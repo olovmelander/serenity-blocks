@@ -35,7 +35,7 @@ const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
     'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'prerender', 'getPostState', 'getState',
     'dispose', 'onB2B', 'onGameOver', 'onSessionStart', 'exportSessionState', 'importSessionState',
-    'setAirMarch',
+    'setAirMarch', 'onSpin',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
@@ -215,6 +215,11 @@ vi.mock('../../src/themes/grainfields/grainfields-world.js', () => {
             this.counts.clears += 1;
             this.clears.push({ ...context, rows: [...context.rows], rowCodes: [...context.rowCodes] });
             this.postState.flash = 0.2 * context.lines;
+        }
+
+        onSpin(context) {
+            mocks.log.push('onSpin');
+            this.spins = [...(this.spins || []), { ...context }];
         }
 
         onCombo(combo) {

@@ -1335,3 +1335,208 @@ describe('koi pond tiers', () => {
         for (let i = 3; i < mask.length; i += 4) expect(mask[i]).toBe(255);
     });
 });
+
+describe('koi pond world: play builds instead of popping', () => {
+    /** A quick, steady hand: a hard-dropped clearing lock every `every` seconds, the chain counting up. */
+    function playChain(world, camera, clears, every = 0.64) {
+        for (let k = 0; k < clears; k++) {
+            const lines = 1 + (k % 3);
+            world.onLock({
+                u: 0.3 + (k % 5) * 0.1, rows: [18, 19], hardDrop: true, color: '#ffc852',
+            });
+            world.onClear({ rows: [19, 18, 17].slice(0, lines), lines, combo: k + 1 });
+            world.onCombo(k + 1);
+            run(world, camera, every);
+        }
+    }
+
+    it('never cuts the light: a single right after a quad only adds to what the quad lit', () => {
+        const a = makeWorld('Low');
+        const b = makeWorld('Low');
+        for (const { world, camera } of [a, b]) {
+            run(world, camera, 2);
+            world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+            run(world, camera, HUSH_HOLD + 0.1);
+        }
+        // Only `a` hears the single, while the quad's light is still high: it lands on the next
+        // step, on top of the quad's light.
+        a.world.onClear({ rows: [19], lines: 1 });
+        run(a.world, a.camera, DT);
+        run(b.world, b.camera, DT);
+        expect(a.world.glow).toBeGreaterThan(b.world.glow);
+        expect(a.world.kick).toBeGreaterThan(b.world.kick);
+        for (let i = 0; i < 180; i++) {
+            run(a.world, a.camera, DT);
+            run(b.world, b.camera, DT);
+            expect(a.world.glow).toBeGreaterThanOrEqual(b.world.glow - 1e-9);
+            expect(a.world.kick).toBeGreaterThanOrEqual(b.world.kick - 1e-9);
+            expect(a.world.getPostState().flash).toBeGreaterThanOrEqual(b.world.getPostState().flash - 1e-9);
+        }
+    });
+
+    it('builds through a chain: hotter than its first clear, a quad in it an inhale, then it breathes back', () => {
+        const { camera, world } = makeWorld('Low');
+        run(world, camera, 3);
+        const rest = {
+            reach: world.light.u.lantern.value.w,
+            exposure: world.getPostState().exposure,
+            flies: world.fireflies.stir.value,
+        };
+        playChain(world, camera, 1);
+        const first = {
+            ...world.getState(),
+            reach: world.light.u.lantern.value.w,
+            flies: world.fireflies.stir.value,
+            rally: world.school.rally,
+            exposure: world.getPostState().exposure,
+        };
+        expect(first.stage).toBe(0); // one clear: still the calm pond
+        playChain(world, camera, 11);
+        const hot = world.getState();
+        // The heat has built across the chain: the act is the fever, the lantern burns further,
+        // the fireflies are all up, the school rallies to the ring, the iris has closed a little.
+        expect(hot.heat).toBeGreaterThan(first.heat + 0.4);
+        expect(hot.fever).toBeGreaterThan(0.5);
+        expect(hot.stage).toBe(3);
+        expect(world.light.u.lantern.value.w).toBeGreaterThan(first.reach + 0.5);
+        expect(first.reach).toBeGreaterThanOrEqual(rest.reach);
+        expect(world.fireflies.stir.value).toBeGreaterThanOrEqual(first.flies);
+        expect(world.fireflies.stir.value).toBe(1);
+        expect(world.school.rally).toBeGreaterThan(first.rally + 0.5);
+        expect(world.getPostState().exposure).toBeLessThan(first.exposure);
+        expect(hot.dragon).toBeGreaterThan(0.5);
+        // Every lily is open and burning.
+        expect(hot.liliesOpen).toBe(hot.lilies);
+        // A quad now is an inhale, not a blackout.
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, combo: 13 });
+        expect(world.hushDepth).toBeLessThan(0.3);
+        let least = 1;
+        run(world, camera, HUSH_HOLD, () => { least = Math.min(least, world.breath); });
+        expect(least).toBeGreaterThan(0.7);
+        expect(least).toBeLessThan(1);
+        // The hands rest: the pond breathes back to its night.
+        world.onCombo(0);
+        run(world, camera, 20);
+        const after = world.getState();
+        expect(after.heat).toBeLessThan(0.02);
+        expect(after.fever).toBe(0);
+        expect(after.stage).toBe(0);
+        expect(world.light.u.lantern.value.w).toBeCloseTo(rest.reach, 2);
+        expect(world.school.rally).toBe(0);
+        expect(world.breath).toBeCloseTo(1, 3);
+        expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 2);
+        expect(world.fireflies.stir.value).toBeCloseTo(rest.flies, 2);
+    });
+
+    it('crowns a quad with a late perfect clear instead of answering it again: no second hush', () => {
+        const { camera, world } = makeWorld('High');
+        run(world, camera, 10);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(world, camera, HUSH_HOLD + 0.03);
+        const { hushUntil, rearUntil } = world;
+        const leap = vi.spyOn(world.school, 'leap');
+        const ring = vi.spyOn(world.light, 'ring');
+        // As the director hands it on: a crown, no lines.
+        world.onClear({
+            rows: [], lines: 0, perfect: true, crown: true, combo: 1,
+        });
+        expect(world.hushUntil).toBe(hushUntil);
+        expect(world.counts).toMatchObject({ quads: 1, clears: 1, crowns: 1 });
+        expect(world.rearUntil).toBeGreaterThan(rearUntil);
+        // The light only comes back up from the quad's hush: it never sinks a second time.
+        let last = world.breath;
+        run(world, camera, 1.5, () => {
+            expect(world.breath).toBeGreaterThanOrEqual(last - 1e-9);
+            last = world.breath;
+        });
+        expect(world.breath).toBeGreaterThan(0.99);
+        // Four more koi turn over in the air (the quad's own last flights are still going too)...
+        const crowning = ([options]) => options.side !== 0 && [1.5, 1.75].includes(options.power);
+        const flights = leap.mock.calls.filter(crowning);
+        expect(flights).toHaveLength(4);
+        flights.forEach(([options]) => expect(options.twist).toBe(true));
+        // ...under a rose ring (not one more gold one), and every lily blazes.
+        expect(ring.mock.calls.some(([, , , , rgb]) => rgb[2] / rgb[0] > 0.3)).toBe(true);
+        expect(world.getState().liliesOpen).toBe(world.getState().lilies);
+    });
+
+    it('shows a T-spin that cleared nothing: one koi turns over at the surface under a rose swirl', () => {
+        const { camera, world } = makeWorld('Low');
+        run(world, camera, 10);
+        const leap = vi.spyOn(world.school, 'leap');
+        const ring = vi.spyOn(world.light, 'ring');
+        world.onLock({ u: 0.3, rows: [18, 19], color: '#7dffb8' });
+        world.onClear({ lines: 0, tspin: true });
+        expect(world.counts).toMatchObject({ clears: 0, spins: 1, quads: 0 });
+        expect(leap.mock.calls[0][0]).toMatchObject({ twist: true });
+        const swirl = ring.mock.calls[ring.mock.calls.length - 1];
+        expect(swirl[4][2] / swirl[4][0]).toBeGreaterThan(0.4);
+        // Where the piece went into the water.
+        expect(swirl[0]).toBeCloseTo(ring.mock.calls[0][0], 6);
+        expect(swirl[1]).toBeCloseTo(ring.mock.calls[0][1], 6);
+        expect(world.surge.level.valueAt(world.time + 0.5)).toBeGreaterThan(0.1);
+    });
+
+    it('answers a back-to-back with a pair that goes over together, turning, under a rose ring', () => {
+        const { camera, world } = makeWorld('High');
+        run(world, camera, 10);
+        const leap = vi.spyOn(world.school, 'leap');
+        const ring = vi.spyOn(world.light, 'ring');
+        world.onClear({ rows: [19, 18], lines: 2, b2b: true });
+        run(world, camera, 0.3);
+        const pair = leap.mock.calls.filter(([options]) => options.power === 1.5 && options.side !== 0);
+        expect(pair.map(([options]) => options.side).sort()).toEqual([-1, 1]);
+        pair.forEach(([options]) => expect(options.twist).toBe(true));
+        expect(ring.mock.calls.some(([, , , , rgb, reach]) => rgb[2] / rgb[0] > 0.3 && reach === 22)).toBe(true);
+    });
+
+    it('builds each wave of a cascade on the last: wider, stronger, deeper in colour', () => {
+        const { camera, world } = makeWorld('Low');
+        run(world, camera, 5);
+        const ring = vi.spyOn(world.light, 'ring');
+        const waves = [];
+        for (let cascade = 1; cascade <= 4; cascade++) {
+            ring.mockClear();
+            world.onClear({ rows: [19], lines: 1, cascade });
+            run(world, camera, 0.36);
+            const widest = ring.mock.calls.reduce((best, call) => (call[5] > best[5] ? call : best));
+            waves.push({ strength: widest[3], reach: widest[5], warmth: widest[4][1] / widest[4][0] });
+        }
+        for (let k = 1; k < waves.length; k++) {
+            expect(waves[k].reach).toBeGreaterThan(waves[k - 1].reach);
+            expect(waves[k].strength).toBeGreaterThan(waves[k - 1].strength);
+            expect(waves[k].warmth).toBeLessThan(waves[k - 1].warmth); // gold toward vermilion
+        }
+    });
+
+    it('keeps a clear\'s gold band crossing the pond whatever small bands follow it', () => {
+        const light = new PondLight({ tier: QUALITY.Minimal });
+        light.ring(0, 0, 10, 1.8, [1.6, 1.05, 0.32], 18);
+        for (let i = 0; i < 20; i++) light.ring(i * 0.1, 0, 10 + i * 0.05, 0.4, [1, 1, 1], 8);
+        expect(light.ringA.filter((a) => a.w === 1.8)).toHaveLength(1);
+        expect(light.ringA).toHaveLength(RING_SLOTS);
+        light.dispose();
+    });
+
+    it('lets a leap that found every koi busy wait and go, and runs a full queue\'s earliest call', () => {
+        const { camera, world } = makeWorld('Low');
+        run(world, camera, 6);
+        const real = world.school.leap.bind(world.school);
+        let refuse = 2;
+        vi.spyOn(world.school, 'leap').mockImplementation((options) => {
+            refuse -= 1;
+            return refuse >= 0 ? -1 : real(options);
+        });
+        world.onClear({ rows: [19], lines: 1 });
+        expect(world.counts.leaps).toBe(0);
+        run(world, camera, 1);
+        expect(world.counts.leaps).toBe(1);
+
+        // A full queue never drops what waits in it: the earliest call runs at once instead.
+        const ran = [];
+        world.queue.length = 0;
+        for (let i = 0; i < 100; i++) world.at(world.time + 50 + i, () => ran.push(i));
+        expect(world.queue).toHaveLength(96);
+        expect(ran).toEqual([0, 1, 2, 3]);
+    });
+});

@@ -33,7 +33,9 @@ export class SummerLake {
         this.samples = samples;
         this.group = new THREE.Group();
         this.group.name = 'SummerLake';
-        this.ripples = new SummerRings(tier.ripples, RING_LIFE);
+        // A ring fades as exp(-0.42 age) and thins as it widens (createMaterial): a full pool
+        // gives up the one with the least left of it.
+        this.ripples = new SummerRings(tier.ripples, RING_LIFE, 0.42, 0.09 * SUMMER_RING_SPEED);
         this.uShimmer = uniform(0);
         this.reflection = null;
         this.owned = [];
@@ -172,9 +174,11 @@ export class SummerLake {
         return material;
     }
 
-    update(dt, frame = {}) {
+    /** Age the rings; `worn` (SummerWorld.wear) carries the shimmer with play's floor under it. */
+    update(dt, frame = {}, worn = null) {
         this.ripples.update(dt);
-        const shimmer = Number.isFinite(frame.shimmer) ? THREE.MathUtils.clamp(frame.shimmer, 0, 1) : 0;
+        const source = worn && Number.isFinite(worn.shimmer) ? worn.shimmer : frame.shimmer;
+        const shimmer = Number.isFinite(source) ? THREE.MathUtils.clamp(source, 0, 1) : 0;
         this.uShimmer.value = shimmer;
     }
 

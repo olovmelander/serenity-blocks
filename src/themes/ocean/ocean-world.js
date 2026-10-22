@@ -29,6 +29,18 @@
  *   level    the light turns to its next hour (six of them on a wheel) and a long swell passes
  *            overhead.
  *
+ * Fast play BUILDS (shared/gameplay-surge.js: the heat of play, fed by every event). Nothing a
+ * later event does cuts what an earlier one lit: a second four restarts no shaft and no hush, a
+ * current still crossing is made stronger rather than cut, a far whale never keeps the near one
+ * away (a whale already in the water answers by singing). Calm play looks as it always did; as
+ * the hands quicken the reef wakes (its own light and the colours it holds burn brighter, the
+ * caustics sharpen, the current leans harder); hot, the surface steepens, the plankton stirs and
+ * a current only lets go of part of each colony's colour, so the canyon walls burn on in the
+ * chain's colours; in a fever the light comes down over the board as a standing shaft and the
+ * school winds round it. A four's hush is as deep as play is cold; a cascade's waves cross ever
+ * stronger; a back-to-back rings the sea like a bell; a perfect clear is the crown (the whole
+ * reef spawns at once, the water clears), and the chain's end lets go what it kept alight.
+ *
  * The light also moves on by itself, whatever the level: an hour every 100 s of the world's
  * clock, so the colour of the water is never quite the same twice.
  *
@@ -38,6 +50,7 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     CALLS,
     DEG,
@@ -130,6 +143,44 @@ const RIBBON = Object.freeze({
     wide: 17, swing: 0.3, back: -5.5, deep: 2.4, hold: 3.4,
 });
 
+/** The overdrive a run of four-line clears can stack to. */
+const SURGE_MAX = 1.5;
+/** Seconds a current's front takes to cross the frame and let go of it: its row may make way. */
+const SURGE_CROSS = 5.5;
+/** The strongest a current grows when later clears ride on it. */
+const SURGE_FRONT_MAX = 2.0;
+/** Seconds after it was let go that a colour has all but gone out: its row may make way. */
+const STAIN_SPENT = 1.8;
+/** Seconds a colony takes to settle to the share of its colour it keeps (or takes up a new one). */
+const STAIN_SETTLE = 0.5;
+/** A whale already in the water answers a call by singing, at most this often (seconds). */
+const ENCORE_GAP = 1.1;
+
+/**
+ * The heat of play as the sea wears it (the shared GameplaySurge's level, 0..1): `warm` is the
+ * world taking notice (nothing under casual play), `hot` the sea alive with the player.
+ */
+const warmOf = (level) => smooth(0.15, 0.6, level);
+const hotOf = (level) => smooth(0.45, 0.9, level);
+
+/** A colony's hold on its colour at `t` (1 = all of it): eased from one share to the next. */
+function holdAt(s, t) {
+    if (t < s.holdAt) return s.holdFrom;
+    return s.holdTo + (s.holdFrom - s.holdTo) * Math.exp(-(t - s.holdAt) / STAIN_SETTLE);
+}
+
+/** Ease a colony's hold to `to` from `at` on, from wherever it stands then. */
+function settleHold(s, to, at) {
+    if (at < s.holdAt) {
+        // Two fronts on their way: the later settles on from where the first leaves it.
+        s.holdTo = Math.min(s.holdTo, to);
+        return;
+    }
+    s.holdFrom = holdAt(s, at);
+    s.holdTo = to;
+    s.holdAt = at;
+}
+
 /** The large animals' parts: one per kind (giant:humpback, giant:manta, ...). */
 const GIANT_PARTS = KINDS.map((kind) => `giant:${kind}`);
 
@@ -220,6 +271,12 @@ export class OceanWorld {
                 x: 0.5, y: 0.5, radius: 0, strength: 0,
             })),
         };
+        /**
+         * The heat of play (shared/gameplay-surge.js), fed by every event on the world clock: the
+         * reef wakes, the light comes down and the school winds in as it builds, and the sea
+         * breathes back to rest when the hands do.
+         */
+        this.heat = new GameplaySurge();
         this.resetState(0);
     }
 
@@ -228,21 +285,39 @@ export class OceanWorld {
         this.time = time;
         this.combo = 0;
         this.power = 0;
+        /** The reef's charge as everything reads it: the chain's power, or the heat of play's floor. */
+        this.charge = 0;
         this.surge = 0;
+        /** An overdrive on its way: it rises to `surgeTo` when the light comes down (`surgeAt`). */
+        this.surgeAt = NEVER;
+        this.surgeTo = 0;
         this.level = 1;
         /** The level's place on the wheel of hours, turning from one to the next. */
         this.turn = { from: 0, to: 0, time: -100 };
         this.flash = 0;
         this.kick = 0;
-        this.dip = 0;
         this.breath = 1;
         this.lift = 0;
         this.flare = 0;
         this.swell = 1;
         this.current = 0.25;
         this.hushUntil = -1;
+        /** How far the last four-line clear's hush dims the sea (0.7 in cold play, shallow in a fever). */
+        this.hushDepth = 0.7;
+        // The heat of play, as last sampled (update()).
+        this.heat?.reset();
+        this.heatLevel = 0;
+        this.fever = 0;
+        this.punch = 0;
+        this.warm = 0;
+        this.hot = 0;
+        this.act = 0;
         this.rings = [];
-        /** Colonies holding a colour: { x, y, z, rgb, birth, gain, release }. */
+        /**
+         * Colonies holding a colour: { x, y, z, rgb, birth, gain, release }, and how much of it
+         * they still hold (hold*, eased between shares), the flare they give as a current passes
+         * (a Swell), and a colour they are taking up (tint, from tintAt).
+         */
         this.stains = [];
         this.surges = [];
         this.scares = [];
@@ -250,8 +325,12 @@ export class OceanWorld {
         this.shocks = [];
         this.surgeDir = -1;
         this.lastLanding = null;
+        /**
+         * The great shaft: standing from `from` to `until` (a second four-line clear while it stands
+         * holds it longer and wider, never restarts it); `level` is how far down it is (eased).
+         */
         this.beam = {
-            x: 0, z: 0, time: -100, strength: 0,
+            x: 0, z: 0, from: -100, until: -100, strength: 0, wide: 0, level: 0,
         };
         // The school: where it is on its loop, the shape it is easing to, the vortex.
         this.school = {
@@ -266,12 +345,15 @@ export class OceanWorld {
             tight: 1,
             excite: 0,
         };
-        /** Passes the board has called for: { start, side } per animal, null when none. */
+        /**
+         * Passes the board has called for: { start, side } per animal, null when none. The whale
+         * far out and the whale over the board are two passes: a far one never keeps the near one away.
+         */
         this.calls = {
-            turtle: null, mantas: [null, null, null], whale: null,
+            turtle: null, mantas: [null, null, null], whale: null, whaleFar: null,
         };
         this.counts = {
-            locks: 0, clears: 0, quads: 0, stains: 0, released: 0, passes: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, stains: 0, released: 0, kept: 0, passes: 0,
         };
         // The slow clock and the flora's own phase are functions of the world clock until gameplay bends them.
         this.drift = time * (this.reducedMotion ? 0.3 : 1);
@@ -436,7 +518,7 @@ export class OceanWorld {
         this.school.vortexUntil = Math.min(this.school.vortexUntil, this.time);
         this.releaseAll(this.time, 0.6, 0.5);
         this.counts = {
-            locks: 0, clears: 0, quads: 0, stains: 0, released: 0, passes: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, stains: 0, released: 0, kept: 0, passes: 0,
         };
         // A new run is at level one again, but the light stays where the clock and the last run
         // left it: the next level-up steps on from there.
@@ -599,7 +681,20 @@ export class OceanWorld {
     /** Start a ring of light on the reef at (x, z) at `time`. */
     ring(x, z, time, strength, rgb, reach = 1) {
         if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(time)) return;
-        if (this.rings.length >= RING_SLOTS) this.rings.shift();
+        if (this.rings.length >= RING_SLOTS) {
+            // The ring with the least light left makes way (one still to land counts as whole).
+            let weakest = 0;
+            let least = Infinity;
+            for (let i = 0; i < this.rings.length; i++) {
+                const r = this.rings[i];
+                const left = r.strength * (1 - smooth(RING_LIVE * 0.45, RING_LIVE, this.time - r.time));
+                if (left < least) {
+                    least = left;
+                    weakest = i;
+                }
+            }
+            this.rings.splice(weakest, 1);
+        }
         this.rings.push({
             x, z, time, strength, rgb: [rgb[0], rgb[1], rgb[2]], reach,
         });
@@ -608,15 +703,64 @@ export class OceanWorld {
     /** Light the colonies round (x, z) in a colour from `time`; they hold it until a clear lets it go. */
     stain(x, z, time, rgb, gain = 1) {
         if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(time)) return;
-        if (this.stains.length >= STAIN_SLOTS) {
-            // No room: the oldest one still held lets go by itself, and the oldest of all makes
-            // way (a colour let go is still fading in the list: the list must not outgrow its table).
-            const oldest = this.stains.find((s) => s.release === NEVER);
-            if (oldest) this.release(oldest, Math.max(this.time, oldest.birth), 0.5);
-            while (this.stains.length >= STAIN_SLOTS) this.stains.shift();
+        const { stains } = this;
+        if (stains.length >= STAIN_SLOTS) {
+            // A colour let go that has all but gone out makes way (the one let go longest ago).
+            let spent = -1;
+            for (let i = 0; i < stains.length; i++) {
+                const s = stains[i];
+                if (s.release !== NEVER && this.time - s.release > STAIN_SPENT
+                    && (spent < 0 || s.release < stains[spent].release)) spent = i;
+            }
+            if (spent >= 0) stains.splice(spent, 1);
         }
-        this.stains.push({
-            x, y: this.groundAt(x, z), z, rgb: [rgb[0], rgb[1], rgb[2]], birth: time, gain, release: NEVER,
+        if (stains.length >= STAIN_SLOTS) {
+            // Still no room: the reef overflows. The oldest colony still holding lets its colour go
+            // by itself (it flares and spawns), and this light is taken up by the held colony
+            // nearest where it lands: that one turns to the new colour as it arrives. Nothing is
+            // cut off mid-glow.
+            const oldest = stains.find((s) => s.release === NEVER);
+            if (oldest) this.release(oldest, Math.max(this.time, oldest.birth), 0.5);
+            let near = null;
+            let best = Infinity;
+            for (let i = 0; i < stains.length; i++) {
+                const s = stains[i];
+                if (s.release !== NEVER || s === oldest) continue;
+                const d = (s.x - x) * (s.x - x) + (s.z - z) * (s.z - z);
+                if (d < best) {
+                    best = d;
+                    near = s;
+                }
+            }
+            if (near) {
+                near.tint = [rgb[0], rgb[1], rgb[2]];
+                near.tintAt = Math.max(time, near.birth);
+                near.gain = Math.max(near.gain, gain);
+                settleHold(near, 1, near.tintAt);
+                near.flare.hit(1.2, near.tintAt);
+                this.counts.stains += 1;
+                return;
+            }
+            // Every row is a colour still fading: the one let go longest ago makes way.
+            let first = 0;
+            for (let i = 1; i < stains.length; i++) if (stains[i].release < stains[first].release) first = i;
+            stains.splice(first, 1);
+        }
+        stains.push({
+            x,
+            y: this.groundAt(x, z),
+            z,
+            rgb: [rgb[0], rgb[1], rgb[2]],
+            birth: time,
+            gain,
+            release: NEVER,
+            holdFrom: 1,
+            holdTo: 1,
+            holdAt: -100,
+            kept: false,
+            flare: new Swell({ release: 0.3 }),
+            tint: null,
+            tintAt: NEVER,
         });
         this.counts.stains += 1;
     }
@@ -626,13 +770,42 @@ export class OceanWorld {
         if (stain.release !== NEVER) return;
         stain.release = Math.max(time, stain.birth);
         this.counts.released += 1;
-        this.spawn(stain.x, stain.y, stain.z, stain.rgb, stain.release, share * stain.gain);
+        const held = Math.max(0.35, holdAt(stain, stain.release));
+        this.spawn(stain.x, stain.y, stain.z, stain.rgb, stain.release, share * stain.gain * held);
+    }
+
+    /**
+     * Let PART of a colony's colour go at `time` as a current passes it in hot play: it flares and
+     * spawns what it lets go, and keeps `keep` of what it held (never less than `floor`), so the
+     * reef's record of the chain burns on under the caustics instead of emptying on every clear.
+     */
+    letSome(stain, time, share, keep, floor) {
+        if (stain.release !== NEVER) return;
+        const at = Math.max(time, stain.birth);
+        const held = holdAt(stain, at);
+        const to = Math.max(Math.min(held, floor), held * keep);
+        settleHold(stain, to, at);
+        stain.kept = true;
+        stain.flare.hit(0.6 + 1.4 * (1 - keep), at);
+        this.counts.kept += 1;
+        this.spawn(stain.x, stain.y, stain.z, stain.rgb, at, share * stain.gain * Math.max(0.35, held));
     }
 
     /** Let every colony go, one after another over `over` seconds. */
     releaseAll(time, over = 0.5, share = 1) {
         const held = this.stains.filter((s) => s.release === NEVER);
         held.forEach((s, i) => this.release(s, Math.max(time, s.birth) + (over * i) / Math.max(1, held.length), share));
+    }
+
+    /**
+     * What the reef kept through a chain lets go: the colonies a current has already passed (the
+     * ones hot play made hold on), one after another over `over` seconds. Lights still sinking,
+     * and colonies no current has reached yet, keep theirs for the next clear, as in calm play.
+     */
+    releaseKept(time, over = 1.2, share = 0.8) {
+        const kept = this.stains.filter((s) => s.release === NEVER && s.kept);
+        kept.forEach((s, i) => this.release(s, Math.max(time, s.birth) + (over * i) / Math.max(1, kept.length), share));
+        return kept.length;
     }
 
     /** Beads rising from a place on the reef: the corals spawning. */
@@ -664,9 +837,39 @@ export class OceanWorld {
     /** A ring of pressure through the picture from a world point at `time`. */
     shock(x, y, z, time, strength) {
         const at = this.worldToScreen(x, y, z, { x: 0.5, y: 0.5 });
-        if (this.shocks.length >= SHOCKS) this.shocks.shift();
+        if (this.shocks.length >= SHOCKS) {
+            // The ring with the least left in it makes way (one still to come counts as whole).
+            let weakest = 0;
+            let least = Infinity;
+            for (let i = 0; i < this.shocks.length; i++) {
+                const s = this.shocks[i];
+                const left = s.strength * Math.exp(-Math.max(0, this.time - s.time) / 0.65);
+                if (left < least) {
+                    least = left;
+                    weakest = i;
+                }
+            }
+            this.shocks.splice(weakest, 1);
+        }
         this.shocks.push({
             x: at.x, y: at.y, time, strength: this.reducedMotion ? strength * 0.4 : strength,
+        });
+    }
+
+    /**
+     * A shell of light sent out through the water from a world point at `time` (a whale's song;
+     * the sea ringing like a bell on a back-to-back). When every row is taken the song that has
+     * faded furthest makes way.
+     */
+    sing(x, y, z, time) {
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(time)) return;
+        if (this.songs.length >= SONG_SLOTS) {
+            let first = 0;
+            for (let i = 1; i < this.songs.length; i++) if (this.songs[i].time < this.songs[first].time) first = i;
+            this.songs.splice(first, 1);
+        }
+        this.songs.push({
+            x, y, z, time,
         });
     }
 
@@ -709,6 +912,7 @@ export class OceanWorld {
         this.lockAt(wx, wy, side, rgb, hardDrop);
         this.kick = Math.max(this.kick, hardDrop ? 0.45 : 0.08);
         this.flash = Math.max(this.flash, hardDrop ? 0.06 : 0.012);
+        this.heat.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
@@ -757,50 +961,97 @@ export class OceanWorld {
         }
     }
 
-    /** Lines cleared. `lines` 1..4; `tspin`, `perfect`. */
+    /**
+     * A current across the canyon from `birth` for a clear of `n` lines, or, when every row is
+     * still crossing the frame (a chain faster than a front crosses), the youngest one made
+     * stronger: a current already running is never cut off mid-frame. Returns the front this
+     * clear rides on, { time, dir }.
+     */
+    sendCurrent(birth, n, strength) {
+        let at = birth;
+        // No two currents share a birth (two boards can clear in one frame).
+        for (let i = 0; i < this.surges.length; i++) {
+            if (this.surges[i].time === at) {
+                at += 1e-6;
+                i = -1;
+            }
+        }
+        if (this.surges.length >= SURGE_SLOTS) {
+            let spent = -1;
+            for (let i = 0; i < this.surges.length; i++) {
+                const s = this.surges[i];
+                if (this.time - s.time > SURGE_CROSS && (spent < 0 || s.time < this.surges[spent].time)) spent = i;
+            }
+            if (spent >= 0) this.surges.splice(spent, 1);
+            else {
+                let young = 0;
+                for (let i = 1; i < this.surges.length; i++) {
+                    if (this.surges[i].time > this.surges[young].time) young = i;
+                }
+                const s = this.surges[young];
+                s.strength = Math.min(SURGE_FRONT_MAX, s.strength + strength * 0.4);
+                s.lines = Math.max(s.lines, n);
+                return s;
+            }
+        }
+        this.surgeDir = -this.surgeDir;
+        const front = {
+            time: at, dir: this.surgeDir, strength, lines: n,
+        };
+        this.surges.push(front);
+        return front;
+    }
+
+    /**
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = which wave of one
+     * lock's cascade this is (each builds on the last); `combo` = the true combo.
+     */
     onClear({
-        rows = null, lines = 1, perfect = false, tspin = false, player = 0, screen = null,
+        rows = null, lines = 1, perfect = false, tspin = false, b2b = false, cascade = 1, combo = 1, player = 0,
+        screen = null,
     } = {}) {
         if (!this.u) return;
         const t = this.time;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
+        const wave = Math.max(1, Math.min(12, Math.round(Number(cascade) || 1)));
+        // How deep into a cascade: each wave crosses stronger, spawns more, flares higher.
+        const deep = clamp01((wave - 1) / 4);
         const quad = n >= 4 || perfect;
         const share = this.poolShare();
         const { glow } = this._hour;
         const peak = Math.max(glow[0], glow[1], glow[2], 1e-4);
         const rgb = glow.map((c) => (c / peak) * 0.85 + 0.15);
-        let birth = quad ? t + HUSH_HOLD : t;
-        // No two currents share a birth (two boards can clear in one frame).
-        for (let i = 0; i < this.surges.length; i++) {
-            if (this.surges[i].time === birth) {
-                birth += 1e-6;
-                i = -1;
-            }
-        }
-        this.surgeDir = -this.surgeDir;
-        const dir = this.surgeDir;
-        if (this.surges.length >= SURGE_SLOTS) this.surges.shift();
-        this.surges.push({
-            time: birth, dir, strength: Math.min(1.6, 0.6 + 0.22 * n + (quad ? 0.25 : 0)), lines: n,
-        });
-        this.flare = Math.max(this.flare, 0.35 + 0.15 * n);
+        const birth = quad ? t + HUSH_HOLD : t;
+        // The heat of play: read before this clear adds to it (the share a colony keeps).
+        const keep = this.keepShare();
+        this.heat.clear({
+            lines: n, cascade: wave, combo, tspin, perfect, b2b,
+        }, t);
+        const front = this.sendCurrent(birth, n, Math.min(1.6, 0.6 + 0.22 * n + (quad ? 0.25 : 0)) + 0.35 * deep);
+        const { dir } = front;
+        this.flare = Math.max(this.flare, 0.35 + 0.15 * n + 0.25 * deep);
         this.flash = Math.max(this.flash, 0.03 + 0.02 * n);
 
-        // ── Every colony the front passes lets its colour go ──
+        // ── Every colony the front passes lets its colour go: all of it in calm play; in hot play
+        // only a share, so the reef's record of the chain burns on ──
+        const floor = 0.75 * keep;
         for (let i = 0; i < this.stains.length; i++) {
             const s = this.stains[i];
             if (s.release !== NEVER) continue;
-            const pass = surgePassTime(birth, dir, s.x / this.squeeze);
+            const pass = Math.max(t, surgePassTime(front.time, dir, s.x / this.squeeze));
             // (A light still on its way down leaves its colony for the next current.)
             if (s.birth > pass) continue;
-            this.release(s, pass, 0.7 + 0.25 * n);
+            if (keep > 0.04) this.letSome(s, pass, (0.7 + 0.25 * n) * (1 - keep * 0.6), keep, floor);
+            else this.release(s, pass, 0.7 + 0.25 * n);
         }
-        // The reef spawns a little by itself as the front goes by, more for more lines.
-        const gardens = quad ? this.gardens.length : Math.min(this.gardens.length, n + 1);
+        // The reef spawns a little by itself as the front goes by, more for more lines and for
+        // each wave of a cascade.
+        const gardens = quad ? this.gardens.length : Math.min(this.gardens.length, n + wave);
         for (let i = 0; i < gardens; i++) {
             const g = this.gardens[(i * 3 + this.counts.clears) % this.gardens.length];
             const x = g[0] * this.squeeze;
-            this.spawn(x, this.groundAt(x, g[1]), g[1], rgb, surgePassTime(birth, dir, g[0]), quad ? 1.1 : 0.45);
+            const pass = Math.max(t, surgePassTime(front.time, dir, g[0]));
+            this.spawn(x, this.groundAt(x, g[1]), g[1], rgb, pass, quad ? 1.1 : 0.45 + 0.3 * deep);
         }
 
         // ── The school draws out and streams across at the cleared rows' height ──
@@ -813,7 +1064,16 @@ export class OceanWorld {
             const { y } = boardPoint(board, 0.5, mid, this._point);
             high = Math.max(1.6, Math.min(SURFACE - 2.5, this.screenToWorld(0.5, y, 15.5, [0, 0, 0])[1]));
         }
-        this.school.ribbon = { from: birth, until: birth + RIBBON.hold + 0.4 * n, high };
+        // A ribbon still streaming streams on (it never eases out for a quad's hush); a new one
+        // starts when the last has let go.
+        const { ribbon } = this.school;
+        const until = birth + RIBBON.hold + 0.4 * n + 0.6 * deep;
+        if (t >= ribbon.from && t < ribbon.until) ribbon.until = Math.max(ribbon.until, until);
+        else {
+            ribbon.from = birth;
+            ribbon.until = until;
+        }
+        ribbon.high = high;
 
         // ── The cleared rows leave the card as sheets of bubbles, carried off by the current ──
         if (this.pool && board && card && !screen) {
@@ -824,28 +1084,57 @@ export class OceanWorld {
                 [-1, 1].forEach((edge) => {
                     this.screenToWorld(edge < 0 ? card.x0 : card.x1, y, 7, at);
                     this.pool.emit({
-                        mode: 'bubble', at, n: Math.round((8 + (quad ? 5 : 0)) * share), rgb, time: birth + i * 0.04, vel: [dir * 2.2 + edge * 1.1, 0.35, -0.3], spread: 0.6, scatter: 0.12, life: [1.8, 4], size: 0.06, stagger: 0.3,
+                        mode: 'bubble', at, n: Math.round((8 + (quad ? 5 : 0)) * (1 + deep) * share), rgb, time: birth + i * 0.04, vel: [dir * (2.2 + deep) + edge * 1.1, 0.35, -0.3], spread: 0.6, scatter: 0.12, life: [1.8, 4], size: 0.06, stagger: 0.3,
                     });
                 });
             }
         }
 
         if (quad) {
-            this.hushUntil = t + HUSH_HOLD;
-            this.surge = perfect ? 1.3 : 1;
-            this.school.vortexFrom = birth;
-            this.school.vortexUntil = birth + VORTEX_HOLD;
-            // The great shaft comes down over the board.
-            this.beam = {
-                x: 0, z: VORTEX.z - 1, time: birth, strength: 1,
-            };
+            // The sea holds its breath: as deep as play is cold. Mid-fever it only inhales.
+            this.hushUntil = Math.max(this.hushUntil, t + HUSH_HOLD);
+            this.hushDepth = 0.7 * (1 - 0.8 * clamp01(this.heatLevel));
+            // The overdrive stacks with each four-line clear instead of being set back.
+            // It rises as the light comes down, after the hush (the iris must not close on a held breath).
+            this.surgeTo = Math.min(SURGE_MAX, Math.max(this.surge + 0.3, this.surgeTo + 0.3, perfect ? 1.3 : 1));
+            this.surgeAt = Math.min(this.surgeAt, birth);
+            // The school winds round the board; still winding, it winds on (no unwinding in the hush).
+            const sc = this.school;
+            if (t >= sc.vortexFrom && t < sc.vortexUntil) {
+                sc.vortexUntil = Math.max(sc.vortexUntil, birth + VORTEX_HOLD);
+            } else {
+                sc.vortexFrom = birth;
+                sc.vortexUntil = birth + VORTEX_HOLD;
+            }
+            // The great shaft comes down over the board; one still standing holds on, wider.
+            const b = this.beam;
+            b.x = 0;
+            b.z = VORTEX.z - 1;
+            b.strength = 1;
+            if (t < b.until && b.level > 0.02) {
+                b.until = Math.max(b.until, birth + VORTEX_HOLD - 1);
+                b.wide = Math.min(2, b.wide + 1);
+            } else {
+                b.from = birth;
+                b.until = birth + VORTEX_HOLD - 1;
+                b.wide = 0;
+            }
             this.shock(0, 3, VORTEX.z, birth, 1);
             this.scare(0, 4, VORTEX.z, birth, 0.6, 9);
             this.counts.quads += 1;
-            // The whale answers it.
+            // The whale answers it: she comes over the board, or, already here, sings.
             this.call('whale', birth + 0.6);
         }
-        if (perfect) this.lift = 1;
+        if (perfect) this.crown(birth);
+        if (b2b) {
+            // Back-to-back: the sea rings like a bell from the board. A shell of light runs out
+            // through the water, a ring of the hour's light crosses the whole floor, the shafts
+            // flare: the second hard clear answers the first.
+            this.sing(0, 3.6, VORTEX.z, birth + 0.12);
+            this.ring(0, -4, birth + 0.12, 1.2, rgb, 2.6);
+            if (!quad) this.shock(0, 3, VORTEX.z, birth + 0.12, 0.7);
+            this.flare = Math.max(this.flare, 0.95);
+        }
         if (tspin) {
             // A ring of bubbles blown where the piece went in, widening as it climbs.
             const at = this.lastLanding || [-6 * this.squeeze, this.groundAt(-6 * this.squeeze, -2), -2];
@@ -862,7 +1151,67 @@ export class OceanWorld {
         this.counts.clears += 1;
     }
 
-    /** Send for one of the large animals at `time` (nothing happens while it is still passing). */
+    /** How much of its colour a colony keeps as a current passes: none in calm play, most of it hot. */
+    keepShare() {
+        return 0.72 * smooth(0.2, 0.75, this.heatLevel);
+    }
+
+    /**
+     * The crown on a perfect clear, layered on the clear still playing (never a second clear, never
+     * a second hush): the whole reef lets go at once, a mass spawning in the colours it held; the
+     * water clears; the sea rings from the board; a great shaft still standing holds on longer.
+     */
+    crown(at) {
+        this.releaseAll(at, 0.9, 1.2);
+        this.lift = Math.max(this.lift, 0.6);
+        this.sing(0, 3.6, VORTEX.z, at + 0.2);
+        this.flare = Math.max(this.flare, 0.8);
+        const b = this.beam;
+        if (at < b.until && b.level > 0.02) b.until = Math.max(b.until, at + 2.5);
+        this.counts.crowns += 1;
+    }
+
+    /** A perfect clear on a moment of its own, after its clear's last wave: the crown. */
+    onPerfect() {
+        if (!this.u) return;
+        this.heat.crown(this.time);
+        this.crown(this.time);
+    }
+
+    /** A T-spin that cleared nothing: one ring of bubbles where the piece went in, and a ring of its light. */
+    onSpin() {
+        if (!this.u) return;
+        const t = this.time;
+        this.heat.spin(t);
+        const at = this.lastLanding || [-6 * this.squeeze, this.groundAt(-6 * this.squeeze, -2), -2];
+        const { glow } = this._hour;
+        const peak = Math.max(glow[0], glow[1], glow[2], 1e-4);
+        const rgb = glow.map((c) => (c / peak) * 0.85 + 0.15);
+        if (this.pool) {
+            this.pool.emit({
+                mode: 'bubble',
+                at: [at[0], at[1] + 0.4, at[2]],
+                n: Math.round(26 * this.poolShare()),
+                rgb,
+                time: t,
+                vel: [0, 1.05, 0],
+                spread: 0.03,
+                ring: 0.4,
+                ringSpeed: 0.6,
+                life: [3.5, 5],
+                size: 0.08,
+                scatter: 0.02,
+            });
+        }
+        this.ring(at[0], at[2], t, 0.8, rgb, 0.9);
+        this.counts.spins += 1;
+    }
+
+    /**
+     * Send for one of the large animals at `time`. A turtle or a manta still passing is not sent
+     * again; a whale is never refused: a far one never keeps the one over the board away, and a
+     * whale already in the water answers a further call by singing.
+     */
     call(kind, time, far = false) {
         const member = (extra = {}) => ({
             lag: 0, off: [0, 0, 0], weave: 0, weaveRate: 0, weavePhase: 0, scale: 1, phase: 0, variant: 0.3, roll: 0, ...extra,
@@ -886,10 +1235,15 @@ export class OceanWorld {
                 start: time, side, visit: laneVisit('manta', LANES.manta, time, PASS_SECONDS.manta, side, [one]),
             };
         } else {
-            const c = this.calls.whale;
-            const lane = c?.far ? 'whaleFar' : 'whale';
-            if (c && time < c.start + PASS_SECONDS[lane]) {
-                // Already on its way far out: a louder call does not turn it round.
+            const passing = (c, lane) => Boolean(c && time < c.start + PASS_SECONDS[lane]);
+            const near = this.calls.whale;
+            const farOne = this.calls.whaleFar;
+            // A whale already on her way answers: the one over the board first.
+            const answering = far
+                ? (passing(near, 'whale') && near) || (passing(farOne, 'whaleFar') && farOne)
+                : passing(near, 'whale') && near;
+            if (answering) {
+                if (!(time - answering.encore < ENCORE_GAP)) answering.encore = time;
                 return false;
             }
             const side = this.counts.passes % 2 ? 1 : -1;
@@ -901,8 +1255,14 @@ export class OceanWorld {
                     lag: 0.035, off: [-side * 2.6, -1.9, 0], scale: 0.46, phase: 1.7, variant: 0.7,
                 }));
             }
-            this.calls.whale = {
-                start: time, side, far, sung: false, visit: laneVisit('humpback', LANES[here], time, PASS_SECONDS[here], side, members),
+            this.calls[here] = {
+                start: time,
+                side,
+                far,
+                sung: false,
+                encore: -100,
+                sangAt: -100,
+                visit: laneVisit('humpback', LANES[here], time, PASS_SECONDS[here], side, members),
             };
         }
         this.counts.passes += 1;
@@ -925,8 +1285,9 @@ export class OceanWorld {
     }
 
     /**
-     * The true combo changed. A higher number sends for the next of the large animals; a lower
-     * one means the chain broke (0), or broke and a new one has already begun.
+     * The true combo changed. A higher number sends for the next of the large animals (past the
+     * whale over the board, each further link makes her sing); a lower one means the chain broke
+     * (0), or broke and a new one has already begun: what the reef held on to through it lets go.
      */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
@@ -934,8 +1295,11 @@ export class OceanWorld {
             this.combo = n;
             return;
         }
-        if (n < this.combo) this.dip = Math.max(this.dip, 0.2);
-        else if (n > this.combo) {
+        if (n < this.combo) {
+            // The chain's release: no dimming, the sea exhales, the colonies the chain kept alight
+            // spawning their colours as it goes.
+            this.releaseKept(this.time);
+        } else if (n > this.combo) {
             if (n >= CALLS.whale) this.call('whale', this.time);
             else if (n >= CALLS.whaleFar) this.call('whale', this.time, true);
             if (n >= CALLS.mantas) this.call('manta', this.time);
@@ -971,6 +1335,7 @@ export class OceanWorld {
         this.flare = Math.max(this.flare, 0.7);
         this.flash = Math.max(this.flash, 0.1);
         this.school.excite = 1;
+        this.heat.levelUp(this.time);
         // A ring of the new hour's light runs out over the whole canyon floor.
         const { glow } = hourAt(hourPlace(to, this.time, this.hourDrift));
         this.ring(0, -4, this.time, 1.3, glow, 2.6);
@@ -991,7 +1356,10 @@ export class OceanWorld {
         refractToAir(this._sun, this._air);
         u.sunDir.value.set(this._sun[0], this._sun[1], this._sun[2]);
         u.sunAir.value.set(this._air[0], this._air[1], this._air[2]);
-        u.fluor.value = Math.min(1.4, h.fluor + this.power * 0.3 + this.surge * 0.35);
+        // The reef's own light: with the hour, the chain's charge, the overdrive, and the heat of
+        // play (it wakes as the hands quicken and burns through a fever).
+        const play = this.warm * 0.22 + this.fever * 0.3;
+        u.fluor.value = Math.min(1.6, h.fluor + this.charge * 0.3 + this.surge * 0.35 + play);
         u.night.value = h.night;
     }
 
@@ -1032,9 +1400,10 @@ export class OceanWorld {
             return true;
         };
 
-        // ── The board's calls: the whale (and her calf), up to three mantas, the turtle ──
-        const w = this.calls.whale;
-        if (w && place(w.visit, w.visit.members[0])) {
+        // ── The board's calls: the whale over the board (and her calf), the whale far out, up to
+        // three mantas, the turtle ──
+        const whale = (w) => {
+            if (!w || !place(w.visit, w.visit.members[0])) return;
             const { fx, fy, fz } = pose;
             shade(
                 pose.x - fx * 5.5,
@@ -1050,13 +1419,18 @@ export class OceanWorld {
             const wk = (t - w.start) / w.visit.seconds;
             if (!w.far && !w.sung && wk > 0.4) {
                 w.sung = true;
-                if (this.songs.length >= SONG_SLOTS) this.songs.shift();
-                this.songs.push({
-                    x: pose.x, y: pose.y, z: pose.z, time: w.start + 0.4 * w.visit.seconds,
-                });
+                w.sangAt = w.start + 0.4 * w.visit.seconds;
+                this.sing(pose.x, pose.y, pose.z, w.sangAt);
+            }
+            // A further call answered: she sings where she is.
+            if (w.encore > w.sangAt && t >= w.encore) {
+                w.sangAt = w.encore;
+                this.sing(pose.x, pose.y, pose.z, w.encore);
             }
             for (let m = 1; m < w.visit.members.length; m++) place(w.visit, w.visit.members[m]);
-        }
+        };
+        whale(this.calls.whale);
+        whale(this.calls.whaleFar);
         for (let i = 0; i < this.calls.mantas.length; i++) {
             const c = this.calls.mantas[i];
             if (c && place(c.visit, c.visit.members[0])) {
@@ -1093,19 +1467,48 @@ export class OceanWorld {
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
 
+        // ── The heat of play: calm (as the sea always was), warm (the reef wakes), hot (the
+        // sea alive with the player), fever (the light comes down over the board) ──
+        const heat = this.heat.sample(t);
+        this.heatLevel = heat.level;
+        this.fever = heat.fever;
+        this.punch = heat.punch;
+        this.warm = warmOf(heat.level);
+        this.hot = hotOf(heat.level);
+        const { warm, hot, fever } = this;
+        // Stepping up into an act calls the sea's own: a manta glides over as play turns hot, and
+        // the whale comes over the board for a fever (or, already here, sings).
+        if (heat.stage > this.act) {
+            if (heat.stage >= 2 && this.act < 2) this.call('manta', t);
+            if (heat.stage >= 3 && this.act < 3) this.call('whale', t);
+        }
+        this.act = heat.stage;
+
         // ── The charge ──
         const target = powerForCombo(this.combo);
         this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.8, dt);
+        // A quick hand charges the reef as a chain does: the heat of play is its floor.
+        this.charge = Math.max(this.power, 0.42 * warm + 0.3 * hot);
+        const { charge } = this;
         this.surge *= Math.exp(-dt / SURGE_COOL);
+        if (t >= this.surgeAt) {
+            this.surge = Math.max(this.surge, this.surgeTo);
+            this.surgeAt = NEVER;
+            this.surgeTo = 0;
+        }
         this.flash *= Math.exp(-dt / 0.25);
         this.kick *= Math.exp(-dt / 0.16);
-        this.dip *= Math.exp(-dt / 0.35);
+        // Every event's punch is a floor under the camera's kick: rapid locks ride on it.
+        this.kick = Math.max(this.kick, heat.punch * 0.24 * motion);
         this.lift *= Math.exp(-dt / 6);
         this.flare *= Math.exp(-dt / 1.1);
-        this.swell += (1 + this.surge * 0.5 - this.swell) * approach(0.45, dt);
+        // The surface stands steeper as play heats, and rolls in a fever.
+        this.swell += (1 + this.surge * 0.5 + (0.3 * hot + 0.35 * fever) * motion - this.swell) * approach(0.45, dt);
         const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.3 : 1 - this.dip;
+        const breathTarget = hush ? 1 - this.hushDepth : 1;
         this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        // How far the sea is holding its breath (0..1 of a cold quad's hush).
+        const inhale = clamp01((1 - this.breath) / 0.7);
 
         // ── The currents ──
         let pull = 0;
@@ -1115,9 +1518,9 @@ export class OceanWorld {
             if (age > SURGE_LIVE) this.surges.splice(i, 1);
             else if (age >= 0) pull = Math.max(pull, s.strength * Math.exp(-age / 2.2));
         }
-        this.current += (0.25 + this.power * 0.12 - this.current) * approach(1.2, dt);
+        this.current += (0.25 + charge * 0.12 + hot * 0.1 - this.current) * approach(1.2, dt);
         // The slow clock, and the flora's own phase (integrated: their pace follows the water, gently).
-        this.drift += dt * motion * (1 + this.power * 0.25 + this.surge * 0.5);
+        this.drift += dt * motion * (1 + charge * 0.25 + this.surge * 0.5 + fever * 0.3);
         this.sway += dt * motion * (0.9 + this.current * 0.4 + pull * 0.25);
 
         // ── The school ──
@@ -1136,10 +1539,11 @@ export class OceanWorld {
         Object.keys(ask).forEach((key) => {
             sc.shape[key] += (ask[key] - sc.shape[key]) * ease;
         });
-        const winding = t >= sc.vortexFrom && t < sc.vortexUntil ? 1 : 0;
-        sc.vortex += (winding - sc.vortex) * approach(winding ? 1.7 : 0.8, dt);
-        sc.excite += (Math.max(this.power * 0.6, k, sc.vortex) - sc.excite) * approach(1.5, dt);
-        sc.tight += ((1 - 0.35 * k + 0.2 * sc.vortex) - sc.tight) * approach(2, dt);
+        // In a fever the school winds round the light over the board, quad or not.
+        const winding = Math.max(t >= sc.vortexFrom && t < sc.vortexUntil ? 1 : 0, 0.75 * smooth(0.3, 0.95, fever));
+        sc.vortex += (winding - sc.vortex) * approach(winding > sc.vortex ? 1.7 : 0.8, dt);
+        sc.excite += (Math.max(charge * 0.6, k, sc.vortex, 0.45 * warm + 0.35 * hot) - sc.excite) * approach(1.5, dt);
+        sc.tight += ((1 - 0.35 * k + 0.2 * sc.vortex + 0.12 * hot) - sc.tight) * approach(2, dt);
         // (Integrated: the pace changes with the game, so the place on the loop must be summed.)
         sc.phase += dt * motion * SCHOOL_PACE * (1 + sc.excite * 0.6 + k * 2.6);
         sc.spin += dt * motion * (0.55 + sc.vortex * 1.1);
@@ -1168,10 +1572,19 @@ export class OceanWorld {
         for (let i = this.stains.length - 1; i >= 0; i--) {
             if (t - this.stains[i].release > STAIN_FADE) this.stains.splice(i, 1);
         }
+        // The colonies burn brighter in the colours they hold as play heats.
+        const burn = 1 + 0.45 * warm + 0.4 * fever;
         for (let i = 0; i < this.stains.length && stains < STAIN_SLOTS; i++) {
             const s = this.stains[i];
+            if (s.tint && t >= s.tintAt) {
+                // A new light has landed on it: it takes up that colour now.
+                s.rgb = s.tint;
+                s.tint = null;
+                s.tintAt = NEVER;
+            }
             if (t - s.birth < -3) continue;
-            u.stainRows[stains * 2].set(s.x, s.z, s.birth, s.gain);
+            const gain = s.gain * holdAt(s, t) * (1 + s.flare.rawAt(t)) * burn;
+            u.stainRows[stains * 2].set(s.x, s.z, s.birth, gain);
             u.stainRows[stains * 2 + 1].set(s.rgb[0], s.rgb[1], s.rgb[2], s.release);
             stains += 1;
         }
@@ -1206,19 +1619,23 @@ export class OceanWorld {
         u.counts.value.set(rings, stains, surges, scares);
         u.counts2.value.x = songs;
 
-        // ── The great shaft ──
-        const beamAge = t - this.beam.time;
-        const beamOn = beamAge >= 0 && beamAge < VORTEX_HOLD + 2.5
-            ? smooth(0, 0.5, beamAge) * (1 - smooth(VORTEX_HOLD - 1, VORTEX_HOLD + 2.5, beamAge)) * this.beam.strength
-            : 0;
-        u.beam.value.set(this.beam.x, this.beam.z, 3.2 + beamOn * 0.8, beamOn);
+        // ── The great shaft: down for a four-line clear (a second one holds it longer and wider),
+        // and, in a fever, standing over the board on its own, softer ──
+        const b = this.beam;
+        const standing = t >= b.from && t < b.until ? 1 : 0;
+        b.level += (standing - b.level) * approach(standing ? 4.5 : 0.95, dt);
+        if (b.level < 1e-3 && !standing) b.level = 0;
+        const feverShaft = 0.36 * smooth(0.3, 0.95, fever);
+        const beamOn = Math.max(b.level * b.strength, feverShaft);
+        u.beam.value.set(0, VORTEX.z - 1, 3.2 + beamOn * 0.8 + b.wide * 0.7 * b.level, beamOn);
 
         // ── Uniforms ──
         u.time.value = t;
         u.drift.value = this.drift;
         u.sway.value = this.sway;
-        u.power.value = this.power;
-        u.surge.value = this.surge;
+        u.power.value = charge;
+        // (The motes stir with the overdrive, and with the heat of play.)
+        u.surge.value = this.surge + 0.4 * hot + 0.6 * fever;
         u.breath.value = this.breath;
         u.lift.value = clamp01(this.lift);
         u.current.value = this.current;
@@ -1229,10 +1646,16 @@ export class OceanWorld {
         const post = this._post;
         post.flash = this.flash;
         post.kick = this.kick;
-        post.shafts = hush ? 0.25 : h.shafts * (1 + this.power * 0.35 + this.flare * 0.9 + this.surge * 0.7);
+        // The light comes down with the play: the shafts stand stronger as it heats, and the sea's
+        // breath (a quad's hush) takes them away only as far as it is held.
+        const lit = 1 + charge * 0.35 + this.flare * 0.9 + this.surge * 0.7 + warm * 0.08 + fever * 0.12;
+        const shafts = h.shafts * lit;
+        post.shafts = lerp(shafts, 0.25, inhale);
         post.bloomBoost = this.surge * 0.15 + this.flare * 0.15;
-        // The iris closes a little as the sea flares, so its colours survive the surge.
-        post.exposure = h.exposure / (1 + this.surge * 0.35 + this.flare * 0.12 + beamOn * 0.15);
+        // The iris closes a little as the sea flares and heats, so its colours survive the surge.
+        const iris = this.surge * 0.35 + this.flare * 0.12 + beamOn * 0.25 + this.lift * 0.3
+            + warm * 0.12 + fever * 0.16;
+        post.exposure = h.exposure / (1 + iris);
         for (let c = 0; c < 3; c++) post.shade[c] = h.abyss[c] * 0.7 + h.deep[c] * 0.12;
         for (let i = this.shocks.length - 1; i >= 0; i--) {
             if (t - this.shocks[i].time > 2.4) this.shocks.splice(i, 1);
@@ -1273,6 +1696,16 @@ export class OceanWorld {
             time: this.time,
             combo: this.combo,
             power: this.power,
+            charge: this.charge,
+            /** The heat of play as the sea last sampled it (shared/gameplay-surge.js). */
+            heat: {
+                level: this.heatLevel,
+                fever: this.fever,
+                punch: this.punch,
+                stage: this.act,
+                warm: this.warm,
+                hot: this.hot,
+            },
             surge: this.surge,
             breath: this.breath,
             level: this.level,
@@ -1298,9 +1731,11 @@ export class OceanWorld {
             calls: {
                 turtle: Boolean(this.calls.turtle && this.time < this.calls.turtle.start + PASS_SECONDS.turtle),
                 mantas: this.calls.mantas.filter((c) => c && this.time < c.start + PASS_SECONDS.manta).length,
-                whale: Boolean(this.calls.whale && this.time
-                    < this.calls.whale.start + PASS_SECONDS[this.calls.whale.far ? 'whaleFar' : 'whale']),
-                whaleFar: Boolean(this.calls.whale?.far),
+                /** A whale the board called is in the water (over the board, or far out). */
+                whale: Boolean((this.calls.whale && this.time < this.calls.whale.start + PASS_SECONDS.whale)
+                    || (this.calls.whaleFar && this.time < this.calls.whaleFar.start + PASS_SECONDS.whaleFar)),
+                whaleNear: Boolean(this.calls.whale && this.time < this.calls.whale.start + PASS_SECONDS.whale),
+                whaleFar: Boolean(this.calls.whaleFar && this.time < this.calls.whaleFar.start + PASS_SECONDS.whaleFar),
             },
             /** The sea's own visitors in the water now (act names), and the next to come. */
             visits: visiting.map((v) => v.act),

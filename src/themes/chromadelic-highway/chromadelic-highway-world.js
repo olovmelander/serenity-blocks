@@ -19,6 +19,18 @@
  * rings take ANY colour and one of eleven forms, by movement. The colours drift with the road by
  * themselves (a movement every ~90 s at cruise, whatever the level) AND step one movement on every
  * level-up. A ring locks its style just before it clears the card edge and keeps it for its flight.
+ *
+ * Build-up (src/themes/shared/gameplay-surge.js): the reactions ACCUMULATE instead of popping and
+ * restarting. Bands share a pool that never gives up a live band to a weaker one (the newcomer folds
+ * into it), two cascade fronts, two chases and two star waves run side by side, and the event
+ * envelopes are swells. The surge's heat drives the OVERDRIVE: warm, the road and the packets pick up
+ * and every lock pulses the rails brighter; hot, the rings burn fuller, the air thickens with their
+ * colour, the streaks stretch and every lock lights the arches; fever, the tunnel runs at warp (~1.6×
+ * cruise, the lens opening), the packets blur into rings of light, every other ring comes out of the
+ * board as a prism arc, the hero's storm charges and meteors shower. The true combo (from the
+ * theme's ComboTracker) turns the spectrum a step per clear; cascade depth escalates wave on wave;
+ * a T-spin twists the tunnel, back-to-back answers with a second gold front, and a perfect clear
+ * crowns the clear still playing with a prism tunnel. When the hands rest it all coasts back.
  */
 
 import * as THREE from 'three/webgpu';
@@ -39,7 +51,8 @@ import {
     MOVEMENTS, RING_PHASE_WRAP, SPECTRUM_HOME, STEP_TRAVEL, hueOf, neonColor, ringStyle, skyTurnAt, spectrumSummary,
 } from './chromadelic-highway-spectrum.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
-import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
+import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
+import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 const tier = (o) => o;
 
@@ -211,6 +224,24 @@ const RING_SLOTS = 16;
 const CAMERA_Z = 280;
 /** Packet phase rate (rad/s) at rest; a combo chain adds up to +1.4 (integrated, never clock × rate). */
 const RING_PHASE_RATE = 0.7;
+/**
+ * The packets' fastest rate: rest, a full combo (+1.4), the heat of play (+1.0 hot, +1.2 fever)
+ * and a T-spin's whirl. The integrated phase never steps further than this × one frame.
+ */
+export const RING_PHASE_MAX_RATE = RING_PHASE_RATE + 1.4 + 2.2 + 2.4;
+/**
+ * The overdrive: how much faster the road runs with the heat of play, on top of the lock pace
+ * (worldSpeedFactor). A fever runs the tunnel at warp, ~1.6× cruise; it coasts back with the heat.
+ */
+const DRIVE = { level: 0.25, fever: 0.35 };
+/** Lock bands come out of the board at most this often; a quicker lock adds to the live one. */
+const LOCK_BAND_GAP = 0.35;
+/** Event bands are spent below this energy (their slot is free). */
+const BAND_SPENT = 0.004;
+/** A full wave pool keeps a live band stronger than this share of a newcomer; it folds in instead. */
+const BAND_KEEP = 0.5;
+/** Chase slots: a chase still climbing below this share of its run takes a new clear's light. */
+const CHASE_FOLD_S = 0.85;
 /** The air's brightness (ring-air band gain). */
 const AIR_GAIN = 0.12;
 /** The sky's own hue (turns; the nebula's violet before its turn) and its pull on the air. */
@@ -249,6 +280,17 @@ const WAVE_PRESETS = {
         v0: 500, accel: 600, amp: 0.7, hue: 0.25, width: 60, white: 0.6, tau: 0.9,
     },
 };
+
+/**
+ * Each step of a true combo turns the next rings this far round the spectrum (a movement = 1):
+ * a twelve-clear chain walks about half a movement, so its colours travel while its peak keeps
+ * the bold forms rather than crossing into a thinner movement mid-chain.
+ */
+const CHAIN_STEP = 0.05;
+/** Back-to-back's second front and the perfect clear's wave: white-gold. */
+const GOLD = new THREE.Color(1.0, 0.84, 0.46);
+/** A T-spin's band: the theme's T (chromadelic-highway-tetrominos.js), electric lemon. */
+const T_COLOR = new THREE.Color(1.0, 0.92, 0.0);
 
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -313,9 +355,58 @@ export class ChromadelicWorld {
         this.lastLockAt = -1e4;
         this.cometAt = -1e4;
         this.chainCometDone = false;
+        this.trueCometDone = false;
+        /**
+         * What the frame shows of the event envelopes (written every update(); the theme and the
+         * playground hand `dip` to the post). `dip` and `combo` are held at max and decay; the
+         * rest are read from the swells below.
+         */
         this.fx = {
             dip: 0, surge: 0, streakWarp: 0, flare: 0, storm: 0, railTick: 0, nebula: 0, combo: 0,
         };
+        /** The event contrast dip (max-held, decays τ 0.3 s), before Reduce flashing and heat. */
+        this.dipEvent = 0;
+        /**
+         * Event envelopes that ACCUMULATE (src/themes/shared/swell.js): every hit adds to what is
+         * still lit, so a second quad warps on top of the first, a cascade's waves feed one storm
+         * and a lock right after a lock adds to the rails' tick instead of being dropped.
+         */
+        this.env = {
+            lens: new Swell({ release: 0.55, ceiling: 1.6, knee: 1 }), // a quad's FOV surge
+            warp: new Swell({ release: 0.45, ceiling: 1.6, knee: 1 }), // a quad's streak warp
+            flare: new Swell({ // the binary star
+                attack: 0.04, release: 0.45, ceiling: 1.8, knee: 1,
+            }),
+            nebula: new Swell({
+                attack: 0.05, release: 0.55, ceiling: 1.6, knee: 1,
+            }),
+            storm: new Swell({ release: 0.45, ceiling: 0.95, knee: 0.7 }), // the hero's lightning
+            railTick: new Swell({ release: 0.08, ceiling: 1.6, knee: 1 }),
+            roadPulse: new Swell({ release: 0.3, ceiling: 0.9, knee: 0.5 }), // every lock, on the road
+            twist: new Swell({ // a T-spin's whirl
+                attack: 0.08, release: 0.8, ceiling: 1.4, knee: 0.9,
+            }),
+        };
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js): the road accelerates into warp,
+         * the packets blur, the air thickens with colour, the hero's storm charges and, in a fever,
+         * every other ring comes out of the board as a prism arc. Sampled once a frame on the world
+         * clock; `heat` keeps the last sample (a copy: the surge reuses its object).
+         */
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        /** One resolved clear for the surge, staged like a director's (T-spin/B2B come after it). */
+        this.staged = {
+            any: false, at: 0, lines: 0, cascade: 1, combo: 1, tspin: false, b2b: false, perfect: false,
+        };
+        /** The live lock band (a quicker lock folds into it), the hard drop of this tick, the B2B run. */
+        this.lockBand = null;
+        this.hardDropPending = false;
+        this.b2bRun = 0;
+        this.chain = 0;
+        this.twistSign = 1;
         /**
          * The spectrum (chromadelic-highway-spectrum.js): place = level + distance / STEP_TRAVEL.
          * `levelTarget` steps +1 on every level-up (rings lock with it at once); `levelPlace` is the
@@ -330,6 +421,9 @@ export class ChromadelicWorld {
         this.ringRepaint = new Array(RING_SLOTS).fill(0); // the level-up repaint each slot has seen
         this.repaint = null;
         this.prismEcho = 0;
+        this.feverPrism = false; // a fever is on: every other ring locks as a prism arc
+        this.crownRings = 0; // rings still to come out as prism arches after a perfect clear
+        this.airGain = AIR_GAIN; // the air's brightness at rest (the heat of play lifts it)
         this.leadSerial = null; // the ring that came out from behind the board most recently
         this.air = new THREE.Color(0, 0, 0);
         this.airSeeded = false;
@@ -338,7 +432,17 @@ export class ChromadelicWorld {
         };
         this.composition = new ChromadelicComposition();
         this.anchors = null; // eased body targets
-        this.cascade = { birth: -1e4, amp: 0 };
+        /**
+         * Two cascade fronts and two chases: a new one takes a free slot (or the one nearest its
+         * end) instead of restarting the one in flight, so a level-up's repaint front keeps
+         * running under a quad's prism front, and the light climbing the arches reaches the crown.
+         */
+        this.cascades = Array.from({ length: 2 }, () => ({
+            birth: -1e4, amp: 0, D0: 0, speed: 2400,
+        }));
+        this.chases = Array.from({ length: 2 }, () => ({
+            birth: -1e4, duration: 0.6, fronts: 0, amp: 0,
+        }));
 
         const slots = this.tier.waveSlots;
         this.shared = {
@@ -364,12 +468,16 @@ export class ChromadelicWorld {
             uApron: uniform(new THREE.Vector4(960, 204, 920, 0)),
             uHeroPx: uniform(new THREE.Vector3(-1e4, -1e4, 1)),
             uDEmerge: uniform(1120),
-            // Ring cascade: (birth, D0, speed, amp), (rgb, tint amount) and the prism burst.
+            // Ring cascades (two fronts): (birth, D0, speed, amp), (rgb, tint amount) and the prism burst.
             uCascade: uniform(new THREE.Vector4(-1e4, 1120, 2400, 0)),
             uCascadeCol: uniform(new THREE.Vector4(1, 1, 1, 0)),
             uCascadePrism: uniform(0),
-            // Chase lights climbing the arches: (birth, duration, fronts, amp).
+            uCascade2: uniform(new THREE.Vector4(-1e4, 1120, 2400, 0)),
+            uCascadeCol2: uniform(new THREE.Vector4(1, 1, 1, 0)),
+            uCascadePrism2: uniform(0),
+            // Chase lights climbing the arches (two slots): (birth, duration, fronts, amp).
             uChase: uniform(new THREE.Vector4(-1e4, 0.6, 0, 0)),
+            uChase2: uniform(new THREE.Vector4(-1e4, 0.6, 0, 0)),
             uRingPhase: uniform(0),
             uAirGain: uniform(AIR_GAIN),
             // Ring style slots (J mod 16): core colour, halo colour + prism code, form.
@@ -767,11 +875,18 @@ export class ChromadelicWorld {
     lockRing(serial, slot, d) {
         const { uRingPalette, uRingGlow, uRingForm } = this.shared;
         const place = this.ringPlace(Math.min(d, Math.max(0, this.ringLockDistance(serial))));
-        const echo = this.prismEcho > 0;
+        let echo = this.prismEcho > 0;
         if (echo) this.prismEcho -= 1;
-        const override = this.spectrum.form || echo
-            ? { form: this.spectrum.form, prism: echo }
-            : null;
+        let { form } = this.spectrum;
+        // A perfect clear's crown and a fever stream the theme's signature: full-spectrum arches
+        // (the prism form), the crown's for the whole length of the tunnel, a fever's every other.
+        const crown = this.crownRings > 0;
+        if (crown) this.crownRings -= 1;
+        if (crown || (this.feverPrism && serial % 2 === 0)) {
+            form = form || 'prism';
+            echo = true;
+        }
+        const override = form || echo ? { form, prism: echo } : null;
         const st = ringStyle(serial, place, this.ringStyles[slot], override);
         uRingPalette.array[slot].setRGB(st.core.r, st.core.g, st.core.b);
         uRingGlow.array[slot].set(st.glow.r, st.glow.g, st.glow.b, st.prism ? 1 + st.prismHue : 0);
@@ -942,11 +1057,20 @@ export class ChromadelicWorld {
         this.spectrum.levelPlace = this.spectrum.levelTarget;
         this.ringPhase = (t * RING_PHASE_RATE) % RING_PHASE_WRAP;
         this.prismEcho = 0;
+        this.feverPrism = false;
+        this.crownRings = 0;
         this.ringSlots.fill(null);
         this.ringRepaint.fill(0);
         this.repaint = null;
         this.shared.uChase.value.set(-1e4, 0.6, 0, 0);
+        this.shared.uChase2.value.set(-1e4, 0.6, 0, 0);
         this.shared.uCascadePrism.value = 0;
+        this.shared.uCascadePrism2.value = 0;
+        this.chases.forEach((c) => {
+            c.birth = -1e4;
+            c.fronts = 0;
+            c.amp = 0;
+        });
         this.planets.forEach((p) => p.setSpinForTime(t));
         this.meteors?.clear();
         this.meteorTimer = 7;
@@ -956,9 +1080,21 @@ export class ChromadelicWorld {
         this.lastLockAt = -1e4;
         this.cometAt = -1e4;
         this.chainCometDone = false;
-        this.cascade.birth = -1e4;
-        this.cascade.amp = 0;
+        this.trueCometDone = false;
+        this.cascades.forEach((c) => {
+            c.birth = -1e4;
+            c.amp = 0;
+        });
         Object.keys(this.fx).forEach((k) => { this.fx[k] = 0; });
+        this.dipEvent = 0;
+        Object.values(this.env).forEach((s) => s.reset());
+        this.surge.reset();
+        Object.keys(this.heat).forEach((k) => { this.heat[k] = 0; });
+        this.staged.any = false;
+        this.lockBand = null;
+        this.hardDropPending = false;
+        this.b2bRun = 0;
+        this.chain = 0;
         this.cam.lookX.x = 0;
         this.cam.lookX.v = 0;
         this.cam.bank.x = 0;
@@ -972,6 +1108,11 @@ export class ChromadelicWorld {
     }
 
     // ── Event language: light bursting out of the board ──────────────────────
+    //
+    // Everything here ACCUMULATES. A band never cuts a stronger one (the pool gives up only a
+    // spent band and otherwise folds the newcomer into the live one), two cascade fronts and two
+    // chases run side by side, the envelopes are swells, and the surge (sampled in update()) holds
+    // how hot play runs so the next clear lands on what the last ones built.
 
     /** Launch one wave `delay` seconds from now (closed form: it keeps its scheduled birth). */
     launchWave(preset, overrides = {}, delay = 0) {
@@ -984,32 +1125,152 @@ export class ChromadelicWorld {
         else this.pendingEvents.push({ at: this.time + delay, fn });
     }
 
+    /** A band's energy at `t` (rising, or not yet born, it counts at full strength). */
+    bandEnergy(w, t = this.time) {
+        const age = t - w.birth;
+        if (age < 0.04) return w.amp;
+        if (age > w.tau * 8) return 0;
+        return w.amp * Math.exp(-age / w.tau);
+    }
+
+    /**
+     * Write a band into the pool (1–6 slots by tier). A free slot first (empty or spent). A full
+     * pool gives up its weakest band only when that one is mostly spent next to the newcomer;
+     * otherwise the new light folds into the youngest live band (the one nearest the board), which
+     * brightens and runs on. So a lock after a quad never cuts a quad band in mid-flight, and on
+     * Minimal's single slot a quad's four bands are one band that keeps gaining, not four cut-offs.
+     * @returns {object} the band that carries the light
+     */
     writeWave(p, birth) {
-        const i = this.waveCursor;
-        this.waveCursor = (this.waveCursor + 1) % this.waveSlots.length;
-        this.waveSlots[i] = { ...p, z0: this.composition.result.zEntry - 40, birth };
+        const slots = this.waveSlots;
+        let free = -1;
+        let weakest = -1;
+        let weakestE = Infinity;
+        let youngest = -1;
+        for (let i = 0; i < slots.length; i++) {
+            const w = slots[i];
+            const e = w ? this.bandEnergy(w, birth) : 0;
+            if (!w || e < BAND_SPENT) {
+                if (free < 0) free = i;
+                continue;
+            }
+            if (e < weakestE) {
+                weakestE = e;
+                weakest = i;
+            }
+            if (youngest < 0 || w.birth > slots[youngest].birth) youngest = i;
+        }
+        let i = free;
+        if (i < 0 && weakestE < BAND_KEEP * p.amp) i = weakest;
+        if (i < 0) return this.foldBand(slots[youngest], p, birth);
+        slots[i] = { ...p, z0: this.composition.result.zEntry - 40, birth };
+        return slots[i];
+    }
+
+    /**
+     * Add a band's light to a live band at `t`: its energy rises by the newcomer's amp (it never
+     * drops), it takes the newcomer's colour when that is the stronger light (else blends toward
+     * it) and the wider of the two widths. It keeps its place on the road and its birth.
+     */
+    foldBand(w, p, t) {
+        const e = this.bandEnergy(w, t);
+        const env = w.amp > 0 ? e / w.amp : 1;
+        w.amp += p.amp / Math.max(env, 0.3);
+        if (p.amp > e) {
+            w.rgb = p.rgb;
+            w.hue = p.hue;
+            w.white = p.white;
+        } else if (p.rgb && w.rgb) {
+            w.rgb = w.rgb.clone().lerp(p.rgb, p.amp / (e + p.amp));
+        }
+        w.width = Math.max(w.width, p.width);
+        return w;
+    }
+
+    /** The cascade slot for a new front: one that has run out, else the one with less light left. */
+    cascadeSlot() {
+        let best = 0;
+        let bestE = Infinity;
+        for (let i = 0; i < this.cascades.length; i++) {
+            const c = this.cascades[i];
+            const age = this.time - c.birth;
+            const front = c.D0 - c.speed * Math.max(0, age);
+            const e = front < 100 || age > 3 ? 0 : c.amp * Math.exp(-age / 0.8);
+            if (e < bestE) {
+                bestE = e;
+                best = i;
+            }
+        }
+        return best;
     }
 
     /**
      * A front sweeping the rings from where they emerge down to the lens: white-hot, tinted
      * toward `color` by `hueMix`, or (prism) turning every arch into the spectrum as it passes.
+     * Two fronts can run at once: a new one never restarts the one in flight.
      */
     launchCascade({
         amp = 1.0, speed = 2400, color = null, hueMix = 0, prism = false,
     } = {}) {
-        this.cascade.birth = this.time;
-        this.cascade.amp = amp;
-        const c = this.shared.uCascade.value;
-        c.set(this.time, this.composition.result.dEmerge, speed, amp);
-        const col = this.shared.uCascadeCol.value;
+        const i = this.cascadeSlot();
+        const slot = this.cascades[i];
+        const a = amp * (prefersReducedFlashing() ? 0.6 : 1);
+        slot.birth = this.time;
+        slot.amp = a;
+        slot.D0 = this.composition.result.dEmerge;
+        slot.speed = speed;
+        const { shared } = this;
+        (i === 0 ? shared.uCascade : shared.uCascade2).value.set(this.time, slot.D0, speed, a);
+        const col = (i === 0 ? shared.uCascadeCol : shared.uCascadeCol2).value;
         if (color) col.set(color.r, color.g, color.b, hueMix);
         else col.set(1, 1, 1, 0);
-        this.shared.uCascadePrism.value = prism ? 1 : 0;
+        (i === 0 ? shared.uCascadePrism : shared.uCascadePrism2).value = prism ? 1 : 0;
+        return i;
     }
 
-    /** Chase lights climbing every arch from its feet to its crown (`fronts` 1–3). */
+    /**
+     * Chase lights climbing every arch from its feet to its crown (`fronts` 1–3). A chase still
+     * climbing takes a new clear's light (it brightens and climbs on to the crown, never back to
+     * the feet); otherwise the new chase takes a free slot, or the older one, and the last one
+     * finishes at the crown while the new one starts.
+     */
     launchChase({ fronts = 1, duration = 0.6, amp = 1.0 } = {}) {
-        this.shared.uChase.value.set(this.time, duration, Math.max(1, Math.min(3, fronts)), amp);
+        const a = amp * (prefersReducedFlashing() ? 0.6 : 1);
+        const { chases } = this;
+        let climbing = -1;
+        let free = -1;
+        let oldest = 0;
+        for (let i = 0; i < chases.length; i++) {
+            const c = chases[i];
+            const s = (this.time - c.birth) / c.duration;
+            const last = (this.time - c.birth - (c.fronts - 1) * 0.12) / c.duration;
+            const newer = climbing < 0 || c.birth > chases[climbing].birth;
+            if (c.fronts > 0 && s >= 0 && s < CHASE_FOLD_S && newer) climbing = i;
+            if ((c.fronts === 0 || last > 1.6) && free < 0) free = i;
+            if (c.birth < chases[oldest].birth) oldest = i;
+        }
+        let i = climbing;
+        if (i >= 0) {
+            const c = chases[i];
+            if (this.time - c.birth < 0.06) {
+                // Launched this very tick (a lock's chase, then its clear's): the climb has not
+                // shown yet, so it takes the fuller of the two.
+                c.fronts = Math.max(c.fronts, Math.max(1, Math.min(3, fronts)));
+                c.duration = Math.max(c.duration, duration);
+                c.amp = Math.min(Math.max(c.amp, a) + 0.3 * Math.min(c.amp, a), 1.6);
+            } else {
+                c.amp = Math.min(c.amp + a * 0.6, 1.6);
+            }
+        } else {
+            i = free >= 0 ? free : oldest;
+            const c = chases[i];
+            c.birth = this.time;
+            c.duration = duration;
+            c.fronts = Math.max(1, Math.min(3, fronts));
+            c.amp = Math.min(a, 1.6);
+        }
+        const c = chases[i];
+        (i === 0 ? this.shared.uChase : this.shared.uChase2).value.set(c.birth, c.duration, c.fronts, c.amp);
     }
 
     /** The colour of the newest ring on screen (event light takes the tunnel's colours). */
@@ -1021,23 +1282,114 @@ export class ChromadelicWorld {
         return out.setRGB(c.r, c.g, c.b);
     }
 
-    onPieceLock() {
-        if (this.time - this.lastLockAt < 0.35) return;
-        this.lastLockAt = this.time;
-        this.launchWave('lock', { rgb: this.leadColor(new THREE.Color()) });
-        this.fx.railTick = 1;
+    /** Roll the stars' brightness wave out from the vanishing point. */
+    starWave(boost) {
+        this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, boost);
+    }
+
+    /** Stage a clear's parts for the surge (one resolved clear, like a director's flush). */
+    stage(at) {
+        const s = this.staged;
+        if (!s.any) {
+            s.any = true;
+            s.at = at;
+            s.lines = 0;
+            s.cascade = 1;
+            s.combo = 1;
+            s.tspin = false;
+            s.b2b = false;
+            s.perfect = false;
+        }
+        return s;
     }
 
     /**
-     * Combo bands climb the wheel from the newest ring's hue, one step per combo; the rings'
-     * packets race (an integrated phase, eased back after the chain).
+     * Resolve what this tick staged into the surge: a clear (with its T-spin, back-to-back and
+     * perfect flags, which arrive after its LINE_CLEAR), or, with no lines, a crown on the clear
+     * still playing (a late perfect clear) or a T-spin that cleared nothing — never a new clear.
+     */
+    flushStaged() {
+        const s = this.staged;
+        if (!s.any) return;
+        s.any = false;
+        if (s.lines > 0) {
+            this.surge.clear(s, s.at);
+            if (s.lines < 4 && !s.tspin && !s.b2b) this.b2bRun = 0;
+            return;
+        }
+        const W = SURGE_WEIGHTS;
+        const worth = (w) => (s.perfect ? w.perfect : 0) + (s.tspin ? w.tspin * 0.5 : 0) + (s.b2b ? w.b2b : 0);
+        const punch = worth(W.punch);
+        const heat = worth(W.heat);
+        this.surge.punch.hit(punch, s.at);
+        this.surge.level.hit(heat, s.at);
+    }
+
+    /** HARD_DROP comes in the same tick as, and just before, its PIECE_LOCK. */
+    onHardDrop() {
+        this.hardDropPending = true;
+    }
+
+    /**
+     * A lock: a faint band in the newest ring's colour and a tick down the rails, brighter the
+     * hotter play runs. Bands leave the board at most every LOCK_BAND_GAP (a quick hand never
+     * strobes the road); a lock inside the gap adds its light to the live lock band and the
+     * road's pulse instead of being dropped. A hard drop slams: a whiter, faster band, a harder
+     * tick. Once play runs hot every lock also lights the arches.
+     */
+    onPieceLock() {
+        const hard = this.hardDropPending;
+        this.hardDropPending = false;
+        const { level } = this.heat;
+        this.env.railTick.hit(hard ? 1.4 : 1, this.time);
+        this.env.roadPulse.hit((hard ? 0.3 : 0.18) * (1 + level), this.time);
+        this.surge.lock({ hardDrop: hard }, this.time);
+        const base = WAVE_PRESETS.lock;
+        const p = {
+            ...base,
+            amp: base.amp * (1 + 1.6 * level) * (hard ? 1.6 : 1),
+            rgb: this.leadColor(new THREE.Color()),
+            white: hard ? 0.55 : base.white,
+            v0: hard ? 700 : base.v0,
+            accel: hard ? 1300 : base.accel,
+        };
+        const live = this.lockBand && this.waveSlots.includes(this.lockBand) ? this.lockBand : null;
+        if (live && this.time - this.lastLockAt < LOCK_BAND_GAP) {
+            this.foldBand(live, p, this.time);
+        } else {
+            this.lastLockAt = this.time;
+            this.lockBand = this.writeWave(p, this.time);
+        }
+        if (this.heat.stage >= 2) this.launchChase({ fronts: 1, duration: 0.5, amp: 0.25 + 0.35 * level });
+    }
+
+    /**
+     * Cascade depth (COMBO carries the depth of ONE lock's cascade, ADR-0011; the true combo
+     * arrives with the clear, see onChain). Each wave builds on the last: its band climbs the hue
+     * wheel and leaves the board wider, brighter and faster; from the fourth wave it is doubled
+     * and sends a front through the rings in its colour; the packets race, meteors fly every
+     * third wave and a comet crowns a deep cascade.
      */
     onCombo(combo) {
         const c = Math.max(1, combo);
-        const rgb = this.leadColor(new THREE.Color(), { shift: 0.07 * Math.min(c - 1, 8) });
-        const amp = Math.min(0.3 + 0.06 * c, 0.7);
-        this.launchWave('combo', { amp, rgb });
-        if (c >= 5) this.launchWave('combo', { amp, rgb }, 0.09);
+        const deep = Math.min(c - 1, 8);
+        const rgb = this.leadColor(new THREE.Color(), { shift: 0.07 * deep });
+        const quick = 1 + 0.08 * deep;
+        const band = {
+            amp: Math.min(0.3 + 0.08 * c, 0.9),
+            rgb,
+            width: 20 + 3 * deep,
+            white: 0.2 + 0.04 * deep,
+            v0: 650 * quick,
+            accel: 1400 * quick,
+        };
+        this.launchWave('combo', band);
+        if (c >= 4) {
+            this.launchWave('combo', band, 0.09);
+            this.launchCascade({
+                amp: Math.min(0.25 + 0.08 * c, 0.85), speed: 2200 + 120 * deep, color: rgb, hueMix: 0.8,
+            });
+        }
         this.fx.combo = Math.max(this.fx.combo, Math.min(1, (c - 1) / 5));
         if (c >= 3 && c % 3 === 0) {
             const count = 2 + (this.random() > 0.5 ? 1 : 0);
@@ -1052,29 +1404,136 @@ export class ChromadelicWorld {
         if (c < 5) this.chainCometDone = false;
     }
 
-    onLineClear(lines) {
+    /**
+     * The true combo (consecutive clearing locks, src/core/combo-tracker.js): what a chain BUILDS.
+     * Every step turns the next rings out of the board further round the wheel (the place keeps
+     * what it gained, so a long chain runs through movements), from the fourth step they come out
+     * as prism arcs, the packets race, meteors fly with the chain and a comet crowns a long one.
+     * 0: the chain broke (the packets and the heat ease out by themselves).
+     */
+    onChain(combo) {
+        const c = Math.max(0, Math.floor(Number(combo) || 0));
+        this.chain = c;
+        if (c < 2) {
+            if (c === 0) this.trueCometDone = false;
+            return;
+        }
+        this.spectrum.levelTarget += CHAIN_STEP;
+        if (c >= 4) this.prismEcho = Math.min(this.prismEcho + 1, this.ringCount + 4);
+        this.unlockHiddenRings();
+        this.fx.combo = Math.max(this.fx.combo, Math.min(1, (c - 1) / 6));
+        if (c >= 6 && c % 2 === 0) {
+            const count = 2 + (c >= 10 ? 1 : 0);
+            for (let i = 0; i < count; i++) this.schedule(0.1 + 0.12 * i, () => this.spawnMeteor());
+        }
+        if (c >= 5 && !this.trueCometDone && this.time - this.cometAt > 20) {
+            this.trueCometDone = true;
+            this.cometAt = this.time;
+            this.spawnComet();
+        }
+    }
+
+    /**
+     * A clear. `lines` 1–4; `cascade` the wave of this lock's cascade (1 = the lock's own clear);
+     * `combo` the true combo after it and `chainStep` whether this wave advanced it.
+     */
+    onLineClear(lines, { cascade = 1, combo = 1, chainStep = false } = {}) {
         const n = Math.max(1, Math.min(4, lines));
+        const wave = Math.max(1, Math.floor(Number(cascade) || 1));
+        const s = this.stage(this.time);
+        s.lines = Math.max(s.lines, n);
+        s.cascade = Math.max(s.cascade, wave);
+        s.combo = Math.max(s.combo, Math.max(1, Math.floor(Number(combo) || 1)));
+        if (chainStep) this.onChain(combo);
+        const { level } = this.heat;
         if (n >= 4) {
             // Three staggered beats: bands out of the card, the prism cascade (every arch turns
             // into the spectrum as the front passes, the light climbing it), the streak warp.
             // The next rings out of the board are prism arcs too: the Tetris echoes down the road.
+            // A second quad adds to the first's warp and lens instead of restarting them.
             for (let i = 0; i < 4; i++) this.launchWave('tetris', { white: 0.1 + i * 0.13 }, i * 0.05);
             this.schedule(0.15, () => this.launchCascade({ amp: 1.0, speed: 2400, prism: true }));
-            this.schedule(0.3, () => { this.fx.streakWarp = 1; });
-            this.prismEcho = 3;
+            this.schedule(0.3, () => { this.env.warp.hit(1, this.time); });
+            this.prismEcho = Math.min(this.prismEcho + 3, this.ringCount + 4);
             this.unlockHiddenRings();
-            this.fx.surge = 1;
-            this.fx.dip = Math.max(this.fx.dip, 0.12);
-            this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, 0.7);
+            this.env.lens.hit(1, this.time);
+            // The contrast dip holds its breath for the quad: as deep as play is cold (a quad in
+            // a fever barely pauses for it).
+            this.dipEvent = Math.max(this.dipEvent, 0.12 * (1 - 0.6 * level));
+            this.starWave(0.7 + 0.3 * level);
             return;
         }
         // Bands in the newest ring's colour (its complement for a triple), and chase lights
-        // climbing every arch, one front per line.
+        // climbing every arch, one front per line; the hotter play runs, the brighter the bands
+        // and the faster the light climbs. Each clear charges the hero's storm a little more.
         const rgb = this.leadColor(new THREE.Color(), { shift: n === 3 ? 0.5 : 0.04 * n, target: 0.55 });
-        for (let i = 0; i < n; i++) this.launchWave('clear', { amp: 0.4 + 0.1 * n, rgb }, i * 0.08);
-        this.launchChase({ fronts: n, duration: 0.55 + 0.05 * n, amp: 0.8 + 0.1 * n });
-        this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, 0.3 + 0.1 * n);
-        this.fx.storm = Math.max(this.fx.storm, Math.min(0.35 + 0.15 * n, 0.8));
+        const amp = Math.min(0.4 + 0.1 * n + 0.2 * level, 0.95);
+        for (let i = 0; i < n; i++) this.launchWave('clear', { amp, rgb }, i * 0.08);
+        const quick = 1 - 0.25 * level;
+        this.launchChase({
+            fronts: n + (wave >= 3 ? 1 : 0),
+            duration: (0.55 + 0.05 * n) * quick,
+            amp: 0.8 + 0.1 * n + 0.3 * level + 0.06 * (wave - 1),
+        });
+        this.starWave(0.3 + 0.1 * n + 0.3 * level);
+        this.env.storm.hit(Math.min(0.35 + 0.15 * n, 0.8), this.time);
+    }
+
+    /**
+     * A T-spin twists the tunnel: the packets whirl round every ring (the spinning forms spin
+     * with them), the view leans into the turn and a band in the T's electric yellow leaves the
+     * board. A T-spin that clears nothing still turns it, more gently. Arrives after its clear.
+     */
+    onTSpin(lines = 0) {
+        const n = Math.max(0, Math.min(3, Math.floor(Number(lines) || 0)));
+        this.stage(this.time).tspin = true;
+        this.env.twist.hit(n > 0 ? 0.6 + 0.2 * n : 0.35, this.time);
+        const motion = this.motion ?? 1;
+        this.cam.bank.v += this.twistSign * (n > 0 ? 0.05 + 0.012 * n : 0.03) * motion;
+        this.twistSign = -this.twistSign;
+        this.launchWave('clear', {
+            amp: n > 0 ? 0.3 + 0.1 * n : 0.16, rgb: T_COLOR, white: 0.35, width: 18,
+        });
+        if (n === 0) this.starWave(0.25);
+    }
+
+    /**
+     * Back-to-back: the second difficult clear in a row is answered twice. A second front
+     * follows the first through every arch in white-gold (brighter for each B2B of a run), all
+     * three chase fronts fill the arches, the binary flares and the next rings out are prism arcs.
+     * Arrives after its clear.
+     */
+    onB2B() {
+        this.b2bRun = Math.min(this.b2bRun + 1, 5);
+        this.stage(this.time).b2b = true;
+        const amp = Math.min(0.7 + 0.12 * this.b2bRun, 1.2);
+        this.schedule(0.42, () => this.launchCascade({
+            amp, speed: 2600, color: GOLD, hueMix: 0.85,
+        }));
+        this.launchChase({ fronts: 3, duration: 0.55, amp: 1.2 });
+        this.prismEcho = Math.min(this.prismEcho + 2, this.ringCount + 4);
+        this.unlockHiddenRings();
+        this.env.flare.hit(0.7, this.time);
+        this.env.lens.hit(0.5, this.time);
+    }
+
+    /**
+     * A perfect clear crowns the clear still playing (physics settles it ~360 ms after the last
+     * wave): a prism front sweeps every arch, the rings out of the board for the whole length of
+     * the tunnel are prism arcs, the binary flares, the stars ring out and a wide white-gold wave
+     * rolls out of the board. Never a second quad.
+     */
+    onPerfectClear() {
+        this.stage(this.time).perfect = true;
+        this.launchCascade({ amp: 1.2, speed: 2000, prism: true });
+        this.crownRings = this.ringCount;
+        this.unlockHiddenRings();
+        this.launchWave('levelUp', { rgb: GOLD, amp: 0.8, white: 0.5 });
+        this.launchChase({ fronts: 3, duration: 0.8, amp: 1.4 });
+        this.env.flare.hit(1.2, this.time);
+        this.env.nebula.hit(1, this.time);
+        this.env.lens.hit(0.6, this.time);
+        this.starWave(1.0);
     }
 
     /**
@@ -1097,10 +1556,11 @@ export class ChromadelicWorld {
         this.repaint = {
             id: this.repaintSeq, birth: this.time, D0: this.composition.result.dEmerge, speed,
         };
-        this.fx.flare = 1;
-        this.fx.nebula = 1;
-        this.fx.dip = Math.max(this.fx.dip, 0.08);
-        this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, 0.5);
+        this.env.flare.hit(1, this.time);
+        this.env.nebula.hit(1, this.time);
+        this.dipEvent = Math.max(this.dipEvent, 0.08 * (1 - 0.6 * this.heat.level));
+        this.starWave(0.5);
+        this.surge.levelUp(this.time);
         this.schedule(0.5, () => this.setLevel(next, { step: false }));
     }
 
@@ -1170,12 +1630,14 @@ export class ChromadelicWorld {
         comp.anchorToWorld(u2, v2, 2900, _v2);
         _v3.subVectors(_v2, _v1).divideScalar(life);
         this.meteors.spawn({
-            start: _v1, velocity: _v3, life, widthPx: 5, value: 2.2, time: this.time,
+            start: _v1, velocity: _v3, life, widthPx: 5, value: 2.2, time: this.time, evict: true,
         });
+        // A one-slot pool keeps the dust tail rather than overwriting it with the ion tail.
+        if ((this.meteors.capacity ?? 2) < 2) return;
         comp.anchorToWorld(u2 + side * 0.05, v2 - 0.02, 2900, _v2);
         _v3.subVectors(_v2, _v1).divideScalar(life);
         this.meteors.spawn({
-            start: _v1, velocity: _v3, life, widthPx: 1.6, value: 3.2, time: this.time,
+            start: _v1, velocity: _v3, life, widthPx: 1.6, value: 3.2, time: this.time, evict: true,
         });
     }
 
@@ -1202,7 +1664,6 @@ export class ChromadelicWorld {
         // simultaneous events is scaled back.
         E += 0.5 * (sim.ring ?? 0) + 0.3 * (sim.pulse ?? 0);
         const govern = E > 3 ? 3 / E : 1;
-        const cAge = this.time - this.cascade.birth;
         this.governor = govern;
         const col = this._waveCol || (this._waveCol = { r: 0, g: 0, b: 0 });
         for (let i = 0; i < this.waveSlots.length; i++) {
@@ -1222,7 +1683,13 @@ export class ChromadelicWorld {
             uA.array[i].set(w.zFront, 1 / Math.max(1, w.width), w.energy * govern, w.hue < 0 && !w.rgb ? 1 : 0);
             uB.array[i].set(col.r, col.g, col.b, w.white);
         }
-        this.shared.uCascade.value.w = cAge >= 0 && cAge < 3 ? this.cascade.amp * Math.exp(-cAge / 0.8) : 0;
+        for (let i = 0; i < this.cascades.length; i++) {
+            const c = this.cascades[i];
+            const cAge = this.time - c.birth;
+            (i === 0 ? this.shared.uCascade : this.shared.uCascade2).value.w = cAge >= 0 && cAge < 3
+                ? c.amp * Math.exp(-cAge / 0.8)
+                : 0;
+        }
         return govern;
     }
 
@@ -1234,8 +1701,20 @@ export class ChromadelicWorld {
     update(sim, camera) {
         const delta = sim.delta ?? 0;
         this.time = sim.time;
-        // One world speed, eased (τ 1.2 s).
-        const targetSpeed = TRAVEL_SPEED * worldSpeedFactor(sim.pace ?? 1);
+        const motion = this.motion ?? 1;
+        // How hot play runs: this tick's clear joins the surge, then one sample for the frame.
+        this.flushStaged();
+        const heat = this.surge.sample(this.time);
+        this.heat.punch = heat.punch;
+        this.heat.level = heat.level;
+        this.heat.fever = heat.fever;
+        this.heat.stage = heat.stage;
+        const { level, fever } = this.heat;
+        this.feverPrism = heat.stage === 3;
+        // One world speed, eased (τ 1.2 s): the lock pace, and the overdrive the heat of play
+        // adds on top (a fever runs at warp; when the hands rest the road coasts back to cruise).
+        const drive = 1 + (DRIVE.level * level + DRIVE.fever * fever) * motion;
+        const targetSpeed = TRAVEL_SPEED * worldSpeedFactor(sim.pace ?? 1) * drive;
         this.speed += (targetSpeed - this.speed) * (1 - Math.exp(-delta / 1.2));
         // Reduced motion: the road runs at a quarter of its speed (integrated, so no jump).
         const travelRate = 0.25 + 0.75 * (this.motion ?? 1);
@@ -1258,25 +1737,36 @@ export class ChromadelicWorld {
             }
         }
 
-        // Event envelopes (exponential decays).
-        const { fx } = this;
-        _decay(fx, 'dip', 0.3, delta);
-        _decay(fx, 'surge', 0.55, delta);
-        _decay(fx, 'flare', 0.4, delta);
-        _decay(fx, 'storm', 0.45, delta);
-        _decay(fx, 'railTick', 0.08, delta);
-        _decay(fx, 'nebula', 0.5, delta);
+        // Event envelopes: swells read at the frame's time (every hit added to what was lit).
+        const { fx, env } = this;
+        const now = this.time;
+        fx.surge = env.lens.valueAt(now);
+        fx.streakWarp = env.warp.valueAt(now);
+        // The binary flares with level-ups and crowns, and burns brighter through a fever.
+        fx.flare = env.flare.valueAt(now) + 0.45 * fever;
+        fx.nebula = env.nebula.valueAt(now);
+        fx.railTick = env.railTick.valueAt(now);
+        // The hero's storm: each clear's lightning, and a charge that builds with the heat of play.
+        fx.storm = Math.min(1, env.storm.valueAt(now) + 0.3 * Math.max(0, level - 0.4) + 0.3 * fever);
+        // The contrast dip (a quad, a level-up) keeps a trace under Reduce flashing; a hot run
+        // holds a little of it, so the neon reads against deeper darks as the light builds.
+        this.dipEvent *= Math.exp(-delta / 0.3);
+        fx.dip = this.dipEvent * flashScale() + 0.03 * level + 0.05 * fever;
         _decay(fx, 'combo', 2.5, delta);
-        if (fx.streakWarp > 0) fx.streakWarp = Math.max(0, fx.streakWarp - delta / 0.8);
 
         // The spectrum: lock the rings about to come out, ease the sky's level step (~3 s), and
-        // run the packets' phase at a rate the combo raises (integrated: never clock × rate).
+        // run the packets' phase at a rate the combo, the heat and a T-spin raise (integrated:
+        // never clock × rate). In a fever the packets blur into rings of light.
         this.updateRingStyles();
         const sp = this.spectrum;
         sp.levelPlace += (sp.levelTarget - sp.levelPlace) * (1 - Math.exp(-delta / 1.0));
         if (Math.abs(sp.levelTarget - sp.levelPlace) < 1e-4) sp.levelPlace = sp.levelTarget;
-        this.ringPhase = (this.ringPhase + delta * (RING_PHASE_RATE + 1.4 * fx.combo * (this.motion ?? 1)))
-            % RING_PHASE_WRAP;
+        const twist = env.twist.valueAt(now);
+        const phaseRate = Math.min(
+            RING_PHASE_MAX_RATE,
+            RING_PHASE_RATE + (1.4 * fx.combo + 1.0 * level + 1.2 * fever + 3 * twist) * motion,
+        );
+        this.ringPhase = (this.ringPhase + delta * phaseRate) % RING_PHASE_WRAP;
         this.shared.uRingPhase.value = this.ringPhase;
         this.updateAir(delta);
 
@@ -1285,32 +1775,39 @@ export class ChromadelicWorld {
         shared.uTime.value = this.time;
         shared.uTravel.value = this.travel;
         shared.uMoteTravel.value = this.moteTravel;
-        shared.uPulse.value = (sim.pulse ?? 0) * govern;
+        // Every lock pulses the road (a quick hand rides it up); the heat lifts its floor.
+        shared.uPulse.value = ((sim.pulse ?? 0) + env.roadPulse.valueAt(now) + 0.25 * level + 0.2 * fever) * govern;
         shared.uPace.value = sim.pace ?? 1;
-        shared.uRingEnv.value = (sim.ring ?? 0) * govern;
+        // The rings burn fuller (core width and gain) the hotter play runs.
+        shared.uRingEnv.value = ((sim.ring ?? 0) + 0.45 * level + 0.5 * fever) * govern;
         shared.uRailTick.value = fx.railTick;
         shared.uMoteGain.value = 1 + 0.5 * (sim.ambient ?? 0);
+        // The tunnel's air thickens with the rings' colours.
+        shared.uAirGain.value = this.airGain * (1 + 0.7 * level + 0.9 * fever);
         const pace = sim.pace ?? 1;
+        // The streaks stretch toward light-rails at warp (the shader caps their length).
         shared.uStreakLength.value = (40 + 60 * Math.max(pace - 1, 0)) * (1 + 0.8 * (sim.particle ?? 0))
-            * (1 + 2 * fx.streakWarp * (this.motion ?? 1));
-        shared.uStreakDensity.value = 0.6 + 0.4 * Math.min(1, sim.particle ?? 0);
+            * (1 + 2 * fx.streakWarp * motion) * (1 + (1.2 * level + 2.2 * fever) * motion);
+        shared.uStreakDensity.value = Math.min(1, 0.6 + 0.4 * Math.min(1, sim.particle ?? 0) + 0.2 * (level + fever));
 
-        // Sky + stars.
+        // Sky + stars: the nebula breathes deeper with the heat.
         this.sky.uniforms.uTime.value = this.time;
-        this.sky.uniforms.uNebBreath.value = 0.1 * (sim.ambient ?? 0) + 0.2 * fx.nebula;
+        this.sky.uniforms.uNebBreath.value = 0.1 * (sim.ambient ?? 0) + 0.2 * fx.nebula + 0.15 * level + 0.25 * fever;
         this.sky.setHueShift(skyTurnAt(this.skyPlace()));
         this.stars.uniforms.uTime.value = this.time;
         this.stars.uniforms.uBinaryFlare.value = fx.flare;
 
         this.updateBodies(camera, delta);
 
-        // Meteors: an idle one every 5–10 s, at most 2 alive.
+        // Meteors: an idle one every 5–10 s, at most 2 alive; a fever brings a shower.
         const alive = this.meteors.update(this.time);
-        this.meteorTimer -= delta;
+        this.meteorTimer -= delta * (1 + 3 * fever);
         if (this.meteorTimer <= 0) {
-            if (alive < 2 && !prefersReducedMotion()) this.spawnMeteor();
+            if (alive < 2 + Math.round(3 * fever) && !prefersReducedMotion()) this.spawnMeteor();
             this.meteorTimer = 5 + this.random() * 5;
         }
+        // A HARD_DROP whose PIECE_LOCK never came (they share a tick) is forgotten.
+        this.hardDropPending = false;
     }
 
     /** Ease the solved anchors, then place and light every body. */
@@ -1425,10 +1922,13 @@ export class ChromadelicWorld {
         const pointer = this.capture ? 0 : motion;
         const px = (sim.pointerX ?? 0) * 9.7 * pointer;
         const py = -(sim.pointerY ?? 0) * 5.5 * pointer;
+        // Every event's punch lurches the eye a little down the road (it rides a floor under a
+        // quick hand rather than flickering back), on the same ease as the float.
+        const lurch = 2.5 * this.heat.punch;
         camera.position.set(
             rest.x + (Math.sin(t * 0.13) * 2.2 + Math.sin(t * 0.41) * 0.5) * motion + px,
             rest.y + (Math.sin(t * 0.17) * 1.5 + Math.sin(t * 0.53) * 0.4) * motion + py,
-            rest.z + Math.sin(t * 0.09) * 2.5 * motion,
+            rest.z + (Math.sin(t * 0.09) * 2.5 - lurch) * motion,
         );
         const ahead = this.sampleRoadCurve(-1500, _camAhead);
         const near = this.sampleRoadCurve(-800, _camNear);
@@ -1448,12 +1948,14 @@ export class ChromadelicWorld {
         camera.lookAt(_look);
         camera.rotateZ(this.cam.bank.x);
 
-        // Lens: Hor+ base + pace widening (Medium+) + the Tetris surge.
+        // Lens: Hor+ base + pace widening (Medium+) + the Tetris surge + the overdrive (the lens
+        // opens with the heat of play; a fever stretches the tunnel toward warp).
         let fov = restVerticalFov(camera.aspect || this.aspect);
         if (this.tier.paceFov) {
             const paceTarget = 2.5 * THREE.MathUtils.smoothstep(sim.pace ?? 1, 1.0, 2.2) * motion;
             this.cam.paceFov += (paceTarget - this.cam.paceFov) * (dt > 0 ? 1 - Math.exp(-dt / 1.5) : 1);
-            fov += this.cam.paceFov + 1.6 * this.fx.surge * motion;
+            const drive = Math.min(1.2 * this.heat.level + 1.6 * this.heat.fever, 2.6);
+            fov += this.cam.paceFov + (1.6 * this.fx.surge + drive) * motion;
         }
         if (Math.abs(fov - camera.fov) > 0.01) {
             camera.fov = fov;

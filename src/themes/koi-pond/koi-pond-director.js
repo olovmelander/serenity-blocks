@@ -8,9 +8,14 @@
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *
+ * Two clears carry no lines of their own: physics settles a perfect clear ~360 ms AFTER the
+ * clear's last wave, in a frame of its own, so a PERFECT_CLEAR with nothing staged resolves as
+ * `crown: true, perfect: true, lines: 0` — a crown on the clear still playing, never a second
+ * clear; and a T-spin that clears nothing resolves as `tspin: true, lines: 0`.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -20,8 +25,9 @@
  * The theme (koi-pond-theme.js) hands these to KoiPondWorld: a lock drops through the card into
  * the water under its column (`u`, the middle one of `rows`, `hardDrop`, `color`); a clear sends
  * koi over the water by its `lines` (`tspin` turns one in the air, four lines or `perfect` hold
- * the pond's breath first); the combo draws the school into its ring round the board. The pond
- * reads the chain from sink.combo, so a clear's own `combo`, `cascade` and `b2b` go unused here.
+ * the pond's breath first), each `cascade` wave reaching further than the last and a `b2b`
+ * sending a pair over together; the combo draws the school into its ring round the board (the
+ * pond reads the chain from sink.combo, not from the clear's own `combo`).
  *
  * Combo: the bus's COMBO event carries the CASCADE DEPTH of one lock, never a combo (ADR-0011).
  * The true consecutive-clear combo is derived here with one ComboTracker per player; an explicit
@@ -84,6 +90,7 @@ function createSlot() {
         tspin: false,
         perfect: false,
         b2b: false,
+        crown: false,
         hasPosition: false,
         posX: 0,
         posY: 0,
@@ -106,6 +113,7 @@ function clearPending(slot) {
     slot.tspin = false;
     slot.perfect = false;
     slot.b2b = false;
+    slot.crown = false;
     slot.hasPosition = false;
 }
 
@@ -210,7 +218,16 @@ export class KoiPondDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0,
+            rows: [],
+            lines: 1,
+            combo: 1,
+            cascade: 1,
+            tspin: false,
+            perfect: false,
+            b2b: false,
+            crown: false,
+            screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
     }
@@ -361,7 +378,8 @@ export class KoiPondDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        // Settled after the clear's last wave: a crown on that clear, not a clear of its own.
+        if (slot.lines === 0) slot.crown = true;
         return true;
     }
 
@@ -411,7 +429,8 @@ export class KoiPondDirector {
                 c.screen = null;
                 sink.lock(c);
             }
-            if (slot.lines > 0 && sink?.clear) {
+            const lineless = slot.lines === 0 && (slot.crown || slot.tspin);
+            if ((slot.lines > 0 || lineless) && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
                 c.rows.length = 0;
@@ -422,6 +441,7 @@ export class KoiPondDirector {
                 c.tspin = slot.tspin;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
+                c.crown = slot.lines === 0 && slot.crown;
                 c.screen = screen;
                 sink.clear(c);
             }

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    WINTER_EVENT_HANDLERS, WinterDirector, resolvePieceColor,
+    BREAK_FRAMES, WINTER_EVENT_HANDLERS, WinterDirector, resolvePieceColor,
 } from '../../src/themes/winter/winter-director.js';
 import { PLAYER_SLOTS } from '../../src/themes/winter/winter-composition.js';
 import { WINTER_TETROMINOS } from '../../src/themes/winter/winter-tetrominos.js';
@@ -30,7 +30,7 @@ const I = {
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], levelUp: [], gameOver: 0, order: [],
+        lock: [], clear: [], combo: [], levelUp: [], gameOver: 0, order: [], spin: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
@@ -41,6 +41,7 @@ function makeDirector(options = {}) {
             calls.order.push(`combo:${n}`);
         }),
         levelUp: vi.fn((level) => calls.levelUp.push(level)),
+        spin: vi.fn((c) => calls.spin.push({ ...c })),
         gameOver: vi.fn(() => {
             calls.gameOver += 1;
             calls.order.push('gameOver');
@@ -157,6 +158,80 @@ describe('winter director: intake', () => {
         director.onPieceLock({ piece: T });
         director.flush();
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
+    });
+
+    it('reports a broken chain as the lock that broke it settles, not a whole piece later', () => {
+        const { director, calls } = makeDirector();
+        for (let i = 0; i < 3; i++) {
+            director.onPieceLock({ piece: I });
+            director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+            director.flush();
+        }
+        expect(calls.combo[calls.combo.length - 1]).toEqual([3, 0]);
+        // A lock that clears nothing: within BREAK_FRAMES frames the fires are told.
+        director.onPieceLock({ piece: T });
+        for (let f = 0; f < BREAK_FRAMES - 1; f++) {
+            director.flush();
+            expect(calls.combo[calls.combo.length - 1]).toEqual([3, 0]);
+        }
+        director.flush();
+        expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
+        // Said once; the next lock (the tracker's own reset) says nothing new.
+        const said = calls.combo.length;
+        director.onPieceLock({ piece: T });
+        for (let f = 0; f < BREAK_FRAMES + 2; f++) director.flush();
+        expect(calls.combo).toHaveLength(said);
+        // A clearing lock starts the next chain from one.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear[calls.clear.length - 1].combo).toBe(1);
+        expect(calls.combo[calls.combo.length - 1]).toEqual([1, 0]);
+        // A clear that is a frame late (a mode that sends it so) keeps the chain going.
+        director.onPieceLock({ piece: I });
+        director.flush();
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.flush();
+        for (let f = 0; f < BREAK_FRAMES + 2; f++) director.flush();
+        expect(calls.combo[calls.combo.length - 1]).toEqual([2, 0]);
+    });
+
+    it('crowns the clear still playing with a perfect clear that settles after it', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false, crown: false });
+        // ~360 ms later, in a frame of its own.
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({ perfect: true, crown: true, cascade: 1 });
+        expect(calls.clear[1].rows).toEqual([]);
+        // The chain is not stepped by it.
+        expect(calls.combo).toEqual([[1, 0]]);
+        // A perfect clear in its clear's own frame is that clear, perfect.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear[2]).toMatchObject({ lines: 4, perfect: true, crown: false });
+    });
+
+    it('hands on a T-spin that cleared nothing as a spin', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.spin).toEqual([{ player: 0, screen: null }]);
+        // One that cleared is on its clear, not a spin as well.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
     });
 
     it('carries T-spins, perfect clears and back-to-backs on the clear', () => {

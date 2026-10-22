@@ -142,8 +142,8 @@ vi.mock('../../src/themes/verdant-hills/verdant-hills-assets.js', () => ({
 
 const GAMEPLAY_EVENTS = [EVENTS.HARD_DROP, EVENTS.PIECE_LOCK, EVENTS.LINE_CLEAR, EVENTS.COMBO, EVENTS.TSPIN, EVENTS.B2B,
     EVENTS.PERFECT_CLEAR, EVENTS.LEVEL_UP];
-const DIRECTOR_METHODS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack',
-    'onPerfectClear', 'onLevelUp', 'onGameOver'];
+const DIRECTOR_METHODS = ['onHardDrop', 'onPieceLock', 'onQuietLock', 'onLineClear', 'onCombo', 'onTSpin',
+    'onBackToBack', 'onPerfectClear', 'onLevelUp', 'onGameOver'];
 const FLOURISHES = ['onTSpin', 'onBackToBack', 'onPerfectClear', 'onLevelUp'];
 const RUNTIME_FIELDS = ['renderer', 'world', 'post', 'reactions', 'assets', 'timer', 'scene', 'camera'];
 const TIER_NAMES = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
@@ -196,6 +196,7 @@ function stubSceneBuild(theme) {
         theme.reactions = {
             onHardDrop: vi.fn(),
             onPieceLock: vi.fn(),
+            onQuietLock: vi.fn(),
             onLineClear: vi.fn(),
             onCombo: vi.fn(),
             onTSpin: vi.fn(),
@@ -595,6 +596,9 @@ describe('Verdant Hills gameplay payloads', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: { x: 1, y: 2 } });
         expect(theme.reactions.onHardDrop).not.toHaveBeenCalled();
         expect(theme.reactions.onPieceLock).not.toHaveBeenCalled();
+        // ... but every lock still counts: the streak (and the surge) must hear it, or a combo
+        // could never build with the ripple off.
+        expect(theme.reactions.onQuietLock).toHaveBeenCalledTimes(2);
         // Everything else still answers through the bus.
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 3 });
@@ -629,6 +633,7 @@ describe('Verdant Hills gameplay payloads', () => {
         eventBus.emit(EVENTS.HARD_DROP, { distance: 4 });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2 });
         expect(theme.reactions.onPieceLock).toHaveBeenCalledTimes(allowed ? 1 : 0);
+        expect(theme.reactions.onQuietLock).toHaveBeenCalledTimes(allowed ? 0 : 1);
         expect(theme.reactions.onHardDrop).toHaveBeenCalledTimes(allowed ? 1 : 0);
         expect(theme.reactions.onLineClear).toHaveBeenCalledOnce();
     });
@@ -1645,8 +1650,14 @@ describe('Verdant Hills board tracking and camera', () => {
             x: 0, y: 0, sx: 0, sy: 0,
         });
         windowListener('pointermove')({ clientX: 1440, clientY: 0, pointerType: 'mouse' });
+        theme.reactions.setStill = vi.fn();
         for (let frame = 0; frame < 30; frame++) theme.update(1 / 60);
         expect(camera.position.equals(rest)).toBe(true);
+        // ... and the day itself calms: the gusts, ribbons, seed, whirl and birds are told every frame.
+        expect(theme.reactions.setStill).toHaveBeenCalledTimes(30);
+        expect(theme.reactions.setStill).toHaveBeenLastCalledWith(true);
+        expect(theme.reactions.setStill.mock.invocationCallOrder.at(-1))
+            .toBeLessThan(theme.reactions.update.mock.invocationCallOrder.at(-1));
     });
 
     it('leans across its own line of sight, whichever way the world has pointed it', async () => {
@@ -2302,11 +2313,12 @@ describe('Verdant Hills built around its artwork', () => {
         expect(frame.wind).toBe(1);
         expect(Array.from(frame.kites).every((level) => level > 0.5)).toBe(true);
 
-        // Game over settles the day; switching effects off empties the air at once.
+        // Game over settles the day (the front and the sunlight fade where they are, within a few
+        // seconds); switching effects off empties the air at once.
         windowListener('gameOver')();
-        expect(reactions.getFrame()).toMatchObject({
-            settled: true, front: null, sunbreak: null, aloft: 0,
-        });
+        expect(reactions.getFrame()).toMatchObject({ settled: true, aloft: 0 });
+        expect(reactions.getFrame().front).not.toBeNull();
+        expect(reactions.getFrame().sunbreak).not.toBeNull();
         expect(reactions.getFrame().emitters.length).toBeGreaterThan(0);
         expect(world.resetEffects).not.toHaveBeenCalled();
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { changed: { backgroundComboEffects: false } });

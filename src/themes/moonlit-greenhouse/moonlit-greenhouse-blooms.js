@@ -1132,6 +1132,24 @@ export function createBlooms({ tier, U }) {
         return out;
     };
 
+    /**
+     * Pollen from `count` open blooms that stay open (a garden filling through a hot chain still
+     * gives the air its pollen): taken in turn round the open blooms, oldest first, so each gives
+     * in its turn. Pushes { x, y, z, rgb, at } into `out`.
+     */
+    let turn = 0;
+    const pollinate = (count, at, out = []) => {
+        const n = Math.min(Math.max(0, count), open.length);
+        for (let i = 0; i < n; i += 1) {
+            const b = open[(turn + i) % open.length];
+            out.push({
+                x: b.heart.x, y: b.heart.y, z: b.heart.z, rgb: b.rgb, at,
+            });
+        }
+        if (open.length) turn = (turn + n) % open.length;
+        return out;
+    };
+
     /** The light the blooms (and the Queen) throw on the garden at `clock`: { x, y, z, strength, rgb, radius }. */
     const lights = (clock) => {
         lit.length = 0;
@@ -1175,6 +1193,7 @@ export function createBlooms({ tier, U }) {
     const reset = () => {
         for (let i = 0; i < slots; i += 1) free(i);
         open.length = 0;
+        turn = 0;
     };
     reset();
 
@@ -1184,6 +1203,7 @@ export function createBlooms({ tier, U }) {
         slots,
         add,
         release,
+        pollinate,
         lights,
         count: () => open.length,
         reset,

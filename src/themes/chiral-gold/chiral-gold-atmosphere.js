@@ -186,7 +186,9 @@ export function createShafts(u) {
         // Brighter toward the lamp.
         const along = mix(float(0.35), float(1.0), h);
         const flare = mix(u.flare.x, u.flare.y, smoothstep(-0.5, 0.5, vSide));
-        const power = u.heat.mul(0.45).add(0.5).add(flare.mul(0.45));
+        // (Held to a little of the heat: the beams fill the frame's sides, and a chain that
+        // doubled them hazed the hall's dark.)
+        const power = u.heat.mul(0.2).add(0.5).add(flare.mul(0.2));
         const tint = mix(u.glow, vec3(1.0, 0.9, 0.76), 0.55);
         return tint.mul(chord.pow(0.85)).mul(lines.add(0.5))
             .mul(haze.mul(0.9).add(0.35))
@@ -249,8 +251,10 @@ export function createMotes(u, count) {
     // It glints as it turns; the towers light the dust around them.
     const glint = pow(sin(t.mul(a.w.mul(1.7).add(0.5)).add(a.x.mul(50.0))).mul(0.5).add(0.5), 7.0);
     const toTower = abs(abs(centre.x).sub(u.helixX));
+    // (The dust fills the whole frame: it takes only a little of the heat, or a long chain would
+    // lift the hall's dark to a haze.)
     const lit = exp(toTower.mul(toTower).mul(-0.07)).mul(1.5).add(0.22)
-        .mul(u.heat.mul(0.5).add(1.0).add(u.flare.x.add(u.flare.y).mul(0.2)));
+        .mul(u.heat.mul(0.3).add(1.0).add(u.flare.x.add(u.flare.y).mul(0.1)));
     const tint = mix(u.glow, vec3(1.0, 0.86, 0.6), a.z.mul(7.0).fract().mul(0.6));
     const vLight = varying(
         tint.mul(glint.mul(3.2).add(0.3)).mul(lit).mul(spread).mul(visible)

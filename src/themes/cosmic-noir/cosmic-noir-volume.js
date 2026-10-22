@@ -92,8 +92,6 @@ const UNSHADED = 0.6;
 const INNER_SMOKE = 0.24;
 /** The longest run of an echo's shell a ray is lit over (at its limb, where the ray grazes it). */
 const ECHO_RUN_MAX = 5.0;
-/** Forward scatter of the beams in the smoke (Henyey–Greenstein g). */
-const FORWARD = 0.4;
 /** How far toward the pulsar the shading tap reads (scene units). */
 const SHADE_REACH = 1.6;
 /** How far (in tiles) the slow field bends the place the smoke is read at: the curls. */
@@ -156,7 +154,7 @@ export function createSmoke(u, {
         const sw = blur.mul(0.09).add(0.012);
         const x = field.div(sw);
         const ramp = max(x, 0.0).add(log(float(1.0).add(exp(abs(x).negate())))).mul(sw);
-        const d = min(ramp.mul(4.2), 1.4).mul(layers.mul(0.6).add(0.4)).add(SMOKE.haze);
+        const d = min(ramp.mul(4.2), 1.4).mul(layers.mul(0.6).add(0.4)).add(u.haze);
         return vec2(d.mul(env), base.b);
     };
 
@@ -261,7 +259,7 @@ export function createSmoke(u, {
                 const crossAt = (tc, weight) => {
                     If(tc.greaterThanEqual(t).and(tc.lessThan(t.add(ds))).and(tc.lessThan(tEnd)), () => {
                         const at = densityAt(o.add(ray.mul(tc)), ds).x;
-                        const mass = max(at.sub(SMOKE.haze), 0.0);
+                        const mass = max(at.sub(u.haze), 0.0);
                         col.addAssign(gain.mul(mass).mul(EXTINCTION).mul(trans).mul(weight)
                             .mul(u.breath));
                     });
@@ -285,7 +283,7 @@ export function createSmoke(u, {
                 const beam = cnBeamSkirt(d, u.beam).mul(u.beamGain).div(float(1.0).add(rb.mul(rb)));
                 const rc = r.div(PULSAR.coreReach);
                 const core = u.coreGain.div(float(1.0).add(rc.mul(rc)));
-                const phase = cnPhase(dot(d, toEye), float(FORWARD));
+                const phase = cnPhase(dot(d, toEye), u.forward);
                 const direct = beam.mul(phase).mul(bars).add(core.mul(phase.mul(0.35).add(0.65)).mul(even)).toVar();
                 if (taps > 0) {
                     // How much smoke stands between here and the pulsar, a step toward it.
@@ -326,7 +324,7 @@ export function createSmoke(u, {
             const rb = rs.div(PULSAR.beamReach);
             const soft = float(0.05).add(rs.mul(0.014));
             const bars = cnCage(ds0, u.spin, u.spinE1, u.spinE2, u.cageTurn, u.cageFill, soft);
-            const phase = cnPhase(dot(ds0, toEye), float(FORWARD));
+            const phase = cnPhase(dot(ds0, toEye), u.forward);
             const core = u.beamGain.div(float(1.0).add(rb.mul(rb))).mul(phase).mul(bars).toVar();
             if (taps > 0) {
                 const tap = densityAt(xs.sub(ds0.mul(SHADE_REACH)), float(2.0));

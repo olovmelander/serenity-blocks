@@ -5,9 +5,9 @@
  *            spikes (three long lines at 60° and a short horizontal one), many faint points.
  *            Stars that stand behind a pillar are hidden (worked out on the CPU from the dust's
  *            shape whenever the stage is laid out); a few stand in front of everything.
- *   births   the board's stars: every lock kindles a little cluster in a pillar, one star per
- *            cell of the piece, in the piece's colour. Held in the dust it is a reddened ember
- *            with short spikes; a clear sets it free and it burns as a full star.
+ *   births   the board's stars: every lock kindles a star in a pillar: the piece's own shape,
+ *            solid, in its colour, drawing together into one star. Held in the dust it is a
+ *            reddened ember with short spikes; a clear sets it free and it burns as a full star.
  */
 
 import * as THREE from 'three/webgpu';
@@ -45,7 +45,7 @@ import {
     mulberry32,
 } from './nebula-flow-core.js';
 import {
-    nfBirthLight, nfClip, nfGauss, nfLightMaterial, nfPart, nfQuadGeometry, nfSegment,
+    nfBirthLight, nfClip, nfLightMaterial, nfPart, nfQuadGeometry,
 } from './nebula-flow-tsl.js';
 
 /**
@@ -137,10 +137,11 @@ export function createFieldStars(u, { count = 120, seed = 0x51a2 } = {}) {
 }
 
 /**
- * The board's stars: one sprite per birth slot. At ignition the piece's cells stand as four
- * stars in its own shape, joined by lines of light (a constellation); they draw together into one
- * star, which wears the cluster's spikes. Held in the dust it is a reddened ember with short
- * spikes; a clear sets it free and it burns as a full star.
+ * The board's stars: one sprite per birth slot. At ignition the piece stands in the dust as one
+ * solid shape of light in its own shape and colour (one body, one outline round the whole piece, no
+ * seams between its cells); it draws together into one star, which wears the cluster's spikes.
+ * Held in the dust it is a reddened ember with short spikes; a clear sets it free and it burns as
+ * a full star.
  */
 export function createBirths(u) {
     const slot = new Float32Array(BIRTH_SLOTS);
@@ -173,37 +174,46 @@ export function createBirths(u) {
     material.outputNode = Fn(() => {
         const q = positionGeometry.xy.toVar();
         const h = max(half, 1e-4);
-        // the cells, in units of the sprite
+        // the cells, in cells about the piece's centre (y up)
         const c0 = u.births.element(base.add(3));
         const c1 = u.births.element(base.add(4));
         const cellR = spread.div(h);
         const at = [c0.xy, c0.zw, c1.xy, c1.zw];
-        const cells = float(0).toVar();
-        at.forEach((c) => {
-            const d = length(q.sub(c.mul(cellR)));
-            const core = float(BIRTH_CELL * 0.11).mul(E.z).div(h);
-            cells.addAssign(nfGauss(d.div(core)).add(nfGauss(d.div(core.mul(3.5))).mul(0.18)));
-        });
-        // the constellation's lines: between cells one apart, fading as they draw together
-        const lines = float(0).toVar();
-        const lineW = float(0.0028).div(h);
+        // The piece as ONE solid shape: the union of one box over every pair of joined cells (two
+        // cells side by side make one 2×1 box), so every seam between two cells lies inside a box
+        // and the union has no inside edges: one body, one outline round the whole piece.
+        const qc = q.div(max(cellR, 1e-4)).toVar();
+        const round = 0.16;
+        const d = float(1e3).toVar();
         for (let i = 0; i < 4; i += 1) {
             for (let j = i + 1; j < 4; j += 1) {
                 const gap = length(at[i].sub(at[j]));
-                const adjacent = smoothstep(1.3, 1.05, gap);
-                const seg = nfSegment(q, at[i].mul(cellR), at[j].mul(cellR));
-                lines.addAssign(nfGauss(seg.x.div(lineW)).mul(adjacent));
+                const joined = gap.greaterThan(0.5).and(gap.lessThan(1.2));
+                const lo = min(at[i], at[j]).sub(0.5);
+                const hi = max(at[i], at[j]).add(0.5);
+                const k = abs(qc.sub(lo.add(hi).mul(0.5))).sub(hi.sub(lo).mul(0.5)).add(round);
+                const box = length(max(k, vec2(0))).add(min(max(k.x, k.y), 0)).sub(round);
+                d.assign(min(d, joined.select(box, float(1e3))));
             }
         }
-        const lineFade = float(1).sub(smoothstep(0.15, CONSTELLATION_HOLD + 0.5, age));
+        // in cells from the outline (negative inside): a body of one light, one line round it,
+        // a soft glow in the dust about it
+        const body = float(1).sub(smoothstep(-0.07, 0.04, d));
+        const outline = exp(abs(d).mul(-14.0));
+        const aura = exp(max(d, 0).mul(-3.5)).mul(0.16);
+        // the piece holds its shape a moment, then draws together into one star
+        const shapeFade = float(1).sub(smoothstep(CONSTELLATION_HOLD, CONSTELLATION_MERGE, age));
+        const shape = body.mul(0.42).add(outline.mul(0.6)).add(aura).mul(shapeFade);
         const { core, halo, rays } = spikes(q.mul(h.div(max(reach, 1e-4))), float(260.0));
         const merged = smoothstep(CONSTELLATION_HOLD, CONSTELLATION_MERGE, age);
         const embedded = freed.or(great).select(0, 1);
         // the piece's colour, white-hot where it is brightest; held in the dust it reddens
         const hot = C.rgb.mul(mix(1.0, 0.6, embedded)).add(vec3(1.0, 0.32, 0.16).mul(embedded.mul(0.4)));
-        const white = cells.mul(1.3).add(lines.mul(lineFade).mul(0.55))
-            .add(core.mul(0.6).add(halo.mul(0.7)).add(rays.mul(mix(1.0, 0.3, embedded))).mul(merged.mul(0.8).add(0.2)));
-        const rgb = mix(hot, vec3(1), clamp(cells.mul(0.45).add(core.mul(merged).mul(0.4)), 0, 0.8)).mul(white);
+        const star = core.mul(0.6).add(halo.mul(0.7)).add(rays.mul(mix(1.0, 0.3, embedded)))
+            .mul(merged.mul(0.8).add(0.2));
+        // the shape in one colour: white-hot as it lights, then the piece's own
+        const shapeRgb = mix(hot, vec3(1), exp(age.div(0.25).negate()).mul(0.55)).mul(shape);
+        const rgb = mix(hot, vec3(1), clamp(core.mul(merged).mul(0.4), 0, 0.8)).mul(star).add(shapeRgb);
         return vec4(rgb.mul(light).mul(u.iris), 0);
     })();
     return nfPart('births', geometry, material, 12);

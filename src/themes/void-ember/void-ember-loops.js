@@ -129,7 +129,10 @@ export function createLoops(u) {
         .mul(step(0.0, age));
     const breathe = sin(u.time.mul(0.7).add(seed.mul(TAU))).mul(0.05).add(1.0);
     const lift = eru.mul(ERUPT_SPEED).add(eru.mul(eru).mul(ERUPT_GAIN)).mul(torn);
-    const apex = shape.y.mul(rise).mul(held.mul(0.45).add(0.55)).mul(breathe).add(lift);
+    // The hotter play runs, the taller what the star still holds stands (u.loopGrow, 0 at rest).
+    const grow = u.loopGrow.mul(float(1.0).sub(torn));
+    const apex = shape.y.mul(rise).mul(held.mul(0.45).add(0.55)).mul(breathe).mul(grow.mul(0.45).add(1.0))
+        .add(lift);
     const reach = shape.x.mul(lift.mul(0.55).add(1.0));
     const phi = s.mul(Math.PI);
     const sp = sin(phi);
@@ -168,9 +171,11 @@ export function createLoops(u) {
     const gain = tint.w.mul(held.mul(0.85).add(0.2)).mul(smoothstep(0.0, 0.25, up))
         .mul(exp(max(age, 0.0).div(-0.5)).mul(1.6).add(1.0))
         .mul(mix(float(1.0), leaving, torn))
+        .mul(grow.mul(0.6).add(1.0))
         .mul(alive);
     // The element burns off: the loop cools from the piece's colour into the star's own fire.
-    const own = veBlackbody(u.heat.add(0.22));
+    // (Never past gold: a loop held on a hot star burns in its fire, not in white.)
+    const own = veBlackbody(min(u.heat.add(0.22), 0.86));
     const burnt = clamp(float(1.0).sub(held.mul(1.15)), 0.0, 1.0).mul(float(1.0).sub(torn));
     const vLight = varying(mix(tint.rgb, own, burnt.mul(0.85)).mul(gain), 'veLoopLight');
     const vSeed = varying(vec2(seed, lift), 'veLoopSeed');

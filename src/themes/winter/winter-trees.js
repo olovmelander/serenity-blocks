@@ -100,7 +100,8 @@ function ghostMaterial(u, { glints }) {
         if (glints) {
             const R = reflect(V.negate(), N);
             const lobe = wPow4(max(dot(R, u.moonDir), 0.0));
-            const glint = snowGlint(u, P, lobe.mul(0.7), ringNow.a.mul(0.4));
+            // (Their rime glitters the more, the hotter play runs.)
+            const glint = snowGlint(u, P, lobe.mul(0.7), ringNow.a.mul(0.4).add(u.heat.x.mul(0.04)));
             col.addAssign(u.moonCol.mul(glint.x).mul(glint.y.mul(4.0).add(1.5)).mul(float(1.0).sub(dusted)).mul(open)
                 .mul(u.breath));
         }

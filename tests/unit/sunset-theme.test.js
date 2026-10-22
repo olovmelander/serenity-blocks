@@ -116,6 +116,10 @@ vi.mock('../../src/themes/sunset/sunset-world.js', () => ({
             if (clear.lines >= 4 || clear.perfect) this.counts.quads += 1;
         }
 
+        onCrown() { return this; }
+
+        onSpin() { return this; }
+
         onCombo(combo) { this.combo = combo; }
 
         levelUp(level) { this.level = level; }
@@ -664,6 +668,21 @@ describe('Sunset theme: one node renderer on both backends', () => {
         expect(clear).toHaveBeenCalledOnce();
         expect(clear.mock.calls[0][0]).toMatchObject({ lines: 2, tspin: true, perfect: true });
         expect(counts(theme).clears).toBe(1);
+    });
+
+    it('crowns a quad with the perfect clear that settles after it, never a second clear', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        const clear = vi.spyOn(theme.world, 'onClear');
+        const crown = vi.spyOn(theme.world, 'onCrown');
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        stepFrames(theme, 1);
+        // ~360 ms later, in a frame of its own.
+        eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 4 });
+        stepFrames(theme, 1);
+        expect(clear).toHaveBeenCalledOnce();
+        expect(crown).toHaveBeenCalledOnce();
+        expect(counts(theme)).toMatchObject({ clears: 1, quads: 1 });
     });
 
     it('hands the post what the sky asks of it, then the clock, each frame', async () => {

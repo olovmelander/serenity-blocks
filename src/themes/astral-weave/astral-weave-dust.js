@@ -22,6 +22,7 @@ import {
     abs,
     clamp,
     cos,
+    dot,
     exp,
     float,
     instanceIndex,
@@ -105,7 +106,7 @@ function moteHome(shared, seeds) {
 export function createDust(shared, count, simulate) {
     const n = Math.max(1, count | 0);
     const {
-        uTime, uViewport, uPxScale, uHeat, uEnergy, uFade, uPluck, uShock,
+        uTime, uViewport, uPxScale, uHeat, uEnergy, uFade, uPluck, uShockR, uShockG,
     } = shared;
     const geometry = awQuadGeometry(n, 2024);
     const material = awFxMaterial('astral-weave-dust');
@@ -157,10 +158,10 @@ export function createDust(shared, count, simulate) {
                 const kick = exp(d.mul(d).mul(-11.0)).mul(S.w).mul(fresh).mul(1.5);
                 vNew.addAssign(vec3(away.div(d).mul(kick), kick.mul(s.z.sub(0.4)).mul(0.6)));
             }
-            // A clear's shock front pushes a wave outward through it.
+            // The clears' shock fronts push waves outward through it.
             const r = max(length(pNew.xy), 1e-3);
-            const front = r.sub(uShock.x);
-            const push = exp(front.mul(front).mul(-110.0)).mul(uShock.y).mul(26.0).mul(uDt);
+            const front = vec4(r).sub(uShockR);
+            const push = dot(exp(front.mul(front).mul(-110.0)), uShockG).mul(26.0).mul(uDt);
             vNew.addAssign(vec3(pNew.xy.div(r).mul(push), push.mul(s.n.sub(0.5))));
             p.assign(pNew);
             v.assign(vNew);

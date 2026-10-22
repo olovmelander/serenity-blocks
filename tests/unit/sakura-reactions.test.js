@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-    SAKURA_MAX_FOXFIRE, SAKURA_REACTION_LIMITS, SakuraReactions,
+    SAKURA_FRONT_SLOTS, SAKURA_MAX_FOXFIRE, SAKURA_REACTION_LIMITS, SakuraReactions,
 } from '../../src/themes/sakura-twilight/sakura-reactions.js';
 
 const ENVELOPES = ['gust', 'glow', 'lanterns', 'moon'];
 const UNIT_STATES = ['vortex', 'heat', 'spirit', 'constellation', 'figures', 'hush'];
-const EMITTER_KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise'];
+/** What gameplay events emit; the fever's own festival of sky lanterns comes on a cadence. */
+const EVENT_KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise'];
+const EMITTER_KINDS = [...EVENT_KINDS, 'festival'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed',
     'serial', 'side', 'strength'];
 const REST_FRAME = Object.freeze({
@@ -22,6 +24,17 @@ const REST_FRAME = Object.freeze({
     hush: 0,
     streak: 0,
     front: null,
+    // Every front crossing, the boughs' sway, how hot play runs, the crown and the corona.
+    fronts: [],
+    sway: 0,
+    punch: 0,
+    level: 0,
+    fever: 0,
+    stage: 0,
+    crown: 0,
+    corona: 0,
+    leap: 0,
+    motion: 1,
     emitters: [],
 });
 const TIER_ORDER = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
@@ -193,7 +206,7 @@ describe('Sakura reaction director', () => {
                 // The pieces that went missing from small pools: the lock, and the left jet.
                 expect(emittersOf(frame, 'lock')).toHaveLength(1);
                 expect(emittersOf(frame, 'clear').map((emitter) => emitter.side).sort()).toEqual([-1, 1]);
-                expect(new Set(kindsOf(frame))).toEqual(new Set(EMITTER_KINDS));
+                expect(new Set(kindsOf(frame))).toEqual(new Set(EVENT_KINDS));
                 expectBounded(frame, reactions.maxEmitters);
                 // And it is all still there for the frame after, to go on being played.
                 expect(lostSince(reactions.update(1 / 60))).toEqual([]);
@@ -226,7 +239,7 @@ describe('Sakura reaction director', () => {
                 const fresh = frame.emitters.filter((emitter) => emitter.serial >= first);
                 expect(fresh.length).toBeGreaterThan(10);
                 expect(fresh.every((emitter) => emitter.age === 0)).toBe(true);
-                expect(new Set(fresh.map((emitter) => emitter.kind))).toEqual(new Set(EMITTER_KINDS));
+                expect(new Set(fresh.map((emitter) => emitter.kind))).toEqual(new Set(EVENT_KINDS));
                 const kept = frame.emitters.filter((emitter) => emitter.serial < first);
                 const keptSerials = new Set(kept.map((emitter) => emitter.serial));
                 const dropped = before.emitters.filter((emitter) => !keptSerials.has(emitter.serial));
@@ -564,21 +577,47 @@ describe('Sakura reaction director', () => {
             expect(advance(reactions, 1).front).toBeNull();
         });
 
-        it('alternates the direction of successive fronts and restarts each one upwind', () => {
+        it('sends every front with the prevailing breeze and never restarts or reverses one in flight', () => {
+            // (It used to alternate the direction and restart the one front: every double teleported
+            // the wind wall to the far edge and a cascade ping-ponged it.)
             const reactions = create();
-            const directions = [];
-            for (let sweep = 0; sweep < 4; sweep += 1) {
+            const directions = new Set();
+            const tracks = new Map();
+            const restarts = [];
+            for (let sweep = 0; sweep < 6; sweep += 1) {
                 reactions.onLineClear(2);
-                const { front } = advance(reactions, 0.4);
-                directions.push(front.direction);
-                expect(front.position * front.direction).toBeLessThan(0);
+                for (let frame = 0; frame < 21; frame += 1) {
+                    const { fronts } = reactions.update(1 / 60);
+                    reactions.fronts.forEach((slot, index) => {
+                        if (!slot.active) {
+                            tracks.delete(index);
+                            return;
+                        }
+                        const before = tracks.get(index);
+                        if (before !== undefined && slot.age < before) restarts.push(index);
+                        tracks.set(index, slot.age);
+                    });
+                    fronts.forEach((front) => directions.add(front.direction));
+                }
             }
-            expect(directions[1]).toBe(-directions[0]);
-            expect(directions[2]).toBe(directions[0]);
-            expect(directions[3]).toBe(directions[1]);
-            // A new clear replaces the front in flight instead of adding a second one.
-            reactions.onLineClear(2);
-            expect(reactions.frame.front.strength).toBe(0);
+            expect([...directions]).toEqual([1]);
+            expect(restarts).toEqual([]);
+            // Fronts overlap instead of replacing each other, never more than the slots.
+            const crossing = reactions.getFrame().fronts;
+            expect(crossing.length).toBeGreaterThan(1);
+            expect(crossing.length).toBeLessThanOrEqual(SAKURA_FRONT_SLOTS);
+            // One that finds every slot busy joins the youngest: it grows stronger, it does not restart.
+            const full = create();
+            for (let sweep = 0; sweep < SAKURA_FRONT_SLOTS; sweep += 1) {
+                full.onLineClear(2);
+                advance(full, 0.1);
+            }
+            const ages = full.fronts.map((front) => front.age);
+            const youngest = full.fronts.reduce((a, b) => (b.age < a.age ? b : a));
+            const before = youngest.target;
+            full.onLineClear(4);
+            expect(full.fronts.map((front) => front.age)).toEqual(ages);
+            expect(youngest.target).toBeGreaterThan(before);
         });
     });
 
@@ -1037,7 +1076,8 @@ describe('Sakura reaction director', () => {
             expect(playing.hush).toBe(0);
             expect(reactions.onGameOver()).toBeUndefined();
             const over = reactions.getFrame();
-            expect(over.front).toBeNull();
+            // The wind dies: a front still crossing eases away rather than snapping the trees upright.
+            expect(over.front.strength).toBeLessThanOrEqual(playing.front.strength);
             expect(over.streak).toBe(0);
             // What is already in the air keeps falling.
             expect(over.emitters).toEqual(playing.emitters);
@@ -1048,7 +1088,8 @@ describe('Sakura reaction director', () => {
                 expect(frame.vortex).toBeLessThanOrEqual(previous.vortex);
                 expect(frame.foxfire).toBeLessThanOrEqual(previous.foxfire);
                 expect(frame.hush).toBeGreaterThanOrEqual(previous.hush);
-                expect(frame.front).toBeNull();
+                expect(frame.front?.strength ?? 0).toBeLessThanOrEqual(previous.front?.strength ?? 0);
+                if (step >= 4) expect(frame.front).toBeNull();
                 previous = frame;
             }
             expect(previous.hush).toBeGreaterThan(0.5);
@@ -1164,9 +1205,11 @@ describe('Sakura reaction director', () => {
             reactions.onPieceLock({ piece: cell(4, 22) });
             reactions.onPieceLock({ piece: cell(4, 22) });
             const rest = advance(reactions, 150);
-            const { spirit, ...others } = rest;
-            const { spirit: restSpirit, ...restOthers } = REST_FRAME;
+            // (`leap` counts the four-line clears so far: one.)
+            const { spirit, leap, ...others } = rest;
+            const { spirit: restSpirit, leap: restLeap, ...restOthers } = REST_FRAME;
             expect(others).toEqual(restOthers);
+            expect([restLeap, leap]).toEqual([0, 1]);
             expect(restSpirit).toBe(0);
             // The spirit trails the stream and the sky asymptotically.
             expect(spirit).toBeLessThan(1e-6);
@@ -1395,6 +1438,185 @@ describe('Sakura reaction director', () => {
             // The seed only decorates an event: it never changes what happens.
             const shape = (frame) => frame.emitters.map(({ seed, ...rest }) => rest);
             expect(shape(play(12))).toEqual(shape(play(11)));
+        });
+    });
+
+    describe('building with play', () => {
+        /** One clearing lock of a chain, hard-dropped, as the game sends it. */
+        const chainStep = (reactions, lines, { cascade = 1 } = {}) => {
+            reactions.onHardDrop({ distance: 18 });
+            reactions.onPieceLock({ piece: cell(4, 22) });
+            reactions.onLineClear(lines, { clearedRows: [23], cascadeCount: 1 });
+            for (let wave = 2; wave <= cascade; wave += 1) {
+                advance(reactions, 0.36);
+                reactions.onCombo(wave);
+                reactions.onLineClear(1, { clearedRows: [23], cascadeCount: wave });
+            }
+        };
+        /** The tray's Fever: twelve clearing locks 0.64 s apart, a cascade, a quad and its crown. */
+        const fever = (reactions) => {
+            const plan = [1, 1, 2, 1, 2, 2, 3, 2, 2, 'cascade', 3, 4];
+            const readings = [];
+            plan.forEach((step, index) => {
+                if (index > 0) advance(reactions, 0.64);
+                if (step === 'cascade') chainStep(reactions, 2, { cascade: 4 });
+                else chainStep(reactions, step);
+                readings.push(reactions.getFrame());
+            });
+            advance(reactions, 0.36);
+            reactions.onPerfectClear();
+            return readings;
+        };
+
+        it('never cuts the light when a weak event follows a strong one', () => {
+            const reactions = create();
+            reactions.onPieceLock({ piece: cell(4, 22) });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            advance(reactions, 0.1);
+            const quad = reactions.getFrame();
+            const alone = create();
+            alone.onPieceLock({ piece: cell(4, 22) });
+            alone.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            // A plain lock right after: every envelope holds or rises, and stays above the quad's
+            // own fall for the next second and a half.
+            reactions.onPieceLock({ piece: cell(2, 22) });
+            const after = reactions.getFrame();
+            for (const key of ENVELOPES) expect(after[key], key).toBeGreaterThanOrEqual(quad[key]);
+            advance(alone, 0.1);
+            for (let step = 0; step < 15; step += 1) {
+                const both = advance(reactions, 0.1);
+                const only = advance(alone, 0.1);
+                for (const key of ENVELOPES) expect(both[key], key).toBeGreaterThanOrEqual(only[key] - 1e-9);
+            }
+            // The stream, the sky and the flames are never pulled down by a smaller event.
+            const chain = create();
+            clearingLock(chain, 4);
+            chain.onCombo(9);
+            advance(chain, 1);
+            const high = chain.getFrame();
+            chain.onCombo(2);
+            chain.onLineClear(1);
+            const low = advance(chain, 1 / 60);
+            expect(low.vortex).toBeGreaterThanOrEqual(high.vortex - 1e-3);
+            expect(low.constellation).toBeGreaterThanOrEqual(high.constellation - 1e-3);
+            expect(low.foxfire).toBeGreaterThanOrEqual(high.foxfire - 1e-3);
+        });
+
+        it('reads hotter as a long chain goes on, crowns the quad without throwing it again, and breathes back', () => {
+            const reactions = create();
+            const readings = fever(reactions);
+            const first = readings[0];
+            const last = readings.at(-1);
+            // The night deepens through the chain: the heat of play, the flames, the drawn sky.
+            expect(last.level).toBeGreaterThan(first.level + 0.5);
+            expect(last.fever).toBeGreaterThan(0.5);
+            expect(last.stage).toBe(3);
+            expect(last.foxfire).toBeGreaterThan(first.foxfire + 8);
+            expect(last.constellation).toBeGreaterThan(first.constellation + 0.6);
+            expect(readings[6].level).toBeGreaterThan(readings[2].level);
+            expect(readings[10].fever).toBeGreaterThan(readings[6].fever);
+            // A fever is the night of hanami: stars fall and sky lanterns lift in a steady festival.
+            const kinds = new Set();
+            for (let frame = 0; frame < 120; frame += 1) {
+                reactions.update(1 / 60).emitters.forEach((emitter) => kinds.add(emitter.kind));
+            }
+            expect(kinds.has('festival')).toBe(true);
+            // The perfect clear crowned the quad: one blizzard, one leap, the crown lit.
+            const crowned = reactions.getFrame();
+            expect(crowned.crown).toBeGreaterThan(0.3);
+            expect(crowned.leap).toBe(1);
+            const showers = reactions.emitters.filter((emitter) => emitter.active && emitter.kind === 'shower');
+            expect(showers).toHaveLength(1);
+            // Hands at rest: the garden breathes back to calm within seconds, its sky last.
+            const rested = advance(reactions, 12);
+            expect(rested.level).toBeLessThan(0.15);
+            expect(rested.fever).toBe(0);
+            expect(rested.stage).toBe(0);
+            expect(rested.foxfire).toBeLessThan(1);
+            const quiet = advance(reactions, 30);
+            expect(quiet.constellation).toBeLessThan(0.05);
+            expect(quiet.emitters).toEqual([]);
+        });
+
+        it('builds each cascade wave on the last instead of playing the first again', () => {
+            const reactions = create();
+            reactions.onPieceLock({ piece: cell(4, 22) });
+            reactions.onLineClear(2, { clearedRows: [22, 23], cascadeCount: 1 });
+            const waves = [reactions.getFrame()];
+            for (let wave = 2; wave <= 5; wave += 1) {
+                advance(reactions, 0.36);
+                reactions.onCombo(wave);
+                reactions.onLineClear(1, { clearedRows: [23], cascadeCount: wave });
+                waves.push(reactions.getFrame());
+            }
+            const jets = (frame) => emittersOf(frame, 'clear').filter((emitter) => emitter.age === 0);
+            for (let index = 2; index < waves.length; index += 1) {
+                // More flames, more of the sky, stronger jets and another front each wave.
+                expect(waves[index].foxfire).toBeGreaterThanOrEqual(waves[index - 1].foxfire);
+                expect(jets(waves[index])[0].strength).toBeGreaterThan(jets(waves[index - 1])[0].strength);
+                expect(jets(waves[index])[0].lines).toBeGreaterThanOrEqual(jets(waves[index - 1])[0].lines);
+            }
+            expect(waves.at(-1).fronts.length).toBeGreaterThan(1);
+            // A wave of the same lock is worth a wave, not a new clear: the streak stays one.
+            expect(waves.at(-1).streak).toBe(1);
+        });
+
+        it('answers a back-to-back with the moon\'s corona, wider for every one in a row', () => {
+            const reactions = create();
+            reactions.onBackToBack();
+            const one = advance(reactions, 0.4).corona;
+            expect(one).toBeGreaterThan(0.5);
+            advance(reactions, 1);
+            reactions.onBackToBack();
+            const two = advance(reactions, 0.4).corona;
+            expect(two).toBeGreaterThan(one);
+            expect(advance(reactions, 20).corona).toBeLessThan(0.005);
+        });
+
+        it('shows a T-spin that cleared nothing as a smaller flourish', () => {
+            const cleared = create();
+            cleared.onTSpin({ lineCount: 2, piece: cell(6, 20) });
+            const empty = create();
+            empty.onTSpin({ lineCount: 0, piece: cell(6, 20) });
+            const spin = (frame) => emittersOf(frame, 'spin')[0];
+            expect(spin(empty.frame).strength).toBeGreaterThan(0);
+            expect(spin(empty.frame).strength).toBeLessThan(spin(cleared.frame).strength);
+            expect(emittersOf(empty.frame, 'star')).toHaveLength(1);
+            expect(advance(empty, 0.2).level).toBeGreaterThan(0);
+        });
+
+        it('calms the wind, fronts and boughs under Reduce motion', () => {
+            const full = create();
+            const calm = create();
+            calm.setMotion(0.35);
+            for (const reactions of [full, calm]) {
+                clearingLock(reactions, 3);
+                advance(reactions, 0.5);
+            }
+            expect(calm.frame.motion).toBe(0.35);
+            expect(calm.frame.gust).toBeCloseTo(full.frame.gust * 0.35, 9);
+            expect(calm.frame.sway).toBeCloseTo(full.frame.sway * 0.35, 9);
+            expect(calm.frame.front.strength).toBeCloseTo(full.frame.front.strength * 0.35, 9);
+            // The light is not motion: it is the same.
+            for (const key of ['glow', 'lanterns', 'moon']) expect(calm.frame[key]).toBe(full.frame[key]);
+        });
+
+        it('leans the boughs into a gust instead of jerking them', () => {
+            const reactions = create();
+            reactions.onLineClear(4);
+            // The gust's light is there at once; the boughs follow it on a spring.
+            expect(reactions.frame.gust).toBeGreaterThan(0.5);
+            expect(reactions.frame.sway).toBe(0);
+            const steps = [];
+            let previous = 0;
+            for (let frame = 0; frame < 30; frame += 1) {
+                const { sway } = reactions.update(1 / 60);
+                steps.push(sway - previous);
+                previous = sway;
+            }
+            // No frame moves them more than a small share of the way.
+            expect(Math.max(...steps)).toBeLessThan(0.1);
+            expect(previous).toBeGreaterThan(0.3);
         });
     });
 });

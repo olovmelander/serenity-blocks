@@ -331,12 +331,35 @@ export class PondLight {
         return sum.mul(u.ringsLive);
     }
 
-    /** Send a band of light out from (x, z). */
+    /**
+     * Send a band of light out from (x, z). It takes the slot whose band has the least light
+     * left (a spent one first), so under rapid play the gold ring of a clear crossing the pond
+     * is never cut off by the small bands of the locks after it. Returns the slot.
+     */
     ring(x, z, time, strength, rgb, reach = 12) {
-        const slot = this.ringCursor % RING_SLOTS;
-        this.ringCursor += 1;
+        let slot = this.ringCursor % RING_SLOTS;
+        let least = Infinity;
+        for (let k = 0; k < RING_SLOTS; k += 1) {
+            const i = (this.ringCursor + k) % RING_SLOTS;
+            const left = this.ringLeft(i, time);
+            if (left < least) {
+                least = left;
+                slot = i;
+                if (left <= 0) break;
+            }
+        }
+        this.ringCursor = slot + 1;
         this.ringA[slot].set(x, z, time, strength);
         this.ringC[slot].set(rgb[0], rgb[1], rgb[2], reach);
+        return slot;
+    }
+
+    /** The light band `i` still carries at `time` (what its shader term fades by: e^-0.55·age). */
+    ringLeft(i, time) {
+        const a = this.ringA[i];
+        const age = time - a.z;
+        if (!(a.w > 0) || age >= RING_LIFE) return 0;
+        return a.w * Math.exp(-0.55 * Math.max(0, age));
     }
 
     resetRings() {

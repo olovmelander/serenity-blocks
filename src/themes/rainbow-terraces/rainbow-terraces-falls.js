@@ -215,8 +215,10 @@ export function createFalls({ tier, U, tex }) {
         // The sheet's face: up where it leaves the lip, outward once it falls.
         const N0 = normalize(cross(along, W).add(vec3(0.0, 1e-5, 0.0))).toVar();
         // The T-spin wrings the sheet: a half-turn about its own fall line travelling down at water
-        // speed, so the curtain goes edge-on and turns its shade side to us.
-        const wring = U.wring.y.mul(exp(t.sub(U.waterClock.sub(U.wring.x)).div(0.6).pow2().negate())).mul(3.1416);
+        // speed, so the curtain goes edge-on and turns its shade side to us. Two can travel at once
+        // (U.wring: water clock and strength of each), so a second T-spin never cuts the first.
+        const wring = U.wring.y.mul(exp(t.sub(U.waterClock.sub(U.wring.x)).div(0.6).pow2().negate()))
+            .add(U.wring.w.mul(exp(t.sub(U.waterClock.sub(U.wring.z)).div(0.6).pow2().negate()))).mul(3.1416);
         const cw = cos(wring);
         const swr = sin(wring);
         const Wr = W.mul(cw).add(N0.mul(swr));

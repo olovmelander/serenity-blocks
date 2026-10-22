@@ -1015,15 +1015,19 @@ describe('cinder drift world: clears', () => {
         }
         expect(world.counts.clears).toBe(1);
         const two = { strength: jets.frame.value.w, heat: jets.heat.value };
-        // Without rows it clears from the floor up.
+        // Without rows it clears from the floor up. (The jets still burning finish: the next
+        // clear fires the other set.)
         world.onClear({ lines: 3 });
-        expect(jets.rows.value.x).toBeGreaterThan(jets.rows.value.y);
-        expect(jets.rows.value.y).toBeGreaterThan(jets.rows.value.z);
-        expect(jets.rows.value.z).toBeGreaterThan(0);
-        expect(jets.rows.value.w).toBe(-1);
+        const next = world.jets.uniforms;
+        expect(next).not.toBe(jets);
+        expect(jets.frame.value.w).toBe(two.strength);
+        expect(next.rows.value.x).toBeGreaterThan(next.rows.value.y);
+        expect(next.rows.value.y).toBeGreaterThan(next.rows.value.z);
+        expect(next.rows.value.z).toBeGreaterThan(0);
+        expect(next.rows.value.w).toBe(-1);
         // More lines burn hotter and stronger.
-        expect(jets.heat.value).toBeGreaterThan(two.heat);
-        expect(jets.frame.value.w).toBeGreaterThan(two.strength);
+        expect(next.heat.value).toBeGreaterThan(two.heat);
+        expect(next.frame.value.w).toBeGreaterThan(two.strength);
         world.dispose();
     });
 
@@ -1052,7 +1056,8 @@ describe('cinder drift world: clears', () => {
         const waves = [];
         for (let lines = 1; lines <= 3; lines++) {
             world.onClear({ lines });
-            const slot = (lines - 1) % CLEAR_SLOTS;
+            const slot = world.clearSlot;
+            expect(slot).toBe(lines - 1); // an empty slot first
             expect(world.u.clearA[slot].value.x).toBe(world.time); // at once: only four lines wait
             expect(world.u.clearA[slot].value.y).toBe(lines);
             expect(world.u.clearA[slot].value.w).toBe(0);
@@ -1073,15 +1078,13 @@ describe('cinder drift world: clears', () => {
         expect(three.colour.y).toBeGreaterThan(two.colour.y);
         expect(three.colour.z).toBeGreaterThan(one.colour.z);
         // No line count is one line; more than four is four; nonsense is one.
-        const next = () => world.u.clearA[world.counts.clears % CLEAR_SLOTS].value;
-        let slot = next();
+        const newest = () => world.u.clearA[world.clearSlot].value;
         world.onClear({});
-        expect(slot.y).toBe(1);
-        slot = next();
+        expect(newest().y).toBe(1);
         world.onClear({ lines: 'many' });
-        expect(slot.y).toBe(1);
-        slot = next();
+        expect(newest().y).toBe(1);
         world.onClear({ lines: 9 });
+        const slot = newest();
         expect(slot.y).toBe(4);
         expect(slot.w).toBe(1);
         expect(world.counts).toMatchObject({ clears: 6, quads: 1 });
@@ -1355,15 +1358,21 @@ describe('cinder drift world: clears', () => {
         perfect.world.dispose();
     });
 
-    it('turns the crust round the foot of the board on a T-spin', () => {
+    it('turns the crust round the foot of the board on a T-spin, and a second spin adds to the turn', () => {
         const plain = makeWorld('Low');
+        const once = makeWorld('Low');
         const { camera, world } = makeWorld('Low');
         expect(world.u.whirl.value.w).toBe(0);
         plain.world.onClear({ lines: 2 });
+        once.world.onClear({ lines: 2, tspin: true });
         world.onClear({ lines: 2, tspin: true });
         const whirl = world.u.whirl.value;
         const heart = world.u.heart.value;
         expect(whirl.z).toBe(world.time);
+        // It winds up over a moment (the world turns it frame by frame).
+        run(world, camera, 0.4);
+        run(once.world, once.camera, 0.4);
+        run(plain.world, plain.camera, 0.4);
         expect(whirl.w).not.toBe(0);
         // Round a point on the lake by the wave's heart, further up the chamber.
         expect(whirl.x).toBe(heart.x);
@@ -1374,22 +1383,39 @@ describe('cinder drift world: clears', () => {
         expect(world.counts.quads).toBe(0);
         expect(plain.world.u.whirl.value.w).toBe(0);
         const first = whirl.w;
-        // The next one turns the other way.
-        run(world, camera, 0.5);
+        // A second spin while the crust still turns adds to the turn, the same way: the plates
+        // never snap back straight or jerk round the other way.
         world.onClear({ lines: 1, tspin: true });
-        expect(whirl.z).toBe(world.time);
-        expect(Math.sign(whirl.w)).toBe(-Math.sign(first));
-        expect(Math.abs(whirl.w)).toBe(Math.abs(first));
+        let last = Math.abs(whirl.w);
+        for (let i = 0; i < 30; i++) {
+            run(world, camera, 1 / 60, 1);
+            run(once.world, once.camera, 1 / 60, 1);
+            expect(Math.sign(whirl.w)).toBe(Math.sign(first));
+            expect(Math.abs(whirl.w)).toBeGreaterThan(last * 0.97);
+            last = Math.abs(whirl.w);
+        }
+        expect(Math.abs(whirl.w)).toBeGreaterThan(Math.abs(once.world.u.whirl.value.w) * 1.3);
         // A clear without one leaves the crust turning as it was.
-        run(world, camera, 0.5);
-        const turning = whirl.toArray();
+        const turning = world.swells.whirl.valueAt(world.time + 0.4);
         world.onClear({ lines: 3 });
-        expect(whirl.toArray()).toEqual(turning);
-        // The chamber settles.
+        expect(world.swells.whirl.valueAt(world.time + 0.4)).toBe(turning);
+        // The chamber settles; a fresh turn, once the crust lies still, goes the other way.
         const stirred = world.storm;
         run(world, camera, 8);
         expect(world.storm).toBeLessThan(stirred * 0.1);
-        plain.world.dispose();
+        expect(Math.abs(whirl.w)).toBeLessThan(0.05);
+        world.onClear({ lines: 1, tspin: true });
+        run(world, camera, 0.4);
+        expect(Math.sign(whirl.w)).toBe(-Math.sign(first));
+        // A T-spin that clears nothing turns it a little.
+        const mini = makeWorld('Low');
+        mini.world.onTSpinMini({});
+        run(mini.world, mini.camera, 0.4);
+        expect(Math.abs(mini.world.u.whirl.value.w)).toBeGreaterThan(0);
+        expect(Math.abs(mini.world.u.whirl.value.w)).toBeLessThan(Math.abs(first));
+        expect(mini.world.counts).toMatchObject({ tspins: 1, clears: 0 });
+        expect(mini.world.storm).toBeGreaterThan(0);
+        for (const w of [plain, once, mini]) w.world.dispose();
         world.dispose();
     });
 });
@@ -1468,8 +1494,8 @@ describe('cinder drift world: combos and levels', () => {
 
         // The chain breaks: the chamber lets its breath go, and everything falls back.
         world.onCombo(0);
-        expect(world.dip).toBeGreaterThan(0);
         run(world, camera, 0.2);
+        expect(world.dip).toBeGreaterThan(0);
         expect(world.getState().breath).toBeLessThan(0.95);
         expect(world.fissures).toBeLessThan(STREAM_SLOTS);
         run(world, camera, 14);
@@ -1478,9 +1504,10 @@ describe('cinder drift world: combos and levels', () => {
         expect(world.getState().breath).toBeCloseTo(1, 6);
         expect(world.getState().fallGain).toBeCloseTo(1, 2);
         // A single clear that is not followed up is no broken chain.
-        world.dip = 0;
+        expect(world.dip).toBe(0); // (the sag has passed)
         world.onCombo(1);
         world.onCombo(0);
+        run(world, camera, 0.2);
         expect(world.dip).toBe(0);
         // Nonsense is no chain.
         world.onCombo(NaN);
@@ -1943,7 +1970,7 @@ describe('cinder drift world: time', () => {
         // Nothing at rest touches the post: the picture is steady.
         expect(world.getPostState()).toMatchObject(AT_REST);
         expect(world.counts).toEqual({
-            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0,
+            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0, crowns: 0, tspins: 0, b2b: 0,
         });
         world.dispose();
     });
@@ -2108,5 +2135,186 @@ describe('cinder drift effects: uploads', () => {
         for (let i = 0; i < 40; i++) markSpatterSlots(attribute, i, 1, 64);
         expect(attribute.updateRanges.length).toBeLessThanOrEqual(33);
         expect(ranges(attribute)).toContainEqual([0, 64 * 4]);
+    });
+});
+
+describe('cinder drift world: it builds with play', () => {
+    /** One step of a chain, hard-dropped: the lock, its clear and the combo, as the director sends them. */
+    const step = (world, combo) => {
+        world.onLock({ u: 0.3 + 0.05 * (combo % 6), rows: [19], hardDrop: true });
+        world.onClear({ lines: 1 + (combo % 3), combo });
+        world.onCombo(combo);
+    };
+
+    it('never cuts the light when a weak event follows a strong one', () => {
+        const alone = makeWorld('Low');
+        const after = makeWorld('Low');
+        for (const { world, camera } of [alone, after]) {
+            world.onClear({ lines: 4 });
+            run(world, camera, 0.6);
+        }
+        const quadSlot = after.world.clearSlot;
+        const quadWave = after.world.u.clearA[quadSlot].value.toArray();
+        // A single right after the quad...
+        after.world.onClear({ lines: 1 });
+        // ...takes another slot: the quad's wave is still in the lake, as it was.
+        expect(after.world.clearSlot).not.toBe(quadSlot);
+        expect(after.world.u.clearA[quadSlot].value.toArray()).toEqual(quadWave);
+        for (let frame = 0; frame < 150; frame++) {
+            run(alone.world, alone.camera, 1 / 60, 1);
+            run(after.world, after.camera, 1 / 60, 1);
+            // Every light the quad lit is at least as bright with the single on top of it.
+            const a = alone.world;
+            const b = after.world;
+            expect(b.surge).toBeGreaterThanOrEqual(a.surge - 1e-12);
+            expect(b.u.curtain.value).toBeGreaterThanOrEqual(a.u.curtain.value - 1e-12);
+            expect(b.getState().breath).toBeGreaterThanOrEqual(a.getState().breath - 1e-12);
+            expect(b.swells.swell.valueAt(b.time)).toBeGreaterThanOrEqual(a.swells.swell.valueAt(a.time) - 1e-12);
+            expect(b.getPostState().kick).toBeGreaterThanOrEqual(a.getPostState().kick - 1e-12);
+            expect(b.u.shock.value.y).toBeGreaterThanOrEqual(a.u.shock.value.y - 1e-12);
+        }
+        // A level-up on the quad's heels joins its shock instead of replacing it with a weaker one.
+        const shaken = makeWorld('Low');
+        shaken.world.onClear({ lines: 4 });
+        run(shaken.world, shaken.camera, HUSH_HOLD + 0.05);
+        const front = shaken.world.u.shock.value.clone();
+        shaken.world.levelUp(2);
+        expect(shaken.world.u.shock.value.x).toBe(front.x);
+        expect(shaken.world.u.shock.value.y).toBeGreaterThan(front.y);
+        // Waves replaced in a long run of clears leave their glow behind, fading, never dropped.
+        const many = makeWorld('Low');
+        for (let i = 0; i < CLEAR_SLOTS + 2; i++) {
+            many.world.onClear({ lines: 2 });
+            run(many.world, many.camera, 0.3);
+        }
+        expect(many.world.u.clearCarry.value).toBeGreaterThan(0);
+        for (const w of [alone, after, shaken, many]) w.world.dispose();
+    });
+
+    it('burns hotter through a long chain than on its first clear, and breathes back when the hands rest', () => {
+        const { camera, world } = makeWorld('Low');
+        const rest = { ...world.getPostState(), fallGain: world.fallGain, rain: world.rain };
+        const read = () => ({
+            level: world.play.level,
+            fever: world.play.fever,
+            rise: world.u.rise.value,
+            curtain: world.u.curtain.value,
+            fallGain: world.u.fallGain.value,
+            rain: world.rain,
+            fissures: world.fissures,
+        });
+        step(world, 1);
+        run(world, camera, 0.4);
+        const first = read();
+        run(world, camera, 0.24);
+        for (let combo = 2; combo <= 12; combo++) {
+            step(world, combo);
+            run(world, camera, 0.64);
+        }
+        const chain = read();
+        expect(world.play.stage).toBe(3); // the fever
+        expect(chain.level).toBeGreaterThan(first.level + 0.4);
+        expect(chain.fever).toBeGreaterThan(0.5);
+        // The seams fill, the hem of flame stands, the fall runs harder, the roof rains fire.
+        expect(chain.rise).toBeGreaterThan(first.rise + 2);
+        expect(chain.curtain).toBeGreaterThan(first.curtain);
+        expect(chain.fallGain).toBeGreaterThan(first.fallGain);
+        expect(chain.rain).toBeGreaterThan(first.rain * 3);
+        expect(chain.fissures).toBeGreaterThan(first.fissures + 3);
+        // The iris lets the build through instead of closing it out of the frame.
+        expect(world.getPostState().exposure).toBeGreaterThan(0.4);
+        // A quad deep in the fever inhales: the chamber never blacks out.
+        world.onClear({ lines: 4, combo: 13 });
+        let darkest = 1;
+        for (let i = 0; i < 30; i++) {
+            run(world, camera, 1 / 60, 1);
+            darkest = Math.min(darkest, world.getState().breath);
+        }
+        expect(darkest).toBeGreaterThan(0.75);
+        // ...where one from cold holds its breath to the dark.
+        const cold = makeWorld('Low');
+        cold.world.onClear({ lines: 4 });
+        run(cold.world, cold.camera, HUSH_HOLD * 0.9);
+        expect(cold.world.getState().breath).toBeLessThan(0.5);
+        cold.world.dispose();
+        // The hands rest: the chamber breathes back to calm.
+        world.onCombo(0);
+        run(world, camera, 30, 900);
+        expect(world.play.stage).toBe(0);
+        expect(world.play.level).toBeLessThan(0.01);
+        expect(world.rise).toBeLessThan(0.01);
+        expect(world.curtain).toBeLessThan(0.01);
+        expect(world.fallGain).toBeCloseTo(rest.fallGain, 2);
+        expect(world.rain).toBeCloseTo(rest.rain, 2);
+        expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 2);
+        expect(world.getPostState().haze).toBeCloseTo(rest.haze, 2);
+        world.dispose();
+    });
+
+    it('lands a cascade\'s waves deeper and whiter, one on the last', () => {
+        const { world } = makeWorld('Low');
+        const waves = [];
+        let stood = 0;
+        for (let cascade = 1; cascade <= 4; cascade++) {
+            world.onClear({ lines: 1, cascade });
+            waves.push({
+                strength: world.u.clearA[world.clearSlot].value.z,
+                blue: world.u.clearC[world.clearSlot].value.z,
+                fountains: world.counts.fountains - stood,
+            });
+            stood = world.counts.fountains;
+        }
+        for (let i = 1; i < waves.length; i++) {
+            expect(waves[i].strength).toBeGreaterThan(waves[i - 1].strength);
+            expect(waves[i].blue).toBeGreaterThan(waves[i - 1].blue);
+            expect(waves[i].fountains).toBeGreaterThan(waves[i - 1].fountains);
+        }
+        world.dispose();
+    });
+
+    it('answers a back-to-back in the rock: the seams flood, a shock rings out, the cliffs pour', () => {
+        const plain = makeWorld('Low');
+        const { camera, world } = makeWorld('Low');
+        plain.world.onClear({ lines: 4 });
+        world.onClear({ lines: 4, b2b: true });
+        expect(world.counts.b2b).toBe(1);
+        run(plain.world, plain.camera, 0.8);
+        run(world, camera, 0.8);
+        expect(world.rise).toBeGreaterThan(plain.world.rise + 1);
+        expect(world.fissures).toBeGreaterThan(plain.world.fissures + 0.5);
+        expect(world.u.shock.value.y).toBeGreaterThan(plain.world.u.shock.value.y);
+        // The second step of the streak floods higher than the first.
+        const once = world.rise;
+        run(world, camera, 1.5);
+        world.onClear({ lines: 4, b2b: true });
+        run(world, camera, 0.8);
+        expect(world.rise).toBeGreaterThan(once);
+        plain.world.dispose();
+        world.dispose();
+    });
+
+    it('crowns a late perfect clear on the clear still playing: no second hush, no second volley', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onClear({ lines: 4 });
+        run(world, camera, 0.6);
+        const thrown = { ...world.counts };
+        const pending = world.pending.length;
+        world.onPerfectCrown({});
+        expect(world.counts).toMatchObject({
+            quads: thrown.quads, bombs: thrown.bombs, fountains: thrown.fountains, crowns: 1,
+        });
+        expect(world.hushUntil).toBeLessThan(world.time);
+        expect(world.pending.length).toBeGreaterThan(pending); // the crust is about to lift
+        let darkest = 1;
+        for (let i = 0; i < 60; i++) {
+            run(world, camera, 1 / 60, 1);
+            darkest = Math.min(darkest, world.getState().breath);
+        }
+        expect(darkest).toBeGreaterThan(0.95);
+        // The roof rains fire, and every cliff pours.
+        expect(world.rain).toBeGreaterThan(5);
+        run(world, camera, 0.6);
+        expect(world.fissures).toBeGreaterThan(STREAM_SLOTS - 1);
+        world.dispose();
     });
 });

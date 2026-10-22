@@ -6,7 +6,9 @@
  * piece's colour, a ring leaves it through the gas, and it KEEPS some of that light (it fades
  * over half a minute). A clear lets everything go: as the wave from the nucleus passes a nursery
  * its stored light goes nova — a white flash, a shell in the colour it held — and it is dark
- * again. So the more of the galaxy the player has lit, the more a clear sets off.
+ * again. So the more of the galaxy the player has lit, the more a clear sets off. In the middle
+ * of a chain a wave only fans them (they flare and burn on, brighter): the arms string up with
+ * the run's colours until the chain ends, or a four-line clear lets them all go at once.
  *
  * Per-nursery state is two instanced attributes written only when gameplay happens:
  *   aHold  (epoch, flash time, flash amount, flash kind)
@@ -45,8 +47,8 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    NOVA_LIFE, PULSE_FADE, STORE_HOLD, STORE_MAX, epochFor, gxArmAngle, gxFxMaterial, gxMax3, gxPart,
-    gxQuadGeometry, gxWaveLight, heldAt, wavePassTime,
+    KEEP_ADD, KEEP_GAIN, KEEP_MAX, NOVA_LIFE, PULSE_FADE, STORE_HOLD, STORE_MAX, epochFor, gxArmAngle,
+    gxFxMaterial, gxMax3, gxPart, gxQuadGeometry, gxWaveLight, heldAt, wavePassTime,
 } from './galaxy-tsl.js';
 
 /** How far a nova's shell runs, in nursery radii. */
@@ -173,6 +175,16 @@ export function createNurseries(u, sites, count) {
         const o = event.index * 4;
         const before = heldAt(aHold[o], event.time);
         if (event.kind === 1) {
+            if (event.keep) {
+                // Mid-chain: it flares as the front passes and burns on, brighter than before.
+                if (!(before > 0.06)) return false;
+                const amount = 0.25 + before * 0.4;
+                const kept = Math.max(before, Math.min(KEEP_MAX, before * KEEP_GAIN + KEEP_ADD));
+                aHold.set([epochFor(kept, event.time), event.time, amount, 1], o);
+                event.amount = amount;
+                event.held = before;
+                return true;
+            }
             const amount = Math.max(event.floor, before > 0.06 ? 0.35 + before * 0.5 : 0);
             if (amount <= 0) return false;
             aHold.set([NO_LIGHT, event.time, amount, 1], o);
@@ -201,13 +213,17 @@ export function createNurseries(u, sites, count) {
      * Whether it has anything to let go is decided at that moment, not now (a seed may still
      * be on its way, an earlier wave may empty it first). `floor` > 0 sets off the dark ones
      * too (a four-line clear). `rgb` and `sparks` ride along for whoever answers the nova: the
-     * wave's own colour, and this nova's share of the debris pool.
+     * wave's own colour, and this nova's share of the debris pool. `keep` (a wave in the middle
+     * of a chain): the lit ones flare and keep their light, a little brighter, instead of letting
+     * it go; the dark ones stay dark.
      */
-    part.release = (birth, { floor = 0, rgb = null, sparks = 0 } = {}) => {
+    part.release = (birth, {
+        floor = 0, rgb = null, sparks = 0, keep = false,
+    } = {}) => {
         if (!Number.isFinite(birth)) return;
         for (let i = 0; i < n; i++) {
             queue({
-                time: birth + wavePassTime(aSite[i * 4]), index: i, kind: 1, floor, rgb, sparks,
+                time: birth + wavePassTime(aSite[i * 4]), index: i, kind: 1, floor, rgb, sparks, keep,
             });
         }
     };

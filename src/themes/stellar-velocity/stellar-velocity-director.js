@@ -9,6 +9,10 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.perfect({ player })   a perfect clear that settled after its clear (physics sends it
+ *                              ~360 ms after the last wave, in a tick of its own): the crown on
+ *                              the clear still playing, never a new clear
+ *   sink.spin({ player })      a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -204,7 +208,8 @@ function capturePosition(slot, payload) {
 export class StellarVelocityDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: { lock?: Function, clear?: Function, perfect?: Function, spin?: Function,
+     *     combo?: Function, levelUp?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -224,6 +229,7 @@ export class StellarVelocityDirector {
         this._clear = {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
+        this._moment = { player: 0 };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -367,13 +373,17 @@ export class StellarVelocityDirector {
         return true;
     }
 
+    /**
+     * Physics settles a perfect clear ~360 ms after its clear's last wave, in a tick of its own:
+     * then it is the crown on that clear (sink.perfect), not a clear of its own. In the same
+     * frame as a clear it rides on that clear.
+     */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -436,6 +446,11 @@ export class StellarVelocityDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.lines === 0) {
+                const m = this._moment;
+                m.player = slot.player;
+                if (slot.perfect) sink?.perfect?.(m);
+                if (slot.tspin) sink?.spin?.(m);
             }
             clearPending(slot);
         }

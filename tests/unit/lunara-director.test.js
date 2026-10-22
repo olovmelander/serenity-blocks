@@ -129,6 +129,37 @@ describe('lunara director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('resolves a perfect clear settled after its clear as a crown, and a T-spin that clears nothing', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, crown: false, perfect: false });
+        // Physics settles the perfect clear ~360 ms later, in a frame of its own: a crown on the
+        // clear still playing, never a second one-line clear.
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({
+            lines: 0, perfect: true, crown: true, combo: 1,
+        });
+        // The chain is not counted twice.
+        expect(calls.combo).toEqual([[1, 0]]);
+        // A T-spin with no lines still says so.
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(3);
+        expect(calls.clear[2]).toMatchObject({ lines: 0, tspin: true, crown: false });
+        // A perfect clear in the frame of its own clear stays on that clear.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear[3]).toMatchObject({ lines: 4, perfect: true, crown: false });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);

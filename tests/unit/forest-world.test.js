@@ -14,7 +14,7 @@ import {
 import {
     FOREST_HOUR_COLOURS, FOREST_HOUR_PERIOD, FOREST_HOUR_REST, FOREST_HOURS, forestHourAt, forestHourDrift,
 } from '../../src/themes/forest/forest-hours.js';
-import { FOREST_MOON_DIRECTION } from '../../src/themes/forest/forest-light.js';
+import { FOREST_MOON_DIRECTION, ForestLight } from '../../src/themes/forest/forest-light.js';
 import {
     FOREST_EYE, FOREST_MOON_AZIMUTH_DEGREES, FOREST_MOON_ELEVATION_DEGREES, FOREST_MOON_RADIUS_DEGREES,
     FOREST_RIDE_AXIS, forestBearing, forestRide, forestRideHalfWidth, forestRidePoint,
@@ -23,6 +23,7 @@ import { ForestPost } from '../../src/themes/forest/forest-post.js';
 import { FOREST_TIERS, forestTier } from '../../src/themes/forest/forest-quality.js';
 import { FOREST_REACTION_LIMITS, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
 import { forestFigure } from '../../src/themes/forest/forest-figures.js';
+import { ForestSky } from '../../src/themes/forest/forest-sky.js';
 import { FOREST_DEFAULT_BOARD } from '../../src/themes/forest/forest-stage.js';
 import {
     FOREST_BOUNDS, FOREST_HEARTH, FOREST_KNOLL, forestGroundHeight, forestPlateau,
@@ -1528,7 +1529,7 @@ describe('Forest world: the hours of the night', () => {
     };
 
     it('opens in deep night on the first level and stays there while the hour rests', async () => {
-        const { world: world } = await buildWorld('Minimal');
+        const { world } = await buildWorld('Minimal');
         expect(world.level).toBe(1);
         expect(world.hourStep).toBe(0);
         const start = held(world);
@@ -1540,7 +1541,7 @@ describe('Forest world: the hours of the night', () => {
     });
 
     it('turns by the clock alone, the same at any frame rate and after a seek', async () => {
-        const { world: world } = await buildWorld('Minimal');
+        const { world } = await buildWorld('Minimal');
         const target = FOREST_HOUR_PERIOD * 1.7;
         for (const rate of [20, 60]) {
             const time = live(world, 0, target, rate);
@@ -1560,7 +1561,7 @@ describe('Forest world: the hours of the night', () => {
     });
 
     it('takes a level as one hour on from wherever the clock has brought the night', async () => {
-        const { world: world } = await buildWorld('Minimal');
+        const { world } = await buildWorld('Minimal');
         // Aloud: it eases there over a few seconds, never past it.
         expect(world.setLevel(2)).toBe(2);
         expect(world.hourStep).toBe(0);
@@ -1589,7 +1590,7 @@ describe('Forest world: the hours of the night', () => {
     });
 
     it('is there at once when told silently, as a rebuilt world or a capture must be', async () => {
-        const { world: world } = await buildWorld('Minimal');
+        const { world } = await buildWorld('Minimal');
         for (const [level, hour] of [[3, 2], [4, 3], [5, 4], [6, 0], [1, 0], [12, 1]]) {
             world.setLevel(level, { silent: true });
             world.update(5, 0, {});
@@ -1600,7 +1601,7 @@ describe('Forest world: the hours of the night', () => {
     });
 
     it('goes back to the first level the short way round the night', async () => {
-        const { world: world } = await buildWorld('Minimal');
+        const { world } = await buildWorld('Minimal');
         world.setLevel(5, { silent: true });
         expect(world.hourStep).toBe(-1);
         // A new run: the first level's hour is one hour on from the fifth, not four back.
@@ -1642,7 +1643,7 @@ describe('Forest world: the hours of the night', () => {
     });
 
     it('keeps the level it has when told one that is no level', async () => {
-        const { world: world } = await buildWorld('Minimal');
+        const { world } = await buildWorld('Minimal');
         world.setLevel(4, { silent: true });
         for (const nothing of [NaN, undefined, 'next', {}, Infinity]) {
             expect(world.setLevel(nothing)).toBe(4);
@@ -1938,6 +1939,88 @@ describe('Forest world ownership', () => {
             .toEqual([...used].sort());
         expect(() => world.update(0, STEP, eventfulReactions('Minimal').update(STEP))).not.toThrow();
     }, SLOW);
+});
+
+describe('Forest world: the build-up of hot play', () => {
+    const STEP_S = 1 / 60;
+
+    function sky() {
+        const tier = forestTier('High');
+        const light = new ForestLight({ tier, rng: () => 0.5 });
+        return { light, sky: new ForestSky({ light, tier, rng: () => 0.5 }) };
+    }
+
+    it('lets every star asked for fall in turn, never cutting short the one in the sky', () => {
+        const { sky: night } = sky();
+        night.update(STEP_S, { stars: 0 });
+        // Three asked for at once (a perfect clear's two and a triple's).
+        night.update(STEP_S, { stars: 3 });
+        let falls = 0;
+        let wasActive = false;
+        for (let frame = 0; frame < 8 * 60; frame++) {
+            const before = night.meteor.age;
+            night.update(STEP_S, { stars: 3, settled: true });
+            // A star in flight only ever moves on; none is restarted.
+            if (wasActive && night.meteor.active) expect(night.meteor.age).toBeGreaterThan(before);
+            if (night.meteor.active && !wasActive) falls += 1;
+            wasActive = night.meteor.active;
+        }
+        expect(falls).toBe(3);
+        expect(night.pendingStars).toBe(0);
+    });
+
+    it('turns the falling stars into a shower in a fever', () => {
+        const count = (fever) => {
+            const { sky: night } = sky();
+            let falls = 0;
+            let wasActive = false;
+            for (let frame = 0; frame < 40 * 60; frame++) {
+                night.update(STEP_S, { surge: { level: fever, fever } });
+                if (night.meteor.active && !wasActive) falls += 1;
+                wasActive = night.meteor.active;
+            }
+            return falls;
+        };
+        expect(count(1)).toBeGreaterThan(count(0) * 5);
+    });
+
+    it('lights the moon\'s ice ring for a back-to-back, and holds the moon back under hot play', () => {
+        const { light } = sky();
+        light.update(0, STEP_S, { moon: 0.8 });
+        const cool = light.uMoonGain.value;
+        expect(light.uHalo.value).toBe(0);
+        light.update(0, STEP_S, { moon: 0.8, halo: 1.2, surge: { level: 0.9, fever: 0.9 } });
+        expect(light.uHalo.value).toBeCloseTo(1.2, 9);
+        // Hot play: the event lifts the moon less, and a fever draws it below its rest.
+        expect(light.uMoonGain.value).toBeLessThan(cool);
+        light.update(0, STEP_S, { surge: { level: 0.9, fever: 1 } });
+        expect(light.uMoonGain.value).toBeLessThan(1);
+        // The standing breeze bows the ferns on top of the gusts.
+        light.update(0, STEP_S, { gust: 0.2 });
+        const gust = light.uGust.value;
+        light.update(0, STEP_S, { gust: 0.2, breeze: 0.2 });
+        expect(light.uGust.value).toBeGreaterThan(gust);
+    });
+
+    it('closes the iris as play heats, and Reduce flashing holds the event lifts back', () => {
+        const { post } = createPost('Low');
+        post.update({ moon: 1, shafts: 1 });
+        const lifted = { exposure: post.uExposure.value, shafts: post.uShafts.value };
+        post.update({});
+        const rest = { exposure: post.uExposure.value, shafts: post.uShafts.value };
+        expect(lifted.exposure).toBeGreaterThan(rest.exposure);
+        post.update({ moon: 1, shafts: 1, surge: { level: 0.9, fever: 0.9 } });
+        expect(post.uExposure.value).toBeLessThan(lifted.exposure);
+        expect(post.uExposure.value).toBeLessThan(rest.exposure);
+        expect(post.uShafts.value).toBeLessThan(lifted.shafts);
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        try {
+            post.update({ moon: 1, shafts: 1 });
+            expect(post.uExposure.value - rest.exposure).toBeLessThan((lifted.exposure - rest.exposure) * 0.2);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
 });
 
 describe('Forest post tier ownership', () => {

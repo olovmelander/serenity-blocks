@@ -45,6 +45,7 @@ import {
     CLEAR_AFTERGLOW,
     CLEAR_FRONT_GAP,
     CLEAR_FRONT_WIDTH,
+    CLEAR_LIVE,
     CLEAR_REACH,
     CLEAR_SHAPE,
     CLEAR_SLOTS,
@@ -303,6 +304,19 @@ export function createGeodeUniforms(textures) {
         crown: uniform(0),
         /** A four-line clear's fracture: (birth time, strength). */
         shock: uniform(new THREE.Vector2(-100, 0)),
+        /** The fracture before it, still healing when the next one opened: (birth time, strength). */
+        shockB: uniform(new THREE.Vector2(-100, 0)),
+        /**
+         * A fever holds the fracture open: (how brightly its cracks burn, how far down the wall
+         * from the heart they have opened).
+         */
+        veins: uniform(new THREE.Vector2(0, 0)),
+        /**
+         * The heat of play (src/themes/shared/gameplay-surge.js): (how much of its level the geode
+         * wears 0..1 — none under casual play, see warmth() in geode-world.js — fever 0..1, blaze —
+         * the light every clear pours into the crown — 0..~1.2, the agate's back-to-back lift 0..~1.2).
+         */
+        heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** (any ring live, any ripple live, any clear live, fracture live): the loops rest at 0. */
         live: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** Heart rings: (birth time, strength, reach, _) + colour. */
@@ -406,21 +420,25 @@ export const gdStrikeLight = (u, p) => {
 /**
  * The clear waves at wall coordinate `w`. Returns vec4(colour · front, afterglow): the bright
  * leading fronts (one per cleared line) and the afterglow of everything the wave has passed.
+ * Call it inside an Fn (it keeps its sums in variables and skips the slots that are over).
  */
 export const gdClearLight = (u, w) => {
-    let front = vec3(0.0);
-    let glow = float(0.0);
-    const pass = float(CLEAR_TRAVEL).mul(pow(clamp(w.div(CLEAR_REACH), 0.0, 1.0), 1 / CLEAR_SHAPE));
+    const front = vec3(0.0).toVar();
+    const glow = float(0.0).toVar();
+    const pass = float(CLEAR_TRAVEL).mul(pow(clamp(w.div(CLEAR_REACH), 0.0, 1.0), 1 / CLEAR_SHAPE)).toVar();
     for (let i = 0; i < CLEAR_SLOTS; i++) {
         const A = u.clearA[i];
-        const since = u.time.sub(A.x).sub(pass);
-        let f = float(0.0);
-        for (let k = 0; k < 4; k++) {
-            f = f.add(gdBell(since.sub(k * CLEAR_FRONT_GAP).div(CLEAR_FRONT_WIDTH)).mul(step(k + 0.5, A.y)));
-        }
-        const live = step(0.0, since).mul(A.z);
-        front = front.add(u.clearC[i].mul(f.mul(A.z)));
-        glow = glow.add(exp(max(since, 0.0).div(-CLEAR_AFTERGLOW)).mul(live));
+        // A slot whose wave is over costs one comparison (the branch is uniform).
+        If(u.time.sub(A.x).lessThan(CLEAR_LIVE), () => {
+            const since = u.time.sub(A.x).sub(pass);
+            let f = float(0.0);
+            for (let k = 0; k < 4; k++) {
+                f = f.add(gdBell(since.sub(k * CLEAR_FRONT_GAP).div(CLEAR_FRONT_WIDTH)).mul(step(k + 0.5, A.y)));
+            }
+            const live = step(0.0, since).mul(A.z);
+            front.addAssign(u.clearC[i].mul(f.mul(A.z)));
+            glow.addAssign(exp(max(since, 0.0).div(-CLEAR_AFTERGLOW)).mul(live));
+        });
     }
     return vec4(front, glow);
 };

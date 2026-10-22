@@ -406,20 +406,26 @@ export function createShore({
             .toVar();
 
         // ── How hard the water is shaken (the sea's light, in units of a mean breaker) ──
+        // The play shakes it too (U.stir, 0 calm): the surf's own breakers burn brighter, and the
+        // open bay most of all (the near water keeps its dark between the board's waves).
+        const stirred = U.stir.mul(smoothstep(4.0, 30.0, dist)).toVar();
         const agitation = surf.lip.mul(TUNE.lip).add(surf.bore.mul(TUNE.bore))
             .add(surf.foam.mul(threads.mul(0.8).add(0.25)).mul(TUNE.foam))
+            .mul(U.stir.mul(0.6).add(1.0))
             .toVar();
         // The swash: its leading edge, and the lace on the sheet behind it.
         const behindEdge = exp(sw.front.sub(x).max(0.0).div(-1.6));
         const draining = float(1.0).sub(sw.rising).mul(exp(sw.tau.sub(sw.top).div(-2.4)));
         const sheetLight = sheet.mul(threads).mul(behindEdge.mul(0.7).add(draining.mul(0.55)).add(0.06)).mul(TUNE.lace);
         agitation.addAssign(edge.mul(TUNE.edge).mul(onLand.mul(0.8).add(0.2)).add(sheetLight));
-        // Calm water keeps a faint fire where its ripples tip.
+        // Calm water keeps a faint fire where its ripples tip; shaken by the play, it sparks.
         const ripple = length(slope).toVar();
-        agitation.addAssign(smoothstep(0.06, 0.24, ripple).mul(TUNE.calm).mul(float(1.0).sub(onLand)));
-        // A perfect clear lights the whole bay.
+        agitation.addAssign(smoothstep(0.06, 0.24, ripple).mul(stirred.mul(TUNE.calm * 4).add(TUNE.calm))
+            .mul(float(1.0).sub(onLand)));
+        // A perfect clear lights the whole bay; a fever, the open bay.
         const watered = max(float(1.0).sub(onLand), sheet).toVar();
-        agitation.addAssign(U.bayBloom.mul(threads.mul(1.2).add(0.8)).mul(max(watered, wet.mul(0.4))));
+        agitation.addAssign(U.bayBloom.add(stirred.mul(0.3)).mul(threads.mul(1.2).add(0.8))
+            .mul(max(watered, wet.mul(0.4))));
 
         // ── The board: drops and waves of light ──
         const tint = vec3(0.0).toVar();

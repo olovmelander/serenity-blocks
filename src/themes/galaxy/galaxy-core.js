@@ -29,11 +29,19 @@ export const GALAXY = Object.freeze({
     armStart: 8.5,
 });
 
-/** Gameplay pulse slots evaluated by the materials. */
-export const LOCK_SLOTS = 6;
-export const CLEAR_SLOTS = 2;
-/** Seeds in flight at once (a lock throws one, a hard drop three). */
-export const SEED_SLOTS = 8;
+/**
+ * Gameplay pulse slots evaluated by the materials. A new ring or wave takes the slot with the
+ * least light left in it (never one still running out through the disc while a fainter one is
+ * there): a hard-drop flurry rings the gas three times a drop, and a cascade or a quick chain
+ * keeps five or six clear waves running out one behind another. A clear-wave slot past its life
+ * costs the shaders nothing (each slot is skipped once it is spent).
+ */
+export const LOCK_SLOTS = 8;
+export const CLEAR_SLOTS = 6;
+/** Seconds a clear wave stays in the disc (its afterglow is all but gone by then). */
+export const WAVE_LIVE = 7;
+/** Seeds in flight at once (a lock throws one, a hard drop three; a rush keeps ~10 in the air). */
+export const SEED_SLOTS = 12;
 /** Motes in one seed's tail. */
 export const SEED_TAIL = 32;
 /** Seconds a seed takes from the board to its nursery (scaled by the distance). */
@@ -65,6 +73,17 @@ export const NOVA_LIFE = 1.5;
 
 /** Seconds a four-line clear holds the galaxy's breath before the nucleus erupts. */
 export const HUSH_HOLD = 0.22;
+/**
+ * How much of its light a nursery keeps when a wave passes it in the middle of a chain (it flares
+ * and burns on, brighter: KEEP_GAIN × what it held + KEEP_ADD, up to KEEP_MAX), so a long
+ * chain strings the arms with the run's colours; the chain's end, a four-line clear or a perfect clear lets it all go.
+ */
+export const KEEP_GAIN = 1.12;
+export const KEEP_ADD = 0.06;
+/** The most a kept nursery burns with (under STORE_MAX: it keeps its colour, not white-hot). */
+export const KEEP_MAX = 1.7;
+/** Burst heads the jets can carry at once (an eruption, a triple, the knots of a chain). */
+export const JET_BURSTS = 3;
 /** The longest the jets reach (light-units along the axis). */
 export const JET_REACH = 150;
 /** The most combo rings the nucleus wears. */

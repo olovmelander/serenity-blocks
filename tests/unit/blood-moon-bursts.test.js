@@ -44,37 +44,63 @@ describe('Blood Moon bounded burst pool', () => {
         expect(bursts.getDiagnostics()).toEqual(emitted);
     });
 
-    it('reuses only the oldest of three full slots while other showers continue aging', () => {
+    it('never cuts a burning shower: a full pool feeds its youngest while the others keep aging', () => {
         const objects = [...bursts.objects];
         bursts.trigger(1);
-        bursts.update(0.4);
+        bursts.update(0.6);
         bursts.trigger(0.8);
-        bursts.update(0.3);
+        bursts.update(0.5);
         bursts.trigger(0.6);
-        bursts.update(0.2);
+        bursts.update(0.5);
         const previous = bursts.getDiagnostics();
         expect(previous.activeSlots).toBe(3);
+        expect(previous.slots.map((slot) => slot.serial)).toEqual([0, 1, 2]);
 
         bursts.trigger(0.7);
         bursts.update(0.1);
         const current = bursts.getDiagnostics();
         expect(current.activeSlots).toBe(3);
         expect(current.activeParticles).toBe(90);
-        expect(current.slots.map((slot) => slot.serial)).toEqual([3, 1, 2]);
-        expect(current.slots[0].age).toBeCloseTo(0.1);
-        expect(current.slots[0].strength).toBe(0.7);
-        for (const index of [1, 2]) {
+        // No shower restarted: the youngest thickened, every one aged on.
+        expect(current.slots.map((slot) => slot.serial)).toEqual([0, 1, 2]);
+        for (const index of [0, 1, 2]) {
             expect(current.slots[index].age).toBeCloseTo(previous.slots[index].age + 0.1);
-            expect(current.slots[index].strength).toBe(previous.slots[index].strength);
         }
+        expect(current.slots[2].target).toBeCloseTo(0.6 + 0.7 * 0.55);
+        expect(current.slots[2].strength).toBeGreaterThan(previous.slots[2].strength);
+        expect(current.slots[0].strength).toBe(previous.slots[0].strength);
+        expect(current.slots[1].strength).toBe(previous.slots[1].strength);
+
+        // Once a shower is spent it gives its slot to the next, which starts from the moon.
+        bursts.update(4.5);
+        bursts.trigger(0.9);
+        bursts.update(0.05);
+        const later = bursts.getDiagnostics();
+        expect(later.activeSlots).toBe(3);
+        expect(later.slots.find((slot) => slot.serial === 3)?.age).toBeCloseTo(0.05);
         expect(scene.children).toHaveLength(3);
         bursts.objects.forEach((object, index) => { expect(object).toBe(objects[index]); });
+    });
+
+    it('thickens the youngest shower for a cue right behind it (a cascade) instead of throwing another', () => {
+        bursts.trigger(0.7, 0.2);
+        bursts.update(0.2);
+        bursts.trigger(0.8, 0.6);
+        bursts.update(0.1);
+        const fed = bursts.getDiagnostics();
+        expect(fed.activeSlots).toBe(1);
+        expect(fed.slots[0].age).toBeCloseTo(0.3);
+        expect(fed.slots[0].target).toBeCloseTo(0.7 + 0.8 * 0.55);
+        expect(fed.slots[0].heat).toBeCloseTo(0.6);
+        // It brightens over a few frames, never in one step.
+        expect(fed.slots[0].strength).toBeGreaterThan(0.7);
+        expect(fed.slots[0].strength).toBeLessThan(fed.slots[0].target);
     });
 
     it('captures each launch origin before the moon moves and never drags existing showers', () => {
         bursts.trigger();
         shared.center.value.set(0.6, 0.8);
-        bursts.update(0.1);
+        bursts.update(0.5);
         expect(bursts.getDiagnostics().slots[0].origin).toEqual({ x: 0.235, y: 0.62 });
 
         shared.center.value.set(0.8, 0.2);
@@ -93,7 +119,7 @@ describe('Blood Moon bounded burst pool', () => {
         bursts.seek(0.65, 0.7);
         const first = bursts.getDiagnostics();
         bursts.trigger();
-        bursts.update(0.4);
+        bursts.update(0.5);
         bursts.trigger(0.8);
         bursts.update(0.2);
         expect(bursts.getDiagnostics().activeSlots).toBe(3);

@@ -2,9 +2,12 @@
  * Summer — what lives in the evening air.
  *
  * Butterflies working the flowers of the meadow and swallows hunting low over the lake.
- * Every path is a closed-form function of time, so all of it runs in two vertex shaders on
- * both backends with no per-frame CPU work, and a capture at a given time always shows the
- * same sky. A line clear sends the butterflies up; a big one startles the swallows too.
+ * Every path is a closed-form function of its own clock, so all of it runs in two vertex
+ * shaders on both backends with a few numbers of CPU work a frame. A line clear sends the
+ * butterflies up; a big one startles the swallows too. Each kind's clock runs a little faster
+ * the hotter play runs (update()), so a quick hand sets the swallows hunting faster and the
+ * butterflies dancing quicker: the clock is integrated, so a quickening never jumps a wing or
+ * a path, and nor does a startle's quicker wingbeat (its phase is integrated too).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -75,6 +78,12 @@ export class SummerLife {
         this.group.name = 'SummerLife';
         this.uFlutter = uniform(0);
         this.uStartle = uniform(0);
+        /** The butterflies' and the swallows' own clocks: time, plus what play has hurried them. */
+        this.uButterflyClock = uniform(0);
+        this.uSwallowClock = uniform(0);
+        /** The swallows' wingbeat phase (radians, integrated in update(), wrapped to a turn). */
+        this.uFlap = uniform(0);
+        this.hurried = { butterflies: 0, swallows: 0 };
         this.owned = [];
         this.butterflies = 0;
         this.swallows = 0;
@@ -114,7 +123,9 @@ export class SummerLife {
         const look = instancedBufferAttribute(new THREE.InstancedBufferAttribute(looks, 4));
         const material = new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide });
         material.name = 'SummerButterflies';
-        const t = light.uTime;
+        // The path runs on the butterflies' own clock; the wings beat on the scene's.
+        const t = this.uButterflyClock;
+        const beatTime = light.uTime;
         const phase = home.w.mul(TAU);
         // A butterfly never flies straight: it loops from flower to flower and bobs as it goes.
         const reach = look.w.mul(this.uFlutter.mul(1.4).add(1));
@@ -134,7 +145,7 @@ export class SummerLife {
         const right = normalize(cross(heading, vec3(0, 1, 0)));
         // Wings clap over the back, then open flat: the beat lives mostly above the body.
         const wing = attribute('wing', 'float');
-        const beat = sin(t.mul(look.z).add(phase.mul(9))).mul(0.62).add(0.52);
+        const beat = sin(beatTime.mul(look.z).add(phase.mul(9))).mul(0.62).add(0.52);
         const span = positionGeometry.x.mul(look.y);
         const local = vec3(span.mul(cos(beat)), span.abs().mul(sin(beat)), positionGeometry.z.mul(look.y));
         material.positionNode = position.add(right.mul(local.x)).add(vec3(0, local.y, 0)).sub(heading.mul(local.z));
@@ -166,7 +177,9 @@ export class SummerLife {
         const bird = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data, 4));
         const material = new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide });
         material.name = 'SummerSwallows';
-        const t = light.uTime;
+        // The paths run on the swallows' own clock, the rhythm of beat and glide on the scene's.
+        const t = this.uSwallowClock;
+        const rhythm = light.uTime;
         const phase = bird.x.mul(TAU);
         // Swallows quarter the cove in long figures of eight, low over the water, and
         // tower when something startles them.
@@ -184,9 +197,10 @@ export class SummerLife {
         const right = normalize(cross(heading, vec3(0, 1, 0)));
         const up = cross(right, heading);
         const wing = attribute('wing', 'float');
-        // A few quick beats, then a glide; a startled bird only beats.
-        const beating = smoothstep(-0.2, 0.4, sin(t.mul(1.1).add(bird.x.mul(40)))).max(this.uStartle);
-        const flap = sin(t.mul(this.uStartle.mul(5).add(13)).add(bird.x.mul(31))).mul(beating)
+        // A few quick beats, then a glide; a startled bird only beats, and faster: the beat's
+        // phase is integrated on the CPU (update()), so a startle that comes or goes never jumps it.
+        const beating = smoothstep(-0.2, 0.4, sin(rhythm.mul(1.1).add(bird.x.mul(40)))).max(this.uStartle);
+        const flap = sin(this.uFlap.add(bird.x.mul(31))).mul(beating)
             .add(float(0.12).mul(beating.oneMinus()));
         // Bank into the turn.
         const bank = dot(normalize(path(t.add(0.4)).sub(position)), right).mul(0.9);
@@ -207,10 +221,36 @@ export class SummerLife {
         this.owned.push(material, mesh.geometry);
     }
 
-    update(frame = {}) {
+    /**
+     * One frame. `worn` is the world's reading (SummerWorld.wear): the flutter and the startle
+     * eased so a clear lifts the butterflies and a quad the swallows over a moment instead of in
+     * one frame, how hot play runs, and Reduce motion's share; without it the frame is read as is.
+     */
+    update(frame = {}, dt = 0, worn = null, time = this.light.uTime.value) {
         const read = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        this.uFlutter.value = read(frame.flutter);
-        this.uStartle.value = read(frame.flock);
+        const motion = worn && Number.isFinite(worn.motion) ? read(worn.motion) : 1;
+        const level = read(worn?.level);
+        const fever = read(worn?.fever);
+        const flutter = read(worn ? worn.flutter : frame.flutter);
+        const startle = read(worn ? worn.flock : frame.flock);
+        // Reduce motion keeps them close to their rounds: a startle or a fever moves them less.
+        this.uFlutter.value = flutter * motion;
+        this.uStartle.value = startle * motion;
+        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
+        // A quick hand hurries them: the swallows hunt faster, the butterflies dance quicker.
+        this.hurried.butterflies += step * (level * 0.5 + fever * 0.6) * motion;
+        this.hurried.swallows += step * (level * 0.55 + fever * 0.5) * motion;
+        const now = Number.isFinite(time) ? time : 0;
+        this.uButterflyClock.value = now + this.hurried.butterflies;
+        this.uSwallowClock.value = now + this.hurried.swallows;
+        this.uFlap.value = (this.uFlap.value + step * (13 + 5 * this.uStartle.value)) % TAU;
+    }
+
+    /** Back to their own pace (a seek, a new session). */
+    reset() {
+        this.hurried.butterflies = 0;
+        this.hurried.swallows = 0;
+        this.uFlap.value = 0;
     }
 
     dispose() {

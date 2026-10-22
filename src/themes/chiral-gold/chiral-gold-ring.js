@@ -89,16 +89,24 @@ function bandMaterial(u) {
         const env = exp(age.mul(-0.85)).mul(step(0.0, age)).mul(A.z);
         comets = comets.add(lead.mul(2.2).add(tail).mul(env));
     }
-    // The four-line strike lights the ring from the crown down both sides.
+    // The four-line strike lights the ring from the crown down both sides (aurum.z: the blaze's
+    // gain, which another strike raises while it burns instead of lighting it again).
     const aAge = u.time.sub(u.aurum.x).sub(AURUM.hush);
     const fromCrown = abs(wrapPi(phi.sub(Math.PI / 2)));
     const lit = smoothstep(0.0, 0.5, aAge.mul(7.0).sub(fromCrown)).mul(step(0.0, aAge));
-    const blaze = lit.mul(exp(aAge.mul(-0.5))).mul(u.aurum.y);
+    const blaze = lit.mul(exp(aAge.mul(-0.5))).mul(u.aurum.z);
+    // The crown (aurum.w): a back-to-back and a perfect clear light the top of the arch in the
+    // alloy's own colour, and it stays lit while the back-to-backs keep coming.
+    const crown = exp(fromCrown.mul(fromCrown).mul(-7.0)).mul(u.aurum.w);
     const rim = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
     const hot = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.55);
+    // The blaze burns in the alloy's own gold, its brushing showing through: a ring of molten
+    // colour, not a white hoop that hazes the hall.
+    const blazeHot = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.2);
     const glow = hot.mul(comets.mul(brush.mul(0.6).add(0.7)).mul(3.2))
         .add(u.glow.mul(u.heat).mul(rim.mul(1.3).add(0.12)))
-        .add(hot.mul(blaze).mul(brush.mul(0.8).add(0.6)).mul(1.2))
+        .add(blazeHot.mul(blaze).mul(brush.mul(1.0).add(0.4)).mul(1.0))
+        .add(u.glow.mul(crown).mul(brush.mul(0.7).add(0.5)).mul(rim.mul(1.2).add(0.8)).mul(1.6))
         .add(u.glow.mul(u.audio.w).mul(rim).mul(0.3))
         .mul(u.emit);
     material.colorNode = u.metal(alloy, roughness).add(glow);

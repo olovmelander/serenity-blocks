@@ -209,6 +209,8 @@ export class BlackHoleWorld {
         this.roll = 0;
         this.pointer = { x: 0, y: 0 };
         this.energy = 0;
+        /** How close the camera has drawn in as play heats (world units; see orbitTarget). */
+        this.pull = 0;
         /** Turns the inner edge has made; the gas pattern is a function of this alone. */
         this.diskTurns = 0;
         this.diskRate = 1;
@@ -293,7 +295,8 @@ export class BlackHoleWorld {
         const zoom = 1
             + Math.sin(time * 0.038 + phase.d) * 0.15
             + Math.sin(time * 0.013 + phase.a) * 0.06;
-        const pushIn = this.reducedMotion ? 0 : this.energy * 24;
+        // The hole looms as play heats: the orbit draws in, a tenth of the way at a fever.
+        const pushIn = this.reducedMotion ? 0 : this.energy * 24 + this.pull;
         const radius = Math.max(MIN_ORBIT_RADIUS, pose?.radius ?? ORBIT_RADIUS * zoom - pushIn);
         const flat = Math.cos(elevation) * radius;
         return out.set(Math.sin(azimuth) * flat, Math.sin(elevation) * radius, Math.cos(azimuth) * flat);
@@ -419,6 +422,10 @@ export class BlackHoleWorld {
         u.diskHeat.value = director.diskHeat;
         u.diskGain.value = director.diskGain;
         u.ringGain.value = director.ringGain;
+        u.diskTint.value.fromArray(director.diskTint);
+        u.ringTint.value.fromArray(director.ringTint);
+        u.skyGain.value = director.skyGain;
+        u.nebulaGain.value = director.nebulaGain;
         for (let slot = 0; slot < director.hotspots.length; slot += 1) {
             const hotspot = director.hotspots[slot];
             const strength = hotspot.active ? hotspot.strength : 0;
@@ -462,6 +469,7 @@ export class BlackHoleWorld {
         if (this.director.shakeAmount > 0) this.rig.shake(this.director.shakeAmount, this.director.shakeDuration);
         this.energy = this.director.energy;
         this.diskRate = this.director.diskRate;
+        this.pull = this.director.level * 40 + this.director.fever * 55;
         this.holeDrift(this.reducedMotion ? 0 : time, this.hole);
         this.uniforms.holePosition.value.copy(this.hole);
         this.updateDisk(dt);
@@ -474,6 +482,7 @@ export class BlackHoleWorld {
         if (this.disposed) return;
         this.time = 0;
         this.energy = 0;
+        this.pull = 0;
         this.diskTurns = 0;
         this.diskRate = 1;
         this.roll = 0;

@@ -10,6 +10,10 @@
  * the scene pass from High up (`samples`, shared/scene-antialias.js) settles the grass, FXAA
  * on a single-sampled pass. Low and Minimal draw the same scene directly with ACES tone
  * mapping (the canvas's MSAA).
+ *
+ * As play heats (verdant-hills-surge.js) the light warms and the shafts thicken, so the iris
+ * closes a little and the grade leans richer: the greens stay deep and the darks stay dark
+ * rather than the valley washing pale. Nothing here flashes.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -21,8 +25,11 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { verdantHillsTier } from './verdant-hills-quality.js';
+import { createVerdantHillsWorn, wearVerdantHillsFrame } from './verdant-hills-surge.js';
 
 const BLOOM_STRENGTH = 0.18;
+/** The grade's saturation at rest; hot play adds to it. */
+const SATURATION = 1.12;
 /** How far the light between the clouds is followed, metres. */
 const SHAFT_RANGE = 9000;
 /** How brightly the shaft of the game's own gap in the clouds stands in the air. */
@@ -47,6 +54,8 @@ export class VerdantHillsPost {
         this.exposure = 0.82;
         this.uExposure = uniform(0.82);
         this.uShafts = uniform(1);
+        this.uSaturation = uniform(SATURATION);
+        this.worn = createVerdantHillsWorn();
         // The camera's basis, scaled so that `forward + right·x + up·y` is the ray through a pixel.
         this.uEye = uniform(new THREE.Vector3());
         this.uForward = uniform(new THREE.Vector3(0, 0, -1));
@@ -90,7 +99,7 @@ export class VerdantHillsPost {
             // Shadows lean a little toward blue, so the sunlit green has something to stand against.
             const shade = float(1).sub(smoothstep(0.02, 0.4, luma));
             toned.mulAssign(mix(vec3(1), vec3(0.95, 0.99, 1.06), shade.mul(0.45)));
-            toned.assign(mix(vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))), toned, 1.12));
+            toned.assign(mix(vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))), toned, this.uSaturation));
             const radius = length(screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1)).mul(2));
             toned.mulAssign(float(1).sub(smoothstep(0.8, 1.75, radius).mul(0.16)));
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
@@ -137,10 +146,12 @@ export class VerdantHillsPost {
     }
 
     update(frame = {}) {
-        const warmth = Number.isFinite(frame.warmth) ? THREE.MathUtils.clamp(frame.warmth, 0, 1) : 0;
-        const shafts = Number.isFinite(frame.shafts) ? THREE.MathUtils.clamp(frame.shafts, 0, 1) : 0;
-        this.uExposure.value = this.exposure + warmth * 0.04;
+        // The frame as the world wears it: the surge's warmth and shafts, the iris and the grade.
+        const worn = wearVerdantHillsFrame(frame, this.worn);
+        const { warmth, shafts } = worn;
+        this.uExposure.value = this.exposure + warmth * 0.04 - worn.iris;
         this.uShafts.value = 1 + shafts * 0.7;
+        this.uSaturation.value = SATURATION + worn.saturation;
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + warmth * 0.06;
     }
 

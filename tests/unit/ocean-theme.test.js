@@ -51,7 +51,8 @@ const mocks = vi.hoisted(() => {
         /** Every call the theme makes on its world, `build` first (it is chained on the constructor). */
         WORLD_CONTRACT: [
             'build', 'bindCamera', 'showOnlyParts', 'setReducedMotion', 'setViewport', 'setLayout',
-            'updateCamera', 'update', 'seek', 'onLock', 'onClear', 'onCombo', 'levelUp', 'resetSession',
+            'updateCamera', 'update', 'seek', 'onLock', 'onClear', 'onPerfect', 'onSpin', 'onCombo', 'levelUp',
+            'resetSession',
             'getPostState', 'getState', 'paint', 'dispose',
         ],
         /** The one call the world may leave out. */

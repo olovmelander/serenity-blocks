@@ -214,10 +214,12 @@ export function createPalms(u, { rand, count }) {
         const flex = palm.y;
         const heightFrac = palm.w;
         const t = u.time;
-        const sway = heightFrac.mul(heightFrac);
+        // The sea breeze freshens as play heats (1 at rest): the crowns sway and flutter wider.
+        const breeze = u.breeze ?? float(1.0);
+        const sway = heightFrac.mul(heightFrac).mul(breeze);
         const swayX = sin(t.mul(0.55).add(phase)).mul(0.2).mul(sway);
         const swayZ = sin(t.mul(0.43).add(phase.mul(1.3))).mul(0.12).mul(sway);
-        const flutter = pow(flex, 1.5);
+        const flutter = pow(flex, 1.5).mul(breeze);
         const fy = sin(t.mul(1.7).add(phase).add(flex.mul(2.4))).mul(0.2).mul(flutter);
         const fx = sin(t.mul(1.1).add(phase.mul(1.3))).mul(0.14).mul(flutter);
         return positionLocal.add(vec3(swayX.add(fx), fy, swayZ));

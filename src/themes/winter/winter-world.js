@@ -25,7 +25,24 @@
  *            takes their colour and the air fills with diamond dust.
  *   four     the night holds its breath; then the fox pounces, a ring of powder bursts from
  *            under the board, every tree lets its load go — and a fox of light bounds across
- *            the whole sky.
+ *            the whole sky. A second four while it runs makes it burn brighter; it is never
+ *            sent back to the start of its run.
+ *   cascade  each wave strums the sky again, wider and faster than the last, so the waves
+ *            ripple outward through the fires like plucked strings.
+ *   B2B      the moon answers: its ring of ice-light flares with its moon dogs and a pillar
+ *            of light stands over it, brighter for every back-to-back in a row.
+ *   perfect  (settled after the clear) the crown: the fox of light blazes, the ring and the
+ *            pillar burn, every crystal in the snow, the air and the ice fires at once.
+ *
+ * And the heat of play (src/themes/shared/gameplay-surge.js) is spent on the whole night, not on
+ * the fires alone. Warm: the snowfield starts to glitter, the wind rises, the twilight turns.
+ * Hot: night falls and the stars come out, the ring round the moon stands, diamond dust hangs in
+ * the air, the fox runs with the player. Fever: the dust and the snow glitter in the fires'
+ * colours, the fires run in the lake's cracks, a pillar of moonlight stands, the snow ghosts shed
+ * their loads into the gale. When the hands rest the night breathes back to its twilight.
+ *
+ * Every flash, kick, lift and overdrive is a Swell (src/themes/shared/swell.js): a new hit adds
+ * to what is still lit and never restarts it, so a single after a four can only lift the light.
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
@@ -33,18 +50,28 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     DEG,
     EYE,
     FOX_FIRE,
     FOX_SCALE,
     GUST_SPEED,
+    HELD,
     HOURS,
     HOUR_KEYS,
     HUSH_HOLD,
     REST_RIG,
+    RING_FADE,
+    SKY_HOLD,
+    SKY_LET_GO,
+    SKY_SLOTS,
     SPARK_RISE,
     SPIRIT_RUN,
+    STRUM_FADE,
+    STRUM_SPEED,
+    STRUM_WIDTH,
     SURGE_COOL,
     WIND,
     approach,
@@ -98,6 +125,19 @@ const CURTAIN_REST = [0.22, 0.05, 0.12, 0];
 const CURTAIN_LIT = [1.15, 1.2, 0.9, 1.2];
 /** The charge at which each sheet begins to wake, and is fully awake. */
 const CURTAIN_WAKE = [[0, 0.5], [0.08, 0.62], [0.02, 0.8], [0.4, 1]];
+/**
+ * A sheet's energy rises freely to the knee, then eases toward the ceiling: a chain, a four and a
+ * run of clears stacked on one another burn the fires deeper, never into a wash over the sky.
+ */
+const CURTAIN_KNEE = 1.4;
+const CURTAIN_CEILING = 1.8;
+/** Below this a held sky colour is spent and its slot is free at once. */
+const SKY_SPENT = 0.04;
+/** Seconds a gust's push takes to fall to 1/e (the shader's wGust). */
+const GUST_FADE = 3.2;
+/** Clears that may stand queued for a tree's load, and tail flicks for the rings on their way. */
+const MAX_DUMPS = 16;
+const MAX_FLICKS = 8;
 
 export class WinterWorld {
     /**
@@ -166,6 +206,33 @@ export class WinterWorld {
         this._curtains = [...CURTAIN_REST];
         /** A held charge (captures and tuning): overrides the chain. */
         this.heldPower = null;
+        // ── What accumulates (every hit adds to what is still lit; nothing restarts) ──
+        /** The fours' overdrive (`surge`), and the clears' lift of the fires (`swell`). */
+        this.surgeEnv = new Swell({ release: SURGE_COOL, ceiling: 1.6, knee: 1.1 });
+        this.swellEnv = new Swell({ release: SWELL_FADE, ceiling: 0.85, knee: 0.6 });
+        /** The lens's lift after a clear, its kick and its flash. */
+        this.liftEnv = new Swell({ release: 0.7, ceiling: 1.0, knee: 0.7 });
+        this.kickEnv = new Swell({ release: 0.16, ceiling: 1.2, knee: 0.7 });
+        this.flashEnv = new Swell({ release: 0.25, ceiling: 0.45, knee: 0.3 });
+        /** A perfect clear's crown, a back-to-back's answer from the moon, the fox of light's fire. */
+        this.crownEnv = new Swell({
+            attack: 0.15, release: 2.2, ceiling: 1.4, knee: 1,
+        });
+        this.b2bEnv = new Swell({
+            attack: 0.12, release: 2.4, ceiling: 1.6, knee: 1.1,
+        });
+        this.spiritBoost = new Swell({
+            attack: 0.2, release: 2.5, ceiling: 0.9, knee: 0.6,
+        });
+        /** How hot play runs: the whole night spends it (see update()). */
+        this.play = new GameplaySurge();
+        this.heatOfPlay = {
+            punch: 0, level: 0, fever: 0, stage: 0, warm: 0, hot: 0, crown: 0, b2b: 0,
+        };
+        /** Sky colours waiting for their slot's old colour to let go (no allocation per event). */
+        this.skyQueue = Array.from({ length: SKY_SLOTS }, () => ({
+            due: Infinity, bearing: 0, arrives: 0, strength: 0, rgb: [1, 1, 1],
+        }));
         this._post = {
             heart: this.heart,
             flash: 0,
@@ -198,22 +265,41 @@ export class WinterWorld {
         this.breath = 1;
         this.halo = 0;
         this.hushUntil = -1;
+        /** How deep the hush before a four goes (1 from cold; shallow when play already runs hot). */
+        this.hushDepth = 1;
+        /** Rings, gusts, sky colours and strums sent (each takes its pool's faintest slot). */
         this.ringCursor = 0;
         this.gustCursor = 0;
         this.skyCursor = 0;
+        this.strumCursor = 0;
+        /** The slot each last went to. */
+        this.lastRing = -1;
+        this.lastGust = -1;
+        this.lastSky = -1;
+        this.lastStrum = -1;
         this.spiritAt = -100;
         this.spiritGlow = 0;
         this.tailDebt = 0;
-        this.lastClear = { time: -100, lines: 0 };
-        this.pendingKick = { time: Infinity, amount: 0 };
-        this.pendingSwell = { time: Infinity, amount: 0 };
-        this.pendingSurge = null;
+        /** Back-to-backs in a row (the moon answers each brighter), and the gale's shedding. */
+        this.b2bRun = 0;
+        this.shedDebt = 0;
+        this.shedCursor = 0;
+        [
+            this.surgeEnv, this.swellEnv, this.liftEnv, this.kickEnv, this.flashEnv, this.crownEnv, this.b2bEnv,
+            this.spiritBoost, this.play,
+        ].forEach((swell) => swell.reset());
+        Object.keys(this.heatOfPlay).forEach((key) => {
+            this.heatOfPlay[key] = 0;
+        });
+        this.skyQueue.forEach((queued) => {
+            queued.due = Infinity;
+        });
         this.pendingPounce = Infinity;
         /** Tail flicks waiting for their ring to reach the fox, and loads waiting for their gust. */
         this.flicks = [];
         this.dumps = [];
         this.counts = {
-            locks: 0, clears: 0, quads: 0, sparks: 0, flicks: 0, prints: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, sparks: 0, flicks: 0, prints: 0,
         };
         const still = this.reducedMotion ? 0.3 : 1;
         // The wind and the rays are functions of the world clock until gameplay bends them.
@@ -227,9 +313,10 @@ export class WinterWorld {
         if (this.u) {
             for (let i = 0; i < this.u.ringA.length; i++) this.u.ringA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < this.u.gustA.length; i++) this.u.gustA[i].value.set(0, 0, -100, 0);
-            for (let i = 0; i < this.u.skyA.length; i++) this.u.skyA[i].value.set(0, -100, 0, 0);
-            this.u.flare.value.set(-100, 0);
+            for (let i = 0; i < this.u.skyA.length; i++) this.u.skyA[i].value.set(0, -100, 0, HELD);
+            this.u.strums.forEach((slot) => slot.value.set(-100, 0, STRUM_WIDTH, STRUM_SPEED));
             this.u.spirit.value.set(0, 0.3, 0, 0);
+            this.u.heat.value.set(0, 0, 0, 0);
         }
     }
 
@@ -388,10 +475,19 @@ export class WinterWorld {
         const {
             time, windRun, auroraRun, power, surge, swell, breath, storm, halo, mind, _curtains, hourStep, heatEase,
         } = this;
-        const { prints } = this;
+        const { prints, play } = this;
+        // The overdrive and the lift go on falling from where they stand (what was still on its
+        // way, a four behind its hush, is dropped with everything else in flight); the heat of
+        // play breathes back on its own.
+        const overdrive = this.surgeEnv.rawAt(time);
+        const lifted = this.swellEnv.rawAt(time);
+        const heat = play.exportState();
         this.prints = null;
         this.resetState(time, { fox: false });
         this.prints = prints;
+        this.surgeEnv.hit(overdrive, time);
+        this.swellEnv.hit(lifted, time);
+        play.importState(heat);
         Object.assign(this, {
             windRun, auroraRun, power, surge, swell, breath, storm, halo, _curtains, hourStep, heatEase,
         });
@@ -545,11 +641,34 @@ export class WinterWorld {
         return Math.max(1, Math.round((n * this.tier.sparks) / SPARK_POOL));
     }
 
+    /**
+     * The slot of a pool whose light has least left of it (`left(i)`; one still to come reads as
+     * Infinity and is never taken): a new event never cuts a strong one short while a fading one
+     * could make room. Ties go to the lowest slot.
+     */
+    faintest(count, left) {
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < count; i++) {
+            const l = left(i);
+            if (l < least) {
+                least = l;
+                slot = i;
+            }
+        }
+        return slot;
+    }
+
     /** Send a ring of powder out over the snow from a point. */
     ring(x, z, time, strength, rgb, reach = 1, gain = 2) {
         const { u } = this;
-        const slot = this.ringCursor % u.ringA.length;
+        const slot = this.faintest(u.ringA.length, (i) => {
+            const A = u.ringA[i].value;
+            const age = this.time - A.z;
+            return age < 0 ? Infinity : A.w * Math.exp(-age * RING_FADE);
+        });
         this.ringCursor += 1;
+        this.lastRing = slot;
         u.ringA[slot].value.set(x, z, time, strength);
         u.ringC[slot].value.set(rgb[0] * gain, rgb[1] * gain, rgb[2] * gain, reach);
     }
@@ -557,22 +676,103 @@ export class WinterWorld {
     /** Send a gust across the snowfield from a point. */
     gust(x, z, time, strength) {
         const { u } = this;
-        const slot = this.gustCursor % u.gustA.length;
+        const slot = this.faintest(u.gustA.length, (i) => {
+            const A = u.gustA[i].value;
+            const age = this.time - A.z;
+            return age < 0 ? Infinity : A.w * Math.exp(-age / GUST_FADE);
+        });
         this.gustCursor += 1;
+        this.lastGust = slot;
         u.gustA[slot].value.set(x, z, time, strength);
     }
 
-    /** The fires over a bearing take a colour when the sparks arrive, and hold it. */
+    /**
+     * Strum the sky from the board outward at `at`: `strength`, its half width and its speed (in
+     * bearing tan). It takes the strum slot with least left, so a cascade's waves follow one
+     * another out across the fires instead of pulling the last one back to the board.
+     */
+    strum(at, strength, width = STRUM_WIDTH, speed = STRUM_SPEED) {
+        const { u } = this;
+        const slot = this.faintest(u.strums.length, (i) => {
+            const S = u.strums[i].value;
+            const age = this.time - S.x;
+            if (age < 0) return Infinity;
+            // (Run out past the frame's edge, it is spent whatever its strength.)
+            return age * S.w > 3 ? 0 : S.y * Math.exp(-age / STRUM_FADE);
+        });
+        this.strumCursor += 1;
+        this.lastStrum = slot;
+        u.strums[slot].value.set(at, strength, width, speed);
+    }
+
+    /**
+     * The fires over a bearing take a colour when the sparks arrive, and hold it. The colour goes
+     * to a spent slot if there is one; else the faintest held colour (and, of two alike, the one
+     * nearest this bearing, whose hue this one replaces) lets go over SKY_LET_GO and the new one
+     * takes its place when the sparks arrive: no bearing's hue ever snaps. Should every slot be
+     * letting go already, the colour waiting longest for one is replaced (it has not shown yet).
+     */
     colourSky(from, rgb, arrives, strength) {
         const { u } = this;
-        const slot = this.skyCursor % u.skyA.length;
-        this.skyCursor += 1;
-        u.skyA[slot].value.set(from[0] / Math.max(0.2, -from[2]), arrives, strength, 0);
+        const bearing = from[0] / Math.max(0.2, -from[2]);
+        const t = this.time;
+        let slot = -1;
+        let least = Infinity;
+        let waiting = -1;
+        for (let i = 0; i < u.skyA.length; i++) {
+            const A = u.skyA[i].value;
+            if (this.skyQueue[i].due < Infinity) {
+                if (waiting < 0 || this.skyQueue[i].due > this.skyQueue[waiting].due) waiting = i;
+                continue;
+            }
+            const age = t - A.y;
+            const held = age < 0 ? A.z : A.z * Math.exp(-age / SKY_HOLD);
+            const near = Math.min(1, Math.abs(A.x - bearing) / 0.6);
+            const keep = held < SKY_SPENT ? -1 : held * (0.55 + 0.45 * near);
+            if (keep < least) {
+                least = keep;
+                slot = i;
+            }
+        }
         // As light in the sky a pale piece would only bleach the fires: its hue is pushed out.
         const grey = rgb[0] * 0.3 + rgb[1] * 0.5 + rgb[2] * 0.2;
-        const deep = rgb.map((c) => Math.max(0.02, grey + (c - grey) * 1.7));
-        const peak = Math.max(deep[0], deep[1], deep[2]);
-        u.skyC[slot].value.set(deep[0] / peak, deep[1] / peak, deep[2] / peak);
+        const d0 = Math.max(0.02, grey + (rgb[0] - grey) * 1.7);
+        const d1 = Math.max(0.02, grey + (rgb[1] - grey) * 1.7);
+        const d2 = Math.max(0.02, grey + (rgb[2] - grey) * 1.7);
+        const peak = Math.max(d0, d1, d2);
+        this.skyCursor += 1;
+        if (slot >= 0 && least < 0) {
+            // A spent slot: the colour is written now and shows when the sparks arrive.
+            this.lastSky = slot;
+            u.skyA[slot].value.set(bearing, arrives, strength, HELD);
+            u.skyC[slot].value.set(d0 / peak, d1 / peak, d2 / peak);
+            return;
+        }
+        if (slot >= 0) {
+            // The faintest held colour lets go now; this one waits for its slot.
+            u.skyA[slot].value.w = t;
+            this.skyQueue[slot].due = t + SKY_LET_GO;
+        } else slot = waiting;
+        const queued = this.skyQueue[slot];
+        queued.bearing = bearing;
+        queued.arrives = arrives;
+        queued.strength = strength;
+        queued.rgb[0] = d0 / peak;
+        queued.rgb[1] = d1 / peak;
+        queued.rgb[2] = d2 / peak;
+        this.lastSky = slot;
+    }
+
+    /** Colours whose slot has let go of its old one take it (update(), every frame). */
+    settleSky(t) {
+        const { u } = this;
+        for (let i = 0; i < this.skyQueue.length; i++) {
+            const queued = this.skyQueue[i];
+            if (t < queued.due) continue;
+            u.skyA[i].value.set(queued.bearing, Math.max(queued.arrives, queued.due), queued.strength, HELD);
+            u.skyC[i].value.set(queued.rgb[0], queued.rgb[1], queued.rgb[2]);
+            queued.due = Infinity;
+        }
     }
 
     /**
@@ -613,13 +813,15 @@ export class WinterWorld {
                 wy = this._point.y;
             }
         }
+        // (The hotter play runs, the more of the piece goes up: a flurry of hard drops is a squall.)
+        const more = 1 + 0.35 * this.heatOfPlay.level;
         // ── The ring: the piece lands in the snow under the foot of the board ──
         const strike = this.screenToSnow(fx, fy);
         this.ring(strike.x, strike.z, this.time, hardDrop ? 1.5 : 1, rgb, hardDrop ? 1.25 : 1);
         this.counts.sparks += this.sparks.emit({
             from: [strike.x, 0.15, strike.z],
             toward: [side * 0.5, 1, 0.1],
-            n: this.handful(hardDrop ? 12 : 6),
+            n: this.handful((hardDrop ? 12 : 6) * more),
             rgb,
             time: this.time,
             speed: hardDrop ? [1.6, 4.4] : [1, 2.8],
@@ -636,7 +838,7 @@ export class WinterWorld {
         this.counts.sparks += this.sparks.emit({
             from,
             toward: [side * 0.9, 0.45, -0.3],
-            n: this.handful(hardDrop ? 46 : 26),
+            n: this.handful((hardDrop ? 46 : 26) * more),
             rgb,
             time: this.time,
             speed: hardDrop ? [2.2, 7.5] : [1.4, 5],
@@ -670,37 +872,66 @@ export class WinterWorld {
         const { pose } = this.mind;
         const reach = hardDrop ? 1.25 : 1;
         const arrives = ringArrival(Math.hypot(pose.x - strike.x, pose.z - strike.z), reach);
-        if (Number.isFinite(arrives) && this.flicks.length < 8) {
-            this.flicks.push({ time: this.time + arrives, rgb, strength: hardDrop ? 1 : 0.7 });
+        if (Number.isFinite(arrives)) {
+            const strength = hardDrop ? 1 : 0.7;
+            if (this.flicks.length < MAX_FLICKS) this.flicks.push({ time: this.time + arrives, rgb, strength });
+            else {
+                // Rings in plenty on their way: the latest flick to come takes this one's colour
+                // and flicks the harder for it, instead of this one being lost.
+                const last = this.flicks.reduce((a, b) => (b.time > a.time ? b : a));
+                last.rgb = rgb;
+                last.strength = Math.min(1.3, Math.max(last.strength, strength) + 0.15);
+            }
         }
-        this.kick = Math.max(this.kick, hardDrop ? 0.5 : 0.1);
-        this.flash = Math.max(this.flash, hardDrop ? 0.07 : 0.012);
+        this.strike(hardDrop ? 0.5 : 0.1, hardDrop ? 0.07 : 0.012, this.time);
         this.storm = Math.max(this.storm, hardDrop ? 0.3 : 0.1);
+        this.play.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
+    /** A kick and a flash for the lens at `at`, added to whatever is still lit. */
+    strike(kick, flash, at) {
+        this.kickEnv.hit(kick, at);
+        this.flashEnv.hit(flash, at);
+        // (Felt at once: the camera reads the kick before the next update.)
+        if (at <= this.time) {
+            this.kick = Math.max(this.kick, this.kickEnv.valueAt(this.time));
+            this.flash = Math.max(this.flash, this.flashEnv.valueAt(this.time));
+        }
+    }
+
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`.
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = which wave of its lock
+     * this is (1 = the first); `crown`: a perfect clear that settled after its clear (onCrown).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
+        player = 0, screen = null,
     } = {}) {
         const { u } = this;
         if (!u || !this.sparks) return;
+        if (crown) {
+            this.onCrown({ player, screen });
+            return;
+        }
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
+        // Each wave of a cascade builds on the last: deeper, it strums wider, faster and brighter.
+        const depth = Math.max(1, Math.min(12, Math.round(Number(cascade) || 1)));
+        const deeper = depth - 1;
         const quad = n >= 4 || perfect;
         const birth = quad ? this.time + HUSH_HOLD : this.time;
         const p = this._hour;
         // The blades go out in the fires' own light.
         const peak = Math.max(p.fire[0], p.fire[1], p.fire[2], 1e-4);
         const rgb = p.fire.map((c) => (c / peak) * 0.9 + 0.1);
-        this.lastClear = { time: birth, lines: n };
-        // (A clear still waiting behind a hush is not forgotten when another arrives.)
-        if (this.pendingSwell.time < Infinity) this.swell = Math.max(this.swell, this.pendingSwell.amount);
-        if (this.pendingSurge) this.surge = Math.max(this.surge, this.pendingSurge.amount);
-        this.pendingSwell = { time: birth, amount: 0.3 + 0.17 * n };
-        this.pendingKick = { time: birth + 0.1, amount: 0.2 + 0.1 * n };
-        this.storm = Math.max(this.storm, Math.min(1.5, 0.45 + 0.2 * n + (quad ? 0.4 : 0)));
+        // Everything below adds to what is still lit: a single on the heels of a four can only lift it.
+        this.liftEnv.hit((0.3 + 0.12 * n) * (1 + 0.15 * deeper), birth);
+        this.swellEnv.hit((0.3 + 0.17 * n) * (1 + 0.15 * deeper), birth);
+        this.strike((0.2 + 0.1 * n) * (1 + 0.1 * deeper), (0.2 + 0.1 * n) * 0.4, birth + 0.1);
+        this.storm = Math.max(this.storm, Math.min(1.5, 0.45 + 0.2 * n + (quad ? 0.4 : 0) + 0.06 * deeper));
+        this.play.clear({
+            lines: n, cascade: depth, combo, tspin, perfect, b2b,
+        }, birth);
 
         // ── The cleared rows leave the card: blades of light, and jets of sparks ──
         const board = boardFor(this.layout, player);
@@ -717,10 +948,10 @@ export class WinterWorld {
                     this.counts.sparks += this.sparks.emit({
                         from,
                         toward: [side, 0.35, -0.25],
-                        n: this.handful(quad ? 30 : 20),
+                        n: this.handful((quad ? 30 : 20) * (1 + 0.2 * deeper)),
                         rgb: null,
                         time: birth + k * 0.03,
-                        speed: [3, quad ? 12 : 8.5],
+                        speed: [3, (quad ? 12 : 8.5) * (1 + 0.08 * deeper)],
                         cone: 0.42,
                         life: [SPARK_RISE * 0.8, SPARK_RISE * 1.3],
                         size: 0.024,
@@ -732,26 +963,29 @@ export class WinterWorld {
         }
 
         // ── A gust crosses the snowfield from under the board; the sky is strummed ──
-        const foot = board ? this.screenToSnow((board.x0 + board.x1) * 0.5, Math.max(board.y1 + 0.04, 0.92)) : this.screenToSnow(0.5, 0.95);
-        this.gust(foot.x, foot.z, birth, Math.min(1.6, 0.7 + 0.2 * n + (quad ? 0.3 : 0)));
-        u.flare.value.set(birth, Math.min(1.3, 0.5 + 0.2 * n));
+        const foot = this.boardFoot(board);
+        this.gust(foot.x, foot.z, birth, Math.min(1.9, 0.7 + 0.2 * n + (quad ? 0.3 : 0) + 0.12 * deeper));
+        this.strum(
+            birth,
+            Math.min(1.4, (0.5 + 0.2 * n) * (1 + 0.12 * deeper)),
+            STRUM_WIDTH * (1 + 0.22 * deeper),
+            STRUM_SPEED * (1 + 0.12 * deeper),
+        );
         this.mind.startle(Math.min(1.4, 0.5 + 0.25 * n));
         // The gust shakes the trees it reaches: from three lines up their loads come down.
-        if (n >= 3 || quad) {
-            this.crowns.forEach((crown) => {
-                if (this.dumps.length >= 16) return;
-                const far = Math.hypot(crown.x - foot.x, crown.z - foot.z);
-                this.dumps.push({ time: birth + far / GUST_SPEED, crown, heavy: quad });
-            });
-        }
+        if (n >= 3 || quad) this.shakeTrees(foot, birth, quad);
 
         if (quad) {
-            // The night holds its breath; then the fox pounces and its like crosses the sky.
+            // The night holds its breath (as deep as play is cold: in a fever it only inhales);
+            // then the fox pounces and its like crosses the sky.
             this.hushUntil = this.time + HUSH_HOLD;
-            this.pendingSurge = { time: birth, amount: perfect ? 1.3 : 1 };
-            this.pendingPounce = birth;
-            this.spiritAt = birth + 0.35;
-            this.ring(foot.x, foot.z, birth, 1.6, [rgb[0] * 0.7 + 0.3, rgb[1] * 0.7 + 0.3, rgb[2] * 0.7 + 0.3], 1.8, 2.4);
+            this.hushDepth = 1 - 0.8 * smooth(0.15, 0.85, this.heatOfPlay.level);
+            this.surgeEnv.hit(perfect ? 1.3 : 1, birth);
+            // (A pounce already on its way is the one it makes.)
+            this.pendingPounce = Math.min(this.pendingPounce, birth);
+            this.callSpirit(birth + 0.35, 0.55);
+            const pale = rgb.map((c) => c * 0.7 + 0.3);
+            this.ring(foot.x, foot.z, birth, 1.6, pale, 1.8, 2.4);
             this.halo = Math.max(this.halo, 0);
             this.counts.quads += 1;
             if (card && !screen) {
@@ -777,35 +1011,115 @@ export class WinterWorld {
         if (tspin) {
             // The wind turns on itself: a wheel of sparks and powder spins up round the card.
             this.storm = Math.max(this.storm, 1.1);
-            if (card && !screen) {
-                const cx = (card.x0 + card.x1) * 0.5;
-                const cy = (card.y0 + card.y1) * 0.5;
-                const centre = this.screenToWorld(cx, cy, SPARK_DEPTH, [0, 0, 0]);
-                const spokes = 14;
-                for (let k = 0; k < spokes; k++) {
-                    const a = (k / spokes) * Math.PI * 2;
-                    const sx = cx + Math.cos(a) * (card.x1 - card.x0) * 0.62;
-                    const sy = cy + Math.sin(a) * (card.y1 - card.y0) * 0.56;
-                    const from = this.screenToWorld(sx, sy, SPARK_DEPTH);
-                    const out = [from[0] - centre[0], from[1] - centre[1], from[2] - centre[2]];
-                    this.counts.sparks += this.sparks.emit({
-                        from,
-                        toward: [out[1] + out[0] * 0.25, -out[0] + out[1] * 0.25, -0.2],
-                        n: this.handful(7),
-                        rgb: null,
-                        time: birth + k * 0.018,
-                        speed: [4.5, 8.5],
-                        cone: 0.16,
-                        life: [SPARK_RISE * 0.7, SPARK_RISE * 1.1],
-                        size: 0.024,
-                        glow: 1.3,
-                        stagger: 0.08,
-                        lift: [2, 6],
-                    });
-                }
-            }
+            if (card && !screen) this.wheel(card, 14, 7, birth);
         }
+        if (b2b) {
+            // Back to back: the moon answers. Its ring of ice-light flares with its moon dogs and a
+            // pillar of light stands over it — brighter for every back-to-back in a row — and the
+            // fox looks up at it.
+            this.b2bRun += 1;
+            this.b2bEnv.hit(Math.min(1.5, 0.65 + 0.25 * (this.b2bRun - 1)), birth);
+            const d = u.moonDir.value;
+            this.mind.attend(EYE.x + d.x * 400, EYE.y + d.y * 400, EYE.z + d.z * 400, birth + 1.6, 1);
+        } else this.b2bRun = 0;
         this.counts.clears += 1;
+    }
+
+    /** Where the foot of the board meets the snow (or of the solo board's place, with none). */
+    boardFoot(board) {
+        return board
+            ? this.screenToSnow((board.x0 + board.x1) * 0.5, Math.max(board.y1 + 0.04, 0.92))
+            : this.screenToSnow(0.5, 0.95);
+    }
+
+    /**
+     * The gust reaches the trees and their loads come down, each when it gets there. A tree whose
+     * load is already on its way lets go the more heavily for it, rather than twice.
+     */
+    shakeTrees(foot, at, heavy) {
+        this.crowns.forEach((crown) => {
+            const queued = this.dumps.find((dump) => dump.crown === crown);
+            if (queued) {
+                queued.heavy = queued.heavy || heavy;
+                return;
+            }
+            if (this.dumps.length >= MAX_DUMPS) return;
+            const far = Math.hypot(crown.x - foot.x, crown.z - foot.z);
+            this.dumps.push({ time: at + far / GUST_SPEED, crown, heavy });
+        });
+    }
+
+    /**
+     * Call up the fox of light to start its run at `at`. While it is still crossing the sky (or
+     * about to), a new call makes it burn brighter instead of sending it back to the start.
+     */
+    callSpirit(at, boost) {
+        const k = (this.time - this.spiritAt) / SPIRIT_RUN;
+        if (this.spiritAt > -50 && k < 0.85) this.spiritBoost.hit(boost, at);
+        else this.spiritAt = at;
+    }
+
+    /** A wheel of `spokes` spokes of sparks round the card, `n` to a spoke. */
+    wheel(card, spokes, n, birth) {
+        const cx = (card.x0 + card.x1) * 0.5;
+        const cy = (card.y0 + card.y1) * 0.5;
+        const centre = this.screenToWorld(cx, cy, SPARK_DEPTH, [0, 0, 0]);
+        for (let k = 0; k < spokes; k++) {
+            const a = (k / spokes) * Math.PI * 2;
+            const sx = cx + Math.cos(a) * (card.x1 - card.x0) * 0.62;
+            const sy = cy + Math.sin(a) * (card.y1 - card.y0) * 0.56;
+            const from = this.screenToWorld(sx, sy, SPARK_DEPTH);
+            const out = [from[0] - centre[0], from[1] - centre[1], from[2] - centre[2]];
+            this.counts.sparks += this.sparks.emit({
+                from,
+                toward: [out[1] + out[0] * 0.25, -out[0] + out[1] * 0.25, -0.2],
+                n: this.handful(n),
+                rgb: null,
+                time: birth + k * 0.018,
+                speed: [4.5, 8.5],
+                cone: 0.16,
+                life: [SPARK_RISE * 0.7, SPARK_RISE * 1.1],
+                size: 0.024,
+                glow: 1.3,
+                stagger: 0.08,
+                lift: [2, 6],
+            });
+        }
+    }
+
+    /** A T-spin that cleared nothing: the wind turns on itself, a little. */
+    onSpin({ screen = null } = {}) {
+        if (!this.u || !this.sparks) return;
+        this.storm = Math.max(this.storm, 0.55);
+        this.play.spin(this.time);
+        const card = cardUnion(this.layout);
+        if (card && !screen) this.wheel(card, 7, 4, this.time);
+        this.counts.spins += 1;
+    }
+
+    /**
+     * A perfect clear, settled after the clear it crowns (physics sends it ~360 ms after the last
+     * wave): no second hush, no second pounce. The crown is layered on the clear still playing —
+     * the fox of light blazes (or is called up, if none is running), the moon's ring and its
+     * pillar burn, every crystal in the snow, the air and the ice fires at once, every tree lets
+     * its load go and the sky is strummed wide. Then the night breathes out.
+     */
+    onCrown({ player = 0 } = {}) {
+        const { u } = this;
+        if (!u || !this.sparks) return;
+        const t = this.time;
+        this.crownEnv.hit(1, t);
+        this.play.crown(t);
+        this.callSpirit(t + 0.15, 0.9);
+        this.strike(0.35, 0.16, t);
+        this.surgeEnv.hit(0.35, t);
+        const foot = this.boardFoot(boardFor(this.layout, player));
+        const moon = u.moonCol.value;
+        const peak = Math.max(moon.x, moon.y, moon.z, 1e-4);
+        this.ring(foot.x, foot.z, t, 1.4, [moon.x / peak, moon.y / peak, moon.z / peak], 2, 2.2);
+        this.strum(t, 1.2, STRUM_WIDTH * 1.8, STRUM_SPEED * 0.8);
+        this.shakeTrees(foot, t, true);
+        this.counts.crowns += 1;
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -830,10 +1144,11 @@ export class WinterWorld {
             return;
         }
         this.storm = Math.max(this.storm, 0.8);
-        this.flash = Math.max(this.flash, 0.1);
+        this.strike(0, 0.1, this.time);
+        this.play.levelUp(this.time);
         if (!this.u || !this.sparks) return;
         // The sky is strummed, and the fox answers with a shower from its tail and a look at the viewer.
-        this.u.flare.value.set(this.time, 1.1);
+        this.strum(this.time, 1.1);
         this.mind.startle(0.6);
         this.mind.attend(EYE.x, EYE.y, EYE.z, this.time + 2.2, 0.9);
         this.counts.sparks += this.sparks.emit({
@@ -858,9 +1173,12 @@ export class WinterWorld {
         this.mind.sleep(this.time);
     }
 
-    /** How far the twilight has turned to the fires' night (0..1), for the hour's colours. */
+    /**
+     * How far the twilight has turned to the fires' night (0..1), for the hour's colours: the
+     * chain's fires, the fours' overdrive, and, once play runs warm, the heat of play itself.
+     */
     heat() {
-        return clamp01(this.power + this.surge * 0.55);
+        return clamp01(Math.max(this.power, smooth(0.15, 0.9, this.heatOfPlay.level)) + this.surge * 0.55);
     }
 
     /** How many hours into the polar day the sky stands: the levels' steps plus the clock's turn. */
@@ -883,36 +1201,43 @@ export class WinterWorld {
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
 
+        // ── The heat of play: what the whole night spends ──
+        const play = this.play.sample(t);
+        const H = this.heatOfPlay;
+        H.punch = play.punch;
+        H.level = play.level;
+        H.fever = play.fever;
+        H.stage = play.stage;
+        // Warm: the night takes notice. Hot: it is alive with the player. (Fever: its own swell.)
+        H.warm = smooth(0.12, 0.5, play.level);
+        H.hot = smooth(0.4, 0.85, play.level);
+        H.crown = this.crownEnv.valueAt(t);
+        H.b2b = this.b2bEnv.valueAt(t);
+        const {
+            warm, hot, fever, crown, b2b, punch,
+        } = H;
+
         // ── The charge ──
         const target = this.heldPower ?? powerForCombo(this.combo);
         this.power += (target - this.power) * approach(target > this.power ? 2.2 : 0.6, dt);
         if (dt === 0 && this.heldPower !== null) this.power = target;
-        this.surge *= Math.exp(-dt / SURGE_COOL);
-        this.swell *= Math.exp(-dt / SWELL_FADE);
+        this.surge = this.surgeEnv.valueAt(t);
+        this.swell = this.swellEnv.valueAt(t);
         this.storm *= Math.exp(-dt / 2.1);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
         this.dip *= Math.exp(-dt / 0.4);
-        if (t >= this.pendingKick.time) {
-            this.kick = Math.max(this.kick, this.pendingKick.amount);
-            this.flash = Math.max(this.flash, this.pendingKick.amount * 0.4);
-            this.pendingKick.time = Infinity;
-        }
-        if (t >= this.pendingSwell.time) {
-            this.swell = Math.max(this.swell, this.pendingSwell.amount);
-            this.pendingSwell.time = Infinity;
-        }
-        if (this.pendingSurge && t >= this.pendingSurge.time) {
-            this.surge = Math.max(this.surge, this.pendingSurge.amount);
-            this.pendingSurge = null;
-        }
+        // The lens: every kick and flash adds to what is still lit, and a quick hand keeps a floor
+        // under them instead of letting each one fall to nothing before the next.
+        this.kick = this.kickEnv.valueAt(t) + punch * 0.18;
+        this.flash = this.flashEnv.valueAt(t) + punch * 0.025 + crown * 0.08;
         if (t >= this.pendingPounce) {
-            this.mind.pounce(this.pendingPounce);
+            // (Already in the air, it does not gather itself over again: it lands, and runs on.)
+            if (this.mind.mode === 'pounce') this.mind.startle(1.2);
+            else this.mind.pounce(this.pendingPounce);
             this.pendingPounce = Infinity;
         }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.12 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 12, dt);
+        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const breathTarget = hush > 0 ? 1 - 0.88 * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 12, dt);
         if (dt === 0) this.breath = breathTarget;
         // ── The hour: the clock turns it by itself; a level's step and the charge ease in ──
         const heat = this.heat();
@@ -921,26 +1246,32 @@ export class WinterWorld {
         this.hourStep += (turned - this.hourStep) * follow;
         this.heatEase += (heat - this.heatEase) * follow;
         this.applyHour();
+        this.settleSky(t);
 
-        // ── The wind, and the rays' run ──
-        const gale = 0.2 + this.power * 0.3 + this.storm * 0.55 + this.surge * 0.35;
+        // ── The wind, and the rays' run: the gale rises with the pace ──
+        const gale = 0.2 + this.power * 0.3 + this.storm * 0.55 + this.surge * 0.35
+            + warm * 0.08 + hot * 0.1 + fever * 0.16 + punch * 0.06;
         const blow = dt * motion * (0.55 + gale * 1.7);
         this.windRun[0] += WIND.x * blow;
         this.windRun[1] += WIND.z * blow;
-        this.auroraRun += dt * motion * (0.55 + this.power * 1.5 + this.surge * 2.2 + this.swell * 1.5);
+        this.auroraRun += dt * motion * (0.55 + this.power * 1.5 + this.surge * 2.2 + this.swell * 1.5
+            + play.level * 0.5 + fever * 0.7);
 
-        // ── The sheets wake one after another ──
+        // ── The sheets wake one after another (and the far ones burn on in a fever) ──
         const k = dt === 0 ? 1 : approach(2.4, dt);
         for (let i = 0; i < 4; i++) {
             const awake = smooth(CURTAIN_WAKE[i][0], CURTAIN_WAKE[i][1], this.power);
-            const wanted = CURTAIN_REST[i] + CURTAIN_LIT[i] * awake + this.surge * 0.7 + this.swell * (0.5 + 0.2 * i);
-            this._curtains[i] += (wanted - this._curtains[i]) * k;
+            const wanted = CURTAIN_REST[i] + CURTAIN_LIT[i] * awake + this.surge * 0.7 + this.swell * (0.5 + 0.2 * i)
+                + (hot * 0.12 + fever * 0.3) * (i >= 2 ? 1 : 0.35);
+            // (In a fever they burn a shade lower and the night between them deepens: deep, not washed.)
+            const held = softCeiling(wanted, CURTAIN_KNEE, CURTAIN_CEILING) * (1 - 0.1 * fever);
+            this._curtains[i] += (held - this._curtains[i]) * k;
         }
 
         // ── The fox ──
         this.stepFox(dt, t);
 
-        // ── The fox of light ──
+        // ── The fox of light (a second four, or the crown, makes it burn the brighter) ──
         const spiritAge = t - this.spiritAt;
         let spiritGlow = 0;
         if (this.spirit) {
@@ -954,6 +1285,7 @@ export class WinterWorld {
             const kk = spiritAge / SPIRIT_RUN;
             spiritGlow = smooth(0, 0.07, kk) * (1 - smooth(0.8, 1, kk));
         }
+        spiritGlow *= 1 + this.spiritBoost.valueAt(t);
         this.spiritGlow = spiritGlow;
         const spiritBearing = spiritPath(clamp01(spiritAge / SPIRIT_RUN), this._spiritAt).bearing;
         // While its like crosses the sky the fox on the snow watches it go.
@@ -975,6 +1307,19 @@ export class WinterWorld {
                 this.redrawShadows();
             }
         }
+
+        // ── In a fever the gale strips the snow ghosts: one load after another comes down ──
+        if (fever > 0.02 && this.crowns?.length) {
+            this.shedDebt += dt * fever * 0.5 * motion;
+            if (this.shedDebt >= 1) {
+                this.shedDebt -= 1;
+                const top = this.crowns[(this.shedCursor * 3) % this.crowns.length];
+                this.shedCursor += 1;
+                if (this.dumps.length < MAX_DUMPS && !this.dumps.some((dump) => dump.crown === top)) {
+                    this.dumps.push({ time: t, crown: top, heavy: false });
+                }
+            }
+        } else this.shedDebt = 0;
 
         // ── Loads the gust has reached come down ──
         if (this.dumps.length) {
@@ -1009,14 +1354,25 @@ export class WinterWorld {
         u.gale.value = gale;
         u.auroraRun.value = this.auroraRun;
         u.curtains.value.set(this._curtains[0], this._curtains[1], this._curtains[2], this._curtains[3]);
-        u.halo.value = 0.2 + this.power * 0.45 + this.surge * 0.6;
+        // The ring of ice-light round the moon: the chain, the fours, play running hot, and the
+        // moon's own answer to a back-to-back and to the crown.
+        u.halo.value = 0.2 + this.power * 0.45 + this.surge * 0.6 + hot * 0.2 + fever * 0.4 + b2b * 0.75 + crown * 0.7;
         u.spirit.value.set(Math.tan(spiritBearing), 0.3, spiritGlow, 0);
+        // The snow, the dust and the ice: how much of them is alight, how far in the fires' colours,
+        // the crown's flash through all of it, and the pillar over the moon.
+        u.heat.value.set(
+            warm * 0.45 + hot * 0.45 + fever * 0.6 + crown * 0.8,
+            fever,
+            crown,
+            fever * 0.5 + b2b * 0.65 + crown * 0.9,
+        );
         const p = this._hour;
         HOUR_KEYS.forEach((key) => {
             const node = key === 'moon' ? u.moonCol : u[key];
             node.value.set(p[key][0], p[key][1], p[key][2]);
         });
-        u.stars.value = this._hourStars;
+        // Night falls as play runs hot: the stars come out in their thousands.
+        u.stars.value = this._hourStars * (1 + hot * 0.45 + fever * 0.6 + crown * 0.3);
 
         const sky = this.parts.sky?.mesh;
         if (sky && camera) {
@@ -1027,25 +1383,31 @@ export class WinterWorld {
         if (camera) this.projectMoon(camera);
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const lift = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
+        const lift = this.liftEnv.valueAt(t);
+        const steady = flashScale();
         const post = this._post;
         post.flash = this.flash;
         post.kick = this.kick;
-        post.shafts = hush ? 0.03 : 0.08 + this.surge * 0.1;
-        post.bloomBoost = this.surge * 0.14 + lift * 0.1 + spiritGlow * 0.1;
-        post.glare = (0.3 + this.power * 0.15) * this.breath;
+        post.shafts = (0.08 + this.surge * 0.1 + fever * 0.05 + crown * 0.06) * (1 - 0.62 * hush);
+        // (What lights the frame for a moment is held back under Reduce flashing.)
+        post.bloomBoost = this.surge * 0.14 + lift * 0.1 * steady + spiritGlow * 0.1 + hot * 0.03 + fever * 0.06
+            + crown * 0.12 * steady;
+        post.glare = (0.3 + this.power * 0.15 + b2b * 0.12 + crown * 0.1) * this.breath;
         post.glareColor[0] = u.moonCol.value.x * 0.2;
         post.glareColor[1] = u.moonCol.value.y * 0.2;
         post.glareColor[2] = u.moonCol.value.z * 0.2;
-        // The lens opens as the twilight turns to night, and closes a little on a flash.
-        post.exposure = (1 + heat * 0.32) / (1 + this.surge * 0.22 + lift * 0.2);
+        // The lens opens as the twilight turns to night, and closes a little on a flash; as play
+        // runs hot the iris closes a touch more, so the colours stay deep and the night stays dark.
+        post.exposure = (1 + heat * 0.32) / (1 + this.surge * 0.22 + lift * 0.2) / (1 + hot * 0.1 + fever * 0.15);
     }
 
     /** Step the fox's mind, press its prints, strike its sparks and pose its body. */
     stepFox(dt, t) {
         const { mind, u } = this;
-        mind.step(dt, t, { power: this.power, surge: this.surge });
+        // (It runs with the player too: a quick hand sets it trotting, then running, chain or none.)
+        const H = this.heatOfPlay;
+        const pace = Math.max(this.power, H.warm * 0.3 + H.hot * 0.3 + H.fever * 0.25);
+        mind.step(dt, t, { power: pace, surge: this.surge });
         const { pose } = mind;
         for (let i = 0; i < mind.events.length; i++) {
             const e = mind.events[i];
@@ -1217,6 +1579,8 @@ export class WinterWorld {
             treeTriangles: this.treePart?.triangles ?? 0,
             groundVertices: this.parts.ground?.vertices ?? 0,
             curtains: [...this._curtains],
+            // How hot play runs, and what the night makes of it.
+            heat: { ...this.heatOfPlay },
             sparks: this.sparks?.count ?? 0,
             snow: this.parts.snow?.count ?? 0,
             fox: {

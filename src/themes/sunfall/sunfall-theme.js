@@ -12,6 +12,7 @@ import {
 } from './sunfall-quality.js';
 import { SUNFALL_TETROMINOS } from './sunfall-tetrominos.js';
 import { SunfallDirector } from './sunfall-director.js';
+import { wireSunfallEvents } from './sunfall-events.js';
 import { SunfallWorld } from './sunfall-world.js';
 import { SunfallPost, createPassThroughPipeline, resolveSunfallPostLook } from './sunfall-post.js';
 import { readBoardViewport } from './sunfall-composition.js';
@@ -156,39 +157,9 @@ export default class SunfallTheme extends BaseTheme {
     setupEvents() {
         this.clearEventUnsubscribers();
         this.clearTrackedResources();
-        this.eventUnsubscribers = [];
-        const playing = () => this.isActive && !this.isPaused && this.reactionsEnabled;
+        // The gameplay events, read from their canonical payloads (sunfall-events.js).
+        this.eventUnsubscribers = wireSunfallEvents(this);
         const on = (evt, fn) => { if (evt) this.eventUnsubscribers.push(eventBus.on(evt, fn)); };
-
-        on(EVENTS.PIECE_LOCK, (p) => {
-            if (!playing() || !this.lockRippleEnabled) return;
-            const piece = p?.piece || p || {};
-            const code = piece.type || piece.code || p?.pieceType || 'T';
-            this.director?.onPieceLock({
-                shape: piece.shape || p?.shape, code, col: piece.x ?? p?.col ?? 4, row: piece.y ?? p?.row ?? 12,
-            });
-        });
-        on(EVENTS.HARD_DROP, (p) => {
-            if (!playing()) return;
-            const code = p?.pieceType || p?.piece?.type || 'S';
-            this.director?.onHardDrop({
-                code, col: p?.x ?? p?.col ?? 4.5, row: p?.y ?? p?.row ?? 14, distance: p?.distance ?? 10,
-            });
-        });
-        on(EVENTS.LINE_CLEAR, (p) => {
-            if (!playing()) return;
-            const lines = p?.lines || p?.lineCount || p?.clearedLines?.length || 1;
-            if (p?.isTSpin || p?.tSpin) this.director?.onTSpin({ lines, isMini: Boolean(p?.isMini) });
-            const rows = p?.clearedLines || p?.rows || [];
-            this.director?.onLineClear({ lines, rows, b2b: p?.b2bCount ?? p?.backToBackCount ?? null });
-            if (p?.isPerfectClear || p?.perfectClear) this.director?.onPerfectClear();
-        });
-        on(EVENTS.COMBO, (p) => { if (playing()) this.director?.onCombo(p?.comboCount ?? p?.combo ?? p?.count ?? 0); });
-        on(EVENTS.LEVEL_UP, (p) => {
-            if (!this.isActive) return;
-            this.level = p?.level ?? p?.newLevel ?? (this.level + 1);
-            this.director?.onLevelUp(this.level);
-        });
         on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p));
         on(EVENTS.VIEWPORT_RESIZED, (v) => {
             const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
@@ -257,12 +228,7 @@ export default class SunfallTheme extends BaseTheme {
         const snap = this.director.step(delta);
         this.world.applySnapshot(snap);
         if (this.post) {
-            this.post.update({
-                time: snap.time,
-                bloomBoost: snap.cataractPulse * 0.45 + snap.zenithPulse * 0.55,
-                flash: snap.zenithPulse * 0.4 + snap.cataractPulse * 0.25,
-                flashColour: snap.station.beamCore,
-            });
+            this.post.update(this.world.postState);
             this.post.render();
         } else if (this.passThrough) this.passThrough.render();
         else this.renderer.render(this.scene, this.camera);

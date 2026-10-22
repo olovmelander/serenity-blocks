@@ -37,8 +37,9 @@
  * A strike and a release keep separate flashes because they overlap in ordinary play: the piece
  * that completes a line sends its spark (landing in about half a second) and its wave (passing
  * a second later) together. A cut is the moment a wave passes the crystal; it voids only light
- * that landed before it, so a spark that lands after the wave has passed is kept. There are two
- * cuts because two waves are on the wall at once in a chain of clears.
+ * that landed before it, so a spark that lands after the wave has passed is kept. The shader sees
+ * the next two cuts; a cascade puts up to six waves on the wall at once, so the CPU keeps the
+ * rest and moves them up as the earlier ones pass.
  */
 
 import * as THREE from 'three/webgpu';
@@ -79,6 +80,7 @@ import {
 import {
     BEAM_LIFE,
     CAVITY,
+    CLEAR_SLOTS,
     CROWN_COLORS,
     CROWN_RINGS,
     FLASH_FADE,
@@ -105,6 +107,8 @@ const CORNERS = [1.0, 0.86, 1.04, 0.9, 1.0, 0.84];
 const NEVER = 1e9;
 /** Seconds before its pass at which a waiting flare takes over the shader's slot. */
 const FLARE_HANDOVER = 0.03;
+/** The brightest a lance that carries the next four-line clear's (or a perfect clear's) grows. */
+const LANCE_MAX = 2.2;
 
 function unitCrystal() {
     const positions = [];
@@ -273,7 +277,9 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         const kept = mix(keptPrev, keptStore, step(store.w, u.time))
             .mul(exp(u.time.sub(store.w).div(-STORE_HOLD)));
         // A crown crystal burns in its ring's colour for as long as it stands.
-        const burn = crownColor(ring).mul(grown()).mul(u.power.mul(0.25).add(0.42)).mul(isCrown);
+        // …brighter for every clear of the chain that pours its light into it (heat.z: the blaze).
+        const burn = crownColor(ring).mul(grown()).mul(u.power.mul(0.25).add(u.heat.z.mul(0.25)).add(0.42))
+            .mul(isCrown);
         return kept.add(burn);
     };
     /** A flash's age and envelope now (vertex stage). */
@@ -360,7 +366,7 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
             .mul(smoothstep(0.08, 0.4, t));
         const breathe = sin(u.time.mul(0.6).add(rnd.mul(40.0))).mul(0.16).add(0.84);
         const core = body.mul(mix(body, vec3(1.0), 0.2)).mul(up.mul(up).mul(1.2).add(0.22))
-            .mul(breathe).mul(u.power.mul(1.4).add(1.0));
+            .mul(breathe).mul(u.power.mul(1.4).add(u.heat.x.mul(0.2)).add(u.heat.y.mul(0.35)).add(1.0));
         const within = body.mul(planes).mul(u.heart).mul(key.mul(0.6).add(0.4)).mul(0.2)
             .add(core.mul(planes.mul(0.5).add(0.75)))
             .add(body.mul(phantom).mul(u.heart).mul(0.14));
@@ -418,8 +424,11 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         const stay = sin(u.time.mul(seed.mul(1.5).add(0.7)).add(seed.mul(60.0))).mul(0.5).add(0.5);
         const lightNow = flashNow().mul(1.5)
             .add(heldNow.mul(stay.mul(0.35).add(0.3)))
-            // A few points always catch the heart.
-            .add(u.heart.mul(step(0.74, seed)).mul(stay.mul(stay)).mul(0.16).mul(u.breath)
+            // A few points always catch the heart; in a fever, many more, brighter: the geode is
+            // starred with them.
+            .add(u.heart.mul(step(float(0.74).sub(u.heat.y.mul(0.3)), seed)).mul(stay.mul(stay)).mul(0.16)
+                .mul(u.heat.y.mul(1.4).add(1.0))
+                .mul(u.breath)
                 .mul(float(1.0).sub(isCrown)));
         const power = max(lightNow.r, max(lightNow.g, lightNow.b));
         const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(tip, 1.0));
@@ -491,30 +500,73 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
     const carried = new Uint8Array(n);
     const fresh = new Float32Array(n * 3);
     /**
-     * Flares waiting their turn: the shader has one release slot, and up to two waves can be on
-     * their way to a crystal after the flare it is showing. Two (r, g, b, pass) entries per
-     * crystal, earliest first; pass < 0 = empty.
+     * The waves on their way to each crystal: up to CUTS pass times, earliest first, NEVER after
+     * the last (single precision, as the shader reads them). The shader sees the first two
+     * (aAux.x, aAux.w); the others wait here and move up as the earlier ones pass. As many as
+     * the shaders draw waves, so a crystal answers every wave on the wall.
      */
-    const QUEUE = 8;
+    const CUTS = CLEAR_SLOTS;
+    const cuts = new Float32Array(n * CUTS).fill(NEVER);
+    /**
+     * Flares waiting their turn: the shader has one release slot, and up to FLARES more waves can
+     * be on their way to a crystal after the flare it is showing. (r, g, b, pass) entries per
+     * crystal, earliest first, packed; pass < 0 = empty.
+     */
+    const FLARES = CLEAR_SLOTS;
+    const QUEUE = FLARES * 4;
     const queued = new Float32Array(n * QUEUE);
+    const qAt = (i, k) => i * QUEUE + k * 4;
     const clearQueue = (i) => {
         queued.fill(0, i * QUEUE, i * QUEUE + QUEUE);
-        queued[i * QUEUE + 3] = -100;
-        queued[i * QUEUE + 7] = -100;
+        for (let k = 0; k < FLARES; k++) queued[qAt(i, k) + 3] = -100;
     };
     for (let i = 0; i < n; i++) clearQueue(i);
-    let queuedCount = 0;
-    /** The (up to two) waves on their way to each crystal: aAux.x <= aAux.w, NEVER = none. */
-    const cutA = (i) => aAux[i * 4];
-    const cutB = (i) => aAux[i * 4 + 3];
+    /**
+     * A strike's flash waiting for its spark: a crystal still burning with the last strike keeps
+     * that flash until the new spark lands, which then joins what is left of it (rgb, when; < 0 =
+     * none). A quick hand strikes the same bells again and again: none goes dark between.
+     */
+    const pending = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) pending[i * 4 + 3] = -100;
+    /** A flash brighter than this when the next strike is sent waits for that spark. */
+    const BURNING = 0.25;
+    /** The brightest a flash that joins what is left grows. */
+    const FLASH_MAX = 4;
+
+    const cutA = (i) => cuts[i * CUTS];
     const peakOf = (data, o) => Math.max(data[o], data[o + 1], data[o + 2]);
+    /** Show the shader the first two waves due. */
+    const showCuts = (i) => {
+        aAux[i * 4] = cuts[i * CUTS];
+        aAux[i * 4 + 3] = cuts[i * CUTS + 1];
+    };
+    /** The first wave due at or after `t` (NEVER if none). */
+    const cutFrom = (i, t) => {
+        for (let k = 0; k < CUTS; k++) if (cuts[i * CUTS + k] >= t) return cuts[i * CUTS + k];
+        return NEVER;
+    };
     /** True if a wave passes in [landed, before): light that landed at `landed` is gone by `before`. */
-    const takenBefore = (i, landed, before) => (landed <= cutA(i) && cutA(i) < before)
-        || (landed <= cutB(i) && cutB(i) < before);
+    const takenBefore = (i, landed, before) => cutFrom(i, landed) < before;
+    /** Drop the k-th wave due. */
+    const dropCut = (i, k) => {
+        const c = i * CUTS;
+        cuts.copyWithin(c + k, c + k + 1, c + CUTS);
+        cuts[c + CUTS - 1] = NEVER;
+    };
+    /** Add a wave due at `pass` (single precision), in order. The caller made room. */
+    const addCut = (i, pass) => {
+        const c = i * CUTS;
+        let k = CUTS - 1;
+        while (k > 0 && cuts[c + k - 1] > pass) {
+            cuts[c + k] = cuts[c + k - 1];
+            k -= 1;
+        }
+        cuts[c + k] = pass;
+    };
     const heldAt = (i, time) => {
         const k = Math.exp(-(time - storeT0[i]) / STORE_HOLD);
         // Until the spark lands the crystal still holds only what it held before.
-        if (time < storeT0[i]) return cutA(i) < time || cutB(i) < time ? 0 : peakOf(aPrev, i * 3) * k;
+        if (time < storeT0[i]) return cutA(i) < time ? 0 : peakOf(aPrev, i * 3) * k;
         return takenBefore(i, storeT0[i], time) ? 0 : peakOf(aStore, i * 4) * k;
     };
     /** Write the stored light from its two parts, capped at STORE_MAX. */
@@ -525,12 +577,11 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         const scale = Math.min(1, STORE_MAX / Math.max(sum[0], sum[1], sum[2], 1e-4));
         aStore.set([sum[0] * scale, sum[1] * scale, sum[2] * scale], o);
     };
-    /** Fold every cut that has already happened into the stored values, so only pending ones remain. */
+    /** Fold every wave that has already passed into the stored values, so only those due remain. */
     const settle = (i, now) => {
         const o = i * 4;
-        for (let pass = 0; pass < 2; pass++) {
-            const cut = aAux[o];
-            if (cut > now) break;
+        while (cutA(i) <= now) {
+            const cut = cutA(i);
             if (storeT0[i] <= cut) {
                 // What had landed was let go.
                 fresh.fill(0, i * 3, i * 3 + 3);
@@ -542,9 +593,9 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
                 carried[i] = 0;
                 restore(i);
             }
-            aAux[o] = aAux[o + 3];
-            aAux[o + 3] = NEVER;
+            dropCut(i, 0);
         }
+        showCuts(i);
     };
 
     /**
@@ -553,67 +604,99 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
      */
     const recarry = (i, now) => {
         if (!(storeT0[i] > now) || carried[i]) return;
-        if (cutA(i) < storeT0[i] || cutB(i) < storeT0[i]) return;
+        if (cutA(i) < storeT0[i]) return;
         carried[i] = 1;
         restore(i);
     };
 
     // ── Flares: the shader's slot (aRelease) and the queue behind it ──
-    /** Add a flare to the queue in time order (a third joins the later of the two). */
-    const enqueue = (i, flare) => {
-        const q = i * QUEUE;
-        if (queued[q + 3] < 0) queued.set(flare, q);
-        else if (queued[q + 7] < 0) {
-            if (flare[3] < queued[q + 3]) {
-                queued.copyWithin(q + 4, q, q + 4);
-                queued.set(flare, q);
-            } else queued.set(flare, q + 4);
-        } else {
-            for (let ch = 0; ch < 3; ch++) queued[q + 4 + ch] += flare[ch];
-        }
-        queuedCount += 1;
+    const queueLength = (i) => {
+        let k = 0;
+        while (k < FLARES && queued[qAt(i, k) + 3] >= 0) k += 1;
+        return k;
     };
-    /** Every place a flare for the pass `at` may be: the shader's slot, then the queue. */
-    const flareSlots = (i) => [[aRelease, i * 4], [queued, i * QUEUE], [queued, i * QUEUE + 4]];
+    /** Add a flare to the queue in time order (once it is full, a new one joins the latest). */
+    const enqueue = (i, flare) => {
+        const waiting = queueLength(i);
+        if (waiting >= FLARES) {
+            const at = qAt(i, FLARES - 1);
+            for (let ch = 0; ch < 3; ch++) queued[at + ch] += flare[ch];
+            return;
+        }
+        let k = waiting;
+        while (k > 0 && queued[qAt(i, k - 1) + 3] > flare[3]) {
+            queued.copyWithin(qAt(i, k), qAt(i, k - 1), qAt(i, k - 1) + 4);
+            k -= 1;
+        }
+        for (let ch = 0; ch < 4; ch++) queued[qAt(i, k) + ch] = flare[ch];
+    };
+    /** Keep the queue packed and in time order. */
+    const packQueue = (i) => {
+        let packed = 0;
+        for (let k = 0; k < FLARES; k++) {
+            const at = qAt(i, k);
+            if (queued[at + 3] < 0) continue;
+            // (insertion: entries move down past later ones)
+            let to = packed;
+            const entry = [queued[at], queued[at + 1], queued[at + 2], queued[at + 3]];
+            while (to > 0 && queued[qAt(i, to - 1) + 3] > entry[3]) {
+                queued.copyWithin(qAt(i, to), qAt(i, to - 1), qAt(i, to - 1) + 4);
+                to -= 1;
+            }
+            for (let ch = 0; ch < 4; ch++) queued[qAt(i, to) + ch] = entry[ch];
+            packed += 1;
+        }
+        for (let k = packed; k < FLARES; k++) {
+            const at = qAt(i, k);
+            queued.fill(0, at, at + 3);
+            queued[at + 3] = -100;
+        }
+    };
+    /** The place the flare for `pass` waits in (the shader's slot, then the queue), or null. */
+    const flareAt = (i, pass) => {
+        if (aRelease[i * 4 + 3] === pass) return [aRelease, i * 4];
+        for (let k = 0; k < FLARES; k++) if (queued[qAt(i, k) + 3] === pass) return [queued, qAt(i, k)];
+        return null;
+    };
     /** Add colour to the flare that will fire at `pass`, wherever it is waiting. False if none is. */
     const addToFlare = (i, pass, rgb, gain) => {
-        const slots = flareSlots(i);
-        for (let k = 0; k < slots.length; k++) {
-            const [data, at] = slots[k];
-            if (data[at + 3] === pass) {
-                for (let ch = 0; ch < 3; ch++) data[at + ch] += rgb[ch] * gain;
-                return true;
-            }
-        }
-        return false;
+        const slot = flareAt(i, pass);
+        if (!slot) return false;
+        const [data, at] = slot;
+        for (let ch = 0; ch < 3; ch++) data[at + ch] += rgb[ch] * gain;
+        return true;
     };
     /** A wave was forgotten: its waiting flare moves to the next pass, joining any flare due then. */
     const retime = (i, from, to) => {
-        const slots = flareSlots(i);
-        let moved = null;
-        for (let k = 0; k < slots.length; k++) {
-            const [data, at] = slots[k];
-            if (data[at + 3] !== from) continue;
-            moved = [data, at];
-            data[at + 3] = to;
-            break;
-        }
+        const moved = flareAt(i, from);
         if (!moved) return;
-        for (let k = 0; k < slots.length; k++) {
-            const [data, at] = slots[k];
+        moved[0][moved[1] + 3] = to;
+        // Two flares for one pass: the moved one keeps both, the other is freed.
+        const places = [[aRelease, i * 4]];
+        for (let k = 0; k < FLARES; k++) places.push([queued, qAt(i, k)]);
+        for (const [data, at] of places) {
             if (data[at + 3] !== to || (data === moved[0] && at === moved[1])) continue;
-            // Two flares for one pass: the earlier slot keeps both, the later one is freed.
             for (let ch = 0; ch < 3; ch++) moved[0][moved[1] + ch] += data[at + ch];
             data.fill(0, at, at + 3);
             data[at + 3] = -100;
         }
-        // Keep the queue packed, earliest first.
-        const q = i * QUEUE;
-        if (queued[q + 3] < 0 && queued[q + 7] >= 0) {
-            queued.copyWithin(q, q + 4, q + 8);
-            queued.fill(0, q + 4, q + 7);
-            queued[q + 7] = -100;
-        }
+        packQueue(i);
+    };
+
+    /** Hand a strike's waiting flash to the shader once its spark is in. */
+    const landFlash = (i, now) => {
+        const o = i * 4;
+        const at = pending[o + 3];
+        if (at < 0 || now < at) return false;
+        // What is left of the flash it was showing joins the new one.
+        const age = at - aFlash[o + 3];
+        const left = aFlash[o + 3] > -50 && age >= 0 ? Math.exp(-age / FLASH_FADE) : 0;
+        const rgb = [0, 1, 2].map((ch) => pending[o + ch] + aFlash[o + ch] * left);
+        const scale = Math.min(1, FLASH_MAX / Math.max(rgb[0], rgb[1], rgb[2], 1e-4));
+        aFlash.set([rgb[0] * scale, rgb[1] * scale, rgb[2] * scale, at], o);
+        pending.fill(0, o, o + 3);
+        pending[o + 3] = -100;
+        return true;
     };
 
     /**
@@ -622,41 +705,76 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
      * crystal, this one's light joins it and lands with it — the crystal never shows light
      * before a spark has reached it — and the brighter of the two flashes is the one it gives.
      * Light that lands before a wave already on its way is let go with the rest when it passes.
+     * A crystal still burning with its last flash keeps it until this spark lands. `defer` leaves
+     * the upload to the caller (part.touch), for many strikes at once.
      */
-    part.strike = (i, rgb, time, amount = 1, now = time) => {
+    part.strike = (i, rgb, time, amount = 1, now = time, defer = false) => {
         if (!(i >= 0 && i < n)) return;
         const o = i * 4;
         const p = i * 3;
         settle(i, now);
+        landFlash(i, now);
         const add = [rgb[0] * amount * 0.55, rgb[1] * amount * 0.55, rgb[2] * amount * 0.55];
+        const flash = [rgb[0] * amount * 1.6, rgb[1] * amount * 1.6, rgb[2] * amount * 1.6];
         if (storeT0[i] > now) {
             for (let ch = 0; ch < 3; ch++) fresh[p + ch] += add[ch];
-            if (amount * 1.6 > peakOf(aFlash, o)) {
-                aFlash.set([rgb[0] * amount * 1.6, rgb[1] * amount * 1.6, rgb[2] * amount * 1.6], o);
-            }
+            // (the flash that will fire when the first spark lands: waiting, or already set)
+            const target = pending[o + 3] >= 0 ? pending : aFlash;
+            if (amount * 1.6 > peakOf(target, o)) target.set(flash, o);
         } else {
             const k = Math.exp(-(time - storeT0[i]) / STORE_HOLD);
             aPrev.set([aStore[o] * k, aStore[o + 1] * k, aStore[o + 2] * k], p);
             // A wave that passes before this spark lands takes the old light with it.
-            carried[i] = cutA(i) < time || cutB(i) < time ? 0 : 1;
+            carried[i] = cutA(i) < time ? 0 : 1;
             fresh.set(add, p);
             aStore[o + 3] = time;
             storeT0[i] = time;
-            aFlash.set([rgb[0] * amount * 1.6, rgb[1] * amount * 1.6, rgb[2] * amount * 1.6, time], o);
+            const age = now - aFlash[o + 3];
+            const burning = aFlash[o + 3] > -50 && age >= 0 ? peakOf(aFlash, o) * Math.exp(-age / FLASH_FADE) : 0;
+            if (burning > BURNING) pending.set([...flash, time], o);
+            else aFlash.set([...flash, time], o);
         }
         restore(i);
         // What the next wave to pass after it lands will let go now includes this light.
-        if (storeT0[i] <= cutA(i)) addToFlare(i, cutA(i), add, 2.2);
-        else if (storeT0[i] <= cutB(i)) addToFlare(i, cutB(i), add, 2.2);
+        const next = cutFrom(i, storeT0[i]);
+        if (next !== NEVER) addToFlare(i, next, add, 2.2);
+        if (!defer) touch();
+    };
+
+    /**
+     * A perfect clear: every bell rings at once, from the heart outward, in `rgb` — and keeps it.
+     * One upload for all of them.
+     */
+    part.ringAll = (rgb, time, amount, { now = time, spread = 0 } = {}) => {
+        for (let i = 0; i < heroes; i++) {
+            part.strike(i, rgb, time + spread * clearPassTime(list[i].w), amount, now, true);
+        }
         touch();
+    };
+
+    /**
+     * The lances standing (or about to leave) burn brighter: nothing restarts. Returns how many.
+     */
+    part.boostLances = (gain, now) => {
+        let lit = 0;
+        for (let i = 0; i < heroes; i++) {
+            const o = i * 4;
+            if (!(aAux[o + 2] > 0) || now - aAux[o + 1] >= BEAM_LIFE) continue;
+            aAux[o + 2] = Math.min(LANCE_MAX, aAux[o + 2] + gain);
+            lit += 1;
+        }
+        if (lit) touch();
+        return lit;
     };
 
     /**
      * A clear: a wave leaves the heart at `time` and every hero crystal answers as it passes —
      * in the wave's colour, and in whatever colour it is holding by then, which is then gone.
-     * Two waves can be on their way to a crystal at once, as two are drawn at once. `forget` is
+     * As many waves can be on their way to a crystal at once as the shaders draw. `forget` is
      * the birth time of the wave the shaders stopped drawing to make room for this one: a crystal
      * it had yet to reach forgets it too, and its waiting flare moves to the next pass.
+     * A four-line clear (`beam`) throws a lance from every cluster's tallest crystal; one still
+     * standing bright from the last is not thrown again but burns brighter.
      * @returns {{ released: number, passes: Float32Array, amounts: Float32Array }}  light let go
      *   in all, and each crystal's pass time and share
      */
@@ -672,26 +790,31 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
             passes[i] = pass;
             settle(i, now);
             if (beam > 0) {
-                aAux[o + 1] = pass;
-                aAux[o + 2] = crystal.main ? beam : 0;
+                const age = now - aAux[o + 1];
+                const standing = aAux[o + 2] > 0 && age < BEAM_LIFE
+                    ? aAux[o + 2] * Math.exp(-1.5 * Math.max(0, age)) : 0;
+                if (crystal.main && standing > beam * 0.5) {
+                    // Still burning brighter than half a new one: it carries this one's light instead.
+                    aAux[o + 2] = Math.min(LANCE_MAX, aAux[o + 2] + beam * 0.5);
+                } else {
+                    aAux[o + 1] = pass;
+                    aAux[o + 2] = crystal.main ? beam : 0;
+                }
             }
             let orphan = NEVER;
             if (forget !== null) {
                 const gone = Math.fround(forget + clearPassTime(crystal.w));
-                if (aAux[o] === gone) {
-                    aAux[o] = aAux[o + 3];
-                    aAux[o + 3] = NEVER;
+                for (let k = 0; k < CUTS; k++) {
+                    if (cuts[i * CUTS + k] !== gone) continue;
+                    dropCut(i, k);
                     orphan = gone;
-                } else if (aAux[o + 3] === gone) {
-                    aAux[o + 3] = NEVER;
-                    orphan = gone;
+                    break;
                 }
             }
-            if (cutB(i) !== NEVER) {
-                // Still two due (the caller named no wave to forget): the earlier one goes.
-                orphan = aAux[o];
-                aAux[o] = aAux[o + 3];
-                aAux[o + 3] = NEVER;
+            if (cuts[i * CUTS + CUTS - 1] !== NEVER) {
+                // Still every place taken (the caller named no wave to forget): the earliest goes.
+                orphan = cutA(i);
+                dropCut(i, 0);
             }
             // (aAux holds single-precision times: compare like with like)
             const due = Math.fround(pass);
@@ -707,7 +830,7 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
                 restore(i);
             }
             // What the wave finds: the stored light if its spark has landed by then, else what
-            // the crystal held before — unless the other wave on its way gets there first.
+            // the crystal held before — unless another wave on its way gets there first.
             const k = Math.exp(-(pass - storeT0[i]) / STORE_HOLD);
             const landed = storeT0[i] <= pass;
             const source = landed ? aStore : aPrev;
@@ -732,15 +855,10 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
                     enqueue(i, Array.from(aRelease.subarray(o, o + 4)));
                     aRelease.set(flare, o);
                 } else enqueue(i, flare);
-            } else if (queued[i * QUEUE + 3] >= 0) enqueue(i, flare);
+            } else if (queueLength(i) > 0) enqueue(i, flare);
             else aRelease.set(flare, o);
-            // Keep the two cuts in order.
-            if (cutA(i) === NEVER) aAux[o] = pass;
-            else if (pass >= cutA(i)) aAux[o + 3] = pass;
-            else {
-                aAux[o + 3] = aAux[o];
-                aAux[o] = pass;
-            }
+            addCut(i, due);
+            showCuts(i);
         }
         touch();
         return { released, passes, amounts };
@@ -748,30 +866,31 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
 
     /**
      * Once a frame: hand the next waiting flare to the shader just before its wave passes (the
-     * flare before it has had the slot since its own pass).
+     * flare before it has had the slot since its own pass), a strike's waiting flash once its
+     * spark is in, and the next wave due once one has passed (the shader sees two at a time).
      */
     part.tick = (now) => {
-        if (queuedCount <= 0) return;
-        let left = 0;
         let wrote = false;
         for (let i = 0; i < heroes; i++) {
-            const q = i * QUEUE;
-            if (queued[q + 3] < 0) continue;
-            if (now >= queued[q + 3] - FLARE_HANDOVER) {
-                aRelease.set(queued.subarray(q, q + 4), i * 4);
-                queued.copyWithin(q, q + 4, q + 8);
-                queued.fill(0, q + 4, q + 7);
-                queued[q + 7] = -100;
+            if (cuts[i * CUTS + 2] !== NEVER && cutA(i) <= now) {
+                settle(i, now);
                 wrote = true;
             }
-            if (queued[q + 3] >= 0) left += 1;
+            if (landFlash(i, now)) wrote = true;
+            const q = qAt(i, 0);
+            if (queued[q + 3] >= 0 && now >= queued[q + 3] - FLARE_HANDOVER) {
+                aRelease.set(queued.subarray(q, q + 4), i * 4);
+                queued.copyWithin(q, q + 4, i * QUEUE + QUEUE);
+                const last = qAt(i, FLARES - 1);
+                queued.fill(0, last, last + 3);
+                queued[last + 3] = -100;
+                wrote = true;
+            }
         }
-        queuedCount = left;
         if (wrote) touch();
     };
 
     part.reset = () => {
-        queuedCount = 0;
         for (let i = 0; i < n; i++) {
             aStore.set([0, 0, 0, 0], i * 4);
             aPrev.set([0, 0, 0], i * 3);
@@ -784,16 +903,26 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
             storeT0[i] = 0;
             carried[i] = 0;
             fresh.fill(0, i * 3, i * 3 + 3);
+            pending.fill(0, i * 4, i * 4 + 3);
+            pending[i * 4 + 3] = -100;
             clearQueue(i);
         }
+        cuts.fill(NEVER);
         touch();
     };
+    part.touch = touch;
     part.heldAt = heldAt;
     /** Everything the geode holds at `time`. */
     part.totalHeld = (time) => {
         let sum = 0;
         for (let i = 0; i < heroes; i++) sum += heldAt(i, time);
         return sum;
+    };
+    /** The waves due at crystal `i`, earliest first (all of them, not only the two the shader sees). */
+    part.cutsOf = (i) => {
+        const out = [];
+        for (let k = 0; k < CUTS; k++) if (cuts[i * CUTS + k] !== NEVER) out.push(cuts[i * CUTS + k]);
+        return out;
     };
     part.count = n;
     part.heroes = heroes;
@@ -843,7 +972,9 @@ export function createDruzy(u, druzy, count, { caustics = true } = {}) {
         const field = u.noise(at).level(0.0);
         const patch = smoothstep(0.6, 0.82, field.r).mul(smoothstep(0.3, 0.6, field.b));
         fire = gdSpectrum(field.g.mul(2.2).add(look.w.mul(0.6))).mul(patch)
-            .mul(u.power.mul(0.9).add(u.surge.mul(0.8)).add(0.3)).mul(u.breath);
+            .mul(u.power.mul(0.9).add(u.surge.mul(0.8)).add(u.heat.x.mul(0.4)).add(u.heat.y.mul(0.7))
+                .add(0.3))
+            .mul(u.breath);
     }
     const vWave = varying(vec4(waves.rgb.add(fire), waves.a), 'gdDruzyWave');
     // (a seed for the facets' cut, and how bright this point is among its neighbours)

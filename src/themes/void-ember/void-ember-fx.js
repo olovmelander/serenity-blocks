@@ -431,6 +431,7 @@ export function createShells(u) {
         const hot = mix(fire, vB.rgb.mul(vec3(1.0, 0.5, 0.26)), smoothstep(0.5, 2.4, since));
         return vec4(hot.mul(light.mul(filaments).mul(window).mul(fade).mul(vA.y)
             .mul(1.25)
+            .mul(u.shellGain)
             .mul(u.iris.sqrt())), 0.0);
     })();
     const part = vePart('VoidEmberShells', geometry, material, 45);
@@ -441,44 +442,60 @@ export function createShells(u) {
 // ── Row beams ───────────────────────────────────────────────────────────────────
 
 export const BEAM_ROWS = 4;
+/**
+ * Sets of blades: a clear fires the set whose blades have faded the most, so the next wave of a
+ * cascade (or another board's clear) never cuts off blades that are still leaving the card.
+ */
+export const BEAM_SETS = 2;
 /** Seconds a beam's head takes from the card to the edge of the frame, and its afterglow. */
 export const BEAM_TRAVEL = 0.14;
 export const BEAM_FADE = 0.18;
 /** How far toward the edge of the frame a beam reaches (a fraction of the way). */
 export const BEAM_REACH = 0.62;
 
-/** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
+/** Screen-space strips: one from each side of the card for up to four cleared rows, per set. */
 export function createRowBeams(u) {
-    const count = BEAM_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = veQuadGeometry(count, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
-    const uniforms = {
+    const perSet = BEAM_ROWS * 2;
+    const count = perSet * BEAM_SETS;
+    const aRow = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const k = i % perSet;
+        aRow.set([Math.floor(k / 2), k % 2 ? 1 : -1, Math.floor(i / perSet)], i * 3);
+    }
+    const geometry = veQuadGeometry(count, { aRow: [aRow, 3] });
+    const row = attribute('aRow', 'vec3');
+    const sets = Array.from({ length: BEAM_SETS }, () => ({
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
         rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** (card x0, card x1, birth time, strength) */
         frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
         color: uniform(new THREE.Vector3(1, 1, 1)),
-    };
+    }));
+    // (Two sets: a 0/1 mix picks a strip's own.)
+    const second = step(0.5, row.z);
+    const setRows = mix(sets[0].rows, sets[1].rows, second);
+    const setFrame = mix(sets[0].frame, sets[1].frame, second);
+    const setColor = mix(sets[0].color, sets[1].color, second);
     const material = veFxMaterial('VoidEmberRowBeams', { depthTest: false });
     const rowY = mix(
-        mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)),
-        mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)),
+        mix(setRows.x, setRows.y, step(0.5, row.x)),
+        mix(setRows.z, setRows.w, step(2.5, row.x)),
         step(1.5, row.x),
     );
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const used = step(0.0, rowY).mul(step(0.001, setFrame.w));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
+    const edge = mix(setFrame.x, setFrame.y, step(0.0, row.y));
     const end = step(0.0, row.y);
     const sx = mix(edge, mix(edge, end, BEAM_REACH), along);
     const thicknessPx = float(46.0);
     const sy = rowY.add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
+    const vFrame = varying(vec2(setFrame.z, setFrame.w), 'veBeamFrame');
+    const vColor = varying(setColor, 'veBeamColor');
     const vAlong = varying(along, 'veBeamT');
     material.colorNode = Fn(() => {
-        const age = u.time.sub(uniforms.frame.z);
+        const age = u.time.sub(vFrame.x);
         const head = age.div(BEAM_TRAVEL);
         const reached = step(vAlong, head);
         const dy = uv().y.sub(0.5).mul(thicknessPx);
@@ -489,21 +506,37 @@ export function createRowBeams(u) {
         const tip = exp(vAlong.sub(head).mul(vAlong.sub(head)).mul(-150.0)).mul(step(head, 1.25));
         const env = exp(max(age.sub(vAlong.mul(BEAM_TRAVEL)), 0.0).div(-BEAM_FADE)).mul(step(0.0, age));
         const k = core.add(sheath).mul(reached).mul(env).add(core.add(sheath).mul(tip).mul(2.2))
-            .mul(uniforms.frame.w)
+            .mul(vFrame.y)
             .mul(float(1.0).sub(vAlong).mul(float(1.0).sub(vAlong)));
-        const col = mix(uniforms.color, vec3(1.0, 0.95, 0.86), core.mul(0.3));
+        const col = mix(vColor, vec3(1.0, 0.95, 0.86), core.mul(0.3));
         return vec4(col.mul(k).mul(1.7).mul(u.iris), 0.0);
     })();
     const part = vePart('VoidEmberRowBeams', geometry, material, 60);
-    part.uniforms = uniforms;
+    /** The set fired last (what the world and its tests read). */
+    part.uniforms = sets[0];
+    part.sets = sets;
+    /** What is left of a set's blades at `time` (their envelope at the card's edge). */
+    const left = (set, time) => {
+        const { z: birth, w: strength } = set.frame.value;
+        const age = time - birth;
+        if (!(strength > 0)) return 0;
+        return age < 0 ? strength : strength * Math.exp(-age / BEAM_FADE);
+    };
     /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
-        uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
-        uniforms.color.value.set(rgb[0], rgb[1], rgb[2]);
+        let set = sets[0];
+        for (let i = 1; i < sets.length; i++) if (left(sets[i], time) < left(set, time)) set = sets[i];
+        set.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
+        set.frame.value.set(x0, x1, time, strength);
+        set.color.value.set(rgb[0], rgb[1], rgb[2]);
+        part.uniforms = set;
     };
     part.reset = () => {
-        uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        sets.forEach((set) => {
+            set.rows.value.set(-1, -1, -1, -1);
+            set.frame.value.set(0.4, 0.6, -100, 0);
+        });
+        part.uniforms = sets[0];
     };
     return part;
 }

@@ -17,6 +17,7 @@ import {
     dot,
     float,
     floor,
+    fract,
     length,
     max,
     min,
@@ -65,6 +66,9 @@ export const POST_LOOK = {
     },
 };
 
+/** How many times a second the tape glitch re-cuts its bands (under 3 Hz: ADR-0021). */
+export const GLITCH_CUTS = 2.5;
+
 export const BLOOM_THRESHOLD = 1.0;
 export const BLOOM_KNEE = 0.4;
 /** Tight: the neon lines glow, but the great disc no longer veils a third of the sky. */
@@ -110,6 +114,8 @@ export class NeonDuskPost {
         this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
         this.uBloomBoost = uniform(0);
         this.uGlitch = uniform(0);
+        /** The iris: it closes a little as play heats, so the neon stays saturated. */
+        this.uExposure = uniform(1);
 
         this.bloomNode = null;
         if (look.bloom) {
@@ -138,11 +144,17 @@ export class NeonDuskPost {
             const g = this.uGlitch;
             const t = this.uTime;
             const st0 = screenUV;
-            // ── Tape glitch: a few horizontal bands slip sideways for a moment ──
-            const rows = floor(st0.y.mul(28.0)).add(floor(t.mul(18.0)).mul(7.0));
+            // ── Tape glitch: a few horizontal bands slip sideways for a moment. Photosensitivity
+            // (ADR-0021): the bands are re-cut GLITCH_CUTS times a second (under 3 Hz), and each
+            // cut eases in and back out, so a band never jumps: the tape wobbles, it does not
+            // strobe. The theme scales `glitch` by flashScale() ──
+            const cut = t.mul(GLITCH_CUTS);
+            const rows = floor(st0.y.mul(28.0)).add(floor(cut).mul(7.0));
             const hit = step(float(1.0).sub(g.mul(0.35)), ndHash21(vec2(rows, 3.1)));
+            const ease = sin(fract(cut).mul(Math.PI));
             const slip = ndHash21(vec2(rows, 9.7)).sub(0.5).mul(0.05).mul(g)
-                .mul(hit);
+                .mul(hit)
+                .mul(ease);
             const st = vec2(st0.x.add(slip), st0.y);
             const centered = st.sub(0.5);
 
@@ -165,7 +177,7 @@ export class NeonDuskPost {
                 const bloomTex = this.bloomNode.getTextureNode();
                 B.assign(vec3(bloomTex.sample(st).rgb).mul(float(1.0).add(this.uBloomBoost.mul(0.35))));
             }
-            const H = S.add(B).toVar();
+            const H = S.add(B).mul(this.uExposure).toVar();
             // Mid-tone contrast before the tone map (the darks are left alone).
             const Lh = max(dot(H, LUMA), 1e-4);
             H.mulAssign(pow(Lh.div(0.2), float(0.12).mul(smoothstep(0.01, 0.07, Lh))));
@@ -200,11 +212,18 @@ export class NeonDuskPost {
         this.size = { width: 0, height: 0 };
     }
 
-    /** Per-frame uniforms (all optional). */
+    /**
+     * Per-frame uniforms (all optional). `exposure` is the iris (1 at rest); `bloomGain` scales
+     * the tier's bloom strength (1 at rest; a touch more as play heats).
+     */
     update(params) {
         if (params.time !== undefined) this.uTime.value = params.time;
         if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
         if (params.glitch !== undefined) this.uGlitch.value = params.glitch;
+        if (params.exposure !== undefined) this.uExposure.value = params.exposure;
+        if (params.bloomGain !== undefined && this.bloomNode) {
+            this.bloomNode.strength.value = this.look.bloomStrength * params.bloomGain;
+        }
     }
 
     render() {

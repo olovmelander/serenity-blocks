@@ -10,7 +10,10 @@
  *   > CLEAR > STONEFALL (hard drop) > LOCK
  *
  * T-spin, B2B, true combo, cascade depth and line count are modifiers on that one cue, never
- * separate shows. "QUAD" is the four-line clear.
+ * separate shows. "QUAD" is the four-line clear. The apex's cooldown only spaces its full
+ * entrance (the Sun Cross drawn, the stone shaken): a clear of a combo >= 10 inside it keeps its
+ * own beat and carries `apex`, so the optics FEED the Sun Cross still standing instead of
+ * answering the 11th clear of a chain like the 1st.
  *
  * Handler names (one per canonical event; `PARHELION_EVENT_HANDLERS` maps EVENTS keys to them):
  *   onPieceLock, onHardDrop, onLineClear, onCombo, onTSpin, onB2B, onPerfectClear, onLevelUp.
@@ -51,6 +54,10 @@
  *   reducedMotion  current setting, so the consumer picks the static/short form.
  *   lockCount      primary-board PIECE_LOCK count (station k = lockCount % 12).
  *   b2b            the special continues a B2B chain (an ECHO follows 0.18 s later).
+ *   apex           a clear of a live apex chain (true combo >= 10) resolved inside the apex
+ *                  cooldown: it keeps its own kind and feeds the standing Sun Cross.
+ *   crown          a PERFECT that arrived on its own (no rows this frame): the crown on the
+ *                  clear already shown (physics sends it ~360 ms after the last wave).
  *   echoOf         for ECHO: the CUE kind it repeats; CUE.NONE otherwise.
  *
  * Allocation discipline: handlers and update() create no objects, arrays or closures. The one
@@ -74,10 +81,17 @@ export const PARHELION_ECHO_STRENGTH = 0.5;
 export const PARHELION_APEX_COMBO = 10;
 export const PARHELION_APEX_COOLDOWN = 6;
 export const PARHELION_FULL_CIRCLE_LOCKS = 12;
+/**
+ * Resonance easing (half-lives, s) and how long it holds after a chain's latest clear while the
+ * chain lives (hands at rest: the world breathes back). A lock that clears nothing breaks the
+ * chain and the fall begins at once.
+ */
 export const PARHELION_RESONANCE = Object.freeze({
     rise: 0.28,
     fall: 0.85,
-    hold: 1.65,
+    hold: 3.5,
+    /** A perfect clear resolves the chain: it holds through the reveal, then lets go. */
+    crown: 1.2,
 });
 /** Reduced motion caps the reaction intensity (§7.6). */
 export const PARHELION_REDUCED_MOTION_INTENSITY = 0.45;
@@ -92,8 +106,9 @@ const HALF_LIFE_FACTOR = Math.log(2);
 const STONEFALL_BASE = 0.4;
 const STONEFALL_RANGE = 0.25;
 const STONEFALL_ROWS = 18;
-const CASCADE_DEPTH_STEP = 0.05;
-const CASCADE_DEPTH_MAX = 3;
+// Each cascade wave builds on the last: +0.06 a wave, up to the tenth.
+const CASCADE_DEPTH_STEP = 0.06;
+const CASCADE_DEPTH_MAX = 10;
 
 const EMPTY_PAYLOAD = Object.freeze({});
 
@@ -244,6 +259,8 @@ function createCue() {
         reducedMotion: false,
         lockCount: 0,
         b2b: false,
+        apex: false,
+        crown: false,
         echoOf: CUE.NONE,
     };
 }
@@ -688,6 +705,11 @@ export class ReactionDirector {
         if (kind !== CUE.NONE) {
             const special = kind === CUE.QUAD || kind === CUE.TSPIN || kind === CUE.APEX;
             const echo = special && slot.b2b;
+            // Inside the apex cooldown a chain past ten is not dropped back to a plain beat: the
+            // clear keeps its own beat and feeds the Sun Cross still standing.
+            this.cue.apex = lines > 0 && combo >= PARHELION_APEX_COMBO
+                && kind !== CUE.APEX && kind !== CUE.PERFECT;
+            this.cue.crown = kind === CUE.PERFECT && lines === 0;
             this._emit(slot, kind, strength * this.gain, lines, combo, echo);
             if (echo) this._scheduleEcho(kind);
             const quiet = kind === CUE.LOCK || kind === CUE.STONEFALL;
@@ -698,9 +720,16 @@ export class ReactionDirector {
         }
 
         if (lines > 0) {
+            // The chain lives: its resonance holds until it breaks (or the hands rest).
             slot.resTarget = clamp01(combo / PARHELION_APEX_COMBO);
             slot.resHold = PARHELION_RESONANCE.hold;
+        } else if (slot.lockTicks > 0 && !slot.perfect) {
+            // A lock that cleared nothing: the chain is broken, its resonance eases out now.
+            slot.resTarget = 0;
+            slot.resHold = 0;
         }
+        // A perfect clear is the chain's release: the Clear Sky carries it, then it lets go.
+        if (slot.perfect && slot.resHold > 0) slot.resHold = Math.min(slot.resHold, PARHELION_RESONANCE.crown);
         if (slot.level > 0) this._callSink('levelUp', slot.level);
         clearPending(slot);
     }
@@ -785,6 +814,8 @@ export class ReactionDirector {
             c.reducedMotion = this.reducedMotion;
             c.lockCount = this.lockCount;
             c.b2b = false;
+            c.apex = false;
+            c.crown = false;
             c.echoOf = this.echoKind[index];
             this.echoHead = (this.echoHead + 1) % PARHELION_ECHO_CAPACITY;
             this.echoCount -= 1;
@@ -793,10 +824,11 @@ export class ReactionDirector {
     }
 
     /**
-     * r = clamp(trueCombo / 10), eased by half-life (rise 0.28 s, fall 0.85 s) and held 1.65 s
-     * after each clear. The shared halo follows the strongest player. r is a tier signal (the
-     * §7.4 thresholds sit at combo 2/4/7), so it is not scaled by intensity; the consumer applies
-     * intensity to the gains it drives.
+     * r = clamp(trueCombo / 10), eased by half-life (rise 0.28 s, fall 0.85 s), held while the
+     * chain lives (a lock that clears nothing breaks it) and at most 3.5 s after its latest
+     * clear, so a chain with slow clears builds instead of pumping. The shared halo follows the
+     * strongest player. r is a tier signal, so it is not scaled by intensity; the consumer
+     * applies intensity to the gains it drives.
      */
     _updateResonance(delta) {
         let target = 0;

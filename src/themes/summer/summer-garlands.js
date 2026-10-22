@@ -106,10 +106,13 @@ export class SummerGarlands {
         this.uBoard.value.set(centre.x, centre.y, centre.z, Number.isFinite(height) ? height : 3.4);
     }
 
-    update(frame = {}) {
+    /** `worn` (SummerWorld.wear): in a fever the silk glows as if lit from within. */
+    update(frame = {}, worn = null) {
         const level = Number.isFinite(frame.ribbons) ? THREE.MathUtils.clamp(frame.ribbons, 0, 1) : 0;
         this.uLevel.value = level;
-        this.uHeat.value = Number.isFinite(frame.heat) ? THREE.MathUtils.clamp(frame.heat, 0, 1) : 0;
+        const heat = Number.isFinite(frame.heat) ? THREE.MathUtils.clamp(frame.heat, 0, 1) : 0;
+        const fever = worn && Number.isFinite(worn.fever) ? THREE.MathUtils.clamp(worn.fever, 0, 1) : 0;
+        this.uHeat.value = Math.max(heat, fever * 0.5);
         if (this.warmFrames > 0) this.warmFrames -= 1;
         // Also for as long as the theme builds hidden behind the one playing (`warming`, set by it):
         // that build is budgeted per frame and can reach the ribbons after their first frames,

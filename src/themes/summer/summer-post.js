@@ -20,9 +20,15 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
 import { bilateralBlur } from 'three/addons/tsl/display/BilateralBlurNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { summerTier } from './summer-quality.js';
 
 const BLOOM_STRENGTH = 0.2;
+/** The sun's volumes at rest (per hundred metres of lit air), and their ceiling. */
+const GODRAYS_DENSITY = 0.08;
+const GODRAYS_MAX = 0.34;
+/** The grade's saturation at rest; play richens it (update()). */
+const SATURATION = 1.14;
 
 export class SummerPost {
     constructor({
@@ -43,6 +49,7 @@ export class SummerPost {
         this.exposure = 0.8;
         this.uExposure = uniform(0.8);
         this.uShafts = uniform(1);
+        this.uSaturation = uniform(SATURATION);
         this.uSunScreen = uniform(new THREE.Vector2(0.35, 0.3));
         this.sunPoint = new THREE.Vector3();
         if (this.disabled) return;
@@ -56,8 +63,8 @@ export class SummerPost {
             this.godraysNode = godrays(sceneDepth, camera, light.sun);
             this.godraysNode.raymarchSteps.value = this.tier.godrays;
             // Density is per hundred metres of lit air; the shadow box here is hundreds of metres deep.
-            this.godraysNode.density.value = 0.08;
-            this.godraysNode.maxDensity.value = 0.34;
+            this.godraysNode.density.value = GODRAYS_DENSITY;
+            this.godraysNode.maxDensity.value = GODRAYS_MAX;
             this.godraysNode.distanceAttenuation.value = 0;
             this.godraysNode.resolutionScale = this.tier.godraysScale;
             // The blur ping-pongs its input texture, so hand it the pass texture itself.
@@ -86,7 +93,7 @@ export class SummerPost {
             // Shadows lean a little toward blue, so the warm light has something to stand against.
             const shade = float(1).sub(smoothstep(0.02, 0.4, luma));
             toned.mulAssign(mix(vec3(1), vec3(0.95, 0.99, 1.06), shade.mul(0.5)));
-            toned.assign(mix(vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))), toned, 1.14));
+            toned.assign(mix(vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))), toned, this.uSaturation));
             const radius = length(screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1)).mul(2));
             toned.mulAssign(float(1).sub(smoothstep(0.78, 1.75, radius).mul(0.2)));
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
@@ -119,12 +126,34 @@ export class SummerPost {
         }
     }
 
+    /**
+     * One frame of the lens. The event envelopes lift exposure, bloom and the shafts for a moment,
+     * and a sunburst (a quad, a back-to-back, the perfect clear's crown) floods the shafts:
+     * frame-wide brightenings, so each goes through flashScale() (ADR-0021). How hot play runs
+     * (`surge`: level, fever) thickens the sun's volumes and richens the colour, and closes the
+     * iris a little, so the gold of a fever stays saturated instead of washing pale.
+     */
     update(frame = {}) {
-        const warmth = Number.isFinite(frame.warmth) ? THREE.MathUtils.clamp(frame.warmth, 0, 1) : 0;
-        const shafts = Number.isFinite(frame.shafts) ? THREE.MathUtils.clamp(frame.shafts, 0, 1) : 0;
-        this.uExposure.value = this.exposure * (this.light?.hour?.exposure ?? 1) + warmth * 0.04;
-        this.uShafts.value = 1 + shafts * 0.6;
-        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + warmth * 0.07;
+        const unit = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
+        const warmth = unit(frame.warmth);
+        const shafts = unit(frame.shafts);
+        const surge = frame.surge && typeof frame.surge === 'object' ? frame.surge : null;
+        const level = unit(surge?.level);
+        const fever = unit(surge?.fever);
+        const sunburst = unit(frame.sunburst);
+        const flash = flashScale();
+        this.uExposure.value = this.exposure * (this.light?.hour?.exposure ?? 1) + warmth * 0.04 * flash
+            - Math.max(0, level - 0.25) * 0.08 - fever * 0.05;
+        // The shafts' floor rises with play; the sunburst floods them for its moment.
+        const lit = shafts + (1 - shafts) * (level * 0.2 + fever * 0.35);
+        this.uShafts.value = 1 + (lit * 0.6 + sunburst * 0.55) * flash;
+        this.uSaturation.value = SATURATION + level * 0.05 + fever * 0.07;
+        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + warmth * 0.07 * flash;
+        if (this.godraysNode) {
+            // The sun pours in: its shafts thicken with the heat, the most in a fever.
+            this.godraysNode.density.value = GODRAYS_DENSITY + level * 0.02 + fever * 0.05 + sunburst * 0.03 * flash;
+            this.godraysNode.maxDensity.value = GODRAYS_MAX + level * 0.05 + fever * 0.14 + sunburst * 0.08 * flash;
+        }
         if (this.light && this.camera?.isCamera) {
             // Screen position of the sun (uv, y down) for the shaft tint.
             const point = this.sunPoint.copy(this.camera.position)

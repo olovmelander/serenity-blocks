@@ -12,7 +12,7 @@ import {
     FOX_FIRE, bakeNoise, createNoiseTexture, createShadowTexture, createWinterUniforms,
 } from '../../src/themes/winter/winter-tsl.js';
 import {
-    BEAM_ROWS, SPARK_DRAG, SPARK_HANG, createPrints, createRowBeams, createSparks, sparkPoint,
+    BEAM_ROWS, BEAM_SETS, SPARK_DRAG, SPARK_HANG, createPrints, createRowBeams, createSparks, sparkPoint,
 } from '../../src/themes/winter/winter-fx.js';
 
 /** The shared uniforms, made as WinterWorld.build() makes them. */
@@ -256,7 +256,10 @@ describe('winter fox fires: the pool', () => {
 
     it('goes round its pool as a ring and never grows', () => {
         const birth = data(sparks, 'aBirth');
-        const quiet = { from: [0, 1, -5], rgb: [1, 1, 1], stagger: 0 };
+        // (All of one life: none is nearer its end than another, so the ring decides.)
+        const quiet = {
+            from: [0, 1, -5], rgb: [1, 1, 1], stagger: 0, life: [3, 3],
+        };
         expect(sparks.emit({ ...quiet, n: COUNT - 3, time: 1 })).toBe(COUNT - 3);
         expect(sparks.emit({ ...quiet, n: 8, time: 2 })).toBe(8);
         // The last three slots, then round to the first five.
@@ -271,6 +274,35 @@ describe('winter fox fires: the pool', () => {
         expect(sparks.count).toBe(COUNT);
         expect(sparks.geometry.instanceCount).toBe(COUNT);
         expect(sparks.geometry.getAttribute('aBirth').count).toBe(COUNT);
+    });
+
+    it('never cuts a spark still climbing while one a little further round is spent', () => {
+        const birth = data(sparks, 'aBirth');
+        const life = data(sparks, 'aVel');
+        // The pool full: long-lived sparks, with a run of short-lived flashes among them.
+        sparks.emit({
+            from: [0, 1, -5], n: 10, time: 1, stagger: 0, life: [4, 4],
+        });
+        sparks.emit({
+            from: [0, 1, -5], n: 4, time: 1, stagger: 0, life: [0.3, 0.3],
+        });
+        sparks.emit({
+            from: [0, 1, -5], n: COUNT - 14, time: 1, stagger: 0, life: [4, 4],
+        });
+        // Two seconds on, the cursor is back at slot 0 (still climbing) and the flashes are spent:
+        // the next four go where the flashes were.
+        sparks.emit({
+            from: [0, 1, -5], n: 4, time: 3, stagger: 0, life: [4, 4],
+        });
+        for (const i of [10, 11, 12, 13]) expect(birth[i * 4 + 3], `slot ${i}`).toBe(3);
+        for (const i of [0, 1, 2, 3, 9, 14]) expect(birth[i * 4 + 3], `slot ${i}`).toBe(1);
+        // With nothing spent the one nearest its end goes first: here the oldest, the ring's next.
+        sparks.emit({
+            from: [0, 1, -5], n: 1, time: 3.5, stagger: 0, life: [4, 4],
+        });
+        expect(birth[14 * 4 + 3]).toBe(3.5);
+        expect(life[14 * 4 + 3]).toBe(4);
+        expect(sparks.count).toBe(COUNT);
     });
 
     it('may be thrown a moment ahead, each spark at or after that moment', () => {
@@ -315,14 +347,22 @@ describe('winter row beams', () => {
     });
     afterAll(() => release(beams));
 
-    it('is two strips a row, dark until fired', () => {
+    it('is two strips a row, in sets that can fly at once, dark until fired', () => {
         const { frame } = beams.uniforms;
-        expect(beams.geometry.instanceCount).toBe(BEAM_ROWS * 2);
+        expect(BEAM_SETS).toBeGreaterThan(1);
+        expect(beams.geometry.instanceCount).toBe(BEAM_ROWS * 2 * BEAM_SETS);
         const strips = data(beams, 'aRow');
-        for (let i = 0; i < BEAM_ROWS * 2; i++) {
-            expect(strips[i * 2]).toBe(Math.floor(i / 2));
-            expect(strips[i * 2 + 1]).toBe(i % 2 ? 1 : -1);
+        for (let i = 0; i < BEAM_ROWS * 2 * BEAM_SETS; i++) {
+            const k = i % (BEAM_ROWS * 2);
+            expect(strips[i * 3]).toBe(Math.floor(k / 2));
+            expect(strips[i * 3 + 1]).toBe(k % 2 ? 1 : -1);
+            expect(strips[i * 3 + 2]).toBe(Math.floor(i / (BEAM_ROWS * 2)));
         }
+        expect(beams.sets).toHaveLength(BEAM_SETS);
+        beams.sets.forEach((set) => {
+            expect(set.frame.value.w).toBe(0);
+            expect(set.frame.value.z).toBeLessThan(0);
+        });
         expect(frame.value.w).toBe(0);
         expect(frame.value.z).toBeLessThan(0);
         // Drawn over the scene in screen space: no depth test, nothing written to depth.
@@ -332,21 +372,31 @@ describe('winter row beams', () => {
     });
 
     it('fires the rows it is given from the card\'s edges and parks again', () => {
-        const { rows, frame, color } = beams.uniforms;
+        // (`uniforms` names the set fired last.)
+        const fired = () => beams.uniforms;
         beams.fire([0.7, 0.66], 0.41, 0.59, [1, 0.8, 0.5], 12, 0.9);
-        expect(rows.value.toArray()).toEqual([0.7, 0.66, -1, -1]);
-        expect(frame.value.toArray()).toEqual([0.41, 0.59, 12, 0.9]);
-        expect(color.value.toArray()).toEqual([1, 0.8, 0.5]);
+        expect(fired().rows.value.toArray()).toEqual([0.7, 0.66, -1, -1]);
+        expect(fired().frame.value.toArray()).toEqual([0.41, 0.59, 12, 0.9]);
+        expect(fired().color.value.toArray()).toEqual([1, 0.8, 0.5]);
+        const first = fired().frame;
         // Four rows at most; full strength unless told.
         beams.fire([0.8, 0.76, 0.72, 0.68, 0.64], 0.3, 0.7, [0.5, 0.5, 1], 13);
-        expect(rows.value.toArray()).toEqual([0.8, 0.76, 0.72, 0.68]);
-        expect(frame.value.toArray()).toEqual([0.3, 0.7, 13, 1]);
-        expect(color.value.toArray()).toEqual([0.5, 0.5, 1]);
+        expect(fired().rows.value.toArray()).toEqual([0.8, 0.76, 0.72, 0.68]);
+        expect(fired().frame.value.toArray()).toEqual([0.3, 0.7, 13, 1]);
+        expect(fired().color.value.toArray()).toEqual([0.5, 0.5, 1]);
+        // A second clear while the first's blades fly fires the other set: the first's are untouched.
+        expect(fired().frame).not.toBe(first);
+        expect(first.value.toArray()).toEqual([0.41, 0.59, 12, 0.9]);
+        // A third takes the set that went out longest ago.
         beams.fire([0.5], 0.3, 0.7, [1, 1, 1], 14);
-        expect(rows.value.toArray()).toEqual([0.5, -1, -1, -1]);
+        expect(fired().frame).toBe(first);
+        expect(fired().rows.value.toArray()).toEqual([0.5, -1, -1, -1]);
         beams.reset();
-        expect(frame.value.w).toBe(0);
-        expect(frame.value.z).toBeLessThan(0);
+        beams.sets.forEach((set) => {
+            expect(set.frame.value.w).toBe(0);
+            expect(set.frame.value.z).toBeLessThan(0);
+        });
+        expect(fired().frame.value.w).toBe(0);
     });
 });
 

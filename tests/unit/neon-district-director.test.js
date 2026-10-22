@@ -129,6 +129,38 @@ describe('neon district director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('crowns a perfect clear that comes a frame after its clear, never replaying the clear', () => {
+        const { director, calls, sink } = makeDirector();
+        const perfect = [];
+        const spins = [];
+        sink.perfect = (c) => perfect.push({ ...c, rows: [...c.rows] });
+        sink.spin = (c) => spins.push({ ...c });
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // Physics sends PERFECT_CLEAR once the last wave has settled, in a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(perfect).toHaveLength(1);
+        expect(perfect[0]).toMatchObject({ lines: 0, perfect: true, combo: 1 });
+        // A T-spin that clears nothing still reaches the sink, beside its lock.
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(spins).toEqual([{ player: 0 }]);
+        expect(calls.clear).toHaveLength(1);
+    });
+
+    it('still answers a lone perfect clear as a clear for a sink that knows no crowns', () => {
+        const { director, calls } = makeDirector();
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);

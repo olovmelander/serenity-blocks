@@ -112,6 +112,10 @@ function problemsOf({
         if (/\bNaN\b|\bInfinity\b/.test(code)) problems.push(`${name}, ${label} ${stage}: a NaN or Infinity literal`);
         if (/object Object/.test(code)) problems.push(`${name}, ${label} ${stage}: a node was stringified`);
     }
+    // WebGPU passes at most 16 locations between the stages (maxInterStageShaderVariables): a
+    // vertex stage that hands on more fails its pipeline on the device, not in the builder.
+    const varyings = new Set(`${out.vertex}`.match(/nodeVarying\d+/g) || []).size;
+    if (label === 'WGSL' && varyings > 15) problems.push(`${name}, ${label}: ${varyings} varyings, over 15`);
     if (/mx_\w+/.test(`${out.vertex}${out.fragment}`)) problems.push(`${name}, ${label}: MaterialX noise`);
     return problems;
 }

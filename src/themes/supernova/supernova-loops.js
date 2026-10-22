@@ -211,6 +211,27 @@ export function createLoops(u, slots = LOOP_SLOTS) {
         }
         touch();
     };
+    /**
+     * Every arch standing at `time` lives out the rest of its life within `within` seconds: it
+     * sags and rains back as it would have, only sooner (a detonation tears them off the star
+     * instead of wiping them in one frame). One not yet risen never rises.
+     */
+    part.retire = (time, within = 0.6) => {
+        let changed = false;
+        for (let i = 0; i < count; i++) {
+            const birth = aFoot[i * 4 + 3];
+            const life = aMisc[i * 4 + 2];
+            if (birth > time) {
+                aFoot[i * 4 + 3] = -100;
+                aMisc[i * 4 + 2] = LOOP_LIFE;
+                changed = true;
+            } else if (birth + life > time) {
+                aMisc[i * 4 + 2] = Math.min(life, time - birth + within);
+                changed = true;
+            }
+        }
+        if (changed) touch();
+    };
     /** How many arches are standing at `time`. */
     part.standing = (time) => {
         let n = 0;

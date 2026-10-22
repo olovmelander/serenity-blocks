@@ -39,9 +39,14 @@ export const BAND_EDGE_WANDER = 0.7;
 /** Gameplay slots evaluated by the materials. */
 export const PULSE_SLOTS = 6;
 export const STRIKE_SLOTS = 6;
-export const CLEAR_SLOTS = 2;
-/** Sparks in flight at once (a lock throws one, a hard drop three). */
-export const WISP_SLOTS = 8;
+/**
+ * Clear waves on the wall at once. A cascade sends a wave every 0.36 s and each runs down the wall
+ * for 1.9 s, so six let every wave of the deepest cascade finish its run before its slot is
+ * taken (the weakest goes first, never the newest). The shaders skip a slot whose wave is over.
+ */
+export const CLEAR_SLOTS = 6;
+/** Sparks in flight at once (a lock throws one, a hard drop three: a quick hand keeps nine up). */
+export const WISP_SLOTS = 12;
 /** Motes in one spark's tail. */
 export const WISP_TAIL = 28;
 
@@ -390,3 +395,23 @@ export const mineralDrift = (time) => {
 
 /** The colour a four-line clear fires in. */
 export const GEODEFIRE = Object.freeze([1.0, 0.9, 0.72]);
+
+/** The colour a perfect clear rings every bell in: fire opal. */
+export const FIRE_OPAL = Object.freeze([1.0, 0.36, 0.1]);
+
+/** Seconds a clear wave stays on the wall (the shaders skip its slot after). */
+export const CLEAR_LIVE = 7.5;
+
+/**
+ * What is left of a clear wave born at `birth` with `strength`, at `now`: the whole strength
+ * until it leaves the heart (a four-line clear's waits out the hush), most of it while its fronts
+ * are still running down the wall (a little less the further they have run), then its afterglow.
+ * The slot with the least left is the one a new wave takes.
+ */
+export function clearEnergy(birth, strength, now) {
+    const age = now - birth;
+    if (!(strength > 0) || age >= CLEAR_LIVE) return 0;
+    if (age <= 0) return strength;
+    if (age < CLEAR_TRAVEL) return strength * (1 - (0.25 * age) / CLEAR_TRAVEL);
+    return strength * 0.75 * Math.exp(-(age - CLEAR_TRAVEL) / CLEAR_AFTERGLOW);
+}

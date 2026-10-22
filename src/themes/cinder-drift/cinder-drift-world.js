@@ -23,6 +23,17 @@
  *            the whole fissure stands up as a curtain of fire, bombs of lava arc across the
  *            chamber and melt the crust where they land, and the lake stands open and white.
  *
+ * It BUILDS (src/themes/shared/gameplay-surge.js): every envelope an event lights adds to what is
+ * still lit, so a single after a quad never cuts its light and a cascade's waves land on top of
+ * one another, deeper and whiter each; and the chamber remembers how hot play runs. Warm, the
+ * lava climbs the seams between the columns and the fall runs harder; hot, a hem of flame stands
+ * along the fissure between clears, the cliffs crack and pour, fire drips from the roof; in a
+ * fever the whole fissure burns, every pipe in the roof rains fire, the seams are lava to the
+ * knees and the lake's heart runs white. A quad mid-fever only inhales; a back-to-back answers
+ * in the rock (the seams flood, a shock rings through the columns); a perfect clear crowns the
+ * clear still playing (the crust lifts, the cliffs all pour). When the hands rest it breathes
+ * back to calm.
+ *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
  */
@@ -31,7 +42,9 @@ import * as THREE from 'three/webgpu';
 import {
     BOMB_SLOTS,
     CINDER_PALETTES,
+    CLEAR_AFTERGLOW,
     CLEAR_SLOTS,
+    CLEAR_TRAVEL,
     CURTAIN_LIFE,
     DEG,
     DRIFT_DIR,
@@ -44,6 +57,7 @@ import {
     NOISE_SIZE,
     PALETTE_KEYS,
     PLATE_SIZE,
+    RING_FADE,
     RING_SLOTS,
     STREAM_SLOTS,
     WHITE_HEAT,
@@ -61,10 +75,15 @@ import {
     pieceColor,
     powerForCombo,
     rigForAspect,
+    smooth,
     uploadHeat,
 } from './cinder-drift-tsl.js';
 import { HeatField } from './cinder-drift-heat.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import {
+    GameplaySurge, SURGE_WEIGHTS, Swell, softCeiling,
+} from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     buildPlan, PLAN_SEED, planFromData, SHORE_SIZE,
 } from './cinder-drift-layout.js';
@@ -185,7 +204,70 @@ export class CinderDriftWorld {
         this._post = {
             heart: this.heart, flash: 0, kick: 0, shafts: 0.25, bloomBoost: 0, exposure: 1, haze: 1, horizon: 0.56,
         };
+        /**
+         * Every envelope an event lights ADDS to what is still lit (shared/swell.js): a weak hit
+         * after a strong one never cuts the light, and rapid hits ride up to a plateau.
+         *   surge     the overdrive after a four-line clear (a second quad adds to the first)
+         *   flash, kick, shake   the post's lift, the lens's punch, the chamber's shaking
+         *   dip       the breath the chamber lets go when a chain breaks (a sag, not a drop)
+         *   quadCurtain, curtain   the fountains' light: a curtain of fire, a smaller clear's
+         *   swell     the shafts' and the iris's answer to a clear
+         *   whirl     how far T-spins have turned the crust (they add up, one way per turn)
+         *   carry     the afterglow of clear waves whose slots newer waves took
+         *   b2b       a back-to-back streak: the rock's answer
+         *   crown     a perfect clear's crown
+         */
+        this.swells = {
+            surge: new Swell({ release: SURGE_COOL, ceiling: 1.6, knee: 1.05 }),
+            flash: new Swell({ release: 0.25, ceiling: 0.6, knee: 0.35 }),
+            kick: new Swell({ release: 0.16, ceiling: 1.2, knee: 0.8 }),
+            shake: new Swell({ release: 0.3, ceiling: 1.2, knee: 0.75 }),
+            dip: new Swell({
+                attack: 0.12, release: 0.6, ceiling: 0.4, knee: 0.3,
+            }),
+            quadCurtain: new Swell({ release: CURTAIN_LIFE * 0.75 }),
+            curtain: new Swell({ release: FOUNTAIN_LIFE }),
+            swell: new Swell({ release: 0.7, ceiling: 1, knee: 0.6 }),
+            whirl: new Swell({
+                attack: 0.18, release: 1.7, ceiling: 3.6, knee: 2.4,
+            }),
+            carry: new Swell({ release: CLEAR_AFTERGLOW, ceiling: 2, knee: 1.4 }),
+            b2b: new Swell({ release: 6, ceiling: 1.4, knee: 1 }),
+            crown: new Swell({
+                attack: 0.15, release: 3, ceiling: 1.3, knee: 1,
+            }),
+        };
+        /** How hot play runs (shared/gameplay-surge.js), and its reading as of the last frame. */
+        this.gameplay = new GameplaySurge();
+        this.play = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
         this.resetState(0);
+    }
+
+    /** The overdrive after a four-line clear (0 at rest; a quad 1, more on a perfect or a second quad). */
+    get surge() {
+        return this.swells.surge.valueAt(this.time);
+    }
+
+    /** The post's lift. */
+    get flash() {
+        return this.swells.flash.valueAt(this.time);
+    }
+
+    /** The lens's punch (fov, fringe). */
+    get kick() {
+        return this.swells.kick.valueAt(this.time);
+    }
+
+    /** The chamber's shaking: the strikes', plus the fever's low tremor. */
+    get shake() {
+        return this.swells.shake.valueAt(this.time) + this.tremor;
+    }
+
+    /** How far the chamber has let its breath go after a chain broke. */
+    get dip() {
+        return this.swells.dip.valueAt(this.time);
     }
 
     /** Everything the choreography remembers. */
@@ -193,29 +275,33 @@ export class CinderDriftWorld {
         this.time = time;
         this.combo = 0;
         this.power = 0;
-        this.surge = 0;
         this.storm = 0;
         this.level = 1;
         this.paletteIndex = 0;
-        this.flash = 0;
-        this.kick = 0;
-        this.shake = 0;
-        this.dip = 0;
+        this.tremor = 0;
         this.breath = 1;
         this.fissures = 0;
         this.fissuresOpen = 0;
         this.fallGain = 1;
         this.curtain = 0;
-        this.curtainTau = 1;
+        this.rise = 0;
+        this.rain = 0.1;
         this.hushUntil = -1;
-        this.ringCursor = 0;
-        this.clearCursor = 0;
-        this.lastClear = { time: -100, lines: 0 };
-        this.pendingKick = { time: Infinity, amount: 0 };
+        this.hushDepth = 1;
+        /** The way T-spins turn the crust: kept while it turns, changed for a fresh turn. */
+        this.whirlSign = -1;
+        this.b2bStreak = 0;
+        /** The clear slot the newest wave took. */
+        this.clearSlot = 0;
+        Object.values(this.swells).forEach((swell) => swell.reset());
+        this.gameplay.reset();
+        Object.assign(this.play, {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        });
         /** Pools still to be melted into the lake's memory: bombs landing, fountains standing. */
         this.pending = [];
         this.counts = {
-            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0,
+            locks: 0, clears: 0, quads: 0, fountains: 0, bombs: 0, crowns: 0, tspins: 0, b2b: 0,
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.35 : 1;
@@ -229,14 +315,20 @@ export class CinderDriftWorld {
         this.heat.reset(time);
         this.falls?.reset();
         this.spatter?.reset();
+        if (this.spatter) this.spatter.clock = time;
         this.bombs?.reset();
         this.flashes?.reset();
         this.jets?.reset();
         if (this.u) {
             for (let i = 0; i < RING_SLOTS; i++) this.u.ringA[i].value.set(0, 0, -100, 0);
-            for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
+            for (let i = 0; i < CLEAR_SLOTS; i++) {
+                this.u.clearA[i].value.set(-100, 1, 0, 0);
+                this.u.clearC[i].value.set(1, 1, 1);
+            }
             this.u.shock.value.set(-100, 0);
             this.u.whirl.value.set(0, 0, -100, 0);
+            this.u.rise.value = 0;
+            this.u.clearCarry.value = 0;
         }
     }
 
@@ -468,11 +560,24 @@ export class CinderDriftWorld {
 
     // ── The lake ────────────────────────────────────────────────────────────────
 
-    /** Send a ring out through the crust from (x, z) at `time`; `reach` is a fraction of RING_REACH. */
+    /**
+     * Send a ring out through the crust from (x, z) at `time`; `reach` is a fraction of RING_REACH.
+     * It takes the slot with the least ring left in it (a spent one, else the faintest, the
+     * oldest of equals): a volley of bomb rings never cuts off a lock's ring still running.
+     */
     ring(x, z, time, strength, rgb, reach = 1) {
         if (!this.u) return;
-        const slot = this.ringCursor % RING_SLOTS;
-        this.ringCursor += 1;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < RING_SLOTS; i++) {
+            const A = this.u.ringA[i].value;
+            const age = this.time - A.z;
+            const left = A.w <= 0 || age > RING_LIVE ? -1 : A.w * Math.exp(-Math.max(0, age) * RING_FADE);
+            if (left < least || (left === least && A.z < this.u.ringA[slot].value.z)) {
+                least = left;
+                slot = i;
+            }
+        }
         this.u.ringA[slot].value.set(x, z, time, strength);
         this.u.ringC[slot].value.set(rgb[0], rgb[1], rgb[2], reach);
     }
@@ -492,7 +597,7 @@ export class CinderDriftWorld {
             this.pending.push({
                 time, x, z, radius, amount, land,
             });
-        }
+        } else this.melt(x, z, radius, amount); // (a full queue melts it early, never drops it)
     }
 
     /** A staged pool's moment has come. (Rings, flashes and drops are taken now, not when staged:
@@ -575,10 +680,13 @@ export class CinderDriftWorld {
         // drawn smaller: it must not fill the frame.
         const eye = this._camera?.position;
         const near = Math.max(0.42, Math.min(1, (eye ? Math.hypot(x - eye.x, z - eye.z) : 12) / 12));
+        // The quicker the hand, the harder each piece strikes: a bigger crown, a further ring.
+        const pace = 1 + this.play.level * 0.45 + this.play.fever * 0.25;
 
         // ── The lake takes the piece's heat ──
         const glowRgb = rgb.map((c, i) => c * 0.2 + [1, 0.4, 0.09][i] * 0.8);
-        this.ring(x, z, this.time, (hard ? 1.3 : 0.85) * (0.5 + 0.5 * near), glowRgb, hard ? 1 : 0.72);
+        const ringStrength = (hard ? 1.3 : 0.85) * (0.5 + 0.5 * near) * Math.sqrt(pace);
+        this.ring(x, z, this.time, ringStrength, glowRgb, hard ? 1 : 0.72);
         this.melt(x, z, (hard ? 2.3 : 1.7) * (0.55 + 0.45 * near), hard ? 1.6 : 1.25);
         // The strike: a burst of light, a jet of lava thrown straight up, and a crown of drops
         // with a breath of the piece's colour in it.
@@ -597,14 +705,14 @@ export class CinderDriftWorld {
             z,
             time: this.time,
             life: hard ? 0.5 : 0.36,
-            height: (hard ? 2.9 : 1.7) * near,
+            height: (hard ? 2.9 : 1.7) * near * pace,
             width: (hard ? 0.6 : 0.42) * near,
         });
         this.spatter.emit({
             x,
             y: 0.15,
             z,
-            n: this.drops(hard ? 150 : 64),
+            n: this.drops((hard ? 150 : 64) * pace),
             rgb: tint,
             time: this.time,
             out: [0.6 * near, (hard ? 5.8 : 3.4) * near],
@@ -638,35 +746,120 @@ export class CinderDriftWorld {
                 aim: [this._right.x * side, this._right.z * side],
             });
         }
-        this.kick = Math.max(this.kick, hard ? 0.55 : 0.1);
-        this.flash = Math.max(this.flash, hard ? 0.1 : 0.02);
-        if (hard) this.shake = Math.max(this.shake, 0.55);
+        // (Each strike adds to the punch still in the lens: rapid drops ride on a floor.)
+        const S = this.swells;
+        S.kick.hit(hard ? 0.5 : 0.1, this.time);
+        S.flash.hit(hard ? 0.08 : 0.02, this.time);
+        if (hard) S.shake.hit(0.45, this.time);
+        this.gameplay.lock({ hardDrop: hard === 1 }, this.time);
         this.counts.locks += 1;
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`. (The true combo arrives through onCombo.)
+     * How deep a four-line clear's hush goes: all the way from cold, the shallower the hotter play
+     * already runs and the more overdrive is still burning (a quad mid-fever only inhales: it
+     * never blacks the chamber out), held back under Reduce flashing (a frame-wide sink and
+     * re-light is a flash, ADR-0021).
+     */
+    hushDepthNow() {
+        const level = this.gameplay.level.valueAt(this.time);
+        const cold = clamp01(1 - level * 1.15 - this.gameplay.fever * 0.4 - Math.min(1, this.surge) * 0.3);
+        return Math.max(0.12, cold) * flashScale();
+    }
+
+    /**
+     * The clear slot a new wave takes: an empty one, else the one with the least light left (its
+     * fronts long gone by, its afterglow faint). What that one still held is carried on as a glow
+     * that fades as it would have, so the chamber's light never drops when a wave is replaced.
+     */
+    takeClearSlot(time) {
+        const { clearA } = this.u;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < CLEAR_SLOTS; i++) {
+            const A = clearA[i].value;
+            const age = time - A.x;
+            const left = A.z <= 0 || age > CLEAR_LIVE
+                ? -1
+                : A.z * Math.exp(-Math.max(0, age - CLEAR_TRAVEL) / CLEAR_AFTERGLOW);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        if (least > 0) {
+            const A = clearA[slot].value;
+            // (Its afterglow as it stands part-way out: younger far away, older at the heart.)
+            const age = Math.max(0, time - A.x - CLEAR_TRAVEL * 0.4);
+            this.swells.carry.hit(A.z * Math.exp(-age / CLEAR_AFTERGLOW), time);
+        }
+        this.clearSlot = slot;
+        return slot;
+    }
+
+    /**
+     * A shock through the rock from the wave's heart, born at `birth`. A shock still running
+     * stronger than the new one keeps its front and takes the new one's strength into it; a
+     * stronger new one starts its own front with what the old one still had.
+     */
+    shockAt(birth, amount) {
+        if (!this.u) return;
+        const s = this.u.shock.value;
+        const gone = Math.max(0, birth - s.x);
+        const left = s.y * Math.exp(-gone / 1.1);
+        if (left >= amount) s.y = Math.min(1.8, (left + amount * 0.5) * Math.exp(gone / 1.1));
+        else s.set(birth, Math.min(1.8, amount + left * 0.5));
+    }
+
+    /** Turn the crust round (x, z): a fresh turn may go either way; one still turning keeps its way. */
+    twist(x, z, amount) {
+        const { whirl } = this.swells;
+        if (whirl.valueAt(this.time) < 0.05) this.whirlSign = -this.whirlSign;
+        this.u.whirl.value.set(x, z, this.time, this.u.whirl.value.w);
+        whirl.hit(amount, this.time);
+    }
+
+    /**
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = which wave of one lock's
+     * clear this is (each wave lands deeper and whiter on the last); `combo` = the chain it is a
+     * step of (the fountains walk out along the fissure with it). (The chamber's pressure follows
+     * the true combo through onCombo.)
      */
     onClear({
         rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        cascade = 1, combo = 1, b2b = false,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms || !this.spatter) return;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        // How deep in a cascade this wave is (0 = its first), and the chain's step.
+        const depth = Math.max(0, Math.min(6, Math.round(Number(cascade) || 1) - 1));
+        const chain = Math.max(1, Math.round(Number(combo) || 1));
+        const S = this.swells;
+        const { level } = this.play;
         const p = this._palette;
         // One line answers in the lava's body, two toward its heart, three in its heart; four
-        // lean to the white of the forge (not all the way: the lake must keep its colour).
+        // lean to the white of the forge (not all the way: the lake must keep its colour). A
+        // cascade's later waves, and a back-to-back, burn whiter still.
         let rgb;
         if (quad) rgb = [0, 1, 2].map((c) => lerp(p.hot[c], WHITE_HEAT[c], 0.4));
         else {
             const k = (n - 1) / 2;
             rgb = [0, 1, 2].map((c) => lerp(p.mid[c], p.hot[c], k));
         }
+        const whiten = Math.min(0.55, depth * 0.1 + (b2b ? 0.3 : 0));
+        if (whiten > 0) rgb = rgb.map((c, i) => lerp(c, WHITE_HEAT[i], whiten));
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => c / peak);
-        const strength = Math.min(1.5, 0.6 + 0.15 * n + (quad ? 0.25 : 0));
+        const deeper = 1 + 0.22 * depth;
+        const strength = Math.min(2.2, (0.6 + 0.15 * n + (quad ? 0.25 : 0)) * deeper * (b2b ? 1.15 : 1));
         const birth = quad ? this.time + HUSH_HOLD : this.time;
+        // (Read before this clear's own heat joins: a quad's hush depends on how hot play WAS.)
+        const hushDepth = quad ? this.hushDepthNow() : 0;
+        this.gameplay.clear({
+            lines: n, cascade, combo: chain, tspin, perfect, b2b,
+        }, birth);
 
         // ── The wave leaves the foot of the board ──
         const board = boardFor(this.layout, player);
@@ -677,19 +870,22 @@ export class CinderDriftWorld {
         const hx = heart.x;
         const hz = heart.z;
         uniforms.heart.value.set(hx, hz);
-        const slot = this.clearCursor % CLEAR_SLOTS;
-        this.clearCursor += 1;
+        const slot = this.takeClearSlot(birth);
         uniforms.clearA[slot].value.set(birth, perfect ? 4 : n, strength, quad ? 1 : 0);
         uniforms.clearC[slot].value.set(rgb[0], rgb[1], rgb[2]);
-        this.lastClear = { time: birth, lines: n };
-        this.melt(hx, hz, 2.4 + 0.5 * n, 0.5 + 0.12 * n);
+        S.swell.hit((0.3 + 0.12 * n) * (1 + 0.15 * depth), birth);
+        // The lake's heart under the board: each clear melts it wider, and the hotter play runs
+        // the more of it stays open between clears (the lake remembers: it runs white in a fever).
+        const pool = (0.5 + 0.12 * n + 0.1 * depth) * (1 + level * 0.4);
+        this.melt(hx, hz, 2.4 + 0.5 * n + 0.8 * depth + level * 1.5, pool);
 
         // ── The cleared rows leave the card as tongues of fire ──
         if (board && card && this.layoutLive && !screen) {
             const list = Array.isArray(rows) && rows.length ? rows : Array.from({ length: n }, (_, i) => 19 - i);
             const ys = [];
             for (let i = 0; i < list.length && i < 4; i++) ys.push(boardPoint(board, 0.5, list[i], this._point).y);
-            this.jets.fire(ys, card.x0, card.x1, this.time, Math.min(1.5, 0.8 + 0.18 * n), 0.9 + 0.09 * n);
+            const jet = Math.min(1.5, 0.8 + 0.18 * n) * (1 + 0.12 * depth);
+            this.jets.fire(ys, card.x0, card.x1, this.time, jet, 0.9 + 0.09 * n + 0.05 * depth);
             for (let i = 0; i < ys.length; i++) {
                 for (let side = -1; side <= 1; side += 2) {
                     const from = this.screenToWorld(side < 0 ? card.x0 : card.x1, ys[i], 6.5);
@@ -715,14 +911,19 @@ export class CinderDriftWorld {
         }
 
         // ── A fissure opens across the lake ──
+        // A chain walks its fountains out along the fissure from the card, a pair a step, until
+        // the whole line has burned; a cascade's later waves stand more, and taller.
         const rand = mulberry32(0x7f15 + this.counts.clears * 2654435761);
-        const stand = perfect ? FOUNTAIN_SLOTS : FOUNTAINS_FOR_LINES[n];
+        const more = 2 * Math.min(depth, 3);
+        const stand = perfect ? FOUNTAIN_SLOTS : Math.min(FOUNTAIN_SLOTS, FOUNTAINS_FOR_LINES[n] + more);
+        const walk = quad ? 0 : (2 * (chain - 1)) % FOUNTAIN_SLOTS;
+        const taller = (1 + 0.1 * depth) * (1 + 0.2 * level);
         for (let k = 0; k < stand; k++) {
-            const f = this.plan.fountains[k];
+            const f = this.plan.fountains[(walk + k) % FOUNTAIN_SLOTS];
             const at = birth + clearPassTime(Math.hypot(f.x - hx, f.z - hz)) + rand() * 0.12;
             const life = quad ? CURTAIN_LIFE * (0.7 + rand() * 0.5) : FOUNTAIN_LIFE * (0.75 + 0.14 * n + rand() * 0.3);
             // (A curtain is never a row of equals: a few stand far taller than their neighbours.)
-            const height = quad ? 9 + rand() ** 1.6 * 19 : 4.5 + 2.2 * n + rand() * 2.5;
+            const height = (quad ? 9 + rand() ** 1.6 * 19 : 4.5 + 2.2 * n + rand() * 2.5) * taller;
             this.falls.fountain({
                 x: f.x, z: f.z, time: at, life, height: height * 0.72, width: quad ? 2.0 + rand() * 1.0 : 0.9 + 0.16 * n,
             });
@@ -731,7 +932,7 @@ export class CinderDriftWorld {
                 x: f.x,
                 y: 0.3,
                 z: f.z,
-                n: Math.round(this.tier.fountain * (quad ? 0.62 : 0.3 + 0.1 * n)),
+                n: Math.round(this.tier.fountain * (quad ? 0.62 : 0.3 + 0.1 * n) * (1 + 0.12 * depth)),
                 time: at,
                 stagger: life * 0.86,
                 out: [0.5, 2.2 + height * 0.16],
@@ -751,17 +952,22 @@ export class CinderDriftWorld {
             this.meltAt(at, f.x, f.z, quad ? 4.6 : 2.6 + 0.4 * n, quad ? 2 : 1.1);
             this.counts.fountains += 1;
         }
-        // The fountains light the chamber for as long as they stand.
-        this.curtain = Math.max(this.curtain, quad ? 1 : 0.18 + 0.14 * n);
-        this.curtainTau = quad ? CURTAIN_LIFE * 0.75 : FOUNTAIN_LIFE;
-        this.storm = Math.max(this.storm, Math.min(1.4, 0.32 + 0.16 * n + (quad ? 0.4 : 0)));
-        this.pendingKick = { time: birth + 0.1, amount: 0.24 + 0.1 * n };
+        // The fountains light the chamber for as long as they stand (and a chain's add up).
+        if (quad) S.quadCurtain.hit(1, birth);
+        else S.curtain.hit((0.18 + 0.14 * n) * (1 + 0.25 * depth), birth);
+        this.storm = Math.max(this.storm, Math.min(1.4, 0.32 + 0.16 * n + (quad ? 0.4 : 0) + 0.08 * depth));
+        // A beat after the wave leaves, the lens takes the punch (added to what it still holds).
+        const punch = 0.24 + 0.1 * n + 0.05 * depth;
+        S.kick.hit(punch, birth + 0.1);
+        S.flash.hit(punch * 0.5, birth + 0.1);
+        if (quad) S.shake.hit(1, birth + 0.1);
 
         if (quad) {
-            // The chamber holds its breath, then everything goes up.
+            // The chamber holds its breath (as deep as play is cold), then everything goes up.
             this.hushUntil = this.time + HUSH_HOLD;
-            this.surge = perfect ? 1.3 : 1;
-            uniforms.shock.value.set(birth, this.reducedMotion ? 0.5 : 1);
+            this.hushDepth = hushDepth;
+            S.surge.hit(perfect ? 1.3 : 1, this.time);
+            this.shockAt(birth, this.reducedMotion ? 0.5 : 1);
             const bombs = Math.min(BOMB_SLOTS, this.tier.bombs);
             for (let b = 0; b < bombs; b++) {
                 const f = this.plan.fountains[b % FOUNTAIN_SLOTS];
@@ -789,22 +995,95 @@ export class CinderDriftWorld {
                 this.meltAt(leave + flight, tx, tz, 3.4, 1.6, b % 2 ? 1 : 2);
                 this.counts.bombs += 1;
             }
-            this.shake = Math.max(this.shake, 0.2);
+            S.shake.hit(0.2, this.time);
             this.counts.quads += 1;
+            if (perfect) this.crown(birth, player, { wave: false });
         }
         if (tspin) {
-            // The crust turns round the foot of the board.
-            uniforms.whirl.value.set(hx, hz - 9, this.time, this.counts.clears % 2 ? -2.6 : 2.6);
+            // The crust turns round the foot of the board (a second spin adds to the turn).
+            this.twist(hx, hz - 9, 1.8 * (1 + 0.15 * depth));
             this.storm = Math.max(this.storm, 0.85);
         }
+        if (b2b) {
+            // Back-to-back: the rock answers. The seams between the columns flood with lava and
+            // a shock rings out through them, higher and harder with every step of the streak.
+            this.b2bStreak += 1;
+            const step = Math.min(this.b2bStreak, 4);
+            S.b2b.hit(0.35 + 0.15 * step, birth);
+            this.shockAt(birth, (this.reducedMotion ? 0.5 : 1) * (0.5 + 0.12 * step));
+            this.counts.b2b += 1;
+        } else if (n < 4 && !tspin) this.b2bStreak = 0;
         this.counts.clears += 1;
+    }
+
+    /**
+     * A perfect clear's crown, at `at`, on the clear still playing: the crust lifts (rafts break
+     * open across the lake and skin back over for the next quarter minute), the cliffs all pour
+     * at once, fire rains from the whole roof, a white wave runs out, and the rock rings.
+     */
+    crown(at, player = 0, { wave = true } = {}) {
+        const { u: uniforms } = this;
+        const S = this.swells;
+        S.crown.hit(1, at);
+        S.swell.hit(0.6, at);
+        S.flash.hit(0.22, at);
+        S.kick.hit(0.35, at);
+        this.storm = Math.max(this.storm, 1.1);
+        this.shockAt(at, this.reducedMotion ? 0.5 : 0.9);
+        // The crust lifts: rafts break open across the middle of the lake, and skin back over.
+        const spots = 9;
+        for (let i = 0; i < spots; i++) {
+            const sx = 0.06 + (i / (spots - 1)) * 0.88;
+            const sy = [0.8, 0.7, 0.64][i % 3];
+            const spot = this.screenToLake(sx, Math.max(sy, this.horizon + 0.04), this._strike, 60);
+            this.meltAt(at + 0.05 * i, spot.x, spot.z, 5 + (i % 3) * 2.5, 0.45);
+        }
+        // A white wave from the heart (a perfect clear's own, four fronts), unless its quad's is it.
+        if (!wave) {
+            this.counts.crowns += 1;
+            return;
+        }
+        const board = boardFor(this.layout, player);
+        const heart = this.screenToLake(board ? (board.x0 + board.x1) * 0.5 : 0.5, 0.93);
+        uniforms.heart.value.set(heart.x, heart.z);
+        const slot = this.takeClearSlot(at);
+        const w = WHITE_HEAT;
+        uniforms.clearA[slot].value.set(at, 4, 1.25, 1);
+        uniforms.clearC[slot].value.set(w[0], w[1], w[2]);
+        this.counts.crowns += 1;
+    }
+
+    /**
+     * A PERFECT_CLEAR that came after its clear's frame (physics sends it ~360 ms after the last
+     * wave): the crown on the clear still playing, never a second hush or a second volley.
+     */
+    onPerfectCrown({ player = 0 } = {}) {
+        if (!this.u || !this.spatter) return;
+        const W = SURGE_WEIGHTS;
+        this.gameplay.punch.hit(W.punch.perfect, this.time);
+        this.gameplay.level.hit(W.heat.perfect, this.time);
+        this.crown(this.time, player);
+    }
+
+    /** A T-spin that cleared nothing: the crust turns a little round the foot of the board. */
+    onTSpinMini({ player = 0 } = {}) {
+        if (!this.u || !this.spatter) return;
+        const board = boardFor(this.layout, player);
+        const heart = this.screenToLake(board ? (board.x0 + board.x1) * 0.5 : 0.5, 0.93);
+        this.twist(heart.x, heart.z - 9, 0.9);
+        this.ring(heart.x, heart.z - 9, this.time, 0.75, this._palette.spark, 0.6);
+        this.storm = Math.max(this.storm, 0.45);
+        const W = SURGE_WEIGHTS;
+        this.gameplay.punch.hit(W.punch.tspin * 0.5, this.time);
+        this.gameplay.level.hit(W.heat.tspin * 0.5, this.time);
+        this.counts.tspins += 1;
     }
 
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
-        // The chain broke: the chamber lets its breath go.
-        if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.28);
+        // The chain broke: the chamber lets its breath go, a slow sag, deeper the longer the chain.
+        if (n === 0 && this.combo >= 2) this.swells.dip.hit(0.14 + 0.014 * Math.min(this.combo, 10), this.time);
         this.combo = n;
     }
 
@@ -815,8 +1094,9 @@ export class CinderDriftWorld {
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
-            this.flash = Math.max(this.flash, 0.14);
-            this.u?.shock.value.set(this.time, 0.4);
+            this.swells.flash.hit(0.14, this.time);
+            this.shockAt(this.time, 0.4);
+            this.gameplay.levelUp(this.time);
         }
     }
 
@@ -899,7 +1179,7 @@ export class CinderDriftWorld {
             if (live && this.tips.length) {
                 // A drop now and then at rest; under pressure, a rain of fire.
                 const rand = mulberry32(0xd41b + drip * 2654435761);
-                const rate = (0.1 + this.power * this.power * 7 + this.surge * 9) * (this.spatter.count / SPATTER_REFERENCE);
+                const rate = this.rain * (this.spatter.count / SPATTER_REFERENCE);
                 const n = Math.floor(rate) + (rand() < rate % 1 ? 1 : 0);
                 for (let k = 0; k < n; k++) {
                     const tip = this.tips[Math.floor(rand() * this.tips.length)];
@@ -929,31 +1209,43 @@ export class CinderDriftWorld {
         const t = this.time;
         const motion = this.reducedMotion ? 0.35 : 1;
         if (camera) this._camera = camera;
+        if (this.spatter) this.spatter.clock = t;
+        const S = this.swells;
+
+        // ── How hot play runs ──
+        // calm (as at rest), warm (the chamber takes notice), hot (it is alive with the player),
+        // fever (the whole fissure burns and the roof rains fire).
+        const play = this.gameplay.sample(t);
+        Object.assign(this.play, play);
+        const { level, fever } = play;
+        const warm = smooth(0.15, 0.55, level);
+        const hot = smooth(0.4, 0.85, level);
+        const { surge } = this;
+        const crown = S.crown.valueAt(t);
+        const b2b = S.b2b.valueAt(t);
+        // A low tremor through the rock in a fever (the camera reads it, scaled by its calm).
+        this.tremor = fever * 0.1 + crown * 0.12;
 
         // ── The pressure ──
         const target = powerForCombo(this.combo);
-        this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.8, dt);
-        this.surge *= Math.exp(-dt / SURGE_COOL);
+        this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.6, dt);
         this.storm *= Math.exp(-dt / 1.7);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
-        this.shake *= Math.exp(-dt / 0.3);
-        this.dip *= Math.exp(-dt / 0.35);
-        this.curtain *= Math.exp(-dt / this.curtainTau);
-        if (t >= this.pendingKick.time) {
-            this.kick = Math.max(this.kick, this.pendingKick.amount);
-            this.flash = Math.max(this.flash, this.pendingKick.amount * 0.5);
-            if (this.surge > 0.5) this.shake = Math.max(this.shake, 1);
-            this.pendingKick.time = Infinity;
-        }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.15 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        // The hush before a quad: as deep as play was cold (hushDepthNow), never a blackout mid-fever.
+        const hushing = t < this.hushUntil;
+        const hush = hushing ? this.hushDepth : 0;
+        const breathTarget = hushing ? 1 - 0.85 * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hushing ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
         this.applyPalette(approach(0.8, dt));
 
-        // Every step of the chain past the first cracks another fissure in the cliffs.
-        const fissureTarget = fissuresForCombo(this.combo);
+        // Every step of the chain past the first cracks another fissure in the cliffs; hot play
+        // cracks a couple on its own, a fever all but all, a back-to-back more with every step of
+        // its streak, a perfect clear every one.
+        const fissureTarget = Math.min(STREAM_SLOTS, Math.max(
+            fissuresForCombo(this.combo),
+            hot * 2 + fever * 3 + b2b * 3,
+            crown * STREAM_SLOTS,
+        ));
         this.fissures += (fissureTarget - this.fissures) * approach(fissureTarget > this.fissures ? 3.2 : 0.6, dt);
         const open = Math.min(STREAM_SLOTS, Math.floor(this.fissures + 0.5));
         if (open > this.fissuresOpen && dt > 0) {
@@ -975,17 +1267,33 @@ export class CinderDriftWorld {
                     x: s.lip[0], y: s.lip[1], z: s.lip[2], time: t, rgb: [1, 0.55, 0.22], size: 3.2, gain: 3.6,
                 });
             }
-            this.flash = Math.max(this.flash, 0.05);
+            S.flash.hit(0.05, t);
         }
         this.fissuresOpen = open;
-        const gainTarget = 1 + this.power * 0.55 + this.surge * 0.8;
+        // The fall runs harder with the pressure, the overdrive, the heat of play and the rock's answers.
+        const gainTarget = 1 + this.power * 0.55 + surge * 0.8 + warm * 0.12 + fever * 0.25 + b2b * 0.4 + crown * 0.3;
         this.fallGain += (gainTarget - this.fallGain) * approach(1.6, dt);
         if (dt === 0) this.fallGain = gainTarget;
+        // The fountains' light, plus the hem of flame that stands along the fissure once play runs
+        // hot (a wall of it in a fever); the clears' own add up under a quick hand.
+        // (A quick hand's clears stand a hem, never a quad's wall: that is the quad's to stand.)
+        // (A quad's wall of fire stands in place of the hem and the smaller clears' light, not
+        // on top of them: they are the floor it rises from and falls back to.)
+        const hem = hot * 0.08 + fever * 0.2 + crown * 0.1;
+        const floor = softCeiling(S.curtain.valueAt(t), 0.35, 0.55) + hem;
+        const wall = S.quadCurtain.valueAt(t);
+        this.curtain = softCeiling(Math.max(wall, floor) + 0.25 * Math.min(wall, floor), 0.9, 1.15);
+        // Lava climbs the seams between the columns with the heat of play and a back-to-back.
+        this.rise = warm * 0.8 + hot * 0.9 + fever * 2.2 + b2b * 3 + crown * 1.5;
 
         // ── The slow clocks ──
-        this.drift += dt * DRIFT_SPEED * motion * (1 + this.power * 1.5 + this.surge * 2.2 + this.storm * 0.8);
-        this.flow += dt * (1 + this.power * 1.4 + this.surge * 2 + this.storm);
-        this.lift += dt * motion * (1 + this.power * 3.4 + this.surge * 5 + this.storm * 2.2);
+        const stir = warm * 0.35 + hot * 0.35 + fever * 0.8;
+        this.drift += dt * DRIFT_SPEED * motion * (1 + this.power * 1.5 + surge * 2.2 + this.storm * 0.8 + stir);
+        this.flow += dt * (1 + this.power * 1.4 + surge * 2 + this.storm + stir);
+        this.lift += dt * motion * (1 + this.power * 3.4 + surge * 5 + this.storm * 2.2 + stir * 2.5);
+        // Fire drips from the pipes in the roof: a drop now and then at rest, a rain of it under
+        // pressure, in a fever and on a perfect clear.
+        this.rain = 0.1 + this.power * this.power * 7 + surge * 9 + hot * 2.5 + fever * 9 + crown * 10;
 
         // ── The chamber's own life, and the pools whose moment has come ──
         if (this.spatter) this.beats(t, dt > 0);
@@ -1009,16 +1317,18 @@ export class CinderDriftWorld {
             const age = t - u.ringA[i].value.z;
             if (age > -6 && age < RING_LIVE) ringsLive = 1;
         }
-        let clearLive = 0;
+        const carry = S.carry.valueAt(t);
+        let clearLive = carry > 0 ? 1 : 0;
         for (let i = 0; i < CLEAR_SLOTS; i++) {
             const age = t - u.clearA[i].value.x;
             if (age > -1 && age < CLEAR_LIVE) clearLive = 1;
         }
         u.ringsLive.value = ringsLive;
         u.clearLive.value = clearLive;
+        u.clearCarry.value = carry;
         u.time.value = t;
         u.power.value = this.power;
-        u.surge.value = this.surge;
+        u.surge.value = surge;
         u.breath.value = this.breath;
         u.drift.value = this.drift;
         u.flow.value = this.flow;
@@ -1026,10 +1336,13 @@ export class CinderDriftWorld {
         u.heatRef.value = this.heat.ref;
         u.fissures.value = this.fissures;
         u.fallGain.value = this.fallGain;
-        u.curtain.value = hush ? 0 : this.curtain;
-        // The overdrive burns every fire toward white.
+        u.curtain.value = this.curtain * (1 - hush);
+        u.rise.value = this.rise;
+        const turn = S.whirl.valueAt(t);
+        u.whirl.value.w = turn > 0 ? this.whirlSign * turn : 0;
+        // The overdrive burns every fire toward white; so does a fever, and a crown.
         const p = this._palette;
-        const white = clamp01(this.surge * 0.22);
+        const white = clamp01(surge * 0.22 + crown * 0.1);
         u.hot.value.set(lerp(p.hot[0], WHITE_HEAT[0], white), lerp(p.hot[1], WHITE_HEAT[1], white), lerp(p.hot[2], WHITE_HEAT[2], white));
         u.mid.value.set(p.mid[0], p.mid[1], p.mid[2]);
         u.deep.value.set(p.deep[0], p.deep[1], p.deep[2]);
@@ -1039,17 +1352,20 @@ export class CinderDriftWorld {
         u.spark.value.set(p.spark[0], p.spark[1], p.spark[2]);
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const swell = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
+        const swell = S.swell.valueAt(t);
         const post = this._post;
         post.flash = this.flash;
-        post.kick = this.kick;
-        const ablaze = Math.min(1, this.curtain * 0.9 + this.surge * 0.5 + this.power * 0.5);
-        post.shafts = hush ? 0.04 : (0.16 + this.power * 0.1 + swell * 0.12) * (1 - 0.7 * ablaze);
-        post.bloomBoost = swell * 0.1 - ablaze * 0.9;
-        // The iris closes as the chamber flares, so its colours survive the surge.
-        post.exposure = 1 / (1 + this.surge * 0.6 + this.curtain * 0.6 + swell * 0.25 + this.power * 0.3 + this.storm * 0.1);
-        post.haze = 1 + this.power * 0.5 + this.surge * 0.8 + this.storm * 0.3;
+        // (Under rapid play the lens's punch rides on the surge's floor.)
+        post.kick = this.kick + play.punch * 0.2;
+        const ablaze = Math.min(1, this.curtain * 0.9 + surge * 0.5 + this.power * 0.5);
+        const shafts = (0.16 + this.power * 0.1 + swell * 0.12 + hot * 0.06 + fever * 0.08) * (1 - 0.55 * ablaze);
+        post.shafts = lerp(shafts, 0.04, hush);
+        post.bloomBoost = swell * 0.1 - ablaze * 0.65 + fever * 0.06;
+        // The iris closes as the chamber flares, so its colours survive the surge (the build is
+        // in the fire itself: the seams, the streams, the rain, the hem, never a brighter haze).
+        post.exposure = 1 / (1 + surge * 0.6 + this.curtain * 0.6 + swell * 0.25 + this.power * 0.12
+            + this.storm * 0.1 + crown * 0.2);
+        post.haze = 1 + this.power * 0.5 + surge * 0.8 + this.storm * 0.3 + warm * 0.2 + fever * 0.4;
         post.horizon = this.horizon;
     }
 
@@ -1070,6 +1386,8 @@ export class CinderDriftWorld {
             fissures: this.fissures,
             fallGain: this.fallGain,
             curtain: this.curtain,
+            rise: this.rise,
+            play: { ...this.play },
             drift: this.drift,
             level: this.level,
             palette: CINDER_PALETTES[this.paletteIndex].name,

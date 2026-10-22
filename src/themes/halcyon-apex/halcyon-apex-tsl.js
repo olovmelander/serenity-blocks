@@ -15,6 +15,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     cameraPosition,
     clamp,
@@ -24,6 +25,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     normalize,
     smoothstep,
@@ -271,9 +273,17 @@ export function createSanctuaryUniforms(textures) {
         cloudDrift: uniform(0),
         beadLift: uniform(0),
         spin: uniform(0),
-        /** A four-line clear: the beacons (birth time, strength) and the ring it sends over the sky. */
-        beacon: uniform(new THREE.Vector2(-100, 0)),
-        shock: uniform(new THREE.Vector2(-100, 0)),
+        /**
+         * The beacons, as the world has them now (it accumulates them on the CPU): (Apex blaze,
+         * Apex flare, Halcyon blaze, Halcyon flare). The blaze is the pillar's light; the flare
+         * the burst of width it stands up with.
+         */
+        beacon: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /**
+         * Two rings of light over the sky (a four-line clear, a perfect clear, a back-to-back, a
+         * level): (birth, strength) × 2.
+         */
+        shock: uniform(new THREE.Vector4(-100, 0, -100, 0)),
         /** 1 while any ring / clear wave / ley pulse is still running (the loops are skipped at rest). */
         ringsLive: uniform(0),
         clearLive: uniform(0),
@@ -425,7 +435,22 @@ export const haClearLight = (u, p) => {
         front = front.add(u.clearC[i].mul(f.mul(A.z)));
         glow = glow.add(exp(since.div(-CLEAR_AFTERGLOW)).mul(live));
     }
-    return vec4(front, glow);
+    // Waves overlapping in a fast chain flood the bed no brighter than a strong one alone: the
+    // afterglow is linear up to 1, then eases toward 1.6 (the light stays rich, never milky).
+    const over = max(glow.sub(1.0), 0.0);
+    return vec4(front, min(glow, 1.0).add(over.div(over.add(1.0)).mul(0.6)));
+};
+
+/**
+ * haClearLight, skipped outright (a uniform branch) while no wave is running. Call it inside an
+ * Fn body: at rest the sanctuary pays nothing for its four clear slots.
+ */
+export const haClearLightLive = (u, p) => {
+    const light = vec4(0.0).toVar();
+    If(u.clearLive.greaterThan(0.5), () => {
+        light.assign(haClearLight(u, p));
+    });
+    return light;
 };
 
 /**

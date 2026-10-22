@@ -650,3 +650,134 @@ describe('Thermal Bloom world: the columns and their steam phases', () => {
         expect(jets.some(([a, b]) => a.w > 2 && b.w === COLUMN_KIND.jet)).toBe(true);
     });
 });
+
+describe('Thermal Bloom world: play builds, and nothing running is cut', () => {
+    const eruptionRow = (world, slot) => world.u.tables.events[EVENT_ROWS.eruptions + slot * 2];
+
+    it('feeds a four-line eruption with what follows: a weak clear never cuts it, the perfect clear crowns it', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 0.1, () => clear(world, { lines: 4, rows: [19, 18, 17, 16] }));
+        run(world, camera, 1.4);
+        const tall = eruptionRow(world, 0).w;
+        const bow = world.u.bow.value;
+        expect(tall).toBeGreaterThan(ERUPTIONS.idle.height * 1.5);
+        expect(bow).toBeGreaterThan(0.5);
+        // The chain's next link, a single, a moment later: the column and its bow only hold or climb.
+        let low = Infinity;
+        let lowBow = Infinity;
+        frame(world, camera, 0.1, () => clear(world, { lines: 1, rows: [19], combo: 2 }));
+        for (let i = 0; i < 10; i++) {
+            frame(world, camera, 0.1);
+            low = Math.min(low, eruptionRow(world, 0).w);
+            lowBow = Math.min(lowBow, world.u.bow.value);
+        }
+        expect(low).toBeGreaterThanOrEqual(tall - 1e-6);
+        expect(lowBow).toBeGreaterThanOrEqual(bow - 1e-3);
+        // The perfect clear lands on a frame of its own, with no rows: a crown, not a new clear.
+        const { clears } = world.getState().counts;
+        frame(world, camera, 0.1, () => clear(world, { lines: 1, perfect: true, rows: [] }));
+        expect(world.getState().counts.clears).toBe(clears);
+        expect(world.getState().counts.perfects).toBe(1);
+        low = Infinity;
+        for (let i = 0; i < 10; i++) {
+            frame(world, camera, 0.1);
+            low = Math.min(low, eruptionRow(world, 0).w);
+        }
+        expect(low).toBeGreaterThanOrEqual(tall - 1e-6);
+        run(world, camera, 2.5);
+        expect(eruptionRow(world, 2).w).toBeGreaterThan(60);
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back to calm when the hands rest', () => {
+        const hot = makeWorld();
+        const cold = makeWorld();
+        const both = (dt, during = null) => {
+            frame(hot.world, hot.camera, dt, during);
+            frame(cold.world, cold.camera, dt);
+        };
+        const link = (n) => () => {
+            lock(hot.world, { hardDrop: true, distance: 16 });
+            clear(hot.world, { lines: 1 + (n % 3), rows: [19], combo: n });
+            hot.world.onCombo(n);
+        };
+        const read = () => ({
+            steam: hot.world.u.steam.value / cold.world.u.steam.value,
+            vivid: hot.world.getPostState().vivid,
+            reach: hot.world.u.reach.value,
+            surge: { ...hot.world.getState().surge },
+        });
+        both(0.1, link(1));
+        for (let i = 0; i < 5; i++) both(0.1);
+        const first = read();
+        for (let n = 2; n <= 12; n++) {
+            for (let i = 0; i < 5; i++) both(0.1);
+            both(0.14, link(n));
+        }
+        for (let i = 0; i < 5; i++) both(0.1);
+        const late = read();
+        expect(late.surge.level).toBeGreaterThan(first.surge.level);
+        expect(late.surge.fever).toBeGreaterThan(0.5);
+        expect(late.surge.stage).toBe(3);
+        expect(late.steam).toBeGreaterThan(first.steam);
+        expect(late.vivid).toBeGreaterThan(first.vivid);
+        expect(late.reach).toBeGreaterThan(first.reach);
+        // The overlook leans in over the fever.
+        expect(hot.camera.position.z).toBeLessThan(cold.camera.position.z - 0.5);
+        // The hands rest (the chain is broken by a lock that clears nothing) and the basin
+        // breathes back: the surge empties, the steam and the camera are the calm world's again.
+        both(0.1, () => {
+            lock(hot.world);
+            hot.world.onCombo(0);
+        });
+        for (let i = 0; i < 200; i++) both(0.1);
+        const rest = read();
+        expect(rest.surge.level).toBeLessThan(0.02);
+        expect(rest.surge.fever).toBe(0);
+        expect(rest.steam).toBeCloseTo(1, 2);
+        expect(hot.camera.position.distanceTo(cold.camera.position)).toBeLessThan(0.02);
+    });
+
+    it('cools the chain\'s ladder from the top down, and a second break rolls on the first one\'s steam', () => {
+        const { world, camera } = makeWorld();
+        const thread = () => world.u.tables.plumes[world.threadSlot * 2 + 1].x;
+        for (let n = 2; n <= 6; n++) frame(world, camera, 0.4, () => world.onCombo(n));
+        frame(world, camera, 0.1, () => world.onCombo(0));
+        const out = (v) => v.out > v.start && world.time >= v.out;
+        const top = world.ladder.reduce((a, b) => (b.link > a.link ? b : a));
+        const foot = world.ladder.reduce((a, b) => (b.link < a.link ? b : a));
+        expect(out(top)).toBe(true);
+        expect(out(foot)).toBe(false);
+        run(world, camera, 2);
+        expect(out(foot)).toBe(true);
+        // A short second chain breaks inside the first one's exhalation: it never shrinks back.
+        run(world, camera, 1);
+        const swollen = thread();
+        let low = Infinity;
+        frame(world, camera, 0.1, () => world.onCombo(2));
+        frame(world, camera, 0.1, () => world.onCombo(0));
+        for (let i = 0; i < 20; i++) {
+            frame(world, camera, 0.1);
+            low = Math.min(low, thread());
+        }
+        expect(low).toBeGreaterThan(swollen * 0.9);
+    });
+
+    it('feeds spinning devils instead of deleting one; a T-spin that clears nothing spins a small one', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 0.1, () => world.onTSpin());
+        run(world, camera, 1);
+        expect(world.u.devilCount.value).toBe(1);
+        frame(world, camera, 0.1, () => clear(world, { lines: 3, tspin: true }));
+        run(world, camera, 1.5);
+        expect(world.u.devilCount.value).toBe(EVENT_SLOTS.devils);
+        const tallest = Math.max(...world.devils.map((d) => d.height));
+        frame(world, camera, 0.1, () => clear(world, { lines: 2, tspin: true }));
+        run(world, camera, 1.5);
+        expect(world.u.devilCount.value).toBe(EVENT_SLOTS.devils);
+        expect(Math.max(...world.devils.map((d) => d.height))).toBeGreaterThan(tallest);
+        // Every devil ends on its own and leaves its rosette: none was cut short.
+        run(world, camera, 16);
+        expect(world.u.devilCount.value).toBe(0);
+        expect(world.u.rosetteCount.value).toBe(EVENT_SLOTS.devils);
+    });
+});

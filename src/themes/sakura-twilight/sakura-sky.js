@@ -7,18 +7,25 @@
  * gives it. `moon(direction)` is exported as a node so the lake can mirror the same disc.
  *
  * Over the vault lie the constellations: a few figures of bright stars whose lines draw
- * themselves in as a combo builds, and the shooting stars a four-line clear sets off.
+ * themselves in as a combo builds, and the shooting stars a four-line clear sets off — up to
+ * three at once, each finishing its fall (a fever makes them a meteor shower). A back-to-back
+ * opens the hazy moon's rainbow corona; a perfect clear and a fever brighten its aureole.
  */
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, color, cross, dot, exp, float, floor, fract, instancedBufferAttribute, length, max, mix,
-    normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step, uniform, uv, vec2, vec3,
+    normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step, uniform, uniformArray, uv, vec2,
+    vec3,
 } from 'three/tsl';
 
 const TAU = Math.PI * 2;
 /** Angular radius of the moon's disc in radians (far larger than life: this is a print). */
 export const SAKURA_MOON_RADIUS = 0.062;
 const DOME_RADIUS = 1500;
+/** Shooting stars that can cross the sky at once (each runs its whole fall). */
+export const SAKURA_SHOOTING_STARS = 3;
+/** A star has burnt out by then (its streak fades as exp(-1.5 age)). */
+const SHOOT_LIFE = 3;
 
 /**
  * Figures drawn with straight lines between stars, in a frame around a centre direction:
@@ -75,9 +82,26 @@ export class SakuraSky {
         this.uDraw = uniform(0);
         this.uFigures = uniform(0);
         this.uMoonGlow = uniform(0);
-        this.uShoot = uniform(new THREE.Vector4(0, 0, -100, 0)); // start x, start y (plane), birth, strength
-        this.uShootDir = uniform(new THREE.Vector2(-0.8, -0.35));
+        // The rainbow rings round the hazy moon a back-to-back opens (0 closed .. 1.6).
+        this.uCorona = uniform(0);
+        // Shooting stars: start x, start y (on the sky plane), birth, strength; and each one's
+        // direction (x, y on the plane).
+        this.shotData = Array.from({ length: SAKURA_SHOOTING_STARS }, () => new THREE.Vector4(0, 0, -100, 0));
+        this.shotDirData = Array.from({ length: SAKURA_SHOOTING_STARS }, () => new THREE.Vector4(-0.92, -0.4, 0, 0));
+        this.uShots = uniformArray(this.shotData, 'vec4');
+        this.uShotDirs = uniformArray(this.shotDirData, 'vec4');
+        this.lastShot = 0;
         this.shootCount = 0;
+    }
+
+    /** The most recent shooting star's slot (start x, start y, birth, strength). */
+    get uShoot() {
+        return { value: this.shotData[this.lastShot] };
+    }
+
+    /** The most recent shooting star's direction on the sky plane (x, y). */
+    get uShootDir() {
+        return { value: this.shotDirData[this.lastShot] };
     }
 
     own(resource) {
@@ -124,7 +148,8 @@ export class SakuraSky {
             .add(vec3(0.42, 0.78, 1.0).mul(band(3.35, 0.4)).mul(0.034))
             .add(vec3(1.0, 0.5, 0.75).mul(band(4.15, 0.45)).mul(0.02));
         const glow = this.uMoonGlow.mul(0.9).add(1);
-        const around = light.uMoonColor.mul(aureole).mul(0.62).add(corona);
+        // A back-to-back opens the corona: its three rings burn several times as bright.
+        const around = light.uMoonColor.mul(aureole).mul(0.62).add(corona.mul(this.uCorona.mul(3.4).add(1)));
         return body.mul(inside).add(around.mul(inside.oneMinus()).mul(glow).mul(step(0.2, facing)));
     }
 
@@ -174,15 +199,21 @@ export class SakuraSky {
             .mul(pow(moonward, 12).mul(0.85).oneMinus())
             .mul(pow(toward, 3).mul(lowness).oneMinus());
         const starColour = mix(vec3(0.8, 0.88, 1.25), vec3(1.25, 1.0, 0.85), fract(direction.x.mul(91.7).add(direction.z.mul(47.3))));
-        // A shooting star: a short bright streak sliding along a line on the sky plane.
-        const shootAge = light.uTime.sub(this.uShoot.z);
-        const head = this.uShoot.xy.add(this.uShootDir.mul(shootAge.mul(2.6)));
-        const along = dot(plane.sub(head), this.uShootDir);
-        const across = length(plane.sub(head).sub(this.uShootDir.mul(along)));
-        const streak = smoothstep(0, 0.012, across).oneMinus().mul(smoothstep(-0.9, 0, along)).mul(step(along, 0))
-            .mul(saturate(shootAge.mul(6)))
-            .mul(exp(shootAge.mul(-1.5)))
-            .mul(this.uShoot.w);
+        // Shooting stars: each a short bright streak sliding along a line on the sky plane.
+        let streak = float(0);
+        for (let index = 0; index < SAKURA_SHOOTING_STARS; index += 1) {
+            const shot = this.uShots.element(index);
+            const way = this.uShotDirs.element(index).xy;
+            const shootAge = light.uTime.sub(shot.z);
+            const head = shot.xy.add(way.mul(shootAge.mul(2.6)));
+            const along = dot(plane.sub(head), way);
+            const across = length(plane.sub(head).sub(way.mul(along)));
+            streak = streak.add(smoothstep(0, 0.012, across).oneMinus().mul(smoothstep(-0.9, 0, along))
+                .mul(step(along, 0))
+                .mul(saturate(shootAge.mul(6)))
+                .mul(exp(shootAge.mul(-1.5)))
+                .mul(shot.w));
+        }
         material.colorNode = mix(sky, cloud, cover.mul(0.5))
             .add(starColour.mul(starlight).mul(1.5))
             .add(this.moon(direction).mul(cover.mul(0.5).oneMinus()))
@@ -298,27 +329,56 @@ export class SakuraSky {
         this.group.add(stars);
     }
 
-    /** Send one shooting star across the upper sky. */
+    /**
+     * Send one shooting star across the upper sky. It takes a slot whose star has burnt out, else
+     * the one with the least light left, so a second star never cuts the first mid-fall.
+     */
     shoot(strength = 1) {
         const { rng } = this;
+        const now = this.light.uTime.value;
+        let slot = 0;
+        let least = Infinity;
+        for (let turn = 1; turn <= SAKURA_SHOOTING_STARS; turn += 1) {
+            const index = (this.lastShot + turn) % SAKURA_SHOOTING_STARS;
+            const shot = this.shotData[index];
+            const age = now - shot.z;
+            const left = age >= SHOOT_LIFE || age < 0 ? 0 : shot.w * Math.exp(-1.5 * age);
+            if (left < least) {
+                least = left;
+                slot = index;
+            }
+        }
         this.shootCount += 1;
+        this.lastShot = slot;
         const leftward = this.shootCount % 2 === 0;
-        this.uShoot.value.set((leftward ? 0.5 : -0.9) + rng() * 0.5, -1.1 - rng() * 0.9, this.light.uTime.value, strength);
-        this.uShootDir.value.set(leftward ? -0.86 : 0.86, 0.34 + rng() * 0.2).normalize();
+        this.shotData[slot].set((leftward ? 0.5 : -0.9) + rng() * 0.5, -1.1 - rng() * 0.9, now, strength);
+        const dx = leftward ? -0.86 : 0.86;
+        const dy = 0.34 + rng() * 0.2;
+        const norm = Math.hypot(dx, dy);
+        this.shotDirData[slot].set(dx / norm, dy / norm, 0, 0);
     }
 
+    /**
+     * The frame's sky: how far the figures are drawn and how they burn, the moon's glow (its own
+     * flare, a fever's and a perfect clear's crown) and the back-to-back corona.
+     */
     update(frame = {}) {
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
+        const ranged = (value, top) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, top) : 0);
         this.uDraw.value = clamp01(frame.constellation);
         this.uFigures.value = clamp01(frame.figures);
-        this.uMoonGlow.value = clamp01(frame.moon);
+        this.uMoonGlow.value = Math.min(1.6, Math.max(clamp01(frame.moon), 0.35 * clamp01(frame.fever))
+            + 0.55 * ranged(frame.crown, 1.3));
+        this.uCorona.value = ranged(frame.corona, 1.6);
     }
 
     reset() {
-        this.uShoot.value.set(0, 0, -100, 0);
+        this.shotData.forEach((shot) => shot.set(0, 0, -100, 0));
+        this.lastShot = 0;
         this.uDraw.value = 0;
         this.uFigures.value = 0;
         this.uMoonGlow.value = 0;
+        this.uCorona.value = 0;
     }
 
     dispose() {

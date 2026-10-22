@@ -7,6 +7,10 @@
  * lays down the short-lived force fields that carry them, feeds the combo stream, drops
  * rings on the lake, sets lanterns afloat or aloft, sends shooting stars, and reports the
  * wind the petal simulation should feel this frame.
+ *
+ * As play runs hot (`frame.level`) each lock's and clear's ring and glint is a little gentler:
+ * they come thick and fast then and interfere across the water and the grass instead of
+ * stacking into one pale veil over the garden.
  */
 import * as THREE from 'three/webgpu';
 import { SAKURA_STAGE_DEPTH } from './sakura-stage.js';
@@ -14,6 +18,8 @@ import { SAKURA_STAGE_DEPTH } from './sakura-stage.js';
 const REFERENCE_PETALS = 6000;
 const CLEAR_WINDOW = 0.5;
 const SHOWER_WINDOW = 1.6;
+/** Wind fronts the light rig can bend the garden under at once (SakuraReactions' slots). */
+const FRONTS = 3;
 
 export class SakuraPetalDirector {
     /**
@@ -49,8 +55,19 @@ export class SakuraPetalDirector {
         this.front = {
             x: 0, width: 9, strength: 0, direction: 1,
         };
+        /** Every front crossing, in world x (the first FRONTS of `frame.fronts`). */
+        this.fronts = Array.from({ length: FRONTS }, () => ({
+            x: 0, width: 9, strength: 0, direction: 1,
+        }));
+        /** How gentle this frame's rings and glints are (1 at rest; see the header). */
+        this.calm = 1;
+        /**
+         * The light a new event petal carries: a little less as play runs hot, when they fill the
+         * air, so the storm reads as petals and not as one pink glow.
+         */
+        this.glow = 1;
         this.env = {
-            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fields: this.fields,
+            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: [], fields: this.fields,
         };
     }
 
@@ -97,13 +114,18 @@ export class SakuraPetalDirector {
                     side * speed,
                     0.5 + 2.6 * this.random(),
                     (this.random() - 0.5) * 3,
-                    0.7 + 0.3 * strength,
+                    (0.7 + 0.3 * strength) * this.glow,
                 );
             }
-            this.effects.flash?.(edge.x + side * 0.25, this.above(edge.x, edge.y, edge.z), edge.z, 0.55 + strength * 0.7);
+            this.effects.flash?.(
+                edge.x + side * 0.25,
+                this.above(edge.x, edge.y, edge.z),
+                edge.z,
+                (0.55 + strength * 0.7) * this.glints(),
+            );
             // The piece seems to fall through the card into the lake behind it.
             const drop = stage.lake(emitter.column, 24 + 10 * this.random(), this.foot);
-            this.effects.ring?.(drop.x, drop.z, 0.45 + strength * 0.9);
+            this.effects.ring?.(drop.x, drop.z, (0.45 + strength * 0.9) * this.calm);
         }
         if (emitter.age < 0.28) {
             this.fields.push({
@@ -137,7 +159,7 @@ export class SakuraPetalDirector {
                 side * speed,
                 -0.3 + 2.8 * this.random(),
                 (this.random() - 0.5) * 4.4,
-                0.7 + 0.3 * strength,
+                (0.7 + 0.3 * strength) * this.glow,
             );
         }
         if (emitter.age < 0.75) {
@@ -146,12 +168,17 @@ export class SakuraPetalDirector {
             });
         }
         if (fresh) {
-            this.effects.flash?.(edge.x + side * 0.4, this.above(edge.x, edge.y, edge.z), edge.z, 0.9 + lines * 0.22);
+            this.effects.flash?.(
+                edge.x + side * 0.4,
+                this.above(edge.x, edge.y, edge.z),
+                edge.z,
+                (0.9 + lines * 0.22) * this.glints(),
+            );
         }
         if (fresh && side < 0) {
             // One ring for the whole clear, wide and bright, from the middle of the lake.
             const drop = stage.lake(0.5, 30, this.foot);
-            this.effects.ring?.(drop.x, drop.z, 0.7 + lines * 0.22);
+            this.effects.ring?.(drop.x, drop.z, (0.7 + lines * 0.22) * this.calm);
         }
     }
 
@@ -197,7 +224,7 @@ export class SakuraPetalDirector {
                 -Math.sin(angle) * speed,
                 0.4 + this.random() * 1.2,
                 Math.cos(angle) * speed,
-                0.6 + 0.4 * energy,
+                (0.6 + 0.4 * energy) * this.glow,
             );
         }
     }
@@ -219,7 +246,7 @@ export class SakuraPetalDirector {
                     Math.cos(angle) * speed * 0.8 + side * 2,
                     Math.sin(angle) * speed * 0.6 + 1.5,
                     Math.sin(angle) * 1.5,
-                    0.95,
+                    0.95 * this.glow,
                 );
             }
         }
@@ -257,6 +284,27 @@ export class SakuraPetalDirector {
         }
     }
 
+    /** How bright a lock's or clear's glint is as play runs hot (gentler, like the rings). */
+    glints() {
+        return this.calm;
+    }
+
+    /**
+     * The fever's festival: a few sky lanterns at a time lift off the lake in view, either side of
+     * the board, so through a fever a steady stream of them climbs past the mountain into the night.
+     */
+    festival(emitter) {
+        const count = Math.max(1, Math.min(4, Math.round(emitter.lines) || 2));
+        for (let i = 0; i < count; i += 1) {
+            const side = (i + emitter.serial) % 2 === 0 ? -1 : 1;
+            // Out past the card's edge on its side, from the near water to the far.
+            const column = side < 0 ? -1.3 + this.random() * 1.1 : 1.2 + this.random() * 1.1;
+            const water = this.stage.lake(column, 20 + this.random() * 34, this.foot);
+            const y = Math.max(0, this.surface(water.x, water.z)) + 0.4 + this.random() * 0.6;
+            this.effects.skyLantern?.(water.x, y, water.z, this.random() * 0.7);
+        }
+    }
+
     /** A flight of sky lanterns from the banks and the far shore, staggered over a few seconds. */
     lanterns(emitter) {
         const share = Math.max(3, Math.round(this.tier.skyLanterns * (0.25 + 0.75 * emitter.strength)));
@@ -276,6 +324,9 @@ export class SakuraPetalDirector {
     apply(frame = {}, dt = 0, wind = { x: 1, z: 0, strength: 0.3 }) {
         const { fields, stage } = this;
         fields.length = 0;
+        const level = Number.isFinite(frame.level) ? Math.max(0, Math.min(1, frame.level)) : 0;
+        this.calm = 1 - 0.45 * level;
+        this.glow = 1 - 0.35 * level;
         const emitters = frame.emitters || [];
         for (let i = 0; i < emitters.length; i += 1) {
             const emitter = emitters[i];
@@ -294,8 +345,11 @@ export class SakuraPetalDirector {
             } else if (emitter.kind === 'star' && fresh) this.effects.star?.(emitter.strength);
             else if (emitter.kind === 'floats' && fresh) this.floats(emitter);
             else if (emitter.kind === 'lanterns' && fresh) this.lanterns(emitter);
+            else if (emitter.kind === 'festival' && fresh) this.festival(emitter);
         }
         const vortex = Number.isFinite(frame.vortex) ? Math.max(0, Math.min(1, frame.vortex)) : 0;
+        // Reduce motion: the stream turns slower (frame.motion, SakuraReactions.setMotion).
+        const motion = Number.isFinite(frame.motion) ? Math.max(0, Math.min(1, frame.motion)) : 1;
         if (vortex > 0.03) {
             const centre = stage.centre(SAKURA_STAGE_DEPTH, this.point);
             const floor = this.surface(centre.x, centre.z);
@@ -306,7 +360,7 @@ export class SakuraPetalDirector {
                 radius: 2.7 + 0.8 * vortex,
                 reach: 4.4 + vortex,
                 top: floor + 2.4 + 7.5 * vortex,
-                spin: 4.0 + 7.5 * vortex,
+                spin: (4.0 + 7.5 * vortex) * (0.4 + 0.6 * motion),
                 turn: 1,
                 grip: 2.4,
                 pull: 2.6,
@@ -334,6 +388,20 @@ export class SakuraPetalDirector {
             this.front.direction = frame.front.direction;
             env.front = this.front;
         } else env.front = null;
+        // Every front crossing, for the light rig (the trees and grass bend under all of them);
+        // the petal simulation feels the strongest.
+        env.fronts.length = 0;
+        const crossing = Array.isArray(frame.fronts) ? frame.fronts : [];
+        for (let i = 0; i < crossing.length && env.fronts.length < FRONTS; i += 1) {
+            const source = crossing[i];
+            if (!(source?.strength > 0.001) || !Number.isFinite(source.position)) continue;
+            const target = this.fronts[env.fronts.length];
+            target.x = source.position * stage.halfWidth(26);
+            target.strength = source.strength;
+            target.direction = source.direction;
+            env.fronts.push(target);
+            if (!env.front || target.strength > env.front.strength) env.front = target;
+        }
         return env;
     }
 }

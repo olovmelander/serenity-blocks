@@ -122,11 +122,27 @@ function buildSeaGeometry(rings, segments) {
     return geometry;
 }
 
-/** A gaussian light ring at distance `dist` for pulse slot P = (radius, 1/width, energy, 0). */
-const ringTerm = (dist, P) => {
-    const d = dist.sub(P.x).mul(P.y);
-    return exp(d.mul(d).negate()).mul(P.z);
-};
+/**
+ * Every light-wave slot (P = radius, 1/width, energy, heat; a gaussian band) at `dist`: their summed light and its colour, gold for a plain wave and
+ * molten amber for a hot one (a deep cascade, a long chain, a fever), weighted by each band's
+ * light. `wide` widens the bands (the towers take them three times as wide).
+ */
+export function ringLight(rings, dist, wide = 1, knee = 0.8, room = 0.6) {
+    const sum = float(0.0).toVar();
+    const hot = float(0.0).toVar();
+    rings.forEach((P) => {
+        const d = dist.sub(P.x).mul(P.y).div(wide);
+        const r = exp(d.mul(d).negate()).mul(P.z);
+        sum.addAssign(r);
+        hot.addAssign(r.mul(P.w));
+    });
+    const heat = clamp(hot.div(max(sum, 1e-4)), 0.0, 1.0);
+    // Bands that overlap add up to a soft limit: one wave reads as it always has, a procession
+    // never floods the deck or a tower with light (linear to `knee`, then easing to knee + room).
+    const over = max(sum.sub(knee), 0.0);
+    const light = min(sum, knee).add(over.div(over.div(room).add(1.0)));
+    return { sum: light, heat };
+}
 
 /** Swell, mask and heads at field point q (world units, scrolled): their values and gradients. */
 function baseField(q) {
@@ -318,12 +334,18 @@ export function createCloudSea(u, opts = {}) {
         const rim = g.mul(g).mul(g);
         col.addAssign(sunCol.mul(lobe).mul(rim.mul(1.5).add(0.1)).mul(mix(lit, float(1.0), 0.2))
             .mul(u.sunPulse.mul(0.5).add(1.0)));
+        // As play heats the glare path turns molten: deep amber down the sun's bearing, on the
+        // lit faces, the shadows left dark.
+        col.addAssign(rgb(0xff8a3a, 1.5).mul(lobe).mul(rim.add(0.3)).mul(mix(float(0.25), float(1.0), lit))
+            .mul(u.blaze.z));
 
         // ── Light waves (line clears / level up) rolling in over the heads toward the camera,
-        // brightest on the crowns ──
-        const ring = ringTerm(dist, u.ring0).add(ringTerm(dist, u.ring1));
-        col.addAssign(rgb(0xffd9a0, 2.2).mul(ring.mul(mix(float(0.45), float(1.0), crown))
-            .mul(mix(float(0.6), float(1.0), lit))));
+        // brightest on the crowns; a hot wave burns amber ──
+        const ring = ringLight(u.rings, dist, 1, 0.7, 0.4);
+        const ringCol = mix(rgb(0xffd9a0, 2.2), rgb(0xff8644, 2.0), ring.heat);
+        // A hot band leaves the shadows darker: it reads as a line of fire on the crowns.
+        col.addAssign(ringCol.mul(ring.sum.mul(mix(float(0.45), float(1.0), crown))
+            .mul(mix(float(0.6).sub(ring.heat.mul(0.35)), float(1.0), lit))));
 
         // ── Mist pooled in the creases: violet, warm toward the sun ──
         const mist = mix(rgb(0xb8a6d8, 0.62), rgb(0xffd2b0, 0.95), clamp(lobe.mul(2.0), 0.0, 1.0));

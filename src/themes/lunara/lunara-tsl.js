@@ -440,7 +440,9 @@ export const luLockLight = (u, p) => {
 
 /**
  * The clear waves at world point `p`. Returns vec4(colour · front, afterglow): the bright
- * leading fronts (one per cleared line) and the afterglow of everything the wave has passed.
+ * leading fronts (one per cleared line; the fronts of waves crossing at once add) and the
+ * afterglow of everything the waves have passed (the brightest of them: a cascade's waves follow
+ * one another over the same water, and summed their afterglow would turn it milky).
  */
 export const luClearLight = (u, p) => {
     let front = vec3(0.0);
@@ -456,7 +458,7 @@ export const luClearLight = (u, p) => {
         }
         const live = step(0.0, since).mul(A.z);
         front = front.add(u.clearC[i].mul(f.mul(A.z)));
-        glow = glow.add(exp(since.div(-CLEAR_AFTERGLOW)).mul(live));
+        glow = max(glow, exp(since.div(-CLEAR_AFTERGLOW)).mul(live));
     }
     return vec4(front, glow);
 };

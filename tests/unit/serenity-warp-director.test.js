@@ -20,7 +20,7 @@ const tableColor = (key) => SERENITY_WARP_TETROMINOS.colors?.[key] ?? SERENITY_W
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], levelUp: [], order: [],
+        lock: [], clear: [], perfect: [], spin: [], combo: [], levelUp: [], order: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
@@ -31,6 +31,14 @@ function makeDirector(options = {}) {
         clear: vi.fn((c) => {
             calls.order.push('clear');
             calls.clear.push({ ...c, rows: [...c.rows], screen: c.screen ? { ...c.screen } : null });
+        }),
+        perfect: vi.fn((c) => {
+            calls.order.push('perfect');
+            calls.perfect.push({ ...c });
+        }),
+        spin: vi.fn((c) => {
+            calls.order.push('spin');
+            calls.spin.push({ ...c });
         }),
         combo: vi.fn((n, player) => {
             calls.order.push('combo');
@@ -190,6 +198,38 @@ describe('stellar velocity director: intake', () => {
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
+        // Riding on its clear, the perfect clear is no crown of its own.
+        expect(calls.perfect).toHaveLength(0);
+    });
+
+    it('crowns the clear with a perfect clear that settles in a frame of its own, never a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // Physics settles it ~360 ms later, in a tick of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.perfect).toEqual([{ player: 0 }]);
+    });
+
+    it('answers a T-spin that cleared nothing, and only that', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.spin).toEqual([{ player: 0 }]);
+        expect(calls.order).toEqual(['lock', 'spin']);
+        // A T-spin that cleared lines rides on its clear.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23] });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.clear[0].tspin).toBe(true);
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

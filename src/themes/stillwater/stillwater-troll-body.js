@@ -513,9 +513,15 @@ export class TrollBody {
         // A start is taken once, whenever the frame after it comes.
         const startleAt = Number.isFinite(want.startleAt) ? want.startleAt : -Infinity;
         if (want.startle !== false && startleAt > this.lastStartle && this.time - startleAt < 0.6 && this.time >= startleAt) {
+            // A start from rest is a full one; another hard on its heels only a flinch on top of
+            // what is left of the last (lights falling fast keep him alert, not jolting).
+            const rested = Math.min(1, Math.max(0, (startleAt - this.lastStartle) / 3));
             this.lastStartle = startleAt;
-            this.startle.x = 1;
-            this.startle.v = 0;
+            const amount = 0.3 + 0.7 * rested;
+            if (amount > this.startle.x) {
+                this.startle.x = amount;
+                this.startle.v = 0;
+            }
         }
         // (Going home after a parting he walks bowed a little.)
         const lean = 0.12 * gait + 0.06 * this.exertion + this.doze.x * 0.12 + (want.heavy ? 0.08 : 0);

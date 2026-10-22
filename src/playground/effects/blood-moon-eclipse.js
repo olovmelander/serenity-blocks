@@ -103,11 +103,24 @@ const DISC = (() => {
 const sample = [0, 0, 0];
 
 /**
- * The whole eclipse at `time`: the shadow's offset, the moon's mean light (rgb and luminance),
- * how much of the face lies in the umbra, and the exposure the night takes for it.
+ * How far aside a perfect clear's diamond ring steps the shadow at most (lunar radii): a sliver
+ * of sun burns on the limb and the night stops down to about half, then the moon slides back.
  */
-export function sampleEclipse(time, out = {}) {
+export const DIAMOND_REACH = 1.88;
+
+/**
+ * The whole eclipse at `time`: the shadow's offset, the moon's mean light (rgb and luminance),
+ * how much of the face lies in the umbra, and the exposure the night takes for it. `nudge`
+ * (lunar radii, ≥ 0) steps the shadow further aside for a moment — the diamond ring — but never
+ * past DIAMOND_REACH, nor back from where the cycle already has it.
+ */
+export function sampleEclipse(time, out = {}, nudge = 0) {
     const offset = eclipseOffset(time, out.offset || (out.offset = { x: 0, y: 0 }));
+    if (nudge > 0 && Number.isFinite(nudge)) {
+        const side = offset.x < 0 ? -1 : 1;
+        const along = Math.abs(offset.x);
+        offset.x = side * Math.max(along, Math.min(DIAMOND_REACH, along + nudge));
+    }
     const light = out.light || (out.light = [0, 0, 0]);
     light[0] = 0; light[1] = 0; light[2] = 0;
     let inUmbra = 0;

@@ -9,8 +9,17 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.perfect({ player, lines: 0, combo, perfect: true, b2b, ... })   a perfect clear that
+ *                              came in a frame of its own (see below): a crown, not a new clear
+ *   sink.spin({ player })      a T-spin that cleared no lines
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *
+ * Physics emits PERFECT_CLEAR after the clear's LAST cascade wave has settled (about 360 ms
+ * after it, in a frame of its own), so it usually arrives with no rows of its own. It is then
+ * resolved as `sink.perfect` — the crown on the clear still playing — never as a second clear
+ * (which would replay the four-line blackout and its wave). A sink without `perfect` gets the
+ * old one-line clear.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -206,6 +215,7 @@ export class NeonDistrictDirector {
         this._clear = {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
+        this._spin = { player: 0 };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -349,13 +359,13 @@ export class NeonDistrictDirector {
         return true;
     }
 
+    /** Usually a frame after the clear it crowns: staged with no rows of its own (see flush). */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -405,6 +415,8 @@ export class NeonDistrictDirector {
                 c.screen = null;
                 sink.lock(c);
             }
+            const crownOnly = slot.lines === 0 && slot.perfect;
+            if (crownOnly && !sink?.perfect) slot.lines = 1; // a sink that knows no crowns
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
@@ -418,6 +430,23 @@ export class NeonDistrictDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (crownOnly && sink?.perfect) {
+                // The board emptied by the clear still playing: crown it, never replay it.
+                const c = this._clear;
+                c.player = slot.player;
+                c.rows.length = 0;
+                c.lines = 0;
+                c.combo = Math.max(1, slot.tracker.combo);
+                c.cascade = 1;
+                c.tspin = false;
+                c.perfect = true;
+                c.b2b = slot.b2b;
+                c.screen = screen;
+                sink.perfect(c);
+            } else if (slot.tspin && slot.lines === 0 && sink?.spin) {
+                // A T-spin that cleared nothing still turns the circuit over.
+                this._spin.player = slot.player;
+                sink.spin(this._spin);
             }
             clearPending(slot);
         }

@@ -7,7 +7,9 @@
  *
  *   calm zones (what shows through the translucent board card and HUD is soft-clipped) → [the
  *   bloom, when built] → luminance only (this is a black-and-white film) → exposure → a soft black
- *   point → the film's characteristic curve (a deep toe, a long shoulder) → the flashbulb's negative →
+ *   point (the paper's grade: hot play prints harder, the thin haze sinks into the black) → the
+ *   film's characteristic curve (a deep toe, a long shoulder) → the flashbulb's negative (in hot play
+ *   a Sabattier solarisation instead: the mid-tones reverse, the blacks stay black) →
  *   the stock's toning (shadows and highlights each tinted, luminance kept, the paper's own base
  *   under the deepest blacks) → vignette → sRGB → the reel change's cue mark → grain (strongest in
  *   the mid-tones, where film shows it) → dust on the print → triangular dither.
@@ -84,7 +86,13 @@ export const BLOOM_KNEE = 0.5;
 export const BLOOM_RADIUS = 0.7;
 export const EXPOSURE = 1.0;
 /** Below this (scene luminance) the print crushes to black: noir's deep shadows. */
-const BLACK_POINT = 0.02;
+export const BLACK_POINT = 0.02;
+/** At the hardest paper grade (`contrast` 1) the black point is this many times BLACK_POINT. */
+const HARD_GRADE = 4;
+/** The share of the dust lattice's cells that hold a speck at rest. */
+const DUST_SHARE = 0.0016;
+/** The vignette's depth at rest. */
+const VIGNETTE = 0.55;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
@@ -136,6 +144,10 @@ export class CosmicNoirPost {
         this.uExposure = uniform(EXPOSURE);
         this.uFlash = uniform(0); // a clear's lift of the whole print, 0..1
         this.uNegative = uniform(0); // the flashbulb: 1 = the print is its own negative
+        this.uSolar = uniform(0); // 0 = the flashbulb is a negative, 1 = a solarisation (the blacks kept)
+        this.uBlackPoint = uniform(BLACK_POINT); // the paper's grade (hot play prints harder)
+        this.uVignette = uniform(VIGNETTE);
+        this.uDustCut = uniform(1 - DUST_SHARE); // a cell holds a speck above this
         this.uCue = uniform(0); // the reel change's cue mark, 0..1
         this.uCuePos = uniform(new THREE.Vector2(0.9, 0.16));
         this.uBloomBoost = uniform(0);
@@ -210,10 +222,13 @@ export class CosmicNoirPost {
             const fromCentre = st.sub(0.5);
             const L0 = cnLuma(S.add(glow)).mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.4)));
             // A soft black point: the thinnest haze sinks into the black (≈ L − k above it, no kink).
-            const L = L0.mul(L0).div(L0.add(BLACK_POINT));
+            const L = L0.mul(L0).div(L0.add(this.uBlackPoint));
             const y = filmCurve(L).toVar();
-            // The flashbulb: the print turns to its negative (the card stays itself).
-            y.assign(mix(y, float(1.0).sub(y), this.uNegative.mul(float(1.0).sub(calm))));
+            // The flashbulb: the print turns to its negative (the card stays itself). Fired in hot
+            // play it is a Sabattier solarisation instead: the mid-tones reverse and the blacks stay
+            // black, so the payoff draws the smoke's edges in light instead of whiting the frame.
+            const flipped = mix(float(1.0).sub(y), y.mul(float(1.0).sub(y)).mul(2.9), this.uSolar);
+            y.assign(mix(y, flipped, this.uNegative.mul(float(1.0).sub(calm))));
             // ── The stock's toning: shadows and highlights tinted, luminance kept ──
             const tone = mix(this.uShadow, this.uHigh, smoothstep(0.02, 0.75, y));
             const toned = vec3(y).mul(tone).toVar();
@@ -221,7 +236,7 @@ export class CosmicNoirPost {
             // ── Vignette: a print's corners fall away ──
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.3, 1.05, length(cv.mul(1.45)));
-            toned.mulAssign(float(1.0).sub(vig.mul(0.55)));
+            toned.mulAssign(float(1.0).sub(vig.mul(this.uVignette)));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(toned, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
@@ -256,7 +271,7 @@ export class CosmicNoirPost {
                 const pos = vec2(cnHash21(cell.add(vec2(frame, 5.0))), cnHash21(cell.add(vec2(9.0, frame))));
                 const local = fract(px.div(cellPx)).sub(pos).mul(cellPx);
                 const size = h.mul(1.6).add(0.7).mul(hScale);
-                const speck = exp(dot(local, local).div(size.mul(size)).negate()).mul(step(0.9984, h));
+                const speck = exp(dot(local, local).div(size.mul(size)).negate()).mul(step(this.uDustCut, h));
                 D.assign(mix(D, vec3(0.9, 0.89, 0.86), speck.mul(0.55).mul(min(this.uGrain, 1.0)).mul(float(1.0).sub(calm))));
             }
             const dth = cnHash21(pxi).add(cnHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
@@ -284,12 +299,22 @@ export class CosmicNoirPost {
         this.pipeline.needsUpdate = true;
     }
 
-    /** Per-frame values (all optional). */
+    /**
+     * Per-frame values (all optional). `contrast` 0..1 = the paper's grade (the black point rises);
+     * `vignette` = its depth; `dust` = how many specks, × the rest share. Frame-wide flashes (the
+     * flash and the flashbulb's flip) keep flashScale() of their strength under Reduce flashing.
+     */
     update({
-        flash, negative, cue, bloomBoost, exposure, time, stock, cuePos,
+        flash, negative, solar, cue, bloomBoost, exposure, time, stock, cuePos, contrast, vignette, dust,
     } = {}) {
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
-        if (negative !== undefined) this.uNegative.value = negative;
+        if (negative !== undefined) this.uNegative.value = negative * flashScale();
+        if (solar !== undefined) this.uSolar.value = Math.max(0, Math.min(1, solar));
+        if (contrast !== undefined) {
+            this.uBlackPoint.value = BLACK_POINT * (1 + (HARD_GRADE - 1) * Math.max(0, Math.min(1, contrast)));
+        }
+        if (vignette !== undefined) this.uVignette.value = vignette;
+        if (dust !== undefined) this.uDustCut.value = 1 - DUST_SHARE * Math.max(0, dust);
         if (cue !== undefined) this.uCue.value = cue;
         if (cuePos) this.uCuePos.value.set(cuePos.x, cuePos.y);
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;

@@ -216,6 +216,10 @@ export function createMotes(u, t, count) {
         }) {
             for (let k = 0; k < n; k++) {
                 const o = next * 4;
+                // The ring is full of dust still in the air (the oldest is not yet in its last
+                // fifth): the rest of this burst is not thrown, rather than wiping dust mid-flight.
+                const born = from[o + 3];
+                if (time - born < go[o + 3] * 0.8) break;
                 const a = rand() * Math.PI * 2;
                 const r = Math.sqrt(rand()) * spread;
                 from[o] = x + Math.cos(a) * r;

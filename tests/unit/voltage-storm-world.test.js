@@ -11,7 +11,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    AMBIENT_BEAT, REST_RIG, SURGE_COOL, VOLTAGE_STORM_PARTS, VoltageStormWorld, fovForAspect,
+    AMBIENT_BEAT, FLICKER_GAP, KEEP_MAX, REST_RIG, SURGE_COOL, VOLTAGE_STORM_PARTS, VoltageStormWorld, fovForAspect,
 } from '../../src/themes/voltage-storm/voltage-storm-world.js';
 import {
     BOLT_RANGES, BOLT_ROWS, DEG, FLASH_SLOTS, HELD_MAX, HELD_TAU, HUSH_HOLD, MAX_CHAIN_ARCS, PALETTE_DRIFT,
@@ -19,6 +19,7 @@ import {
     palettePhase, pieceColor, powerForCombo,
 } from '../../src/themes/voltage-storm/voltage-storm-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/voltage-storm/voltage-storm-quality.js';
+import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from '../../src/themes/voltage-storm/voltage-storm-composition.js';
@@ -1515,6 +1516,323 @@ describe('voltage storm world: reduced motion', () => {
     });
 });
 
+describe('voltage storm world: the storm builds with play', () => {
+    /** A long chain, as the tray's Fever plays it: a hard-dropped clearing lock every `gap` seconds. */
+    function chain(world, camera, steps, { gap = 0.64, from = 0 } = {}) {
+        for (let i = from; i < from + steps; i++) {
+            world.onLock({
+                u: i % 2 ? 0.8 : 0.2, rows: [12], color: PIECES[i % PIECES.length], hardDrop: true,
+            });
+            const lines = 1 + (i % 3);
+            world.onClear({ lines, rows: [19, 18, 17].slice(0, lines), combo: i + 1 });
+            world.onCombo(i + 1);
+            run(world, camera, gap, Math.round(gap * 60));
+        }
+    }
+    /** What the weather looks like now. */
+    const weather = (world) => ({
+        drive: world.drive,
+        stage: world.getState().heat.stage,
+        rain: world.u.rainGain.value,
+        lean: world.u.rainLean.value.x,
+        corona: Math.max(...world.towers.map((_, i) => world.u.tables.towers[i * 3 + 2].w)),
+        horizon: world.u.horizon.value.x,
+        held: world.totalHeld(),
+        glow: world.getState().glow,
+    });
+
+    it('lets a weak event after a strong one only add: the kick, a tower\'s pulse, the sheet and the ripple', () => {
+        // The kick: a soft lock right after a hard drop shakes on, it does not cut the shake short.
+        const hardOnly = makeWorld();
+        const both = makeWorld();
+        for (const { world } of [hardOnly, both]) {
+            world.onLock({
+                u: 0.2, rows: [8], color: PIECES[0], hardDrop: true,
+            });
+        }
+        for (const { world, camera } of [hardOnly, both]) run(world, camera, 0.05, 3);
+        both.world.onLock({ u: 0.8, rows: [9], color: PIECES[1] });
+        for (const { world, camera } of [hardOnly, both]) run(world, camera, 1 / 60, 1);
+        expect(both.world.kick).toBeGreaterThan(hardOnly.world.kick);
+        expect(both.world.getPostState().kick).toBeGreaterThan(hardOnly.world.getPostState().kick);
+
+        // A tower's pulse: a soft lock's charge joins the hard drop's pulse still climbing.
+        const { world, camera } = makeWorld();
+        const tower = world.towers[2];
+        world.charge(2, pieceColor(PIECES[0]), 0.9, true);
+        const born = tower.pulseTime;
+        run(world, camera, 0.1, 6);
+        const shown = () => tower.pulseStrength * Math.exp(-(world.time - tower.pulseTime) * 2.2);
+        const before = shown();
+        world.charge(2, pieceColor(PIECES[1]), 0.3, false);
+        expect(tower.pulseTime).toBe(born);
+        expect(shown()).toBeGreaterThan(before);
+
+        // A second four while the first one's sheet and ripple still run drives them on.
+        const one = makeWorld();
+        const two = makeWorld();
+        const sheets = [];
+        for (const w of [one, two]) {
+            w.world.onClear({ lines: 4 });
+            expect(runUntil(w.world, w.camera, () => w.world.surge > 0)).toBe(true);
+            sheets.push(w.world.u.sheet.value.z);
+        }
+        run(two.world, two.camera, 0.3);
+        run(one.world, one.camera, 0.3);
+        const rippleAt = two.world.getPostState().ripple.radius;
+        two.world.onClear({ lines: 4 });
+        const { surge } = two.world;
+        expect(runUntil(two.world, two.camera, () => two.world.surge > surge)).toBe(true);
+        runTo(one.world, one.camera, two.world.time, 1 / 240);
+        // Not started again from the hero: the same front, burning brighter, and the same ring.
+        expect(two.world.u.sheet.value.z).toBe(sheets[1]);
+        const gain = (w) => w.u.sheet.value.w * Math.exp(-(w.time - w.u.sheet.value.z) * 0.85);
+        expect(gain(two.world)).toBeGreaterThan(gain(one.world));
+        expect(two.world.getPostState().ripple.radius).toBeGreaterThan(rippleAt);
+        expect(two.world.getPostState().ripple.strength).toBeGreaterThan(one.world.getPostState().ripple.strength);
+        // The overdrive stacks too.
+        expect(two.world.surge).toBeGreaterThan(one.world.surge);
+    });
+
+    it('runs hotter the longer a chain goes on: the field fills and keeps its charge, the weather gathers', () => {
+        const { world, camera } = makeWorld();
+        chain(world, camera, 1);
+        const first = weather(world);
+        expect(first.stage).toBe(0);
+        chain(world, camera, 9, { from: 1 });
+        const later = weather(world);
+        expect(later.stage).toBeGreaterThanOrEqual(2);
+        expect(later.drive).toBeGreaterThan(first.drive + 0.3);
+        expect(later.rain).toBeGreaterThan(first.rain);
+        expect(later.lean).toBeGreaterThan(first.lean);
+        expect(later.held).toBeGreaterThan(first.held);
+        expect(later.glow).toBeGreaterThan(0);
+        // The strip of clear sky closes over as the cell gathers.
+        expect(later.horizon).toBeLessThan(first.horizon);
+        // The charge leapt further down the rows than the nearest towers.
+        expect(holders(world).some((i) => world.towers[i].row >= 2)).toBe(true);
+        // A tower struck now keeps a share of what it held (from cold it lets go of all of it).
+        const cold = makeWorld();
+        cold.world.charge(4, pieceColor(PIECES[3]), 2, true);
+        cold.world.onClear({ lines: 1 });
+        world.charge(4, pieceColor(PIECES[3]), HELD_MAX, true);
+        const amounts = held(world);
+        const struck = amounts.indexOf(Math.max(...amounts));
+        world.onClear({ lines: 1 });
+        run(world, camera, 0.6);
+        run(cold.world, cold.camera, 0.6);
+        expect(held(cold.world)[4]).toBe(0);
+        expect(held(world)[struck]).toBeGreaterThan(0);
+        expect(held(world)[struck]).toBeLessThanOrEqual(amounts[struck] * KEEP_MAX + 1e-9);
+    });
+
+    it('breathes back to calm once the hands rest', () => {
+        const { world, camera } = makeWorld();
+        const rest = weather(world);
+        chain(world, camera, 10);
+        world.onCombo(0);
+        run(world, camera, 20, 600);
+        const after = weather(world);
+        expect(after.drive).toBe(0);
+        expect(after.stage).toBe(0);
+        expect(after.glow).toBe(0);
+        expect(after.rain).toBeCloseTo(rest.rain, 2);
+        // (The light has drifted on round the wheel by itself meanwhile: the strip is its own again.)
+        expect(after.horizon).toBeCloseTo(paletteAt(palettePhase(1, world.time)).horizon[0], 3);
+        expect(world.getState().chainArcs).toBe(0);
+    });
+
+    it('holds the quad\'s hush shallower the hotter play runs, and never stops the storm in a chain', () => {
+        const cold = makeWorld();
+        cold.world.onClear({ lines: 4 });
+        run(cold.world, cold.camera, 0.2, 48);
+        const { world, camera } = makeWorld();
+        chain(world, camera, 8);
+        const clock = world.stormClock;
+        world.onClear({ lines: 4, combo: 9 });
+        run(world, camera, 0.2, 48);
+        expect(world.hushDepth).toBeLessThan(0.5);
+        expect(world.breath).toBeGreaterThan(cold.world.breath + 0.3);
+        expect(world.stormClock).toBeGreaterThan(clock);
+    });
+
+    it('crowns a perfect clear that comes on a frame of its own: the field lets go, with no second hush', () => {
+        const { world, camera } = makeWorld();
+        const fired = watchBolts(world);
+        for (const [index, amount] of [[0, 1.2], [3, 1.4], [6, 0.8], [9, 0.6]]) {
+            world.charge(index, pieceColor(PIECES[index % 7]), amount);
+        }
+        world.onClear({ lines: 4 });
+        const hushed = world.hushUntil;
+        run(world, camera, 0.36, 36);
+        // The far towers the four did not strike still hold.
+        expect(holders(world)).toEqual(expect.arrayContaining([6, 9]));
+        const strikes = fired('strike').length;
+        const { breath } = world;
+        world.onPerfect({});
+        expect(world.hushUntil).toBe(hushed);
+        expect(world.getState().counts).toMatchObject({ clears: 1, quads: 1, crowns: 1 });
+        // The fullest are struck, but their light is the cloud's glow: no barrage of flashes.
+        const crown = fired('strike').slice(strikes);
+        expect(crown.length).toBeGreaterThan(0);
+        for (const bolt of crown) expect(bolt.glowGain).toBe(0);
+        let lowest = breath;
+        for (let i = 0; i < 60; i++) {
+            run(world, camera, 1 / 60, 1);
+            lowest = Math.min(lowest, world.breath);
+        }
+        expect(lowest).toBeGreaterThanOrEqual(breath);
+        expect(world.getState().glow).toBeGreaterThan(0);
+        run(world, camera, 1.5);
+        expect(world.totalHeld()).toBe(0);
+    });
+
+    it('answers a T-spin that cleared nothing with a small turn of the cell and an arc up the mast', () => {
+        const { world, camera } = makeWorld();
+        const fired = watchBolts(world);
+        const hero = world.towers[0];
+        world.onTSpin({});
+        expect(fired('strike')).toHaveLength(0);
+        expect(fired('arc')).toHaveLength(1);
+        expect(fired('arc')[0].end).toEqual([hero.x, hero.height * TOWER.toroid, hero.z]);
+        let turned = 0;
+        for (let i = 0; i < 60; i++) {
+            run(world, camera, 1 / 60, 1);
+            turned = Math.max(turned, Math.abs(world.twist));
+        }
+        expect(turned).toBeGreaterThan(0);
+        // Smaller than a T-spin that cleared lines.
+        const clearing = makeWorld();
+        clearing.world.onClear({ lines: 2, tspin: true });
+        let big = 0;
+        for (let i = 0; i < 60; i++) {
+            run(clearing.world, clearing.camera, 1 / 60, 1);
+            big = Math.max(big, Math.abs(clearing.world.twist));
+        }
+        expect(turned).toBeLessThan(big);
+        expect(world.getState().counts.clears).toBe(0);
+    });
+
+    it('walks a cascade out into the storm: each wave strikes the towers a row further out, harder', () => {
+        const { world, camera } = makeWorld();
+        const fired = watchBolts(world);
+        world.onClear({ lines: 2, rows: [19, 18] });
+        const waves = [];
+        for (let wave = 2; wave <= 4; wave++) {
+            run(world, camera, 0.36, 22);
+            const before = fired('strike').length;
+            world.onClear({ lines: 1, rows: [19], cascade: wave });
+            waves.push(fired('strike').slice(before));
+        }
+        waves.forEach((bolts, k) => {
+            const rows = bolts.map((bolt) => world.towers[towerAt(world, bolt.end)].row);
+            // Both towers of the row one further out than the last wave's.
+            expect(rows.filter((row) => row === k + 1)).toHaveLength(2);
+            if (k > 0) {
+                const power = (list) => Math.max(...list.map((bolt) => bolt.power));
+                expect(power(bolts)).toBeGreaterThan(power(waves[k - 1]));
+            }
+        });
+    });
+
+    it('answers a back-to-back twice: both heroes struck at once, harder with each one in a row', () => {
+        const { world, camera } = makeWorld();
+        const fired = watchBolts(world);
+        /** The two strikes of a back-to-back: one on each hero, at the same moment. */
+        const twin = (bolts) => {
+            const right = bolts.filter((bolt) => towerAt(world, bolt.end) === 1)
+                .sort((a, b) => b.power - a.power)[0];
+            const left = bolts.find((bolt) => towerAt(world, bolt.end) === 0 && bolt.time === right?.time);
+            return { left, right };
+        };
+        world.onClear({ lines: 4 });
+        run(world, camera, 2);
+        let from = fired('strike').length;
+        world.onClear({ lines: 4, b2b: true });
+        const first = twin(fired('strike').slice(from));
+        expect(first.left).toBeDefined();
+        expect(first.right).toBeDefined();
+        run(world, camera, 2);
+        from = fired('strike').length;
+        world.onClear({
+            lines: 2, tspin: true, b2b: true,
+        });
+        const second = twin(fired('strike').slice(from));
+        expect(second.left).toBeDefined();
+        expect(second.right.power).toBeGreaterThan(first.right.power);
+        expect(second.right.width).toBeGreaterThan(first.right.width);
+        // A plain clear does not answer twice.
+        run(world, camera, 2);
+        from = fired('strike').length;
+        world.onClear({ lines: 1 });
+        expect(fired('strike').slice(from)).toHaveLength(1);
+    });
+
+    it('lets the cloud flash by itself under three times a second, however fast the hands; the rest glows', () => {
+        const { world, camera } = makeWorld('High', { quiet: false });
+        const fired = watchBolts(world);
+        let glowed = 0;
+        for (let i = 0; i < 24; i++) {
+            world.onLock({
+                u: i % 2 ? 0.8 : 0.2, rows: [8], color: PIECES[i % 7], hardDrop: true,
+            });
+            if (i % 4 === 3) world.onClear({ lines: 1 });
+            for (let f = 0; f < 15; f++) {
+                run(world, camera, 1 / 60, 1);
+                glowed = Math.max(glowed, world.getState().glow);
+            }
+        }
+        // The cloud's own flashes (a lock's answer, the storm's beat): crawlers and far strikes.
+        const own = fired().filter((bolt) => bolt.kind === 'crawler'
+            || (bolt.kind === 'strike' && towerAt(world, bolt.end) < 0));
+        const lit = own.filter((bolt) => bolt.glowGain > 0).map((bolt) => bolt.time).sort((a, b) => a - b);
+        expect(lit.length).toBeGreaterThan(3);
+        for (let i = 1; i < lit.length; i++) expect(lit[i] - lit[i - 1]).toBeGreaterThanOrEqual(FLICKER_GAP - 1e-9);
+        // None was dropped: the held ones still crawled through the cloud, and their light glowed in it.
+        expect(own.length).toBeGreaterThan(lit.length);
+        expect(glowed).toBeGreaterThan(0);
+    });
+
+    it('holds the lightning still under Reduce flashing from the first frame, with a trace of its light', () => {
+        const script = ({ world, camera }) => {
+            let most = 0;
+            world.onLock({
+                u: 0.2, rows: [8], color: PIECES[0], hardDrop: true,
+            });
+            world.onClear({ lines: 4 });
+            for (let i = 0; i < 90; i++) {
+                run(world, camera, 1 / 60, 1);
+                for (let k = 0; k < world.u.flashCount.value; k++) {
+                    const light = world.u.tables.flashes[k * 2 + 1];
+                    most = Math.max(most, light.x, light.y, light.z);
+                }
+            }
+            return { most, sheet: world.u.sheet.value.w };
+        };
+        const full = script(makeWorld());
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        try {
+            const calm = makeWorld('High', { quiet: false });
+            // Before any strike: the storm's own bolts already have one stroke and no flicker.
+            expect(calm.world.bolts.calm).toBe(true);
+            calm.world.setReducedMotion(true);
+            calm.world.setReducedMotion(false);
+            expect(calm.world.bolts.calm).toBe(true);
+            const fired = watchBolts(calm.world);
+            const seen = script(calm);
+            for (const slot of calm.world.bolts.slots) {
+                if (slot.live && !slot.held) expect(slot.plan.times).toHaveLength(1);
+            }
+            expect(fired('strike').length).toBeGreaterThan(0);
+            expect(seen.most).toBeLessThanOrEqual(full.most * REDUCED_FLASH_SCALE * 1.5);
+            expect(seen.sheet).toBeLessThanOrEqual(REDUCED_FLASH_SCALE + 1e-9);
+            expect(full.sheet).toBeGreaterThan(seen.sheet);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+});
+
 describe('voltage storm world: layout and aspect', () => {
     const board = (card) => ({
         x0: card.x0 + 0.02, y0: card.y0 + 0.1, x1: card.x1 - 0.02, y1: card.y1 - 0.04,
@@ -1731,6 +2049,7 @@ describe('voltage storm world: parts, frames and disposal', () => {
         const { flashes } = world.u.tables;
         expect(flashes).toHaveLength(FLASH_SLOTS * 2);
         let most = 0;
+        let spilled = 0;
         world.onCombo(MAX_CHAIN_ARCS + 5);
         for (let round = 0; round < 4; round++) {
             world.onLock({
@@ -1741,24 +2060,30 @@ describe('voltage storm world: parts, frames and disposal', () => {
                 run(world, camera, 1 / 60, 1);
                 const lights = update.mock.results.at(-1).value;
                 const count = world.u.flashCount.value;
-                expect(count).toBe(lights.length);
+                // The bolts' lights, then the cloud's held glow in the last row while it is lit.
+                const glow = world.getState().glow > 0 ? 1 : 0;
+                expect(count).toBe(lights.length + glow);
                 expect(count).toBeLessThanOrEqual(FLASH_SLOTS);
                 expect(world.getState().flashes).toBe(count);
                 for (let k = 0; k < count; k++) {
                     const at = flashes[k * 2];
                     const light = flashes[k * 2 + 1];
-                    expect([at.x, at.y, at.z, at.w]).toEqual([lights[k].x, lights[k].y, lights[k].z, lights[k].reach]);
+                    const source = k < lights.length ? lights[k] : world.glowLight;
+                    expect([at.x, at.y, at.z, at.w]).toEqual([source.x, source.y, source.z, source.reach]);
                     for (const channel of [light.x, light.y, light.z]) {
                         expect(Number.isFinite(channel)).toBe(true);
                         expect(channel).toBeGreaterThanOrEqual(0);
                     }
                 }
                 most = Math.max(most, count);
+                spilled = Math.max(spilled, world.bolts.spill.k);
             }
         }
-        // The burst did fill it: more bolts were alight than the table has rows.
+        // The burst did fill it: more bolts were alight than the table has rows, and the light of
+        // those that found no row was carried by the glow instead of lost.
         expect(most).toBe(FLASH_SLOTS);
         expect(world.getState().bolts).toBeGreaterThan(FLASH_SLOTS);
+        expect(spilled).toBeGreaterThan(0);
     });
 
     it('paints its sky each frame unless told not to draw, and runs without a renderer at all', () => {

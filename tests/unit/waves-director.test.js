@@ -149,6 +149,51 @@ describe('waves director: intake', () => {
         });
     });
 
+    it('crowns the clear still playing with a perfect clear settled after it, never a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false, crown: false });
+        // Physics settles the perfect clear ~360 ms later, in a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({ perfect: true, crown: true, rows: [] });
+        // The chain is not counted twice for it.
+        expect(calls.clear[1].combo).toBe(calls.clear[0].combo);
+        // A perfect clear that arrives with its own rows is a clear, not a crown.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear[2]).toMatchObject({ lines: 2, perfect: true, crown: false });
+    });
+
+    it('turns a T-spin that cleared nothing into a spin, not a clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(sink.spin.mock.calls[0][0]).toMatchObject({ player: 0 });
+        // One that cleared lines rides on its clear.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true, crown: false });
+        // A sink that does not hear spins is no error.
+        const deaf = makeDirector();
+        deaf.director.onPieceLock({ piece: T });
+        deaf.director.onTSpin({ lineCount: 0 });
+        expect(() => deaf.director.flush()).not.toThrow();
+        expect(deaf.calls.clear).toHaveLength(0);
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);

@@ -243,11 +243,15 @@ export class WavesPod {
      * @param {number} [o.d]        metres ahead of the eye
      * @param {boolean} [o.hero]    throw it across the sun
      * @param {number} [o.height]   metres its back rises above where it left the water
+     * @param {number} [o.slot]     the dolphin to send (freeSlot()); else the next in turn
      */
-    leap(time, open, { d = null, hero = false, height = null } = {}) {
+    leap(time, open, {
+        d = null, hero = false, height = null, slot = null,
+    } = {}) {
         const { rand } = this;
-        const arc = this.arcs[this.cursor];
-        this.cursor = (this.cursor + 1) % this.count;
+        const index = Number.isInteger(slot) && slot >= 0 && slot < this.count ? slot : this.cursor;
+        const arc = this.arcs[index];
+        this.cursor = (index + 1) % this.count;
         const ahead = d ?? 9 + rand() * 9;
         // It leaves the lower face, heading out of the wave and a little down the line.
         const from = wavePoint(0.16 + rand() * 0.08, ahead, open);
@@ -287,6 +291,35 @@ export class WavesPod {
             phase: rand() * 6.28,
         });
         return arc;
+    }
+
+    /**
+     * A dolphin free to be sent at `time`: one at rest (the next in turn first), else the one that
+     * went back into the sea longest ago (it is under the water, out of sight). -1 while every one
+     * of them is in the air or waiting to break the surface: a call waits for one, it never takes a
+     * dolphin out of the air.
+     */
+    freeSlot(time) {
+        let best = -1;
+        let since = -Infinity;
+        for (let k = 0; k < this.count; k += 1) {
+            const i = (this.cursor + k) % this.count;
+            const arc = this.arcs[i];
+            if (!arc.active) return i;
+            const under = time - (arc.t0 + arc.flight);
+            if (arc.landed && under > since) {
+                since = under;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /** Dolphins in the air or about to break the surface. */
+    live() {
+        let n = 0;
+        for (let i = 0; i < this.count; i += 1) if (this.arcs[i].active && !this.arcs[i].landed) n += 1;
+        return n;
     }
 
     /**

@@ -270,10 +270,25 @@ export function createTempleUniforms(textures) {
         auroraB: uniform(new THREE.Vector3(0.03, 0.62, 1.0)),
         auroraC: uniform(new THREE.Vector3(0.28, 0.11, 1.0)),
         auroraGain: uniform(1),
-        /** The Great Crystal: where its light is, its colour and its power (1 at rest). */
+        /**
+         * The aurora's own clock (seconds): the world clock at rest; it runs ahead as play heats,
+         * so the curtains fold, flow and ripple faster the longer the hands stay quick.
+         */
+        auroraClock: uniform(0),
+        /**
+         * The Great Crystal: where it stands, and its own glow (the crystal itself, and its image in
+         * every facet and in the lake): colour and power (1 at rest).
+         */
         heartPos: uniform(new THREE.Vector3(0, NAVE.heartY, NAVE.heartZ)),
         heartColor: uniform(new THREE.Vector3(0.33, 0.8, 1.0)),
         heartPower: uniform(1),
+        /**
+         * The light the Great Crystal throws on the nave (every surface, the air, the mist round
+         * it). The same as its glow at rest; when the crystal blazes diamond white, this keeps
+         * the aurora's colours and a measured power, so the temple stays coloured with real darks.
+         */
+        lightColor: uniform(new THREE.Vector3(0.33, 0.8, 1.0)),
+        lightPower: uniform(1),
         /** The moon's light, and how much of the ambient light is left (a hush dims it). */
         moonColor: uniform(new THREE.Vector3(0.62, 0.76, 1.0)),
         ambient: uniform(1),
@@ -356,11 +371,11 @@ export function itLobes(u, p, dir) {
     return heart.add(moon);
 }
 
-/** The Great Crystal's light arriving at `p`. */
+/** The Great Crystal's light arriving at `p` (the light it throws, not its own glow). */
 export function itHeartLight(u, p) {
     const d = u.heartPos.sub(p);
     const d2 = dot(d, d);
-    return u.heartColor.mul(u.heartPower).mul(float(1.0).div(d2.mul(0.0011).add(1.0)));
+    return u.lightColor.mul(u.lightPower).mul(float(1.0).div(d2.mul(0.0011).add(1.0)));
 }
 
 /**
@@ -411,7 +426,7 @@ export function itAirlight(u, rel, dist) {
     const h = sqrt(max(dot(toHeart, toHeart).sub(b.mul(b)), 1.4));
     const integral = atan(dist.sub(b).div(h)).add(atan(b.div(h))).div(h);
     // A flare must not white the whole nave out: the glow follows the power only so far.
-    return u.heartColor.mul(min(u.heartPower, 1.8)).mul(integral).mul(0.2);
+    return u.lightColor.mul(min(u.lightPower, 1.8)).mul(integral).mul(0.2);
 }
 
 /** Apply the atmosphere to a shaded colour at world point `p`. */

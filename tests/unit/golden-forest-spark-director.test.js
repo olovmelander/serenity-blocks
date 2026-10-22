@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { goldenForestEye, goldenForestViewFor } from '../../src/themes/golden-forest/golden-forest-composition.js';
 import { GOLDEN_FOREST_TIERS } from '../../src/themes/golden-forest/golden-forest-quality.js';
 import { GoldenForestReactions } from '../../src/themes/golden-forest/golden-forest-reactions.js';
-import { GoldenForestRipples } from '../../src/themes/golden-forest/golden-forest-ripples.js';
+import { GoldenForestRipples, goldenForestRingEnergy } from '../../src/themes/golden-forest/golden-forest-ripples.js';
 import { GoldenForestSparkDirector } from '../../src/themes/golden-forest/golden-forest-spark-director.js';
 import { GoldenForestSparkSim } from '../../src/themes/golden-forest/golden-forest-spark-sim.js';
 import {
@@ -634,6 +634,32 @@ describe('Golden Forest lake rings', () => {
         expect(snapshot(single)).toEqual([[2, 2, 0, 1]]);
     });
 
+    it('lets the ring with the least left of it give way, never a broad ring still spreading', () => {
+        const ripples = new GoldenForestRipples(3);
+        // A broad clear ring, then two faint touches after it.
+        ripples.add(10, 0, 2.6);
+        ripples.update(0.8);
+        ripples.add(20, 0, 0.3);
+        ripples.update(0.1);
+        ripples.add(30, 0, 0.5);
+        ripples.update(0.1);
+        // The broad ring is the oldest, but it still carries the most: a lock's ring takes the
+        // place of the fainter touch instead.
+        expect(goldenForestRingEnergy(ripples.rings[0])).toBeGreaterThan(goldenForestRingEnergy(ripples.rings[1]));
+        ripples.add(40, 0, 0.55);
+        expect(snapshot(ripples).map(([x]) => x)).toEqual([10, 40, 30]);
+        // A ring fainter than everything on the water is the one let go.
+        expect(ripples.add(50, 0, 0.05)).toBeNull();
+        expect(snapshot(ripples).map(([x]) => x)).toEqual([10, 40, 30]);
+        // Two strong rings later, the broad one (now faded the most) gives way in its turn.
+        ripples.add(70, 0, 2);
+        ripples.add(80, 0, 2);
+        expect(snapshot(ripples).map(([x]) => x)).toEqual([10, 80, 70]);
+        ripples.update(6);
+        expect(ripples.add(60, 0, 0.6)).toBe(ripples.rings[0]);
+        expect(snapshot(ripples).map(([x]) => x)).toEqual([60, 80, 70]);
+    });
+
     it('ages the rings on the water and clears each one at the end of its life', () => {
         const ripples = new GoldenForestRipples(3);
         ripples.add(1, 1, 1);
@@ -821,6 +847,8 @@ describe('Golden Forest spark director', () => {
                 tick();
             }
             for (let step = 0; step < 60; step++) tick();
+            // Play's own rings are a little gentler the hotter it runs (the perfect clear's are not).
+            const calm = 1 - 0.45 * reactions.frame.level;
             // One frame: the lock that completes a four-line perfect clear on a combo.
             reactions.onPieceLock();
             reactions.onLineClear(4);
@@ -831,13 +859,14 @@ describe('Golden Forest spark director', () => {
             director.apply(frame, STEP);
             const onTheWater = ripples.rings.filter((entry) => entry.z === 0).map((entry) => entry.w)
                 .sort((a, b) => b - a);
-            // The last four asked are the four on the water: the perfect clear's 2.6 and 1.6,
-            // the clear's second ring and the combo's. The lock's and the clear's first gave way.
+            // The lake keeps the strongest four (the weakest gives way, golden-forest-ripples.js):
+            // the perfect clear's 2.6 and 1.6 and both of the clear's rings. The lock's and the
+            // combo's, the weakest asked, gave way.
             expect(onTheWater).toHaveLength(4);
             expect(onTheWater[0]).toBe(2.6);
-            expect(onTheWater[1]).toBe(1.6);
-            expect(onTheWater[2]).toBeCloseTo(0.7 + 4 * 0.2, 12);
-            expect(onTheWater[3]).toBeCloseTo(0.7 + 0.9 * (1 - Math.exp(-2 * 0.22)), 12);
+            expect(onTheWater[1]).toBeCloseTo((1.1 + 4 * 0.36) * calm, 6);
+            expect(onTheWater[2]).toBe(1.6);
+            expect(onTheWater[3]).toBeCloseTo((0.7 + 4 * 0.2) * calm, 6);
         });
 
         it('ignores rings at rest, rings without strength and frames without a queue', () => {

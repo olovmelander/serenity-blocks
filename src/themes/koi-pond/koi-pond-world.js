@@ -20,7 +20,22 @@
  *            it; the lilies open one by one, a gauge of the chain. A long chain wakes the
  *            dragon in the basin under the board.
  *   four     the pond holds its breath — then the whole school goes over the water at once,
- *            and the dragon rears out of it.
+ *            and the dragon rears out of it. The breath is as deep as play is cold: a quad in a
+ *            fever is an inhale, never a blackout.
+ *   perfect  (settled after the clear) a crown on the clear still playing, never a second
+ *            hush: gold and rose rings cross the whole pond, every lily blazes, every koi takes
+ *            fire, four more turn over in the air and the dragon rears again.
+ *   cascade  each wave reaches further than the last: a wider, deeper-gold ring, a higher leap.
+ *   b2b      the second difficult clear sends a PAIR over together, turning, under a rose ring,
+ *            and the lantern flares.
+ *   spin     a T-spin that clears nothing: one koi turns over at the surface, a rose swirl.
+ *   heat     the shared surge (src/themes/shared/gameplay-surge.js) is the pond's memory of
+ *            play. Warm: the koi quicken and warm from inside, the fireflies lift, the lantern
+ *            burns brighter. Hot: the big koi rally to the ring round the board without a
+ *            chain, the garden stirs, the lilies' hearts kindle. Fever: the whole school whirls
+ *            round the board pouring gold into the water, every lily opens burning, the
+ *            fireflies swarm off the banks and the dragon rises under the ring. When the hands
+ *            rest the pond breathes back to its night over a few seconds.
  *   level    every lily opens, the lantern flares, and the night steps one on round its wheel
  *            of six (koi-pond-moods.js): another moon, another water, and the maple turns to
  *            that night's leaves one leaf at a time.
@@ -33,8 +48,9 @@
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
-    DEG, POND, approach, clamp, clamp01, hash2, pieceLight, waterDepth,
+    DEG, POND, approach, clamp, clamp01, hash2, pieceLight, smooth, waterDepth,
 } from './koi-pond-core.js';
 import { CHAIN_GOLD, PondLight } from './koi-pond-light.js';
 import {
@@ -66,6 +82,8 @@ export { REST_RIG, fovForAspect };
 
 /** Seconds the pond holds its breath before a four-line clear answers. */
 export const HUSH_HOLD = 0.34;
+/** How far the light sinks in a hush from cold (play already hot sinks it far less). */
+export const HUSH_LEAST = 0.14;
 /** Chain length at which the pond is fully charged. */
 export const FULL_CHAIN = 9;
 /** Chain length that wakes the dragon. */
@@ -79,6 +97,18 @@ const LILY_HOLD = 7;
 const FLASH_POOLS = 8;
 const ROSE = Object.freeze([1.0, 0.5, 0.36]);
 const MOONWHITE = Object.freeze([0.7, 0.86, 1.0]);
+/** The deep end of a cascade: each wave's ring turns from gold toward the vermilion of the koi. */
+const VERMILION = Object.freeze([1.0, 0.4, 0.13]);
+/** The lantern's reach at rest (metres); a fever lets it burn further over the water. */
+const LANTERN_REACH = 5.5;
+/** Callbacks waiting on the clock: past this, the earliest runs at once (never dropped). */
+const QUEUE_LIMIT = 96;
+/** Seconds a leap that found no fish free waits before it asks again, and how often. */
+const LEAP_RETRY = 0.3;
+const LEAP_TRIES = 3;
+/** The pond's swells, read once a frame (a fixed list: no allocation a frame). */
+const SWELL_KEYS = Object.freeze(['glow', 'flashLight', 'kick', 'gust', 'stir']);
+const lerp = (a, b, t) => a + (b - a) * t;
 
 /**
  * What of the pond a screen of this aspect shows, and so where the koi keep their loops: the
@@ -178,6 +208,23 @@ export class KoiPondWorld {
         /** The night the pond stands in (koi-pond-moods.js), and the level's eased place on the wheel. */
         this._mood = moodAt(0);
         this.moodPlace = 0;
+        /**
+         * The pond's reactions ACCUMULATE: each is a Swell (src/themes/shared/swell.js), so a weak
+         * hit after a strong one can only add to the light, and the sixth quick clear lands on a
+         * brighter pond than the first. `this.glow` etc. hold the reading as of the last frame.
+         */
+        this.swells = {
+            glow: new Swell({ release: 1.6, ceiling: 1.2, knee: 0.7 }),
+            flashLight: new Swell({ release: 0.25, ceiling: 0.4, knee: 0.25 }),
+            kick: new Swell({ release: 0.18, ceiling: 1.0, knee: 0.6 }),
+            gust: new Swell({ release: 1.4, ceiling: 1.0, knee: 0.65 }),
+            stir: new Swell({ release: 2.6, ceiling: 1.6, knee: 1.1 }),
+        };
+        /** How hot play runs (src/themes/shared/gameplay-surge.js), sampled once a frame. */
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
         this.resetState(0);
     }
 
@@ -188,19 +235,30 @@ export class KoiPondWorld {
         this.combo = 0;
         this.power = 0;
         this.glow = 0;
+        this.haze = 0;
         this.flashLight = 0;
         this.kick = 0;
         this.breath = 1;
         this.gust = 0;
         this.stir = 0;
+        Object.values(this.swells).forEach((swell) => swell.reset());
+        this.surge.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
         this.hushUntil = -1;
+        this.hushDepth = 1;
         this.dragonUntil = -1;
         this.rearUntil = -1;
+        this.rearHeight = 1;
+        this.lastLockX = 0;
+        this.lastLockZ = 0.6;
         this.level = 1;
         this.moodPlace = 0;
         this.queue.length = 0;
         this.counts = {
-            locks: 0, clears: 0, quads: 0, leaps: 0, steps: 0, splashes: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, leaps: 0, steps: 0, splashes: 0,
         };
         this.school?.reset(time);
         this.light?.resetRings();
@@ -389,6 +447,7 @@ export class KoiPondWorld {
         this.school?.setChain(0);
         this.queue.length = 0;
         this.hushUntil = -1;
+        this.hushDepth = 1;
         this.dragonUntil = -1;
         this.rearUntil = -1;
     }
@@ -473,17 +532,39 @@ export class KoiPondWorld {
 
     /** Run `fn` when the simulation clock reaches `time`. */
     at(time, fn) {
-        // (A frozen capture never drains the queue: it must not grow without end.)
-        if (this.queue.length >= 96) this.queue.shift();
+        // (A frozen capture never drains the queue: it must not grow without end. Past the limit
+        // the earliest waiting callback runs now: a pebble lands early rather than never.)
+        let early = null;
+        if (this.queue.length >= QUEUE_LIMIT) {
+            let first = 0;
+            for (let i = 1; i < this.queue.length; i += 1) if (this.queue[i].time < this.queue[first].time) first = i;
+            [early] = this.queue.splice(first, 1);
+        }
         this.queue.push({ time, fn });
+        early?.fn();
     }
 
-    /** A flash of light on the water at (x, z). */
+    /** Add `amount` to one of the pond's swells at `at` (default now) and refresh its reading. */
+    swell(name, amount, at = this.time) {
+        const swell = this.swells[name];
+        swell.hit(amount, at);
+        this[name] = swell.valueAt(this.time);
+    }
+
+    /** A flash of light on the water at (x, z): it takes the pool with the least light left. */
     flashAt(x, z, radius, strength, rgb) {
         const { flash } = this;
         if (!flash) return;
-        const i = flash.cursor % FLASH_POOLS;
-        flash.cursor += 1;
+        let i = flash.cursor % FLASH_POOLS;
+        let least = Infinity;
+        for (let k = 0; k < FLASH_POOLS; k += 1) {
+            const j = (flash.cursor + k) % FLASH_POOLS;
+            if (flash.strength[j] < least) {
+                least = flash.strength[j];
+                i = j;
+            }
+        }
+        flash.cursor = i + 1;
         flash.x[i] = x;
         flash.z[i] = z;
         flash.radius[i] = radius;
@@ -532,6 +613,8 @@ export class KoiPondWorld {
         }
         // ── The piece falls through the card into the pond under it ──
         const under = this.screenToWater(px, py, this._hit);
+        this.lastLockX = under.x;
+        this.lastLockZ = under.z;
         surface?.plunge(under.x, under.z, {
             amp: hardDrop ? 0.085 : 0.045, radius: hardDrop ? 0.34 : 0.26, rate: hardDrop ? 8 : 9.5, foam: hardDrop ? 0.9 : 0.3,
         });
@@ -627,9 +710,10 @@ export class KoiPondWorld {
                 school?.startle(landX, landZ, hardDrop ? 1.25 : 0.75, hardDrop ? 3.4 : 2.2);
             });
         }
-        this.kick = Math.max(this.kick, hardDrop ? 0.45 : 0.08);
-        this.flashLight = Math.max(this.flashLight, hardDrop ? 0.08 : 0.015);
-        if (hardDrop) this.gust = Math.max(this.gust, 0.6);
+        this.swell('kick', hardDrop ? 0.45 : 0.08);
+        this.swell('flashLight', hardDrop ? 0.08 : 0.015);
+        if (hardDrop) this.swell('gust', 0.6);
+        this.surge.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
@@ -645,16 +729,8 @@ export class KoiPondWorld {
         }
     }
 
-    /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`.
-     */
-    onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
-    } = {}) {
-        const { light, surface, school } = this;
-        if (!light) return;
-        const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
-        const quad = n >= 4 || perfect;
+    /** Where a clear's rows (or a click) meet the water: the heart of what it answers. */
+    clearHeart(rows, player, screen, out = this._hit) {
         const board = boardFor(this.layout, player);
         let hx = 0.5;
         let hy = 0.6;
@@ -667,30 +743,74 @@ export class KoiPondWorld {
             hx = this._point.x;
             hy = this._point.y;
         }
-        const heart = this.screenToWater(hx, hy, this._hit);
+        return this.screenToWater(hx, hy, out);
+    }
+
+    /**
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` the wave (1 = the clear
+     * itself); `combo` the true chain. Two clears carry no lines (koi-pond-director.js): `crown`
+     * (a perfect clear settled after its clear) and a T-spin with `lines: 0`.
+     */
+    onClear({
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
+        player = 0, screen = null,
+    } = {}) {
+        const { light, surface, school } = this;
+        if (!light) return;
+        if (crown === true) {
+            this.crownClear(rows, player, screen);
+            return;
+        }
+        if (tspin && Number(lines) === 0) {
+            this.spinClear();
+            return;
+        }
+        const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
+        const quad = n >= 4 || perfect;
+        // Each wave of a cascade reaches further than the last: a stronger, wider ring turning
+        // from gold toward the koi's vermilion, a higher leap, another lily.
+        const deeper = Math.max(0, Math.min(9, Math.round(Number(cascade) || 1) - 1));
+        const turn = Math.min(1, deeper / 4) * 0.7;
+        const heart = this.clearHeart(rows, player, screen);
         const hx0 = heart.x;
         const hz0 = heart.z;
+        // The hush is as deep as play is cold: from rest the pond holds its breath; in a fever a
+        // quad is an inhale and the light barely dips.
+        const hushDepth = 1 - 0.85 * clamp01(this.heat.level);
         const birth = quad ? this.time + HUSH_HOLD : this.time;
-        const strength = Math.min(1.8, 0.8 + 0.18 * n + (quad ? 0.35 : 0));
-        const gold = [CHAIN_GOLD[0] * 1.6, CHAIN_GOLD[1] * 1.6, CHAIN_GOLD[2] * 1.6];
+        // (A hot chain keeps several gold rings crossing the pond at once: each is a little
+        // fainter so together they read as rings, not as a haze over the whole bed.)
+        const strength = Math.min(2.2, 0.8 + 0.18 * n + (quad ? 0.35 : 0) + 0.15 * deeper)
+            * (1 - 0.3 * clamp01(this.heat.level));
+        const lift = 1.6 + 0.12 * deeper;
+        const gold = [
+            lerp(CHAIN_GOLD[0], VERMILION[0], turn) * lift,
+            lerp(CHAIN_GOLD[1], VERMILION[1], turn) * lift,
+            lerp(CHAIN_GOLD[2], VERMILION[2], turn) * lift,
+        ];
+        const fuller = 1 + 0.15 * deeper;
+        this.surge.clear({
+            lines: n, cascade: deeper + 1, combo, tspin, perfect, b2b,
+        }, birth);
         this.at(birth, () => {
             surface?.plunge(hx0, hz0, {
-                amp: 0.06 + 0.02 * n, radius: 0.5 + 0.06 * n, rate: 7, foam: 0.4,
+                amp: 0.06 + 0.02 * n + 0.008 * deeper, radius: 0.5 + 0.06 * n + 0.05 * deeper, rate: 7, foam: 0.4,
             });
-            light.ring(hx0, hz0, this.time, strength, gold, 18);
-            this.glow = Math.max(this.glow, 0.35 + 0.2 * n + (quad ? 0.4 : 0));
-            this.flashLight = Math.max(this.flashLight, 0.06 + 0.04 * n);
-            this.kick = Math.max(this.kick, 0.16 + 0.07 * n);
-            this.stir = Math.max(this.stir, Math.min(1, 0.35 + 0.2 * n));
-            this.gust = Math.max(this.gust, 0.4 + 0.2 * n);
-            this.wakeLilies(quad ? this.lily.count : n, quad ? 1.6 : 1.3);
+            light.ring(hx0, hz0, this.time, strength, gold, 18 + 3 * deeper);
+            this.swell('glow', (0.35 + 0.2 * n + (quad ? 0.4 : 0)) * fuller);
+            this.swell('flashLight', 0.06 + 0.04 * n);
+            this.swell('kick', 0.16 + 0.07 * n);
+            this.swell('stir', Math.min(1, 0.35 + 0.2 * n));
+            this.swell('gust', 0.4 + 0.2 * n);
+            this.wakeLilies(quad ? this.lily.count : n + deeper, quad ? 1.6 : 1.3 + 0.1 * deeper);
         });
 
         // ── The koi go over the water ──
         const first = this.counts.clears % 2 ? 1 : -1;
         if (quad) {
             this.hushUntil = this.time + HUSH_HOLD;
-            school?.holdBreath(HUSH_HOLD);
+            this.hushDepth = hushDepth;
+            school?.holdBreath(HUSH_HOLD, hushDepth);
             const flights = perfect ? 8 : 6;
             for (let k = 0; k < flights; k += 1) {
                 this.at(birth + 0.05 + k * 0.13, () => this.sendLeap(k % 2 ? first : -first, 1.25 + (k % 3) * 0.22, k % 3 === 2));
@@ -698,6 +818,7 @@ export class KoiPondWorld {
             // The dragon comes up for it, and rears.
             this.dragonUntil = birth + DRAGON_VISIT;
             this.rearUntil = birth + DRAGON_REAR;
+            this.rearHeight = 1;
             // The card itself throws water from both its sides, and every koi takes fire.
             const card = cardUnion(this.layout) || { x0: 0.4, x1: 0.6 };
             this.at(birth, () => {
@@ -723,29 +844,126 @@ export class KoiPondWorld {
                     }
                 });
                 school?.shine(1.2);
-                light.ring(hx0, hz0, this.time + 0.22, strength * 0.7, [1.5, 1.3, 1.0], 20);
+                // (Its second ring is the koi's vermilion-rose, not cream: the payoff in colour.)
+                light.ring(hx0, hz0, this.time + 0.22, strength * 0.7, [1.45, 0.8, 0.45], 20);
             });
             this.counts.quads += 1;
         } else {
-            this.sendLeap(first, 0.9 + 0.12 * n, tspin);
-            if (n >= 2) this.at(this.time + 0.16, () => this.sendLeap(-first, 1.0 + 0.1 * n, false));
-            if (n >= 3) this.at(this.time + 0.36, () => this.sendLeap(first, 1.35, true));
+            // A cascade's later waves leap higher, and from the third on they turn in the air.
+            const up = 0.12 * deeper;
+            this.sendLeap(first, 0.9 + 0.12 * n + up, tspin || deeper >= 2);
+            if (n >= 2) this.at(this.time + 0.16, () => this.sendLeap(-first, 1.0 + 0.1 * n + up, false));
+            if (n >= 3) this.at(this.time + 0.36, () => this.sendLeap(first, 1.35 + up, true));
         }
+        if (b2b) this.backToBack(hx0, hz0, birth, first);
         this.counts.clears += 1;
     }
 
-    sendLeap(side, power, twist) {
+    /**
+     * The second difficult clear in a row: a PAIR goes over together from both reaches, both
+     * turning, under a rose ring from the board, and the lantern flares.
+     */
+    backToBack(x, z, at, side) {
+        this.at(at + 0.08, () => {
+            this.light?.ring(x, z, this.time, 1.35, [ROSE[0] * 1.8, ROSE[1] * 1.5, ROSE[2] * 1.7], 22);
+            this.sendLeap(side, 1.5, true);
+            this.sendLeap(-side, 1.5, true);
+            this.lanternFlare(0.8);
+            this.swell('glow', 0.3);
+        });
+    }
+
+    /**
+     * A perfect clear, settled after the clear's last wave: the crown on the clear still playing,
+     * never a second hush. Gold and then rose rings cross the whole pond, every lily blazes,
+     * every koi takes fire, four more turn over in the air, the lantern flares and the dragon
+     * rears again, higher.
+     */
+    crownClear(rows, player, screen) {
+        const { light, surface, school } = this;
+        const { x, z } = this.clearHeart(rows, player, screen);
+        const now = this.time;
+        this.surge.crown(now);
+        surface?.plunge(x, z, {
+            amp: 0.11, radius: 0.8, rate: 6, foam: 0.5,
+        });
+        // (Rose, not more gold: the quad's gold rings are still crossing the pond, and on top
+        // of them another would burn to cream. The lantern answers in amber from the bank.)
+        light.ring(x, z, now + 0.15, 1.35, [ROSE[0] * 1.6, ROSE[1] * 1.25, ROSE[2] * 1.5], 26);
+        if (this.lily) this.wakeLilies(this.lily.count, 2.2);
+        school?.shine(1.6);
+        this.dragonUntil = Math.max(this.dragonUntil, now + DRAGON_VISIT);
+        this.rearUntil = Math.max(this.rearUntil, now + DRAGON_REAR);
+        this.rearHeight = 1.35;
+        const first = this.counts.crowns % 2 ? 1 : -1;
+        for (let k = 0; k < 4; k += 1) {
+            this.at(now + 0.12 + k * 0.17, () => this.sendLeap(k % 2 ? first : -first, 1.5 + (k % 2) * 0.25, true));
+        }
+        this.lanternFlare(1);
+        this.swell('glow', 0.45);
+        this.swell('stir', 1);
+        this.swell('gust', 0.5);
+        this.swell('kick', 0.25);
+        this.swell('flashLight', 0.1);
+        this.counts.crowns += 1;
+    }
+
+    /** A T-spin that cleared nothing: one koi turns over at the surface, a rose swirl. */
+    spinClear() {
+        const { light, surface } = this;
+        const x = this.lastLockX;
+        const z = this.lastLockZ;
+        this.surge.spin(this.time);
+        surface?.plunge(x, z, {
+            amp: 0.05, radius: 0.3, rate: 11, foam: 0.3,
+        });
+        light.ring(x, z, this.time, 0.85, [ROSE[0] * 1.5, ROSE[1] * 1.3, ROSE[2] * 1.9], 9);
+        this.sendLeap(x < 0 ? -1 : 1, 0.7, true);
+        this.swell('glow', 0.15);
+        this.swell('stir', 0.3);
+        this.counts.spins += 1;
+    }
+
+    /** The lantern flares, and its light crosses the pond. */
+    lanternFlare(strength = 1) {
+        const flame = this.garden?.lantern.flame;
+        if (!flame || !this.light) return;
+        this.light.ring(flame[0], flame[2] + 0.6, this.time, 1.3 * strength, [1.6, 0.9, 0.34], 20);
+        this.flashAt(flame[0], flame[2] + 0.7, 2.2, 1.6 * strength, [1.0, 0.56, 0.2]);
+    }
+
+    /**
+     * Send a koi over the water. When every free fish is already in the air or running up, the
+     * leap waits and asks again (a few times) instead of being dropped.
+     */
+    sendLeap(side, power, twist, tries = 0) {
         const index = this.school?.leap({ side, power, twist }) ?? -1;
-        if (index < 0 && side !== 0) return this.sendLeap(0, power, twist);
+        if (index < 0 && side !== 0) return this.sendLeap(0, power, twist, tries);
         if (index >= 0) this.counts.leaps += 1;
+        else if (this.school && tries < LEAP_TRIES) {
+            this.at(this.time + LEAP_RETRY, () => this.sendLeap(0, power, twist, tries + 1));
+        }
         return index;
     }
 
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
+        if (n === 0 && this.combo >= 4) this.exhale();
         this.combo = n;
         this.school?.setChain(n);
+    }
+
+    /**
+     * A long chain is over: one slow, wide breath of gold out from under the board and the
+     * fireflies lift once more, then the ring fans out and the pond settles.
+     */
+    exhale() {
+        if (!this.light) return;
+        const heart = this.clearHeart(null, 0, null);
+        const breath = [CHAIN_GOLD[0] * 1.3, CHAIN_GOLD[1] * 1.3, CHAIN_GOLD[2] * 1.3];
+        this.light.ring(heart.x, heart.z, this.time, 0.9, breath, 26);
+        this.swell('stir', 0.5);
     }
 
     /**
@@ -758,17 +976,13 @@ export class KoiPondWorld {
             this.moodPlace = turnToward(this.moodPlace, this.level, 1);
             return;
         }
-        this.glow = Math.max(this.glow, 0.5);
-        this.flashLight = Math.max(this.flashLight, 0.1);
-        this.stir = 1;
-        this.gust = Math.max(this.gust, 0.8);
+        this.swell('glow', 0.5);
+        this.swell('flashLight', 0.1);
+        this.swell('stir', 1);
+        this.swell('gust', 0.8);
+        this.surge.levelUp(this.time);
         if (this.lily) this.wakeLilies(this.lily.count, 1.1);
-        // The lantern flares, and its light crosses the pond.
-        const flame = this.garden?.lantern.flame;
-        if (flame && this.light) {
-            this.light.ring(flame[0], flame[2] + 0.6, this.time, 1.3, [1.6, 0.9, 0.34], 20);
-            this.flashAt(flame[0], flame[2] + 0.7, 2.2, 1.6, [1.0, 0.56, 0.2]);
-        }
+        this.lanternFlare(1);
     }
 
     /**
@@ -804,9 +1018,12 @@ export class KoiPondWorld {
             wakes = school.writeWakes(this._wakes, SIM_STEP, WAKE_STRIDE);
         }
         if (dragon) {
-            const wanted = this.combo >= DRAGON_CHAIN || now < this.dragonUntil ? 1 : 0;
-            const rear = now < this.rearUntil ? 1 : 0;
-            dragon.step(SIM_STEP, now, wanted, this.power, rear);
+            // A long chain or a quad wakes it; a fever brings it up under the ring too, and as the
+            // fever cools it sinks back slowly instead of on the lock that broke the chain.
+            const called = this.combo >= DRAGON_CHAIN || now < this.dragonUntil ? 1 : 0;
+            const wanted = Math.max(called, smooth(0.35, 0.85, this.heat.fever));
+            const rear = now < this.rearUntil ? this.rearHeight : 0;
+            dragon.step(SIM_STEP, now, wanted, Math.max(this.power, this.heat.fever), rear);
             if (dragon.presence > 0.05) wakes = this.writeDragonWakes(wakes);
         }
         spray?.step(SIM_STEP);
@@ -884,13 +1101,16 @@ export class KoiPondWorld {
             lily, lilies, pools, flora,
         } = this;
         if (!lily || !lilies) return;
-        // A chain opens them one by one: a gauge of how long it has run.
+        // A chain opens them one by one: a gauge of how long it has run. A fever opens them all,
+        // their hearts burning.
         const chainLit = this.combo >= 2 ? Math.min(lily.count, Math.ceil(((this.combo - 1) / (FULL_CHAIN - 1)) * lily.count)) : 0;
+        const { fever } = this.heat;
+        const feverLit = Math.ceil(smooth(0.3, 0.9, fever) * lily.count);
         for (let i = 0; i < lily.count; i += 1) {
-            const awake = this.time < lily.until[i] || i < chainLit;
+            const awake = this.time < lily.until[i] || i < chainLit || i < feverLit;
             const target = awake ? 1 : lily.rest[i];
             lily.open[i] += (target - lily.open[i]) * (snap ? 1 : approach(target > lily.open[i] ? 2.4 : 0.5, dt));
-            const floor = i < chainLit ? 0.5 + this.power * 0.4 : 0;
+            const floor = Math.max(i < chainLit ? 0.5 + this.power * 0.4 : 0, i < feverLit ? 0.3 + fever * 0.6 : 0);
             lily.heart[i] = Math.max(floor, lily.heart[i] * Math.exp(-dt / 2.4));
             lilies.openness[i] = lily.open[i];
             lilies.heart[i] = lily.heart[i];
@@ -907,6 +1127,17 @@ export class KoiPondWorld {
         if (camera) this._camera = camera;
         const { renderer } = this;
 
+        // ── How hot play runs: the school hears it before it swims this frame ──
+        const sample = this.surge.sample(this.time);
+        const H = this.heat;
+        H.punch = sample.punch;
+        H.level = sample.level;
+        H.fever = sample.fever;
+        H.stage = sample.stage;
+        const { level, fever } = H;
+        const motion = this.reducedMotion ? 0.35 : 1;
+        this.school?.setSurge(level, fever, motion);
+
         // ── The fixed-step simulation ──
         const previous = renderer ? renderer.getRenderTarget() : null;
         this.accumulator += dt;
@@ -922,32 +1153,47 @@ export class KoiPondWorld {
         // ── The charge ──
         const target = clamp01(this.combo / FULL_CHAIN);
         this.power += (target - this.power) * approach(target > this.power ? 2.2 : 0.8, dt);
-        this.glow *= Math.exp(-dt / 1.6);
-        this.flashLight *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.18);
-        this.gust *= Math.exp(-dt / 1.4);
-        this.stir *= Math.exp(-dt / 2.6);
+        for (let k = 0; k < SWELL_KEYS.length; k += 1) {
+            const key = SWELL_KEYS[k];
+            this[key] = this.swells[key].valueAt(this.time);
+        }
+        // The hush: from cold the light sinks to HUSH_LEAST; the hotter play runs, the shallower.
         const hush = this.time < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.14 : 1;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 12, dt);
+        const held = hush * this.hushDepth;
+        const breathTarget = 1 - (1 - HUSH_LEAST) * held;
+        this.breath += (breathTarget - this.breath) * approach(hush ? 12 + 28 * this.hushDepth : 12, dt);
         if (dt === 0) this.breath = breathTarget;
 
         const { u } = light;
         light.update(this.time);
-        u.power.value = this.power;
-        u.glow.value = this.glow;
+        // The gold in the water: the chain's charge (a fever without a chain lends it a little).
+        u.power.value = Math.min(1, this.power + fever * 0.25);
+        // What of the swell of light reaches what lies over the whole pond (the gold dust in the
+        // water, the bloom, the mist): less the hotter play runs, so a long chain's light goes
+        // into the koi, the lilies, the lantern and the fireflies, not into a haze over the bed.
+        const haze = this.glow * (1 - 0.5 * level);
+        this.haze = haze;
+        u.glow.value = haze;
         u.breath.value = this.breath;
-        const motion = this.reducedMotion ? 0.35 : 1;
-        if (this.maples) this.maples.gust.value = (1 + this.gust * 2.4 + this.power * 0.6) * motion;
-        if (this.iris) this.iris.gust.value = (1 + this.gust * 2.2) * motion;
-        if (this.floaters) this.floaters.stir.value = 1 + this.gust * 3;
-        if (this.fireflies) this.fireflies.stir.value = Math.min(1, this.stir + this.power * 0.3);
-        if (this.mist) this.mist.density.value = 1 - hush * 0.6 + this.glow * 0.2;
-        // The flame gutters a little, and leaps with the pond.
+        // The garden answers the pace: the maple and the iris sway harder, leaves drift faster.
+        if (this.maples) this.maples.gust.value = (1 + this.gust * 2.4 + this.power * 0.6 + level * 0.4) * motion;
+        if (this.iris) this.iris.gust.value = (1 + this.gust * 2.2 + level * 0.3) * motion;
+        if (this.floaters) this.floaters.stir.value = 1 + this.gust * 3 + level * 1.2;
+        // The fireflies lift off the banks as play warms, and swarm alight in a fever.
+        if (this.fireflies) {
+            const lift = this.stir + this.power * 0.3 + level * 0.3 + fever * 0.45 + H.punch * 0.15;
+            this.fireflies.stir.value = Math.min(1, lift);
+        }
+        if (this.mist) this.mist.density.value = 1 - held * 0.6 + haze * 0.2;
+        // The flame gutters a little, leaps with the pond and burns higher the hotter play runs.
         const flicker = this.lantern
             ? 1 + Math.sin(this.time * 11.3) * 0.035 + Math.sin(this.time * 4.7 + 1.3) * 0.05 + this.glow * 0.25
+                + level * 0.15 + fever * 0.3 + H.punch * 0.12
             : 1;
-        if (this.lantern) this.lantern.flicker.value = flicker;
+        if (this.lantern) {
+            this.lantern.flicker.value = flicker;
+            u.lantern.value.w = LANTERN_REACH * (1 + level * 0.08 + fever * 0.22);
+        }
         // The night: a new level's step is eased as a place on the wheel, never as colours, so
         // at rest the pond's light is a pure function of the clock.
         this.moodPlace = turnToward(this.moodPlace, this.level, approach(MOOD_TURN, dt));
@@ -966,8 +1212,8 @@ export class KoiPondWorld {
         this.pools?.commit();
         this.spray?.commit();
         if (this.surface) {
-            this.surface.u.still.value = hush;
-            this.surface.u.gust.value = 1 + this.gust * 0.8;
+            this.surface.u.still.value = held;
+            this.surface.u.gust.value = 1 + this.gust * 0.8 + level * 0.35;
             this.surface.derive(renderer, this.time);
         }
         if (renderer) renderer.setRenderTarget(previous);
@@ -978,9 +1224,11 @@ export class KoiPondWorld {
 
         const post = this._post;
         post.flash = this.flashLight;
-        post.bloomBoost = this.glow * 0.25 + this.power * 0.15;
-        post.exposure = 1 / (1 + this.glow * 0.22 + this.power * 0.1);
-        post.warm = clamp01(this.power * 0.6 + this.glow * 0.15);
+        // No more bloom for heat (it would haze the pond), and the iris closes as heat rises: the
+        // gold and the koi's colours stay saturated and the night water stays dark.
+        post.bloomBoost = haze * 0.25 + this.power * 0.15;
+        post.exposure = 1 / (1 + haze * 0.22 + this.power * 0.1 + level * 0.08 + fever * 0.1);
+        post.warm = clamp01(this.power * 0.6 + haze * 0.15 + fever * 0.15);
         for (let c = 0; c < 3; c += 1) {
             post.gradeMul[c] = mood.gradeMul[c];
             post.gradeLift[c] = mood.gradeLift[c];
@@ -1011,6 +1259,10 @@ export class KoiPondWorld {
             power: this.power,
             glow: this.glow,
             breath: this.breath,
+            hushDepth: this.hushDepth,
+            heat: Math.round(this.heat.level * 1000) / 1000,
+            fever: Math.round(this.heat.fever * 1000) / 1000,
+            stage: this.heat.stage,
             level: this.level,
             // The night it stands in, the one it is turning toward, and how far it has turned.
             night: KOI_POND_MOODS[this._mood.from].name,

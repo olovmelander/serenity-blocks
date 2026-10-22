@@ -191,7 +191,12 @@ export function createChips(u, count) {
 
 // ── The crown ───────────────────────────────────────────────────────────────────
 
-export const CROWN_SLOTS = 2;
+/**
+ * Crowns standing at once. A hard drop every 300 ms (a quick hand) keeps five in the air, so the
+ * ring of spikes thickens as the drops come faster instead of the oldest vanishing mid-growth; a
+ * new crown takes the oldest slot.
+ */
+export const CROWN_SLOTS = 5;
 
 /** How tall a crown's spikes stand (0..1), `age` seconds after the drop. CPU twin of the shader. */
 export function crownRise(age) {
@@ -255,9 +260,14 @@ export function createCrown(u) {
     };
     const spike = attribute('aSpike', 'vec4');
     const shape = attribute('aShape', 'vec4');
-    const which = step(0.5, spike.x);
-    const place = mix(uniforms.place[0], uniforms.place[1], which);
-    const tintNode = mix(uniforms.color[0], uniforms.color[1], which);
+    // This spike's crown (slots are ascending: each step past a slot's index moves to the next).
+    let place = uniforms.place[0];
+    let tintNode = uniforms.color[0];
+    for (let s = 1; s < CROWN_SLOTS; s++) {
+        const on = step(s - 0.5, spike.x);
+        place = mix(place, uniforms.place[s], on);
+        tintNode = mix(tintNode, uniforms.color[s], on);
+    }
     const age = u.time.sub(place.z).sub(shape.z);
     const live = step(0.0, age).mul(step(age, CROWN_LIFE));
     const up = float(1.0).sub(exp(age.mul(-34.0)));
@@ -329,16 +339,18 @@ export function createCrown(u) {
 
     const part = itPart('IceTempleCrown', geometry, material, 1, true);
     part.uniforms = uniforms;
-    let cursor = 0;
+    /** A new crown takes the oldest slot: every crown lives the same CROWN_LIFE. */
     part.raise = (x, z, rgb, time, radius = 2.4) => {
-        const slot = cursor % CROWN_SLOTS;
-        cursor += 1;
+        let slot = 0;
+        for (let i = 1; i < CROWN_SLOTS; i++) {
+            if (uniforms.place[i].value.z < uniforms.place[slot].value.z) slot = i;
+        }
         uniforms.place[slot].value.set(x, z, time, radius);
         uniforms.color[slot].value.set(rgb[0], rgb[1], rgb[2]);
+        return slot;
     };
     part.reset = () => {
         for (let i = 0; i < CROWN_SLOTS; i++) uniforms.place[i].value.set(0, 0, -100, 0);
-        cursor = 0;
     };
     return part;
 }
@@ -346,38 +358,59 @@ export function createCrown(u) {
 // ── Row beams ───────────────────────────────────────────────────────────────────
 
 export const BEAM_ROWS = 4;
+/**
+ * Volleys in the air at once: a clear (or a cascade's next wave, 360 ms on) fires its blades
+ * while the last volley is still fading, instead of cutting it off. A new volley takes the older.
+ */
+export const BEAM_SLOTS = 2;
 /** Seconds a beam's head takes from the card to the edge of the frame, and its afterglow. */
 export const BEAM_TRAVEL = 0.11;
 export const BEAM_FADE = 0.26;
 
-/** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
+/** Screen-space strips: one from each side of the card for up to four cleared rows, per volley. */
 export function createRowBeams(u) {
-    const count = BEAM_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = itQuadGeometry(count, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
+    const count = BEAM_SLOTS * BEAM_ROWS * 2;
+    const aRow = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const k = i % (BEAM_ROWS * 2);
+        aRow.set([Math.floor(k / 2), k % 2 ? 1 : -1, Math.floor(i / (BEAM_ROWS * 2))], i * 3);
+    }
+    const geometry = itQuadGeometry(count, { aRow: [aRow, 3] });
+    const row = attribute('aRow', 'vec3');
     const uniforms = {
-        /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
-        rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
-        /** (card x0, card x1, birth time, strength) */
-        frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
-        color: uniform(new THREE.Vector3(1, 1, 1)),
+        /** Per volley: screen y (fractions, y down) of up to four rows; < 0 = unused. */
+        rows: Array.from({ length: BEAM_SLOTS }, () => uniform(new THREE.Vector4(-1, -1, -1, -1))),
+        /** Per volley: (card x0, card x1, birth time, strength) */
+        frame: Array.from({ length: BEAM_SLOTS }, () => uniform(new THREE.Vector4(0.4, 0.6, -100, 0))),
+        color: Array.from({ length: BEAM_SLOTS }, () => uniform(new THREE.Vector3(1, 1, 1))),
     };
     const material = itFxMaterial('IceTempleRowBeams', { depthTest: false });
-    const rowY = mix(mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)), mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)), step(1.5, row.x));
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    // This strip's volley (slots are ascending).
+    let rows = uniforms.rows[0];
+    let frame = uniforms.frame[0];
+    let colour = uniforms.color[0];
+    for (let s = 1; s < BEAM_SLOTS; s++) {
+        const on = step(s - 0.5, row.z);
+        rows = mix(rows, uniforms.rows[s], on);
+        frame = mix(frame, uniforms.frame[s], on);
+        colour = mix(colour, uniforms.color[s], on);
+    }
+    const rowY = mix(mix(rows.x, rows.y, step(0.5, row.x)), mix(rows.z, rows.w, step(2.5, row.x)), step(1.5, row.x));
+    const used = step(0.0, rowY).mul(step(0.001, frame.w));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
+    const edge = mix(frame.x, frame.y, step(0.0, row.y));
     const end = step(0.0, row.y);
     const sx = mix(edge, end, along);
     const thicknessPx = float(46.0);
     const sy = rowY.add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
     const vAlong = varying(along, 'itBeamT');
+    const vFrame = varying(frame.zw, 'itBeamFrame');
+    const vColour = varying(colour, 'itBeamColour');
     material.colorNode = Fn(() => {
-        const age = u.time.sub(uniforms.frame.z);
+        const age = u.time.sub(vFrame.x);
+        const strength = vFrame.y;
         const head = age.div(BEAM_TRAVEL);
         const reached = step(vAlong, head);
         const dy = uv().y.sub(0.5).mul(thicknessPx);
@@ -391,23 +424,34 @@ export function createRowBeams(u) {
         const split = exp(abs(dy).mul(-0.11)).mul(float(1.0).sub(core)).mul(vAlong.mul(0.8).add(0.2));
         const prism = itSpectrum(dy.div(thicknessPx).mul(1.4).add(0.5));
         const k = core.add(glow).mul(reached).mul(env).add(core.add(glow).mul(tip).mul(2.0))
-            .mul(uniforms.frame.w)
+            .mul(strength)
             .mul(mix(float(1.0), float(0.55), vAlong));
-        const col = mix(uniforms.color, vec3(1.0), core.mul(0.75)).mul(k).mul(2.5)
-            .add(prism.mul(split).mul(reached).mul(env).mul(uniforms.frame.w)
+        const col = mix(vColour, vec3(1.0), core.mul(0.75)).mul(k).mul(2.5)
+            .add(prism.mul(split).mul(reached).mul(env).mul(strength)
                 .mul(0.5));
         return vec4(col, 0.0);
     })();
     const part = itPart('IceTempleRowBeams', geometry, material, 60, false);
     part.uniforms = uniforms;
-    /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
+    /** The volley fired last. */
+    part.slot = 0;
+    /**
+     * `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions.
+     * The volley takes the older slot, so the one still fading plays out.
+     */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
-        uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
-        uniforms.color.value.set(rgb[0], rgb[1], rgb[2]);
+        let slot = 0;
+        for (let i = 1; i < BEAM_SLOTS; i++) {
+            if (uniforms.frame[i].value.z < uniforms.frame[slot].value.z) slot = i;
+        }
+        uniforms.rows[slot].value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
+        uniforms.frame[slot].value.set(x0, x1, time, strength);
+        uniforms.color[slot].value.set(rgb[0], rgb[1], rgb[2]);
+        part.slot = slot;
     };
     part.reset = () => {
-        uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        for (let i = 0; i < BEAM_SLOTS; i++) uniforms.frame[i].value.set(0.4, 0.6, -100, 0);
+        part.slot = 0;
     };
     return part;
 }
@@ -472,7 +516,10 @@ const branch = /* @__PURE__ */ Fn(([p, i, grown]) => {
 /**
  * @param {object} u
  * @returns part with `uniforms.place` (centre xyz, radius) and `uniforms.state`
- *   (birth time, strength, layers, turn)
+ *   (birth time, strength, layers, extra hold): `layers` 1 draws one flake; between 1 and 2 the
+ *   second (a perfect clear's halo) fades in with it, so a crown that comes while the flake
+ *   stands joins it instead of restarting it; the extra hold (seconds) keeps a standing flake up
+ *   longer when another four-line clear comes before it breaks.
  */
 export function createSnowflake(u) {
     const aLayer = new Float32Array([0, 1]);
@@ -480,16 +527,18 @@ export function createSnowflake(u) {
     const uniforms = {
         /** World position of the flake's centre, and its radius in metres. */
         place: uniform(new THREE.Vector4(0, 9, -10, 9)),
-        /** (birth time, strength, layers 1|2, _) */
+        /** (birth time, strength, layers 1..2, extra hold seconds) */
         state: uniform(new THREE.Vector4(-100, 0, 1, 0)),
         tint: uniform(new THREE.Vector3(0.7, 0.92, 1.0)),
     };
     const layer = attribute('aLayer', 'float');
     const material = itFxMaterial('IceTempleSnowflake');
     const age = u.time.sub(uniforms.state.x);
-    const life = FLAKE_GROW + FLAKE_HOLD + FLAKE_SHATTER;
+    const life = uniforms.state.w.add(FLAKE_GROW + FLAKE_HOLD + FLAKE_SHATTER);
+    // The halo layer: how far it has faded in (the first layer is always drawn).
+    const halo = clamp(uniforms.state.z.sub(1.0), 0.0, 1.0);
     const live = step(0.0, age).mul(step(age, life)).mul(step(0.001, uniforms.state.y))
-        .mul(step(layer, uniforms.state.z.sub(0.5)));
+        .mul(max(float(1.0).sub(layer), step(0.001, halo)));
     const clip = viewProjection(uniforms.place.xyz);
     const half = u.viewport.mul(0.5);
     const pxPerMetre = u.viewport.y.mul(u.projScale).div(max(clip.w, 0.3));
@@ -504,7 +553,8 @@ export function createSnowflake(u) {
         const q0 = uv().sub(0.5).mul(2.0).toVar();
         const grow = clamp(age.div(FLAKE_GROW), 0.0, 1.0);
         const grown = float(1.0).sub(pow(float(1.0).sub(grow), 3.0)).mul(ARM_LENGTH);
-        const shatter = clamp(age.sub(FLAKE_GROW + FLAKE_HOLD).div(FLAKE_SHATTER), 0.0, 1.0).toVar();
+        const shatter = clamp(age.sub(uniforms.state.w).sub(FLAKE_GROW + FLAKE_HOLD).div(FLAKE_SHATTER), 0.0, 1.0)
+            .toVar();
 
         // ── It breaks: every shard keeps its piece of the drawing and falls with it ──
         const shard = floor(q0.mul(13.0).add(vLayer.mul(3.7)));
@@ -579,7 +629,8 @@ export function createSnowflake(u) {
             .add(uniforms.tint.mul(tip).mul(core.add(sheen)))
             .mul(fade)
             .mul(uniforms.state.y)
-            .mul(float(1.0).sub(vLayer.mul(0.68)));
+            .mul(float(1.0).sub(vLayer.mul(0.68)))
+            .mul(mix(float(1.0), halo, vLayer));
         // The quad's own edge must never show.
         return vec4(col.mul(float(1.0).sub(smoothstep(0.94, 1.0, length(q0)))), 0.0);
     })();
@@ -588,6 +639,13 @@ export function createSnowflake(u) {
     part.uniforms = uniforms;
     part.launch = (time, strength = 1, layers = 1) => {
         uniforms.state.value.set(time, strength, layers, 0);
+    };
+    /** A standing flake: fade its halo in (1..2), or hold it up `hold` seconds longer. */
+    part.setLayers = (layers) => {
+        uniforms.state.value.z = layers;
+    };
+    part.setHold = (hold) => {
+        uniforms.state.value.w = hold;
     };
     part.reset = () => {
         uniforms.state.value.set(-100, 0, 1, 0);

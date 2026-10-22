@@ -78,20 +78,30 @@ describe('HimalayanPeakWorld', () => {
         expect(world.getState().held).toBeGreaterThan(0.2);
     });
 
-    it('lets every flag go on a clear and lifts the sun for a moment', () => {
+    it('lets the lines\' surplus go on a clear, everything on a crown, and lifts the sun for a moment', () => {
         const { world, camera } = makeWorld();
         step(world, camera, 0, 1);
         for (let i = 0; i < 6; i++) world.onLock({ u: i % 2 ? 0.8 : 0.2, rows: [4 + i * 2], color: '#fbc531' });
         step(world, camera, 1, 2.5);
-        expect(world.getState().held).toBeGreaterThan(0.5);
+        const full = world.getState().held;
+        expect(full).toBeGreaterThan(0.5);
         const before = world.getState().elevation;
+        const thrown = world.counts.papers;
         world.onClear({ rows: [19, 18], lines: 2 });
         step(world, camera, 2.5, 3.6);
         const after = world.getState();
-        expect(after.held).toBeLessThan(0.05);
+        // The first clear of a chain lets half of what the lines hold go to the wind and keeps
+        // the rest: the lines go on filling with the colours played.
+        expect(after.held).toBeGreaterThan(full * 0.4);
+        expect(after.held).toBeLessThan(full * 0.6);
+        expect(world.counts.papers - thrown).toBeGreaterThan(20);
         expect(after.elevation).toBeGreaterThan(before + 1);
         expect(world.u.waveA[0].value.z).toBeGreaterThan(0);
-        step(world, camera, 3.6, 16);
+        // A board cleared whole lets everything go.
+        world.onCrown();
+        step(world, camera, 3.6, 4.6);
+        expect(world.getState().held).toBeLessThan(0.05);
+        step(world, camera, 4.6, 18);
         expect(world.getState().elevation).toBeLessThan(before + 1);
     });
 

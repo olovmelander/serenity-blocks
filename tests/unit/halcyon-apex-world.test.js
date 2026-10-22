@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    HALCYON_APEX_PARTS, HalcyonApexWorld, REST_RIG, SUN_FLOOR, SURGE_COOL, fovForAspect,
+    CLEAR_KICK_DELAY, HALCYON_APEX_PARTS, HalcyonApexWorld, REST_RIG, SUN_FLOOR, SURGE_COOL, fovForAspect,
 } from '../../src/themes/halcyon-apex/halcyon-apex-world.js';
 import {
     CLEAR_REACH, CLEAR_SHAPE, CLEAR_SLOTS, CLEAR_TRAVEL, DEG, HALCYON_PALETTES, HOLD_FADE, HOLD_MAX, HUSH_HOLD, LEY_A,
@@ -1022,15 +1022,37 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         settle(world, camera);
         expect(world.u.clearLive.value).toBe(1);
         expect(world.counts).toMatchObject({ clears: 1, quads: 0 });
-        // Without the rows' numbers, the lowest rows of the board are taken.
+        // Without the rows' numbers, the lowest rows of the board are taken. The next clear fires
+        // the other set of blades: the first set is left to finish in the air.
         world.onClear({ lines: 3 });
-        expect(beams.rows.value.toArray()).toEqual([rowY(19), rowY(18), rowY(17), -1]);
-        // The next clear takes the next slot; after the last slot comes the first again.
-        expect(world.u.clearA[1 % CLEAR_SLOTS].value.y).toBe(3);
-        for (let i = 2; i <= CLEAR_SLOTS; i++) world.onClear({ lines: 1 });
-        expect(world.u.clearA[0].value.y).toBe(1);
+        expect(world.beams.uniforms).not.toBe(beams);
+        expect(world.beams.uniforms.rows.value.toArray()).toEqual([rowY(19), rowY(18), rowY(17), -1]);
+        expect(beams.rows.value.toArray()).toEqual([rowY(14), rowY(13), -1, -1]);
+        // The next clear takes a free slot while there is one.
+        expect(world.u.clearA.filter((other) => other.value.z > 0)).toHaveLength(2);
+        expect(world.u.clearA.filter((other) => other.value.y === 3)).toHaveLength(1);
+        for (let i = 2; i < CLEAR_SLOTS; i++) world.onClear({ lines: 1 });
+        expect(world.u.clearA.every((other) => other.value.z > 0)).toBe(true);
         expect(world.u.clearA).toHaveLength(CLEAR_SLOTS);
-        expect(world.counts.clears).toBe(CLEAR_SLOTS + 1);
+        expect(world.counts.clears).toBe(CLEAR_SLOTS);
+        world.dispose();
+    });
+
+    it('gives a new wave the slot with the least light left, never one still running bright', () => {
+        const { camera, world } = makeWorld('Low');
+        // A wave every half second until every slot runs one.
+        const births = [];
+        for (let i = 0; i < CLEAR_SLOTS; i++) {
+            if (i > 0) run(world, camera, 0.5, 30);
+            world.onClear({ lines: 1 });
+            births.push(world.time);
+        }
+        expect(world.u.clearA.map((slot) => slot.value.x).sort((a, b) => a - b)).toEqual(births);
+        // One more: the oldest wave (its afterglow furthest gone) gives way; the others run on.
+        run(world, camera, 0.5, 30);
+        world.onClear({ lines: 2 });
+        const now = world.u.clearA.map((slot) => slot.value.x).sort((a, b) => a - b);
+        expect(now).toEqual([...births.slice(1), world.time]);
         world.dispose();
     });
 
@@ -1159,33 +1181,115 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         expect(pass[far] - pass[near]).toBeGreaterThan(0.05);
 
         runTo(world, camera, pass[near] - 0.02);
-        expect(world.held[near]).toBeGreaterThan(0);
-        expect(world.held[far]).toBeGreaterThan(0);
+        const full = [...world.held];
+        expect(full[near]).toBeGreaterThan(0);
+        expect(full[far]).toBeGreaterThan(0);
+        // The nearer one lets go first: its light pours out over a moment (never cut in a frame)...
         runTo(world, camera, pass[near] + 0.02);
-        expect(world.held[near]).toBe(0);
-        expect(world.held[far]).toBeGreaterThan(0);
-        runTo(world, camera, pass[far] - 0.02);
-        expect(world.held[far]).toBeGreaterThan(0);
-        runTo(world, camera, pass[far] + 0.02);
-        expect(world.held).toEqual([0, 0]);
+        expect(world.held[near]).toBeLessThan(full[near] * 0.95);
+        expect(world.held[near]).toBeGreaterThan(full[near] * 0.5);
+        expect(world.held[far]).toBeCloseTo(full[far], 2);
+        let rose = 0;
+        let previous = world.held[near];
+        runTo(world, camera, pass[far] - 0.02, () => {
+            if (world.held[near] > previous) rose += 1;
+            previous = world.held[near];
+        });
+        expect(rose).toBe(0);
+        expect(world.held[near]).toBeLessThan(full[near] * 0.3);
+        expect(world.held[far]).toBeGreaterThan(full[far] * 0.9);
+        // ...then the far one; a clear on its own leaves neither holding anything.
+        runTo(world, camera, Math.max(...pass) + 1.2);
+        expect(world.held[0]).toBeLessThan(1e-9);
+        expect(world.held[1]).toBeLessThan(1e-9);
         expect(world.arrivals).toHaveLength(0);
-        expect(world.u.held.value.toArray().slice(0, 2)).toEqual([0, 0]);
+        expect(world.u.held.value.toArray().slice(0, 2)).toEqual(world.held);
+        world.dispose();
+    });
+
+    it('keeps its light through a chain and grows it, and lets it all go up its beacon on the payoff', () => {
+        const { camera, world } = makeWorld('Low');
+        const quiet = makeWorld('Low');
+        // A chain: a lock on each side, then a clear, again and again.
+        for (let step = 1; step <= 9; step++) {
+            for (const view of [world, quiet.world]) {
+                view.onLock({ u: 0.1, hardDrop: true });
+                view.onLock({ u: 0.9, hardDrop: true });
+            }
+            world.onClear({ lines: 2, combo: step });
+            world.onCombo(step);
+            run(world, camera, 0.7, 42);
+            run(quiet.world, quiet.camera, 0.7, 42);
+        }
+        runTo(world, camera, world.time + 2);
+        runTo(quiet.world, quiet.camera, quiet.world.time + 2);
+        // The Apex now holds more than its resting fill: the chain raised it, and kept it.
+        expect(world.held[0]).toBeGreaterThan(HOLD_MAX);
+        expect(world.held[0]).toBeGreaterThan(quiet.world.held[0]);
+        expect(world.held[1]).toBeGreaterThan(0);
+        expect(world.u.beacon.value.toArray()).toEqual([0, 0, 0, 0]);
+        // The four-line clear: as the wave reaches each crystal it pours out everything, and
+        // the light stands up its beacon, taller for what it held than a cold one's.
+        const before = [...world.held];
+        const fresh = makeWorld('Low');
+        world.onClear({ lines: 4, combo: 10 });
+        fresh.world.onClear({ lines: 4 });
+        let tall = 0;
+        let plain = 0;
+        runTo(world, camera, world.time + HUSH_HOLD + 2.4, () => {
+            tall = Math.max(tall, world.u.beacon.value.x);
+        });
+        runTo(fresh.world, fresh.camera, fresh.world.time + HUSH_HOLD + 2.4, () => {
+            plain = Math.max(plain, fresh.world.u.beacon.value.x);
+        });
+        expect(plain).toBeGreaterThan(0);
+        expect(tall).toBeGreaterThan(plain * 1.2);
+        expect(world.held[0]).toBeLessThan(before[0] * 0.05);
+        expect(world.held[1]).toBeLessThan(before[1] * 0.05);
+        for (const view of [world, quiet.world, fresh.world]) view.dispose();
+    });
+
+    it('pours the chain\'s light out at its end, and lets what it lifted drift down', () => {
+        const { camera, world } = makeWorld('Low');
+        for (let step = 1; step <= 6; step++) {
+            world.onLock({ u: 0.1, hardDrop: true });
+            world.onClear({ lines: 1, combo: step });
+            world.onCombo(step);
+            run(world, camera, 0.7, 42);
+        }
+        runTo(world, camera, world.time + 1.5);
+        const held = world.held[0];
+        expect(held).toBeGreaterThan(1);
+        const lifted = world.lift;
+        expect(lifted).toBeGreaterThan(3);
+        world.onCombo(0);
+        let pillar = 0;
+        let low = 1;
+        runTo(world, camera, world.time + 1, () => {
+            pillar = Math.max(pillar, world.u.beacon.value.x);
+            low = Math.min(low, world.breath);
+        });
+        // The Apex poured everything out into a pillar; the sanctuary barely sighed.
+        expect(world.held[0]).toBeLessThan(held * 0.05);
+        expect(pillar).toBeGreaterThan(0.2);
+        expect(low).toBeGreaterThan(0.85);
+        // What the chain lifted is still mostly aloft a second later, and comes down after.
+        expect(world.lift).toBeGreaterThan(lifted * 0.5);
+        runTo(world, camera, world.time + 12);
+        expect(world.lift).toBeLessThan(0.05);
         world.dispose();
     });
 
     it('kicks the camera a beat after a clear, harder for more lines', () => {
         const { camera, world } = makeWorld('Low');
         world.onClear({ lines: 2 });
-        const due = world.pendingKick.time;
-        expect(due).toBeGreaterThan(world.time);
-        expect(world.pendingKick.amount).toBeGreaterThan(0);
+        const due = world.time + CLEAR_KICK_DELAY;
         settle(world, camera);
         expect(world.kick).toBe(0);
         runTo(world, camera, due - 0.01);
         expect(world.kick).toBe(0);
         runTo(world, camera, due + 0.01);
         expect(world.kick).toBeGreaterThan(0);
-        expect(world.pendingKick.time).toBe(Infinity);
         expect(world.getPostState().kick).toBe(world.kick);
         expect(world.getPostState().flash).toBeGreaterThan(0);
         // Once, not on every frame after.
@@ -1195,12 +1299,49 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         const amounts = [1, 2, 3, 4].map((lines) => {
             const other = makeWorld('Minimal');
             other.world.onClear({ lines });
-            const { amount } = other.world.pendingKick;
+            const blow = other.world.time + CLEAR_KICK_DELAY + (lines === 4 ? HUSH_HOLD : 0);
+            let peak = 0;
+            runTo(other.world, other.camera, blow + 0.1, () => {
+                peak = Math.max(peak, other.world.kick);
+            });
             other.world.dispose();
-            return amount;
+            return peak;
         });
         for (let i = 1; i < amounts.length; i++) expect(amounts[i]).toBeGreaterThan(amounts[i - 1]);
         world.dispose();
+    });
+
+    it('never lets a weaker event cut the light a stronger one left: a single after a four adds to it', () => {
+        const single = makeWorld('Low');
+        const alone = makeWorld('Low');
+        for (const { world, camera } of [single, alone]) {
+            world.onLock({ u: 0.9, hardDrop: true });
+            world.onClear({ lines: 4 });
+            run(world, camera, 0.5, 30);
+        }
+        // A plain single half a second into the four-line clear's light, in one world only.
+        single.world.onClear({ lines: 1 });
+        single.world.onLock({ u: 0.2 });
+        let cut = 0;
+        const keys = ['shafts', 'bloomBoost', 'kick', 'flash'];
+        for (let f = 0; f < 240; f++) {
+            for (const { world, camera } of [single, alone]) run(world, camera, 1 / 60, 1);
+            const a = single.world.getPostState();
+            const b = alone.world.getPostState();
+            for (const key of keys) if (a[key] < b[key] - 1e-9) cut += 1;
+            if (single.world.surge < alone.world.surge - 1e-9) cut += 1;
+            if (single.world.u.beacon.value.x < alone.world.u.beacon.value.x - 1e-9) cut += 1;
+            if (single.world.u.shock.value.y < alone.world.u.shock.value.y - 1e-9) cut += 1;
+            if (single.world.heat.level < alone.world.heat.level - 1e-9) cut += 1;
+        }
+        expect(cut).toBe(0);
+        // A level reached mid-flight opens its faint ring beside the four's, never over it.
+        const four = alone.world.u.shock.value.toArray();
+        alone.world.levelUp(2);
+        expect(alone.world.u.shock.value.toArray().slice(0, 2)).toEqual(four.slice(0, 2));
+        expect(alone.world.u.shock.value.w).toBeGreaterThan(0);
+        single.world.dispose();
+        alone.world.dispose();
     });
 
     it('charges and lifts with the combo, and comes back down when the chain breaks', () => {
@@ -1238,7 +1379,9 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         expect(wrong).toBe(0);
         expect(world.power).toBeGreaterThan(0);
         expect(world.lift).toBeGreaterThan(0);
-        run(world, camera, 16);
+        // (What it lifted drifts down over several seconds, never in a moment.)
+        expect(world.lift).toBeGreaterThan(LIFT_MAX * 0.7);
+        run(world, camera, 26);
         expect(world.power).toBeLessThan(1e-4);
         expect(world.lift).toBeLessThan(1e-4);
         // Nonsense is no chain; a fraction is rounded.
@@ -1378,8 +1521,14 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         expect(world.hushUntil).toBe(birth);
         expect(world.u.clearA[0].value.toArray().slice(0, 2)).toEqual([birth, 4]);
         expect(world.u.clearA[0].value.w).toBe(1);
-        expect(world.u.beacon.value.x).toBe(birth);
-        expect(world.u.beacon.value.y).toBeGreaterThan(0);
+        // The beacons stand as the wave reaches each great crystal (below).
+        const heart = world.u.clearH[0].value;
+        const { apex } = world.plan;
+        const [hx, , hz] = world.halcyon;
+        const reach = [
+            birth + clearPassTime(Math.hypot(apex[0] - heart.x, apex[2] - heart.y)),
+            birth + clearPassTime(Math.hypot(hx - heart.x, hz - heart.y)),
+        ];
         expect(world.u.shock.value.x).toBe(birth);
         expect(world.u.shock.value.y).toBeGreaterThan(0);
         expect(scatter).toHaveBeenCalledOnce();
@@ -1403,14 +1552,29 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         expect(world.breath).toBeLessThan(dip); // far deeper than a broken chain's sigh
         expect(world.breath).toBeGreaterThan(0);
         expect(world.u.breath.value).toBe(world.breath);
-        // Then everything fires: the breath comes back, the shafts blaze past their rest.
+        // Then everything fires: the breath comes back and the bloom swells a little, but the
+        // light is the pillars' and the rings': the sun's shafts stay under their rest, so no veil
+        // of glare is dragged across the frame, and the iris closes.
         const sunk = world.breath;
         runTo(world, camera, birth + 0.25);
         expect(world.breath).toBeGreaterThan(sunk);
-        expect(world.getPostState().shafts).toBeGreaterThan(rest.shafts);
+        expect(world.getPostState().shafts).toBeLessThan(rest.shafts);
         expect(world.getPostState().bloomBoost).toBeGreaterThan(rest.bloomBoost);
+        expect(world.getPostState().exposure).toBeLessThan(rest.exposure);
+        // Each great crystal's beacon stands as the wave reaches it: dark before, standing after.
+        expect(world.u.beacon.value.toArray()).toEqual([0, 0, 0, 0]);
+        runTo(world, camera, Math.min(...reach) - 0.01);
+        expect(world.u.beacon.value.toArray()).toEqual([0, 0, 0, 0]);
+        runTo(world, camera, Math.max(...reach) + 0.05);
+        const [apexBlaze, apexFlare, halcyonBlaze, halcyonFlare] = world.u.beacon.value.toArray();
+        for (const value of [apexBlaze, apexFlare, halcyonBlaze, halcyonFlare]) expect(value).toBeGreaterThan(0);
+        // (The Halcyon's pillar stands before the sun: it burns less, so the glare never whitens the frame.)
+        expect(halcyonBlaze).toBeLessThan(apexBlaze);
         runTo(world, camera, birth + 2);
         expect(world.breath).toBeCloseTo(1, 5);
+        // The pillars come down (they never stop dead).
+        runTo(world, camera, birth + 18);
+        expect(world.u.beacon.value.toArray()).toEqual([0, 0, 0, 0]);
         world.dispose();
 
         // A tier without a flock fires all the same.
@@ -1430,22 +1594,28 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         three.world.onClear({ lines: 3 });
         expect(three.world.surge).toBe(0);
         expect(three.world.hushUntil).toBeLessThan(three.world.time);
-        expect(three.world.u.beacon.value.y).toBe(0);
         expect(four.world.surge).toBeGreaterThan(0);
         expect(perfect.world.surge).toBeGreaterThan(four.world.surge);
         // A perfect clear fires as four lines whatever it cleared, and its beacons stand taller.
         expect(perfect.world.u.clearA[0].value.toArray().slice(0, 2)).toEqual([perfect.world.time + HUSH_HOLD, 4]);
         expect(perfect.world.u.clearA[0].value.w).toBe(1);
         expect(perfect.world.hushUntil).toBe(perfect.world.time + HUSH_HOLD);
-        expect(perfect.world.u.beacon.value.y).toBeGreaterThan(four.world.u.beacon.value.y);
         expect(perfect.world.counts.quads).toBe(1);
         expect(hueGap(perfect.world.u.clearC[0].value.toArray(), SUNFIRE)).toBeLessThan(1e-6);
+        const tallest = { four: 0, perfect: 0, three: 0 };
+        const hot = { four: four.world.surge, perfect: perfect.world.surge };
+        for (const [name, { world, camera }] of Object.entries({ four, perfect, three })) {
+            run(world, camera, 1.6, 96, () => {
+                tallest[name] = Math.max(tallest[name], world.u.beacon.value.x);
+            });
+        }
+        expect(tallest.three).toBe(0);
+        expect(tallest.four).toBeGreaterThan(0);
+        expect(tallest.perfect).toBeGreaterThan(tallest.four);
         // The overdrive cools to 1/e in SURGE_COOL seconds, at any frame rate.
-        for (const { world, camera } of [four, perfect]) {
-            const hot = world.surge;
-            run(world, camera, SURGE_COOL / 2, 20);
-            run(world, camera, SURGE_COOL / 2, 200);
-            expect(world.surge).toBeCloseTo(hot / Math.E, 9);
+        for (const [name, { world, camera }] of Object.entries({ four, perfect })) {
+            run(world, camera, SURGE_COOL - 1.6, 20);
+            expect(world.surge).toBeCloseTo(hot[name] / Math.E, 9);
             expect(world.u.surge.value).toBe(world.surge);
         }
         for (const { world } of [four, perfect, three]) world.dispose();
@@ -1533,6 +1703,183 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
     });
 });
 
+describe('halcyon apex world: the heat of play', () => {
+    /** A chain of `count` clearing hard drops, `gap` seconds apart, the way the tray's Fever plays. */
+    const chain = (world, camera, count, gap = 0.64, from = 1) => {
+        for (let i = 0; i < count; i++) {
+            const step = from + i;
+            world.onLock({ u: i % 2 ? 0.15 : 0.85, hardDrop: true, rows: [19] });
+            world.onClear({ lines: 1 + (i % 3), combo: step });
+            world.onCombo(step);
+            run(world, camera, gap, Math.round(gap * 60));
+        }
+    };
+    /** How far a colour sits from sunfire's hue (0 = sunfire). */
+    const fromSunfire = (node) => hueGap(node.value.toArray(), SUNFIRE);
+
+    it('builds through a long chain: hotter at its end than at its first clear, and breathes back at rest', () => {
+        const { camera, world } = makeWorld('Low');
+        const rest = { zenith: world.u.zenith.value.toArray() };
+        chain(world, camera, 1);
+        const first = {
+            ...world.heat,
+            power: world.u.power.value,
+            lift: world.lift,
+            ley: fromSunfire(world.u.ley),
+            exposure: world.getPostState().exposure,
+            apex: world.held[0],
+        };
+        chain(world, camera, 11, 0.64, 2);
+        const late = {
+            ...world.heat,
+            power: world.u.power.value,
+            lift: world.lift,
+            ley: fromSunfire(world.u.ley),
+            exposure: world.getPostState().exposure,
+            apex: world.held[0],
+        };
+        // The first clear barely stirs it (calm play looks as it always did)...
+        expect(first.level).toBeLessThan(0.3);
+        expect(first.fever).toBe(0);
+        expect(first.stage).toBeLessThanOrEqual(1);
+        // ...the twelfth finds it in a fever: charged, aloft, its ley burning toward sunfire, the
+        // Apex holding the chain's light, the iris closed so the colours stay deep.
+        expect(late.level).toBeGreaterThan(0.75);
+        expect(late.fever).toBeGreaterThan(0.6);
+        expect(late.stage).toBe(3);
+        expect(late.power).toBeGreaterThan(first.power);
+        expect(late.lift).toBeGreaterThan(first.lift + 5);
+        expect(late.ley).toBeLessThan(first.ley * 0.5);
+        expect(late.apex).toBeGreaterThan(HOLD_MAX);
+        expect(late.exposure).toBeLessThan(first.exposure);
+        // In the fever the darks deepen: the zenith is deeper than the hour's own.
+        expect(world.u.zenith.value.toArray()[2]).toBeLessThan(rest.zenith[2]);
+        // The hands rest: within a few seconds it is calm again, the fever gone, the sky its own.
+        run(world, camera, 10, 600);
+        expect(world.heat.level).toBeLessThan(0.15);
+        expect(world.heat.fever).toBe(0);
+        expect(world.heat.stage).toBeLessThanOrEqual(1);
+        const zenith = world.u.zenith.value.toArray();
+        for (let k = 0; k < 3; k++) expect(zenith[k]).toBeCloseTo(rest.zenith[k], 6);
+        expect(fromSunfire(world.u.ley)).toBeGreaterThan(late.ley);
+        world.dispose();
+    });
+
+    it('only inhales on a four-line clear in a fever, where from cold it holds its breath', () => {
+        const breathOf = (warm) => {
+            const { camera, world } = makeWorld('Low');
+            if (warm) chain(world, camera, 10);
+            world.onClear({ lines: 4, combo: warm ? 11 : 1 });
+            let low = 1;
+            runTo(world, camera, world.time + HUSH_HOLD, () => {
+                low = Math.min(low, world.breath);
+            });
+            world.dispose();
+            return low;
+        };
+        const cold = breathOf(false);
+        const hot = breathOf(true);
+        expect(cold).toBeLessThan(0.3);
+        expect(hot).toBeGreaterThan(0.6);
+        expect(hot).toBeLessThan(1);
+    });
+
+    it('crowns the clear still playing with a late perfect clear: no second hush, no second wave', () => {
+        const crowned = makeWorld('Low');
+        const plain = makeWorld('Low');
+        for (const { world, camera } of [crowned, plain]) {
+            world.onClear({ lines: 4 });
+            run(world, camera, 0.36, 22);
+        }
+        const { world, camera } = crowned;
+        const slots = world.u.clearA.map((slot) => slot.value.toArray());
+        const { hushUntil } = world;
+        const { surge } = world;
+        world.onCrown();
+        // Nothing replays: the same waves, the same hush, one clear and one four-line clear.
+        expect(world.u.clearA.map((slot) => slot.value.toArray())).toEqual(slots);
+        expect(world.hushUntil).toBe(hushUntil);
+        expect(world.counts).toMatchObject({ clears: 1, quads: 1, crowns: 1 });
+        // It adds: the overdrive rises from where it was, a second ring opens beside the first.
+        expect(world.surge).toBeGreaterThan(surge);
+        expect(world.u.shock.value.w).toBeGreaterThan(0);
+        expect(world.u.shock.value.x).toBe(plain.world.u.shock.value.x);
+        let low = 1;
+        const tallest = [0, 0];
+        run(world, camera, 1.6, 96, () => {
+            low = Math.min(low, world.breath);
+            tallest[0] = Math.max(tallest[0], world.u.beacon.value.x);
+        });
+        run(plain.world, plain.camera, 1.6, 96, () => {
+            tallest[1] = Math.max(tallest[1], plain.world.u.beacon.value.x);
+        });
+        expect(low).toBeGreaterThan(0.9);
+        expect(tallest[0]).toBeGreaterThan(tallest[1]);
+        crowned.world.dispose();
+        plain.world.dispose();
+    });
+
+    it('answers a back-to-back with both beacons and a second ring, in sunfire', () => {
+        const back = makeWorld('Low');
+        const plain = makeWorld('Low');
+        back.world.onClear({ lines: 2, tspin: true, b2b: true });
+        plain.world.onClear({ lines: 2, tspin: true });
+        expect(hueGap(back.world.u.clearC[0].value.toArray(), SUNFIRE)).toBeLessThan(1e-6);
+        expect(hueGap(plain.world.u.clearC[0].value.toArray(), SUNFIRE)).toBeGreaterThan(0.05);
+        expect(back.world.u.shock.value.y).toBeGreaterThan(0);
+        expect(plain.world.u.shock.value.y).toBe(0);
+        expect(back.world.surge).toBeGreaterThan(0);
+        const tallest = [0, 0, 0];
+        run(back.world, back.camera, 1.6, 96, () => {
+            tallest[0] = Math.max(tallest[0], back.world.u.beacon.value.x);
+            tallest[1] = Math.max(tallest[1], back.world.u.beacon.value.z);
+        });
+        run(plain.world, plain.camera, 1.6, 96, () => {
+            tallest[2] = Math.max(tallest[2], plain.world.u.beacon.value.x, plain.world.u.beacon.value.z);
+        });
+        expect(tallest[0]).toBeGreaterThan(0);
+        expect(tallest[1]).toBeGreaterThan(0);
+        expect(tallest[2]).toBe(0);
+        back.world.dispose();
+        plain.world.dispose();
+    });
+
+    it('runs each wave of a cascade deeper than the last, and never over the waves still running', () => {
+        const { camera, world } = makeWorld('Low');
+        const strengths = [];
+        const births = [];
+        for (let depth = 1; depth <= 4; depth++) {
+            if (depth > 1) run(world, camera, 0.36, 22);
+            world.onClear({ lines: 1, cascade: depth, combo: 1 });
+            births.push(world.time);
+            const slot = world.u.clearA.find((other) => other.value.x === world.time).value;
+            strengths.push(slot.z);
+            expect(slot.y, `wave ${depth} fronts`).toBe(depth > 1 ? 2 : 1);
+        }
+        for (let i = 1; i < strengths.length; i++) expect(strengths[i]).toBeGreaterThan(strengths[i - 1]);
+        // Four waves, four slots: the first is still running when the fourth leaves.
+        expect(world.u.clearA.map((slot) => slot.value.x).sort((a, b) => a - b)).toEqual(births);
+        // Each later wave rings the lagoon from the board's foot, further than the one before.
+        const reach = rings(world).filter((ring) => births.includes(ring.place.z)).map((ring) => ring.colour.w);
+        expect(reach).toHaveLength(3);
+        for (let i = 1; i < reach.length; i++) expect(reach[i]).toBeGreaterThan(reach[i - 1]);
+        world.dispose();
+    });
+
+    it('turns a little on a T-spin that cleared nothing', () => {
+        const { camera, world } = makeWorld('Low');
+        expect(world.twist).toBe(0);
+        world.onSpin({});
+        expect(world.twist).toBeGreaterThan(0);
+        expect(world.twist).toBeLessThan(1);
+        expect(ringBornAt(world, world.time)).toBeTruthy();
+        expect(world.counts).toMatchObject({ spins: 1, clears: 0 });
+        run(world, camera, 0.2, 12);
+        expect(world.heat.punch).toBeGreaterThan(0);
+        world.dispose();
+    });
+});
+
 describe('halcyon apex world: time', () => {
     const script = (world, camera, fps) => {
         world.onLock({ u: 0.3, hardDrop: true, color: '#ffc050' });
@@ -1584,7 +1931,9 @@ describe('halcyon apex world: time', () => {
             expect(slow.world.u.clearA[i].value.toArray()).toEqual(fast.world.u.clearA[i].value.toArray());
         }
         expect(slow.world.u.shock.value.toArray()).toEqual(fast.world.u.shock.value.toArray());
-        expect(slow.world.u.beacon.value.toArray()).toEqual(fast.world.u.beacon.value.toArray());
+        // The beacons are what the world has accumulated by now (as tall as what was held).
+        const beacons = [slow.world.u.beacon.value.toArray(), fast.world.u.beacon.value.toArray()];
+        for (let k = 0; k < 4; k++) near(beacons[0][k], beacons[1][k], `beacon[${k}]`);
         // A ring's place and a wisp's flight depend on the camera's pose that frame: the same to a hair.
         for (let i = 0; i < LOCK_SLOTS; i++) {
             const lockA = slow.world.u.lockA[i].value.toArray();
@@ -1705,7 +2054,7 @@ describe('halcyon apex world: time', () => {
         expect(world.arrivals).toHaveLength(0);
         expect([world.flash, world.kick, world.twist, world.dip]).toEqual([0, 0, 0, 0]);
         expect(world.hushUntil).toBeLessThan(40);
-        expect(world.pendingKick.time).toBe(Infinity);
+        expect(world.getState().heat).toEqual({ level: 0, fever: 0, stage: 0 });
         expect(rings(world)).toHaveLength(0);
         expect(pulses(world)).toHaveLength(0);
         for (let i = 0; i < CLEAR_SLOTS; i++) expect(world.u.clearA[i].value.z).toBe(0);

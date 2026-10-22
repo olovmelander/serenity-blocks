@@ -114,6 +114,8 @@ export function createCaveLight() {
         energy: uniform(0),
         /** Sustained combo hum, 0..1. */
         resonance: uniform(0),
+        /** Phase of the hum's standing bands (radians): the world runs it faster as play heats. */
+        humPhase: uniform(0),
         /** A flash from the board, seen by every facet that faces the player. */
         flashColor: uniform(new THREE.Color(0xffffff)),
         flash: uniform(0),

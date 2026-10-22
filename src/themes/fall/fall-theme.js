@@ -17,7 +17,7 @@ import { disposeFallAssets, loadFallAssets } from './fall-assets.js';
 import { readFallBoardRect } from './fall-stage.js';
 import { FALL_TETROMINOS } from './fall-tetrominos.js';
 import { FallWorld } from './fall-world.js';
-import { FallReactions } from './fall-reactions.js';
+import { FALL_REDUCED_MOTION, FallReactions } from './fall-reactions.js';
 import { FallPost } from './fall-post.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 
@@ -502,6 +502,11 @@ export default class FallTheme extends BaseTheme {
     update(delta) {
         const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
         this.time += dt;
+        // Reduced motion calms the grove's answers too, not only the camera: the breeze, the
+        // storm, every throw and gust come gentler (FallReactions.motion).
+        if (this.reactions) {
+            this.reactions.motion = this.reducedMotion || prefersReducedMotion() ? FALL_REDUCED_MOTION : 1;
+        }
         this.reactions?.update(dt);
         const frame = this.reactions?.getFrame();
         this.boardPoll -= dt;

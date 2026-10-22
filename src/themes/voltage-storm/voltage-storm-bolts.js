@@ -411,6 +411,14 @@ export class BoltTable {
         });
         this.lights = [];
         this._light = {};
+        /**
+         * The light of the frame's bolts that found no row in the flash table (dimmest first to
+         * go): what they would have delivered, `k`, and its colour weighted by it. The world folds
+         * it into the cloud's held glow instead of losing it when the sky is busy.
+         */
+        this.spill = {
+            k: 0, r: 0, g: 0, b: 0,
+        };
         this.fired = 0;
         /** Reduced motion: every bolt has one stroke and a standing arc holds a steady light. */
         this.calm = false;
@@ -450,11 +458,13 @@ export class BoltTable {
      * @param {number} [bolt.glow]    reach in metres of the light it throws (0 = it lights nothing)
      * @param {number} [bolt.glowGain] gain on that light
      * @param {number} [bolt.index]   a fixed slot within the kind's range (chain arcs)
+     * @param {number} [bolt.now]     the moment it is fired at (default: `time`): which slot is
+     *                                free, or nearest its end, is judged then
      * @returns {number} the slot
      */
     fire({
         kind = 'strike', start, end, rgb, time, seed, reach = 0.085, width = 3.2, power = 1, leader = 0.11,
-        strokes = 3, branches = 1, glow = 650, glowGain = 1, index = null, held = false,
+        strokes = 3, branches = 1, glow = 650, glowGain = 1, index = null, held = false, now,
     }) {
         const range = BOLT_RANGES[kind] || BOLT_RANGES.strike;
         const size = range[1] - range[0];
@@ -462,8 +472,8 @@ export class BoltTable {
         if (index !== null) slotIndex = range[0] + (Math.max(0, index) % size);
         else {
             const pool = BOLT_RANGES[kind] ? kind : 'strike';
-            slotIndex = range[0] + (this.cursors[pool] % size);
-            this.cursors[pool] += 1;
+            slotIndex = this.pick(range, this.cursors[pool], Number.isFinite(now) ? now : time);
+            this.cursors[pool] = slotIndex - range[0] + 1;
         }
         this.fired += 1;
         const slot = this.slots[slotIndex];
@@ -497,6 +507,32 @@ export class BoltTable {
         light.b = rgb[2] * 0.75 + 0.25;
         light.gain = glow > 0 ? glowGain : 0;
         return slotIndex;
+    }
+
+    /**
+     * The slot a new bolt of a kind takes at `now`: the next free one from the kind's turn, else
+     * the oldest still alight (the one furthest into its afterglow, never a standing arc). When
+     * the sky is busy a new bolt so takes a slot that is done or nearly done instead of cutting
+     * off whatever bolt the turn happens to land on, mid-stroke. Ties go by turn, so a table
+     * fired all at once still fills one slot after another.
+     */
+    pick(range, cursor, now) {
+        const size = range[1] - range[0];
+        let best = -1;
+        let oldest = Infinity;
+        for (let j = 0; j < size; j++) {
+            const i = range[0] + ((cursor + j) % size);
+            const slot = this.slots[i];
+            // Free: never used, emptied, or its life is over by now (whether or not a frame has
+            // noticed yet: the choice must not depend on how the frames were cut).
+            if (!slot.live || (!slot.held && now - slot.birth > slot.life)) return i;
+            if (slot.held) continue;
+            if (slot.birth < oldest) {
+                oldest = slot.birth;
+                best = i;
+            }
+        }
+        return best >= 0 ? best : range[0] + (cursor % size);
     }
 
     /** Empty every slot of a kind at once (no afterglow). */
@@ -543,11 +579,16 @@ export class BoltTable {
 
     /**
      * Work out every live bolt's light at `time` and write it to the table. Returns the lights of
-     * the frame, brightest first (at most FLASH_SLOTS).
+     * the frame, brightest first (at most `limit`); what the rest would have delivered is summed
+     * in `spill`.
      */
-    update(time) {
-        const { lights } = this;
+    update(time, limit = FLASH_SLOTS) {
+        const { lights, spill } = this;
         lights.length = 0;
+        spill.k = 0;
+        spill.r = 0;
+        spill.g = 0;
+        spill.b = 0;
         const out = this._light;
         for (let i = 0; i < BOLT_SLOTS; i++) {
             const slot = this.slots[i];
@@ -581,7 +622,16 @@ export class BoltTable {
             if (slot.light.gain > 0 && slot.light.level > 0.004) lights.push(slot.light);
         }
         lights.sort(byLight);
-        if (lights.length > FLASH_SLOTS) lights.length = FLASH_SLOTS;
+        const keep = Math.max(0, Math.min(FLASH_SLOTS, limit));
+        for (let i = keep; i < lights.length; i++) {
+            const light = lights[i];
+            const k = light.level * light.gain;
+            spill.k += k;
+            spill.r += light.r * k;
+            spill.g += light.g * k;
+            spill.b += light.b * k;
+        }
+        if (lights.length > keep) lights.length = keep;
         return lights;
     }
 

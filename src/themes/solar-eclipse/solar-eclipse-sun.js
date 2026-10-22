@@ -25,6 +25,7 @@ import {
     acos,
     asin,
     atan,
+    ceil,
     clamp,
     cos,
     dot,
@@ -211,27 +212,32 @@ export function drawSun(env, p, {
         light.mulAssign(float(1.0).sub(smoothstep(CORONA_REACH * 0.6, CORONA_REACH, r)));
         light.mulAssign(smoothstep(0.995, 1.004, r));
 
-        // ── A coronal mass ejection: a bright front, a dark cavity, a twisted core ──
-        const cAge = t.sub(u.cme.y);
-        If(u.cme.z.greaterThan(0.001).and(cAge.greaterThan(0.0)).and(cAge.lessThan(8.0)), () => {
-            const dir = vec2(cos(u.cme.x), sin(u.cme.x));
-            const travel = float(1.0).sub(exp(cAge.div(-2.3)));
-            const reach = travel.mul(6.0).add(0.15);
-            const rb = reach.mul(0.4).mul(u.cme.w).add(0.05);
-            const centre = dir.mul(reach.add(1.0).sub(rb));
-            const v = p.sub(centre);
-            const dv = max(length(v), 1e-4);
-            const facing = dot(v.div(dv), dir);
-            const fan = atan(v.y, v.x);
-            const fibre = noiseAt(noise, vec2(cos(fan), sin(fan)).mul(1.4).add(vec2(cAge.mul(0.05), 0.33)), 1.0).b;
-            const width = rb.mul(0.16).add(0.05);
-            const legs = smoothstep(-0.55, 0.2, facing);
-            const rim = seGauss(dv.sub(rb).div(width)).mul(legs).mul(fibre.mul(0.9).add(0.55));
-            const inside = float(1.0).sub(smoothstep(rb.mul(0.7), rb.add(width), dv)).mul(legs);
-            const fade = smoothstep(0.0, 0.3, cAge).mul(exp(cAge.div(-2.8))).mul(u.cme.z);
-            light.mulAssign(rim.mul(3.2).add(inside.mul(1.4)).mul(fade).add(1.0));
-            behind.addAssign(u.coronaIn.mul(rim).mul(fade).mul(0.16).div(reach.mul(0.3).add(1.0)));
-        });
+        // ── Coronal mass ejections: a bright front, a dark cavity, a twisted core. Two may be in
+        // the air at once (a back-to-back's twins, a deep cascade's), so one never cuts another.
+        const ejection = (cme) => {
+            const cAge = t.sub(cme.y);
+            If(cme.z.greaterThan(0.001).and(cAge.greaterThan(0.0)).and(cAge.lessThan(8.0)), () => {
+                const dir = vec2(cos(cme.x), sin(cme.x));
+                const travel = float(1.0).sub(exp(cAge.div(-2.3)));
+                const reach = travel.mul(6.0).add(0.15);
+                const rb = reach.mul(0.4).mul(cme.w).add(0.05);
+                const centre = dir.mul(reach.add(1.0).sub(rb));
+                const v = p.sub(centre);
+                const dv = max(length(v), 1e-4);
+                const facing = dot(v.div(dv), dir);
+                const fan = atan(v.y, v.x);
+                const fibre = noiseAt(noise, vec2(cos(fan), sin(fan)).mul(1.4).add(vec2(cAge.mul(0.05), 0.33)), 1.0).b;
+                const width = rb.mul(0.16).add(0.05);
+                const legs = smoothstep(-0.55, 0.2, facing);
+                const rim = seGauss(dv.sub(rb).div(width)).mul(legs).mul(fibre.mul(0.9).add(0.55));
+                const inside = float(1.0).sub(smoothstep(rb.mul(0.7), rb.add(width), dv)).mul(legs);
+                const fade = smoothstep(0.0, 0.3, cAge).mul(exp(cAge.div(-2.8))).mul(cme.z);
+                light.mulAssign(rim.mul(3.2).add(inside.mul(1.4)).mul(fade).add(1.0));
+                behind.addAssign(u.coronaIn.mul(rim).mul(fade).mul(0.16).div(reach.mul(0.3).add(1.0)));
+            });
+        };
+        ejection(u.cme);
+        ejection(u.cme2);
 
         const tint = mix(u.coronaIn, u.coronaOut, smoothstep(1.05, 2.8, r));
         behind.addAssign(tint.mul(light));
@@ -389,22 +395,24 @@ export function drawSun(env, p, {
         });
     });
 
-    // ── In front: the bead necklace a clear sends round the limb ──
-    const bAge = t.sub(u.beads.y);
-    If(u.beads.w.greaterThan(0.001).and(bAge.greaterThan(0.0)).and(bAge.lessThan(3.4)).and(r.lessThan(1.4)), () => {
+    // ── In front: the bead necklace the clears send round the limb ──
+    // The world turns it and lights it (u.beads: turn, −, count, light); the count may be
+    // fractional while a new bead splits off the first and slides into its place, so clears that
+    // come quickly ADD pearls to the necklace still turning instead of restarting it.
+    If(u.beads.w.greaterThan(0.001).and(r.lessThan(1.4)), () => {
         const count = max(u.beads.z, 1.0);
         const ring = seGauss(r.sub(1.03).div(max(px.mul(1.2), 0.012)));
-        const fade = smoothstep(0.0, 0.08, bAge).mul(float(1.0).sub(smoothstep(2.1, 3.4, bAge))).mul(u.beads.w);
         Loop({
-            start: int(0), end: int(u.beads.z), type: 'int', condition: '<', name: 'bd',
+            start: int(0), end: int(ceil(u.beads.z)), type: 'int', condition: '<', name: 'bd',
         }, ({ bd: i }) => {
-            const a = u.beads.x.add(float(i).mul(TAU).div(count)).add(bAge.mul(2.7));
+            const a = u.beads.x.add(float(i).mul(TAU).div(count));
             const pos = vec2(cos(a), sin(a)).mul(1.03);
             const d = length(p.sub(pos));
             const pearl = seGauss(d.div(max(px.mul(1.6), 0.022))).mul(8.0).add(exp(d.div(-0.08)).mul(1.1));
             const behindIt = wrap(a.sub(ang));
             const tail = exp(behindIt.div(-0.42)).mul(smoothstep(-0.02, 0.02, behindIt)).mul(ring).mul(1.4);
-            front.addAssign(PHOTOSPHERE.mul(pearl.add(tail)).mul(fade));
+            const share = clamp(u.beads.z.sub(float(i)), 0.0, 1.0);
+            front.addAssign(PHOTOSPHERE.mul(pearl.add(tail)).mul(u.beads.w.mul(share)));
         });
     });
 

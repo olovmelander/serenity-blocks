@@ -234,6 +234,8 @@ export default class IceTempleTheme extends BaseTheme {
                 clear: (c) => this.world?.onClear(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
+                crown: (c) => this.world?.onCrown(c),
+                spin: (c) => this.world?.onSpin(c),
             },
         });
         this.appliedSize = null;

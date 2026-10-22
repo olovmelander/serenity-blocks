@@ -130,12 +130,15 @@ export function createNoiseTexture(data = noiseData()) {
 
 // ── The scene's state ─────────────────────────────────────────────────────────────
 
-/** Gaps the locks tear in the deck at once (each two rows in `gaps`). */
-export const GAPS = 12;
-/** Trails of wind the clears send across the fields at once (each three rows in `trails`). */
-export const TRAILS = 6;
-/** Pulses of wind in the grain at once: a hard drop's ring, a T-spin's whirl, a level's wave. */
-export const PULSES = 6;
+/**
+ * Gaps the locks tear in the deck at once (each two rows in `gaps`): twelve standing, the rest
+ * room for those fading out (grainfields-reactions.js LIVE, FADE). The loops read only the count.
+ */
+export const GAPS = 16;
+/** Trails of wind the clears send across the fields at once (each three rows in `trails`): six, and three fading. */
+export const TRAILS = 9;
+/** Pulses of wind in the grain at once (a hard drop's ring, a T-spin's whirl, a level's wave): six, and three fading. */
+export const PULSES = 9;
 /** Gaps whose shafts stand in the air in front of the fells at the storm break. */
 export const RAYS = 4;
 /** Points of the path's centre line the shaders read. */

@@ -33,6 +33,8 @@ const LAKE_HALF_WIDTH = 5200;
 const PROFILE_BINS = 512;
 const PROFILE_MAX_ELEVATION = 0.4;
 const DEG = Math.PI / 180;
+/** How fast a lake ring fades (1/s): the shader and the slot choice read the same. */
+const RIPPLE_FADE = 0.55;
 /** The shore-ice mask covers the near water: x within ±half, z from `near` out to `far`. */
 export const SHORE_ICE = Object.freeze({
     half: 200, near: 20, far: -220, width: 256, height: 160,
@@ -492,7 +494,6 @@ export class AuroraLandscape {
 
         const slots = Math.max(1, preset.rippleSlots);
         this.rippleSlots = slots;
-        this.rippleCursor = 0;
         // x, z, birth time, strength — and tint with the ring's travel speed in w.
         this.rippleData = Array.from({ length: slots }, () => new THREE.Vector4(0, 0, -1000, 0));
         this.rippleTint = Array.from({ length: slots }, () => new THREE.Vector4(0.3, 1, 0.6, 26));
@@ -814,7 +815,7 @@ export class AuroraLandscape {
                 const age = u.time.sub(ring.z);
                 const front = radius.sub(age.mul(tint.w));
                 const packet = exp(front.mul(front).mul(-0.012))
-                    .mul(ring.w).mul(exp(age.mul(-0.55))).mul(smoothstep(0, 0.12, age));
+                    .mul(ring.w).mul(exp(age.mul(-RIPPLE_FADE))).mul(smoothstep(0, 0.12, age));
                 slope.addAssign(offsetFromRing.div(radius).mul(sin(front.mul(0.52)).mul(packet).mul(0.8)));
                 // Light rides the crests: a few thin bright rings, not a lit disc.
                 const crest = max(sin(front.mul(0.52).add(1.1)), 0);
@@ -883,12 +884,22 @@ export class AuroraLandscape {
 
     /**
      * Start a ring on the lake at world (x, z). `tint` is a linear RGB triple.
-     * Reuses the oldest slot; allocates nothing.
+     * Takes the ring with the least left to give (strength × its fade, as the shader fades
+     * it), so in rapid play rings pile into the mirror instead of a strong one being cut
+     * mid-spread by the next lock. Allocates nothing.
      */
     ripple(time, x, z, strength, tint, speed = 26) {
         if (this.disposed || !(strength > 0)) return false;
-        const slot = this.rippleCursor;
-        this.rippleCursor = (slot + 1) % this.rippleSlots;
+        let slot = 0;
+        let weakest = Infinity;
+        for (let i = 0; i < this.rippleSlots; i += 1) {
+            const ring = this.rippleData[i];
+            const left = ring.w * Math.exp(-Math.max(0, time - ring.z) * RIPPLE_FADE);
+            if (left < weakest) {
+                weakest = left;
+                slot = i;
+            }
+        }
         this.rippleData[slot].set(x, z, time, Math.min(1.5, strength));
         this.rippleTint[slot].set(tint[0], tint[1], tint[2], speed);
         return true;
@@ -896,7 +907,6 @@ export class AuroraLandscape {
 
     resetRipples() {
         for (const ring of this.rippleData) ring.set(0, 0, -1000, 0);
-        this.rippleCursor = 0;
     }
 
     getDiagnostics() {

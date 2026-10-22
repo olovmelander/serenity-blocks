@@ -39,6 +39,20 @@ export class GoldenForestWorld {
         this.group.name = 'Golden Forest — the lake at the golden hour';
         this.disposed = false;
         this.built = false;
+        /** Reduce motion's share (setMotion), and the envelopes as worn (wear()). */
+        this.motion = 1;
+        this.worn = {
+            gust: 0,
+            gustSpeed: 0,
+            flock: 0,
+            flockSpeed: 0,
+            warmth: 0,
+            level: 0,
+            fever: 0,
+            crown: 0,
+            gold: 0,
+            motion: 1,
+        };
     }
 
     build() {
@@ -155,6 +169,9 @@ export class GoldenForestWorld {
         this.director?.reset();
         this.sparks?.reset();
         this.lake?.reset();
+        Object.assign(this.worn, {
+            gust: 0, gustSpeed: 0, flock: 0, flockSpeed: 0, warmth: 0,
+        });
     }
 
     prepareCamera(aspect) {
@@ -176,20 +193,67 @@ export class GoldenForestWorld {
         if (this.ribbons) this.ribbons.warming = on === true;
     }
 
+    /**
+     * Reduce motion: the wind, the fronts, the startled flock and the river's turn are calmed to
+     * this share (1: all of it). The theme sets it from Settings and the system preference.
+     */
+    setMotion(scale) {
+        this.motion = Number.isFinite(scale) ? THREE.MathUtils.clamp(scale, 0, 1) : 1;
+    }
+
+    /**
+     * The envelopes as the world wears them. Anything that MOVES the scene (the gust bending every
+     * bough and carrying the motes, the flock bursting wide) follows its envelope through a
+     * critically damped spring, and the warmth of the sky and crowns eases in, so a lock leans the
+     * forest instead of jerking it and rapid locks raise the wind instead of shaking the trees.
+     * How hot play runs (`level`, `fever`) is spent here too: the evening wind rises, the
+     * fireflies wake and fall into step, the sun pours in, the birds go up.
+     */
+    wear(frame, dt) {
+        const unit = (value, high = 1) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, high) : 0);
+        const { worn } = this;
+        const motion = this.motion ?? 1;
+        const level = unit(frame.level);
+        const fever = unit(frame.fever);
+        worn.level = level;
+        worn.fever = fever;
+        worn.crown = unit(frame.crown, 1.2);
+        worn.gold = unit(frame.gold, 1.5);
+        worn.motion = motion;
+        const spring = (key, speed, target, omega) => {
+            if (dt > 0) {
+                const step = Math.min(dt, 0.05);
+                const pull = omega * omega * (target - worn[key]) - 2 * omega * worn[speed];
+                worn[speed] += pull * step;
+                worn[key] += worn[speed] * step;
+                if (!Number.isFinite(worn[key]) || !Number.isFinite(worn[speed])) {
+                    worn[key] = target;
+                    worn[speed] = 0;
+                }
+            }
+            return worn[key];
+        };
+        spring('gust', 'gustSpeed', unit(frame.gust), 7);
+        spring('flock', 'flockSpeed', Math.max(unit(frame.flock), fever * 0.45), 4);
+        if (dt > 0) worn.warmth += (unit(frame.warmth) - worn.warmth) * (1 - Math.exp(-Math.min(dt, 0.05) * 9));
+        return worn;
+    }
+
     update(rawTime, rawStep, frame = {}) {
         if (!this.built || this.disposed || !this.director) return;
         const { light } = this;
         const time = Number.isFinite(rawTime) ? Math.max(0, rawTime) : light.uTime.value;
         const dt = Number.isFinite(rawStep) ? Math.max(0, rawStep) : 0;
         const direction = light.uWindDir.value;
-        const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z });
-        light.update(time, { ...frame, front: env.front });
+        const worn = this.wear(frame || {}, dt);
+        const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z }, worn);
+        light.update(time, frame, worn, env.fronts);
         this.sparks.update(dt, env);
-        this.birds.update(frame);
-        this.ribbons.update(frame);
+        this.birds.update(frame, dt, worn);
+        this.ribbons.update(frame, worn);
         const rocked = this.shore.update(time, dt);
         if (rocked) this.lake.ripples.add(rocked.x, rocked.z, 0.2);
-        this.lake.update(dt, frame);
+        this.lake.update(dt, frame, worn);
     }
 
     getDiagnostics() {

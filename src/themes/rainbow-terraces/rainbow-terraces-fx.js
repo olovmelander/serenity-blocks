@@ -7,7 +7,9 @@
  *           beads, the thread of light-water's droplets, crowns of glints, the clear's sheets, the
  *           gliders' trails and brush heads, the sleepers in the grotto at night. Shapes: 0 a glow
  *           with a hot core, 1 a soft disc, 2 a rounded square (a cell), 3 a four-point glint, 4 a
- *           streak along its motion. A light never shrinks below a few pixels.
+ *           streak along its motion, 7 a tile (one cell of a SOLID piece: its edge ramps add up
+ *           to one across a joint with the next tile, so a piece's tiles draw one shape with one
+ *           outline and no seams). A light never shrinks below a few pixels.
  *   spray   soft lit billboards of spray at the falls' lips, along their edges and in the plume where
  *           they go to mist, laid over what is behind them far to near; every spray pixel adds the
  *           droplet optics of its own direction, so the bow really stands in the spray (faintly even
@@ -25,7 +27,7 @@ import { uploadUsed } from '../shared/instance-upload.js';
 
 /** Glow shapes. */
 export const GLOW = Object.freeze({
-    glow: 0, disc: 1, cell: 2, glint: 3, streak: 4, ring: 5, soft: 6,
+    glow: 0, disc: 1, cell: 2, glint: 3, streak: 4, ring: 5, soft: 6, tile: 7,
 });
 
 /**
@@ -98,11 +100,17 @@ export function createGlows({ capacity, U, minPixels = 2.5 }) {
         const ring = exp(rr.sub(0.78).div(0.06).pow2().negate()).add(exp(rr.sub(0.7).div(0.2).pow2().negate()).mul(0.25));
         // A soft bead with no hot core: overlapping, they draw one smooth ribbon.
         const soft = exp(r2.mul(-3.2));
+        // A tile of a solid piece (its quad 1.25 cells across: the cell's border at 0.8): each
+        // axis ramps over 0.65..0.95, odd about the border, so the next tile's ramp makes it up
+        // to exactly one across the joint (additive), and the piece is one flat shape.
+        const tileEdge = (a) => float(1.0).sub(smoothstep(0.65, 0.95, abs(a)));
+        const tile = tileEdge(d.x).mul(tileEdge(d.y)).mul(1.1);
         const pick = (k) => float(1.0).sub(smoothstep(0.0, 0.5, abs(shape.sub(k))));
         const v = glow.mul(pick(0)).add(disc.mul(pick(1))).add(box.mul(pick(2))).add(star.mul(pick(3)))
             .add(streak.mul(pick(4)))
             .add(ring.mul(pick(5)))
-            .add(soft.mul(pick(6)));
+            .add(soft.mul(pick(6)))
+            .add(tile.mul(pick(7)));
         return vec4(B.xyz.mul(v).mul(float(1.0).sub(vAir.mul(0.55))), 0.0);
     })();
 

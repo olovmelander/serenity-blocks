@@ -14,11 +14,12 @@ import * as THREE from 'three/webgpu';
 import { WINTER_PARTS, WinterWorld } from '../../src/themes/winter/winter-world.js';
 import { planGhosts } from '../../src/themes/winter/winter-ghosts.js';
 import {
-    EYE, FRAME_TREES, GUST_SLOTS, HOURS, HOUR_KEYS, HUSH_HOLD, REST_RIG, RING_SLOTS, SKY_SLOTS, SPARK_RISE, SPIRIT_RUN,
+    EYE, FRAME_TREES, GUST_SLOTS, HOURS, HOUR_KEYS, HUSH_HOLD, REST_RIG, RING_SLOTS, SKY_LET_GO, SKY_SLOTS, SPARK_RISE,
+    SPIRIT_RUN, STRUM_SLOTS,
     bearingFor, fovForAspect, moonDirection, pieceColor, powerForCombo,
 } from '../../src/themes/winter/winter-core.js';
 import { SHADOW_RECT } from '../../src/themes/winter/winter-field.js';
-import { BEAM_ROWS } from '../../src/themes/winter/winter-fx.js';
+import { BEAM_ROWS, BEAM_SETS } from '../../src/themes/winter/winter-fx.js';
 import { spiritPath } from '../../src/themes/winter/winter-fox.js';
 import { FOX_CLIPS, MOUSING } from '../../src/themes/winter/winter-fox-mind.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/winter/winter-quality.js';
@@ -167,7 +168,7 @@ describe('WinterWorld: what it builds', () => {
             expect(state.treeTriangles).toBeGreaterThan(0);
             // The pools are always drawn, whole: a dormant slot is a quad of no size.
             expect(world.sparks.geometry.instanceCount).toBe(tier.sparks);
-            expect(world.beams.geometry.instanceCount).toBe(BEAM_ROWS * 2);
+            expect(world.beams.geometry.instanceCount).toBe(BEAM_ROWS * 2 * BEAM_SETS);
             // The moon shadows' map covers the patch the field says it does.
             const rect = world.u.shadowRect.value;
             expect([rect.x, rect.y]).toEqual([SHADOW_RECT.x0, SHADOW_RECT.z0]);
@@ -418,11 +419,11 @@ describe('WinterWorld: the camera and the frame', () => {
         ];
         numbers.forEach((key) => expect(finite(u[key].value), key).toBe(true));
         const vectors = [
-            'moonDir', 'glowDir', 'curtains', 'windRun', 'foxPos', 'spirit', 'flare',
+            'moonDir', 'glowDir', 'curtains', 'windRun', 'foxPos', 'spirit', 'heat',
             ...HOUR_KEYS.map((k) => (k === 'moon' ? 'moonCol' : k)),
         ];
         vectors.forEach((key) => expect(u[key].value.toArray().every(finite), key).toBe(true));
-        [...u.ringA, ...u.ringC, ...u.gustA, ...u.skyA, ...u.skyC].forEach((slot) => {
+        [...u.ringA, ...u.ringC, ...u.gustA, ...u.skyA, ...u.skyC, ...u.strums].forEach((slot) => {
             expect(slot.value.toArray().every(finite)).toBe(true);
         });
         world.dispose();
@@ -498,12 +499,11 @@ describe('WinterWorld: a piece locks', () => {
             sparks: world.counts.sparks,
         };
         step(world, camera, 1, 1.5);
-        const ringSlot = world.ringCursor % RING_SLOTS;
         world.onLock({
             u: 0.85, rows: [15], color: '#6de0ff', hardDrop: true,
         });
-        // The next slot of each, harder and reaching farther.
-        expect(ringSlot).toBe(1);
+        // The next slot of each (the first still runs), harder and reaching farther.
+        expect(world.lastRing).toBe(1);
         expect(world.u.ringA[1].value.z).toBe(world.time);
         expect(world.u.ringA[1].value.w).toBeGreaterThan(soft.ring.w);
         expect(world.u.ringC[1].value.w).toBeGreaterThan(soft.reach);
@@ -513,9 +513,9 @@ describe('WinterWorld: a piece locks', () => {
         expect(thrownSince(world, world.time).length).toBeGreaterThan(soft.sparks);
         // A point on screen may stand in for the board (boards the layout does not know).
         step(world, camera, 1.5, 1.6);
-        const skySlot = world.skyCursor % SKY_SLOTS;
         world.onLock({ screen: { x: 0.15, y: 0.4 }, color: '#5df2a6' });
         expect(world.counts.locks).toBe(3);
+        const skySlot = world.lastSky;
         expect(world.u.skyA[skySlot].value.y).toBeGreaterThan(world.time);
         expect(world.u.skyA[skySlot].value.x).toBeLessThan(0);
         // With no colour given the fallback colour is used: still a light, never black.
@@ -524,20 +524,29 @@ describe('WinterWorld: a piece locks', () => {
         world.dispose();
     });
 
-    it('goes round its ring and sky slots without growing them', () => {
+    it('goes round its ring and sky slots without growing them, the faintest first', () => {
         const { world, camera } = makeWorld();
         const rounds = Math.max(RING_SLOTS, SKY_SLOTS) + 2;
         for (let i = 0; i < rounds; i++) {
             step(world, camera, i, i + 1);
-            // (The fox's answering flick takes a sky slot of its own: the cursors say which is next.)
-            const ring = world.ringCursor % RING_SLOTS;
-            const sky = world.skyCursor % SKY_SLOTS;
+            const rings = world.ringCursor;
+            const skies = world.skyCursor;
+            // The ring with least left of it is the one a new ring takes: never one still strong.
+            const left = world.u.ringA.map((slot) => slot.value.w * Math.exp(-(world.time - slot.value.z) * 1.05));
+            const faintest = left.indexOf(Math.min(...left));
             world.onLock({ u: 0.3, rows: [10], color: '#b79bff' });
-            expect(world.u.ringA[ring].value.z, `lock ${i}`).toBe(world.time);
-            expect(world.u.skyA[sky].value.y, `lock ${i}`).toBeGreaterThan(world.time);
-            // One slot of each a lock, and no other touched.
-            expect(world.ringCursor % RING_SLOTS).toBe((ring + 1) % RING_SLOTS);
-            expect(world.skyCursor % SKY_SLOTS).toBe((sky + 1) % SKY_SLOTS);
+            expect(world.lastRing, `lock ${i}`).toBe(faintest);
+            expect(world.u.ringA[faintest].value.z, `lock ${i}`).toBe(world.time);
+            // One of each a lock.
+            expect(world.ringCursor).toBe(rings + 1);
+            expect(world.skyCursor).toBe(skies + 1);
+            // The sky's colour: in a free slot at once, or else waiting for a held one to let go,
+            // in time for the sparks.
+            const queued = world.skyQueue[world.lastSky];
+            if (queued.due < Infinity) {
+                expect(queued.due, `lock ${i}`).toBeLessThanOrEqual(world.time + SKY_LET_GO + 1e-9);
+                expect(queued.arrives, `lock ${i}`).toBeGreaterThan(world.time);
+            } else expect(world.u.skyA[world.lastSky].value.y, `lock ${i}`).toBeGreaterThan(world.time);
         }
         // It has been round every slot more than once, and there are no more than there were.
         expect(world.ringCursor).toBeGreaterThan(RING_SLOTS);
@@ -648,23 +657,24 @@ describe('WinterWorld: a piece locks', () => {
 describe('WinterWorld: lines clear', () => {
     it('sends a gust from under the board and strums the sky, harder the more lines', () => {
         const { world, camera } = makeWorld();
-        let previous = { gust: 0, flare: 0 };
+        let previous = { gust: 0, strum: 0 };
         for (let lines = 1; lines <= 3; lines++) {
             step(world, camera, world.time, world.time + 2);
             const rows = Array.from({ length: lines }, (_, i) => 19 - i);
             world.onClear({ rows, lines });
             const slot = (lines - 1) % GUST_SLOTS;
+            expect(world.lastGust).toBe(slot);
             const gust = world.u.gustA[slot].value;
             // (x, z, when, how hard): from the snow under the board, now.
             expect(gust.z, `${lines} lines`).toBe(world.time);
             expect(gust.w, `${lines} lines`).toBeGreaterThan(previous.gust);
             expect(gust.y).toBeLessThan(-2);
             expect(Math.hypot(gust.x, gust.y)).toBeLessThan(15);
-            // The flare: (when, how hard).
-            const flare = world.u.flare.value;
-            expect(flare.x, `${lines} lines`).toBe(world.time);
-            expect(flare.y, `${lines} lines`).toBeGreaterThan(previous.flare);
-            previous = { gust: gust.w, flare: flare.y };
+            // The strum: (when, how hard, how wide, how fast), in a slot of its own.
+            const strum = world.u.strums[world.lastStrum].value;
+            expect(strum.x, `${lines} lines`).toBe(world.time);
+            expect(strum.y, `${lines} lines`).toBeGreaterThan(previous.strum);
+            previous = { gust: gust.w, strum: strum.y };
             expect(world.counts.clears).toBe(lines);
             expect(world.counts.quads).toBe(0);
             // No hush for less than four: the night keeps breathing.
@@ -673,6 +683,7 @@ describe('WinterWorld: lines clear', () => {
             expect(world.mind.mode).not.toBe('pounce');
         }
         expect(world.u.gustA).toHaveLength(GUST_SLOTS);
+        expect(world.u.strums).toHaveLength(STRUM_SLOTS);
         world.dispose();
     });
 
@@ -751,14 +762,18 @@ describe('WinterWorld: lines clear', () => {
         expect(rows.value.x).toBeGreaterThan(rows.value.y);
         expect(rows.value.z).toBeLessThan(0);
         expect(rows.value.w).toBeLessThan(0);
-        // More lines hit harder.
+        // More lines hit harder. (A clear while the last one's blades still fly fires the other
+        // set of blades: the first two rows' keep flying.)
         const two = beam.value.w;
         world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
-        expect(beam.value.w).toBeGreaterThan(two);
-        expect(rows.value.w).toBeCloseTo(boardPoint(board, 0.5, 16).y, 9);
+        const four = world.beams.uniforms;
+        expect(four.frame).not.toBe(beam);
+        expect(four.frame.value.w).toBeGreaterThan(two);
+        expect(four.rows.value.w).toBeCloseTo(boardPoint(board, 0.5, 16).y, 9);
+        expect(beam.value.w).toBe(two);
         // A new session parks them; the layout going away switches them off again.
         world.resetSession();
-        expect(beam.value.w).toBe(0);
+        world.beams.sets.forEach((set) => expect(set.frame.value.w).toBe(0));
         world.setLayout(null);
         expect(world.getState().layoutLive).toBe(false);
         world.onClear({ rows: [19], lines: 1 });
@@ -791,7 +806,7 @@ describe('WinterWorld: four lines', () => {
         // Everything is set for the moment the hush ends.
         expect(world.spiritAt).toBeGreaterThanOrEqual(opens);
         expect(world.spiritAt).toBeLessThan(opens + 2);
-        expect(world.u.flare.value.x).toBeCloseTo(opens, 9);
+        expect(world.u.strums[world.lastStrum].value.x).toBeCloseTo(opens, 9);
         expect(world.u.gustA[0].value.z).toBeCloseTo(opens, 9);
         expect(world.dumps.length).toBeGreaterThan(0);
         // ── The hush: every light sinks, and nothing has happened yet ──
@@ -1002,8 +1017,8 @@ describe('WinterWorld: the hours', () => {
         // Aloud: the sky is strummed and the fox answers, and the colours take their time.
         const { sparks } = world.counts;
         world.levelUp(2);
-        expect(world.u.flare.value.x).toBe(world.time);
-        expect(world.u.flare.value.y).toBeGreaterThan(0);
+        expect(world.u.strums[world.lastStrum].value.x).toBe(world.time);
+        expect(world.u.strums[world.lastStrum].value.y).toBeGreaterThan(0);
         expect(world.counts.sparks).toBeGreaterThan(sparks);
         frame(world, camera, 0.5 + 1 / 60, 1 / 60);
         const start = far(read(), calm(HOURS[1]));
@@ -1011,12 +1026,12 @@ describe('WinterWorld: the hours', () => {
         step(world, camera, world.time, 12);
         expect(far(read(), calm(HOURS[1]))).toBeLessThan(start * 0.01);
         expect(world.u.stars.value).toBeCloseTo(HOURS[1].calm.stars, 3);
-        // Silent (a restored session): there at once, with no flare.
-        const flare = world.u.flare.value.clone();
+        // Silent (a restored session): there at once, with no strum.
+        const strums = world.u.strums.map((slot) => slot.value.toArray());
         world.levelUp(4, { silent: true });
         frame(world, camera, 12, 0);
         expect(far(read(), calm(HOURS[3]))).toBeLessThan(1e-9);
-        expect(world.u.flare.value.toArray()).toEqual(flare.toArray());
+        expect(world.u.strums.map((slot) => slot.value.toArray())).toEqual(strums);
         world.dispose();
     });
 });
@@ -1043,10 +1058,11 @@ describe('WinterWorld: seek, replay and a new session', () => {
             // Every slot of the pools that is in use (a parked slot's stale numbers are never read).
             pools: liveRows(world.sparks, ['aBirth', 'aVel', 'aTint', 'aKind'], (row) => row[3] > -100),
             prints: liveRows(world.prints, ['aMade', 'aPrint'], (row) => row[0] > -1000),
-            slots: [...u.ringA, ...u.ringC, ...u.gustA, ...u.skyA, ...u.skyC].map((slot) => slot.value.toArray()),
+            slots: [...u.ringA, ...u.ringC, ...u.gustA, ...u.skyA, ...u.skyC, ...u.strums]
+                .map((slot) => slot.value.toArray()),
             uniforms: ['time', 'power', 'surge', 'breath', 'gale', 'auroraRun', 'halo', 'foxGlow', 'foxEyes', 'stars']
                 .map((k) => u[k].value),
-            vectors: ['windRun', 'curtains', 'foxPos', 'spirit', 'flare', 'zenith', 'fire']
+            vectors: ['windRun', 'curtains', 'foxPos', 'spirit', 'heat', 'zenith', 'fire']
                 .map((k) => u[k].value.toArray()),
         };
     }
@@ -1156,7 +1172,7 @@ describe('WinterWorld: seek, replay and a new session', () => {
         world.u.ringA.forEach((slot) => expect(slot.value.w).toBe(0));
         world.u.gustA.forEach((slot) => expect(slot.value.w).toBe(0));
         world.u.skyA.forEach((slot) => expect(slot.value.z).toBe(0));
-        expect(world.u.flare.value.y).toBe(0);
+        world.u.strums.forEach((slot) => expect(slot.value.y).toBe(0));
         expect(world.spiritAt).toBeLessThan(0);
         // A frame later nothing has snapped: the fires and the hour's colours have barely moved.
         frame(world, camera, 6.1 + 1e-3, 1e-3);

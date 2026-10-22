@@ -409,7 +409,13 @@ export default class VerdantHillsTheme extends BaseTheme {
     }
 
     onPieceLock(payload) {
-        if (!this.effectsAllowed() || !this.lockRipple) return;
+        if (!this.effectsAllowed()) return;
+        // With the lock ripple off the lock shows nothing, but it still counts: it ends a streak
+        // or carries it on, and the surge hears it (see VerdantHillsReactions.onQuietLock).
+        if (!this.lockRipple) {
+            this.reactions?.onQuietLock?.();
+            return;
+        }
         this.reactions?.onPieceLock(eventDetail(payload));
     }
 
@@ -520,6 +526,8 @@ export default class VerdantHillsTheme extends BaseTheme {
     update(delta) {
         const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
         this.time += dt;
+        // Reduce motion calms the gusts, ribbons, seed, whirl and birds too, not only the camera.
+        this.reactions?.setStill?.(this.reducedMotion || prefersReducedMotion());
         this.reactions?.update(dt);
         const frame = this.reactions?.getFrame();
         this.boardPoll -= dt;

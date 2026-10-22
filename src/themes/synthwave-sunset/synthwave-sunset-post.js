@@ -379,14 +379,17 @@ export class SynthwaveSunsetPost {
     }
 
     /**
-     * Per-frame uniforms (all optional).
-     * @param {{time?: number, sun?: THREE.Vector2, sunVis?: number, bloomBoost?: number}} params
+     * Per-frame uniforms (all optional). `exposure` is the iris: the world closes it a little as
+     * play heats and the bay blazes, so the colours stay saturated and the dusk stays deep.
+     * @param {{time?: number, sun?: THREE.Vector2, sunVis?: number, bloomBoost?: number,
+     *   exposure?: number}} params
      */
     update(params) {
         if (params.time !== undefined) this.uGrainPhase.value = Math.floor(params.time * 24) % 256;
         if (params.sun) this.uSun.value.copy(params.sun);
         if (params.sunVis !== undefined) this.uSunVis.value = params.sunVis;
         if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
+        if (Number.isFinite(params.exposure)) this.uExposure.value = params.exposure;
     }
 
     setGrainEnabled(enabled) {

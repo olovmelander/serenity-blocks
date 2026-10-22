@@ -41,7 +41,7 @@ const {
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], b2b: [], levelUp: [], order: [],
+        lock: [], clear: [], spin: [], combo: [], b2b: [], levelUp: [], order: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
@@ -54,6 +54,10 @@ function makeDirector(options = {}) {
             calls.clear.push({
                 ...c, rows: [...c.rows], rowCodes: [...c.rowCodes], screen: c.screen ? { ...c.screen } : null,
             });
+        }),
+        spin: vi.fn((c) => {
+            calls.order.push('spin');
+            calls.spin.push({ ...c });
         }),
         combo: vi.fn((n, player) => {
             calls.order.push('combo');
@@ -271,6 +275,23 @@ describe('high-coast director: intake', () => {
         expect(calls.clear[1]).toMatchObject({
             lines: 1, tspin: false, b2b: false, perfect: false,
         });
+    });
+
+    it('answers a T-spin that cleared nothing with a spin of its own, never a clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toEqual([]);
+        expect(calls.spin).toEqual([{ player: 0, screen: null }]);
+        expect(calls.order).toEqual(['lock', 'spin']);
+        // A T-spin that clears rides on its clear, with no spin besides.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 1, tspin: true });
     });
 
     it('resolves a perfect clear on its own frame as a clear with no rows', () => {
@@ -860,7 +881,7 @@ describe('high-coast director: settings and resets', () => {
         expect(director.onPerfectClear({ depth: 1 })).toBe(false);
         director.flush();
         expect(calls).toEqual({
-            lock: [], clear: [], combo: [], b2b: [], levelUp: [], order: [],
+            lock: [], clear: [], spin: [], combo: [], b2b: [], levelUp: [], order: [],
         });
         expect(director.slots.every((slot) => !slot.assigned)).toBe(true);
     });

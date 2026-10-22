@@ -10,15 +10,26 @@
  * it hands the painter the clock, draws the pieces of stroke that are due into the paint
  * (chromatic-impasto-canvas.js), dries it a little, and winds the twist a chain of clears puts
  * on the canvas.
+ *
+ * The paint is never cleared: the picture IS the accumulated play. On top of it the studio builds
+ * with the heat of play (src/themes/shared/gameplay-surge.js): at rest and under casual play it is
+ * the studio as it always was; as the hands quicken the brush is loaded heavier and the paint
+ * stays wet (warm); the lamp comes down and rakes the relief, the colours fill and the impasto
+ * stands thicker (hot); and in a fever the lamp swings low across the canvas, every ridge throwing
+ * its shadow and flashing the lamp's window as it passes, the wet skin glistening, the stirring
+ * winding faster, the light warming toward gold. A perfect clear crowns it: the lamp climbs, the
+ * raking light settles into a full golden light, and the studio breathes out. Every flash, kick
+ * and four-line gold is an accumulating envelope (shared/swell.js): a hit adds to what is still
+ * lit, never restarts it.
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 
 import {
-    DEG, GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, RELIEF, SHEEN_SLOTS, SWIRL_FROM, TAU, TWIST_BAKE_AT, VIEW,
-    TWIST_CREEP, VIEW_DISTANCE, approach, clamp, clamp01, createField, lerp, mixRgb, mulberry32, notchForCombo,
-    pigmentFromHex, powerForCombo, radicalInverse,
+    DEG, GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, RELIEF, SHEEN_SLOTS, SHEEN_TRAVEL, SWIRL_FROM, TAU,
+    TWIST_BAKE_AT, VIEW, TWIST_CREEP, VIEW_DISTANCE, approach, clamp, clamp01, createField, lerp, mixRgb, mulberry32,
+    notchForCombo, pigmentFromHex, powerForCombo, radicalInverse, smooth,
 } from './chromatic-impasto-core.js';
 import { tierFor } from './chromatic-impasto-quality.js';
 import { createBlob } from './chromatic-impasto-strokes.js';
@@ -34,6 +45,7 @@ import {
     BOARD_GRID, boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './chromatic-impasto-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 
 /** The rest camera (the frame is always two canvas units tall, so the field of view is fixed). */
 export const REST_RIG = Object.freeze({
@@ -68,6 +80,10 @@ export const COMBO_GLOW = 5;
 export const COMBO_GOLD = 8;
 /** How far from the board the stirring reaches (canvas units), at rest and at a long chain. */
 const TWIST_REACH = [1.05, 1.5];
+/** Links of a chain past which its arcs stop growing (the whorl is then wound round the frame). */
+const COMBO_WIDEST = 14;
+/** How a four-line clear's hush deepens: fully from cold, barely in a fever (1 - this × level). */
+const HUSH_EASE = 0.8;
 
 const PARTS = ['canvas', 'droplets', 'shadows', 'motes'];
 
@@ -123,7 +139,15 @@ export class ChromaticImpastoWorld {
             cx: 0, cy: 0, angle: 0, reach: TWIST_REACH[0],
         };
         this._post = {
-            flash: 0, kick: 0, exposure: 1, bloomBoost: 0, hush: 0, heart: { x: 0.5, y: 0.5 }, warmth: 0,
+            flash: 0,
+            kick: 0,
+            exposure: 1,
+            bloomBoost: 0,
+            hush: 0,
+            heart: { x: 0.5, y: 0.5 },
+            warmth: 0,
+            saturation: 1.1,
+            vignette: 0.5,
         };
         this.needsPaint = true;
         /** True once the passes a game meets late (bake, drying) have been drawn once. */
@@ -143,27 +167,58 @@ export class ChromaticImpastoWorld {
         this.time = time;
         this.combo = 0;
         this.power = 0;
+        /**
+         * The studio's flash and impact (the post's lift and fringe, the camera's step back), and a
+         * four-line clear's gold in the lamp: accumulating envelopes, so a single after a quad adds
+         * to its light instead of cutting it, and quads stack (a perfect clear crowns them).
+         */
+        this.flashSwell ??= new Swell({ release: 0.25, ceiling: 0.6, knee: 0.35 });
+        this.kickSwell ??= new Swell({ release: 0.18, ceiling: 1.2, knee: 0.8 });
+        this.glow ??= new Swell({
+            attack: 0.06, release: 2.6, ceiling: 1.5, knee: 1,
+        });
+        /** A perfect clear's release: the lamp climbs and the raking light settles into gold. */
+        this.glory ??= new Swell({
+            attack: 0.35, release: 2.4, ceiling: 1, knee: 0.8,
+        });
+        /** How hot play runs: what the studio wears as the hands quicken. */
+        this.play ??= new GameplaySurge();
+        this.flashSwell.reset();
+        this.kickSwell.reset();
+        this.glow.reset();
+        this.glory.reset();
+        this.play.reset();
+        /** The surge as of the last frame, and what the studio makes of it (see update()). */
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        this.drive = {
+            warm: 0, hot: 0, fever: 0, energy: 0, glory: 0,
+        };
+        /** This frame's readings of the envelopes above. */
         this.surge = 0;
         this.flash = 0;
         this.kick = 0;
-        this.dip = 0;
         this.swing = 0;
         this.swingPhase = 0;
+        /** The lamp's slow pass across the canvas while play runs hot. */
+        this.rakePhase = 0;
         this.breath = 1;
         this.level = 1;
         this.periodIndex = 0;
         this.hushUntil = -1;
+        /** How deep the hush goes (set when it starts), and how deep it is now (eased). */
+        this.hushDepth = 1;
+        this.hushLevel = 0;
         this.twistAngle = 0;
         /** Where the twist is easing to: every link of a chain moves it on a notch. */
         this.twistTarget = 0;
         /** How far the stirring reaches: chosen while the canvas is untwisted, held until a bake. */
         this.twistReach = TWIST_REACH[0];
         this.dryClock = 0;
-        this.sheenCursor = 0;
         this.session = 0;
         this.ambientIndex = Math.max(0, Math.floor((time - INTRO_SPAN - 1) / AMBIENT_BEAT));
         this.recent = [];
-        this.pendingKick = { time: Infinity, amount: 0 };
         this.counts = {
             locks: 0, clears: 0, quads: 0, strokes: 0, bakes: 0,
         };
@@ -373,7 +428,6 @@ export class ChromaticImpastoWorld {
         this.bakeTwist();
         this.combo = 0;
         this.hushUntil = -1;
-        this.pendingKick.time = Infinity;
     }
 
     /** A new game: the canvas is scraped down and blocked in again, in the first period. */
@@ -633,9 +687,27 @@ export class ChromaticImpastoWorld {
             }
         }
         const under = this.recent[0] || null;
+        // A quick hand loads the brush: the stroke reaches further, stands thicker and runs wetter.
+        const { energy } = this.drive;
         const gesture = lockGesture({
-            field: this.field, x, y, out, color: rgb, under, hard: hardDrop, reach, t0: t, seed: index + 1,
+            field: this.field,
+            x,
+            y,
+            out,
+            color: rgb,
+            under,
+            hard: hardDrop,
+            reach: reach * (1 + 0.45 * energy),
+            t0: t,
+            seed: index + 1,
         });
+        if (energy > 0) {
+            gesture.strokes.forEach((s) => {
+                s.height *= 1 + 0.22 * energy;
+                s.load *= 1 + 0.15 * energy;
+                s.dry *= 1 - 0.45 * energy;
+            });
+        }
         this.painter.addAll(gesture.strokes);
         if (hardDrop) {
             // The slab is driven out of a splat that stands clear of the card.
@@ -650,40 +722,95 @@ export class ChromaticImpastoWorld {
                 spatter: 7,
             }));
             this.throwPaint({
-                x, y, dx: out[0], dy: out[1], n: 22, color: rgb, time: t, speed: 1.25, spread: 1.4, size: 1.1,
+                x,
+                y,
+                dx: out[0],
+                dy: out[1],
+                n: 22 * (1 + 0.8 * energy),
+                color: rgb,
+                time: t,
+                speed: 1.25 * (1 + 0.25 * energy),
+                spread: 1.4,
+                size: 1.1,
             });
         } else {
             // A few drops leave the brush as it lifts.
             const [tipX, tipY] = gesture.tip;
             const [dx, dy] = gesture.heading;
             this.throwPaint({
-                x: tipX, y: tipY, dx, dy, n: 6, color: rgb, time: t + 0.2, speed: 0.6, spread: 0.7, size: 0.8,
+                x: tipX,
+                y: tipY,
+                dx,
+                dy,
+                n: 6 * (1 + energy),
+                color: rgb,
+                time: t + 0.2,
+                speed: 0.6 * (1 + 0.25 * energy),
+                spread: 0.7,
+                size: 0.8,
             });
         }
         this.recent.unshift(rgb);
         if (this.recent.length > 8) this.recent.length = 8;
-        this.kick = Math.max(this.kick, hardDrop ? 0.5 : 0.1);
-        this.flash = Math.max(this.flash, hardDrop ? 0.08 : 0.015);
+        this.strike(hardDrop ? 0.5 : 0.1, hardDrop ? 0.08 : 0.015, t);
+        this.play.lock({ hardDrop }, t);
         this.counts.locks += 1;
     }
 
-    /** A ring of wet light leaves (x, y) at `time`. */
-    sendSheen(x, y, time, strength) {
-        const slot = this.sheenCursor % SHEEN_SLOTS;
-        this.sheenCursor += 1;
-        this.u.sheenSlots[slot].set(x, y, time, strength);
+    /** An impact (fringe, the camera's step back) and a flash at `at`, added to what is still lit. */
+    strike(kick, flash, at) {
+        this.kickSwell.hit(kick, at);
+        this.flashSwell.hit(flash, at);
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `rows` = the cleared visible rows; `tspin`, `perfect`.
+     * A ring of wet light leaves (x, y) at `time`. One sent from about the same place at about
+     * the same moment as a ring still crossing joins it (brighter); otherwise it takes the slot
+     * with the least light left in it, so under fast play no ring vanishes mid-crossing while a
+     * spent one stands idle.
+     */
+    sendSheen(x, y, time, strength) {
+        const slots = this.u.sheenSlots;
+        let weakest = 0;
+        let least = Infinity;
+        for (let i = 0; i < SHEEN_SLOTS; i++) {
+            const v = slots[i];
+            if (Math.abs(v.z - time) < 0.12 && Math.hypot(v.x - x, v.y - y) < 0.3) {
+                v.w = Math.min(1.5, v.w + strength * 0.5);
+                return;
+            }
+            // The light a ring has left to give: its strength, faded, over what is left of its way.
+            const k = Math.max(0, (this.time - v.z) / SHEEN_TRAVEL);
+            const left = v.w * (1 - smooth(0.6, 1.25, k)) * clamp01((1.25 - k) / 1.25);
+            if (left < least) {
+                least = left;
+                weakest = i;
+            }
+        }
+        slots[weakest].set(x, y, time, strength);
+    }
+
+    /**
+     * Lines cleared. `lines` 1..4; `rows` = the cleared visible rows; `tspin`, `perfect`, `b2b`;
+     * `cascade` = the wave of the lock's cascade (each deeper wave flings harder); `combo` = the
+     * true combo; `crown` = a perfect clear settled after its clear's last wave (no rows of its
+     * own: the crown on the clear still playing, see crown()).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
+        player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
+        if (crown && perfect) {
+            this.crown();
+            return;
+        }
         const t = this.time;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        // Waves of a cascade past the first: each one wider, harder and further flung than the last.
+        const depth = Math.max(0, Math.min(8, Math.round(Number(cascade) || 1) - 1));
+        const { energy } = this.drive;
         const index = this.counts.clears;
         const rand = mulberry32(index * 4421 + 59);
         const { card } = this;
@@ -714,16 +841,20 @@ export class ChromaticImpastoWorld {
                 x1 = this.heart.x;
             }
             centre = y;
+            // A back-to-back's first row leaves in gold leaf: the second difficult clear is gilded.
+            const gilt = b2b && i === 0;
             const strokes = sweepGesture({
                 y,
                 x0,
                 x1,
                 halfX,
-                width: rowHeight * 0.88,
-                color: colors[i % colors.length],
-                colorB: colors[(i + 1) % colors.length],
+                width: rowHeight * 0.88 * (1 + 0.14 * depth + 0.12 * energy),
+                color: gilt ? GOLD : colors[i % colors.length],
+                colorB: colors[(i + (gilt ? 0 : 1)) % colors.length],
                 t0: birth + i * 0.045,
                 seed: index * 5 + i + 1,
+                special: gilt ? 1 : 0,
+                dur: 0.42 / (1 + 0.12 * depth),
             });
             this.painter.addAll(strokes);
             // Paint flies off the brush as it leaves the card.
@@ -733,22 +864,46 @@ export class ChromaticImpastoWorld {
                     y,
                     dx: side,
                     dy: 0.15,
-                    n: 7 + n * 2,
-                    color: colors[i % colors.length],
+                    n: (7 + n * 2 + 4 * depth) * (1 + 0.6 * energy),
+                    color: gilt ? GOLD : colors[i % colors.length],
                     time: birth + i * 0.045 + 0.04,
-                    speed: 1.1 + n * 0.12,
+                    speed: 1.1 + n * 0.12 + 0.16 * depth,
                     spread: 0.8,
+                    special: gilt ? 1 : 0,
                 });
+                if (depth > 0 && i === 0) {
+                    // A deeper wave strikes the cloth where its brush leaves the card: a splat a
+                    // wave, bigger and further out each time.
+                    this.painter.addAll(splatGesture({
+                        x: side < 0 ? x0 - 0.1 - 0.035 * depth : x1 + 0.1 + 0.035 * depth,
+                        y: y + (rand() - 0.5) * 0.08,
+                        radius: 0.028 + 0.008 * depth,
+                        color: colors[(depth + (side < 0 ? 0 : 1)) % colors.length],
+                        colorB: colors[(depth + 2) % colors.length],
+                        t0: birth + 0.06,
+                        seed: index * 13 + depth * 3 + side + 5,
+                        spatter: 4 + 2 * depth,
+                    }));
+                }
             }
         }
-        this.sendSheen(this.heart.x, centre, birth, Math.min(1, 0.4 + 0.15 * n));
-        this.pendingKick = { time: birth + 0.05, amount: 0.18 + 0.09 * n };
-        this.swing = Math.max(this.swing, 0.25 + 0.12 * n);
+        this.sendSheen(this.heart.x, centre, birth, Math.min(1, 0.4 + 0.15 * n) + 0.15 * depth + (b2b ? 0.3 : 0));
+        if (!quad) {
+            const kick = 0.18 + 0.09 * n;
+            this.strike(kick + 0.06 * depth + (b2b ? 0.15 : 0), kick * 0.3, birth + 0.05);
+        }
+        this.swing = Math.max(this.swing, 0.25 + 0.12 * n + 0.05 * depth);
+        this.play.clear({
+            lines: n, cascade, combo, tspin, perfect, b2b,
+        }, birth);
 
         if (quad) {
-            // The studio holds its breath; then the paint flies, and the gold goes on.
+            // The studio holds its breath; then the paint flies, and the gold goes on. From cold it
+            // holds it fully; the hotter play already runs the shallower it goes (a quad mid-fever
+            // inhales, it does not black the studio out).
             this.hushUntil = t + HUSH_HOLD;
-            this.surge = perfect ? 1.3 : 1;
+            this.hushDepth = 1 - HUSH_EASE * this.heat.level;
+            this.glow.hit(1 + (b2b ? 0.3 : 0), birth);
             const burst = burstGesture({
                 card,
                 colors: this.recentColors(5),
@@ -764,9 +919,10 @@ export class ChromaticImpastoWorld {
                     ...th, n: 8, time: birth + 0.03, speed: 1.9, spread: 0.6, size: 1.05,
                 });
             }
-            // Every four-line clear of a game lays its ring outside the last: the board's frame.
+            // Every four-line clear of a game lays its ring outside the last: the board's frame (a
+            // back-to-back lays it thicker).
             this.painter.addAll(haloGesture({
-                card, t0: birth + 0.28, seed: index + 3, turns: perfect ? 2 : 1, ring: this.counts.quads % 4,
+                card, t0: birth + 0.28, seed: index + 3, ring: this.counts.quads % 4, width: b2b ? 0.05 : 0.034,
             }));
             // Flakes of gold in the air over the board.
             this.throwPaint({
@@ -783,29 +939,11 @@ export class ChromaticImpastoWorld {
                 special: 1,
             });
             this.sendSheen(this.heart.x, this.heart.y, birth + 0.3, 1);
-            this.pendingKick = { time: birth, amount: 0.9 };
+            this.strike(0.9 + (b2b ? 0.15 : 0), 0.27, birth);
             this.counts.quads += 1;
         }
-        if (perfect) {
-            // The masterstroke: two great arcs of light and gold wound round the board.
-            const round = this.ringRound(0.26);
-            this.painter.addAll(spiralGesture({
-                cx: this.heart.x,
-                cy: this.heart.y,
-                radius: round.radius,
-                squash: round.squash,
-                colors: [this.period.light, GOLD],
-                t0: birth + 0.5,
-                seed: index + 5,
-                arms: 2,
-                sweep: 4.6,
-                width: 0.04,
-                grow: 0.3,
-                special: 1,
-                dur: 0.8,
-                tag: 'gold',
-            }));
-        }
+        // A perfect clear named with its clear (the masterstroke laid with the quad).
+        if (perfect) this.masterstroke(birth + 0.3, index);
         if (tspin) {
             // The canvas itself turns a notch, and the turn is drawn.
             if (!this.reducedMotion) this.twistTarget += 0.42;
@@ -827,6 +965,91 @@ export class ChromaticImpastoWorld {
         this.counts.clears += 1;
     }
 
+    /**
+     * The masterstroke: two great arcs of light and gold wound round the board, one more ring of
+     * gold outside the frame, gold flakes in the air, and wet light across the whole canvas.
+     */
+    masterstroke(at, index) {
+        const round = this.ringRound(0.26);
+        this.painter.addAll(spiralGesture({
+            cx: this.heart.x,
+            cy: this.heart.y,
+            radius: round.radius,
+            squash: round.squash,
+            colors: [this.period.light, GOLD],
+            t0: at + 0.2,
+            seed: index + 5,
+            arms: 2,
+            sweep: 4.6,
+            width: 0.04,
+            grow: 0.3,
+            special: 1,
+            dur: 0.8,
+            tag: 'gold',
+        }));
+        this.painter.addAll(haloGesture({
+            card: this.card, t0: at, seed: index + 41, ring: this.counts.quads % 4,
+        }));
+        this.counts.quads += 1;
+        this.throwPaint({
+            x: this.heart.x,
+            y: this.heart.y,
+            dx: 0,
+            dy: 1,
+            n: 36,
+            color: GOLD,
+            time: at + 0.05,
+            speed: 1.7,
+            spread: TAU,
+            size: 0.75,
+            special: 1,
+        });
+        this.sendSheen(this.heart.x, this.heart.y, at, 1.4);
+        // The release: the lamp climbs and the raking light settles into a full golden light.
+        this.glory.hit(1, at);
+        this.swing = Math.max(this.swing, 0.8);
+    }
+
+    /**
+     * A perfect clear settled after its clear's last wave: the crown on the clear still playing,
+     * never a second one (no hush, no second burst of paint, no rows swept again).
+     */
+    crown() {
+        if (!this.u) return;
+        const t = this.time;
+        this.glow.hit(1.1, t + 0.05);
+        this.strike(0.45, 0.2, t + 0.05);
+        this.masterstroke(t + 0.05, this.counts.clears + 97);
+        this.play.crown(t);
+    }
+
+    /** A T-spin that cleared nothing: the canvas turns a little, and a short turn is drawn. */
+    onSpin() {
+        if (!this.u) return;
+        const t = this.time;
+        if (!this.reducedMotion) this.twistTarget += 0.16;
+        const round = this.ringRound(0.08);
+        const colors = this.recentColors(2);
+        this.painter.addAll(spiralGesture({
+            cx: this.heart.x,
+            cy: this.heart.y,
+            radius: round.radius,
+            squash: round.squash,
+            colors: [colors[0], this.period.light, colors[1]],
+            t0: t,
+            seed: this.counts.locks * 7 + 3,
+            arms: 3,
+            sweep: 1.7,
+            width: 0.016,
+            grow: 0.15,
+            dur: 0.4,
+        }));
+        this.sendSheen(this.heart.x, this.heart.y, t, 0.35);
+        this.strike(0.15, 0.03, t);
+        this.swing = Math.max(this.swing, 0.3);
+        this.play.spin(t);
+    }
+
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
@@ -837,13 +1060,16 @@ export class ChromaticImpastoWorld {
         if (n > this.combo && n >= SWIRL_FROM) {
             // Every link of the chain is drawn: arcs wound round the board, wider as it grows.
             // From the fifth link the paint is fluorescent; from the eighth it is gold.
+            // Past the eighth link the whorl keeps winding: wider and longer every link, with more
+            // arms (gold leaf and the pieces' own colours, so the chain fills the picture with
+            // colour rather than washing it to cream).
             const t = this.time;
-            const links = Math.min(8, n);
+            const links = Math.min(COMBO_WIDEST, n);
             const { radius, squash } = this.ringRound(0.1 + links * 0.03);
             const gilded = n >= COMBO_GOLD;
             const lit = n >= COMBO_GLOW;
-            const colors = gilded ? [GOLD, this.period.light, GOLD] : this.recentColors(3);
-            const arms = Math.min(4, 1 + Math.floor(n / 2));
+            const colors = gilded ? [GOLD, ...this.recentColors(2), this.period.light] : this.recentColors(3);
+            const arms = Math.min(6, 1 + Math.floor(n / 2));
             this.painter.addAll(spiralGesture({
                 cx: this.heart.x,
                 cy: this.heart.y,
@@ -854,7 +1080,7 @@ export class ChromaticImpastoWorld {
                 seed: n * 13 + this.counts.clears,
                 arms,
                 sweep: 2.6 + links * 0.25,
-                width: 0.02 + links * 0.0022,
+                width: (0.02 + links * 0.0022) * (1 + 0.15 * this.drive.energy),
                 grow: 0.22,
                 special: Number(gilded) - Number(lit && !gilded),
                 // One arc of each link carries the special paint; the rest are the pieces' own.
@@ -884,9 +1110,14 @@ export class ChromaticImpastoWorld {
         }
         if (n === 0 && this.combo >= SWIRL_FROM) {
             // The chain broke: the canvas stops where it is, still turned. (The turn is baked
-            // into the paint when it has wound far enough, and when the game ends.)
+            // into the paint when it has wound far enough, and when the game ends.) The studio
+            // breathes out: a ring of wet light rolls off the board, as wide as the chain was
+            // long, and the lamp sways; the heat of play then eases away by itself.
             this.twistTarget = this.twistAngle;
-            this.dip = Math.max(this.dip, 0.2);
+            if (this.combo >= SWIRL_FROM + 2) {
+                this.sendSheen(this.heart.x, this.heart.y, this.time, Math.min(0.9, 0.3 + 0.05 * this.combo));
+                this.swing = Math.max(this.swing, 0.35);
+            }
         }
         this.combo = n;
     }
@@ -919,8 +1150,9 @@ export class ChromaticImpastoWorld {
         });
         this.painter.addAll(strokes);
         this.sendSheen(this.heart.x, this.heart.y, this.time, 0.8);
-        this.flash = Math.max(this.flash, 0.12);
+        this.flashSwell.hit(0.12, this.time);
         this.swing = Math.max(this.swing, 0.6);
+        this.play.levelUp(this.time);
     }
 
     /** Freeze the twist into the paint. */
@@ -956,20 +1188,36 @@ export class ChromaticImpastoWorld {
         // ── The charge ──
         const target = powerForCombo(this.combo);
         this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.9, dt);
-        this.surge *= Math.exp(-dt / 2.6);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.18);
-        this.dip *= Math.exp(-dt / 0.4);
+        this.surge = this.glow.valueAt(t);
+        this.flash = this.flashSwell.valueAt(t);
+        this.kick = this.kickSwell.valueAt(t);
         this.swing *= Math.exp(-dt / 1.1);
-        if (t >= this.pendingKick.time) {
-            this.kick = Math.max(this.kick, this.pendingKick.amount);
-            this.flash = Math.max(this.flash, this.pendingKick.amount * 0.3);
-            this.pendingKick.time = Infinity;
-        }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.3 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 12, dt);
-        if (dt === 0) this.breath = breathTarget;
+        // The hush before four lines: as deep as play is cold, eased in and out.
+        const hushing = t < this.hushUntil;
+        const hushTarget = hushing ? this.hushDepth : 0;
+        this.hushLevel += (hushTarget - this.hushLevel) * approach(hushing ? 30 : 12, dt);
+        if (dt === 0) this.hushLevel = hushTarget;
+        this.breath = 1 - 0.7 * this.hushLevel;
+
+        // ── The heat of play, and the acts the studio makes of it ──
+        const heat = this.play.sample(t);
+        this.heat.punch = heat.punch;
+        this.heat.level = heat.level;
+        this.heat.fever = heat.fever;
+        this.heat.stage = heat.stage;
+        const { drive } = this;
+        // Nothing under casual play (the studio as it always was); a quick hand warms it; a long
+        // chain makes it hot; the fever is the sustained tide.
+        drive.warm = smooth(0.18, 0.5, heat.level);
+        drive.hot = smooth(0.45, 0.85, heat.level);
+        drive.fever = heat.fever;
+        drive.energy = clamp01(0.5 * drive.warm + 0.25 * drive.hot + 0.25 * drive.fever);
+        drive.glory = this.glory.valueAt(t);
+        const {
+            warm, hot, fever, glory,
+        } = drive;
+        // How hard the light rakes: a crown settles it into a full golden light.
+        const rake = (0.4 * warm + 0.3 * hot + 0.3 * fever) * (1 - 0.75 * glory);
 
         // ── The painter's own strokes, on the studio's clock ──
         const beat = Math.floor((t - INTRO_SPAN - 1) / AMBIENT_BEAT);
@@ -1000,7 +1248,7 @@ export class ChromaticImpastoWorld {
         tw.reach = this.twistReach;
         // Each link moved the target on a notch; the canvas eases after it, and creeps on while
         // the chain holds.
-        if (this.combo >= SWIRL_FROM) this.twistTarget += TWIST_CREEP * motion * dt;
+        if (this.combo >= SWIRL_FROM) this.twistTarget += TWIST_CREEP * (1 + 1.2 * fever) * motion * dt;
         this.twistAngle += (this.twistTarget - this.twistAngle) * approach(3.2, dt);
         tw.angle = this.twistAngle;
 
@@ -1023,9 +1271,10 @@ export class ChromaticImpastoWorld {
                 canvas.dry(Math.exp(-seconds / DRY_TAU));
             });
             canvas.flush();
-            // Drying: stepped, and only while something is still wet.
+            // Drying: stepped, and only while something is still wet. Hot play keeps the canvas
+            // wet: a fever leaves a glistening, freshly loaded picture.
             this.dryClock += dt;
-            const k = Math.exp(-DRY_STEP / DRY_TAU);
+            const k = Math.exp(-DRY_STEP / (DRY_TAU * (1 + 0.6 * hot + 0.7 * fever)));
             let steps = 0;
             while (this.dryClock >= DRY_STEP && steps < 8) {
                 this.dryClock -= DRY_STEP;
@@ -1053,32 +1302,51 @@ export class ChromaticImpastoWorld {
         // ── Uniforms ──
         u.time.value = t;
         u.twist.value.set(tw.cx, tw.cy, tw.angle, tw.reach);
-        // The lamp wanders a little on its own and swings when the board asks.
+        // The lamp wanders a little on its own and swings when the board asks. As play heats it
+        // comes down and rakes the relief harder; running hot it swings slowly across the canvas
+        // so every ridge's shadow and every wet facet's window travel with it (a fever's lamp
+        // sweeps wide). A crown lifts it into a full golden light.
         this.swingPhase += dt * 4.6;
+        this.rakePhase += dt * (0.75 + 0.45 * fever);
+        const sweep = (0.16 * hot + 0.4 * fever) * (1 - 0.7 * glory);
         const azimuth = LAMP.azimuth + (Math.sin(t * 0.07) * 0.22 + Math.sin(t * 0.031 + 2) * 0.12) * motion
-            + this.swing * Math.sin(this.swingPhase) * 0.16 * motion;
+            + this.swing * Math.sin(this.swingPhase) * 0.16 * motion
+            + sweep * Math.sin(this.rakePhase) * motion;
         const elevation = LAMP.elevation
-            + (Math.sin(t * 0.05 + 1.1) * 0.05 + this.power * 0.025 + this.surge * 0.025) * (motion * 0.6 + 0.4);
+            + (Math.sin(t * 0.05 + 1.1) * 0.05 + this.power * 0.025 + this.surge * 0.025) * (motion * 0.6 + 0.4)
+            - rake * 0.15 + glory * 0.08;
         dirFromAngles(azimuth, elevation, u.lightDir.value);
         u.lampPos.value.copy(u.lightDir.value).multiplyScalar(LAMP.distance);
         const { key } = this.period;
-        const lift = (1 + this.power * 0.2 + this.surge * 0.28) * this.breath;
-        const tint = mixRgb(key, GOLD, clamp01(this.surge * 0.45));
+        const lift = (1 + this.power * 0.2 + this.surge * 0.2 + 0.1 * warm + 0.08 * hot + 0.1 * fever) * this.breath;
+        const tint = mixRgb(key, GOLD, Math.min(0.55, this.surge * 0.38 + 0.1 * fever + 0.12 * glory));
         u.keyColor.value.set(2.5 * tint[0] * lift, 2.5 * tint[1] * lift, 2.5 * tint[2] * lift);
-        const fill = 0.3 * (0.4 + 0.6 * this.breath);
+        // The room falls back round the lamp as it rakes: the darks stay dark.
+        const fill = 0.3 * (0.4 + 0.6 * this.breath) * (1 - 0.2 * rake);
         u.fillColor.value.set(fill, fill * 1.1, fill * 1.33);
-        u.wetLift.value = clamp01(this.power * 0.35 + this.surge * 0.25);
-        u.windowGain.value = 3.4 * (1 + this.power * 0.2 + this.surge * 0.25) * this.breath;
+        // The wet skin: a quick hand keeps the paint wet, and it glistens with the lamp's window.
+        u.wetLift.value = clamp01(this.power * 0.35 + this.surge * 0.22 + 0.06 * warm + 0.06 * hot + 0.1 * fever);
+        u.windowGain.value = 3.4 * (1 + this.power * 0.2 + this.surge * 0.22 + 0.12 * hot + 0.22 * fever) * this.breath;
+        // The impasto stands thicker (deeper relief, longer shadows), the fluorescents burn.
+        u.thickness.value = RELIEF.thickness * (1 + 0.12 * warm + 0.12 * hot + 0.2 * fever);
+        u.shadowDepth.value = 0.82 + 0.1 * rake;
+        u.glowGain.value = 0.8 * (1 + 0.15 * fever);
 
         // ── Post ──
         const post = this._post;
         post.flash = this.flash;
         post.kick = this.kick;
-        post.hush = hush;
-        post.bloomBoost = this.surge * 0.3 + this.power * 0.08;
-        post.warmth = clamp01(this.surge * 0.6);
-        // The iris closes as the studio flares, so the colours survive the surge.
-        post.exposure = 1 / (1 + this.surge * 0.3 + this.power * 0.12);
+        post.hush = this.hushLevel;
+        // (the bloom does not swell with the heat: the build is the paint's own light, not a haze)
+        post.bloomBoost = this.surge * 0.2 + this.power * 0.08;
+        post.warmth = Math.min(0.7, this.surge * 0.45 + 0.08 * fever + 0.12 * glory);
+        // The iris closes a little as the studio flares, never as far as the light it adds: the
+        // build reads brighter where the lamp falls and the colours stay saturated.
+        // (and as a crown lifts the lamp over the flats)
+        post.exposure = 1 / (1 + this.surge * 0.2 + this.power * 0.05 + 0.08 * hot + 0.1 * fever + 0.15 * glory);
+        // The colours fill as play heats, and the corners fall back toward the lamp's pool.
+        post.saturation = 1.1 + 0.05 * warm + 0.05 * hot + 0.08 * fever;
+        post.vignette = 0.5 + 0.06 * hot + 0.1 * fever;
         if (camera) this._camera = camera;
     }
 
@@ -1094,6 +1362,7 @@ export class ChromaticImpastoWorld {
             combo: this.combo,
             power: this.power,
             surge: this.surge,
+            heat: { ...this.heat },
             breath: this.breath,
             level: this.level,
             period: this.period.name,

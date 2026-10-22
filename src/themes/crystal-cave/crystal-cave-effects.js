@@ -20,6 +20,8 @@ export const SPARK_KIND = Object.freeze({
 });
 const RAYS_PER_FAN = 13;
 const FAN_SECONDS = 1.7;
+/** A fan fades as exp(-FAN_DECAY · seconds). */
+const FAN_DECAY = 2.6;
 
 function additive(name) {
     const material = new THREE.MeshBasicNodeMaterial({
@@ -170,7 +172,7 @@ export function createCaveEffects({ light, poolLevel, quality }) {
         // A fan that is not burning collapses to nothing rather than being drawn clear.
         const age = clamp(elapsed, 0, FAN_SECONDS);
         const shoot = float(1).sub(exp(age.mul(-7.5))).mul(alive);
-        const fade = exp(age.mul(-2.6)).mul(alive);
+        const fade = exp(age.mul(-FAN_DECAY)).mul(alive);
         const angle = ray.y.mul(shape.z.mul(0.07).add(0.42)).add(sin(age.mul(2.2).add(ray.z.mul(TAU))).mul(0.03));
         const heading = normalize(right.mul(shape.x.mul(cos(angle))).add(up.mul(sin(angle))).add(forward.mul(0.42)));
         const reach = shape.z.mul(4).add(17).mul(ray.w.mul(0.7).add(0.3)).mul(shoot);
@@ -375,11 +377,24 @@ export function createCaveEffects({ light, poolLevel, quality }) {
             spark.tint.copy(tint);
             return true;
         },
-        /** Fire a prismatic fan from a point beside the board. */
+        /**
+         * Fire a prismatic fan from a point beside the board. When every fan is burning the
+         * faintest gives way, never one that only just opened.
+         */
         fan(origin, side, strength, lines, time, seed = 0) {
             if (fanCount === 0) return false;
-            const index = fanCursor;
-            fanCursor = (fanCursor + 1) % fanCount;
+            let index = fanCursor;
+            let faintest = Infinity;
+            for (let offset = 0; offset < fanCount; offset += 1) {
+                const slot = (fanCursor + offset) % fanCount;
+                const age = time - fanPlace[slot].w;
+                const left = age >= 0 && age < FAN_SECONDS ? fanShape[slot].y * Math.exp(-age * FAN_DECAY) : 0;
+                if (left < faintest) {
+                    faintest = left;
+                    index = slot;
+                }
+            }
+            fanCursor = (index + 1) % fanCount;
             fanPlace[index].set(origin.x, origin.y, origin.z, time);
             fanShape[index].set(side < 0 ? -1 : 1, strength, lines, seed);
             return true;
