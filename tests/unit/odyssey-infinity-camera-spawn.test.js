@@ -10,6 +10,7 @@ import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
     INFINITY_SPAWN_POLICY_CAMERA_V1,
     projectInfinityPresentationCamera,
+    resolveInfinityFollowCameraRow,
     resolveInfinitySpawnRow,
 } from '../../src/core/infinity-spawn-policy.js';
 import { processPhysics } from '../../src/core/physics.js';
@@ -39,15 +40,22 @@ describe('Odyssey Infinity camera-independent spawning', () => {
     });
     afterEach(() => { vi.restoreAllMocks(); });
 
-    it.each([[55, 52], [38, 6]])('preserves level %i first spawn above starting garbage', (id, expectedRow) => {
+    // 2026-10-22: the window is the 20 rows shown, framed over the garbage's top, and the first
+    // piece enters two rows above it. The window used to add the starting rows, which put these
+    // first spawns at 52 and 6 — 32 and 8 rows above the view the well opened on.
+    it.each([[55, 70], [38, 14]])('spawns level %i\'s first piece just above the view it opens on', (id, view) => {
         const { state } = createAttempt(id);
         const level = getLevelById(id);
         expect(state.infinitySpawnPolicy).toBe(INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1);
-        expect(state.infinityVisibleRows).toBe(20 + level.mechanics.board.startingRows);
+        expect(state.infinityVisibleRows).toBe(20);
+        // The view the well opens on: the garbage's top at 20 % of it, within the floor.
+        const garbageTop = state.boardGrid.length - level.mechanics.board.startingRows;
+        expect(view).toBe(Math.min(state.boardGrid.length - 20, garbageTop - 4));
+        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(view);
         const anchor = state.cameraRow;
         expect(projectInfinityPresentationCamera(state, state.boardGrid.length - 20)).toBe(false);
         expect(state.cameraRow).toBe(anchor);
-        expect(spawnPiece(state)?.y).toBe(expectedRow);
+        expect(spawnPiece(state)?.y).toBe(view - 2);
         expect(state.isGameOver).toBe(false);
     });
 
@@ -120,16 +128,19 @@ describe('Odyssey Infinity camera-independent spawning', () => {
         expect(state.isGameOver).toBe(false);
     });
 
-    it('uses the actual capped starting garbage count for the initial window', () => {
+    it('frames a well seeded nearly full of garbage at the garbage\'s top', () => {
         const engine = new GameplayHybridEngine();
         const level = structuredClone(getLevelById(55));
         level.mechanics.board.startingRows = 1000;
         engine.configure(level);
         const state = engine.createGameState();
+        // The count is capped to leave the top eight rows open...
         expect(state.lockedPieces).toHaveLength(96);
-        expect(state.infinityVisibleRows).toBe(116);
+        expect(state.infinityVisibleRows).toBe(20);
+        // ...so the view opens at row 4 (the garbage's top, row 8, at 20 %), the spawn two above.
+        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(4);
         state.nextPieces = ['O'];
-        expect(spawnPiece(state)?.y).toBe(0);
+        expect(spawnPiece(state)?.y).toBe(2);
         expect(state.isGameOver).toBe(false);
     });
 

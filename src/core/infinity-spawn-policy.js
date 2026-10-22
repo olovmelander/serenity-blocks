@@ -75,6 +75,38 @@ export function resolveInfinitySimulationCameraRow(
     return Math.max(0, Math.min(maxCameraRow, highestOccupiedRow - topPaddingRows));
 }
 
+/** How far down the view a falling piece's bottom may reach before the camera follows it. */
+export const INFINITY_FOLLOW_PIECE_BOTTOM_SHARE = 0.8;
+
+/**
+ * The top row a tall well's PRESENTATION camera frames: the simulation's own window (the row the
+ * next spawn is anchored to, so a new piece always enters just above the view's top), lowered
+ * only as far as a falling piece needs to keep its bottom within the view's lower fifth.
+ * Infinity's camera rule (the tower top at 20 % of the view, a piece's bottom at most 80 %) as
+ * one function, so a mode's camera and its spawns can never disagree about where the well's
+ * top is.
+ *
+ * @param {Record<string, any>} gameState
+ * @param {number} visibleRows the presentation viewport's rows
+ * @param {{y: number, shape?: unknown[]}|null} [piece] the falling piece (null: none)
+ */
+export function resolveInfinityFollowCameraRow(
+    gameState,
+    visibleRows,
+    piece = gameState?.currentPiece ?? null,
+) {
+    const board = gameState?.boardGrid || gameState?.board;
+    if (!Array.isArray(board) || board.length === 0) return 0;
+    const rows = Number.isSafeInteger(visibleRows) && visibleRows > 0 ? visibleRows : ROWS;
+    const maxCameraRow = Math.max(0, board.length - rows);
+    let target = resolveInfinitySimulationCameraRow(gameState);
+    if (piece && Number.isFinite(piece.y)) {
+        const bottom = piece.y + (Array.isArray(piece.shape) ? piece.shape.length : 0);
+        target = Math.max(target, bottom - Math.floor(rows * INFINITY_FOLLOW_PIECE_BOTTOM_SHARE));
+    }
+    return Math.max(0, Math.min(maxCameraRow, target));
+}
+
 /**
  * @param {Record<string, any>} gameState
  * @param {number|null} [knownHighestOccupiedRow]
