@@ -137,3 +137,56 @@ JSONs: `$S/lanes/act1/perf/`.
   crystals since Olov's 2026-08 request).
 - `serenity-blocks-eagle` (a parked, merged worktree) was checked out at `d557160a` for the perf base
   and left clean there.
+
+## 6. One encounter per stretch (2026-10-22)
+
+Olov: the big fishes, the fishes and the sea creatures in chapter 2 "do not work good".
+
+**What the player saw.** A frozen-clock capture shows none of the animals: they arrive on the
+clock (a 9-10 s swim in from the blue), and the harness's manual frames never let that play out,
+so their arrival never completes. In the live journey (a scratch script parks the eye and lets the
+game's own loop run, sampling each animal every second):
+- every animal circled the rail itself at 20-32 u, and the visitors followed the eye 44-62 u
+  above it;
+- their eye-height windows overlapped (whale shark 116-236, manta 150-252, whales 97-273);
+- so at orbs 8-9 the whale shark, the manta and both whales crowded one frame 40-75 u from the
+  eye, over each other and the orb, and the calf (26 u) read as a small shark beside the nearer
+  manta;
+- the fish were 1.3-2 u long, faint specks from 50 u.
+
+**Where the eye parks.** A chapter's first orbs park the eye a little way in
+(`resolveOrbParkProgress`): orbs 6 and 7 both park at y ~169, orb 8 at ~175, orb 9 at ~207, and
+orb 10 at ~272, looking 34° up along the surface, which is only 15 u above it. So chapter 2 has
+three parked viewpoints, and each now has its own animal.
+
+| Viewpoint | Animal | Its place (centre, depth, lane) | On screen while the eye is at y | In frame (live, after its arrival) |
+|---|---|---|---|---|
+| Orbs 6-8 (y 169-175) | Whale shark | over the rail at chapter-local 0.32, y 265, 45 u lane | 100-182 | 100 %, 0.43-0.46 of the frame |
+| Orb 9 (y 207) | Mother and calf | over the rail at 0.62, 13 / 8 u under the surface, 28 / 20 u lanes | 190-232 | 100 %, mother 0.77, calf 0.33 |
+| Orb 10 (y 272) | Manta | 15 u left of the rail at 0.94, 5 u under the surface, 6 u loop, bank ≤ 0.25 rad | 240-282 | 100 %, lower-left third, 0.57 |
+
+Each place was scored on the real camera at its park (in frame for most of a lap, never over the
+orb, a readable size) before it was tried in game. The manta's first place, centred on the rail,
+sat over orb 10, which is low in the middle of that frame. It moved aside, and its bank is capped so
+its wingtips stay under the surface.
+
+- **Arrive and leave both ways.** `stepVisitorPassage` now sends an animal away whenever the eye
+  leaves its window: diving when the eye climbs past it, swimming off when the eye goes back
+  below it. It arrives again whenever the eye comes back. Before, stepping back from orb 8 to 7
+  kept the manta with the shark, and the shark never came back to orb 7. The whale pass now uses
+  the same passage (it had its own depth fade).
+- **Fish that read as fish.** Hulls 2.9-4.4 u (about 1 m at the whales' ~4 u/m) and cruisers
+  6-9 u, 150 of them (was 110) in schools spread to match. Same one draw.
+
+**Tests.** `odyssey-ch2-encounters` (new; on the real camera):
+- one animal at a time on the climb, and the right one at each orb;
+- the swap back when the eye goes down;
+- each animal in frame for most of a lap from its orbs, never over the orb, between a quarter
+  and the whole of the frame.
+
+`odyssey-act1-arrivals` and `odyssey-ocean-visitors` follow the new places. The manta, which waits
+just under the surface at the last orb, may leave by the breach.
+
+**Cost.** +40 fish (11 triangles each) in the existing draw. No new draws, pipelines or textures.
+
+![Before (top): orb 9 twice (all four animals in one frame) and orb 10 (none). After (bottom): orbs 6-8, orb 9, orb 10](images/odyssey-audit-2026-10-22/ch2-sea-life.jpg)

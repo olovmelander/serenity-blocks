@@ -1,17 +1,24 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * THE OCEAN'S VISITORS — a manta and a whale shark in the deep half of the ascent (Act I
- * overhaul, 2026-10-20).
+ * THE OCEAN'S VISITORS — a whale shark and a manta on the ascent (Act I overhaul, 2026-10-20).
  *
- * The whale pass swims near the top of the column (42 u under the surface), so the deep half of
- * chapter 2 — the vent to ~100 u down, a third of the act — had fish specks and nothing that made
- * you look up. Two visitors now share it, each on a clock-only loop round the ascent so a camera
- * parked at an orb still sees them pass:
- *   - a WHALE SHARK in the deepest stretch, long and slow, the scale beat right after the vent;
- *   - a MANTA higher up, gliding loops overhead and banking through Snell's window — the
- *     silhouette against the light that underwater film is made of.
- * Each keeps a height a little above the eye (a damped follow with a capped climb rate, so when
- * the camera pans between orbs the animal swims up after it rather than riding it).
+ * Chapter 2 had fish specks and nothing that made you look up but the whales. Two visitors join
+ * them, each on a clock-only loop so a camera parked at an orb still sees them pass:
+ *   - a WHALE SHARK in the deep stretch, long and slow, the scale beat right after the vent;
+ *   - a MANTA at the top of the climb, gliding loops just under the bright surface ahead and
+ *     banking through Snell's window — the silhouette against the light that underwater film is
+ *     made of.
+ *
+ * ONE ENCOUNTER PER STRETCH (2026-10-22). Olov: the big fishes and sea creatures in chapter 2 "do
+ * not work good". Measured in the live journey: every animal circled the rail itself at 20-32 u,
+ * the visitors followed the eye 44-62 u above it, and their stretches overlapped, so at orbs 8-9
+ * the whale shark, the manta and both whales crowded one frame 40-75 u from the eye, over each
+ * other and the orb, and the calf read as a small shark beside the nearer manta. Now each animal
+ * has ONE place in the sea (a loop centre over its own orb and a fixed depth, scored on the real
+ * camera so it is in frame most of a lap and never over the orb) and its own stretch of the climb
+ * (eye-height windows that do not overlap), keyed to where the journey parks the eye: the whale
+ * shark over orbs 6-8, the whales over orb 9 (odyssey-whale-pass.js), the manta under the bright
+ * surface ahead of orb 10. It arrives and leaves by swimming, whichever way the eye goes.
  *
  * The bodies are the Ocean theme's (built in Blender from numbers), copied into Odyssey's own
  * asset by scripts/odyssey-extract-ocean-visitors.mjs — themes are islands; this file parses that
@@ -59,6 +66,7 @@ import {
 } from 'three/tsl';
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
 import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { getOdysseyPathCurve, getOdysseyPathPointAt } from '../path-utils.js';
 
 export const OCEAN_VISITORS_URL = new URL('../assets/chapter-02/visitors/ocean-visitors.glb', import.meta.url).href;
 
@@ -162,22 +170,30 @@ export function parseOceanVisitors(source) {
 
 /**
  * The cast. `size` is world units (a ray across its wings, a fish nose to tail); `window` the
- * eye heights (world y) it keeps you company between — it swims in from the blue as the eye
- * reaches the bottom and dives away as the eye nears the top (VISITOR_PASSAGE); `above` how far
- * over the eye it keeps; `loop` its path round the axis (radius, wobble, period s, phase);
+ * eye heights (world y) it keeps you company between — it swims in from the blue once the eye is
+ * inside and swims away once the eye leaves, up or down (VISITOR_PASSAGE); `at` the centre of its
+ * loop, as a fraction of chapter 2's span (the board puts it on the rail there), and `y` its
+ * depth (world y), `aside` how far its centre sits off the rail, square to its heading (negative:
+ * the eye's left); `loop` its path round that centre (radius, wobble, period s, phase, lift);
  * `stroke` seconds per beat at full size.
+ *
+ * Where the journey parks the eye (resolveOrbParkProgress, 2026-10-22): orbs 6 and 7 at y ~169
+ * (a chapter's first orbs park a little way into it), orb 8 at ~175, orb 9 at ~207, orb 10 at ~272
+ * looking ahead along the surface. The windows do not overlap once the departure margin is counted
+ * (the shark leaves from 182, the whales arrive from 190 and leave from 232, the manta arrives
+ * from 240), so the climb meets one animal at a time, and each park sits well inside its window.
  */
 export const OCEAN_VISITOR_CAST = Object.freeze([
     Object.freeze({
         name: 'whaleShark',
         size: 46,
-        // Top at 236, not 196: the player parks at L6/L7 with the eye at ~170 and the window's top
-        // was 18 u on, so the shark turned and dived three seconds after arriving. It now keeps
-        // company up past L9 (eye ~207) and leaves on the way to L10.
-        window: [116, 236],
-        above: 62,
+        // Orbs 6-8 (the eye parks at y 169-175). Its loop is centred on the rail there, ~90 u
+        // above the eye: in frame for the whole lap at ~0.4 of the frame, never over the orb.
+        window: [100, 200],
+        at: 0.32,
+        y: 265,
         loop: Object.freeze({
-            radius: 30, wobble: 9, period: 64, phase: 0.6, lift: 7,
+            radius: 45, wobble: 6, period: 64, phase: 0.6, lift: 5,
         }),
         stroke: 4.4,
         // ray = false: the fish stroke (side to side)
@@ -186,18 +202,47 @@ export const OCEAN_VISITOR_CAST = Object.freeze([
     Object.freeze({
         name: 'manta',
         size: 24,
-        window: [150, 252],
-        above: 44,
+        // Orb 10 (the eye at y ~272 looks 34 deg up along the surface, which is only 15 u above
+        // it, so anything under the surface shows in the lower part of the frame). Its loop is
+        // ~40 u ahead and 15 u left of the rail (on it, it sat over the orb, which is low in the
+        // middle of that frame), 5 u under the surface, over deep water: in frame for the whole
+        // lap, in the lower left third at 0.5-0.65 of the frame, never over the orb, a silhouette
+        // under the bright surface. It banks gently (`bankMax`): its wingtips stay under water.
+        window: [240, 300],
+        at: 0.94,
+        aside: -15,
+        y: 282,
         loop: Object.freeze({
-            radius: 24, wobble: 10, period: 38, phase: 2.4, lift: 6,
+            radius: 6, wobble: 1.5, period: 38, phase: 2.4, lift: 1,
         }),
+        bankMax: 0.25,
         stroke: 3.4,
         ray: true,
     }),
 ]);
 
-/** How fast a visitor may climb after the eye (u/s) — it swims up, it is not carried. */
-const CLIMB_RATE = 16;
+/**
+ * World XZ of a cast member's loop centre: the rail at its `at` of chapter 2's span, `aside` units
+ * square to the rail's heading there. The board places the animals with this, and the tests too.
+ * @param {{at: number, aside?: number}} cast
+ * @param {number[]} chapterPositions the active layout's chapter starts
+ * @returns {{x: number, z: number}|null} null without a layout
+ */
+export function resolveOceanVisitorCentre(cast, chapterPositions) {
+    const c1 = chapterPositions?.[1];
+    const c2 = chapterPositions?.[2];
+    if (!Number.isFinite(c1) || !Number.isFinite(c2) || !Number.isFinite(cast?.at)) return null;
+    const q = Math.min(1, Math.max(0, c1 + ((c2 - c1) * cast.at)));
+    const point = getOdysseyPathPointAt(q);
+    const aside = cast.aside ?? 0;
+    if (aside !== 0) {
+        const tangent = getOdysseyPathCurve().getTangentAt(q);
+        const flat = Math.hypot(tangent.x, tangent.z) || 1;
+        point.x += (-tangent.z / flat) * aside;
+        point.z += (tangent.x / flat) * aside;
+    }
+    return { x: point.x, z: point.z };
+}
 
 /**
  * THE WAY IN AND THE WAY OUT (2026-10-20, in-game feedback: the animals "just pop up" coming
@@ -207,9 +252,10 @@ const CLIMB_RATE = 16;
  * glide from orb 5 to orb 6 crossed the whole fade in a second with the animal already in frame
  * 65 u away. Now it ARRIVES: once the water and its window allow it, it spirals in from
  * `reach` beyond its loop, through the blue, over `approachS` seconds on the clock — met in the
- * haze, not switched on. And it LEAVES by diving: when its window closes (or the water ends) it
- * swims outward and down over `departS` seconds, under the eye, which looks up, so it is out of
- * frame before its last stretch fades (odyssey-act1-fade-out-of-view.test.js).
+ * haze, not switched on. And it LEAVES by swimming away when the eye leaves its window: outward
+ * and down under the eye when the eye climbs past it (the eye looks up, so it is out of frame
+ * before its last stretch fades, odyssey-act1-fade-out-of-view.test.js), outward when the eye goes
+ * back down below it. Back inside its window, it arrives again.
  */
 export const VISITOR_PASSAGE = Object.freeze({
     approachS: 9,
@@ -242,8 +288,13 @@ export function stepVisitorPassage(state, {
     const P = VISITOR_PASSAGE;
     const [lo, hi] = window;
     const step = Math.min(Math.max(Number.isFinite(dt) ? dt : 0, 0), 0.1);
-    if (!state.phase) Object.assign(state, { phase: 'away', approach: 0, depart: 0 });
-    if (state.phase === 'away' && on && camY >= lo && camY < hi - P.departMargin) {
+    if (!state.phase) {
+        Object.assign(state, {
+            phase: 'away', approach: 0, depart: 0, dive: 1,
+        });
+    }
+    const inside = camY >= lo && camY < hi - P.departMargin;
+    if (state.phase === 'away' && on && inside) {
         state.phase = 'in';
         state.approach = 0;
     }
@@ -251,16 +302,19 @@ export function stepVisitorPassage(state, {
     if (!on && (state.phase === 'in' || state.phase === 'out')) state.phase = 'gone';
     if (state.phase === 'in') {
         state.approach = Math.min(1, state.approach + (step / P.approachS));
-        if (camY >= hi - P.departMargin) {
+        if (!inside) {
             state.phase = 'out';
             state.depart = 0;
+            // Past it, it dives under the eye; back below it, it only swims off into the blue.
+            state.dive = camY < lo ? 0 : 1;
         }
     }
     if (state.phase === 'out') {
         state.depart = Math.min(1, state.depart + (step / P.departS));
         if (state.depart >= 1) state.phase = 'gone';
     }
-    if (state.phase === 'gone' && camY < lo) state.phase = 'away';
+    // Gone, it may come again once the eye has left its window (either way) and returns to it.
+    if (state.phase === 'gone' && !inside) state.phase = 'away';
     if (state.phase === 'in') {
         const k = 1 - smooth(state.approach);
         return {
@@ -271,7 +325,7 @@ export function stepVisitorPassage(state, {
         const k = smooth(state.depart);
         const alpha = 1 - smooth((state.depart - 0.75) / 0.25);
         return {
-            radial: P.reach * k, up: -P.dive * k, alpha, shown: alpha > 0.01,
+            radial: P.reach * k, up: -P.dive * k * (state.dive ?? 1), alpha, shown: alpha > 0.01,
         };
     }
     return {
@@ -429,14 +483,16 @@ function createVisitorMaterial(uWater, uSurface) {
 
 /**
  * @param {object} opts
- * @param {{x:number, z:number}} opts.axis world XZ of the ascent column
+ * @param {{x:number, z:number}} [opts.axis] world XZ every loop centres on when `placeOf` gives none
+ * @param {(cast: object) => ({x:number, z:number}|null)} [opts.placeOf] world XZ of one animal's
+ *   loop centre (the board: the rail at the cast's `at`)
  * @param {number} opts.seaLevel world Y of the sea surface
  * @param {THREE.Color} opts.shallowColour water near the surface
  * @param {THREE.Color} opts.deepColour water in the abyss
  * @param {string} [opts.url]
  */
 export function createOceanVisitors({
-    axis, seaLevel, shallowColour, deepColour, url = OCEAN_VISITORS_URL,
+    axis = { x: 0, z: 0 }, placeOf = null, seaLevel, shallowColour, deepColour, url = OCEAN_VISITORS_URL,
 }) {
     const group = new THREE.Group();
     group.name = 'odyssey-ocean-visitors';
@@ -454,14 +510,16 @@ export function createOceanVisitors({
     const vU = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
 
-    const pathAt = (cast, t, out) => {
+    // Each animal loops round its own centre (placeOf), or the shared axis when none is given.
+    const centreOf = (cast) => (typeof placeOf === 'function' ? placeOf(cast) : null) || axis;
+    const pathAt = (cast, centre, t, out) => {
         const { loop } = cast;
         const a = ((t / loop.period) * Math.PI * 2) + loop.phase;
         const r = loop.radius + (Math.sin((a * 2) + (loop.phase * 3)) * loop.wobble);
         out.set(
-            axis.x + (Math.cos(a) * r),
+            centre.x + (Math.cos(a) * r),
             Math.sin((a * 1.5) + loop.phase) * loop.lift,
-            axis.z + (Math.sin(a) * r),
+            centre.z + (Math.sin(a) * r),
         );
         return out;
     };
@@ -487,9 +545,9 @@ export function createOceanVisitors({
                 actors.push({
                     cast,
                     mesh,
+                    centre: centreOf(cast),
                     phase: cast.loop.phase,
                     beatPhase: cast.loop.phase,
-                    y: null,
                     fade: 0,
                     passage: {},
                     p0: new THREE.Vector3(),
@@ -533,13 +591,8 @@ export function createOceanVisitors({
                 mesh.userData.fade = actor.fade;
                 mesh.userData.passage = actor.passage.phase;
                 mesh.visible = passage.shown && actor.fade > 0.01;
-                if (!mesh.visible) { actor.y = null; return; }
+                if (!mesh.visible) return;
                 any = true;
-                // A damped follow of the eye's height with a capped climb: it swims up after you.
-                const wantY = camY + cast.above;
-                if (actor.y === null) actor.y = wantY;
-                const step = THREE.MathUtils.clamp((wantY - actor.y) * Math.min(1, dt * 1.1), -CLIMB_RATE * dt, CLIMB_RATE * dt);
-                actor.y += step;
                 // Stroke phase integrated on the CPU (never clock x a changing rate); mantas glide.
                 actor.beatPhase += dt * 0.21;
                 const beat = cast.ray ? 0.35 + (0.65 * (0.5 + (0.5 * Math.sin(actor.beatPhase)))) : 0.85;
@@ -547,11 +600,10 @@ export function createOceanVisitors({
                 mesh.userData.swimPhase = actor.phase;
                 mesh.userData.swimBeat = beat;
                 // Heading and bank from three points of its path (orientation from WORLD up).
-                pathAt(cast, time - 0.5, actor.p0);
-                pathAt(cast, time, actor.p1);
-                pathAt(cast, time + 0.5, actor.p2);
+                pathAt(cast, actor.centre, time - 0.5, actor.p0);
+                pathAt(cast, actor.centre, time, actor.p1);
+                pathAt(cast, actor.centre, time + 0.5, actor.p2);
                 vF.subVectors(actor.p2, actor.p0);
-                vF.y += step * 2; // climbing after the eye tilts the nose up a little
                 if (vF.lengthSq() < 1e-8) vF.set(0, 0, 1);
                 vF.normalize();
                 vS.crossVectors(up, vF).normalize();
@@ -562,20 +614,21 @@ export function createOceanVisitors({
                 const d2x = actor.p2.x - actor.p1.x;
                 const d2z = actor.p2.z - actor.p1.z;
                 const turn = Math.atan2((d1x * d2z) - (d1z * d2x), (d1x * d2x) + (d1z * d2z));
-                const bank = THREE.MathUtils.clamp(turn * (cast.ray ? 6.0 : 2.5), -0.7, 0.7);
+                const bankMax = cast.bankMax ?? 0.7;
+                const bank = THREE.MathUtils.clamp(turn * (cast.ray ? 6.0 : 2.5), -bankMax, bankMax);
                 // Bank: the up vector leans toward the inside of the turn.
                 vU.multiplyScalar(Math.cos(bank)).addScaledVector(vS, -Math.sin(bank)).normalize();
                 vS.crossVectors(vU, vF).normalize();
                 basis.makeBasis(vS, vU, vF);
                 mesh.quaternion.setFromRotationMatrix(basis);
-                // The passage's offset: outward from the axis (the way it came, the way it goes)
-                // and, leaving, down under the eye.
-                const rx = actor.p1.x - axis.x;
-                const rz = actor.p1.z - axis.z;
+                // The passage's offset: outward from its centre (the way it came, the way it goes)
+                // and, leaving past it, down under the eye.
+                const rx = actor.p1.x - actor.centre.x;
+                const rz = actor.p1.z - actor.centre.z;
                 const rl = Math.hypot(rx, rz) || 1;
                 mesh.position.set(
                     actor.p1.x + ((rx / rl) * passage.radial),
-                    actor.y + actor.p1.y + passage.up,
+                    cast.y + actor.p1.y + passage.up,
                     actor.p1.z + ((rz / rl) * passage.radial),
                 );
                 mesh.userData.swimTurn = THREE.MathUtils.clamp(turn * 4, -0.6, 0.6);
