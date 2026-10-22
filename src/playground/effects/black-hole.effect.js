@@ -126,7 +126,10 @@ export function create({
     ].filter(([key]) => overridden(key));
     const frame = (time, dt) => {
         world.update(time, dt);
-        post.update({ energy: world.director.energy, flash: world.director.flash, ripples: world.ripples });
+        const { director } = world;
+        post.update({
+            energy: director.energy, flash: director.flash, iris: director.iris, ripples: world.ripples,
+        });
         // The director drives disk, ring and heat each frame; an override scales what it set.
         for (const [key, target] of overrides) {
             const outright = ['sky', 'stars', 'doppler', 'corona', 'nebula'].includes(key);
