@@ -11,6 +11,13 @@
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *   sink.crown(player)         a perfect clear settled after its clear had gone (physics sends
+ *                              PERFECT_CLEAR ~360 ms after the last wave, in a frame of its own):
+ *                              the crown on the clear still playing, never a new clear
+ *   sink.spin(player)          a T-spin that cleared nothing
+ *
+ * Without `crown` a lone perfect clear is sent as a one-line clear with `perfect` set, and without
+ * `spin` a T-spin that cleared nothing is not sent (both as before).
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -349,13 +356,16 @@ export class SupernovaDirector {
         return true;
     }
 
+    /**
+     * Usually a frame of its own, after the clear's last wave: resolved as a crown on that clear
+     * (see resolve()), not as a new one.
+     */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -405,6 +415,13 @@ export class SupernovaDirector {
                 c.screen = null;
                 sink.lock(c);
             }
+            // A perfect clear with no rows of its own this frame crowns the clear already sent.
+            if (slot.lines === 0 && slot.perfect) {
+                if (sink?.crown) sink.crown(slot.player);
+                else slot.lines = 1;
+            }
+            // A T-spin that cleared nothing still turns the star a little.
+            if (slot.lines === 0 && slot.tspin && !slot.perfect) sink?.spin?.(slot.player);
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;

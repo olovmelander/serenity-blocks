@@ -41,7 +41,7 @@ export const RING = Object.freeze({
 });
 
 /** Lock impacts the photosphere remembers (a flash, a ripple, a patch of the piece's colour). */
-export const IMPACT_SLOTS = 6;
+export const IMPACT_SLOTS = 10;
 /** Streams in flight at once (a lock sends one, a hard drop three, a clear one per row). */
 export const STREAM_SLOTS = 12;
 /** Segments along one stream's ribbon. */
