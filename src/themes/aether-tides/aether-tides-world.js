@@ -27,6 +27,7 @@
 import { texture } from 'three/tsl';
 
 import { cameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     AETHER_PALETTES,
     GYRE_SLOTS,
@@ -148,20 +149,40 @@ export class AetherTidesWorld {
         this.wellOpen = 0;
         this.wellAim = 0;
         this.releaseAt = NEVER;
-        /** The spring behind the board a clear opens, and the turn a T-spin gives. */
+        /**
+         * The spring behind the board a clear opens (it follows the latest clear and its push
+         * accumulates: a cascade's waves feed one welling spring), and the turn a T-spin gives.
+         */
         this.burst = {
-            at: NEVER, x: 0, y: 0, strength: 0,
+            x: 0,
+            y: 0,
+            swell: new Swell({ release: 1 / 7, ceiling: 30, knee: 22 }),
         };
         this.twist = {
             at: NEVER, x: 0, y: 0, strength: 0,
         };
-        /** A four-line clear: the hush before it, and the Tide Star's flare. */
+        /**
+         * A four-line clear: the hush before it (how deep: shallower the hotter play already
+         * runs, so a quad in a fever inhales instead of going dark), and the Tide Star's flare
+         * (a second quad feeds the flare still burning instead of restarting it).
+         */
         this.hushAt = NEVER;
-        this.flareAt = NEVER;
+        this.hushDepth = 1;
+        this.flare = new Swell({
+            attack: 0.05, release: 1 / 1.15, ceiling: 1.5, knee: 1,
+        });
         this.starfireAt = NEVER;
-        /** The post stack's flash and kick: when, and how hard. */
-        this.flash = { at: NEVER, strength: 0 };
-        this.kick = { at: NEVER, strength: 0 };
+        /** The post stack's flash and kick: every hit adds to what is still lit. */
+        this.flash = new Swell({ release: 1 / 3.2, ceiling: 0.9, knee: 0.5 });
+        this.kick = new Swell({ release: 0.2, ceiling: 1.2, knee: 0.7 });
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js): the nebula burns brighter,
+         * the tide runs faster and the stars pour more light the longer the hands stay quick,
+         * and in a fever the Tide Stars burn in starfire.
+         */
+        this.surge = new GameplaySurge();
+        /** The surge as of the last frame (the post state reads it). */
+        this.heat = this.surge.sample(NEVER);
         /** Palette: what is shown, blending from one index to another. */
         this.paletteFrom = 0;
         this.paletteTo = 0;
@@ -350,13 +371,14 @@ export class AetherTidesWorld {
         this.wellOpen = 0;
         this.wellAim = 0;
         this.releaseAt = NEVER;
-        this.burst.at = NEVER;
+        this.burst.swell.reset();
         this.twist.at = NEVER;
         this.hushAt = NEVER;
-        this.flareAt = NEVER;
+        this.flare.reset();
         this.starfireAt = NEVER;
-        this.flash.at = NEVER;
-        this.kick.at = NEVER;
+        this.flash.reset();
+        this.kick.reset();
+        this.surge.reset();
     }
 
     /** Before each fluid step: place what moves by itself, then write the event table. */
@@ -366,6 +388,7 @@ export class AetherTidesWorld {
         } = this;
         const calm = this.reducedMotion ? 0.5 : 1;
         const power = powerForCombo(this.combo);
+        const { level, fever } = this.surge.sample(clock);
 
         // Three slow gyres: the tide. They wander, and their strengths breathe out of step.
         for (let g = 0; g < GYRE_SLOTS; g += 1) {
@@ -378,8 +401,9 @@ export class AetherTidesWorld {
                 radius: 0.95,
             });
         }
-        U.tide.value = calm * (1 + power * 0.9);
-        U.gust.value = 0.16 * calm * (1 + power * 0.6);
+        // The tide quickens with play: a quick hand stirs the whole nebula, a fever churns it.
+        U.tide.value = calm * (1 + power * 0.9 + level * 0.7 + fever * 0.5);
+        U.gust.value = 0.16 * calm * (1 + power * 0.6 + level * 0.5 + fever * 0.4);
         U.gustScroll.value.set(clock * 0.004, clock * -0.0027);
         this.fieldUniforms.drift.value.set(clock * 0.0009, clock * 0.0006);
 
@@ -402,13 +426,12 @@ export class AetherTidesWorld {
         });
 
         // ── the spring behind the board, and a T-spin's turn ──
-        const burstAge = clock - this.burst.at;
         const twistAge = clock - this.twist.at;
-        const burstLater = this.burst.at > this.twist.at;
+        const burstLater = this.burst.swell.t0 > this.twist.at;
         events.setWell(WELL_BOARD, {
             x: burstLater ? this.burst.x : this.twist.x,
             y: burstLater ? this.burst.y : this.twist.y,
-            flow: burstAge >= 0 && burstAge < 1.2 ? this.burst.strength * Math.exp(-burstAge * 7) * calm : 0,
+            flow: this.burst.swell.valueAt(clock) * calm,
             radius: 0.3,
             swirl: twistAge >= 0 && twistAge < 2.5 ? this.twist.strength * Math.exp(-twistAge * 2.6) * calm : 0,
             drain: 0,
@@ -456,9 +479,7 @@ export class AetherTidesWorld {
 
     /** The Tide Star's flare after a four-line clear: a hard rise, a slow fall. */
     flareStrength(clock) {
-        const age = clock - this.flareAt;
-        if (age < 0 || age > 5) return 0;
-        return Math.min(1, age / 0.08) * Math.exp(-age * 1.15);
+        return this.flare.valueAt(clock);
     }
 
     updateCamera() {}
@@ -491,11 +512,18 @@ export class AetherTidesWorld {
 
         const power = powerForCombo(this.combo);
         const flare = this.flareStrength(now);
+        const heat = this.surge.sample(now);
+        this.heat = heat;
+        const { level, fever } = heat;
         const a = tideStarPosition(0, now, aspect, this._p);
         P.starA.value.set(a.x, a.y);
         const b = tideStarPosition(1, now, aspect, this._p);
         P.starB.value.set(b.x, b.y);
-        P.starFlux.value.set(1 + power * 0.35 + flare * 1.7, 0.62 + power * 0.2 + flare * 0.3);
+        // The stars pour more light through the gas the hotter play runs.
+        P.starFlux.value.set(
+            1 + power * 0.35 + flare * 1.7 + level * 0.45 + fever * 0.55,
+            0.62 + power * 0.2 + flare * 0.3 + level * 0.25 + fever * 0.35,
+        );
 
         const w = maelstromPosition(now, aspect, this._p);
         const open = this.wellOpen;
@@ -507,19 +535,20 @@ export class AetherTidesWorld {
         // The hush: everything sinks, then lets go as the starfire fires.
         const hushAge = now - this.hushAt;
         P.hush.value = hushAge >= 0 && hushAge < HUSH_HOLD + 0.4
-            ? smooth(0, 0.07, hushAge) * (1 - smooth(HUSH_HOLD - 0.02, HUSH_HOLD + 0.1, hushAge))
+            ? smooth(0, 0.07, hushAge) * (1 - smooth(HUSH_HOLD - 0.02, HUSH_HOLD + 0.1, hushAge)) * this.hushDepth
             : 0;
-        // A four-line clear burns in starfire for a few seconds, then the palette's own colour.
+        // A four-line clear burns in starfire for a few seconds, then the palette's own colour;
+        // a fever keeps the fronts half in starfire for as long as it lasts.
         const fire = now - this.starfireAt;
-        const burning = fire >= 0 && fire < 4 ? 1 - smooth(1.6, 4, fire) : 0;
+        const burning = Math.max(fire >= 0 && fire < 4 ? 1 - smooth(1.6, 4, fire) : 0, fever * 0.5);
         const { shock } = this.palette;
         P.shock.value.setRGB(
             lerp(shock[0], STARFIRE[0], burning),
             lerp(shock[1], STARFIRE[1], burning),
             lerp(shock[2], STARFIRE[2], burning),
         );
-        P.hot.value = 1 + burning * 0.2;
-        P.glow.value = 1 + power * 0.25;
+        P.hot.value = 1 + burning * 0.2 + level * 0.08;
+        P.glow.value = 1 + power * 0.25 + level * 0.25 + fever * 0.2;
 
         this.fx.sync();
         this.tuning?.();
@@ -850,6 +879,7 @@ export class AetherTidesWorld {
         });
 
         if (hard) this.strike(0.12, 0.5, at);
+        this.surge.lock(c, at);
         this.lockCount += 1;
     }
 
@@ -868,9 +898,12 @@ export class AetherTidesWorld {
         const at = this.eventClock + (grand ? HUSH_HOLD : 0);
         if (grand) {
             this.hushAt = this.eventClock;
-            this.flareAt = at;
+            // From cold it holds its breath fully; in a fever it barely pauses for it.
+            this.hushDepth = 1 - 0.8 * this.surge.level.valueAt(this.eventClock);
+            this.flare.hit(1, at);
             this.starfireAt = at;
         }
+        this.surge.clear(c, at);
         const { board, card } = this.stage(c.player || 0);
         const ch = (board.y1 - board.y0) / BOARD_GRID.rows;
         const rows = Array.isArray(c.rows) && c.rows.length
@@ -962,10 +995,9 @@ export class AetherTidesWorld {
             }, this.eventClock);
         }
         // The gas behind the board wells up and out.
-        this.burst.at = at;
         this.burst.x = heartX;
         this.burst.y = heartY;
-        this.burst.strength = (3.2 + 1.5 * lines) * (c.perfect ? 2.4 : 1);
+        this.burst.swell.hit((3.2 + 1.5 * lines) * (c.perfect ? 2.4 : 1), at);
 
         // ── every star the board has lit goes nova as the front reaches it ──
         for (let i = 0; i < STAR_SLOTS; i += 1) {
@@ -1130,15 +1162,14 @@ export class AetherTidesWorld {
             rough: 0.8,
         }, this.eventClock);
         this.strike(0.2, 0.15, this.eventClock);
+        this.surge.levelUp(this.eventClock);
     }
 
-    /** A flash and a kick for the post stack, starting at `at`. */
+    /** A flash and a kick for the post stack at `at`, added to whatever is still lit. */
     strike(flash, kick, at) {
         const calm = this.reducedMotion ? 0.3 : 1;
-        this.flash.at = at;
-        this.flash.strength = flash * calm;
-        this.kick.at = at;
-        this.kick.strength = kick * calm;
+        this.flash.hit(flash * calm, at);
+        this.kick.hit(kick * calm, at);
     }
 
     /** A new run: no chain, nothing held; the nebula keeps flowing. */
@@ -1152,14 +1183,17 @@ export class AetherTidesWorld {
         const out = this._post;
         if (!this.fluid) return out;
         const { now } = this;
-        const flashAge = now - this.flash.at;
-        const kickAge = now - this.kick.at;
         const flare = this.flareStrength(now);
-        out.flash = (flashAge >= 0 ? this.flash.strength * Math.exp(-flashAge * 3.2) : 0) + flare * 0.5;
-        out.kick = kickAge >= 0 ? this.kick.strength * Math.exp(-kickAge * 5) : 0;
-        out.bloomBoost = flare * 0.8 + this.wellOpen * 0.25;
-        // An iris: it closes a little as the nebula flares, so the colours survive the surge.
-        out.exposure = 1 - Math.min(0.42, out.flash * 0.42) - this.picture.hush.value * 0.12;
+        const { level, fever } = this.heat;
+        out.flash = this.flash.valueAt(now) + flare * 0.5;
+        out.kick = this.kick.valueAt(now);
+        // The bloom swells a little with the heat of play and holds through a fever (the gas's
+        // own glow carries most of it: a haze over everything would wash the colours out).
+        out.bloomBoost = flare * 0.8 + this.wellOpen * 0.25 + level * 0.12 + fever * 0.22;
+        // An iris: it closes a little as the nebula flares and as play heats, so the colours
+        // survive the surge and the deep sky stays deep.
+        out.exposure = 1 - Math.min(0.42, out.flash * 0.42) - this.picture.hush.value * 0.12
+            - Math.max(0, level - 0.2) * 0.06;
         return out;
     }
 
