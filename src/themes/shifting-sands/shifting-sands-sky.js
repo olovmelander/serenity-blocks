@@ -3,14 +3,16 @@
  *
  *  - the shared atmosphere gradient (hot apricot band toward the suns → dusty rose away from
  *    them → violet upper sky → deep blue zenith) and the suns' Mie glow;
- *  - faint crepuscular rays fanning from the primary sun;
+ *  - faint crepuscular rays fanning from the primary sun (longer and brighter as play heats:
+ *    uHeat.w, the burn);
  *  - high cirrus on an altitude plane, in wisps gathered into drifts (a slow warp bends the
  *    fibres), lit gold-pink from below near the suns and dusky mauve away from them;
  *  - dust bars: thin strata of high dust low over the suns' bearing, dark against the suns' own
  *    glow with a burning edge, rose-gold further out; the sinking ember passes down behind them;
  *  - the twin suns: an ember-gold primary whose heart passes the tone curve's whitening point and
  *    whose rim melts into its glow (lower limb reddened, squashed a little by refraction, veiled
- *    where a dust bar crosses it), and a white-hot companion;
+ *    where a dust bar crosses it), and a white-hot companion; a flare (uSunFlare) swells both
+ *    discs and widens the ember's corona;
  *  - the two moons: shaded spheres lit by the primary sun (thick crescents, the dark
  *    limb faintly lit by dust-glow), veiled by the haze;
  *  - stars that surface as the dusk deepens (one hash per pixel cell, no extra draw).
@@ -101,7 +103,7 @@ function moonDisc(dir, M, r, uSunA, noiseTex, seed) {
  */
 export function createSky(shared, opts) {
     const {
-        uTime, uSunA, uSunB, uSunLightA, uSunLightB, uDusk, uSunFlare, atmosphere, noiseTex, uWindDir,
+        uTime, uSunA, uSunB, uSunLightA, uSunLightB, uDusk, uSunFlare, uHeat, atmosphere, noiseTex, uWindDir,
     } = shared;
     const clouds = opts.clouds !== false;
     const stars = opts.stars !== false;
@@ -127,9 +129,10 @@ export function createSky(shared, opts) {
         const rayN = ssTexNoise(noiseTex, vec2(ang.mul(9.0), uTime.mul(0.015)));
         const rays = rayN.x.mul(0.65).add(rayN.y.mul(0.35));
         const cA = dot(dir, uSunA);
-        const rayFall = smoothstep(0.93, 0.997, cA).mul(smoothstep(-0.04, 0.05, el))
-            .mul(float(1.0).sub(smoothstep(0.1, 0.3, el)));
-        col.addAssign(uSunLightA.mul(smoothstep(0.35, 0.85, rays).mul(rayFall).mul(0.035)));
+        const burn = uHeat.w;
+        const rayFall = smoothstep(burn.mul(-0.05).add(0.93), 0.997, cA).mul(smoothstep(-0.04, 0.05, el))
+            .mul(float(1.0).sub(smoothstep(burn.mul(0.12).add(0.1), burn.mul(0.2).add(0.3), el)));
+        col.addAssign(uSunLightA.mul(smoothstep(0.35, 0.85, rays).mul(rayFall).mul(burn.mul(0.055).add(0.035))));
 
         // ── Stars (deepening dusk) ──
         if (stars) {
@@ -232,9 +235,11 @@ export function createSky(shared, opts) {
         const ember = mix(vec3(1.0), vec3(0.78, 0.5, 0.32), lowLimb);
         // Sinking into the thick air at deep dusk, it dims and reddens.
         const duskA = mix(vec3(1.0), vec3(0.62, 0.36, 0.26), uDusk);
+        // A flare lifts the white sun fully; the ember only a little (its heart would pale to cream
+        // under a long chain): its corona carries the rest.
         const flare = uSunFlare.add(1.0);
         const radA = heartA.mul(darkA).mul(ember).mul(duskA).mul(SUN_A_POWER)
-            .mul(flare);
+            .mul(uSunFlare.mul(0.4).add(1.0));
         // A dust bar across the disc veils it to a deeper ember.
         const veiled = radA.mul(mix(vec3(1.0), vec3(0.42, 0.24, 0.16), barCover.mul(0.85)));
         col.assign(mix(col, veiled, discA));
@@ -246,7 +251,11 @@ export function createSky(shared, opts) {
         const darkB = vec3(1.0).sub(vec3(0.3, 0.45, 0.62).mul(float(1.0).sub(muB)));
         col.assign(mix(col, SUN_B_CORE.mul(darkB).mul(SUN_B_POWER).mul(flare), discB));
         // A tight corona just outside each disc: the ember's held close, the white sun's wider.
-        const coronaA = exp(rA.sub(1.0).max(0.0).mul(-4.0)).mul(0.5).mul(float(1.0).sub(discA))
+        // The ember swells with the flare and with the heat of play (its heart keeps its colour:
+        // the corona carries the heat, the disc only the flare).
+        const swell = clamp(uSunFlare.add(burn.mul(0.5)), 0.0, 1.5);
+        const coronaA = exp(rA.sub(1.0).max(0.0).mul(swell.mul(1.4).sub(4.0)))
+            .mul(swell.mul(0.6).add(0.5)).mul(float(1.0).sub(discA))
             .mul(float(1.0).sub(barCover.mul(0.7)));
         col.addAssign(uSunLightA.mul(coronaA));
         const coronaB = exp(angB.div(sunRadB).sub(1.0).max(0.0).mul(-2.6)).mul(1.2).mul(float(1.0).sub(discB));
