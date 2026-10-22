@@ -20,12 +20,14 @@ const shippedManifest = JSON.parse(readFileSync(`${musicFolder}/songs.json`, 'ut
 afterEach(() => vi.unstubAllGlobals());
 
 describe('one soundtrack per collectible theme', () => {
-    it('covers every current theme exactly once with distinct keys and file paths', () => {
+    it('covers every current theme exactly once with distinct keys and URLs', () => {
         expect(THEME_MUSIC_CATALOG).toHaveLength(63);
         expect(THEME_MUSIC_CATALOG.map((song) => song.themeId)).toEqual(THEME_REGISTRY.map((theme) => theme.id));
-        for (const field of ['themeId', 'trackKey', 'file', 'path']) {
+        for (const field of ['themeId', 'trackKey', 'path']) {
             expect(new Set(THEME_MUSIC_CATALOG.map((song) => song[field])).size).toBe(63);
         }
+        // Placeholders share Blood Moon's file; every recording is its own.
+        expect(new Set(THEME_MUSIC_CATALOG.map((song) => song.file)).size).toBe(31);
         expect(THEME_MUSIC_CATALOG.filter((song) => !song.placeholder)).toHaveLength(31);
         expect(THEME_MUSIC_CATALOG.filter((song) => song.placeholder)).toHaveLength(32);
     });
@@ -51,9 +53,9 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic(themeId)).toMatchObject({ trackKey, placeholder: false });
     });
 
-    it('replaces the former sharing of the Murmuration recording with an independent Chromadelic file', () => {
+    it('replaces the former sharing of the Murmuration recording with a Chromadelic song of its own', () => {
         expect(getThemeMusic('chromadelic-highway')).toMatchObject({
-            trackKey: 'ChromadelicHighway', file: 'chromadelic-highway-placeholder-song.mp3', placeholder: true,
+            trackKey: 'ChromadelicHighway', path: './assets/music/blood-moon.mp3?song=chromadelic-highway', placeholder: true,
         });
         expect(getThemeForMusic('Murmuration')).toBe('murmuration');
     });
@@ -74,7 +76,7 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('high-coast')).toMatchObject({
             name: 'High Coast',
             trackKey: 'HighCoast',
-            file: 'high-coast-placeholder-song.mp3',
+            path: './assets/music/blood-moon.mp3?song=high-coast',
             placeholder: true,
         });
         expect(getThemeForMusic('Mountain')).toBe('high-coast');
@@ -87,7 +89,7 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('kaleidosonic')).toMatchObject({
             name: 'Kaleidosonic',
             trackKey: 'Kaleidosonic',
-            file: 'kaleidosonic-placeholder-song.mp3',
+            path: './assets/music/blood-moon.mp3?song=kaleidosonic',
             placeholder: true,
         });
         expect(getThemeForMusic('SingingBowl')).toBe('kaleidosonic');
@@ -160,21 +162,18 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('unknown')).toBeNull();
     });
 
-    // About 260 MB to read (thirty-odd 8 MB copies): compared byte for byte, which is far cheaper than
-    // hashing each, and given time, since the whole suite running at once can starve it for seconds.
-    it('ships each independent placeholder as an exact copy of the Blood Moon source', () => {
-        const source = readFileSync(`${musicFolder}/blood-moon.mp3`);
+    // Thirty-two byte-identical 8 MB copies of it shipped before (2026-10-22).
+    it('plays the one Blood Moon file for every placeholder, each under a URL of its own', () => {
         for (const song of THEME_MUSIC_CATALOG) {
-            const { size } = statSync(`${musicFolder}/${song.file}`);
-            expect(size).toBeGreaterThan(0);
+            expect(statSync(`${musicFolder}/${song.file}`).size, song.file).toBeGreaterThan(0);
             if (song.placeholder) {
-                expect(song.file).toBe(`${song.themeId}-placeholder-song.mp3`);
+                expect(song.file).toBe('blood-moon.mp3');
                 expect(song.placeholderSource).toBe('blood-moon.mp3');
-                expect(size, song.file).toBe(source.length);
-                expect(readFileSync(`${musicFolder}/${song.file}`).equals(source), song.file).toBe(true);
+                expect(song.path).toBe(`./assets/music/blood-moon.mp3?song=${song.themeId}`);
             }
         }
-    }, 30_000);
+        expect(files.filter((file) => file.endsWith('-placeholder-song.mp3'))).toEqual([]);
+    });
 
     it('provides an unambiguous forward/reverse runtime lookup for every song', () => {
         const themes = THEME_REGISTRY.map((theme) => theme.id);
@@ -224,8 +223,8 @@ describe('one soundtrack per collectible theme', () => {
     });
 
     it('refuses to emit a manifest if a collectible recording is missing', () => {
-        expect(() => buildSongsManifest(files.filter((file) => file !== 'vesper-chrysalis-placeholder-song.mp3')))
-            .toThrow('Missing theme recordings: vesper-chrysalis-placeholder-song.mp3');
+        expect(() => buildSongsManifest(files.filter((file) => file !== 'wolfhour.mp3')))
+            .toThrow('Missing theme recordings: wolfhour.mp3');
     });
 
     it('falls back to Forest’s owned song with complete identity metadata when loading fails', async () => {

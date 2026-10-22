@@ -64,7 +64,7 @@ describe('Kaleidosonic took the Singing Bowl orb: what a player already has now 
         const song = getThemeMusic('kaleidosonic');
         expect(song).toMatchObject({
             name: 'Kaleidosonic',
-            file: 'kaleidosonic-placeholder-song.mp3',
+            path: './assets/music/blood-moon.mp3?song=kaleidosonic',
             trackKey: 'Kaleidosonic',
             placeholder: true,
             placeholderSource: 'blood-moon.mp3',
