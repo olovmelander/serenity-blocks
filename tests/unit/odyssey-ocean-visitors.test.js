@@ -76,7 +76,8 @@ describe('ocean visitors — lifecycle and swimming', () => {
     it('stays hidden until the board marks it ready, then shows in its window', async () => {
         const visitors = await loadedVisitors();
         const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
-        camera.position.set(-6, 150, 4);
+        // Inside the whale shark's stretch (orbs 6-7).
+        camera.position.set(-6, 130, 4);
         visitors.update(10, 0.016, camera, 1, true, 1);
         expect(visitors.group.visible).toBe(false);
         visitors.markReady();

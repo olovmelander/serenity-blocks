@@ -44,8 +44,8 @@ import {
     steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
 import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
-import { createWhalePass } from './composition/odyssey-whale-pass.js';
-import { createOceanVisitors } from './composition/odyssey-ocean-visitors.js';
+import { WHALE_PASS_STAGE, createWhalePass } from './composition/odyssey-whale-pass.js';
+import { createOceanVisitors, resolveOceanVisitorCentre } from './composition/odyssey-ocean-visitors.js';
 import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
@@ -3081,9 +3081,10 @@ export class OdysseyBoardController {
                     const noWhales = typeof window !== 'undefined'
                         && new URLSearchParams(window.location?.search || '').get('odysseyNoWhales') === '1';
                     if (this.oneWorldEnabled && !noWhales && Number.isFinite(c1) && Number.isFinite(c2)) {
-                        const mid = getOdysseyPathPointAt((c1 + c2) / 2);
+                        // The pair's stretch of the climb: its loop centred on the rail there.
+                        const centre = getOdysseyPathPointAt(c1 + ((c2 - c1) * WHALE_PASS_STAGE.at));
                         this.whalePass = createWhalePass({
-                            axis: { x: mid.x, z: mid.z },
+                            axis: { x: centre.x, z: centre.z },
                             seaLevel: ODYSSEY_SEA_LEVEL,
                             shallowColour: new THREE.Color(...sampleColourScript(0.12).skyHorizon),
                             deepColour: new THREE.Color(...sampleColourScript(0.0).skyHorizon),
@@ -3105,9 +3106,10 @@ export class OdysseyBoardController {
                     const noVisitors = typeof window !== 'undefined'
                         && new URLSearchParams(window.location?.search || '').get('odysseyNoVisitors') === '1';
                     if (this.oneWorldEnabled && !noVisitors && Number.isFinite(c1) && Number.isFinite(c2)) {
-                        const deep = getOdysseyPathPointAt(c1 + ((c2 - c1) * 0.3));
+                        // Each animal's loop centred by its own orb (its cast's `at` and `aside`).
+                        const { chapterPositions } = this.presentationLayout;
                         this.oceanVisitors = createOceanVisitors({
-                            axis: { x: deep.x, z: deep.z },
+                            placeOf: (cast) => resolveOceanVisitorCentre(cast, chapterPositions),
                             seaLevel: ODYSSEY_SEA_LEVEL,
                             shallowColour: new THREE.Color(...sampleColourScript(0.12).skyHorizon),
                             deepColour: new THREE.Color(...sampleColourScript(0.0).skyHorizon),
