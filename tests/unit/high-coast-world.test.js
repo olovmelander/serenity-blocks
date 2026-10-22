@@ -249,7 +249,9 @@ describe('HighCoastWorld: the rising land', () => {
         expect(world.u.wetLine.value).toBeLessThanOrEqual(0);
         expect(world.u.drain.value).toBeGreaterThan(0); // the sea runs off the risen rock...
         stepTo(shared, world.time + TIMING.drain + 1);
-        expect(world.u.drain.value).toBe(0); // ...for a while
+        expect(world.u.drain.value).toBeLessThan(0.05); // ...for a while, then dies away
+        stepTo(shared, world.time + 20, 0.25);
+        expect(world.u.drain.value).toBe(0);
         expect(world.counts).toMatchObject({ clears: 1, lines: 3 });
     });
 
@@ -321,8 +323,10 @@ describe('HighCoastWorld: the rising land', () => {
         expect(world.u.rebound.value).toBeGreaterThan(0.5);
         expect(world.motes.cursor).toBeGreaterThan(0); // spray off the shores
         stepTo(shared, START + 6);
-        expect(world.u.rebound.value).toBe(0);
+        expect(world.u.rebound.value).toBeLessThan(0.05); // the flare dies away
         expect(world.getPostState().flash).toBe(0);
+        stepTo(shared, START + 25, 0.25);
+        expect(world.u.rebound.value).toBe(0);
     });
 });
 
@@ -417,7 +421,7 @@ describe('HighCoastWorld: an event\'s water sites', () => {
         expect(world.siteQueue).toHaveLength(0);
     });
 
-    it('drops the sites it could not serve within a second of their event', () => {
+    it('raises no site late: one not served within a second of its event is carried into the next ones', () => {
         const { world } = shared;
         begin(shared);
         world.onClear({ lines: 2, combo: 1 });
@@ -426,6 +430,7 @@ describe('HighCoastWorld: an event\'s water sites', () => {
         world.update({ time: START + 2, delta: 1 / 30 }, shared.camera);
         expect(world.siteQueue).toHaveLength(0);
         expect(world.motes.cursor).toBe(cursor);
+        expect(world.siteCarry.mist).toBeGreaterThan(0); // high-coast-surge.test.js: it rises with the next
     });
 });
 
