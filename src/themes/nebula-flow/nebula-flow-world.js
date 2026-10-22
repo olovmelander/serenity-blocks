@@ -365,7 +365,12 @@ export class NebulaFlowWorld {
         const u = createNebulaUniforms();
         this.u = u;
         this.addPart('nebula', createNebula(u, noise, relief, {
-            lightTaps: tier.lightTaps, detail: tier.detail, veils: tier.veils, stars: tier.starLayers, debug: this.debug,
+            lightTaps: tier.lightTaps,
+            detail: tier.detail,
+            veils: tier.veils,
+            litGas: tier.litGas,
+            stars: tier.starLayers,
+            debug: this.debug,
         }));
         this.addPart('stars', createFieldStars(u, { count: tier.stars, seed: this.seed + 11 }));
         this.addPart('births', createBirths(u));

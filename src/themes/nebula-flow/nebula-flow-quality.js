@@ -3,7 +3,8 @@
  *
  * lightTaps    taps toward the cluster for the dust's self-shadow (the depth of its shading)
  * detail       octaves of relief on the dust (its billows and their normals)
- * veils        the veils' second, finer filaments
+ * veils        the veils' second, finer filaments, and the wisps drifting in front of the dust
+ * litGas       the cavity's gas lit as a volume (its billows read again a step nearer the light)
  * starLayers   lattices of far stars drawn in the nursery itself
  * stars        field stars drawn as sprites (the bright ones wear diffraction spikes)
  * ambient      young stars already in the pillars with no play (their jets breathe)
@@ -13,6 +14,7 @@ export const QUALITY = Object.freeze({
         lightTaps: 3,
         detail: 1,
         veils: false,
+        litGas: false,
         starLayers: 1,
         stars: 60,
         ambient: 2,
@@ -21,6 +23,7 @@ export const QUALITY = Object.freeze({
         lightTaps: 3,
         detail: 2,
         veils: false,
+        litGas: false,
         starLayers: 1,
         stars: 90,
         ambient: 2,
@@ -29,6 +32,7 @@ export const QUALITY = Object.freeze({
         lightTaps: 4,
         detail: 2,
         veils: true,
+        litGas: true,
         starLayers: 2,
         stars: 120,
         ambient: 3,
@@ -37,6 +41,7 @@ export const QUALITY = Object.freeze({
         lightTaps: 5,
         detail: 3,
         veils: true,
+        litGas: true,
         starLayers: 2,
         stars: 150,
         ambient: 3,
@@ -45,6 +50,7 @@ export const QUALITY = Object.freeze({
         lightTaps: 6,
         detail: 3,
         veils: true,
+        litGas: true,
         starLayers: 2,
         stars: 180,
         ambient: 4,
@@ -53,6 +59,7 @@ export const QUALITY = Object.freeze({
         lightTaps: 7,
         detail: 3,
         veils: true,
+        litGas: true,
         starLayers: 2,
         stars: 220,
         ambient: 4,
