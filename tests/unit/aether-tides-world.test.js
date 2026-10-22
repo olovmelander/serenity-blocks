@@ -1780,13 +1780,12 @@ describe('aether tides stardust table', () => {
         }
         // (x, y, t0, aim) (r, g, b, speed) (dirX, dirY, life, size): the direction is made a unit one.
         expect(burstRows(table, 3)).toEqual([3, -3, 5, 0.75, 1, 0.5, 0.25, 1.5, 0, -1, 1.25, 2]);
-        // One more than there are slots replaces the first.
+        // One more than there are slots replaces the one nearest its end (here the first).
         expect(table.burst({
             x: 50, y: 60, at: 99, color: [0.25, 0.5, 1],
         })).toBe(0);
         expect(burstRows(table, 0).slice(0, 3)).toEqual([50, 60, 99]);
         expect(burstRows(table, 1).slice(0, 3)).toEqual([1, -1, 3]);
-        expect(table.burstCursor).toBe(1);
         expect(table.data).toHaveLength(FX_ROWS * 4);
     });
 
@@ -1835,8 +1834,6 @@ describe('aether tides stardust table', () => {
 
         table.reset();
         expect(table.data).toBe(data);
-        expect(table.burstCursor).toBe(0);
-        expect(table.beamCursor).toBe(0);
         for (let slot = 0; slot < BURST_SLOTS; slot += 1) expect(burstRows(table, slot)[2]).toBeLessThan(-1e5);
         for (let slot = 0; slot < BEAM_SLOTS; slot += 1) expect(beamRows(table, slot)[3]).toBeLessThan(-1e5);
         expect(allFinite(table.data)).toBe(true);
@@ -1970,6 +1967,9 @@ describe('aether tides tiers', () => {
 });
 
 describe('aether tides world: build-up', () => {
+    /** Stars burning now (lit, their nova not yet over). */
+    const burning = (world) => world.events.stars.filter((_, i) => world.events.starAlive(i, world.now));
+
     it('a single right after a quad adds to its light instead of cutting it', () => {
         const { world } = makeWorld('Low');
         world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
@@ -2005,6 +2005,59 @@ describe('aether tides world: build-up', () => {
         // And the hands resting lets it all breathe out.
         run(world, 12);
         expect(world.picture.glow.value).toBeLessThan(tenth.glow - 0.3);
+        world.dispose();
+    });
+    it('crowns a perfect clear settled after its quad: no second hush, the flare fed, the stars spent', () => {
+        const { world } = makeWorld('Low');
+        world.onLock(T_LEFT);
+        run(world, 0.5);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        const { hushAt } = world;
+        run(world, HUSH_HOLD + 0.36);
+        const flare = world.flareStrength(world.now);
+        world.onLock(T_LEFT);
+        run(world, 0.1);
+        world.onClear({
+            lines: 0, crown: true, perfect: true, rows: [],
+        });
+        expect(world.hushAt).toBe(hushAt);
+        run(world, 0.2);
+        expect(world.picture.hush.value).toBe(0);
+        expect(world.flareStrength(world.now)).toBeGreaterThan(flare * 0.8);
+        run(world, 4);
+        expect(burning(world)).toHaveLength(0);
+        world.dispose();
+    });
+
+    it('answers back-to-back with the amber companion', () => {
+        const { world } = makeWorld('Low');
+        const rest = world.picture.starFlux.value.y;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, b2b: true });
+        run(world, HUSH_HOLD + 0.3);
+        expect(world.picture.starFlux.value.y).toBeGreaterThan(rest + 0.8);
+        world.dispose();
+    });
+
+    it('keeps the stars a chain lights, brighter, until the chain lets go', () => {
+        const { world } = makeWorld('Low');
+        world.onLock(T_LEFT);
+        world.onClear({ rows: [19], lines: 1, combo: 1 });
+        world.onCombo(1);
+        run(world, 0.6);
+        world.onLock(T_RIGHT);
+        // The first clear's star (no chain yet) goes nova; the second lock's star stays.
+        run(world, 2.5);
+        const lit = burning(world).length;
+        expect(lit).toBeGreaterThan(0);
+        const flux = Math.max(...burning(world).map((star) => star.flux));
+        world.onClear({ rows: [19], lines: 1, combo: 2 });
+        world.onCombo(2);
+        run(world, 2);
+        expect(burning(world)).toHaveLength(lit);
+        expect(Math.max(...burning(world).map((star) => star.flux))).toBeGreaterThan(flux);
+        world.onCombo(0);
+        run(world, 4);
+        expect(burning(world)).toHaveLength(0);
         world.dispose();
     });
 });
