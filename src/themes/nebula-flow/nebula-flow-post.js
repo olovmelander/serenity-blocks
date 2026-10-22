@@ -222,14 +222,18 @@ export class NebulaFlowPost {
                 glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.5))));
                 if (rayTaps > 0) {
                     // The bloom dragged down from the cluster: where a pillar stands in its way
-                    // there is a shadow down the shaft, and light between.
+                    // there is a shadow down the shaft, and light between. Only bloom near the
+                    // cluster emits: a bright star in the middle of the frame dragged down this way
+                    // drew a grainy trail of the jitter below it.
                     const rays = vec3(0.0).toVar();
                     let total = 0;
                     for (let i = 0; i < rayTaps; i++) {
                         const w = 1 - (i / rayTaps) * 0.75;
                         total += w;
                         const f = jitter.add(i).div(rayTaps).mul(0.42);
-                        rays.addAssign(bt.sample(st.add(toSun.mul(f))).rgb.mul(w));
+                        const at = st.add(toSun.mul(f));
+                        const nearSun = float(1.0).sub(smoothstep(0.45, 1.05, length(this.uSun.sub(at).mul(aspect))));
+                        rays.addAssign(bt.sample(at).rgb.mul(nearSun.mul(w)));
                     }
                     const reach = float(1.0).sub(smoothstep(0.3, 2.1, dist));
                     glare.addAssign(rays.mul(1 / total).mul(this.uRays).mul(reach).mul(1.6));
