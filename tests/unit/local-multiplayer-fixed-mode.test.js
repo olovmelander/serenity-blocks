@@ -482,15 +482,19 @@ describe('Local Multiplayer fixed mode integration', () => {
 });
 
 describe('Local Multiplayer fixed command and callback policy', () => {
-    it('applies stable unique death batches with one win-condition check', () => {
+    it('applies stable unique death batches and leaves the match to its owner to judge', () => {
         const multiplayerState = new MultiPlayerState(3);
-        const checkWinCondition = vi.spyOn(multiplayerState, 'checkWinCondition')
-            .mockReturnValue(false);
+        multiplayerState.setMatchConfig({ endCondition: 'frags', endConditionValue: 1 });
+        multiplayerState.lastAttackerIds = [1, null, 1];
+        const checkWinCondition = vi.spyOn(multiplayerState, 'checkWinCondition');
 
         expect(multiplayerState.handlePlayerDeaths([2, 0, 2, -1, 4])).toEqual([0, 2]);
         expect(multiplayerState.players.map((player) => player.isAlive)).toEqual([false, true, false]);
         expect(multiplayerState.deaths).toEqual([1, 0, 1]);
-        expect(checkWinCondition).toHaveBeenCalledOnce();
+        // These counters are one round's; the mode judges match totals (or OdysseyBotMatch
+        // calls checkWinCondition for its duel). Judging here froze 3-4 player matches.
+        expect(checkWinCondition).not.toHaveBeenCalled();
+        expect(multiplayerState.isGameOver).toBe(false);
     });
 
     it('declares tied same-tick frag leaders a draw instead of favoring player zero', () => {
@@ -499,6 +503,7 @@ describe('Local Multiplayer fixed command and callback policy', () => {
         multiplayerState.lastAttackerIds = [1, 0];
 
         expect(multiplayerState.handlePlayerDeaths([1, 0])).toEqual([0, 1]);
+        multiplayerState.checkWinCondition(); // as OdysseyBotMatch judges its duel
 
         expect(multiplayerState.frags).toEqual([1, 1]);
         expect(multiplayerState.isGameOver).toBe(true);
@@ -516,6 +521,7 @@ describe('Local Multiplayer fixed command and callback policy', () => {
         multiplayerState.lastAttackerIds = [2, null, 0, null];
 
         expect(multiplayerState.handlePlayerDeaths([2, 0])).toEqual([0, 2]);
+        multiplayerState.checkWinCondition();
 
         expect(multiplayerState.frags).toEqual([1, 0, 1, 0]);
         expect(multiplayerState.isGameOver).toBe(true);
