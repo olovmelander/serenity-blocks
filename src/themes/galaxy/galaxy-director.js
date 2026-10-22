@@ -8,7 +8,11 @@
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
+ *       `crown`: a perfect clear that settled after its clear's last wave (physics sends it
+ *       ~360 ms later, in a frame of its own) — the crown on the clear still playing, never a
+ *       new clear (`lines` 1, no rows)
+ *   sink.spin({ player, screen })  a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -19,7 +23,11 @@
  *
  * Combo: the bus's COMBO event carries the CASCADE DEPTH of one lock, never a combo (ADR-0011).
  * The true consecutive-clear combo is derived here with one ComboTracker per player; an explicit
- * LINE_CLEAR.comboCount (meditation clicks, Odyssey's victory lap) can raise it.
+ * LINE_CLEAR.comboCount (meditation clicks, Odyssey's victory lap) can raise it. A chain ends on
+ * a lock that clears nothing, and physics says so only by staying silent (the tracker itself
+ * learns of it when the NEXT piece locks): a lock's first wave arrives in the lock's own tick, so
+ * a lock that has heard no clear BREAK_FRAMES flushes later broke the chain, and the break is
+ * reported then — the galaxy lets the chain's light go as the piece settles, not a piece later.
  *
  * Allocation: handlers write numbers into preallocated slots; flush() reuses one lock and one
  * clear object. The sink must copy what it keeps.
@@ -31,6 +39,8 @@ import { GALAXY_TETROMINOS } from './galaxy-tetrominos.js';
 
 const MAX_ROWS = 4;
 const MAX_SHAPE_SIZE = 8;
+/** Flushes a lock waits for its first clear before it counts as one that broke the chain. */
+export const BREAK_FRAMES = 3;
 const EMPTY = Object.freeze({});
 const HEX = /^#[0-9a-f]{6}$/i;
 
@@ -78,12 +88,17 @@ function createSlot() {
         tspin: false,
         perfect: false,
         b2b: false,
+        cleared: false,
         hasPosition: false,
         posX: 0,
         posY: 0,
         // persistent per-player state
         tracker: new ComboTracker(),
         reported: 0,
+        /** Flushes since a lock that has heard no clear yet (-1: none waiting). */
+        quiet: -1,
+        /** The last lock cleared nothing: the chain is over, whatever the tracker still holds. */
+        broken: false,
     };
 }
 
@@ -100,6 +115,7 @@ function clearPending(slot) {
     slot.tspin = false;
     slot.perfect = false;
     slot.b2b = false;
+    slot.cleared = false;
     slot.hasPosition = false;
 }
 
@@ -186,7 +202,7 @@ function capturePosition(slot, payload) {
 export class GalaxyDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: { lock?: Function, clear?: Function, spin?: Function, combo?: Function, levelUp?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -204,8 +220,18 @@ export class GalaxyDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0,
+            rows: [],
+            lines: 1,
+            combo: 1,
+            cascade: 1,
+            tspin: false,
+            perfect: false,
+            b2b: false,
+            crown: false,
+            screen: null,
         };
+        this._spin = { player: 0, screen: null };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -265,6 +291,8 @@ export class GalaxyDirector {
         slot.pending = true;
         slot.lock = this.lockRipple;
         slot.tracker.notePieceLocked();
+        // Waiting to hear whether it clears anything (resolve() counts the flushes).
+        slot.quiet = 0;
         captureLock(slot, payload);
         return true;
     }
@@ -297,6 +325,9 @@ export class GalaxyDirector {
             captureClearRows(slot, payload, lines);
         }
         slot.cascade = Math.max(slot.cascade, cascade);
+        slot.cleared = true;
+        slot.quiet = -1;
+        slot.broken = false;
         slot.tracker.noteLineClear();
         if (Number.isFinite(payload.comboCount)) {
             slot.explicitCombo = Math.max(slot.explicitCombo, Math.trunc(Number(payload.comboCount)));
@@ -349,6 +380,11 @@ export class GalaxyDirector {
         return true;
     }
 
+    /**
+     * Physics settles a perfect clear ~360 ms after the clear's last wave, in a frame of its own:
+     * with no LINE_CLEAR beside it, it is the crown on the clear already playing (resolve() sends
+     * it as `crown`), never a new one-line clear that would hold the galaxy's breath again.
+     */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
@@ -382,7 +418,16 @@ export class GalaxyDirector {
     }
 
     resolve(slot, sink) {
-        const combo = Math.max(slot.tracker.combo, slot.lines > 0 ? Math.max(1, slot.explicitCombo) : 0);
+        // A lock that has heard no clear for BREAK_FRAMES flushes cleared nothing: the chain is over.
+        if (slot.quiet >= 0 && !slot.cleared) {
+            slot.quiet += 1;
+            if (slot.quiet >= BREAK_FRAMES) {
+                slot.quiet = -1;
+                slot.broken = true;
+            }
+        }
+        const chain = slot.broken ? 0 : slot.tracker.combo;
+        const combo = Math.max(chain, slot.lines > 0 ? Math.max(1, slot.explicitCombo) : 0);
         if (slot.pending) {
             let screen = null;
             if (slot.hasPosition) {
@@ -405,19 +450,28 @@ export class GalaxyDirector {
                 c.screen = null;
                 sink.lock(c);
             }
+            // A perfect clear with no clear in its frame is the crown on the one already playing.
+            const crown = slot.perfect && !slot.cleared && !slot.hasPosition && !slot.tspin;
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
                 c.rows.length = 0;
-                for (let r = 0; r < slot.clearRowCount; r += 1) c.rows.push(slot.clearRows[r]);
+                if (!crown) for (let r = 0; r < slot.clearRowCount; r += 1) c.rows.push(slot.clearRows[r]);
                 c.lines = slot.lines;
                 c.combo = Math.max(1, combo);
-                c.cascade = slot.cascade;
+                c.cascade = crown ? 1 : slot.cascade;
                 c.tspin = slot.tspin;
                 c.perfect = slot.perfect;
-                c.b2b = slot.b2b;
+                c.b2b = crown ? false : slot.b2b;
+                c.crown = crown;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.tspin && sink?.spin) {
+                // A T-spin that cleared nothing: still something small.
+                const c = this._spin;
+                c.player = slot.player;
+                c.screen = screen;
+                sink.spin(c);
             }
             clearPending(slot);
         }
@@ -433,6 +487,8 @@ export class GalaxyDirector {
             const slot = this.slots[i];
             clearPending(slot);
             slot.tracker.reset();
+            slot.quiet = -1;
+            slot.broken = false;
             if (slot.reported !== 0) {
                 slot.reported = 0;
                 this.sink?.combo?.(0, slot.player);

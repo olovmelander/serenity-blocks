@@ -114,18 +114,20 @@ export function createSeeds(u) {
     })();
 
     const part = gxPart('GalaxySeeds', geometry, material, 40);
-    let cursor = 0;
+    /** When each slot's seed lands (its tail a little after): a new seed takes the one landed first. */
+    const lands = new Float64Array(SEED_SLOTS).fill(-Infinity);
     /**
      * Send a seed from `from` (a world point) into the nursery at `site` (the plan's entry: the
      * shader finds where that nursery is at every moment of the flight), leaving at `time` and
      * taking `flight` seconds. `bow` (a world vector) pulls the middle of the arc aside; `size`
-     * scales the comet.
+     * scales the comet. It never takes a slot whose comet is still in the air while one has landed.
      */
     part.launch = ({
         from: p0, site, rgb, time, flight, bow = [0, 0, 0], size = 1,
     }) => {
-        const slot = cursor % SEED_SLOTS;
-        cursor += 1;
+        let slot = 0;
+        for (let i = 1; i < SEED_SLOTS; i++) if (lands[i] < lands[slot]) slot = i;
+        lands[slot] = time + flight * (1 + SEED_LAG);
         for (let j = 0; j < SEED_TAIL; j++) {
             const i = slot * SEED_TAIL + j;
             aFrom.set([p0[0], p0[1], p0[2], time], i * 4);
@@ -141,7 +143,7 @@ export function createSeeds(u) {
     part.reset = () => {
         for (let i = 0; i < count; i++) aFrom[i * 4 + 3] = -100;
         geometry.getAttribute('aFrom').needsUpdate = true;
-        cursor = 0;
+        lands.fill(-Infinity);
     };
     part.count = count;
     return part;
@@ -151,6 +153,8 @@ export function createSeeds(u) {
 
 /** A spark's drag: it covers (1 − e^(−t·DRAG)) / DRAG seconds of its first speed. */
 export const SPARK_DRAG = 1.5;
+/** How far round the ring a new spark looks for a spent slot before taking the oldest it saw. */
+const SPARK_PROBE = 24;
 
 /** How far a spark has gone `tau` seconds after it left, per unit of speed. CPU twin. */
 export function sparkTravel(tau) {
@@ -211,6 +215,22 @@ export function createSparks(u, count) {
     const part = gxPart('GalaxySparks', geometry, material, 30);
     let cursor = 0;
     let bursts = 0;
+    /** When each slot's spark goes out. */
+    const ends = new Float64Array(count).fill(-Infinity);
+    /**
+     * The slot for a spark born at `born`: the first spent one a little way round the ring from
+     * the cursor, else the nearest its end of those looked at — so the debris of one wave never
+     * cuts the last wave's out of the air while the pool has room.
+     */
+    const take = (born) => {
+        let pick = cursor % count;
+        for (let p = 0; p < SPARK_PROBE && ends[pick] > born; p++) {
+            const i = (cursor + p) % count;
+            if (ends[i] < ends[pick]) pick = i;
+        }
+        cursor = pick + 1;
+        return pick;
+    };
     /**
      * Throw `n` sparks from a world point at `time` (which may be a moment ahead). They leave in
      * the plane spanned by `e1` and `e2` (the disc's own, as world unit vectors) at `out` =
@@ -223,19 +243,21 @@ export function createSparks(u, count) {
         bursts += 1;
         const total = Math.min(n, count);
         for (let j = 0; j < total; j++) {
-            const i = cursor % count;
-            cursor += 1;
             const bearing = rand() * TAU;
             const speed = out[0] + (out[1] - out[0]) * rand() ** 1.6;
             const cb = Math.cos(bearing) * speed;
             const sb = Math.sin(bearing) * speed;
             const up = (rand() * 2 - 1) * lift * speed;
-            aBirth.set([x, y, z, time + rand() * stagger], i * 4);
+            const born = time + rand() * stagger;
+            const lasts = life[0] + (life[1] - life[0]) * rand();
+            const i = take(born);
+            ends[i] = born + lasts;
+            aBirth.set([x, y, z, born], i * 4);
             aVel.set([
                 e1[0] * cb + e2[0] * sb + axis[0] * up,
                 e1[1] * cb + e2[1] * sb + axis[1] * up,
                 e1[2] * cb + e2[2] * sb + axis[2] * up,
-                life[0] + (life[1] - life[0]) * rand(),
+                lasts,
             ], i * 4);
             const g = 0.7 + rand() * 0.6;
             aTint.set([rgb[0] * g, rgb[1] * g, rgb[2] * g, size * (0.55 + rand() * 0.9)], i * 4);
@@ -247,6 +269,7 @@ export function createSparks(u, count) {
     part.reset = () => {
         for (let i = 0; i < count; i++) aBirth[i * 4 + 3] = -100;
         geometry.getAttribute('aBirth').needsUpdate = true;
+        ends.fill(-Infinity);
         cursor = 0;
         bursts = 0;
     };
@@ -261,38 +284,57 @@ export const BEAM_ROWS = 4;
 export const BEAM_TRAVEL = 0.14;
 export const BEAM_FADE = 0.18;
 
-/** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
+/** Sets of blades: a clear on the heels of another fires its own while the last ones finish. */
+export const BEAM_SETS = 2;
+/** Seconds a set of blades takes to fade out completely. */
+const BEAM_LIFE = BEAM_TRAVEL + BEAM_FADE * 6;
+
+/**
+ * Screen-space strips: one from each side of the card for up to four cleared rows, in two sets.
+ * `uniforms` is the newest set; `older` the one before, still finishing.
+ */
 export function createRowBeams(u) {
-    const count = BEAM_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = gxQuadGeometry(count, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
-    const uniforms = {
+    const count = BEAM_ROWS * 2 * BEAM_SETS;
+    const aRow = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+        const k = i % (BEAM_ROWS * 2);
+        aRow.set([Math.floor(k / 2), k % 2 ? 1 : -1, Math.floor(i / (BEAM_ROWS * 2)), 0], i * 4);
+    }
+    const geometry = gxQuadGeometry(count, { aRow: [aRow, 4] });
+    const row = attribute('aRow', 'vec4');
+    const makeSet = () => ({
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
         rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** (card x0, card x1, birth time, strength) */
         frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
         color: uniform(new THREE.Vector3(1, 1, 1)),
-    };
+    });
+    const uniforms = makeSet();
+    const older = makeSet();
     const material = gxFxMaterial('GalaxyRowBeams');
+    const second = step(0.5, row.z);
+    const rows = mix(uniforms.rows, older.rows, second);
+    const frame = mix(uniforms.frame, older.frame, second);
+    const colour = mix(uniforms.color, older.color, second);
     const rowY = mix(
-        mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)),
-        mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)),
+        mix(rows.x, rows.y, step(0.5, row.x)),
+        mix(rows.z, rows.w, step(2.5, row.x)),
         step(1.5, row.x),
     );
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const used = step(0.0, rowY).mul(step(0.001, frame.w));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
+    const edge = mix(frame.x, frame.y, step(0.0, row.y));
     const end = step(0.0, row.y);
     const sx = mix(edge, end, along);
     const thicknessPx = float(34.0);
     const sy = rowY.add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
     const vAlong = varying(along, 'gxBeamT');
+    const vFrame = varying(vec3(frame.z, frame.w, 0.0), 'gxBeamFrame');
+    const vColour = varying(colour, 'gxBeamColour');
     material.colorNode = Fn(() => {
-        const age = u.time.sub(uniforms.frame.z);
+        const age = u.time.sub(vFrame.x);
         const head = age.div(BEAM_TRAVEL);
         const reached = step(vAlong, head);
         const dy = uv().y.sub(0.5).mul(thicknessPx);
@@ -303,23 +345,38 @@ export function createRowBeams(u) {
         const tip = exp(vAlong.sub(head).mul(vAlong.sub(head)).mul(-150.0)).mul(step(head, 1.25));
         const env = exp(max(age.sub(vAlong.mul(BEAM_TRAVEL)), 0.0).div(-BEAM_FADE)).mul(step(0.0, age));
         const k = core.add(sheath).mul(reached).mul(env).add(core.add(sheath).mul(tip).mul(2.2))
-            .mul(uniforms.frame.w)
+            .mul(vFrame.y)
             .mul(float(1.0).sub(vAlong).mul(float(1.0).sub(vAlong)).mul(float(1.0).sub(vAlong))
                 .mul(0.96)
                 .add(0.04));
-        const col = mix(uniforms.color, vec3(1.0), core.mul(0.3));
+        const col = mix(vColour, vec3(1.0), core.mul(0.3));
         return vec4(col.mul(k).mul(1.7), 0.0);
     })();
     const part = gxPart('GalaxyRowBeams', geometry, material, 60);
     part.uniforms = uniforms;
-    /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
+    part.older = older;
+    /**
+     * `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions.
+     * The blades still flying move to the second set and finish there (unless the second set's
+     * are brighter still: then the newer ones simply give way).
+     */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
+        const left = (set) => {
+            const age = time - set.frame.value.z;
+            return age < 0 ? set.frame.value.w : set.frame.value.w * Math.max(0, 1 - age / BEAM_LIFE);
+        };
+        if (left(uniforms) > left(older)) {
+            older.rows.value.copy(uniforms.rows.value);
+            older.frame.value.copy(uniforms.frame.value);
+            older.color.value.copy(uniforms.color.value);
+        }
         uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
         uniforms.frame.value.set(x0, x1, time, strength);
         uniforms.color.value.set(rgb[0], rgb[1], rgb[2]);
     };
     part.reset = () => {
         uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        older.frame.value.set(0.4, 0.6, -100, 0);
     };
     return part;
 }

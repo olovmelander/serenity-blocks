@@ -2,7 +2,7 @@ import {
     describe, expect, it, vi,
 } from 'vitest';
 import {
-    GALAXY_EVENT_HANDLERS, GalaxyDirector, resolvePieceColor,
+    BREAK_FRAMES, GALAXY_EVENT_HANDLERS, GalaxyDirector, resolvePieceColor,
 } from '../../src/themes/galaxy/galaxy-director.js';
 import {
     BOARD_GRID, PLAYER_SLOTS, boardFor, boardPoint, cardUnion, fallbackLayout, layoutsDiffer, readLayoutRects,
@@ -122,8 +122,9 @@ describe('galaxy director: intake', () => {
         director.onB2B({ active: true });
         director.onPerfectClear({ depth: 1 });
         director.flush();
+        // In the clear's own frame a perfect clear is that clear's, not a crown on it.
         expect(calls.clear[0]).toMatchObject({
-            lines: 2, tspin: true, b2b: true, perfect: true,
+            lines: 2, tspin: true, b2b: true, perfect: true, crown: false,
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
@@ -177,6 +178,60 @@ describe('galaxy director: intake', () => {
         expect(calls.clear[0].lines).toBe(2);
         expect(calls.clear[0].rows).toEqual([]);
         expect(calls.levelUp).toEqual([1]);
+    });
+
+    it('reports a broken chain a few frames after the lock that cleared nothing, not a whole piece later', () => {
+        const { director, calls } = makeDirector();
+        for (let i = 0; i < 3; i++) {
+            director.onPieceLock({ piece: I });
+            director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+            director.flush();
+        }
+        expect(calls.combo[calls.combo.length - 1]).toEqual([3, 0]);
+        // A lock whose first wave would have come in its own tick: nothing comes.
+        director.onPieceLock({ piece: T });
+        for (let f = 1; f < BREAK_FRAMES; f++) {
+            director.flush();
+            expect(calls.combo[calls.combo.length - 1], `flush ${f}`).toEqual([3, 0]);
+        }
+        director.flush();
+        expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
+        // A lock that clears keeps the chain going, and a new chain starts at one.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        for (let f = 0; f < BREAK_FRAMES + 2; f++) director.flush();
+        expect(calls.combo[calls.combo.length - 1]).toEqual([1, 0]);
+    });
+
+    it('crowns the clear still playing with a perfect clear that settles in a frame of its own', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onB2B({ active: true });
+        director.flush();
+        expect(calls.clear[0]).toMatchObject({ lines: 4, crown: false, b2b: true });
+        // ~360 ms later, on its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({
+            crown: true, perfect: true, lines: 1, cascade: 1, b2b: false, rows: [],
+        });
+        // The chain is not a step longer for it.
+        expect(calls.clear[1].combo).toBe(calls.clear[0].combo);
+    });
+
+    it('still answers a T-spin that clears nothing, with no clear', () => {
+        const { director, calls } = makeDirector();
+        const spin = vi.fn();
+        director.sink.spin = spin;
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.lock).toHaveLength(1);
+        expect(spin).toHaveBeenCalledOnce();
+        expect(spin.mock.calls[0][0]).toMatchObject({ player: 0 });
     });
 });
 

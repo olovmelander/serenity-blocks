@@ -15,6 +15,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     clamp,
     cos,
@@ -25,6 +26,7 @@ import {
     length,
     log,
     max,
+    min,
     pow,
     step,
     texture,
@@ -45,6 +47,7 @@ import {
     WAVE_AFTERGLOW,
     WAVE_FRONT_GAP,
     WAVE_FRONT_WIDTH,
+    WAVE_LIVE,
     WAVE_REACH,
     WAVE_SHAPE,
     WAVE_TRAVEL,
@@ -272,8 +275,12 @@ export function createGalaxyUniforms(textures) {
         rings: uniform(0),
         /** The jets: (reach 0..1, gain, burst birth time, burst strength). */
         jets: uniform(new THREE.Vector4(0.1, 0.06, -100, 0)),
+        /** Two more burst heads on the jets: (birth, strength, birth, strength). */
+        jetBursts: uniform(new THREE.Vector4(-100, 0, -100, 0)),
         /** A four-line clear's shock ring across the sky: (birth time, strength). */
         shock: uniform(new THREE.Vector2(-100, 0)),
+        /** A second ring, so a T-spin or a new level never cuts an eruption's: (birth, strength). */
+        shockB: uniform(new THREE.Vector2(-100, 0)),
         /** The sky's stars answer a clear: 0..1. */
         skyPulse: uniform(0),
         /** The companion galaxy: where it is, (angular radius, its own turn, tilt, _). */
@@ -285,7 +292,10 @@ export function createGalaxyUniforms(textures) {
         /** Ripple slots: (x, z in the galaxy's frame, birth time, strength) + (colour, reach 0..1). */
         lockA: [],
         lockC: [],
-        /** Wave slots: (birth time, fronts, strength, starfire 0..1) + colour. */
+        /**
+         * Wave slots: (birth time, fronts, strength, heat) + colour. Heat (0 for a plain clear, 1
+         * for an eruption, more for each wave of a cascade) widens the fronts.
+         */
         waveA: [],
         waveC: [],
         noiseTex: textures.noise,
@@ -326,25 +336,32 @@ export const gxRippleLight = (u, xz) => {
 
 /**
  * The clear waves at radius `r` of the disc. Returns vec4(colour · front, afterglow): the bright
- * leading fronts (one per cleared line) and the afterglow of everything the wave has passed.
+ * leading fronts (one per cleared line) and the afterglow of everything the wave has passed. A
+ * slot past WAVE_LIVE is skipped (a uniform branch), so the six slots cost only what is running.
  */
 export const gxWaveLight = (u, r) => {
-    let front = vec3(0.0);
-    let glow = float(0.0);
+    const front = vec3(0.0).toVar();
+    const glow = float(0.0).toVar();
     const far = clamp(r.div(WAVE_REACH), 0.0, 1.0);
-    const pass = float(WAVE_TRAVEL).mul(pow(far, 1 / WAVE_SHAPE));
+    const pass = float(WAVE_TRAVEL).mul(pow(far, 1 / WAVE_SHAPE)).toVar();
     for (let i = 0; i < CLEAR_SLOTS; i++) {
         const A = u.waveA[i];
-        const since = u.time.sub(A.x).sub(pass);
-        let f = float(0.0);
-        for (let k = 0; k < 4; k++) {
-            f = f.add(gxBell(since.sub(k * WAVE_FRONT_GAP).div(WAVE_FRONT_WIDTH)).mul(step(k + 0.5, A.y)));
-        }
-        const live = step(0.0, since).mul(A.z);
-        front = front.add(u.waveC[i].mul(f.mul(A.z)));
-        glow = glow.add(exp(max(since, 0.0).div(-WAVE_AFTERGLOW)).mul(live));
+        If(u.time.sub(A.x).lessThan(WAVE_LIVE), () => {
+            const since = u.time.sub(A.x).sub(pass).toVar();
+            // A hotter wave (an eruption, a deeper cascade wave) runs out in wider fronts.
+            const width = A.w.mul(0.35).add(1.0).mul(WAVE_FRONT_WIDTH);
+            let f = float(0.0);
+            for (let k = 0; k < 4; k++) {
+                f = f.add(gxBell(since.sub(k * WAVE_FRONT_GAP).div(width)).mul(step(k + 0.5, A.y)));
+            }
+            const live = step(0.0, since).mul(A.z);
+            front.addAssign(u.waveC[i].mul(f.mul(A.z)));
+            glow.addAssign(exp(max(since, 0.0).div(-WAVE_AFTERGLOW)).mul(live));
+        });
     }
-    return vec4(front, glow);
+    // Waves running out one behind another share one afterglow: never more than one wave's, so a
+    // chain lifts the gas once instead of washing it out (the fronts keep their own light).
+    return vec4(front, min(glow, 1.0));
 };
 
 // ── Materials and geometry ──────────────────────────────────────────────────────
