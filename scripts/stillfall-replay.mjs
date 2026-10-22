@@ -8,7 +8,7 @@
  *   node scripts/stillfall-replay.mjs --file=candidates.json
  *     (a JSON array of { rows, supply, goal, solution }, as puzzle-bank.js entries hold them)
  *
- * The structure's bodies keep their letters; the supply's pieces are numbered 1–4 in the
+ * The structure's bodies keep their letters; the supply's pieces are numbered 1–5 in the
  * order they are dealt.
  */
 import fs from 'node:fs';

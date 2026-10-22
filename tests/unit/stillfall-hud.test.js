@@ -4,7 +4,11 @@
  * the tiers is in stillfall-atlas-model.test.js.
  */
 import { describe, expect, it } from 'vitest';
-import { failureTitle, goalText, outcomeHtml } from '../../src/ui/stillfall/stillfall-hud.js';
+import {
+    failureTitle, goalText, outcomeHtml, supplyStripHtml,
+} from '../../src/ui/stillfall/stillfall-hud.js';
+import { NEXT_QUEUE_SLOTS } from '../../src/ui/next-queue-ui.js';
+import { PIECE_ROWS, pieceGlyphHtml, shapeOutline } from '../../src/ui/stillfall/stillfall-piece-glyphs.js';
 
 const failed = (goal, extra = {}, supply = ['I']) => ({
     puzzle: {
@@ -73,5 +77,55 @@ describe('Stillfall panel', () => {
         expect(one).toContain('data-stillfall-action="retry"');
         expect(one).toContain('Try again');
         expect(outcomeHtml(failed({ type: 'lines', atLeast: 1 }, {}, ['I', 'O', 'T']))).toContain('Take back');
+    });
+
+    it('shows the whole supply when the queue cannot: placed pieces dimmed, the one in hand lit', () => {
+        const playing = (supply, dealt, inHand = supply[dealt] ?? null) => ({
+            puzzle: {
+                id: 'p', title: 'P', lesson: '', goal: { type: 'lines', atLeast: 1 }, supply,
+            },
+            dealt,
+            inHand,
+        });
+        // The piece in hand and the queue's slots show four; the queue says it all.
+        expect(NEXT_QUEUE_SLOTS).toBe(3);
+        expect(supplyStripHtml(playing(['I', 'O', 'T', 'S'], 0))).toBe('');
+        const strip = supplyStripHtml(playing(['T', 'S', 'T', 'O', 'L'], 2));
+        const places = [...strip.matchAll(/stillfall-supply__piece (is-[a-z-]+)/g)].map((match) => match[1]);
+        expect(places).toEqual(['is-placed', 'is-placed', 'is-in-hand', 'is-coming', 'is-coming']);
+        expect(strip).toContain('aria-label="The pieces, in order: T, S, T, O, L"');
+        // Spent, nothing is in hand.
+        const spent = supplyStripHtml(playing(['T', 'S', 'T', 'O', 'L'], 5));
+        expect(spent.match(/is-placed/g)).toHaveLength(5);
+    });
+
+    it('draws each piece as one solid shape, the outline of its four cells', () => {
+        const inside = (corners, px, py) => {
+            let hit = false;
+            corners.forEach(([x1, y1], i) => {
+                const [x2, y2] = corners[(i + 1) % corners.length];
+                if ((y1 > py) !== (y2 > py) && px < x1 + ((py - y1) * (x2 - x1)) / (y2 - y1)) hit = !hit;
+            });
+            return hit;
+        };
+        const sides = {
+            I: 4, O: 4, T: 8, S: 8, Z: 8, J: 6, L: 6,
+        };
+        for (const [key, rows] of Object.entries(PIECE_ROWS)) {
+            const corners = shapeOutline(rows);
+            expect(corners, key).toHaveLength(sides[key]);
+            const area = Math.abs(corners.reduce((sum, [x1, y1], i) => {
+                const [x2, y2] = corners[(i + 1) % corners.length];
+                return sum + x1 * y2 - x2 * y1;
+            }, 0)) / 2;
+            expect(area, key).toBe(4);
+            rows.forEach((row, y) => [...row].forEach((mark, x) => {
+                expect(inside(corners, x + 0.5, y + 0.5), `${key} ${x},${y}`).toBe(mark === '#');
+            }));
+            // One polygon, never a square per cell.
+            const html = pieceGlyphHtml(key, 'glyph');
+            expect(html.match(/<polygon /g), key).toHaveLength(1);
+            expect(html).not.toContain('<i');
+        }
     });
 });

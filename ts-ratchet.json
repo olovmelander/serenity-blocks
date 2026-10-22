@@ -64,6 +64,7 @@
     "src/core/simulation-tick.js",
     "src/core/steam/steam-networking.js",
     "src/core/stillfall/puzzle-bank.js",
+    "src/core/stillfall/stillfall-cascade.js",
     "src/core/stillfall/stillfall-progress.js",
     "src/core/stillfall/stillfall-puzzle.js",
     "src/core/stillfall/stillfall-reach.js",

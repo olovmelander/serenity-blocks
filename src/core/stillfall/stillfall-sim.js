@@ -3,14 +3,16 @@
 /**
  * Pure Stillfall simulation: deal the next piece, list every landing the real controls
  * can reach, lock one, and resolve its cascade with the same resolver the game is
- * differential-tested against (cascade-resolver.js). Nothing here writes a GameState;
- * every step returns a new run.
+ * differential-tested against (cascade-resolver.js). The solver's own steps (runAfter,
+ * outcomeAfter) resolve with stillfall-cascade.js, that resolver's answer on typed arrays,
+ * held to it lock for lock. Nothing here writes a GameState; every step returns a new run.
  */
 
 import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
 import { createBoardGrid, invalidateGhostCache, rebuildBoardGridFromPieces } from '../board.js';
 import { canPlacePiece, rotateShapeMatrix } from '../game.js';
 import { resolveCascade } from '../cascade-resolver.js';
+import { cascadeCellsOnBase, loadCascadeBase, resolveStillfallCascade } from './stillfall-cascade.js';
 import { reachableLandings } from './stillfall-reach.js';
 import { STILLFALL_BOARD_HEIGHT, goalParts } from './stillfall-puzzle.js';
 
@@ -234,15 +236,41 @@ function lockedBodyFor(run, placement) {
 /**
  * The run after a placement, as applyPlacement makes it, for the solver. A lock that
  * completes no row skips the cascade resolver, whose answer for it is known: nothing
- * clears, nothing falls, and the bodies are the ones before plus the new piece.
+ * clears, nothing falls, and the bodies are the ones before plus the new piece. A lock that
+ * clears is resolved by stillfall-cascade.js, resolveCascade's answer without its scoring
+ * and animation bookkeeping (a test holds the two to each other lock for lock).
  * @param {StillfallRun} run
  * @param {StillfallPlacement} placement
  * @returns {StillfallRun}
  */
 export function runAfter(run, placement) {
+    return stepAfter(run, placement).run;
+}
+
+/**
+ * runAfter's run, and the waves and lines its lock set off (the puzzle search records them).
+ * @param {StillfallRun} run
+ * @param {StillfallPlacement} placement
+ * @returns {{ run: StillfallRun, cascadeCount: number, linesCleared: number }}
+ */
+export function stepAfter(run, placement) {
     const before = boardOf(run);
-    if (completesRow(before, placement)) return applyPlacement(run, placement).run;
     const locked = lockedBodyFor(run, placement);
+    if (completesRow(before, placement)) {
+        const resolution = resolveStillfallCascade([...run.lockedPieces, locked], STILLFALL_BOARD_HEIGHT);
+        /** @type {StillfallRun} */
+        const next = {
+            ...run,
+            lockedPieces: resolution.lockedPiecesAfter,
+            dealt: run.dealt + 1,
+            nextPieceId: run.nextPieceId + 1,
+            lines: run.lines + resolution.linesClearedThisTurn,
+            bestWaves: Math.max(run.bestWaves, resolution.cascadeCount),
+        };
+        next.outcome = judge(next);
+        RUN_BOARDS.set(next, resolution.boardAfter);
+        return { run: next, cascadeCount: resolution.cascadeCount, linesCleared: resolution.linesClearedThisTurn };
+    }
     /** @type {StillfallRun} */
     const next = {
         ...run,
@@ -257,25 +285,107 @@ export function runAfter(run, placement) {
         if (y >= 0 && y < grid.length) grid[y][x] = { color: locked.shapeKey, id: locked.pieceId, type: locked.type };
     }
     RUN_BOARDS.set(next, grid);
-    return next;
+    return { run: next, cascadeCount: 0, linesCleared: 0 };
+}
+
+/** The run whose bodies are loaded as the fast cascade's base (the solver tries a run's locks together). */
+/** @type {StillfallRun | null} */
+let baseRun = null;
+
+/**
+ * What judge(runAfter(run, placement)) says, from the cascade's cells, without building the
+ * run after: the solver asks it of every place a last piece could clear a row, where only a
+ * solve matters.
+ * @param {StillfallRun} run an open run
+ * @param {StillfallPlacement} placement
+ * @returns {'open'|'solved'|'failed'}
+ */
+export function outcomeAfter(run, placement) {
+    if (baseRun !== run) {
+        loadCascadeBase(run.lockedPieces, STILLFALL_BOARD_HEIGHT);
+        baseRun = run;
+    }
+    const { cascadeCount, linesClearedThisTurn, cells } = cascadeCellsOnBase(lockedBodyFor(run, placement));
+    const { puzzle } = run;
+    const parts = goalParts(puzzle.goal);
+    const idOf = (/** @type {StillfallGoal} */ part) => puzzle.bodyIds[/** @type {string} */ (part.body)];
+    const present = (/** @type {number} */ id) => cells.indexOf(id) >= 0;
+    if (parts.some((part) => part.type === 'relic-floor' && !present(idOf(part)))) return 'failed';
+    const floor = (puzzle.boardHeight - 1) * COLS;
+    const met = (/** @type {StillfallGoal} */ part) => {
+        if (part.type === 'waves') return Math.max(run.bestWaves, cascadeCount) >= /** @type {number} */ (part.atLeast);
+        if (part.type === 'lines') return run.lines + linesClearedThisTurn >= /** @type {number} */ (part.atLeast);
+        if (part.type === 'clear-all') return cells.every((id) => id === 0);
+        if (part.type === 'seal') return !present(idOf(part));
+        if (part.type === 'relic-floor') return cells.subarray(floor, floor + COLS).indexOf(idOf(part)) >= 0;
+        return false;
+    };
+    if (parts.every(met)) return 'solved';
+    return run.dealt + 1 >= puzzle.supply.length ? 'failed' : 'open';
 }
 
 /**
- * Whether a landing fills the last empty cells of some row, so that its lock clears one.
+ * Whether a landing fills the last empty cells of some row, so that its lock clears one. A
+ * landing's cells are empty, so it fills a row when it has as many cells there as the row has
+ * empty ones.
  * @param {Array<Array<unknown>>} boardGrid the board before the lock
  * @param {{ x: number, y: number, shape: number[][] }} placement
  */
 export function completesRow(boardGrid, placement) {
-    const cells = cellsOf(placement);
-    for (const [, y] of cells) {
+    const { shape } = placement;
+    for (let localY = 0; localY < shape.length; localY += 1) {
+        const y = placement.y + localY;
         if (y < 0 || y >= boardGrid.length) continue;
-        let full = true;
-        for (let x = 0; x < COLS && full; x += 1) {
-            full = boardGrid[y][x] !== null || cells.some(([cx, cy]) => cx === x && cy === y);
-        }
-        if (full) return true;
+        let mine = 0;
+        for (const cell of shape[localY]) if (cell > 0) mine += 1;
+        if (mine === 0) continue;
+        const row = boardGrid[y];
+        let empty = 0;
+        for (let x = 0; x < COLS; x += 1) if (row[x] === null) empty += 1;
+        if (empty === mine) return true;
     }
     return false;
+}
+
+/** A copy of one run's board that couldSolveAfter writes a piece into and takes it out of again. */
+/** @type {Array<Array<unknown>>} */
+let scratchBoard = [];
+/** @type {StillfallRun | null} */
+let scratchOf = null;
+
+/**
+ * Whether the puzzle might still be solved after this landing: false only when the piece in
+ * hand is the one before the last, this landing completes no row (so nothing falls, and the
+ * board after is the run's with the piece added), and no place the last piece could rest and
+ * clear a row on that board solves. The solver asks it before it builds the run after, which
+ * most such landings then never need; the answer is the one searching that run would give.
+ * @param {StillfallRun} run an open run
+ * @param {StillfallPlacement} placement
+ */
+export function couldSolveAfter(run, placement) {
+    if (run.dealt !== run.puzzle.supply.length - 2) return true;
+    const before = boardOf(run);
+    if (completesRow(before, placement)) return true;
+    if (scratchOf !== run) {
+        scratchBoard = before.map((row) => row.slice());
+        scratchOf = run;
+    }
+    const locked = lockedBodyFor(run, placement);
+    const cells = cellsOf(locked).filter(([, y]) => y >= 0 && y < scratchBoard.length);
+    const mark = { color: locked.shapeKey, id: locked.pieceId, type: locked.type };
+    for (const [x, y] of cells) scratchBoard[y][x] = mark;
+    /** @type {StillfallRun} */
+    const next = {
+        ...run,
+        lockedPieces: /** @type {LockedBody[]} */ ([...run.lockedPieces, locked]),
+        dealt: run.dealt + 1,
+        nextPieceId: run.nextPieceId + 1,
+    };
+    try {
+        return lineClearingRests(next, scratchBoard).some((rest) => outcomeAfter(next, rest) === 'solved');
+    } finally {
+        for (const [x, y] of cells) scratchBoard[y][x] = null;
+    }
 }
 
 /**
@@ -397,11 +507,14 @@ function rotationsOf(/** @type {string} */ shapeKey) {
  */
 export function lineClearingRests(run, boardGrid) {
     const shapeKey = /** @type {string} */ (currentShapeKey(run));
+    const rotations = rotationsOf(shapeKey);
     const height = boardGrid.length;
+    // A cell is free when it is in the well (or above it) and empty.
     const free = (/** @type {number} */ x, /** @type {number} */ y) => (
         x >= 0 && x < COLS && y < height && (y < 0 || boardGrid[y][x] === null));
-    /** @type {Map<string, StillfallPlacement>} */
+    /** @type {Map<number, StillfallPlacement>} keyed by the cells, as the footprint would be */
     const found = new Map();
+    const key = [0, 0, 0, 0];
     for (let y = 0; y < height; y += 1) {
         const row = boardGrid[y];
         let first = -1;
@@ -415,20 +528,33 @@ export function lineClearingRests(run, boardGrid) {
         }
         if (empty === 0 || empty > 4 || last - first > 3) continue;
         // A piece that completes the row covers its first gap with one of its cells.
-        rotationsOf(shapeKey).forEach(({ shape, cells }, rotation) => {
+        for (let rotation = 0; rotation < rotations.length; rotation += 1) {
+            const { shape, cells } = rotations[rotation];
             for (const [ax, ay] of cells) {
                 const x = first - ax;
                 const top = y - ay;
-                if (!cells.every(([dx, dy]) => free(x + dx, top + dy))) continue;
-                if (cells.filter(([, dy]) => top + dy === y).length !== empty) continue;
-                if (cells.every(([dx, dy]) => free(x + dx, top + dy + 1))) continue; // it would fall on
+                let room = true;
+                let inRow = 0;
+                let held = false; // some cell rests on a block or the floor: it would not fall on
+                for (let k = 0; k < cells.length && room; k += 1) {
+                    const cx = x + cells[k][0];
+                    const cy = top + cells[k][1];
+                    room = free(cx, cy);
+                    if (cy === y) inRow += 1;
+                    if (!free(cx, cy + 1)) held = true;
+                }
+                if (!room || inRow !== empty || !held) continue;
+                for (let k = 0; k < cells.length; k += 1) key[k] = (top + cells[k][1] + 8) * COLS + x + cells[k][0];
+                key.sort((a, b) => a - b);
+                const cellsKey = ((key[0] * 512 + key[1]) * 512 + key[2]) * 512 + key[3];
+                if (found.has(cellsKey)) continue;
                 const placement = {
                     shapeKey, shape, rotation, x, y: top, actions: [], footprint: '',
                 };
                 placement.footprint = footprintOf(placement);
-                if (!found.has(placement.footprint)) found.set(placement.footprint, placement);
+                found.set(cellsKey, placement);
             }
-        });
+        }
     }
     return [...found.values()];
 }
@@ -447,9 +573,30 @@ export function cellsOf(piece) {
     return cells;
 }
 
+/** `x,y` for each cell from eight rows above the well down, built once. */
+const CELL_NAMES = /** @type {string[]} */ ([]);
+
 /** @param {{ x: number, y: number, shape: number[][] }} piece */
 function footprintOf(piece) {
-    return cellsOf(piece).map(([x, y]) => `${x},${y}`).sort().join(';');
+    /** @type {string[]} */
+    const names = [];
+    const { shape } = piece;
+    for (let localY = 0; localY < shape.length; localY += 1) {
+        const row = shape[localY];
+        for (let localX = 0; localX < row.length; localX += 1) {
+            if (row[localX] <= 0) continue;
+            const x = piece.x + localX;
+            const y = piece.y + localY;
+            const index = (y + 8) * COLS + x;
+            let name = index >= 0 ? CELL_NAMES[index] : undefined;
+            if (name === undefined) {
+                name = `${x},${y}`;
+                if (index >= 0 && x >= 0 && x < COLS) CELL_NAMES[index] = name;
+            }
+            names.push(name);
+        }
+    }
+    return names.sort().join(';');
 }
 
 /** @param {LockedBody[]} pieces */
