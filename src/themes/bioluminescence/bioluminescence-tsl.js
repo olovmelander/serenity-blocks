@@ -17,6 +17,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     Loop,
     abs,
     atan,
@@ -28,6 +29,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     pow,
     sqrt,
@@ -45,6 +47,7 @@ import {
     CLEAR_AFTERGLOW,
     CLEAR_FRONT_GAP,
     CLEAR_FRONT_WIDTH,
+    CLEAR_LIVE,
     CLEAR_REACH,
     CLEAR_SHAPE,
     CLEAR_SLOTS,
@@ -56,6 +59,8 @@ import {
     RING_FADE,
     RING_REACH,
     RING_TAU,
+    SHOCK_FADE,
+    SHOCK_SPEED,
     TERRAIN,
 } from './bioluminescence-core.js';
 
@@ -209,8 +214,24 @@ export function createGrottoUniforms(textures, opts = {}) {
          * that much nearer the middle of the pool (1 = where the plan put it).
          */
         squeeze: uniform(1),
-        /** The Great Bloom: (birth time, strength). */
-        shock: uniform(new THREE.Vector2(-100, 0)),
+        /**
+         * The Great Bloom's ring from the elder across the pool, two of them: (birth time,
+         * strength) each, in xy and zw (a back-to-back sends a second ring after the first).
+         */
+        shock: uniform(new THREE.Vector4(-100, 0, -100, 0)),
+        /**
+         * The pool remembers: a glow every clear's afterglow sits on — what a wave that has
+         * rolled past leaves behind, and the heat of play (the plankton, the mycelium and the
+         * glow-worms read it as they read a wave's afterglow).
+         */
+        glowFloor: uniform(0),
+        /** In a fever the elder's heartbeat rolls across the pool as rings of that glow: how bright. */
+        beatGlow: uniform(0),
+        /**
+         * 0..1: how much of what a cap holds it keeps when a wave takes it. Nothing at rest; a hot
+         * chain lets the caps keep their colours, so the grotto fills with them.
+         */
+        keep: uniform(0),
         /** A T-spin's turn of the air, 0..1. */
         swirl: uniform(0),
         /** 1 while any ring / any clear wave is still in the grotto (the loops are skipped at rest). */
@@ -378,34 +399,78 @@ export const blLockLight = (u, p) => {
     return sum;
 };
 
-/**
- * The clear waves at world point `p`. Returns vec4(colour · front, afterglow): the bright
- * leading fronts (one per cleared line) and the afterglow of everything the wave has passed.
- */
-export const blClearLight = (u, p) => {
-    let front = vec3(0.0);
-    let glow = float(0.0);
-    for (let i = 0; i < CLEAR_SLOTS; i++) {
-        const A = u.clearA[i];
-        const far = clamp(length(p.xz.sub(u.clearH[i])).div(CLEAR_REACH), 0.0, 1.0);
-        const pass = float(CLEAR_TRAVEL).mul(pow(far, 1 / CLEAR_SHAPE));
-        const since = u.time.sub(A.x).sub(pass);
-        let f = float(0.0);
-        for (let k = 0; k < 4; k++) {
-            f = f.add(blBell(since.sub(k * CLEAR_FRONT_GAP).div(CLEAR_FRONT_WIDTH)).mul(step(k + 0.5, A.y)));
-        }
-        const live = step(0.0, since).mul(A.z);
-        front = front.add(u.clearC[i].mul(f.mul(A.z)));
-        glow = glow.add(exp(since.div(-CLEAR_AFTERGLOW)).mul(live));
-    }
-    return vec4(front, glow);
-};
-
 /** The grotto's heartbeat at a point: a swell that leaves the elder and crosses the cave. */
 export const blPulseAt = (u, p) => {
     const d = length(p.xz.sub(vec2(ELDER.x, ELDER.z)));
     return u.pulse.sub(d.mul(0.011)).mul(Math.PI * 2).sin().mul(0.5)
         .add(0.5);
+};
+
+/**
+ * Whether clear slot `i` still has a wave in the grotto: a uniform test, so the branch costs
+ * nothing where the slot is empty.
+ */
+export const blClearSlotLive = (u, i) => u.time.sub(u.clearA[i].x).lessThan(CLEAR_LIVE);
+
+/**
+ * The clear waves at world point `p`. Returns vec4(colour · front, afterglow): the bright
+ * leading fronts (one per cleared line) and the afterglow of everything the wave has passed,
+ * on the glow the pool remembers (`glowFloor`). A slot whose wave has gone is skipped.
+ */
+export const blClearLight = (u, p) => Fn(() => {
+    const front = vec3(0.0).toVar();
+    const glow = float(0.0).toVar();
+    for (let i = 0; i < CLEAR_SLOTS; i++) {
+        If(blClearSlotLive(u, i), () => {
+            const A = u.clearA[i];
+            const far = clamp(length(p.xz.sub(u.clearH[i])).div(CLEAR_REACH), 0.0, 1.0);
+            const pass = float(CLEAR_TRAVEL).mul(pow(far, 1 / CLEAR_SHAPE));
+            const since = u.time.sub(A.x).sub(pass).toVar();
+            let f = float(0.0);
+            for (let k = 0; k < 4; k++) {
+                f = f.add(blBell(since.sub(k * CLEAR_FRONT_GAP).div(CLEAR_FRONT_WIDTH)).mul(step(k + 0.5, A.y)));
+            }
+            front.addAssign(u.clearC[i].mul(f.mul(A.z)));
+            glow.addAssign(exp(since.div(-CLEAR_AFTERGLOW)).mul(step(0.0, since).mul(A.z)));
+        });
+    }
+    // The elder's heartbeat, sharpened into a ring that rolls out across the cave on every beat.
+    const beat = blPulseAt(u, p);
+    const ring = beat.mul(beat).mul(beat.mul(beat));
+    // Waves that overlap add up, but past one wave's worth ever more gently: a long chain lights
+    // the water deeper and longer, never white.
+    const sum = glow.add(u.glowFloor).add(u.beatGlow.mul(ring));
+    const over = max(sum.sub(0.8), 0.0);
+    // (And the fronts the same way: a cascade's keep crossing every surface, so their sum is
+    // held near one bright front.)
+    const peak = max(blMax3(front), 1e-4);
+    const past = max(peak.sub(1.6), 0.0);
+    const lit = front.mul(min(peak, 1.6).add(past.div(past.mul(1.5).add(1.0))).div(peak));
+    return vec4(lit, min(sum, 0.8).add(over.div(over.mul(1.5).add(1.0))));
+})();
+
+/**
+ * The Great Bloom's rings at a point `d` metres from the elder: each a bell `width` wide
+ * running out at SHOCK_SPEED and fading as it goes.
+ */
+export const blShockRing = (u, d, width) => {
+    let sum = float(0.0);
+    for (const [at, strength] of [['x', 'y'], ['z', 'w']]) {
+        const age = u.time.sub(u.shock[at]);
+        sum = sum.add(blBell(d.sub(age.mul(SHOCK_SPEED)).div(width)).mul(exp(age.mul(-SHOCK_FADE)))
+            .mul(step(0.0, age)).mul(u.shock[strength]));
+    }
+    return sum;
+};
+
+/** The same rings as a swell that reaches a point `d` metres from the elder and stays a moment. */
+export const blShockReach = (u, d) => {
+    let sum = float(0.0);
+    for (const [at, strength] of [['x', 'y'], ['z', 'w']]) {
+        const age = u.time.sub(u.shock[at]);
+        sum = sum.add(exp(max(age.sub(d.mul(0.022)), 0.0).mul(-SHOCK_FADE)).mul(step(0.0, age)).mul(u.shock[strength]));
+    }
+    return sum;
 };
 
 // ── Materials and geometry ──────────────────────────────────────────────────────
