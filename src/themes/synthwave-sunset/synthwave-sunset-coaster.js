@@ -241,14 +241,18 @@ function createCoasterMaterial(u, name) {
         const timber = rgb(0x3a2a30).mul(sky).add(rim.mul(0.7)).add(glow.mul(0.5));
         const steel = rgb(0xd8d0dc).mul(sky.add(glow)).add(rim);
         const station = rgb(0xff8ab8).mul(sky.add(rgb(0xffb070, 0.3).mul(u.pierGlow))).add(rim);
-        // The beam: lemon from the lift's foot up to the train while a chain lifts it (the
-        // meter), a trail of light behind the train on a ride (wrapping round the circuit).
+        // The beam: lemon from the lift's foot up to the meter while a chain lifts the train, as
+        // bright as the chain's charge (it drains down the lift when the chain lets go); a trail
+        // of light behind the train on a ride (wrapping round the circuit), longer for a longer
+        // chain.
         const tt = meta.y;
         const lifted = smoothstep(u.coasterFoot.sub(0.01), u.coasterFoot.add(0.01), tt)
             .mul(float(1.0).sub(smoothstep(u.coasterMeter.sub(0.004), u.coasterMeter, tt)))
-            .mul(smoothstep(0.0, 0.02, u.coasterMeter));
+            .mul(smoothstep(0.0, 0.02, u.coasterMeter))
+            .mul(u.coasterCharge ?? float(1.0));
         const behind = fract(u.coasterTrain.sub(tt));
-        const trail = smoothstep(0.0, 0.003, behind).mul(exp(behind.mul(-34.0))).mul(u.coasterRide);
+        const trail = smoothstep(0.0, 0.003, behind).mul(exp(behind.mul(u.coasterTrail ?? float(34.0)).negate()))
+            .mul(u.coasterRide);
         const beamLight = rgb(0xffe46a, 2.6).mul(lifted).add(rgb(0x7ff0d4, 3.0).mul(trail));
         const beam = timber.add(beamLight);
         return select(kind.lessThan(0.5), timber, select(kind.lessThan(1.5), steel, select(kind.lessThan(2.5), station, beam)));
@@ -342,8 +346,9 @@ export function createCoaster(u, opts = {}) {
         for (let k = 0; k < COASTER.cars; k += 1) {
             // Cars trail the lead round the circuit.
             const tk = ((((t - (k * 2.6) / length) % 1) + 1) % 1);
-            curve.getPointAt(tk, p).add(up.clone().multiplyScalar(0.45));
-            tangent.copy(curve.getTangentAt(tk));
+            curve.getPointAt(tk, p);
+            p.y += 0.45;
+            curve.getTangentAt(tk, tangent);
             q.setFromUnitVectors(xAxis, tangent);
             m.compose(p, q, scale);
             train.setMatrixAt(k, m);
