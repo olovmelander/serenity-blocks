@@ -15,8 +15,8 @@ import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/aether-tides/a
 import { POST_LOOK } from '../../src/themes/aether-tides/aether-tides-post.js';
 import { gridFor } from '../../src/themes/aether-tides/aether-tides-fluid.js';
 import {
-    BEAM_ROWS, BEAM_SLOTS, BURST_ROWS, BURST_SLOTS, ECHO_CELLS, ECHO_ROWS, ECHO_SLOTS, FX_ROWS, FxTable,
-    JOIN_DOWN, JOIN_LEFT, JOIN_RIGHT, JOIN_UP, ROW_BEAM, ROW_BURST, ROW_ECHO,
+    BEAM_ROWS, BEAM_SLOTS, BURST_ROWS, BURST_SLOTS, ECHO_CELLS, ECHO_CORNER_FILL, ECHO_ROWS, ECHO_SLOTS, FX_ROWS,
+    FxTable, JOIN_DOWN, JOIN_LEFT, JOIN_RIGHT, JOIN_UP, ROW_BEAM, ROW_BURST, ROW_ECHO,
 } from '../../src/themes/aether-tides/aether-tides-fx.js';
 
 /**
@@ -1908,6 +1908,32 @@ describe('aether tides stardust table', () => {
         expect(table.echoCursor).toBe(0);
         for (let i = 0; i < ECHO_SLOTS; i += 1) expect(rows(i)[2]).toBeLessThan(-1e5);
         expect(allFinite(table.data)).toBe(true);
+    });
+
+    it('marks the echo corners: the bend of a piece is rounded, never filled, and an O is solid', () => {
+        const table = new FxTable();
+        const p = 0.1;
+        // Corners per cell, quadrants 0 up-left, 1 up-right, 2 down-left, 3 down-right (y down).
+        const corners = (cells) => {
+            const slot = table.echo({
+                cells, at: 1, half: 0.046, pitchX: p, color: [1, 1, 1],
+            });
+            const o = (ROW_ECHO + slot * ECHO_ROWS) * 4;
+            return cells.map((_, c) => table.data[o + (4 + c) * 4 + 3]);
+        };
+        const fillet = (q) => 2 ** q;
+        const fill = (q) => ECHO_CORNER_FILL * 2 ** q;
+        // A T (stem up): the middle is joined left, right and up, with nothing on its diagonals,
+        // so both inner corners above it are rounded; the arms and the stem have none.
+        expect(corners([[0, -p], [-p, 0], [0, 0], [p, 0]])).toEqual([0, 0, fillet(0) + fillet(1), 0]);
+        // An L: one bend, at the foot.
+        expect(corners([[0, 0], [0, p], [0, 2 * p], [p, 2 * p]])).toEqual([0, 0, fillet(1), 0]);
+        // An S: each middle cell bends once, under the top row's overhang and over the bottom's.
+        expect(corners([[p, 0], [2 * p, 0], [0, p], [p, p]])).toEqual([fillet(3), 0, 0, fillet(0)]);
+        // An O: every cell's diagonal is the piece's own, so the middle is filled, not rounded.
+        expect(corners([[0, 0], [p, 0], [0, p], [p, p]])).toEqual([fill(3), fill(2), fill(1), fill(0)]);
+        // An I has no corners at all.
+        expect(corners([[0, 0], [p, 0], [2 * p, 0], [3 * p, 0]])).toEqual([0, 0, 0, 0]);
     });
 });
 
