@@ -148,6 +148,15 @@ export function createLipRain({
 // ── Thrown spray ────────────────────────────────────────────────────────────────────────────
 
 const POOL_STRIDE = 12;
+/**
+ * How many drops from the write cursor a new drop looks through for one that is spent (gone, or
+ * in the sea). With none spent among them it takes the one nearest its end and the cursor moves
+ * past them all, so a throw on top of a held quad's throw skips over it to the spent drops beyond
+ * (touching a drop or two of it on the way), and when the pool is truly full it thins what hangs
+ * in the air instead of cutting a hole in it. A spent drop at the cursor (the usual case) costs
+ * one look.
+ */
+const POOL_PROBE = 256;
 
 /** `rgb` leaned toward one colour of the spectrum (`hue` in radians) by `amount`. */
 function spectrum(hue, amount, rgb, out) {
@@ -160,6 +169,9 @@ function spectrum(hue, amount, rgb, out) {
 /**
  * A ring buffer of drops thrown by events. Each is written once, when it leaves:
  * (x, y, z, birth), (vx, vy, vz, size), (r, g, b, life); the vertex stage flies it from there.
+ * The cursor goes round in turn, but a new drop takes the first spent drop a few places ahead of
+ * it, or, with none spent there, the one nearest its end: a drop still in the air is overwritten
+ * only when every drop near the cursor is still in the air too.
  */
 export class SprayPool {
     constructor({ tier, U, seed = 5 }) {
@@ -168,6 +180,8 @@ export class SprayPool {
         this.seed = seed;
         this.rand = mulberry32(seed * 104729 + 3);
         this.cursor = 0;
+        /** The moment the drops being thrown leave (what is still in the air is read against it). */
+        this.now = 0;
         this.data = new Float32Array(this.count * POOL_STRIDE);
         const { base, geometry } = quads(this.count);
         this.buffer = new THREE.InstancedInterleavedBuffer(this.data, POOL_STRIDE);
@@ -205,6 +219,7 @@ export class SprayPool {
     reset() {
         this.rand = mulberry32(this.seed * 104729 + 3);
         this.cursor = 0;
+        this.now = 0;
         // Born long ago: nothing is in the air.
         for (let i = 0; i < this.count; i += 1) {
             const at = i * POOL_STRIDE;
@@ -215,10 +230,42 @@ export class SprayPool {
         this.buffer.needsUpdate = true;
     }
 
+    /** Seconds of flight drop `i` still has to give at `now` (≤ 0: spent, or gone into the sea). */
+    remaining(i, now) {
+        const d = this.data;
+        const at = i * POOL_STRIDE;
+        const t = now - d[at + 3];
+        const left = d[at + 11] - t;
+        if (left <= 0 || t <= 0) return left;
+        // Fallen into the water: drawn no more (the shader fades it out under the surface).
+        const y = d[at + 1] + d[at + 5] * t - 0.5 * GRAVITY * t * t;
+        return y < -0.05 ? 0 : left;
+    }
+
+    /** The slot the next drop takes; the cursor moves on past it (or past every drop looked at). */
+    slotFor(now) {
+        const probe = Math.min(POOL_PROBE, this.count);
+        let best = this.cursor;
+        let least = Infinity;
+        for (let k = 0; k < probe; k += 1) {
+            const i = (this.cursor + k) % this.count;
+            const left = this.remaining(i, now);
+            if (left <= 0) {
+                this.cursor = (i + 1) % this.count;
+                return i;
+            }
+            if (left < least) {
+                least = left;
+                best = i;
+            }
+        }
+        this.cursor = (this.cursor + probe) % this.count;
+        return best;
+    }
+
     /** One drop, leaving (x, y, z) at `time` with a velocity. */
     put(time, x, y, z, vx, vy, vz, size, rgb, life) {
-        const at = this.cursor * POOL_STRIDE;
-        this.cursor = (this.cursor + 1) % this.count;
+        const at = this.slotFor(this.now) * POOL_STRIDE;
         const d = this.data;
         d[at] = x;
         d[at + 1] = y;
@@ -245,6 +292,7 @@ export class SprayPool {
         toward = 0,
     } = {}) {
         const { rand } = this;
+        this.now = time;
         for (let k = 0; k < n; k += 1) {
             const a = rand() * TAU;
             const speed = out[0] + (out[1] - out[0]) * rand();
@@ -276,6 +324,7 @@ export class SprayPool {
         delay = 0.3, flown = 0.9, beads = 0, prism = 0, spread = 1.6,
     } = {}) {
         const { rand } = this;
+        this.now = time;
         const edge = { x: 0, y: 0, z: 0 };
         const inner = { x: 0, y: 0, z: 0 };
         const tint = [1, 1, 1];
@@ -314,6 +363,7 @@ export class SprayPool {
         d = 4, n = 90, turn = 1.9, ahead = 1.5, size = 0.04, rgb = [0.8, 1, 0.95], life = [2.4, 3.6],
     } = {}) {
         const { rand } = this;
+        this.now = time;
         const at = { x: 0, y: 0, z: 0 };
         const next = { x: 0, y: 0, z: 0 };
         for (let k = 0; k < n; k += 1) {
