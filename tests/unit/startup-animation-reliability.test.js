@@ -1218,8 +1218,10 @@ describe('boot warp startup decision', () => {
             disposeVisuals: vi.fn(),
         };
 
+        const introAnimation = { revealTitle: vi.fn(() => true) };
         const result = await playBootWarpStartupSequence({
             urlParams: new URLSearchParams('noBootWarp=1'),
+            introAnimation,
             dismissStartupShell,
             startupPipeline,
         });
@@ -1258,9 +1260,10 @@ describe('boot warp startup decision', () => {
 
         const introAnimation = {
             rendererReady: Promise.resolve(),
+            titleReady: Promise.resolve(),
             getWebGPUDevice: () => null,
             postponeTitleSafety: vi.fn(),
-            revealTitle: vi.fn(),
+            revealTitle: vi.fn(() => true),
         };
         const result = await playBootWarpStartupSequence({
             introAnimation,
@@ -1277,6 +1280,120 @@ describe('boot warp startup decision', () => {
         });
         expect(startupPipeline.trackVisual).not.toHaveBeenCalled();
         expect(rendererMocks.bootRendererInit).not.toHaveBeenCalled();
+    });
+
+    it('holds the ident until the intro title exists before the wordmark travels (phone, no warp)', async () => {
+        const { playBootWarpStartupSequence } = await import(
+            '../../src/ui/boot-warp-orchestrator.js'
+        );
+        const titleReady = deferred();
+        const dismissStartupShell = vi.fn();
+        const introAnimation = {
+            titleReady: titleReady.promise,
+            postponeTitleSafety: vi.fn(),
+            revealTitle: vi.fn(() => true),
+        };
+        const startupPipeline = {
+            signal: new AbortController().signal,
+            waitForStep: (value) => Promise.resolve(value),
+        };
+
+        const sequence = playBootWarpStartupSequence({
+            urlParams: new URLSearchParams('noBootWarp=1'),
+            introAnimation,
+            dismissStartupShell,
+            startupPipeline,
+        });
+        // The intro is still starting its renderer: its title is not built yet.
+        await vi.waitFor(() => expect(introAnimation.postponeTitleSafety).toHaveBeenCalled());
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(introAnimation.revealTitle).not.toHaveBeenCalled();
+        expect(dismissStartupShell).not.toHaveBeenCalled();
+
+        titleReady.resolve();
+        await sequence;
+        expect(introAnimation.revealTitle).toHaveBeenCalledExactlyOnceWith('css-fallback', {
+            deferInteraction: true,
+            connectDurationMs: 3200,
+        });
+        expect(dismissStartupShell).toHaveBeenCalledExactlyOnceWith('intro-begin', { quick: true, durationMs: 3200 });
+    });
+
+    it('fades the ident out whole when its wordmark has no title to land on', async () => {
+        const { playBootWarpStartupSequence } = await import(
+            '../../src/ui/boot-warp-orchestrator.js'
+        );
+        const dismissStartupShell = vi.fn();
+        // Already revealed (the safety fired), or no title: the wordmark cannot travel.
+        const introAnimation = { titleReady: Promise.resolve(), revealTitle: vi.fn(() => false) };
+
+        await playBootWarpStartupSequence({
+            urlParams: new URLSearchParams('noBootWarp=1'),
+            introAnimation,
+            dismissStartupShell,
+            startupPipeline: { waitForStep: (value) => Promise.resolve(value) },
+        });
+
+        expect(dismissStartupShell).toHaveBeenCalledExactlyOnceWith('intro-begin', {});
+    });
+
+    it('bounds the wait for the intro title', async () => {
+        const { waitForIntroTitle } = await import('../../src/ui/boot-warp-startup.js');
+        await expect(waitForIntroTitle({ titleReady: new Promise(() => {}) }, { timeoutMs: 5 }))
+            .resolves.toBe(false);
+        await expect(waitForIntroTitle({ titleReady: Promise.resolve() })).resolves.toBe(true);
+        await expect(waitForIntroTitle({})).resolves.toBe(true);
+    });
+
+    it('connects the loading wordmark only to a title that exists', async () => {
+        const dom = installDom();
+        dom.getElementById = (id) => dom.body.querySelector(`#${id}`);
+        // The handoff writes its landing geometry as custom properties.
+        dom.createElement = (tagName) => {
+            const element = createElement(tagName);
+            element.style.setProperty = (key, value) => { element.style[key] = value; };
+            return element;
+        };
+        const shell = dom.createElement('div');
+        shell.id = 'startup-shell';
+        const name = dom.createElement('div');
+        name.className = 'startup-logo__name';
+        const wordmark = dom.createElement('div');
+        wordmark.className = 'startup-logo__name-text';
+        name.appendChild(wordmark);
+        shell.appendChild(name);
+        dom.body.appendChild(shell);
+        const { IntroAnimation } = await import('../../src/ui/intro-animation.js');
+        const makeIntro = () => {
+            const intro = new IntroAnimation();
+            intro.titleDeferred = true;
+            intro.titleRevealed = false;
+            intro.interactionEnabled = false;
+            intro.initRenderer = vi.fn().mockResolvedValue('failed');
+            return intro;
+        };
+
+        // Revealed while the renderer is still starting: there is no title to travel into yet.
+        const early = makeIntro();
+        expect(early.revealTitle('css-fallback', { deferInteraction: true, connectDurationMs: 3200 })).toBe(false);
+        await early.createIntroHTML();
+        expect(early.interactionLockedUntil).toBe(0);
+        expect(early.container.querySelector('.intro-title-container').classList.contains('intro-title-connected'))
+            .toBe(false);
+
+        const intro = makeIntro();
+        let titleReady = false;
+        intro._titleReadyResolve = () => {
+            titleReady = Boolean(intro.container.querySelector('.intro-title'));
+        };
+        await intro.createIntroHTML();
+        expect(titleReady).toBe(true);
+        expect(intro.revealTitle('css-fallback', { deferInteraction: true, connectDurationMs: 3200 })).toBe(true);
+        expect(intro.container.querySelector('.intro-title-container').classList.contains('intro-title-connected'))
+            .toBe(true);
+        expect(intro.interactionLockedUntil).toBeGreaterThan(0);
+        intro.stopWordmarkHandoff();
     });
 });
 

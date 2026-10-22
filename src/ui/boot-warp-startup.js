@@ -4,6 +4,10 @@ import { markStartup } from './startup-debug.js';
 import { setIdentArming } from './startup-ident-hold.js';
 
 export const INTRO_RENDERER_READY_TIMEOUT_MS = 8000;
+// How long the CSS fallback holds the ident for the intro's title to exist (waitForIntroTitle).
+// A phone reaches the fallback while the intro is still fetching and starting its renderer; past
+// this the ident fades out on its own rather than holding the boot.
+export const INTRO_TITLE_READY_TIMEOUT_MS = 8000;
 // Prewarm now waits for the GPU to actually EXECUTE the primed frames (see
 // BootWarpTransition._prewarmInternal), so a cold Dawn/driver pipeline cache spends its
 // real shader-compile time here — measured ~3s on a cold cache — instead of stalling the
@@ -606,4 +610,30 @@ export async function waitForIntroRendererDecision(introAnimation, options = {})
     }
 
     return { canAttemptWarp: true, reason: 'intro-renderer-settled' };
+}
+
+/**
+ * Wait (bounded) for the intro's title to be in the document, so the loading wordmark has a
+ * title to travel into. An intro without the gate (older callers, test doubles) counts as ready.
+ *
+ * @param {object} introAnimation
+ * @param {{ timeoutMs?: number, setTimeoutFn?: Function, clearTimeoutFn?: Function }} [options]
+ * @returns {Promise<boolean>} false when the wait ran out
+ */
+export async function waitForIntroTitle(introAnimation, options = {}) {
+    const titleReady = introAnimation?.titleReady;
+    if (!titleReady || typeof titleReady.then !== 'function') return true;
+    const timeoutMs = options.timeoutMs ?? INTRO_TITLE_READY_TIMEOUT_MS;
+    const setTimeoutFn = options.setTimeoutFn || setTimeout;
+    const clearTimeoutFn = options.clearTimeoutFn || clearTimeout;
+
+    let timerId = null;
+    const ready = await Promise.race([
+        Promise.resolve(titleReady).then(() => true, () => true),
+        new Promise((resolve) => {
+            timerId = setTimeoutFn(() => resolve(false), timeoutMs);
+        }),
+    ]);
+    if (timerId !== null) clearTimeoutFn(timerId);
+    return ready;
 }
