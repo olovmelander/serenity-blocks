@@ -3,6 +3,45 @@ import { canWriteLegacySimulationResults } from './single-player-result-compatib
 import { getOdysseyCampaignSummary } from '../odyssey/odyssey-campaign-summary.js';
 import { odysseyCharmsUsed } from '../odyssey/odyssey-charm-use.js';
 
+/**
+ * An orb's end that throws (the save, the campaign summary, the results sheet) must not leave
+ * the attempt retired under a frozen well with no sheet: it is logged and the journey goes
+ * back to the map.
+ */
+export async function settleOdysseyLevelEnd(mode, ending) {
+    try {
+        return await ending;
+    } catch (error) {
+        console.error('[Odyssey] Ending the orb failed:', error);
+        try {
+            await mode.returnToBoard();
+        } catch (returnError) {
+            console.error('[Odyssey] Returning to the map failed:', returnError);
+        }
+        return undefined;
+    }
+}
+
+/**
+ * A Finish pressed mid-cascade waits for the cascade, then finishes. Retiring the attempt
+ * fences its callbacks, so the cascade's waves added their score but not their cascades or
+ * depth, and an orb's third star can need them.
+ * @returns {boolean} whether the finish was put off
+ */
+export function deferFinishPastCascade(mode, session) {
+    const { gameState } = session;
+    if (!gameState.isProcessingPhysics || !gameState.latestPhysicsPromise) return false;
+    if (!session.finishAfterCascade) {
+        session.finishAfterCascade = Promise.resolve(gameState.latestPhysicsPromise)
+            .catch(() => {})
+            .then(() => {
+                session.finishAfterCascade = null;
+                mode._finishVictoryLap();
+            });
+    }
+    return true;
+}
+
 /** Save one retired attempt before choosing the next step of the journey. */
 export async function completeOdysseyLevel(mode, results) {
     // Prevent multiple completions
