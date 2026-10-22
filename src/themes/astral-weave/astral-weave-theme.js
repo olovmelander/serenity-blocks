@@ -159,9 +159,6 @@ export default class AstralWeaveTheme extends BaseTheme {
         this._sim = {
             time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
-        this._post = {
-            heart: null, flash: 0, kick: 0,
-        };
         this._calmRects = [];
     }
 
@@ -229,6 +226,8 @@ export default class AstralWeaveTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                perfect: (c) => this.world?.onPerfect(c),
+                spin: (c) => this.world?.onSpin(c),
                 combo: (n, player) => this.world?.onCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
             },
@@ -581,11 +580,8 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.easeCalmZones(wall);
 
         if (this.post) {
-            const p = this._post;
-            p.heart = world.getHeartScreen();
-            p.flash = world.flash;
-            p.kick = world.kick;
-            this.post.update(p);
+            // Flash and kick, and the bloom and iris that follow the heat of play.
+            this.post.update(world.getPostState());
             this.post.render();
         } else if (this.passThrough) {
             this.passThrough.render();
