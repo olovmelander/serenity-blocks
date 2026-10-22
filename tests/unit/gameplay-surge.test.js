@@ -94,6 +94,25 @@ describe('Swell', () => {
         });
     });
 
+    it('never shows a scheduled hit early, even when later hits arrive for the same moment or after it', () => {
+        [0, 0.05].forEach((attack) => {
+            const s = new Swell({ attack, release: 1, ceiling: 2 });
+            s.hit(0.3, 0);
+            expect(s.valueAt(1)).toBeGreaterThan(0);
+            const before = s.valueAt(1);
+            // A quad that holds its breath: its light is due at 1.24, then more lands on and after it.
+            s.hit(1, 1.24);
+            s.hit(0.5, 1.24);
+            s.hit(0.4, 1.4);
+            s.hit(0.2, 1.01);
+            // Read during the hush: nothing from the future.
+            expect(s.valueAt(1)).toBeCloseTo(before, 9);
+            expect(s.valueAt(1.2)).toBeLessThan(before + 0.2 * 1.01);
+            // Then it all lands.
+            expect(s.valueAt(1.5)).toBeGreaterThan(1.2);
+        });
+    });
+
     it('waits for a hit scheduled ahead, and is the same whatever order it is read in', () => {
         const s = new Swell({ attack: 0.1, release: 1 });
         s.hit(0.5, 0);

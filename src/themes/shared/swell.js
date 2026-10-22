@@ -12,15 +12,18 @@
  *
  * Exponentials forget their past, so the whole history is two numbers rebased to the last folded
  * hit: no lists, no allocation. A hit may be scheduled a little ahead (a theme that holds its
- * breath before a quad lands); up to PENDING of them wait and join on time. Reading is a pure
- * function of the hits and the time, as long as it is not earlier than the last folded hit.
+ * breath before a quad lands); up to PENDING of them wait and join only once a reading has reached
+ * their time, so a reading never sees light that has not happened yet. Reading is a pure function
+ * of the hits and the time, as long as it is not earlier than the last folded hit.
  *
  * The usual fix for a single-slot envelope (`x.at = now; x.strength = s`, read as
  * `strength * exp(-(now - at) * k)`) is a Swell with `release: 1 / k` and `hit(s, now)`.
  */
 
-/** Late hits waiting for their time, per swell. */
-const PENDING = 4;
+/** Hits waiting for their time (scheduled ahead of the last reading), per swell. */
+const PENDING = 8;
+/** Hits this close in time wait as one. */
+const SAME = 1e-6;
 /** Below this a swell reads as at rest. */
 const REST = 1e-5;
 
@@ -72,6 +75,8 @@ export class Swell {
         this.t0 = -Infinity;
         this.pendingAt = new Float64Array(PENDING).fill(Infinity);
         this.pendingAmount = new Float64Array(PENDING);
+        /** The latest time read: the present. Only hits up to it join the history. */
+        this.present = -Infinity;
     }
 
     /** Folded history alone at time `t` (≥ t0), unsoftened. */
@@ -162,9 +167,9 @@ export class Swell {
         if (!(amount > 0) || !Number.isFinite(at)) return;
         // Hits never go back in time: one stamped before the last joins it there.
         const when = Math.max(at, this.t0);
-        // Time only moves forward: every waiting hit due by then joins the history first, so only
-        // hits still ahead of this one wait.
-        this._settle(when);
+        // Waiting hits that are due by now (both this hit's time and the present) join the history
+        // first. A hit still ahead of the present never does: a reading before it must not see it.
+        this._settle(Math.min(when, this.present));
         const bounded = this._bounded(amount, when);
         if (!(bounded > 0)) return;
         if (when <= this.t0) {
@@ -173,10 +178,12 @@ export class Swell {
         }
         let slot = -1;
         for (let i = 0; i < PENDING; i += 1) {
-            if (this.pendingAt[i] === Infinity) {
-                slot = i;
-                break;
+            if (Math.abs(this.pendingAt[i] - when) <= SAME) {
+                // The same moment: they wait as one.
+                this.pendingAmount[i] += bounded;
+                return;
             }
+            if (slot < 0 && this.pendingAt[i] === Infinity) slot = i;
         }
         if (slot < 0) {
             // Queue full: the earliest waiting hit joins now, making room.
@@ -193,6 +200,7 @@ export class Swell {
     /** Unsoftened value at `now` (history plus every waiting hit already due). */
     rawAt(now) {
         if (!Number.isFinite(now)) return 0;
+        if (now > this.present) this.present = now;
         let value = now >= this.t0 ? this._base(now) : this._base(this.t0);
         for (let i = 0; i < PENDING; i += 1) {
             if (this.pendingAt[i] <= now) value += this._single(this.pendingAmount[i], this.pendingAt[i], now);
@@ -215,5 +223,6 @@ export class Swell {
         this.t0 = -Infinity;
         this.pendingAt.fill(Infinity);
         this.pendingAmount.fill(0);
+        this.present = -Infinity;
     }
 }
