@@ -368,7 +368,9 @@ export default class AuroraTheme extends BaseTheme {
         }
         this.world.update(this.time, dt, this.pointer);
         const { director } = this.world;
-        this.post?.update({ activity: director.activity, surge: director.surge });
+        this.post?.update({
+            activity: director.activity, surge: director.surge, heat: director.heatLevel, fever: director.heatFever,
+        });
     }
 
     renderFrame() {

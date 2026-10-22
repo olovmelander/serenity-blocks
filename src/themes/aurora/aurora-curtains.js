@@ -24,7 +24,7 @@ import {
     uniformArray, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    AURORA_ARCS, AURORA_GEOMETRY, AURORA_MEANDERS, BILLOW, CORONA_ARC_INDEX, EXCITATION, MEANDER_REACH,
+    AURORA_ARCS, AURORA_GEOMETRY, AURORA_MEANDERS, BILLOW, CORONA_ARC_INDEX, EXCITATION, MEANDER_REACH, SWEEP,
     envelopePhase, meanderPhase,
 } from './aurora-field.js';
 import { AURORA_COLORS } from './aurora-palette.js';
@@ -113,8 +113,14 @@ export class AuroraCurtains {
             fringe: uniform(0.08),
             violet: uniform(0.12),
             surge: uniform(0),
-            sweep: uniform(new THREE.Vector2(-200, 0)),
+            // SWEEP.slots bands climbing the rays: altitude above the border km, gain, 1/width.
+            sweep: uniformArray(
+                Array.from({ length: SWEEP.slots }, () => new THREE.Vector4(-200, 0, 1 / SWEEP.width, 0)),
+                'vec4',
+            ),
             diffuse: uniform(1),
+            // How hard the brightest folds compress along their own hue (the storm raises it).
+            compress: uniform(0.3),
             tint: uniform(new THREE.Vector4(0, 0, 0, 0)),
             arcGain: uniformArray(AURORA_ARCS.map((arc) => arc.gain), 'float'),
             // Per arc, BILLOW.slots travelling waves in the fabric: centre km, amplitude km, 1/width.
@@ -204,7 +210,7 @@ export class AuroraCurtains {
             });
             // Compress highlights along their own hue, so the brightest folds saturate
             // toward their colour instead of clipping to white further down the chain.
-            light.divAssign(dot(light, vec3(LUMA[0], LUMA[1], LUMA[2])).mul(0.3).add(1));
+            light.divAssign(dot(light, vec3(LUMA[0], LUMA[1], LUMA[2])).mul(this.uniforms.compress).add(1));
             return vec4(this.encode(min(light, 16)), 1);
         })();
     }
@@ -394,13 +400,22 @@ export class AuroraCurtains {
                                 hue,
                                 excited.mul(0.85),
                             );
-                            const sweepOffset = xh.sub(u.sweep.x).div(46);
-                            const sweep = exp(sweepOffset.mul(sweepOffset).negate()).mul(u.sweep.y);
+                            // Bands climbing the rays; each runs its course, so a cascade's
+                            // waves rise one above the other instead of restarting one band.
+                            let sweep = float(0);
+                            for (let slot = 0; slot < SWEEP.slots; slot += 1) {
+                                const sweepBand = u.sweep.element(slot);
+                                const sweepOffset = xh.sub(sweepBand.x).mul(sweepBand.z);
+                                sweep = sweep.add(exp(sweepOffset.mul(sweepOffset).negate()).mul(sweepBand.y));
+                            }
+                            // Where a pulse holds the curtain, the storm's own layers give way to
+                            // its colour: an emerald wave under a pink hem would sum toward white.
+                            const yields = excited.mul(-0.55).add(1);
                             const emission = body.mul(green.mul(excited.mul(0.4).add(1)))
                                 .add(mix(vec3(0.5, 0.36, 0.24), hue, excited.mul(0.6)).mul(hem.mul(0.55)))
-                                .add(triple(AURORA_COLORS.crown).mul(crown))
-                                .add(triple(AURORA_COLORS.fringe).mul(fringe))
-                                .add(triple(AURORA_COLORS.violet).mul(violet))
+                                .add(triple(AURORA_COLORS.crown).mul(crown.mul(excited.mul(-0.35).add(1))))
+                                .add(triple(AURORA_COLORS.fringe).mul(fringe.mul(yields)))
+                                .add(triple(AURORA_COLORS.violet).mul(violet.mul(yields)))
                                 .mul(striation.mul(patch).mul(u.surge.mul(0.3).add(1).add(sweep.mul(0.6))))
                                 .mul(excited.mul(rays).mul(0.25).add(1));
                             sum.addAssign(emission.mul(hit.weight.mul(dt).mul(0.25)));

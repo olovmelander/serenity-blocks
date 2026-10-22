@@ -6,6 +6,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { AuroraAir } from './aurora-air.js';
@@ -28,6 +29,12 @@ const FOCUS_DISTANCE = 60;
 /** Rings land on the lake between these distances from the eye. */
 const RIPPLE_NEAR = 44;
 const RIPPLE_FAR = 200;
+/** Meteors waiting their turn for a free slot: a fever's volleys become a shower. */
+const METEOR_QUEUE = 16;
+/** Seconds between the meteors of one volley, so they never start on the same frame. */
+const VOLLEY_GAP = 0.13;
+/** A meteor waits at most this long for a free slot, then takes the one furthest on. */
+const METEOR_PATIENCE = 1.5;
 
 export class AuroraWorld {
     constructor({
@@ -116,8 +123,10 @@ export class AuroraWorld {
             pointerScale: 0.2,
             idlePhase: 1.3,
         });
-        this.meteorFrom = [0, 1, 0];
-        this.meteorTo = [0, 1, 0];
+        this.meteorQueue = Array.from({ length: METEOR_QUEUE }, () => ({
+            at: Infinity, from: [0, 1, 0], to: [0, 1, 0], duration: 1, brightness: 1, warmth: 0,
+        }));
+        this.lastMeteorAt = -Infinity;
         this.tangentX = 1;
         this.prepareCamera(camera.aspect || 16 / 9);
         this.applyDirector();
@@ -185,7 +194,11 @@ export class AuroraWorld {
         curtain.violet.value = director.violet;
         curtain.surge.value = director.surge;
         curtain.diffuse.value = director.diffuse;
-        curtain.sweep.value.set(director.sweepAltitude, director.sweepGain);
+        curtain.compress.value = director.compress;
+        const bands = director.sweepBands;
+        for (let i = 0; i < curtain.sweep.array.length; i += 1) {
+            curtain.sweep.array[i].set(bands[i * 4], bands[i * 4 + 1], bands[i * 4 + 2], 0);
+        }
         curtain.tint.value.set(director.tint[0], director.tint[1], director.tint[2], director.tint[3]);
         for (let i = 0; i < director.arcGain.length; i += 1) curtain.arcGain.array[i] = director.arcGain[i];
         for (let i = 0; i < curtain.billow.array.length; i += 1) {
@@ -215,28 +228,72 @@ export class AuroraWorld {
                 ripple.speed,
             );
         }
-        for (let i = 0; i < director.meteorCount; i += 1) {
-            const meteor = director.meteors[i];
-            const from = this.meteorFrom;
-            const to = this.meteorTo;
-            from[0] = Math.cos(meteor.fromElevation) * Math.sin(meteor.fromAzimuth);
-            from[1] = Math.sin(meteor.fromElevation);
-            from[2] = -Math.cos(meteor.fromElevation) * Math.cos(meteor.fromAzimuth);
-            to[0] = Math.cos(meteor.toElevation) * Math.sin(meteor.toAzimuth);
-            to[1] = Math.sin(meteor.toElevation);
-            to[2] = -Math.cos(meteor.toElevation) * Math.cos(meteor.toAzimuth);
-            // Stagger a volley so its meteors never start on the same frame.
-            this.sky.launchMeteor(time + i * 0.13, from, to, {
-                duration: meteor.duration, brightness: meteor.brightness, warmth: meteor.warmth,
-            });
-        }
+        for (let i = 0; i < director.meteorCount; i += 1) this.queueMeteor(director.meteors[i], time);
+        this.launchDueMeteors(time);
         if (director.shakeAmount > 0) this.rig.shake(director.shakeAmount, director.shakeDuration);
+    }
+
+    /**
+     * Queue one of the director's meteors, a volley gap after the last one queued. A full
+     * queue launches its earliest meteor now to make room: no meteor is ever dropped.
+     */
+    queueMeteor(meteor, time) {
+        let entry = null;
+        for (const waiting of this.meteorQueue) {
+            if (waiting.at === Infinity) {
+                entry = waiting;
+                break;
+            }
+        }
+        if (!entry) {
+            entry = this.earliestMeteor();
+            this.launchQueued(entry, time);
+        }
+        // A clock that went back (a seek) starts the queue afresh.
+        const after = this.lastMeteorAt + VOLLEY_GAP;
+        entry.at = after > time && after < time + METEOR_QUEUE * VOLLEY_GAP * 2 ? after : time;
+        this.lastMeteorAt = entry.at;
+        const { from, to } = entry;
+        from[0] = Math.cos(meteor.fromElevation) * Math.sin(meteor.fromAzimuth);
+        from[1] = Math.sin(meteor.fromElevation);
+        from[2] = -Math.cos(meteor.fromElevation) * Math.cos(meteor.fromAzimuth);
+        to[0] = Math.cos(meteor.toElevation) * Math.sin(meteor.toAzimuth);
+        to[1] = Math.sin(meteor.toElevation);
+        to[2] = -Math.cos(meteor.toElevation) * Math.cos(meteor.toAzimuth);
+        entry.duration = meteor.duration;
+        entry.brightness = meteor.brightness;
+        entry.warmth = meteor.warmth;
+    }
+
+    earliestMeteor() {
+        let first = this.meteorQueue[0];
+        for (const waiting of this.meteorQueue) if (waiting.at < first.at) first = waiting;
+        return first;
+    }
+
+    launchQueued(entry, time) {
+        this.sky.launchMeteor(time, entry.from, entry.to, {
+            duration: entry.duration, brightness: entry.brightness, warmth: entry.warmth,
+        });
+        entry.at = Infinity;
+    }
+
+    /** Start the meteors that are due, each as a slot comes free (or once it has waited long enough). */
+    launchDueMeteors(time) {
+        for (;;) {
+            const entry = this.earliestMeteor();
+            if (!(entry.at <= time)) return;
+            if (!this.sky.hasFreeMeteorSlot(time) && time - entry.at < METEOR_PATIENCE) return;
+            this.launchQueued(entry, time);
+        }
     }
 
     update(time, dt = 0, pointer = null) {
         if (this.disposed || !Number.isFinite(time) || !Number.isFinite(dt)) return;
         this.time = time;
         this.uniforms.time.value = time;
+        // Reduce flashing (ADR-0021) quiets the curtains pulsing in the rhythm of a quick hand.
+        this.director.flashing = flashScale();
         this.director.update(dt);
         this.drainDirector();
         this.applyDirector();
@@ -259,6 +316,8 @@ export class AuroraWorld {
         if (this.disposed) return;
         this.time = 0;
         this.director.reset();
+        for (const waiting of this.meteorQueue) waiting.at = Infinity;
+        this.lastMeteorAt = -Infinity;
         this.sky.resetMeteors();
         this.landscape.resetRipples();
         this.rig.reset();
