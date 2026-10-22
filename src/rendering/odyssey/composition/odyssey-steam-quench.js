@@ -218,15 +218,21 @@ const _fogWarm = new THREE.Color();
 const _fogLit = new THREE.Color();
 const _fogShadow = new THREE.Color();
 const STEAM_FOG_FLASH = new THREE.Color(1.0, 0.97, 0.94);
-const STEAM_SHADOW_COOL = new THREE.Color(0.20, 0.25, 0.29);
+// SMOKE, THEN LIGHT (audit pass, 2026-10-22). The vapour's AVERAGE is pinned to the cavern's
+// brightness (the luminance cap, the 1->2 seam gate), and a dim average of near-equal lit and
+// shadowed vapour is one flat brown — the last 40 % of the climb read as a featureless olive
+// aperture and then brown and grey fog. The gaps are now darker smoke (sea-teal on the cool side)
+// so, at the same average, the exposure lifts the lit billows, their rims and the rays into
+// visible light: the same mean luminance, far more form.
+const STEAM_SHADOW_COOL = new THREE.Color(0.13, 0.21, 0.25);
 // GOLDEN, NOT MUD (Genesis pass, 2026-10-02): the warm half's shadows were a neutral warm grey
 // and its lit billows were pushed toward white, so once the exposure scaled the volume down to
 // the cavern's brightness the steam read as beige-grey mud. Amber shadows and less whitening while
 // the fire is still below make it a golden vapour lit by the lava and the First Heart; the
 // pearly white flash still peaks at the crossover, then the cool half takes over unchanged.
 // Deepened to ember (all-angles pass, 2026-10-18): the old 0.34/0.17/0.08 shadow, dimmed by the
-// luminance cap, was the brown half of the mud.
-const STEAM_SHADOW_WARM = new THREE.Color(0.28, 0.11, 0.03);
+// luminance cap, was the brown half of the mud. Sooty ember now (audit pass, see above).
+const STEAM_SHADOW_WARM = new THREE.Color(0.20, 0.075, 0.02);
 const STEAM_WARM_WHITENING = 0.6; // how much less the flash whitens the vapour while warm
 // The warmth at which the hue starts and finishes leaving gold for the cool side (shader and
 // steamQuenchMeanColour share them, so scene fog keeps the steam's colour). Narrow and late:
@@ -295,9 +301,18 @@ export function steamQuenchMeanLuma(seamT) {
 
 /**
  * Hot spots (the aperture, the rays) may rise this far above the cap — the light the eye climbs
- * toward has to be brighter than the vapour around it, or the volume is a flat card.
+ * toward has to be brighter than the vapour around it, or the volume is a flat card. 2.4 -> 3.6
+ * (audit pass, 2026-10-22): the whole opening, where the eye looks, sat above the old ceiling's
+ * knee and was squeezed ~5x into one plateau.
  */
-export const STEAM_QUENCH_HIGHLIGHT_HEADROOM = 2.4;
+export const STEAM_QUENCH_HIGHLIGHT_HEADROOM = 3.6;
+/**
+ * The light the shader ADDS on top of the vapour's mean colour (rims, rays, the core) as a share
+ * of that mean: the exposure reference is scaled by it so the frame's average still follows the
+ * luminance cap — the seam's brightness ramp — with the light in it. Measured against the
+ * pre-pass captures (frame median within ~3 luma at local 0.6-0.98).
+ */
+export const STEAM_QUENCH_LIGHT_SHARE = 1.08;
 
 /**
  * @param {object} [opts]
@@ -342,7 +357,8 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     const slow = fbm3(warped.mul(vec3(1.0, 0.42, 1.0)).add(vec3(0.0, uTime.mul(-0.09), 0.0)), 4);
     const fast = fbm3(p.mul(3.4).add(vec3(uTime.mul(0.10), uTime.mul(-0.32), uTime.mul(0.075))), 3);
     const billowRaw = clamp(slow.mul(0.9).add(fast.mul(0.12)), 0.0, 1.0);
-    const billow = smoothstep(0.26, 0.80, billowRaw);
+    // 0.26..0.80 -> 0.32..0.72 (audit pass): a crisper edge between billow and smoke.
+    const billow = smoothstep(0.32, 0.72, billowRaw);
 
     // Radial feather. The shell is a sphere, so `positionLocal.length()` is ~radius everywhere;
     // the feather that matters is against the BILLOW, not against geometry — a hard-edged
@@ -400,7 +416,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // Gaps are shadowed VAPOUR, not smoke (a hard dark/bright split read as camouflage):
     // a cool or warm grey ~half the lit value, blended across the whole billow range.
     const shadowVapour = mix(
-        vec3(0.20, 0.25, 0.29),
+        vec3(STEAM_SHADOW_COOL.r, STEAM_SHADOW_COOL.g, STEAM_SHADOW_COOL.b),
         vec3(STEAM_SHADOW_WARM.r, STEAM_SHADOW_WARM.g, STEAM_SHADOW_WARM.b),
         warmHue,
     );
@@ -429,28 +445,57 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     const streak = smoothstep(0.42, 0.82, wisps).mul(shaftContrast).mul(smoothstep(0.1, 0.8, viewUp));
     // Dense vapour SCATTERS: the thicker it gets the more light reaches its gaps, so the shadow
     // lifts toward the lit colour with density instead of staying a grey hole between billows
-    // (at the crossover the old split was grey-on-white mottle).
-    const shadowLifted = mix(shadowVapour, litVapour, d.mul(0.5));
+    // (at the crossover the old split was grey-on-white mottle). Less lift than the old 0.5: at
+    // 0.5 the gaps and billows met in one flat band once the exposure dimmed them.
+    const shadowLifted = mix(shadowVapour, litVapour, d.mul(0.35));
+    // BACKLIT RIMS (audit pass, 2026-10-22): vapour lit from the opening ahead glows at its thin
+    // edges, so each billow gets a lining where it thins into the smoke — strongest toward the
+    // light, amber over the fire and aqua-white over the sea. AMBER, not gold: a pale gold dimmed
+    // to the cavern's brightness reads as olive.
+    const rim = smoothstep(0.30, 0.46, billowRaw).mul(oneMinus(smoothstep(0.46, 0.72, billowRaw)))
+        .mul(smoothstep(0.15, 0.85, viewUp));
+    const lightTint = mix(vec3(0.70, 0.92, 1.0), vec3(1.0, 0.52, 0.16), warmHue);
+    // THE HOT CORE BEHIND THE BILLOWS (audit pass): the vent's heart reaches the eye through the
+    // vapour, so dense billows dim it into dark forms against the light. Only the core: dimming
+    // the broad aperture too cancelled the lit billows against the lit gaps — one flat plateau.
+    const transmit = mix(float(1.0), float(0.3), billow);
     const colour = mix(shadowLifted, litVapour, smoothstep(0.0, 1.0, billow))
-        .mul(float(0.80).add(streak.mul(0.45)))
-        .add(vec3(0.95, 0.93, 0.86).mul(rays).mul(float(0.05).add(d.mul(0.10))))
+        // STREAMING VAPOUR carries the climb (audit pass): the wisps slide out of the opening, and
+        // at 0.80 + 0.45 they were too faint to read as motion once the volume was exposed.
+        .mul(float(0.62).add(streak.mul(0.85)))
+        .add(lightTint.mul(rim).mul(0.22))
+        // The rays are the light the eye climbs toward: they carry the fire while it is below and
+        // the sea's daylight after (they were a 0.05-0.15 whisper, invisible once exposed).
+        .add(lightTint.mul(rays).mul(float(0.16).add(d.mul(0.24))))
         .add(uWarm.mul(under).mul(w).mul(float(0.5).add(billow.mul(0.5))).mul(0.26))
+        // The vent's hot core through the steam: a tight bright heart inside the broad aperture.
+        .add(lightTint.mul(smoothstep(0.90, 0.995, viewUp)).mul(0.30).mul(transmit))
         // THE LIGHT ABOVE CARRIES ACROSS THE SEAM (2026-10-02). The First Heart — the white-hot
         // vent the climb aims at — sits dead centre above the eye, so while the cavern is behind
         // you the aperture glows with ITS fire through the steam; as the water takes over the
         // same aperture cools into the ocean's light from above. Fire above becomes sky above.
         .add(mix(vec3(0.80, 0.90, 1.0), vec3(1.0, 0.64, 0.34), w.mul(w)).mul(aperture.mul(aperture))
-            .mul(float(0.34).add(oneMinus(w).mul(0.34)))
+            // 0.34 -> 0.24 (audit pass): the broad glow is a smooth gradient with no form in
+            // it; the rays and the core now carry the light.
+            .mul(float(0.24).add(oneMinus(w).mul(0.34)))
             .mul(float(0.55).add(fast.mul(0.45))))
         // A LUMINOUS TUNNEL, not a white-out: the eye looks up the shaft, so the light lives
         // at the centre of the view (the aperture, the rays) and the periphery falls into
-        // shadowed vapour. Without it the peak was an even field of white.
-        .mul(mix(float(0.52), float(1.0), smoothstep(0.25, 0.95, viewUp)))
-        .min(vec3(0.96, 0.96, 0.96));
+        // shadowed vapour. Without it the peak was an even field of white. 0.52 -> 0.40 (audit
+        // pass): with the light in the rays and the core, a darker rim of smoke frames it.
+        .mul(mix(float(0.40), float(1.0), smoothstep(0.25, 0.95, viewUp)));
+    // A SOFT SHOULDER ON LUMINANCE, HUE KEPT (audit pass, 2026-10-22). This was a per-channel
+    // min(0.96): where the eye looks up the shaft the aperture, rays and billows sum past it, red
+    // clipped first while green kept rising, and the fire-lit vapour came out tan and olive — a flat
+    // plateau exactly where the light should be. Linear to 0.7, then rolling off toward 1.2.
+    const preLuma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
+    const over = max(preLuma.sub(0.7), float(0.0));
+    const shoulder = min(preLuma, float(0.7).add(over.div(over.mul(2.0).add(1.0))));
+    const shaped = colour.mul(shoulder.div(max(preLuma, float(1e-4))));
     // EXIT: the same volume becomes murk in the water's own colour, brightest toward the surface
     // light above, with only a soft breath of the billow left — water clearing, not cloud lifting.
     const murk = uCool.mul(float(0.82).add(billow.mul(0.22))).mul(float(0.75).add(aperture.mul(0.45)));
-    const exitRaw = mix(colour, murk, uExit);
+    const exitRaw = mix(shaped, murk, uExit);
     // LUMINANCE CAP (see STEAM_QUENCH_LUMA_CAP), applied as EXPOSURE, not as a per-pixel clip.
     // Capping each pixel at the cap flattened the volume wherever the cap was below the vapour's
     // own brightness — the whole dark stretch (cap at DARK_FRACTION) rendered as one even brown,
@@ -462,8 +507,14 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     const exposure = min(float(1.0), uLumaCap.div(max(uLumaRef, float(1e-4))));
     const exposedLuma = exitLuma.mul(exposure);
     const ceiling = uLumaCap.mul(STEAM_QUENCH_HIGHLIGHT_HEADROOM);
+    // A KNEE, not a wall (audit pass): a hard min() at the ceiling flattened the opening — the
+    // brightest third of the frame, where the eye looks — into one plateau. Linear to half the
+    // ceiling, then easing toward it, so the billows against the light keep their shape.
+    const kneeStart = ceiling.mul(0.5);
+    const above = max(exposedLuma.sub(kneeStart), float(0.0));
+    const kneed = min(exposedLuma, kneeStart.add(above.div(above.div(kneeStart).add(1.0))));
     const exitColour = exitRaw.mul(exposure)
-        .mul(min(float(1.0), ceiling.div(max(exposedLuma, float(1e-4)))));
+        .mul(kneed.div(max(exposedLuma, float(1e-4))));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = exitColour;
@@ -503,7 +554,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             // square — leaving the weather quickly into open water is what the breach wants.
             uDensity.value = steamQuenchDensity(t);
             uLumaCap.value = steamQuenchLumaCap(t);
-            uLumaRef.value = steamQuenchMeanLuma(t);
+            uLumaRef.value = steamQuenchMeanLuma(t) * STEAM_QUENCH_LIGHT_SHARE;
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
             uExit.value = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
