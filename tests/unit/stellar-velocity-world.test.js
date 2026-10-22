@@ -12,9 +12,9 @@ import {
     BOOST_MAX, REST_RIG, STELLAR_VELOCITY_PARTS, StellarVelocityWorld, TRAVEL_WRAP, fovForAspect,
 } from '../../src/themes/stellar-velocity/stellar-velocity-world.js';
 import {
-    BOLT_FLIGHT, BOLT_SLOTS, CRUISE, FRONT_SLOTS, GEAR_CHAIN, HOOP_LIGHTS, HOOP_SLOTS, HOOP_STAGGER, HUSH_HOLD,
-    JET_SLOTS, JUMP_EXIT, JUMP_TUNNEL, JUMP_TUNNEL_PERFECT, NEBULA_PALETTES, PALETTE_HOME, PALETTE_STEP, WARP_CHAIN,
-    courseAnchors, gearForCombo, hoopDepth, hoopRun, warpForCombo,
+    BOLT_FLIGHT, BOLT_SLOTS, CRUISE, FRONT_SLOTS, FRONT_SPEED, GEAR_CHAIN, HOOP_LIGHTS, HOOP_SLOTS, HOOP_STAGGER,
+    HUSH_HOLD, JET_SLOTS, JUMP_EXIT, JUMP_TUNNEL, JUMP_TUNNEL_PERFECT, NEBULA_PALETTES, PALETTE_HOME, PALETTE_STEP,
+    WARP_CHAIN, courseAnchors, gearForCombo, hoopDepth, hoopHeld, hoopRun, warpForCombo,
 } from '../../src/themes/stellar-velocity/stellar-velocity-core.js';
 import { QUALITY } from '../../src/themes/stellar-velocity/stellar-velocity-quality.js';
 import { fallbackLayout } from '../../src/themes/stellar-velocity/stellar-velocity-composition.js';
@@ -478,6 +478,227 @@ describe('stellar velocity world: the nebula follows the level and the clock', (
         expect(world.getState().palette).toBe(NEBULA_PALETTES[PALETTE_HOME + 2].name);
         settle(world, camera, 5 + PALETTE_STEP);
         expect(world.getState().palette).toBe(NEBULA_PALETTES[PALETTE_HOME + 1].name);
+    });
+});
+
+/** A long chain as the tray's Fever plays it: a hard-dropped clearing lock every `gap` seconds. */
+function chain(world, camera, from, to, gap = 0.64) {
+    for (let k = from; k <= to; k++) {
+        frame(world, camera, 1 / 60, () => {
+            world.onLock({
+                u: ((k * 0.37) % 1) * 0.9 + 0.05, rows: [19], color: Object.values(COLORS)[k % 7], hardDrop: true,
+            });
+            world.onClear({ rows: [19], lines: 1 + (k % 3), combo: k });
+            world.onCombo(k);
+        });
+        run(world, camera, gap - 1 / 60);
+    }
+}
+
+/** The lowest breath and tunnel shown over `seconds` of frames, and the most either sank in a frame. */
+function lowest(world, camera, seconds) {
+    let breath = Infinity;
+    let jump = Infinity;
+    let sank = 0;
+    let last = world.getState();
+    for (let i = 0; i < Math.round(seconds * 60); i++) {
+        frame(world, camera, 1 / 60);
+        const state = world.getState();
+        breath = Math.min(breath, state.breath);
+        jump = Math.min(jump, state.jump);
+        sank = Math.max(sank, last.breath - state.breath, last.jump - state.jump);
+        last = state;
+    }
+    return { breath, jump, sank };
+}
+
+describe('stellar velocity world: play builds instead of restarting', () => {
+    it('a four that lands in a running tunnel keeps it running: no second hush, one arrival', () => {
+        const { camera, world } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17, 16], lines: 4 }));
+        run(world, camera, HUSH_HOLD + JUMP_TUNNEL * 0.8);
+        expect(world.getState().jump).toBe(1);
+        // A back-to-back four, 1.8 s into the tunnel (the tray's B2B is 2.3 s apart).
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17, 16], lines: 4, b2b: true }));
+        expect(world.counts.quads).toBe(2);
+        const held = lowest(world, camera, 0.6);
+        expect(held.breath).toBeGreaterThan(0.95);
+        expect(held.jump).toBe(1);
+        // Past where the first tunnel alone would have let us out: still in it.
+        expect(world.getState().jumps).toBe(0);
+        expect(world.getState().jump).toBe(1);
+        run(world, camera, JUMP_TUNNEL * 0.6 + JUMP_EXIT + 2);
+        expect(world.getState().jump).toBe(0);
+        expect(world.getState().jumps).toBe(1);
+    });
+
+    it('a perfect clear that settles after its four crowns the jump: longer and gold, never a second hush', () => {
+        const { camera, world } = makeWorld();
+        const sun = world.u.sunCol.value.clone();
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17, 16], lines: 4 }));
+        const quad = world.time;
+        const until = (since) => run(world, camera, quad + since - world.time);
+        run(world, camera, 0.36);
+        frame(world, camera, 1 / 60, () => world.onPerfect());
+        expect(world.counts.quads).toBe(1);
+        // The four's own breath is still coming back: it never sinks again, the tunnel stays open.
+        const held = lowest(world, camera, 0.5);
+        expect(held.sank).toBe(0);
+        expect(held.jump).toBe(1);
+        // The crown: the tunnel's mouth and threads, and the sun, burn gold.
+        expect(world.u.crown.value).toBeGreaterThan(0.5);
+        expect(world.u.sunCol.value.z / world.u.sunCol.value.x).toBeLessThan((sun.z / sun.x) * 0.9);
+        // Where a plain four would have let us out, the crowned jump is still in its tunnel; it
+        // arrives once, with a perfect clear's afterglow.
+        until(HUSH_HOLD + JUMP_TUNNEL + JUMP_EXIT + 0.02);
+        expect(world.getState().jump).toBe(1);
+        expect(world.getState().jumps).toBe(0);
+        until(HUSH_HOLD + JUMP_TUNNEL_PERFECT + 0.1);
+        expect(world.getState().jumps).toBe(1);
+        expect(world.getState().surge).toBeGreaterThan(1.2);
+        run(world, camera, JUMP_EXIT + 3);
+        expect(world.getState().jumps).toBe(1);
+    });
+
+    it('the hush is as deep as play is cold: in a fever a four only inhales', () => {
+        const cold = makeWorld();
+        frame(cold.world, cold.camera, 1 / 60, () => cold.world.onClear({ lines: 4 }));
+        const fromCold = lowest(cold.world, cold.camera, HUSH_HOLD);
+        const hot = makeWorld();
+        chain(hot.world, hot.camera, 1, 10);
+        expect(hot.world.heat.stage).toBe(3);
+        frame(hot.world, hot.camera, 1 / 60, () => hot.world.onClear({ lines: 4, combo: 11 }));
+        const fromHot = lowest(hot.world, hot.camera, HUSH_HOLD);
+        expect(fromCold.breath).toBeLessThan(0.3);
+        expect(fromHot.breath).toBeGreaterThan(0.6);
+    });
+
+    it('each wave of a cascade burns on the last: faster, stronger fronts, the sky pulled further', () => {
+        const { camera, world } = makeWorld();
+        const reads = [];
+        const sent = [];
+        const send = world.front.bind(world);
+        world.front = (time, data) => {
+            sent.push(data);
+            send(time, data);
+        };
+        for (let wave = 1; wave <= 6; wave++) {
+            // A weaker wave after a stronger one never cuts what is burning: a moment on, the
+            // afterburner reads at least what it would have without it.
+            const soon = world.time + 0.1;
+            const before = world.afterburn.valueAt(soon);
+            sent.length = 0;
+            frame(world, camera, 1 / 60, () => world.onClear({
+                rows: [19], lines: wave % 3 === 0 ? 2 : 1, cascade: wave,
+            }));
+            expect(world.afterburn.valueAt(soon)).toBeGreaterThanOrEqual(before);
+            run(world, camera, 0.36 - 1 / 60);
+            const fronts = [...sent];
+            reads.push({
+                warp: world.warp,
+                sun: world.u.sunGain.value,
+                speed: Math.max(...fronts.map((f) => f.speed)),
+                strength: Math.max(...fronts.map((f) => f.strength)),
+            });
+        }
+        for (let k = 2; k < reads.length; k++) {
+            expect(reads[k].warp).toBeGreaterThan(reads[k - 1].warp);
+            expect(reads[k].speed).toBeGreaterThan(reads[k - 1].speed);
+            expect(reads[k].strength).toBeGreaterThan(reads[k - 1].strength);
+        }
+        expect(reads[5].sun).toBeGreaterThan(reads[1].sun);
+        // It pushes toward the jump, but only a jump goes all the way.
+        expect(reads[5].warp).toBeLessThan(WARP_CHAIN);
+    });
+
+    it('a long chain reads hotter than its first clear, lines the course with its wake, and breathes back', () => {
+        const { camera, world } = makeWorld();
+        chain(world, camera, 1, 1);
+        const first = {
+            warp: world.warp,
+            sun: world.u.sunGain.value,
+            rush: world.rushShare(),
+            fov: camera.fov,
+            exposure: world.getPostState().exposure,
+            hoops: world.getState().hoops,
+        };
+        chain(world, camera, 2, 12);
+        const state = world.getState();
+        expect(state.stage).toBe(3); // a fever
+        expect(state.warp).toBeGreaterThan(first.warp);
+        expect(state.warp).toBeGreaterThan(WARP_CHAIN); // a fever goes past any chain
+        expect(state.warp).toBeLessThan(0.985); // only a jump goes all the way
+        expect(world.u.sunGain.value).toBeGreaterThan(first.sun);
+        expect(world.rushShare()).toBeGreaterThan(first.rush);
+        expect(camera.fov).toBeGreaterThan(first.fov);
+        expect(world.getPostState().exposure).toBeLessThan(first.exposure);
+        // Every hoop we flew through left a ring at its place: the course fills while we chain.
+        expect(state.hoops).toBeGreaterThan(first.hoops + 3);
+        expect(world.hoopSlots.some((slot) => slot.wake && slot.strength > 0)).toBe(true);
+        // The hands rest: we let off and glide; the wake fades in seconds, not half a minute.
+        frame(world, camera, 1 / 60, () => world.onCombo(0));
+        run(world, camera, 16);
+        const rested = world.getState();
+        expect(rested.stage).toBe(0);
+        expect(rested.fever).toBe(0);
+        expect(rested.warp).toBeLessThan(0.05);
+        expect(rested.gear).toBeLessThan(1.6);
+        const wakeLight = world.hoopSlots.filter((slot) => slot.wake && slot.strength > 0)
+            .map((slot) => hoopHeld(world.time - slot.birth, true) * slot.strength);
+        expect(Math.max(0, ...wakeLight)).toBeLessThan(0.03);
+    });
+
+    it('a slow level front is never cut by the lock pulses of rapid play', () => {
+        const { camera, world } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.levelUp(2));
+        const slow = world.frontSlots.find((slot) => slot.speed === FRONT_SPEED.level);
+        const born = slow.birth;
+        for (let i = 0; i < 16; i++) {
+            frame(world, camera, 1 / 60, () => world.onLock({
+                u: (i % 10) / 10, rows: [19], color: COLORS.T, hardDrop: true,
+            }));
+            run(world, camera, 0.05);
+        }
+        run(world, camera, BOLT_FLIGHT * 2);
+        expect(world.frontCursor).toBeGreaterThan(FRONT_SLOTS + 4);
+        expect(world.getState().fronts).toBeGreaterThan(1);
+        expect(slow.birth).toBe(born);
+        expect(slow.speed).toBe(FRONT_SPEED.level);
+    });
+
+    it('a back-to-back burns the sun gold and flares its spikes, a second one more', () => {
+        const { camera, world } = makeWorld();
+        const gold = () => 1 - world.u.sunCol.value.z / world.u.sunCol.value.x;
+        const restGold = gold();
+        const restGlint = world.getPostState().glint;
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, tspin: true, b2b: true }));
+        run(world, camera, 0.3);
+        const once = gold();
+        expect(once).toBeGreaterThan(restGold + 0.1);
+        expect(world.getPostState().glint).toBeGreaterThan(restGlint);
+        run(world, camera, 0.9);
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, tspin: true, b2b: true }));
+        run(world, camera, 0.3);
+        expect(gold()).toBeGreaterThan(once);
+        run(world, camera, 15);
+        expect(Math.abs(gold() - restGold)).toBeLessThan(0.02);
+    });
+
+    it('a T-spin that clears nothing rolls the canyon a little', () => {
+        const peakRoll = (fire) => {
+            const { camera, world } = makeWorld();
+            frame(world, camera, 1 / 60, () => fire(world));
+            let peak = 0;
+            for (let i = 0; i < 60; i++) {
+                frame(world, camera, 1 / 60);
+                peak = Math.max(peak, Math.abs(world.twist));
+            }
+            return peak;
+        };
+        const spin = peakRoll((world) => world.onSpin());
+        const clear = peakRoll((world) => world.onClear({ lines: 2, tspin: true }));
+        expect(spin).toBeGreaterThan(0.005);
+        expect(spin).toBeLessThan(clear);
     });
 });
 
