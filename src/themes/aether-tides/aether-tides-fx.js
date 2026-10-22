@@ -15,8 +15,8 @@
  *              fused (no line between its cells), a lit body inside one rounded outline, crisp
  *              for a third of a second while the gas poured under it is still gathering. Then
  *              the shape is gone and the gas is what remains. One quad per piece; the fragment
- *              takes the union of its cells, each cell's box stretched to its neighbours'
- *              centres so the inside has no seams.
+ *              takes the union of its cells, each cell's boxes stretched to its neighbours'
+ *              centres so the inside has no seams, with a round web in each inner corner.
  *
  *   burst  r0 (x, y, t0, aim)        aim 0 = every way, 1 = along its direction
  *          r1 (r, g, b, speed)
@@ -27,8 +27,10 @@
  *          r1 (r, g, b, gain)
  *          r2 (hx, hy, count, 0)     the bounds' half-size, and how many cells
  *          r3 (pitchX, pitchY, 0, 0) from one cell's centre to the next
- *          r4…  (dx, dy, joins, 0)   each cell's centre from the middle; `joins` is a bit per
- *                                    side that meets another cell (1 left, 2 right, 4 up, 8 down)
+ *          r4…  (dx, dy, joins, corners)  each cell's centre from the middle; `joins` is a bit per
+ *                                    side that meets another cell (1 left, 2 right, 4 up, 8 down);
+ *                                    `corners` a bit per quadrant joined on both its sides (see
+ *                                    ECHO_CORNER_FILL)
  *
  * A dormant slot draws zero-size quads.
  */
@@ -36,6 +38,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     clamp,
     cos,
@@ -49,7 +52,6 @@ import {
     mix,
     mod,
     positionGeometry,
-    select,
     sin,
     smoothstep,
     step,
@@ -86,6 +88,14 @@ export const JOIN_LEFT = 1;
 export const JOIN_RIGHT = 2;
 export const JOIN_UP = 4;
 export const JOIN_DOWN = 8;
+
+/**
+ * Echo corners: a cell joined on two sides that meet (left or right, and up or down) has a
+ * quadrant between them, numbered 0 up-left, 1 up-right, 2 down-left, 3 down-right. Bit 2^q: the
+ * diagonal cell there is not the piece's (the bend of an L, a T, an S), so the inner corner is
+ * rounded. Bit ECHO_CORNER_FILL · 2^q: it is (an O), so the gap between the four cells is filled.
+ */
+export const ECHO_CORNER_FILL = 16;
 
 const NEVER = -1e6;
 
@@ -220,6 +230,12 @@ export class FxTable {
         d[o + 13] = pitchY;
         // Two cells meet when one sits a pitch from the other along one axis and level on the other.
         const near = (a, b, pitch) => Math.abs(a - b) < pitch * 0.3;
+        const has = (x, y) => {
+            for (let j = 0; j < count; j += 1) {
+                if (near(cells[j][0], x, pitchX) && near(cells[j][1], y, pitchY)) return true;
+            }
+            return false;
+        };
         for (let i = 0; i < count; i += 1) {
             const [x, y] = cells[i];
             let joins = 0;
@@ -231,10 +247,20 @@ export class FxTable {
                 if (near(nx, x, pitchX) && near(ny, y - pitchY, pitchY)) joins |= JOIN_UP;
                 if (near(nx, x, pitchX) && near(ny, y + pitchY, pitchY)) joins |= JOIN_DOWN;
             }
+            let corners = 0;
+            for (let q = 0; q < 4; q += 1) {
+                const right = q % 2 === 1;
+                const down = q >= 2;
+                if ((joins & (right ? JOIN_RIGHT : JOIN_LEFT)) && (joins & (down ? JOIN_DOWN : JOIN_UP))) {
+                    const diagonal = has(x + (right ? pitchX : -pitchX), y + (down ? pitchY : -pitchY));
+                    corners |= diagonal ? ECHO_CORNER_FILL << q : 1 << q;
+                }
+            }
             const r = o + (4 + i) * 4;
             d[r] = x - cx;
             d[r + 1] = y - cy;
             d[r + 2] = joins;
+            d[r + 3] = corners;
         }
         return slot;
     }
@@ -389,31 +415,62 @@ export function createFx({
             const at = int(floor(vSlot.add(0.5))).mul(ECHO_ROWS).add(ROW_ECHO).toVar();
             const half = fx.element(at).w.toVar();
             const count = fx.element(at.add(2)).z.toVar();
-            // A side that meets another cell stretches to that cell's centre, so the union of
-            // the stretched boxes has no inside edges: one outline, round the whole piece.
-            const toNext = fx.element(at.add(3)).xy.sub(half).toVar();
+            const pitch = fx.element(at.add(3)).xy.toVar();
+            // A side that meets another cell stretches to that cell's centre, so the union has no
+            // inside edges: one outline, round the whole piece. Each cell is two boxes, one
+            // stretched across and one up and down (one box stretched both ways would fill the
+            // bend of an L or a T), and the union is a hard one, so straight sides stay straight.
+            const toNext = pitch.sub(half).toVar();
             const round = half.mul(0.36);
-            const fillet = half.mul(0.2);
+            const fillet = half.mul(0.24);
             const d = float(1e3).toVar();
+            const bit = (word, value) => mod(floor(word.div(value)), 2.0);
+            // Signed distance to the box lo..hi, its corners rounded by r.
+            const box = (lo, hi, r) => {
+                const q = abs(vAt.sub(lo.add(hi).mul(0.5))).sub(hi.sub(lo).mul(0.5)).add(r);
+                return max(q, vec2(0.0)).length().add(min(max(q.x, q.y), 0.0)).sub(r);
+            };
             for (let i = 0; i < ECHO_CELLS; i += 1) {
-                const cell = fx.element(at.add(4 + i));
-                const joins = cell.z;
-                const joined = (bitValue) => mod(floor(joins.div(bitValue)), 2.0);
-                const lo = cell.xy.sub(vec2(
-                    half.add(joined(JOIN_LEFT).mul(toNext.x)),
-                    half.add(joined(JOIN_UP).mul(toNext.y)),
-                ));
-                const hi = cell.xy.add(vec2(
-                    half.add(joined(JOIN_RIGHT).mul(toNext.x)),
-                    half.add(joined(JOIN_DOWN).mul(toNext.y)),
-                ));
-                const q = abs(vAt.sub(lo.add(hi).mul(0.5))).sub(hi.sub(lo).mul(0.5)).add(round);
-                const box = max(q, vec2(0.0)).length().add(min(max(q.x, q.y), 0.0)).sub(round);
-                // A cell the piece does not have lies far away.
-                const own = select(float(i).lessThan(count), box, float(1e3));
-                // A smooth union: a soft fillet in the piece's inner corners.
-                const h = clamp(float(0.5).add(own.sub(d).mul(0.5).div(fillet)), 0.0, 1.0);
-                d.assign(mix(own, d, h).sub(fillet.mul(h).mul(float(1.0).sub(h))));
+                If(float(i).lessThan(count), () => {
+                    const cell = fx.element(at.add(4 + i));
+                    const c = cell.xy;
+                    const joins = cell.z;
+                    const across = box(
+                        c.sub(vec2(half.add(bit(joins, JOIN_LEFT).mul(toNext.x)), half)),
+                        c.add(vec2(half.add(bit(joins, JOIN_RIGHT).mul(toNext.x)), half)),
+                        round,
+                    );
+                    const upDown = box(
+                        c.sub(vec2(half, half.add(bit(joins, JOIN_UP).mul(toNext.y)))),
+                        c.add(vec2(half, half.add(bit(joins, JOIN_DOWN).mul(toNext.y)))),
+                        round,
+                    );
+                    d.assign(min(d, min(across, upDown)));
+                    const corners = cell.w;
+                    If(corners.greaterThan(0.5), () => {
+                        for (let q = 0; q < 4; q += 1) {
+                            const s = vec2(q % 2 === 1 ? 1 : -1, q >= 2 ? 1 : -1);
+                            // The diagonal cell is the piece's too (an O): the whole block of four,
+                            // so the gap between them is filled and the body is as deep as the I's.
+                            If(bit(corners, ECHO_CORNER_FILL * 2 ** q).greaterThan(0.5), () => {
+                                const near = c.sub(s.mul(half));
+                                const far = c.add(pitch.mul(s)).add(s.mul(half));
+                                d.assign(min(d, box(min(near, far), max(near, far), round)));
+                            });
+                            // It is not (the bend of an L, a T, an S): a round web in the inner
+                            // corner, the square there less the circle that touches both sides.
+                            If(bit(corners, 2 ** q).greaterThan(0.5), () => {
+                                const inner = c.add(s.mul(half));
+                                const middle = inner.add(s.mul(fillet));
+                                const web = max(
+                                    box(min(inner, middle), max(inner, middle), float(0.0)),
+                                    fillet.sub(vAt.sub(middle).length()),
+                                );
+                                d.assign(min(d, web));
+                            });
+                        }
+                    });
+                });
             }
             // In cell half-sizes from the outline (negative inside).
             const e = d.div(half).toVar();
