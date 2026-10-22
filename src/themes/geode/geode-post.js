@@ -10,8 +10,9 @@
  *   and HUD is soft-clipped and its bloom attenuated) → bloom → heart shafts (the bloom dragged
  *   radially out of the heart: its light streaming past the crystals; a clear floods them) →
  *   exposure and event flash → "gem filmic" tone map (hue preserving, the hottest cores roll to
- *   white) → grade (deep violet shadows, a saturation lift) → vignette → sRGB → grain and
- *   triangular dither.
+ *   white) → grade (deep violet shadows, a saturation lift; the heat of play saturates the
+ *   colours further and deepens the dark between them, so a geode that burns brighter never
+ *   turns milky) → vignette → sRGB → grain and triangular dither.
  *
  * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
  * outputColorTransform is off (the output node encodes sRGB itself).
@@ -138,6 +139,8 @@ export class GeodePost {
         this.uBloomBoost = uniform(0);
         /** The prism ring: (radius in screen heights, strength). */
         this.uPrism = uniform(new THREE.Vector2(0, 0));
+        /** The heat of play's grade, 0..1: more saturation, deeper darks. */
+        this.uGrade = uniform(0);
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -249,7 +252,9 @@ export class GeodePost {
             // Deep violet, slightly lifted shadows (the dark of the lining); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
             T.assign(mix(T, T.mul(vec3(0.96, 0.9, 1.14)).add(vec3(0.002, 0.0008, 0.0046)), lo.mul(0.55)));
-            T.assign(mix(vec3(gdLuma(T)), T, 1.14));
+            T.assign(mix(vec3(gdLuma(T)), T, this.uGrade.mul(0.26).add(1.14)));
+            // The hotter play runs, the deeper the dark between the lights.
+            T.mulAssign(float(1.0).sub(float(1.0).sub(smoothstep(0.0, 0.45, L)).mul(this.uGrade).mul(0.32)));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.45, 1.08, length(cv.mul(1.5)));
@@ -288,7 +293,7 @@ export class GeodePost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, shafts, time, prism,
+        heart, flash, kick, bloomBoost, exposure, shafts, time, prism, grade,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
@@ -298,6 +303,7 @@ export class GeodePost {
         if (shafts !== undefined) this.uShafts.value = shafts;
         if (time !== undefined) this.uTime.value = time;
         if (prism) this.uPrism.value.set(prism.radius, prism.strength);
+        if (grade !== undefined) this.uGrade.value = grade;
     }
 
     /**
