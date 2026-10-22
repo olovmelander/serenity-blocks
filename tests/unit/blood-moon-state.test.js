@@ -307,6 +307,8 @@ describe('Blood Moon reactions', () => {
         expect(state.pulse).toBe(0);
         state.cue('clear', { lineCount: 3 });
         const alternate = new BloodMoonReactions();
+        // Read the same way (a reading moves an envelope's present forward).
+        expect(alternate.pulse).toBe(0);
         alternate.cue('clear', { lines: 3 });
         expect(state).toEqual(alternate);
     });
