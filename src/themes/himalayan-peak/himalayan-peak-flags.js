@@ -177,7 +177,10 @@ export function createFlags(u, { flags = 180 } = {}) {
     // (Released while a gust was still on its way, that is what it held before.)
     const left = mix(when.w, held.w.mul(exp(when.x.sub(when.y).div(BLESS_HOLD))), step(when.x, when.y));
     const freed = exp(max(gone, 0.0).div(-0.32)).mul(step(0.0, gone)).mul(left);
-    const vGlow = varying(vec4(held.rgb.mul(kept.mul(0.9).add(struck.mul(2.4))).add(vec3(1.0, 0.86, 0.6).mul(freed.mul(1.6))), gust), 'hpFlagGlow');
+    // The hotter play runs, the brighter what the lines hold burns (u.prayer, 0 at rest).
+    const burn = u.prayer.mul(0.35).add(0.9);
+    const glowing = held.rgb.mul(kept.mul(burn).add(struck.mul(2.4))).add(vec3(1.0, 0.86, 0.6).mul(freed.mul(1.6)));
+    const vGlow = varying(vec4(glowing, gust), 'hpFlagGlow');
 
     material.colorNode = Fn(() => {
         const st = uv();
@@ -254,10 +257,11 @@ export function createFlags(u, { flags = 180 } = {}) {
 
     /**
      * Give the flags of `line` within `spread` metres of `along` the colour `rgb`: each takes it
-     * when the gust that left at `time` reaches it. `amount` in lock units.
+     * when the gust that left at `time` reaches it. `amount` in lock units; `most` is what one
+     * flag may hold (a long chain lets the lines hold more).
      * @returns {number} flags blessed
      */
-    part.bless = (line, along, rgb, time, amount = 1, spread = 3.2) => {
+    part.bless = (line, along, rgb, time, amount = 1, spread = 3.2, most = BLESS_MAX) => {
         let n = 0;
         for (let i = 0; i < part.live; i++) {
             const f = part.info[i];
@@ -269,7 +273,7 @@ export function createFlags(u, { flags = 180 } = {}) {
             const arrive = time + d / GUST_SPEED;
             // What it still holds carries over, capped.
             const before = part.heldAt(i, arrive);
-            const total = Math.min(BLESS_MAX, before + share);
+            const total = Math.min(Math.max(most, before), before + share);
             const k = share / Math.max(1e-4, before + share);
             aHeld.set([
                 aHeld[o] + (rgb[0] - aHeld[o]) * k,
@@ -303,19 +307,39 @@ export function createFlags(u, { flags = 180 } = {}) {
 
     /**
      * A clear at `time` lets go of what every flag holds (each a moment after its neighbour,
-     * `stagger` seconds per metre from `from`). Returns the flags that held something.
+     * `stagger` seconds per metre from `from`). Returns the flags that let something go, with
+     * `amount` = what each let go of.
+     *
+     * `keep` (0..1): the share each flag holds on to. 0 lets everything go in a flash of white
+     * gold. Above 0 only the surplus goes (a chain's clears: the lines keep their colours and go
+     * on filling), and the flag snaps in its own colour as it lets the surplus go; a gust still
+     * on its way to a flag lands first, so the colour it carries is kept too.
      */
-    part.release = (time, from = null, stagger = 0.012) => {
+    part.release = (time, from = null, stagger = 0.012, keep = 0) => {
         const out = [];
+        const share = Math.max(0, Math.min(1, keep));
         for (let i = 0; i < part.live; i++) {
             const f = part.info[i];
-            const at = time + (from ? Math.hypot(f.x - from[0], f.y - from[1], f.z - from[2]) * stagger : 0);
+            const o = i * 4;
+            let at = time + (from ? Math.hypot(f.x - from[0], f.y - from[1], f.z - from[2]) * stagger : 0);
+            // (Keeping: a gust still on its way to the flag lands before the flag lets go.)
+            if (share > 0 && aWhen[o + 1] > at && aWhen[o] > at) at = aWhen[o];
             const amount = part.heldAt(i, at);
             if (amount < 0.05) continue;
-            aWhen[i * 4 + 1] = at;
-            const o = i * 4;
+            let letGo = amount;
+            if (share > 0) {
+                const holds = amount * share;
+                letGo = amount - holds;
+                if (letGo < 0.03) continue;
+                // Until its moment it shows what it holds now; then it holds `holds`, snapping
+                // as it lets the rest go. Its colour stays.
+                aHeld[o + 3] = holds;
+                aWhen.set([at, 1e6, letGo * 0.6, amount], o);
+            } else {
+                aWhen[o + 1] = at;
+            }
             out.push({
-                index: i, time: at, amount, x: f.x, y: f.y, z: f.z, rgb: [aHeld[o], aHeld[o + 1], aHeld[o + 2]],
+                index: i, time: at, amount: letGo, x: f.x, y: f.y, z: f.z, rgb: [aHeld[o], aHeld[o + 1], aHeld[o + 2]],
             });
         }
         if (out.length) dirty('aHeld', 'aWhen');

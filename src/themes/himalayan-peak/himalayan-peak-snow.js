@@ -23,6 +23,7 @@ import {
     float,
     floor,
     fract,
+    instanceIndex,
     length,
     max,
     mix,
@@ -38,7 +39,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { AVALANCHE_RUN, mulberry32 } from './himalayan-peak-core.js';
+import { AVALANCHE_RUN, AVALANCHE_SLOTS, mulberry32 } from './himalayan-peak-core.js';
 import { avalancheTrack, crestEmitters } from './himalayan-peak-layout.js';
 import {
     hpAirLight, hpClip, hpFxMaterial, hpPart, hpPow4, hpQuadGeometry,
@@ -133,9 +134,12 @@ export function createSpindrift(u, field, count) {
 const TRACK_POINTS = 24;
 
 /**
- * @param {object} u       `avalanche` = (birth time, strength)
+ * Two slides can run at once (AVALANCHE_SLOTS): the first `count` sprites bring down the first,
+ * the next `count` the second, so a quad that comes while a slide is still on the face starts
+ * its own beside it instead of snatching the first back to the top.
+ * @param {object} u       `avalanche` = (birth time, strength) of the first slide, then the second
  * @param {object} field
- * @param {number} count
+ * @param {number} count   sprites per slide
  */
 export function createAvalanche(u, field, count) {
     const raw = avalancheTrack(field);
@@ -153,14 +157,17 @@ export function createAvalanche(u, field, count) {
         ));
     }
     const track = uniformArray(points);
-    const aSeed = new Float32Array(count * 4);
+    const sprites = count * AVALANCHE_SLOTS;
+    const aSeed = new Float32Array(sprites * 4);
     const rand = mulberry32(0xa7a1);
-    for (let i = 0; i < count * 4; i++) aSeed[i] = rand();
-    const geometry = hpQuadGeometry(count, { aSeed: [aSeed, 4] });
+    for (let i = 0; i < sprites * 4; i++) aSeed[i] = rand();
+    const geometry = hpQuadGeometry(sprites, { aSeed: [aSeed, 4] });
     const seed = attribute('aSeed', 'vec4');
 
     const material = hpFxMaterial('HimalayanPeakAvalanche');
-    const tau = u.time.sub(u.avalanche.x);
+    // Which slide this sprite belongs to: (birth time, strength).
+    const slide = mix(u.avalanche.xy, u.avalanche.zw, step(count - 0.5, float(instanceIndex)));
+    const tau = u.time.sub(slide.x);
     const live = step(0.0, tau).mul(step(tau, AVALANCHE_RUN * 2.2));
     // The front runs out fast and dies on the cloud.
     const out = float(1.0).sub(clamp(tau.div(AVALANCHE_RUN), 0.0, 1.0));
@@ -177,7 +184,7 @@ export function createAvalanche(u, field, count) {
     const p = base.add(vec3(billow.mul(0.95).add(churn), billow.mul(0.55), wide));
     const metres = float(70.0).add(seed.w.mul(250.0)).mul(grown.mul(0.8).add(0.35).add(front.mul(0.7)));
     material.vertexNode = billboard(u, p, metres.mul(live));
-    const cover = u.avalanche.y.mul(grown).mul(float(1.0).sub(smoothstep(AVALANCHE_RUN * 0.85, AVALANCHE_RUN * 1.9, tau)))
+    const cover = slide.y.mul(grown).mul(float(1.0).sub(smoothstep(AVALANCHE_RUN * 0.85, AVALANCHE_RUN * 1.9, tau)))
         .mul(live).mul(0.7);
     // (Some of it hangs in front of the rest: lighter and darker billows give the cloud a body.)
     const vLight = varying(vec4(snowLight(u, p, 140).mul(seed.y.mul(0.7).add(0.75)), cover), 'hpPowderLight');

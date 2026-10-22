@@ -1000,7 +1000,8 @@ describe('himalayan peak world: lines, gusts and what a session leaves behind', 
             world.u.ringA.forEach((slot) => expect(slot.value.toArray()).toEqual([0, 0, -100, 0]));
             world.u.gustA.forEach((slot) => expect(slot.value.toArray()).toEqual([0, 0, -100, 0]));
             world.u.waveA.forEach((slot) => expect(slot.value.z).toBe(0));
-            expect(world.u.avalanche.value.toArray()).toEqual([-100, 0]);
+            // (Both slides: the first and the second.)
+            expect(world.u.avalanche.value.toArray()).toEqual([-100, 0, -100, 0]);
             expect(world.counts).toEqual({
                 locks: 0, clears: 0, quads: 0, papers: 0, blessed: 0,
             });
