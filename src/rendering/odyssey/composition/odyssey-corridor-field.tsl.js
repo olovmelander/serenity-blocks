@@ -54,6 +54,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { billboardWorld, makeQuadInstancedGeometry } from '../chapter-environments/shared/odyssey-tsl-billboard.js';
+import { keepOdysseyTexture } from '../chapter-environments/shared/odyssey-resident-textures.js';
 
 // Alpha below this contributes no visible glow but still costs a shaded+blended pixel.
 // `Discard` it so the GPU skips the blend (overdraw saving on feathered corners / vacuum).
@@ -178,7 +179,7 @@ export function getCorridorFbmTexture() {
     tex.generateMipmaps = false;
     tex.needsUpdate = true;
     tex.name = 'odyssey-corridor-fbm';
-    _fbmTexture = tex;
+    _fbmTexture = keepOdysseyTexture(tex);
     return tex;
 }
 

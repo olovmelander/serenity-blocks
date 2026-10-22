@@ -117,6 +117,27 @@ describe('Tide', () => {
         expect(sweepLowestRows(undefined, 4, FLOOR)).toEqual({ pieces: [], removed: 0 });
     });
 
+    it('refuses when the falling piece would sit inside the stack it settles', () => {
+        // The T settles four rows, onto row 21 at columns 3-5. An O tucked under its arm, at
+        // columns 2-3 of rows 20-21, would be inside it: Tide used to leave the two overlapping.
+        const session = createSession();
+        session.gameState.currentPiece = {
+            shapeKey: 'O', shape: [[1, 1], [1, 1]], x: 2, y: 20,
+        };
+        const { mode } = createMode(session);
+        const before = session.gameState.lockedPieces;
+
+        expect(odysseyCharmRefusal(mode, session, 'tide', 1)).toBe('piece-in-way');
+        expect(ODYSSEY_CHARM_REFUSALS['piece-in-way']).toBe('piece in the way');
+        expect(applyOdysseyTide(session.gameState)).toBe(false);
+        expect(session.gameState.lockedPieces).toBe(before);
+
+        // One column over, the O is clear of the settled T and Tide goes ahead.
+        session.gameState.currentPiece.x = 6;
+        expect(odysseyCharmRefusal(mode, session, 'tide', 1)).toBeNull();
+        expect(applyOdysseyTide(session.gameState)).toBe(true);
+    });
+
     it('rewrites a live well through the restore boundary and refuses when there is nothing to sweep', () => {
         const gameState = createWell();
         const before = gameState.boardVersion || 0;

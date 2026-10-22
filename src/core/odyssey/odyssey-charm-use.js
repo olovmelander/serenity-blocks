@@ -32,6 +32,7 @@ export const ODYSSEY_CHARM_REFUSALS = Object.freeze({
     'no-clock': 'no clock here',
     cascade: 'mid-cascade',
     'empty-floor': 'nothing to clear',
+    'piece-in-way': 'piece in the way',
     used: 'used',
     none: 'none left',
     paused: 'paused',
@@ -96,8 +97,23 @@ export function sweepLowestRows(lockedPieces, rows, floorRow) {
     return { pieces, removed };
 }
 
-function replaceWell(gameState, pieces) {
-    const grid = rebuildBoardGridFromPieces(pieces, gameState.boardGrid.map((row) => Array(row.length).fill(null)));
+function sweptGrid(gameState, pieces) {
+    return rebuildBoardGridFromPieces(pieces, gameState.boardGrid.map((row) => Array(row.length).fill(null)));
+}
+
+/**
+ * Whether the falling piece would sit inside the stack Tide settles beneath it: the stack
+ * moves down by the rows it sweeps, and a piece tucked under a ledge is in its way. It used to
+ * be left there, overlapping, and locked on top of filled cells.
+ */
+function pieceInTheWay(gameState, grid) {
+    const piece = gameState.currentPiece;
+    return Boolean(piece?.shape) && piece.shape.some((row, dy) => row.some((cell, dx) => (
+        cell && grid[Math.floor(piece.y + dy)]?.[Math.floor(piece.x + dx)] != null
+    )));
+}
+
+function replaceWell(gameState, pieces, grid = sweptGrid(gameState, pieces)) {
     restoreBoardState(gameState, { grid, lockedPieces: pieces }, {
         adoptBoard: true, keepCurrentPiece: true, mirrorGrid: Array.isArray(gameState.grid),
     });
@@ -115,7 +131,9 @@ export function applyOdysseyTide(gameState, rows = ODYSSEY_TIDE_ROWS) {
     if (!gameState?.boardGrid?.length || gameState.isProcessingPhysics || gameState.isGameOver) return false;
     const { pieces, removed } = sweepLowestRows(gameState.lockedPieces, rows, gameState.boardGrid.length - 1);
     if (removed === 0) return false;
-    replaceWell(gameState, pieces);
+    const grid = sweptGrid(gameState, pieces);
+    if (pieceInTheWay(gameState, grid)) return false;
+    replaceWell(gameState, pieces, grid);
     return true;
 }
 
@@ -259,9 +277,9 @@ export function odysseyCharmRefusal(mode, session, charmId, count) {
     if (charmId === 'tide') {
         if (gameState.isProcessingPhysics) return 'cascade';
         const floor = (gameState.boardGrid?.length || 0) - 1;
-        if (floor < 0 || sweepLowestRows(gameState.lockedPieces, ODYSSEY_TIDE_ROWS, floor).removed === 0) {
-            return 'empty-floor';
-        }
+        const swept = floor < 0 ? null : sweepLowestRows(gameState.lockedPieces, ODYSSEY_TIDE_ROWS, floor);
+        if (!swept || swept.removed === 0) return 'empty-floor';
+        if (pieceInTheWay(gameState, sweptGrid(gameState, swept.pieces))) return 'piece-in-way';
     }
     return null;
 }
