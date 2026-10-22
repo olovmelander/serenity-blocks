@@ -43,6 +43,25 @@ export const FLARE_LIFE = 0.9;
 /** Segments along a stream (it bows, so it is a strip, not one quad). */
 const STREAM_SEGMENTS = 24;
 
+/**
+ * The slot to write next in a table of two rows a slot (birth in row A's z): a spent one, else the
+ * one with the least light left (`left(slot, age)`; one not born yet keeps all of it). A burst
+ * never cuts off a stream or a flare still in full light while a fading one is there to take.
+ */
+function weakestSlot(table, slots, time, life, left) {
+    let pick = 0;
+    let least = Infinity;
+    for (let i = 0; i < slots; i++) {
+        const age = time - table[i * 2].z;
+        const light = age > life ? 0 : left(i, Math.max(0, age) / life);
+        if (light < least) {
+            least = light;
+            pick = i;
+        }
+    }
+    return pick;
+}
+
 /** A strip of `segments` quads along x (0..1) for `count` instances, with an instance index. */
 function stripGeometry(count, segments) {
     const geometry = new THREE.InstancedBufferGeometry();
@@ -111,13 +130,14 @@ export function createStreams(u) {
 
     const part = swPart('SerenityWarpStreams', geometry, material, 80);
     let cursor = 0;
+    const streamLeft = (i, gone) => table[i * 2].w * (1 - gone) * (1 - gone);
     /**
      * One stream per point. `points` are where the rows leave the card (UV, y down).
      * @param {{ x: number, y: number }[]} points
      */
     part.fire = (points, rgb, time, strength = 1) => {
         for (let i = 0; i < points.length && i < 4; i++) {
-            const slot = cursor % STREAM_SLOTS;
+            const slot = weakestSlot(table, STREAM_SLOTS, time, STREAM_LIFE, streamLeft);
             cursor += 1;
             const lean = (i % 2 ? -1 : 1) * (0.6 + 0.4 * ((cursor * 0.37) % 1));
             table[slot * 2].set(points[i].x, points[i].y, time + i * 0.04, strength);
@@ -167,16 +187,14 @@ export function createFlares(u) {
     material.colorNode = vec4(vLight.mul(core.add(halo).add(spikes.mul(1.3)).add(minor)).mul(edge).mul(mix(float(1.0), float(0.6), k)), 0.0);
 
     const part = swPart('SerenityWarpFlares', geometry, material, 90);
-    let cursor = 0;
+    const flareLeft = (i, gone) => table[i * 2 + 1].w * (1 - gone) ** 3;
     /** A flare at a screen point (UV, y down), `span` in frame heights. */
     part.fire = (x, y, rgb, time, span = 0.08, strength = 1) => {
-        const slot = cursor % FLARE_SLOTS;
-        cursor += 1;
+        const slot = weakestSlot(table, FLARE_SLOTS, time, FLARE_LIFE, flareLeft);
         table[slot * 2].set(x, y, time, span);
         table[slot * 2 + 1].set(rgb[0], rgb[1], rgb[2], strength);
     };
     part.reset = () => {
-        cursor = 0;
         for (let i = 0; i < FLARE_SLOTS; i++) {
             table[i * 2].set(0, 0, -100, 0);
             table[i * 2 + 1].set(0, 0, 0, 0);

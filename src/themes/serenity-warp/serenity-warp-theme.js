@@ -262,6 +262,9 @@ export default class SerenityWarpTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                // A perfect clear that settled after its clear crowns the jump it began.
+                perfect: (c) => this.world?.onPerfect?.(c),
+                spin: (c) => this.world?.onSpin?.(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
                     this.level = level;
