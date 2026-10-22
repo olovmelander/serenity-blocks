@@ -129,14 +129,70 @@ describe('tornado director: intake', () => {
         }
         expect(calls.clear.map((c) => c.combo)).toEqual([1, 2, 3]);
         expect(calls.combo).toEqual([[1, 0], [2, 0], [3, 0]]);
-        // A lock that clears nothing ends the chain. Physics emits no "resolved with no clears"
-        // callback, so the tracker learns of it when the NEXT piece locks.
-        director.onPieceLock({ piece: T });
-        director.flush();
-        expect(calls.combo[calls.combo.length - 1]).toEqual([3, 0]);
+        // A lock that clears nothing ends the chain, on the frame it locks: a lock and its first
+        // wave share a tick, so a lock with no clear beside it cleared nothing (the tracker
+        // itself only learns of it at the NEXT lock).
         director.onPieceLock({ piece: T });
         director.flush();
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
+        // Nothing more to report until a clear starts a new chain, which counts from one.
+        director.onPieceLock({ piece: T });
+        director.flush();
+        expect(calls.combo).toHaveLength(4);
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.flush();
+        expect(calls.combo[calls.combo.length - 1]).toEqual([1, 0]);
+        expect(calls.clear[calls.clear.length - 1].combo).toBe(1);
+    });
+
+    it('keeps a chain alive across the later waves of a cascade (no lock, no break)', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.flush();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.flush();
+        // Wave two arrives 360 ms later, on a frame of its own.
+        director.onCombo({ comboCount: 2 });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 2 });
+        director.flush();
+        expect(calls.clear.map((c) => [c.combo, c.cascade])).toEqual([[1, 1], [2, 1], [2, 2]]);
+        expect(calls.combo).toEqual([[1, 0], [2, 0]]);
+    });
+
+    it('marks a perfect clear that arrives after its clear as the crown, not a new clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false, crown: false });
+        // Physics sends PERFECT_CLEAR ~360 ms after the last wave, on a frame of its own.
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({ perfect: true, crown: true, combo: 1 });
+        // The chain is not broken by it.
+        expect(calls.combo).toEqual([[1, 0]]);
+    });
+
+    it('hands a T-spin that cleared nothing to the sink on its own', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.tspin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(sink.tspin).toHaveBeenCalledOnce();
+        expect(sink.tspin).toHaveBeenCalledWith(0);
+        expect(calls.clear).toHaveLength(0);
+        // A T-spin that cleared lines rides on its clear instead.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(sink.tspin).toHaveBeenCalledOnce();
+        expect(calls.clear[0]).toMatchObject({ tspin: true, lines: 2, crown: false });
     });
 
     it('carries T-spins, perfect clears and back-to-backs on the clear', () => {

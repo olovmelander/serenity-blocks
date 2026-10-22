@@ -15,6 +15,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     atan,
     attribute,
@@ -177,7 +178,8 @@ function createShell({
         } else {
             // Dust at the foot (dragged up the lower third, darker and browner), cloud at the top.
             col.assign(mix(col, u.dust.mul(lit.mul(0.9).add(0.4)).mul(bands.mul(0.3).add(0.8)), exp(h.mul(-4.5)).mul(0.82)));
-            const crown = u.cloudMid.mul(1.25).add(u.cloudLit.mul(lit).mul(0.16));
+            // The wall cloud burns in the chain's colours while the storm is wound up.
+            const crown = u.cloudMid.mul(1.25).add(u.cloudLit.mul(lit).mul(0.16)).add(u.charge.mul(0.7));
             col.assign(mix(col, crown, smoothstep(0.7, 1.0, h).mul(0.8)));
         }
         for (let i = 0; i < FLASHES; i += 1) {
@@ -190,20 +192,24 @@ function createShell({
 
         if (kind === 'body') {
             // The ribbons: one helix of light per swallowed piece, climbing with the updraught.
+            // A ribbon that is not lit costs nothing (a uniform branch, the same for every pixel).
             const glow = vec3(0.0).toVar();
-            for (let i = 0; i < RIBBONS; i += 1) {
+            const held = Math.min(RIBBONS, tier.ribbons ?? RIBBONS);
+            for (let i = 0; i < held; i += 1) {
                 const shape = u.ribbons.element(i * 2); // (phase, head, tail, light)
                 const paint = u.ribbons.element(i * 2 + 1); // (rgb, turns)
-                // A bright thread, a fainter one beside it and a soft glow round both.
-                const s = fract(sa.add(h.mul(paint.w)).add(shape.x).add(n1.sub(0.5).mul(0.02)));
-                const off = abs(s.sub(0.5));
-                const band = tnGauss(off.div(0.0075))
-                    .add(tnGauss(off.sub(0.024).div(0.005)).mul(0.5))
-                    .add(tnGauss(off.div(0.034)).mul(0.2));
-                const span = smoothstep(shape.z, shape.z.add(0.06), h)
-                    .mul(smoothstep(shape.y.sub(0.07), shape.y, h).oneMinus())
-                    .mul(smoothstep(0.76, 0.96, h).oneMinus());
-                glow.addAssign(paint.rgb.mul(band).mul(span).mul(shape.w));
+                If(shape.w.greaterThan(0.0005), () => {
+                    // A bright thread, a fainter one beside it and a soft glow round both.
+                    const s = fract(sa.add(h.mul(paint.w)).add(shape.x).add(n1.sub(0.5).mul(0.02)));
+                    const off = abs(s.sub(0.5));
+                    const band = tnGauss(off.div(0.0075))
+                        .add(tnGauss(off.sub(0.024).div(0.005)).mul(0.5))
+                        .add(tnGauss(off.div(0.034)).mul(0.2));
+                    const span = smoothstep(shape.z, shape.z.add(0.06), h)
+                        .mul(smoothstep(shape.y.sub(0.07), shape.y, h).oneMinus())
+                        .mul(smoothstep(0.76, 0.96, h).oneMinus());
+                    glow.addAssign(paint.rgb.mul(band).mul(span).mul(shape.w));
+                });
             }
             glow.mulAssign(n2.mul(0.7).add(0.6)).mulAssign(rim.mul(0.75).add(0.25));
             glow.mulAssign(u.release.mul(1.3).add(1.0));
