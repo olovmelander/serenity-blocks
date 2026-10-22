@@ -3,10 +3,12 @@
  *
  *  - Gulls wheel on the air over the water in slow circles (closed form in the clock), wings
  *    flapping now and then; the great rebound (four lines) startles them: they lift off the
- *    shores in a burst and climb before settling back to their rounds.
+ *    shores in a burst and climb before settling back to their rounds (a second quad lifts them
+ *    higher while they still climb). Hot play draws them in over the bay, riding higher.
  *  - The lighthouse on its far island shows its character after sunset (two flashes every ten
- *    seconds) and, while a back-to-back run lasts, burns steady and sweeps its beam through the
- *    haze over the sea.
+ *    seconds) and, while a back-to-back run lasts (or a perfect clear's glass holds), burns
+ *    steady and sweeps its beam through the haze over the sea. A level-up, a back-to-back clear
+ *    and the crown each give a long flash.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -29,6 +31,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { Swell } from '../shared/swell.js';
 import { EYE, mulberry32, smooth } from './high-coast-core.js';
 import { aerial, airClarity } from './high-coast-light.js';
 
@@ -146,7 +149,14 @@ export function createLife(u, t, tier, lantern) {
     beam.frustumCulled = false;
     beam.renderOrder = 31;
 
-    const state = { startleAt: -1e6 };
+    /**
+     * The startle: a lift that rises in a couple of seconds and settles over half a minute. A second
+     * quad lifts the flock still climbing higher instead of dropping it to the water to start again.
+     */
+    const startle = new Swell({
+        attack: 0.6, release: 10, ceiling: 1.3, knee: 1,
+    });
+    const state = { gather: 0 };
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
@@ -162,17 +172,20 @@ export function createLife(u, t, tier, lantern) {
         meshes: [gulls, glow, beam],
         light,
         reset() {
-            state.startleAt = -1e6;
+            startle.reset();
             state.gather = 0;
         },
-        startle(time) { state.startleAt = time; },
+        /** A quad (amount 1), the crown: the flock lifts off the shores and climbs. */
+        startle(time, amount = 1) { startle.hit(amount, time); },
         update(time, dt, world) {
             const sea = world ? world.u.sea.value : 0;
-            const age = time - state.startleAt;
-            // The startle: a lift that rises fast and settles over half a minute.
-            const lift = age > 0 ? smooth(0, 1.5, age) * (1 - smooth(8, 30, age)) : 0;
-            // A chain draws them in: they gather lower over the near bay as it grows (eased).
-            const asked = world ? smooth(2, 6, world.combo) : 0;
+            const heat = world ? world.heat.level : 0;
+            const motion = world ? world.motion : 1;
+            // The startle's lift, and the flock riding higher on the air as play heats.
+            const lift = startle.valueAt(time) + heat * 0.3 * motion;
+            // A chain draws them in: they gather lower over the near bay as it grows (eased); hot
+            // play draws them in too.
+            const asked = world ? Math.max(smooth(2, 6, world.combo), heat * 0.8) : 0;
             state.gather = (state.gather || 0) + (asked - (state.gather || 0)) * (1 - Math.exp(-0.8 * dt));
             const { gather } = state;
             rounds.forEach((g, i) => {
@@ -199,8 +212,9 @@ export function createLife(u, t, tier, lantern) {
             const lamps = world ? world.u.lamps.value : 0;
             const c = (time % 10) / 10;
             const flashes = Math.exp(-(((c - 0.05) / 0.012) ** 2)) + Math.exp(-(((c - 0.11) / 0.012) ** 2));
-            // A level-up: the light signals once (a long flash), day or night.
-            const signal = world ? Math.exp(-((((time - world.levelUpAt) - 0.6) / 0.35) ** 2)) : 0;
+            // A level-up, a back-to-back clear, the crown: the light signals (a long flash), day or
+            // night; signals close together add up instead of restarting.
+            const signal = world ? world.signalShown || 0 : 0;
             light.flash = Math.max(lamps * flashes, beacon * 0.85 + beacon * flashes * 0.4, signal * 1.4);
             if (world) world.u.beacon.value.y = light.flash;
             if (lantern) {
@@ -230,6 +244,14 @@ export function createLife(u, t, tier, lantern) {
         },
         getState() {
             return { gulls: rounds.length, flash: light.flash };
+        },
+        exportState() {
+            return { startle: startle.exportState(), gather: state.gather };
+        },
+        importState(s) {
+            if (!s) return;
+            startle.importState(s.startle);
+            state.gather = Number.isFinite(s.gather) ? s.gather : 0;
         },
         dispose() {
             gullGeo.dispose();

@@ -32,8 +32,8 @@ const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 /** The world's and the post stack's public contract: what HighCoastTheme calls. */
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
-    'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'prerender', 'getPostState', 'getState',
-    'dispose', 'onB2B', 'onGameOver', 'onSessionStart', 'exportSessionState', 'importSessionState',
+    'updateCamera', 'onLock', 'onClear', 'onSpin', 'onCombo', 'levelUp', 'update', 'prerender', 'getPostState',
+    'getState', 'dispose', 'onB2B', 'onGameOver', 'onSessionStart', 'exportSessionState', 'importSessionState',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
@@ -126,6 +126,7 @@ vi.mock('../../src/themes/high-coast/high-coast-world.js', () => {
             this.counts = { locks: 0, clears: 0 };
             this.locks = [];
             this.clears = [];
+            this.spins = [];
             this.levels = [];
             this.cameraSims = [];
             this.sims = [];
@@ -205,6 +206,11 @@ vi.mock('../../src/themes/high-coast/high-coast-world.js', () => {
             this.counts.clears += 1;
             this.clears.push({ ...context, rows: [...context.rows], rowCodes: [...context.rowCodes] });
             this.postState.flash = 0.2 * context.lines;
+        }
+
+        onSpin(context) {
+            mocks.log.push('onSpin');
+            this.spins.push({ ...context });
         }
 
         onCombo(combo) {
@@ -894,6 +900,15 @@ describe('High Coast theme: one node renderer on both backends', () => {
         expect(theme.getDiagnostics().world).toMatchObject({
             level: 3, combo: 1, b2b: 1, counts: { locks: 1, clears: 1 },
         });
+    });
+
+    it('carries a T-spin that cleared nothing to the world as a spin, not a clear', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
+        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        theme.stepFrame(16);
+        expect(theme.world.clears).toHaveLength(0);
+        expect(theme.world.spins).toEqual([{ player: 0, screen: null }]);
     });
 
     it('hands the post what the world asks of it, then the clock, each frame', async () => {
