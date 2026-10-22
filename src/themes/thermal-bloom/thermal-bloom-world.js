@@ -29,6 +29,15 @@
  *   perfect  the Sleeper wakes on the far rim; the living colour is renewed; the stone stays.
  *   level    the year turns: a succession front sweeps out from the Iris along the fingers.
  *   over     the springs sigh: the blooms bleach, the Chalice drains; a new run refills it.
+ *   heat     how hot play runs (shared/gameplay-surge.js): the basin boils harder — more steam,
+ *            the spouters burbling and pulsing faster, the far columns swelling, the fumaroles
+ *            chuffing together, the Chalice roaring steam, the eye widening, the bands brightening,
+ *            the overlook leaning in, the Consort stirring in a fever — and breathes back to calm.
+ *
+ * Nothing running is cut by what comes next: the eruptions are fed columns (thermal-bloom-fed-
+ * column.js), the perfect clear is a crown on the clear it follows, a second break's steam rolls
+ * on the first's, the ladder cools from the top down, full pools are topped up, spinning devils
+ * are fed, and springs and boil-overs that must make room fade out.
  *
  * The parts are built from a registry (PART_BUILDERS); a part not built yet is simply absent.
  * Nothing is created at event time: events write numbers into preallocated state, so seek(t)
@@ -131,6 +140,8 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './thermal-bloom-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { FedColumn, STEAM_LEAD } from './thermal-bloom-fed-column.js';
+import { GameplaySurge, SURGE_WEIGHTS } from '../shared/gameplay-surge.js';
 
 /** The rest camera's clip planes and the bounds of its field of view (degrees). */
 export const REST_RIG = Object.freeze({
@@ -382,6 +393,32 @@ const RENEW = Object.freeze({ delay: 0.4, sweep: 4.5 });
 const VIVID_TAU = 0.45;
 /** Clocks wrap here (float precision in the shaders). */
 const CLOCK_WRAP = 4096;
+/**
+ * The chain's thermometer cools from the top down at a break: the hottest vent goes out first,
+ * the next this many seconds later (the ladder never blows out in one frame).
+ */
+const LADDER_OUT_STEP = 0.3;
+/** Lock springs that may still be fading into the ground beyond the live ones (bounded GPU). */
+const SPRINGS_FADING = 3;
+/** A boil-over asked to make room thins away over this long instead of vanishing (seconds). */
+const BOIL_THIN = 0.8;
+/** Boil-overs in the air at once (the oldest beyond BOILS_SOFT thin away to make room). */
+const BOILS_SOFT = 8;
+const BOILS_MAX = 12;
+/** A back-to-back clear's answer at the Consort: a burst off its pool (§3.5), fed by the next. */
+const CONSORT_KICK = Object.freeze({
+    delay: 0.15, rise: 0.45, hold: 0.9, fall: 0.8, steam: 0, height: 9,
+});
+/** What a perfect clear on its own frame adds to the surge (its clear was counted already). */
+const PERFECT_ALONE = Object.freeze({ lines: 1, perfect: true });
+/** The surge's acts (src/themes/shared/gameplay-surge.js SURGE_STAGES). */
+const STAGE_HOT = 2;
+const STAGE_FEVER = 3;
+/** Under hot play the fumaroles across the basin chuff together this often (seconds, hot … fever). */
+const CHUFF_EVERY = Object.freeze({ hot: 3.4, fever: 2.4 });
+/** The camera's answer to play (degrees, metres): a thump on each hit, a lean in over a fever. */
+const THUMP = Object.freeze({ pitch: 0.28, drop: 0.32 });
+const LEAN = Object.freeze({ pitch: 0.55, forward: 2.2, drop: 0.8 });
 
 function emptyCounts() {
     return {
@@ -471,6 +508,27 @@ export class ThermalBloomWorld {
         };
         this.lastClear.rows = [];
         this.lastClear.rowCodes = [];
+        /**
+         * The eruptions are fed, never restarted: a running one finishes (or is held up and
+         * raised by what comes next). The Chalice's four-line column, the Consort's double
+         * eruption with it, the Consort's burst at a back-to-back clear, the Sleeper's column.
+         */
+        this.quad = new FedColumn(ERUPTIONS.quad, { gain: 0.25, most: 1.5 });
+        this.consortCol = new FedColumn(ERUPTIONS.consort, { gain: 0.2, most: 1.4 });
+        this.consortKick = new FedColumn(CONSORT_KICK, { gain: 0.35, most: 2.6 });
+        this.sleeperCol = new FedColumn(ERUPTIONS.sleeper, { gain: 0.15, most: 1.3 });
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js): the basin boils harder the
+         * longer the hands stay quick — the steam thickens, the spouters burble and pulse faster,
+         * the far columns swell, the fumaroles chuff together, the Chalice roars steam, the eye
+         * widens and the living bands brighten — and breathes back to calm when they rest.
+         */
+        this.surge = new GameplaySurge();
+        /** The surge as of the last sample (the camera reads it before this frame's events). */
+        this.surgeLevel = 0;
+        this.surgeFever = 0;
+        this.surgeStage = 0;
+        this.surgePunch = 0;
         /** The sun: the solved target and the eased value (azimuth, elevation, degrees). */
         this.sunTarget = { azimuth: 122, elevation: 32, onColumn: true };
         this.sunNow = { azimuth: 122, elevation: 32 };
@@ -506,6 +564,27 @@ export class ThermalBloomWorld {
         this.lastRelease = {
             at: -1e6, peak: 0, length: 0, sustained: 0,
         };
+        /** The break before it, whose steam phase may still be rolling (both roll to their end). */
+        this.prevRelease = this.lastRelease;
+        this.quad.reset();
+        this.consortCol.reset();
+        this.consortKick.reset();
+        this.sleeperCol.reset();
+        /**
+         * The perfect clear's awakening (§3.12): when the Sleeper woke, the latest perfect clear
+         * that fed it, and the renewal front's start (a front already sweeping is not restarted).
+         */
+        this.perfect = { at: -1e6, fedAt: -1e6, renewAt: -1e6 };
+        /** The spouters' own clock (it runs faster under hot play) and the cascade waves' kicks. */
+        this.spoutClock = time;
+        this.spoutKicks = Array.from({ length: 6 }, () => ({ at: -1e6, height: 0, spouter: 0 }));
+        this.surge.reset();
+        this.surgeLevel = 0;
+        this.surgeFever = 0;
+        this.surgeStage = 0;
+        this.surgePunch = 0;
+        this._thump = 0;
+        this._lean = 0;
         /** The chain's last link and when it reached six (the sustained column); the flood. */
         this.lastLinkAt = -1e6;
         this.sustainAt = -1e6;
@@ -800,28 +879,33 @@ export class ThermalBloomWorld {
         const tall = 1 + 0.35 * phone;
         let radius = 1.8;
         let flare = 1.1;
-        const C = this.lastClear;
-        const quadAge = C.lines >= 4 && !C.perfect ? t - C.at : -1;
+        // The four-line eruption is its own record, fed by what follows (never cut by a clear).
+        const Q = this.quad;
+        const qs = Q.state(t, this._quadState || (this._quadState = { height: 0, fall: 0, surge: -1 }));
+        const quadLive = Q.live(t);
+        const quadAge = quadLive ? t - Q.at : -1;
         const q = ERUPTIONS.quad;
-        const quadLive = quadAge >= 0 && quadAge < q.delay + q.rise + q.hold + q.fall;
+        const { surgeLevel: level, surgeFever: fever } = this;
         const linkAge = t - this.lastLinkAt;
         const releaseAge = t - this.lastRelease.at;
         // Full idle eruptions run only in menus or after a minute with no events (§3.9); while a
         // session is live the Chalice keeps to its preplay splashes.
         const quiet = !this.layoutLive || t - this.lastEventAt > 60;
         const idleAge = quiet ? sched.eruptionAge : -1;
-        if (quadLive && quadAge < q.delay) {
+        if (quadLive && qs.surge >= 0) {
             // The surge (§1.5, 0–0.35 s): the pool heaves into a dome over the lip and spills down
             // the cone, a steam skirt flaring round it (a dome written with no crown flare).
-            state.height = 4.0 * smooth(0, 0.26, quadAge) * (1 + 0.06 * Math.sin(quadAge * 37));
+            state.height = 4.0 * smooth(0, 0.26, qs.surge) * (1 + 0.06 * Math.sin(qs.surge * 37));
             state.fall = 0;
             radius = 3.2;
             flare = 0;
         } else if (quadLive) {
-            // Four lines (§3.10): the column to 90 m out of the surge, then the fall-back as rain.
-            columnState('quad', quadAge, undefined, state);
+            // Four lines (§3.10): the column out of the surge, then the fall-back as rain. A second
+            // four (or the chain's clears) feeds it: held up longer, its crown climbing higher.
+            state.height = qs.height;
+            state.fall = qs.fall;
             if (state.fall === 0) state.height = Math.max(state.height, 4.0);
-            radius = 9;
+            radius = 9 * (1 + 0.12 * (Q.peak(t) / q.height - 1));
             flare = 1.3;
         } else if (this.combo >= 6) {
             // A sustained column, growing with the chain (no bow).
@@ -878,9 +962,23 @@ export class ThermalBloomWorld {
         cs.height = 0;
         cs.fall = 0;
         if (this.b2b > 0) this._consortLevel = this.b2b;
-        const level = this.b2b > 0 ? this.b2b : (this._consortLevel || 1);
-        if (quadLive && this.b2b > 0) {
-            columnState('consort', quadAge, undefined, cs);
+        const b2bLevel = this.b2b > 0 ? this.b2b : (this._consortLevel || 1);
+        // Its eruptions are records of their own (a double eruption runs to its end even if the
+        // chain breaks under it); each back-to-back clear's burst is fed by the next.
+        if (!this._consortBig) {
+            this._consortBig = { height: 0, fall: 0, surge: -1 };
+            this._consortKick = { height: 0, fall: 0, surge: -1 };
+        }
+        const big = this.consortCol.state(t, this._consortBig);
+        const kick = this.consortKick.state(t, this._consortKick);
+        const bigUp = big.height > 0;
+        const kickUp = kick.height > 0;
+        if (bigUp && (!kickUp || big.height >= kick.height || kick.fall > 0)) {
+            cs.height = big.height;
+            cs.fall = big.fall;
+        } else if (kickUp) {
+            cs.height = kick.height;
+            cs.fall = kick.fall;
         } else if (this.b2b >= 3) {
             columnState('combo', t - this.b2bAt, 10, cs);
         } else if (this.b2b > 0) {
@@ -890,33 +988,48 @@ export class ThermalBloomWorld {
             const peak = (this.b2b === 1 ? 2 : 4) * (1 + mulberry32(k * 7919 + 13)());
             columnState('preplay', t - k * period, peak, cs);
         }
-        const stand = this.b2b > 0 ? smooth(0.05, 0.9, this.consortWet) : 1 - smooth(0, 6, t - this.lastB2BBreak);
+        const stand = this.consortStand(t);
         // (row 1 z: the standing column's height in whole metres, its amount as the fraction)
-        const standing = stand > 0.01 ? Math.round((20 + 20 * level) * (0.6 + 0.4 * stand)) + Math.min(0.99, stand) : 0;
-        const consortR = this.b2b > 0 && quadLive ? 2.6 : 1.0;
+        const standing = stand > 0.01
+            ? Math.round((20 + 20 * b2bLevel) * (0.6 + 0.4 * stand)) + Math.min(0.99, stand) : 0;
+        let consortR = kickUp ? 1.5 : 1.0;
+        if (bigUp) consortR = 2.6;
         set(COLUMN_SLOT.consort, ox, oz, oy + 0.2, cs.height, consortR, standing, COLUMN_KIND.standing, cs.fall);
-        // The Sleeper (§3.12): a perfect clear wakes its 150 m column, wide and flaring.
+        // The Sleeper (§3.12): a perfect clear wakes its 150 m column, wide and flaring (a second
+        // perfect clear while it stands holds it up and lifts it).
         const [sx, sy, sz] = plan.sleeper;
-        const sl = this._sleeper || (this._sleeper = { height: 0, fall: 0 });
-        sl.height = 0;
-        sl.fall = 0;
-        if (C.perfect) columnState('sleeper', t - C.at, undefined, sl);
+        const sl = this.sleeperCol.state(t, this._sleeper || (this._sleeper = { height: 0, fall: 0, surge: -1 }));
         set(COLUMN_SLOT.sleeper, sx, sz, sy - 1, sl.height, 18, 1.6, COLUMN_KIND.water, sl.fall);
-        // The spouters: a constant burble with a pulse on each one's own period.
+        // The spouters: a constant burble with a pulse on each one's own period. Under hot play
+        // they burble higher and pulse faster (their own clock runs quicker) and higher; a
+        // four-line eruption sets them off in sympathy (again with each feed), and each cascade
+        // wave kicks one, higher the deeper the wave.
         const spouts = this.parts.geyser?.spouts;
+        const boil = 1 + 1.4 * level + 2.2 * fever;
+        const pulse = 1 + 0.8 * level + 1.6 * fever;
         SPOUTERS.forEach((sp, i) => {
             const mirror = this.mirrored ? -1 : 1;
             const spot = spouts?.[i] || [cx + sp.lx * mirror, cy - 6, cz + sp.lz];
-            const age = (t + sp.phase) % sp.period;
-            const burble = SPOUTER_BURBLE * (0.85 + 0.2 * Math.sin(t * 5.3 + i * 2.1) + 0.12 * Math.sin(t * 8.9 + i));
-            const sym = quadLive ? columnHeight('spouter', quadAge - 0.6 - i * 0.95, 6 + 2 * i) : 0;
+            const age = (((this.spoutClock + sp.phase) % sp.period) + sp.period) % sp.period;
+            const burble = SPOUTER_BURBLE * boil
+                * (0.85 + 0.2 * Math.sin(t * 5.3 + i * 2.1) + 0.12 * Math.sin(t * 8.9 + i));
+            let sym = 0;
+            if (quadLive) {
+                sym = Math.max(
+                    columnHeight('spouter', t - Q.at - 0.6 - i * 0.95, 6 + 2 * i),
+                    columnHeight('spouter', t - Q.kickAt - 0.6 - i * 0.95, 6 + 2 * i),
+                );
+            }
+            this.spoutKicks.forEach((k) => {
+                if (k.spouter === i && t - k.at < 2) sym = Math.max(sym, columnHeight('spouter', t - k.at, k.height));
+            });
             set(
                 COLUMN_SLOT.spouter0 + i,
                 spot[0],
                 spot[2],
                 spot[1] - 0.1,
-                Math.max(burble, columnHeight('spouter', age), sym),
-                sym > 2 ? 0.45 : 0.2,
+                Math.max(burble, columnHeight('spouter', age, ERUPTIONS.spouter.height * pulse), sym),
+                sym > 2 ? 0.45 : 0.2 + 0.08 * fever,
                 0.5,
                 COLUMN_KIND.spouter,
             );
@@ -965,15 +1078,23 @@ export class ThermalBloomWorld {
                 take(0.25 * flash, 0.3 * flash, 0.45);
                 phase(idleAge - IDLE_WATER + 2, IDLE_STEAM + 2, 4, 0.45);
             }
-            // A broken chain's roaring white exhalation, 4 + 2·peak seconds, as big as the chain was.
-            const rl = this.lastRelease;
-            if (rl.peak >= 2) phase(releaseAge, rl.length, 1.2, clamp01(0.3 + 0.11 * rl.peak));
-            // Four lines: steam flashes off the column, then the 15 s steam phase from its fall-back.
-            if (C.lines >= 4 && !C.perfect && quadAge >= 0) {
-                const qs = quadAge - (q.delay + q.rise + q.hold);
-                if (quadLive) take(0.3 * smooth(0.3, 1.5, quadAge), 0.35 * smooth(0.3, 1.5, quadAge), 1);
-                phase(qs + 0.6, q.steam + 0.6, 2.4, 1);
-            }
+            // A broken chain's roaring white exhalation, 4 + 2·peak seconds, as big as the chain was
+            // (a second break inside it rolls on top of it: both run to their end).
+            const exhale = (rl) => {
+                if (rl.peak >= 2) phase(t - rl.at, rl.length, 1.2, clamp01(0.3 + 0.11 * rl.peak));
+            };
+            exhale(this.prevRelease);
+            exhale(this.lastRelease);
+            // Four lines: steam flashes off the column, then the 15 s steam phase from its fall-back
+            // (a phase a feed overtook rolls on to its end under the next).
+            if (quadLive) take(0.3 * smooth(0.3, 1.5, quadAge), 0.35 * smooth(0.3, 1.5, quadAge), 1);
+            phase(t - (Q.holdEnd - STEAM_LEAD), q.steam + STEAM_LEAD, 2.4, 1);
+            phase(t - Q.overtaken[0], q.steam + STEAM_LEAD, 2.4, 1);
+            phase(t - Q.overtaken[1], q.steam + STEAM_LEAD, 2.4, 1);
+            // Hot play: the Chalice boils harder, its thread swelling toward a standing steam column
+            // that roars through a fever.
+            const roar = 0.12 * level * level + 0.5 * fever;
+            if (roar > 0.005) take(roar, roar, 0.25 + 0.45 * fever);
             now.grown = grown;
             now.dense = dense;
             now.size = size;
@@ -993,8 +1114,19 @@ export class ThermalBloomWorld {
         // The flood, the fumaroles' sympathy and the bow, for the shaders (on the wrapped clock).
         u.floodAt.value = this.toPhase(this.floodAt);
         u.sympathyAt.value = this.toPhase(this.sympathyAt);
+        // The bow lives in the column's spray while it stands: it fades with the fall-back, and a
+        // refill brings it back from where it had faded to (never a jump).
         const bowIn = this.reducedMotion ? 0.8 : 0.5;
-        u.bow.value = quadLive ? smooth(0.85, 0.85 + bowIn, quadAge) * (1 - smooth(4.0, 4.5, quadAge)) : 0;
+        let bow = 0;
+        if (quadLive) {
+            bow = smooth(0.85, 0.85 + bowIn, quadAge) * (1 - smooth(Q.holdEnd, Q.holdEnd + 0.5, t));
+            const r = t - Q.refillAt;
+            if (r >= 0 && r < bowIn) {
+                const from = 1 - smooth(0, 0.5, Q.refillFrom * q.fall);
+                bow *= lerp(from, 1, smooth(0, bowIn, r));
+            }
+        }
+        u.bow.value = bow;
     }
 
     setReducedMotion(reduced) {
@@ -1022,6 +1154,7 @@ export class ThermalBloomWorld {
         this.lockRate = 0;
         this.records = 0;
         this.clearRecord();
+        // (the surge is not reset: the basin breathes back to calm on its own clock, no snap)
         // A new run starts on level one, but the year does not turn back: the wheel keeps the
         // place it reached (and goes on turning with the clock).
         this.front = {
@@ -1060,11 +1193,17 @@ export class ThermalBloomWorld {
         const breathPitch = Math.sin(TAU * BREATH_FY * t + 1.1) * BREATH_DEG * 0.6;
         const px = Math.max(-1, Math.min(1, Number(pointerX) || 0));
         const py = Math.max(-1, Math.min(1, Number(pointerY) || 0));
+        // Play moves the overlook a little: each hit thumps it (the ground shaking under the
+        // eruptions, riding on a floor under a quick hand) and a fever leans it in over the basin.
+        // Off under reduced motion, and at rest (the rest camera is posed with calm 0).
+        const thump = Math.min(1.2, this._thump || 0) * calm;
+        const lean = (this._lean || 0) * calm;
         const yaw = (breathYaw - px * PARALLAX_YAW) * calm;
-        const pitch = -rig.pitch + (breathPitch - py * PARALLAX_PITCH) * calm;
+        const pitch = -rig.pitch + (breathPitch - py * PARALLAX_PITCH) * calm
+            - THUMP.pitch * thump - LEAN.pitch * lean;
         const driftX = (Math.sin(TAU * BREATH_FX * t + 0.7) * BREATH_X + px * PARALLAX_X) * calm;
-        const driftY = Math.sin(TAU * BREATH_FY * t + 2.3) * BREATH_Y * calm;
-        camera.position.set(driftX, rig.height + driftY, 0);
+        const driftY = Math.sin(TAU * BREATH_FY * t + 2.3) * BREATH_Y * calm - THUMP.drop * thump - LEAN.drop * lean;
+        camera.position.set(driftX, rig.height + driftY, -LEAN.forward * lean);
         camera.rotation.set(pitch * DEG, yaw * DEG, 0, 'YXZ');
         camera.updateMatrixWorld();
     }
@@ -1072,6 +1211,12 @@ export class ThermalBloomWorld {
     updateCamera(camera, sim) {
         // The staged gameplay is flushed between this and update(): it must carry this frame's time.
         this.time = sim.time;
+        // (the hits so far, read without stepping the surge, softened over a frame or two so a hit
+        // lands as a thump, not a cut; the fever as last sampled)
+        const punch = this.surge.punch.valueAt(sim.time);
+        const k = approach(1 / 0.07, Math.max(0, sim.delta || 0));
+        this._thump = (this._thump || 0) + (punch - (this._thump || 0)) * (punch > (this._thump || 0) ? k : 1);
+        this._lean = smooth(0.1, 0.9, this.surgeFever);
         this.pose(camera, sim.time, sim.pointerX, sim.pointerY, this.reducedMotion ? 0 : 1);
         // The shared breath (shared/camera-breath.js) on top of the pose, turning the view
         // only (a look out from the overlook): off under reduced motion. update() copies the
@@ -1111,6 +1256,7 @@ export class ThermalBloomWorld {
         if (L.hardDrop) this.counts.hardDrops += 1;
         // The slot pressure: one more lock into the eased rate (an impulse of 1/τ).
         this.lockRate += 1 / RATE_TAU;
+        this.surge.lock(L, t);
         this.spill(L);
         this.lastEventAt = t;
         // The next run's first lock refills a drained Chalice.
@@ -1249,18 +1395,32 @@ export class ThermalBloomWorld {
         const rand = mulberry32((this.counts.locks * 7919) ^ 0xb100);
         const fan = this.placeBloom(aim, rows, hard, rand);
         // At most LOCK_SPRINGS lock springs at once (the ladder's vents keep their own): the
-        // ground reads as a few fresh springs, never a carpet of discs.
-        const slots = Math.min(this.tier.bloomSlots, LOCK_SPRINGS);
-        const life = bloomLife(slots, this.lockRate);
+        // ground reads as a few fresh springs, never a carpet of discs. Hot play keeps a couple
+        // more, and keeps them in colour longer (the slot pressure alone would bleach a quick
+        // hand's springs fastest): the stone remembers a fever.
         const t = this.time;
-        // Reuse the lock spring nearest its end once they are all taken (and any slot when the
-        // pool is full).
-        const springs = this.blooms.filter((b) => !b.vent);
-        if (springs.length >= slots || this.blooms.length >= this.tier.bloomSlots) {
-            const pool = springs.length ? springs : this.blooms;
-            let k = pool[0];
-            pool.forEach((b) => {
+        const level = this.surge.level.valueAt(t);
+        const slots = Math.min(this.tier.bloomSlots, LOCK_SPRINGS + Math.round(2 * level));
+        const life = Math.min(60, Math.max(bloomLife(slots, this.lockRate), 6 + 7 * level + 5 * this.surgeFever));
+        // Once they are all taken the spring nearest its end goes out: it fades into the ground
+        // over OUT_TIME, never vanishing (its bleach kept: see goOut).
+        const springs = this.blooms.filter((b) => !b.vent && !(b.outAt >= 0));
+        if (springs.length >= slots) {
+            let k = springs[0];
+            springs.forEach((b) => {
                 if (b.start + b.life < k.start + k.life) k = b;
+            });
+            ThermalBloomWorld.goOut(k, t);
+        }
+        // Bounded: the springs fading out beyond SPRINGS_FADING (and anything when the pool is
+        // full) give way, the furthest gone first.
+        const fading = this.blooms.filter((b) => !b.vent && b.outAt >= 0);
+        if (fading.length > SPRINGS_FADING || this.blooms.length >= this.tier.bloomSlots) {
+            const pool = fading.length ? fading : this.blooms;
+            let k = pool[0];
+            const remains = (b) => (b.outAt >= 0 ? b.outAt + OUT_TIME : b.start + b.life);
+            pool.forEach((b) => {
+                if (remains(b) < remains(k)) k = b;
             });
             this.blooms.splice(this.blooms.indexOf(k), 1);
         }
@@ -1299,8 +1459,38 @@ export class ThermalBloomWorld {
             seed: this.counts.locks % 64,
             // (an upright phone's margin is a sliver about two cells wide: the boil keeps inside it)
             narrow: Boolean(aim.upright && aim.toCard !== 0),
+            // (when it was asked to make room: it thins away from then, BOIL_THIN)
+            cut: -1,
         });
-        while (this.boils.length > 8) this.boils.shift();
+        // A quick hand fills the air: past BOILS_SOFT the oldest thin away rather than vanish.
+        let standing = 0;
+        for (let i = this.boils.length - 1; i >= 0; i--) {
+            const b = this.boils[i];
+            if (b.cut >= 0) continue;
+            standing += 1;
+            if (standing > BOILS_SOFT) b.cut = t;
+        }
+        while (this.boils.length > BOILS_MAX) this.boils.shift();
+    }
+
+    /** How much of a boil-over's steam still stands at t (1, or thinning away once cut). */
+    static boilThin(b, t) {
+        return b.cut >= 0 ? 1 - smooth(b.cut, b.cut + BOIL_THIN, t) : 1;
+    }
+
+    /**
+     * A spring goes out at `at`: it fades into the ground over OUT_TIME (the shader's BLOOM_OUT).
+     * The shader reads a spring going out on the out life, so a lock spring's age is rescaled to
+     * it: its colour stays as bleached as it was instead of flaring back.
+     */
+    static goOut(b, at) {
+        if (b.outAt >= 0) return;
+        if (!b.vent && b.life !== BLOOM_OUT.life) {
+            const age = Math.max(0, at - b.start);
+            b.start = at - Math.min(BLOOM_OUT.life * 0.98, age * (BLOOM_OUT.life / Math.max(1, b.life)));
+            b.life = BLOOM_OUT.life;
+        }
+        b.outAt = at;
     }
 
     /** How long a boil-over stands in the air (seconds): its drops, then its steam. */
@@ -1317,7 +1507,8 @@ export class ThermalBloomWorld {
         if (!u?.tables?.bursts) return;
         const rows = u.tables.bursts;
         let n = 0;
-        this.boils = this.boils.filter((b) => t - b.start < ThermalBloomWorld.boilLife(b));
+        this.boils = this.boils.filter((b) => t - b.start < ThermalBloomWorld.boilLife(b)
+            && !(b.cut >= 0 && t - b.cut >= BOIL_THIN && t - b.start > 3));
         for (let i = this.boils.length - 1; i >= 0 && n < BURST_SLOTS; i--) {
             const b = this.boils[i];
             if (t - b.start > 3) continue;
@@ -1355,7 +1546,7 @@ export class ThermalBloomWorld {
             const rungK = 0.55 + 0.06 * Math.max(0, (v.link || 2) - 2);
             rows[n * 2 + 1].set(vc[0], vc[1], vc[2], burstCode(BURST_KIND.fountain, v.cell * rungK, life));
             n += 1;
-            if (blown && t - v.out < 1.5 && n < BURST_SLOTS) {
+            if (blown && t >= v.out && t - v.out < 1.5 && n < BURST_SLOTS) {
                 rows[n * 2].set(v.x, v.y, v.z, this.toPhase(v.out));
                 rows[n * 2 + 1].set(vc[0], vc[1], vc[2], burstCode(BURST_KIND.splash, v.cell * 2.2));
                 n += 1;
@@ -1542,6 +1733,13 @@ export class ThermalBloomWorld {
     onClear(context = {}) {
         if (!this.u) return;
         const t = this.time;
+        // A perfect clear comes a beat after the clear it crowns, on a frame of its own with no
+        // rows (the director resolves it alone): it is a crown on what is still playing — the
+        // Sleeper wakes, the basin is renewed — never a new clear that would cut the eruption.
+        if (context.perfect === true && !(Array.isArray(context.rows) && context.rows.length) && !context.screen) {
+            this.crown(t);
+            return;
+        }
         const C = this.lastClear;
         const lines = Math.max(1, Math.min(4, Math.round(Number(context.lines) || 1)));
         C.at = t;
@@ -1560,21 +1758,80 @@ export class ThermalBloomWorld {
             : [];
         this.counts.clears += 1;
         this.counts.lines += lines;
+        this.surge.clear(C, t);
         if (lines >= 4) {
             this.counts.quads += 1;
-            if (!C.perfect) this.floodAt = t + ERUPTIONS.quad.delay;
+            // The Chalice's major eruption: launched, or — while one stands — fed (held up longer,
+            // its crown higher: two fours in a run are a double eruption). The apron floods (on
+            // from where a flood still stands), and a back-to-back run doubles it at the Consort.
+            this.quad.feed(t, 1);
+            this.flood(t + ERUPTIONS.quad.delay);
+            if (C.b2b || this.b2b > 0) this.consortCol.feed(t, 1);
+        } else {
+            // A smaller clear while the four-line column stands keeps it up a little longer and
+            // a little higher (the chain feeds the eruption; it never cuts it).
+            this.quad.feed(t, 0.12 * lines + 0.08 * Math.min(4, C.cascade - 1), { launch: false });
+        }
+        // A back-to-back clear: the Consort answers with a burst off its pool, the next one
+        // feeding it higher (§3.5).
+        if (C.b2b) this.consortKick.feed(t, 1);
+        // Each cascade wave past the first kicks a spouter on the mound, higher the deeper it
+        // runs; from the third the fumaroles across the basin chuff with it.
+        if (C.cascade >= 2) {
+            this.kickSpouter((C.cascade - 2) % SPOUTERS.length, 3 + 2.2 * Math.min(8, C.cascade), t);
+            if (C.cascade >= 3 && t - this.sympathyAt > 1.2) this.sympathyAt = t;
         }
         if (C.tspin) this.counts.tspins += 1;
-        if (C.perfect) this.counts.perfects += 1;
         if (C.cascade > 1) this.counts.cascades += 1;
         // Every cleared row lays a stripe in the stone record (a perfect clear's stone stays).
         this.records += C.perfect ? 0 : lines;
         if (!C.perfect) this.seal(C);
         if (C.tspin) this.spawnDevils(C);
-        // The perfect clear renews the basin (§3.12): every live bloom finishes into recolonised
-        // mat at once; the stone (fossils, rosettes) stays.
-        if (C.perfect) this.blooms.forEach((b) => { b.life = Math.min(b.life, t - b.start + 0.4); });
+        // A perfect clear in the clear's own frame: the clear, and its crown.
+        if (C.perfect) this.crown(t, { clear: false });
         this.lastEventAt = t;
+    }
+
+    /**
+     * The perfect clear's crown (§3.12): the Sleeper wakes on the far rim (a second while it
+     * stands feeds it), a renewal front sweeps out from the Iris, the light swells and the colour
+     * lifts; every live bloom finishes into recolonised mat at once; the stone (fossils,
+     * rosettes) stays. Layered on whatever still plays: nothing running is cut.
+     */
+    crown(t, { clear = true } = {}) {
+        const p = this.perfect;
+        if (t - p.fedAt > 30) p.at = t;
+        p.fedAt = t;
+        if (!(t - p.renewAt - RENEW.delay < RENEW.sweep)) p.renewAt = t;
+        this.sleeperCol.feed(t, 1);
+        this.counts.perfects += 1;
+        if (clear) this.surge.clear(PERFECT_ALONE, t);
+        this.blooms.forEach((b) => { b.life = Math.min(b.life, t - b.start + 0.4); });
+        this.lastEventAt = t;
+    }
+
+    /** A cascade wave's kick at one of the mound's spouters (the oldest kick gives way). */
+    kickSpouter(spouter, height, t) {
+        let k = this.spoutKicks[0];
+        this.spoutKicks.forEach((s) => {
+            if (s.at < k.at) k = s;
+        });
+        k.at = t;
+        k.height = height;
+        k.spouter = spouter;
+    }
+
+    /**
+     * Four lines flood the apron from `at` (the shader's timeline: out over a second, draining
+     * from 4 s, gone by 12.5). A flood still standing is not restarted from nothing: the new one
+     * surges on from the reach it has.
+     */
+    flood(at) {
+        const reachAt = (a) => (a >= 0 && a < 12.5 ? (1 - Math.exp(-a / 0.9)) * (1 - smooth(4, 12, a)) : 0);
+        const age = at - this.floodAt;
+        if (age >= 0 && age < 2) return;
+        const r = Math.min(0.97, reachAt(age));
+        this.floodAt = r > 0.02 ? at + 0.9 * Math.log(1 - r) : at;
     }
 
     /**
@@ -1734,12 +1991,37 @@ export class ThermalBloomWorld {
         this.parts.basin?.setRecordZones?.(centres, away, arc, this._zones.half, this._zones.origin);
     }
 
-    /** One fill row (the newest live ones); `start` may lie a little ahead (a chain or a wave). */
+    /**
+     * One fill row; `start` may lie a little ahead (a chain or a wave). The rows are few: while
+     * there is room every fill keeps its own timeline (the shader keeps the strongest of each, so
+     * a second fill at a rim still filling only adds). When they are all taken a pool already
+     * brimming at that same rim is topped up instead — it brims again, held full — and only
+     * otherwise does the oldest give way: a quad's pools are not deleted by the next clear.
+     */
     pushFill(x, z, side, index, start, cell = 2) {
-        this.fills.push({
-            x, z, start, code: side * 100 + index, side, cell: Math.max(0.3, cell),
-        });
-        if (this.fills.length > EVENT_SLOTS.fills) this.fills.shift();
+        const code = side * 100 + index;
+        const fill = {
+            x, z, start, code, side, cell: Math.max(0.3, cell),
+        };
+        if (this.fills.length >= EVENT_SLOTS.fills) {
+            const near = Math.max(0.3, cell) * 1.5;
+            let same = null;
+            this.fills.forEach((f) => {
+                if (f.code === code && Math.hypot(f.x - x, f.z - z) < Math.max(near, f.cell * 1.5)
+                    && (!same || f.start > same.start)) same = f;
+            });
+            if (same) {
+                // Topped up: its pool stays full (its timeline held at the brim), never restarted.
+                if (this.time - same.start > 1.1) same.start = this.time - 1.1;
+                return;
+            }
+            let oldest = this.fills[0];
+            this.fills.forEach((f) => {
+                if (f.start < oldest.start) oldest = f;
+            });
+            this.fills.splice(this.fills.indexOf(oldest), 1);
+        }
+        this.fills.push(fill);
     }
 
     /** The live fills into their rows. */
@@ -1818,13 +2100,19 @@ export class ThermalBloomWorld {
         }
         if (n === 0 && this.peak >= 2) {
             this.counts.releases += 1;
-            this.ladder.forEach((v) => {
-                if (!(v.out > v.start)) v.out = t;
+            // The thermometer cools from the top down: the hottest vent goes out first, the next
+            // a beat later, down to the foot (never the whole ladder in one frame). Each vent's
+            // spring goes out with it: it cools toward the mat and is gone OUT_TIME later.
+            const lit = this.ladder.filter((v) => !(v.out > v.start)).sort((a, b) => b.link - a.link);
+            lit.forEach((v, k) => {
+                v.out = t + k * LADDER_OUT_STEP;
+                if (v.bloom) ThermalBloomWorld.goOut(v.bloom, v.out);
             });
-            // Their springs go out with them: they cool toward the mat and are gone in 2.5 s.
             this.blooms.forEach((b) => {
-                if (b.vent && !(b.outAt >= 0)) b.outAt = t;
+                if (b.vent) ThermalBloomWorld.goOut(b, t + lit.length * LADDER_OUT_STEP);
             });
+            // A break inside the last one's steam phase rolls on top of it: both run to their end.
+            this.prevRelease = this.lastRelease;
             this.lastRelease = {
                 at: t,
                 peak: this.peak,
@@ -1883,8 +2171,16 @@ export class ThermalBloomWorld {
         });
         while (this.ladder.length > 10) this.ladder.shift();
         const slots = this.tier.bloomSlots;
-        if (this.blooms.length >= slots) this.blooms.shift();
-        this.blooms.push({
+        if (this.blooms.length >= slots) {
+            // Full: what is furthest gone gives way (a spring already going out, else the oldest).
+            let k = this.blooms[0];
+            const remains = (b) => (b.outAt >= 0 ? b.outAt + OUT_TIME - 1e3 : b.start + b.life);
+            this.blooms.forEach((b) => {
+                if (remains(b) < remains(k)) k = b;
+            });
+            this.blooms.splice(this.blooms.indexOf(k), 1);
+        }
+        const bloom = {
             x: fan.x,
             z: fan.z,
             cell: aim.cell,
@@ -1896,13 +2192,16 @@ export class ThermalBloomWorld {
             length: Math.max(1, Math.round(fan.length * 0.5)),
             heading: fan.heading,
             vent: true,
-        });
+        };
+        this.blooms.push(bloom);
+        this.ladder[this.ladder.length - 1].bloom = bloom;
     }
 
     /** The chain the ladder shows: the live one, or the peak it broke at while its vents blow out. */
     ladderChain(t) {
         if (this.combo >= 2) return this.combo;
-        return t - this.lastRelease.at < 4 ? Math.max(2, this.lastRelease.peak) : 2;
+        // (until the last of its staggered vents has rolled away)
+        return t - this.lastRelease.at < 4 + 10 * LADDER_OUT_STEP ? Math.max(2, this.lastRelease.peak) : 2;
     }
 
     /**
@@ -1934,9 +2233,9 @@ export class ThermalBloomWorld {
      * facing the card and wandering toward the card's side for 5–7 s, never round it; under
      * reduced motion they turn in place.
      */
-    spawnDevils(C) {
+    spawnDevils(C, { small = false } = {}) {
         const { plan } = this;
-        const n = Math.max(1, Math.min(3, C.lines));
+        const n = small ? 1 : Math.max(1, Math.min(3, C.lines));
         const t = this.time;
         const layout = this.layout || fallbackLayout(this.aspect * 1000, 1000);
         const card = cardUnion(layout) || {
@@ -1954,20 +2253,68 @@ export class ThermalBloomWorld {
             const dl = Math.hypot(dx, dz) || 1;
             const fromX = ex + (dx / dl) * IRIS_RADIUS * 0.35 + (rand() - 0.5) * 30;
             const fromZ = ez + (dz / dl) * IRIS_RADIUS * 0.35 + (rand() - 0.5) * 30;
+            const life = 5 + 2 * rand();
+            const height = small ? 34 + 10 * rand() : 55 + 20 * rand();
+            if (this.devils.length >= EVENT_SLOTS.devils) {
+                // Every slot spins: the T-spin feeds the devil nearest its end instead of deleting
+                // one mid-spin — it spins on longer, climbs taller, and wanders on toward the card.
+                let d = this.devils[0];
+                this.devils.forEach((e) => {
+                    if (e.start + e.life < d.start + d.life) d = e;
+                });
+                const x = d.x ?? d.fromX;
+                const z = d.z ?? d.fromZ;
+                d.fromX = x;
+                d.fromZ = z;
+                d.toX = x + (goal[0] - x) * 0.35;
+                d.toZ = z + (goal[2] - z) * 0.35;
+                d.pathAt = t;
+                d.life = Math.max(d.life, t - d.start + life);
+                d.pathLen = d.start + d.life - t;
+                d.heightFrom = ThermalBloomWorld.devilHeight(d, t);
+                d.heightTo = Math.min(105, Math.max(d.heightTo, height) + (small ? 6 : 14));
+                d.heightAt = t;
+                d.radius = Math.min(7.5, d.radius + (small ? 0.2 : 0.6));
+                continue;
+            }
             this.devils.push({
                 start: t + i * 0.35,
-                life: 5 + 2 * rand(),
+                life,
                 fromX,
                 fromZ,
                 toX: fromX + (goal[0] - fromX) * 0.45,
                 toZ: fromZ + (goal[2] - fromZ) * 0.45,
-                // 55–75 m tall, 8–11 m across: a column that reads from the overlook at the Iris.
-                height: 55 + 20 * rand(),
-                radius: 4.2 + 1.4 * rand(),
+                // (the path's own clock: a fed devil walks on from where it stands)
+                pathAt: t + i * 0.35,
+                pathLen: life,
+                // 55–75 m tall, 8–11 m across: a column that reads from the overlook at the Iris
+                // (a T-spin that clears nothing: a small one). A feed eases it taller.
+                heightFrom: height,
+                heightTo: height,
+                heightAt: -1e6,
+                radius: (small ? 3.2 : 4.2) + 1.4 * rand(),
                 seed: rand(),
             });
         }
-        while (this.devils.length > EVENT_SLOTS.devils) this.devils.shift();
+    }
+
+    /** A devil's height at t (a feed eases it taller over a second). */
+    static devilHeight(d, t) {
+        return lerp(d.heightFrom, d.heightTo, smooth(d.heightAt, d.heightAt + 1.2, t));
+    }
+
+    /**
+     * A T-spin that cleared nothing (the director's tspin): still a small devil off the Iris (or
+     * a feed to one already spinning), and a little heat.
+     */
+    onTSpin() {
+        if (!this.u) return;
+        const t = this.time;
+        this.counts.tspins += 1;
+        this.spawnDevils(this.lastClear, { small: true });
+        this.surge.punch.hit(SURGE_WEIGHTS.punch.tspin * 0.6, t);
+        this.surge.level.hit(SURGE_WEIGHTS.heat.tspin * 0.4, t);
+        this.lastEventAt = t;
     }
 
     /** The devils' rows from their paths; a devil that ends leaves its rosette. */
@@ -1981,13 +2328,18 @@ export class ThermalBloomWorld {
                 this.addRosette(d.x ?? d.fromX, d.z ?? d.fromZ, t);
                 return;
             }
-            const k = this.reducedMotion ? 0 : smooth(0, 1, Math.max(0, age) / d.life);
+            const k = this.reducedMotion ? 0 : smooth(0, 1, Math.max(0, t - d.pathAt) / Math.max(0.1, d.pathLen));
             const px = -(d.toZ - d.fromZ);
             const pz = d.toX - d.fromX;
             const pl = Math.hypot(px, pz) || 1;
             const wob = this.reducedMotion ? 0 : Math.sin(age * 1.7 + d.seed * 6) * 6;
-            d.x = d.fromX + (d.toX - d.fromX) * k + (px / pl) * wob;
-            d.z = d.fromZ + (d.toZ - d.fromZ) * k + (pz / pl) * wob;
+            // (the wobble is about the path: a re-based path starts where the devil stands)
+            const wob0 = this.reducedMotion || !(d.pathAt > d.start)
+                ? 0 : Math.sin((d.pathAt - d.start) * 1.7 + d.seed * 6) * 6;
+            const w = wob - wob0 * (1 - k);
+            d.x = d.fromX + (d.toX - d.fromX) * k + (px / pl) * w;
+            d.z = d.fromZ + (d.toZ - d.fromZ) * k + (pz / pl) * w;
+            d.height = ThermalBloomWorld.devilHeight(d, t);
             keep.push(d);
         });
         this.devils = keep;
@@ -2029,18 +2381,20 @@ export class ThermalBloomWorld {
         const [cSlot, sSlot] = this.spareSlots;
         if (cSlot !== undefined) restore(cSlot);
         if (sSlot === undefined) return;
-        const C = this.lastClear;
-        const age = t - C.at;
+        // (grown from the Sleeper's waking; thinning from the latest perfect clear that fed it)
+        const p = this.perfect;
+        const age = t - p.at;
+        const late = t - p.fedAt;
         const from = 1.2;
         const until = 28;
-        if (!C.perfect || !(age >= 0) || age > until + 2) restore(sSlot);
+        if (!(age >= 0) || late > until + 2) restore(sSlot);
         else if (age < from) restore(sSlot, 1 - smooth(0.2, from, age));
-        else if (age >= until) restore(sSlot, smooth(until, until + 2, age));
+        else if (late >= until) restore(sSlot, smooth(until, until + 2, late));
         else {
             const [x, y, z] = plan.sleeper;
             const k = smooth(from, 3.2, age);
             const grow = smooth(1.5, 12, age);
-            const thin = 1 - smooth(14, until, age);
+            const thin = 1 - smooth(14, until, late);
             rows[sSlot * 2].set(x, z, y, 160 + 320 * grow);
             rows[sSlot * 2 + 1].set(26 + 14 * grow, 55 + 225 * grow, 1.4 * k * thin, PLUME_KIND.thread);
         }
@@ -2053,7 +2407,18 @@ export class ThermalBloomWorld {
 
     /** The sustained column's height for the live chain (§3.9: 25 m at six links, 60 m by ten). */
     sustainedHeight() {
-        return 25 + 35 * clamp01((this.combo - 6) / 4);
+        // (a fever lifts it on past the chain's own sixty metres)
+        return 25 + 35 * clamp01((this.combo - 6) / 4) + 15 * this.surgeFever;
+    }
+
+    /**
+     * How much of the Consort's standing steam column stands (0..1): while a back-to-back chain
+     * lives, thinning away over 6 s after it breaks; and in a fever the companion vent stirs on
+     * its own (the whole basin boils), settling back as the fever cools.
+     */
+    consortStand(t) {
+        const chain = this.b2b > 0 ? smooth(0.05, 0.9, this.consortWet) : 1 - smooth(0, 6, t - this.lastB2BBreak);
+        return Math.max(chain, 0.7 * smooth(0.3, 1, this.surgeFever));
     }
 
     /** The live back-to-back level (0 = the chain broke … 3): the Consort. */
@@ -2108,6 +2473,7 @@ export class ThermalBloomWorld {
             return;
         }
         this.counts.levelUps += 1;
+        this.surge.levelUp(t);
         if (gained > 0) this.turnSeason(this.seasonOffset + gained, t);
         this.placeWheel(t);
     }
@@ -2270,26 +2636,49 @@ export class ThermalBloomWorld {
         // ── The year: the wheel turns with the clock, a level-up a step more ──
         this.placeWheel(t);
 
+        // ── How hot play runs (sampled once a frame, after this frame's events) ──
+        const surge = this.surge.sample(t);
+        this.surgeLevel = surge.level;
+        this.surgeFever = surge.fever;
+        this.surgeStage = surge.stage;
+        this.surgePunch = surge.punch;
+        const { level: hot, fever } = surge;
+        // The spouters' own clock: it runs faster the hotter play runs.
+        this.spoutClock += dt * (1 + 0.9 * hot + 1.1 * fever);
+        // Hot play: the fumaroles across the basin chuff together, more often in a fever.
+        if (surge.stage >= STAGE_HOT) {
+            const every = surge.stage >= STAGE_FEVER ? CHUFF_EVERY.fever : CHUFF_EVERY.hot;
+            if (t - this.sympathyAt > every) this.sympathyAt = t;
+        }
+
         // ── The gauges ──
         const heat = this.held.heat !== null ? clamp01(this.held.heat) : null;
-        // The eye never widens under the card: its heat stops 0.02 of the screen short of it.
-        const heatTarget = Math.min(heat !== null ? heat * 0.5 : eyeHeat(this.combo, this.level), this.eyeHeatCap());
-        this.heat += (heatTarget - this.heat) * approach(this.combo > 0 ? 3 : 1 / 4, dt);
-        const reachTarget = heat !== null ? 1 + heat * 0.96 : fingerReach(this.combo);
+        // The eye never widens under the card: its heat stops 0.02 of the screen short of it. A
+        // fever keeps it widening past the chain's own cap.
+        const heatTarget = Math.min(
+            heat !== null ? heat * 0.5 : eyeHeat(this.combo, this.level) + 0.1 * fever,
+            this.eyeHeatCap(),
+        );
+        this.heat += (heatTarget - this.heat) * approach(this.combo > 0 || fever > 0.05 ? 3 : 1 / 4, dt);
+        // (a fever pushes the fingers' wet front a notch and a half past the chain's last)
+        const reachTarget = heat !== null ? 1 + heat * 0.96 : fingerReach(this.combo) + 0.18 * fever;
         // The fronts push out at once a link, and drain back notch by notch over about 12 s.
         this.reach += (reachTarget - this.reach) * approach(reachTarget > this.reach ? 4 : 1 / 3, dt);
-        const C = this.lastClear;
-        const sinceClear = t - C.at;
-        let vividTarget = 1;
-        if (C.perfect && sinceClear < 22) vividTarget = 1.25;
-        else if (C.lines >= 4 && sinceClear < 6) vividTarget = 1.18;
+        // The living bands brighten with the heat of play (colour, never light), and a four or a
+        // perfect clear lifts them further; a fever holds them near the cap.
+        const p = this.perfect;
+        let vividTarget = 1 + 0.08 * hot + 0.12 * fever;
+        if (t - p.fedAt < 22) vividTarget = 1.25;
+        else if (t - this.quad.kickAt < 6) vividTarget = Math.max(vividTarget, 1.18);
         this.vivid += (vividTarget - this.vivid) * approach(1 / VIVID_TAU, dt);
 
         // ── Weather ──
         const breath = this.held.breath !== null ? clamp01(this.held.breath) : breathAt(t);
         const wind = windAt(t, this._wind);
         u.breath.value = breath;
-        u.steam.value = steamForBreath(breath) * this.seasonValue('steam') * (1 - 0.45 * (this.drained || 0));
+        // The basin boils harder under hot play: more steam off every vent and pool.
+        u.steam.value = steamForBreath(breath) * this.seasonValue('steam') * (1 - 0.45 * (this.drained || 0))
+            * (1 + 0.14 * hot + 0.2 * fever);
         const heading = WIND_HEADING + wind.angle; // the breeze leans the steam to the right
         u.windDir.value.set(Math.cos(heading), Math.sin(heading));
         u.windSpeed.value = wind.speed;
@@ -2321,7 +2710,7 @@ export class ThermalBloomWorld {
         let frontR = this.front.from === this.front.to ? 1e6 : frontRadiusAt(sweep);
         // A perfect clear sends a renewal wave out from the Iris along the fingers (the season
         // unchanged: only the front's glowing edge and the vivid wake behind it show).
-        const renewAge = this.lastClear.perfect ? t - this.lastClear.at - RENEW.delay : -1;
+        const renewAge = t - p.renewAt - RENEW.delay;
         const renewing = frontR > 1e5 && renewAge >= 0 && renewAge < RENEW.sweep;
         if (renewing) frontR = frontRadiusAt(renewAge / RENEW.sweep);
         if (renewing) u.frontTint.value.set(0.45, 0.95, 0.9);
@@ -2331,7 +2720,7 @@ export class ThermalBloomWorld {
         u.reach.value = this.reach;
 
         // ── The sun: eased toward the solution, never while an eruption is live ──
-        const erupting = t - this.lastClear.at < 20 && this.lastClear.lines >= 4;
+        const erupting = t - this.quad.kickAt < 20;
         if (!erupting) {
             const k = approach(1 / SUN_TAU, dt);
             this.sunNow.azimuth += (this.sunTarget.azimuth - this.sunNow.azimuth) * k;
@@ -2372,10 +2761,10 @@ export class ThermalBloomWorld {
         post.sat = this.seasonValue('sat');
         post.vivid = this.vivid;
         // A perfect clear: the light itself swells for a few seconds (the bloom, never the
-        // exposure), as the Sleeper wakes.
-        const pc = this.lastClear;
-        const pAge = pc.perfect ? t - pc.at : -1;
-        post.bloomBoost = pAge >= 0 ? 0.9 * smooth(0.6, 2.0, pAge) * (1 - smooth(5, 10, pAge)) : 0;
+        // exposure), as the Sleeper wakes (a second one holds it).
+        const pAge = t - p.at;
+        post.bloomBoost = pAge >= 0 && t - p.fedAt < 10
+            ? 0.9 * smooth(0.6, 2.0, pAge) * (1 - smooth(5, 10, t - p.fedAt)) : 0;
         u.iris.value = 1 / post.iris;
         this.writeShimmer();
     }
@@ -2447,7 +2836,9 @@ export class ThermalBloomWorld {
             b.ub = under ? under[2] : 0;
             b.code = vapourCode(kind, seed);
             b.key = Math.hypot(x - cam.x, y + h * 0.5 - cam.y, z - cam.z) - Math.max(r0, r1) * 0.5;
-            // The basin's own steam first, then the eruptions, then the events (newest first).
+            // The basin's own steam first, then the eruptions, then the events (the densest
+            // first: under fast play what gives way is what has nearly thinned away already, never
+            // a body in its prime, so the march sheds steam by fading it, not by cutting it).
             b.pri = this._vapourPri;
             b.order = list.length;
             list.push(b);
@@ -2455,7 +2846,7 @@ export class ThermalBloomWorld {
         this._vapourPri = 0;
         this.vapourSources(t, add, plan);
         if (list.length > VAPOUR_SLOTS) {
-            list.sort((a, b) => a.pri - b.pri || b.order - a.order);
+            list.sort((a, b) => a.pri - b.pri || b.density - a.density || b.order - a.order);
             list.length = VAPOUR_SLOTS;
         }
         list.sort((a, b) => a.key - b.key);
@@ -2480,9 +2871,25 @@ export class ThermalBloomWorld {
         const { u } = this;
         const steam = u.steam.value;
         const [ex, , ez] = plan.eye;
+        // How hard the basin boils with play (the surge): 0 at rest.
+        const play = this.surgeLevel;
+        const { surgeFever: fever } = this;
+        const boil = 0.15 * play + 0.4 * fever;
         // The Iris's dome: a heap of steam as wide as the pool's skirts, leaning with the wind,
-        // lit turquoise over the water and apricot over the mats (the shader's own underlight).
-        add(VAPOUR_KIND.dome, 3, ex, 0, ez, 50, IRIS_RADIUS * 1.12, IRIS_RADIUS * 0.95, 0.2 * steam, 0.16);
+        // lit turquoise over the water and apricot over the mats (the shader's own underlight);
+        // it heaps higher and thicker as the basin boils.
+        add(
+            VAPOUR_KIND.dome,
+            3,
+            ex,
+            0,
+            ez,
+            50 * (1 + 0.3 * play + 0.6 * fever),
+            IRIS_RADIUS * 1.12,
+            IRIS_RADIUS * 0.95,
+            0.2 * steam * (1 + 0.5 * play + 0.9 * fever),
+            0.16,
+        );
         // The Chalice's thread off its vent, swelling a little with the breath.
         const [cx, cy, cz] = plan.chalice;
         const vent = cy + CHALICE.height - 0.8;
@@ -2519,27 +2926,30 @@ export class ThermalBloomWorld {
                 const x = top.x + down.x * along;
                 const z = top.y + down.y * along;
                 const y = terraces?.heightAt ? terraces.heightAt(x, z) : 6;
-                const hot = 1 - k * 0.3;
+                const warmth = 1 - k * 0.3;
                 add(
                     VAPOUR_KIND.plume,
                     33 + k,
                     x,
                     y - 0.5,
                     z,
-                    16 + 6 * hot,
+                    16 + 6 * warmth,
                     6,
                     13,
-                    0.4 * steam * hot,
+                    0.4 * steam * warmth * (1 + 0.5 * fever),
                     0.22,
-                    [0.04 * hot, 0.42 * hot, 0.5 * hot],
+                    [0.04 * warmth, 0.42 * warmth, 0.5 * warmth],
                 );
             });
         }
         // The far columns: every vent's steam across the basin, each its own lean and billows (the
         // sheets stand down while the march draws them).
-        // At a perfect clear every vent across the basin swells in sympathy, near to far.
-        const C = this.lastClear;
-        const perfectAge = C.perfect ? t - C.at : -1;
+        // At a perfect clear every vent across the basin swells in sympathy, near to far (grown
+        // from the Sleeper's waking, thinning from the latest perfect clear). Under hot play every
+        // vent swells with the basin's boil, and in a fever their feet glow apricot off the mats.
+        const pr = this.perfect;
+        const perfectAge = t - pr.at;
+        const perfectLate = t - pr.fedAt;
         const camX = u.camPos.value.x;
         const camZ = u.camPos.value.z;
         (this.plumes || []).forEach((p, i) => {
@@ -2547,33 +2957,34 @@ export class ThermalBloomWorld {
             const seed = (i * 13 + 5) % 64;
             const lean = 0.06 + 0.06 * ((i * 0.618) % 1);
             const delay = Math.hypot(p.x - camX, p.z - camZ) / 900;
-            const sym = perfectAge >= 0
-                ? smooth(0.6 + delay, 2.4 + delay, perfectAge) * (1 - smooth(14, 22, perfectAge)) : 0;
+            const sym = perfectAge >= 0 && perfectLate < 22
+                ? smooth(0.6 + delay, 2.4 + delay, perfectAge) * (1 - smooth(14, 22, perfectLate)) : 0;
             // Every third vent breathes a broad low bank drifting off the flats, not a column.
             const bank = i % 3 === 1;
+            const glow = sym > 0 || fever > 0.01;
             add(
                 VAPOUR_KIND.plume,
                 seed,
                 p.x,
                 p.base,
                 p.z,
-                p.height * (bank ? 0.42 : 1) * (1 + 0.9 * sym),
-                p.r0 * (bank ? 2.6 : 0.7 + 0.5 * sym),
-                p.r1 * (bank ? 2.0 : 0.9 + 0.6 * sym),
-                0.55 * p.density * steam * (bank ? 0.7 : 1) * (1 + 0.5 * sym),
+                p.height * (bank ? 0.42 : 1) * (1 + 0.9 * sym + boil),
+                p.r0 * (bank ? 2.6 : 0.7 + 0.5 * sym + 0.15 * boil),
+                p.r1 * (bank ? 2.0 : 0.9 + 0.6 * sym + 0.3 * boil),
+                0.55 * p.density * steam * (bank ? 0.7 : 1) * (1 + 0.5 * sym + 0.35 * boil),
                 bank ? lean * 2.5 : lean,
-                sym > 0 ? [0.5 * sym, 0.42 * sym, 0.3 * sym] : null,
+                glow ? [0.5 * sym + 0.3 * fever, 0.42 * sym + 0.19 * fever, 0.3 * sym + 0.09 * fever] : null,
                 // Their billows climb with their puffs: a far column visibly breathes upward.
                 riseForLean(bank ? lean * 2.5 : lean) * 0.7,
             );
         });
         // The Sleeper (§3.12): woken by a perfect clear, a towering column on the far rim, its
         // steam rolling up through the sky band, lit warm by the low sun.
-        if (perfectAge >= 0 && perfectAge < 30) {
+        if (perfectAge >= 0 && perfectLate < 30) {
             const [sx, sy, sz] = plan.sleeper;
             const k = smooth(0.8, 3.2, perfectAge);
             const grow = smooth(0.8, 10, perfectAge);
-            const thin = 1 - smooth(16, 30, perfectAge);
+            const thin = 1 - smooth(16, 30, perfectLate);
             // (its steam holds back while the water stands, so the column reads as a jet; then it
             // billows up as the water falls back)
             const steamUp = 0.06 + 0.94 * smooth(6, 10, perfectAge);
@@ -2599,22 +3010,30 @@ export class ThermalBloomWorld {
         // taller with the level, lit turquoise from below; it thins away when the chain breaks.
         {
             const level = this.b2b > 0 ? this.b2b : (this._consortLevel || 1);
-            const stand = this.b2b > 0 ? smooth(0.05, 0.9, this.consortWet) : 1 - smooth(0, 6, t - this.lastB2BBreak);
-            if (stand > 0.01) {
+            const stand = this.consortStand(t);
+            // (it heaps up with each back-to-back clear's burst off its pool, then settles back)
+            const K = this.consortKick;
+            const burst = t >= K.at && t - K.end < 3
+                ? smooth(0, 0.6, t - K.at) * (1 - smooth(0, 3, t - K.end))
+                    * Math.min(1.6, K.peak(t) / CONSORT_KICK.height)
+                : 0;
+            const shown = Math.max(stand, 0.7 * Math.min(1, burst));
+            if (shown > 0.01) {
                 const [ox, oy, oz] = plan.consort;
+                const glow = shown * 1.2 * (1 + 0.5 * burst);
                 add(
                     VAPOUR_KIND.plume,
                     57,
                     ox,
                     oy,
                     oz,
-                    (45 + 25 * level) * (0.6 + 0.4 * stand),
+                    (45 + 25 * level) * (0.6 + 0.4 * shown) * (1 + 0.3 * burst),
                     5,
-                    16 + 6 * level,
-                    1.7 * stand,
+                    (16 + 6 * level) * (1 + 0.2 * burst),
+                    1.7 * shown,
                     0.12,
                     // (its pool's turquoise under it, soft: at full strength the stem read neon)
-                    [0.1 * stand * 1.2, 0.62 * stand * 1.2, 0.7 * stand * 1.2],
+                    [0.1 * glow, 0.62 * glow, 0.7 * glow],
                 );
             }
         }
@@ -2704,12 +3123,14 @@ export class ThermalBloomWorld {
             const heat = ThermalBloomWorld.heatColour(chain, this._heatVap || (this._heatVap = [0, 0, 0]));
             // Past six links the rungs grow taller together (the chain's heat rising), and from
             // nine their feet burn white.
-            const tower = Math.max(0, chain - 6);
-            const whiteHot = smooth(8, 10, chain);
+            // (a fever keeps them climbing past the chain's own count, white-hot)
+            const tower = Math.max(0, chain - 6) + 2.5 * this.surgeFever;
+            const whiteHot = Math.max(smooth(8, 10, chain), 0.8 * this.surgeFever);
             this.ladder.forEach((v, i) => {
                 const a = t - v.start;
                 if (!(a >= 0)) return;
-                const blown = v.out > v.start;
+                // (a vent the break has not reached yet still stands: the thermometer cools from the top)
+                const blown = v.out > v.start && t >= v.out;
                 const since = blown ? t - v.out : 0;
                 const c = v.cell;
                 const g = 1 - Math.exp(-a / 0.35);
@@ -2841,12 +3262,14 @@ export class ThermalBloomWorld {
             const a = t - b.start;
             const life = ThermalBloomWorld.boilLife(b);
             if (!(a >= 0) || a > life) return;
+            const thinning = ThermalBloomWorld.boilThin(b, t);
+            if (!(thinning > 0.001)) return;
             const c = b.cell * (b.hard ? 1.3 : 1);
             const slim = b.narrow ? 0.4 : 1;
             const g = 1 - Math.exp(-a / 0.9);
-            const glow = 4.5 * (1 - smooth(0.4, 4.5, a));
+            const glow = 4.5 * (1 - smooth(0.4, 4.5, a)) * thinning;
             const under = [b.rgb[0] * glow, b.rgb[1] * glow, b.rgb[2] * glow];
-            const density = 1.5 * smooth(0, 0.15, a) * (1 - smooth(life * 0.4, life, a));
+            const density = 1.5 * smooth(0, 0.15, a) * (1 - smooth(life * 0.4, life, a)) * thinning;
             // A plume off the new spring: it shoots up out of the boil-over in a second, billowing
             // as it climbs, sheared downwind, its foot lit in the piece's colour; then it lifts
             // off the ground and thins.
@@ -2861,7 +3284,7 @@ export class ThermalBloomWorld {
                     c * (0.7 + 0.5 * gr),
                     c * (1.2 + 2.6 * gr) * slim,
                     c * (1.6 + 3.2 * gr) * slim,
-                    1.3 * smooth(0, 0.08, a) * (1 - smooth(0.5, 1.4, a)),
+                    1.3 * smooth(0, 0.08, a) * (1 - smooth(0.5, 1.4, a)) * thinning,
                     0.05,
                     [under[0] * 0.5, under[1] * 0.5, under[2] * 0.5],
                 );
@@ -2884,7 +3307,7 @@ export class ThermalBloomWorld {
             if (b.hard) {
                 // The plunge's jet of steam, shot up with the drops.
                 const gj = 1 - Math.exp(-a / 0.35);
-                const dj = 1.3 * smooth(0, 0.1, a) * (1 - smooth(1.2, 3.5, a));
+                const dj = 1.3 * smooth(0, 0.1, a) * (1 - smooth(1.2, 3.5, a)) * thinning;
                 add(
                     VAPOUR_KIND.plume,
                     (b.seed + 17) % 64,
@@ -2990,6 +3413,7 @@ export class ThermalBloomWorld {
             reach: this.reach,
             lockRate: this.lockRate,
             records: this.records,
+            surge: { level: this.surgeLevel, fever: this.surgeFever, stage: this.surgeStage },
             drained: this.drain.at > this.drain.refillAt,
             mirrored: this.mirrored,
             sun: {

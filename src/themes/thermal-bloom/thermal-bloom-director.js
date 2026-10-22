@@ -12,6 +12,7 @@
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..3), whenever it changes
  *   sink.levelUp(level)
+ *   sink.tspin(player)         optional: a T-spin that cleared nothing (in place of a clear)
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor), a clear's lowest row first;
  * `u` is the lock's column as a fraction of the board width; `distance` is how many rows a hard
@@ -782,6 +783,9 @@ export class ThermalBloomDirector {
             c.b2b = slot.b2b;
             c.screen = screen;
             sink.clear(c);
+        } else if (slot.tspin && slot.lines === 0) {
+            // A T-spin that cleared nothing still turned the piece: the sink may answer it.
+            sink?.tspin?.(slot.player);
         }
     }
 
