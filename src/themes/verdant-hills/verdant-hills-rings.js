@@ -8,6 +8,12 @@
  */
 import * as THREE from 'three/webgpu';
 
+/** The strongest a gust can be. */
+const RING_CEILING = 3;
+/** A ring this young and this close (metres) takes a new one into itself when the pool is full. */
+const JOIN_AGE = 0.3;
+const JOIN_REACH = 3;
+
 export class VerdantHillsRings {
     constructor(count = 8, life = 9) {
         this.count = Math.max(1, Math.floor(count));
@@ -21,25 +27,41 @@ export class VerdantHillsRings {
         this.cursor = 0;
     }
 
-    /** Start a ring at a point; replaces a free slot or the oldest ring. */
+    /**
+     * Start a ring at a point in a free slot. With every slot spreading, a ring that has only just
+     * set out from (nearly) the same place takes the new one into itself (it carries on, stronger);
+     * otherwise the ring with the least left to give (its strength as it has faded, the way the
+     * grass feels it) makes way, never one in full flood because it happened to start first.
+     */
     add(x, z, strength = 1) {
         if (!Number.isFinite(x) || !Number.isFinite(z) || !(strength > 0)) return null;
+        const asked = Math.min(RING_CEILING, strength);
         let selected = -1;
-        let oldest = -1;
+        let least = Infinity;
         for (let step = 0; step < this.count; step += 1) {
             const index = (this.cursor + step) % this.count;
             const ring = this.rings[index];
             if (ring.w <= 0) {
                 selected = index;
+                least = -1;
                 break;
             }
-            if (ring.z > oldest) {
-                oldest = ring.z;
+            const left = ring.w * Math.exp(-0.5 * ring.z);
+            if (left < least) {
+                least = left;
                 selected = index;
             }
         }
+        if (least >= 0) {
+            for (const ring of this.rings) {
+                if (ring.z < JOIN_AGE && Math.hypot(ring.x - x, ring.y - z) < JOIN_REACH) {
+                    ring.w = Math.min(RING_CEILING, ring.w + asked * 0.5);
+                    return ring;
+                }
+            }
+        }
         this.cursor = (selected + 1) % this.count;
-        return this.rings[selected].set(x, z, 0, Math.min(3, strength));
+        return this.rings[selected].set(x, z, 0, asked);
     }
 
     update(dt) {

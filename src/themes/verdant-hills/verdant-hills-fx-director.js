@@ -7,14 +7,18 @@
  * translates: it draws ribbons of wind away from the card's edge, throws seed and chaff
  * out from behind it, lays down the short-lived force fields that carry them, winds the
  * whirl a combo builds around the board, starts the gusts that spread through the grass,
- * sends the front down the valley, and steers the pool of sunlight that crosses the hills
+ * sends the fronts down the valley, and steers the pool of sunlight that crosses the hills
  * when the clouds open.
+ *
+ * It reads the frame the world wears (verdant-hills-surge.js): a fever feeds the whirl thicker
+ * (`feed`), hot play widens the fronts, a fed break in the clouds opens wider (`breadth`), and
+ * Reduce motion (`motion`) slows the ribbons, thins the seed and gentles the air that carries it.
  */
 import * as THREE from 'three/webgpu';
 import { VERDANT_HILLS_CHAFF } from './verdant-hills-seeds.js';
 import { VERDANT_HILLS_PARTICLES } from './verdant-hills-seed-sim.js';
 import { VERDANT_HILLS_STAGE_DEPTH } from './verdant-hills-stage.js';
-import { VERDANT_HILLS_KITE_COLOURS } from './verdant-hills-tetrominos.js';
+import { VERDANT_HILLS_KITE_COLOURS, VERDANT_HILLS_PIECE_KITES } from './verdant-hills-tetrominos.js';
 
 const REFERENCE_SEEDS = 2400;
 const CLEAR_WINDOW = 0.5;
@@ -41,6 +45,8 @@ const LEAVES = [VERDANT_HILLS_CHAFF.oakLeaf, VERDANT_HILLS_CHAFF.oakLeafPale];
 const WHITE = new THREE.Color(1, 0.99, 0.94);
 const GOLD = new THREE.Color(1, 0.93, 0.7);
 const KITE_TONES = VERDANT_HILLS_KITE_COLOURS.map((hex) => new THREE.Color(hex));
+/** The sunflower kite's colour (the T's) joins the gold of a back-to-back's ribbons. */
+const VERDANT_HILLS_GOLD_KITE = VERDANT_HILLS_PIECE_KITES.T;
 const UP = new THREE.Vector3(0, 1, 0);
 
 export class VerdantHillsFxDirector {
@@ -72,6 +78,12 @@ export class VerdantHillsFxDirector {
         this.axis = new THREE.Vector3();
         this.windward = new THREE.Vector3(0.5, 0, -0.866);
         this.front = { along: 0, width: 26, strength: 0 };
+        /** The other fronts crossing at once, in the same terms (strength 0: none). */
+        this.fronts = [{ along: 0, width: 26, strength: 0 }, { along: 0, width: 26, strength: 0 }];
+        /** Reduce motion's share of the day's motion, the ribbons' pace and the seed budget, per frame. */
+        this.motion = 1;
+        this.pace = 1;
+        this.share = this.scale;
         this.pool = {
             x: 0, z: 0, radius: 420, strength: 0,
         };
@@ -84,6 +96,7 @@ export class VerdantHillsFxDirector {
             heat: 0,
             settled: false,
             front: null,
+            fronts: this.fronts,
             pool: null,
             fields: this.fields,
         };
@@ -164,7 +177,7 @@ export class VerdantHillsFxDirector {
             heading: this.outward(side, 0.1 + this.random() * 0.14, 0.42),
             colour: tone,
             length: 3 + streak.strength * 2.4,
-            speed: 8 + streak.strength * 6,
+            speed: (8 + streak.strength * 6) * this.pace,
             life: 1.25 + streak.strength * 0.3,
             width: 0.04 + streak.strength * 0.025,
             strength: 0.75 + streak.strength * 0.25,
@@ -192,7 +205,7 @@ export class VerdantHillsFxDirector {
                     heading: this.outward(side, 0.04 + this.random() * 0.16, 0.3 + this.random() * 0.15),
                     colour: WHITE,
                     length: 5.5 + lines * 1.3 + this.random() * 1.5,
-                    speed: 13 + lines * 2 + this.random() * 3,
+                    speed: (13 + lines * 2 + this.random() * 3) * this.pace,
                     life: 1.6 + lines * 0.1,
                     width: 0.042 + streak.strength * 0.02,
                     strength: 1,
@@ -220,7 +233,7 @@ export class VerdantHillsFxDirector {
                 heading: this.outward(1, 0.02 + this.random() * 0.05, 0.22),
                 colour: i % 2 === 0 ? WHITE : GOLD,
                 length: 15 + this.random() * 7,
-                speed: 23 + this.random() * 6,
+                speed: (23 + this.random() * 6) * this.pace,
                 life: 2.5,
                 width: 0.06 + depth * 0.0035,
                 strength: 0.7 + streak.strength * 0.3,
@@ -248,7 +261,7 @@ export class VerdantHillsFxDirector {
                 heading: this.heading.copy(stage.right).multiplyScalar(twin === 0 ? side : -side).normalize(),
                 colour: twin === 0 ? tone : WHITE,
                 length: 6.5,
-                speed: 10,
+                speed: 10 * this.pace,
                 life: 1.9,
                 width: 0.06,
                 strength: 1,
@@ -259,6 +272,39 @@ export class VerdantHillsFxDirector {
                 wobble: 0.02,
                 axis: this.axis.copy(stage.forward),
                 phase: twin * 3.1,
+            });
+        }
+    }
+
+    /**
+     * A back-to-back: golden ribbons cross behind the board from either side, each looping as it
+     * passes the middle; a run of back-to-backs sends more of them (`lines` is how far it has run).
+     */
+    goldRibbons(streak) {
+        const { stage, ribbons } = this;
+        const count = Math.min(5, 1 + Math.max(1, streak.lines || 1));
+        for (let i = 0; i < count; i += 1) {
+            const side = i % 2 === 0 ? -1 : 1;
+            const depth = 8 + i * 1.6 + this.random() * 1.5;
+            const up = 0.3 + 0.08 * i + 0.1 * this.random();
+            const origin = stage.point(side < 0 ? -0.06 : 1.06, up, depth, this.point);
+            origin.y = this.above(origin.x, origin.y, origin.z, 1);
+            ribbons.launch({
+                origin,
+                heading: this.outward(-side, 0.1 + this.random() * 0.06, 0.08),
+                colour: i % 3 === 2 ? KITE_TONES[VERDANT_HILLS_GOLD_KITE] : GOLD,
+                length: 9 + this.random() * 4,
+                speed: (17 + this.random() * 4) * this.pace,
+                life: 2.3,
+                width: 0.06 + depth * 0.003,
+                strength: 0.8 + 0.2 * Math.min(1, streak.strength),
+                loops: 1 + (i % 2),
+                loopRadius: 0.8 + this.random() * 0.4,
+                loopAt: stage.halfWidth(depth) * (0.85 + this.random() * 0.3),
+                lift: 0.03,
+                wobble: 0.2,
+                axis: this.axis.copy(stage.forward).multiplyScalar(side),
+                phase: this.random() * 6.28,
             });
         }
     }
@@ -279,7 +325,7 @@ export class VerdantHillsFxDirector {
                     .normalize(),
                 colour: tone,
                 length: 4.6,
-                speed: 9 + this.random() * 3,
+                speed: (9 + this.random() * 3) * this.pace,
                 life: 2.3,
                 width: 0.06,
                 strength: 1,
@@ -314,7 +360,7 @@ export class VerdantHillsFxDirector {
             heading: tangent,
             colour: coloured || this.whirlTurn % 2 === 0 ? KITE_TONES[this.whirlTurn % KITE_TONES.length] : WHITE,
             length: 5 + level * 3,
-            speed: 9 + level * 7,
+            speed: (9 + level * 7) * this.pace,
             life: 1.5,
             width: 0.055 + level * 0.025,
             strength: 0.8 + level * 0.2,
@@ -343,7 +389,7 @@ export class VerdantHillsFxDirector {
                 .normalize(),
             colour: WHITE,
             length: 7 + this.random() * 5,
-            speed: 7 + wind * 8,
+            speed: (7 + wind * 8) * this.pace,
             life: 2.6,
             width: 0.07 + depth * 0.004,
             strength: 0.42,
@@ -362,7 +408,7 @@ export class VerdantHillsFxDirector {
         const { side, strength } = emitter;
         const edge = stage.edge(side, emitter.row, VERDANT_HILLS_STAGE_DEPTH, this.point, 0.012);
         if (fresh) {
-            const count = Math.round((26 + 44 * strength) * this.scale);
+            const count = Math.round((26 + 44 * strength) * this.share);
             for (let i = 0; i < count; i += 1) {
                 const speed = (1.6 + 3.6 * this.random()) * (0.6 + strength);
                 const x = edge.x + side * this.random() * 0.3;
@@ -392,7 +438,7 @@ export class VerdantHillsFxDirector {
                 y: this.above(edge.x, edge.y, edge.z) - 0.3,
                 z: edge.z,
                 radius: 4,
-                power: 16 * strength + 4,
+                power: (16 * strength + 4) * this.motion,
                 up: 5,
             });
         }
@@ -402,7 +448,7 @@ export class VerdantHillsFxDirector {
     seeds(emitter) {
         const { sim } = this;
         const spot = this.meadowAt(emitter.column, this.foot);
-        const count = this.due(emitter, (40 + 60 * emitter.strength) * this.scale, SEED_WINDOW);
+        const count = this.due(emitter, (40 + 60 * emitter.strength) * this.share, SEED_WINDOW);
         for (let i = 0; i < count; i += 1) {
             const angle = this.random() * Math.PI * 2;
             const spread = 0.5 + 2.6 * this.random();
@@ -425,7 +471,7 @@ export class VerdantHillsFxDirector {
         const { side, strength } = emitter;
         const lines = Math.max(1, emitter.lines);
         const edge = stage.edge(side, emitter.row, VERDANT_HILLS_STAGE_DEPTH, this.point, 0.02);
-        const count = this.due(emitter, (24 + 28 * lines) * this.scale, CLEAR_WINDOW);
+        const count = this.due(emitter, (24 + 28 * lines) * this.share, CLEAR_WINDOW);
         for (let i = 0; i < count; i += 1) {
             const speed = (4.5 + 7.5 * this.random()) * (0.7 + 0.5 * strength);
             const z = edge.z + (this.random() - 0.5) * 1.6;
@@ -458,7 +504,7 @@ export class VerdantHillsFxDirector {
                 dy: 0.16,
                 dz: 0,
                 radius: 5.4,
-                power: 16 * strength,
+                power: 16 * strength * this.motion,
             });
         }
     }
@@ -466,7 +512,7 @@ export class VerdantHillsFxDirector {
     /** The hill breathes out: seed and petals lift off the grass all around the board, leaves off the oak. */
     rise(emitter) {
         const { stage, sim, oak } = this;
-        const count = this.due(emitter, 420 * this.scale * emitter.strength, RISE_WINDOW);
+        const count = this.due(emitter, 420 * this.share * emitter.strength, RISE_WINDOW);
         for (let i = 0; i < count; i += 1) {
             const spot = stage.ground(this.random(), 0.6 + 0.39 * this.random(), this.groundHeight, this.foot);
             if (stage.reach < 40) {
@@ -489,7 +535,7 @@ export class VerdantHillsFxDirector {
         }
         if (!oak) return;
         const torn = { id: `leaf${emitter.id}`, age: emitter.age };
-        const leaves = this.due(torn, 150 * this.scale * emitter.strength, LEAF_WINDOW);
+        const leaves = this.due(torn, 150 * this.share * emitter.strength, LEAF_WINDOW);
         for (let i = 0; i < leaves; i += 1) {
             const angle = this.random() * Math.PI * 2;
             const reach = Math.sqrt(this.random()) * oak.radius;
@@ -544,7 +590,7 @@ export class VerdantHillsFxDirector {
         const edge = stage.edge(side, emitter.row, VERDANT_HILLS_STAGE_DEPTH, this.point, 0.01);
         const x = edge.x + side * 2;
         if (fresh) {
-            const count = Math.round(46 * this.scale);
+            const count = Math.round(46 * this.share);
             for (let i = 0; i < count; i += 1) {
                 const angle = i * 0.7;
                 const speed = 3 + 0.1 * i;
@@ -572,13 +618,28 @@ export class VerdantHillsFxDirector {
                 radius: 1.2,
                 reach: 3.4,
                 top: this.above(x, edge.y, edge.z) + 0.6,
-                spin: 4.4,
+                spin: 4.4 * this.pace,
                 turn: side,
                 grip: 3,
                 pull: 12,
                 lift: 2.4,
             });
         }
+    }
+
+    /**
+     * A front of the reactions' (position across the view, strength) in world terms: how far down
+     * the wind it has come, how wide it is (wider the hotter play runs), how hard it pushes.
+     * Returns false for none, or one too faint to see.
+     */
+    placeFront(front, target, level = 0) {
+        if (!front || !(front.strength > 0.001) || !Number.isFinite(front.position)) return false;
+        // Slow over the hill at the lens, then away down the valley faster than the eye follows.
+        const travel = Math.max(0, Math.min(1, (front.position + 1.4) / 2.8));
+        target.along = FRONT_START + FRONT_REACH * travel ** 2.2;
+        target.width = (6 + Math.max(0, target.along) * 0.16) * (1 + 0.4 * level);
+        target.strength = front.strength;
+        return true;
     }
 
     /**
@@ -590,6 +651,10 @@ export class VerdantHillsFxDirector {
         const { fields, stage, waves } = this;
         fields.length = 0;
         this.follow(frame.epoch);
+        // Reduce motion's share: slower ribbons, less seed, gentler air.
+        this.motion = Number.isFinite(frame.motion) ? Math.max(0, Math.min(1, frame.motion)) : 1;
+        this.pace = 0.45 + 0.55 * this.motion;
+        this.share = this.scale * (0.45 + 0.55 * this.motion);
         this.windward.set(wind.x, 0, wind.z).normalize();
         const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
         const emitters = frame.emitters || [];
@@ -607,7 +672,7 @@ export class VerdantHillsFxDirector {
             else if (emitter.kind === 'rise' || emitter.kind === 'festival') this.rise(emitter);
             else if (emitter.kind === 'spin') this.spin(emitter, fresh);
             else if (emitter.kind === 'combo' && fresh) {
-                this.ring(Math.round((20 + 56 * emitter.strength) * this.scale), emitter.strength);
+                this.ring(Math.round((20 + 56 * emitter.strength) * this.share), emitter.strength);
             }
         }
         // Gusts and ribbons the director asked for, oldest first: each queue is a ring
@@ -629,7 +694,7 @@ export class VerdantHillsFxDirector {
         };
         this.waveSerial = play(frame.waves, this.waveSerial, (wave) => {
             const spot = this.meadowAt(wave.column, this.foot);
-            waves?.add(spot.x, spot.z, wave.strength);
+            waves?.add(spot.x, spot.z, wave.strength * this.motion);
         });
         this.streakSerial = play(frame.streaks, this.streakSerial, (streak) => {
             if (!this.ribbons) return;
@@ -638,6 +703,7 @@ export class VerdantHillsFxDirector {
             else if (streak.kind === 'great') this.greatRibbons(streak);
             else if (streak.kind === 'spin') this.spinRibbon(streak);
             else if (streak.kind === 'festival') this.festivalRibbons();
+            else if (streak.kind === 'gold') this.goldRibbons(streak);
         });
         const whirl = Number.isFinite(frame.whirl) ? Math.max(0, Math.min(1, frame.whirl)) : 0;
         if (whirl > 0.03) {
@@ -651,18 +717,19 @@ export class VerdantHillsFxDirector {
                 // The whirl rides up the board as the combo builds.
                 top: centre.y - 1.1 + 2.3 * whirl,
                 // Radians a second: a slow wheel that quickens as the combo builds.
-                spin: 1.1 + 1.7 * whirl,
+                spin: (1.1 + 1.7 * whirl) * this.pace,
                 turn: 1,
                 grip: 3,
                 pull: 9,
                 lift: 2.6,
             });
-            // Keep the whirl fed while it turns.
-            this.whirlFeed += step * (22 + 70 * whirl) * this.scale;
-            const feed = Math.floor(this.whirlFeed);
-            if (feed > 0) {
-                this.whirlFeed -= feed;
-                this.ring(feed, whirl);
+            // Keep the whirl fed while it turns; a fever feeds it thicker.
+            const feed = Number.isFinite(frame.feed) ? Math.max(0, Math.min(2, frame.feed)) : 1;
+            this.whirlFeed += step * (22 + 70 * whirl) * this.share * feed;
+            const thrown = Math.floor(this.whirlFeed);
+            if (thrown > 0) {
+                this.whirlFeed -= thrown;
+                this.ring(thrown, whirl);
             }
             // And draw it: a ribbon every half-turn, coloured once the streamers unfurl.
             this.whirlClock -= step;
@@ -688,14 +755,13 @@ export class VerdantHillsFxDirector {
             this.idleClock = 4.5 + this.random() * 5 - env.wind * 2;
             if (!env.settled && this.ribbons.active() < 3) this.idleRibbon(env.wind);
         }
-        if (frame.front && frame.front.strength > 0.001) {
-            // Slow over the hill at the lens, then away down the valley faster than the eye follows.
-            const travel = Math.max(0, Math.min(1, (frame.front.position + 1.4) / 2.8));
-            this.front.along = FRONT_START + FRONT_REACH * travel ** 2.2;
-            this.front.width = 6 + Math.max(0, this.front.along) * 0.16;
-            this.front.strength = frame.front.strength;
-            env.front = this.front;
-        } else env.front = null;
+        // The fronts crossing the valley: the newest, and up to two more still on their way.
+        const level = Number.isFinite(frame.level) ? Math.max(0, Math.min(1, frame.level)) : 0;
+        env.front = this.placeFront(frame.front, this.front, level) ? this.front : null;
+        const others = Array.isArray(frame.fronts) ? frame.fronts : null;
+        for (let i = 0; i < this.fronts.length; i += 1) {
+            if (!this.placeFront(others?.[i + 1], this.fronts[i], level)) this.fronts[i].strength = 0;
+        }
         if (frame.sunbreak && frame.sunbreak.strength > 0.001) {
             const travel = Math.max(0, Math.min(1, frame.sunbreak.progress));
             // It lingers over the hills either side of the board and hurries behind it.
@@ -707,7 +773,10 @@ export class VerdantHillsFxDirector {
             const range = POOL_RANGE[0] + (POOL_RANGE[1] - POOL_RANGE[0]) * travel;
             this.pool.x = stage.origin.x + Math.sin(bearing) * range;
             this.pool.z = stage.origin.z - Math.cos(bearing) * range;
-            this.pool.radius = 190 + 80 * travel;
+            // A break that has been fed (or that a fever holds open) stands wider.
+            const { breadth: opened } = frame.sunbreak;
+            const breadth = Number.isFinite(opened) ? Math.max(0, Math.min(1, opened)) : 0;
+            this.pool.radius = 190 + 80 * travel + 150 * breadth;
             this.pool.strength = frame.sunbreak.strength;
             env.pool = this.pool;
         } else env.pool = null;

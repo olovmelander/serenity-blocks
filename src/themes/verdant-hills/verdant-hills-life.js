@@ -67,6 +67,9 @@ function createSwallowGeometry() {
     return geometry;
 }
 
+/** How quickly the butterflies and swallows follow what the frame asks of them (per second). */
+const LIFE_EASE = 2.5;
+
 export class VerdantHillsLife {
     constructor({ light, tier, rng = Math.random }) {
         this.light = light;
@@ -76,6 +79,9 @@ export class VerdantHillsLife {
         this.group.name = 'VerdantHillsLife';
         this.uFlutter = uniform(0);
         this.uStartle = uniform(0);
+        // The swallows' wingbeat, carried forward at the rate of the moment: a startle quickens
+        // the wings without throwing them to another point of their beat.
+        this.uWingClock = uniform(0);
         this.owned = [];
         this.butterflies = 0;
         this.swallows = 0;
@@ -185,7 +191,7 @@ export class VerdantHillsLife {
         const wing = attribute('wing', 'float');
         // A few quick beats, then a glide; a startled bird only beats.
         const beating = smoothstep(-0.2, 0.4, sin(t.mul(1.1).add(bird.x.mul(40)))).max(this.uStartle);
-        const flap = sin(t.mul(this.uStartle.mul(5).add(13)).add(bird.x.mul(31))).mul(beating)
+        const flap = sin(this.uWingClock.add(bird.x.mul(31))).mul(beating)
             .add(float(0.12).mul(beating.oneMinus()));
         // Bank into the turn.
         const bank = dot(normalize(path(t.add(0.4)).sub(position)), right).mul(0.9);
@@ -206,10 +212,18 @@ export class VerdantHillsLife {
         this.owned.push(material, mesh.geometry);
     }
 
-    update(frame = {}) {
+    /**
+     * The butterflies lift and the swallows tower as the game stirs them. Both follow the frame
+     * over a moment rather than in one step (a quad sends the birds up, it does not move them
+     * forty metres between two frames), and settle back as slowly as the frame lets them.
+     */
+    update(frame = {}, dt = 1 / 60) {
         const read = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        this.uFlutter.value = read(frame.flutter);
-        this.uStartle.value = read(frame.flock);
+        const step = Number.isFinite(dt) ? THREE.MathUtils.clamp(dt, 0, 0.25) : 0;
+        const ease = 1 - Math.exp(-LIFE_EASE * step);
+        this.uFlutter.value += (read(frame.flutter) - this.uFlutter.value) * ease;
+        this.uStartle.value += (read(frame.flock) - this.uStartle.value) * ease;
+        this.uWingClock.value = (this.uWingClock.value + step * (13 + 5 * this.uStartle.value)) % (TAU * 1000);
     }
 
     dispose() {

@@ -55,12 +55,21 @@ export const VERDANT_HILLS_KITE_STATIONS = Object.freeze([
     },
 ]);
 
+/** How fast a kite swings its figure of eight (radians a second): quicker the harder it blows. */
+export function verdantHillsKiteRate(slot, { wind = 0, flutter = 0 } = {}) {
+    const lively = 0.35 + 0.65 * clamp(wind + flutter * 0.6, 0, 1);
+    return 0.5 + 0.4 * lively + (slot % 3) * 0.06;
+}
+
 /**
  * Where a kite stands. `fly` 0..1 says how far it has been let out, `height` 0..1 how much
- * line the game has paid out, `wind` 0..1 how hard it blows. Writes position into `out`.
+ * line the game has paid out, `wind` 0..1 how hard it blows, `gale` 0..1 how far hot play has
+ * raised the wind past that (the kites swing wider and nod deeper, a kite day at full stretch).
+ * `turn` is how far round its swing the kite has come (radians); without one it is `time` times
+ * its rate (verdantHillsKiteRate), the closed form. Writes position into `out`.
  */
 export function verdantHillsKitePlace(slot, time, {
-    fly = 1, height = 0, wind = 0, flutter = 0, windX = 0.5, windZ = -0.866,
+    fly = 1, height = 0, wind = 0, flutter = 0, gale = 0, windX = 0.5, windZ = -0.866, turn = Number.NaN,
 } = {}, out = new THREE.Vector3()) {
     const station = VERDANT_HILLS_KITE_STATIONS[slot];
     const [px, pz] = station.post;
@@ -70,13 +79,15 @@ export function verdantHillsKitePlace(slot, time, {
     const phase = slot * 2.399;
     // The swing: a lazy eight, wider and quicker the harder it blows.
     const lively = 0.35 + 0.65 * clamp(wind + flutter * 0.6, 0, 1);
-    const rate = 0.5 + 0.4 * lively + (slot % 3) * 0.06;
-    const swing = Math.sin(time * rate + phase);
-    const nod = Math.sin(time * rate * 2 + phase * 2 + 1.2);
-    const bearing = Math.atan2(windX, -windZ) + degToRad(station.off + swing * (5 + 11 * lively));
+    const stretch = clamp(Number.isFinite(gale) ? gale : 0, 0, 1);
+    // The gale only widens the swing; how quickly it swings is the rate's.
+    const angle = Number.isFinite(turn) ? turn : time * verdantHillsKiteRate(slot, { wind, flutter });
+    const swing = Math.sin(angle + phase);
+    const nod = Math.sin(angle * 2 + phase * 2 + 1.2);
+    const bearing = Math.atan2(windX, -windZ) + degToRad(station.off + swing * (5 + 11 * lively + 7 * stretch));
     // A kite just launched hangs low on a short line; paid-out line lets it climb.
-    const lift = degToRad(lerp(26.5, 31, paid * (0.82 + 0.18 * Math.sin(phase * 3.1))) + nod * (1.2 + 2.2 * lively))
-        * (0.3 + 0.7 * out01);
+    const lift = degToRad(lerp(26.5, 31, paid * (0.82 + 0.18 * Math.sin(phase * 3.1)))
+        + nod * (1.2 + 2.2 * lively + 2.4 * stretch)) * (0.3 + 0.7 * out01);
     const line = station.line * (0.75 + 0.3 * paid) * (0.08 + 0.92 * out01 * out01 * (3 - 2 * out01));
     const x = px + Math.sin(bearing) * Math.cos(lift) * line;
     const z = pz - Math.cos(bearing) * Math.cos(lift) * line;
@@ -101,6 +112,14 @@ export class VerdantHillsKites {
         this.nose = new THREE.Vector3();
         this.right = new THREE.Vector3();
         this.normal = new THREE.Vector3();
+        /**
+         * How far round its swing each kite has come. While the clock runs on by its steps the
+         * swing is carried forward at the rate of the moment, so a gust that quickens it never
+         * throws a kite across the sky (time × rate would, the later in the day the further);
+         * a clock that jumps (a seek, a test) takes the closed form again.
+         */
+        this.turns = new Float64Array(VERDANT_HILLS_KITE_STATIONS.length);
+        this.clock = Number.NaN;
         this.posts = VERDANT_HILLS_KITE_STATIONS.map(({ post: [x, z] }) => new THREE.Vector3(
             x,
             verdantHillsGroundHeight(x, z) + VERDANT_HILLS_POST_HEIGHT,
@@ -308,15 +327,24 @@ export class VerdantHillsKites {
             height: Number.isFinite(frame.height) ? frame.height : 0,
             wind: Number.isFinite(frame.wind) ? frame.wind : 0,
             flutter: Number.isFinite(frame.flutter) ? frame.flutter : 0,
+            gale: Number.isFinite(frame.gale) ? frame.gale : 0,
             windX,
             windZ,
+            turn: 0,
         };
+        const elapsed = Number.isFinite(dt) ? dt : 0;
+        const stepped = elapsed > 0 && Math.abs(time - this.clock - elapsed) < 1e-6;
+        this.clock = time;
         let aloft = 0;
         for (let slot = 0; slot < this.count; slot += 1) {
             const row = slot * ROWS;
             const fly = clamp(Number(frame.kites?.[slot]) || 0, 0, 1);
             state.fly = fly;
+            const rate = verdantHillsKiteRate(slot, state);
+            this.turns[slot] = stepped ? this.turns[slot] + elapsed * rate : time * rate;
+            state.turn = this.turns[slot];
             const place = verdantHillsKitePlace(slot, time, state, this.place);
+            state.turn = this.turns[slot] + 0.05 * rate;
             const ahead = verdantHillsKitePlace(slot, time + 0.05, state, this.ahead);
             const station = VERDANT_HILLS_KITE_STATIONS[slot];
             const post = this.posts[slot];
