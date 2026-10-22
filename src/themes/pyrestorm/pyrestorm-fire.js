@@ -334,6 +334,24 @@ export class Bombs {
         this.u = u;
         this.count = count;
         this.cursor = 0;
+        /**
+         * When each particle is done (born + flight, + its trail for a bomb), until when it must
+         * not be cut (a bomb until it lands, an ember until it has landed: before then it is a
+         * promise the arc made), and what it is. A full pool gives up the particle that loses
+         * least: sparks and spatter first, then embers cooling on the cone and trails draining
+         * into it, nearest their end; a bomb mid-arc or an ember yet to land only if nothing else
+         * is left, which the bursts' budget (room()) keeps from happening.
+         */
+        this.end = new Float64Array(count).fill(-1e9);
+        this.held = new Float64Array(count).fill(-1e9);
+        this.kinds = new Uint8Array(count);
+        /** The theme clock as of the last frame; slots in use, and slots held (in flight). */
+        this.now = 0;
+        this.busy = 0;
+        this.holding = 0;
+        /** Particles given up before their end to make room, and of them, ones cut mid-flight. */
+        this.evicted = 0;
+        this.cut = 0;
         this.start = new Float32Array(count * 4);
         this.move = new Float32Array(count * 4);
         this.look = new Float32Array(count * 4);
@@ -468,8 +486,15 @@ export class Bombs {
     spawn({
         x, y, z, vx, vy, vz, born, life, tint = [1, 1, 1], px = 2, kind = BOMB.bomb, g = G, trail = 0.6, drag = 0,
     }) {
-        const i = this.cursor;
-        this.cursor = (this.cursor + 1) % this.count;
+        const i = this.pick();
+        this.end[i] = born + life + (kind === BOMB.bomb ? Math.max(0.05, trail) : 0);
+        // A bomb is held until it lands, its ember until it has landed; nothing else is held.
+        let held = -1e9;
+        if (kind === BOMB.bomb) held = born + life;
+        else if (kind === BOMB.ember) held = born;
+        this.held[i] = held;
+        if (this.held[i] > this.now) this.holding++;
+        this.kinds[i] = kind;
         this.start[i * 4] = x;
         this.start[i * 4 + 1] = y;
         this.start[i * 4 + 2] = z;
@@ -490,9 +515,66 @@ export class Bombs {
         return i;
     }
 
+    /**
+     * The slot the next particle takes: the first one done, walking on from the last written (in
+     * a pool that is not full that is the very next), else the one that loses least (see `held`).
+     */
+    pick() {
+        const {
+            count, end, held, kinds, now,
+        } = this;
+        let i = this.cursor;
+        let best = i;
+        let bestScore = Infinity;
+        for (let k = 0; k < count; k++) {
+            const left = end[i] - now;
+            if (left <= 0) {
+                best = i;
+                bestScore = 0;
+                break;
+            }
+            let score;
+            if (held[i] > now) score = 1e3 + left;
+            else score = kinds[i] === BOMB.spark || kinds[i] === BOMB.splash ? left * 0.3 : left * 0.5;
+            if (score < bestScore) {
+                bestScore = score;
+                best = i;
+            }
+            i = i + 1 === count ? 0 : i + 1;
+        }
+        if (bestScore > 0) {
+            this.evicted++;
+            if (held[best] > now) {
+                this.cut++;
+                this.holding--;
+            }
+        } else this.busy++;
+        this.cursor = best + 1 === count ? 0 : best + 1;
+        return best;
+    }
+
+    /** How full the pool is (0..1): what a burst reads to shed sparks before the pool overflows. */
+    get load() {
+        return Math.min(1, this.busy / this.count);
+    }
+
+    /**
+     * Slots a burst may still hold in flight (each bomb holds two: itself and the ember it will
+     * lie as). Bursts throw no more than this, so at most 70% of the pool is ever in flight and
+     * the rest can always make room: under fast play each burst throws fewer bombs, and every
+     * one thrown lands.
+     */
+    room() {
+        return Math.max(0, Math.floor(this.count * 0.7) - this.holding);
+    }
+
     clear() {
         for (let i = 0; i < this.count; i++) this.start[i * 4 + 3] = -1e6;
+        this.end.fill(-1e9);
+        this.held.fill(-1e9);
         this.cursor = 0;
+        this.busy = 0;
+        this.holding = 0;
         this.dirty = true;
     }
 
@@ -505,7 +587,19 @@ export class Bombs {
         return n;
     }
 
-    update() {
+    /** Once a frame, with the theme clock: count what is still in use, upload what changed. */
+    update(time) {
+        if (Number.isFinite(time)) {
+            this.now = time;
+            let busy = 0;
+            let holding = 0;
+            for (let i = 0; i < this.count; i++) {
+                if (this.end[i] > time) busy++;
+                if (this.held[i] > time) holding++;
+            }
+            this.busy = busy;
+            this.holding = holding;
+        }
         if (!this.dirty) return;
         this.attr.start.needsUpdate = true;
         this.attr.move.needsUpdate = true;
