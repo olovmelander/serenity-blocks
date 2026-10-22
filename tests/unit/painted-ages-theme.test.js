@@ -33,7 +33,7 @@ const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
     'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'prerender', 'getPostState', 'getState',
-    'dispose', 'onB2B', 'onGameOver', 'onSessionStart', 'exportSessionState', 'importSessionState',
+    'dispose', 'onB2B', 'onGameOver', 'onSessionStart', 'exportSessionState', 'importSessionState', 'onSpin',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
@@ -210,6 +210,10 @@ vi.mock('../../src/themes/painted-ages/painted-ages-world.js', () => {
         onCombo(combo) {
             mocks.log.push('onCombo');
             this.combo = combo;
+        }
+
+        onSpin() {
+            mocks.log.push('onSpin');
         }
 
         onB2B(level) {
@@ -894,6 +898,16 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(theme.getDiagnostics().world).toMatchObject({
             level: 3, combo: 1, b2b: 1, counts: { locks: 1, clears: 1 },
         });
+    });
+
+    it('carries a T-spin that cleared nothing to the world on its own', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
+        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        mocks.log.length = 0;
+        theme.stepFrame(16);
+        expect(mocks.log).toContain('onSpin');
+        expect(theme.world.clears).toHaveLength(0);
     });
 
     it('hands the post what the world asks of it, then the clock, each frame', async () => {

@@ -352,10 +352,14 @@ export function fieldScalar(tex, xz, fallback = 1) {
 
 // ── The scene's state ─────────────────────────────────────────────────────────────
 
-/** Pigment ribbons running along beds at once (locks). */
-export const RIBBONS = 10;
-/** Light waves climbing the strata at once (clears). */
-export const WAVES = 6;
+/** Pigment ribbons running along beds at once (locks; a quick hand keeps about a dozen alive). */
+export const RIBBONS = 12;
+/**
+ * Light waves climbing the strata at once (clears). A quad alone sends ten (its four row bands
+ * and the six-colour tide) and a perfect clear seven more, while a chain's earlier bands are still
+ * climbing: when the table is full the faintest gives way (painted-ages-fx.js).
+ */
+export const WAVES = 16;
 
 const rows = (count) => Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, 0));
 const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
@@ -430,6 +434,13 @@ export function createUniforms() {
         settle: uniform(0),
         /** The newest record bed's glow (1 when it is laid down, fading). */
         fresh: uniform(0),
+        /** How many of the newest record beds share that glow (a chain lights its beds one by one). */
+        freshRows: uniform(1),
+        /**
+         * The heat of play (src/themes/shared/gameplay-surge.js): the painted beds glow in their
+         * own pigment, a slow tide of colour climbing them (0 at rest and under casual play).
+         */
+        strataGlow: uniform(0),
         recordTop: uniform(160),
         recordHead: uniform(RECORD_ROWS - 1),
         recordCount: uniform(0),

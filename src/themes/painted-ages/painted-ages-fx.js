@@ -26,6 +26,18 @@ function compact(rows, stride, count, alive) {
     return w;
 }
 
+/**
+ * What a row still has to give at `now`: its power times the share of its life still ahead (a row
+ * scheduled ahead of `now` has all of it). A full table gives up its faintest row rather than
+ * simply its oldest, so a chain's earlier bands keep climbing while a quad's tide joins them.
+ */
+function energyAt(start, end, power, now) {
+    if (now <= start) return power;
+    const span = end - start;
+    if (!(span > 0)) return 0;
+    return power * Math.max(0, (end - now) / span);
+}
+
 export class EventTables {
     constructor(u) {
         this.u = u;
@@ -33,6 +45,12 @@ export class EventTables {
         this.waveCount = 0;
         this.ribbonLife = new Float64Array(RIBBONS);
         this.waveLife = new Float64Array(WAVES);
+        this.ribbonStart = new Float64Array(RIBBONS);
+        this.waveStart = new Float64Array(WAVES);
+        this.ribbonPower = new Float64Array(RIBBONS);
+        this.wavePower = new Float64Array(WAVES);
+        /** The latest time the tables were told of (update(), or a row added). */
+        this.now = -Infinity;
     }
 
     reset() {
@@ -43,6 +61,7 @@ export class EventTables {
         this.waveCount = 0;
         this.u.ribbonCount.value = 0;
         this.u.waveCount.value = 0;
+        this.now = -Infinity;
     }
 
     /** Light a bed: origin (x, z), its geological height g, colour, power, and how it runs. */
@@ -50,12 +69,16 @@ export class EventTables {
         x, z, g, time, rgb, power = 1, half = 1.1, speed = 170, reach = 900, kind = 0, life = 3.2,
     }) {
         const rows = this.u.tables.ribbons;
-        if (this.ribbonCount >= RIBBONS) this.dropOldest(rows, 3, 'ribbonCount', this.ribbonLife);
+        if (this.ribbonCount >= RIBBONS) {
+            this.dropFaintest(rows, 3, 'ribbonCount', this.ribbonStart, this.ribbonLife, this.ribbonPower, time);
+        }
         const i = this.ribbonCount++;
         rows[i * 3].set(x, z, g, time);
         rows[i * 3 + 1].set(rgb[0], rgb[1], rgb[2], power);
         rows[i * 3 + 2].set(half, speed, reach, kind);
+        this.ribbonStart[i] = time;
         this.ribbonLife[i] = time + life;
+        this.ribbonPower[i] = power;
         this.u.ribbonCount.value = this.ribbonCount;
     }
 
@@ -64,42 +87,64 @@ export class EventTables {
         g0, climb = 60, time, power = 1, rgb, half = 2.4, life = 4,
     }) {
         const rows = this.u.tables.waves;
-        if (this.waveCount >= WAVES) this.dropOldest(rows, 2, 'waveCount', this.waveLife);
+        if (this.waveCount >= WAVES) {
+            this.dropFaintest(rows, 2, 'waveCount', this.waveStart, this.waveLife, this.wavePower, time);
+        }
         const i = this.waveCount++;
         rows[i * 2].set(g0, climb, time, power);
         rows[i * 2 + 1].set(rgb[0], rgb[1], rgb[2], half);
+        this.waveStart[i] = time;
         this.waveLife[i] = time + life;
+        this.wavePower[i] = power;
         this.u.waveCount.value = this.waveCount;
     }
 
-    dropOldest(rows, stride, key, lives) {
-        let oldest = 0;
-        for (let i = 1; i < this[key]; i++) if (lives[i] < lives[oldest]) oldest = i;
-        lives[oldest] = -1;
-        this[key] = compactWithLife(rows, stride, this[key], lives, (i) => i !== oldest);
+    /**
+     * The table is full: the row with the least left to give goes (a row added a little ahead of
+     * time is judged at the present, never at its own start).
+     */
+    dropFaintest(rows, stride, key, starts, lives, powers, time) {
+        const now = Number.isFinite(this.now) ? Math.min(this.now, time) : time;
+        let faintest = 0;
+        let least = Infinity;
+        for (let i = 0; i < this[key]; i++) {
+            const left = energyAt(starts[i], lives[i], powers[i], now);
+            if (left < least) {
+                least = left;
+                faintest = i;
+            }
+        }
+        lives[faintest] = -1;
+        this[key] = compactTable(rows, stride, this[key], starts, lives, powers, (i) => i !== faintest);
     }
 
     /** Retire what has run its course. */
     update(time) {
+        this.now = time;
         const rib = this.u.tables.ribbons;
         const before = this.ribbonCount;
-        this.ribbonCount = compactWithLife(rib, 3, this.ribbonCount, this.ribbonLife, (i) => this.ribbonLife[i] > time);
+        const ribbonLive = (i) => this.ribbonLife[i] > time;
+        const { ribbonStart, ribbonLife, ribbonPower } = this;
+        this.ribbonCount = compactTable(rib, 3, before, ribbonStart, ribbonLife, ribbonPower, ribbonLive);
         if (before !== this.ribbonCount) this.u.ribbonCount.value = this.ribbonCount;
         const wav = this.u.tables.waves;
         const wb = this.waveCount;
-        this.waveCount = compactWithLife(wav, 2, this.waveCount, this.waveLife, (i) => this.waveLife[i] > time);
+        const waveLive = (i) => this.waveLife[i] > time;
+        this.waveCount = compactTable(wav, 2, wb, this.waveStart, this.waveLife, this.wavePower, waveLive);
         if (wb !== this.waveCount) this.u.waveCount.value = this.waveCount;
     }
 }
 
-/** compact(), moving each row's life with it. */
-function compactWithLife(rows, stride, count, lives, alive) {
+/** compact(), moving each row's start, end and power with it. */
+function compactTable(rows, stride, count, starts, lives, powers, alive) {
     let w = 0;
     for (let r = 0; r < count; r++) {
         if (!alive(r)) continue;
         if (w !== r) {
             for (let k = 0; k < stride; k++) rows[w * stride + k].copy(rows[r * stride + k]);
+            starts[w] = starts[r];
             lives[w] = lives[r];
+            powers[w] = powers[r];
         }
         w++;
     }
