@@ -69,8 +69,8 @@ export class GoldenForestSparks {
         const comet = mix(float(1), pow(st.y, 1.6).mul(0.8).add(0.2), glow.z);
         // Amber at rest, pale gold when a combo heats them; never so bright that the
         // bloom washes the colour out of them.
-        const ember = mix(vec3(1.0, 0.42, 0.05), vec3(1.0, 0.74, 0.3), glow.y);
-        material.colorNode = ember.mul(glow.y.mul(0.6).add(1.45));
+        const ember = mix(vec3(1.0, 0.42, 0.05), vec3(1.0, 0.68, 0.22), glow.y);
+        material.colorNode = ember.mul(glow.y.mul(0.45).add(1.45));
         material.opacityNode = core.mul(1.1).add(halo.mul(0.6)).mul(glow.x).mul(comet);
         const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, count);
         mesh.name = 'GoldenForestFireflies';

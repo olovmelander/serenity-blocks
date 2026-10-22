@@ -249,6 +249,8 @@ export default class CinderDriftTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                crown: (player) => this.world?.onPerfectCrown({ player }),
+                tspin: (player) => this.world?.onTSpinMini({ player }),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
             },

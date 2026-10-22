@@ -658,6 +658,98 @@ describe('Verdant Hills effects director', () => {
             expect(env.pool.strength).toBeGreaterThanOrEqual(0);
         });
 
+        it('crosses golden ribbons behind the board for a back-to-back, from both sides, more for a run', () => {
+            const built = rig({ quality: 'Extreme' });
+            const { stage, camera, launched } = built;
+            // The golden ribbons of the frame a back-to-back lands in (the whirl it winds draws its own).
+            const crossed = () => {
+                const before = launched.length;
+                built.reactions.onBackToBack();
+                built.frame();
+                return launched.slice(before).filter((ribbon) => {
+                    const { x } = onScreen(camera, ribbon.origin);
+                    return x < 0.02 || x > 0.98;
+                });
+            };
+            const first = crossed();
+            expect(first).toHaveLength(2);
+            const sides = new Set();
+            for (const ribbon of first) {
+                const depth = depthOf(stage, ribbon.origin);
+                expect(depth).toBeGreaterThan(VERDANT_HILLS_STAGE_DEPTH);
+                const { x } = onScreen(camera, ribbon.origin);
+                // From beyond one edge of the picture, across toward the other.
+                const side = x < 0.5 ? -1 : 1;
+                sides.add(side);
+                expect(Math.min(x, 1 - x)).toBeLessThan(0.02);
+                expect(ribbon.heading.dot(stage.right) * -side).toBeGreaterThan(0.8);
+                expect(clearanceOf(ribbon.origin)).toBeGreaterThan(1);
+                expect(ribbon.speed * ribbon.life * 0.7).toBeGreaterThan(stage.halfWidth(depth) * 2);
+                expect(ribbon.loops).toBeGreaterThanOrEqual(1);
+                // Gold, or the sunflower kite's own colour: never white.
+                expect(sameColour(ribbon.colour, new THREE.Color(1, 0.99, 0.94))).toBe(false);
+            }
+            expect([...sides].sort()).toEqual([-1, 1]);
+            // The next back-to-backs of a run cross more of them, up to five.
+            const counts = [];
+            for (let b2b = 0; b2b < 4; b2b++) {
+                built.run(2);
+                counts.push(crossed().length);
+            }
+            expect(counts).toEqual([3, 4, 5, 5]);
+        });
+
+        it('lays every front crossing in world terms, each wider as it goes and the hotter play runs', () => {
+            const { director } = rig();
+            const newest = { position: -1.2, direction: 1, strength: 0.5 };
+            const middle = { position: 0, direction: 1, strength: 0.7 };
+            const oldest = { position: 1, direction: 1, strength: 0.2 };
+            const env = director.apply(quiet({ front: newest, fronts: [newest, middle, oldest] }), STEP, WIND);
+            const [second, third] = env.fronts.map((front) => ({ ...front }));
+            expect(env.front.strength).toBe(0.5);
+            expect(second.strength).toBe(0.7);
+            expect(third.strength).toBe(0.2);
+            expect(env.front.along).toBeLessThan(second.along);
+            expect(second.along).toBeLessThan(third.along);
+            expect(third.width).toBeGreaterThan(second.width);
+            // Hot play widens them into one rolling wall of wind.
+            const hot = director.apply(quiet({
+                front: newest, fronts: [newest, middle, oldest], level: 1,
+            }), STEP, WIND);
+            expect(hot.fronts[0].width).toBeCloseTo(second.width * 1.4, 9);
+            // Only the newest crossing: the others are none.
+            const alone = director.apply(quiet({ front: newest, fronts: [newest] }), STEP, WIND);
+            expect(alone.fronts.map((front) => front.strength)).toEqual([0, 0]);
+            expect(director.apply(quiet(), STEP, WIND).fronts.map((front) => front.strength)).toEqual([0, 0]);
+        });
+
+        it('feeds the whirl thicker in a fever, and gentles ribbons, seed and air under Reduce motion', () => {
+            const thrown = (extra) => {
+                const built = rig();
+                for (let frame = 0; frame < 60; frame++) {
+                    built.director.apply(quiet({ whirl: 0.8, streamers: 1, ...extra }), STEP, WIND);
+                }
+                const vortex = built.director.fields.find((field) => field.kind === 'vortex');
+                return { spawned: built.spawn.mock.calls.length, launched: built.launched, vortex };
+            };
+            const plain = thrown({});
+            const fever = thrown({ feed: 1.8 });
+            const still = thrown({ motion: 0.35 });
+            expect(fever.spawned).toBeGreaterThan(plain.spawned * 1.6);
+            expect(still.spawned).toBeLessThan(plain.spawned * 0.7);
+            expect(still.vortex.spin).toBeLessThan(plain.vortex.spin * 0.7);
+            expect(still.launched.length).toBeGreaterThan(0);
+            expect(Math.max(...still.launched.map((ribbon) => ribbon.speed)))
+                .toBeLessThan(Math.min(...plain.launched.map((ribbon) => ribbon.speed)));
+            // Gusts through the grass are gentler too.
+            const built = rig();
+            built.reactions.onLineClear(2, { clearedRows: [20, 21] });
+            const frame = built.reactions.update(STEP);
+            built.director.apply({ ...frame, motion: 0.35 }, STEP, WIND);
+            const asked = frame.waves.filter((wave) => wave.serial >= 0).sort((a, b) => b.serial - a.serial)[0];
+            expect(built.blown.mock.calls.at(-1)[2]).toBeCloseTo(asked.strength * 0.35, 9);
+        });
+
         it('lifts seed and petals off the grass all round the board, and tears leaves off the oak', () => {
             const built = rig({ quality: 'Medium' });
             built.reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
@@ -1172,10 +1264,14 @@ describe('Verdant Hills effects director', () => {
             built.reactions.onGameOver();
             const env = built.frame();
             expect(env.settled).toBe(true);
-            expect(env.front).toBeNull();
-            expect(env.pool).toBeNull();
+            // The front and the open clouds fade where they are instead of vanishing in a frame.
+            expect(env.front.strength).toBeGreaterThan(0);
+            expect(env.pool.strength).toBeGreaterThan(0);
+            built.run(3);
+            expect(built.frame().front).toBeNull();
+            expect(built.frame().pool).toBeNull();
             // The whirl unwinds over a few seconds, still drawing itself as it goes.
-            built.run(6);
+            built.run(3);
             const drawn = built.launched.length;
             const fed = built.spawn.mock.calls.length;
             built.run(4);
@@ -1193,30 +1289,31 @@ describe('Verdant Hills effects director', () => {
     describe('queued ribbons', () => {
         it('plays a full queue of ribbons asked for in one frame, each once and oldest first', () => {
             const { director, reactions, launched } = rig({ quality: 'Extreme' });
-            // Sixteen locks' worth in a single frame, each its own kite and its own row.
-            const asked = Array.from({ length: 16 }, (_, index) => ({
-                side: index % 2 ? 1 : -1, row: 0.5 + index * 0.03, strength: 0.5, kite: index % 7,
+            // A whole queue of locks' worth in a single frame, each its own kite and its own row.
+            const size = reactions.streaks.length;
+            const asked = Array.from({ length: size }, (_, index) => ({
+                side: index % 2 ? 1 : -1, row: 0.4 + index * 0.025, strength: 0.5, kite: index % 7,
             }));
             asked.forEach((cue) => reactions.streak('lock', cue));
             director.apply(reactions.update(STEP), STEP, WIND);
-            expect(launched).toHaveLength(16);
+            expect(launched).toHaveLength(size);
             launched.forEach((ribbon, index) => {
                 expect(sameColour(ribbon.colour, KITE_TONES[asked[index].kite]), `ribbon ${index}`).toBe(true);
                 expect(Math.sign(ribbon.heading.x)).toBe(asked[index].side);
             });
             // Lower rows first: in the order they were asked for.
-            for (let index = 1; index < 16; index++) {
+            for (let index = 1; index < size; index++) {
                 expect(launched[index].origin.y).toBeGreaterThan(launched[index - 1].origin.y);
             }
             director.apply(reactions.update(STEP), STEP, WIND);
-            expect(launched).toHaveLength(16);
+            expect(launched).toHaveLength(size);
             // The queue is a ring: two more reuse its two oldest slots, and only those two play.
-            reactions.streak('lock', { side: -1, row: 0.9, kite: 5 });
-            reactions.streak('lock', { side: 1, row: 0.95, kite: 6 });
+            reactions.streak('lock', { side: -1, row: 0.95, kite: 5 });
+            reactions.streak('lock', { side: 1, row: 0.97, kite: 6 });
             director.apply(reactions.update(STEP), STEP, WIND);
-            expect(launched).toHaveLength(18);
-            expect(sameColour(launched[16].colour, KITE_TONES[5])).toBe(true);
-            expect(sameColour(launched[17].colour, KITE_TONES[6])).toBe(true);
+            expect(launched).toHaveLength(size + 2);
+            expect(sameColour(launched[size].colour, KITE_TONES[5])).toBe(true);
+            expect(sameColour(launched[size + 1].colour, KITE_TONES[6])).toBe(true);
         });
 
         it('draws the ribbons of every kind of event that lands in one frame', () => {

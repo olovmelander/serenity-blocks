@@ -38,10 +38,13 @@ export const HOLE = Object.freeze({
     ESCAPE: 12.4,
 });
 
-/** Slots the disk shader evaluates for matter the player has fed it. */
-export const HOTSPOT_SLOTS = 6;
-/** Pressure waves crossing the disk at once. */
-export const WAVE_SLOTS = 2;
+/**
+ * Slots the disk shader evaluates for matter the player has fed it: enough that a quick
+ * hand's arcs ride the disk together (each costs one wrap and two exponentials per crossing).
+ */
+export const HOTSPOT_SLOTS = 12;
+/** Pressure waves crossing the disk at once: a cascade's fronts stack instead of restarting. */
+export const WAVE_SLOTS = 5;
 
 /** The disk's pattern speed, as a fraction of the inner edge's orbital rate. */
 const RIGID_RATE = 0.42;
@@ -129,6 +132,12 @@ export function createLensUniforms() {
         diskHeat: uniform(1),
         doppler: uniform(0.8),
         ringGain: uniform(1),
+        /**
+         * Multiplied into the gas's blackbody and the photon ring's. White at rest; as play
+         * heats the disk they take green and blue out of its whites, so it burns gold.
+         */
+        diskTint: uniform(new THREE.Vector3(1, 1, 1)),
+        ringTint: uniform(new THREE.Vector3(1, 1, 1)),
         skyGain: uniform(1),
         starGain: uniform(1),
         /** The thick glowing gas round the disk, and the emission nebulae of the far sky. */
@@ -310,10 +319,11 @@ export function createLensMaterial({
         Loop(HOTSPOT_SLOTS, ({ i }) => {
             const spot = u.hotspot.element(i);
             If(spot.w.greaterThan(0.002), () => {
-                const away = turn.mul(TAU).sub(spot.x);
-                // Wrapped angular distance, leaning with the shear so the arc trails.
+                // Wrapped angular distance, leaning with the shear so the arc trails: one floor
+                // instead of an atan of a sine and a cosine, the same angle in [-π, π).
                 const lean = radius.sub(spot.y).mul(0.55);
-                const arc = atan(sin(away.add(lean)), cos(away.add(lean)));
+                const away = turn.mul(TAU).sub(spot.x).add(lean);
+                const arc = away.sub(floor(away.div(TAU).add(0.5)).mul(TAU));
                 const along = exp(arc.mul(arc).negate().div(spot.z.mul(spot.z)));
                 // The arc lengthens along its orbit but stays a thin thread across it.
                 const across = radius.sub(spot.y).div(spot.z.mul(0.16).add(0.42));
@@ -346,7 +356,8 @@ export function createLensMaterial({
             .add(fedGain.mul(0.2));
         const power = pow(warmth, 2.4).mul(pow(beaming, 1.7)).mul(density.mul(density.add(0.35)))
             .mul(shock.mul(0.95).add(1));
-        const raw = blackbody(heat).mul(power).mul(u.diskGain).mul(2.7);
+        const raw = blackbody(heat).mul(u.diskTint).mul(power).mul(u.diskGain)
+            .mul(2.7);
         // A shoulder on the brightest channel: an excited disk runs hotter and bluer, but its
         // filaments stay filaments instead of clipping into one white plate.
         const peak = max(max(raw.r, raw.g), raw.b);
@@ -355,12 +366,14 @@ export function createLensMaterial({
         // glows on top, rather than adding itself to white.
         const fedTint = fed.div(max(fedGain, 0.001));
         const fedShare = clamp(fedGain.mul(0.9), 0, 0.88);
+        // Arcs laid over each other dye the gas more deeply, they do not stack into a white sheet.
+        const fedLight = min(fedGain, 1.15);
         const emission = mix(
             raw.mul(shoulder),
-            fedTint.mul(peak.mul(shoulder).mul(1.1).add(fedGain.mul(density.mul(0.9).add(0.5)).mul(1.5))),
+            fedTint.mul(peak.mul(shoulder).mul(1.1).add(fedLight.mul(density.mul(0.9).add(0.5)).mul(1.5))),
             fedShare,
         );
-        const alpha = float(1).sub(exp(density.add(fedGain.mul(0.4)).mul(envelope).mul(-3.4).div(grazing.add(0.1))));
+        const alpha = float(1).sub(exp(density.add(fedLight.mul(0.4)).mul(envelope).mul(-3.4).div(grazing.add(0.1))));
         return vec4(emission.mul(envelope), alpha);
     };
 
@@ -508,7 +521,8 @@ export function createLensMaterial({
             // The floor keeps the outer haze flame-orange: ember red over the blue sky reads magenta.
             // Capped short of the blue end: a blue-white veil is the one thing the haze must not be.
             const warmth = min(hazeHeat.div(max(haze, 1e-4)).mul(0.72).add(0.16), 1.1).mul(u.diskHeat);
-            colour.addAssign(blackbody(warmth).mul(haze).mul(u.diskGain).mul(u.coronaGain)
+            colour.addAssign(blackbody(warmth).mul(u.diskTint).mul(haze).mul(u.diskGain)
+                .mul(u.coronaGain)
                 .mul(CORONA.GAIN * 2.7));
         }
 
@@ -525,7 +539,8 @@ export function createLensMaterial({
             .mul(front);
         // Brighter where the disk's approaching side feeds it.
         const side = dot(away, vec3(direction.z, 0, direction.x.negate())).mul(0.5).mul(u.doppler).add(1);
-        colour.addAssign(blackbody(u.diskHeat.mul(1.02)).mul(ring).mul(side).mul(u.ringGain)
+        colour.addAssign(blackbody(u.diskHeat.mul(1.02)).mul(u.ringTint).mul(ring).mul(side)
+            .mul(u.ringGain)
             .mul(u.diskGain)
             .mul(2.4));
 

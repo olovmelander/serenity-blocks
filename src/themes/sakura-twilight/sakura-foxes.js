@@ -84,7 +84,9 @@ export class SakuraFoxes {
         });
         this.time = 0;
         this.startled = 0;
-        this.signals = { moon: 0, lanterns: 0 };
+        this.signals = { moon: 0, lanterns: 0, leap: 0 };
+        /** Leaps for four-line clears still to come: each waits until the last has landed. */
+        this.leapsOwed = 0;
         /**
          * Where a fox has just come down, shaken itself or scraped at the ground: bursts for
          * the petal simulation, which lifts whatever lies there (each lives a fifth of a second).
@@ -339,16 +341,35 @@ export class SakuraFoxes {
                 this.startled = 5;
                 mind.startle(1);
             }
-            // Four lines flare the moon: it leaps for it.
-            if (moon > 0.85 && signals.moon <= 0.85) mind.pounce(time);
+            // Four lines: it leaps for the moon, once for each (the reactions count them in
+            // `leap`; a frame without the count reads the moon's flare). A second quad while it is
+            // in the air waits for it to land instead of yanking it back to gather itself again.
+            const { leap } = frame;
+            if (Number.isFinite(leap)) {
+                if (leap > signals.leap) this.leapsOwed = Math.min(2, this.leapsOwed + leap - signals.leap);
+            } else if (moon > 0.85 && signals.moon <= 0.85) this.leapsOwed = Math.min(2, this.leapsOwed + 1);
+            if (this.leapsOwed > 0 && !this.foxes.some((fox) => fox.mind.mode === 'pounce')) {
+                this.leapsOwed -= 1;
+                mind.pounce(time);
+            }
             // A piece locks and the lanterns breathe: it looks up from what it is doing, out
             // over the water where the ring runs.
             if (lanterns > signals.lanterns + 0.12) mind.attend(0, 2.5, -6, time + 1.1, 0.8);
         }
+        if (mind.asleep) this.leapsOwed = 0;
         signals.moon = moon;
         signals.lanterns = lanterns;
-        // The stream of petals a chain winds up sets it running.
-        mind.step(dt, time, { power: read(frame.heat) * 0.9, surge: 0 });
+        if (Number.isFinite(frame.leap)) signals.leap = frame.leap;
+        // The stream of petals a chain winds up sets it running; hot play has it running with the
+        // player, faster through a fever (calmed under Reduce motion).
+        const level = Math.max(0, Math.min(1, read(frame.level)));
+        const fever = Math.max(0, Math.min(1, read(frame.fever)));
+        const motion = Number.isFinite(frame.motion) ? Math.max(0, Math.min(1, frame.motion)) : 1;
+        const hot = Math.max(0, Math.min(1, (level - 0.5) / 0.4));
+        mind.step(dt, time, {
+            power: Math.max(read(frame.heat) * 0.9, hot * 0.45 * motion),
+            surge: (level * 0.6 + fever * 0.6) * motion,
+        });
         // What a fox does to the petals lying where it is.
         this.kicks = this.kicks.filter((kick) => {
             kick.age += dt;
@@ -373,6 +394,8 @@ export class SakuraFoxes {
         this.startled = 0;
         this.signals.moon = 0;
         this.signals.lanterns = 0;
+        this.signals.leap = 0;
+        this.leapsOwed = 0;
         this.kicks.length = 0;
         this.mind.reset(0);
         this.place();

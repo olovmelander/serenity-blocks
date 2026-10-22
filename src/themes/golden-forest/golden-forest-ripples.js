@@ -9,6 +9,15 @@ import * as THREE from 'three/webgpu';
 
 const RING_LIFE = 9;
 
+/**
+ * What is left of a ring as the water shader draws it: its strength, fading as it ages and
+ * spreading thinner as it widens (golden-forest-lake.js: exp(-0.42 age) / (1 + 0.09 · 2.6 age)).
+ */
+export function goldenForestRingEnergy(ring) {
+    if (!(ring.w > 0)) return 0;
+    return (ring.w * Math.exp(-0.42 * ring.z)) / (1 + 0.234 * ring.z);
+}
+
 /** A fixed pool of expanding rings: position, age and strength for the water shader. */
 export class GoldenForestRipples {
     constructor(count = 8) {
@@ -22,25 +31,33 @@ export class GoldenForestRipples {
         this.cursor = 0;
     }
 
-    /** Start a ring at a point on the water; replaces a free slot or the oldest ring. */
+    /**
+     * Start a ring at a point on the water in a free slot, else in place of the ring with the
+     * least left of it, so a broad clear ring still spreading is never cut for a spark's touch.
+     * A new ring weaker than every ring on the water is the one let go (returns null).
+     */
     add(x, z, strength = 1) {
         if (!Number.isFinite(x) || !Number.isFinite(z) || !(strength > 0)) return null;
         let selected = -1;
-        let oldest = -1;
+        let weakest = Infinity;
         for (let step = 0; step < this.count; step += 1) {
             const index = (this.cursor + step) % this.count;
             const ring = this.rings[index];
             if (ring.w <= 0) {
                 selected = index;
+                weakest = 0;
                 break;
             }
-            if (ring.z > oldest) {
-                oldest = ring.z;
+            const energy = goldenForestRingEnergy(ring);
+            if (energy < weakest) {
+                weakest = energy;
                 selected = index;
             }
         }
+        const value = Math.min(3, strength);
+        if (value < weakest) return null;
         this.cursor = (selected + 1) % this.count;
-        return this.rings[selected].set(x, z, 0, Math.min(3, strength));
+        return this.rings[selected].set(x, z, 0, value);
     }
 
     update(dt) {

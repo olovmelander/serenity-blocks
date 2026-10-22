@@ -11,7 +11,10 @@
  * rises and drifts out over it, and a path of light begins to run between them on the water.
  * Four lines at once and the heart itself rises out of the tarn: he lowers his lantern to the
  * water to light its way, it comes up gold out of the dark and crosses to her, and she takes it
- * to her breast. When the chain breaks they do not turn at once: they look at each other a while,
+ * to her breast. Every four lines raise another: a heart never takes the place of one still on
+ * its way or in her hands. The next waits on the bed until she has taken the last, and each one
+ * she takes adds to the light she holds, so a run of them leaves her burning brighter and longer.
+ * When the chain breaks they do not turn at once: they look at each other a while,
  * then go back, he slowly, she looking over her shoulder.
  *
  * At rest the story goes on in small things: she kneels at the water's edge and trails her hand in
@@ -27,6 +30,7 @@
 import {
     APPROACH_STEPS, HEART, HUSH_HOLD, SPIRIT, TROLL, clamp01, lerp, smooth,
 } from './stillwater-core.js';
+import { Swell, softCeiling } from '../shared/swell.js';
 
 /** Seconds the two hold each other's eyes when a chain breaks, before they go back. */
 export const PARTING = 2.6;
@@ -40,6 +44,14 @@ export const DOZE_AFTER = 16;
 export const HEART_FLIGHT = Object.freeze({
     rise: HUSH_HOLD, surface: HUSH_HOLD + 1.1, crest: HUSH_HOLD + 2.0, taken: HUSH_HOLD + 3.6, held: HUSH_HOLD + 7.5,
 });
+/** Seconds after she takes one heart before the next waiting on the bed rises. */
+export const HEART_GAP = 0.6;
+/** Seconds a heart in her breast takes to sink into her own light as the next one rises. */
+export const HEART_SINK = 0.5;
+/** Hearts waiting on the bed at most: four lines more make the last of them the brighter. */
+export const HEART_QUEUE = 3;
+/** How near a fever of play draws the two (a bond), whatever the chain: out to the water's edge. */
+export const FERVOUR_BOND = 0.62;
 
 /** How far the chain has them (0..1) for a combo. */
 export function bondForCombo(combo) {
@@ -107,7 +119,24 @@ export class StillwaterStory {
         this.looks = [];
         /** Light arriving: { side, at } (the receiver lifts their hands or the lantern for it). */
         this.arrivals = [];
-        this.heart = null;
+        /**
+         * The hearts four-line clears raised, oldest first: { time (its flight's start), raised
+         * (the clear that raised it), gain }. Only one flies at a time; the rest wait on the bed.
+         */
+        this.hearts = [];
+        /** The flare still left of hearts the story has let go of: (amount, as of when). */
+        this.spent = 0;
+        this.spentAt = time;
+        /** What she holds of every heart she has taken: it fades over half a minute. */
+        if (this.glory) this.glory.reset();
+        else {
+            this.glory = new Swell({
+                attack: 0.6, release: 30, ceiling: 1.5, knee: 1,
+            });
+        }
+        /** How hot play runs (0..1, the world says): a fever draws them out whatever the chain. */
+        this.fervour = 0;
+        this.b2bAt = -10;
         this.startleAt = -10;
         this.skyAt = -10;
         this.clearAt = -10;
@@ -142,14 +171,37 @@ export class StillwaterStory {
         this.ended = false;
     }
 
+    /** The newest heart raised, or null. */
+    get heart() {
+        return this.hearts.length ? this.hearts[this.hearts.length - 1] : null;
+    }
+
+    /**
+     * Four lines raise a heart. It never takes the place of another: one still on its way or in
+     * her hands is followed, the next rising from the bed as soon as she has taken the last.
+     */
+    raiseHeart(time, gain = 1) {
+        const F = HEART_FLIGHT;
+        const last = this.heart;
+        let waiting = 0;
+        for (let i = 0; i < this.hearts.length; i++) if (this.hearts[i].time + F.rise > time) waiting += 1;
+        if (last && waiting >= HEART_QUEUE) {
+            // The bed holds as many as it will: the last of them comes up the brighter for it.
+            last.gain = Math.min(3, last.gain + gain * 0.5);
+            this.glory.hit(gain * 0.5, last.time + F.taken);
+            return;
+        }
+        const start = last ? Math.max(time, last.time + F.taken - F.rise + HEART_GAP) : time;
+        this.hearts.push({ time: start, raised: time, gain });
+        this.glory.hit(gain, start + F.taken);
+    }
+
     /** Lines cleared. A four-line clear raises the heart. */
     onClear({ time, lines = 1, perfect = false }) {
         this.lastEvent = time;
         this.clearAt = time;
         const quad = lines >= 4 || perfect;
-        if (quad && (!this.heart || time > this.heart.time + HEART_FLIGHT.taken)) {
-            this.heart = { time, perfect };
-        }
+        if (quad) this.raiseHeart(time, perfect ? 1.4 : 1);
         // Both look out to the tarn's heart, where the swells come from.
         ['troll', 'spirit'].forEach((who) => {
             this.looks.push({
@@ -157,6 +209,42 @@ export class StillwaterStory {
             });
         });
         this.ended = false;
+    }
+
+    /**
+     * A perfect clear settled on the four lines still playing: the heart they raised comes up the
+     * brighter (or one rises, if none is on its way), and both look up as the mist lifts.
+     */
+    onCrown(time) {
+        this.lastEvent = time;
+        this.skyAt = time;
+        const last = this.heart;
+        if (last && time < last.time + HEART_FLIGHT.taken) {
+            last.gain = Math.min(3, last.gain + 0.5);
+            this.glory.hit(0.5, last.time + HEART_FLIGHT.taken);
+        } else this.raiseHeart(time, 1.4);
+        this.ended = false;
+    }
+
+    /** A second difficult clear in a row: the two look at each other across the water. */
+    onB2B(time) {
+        this.lastEvent = time;
+        this.b2bAt = time;
+        const at = this.at || {};
+        const spirit = at.spiritHeart || [SPIRIT.home[0], SPIRIT.home[1] + 1.2, SPIRIT.home[2]];
+        const lantern = at.lantern || [TROLL.home[0] - 0.4, 2.4, TROLL.home[2] + 0.3];
+        this.looks.push({
+            who: 'troll', at: [spirit[0], spirit[1], spirit[2]], from: time + 0.05, until: time + 1.8,
+        });
+        this.looks.push({
+            who: 'spirit', at: [lantern[0], lantern[1], lantern[2]], from: time + 0.05, until: time + 1.8,
+        });
+        this.ended = false;
+    }
+
+    /** How hot play runs (0..1): a fever draws them out to the water whatever the chain. */
+    setFervour(fervour) {
+        this.fervour = clamp01(Number(fervour) || 0);
     }
 
     /** The chain's length now. */
@@ -219,8 +307,9 @@ export class StillwaterStory {
             this.partingUntil = -1;
             this.bondTarget = chainBond(this.combo);
         }
-        // The bond is what they are asked: up at once, down only after the parting.
-        this.bond = this.bondTarget;
+        // The bond is what they are asked: up at once, down only after the parting. A fever of play
+        // draws them out too, chain or none, and lets them go as it cools.
+        this.bond = Math.max(this.bondTarget, FERVOUR_BOND * this.fervour);
         this.trollAt = trollStation(this.bond, this.trollAt);
         // (A chain of one gets him up off his stone; he sits again only after a calm.)
         if (this.trollAt !== 'home' || this.bond > 0.2) this.trollHomeSince = time;
@@ -230,7 +319,14 @@ export class StillwaterStory {
         // Old looks and arrivals drop away.
         this.looks = this.looks.filter((l) => l.until > time);
         this.arrivals = this.arrivals.filter((a) => a.at > time - 2);
-        if (this.heart && time > this.heart.time + HEART_FLIGHT.held + 2) this.heart = null;
+        for (let i = this.hearts.length - 1; i >= 0; i--) {
+            const h = this.hearts[i];
+            if (time <= h.time + HEART_FLIGHT.held + 2) continue;
+            // (What is left of its flare dies away as it would have.)
+            this.spent = this.spentFlare(time) + h.gain * Math.exp(-(time - h.time - HEART_FLIGHT.taken) / 1.4);
+            this.spentAt = time;
+            this.hearts.splice(i, 1);
+        }
         // The path of light runs between them while the chain holds them near.
         const pathTarget = this.bond >= 0.6 && this.partingUntil < 0 ? 1 : 0;
         const rate = pathTarget > this.path ? 0.35 : 0.6;
@@ -251,7 +347,7 @@ export class StillwaterStory {
     }
 
     updateGaze(time, dt) {
-        const meet = this.glance('troll', time) && this.glance('spirit', time) ? 1 : 0;
+        const meet = (this.glance('troll', time) && this.glance('spirit', time)) || time - this.b2bAt < 1.8 ? 1 : 0;
         const parting = this.partingUntil >= 0 ? 1 : 0;
         const target = Math.max(meet, parting, this.bond >= 0.6 ? 0.6 : 0);
         this.gaze += (target - this.gaze) * (1 - Math.exp(-dt * (target > this.gaze ? 2.5 : 1.2)));
@@ -267,12 +363,35 @@ export class StillwaterStory {
         return best ? best.at : null;
     }
 
-    /** Where the heart is on its flight (world), and how brightly it shows; null when it is not flying. */
+    /**
+     * Where the heart is (world), and how brightly it shows: the one on its way if one is flying,
+     * else the newest in her breast (sinking into her as the next rises); null when there is none.
+     */
     heartAt(time, out = [0, 0, 0, 0]) {
-        if (!this.heart) return null;
-        const t = time - this.heart.time;
         const F = HEART_FLIGHT;
-        if (t < F.rise || t > F.held + 1.5) return null;
+        const { hearts } = this;
+        for (let i = hearts.length - 1; i >= 0; i--) {
+            const t = time - hearts[i].time;
+            if (t >= F.rise && t < F.taken) return this.flightAt(t, out);
+        }
+        for (let i = hearts.length - 1; i >= 0; i--) {
+            const t = time - hearts[i].time;
+            if (t < F.taken || t > F.held + 1.5) continue;
+            this.flightAt(t, out);
+            const next = hearts[i + 1];
+            if (next) {
+                // The next is about to rise: the one she holds sinks into her own light first.
+                const rise = next.time + F.rise;
+                out[3] *= 1 - smooth(Math.max(rise - HEART_SINK, next.raised), rise, time);
+            }
+            return out;
+        }
+        return null;
+    }
+
+    /** A heart `t` seconds into its flight (rise..held): where, and how brightly. */
+    flightAt(t, out) {
+        const F = HEART_FLIGHT;
         const to = this.at?.spiritHeart || [SPIRIT.home[0], SPIRIT.home[1] + 1.2, SPIRIT.home[2]];
         const surface = [HEART[0], 0.05, HEART[2]];
         const crest = [lerp(HEART[0], to[0], 0.35), 2.6, lerp(HEART[2], to[2], 0.35)];
@@ -304,12 +423,29 @@ export class StillwaterStory {
         return out;
     }
 
-    /** 0..1: how far into being taken the heart is (her flare), with its moment. */
+    /**
+     * Her flare as she takes a heart (1 at the moment, dying away). Hearts taken one after another
+     * add to it (under a soft ceiling): a new one never puts out the last one's light.
+     */
     heartTaken(time) {
-        if (!this.heart) return 0;
-        const t = time - this.heart.time;
-        if (t < HEART_FLIGHT.taken) return 0;
-        return Math.exp(-(t - HEART_FLIGHT.taken) / 1.4);
+        let sum = this.spentFlare(time);
+        for (let i = 0; i < this.hearts.length; i++) {
+            const h = this.hearts[i];
+            const t = time - h.time;
+            if (t >= HEART_FLIGHT.taken) sum += h.gain * Math.exp(-(t - HEART_FLIGHT.taken) / 1.4);
+        }
+        return softCeiling(sum, 1, 1.8);
+    }
+
+    /** What is left of the flare of hearts already let go of. */
+    spentFlare(time) {
+        if (!(this.spent > 1e-6)) return 0;
+        return this.spent * Math.exp(-Math.max(0, time - this.spentAt) / 1.4);
+    }
+
+    /** What she holds of every heart she has taken (0..1.5): a slow light that outlasts the flare. */
+    heartsHeld(time) {
+        return this.glory.valueAt(time);
     }
 
     // ── What each of them means to do ───────────────────────────────────────────
@@ -338,7 +474,15 @@ export class StillwaterStory {
         out.staff = 'walk';
         out.crouch = false;
         out.reach = 0;
-        const heartT = this.heart ? time - this.heart.time : -1;
+        // (The newest heart on its way: an older one is already in her hands.)
+        let heartT = -1;
+        for (let i = this.hearts.length - 1; i >= 0; i--) {
+            const t = time - this.hearts[i].time;
+            if (t >= 0) {
+                heartT = t;
+                break;
+            }
+        }
         const flying = heartT >= 0 && heartT < HEART_FLIGHT.taken + 0.6;
         if (flying) {
             if (station !== 'home' && heartT < HEART_FLIGHT.crest) {
@@ -375,15 +519,22 @@ export class StillwaterStory {
         const lantern = at.lantern || [TROLL.home[0] - 0.4, 2.4, TROLL.home[2] + 0.3];
         // (Not only in a long silence: while the chain sleeps she goes back down to the water,
         // and pieces falling do not call her up; a chain does.)
-        out.kneel = this.bond < 0.05 && time - this.spiritHomeSince > KNEEL_AFTER && !this.heart;
-        const heartT = this.heart ? time - this.heart.time : -1;
+        out.kneel = this.bond < 0.05 && time - this.spiritHomeSince > KNEEL_AFTER && !this.hearts.length;
+        // Open for a heart on its way (before the one she holds), else holding one to her breast.
+        let open = false;
+        let holding = false;
+        for (let i = 0; i < this.hearts.length; i++) {
+            const t = time - this.hearts[i].time;
+            if (t >= HEART_FLIGHT.rise && t < HEART_FLIGHT.taken) open = true;
+            else if (t >= HEART_FLIGHT.taken && t < HEART_FLIGHT.held) holding = true;
+        }
         out.hands = 'rest';
-        if (heartT >= HEART_FLIGHT.rise && heartT < HEART_FLIGHT.taken) out.hands = 'open';
-        else if (heartT >= HEART_FLIGHT.taken && heartT < HEART_FLIGHT.held) out.hands = 'heart';
+        if (open) out.hands = 'open';
+        else if (holding) out.hands = 'heart';
         else if (this.arrivals.some((a) => a.side < 0 && a.at > time - 0.3 && a.at < time + 0.9)) out.hands = 'receive';
         else if (this.bond >= 0.6 && this.partingUntil < 0) out.hands = 'reach';
         let look = this.eventLook('spirit', time);
-        if (heartT >= HEART_FLIGHT.rise && heartT < HEART_FLIGHT.taken) {
+        if (open) {
             const h = this.heartAt(time);
             if (h) look = [h[0], h[1], h[2]];
         }

@@ -9,6 +9,7 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, rowCodes, screen })
+ *   sink.spin({ player, u, color, screen })   a T-spin that cleared nothing (optional)
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..4), whenever it changes
  *   sink.levelUp(level)
@@ -493,6 +494,9 @@ export class PaintedAgesDirector {
             rowCodes: [],
             screen: null,
         };
+        this._spin = {
+            player: 0, u: 0.5, color: null, screen: null,
+        };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -782,6 +786,15 @@ export class PaintedAgesDirector {
             c.b2b = slot.b2b;
             c.screen = screen;
             sink.clear(c);
+        }
+        // A T-spin that cleared nothing has no clear to carry it: it is told on its own.
+        if (slot.tspin && slot.lines === 0 && sink?.spin) {
+            const c = this._spin;
+            c.player = slot.player;
+            c.u = slot.lockU;
+            c.color = slot.lockColor;
+            c.screen = screen;
+            sink.spin(c);
         }
     }
 

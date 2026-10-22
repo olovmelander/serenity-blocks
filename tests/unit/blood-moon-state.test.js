@@ -214,7 +214,11 @@ describe('Blood Moon reactions', () => {
         expect(state.pulse).toBeGreaterThan(0);
         expect(state.pulse).toBeGreaterThan(0.15);
         expect(state.pulse).toBeLessThan(0.4);
-        expect(state.starBoost).toBeGreaterThan(0.5);
+        // A visible lift of the stars, below a single clear's (a lock used to outshine one).
+        expect(state.starBoost).toBeGreaterThan(0.3);
+        const single = new BloodMoonReactions();
+        single.cue('clear', { lines: 1 });
+        expect(single.starBoost).toBeGreaterThan(state.starBoost);
         expect(state.impact).toBeGreaterThan(0);
         expect(state.waveAge).toBe(Infinity);
         expect(state.burstAge).toBe(Infinity);
@@ -303,6 +307,8 @@ describe('Blood Moon reactions', () => {
         expect(state.pulse).toBe(0);
         state.cue('clear', { lineCount: 3 });
         const alternate = new BloodMoonReactions();
+        // Read the same way (a reading moves an envelope's present forward).
+        expect(alternate.pulse).toBe(0);
         alternate.cue('clear', { lines: 3 });
         expect(state).toEqual(alternate);
     });

@@ -68,7 +68,8 @@ const at = { x: 0, z: 0 };
 /**
  * Write the spray alive at `clock` into `push(x, y, z, r, R, G, B, vx, vy, vz)`.
  * `glow` is the sea's light (rgb), `power` its strength; `waves` the board's waves of light
- * ({ a0, s0, t0, strength, H, speed, sBreak, peel }); `limit` the most droplets to write.
+ * ({ a0, s0, t0, strength, H, speed, sBreak, peel, fade? (0..1 while it fades out to make room) });
+ * `limit` the most droplets to write.
  * Returns how many were written.
  */
 export function writeSpray(clock, glow, power, waves, limit, push) {
@@ -137,7 +138,7 @@ export function writeSpray(clock, glow, power, waves, limit, push) {
                 const y = wave.H * 0.75 + up * t - 0.5 * G * t * t;
                 if (y < -0.05) continue;
                 const fade = (1 - clamp01((t - SPRAY.life * 0.5) / (SPRAY.life * 0.8))) * Math.exp(-t * 1.2);
-                const c = power * 1.1 * fade * wave.strength;
+                const c = power * 1.1 * fade * wave.strength * (wave.fade ?? 1);
                 push(at.x + vx * t, y, at.z + vz * t, 0.016, glow[0] * c, glow[1] * c, glow[2] * c, vx, up - G * t, vz);
                 n += 1;
             }

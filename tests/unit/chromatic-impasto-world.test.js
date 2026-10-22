@@ -4,7 +4,8 @@ import {
     AMBIENT_BEAT, CHROMATIC_IMPASTO_PARTS, ChromaticImpastoWorld, DRY_STEP, LAMP, REST_RIG, fovForAspect,
 } from '../../src/themes/chromatic-impasto/chromatic-impasto-world.js';
 import {
-    GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, KIND, SHEEN_SLOTS, SWIRL_FROM, TWIST_BAKE_AT, VIEW_DISTANCE, pigmentFromHex,
+    GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, KIND, RELIEF, SHEEN_SLOTS, SWIRL_FROM, TWIST_BAKE_AT, VIEW_DISTANCE,
+    pigmentFromHex,
 } from '../../src/themes/chromatic-impasto/chromatic-impasto-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/chromatic-impasto/chromatic-impasto-quality.js';
 import { fallbackLayout } from '../../src/themes/chromatic-impasto/chromatic-impasto-composition.js';
@@ -288,7 +289,8 @@ describe('chromatic impasto world: the board paints', () => {
         expect(second.colorB).toEqual(pigmentFromHex('#00d9cc'));
         expect(second.mixB).toBeGreaterThan(0);
         expect(world.counts.locks).toBe(2);
-        expect(world.kick).toBeGreaterThan(0);
+        // Each lock kicks (read at the event's time: the frame reads it on its way).
+        expect(world.kickSwell.valueAt(world.time)).toBeGreaterThan(0);
         world.dispose();
     });
 
@@ -389,11 +391,12 @@ describe('chromatic impasto world: the board paints', () => {
         expect(gold.length).toBeGreaterThanOrEqual(12);
         expect(gold.every((s) => s.special === 1 && s.t0 > t + HUSH_HOLD)).toBe(true);
         expect(gold[0].colorA).toEqual([...GOLD]);
+        // From cold the studio holds its breath fully (eased in over a few frames, not snapped).
         run(world, camera, HUSH_HOLD * 0.5, 4);
-        expect(world.getPostState().hush).toBe(1);
+        expect(world.getPostState().hush).toBeGreaterThan(0.9);
         expect(world.breath).toBeLessThan(0.6);
         run(world, camera, 0.5);
-        expect(world.getPostState().hush).toBe(0);
+        expect(world.getPostState().hush).toBeLessThan(0.02);
         expect(world.surge).toBeGreaterThan(0.5);
         expect(world.counts.quads).toBe(1);
         // The next four lines lay their ring outside the first.
@@ -769,17 +772,178 @@ describe('chromatic impasto world: light and state', () => {
     });
 
     it('reports what it holds, and reuses its sheen slots', () => {
-        const { world } = makeWorld('Low');
+        const { world, camera } = makeWorld('Low');
+        // Rings sent from one place at one moment join one ring, brighter.
         for (let i = 0; i < SHEEN_SLOTS + 2; i++) world.onClear({ rows: [19], lines: 1 });
-        expect(world.u.sheenSlots.filter((v) => v.z > 0)).toHaveLength(SHEEN_SLOTS);
+        const joined = world.u.sheenSlots.filter((v) => v.z > 0);
+        expect(joined).toHaveLength(1);
+        expect(joined[0].w).toBeGreaterThan(1);
+        const firstAt = joined[0].z;
+        // Rings sent apart fill the slots; a new one takes the ring with the least light left,
+        // never one still crossing in full.
+        for (let i = 0; i < SHEEN_SLOTS + 1; i++) {
+            run(world, camera, 0.2, 2);
+            world.onClear({ rows: [19 - (i % 3) * 6], lines: 1 });
+        }
+        const live = world.u.sheenSlots.filter((v) => v.z > 0);
+        expect(live).toHaveLength(SHEEN_SLOTS);
+        expect(Math.min(...live.map((v) => v.z))).toBeGreaterThan(firstAt);
         const state = world.getState();
         expect(state.quality).toBe('Low');
-        expect(state.counts.clears).toBe(SHEEN_SLOTS + 2);
+        expect(state.counts.clears).toBe(SHEEN_SLOTS * 2 + 3);
         expect(state.log).toBe(world.painter.log.length);
         expect(state.canvas).toEqual([world.canvas.width, world.canvas.height]);
         expect(state.card.x0).toBeLessThan(state.card.x1);
         world.dispose();
         expect(() => world.update({ time: 99, delta: 0.1 })).not.toThrow();
         expect(() => world.onLock({ rows: [3], u: 0.5 })).not.toThrow();
+    });
+});
+
+describe('chromatic impasto world: it builds with play', () => {
+    const QUAD = [19, 18, 17, 16];
+    const lightOf = (world) => ({
+        level: world.heat.level,
+        window: world.u.windowGain.value,
+        thickness: world.u.thickness.value,
+        saturation: world.getPostState().saturation,
+        elevation: Math.asin(world.u.lightDir.value.z),
+    });
+    /** A chain of `links` clearing hard drops, one every `gap` seconds, as a quick hand plays it. */
+    const chain = (world, camera, links, gap = 0.64) => {
+        for (let n = 1; n <= links; n++) {
+            world.onLock({
+                rows: [19], u: (n % 5) / 5, hardDrop: true, color: '#ffbe00',
+            });
+            world.onClear({ rows: [19], lines: (n % 3) + 1, combo: n });
+            world.onCombo(n);
+            run(world, camera, gap, Math.round(gap * 60));
+        }
+    };
+
+    it('never lets a weak clear right after a strong one cut the light', () => {
+        const alone = makeWorld('Low');
+        const after = makeWorld('Low');
+        [alone, after].forEach(({ world, camera }) => {
+            world.onClear({ rows: QUAD, lines: 4 });
+            run(world, camera, 0.25, 15);
+        });
+        after.world.onClear({ rows: [19], lines: 1 });
+        for (let i = 0; i < 60; i++) {
+            [alone, after].forEach(({ world, camera }) => run(world, camera, 1 / 60, 1));
+            const a = alone.world.getPostState();
+            const b = after.world.getPostState();
+            expect(b.kick).toBeGreaterThanOrEqual(a.kick - 1e-9);
+            expect(b.flash).toBeGreaterThanOrEqual(a.flash - 1e-9);
+            expect(after.world.surge).toBeGreaterThanOrEqual(alone.world.surge - 1e-9);
+        }
+        // Four lines straight after a perfect clear add to its gold; they never step it down.
+        const { world, camera } = makeWorld('Low');
+        world.onClear({ rows: QUAD, lines: 4, perfect: true });
+        run(world, camera, 0.6);
+        const crowned = world.surge;
+        world.onClear({ rows: QUAD, lines: 4 });
+        run(world, camera, 0.35);
+        expect(world.surge).toBeGreaterThan(crowned);
+        [alone, after].forEach(({ world: w }) => w.dispose());
+        world.dispose();
+    });
+
+    it('looks as it always did under casual play, reads hotter at the end of a long chain, and breathes back', () => {
+        const { world, camera } = makeWorld('Low');
+        world.ambientIndex = Infinity;
+        const rest = lightOf(world);
+        chain(world, camera, 1);
+        const first = lightOf(world);
+        // One clear is casual play: the studio is as it always was.
+        expect(first.saturation).toBeCloseTo(rest.saturation, 9);
+        expect(first.thickness).toBeCloseTo(RELIEF.thickness, 9);
+        chain(world, camera, 11);
+        const hot = lightOf(world);
+        expect(hot.level).toBeGreaterThan(first.level + 0.5);
+        expect(world.heat.stage).toBeGreaterThanOrEqual(2);
+        // The wet skin glistens, the impasto stands thicker, the colours fill, the lamp rakes low.
+        expect(hot.window).toBeGreaterThan(first.window);
+        expect(hot.thickness).toBeGreaterThan(first.thickness * 1.2);
+        expect(hot.saturation).toBeGreaterThan(first.saturation + 0.1);
+        expect(hot.elevation).toBeLessThan(first.elevation - 0.04);
+        // The hands rest: the studio breathes back to calm.
+        world.onCombo(0);
+        run(world, camera, 10, 300);
+        const calm = lightOf(world);
+        // (below the warm act's threshold: the studio wears nothing of the chain any more)
+        expect(world.heat.level).toBeLessThan(0.18);
+        expect(world.heat.fever).toBe(0);
+        expect(calm.saturation).toBeCloseTo(rest.saturation, 2);
+        expect(calm.thickness).toBeCloseTo(RELIEF.thickness, 4);
+        world.dispose();
+    });
+
+    it('inhales before four lines in a fever instead of blacking the studio out', () => {
+        const { world, camera } = makeWorld('Low');
+        world.ambientIndex = Infinity;
+        chain(world, camera, 10);
+        world.onClear({ rows: QUAD, lines: 4, combo: 11 });
+        run(world, camera, HUSH_HOLD * 0.5, 4);
+        expect(world.getPostState().hush).toBeLessThan(0.45);
+        expect(world.breath).toBeGreaterThan(0.7);
+        world.dispose();
+    });
+
+    it('crowns the clear still playing with a perfect clear settled after it: no second hush, no rows again', () => {
+        const { world, camera } = makeWorld('Low');
+        world.onClear({ rows: QUAD, lines: 4 });
+        run(world, camera, 0.36, 22);
+        const swept = tagged(world, 'sweep').length;
+        const burst = tagged(world, 'burst').length;
+        const gold = tagged(world, 'gold').length;
+        const { hushUntil, surge } = world;
+        const { clears } = world.counts;
+        world.onClear({
+            rows: [], lines: 1, perfect: true, crown: true,
+        });
+        expect(tagged(world, 'sweep')).toHaveLength(swept);
+        expect(tagged(world, 'burst')).toHaveLength(burst);
+        expect(world.hushUntil).toBe(hushUntil);
+        expect(world.counts.clears).toBe(clears);
+        // The masterstroke: great arcs of gold, and one more ring of gold round the frame.
+        expect(tagged(world, 'gold').length).toBeGreaterThan(gold + 12);
+        run(world, camera, 0.5);
+        expect(world.surge).toBeGreaterThan(surge);
+        expect(world.drive.glory).toBeGreaterThan(0.3);
+        expect(world.getPostState().hush).toBeLessThan(0.01);
+        world.dispose();
+    });
+
+    it('answers a T-spin that clears nothing with a small turn', () => {
+        const { world, camera } = makeWorld('Low');
+        world.onSpin({ player: 0 });
+        expect(tagged(world, 'spiral').length).toBe(3);
+        run(world, camera, 1.5);
+        expect(world.twistAngle).toBeGreaterThan(0.08);
+        expect(world.twistAngle).toBeLessThan(0.3);
+        expect(world.heat.level).toBeGreaterThan(0);
+        world.dispose();
+    });
+
+    it('builds each wave of a cascade on the last, and gilds a back-to-back', () => {
+        const { world } = makeWorld('Low');
+        world.onClear({ rows: [19, 18], lines: 2, cascade: 1 });
+        const wave1 = tagged(world, 'sweep');
+        expect(tagged(world, 'splat')).toHaveLength(0);
+        world.onClear({ rows: [19], lines: 1, cascade: 3 });
+        const wave3 = tagged(world, 'sweep').filter((st) => !wave1.includes(st));
+        expect(wave3[0].half[0]).toBeGreaterThan(wave1[0].half[0] * 1.2);
+        expect(wave3[0].dur).toBeLessThan(wave1[0].dur);
+        // A deeper wave strikes the cloth beside the board.
+        expect(tagged(world, 'splat').length).toBeGreaterThan(4);
+        const before = tagged(world, 'sweep');
+        world.onClear({
+            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        });
+        const gilt = tagged(world, 'sweep').filter((st) => !before.includes(st) && st.special === 1);
+        expect(gilt.length).toBeGreaterThan(0);
+        expect(gilt[0].colorA).toEqual([...GOLD]);
+        world.dispose();
     });
 });

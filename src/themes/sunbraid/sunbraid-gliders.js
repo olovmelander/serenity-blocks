@@ -142,11 +142,15 @@ export function createGliders(u, t, count) {
         material,
         geometry,
         count: n,
-        /** Fly every glider to clock `time`; write their shadow discs into the rows. */
+        /**
+         * Fly every glider to clock `time` (or the world's glide clock, which runs ahead of it as
+         * play heats: the valley quickens); write their shadow discs into the rows.
+         */
         update(time, dt, world) {
             const rows = world.u.gliderRows;
+            const clock = Number.isFinite(world.glideTime) ? world.glideTime : time;
             for (let k = 0; k < n; k++) {
-                gliderAt(k, time, at);
+                gliderAt(k, clock, at);
                 const y = groundHeight(at.x, at.z) + at.y;
                 // Heading: the nose (−z) along the travel; then bank about the nose.
                 qn.setFromAxisAngle(Y, Math.atan2(-at.hx, -at.hz));

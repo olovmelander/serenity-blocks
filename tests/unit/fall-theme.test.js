@@ -1303,7 +1303,9 @@ describe('Fall with its real artwork', () => {
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         const frame = reactions.getFrame();
         expect(frame.emitters.map((emitter) => emitter.kind).sort())
-            .toEqual(['clear', 'clear', 'combo', 'lock', 'shower', 'shower', 'spin']);
+            // The perfect clear crowns the quad's shower instead of starting another; the
+            // back-to-back answers from the two great trees.
+            .toEqual(['clear', 'clear', 'combo', 'crown', 'lock', 'shower', 'spin', 'twin']);
         expect(frame.front).not.toBeNull();
         expect(frame.emitters.find((emitter) => emitter.kind === 'lock')).toMatchObject({ side: -1 });
         const draw = vi.spyOn(post.pipeline, 'render').mockImplementation(() => {});

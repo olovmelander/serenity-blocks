@@ -2498,6 +2498,8 @@ export function rbBarkEvents(u, {
             const H = u.events.element(base.add(1)).toVar();
             const I = u.events.element(base.add(2)).toVar();
             const t = u.time.sub(G.w).toVar();
+            // Its latest blaze (a ring cleared again re-blazes: I.w; else its own t0).
+            const tBlaze = u.time.sub(I.w).toVar();
             // Across the visible arc, screen left (0) to right (1).
             const f = rbWrapPi(theta.sub(H.z)).div(H.w).toVar();
             const inArc = smoothstep(-0.015, 0.01, f).mul(float(1.0).sub(smoothstep(0.99, 1.015, f)));
@@ -2521,6 +2523,12 @@ export function rbBarkEvents(u, {
             const reachT = G.z.mul(1.0 + SHED.tear);
             const front = G.y.add(reachT).sub(reachT.mul(2.0).mul(float(1.0).sub(q.mul(q)))).toVar();
             const bared = smoothstep(front.sub(aaY), front.add(aaY), y).mul(step(SHED.split, t)).toVar();
+            // A re-blaze sweeps down the ring the same way; above its front the ring reads its
+            // latest blaze, below it the one before (never a hole in the ring while it passes).
+            const pB = clamp(tBlaze.sub(SHED.split).div(SHED.bare - SHED.split), 0.0, 1.0);
+            const qB = float(1.0).sub(pB);
+            const frontB = G.y.add(reachT).sub(reachT.mul(2.0).mul(float(1.0).sub(qB.mul(qB))));
+            const tb = mix(t, tBlaze, step(frontB, y).mul(step(SHED.split, tBlaze))).toVar();
             const natural = smoothstep(G.w.add(I.z.mul(1 - PEEL.erode)), G.w.add(I.z), u.time);
             const killed = clamp(u.time.sub(I.y).div(PEEL.kill), 0.0, 1.0);
             const e = max(natural, killed).mul(1.12).sub(0.02);
@@ -2536,15 +2544,15 @@ export function rbBarkEvents(u, {
             const kk = seg.sub(hi.mul(5.0));
             const cellCode = mod(floor(packed.add(0.5).div(exp2(kk.mul(3.0)))), 8.0);
             const cellAge = u.palette.element(int(floor(cellCode.add(0.5))).add(PALETTE_ROWS.pieceAge)).w;
-            const rip = smoothstep(0.0, 1.0, t.sub(SHED.ripen).sub(seg.mul(SHED.cell)).div(SHED.ripenFor)).toVar();
+            const rip = smoothstep(0.0, 1.0, tb.sub(SHED.ripen).sub(seg.mul(SHED.cell)).div(SHED.ripenFor)).toVar();
             If(cover.greaterThan(0.002).and(G.w.greaterThan(best)), () => {
                 best.assign(G.w);
                 k.assign(cover);
                 age.assign(cellAge.mul(rip).add(max(t.sub(SHED.ripen + SHED.ripenFor), 0.0).mul(PEEL.ripen)));
-                since.assign(max(t.sub(SHED.bare), 0.0));
+                since.assign(max(tb.sub(SHED.bare), 0.0));
                 hard.assign(0.0);
                 flushK.assign(0.0);
-                blaze.assign(smoothstep(SHED.bare - 0.04, SHED.bare + 0.03, t).mul(float(1.0).sub(rip)).mul(I.x));
+                blaze.assign(smoothstep(SHED.bare - 0.04, SHED.bare + 0.03, tb).mul(float(1.0).sub(rip)).mul(I.x));
                 // (An older ring's or band's rim and cream stay under the newer ring: never a chain
                 // of beads along the seam.)
                 rim.mulAssign(float(1.0).sub(cover));
@@ -2556,7 +2564,8 @@ export function rbBarkEvents(u, {
             const inner = smoothstep(-PEEL.cream * 1.8, -PEEL.cream * 0.4, edge).mul(inBand)
                 .mul(smoothstep(0.35, 0.7, fibre));
             cream.assign(max(cream, inner.mul(bared).mul(keep).mul(inArc).mul(I.x)));
-            const flash = float(1.0).sub(smoothstep(SHED.split * 0.5, SHED.split + 0.08, t)).mul(step(0.0, t));
+            const flash = float(1.0).sub(smoothstep(SHED.split * 0.5, SHED.split + 0.08, tBlaze))
+                .mul(step(0.0, tBlaze));
             const line = float(1.0).sub(smoothstep(0.0, aaY.mul(1.5).add(0.006), abs(y.sub(G.y.add(G.z.mul(wobU)))))).mul(inArc);
             split.assign(max(split, line.mul(flash).mul(I.x)));
             const under = smoothstep(front.sub(0.12), front.sub(0.01), y).mul(float(1.0).sub(bared)).mul(inBand).mul(inArc);
@@ -2629,27 +2638,39 @@ export function rbBarkEvents(u, {
  * The Great Moult at a world point (§6.5, MOULT; every trunk, near and far): `stripped` (0 … 1,
  * above the front sweeping down the frame: the bark stands in First Skin), `ripen` (0 … 1: how far
  * its colour has climbed back), `wet`, and the creak's lift of every old lip. `flame` is a 0 … 1
- * noise read that makes the returning colour climb in fingers. Inline (reads the event table).
+ * noise read that makes the returning colour climb in fingers. Inline (reads the event table: the
+ * base front's start, how much the moult shows, and the latest front's start).
+ *
+ * A second four-line clear never restarts it: its front sweeps down again from the top, and above
+ * that front the colour climbs back from it (First Skin again where it had ripened), below it
+ * still from the first; what stands stripped stays stripped. With one front the two are the same.
  */
 export function rbMoult(u, P, flame) {
     const M = u.events.element(EVENT_ROWS.moult).toVar();
     const t = u.time.sub(M.x).toVar();
-    const on = step(0.5, M.y).mul(step(0.0, t)).toVar();
+    const tLate = u.time.sub(M.w).toVar();
+    const on = clamp(M.y, 0.0, 1.0).mul(step(0.0, t)).toVar();
     const flat = max(length(P.xz.sub(u.camPos.xz)), 0.5).toVar();
     const el = atan(P.y.sub(u.camPos.y), flat).mul(180 / Math.PI).toVar();
-    const rank = flat.div(35.0);
-    const pf = clamp(t.sub(MOULT.creak).sub(rank.mul(M.z)).div(M.w), 0.0, 1.0);
-    const ease = pf.mul(pf).mul(float(3.0).sub(pf.mul(2.0)));
+    const rank = flat.div(35.0).toVar();
+    const jag = flame.sub(0.5).mul(6.0).toVar();
     // (The front is torn, never a ruled line, and narrow: a broad blend would sweep a rainbow of
     // every age across the trunks.)
-    const frontEl = mix(float(MOULT.from), float(MOULT.to), ease).add(flame.sub(0.5).mul(6.0));
+    const frontAt = (since) => {
+        const pf = clamp(since.sub(MOULT.creak).sub(rank.mul(MOULT.rankDelay)).div(MOULT.front), 0.0, 1.0);
+        const ease = pf.mul(pf).mul(float(3.0).sub(pf.mul(2.0)));
+        return mix(float(MOULT.from), float(MOULT.to), ease).add(jag);
+    };
     // (Both the front and the colour's climb back are a hard choice per pixel: a blend of ages would
     // pass through every colour of the ramp, a rainbow fringe along them.)
-    const stripped = step(frontEl, el).mul(on).toVar();
-    const delay = el.sub(MOULT.to).div(MOULT.from - MOULT.to).mul(MOULT.span).add(flame.mul(MOULT.flame));
-    const ripen = step(0.0, t.sub(MOULT.ripenAt).sub(rank.mul(MOULT.rankRipen)).sub(delay)).toVar();
-    const creak = smoothstep(0.0, 0.15, t).mul(float(1.0).sub(smoothstep(0.15, MOULT.creak, t).mul(0.7)))
-        .mul(float(1.0).sub(smoothstep(1.0, 2.5, t))).mul(on);
+    const stripped = step(frontAt(t), el).mul(on).toVar();
+    const again = step(frontAt(tLate), el).mul(step(0.0, tLate));
+    const delay = el.sub(MOULT.to).div(MOULT.from - MOULT.to).mul(MOULT.span).add(flame.mul(MOULT.flame))
+        .toVar();
+    const ripenBy = (since) => step(0.0, since.sub(MOULT.ripenAt).sub(rank.mul(MOULT.rankRipen)).sub(delay));
+    const ripen = mix(ripenBy(t), ripenBy(tLate), again).toVar();
+    const creak = smoothstep(0.0, 0.15, tLate).mul(float(1.0).sub(smoothstep(0.15, MOULT.creak, tLate).mul(0.7)))
+        .mul(float(1.0).sub(smoothstep(1.0, 2.5, tLate))).mul(on);
     return {
         stripped, ripen, wet: stripped.mul(float(1.0).sub(ripen)), creak,
     };

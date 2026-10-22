@@ -137,6 +137,9 @@ export class WolfhourGrade {
         if (params.bloomStrength !== undefined && this.bloomNode) {
             this.bloomNode.strength.value = params.bloomStrength;
         }
+        // The iris: the theme closes it a little as play heats and the moon wakes, so the added
+        // light keeps the night's colour and its darks instead of greying them.
+        if (Number.isFinite(params.exposure)) this.uExposure.value = params.exposure;
     }
 
     updateStaticProfile(params = {}) {

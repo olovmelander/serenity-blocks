@@ -2,7 +2,8 @@
  * Fall — the enchanted grove, shared by the isolated playground and both player backends.
  *
  * FallWorld is the composition root: it owns the light rig, the forest floor, the trees
- * and the air, frames the camera, and forwards gameplay envelopes to them each frame.
+ * and the air, frames the camera, and forwards gameplay envelopes to them each frame (the
+ * director's frame: its envelopes, fronts, and what the surge of play asks of the grove).
  */
 import * as THREE from 'three/webgpu';
 import { FallAtmosphere } from './fall-atmosphere.js';
@@ -118,7 +119,7 @@ export class FallWorld {
         const { light } = this;
         const direction = light.uWindDir.value;
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
-        light.update(time, { ...frame, front: env.front });
+        light.update(time, { ...frame, front: env.front, fronts: env.fronts }, dt);
         this.leaves.update(dt, env, frame.heat);
         this.atmosphere.update(time, dt, frame);
     }

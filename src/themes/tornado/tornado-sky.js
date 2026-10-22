@@ -161,6 +161,9 @@ export function createSky({ u, noise, tier }) {
             const plates = sin(r.div(85.0).sub(dens.mul(7.0))).mul(0.5).add(0.5);
             col.mulAssign(plates.mul(exp(r.div(-1300.0))).mul(-0.22).add(1.0));
             col.assign(mix(col, col.mul(vec3(0.7, 1.18, 0.9)), u.fury.mul(0.55).mul(exp(r.div(-1500.0)))));
+            // A wound-up storm: the colours the funnel holds burn in the deck round its heart,
+            // brightest in the thick lobes (nothing at rest: the charge is zero).
+            col.addAssign(u.charge.mul(exp(r.div(-1100.0))).mul(dens.mul(0.9).add(0.15)));
             // Light from inside.
             for (let i = 0; i < FLASHES; i += 1) {
                 const f = u.flashes.element(i);

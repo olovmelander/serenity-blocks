@@ -6,7 +6,7 @@ import {
     GEODE_PARTS, GeodeWorld, REST_RIG, SPARK_DEPTH, SURGE_COOL, fovForAspect,
 } from '../../src/themes/geode/geode-world.js';
 import {
-    CAVITY, CLEAR_SLOTS, CLEAR_TRAVEL, CROWN_COLORS, CROWN_RINGS, DEG, GEODEFIRE, GEODE_PALETTES, HUSH_HOLD,
+    CAVITY, CLEAR_SLOTS, CLEAR_TRAVEL, CROWN_COLORS, CROWN_RINGS, DEG, FIRE_OPAL, GEODEFIRE, GEODE_PALETTES, HUSH_HOLD,
     MINERALS, MINERAL_HOLD, MINERAL_PERIOD, PULSE_SLOTS, STORE_HOLD, STORE_MAX, STRIKE_SLOTS,
     WISP_SLOTS, WISP_TAIL, clearPassTime, crownForCombo, mineralDrift, paletteAt, pieceColor, powerForCombo,
 } from '../../src/themes/geode/geode-core.js';
@@ -100,6 +100,9 @@ const cutsOf = (world, index) => [0, 3].map((k) => {
     const at = world.crystals.state.aAux[index * 4 + k];
     return at > 1e8 ? Infinity : at;
 });
+
+/** Every wave due at a crystal, the earliest first (the shader sees the first two of them). */
+const allCutsOf = (world, index) => world.crystals.cutsOf(index);
 
 /** What every crystal holds at this moment. */
 const heldNow = (world) => Array.from(
@@ -1734,7 +1737,7 @@ describe('geode world: clears', () => {
         world.dispose();
     });
 
-    it('answers the waves the shaders still draw when a third leaves the heart: the oldest is forgotten', () => {
+    it('answers every wave the shaders draw, a cascade\'s six at once, forgetting only one a seventh displaces', () => {
         const { camera, world } = makeWorld('Low');
         world.onLock({ u: 0.2, hardDrop: true, color: '#ff70ff' });
         world.onLock({ u: 0.8, hardDrop: true, color: '#60ffff' });
@@ -1743,31 +1746,45 @@ describe('geode world: clears', () => {
         for (let i = 0; i < world.crystals.heroes; i++) if (world.crystals.heldAt(i, world.time) > 0) holders.push(i);
         expect(holders.length).toBeGreaterThan(1);
         const { aRelease } = world.crystals.state;
+        const drawn = () => world.u.clearA.map((slot) => slot.value.x).filter((x) => x > -50).sort((a, b) => a - b);
 
-        const born = [world.time];
-        world.onClear({ lines: 1 });
-        run(world, camera, 0.7);
-        born.push(world.time);
-        world.onClear({ lines: 2 });
-        run(world, camera, 0.55);
+        // Six waves, a quarter of a second apart: every one of them stands on the wall.
+        const born = [];
+        for (let k = 0; k < CLEAR_SLOTS; k++) {
+            if (k > 0) run(world, camera, 0.25);
+            born.push(world.time);
+            world.onClear({ lines: 1 });
+        }
+        expect(drawn()).toEqual(born);
+        for (let i = 0; i < world.crystals.heroes; i++) {
+            const reach = clearPassTime(world.list[i].w);
+            // Every crystal is due to answer every wave that has yet to reach it, in order...
+            const due = born.map((birth) => birth + reach).filter((pass) => pass > world.time);
+            const cuts = allCutsOf(world, i).filter((cut) => cut > world.time);
+            expect(cuts, `hero ${i}`).toHaveLength(due.length);
+            cuts.forEach((cut, k) => expect(cut, `hero ${i}`).toBeCloseTo(due[k], 4));
+            // ...and the shader sees the first two of them.
+            const shown = cutsOf(world, i).filter((cut) => Number.isFinite(cut));
+            expect(shown, `hero ${i}`).toEqual(allCutsOf(world, i).slice(0, 2));
+        }
         const flaresBefore = Array.from(aRelease);
+
+        // A seventh, while all six still run: the one with the least left on the wall (the oldest) gives
+        // up its slot, and the crystals forget it too.
+        run(world, camera, 0.1);
         born.push(world.time);
-        world.onClear({ lines: 3 });
-        expect(world.counts.clears).toBe(3);
-        // The shaders have a slot for each of the last waves only: the third is written over the first.
-        const drawn = world.u.clearA.map((slot) => slot.value.x).sort((a, b) => a - b);
-        expect(drawn).toEqual(born.slice(-CLEAR_SLOTS));
-        expect(drawn).not.toContain(born[0]);
+        world.onClear({ lines: 1 });
+        expect(world.counts.clears).toBe(7);
+        expect(drawn()).toEqual(born.slice(1));
         const seen = { forgot: 0, passed: 0 };
         for (let i = 0; i < world.crystals.heroes; i++) {
             const label = `hero ${i}`;
             const reach = clearPassTime(world.list[i].w);
-            // Every crystal is due to answer the waves that are drawn and have yet to reach it: those, and no other.
-            const due = drawn.map((birth) => birth + reach).filter((pass) => pass > world.time);
-            const cuts = cutsOf(world, i).filter((cut) => Number.isFinite(cut));
+            const due = born.slice(1).map((birth) => birth + reach).filter((pass) => pass > world.time);
+            const cuts = allCutsOf(world, i).filter((cut) => cut > world.time);
             expect(cuts, label).toHaveLength(due.length);
             cuts.forEach((cut, k) => expect(cut, label).toBeCloseTo(due[k], 4));
-            if (born[0] + reach > born[2]) {
+            if (born[0] + reach > born[6]) {
                 // The first wave had yet to reach it: the flare that waited for that wave waits for the second
                 // instead, with the second's own in it.
                 seen.forgot += 1;
@@ -1779,27 +1796,37 @@ describe('geode world: clears', () => {
         }
         expect(seen.forgot).toBeGreaterThan(0);
         expect(seen.passed).toBeGreaterThan(0);
-        // What a crystal held goes with the first wave to pass it that is still drawn then: the first wave if it
-        // had been by before the third left, the second if not.
+        // What a crystal held goes with the first wave to pass it that is still drawn then.
         let kept = 0;
         for (const i of holders) {
             const reach = clearPassTime(world.list[i].w);
             const first = born[0] + reach;
-            const taker = first > born[2] ? born[1] + reach : first;
-            if (first > born[2]) {
+            const taker = first > born[6] ? born[1] + reach : first;
+            if (first > born[6]) {
                 kept += 1;
                 expect(world.crystals.heldAt(i, first + 1e-3), `holder ${i}`).toBeGreaterThan(0); // no wave is there
                 expect(world.crystals.heldAt(i, taker - 1e-3), `holder ${i}`).toBeGreaterThan(0);
             }
-            expect(world.crystals.heldAt(i, Math.max(taker, born[2]) + 1e-3), `holder ${i}`).toBe(0);
+            expect(world.crystals.heldAt(i, Math.max(taker, born[6]) + 1e-3), `holder ${i}`).toBe(0);
         }
         expect(kept).toBeGreaterThan(0);
+        // Played through: as each wave passes, the shader is shown the next ones due, and every
+        // crystal flares for every wave still drawn as it passes.
+        const watched = holders[0];
+        const reach = clearPassTime(world.list[watched].w);
+        for (const birth of born.slice(1).filter((b) => b + reach > world.time)) {
+            run(world, camera, birth + reach - world.time + 0.01);
+            expect(aRelease[watched * 4 + 3]).toBeCloseTo(birth + reach, 4);
+            // The next wave due is one of the two the shader sees.
+            const [next] = allCutsOf(world, watched).filter((cut) => cut > world.time);
+            if (next !== undefined) expect(cutsOf(world, watched)).toContain(next);
+        }
         run(world, camera, CLEAR_TRAVEL * 1.05);
         expect(world.getState().held).toBe(0);
         world.dispose();
     });
 
-    it('forgets the wave the shaders stop drawing when a third follows a single inside a fracture\'s hush', () => {
+    it('answers a single inside a fracture\'s hush and a third wave after it: all three drawn, due in turn', () => {
         const { camera, world, holders } = litWorld();
         const { aRelease } = world.crystals.state;
         // Four lines, another line inside the hush, and a third wave while both are on the wall.
@@ -1811,34 +1838,35 @@ describe('geode world: clears', () => {
         run(world, camera, 0.4);
         const third = world.time;
         world.onClear({ lines: 2 });
-        // The third is written over the oldest wave, the fracture's: though that one would have passed the
-        // crystals AFTER the single's.
-        const drawn = world.u.clearA.map((slot) => slot.value.x).sort((a, b) => a - b);
+        // Nothing is written over: the fracture's wave, the single's and the third all stand.
+        const drawn = world.u.clearA.map((slot) => slot.value.x).filter((x) => x > -50).sort((a, b) => a - b);
+        expect(drawn).toHaveLength(3);
         expect(drawn[0]).toBeCloseTo(single, 9);
-        expect(drawn[1]).toBeCloseTo(third, 9);
+        expect(drawn[1]).toBeCloseTo(quad, 9);
+        expect(drawn[2]).toBeCloseTo(third, 9);
         expect(single).toBeLessThan(quad);
         for (let i = 0; i < world.crystals.heroes; i++) {
             const label = `hero ${i}`;
             const reach = clearPassTime(world.list[i].w);
-            // Every crystal answers the waves that are drawn: the single's and the third's, not the fracture's.
-            const [earlier, later] = cutsOf(world, i);
-            expect(earlier, label).toBeCloseTo(single + reach, 4);
-            expect(later, label).toBeCloseTo(third + reach, 4);
+            // Every crystal answers all three, in the order they pass it; the shader sees the first two.
+            const due = [single, quad, third].map((birth) => birth + reach).filter((pass) => pass > world.time);
+            const cuts = allCutsOf(world, i).filter((cut) => cut > world.time);
+            expect(cuts, label).toHaveLength(due.length);
+            cuts.forEach((cut, k) => expect(cut, label).toBeCloseTo(due[k], 4));
         }
-        // What a crystal holds goes with the single's wave, and the wall is dark where the fracture's would be.
+        // What a crystal holds goes with the single's wave.
         for (const i of holders) {
             const reach = clearPassTime(world.list[i].w);
             expect(world.crystals.heldAt(i, single + reach - 1e-3), `holder ${i}`).toBeGreaterThan(0);
             expect(world.crystals.heldAt(i, single + reach + 1e-3), `holder ${i}`).toBe(0);
         }
-        // Played through, each crystal flares for the single's wave and then for the third's: never for a
-        // wave that is not there.
+        // Played through, each crystal flares for the single's wave, then the fracture's, then the third's.
         const [watched] = holders;
         const reach = clearPassTime(world.list[watched].w);
         run(world, camera, single + reach - world.time + 0.01);
         expect(aRelease[watched * 4 + 3]).toBeCloseTo(single + reach, 4);
         run(world, camera, quad + reach - world.time + 0.01);
-        expect(aRelease[watched * 4 + 3]).toBeCloseTo(single + reach, 4);
+        expect(aRelease[watched * 4 + 3]).toBeCloseTo(quad + reach, 4);
         run(world, camera, third + reach - world.time + 0.01);
         expect(aRelease[watched * 4 + 3]).toBeCloseTo(third + reach, 4);
         run(world, camera, CLEAR_TRAVEL);
@@ -1867,7 +1895,11 @@ describe('geode world: clears', () => {
                 [0, () => world.onClear({ lines: 1 })], // a first wave, due at the crystal at t0 + reach
                 [0.7, () => { lands = world.sendWisp(target, from, cool, 0.85); }], // a spark to land after that
                 [secondAfter, () => world.onClear({ lines: 1 })],
-                [0.9, () => world.onClear({ lines: 1 })], // a third wave: the first is no longer drawn
+                // Five more at once: every slot is taken, and the first (the one with the least left on the
+                // wall) gives up its own.
+                [0.9, () => {
+                    for (let k = 0; k < CLEAR_SLOTS - 1; k++) world.onClear({ lines: 1 });
+                }],
             ].sort((a, b) => a[0] - b[0]);
             for (const [at, event] of script) {
                 const wait = t0 + at - world.time;
@@ -1955,17 +1987,19 @@ describe('geode world: clears', () => {
     });
 
     it('flares every crystal as each wave of a run of clears passes it, whatever the pace, even or not', () => {
-        const even = (gap) => Array.from({ length: 6 }, (_, n) => Math.round(n * gap * 60));
-        // The frames (60 a second) on which a line is cleared, and whether three waves are ever on the wall
-        // at once: the oldest is then written over before it gets to the far crystals.
+        const even = (gap, count = 6) => Array.from({ length: count }, (_, n) => Math.round(n * gap * 60));
+        // The frames (60 a second) on which a line is cleared, and whether more waves than the shaders have
+        // slots are ever on the wall at once: the one with the least left is then written over before it gets
+        // to the far crystals. A cascade's pace (0.36 s) never crowds them.
         const paces = [
-            ['every 0.6 s', even(0.6), true],
+            ['every 0.6 s', even(0.6), false],
             ['every second', even(1), false],
             ['every 1.5 s', even(1.5), false],
-            // Uneven: the fourth leaves once the first has been by the near crystals, with the second and
-            // the third still due there.
-            ['at 0, 1.0, 1.4 and 1.8 s', [0, 60, 84, 108], true],
-            ['in a flurry', [0, 20, 50, 75, 110, 130, 190, 200], true],
+            ['at 0, 1.0, 1.4 and 1.8 s', [0, 60, 84, 108], false],
+            ['in a flurry', [0, 20, 50, 75, 110, 130, 190, 200], false],
+            ['a deep cascade', even(0.36, 10), false],
+            // Faster than any cascade: nine in a second and a half.
+            ['a flood', even(0.15, 9), true],
         ];
         for (const [label, frames, crowded] of paces) {
             const { camera, world } = makeWorld('Low');
@@ -2527,35 +2561,34 @@ describe('geode world: combos and levels', () => {
         world.dispose();
     });
 
-    it('leaves no crystal answering a wave whose slot a level-up has taken', () => {
+    it('gives a level-up\'s pale wave its own slot: the clear that brought it and the one before keep theirs', () => {
         const { camera, world, holders } = litWorld();
         const first = world.time;
         world.onClear({ lines: 1 });
         run(world, camera, 0.7);
-        // The clear that brings the level up: its wave and the level's pale one take both the shaders' slots.
+        // The clear that brings the level up: its wave and the level's pale one, beside the first.
         const second = world.time;
         world.onClear({ lines: 1 });
         world.levelUp(2);
-        const drawn = world.u.clearA.map((slot) => slot.value.x).sort((a, b) => a - b);
-        expect(drawn).toEqual(new Array(CLEAR_SLOTS).fill(second));
+        const drawn = world.u.clearA.map((slot) => slot.value.x).filter((x) => x > -50).sort((a, b) => a - b);
+        expect(drawn).toEqual([first, second, second]);
         // Every crystal is due to answer the waves that are drawn and have yet to reach it: those, and no other.
         for (let i = 0; i < world.crystals.heroes; i++) {
             const reach = clearPassTime(world.list[i].w);
             const due = drawn.map((birth) => birth + reach).filter((pass) => pass > world.time);
-            const cuts = cutsOf(world, i).filter((cut) => Number.isFinite(cut));
+            const cuts = allCutsOf(world, i).filter((cut) => cut > world.time);
             expect(cuts, `hero ${i}`).toHaveLength(due.length);
             cuts.forEach((cut, k) => expect(cut, `hero ${i}`).toBeCloseTo(due[k], 4));
         }
-        // What a crystal holds stays where the first wave would have passed it, and goes with the two that are drawn.
+        // What a crystal holds goes with the first wave, which is still drawn.
         let waited = 0;
         for (const i of holders) {
             const reach = clearPassTime(world.list[i].w);
             if (first + reach > second) {
                 waited += 1;
-                expect(world.crystals.heldAt(i, first + reach + 1e-3), `holder ${i}`).toBeGreaterThan(0);
-                expect(world.crystals.heldAt(i, second + reach - 1e-3), `holder ${i}`).toBeGreaterThan(0);
+                expect(world.crystals.heldAt(i, first + reach - 1e-3), `holder ${i}`).toBeGreaterThan(0);
             }
-            expect(world.crystals.heldAt(i, second + reach + 1e-3), `holder ${i}`).toBe(0);
+            expect(world.crystals.heldAt(i, Math.max(first + reach, second) + 1e-3), `holder ${i}`).toBe(0);
         }
         expect(waited).toBeGreaterThan(0);
         run(world, camera, CLEAR_TRAVEL * 1.05);
@@ -2762,17 +2795,17 @@ describe('geode world: what the shaders and the post are told', () => {
         const post = world.getPostState();
         expect(world.getPostState()).toBe(post);
         expect(Object.keys(post).sort()).toEqual([
-            'bloomBoost', 'exposure', 'flash', 'heart', 'kick', 'prism', 'shafts',
+            'bloomBoost', 'exposure', 'flash', 'grade', 'heart', 'kick', 'prism', 'shafts',
         ]);
-        // At rest: an open iris, the heart's own shafts, nothing else.
+        // At rest: an open iris, the heart's own shafts, no heat in the grade, nothing else.
         expect(post).toMatchObject({
-            flash: 0, kick: 0, exposure: 1, prism: { radius: 0, strength: 0 },
+            flash: 0, kick: 0, exposure: 1, grade: 0, prism: { radius: 0, strength: 0 },
         });
         expect(post.bloomBoost).toBeLessThan(1e-12);
         expect(post.shafts).toBeGreaterThan(0);
         const { prism } = post;
         const finite = () => {
-            for (const key of ['flash', 'kick', 'shafts', 'bloomBoost', 'exposure']) {
+            for (const key of ['flash', 'kick', 'shafts', 'bloomBoost', 'exposure', 'grade']) {
                 expect(Number.isFinite(post[key]), key).toBe(true);
                 expect(post[key], key).toBeGreaterThanOrEqual(0);
             }
@@ -3091,6 +3124,215 @@ describe('geode world: time', () => {
         const { drift } = world;
         run(world, camera, 1);
         expect(world.drift - drift).toBeCloseTo(1, 4);
+        world.dispose();
+    });
+});
+
+describe('geode world: the build-up', () => {
+    /**
+     * A long chain as the tray's Fever plays it: a hard-dropped clearing lock every 0.64 s, the
+     * chain one longer each time. Returns what the geode wore after its first clear and its last.
+     */
+    const chain = (world, camera, clears = 12) => {
+        const read = () => ({
+            warm: world.u.heat.value.x,
+            fever: world.u.heat.value.y,
+            grade: world.getPostState().grade,
+            veins: world.u.veins.value.x,
+            stage: world.getState().heat.stage,
+            z: camera.position.z,
+            level: world.getState().heat.level,
+        });
+        let first = null;
+        for (let n = 1; n <= clears; n++) {
+            world.onLock({ u: n % 2 ? 0.3 : 0.7, hardDrop: true, color: '#ffa050' });
+            world.onClear({ lines: 1 + (n % 3), combo: n });
+            world.onCombo(n);
+            run(world, camera, 0.64);
+            if (n === 1) first = read();
+        }
+        return { first, last: read() };
+    };
+
+    it('builds over a long chain: the last clear reads far hotter than the first, and the fever opens the wall', () => {
+        const { camera, world } = makeWorld('Medium');
+        // A twin left alone on the same clock: where the view floats with nothing played.
+        const twin = makeWorld('Medium');
+        const { first, last } = chain(world, camera);
+        run(twin.world, twin.camera, 12 * 0.64, 12 * Math.round(0.64 * 60));
+        // The first clear of a run is casual play: the geode wears none of it.
+        expect(first.warm).toBe(0);
+        expect(first.fever).toBe(0);
+        expect(first.grade).toBe(0);
+        expect(first.stage).toBe(0);
+        // Twelve in a row: the lining glitters, the bells hum, the grade deepens, the view leans in...
+        expect(last.level).toBeGreaterThan(0.85);
+        expect(last.warm).toBeGreaterThan(0.8);
+        expect(last.grade).toBeGreaterThan(first.grade + 0.5);
+        expect(last.z).toBeLessThan(twin.camera.position.z - 0.8);
+        // ...and the fever cracks the geode open from the heart.
+        expect(last.stage).toBe(3);
+        expect(last.fever).toBeGreaterThan(0.3);
+        expect(last.veins).toBeGreaterThan(0);
+        expect(world.u.veins.value.y).toBeGreaterThan(CAVITY.wHeart);
+        expect(world.u.live.value.w).toBe(1);
+        twin.world.dispose();
+        world.dispose();
+    });
+
+    it('never cuts the light with a weaker event after a stronger one', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onLock({ u: 0.3, hardDrop: true, color: '#ffa050' });
+        world.onClear({ lines: 4 });
+        run(world, camera, HUSH_HOLD + 0.15);
+        const quadBirth = world.u.clearA.map((slot) => slot.value.x).find((x) => x > -50);
+        const before = {
+            ...world.getPostState(), prism: { ...world.getPostState().prism }, storm: world.storm, surge: world.surge,
+        };
+        // A plain lock, a single, and a T-spin that clears nothing, all at once on top of the four.
+        world.onLock({ u: 0.6, color: '#60ffff' });
+        world.onClear({ lines: 1 });
+        world.onSpin();
+        run(world, camera, 1 / 240, 1);
+        const after = world.getPostState();
+        const fade = Math.exp(-(1 / 240) / 0.16) - 1e-6; // the fastest any of them falls in a frame
+        for (const key of ['shafts', 'bloomBoost', 'kick']) {
+            expect(after[key], key).toBeGreaterThanOrEqual(before[key] * fade);
+        }
+        expect(world.storm).toBeGreaterThan(before.storm * 0.99);
+        expect(world.surge).toBeGreaterThan(before.surge * 0.99);
+        // The four's prism ring carries on (the spin's light joins it), and its wave is still drawn.
+        expect(after.prism.radius).toBeGreaterThan(before.prism.radius);
+        expect(after.prism.strength).toBeGreaterThan(before.prism.strength * 0.99);
+        expect(world.u.clearA.map((slot) => slot.value.x)).toContain(quadBirth);
+        // A strong hit right after a weak one adds to it.
+        const { world: fresh, camera: eye } = makeWorld('Low');
+        fresh.onLock({ u: 0.3, color: '#ffa050' });
+        const soft = fresh.kick;
+        fresh.onLock({ u: 0.6, hardDrop: true, color: '#ffa050' });
+        expect(fresh.kick).toBeGreaterThan(soft + 0.45);
+        run(fresh, eye, 0.05);
+        world.dispose();
+        fresh.dispose();
+    });
+
+    it('breathes back to calm once the hands rest', () => {
+        const { camera, world } = makeWorld('Medium');
+        const rest = { ...world.getPostState() };
+        const restZ = camera.position.z;
+        chain(world, camera);
+        expect(world.getState().heat.stage).toBe(3);
+        world.onCombo(0);
+        // A few seconds on, the fever has let go and the geode is cooling...
+        run(world, camera, 4);
+        expect(world.getState().heat.fever).toBeLessThan(0.05);
+        expect(world.getState().heat.stage).toBeLessThan(3);
+        // ...and long after, it is the calm geode again.
+        run(world, camera, 30, 600);
+        expect(world.u.heat.value.toArray().slice(0, 2)).toEqual([0, 0]);
+        expect(world.u.veins.value.x).toBe(0);
+        expect(world.u.live.value.w).toBe(0);
+        expect(world.getPostState().grade).toBe(0);
+        expect(world.getPostState().exposure).toBeCloseTo(1, 6);
+        expect(world.getPostState().shafts).toBeCloseTo(rest.shafts, 6);
+        // The view has drifted back from the heart to where it floats at rest.
+        world.updateCamera(camera, { time: 10, delta: 0 });
+        expect(camera.position.z).toBeCloseTo(restZ, 9);
+        world.dispose();
+    });
+
+    it('builds every wave of a cascade on the last: deeper, stronger, wider, up the spectrum, all standing', () => {
+        const { camera, world } = makeWorld('Low');
+        const waves = [];
+        for (let depth = 1; depth <= 6; depth++) {
+            if (depth > 1) run(world, camera, 0.36);
+            world.onClear({ lines: 1, cascade: depth });
+            const slot = world.u.clearA.findIndex((s) => s.value.x === world.time);
+            waves.push({ place: world.u.clearA[slot].value.clone(), colour: world.u.clearC[slot].value.clone() });
+        }
+        // All six stand on the wall at once: none was written over.
+        const births = world.u.clearA.map((slot) => slot.value.x).sort((a, b) => a - b);
+        expect(births).toEqual(waves.map((w) => w.place.x));
+        for (let k = 1; k < waves.length; k++) {
+            expect(waves[k].place.z, `wave ${k + 1}`).toBeGreaterThan(waves[k - 1].place.z); // stronger
+            expect(waves[k].place.y, `wave ${k + 1}`).toBeGreaterThanOrEqual(waves[k - 1].place.y); // more fronts
+            expect(waves[k].colour.distanceTo(waves[k - 1].colour), `wave ${k + 1}`).toBeGreaterThan(0.02);
+        }
+        expect(waves[3].place.y).toBe(4);
+        world.dispose();
+    });
+
+    it('crowns a four with its late perfect clear: no second hush, nothing restarted, every bell rung', () => {
+        const { camera, world } = makeWorld('High');
+        const { aAux, aFlash } = world.crystals.state;
+        world.onClear({ lines: 4 });
+        run(world, camera, HUSH_HOLD + 0.14);
+        const { hushUntil } = world;
+        const waves = world.u.clearA.map((slot) => slot.value.toArray());
+        const fracture = world.u.shock.value.toArray();
+        const lances = [];
+        for (let i = 0; i < world.crystals.heroes; i++) {
+            if (aAux[i * 4 + 2] > 0) lances.push([i, aAux[i * 4 + 1], aAux[i * 4 + 2]]);
+        }
+        expect(lances.length).toBeGreaterThan(0);
+        const { breath } = world.getState();
+        const heart = world.u.heart.value.length();
+        world.onPerfect();
+        // No new clear, no hush, no new wave, the same fracture: brighter.
+        expect(world.counts).toMatchObject({ clears: 1, quads: 1, crowns: 1 });
+        expect(world.hushUntil).toBe(hushUntil);
+        expect(world.u.clearA.map((slot) => slot.value.toArray())).toEqual(waves);
+        expect(world.u.shock.value.x).toBe(fracture[0]);
+        expect(world.u.shock.value.y).toBeGreaterThan(fracture[1]);
+        // The lances still standing burn brighter; none is thrown again.
+        for (const [i, birth, strength] of lances) {
+            expect(aAux[i * 4 + 1], `lance ${i}`).toBe(birth);
+            expect(aAux[i * 4 + 2], `lance ${i}`).toBeGreaterThan(strength);
+        }
+        // Every bell rings in fire opal, from the heart outward.
+        run(world, camera, 1.2);
+        for (let i = 0; i < world.crystals.heroes; i++) {
+            expect(aFlash[i * 4 + 3], `bell ${i}`).toBeGreaterThan(world.time - 1.3);
+            expectHue(Array.from(aFlash.subarray(i * 4, i * 4 + 3)), FIRE_OPAL, 1);
+        }
+        expect(world.getState().held).toBeGreaterThan(0);
+        // The geode breathes on and its heart flares (no second hush).
+        expect(world.getState().breath).toBeGreaterThanOrEqual(breath);
+        expect(world.getState().breath).toBeGreaterThan(0.9);
+        expect(world.u.heart.value.length()).toBeGreaterThan(heart * 0.9);
+        world.dispose();
+    });
+
+    it('winds the agate on back-to-back clears and sets its bands blazing, more with each in a row', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onClear({ lines: 4 });
+        run(world, camera, 2);
+        const notch = world.twistTarget;
+        expect(world.u.heat.value.w).toBe(0);
+        world.onClear({ lines: 4, b2b: true });
+        const rings = ringsBornAt(world, world.time).length + ringsBornAt(world, world.time + 0.1).length;
+        expect(rings).toBe(2);
+        expect(world.twistTarget).toBeGreaterThan(notch);
+        run(world, camera, 0.4);
+        const once = world.u.heat.value.w;
+        expect(once).toBeGreaterThan(0);
+        run(world, camera, 1.6);
+        world.onClear({ lines: 2, tspin: true, b2b: true });
+        expect(ringsBornAt(world, world.time + 0.2)).toHaveLength(1); // a third ring for the second in a row
+        run(world, camera, 0.4);
+        expect(world.u.heat.value.w).toBeGreaterThan(once);
+        world.dispose();
+    });
+
+    it('turns the agate half a notch on a T-spin that clears nothing, with a faint ring from the heart', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onSpin();
+        expect(world.twistTarget).toBeGreaterThan(0);
+        expect(ringsBornAt(world, world.time)).toHaveLength(1);
+        expect(world.counts).toMatchObject({ spins: 1, clears: 0 });
+        run(world, camera, 0.1);
+        expect(world.getPostState().prism.strength).toBeGreaterThan(0);
+        expect(world.u.live.value.w).toBe(0); // the wall does not break
         world.dispose();
     });
 });

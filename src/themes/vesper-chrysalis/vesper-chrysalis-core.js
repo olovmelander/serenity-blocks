@@ -130,8 +130,12 @@ export function skyDirection(azimuth, elevation, out = [0, 0, 0]) {
 
 /** Rings on the lake the water evaluates at once. */
 export const RING_SLOTS = 12;
-/** Swells (a clear's wave over the lake) at once. */
-export const SWELL_SLOTS = 3;
+/**
+ * Swells (a clear's wave over the lake) at once. A chain or a cascade sends one every third of a
+ * second or so: a new one takes the slot whose swell has least left to give, never one still
+ * crossing to its lilies while a spent one is free.
+ */
+export const SWELL_SLOTS = 6;
 /** Moths in flight at once (a lock sends one, a hard drop three). */
 export const MOTH_SLOTS = 12;
 /** Motes in one moth's wake. */
@@ -140,8 +144,11 @@ export const MOTH_TAIL = 22;
 export const THREAD_PULSES = 4;
 /** The most lantern lilies any tier floats. */
 export const BLOOM_MAX = 24;
-/** Blades of light the cleared rows throw out of the card. */
-export const BLADE_SLOTS = 4;
+/**
+ * Blades of light the cleared rows throw out of the card: three clears' worth, so a clear (or a
+ * cascade's next wave) takes the faintest blades and never cuts the last clear's short.
+ */
+export const BLADE_SLOTS = 12;
 
 /** A ring's radius `age` seconds after it starts: reach · RING_REACH · (1 − e^(−age/τ)) metres. */
 export const RING_REACH = 22;
@@ -184,8 +191,12 @@ export const BLOOM_KEEP = 0.22;
 export const HUSH_HOLD = 0.24;
 /** Seconds the overdrive after a four-line clear takes to cool to 1/e. */
 export const SURGE_COOL = 3.4;
-/** Seconds the wings take to fall to dust when the chain breaks. */
-export const WING_FALL = 1.7;
+/**
+ * Seconds a full pair of wings takes to fold away when the chain breaks: they moult, folding
+ * back from the margin at an even 1 / WING_FALL of their span a second, shedding scales from the
+ * fraying edge, and a new chain catches them wherever they stand.
+ */
+export const WING_FALL = 5;
 
 // ── The wings ───────────────────────────────────────────────────────────────────
 

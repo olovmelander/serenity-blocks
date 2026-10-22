@@ -9,12 +9,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    DECK, DEG, EYE, PIECE_COLORS, TIMING, hexToLinear, rigFor,
+    DECK, DEG, EYE, PIECE_COLORS, TIMING, hexToLinear, rigFor, smooth,
 } from '../../src/themes/grainfields/grainfields-core.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/grainfields/grainfields-composition.js';
 import { groundHeight } from '../../src/themes/grainfields/grainfields-plan.js';
 import {
-    GrainfieldsReactions, MAX_GAPS, MAX_PULSES, MAX_TRAILS, PULSE, beamDistance, beamRadius, freeColumn,
+    FADE, FRONT, GrainfieldsReactions, LIVE, MAX_GAPS, MAX_PULSES, MAX_TRAILS, PULSE, STILL, TEAR, beamDistance,
+    beamRadius, breakFor, freeColumn,
 } from '../../src/themes/grainfields/grainfields-reactions.js';
 import {
     GAPS, PULSES, TRAILS, createUniforms,
@@ -62,6 +63,8 @@ const lockAt = (reactions, c, time = 10, { layout = BOARD_ONLY, aim = makeAim() 
     layout, aim, deck: DECK_STATE,
 });
 const clearAt = (reactions, c, time = 10, { layout = BOARD_ONLY, aim = makeAim() } = {}) => reactions.clear(c, time, { layout, aim });
+/** What is left of a fade begun at `item.fadeAt` over `span` seconds (1 while it stands). */
+const left = (item, t, span) => (Number.isFinite(item.fadeAt) ? 1 - smooth(item.fadeAt, item.fadeAt + span, t) : 1);
 
 describe('Grainfields reactions: a lock\'s beam', () => {
     it('lands beside the card on its own side (left of it for u < 0.5, right for u > 0.5), the board alone on screen', () => {
@@ -417,6 +420,142 @@ describe('Grainfields reactions: the chain', () => {
     });
 });
 
+describe('Grainfields reactions: building, never restarting', () => {
+    it('feeds the tear over the gate and the front of light on a second quad instead of restarting them', () => {
+        const reactions = new GrainfieldsReactions();
+        clearAt(reactions, { lines: 4 }, 30);
+        const radius = reactions.tearRadius;
+        expect(radius).toBe(TEAR.radius);
+        // A second quad while the first's front is still on its way to the eye, and a third as
+        // the tear is closing: nothing on screen ever steps down.
+        let previous = { tear: 0, front: 0, glow: 0 };
+        let fed = 0;
+        for (let t = 30; t < 60; t += 1 / 30) {
+            if (fed === 0 && t >= 32) {
+                clearAt(reactions, { lines: 4 }, t);
+                // The front still running out from the gate is fed: brighter, held longer.
+                expect(reactions.flareGain).toBeGreaterThan(1);
+                expect(reactions.flareGain).toBeLessThanOrEqual(FRONT.gain);
+                fed = 1;
+            } else if (fed === 1 && t >= 44) {
+                const closing = reactions.tear(t);
+                expect(closing).toBeLessThan(1);
+                expect(closing).toBeGreaterThan(0.3);
+                clearAt(reactions, { lines: 4 }, t);
+                expect(reactions.tear(t)).toBeCloseTo(closing, 9);
+                expect(reactions.tear(t + TIMING.tearIn)).toBeCloseTo(1, 9);
+                fed = 2;
+            }
+            const tear = reactions.tear(t);
+            const [, front] = reactions.flare(t);
+            const glow = reactions.flareGlow(t);
+            // The tear steps down only as fast as it closes on its own (a closing tear fed again
+            // opens from where it stands); a restart would drop it to nothing in a frame.
+            expect(previous.tear - tear, `tear at ${t.toFixed(2)}`).toBeLessThan(0.01);
+            // The front keeps running out from the gate while it is lit; it is never sent back.
+            if (t > 32 && t < 36) expect(front, `front at ${t.toFixed(2)}`).toBeGreaterThan(previous.front);
+            // (The light it lifts only ever fades as slowly as a front fades: never a step.)
+            if (t > 31) expect(previous.glow - glow, `glow at ${t.toFixed(2)}`).toBeLessThan(0.03);
+            previous = { tear, front, glow };
+        }
+        // Each quad that found the tear open widened it.
+        expect(reactions.tearRadius).toBeGreaterThan(radius);
+        expect(reactions.tearRadius).toBeLessThanOrEqual(TEAR.widest);
+        // A quad after the front has passed the eye sends a new one out of the gate, and the light of
+        // the old one fades out under it instead of dropping.
+        const late = new GrainfieldsReactions();
+        clearAt(late, { lines: 4 }, 10);
+        const t2 = 10 + FRONT.delay + FRONT.pass + 1;
+        const before = late.flareGlow(t2);
+        expect(before).toBeGreaterThan(0.3);
+        clearAt(late, { lines: 4 }, t2);
+        expect(late.flareGlow(t2)).toBeCloseTo(before, 9);
+        expect(late.flare(t2 + FRONT.delay + 0.5)[1]).toBeLessThan(2000); // a new front, near the gate
+    });
+
+    it('answers back-to-back at the gate: each difficult clear of a run tears the sky over Lapporten, wider', () => {
+        const reactions = new GrainfieldsReactions();
+        reactions.setB2B(1, 0);
+        clearAt(reactions, { lines: 2, tspin: true, b2b: true }, 10);
+        expect(reactions.tear(10 + TIMING.tearIn)).toBeCloseTo(1, 9);
+        const one = reactions.tearRadius;
+        reactions.setB2B(3, 12);
+        clearAt(reactions, { lines: 2, tspin: true, b2b: true }, 12);
+        expect(reactions.tearRadius).toBeGreaterThan(one);
+        // No B2B, no tear: a T-spin alone wheels the wind only.
+        const plain = new GrainfieldsReactions();
+        clearAt(plain, { lines: 2, tspin: true }, 10);
+        expect(plain.tear(12)).toBe(0);
+    });
+
+    it('holds the clear sky through a second perfect clear (no cloud, then clear again); the wind returns', () => {
+        const reactions = new GrainfieldsReactions();
+        reactions.perfect(50);
+        let previous = 0;
+        for (let t = 50; t < 50 + TIMING.clearHold; t += 0.1) {
+            if (Math.abs(t - 55) < 0.05) reactions.perfect(t);
+            const [sky] = reactions.clearSky(t);
+            expect(sky, `sky at ${t.toFixed(1)}`).toBeGreaterThanOrEqual(previous - 1e-9);
+            previous = sky;
+        }
+        // The stillness lets go first: the breeze returns under the clear sky.
+        const [sky, still] = reactions.clearSky(55 + STILL.hold + STILL.back + 0.5);
+        expect(sky).toBeCloseTo(1, 9);
+        expect(still).toBe(0);
+    });
+
+    it('keeps opening the storm past a chain of six, a little each step', () => {
+        expect(breakFor(0)).toBe(0);
+        expect(breakFor(1)).toBe(0);
+        expect(breakFor(2)).toBeCloseTo(0.3, 9);
+        expect(breakFor(6)).toBeCloseTo(0.9, 9);
+        for (let n = 7; n <= 11; n++) expect(breakFor(n), `combo ${n}`).toBeGreaterThan(breakFor(n - 1));
+        expect(breakFor(11)).toBeCloseTo(1, 9);
+        expect(breakFor(40)).toBe(1);
+    });
+
+    it('eases the back-to-back wind in and out instead of stepping it', () => {
+        const reactions = new GrainfieldsReactions();
+        reactions.setB2B(4, 10);
+        expect(reactions.b2bShown(10)).toBe(0);
+        expect(reactions.b2bShown(11)).toBeCloseTo(4, 9);
+        reactions.setB2B(0, 20);
+        expect(reactions.b2bShown(20)).toBeCloseTo(4, 9);
+        expect(reactions.b2bShown(22)).toBeGreaterThan(0.5);
+        expect(reactions.b2bShown(24)).toBe(0);
+        // Settled at once (a rebuild in place carries the run over as it stands).
+        reactions.setB2B(3);
+        expect(reactions.b2bShown(0)).toBe(3);
+    });
+
+    it('blows each cascade wave a stronger, wider lane than the last, and the gale rises with them', () => {
+        const reactions = new GrainfieldsReactions();
+        for (let wave = 1; wave <= 4; wave++) clearAt(reactions, { lines: 1, cascade: wave }, 10 + wave * 0.36);
+        const lanes = reactions.trails;
+        for (let i = 1; i < lanes.length; i++) {
+            expect(lanes[i].power, `wave ${i + 1}`).toBeGreaterThan(lanes[i - 1].power);
+            expect(lanes[i].width, `wave ${i + 1}`).toBeGreaterThan(lanes[i - 1].width);
+        }
+        const single = new GrainfieldsReactions();
+        clearAt(single, { lines: 1 }, 10.36);
+        expect(reactions.gale(12)).toBeGreaterThan(single.gale(12));
+        // At rest the gale falls away.
+        expect(reactions.gale(40)).toBeLessThan(0.01);
+    });
+
+    it('turns a small whirl for a T-spin that cleared nothing, where the piece fell', () => {
+        const reactions = new GrainfieldsReactions();
+        const whirl = reactions.spin({ u: 0.2 }, 10, { layout: BOARD_ONLY, aim: makeAim() });
+        expect(whirl).toMatchObject({ kind: PULSE.whirl, at: 10 });
+        expect(reactions.pulses).toEqual([whirl]);
+        const full = new GrainfieldsReactions();
+        clearAt(full, { lines: 2, tspin: true }, 10);
+        expect(whirl.power).toBeLessThan(full.pulses[0].power);
+        expect(whirl.width).toBeLessThan(full.pulses[0].width);
+        expect(reactions.spin({ u: 0.2 }, 11, { layout: BOARD_ONLY, aim: () => null })).toBeNull();
+    });
+});
+
 describe('Grainfields reactions: the tables', () => {
     it('sizes its tables as the shaders do', () => {
         expect(MAX_GAPS).toBe(GAPS);
@@ -428,29 +567,33 @@ describe('Grainfields reactions: the tables', () => {
         expect(u.tables.pulses).toHaveLength(PULSES * 2);
     });
 
-    it('never holds more gaps, trails or pulses than the tables, dropping the oldest first', () => {
+    it('never holds more gaps, trails or pulses than the tables: the faintest fades out, the newest is kept', () => {
         const reactions = new GrainfieldsReactions();
         for (let k = 0; k < MAX_GAPS * 3; k++) {
-            lockAt(reactions, {
+            const gap = lockAt(reactions, {
                 u: (k % 10) / 10, rows: [k % 20], hardDrop: k % 2 === 0, distance: 8,
             }, 10 + k * 0.1);
             expect(reactions.gaps.length).toBeLessThanOrEqual(MAX_GAPS);
             expect(reactions.pulses.length).toBeLessThanOrEqual(MAX_PULSES);
+            expect(reactions.gaps[reactions.gaps.length - 1]).toBe(gap);
+            const standing = reactions.gaps.filter((g) => !Number.isFinite(g.fadeAt));
+            expect(standing.length).toBeLessThanOrEqual(LIVE.gaps);
         }
         expect(reactions.gaps).toHaveLength(MAX_GAPS);
-        const last = 10 + (MAX_GAPS * 3 - 1) * 0.1;
-        expect(reactions.gaps[MAX_GAPS - 1].at).toBeCloseTo(last, 9);
-        expect(reactions.gaps[0].at).toBeCloseTo(last - (MAX_GAPS - 1) * 0.1, 9);
-        expect(reactions.pulses).toHaveLength(MAX_PULSES);
+        // The beams that gave up their place were soft locks' (the faintest) before hard drops'.
+        const fading = reactions.gaps.filter((g) => Number.isFinite(g.fadeAt));
+        expect(fading.length).toBeGreaterThan(0);
+        expect(reactions.pulses.length).toBeLessThanOrEqual(MAX_PULSES);
         for (let k = 0; k < MAX_TRAILS * 3; k++) {
             clearAt(reactions, { lines: 1 + (k % 4), tspin: k % 3 === 0 }, 20 + k);
             reactions.levelUp(20 + k);
             expect(reactions.trails.length).toBeLessThanOrEqual(MAX_TRAILS);
             expect(reactions.pulses.length).toBeLessThanOrEqual(MAX_PULSES);
         }
-        expect(reactions.trails).toHaveLength(MAX_TRAILS);
-        expect(reactions.trails[MAX_TRAILS - 1].at).toBeGreaterThanOrEqual(20 + MAX_TRAILS * 3 - 1);
-        expect(reactions.pulses[MAX_PULSES - 1]).toMatchObject({ kind: PULSE.wave, at: 20 + MAX_TRAILS * 3 - 1 });
+        expect(reactions.trails.length).toBeLessThanOrEqual(MAX_TRAILS);
+        expect(reactions.trails[reactions.trails.length - 1].at).toBeGreaterThanOrEqual(20 + MAX_TRAILS * 3 - 1);
+        const newest = reactions.pulses[reactions.pulses.length - 1];
+        expect(newest).toMatchObject({ kind: PULSE.wave, at: 20 + MAX_TRAILS * 3 - 1 });
         // The uniforms never count past their tables either.
         const u = createUniforms();
         reactions.writeUniforms(u, 20 + MAX_TRAILS * 3);
@@ -459,6 +602,67 @@ describe('Grainfields reactions: the tables', () => {
         expect(u.pulseCount.value).toBeLessThanOrEqual(PULSES);
     });
 
+    // The worst pop this theme had (2026-10-22 audit): twelve gaps, the oldest shifted out, while a
+    // gap lives 34 s, so at two locks a second every sunbeam stood ~6 s and winked out at full
+    // strength. Now a beam that gives up its place fades out over FADE.gaps.
+    it('never winks a beam, a lane or a pulse out under rapid play: what gives up its place fades', () => {
+        const reactions = new GrainfieldsReactions();
+        const u = createUniforms();
+        const dt = 1 / 60;
+        /** What each of a table's things shows, by the thing (gone: 0). */
+        const shown = (list, strength) => new Map(list.map((item) => [item, strength(item)]));
+        let gaps = new Map();
+        let trails = new Map();
+        let pulses = new Map();
+        let worst = { gaps: 0, trails: 0, pulses: 0 };
+        let lock = 0;
+        for (let t = 0; t < 40; t += dt) {
+            // A quick hand: a hard drop every 0.3 s, a clear every other lock, a cascade's waves now
+            // and then, a T-spin and a level now and then.
+            if (t >= lock * 0.3) {
+                lockAt(reactions, {
+                    u: (lock * 0.37) % 1, rows: [19 - (lock % 12)], hardDrop: true, distance: 10,
+                }, t);
+                if (lock % 2 === 0) {
+                    clearAt(reactions, {
+                        lines: 1 + (lock % 4), cascade: 1 + (lock % 3), tspin: lock % 9 === 0,
+                    }, t);
+                }
+                if (lock % 15 === 0) reactions.levelUp(t);
+                lock += 1;
+            }
+            reactions.writeUniforms(u, t);
+            const nowGaps = shown(reactions.gaps, (g) => GrainfieldsReactions.gapStrength(g, t));
+            // (As the shaders draw them: a lane full for four seconds, out by 7.5; a ring or wave out
+            // by six, a whirl by seven; times what is left of a fade.)
+            const nowTrails = shown(reactions.trails, (tr) => tr.power * left(tr, t, FADE.trails)
+                * smooth(0, 0.25, t - tr.at) * (1 - smooth(4, 7.5, t - tr.at)));
+            const nowPulses = shown(reactions.pulses, (p) => {
+                const age = t - p.at;
+                const life = p.kind === PULSE.whirl
+                    ? smooth(0, 0.6, age) * (1 - smooth(3.5, 7, age))
+                    : smooth(0, 0.15, age) * (1 - smooth(2.5, 6, age));
+                return p.power * left(p, t, FADE.pulses) * life;
+            });
+            const drop = (was, now) => {
+                let most = 0;
+                for (const [item, before] of was) most = Math.max(most, before - (now.get(item) ?? 0));
+                return most;
+            };
+            worst.gaps = Math.max(worst.gaps, drop(gaps, nowGaps));
+            worst.trails = Math.max(worst.trails, drop(trails, nowTrails));
+            worst.pulses = Math.max(worst.pulses, drop(pulses, nowPulses));
+            gaps = nowGaps;
+            trails = nowTrails;
+            pulses = nowPulses;
+        }
+        expect(lock).toBeGreaterThan(100);
+        // A frame's step down is a fade's (well under a tenth), never a beam cut at full strength.
+        expect(worst.gaps).toBeLessThan(0.05);
+        expect(worst.trails).toBeLessThan(0.1);
+        expect(worst.pulses).toBeLessThan(0.1);
+        worst = null;
+    });
     it('forgets what has run its course', () => {
         const reactions = new GrainfieldsReactions();
         lockAt(reactions, {

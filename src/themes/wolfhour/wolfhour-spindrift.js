@@ -28,7 +28,7 @@ export function spindriftGust(time, phase = 0) {
     return 0.35 + 0.65 * (g * 0.5 + 0.5) ** 1.5;
 }
 
-function createPlumeMaterial(plume, noiseMap, uTime, uGust) {
+function createPlumeMaterial(plume, noiseMap, uTime, uGust, uWind) {
     const material = new THREE.MeshBasicNodeMaterial({
         name: plume.name, transparent: true, depthWrite: false, side: THREE.DoubleSide,
     });
@@ -51,6 +51,8 @@ function createPlumeMaterial(plume, noiseMap, uTime, uGust) {
     material.opacityNode = body.mul(shreds.mul(0.75).add(0.25)).mul(reach).mul(root)
         .mul(plume.strength)
         .mul(uGust.mul(0.5).add(0.5))
+        // Play stirs the wind: the plumes thicken (uWind, 0 at rest).
+        .mul(uWind.mul(0.7).add(1))
         .clamp(0, 1);
     material.colorNode = mix(vec3(0.27, 0.32, 0.45), vec3(0.16, 0.2, 0.3), along);
     return material;
@@ -61,6 +63,7 @@ export function createWolfhourSpindrift({ quality = 'High', noiseMap = null } = 
     const ownsNoise = !noiseMap;
     const noise = noiseMap || makeWolfhourNoiseTexture();
     const uTime = uniform(0);
+    const uWind = uniform(0);
     const plumes = [];
     if (quality !== 'Minimal') {
         for (const plume of SPINDRIFT_PLUMES) {
@@ -68,7 +71,7 @@ export function createWolfhourSpindrift({ quality = 'High', noiseMap = null } = 
             const geometry = new THREE.PlaneGeometry(plume.length, plume.height);
             // The summit is the quad's left edge, a third of the way up.
             geometry.translate(plume.length / 2, plume.height * 0.14, 0);
-            const mesh = new THREE.Mesh(geometry, createPlumeMaterial(plume, noise, uTime, uGust));
+            const mesh = new THREE.Mesh(geometry, createPlumeMaterial(plume, noise, uTime, uGust, uWind));
             mesh.name = plume.name;
             mesh.userData.summitX = plume.x;
             mesh.userData.phase = plume.phase;
@@ -78,9 +81,18 @@ export function createWolfhourSpindrift({ quality = 'High', noiseMap = null } = 
     }
     return {
         plumes,
-        update(time) {
+        /**
+         * `wind` (0..~1.2, 0 at rest) is how hard play drives the night wind: the gusts reach
+         * further (never past the plume's quad) and the plumes thicken.
+         */
+        update(time, wind = 0) {
+            const w = Number.isFinite(wind) ? Math.max(0, Math.min(1.2, wind)) : 0;
             uTime.value = Number.isFinite(time) ? time : 0;
-            for (const mesh of plumes) mesh.userData.uGust.value = spindriftGust(time, mesh.userData.phase);
+            uWind.value = w;
+            for (const mesh of plumes) {
+                const gust = spindriftGust(time, mesh.userData.phase);
+                mesh.userData.uGust.value = Math.min(1.1, gust * (1 + w * 0.5) + w * 0.12);
+            }
         },
         dispose() {
             for (const mesh of plumes) {

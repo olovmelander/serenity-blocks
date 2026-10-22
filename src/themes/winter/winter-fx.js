@@ -50,6 +50,8 @@ export const SPARK_DRAG = 1.7;
 export const POWDER_DRAG = 3.0;
 /** Seconds a spark hangs before the sky begins to draw it up. */
 export const SPARK_HANG = 0.22;
+/** Slots past the cursor the pool looks at for one that is spent (see createSparks' take). */
+const SPARK_SCAN = 16;
 
 /**
  * Where a spark thrown from `from` with velocity `vel` is `tau` seconds later, its winding
@@ -154,6 +156,29 @@ export function createSparks(u, count) {
     const part = wPart('WinterFoxFires', geometry, material, 46);
     let cursor = 0;
     let bursts = 0;
+    /** Seconds the sprite in slot `i` still has to live at `time` (≤ 0: spent). */
+    const left = (i, time) => aBirth[i * 4 + 3] + aVel[i * 4 + 3] - time;
+    /**
+     * The slot the next sprite takes. The cursor goes round the pool, but lives differ (a flash
+     * lasts a third of a second, a spark rising into the sky four): the slot it names may still
+     * be mid-flight while one a little further on is spent. So it looks a few slots ahead and
+     * takes a spent one, or else the one nearest its end — a spark still climbing is never cut
+     * while a dying one could make room.
+     */
+    const take = (time) => {
+        let best = cursor % count;
+        let bestLeft = left(best, time);
+        for (let s = 1; s < SPARK_SCAN && bestLeft > 0; s++) {
+            const j = (cursor + s) % count;
+            const l = left(j, time);
+            if (l < bestLeft) {
+                best = j;
+                bestLeft = l;
+            }
+        }
+        cursor = best + 1;
+        return best;
+    };
     /**
      * Throw `n` sprites from a point at `time` (which may be a moment ahead).
      * @param {object} o
@@ -174,8 +199,7 @@ export function createSparks(u, count) {
         const len = Math.hypot(toward[0], toward[1], toward[2]) || 1;
         const total = Math.min(n, count);
         for (let k = 0; k < total; k++) {
-            const i = cursor % count;
-            cursor += 1;
+            const i = take(time);
             // A random heading inside the cone about `toward`.
             const a = rand() * TAU;
             const z = rand() * 2 - 1;
@@ -224,39 +248,63 @@ export const BEAM_ROWS = 4;
 export const BEAM_TRAVEL = 0.14;
 export const BEAM_FADE = 0.17;
 
-/** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
+/** Sets of blades that can be in flight at once: a clear on top of one still flying adds its own. */
+export const BEAM_SETS = 2;
+
+/**
+ * Screen-space strips: one from each side of the card for up to four cleared rows, in BEAM_SETS
+ * sets. A clear fires the set whose blades went out longest ago, so two clears close together
+ * (two boards, waves coalesced into one frame) never erase each other's blades mid-flight.
+ */
 export function createRowBeams(u) {
-    const count = BEAM_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = wQuadGeometry(count, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
-    const uniforms = {
+    const perSet = BEAM_ROWS * 2;
+    const count = perSet * BEAM_SETS;
+    const aRow = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const k = i % perSet;
+        aRow.set([Math.floor(k / 2), k % 2 ? 1 : -1, Math.floor(i / perSet)], i * 3);
+    }
+    const geometry = wQuadGeometry(count, { aRow: [aRow, 3] });
+    const row = attribute('aRow', 'vec3');
+    const set = () => ({
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
         rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** (card x0, card x1, birth time, strength) */
         frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
         color: uniform(new THREE.Vector3(1, 1, 1)),
-    };
+    });
+    const sets = Array.from({ length: BEAM_SETS }, set);
+    /** The set fired last (tests and tuning read its uniforms by these names). */
+    const uniforms = { ...sets[0] };
     const material = wFxMaterial('WinterRowBeams', { depthTest: false });
+    // (Each strip reads its own set's numbers.)
+    const pick = (name) => sets.slice(1).reduce(
+        (node, s, k) => mix(node, s[name], step(k + 0.5, row.z)),
+        sets[0][name],
+    );
+    const rowsU = pick('rows');
+    const frameU = pick('frame');
+    const colorU = pick('color');
     const rowY = mix(
-        mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)),
-        mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)),
+        mix(rowsU.x, rowsU.y, step(0.5, row.x)),
+        mix(rowsU.z, rowsU.w, step(2.5, row.x)),
         step(1.5, row.x),
     );
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const used = step(0.0, rowY).mul(step(0.001, frameU.w));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
+    const edge = mix(frameU.x, frameU.y, step(0.0, row.y));
     const end = step(0.0, row.y);
     const sx = mix(edge, end, along);
     const thicknessPx = float(46.0);
     const sy = rowY.add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
     const vAlong = varying(along, 'wBeamT');
+    const vFrame = varying(frameU.zw, 'wBeamFrame');
+    const vColor = varying(colorU, 'wBeamColor');
     material.colorNode = Fn(() => {
         const far = clamp(vAlong, 0.0, 1.0);
-        const age = u.time.sub(uniforms.frame.z);
+        const age = u.time.sub(vFrame.x);
         const head = age.div(BEAM_TRAVEL);
         const reached = step(far, head);
         const dy = uv().y.sub(0.5).mul(thicknessPx);
@@ -267,22 +315,28 @@ export function createRowBeams(u) {
         const tip = exp(far.sub(head).mul(far.sub(head)).mul(-150.0)).mul(step(head, 1.25));
         const env = exp(max(age.sub(far.mul(BEAM_TRAVEL)), 0.0).div(-BEAM_FADE)).mul(step(0.0, age));
         const k = core.add(sheath).mul(reached).mul(env).add(core.add(sheath).mul(tip).mul(2.2))
-            .mul(uniforms.frame.w)
+            .mul(vFrame.y)
             .mul(float(1.0).sub(far).mul(float(1.0).sub(far)).mul(0.9)
                 .add(0.1));
-        const col = mix(uniforms.color, vec3(1.0), core.mul(0.3));
+        const col = mix(vColor, vec3(1.0), core.mul(0.3));
         return vec4(col.mul(k).mul(2.4), 0.0);
     })();
     const part = wPart('WinterRowBeams', geometry, material, 60);
     part.uniforms = uniforms;
+    part.sets = sets;
     /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
-        uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
-        uniforms.color.value.set(rgb[0], rgb[1], rgb[2]);
+        // The set whose blades went out longest ago (they are spent within half a second).
+        let s = sets[0];
+        for (let k = 1; k < sets.length; k++) if (sets[k].frame.value.z < s.frame.value.z) s = sets[k];
+        s.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
+        s.frame.value.set(x0, x1, time, strength);
+        s.color.value.set(rgb[0], rgb[1], rgb[2]);
+        Object.assign(uniforms, s);
     };
     part.reset = () => {
-        uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        sets.forEach((each) => each.frame.value.set(0.4, 0.6, -100, 0));
+        Object.assign(uniforms, sets[0]);
     };
     return part;
 }

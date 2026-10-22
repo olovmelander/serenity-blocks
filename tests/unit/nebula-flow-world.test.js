@@ -55,6 +55,7 @@ import {
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/nebula-flow/nebula-flow-quality.js';
 import { boardPoint, fallbackLayout } from '../../src/themes/nebula-flow/nebula-flow-composition.js';
 import { NEBULA_FLOW_TETROMINOS } from '../../src/themes/nebula-flow/nebula-flow-tetrominos.js';
+import { BLADE_LIFE, BLADE_SLOTS } from '../../src/themes/nebula-flow/nebula-flow-fx.js';
 
 vi.setConfig({ testTimeout: 30_000 }); // every test builds the nursery's materials
 
@@ -101,6 +102,8 @@ function run(world, camera, seconds, dt = 1 / 30) {
 const lock = (world, extra = {}) => world.onLock({
     u: 0.2, rows: [12, 11], color: COLORS.T, cells: T_CELLS, ...extra,
 });
+/** Long enough for the heat of a quick burst of locks to ebb: a clear then frees what they kindled. */
+const REST_AFTER = 7;
 const lit = (world) => world.births.filter((b) => b.power > 0 && b.kind !== KIND_AMBIENT);
 const ambient = (world) => world.births.filter((b) => b.power > 0 && b.kind === KIND_AMBIENT);
 const newest = (world) => lit(world).reduce((a, b) => (b.born > a.born ? b : a));
@@ -496,7 +499,9 @@ describe('Nebula Flow world: a lock', () => {
             frame(world, camera, 0.05, () => lock(world, { u: ((i * 0.37) % 1) * 0.9 + 0.05 }));
         }
         expect(ambient(world)).toHaveLength(resting);
-        run(world, camera, FLIGHT + 0.1, 1 / 30);
+        // the hands rest (so quick a hand keeps its stars: see "keeps the stars a chain lights"),
+        // then a clear frees them
+        run(world, camera, REST_AFTER, 1 / 30);
         frame(world, camera, 1 / 30, () => world.onClear({ rows: [19], lines: 1 }));
         run(world, camera, RELEASE_FADE + 8, 0.5);
         const spent = lit(world).filter((b) => birthDone(b, world.time));
@@ -514,7 +519,7 @@ describe('Nebula Flow world: a lock', () => {
         }
         // a full ring took them
         expect(ambient(world).length).toBeLessThan(resting);
-        run(world, camera, FLIGHT + 0.1, 1 / 30);
+        run(world, camera, REST_AFTER, 1 / 30);
         frame(world, camera, 1 / 30, () => world.onClear({ rows: [19], lines: 1 }));
         run(world, camera, RELEASE_FADE + 8, 0.5);
         world.resetSession();
@@ -793,9 +798,10 @@ describe('Nebula Flow world: the chain, the levels and the clock', () => {
             expect(world.getState().vortex).toBe(world.vortex);
             last = world.vortex;
         }
+        // every arm of a chain of one colour wears that colour
         expect(world.vortexTint).toEqual(pieceColor(COLORS.S));
         expect(world.u.vortex.value.z).toBeCloseTo(world.vortex, 9);
-        expect(world.u.vortexTint.value.toArray()).toEqual(pieceColor(COLORS.S));
+        world.u.vortexArms.forEach((arm) => expect(arm.value.toArray()).toEqual(pieceColor(COLORS.S)));
         expect(world.getState().combo).toBe(6);
         // the gas runs faster through a chain
         expect(flowAt()).toBeGreaterThan(restFlow * 1.2);
@@ -1054,5 +1060,312 @@ describe('Nebula Flow world: a session', () => {
         // a copy: changing it changes nothing
         state.counts.locks = 9;
         expect(world.getState().counts.locks).toBe(0);
+    });
+});
+
+describe('Nebula Flow world: building with play', () => {
+    /** One step of a quick chain: a hard-dropped piece clears `lines` as step `n` (the theme's order). */
+    const chainStep = (world, camera, n, lines = 1, extra = {}) => frame(world, camera, 1 / 60, () => {
+        lock(world, {
+            hardDrop: true, u: n % 2 ? 0.8 : 0.2, rows: [8 + (n % 8)], color: COLORS[Object.keys(SHAPES)[n % 7]],
+        });
+        world.onClear({
+            rows: [19], lines, combo: n, ...extra,
+        });
+        world.onCombo(n);
+    });
+    const chain = (world, camera, steps, gap = 0.64) => {
+        for (let n = 1; n <= steps; n += 1) {
+            chainStep(world, camera, n);
+            run(world, camera, gap, 1 / 60);
+        }
+    };
+    /** What the build is spent on, read now (the post state is one reused object). */
+    const reading = (world) => {
+        const post = world.getPostState();
+        return {
+            ...world.getState().heat,
+            burn: world.u.burn.value,
+            rays: post.rays,
+            exposure: post.exposure,
+            flash: post.flash,
+            bloom: post.bloomBoost,
+            glow: world.vortexGlow,
+            gain: world.emberGain,
+        };
+    };
+    const quad = (world, camera, extra = {}) => frame(world, camera, 1 / 60, () => world.onClear({
+        rows: [19, 18, 17, 16], lines: 4, ...extra,
+    }));
+    const greats = (world) => world.births.filter((b) => b.power > 0 && b.kind === KIND_GREAT);
+
+    it('never cuts the light: a single right after a great star only adds to it', () => {
+        const a = makeWorld('Low', { at: 20 });
+        const b = makeWorld('Low', { at: 20 });
+        [a, b].forEach(({ world, camera }) => {
+            quad(world, camera);
+            run(world, camera, HUSH_HOLD + 0.05, 1 / 60);
+            expect(greats(world)).toHaveLength(1);
+        });
+        frame(a.world, a.camera, 1 / 60, () => a.world.onClear({ rows: [19], lines: 1 }));
+        frame(b.world, b.camera, 1 / 60);
+        for (let i = 0; i < 60; i += 1) {
+            const with1 = reading(a.world);
+            const without = reading(b.world);
+            expect(with1.flash).toBeGreaterThanOrEqual(without.flash - 1e-9);
+            expect(with1.bloom).toBeGreaterThanOrEqual(without.bloom - 1e-9);
+            expect(with1.rays).toBeGreaterThanOrEqual(without.rays - 1e-9);
+            frame(a.world, a.camera, 1 / 60);
+            frame(b.world, b.camera, 1 / 60);
+        }
+    });
+
+    it('keeps the stars a chain kindles, brighter clear by clear, and frees them all when the chain ends', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        chain(world, camera, 6);
+        const kept = lit(world);
+        expect(kept).toHaveLength(6);
+        kept.forEach((b) => expect(b.released).toBe(-1));
+        expect(world.getState().held).toBe(6);
+        // they burn brighter than they would alone: the sprite's power and the lantern in the dust
+        expect(world.emberGain).toBeGreaterThan(1.2);
+        const star = kept[0];
+        const slot = world.births.indexOf(star);
+        const own = star.power * birthLight(world.time - star.born, star.released, star.kind);
+        expect(world.u.tables.births[slot * BIRTH_ROWS].w).toBeGreaterThan(star.power);
+        const lamp = world.u.tables.lanterns.slice(0, world.u.lanternCount.value * LANTERN_ROWS)
+            .find((r, k) => k % LANTERN_ROWS === 0 && r.x === star.x && r.y === star.y);
+        expect(lamp.z).toBeGreaterThan(own * 1.2);
+        // the chain ends (the next lock clears nothing): they go free together as the cluster
+        // breathes out to them
+        const t = world.time + 1 / 60;
+        frame(world, camera, 1 / 60, () => {
+            lock(world, { u: 0.5 });
+            world.onCombo(0);
+        });
+        kept.forEach((b) => expect(b.released).toBeGreaterThanOrEqual(0));
+        expect(clusterFronts(world, t).length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('runs hotter through a long chain than after its first clear, and breathes back to rest', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        const rest = reading(world);
+        chainStep(world, camera, 1);
+        run(world, camera, 0.5, 1 / 60);
+        const first = reading(world);
+        chain(world, camera, 12);
+        const peak = reading(world);
+        expect(peak.level).toBeGreaterThan(first.level + 0.3);
+        expect(peak.stage).toBeGreaterThanOrEqual(2);
+        expect(peak.fever).toBeGreaterThan(0.3);
+        // the rims burn, the shafts pour, the kept stars and the vortex glow: all hotter
+        expect(peak.burn).toBeGreaterThan(first.burn + 0.2);
+        expect(peak.rays).toBeGreaterThan(first.rays);
+        expect(peak.gain).toBeGreaterThan(first.gain + 0.3);
+        expect(peak.glow).toBeGreaterThan(first.glow);
+        // the iris closes a little for it, never enough to shut the build out
+        expect(peak.exposure).toBeLessThan(rest.exposure);
+        expect(peak.exposure).toBeGreaterThan(0.6);
+        // the hands rest (the next lock breaks the chain): the nursery breathes back
+        frame(world, camera, 1 / 60, () => world.onCombo(0));
+        run(world, camera, 15, 1 / 20);
+        const after = reading(world);
+        expect(after.stage).toBe(0);
+        expect(after.burn).toBeLessThan(rest.burn + 0.02);
+        expect(after.gain).toBeLessThan(rest.gain + 0.02);
+        expect(after.glow).toBeLessThan(0.02);
+        expect(after.rays).toBeLessThan(rest.rays + 0.02);
+        expect(after.exposure).toBeGreaterThan(rest.exposure - 0.02);
+    });
+
+    it('holds its breath for a quad as deep as play is cold: mid-fever it only inhales', () => {
+        const cold = makeWorld('Low', { at: 20 });
+        quad(cold.world, cold.camera);
+        run(cold.world, cold.camera, HUSH_HOLD * 0.5, 1 / 60);
+        const deep = cold.world.u.hush.value;
+        const hot = makeWorld('Low', { at: 20 });
+        chain(hot.world, hot.camera, 10);
+        quad(hot.world, hot.camera, { combo: 11 });
+        run(hot.world, hot.camera, HUSH_HOLD * 0.5, 1 / 60);
+        expect(deep).toBeGreaterThan(0.5);
+        expect(hot.world.u.hush.value).toBeLessThan(deep * 0.5);
+        // and the great star is still born
+        run(hot.world, hot.camera, HUSH_HOLD, 1 / 60);
+        expect(greats(hot.world)).toHaveLength(1);
+    });
+
+    it('feeds the great star\'s hole with the next great star instead of shutting it and blowing another', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        quad(world, camera);
+        run(world, camera, HUSH_HOLD + 3, 1 / 30);
+        const shown = () => world.u.hole.value.z * (1 - world.u.hole.value.w);
+        const site = [world.hole.x, world.hole.y];
+        const before = shown();
+        expect(before).toBeGreaterThan(0.02);
+        quad(world, camera);
+        let last = shown();
+        for (let i = 0; i < 90; i += 1) {
+            frame(world, camera, 1 / 60);
+            // it never snaps shut: frame to frame it only heals a hair or opens
+            expect(shown() - last).toBeGreaterThan(-1e-3);
+            last = shown();
+        }
+        expect([world.hole.x, world.hole.y]).toEqual(site);
+        expect(shown()).toBeGreaterThan(before);
+        const born = greats(world);
+        expect(born).toHaveLength(2);
+        born.forEach((b) => expect([b.x, b.y]).toEqual(site));
+        expect(world.getState().counts.quads).toBe(2);
+    });
+
+    it('crowns the great star with a perfect clear that settles after its quad: no second hush or great star', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        world.onCombo(5);
+        run(world, camera, 2, 1 / 30);
+        const wound = world.vortex;
+        quad(world, camera);
+        run(world, camera, HUSH_HOLD + 0.1, 1 / 60);
+        const [great] = greats(world);
+        const { power } = great;
+        const t = world.time + 1 / 60;
+        frame(world, camera, 1 / 60, () => world.onCrown({ player: 0 }));
+        expect(greats(world)).toEqual([great]);
+        expect(great.power).toBeGreaterThan(power);
+        expect(world.queue).toHaveLength(0);
+        // a crown of light runs out from it
+        const fromGreat = (f) => f.strength > 0 && f.born >= t - 1e-9 && f.x === great.x && f.y === great.y;
+        expect(world.fronts.some(fromGreat)).toBe(true);
+        let hush = 0;
+        for (let i = 0; i < 30; i += 1) {
+            frame(world, camera, 1 / 60);
+            hush = Math.max(hush, world.u.hush.value);
+        }
+        expect(hush).toBe(0);
+        expect(world.getState().counts.quads).toBe(1);
+        // and the chain's whirl lets go into its light
+        run(world, camera, 4, 1 / 30);
+        expect(world.vortex).toBeLessThan(wound * 0.3);
+
+        // a crown that comes while the nursery still holds its breath: the great star is born a
+        // perfect clear's, once
+        const early = makeWorld('High', { at: 20 });
+        quad(early.world, early.camera);
+        run(early.world, early.camera, HUSH_HOLD * 0.4, 1 / 60);
+        frame(early.world, early.camera, 1 / 60, () => early.world.onCrown({ player: 0 }));
+        run(early.world, early.camera, HUSH_HOLD + 0.1, 1 / 60);
+        expect(greats(early.world)).toHaveLength(1);
+        expect(greats(early.world)[0].power).toBeCloseTo(1.6 * 1.3, 9);
+
+        // a perfect clear with no great star burning: one is born at once, with no hush
+        const alone = makeWorld('High', { at: 20 });
+        frame(alone.world, alone.camera, 1 / 60, () => alone.world.onCrown({ player: 0 }));
+        expect(greats(alone.world)).toHaveLength(1);
+        expect(alone.world.u.hush.value).toBe(0);
+    });
+
+    it('builds each wave of a cascade on the last: quicker, brighter fronts and blades, the gas winding round', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        let prev = null;
+        for (let wave = 1; wave <= 4; wave += 1) {
+            const t = world.time + 1 / 60;
+            frame(world, camera, 1 / 60, () => world.onClear({
+                rows: [19], lines: 1, cascade: wave, combo: 1,
+            }));
+            const [front] = clusterFronts(world, t);
+            const blade = Math.max(...world.parts.blades.table.filter((r, i) => i % 2 === 1).map((r) => r.w));
+            if (prev) {
+                expect(front.speed).toBeGreaterThan(prev.front.speed);
+                expect(front.strength).toBeGreaterThan(prev.front.strength);
+                expect(front.width).toBeGreaterThan(prev.front.width);
+                expect(blade).toBeGreaterThan(prev.blade);
+            }
+            prev = { front: { ...front }, blade };
+            run(world, camera, 0.36, 1 / 60);
+        }
+        // no chain, yet the waves wound the gas round the board
+        expect(world.combo).toBe(0);
+        expect(world.vortex).toBeGreaterThan(0.3);
+    });
+
+    it('answers a back-to-back with twin fronts in the cluster\'s light, bigger the second time', () => {
+        const plain = makeWorld('Low', { at: 20 });
+        const twin = makeWorld('Low', { at: 20 });
+        let t = plain.world.time + 1 / 60;
+        frame(plain.world, plain.camera, 1 / 60, () => plain.world.onClear({ rows: [19, 18], lines: 2, tspin: true }));
+        frame(twin.world, twin.camera, 1 / 60, () => twin.world.onClear({
+            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        }));
+        expect(clusterFronts(plain.world, t)).toHaveLength(2);
+        const first = clusterFronts(twin.world, t).map((f) => ({ ...f }));
+        expect(first).toHaveLength(4);
+        run(plain.world, plain.camera, 0.5, 1 / 60);
+        run(twin.world, twin.camera, 0.5, 1 / 60);
+        expect(twin.world.getPostState().rays).toBeGreaterThan(plain.world.getPostState().rays);
+        // the second back-to-back answers bigger
+        run(twin.world, twin.camera, 1, 1 / 60);
+        t = twin.world.time + 1 / 60;
+        frame(twin.world, twin.camera, 1 / 60, () => twin.world.onClear({
+            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        }));
+        const strongest = (fronts) => Math.max(...fronts.map((f) => f.strength));
+        expect(strongest(clusterFronts(twin.world, t))).toBeGreaterThan(strongest(first));
+    });
+
+    it('turns the flow a little for a T-spin that clears nothing', () => {
+        const peakTwist = (during) => {
+            const { world, camera } = makeWorld('Low', { at: 20 });
+            frame(world, camera, 1 / 60, () => during(world));
+            let peak = 0;
+            for (let i = 0; i < 30; i += 1) {
+                frame(world, camera, 1 / 60);
+                peak = Math.max(peak, Math.abs(world.twist));
+            }
+            return peak;
+        };
+        const spin = peakTwist((world) => world.onSpin({ player: 0 }));
+        const clear = peakTwist((world) => world.onClear({ rows: [19, 18], lines: 2, tspin: true }));
+        expect(spin).toBeGreaterThan(0.01);
+        expect(spin).toBeLessThan(clear);
+    });
+
+    it('winds each step of a chain into the vortex as an arm in its piece\'s colour, easing in', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        const keys = ['I', 'Z', 'L', 'O'];
+        keys.forEach((key, i) => {
+            frame(world, camera, 1 / 60, () => {
+                lock(world, { color: COLORS[key] });
+                world.onCombo(i + 2);
+            });
+            run(world, camera, 1.5, 1 / 30);
+        });
+        const near = (rgb, target) => Math.max(...rgb.map((v, c) => Math.abs(v - target[c]))) < 0.03;
+        // the chain's colours, one per arm, all at once
+        keys.forEach((k, i) => expect(near(world.arms[i], pieceColor(COLORS[k])), k).toBe(true));
+        // the next step takes the oldest arm, and its colour eases in rather than snapping
+        frame(world, camera, 1 / 60, () => {
+            lock(world, { color: COLORS.T });
+            world.onCombo(6);
+        });
+        const target = pieceColor(COLORS.T);
+        const arm = world.arms[world.armCursor];
+        expect(Math.max(...arm.map((v, c) => Math.abs(v - target[c])))).toBeGreaterThan(0.05);
+        run(world, camera, 3, 1 / 30);
+        arm.forEach((v, c) => expect(v).toBeCloseTo(target[c], 2));
+        world.u.vortexArms.forEach((u, a) => expect(u.value.toArray()).toEqual(world.arms[a]));
+    });
+
+    it('gives a new blade a spent slot, else the one that started longest ago', () => {
+        const { world } = makeWorld('Low', { at: 20 });
+        const { blades } = world.parts;
+        const starts = () => blades.table.filter((r, i) => i % 2 === 0).map((r) => r.y);
+        for (let i = 0; i < BLADE_SLOTS; i += 1) blades.fire(i * 0.01, 20 + i * 0.1, -0.5, 0.5, [1, 1, 1], 1);
+        // every slot crossing: the oldest goes
+        blades.fire(0.5, 20 + BLADE_SLOTS * 0.1, -0.5, 0.5, [1, 1, 1], 1);
+        expect(starts()[0]).toBeCloseTo(20 + BLADE_SLOTS * 0.1, 9);
+        starts().slice(1).forEach((s, i) => expect(s).toBeCloseTo(20 + (i + 1) * 0.1, 9));
+        // later, a spent one is taken before any still crossing
+        const later = 20 + 0.1 + BLADE_LIFE + 0.01;
+        blades.fire(0.6, later, -0.5, 0.5, [1, 1, 1], 1);
+        expect(starts()[1]).toBeCloseTo(later, 9);
     });
 });

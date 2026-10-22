@@ -17,6 +17,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     cameraPosition,
     clamp,
@@ -44,6 +45,8 @@ import {
     RIPPLE_SLOTS,
     RIPPLE_TAU,
     STAGE,
+    SURGE_FADE,
+    SURGE_SLOTS,
     cgBell,
     cgPart,
 } from './chiral-gold-tsl.js';
@@ -88,7 +91,9 @@ export function createWater(u, opts = {}) {
         // A slow swell: two fetches of the noise drifting against each other.
         const nA = u.noise(st.mul(0.041).add(vec2(t.mul(0.0052), t.mul(0.0037)))).toVar();
         const nB = u.noise(st.mul(0.163).sub(vec2(t.mul(0.0093), t.mul(-0.0061)))).toVar();
-        const swell = u.audio.x.mul(0.5).add(0.55);
+        // Play works the water: a long chain turns the black mirror into a chop that calms over
+        // seconds once the hands rest (u.play.w).
+        const swell = u.audio.x.mul(0.5).add(0.55).mul(u.play.w.add(1.0));
         // (Calmer than it was: a stronger swell broke the towers' reflections into heat haze.)
         const slope = nA.rg.sub(0.5).mul(0.085).add(nB.gb.sub(0.5).mul(0.022)).mul(swell)
             .toVar();
@@ -125,7 +130,7 @@ export function createWater(u, opts = {}) {
                 const off = length(fromCentre.sub(f.axis.mul(dot(fromCentre, f.axis))));
                 const R = beamRadius(u, tWater.div(f.len));
                 const inBeam = float(1.0).sub(smoothstep(R.mul(0.15), R.mul(1.05), off));
-                const beamPower = u.heat.mul(0.45).add(0.5).add(flare.mul(0.45));
+                const beamPower = u.heat.mul(0.2).add(0.5).add(flare.mul(0.2));
                 light.addAssign(mix(u.glow, vec3(1.0, 0.9, 0.76), 0.55).mul(inBeam).mul(beamPower)
                     .mul(nA.b.mul(0.6).add(0.6))
                     .mul(0.035));
@@ -149,26 +154,34 @@ export function createWater(u, opts = {}) {
             light.addAssign(u.rippleC[i].mul(crest.mul(env)).mul(1.15));
         }
 
-        // The clear's surge: straight fronts running out to both sides, one crest per line.
-        const sAge = t.sub(u.surge.x);
-        const sEnv = exp(sAge.mul(-1.25)).mul(step(0.0, sAge)).mul(u.surge.y);
-        const sx = abs(p.x).sub(sAge.mul(SURGE_SPEED));
+        // The clears' surges: straight fronts running out to both sides, one crest per line. Each
+        // slot is its own front (a cascade sends one after another, each faster than the last);
+        // a slot at rest costs one uniform branch.
         const surgeCrest = float(0.0).toVar();
         const surgeWave = float(0.0).toVar();
-        for (let k = 0; k < 4; k++) {
-            const on = step(k + 0.5, u.surge.z);
-            const xk = sx.add(k * SURGE_GAP);
-            surgeCrest.addAssign(cgBell(xk.div(0.8)).mul(on));
-            surgeWave.addAssign(sin(xk.mul(4.4)).mul(exp(xk.mul(xk).mul(-0.9))).mul(on));
+        for (let i = 0; i < SURGE_SLOTS; i++) {
+            const S = u.surgeA[i];
+            const sAge = t.sub(S.x).toVar();
+            const sEnv = exp(sAge.mul(-SURGE_FADE)).mul(step(0.0, sAge)).mul(S.y).toVar();
+            If(sEnv.greaterThan(0.002), () => {
+                const sx = abs(p.x).sub(sAge.mul(S.w).mul(SURGE_SPEED));
+                for (let k = 0; k < 4; k++) {
+                    const on = step(k + 0.5, S.z).mul(sEnv);
+                    const xk = sx.add(k * SURGE_GAP);
+                    surgeCrest.addAssign(cgBell(xk.div(0.8)).mul(on));
+                    surgeWave.addAssign(sin(xk.mul(4.4)).mul(exp(xk.mul(xk).mul(-0.9))).mul(on));
+                }
+            });
         }
         const along = exp(p.z.sub(3.0).mul(p.z.sub(3.0)).mul(-0.012));
-        slope.x.addAssign(surgeWave.mul(sEnv).mul(along).mul(0.2).mul(p.x.sign()));
+        slope.x.addAssign(surgeWave.mul(along).mul(0.2).mul(p.x.sign()));
         const shimmer = nB.r.mul(0.9).add(0.35);
-        light.addAssign(mix(u.glow, vec3(1.0, 0.9, 0.72), 0.3).mul(surgeCrest.mul(sEnv).mul(along)).mul(shimmer).mul(0.45));
+        light.addAssign(mix(u.glow, vec3(1.0, 0.9, 0.72), 0.3).mul(surgeCrest.mul(along)).mul(shimmer).mul(0.45));
 
         // The four-line strike gilds the water outward from the board's foot.
         const aAge = t.sub(u.aurum.x);
-        const aLive = step(0.0, aAge).mul(u.aurum.y);
+        // Its gain (aurum.z) grows when another strike lands while the gilt is still bright.
+        const aLive = step(0.0, aAge).mul(u.aurum.z);
         const fromBoard = length(st.sub(vec2(0.0, STAGE.boardZ)));
         const gilt = smoothstep(0.0, 9.0, aAge.mul(20.0).sub(fromBoard)).mul(exp(aAge.mul(-0.55))).mul(aLive);
         const nC = u.noise(st.mul(0.71).add(vec2(t.mul(0.031), t.mul(-0.022))));

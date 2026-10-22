@@ -8,10 +8,15 @@
  * theme's frame — resolves each slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, rowCodes, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, rowCodes, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..4), whenever it changes
  *   sink.levelUp(level)
+ *
+ * Two clears carry no lines of their own: physics settles a perfect clear ~360 ms AFTER the
+ * clear's last wave, in a frame of its own, so a PERFECT_CLEAR with nothing staged resolves as
+ * `crown: true, perfect: true, lines: 0` (a crown on the clear still ringing, never a second
+ * clear); and a T-spin that clears nothing resolves as `tspin: true, lines: 0`.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor), a clear's lowest row first;
  * `u` is the lock's column as a fraction of the board width; `distance` is how many rows a hard
@@ -146,6 +151,8 @@ function createSlot() {
         explicitCombo: -1,
         tspin: false,
         perfect: false,
+        /** A perfect clear on a frame of its own (no clear staged with it): the crown. */
+        crown: false,
         b2b: false,
         hasPosition: false,
         posX: 0,
@@ -196,6 +203,7 @@ function clearPending(slot) {
     slot.explicitCombo = -1;
     slot.tspin = false;
     slot.perfect = false;
+    slot.crown = false;
     slot.b2b = false;
     slot.hasPosition = false;
     slot.stash = 0;
@@ -490,6 +498,7 @@ export class KaleidosonicDirector {
             tspin: false,
             perfect: false,
             b2b: false,
+            crown: false,
             rowCodes: [],
             screen: null,
         };
@@ -670,7 +679,8 @@ export class KaleidosonicDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        // Settled after the clear's last wave: a crown on that clear, not a clear of its own.
+        if (slot.lines === 0) slot.crown = true;
         slot.wellStamp.fill(0);
         return true;
     }
@@ -765,7 +775,8 @@ export class KaleidosonicDirector {
             c.screen = null;
             sink.lock(c);
         }
-        if (slot.lines > 0 && sink?.clear) {
+        const lineless = slot.lines === 0 && (slot.crown || slot.tspin);
+        if ((slot.lines > 0 || lineless) && sink?.clear) {
             const c = this._clear;
             c.player = slot.player;
             c.rows.length = 0;
@@ -780,6 +791,7 @@ export class KaleidosonicDirector {
             c.tspin = slot.tspin;
             c.perfect = slot.perfect;
             c.b2b = slot.b2b;
+            c.crown = slot.lines === 0 && slot.crown;
             c.screen = screen;
             sink.clear(c);
         }

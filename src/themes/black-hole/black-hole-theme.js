@@ -309,6 +309,7 @@ export default class BlackHoleTheme extends BaseTheme {
             eventBus.on(EVENTS.LINE_CLEAR, whenAllowed((payload) => this.world.director.onLineClear(payload))),
             eventBus.on(EVENTS.COMBO, whenAllowed((payload) => this.world.director.onCascade(payload))),
             eventBus.on(EVENTS.TSPIN, whenAllowed((payload) => this.world.director.onTSpin(payload))),
+            eventBus.on(EVENTS.B2B, whenAllowed((payload) => this.world.director.onBackToBack(payload))),
             eventBus.on(EVENTS.PERFECT_CLEAR, whenAllowed((payload) => this.world.director.onPerfectClear(payload))),
             eventBus.on(EVENTS.LEVEL_UP, whenAllowed((payload) => this.world.director.onLevelUp(payload))),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
@@ -463,7 +464,9 @@ export default class BlackHoleTheme extends BaseTheme {
         }
         this.world.update(this.time, dt, this.pointer);
         const { director } = this.world;
-        this.post?.update({ energy: director.energy, flash: director.flash, ripples: this.world.ripples });
+        this.post?.update({
+            energy: director.energy, flash: director.flash, iris: director.iris, ripples: this.world.ripples,
+        });
     }
 
     renderFrame() {

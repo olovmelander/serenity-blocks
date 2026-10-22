@@ -50,18 +50,35 @@ function signal(phase) {
     return Math.exp(-flash * flash) + 0.34 * Math.exp(-echo * echo);
 }
 
+/** How bright the chorus's shared flash burns against a firefly's own (hot play raises it). */
+export const FOREST_CHORUS = 1.25;
+
+/**
+ * The chorus's swell: a broad, smooth rise and fall of light around each shared flash (periodic,
+ * so it never jumps where the phase wraps), lighting a band of the wood metres wide as it rolls
+ * out from the hearth. 0 at rest; a fever brings it in (`pulse`), the wood's heartbeat.
+ */
+export function forestChorusSwell(phase) {
+    const lift = 0.5 + 0.5 * Math.cos((phase - 0.2) * TAU);
+    const squared = lift * lift;
+    return squared * squared * squared;
+}
+
 /**
  * Brightness of an ambient firefly's own light at time `t`.
  * `sync` 0..1 is how far the forest has fallen into step; `beat` is the shared clock's
- * phase and `away` the firefly's distance from the hearth, so the shared flash travels.
+ * phase and `away` the firefly's distance from the hearth, so the shared flash travels;
+ * `chorus` is how bright the shared flash burns, and `pulse` how much of the chorus's broad swell
+ * comes with it (forestChorusSwell).
  */
-export function forestFireflyFlash(seed, t, sync = 0, beat = 0, away = 0) {
+export function forestFireflyFlash(seed, t, sync = 0, beat = 0, away = 0, chorus = FOREST_CHORUS, pulse = 0) {
     const period = 2.6 + seed * 4.2;
     const own = (((t / period + seed * 7.13) % 1) + 1) % 1;
     const shared = (((beat - away * FOREST_SYNC_PHASE_PER_METRE + seed * 0.05) % 1) + 1) % 1;
     // Fireflies join the chorus one by one as it grows.
     const joined = clamp((sync - ((seed * 5.3) % 1) * 0.8) / 0.2, 0, 1);
-    return signal(own) * (1 - joined) + signal(shared) * 1.25 * joined;
+    const together = signal(shared) * chorus + (pulse > 0 ? forestChorusSwell(shared) * pulse : 0);
+    return signal(own) * (1 - joined) + together * joined;
 }
 
 export class ForestFireflySim {
@@ -110,6 +127,12 @@ export class ForestFireflySim {
         this.outGlow = new Float32Array(n * 4);
         this.beat = 0;
         this.sync = 0;
+        // Hot play (see ForestFireflyDirector): the chorus's brightness, the steady light every
+        // firefly keeps, and a back-to-back's blink.
+        this.chorus = FOREST_CHORUS;
+        this.pulse = 0;
+        this.lantern = 0;
+        this.blink = 0;
         this.wander = [0, 0, 0];
         this.pull = [0, 0, 0];
         for (let i = 0; i < n; i += 1) {
@@ -146,6 +169,10 @@ export class ForestFireflySim {
         this.time = 0;
         this.beat = 0;
         this.sync = 0;
+        this.chorus = FOREST_CHORUS;
+        this.pulse = 0;
+        this.lantern = 0;
+        this.blink = 0;
         this.cursor = this.ambient;
         this.x.fill(0);
         this.y.fill(0);
@@ -283,7 +310,7 @@ export class ForestFireflySim {
 
     /**
      * Advance the simulation. `env` is { windX, windZ, gust, glow, heat, sync, beatRate,
-     * settled, fields }.
+     * chorus, pulse, lantern, blink, settled, fields }.
      */
     step(dt, env = {}) {
         const step = Number.isFinite(dt) ? clamp(dt, 0, 0.05) : 0;
@@ -294,6 +321,10 @@ export class ForestFireflySim {
         const windZ = Number.isFinite(env.windZ) ? env.windZ : 0;
         const settled = env.settled === true;
         this.sync = clamp(Number.isFinite(env.sync) ? env.sync : 0, 0, 1);
+        this.chorus = Number.isFinite(env.chorus) ? clamp(env.chorus, 0, 3) : FOREST_CHORUS;
+        this.pulse = Number.isFinite(env.pulse) ? clamp(env.pulse, 0, 2) : 0;
+        this.lantern = Number.isFinite(env.lantern) ? clamp(env.lantern, 0, 0.5) : 0;
+        this.blink = Number.isFinite(env.blink) ? clamp(env.blink, 0, 1.5) : 0;
         this.beat += step * (Number.isFinite(env.beatRate) ? clamp(env.beatRate, 0, 3) : 0.3);
         const t = this.time;
         const { pull, wander } = this;
@@ -380,7 +411,11 @@ export class ForestFireflySim {
     /** Fill the instance buffers from the current state. */
     write(glow = 0, heat = 0) {
         const t = this.time;
-        const { outPlace, outGlow, outVelocity } = this;
+        const {
+            outPlace, outGlow, outVelocity, chorus, pulse,
+        } = this;
+        // Hot play's steady light and a back-to-back's blink, the same for every firefly.
+        const added = glow * 0.45 + this.lantern + this.blink;
         for (let i = 0; i < this.ambient; i += 1) {
             const o = i * 4;
             outPlace[o] = this.x[i];
@@ -393,8 +428,8 @@ export class ForestFireflySim {
             outVelocity[o + 3] = FOREST_FIREFLY_AMBIENT;
             // The shader works the flash out again for every point of the trail; this
             // copy is what the forest floor is lit by.
-            outGlow[o] = 0.012 + forestFireflyFlash(this.seed[i], t, this.sync, this.beat, this.homeAway[i])
-                + glow * 0.45;
+            const flash = forestFireflyFlash(this.seed[i], t, this.sync, this.beat, this.homeAway[i], chorus, pulse);
+            outGlow[o] = 0.012 + flash + added;
             outGlow[o + 1] = heat * 0.6;
             outGlow[o + 2] = this.homeAway[i];
             outGlow[o + 3] = 1;

@@ -26,6 +26,26 @@
  *   perfect     the same, and the whole bay lights to the horizon for a while.
  *   combo       a chain brings rain: a sprinkle, a shower, a downpour, every drop a spark on the sea.
  *   level up    the night turns on (the wheel below), and the bay shimmers once.
+ *   cascade     each wave of a cascade throws a bigger, brighter, faster wave than the last; one
+ *               right on the heels of the last feeds the wave still standing up instead.
+ *   back-to-back  the wave peels along the shore half again as fast and the whole bay shimmers,
+ *               more for every back-to-back in a row.
+ *   T-spin, no lines  a small school of fish darts through the shallows.
+ *
+ * Nothing the board does restarts what is already lit: a full table of waves makes room by
+ * fading out the faintest (one that has run up the sand and is draining), never a great set wave
+ * mid-run, and when every wave is still bright the new one's light feeds the youngest instead; a
+ * splash makes room the same way; a crown never takes a droplet still in the air; a T-spin while
+ * every school is running sends more fish after the youngest. A perfect clear that settles after
+ * its clear (the game sends it a moment later) crowns the great wave still running (it swells and
+ * burns brighter, and the bay lights) instead of throwing a second one.
+ *
+ * And the play builds (src/themes/shared/gameplay-surge.js): the hotter the hands, the more the
+ * sea is shaken. Calm: as it is. Warm: the surf's own breakers burn brighter and the waves the
+ * board throws stand a little taller. Hot: the calm water between the breakers sparks where its
+ * ripples tip, the squall's rain stops dimming the night and lights the sea instead. Fever: the
+ * whole bay burns, the downpour doubles into a rain of sparks, and the cloud thins over the
+ * stars. A perfect clear crowns it; when the hands rest the sea breathes back to dark.
  *
  * And the clock turns the night by itself (NIGHTS in the core: six nights on a wheel, one every
  * NIGHT_SECONDS, resting a little on each), in every mode, the ones that never level included; a
@@ -34,6 +54,8 @@
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     DEG, EYE, NIGHTS, NIGHT_COLOURS, NIGHT_SECONDS, SURF, TURN_SECONDS, approach, clamp, clamp01, fromShore, lerp,
     lightAt, mulberry32, pieceLight, runup, sandHeight, smooth, surfHeight, toShore, turnOffset,
@@ -69,11 +91,50 @@ const GRAVITY = 9.81;
 const SHOAL_SECONDS = 3.4;
 /** The wet sand the drops may land on reaches this far up the beach (metres from the waterline). */
 const WET_REACH = runup(SURF.height) * 0.85;
+/** A wave of light or a splash that has to make room fades out over this long instead of vanishing. */
+const RETIRE_SECONDS = 0.8;
+/** Rows the shaders' tables keep beyond the tier, for what is fading out. */
+export const SPARE_BREAKERS = 2;
+export const SPARE_SPLASHES = 3;
+/** A wave makes room for a new one only once it has run this long (until then a new one feeds it). */
+const RETIRE_AFTER = 1.2;
+/** A clear this soon after the last wave was thrown (a cascade's next wave) feeds that wave instead. */
+const JOIN_SECONDS = 0.45;
+/** The most a wave of light can be fed up to: its strength, and how tall a wave or a great wave grows. */
+const WAVE_STRENGTH_CAP = 1.9;
+const WAVE_H_CAP = 1.45;
+const GREAT_H_CAP = 2.9;
+/** A wave fed by one that found no room takes this share of its light (the rest goes into its size). */
+const FEED_SHARE = 0.22;
+/** A wave fed this tall counts as a great set wave (it is never retired mid-run). */
+const GREAT_H = 1.6;
+/** Schools of fish in the shallows at once, and how many times the tier's fish one can grow to. */
+const SCHOOLS = 2;
+const SCHOOL_GROWTH = 2;
+/** A school is gone this long after its last fish set off (the slowest crosses in 1.25 × SHOAL_SECONDS, after a lag of up to 0.9 s). */
+const SCHOOL_LIFE = SHOAL_SECONDS * 1.25 + 0.95;
 
 /** How hard the rain falls for a chain of `combo` clears (0..1): none below two. */
 export function rainForCombo(combo) {
     if (combo < 2) return 0;
     return clamp01(0.2 + (combo - 2) * 0.17);
+}
+
+/** Seconds a wave of light thrown `s0` metres out at `speed` lives, swash and all, for its height. */
+function waveLife(s0, speed, H) {
+    const top = Math.sqrt((2 * runup(H * 1.6)) / 0.73);
+    return s0 / speed + 2 * top + 3;
+}
+
+/** 1 while a wave or a splash is lit, easing to 0 over RETIRE_SECONDS once it is retired. */
+function fadeOf(item, now) {
+    return item.retireAt === Infinity ? 1 : 1 - smooth(item.retireAt, item.retireAt + RETIRE_SECONDS, now);
+}
+
+/** Remove `list[i]` in place (no new array). */
+function removeAt(list, i) {
+    for (let k = i; k < list.length - 1; k += 1) list[k] = list[k + 1];
+    list.length -= 1;
 }
 
 const tmpRay = new THREE.Vector3();
@@ -137,37 +198,70 @@ export class LuminousTidesWorld {
             squallDim: uniform(1),
             /** How hard the rain falls (0..1). */
             rain: uniform(0),
-            /** A perfect clear lights the whole bay (0..1). */
+            /** A perfect clear lights the whole bay (0..1); so does a fever, in part. */
             bayBloom: uniform(0),
             glowPower: uniform(1),
+            /** How shaken the sea is by the play (0 calm): the surf burns brighter, the calm water sparks. */
+            stir: uniform(0),
             /** Radians a pixel spans. */
             pixelAngle: uniform(0.0008),
             /** x: live splashes, y: live waves of light. */
             counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
         };
-        this.splashRows = Array.from({ length: this.tier.splashes * 2 }, () => new THREE.Vector4(0, 0, -100, 0));
-        this.breakerRows = Array.from({ length: this.tier.breakers * 2 }, () => new THREE.Vector4(0, 0, -100, 0));
+        // Each table keeps a few spare rows for what is fading out to make room.
+        const splashRows = (this.tier.splashes + SPARE_SPLASHES) * 2;
+        const breakerRows = (this.tier.breakers + SPARE_BREAKERS) * 2;
+        this.splashRows = Array.from({ length: splashRows }, () => new THREE.Vector4(0, 0, -100, 0));
+        this.breakerRows = Array.from({ length: breakerRows }, () => new THREE.Vector4(0, 0, -100, 0));
         this.rows = {
             splashes: uniformArray(this.splashRows, 'vec4'),
             breakers: uniformArray(this.breakerRows, 'vec4'),
         };
-        /** Splashes: { x, y, z, t0 (impact), strength, radius, rgb, height (of the fall) } in a ring. */
+        /** Splashes: { x, y, z, t0 (impact), strength, radius, rgb, height (of the fall), retireAt }. */
         this.splashes = [];
-        /** Waves of light: { a0, s0, t0, strength, H, speed, sBreak, peel, life }. */
+        /**
+         * Waves of light: { a0, s0, t0, strength, H, Hto (it grows toward), speed, sBreak, peel, life,
+         * great, born (when thrown), retireAt, fade }.
+         */
         this.breakers = [];
-        /** Droplets: [x, y, z, vx, vy, vz, born, r, g, b] each, in a ring buffer. */
+        /** Droplets: [x, y, z, vx, vy, vz, born, r, g, b] each; a crown takes only the ones that have fallen. */
         this.drops = new Float32Array(this.tier.drops * 10).fill(-100);
         this.dropCursor = 0;
-        /** The fish shoal: when it set off and where it runs (shore a, s). */
-        this.shoal = {
-            at: -100, a0: 0, a1: 0, s0: 8, s1: 4, seed: 0,
-        };
+        /**
+         * The schools of fish a T-spin sends: when each set off, where it runs (shore a, s), and when
+         * each of its fish set off (fish join a running school from where it started).
+         */
+        this.schools = Array.from({ length: SCHOOLS }, () => ({
+            at: -100,
+            until: -100,
+            a0: 0,
+            a1: 0,
+            s0: 8,
+            s1: 4,
+            seed: 0,
+            n: 0,
+            glow: 1,
+            start: new Float32Array(this.tier.fish * SCHOOL_GROWTH),
+        }));
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), as of the last frame; the post's
+         * flash (every clear adds to what is still lit); the bay's sigh when a long chain ends.
+         */
+        this.surge = new GameplaySurge();
+        this.heat = this.surge.sample(-100);
+        this.flash = new Swell({ release: 1 / 3.5, ceiling: 0.5, knee: 0.32 });
+        this.exhale = new Swell({ attack: 0.5, release: 3.5, ceiling: 0.45 });
+        /** How far the squall's rain has stopped dimming the night (0: it dims as ever). */
+        this.clearing = 0;
+        /** The eye's kick, eased from the surge's punch. */
+        this.kick = 0;
+        /** Back-to-backs in a row. */
+        this.b2bRun = 0;
         this.state = {
             combo: 0,
             level: 1,
             rain: 0,
             bloom: 0,
-            flash: 0,
             rainClock: 0,
             locks: 0,
             clears: 0,
@@ -199,9 +293,10 @@ export class LuminousTidesWorld {
             tier, U, rows: this.rows, skyNoise: this.skyNoise, seaNoise: this.seaNoise, seaVariance: sea.variance,
         });
         this.parts.land = createLand({ tier, U, skyNoise: this.skyNoise });
-        // Glows: every droplet, a falling drop's streak and flash per splash, the shoal (a head and a
-        // tail a fish), the spray.
-        const glowCapacity = tier.drops + tier.splashes * 3 + tier.fish * 2 + tier.spray;
+        // Glows: every droplet, a falling drop's streak and flash per splash, the schools (a head and
+        // a tail a fish, each school grown to its fullest), the spray.
+        const glowCapacity = tier.drops + (tier.splashes + SPARE_SPLASHES) * 3 + tier.fish * 2 * SCHOOL_GROWTH * SCHOOLS
+            + tier.spray;
         this.parts.glows = createGlows({ capacity: glowCapacity, U });
         this.parts.rain = createRain({ count: tier.streaks, U, seed: this.seed + 5 });
         Object.values(this.parts).forEach((part) => this.group.add(part.mesh));
@@ -277,7 +372,6 @@ export class LuminousTidesWorld {
         s.level = 1;
         s.rain = 0;
         s.bloom = 0;
-        s.flash = 0;
         s.locks = 0;
         s.clears = 0;
         s.waves = 0;
@@ -286,9 +380,21 @@ export class LuminousTidesWorld {
         this.breakers.length = 0;
         this.drops.fill(-100);
         this.dropCursor = 0;
-        this.shoal.at = -100;
+        this.schools.forEach((school) => {
+            school.at = -100;
+            school.until = -100;
+            school.n = 0;
+        });
+        this.surge.reset();
+        this.heat = this.surge.sample(this.clock);
+        this.flash.reset();
+        this.exhale.reset();
+        this.clearing = 0;
+        this.kick = 0;
+        this.b2bRun = 0;
         this.U.rain.value = 0;
         this.U.bayBloom.value = 0;
+        this.U.stir.value = 0;
     }
 
     // ── camera ──────────────────────────────────────────────────────────────────
@@ -314,9 +420,13 @@ export class LuminousTidesWorld {
         const drift = still * (Math.sin(t * 0.17) * 0.6 + Math.sin(t * 0.11 + 1.3) * 0.4);
         const px = still * (sim.pointerX || 0);
         const py = still * (sim.pointerY || 0);
+        // Every hit of play lifts the eye a touch, eased (a quick rise, the surge's fall): under a
+        // quick hand it rides a little higher instead of jolting.
+        this.kick += (this.heat.punch - this.kick) * approach(14, sim.delta);
+        const kick = still * Math.min(1.2, this.kick);
         const yaw = (s.yaw + drift * 0.3 + px * 1.6) * DEG;
-        const pitch = (s.pitch + drift * 0.08 - py * 0.9) * DEG;
-        camera.position.set(EYE.x + px * 0.15, EYE.y + breath, EYE.z);
+        const pitch = (s.pitch + drift * 0.08 - py * 0.9 + kick * 0.18) * DEG;
+        camera.position.set(EYE.x + px * 0.15, EYE.y + breath + kick * 0.025, EYE.z);
         camera.up.set(0, 1, 0);
         tmpRay.set(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
         camera.lookAt(camera.position.x + tmpRay.x, camera.position.y + tmpRay.y, camera.position.z + tmpRay.z);
@@ -375,15 +485,60 @@ export class LuminousTidesWorld {
         return pieceLight(color, [0.2, 0.62, 1]);
     }
 
+    /** How much light a splash still has at `now` (its burst, its glow, its slow tail). */
+    splashLight(sp, now) {
+        const age = now - sp.t0;
+        if (age < 0) return sp.strength * 4; // still falling: it has all of it to come
+        const left = 1.8 * Math.exp(-age / 0.18) + 0.7 * Math.exp(-age / 1.6) + 0.12 * Math.exp(-age / 5);
+        return sp.strength * left * fadeOf(sp, now);
+    }
+
     /** A drop lands at (x, z) at `at` (its fall has started FALL_SECONDS before). */
     addSplash(x, z, at, strength, radius, rgb, height) {
-        if (this.splashes.length >= this.tier.splashes) this.splashes.shift();
+        const { clock, splashes } = this;
+        // Full: the faintest splash still lit makes room by fading out (never the newest's light).
+        let live = 0;
+        let faint = null;
+        for (let i = 0; i < splashes.length; i += 1) {
+            const sp = splashes[i];
+            if (sp.retireAt !== Infinity || clock - sp.t0 > SPLASH_LIFE) continue;
+            live += 1;
+            if (!faint || this.splashLight(sp, clock) < this.splashLight(faint, clock)) faint = sp;
+        }
+        if (live >= this.tier.splashes && faint) faint.retireAt = clock;
+        // No row free: the one furthest through its fade (all but gone) leaves now.
+        if (splashes.length >= this.splashRows.length / 2) {
+            let gone = -1;
+            for (let i = 0; i < splashes.length; i += 1) {
+                const light = this.splashLight(splashes[i], clock);
+                if (gone < 0 || light < this.splashLight(splashes[gone], clock)) gone = i;
+            }
+            removeAt(splashes, gone);
+        }
         toShore(x, z, shoreTmp);
         const y = Math.max(sandHeight(shoreTmp.s) + 0.01, surfHeight(shoreTmp.a, shoreTmp.s, at) + 0.02);
-        this.splashes.push({
-            x, y, z, t0: at, strength, radius, rgb: [rgb[0], rgb[1], rgb[2]], height,
+        splashes.push({
+            x, y, z, t0: at, strength, radius, rgb: [rgb[0], rgb[1], rgb[2]], height, retireAt: Infinity,
         });
         this.crown(x, y, z, at, strength, rgb);
+    }
+
+    /**
+     * The next droplet slot that is free (its droplet has fallen back, or never flew), or -1 when
+     * every droplet is still in the air: a crown never takes one mid-flight, it throws fewer.
+     */
+    freeDrop() {
+        const cap = this.drops.length / 10;
+        const { clock, drops } = this;
+        for (let tries = 0; tries < cap; tries += 1) {
+            const k = this.dropCursor * 10;
+            this.dropCursor = (this.dropCursor + 1) % cap;
+            const age = clock - drops[k + 6];
+            if (age > DROP_LIFE) return k;
+            // Fallen back below where it was thrown from: drawn no more.
+            if (age >= 0 && drops[k + 4] * age - 0.5 * GRAVITY * age * age < -0.15) return k;
+        }
+        return -1;
     }
 
     /** A crown of droplets thrown up from (x, y, z) at `at`, and the jet that climbs out of its middle. */
@@ -392,8 +547,8 @@ export class LuminousTidesWorld {
         const n = Math.round(clamp(cap / 10, 8, 40) * clamp(strength, 0.4, 2));
         const sea = this.light.glow;
         for (let i = 0; i < n + 3; i += 1) {
-            const k = this.dropCursor * 10;
-            this.dropCursor = (this.dropCursor + 1) % cap;
+            const k = this.freeDrop();
+            if (k < 0) break;
             const jet = i >= n;
             const ang = this.rand() * Math.PI * 2;
             const out = jet ? 0.05 * this.rand() : (0.5 + this.rand() * 0.9) * Math.sqrt(strength);
@@ -413,15 +568,143 @@ export class LuminousTidesWorld {
         }
     }
 
-    /** A wave of light is thrown: it starts `s0` metres out at `a0` along the shore at `at`. */
+    /**
+     * How much light a wave of light still has at `now`: all of it while it comes in and breaks,
+     * then its swash running up the sand and draining away.
+     */
+    waveLight(b, now) {
+        const age = now - b.t0;
+        const ashore = b.s0 / b.speed;
+        const lit = age <= ashore ? 1 : Math.exp(-(age - ashore) / 3.5);
+        return b.strength * lit * fadeOf(b, now);
+    }
+
+    /** Whether a wave is still lit and not already making room. */
+    waveLive(b, now) {
+        return b.retireAt === Infinity && now - b.t0 <= b.life;
+    }
+
+    /**
+     * Feed a live wave: it burns brighter (`amount`) and grows (`grow` metres taller, eased in over
+     * a moment, and a little faster along its peel). It only ever gains.
+     */
+    feedBreaker(b, amount, grow) {
+        b.strength = Math.min(WAVE_STRENGTH_CAP, b.strength + Math.max(0, amount));
+        const cap = b.great ? GREAT_H_CAP : Math.max(WAVE_H_CAP, b.Hto);
+        b.Hto = Math.max(b.Hto, Math.min(cap, b.Hto + Math.max(0, grow)));
+        b.peel = Math.min(44, b.peel + 2);
+        b.life = Math.max(b.life, waveLife(b.s0, b.speed, b.Hto));
+    }
+
+    /** The live wave thrown last (of a clear's waves, the last to set off), or null. */
+    youngestBreaker(now = this.clock) {
+        let best = null;
+        for (let i = 0; i < this.breakers.length; i += 1) {
+            const b = this.breakers[i];
+            if (!this.waveLive(b, now)) continue;
+            if (!best || b.born > best.born || (b.born === best.born && b.t0 > best.t0)) best = b;
+        }
+        return best;
+    }
+
+    /**
+     * The live wave furthest through its run (thrown first: its bore is in, its swash is up the
+     * sand and draining, the least of its light is left): a wave of the board's before a great
+     * set wave.
+     */
+    oldestBreaker(now = this.clock) {
+        let best = null;
+        let bestGreat = null;
+        for (let i = 0; i < this.breakers.length; i += 1) {
+            const b = this.breakers[i];
+            if (!this.waveLive(b, now)) continue;
+            if (b.great) {
+                if (!bestGreat || b.t0 < bestGreat.t0) bestGreat = b;
+            } else if (!best || b.t0 < best.t0) best = b;
+        }
+        return best || bestGreat;
+    }
+
+    /**
+     * A wave of light is thrown: it starts `s0` metres out at `a0` along the shore at `at`. Nothing
+     * still lit vanishes for it: a full table makes room by fading out the wave furthest through
+     * its run (its swash sinking into the sand), never a great set wave for one of the board's;
+     * when every wave is still standing up (a burst of clears) or every spare row is busy fading,
+     * the new one's light feeds the youngest instead. Returns the wave that carries it.
+     */
     addBreaker(a0, s0, at, strength, {
-        H = 0.9, speed = 4.4, sBreak = s0 - 2.6, peel = 22,
+        H = 0.9, speed = 4.4, sBreak = s0 - 2.6, peel = 22, great = false,
     } = {}) {
-        if (this.breakers.length >= this.tier.breakers) this.breakers.shift();
-        const top = Math.sqrt((2 * runup(H * 1.6)) / 0.73);
-        this.breakers.push({
-            a0, s0, t0: at, strength, H, speed, sBreak, peel, life: s0 / speed + 2 * top + 3,
-        });
+        const { clock, breakers } = this;
+        const rows = this.breakerRows.length / 2;
+        let live = 0;
+        let held = 0; // rows taken: lit, or still fading out
+        for (let i = 0; i < breakers.length; i += 1) {
+            const b = breakers[i];
+            if (this.waveLive(b, clock)) live += 1;
+            if (clock - b.t0 <= b.life && fadeOf(b, clock) > 0) held += 1;
+        }
+        // Full, or every spare row is busy with a wave fading out: the oldest makes room once it
+        // has come in (it fades as its swash sinks away); otherwise the new wave's light feeds the
+        // youngest. A great set wave always stands up on its own: one of the board's makes room.
+        if (live >= this.tier.breakers || held >= rows) {
+            const faint = live >= this.tier.breakers ? this.oldestBreaker(clock) : null;
+            const room = (held < rows || great) && faint && !(faint.great && !great)
+                && (great || clock - faint.t0 > RETIRE_AFTER);
+            if (!room) {
+                const host = this.youngestBreaker(clock);
+                if (host) {
+                    this.feedBreaker(host, strength * FEED_SHARE, great ? 0.5 : 0.08);
+                    if (great) host.great = true;
+                    return host;
+                }
+                if (held >= rows) return null;
+            }
+            if (faint && room) faint.retireAt = clock;
+        }
+        // A row taken by a wave that is spent (gone since the last frame) is free again; a great
+        // set wave with no row free takes the one furthest through its fade.
+        if (breakers.length >= rows) {
+            for (let i = breakers.length - 1; i >= 0; i -= 1) {
+                const b = breakers[i];
+                if (clock - b.t0 > b.life || fadeOf(b, clock) <= 0) removeAt(breakers, i);
+            }
+            if (breakers.length >= rows) {
+                let gone = -1;
+                for (let i = 0; i < breakers.length; i += 1) {
+                    const b = breakers[i];
+                    if (b.retireAt === Infinity) continue;
+                    if (gone < 0 || this.waveLight(b, clock) < this.waveLight(breakers[gone], clock)) gone = i;
+                }
+                if (gone < 0) return null;
+                removeAt(breakers, gone);
+            }
+        }
+        const wave = {
+            a0,
+            s0,
+            t0: at,
+            strength: Math.min(WAVE_STRENGTH_CAP, strength),
+            H,
+            Hto: H,
+            speed,
+            sBreak,
+            peel,
+            life: waveLife(s0, speed, H),
+            great,
+            born: clock,
+            retireAt: Infinity,
+            fade: 1,
+        };
+        breakers.push(wave);
+        return wave;
+    }
+
+    /** The wave thrown just now (a cascade's last wave) that a clear at `a` could feed, or null. */
+    joinable(a) {
+        const host = this.youngestBreaker(this.clock);
+        if (!host || host.great || this.clock - host.born > JOIN_SECONDS || Math.abs(host.a0 - a) > 8) return null;
+        return host;
     }
 
     // ── events ──────────────────────────────────────────────────────────────────
@@ -468,8 +751,12 @@ export class LuminousTidesWorld {
         const hard = c.hardDrop === true;
         const rgb = pieceLight(c.color, this._rgb);
         const hit = this.aimDrop(c);
-        const strength = hard ? 1.75 : 1;
-        this.addSplash(hit.x, hit.z, this.clock + FALL_SECONDS, strength, hard ? 0.7 : 0.45, rgb, hard ? 9 : 6);
+        // The hotter the play, the harder the drops land.
+        const { level } = this.heat;
+        const strength = (hard ? 1.75 : 1) * (1 + 0.2 * level);
+        const radius = (hard ? 0.7 : 0.45) * (1 + 0.2 * level);
+        this.addSplash(hit.x, hit.z, this.clock + FALL_SECONDS, strength, radius, rgb, hard ? 9 : 6);
+        this.surge.lock(c, this.clock);
     }
 
     /** Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, screen }. */
@@ -479,6 +766,12 @@ export class LuminousTidesWorld {
         s.clears += 1;
         const lines = Math.max(1, Math.min(4, Math.round(Number(c.lines)) || 1));
         const big = lines >= 4 || c.perfect === true;
+        const depth = Math.max(1, Math.min(12, Math.round(Number(c.cascade)) || 1));
+        // The play as it stood before this clear (the clear itself builds on it from here).
+        const { level } = this.heat;
+        this.surge.clear(c, this.clock);
+        if (c.b2b) this.b2bRun += 1;
+        else if (depth === 1 && lines < 4 && !c.tspin) this.b2bRun = 0;
         // Where along the shore the waves are thrown from: beside the card at the cleared rows.
         let y = 0.62;
         let x = 0.2;
@@ -500,30 +793,103 @@ export class LuminousTidesWorld {
         }
         const hit = this.castShore(x, y, 8, 120);
         const a0 = hit.a;
-        const strength = c.b2b ? 1.25 : 1;
-        if (big) {
-            this.addBreaker(a0, 16, this.clock, 1.6 * strength, {
-                H: 2.6, speed: 4.2, sBreak: 9.5, peel: 30,
+        const { clock } = this;
+        // A back-to-back throws harder, more for every one in a row; the deeper the cascade and the
+        // hotter the play, the bigger, brighter and faster the waves.
+        const run = Math.min(4, Math.max(0, this.b2bRun - 1));
+        const b2b = c.b2b ? 1.25 + 0.12 * run : 1;
+        const strength = b2b * (1 + 0.1 * (depth - 1) + 0.1 * level);
+        const grow = 1 + 0.08 * (depth - 1) + 0.2 * level;
+        const pace = 1 + 0.06 * (depth - 1);
+        const peel = (c.b2b ? 1.5 : 1) * (1 + 0.08 * (depth - 1));
+        const host = big ? null : this.joinable(a0);
+        if (host) {
+            // Right on the heels of the last wave (a cascade's next): it feeds the wave still
+            // coming in, which stands up taller and burns brighter for it.
+            this.feedBreaker(host, FEED_SHARE * lines * strength, 0.06 * lines + 0.05 * (depth - 1));
+            this.flash.hit(0.03 + lines * 0.02, clock);
+        } else if (big) {
+            this.addBreaker(a0, 16, clock, 1.6 * strength, {
+                H: 2.6 * (1 + 0.05 * level), speed: 4.2, sBreak: 9.5, peel: 30 * peel, great: true,
             });
             s.waves += 1;
-            s.flash = Math.max(s.flash, 0.3);
-            if (c.perfect) s.bloom = 1;
+            this.flash.hit(0.3, clock);
+            // The whole bay lights: a frame-wide flash, so Reduce flashing scales it (ADR-0021).
+            if (c.perfect) s.bloom = Math.max(s.bloom, flashScale());
         } else {
             for (let i = 0; i < lines; i += 1) {
-                this.addBreaker(a0 - i * 3, 13 + i * 2.2, this.clock + i * 0.5, strength, {
-                    H: 0.85, speed: 4.2, sBreak: 10.8 + i * 2.2, peel: 22,
+                this.addBreaker(a0 - i * 3, 13 + i * 2.2, clock + (i * 0.5) / pace, strength, {
+                    H: Math.min(WAVE_H_CAP, 0.85 * grow), speed: 4.2 * pace, sBreak: 10.8 + i * 2.2, peel: 22 * peel,
                 });
                 s.waves += 1;
             }
-            s.flash = Math.max(s.flash, 0.04 + lines * 0.03);
+            this.flash.hit(0.04 + lines * 0.03, clock);
         }
-        if (c.tspin) this.sendShoal();
+        // A back-to-back: the whole bay shimmers, brighter for every one in a row.
+        if (c.b2b) s.bloom = Math.max(s.bloom, (0.3 + 0.08 * run) * flashScale());
+        if (c.tspin) this.sendShoal(1);
     }
 
-    /** A shoal of fish darts through the shallows from `a0` along the shore. */
-    sendShoal() {
+    /**
+     * A perfect clear that settled after its clear (the game sends it a moment after the last
+     * wave): the crown on the great wave still running, not a second one. It swells taller and
+     * burns brighter, and the whole bay lights.
+     */
+    onPerfect() {
+        if (!this.camera) return;
+        const { clock } = this;
+        let host = null;
+        for (let i = 0; i < this.breakers.length; i += 1) {
+            const b = this.breakers[i];
+            if (b.great && this.waveLive(b, clock) && (!host || b.born > host.born)) host = b;
+        }
+        host = host || this.youngestBreaker(clock);
+        if (!host) {
+            // No wave left running to crown: the sea throws the great one now.
+            this.onClear({ lines: 4, perfect: true, rows: [19, 18, 17, 16] });
+            return;
+        }
+        this.surge.crown(clock);
+        this.state.bloom = Math.max(this.state.bloom, flashScale());
+        this.flash.hit(0.22, clock);
+        const grow = host.great ? 0.25 : Math.max(0.6, GREAT_H - host.Hto);
+        host.great = true;
+        this.feedBreaker(host, 0.5, grow);
+    }
+
+    /** A T-spin that cleared nothing: a small school darts through the shallows. */
+    onSpin() {
+        if (!this.camera) return;
+        this.surge.spin(this.clock);
+        this.flash.hit(0.03, this.clock);
+        this.sendShoal(0.45);
+    }
+
+    /**
+     * A school of fish darts through the shallows; `size` of a T-spin's full school. While every
+     * school is still running, more fish set off after the youngest from where it started.
+     */
+    sendShoal(size = 1) {
         const s = this.state;
-        const sh = this.shoal;
+        const { clock } = this;
+        s.shoals += 1;
+        const count = Math.max(3, Math.round(this.tier.fish * size));
+        let sh = null;
+        let youngest = null;
+        for (let i = 0; i < this.schools.length; i += 1) {
+            const school = this.schools[i];
+            if (clock >= school.until) {
+                if (!sh) sh = school;
+            } else if (!youngest || school.at > youngest.at) youngest = school;
+        }
+        if (!sh) {
+            const to = Math.min(youngest.start.length, youngest.n + count);
+            for (let i = youngest.n; i < to; i += 1) youngest.start[i] = clock;
+            youngest.n = to;
+            youngest.until = clock + SCHOOL_LIFE;
+            youngest.glow = Math.min(1.6, youngest.glow + 0.15 * size);
+            return;
+        }
         const layout = this.aimLayout();
         const card = layout?.cards?.[0];
         const inner = card ? Math.max(0.06, card.x0 - 0.04) : 0.36;
@@ -531,18 +897,27 @@ export class LuminousTidesWorld {
         const fromA = from.a;
         const fromS = clamp(from.s, 2, 9);
         const to = this.castShore(inner, 0.9, 2.5, 30);
-        sh.at = this.clock;
+        sh.at = clock;
+        sh.until = clock + SCHOOL_LIFE;
         sh.seed = this.rand();
         sh.a0 = fromA;
         sh.s0 = fromS;
         sh.a1 = to.a;
         sh.s1 = clamp(to.s, 1.4, 6);
-        s.shoals += 1;
+        sh.n = Math.min(sh.start.length, count);
+        sh.start.fill(clock, 0, sh.n);
+        sh.glow = 1;
     }
 
-    /** The longest chain any board is holding (0 = it broke). */
+    /**
+     * The longest chain any board is holding (0 = it broke). A long chain's end is felt: the bay
+     * sighs out a soft light as its rain eases off.
+     */
     onCombo(combo) {
-        this.state.combo = Math.max(0, combo | 0);
+        const next = Math.max(0, combo | 0);
+        const was = this.state.combo;
+        if (next === 0 && was >= 4) this.exhale.hit((0.12 + 0.02 * Math.min(was, 12)) * flashScale(), this.clock);
+        this.state.combo = next;
     }
 
     /**
@@ -560,7 +935,8 @@ export class LuminousTidesWorld {
             turn.to += next - s.level;
             turn.at = this.clock;
             turn.seconds = TURN_SECONDS;
-            s.bloom = Math.max(s.bloom, 0.28);
+            s.bloom = Math.max(s.bloom, 0.28 * flashScale());
+            this.surge.levelUp(this.clock);
         }
         s.level = next;
         this.applyNight();
@@ -602,13 +978,19 @@ export class LuminousTidesWorld {
             this.lightRows[i].set(colour[0], colour[1], colour[2], 0);
         }
         const { rain } = this.state;
-        U.stars.value = light.stars * (1 - rain * 0.8);
-        U.milky.value = light.milky * (1 - rain);
-        U.cover.value = Math.min(1, light.cover + rain * 0.45);
-        U.haze.value = light.haze + rain * 0.2;
-        U.warmth.value = light.warmth * (1 - rain * 0.3);
-        U.glowPower.value = light.glowPower;
-        U.squallDim.value = 1 - rain * 0.32;
+        const { level, fever } = this.heat;
+        // The squall dims the night only while play is cold: under a hot chain its rain stops
+        // greying the sky and lights the sea instead, and in a fever the cloud thins over the
+        // stars and the whole sea burns brighter.
+        this.clearing = clamp01(smooth(0.2, 0.7, level) * 0.75 + fever * 0.4);
+        const squall = rain * (1 - this.clearing);
+        U.stars.value = light.stars * (1 - squall * 0.8) * (1 + 0.35 * fever);
+        U.milky.value = light.milky * (1 - squall);
+        U.cover.value = Math.min(1, light.cover + squall * 0.45) * (1 - 0.3 * fever);
+        U.haze.value = light.haze + squall * 0.2;
+        U.warmth.value = light.warmth * (1 - squall * 0.3);
+        U.glowPower.value = light.glowPower * (1 + 0.05 * level + 0.1 * fever);
+        U.squallDim.value = 1 - squall * 0.32;
     }
 
     // ── frame ───────────────────────────────────────────────────────────────────
@@ -621,59 +1003,78 @@ export class LuminousTidesWorld {
         const s = this.state;
         this.clock += dt;
         U.time.value = this.clock;
+        // How hot play runs, once a frame on the world's clock.
+        const heat = this.surge.sample(this.clock);
+        this.heat = heat;
+        const { level, fever } = heat;
 
-        // The rain follows the chain: it comes on in a few seconds and eases off slower.
+        // The rain follows the chain: it comes on in a few seconds and eases off slower. The
+        // hotter the play, the more of its drops crown on the water, and the harder (past the
+        // chain's own cap the downpour keeps growing with the heat).
         const want = rainForCombo(s.combo);
         s.rain += (want - s.rain) * approach(want > s.rain ? 0.9 : 0.32, dt);
         if (s.rain < 1e-3) s.rain = 0;
         U.rain.value = s.rain;
         if (this.camera && s.rain > 0.15) {
-            s.rainClock += dt * s.rain * 9;
+            s.rainClock += dt * s.rain * 9 * (1 + 0.5 * level + 1.1 * fever);
+            const hard = 0.32 * (1 + 0.6 * fever);
             while (s.rainClock >= 1) {
                 s.rainClock -= 1;
                 const left = this.rand() < 0.62;
                 const sx = left ? 0.02 + this.rand() * 0.34 : 0.74 + this.rand() * 0.24;
                 const sy = 0.6 + this.rand() * 0.37;
                 const hit = this.castShore(sx, sy, 2.5, 30);
-                if (hit.s > -WET_REACH) this.crown(hit.x, hit.y + 0.01, hit.z, this.clock, 0.32, this.light.glow);
+                if (hit.s > -WET_REACH) this.crown(hit.x, hit.y + 0.01, hit.z, this.clock, hard, this.light.glow);
             }
         } else {
             s.rainClock = 0;
         }
         s.bloom *= Math.exp(-0.22 * dt);
-        U.bayBloom.value = s.bloom;
-        s.flash *= Math.exp(-3.5 * dt);
+        // The bay: a perfect clear's light, a fever's sea of fire under it, a long chain's sigh.
+        U.bayBloom.value = s.bloom + (1 - Math.min(1, s.bloom)) * Math.min(1, this.exhale.valueAt(this.clock));
+        // The sea is shaken by the play: its own surf burns brighter, the open bay sparks and in a
+        // fever burns (the shore's stir).
+        U.stir.value = 0.25 * level + 0.75 * fever;
         this.applyNight();
         // The night sky turns slowly; the cloud drifts in off the sea.
         U.starTurn.value = (this.clock * 0.0016) % (Math.PI * 2);
         U.drift.value.set(-this.clock * 0.0009, this.clock * 0.0003);
 
-        this.writeRows();
+        this.writeRows(dt);
         this.updateGlows();
         if (camera) this.parts.sky.follow(camera);
     }
 
-    /** The live splashes and waves of light, compacted into the shaders' tables. */
-    writeRows() {
-        const { clock } = this;
+    /**
+     * The live splashes and waves of light (and the ones fading out to make room), compacted into
+     * the shaders' tables; what is spent leaves the lists. A fed wave grows toward its new height.
+     */
+    writeRows(dt = 0) {
+        const { clock, splashes, breakers } = this;
         let n = 0;
-        for (let i = 0; i < this.splashes.length; i += 1) {
-            const sp = this.splashes[i];
-            if (clock - sp.t0 > SPLASH_LIFE) continue;
-            this.splashRows[n * 2].set(sp.x, sp.z, sp.t0, sp.strength);
+        for (let i = 0; i < splashes.length; i += 1) {
+            const sp = splashes[i];
+            const fade = fadeOf(sp, clock);
+            if (clock - sp.t0 > SPLASH_LIFE || fade <= 0) continue;
+            splashes[n] = sp;
+            this.splashRows[n * 2].set(sp.x, sp.z, sp.t0, sp.strength * fade);
             this.splashRows[n * 2 + 1].set(sp.rgb[0], sp.rgb[1], sp.rgb[2], sp.radius);
             n += 1;
         }
-        while (this.splashes.length && clock - this.splashes[0].t0 > SPLASH_LIFE) this.splashes.shift();
+        splashes.length = n;
         let m = 0;
-        for (let i = 0; i < this.breakers.length; i += 1) {
-            const b = this.breakers[i];
-            if (clock - b.t0 > b.life) continue;
-            this.breakerRows[m * 2].set(b.a0, b.s0, b.t0, b.strength);
+        const grow = approach(2.4, dt);
+        for (let i = 0; i < breakers.length; i += 1) {
+            const b = breakers[i];
+            b.fade = fadeOf(b, clock);
+            if (clock - b.t0 > b.life || b.fade <= 0) continue;
+            b.H += (b.Hto - b.H) * grow;
+            breakers[m] = b;
+            this.breakerRows[m * 2].set(b.a0, b.s0, b.t0, b.strength * b.fade);
             this.breakerRows[m * 2 + 1].set(b.H, b.speed, b.sBreak, b.peel);
             m += 1;
         }
-        while (this.breakers.length && clock - this.breakers[0].t0 > this.breakers[0].life) this.breakers.shift();
+        breakers.length = m;
         this.U.counts.value.set(n, m, 0, 0);
     }
 
@@ -682,7 +1083,8 @@ export class LuminousTidesWorld {
         const { glows } = this.parts;
         const { clock } = this;
         glows.begin();
-        const power = this.light.glowPower;
+        // The night's glow power, as the play has raised it.
+        const power = this.U.glowPower.value;
         // The drops falling out of the night, in their pieces' colours.
         for (let i = 0; i < this.splashes.length; i += 1) {
             const sp = this.splashes[i];
@@ -737,62 +1139,72 @@ export class LuminousTidesWorld {
         // The spray off every breaking lip, and off the board's waves along their peel.
         const { glow } = this.light;
         this._sprayCount = writeSpray(clock, glow, power, this.breakers, this.tier.spray, this._pushSpray);
-        // The shoal: each fish a streak of light just under the surface, darting along the shallows.
-        const sh = this.shoal;
-        const age = clock - sh.at;
-        if (age >= 0 && age < SHOAL_SECONDS + 1.5) {
-            const { fish } = this.tier;
-            for (let i = 0; i < fish; i += 1) {
-                const r = (k) => {
-                    const v = Math.sin((i + 1) * 12.9898 + k * 78.233 + sh.seed * 37.719) * 43758.5453;
-                    return v - Math.floor(v);
-                };
-                const lag = r(1) * 0.9;
-                const pace = SHOAL_SECONDS * (0.75 + r(2) * 0.5);
-                const u = clamp01((age - lag) / pace);
-                if (u <= 0 || u >= 1) continue;
-                const along = (r(3) - 0.5) * 6;
-                const across = (r(4) - 0.5) * 3.2;
-                const wiggle = 0.9 + r(5) * 1.6;
-                const phase = r(6) * 6.28;
-                const at = (q) => {
-                    const e = q * q * (3 - 2 * q);
-                    shoalTmp.a = lerp(sh.a0, sh.a1, e) + along + Math.sin(e * 9 * wiggle + phase) * 0.35;
-                    shoalTmp.s = lerp(sh.s0, sh.s1, e) + across + Math.sin(e * 5 * wiggle + phase) * 0.9;
-                    return shoalTmp;
-                };
-                const here = at(u);
-                const ha = here.a;
-                const hs = Math.max(0.8, here.s);
-                fromShore(ha, hs, worldTmp);
-                const hx = worldTmp.x;
-                const hz = worldTmp.z;
-                const next = at(Math.min(1, u + 0.01));
-                fromShore(next.a, Math.max(0.8, next.s), worldTmp);
-                const vx = (worldTmp.x - hx) / (0.01 * pace);
-                const vz = (worldTmp.z - hz) / (0.01 * pace);
-                const yy = surfHeight(ha, hs, clock) + 0.02;
-                const fade = smooth(0, 0.06, u) * (1 - smooth(0.8, 1, u));
-                const head = 2.2 * fade * power;
-                const tail = 1.0 * fade * power;
-                glows.push(hx, yy, hz, 0.035, glow[0] * head, glow[1] * head, glow[2] * head);
-                glows.push(hx, yy, hz, 0.02, glow[0] * tail, glow[1] * tail, glow[2] * tail, 0, vx, 0, vz, -0.16);
-            }
-        }
+        // The schools: each fish a streak of light just under the surface, darting along the
+        // shallows from when it set off (fish that joined a running school chase it from its start).
+        for (let k = 0; k < this.schools.length; k += 1) this.drawSchool(this.schools[k], glows, power, glow);
         glows.end();
+    }
+
+    /** One school's fish into the glows. */
+    drawSchool(sh, glows, power, glow) {
+        const { clock } = this;
+        if (clock < sh.at || clock >= sh.until) return;
+        const bright = power * sh.glow;
+        for (let i = 0; i < sh.n; i += 1) {
+            const r = (k) => {
+                const v = Math.sin((i + 1) * 12.9898 + k * 78.233 + sh.seed * 37.719) * 43758.5453;
+                return v - Math.floor(v);
+            };
+            const lag = r(1) * 0.9;
+            const pace = SHOAL_SECONDS * (0.75 + r(2) * 0.5);
+            const u = clamp01((clock - sh.start[i] - lag) / pace);
+            if (u <= 0 || u >= 1) continue;
+            const along = (r(3) - 0.5) * 6;
+            const across = (r(4) - 0.5) * 3.2;
+            const wiggle = 0.9 + r(5) * 1.6;
+            const phase = r(6) * 6.28;
+            const at = (q) => {
+                const e = q * q * (3 - 2 * q);
+                shoalTmp.a = lerp(sh.a0, sh.a1, e) + along + Math.sin(e * 9 * wiggle + phase) * 0.35;
+                shoalTmp.s = lerp(sh.s0, sh.s1, e) + across + Math.sin(e * 5 * wiggle + phase) * 0.9;
+                return shoalTmp;
+            };
+            const here = at(u);
+            const ha = here.a;
+            const hs = Math.max(0.8, here.s);
+            fromShore(ha, hs, worldTmp);
+            const hx = worldTmp.x;
+            const hz = worldTmp.z;
+            const next = at(Math.min(1, u + 0.01));
+            fromShore(next.a, Math.max(0.8, next.s), worldTmp);
+            const vx = (worldTmp.x - hx) / (0.01 * pace);
+            const vz = (worldTmp.z - hz) / (0.01 * pace);
+            const yy = surfHeight(ha, hs, clock) + 0.02;
+            const fade = smooth(0, 0.06, u) * (1 - smooth(0.8, 1, u));
+            const head = 2.2 * fade * bright;
+            const tail = 1.0 * fade * bright;
+            glows.push(hx, yy, hz, 0.035, glow[0] * head, glow[1] * head, glow[2] * head);
+            glows.push(hx, yy, hz, 0.02, glow[0] * tail, glow[1] * tail, glow[2] * tail, 0, vx, 0, vz, -0.16);
+        }
     }
 
     /** What the post stack should know this frame. */
     getPostState() {
         const s = this.state;
         const L = this.light;
+        const { level, fever, punch } = this.heat;
         const post = this._post || (this._post = {
             flash: 0, bloomBoost: 0, exposure: 1, rain: 0, gradeShadow: [0.92, 0.98, 1.1], gradeLight: [1.02, 1, 0.98],
         });
-        post.flash = s.flash;
-        post.bloomBoost = s.bloom * 0.5 + s.rain * 0.15;
-        post.exposure = L.exposure;
-        post.rain = s.rain;
+        // Every clear adds to the lift still lit; the play's punch rides under it.
+        post.flash = this.flash.valueAt(this.clock) + punch * 0.05;
+        // The bloom swells a little with the heat (the sea's own sparks carry the rest: a haze
+        // over everything would wash the blues out).
+        post.bloomBoost = s.bloom * 0.5 + s.rain * 0.15 + 0.1 * fever;
+        // An iris: it closes a little as the sea burns hotter, so the blues stay deep and the night dark.
+        post.exposure = L.exposure * (1 - 0.1 * Math.max(0, level - 0.2) - 0.06 * fever);
+        // The lens greys only under a cold squall: a hot chain's rain is a rain of sparks.
+        post.rain = s.rain * (1 - this.clearing);
         return post;
     }
 
@@ -823,7 +1235,11 @@ export class LuminousTidesWorld {
             splashes: this.U.counts.value.x,
             waves: this.U.counts.value.y,
             drops,
-            shoal: clock - this.shoal.at < SHOAL_SECONDS + 1.5 && clock >= this.shoal.at,
+            shoal: this.schools.some((sh) => clock >= sh.at && clock < sh.until),
+            fish: this.schools.reduce((n, sh) => n + (clock >= sh.at && clock < sh.until ? sh.n : 0), 0),
+            surge: this.heat.level,
+            fever: this.heat.fever,
+            stage: this.heat.stage,
             locks: s.locks,
             clears: s.clears,
             thrown: s.waves,

@@ -11,6 +11,12 @@
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *   sink.crown(player)         a perfect clear that came on a frame of its own, after its clear
+ *   sink.spin(player)          a T-spin that cleared nothing
+ *
+ * A perfect clear is settled by physics ~360 ms AFTER the last wave of the clear that made it, so
+ * it nearly always arrives alone. It is a crown on the clear still playing, never a clear of its
+ * own: the sink is told so (a sink with no `crown` gets the old one-line perfect clear instead).
  *
  * What the grotto does with them is the world's business: a lock's light dives into the pool and
  * swims to a mushroom, a clear sends a wave of plankton light across the water, the combo wakes
@@ -384,7 +390,6 @@ export class BioluminescenceDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -449,6 +454,13 @@ export class BioluminescenceDirector {
                 c.screen = null;
                 sink.lock(c);
             }
+            // A perfect clear on its own frame (after its clear's last wave): a crown, not a clear.
+            if (slot.lines === 0 && slot.perfect && !slot.hasPosition) {
+                if (sink?.crown) sink.crown(slot.player);
+                else slot.lines = 1;
+            }
+            // A T-spin that cleared nothing still shows.
+            if (slot.lines === 0 && slot.tspin && sink?.spin) sink.spin(slot.player);
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;

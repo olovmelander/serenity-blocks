@@ -16,7 +16,12 @@
  * The grotto is one organism and these are its fruit. A lock's swimmer reaches a mushroom's foot:
  * the light climbs the stem, the cap blooms in the piece's colour (it swells for a moment) and
  * KEEPS that colour, fading over half a minute. A clear lets everything go: as the wave passes a
- * mushroom its held colour flares out and is gone. A chain raises the fairy rings.
+ * mushroom its held colour flares out and is gone — all of it at rest; in a hot chain the caps
+ * keep some of it (the `keep` uniform), so the grotto fills with the colours played. A chain
+ * raises the fairy rings.
+ *
+ * A cap's flash never restarts: one that comes while the last still burns waits for its own
+ * bloom and then adds to what is left, so the cap only ever brightens (see field.update()).
  *
  * Per-mushroom state lives in four instanced attributes (one interleaved buffer per draw) written
  * only when gameplay happens:
@@ -76,6 +81,10 @@ import {
 import { BELL, GLOBE, PARASOL } from './bioluminescence-layout.js';
 
 const NEVER = 1e9;
+/** The brightest a cap's flash gets (its brightest channel), however many flashes join it. */
+const PULSE_MAX = 2.4;
+/** Two flashes that meet are at most this much brighter than the stronger of them. */
+const PULSE_JOIN = 1.25;
 /** Added to an instance's rank when it belongs to a court (see the plan's `court`). */
 const COURT = 4;
 const STEM = 0;
@@ -321,9 +330,9 @@ function createDraw(u, name, spec, items, renderOrder) {
     const vNormal = varying(mix(capNormal, vec3(ln.x, ln.y.mul(0.25), ln.z), isStem), 'blShroomN');
     const vPart = varying(part, 'blShroomPart');
     /** Light held now: the new light only once its swimmer has arrived. */
-    // A clear's wave voids what was held when it passed: never the light of a swimmer that
-    // arrives after it.
-    const uncut = step(u.time, cut);
+    // A clear's wave voids what was held when it passed (all but what a hot chain lets a cap
+    // keep): never the light of a swimmer that arrives after it.
+    const uncut = max(step(u.time, cut), u.keep);
     const held = mix(prev.mul(uncut), store.rgb.mul(max(uncut, step(cut, store.w))), step(store.w, u.time))
         .mul(exp(u.time.sub(store.w).div(-STORE_HOLD)));
     const vHeld = varying(held, 'blShroomHeld');
@@ -508,15 +517,98 @@ export function createMushrooms(u, plan, { count, sprouts = 0 }) {
         return { state: draws[key].state, o4: slot * 4, o3: slot * 3 };
     };
 
+    // ── Flashes that wait their turn ──
+    // A cap shows one flash (aPulse). A new one used to replace it at once, so a cap still burning
+    // went dark until the new light had swum over and climbed the stem, and came back weaker if
+    // the new light was. Now a flash waits here (two a cap; a third joins the nearest) and is
+    // written when its light starts up the stem — or, while the cap still burns, at its bloom —
+    // joining what is left of the one burning (see update()).
+    const pendRGB = new Float32Array(n * 2 * 3);
+    const pendBloom = new Float64Array(n * 2).fill(Infinity);
+    let pendCount = 0;
+    /** Queue a flash of (r, g, b) in mushroom `i` that blooms at `bloom`. */
+    const schedule = (i, r, g, b, bloom) => {
+        if (!(i >= 0 && i < n) || !Number.isFinite(bloom)) return;
+        const base = i * 2;
+        let k;
+        const [a, c] = [pendBloom[base], pendBloom[base + 1]];
+        // (Flashes due together are one flash; with both places taken it joins the nearer.)
+        if (a !== Infinity && Math.abs(a - bloom) < 0.05) k = 0;
+        else if (c !== Infinity && Math.abs(c - bloom) < 0.05) k = 1;
+        else if (a === Infinity) k = 0;
+        else if (c === Infinity) k = 1;
+        else k = Math.abs(a - bloom) <= Math.abs(c - bloom) ? 0 : 1;
+        if (pendBloom[base + k] === Infinity) pendCount += 1;
+        const o = (base + k) * 3;
+        pendRGB[o] += r;
+        pendRGB[o + 1] += g;
+        pendRGB[o + 2] += b;
+        pendBloom[base + k] = Math.min(pendBloom[base + k], bloom);
+    };
     /**
-     * How much of what mushroom `i` holds is alive at `time` (0 or the decay factor): before the
-     * swimmer arrives it is what the cap held before, which a clear's wave voids; after, it is
-     * the new light, which a wave voids only if it was already there when the wave passed.
+     * Join waiting flash `e` to the flash in `out` (rgb, bloom time): what is left of it, plus the
+     * new — never less than the stronger of the two, and only a little more (a cap fed on every
+     * lock would otherwise burn at its brightest all chain long and light the mist white).
+     */
+    const join = (out, e) => {
+        const at = pendBloom[e];
+        const left = at >= out[3] ? Math.exp(-(at - out[3]) / PULSE_FADE) : 1;
+        const o = e * 3;
+        let r = pendRGB[o] + out[0] * left;
+        let g = pendRGB[o + 1] + out[1] * left;
+        let b = pendRGB[o + 2] + out[2] * left;
+        const added = Math.max(pendRGB[o], pendRGB[o + 1], pendRGB[o + 2]);
+        const stronger = Math.max(added, Math.max(out[0], out[1], out[2]) * left);
+        const most = Math.min(PULSE_MAX, stronger * PULSE_JOIN);
+        const peak = Math.max(r, g, b);
+        if (peak > most) {
+            r *= most / peak;
+            g *= most / peak;
+            b *= most / peak;
+        }
+        out[0] = r;
+        out[1] = g;
+        out[2] = b;
+        out[3] = at;
+        return out;
+    };
+    /** The flash burning in mushroom `i` (rgb, bloom time), into `out`. */
+    const burning = (i, out) => {
+        const { state, o4 } = peek(i);
+        out[0] = state.aPulse[o4];
+        out[1] = state.aPulse[o4 + 1];
+        out[2] = state.aPulse[o4 + 2];
+        out[3] = state.aPulse[o4 + 3] + STEM_CLIMB;
+        return out;
+    };
+    const _flash = [0, 0, 0, 0];
+    /** The flash of mushroom `i` at `time`, every waiting flash due by then counted (into `out`). */
+    const flashOf = (i, time, out) => {
+        burning(i, _flash);
+        const base = i * 2;
+        const [a, c] = [pendBloom[base], pendBloom[base + 1]];
+        const first = a <= c ? 0 : 1;
+        if (pendBloom[base + first] <= time) join(_flash, base + first);
+        if (pendBloom[base + 1 - first] <= time) join(_flash, base + 1 - first);
+        const age = time - _flash[3];
+        const env = age >= 0 ? Math.exp(-age / PULSE_FADE) : 0;
+        out[0] = _flash[0] * env;
+        out[1] = _flash[1] * env;
+        out[2] = _flash[2] * env;
+        return out;
+    };
+
+    /**
+     * How much of what mushroom `i` holds is alive at `time` (the decay factor, or the share a
+     * wave left it): before the swimmer arrives it is what the cap held before, which a clear's
+     * wave voids; after, it is the new light, which a wave voids only if it was already there
+     * when the wave passed. What a hot chain lets a cap keep (u.keep, as it stands now) survives.
      */
     const alive = (i, time) => {
         const pending = time < storeT0[i];
-        if (time > cutAt[i] && (pending || storeT0[i] < cutAt[i])) return 0;
-        return Math.exp(-(time - storeT0[i]) / STORE_HOLD);
+        const decay = Math.exp(-(time - storeT0[i]) / STORE_HOLD);
+        if (time > cutAt[i] && (pending || storeT0[i] < cutAt[i])) return u.keep.value > 0 ? decay * u.keep.value : 0;
+        return decay;
     };
     const heldAt = (i, time) => {
         const k = alive(i, time);
@@ -552,15 +644,12 @@ export function createMushrooms(u, plan, { count, sprouts = 0 }) {
             out[2] = from[o + 2] * k;
             return out;
         },
-        /** The bloom flash of mushroom `i` at `time`: its colour × envelope (into `out`). */
+        /**
+         * The bloom flash of mushroom `i` at `time`: its colour × envelope (into `out`), every
+         * flash that has bloomed by then counted.
+         */
         flashAt(i, time, out = [0, 0, 0]) {
-            const { state, o4 } = peek(i);
-            const age = time - state.aPulse[o4 + 3] - STEM_CLIMB;
-            const env = age >= 0 ? Math.exp(-age / PULSE_FADE) : 0;
-            out[0] = state.aPulse[o4] * env;
-            out[1] = state.aPulse[o4 + 1] * env;
-            out[2] = state.aPulse[o4 + 2] * env;
-            return out;
+            return flashOf(i, time, out);
         },
         /**
          * Light reaches the foot of mushroom `i` at `time` (which may be a moment ahead of `now`):
@@ -598,7 +687,7 @@ export function createMushrooms(u, plan, { count, sprouts = 0 }) {
                 cutAt[i] = NEVER;
                 state.aCut[where[i].slot] = NEVER;
             }
-            state.aPulse.set([rgb[0] * amount * 1.5, rgb[1] * amount * 1.5, rgb[2] * amount * 1.5, time], o4);
+            schedule(i, rgb[0] * amount * 1.5, rgb[1] * amount * 1.5, rgb[2] * amount * 1.5, bloom);
             flush();
             return bloom;
         },
@@ -621,14 +710,19 @@ export function createMushrooms(u, plan, { count, sprouts = 0 }) {
                     // was showing, and the bloom on its way is left to fire.
                     released += Math.max(state.aPrev[o3], state.aPrev[o3 + 1], state.aPrev[o3 + 2]) * k;
                 } else {
-                    const had = [state.aStore[o4] * k, state.aStore[o4 + 1] * k, state.aStore[o4 + 2] * k];
+                    // What the cap keeps through the wave is not let go; and what an earlier wave
+                    // already took (all but the share it keeps) is not let go twice.
+                    const given = cutAt[i] < pass && storeT0[i] < cutAt[i];
+                    const go = given ? 0 : k * (1 - Math.min(1, Math.max(0, u.keep.value)));
+                    const had = [state.aStore[o4] * go, state.aStore[o4 + 1] * go, state.aStore[o4 + 2] * go];
                     released += Math.max(had[0], had[1], had[2]);
-                    state.aPulse.set([
+                    schedule(
+                        i,
                         had[0] * 2.0 + rgb[0] * strength * 0.3,
                         had[1] * 2.0 + rgb[1] * strength * 0.3,
                         had[2] * 2.0 + rgb[2] * strength * 0.3,
-                        pass - STEM_CLIMB,
-                    ], o4);
+                        pass,
+                    );
                 }
                 cutAt[i] = pass;
                 state.aCut[where[i].slot] = pass;
@@ -636,11 +730,37 @@ export function createMushrooms(u, plan, { count, sprouts = 0 }) {
             flush();
             return { released, passes };
         },
-        /** Fire one mushroom's bloom without touching what it holds (the elder's Great Bloom). */
+        /** Fire one mushroom's bloom at `time` without touching what it holds (the elder's Great Bloom). */
         fire(i, rgb, time, amount = 1) {
             if (!(i >= 0 && i < n)) return;
-            const { state, o4 } = view(i);
-            state.aPulse.set([rgb[0] * amount, rgb[1] * amount, rgb[2] * amount, time - STEM_CLIMB], o4);
+            schedule(i, rgb[0] * amount, rgb[1] * amount, rgb[2] * amount, time);
+        },
+        /**
+         * Once a frame: every waiting flash whose light starts up the stem by `now` is written —
+         * or, while the cap is still burning from the last one, at its own bloom, so the cap
+         * never goes dark in between. It joins what is left of the flash burning.
+         */
+        update(now) {
+            if (pendCount <= 0) return;
+            for (let i = 0; i < n; i++) {
+                const base = i * 2;
+                for (;;) {
+                    const k = pendBloom[base] <= pendBloom[base + 1] ? 0 : 1;
+                    const at = pendBloom[base + k];
+                    if (at === Infinity) break;
+                    burning(i, _flash);
+                    // A flash still climbing blooms first.
+                    if (now < _flash[3]) break;
+                    const left = Math.max(_flash[0], _flash[1], _flash[2]) * Math.exp(-(now - _flash[3]) / PULSE_FADE);
+                    if (now < (left > 0.03 ? at : at - STEM_CLIMB)) break;
+                    join(_flash, base + k);
+                    const { state, o4 } = view(i);
+                    state.aPulse.set([_flash[0], _flash[1], _flash[2], at - STEM_CLIMB], o4);
+                    pendBloom[base + k] = Infinity;
+                    pendRGB.fill(0, (base + k) * 3, (base + k) * 3 + 3);
+                    pendCount -= 1;
+                }
+            }
             flush();
         },
         reset() {
@@ -654,6 +774,9 @@ export function createMushrooms(u, plan, { count, sprouts = 0 }) {
             });
             storeT0.fill(0);
             cutAt.fill(NEVER);
+            pendRGB.fill(0);
+            pendBloom.fill(Infinity);
+            pendCount = 0;
         },
     };
     return field;

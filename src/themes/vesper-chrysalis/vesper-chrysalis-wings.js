@@ -10,7 +10,10 @@
  * A wing is WRITTEN outward from the root: everything inside the front is lit, the front itself
  * is a hot line, and beyond it there is nothing. The front's place is how far the chain of
  * clears has come (u.wing.x), so every step of a combo draws a new band of wing on both sides
- * of the board. When the chain breaks the wings burn away from the margin inward (u.wing.z).
+ * of the board. When the chain breaks the wings moult: the front folds back toward the root,
+ * fraying as it goes, its eaten edge in embers (u.wing.z: how hard it frays), and a new chain
+ * catches it wherever it stands. A back-to-back gilds the veins (u.heat.z); a fever draws the
+ * wing more in its lines than in its veil (u.heat.y).
  *
  * Drawn premultiplied (One, OneMinusSrcAlpha): the light adds, and the little alpha the veil
  * and the eyes' pupils carry lets them darken what is behind them.
@@ -158,7 +161,6 @@ export function createWings(u, opts = {}) {
         const v = clamp(vWing.y, 0.0, 1.0).toVar();
         const kind = vWing.z.toVar();
         const w = u.wing.x;
-        const fall = u.wing.z;
 
         // ── The front: the wing is written outward from the root ──
         const grain = u.noise(vec2(an.mul(1.6).add(kind.mul(0.37)), v.mul(1.3).add(0.61))).toVar();
@@ -235,15 +237,26 @@ export function createWings(u, opts = {}) {
 
         // ── All of it, inside the front ──
         const gain = u.power.mul(0.5).add(u.eyes.z.mul(0.8)).add(u.wing.w.mul(0.9)).add(0.85);
-        const veil = dust.mul(0.3).add(0.1).add(margin.mul(0.22));
+        // In a fever the wing is drawn in its lines more than its veil: the milk thins, the
+        // veins and bands burn, and the colour stays deep.
+        const fever = u.heat.y;
+        const veil = dust.mul(0.3).add(0.1).add(margin.mul(0.22)).mul(float(1.0).sub(fever.mul(0.3)));
         const lines = veins.mul(1.25).add(net).add(band1.mul(1.1)).add(band2.mul(1.5))
             .add(rim.mul(2.0))
-            .add(sparkle.mul(3.0));
-        const light = tint.mul(veil.add(lines.mul(float(1.0).sub(eyeArea.mul(0.8))))).add(eyeLight).mul(lit).mul(gain)
+            .add(sparkle.mul(3.0))
+            .mul(fever.mul(0.35).add(1.0));
+        // A back-to-back lays gold in the lines (the veil keeps its colour).
+        const gilt = mix(tint, vec3(1.0, 0.76, 0.4), clamp(u.heat.z, 0.0, 1.0).mul(0.85));
+        const light = tint.mul(veil).add(gilt.mul(lines.mul(float(1.0).sub(eyeArea.mul(0.8))))).add(eyeLight)
+            .mul(lit)
+            .mul(gain)
             .toVar();
-        // The front burns gold-white as it writes, and warms the wing just behind it.
+        // The front burns gold-white as it writes, and warms the wing just behind it (a front
+        // folding back burns in embers instead, below).
+        const fall = u.wing.z;
         const hot = mix(u.wingRoot, vec3(1.0, 0.95, 0.85), 0.6);
-        light.addAssign(hot.mul(frontLine.mul(u.wing.w.mul(3.0).add(2.6)).add(frontGlow.mul(0.35))));
+        light.addAssign(hot.mul(frontLine.mul(u.wing.w.mul(3.0).add(2.6)).mul(float(1.0).sub(fall))
+            .add(frontGlow.mul(0.35))));
         const alpha = float(0.14).add(dust.mul(0.1)).add(veins.mul(0.14)).add(margin.mul(0.08))
             .add(pupil.mul(open).mul(0.9))
             .mul(lit)
@@ -251,11 +264,12 @@ export function createWings(u, opts = {}) {
         // A pupil is dark: it takes the light out of what it covers.
         light.mulAssign(float(1.0).sub(pupil.mul(open).mul(0.95)));
 
-        // ── The fall: the wings burn away from the margin inward ──
-        const hold = grain.b.mul(0.3).add(fine.b.mul(0.3)).add(float(1.0).sub(v).mul(0.4)).add(0.1);
-        const edge = fall.mul(1.25);
-        const keep = smoothstep(edge.sub(0.05), edge.add(0.02), hold).toVar();
-        const ember = vcBell(hold.sub(edge).div(0.035)).mul(step(0.001, fall)).mul(lit);
+        // ── The moult: the folding front frays, eaten ragged behind it, its edge in embers ──
+        const ragged = grain.b.mul(0.55).add(fine.b.mul(0.45));
+        const inside = front.sub(v);
+        const fray = ragged.mul(0.16).add(0.012).mul(fall);
+        const keep = mix(float(1.0), smoothstep(fray.mul(0.5), fray.add(1e-4), inside), step(0.001, fall)).toVar();
+        const ember = vcBell(inside.sub(fray).div(0.03)).mul(fall).mul(lit);
         light.assign(light.mul(keep).add(hot.mul(ember).mul(2.4)));
         alpha.mulAssign(keep);
 

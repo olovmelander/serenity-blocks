@@ -149,6 +149,48 @@ describe('bioluminescence director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('crowns a perfect clear that comes on a frame of its own instead of making it a clear', () => {
+        const { director, calls } = makeDirector();
+        const crown = vi.fn();
+        director.sink.crown = crown;
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // Physics settles the perfect clear after the clear's last wave.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(crown).toHaveBeenCalledOnce();
+        expect(crown).toHaveBeenCalledWith(0);
+        director.flush();
+        expect(crown).toHaveBeenCalledOnce();
+        // A sink that cannot crown gets the old one-line perfect clear.
+        const old = makeDirector();
+        old.director.onPerfectClear({ depth: 1 });
+        old.director.flush();
+        expect(old.calls.clear).toHaveLength(1);
+        expect(old.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('still shows a T-spin that cleared nothing', () => {
+        const { director, calls } = makeDirector();
+        const spin = vi.fn();
+        director.sink.spin = spin;
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(spin).toHaveBeenCalledOnce();
+        expect(calls.clear).toHaveLength(0);
+        // One that cleared lines is carried on its clear, not twice.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(spin).toHaveBeenCalledOnce();
+        expect(calls.clear[0]).toMatchObject({ lines: 1, tspin: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);

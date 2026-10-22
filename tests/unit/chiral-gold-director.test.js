@@ -187,6 +187,46 @@ describe('Chiral Gold director: stage on the bus, resolve on the frame', () => {
         expect(calls.clears[1]).toMatchObject({ tspin: false, b2b: false, perfect: false });
     });
 
+    it('crowns the clear with a late perfect clear instead of replaying it', () => {
+        const { sink, calls } = createSink();
+        const director = new ChiralGoldDirector({ sink });
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23] });
+        director.flush();
+        // Physics settles the perfect clear ~360 ms later, in a frame of its own.
+        director.onPerfectClear({});
+        director.flush();
+        expect(calls.clears).toHaveLength(2);
+        expect(calls.clears[0]).toMatchObject({ lines: 4, crown: false, perfect: false });
+        expect(calls.clears[1]).toMatchObject({ crown: true, perfect: true, rows: [] });
+        // In the same frame as its clear it rides on that clear.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [22, 23] });
+        director.onPerfectClear({});
+        director.flush();
+        expect(calls.clears[2]).toMatchObject({ lines: 2, crown: false, perfect: true });
+    });
+
+    it('turns a T-spin that clears nothing into a spin, not a clear', () => {
+        const { sink, calls } = createSink();
+        const spins = [];
+        sink.spin = (c) => spins.push({ ...c });
+        const director = new ChiralGoldDirector({ sink });
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clears).toHaveLength(0);
+        expect(calls.locks).toHaveLength(1);
+        expect(spins).toEqual([{ player: 0 }]);
+        // A T-spin that clears lines stays on its clear.
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 1 });
+        director.onLineClear({ lineCount: 1, clearedRows: [23] });
+        director.flush();
+        expect(spins).toHaveLength(1);
+        expect(calls.clears[0]).toMatchObject({ tspin: true });
+    });
+
     it('keeps one chain per board and drops a sixth board rather than crossing wires', () => {
         const { sink, calls } = createSink();
         const director = new ChiralGoldDirector({ sink });

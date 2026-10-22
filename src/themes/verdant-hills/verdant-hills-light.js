@@ -8,8 +8,9 @@
  * that drift over the hills are the shadows of the clouds above them. `haze()` lays the
  * same aerial perspective over every surface, `wind()` moves bark and leaves together, and
  * `meadowWind()` rolls gusts through the grass — the steady bands of the breeze, the rings
- * that spread from the foot of the board, and the front that crosses the valley when the
- * game asks for it.
+ * that spread from the foot of the board, and the fronts (up to three at once) that cross the
+ * valley when the game asks for them. Hot play raises a gale on top of the wind dial and thins
+ * the cumulus a little (`update()`: `gale`, `coverShift`, from verdant-hills-surge.js).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -41,6 +42,8 @@ export const VERDANT_HILLS_CLOUD_SEED = 1456;
 export const VERDANT_HILLS_CLOUD_SCHEMA = 1;
 /** How far the clouds travel in a second at rest, metres. */
 const CLOUD_DRIFT = 11;
+/** How much of the haze the strongest wind of a fever clears from the valley. */
+const CLEARED_HAZE = 0.4;
 /** The share of the sky under cloud on a fair day. */
 const CLOUD_COVER = 0.25;
 /** Where the field stands when a session starts: the home hill in the sun, a shadow on its way. */
@@ -262,6 +265,9 @@ export class VerdantHillsLight {
         this.uGust = uniform(0);
         this.uWindClock = uniform(0);
         this.uFront = uniform(new THREE.Vector4(0, 0, 26, 0)); // along the wind, strength, width
+        // The other fronts still crossing (the newest is uFront), in the same terms.
+        this.uFront2 = uniform(new THREE.Vector4(0, 0, 26, 0));
+        this.uFront3 = uniform(new THREE.Vector4(0, 0, 26, 0));
         // Gameplay envelopes shared by every material.
         this.uWarmth = uniform(0);
         this.uGlow = uniform(0);
@@ -278,6 +284,11 @@ export class VerdantHillsLight {
         this.uCloudOffset = uniform(new THREE.Vector2(CLOUD_START[0], CLOUD_START[1]));
         this.uSunPool = uniform(new THREE.Vector4(0, 0, 400, 0));
         this.cloudSpeed = 1;
+        // How far hot play has thinned the cumulus (a share of the sky, eased; see update()), and
+        // how much of the haze the rising wind has cleared (0..1, eased), from the haze it found.
+        this.coverShift = 0;
+        this.clearAir = 0;
+        this.hazeRest = null;
         // The clock at the last frame: the breeze eases by the time between two of them.
         this.windTime = 0;
         // Gusts that spread through the grass from the foot of the board.
@@ -468,10 +479,11 @@ export class VerdantHillsLight {
         return smoothstep(-0.25, 0.85, band);
     }
 
-    /** The front that crosses the valley: how strongly it is passing over a ground coordinate. */
+    /** The fronts that cross the valley: how strongly they are passing over a ground coordinate. */
     windFront(xz) {
         const along = dot(xz, vec2(this.uWindDir.x, this.uWindDir.z));
-        return exp(along.sub(this.uFront.x).div(this.uFront.z).pow2().negate()).mul(this.uFront.y);
+        const bell = (front) => exp(along.sub(front.x).div(front.z).pow2().negate()).mul(front.y);
+        return bell(this.uFront).add(bell(this.uFront2)).add(bell(this.uFront3));
     }
 
     /**
@@ -538,18 +550,45 @@ export class VerdantHillsLight {
         // (game over) lets the grass stand.
         const passed = this.uTime.value - this.windTime;
         this.windTime = this.uTime.value;
-        const target = (frame.settled === true ? 0.1 : 0.34) + dial * 0.5;
+        // Hot play raises a gale past the dial (verdant-hills-surge.js).
+        const gale = clamp01(frame.gale);
+        const target = (frame.settled === true ? 0.1 : 0.34) + dial * 0.5 + gale * 0.14;
         const ease = 1 - Math.exp(-3.7 * (passed > 0 ? Math.min(passed, 0.1) : 1 / 60));
         this.uWind.value += (target - this.uWind.value) * ease;
         this.uGust.value = clamp01(frame.gust) * 1.5;
         this.uWarmth.value = clamp01(frame.warmth);
         this.uGlow.value = clamp01(frame.glow);
         this.uShimmer.value = clamp01(frame.shimmer);
-        this.setCloudCover(this.uCloudCover.value);
-        this.cloudSpeed = (frame.settled === true ? 0.35 : 1) + dial * 2.4 + clamp01(frame.gust) * 1.2;
-        if (frame.front && Number.isFinite(frame.front.along)) {
-            this.uFront.value.set(frame.front.along, clamp01(frame.front.strength) * 2.2, frame.front.width || 26, 0);
-        } else this.uFront.value.y = 0;
+        // The cumulus thins as a fever burns: eased, and drawn between the field's own levels so
+        // the clouds shrink smoothly instead of in steps.
+        const shift = Number.isFinite(frame.coverShift) ? THREE.MathUtils.clamp(frame.coverShift, -0.2, 0.2) : 0;
+        this.coverShift += (shift - this.coverShift) * ease;
+        if (Math.abs(this.coverShift) < 1e-4) {
+            this.coverShift = 0;
+            this.setCloudCover(this.uCloudCover.value);
+        } else this.shiftCloudCover(this.uCloudCover.value, this.coverShift);
+        this.cloudSpeed = (frame.settled === true ? 0.35 : 1) + dial * 2.4 + clamp01(frame.gust) * 1.2 + gale * 0.8;
+        // The rising wind clears the air: less haze over the far hills, and less of it lit between
+        // the clouds, so a hot valley stays sharp and green. The haze it found is what it returns to.
+        const clearing = clamp01(frame.clearAir);
+        if (clearing > 0 || this.hazeRest !== null) {
+            if (this.hazeRest === null) this.hazeRest = this.uHaze.value;
+            this.clearAir += (clearing - this.clearAir) * ease;
+            if (clearing === 0 && this.clearAir < 1e-4) {
+                this.uHaze.value = this.hazeRest;
+                this.hazeRest = null;
+                this.clearAir = 0;
+            } else this.uHaze.value = this.hazeRest * (1 - CLEARED_HAZE * this.clearAir);
+        }
+        const lay = (slot, front) => {
+            if (front && Number.isFinite(front.along)) {
+                slot.set(front.along, clamp01(front.strength) * 2.2, front.width || 26, 0);
+            } else slot.y = 0;
+        };
+        lay(this.uFront.value, frame.front);
+        const others = Array.isArray(frame.fronts) ? frame.fronts : null;
+        lay(this.uFront2.value, others?.[0]);
+        lay(this.uFront3.value, others?.[1]);
         if (frame.pool && Number.isFinite(frame.pool.x)) {
             this.uSunPool.value.set(frame.pool.x, frame.pool.z, frame.pool.radius || 400, clamp01(frame.pool.strength));
         } else this.uSunPool.value.w = 0;
@@ -559,6 +598,23 @@ export class VerdantHillsLight {
         if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150) {
             this.sun.shadow.needsUpdate = true;
         }
+    }
+
+    /**
+     * Draw the clouds at `cover` moved by `shift`, without changing the cover itself: the field's
+     * threshold read between two of its levels, so a cover that drifts moves the clouds' edges
+     * smoothly.
+     */
+    shiftCloudCover(cover, shift) {
+        const base = Number.isFinite(cover) ? cover : CLOUD_COVER;
+        const share = THREE.MathUtils.clamp(base + shift, 0.02, 0.9);
+        this.uCloudCover.value = THREE.MathUtils.clamp(base, 0.02, 0.9);
+        const at = (1 - share) * 255;
+        const low = Math.floor(at);
+        const high = Math.min(255, low + 1);
+        const edge = this.cloudEdges[low] + (this.cloudEdges[high] - this.cloudEdges[low]) * (at - low);
+        this.uCloudEdge.value = edge;
+        this.uCloudSpan.value = Math.max(0.08, 1 - edge);
     }
 
     /** Choose the share of the sky that lies under cloud (0..1). */
@@ -591,6 +647,11 @@ export class VerdantHillsLight {
         this.uWind.value = 0.34;
         this.windTime = 0;
         this.cloudSpeed = 1;
+        this.coverShift = 0;
+        this.setCloudCover(this.uCloudCover.value);
+        if (this.hazeRest !== null) this.uHaze.value = this.hazeRest;
+        this.hazeRest = null;
+        this.clearAir = 0;
         this.reset();
     }
 
@@ -598,6 +659,8 @@ export class VerdantHillsLight {
         this.waves.reset();
         this.uSunPool.value.w = 0;
         this.uFront.value.y = 0;
+        this.uFront2.value.y = 0;
+        this.uFront3.value.y = 0;
     }
 
     dispose() {

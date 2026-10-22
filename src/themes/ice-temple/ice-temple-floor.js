@@ -270,7 +270,7 @@ export function createFloor(u, opts = {}) {
         const held = itResonance(u, p)
             .mul(float(1.0).sub(smoothstep(u.resRadius.mul(0.55), u.resRadius.add(0.01), fromBoard)));
         const pulse = ring.mul(1.9).add(clear.rgb.mul(1.5)).add(held.mul(0.8))
-            .add(u.heartColor.mul(clear.w).mul(0.06))
+            .add(u.lightColor.mul(clear.w).mul(0.06))
             .toVar();
 
         // ── What lies under the surface ──

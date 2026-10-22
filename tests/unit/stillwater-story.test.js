@@ -12,8 +12,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    DOZE_AFTER, HEART_FLIGHT, KNEEL_AFTER, PARTING, SIT_AFTER, StillwaterStory, bondForCombo, chainBond,
-    spiritPathPoint, trollStation,
+    DOZE_AFTER, FERVOUR_BOND, HEART_FLIGHT, HEART_GAP, HEART_QUEUE, KNEEL_AFTER, PARTING, SIT_AFTER, StillwaterStory,
+    bondForCombo, chainBond, spiritPathPoint, trollStation,
 } from '../../src/themes/stillwater/stillwater-story.js';
 import {
     APPROACH_STEPS, HEART, SPIRIT, TROLL,
@@ -338,15 +338,81 @@ describe('stillwater story: the heart\'s flight', () => {
         expect(last).toBeLessThan(0.01);
     });
 
-    it('does not raise a second heart over one still on its way, and lets the story forget it once it is held', () => {
+    it('raises another heart for more lines, never over one still on its way, and forgets them once held', () => {
+        // (It once kept one heart: four lines more while it flew raised none, and four lines more
+        // while she held it took it from her breast and her light fell by half in a frame.)
         const story = quad();
         story.onClear({ time: 10 + HEART_FLIGHT.crest, lines: 4 });
-        expect(story.heart.time).toBe(10);
-        story.onClear({ time: 10 + HEART_FLIGHT.taken + 0.5, lines: 4 });
-        expect(story.heart.time).toBe(10 + HEART_FLIGHT.taken + 0.5);
+        expect(story.hearts.map((h) => h.time)[0]).toBe(10);
+        expect(story.hearts).toHaveLength(2);
+        // The second waits on the bed until she has taken the first.
+        expect(story.heart.time + HEART_FLIGHT.rise).toBeCloseTo(10 + HEART_FLIGHT.taken + HEART_GAP, 9);
+        // However many more come, the bed holds a few; the last of them comes up the brighter.
+        for (let i = 0; i < 6; i++) story.onClear({ time: 10 + HEART_FLIGHT.crest + 0.1 * (i + 1), lines: 4 });
+        expect(story.hearts).toHaveLength(1 + HEART_QUEUE);
+        expect(story.heart.gain).toBeGreaterThan(1);
         const again = quad();
         runTo(again, 10 + HEART_FLIGHT.held + 3);
         expect(again.heart).toBeNull();
+    });
+
+    it('never puts out the light she holds: a heart that follows adds to it, and she takes every one', () => {
+        // Four lines while the first flies, and again while she holds it.
+        const story = quad();
+        story.onClear({ time: 10 + HEART_FLIGHT.crest, lines: 4 });
+        const takenAt = [];
+        let lastOrb = null;
+        let third = false;
+        const flareFloor = Math.exp(-DT / 1.4);
+        let previous = story.heartTaken(story.time);
+        runTo(story, 10 + 4 * HEART_FLIGHT.held, (time) => {
+            if (!third && time >= 10 + HEART_FLIGHT.taken + 1.2) {
+                third = true;
+                story.onClear({ time, lines: 4 });
+            }
+            const flare = story.heartTaken(time);
+            // Her flare only falls as fast as it fades by itself; a new heart only lifts it.
+            expect(flare, `t ${time}`).toBeGreaterThanOrEqual(previous * flareFloor - 1e-9);
+            if (flare > previous + 0.3) takenAt.push(time);
+            previous = flare;
+            const orb = story.heartAt(time, [0, 0, 0, 0]);
+            if (orb && lastOrb) {
+                const moved = Math.hypot(orb[0] - lastOrb[0], orb[1] - lastOrb[1], orb[2] - lastOrb[2]);
+                // Where it hands over from the one in her breast to the next rising from the bed,
+                // the one she held has already sunk into her: nothing bright jumps.
+                if (moved > 0.25) expect(lastOrb[3], `t ${time}`).toBeLessThan(0.05);
+                else expect(orb[3], `t ${time}`).toBeGreaterThan(lastOrb[3] - 0.08);
+            }
+            lastOrb = orb;
+        });
+        // She took all three, one after another, and the story has let them go.
+        expect(takenAt).toHaveLength(3);
+        expect(takenAt[1] - takenAt[0]).toBeGreaterThan(HEART_GAP);
+        expect(story.hearts).toHaveLength(0);
+        // What she holds of them outlasts every flare.
+        expect(story.heartsHeld(story.time)).toBeGreaterThan(0.3);
+    });
+
+    it('comes up the brighter for a perfect clear that settles on the lines that raised it', () => {
+        const story = quad();
+        story.onCrown(10.36);
+        expect(story.hearts).toHaveLength(1);
+        expect(story.heart.gain).toBeGreaterThan(1);
+        // And with no heart on its way, a crown raises one.
+        const lone = storyAt(9);
+        lone.onCrown(10);
+        expect(lone.hearts).toHaveLength(1);
+    });
+
+    it('draws the two out to the water in a fever of play, chain or none, and lets them go as it cools', () => {
+        const story = storyAt(0);
+        story.setFervour(1);
+        runTo(story, 1);
+        expect(story.bond).toBeCloseTo(FERVOUR_BOND, 9);
+        expect(story.spiritWant(1).out).toBeCloseTo(FERVOUR_BOND, 9);
+        story.setFervour(0);
+        runTo(story, 2);
+        expect(story.bond).toBe(0);
     });
 });
 

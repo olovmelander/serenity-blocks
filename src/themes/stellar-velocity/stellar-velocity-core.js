@@ -41,10 +41,15 @@ export function gearForCombo(combo) {
     return combo > 0 ? 1 + (GEAR_CHAIN - 1) * (1 - Math.exp(-combo / 3.8)) : 1;
 }
 
-/** The most of light's speed a chain reaches: past it only a jump goes. */
+/** The most of light's speed a chain reaches: past it only a fever and a jump go. */
 export const WARP_CHAIN = 0.9;
+/** What a fever holds the field at: top gear, the sky bunched hard into the sun. */
+export const WARP_FEVER = 0.955;
 /** What a jump's spool pulls the field to. */
 export const WARP_JUMP = 0.985;
+/** Gears the heat of play adds on top of a chain's (all of it at full heat), and a fever's. */
+export const GEAR_HEAT = 3;
+export const GEAR_FEVER = 10;
 
 /**
  * How much of light's speed a chain of n clears is shown at (0 at rest → WARP_CHAIN). This is
@@ -86,11 +91,28 @@ export const HOOP_SEGMENTS = 96;
 /** Hoops whose light the cloud is marched with (the nearest lit ones). */
 export const HOOP_LIGHTS = 4;
 
-/** What is left of a hoop's light `age` seconds after its lock. */
-export function hoopHeld(age) {
+/**
+ * Seconds a WAKE ring's light takes to fall to 1/e. While play runs hot, a hoop we have flown
+ * through re-forms at its place as a dimmer ring (its wake), and the next clear flies through it
+ * again: in a long chain the canyon fills with rings in the chain's colours. Once the hands rest
+ * the wake fades in seconds, not in half a minute.
+ */
+export const WAKE_HOLD = 4.5;
+
+/** What is left of a hoop's light `age` seconds after its lock (a wake ring's: `wake` true). */
+export function hoopHeld(age, wake = false) {
     if (age < 0 || age > HOOP_LIFE) return 0;
     const t = Math.min(1, age / HOOP_OPEN);
-    return t * t * (3 - 2 * t) * Math.exp(-age / HOOP_HOLD) * (1 - smooth(HOOP_LIFE - 10, HOOP_LIFE, age));
+    const hold = wake ? WAKE_HOLD : HOOP_HOLD;
+    return t * t * (3 - 2 * t) * Math.exp(-age / hold) * (1 - smooth(HOOP_LIFE - 10, HOOP_LIFE, age));
+}
+
+/**
+ * How much of a hoop's light its wake keeps, for the heat of play (0..1): none in casual play,
+ * most of it in a fever.
+ */
+export function wakeShare(level) {
+    return smooth(0.3, 0.8, level) * 0.78;
 }
 
 /** Where slot k's hoop stands (depth ahead) and how wide it is. */
@@ -365,6 +387,12 @@ export function paletteName(place) {
 
 /** The colour a clear's fronts and a jump's flash come in. */
 export const DRIVEFIRE = Object.freeze([0.86, 0.95, 1.0]);
+/** A cascade's deeper waves burn toward this: the drive's light shifted blue, as of a faster ship. */
+export const AFTERBURN = Object.freeze([0.42, 0.68, 1.0]);
+/** A back-to-back's gold: the sun's spikes, a front, the arrival of a back-to-back jump. */
+export const B2B_GOLD = Object.freeze([1.0, 0.68, 0.24]);
+/** A perfect clear's crown: the tunnel's threads and the fronts it arrives with. */
+export const CROWN_FIRE = Object.freeze([1.0, 0.86, 0.56]);
 
 /**
  * Where the sun (the point the course runs to) hangs for an aspect ratio, as screen fractions,

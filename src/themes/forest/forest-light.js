@@ -35,6 +35,14 @@ export const FOREST_MOON_DIRECTION = Object.freeze(new THREE.Vector3(
 /** The colour of a firefly's light, and of the white gold a long combo heats it to. */
 export const FOREST_FIREFLY_COLOUR = Object.freeze([0.72, 1.0, 0.2]);
 export const FOREST_FIREFLY_HOT = Object.freeze([1.0, 0.92, 0.52]);
+/**
+ * How much less the events lift the moon (its face, the air round it, the fill it lends the
+ * forest; the lens follows) at a level of play of 1, and how far a full fever draws the moon's
+ * light back below its resting strength: under hot play the night deepens and the fireflies,
+ * the only saturated colour in it, carry the build-up and blaze against it.
+ */
+export const FOREST_MOON_HOT = 0.45;
+export const FOREST_MOON_FEVER = 0.3;
 
 /** Four channels of tileable value noise at rising frequencies. */
 function createNoiseTexture(rng, size = 128) {
@@ -111,6 +119,8 @@ export class ForestLight {
         this.uMoonColor = tone('moon');
         // Events lift the moon a little; 1 at rest.
         this.uMoonGain = uniform(1);
+        // A back-to-back's ice ring round the moon (0 at rest, up to 1.5 for several in a row).
+        this.uHalo = uniform(0);
         this.uSkyLight = tone('skyLight');
         this.uBounce = tone('bounce');
         this.uFill = tone('fill');
@@ -425,10 +435,17 @@ export class ForestLight {
     update(time, dt, frame = {}) {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        this.uGust.value = clamp01(frame.gust) * 1.5;
+        const level = clamp01(frame.surge?.level);
+        // The event gusts, and the standing breeze hot play keeps bowing the ferns.
+        this.uGust.value = clamp01(clamp01(frame.gust) + clamp01(frame.breeze)) * 1.5;
         this.uGlow.value = clamp01(frame.glow);
         this.uWake.value = clamp01(frame.wake);
-        this.uMoonGain.value = 1 + clamp01(frame.moon) * 0.75;
+        // The moon answers each event, a little less the hotter play runs, so a long chain never
+        // washes the blue night out round it; in a fever it draws its light back and the wood
+        // burns with its own.
+        this.uMoonGain.value = (1 + clamp01(frame.moon) * (1 - FOREST_MOON_HOT * level) * 0.75)
+            * (1 - FOREST_MOON_FEVER * clamp01(frame.surge?.fever));
+        this.uHalo.value = Number.isFinite(frame.halo) ? THREE.MathUtils.clamp(frame.halo, 0, 1.5) : 0;
         if (frame.front && Number.isFinite(frame.front.x)) {
             this.uFront.value.set(frame.front.x, clamp01(frame.front.strength) * 2.2, 20, 0);
         } else this.uFront.value.y = 0;

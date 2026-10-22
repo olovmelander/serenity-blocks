@@ -146,6 +146,26 @@ export function createPapers(u, count) {
     const part = hpPart('HimalayanPeakPapers', geometry, material, 44);
     let cursor = 0;
     let bursts = 0;
+    /** How far past the oldest paper a throw looks for one already gone before taking it. */
+    const LOOK_AHEAD = 48;
+    /**
+     * The slot the next paper thrown at `time` takes: the oldest thrown, unless it is still in
+     * the air and one of the next few has already landed (lives differ). A storm on a storm
+     * never takes a paper out of the air while a spent one is to hand.
+     */
+    const nextSlot = (time) => {
+        for (let k = 0; k < LOOK_AHEAD && k < count; k++) {
+            const i = (cursor + k) % count;
+            if (time >= aBirth[i * 4 + 3] + aVel[i * 4 + 3]) {
+                // (The live ones passed over stay in the air; the cursor comes round to them.)
+                cursor += k + 1;
+                return i;
+            }
+        }
+        const i = cursor % count;
+        cursor += 1;
+        return i;
+    };
     /**
      * Throw `n` papers from a point at `time` (which may be a moment ahead).
      * @param {object} o
@@ -165,8 +185,7 @@ export function createPapers(u, count) {
         const len = Math.hypot(toward[0], toward[1], toward[2]) || 1;
         const total = Math.min(n, count);
         for (let k = 0; k < total; k++) {
-            const i = cursor % count;
-            cursor += 1;
+            const i = nextSlot(time);
             // A random heading inside the cone about `toward`.
             const a = rand() * TAU;
             const z = rand() * 2 - 1;

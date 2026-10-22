@@ -44,6 +44,8 @@ export function createMatterUniforms(lens) {
         surge: uniform(0),
         heat: uniform(1),
         jets: uniform(0),
+        /** 0…1: a fever opens the jets up — longer, wider, their field lines wound tight. */
+        jetFlare: uniform(0),
     };
 }
 
@@ -350,13 +352,14 @@ export class BlackHoleMatter {
         material.side = THREE.DoubleSide;
         const sign = float(instanceIndex).mul(2).sub(1);
         const axis = u.diskToWorld.mul(vec3(0, 1, 0)).mul(sign);
-        const reach = u.jets.mul(14).add(10);
+        const flare = u.jetFlare;
+        const reach = u.jets.mul(14).add(10).add(flare.mul(9));
         const t = positionGeometry.x.add(0.5);
         const base = u.holePosition.add(axis.mul(u.rs.mul(1.6)));
         const spine = base.add(axis.mul(u.rs.mul(reach).mul(t)));
         const side = normalize(cross(axis, cameraPosition.sub(spine)));
         // A narrow throat that opens into a slowly widening column.
-        const girth = u.rs.mul(pow(t, 0.75).mul(3.6).add(1.1));
+        const girth = u.rs.mul(pow(t, 0.75).mul(flare.mul(1.4).add(3.6)).add(1.1));
         const point = spine.add(side.mul(positionGeometry.y.mul(2)).mul(girth));
         const world = varying(point);
         // The jet that points our way is beamed brighter.
@@ -373,14 +376,15 @@ export class BlackHoleMatter {
         const spine2 = exp(spread.mul(spread).mul(-120));
         const core = exp(spread.mul(spread).mul(-16));
         const sheath = exp(spread.mul(spread).mul(-3.4));
-        // Two field lines wound round the column, crossing as they climb.
-        const wind = sin(flow.mul(2.4)).mul(0.36);
+        // Two field lines wound round the column, crossing as they climb; a fever winds them
+        // tighter and lets them carry the light, so the column blazes violet rather than white.
+        const wind = sin(flow.mul(flare.mul(1.8).add(2.4))).mul(0.36);
         const strandA = across.sub(wind);
         const strandB = across.add(wind);
         const strands = exp(strandA.mul(strandA).mul(-85)).add(exp(strandB.mul(strandB).mul(-85)));
-        const body = spine2.mul(knots.mul(3.2).add(1.4))
+        const body = spine2.mul(knots.mul(3.2).add(1.4)).mul(flare.mul(-0.6).add(1))
             .add(core.mul(knots.mul(0.6).add(0.3)).mul(grain.mul(0.9).add(0.55)))
-            .add(strands.mul(grain.add(0.35)).mul(0.8))
+            .add(strands.mul(grain.add(0.35)).mul(flare.mul(1.1).add(0.8)))
             .add(sheath.mul(grain.mul(0.8).add(0.4)).mul(0.13));
         const envelope = smoothstep(0.0, 0.1, along).mul(pow(along.oneMinus(), 1.5));
         // Hide the stretch of the far jet that lies behind the shadow.
@@ -393,10 +397,16 @@ export class BlackHoleMatter {
         const shadow = u.rs.mul(HOLE.CRITICAL);
         // The column only lights once it is clear of the shadow, on either side of the hole.
         const clear = smoothstep(shadow.mul(0.92), shadow.mul(1.7), impact);
-        const tint = mix(mix(vec3(0.36, 0.3, 0.95), vec3(0.34, 0.6, 1.0), core), vec3(0.86, 0.93, 1.0), spine2);
+        // Opened up by a fever, the column burns a deeper violet-blue at a little less light, so
+        // it blazes in colour rather than flaring white.
+        const tint = mix(
+            mix(vec3(0.36, 0.3, 0.95), vec3(0.34, 0.6, 1.0), core.mul(flare.mul(-0.45).add(1))),
+            vec3(0.86, 0.93, 1.0),
+            spine2.mul(flare.mul(-0.5).add(1)),
+        );
         material.outputNode = vec4(tint.mul(body).mul(envelope).mul(u.jets).mul(toward)
             .mul(clear)
-            .mul(2.6), 0);
+            .mul(flare.mul(-0.7).add(2.6)), 0);
         this.jets = this.add(new THREE.InstancedMesh(this.geometry, material, 2), 'Black Hole — jets', 30);
         this.jets.visible = false;
     }
@@ -431,9 +441,10 @@ export class BlackHoleMatter {
         const u = this.uniforms;
         u.time.value = time;
         u.turns.value = turns % TURN_WRAP;
-        u.surge.value = director.surge;
+        u.surge.value = director.dust ?? director.surge;
         u.heat.value = director.diskHeat;
         u.jets.value = director.jets;
+        u.jetFlare.value = director.jetFlare ?? 0;
         // Idle layers leave the render list altogether.
         this.jets.visible = director.jets > 0.004;
         let feeding = false;

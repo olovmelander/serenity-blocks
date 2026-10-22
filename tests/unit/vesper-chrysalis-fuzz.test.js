@@ -21,8 +21,8 @@ import {
     REST_RIG, VESPER_PARTS, VesperWorld, fovForAspect,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-world.js';
 import {
-    BLOOM_FULL, BLOOM_HOLD, BLOOM_RISE, HUSH_HOLD, MOTH_FLIGHT, RING_LIVE, RING_SLOTS, SWELL_LIVE, WING_FALL,
-    mulberry32, swellPassTime,
+    BLOOM_FULL, BLOOM_HOLD, BLOOM_RISE, HUSH_HOLD, MOTH_FLIGHT, RING_LIVE, SWELL_LIVE, WING_FALL,
+    mulberry32, swellPassTime, wingForCombo,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 import { QUALITY_NAMES } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-quality.js';
 import { fallbackLayout } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-composition.js';
@@ -173,7 +173,7 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
     };
     const ring = world.ring.bind(world);
     world.ring = (...args) => {
-        if (world.u.ringA[world.ringCursor % RING_SLOTS].value.z > world.time) stats.ringsUnseen += 1;
+        if (world.u.ringA[world.ringSlot()].value.z > world.time) stats.ringsUnseen += 1;
         return ring(...args);
     };
     // The fastest a lily's light can change: its rise (a smoothstep over BLOOM_RISE) plus its fade.
@@ -295,12 +295,13 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         const wing = u.wing.value;
         if (!(world.wing >= 0 && world.wing <= 1)) fault(`wing ${world.wing}`);
         if (wing.x !== world.wing) fault(`the shaders' wing ${wing.x} is not the world's ${world.wing}`);
-        const fallAge = t - world.fallStart;
-        if (fallAge >= 0 && fallAge < WING_FALL) {
-            need(world.wing === world.fallFrom, () => `falling wings changed from ${world.fallFrom} to ${world.wing}`);
-            need(Math.abs(wing.z - fallAge / WING_FALL) <= 1e-9, () => `fall ${wing.z} at ${fallAge} s`);
-        } else if (wing.z !== 0) fault(`fall ${wing.z} with nothing falling`);
-        // (A chain may run while the old wings fall: its own wait, and `wing` stays the old ones'.)
+        // The folding front frays (0..1); wings that moult never fold below the chain's own step.
+        need(wing.z >= 0 && wing.z <= 1, () => `fray ${wing.z}`);
+        need(
+            !world.moulting || world.wing >= wingForCombo(world.combo) - 1e-12,
+            () => `wings moulting at ${world.wing}, below the chain of ${world.combo}'s step`,
+        );
+        // (A chain may run while the old wings fold: it catches them where they stand.)
         const eyes = u.eyes.value;
         for (const [name, v] of [['hind eye', eyes.x], ['fore eye', eyes.y], ['radiance', eyes.z]]) {
             if (!(v >= 0 && v <= 1)) fault(`${name} ${v}`);
@@ -378,9 +379,15 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
             time, delta, pointerX: pointer ? pointer[0] : 0, pointerY: pointer ? pointer[1] : 0,
         };
         const before = eased();
+        const { moulting } = world;
         world.updateCamera(camera, sim);
         world.update(sim, camera);
         stats.frames += 1;
+        // Moulting wings fold back at an even pace: never faster than 1 / WING_FALL of the span a second.
+        need(
+            !moulting || before[0] - world.wing <= delta / WING_FALL + 1e-9,
+            () => `moulting wings fell from ${before[0]} to ${world.wing} in ${delta} s`,
+        );
         // A frame of no time moves nothing that eases, whatever was asked of the world before it.
         if (delta === 0) {
             const after = eased();
@@ -447,21 +454,23 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         if (lines === 4 || perfect) stats.quads += 1;
         note = `a clear of ${lines}${perfect ? ' (perfect)' : ''}`;
     };
-    /** Whether wings are falling as the world's clock stands. */
-    const fallingNow = () => world.time - world.fallStart >= 0 && world.time - world.fallStart < WING_FALL;
+    /** Whether the wings are moulting (folding back after a break) as the world stands. */
+    const fallingNow = () => world.moulting;
     const chain = (n) => {
         const before = world.combo;
         const count = Math.max(0, Math.round(Number(n) || 0));
-        // Wings that stand fall when the chain drops (to nothing, or to a shorter one); wings
-        // already falling are not dropped again; a longer chain rings the silk. (How much wing
+        // Wings that stand moult when the chain drops (to nothing, or to a shorter one); wings
+        // already moulting are not dropped again; a longer chain rings the silk. (How much wing
         // counts as standing is the world's to tune: wings well open must fall, none at all cannot.)
         const lower = count < before && !fallingNow();
         const start = world.fallStart;
+        const wasMoulting = world.moulting;
         const { falls } = world.counts;
         const { wing } = world;
         world.onCombo(n);
         if (world.combo !== count) fault(`a chain of ${String(n)} left the combo at ${world.combo}`);
-        const drops = world.fallStart !== start;
+        // (A fall can start at the very time the last one did: a frame of no time between them.)
+        const drops = world.fallStart !== start || (!wasMoulting && world.moulting);
         need(!(lower && wing > 0.2) || drops, () => `a chain of ${before} -> ${count} left wings at ${wing} standing`);
         need(!drops || (lower && wing > 0), () => `a chain of ${before} -> ${count} dropped wings at ${wing}`);
         const told = `a chain of ${before} -> ${count}`;
@@ -470,7 +479,10 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         if (drops) {
             stats.falls += 1;
             if (count > 0) stats.fallsToShorter += 1;
-            need(world.fallStart === world.time && world.fallFrom === wing, () => 'a fall that starts elsewhere');
+            need(
+                world.fallStart === world.time && world.fallFrom === wing && world.moulting,
+                () => 'a fall that starts elsewhere',
+            );
         }
         if (count > before) {
             written.pulses += 1;
@@ -489,10 +501,11 @@ function play(seed, { events = 2500, quality = 'Low' } = {}) {
         };
         const chained = world.combo > 0 && !fallingNow();
         const start = world.fallStart;
+        const wasMoulting = world.moulting;
         if (gameOver) world.onGameOver();
         world.resetSession();
         newCounts();
-        const drops = world.fallStart !== start;
+        const drops = world.fallStart !== start || (!wasMoulting && world.moulting);
         if (chained && before.wing > 0.2 && !drops) fault('a new run left the wings of its chain standing');
         if (drops && !(chained && before.wing > 0)) fault('a new run dropped wings that were not standing');
         if (drops) stats.falls += 1;

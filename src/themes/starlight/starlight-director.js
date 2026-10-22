@@ -9,6 +9,10 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.crown(player)         a PERFECT_CLEAR alone in its frame (physics sends it ~360 ms after
+ *                              the clear's last wave): the crown on the clear still playing, never
+ *                              a clear of its own (a sink without `crown` gets the old 1-line clear)
+ *   sink.spin(player)          a T-spin that cleared nothing (no clear follows it)
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -349,13 +353,13 @@ export class StarlightDirector {
         return true;
     }
 
+    /** In the same frame as its lines it rides on their clear; alone it is a crown (resolve). */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -405,6 +409,12 @@ export class StarlightDirector {
                 c.screen = null;
                 sink.lock(c);
             }
+            if (slot.lines === 0 && slot.perfect) {
+                // The late perfect clear: the crown on the clear already shown.
+                if (sink?.crown) sink.crown(slot.player);
+                else slot.lines = 1;
+            }
+            if (slot.lines === 0 && slot.tspin) sink?.spin?.(slot.player);
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;

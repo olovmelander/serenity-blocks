@@ -384,6 +384,12 @@ export function createVoidEmberUniforms(textures) {
         iris: uniform(1),
         /** The corona and the ember wind wind up (a T-spin) and spring back: radians per radius. */
         twist: uniform(0),
+        /**
+         * How hot play runs, spent where the world wears it (0 at rest): the loops the star holds
+         * stand taller and burn brighter, and the fire in the belt's stones wakes in every stone.
+         */
+        loopGrow: uniform(0),
+        blaze: uniform(0),
         /** The light the star casts on what is round it (colour × strength at one radius). */
         starLight: uniform(new THREE.Vector3(1, 0.2, 0.03)),
         /** The share of it the dust of the void gets (it grows far less with the heat). */
@@ -399,10 +405,10 @@ export function createVoidEmberUniforms(textures) {
         worldCentre: uniform(new THREE.Vector3(60, 20, -180)),
         worldRadius: uniform(6),
         /**
-         * Impacts on the photosphere, two rows each: (site in the star's frame, birth time) and
-         * (colour, strength). `impactCount` rows are live.
+         * Impacts on the photosphere, three rows each: (site in the star's frame, birth time),
+         * (colour, strength) and (how long its scar lasts, _, _, _). `impactCount` rows are live.
          */
-        impacts: uniformArray(Array.from({ length: IMPACT_SLOTS * 2 }, far), 'vec4'),
+        impacts: uniformArray(Array.from({ length: IMPACT_SLOTS * 3 }, far), 'vec4'),
         impactCount: uniform(0, 'int'),
         /**
          * Clear waves, three rows each: (birth time, strength, fronts, shell thickness),
@@ -412,6 +418,18 @@ export function createVoidEmberUniforms(textures) {
         waves: uniformArray(Array.from({ length: WAVE_SLOTS * 3 }, far), 'vec4'),
         /** 1 while any wave is still crossing the frame (the per-pixel wave maths is skipped at rest). */
         wavesLive: uniform(0),
+        /**
+         * The afterglow of waves whose slots were taken by newer ones: Σ strength · e^(−age /
+         * WAVE_AFTERGLOW), now. Every wave that has passed a point glows there by the same
+         * e^(pass / WAVE_AFTERGLOW) factor, so the sum carries on exactly where they had passed.
+         */
+        waveCarry: uniform(0),
+        /**
+         * How bright the shells are drawn (1 at rest): when many cross the frame at once their sum
+         * is eased (about the square root of how many), so a cascade's shells read as a train of
+         * fronts over the void, not a haze over the frame.
+         */
+        shellGain: uniform(1),
         latticeTex: textures.lattice,
         fbmTex: textures.fbm,
         /** The crust's plates, baked (createPlatesTexture). */
@@ -467,7 +485,11 @@ export const veWaveLight = (u, radii) => {
         front = front.add(C.rgb.mul(f.mul(A.y)));
         glow = glow.add(exp(max(since, 0.0).div(-WAVE_AFTERGLOW)).mul(live));
     }
-    return vec4(front, min(glow, 1.5));
+    // What the waves that gave up their slots still leave behind (they had all passed here).
+    glow = glow.add(u.waveCarry.mul(exp(pass.div(WAVE_AFTERGLOW))));
+    // Linear to 0.8 (one wave's), then a soft knee to 1.2: many waves glow longer, not whiter.
+    const knee = min(glow, 0.8).add(float(0.4).mul(float(1.0).sub(exp(max(glow.sub(0.8), 0.0).div(-0.4)))));
+    return vec4(front, knee);
 };
 
 // ── Materials and geometry ──────────────────────────────────────────────────────

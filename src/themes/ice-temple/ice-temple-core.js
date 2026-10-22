@@ -75,9 +75,13 @@ export const MOON = Object.freeze({
     tanElevation: Math.tan(MOON_ELEVATION),
 });
 
-/** Gameplay pulse slots evaluated by the materials. */
-export const LOCK_SLOTS = 4;
-export const CLEAR_SLOTS = 2;
+/**
+ * Gameplay pulse slots evaluated by the materials. A new event takes the slot with the least
+ * light left in it, so under fast play (a hard drop every 300 ms, a cascade's waves 360 ms
+ * apart) a fracture still healing or a wave still running down the nave is not cut short.
+ */
+export const LOCK_SLOTS = 6;
+export const CLEAR_SLOTS = 4;
 
 /**
  * Lock: the piece strikes the ice. A shell of light runs out through the temple at

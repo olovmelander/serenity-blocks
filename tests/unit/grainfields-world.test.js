@@ -381,7 +381,10 @@ describe('GrainfieldsWorld: events reach the reactions and the counters', () => 
         world.onB2B(3);
         expect(world.counts.b2bSteps).toBe(2);
         expect(world.reactions.b2b).toBe(3);
+        // (It rises over a second, never in a step.)
         world.update(sim(START, 0), shared.camera);
+        expect(world.u.windStrength.value).toBeCloseTo(wind0, 9);
+        stepTo(shared, START + 1.2);
         expect(world.u.windStrength.value).toBeGreaterThan(wind0);
         world.onLock({ u: 0.3, rows: [12] });
         world.onB2B(0);
@@ -467,6 +470,156 @@ describe('GrainfieldsWorld: events reach the reactions and the counters', () => 
         } finally {
             world.setReducedMotion(false);
         }
+    });
+});
+
+describe('GrainfieldsWorld: play builds the storm\'s break', () => {
+    /** The tray's Fever: twelve hard-dropped clears 0.64 s apart, the chain counting up. */
+    function chain(w, clears = 12, gap = 0.64) {
+        const { world } = w;
+        for (let n = 1; n <= clears; n++) {
+            world.onLock({
+                u: (n * 0.29) % 1, rows: [19], color: PIECE_COLORS[n % 7], hardDrop: true, distance: 14,
+            });
+            world.onClear({ lines: 1 + (n % 3), combo: n });
+            world.onCombo(n);
+            stepTo(w, world.time + gap);
+        }
+    }
+    const look = (world) => ({
+        level: world.heat.level,
+        cover: world.u.cover.value,
+        wind: world.u.windStrength.value,
+        saturation: world.getPostState().saturation,
+        gust: world.gustLead,
+        deck: world.deckLead,
+    });
+
+    it('reads a long chain hotter than its first clear: the deck more open, the wind up, the gold deeper', () => {
+        const { world } = shared;
+        begin(shared);
+        const rest = look(world);
+        chain(shared, 1);
+        const first = look(world);
+        begin(shared);
+        chain(shared, 12);
+        const last = look(world);
+        expect(first.level).toBeGreaterThan(rest.level);
+        expect(last.level).toBeGreaterThan(first.level + 0.4);
+        expect(world.heat.stage).toBe(3); // the fever
+        expect(last.cover).toBeLessThan(first.cover - 0.2);
+        expect(last.wind).toBeGreaterThan(first.wind);
+        expect(last.saturation).toBeGreaterThan(first.saturation + 0.05);
+        // The deck races and the gusts run on ahead of the clock's closed forms.
+        expect(last.gust).toBeGreaterThan(first.gust);
+        expect(last.deck).toBeGreaterThan(first.deck);
+        // The storm opens past the chain's own last step (a fever adds to the break).
+        expect(world.u.breaking.value).toBeGreaterThan(world.reactions.breaking(world.time));
+        expect(world.u.cover.value).toBeGreaterThanOrEqual(0.05);
+        expect(world.beamGlow).toBeGreaterThan(1);
+        begin(shared);
+    });
+
+    it('breathes back to the world at rest when the hands rest', () => {
+        const { world } = shared;
+        begin(shared);
+        const rest = world.getPostState().saturation;
+        chain(shared, 12);
+        world.onLock({ u: 0.5, rows: [19] });
+        world.onCombo(0);
+        const hot = look(world);
+        stepTo(shared, world.time + TIMING.breakOut + 2, 0.1);
+        const after = look(world);
+        expect(after.level).toBeLessThan(0.02);
+        expect(world.heat.stage).toBe(0);
+        expect(after.saturation).toBeCloseTo(rest, 2);
+        expect(after.cover).toBeCloseTo(world.light.cover, 3);
+        // The leads stop growing at rest (the deck and the gusts run at their own speeds again).
+        const lead = world.deckLead;
+        stepTo(shared, world.time + 2, 0.1);
+        expect(world.deckLead - lead).toBeLessThan(0.01);
+        expect(hot.level).toBeGreaterThan(0.5);
+        begin(shared);
+    });
+
+    it('never cuts the light for a weak event right after a strong one: a single after a quad only adds', () => {
+        const { world } = shared;
+        begin(shared);
+        world.onLock({
+            u: 0.9, rows: [19, 18, 17, 16], hardDrop: true, distance: 15,
+        });
+        world.onClear({ lines: 4, combo: 1 });
+        stepTo(shared, START + 0.9);
+        const read = () => ({
+            tear: world.u.tear.value.w,
+            front: world.u.flare.value,
+            glow: world.fx.flare,
+            exposure: world.getPostState().exposure,
+            bloom: world.getPostState().bloomBoost,
+            level: world.heat.level,
+        });
+        const before = read();
+        world.onLock({ u: 0.2, rows: [19] });
+        world.onClear({ lines: 1, combo: 2 });
+        world.onCombo(2);
+        stepTo(shared, START + 0.9 + 1 / 30);
+        const after = read();
+        for (const key of Object.keys(before)) expect(after[key], key).toBeGreaterThanOrEqual(before[key] - 0.01);
+        // And a second quad feeds the tear over the gate, never moving it or closing it.
+        const { tearX, tearZ } = world.reactions;
+        stepTo(shared, START + 4);
+        world.onClear({ lines: 4, combo: 3 });
+        expect([world.reactions.tearX, world.reactions.tearZ]).toEqual([tearX, tearZ]);
+        stepTo(shared, START + 4 + 1 / 30);
+        expect(world.u.tear.value.w).toBeCloseTo(1, 3);
+        begin(shared);
+    });
+
+    it('crowns a clear with a late perfect clear: the sky clears and the geese lift off, with no second clear', () => {
+        const { world } = shared;
+        begin(shared);
+        world.onClear({ lines: 4, combo: 1 });
+        const lanes = world.reactions.trails.length;
+        const tear = world.reactions.tearAt;
+        stepTo(shared, START + 0.4);
+        world.onClear({
+            lines: 1, rows: [], perfect: true, crown: true, combo: 1,
+        });
+        expect(world.counts).toMatchObject({ clears: 1, quads: 1, perfects: 1 });
+        expect(world.reactions.trails).toHaveLength(lanes); // no stray lane
+        expect(world.reactions.tearAt).toBe(tear); // the quad's tear is not opened again
+        expect(world.u.skein.value).toBe(world.time);
+        stepTo(shared, world.time + 3);
+        expect(world.u.clearSky.value).toBeCloseTo(1, 6);
+        begin(shared);
+    });
+
+    it('turns a little wind for a T-spin that cleared nothing', () => {
+        const { world } = shared;
+        begin(shared);
+        world.onSpin({ player: 0, u: 0.3 });
+        expect(world.counts).toMatchObject({ spins: 1, clears: 0, tspins: 0 });
+        expect(world.reactions.pulses.map((p) => p.kind)).toEqual([PULSE.whirl]);
+        expect(thrownAt(world, START)).toBeGreaterThan(0);
+        stepTo(shared, START + 0.5);
+        expect(world.u.pulseCount.value).toBe(1);
+        expect(world.heat.level).toBeGreaterThan(0);
+        begin(shared);
+    });
+
+    it('lets a skein still in sight fly on: a second level-up soon after never makes it vanish', () => {
+        const { world } = shared;
+        begin(shared);
+        world.levelUp(2);
+        expect(world.u.skein.value).toBe(START);
+        stepTo(shared, START + 8);
+        world.levelUp(3);
+        expect(world.u.skein.value).toBe(START);
+        expect(world.reactions.pulses.filter((p) => p.kind === PULSE.wave)).toHaveLength(2);
+        stepTo(shared, START + 60, 0.5);
+        world.levelUp(4);
+        expect(world.u.skein.value).toBe(world.time);
+        begin(shared);
     });
 });
 

@@ -17,7 +17,11 @@
  * A kindled star flashes when its mote arrives.
  *
  * LINES. A figure's lines are thin strips between two sky directions, drawn on from one star to
- * the other with a bright point at the tip, short of the stars at both ends.
+ * the other with a bright point at the tip, short of the stars at both ends. In the hour's line
+ * colour at rest; as play heats they take the colours of the two stars they join.
+ *
+ * HEAT. As play runs hot the trails turn to their stars' own colours (embers, golds, blues) and
+ * the faintest thin out, so a fever's long exposure is vivid arcs on a dark sky, never a veil.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -48,7 +52,7 @@ import {
     FIGURES_KEPT, FIGURE_LINES, FIGURE_STARS,
 } from './starlight-core.js';
 import {
-    SKY_RADIUS, mirrorDir, mirrorShare, ridges, sized, skyDir, skyTangent, starColour, woodsTop,
+    SKY_RADIUS, mirrorDir, mirrorShare, ridges, sized, skyDir, skyTangent, slLuma, starColour, woodsTop,
 } from './starlight-tsl.js';
 
 /** Catalogue stars bright enough to carry a glint (the catalogue is sorted brightest first). */
@@ -57,6 +61,7 @@ export const KINDLED = FIGURES_KEPT * FIGURE_STARS;
 export const GLINTS = BRIGHT_GLINTS + KINDLED;
 export const LINES = FIGURES_KEPT * FIGURE_LINES;
 const LINE_SEGMENTS = 6;
+const WHITE = Object.freeze([1, 1, 1]);
 
 const additive = () => new THREE.MeshBasicNodeMaterial({
     transparent: true,
@@ -154,8 +159,16 @@ function fieldMaterial({
     const depth = exp(max(d.y, 0.0).div(-0.16)).mul(0.5).add(0.09).mul(u.shutter.oneMinus());
     const twinkle = beat.mul(depth).add(1.0);
 
-    const colour = starColour(look.x).mul(air.tint);
-    const vColour = varying(vec4(colour.mul(light).mul(air.kept).mul(shown).mul(twinkle)
+    // Heat: the colours of the stars come up (their temperatures spread toward ember and blue, and
+    // a saturation push) and the faint dust gives way to the bright, so the trails read as
+    // coloured arcs on a dark sky.
+    const temp = mix(look.x, smoothstep(0.3, 0.72, look.x), u.fever);
+    const hue = starColour(temp).mul(air.tint);
+    const colour = max(mix(vec3(slLuma(hue)), hue, u.fever.mul(1.2).add(u.heat.mul(0.25)).add(1.0)), 0.0);
+    const clarity = u.fever.mul(0.85).add(u.heat.mul(0.1));
+    const keep = mix(float(1.0), smoothstep(0.1, 0.55, light).mul(1.15).add(0.04), clarity);
+    const vColour = varying(vec4(colour.mul(light).mul(keep).mul(air.kept).mul(shown)
+        .mul(twinkle)
         .mul(u.starPower), reach));
     // (arc position in half-widths: −1 at the head's cap … reach + 1 at the tail's, side)
     const vAt = varying(vec2(share.mul(reach).sub(cap), side));
@@ -358,6 +371,8 @@ function lineMaterial({
     const material = additive();
     const from = attribute('aFrom', 'vec4'); // cos ρ, sin ρ, θ, the moment the line is drawn
     const to = attribute('aTo', 'vec4'); // cos ρ, sin ρ, θ, the figure's slot (−1 = no line)
+    const paintA = attribute('aPaintA', 'vec3'); // the colours of the stars it joins
+    const paintB = attribute('aPaintB', 'vec3');
     const t = positionGeometry.x; // 0 … 1 along the line
     const side = positionGeometry.y;
     const a = skyDir(u, from.x, from.y, from.z.add(u.skyAngle));
@@ -379,7 +394,8 @@ function lineMaterial({
 
     const vAt = varying(vec2(t, side));
     const drawn = clamp(u.time.sub(from.w).div(0.55), 0.0, 1.0);
-    const vLight = varying(vec4(u.line.mul(shown).mul(figure.x), drawn));
+    const hue = mix(u.line, mix(paintA, paintB, t), u.tint);
+    const vLight = varying(vec4(hue.mul(shown).mul(figure.x), drawn));
     const flareV = varying(figure.y);
     // Short of the stars at both ends; drawn on from the first to the second.
     const ends = smoothstep(0.06, 0.14, vAt.x).mul(smoothstep(0.94, 0.86, vAt.x));
@@ -415,16 +431,21 @@ function createLines({ u, noise, tier }) {
         to[i * 4] = 1;
         to[i * 4 + 3] = -1;
     }
+    const paintA = new Float32Array(LINES * 3).fill(1);
+    const paintB = new Float32Array(LINES * 3).fill(1);
     const fromAttr = new THREE.InstancedBufferAttribute(from, 4);
     const toAttr = new THREE.InstancedBufferAttribute(to, 4);
-    fromAttr.setUsage(THREE.DynamicDrawUsage);
-    toAttr.setUsage(THREE.DynamicDrawUsage);
+    const paintAAttr = new THREE.InstancedBufferAttribute(paintA, 3);
+    const paintBAttr = new THREE.InstancedBufferAttribute(paintB, 3);
+    [fromAttr, toAttr, paintAAttr, paintBAttr].forEach((attr) => attr.setUsage(THREE.DynamicDrawUsage));
     const build = (mirrored) => {
         const geometry = new THREE.InstancedBufferGeometry();
         geometry.setIndex(index);
         geometry.setAttribute('position', positionAttr);
         geometry.setAttribute('aFrom', fromAttr);
         geometry.setAttribute('aTo', toAttr);
+        geometry.setAttribute('aPaintA', paintAAttr);
+        geometry.setAttribute('aPaintB', paintBAttr);
         geometry.instanceCount = LINES;
         const mesh = new THREE.Mesh(geometry, lineMaterial({
             u, noise, tier, mirrored,
@@ -437,8 +458,11 @@ function createLines({ u, noise, tier }) {
     return {
         sky: build(false),
         lake: build(true),
-        /** Line `slot` (0..LINES−1) of figure `figure`, drawn at `at` from star a to star b. */
-        set(slot, a, b, at, figure) {
+        /**
+         * Line `slot` (0..LINES−1) of figure `figure`, drawn at `at` from star a to star b, in
+         * their colours `rgbA`, `rgbB` (shown as play heats; white when not given).
+         */
+        set(slot, a, b, at, figure, rgbA = WHITE, rgbB = WHITE) {
             const i = slot * 4;
             from[i] = Math.cos(a.rho);
             from[i + 1] = Math.sin(a.rho);
@@ -448,8 +472,15 @@ function createLines({ u, noise, tier }) {
             to[i + 1] = Math.sin(b.rho);
             to[i + 2] = b.theta;
             to[i + 3] = figure;
+            const p = slot * 3;
+            for (let k = 0; k < 3; k += 1) {
+                paintA[p + k] = rgbA[k];
+                paintB[p + k] = rgbB[k];
+            }
             fromAttr.needsUpdate = true;
             toAttr.needsUpdate = true;
+            paintAAttr.needsUpdate = true;
+            paintBAttr.needsUpdate = true;
         },
         clear(slot) {
             to[slot * 4 + 3] = -1;

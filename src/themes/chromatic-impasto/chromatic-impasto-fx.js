@@ -95,6 +95,8 @@ export function createDroplets(u, count) {
     const aStart = new Float32Array(count * 4);
     const aVel = new Float32Array(count * 4);
     const aTint = new Float32Array(count * 4);
+    /** When each drop lands (world seconds): a slot whose drop is still in the air is not reused while another is free. */
+    const landAt = new Float64Array(count).fill(-Infinity);
     for (let i = 0; i < count; i++) aStart[i * 4 + 3] = -1000;
     const attributes = {
         aStart: new THREE.InstancedBufferAttribute(aStart, 4),
@@ -176,6 +178,26 @@ export function createDroplets(u, count) {
 
     let cursor = 0;
     let bursts = 0;
+    /** Slots looked at past the cursor for one whose drop has landed. */
+    const SCAN = 48;
+    /**
+     * The slot for a drop thrown at `time`: the next in turn if its drop has landed, else the
+     * first landed one a little further on, else (the pool is all in the air) the one nearest
+     * its landing. A big throw never plucks drops out of the air while landed slots stand idle.
+     */
+    const take = (time) => {
+        let best = cursor % count;
+        for (let k = 0; k < Math.min(SCAN, count); k++) {
+            const i = (cursor + k) % count;
+            if (landAt[i] <= time) {
+                best = i;
+                break;
+            }
+            if (landAt[i] < landAt[best]) best = i;
+        }
+        cursor = best + 1;
+        return best;
+    };
     const touch = () => {
         attributes.aStart.needsUpdate = true;
         attributes.aVel.needsUpdate = true;
@@ -197,8 +219,7 @@ export function createDroplets(u, count) {
         const total = Math.min(Math.max(0, Math.round(n)), count);
         const base = Math.atan2(dy, dx);
         for (let k = 0; k < total; k++) {
-            const i = cursor % count;
-            cursor += 1;
+            const i = take(time);
             const a = base + (rand() - 0.5) * spread;
             const out = speed * (0.25 + rand() ** 1.5 * 1.0);
             const vz = Math.sqrt(speed) * (0.45 + rand() * 1.5);
@@ -212,6 +233,7 @@ export function createDroplets(u, count) {
             const shade = 0.82 + rand() * 0.3;
             aTint.set([color[0] * shade, color[1] * shade, color[2] * shade, special], i * 4);
             const flight = flightTime(vz, z0);
+            landAt[i] = t0 + flight;
             landings.push({
                 x: x + vx * flight,
                 y: y + vy * flight,
@@ -228,6 +250,7 @@ export function createDroplets(u, count) {
     drops.reset = () => {
         for (let i = 0; i < count; i++) aStart[i * 4 + 3] = -1000;
         attributes.aStart.needsUpdate = true;
+        landAt.fill(-Infinity);
         cursor = 0;
         bursts = 0;
     };

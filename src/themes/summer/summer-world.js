@@ -4,7 +4,19 @@
  *
  * SummerWorld is the composition root: it owns the light rig, the land, the woods, the
  * meadow, the homestead, the lake and the air, frames the camera, and forwards gameplay
- * envelopes to them each frame.
+ * envelopes to them each frame — worn (wear()): what moves the scene eased, and how hot play
+ * runs (the reactions' `surge`) spent on the evening, act by act:
+ *   calm   the evening as it always is
+ *   warm   the evening takes notice: the breeze freshens, the butterflies come out over the
+ *          meadow, the sun's road on the lake starts to glitter, the light warms
+ *   hot    the meadow is alive with the player: the swallows hunt faster and lower, the
+ *          shafts thicken, petals drift off the meadow on the wind, the lanterns brighten
+ *   fever  Midsummer's Eve at its height: the meadow rolls in waves of wind (the reactions'
+ *          gale), breathes its petals and seed down into the golden air, every flower in it
+ *          glows, the swallows tower and wheel over the cove, the sun's road blazes and the
+ *          maypole's lanterns run round the wreaths like the ring dance round the pole
+ * A perfect clear crowns it with a sunburst through the wreath and the bouquet thrown into
+ * the sky; when the hands rest the evening breathes back to calm over a few seconds.
  */
 import * as THREE from 'three/webgpu';
 import { SummerAtmosphere } from './summer-atmosphere.js';
@@ -42,6 +54,25 @@ export class SummerWorld {
         this.disposed = false;
         this.built = false;
         this.boardCentre = new THREE.Vector3();
+        /** Reduce motion's share (setMotion), and the envelopes as worn (wear()). */
+        this.motion = 1;
+        this.worn = {
+            gust: 0,
+            gustSpeed: 0,
+            flock: 0,
+            flockSpeed: 0,
+            flutter: 0,
+            flutterSpeed: 0,
+            warmth: 0,
+            glow: 0,
+            shimmer: 0,
+            sunburst: 0,
+            bloom: 0,
+            level: 0,
+            fever: 0,
+            punch: 0,
+            motion: 1,
+        };
     }
 
     build() {
@@ -180,6 +211,77 @@ export class SummerWorld {
         this.petals?.reset();
         this.light?.reset();
         this.lake?.reset();
+        this.life?.reset();
+        Object.assign(this.worn, {
+            gust: 0, gustSpeed: 0, flock: 0, flockSpeed: 0, flutter: 0, flutterSpeed: 0, warmth: 0, sunburst: 0,
+        });
+    }
+
+    /**
+     * Reduce motion: the wind, the fronts, the startled swallows, the butterflies' flight and the
+     * hurry play puts into them are calmed to this share (1: all of it). The theme sets it from
+     * Settings and the system preference.
+     */
+    setMotion(scale) {
+        this.motion = Number.isFinite(scale) ? THREE.MathUtils.clamp(scale, 0, 1) : 1;
+    }
+
+    /**
+     * The envelopes as the world wears them. What MOVES the scene (the gust bending every stem
+     * and bough, the swallows towering, the butterflies lifting) follows its envelope through a
+     * critically damped spring, and the warmth of the light and the sunburst ease in over a
+     * moment, so a lock leans the meadow instead of jerking it and rapid locks raise the wind
+     * instead of shaking it. A still frame (no time passing: the first frame, a seek) shows the
+     * envelopes as they stand. How hot play runs (`surge`) raises floors under them: the evening
+     * takes notice, comes alive, and in a fever sings.
+     */
+    wear(frame, dt) {
+        const unit = (value, high = 1) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, high) : 0);
+        const { worn } = this;
+        const motion = this.motion ?? 1;
+        const surge = frame.surge && typeof frame.surge === 'object' ? frame.surge : null;
+        const level = unit(surge?.level);
+        const fever = unit(surge?.fever);
+        worn.level = level;
+        worn.fever = fever;
+        worn.punch = unit(surge?.punch);
+        worn.motion = motion;
+        const still = !(dt > 0);
+        const step = Math.min(still ? 0 : dt, 0.05);
+        const spring = (key, speed, target, omega) => {
+            if (still) {
+                worn[key] = target;
+                worn[speed] = 0;
+                return target;
+            }
+            const pull = omega * omega * (target - worn[key]) - 2 * omega * worn[speed];
+            worn[speed] += pull * step;
+            worn[key] += worn[speed] * step;
+            if (!Number.isFinite(worn[key]) || !Number.isFinite(worn[speed])) {
+                worn[key] = target;
+                worn[speed] = 0;
+            }
+            return worn[key];
+        };
+        const ease = (key, target, rate) => {
+            worn[key] = still ? target : worn[key] + (target - worn[key]) * (1 - Math.exp(-step * rate));
+            return worn[key];
+        };
+        // A floor that play raises under an envelope: the two combined, never past full.
+        const lift = (value, floor) => value + (1 - value) * floor;
+        spring('gust', 'gustSpeed', unit(frame.gust), 7);
+        // In a fever the swallows tower and wheel over the cove, and keep to it.
+        spring('flock', 'flockSpeed', Math.max(unit(frame.flock), fever * 0.45), 3.5);
+        // The butterflies come out over the meadow as play warms, and dance in a fever.
+        spring('flutter', 'flutterSpeed', lift(unit(frame.flutter), level * 0.25 + fever * 0.3), 4);
+        ease('warmth', lift(unit(frame.warmth), level * 0.16 + fever * 0.3), 9);
+        ease('sunburst', unit(frame.sunburst), 7);
+        worn.glow = lift(unit(frame.glow), level * 0.12 + fever * 0.22);
+        // The sun's road on the lake glitters as play warms and blazes in a fever.
+        worn.shimmer = lift(unit(frame.shimmer), level * 0.3 + fever * 0.45);
+        // Every flower in the meadow glows a little in a fever, as if the whole field answered.
+        worn.bloom = fever * 0.32;
+        return worn;
     }
 
     prepareCamera(aspect) {
@@ -208,15 +310,18 @@ export class SummerWorld {
         const time = Number.isFinite(rawTime) ? Math.max(0, rawTime) : light.uTime.value;
         const dt = Number.isFinite(rawStep) ? Math.max(0, rawStep) : 0;
         const direction = light.uWindDir.value;
-        const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
-        light.update(time, { ...frame, front: env.front });
+        const worn = this.wear(frame || {}, dt);
+        const env = this.director.apply(frame, dt, {
+            x: direction.x, z: direction.z, strength: light.uWind.value,
+        }, worn);
+        light.update(time, { ...frame, front: env.front }, worn, env.fronts);
         light.step(dt);
         this.petals.update(dt, env);
-        this.life.update(frame);
-        this.garlands.update(frame);
-        const rocked = this.homestead.update(time, dt, frame);
+        this.life.update(frame, dt, worn);
+        this.garlands.update(frame, worn);
+        const rocked = this.homestead.update(time, dt, frame, worn);
         if (rocked) this.lake.ripples.add(rocked.x, rocked.z, 0.2);
-        this.lake.update(dt, frame);
+        this.lake.update(dt, frame, worn);
     }
 
     getDiagnostics() {

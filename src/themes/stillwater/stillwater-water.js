@@ -184,14 +184,16 @@ export function createWater(u, opts = {}) {
         const col = mix(body, mirror, fres).mul(u.breath.mul(0.25).add(0.75)).toVar();
 
         // ── The gold heart on the tarn's bed: when a chain has woken it, its light comes up through
-        // the water in a net of bright threads, strongest over the heart itself ──
+        // the water in a net of bright threads, strongest over the heart itself. In a fever of play
+        // (u.heat.y) the net spreads across the whole tarn, threads of gold over the black ──
         If(u.heartAt.w.greaterThan(0.004), () => {
             const toHeart = st.sub(u.heartAt.xz).toVar();
-            const spread = exp(dot(toHeart, toHeart).mul(-0.0075));
+            const spread = exp(dot(toHeart, toHeart).mul(float(1.0).sub(u.heat.y.mul(0.7)).mul(-0.0075)));
             const n1 = u.noise(st.mul(0.11).add(vec2(u.drift.mul(0.006), u.drift.mul(-0.004))).add(slope.mul(1.5)));
             const n2 = u.noise(st.mul(0.23).sub(vec2(u.drift.mul(0.009), u.drift.mul(0.007))).add(slope.mul(2.0)));
             const net = float(1.0).sub(abs(n1.r.mul(2.0).sub(1.0))).mul(float(1.0).sub(abs(n2.g.mul(2.0).sub(1.0))));
-            const threads = net.mul(net).mul(net).mul(3.2).add(0.3);
+            // (Between the threads the water stays black the wider the net runs.)
+            const threads = net.mul(net).mul(net).mul(3.2).add(u.heat.y.mul(-0.22).add(0.3));
             col.addAssign(u.heart.mul(u.heartAt.w).mul(spread).mul(threads).mul(float(1.0).sub(fres.mul(0.45)))
                 .mul(0.85));
         });

@@ -7,6 +7,12 @@
  * and smooth petal and branch edges: 4× MSAA in the scene pass from High up (`samples`,
  * shared/scene-antialias.js; the lake's mirror matches it), FXAA on a single-sampled pass. Low
  * and Minimal draw the same scene directly with ACES (the canvas's MSAA).
+ *
+ * As play heats (`level`, `fever`) the iris closes a little and the colour deepens, so the
+ * garden's added light — the lanterns, the lit blossom, the foxfire — reads as richer colour
+ * rather than a pale veil; the moonbeams thicken through a fever and bloom at a perfect clear's
+ * crown. Every momentary lift (exposure, bloom, the moon's beams) is held back under Reduce
+ * flashing (flashScale(), ADR-0021).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -17,10 +23,13 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
 import { bilateralBlur } from 'three/addons/tsl/display/BilateralBlurNode.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { sakuraTier } from './sakura-quality.js';
 
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
+/** What the bloom picks out at rest (hot play raises it: update()). */
+const SAKURA_BLOOM_THRESHOLD = 0.9;
 
 export class SakuraPost {
     constructor({
@@ -70,7 +79,7 @@ export class SakuraPost {
             const beamColour = mix(vec3(0.008, 0.01, 0.024), vec3(0.11, 0.15, 0.26), pow(toward, 1.6));
             lit = lit.add(beamColour.mul(this.beamsBlur.r).mul(this.uBeams));
         }
-        this.bloomNode = bloom(sceneColor, 0.3, 0.7, 0.9);
+        this.bloomNode = bloom(sceneColor, 0.3, 0.7, SAKURA_BLOOM_THRESHOLD);
         // Soft knee on the brightest channel, so a lantern keeps its amber in the bloom.
         this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
             const texel = max(input.rgb, vec3(0));
@@ -100,11 +109,27 @@ export class SakuraPost {
 
     update(frame = {}) {
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        const glow = clamp01(frame.glow);
-        this.uExposure.value = 1.0 + glow * 0.06;
-        this.uBeams.value = 1 + clamp01(frame.moon) * 1.5;
-        this.uSpirit.value = clamp01(frame.spirit);
-        if (this.bloomNode) this.bloomNode.strength.value = 0.3 + glow * 0.16;
+        const flash = flashScale();
+        const glow = clamp01(frame.glow) * flash;
+        const level = clamp01(frame.level);
+        const fever = clamp01(frame.fever);
+        const crown = clamp01(frame.crown) * flash;
+        // The iris closes as play heats, so the garden's added light stays colour.
+        this.uExposure.value = 1.0 + glow * 0.06 * (1 - 0.4 * level) - 0.09 * Math.max(0, level - 0.15)
+            - 0.03 * fever;
+        // The beams are a veil over the whole garden, the dark grass and water included: each
+        // event's flare is held lower as play heats (the fever brightens the moon's own halo in
+        // the sky instead of pinning the whole frame pale), and the perfect clear's crown opens them.
+        this.uBeams.value = 1 + clamp01(frame.moon) * 1.5 * flash * (1 - 0.5 * level) + 0.5 * crown;
+        this.uSpirit.value = Math.max(clamp01(frame.spirit), 0.5 * level + 0.5 * fever);
+        if (this.bloomNode) {
+            // Less haze as the air fills with lit petals: the bloom eases back as play heats and
+            // only the brightest lights — the lanterns, the foxfire, the moon — still bloom (the
+            // petals and the lit blossom keep their colour instead of veiling the garden pink).
+            this.bloomNode.strength.value = (0.3 + glow * 0.16 * (1 - 0.45 * level)) * (1 - 0.15 * level)
+                + 0.08 * crown;
+            this.bloomNode.threshold.value = SAKURA_BLOOM_THRESHOLD + 0.5 * level + 0.15 * fever;
+        }
         if (this.light && this.camera?.isCamera) {
             // Screen position of the moon (uv, y down) for the beam tint.
             const point = this.moonPoint.copy(this.camera.position)

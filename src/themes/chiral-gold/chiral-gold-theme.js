@@ -243,6 +243,7 @@ export default class ChiralGoldTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                spin: () => this.world?.onSpin(),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
             },

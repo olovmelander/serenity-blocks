@@ -11,6 +11,10 @@
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *   sink.crown({ player })     a perfect clear settled after its clear (physics sends it ~360 ms
+ *                              after the last wave, in a frame of its own): the crown on the
+ *                              clear still playing, never a new clear
+ *   sink.spin({ player })      a T-spin that cleared nothing
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -186,7 +190,8 @@ function capturePosition(slot, payload) {
 export class IceTempleDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function,
+     *     crown?: Function, spin?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -207,6 +212,7 @@ export class IceTempleDirector {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
+        this._moment = { player: 0 };
     }
 
     /**
@@ -349,13 +355,17 @@ export class IceTempleDirector {
         return true;
     }
 
+    /**
+     * Physics sends PERFECT_CLEAR ~360 ms after the clear's last wave, alone in its frame: then
+     * it is the crown on the clear still playing (sink.crown), not a new one-line clear. In the
+     * same frame as a clear it rides on that clear.
+     */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -404,6 +414,15 @@ export class IceTempleDirector {
                 c.color = slot.lockColor;
                 c.screen = null;
                 sink.lock(c);
+            }
+            const alone = slot.lines === 0;
+            if (alone && slot.perfect && !sink?.crown) slot.lines = 1; // an old sink: as a clear
+            if (alone && slot.perfect && sink?.crown) {
+                this._moment.player = slot.player;
+                sink.crown(this._moment);
+            } else if (alone && slot.tspin && sink?.spin) {
+                this._moment.player = slot.player;
+                sink.spin(this._moment);
             }
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;

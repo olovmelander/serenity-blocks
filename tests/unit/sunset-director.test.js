@@ -149,6 +149,35 @@ describe('sunset director: intake', () => {
         });
     });
 
+    it('crowns a clear with a perfect clear that settles after it, and answers a T-spin that clears nothing', () => {
+        const { director, calls, sink } = makeDirector();
+        const crowns = [];
+        const spins = [];
+        sink.crown = vi.fn((c) => crowns.push({ ...c }));
+        sink.spin = vi.fn((c) => spins.push({ ...c }));
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        // Physics settles the perfect clear ~360 ms after the last wave, in a frame of its own: the
+        // crown on the quad, never a second (one-line) clear.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(crowns).toEqual([{ player: 0 }]);
+        // A T-spin with no lines: no clear, but the world still hears it.
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(spins).toEqual([{ player: 0 }]);
+        // A sink that knows no crown hears the late perfect clear as a clear, as it always did.
+        const plain = makeDirector();
+        plain.director.onPerfectClear({ depth: 4 });
+        plain.director.flush();
+        expect(plain.calls.clear).toHaveLength(1);
+        expect(plain.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);

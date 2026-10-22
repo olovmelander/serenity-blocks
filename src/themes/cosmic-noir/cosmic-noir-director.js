@@ -8,9 +8,15 @@
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
+ *   sink.spin({ player })      a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *
+ * `crown`: physics sends PERFECT_CLEAR ~360 ms AFTER the clear's last wave, in a frame of its own.
+ * Alone in its frame it is no new clear: it resolves as `{ crown: true, perfect: true, lines: 1,
+ * rows: [] }`, the crown on the clear already shown (a sink must not replay the clear for it).
+ * A PERFECT_CLEAR that shares its frame with the clear rides on that clear as `perfect`.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -96,6 +102,8 @@ function createSlot() {
         tspin: false,
         perfect: false,
         b2b: false,
+        /** A PERFECT_CLEAR with no clear of its own staged (the late one): a crown. */
+        crown: false,
         hasPosition: false,
         posX: 0,
         posY: 0,
@@ -118,6 +126,7 @@ function clearPending(slot) {
     slot.tspin = false;
     slot.perfect = false;
     slot.b2b = false;
+    slot.crown = false;
     slot.hasPosition = false;
 }
 
@@ -222,8 +231,18 @@ export class CosmicNoirDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0,
+            rows: [],
+            lines: 1,
+            combo: 1,
+            cascade: 1,
+            tspin: false,
+            perfect: false,
+            b2b: false,
+            crown: false,
+            screen: null,
         };
+        this._spin = { player: 0 };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -309,11 +328,13 @@ export class CosmicNoirDirector {
         const rows = payload.clearedRows;
         const fallbackLines = Array.isArray(rows) && rows.length > 0 ? rows.length : 1;
         const lines = Math.max(1, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, fallbackLines))));
-        if (slot.lines === 0 || lines > slot.lines) {
+        if (slot.lines === 0 || slot.crown || lines > slot.lines) {
             // Several waves in one frame: the widest one names the rows.
             slot.lines = lines;
             captureClearRows(slot, payload, lines);
         }
+        // A clear in the same frame: the perfect clear rides on it.
+        slot.crown = false;
         slot.cascade = Math.max(slot.cascade, cascade);
         slot.tracker.noteLineClear();
         if (Number.isFinite(payload.comboCount)) {
@@ -373,7 +394,12 @@ export class CosmicNoirDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        if (slot.lines === 0) {
+            // The late perfect clear, alone in its frame: the crown, not a new clear.
+            slot.lines = 1;
+            slot.crown = true;
+            slot.clearRowCount = 0;
+        }
         return true;
     }
 
@@ -434,8 +460,13 @@ export class CosmicNoirDirector {
                 c.tspin = slot.tspin;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
+                c.crown = slot.crown;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.tspin && sink?.spin) {
+                // A T-spin that cleared nothing still turns the cage.
+                this._spin.player = slot.player;
+                sink.spin(this._spin);
             }
             clearPending(slot);
         }

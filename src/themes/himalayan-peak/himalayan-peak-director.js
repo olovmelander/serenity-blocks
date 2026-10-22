@@ -9,6 +9,8 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.crown({ player, combo })   a perfect clear settled after its clear (its own frame)
+ *   sink.spin({ player })      a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *   sink.gameOver()            the run ended (see onGameOver: told at once, never staged)
@@ -191,7 +193,8 @@ function capturePosition(slot, payload) {
 export class HimalayanPeakDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function, gameOver?: Function },
+     *   sink?: { lock?: Function, clear?: Function, crown?: Function, spin?: Function, combo?: Function,
+     *     levelUp?: Function, gameOver?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -354,13 +357,17 @@ export class HimalayanPeakDirector {
         return true;
     }
 
+    /**
+     * Physics settles a perfect clear ~360 ms after the clear's last wave, in a frame of its
+     * own: then it is the crown on the clear already played (sink.crown), never a new clear.
+     * Staged in the same frame as its clear, it rides on that clear.
+     */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -436,6 +443,26 @@ export class HimalayanPeakDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.lines === 0 && slot.perfect) {
+                // The late perfect clear: the crown on what is still playing. (A sink with no
+                // crown hears it as the one-line perfect clear it used to be.)
+                if (sink?.crown) sink.crown({ player: slot.player, combo: Math.max(1, combo) });
+                else if (sink?.clear) {
+                    const c = this._clear;
+                    c.player = slot.player;
+                    c.rows.length = 0;
+                    c.lines = 1;
+                    c.combo = Math.max(1, combo);
+                    c.cascade = 1;
+                    c.tspin = slot.tspin;
+                    c.perfect = true;
+                    c.b2b = slot.b2b;
+                    c.screen = screen;
+                    sink.clear(c);
+                }
+            } else if (slot.lines === 0 && slot.tspin && sink?.spin) {
+                // A T-spin that cleared nothing: the wind still turns on itself, a little.
+                sink.spin({ player: slot.player });
             }
             clearPending(slot);
         }

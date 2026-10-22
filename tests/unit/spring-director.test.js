@@ -297,6 +297,33 @@ describe('spring director: intake', () => {
         });
         // Its frame has no lock in it: the chain stands.
         expect(calls.combo).toEqual([[1, 0]]);
+        // It is the crown on the clear before it, not a clear of its own; the clear it crowns
+        // was none, and a perfect clear in its clear's own frame crowns nothing later.
+        expect(calls.clear[1].crown).toBe(true);
+        expect(calls.clear[0]).toMatchObject({ perfect: false, crown: false });
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear[2]).toMatchObject({ lines: 4, perfect: true, crown: false });
+    });
+
+    it('tells the lock of a T-spin that cleared nothing, and leaves a clearing one to its clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock[0].tspin).toBe(true);
+        expect(calls.clear).toHaveLength(0);
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(calls.lock[1].tspin).toBe(false);
+        expect(calls.clear[0].tspin).toBe(true);
+        director.onPieceLock({ piece: I });
+        director.flush();
+        expect(calls.lock[2].tspin).toBe(false);
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

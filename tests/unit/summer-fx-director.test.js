@@ -894,6 +894,32 @@ describe('Summer rings and gusts', () => {
         expect(short.rings.map((ring) => ring.x).sort()).toEqual([1, 2, 9]);
     });
 
+    it('gives up the ring with the least left in it when full, and lets go one weaker than all', () => {
+        const pool = new SummerRings(3, 9, 0.42);
+        // A broad clear ring, then two lock rings a moment later.
+        pool.add(0, 0, 2.4);
+        pool.update(1.5);
+        pool.add(5, 0, 0.6);
+        pool.add(9, 0, 0.7);
+        // The pool is full. A petal's touch weaker than every ring still spreading is let go ...
+        const before = pool.rings.map((ring) => ring.toArray());
+        expect(pool.add(20, 20, 0.2)).toBeNull();
+        expect(pool.rings.map((ring) => ring.toArray())).toEqual(before);
+        // ... and a stronger ring takes the place of the one with the least left (the weaker lock
+        // ring), not the oldest: the clear ring is still the strongest on the water.
+        expect(pool.energy(pool.rings[0])).toBeGreaterThan(pool.energy(pool.rings[1]));
+        const taken = pool.add(30, 0, 1.1);
+        expect(taken).toBe(pool.rings[1]);
+        expect(pool.rings[0].toArray()).toEqual([0, 0, 1.5, 2.4]);
+        expect(pool.rings.map((ring) => ring.x).sort((a, b) => a - b)).toEqual([0, 9, 30]);
+        // The energy is what the shader draws: strength fading with age, thinning as it spreads.
+        const spread = new SummerRings(1, 9, 0.5, 0.25);
+        spread.add(0, 0, 2);
+        spread.update(2);
+        expect(spread.energy(spread.rings[0])).toBeCloseTo((2 * Math.exp(-1)) / 1.5, 12);
+        expect(spread.energy(new THREE.Vector4(0, 0, 0, 0))).toBe(0);
+    });
+
     it('ages the rings and clears each one at the end of its life', () => {
         const pool = new SummerRings(3, 6);
         pool.add(1, 2, 0.8);
@@ -1087,7 +1113,7 @@ describe('Summer effects director', () => {
         });
 
         it.each([0, 1, 3, 5, 8])(
-            'keeps the newest rings of a perfect clear on a pool of four after %i earlier locks',
+            'keeps the strongest rings of a perfect clear on a pool of four after %i earlier locks',
             (earlier) => {
                 const { director, ripples } = createDirector({ rings: 4, petals: SUMMER_TIERS.Minimal.petals });
                 const reactions = new SummerReactions({ quality: 'Minimal', rng: seededRandom(1) });
@@ -1110,10 +1136,12 @@ describe('Summer effects director', () => {
                     .sort((a, b) => a.serial - b.serial);
                 expect(asked.length).toBeGreaterThan(4);
                 director.apply(frame, STEP);
-                // The last four asked are the four on the water; the first ones gave way.
+                // The four strongest asked are the four on the water: a full pool gives up the ring
+                // with the least left in it, and a ring weaker than all of them is the one let go.
                 const onTheWater = ripples.rings.filter((entry) => entry.z === 0).map((entry) => entry.w)
                     .sort((a, b) => a - b);
-                expect(onTheWater).toEqual(asked.slice(-4).map((entry) => entry.strength).sort((a, b) => a - b));
+                const strongest = asked.map((entry) => entry.strength).sort((a, b) => b - a).slice(0, 4);
+                expect(onTheWater).toEqual(strongest.sort((a, b) => a - b));
             },
         );
 

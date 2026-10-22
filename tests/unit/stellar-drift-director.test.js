@@ -167,6 +167,22 @@ describe('stellar drift director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('hands on a perfect clear that settles after its clear as a crown, never a clear of its own', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
+        director.flush();
+        // Physics sends it a beat after the clear's last wave, in a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({
+            lines: 0, rows: [], perfect: true, combo: 1, tspin: false,
+        });
+        // The chain is not counted again.
+        expect(calls.combo).toEqual([[1, 0]]);
+    });
+
     it('delivers a zero-line T-spin without starting a clearing chain', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });

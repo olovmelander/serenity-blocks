@@ -302,7 +302,7 @@ describe('sunbraid director: intake', () => {
         });
     });
 
-    it('resolves a perfect clear on its own frame as a clear with no rows', () => {
+    it('resolves a perfect clear on its own frame as a clear with no rows, for a sink that takes no crown', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: I });
         director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
@@ -316,6 +316,50 @@ describe('sunbraid director: intake', () => {
         });
         // Its frame has no lock in it: the chain stands.
         expect(calls.combo).toEqual([[1, 0]]);
+    });
+
+    it('crowns the clear already sent when the sink can take a crown: no second clear', () => {
+        const { director, calls, sink } = makeDirector();
+        const crowns = [];
+        sink.perfect = vi.fn((c) => crowns.push({ ...c }));
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        director.onPerfectClear({ depth: 4, perfectClearBonus: 800 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(crowns).toEqual([{ player: 0 }]);
+        expect(calls.combo).toEqual([[1, 0]]);
+        // Riding on its own clear's frame it is still carried on that clear, once.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({ lines: 1, perfect: true });
+        expect(crowns).toHaveLength(1);
+    });
+
+    it('answers a T-spin that cleared nothing with a spin, after its lock', () => {
+        const { director, calls, sink } = makeDirector();
+        const spins = [];
+        sink.spin = vi.fn((c) => {
+            calls.order.push('spin');
+            spins.push({ ...c });
+        });
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(spins).toEqual([{ player: 0 }]);
+        expect(calls.order).toEqual(['lock', 'spin']);
+        // A T-spin that clears rides on its clear as before.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(spins).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

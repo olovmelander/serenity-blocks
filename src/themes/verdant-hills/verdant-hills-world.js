@@ -21,6 +21,7 @@ import { VerdantHillsRibbons } from './verdant-hills-ribbons.js';
 import { VerdantHillsSeeds } from './verdant-hills-seeds.js';
 import { VerdantHillsSky } from './verdant-hills-sky.js';
 import { VerdantHillsStage } from './verdant-hills-stage.js';
+import { createVerdantHillsWorn, wearVerdantHillsFrame } from './verdant-hills-surge.js';
 import { VERDANT_HILLS_PLACES, VerdantHillsTerrain, verdantHillsGroundHeight } from './verdant-hills-terrain.js';
 import { VerdantHillsTrees } from './verdant-hills-trees.js';
 import { drainSteps } from '../shared/build-steps.js';
@@ -39,6 +40,23 @@ export class VerdantHillsWorld {
         this.group.name = 'Verdant Hills — a windy day on the downs';
         this.disposed = false;
         this.built = false;
+        /** What the world wears each frame: the reactions frame with the surge spent on it. */
+        this.worn = createVerdantHillsWorn();
+        /** What the light rig is handed each frame (the fronts and the pool in world terms). */
+        this.lit = {
+            wind: 0,
+            gale: 0,
+            gust: 0,
+            warmth: 0,
+            glow: 0,
+            shimmer: 0,
+            settled: false,
+            coverShift: 0,
+            clearAir: 0,
+            front: null,
+            fronts: null,
+            pool: null,
+        };
     }
 
     build() {
@@ -180,13 +198,28 @@ export class VerdantHillsWorld {
         const time = Number.isFinite(rawTime) ? Math.max(0, rawTime) : light.uTime.value;
         const dt = Number.isFinite(rawStep) ? Math.max(0, rawStep) : 0;
         const direction = light.uWindDir.value;
-        const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
-        light.update(time, { ...frame, front: env.front, pool: env.pool });
+        // How hot play runs, worn by everything at once (verdant-hills-surge.js).
+        const worn = wearVerdantHillsFrame(frame, this.worn);
+        const env = this.director.apply(worn, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
+        const { lit } = this;
+        lit.wind = worn.wind;
+        lit.gale = worn.gale;
+        lit.gust = worn.gust;
+        lit.warmth = worn.warmth;
+        lit.glow = worn.glow;
+        lit.shimmer = worn.shimmer;
+        lit.settled = worn.settled;
+        lit.coverShift = worn.coverShift;
+        lit.clearAir = worn.clearAir;
+        lit.front = env.front;
+        lit.fronts = env.fronts;
+        lit.pool = env.pool;
+        light.update(time, lit);
         light.step(dt);
         this.ribbons.update(dt);
-        this.life.update(frame);
-        this.homestead?.update(time, dt, frame);
-        this.kites.update(time, dt, frame);
+        this.life.update(worn, dt);
+        this.homestead?.update(time, dt, worn);
+        this.kites.update(time, dt, worn);
         this.seeds.update(dt, env);
     }
 

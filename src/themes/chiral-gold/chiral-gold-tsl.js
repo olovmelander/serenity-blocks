@@ -44,6 +44,7 @@ import {
     COMET_SLOTS,
     PULSE_SLOTS,
     RIPPLE_SLOTS,
+    SURGE_SLOTS,
 } from './chiral-gold-core.js';
 import {
     NOISE_SEED, NOISE_SIZE, STUDIO_SEED, bakeNoise, bakeStudio,
@@ -171,10 +172,20 @@ export function createHallUniforms(textures) {
         /** Rings on the water: (x, z, birth, strength) + colour. */
         rippleA: [],
         rippleC: [],
-        /** The clear's surge across the water and through the towers: (birth, strength, lines, _). */
-        surge: uniform(new THREE.Vector4(-100, 0, 1, 0)),
-        /** The four-line strike: (birth, strength, _, _). */
+        /** The clears' fronts across the water: (birth, strength, lines, speed) each. */
+        surgeA: [],
+        /**
+         * The four-line strike: (birth, the braid's strength, the blaze's gain, the crown). The
+         * blaze's gain grows when another strike lands while it burns; the crown is the great
+         * ring's crown, lit by a back-to-back and by a perfect clear.
+         */
         aurum: uniform(new THREE.Vector4(-100, 0, 0, 0)),
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js): (level, fever, fill, chop).
+         * `fill` is the height (tower units) the molten gold has climbed inside the towers; `chop`
+         * how hard the water is worked.
+         */
+        play: uniform(new THREE.Vector4(0, 0, -100, 0)),
         /** Comets on the great ring: (birth, turns/s signed, strength, band). */
         cometA: [],
         noiseTex: textures.noise,
@@ -198,6 +209,7 @@ export function createHallUniforms(textures) {
         u.rippleC.push(uniform(new THREE.Vector3(1, 0.7, 0.3)));
     }
     for (let i = 0; i < COMET_SLOTS; i++) u.cometA.push(uniform(new THREE.Vector4(-100, 0, 0, 0)));
+    for (let i = 0; i < SURGE_SLOTS; i++) u.surgeA.push(uniform(new THREE.Vector4(-100, 0, 1, 1)));
     u.noise = (st) => texture(u.noiseTex, st);
     u.metal = (albedo, roughness) => cgStudioMetal(u.studioTex, albedo, roughness);
     return u;

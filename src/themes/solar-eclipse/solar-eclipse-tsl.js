@@ -157,12 +157,16 @@ export function createUniforms() {
         moon: uniform(new THREE.Vector4(0, 0, 1.02, 0)),
         /** The diamond: (bead x, bead y in solar radii, power, spike turn). */
         diamond: uniform(new THREE.Vector4(1, 0, 0, 0)),
-        /** The bead necklace a clear sends round the limb: (start angle, start time, count, power). */
+        /**
+         * The bead necklace the clears send round the limb: (its turn, when it began, count, light).
+         * The world turns it and lights it; a fractional count is a bead splitting off the first.
+         */
         beads: uniform(new THREE.Vector4(0, -100, 0, 0)),
         /** The chromosphere's flash (a level, a clear), 0..1. */
         flash: uniform(0),
-        /** A coronal mass ejection: (position angle, start time, power, width). */
+        /** Two coronal mass ejections, each (position angle, start time, power, width). */
         cme: uniform(new THREE.Vector4(0, -100, 0, 0.6)),
+        cme2: uniform(new THREE.Vector4(0, -100, 0, 0.6)),
         /** Daylight returning for the moment the diamond burns, 0..1. */
         daylight: uniform(0),
         /** The bearing the moon's shadow ends nearest (core.js umbraAzAt), radians east of north. */

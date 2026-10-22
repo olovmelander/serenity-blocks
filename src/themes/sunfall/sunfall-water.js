@@ -25,6 +25,7 @@ import {
     cross,
     dot,
     float,
+    floor,
     fract,
     length,
     max,
@@ -44,7 +45,9 @@ import {
 import {
     CANOPY_LEVEL, OCULUS_CENTER, OCULUS_RX, OCULUS_RZ, mulberry32,
 } from './sunfall-core.js';
-import { SUNFALL_LIGHT, dlBowNode, sfSunMask } from './sunfall-tsl.js';
+import {
+    SUNFALL_LIGHT, dlBowNode, pieceSwatchNode, sfSunMask,
+} from './sunfall-tsl.js';
 
 const FALL_TOP = OCULUS_CENTER[1] - 1.0;
 const FALL_FOOT = CANOPY_LEVEL + 6.0;
@@ -96,7 +99,11 @@ export function createRainMaterial(u) {
         const along = abs(uv().y.sub(0.5)).mul(2.0);
         const core = clamp(float(1.0).sub(across), 0.0, 1.0).mul(clamp(float(1.0).sub(along.mul(along)), 0.0, 1.0));
         const intensity = clamp(u.showerPulse.add(u.cataractPulse.mul(0.8)).add(u.dripScale.mul(0.04)), 0.0, 1.5);
-        const light = u.beamCore.mul(core).mul(intensity).mul(SUNFALL_LIGHT.sun * 0.09).mul(u.sunGain);
+        // Sunlit drops glint in colour as play heats (each streak one piece's pigment).
+        const pigment = pieceSwatchNode(floor(fract(D.z.mul(37.0)).mul(7.0))).mul(1.6);
+        const light = mix(u.beamCore, pigment, u.prism.mul(0.8)).mul(core).mul(intensity)
+            .mul(SUNFALL_LIGHT.sun * 0.09)
+            .mul(u.sunGain);
         return vec4(light, 0.0);
     })();
     const material = premultipliedAdditive(new THREE.MeshBasicNodeMaterial());
@@ -132,7 +139,11 @@ export function createFallMaterial(u, textures) {
         const age = u.cataractAge.sub(0.35);
         const edge = clamp(age.mul(1.0 / 1.2), 0.0, 1.0);
         const front = smoothstep(edge.add(0.02), edge.sub(0.04), v);
-        const cat = front.mul(clamp(u.cataractPulse.mul(1.6), 0.0, 1.0)).mul(smoothstep(-0.1, 0.0, age));
+        // A new pour's front falls over the curtain already standing (never wipes it away).
+        const cat = max(
+            front.mul(clamp(u.cataractPulse.mul(1.6), 0.0, 1.0)).mul(smoothstep(-0.1, 0.0, age)),
+            u.cataractHold,
+        );
         const thread = smoothstep(R.w.sub(1.0).add(0.15), R.w.sub(1.0).add(0.6), u.floodThreads.mul(3.0))
             .add(cat.mul(0.4));
         const amount = select(R.w.lessThan(0.5), cat, clamp(thread, 0.0, 1.0));

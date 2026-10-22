@@ -8,9 +8,14 @@
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
+ *   sink.tspin(player)         a T-spin that cleared nothing
  *   sink.levelUp(level)
+ *
+ * `crown`: a PERFECT_CLEAR that arrived on its own (physics sends it ~360 ms after the clear's
+ * last wave, in a frame of its own). It is the crown on the clear still playing, not a new
+ * clear: `lines` is 1 for sinks that count, but no rows went.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -70,6 +75,8 @@ function createSlot() {
         lockU: 0.5,
         lockColor: null,
         // clear intake
+        locked: false,
+        waves: 0,
         lines: 0,
         cascade: 1,
         clearRows: new Int16Array(MAX_ROWS),
@@ -84,6 +91,8 @@ function createSlot() {
         // persistent per-player state
         tracker: new ComboTracker(),
         reported: 0,
+        // A lock that cleared nothing has ended the chain (until the next clear).
+        broken: false,
     };
 }
 
@@ -93,6 +102,8 @@ function clearPending(slot) {
     slot.hardDrop = false;
     slot.lockRowCount = 0;
     slot.lockColor = null;
+    slot.locked = false;
+    slot.waves = 0;
     slot.lines = 0;
     slot.cascade = 1;
     slot.clearRowCount = 0;
@@ -204,7 +215,16 @@ export class TornadoDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0,
+            rows: [],
+            lines: 1,
+            combo: 1,
+            cascade: 1,
+            tspin: false,
+            perfect: false,
+            b2b: false,
+            crown: false,
+            screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
     }
@@ -264,6 +284,7 @@ export class TornadoDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.lock = this.lockRipple;
+        slot.locked = true;
         slot.tracker.notePieceLocked();
         captureLock(slot, payload);
         return true;
@@ -297,6 +318,7 @@ export class TornadoDirector {
             captureClearRows(slot, payload, lines);
         }
         slot.cascade = Math.max(slot.cascade, cascade);
+        slot.waves += 1;
         slot.tracker.noteLineClear();
         if (Number.isFinite(payload.comboCount)) {
             slot.explicitCombo = Math.max(slot.explicitCombo, Math.trunc(Number(payload.comboCount)));
@@ -382,7 +404,14 @@ export class TornadoDirector {
     }
 
     resolve(slot, sink) {
-        const combo = Math.max(slot.tracker.combo, slot.lines > 0 ? Math.max(1, slot.explicitCombo) : 0);
+        // A lock and its first wave arrive in the same tick (the pinned physics schedule), so a
+        // lock staged with no clear beside it cleared nothing: the chain ends HERE. The tracker
+        // only learns it at the next lock (its reset is deferred), which left the storm at full
+        // fury for a whole piece after the chain was over.
+        if (slot.pending && slot.lines > 0) slot.broken = false;
+        else if (slot.pending && slot.locked) slot.broken = true;
+        const chained = slot.broken ? 0 : slot.tracker.combo;
+        const combo = Math.max(chained, slot.lines > 0 ? Math.max(1, slot.explicitCombo) : 0);
         if (slot.pending) {
             let screen = null;
             if (slot.hasPosition) {
@@ -416,8 +445,11 @@ export class TornadoDirector {
                 c.tspin = slot.tspin;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
+                c.crown = slot.perfect && slot.waves === 0 && !slot.hasPosition;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.tspin && sink?.tspin) {
+                sink.tspin(slot.player);
             }
             clearPending(slot);
         }
@@ -433,6 +465,7 @@ export class TornadoDirector {
             const slot = this.slots[i];
             clearPending(slot);
             slot.tracker.reset();
+            slot.broken = false;
             if (slot.reported !== 0) {
                 slot.reported = 0;
                 this.sink?.combo?.(0, slot.player);

@@ -342,9 +342,10 @@ export class NeonDistrictPost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, rays, streak, time, rainTime,
+        heart, flash, kick, bloomBoost, exposure, rays, streak, time, rainTime, glassMist,
     } = {}) {
         if (rainTime !== undefined) this.uRainTime.value = rainTime;
+        if (glassMist !== undefined) this.uGlassMist.value = glassMist;
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;

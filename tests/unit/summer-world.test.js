@@ -17,8 +17,9 @@ import {
     SUMMER_HOUR_COLOURS, SUMMER_HOURS, summerHourAt, summerSunDirection,
 } from '../../src/themes/summer/summer-hours.js';
 import { SummerForest } from '../../src/themes/summer/summer-forest.js';
+import { SummerLife } from '../../src/themes/summer/summer-life.js';
 import { SUMMER_MIRROR_LAYER } from '../../src/themes/summer/summer-lake.js';
-import { SUMMER_SUN_DIRECTION } from '../../src/themes/summer/summer-light.js';
+import { SUMMER_BREEZE, SUMMER_SUN_DIRECTION } from '../../src/themes/summer/summer-light.js';
 import { SUMMER_PARTICLES } from '../../src/themes/summer/summer-petal-sim.js';
 import { SummerPost } from '../../src/themes/summer/summer-post.js';
 import { SUMMER_TIERS } from '../../src/themes/summer/summer-quality.js';
@@ -1333,6 +1334,98 @@ describe('Summer world in play', () => {
         expect(under(world.light.waves)).toEqual([]);
     }, SLOW);
 
+    it('quickens the swallows\' wingbeat and the creatures\' rounds without a jump', () => {
+        const light = { uTime: { value: 0 } };
+        const life = new SummerLife({ light, tier: { butterflies: 0, birds: 0 } });
+        const TAU = Math.PI * 2;
+        let flap = life.uFlap.value;
+        let clock = life.uSwallowClock.value;
+        // A quad startles the flock in one frame and the fever lets it go: the beat only ever
+        // moves on by a frame's worth, however the startle jumps.
+        for (let step = 0; step < 600; step++) {
+            light.uTime.value += STEP;
+            const flock = step > 100 && step < 300 ? 1 : 0;
+            const fever = step > 200 && step < 400 ? 1 : 0;
+            life.update({ flock }, STEP, {
+                flock, flutter: flock, level: fever, fever, motion: 1,
+            });
+            const moved = (life.uFlap.value - flap + TAU) % TAU;
+            expect(moved).toBeGreaterThan(13 * STEP - 1e-9);
+            expect(moved).toBeLessThanOrEqual(18 * STEP + 1e-9);
+            flap = life.uFlap.value;
+            // The swallows' own clock runs at least as fast as time, and never jumps.
+            const advanced = life.uSwallowClock.value - clock;
+            expect(advanced).toBeGreaterThanOrEqual(STEP - 1e-9);
+            expect(advanced).toBeLessThan(STEP * 2.1);
+            clock = life.uSwallowClock.value;
+        }
+        // Hurried through the fever; back to their own pace after it, and on a reset.
+        expect(life.hurried.swallows).toBeGreaterThan(0.5);
+        life.reset();
+        expect(life.hurried).toEqual({ butterflies: 0, swallows: 0 });
+        // Reduce motion keeps them close to their rounds.
+        life.update({}, STEP, {
+            flock: 1, flutter: 1, level: 1, fever: 1, motion: 0.35,
+        });
+        expect(life.uStartle.value).toBeCloseTo(0.35, 12);
+        expect(life.uFlutter.value).toBeCloseTo(0.35, 12);
+    });
+
+    it('builds through a chain: the evening freshens, deepens and dances, then breathes back', async () => {
+        const { world } = await buildWorld('Low');
+        const reactions = new SummerReactions({ quality: 'Low', rng: seededRandom(5) });
+        advance(world, reactions, 0.25);
+        const { light, homestead, life } = world;
+        const knobs = () => ({
+            wind: light.uWind.value,
+            festival: homestead.uFestival.value,
+            sunBlue: light.uSunColor.value.b,
+            haze: light.uHaze.value,
+            hurried: life.hurried.swallows + life.hurried.butterflies,
+            shimmer: world.lake.uShimmer.value,
+        });
+        // At rest the evening is exactly as it always was.
+        const resting = knobs();
+        expect(resting.wind).toBe(SUMMER_BREEZE);
+        expect(resting.festival).toBe(0);
+        expect(resting.hurried).toBe(0);
+        const clear = (n) => {
+            reactions.onHardDrop({ distance: 16 });
+            reactions.onPieceLock({
+                piece: {
+                    x: n % 8, y: 20, shape: [[1, 1]], shapeKey: 'O',
+                },
+            });
+            reactions.onLineClear(n === 11 ? 4 : 1 + (n % 3), { clearedRows: [22, 23], cascadeCount: 1 });
+            advance(world, reactions, 0.64);
+        };
+        clear(0);
+        const first = knobs();
+        for (let n = 1; n < 12; n++) clear(n);
+        const last = knobs();
+        expect(reactions.getFrame().surge.stage).toBe(3);
+        // A chain reads hotter than its first clear: the breeze freshens, the sun deepens toward
+        // gold and the air clears, the swallows and butterflies are hurried on, the lanterns dance.
+        expect(last.wind).toBeGreaterThan(first.wind + 0.15);
+        expect(last.sunBlue).toBeLessThan(first.sunBlue * 0.9);
+        expect(last.haze).toBeLessThan(first.haze);
+        expect(last.hurried).toBeGreaterThan(first.hurried + 0.5);
+        expect(last.festival).toBeGreaterThan(0.5);
+        expect(first.festival).toBeLessThan(0.1);
+        expect(last.shimmer).toBeGreaterThanOrEqual(first.shimmer);
+        // The hands rest: within seconds the evening is calm again (the creatures keep the ground
+        // they made up, at their own pace once more).
+        advance(world, reactions, 10);
+        const calm = knobs();
+        expect(calm.wind - SUMMER_BREEZE).toBeLessThan(0.02);
+        expect(reactions.getFrame().surge.stage).toBe(0);
+        expect(calm.festival).toBeLessThan(0.03);
+        expect(calm.sunBlue).toBeCloseTo(resting.sunBlue, 1);
+        const pace = calm.hurried;
+        advance(world, reactions, 1);
+        expect(knobs().hurried - pace).toBeLessThan(0.1);
+    }, SLOW);
+
     it('answers a line clear with jets from both sides, rings, a gust, a front of wind and wings', async () => {
         const { world } = await buildWorld('Low');
         const { sim } = world.petals;
@@ -1364,9 +1457,24 @@ describe('Summer world in play', () => {
 
         reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
         advance(world, reactions, STEP);
-        expect(world.life.uStartle.value).toBeGreaterThan(0.9);
-        expect(world.light.uWarmth.value).toBeGreaterThan(0.5);
-        advance(world, reactions, 1);
+        // The swallows go up and the light warms over a moment, not in one frame: a quad lifts the
+        // flock instead of teleporting it.
+        expect(world.life.uStartle.value).toBeLessThan(0.2);
+        expect(world.light.uWarmth.value).toBeGreaterThan(0);
+        let startle = 0;
+        let warmth = 0;
+        let last = world.life.uStartle.value;
+        let jump = 0;
+        advance(world, reactions, 1, () => {
+            const now = world.life.uStartle.value;
+            jump = Math.max(jump, Math.abs(now - last));
+            last = now;
+            startle = Math.max(startle, now);
+            warmth = Math.max(warmth, world.light.uWarmth.value);
+        });
+        expect(startle).toBeGreaterThan(0.6);
+        expect(jump).toBeLessThan(0.06);
+        expect(warmth).toBeGreaterThan(0.5);
         // Four lines lift petals off the whole meadow: more in the air than two lines put there.
         expect(sim.counts().live).toBeGreaterThan(thrown.length);
         expect(alight(sim).every((particle) => Number.isFinite(particle.x + particle.y + particle.z))).toBe(true);

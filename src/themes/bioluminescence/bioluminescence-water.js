@@ -60,6 +60,7 @@ import {
     blAtmosphere,
     blBell,
     blClearLight,
+    blClearSlotLive,
     blFogColor,
     blFxMaterial,
     blHash22,
@@ -69,6 +70,7 @@ import {
     blPart,
     blQuadGeometry,
     blScatter,
+    blShockRing,
 } from './bioluminescence-tsl.js';
 
 /** How fast a drip's ring spreads (m/s) and how long it lives (s). */
@@ -154,21 +156,22 @@ export function createWater(u, plan, opts = {}) {
         If(u.clearLive.greaterThan(0.5), () => {
             clear.assign(blClearLight(u, p));
             for (let i = 0; i < CLEAR_SLOTS; i++) {
-                const A = u.clearA[i];
-                // (Each clear swells out from where it started.)
-                const fromHeart = st.sub(u.clearH[i]);
-                const heartDist = length(fromHeart);
-                const far = clamp(heartDist.div(CLEAR_REACH), 0.0, 1.0);
-                const pass = float(CLEAR_TRAVEL).mul(pow(far, 1 / CLEAR_SHAPE));
-                const since = u.time.sub(A.x).sub(pass);
-                const swell = sin(since.mul(20.0)).mul(exp(since.mul(since).mul(-30.0))).mul(A.z);
-                slope.addAssign(fromHeart.div(max(heartDist, 1e-3)).mul(swell).mul(0.09));
+                // (A slot whose wave has gone is skipped.)
+                If(blClearSlotLive(u, i), () => {
+                    const A = u.clearA[i];
+                    // (Each clear swells out from where it started.)
+                    const fromHeart = st.sub(u.clearH[i]);
+                    const heartDist = length(fromHeart);
+                    const far = clamp(heartDist.div(CLEAR_REACH), 0.0, 1.0);
+                    const pass = float(CLEAR_TRAVEL).mul(pow(far, 1 / CLEAR_SHAPE));
+                    const since = u.time.sub(A.x).sub(pass);
+                    const swell = sin(since.mul(20.0)).mul(exp(since.mul(since).mul(-30.0))).mul(A.z);
+                    slope.addAssign(fromHeart.div(max(heartDist, 1e-3)).mul(swell).mul(0.09));
+                });
             }
         });
-        // The Great Bloom's ring over the pool.
-        const shockAge = u.time.sub(u.shock.x);
-        const shockX = length(st.sub(vec2(ELDER.x, ELDER.z))).sub(shockAge.mul(34.0));
-        const shock = blBell(shockX.div(3.5)).mul(exp(shockAge.mul(-0.9))).mul(step(0.0, shockAge)).mul(u.shock.y);
+        // The Great Bloom's rings over the pool.
+        const shock = blShockRing(u, length(st.sub(vec2(ELDER.x, ELDER.z))), 3.5);
         stir.addAssign(clear.w.mul(0.75).add(shock.mul(2.0)));
 
         // ── The mirror ──

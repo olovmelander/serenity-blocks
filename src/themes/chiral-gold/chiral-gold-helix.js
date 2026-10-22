@@ -294,12 +294,35 @@ export function createGoldMaterial(u, { wire = false } = {}) {
     const breath = sin(u.time.mul(0.9).add(y.mul(0.7))).mul(0.15).add(0.85);
     const hearth = u.glow.mul(facing.mul(facing)).mul(u.heat.mul(0.8).add(0.2)).mul(breath);
     // A pulse is light running in the brushing: a pale gold front that cools to the alloy's glow.
-    const hot = mix(u.glow, vec3(1.0, 0.86, 0.6), smoothstep(0.25, 1.0, band));
-    const pulse = hot.mul(band).mul(brush.mul(0.9).add(0.55)).mul(wire ? 3.4 : 2.2);
+    // The hotter play runs, the more of the light the towers hold themselves (the molten fill
+    // below) and the less each pulse adds, in a deeper gold: rapid fronts never wash the
+    // towers to cream.
+    const share = float(1.0).sub(u.play.x.mul(0.65));
+    const hot = mix(u.glow, vec3(1.0, 0.86, 0.6), smoothstep(0.25, 1.0, band).mul(share).mul(share));
+    const pulse = hot.mul(band).mul(brush.mul(0.9).add(0.55)).mul(wire ? 3.4 : 2.2).mul(share);
     // After a clear the whole tower holds a glow, strongest on its edges.
     const rim = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
     const held = u.glow.mul(flare).mul(rim.mul(0.75).add(brush.mul(0.08)).add(0.02)).mul(wire ? 1.6 : 1.0);
-    material.colorNode = u.metal(alloy, roughness).add(hearth.add(pulse).add(held).mul(u.emit));
+    // The gold the towers take up: play fills them with molten gold from the water up (u.play.z,
+    // the fill line in the tower's own height). Below the line the polished mirror gives way to
+    // gold glowing from within in the alloy's own colour, flowing up along the ribbons, under a
+    // bright meniscus at the line; in a fever it runs hotter (u.play.y). It REPLACES most of the
+    // mirror's light rather than adding to it: saturated, never white.
+    const fillY = u.play.z;
+    const inside = float(1.0).sub(smoothstep(fillY.sub(0.5), fillY.add(0.04), y)).mul(wire ? 0.45 : 0.85);
+    const lineD = y.sub(fillY).div(0.16);
+    const meniscus = exp(lineD.mul(lineD).negate());
+    const flow = u.noise(vec2(st.x.mul(0.09).sub(u.time.mul(0.07)), st.y.mul(0.7))).b;
+    const fire = u.play.y.mul(0.35).add(u.play.x.mul(0.2)).add(0.45);
+    // Molten gold runs deeper than polished gold (the glow pulled toward red gold), under a
+    // white-gold meniscus.
+    const molten = u.glow.mul(vec3(1.0, 0.65, 0.35)).mul(flow.mul(0.9).add(0.3)).mul(facing.mul(0.5).add(0.5))
+        .mul(fire);
+    const lit = u.metal(alloy, roughness);
+    const gold = mix(lit, lit.mul(0.25).add(molten), inside)
+        .add(mix(u.glow, vec3(1.0, 0.9, 0.7), 0.45).mul(meniscus).mul(fire).mul(wire ? 1.2 : 2.4)
+            .mul(step(-50.0, fillY)));
+    material.colorNode = gold.add(hearth.add(pulse).add(held).mul(u.emit));
 
     // The ribbons swell as a pulse passes.
     const swell = band.mul(wire ? 0.035 : 0.07).add(flare.mul(0.02));

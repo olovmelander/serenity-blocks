@@ -9,6 +9,7 @@ import {
     screenCoordinate, screenUV, sin, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
 const EXPOSURE = 1.0;
@@ -73,13 +74,23 @@ export class AuroraPost {
         })();
     }
 
-    /** Events live in the sky itself; the grade only breathes with them, never flashes. */
+    /**
+     * Events live in the sky itself; the grade only breathes with them, never flashes. The
+     * clear's momentary lift is a frame-wide brightening, so Reduce flashing scales it
+     * (ADR-0021). As the heat of play builds (`heat`, `fever`: the director's share of the
+     * shared GameplaySurge) the iris closes a little and the bloom draws in, so the storm's
+     * colours stay saturated and the night stays dark instead of the frame washing to cream.
+     */
     update(frame = {}) {
         if (this.disposed) return;
         const activity = bounded(frame.activity);
-        const surge = bounded(frame.surge);
-        this.uExposure.value = EXPOSURE + surge * 0.02;
-        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + activity * 0.07 + surge * 0.05;
+        const surge = bounded(frame.surge) * flashScale();
+        const heat = bounded(frame.heat);
+        const fever = bounded(frame.fever);
+        this.uExposure.value = EXPOSURE + surge * 0.02 - heat * 0.05 - fever * 0.05;
+        if (this.bloomNode) {
+            this.bloomNode.strength.value = BLOOM_STRENGTH + activity * 0.07 + surge * 0.05 - fever * 0.04;
+        }
     }
 
     render() {

@@ -44,7 +44,9 @@ export const SWIRL_FROM = 2;
 export const TWIST_BAKE_AT = 1.15;
 /** Seconds a clear's sheen takes to cross the canvas. */
 export const SHEEN_TRAVEL = 1.25;
-export const SHEEN_SLOTS = 3;
+/** Rings of wet light crossing at once (a new one joins a ring sent from the same place at the
+ * same moment, else takes the slot with the least light left in it). */
+export const SHEEN_SLOTS = 5;
 /** Drops of thrown paint in the air at once (the pool's upper bound; tiers take fewer). */
 export const DROPLET_MAX = 640;
 /** Gravity on thrown paint (canvas units / s², toward the cloth is −z). */

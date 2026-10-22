@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    FALL_SECONDS, LUMINOUS_TIDES_PARTS, LuminousTidesWorld, rainForCombo,
+    FALL_SECONDS, LUMINOUS_TIDES_PARTS, LuminousTidesWorld, SPARE_SPLASHES, rainForCombo,
 } from '../../src/themes/luminous-tides/luminous-tides-world.js';
 import { QUALITY_NAMES, tierFor } from '../../src/themes/luminous-tides/luminous-tides-quality.js';
 import { fallbackLayout } from '../../src/themes/luminous-tides/luminous-tides-composition.js';
@@ -131,8 +131,11 @@ describe('luminous tides world: the board', () => {
         expect(hard.radius).toBeGreaterThan(soft.radius);
         for (let i = 0; i < 60; i += 1) world.onLock({ rows: [i % 20], u: (i * 0.37) % 1, color: '#45DCF7' });
         step(0.6);
-        expect(world.splashes.length).toBeLessThanOrEqual(tierFor('Low').splashes);
-        expect(world.getState().splashes).toBeLessThanOrEqual(tierFor('Low').splashes);
+        // The tier's splashes are lit; a few more rows hold the ones fading out to make room.
+        const lit = world.splashes.filter((sp) => sp.retireAt === Infinity);
+        expect(lit.length).toBeLessThanOrEqual(tierFor('Low').splashes);
+        expect(world.splashes.length).toBeLessThanOrEqual(tierFor('Low').splashes + SPARE_SPLASHES);
+        expect(world.getState().splashes).toBeLessThanOrEqual(tierFor('Low').splashes + SPARE_SPLASHES);
     });
 
     it('throws a wave of light for each line, one great one for four, and sends a shoal on a T-spin', () => {
@@ -172,6 +175,157 @@ describe('luminous tides world: the board', () => {
         world.onCombo(0);
         step(20);
         expect(world.getState().rain).toBeLessThan(0.05);
+    });
+});
+
+describe('luminous tides world: the build', () => {
+    /** Strength each wave was last drawn with, to catch one vanishing while it still had light. */
+    const drawn = (world) => new Map(world.breakers.map((b) => [b, b.strength * b.fade]));
+    const vanished = (world, before) => {
+        const now = new Set(world.breakers);
+        const lost = [];
+        before.forEach((light, b) => {
+            if (!now.has(b) && light > 0.05 * b.strength && world.clock - b.t0 < b.life - 0.1) lost.push(light);
+        });
+        return lost;
+    };
+
+    it('never drops a lit wave for a new one, and never a great set wave mid-run', () => {
+        const { world, step } = makeWorld();
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        const great = world.breakers[0];
+        expect(great.great).toBe(true);
+        let before = drawn(world);
+        // Doubles 0.4 s apart for eight seconds: far more waves than the table holds.
+        for (let k = 0; k < 20; k += 1) {
+            world.onClear({ rows: [19, 18], lines: 2, combo: k + 2 });
+            for (let f = 0; f < 12; f += 1) {
+                step(1 / 30);
+                expect(vanished(world, before)).toEqual([]);
+                before = drawn(world);
+            }
+            const lit = world.breakers.filter((b) => b.retireAt === Infinity);
+            expect(lit.length).toBeLessThanOrEqual(tierFor('Low').breakers);
+        }
+        expect(world.breakers).toContain(great);
+        expect(great.fade).toBe(1);
+    });
+
+    it('lets a weak clear after a strong one only add light', () => {
+        const { world, step } = makeWorld();
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        step(0.3);
+        const great = world.breakers[0];
+        const { flash } = world.getPostState();
+        const lift = great.strength;
+        world.onClear({ rows: [19], lines: 1 });
+        step(1 / 30);
+        expect(world.getPostState().flash).toBeGreaterThan(flash * Math.exp(-3.5 / 30) * 0.99);
+        expect(great.strength).toBeGreaterThanOrEqual(lift);
+        expect(world.breakers).toContain(great);
+    });
+
+    it('crowns the running great wave with a late perfect clear instead of throwing a second', () => {
+        const { world, step } = makeWorld();
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        step(0.36);
+        const great = world.breakers.filter((b) => b.great);
+        expect(great).toHaveLength(1);
+        const { Hto, strength } = great[0];
+        const { thrown } = world.getState();
+        world.onPerfect({ player: 0 });
+        step(1);
+        expect(world.breakers.filter((b) => b.great)).toHaveLength(1);
+        expect(world.getState().thrown).toBe(thrown);
+        expect(great[0].Hto).toBeGreaterThan(Hto);
+        expect(great[0].strength).toBeGreaterThan(strength);
+        expect(world.getState().bloom).toBeGreaterThan(0.75);
+    });
+
+    it('feeds the next wave of a cascade into the one still coming in, taller and brighter', () => {
+        const { world, step } = makeWorld();
+        world.onClear({
+            rows: [19, 18], lines: 2, cascade: 1, combo: 1,
+        });
+        const first = world.breakers.length;
+        step(0.36);
+        const host = world.breakers[world.breakers.length - 1];
+        const { Hto, strength } = host;
+        world.onClear({
+            rows: [19], lines: 1, cascade: 2, combo: 1,
+        });
+        expect(world.breakers).toHaveLength(first);
+        expect(host.Hto).toBeGreaterThan(Hto);
+        expect(host.strength).toBeGreaterThan(strength);
+        // The next wave of the cascade is thrown, and bigger than the first was.
+        step(0.36);
+        world.onClear({
+            rows: [19, 18], lines: 2, cascade: 3, combo: 1,
+        });
+        const deep = world.breakers[world.breakers.length - 2];
+        expect(deep.H).toBeGreaterThan(world.breakers[0].H);
+        expect(deep.strength).toBeGreaterThan(world.breakers[0].strength);
+    });
+
+    it('burns hotter through a long chain than at its first clear, and breathes back after rest', () => {
+        const { world, step } = makeWorld();
+        const read = () => ({
+            stir: world.U.stir.value,
+            bay: world.U.bayBloom.value,
+            boost: world.getPostState().bloomBoost - world.state.rain * 0.15,
+            power: world.U.glowPower.value / world.light.glowPower,
+            stars: world.U.stars.value,
+        });
+        const calm = read();
+        world.onLock({ rows: [19], u: 0.5, hardDrop: true });
+        world.onClear({ rows: [19], lines: 1, combo: 1 });
+        world.onCombo(1);
+        step(0.64);
+        const first = read();
+        for (let k = 2; k <= 12; k += 1) {
+            world.onLock({ rows: [19], u: 0.5, hardDrop: true });
+            world.onClear({
+                rows: [19, 18], lines: k % 4 === 0 ? 3 : 2, combo: k, tspin: k === 8,
+            });
+            world.onCombo(k);
+            step(0.64);
+        }
+        const hot = read();
+        expect(world.heat.fever).toBeGreaterThan(0.3);
+        expect(hot.stir).toBeGreaterThan(first.stir + 0.4);
+        expect(hot.boost).toBeGreaterThan(first.boost + 0.03);
+        expect(hot.power).toBeGreaterThan(first.power);
+        // The rain of a hot chain no longer dims the stars as a cold squall would.
+        const cold = world.light.stars * (1 - world.state.rain * 0.8);
+        expect(hot.stars).toBeGreaterThan(cold);
+        // Hands at rest: the sea breathes back to calm.
+        world.onCombo(0);
+        step(20);
+        const rest = read();
+        expect(rest.stir).toBeLessThan(0.02);
+        expect(rest.bay).toBeLessThan(calm.bay + 0.03);
+        expect(rest.boost).toBeLessThan(calm.boost + 0.02);
+        expect(rest.power).toBeCloseTo(1, 2);
+    });
+
+    it('sends a small school for a T-spin with no lines, and more fish after a running school', () => {
+        const { world, step } = makeWorld();
+        world.onSpin({ player: 0 });
+        step(0.5);
+        expect(world.getState().shoal).toBe(true);
+        const small = world.getState().fish;
+        expect(small).toBeGreaterThan(0);
+        expect(small).toBeLessThan(tierFor('Low').fish);
+        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        const [a, b] = world.schools;
+        const set = [a.at, b.at];
+        // Both schools are running: a third T-spin adds fish to the youngest, restarting neither.
+        world.onSpin({ player: 0 });
+        expect([a.at, b.at]).toEqual(set);
+        expect(world.getState().fish).toBeGreaterThan(small + tierFor('Low').fish);
+        step(6);
+        expect(world.getState().shoal).toBe(false);
     });
 });
 

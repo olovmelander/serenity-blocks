@@ -6,6 +6,9 @@ import {
 } from 'three/tsl';
 import { resolveWolfhourComposition } from './wolfhour-composition.js';
 
+/** `value` within 0..`top` (0 when it is not a number). */
+const clampTo = (value, top) => Math.max(0, Math.min(top, Number.isFinite(value) ? value : 0));
+
 export function wolfhourRandom(seed = 73013) {
     let value = seed >>> 0;
     return () => {
@@ -55,18 +58,34 @@ export function makeWolfhourNoiseTexture() {
     return map;
 }
 
-function createCorona(maxPulses, noiseMap) {
+/**
+ * The halo plane reaches HALO_SPAN times the corona's old reach, so the lunar halo ring fits on it;
+ * the corona is computed in the same units as before (identical at rest).
+ */
+const HALO_SPAN = 1.7;
+/** The lunar halo ring (in corona radius units: the moon's disc is ~0.38): radius and width. */
+const HALO_RING = Object.freeze({ radius: 0.92, width: 0.06 });
+
+/**
+ * The moon's atmosphere. `uWake` (0 at rest) is how far play has woken the moon: its corona
+ * glows wider and brighter. `uHalo` (0 at rest) draws the halo of a cold night, a ring of light
+ * round the moon in the ice of high cirrus with two brighter moon dogs on it either side: hot
+ * play brings it out faintly, a fever or a perfect clear in full.
+ */
+function createCorona(maxPulses, noiseMap, uWake, uHalo) {
     const uTime = uniform(0);
     const pulseValues = Array.from({ length: maxPulses }, () => new THREE.Vector4());
     const pulseData = uniformArray(pulseValues, 'vec4');
-    const p = uv().sub(0.5);
+    const p = uv().sub(0.5).mul(HALO_SPAN);
     const radius = length(p).mul(2);
     const angle = atan(p.y, p.x.add(0.00001));
     const mist = texture(noiseMap, p.mul(vec2(2.4, 2.8)).add(0.5)
         .add(vec2(uTime.mul(0.006), uTime.mul(-0.004)))).r;
     const breathing = sin(uTime.mul(0.31)).mul(0.08).add(0.92);
-    const corona = exp(max(radius.sub(0.36), 0).mul(-9.5)).mul(0.026)
-        .mul(mist.mul(0.6).add(0.65)).mul(breathing);
+    // The corona widens and brightens as the moon wakes.
+    const corona = exp(max(radius.sub(0.36), 0).mul(uWake.mul(4.2).sub(9.5))).mul(0.026)
+        .mul(mist.mul(0.6).add(0.65)).mul(breathing)
+        .mul(uWake.mul(2.4).add(1));
     let rings = float(0);
     let tint = float(0);
     for (let i = 0; i < maxPulses; i++) {
@@ -85,14 +104,27 @@ function createCorona(maxPulses, noiseMap) {
         tint = tint.add(envelope.mul(pulse.w));
     }
     const haloColor = mix(vec3(0.46, 0.57, 0.80), vec3(0.78, 0.85, 0.98), clamp(tint, 0, 1));
-    const alpha = clamp(corona.add(rings.mul(0.14)), 0, 0.18)
+    const alpha = clamp(corona.add(rings.mul(0.14)), 0, uWake.mul(0.14).add(0.18))
         .mul(float(1).sub(smoothstep(0.83, 1, radius)));
+    // The halo ring: a sharp inner edge, a soft outer one, broken a little by the ice it shines
+    // in; the moon dogs left and right of the moon brighter, faintly red inside and blue outside.
+    const d = radius.sub(HALO_RING.radius).div(HALO_RING.width);
+    const inside = d.min(0);
+    const outside = d.max(0);
+    const ring = exp(inside.mul(inside).mul(-3).sub(outside.mul(outside).mul(0.45)));
+    const across = sin(angle);
+    const dogs = exp(across.mul(across).mul(-40)).mul(3).add(1);
+    // Squared: hot play shows a ghost of it, a fever the full ring.
+    const ringAlpha = ring.mul(dogs).mul(mist.mul(0.7).add(0.45)).mul(uHalo.mul(uHalo)).mul(0.085)
+        .mul(float(1).sub(smoothstep(1.35, 1.65, radius)));
+    const ringColor = mix(vec3(0.98, 0.8, 0.66), vec3(0.62, 0.74, 1.0), smoothstep(-1.2, 1.6, d));
+    const total = alpha.add(ringAlpha);
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
-    material.colorNode = haloColor;
-    material.opacityNode = alpha;
-    material.emissiveNode = haloColor.mul(alpha).mul(0.2);
+    material.colorNode = haloColor.mul(alpha).add(ringColor.mul(ringAlpha)).div(max(total, 0.0001));
+    material.opacityNode = total;
+    material.emissiveNode = haloColor.mul(alpha).mul(0.2).add(ringColor.mul(ringAlpha).mul(0.35));
     return {
         material, uniforms: { uTime }, pulseValues, pulseData, maxPulses,
     };
@@ -104,6 +136,13 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     scene.add(group);
     const uTime = uniform(0);
     const uPulse = uniform(0);
+    // How hard play runs (all 0 at rest, see setSurge): the moon wakes and lights more of the
+    // sky, the halo comes out, the sky opens (the cloud thins, the star band shows) and the stars
+    // burn brighter and twinkle harder.
+    const uWake = uniform(0);
+    const uHalo = uniform(0);
+    const uOpen = uniform(0);
+    const uStarGain = uniform(0);
     const uMoonSky = uniform(new THREE.Vector2(-500, 225));
     const uMoonStars = uniform(new THREE.Vector2(-500, 225));
     const uMoonRadius = uniform(55);
@@ -126,9 +165,9 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const cirrus = smoothstep(0.53, 0.78, n.add(fine.mul(0.13)))
         .mul(exp(p.y.sub(45).div(230).pow2().negate()));
     const skyColor = skyBase
-        .add(vec3(0.0028, 0.0034, 0.0052).mul(band).mul(dust))
-        .add(vec3(0.0052, 0.0068, 0.0115).mul(moonScatter))
-        .add(vec3(0.0045, 0.0062, 0.0105).mul(moonGlow))
+        .add(vec3(0.0028, 0.0034, 0.0052).mul(band).mul(dust).mul(uOpen.mul(1.3).add(1)))
+        .add(vec3(0.0052, 0.0068, 0.0115).mul(moonScatter).mul(uWake.mul(0.9).add(1)))
+        .add(vec3(0.0045, 0.0062, 0.0105).mul(moonGlow).mul(uWake.mul(1.5).add(1)))
         .add(vec3(0.008, 0.0092, 0.0125).mul(cirrus).mul(float(0.1).add(uPulse.mul(0.04))));
     const skyMaterial = new THREE.MeshBasicNodeMaterial({ depthWrite: false });
     skyMaterial.colorNode = skyColor;
@@ -155,7 +194,8 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const radiusSquared = dot(starP, starP);
     const a = attribute('aStar', 'vec4');
     const center = attribute('aCenter', 'vec2');
-    const twinkle = sin(uTime.mul(a.y).add(a.x)).mul(mix(0.1, 0.055, a.w)).add(0.9);
+    const twinkle = sin(uTime.mul(a.y).add(a.x)).mul(mix(0.1, 0.055, a.w)).mul(uStarGain.mul(1.6).add(1))
+        .add(0.9);
     const moonSuppression = smoothstep(uMoonRadius.mul(1.05), uMoonRadius.mul(2.6), length(center.sub(uMoonStars)));
     // Widen subpixel cores by their pixel footprint, conserving integrated light.
     // This keeps faint stars from blinking out as the camera crosses a pixel.
@@ -170,9 +210,9 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const starTint = mix(vec3(0.74, 0.82, 1.0), vec3(1, 0.94, 0.86), smoothstep(0.85, 1, a.x.div(6.283)));
     starsMaterial.colorNode = starTint.mul(a.z);
     starsMaterial.opacityNode = clamp(starShape.mul(twinkle).mul(moonSuppression)
-        .mul(float(0.94).add(uPulse.mul(0.06))), 0, 1);
+        .mul(float(0.94).add(uPulse.mul(0.06)).add(uStarGain.mul(0.4))), 0, 1);
     starsMaterial.emissiveNode = starTint.mul(starShape).mul(a.z).mul(twinkle).mul(moonSuppression)
-        .mul(0.14);
+        .mul(uStarGain.mul(0.1).add(0.14));
     const stars = new THREE.InstancedMesh(geometry, starsMaterial, count);
     stars.name = 'Wolfhour stars';
     stars.frustumCulled = false;
@@ -237,8 +277,8 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     group.add(moon);
     const haloData = createCorona({
         Minimal: 2, Low: 2, Medium: 3, High: 4, Ultra: 6, Extreme: 6,
-    }[quality] || 4, noiseMap);
-    const halo = new THREE.Mesh(new THREE.PlaneGeometry(670, 670), haloData.material);
+    }[quality] || 4, noiseMap, uWake, uHalo);
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(670 * HALO_SPAN, 670 * HALO_SPAN), haloData.material);
     halo.name = 'Wolfhour lunar atmosphere';
     halo.position.set(-500, 225, -2740);
     group.add(halo);
@@ -263,12 +303,13 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
         const thin = float(1).sub(smoothstep(0.45, 0.95, cover));
         const lit = mix(vec3(0.026, 0.034, 0.058), vec3(0.13, 0.155, 0.21), near.mul(0.7).add(0.1));
         const silver = vec3(0.55, 0.6, 0.72).mul(near.mul(near)).mul(thin).mul(cover)
-            .mul(1.6);
+            .mul(uWake.mul(0.9).add(1.6));
         const cloudMaterial = new THREE.MeshBasicNodeMaterial({
             name: 'Wolfhour moonlit clouds', transparent: true, depthWrite: false,
         });
         cloudMaterial.colorNode = lit.add(silver);
-        cloudMaterial.opacityNode = cover.mul(0.8);
+        // The sky opens as play runs hot: the cloud thins away.
+        cloudMaterial.opacityNode = cover.mul(float(0.8).sub(uOpen.mul(0.42)));
         clouds = new THREE.Mesh(new THREE.PlaneGeometry(6200, 1300), cloudMaterial);
         clouds.name = 'Wolfhour moonlit clouds';
         clouds.position.set(0, 300, -2300);
@@ -338,6 +379,19 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
                 0.98,
             ).normalize();
             moonIllumination.value = 0.955 + Math.sin(time * 0.2) * 0.018 + Math.sin(time * 0.071) * 0.007;
+        },
+        /**
+         * How hard play runs: `wake` (the moon's corona and its light on the sky), `halo` (the
+         * lunar halo and its moon dogs), `open` (the cloud thins, the star band shows) and `stars`
+         * (brighter, harder twinkling). All 0 at rest: the night as it always was.
+         */
+        setSurge({
+            wake = 0, halo: ring = 0, open = 0, stars: starGain = 0,
+        } = {}) {
+            uWake.value = clampTo(wake, 1.4);
+            uHalo.value = clampTo(ring, 1.6);
+            uOpen.value = clampTo(open, 1);
+            uStarGain.value = clampTo(starGain, 1.4);
         },
         applyParallax,
         resize,

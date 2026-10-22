@@ -300,3 +300,165 @@ describe('sunset world: what the board does', () => {
         expect(next.world.dayHour()).toBeCloseTo(world.dayHour(), 6);
     });
 });
+
+describe('sunset world: it builds with play, and never restarts', () => {
+    const quad = { lines: 4, rows: [19, 18, 17, 16] };
+    const single = { lines: 1, rows: [19] };
+    const lights = (world) => {
+        const g = world.getState();
+        return {
+            halo: g.halo, fire: g.fire, flash: world.getPostState().flash, glint: world.U.glint.value,
+        };
+    };
+
+    it('lets a weak clear after a strong one only add light, and keeps a standing halo where it is', () => {
+        const { world, step } = makeWorld({ hour: 17.5 });
+        world.onClear(quad);
+        step(1.4);
+        const before = lights(world);
+        expect(world.getState().haloReach).toBeCloseTo(22, 0);
+        world.onClear(single);
+        step(1 / 30);
+        const after = lights(world);
+        Object.keys(before).forEach((key) => {
+            expect(after[key], key).toBeGreaterThanOrEqual(before[key] * 0.97);
+        });
+        // The halo still standing takes the single's light at its place: it does not shrink back
+        // onto the disc and run out again (it used to blink and regrow with every clear).
+        expect(world.getState().haloReach).toBeCloseTo(22, 0);
+        step(0.5);
+        expect(world.getState().haloReach).toBeCloseTo(22, 0);
+        // A later single is a single again, not a quad (the old halo never decayed its strength).
+        step(8);
+        world.onClear(single);
+        step(0.6);
+        const lone = world.getState().halo;
+        const fresh = makeWorld({ hour: 17.5 });
+        fresh.world.onClear(single);
+        fresh.step(0.6);
+        expect(lone).toBeCloseTo(fresh.world.getState().halo, 2);
+    });
+
+    it('holds the green flash on through a second four-line clear instead of restarting it', () => {
+        const { world, step } = makeWorld({ hour: 18 });
+        world.onClear(quad);
+        step(1.4);
+        const lit = world.getState().green;
+        expect(lit).toBeGreaterThan(0.9);
+        world.onClear(quad);
+        step(1 / 30);
+        expect(world.getState().green).toBeGreaterThanOrEqual(lit * 0.99);
+        // Held on past where the first alone would have let it go.
+        step(1.4);
+        expect(world.getState().green).toBeGreaterThan(0.9);
+        step(4);
+        expect(world.getState().green).toBe(0);
+    });
+
+    it('builds a long chain toward a fever the first clear never reaches, then breathes back', () => {
+        const { world, step } = makeWorld({ hour: 17.5, quality: 'High' });
+        for (let i = 0; i < 6; i += 1) world.onLock({ rows: [19], u: 0.3, color: '#ffd700' });
+        step(1);
+        let combo = 0;
+        const clear = (c) => {
+            combo += 1;
+            world.onLock({
+                rows: [19], u: 0.6, color: '#ff8a65', hardDrop: true,
+            });
+            world.onClear({ rows: [19], combo, ...c });
+            world.onCombo(combo);
+        };
+        clear({ lines: 1 });
+        step(0.6);
+        const first = world.getState();
+        const plan = [1, 2, 1, 2, 2, 3, 2, 2, 3, 2];
+        plan.forEach((lines) => {
+            clear({ lines });
+            step(0.64);
+        });
+        // A cascade's waves each build on the last.
+        for (let wave = 2; wave <= 4; wave += 1) {
+            world.onClear({
+                rows: [19], lines: 1, combo, cascade: wave,
+            });
+            step(0.36);
+        }
+        clear(quad);
+        step(0.36);
+        const peak = world.getState();
+        expect(peak.heat.stage).toBe(3);
+        expect(peak.ember).toBeGreaterThan(first.ember + 0.6);
+        expect(peak.fire).toBeGreaterThan(Math.max(1, first.fire));
+        expect(peak.halo).toBeGreaterThan(first.halo);
+        expect(peak.greatHalo).toBeGreaterThan(0.3);
+        expect(peak.birds).toBeGreaterThan(first.birds);
+        // The iris closes a little as the sky burns, so its colours stay deep.
+        expect(world.getPostState().exposure).toBeLessThan(world.light.exposure * 0.92);
+        // The perfect clear settles after the quad: the crown on it, not a second quad.
+        const crown = world.getState().lifted;
+        world.onCrown();
+        step(1);
+        expect(world.getState().greatHalo).toBeGreaterThan(peak.greatHalo);
+        expect(world.getState().sunDogs).toBeGreaterThan(peak.sunDogs);
+        expect(world.getState().lifted).toBeGreaterThanOrEqual(crown);
+        // The hands rest: the world breathes back to the evening it was.
+        world.onCombo(0);
+        step(16);
+        const rest = world.getState();
+        expect(rest.heat.level).toBeLessThan(0.05);
+        expect(rest.ember).toBeLessThan(0.01);
+        expect(rest.halo).toBeLessThan(0.05);
+        expect(rest.greatHalo).toBeLessThan(0.1);
+        expect(rest.fire).toBeLessThan(0.15);
+    });
+
+    it('lifts more lanterns with every wave of a cascade, and shows sun dogs for a back-to-back', () => {
+        const { world, step } = makeWorld({ hour: 17.5, quality: 'High' });
+        for (let i = 0; i < 12; i += 1) world.onLock({ rows: [19], u: 0.3, color: '#ffd700' });
+        step(1);
+        const lifted = () => world.getState().lifted;
+        let was = lifted();
+        world.onClear({ rows: [19], lines: 1, cascade: 1 });
+        const wave1 = lifted() - was;
+        step(0.36);
+        was = lifted();
+        world.onClear({ rows: [19], lines: 1, cascade: 3 });
+        expect(lifted() - was).toBeGreaterThan(wave1);
+        step(2);
+        expect(world.getState().sunDogs).toBe(0);
+        world.onClear({ ...quad, b2b: true });
+        step(0.8);
+        expect(world.getState().sunDogs).toBeGreaterThan(0.5);
+        // A T-spin that clears nothing still sends a lantern up, turning.
+        for (let i = 0; i < 3; i += 1) world.onLock({ rows: [19], u: 0.7, color: '#ba68c8' });
+        step(1);
+        was = lifted();
+        world.onSpin();
+        expect(lifted() - was).toBe(1);
+        expect(world.pool.records.some((r) => r.spiral !== 0)).toBe(true);
+    });
+
+    it('lets a chain grow the flock in the air, and never restarts one still crossing', () => {
+        const { world, step } = makeWorld({ hour: 17.5, quality: 'High' });
+        const birds = world.parts.birds.mesh.geometry.getAttribute('aBird');
+        world.onCombo(3);
+        step(2);
+        const small = world.getState().birds;
+        expect(small).toBeGreaterThan(0);
+        // Three to five within a few seconds: the great flock (a cooldown used to refuse it).
+        world.onCombo(4);
+        world.onCombo(5);
+        step(0.5);
+        expect(world.getState().birds).toBeGreaterThan(small);
+        // Long after, a new step of the chain: a second flight sets out beside the first, which
+        // flies on where it was.
+        step(11);
+        const lead = new THREE.Vector3(birds.getX(0), birds.getY(0), birds.getZ(0));
+        const flying = world.getState().birds;
+        world.onCombo(6);
+        step(1 / 30);
+        const now = new THREE.Vector3(birds.getX(0), birds.getY(0), birds.getZ(0));
+        expect(now.distanceTo(lead)).toBeLessThan(1);
+        expect(world.getState().birds).toBeGreaterThan(flying);
+    });
+});

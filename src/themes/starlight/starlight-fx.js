@@ -71,6 +71,7 @@ function streakMaterial({
 
     const isMote = step(STREAK.mote - 0.5, shape.x).mul(step(shape.x, STREAK.mote + 0.5));
     const isTrain = step(STREAK.mote + 0.5, shape.x);
+    const isFireball = step(STREAK.fireball - 0.5, shape.x).mul(step(shape.x, STREAK.fireball + 0.5));
     const age = u.time.sub(from.w);
     const flown = clamp(age.div(max(to.w, 1e-3)), 0.0, 1.0);
     const over = max(age.sub(to.w), 0.0);
@@ -121,7 +122,8 @@ function streakMaterial({
     );
     const vLight = varying(vec4(paint.xyz, paint.w.mul(shown).mul(max(fade, 0.0))));
     const vAt = varying(vec2(s, side));
-    const vKind = varying(vec2(isMote, isTrain));
+    // (mote, train, how far a fireball keeps its colour in its heart: more the hotter play runs)
+    const vKind = varying(vec3(isMote, isTrain, isFireball.mul(u.heat)));
     const along = clamp(vAt.x, 0.0, 1.0);
     const profile = exp(vAt.y.mul(vAt.y).mul(-4.2));
     // A head that outshines its tail; the tail's far end cools to an ember.
@@ -129,7 +131,7 @@ function streakMaterial({
     const fromHeart = along.sub(NOSE).div(0.085);
     const hot = exp(fromHeart.mul(fromHeart).negate());
     const ember = mix(vec3(1.0, 0.42, 0.14), vLight.rgb, smoothstep(0.1, 0.75, along));
-    const meteor = mix(ember, vec3(1.0, 1.0, 1.0), hot.mul(0.75)).mul(body.add(hot.mul(2.6)));
+    const meteor = mix(ember, vec3(1.0, 1.0, 1.0), hot.mul(vKind.z.mul(-0.4).add(0.75))).mul(body.add(hot.mul(2.6)));
     // A mote keeps its colour, and sparkles.
     const sparkle = sin(along.mul(52.0).sub(u.time.mul(23.0))).mul(0.22).add(0.9);
     const mote = mix(vLight.rgb, vec3(1.0, 1.0, 1.0), hot.mul(0.3)).mul(body.mul(0.8).add(hot.mul(1.5))).mul(sparkle);

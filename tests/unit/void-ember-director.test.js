@@ -294,3 +294,51 @@ describe('void ember director: settings and resets', () => {
         expect(director.slots.every((slot) => !slot.assigned && slot.tracker.combo === 0)).toBe(true);
     });
 });
+
+describe('void ember director: the late perfect clear and the empty T-spin', () => {
+    it('crowns the clear already sent when a perfect clear arrives in a frame of its own', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.crown = vi.fn();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // Physics settles the perfect clear ~360 ms after the last wave, on a later frame.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1); // never a second clear
+        expect(sink.crown).toHaveBeenCalledOnce();
+        expect(sink.crown).toHaveBeenCalledWith(0);
+        // In the same frame as its clear it is that clear's own flag, and no crown.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 2 });
+        director.flush();
+        expect(calls.clear[1]).toMatchObject({ lines: 2, perfect: true });
+        expect(sink.crown).toHaveBeenCalledOnce();
+        // A sink with no crown still hears it, as a one-line perfect clear.
+        const bare = makeDirector();
+        bare.director.onPerfectClear({ depth: 1 });
+        bare.director.flush();
+        expect(bare.calls.clear).toHaveLength(1);
+        expect(bare.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('hands a T-spin that cleared nothing to spin(), and nothing else', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(sink.spin).toHaveBeenCalledWith(0);
+        expect(calls.clear).toHaveLength(0);
+        // One that cleared lines is the clear's own flag.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+    });
+});

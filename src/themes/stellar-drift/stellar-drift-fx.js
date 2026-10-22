@@ -481,19 +481,26 @@ export function createMeteors(u) {
     })();
 
     const part = sdPart('StellarDriftMeteors', geometry, material, 9);
-    let cursor = 0;
     const mid = new THREE.Vector3();
+    /** When each slot's flight has burnt out (its head down and its train cooled). */
+    const ends = new Float64Array(METEOR_SLOTS).fill(-1e6);
     return {
         ...part,
         table,
         reset() {
             for (let i = 0; i < METEOR_SLOTS; i++) rows[i * 4].w = -1e6;
-            cursor = 0;
+            ends.fill(-1e6);
         },
-        /** @param {{ from, to, birth, flight, rgb, size, mote }} m */
+        /**
+         * A new flight takes the slot whose flight burns out first (a spent one, or the one with
+         * least of its train left): a storm never cuts a meteor out of the sky in mid-flight
+         * while an older one is still cooling.
+         * @param {{ from, to, birth, flight, rgb, size, mote }} m
+         */
         launch(m) {
-            const i = cursor;
-            cursor = (cursor + 1) % METEOR_SLOTS;
+            let i = 0;
+            for (let k = 1; k < METEOR_SLOTS; k++) if (ends[k] < ends[i]) i = k;
+            ends[i] = m.birth + m.flight + (m.mote ? MOTE_TRAIN : METEOR_TRAIN);
             rows[i * 4].set(m.from.x, m.from.y, m.from.z, m.birth);
             rows[i * 4 + 1].set(m.to.x, m.to.y, m.to.z, m.flight);
             rows[i * 4 + 2].set(m.rgb[0], m.rgb[1], m.rgb[2], m.size);

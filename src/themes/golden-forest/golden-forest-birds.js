@@ -50,6 +50,8 @@ export class GoldenForestBirds {
         this.group = new THREE.Group();
         this.group.name = 'GoldenForestBirds';
         this.uStartle = uniform(0);
+        /** What a startle has added to the wingbeat's phase (radians, integrated in update()). */
+        this.uFlap = uniform(0);
         this.owned = [];
         this.count = 0;
     }
@@ -103,7 +105,8 @@ export class GoldenForestBirds {
         // Beat, then glide: each bird keeps its own rhythm, and a startled one only beats.
         const wing = attribute('wing', 'float');
         const beating = smoothstep(-0.3, 0.3, sin(t.mul(0.33).add(bird.x.mul(40)))).max(this.uStartle);
-        const flap = sin(t.mul(this.uStartle.mul(5).add(9.5)).add(bird.x.mul(31))).mul(beating)
+        // The wingbeat's phase runs on the CPU (update()), so a startle quickens it without a jump.
+        const flap = sin(t.mul(9.5).add(this.uFlap).add(bird.x.mul(31))).mul(beating)
             .add(float(0.18).mul(beating.oneMinus()));
         const local = positionGeometry.add(vec3(0, wing.mul(flap).mul(0.36), 0)).mul(bird.w);
         material.positionNode = position.add(right.mul(local.x)).add(up.mul(local.y)).sub(heading.mul(local.z));
@@ -120,9 +123,19 @@ export class GoldenForestBirds {
         return this;
     }
 
-    update(frame = {}) {
-        const startle = Number.isFinite(frame.flock) ? THREE.MathUtils.clamp(frame.flock, 0, 1) : 0;
+    /**
+     * `worn.flock` is the startle as the world eases it (a quad lifts the flock over a moment
+     * instead of in one frame; a fever keeps it up), calmed by Reduce motion's share.
+     */
+    update(frame = {}, dt = 0, worn = null) {
+        const source = worn && Number.isFinite(worn.flock) ? worn.flock : frame.flock;
+        const motion = worn && Number.isFinite(worn.motion) ? THREE.MathUtils.clamp(worn.motion, 0, 1) : 1;
+        const startle = Number.isFinite(source) ? THREE.MathUtils.clamp(source, 0, 1) * motion : 0;
         this.uStartle.value = startle;
+        // A startled bird beats up to half again as fast: its phase gains that much more per second.
+        if (Number.isFinite(dt) && dt > 0) {
+            this.uFlap.value = (this.uFlap.value + Math.min(dt, 0.25) * startle * 5) % TAU;
+        }
     }
 
     dispose() {

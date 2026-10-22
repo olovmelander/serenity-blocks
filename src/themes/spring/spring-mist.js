@@ -289,7 +289,8 @@ export class Mist {
                 .mul(shade);
             // The spray bow: where the spray stands about 42° from the point opposite the sun
             // (with the sun high behind the eye, the bow arcs through the spray at the fall's foot).
-            const bow = sprayBow(vTheta).mul(u.sun).mul(u.sunUp).mul(MIST_BOW);
+            // Back-to-back and the heat of play brighten it (u.bow, 1 at rest).
+            const bow = sprayBow(vTheta).mul(u.sun).mul(u.sunUp).mul(u.bow.mul(MIST_BOW));
             const col = mix(u.haze, lit.mul(0.92).add(bow), vLight.y);
             return vec4(col, alpha);
         })();
