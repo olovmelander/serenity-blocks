@@ -189,7 +189,23 @@ describe('Parhelion ReactionDirector dominance', () => {
         expect(cues[0]).toMatchObject({
             kind: CUE.CLEAR, combo: 1, depth: 10, cascade: 2, lines: 1,
         });
-        expect(cues[0].strength).toBeCloseTo(1.15); // +0.05 * min(3, depth)
+        expect(cues[0].strength).toBeCloseTo(1.6); // +0.06 * min(10, depth)
+        expect(cues[0].apex).toBe(false);
+    });
+
+    it('builds each cascade wave on the last: deeper waves resolve stronger', () => {
+        const { director, cues } = createDirector();
+        director.onPieceLock({ piece: tPiece() });
+        director.onLineClear({ lineCount: 2, clearedRows: [22, 23] });
+        director.update(0.01);
+        for (let wave = 2; wave <= 5; wave += 1) {
+            director.onCombo({ comboCount: wave });
+            director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: wave });
+            director.update(0.36);
+        }
+        const strengths = cues.map((c) => c.strength);
+        expect(strengths).toHaveLength(5);
+        for (let i = 1; i < strengths.length; i += 1) expect(strengths[i]).toBeGreaterThan(strengths[i - 1]);
     });
 
     it('lets an explicit LINE_CLEAR comboCount (Odyssey victory lap) reach the apex', () => {
@@ -449,22 +465,37 @@ describe('Parhelion ReactionDirector B2B echo', () => {
 });
 
 describe('Parhelion ReactionDirector apex cooldown', () => {
-    it('fires the apex at true combo 10 and holds it off for 6 s per player', () => {
+    it('fires the apex at true combo 10, spaces its entrance 6 s, and feeds it in between', () => {
         const { director, kinds, cues } = createDirector();
         buildCombo(director, 10);
         expect(kinds().slice(0, 9).every((kind) => kind === CUE.CLEAR)).toBe(true);
-        expect(cues[9]).toMatchObject({ kind: CUE.APEX, combo: 10 });
+        expect(cues.slice(0, 9).every((c) => c.apex === false)).toBe(true);
+        expect(cues[9]).toMatchObject({ kind: CUE.APEX, combo: 10, apex: false });
 
+        // Inside the cooldown a clear keeps its own beat but is never a plain first clear again:
+        // it carries `apex`, and the optics feed the Sun Cross still standing.
         buildCombo(director, 1); // combo 11, 0.1 s later
-        expect(cues[10]).toMatchObject({ kind: CUE.CLEAR, combo: 11 });
+        expect(cues[10]).toMatchObject({ kind: CUE.CLEAR, combo: 11, apex: true });
 
         advance(director, PARHELION_APEX_COOLDOWN - 1.2, 0.1); // still inside the cooldown
         buildCombo(director, 1);
-        expect(cues[11]).toMatchObject({ kind: CUE.CLEAR, combo: 12 });
+        expect(cues[11]).toMatchObject({ kind: CUE.CLEAR, combo: 12, apex: true });
 
         advance(director, 1.2, 0.1); // now past 6 s since the apex
         buildCombo(director, 1);
-        expect(cues[12]).toMatchObject({ kind: CUE.APEX, combo: 13 });
+        expect(cues[12]).toMatchObject({ kind: CUE.APEX, combo: 13, apex: false });
+    });
+
+    it('marks a perfect clear that arrives on its own as the crown on its clear', () => {
+        const { director, cues } = createDirector();
+        clearingLock(director, {}, 4);
+        director.update(0.01);
+        advance(director, 0.36);
+        director.onPerfectClear({ depth: 4 });
+        director.update(0.01);
+        expect(cues.map((c) => c.kind)).toEqual([CUE.QUAD, CUE.PERFECT]);
+        expect(cues[0].crown).toBe(false);
+        expect(cues[1]).toMatchObject({ crown: true, lines: 4 });
     });
 
     it('keeps each player on their own cooldown', () => {
@@ -488,7 +519,7 @@ describe('Parhelion ReactionDirector apex cooldown', () => {
 });
 
 describe('Parhelion ReactionDirector resonance', () => {
-    it('rises with a 0.28 s half-life, holds 1.65 s, then falls with a 0.85 s half-life', () => {
+    it('rises with a 0.28 s half-life, holds 3.5 s at rest, then falls with a 0.85 s half-life', () => {
         const { director, resonances } = createDirector();
         director.onLineClear({ lineCount: 1, comboCount: 10, position: { x: 1, y: 1 } });
         director.update(0);
@@ -499,18 +530,44 @@ describe('Parhelion ReactionDirector resonance', () => {
         expect(director.getDebugState().resonanceTarget).toBe(1);
         expect(director.getDebugState().resonance).toBeCloseTo(0.5, 3);
 
-        advance(director, 1.3); // 1.58 s: still holding the chain's target
+        advance(director, 3.1); // 3.38 s: the chain's target still held (no lock broke it)
         expect(director.getDebugState().resonanceTarget).toBe(1);
         const peak = director.getDebugState().resonance;
-        expect(peak).toBeGreaterThan(0.97);
+        expect(peak).toBeGreaterThan(0.99);
 
-        advance(director, 0.07 + 0.85); // hold over at 1.65 s, then one fall half-life
+        advance(director, 0.12 + 0.85); // hold over at 3.5 s (hands at rest), one fall half-life
         expect(director.getDebugState().resonanceTarget).toBe(0);
         expect(director.getDebugState().resonance).toBeCloseTo(peak / 2, 1);
 
         advance(director, 20, 0.05);
         expect(director.getDebugState().resonance).toBe(0);
         expect(resonances[resonances.length - 1]).toBe(0);
+    });
+
+    it('holds through a slow chain instead of pumping, and eases out when a lock breaks it', () => {
+        const { director } = createDirector();
+        const trace = [];
+        // Five clears 2.5 s apart: well past the old 1.65 s hold, still one living chain.
+        for (let link = 0; link < 5; link += 1) {
+            clearingLock(director);
+            director.update(0.05);
+            for (let step = 0; step < 49; step += 1) {
+                director.update(0.05);
+                trace.push(director.getDebugState().resonance);
+            }
+        }
+        // Never falls back between links: each link only climbs.
+        for (let i = 1; i < trace.length; i += 1) expect(trace[i]).toBeGreaterThanOrEqual(trace[i - 1] - 1e-9);
+        expect(trace.at(-1)).toBeCloseTo(0.5, 2);
+
+        // A lock that clears nothing breaks the chain: the resonance eases out at once.
+        quietLock(director);
+        director.update(0.05);
+        expect(director.getDebugState().resonanceTarget).toBe(0);
+        const before = director.getDebugState().resonance;
+        advance(director, 0.85, 0.05);
+        expect(director.getDebugState().resonance).toBeCloseTo(before / 2, 1);
+        expect(director.getDebugState().resonance).toBeGreaterThan(0); // eased, never snapped
     });
 
     it('maps the true combo linearly: r = clamp(combo / 10)', () => {
