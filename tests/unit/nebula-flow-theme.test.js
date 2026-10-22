@@ -32,8 +32,8 @@ const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 /** The world's and the post stack's public contract: what NebulaFlowTheme calls, plus restCamera(). */
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
-    'restCamera', 'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'update', 'getPostState', 'getState',
-    'dispose',
+    'restCamera', 'updateCamera', 'onLock', 'onClear', 'onCrown', 'onSpin', 'onCombo', 'levelUp', 'update',
+    'getPostState', 'getState', 'dispose',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
@@ -196,6 +196,18 @@ vi.mock('../../src/themes/nebula-flow/nebula-flow-world.js', () => {
             this.counts.clears += 1;
             this.clears.push({ ...context, rows: [...context.rows] });
             this.postState.flash = 0.2 * context.lines;
+        }
+
+        onCrown(context) {
+            mocks.log.push('onCrown');
+            this.crowns = (this.crowns || 0) + 1;
+            this.crownedBy = { ...context };
+        }
+
+        onSpin(context) {
+            mocks.log.push('onSpin');
+            this.spins = (this.spins || 0) + 1;
+            this.spunBy = { ...context };
         }
 
         onCombo(combo) {

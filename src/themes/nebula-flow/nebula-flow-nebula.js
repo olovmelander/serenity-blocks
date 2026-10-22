@@ -205,7 +205,10 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         };
         const gas = flowed(q, outward, 1.0, 0.55, gasRead).toVar();
         // how much of the cluster's light reaches this part of the cavity
-        const nearLight = float(1).div(pow(r.div(1.25), 2.6).add(1.0)).mul(u.shine).toVar();
+        // (in a fever the light holds a share of its place while the gas winds through it: the
+        // whirl reads as coloured arms over a deep cavity, not one pale sheet)
+        const rLit = mix(r, length(pGas.sub(u.cluster)), u.lightHold);
+        const nearLight = float(1).div(pow(rLit.div(1.25), 2.6).add(1.0)).mul(u.shine).toVar();
         const gasDen = pow(smoothstep(0.34, 1.05, gas), 1.8).toVar();
         // the emission's colour by how close to the cluster: hot pale core, saturated middle, dim rim
         const cavityCol = mix(u.cavityFar, u.cavityNear, smoothstep(0.0, 0.9, nearLight)).toVar();
@@ -241,9 +244,21 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
 
         col.addAssign(cavityCol.mul(glow).mul(laneT.mul(0.7).add(0.3)));
         col.addAssign(frontGas);
-        // the vortex glows in the colour of the piece that wound it
+        // the vortex glows in the colours of the pieces that wound it: one arm per quarter turn
+        // about its heart, read in the wound gas so the arms spiral with it. The weights are the
+        // squared halves of the arm's cos and sin (they sum to 1: no trig, no seams).
         const windAmt = clamp(length(q.sub(pGas)).mul(2.5), 0, 1);
-        col.addAssign(u.vortexTint.mul(u.vortexGlow).mul(gasDen.mul(0.75).add(0.04)).mul(windAmt).mul(u.iris));
+        const armAt = q.sub(u.vortex.xy);
+        const armDir = vec2(
+            armAt.x.mul(u.vortexSpin.x).sub(armAt.y.mul(u.vortexSpin.y)),
+            armAt.x.mul(u.vortexSpin.y).add(armAt.y.mul(u.vortexSpin.x)),
+        ).div(max(length(armAt), 1e-3));
+        const armP = max(armDir, vec2(0));
+        const armN = max(armDir.negate(), vec2(0));
+        const armTint = u.vortexArms[0].mul(armP.x.mul(armP.x)).add(u.vortexArms[1].mul(armP.y.mul(armP.y)))
+            .add(u.vortexArms[2].mul(armN.x.mul(armN.x)))
+            .add(u.vortexArms[3].mul(armN.y.mul(armN.y)));
+        col.addAssign(armTint.mul(u.vortexGlow).mul(gasDen.mul(0.8).add(0.012)).mul(windAmt).mul(u.iris));
         // the cluster's own glow, beyond the frame's top
         col.addAssign(u.clusterGlow.mul(exp(length(pGas.sub(u.cluster)).mul(-1.6))).mul(0.45).mul(u.shine));
 
@@ -354,7 +369,9 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
         // the ionization front: a thin skin on every lit edge, flaring as a front crosses it
         const flare = frontSum.mul(3.0).add(1.0);
         const skin = exp(abs(d.add(0.008)).mul(-90.0)).mul(lit.mul(lit)).mul(sun).mul(diffuse.mul(0.7).add(0.3));
-        col.addAssign(u.front.mul(skin).mul(1.6).mul(flare));
+        // the heat of play keeps the rims burning (u.burn − 1 on top of their own light); the
+        // fronts flare them as ever
+        col.addAssign(u.front.mul(skin).mul(1.6).mul(flare.add(u.burn).sub(1)));
         col.addAssign(frontLit.mul(skin).mul(2.0).mul(u.iris));
         // the burning rims of the holes the released stars boiled open
         col.addAssign(holeRim.mul(th.mul(0.6).add(0.15)).mul(0.6).mul(u.iris));

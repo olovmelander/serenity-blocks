@@ -240,6 +240,45 @@ describe('nebula flow director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('crowns the clear a perfect clear settles after (its own frame, no rows), never a second clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.crown = vi.fn((c) => calls.order.push(`crown:${c.player}`));
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // physics sends PERFECT_CLEAR ~360 ms after the last wave, in a frame of its own
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(sink.crown).toHaveBeenCalledTimes(1);
+        expect(calls.order[calls.order.length - 1]).toBe('crown:0');
+        // with no crown to give, it falls back to the one-line perfect clear it always was
+        const plain = makeDirector();
+        plain.director.onPerfectClear({ depth: 4 });
+        plain.director.flush();
+        expect(plain.calls.clear).toHaveLength(1);
+        expect(plain.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('hands a T-spin that cleared nothing to the sink as a spin, not a clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledTimes(1);
+        expect(sink.spin.mock.calls[0][0]).toMatchObject({ player: 0 });
+        expect(calls.clear).toHaveLength(0);
+        // a T-spin that clears rides on its clear
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledTimes(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 1, tspin: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);
