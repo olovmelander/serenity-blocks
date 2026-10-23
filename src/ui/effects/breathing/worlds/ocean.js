@@ -21,10 +21,10 @@
  * Ground units: about twelve metres each. The landscape frame spans some forty metres of beach.
  */
 import {
-    Fn, clamp, dot, exp, float, mix, normalize, pow, reflect, smoothstep, step, uniform, vec2, vec3,
+    Fn, clamp, dot, exp, float, mix, normalize, pow, reflect, select, smoothstep, step, uniform, vec2, vec3,
 } from 'three/tsl';
 import {
-    backdropPoint, fadeOut, fbm, fresnel, gnoise, gnoise3, hash21, hash22, layer, voronoi,
+    backdropPoint, eventWindow, fadeOut, fbm, fbm3, fresnel, gnoise, gnoise3, hash21, hash22, layer, voronoi,
 } from '../stage/breath-tsl.js';
 
 const TAU = Math.PI * 2;
@@ -38,14 +38,6 @@ const PITCH = 0.72;
 const SIN_PITCH = Math.sin(PITCH);
 const COS_PITCH = Math.cos(PITCH);
 const FOCAL = (COS_PITCH * COS_PITCH) / SIN_PITCH;
-/** The low sun, ahead of the lens and a little to the right: elevation and azimuth, radians. */
-const SUN_ELEVATION = 0.36;
-const SUN_AZIMUTH = 0.34;
-const SUN_DIR = [
-    Math.sin(SUN_AZIMUTH) * Math.cos(SUN_ELEVATION),
-    Math.sin(SUN_ELEVATION),
-    Math.cos(SUN_AZIMUTH) * Math.cos(SUN_ELEVATION),
-];
 /**
  * The beach on the ground plane (landscape, portrait): the waterline turns this far from the
  * screen's horizontal (sea to the upper right) and crosses the view's axis this far ahead of the
@@ -62,20 +54,158 @@ const BREAK_LINE = 1.9;
 /** The fringing reef, this far out: tall frames see it near the top, with the open ocean beyond. */
 const REEF = 2.9;
 
-const SUNLIGHT = vec3(1.0, 0.76, 0.5);
-const SKYLIGHT = vec3(0.34, 0.48, 0.7);
-const SKY_GOLD = vec3(1.15, 0.78, 0.44);
-const SKY_ROSE = vec3(0.5, 0.46, 0.62);
-const SKY_HIGH = vec3(0.24, 0.4, 0.74);
-const SAND = vec3(0.8, 0.66, 0.5);
-const BED = vec3(0.86, 0.84, 0.74);
 const WEED = vec3(0.06, 0.09, 0.06);
-const ABSORB = vec3(3.0, 0.6, 0.33);
-const DEEP = vec3(0.0, 0.065, 0.23);
 const FOAM = vec3(1.0, 0.98, 0.96);
-const HAZE = vec3(0.92, 0.76, 0.6);
-const SUN_POWER = 2.4;
-const GLINT = 40;
+
+/**
+ * The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's.
+ * `sun`: the key light's elevation and azimuth (radians; azimuth 0 = straight ahead, + to the
+ * right). Colours are linear RGB. `sunPower` scales the key light on the sand, `glint` the sun's
+ * sparkle on the chop, `caustics` the light nets on the bed, `film` how strongly the draining sand
+ * mirrors the sky (`sheen` the wet sand's gloss as a whole), `clouds` how dark the drifting
+ * cloud shadows are, `spray` the sea-spray veil, `glare` the warm veil on the sun's side of the
+ * view, `face` the light through the incoming wave's face. `bio`: plankton that glows blue where
+ * the water is stirred (night). `gull`: a seabird's shadow may cross the sand now and then.
+ */
+export const MOODS = Object.freeze([
+    {
+        id: 'golden-hour',
+        name: 'Golden Hour',
+        sun: [0.36, 0.34],
+        sunlight: [1.0, 0.76, 0.5],
+        skylight: [0.34, 0.48, 0.7],
+        skyToward: [1.15, 0.78, 0.44],
+        skyAway: [0.5, 0.46, 0.62],
+        skyHigh: [0.24, 0.4, 0.74],
+        sand: [0.8, 0.66, 0.5],
+        bed: [0.86, 0.84, 0.74],
+        absorb: [3.0, 0.6, 0.33],
+        deep: [0.0, 0.065, 0.23],
+        haze: [0.92, 0.76, 0.6],
+        face: [0.05, 0.42, 0.34],
+        sunPower: 2.4,
+        glint: 40,
+        caustics: 1,
+        film: 1,
+        sheen: 1,
+        clouds: 0.24,
+        spray: 0.55,
+        glare: 0.2,
+        bio: null,
+        gull: true,
+        bloom: {
+            strength: 0.3, radius: 0.55, threshold: 0.95, breath: 0.35,
+        },
+        grade: {
+            shadows: [0.86, 0.99, 1.06], highlights: [1.06, 1.0, 0.9], saturation: 1.08, contrast: 1.1, vignette: 0.38,
+        },
+        exposure: 0.96,
+    },
+    {
+        // A high sun off to the right: white coral sand, glass-clear turquoise, crisp caustics.
+        id: 'midday-lagoon',
+        name: 'Midday Lagoon',
+        sun: [0.82, 1.3],
+        sunlight: [1.0, 0.96, 0.88],
+        skylight: [0.36, 0.52, 0.8],
+        skyToward: [0.82, 0.9, 1.0],
+        skyAway: [0.5, 0.7, 0.96],
+        skyHigh: [0.16, 0.36, 0.82],
+        sand: [0.88, 0.78, 0.62],
+        bed: [0.92, 0.92, 0.84],
+        absorb: [2.7, 0.42, 0.27],
+        deep: [0.0, 0.1, 0.27],
+        haze: [0.8, 0.9, 1.0],
+        face: [0.04, 0.46, 0.42],
+        sunPower: 0.95,
+        glint: 34,
+        caustics: 1.35,
+        film: 0.35,
+        sheen: 0.45,
+        clouds: 0.36,
+        spray: 0.4,
+        glare: 0.0,
+        bio: null,
+        gull: true,
+        bloom: {
+            strength: 0.26, radius: 0.5, threshold: 0.98, breath: 0.3,
+        },
+        grade: {
+            shadows: [0.9, 0.99, 1.06], highlights: [1.02, 1.0, 0.97], saturation: 1.1, contrast: 1.08, vignette: 0.32,
+        },
+        exposure: 0.9,
+    },
+    {
+        // The sun just above the sea: rose and violet light, and the draining sand a mirror of it.
+        id: 'rose-dusk',
+        name: 'Rose Dusk',
+        sun: [0.12, -0.2],
+        sunlight: [1.0, 0.6, 0.46],
+        skylight: [0.34, 0.32, 0.54],
+        skyToward: [1.25, 0.58, 0.42],
+        skyAway: [0.6, 0.4, 0.72],
+        skyHigh: [0.24, 0.22, 0.56],
+        sand: [0.74, 0.66, 0.6],
+        bed: [0.84, 0.8, 0.76],
+        absorb: [3.2, 0.85, 0.42],
+        deep: [0.04, 0.04, 0.2],
+        haze: [0.98, 0.6, 0.62],
+        face: [0.2, 0.24, 0.4],
+        sunPower: 3.2,
+        glint: 46,
+        caustics: 0.55,
+        film: 2.0,
+        clouds: 0.14,
+        spray: 0.8,
+        glare: 0.32,
+        bio: null,
+        gull: true,
+        bloom: {
+            strength: 0.36, radius: 0.6, threshold: 0.9, breath: 0.35,
+        },
+        grade: {
+            shadows: [0.92, 0.94, 1.08],
+            highlights: [1.06, 0.97, 0.96],
+            saturation: 1.1,
+            contrast: 1.08,
+            vignette: 0.42,
+        },
+        exposure: 1.0,
+    },
+    {
+        // A moonlit night: the surf, the bore and the stranded foam glow blue with plankton.
+        id: 'glowing-tide',
+        name: 'Glowing Tide',
+        sun: [0.5, -0.38],
+        sunlight: [0.12, 0.155, 0.25],
+        skylight: [0.018, 0.028, 0.065],
+        skyToward: [0.16, 0.2, 0.32],
+        skyAway: [0.03, 0.045, 0.1],
+        skyHigh: [0.014, 0.024, 0.06],
+        sand: [0.42, 0.42, 0.44],
+        bed: [0.7, 0.74, 0.76],
+        absorb: [3.0, 0.7, 0.4],
+        deep: [0.0, 0.012, 0.04],
+        haze: [0.07, 0.1, 0.18],
+        face: [0.0, 0.0, 0.0],
+        sunPower: 1.4,
+        glint: 6,
+        caustics: 0.3,
+        film: 1.3,
+        clouds: 0.18,
+        spray: 0.5,
+        glare: 0.06,
+        bio: [0.02, 0.42, 1.0],
+        gull: false,
+        bloom: {
+            strength: 0.6, radius: 0.7, threshold: 0.5, breath: 0.45,
+        },
+        grade: {
+            shadows: [0.9, 0.98, 1.1], highlights: [0.96, 1.0, 1.06], saturation: 1.12, contrast: 1.1, vignette: 0.46,
+        },
+        exposure: 1.12,
+    },
+]);
 
 /** x² as a product: no pow() of a base that may dip below zero. */
 const sq = (x) => x.mul(x);
@@ -86,17 +216,56 @@ const sq = (x) => x.mul(x);
  */
 const resolve = (foot, wavelength) => fadeOut(0.16, 0.38, foot.div(wavelength));
 
-/** Golden-hour sky along a direction (y up): warm and bright toward the low sun, clear blue overhead. */
-function skyRadiance(dir, sun) {
+/**
+ * The sky along a direction (y up), only ever seen in reflection: the mood's light toward the
+ * sun (gold at golden hour, coral at dusk, a pale halo round the moon), its other colour away from
+ * it, and the zenith overhead.
+ */
+function skyRadiance(dir, sun, pal) {
     const up = dir.y.max(0);
     const toward = dot(dir, sun).max(0).toVar();
     const t2 = sq(toward);
     const t8 = sq(sq(t2));
     const t32 = sq(sq(t8));
-    // Golden hour: the low sky is gold toward the sun and rose away from it; blue overhead.
-    const low = mix(SKY_ROSE, SKY_GOLD, t2);
-    return mix(low, SKY_HIGH, smoothstep(0.03, 0.8, up).mul(float(1).sub(t2.mul(0.45))))
-        .add(SUNLIGHT.mul(t8.mul(0.45).add(t32.mul(1.5))));
+    const low = mix(pal.skyAway, pal.skyToward, t2);
+    return mix(low, pal.skyHigh, smoothstep(0.03, 0.8, up).mul(float(1).sub(t2.mul(0.45))))
+        .add(pal.sunlight.mul(t8.mul(0.45).add(t32.mul(1.5))));
+}
+
+/**
+ * A ray seen from above in its own frame (f forward, s across, ground units): broad wings that
+ * sweep back to their tips and beat slowly, a blunt head and a whip of a tail. Soft-edged: it is
+ * seen through moving water. Returns coverage 0..1.
+ */
+function raySilhouette(f, s, span, beat) {
+    const reach = span.mul(beat.mul(0.1).add(0.95));
+    const across = s.abs().div(reach).toVar();
+    // The wing tips trail back; the head is blunter than the tail end.
+    const swept = f.add(sq(across).mul(span.mul(0.55)));
+    const length = select(swept.greaterThan(0), span.mul(0.62), span.mul(0.5));
+    const inside = float(1).sub(across).sub(swept.abs().div(length));
+    const body = smoothstep(0.0, 0.28, inside);
+    const tail = fadeOut(0.004, 0.012, s.abs()).mul(smoothstep(span.mul(-1.6), span.mul(-1.2), f))
+        .mul(fadeOut(span.mul(-0.5), span.mul(-0.35), f));
+    return body.max(tail.mul(0.6));
+}
+
+/**
+ * A gull's shadow on the sand, in its own frame (f forward, s across): two narrow, swept wings
+ * that beat, a short body. Its edges are soft (a sun's penumbra). Returns coverage 0..1.
+ */
+function gullShadow(f, s, span, beat) {
+    const reach = span.mul(beat.mul(0.22).add(0.78));
+    const across = s.abs().div(reach).toVar();
+    // The wings' centre line: forward at the shoulder, swept back to the tips, a crook at the wrist.
+    const wrist = exp(sq(across.sub(0.42).div(0.2)).negate());
+    const spine = across.mul(span.mul(-0.32)).add(wrist.mul(span.mul(0.08)));
+    const thick = float(1).sub(across).max(0).sqrt()
+        .mul(span.mul(0.16))
+        .add(span.mul(0.02));
+    const wing = fadeOut(thick.mul(0.55), thick.mul(1.25), f.sub(spine).abs()).mul(fadeOut(0.9, 1.02, across));
+    const body = fadeOut(0.7, 1.15, sq(f.add(span.mul(0.05)).div(span.mul(0.34))).add(sq(s.div(span.mul(0.08)))));
+    return wing.max(body);
 }
 
 /**
@@ -131,12 +300,29 @@ function foamWeb(point, time, radius) {
     return { web: smoothstep(hole, hole.add(0.05), cells.x), cells };
 }
 
-/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
-export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
-
-export function createOceanWorld({ u, quality }) {
+export function createOceanWorld({ u, quality, mood = MOODS[0] }) {
     const { octaves, detail } = quality;
     const fine = detail >= 0.6;
+    const m = { ...MOODS[0], ...mood };
+    const [sunElevation, sunAzimuth] = m.sun;
+    const SUN_DIR = [
+        Math.sin(sunAzimuth) * Math.cos(sunElevation),
+        Math.sin(sunElevation),
+        Math.cos(sunAzimuth) * Math.cos(sunElevation),
+    ];
+    const SUNLIGHT = vec3(...m.sunlight);
+    const SKYLIGHT = vec3(...m.skylight);
+    const SAND = vec3(...m.sand);
+    const BED = vec3(...m.bed);
+    const ABSORB = vec3(...m.absorb);
+    const DEEP = vec3(...m.deep);
+    const HAZE = vec3(...m.haze);
+    const pal = {
+        sunlight: SUNLIGHT, skyToward: vec3(...m.skyToward), skyAway: vec3(...m.skyAway), skyHigh: vec3(...m.skyHigh),
+    };
+    const SUN_POWER = m.sunPower;
+    const GLINT = m.glint;
+    const BIO = m.bio ? vec3(...m.bio) : null;
     // The swash as the breath drives it (set in update). `uBore`: how much fresh white water the
     // wave carries. `uLace`: how much older lace rides the water, left by the uprush. `uOut`: 0 while
     // the wave runs up the sand, easing to 1 once the out-breath has begun (the sand drains and the
@@ -184,7 +370,7 @@ export function createOceanWorld({ u, quality }) {
         const run = b.mul(float(1.5).sub(b.mul(0.5))).toVar();
         // Lobes and cusps: the front never runs up as a straight line, and each wave reaches a
         // little differently as the field drifts.
-        const lobes = fbm(vec2(along.mul(0.9).add(1.7), t.mul(0.03)), 3).sub(0.5).mul(0.6)
+        const lobes = fbm(vec2(along.mul(0.9).add(1.7).add(u.seed.mul(9.1)), t.mul(0.03)), 3).sub(0.5).mul(0.6)
             .add(along.mul(2.6).add(t.mul(0.07)).sin().mul(0.05))
             .toVar();
         const cusps = gnoise(vec2(along.mul(6), t.mul(0.12))).sub(0.5).mul(0.07).toVar();
@@ -214,9 +400,10 @@ export function createOceanWorld({ u, quality }) {
         const lagoon = mix(sheet.max(sea), float(0.32), reefFlat.mul(0.85));
         const depth = mix(lagoon, float(7), smoothstep(0.03, 0.4, toReef)).toVar();
 
-        // Cloud shadows: soft, slow, much larger than anything on the sand.
-        const cloud = fbm(g.mul(vec2(0.16, 0.22)).add(vec2(t.mul(0.012), t.mul(-0.005)).add(2.4)), 2);
-        const sunVis = float(1).sub(smoothstep(0.42, 0.8, cloud).mul(0.24)).toVar();
+        // Cloud shadows: soft, slow, much larger than anything on the sand (each visit its own sky).
+        const cloud = fbm(g.mul(vec2(0.16, 0.22)).add(vec2(t.mul(0.012), t.mul(-0.005)).add(2.4))
+            .add(vec2(u.seed.mul(37), u.seed.mul(-11))), 2);
+        const sunVis = float(1).sub(smoothstep(0.42, 0.8, cloud).mul(m.clouds)).toVar();
 
         // The bore: the white water a wave carries. While the lungs fill it is the swash's own front,
         // churning up the sand; once the out-breath begins the next wave breaks offshore and rolls in
@@ -312,9 +499,11 @@ export function createOceanWorld({ u, quality }) {
         // longest behind the retreating backwash and dries back toward the waterline.
         const behind = front.sub(c).max(0);
         const film = exp(behind.mul(mix(float(8), float(4.5), uOut)).negate()).mul(saturated).toVar();
-        const sheen = fresnel(toEye.y, 0.02).mul(2).add(0.065).add(film.mul(0.45))
-            .mul(saturated);
-        sand.assign(mix(sand, skyRadiance(mirror, sun), sheen));
+        const sheen = fresnel(toEye.y, 0.02).mul(2).add(0.065).add(film.mul(0.45 * m.film))
+            .mul(saturated)
+            .mul(m.sheen)
+            .min(0.92);
+        sand.assign(mix(sand, skyRadiance(mirror, sun, pal), sheen));
         const toward = dot(mirror, sun).max(0).toVar();
         sand.addAssign(SUNLIGHT.mul(sq(sq(toward)).mul(film.mul(1.1).add(saturated.mul(0.12))).mul(sunVis)));
 
@@ -334,7 +523,8 @@ export function createOceanWorld({ u, quality }) {
         // Where the surface runs smooth the light is barely focused: the nets come and go in patches.
         const focus = smoothstep(0.25, 0.65, gust).mul(0.7).add(0.3);
         const causticGain = smoothstep(0.02, 0.15, depth).mul(exp(depth.mul(-1.1))).mul(resolve(foot, 0.07)).mul(sunVis)
-            .mul(focus);
+            .mul(focus)
+            .mul(m.caustics);
         const bedLit = bedAlbedo.mul(bedRipples)
             .mul(SUNLIGHT.mul(sunVis.mul(0.5).add(net.mul(causticGain).mul(0.9))).add(SKYLIGHT.mul(0.5)))
             .toVar();
@@ -342,12 +532,33 @@ export function createOceanWorld({ u, quality }) {
         // The water column: red goes first, then green; what is not absorbed scatters back blue.
         const trans = exp(ABSORB.mul(depth).negate()).toVar();
         const under = bedLit.mul(trans).mul(trans).add(DEEP.mul(float(1).sub(exp(depth.mul(-2.4))))).toVar();
+        // Now and then a ray glides along the lagoon: a soft dark shape beating slowly through the
+        // water, its shadow on the bed beside it. It swims in from beyond the frame and out again
+        // (each visit keeps its own timetable).
+        const ray = eventWindow(u.time, float(64), float(36), float(0.8), u.seed.mul(41.3).add(5.7)).toVar();
+        const rayHeading = step(0.5, hash21(vec2(ray.z, 4.4))).mul(2).sub(1).toVar();
+        const rayLane = mix(float(0.6), float(1.15), hash21(vec2(ray.z, 7.7))).add(ray.y.mul(6.5).sin().mul(0.08));
+        const rayAlong = mix(float(-3.4), float(3.4), ray.y).mul(rayHeading);
+        const rayF = along.sub(rayAlong).mul(rayHeading).toVar();
+        const rayS = c.sub(rayLane).toVar();
+        const beat = t.mul(1.25).add(ray.z.mul(20)).sin().toVar();
+        const raySpan = float(0.15);
+        const rayGain = smoothstep(0, 0.03, ray.x).mul(u.life).mul(smoothstep(0.1, 0.35, depth)).mul(water)
+            .toVar();
+        const rayBody = raySilhouette(rayF, rayS, raySpan, beat).mul(rayGain).toVar();
+        // The shadow falls away from the sun, blurred by the water between.
+        const shadowF = rayF.add(SUN_DIR[0] * 0.07);
+        const shadowS = rayS.add(SUN_DIR[2] * 0.06);
+        const rayShadow = raySilhouette(shadowF, shadowS, raySpan.mul(1.15), beat)
+            .mul(rayGain);
+        under.mulAssign(float(1).sub(rayShadow.mul(0.32)));
+        under.assign(mix(under, under.mul(0.3).add(DEEP.mul(0.4)), rayBody.mul(0.72)));
         const facing = clamp(dot(toEye, normal), 0, 1);
         // Far off, where the chop is finer than a pixel, rough patches (cat's paws) scatter the sky
         // and read darker than the glassy water between them.
         const glassy = float(1).sub(resolve(foot, 0.03)).mul(smoothstep(0.35, 0.7, gust)).mul(0.35);
         const reflectance = fresnel(facing, 0.02).mul(0.68).mul(float(1).sub(glassy)).toVar();
-        const seaColor = mix(under, skyRadiance(reflect(view, normal), sun), reflectance).toVar();
+        const seaColor = mix(under, skyRadiance(reflect(view, normal), sun, pal), reflectance).toVar();
         // Sun glitter: chop facets that tip the low sun into the lens, along the path toward the sun.
         const path = exp(float(1).sub(toward).mul(-26)).toVar();
         const glitterNormal = normalize(vec3(chop.x.mul(-2.2), 1, chop.y.mul(-2.2)));
@@ -372,7 +583,7 @@ export function createOceanWorld({ u, quality }) {
             .mul(uOut)
             .mul(fadeOut(0.85, 1.0, b))
             .mul(sunVis);
-        seaColor.addAssign(vec3(0.05, 0.42, 0.34).mul(face).mul(0.55));
+        seaColor.addAssign(vec3(...m.face).mul(face).mul(0.55));
 
         // Foam rides with the water: up the sand on the uprush, back down on the backwash.
         const flowing = vec2(along, c.sub(front.mul(0.85)).mul(0.8)).toVar();
@@ -440,7 +651,8 @@ export function createOceanWorld({ u, quality }) {
             .toVar();
         // Churned foam is lumpy: sunlit tops, blue-grey hollows.
         const lumps = fingers.mul(bore).add(float(1).sub(bore).mul(0.55));
-        const foamLight = mix(SUNLIGHT, vec3(1), 0.45).mul(sunVis.mul(0.8)).add(SKYLIGHT.mul(0.6))
+        const foamKey = BIO ? SUNLIGHT.mul(0.9) : mix(SUNLIGHT, vec3(1), 0.45);
+        const foamLight = foamKey.mul(sunVis.mul(0.8)).add(SKYLIGHT.mul(0.6))
             .mul(density.mul(0.25).add(0.8))
             .mul(lumps.mul(0.5).add(0.72))
             .add(SUNLIGHT.mul(bore.mul(sq(fingers)).mul(0.5)));
@@ -453,27 +665,58 @@ export function createOceanWorld({ u, quality }) {
         sand.mulAssign(float(1).sub(boreShadow.mul(0.4)));
         const col = mix(sand, seaColor, water).toVar();
         col.assign(mix(col, FOAM.mul(foamLight), foam));
+        if (BIO) {
+            // Plankton glows where the water is stirred: brightest in the running bore, softer along
+            // the fringe and the reef surf, faintly through the lace; foam stranded by the backwash
+            // keeps twinkling on the sand, and the gliding ray trails light from its wing tips.
+            const stirred = bore.mul(1.5).add(fringe.mul(0.75)).add(reefSurf.mul(0.7)).add(lace.mul(density).mul(0.45))
+                .mul(water)
+                .add(foam.mul(0.3))
+                .add(bubbles.mul(stranded).mul(1.6));
+            const beneath = exp(sq(xb.div(0.12)).negate()).mul(white).mul(water).mul(0.3);
+            col.addAssign(BIO.mul(stirred.add(beneath)));
+        }
+        if (m.gull) {
+            // A gull's shadow sweeps across the beach now and then, from beyond one edge of the frame
+            // to beyond the other.
+            const flight = eventWindow(u.time, float(29), float(8), float(0.6), u.seed.mul(23.9).add(5.5)).toVar();
+            const heading = hash21(vec2(flight.z, 1.9)).sub(0.5).mul(0.7);
+            const side = step(0.5, hash21(vec2(flight.z, 3.3))).mul(2).sub(1);
+            const dir = vec2(heading.cos().mul(side), heading.sin()).toVar();
+            const lane = vec2(0, mix(float(-0.9), float(0.2), hash21(vec2(flight.z, 5.1))));
+            const offset = g.sub(lane.add(dir.mul(flight.y.sub(0.5).mul(9)))).toVar();
+            const wings = t.mul(5.2).add(flight.z.mul(30)).sin();
+            const gull = gullShadow(dot(offset, dir), dot(offset, vec2(dir.y.negate(), dir.x)), float(0.1), wings)
+                .mul(smoothstep(0, 0.03, flight.x)).mul(u.life).mul(sunVis);
+            col.mulAssign(float(1).sub(gull.mul(0.45)));
+        }
         // The far sea melts into the warm haze of the low sun.
         // Toward the sun the haze is lit gold.
         const haze = float(1).sub(exp(far.sub(1).max(0).mul(-0.3)));
         const sunward = sq(sq(dot(vec2(view.x, view.z), vec2(SUN_DIR[0], SUN_DIR[2])).max(0)));
         col.assign(mix(col, HAZE.mul(sunward.mul(0.7).add(0.75)), haze.mul(0.2)));
+        // Sea spray: a thin veil drifting over the surf, thickest out at the break and over the reef,
+        // and above the wave as it spills.
+        const sprayX = g.x.mul(0.8).add(t.mul(0.05)).add(u.seed.mul(13));
+        const sprayAt = vec3(sprayX, c.mul(1.3).sub(t.mul(0.02)), t.mul(0.04));
+        const sprayField = fbm3(sprayAt, 2);
+        const sprayZone = smoothstep(0.4, 2.2, c).mul(0.7)
+            .add(exp(sq(toReef.div(0.5)).negate()))
+            .add(exp(sq(xb.div(0.25)).negate()).mul(uOut).mul(white).mul(0.8));
+        const spray = smoothstep(0.38, 0.78, sprayField).mul(sprayZone).mul(m.spray).saturate();
+        col.assign(mix(col, HAZE.mul(sunward.mul(0.6).add(0.85)), spray.mul(0.26)));
         // The low sun just beyond the frame lays a warm veil over its side of the view.
         const glare = smoothstep(0.5, 0.9, dot(view, sun));
-        col.addAssign(SUNLIGHT.mul(sq(glare)).mul(0.2));
+        if (m.glare > 0) col.addAssign(SUNLIGHT.mul(sq(glare)).mul(m.glare));
         return col.mul(b.mul(0.08).add(0.96));
     })();
 
     return {
         backdrop,
-        bloom: {
-            strength: 0.3, radius: 0.55, threshold: 0.95, breath: 0.35,
-        },
-        grade: {
-            shadows: [0.86, 0.99, 1.06], highlights: [1.06, 1.0, 0.9], saturation: 1.08, contrast: 1.1, vignette: 0.38,
-        },
+        bloom: m.bloom,
+        grade: m.grade,
         camera: { dolly: 0.03, drift: [0.03, 0.015], period: 70 },
-        exposure: 0.96,
+        exposure: m.exposure,
         update({ delta, phase, progress }) {
             const at = Math.min(1, Math.max(0, progress));
             const ramp = (lo, hi, v) => {
