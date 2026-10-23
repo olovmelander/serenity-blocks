@@ -3,6 +3,8 @@
  * Handles storage, retrieval, and sharing of game demos
  */
 
+import { openDatabaseOnce } from '../../utils/indexed-db-open.js';
+
 // Retention cap (plan §5.0 step 2 "bank real session logs"): every game
 // auto-saves a demo with full board checkpoints every 300 frames, and nothing
 // ever pruned — unbounded growth invites the browser's storage-pressure
@@ -19,20 +21,15 @@ export class DemoManager {
     }
 
     /**
-     * Initializes the IndexedDB database
+     * Opens the IndexedDB database once (utils/indexed-db-open.js: concurrent callers share it,
+     * and it gives way to a newer version of the game in another tab).
      * @returns {Promise<void>}
      */
     async init() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
-
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                this.db = request.result;
-                resolve();
-            };
-
-            request.onupgradeneeded = (event) => {
+        return openDatabaseOnce(this, {
+            name: this.DB_NAME,
+            version: this.DB_VERSION,
+            upgrade: (event) => {
                 const db = event.target.result;
                 if (!db.objectStoreNames.contains(this.STORE_NAME)) {
                     const store = db.createObjectStore(this.STORE_NAME, {
@@ -43,7 +40,7 @@ export class DemoManager {
                     store.createIndex('score', 'metadata.finalScore', { unique: false });
                     store.createIndex('gameMode', 'gameMode', { unique: false });
                 }
-            };
+            },
         });
     }
 

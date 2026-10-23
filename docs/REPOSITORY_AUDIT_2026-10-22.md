@@ -43,7 +43,7 @@ plan before executing them.
    `eslint-plugin-import-x`; decide Prettier (it disagrees with the lint rules on 1,746 files);
    lint `electron/`.
 
-**Bugs** (5, 7, 8, 10, 11 and the first of 9 fixed 2026-10-23 on `fix/player-bugs`; the rest open)
+**Bugs** (all but 6, the Steam lobby lifecycle, fixed 2026-10-23; 6 needs Steam on two machines)
 5. ~~Sunfall: a failed build is swallowed into a blank theme with no Forest fallback; it ignores
    render scale, drops a quality change made while parked, never resets on game over, and `||`
    turns Minimal's 0 into more effects than Low.~~ Fixed: game over closes the cloud deck and a
@@ -58,12 +58,14 @@ plan before executing them.
 8. ~~The Random-theme timer runs on the menu and while hidden, disposing the parked warm theme; two
    handlers disagree about starting it.~~ Fixed: one owner (`themes/random-theme-rotation.js`),
    only in a running game on a visible page, never in Serenity or Odyssey.
-9. Web build: ~~`pagehide` tears the app down even for the back/forward cache (a dead menu on
-   Back)~~ (fixed: a restored page reloads); still open: the high-score IndexedDB (and
-   DemoManager) open a connection per concurrent caller with no `onversionchange`/`onblocked`,
-   so the next `DB_VERSION` bump can hang the results screen while an old tab is open; a startup
-   that loses to the 45 s watchdog never adopts the late app, so Steam, the quit flush and the
-   deferred services never start (needs the post-app wiring in `main.js` made re-runnable).
+9. ~~Web build: `pagehide` tears the app down even for the back/forward cache (a dead menu on
+   Back); the high-score IndexedDB (and DemoManager) open a connection per concurrent caller
+   with no `onversionchange`/`onblocked`, so the next `DB_VERSION` bump can hang the results
+   screen while an old tab is open; a startup that loses to the 45 s watchdog never adopts the
+   late app, so Steam, the quit flush and the deferred services never start.~~ All fixed: a
+   restored page reloads (`fix/player-bugs`); one shared opening that gives way to a newer tab
+   (`utils/indexed-db-open.js`) and a late app wired when it arrives (`utils/late-app-adoption.js`,
+   `fix/storage-and-startup`).
 10. ~~A knock-out right after a zoom punch leaves the board camera zoomed and blocks later punches;
     two Phaser cleanup checks test fields Phaser 4 does not have (`hasFinished`, `emitter.on`).~~
     Fixed.
