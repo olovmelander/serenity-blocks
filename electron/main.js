@@ -39,6 +39,8 @@ import {
     isDuplicateDevToolsShortcut,
 } from './devtools-shortcuts.js';
 import { isAllowedExternalUrl } from './external-links.js';
+import { guardIpcHandlers, isGameSender } from './ipc-sender-guard.js';
+import { isPermissionAllowed } from './permission-policy.js';
 import { decideRendererRecovery, isFatalLoadFailure } from './renderer-recovery.js';
 import { requestRendererQuitFlush } from './quit-flush.js';
 
@@ -78,6 +80,21 @@ let mainWindow = null;
 let currentVSyncEnabled = true;
 let rendererCrashes = []; // recent renderer crash times (electron/renderer-recovery.js)
 let rendererReloadRequestedAt = null; // the player chose Reload on the hang prompt
+
+function gameWebContents() {
+    return mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents : null;
+}
+
+// Every IPC handler, these below and Steam's (steam-integration.js), answers only the game's
+// own page (electron/ipc-sender-guard.js). Installed before the first handler is registered.
+guardIpcHandlers(
+    ipcMain,
+    (event) => isGameSender(event, { webContents: gameWebContents(), isGameUrl: isAllowedAppNavigation }),
+    (channel) => {
+        console.warn(`[Electron] Refused IPC ${channel} from a frame that is not the game`);
+        diagnosticLog({ type: 'ipc-refused', channel });
+    },
+);
 
 // ---------------------------------------------------------------------------
 // Runtime config exposed to renderer via IPC
@@ -264,7 +281,9 @@ let devToolsRequestSequence = 0;
 const DEVTOOLS_PENDING_REQUEST_TTL_MS = 10_000;
 
 function requestDevToolsOpen(source) {
-    if (!mainWindow || mainWindow.isDestroyed()) {
+    // DevTools is for dev and diagnostics builds; a release build refuses (audit R-07 step 7),
+    // and its Settings no longer shows the button (src/ui/developer-surfaces.js).
+    if (!mainWindow || mainWindow.isDestroyed() || !debugKeysEnabled({ isPackaged, diagnosticsEnabled })) {
         return { accepted: false, requestId: null, alreadyOpen: false };
     }
 
@@ -514,11 +533,13 @@ if (loggingEnabled) {
 // <script> (only the hashed first-party startup blocks below are allowed), no
 // eval of JS, no plugins/objects, no <base> hijack, no framing. We still allow
 // inline STYLES ('unsafe-inline' in style-src only — the app sets inline styles
-// pervasively) and the Google webfonts.
+// pervasively). The fonts are self-hosted (public/styles/fonts.css), so no
+// remote origin is allowed at all. Measured in a packaged Electron 44 build: the
+// header does apply to the file:// load (eval and an injected inline script are
+// both blocked).
 //
 // Packaged note: file:// subresources must keep loading, so `file:` is allowed
-// in the resource directives. Self-hosting the two webfonts (a later phase)
-// would let style-src/font-src drop the Google origins entirely.
+// in the resource directives.
 //
 // Inline startup scripts: index.html ships two TRUSTED first-party inline
 // <script> blocks (the startup bridge, and the startup shell that installs the
@@ -565,6 +586,29 @@ function installContentSecurityPolicy() {
     });
 }
 
+// Deny-by-default permissions (electron/permission-policy.js): requests (getUserMedia,
+// geolocation, notifications, ...) and the synchronous checks behind permissions.query and
+// device APIs (HID, serial, USB). A refusal is logged once per permission with logging on.
+function installPermissionPolicy() {
+    const refused = new Set();
+    const decide = (kind, permission, requestingUrl) => {
+        const allowed = isPermissionAllowed({
+            kind, permission, requestingUrl, isGameUrl: isAllowedAppNavigation,
+        });
+        if (!allowed && !refused.has(`${kind}:${permission}`)) {
+            refused.add(`${kind}:${permission}`);
+            diagnosticLog({ type: 'permission-refused', kind, permission });
+        }
+        return allowed;
+    };
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+        callback(decide('request', permission, details?.requestingUrl));
+    });
+    session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => (
+        decide('check', permission, details?.requestingUrl || requestingOrigin)
+    ));
+}
+
 // ---------------------------------------------------------------------------
 // Window creation
 // ---------------------------------------------------------------------------
@@ -591,6 +635,12 @@ function createWindow() {
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         openExternalIfAllowed(url);
         return { action: 'deny' };
+    });
+
+    // Web Bluetooth: with no answer here Electron picks the first device on its own.
+    mainWindow.webContents.on('select-bluetooth-device', (event, _devices, callback) => {
+        event.preventDefault();
+        callback('');
     });
 
     // The url argument is deprecated in Electron 44; the event carries it.
@@ -851,6 +901,7 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
     if (!gotLock) return;
     installContentSecurityPolicy();
+    installPermissionPolicy();
     createWindow();
 
     // Power monitor → renderer

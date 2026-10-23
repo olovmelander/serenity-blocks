@@ -38,6 +38,14 @@ describe('Electron content security policy', () => {
         expect(parsed['frame-src']).toEqual(["'none'"]);
     });
 
+    it('allows no remote origin in either mode: the fonts are self-hosted', () => {
+        ['packaged', 'dev'].forEach((mode) => {
+            const policy = createContentSecurityPolicy({ mode });
+            expect(policy).not.toMatch(/https:|googleapis|gstatic/);
+            expect(directives(policy)['font-src']).not.toContain('https:');
+        });
+    });
+
     it('hashes only attribute-less inline startup scripts', () => {
         const hashes = extractInlineScriptHashes(`
             <script>window.a = 1;</script>
