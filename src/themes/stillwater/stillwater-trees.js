@@ -30,6 +30,7 @@ import {
     floor,
     fract,
     length,
+    log2,
     max,
     min,
     mix,
@@ -41,6 +42,7 @@ import {
     smoothstep,
     step,
     uv,
+    varying,
     vec2,
     vec3,
     vec4,
@@ -52,8 +54,17 @@ import {
     azimuthOf, crownFloor, rangeOf, shoreDistance, valueNoise,
 } from './stillwater-plan.js';
 import {
-    swFog, swFogAmount, swHash11, swHaze, swLight, swPart,
+    NOISE_SIZE, swFog, swFogAmount, swHash11, swHaze, swLight, swPart,
 } from './stillwater-tsl.js';
+
+/**
+ * A tree's own numbers (its seed, a crown's shape) as the fragment stage reads them: flat, not
+ * interpolated. Interpolated across a card, a constant comes out a few bits off from pixel to
+ * pixel, and a hash of it then changes at random from one pixel to the next: a branch, a twig, a
+ * beard of lichen long here and short beside it, a speckle round every tip that crawls as the view
+ * breathes.
+ */
+const flat = (node, name) => varying(node, name).setInterpolation('flat', 'either');
 
 // ── Trunks ──────────────────────────────────────────────────────────────────────
 
@@ -379,11 +390,12 @@ export function createCrowns(u, plan, { samples = 0 } = {}) {
             f.x.negate().mul(across).add(more.y.mul(y)).add(f.y.mul(more.z)),
         ));
     })();
+    const tree = flat(shape, 'vCrownShape');
     material.fragmentNode = Fn(() => {
-        const W = shape.x;
-        const L = shape.y;
-        const s = shape.z;
-        const seed = shape.w;
+        const W = tree.x;
+        const L = tree.y;
+        const s = tree.z;
+        const seed = tree.w;
         const X = corner.x.mul(W).mul(CROWN_SPAN).toVar();
         const Y = mix(float(-CROWN_HANG), L.add(0.3), corner.y).toVar();
         const ax = abs(X).toVar();
@@ -393,6 +405,10 @@ export function createCrowns(u, plan, { samples = 0 } = {}) {
         // Metres one pixel spans here: the cut-out's edge is drawn to it, and fine detail fades with it.
         const pxm = max(length(rel).mul(u.pixelAngle), 1e-4).toVar();
         const fine = float(1.0).sub(smoothstep(0.025, 0.05, pxm)).toVar();
+        // (The whorl's own noise is read at the level this pixel's footprint calls for: its
+        // coordinates jump from one whorl to the next, and a level taken from the screen's
+        // differences would blur to grey on every 2 × 2 block across a whorl's line.)
+        const coarseLod = log2(max(pxm.mul(1.7 * NOISE_SIZE), 1.0)).toVar();
         // The crown's outline: a narrow cone (some trees fuller, some more of a spire), its lowest
         // whorls short and sparse where the light no longer reaches them.
         const form = swHash11(seed.mul(5.3)).mul(0.4).add(0.72);
@@ -415,7 +431,8 @@ export function createCrowns(u, plan, { samples = 0 } = {}) {
             const yb = yw.sub(droop.mul(q.pow(1.6)));
             // Its twigs hang below it in a curtain: ragged, longest along its middle, short at the
             // tip, long enough that the curtains of one whorl reach the branches of the next.
-            const coarse = u.noise(vec2(X.mul(1.7).add(j.mul(0.37)), j.mul(0.173).add(seed.mul(0.01)))).r;
+            const coarse = u.noise(vec2(X.mul(1.7).add(j.mul(0.37)), j.mul(0.173).add(seed.mul(0.01))))
+                .level(coarseLod).r;
             const col = swHash11(floor(X.mul(7.0)).add(j.mul(13.0)).add(seed));
             const rag = mix(coarse, coarse.mul(0.45).add(col.mul(0.55)), fine);
             const belly = sin(min(q.mul(1.1), 1.0).mul(Math.PI)).mul(0.5).add(0.5);
@@ -628,9 +645,9 @@ export function createBoughs(u, plan, name = 'StillwaterBoughs', { samples = 0, 
     })();
     const coverage = samples > 1;
     material.alphaToCoverage = coverage;
-    material.fragmentNode = lichen ? lichenFragment(u, coverage) : Fn(() => {
+    const seed = flat(attribute('aSeed', 'float'), 'vBoughSeed');
+    material.fragmentNode = lichen ? lichenFragment(u, coverage, seed) : Fn(() => {
         const st = uv().toVar();
-        const seed = attribute('aSeed', 'float').toVar();
         const P = positionWorld;
         // Metres a pixel spans here: twigs narrower than a few pixels close into one curtain.
         const pxm = max(length(P.sub(cameraPosition)).mul(u.pixelAngle), 1e-4).toVar();
@@ -689,10 +706,9 @@ export function createBoughs(u, plan, name = 'StillwaterBoughs', { samples = 0, 
  * lichen hanging from it in beards, each its own length, wavering. Far off, the beards are a
  * faint pale curtain.
  */
-function lichenFragment(u, coverage) {
+function lichenFragment(u, coverage, seed) {
     return Fn(() => {
         const st = uv().toVar();
-        const seed = attribute('aSeed', 'float').toVar();
         const P = positionWorld;
         const pxm = max(length(P.sub(cameraPosition)).mul(u.pixelAngle), 1e-4).toVar();
         const PITCH = 11.0;

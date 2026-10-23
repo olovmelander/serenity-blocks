@@ -1094,6 +1094,27 @@ describe('Vesper Chrysalis theme: one node renderer on both backends', () => {
         expect(mocks.worlds).toHaveLength(1); // a new pixel ratio is not a new world
     });
 
+    it('leaves its canvas alone on a save that keeps the pixel ratio', async () => {
+        // Every save carries all the settings, the render scale with them: the song a theme links
+        // to and a theme picked in play are both saved as the theme comes in.
+        const { theme } = await startTheme({ quality: 'High' });
+        const { renderer, world, post } = theme;
+        renderer.setSize.mockClear();
+        renderer.setPixelRatio.mockClear();
+        world.setViewport.mockClear();
+        post.setSize.mockClear();
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, {
+            settings: { renderScale: 1, musicTrack: 'nocturne', backgroundTheme: 'vesper-chrysalis' },
+            dirtyKeys: ['musicTrack'],
+            source: 'local',
+        });
+        await Promise.resolve();
+        expect(renderer.setSize).not.toHaveBeenCalled();
+        expect(renderer.setPixelRatio).not.toHaveBeenCalled();
+        expect(world.setViewport).not.toHaveBeenCalled();
+        expect(post.setSize).not.toHaveBeenCalled();
+    });
+
     it('reads the board on frame time, aims the world at it and calms the post over the card', async () => {
         const { theme, page, win } = await startTheme({ quality: 'High' });
         const { world, post } = theme;
