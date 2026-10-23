@@ -20,9 +20,12 @@ plan before executing them.
 ## Still open, most important first
 
 **Security and dependencies**
-1. Vite 5 → 7 and Vitest 3 → 4 together: the last two critical advisories (tinypool via Vitest)
-   and Vite's path traversal; `server.host: true` puts the dev server on every interface. Then
-   Vite 8 / Rolldown + Vitest 5 as their own project, gated by `check-boot-closure.mjs`.
+1. ~~Vite 5 → 7 and Vitest 3 → 4 together~~ **done 2026-10-23** (`feature/vite7-vitest4`):
+   `npm audit` is clean; the dev server listens on 127.0.0.1 (`npm run dev -- --host` for the
+   LAN). Same chunks, boot closure and build time; Vite 7 strips license comments from the
+   bundle, so `build.license` now writes `dist/THIRD_PARTY_LICENSES.md` and the Pages artifact
+   check requires it. Still open: Vite 8 / Rolldown + Vitest 5 as their own project, gated by
+   `check-boot-closure.mjs` (Rolldown replaces the `manualChunks` rules this build relies on).
 2. The rest of Electron hardening (owner decision 5): deny-by-default permission handler (none
    today: every request is granted), IPC sender checks, a meta CSP, fuses, `app://`.
 3. Close Dependabot PR #315 (TypeScript 7 removes the compiler API two CI gates use); give majors
