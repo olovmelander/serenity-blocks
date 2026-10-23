@@ -10,7 +10,7 @@
  *     Chains       [Combo ×5] [Back-to-back]
  *     Moments      [T-spin] [Perfect clear] [Level up]
  *     Build-up     [Rush] [Fever]
- *     ← → another theme · E closes
+ *     ← → another theme · E hides
  *
  * On a wide screen it stands at the right edge, clear of the middle where the board would be
  * and where the themes play their effects; on a phone it is a short strip along the bottom. It
@@ -20,12 +20,18 @@
  * something else has the screen (the Hub, the breathing guide, the rest veil). While it is in
  * view it owns Esc, as the Hub does; folded away while Play all runs, Esc stops that first.
  *
+ * The line under the theme's name says what the effect under the pointer (or the keyboard's
+ * focus, or the one playing) is; the playing effect's button fills with a thin line for as long
+ * as it plays. With a mouse, the tray fades back while an effect plays and the pointer is
+ * elsewhere, so the effect can be watched whole; reaching for the tray brings it back.
+ *
  * The effects themselves are serenity-effects.js. Styles: public/styles/keystone-overlays.css
  * (`#serenity-effects`). `.serenity-hub` keeps a press on it from also touching the world.
  */
-import { EFFECTS, EFFECT_GROUPS } from './serenity-effects.js';
+import { EFFECTS, EFFECT_GROUPS, effectById } from './serenity-effects.js';
 
 export const TRAY_ID = 'serenity-effects';
+const SUBTITLE = 'What it does when you play';
 
 const el = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -55,6 +61,12 @@ export class SerenityEffectsTray {
         this.isOpen = false;
         this.covered = false;
         this.touring = false;
+        /** @type {string|null} the effect playing, under the pointer, and holding the focus */
+        this.playing = null;
+        /** @type {string|null} */
+        this.pointed = null;
+        /** @type {string|null} */
+        this.focused = null;
         /** @type {ResizeObserver|null} */
         this.sizer = null;
         this.abort = new AbortController();
@@ -75,7 +87,7 @@ export class SerenityEffectsTray {
         const eyebrow = el('p', 'serenity-effects__eyebrow', 'Effects');
         this.title = el('h2', 'serenity-effects__title', 'This theme');
         this.title.id = `${TRAY_ID}-title`;
-        this.subtitle = el('p', 'serenity-effects__subtitle', 'What it does when you play');
+        this.subtitle = el('p', 'serenity-effects__subtitle', SUBTITLE);
         titles.append(eyebrow, this.title, this.subtitle);
         this.playAll = el('button', 'serenity-effects__all', 'Play all');
         this.playAll.type = 'button';
@@ -113,7 +125,7 @@ export class SerenityEffectsTray {
         const hint = el('p', 'serenity-effects__hint');
         const cap = (text) => el('kbd', 'sb-kbd', text);
         hint.append(cap(keys.previous), cap(keys.next), el('span', '', 'another theme'));
-        hint.append(cap(keys.effects), el('span', '', 'closes'));
+        hint.append(cap(keys.effects), el('span', '', 'hides'));
         // The keycaps say it to sighted players; the buttons say it to everyone else.
         hint.setAttribute('aria-hidden', 'true');
 
@@ -132,6 +144,24 @@ export class SerenityEffectsTray {
         root.addEventListener('keydown', (event) => {
             const activates = event.key === ' ' || event.key === 'Enter';
             if (activates && event.target.closest?.('button')) event.stopPropagation();
+        }, { signal });
+        // The line under the name says what the effect being reached for does.
+        const effectOf = (target) => target?.closest?.('[data-effect]')?.dataset.effect || null;
+        root.addEventListener('pointerover', (event) => {
+            this.pointed = effectOf(event.target);
+            this._describe();
+        }, { signal });
+        root.addEventListener('pointerleave', () => {
+            this.pointed = null;
+            this._describe();
+        }, { signal });
+        root.addEventListener('focusin', (event) => {
+            this.focused = effectOf(event.target);
+            this._describe();
+        }, { signal });
+        root.addEventListener('focusout', () => {
+            this.focused = null;
+            this._describe();
         }, { signal });
         // Esc closes the tray first, and with the tray folded away it stops Play all before it
         // can leave the mode. The document's other Esc owners (Settings, in controls.js) listen
@@ -193,13 +223,31 @@ export class SerenityEffectsTray {
         this.root.classList.toggle('is-covered', this.covered);
     }
 
-    /** @param {{ playing: string|null, touring: boolean }} state */
-    setState({ playing, touring }) {
+    /** @param {{ playing: string|null, touring: boolean, ms?: number }} state */
+    setState({ playing, touring, ms = 0 }) {
         this.touring = Boolean(touring);
-        this.buttons.forEach((button, id) => button.classList.toggle('is-playing', id === playing));
+        this.playing = playing;
+        this.buttons.forEach((button, id) => {
+            button.classList.remove('is-playing');
+            if (id !== playing) return;
+            // Again from the start, also when the same effect is pressed again.
+            button.style.setProperty('--fx-ms', `${Math.max(0, Math.round(ms))}ms`);
+            void button.offsetWidth; // eslint-disable-line no-void
+            button.classList.add('is-playing');
+        });
+        // One effect pressed and playing: with a mouse the tray steps back while it is watched.
+        this.root.classList.toggle('is-watching', Boolean(playing) && !touring);
+        this._describe();
         this.playAll.textContent = touring ? 'Stop' : 'Play all';
         this.playAll.classList.toggle('is-on', touring);
         this.playAll.setAttribute('aria-label', touring ? 'Stop playing every effect' : 'Play every effect in turn');
+    }
+
+    /** The line under the name: the effect reached for, else the one playing, else what this is. */
+    _describe() {
+        const effect = effectById(this.pointed || this.focused || this.playing || '');
+        const text = effect ? effect.name : SUBTITLE;
+        if (this.subtitle.textContent !== text) this.subtitle.textContent = text;
     }
 
     /** @param {string} name the theme on screen */
