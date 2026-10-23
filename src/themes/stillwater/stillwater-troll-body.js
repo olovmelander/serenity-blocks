@@ -12,7 +12,12 @@
  *            roll over whichever leg bears the weight (a troll's rolling gait).
  *   staff    his walking staff is placed first, like a third foot, and his left hand takes it where
  *            it stands; lifted, it carries the lantern up or out over the water.
- *   look     the head finds what he watches first, the neck after, the chest last.
+ *   look     the head finds what he watches first, the neck after, the chest last; a turn
+ *            gathers speed and settles (two springs in series) and is never faster than a
+ *            heavy old head turns, so a sudden far look is a sweep, never a snap.
+ *   gestures a wave, a scratch behind the ear, a bow, a stone thrown...: short acts laid over all
+ *            of it (stillwater-gestures.js), each in and out on its own envelope, and faded out
+ *            over a moment when cut short.
  *   acts     sitting down and getting up, crouching to the water, a start: short timelines that
  *            lean in before they move (anticipation) and settle after.
  *   breath   a slow rise and fall of the chest, deeper after walking.
@@ -24,9 +29,12 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    Pendulum, Spring3, clamp, smoothstep, solveTwoBone, spring, springAngle, springTo, rotationBetweenFrames,
-    wrapAngle,
+    Pendulum, Spring3, clamp, follower, followTo, smoothstep, solveTwoBone, spring, springAngle, springTo,
+    rotationBetweenFrames, wrapAngle,
 } from './stillwater-motion.js';
+import {
+    GestureSlots, TROLL_GESTURES, emptyPose, slotWeight,
+} from './stillwater-gestures.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -67,6 +75,17 @@ export const FIST_HOLD = Object.freeze({
 });
 /** The share of the hand's turn about the forearm that the forearm takes (the rest is the wrist's). */
 const FOREARM_TWIST = 0.5;
+
+/**
+ * How his look moves: each share's settling time (s) and the fastest it may turn (rad/s). The
+ * shares add up to the whole turn, so at most he turns his gaze about 2.5 rad (140°) a second.
+ */
+export const TROLL_LOOK = Object.freeze({
+    head: Object.freeze({ share: 0.45, halfLife: 0.2, speed: 1.15 }),
+    neck: Object.freeze({ share: 0.3, halfLife: 0.3, speed: 0.8 }),
+    chest: Object.freeze({ share: 0.25, halfLife: 0.5, speed: 0.55 }),
+    pitch: Object.freeze({ halfLife: 0.24, speed: 1.2 }),
+});
 
 /** A smooth 0 → 1 → 0 over [a, b] with a plateau in the middle third. */
 const hump = (a, b, v) => smoothstep(a, a + (b - a) / 3, v) * (1 - smoothstep(b - (b - a) / 3, b, v));
@@ -200,8 +219,10 @@ export class TrollBody {
         this.crouchK = 0;
         this.seat = seat ? seat.slice() : null;
         this.look = {
-            yaw: spring(), pitch: spring(), chest: spring(), neck: spring(),
+            yaw: follower(), pitch: follower(), chest: follower(), neck: follower(),
         };
+        if (!this.gestures) this.gestures = new GestureSlots();
+        this.gestures.reset();
         this.lean = spring();
         this.actS = { dy: spring(seated ? -0.25 : 0), dz: spring(seated ? -0.4 : 0), lean: spring(seated ? 0.06 : 0) };
         this.bodyY = spring(this.root.y);
@@ -211,6 +232,7 @@ export class TrollBody {
         this.exertion = 0;
         this.doze = spring();
         this.startle = spring();
+        this.startleKick = spring();
         this.lastStartle = -Infinity;
         this._vx = 0;
         this._vz = 0;
@@ -509,7 +531,9 @@ export class TrollBody {
         // Leaning: into the walk, into an act, nodding off.
         const idle = this.mode === 'seated' ? 1 : 0;
         springTo(this.doze, want.doze ? idle : 0, want.doze ? 3.5 : 0.25, dt);
-        springTo(this.startle, 0, 0.18, dt);
+        // A start: the kick dies away; his body follows it a hair behind (quick, never in one frame).
+        springTo(this.startleKick, 0, 0.2, dt);
+        springTo(this.startle, this.startleKick.x, 0.06, dt);
         // A start is taken once, whenever the frame after it comes.
         const startleAt = Number.isFinite(want.startleAt) ? want.startleAt : -Infinity;
         if (want.startle !== false && startleAt > this.lastStartle && this.time - startleAt < 0.6 && this.time >= startleAt) {
@@ -518,9 +542,9 @@ export class TrollBody {
             const rested = Math.min(1, Math.max(0, (startleAt - this.lastStartle) / 3));
             this.lastStartle = startleAt;
             const amount = 0.3 + 0.7 * rested;
-            if (amount > this.startle.x) {
-                this.startle.x = amount;
-                this.startle.v = 0;
+            if (amount > this.startleKick.x) {
+                this.startleKick.x = amount;
+                this.startleKick.v = 0;
             }
         }
         // (Going home after a parting he walks bowed a little.)
@@ -594,38 +618,53 @@ export class TrollBody {
         const L = this.local;
         Object.values(L).forEach((q) => q.identity());
         const act = this.actPose(dt);
+        const gp = this.gesturePose(dt, want);
         const { H } = this;
         const breathe = Math.sin(this.breath);
         const deep = 1 + this.exertion * 0.8;
 
         // ── Hips ──
-        this.hipsOffset.set(this.sway.x[0] / H, (this.sway.x[1] + act.dy) / H, act.dz / H);
+        this.hipsOffset.set(
+            (this.sway.x[0] + gp.hips[0]) / H,
+            (this.sway.x[1] + act.dy + gp.hips[1]) / H,
+            (act.dz + gp.hips[2]) / H,
+        );
         this._e.set(this.lean.x * 0.35 + act.lean * 0.25, this.hipsYaw.x, this._roll || 0, 'YXZ');
         L.hips.setFromEuler(this._e);
 
-        // ── Spine and chest: lean, breathe, start, look ──
+        // ── Spine and chest: lean, breathe, start, look, and whatever he is doing ──
         const startle = this.startle.x;
-        this.updateLook(dt, want);
+        this.updateLook(dt, want, gp.look);
         const spineLean = this.lean.x * 0.45 + act.lean * 0.45 - startle * 0.1;
-        this._e.set(spineLean, this.look.chest.x * 0.4 - this.hipsYaw.x * 0.7, 0, 'YXZ');
+        this._e.set(
+            spineLean + gp.spine[0],
+            this.look.chest.x * 0.4 - this.hipsYaw.x * 0.7 + gp.spine[1],
+            gp.spine[2],
+            'YXZ',
+        );
         L.spine.setFromEuler(this._e);
         const chestLean = this.lean.x * 0.25 + act.lean * 0.3 - breathe * 0.022 * deep - startle * 0.14;
-        this._e.set(chestLean, this.look.chest.x * 0.6, 0, 'YXZ');
+        this._e.set(chestLean + gp.chest[0], this.look.chest.x * 0.6 + gp.chest[1], gp.chest[2], 'YXZ');
         L.chest.setFromEuler(this._e);
         // The head stays level as the body leans (he watches, not the floor).
         const bodyPitch = this.lean.x * 1.05 + act.lean - startle * 0.24;
         const doze = this.doze.x;
-        this._e.set(-bodyPitch * 0.35 + this.look.pitch.x * 0.4 + doze * 0.2, this.look.neck.x, 0, 'YXZ');
+        this._e.set(
+            -bodyPitch * 0.35 + this.look.pitch.x * 0.4 + doze * 0.2 + gp.neck[0],
+            this.look.neck.x + gp.neck[1],
+            gp.neck[2],
+            'YXZ',
+        );
         L.neck.setFromEuler(this._e);
         this._e.set(
-            -bodyPitch * 0.4 + this.look.pitch.x * 0.6 + doze * 0.42 + breathe * 0.012 - startle * 0.2,
-            this.look.yaw.x,
-            Math.sin(this.time * 0.37) * 0.025 * (1 - doze),
+            -bodyPitch * 0.4 + this.look.pitch.x * 0.6 + doze * 0.42 + breathe * 0.012 - startle * 0.2 + gp.head[0],
+            this.look.yaw.x + gp.head[1],
+            Math.sin(this.time * 0.37) * 0.025 * (1 - doze) + gp.head[2],
             'YXZ',
         );
         L.head.setFromEuler(this._e);
         // Shoulders rise with the breath.
-        const shrug = breathe * 0.025 * deep + startle * 0.12;
+        const shrug = breathe * 0.025 * deep + startle * 0.12 + gp.clav;
         L.clavL.setFromAxisAngle(this._v.set(0, 0, 1), shrug);
         L.clavR.setFromAxisAngle(this._v.set(0, 0, 1), -shrug);
 
@@ -635,12 +674,91 @@ export class TrollBody {
         ['L', 'R'].forEach((side) => this.solveLeg(side, act));
 
         // ── The staff, then the left hand on it ──
-        this.updateStaff(dt, want, act);
+        this.updateStaff(dt, want, act, gp);
         this.solveStaffHand();
-        // ── The right hand: swinging, on the knee, or held out ──
-        this.solveArm('R', this.rightHand(dt, want, act));
+        // ── The right hand: swinging, on the knee, held out, or busy with a gesture ──
+        this.solveArm('R', this.rightHand(dt, want, act, gp), this._poleR);
         this.forward();
         this.updateLantern(dt, want);
+        this.gestureMarks(gp);
+    }
+
+    /**
+     * What the gestures under way do to him this frame (stillwater-gestures.js), each by how much
+     * of it shows: offsets summed, hands and the staff's mode handed on to their solves.
+     */
+    gesturePose(dt, want) {
+        const slots = this.gestures.step(want.gesture || null, this.time, dt);
+        const acc = emptyPose(this._gp || (this._gp = {}));
+        acc.hands = acc.hands || [];
+        acc.hands.length = 0;
+        acc.staffK = 0;
+        acc.staffSlot = null;
+        acc.marked = false;
+        const one = this._gpOne || (this._gpOne = {});
+        for (let i = 0; i < slots.length; i++) {
+            const s = slots[i];
+            const fn = TROLL_GESTURES[s.name];
+            const w = slotWeight(s);
+            if (fn && w > 0) {
+                const t = this.time - s.start;
+                const k = clamp(t / Math.max(1e-3, s.length), 0, 1);
+                const p = emptyPose(one);
+                fn(k, t, s.length, p);
+                for (let j = 0; j < 3; j++) {
+                    acc.spine[j] += p.spine[j] * w;
+                    acc.chest[j] += p.chest[j] * w;
+                    acc.neck[j] += p.neck[j] * w;
+                    acc.head[j] += p.head[j] * w;
+                    acc.hips[j] += p.hips[j] * w;
+                }
+                acc.clav += p.clav * w;
+                acc.look *= 1 - (1 - p.look) * w;
+                if (p.R && p.R.w > 0) {
+                    p.R.w *= w;
+                    acc.hands.push(p.R);
+                }
+                if (p.staff && w > 0.5) {
+                    acc.staff = p.staff;
+                    acc.staffK = k;
+                    acc.staffSlot = s;
+                }
+                // A moment the gesture touches something (his hand in the water), taken once.
+                if (p.marks && s.live) {
+                    for (let m = 0; m < p.marks.length; m++) {
+                        const bit = 1 << m;
+                        if (k >= p.marks[m] && !(s.fired & bit)) {
+                            s.fired |= bit;
+                            acc.marked = true;
+                        }
+                    }
+                }
+            }
+        }
+        return acc;
+    }
+
+    /** A gesture's touch: his right hand at the water leaves a ring (walk frame; y under 0 on the water). */
+    gestureMarks(gp) {
+        if (!gp.marked) return;
+        const p = this.toWalk(this.globalPos.handR, this._v);
+        this.events.push({
+            type: 'touch', x: p.x, y: this.ground(p.x, p.z), z: p.z, strength: 0.6,
+        });
+    }
+
+    /** A point given relative to one of his posed bones (or to the lantern, or the model frame), in the model frame. */
+    boneRelative(spec, out) {
+        const { bone, p } = spec;
+        if (bone === 'model') return out.set(p[0], p[1], p[2]);
+        if (bone === 'lantern') {
+            this.toModel(this.lanternAt, out);
+            return out.set(out.x + p[0], out.y + p[1], out.z + p[2]);
+        }
+        const g = this.global[bone];
+        const at = this.globalPos[bone];
+        if (!g || !at) return out.set(p[0], p[1], p[2]);
+        return out.set(p[0], p[1], p[2]).applyQuaternion(g).add(at);
     }
 
     /** Forward kinematics of the posed skeleton into `global` / `globalPos` (model frame). */
@@ -718,15 +836,20 @@ export class TrollBody {
         }
     }
 
-    /** Two-bone solve of an arm so its wrist is at `target` (model frame). */
-    solveArm(side, target) {
+    /**
+     * Two-bone solve of an arm so its wrist is at `target` (model frame). The elbow bends back and
+     * out, or toward `poleIn` (the chest's frame) when a gesture wants it elsewhere (out to the
+     * side for a hand at the head).
+     */
+    solveArm(side, target, poleIn = null) {
         const arm = this.arms[side];
         if (!arm || !target) return;
         const [upper, fore, hand] = arm.names;
         this.forward();
         const a = this.globalPos[upper];
-        // Elbows bend back and out.
-        const pole = this._pole.set(SIDES[side] * 0.55, -0.25, -1).applyQuaternion(this.global.chest);
+        const pole = this._pole.set(SIDES[side] * 0.55, -0.25, -1);
+        if (poleIn) pole.copy(poleIn);
+        pole.applyQuaternion(this.global.chest);
         solveTwoBone(a, target, arm.l1, arm.l2, pole, this._mid, this._end);
         const parentG = this.global[this.parentOf[upper]];
         const restPole = this._v3.set(SIDES[side] * 0.55, -0.25, -1);
@@ -825,7 +948,7 @@ export class TrollBody {
     }
 
     /** The look: yaw and pitch toward what he watches, the head first and the chest last. */
-    updateLook(dt, want) {
+    updateLook(dt, want, keep = 1) {
         let yaw = 0;
         let pitch = 0;
         if (want.look) {
@@ -837,13 +960,14 @@ export class TrollBody {
             yaw = wrapAngle(Math.atan2(dx, dz) - this.heading);
             pitch = -Math.atan2(dy, Math.hypot(dx, dz));
         }
-        yaw = clamp(yaw, -1.7, 1.7);
-        pitch = clamp(pitch, -0.6, 0.5);
-        const share = { chest: 0.25, neck: 0.3, head: 0.45 };
-        springTo(this.look.yaw, yaw * share.head, 0.11, dt);
-        springTo(this.look.neck, yaw * share.neck, 0.2, dt);
-        springTo(this.look.chest, yaw * share.chest, 0.42, dt);
-        springTo(this.look.pitch, pitch, 0.16, dt);
+        // (A gesture that ducks his head, a bow, lets the look go for its while.)
+        yaw = clamp(yaw, -1.7, 1.7) * keep;
+        pitch = clamp(pitch, -0.6, 0.5) * keep;
+        const S = TROLL_LOOK;
+        followTo(this.look.yaw, yaw * S.head.share, S.head.halfLife, dt, S.head.speed);
+        followTo(this.look.neck, yaw * S.neck.share, S.neck.halfLife, dt, S.neck.speed);
+        followTo(this.look.chest, yaw * S.chest.share, S.chest.halfLife, dt, S.chest.speed);
+        followTo(this.look.pitch, pitch, S.pitch.halfLife, dt, S.pitch.speed);
     }
 
     // ── The staff and the lantern ───────────────────────────────────────────────
@@ -870,10 +994,15 @@ export class TrollBody {
      * The staff: planted like a walking stick (a third foot that steps with his right foot), or
      * lifted to carry the lantern up ('raise'), out over the water ('offer') or down to it ('dip').
      */
-    updateStaff(dt, want, act) {
+    updateStaff(dt, want, act, gp = null) {
         const st = this.staff;
-        const wantMode = act.crouch > 0.3 ? 'dip' : (want.staff || 'walk');
-        const lifted = wantMode !== 'walk' && act.sit < 0.5;
+        // (Crouched for the heart the staff stays laid out over the water until he is up again;
+        // crouched to drink it stays planted.)
+        let wantMode = gp?.staff || want.staff || 'walk';
+        if (act.crouch > 0.3 && (wantMode === 'dip' || st.wantMode === 'dip')) wantMode = 'dip';
+        st.wantMode = wantMode;
+        // (Seated he keeps it planted, except to draw the lantern in to trim it.)
+        const lifted = wantMode !== 'walk' && (act.sit < 0.5 || wantMode === 'tend');
         const fwd = this._v3.set(Math.sin(this.heading), 0, Math.cos(this.heading));
         const left = new THREE.Vector3(Math.cos(this.heading), 0, -Math.sin(this.heading));
         // (The chest as it is posed this frame: crouched or seated, the staff comes down with it.)
@@ -895,6 +1024,38 @@ export class TrollBody {
                 grip.y += 0.42;
                 dir = fwd.clone().multiplyScalar(0.12).addScaledVector(left, 0.12).add(UP)
                     .normalize();
+            } else if (wantMode === 'tend') {
+                // Trimming it: the staff drawn in and tipped over so the lantern hangs before his face.
+                grip = chest.clone().addScaledVector(left, 0.5).addScaledVector(fwd, 0.35);
+                grip.y -= 0.55;
+                dir = left.clone().multiplyScalar(-0.45).addScaledVector(fwd, 0.4).add(this._mid.set(0, 1.68, 0))
+                    .normalize();
+            } else if (wantMode === 'thump') {
+                // Knocked on the water before him: its foot lifted and brought down twice (the
+                // gesture's clock), the hand where it leans on it.
+                const k = gp?.staffK ?? 0;
+                const knock = (a, b) => {
+                    if (k <= a || k >= b) return 0;
+                    const u = (k - a) / (b - a);
+                    return u < 0.6 ? smoothstep(0, 0.6, u) : 1 - ((u - 0.6) / 0.4) ** 2;
+                };
+                const tip = this.root.clone().addScaledVector(fwd, 0.95).addScaledVector(left, 0.45);
+                tip.y = this.ground(tip.x, tip.z) + 0.32 * (knock(0.22, 0.46) + knock(0.55, 0.8));
+                const hand = chest.clone().addScaledVector(left, 0.6).addScaledVector(fwd, 0.45);
+                hand.y -= 0.3;
+                dir = hand.clone().sub(tip).normalize();
+                grip = tip.clone().addScaledVector(dir, STAFF.grip);
+                // The moment each knock lands.
+                const slot = gp?.staffSlot;
+                [0.46, 0.8].forEach((at, i) => {
+                    const bit = 1 << (8 + i);
+                    if (slot && slot.live && k >= at && !(slot.fired & bit)) {
+                        slot.fired |= bit;
+                        this.events.push({
+                            type: 'staff', x: tip.x, y: this.ground(tip.x, tip.z), z: tip.z, strength: 1,
+                        });
+                    }
+                });
             } else if (wantMode === 'offer') {
                 // Held out at chest height, leaning out toward what he watches. (The hand is out past
                 // his shoulder: nearer his middle, the arm could only reach it through his belly.)
@@ -907,7 +1068,8 @@ export class TrollBody {
                 grip.y -= 0.2;
                 dir = fwd.clone().multiplyScalar(0.96).add(this._mid.set(0, -0.1, 0)).normalize();
             }
-            const k = st.wasPlanted ? 0.32 : 0.22;
+            let k = st.wasPlanted ? 0.32 : 0.22;
+            if (wantMode === 'thump') k = 0.04;
             st.grip.step(grip.x, grip.y, grip.z, k, dt);
             st.dir.step(dir.x, dir.y, dir.z, k, dt);
             st.wasPlanted = false;
@@ -982,7 +1144,7 @@ export class TrollBody {
     }
 
     /** The right hand (model frame): it swings as he walks, rests on his knee, or is held out. */
-    rightHand(dt, want, act) {
+    rightHand(dt, want, act, gp = null) {
         if (!this.rest.handR) return null;
         // Hanging relaxed at his side (the sculpt holds it up and out: we let it down).
         let x = -0.29;
@@ -1015,9 +1177,27 @@ export class TrollBody {
             y += (out.y - y) * reach;
             z += (out.z - z) * reach;
         }
-        this.armR.step(x, y, z, 0.16, dt);
         // (Model units: the hand rides down with the hips when he sits or crouches.)
-        return new THREE.Vector3(this.armR.x[0], this.armR.x[1] + this.hipsOffset.y * 0.6, this.armR.x[2]);
+        y += this.hipsOffset.y * 0.6;
+        // A gesture's hand (a wave, a scratch behind the ear...), each over the last by its weight;
+        // the elbow bends toward the gesture's pole by as much.
+        const pole = this._poleR || (this._poleR = new THREE.Vector3());
+        pole.set(SIDES.R * 0.55, -0.25, -1);
+        let busy = 0;
+        const hands = gp?.hands || [];
+        for (let i = 0; i < hands.length; i++) {
+            const h = hands[i];
+            const p = this.boneRelative(h, this._v3);
+            const w = clamp(h.w, 0, 1);
+            x += (p.x - x) * w;
+            y += (p.y - y) * w;
+            z += (p.z - z) * w;
+            if (h.pole) pole.lerp(this._v2.set(h.pole[0], h.pole[1], h.pole[2]), w);
+            busy = Math.max(busy, w);
+        }
+        // (Quicker to follow a gesture than to swing: a throw is a throw.)
+        this.armR.step(x, y, z, 0.16 - 0.12 * busy, dt);
+        return new THREE.Vector3(this.armR.x[0], this.armR.x[1], this.armR.x[2]);
     }
 
     /** The lantern swings from the hook as the staff moves (and in the wind). */
