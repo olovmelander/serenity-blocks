@@ -668,6 +668,12 @@
 }
 .ody-breath__orb { position: relative; width: clamp(150px, 19vw, 250px); aspect-ratio: 1; margin-bottom: 6px; }
 .ody-breath__orb > span { position: absolute; border-radius: 50%; }
+/* The breath is written to --breath every frame and moves these only by transform and opacity:
+   as their own compositor layers that is a layer update, not a paint. Unpromoted, each frame
+   repainted the whole document layer (760 paints and full re-rasters in 6 s, audit 2026-10-23). */
+.ody-breath__orb > span,
+.ody-breath__art { will-change: transform, opacity; }
+.ody-breath__world::after { will-change: opacity; }
 .ody-breath__track {
     inset: 0;
     border: 1px solid color-mix(in srgb, var(--ody-breath-tint) 22%, transparent);

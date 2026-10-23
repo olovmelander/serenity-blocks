@@ -603,7 +603,14 @@ export class SoundManager {
             return this.lastAudioAnalysis;
         }
 
-        const snapshot = analyzer.update(deltaTime);
+        // The analyser runs at most every analysisUpdateIntervalMs, so it advances by the time
+        // since it last ran, not by the caller's frame: given one frame per 33 ms its clock ran at
+        // ~20 % of real time at 131 Hz and ~50 % at 60 Hz, so the beat cooldown and the envelopes
+        // differed by display (audit 2026-10-23). Capped like a frame step after a stall.
+        const sinceLastSec = this.lastAudioAnalysisAtMs
+            ? Math.min(0.25, Math.max(0, nowMs - this.lastAudioAnalysisAtMs) / 1000)
+            : deltaTime;
+        const snapshot = analyzer.update(sinceLastSec);
         this.lastAudioAnalysisAtMs = nowMs;
         this.lastAudioAnalysis = {
             bassEnergy: snapshot.bassEnergy,

@@ -211,11 +211,13 @@ function rendererPrototypeOf(m) {
 }
 
 function budgetSessionFor(renderer) {
-    const list = [...budgetSessions];
-    for (let i = list.length - 1; i >= 0; i -= 1) {
-        if (list[i].active && list[i].owns(renderer)) return list[i];
-    }
-    return null;
+    // The newest matching session. Called for EVERY draw of every renderer while a session is
+    // open (the map's lasts the whole visit, level play included): no array copy per call.
+    let found = null;
+    budgetSessions.forEach((session) => {
+        if (session.active && session.owns(renderer)) found = session;
+    });
+    return found;
 }
 
 function installBuildBudget(proto) {

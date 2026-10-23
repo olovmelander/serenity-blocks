@@ -362,7 +362,8 @@ describe('Odyssey journey flow', () => {
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(2, expect.objectContaining({
             pathTravel: true,
             focus: false,
-            travelDuration: 1500,
+            travelDuration: undefined,
+            minTravelDuration: 1500,
             isCurrent: expect.any(Function),
             isPaused: expect.any(Function),
         }));
@@ -764,7 +765,7 @@ describe('Odyssey journey flow', () => {
             preserveJourneyFlow: operation, settlePath: true, onWorldReady: expect.any(Function),
         });
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
-            chapterArrival: true, travelDuration: 2200, focusDuration: 450, focus: false,
+            chapterArrival: true, travelDuration: undefined, minTravelDuration: 2200, focusDuration: 450, focus: false,
             isCurrent: expect.any(Function), isPaused: expect.any(Function),
         });
         expect(mode._setBoardOverlaySuppressed).toHaveBeenCalledWith(true);
@@ -1021,7 +1022,7 @@ describe('Odyssey journey flow', () => {
         const pending = continueOdysseyJourney(mode, { id: 6, chapter: 2 });
         await flush();
         expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(6, {
-            chapterArrival: true, travelDuration: 0, focusDuration: 0, focus: false,
+            chapterArrival: true, travelDuration: 0, minTravelDuration: 2200, focusDuration: 0, focus: false,
             isCurrent: expect.any(Function), isPaused: expect.any(Function),
         });
         fixture.overlays[0].options.onChoose('map');

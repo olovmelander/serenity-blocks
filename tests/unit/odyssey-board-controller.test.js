@@ -252,6 +252,20 @@ describe('OdysseyBoardController chapter framing', () => {
         });
     });
 
+    it('treats the minimum trip of a caller as a floor under the computed trip, never a cap', async () => {
+        // Audit 2026-10-23: the journey's fixed 2.2 s ran the black hole's whole plunge, which
+        // computeTravelDuration gives ~2.6 s more, in the time of an ordinary crossing.
+        const { controller } = createNavigationController();
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
+        controller.cameraController.prefersReducedMotion = () => false;
+        controller.computeTravelDuration = vi.fn(() => 4100);
+        await controller.travelToLevel(6, { pathTravel: true, focus: false, minTravelDuration: 1500 });
+        expect(controller.cameraController.travelToPosition.mock.calls.at(-1)[1]).toBe(4100);
+        controller.computeTravelDuration = vi.fn(() => 950);
+        await controller.travelToLevel(6, { pathTravel: true, focus: false, minTravelDuration: 1500 });
+        expect(controller.cameraController.travelToPosition.mock.calls.at(-1)[1]).toBe(1500);
+    });
+
     it('keeps ordinary same-chapter map selection unchanged', async () => {
         const { controller, nodePosition } = createNavigationController();
         controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import { LevelNodeManager } from './LevelNodeManager.js';
 import {
@@ -117,5 +119,75 @@ describe('Odyssey orb picking', () => {
         const eye = new THREE.Vector3(500, 3000, -500);
         raycaster.set(eye, b.clone().sub(eye).normalize());
         expect(LevelNodeManager.prototype.raycast.call(manager, raycaster)).toBe(40);
+    });
+});
+
+describe('Odyssey orb bob', () => {
+    it('moves the drawn orbs every frame, not only when the buffers are dirty', () => {
+        // Audit 2026-10-23: written only on dirty frames, the bob stepped at ~10 Hz during a
+        // drift and froze while the camera was parked.
+        const glass = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 4, 3), new THREE.MeshBasicMaterial(), 2);
+        const attr = () => new THREE.BufferAttribute(new Float32Array(8), 4);
+        const windowAttr = attr();
+        const haloAttr = attr();
+        const node = (id, visible) => ({
+            config: { id },
+            group: {
+                visible, position: new THREE.Vector3(), quaternion: new THREE.Quaternion(), scale: new THREE.Vector3(1, 1, 1),
+            },
+        });
+        const manager = {
+            time: 0,
+            nodes: new Map([[1, node(1, true)], [2, node(2, false)]]),
+            instanceIdMap: new Map([[1, 0], [2, 1]]),
+            cachedBasePositions: new Map([[1, new THREE.Vector3(10, 20, 30)], [2, new THREE.Vector3(0, 0, 0)]]),
+            glassInstancedMesh: glass,
+            windowMesh: { geometry: { getAttribute: () => windowAttr } },
+            haloMesh: { geometry: { getAttribute: () => haloAttr } },
+            _scratchMatrix: new THREE.Matrix4(),
+            _applyBob: LevelNodeManager.prototype._applyBob,
+        };
+        const bob = () => LevelNodeManager.prototype._bobDrawnNodes.call(manager);
+        manager.time = 1;
+        bob();
+        const first = manager.nodes.get(1).group.position.clone();
+        manager.time = 1.5;
+        bob();
+        const second = manager.nodes.get(1).group.position.clone();
+        expect(second.distanceTo(first)).toBeGreaterThan(0.01);
+        expect(second.distanceTo(new THREE.Vector3(10, 20, 30))).toBeLessThan(0.25);
+        const m = new THREE.Matrix4();
+        glass.getMatrixAt(0, m);
+        // (Float32 buffers.)
+        expect(new THREE.Vector3().setFromMatrixPosition(m).distanceTo(second)).toBeLessThan(1e-5);
+        expect(windowAttr.getX(0)).toBeCloseTo(second.x, 4);
+        expect(haloAttr.getY(0)).toBeCloseTo(second.y, 4);
+        // A hidden orb is left where the dirty pass parked it.
+        expect(manager.nodes.get(2).group.position.length()).toBe(0);
+    });
+});
+
+describe('Odyssey orb entry pulse', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('swells the chosen orb once, up quickly and down slowly, and lets it go', () => {
+        let now = 1000;
+        vi.spyOn(performance, 'now').mockImplementation(() => now);
+        const manager = {
+            nodes: new Map([[7, {}]]),
+            _markUploadDirty: vi.fn(),
+        };
+        LevelNodeManager.prototype.pulseNode.call(manager, 7, 600);
+        const scale = (id) => LevelNodeManager.prototype._pulseScale.call(manager, id);
+        expect(scale(7)).toBeCloseTo(1, 6);
+        now += 180; // 30 %: the peak
+        expect(scale(7)).toBeCloseTo(1.16, 6);
+        expect(scale(8)).toBe(1);
+        now += 210;
+        expect(scale(7)).toBeGreaterThan(1);
+        expect(scale(7)).toBeLessThan(1.16);
+        now += 300;
+        expect(scale(7)).toBeCloseTo(1, 6);
+        expect(manager._markUploadDirty).toHaveBeenCalled();
     });
 });

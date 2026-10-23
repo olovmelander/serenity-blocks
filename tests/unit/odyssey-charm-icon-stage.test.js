@@ -184,6 +184,35 @@ describe('The charm icon stage', () => {
         expect(cancelAnimationFrame).toHaveBeenCalled();
     });
 
+    it('sizes slots from their observed boxes instead of reading layout every frame', async () => {
+        // Audit 2026-10-23: a getBoundingClientRect per slot on every drawn frame (30 a second).
+        let observe = null;
+        vi.stubGlobal('ResizeObserver', class {
+            constructor(callback) { observe = callback; }
+
+            observe() {}
+
+            unobserve() {}
+
+            disconnect() {}
+        });
+        const renderer = fakeRenderer();
+        const stage = new OdysseyCharmIconStage({ createRenderer: async () => renderer, pixelRatio: 1 });
+        const tide = fakeCanvas(40, 40);
+        const reads = vi.spyOn(tide.canvas, 'getBoundingClientRect');
+        stage.mount(tide.canvas, 'tide');
+        expect(await stage.init()).toBe(true);
+        stage.frame(1000);
+        expect(renderer.render).not.toHaveBeenCalled(); // no box reported yet
+        observe([{ target: tide.canvas, contentRect: { width: 40, height: 40 } }]);
+        stage.frame(1033);
+        expect(renderer.calls).toContainEqual(['size', 40, 40]);
+        expect(renderer.render).toHaveBeenCalledTimes(1);
+        stage.frame(1066);
+        expect(reads).not.toHaveBeenCalled();
+        stage.dispose();
+    });
+
     it('keeps the glyphs without a renderer, and after a lost device', async () => {
         const stage = new OdysseyCharmIconStage({ createRenderer: async () => null });
         const slot = fakeCanvas(24, 24);

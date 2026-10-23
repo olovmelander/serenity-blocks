@@ -236,7 +236,9 @@ function createNeonSignStack(neon, plan, tier = CH8_QUALITY_TIERS.high) {
     const drawn = stride > 1 ? plan.signs.filter((_, i) => i % stride === 0) : plan.signs;
     const group = new THREE.Group();
     group.name = 'neon-sign-stack';
-    group.add(createNeonSigns(neon, drawn, createNeonGlyphTexture()));
+    const glyphTexture = createNeonGlyphTexture();
+    group.userData.glyphTexture = glyphTexture;
+    group.add(createNeonSigns(neon, drawn, glyphTexture));
     group.add(createNeonSignHalos(neon, drawn));
     return group;
 }
@@ -468,6 +470,10 @@ export function createUrbanDreamsEnvironment(options = {}) {
     const signs = createNeonSignStack(neon, neonPlan, tier);
     corridor.add(signs);
     group.userData.signs = signs;
+    // The glow map and the glyph atlas are bound only inside TSL node graphs, where teardown's
+    // traverse cannot see them: register them (OD-11), or an evicted or disposed chapter 8 held
+    // their GPU copies until a garbage collection (audit 2026-10-23).
+    group.userData.ownedTextures = [neon.glowTex, signs.userData.glyphTexture].filter((tex) => tex?.isTexture);
 
     const reflectionPlane = createWetReflectionPlane(uniforms, neon, neon.sunVisible);
     corridor.add(reflectionPlane);

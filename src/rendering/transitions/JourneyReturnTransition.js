@@ -1,13 +1,15 @@
 /**
  * Back out of an orb: the board closes into a shrinking gate (the passage rising round it), the
  * passage streams back the other way while the world prepares, and the world opens through a
- * gate at the orb just finished. The picture is drawn by portal-gate.js; this class owns the
- * timing, the readiness hold and the callbacks.
+ * gate at the orb just finished. The picture is drawn by portal-gate.js — in a worker where the
+ * page allows it (portal-gate-remote.js), so the passage keeps streaming while the map comes
+ * back; this class owns the timing, the readiness hold and the callbacks.
  */
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
 import {
     GATE_MAX_FRAME_STEP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase, portalReach,
 } from './portal-gate.js';
+import { startPortalGateOffThread } from './portal-gate-remote.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
 const DEFAULT_TIMINGS = Object.freeze({
@@ -91,6 +93,7 @@ export class JourneyReturnTransition {
         this.cancelAnimationFrame = cancelAnimationFrameRef;
         this.activeRun = null;
         this.handleResize = this.onResize.bind(this);
+        this.handleKeyDown = this.onKeyDown.bind(this);
     }
 
     async play(config = {}) {
@@ -143,6 +146,8 @@ export class JourneyReturnTransition {
             timings.revealDurationMs = Math.min(220, timings.revealDurationMs);
         }
         const callbacks = config.callbacks || {};
+        // A plain return owns Escape while its passage plays (see onKeyDown).
+        const captureEscape = config.captureEscape === true;
         const qualityPreset = config.qualityPreset || 'High';
 
         return {
@@ -173,7 +178,11 @@ export class JourneyReturnTransition {
             resolve: null,
             dom: null,
             canvasSize: { width: 1, height: 1, dpr: 1 },
-            gate: reducedMotion ? null : createPortalGate({ qualityPreset, palette, documentRef: this.document }),
+            qualityPreset,
+            captureEscape,
+            // Made in mount(), on the page, only when the worker does not draw the gate.
+            gate: null,
+            remote: null,
             // What of the arrival's light the player allows (Reduce flashing).
             flash: flashScale(),
             travelState: { travel: 0, lastTravelAt: null },
@@ -181,6 +190,7 @@ export class JourneyReturnTransition {
     }
 
     mount(run) {
+        if (run.captureEscape) this.window?.addEventListener?.('keydown', this.handleKeyDown, true);
         const root = this.document.createElement('div');
         root.className = 'journey-return-transition';
         root.setAttribute(WHEEL_LOCK_ATTRIBUTE, 'true');
@@ -219,16 +229,38 @@ export class JourneyReturnTransition {
         root.appendChild(canvas);
         this.document.body.appendChild(root);
 
-        let ctx = null;
-        try {
-            ctx = canvas.getContext('2d');
-        } catch {
-            ctx = null;
+        run.dom = { root, canvas, ctx: null };
+        run.remote = startPortalGateOffThread(canvas, {
+            qualityPreset: run.qualityPreset,
+            palette: run.palette,
+            flash: run.flash,
+            ...this.measureCanvas(),
+        }, this.window);
+        if (!run.remote) {
+            try {
+                run.dom.ctx = canvas.getContext('2d');
+            } catch {
+                run.dom.ctx = null;
+            }
+            run.gate = createPortalGate({
+                qualityPreset: run.qualityPreset, palette: run.palette, documentRef: this.document,
+            });
         }
-
-        run.dom = { root, canvas, ctx };
         this.resizeCanvas(run);
         this.window?.addEventListener?.('resize', this.handleResize);
+    }
+
+    /**
+     * Escape during a plain return belonged to nobody: the global controls opened Settings over
+     * the passage, whose pause sheet then offered Back to map and Retry mid-return (audit
+     * 2026-10-23). The return takes it, ahead of the page's own handlers (capture phase).
+     * @private
+     */
+    onKeyDown(event) {
+        const run = this.activeRun;
+        if (!run || run.finishing || !run.captureEscape || event?.key !== 'Escape') return;
+        event.preventDefault?.();
+        event.stopImmediatePropagation?.();
     }
 
     onResize() {
@@ -237,14 +269,26 @@ export class JourneyReturnTransition {
         }
     }
 
+    /** @private the window's CSS size and device pixel ratio */
+    measureCanvas() {
+        return {
+            width: this.window?.innerWidth || 1,
+            height: this.window?.innerHeight || 1,
+            dpr: this.window?.devicePixelRatio || 1,
+        };
+    }
+
     resizeCanvas(run) {
-        const width = this.window?.innerWidth || 1;
-        const height = this.window?.innerHeight || 1;
-        const dpr = this.window?.devicePixelRatio || 1;
+        const { width, height, dpr } = this.measureCanvas();
         const { canvas } = run.dom;
         if (canvas) {
-            canvas.width = Math.max(1, Math.floor(width * dpr));
-            canvas.height = Math.max(1, Math.floor(height * dpr));
+            // A canvas handed to the gate's worker is sized there.
+            if (run.remote) {
+                run.remote.resize(width, height, dpr);
+            } else {
+                canvas.width = Math.max(1, Math.floor(width * dpr));
+                canvas.height = Math.max(1, Math.floor(height * dpr));
+            }
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
         }
@@ -503,6 +547,11 @@ export class JourneyReturnTransition {
 
     /** @private */
     drawGate(run, frame, revealProgress) {
+        if (run.remote) {
+            // The worker owns the passage's clock and travel; it gets where the gate is.
+            run.remote.draw({ ...this.describeGate(run, frame, revealProgress), direction: -1, flash: run.flash });
+            return;
+        }
         const { ctx } = run.dom;
         if (!ctx || !run.gate) return;
         const { width, height, dpr } = run.canvasSize;
@@ -566,6 +615,7 @@ export class JourneyReturnTransition {
         // It owns its DOM, but must not detach the successor's resize listener.
         if (!this.activeRun || this.activeRun === run) {
             this.window?.removeEventListener?.('resize', this.handleResize);
+            if (run?.captureEscape) this.window?.removeEventListener?.('keydown', this.handleKeyDown, true);
         }
 
         const root = run?.dom?.root;
@@ -573,7 +623,12 @@ export class JourneyReturnTransition {
             root.parentNode.removeChild(root);
         }
         // Release the full-screen backing now rather than at a later GC, which could otherwise
-        // land inside the next portal's preparation hold.
+        // land inside the next portal's preparation hold (the worker releases a handed-over one).
+        if (run?.remote) {
+            run.remote.stop();
+            run.remote = null;
+            return;
+        }
         const canvas = run?.dom?.canvas;
         if (canvas) {
             canvas.width = 0;

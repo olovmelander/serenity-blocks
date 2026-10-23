@@ -129,6 +129,25 @@ export class OdysseyCharmIconStage {
         this.lastNow = null;
         this.size = { width: 0, height: 0 };
         this.needsFrame = true;
+        // Each slot's box size, kept by a ResizeObserver instead of a layout read per slot on
+        // every drawn frame (30 a second over the map: a forced style/layout whenever anything
+        // else on the page had changed, audit 2026-10-23). Null: read the box each frame.
+        this.slotByCanvas = new WeakMap();
+        this.resizeObserver = typeof globalThis.ResizeObserver === 'function'
+            ? new globalThis.ResizeObserver((entries) => this._onSlotResize(entries))
+            : null;
+    }
+
+    /** @private keep the observed boxes' sizes and draw them anew */
+    _onSlotResize(entries) {
+        entries.forEach((entry) => {
+            const slot = this.slotByCanvas.get(entry.target);
+            if (!slot) return;
+            slot.box = { width: entry.contentRect.width, height: entry.contentRect.height };
+            slot.drawn = false;
+        });
+        this.needsFrame = true;
+        this.start();
     }
 
     /** Build once; resolves true when icons can be drawn. */
@@ -198,6 +217,10 @@ export class OdysseyCharmIconStage {
             canvas, context, id: charmId, state, drawn: false, seen: false, mountedAt: this._now(),
         };
         this.slots.add(slot);
+        if (this.resizeObserver) {
+            this.slotByCanvas.set(canvas, slot);
+            this.resizeObserver.observe(canvas);
+        }
         this.needsFrame = true;
         if (!this.ready && !this.failed) this.init().catch(() => {});
         this.start();
@@ -215,6 +238,7 @@ export class OdysseyCharmIconStage {
 
     _release(slot) {
         if (!this.slots.delete(slot)) return;
+        this.resizeObserver?.unobserve(slot.canvas);
         markLive(slot, false);
         if (!this.slots.size) this.stop();
     }
@@ -240,7 +264,8 @@ export class OdysseyCharmIconStage {
                 this._release(slot);
                 return;
             } else return;
-            const rect = canvas.getBoundingClientRect?.();
+            // The observed box (a first report arrives within a frame of mounting), else a read.
+            const rect = this.resizeObserver ? slot.box : canvas.getBoundingClientRect?.();
             if (!rect || !rect.width || !rect.height) return;
             const width = Math.max(1, Math.round(rect.width * ratio));
             const height = Math.max(1, Math.round(rect.height * ratio));
@@ -378,6 +403,7 @@ export class OdysseyCharmIconStage {
         this.disposed = true;
         this.stop();
         this.ready = false;
+        this.resizeObserver?.disconnect();
         this.slots.forEach((slot) => markLive(slot, false));
         this.slots.clear();
         this.icons.forEach((icon) => icon.dispose());

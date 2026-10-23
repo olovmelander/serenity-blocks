@@ -68,3 +68,39 @@ describe('SoundManager.scheduleDeferredAudioAnalysis', () => {
         expect(idle.length).toBe(0);
     });
 });
+
+describe('SoundManager.getAudioAnalysis clock', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('advances the analyser by the time since it last ran, whatever the display rate', () => {
+        // Audit 2026-10-23: throttled to one run per 33 ms but handed one frame's delta, the
+        // analyser's clock (beat cooldown, envelopes) ran at ~20 % of real time at 131 Hz.
+        const clockAfter = (frameMs, frames) => {
+            let now = 1000;
+            vi.spyOn(performance, 'now').mockImplementation(() => now);
+            const sm = Object.create(SoundManager.prototype);
+            let clock = 0;
+            Object.assign(sm, {
+                analysisUpdateIntervalMs: 33,
+                hiddenAnalysisUpdateIntervalMs: 250,
+                lastAudioAnalysisAtMs: 0,
+                lastAudioAnalysis: null,
+                getAnalyzer: () => ({
+                    update: (dt) => {
+                        clock += dt;
+                        return { bassEnergy: 0, midEnergy: 0, trebleEnergy: 0, overallEnergy: 0, beatDetected: false };
+                    },
+                }),
+            });
+            for (let i = 0; i < frames; i += 1) {
+                now += frameMs;
+                sm.getAudioAnalysis(frameMs / 1000);
+            }
+            vi.restoreAllMocks();
+            return clock;
+        };
+        // Two seconds of frames at 60 Hz and at 144 Hz: the analyser sees ~two seconds either way.
+        expect(clockAfter(1000 / 60, 120)).toBeCloseTo(2, 1);
+        expect(clockAfter(1000 / 144, 288)).toBeCloseTo(2, 1);
+    });
+});
