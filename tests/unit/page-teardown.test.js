@@ -49,6 +49,24 @@ describe('page teardown', () => {
         expect(app.cleanup).toHaveBeenCalledTimes(2);
     });
 
+    it('starts over when Back restores the torn-down page from the back/forward cache', () => {
+        const target = new EventTarget();
+        const reload = vi.fn();
+        const app = { cleanup: vi.fn(async () => {}), cleanupHandlers: [] };
+        const transition = (type, persisted) => Object.defineProperty(new Event(type), 'persisted', { value: persisted });
+        installPageTeardown(app, { target, desktopApi: null, reload });
+
+        target.dispatchEvent(transition('pageshow', false)); // the first load
+        target.dispatchEvent(transition('pageshow', true)); // restored, but never torn down
+        expect(reload).not.toHaveBeenCalled();
+
+        target.dispatchEvent(transition('pagehide', true)); // into the cache
+        expect(app.cleanup).toHaveBeenCalledTimes(1);
+        app.cleanupHandlers.splice(0).forEach((dispose) => dispose()); // as the cleanup does
+        target.dispatchEvent(transition('pageshow', true)); // Back
+        expect(reload).toHaveBeenCalledTimes(1);
+    });
+
     it('needs no desktop bridge in the browser build', () => {
         const app = { cleanup: vi.fn(async () => {}), cleanupHandlers: [] };
         expect(() => installPageTeardown(app, { target: new EventTarget(), desktopApi: null })).not.toThrow();
