@@ -14,10 +14,11 @@ from fall_grove.glb import GlbWriter, quantize_unit
 from .rigs import bone_list, to_gltf
 
 
-def write_figure(obj, bones, colour, path, generator, extras):
+def write_figure(obj, bones, colour, path, generator, extras, flow=None):
     """Write `obj` (a triangulated mesh weighted to the vertex groups named in `bones`).
 
-    `colour(index)` gives each vertex's rgba (0..1). Returns (vertices, triangles, bytes).
+    `colour(index)` gives each vertex's rgba (0..1); `flow(index)`, if given, a direction written as
+    `_FLOW` (int8 unit vectors, glTF axes). Returns (vertices, triangles, bytes).
     """
     order = list(bones.keys())
     me = obj.data
@@ -42,13 +43,18 @@ def write_figure(obj, bones, colour, path, generator, extras):
     tris = np.array([t.vertices[:] for t in me.loop_triangles], dtype=np.uint32)
     writer = GlbWriter(generator=generator)
     unit = nor / np.maximum(np.linalg.norm(nor, axis=1, keepdims=True), 1e-9)
-    writer.add_mesh(obj.name, {
+    attributes = {
         'POSITION': (pos, False),
         'NORMAL': (quantize_unit(unit, np.int8), True),
         'COLOR_0': (quantize_unit(np.clip(col, 0, 1), np.uint8), True),
         'JOINTS_0': (joints, False),
         'WEIGHTS_0': (wq, True),
-    }, indices=tris)
+    }
+    if flow is not None:
+        f = np.array([to_gltf(flow(i)) for i in range(n)], dtype=np.float64)
+        f /= np.maximum(np.linalg.norm(f, axis=1, keepdims=True), 1e-9)
+        attributes['_FLOW'] = (quantize_unit(f, np.int8), True)
+    writer.add_mesh(obj.name, attributes, indices=tris)
     writer.set_extras({
         **extras,
         'bones': bone_list(bones),
