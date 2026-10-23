@@ -153,7 +153,7 @@ The `*.webp` files there are the first pass's.
 **The icon** (both `src/themes/rainbark/rainbark-theme-icon.png` and
 `public/assets/themes/rainbark-theme-icon.png`): the bark close-up (`icon=1`, yaw 24°, pitch 8°,
 fov 30°, an I piece's peel 0.45 s in), cropped by the critic's reframe (the lime strip and its
-curl right of centre against the blue air, ~1.3× in), a 512 px full-bleed circle, judged at 80 px.
+curl right of centre against the blue air, ~1.3× in), a 512 px full-bleed circle, judged at 80 px. Superseded 2026-10-23 by a painted trunk beside the grove ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)).
 
 ## Third pass (2026-10-21): light in the air
 
