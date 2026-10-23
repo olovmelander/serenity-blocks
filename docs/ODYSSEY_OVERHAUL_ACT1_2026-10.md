@@ -190,3 +190,58 @@ just under the surface at the last orb, may leave by the breach.
 **Cost.** +40 fish (11 triangles each) in the existing draw. No new draws, pipelines or textures.
 
 ![Before (top): orb 9 twice (all four animals in one frame) and orb 10 (none). After (bottom): orbs 6-8, orb 9, orb 10](images/odyssey-audit-2026-10-22/ch2-sea-life.jpg)
+
+## 7. The ocean's escort (2026-10-23)
+
+Olov: *"i want all of them to be visible and swimming around when entering the chapter and while
+drifting in the chapter."* (§6 had given each animal one stretch of the climb.)
+
+**What the player saw.** On the journey's own idle drift up the ocean (Act I drifts ~4.1 u/s; ~44 s
+in clear water once the steam has thinned), recorded live with every animal sampled each second:
+the whale shark was in frame 18 s, the manta 9 s, the mother 3 s, the calf 5 s, and all four together
+never. Each arrived over ~9 s once the eye reached its window, so long stretches held nothing but
+fish.
+
+**What changed.** Every animal now escorts the eye through the whole chapter
+(`composition/odyssey-ocean-escort.js`, pure; the visitors and the whale pair place themselves with
+it through `placeEscorted`, and the board steps one formation frame a frame, `_oceanEscortView`).
+
+- **A slot each in the journey's view.** The view is the rail camera (where the follow camera stands
+  at the eye's progress, whatever an orb close-up or a free look does). The whale shark has the left,
+  the mother and calf the right, the manta the top left of the rail, each at its own distance
+  (125 / 150 / 80 u), clear of the rail and the orb. Its anchor swims after the slot (critically
+  damped, ω 3) and it swims loops round the anchor (18 / 20 / 10 u, 34 / 44 / 22 s); its heading is
+  its velocity, mostly level.
+- **In the water.** Looking up the column the slots are simply there. Near the surface the water
+  above runs out: an animal holds its place on screen as long as it can stay most of its distance
+  away (`keep`), coming nearer, and then slides outward from the frame's centre along its own line
+  (looking up, every way out from the centre goes down in the water), or downhill on a rolled
+  frame, just as far as it must (bisection, so it is continuous). Its loop scales with how near it
+  has had to come.
+- **The formation turns as one.** The frame follows where the camera looks quickly but its spin
+  about the line of sight slowly while the eye looks up, so a rail bend spins the formation round
+  the frame's centre, in view and together, instead of swinging each animal across the frame.
+- **Arrival.** The first time an animal can be seen (the steam thinning on the way up from
+  chapter 1, a jump into the ocean) it swims in from 1.9 times its distance along the line of sight
+  over 5 s, faint at first, as §2's arrivals did. It is gone only when the water ends (the breach,
+  the chapter's edge) and arrives afresh next time.
+
+**Measured live, same drift:** the whale shark in frame 44 s, the manta 40 s, the mother 28 s, the
+calf 31 s, all four together 27 s (of 44). Through the deeper half of the climb all four are in
+frame together; in the last ~10 s under the surface the whales sit low at the frame's edge while the
+manta and the whale shark glide under the bright ceiling.
+
+![The drift up the ocean at 18, 27, 36, 46 and 58 s. Before (top): one animal at a time, often none. After (bottom): the escort](images/odyssey-ch2-escort-2026-10-23/ch2-drift-before-after.jpg)
+
+**Not changed:** an orb's close-up (after choosing an orb, the camera brings the orb forward
+against the kelp and seabed). The escort keeps to the journey's view, so in a close-up the animals
+are up in the open water, mostly out of shot, as before.
+
+**Tests.** `odyssey-ch2-escort` (new, replaces `odyssey-ch2-encounters`; the drift on the real
+camera at the drift's pace): all four in frame together through the deeper half; each in view for
+most of the climb; never over the orb ahead, readable sizes; under the surface; the arrival from
+the blue; a jump re-seats it. `odyssey-act1-arrivals` and `odyssey-ocean-visitors` follow the
+escort.
+
+**Cost.** No new draws, pipelines or textures. Per frame in the ocean: one formation frame and three
+slot solves (a 14-step bisection at most) on the CPU.
