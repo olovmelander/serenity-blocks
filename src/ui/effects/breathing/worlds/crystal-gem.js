@@ -24,6 +24,7 @@ import {
     modelWorldMatrixInverse, normalLocal, normalize, positionLocal, positionWorld, reflect, sin, smoothstep,
     sqrt, step, uniformArray, vec3, vec4,
 } from 'three/tsl';
+import { eventWindow } from '../stage/breath-tsl.js';
 import { prismEnvironment, prismFan } from './crystal-light.js';
 
 const DEG = Math.PI / 180;
@@ -235,8 +236,23 @@ export function createQuartzSolid(shape) {
     };
 }
 
-const CORE_COLOR = vec3(0.55, 0.92, 1.0);
-const BODY_COLOR = vec3(0.22, 0.5, 0.78);
+/**
+ * The clear quartz of the blue grotto: the inner light's colour (`core`), the stone's own glow
+ * (`body`), what a run through it absorbs per unit (`absorb`), the light its edges catch (`edge`),
+ * the fill lamp's glints (`lamp`), the phantoms' veils (`veil`), and the grotto it sees (`env`:
+ * low, high, band; `sun`: the beam; `fanTint`: the spectrum's lean). A mood replaces any of them.
+ */
+export const CLEAR_QUARTZ = Object.freeze({
+    core: [0.55, 0.92, 1.0],
+    body: [0.22, 0.5, 0.78],
+    absorb: [0.5, 0.22, 0.12],
+    edge: [0.6, 0.85, 1.0],
+    lamp: [0.85, 0.95, 1.0],
+    veil: [0.6, 0.78, 0.92],
+    env: { low: [0.008, 0.026, 0.034], high: [0.003, 0.005, 0.016], band: [0.02, 0.05, 0.06] },
+    sun: [1.0, 0.97, 0.94],
+    fanTint: [1, 1, 1],
+});
 
 /**
  * The light gathered along one straight run through the stone (from `start`, unit `run`, for
@@ -244,7 +260,7 @@ const BODY_COLOR = vec3(0.22, 0.5, 0.78);
  * its direction through the crystal's centre). Each is the line integral of a Gaussian, solved in
  * closed form from the run's closest approach. `gains` = (thread and body, heart, beam).
  */
-const quartzInner = /* @__PURE__ */ Fn(([start, run, reach, beam, gains]) => {
+const quartzInner = /* @__PURE__ */ Fn(([start, run, reach, beam, gains, coreColor, bodyColor]) => {
     // The thread on the axis: a line integral of a Gaussian is a Gaussian of the miss.
     const lateral = dot(run.xz, run.xz).add(1e-4).toVar();
     const nearest = clamp(dot(start.xz, run.xz).negate().div(lateral), 0, reach);
@@ -276,15 +292,16 @@ const quartzInner = /* @__PURE__ */ Fn(([start, run, reach, beam, gains]) => {
     const off = at.sub(beam.mul(dot(at, beam))).toVar();
     const crossing = min(sqrt(float(Math.PI / BEAM_SHARP).div(parallel)), reach);
     const ray = exp(dot(off, off).mul(-BEAM_SHARP)).mul(crossing).mul(4);
-    return CORE_COLOR.mul(filament.add(body).mul(gains.x).add(heart.mul(gains.y)))
+    return coreColor.mul(filament.add(body).mul(gains.x).add(heart.mul(gains.y)))
         .add(vec3(1, 0.98, 0.95).mul(ray).mul(gains.z))
-        .add(BODY_COLOR.mul(body).mul(0.06));
+        .add(bodyColor.mul(body).mul(0.06));
 }).setLayout({
     name: 'prism_quartz_inner',
     type: 'vec3',
     inputs: [
         { name: 'start', type: 'vec3' }, { name: 'run', type: 'vec3' }, { name: 'reach', type: 'float' },
-        { name: 'beam', type: 'vec3' }, { name: 'gains', type: 'vec3' },
+        { name: 'beam', type: 'vec3' }, { name: 'gains', type: 'vec3' }, { name: 'coreColor', type: 'vec3' },
+        { name: 'bodyColor', type: 'vec3' },
     ],
 });
 
@@ -301,10 +318,17 @@ const quartzInner = /* @__PURE__ */ Fn(([start, run, reach, beam, gains]) => {
  * @param {boolean} [options.phantoms] show the growth phantoms inside the stone
  * @param {number} [options.exit] the crystal the beam passes through: how strongly the side the
  *   light leaves by glows with the spectrum already separating inside it
+ * @param {object} [options.stone] the quartz and its grotto's colours (see CLEAR_QUARTZ)
+ * @param {boolean} [options.glint] now and then a glint runs up the stone's edges (a rare event)
  */
 export function createQuartzMaterial({
     u, solid, light, bounces = 3, dispersion = true, glow = 1, lit = 0, phantoms = false, exit = 0,
+    stone: palette = CLEAR_QUARTZ, glint: edgeGlint = false,
 }) {
+    const tone = { ...CLEAR_QUARTZ, ...palette };
+    const c3 = (rgb) => vec3(...rgb);
+    const CORE_COLOR = c3(tone.core);
+    const BODY_COLOR = c3(tone.body);
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = Fn(() => {
         const {
@@ -319,7 +343,18 @@ export function createQuartzMaterial({
         const toWorld = (d) => normalize(modelWorldMatrix.mul(vec4(d, 0)).xyz);
         const toLocal = (d) => normalize(modelWorldMatrixInverse.mul(vec4(d, 0)).xyz);
         // What the stone sees around it.
-        const env = (d) => prismEnvironment(toWorld(d), fanV, lookV, beamV, skyV);
+        const env = (d) => prismEnvironment(
+            toWorld(d),
+            fanV,
+            lookV,
+            beamV,
+            skyV,
+            c3(tone.env.low),
+            c3(tone.env.high),
+            c3(tone.env.band),
+            c3(tone.sun),
+            c3(tone.fanTint),
+        );
 
         const eye = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz.toVar();
         const origin = positionLocal.toVar();
@@ -363,6 +398,8 @@ export function createQuartzMaterial({
         const beamGain = skyV.x.mul(0.9).toVar();
         const beamLocal = toLocal(vec3(beamV.x, beamV.y, 0)).toVar();
         const gains = vec3(coreGain, heartGain, beamGain).toVar();
+        const coreColor = CORE_COLOR.toVar();
+        const bodyColor = BODY_COLOR.toVar();
 
         const radiance = vec3(0).toVar();
         const through = vec3(1).toVar();
@@ -377,11 +414,11 @@ export function createQuartzMaterial({
         const segment = (first) => {
             const hit = solid.exit(point, heading).toVar();
             const reach = hit.w.min(4).toVar();
-            radiance.addAssign(through.mul(quartzInner(point, heading, reach, beamLocal, gains)));
+            radiance.addAssign(through.mul(quartzInner(point, heading, reach, beamLocal, gains, coreColor, bodyColor)));
             if (first && phantoms) {
                 // The veils scatter a little of the inner light: milky, cool, never opaque.
                 const veil = solid.phantoms(point, heading, reach).mul(0.02).min(0.12);
-                radiance.addAssign(through.mul(vec3(0.6, 0.78, 0.92)).mul(veil).mul(heartGain.mul(0.35).add(0.12)));
+                radiance.addAssign(through.mul(c3(tone.veil)).mul(veil).mul(heartGain.mul(0.35).add(0.12)));
             }
             point.assign(point.add(heading.mul(reach)));
             const wall = hit.xyz.toVar();
@@ -412,7 +449,7 @@ export function createQuartzMaterial({
                 through.mulAssign(reflects);
             }
             // Quartz is nearly clear: a faint cool absorption over each run.
-            through.mulAssign(exp(vec3(0.5, 0.22, 0.12).mul(reach).negate()));
+            through.mulAssign(exp(c3(tone.absorb).mul(reach).negate()));
             heading.assign(reflect(heading, wall));
         };
         segment(true);
@@ -435,11 +472,22 @@ export function createQuartzMaterial({
         const lamp8 = lamp2.mul(lamp2);
         const glint = lamp8.mul(lamp8).mul(lamp8).mul(1.6);
 
-        const surface = mirrored.mul(fresnelIn.mul(1.6).add(0.02)).add(vec3(0.85, 0.95, 1.0).mul(glint));
+        const surface = mirrored.mul(fresnelIn.mul(1.6).add(0.02)).add(c3(tone.lamp).mul(glint));
         const stone = radiance.mul(float(1).sub(fresnelIn));
         // An edge is a narrow bevel that sees much of the grotto: it lights where the reflection is bright.
-        const edgeLight = vec3(0.6, 0.85, 1.0).mul(coreGain.mul(0.2).add(0.12)).add(mirrored.mul(2.2));
-        const lines = edgeLight.mul(edge.mul(0.9).add(sheen));
+        const edgeLight = c3(tone.edge).mul(coreGain.mul(0.2).add(0.12)).add(mirrored.mul(2.2));
+        let lines = edgeLight.mul(edge.mul(0.9).add(sheen));
+        if (edgeGlint) {
+            // A rare event: a bead of light climbs the stone's edges from foot to tip, a faint
+            // band of it crossing the faces, then fades (six seconds; ramps of about a second; the
+            // visit's seed keeps its own timetable).
+            const ev = eventWindow(u.time, float(26), float(6), float(0.7), u.seed.mul(23.9).add(6.6)).toVar();
+            const climb = ev.y.mul(1.2).sub(0.6).toVar();
+            const rise = origin.y.sub(climb).toVar();
+            const bead = exp(rise.div(0.045).pow2().negate()).mul(ev.x).mul(u.life);
+            const band = exp(rise.div(0.11).pow2().negate()).mul(ev.x).mul(u.life);
+            lines = lines.add(c3(tone.sun).mul(edge.mul(4).add(sheen.mul(6)).mul(bead).add(band.mul(0.07))));
+        }
         const col = stone.add(surface).add(lines).toVar();
         if (exit > 0) {
             // Where the light leaves the stone it is already splitting: the fan, drawn as if it had
