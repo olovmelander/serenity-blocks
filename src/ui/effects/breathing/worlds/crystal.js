@@ -16,20 +16,27 @@
  * sees (crystal-light.js), so stone and air always agree. Where the fan lands it paints moving
  * rainbow caustics; dust glints wherever light passes. Landscape lights the grotto from the upper
  * left and sweeps the fan to the right; a tall screen takes the light from above and pours it down.
+ *
+ * Moods: clear quartz in the blue grotto (the poster); an amethyst cave of violet stone where a
+ * cool mist lies thick on the floor and drops fall often; citrine at the golden hour, a low warm
+ * beam full of glinting dust; a frost cavern in winter, a silver beam and snow sifting down.
+ * Every mood keeps a low bank of mist on the wet floor, and two rare events: now and then a
+ * drop falls from the vault into a pool and rings spread across the floor, and a bead of light
+ * climbs the crystal's edges from foot to tip.
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, dot, exp, float, floor, fract, length, min, mix, sin, smoothstep, sqrt, uniform, uniformArray, vec2, vec3,
-    vec4,
+    Fn, If, Loop, dot, exp, float, floor, fract, length, min, mix, sin, smoothstep, sqrt, uniform, uniformArray, vec2,
+    vec3, vec4,
 } from 'three/tsl';
 import {
-    backdropPoint, fadeOut, fbm, fbm3, gnoise, hash21, hash22, layer, ridged,
+    backdropPoint, eventWindow, fadeOut, fbm, fbm3, gnoise, hash21, hash22, layer, ridged,
 } from '../stage/breath-tsl.js';
-import { MOTE_MOTION } from '../stage/breath-motes.js';
+import { MOTE_MOTION, MOTE_SHAPE } from '../stage/breath-motes.js';
 import {
     packBeam, packFan, packLook, packSky, prismBeam, prismFan,
 } from './crystal-light.js';
-import { createQuartzMaterial, createQuartzSolid } from './crystal-gem.js';
+import { CLEAR_QUARTZ, createQuartzMaterial, createQuartzSolid } from './crystal-gem.js';
 
 /** Beam travel angle (radians) on a wide screen and on a tall one; the fan bends further clockwise. */
 const BEAM_ANGLE = [-0.26, -1.3];
@@ -39,12 +46,168 @@ const SPREAD = [0.028, 0.47];
 const REACH = [1.0, 4.2];
 /** Width of the light bands where they leave the crystal. */
 const BAND = 0.05;
-const WHITE = vec3(1.0, 0.97, 0.94);
-const ICE = vec3(0.5, 0.86, 1.0);
-const AIR_LOW = vec3(0.007, 0.022, 0.03);
-const AIR_HIGH = vec3(0.003, 0.005, 0.016);
-const GLASS = vec3(0.01, 0.026, 0.04);
-const STONE = vec3(0.01, 0.013, 0.018);
+
+/**
+ * The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's.
+ * white: the beam's light; ice: the crystal's glow on the air; air low/high: the haze by the floor
+ * and in the vault; glass: painted quartz in shadow; stone, vein, rock: the floor and the walls;
+ * fanTint: the spectrum's lean; mist: the floor bank's colour, how much it veils, how high it
+ * lifts; glints: dust sparkling in the light; quartz: the traced crystal (crystal-gem.js).
+ */
+export const MOODS = Object.freeze([
+    {
+        id: 'blue-grotto',
+        name: 'Blue Grotto',
+        white: [1.0, 0.97, 0.94],
+        ice: [0.5, 0.86, 1.0],
+        airLow: [0.007, 0.022, 0.03],
+        airHigh: [0.003, 0.005, 0.016],
+        glass: [0.01, 0.026, 0.04],
+        stone: [0.01, 0.013, 0.018],
+        vein: [0.02, 0.035, 0.045],
+        rock: [0.004, 0.006, 0.01],
+        fanTint: [1, 1, 1],
+        mist: { colour: [0.03, 0.07, 0.09], cover: 0.3, rise: 0.08 },
+        glints: 1,
+        quartz: CLEAR_QUARTZ,
+        sparks: [[1.0, 0.55, 0.85], [0.45, 0.95, 1.0]],
+        extraMotes: null,
+        grade: {
+            shadows: [0.86, 0.96, 1.1], highlights: [1.03, 1.0, 0.98], saturation: 1.12, contrast: 1.06,
+        },
+    },
+    {
+        // Violet quartz in a cave of violet stone; a cool mist lies thick on the floor.
+        id: 'amethyst-cave',
+        name: 'Amethyst Cave',
+        white: [0.94, 0.94, 1.0],
+        ice: [0.74, 0.5, 1.0],
+        airLow: [0.017, 0.009, 0.034],
+        airHigh: [0.005, 0.002, 0.014],
+        glass: [0.03, 0.012, 0.05],
+        stone: [0.014, 0.01, 0.02],
+        vein: [0.05, 0.03, 0.07],
+        rock: [0.006, 0.004, 0.011],
+        fanTint: [1.0, 0.9, 1.1],
+        mist: { colour: [0.09, 0.07, 0.15], cover: 0.72, rise: 0.13 },
+        glints: 0.8,
+        // A dripping cave: drops fall more often, and the geode walls glitter.
+        drips: { period: 11, chance: 0.85 },
+        flecks: 2.6,
+        quartz: {
+            core: [0.82, 0.6, 1.0],
+            body: [0.46, 0.22, 0.78],
+            absorb: [0.2, 0.75, 0.12],
+            edge: [0.84, 0.66, 1.0],
+            lamp: [0.94, 0.88, 1.0],
+            veil: [0.8, 0.66, 0.96],
+            env: { low: [0.019, 0.01, 0.038], high: [0.006, 0.002, 0.016], band: [0.05, 0.03, 0.075] },
+            sun: [0.94, 0.94, 1.0],
+            fanTint: [1.0, 0.9, 1.1],
+        },
+        sparks: [[0.9, 0.5, 1.0], [0.55, 0.72, 1.0]],
+        extraMotes: null,
+        grade: {
+            shadows: [0.98, 0.9, 1.12], highlights: [1.02, 0.98, 1.03], saturation: 1.1, contrast: 1.06,
+        },
+    },
+    {
+        // Citrine at the golden hour: a warm beam full of glinting dust in an amber grotto.
+        id: 'citrine-hour',
+        name: 'Citrine Hour',
+        white: [1.0, 0.8, 0.52],
+        ice: [1.0, 0.72, 0.36],
+        airLow: [0.032, 0.017, 0.007],
+        airHigh: [0.008, 0.004, 0.005],
+        glass: [0.045, 0.026, 0.008],
+        stone: [0.018, 0.013, 0.009],
+        vein: [0.07, 0.05, 0.025],
+        rock: [0.009, 0.005, 0.003],
+        fanTint: [1.0, 0.86, 0.66],
+        mist: { colour: [0.1, 0.055, 0.022], cover: 0.38, rise: 0.08 },
+        glints: 1.9,
+        // The low sun comes in flatter.
+        beamAngle: [-0.13, -1.16],
+        quartz: {
+            core: [1.0, 0.8, 0.46],
+            body: [0.72, 0.45, 0.15],
+            absorb: [0.05, 0.18, 0.7],
+            edge: [1.0, 0.84, 0.58],
+            lamp: [1.0, 0.92, 0.78],
+            veil: [0.96, 0.8, 0.55],
+            env: { low: [0.04, 0.022, 0.008], high: [0.01, 0.005, 0.006], band: [0.08, 0.05, 0.02] },
+            sun: [1.0, 0.8, 0.52],
+            fanTint: [1.0, 0.86, 0.66],
+        },
+        sparks: [[1.0, 0.62, 0.36], [1.0, 0.9, 0.6]],
+        extraMotes: {
+            // Dust turning slowly in the warm air, a little of it close to the lens.
+            motion: MOTE_MOTION.wander,
+            count: 80,
+            size: 0.008,
+            speed: 0.25,
+            spread: 1,
+            band: [-0.7, 1.0],
+            depth: 2.2,
+            bokeh: 0.2,
+            colorA: [1.0, 0.84, 0.54],
+            colorB: [1.0, 0.64, 0.32],
+            gain: 0.4,
+        },
+        grade: {
+            shadows: [1.02, 0.95, 0.88], highlights: [1.05, 1.0, 0.92], saturation: 1.08, contrast: 1.06,
+        },
+    },
+    {
+        // Winter: a cold silver beam into a frosted cavern, snow sifting down through it, the
+        // walls glittering with rime and a white mist on the floor.
+        id: 'frost-cavern',
+        name: 'Frost Cavern',
+        white: [0.92, 0.96, 1.0],
+        ice: [0.8, 0.9, 1.0],
+        airLow: [0.02, 0.025, 0.033],
+        airHigh: [0.004, 0.006, 0.012],
+        glass: [0.032, 0.038, 0.048],
+        stone: [0.02, 0.022, 0.027],
+        vein: [0.07, 0.08, 0.09],
+        rock: [0.008, 0.009, 0.012],
+        fanTint: [0.95, 0.98, 1.04],
+        mist: { colour: [0.075, 0.085, 0.1], cover: 0.55, rise: 0.1 },
+        glints: 1.2,
+        flecks: 2,
+        quartz: {
+            core: [0.8, 0.9, 1.0],
+            body: [0.45, 0.55, 0.72],
+            absorb: [0.34, 0.24, 0.17],
+            edge: [0.86, 0.93, 1.0],
+            lamp: [0.95, 0.97, 1.0],
+            veil: [0.86, 0.9, 0.98],
+            env: { low: [0.022, 0.028, 0.036], high: [0.005, 0.007, 0.014], band: [0.05, 0.06, 0.072] },
+            sun: [0.92, 0.96, 1.0],
+            fanTint: [0.95, 0.98, 1.04],
+        },
+        sparks: [[0.88, 0.94, 1.0], [0.62, 0.8, 1.0]],
+        extraMotes: {
+            // Snow sifting down through the cavern, some of it close to the lens.
+            motion: MOTE_MOTION.fall,
+            shape: MOTE_SHAPE.flake,
+            count: 90,
+            size: 0.034,
+            speed: 0.3,
+            spread: 1.05,
+            depth: 2.4,
+            bokeh: 0.14,
+            spin: 0.25,
+            flutter: 0.3,
+            colorA: [0.86, 0.92, 1.0],
+            colorB: [0.66, 0.78, 1.0],
+            gain: 0.42,
+        },
+        grade: {
+            shadows: [0.92, 0.97, 1.08], highlights: [1.0, 1.0, 1.02], saturation: 1.0, contrast: 1.06,
+        },
+    },
+]);
 
 /**
  * The distant crystal field along the floor line: depth (hero distances), cell width (world
@@ -130,7 +293,7 @@ const quartzShape = /* @__PURE__ */ Fn(([local, height, width, soft, root]) => {
  * the fan's colour, and the face toward us shows the dark grotto through the glass. Dark at the
  * root, clearer toward the tip, and the termination catches the light.
  */
-const quartzShade = /* @__PURE__ */ Fn(([shape, beamSide, fanLight, glow, soft]) => {
+const quartzShade = /* @__PURE__ */ Fn(([shape, beamSide, fanLight, glow, soft, WHITE, GLASS, ICE]) => {
     const face = shape.y.mul(beamSide).toVar();
     const toBeam = smoothstep(0.3, 0.42, face);
     const toFan = smoothstep(0.3, 0.42, face.negate());
@@ -152,7 +315,8 @@ const quartzShade = /* @__PURE__ */ Fn(([shape, beamSide, fanLight, glow, soft])
     type: 'vec3',
     inputs: [
         { name: 'shape', type: 'vec4' }, { name: 'beamSide', type: 'float' }, { name: 'fanLight', type: 'vec3' },
-        { name: 'glow', type: 'float' }, { name: 'soft', type: 'float' },
+        { name: 'glow', type: 'float' }, { name: 'soft', type: 'float' }, { name: 'WHITE', type: 'vec3' },
+        { name: 'GLASS', type: 'vec3' }, { name: 'ICE', type: 'vec3' },
     ],
 });
 
@@ -272,11 +436,21 @@ const druseLocal = (rel, lean, offset) => {
     return vec2(from.x.mul(lean.x).add(from.y.mul(lean.y)), from.x.mul(lean.y).sub(from.y.mul(lean.x)));
 };
 
-/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
-export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
-
-export function createCrystalWorld({ u, quality }) {
+export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
     const { octaves } = quality;
+    const c3 = (rgb) => vec3(...rgb);
+    const WHITE = c3(mood.white);
+    const ICE = c3(mood.ice);
+    const AIR_LOW = c3(mood.airLow);
+    const AIR_HIGH = c3(mood.airHigh);
+    const GLASS = c3(mood.glass);
+    const STONE = c3(mood.stone);
+    const FAN_TINT = c3(mood.fanTint);
+    /** A painted quartz point, lit in this mood's colours. */
+    const shadeQuartz = (shape, beamSide, fanLight, glow, soft) => {
+        const tones = [WHITE, GLASS, ICE];
+        return quartzShade(shape, beamSide, fanLight, glow, soft, ...tones);
+    };
     // Phones (Low) and the lightest tier take fewer octaves where the eye cannot tell.
     const light2 = quality.detail < 0.6;
     // Every painted crystal point is data, walked by a loop in the shader (one copy of its code).
@@ -290,8 +464,10 @@ export function createCrystalWorld({ u, quality }) {
     )), 'vec4');
     const nearWidths = uniformArray(NEAR_POINTS.map((point) => point[4]), 'float');
     // The composition follows the screen's shape: set in update() from the extents.
-    const beamDir = uniform(new THREE.Vector2(Math.cos(BEAM_ANGLE[0]), Math.sin(BEAM_ANGLE[0])));
-    const fanDir = uniform(new THREE.Vector2(Math.cos(BEAM_ANGLE[0] - BEND[0]), Math.sin(BEAM_ANGLE[0] - BEND[0])));
+    // A mood may bring the light in at its own angle (a low golden-hour sun comes in flatter).
+    const beamAngle = mood.beamAngle ?? BEAM_ANGLE;
+    const beamDir = uniform(new THREE.Vector2(Math.cos(beamAngle[0]), Math.sin(beamAngle[0])));
+    const fanDir = uniform(new THREE.Vector2(Math.cos(beamAngle[0] - BEND[0]), Math.sin(beamAngle[0] - BEND[0])));
 
     /** The light's packed parameters, as fresh nodes for each shader that asks. */
     const light = () => {
@@ -327,15 +503,17 @@ export function createCrystalWorld({ u, quality }) {
 
         // The hero plane: the crystal, the beam and the fan live here.
         const q = layer(p, u, 1).toVar();
-        const fanLight = prismFan(q, fanV, lookV).toVar();
+        const fanLight = prismFan(q, fanV, lookV).mul(FAN_TINT).toVar();
         const rays = prismBeam(q, beamV).toVar();
         // Light scattered in the mist spreads the fan into a soft glow around its bands.
-        const halo = prismFan(q, fanV, vec4(lookV.x.mul(6), lookV.y.mul(5), lookV.z, 0)).toVar();
+        const halo = prismFan(q, fanV, vec4(lookV.x.mul(6), lookV.y.mul(5), lookV.z, 0)).mul(FAN_TINT).toVar();
 
         // The air: a cold teal haze down by the wet floor, deep indigo up in the vault.
         const sky = layer(p, u, 0.12).toVar();
         const lift = smoothstep(horizon.sub(0.3), top.add(0.3), sky.y).toVar();
-        const haze = fbm3(vec3(sky.x.mul(0.8).add(time.mul(0.012)), sky.y.mul(1.5), time.mul(0.018)), 3).toVar();
+        const hazeAt = vec3(sky.x.mul(0.8).add(time.mul(0.012)), sky.y.mul(1.5), time.mul(0.018).add(u.seed.mul(7.3)));
+        const haze = fbm3(hazeAt, 3)
+            .toVar();
         const air = mix(AIR_LOW, AIR_HIGH, lift).mul(haze.mul(1.3).add(0.28)).toVar();
         // Far off, the grotto dissolves into a band of misty light along the floor line: depth.
         const farGlow = exp(sky.y.sub(horizon).sub(0.12).div(0.32).pow2()
@@ -370,12 +548,13 @@ export function createCrystalWorld({ u, quality }) {
         const ripple = gnoise(vec2(gx.mul(4), depth.mul(9).add(time.mul(0.15)))).sub(0.5).mul(0.035)
             .mul(float(1).sub(wet.mul(0.6)));
         const mq = vec2(q.x.add(ripple), contact.mul(2).sub(q.y)).toVar();
-        const mirrored = prismFan(mq, fanV, lookV).mul(0.8).add(WHITE.mul(prismBeam(mq, beamV).x).mul(1.2))
+        const mirrored = prismFan(mq, fanV, lookV).mul(FAN_TINT).mul(0.8)
+            .add(WHITE.mul(prismBeam(mq, beamV).x).mul(1.2))
             .add(ICE.mul(exp(dot(mq, mq).mul(-1.6))).mul(0.1).mul(glow));
         const farMirror = vec2(q.x.add(ripple.mul(2)), horizon.mul(2).sub(q.y));
         const mirroredAir = mix(AIR_LOW, AIR_HIGH, smoothstep(horizon.sub(0.3), top.add(0.3), farMirror.y))
             .mul(haze.mul(1.3).add(0.28))
-            .add(prismFan(farMirror, fanV, vec4(lookV.x.mul(6), lookV.y.mul(5), lookV.z, 0)).mul(0.1))
+            .add(prismFan(farMirror, fanV, vec4(lookV.x.mul(6), lookV.y.mul(5), lookV.z, 0)).mul(FAN_TINT).mul(0.1))
             .add(WHITE.mul(prismBeam(farMirror, beamV).y).mul(0.06));
         // Where the fan meets the floor it lands as moving rainbow caustics.
         const landing = exp(depth.sub(1).pow2().mul(-1.4)).mul(smoothstep(0.35, 0.7, depth)).toVar();
@@ -392,7 +571,7 @@ export function createCrystalWorld({ u, quality }) {
         const caustics = a2.mul(a2).mul(1.1).add(b2.mul(b2).mul(0.7)).add(a2.mul(b2).mul(1.4))
             .add(0.22)
             .toVar();
-        const floorBase = STONE.mul(tone.mul(1.3).add(0.35)).add(vec3(0.02, 0.035, 0.045).mul(vein).mul(0.4))
+        const floorBase = STONE.mul(tone.mul(1.3).add(0.35)).add(c3(mood.vein).mul(vein).mul(0.4))
             .mul(float(1).sub(wet.mul(0.6)))
             .add(AIR_LOW.mul(0.25));
         // The crystal's glow pools on the floor beneath it.
@@ -400,6 +579,45 @@ export function createCrystalWorld({ u, quality }) {
         const floorColor = floorBase.add(fanLight.mul(caustics).mul(landing).mul(1.3)).add(ICE.mul(pool))
             .add(mirrored.add(mirroredAir).mul(shine))
             .toVar();
+        // A rare event: a drop falls from the vault into a pool on the floor and rings spread from
+        // where it lands (some six seconds in all; the visit's seed keeps its own timetable).
+        const { period: dripEvery, chance: dripChance } = mood.drips ?? { period: 19, chance: 0.75 };
+        const dripSalt = u.seed.mul(41.3).add(2.7);
+        const drip = eventWindow(time, float(dripEvery), float(6), float(dripChance), dripSalt).toVar();
+        const dripOn = drip.x.mul(u.life).toVar();
+        const dropGlow = vec3(0).toVar();
+        If(dripOn.greaterThan(0.002), () => {
+            // Where it lands: a floor point between the near druses and the far field.
+            const landDepth = mix(float(1.15), float(2.3), hash21(vec2(drip.z, 1.9))).toVar();
+            const landX = hash21(vec2(drip.z, 4.4)).sub(0.5).mul(1.4).mul(u.ext.x.min(1.6))
+                .toVar();
+            const landY = horizon.sub(ground.div(landDepth)).toVar();
+            const fall = drip.y.div(0.3).saturate().toVar();
+            const age = drip.y.sub(0.3).div(0.7).toVar();
+            // The rings, in floor units round the landing point: circles seen in perspective.
+            const rho = length(vec2(gx.sub(landX.mul(landDepth)), depth.sub(landDepth))).toVar();
+            const spread = age.max(0).mul(0.42).toVar();
+            const w = spread.mul(0.05).add(0.016).toVar();
+            const ringA = exp(rho.sub(spread).div(w).pow2().negate());
+            const ringB = exp(rho.sub(spread.mul(0.6)).div(w.mul(0.8)).pow2().negate()).mul(0.6);
+            const fade = float(1).sub(age).saturate().pow2()
+                .mul(smoothstep(0, 0.02, age));
+            floorColor.addAssign(mix(ICE, WHITE, 0.5).mul(ringA.add(ringB)).mul(fade).mul(0.16)
+                .mul(dripOn));
+            // The drop: a bead of light falling from the vault, drawn out by its speed.
+            const headY = mix(top.sub(0.1), landY, fall.mul(fall));
+            const rel = p.sub(vec2(landX, headY)).toVar();
+            const tail = fall.mul(0.035).add(0.006);
+            const drop = exp(rel.x.div(u.px.mul(2.2)).pow2().negate())
+                .mul(exp(rel.y.max(0).div(tail).pow2().negate()))
+                .mul(exp(rel.y.min(0).div(0.004).pow2().negate()))
+                .mul(fadeOut(0.96, 1, fall));
+            // A small splash of light where it lands.
+            const splashAt = p.sub(vec2(landX, landY));
+            const splash = exp(dot(splashAt, splashAt).div(0.00006).negate())
+                .mul(smoothstep(0, 0.05, age)).mul(fadeOut(0.1, 0.3, age));
+            dropGlow.assign(mix(ICE, WHITE, 0.6).mul(drop.mul(1.3).add(splash.mul(0.9))).mul(dripOn));
+        });
         // Aerial perspective: the floor melts into the haze toward the horizon.
         floorColor.assign(mix(floorColor, fogColor, float(1).sub(exp(depth.mul(-0.16)))));
         col.assign(mix(col, floorColor, fadeOut(horizon.sub(u.px.mul(1.5)), horizon.add(u.px.mul(1.5)), p.y)));
@@ -419,7 +637,7 @@ export function createCrystalWorld({ u, quality }) {
             Loop(2, ({ i }) => {
                 const cell = id.add(side.mul(float(1).sub(float(i))));
                 const { shape, mask } = quartzCell(wx, wy, cell, row, soft);
-                col.assign(mix(col, mix(quartzShade(shape, beamSide, fanLight, glow, soft), fogColor, fog), mask));
+                col.assign(mix(col, mix(shadeQuartz(shape, beamSide, fanLight, glow, soft), fogColor, fog), mask));
             });
         }
         // Druses on the floor, far to near, each fading into the haze by its depth.
@@ -431,18 +649,36 @@ export function createCrystalWorld({ u, quality }) {
             const rel = dq.sub(root).mul(place.z).toVar();
             const soft = u.px.mul(1.3).mul(place.z).toVar();
             const shape = quartzShape(druseLocal(rel, lean, place.x), lean.z, lean.w, soft, float(0)).toVar();
-            const shade = mix(quartzShade(shape, beamSide, fanLight, glow, soft), fogColor, place.w);
+            const shade = mix(shadeQuartz(shape, beamSide, fanLight, glow, soft), fogColor, place.w);
             // Each point grows out of the floor: nothing of it shows below its root line.
             col.assign(mix(col, shade, shape.x.mul(smoothstep(soft.negate(), soft, rel.y))));
         });
 
+        // A low bank of mist lying on the wet floor, thickest along the far floor line: it veils
+        // the far crystals and drifts slowly sideways, lit by the light that passes through it.
+        const bankQ = layer(p, u, 0.5).toVar();
+        const rise = p.y.sub(horizon).toVar();
+        const bank = exp(rise.max(0).div(mood.mist.rise).pow2().negate())
+            .mul(exp(rise.min(0).div(0.3).pow2().negate()));
+        const roll = fbm3(vec3(
+            bankQ.x.mul(1.1).add(time.mul(0.035)).add(u.seed.mul(13)),
+            rise.mul(5).sub(time.mul(0.012)),
+            time.mul(0.02),
+        ), light2 ? 2 : 3);
+        const mist = smoothstep(0.3, 0.74, roll).mul(bank).mul(mood.mist.cover).toVar();
+        const mistLight = c3(mood.mist.colour).mul(glow.mul(0.3).add(0.85)).add(halo.mul(0.25))
+            .add(WHITE.mul(rays.y).mul(0.05));
+        col.assign(mix(col, mistLight, mist));
+
         // Mist drifting between the crystals, lit by whatever light passes through it.
         const wq = layer(p, u, 0.6).toVar();
-        const wisps = fbm3(vec3(wq.x.mul(1.3).add(time.mul(0.02)), wq.y.mul(2.4), time.mul(0.025)), light2 ? 2 : 3);
+        const wispAt = vec3(wq.x.mul(1.3).add(time.mul(0.02)), wq.y.mul(2.4), time.mul(0.025).add(u.seed.mul(5.1)));
+        const wisps = fbm3(wispAt, light2 ? 2 : 3);
         const veil = smoothstep(0.42, 0.78, wisps).toVar();
         col.addAssign(halo.mul(0.22).add(WHITE.mul(rays.y).mul(0.12)).add(ICE.mul(nearCrystal).mul(0.05).mul(glow))
             .add(AIR_LOW.mul(0.3))
             .mul(veil));
+        col.addAssign(dropGlow);
 
         // The beam and the fan in the dusty air of the hero plane. Dust streams along the rays.
         const along = dot(q, fanV.xy).toVar();
@@ -466,7 +702,7 @@ export function createCrystalWorld({ u, quality }) {
 
         // Dust motes glinting wherever the light passes.
         const glints = (k, cells, seed) => glintField(layer(p, u, k).mul(cells), float(seed), float(cells), u.px, time);
-        const sparkle = glints(1.15, 24, 1.3).add(glints(0.85, 38, 7.1).mul(0.7));
+        const sparkle = glints(1.15, 24, 1.3).add(glints(0.85, 38, 7.1).mul(0.7)).mul(mood.glints);
         col.addAssign(fanLight.mul(1.6).add(WHITE.mul(rays.x.mul(1.2).add(rays.y.mul(0.4)))).mul(sparkle).mul(open));
 
         // The grotto's rock, close to the lens: two dark masses that come down at the top corners
@@ -495,7 +731,7 @@ export function createCrystalWorld({ u, quality }) {
             const x0 = u.ext.x.mul(place.y).toVar();
             const rel = vec2(kq.x.sub(x0), top.sub(lipAt(x0)).add(0.03).sub(kq.y)).mul(1 / ROCK_K).toVar();
             const shape = quartzShape(druseLocal(rel, lean, place.x), lean.z, lean.w, vaultSoft, float(0)).toVar();
-            const shade = quartzShade(shape, beamSide, vaultFan, glow, vaultSoft).mul(0.75)
+            const shade = shadeQuartz(shape, beamSide, vaultFan, glow, vaultSoft).mul(0.75)
                 .add(ICE.mul(shape.z.pow2()).mul(nearCrystal.mul(0.3).add(0.02)).mul(glow));
             col.assign(mix(col, shade, shape.x.mul(smoothstep(vaultSoft.negate(), vaultSoft, rel.y))));
         });
@@ -507,8 +743,8 @@ export function createCrystalWorld({ u, quality }) {
             .add(AIR_LOW.mul(0.5));
         // The lip is rough: light catches its bumps and misses the hollows between them.
         const rim = exp(intoRock.max(0).mul(-45)).mul(grain.mul(1.6).sub(0.25).saturate()).add(cleft.mul(0.7));
-        const flecks = glints(ROCK_K, 64, 4.4).mul(exp(intoRock.max(0).mul(-12)));
-        const rockColor = vec3(0.004, 0.006, 0.01).mul(grain.mul(0.9).add(0.5))
+        const flecks = glints(ROCK_K, 64, 4.4).mul(exp(intoRock.max(0).mul(-12))).mul(mood.flecks ?? 1);
+        const rockColor = c3(mood.rock).mul(grain.mul(0.9).add(0.5))
             .add(reaching.mul(rim.mul(0.8).add(flecks.mul(0.8)).add(0.015)));
         col.assign(mix(col, rockColor, rock));
 
@@ -520,7 +756,7 @@ export function createCrystalWorld({ u, quality }) {
             const rel = nq.sub(vec2(u.ext.x.mul(point.x), bottom.sub(0.12))).toVar();
             const local = vec2(rel.x.mul(point.y).add(rel.y.mul(point.z)), rel.x.mul(point.z).sub(rel.y.mul(point.y)));
             const shape = quartzShape(local, point.w, nearWidths.element(i), float(0.018), float(-0.5)).toVar();
-            const shade = quartzShade(shape, beamSide, nearFan, glow, float(0.02)).mul(0.6);
+            const shade = shadeQuartz(shape, beamSide, nearFan, glow, float(0.02)).mul(0.6);
             col.assign(mix(col, shade, shape.x.mul(0.97)));
         });
 
@@ -531,10 +767,19 @@ export function createCrystalWorld({ u, quality }) {
     // The crystal and its splinters share one solid; the splinters take a lighter trace.
     const solid = createQuartzSolid();
     const crystalMaterial = createQuartzMaterial({
-        u, solid, light, bounces: quality.detail >= 0.7 ? 3 : 2, dispersion: true, glow: 1, phantoms: true, exit: 0.3,
+        u,
+        solid,
+        light,
+        bounces: quality.detail >= 0.7 ? 3 : 2,
+        dispersion: true,
+        glow: 1,
+        phantoms: true,
+        exit: 0.3,
+        stone: mood.quartz,
+        glint: true,
     });
     const shardMaterial = createQuartzMaterial({
-        u, solid, light, bounces: 2, dispersion: quality.detail >= 0.5, glow: 0.35, lit: 0.35,
+        u, solid, light, bounces: 2, dispersion: quality.detail >= 0.5, glow: 0.35, lit: 0.35, stone: mood.quartz,
     });
     const crystal = new THREE.Mesh(solid.geometry, crystalMaterial);
     const pose = new THREE.Group();
@@ -559,7 +804,7 @@ export function createCrystalWorld({ u, quality }) {
         threshold: 1.2,
         decay: 0.97,
         length: 0.7,
-        tint: [1, 1, 1],
+        tint: mood.white,
         breath: 0.6,
     };
     return {
@@ -574,23 +819,22 @@ export function createCrystalWorld({ u, quality }) {
                 spread: 0.9,
                 depth: 1.6,
                 bokeh: 0.12,
-                colorA: [1.0, 0.55, 0.85],
-                colorB: [0.45, 0.95, 1.0],
+                colorA: mood.sparks[0],
+                colorB: mood.sparks[1],
                 gain: 0.55,
             },
+            ...(mood.extraMotes ? [mood.extraMotes] : []),
         ],
         shafts,
         bloom: {
             strength: 0.3, radius: 0.65, threshold: 0.85, breath: 0.6,
         },
-        grade: {
-            shadows: [0.86, 0.96, 1.1], highlights: [1.03, 1.0, 0.98], saturation: 1.12, contrast: 1.06, vignette: 0.42,
-        },
+        grade: { vignette: 0.42, ...mood.grade },
         camera: { dolly: 0.04, drift: [0.03, 0.014], period: 60 },
         exposure: 1.0,
         update({ time, ext, breathSoft }) {
             const tall = THREE.MathUtils.smoothstep(ext.y, 1.05, 1.9);
-            const beam = THREE.MathUtils.lerp(BEAM_ANGLE[0], BEAM_ANGLE[1], tall);
+            const beam = THREE.MathUtils.lerp(beamAngle[0], beamAngle[1], tall);
             const out = beam - THREE.MathUtils.lerp(BEND[0], BEND[1], tall);
             beamDir.value.set(Math.cos(beam), Math.sin(beam));
             fanDir.value.set(Math.cos(out), Math.sin(out));
