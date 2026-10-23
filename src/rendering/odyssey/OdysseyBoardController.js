@@ -4289,6 +4289,8 @@ export class OdysseyBoardController {
             this.nodeManager.setFocusedLevel?.(this.cameraController?.mode === 'focus' ? this.selectedLevelId : null);
         }
         this.nodeManager?.update(delta, this.cinematicJourneyActive ? (directorState?.node?.focalPulse ?? 0) : 0);
+        // The rail passes behind the orbs' world windows (ODYSSEY_PATH_ORB_OCCLUSION).
+        if (this.nodeManager) this.pathRenderer?.setOrbOccluders?.(this.nodeManager.getWindowOccluders());
         this.layoutEditor?.update(delta);
 
         // L8 dome-cull: when the dominant chapter's own full-coverage dome is fully opaque
