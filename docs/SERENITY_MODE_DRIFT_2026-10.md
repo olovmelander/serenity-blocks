@@ -168,17 +168,35 @@ Line clears  [Single] [Double] [Triple] [Quad]
 Cascades     [3 waves] [6 waves] [10 waves]
 Chains       [Combo ×5] [Back-to-back]
 Moments      [T-spin] [Perfect clear] [Level up]
-← → another theme · E closes
+Build-up     [Rush] [Fever]
+← → another theme · E hides
 ```
 
-- **Press an effect** and the theme on screen plays it; the button stays lit while it runs. The
-  arrows still change the theme, so one effect can be compared across worlds: press, →, press.
-  **Play all** walks through every effect with a quiet pause after each and names each one in a
-  notice ("Quad · four lines · 6 of 16"). It **folds the tray away** as it starts, so the theme
-  has the whole screen: while it runs the dock's Effects tile counts ("Effects · 6 of 16") and a
-  Stop tile stands beside it (from the keyboard the focus lands on Stop). That Stop, the tray's
-  own (Play all reads Stop while it runs), any effect, or **Esc** ends it; Esc stops it before
-  it can leave the mode. When it reaches the end a notice says "Every effect played".
+- **Press an effect** and the theme on screen plays it; the button stays lit while it runs and
+  fills a thin line in the world's light for exactly as long (the player reports each effect's
+  length, its events and a 500 ms linger), so you can see how long it lasts and when it is done.
+  The line under the theme's name says what the effect under the pointer, the keyboard's focus
+  or the one playing is ("Mega cascade · ten waves"). The arrows still change the theme, so one
+  effect can be compared across worlds: press, →, press.
+- **With a mouse, the tray steps back while you watch.** While an effect you pressed plays and
+  the pointer is elsewhere, the panel fades to a ghost (opacity 0.14, after 0.6 s) so the effect
+  can be seen whole; reaching for it brings it straight back, and it returns by itself when the
+  effect is done. The keyboard's focus keeps it. Not on touch screens, where the strip is small.
+- **Play all** walks through every effect with a quiet pause after each and names each one in a
+  notice ("Quad · four lines"). It **folds the tray away** as it starts, so the theme has the
+  whole screen, and the dock becomes the tour's (Drift and Rest step aside until it ends):
+
+  ```
+          [ ⏮ ]  [ ✦ EFFECTS · 6 OF 16 ]  [ ⏭ ]  [ ■ ]
+  ```
+
+  **Next** goes on at once (dimmed on the last effect). **Previous** works as a music player's
+  does: within 2 s of an effect's start it goes back to the one before, later it plays this one
+  again. Either ends what was playing, so nothing of a skipped effect arrives later. From the
+  keyboard the focus lands on Stop, and when the tour ends it is handed to the Effects tile
+  rather than lost. The dock's Stop, the tray's own (Play all reads Stop while it runs), any
+  effect, or **Esc** ends the tour; Esc stops it before it can leave the mode. When it reaches
+  the end a notice says "Every effect played".
 - **Closing the tray only puts it away** (E, Esc, its ×, the chip): what is playing plays on,
   so an effect can be pressed and then watched with the whole screen.
 - **What the themes receive is what play sends.** Each effect is a short script of the gameplay
@@ -197,12 +215,18 @@ Moments      [T-spin] [Perfect clear] [Level up]
   same reason. Repeated presses vary: Lock walks through the seven shapes and the columns, Level
   up climbs one level each time.
 - One effect at a time: a new one ends the one before it (play never overlaps two locks).
-- The tray stands at the right edge on a wide screen, clear of the middle where the board would
-  be and where themes play their effects. On a phone it is a short strip along the bottom (about
-  a fifth of the screen, where it was over half): one line with the theme's name, Play all and
-  ×, then the effects in two rows that scroll sideways together, three groups to a row, fading
-  at the edge where more wait. Notices stand on it (the tray publishes its height as
-  `--serenity-effects-h`), and the dock steps out while it is open. It steps aside with the
+- **Where it stands** depends on the screen's shape:
+
+  | Screen | Tray | Of the screen |
+  |---|---|---|
+  | Wider than 900 px and taller than 520 px | The right edge, over its own shade (a window too short for it scrolls the panel; its head is never cut off) | 480 px wide at most |
+  | A phone held upright (to 640 px wide) | A strip along the bottom: one line with the theme's name, Play all and ×, then two rows of effects that scroll sideways together, three groups to a row, fading at the edge where more wait | 172 of 844 px |
+  | A tablet held upright (641–900 px wide) | The strip, its groups wrapping onto the lines they need, centred; nothing scrolls | 220 of 1180 px |
+  | A phone on its side (520 px tall or less) | The strip with one row of effects | 118 of 390 px |
+
+  Notices stand on the strip (the tray publishes its height as `--serenity-effects-h`), and the
+  dock steps out while it is open; beside the panel, the caption, the dock and the notices
+  centre on the rest of the screen. It steps aside with the
   world bar whenever something else has the screen (the Hub, the breathing guide, a Hale
   session, the rest veil), and that ends what was playing. Drift holds while it is open or an
   effect plays, so the world you are trying stays. While it is in view, or Play all runs with it
@@ -268,8 +292,8 @@ the arrows' order, delay and save, the rest timer, touch rhythm), `camera-breath
 between the two places, GPU release, never in a session or outside Serenity),
 `serenity-effects.test.js` (every effect's events against the physics order, through the real
 emitters and the consumer-audit payload rules, effects standing on their own against
-`ComboTracker`, the player's timing, Play all, stopping, and "every effect played" only at the
-end), and the updated
+`ComboTracker`, the player's timing and each effect's reported length, Play all, stopping,
+"every effect played" only at the end, and Play all's next and previous), and the updated
 `serenity-random-theme.test.js` / `serenity-breathing-session-input.test.js`.
 
 ## Verification
@@ -303,6 +327,18 @@ listeners each; Esc closed the tray both with focus inside it and on the page, a
 Esc opened Settings; no horizontal scroll on either size; no console errors or warnings besides
 SwiftShader's own driver notes. The phone pass found group labels running into the buttons, fixed
 before commit.
+
+**Effects, the second pass** (2026-10-23, after Olov asked for world-class UI and UX): the same
+scratch page at 1440×900, 1280×720, 820×1180, 390×844, 360×640 and 844×390 (touch where a
+device would have it), with no console errors or warnings and no sideways page scroll at any
+size. The audit before it found the panel cut off on a phone on its side (its head, Play all and
+× above the screen and unreachable: `justify-content: center` on an overflowing column) and
+squeezed to 228 px of content on a tablet held upright (the eyebrow ran into Play all); both
+now take the strip. Checked: Fever's line part-way through; the panel at 0.14 with the pointer
+away and back at 1 with "Mega cascade · ten waves" under the name on hover; the tour's dock on
+every size (one row on a phone); the keyboard from Play all to Stop, Next twice (3 of 16), Previous
+at once (back to 2) and after 2.3 s (2 again), Esc stopping and the focus landing on the Effects
+tile; a mouse press on Stop leaving the dock to sleep as before.
 
 **Effects out of the way** (2026-10-23, after Olov found the tray hid most of the theme while
 Play all ran, stopped everything when closed, and covered a phone screen): the real game on

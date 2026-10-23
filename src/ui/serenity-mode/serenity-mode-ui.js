@@ -111,6 +111,7 @@ export class SerenityModeUi {
             onRest: () => this.setRest(nextRestOption(this.restTimer.minutes)),
             onEffects: () => this.toggleEffects(),
             onStopEffects: () => this.stopEffects(),
+            onSkipEffects: (direction) => this.effects?.skip(direction),
         });
         this.drift = new SerenityDrift({
             activeTheme: () => themeManager?.activeThemeName || null,
@@ -142,8 +143,9 @@ export class SerenityModeUi {
                 this.refresh();
             },
             onTourStep: (effect, index, total) => {
+                // The dock counts ("Effects · 6 of 16"); the notice names the effect.
                 this.effectsTour = { index, total };
-                showSerenityNotice(`${effect.name} · ${index + 1} of ${total}`, 3200);
+                showSerenityNotice(effect.name, 3200);
             },
             onTourDone: () => showSerenityNotice('Every effect played'),
         });

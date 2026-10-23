@@ -50,6 +50,13 @@ export const RUSH_MS = 300;
 export const FEVER_MS = 640;
 /** Play all: the quiet after each effect, so its afterglow can be seen. */
 export const TOUR_REST_MS = 2600;
+/** An effect's name stays lit this long after its last event. */
+export const LINGER_MS = 500;
+/**
+ * Play all's previous: within this long of an effect's start it goes back to the one before;
+ * later it plays this one again (as a music player's previous does).
+ */
+export const RESTART_MS = 2000;
 export const SOURCE = 'serenity-effects';
 
 export const EFFECT_GROUPS = [
@@ -472,7 +479,11 @@ export function emitEffectStep(step) {
 
 /**
  * Plays effects one at a time: a new one ends the one before it (play never overlaps two
- * locks). "Play all" walks through every effect in the tray's order.
+ * locks). "Play all" walks through every effect in the tray's order, and can step forward or
+ * back while it does.
+ *
+ * @typedef {{ playing: string|null, touring: boolean, ms: number }} EffectsState `ms`: how long
+ *   the playing effect stays lit (its events and the linger after them); 0 when none plays
  */
 export class SerenityEffects {
     /**
@@ -482,9 +493,10 @@ export class SerenityEffects {
      * @param {(handle: any) => void} [options.clearTimer]
      * @param {(shapeKey: string) => string|null|undefined} [options.colorFor] the theme's colour
      *   for a piece (none: the standard colour)
-     * @param {(state: { playing: string|null, touring: boolean }) => void} [options.onChange]
+     * @param {(state: EffectsState) => void} [options.onChange]
      * @param {(effect: EffectDefinition, index: number, total: number) => void} [options.onTourStep]
      * @param {() => void} [options.onTourDone] Play all reached the end (not when it was stopped)
+     * @param {() => number} [options.now] the clock Play all's previous reads (ms)
      */
     constructor({
         emit = emitEffectStep,
@@ -494,6 +506,7 @@ export class SerenityEffects {
         onChange = () => {},
         onTourStep = () => {},
         onTourDone = () => {},
+        now = () => Date.now(),
     } = {}) {
         this.emit = emit;
         this.setTimer = setTimer;
@@ -501,12 +514,18 @@ export class SerenityEffects {
         this.onChange = onChange;
         this.onTourStep = onTourStep;
         this.onTourDone = onTourDone;
+        this.now = now;
         this.ctx = createEffectContext({ colorFor });
         /** @type {any[]} */
         this.timers = [];
         /** @type {string|null} */
         this.playing = null;
         this.touring = false;
+        /** How long the playing effect stays lit. */
+        this.ms = 0;
+        /** Where Play all is (-1 when it is not running), and when that effect began. */
+        this.tourIndex = -1;
+        this.tourStartedAt = 0;
     }
 
     /**
@@ -523,6 +542,26 @@ export class SerenityEffects {
 
     /** Every effect in turn, with a pause after each. Again, or any effect, ends it. */
     playAll() {
+        this._tourFrom(0);
+    }
+
+    /**
+     * While Play all runs: on to the next effect now (1), or back (-1): this one again once it
+     * has played a while, else the one before.
+     * @param {number} direction @returns {boolean} whether it moved
+     */
+    skip(direction) {
+        if (!this.touring) return false;
+        let index = this.tourIndex;
+        if (direction > 0) index += 1;
+        else if (this.now() - this.tourStartedAt < RESTART_MS) index = Math.max(0, index - 1);
+        if (index >= EFFECTS.length) return false;
+        this._tourFrom(index);
+        return true;
+    }
+
+    /** @param {number} start */
+    _tourFrom(start) {
         this._cancel();
         this.touring = true;
         const next = (index) => {
@@ -532,10 +571,12 @@ export class SerenityEffects {
                 return;
             }
             const effect = EFFECTS[index];
+            this.tourIndex = index;
+            this.tourStartedAt = this.now();
             this.onTourStep(effect, index, EFFECTS.length);
             this._run(effect.id, () => this._after(TOUR_REST_MS, () => next(index + 1)));
         };
-        next(0);
+        next(start);
     }
 
     /** Stop what is playing (its later events are not sent). */
@@ -549,19 +590,23 @@ export class SerenityEffects {
         this._cancel();
         this.playing = null;
         this.touring = false;
+        this.ms = 0;
+        this.tourIndex = -1;
     }
 
     /** @param {string} id @param {() => void} done */
     _run(id, done) {
         const steps = buildEffect(id, this.ctx) || [];
         this.playing = id;
-        this.onChange({ playing: this.playing, touring: this.touring });
+        // The effect's name stays lit a moment after its last event.
+        this.ms = effectDuration(steps) + LINGER_MS;
+        if (!this.touring) this.tourIndex = -1;
+        this.onChange({ playing: this.playing, touring: this.touring, ms: this.ms });
         steps.filter((step) => step.at === 0).forEach((step) => this.emit(step));
         steps.filter((step) => step.at > 0).forEach((step) => {
             this._after(step.at, () => this.emit(step));
         });
-        // The effect's name stays lit a moment after its last event.
-        this._after(effectDuration(steps) + 500, done);
+        this._after(this.ms, done);
     }
 
     /** @param {number} ms @param {() => void} fn */
@@ -581,6 +626,8 @@ export class SerenityEffects {
     _settle() {
         this.playing = null;
         this.touring = false;
-        this.onChange({ playing: null, touring: false });
+        this.ms = 0;
+        this.tourIndex = -1;
+        this.onChange({ playing: null, touring: false, ms: 0 });
     }
 }
