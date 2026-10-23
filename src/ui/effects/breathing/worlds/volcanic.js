@@ -399,6 +399,9 @@ function paintFountain(c) {
     return vec4(flame, smoothstep(0.06, 0.3, heat).mul(0.88));
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createVolcanicWorld({ u, quality, random }) {
     const { octaves, detail } = quality;
     const fine = detail >= 0.6;

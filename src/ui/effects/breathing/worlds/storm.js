@@ -508,6 +508,9 @@ function paintGlass(ctx) {
     return surface;
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createStormWorld({ u, quality }) {
     const { octaves, detail } = quality;
     // Phones keep eight filaments: fewer and the globe reads as a sparse star.

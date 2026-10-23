@@ -468,6 +468,9 @@ function farSky(p, u, { glow, top, octaves }) {
     return col.mul(float(1).sub(laneCore.mul(0.9))).add(col.mul(laneRim).mul(1.6));
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createNebulaWorld({ u, quality, random }) {
     const { octaves } = quality;
     // Phones (Low) and the lightest tier skip the finest touches: the crinkled cliff edge and the

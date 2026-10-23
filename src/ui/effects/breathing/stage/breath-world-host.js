@@ -7,6 +7,8 @@
  * artwork iterated in the playground is the artwork that ships.
  *
  * A world is { backdrop, objects, motes, bloom, shafts, grade, camera, exposure, update, dispose }.
+ * It is built in one of its moods (stage/breath-moods.js): a visit picks one, and the host keeps
+ * it for the rest of its life, so a session that returns to a world finds the same scene.
  * Its backdrop is a vec3 node painted on one screen-filling quad; the camera maps the z = 0 plane
  * onto the same hero space, so geometry and painted light line up without per-world camera work.
  *
@@ -20,7 +22,8 @@ import { positionGeometry, vec4 } from 'three/tsl';
 import { createBreathUniforms } from './breath-tsl.js';
 import { createMotes } from './breath-motes.js';
 import { BreathPost } from './breath-post.js';
-import { BREATH_WORLD_BUILDERS } from '../worlds/index.js';
+import { pickBreathMood, resolveBreathMood } from './breath-moods.js';
+import { BREATH_WORLD_BUILDERS, BREATH_WORLD_MOODS } from '../worlds/index.js';
 
 /**
  * Render cost only: every tier draws the same artwork. `bloom` is the bloom chain's scale (0: no
@@ -54,6 +57,7 @@ const CAMERA_DISTANCE = 6;
 /** dolly: how far the view leans in at full lungs; drift: slow wander (hero units); period in seconds. */
 const DEFAULT_RIG = Object.freeze({ dolly: 0.035, drift: [0.03, 0.016], period: 56 });
 const TAU = Math.PI * 2;
+const ONE_MOOD = Object.freeze([{ id: 'classic', name: 'Classic' }]);
 
 function seededRandom(seed) {
     let state = seed >>> 0;
@@ -75,7 +79,7 @@ function disposeObject(object) {
 
 export class BreathWorldHost {
     constructor({
-        renderer, scene, camera, quality = 'High',
+        renderer, scene, camera, quality = 'High', pickMood = pickBreathMood,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -88,6 +92,12 @@ export class BreathWorldHost {
         this.scene.add(this.root);
         this.world = null;
         this.worldId = null;
+        this.pickMood = pickMood;
+        /** world id → the mood index (and the visit seed) this host showed it with */
+        this.moodMemory = new Map();
+        this.seedMemory = new Map();
+        this.mood = null;
+        this.life = 1;
         this.time = 0;
         this.breathIntegral = 0;
         this.breathSoft = 0;
@@ -107,13 +117,30 @@ export class BreathWorldHost {
     /** Kept for diagnostics and tests: the pipeline exists only on tiers with post. */
     get pipeline() { return this.post?.pipeline ?? null; }
 
-    /** Build a world and swap it in. Synchronous; the caller decides how to hide the first frames. */
-    setWorld(id) {
+    /**
+     * Build a world and swap it in. Synchronous; the caller decides how to hide the first frames.
+     * `mood` (an index or a mood id) and `seed` (0..1, the visit's own variation) pin a version
+     * for previews and captures; without them a first visit picks, and a return keeps the pick.
+     */
+    setWorld(id, { mood, seed } = {}) {
         const worldId = BREATH_WORLD_BUILDERS[id] ? id : 'deep-relaxation';
-        if (this.worldId === worldId && this.world) return worldId;
+        const moods = BREATH_WORLD_MOODS[worldId]?.length ? BREATH_WORLD_MOODS[worldId] : ONE_MOOD;
+        let moodIndex = resolveBreathMood(moods, mood);
+        if (moodIndex === null) moodIndex = this.moodMemory.get(worldId) ?? this.pickMood(worldId, moods.length);
+        moodIndex = THREE.MathUtils.clamp(Math.floor(moodIndex) || 0, 0, moods.length - 1);
+        const visitSeed = Number.isFinite(seed)
+            ? THREE.MathUtils.clamp(seed, 0, 1) : (this.seedMemory.get(worldId) ?? Math.random());
+        if (this.worldId === worldId && this.world && this.mood === moods[moodIndex]
+            && visitSeed === this.uniforms.seed.value) return worldId;
         this._clearWorld();
+        this.moodMemory.set(worldId, moodIndex);
+        this.seedMemory.set(worldId, visitSeed);
+        this.mood = moods[moodIndex];
+        this.uniforms.seed.value = visitSeed;
         const random = seededRandom(0x51ed270b);
-        const world = BREATH_WORLD_BUILDERS[worldId]({ u: this.uniforms, quality: this.quality, random });
+        const world = BREATH_WORLD_BUILDERS[worldId]({
+            u: this.uniforms, quality: this.quality, random, mood: this.mood,
+        });
         const backdropMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
         backdropMaterial.colorNode = world.backdrop;
         // A clip-space quad: it fills the frame at any aspect and never needs resizing.
@@ -206,6 +233,8 @@ export class BreathWorldHost {
         // Reduced motion freezes ambient drift; the breath itself keeps moving the scene.
         const pace = this.reducedMotion ? 0 : 1 - this.calm * 0.7;
         this.time += delta * pace;
+        // Occasional events (a meteor, a breaching whale) fade away under stillness and reduced motion.
+        this.life += (this._lifeTarget() - this.life) * (1 - Math.exp(-delta * 0.8));
         const { breath } = this.uniforms;
         this.breathIntegral += delta * pace * breath.value;
         // Secondary motion: a critically damped follower of the breath, and its smoothed rate.
@@ -224,15 +253,19 @@ export class BreathWorldHost {
         this.time = time;
         this.breathIntegral = breathIntegral;
         this.calm = this.calmTarget;
+        this.life = this._lifeTarget();
         this.breathSoft = this.uniforms.breath.value;
         this.breathVel = 0;
         this.lastBreath = this.uniforms.breath.value;
         this._push(0);
     }
 
+    _lifeTarget() { return this.reducedMotion ? 0 : 1 - this.calm * 0.75; }
+
     _push(delta) {
         const u = this.uniforms;
         u.time.value = this.time;
+        u.life.value = this.life;
         u.breathInt.value = this.breathIntegral;
         u.calm.value = this.calm;
         u.breathSoft.value = this.breathSoft;
@@ -245,6 +278,7 @@ export class BreathWorldHost {
             breathSoft: this.breathSoft,
             phase: u.phase.value,
             progress: u.phaseT.value,
+            life: this.life,
             ext: u.ext.value,
             zoom: u.zoom.value,
             pan: u.pan.value,
@@ -317,6 +351,8 @@ export class BreathWorldHost {
         const info = this.renderer?.info;
         return {
             world: this.worldId,
+            mood: this.mood?.id ?? null,
+            seed: this.uniforms.seed.value,
             quality: this.qualityName,
             post: Boolean(this.post),
             shafts: Boolean(this.post?.usesShafts),

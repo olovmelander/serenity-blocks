@@ -471,6 +471,9 @@ function createTables() {
     };
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createZenWorld({ u, quality }) {
     const { octaves } = quality;
     const marchSteps = Math.round(12 + 14 * quality.detail);

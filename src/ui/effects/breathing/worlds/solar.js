@@ -505,6 +505,9 @@ function flareRibbons(body, { ribbons, row }) {
     return flare;
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createSolarWorld({ u, quality }) {
     const { detail } = quality;
     // The lightest tier draws with no post pipeline, so no grade: the world warms itself instead.

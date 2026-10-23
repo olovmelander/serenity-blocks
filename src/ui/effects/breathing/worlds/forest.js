@@ -83,6 +83,9 @@ function frond(p, base, angle, length, droop, soft) {
     return smoothstep(float(-soft), float(soft), inside).mul(span);
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createForestWorld({ u, quality }) {
     const { octaves } = quality;
     const rows = quality.detail >= 0.5 ? ROWS : ROWS.filter((_, index) => index !== 1);

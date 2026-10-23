@@ -232,6 +232,9 @@ function roseWindow(w, u, octaves) {
     return mix(VIOLET, GOLD, 0.4).mul(rings.add(tracery.mul(0.75))).mul(veil);
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createSacredWorld({ u, quality }) {
     const { octaves, detail } = quality;
     /** The light's position around the square in laps (0..1), its point, and the hold's depth. */
