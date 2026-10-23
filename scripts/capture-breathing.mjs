@@ -9,6 +9,7 @@
  *   --sheet=pairs      every world empty and full, on contact sheets (default)
  *   --sheet=portrait   every world at 390x844 on the Low tier
  *   --sheet=webgl      every world on the WebGL2 backend
+ *   --sheet=moods      every mood of every world (stage/breath-moods.js), full lungs
  *   --worlds=a,b       limit to these technique ids
  *   --igpu             ask for the integrated GPU instead of the discrete one
  *
@@ -50,9 +51,13 @@ const withTimeout = (promise, ms, label) => Promise.race([
 const RENDER_TILES = `async (tiles, cols, tileWidth, type, quality) => {
     const source = document.querySelector('#stage canvas');
     const raf = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    // A tile with allMoods stands for one tile per mood of its world.
+    tiles = tiles.flatMap((tile) => (tile.allMoods
+        ? window.__BREATH_LAB__.moods(tile.world).map((mood, index) => ({ ...tile, mood: index, label: tile.label + ' · ' + mood.name }))
+        : [tile]));
     const draw = async (tile) => {
         const lab = window.__BREATH_LAB__;
-        lab.setWorld(tile.world);
+        lab.setWorld(tile.world, tile.mood ?? 0, tile.seed ?? 0.5);
         lab.setSession(tile.session || null);
         lab.setBreath({ breath: tile.breath, phase: tile.phase, progress: tile.progress });
         window.__PLAYGROUND__.seek(tile.t);
@@ -102,6 +107,9 @@ const JOBS = {
     webgl: {
         width: 1280, height: 720, query: '&forceWebGL=1&quality=Medium', cols: 4, tileWidth: 480, tiles: WORLDS.map(([id, name]) => tile(id, name, 0.7)),
     },
+    moods: {
+        width: 1280, height: 720, query: '', cols: 4, tileWidth: 480, tiles: WORLDS.map(([id, name]) => ({ ...tile(id, name, 0.85), allMoods: true })),
+    },
 };
 
 async function run(name) {
@@ -112,8 +120,12 @@ async function run(name) {
         useContentSize: true,
         frame: false,
         show: false,
+        // Shown (so frames run at the display rate) but parked off the screen.
+        x: -6000,
+        y: -6000,
         webPreferences: { backgroundThrottling: false, partition: 'breathing-capture' },
     });
+    win.setPosition(-6000, -6000);
     win.showInactive();
     const problems = [];
     win.webContents.on('console-message', (_event, level, message) => {

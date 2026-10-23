@@ -37,6 +37,9 @@
  *   icon=1                   the theme-icon framing: a longer lens (compose for a small circle:
  *                            capture a square frame); iconFov, iconX, iconY, iconZ, iconYaw,
  *                            iconPitch adjust it
+ *   cam=x,y,z&camAt=x,y,z    a camera of your own, anywhere on the stage, looking at camAt
+ *                            (camFov its lens; e.g. beside the troll's path into the wood, with
+ *                            parts= leaving the trunks out, to see his walk side on)
  */
 import * as THREE from 'three/webgpu';
 import { StillwaterWorld } from '../../themes/stillwater/stillwater-world.js';
@@ -175,6 +178,12 @@ export function create({
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const vec = (text) => {
+        const v = (text || '').split(',').map(Number);
+        return v.length === 3 && v.every(Number.isFinite) ? new THREE.Vector3(v[0], v[1], v[2]) : null;
+    };
+    const ownCam = vec(params.get('cam'));
+    const ownCamAt = vec(params.get('camAt'));
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -205,6 +214,14 @@ export function create({
             camera.position.z += num(params, 'iconZ', 0);
             camera.rotateY(num(params, 'iconYaw', 0));
             camera.rotateX(num(params, 'iconPitch', 0));
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        if (ownCam && ownCamAt) {
+            camera.fov = num(params, 'camFov', 30);
+            camera.position.copy(ownCam);
+            camera.up.set(0, 1, 0);
+            camera.lookAt(ownCamAt);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }

@@ -71,9 +71,13 @@ function circleLine(m, centre, radius, dx, dy, width) {
 /**
  * The inscription's light at floor point `f` (floor units, origin under the gate's centre).
  * `reach` is how far from the centre the breath's light has spread (floor units); `wave` lights
- * a ring at that front while the lungs fill. Returns linear RGB.
+ * a ring at that front while the lungs fill. `colors` = { gold, whiteGold, amber } (a mood's
+ * lines); `surge` = (radius, strength): a band of extra light running out along the lines (a rare
+ * event). Returns linear RGB.
  */
-export function inscription(f, u, { reach, wave, detail }) {
+export function inscription(f, u, {
+    reach, wave, detail, colors = null, surge = null,
+}) {
     // Two frames turning against each other: the flower, and the outer rings.
     const a = turn(f, u.time.mul(0.012)).toVar();
     const b = turn(f, u.time.mul(-0.007).add(0.26)).toVar();
@@ -126,14 +130,20 @@ export function inscription(f, u, { reach, wave, detail }) {
     const front = r.sub(reach);
     const crest = exp(front.mul(front).div(fpRadial.mul(fpRadial).add(0.0045)).negate()).mul(wave);
 
-    const gold = vec3(1.0, 0.7, 0.32);
-    const whiteGold = vec3(1.0, 0.88, 0.66);
-    const amber = vec3(1.0, 0.56, 0.22);
-    return whiteGold.mul(flower.mul(0.7))
+    const gold = vec3(...(colors?.gold ?? [1.0, 0.7, 0.32]));
+    const whiteGold = vec3(...(colors?.whiteGold ?? [1.0, 0.88, 0.66]));
+    const amber = vec3(...(colors?.amber ?? [1.0, 0.56, 0.22]));
+    // The surge: the lines inside a band around its front burn several times as bright, and a
+    // faint ring of light travels over the stone with it.
+    const surgeFront = surge ? r.sub(surge.x).div(0.26) : null;
+    const surgeBand = surge ? exp(surgeFront.mul(surgeFront).negate()).mul(surge.y).toVar() : null;
+    const glowing = surge ? lit.add(surgeBand.mul(4.5)) : lit;
+    const lines = whiteGold.mul(flower.mul(0.7))
         .add(gold.mul(rings.add(rosary.mul(0.8)).add(bindus)))
         .add(amber.mul(spokes.mul(0.55).add(ticks.mul(0.6))))
-        .mul(lit)
+        .mul(glowing)
         .add(gold.mul(crest).mul(0.55));
+    return surge ? lines.add(whiteGold.mul(surgeBand).mul(0.05)) : lines;
 }
 
 /** A pixel's floor footprint (floor units): the larger axis, for fading fine texture with distance. */
