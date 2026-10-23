@@ -36,6 +36,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
+    attribute,
     cameraPosition,
     cameraProjectionMatrix,
     clamp,
@@ -571,10 +572,13 @@ function ribbonRadius({
     const near = smoothstep(nearStart, nearEnd, dCam);
     const s = uv().x.mul(arc);
     const ends = smoothstep(0.0, taper, s).mul(smoothstep(0.0, taper, arc.sub(s)));
-    // Past the horizon the rail is not drawn: it tapers into the black hole (the same weight as
-    // odysseyPathHorizonWeight, so the nodes beyond it scale out in step).
+    // Past the horizon the rail is not drawn. It starts to taper where the nodes beyond it start
+    // to scale out (odysseyPathHorizonWeight) but ends within `railSoft`, inside the glass of the
+    // last node it reaches: held at the mouth, the inflow (createPathInflowTSL) carries it on from
+    // that orb into the hole, and a 15 u taper the other way read as a stub of rail going nowhere.
+    const taperFrom = horizon ? horizon.sub(ODYSSEY_PATH_HORIZON.soft) : null;
     const beyond = horizon
-        ? float(1.0).sub(smoothstep(horizon.sub(ODYSSEY_PATH_HORIZON.soft), horizon, uv().x))
+        ? float(1.0).sub(smoothstep(taperFrom, taperFrom.add(ODYSSEY_PATH_HORIZON.railSoft), uv().x))
         : float(1.0);
     return r.mul(near).mul(near).mul(ends).mul(beyond);
 }
@@ -945,6 +949,104 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
             uTransitionHead,
             uTransitionWidth,
         },
+    };
+}
+
+// ── The inflow — the rail's last reach into the black hole ───────────────────────
+
+/** The rail's light where it meets the mouth (chapter 7's first orb, on the 6/7 boundary). */
+function mouthRecipeColour(key, share = 0.5) {
+    const a = new THREE.Color(ODYSSEY_RIBBON_RECIPES[5][key]);
+    return a.lerp(new THREE.Color(ODYSSEY_RIBBON_RECIPES[6][key]), share);
+}
+
+/**
+ * THE INFLOW (odyssey-path-inflow.js): a stream of the rail's light from the mouth orb into the
+ * black hole's centre. A camera-facing strip whose vertices the renderer rewrites each frame;
+ * `aInflow` carries (along, rim, inner, across). Additive and depth-tested: every point of it is
+ * nearer the eye than the shadow's near surface, so it draws over the shadow into the middle of
+ * the disc while the disk band, the orbs and the rail occlude it.
+ *
+ * It leaves the orb in the rail's own light (chapter 6's stardust; the haze its glow), heats to
+ * the accretion disk's amber on the way in, flares white where it crosses the photon ring, then
+ * reddens and dims toward the centre: swallowed. Packets of light ride it in at an even pace along
+ * the logarithmic spiral, so on screen they run on the way to the hole and slow and crowd as they
+ * near its centre.
+ * @param {object} uTime shared time uniform
+ * @param {object} [opts]
+ * @param {number} [opts.segments] centre-line points (two vertices each)
+ * @param {number} [opts.glow] strip half-width over core radius (ODYSSEY_PATH_INFLOW.glow)
+ */
+export function createPathInflowTSL(uTime = uniform(0), opts = {}) {
+    const segments = opts.segments ?? 128;
+    const glow = opts.glow ?? 3.4;
+    const uWeight = opts.uWeight ?? uniform(0);
+    const geometry = new THREE.BufferGeometry();
+    const position = new THREE.BufferAttribute(new Float32Array(segments * 6), 3);
+    position.setUsage(THREE.DynamicDrawUsage);
+    const inflow = new THREE.BufferAttribute(new Float32Array(segments * 8), 4);
+    inflow.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute('position', position);
+    geometry.setAttribute('aInflow', inflow);
+    const index = [];
+    for (let i = 0; i < segments - 1; i += 1) {
+        const a = i * 2;
+        index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+    geometry.setIndex(index);
+
+    const uRail = uniform(mouthRecipeColour('emis', 0.25));
+    const uRailHaze = uniform(mouthRecipeColour('haze', 0.25));
+    const uAmber = uniform(new THREE.Color(ODYSSEY_RIBBON_RECIPES[6].emis));
+
+    const f = varying(attribute('aInflow', 'vec4'));
+    const along = f.x;
+    const rim = f.y;
+    const inner = f.z;
+    const across = abs(f.w);
+    // Across: a hot thread, the stream's core (1 / glow of the strip) and its glow.
+    const coreEdge = 1 / glow;
+    const thread = float(1.0).sub(smoothstep(0.0, coreEdge * 0.45, across));
+    const core = float(1.0).sub(smoothstep(coreEdge * 0.3, coreEdge * 1.2, across));
+    const halo = exp(across.mul(across).mul(-4.5)).mul(0.45);
+    // Packets riding in: a bright head with a tail behind it.
+    const phase = fract(along.mul(16.0).sub(uTime.mul(1.1)));
+    const packet = smoothstep(0.35, 0.93, phase).mul(float(1.0).sub(smoothstep(0.93, 1.0, phase)));
+    // The light: the rail's, to amber, a flare at the photon ring, reddening inside the shadow and
+    // fading only at its very centre (the path is seen going in, not cut off at the edge).
+    const heat = smoothstep(0.0, 0.3, along);
+    let colour = mix(mix(uRailHaze, uRail, thread), uAmber, heat.mul(0.8));
+    colour = mix(colour, vec3(1.0, 0.93, 0.8), clamp(rim.mul(thread.add(core.mul(0.5))), 0.0, 1.0));
+    colour = mix(colour, vec3(1.0, 0.3, 0.16), smoothstep(0.05, 0.5, inner));
+    const swallow = float(1.0).sub(smoothstep(0.35, 1.0, inner).mul(0.85));
+    const leaveOrb = smoothstep(0.0, 0.02, along);
+    const body = thread.mul(1.1).add(core.mul(0.8)).add(halo);
+    const light = body.mul(packet.mul(1.6).add(0.4)).mul(rim.mul(2.4).add(1.0))
+        .mul(swallow)
+        .mul(leaveOrb)
+        .mul(uWeight);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.colorNode = colour.mul(light);
+    material.opacityNode = float(1.0);
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.blending = THREE.AdditiveBlending;
+    material.forceSinglePass = true;
+    material.fog = false;
+    material.userData.emitsBloom = true;
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'odyssey-path-inflow-tsl';
+    // Rewritten in world space every frame: the template's bounds mean nothing.
+    mesh.frustumCulled = false;
+    mesh.visible = false;
+    return {
+        mesh,
+        material,
+        geometry,
+        uniforms: { uTime, uWeight },
     };
 }
 

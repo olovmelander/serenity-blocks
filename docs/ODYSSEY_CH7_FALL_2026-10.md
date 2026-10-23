@@ -2,7 +2,9 @@
 
 **Status: LANDED on `feature/odyssey-ch7-fall`.** The owner's brief: "the black hole floats right
 next to the journey — I want to be sucked into the black hole and have amazing warp effects while
-inside." Follows the [seamless pass](ODYSSEY_SEAMLESS_PASS_2026-10.md).
+inside." Follows the [seamless pass](ODYSSEY_SEAMLESS_PASS_2026-10.md). **2026-10-23:** the path
+flows on into the hole, the photon ring stays on the shadow's edge all the way in, and the plunge
+takes a second instead of seven frames (§6).
 
 ## 0. Why the black hole floated (read before changing ch7)
 
@@ -105,10 +107,102 @@ Neutral: within one timer tick (~0.066 ms) at every station. Inside, the window 
 dome, far starfield, disk, fold arcs and embers (−6 draws); the window shader costs no more than the
 fill it replaces. JSONs: `repos/odyssey-gpu/perf-baseline/ch7fall-1/`.
 
-## 6. Open items
+## 6. The path flows into the hole (2026-10-23)
 
-- A radial zoom blur during the warp (more speed) — would need taps in the lens variant; the
-  chromatic fringes already sell much of it. Measure before adding.
+Olov: *"now it feels like the orb path just quits before we go into the black hole, i want this to
+be a seamless experience, almost like as the black hole is a huge black hole orb on the path that
+we gets sucked in to."*
+
+**What the player saw** (filmed in game on the 48 → 49 trip, the one that crosses the plunge;
+orbs 49 and 50 both park inside the tunnel at p 0.8941):
+
+1. **The rail stopped short.** It ends at the mouth orb (49) through chapter 6, and the hole is
+   camera-locked ~900 u ahead. The two met on screen only from orb 48's view: on the glide on, orb
+   49 slid to the bottom of the frame while the hole held the centre, and the rail ended half a
+   frame below it.
+2. **The hole lost its rim.** The photon ring lay in the plane through the hole's centre, which is
+   the shadow's edge only while the hole is small (a sphere's silhouette is its circle of tangent
+   points, R cos α across and R sin α nearer the eye). From ~20° the shadow hid the razor, and the
+   ring's opacity was also turned down past 12°, so the plunge was a flat black disc.
+3. **The plunge took seven frames.** A trip eases (cubic in-out) over 900 + 2600·Δp ms, and the
+   plunge (mouth to inside, p 0.8709 → 0.8808) was the middle third of a 984 ms trip, where the
+   ease runs fastest: **~120 ms**. Filmed at ~110 ms a frame, the whole plunge fell between two
+   frames.
+4. **A ghost of the ring across the shadow.** Through the 6 → 7 seam both the omen's and
+   Gargantua's lens targets fed the post lens each frame, so its smoothing settled between them (a
+   lens radius of 0.38 for a shadow of 0.59 at p 0.877). The bloom mask and the bend sat inside the
+   hole. Invisible while the two holes were one size, it showed once the ring stayed lit.
+
+**What changed:**
+
+- **The inflow** (`odyssey-path-inflow.js`, drawn by `createPathInflowTSL` in
+  `odyssey-path-renderer.tsl.js`, owned by `OdysseyPathRenderer.setInflow`). From the mouth orb a
+  stream of the rail's light winds into the hole's centre. It is rebuilt every frame from where
+  the orb and the hole really are (`OdysseyBoardController._updatePathInflow`, after the
+  environments pose the hole: chapter 6's omen until chapter 7's Gargantua takes the shadow
+  over), so it stays attached whatever the camera, the hole or a free look does.
+  - **Shape:** it leaves the orb along the rail (only while the rail heads for the hole on screen),
+    then follows a logarithmic spiral, counter-clockwise on screen (the disk's sense). It bends
+    gently on the way and swirls into the centre, and packets riding it at an even pace slow and
+    crowd near the centre. Every point is nearer the eye than the shadow's near surface, so it
+    draws over the shadow into the middle of the disc while the disk band, orbs and rail occlude it.
+  - **Light:** the rail's own (the 6/7 recipes) heats to the disk's amber, flares white where it
+    crosses the photon ring, then reddens and dims toward the centre.
+  - **When:** drawn from the end of the 5 → 6 seam (where the rail has retracted to the mouth) and
+    handed over to the real rail across its reveal inside the hole (`resolveOdysseyPathReveal`, now
+    shared with the horizon). The rail itself now ends within ~4.5 u of the mouth orb, inside its
+    glass (`ODYSSEY_PATH_HORIZON.railSoft`). Its 15 u taper had read as a stub of rail going the
+    wrong way.
+- **The ring on the silhouette** (`updateBlackHoleTranscendenceEnvironment`): the photon ring sits
+  R sin α nearer the eye and is scaled by cos α, a hair in front of the tangent points. Its profile
+  is drawn in toward the shadow as the hole grows (`uRazor`, `CH7_GARGANTUA.photonRazor`), so it
+  stays a razor where it sweeps past the frame's edges. It is no longer dimmed. When the exit's
+  mouth opens it returns to the centre plane for the 7 → 8 swell, as before; at that swap it is
+  past the frame's edges or behind the shadow. The lensed halo still fades by ~19° (the amber
+  flood).
+- **The plunge takes its time** (`CH7_PLUNGE_TRAVEL`, `plungeTravelMeasure`, in
+  `odyssey-black-hole-fall.js`). Every path travel eases in a measure where the plunge weighs 12×
+  open path (smooth shoulders over 0.004 p), so it slows there. A short trip through it gets
+  2.6 s more (fading out for trips longer than 0.04 p, which have seconds of their own). The 48 →
+  49 trip, filmed in game:
+
+  | | Trip | Approach to the mouth | Plunge (mouth → inside) | Inside → park |
+  |---|---|---|---|---|
+  | Before | 0.98 s | 0.41 s | ~0.12 s | 0.45 s |
+  | After | 3.58 s | 1.25 s | 1.04 s | 1.30 s |
+
+  The hole looms while the inflow draws the eye in, grows over a second as the ring sweeps out,
+  and once past the inside point the eye picks up speed through the tunnel (the warp drive's
+  throttle follows it). Reduced motion still cuts. Scrolling by hand is not slowed.
+- **One hole feeds the lens** (`OdysseyBoardController._feedBlackHoleLens`): the omen's target is
+  skipped once Gargantua's shadow is live. Measured live: lens radius = shadow radius within 0.01
+  at every station of the plunge.
+
+**Verification** (WebGPU, High, RTX): live captures (the game loop running, parked 2.5 s per
+station — the chapter-capture harness renders one frame per station, so the post lens's
+smoothing never settles there) at p 0.8618 → 0.879, and the real trip filmed from orb 48 (37
+frames). The 7 → 8 exit is unchanged (the mouth's rim and the Retrosun). No WebGPU errors.
+
+![The approach, before (top) and after (bottom), live at p 0.8709 (orb 49), 0.875, 0.877 and 0.879](images/odyssey-hole-2026-10-23/ch7-path-into-hole.jpg)
+
+![The 48 → 49 trip, filmed in game. Before (top row, ~0.12 s apart): the hole at rest, then the tunnel, with one frame of black disc between. After (rows 2-3): the inflow pulls the eye in, the ring sweeps out, the tunnel](images/odyssey-hole-2026-10-23/ch7-plunge-film.jpg)
+
+Guards: `tests/unit/odyssey-hole-inflow.test.js` (on the real camera: the inflow runs from the
+mouth into the middle of the hole through the whole trip, in front of the shadow, unbroken; its
+weight and hand-over; the strip never flips; the plunge gets > 0.9 s of the 48 → 49 trip on the
+real camera controller; the measure inverts and leaves other trips alone; the ring's inner edge on
+the silhouette within 0.4°; one hole feeds the lens).
+
+**Cost:** one additive strip (128 points, 256 vertices), drawn from the end of the 5 → 6 seam to
+the reveal inside the hole. Per frame, while drawn: O(128) arithmetic and a 7 KB vertex upload.
+
+## 7. Open items
+
+- **The lensed halo** still fades out by ~19° (the amber flood at the 6 → 7 gate). With the ring
+  on the silhouette, a silhouette-seated halo that thins as it grows could keep Gargantua's look
+  further in. Measure the gate's luma first.
+- **Scrolling through the plunge** by hand moves at the player's speed. Easing the scroll there
+  would be resistance, not pacing; leave it unless asked.
 - Quality tiers: the window costs the same on every tier today (it is cheap — §2); Low could drop
   the second lattice octave.
 - The in-game `settings.reducedMotion` toggle is not yet plumbed to the camera (only the OS
