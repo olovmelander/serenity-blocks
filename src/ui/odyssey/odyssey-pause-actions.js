@@ -18,6 +18,9 @@ export function handleOdysseyPauseAction(mode, { action } = {}) {
         return true;
     }
     if (!mode?.isActive || mode.isInBoardView || mode.isEnteringLevel || mode.levelCompleting) return false;
+    // A return already under way: a second Back to map restarted its closing from fully open,
+    // and Retry raced it to the map (audit 2026-10-23).
+    if (mode._boardReturnOperation) return false;
     if (!mode.currentLevelConfig || !mode._activeLevelSession) return false;
     let run = null;
     if (action === 'retry') run = mode._restartLevelInPlace();

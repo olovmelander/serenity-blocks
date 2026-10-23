@@ -289,3 +289,43 @@ describe('ChapterEnvironmentManager seamless fades (2026-10-02)', () => {
         expect(worst).toBeLessThan(0.08);
     });
 });
+
+describe('ChapterEnvironmentManager clock', () => {
+    it('caps a stalled frame at the board’s own 50 ms, so chapters keep step below 30 fps', () => {
+        // Audit 2026-10-23: chapters capped at 33 ms while the board capped at 50 ms, so at
+        // 20-25 fps every chapter ran slower than the orbs, the path and the post beside it.
+        const manager = new ChapterEnvironmentManager(new THREE.Scene(), { setClearColor: vi.fn() }, {
+            chapterPositions: [0, 0.13, 0.21, 0.36, 0.5, 0.65, 0.81, 0.94, 1],
+        });
+        const before = manager.time;
+        manager.update(0.045);
+        expect(manager.time - before).toBeCloseTo(0.045, 6);
+        manager.update(0.4);
+        expect(manager.time - before).toBeCloseTo(0.095, 6);
+        manager.update(-1);
+        expect(manager.time - before).toBeCloseTo(0.095, 6);
+    });
+});
+
+describe('ChapterEnvironmentManager builds', () => {
+    it('builds a chapter once when two callers race the module import', async () => {
+        // Audit 2026-10-23: the loader and a boundary request inside the import's await each built
+        // the chapter; the first group was orphaned with its rig lights still lit.
+        const manager = new ChapterEnvironmentManager(new THREE.Scene(), { setClearColor: vi.fn() }, {
+            chapterPositions: [0, 0.13, 0.21, 0.36, 0.5, 0.65, 0.81, 0.94, 1],
+        });
+        const group = new THREE.Group();
+        let finish;
+        const build = vi.spyOn(manager, '_buildChapterEnvironment').mockImplementation(
+            () => new Promise((resolve) => { finish = () => resolve(group); }),
+        );
+        const first = manager.createChapterEnvironment(6);
+        const second = manager.createChapterEnvironment(6);
+        expect(build).toHaveBeenCalledTimes(1);
+        finish();
+        await expect(Promise.all([first, second])).resolves.toEqual([group, group]);
+        // Settled: a later call builds again only if the chapter is still not resident.
+        manager.createChapterEnvironment(6);
+        expect(build).toHaveBeenCalledTimes(2);
+    });
+});

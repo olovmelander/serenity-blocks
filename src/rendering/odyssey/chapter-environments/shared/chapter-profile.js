@@ -351,7 +351,10 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
             // Keep the widened seam so the handoff has room, but Chapter 6 now stages its
             // own star/hero/clutter reveal instead of pre-igniting everything in Sky.
             seamWidth: 0.0222,
-            preloadDistance: 0.06,
+            // Chapter 6 is drawable from the Earth ignite (p ~0.689, 0.065 before the boundary),
+            // so 0.06 asked for it after it could be seen, leaving its stars ~27 u to finish
+            // building in a rush (audit 2026-10-23). Ask a clear lead before that.
+            preloadDistance: 0.1,
             stinger: 'atmosphere-edge',
             crossfadeDurationMs: 4000,
         },

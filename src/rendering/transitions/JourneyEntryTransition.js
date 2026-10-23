@@ -2,12 +2,15 @@
  * Into an orb: light gathers onto the chosen orb, the orb opens into a gate that swells over the
  * screen while the world darkens round it, the passage plays while the next board prepares, and
  * on arrival a second gate opens from the light ahead onto the board. The picture is drawn by
- * portal-gate.js; this class owns the timing, the readiness hold and the callbacks.
+ * portal-gate.js — in a worker where the page allows it (portal-gate-remote.js), so the passage
+ * keeps streaming while the theme builds; this class owns the timing, the readiness hold and the
+ * callbacks.
  */
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
 import {
     GATE_MAX_FRAME_STEP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase, portalReach,
 } from './portal-gate.js';
+import { startPortalGateOffThread } from './portal-gate-remote.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
 const DEFAULT_TIMINGS = Object.freeze({
@@ -20,6 +23,8 @@ const DEFAULT_TIMINGS = Object.freeze({
 });
 
 const BLACKOUT_READY_THRESHOLD = 0.96;
+/** A gap between frames this long means frames were stopped, not slow (see frameAt). */
+const HOLD_PAUSE_GAP_MS = 1000;
 const ABORT_FADE_MS = 240;
 const WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
 /** The share of the opening by which the gate covers the whole frame (readiness waits for it). */
@@ -180,7 +185,10 @@ export class JourneyEntryTransition {
             resolve: null,
             dom: null,
             canvasSize: { width: 1, height: 1, dpr: 1 },
-            gate: reducedMotion ? null : createPortalGate({ qualityPreset, palette, documentRef: this.document }),
+            qualityPreset,
+            // Made in mount(), on the page, only when the worker does not draw the gate.
+            gate: null,
+            remote: null,
             // What of the arrival's light the player allows (Reduce flashing).
             flash: flashScale(),
             travelState: { travel: 0, lastTravelAt: null },
@@ -225,14 +233,23 @@ export class JourneyEntryTransition {
         root.appendChild(canvas);
         this.document.body.appendChild(root);
 
-        let ctx = null;
-        try {
-            ctx = canvas.getContext('2d');
-        } catch {
-            ctx = null;
+        run.dom = { root, canvas, ctx: null };
+        run.remote = startPortalGateOffThread(canvas, {
+            qualityPreset: run.qualityPreset,
+            palette: run.palette,
+            flash: run.flash,
+            ...this.measureCanvas(),
+        }, this.window);
+        if (!run.remote) {
+            try {
+                run.dom.ctx = canvas.getContext('2d');
+            } catch {
+                run.dom.ctx = null;
+            }
+            run.gate = createPortalGate({
+                qualityPreset: run.qualityPreset, palette: run.palette, documentRef: this.document,
+            });
         }
-
-        run.dom = { root, canvas, ctx };
         this.resizeCanvas(run);
         this.window?.addEventListener?.('resize', this.handleResize);
     }
@@ -243,14 +260,26 @@ export class JourneyEntryTransition {
         }
     }
 
+    /** @private the window's CSS size and device pixel ratio */
+    measureCanvas() {
+        return {
+            width: this.window?.innerWidth || 1,
+            height: this.window?.innerHeight || 1,
+            dpr: this.window?.devicePixelRatio || 1,
+        };
+    }
+
     resizeCanvas(run) {
-        const width = this.window?.innerWidth || 1;
-        const height = this.window?.innerHeight || 1;
-        const dpr = this.window?.devicePixelRatio || 1;
+        const { width, height, dpr } = this.measureCanvas();
         const { canvas } = run.dom;
         if (canvas) {
-            canvas.width = Math.max(1, Math.floor(width * dpr));
-            canvas.height = Math.max(1, Math.floor(height * dpr));
+            // A canvas handed to the gate's worker is sized there.
+            if (run.remote) {
+                run.remote.resize(width, height, dpr);
+            } else {
+                canvas.width = Math.max(1, Math.floor(width * dpr));
+                canvas.height = Math.max(1, Math.floor(height * dpr));
+            }
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
         }
@@ -280,6 +309,12 @@ export class JourneyEntryTransition {
         const { clock } = run;
         if (clock.last === null) clock.last = run.reducedMotion ? run.startedAt : now;
         const step = Math.max(0, now - clock.last);
+        // Frames stopped for a while (the window hidden, rAF paused): the readiness hold does not
+        // count that stretch. Alt-tabbing for 10 s during a hold used to come back to "That orb
+        // took too long to open" (audit 2026-10-23).
+        if (step > HOLD_PAUSE_GAP_MS && run.readyTriggered && !run.readySettled) {
+            run.blackoutTriggeredAt = (run.blackoutTriggeredAt ?? now) + step;
+        }
         clock.t += run.reducedMotion ? step : Math.min(GATE_MAX_FRAME_STEP_MS, step);
         clock.last = now;
         const elapsed = clock.t;
@@ -607,6 +642,11 @@ export class JourneyEntryTransition {
 
     /** @private */
     drawGate(run, frame, revealProgress) {
+        if (run.remote) {
+            // The worker owns the passage's clock and travel; it gets where the gate is.
+            run.remote.draw({ ...this.describeGate(run, frame, revealProgress), direction: 1, flash: run.flash });
+            return;
+        }
         const { ctx } = run.dom;
         if (!ctx || !run.gate) return;
         const { width, height, dpr } = run.canvasSize;
@@ -643,7 +683,9 @@ export class JourneyEntryTransition {
                 if (result.success) {
                     await run.callbacks.onComplete?.();
                 } else {
-                    await run.callbacks.onAbort?.(result);
+                    // `covered`: whether the gate had covered the frame (readiness fired), so the
+                    // caller knows if putting the world back can be seen.
+                    await run.callbacks.onAbort?.({ ...result, covered: run.readyTriggered === true });
                 }
             })
             .catch((error) => {
@@ -684,7 +726,12 @@ export class JourneyEntryTransition {
             root.parentNode.removeChild(root);
         }
         // Release the full-screen backing now rather than at a later GC, which could otherwise
-        // land inside the next portal's preparation hold.
+        // land inside the next portal's preparation hold (the worker releases a handed-over one).
+        if (run?.remote) {
+            run.remote.stop();
+            run.remote = null;
+            return;
+        }
         const canvas = run?.dom?.canvas;
         if (canvas) {
             canvas.width = 0;

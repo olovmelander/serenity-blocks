@@ -82,6 +82,12 @@ import { withEmissiveMaterialBlending } from '../../../themes/shared/mrt-blend.j
 // A6: seam-bloom accent multiplier. Was effectively 0.5 (a white flash hiding the old hard
 // portal cut). Cut to a fraction of that so the ecotone blend reads instead of blowing out.
 const SEAM_BLOOM_BOOST = 0.1;
+// The grain's clock (uTime feeds only the grain hash) wraps here, on the CPU: fed the session
+// time, the hash's sin() argument passed ~7e4 after ten minutes, where fp32 sin goes coarse and
+// the grain turns structured, worst on integrated GPUs. A wrap is invisible in a hash. Wrapping
+// in the shader instead (mod) changed the composite's text and cost a ~70 ms uncached pipeline
+// compile before every reveal (audit 2026-10-23).
+const GRAIN_CLOCK_WRAP_S = 64;
 
 /**
  * CHAPTER 7 PRESENCE for the post's black-hole terms (lens strength, black-crush softening),
@@ -1029,7 +1035,7 @@ export class OdysseyTslPipeline {
      *   saturation, contrast, vignette, chroma }
      */
     updateDynamic(p = {}) {
-        if (p.time !== undefined) this.uTime.value = p.time;
+        if (p.time !== undefined) this.uTime.value = p.time % GRAIN_CLOCK_WRAP_S;
         if (p.exposure !== undefined) this.uExposure.value = p.exposure;
         if (p.bloomStrength !== undefined && this.bloomNode) this.bloomNode.strength.value = p.bloomStrength;
         if (p.gradeStrength !== undefined) this.uGradeStrength.value = p.gradeStrength;
@@ -1044,7 +1050,7 @@ export class OdysseyTslPipeline {
     }
 
     updateTime(time) {
-        this.uTime.value = time;
+        this.uTime.value = time % GRAIN_CLOCK_WRAP_S;
     }
 
     // ── Drop-in PostProcessingStack-compatible API (board controller calls these) ──
@@ -1058,7 +1064,7 @@ export class OdysseyTslPipeline {
      */
     update(delta = 0, directorState = null) {
         const dt = Number.isFinite(delta) ? Math.max(0, delta) : 0;
-        this.uTime.value += dt;
+        this.uTime.value = (this.uTime.value + dt) % GRAIN_CLOCK_WRAP_S;
         this._frameDt = dt; // setLensTarget() smooths by it
         // Decay the transient seam punch: 0.9 a frame at 60 fps, by time so a frame-rate cap keeps it.
         this._seamBoost *= 0.9 ** (dt * 60);

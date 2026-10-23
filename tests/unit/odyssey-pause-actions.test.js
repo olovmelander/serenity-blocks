@@ -157,6 +157,8 @@ describe('Odyssey pause sheet actions', () => {
         for (const overrides of [
             { isInBoardView: true }, { isEnteringLevel: true }, { levelCompleting: true },
             { currentLevelConfig: null }, { _activeLevelSession: null }, { isActive: false },
+            // A return already under way (audit 2026-10-23: a second Back to map restarted it).
+            { _boardReturnOperation: {} },
         ]) {
             result = handle(overrides, { action: 'map' });
             expect(result.taken, JSON.stringify(overrides)).toBe(false);

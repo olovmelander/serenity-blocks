@@ -70,6 +70,8 @@ export async function returnToOdysseyWorld(mode, options = {}) {
         palette,
         timings,
         qualityPreset,
+        // A journey's own overlay answers Escape (Map); a plain return has no other owner.
+        captureEscape: !journeyOwner,
         reducedMotion: prefersOdysseyReducedMotion(mode, mode.deps.settingsManager?.get?.() || {}),
         callbacks: {
             onBlackoutReached: async () => {
