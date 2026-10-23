@@ -18,6 +18,12 @@
  * Everything that repeats (sunspots, prominences, coronal loops and their segments, flare ribbons,
  * the cells of the granulation) is one shader loop over constant data rather than JS-unrolled
  * copies: the fragment shader stays small, so its pipeline compiles quickly on every driver.
+ *
+ * Moods: the golden star; a red giant rising like a horizon, its surface a few huge boiling
+ * convection cells, wrapped in the dust it sheds; a blue-white hot star with a violet corona and a
+ * ringed planet crossing its limb. Behind every star lies the band of its galaxy. Now and then a
+ * coronal mass ejection blooms off the limb over several seconds, and a comet crosses with its
+ * tails streaming away from the star.
  */
 import { Vector4 } from 'three/webgpu';
 import {
@@ -25,29 +31,17 @@ import {
     uniformArray, vec2, vec3,
 } from 'three/tsl';
 import {
-    backdropPoint, fadeOut, fbm, gnoise, gnoise3, hash21, hash33, layer, starfield, turn,
+    backdropPoint, eventWindow, fadeOut, fbm, gnoise, gnoise3, hash21, hash33, layer, ridged, starfield, turn,
 } from '../stage/breath-tsl.js';
 
 const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
 
-/** One turn of the star takes this long (seconds): features drift across the disc, never spin. */
-const ROTATION_PERIOD = 420;
 /** The spin axis tips toward the viewer and leans a little (radians), so the star reads as a ball. */
 const AXIS_TIP = 0.3;
 const AXIS_LEAN = -0.22;
-/** Granules per star radius at disc centre. */
-const GRANULES = 44;
 /** The planet in transit: radius (hero units), parallax depth, seconds to cross the screen. */
 const PLANET = { radius: 0.016, k: 1.12, period: 240 };
-
-const SPACE = vec3(0.0032, 0.0012, 0.0018);
-const NEBULA = vec3(0.03, 0.006, 0.012);
-const CHROMOSPHERE = vec3(1.0, 0.3, 0.12);
-const INNER_CORONA = vec3(1.0, 0.64, 0.32);
-const GLARE = vec3(1.0, 0.42, 0.14);
-const LOOP_LIGHT = vec3(1.0, 0.78, 0.5);
-const FLARE = vec3(1.0, 0.85, 0.6);
 
 /** T = Rz(lean) · Rx(tip): the star's frame as the viewer sees it (row-major). */
 const T = (() => {
@@ -180,6 +174,29 @@ const ERUPTION = {
 const HEDGEROW = { angle: 160, span: 0.2, height: 0.12 };
 
 /**
+ * The red giant rises from the bottom of the screen: only its crown is seen, so its prominences
+ * all stand on the upper limb (90 = straight up), sized for a star twice as large on screen.
+ */
+const RISING_LOOPS = [
+    {
+        angle: 63, span: 0.085, height: 0.26, lean: 10, width: 0.034, seed: 1.3, gain: 1.1, core: true,
+    },
+    {
+        angle: 72, span: 0.04, height: 0.1, lean: -8, width: 0.018, seed: 6.2, gain: 0.8,
+    },
+    {
+        angle: 113, span: 0.07, height: 0.2, lean: -16, width: 0.03, seed: 4.7, gain: 1.0, core: true,
+    },
+    {
+        angle: 131, span: 0.045, height: 0.11, lean: 12, width: 0.02, seed: 5.6, gain: 0.75,
+    },
+];
+const RISING_ERUPTION = {
+    ...ERUPTION, angle: 84, span: 0.06, height: 0.12, width: 0.026,
+};
+const RISING_HEDGEROW = { angle: 97, span: 0.1, height: 0.06 };
+
+/**
  * A prominence's fixed frame at the limb, packed for the shader: its base (sunk so both feet stand
  * just inside the limb) and outward direction; the inverse of its leaning frame (pixel offset to
  * position along the span and up the loop); size and seed; brightness, the reach of its tube in
@@ -206,7 +223,7 @@ function archFrame(loop) {
  * buffer, and a stage may bind only a few): blocks of vec4 rows, one block per feature, `stride`
  * rows per item. `row(block, i, k)` reads row k of item i.
  */
-function createTables(arches) {
+function createTables(arches, active = true) {
     const rows = [];
     const block = (items, ...pack) => {
         const offset = rows.length;
@@ -214,20 +231,20 @@ function createTables(arches) {
         return { offset, stride: pack.length, count: items.length };
     };
     const spots = block(
-        SPOTS,
+        active ? SPOTS : [],
         (spot) => [...spot.c, spot.radius],
         (spot) => [...spot.east, spot.seed],
         (spot) => [...spot.north, 0],
     );
     const ribbons = block(
-        ARCADES,
+        active ? ARCADES : [],
         (a) => [...a.middle, 0],
         (a) => [...a.side, 0],
         (a) => [...a.axis, 0],
         (a) => [...a.centre, 0],
     );
     const arcs = block(
-        ARCS,
+        active ? ARCS : [],
         (arc) => arc.hub,
         (arc) => [...arc.m, 0],
         (arc) => [...arc.e, 0],
@@ -277,27 +294,41 @@ const voronoi3 = /* @__PURE__ */ Fn(([p, t]) => {
     name: 'solar_voronoi3', type: 'vec3', inputs: [{ name: 'p', type: 'vec3' }, { name: 't', type: 'float' }],
 });
 
-/** The photosphere's colour by heat 0..1: deep red at the limb, through orange, to pale gold. */
-const sunTint = /* @__PURE__ */ Fn(([t]) => {
-    const red = mix(vec3(0.3, 0.02, 0.003), vec3(0.8, 0.12, 0.012), smoothstep(0.0, 0.36, t));
-    const orange = mix(red, vec3(1.0, 0.33, 0.045), smoothstep(0.3, 0.62, t));
-    const gold = mix(orange, vec3(1.0, 0.52, 0.14), smoothstep(0.56, 0.86, t));
-    return mix(gold, vec3(1.0, 0.7, 0.32), smoothstep(0.84, 1.1, t));
-}).setLayout({ name: 'solar_sunTint', type: 'vec3', inputs: [{ name: 't', type: 'float' }] });
-
-/** Prominence plasma by density 0..1: thin crimson veils, H-alpha red, dense orange, gold cores. */
-const plasmaTint = /* @__PURE__ */ Fn(([t]) => {
-    const veil = mix(vec3(0.55, 0.045, 0.055), vec3(1.0, 0.2, 0.08), smoothstep(0.0, 0.4, t));
-    const dense = mix(veil, vec3(1.0, 0.48, 0.13), smoothstep(0.35, 0.75, t));
-    return mix(dense, vec3(1.0, 0.78, 0.45), smoothstep(0.72, 1.1, t));
-}).setLayout({ name: 'solar_plasmaTint', type: 'vec3', inputs: [{ name: 't', type: 'float' }] });
-
-/** The corona by height above the limb (star radii): gold-white low, amber, then ember red. */
-const coronaTint = /* @__PURE__ */ Fn(([height]) => {
-    const low = mix(vec3(1.0, 0.68, 0.36), vec3(1.0, 0.36, 0.08), smoothstep(0.0, 0.4, height));
-    const mid = mix(low, vec3(0.62, 0.1, 0.04), smoothstep(0.35, 1.5, height));
-    return mix(mid, vec3(0.25, 0.03, 0.05), smoothstep(1.3, 3.0, height));
-}).setLayout({ name: 'solar_coronaTint', type: 'vec3', inputs: [{ name: 'height', type: 'float' }] });
+/**
+ * A mood's three colour ramps, one layout function each (named per mood, so two moods never share
+ * a function name): the photosphere by heat 0..1 (limb to core), prominence plasma by density
+ * (veils, H-alpha, dense, cores) and the corona by height above the limb (star radii).
+ */
+const tintCache = new Map();
+function tintsFor(mood) {
+    if (tintCache.has(mood.id)) return tintCache.get(mood.id);
+    const key = mood.id.replace(/-/g, '_');
+    const ramp = (stops) => stops.map((c) => vec3(...c));
+    const [s0, s1, s2, s3, s4] = ramp(mood.photosphere);
+    const [p0, p1, p2, p3] = ramp(mood.plasma);
+    const [c0, c1, c2, c3] = ramp(mood.corona);
+    const one = (name, input) => ({ name: `solar_${name}_${key}`, type: 'vec3', inputs: [{ name: input, type: 'float' }] });
+    const tints = {
+        sunTint: Fn(([t]) => {
+            const red = mix(s0, s1, smoothstep(0.0, 0.36, t));
+            const orange = mix(red, s2, smoothstep(0.3, 0.62, t));
+            const gold = mix(orange, s3, smoothstep(0.56, 0.86, t));
+            return mix(gold, s4, smoothstep(0.84, 1.1, t));
+        }).setLayout(one('sunTint', 't')),
+        plasmaTint: Fn(([t]) => {
+            const veil = mix(p0, p1, smoothstep(0.0, 0.4, t));
+            const dense = mix(veil, p2, smoothstep(0.35, 0.75, t));
+            return mix(dense, p3, smoothstep(0.72, 1.1, t));
+        }).setLayout(one('plasmaTint', 't')),
+        coronaTint: Fn(([height]) => {
+            const low = mix(c0, c1, smoothstep(0.0, 0.4, height));
+            const mid = mix(low, c2, smoothstep(0.35, 1.5, height));
+            return mix(mid, c3, smoothstep(1.3, 3.0, height));
+        }).setLayout(one('coronaTint', 'height')),
+    };
+    tintCache.set(mood.id, tints);
+    return tints;
+}
 
 /** A view-space point on the unit ball, in the star's turning frame. */
 function toBody(n, spin) {
@@ -380,9 +411,9 @@ function coronalLoops(q, spin, pixel, steps, { arcs, row }) {
  * only near each loop. The erupting one lifts, lets go of its feet and fades. Adds HDR light to `out`.
  */
 function prominences(w, { prominence, row }, {
-    rise, glow, time, out,
+    rise, glow, time, out, plasmaTint, eruption,
 }) {
-    const cycle = fract(time.div(ERUPTION.period).add(ERUPTION.offset)).toVar();
+    const cycle = fract(time.div(eruption.period).add(eruption.offset)).toVar();
     Loop({
         start: 0, end: prominence.count, type: 'int', condition: '<', name: 'arch',
     }, ({ arch }) => {
@@ -438,19 +469,19 @@ function prominences(w, { prominence, row }, {
 
 /** The hedgerow: a curtain of vertical threads standing on the limb. Adds HDR light to `out`. */
 function hedgerow(w, {
-    rise, glow, time, out,
+    rise, glow, time, out, plasmaTint, curtainAt,
 }) {
     const wr = length(w).toVar();
     const wd = w.div(wr.max(1e-4));
-    const hc = [Math.cos(HEDGEROW.angle * DEG), Math.sin(HEDGEROW.angle * DEG)];
+    const hc = [Math.cos(curtainAt.angle * DEG), Math.sin(curtainAt.angle * DEG)];
     // Signed angle from the curtain's centre; its seam lies on the far side of the star, masked out.
     const offAxis = wd.x.mul(hc[1]).sub(wd.y.mul(hc[0])).atan(dot(wd, vec2(hc[0], hc[1]))).toVar();
-    const curtain = fadeOut(HEDGEROW.span * 0.55, HEDGEROW.span, offAxis.abs()).toVar();
+    const curtain = fadeOut(curtainAt.span * 0.55, curtainAt.span, offAxis.abs()).toVar();
     const climb = wr.sub(1).toVar();
-    If(curtain.greaterThan(0.001).and(climb.lessThan(HEDGEROW.height * 2.2)), () => {
+    If(curtain.greaterThan(0.001).and(climb.lessThan(curtainAt.height * 2.2)), () => {
         const crest = gnoise(vec2(offAxis.mul(9).add(2.1), time.mul(0.03))).mul(0.6).add(0.25)
             .add(gnoise(vec2(offAxis.mul(31).add(7.7), time.mul(0.05))).mul(0.35))
-            .mul(HEDGEROW.height)
+            .mul(curtainAt.height)
             .mul(rise);
         const sheet = fadeOut(crest.mul(0.35), crest, climb).mul(smoothstep(-0.02, 0.0, climb));
         // Threads lean as they climb and gather in clumps; none of them is a straight slat.
@@ -505,40 +536,230 @@ function flareRibbons(body, { ribbons, row }) {
     return flare;
 }
 
-/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
-export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+/**
+ * The band of the star's galaxy, far behind it: clouds of faint stars along a soft spine split by
+ * a dark rift, and the denser starlight that lives in it. Additive light; the visit's seed moves
+ * its clouds.
+ */
+function galaxyBand(p, u, {
+    angle, offset, tint, gain,
+}) {
+    const sky = layer(p, u, 0.03).toVar();
+    const across = dot(sky, vec2(-Math.sin(angle), Math.cos(angle))).sub(offset).toVar();
+    const drift = sky.add(u.seed.mul(vec2(17.3, 9.1))).toVar();
+    const width = gnoise(drift.mul(0.9).add(3.7)).mul(0.16).add(0.24).toVar();
+    const spineAt = across.div(width);
+    const spine = exp(spineAt.mul(spineAt).negate()).toVar();
+    const clouds = fbm(drift.mul(2.2).add(1.3), 3);
+    const riftAt = across.div(width.mul(0.42));
+    const rift = smoothstep(0.47, 0.64, fbm(drift.mul(vec2(3.4, 2.6)).add(8.4), 3)).mul(exp(riftAt.mul(riftAt).negate())).toVar();
+    const glow = spine.mul(smoothstep(0.3, 0.78, clouds).mul(0.8).add(0.2)).mul(float(1).sub(rift.mul(0.85)));
+    const stars = starfield(drift.add(11.3), u, 1.5).mul(spine.mul(0.45).add(0.05)).mul(float(1).sub(rift.mul(0.7)));
+    return vec3(...tint).mul(glow).mul(gain).add(stars.mul(0.6));
+}
 
-export function createSolarWorld({ u, quality }) {
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([
+    {
+        id: 'golden-star',
+        name: 'Golden Star',
+        photosphere: [[0.3, 0.02, 0.003], [0.8, 0.12, 0.012], [1.0, 0.33, 0.045], [1.0, 0.52, 0.14], [1.0, 0.7, 0.32]],
+        plasma: [[0.55, 0.045, 0.055], [1.0, 0.2, 0.08], [1.0, 0.48, 0.13], [1.0, 0.78, 0.45]],
+        corona: [[1.0, 0.68, 0.36], [1.0, 0.36, 0.08], [0.62, 0.1, 0.04], [0.25, 0.03, 0.05]],
+        chromosphere: [1.0, 0.3, 0.12],
+        innerCorona: [1.0, 0.64, 0.32],
+        glare: [1.0, 0.42, 0.14],
+        loopLight: [1.0, 0.78, 0.5],
+        flare: [1.0, 0.85, 0.6],
+        space: [0.0032, 0.0012, 0.0018],
+        galaxy: {
+            angle: 0.5, offset: 0.1, tint: [0.05, 0.026, 0.022], gain: 3,
+        },
+        comet: { head: [0.9, 0.96, 1.0], ion: [0.45, 0.68, 1.0], dust: [1.0, 0.86, 0.62] },
+        size: 1,
+        offset: [0, 0],
+        granules: 44,
+        meso: 7.5,
+        lanes: 0.5,
+        grain: 0.26,
+        ragged: 0.9,
+        boil: 0.3,
+        rotation: 420,
+        spots: true,
+        transit: true,
+        combing: 1,
+        reach: 1,
+        coronaGain: 1,
+        prominence: 1,
+        bare: [1.125, 0.925, 0.825],
+        shaftTint: [1.0, 0.7, 0.4],
+        bloom: {
+            strength: 0.4, radius: 0.7, threshold: 1.0, breath: 0.8,
+        },
+        grade: {
+            shadows: [1.1, 0.9, 0.86], highlights: [1.04, 0.98, 0.9], saturation: 1.06, contrast: 1.06, vignette: 0.42,
+        },
+        exposure: 0.9,
+    },
+    {
+        // A cool giant near the end of its life, so large only its crown fits on the screen: a few
+        // huge convection cells boil slowly across it, its corona is soft and low, and the dust it
+        // sheds hangs around it in dim, lit wisps.
+        id: 'red-giant',
+        name: 'Red Giant',
+        photosphere: [[0.16, 0.01, 0.004], [0.5, 0.045, 0.008], [0.88, 0.15, 0.02], [1.0, 0.3, 0.06], [1.0, 0.46, 0.16]],
+        plasma: [[0.42, 0.028, 0.04], [0.92, 0.12, 0.05], [1.0, 0.3, 0.08], [1.0, 0.56, 0.26]],
+        corona: [[1.0, 0.46, 0.2], [0.86, 0.18, 0.05], [0.42, 0.05, 0.03], [0.15, 0.02, 0.03]],
+        chromosphere: [1.0, 0.18, 0.07],
+        innerCorona: [1.0, 0.42, 0.18],
+        glare: [1.0, 0.26, 0.08],
+        loopLight: [1.0, 0.6, 0.35],
+        flare: [1.0, 0.7, 0.45],
+        space: [0.0026, 0.0008, 0.0012],
+        galaxy: {
+            angle: -0.32, offset: 0.62, tint: [0.045, 0.024, 0.026], gain: 3,
+        },
+        comet: { head: [0.92, 0.95, 1.0], ion: [0.42, 0.62, 1.0], dust: [1.0, 0.78, 0.55] },
+        rising: true,
+        shell: [0.5, 0.16, 0.07],
+        granules: 5.5,
+        meso: 2.2,
+        lanes: 1.2,
+        grain: 0.45,
+        ragged: 0.2,
+        boil: 0.07,
+        rotation: 1100,
+        spots: false,
+        transit: false,
+        combing: 0.45,
+        reach: 1.25,
+        coronaGain: 0.72,
+        prominence: 0.85,
+        bare: [1.15, 0.9, 0.8],
+        shaftTint: [1.0, 0.5, 0.28],
+        bloom: {
+            strength: 0.42, radius: 0.75, threshold: 0.95, breath: 0.7,
+        },
+        grade: {
+            shadows: [1.14, 0.88, 0.86], highlights: [1.06, 0.95, 0.86], saturation: 1.05, contrast: 1.07, vignette: 0.45,
+        },
+        exposure: 0.95,
+    },
+    {
+        // A young blue-white star, hotter and smaller on the screen: fine granulation, a violet
+        // corona combed into sharper rays, pink prominences, a reflection nebula glowing blue around
+        // it, and a ringed planet crossing its limb (its rings dark against the disc, lit where
+        // they hang against the corona).
+        id: 'blue-star',
+        name: 'Blue Star',
+        photosphere: [[0.04, 0.05, 0.26], [0.15, 0.21, 0.68], [0.34, 0.46, 0.94], [0.52, 0.65, 1.0], [0.74, 0.83, 1.0]],
+        plasma: [[0.32, 0.05, 0.3], [0.86, 0.24, 0.72], [1.0, 0.55, 0.95], [0.96, 0.86, 1.0]],
+        corona: [[0.78, 0.84, 1.0], [0.46, 0.5, 1.0], [0.26, 0.17, 0.68], [0.08, 0.04, 0.22]],
+        chromosphere: [0.92, 0.32, 0.82],
+        innerCorona: [0.72, 0.82, 1.0],
+        glare: [0.42, 0.48, 1.0],
+        loopLight: [0.8, 0.86, 1.0],
+        flare: [0.9, 0.94, 1.0],
+        space: [0.0012, 0.0016, 0.0042],
+        galaxy: {
+            angle: 0.95, offset: -0.2, tint: [0.026, 0.032, 0.06], gain: 3,
+        },
+        comet: { head: [0.95, 0.98, 1.0], ion: [0.4, 0.75, 1.0], dust: [0.95, 0.9, 0.8] },
+        reflection: [0.2, 0.36, 1.0],
+        rings: {
+            radius: 0.46, wide: [-1.12, -0.7], tall: [-0.78, -1.05], tilt: 0.32, ratio: 0.28, k: 1.25,
+        },
+        size: 0.8,
+        offset: [0.32, 0.02],
+        granules: 66,
+        meso: 9,
+        lanes: 0.45,
+        grain: 0.32,
+        ragged: 0.9,
+        boil: 0.45,
+        rotation: 300,
+        spots: false,
+        transit: false,
+        combing: 1.25,
+        reach: 1.1,
+        coronaGain: 0.95,
+        prominence: 0.75,
+        bare: [0.92, 0.98, 1.12],
+        shaftTint: [0.6, 0.7, 1.0],
+        bloom: {
+            strength: 0.44, radius: 0.7, threshold: 0.95, breath: 0.8,
+        },
+        grade: {
+            shadows: [0.92, 0.94, 1.14], highlights: [0.98, 0.99, 1.04], saturation: 1.04, contrast: 1.06, vignette: 0.42,
+        },
+        exposure: 0.8,
+    },
+]);
+
+export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
     const { detail } = quality;
     // The lightest tier draws with no post pipeline, so no grade: the world warms itself instead.
     const bare = !(quality.bloom > 0);
-    const arches = detail >= 0.5 ? [...LOOPS, ERUPTION] : LOOPS.filter((loop) => loop.core);
+    const { sunTint, plasmaTint, coronaTint } = tintsFor(mood);
+    const rising = Boolean(mood.rising);
+    const loops = rising ? RISING_LOOPS : LOOPS;
+    const eruption = rising ? RISING_ERUPTION : ERUPTION;
+    const arches = detail >= 0.5 ? [...loops, eruption] : loops.filter((loop) => loop.core);
     const loopSteps = detail >= 0.7 ? 7 : 5;
-    const tables = createTables(arches);
+    const tables = createTables(arches, mood.spots);
+    const color = (c) => vec3(...c);
+    const SPACE = color(mood.space);
+    const CHROMOSPHERE = color(mood.chromosphere);
+    const INNER_CORONA = color(mood.innerCorona);
+    const GLARE = color(mood.glare);
+    const LOOP_LIGHT = color(mood.loopLight);
+    const FLARE = color(mood.flare);
+    const { granules } = mood;
     const backdrop = Fn(() => {
         const p = backdropPoint(u).toVar();
         const breath = u.breathSoft.toVar();
         // Tall screens get a bigger star: it spans most of the width and the corona fills the height.
         const tall = u.ext.y.sub(1).div(1.16).saturate().toVar();
-        const radius = mix(float(0.7), float(0.76), tall).toVar();
-        // Star units: the limb at |q| = 1. Wide screens set the star a little low, so the
-        // prominences on its crown have room under the top of the frame.
-        const centre = vec2(0, mix(float(-0.05), float(0), tall));
+        let radius;
+        let centre;
+        if (rising) {
+            // The giant rises from below the frame: its crown fills the lower part of the screen
+            // (more of it on a tall one, which has the height to spare).
+            radius = mix(float(1.25), float(1.32), tall).toVar();
+            const floorY = u.ext.y.negate().sub(u.focus);
+            centre = vec2(0, floorY.add(radius.mul(mix(float(0.8), float(1.25), tall))).sub(radius)).toVar();
+        } else {
+            radius = mix(float(0.7), float(0.76), tall).mul(mood.size).toVar();
+            // Star units: the limb at |q| = 1. Wide screens set the star a little low, so the
+            // prominences on its crown have room under the top of the frame.
+            centre = vec2(mix(float(mood.offset[0]), float(0), tall), mix(float(mood.offset[1] - 0.05), float(0), tall)).toVar();
+        }
         const q = layer(p, u, 1).sub(centre).div(radius).toVar();
         const r = length(q).toVar();
         const dir = q.div(r.max(1e-4)).toVar();
         const above = r.sub(1).max(0).toVar();
         const pixel = u.px.div(radius).toVar();
 
-        // Deep space: warm black, faint far dust, stars the glare drowns near the star.
-        const sky = layer(p, u, 0.05).toVar();
-        const dust = fbm(sky.mul(0.8).add(vec2(4.1, 1.3)), 2);
-        const col = SPACE.add(NEBULA.mul(smoothstep(0.45, 0.9, dust))).toVar();
+        // Deep space: the band of the galaxy far behind, and stars the glare drowns near the star.
+        const col = SPACE.toVar();
+        const clearSky = smoothstep(0.12, 1.5, above).toVar();
+        If(clearSky.greaterThan(0.001), () => {
+            col.addAssign(galaxyBand(p, u, mood.galaxy).mul(clearSky));
+        });
         col.addAssign(starfield(p, u, 0.8).mul(smoothstep(0.35, 2.2, above)));
+        if (mood.reflection) {
+            // A reflection nebula: blue fibres of dust lit by the star, brightest near it.
+            const rq = layer(p, u, 0.12).add(u.seed.mul(vec2(5.3, 11.9))).toVar();
+            const fibres = ridged(turn(rq, 0.6).mul(vec2(1.1, 3.4)).add(2.2), 4);
+            const mass = smoothstep(0.38, 0.78, fbm(rq.mul(0.8).add(6.1), 3));
+            const lit = float(1).div(dot(q, q).mul(0.18).add(1)).add(0.25);
+            col.addAssign(color(mood.reflection).mul(fibres.mul(fibres)).mul(mass).mul(lit)
+                .mul(0.07));
+        }
 
         // The corona, by direction (vec2 noise, so no angle seam), bending a little as it climbs.
         // Streamers reach farther on tall screens, which have more sky above and below the star.
-        const reach = mix(float(0.22), float(1.15), breath).mul(tall.mul(0.45).add(1)).toVar();
+        const reach = mix(float(0.22), float(1.15), breath).mul(tall.mul(0.45).add(1)).mul(mood.reach).toVar();
         const swirl = turn(dir, above.mul(0.1).add(u.time.mul(0.003))).toVar();
         // Helmet streamers: a few broad petals, favouring the equator, that narrow as they climb.
         const broad = gnoise(swirl.mul(1.7).add(vec2(3.1, 7.7)));
@@ -552,7 +773,7 @@ export function createSolarWorld({ u, quality }) {
         // Fine rays and plumes everywhere: the corona is combed, never smooth.
         const rayA = gnoise(swirl.mul(9).add(vec2(9.2, 1.4)));
         const rayB = gnoise(swirl.mul(23).add(vec2(2.6, 5.3))).toVar();
-        const combed = rayA.sub(0.5).mul(1.3).add(rayB.sub(0.5).mul(0.9)).add(0.6)
+        const combed = rayA.sub(0.5).mul(1.3 * mood.combing).add(rayB.sub(0.5).mul(0.9 * mood.combing)).add(0.6)
             .max(0.05)
             .toVar();
         // Plasma streams outward along the rays, quickening on the in-breath.
@@ -565,8 +786,24 @@ export function createSolarWorld({ u, quality }) {
         col.addAssign(INNER_CORONA.mul(inner).mul(rayB.mul(0.5).add(0.75)).mul(u.breath.mul(0.35).add(0.65)).mul(0.18));
         col.addAssign(coronaTint(above).mul(diffuse.mul(0.2).add(streamers.mul(0.95))).mul(combed)
             .mul(flow.mul(0.9).add(0.55))
-            .mul(0.6));
+            .mul(0.6 * mood.coronaGain));
         col.addAssign(GLARE.div(above.mul(above).mul(7).add(1)).mul(breath.mul(0.04).add(0.05)));
+
+        if (mood.shell) {
+            // The dust a giant sheds: dim wisps lit by the star around it, and darker knots that
+            // stand in front of its corona.
+            If(r.greaterThan(1.2).and(r.lessThan(4.6)), () => {
+                const s = q.mul(1.1).add(u.seed.mul(vec2(7.7, 3.1))).add(vec2(u.time.mul(0.003), 0)).toVar();
+                const veil = fbm(s, 4).toVar();
+                const knots = fbm(s.mul(2.3).add(5.5), 3);
+                const ring = smoothstep(1.25, 1.85, r).mul(fadeOut(2.6, 4.4, r)).toVar();
+                const lit = float(1).div(above.mul(above).mul(0.9).add(1));
+                const wisps = smoothstep(0.46, 0.8, veil).mul(ring);
+                const clumps = smoothstep(0.55, 0.76, knots).mul(smoothstep(0.42, 0.62, veil)).mul(ring);
+                col.mulAssign(float(1).sub(clumps.mul(0.45)));
+                col.addAssign(color(mood.shell).mul(wisps.mul(lit).mul(0.45)));
+            });
+        }
 
         // Solar wind: sparse glints streaming outward on a nearer layer, quickening on the in-breath.
         // Cells in (angle, log radius) scroll outward, so each glint accelerates as it leaves. Only
@@ -611,7 +848,13 @@ export function createSolarWorld({ u, quality }) {
             const chromosphere = exp(line.mul(line).negate()).mul(0.75).add(fringe.mul(0.45));
             plasma.addAssign(CHROMOSPHERE.mul(chromosphere).mul(breath.mul(0.3).add(0.85)));
             const flare = {
-                rise, glow, time: u.time, out: plasma,
+                rise,
+                glow: glow.mul(mood.prominence),
+                time: u.time,
+                out: plasma,
+                plasmaTint,
+                eruption,
+                curtainAt: rising ? RISING_HEDGEROW : HEDGEROW,
             };
             prominences(w, tables, flare);
             hedgerow(w, flare);
@@ -622,36 +865,49 @@ export function createSolarWorld({ u, quality }) {
         const surface = vec3(0).toVar();
         If(r.lessThan(pixel.mul(2).add(1)), () => {
             const mu = sqrt(float(1).sub(r.mul(r)).max(0)).toVar();
-            const spin = u.time.mul(TAU / ROTATION_PERIOD).toVar();
+            const spin = u.time.mul(TAU / mood.rotation).toVar();
             const body = toBody(vec3(q.x, q.y, mu), spin).toVar();
-
-            // Sunspots: dark umbra, filamentary penumbra.
-            const { nearest, around, seed: spotSeed } = nearestSpot(body, tables);
-            const angle = around.div(length(around).max(1e-6)).toVar();
-            // An irregular outline from a few harmonics of the angle around the spot (integer multiples,
-            // so the atan seam never shows).
-            const theta = angle.y.atan(angle.x.add(1e-6));
-            const outline = sin(theta.mul(2).add(spotSeed)).mul(0.1)
-                .add(sin(theta.mul(3).add(spotSeed.mul(1.7))).mul(0.07))
-                .add(sin(theta.mul(5).add(spotSeed.mul(2.3))).mul(0.04));
             const ragged = gnoise3(body.mul(70)).toVar();
-            const f = nearest.mul(outline.add(1)).add(ragged.sub(0.5).mul(0.06)).toVar();
-            const umbra = fadeOut(0.37, 0.47, f).toVar();
-            const penumbra = fadeOut(0.9, 1.0, f).toVar();
-            // Penumbral filaments radiate from the umbra: fine bright and dark spokes.
-            const filaments = gnoise(angle.mul(8).add(vec2(f.mul(0.6), spotSeed.mul(3.1))));
+
+            // Sunspots (dark umbra, filamentary penumbra) and the flare ribbons between them: only
+            // stars with spot groups pay for them.
+            let umbra = float(0);
+            let penumbra = float(0);
+            let filaments = float(1);
+            let plage = float(0);
+            let flare = float(0);
+            if (mood.spots) {
+                const { nearest, around, seed: spotSeed } = nearestSpot(body, tables);
+                const angle = around.div(length(around).max(1e-6)).toVar();
+                // An irregular outline from a few harmonics of the angle around the spot (integer
+                // multiples, so the atan seam never shows).
+                const theta = angle.y.atan(angle.x.add(1e-6));
+                const outline = sin(theta.mul(2).add(spotSeed)).mul(0.1)
+                    .add(sin(theta.mul(3).add(spotSeed.mul(1.7))).mul(0.07))
+                    .add(sin(theta.mul(5).add(spotSeed.mul(2.3))).mul(0.04));
+                const f = nearest.mul(outline.add(1)).add(ragged.sub(0.5).mul(0.06)).toVar();
+                umbra = fadeOut(0.37, 0.47, f).toVar();
+                penumbra = fadeOut(0.9, 1.0, f).toVar();
+                // Penumbral filaments radiate from the umbra: fine bright and dark spokes.
+                filaments = gnoise(angle.mul(8).add(vec2(f.mul(0.6), spotSeed.mul(3.1))));
+                plage = fadeOut(1.3, 4.5, nearest);
+                // Flare ribbons light up on the in-breath and fade as the breath leaves.
+                flare = flareRibbons(body, tables).mul(ragged.mul(1.2).add(0.4)).mul(smoothstep(0.3, 1.0, breath))
+                    .toVar();
+            }
 
             // Granulation: bright cells parted by dark lanes. The mesogranulation bends the cell walls
             // so granules come out rounded and uneven; where cells shrink below a few pixels (the limb,
             // small screens) they fade to an even glow instead of shimmering.
-            const meso = gnoise3(body.mul(7.5).add(vec3(0, 0, u.time.mul(0.02)))).toVar();
+            const meso = gnoise3(body.mul(mood.meso).add(vec3(0, 0, u.time.mul(0.02)))).toVar();
             const network = gnoise3(body.mul(2.8).add(3.3)).toVar();
-            const cells = voronoi3(body.mul(GRANULES).add(meso.mul(2.4)).add(ragged.mul(0.9)), u.time.mul(0.3)).toVar();
-            const walls = smoothstep(0.0, 0.5, cells.y.sub(cells.x));
+            const cells = voronoi3(body.mul(granules).add(meso.mul(2.4)).add(ragged.mul(mood.ragged)), u.time.mul(mood.boil))
+                .toVar();
+            const walls = smoothstep(0.0, mood.lanes, cells.y.sub(cells.x));
             const dome = float(1.25).sub(cells.x.mul(0.9));
             const granule = walls.mul(dome).mul(cells.z.mul(0.5).add(0.75)).toVar();
-            const sharp = smoothstep(1.5, 4.0, mu.max(0.02).div(pixel.mul(GRANULES))).mul(meso.mul(0.8).add(0.6));
-            const grain = granule.sub(0.62).mul(0.26).mul(sharp)
+            const sharp = smoothstep(1.5, 4.0, mu.max(0.02).div(pixel.mul(granules))).mul(meso.mul(0.8).add(0.6));
+            const grain = granule.sub(0.62).mul(mood.grain).mul(sharp)
                 .add(meso.sub(0.5).mul(0.5))
                 .add(network.sub(0.5).mul(0.4))
                 .toVar();
@@ -660,14 +916,9 @@ export function createSolarWorld({ u, quality }) {
             const limb = float(1).sub(mu).toVar();
             const latitude = body.y.abs();
             const belt = smoothstep(0.07, 0.2, latitude).mul(fadeOut(0.42, 0.62, latitude));
-            const plage = fadeOut(1.3, 4.5, nearest);
             const faculae = smoothstep(0.5, 0.74, gnoise3(body.mul(26).add(8.1))).mul(granule.mul(0.6).add(0.5))
                 .mul(belt.mul(0.8).add(plage)).mul(smoothstep(0.36, 0.62, network))
                 .mul(limb.mul(limb.sqrt()).mul(3))
-                .toVar();
-
-            // Flare ribbons light up on the in-breath and fade as the breath leaves.
-            const flare = flareRibbons(body, tables).mul(ragged.mul(1.2).add(0.4)).mul(smoothstep(0.3, 1.0, breath))
                 .toVar();
 
             // Strong limb darkening (linear in mu) with the colour shift that goes with it: a
@@ -691,30 +942,136 @@ export function createSolarWorld({ u, quality }) {
         col.assign(mix(col, surface, disc));
         // The prominences' feet glow over the very edge of the disc.
         col.addAssign(plasma.mul(disc).mul(smoothstep(0.97, 1.0, r)).mul(0.3));
-        // Coronal loops arch over the spot groups, in front of the disc and above the limb.
-        If(r.lessThan(1.15), () => {
-            const arcs = coronalLoops(q, u.time.mul(TAU / ROTATION_PERIOD), pixel, loopSteps, tables);
-            col.addAssign(LOOP_LIGHT.mul(arcs).mul(glow));
+        if (mood.spots) {
+            // Coronal loops arch over the spot groups, in front of the disc and above the limb.
+            If(r.lessThan(1.15), () => {
+                const arcs = coronalLoops(q, u.time.mul(TAU / mood.rotation), pixel, loopSteps, tables);
+                col.addAssign(LOOP_LIGHT.mul(arcs).mul(glow));
+            });
+        }
+
+        // A coronal mass ejection, now and then: a bubble of plasma blooms off the limb over
+        // several seconds (a bright looped front, a darker cavity, a twisted core) and fades as it
+        // expands. Toward the room the screen has: the sides of a wide one, up or down on a tall
+        // one, always up from a rising star. The branch is the same for every pixel.
+        const cme = eventWindow(u.time, float(54), float(15), float(0.8), u.seed.mul(31.7).add(2.3)).toVar();
+        If(cme.x.mul(u.life).greaterThan(0.002), () => {
+            const pick = cme.z;
+            const heading = rising
+                ? pick.sub(0.5).mul(1.3).add(Math.PI / 2)
+                : step(0.5, pick).mul(Math.PI).add(hash21(vec2(pick, 7.7)).sub(0.5).mul(1.1)).add(tall.mul(Math.PI / 2));
+            const toward = vec2(cos(heading), sin(heading)).toVar();
+            const grow = float(1).sub(float(1).sub(cme.y).mul(float(1).sub(cme.y))).toVar();
+            const bubble = grow.mul(0.85).add(0.14).toVar();
+            // A light bulb rather than a ring: stretched along its path, its legs still on the limb.
+            const reachOut = bubble.mul(1.2).add(1).add(grow.mul(0.2)).toVar();
+            const rel = q.sub(toward.mul(reachOut)).toVar();
+            const radial = dot(rel, toward).toVar();
+            const dist = length(vec2(radial.div(1.35), rel.x.mul(toward.y).sub(rel.y.mul(toward.x)))).toVar();
+            const facing = radial.div(length(rel).max(1e-3));
+            const texture = gnoise(rel.div(bubble).mul(2.5).add(vec2(pick.mul(37), u.time.mul(0.05))))
+                .mul(gnoise(rel.div(bubble).mul(vec2(7, 9)).add(vec2(u.time.mul(0.08), pick.mul(11)))).mul(0.9).add(0.3));
+            const front = dist.sub(bubble).div(bubble.mul(0.12).add(0.025));
+            const shell = exp(front.mul(front).negate()).mul(smoothstep(-0.98, 0.1, facing)).mul(texture.mul(1.5).add(0.15));
+            const coreAt = q.sub(toward.mul(reachOut.sub(bubble.mul(0.42)))).div(bubble).toVar();
+            const coreD = length(coreAt).div(0.26);
+            const strands = gnoise(coreAt.mul(7).add(pick.mul(19)));
+            const knot = exp(coreD.mul(coreD).negate()).mul(strands.mul(1.4).add(0.2));
+            const cavity = fadeOut(bubble.mul(0.55), bubble.mul(0.95), dist);
+            const fade = cme.x.mul(u.life).div(grow.mul(1.6).add(1)).mul(float(1).sub(disc)).toVar();
+            col.mulAssign(float(1).sub(cavity.mul(fade).mul(0.3)));
+            col.addAssign(coronaTint(float(0.12)).mul(shell.mul(1.4)).add(plasmaTint(float(0.7)).mul(knot.mul(0.9))).mul(fade));
         });
 
-        // A planet in transit: a crisp black dot, nearer than the star, its thin air lit from behind.
-        const planetAt = layer(p, u, PLANET.k);
-        const span = u.ext.x.add(0.2);
-        const travel = fract(u.time.div(PLANET.period).add(0.43)).mul(2).sub(1).mul(span);
-        const toPlanet = length(planetAt.sub(vec2(travel, radius.mul(0.5)).add(centre))).toVar();
-        const planet = fadeOut(float(PLANET.radius).sub(u.px), u.px.add(PLANET.radius), toPlanet);
-        const air = toPlanet.sub(PLANET.radius).div(u.px.mul(1.6));
-        col.assign(mix(col, vec3(0.0015, 0.0006, 0.0005), planet));
-        col.addAssign(vec3(1.0, 0.62, 0.36).mul(exp(air.mul(air).negate())).mul(disc).mul(0.35));
+        // A comet, now and then: a slow crossing beside the star, its blue ion tail straight away
+        // from the star and its pale dust tail curving back along its path.
+        const comet = eventWindow(u.time, float(80), float(32), float(0.75), u.seed.mul(23.9).add(5.4)).toVar();
+        If(comet.x.mul(u.life).greaterThan(0.002), () => {
+            const pick = comet.z;
+            const side = step(0.5, hash21(vec2(pick, 3.3))).mul(2).sub(1).toVar();
+            const sense = step(0.5, hash21(vec2(pick, 8.1))).mul(2).sub(1).toVar();
+            const lane = hash21(vec2(pick, 5.9));
+            const travel = comet.y.mul(2).sub(1).mul(sense).toVar();
+            const across = rising ? lane.mul(0.3).add(1.22) : lane.mul(0.4).add(1.5);
+            const overhead = vec2(travel.mul(1.75), (rising ? float(1) : side).mul(across.sub(travel.mul(travel).mul(0.12))));
+            const sideways = vec2(side.mul(across.sub(travel.mul(travel).mul(0.15))), travel.mul(1.55));
+            const upright = rising ? float(1) : step(0.5, tall);
+            const head = mix(sideways, overhead, upright).toVar();
+            const motion = mix(vec2(0, sense), vec2(sense, 0), upright);
+            const at = layer(p, u, 1.1).sub(centre).div(radius).toVar();
+            const away = head.div(length(head).max(1e-3)).toVar();
+            const rel = at.sub(head).toVar();
+            const along = dot(rel, away).toVar();
+            const ahead = along.max(0).toVar();
+            const aside = rel.x.mul(away.y).sub(rel.y.mul(away.x)).toVar();
+            const ionWidth = pixel.mul(1.3).add(ahead.mul(0.025));
+            const ionAt = aside.div(ionWidth);
+            const ion = exp(ionAt.mul(ionAt).negate()).mul(smoothstep(-0.01, 0.03, along)).mul(exp(ahead.mul(-2.6)));
+            const lag = dot(motion, vec2(away.y, away.x.negate()));
+            const bent = aside.add(lag.mul(ahead.mul(ahead)).mul(0.9));
+            const dustAt = bent.div(pixel.mul(2.5).add(ahead.mul(0.09)));
+            const dust = exp(dustAt.mul(dustAt).negate()).mul(smoothstep(-0.01, 0.05, along)).mul(exp(ahead.mul(-3.2)));
+            const d2 = dot(rel, rel);
+            const coma = exp(d2.div(pixel.mul(pixel).mul(4)).negate()).mul(2.5).add(float(1).div(d2.mul(7000).add(1)).mul(0.25));
+            const c = mood.comet;
+            col.addAssign(color(c.head).mul(coma).add(color(c.ion).mul(ion.mul(0.55))).add(color(c.dust).mul(dust.mul(0.4)))
+                .mul(comet.x.mul(u.life)));
+        });
+
+        if (mood.transit) {
+            // A planet in transit: a crisp black dot, nearer than the star, its thin air lit from behind.
+            const planetAt = layer(p, u, PLANET.k);
+            const span = u.ext.x.add(0.2);
+            const travel = fract(u.time.div(PLANET.period).add(0.43)).mul(2).sub(1).mul(span);
+            const toPlanet = length(planetAt.sub(vec2(travel, radius.mul(0.5)).add(centre))).toVar();
+            const planet = fadeOut(float(PLANET.radius).sub(u.px), u.px.add(PLANET.radius), toPlanet);
+            const air = toPlanet.sub(PLANET.radius).div(u.px.mul(1.6));
+            col.assign(mix(col, vec3(0.0015, 0.0006, 0.0005), planet));
+            col.addAssign(vec3(1.0, 0.62, 0.36).mul(exp(air.mul(air).negate())).mul(disc).mul(0.35));
+        }
+
+        if (mood.rings) {
+            // A ringed planet on a nearer layer, crossing the limb: its night side towards us, a thin
+            // crescent of lit air on the side that faces the star, and rings that darken the disc
+            // where they cross it and glow faintly (forward scattering) against the corona.
+            const ring = mood.rings;
+            const at = layer(p, u, ring.k).sub(centre).div(radius).toVar();
+            const planetC = mix(vec2(...ring.wide), vec2(...ring.tall), tall).toVar();
+            const rel = at.sub(planetC).toVar();
+            const d = length(rel).toVar();
+            const body = fadeOut(float(ring.radius).sub(pixel.mul(1.2)), pixel.mul(1.2).add(ring.radius), d).toVar();
+            const sunward = planetC.negate().div(length(planetC)).toVar();
+            const facing = dot(rel.div(d.max(1e-4)), sunward).toVar();
+            const limbAt = d.sub(ring.radius).div(pixel.mul(2.4));
+            const air = exp(limbAt.mul(limbAt).negate()).mul(smoothstep(-0.35, 0.9, facing));
+            const halo = exp(d.sub(ring.radius).max(0).mul(-30)).mul(smoothstep(0.1, 1.0, facing)).mul(float(1).sub(body));
+            const night = vec3(0.003, 0.004, 0.009).mul(facing.max(0).mul(2).add(1));
+            const turned = turn(rel, -ring.tilt).toVar();
+            const e = length(vec2(turned.x, turned.y.div(ring.ratio))).div(ring.radius).toVar();
+            const soft = pixel.div(ring.radius * ring.ratio).mul(0.7).toVar();
+            const edge = (from) => smoothstep(soft.negate().add(from), soft.add(from), e);
+            const sheet = edge(1.34).mul(float(1).sub(edge(2.24)));
+            const ringlets = sin(e.mul(23)).mul(0.18).add(gnoise(vec2(e.mul(9), 2.7)).mul(0.5)).add(0.55);
+            const gap = edge(1.8).mul(float(1).sub(edge(1.88)));
+            const density = sheet.mul(ringlets).mul(float(1).sub(gap.mul(0.9))).saturate().toVar();
+            // The far half of the rings passes behind the planet, the near half in front of it.
+            const shown = density.mul(mix(float(1).sub(body), float(1), step(turned.y, 0))).toVar();
+            col.assign(mix(col, night, body));
+            col.addAssign(INNER_CORONA.mul(air.mul(1.4).add(halo.mul(0.18))).mul(glow));
+            const scatter = exp(above.mul(-1.8)).mul(0.22).add(0.035).mul(float(1).sub(disc.mul(0.8)));
+            col.assign(col.mul(float(1).sub(shown.mul(0.82))).add(INNER_CORONA.mul(shown.mul(scatter)).mul(glow)));
+        }
+
         if (bare) {
             // Stand in for the grade (fitted to what the post pipeline does to this palette).
             const luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-            col.assign(mix(vec3(luma), col, 1.15).max(0).mul(vec3(1.125, 0.925, 0.825)));
+            col.assign(mix(vec3(luma), col, 1.15).max(0).mul(color(mood.bare)));
         }
         return col;
     })();
 
-    // Light streams from the star's centre, which sits a little low on wide screens.
+    // Light streams from the star's centre, which sits a little low on wide screens (or from the
+    // crown of a rising star).
     const shafts = {
         source: [0, 0, 1],
         radius: 0.4,
@@ -722,23 +1079,27 @@ export function createSolarWorld({ u, quality }) {
         threshold: 0.8,
         decay: 0.95,
         length: 0.5,
-        tint: [1.0, 0.7, 0.4],
+        tint: mood.shaftTint,
         breath: 0.6,
     };
     return {
         backdrop,
         shafts,
-        bloom: {
-            strength: 0.4, radius: 0.7, threshold: 1.0, breath: 0.8,
-        },
-        grade: {
-            shadows: [1.1, 0.9, 0.86], highlights: [1.04, 0.98, 0.9], saturation: 1.06, contrast: 1.06, vignette: 0.42,
-        },
+        bloom: { ...mood.bloom },
+        grade: { ...mood.grade },
         camera: { dolly: 0.05, drift: [0.03, 0.016], period: 60 },
-        exposure: 0.9,
+        exposure: mood.exposure,
         update({ ext }) {
             const tall = Math.min(Math.max((ext.y - 1) / 1.16, 0), 1);
-            shafts.source[1] = -0.05 * (1 - tall);
+            if (rising) {
+                const radius = 1.25 + 0.07 * tall;
+                const floorY = -ext.y - u.focus.value;
+                shafts.source[0] = 0;
+                shafts.source[1] = floorY + radius * (0.8 + 0.45 * tall) - radius * 0.15;
+            } else {
+                shafts.source[0] = mood.offset[0] * (1 - tall);
+                shafts.source[1] = (mood.offset[1] - 0.05) * (1 - tall);
+            }
         },
     };
 }
