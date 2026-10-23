@@ -23,6 +23,13 @@
  *
  * A foreground overlay, drawn after the galaxy, holds the nearest dust (dark, out of focus, in the
  * bottom corners), the nearest stars, and a few bright stars with diffraction spikes.
+ *
+ * Moods change the light, not the place: the Hubble palette, emerald and gold (O-III and
+ * H-alpha) around a galaxy turned nearly face-on, hydrogen crimson against blue oxygen around one
+ * seen nearly edge-on, and a dark nebula whose lane of cold dust crosses in front of the galaxy.
+ * Specks of dust drift between us and the galaxy, some close to the lens. Now and then a distant
+ * nova brightens and fades over several seconds with a faint light echo swelling round it, and a
+ * meteor crosses high in the frame.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -30,16 +37,14 @@ import {
     smoothstep, step, uniform, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    backdropPoint, fadeOut, fbm, fbm3, gnoise, gnoise3, layer, ridged, smin, starfield, turn,
+    backdropPoint, eventWindow, fadeOut, fbm, fbm3, gnoise, gnoise3, hash21, layer, ridged, shootingStar, smin,
+    starfield, turn,
 } from '../stage/breath-tsl.js';
 
 const TAU = Math.PI * 2;
 
 /** The galaxy. Disc-local units: the visible disc ends near radius 1. */
 const ARMS = 2;
-/** Tilt of the disc plane out of edge-on (pi/2 would be face-on) and the major axis's slant. */
-const TILT = 0.5;
-const ROLL = -0.26;
 /** Log spiral: arms wind tightly inside CORE_R and open beyond it. WIND radians per e-fold. */
 const CORE_R = 0.16;
 const WIND = 2.5;
@@ -55,19 +60,26 @@ const DISC_EXTENT = 1.6;
 /** Galaxy scale on screen: capped on wide screens, the width of the screen on tall ones. */
 const GALAXY_SCALE = 1.16;
 
-/** Palette (linear). Hubble-style emission lines, dust, and the galaxy's star populations. */
-const VOID = vec3(0.002, 0.003, 0.009);
-const H_ALPHA = vec3(1.0, 0.18, 0.4);
-const OIII = vec3(0.08, 0.62, 0.78);
-const SII = vec3(1.0, 0.52, 0.16);
-const FRONT = vec3(1.0, 0.86, 0.62);
-const AMBER = vec3(0.62, 0.26, 0.08);
-const MAROON = vec3(0.11, 0.028, 0.04);
-const STEAM = vec3(0.55, 0.74, 0.92);
-const DUST = vec3(0.011, 0.007, 0.013);
-const OLD = vec3(1.0, 0.76, 0.5);
-const YOUNG = vec3(0.52, 0.68, 1.0);
-const HII = vec3(1.0, 0.42, 0.62);
+/**
+ * A mood's palette (linear): the nebula's emission lines and dust, and the galaxy's star
+ * populations. The poster's is a Hubble palette: teal O-III near the light, rose H-alpha farther
+ * out, gold S-II where the gas is densest, amber dust under white-gold ionisation fronts.
+ */
+const HUBBLE = {
+    void: [0.002, 0.003, 0.009],
+    hAlpha: [1.0, 0.18, 0.4],
+    oiii: [0.08, 0.62, 0.78],
+    sii: [1.0, 0.52, 0.16],
+    front: [1.0, 0.86, 0.62],
+    amber: [0.62, 0.26, 0.08],
+    maroon: [0.11, 0.028, 0.04],
+    steam: [0.55, 0.74, 0.92],
+    dust: [0.011, 0.007, 0.013],
+    old: [1.0, 0.76, 0.5],
+    young: [0.52, 0.68, 1.0],
+    hii: [1.0, 0.42, 0.62],
+};
+const paletteOf = (colours) => Object.fromEntries(Object.entries(colours).map(([name, c]) => [name, vec3(...c)]));
 
 /** Lung fill → galaxy size (the disc swells on the in-breath). */
 const swellOf = (u) => u.breathSoft.mul(0.27).add(0.86);
@@ -162,7 +174,7 @@ function starSeeds(count, random) {
 }
 
 /** The galaxy's resolved stars: additive sprites on the shared spiral. */
-function createStars(u, count, random) {
+function createStars(u, count, random, pal) {
     const seeds = starSeeds(count, random);
     const material = new THREE.SpriteNodeMaterial({
         transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
@@ -185,9 +197,9 @@ function createStars(u, count, random) {
         const old = float(1).sub(young).sub(knot);
         // A spread of temperatures within each population.
         const warm = look.w.mul(7.3).fract();
-        const tint = OLD.mul(mix(float(0.75), float(1.15), warm)).mul(old)
-            .add(mix(YOUNG, vec3(0.92, 0.95, 1.0), warm.mul(0.6)).mul(young))
-            .add(HII.mul(knot));
+        const tint = pal.old.mul(mix(float(0.75), float(1.15), warm)).mul(old)
+            .add(mix(pal.young, vec3(0.92, 0.95, 1.0), warm.mul(0.6)).mul(young))
+            .add(pal.hii.mul(knot));
         // Stars that sit in a dust lane are dimmed by it (the painted lanes are drawn beneath).
         const phase = orbit.y.add(woundAt(orbit.x, u).mul(orbit.z.sub(1))).add(wobble);
         const lane = crestProfile(cos(phase.sub(LANE).mul(ARMS)));
@@ -217,7 +229,7 @@ function createStars(u, count, random) {
  * The disc's smooth light on a quad in the disc plane: old warm disc, blue arms, pink knots, a
  * faint outer glow, and dust lanes that absorb (premultiplied: rgb is added, alpha darkens).
  */
-function createDisc(u) {
+function createDisc(u, pal) {
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true, depthWrite: false, depthTest: false, premultipliedAlpha: true, side: THREE.DoubleSide,
     });
@@ -248,13 +260,13 @@ function createDisc(u) {
             .mul(smoothstep(0.2, 0.36, r0))
             .mul(fadeOut(0.8, 1.0, r0));
         const glow = u.breathSoft.mul(0.5).add(0.7);
-        const light = OLD.mul(exp(r0.mul(-3.6)).mul(0.22))
-            .add(YOUNG.mul(broad.mul(broad).mul(0.35).add(arm).mul(span)
+        const light = pal.old.mul(exp(r0.mul(-3.6)).mul(0.22))
+            .add(pal.young.mul(broad.mul(broad).mul(0.35).add(arm).mul(span)
                 .mul(exp(r0.mul(-1.2)))
                 .mul(clumps.mul(0.9).add(0.35))
                 .mul(0.5)))
-            .add(HII.mul(knots.mul(0.35)))
-            .add(YOUNG.mul(fadeOut(0.45, 1.4, r0).mul(0.05)))
+            .add(pal.hii.mul(knots.mul(0.35)))
+            .add(pal.young.mul(fadeOut(0.45, 1.4, r0).mul(0.05)))
             .mul(glow);
         // Over the bulge, only the near half of the disc stands in front of it.
         const nearSide = smoothstep(-0.06, 0.1, positionWorld.z);
@@ -347,7 +359,7 @@ const ridgeAt = (depth, level, width) => {
  * Returns emission and absorption.
  */
 function cloudBank({
-    density, low, toward, light, glow, streaks, detail, hazeTint,
+    density, low, toward, light, glow, streaks, detail, hazeTint, pal,
     edge = 0.62, rim = 1.6, opacity = 0.96, steam = 0.5, haze = 0.22, line = 0.6, gain = 12,
     body: bodyGain = 0.3, soft = 1, shade = float(0.5),
 }) {
@@ -371,17 +383,17 @@ function cloudBank({
     const skin = exp(inside.mul(-9)).mul(alpha).mul(fibres)
         .add(ridgeAt(depth, 0.004, 0.016).mul(detail.mul(0.6).add(0.4)).mul(line))
         .mul(facing);
-    const body = mix(AMBER, MAROON, smoothstep(0.0, 0.3, inside)).mul(exp(inside.mul(-2.5)))
+    const body = mix(pal.amber, pal.maroon, smoothstep(0.0, 0.3, inside)).mul(exp(inside.mul(-2.5)))
         .mul(detail.mul(0.6).add(relief.mul(0.9)).add(0.1))
         .mul(exposed.mul(0.5).add(0.5))
         .mul(lumps);
     const glowAbove = exp(outside.mul(-8)).mul(float(1).sub(alpha));
     const vapour = exp(outside.mul(-14)).mul(float(1).sub(alpha)).mul(streaks).mul(exposed.mul(0.8).add(0.2));
-    const emission = mix(SII, FRONT, exp(inside.mul(-30))).mul(skin.mul(lit).mul(rim))
+    const emission = mix(pal.sii, pal.front, exp(inside.mul(-30))).mul(skin.mul(lit).mul(rim))
         .add(body.mul(lit).mul(alpha).mul(bodyGain))
-        .add(DUST.mul(alpha))
+        .add(pal.dust.mul(alpha))
         .add(hazeTint.mul(glowAbove.mul(lit).mul(haze)))
-        .add(STEAM.mul(vapour.mul(lit).mul(steam)));
+        .add(pal.steam.mul(vapour.mul(lit).mul(steam)));
     return { emission, absorption: alpha };
 }
 
@@ -433,20 +445,24 @@ function paintWhere(needed, paint) {
  * galaxy's light, rose farther out, gold where the gas is densest —, a young cluster lighting a
  * pool of gas, and dark dust lanes across it all whose edges are lit from behind.
  */
-function farSky(p, u, { glow, top, octaves }) {
+function farSky(p, u, {
+    glow, top, octaves, pal,
+}) {
     const t = u.time;
-    const col = VOID.add(starfield(layer(p, u, 0.02), u, 1.0).mul(0.68)).toVar();
+    const col = pal.void.add(starfield(layer(p, u, 0.02), u, 1.0).mul(0.68)).toVar();
     const qA = layer(p, u, 0.12).toVar();
-    const warpA = vec2(gnoise(qA.mul(0.6).add(vec2(t.mul(0.01), 0))), gnoise(qA.mul(0.6).add(vec2(5.2, 1.3))))
+    // Each visit moves the gas a little (none at the poster's seed, 0.5); the light stays put.
+    const qV = qA.add(u.seed.sub(0.5).mul(vec2(3.7, 2.3))).toVar();
+    const warpA = vec2(gnoise(qV.mul(0.6).add(vec2(t.mul(0.01), 0))), gnoise(qV.mul(0.6).add(vec2(5.2, 1.3))))
         .sub(0.5).toVar();
-    const cloudA = fbm3(vec3(qA.mul(1.05).add(warpA.mul(1.6)), t.mul(0.008)), 4).toVar();
-    const wispA = ridged(qA.mul(2.3).add(warpA.mul(2.4)).add(20.0), Math.max(3, octaves - 1)).toVar();
-    const hueA = gnoise(qA.mul(0.45).add(40.0)).toVar();
+    const cloudA = fbm3(vec3(qV.mul(1.05).add(warpA.mul(1.6)), t.mul(0.008)), 4).toVar();
+    const wispA = ridged(qV.mul(2.3).add(warpA.mul(2.4)).add(20.0), Math.max(3, octaves - 1)).toVar();
+    const hueA = gnoise(qV.mul(0.45).add(40.0)).toVar();
     const lightA = keyLight(qA.mul(1.15)).toVar();
     const brightA = smoothstep(0.3, 0.85, cloudA).toVar();
-    const tintA = mix(OIII, H_ALPHA, smoothstep(0.42, 0.62, hueA.add(lightA.oneMinus().mul(0.55)).sub(0.12)))
+    const tintA = mix(pal.oiii, pal.hAlpha, smoothstep(0.42, 0.62, hueA.add(lightA.oneMinus().mul(0.55)).sub(0.12)))
         .toVar();
-    tintA.assign(mix(tintA, SII, smoothstep(0.6, 0.76, hueA).mul(smoothstep(0.45, 0.75, cloudA)).mul(0.75)));
+    tintA.assign(mix(tintA, pal.sii, smoothstep(0.6, 0.76, hueA).mul(smoothstep(0.45, 0.75, cloudA)).mul(0.75)));
     const clusterAt = vec2(u.ext.x.mul(-0.8), top.mul(0.72)).toVar();
     const toCluster = qA.sub(clusterAt).toVar();
     const pool = float(1).div(dot(toCluster, toCluster).mul(14).add(1)).toVar();
@@ -454,29 +470,167 @@ function farSky(p, u, { glow, top, octaves }) {
         .mul(lightA.mul(0.8).add(0.18).add(pool.mul(1.2))).mul(0.5).mul(glow));
     // Close to the stars the gas glows nearly white-teal.
     const nearCluster = pool.mul(pool).mul(brightA.mul(0.5).add(0.1)).mul(0.25);
-    col.addAssign(mix(OIII, vec3(0.8, 0.9, 1.0), 0.5).mul(nearCluster).mul(glow));
+    col.addAssign(mix(pal.oiii, vec3(0.8, 0.9, 1.0), 0.5).mul(nearCluster).mul(glow));
     col.addAssign(cluster(qA, clusterAt, u).mul(glow));
     col.addAssign(starfield(layer(p, u, 0.3).add(vec2(13.7, 5.1)), u, 0.4).mul(0.6));
     // Dark lanes: sinuous filaments along one contour of a warped field; forward scattering lights
     // their edges in the colour of the glow behind them.
-    const qL = layer(p, u, 0.26).toVar();
+    const qL = layer(p, u, 0.26).add(u.seed.sub(0.5).mul(vec2(2.9, 1.7))).toVar();
+    // A finer fibrous field frays their edges and thins their cores, so they read as smoke and
+    // filaments rather than smooth tubes.
     const laneN = fbm(qL.mul(vec2(1.5, 2.1)).add(warpA.mul(0.9)).add(60.0), 4).toVar();
-    const laneD = laneN.sub(0.58).abs().toVar();
+    const shred = gnoise(qL.mul(vec2(7.0, 3.2)).add(warpA.mul(3.0)).add(90.0)).toVar();
+    const laneD = laneN.add(shred.sub(0.5).mul(0.035)).sub(0.58).abs().toVar();
     const laneMask = smoothstep(0.42, 0.62, gnoise(qL.mul(0.8).add(70.0))).toVar();
-    const laneCore = fadeOut(0.018, 0.05, laneD).mul(laneMask);
-    const laneRim = ridgeAt(laneD, 0.055, 0.014).mul(laneMask);
-    return col.mul(float(1).sub(laneCore.mul(0.9))).add(col.mul(laneRim).mul(1.6));
+    const laneCore = fadeOut(0.018, 0.05, laneD).mul(laneMask).mul(smoothstep(0.2, 0.6, shred).mul(0.5).add(0.5));
+    const laneRim = ridgeAt(laneD, 0.055, 0.016).mul(laneMask).mul(shred.mul(0.9).add(0.15));
+    return col.mul(float(1).sub(laneCore.mul(0.9))).add(col.mul(laneRim).mul(1.15));
 }
 
 /** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
-export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+export const MOODS = Object.freeze([
+    {
+        // A grand-design spiral through a window in a Hubble-palette nebula: teal near the light,
+        // rose farther out, golden cliffs and pillars.
+        id: 'galaxy-window',
+        name: 'Galaxy Window',
+        palette: HUBBLE,
+        // The disc's tilt out of edge-on (pi/2 would be face-on), its roll on screen, the bulge's
+        // flattening and the galaxy's size against the default.
+        tilt: 0.5,
+        roll: -0.26,
+        bulge: 0.62,
+        scale: 1,
+        motes: [[1.0, 0.7, 0.5], [0.55, 0.75, 1.0]],
+        nova: [[0.85, 0.92, 1.0], [1.0, 0.3, 0.5]],
+        bloom: {
+            strength: 0.55, radius: 0.72, threshold: 0.6, breath: 0.5,
+        },
+        grade: {
+            shadows: [0.92, 0.95, 1.12], highlights: [1.06, 1.0, 0.94], saturation: 1.1, contrast: 1.05, vignette: 0.4,
+        },
+        exposure: 1.0,
+    },
+    {
+        // Doubly ionised oxygen and hydrogen as emerald and gold: green gas glowing around the
+        // light, gold veils farther out, cream fronts on olive dust; the galaxy turned nearly face-on.
+        id: 'emerald-veil',
+        name: 'Emerald Veil',
+        palette: {
+            void: [0.001, 0.0035, 0.005],
+            hAlpha: [1.0, 0.6, 0.1],
+            oiii: [0.05, 0.7, 0.4],
+            sii: [1.0, 0.4, 0.08],
+            front: [1.0, 0.93, 0.7],
+            amber: [0.56, 0.33, 0.06],
+            maroon: [0.055, 0.04, 0.018],
+            steam: [0.6, 0.95, 0.76],
+            dust: [0.006, 0.009, 0.006],
+            old: [1.0, 0.8, 0.55],
+            young: [0.6, 0.8, 1.0],
+            hii: [1.0, 0.5, 0.52],
+        },
+        tilt: 0.95,
+        roll: 0.4,
+        bulge: 0.86,
+        scale: 0.86,
+        motes: [[1.0, 0.82, 0.45], [0.5, 1.0, 0.75]],
+        nova: [[0.9, 1.0, 0.92], [1.0, 0.45, 0.3]],
+        bloom: {
+            strength: 0.55, radius: 0.72, threshold: 0.6, breath: 0.5,
+        },
+        grade: {
+            shadows: [0.92, 1.0, 1.03],
+            highlights: [1.05, 1.02, 0.92],
+            saturation: 1.08,
+            contrast: 1.05,
+            vignette: 0.42,
+        },
+        exposure: 1.0,
+    },
+    {
+        // Hydrogen crimson against cold blue oxygen: rose fronts on wine-dark dust, and the
+        // galaxy seen nearly edge-on, a thin blade of light.
+        id: 'crimson-deep',
+        name: 'Crimson Deep',
+        palette: {
+            void: [0.004, 0.002, 0.009],
+            hAlpha: [0.95, 0.05, 0.13],
+            oiii: [0.12, 0.3, 1.0],
+            sii: [1.0, 0.3, 0.34],
+            front: [1.0, 0.82, 0.8],
+            amber: [0.52, 0.1, 0.08],
+            maroon: [0.09, 0.012, 0.025],
+            steam: [0.5, 0.62, 1.0],
+            dust: [0.01, 0.005, 0.012],
+            old: [1.0, 0.74, 0.55],
+            young: [0.55, 0.68, 1.0],
+            hii: [1.0, 0.36, 0.5],
+        },
+        tilt: 0.28,
+        roll: -0.48,
+        bulge: 0.5,
+        scale: 1.04,
+        motes: [[1.0, 0.45, 0.5], [0.5, 0.65, 1.0]],
+        nova: [[0.85, 0.9, 1.0], [1.0, 0.2, 0.35]],
+        bloom: {
+            strength: 0.55, radius: 0.72, threshold: 0.6, breath: 0.5,
+        },
+        grade: {
+            shadows: [0.98, 0.9, 1.12],
+            highlights: [1.06, 0.98, 0.96],
+            saturation: 1.08,
+            contrast: 1.06,
+            vignette: 0.42,
+        },
+        exposure: 1.0,
+    },
+    {
+        // A dark nebula: the galaxy glows through a lane of rich, cold dust that crosses in front
+        // of it, its edges lit from behind; the far gas is faint and smoky, the cliffs sepia.
+        id: 'dark-rift',
+        name: 'Dark Rift',
+        palette: {
+            void: [0.002, 0.002, 0.004],
+            hAlpha: [0.62, 0.2, 0.2],
+            oiii: [0.22, 0.38, 0.58],
+            sii: [0.9, 0.55, 0.3],
+            front: [1.0, 0.86, 0.66],
+            amber: [0.48, 0.28, 0.13],
+            maroon: [0.06, 0.035, 0.025],
+            steam: [0.62, 0.68, 0.78],
+            dust: [0.006, 0.005, 0.005],
+            old: [1.0, 0.78, 0.55],
+            young: [0.6, 0.74, 1.0],
+            hii: [1.0, 0.45, 0.55],
+        },
+        tilt: 0.62,
+        roll: 0.14,
+        bulge: 0.7,
+        scale: 1,
+        rift: { angle: -0.38, offset: -0.02 },
+        motes: [[1.0, 0.8, 0.6], [0.7, 0.8, 1.0]],
+        nova: [[0.9, 0.93, 1.0], [1.0, 0.35, 0.4]],
+        bloom: {
+            strength: 0.6, radius: 0.75, threshold: 0.55, breath: 0.5,
+        },
+        grade: {
+            shadows: [0.96, 0.95, 1.06], highlights: [1.06, 1.0, 0.92], saturation: 1.0, contrast: 1.08, vignette: 0.45,
+        },
+        exposure: 1.05,
+    },
+]);
 
-export function createNebulaWorld({ u, quality, random }) {
+export function createNebulaWorld({
+    u, quality, random, mood = MOODS[0],
+}) {
     const { octaves } = quality;
+    const pal = paletteOf(mood.palette);
+    const galaxyFit = GALAXY_SCALE * mood.scale;
     // Phones (Low) and the lightest tier skip the finest touches: the crinkled cliff edge and the
     // lit lumps inside the dust. Everything else is the same artwork.
     const fine = quality.detail > 0.6;
-    const galaxyScale = uniform(GALAXY_SCALE);
+    const galaxyScale = uniform(galaxyFit);
 
     const backdrop = Fn(() => {
         const p = backdropPoint(u).toVar();
@@ -553,7 +707,8 @@ export function createNebulaWorld({ u, quality, random }) {
                 streaks: smoothstep(0.3, 0.8, stream),
                 detail: smoothstep(0.3, 0.8, bumpC).mul(0.8),
                 shade: fine ? bumpC.sub(bumpAtC(qC.sub(outC.mul(0.01)))).mul(4).add(0.5).saturate() : float(0.5),
-                hazeTint: H_ALPHA,
+                hazeTint: pal.hAlpha,
+                pal,
                 rim: 2.0,
                 line: 0.2,
                 steam: 0.35,
@@ -604,7 +759,8 @@ export function createNebulaWorld({ u, quality, random }) {
                 streaks: smoothstep(0.35, 0.8, stream),
                 detail: smoothstep(0.22, 0.78, detail),
                 // Ionised gas glows teal near the light and rose farther out.
-                hazeTint: mix(OIII, H_ALPHA, smoothstep(0.5, 1.3, length(qB))),
+                hazeTint: mix(pal.oiii, pal.hAlpha, smoothstep(0.5, 1.3, length(qB))),
+                pal,
             });
         }));
 
@@ -613,15 +769,46 @@ export function createNebulaWorld({ u, quality, random }) {
         const seen = smoothstep(0.03, 0.08, clear).toVar();
         const far = vec3(0).toVar();
         If(seen.greaterThan(0), () => {
-            far.assign(farSky(p, u, { glow, top, octaves }));
+            far.assign(farSky(p, u, {
+                glow, top, octaves, pal,
+            }));
         });
         col.addAssign(far.mul(clear).mul(seen));
 
+        // A distant nova, now and then: a faint star brightens over a few seconds, holds, and fades
+        // slowly from blue-white to hydrogen red while a faint shell of light swells round it.
+        // Small, behind the dust (hidden where a wall stands in front), never a flash.
+        const nova = eventWindow(u.time, float(46), float(16), float(0.8), u.seed.mul(41.3).add(1.9)).toVar();
+        If(nova.x.mul(u.life).greaterThan(0.002), () => {
+            const pick = nova.z;
+            const qN = layer(p, u, 0.3).toVar();
+            const side = step(0.5, hash21(vec2(pick, 2.2))).mul(2).sub(1);
+            // Beside the galaxy, in the window every screen keeps clear of walls.
+            const at = vec2(
+                side.mul(mix(float(0.3), float(0.85), hash21(vec2(pick, 4.4)))).mul(u.ext.x),
+                mix(float(0.28), float(0.66), hash21(vec2(pick, 6.6))),
+            );
+            const d = turn(qN.sub(at), 0.26).toVar();
+            const d2 = dot(d, d).toVar();
+            const pxx = u.px.mul(u.px).toVar();
+            const core = exp(d2.div(pxx.mul(3.2)).negate()).mul(5);
+            const halo = float(1).div(d2.mul(1200).add(1)).mul(0.45);
+            const spikeAt = (along, across) => exp(across.mul(across).div(pxx.mul(1.2)).negate())
+                .mul(float(0.004).div(along.abs().add(0.004))).mul(fadeOut(0.0, 0.07, along.abs()));
+            const spikes = spikeAt(d.x, d.y).add(spikeAt(d.y, d.x)).mul(2.2);
+            // The light echo: a faint ring of lit gas swelling outward in the fading colour.
+            const shellAt = d2.sqrt().sub(nova.y.mul(0.09).add(0.015)).div(nova.y.mul(0.01).add(0.005));
+            const shell = exp(shellAt.mul(shellAt).negate()).mul(smoothstep(0.05, 0.3, nova.y)).mul(0.22);
+            const late = vec3(...mood.nova[1]);
+            const tint = mix(vec3(...mood.nova[0]), late, smoothstep(0.3, 0.9, nova.y));
+            col.addAssign(tint.mul(core.add(halo).add(spikes)).add(late.mul(shell)).mul(nova.x.mul(u.life)).mul(clear));
+        });
+
         // The galaxy's bulge and core, behind the disc (its near-side lanes cross in front).
-        const g = turn(layer(p, u, 1).div(galaxyScale), -ROLL).toVar();
-        const b2 = dot(vec2(g.x, g.y.div(0.62)), vec2(g.x, g.y.div(0.62))).toVar();
+        const g = turn(layer(p, u, 1).div(galaxyScale), -mood.roll).toVar();
+        const b2 = dot(vec2(g.x, g.y.div(mood.bulge)), vec2(g.x, g.y.div(mood.bulge))).toVar();
         const coreGlow = u.breathSoft.mul(0.6).add(0.7);
-        col.addAssign(OLD.mul(exp(b2.mul(-140)).mul(0.36).add(exp(b2.mul(-22)).mul(0.1))
+        col.addAssign(pal.old.mul(exp(b2.mul(-140)).mul(0.36).add(exp(b2.mul(-22)).mul(0.1))
             .add(float(1).div(b2.mul(60).add(1)).mul(0.045)))
             .mul(coreGlow));
         col.addAssign(vec3(1.0, 0.93, 0.82).mul(exp(b2.mul(-2600)).mul(3.2)).mul(coreGlow));
@@ -658,7 +845,8 @@ export function createNebulaWorld({ u, quality, random }) {
                 glow,
                 streaks: float(0.5),
                 detail: float(0.3),
-                hazeTint: H_ALPHA,
+                hazeTint: pal.hAlpha,
+                pal,
                 rim: 0.45,
                 line: 0.5,
                 opacity: 0.98,
@@ -671,7 +859,38 @@ export function createNebulaWorld({ u, quality, random }) {
         // The nearest stars, in front of the galaxy: under the breathing camera they slide fastest.
         const stars = starfield(layer(p, u, 1.8).add(vec2(31.3, 17.9)), u, 0.1).mul(0.8).toVar();
         SPIKED.forEach((star) => stars.addAssign(spikedStar(p, u, star)));
-        return vec4(near.emission.add(stars.mul(glow)), near.absorption);
+        // Now and then a meteor: a thin glint crossing high in the frame.
+        stars.addAssign(shootingStar(p, u, {
+            period: 37, duration: 1.4, chance: 0.5, salt: 3.7, area: [-1.3, 0.25, 1.3, 0.8], travel: 0.6, gain: 0.8,
+        }));
+        if (!mood.rift) return vec4(near.emission.add(stars.mul(glow)), near.absorption);
+        // A lane of cold dust crossing in front of the galaxy: dense filaments that swallow its
+        // light, a translucent fringe, and edges lit from behind by the galaxy and the gas.
+        const qR = turn(layer(p, u, 1.25), mood.rift.angle).toVar();
+        const bend = fbm(vec2(qR.x.mul(0.8), 4.2).add(u.seed.mul(6.0)), 3).sub(0.5).mul(0.6);
+        const off = qR.y.sub(mood.rift.offset).sub(bend).abs().toVar();
+        const width = gnoise(vec2(qR.x.mul(1.6).add(u.seed.mul(3.0)), 8.8)).mul(0.14).add(0.08).toVar();
+        const lane = paintWhere(off.lessThan(width.mul(1.3)), () => {
+            const fibres = fbm(qR.mul(vec2(1.8, 6.5)).add(vec2(13.0, 2.0)).add(vec2(t.mul(0.004), 0)), 4).toVar();
+            const grain = gnoise(qR.mul(vec2(5.0, 17.0)).add(vec2(3.3, 7.1)));
+            const body = fadeOut(width.mul(0.1), width.mul(1.2), off).toVar();
+            const density = smoothstep(0.55, 0.95, fibres.add(body.mul(0.3)).add(grain.mul(0.2)))
+                .mul(smoothstep(0.0, 0.6, body))
+                .toVar();
+            const lit = keyLight(layer(p, u, 1)).mul(glow);
+            // Thin dust lets the light behind it through as a silver edge; dense dust swallows it.
+            const rim = density.mul(float(1).sub(density)).mul(4).mul(fibres.mul(0.8).add(0.3));
+            return {
+                emission: pal.front.mul(rim.mul(lit).mul(0.13)).add(pal.amber.mul(density.mul(lit).mul(0.01))),
+                absorption: density.mul(0.9),
+            };
+        });
+        // Composited behind the nearest dust: the corner banks stand in front of the lane.
+        const clearNear = float(1).sub(near.absorption);
+        return vec4(
+            near.emission.add(lane.emission.mul(clearNear)).add(stars.mul(glow)),
+            float(1).sub(clearNear.mul(float(1).sub(lane.absorption))),
+        );
     })();
 
     const overlayMaterial = new THREE.MeshBasicNodeMaterial({
@@ -687,24 +906,33 @@ export function createNebulaWorld({ u, quality, random }) {
     // oval's long axis is the roll.
     const galaxy = new THREE.Group();
     galaxy.rotation.order = 'ZXY';
-    galaxy.rotation.set(TILT, 0, ROLL);
-    galaxy.add(createDisc(u));
-    galaxy.add(createStars(u, Math.max(1500, Math.round(STARS * quality.motes)), random));
+    galaxy.rotation.set(mood.tilt, 0, mood.roll);
+    galaxy.add(createDisc(u, pal));
+    galaxy.add(createStars(u, Math.max(1500, Math.round(STARS * quality.motes)), random, pal));
 
     return {
         backdrop,
         objects: [galaxy, overlay],
-        bloom: {
-            strength: 0.55, radius: 0.72, threshold: 0.6, breath: 0.5,
+        // Dust drifting through the nebula between us and the galaxy, some of it close to the lens.
+        motes: {
+            motion: 'drift',
+            count: 90,
+            size: 0.014,
+            speed: 0.5,
+            band: [-2.3, 1.9],
+            depth: 1.6,
+            bokeh: 0.28,
+            colorA: mood.motes[0],
+            colorB: mood.motes[1],
+            gain: 0.8,
         },
-        grade: {
-            shadows: [0.92, 0.95, 1.12], highlights: [1.06, 1.0, 0.94], saturation: 1.1, contrast: 1.05, vignette: 0.4,
-        },
+        bloom: { ...mood.bloom },
+        grade: { ...mood.grade },
         camera: { dolly: 0.05, drift: [0.045, 0.022], period: 72 },
-        exposure: 1.0,
+        exposure: mood.exposure,
         update({ ext }) {
             // Wide screens cap the galaxy; tall ones fit its long axis to the screen's width.
-            const scale = Math.min(GALAXY_SCALE, (ext?.x ?? 1.78) * 1.0);
+            const scale = Math.min(galaxyFit, (ext?.x ?? 1.78) * mood.scale);
             galaxy.scale.setScalar(scale);
             galaxyScale.value = scale;
         },
