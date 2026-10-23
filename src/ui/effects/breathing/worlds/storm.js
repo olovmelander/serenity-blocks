@@ -19,15 +19,22 @@
  * twice: each table pixel folds its coordinate about the contact line and the globe is painted
  * once, at the folded point, a little blurred (the analytic glow widths just widen) and dimmed by
  * the table's Fresnel. Behind it all: blue-black air with a faint haze lit by the globe, and the
- * soft bokeh of distant lights. Dust motes drift through the violet light in front.
+ * soft bokeh of distant lights. Dust motes drift through the violet light in front, the nearer
+ * ones catching the globe's glow.
+ *
+ * Moods (MOODS): the violet globe in a dark studio (the poster); the same night with rain running
+ * down a tall window onto a city out of focus; a teal-cyan globe in a smoky room; an amber and
+ * neon-pink globe under neon signs. Rare events, gentle and seeded per visit: a fingertip on the
+ * glass (one filament reaches out, holds a spot for seconds, lets go) and a spark of static that
+ * drifts up off the glass.
  */
 import { Vector4 } from 'three/webgpu';
 import {
-    Fn, If, Loop, cos, exp, float, floor, fract, length, max, min, mix, select, sin, smoothstep, sqrt, step,
+    Fn, If, Loop, cos, exp, float, floor, fract, length, max, min, mix, pow, select, sin, smoothstep, sqrt, step,
     uniformArray, vec2, vec3,
 } from 'three/tsl';
 import {
-    backdropPoint, fadeOut, fbm, fresnel, gnoise, gnoise3, hash21, hash22, layer,
+    backdropPoint, eventWindow, fadeOut, fbm, fresnel, gnoise, gnoise3, hash21, hash22, layer,
 } from '../stage/breath-tsl.js';
 import { MOTE_MOTION } from '../stage/breath-motes.js';
 
@@ -54,17 +61,28 @@ const MIRROR = FOOT_Y - TILT * 0.7;
 /** Where the table fades into the dark of the room. */
 const HORIZON = -0.6;
 
-const HOT = vec3(1.0, 0.82, 1.0);
-const MAGENTA = vec3(0.78, 0.26, 1.0);
-const VIOLET = vec3(0.46, 0.28, 1.0);
-const BLUE = vec3(0.22, 0.36, 1.0);
-const NIGHT = vec3(0.0026, 0.003, 0.0068);
 const DAYLIGHT = vec3(0.78, 0.85, 1.0);
-/** Filament glow runs from hot pink to blue-violet, one hue per filament; its outer haze likewise. */
-const PINK_GLOW = vec3(1.0, 0.2, 0.78);
-const BLUE_GLOW = vec3(0.38, 0.26, 1.0);
-const PINK_HAZE = vec3(0.5, 0.22, 1.0);
-const BLUE_HAZE = vec3(0.2, 0.3, 1.0);
+
+/**
+ * A mood's colours as nodes (linear RGB). HOT is the white-hot core, MAGENTA and VIOLET the gas's
+ * two glows, BLUE the room's own tint, NIGHT its air. Filament glow runs from PINK_GLOW to
+ * BLUE_GLOW, one hue per filament (their outer haze likewise), cooling to TIP at the glass.
+ */
+function paletteOf(mood) {
+    const c = mood.colors;
+    return {
+        HOT: vec3(...c.hot),
+        MAGENTA: vec3(...c.magenta),
+        VIOLET: vec3(...c.violet),
+        BLUE: vec3(...c.blue),
+        NIGHT: vec3(...c.night),
+        PINK_GLOW: vec3(...c.pinkGlow),
+        BLUE_GLOW: vec3(...c.blueGlow),
+        PINK_HAZE: vec3(...c.pinkHaze),
+        BLUE_HAZE: vec3(...c.blueHaze),
+        TIP: vec3(...c.tip),
+    };
+}
 const normal3 = (v) => {
     const l = Math.hypot(...v);
     return v.map((c) => c / l);
@@ -150,8 +168,7 @@ function filamentData(layout) {
  * the top. Most are far (small, crisp-edged discs that barely move); every fourth hangs nearer the
  * lens: larger, softer, dimmer, and sliding further as the camera breathes.
  */
-function bokehLayout(count) {
-    const tints = [[0.26, 0.4, 1.0], [0.5, 0.36, 1.0], [0.36, 0.3, 0.95], [0.3, 0.58, 1.0]];
+function bokehLayout(count, tints, gainScale = 1) {
     return Array.from({ length: count }, (_, i) => {
         const near = i % 4 === 3;
         const glow = rand(i, 25) ** 2;
@@ -162,22 +179,183 @@ function bokehLayout(count) {
             size: near ? 0.15 + 0.1 * rand(i, 23) : 0.04 + 0.06 * rand(i, 23),
             soft: near ? 0.4 : 0.2,
             tint: tints[Math.floor(rand(i, 24) * tints.length)],
-            gain: near ? 0.01 + 0.016 * glow : 0.02 + 0.05 * glow,
+            gain: (near ? 0.01 + 0.016 * glow : 0.02 + 0.05 * glow) * gainScale,
         };
     });
 }
 
+/** The city's lights: sodium most of all, warm white windows, a few tail lights, the odd teal sign. */
+const SODIUM = vec3(1.0, 0.5, 0.16);
+const WARM_WHITE = vec3(1.0, 0.82, 0.6);
+const TAIL_LIGHT = vec3(1.0, 0.1, 0.05);
+const TEAL_SIGN = vec3(0.15, 0.8, 0.7);
+
+/**
+ * One row of a night city's lights seen far out of focus: at most one disc per cell along x, at
+ * `y0` (give or take `spread`) above the sill, each with its own size, colour and brightness. A slow
+ * noise along the row gathers the lights into clusters with dark gaps between them. Every disc fits
+ * inside its cell (size < 0.2 / cells), so no cell edge ever cuts one.
+ */
+const cityRow = /* @__PURE__ */ Fn(([p, up, y0, spread, cells, size, density, salt]) => {
+    const q = p.x.mul(cells).add(salt.mul(17.3)).toVar();
+    const cell = floor(q).toVar();
+    const h = hash22(vec2(cell, salt)).toVar();
+    const k = hash22(vec2(cell, salt.add(5.1))).toVar();
+    // Many small lights, a few large ones.
+    const r = size.mul(h.x.mul(h.x).mul(1.2).add(0.5)).toVar();
+    const cx = fract(q).sub(0.5).sub(h.y.sub(0.5).mul(0.3)).div(cells);
+    const cy = up.sub(y0.add(k.x.sub(0.5).mul(spread)));
+    const d = length(vec2(cx, cy)).toVar();
+    const cluster = smoothstep(0.36, 0.6, gnoise(vec2(cell.mul(0.23), salt.mul(3.7))));
+    const on = step(k.y, density.mul(cluster));
+    // Lens bokeh: a soft disc with a faint brighter rim.
+    const disc = fadeOut(r.mul(0.6), r, d).mul(smoothstep(r.mul(0.4), r.mul(0.9), d).mul(0.3).add(0.72));
+    const kind = hash21(vec2(cell.add(3.3), salt)).toVar();
+    const tint = mix(
+        mix(SODIUM, WARM_WHITE, step(0.6, kind)),
+        mix(TAIL_LIGHT, TEAL_SIGN, step(0.975, kind)),
+        step(0.93, kind),
+    );
+    const gain = hash21(vec2(cell.add(9.9), salt)).toVar();
+    return tint.mul(disc).mul(on).mul(gain.mul(gain).mul(0.7).add(0.3));
+}).setLayout({
+    name: 'storm_cityRow',
+    type: 'vec3',
+    inputs: [
+        { name: 'p', type: 'vec2' }, { name: 'up', type: 'float' }, { name: 'y0', type: 'float' },
+        { name: 'spread', type: 'float' }, { name: 'cells', type: 'float' }, { name: 'size', type: 'float' },
+        { name: 'density', type: 'float' }, { name: 'salt', type: 'float' },
+    ],
+});
+
+/**
+ * The night city through the window, far out of focus: dark sky above, the faint sodium haze of the
+ * streets near the bottom, a soft skyline of dark blocks, and its lights in a few clustered rows,
+ * streets low down, lit floors on the blocks, and a few large, dim discs nearer the lens.
+ * `up` is the height above the sill.
+ */
+function cityAt(q, up) {
+    const haze = vec3(0.04, 0.017, 0.007).mul(exp(up.max(0).mul(-2.6)));
+    const sky = vec3(0.0018, 0.0024, 0.0075).add(haze);
+    // Blocks of different heights; the defocus softens their roofs and corners.
+    const bx = q.x.mul(2.4).add(0.3);
+    const block = floor(bx);
+    const heightOf = (b) => {
+        const hh = hash21(vec2(b, 7.7));
+        return hh.mul(hh).mul(0.8).add(0.3);
+    };
+    const roof = mix(heightOf(block), heightOf(block.add(1)), smoothstep(0.86, 1.0, fract(bx)));
+    const mass = fadeOut(roof.sub(0.03), roof.add(0.03), up).toVar();
+    const building = vec3(0.0016, 0.0015, 0.0019).add(haze.mul(0.35));
+    const row = (y0, spread, cells, size, density, salt) => {
+        const args = [y0, spread, cells, size, density, salt].map((v) => float(v));
+        return cityRow(q, up, ...args);
+    };
+    const streets = row(0.07, 0.05, 5, 0.036, 0.9, 1).mul(0.14).add(row(0.17, 0.05, 8, 0.022, 0.75, 2).mul(0.1));
+    const floors = row(0.36, 0.05, 6, 0.026, 0.6, 3).mul(0.075)
+        .add(row(0.58, 0.04, 6, 0.024, 0.5, 4).mul(0.06))
+        .add(row(0.82, 0.04, 6, 0.022, 0.45, 6).mul(0.05));
+    const nearer = row(0.3, 0.45, 1.4, 0.12, 0.65, 5).mul(0.06).add(row(0.75, 0.5, 1.1, 0.16, 0.5, 7).mul(0.04));
+    return mix(sky, building, mass).add(streets).add(floors.mul(mass)).add(nearer);
+}
+
+/**
+ * Runnels on the pane: in a handful of columns a drop slides slowly down at its own pace, trailing
+ * a wet line; drop and trail catch a glint on their side toward the globe (`toward`, a unit vector).
+ * Returns (wet coverage, glint, dark rim).
+ */
+const runnels = /* @__PURE__ */ Fn(([p, t, toward]) => {
+    const x = p.x.mul(3).toVar();
+    const column = floor(x).toVar();
+    const pick = hash21(vec2(column, 3.7)).toVar();
+    // A gentle meander, not a wave: water finds its way down the glass.
+    const wiggle = sin(p.y.mul(3.5).add(pick.mul(40))).mul(0.035).add(sin(p.y.mul(9).add(pick.mul(13))).mul(0.008));
+    const dx = fract(x).sub(0.5).sub(pick.sub(0.5).mul(0.5)).sub(wiggle)
+        .div(3)
+        .toVar();
+    const pace = pick.mul(0.016).add(0.012);
+    const head = float(1.3).sub(fract(hash21(vec2(column, 9.1)).add(t.mul(pace))).mul(2.6)).toVar();
+    const dy = p.y.sub(head).toVar();
+    const dropR = vec2(dx.div(0.017), dy.div(0.024)).toVar();
+    const reach = dropR.length().toVar();
+    const drop = fadeOut(0.72, 1, reach).toVar();
+    const dropG = dropR.sub(toward.mul(0.42));
+    const along = smoothstep(0, 0.02, dy).mul(fadeOut(0.1, 1.1, dy)).toVar();
+    const trail = fadeOut(0.0035, 0.006, dx.abs()).mul(along);
+    // The trail's edge toward the globe holds a thin line of its light.
+    const edge = fadeOut(0.002, 0.0045, dx.sub(toward.x.mul(0.003)).abs()).mul(along);
+    const running = step(0.4, pick).toVar();
+    const wet = drop.add(trail.mul(0.85)).min(1).mul(running);
+    const shine = exp(dropG.dot(dropG).mul(-9)).mul(drop).add(trail.mul(0.35)).add(edge.mul(0.9))
+        .mul(running);
+    return vec3(wet, shine, smoothstep(0.45, 1, reach).mul(drop).mul(running));
+}).setLayout({
+    name: 'storm_runnels',
+    type: 'vec3',
+    inputs: [{ name: 'p', type: 'vec2' }, { name: 't', type: 'float' }, { name: 'toward', type: 'vec2' }],
+});
+
+/**
+ * A tall window behind the globe on a rainy night: the city out of focus (cityAt), mullions, and rain
+ * on the pane. Each bead is a tiny wide-angle lens: it shows the city small and upside down inside a
+ * dark rim, and holds a glint of the globe's violet on the side that faces it.
+ */
+function paintWindow(rp, u, horizonY, K) {
+    const w = layer(rp, u, 0.2).toVar();
+    const sill = horizonY.add(0.035);
+    const up = w.y.sub(sill).toVar();
+    const pane = smoothstep(-0.004, 0.004, up).toVar();
+    const city = cityAt(w, up).toVar();
+    // The globe stands at the origin: every drop catches its light on the side facing it.
+    const toward = w.negate().div(w.length().max(1e-3)).toVar();
+    const near = float(1).div(w.dot(w).mul(1.2).add(1)).toVar();
+    // Beads of all sizes, anywhere in their cell, in about a quarter of the cells.
+    const rq = w.add(vec2(0, u.seed.mul(3))).mul(7).toVar();
+    const cell = floor(rq).toVar();
+    const r = pow(hash21(cell.add(7.3)), float(1.5)).mul(0.26).add(0.1).toVar();
+    const o = fract(rq).sub(0.5).sub(hash22(cell.add(3.1)).sub(0.5).mul(float(0.9).sub(r.mul(2)))).toVar();
+    const d = length(vec2(o.x, o.y.mul(1.12))).toVar();
+    const bead = fadeOut(r.mul(0.8), r, d).mul(step(0.74, hash21(cell.add(41.7)))).toVar();
+    const rim = smoothstep(r.mul(0.55), r, d).mul(bead);
+    const g = o.sub(toward.mul(r.mul(0.4)));
+    const glint = exp(g.dot(g).div(r.mul(r).mul(0.11)).negate()).mul(bead);
+    const view = city.toVar();
+    If(bead.greaterThan(0.001), () => {
+        // Seen through the bead, the city is inverted and drawn in from far around it.
+        const seen = w.sub(o.div(7).mul(8)).toVar();
+        view.assign(mix(view, cityAt(seen, seen.y.sub(sill)).mul(1.7), bead.mul(0.9)));
+    });
+    const run = runnels(w.add(vec2(0, u.seed.mul(3))), u.time, toward).toVar();
+    view.assign(mix(view, city.mul(1.7), run.x));
+    view.mulAssign(float(1).sub(rim.add(run.z).min(1).mul(0.7)));
+    // Beads and runnels hold the globe's violet: a glint on the near side, a faint glow through them.
+    const lit = glint.add(run.y).add(bead.add(run.x).min(1).mul(0.06));
+    view.addAssign(mix(K.MAGENTA, K.VIOLET, 0.4).mul(lit.mul(near.mul(0.7).add(0.15)).mul(0.6)));
+    // Mullions and a transom high up (a tall screen sees it), lit along their edges by the globe.
+    const mx = min(w.x.abs().sub(1.12).abs(), up.sub(1.25).abs()).toVar();
+    const bar = fadeOut(0.03, 0.036, mx);
+    const lip = mx.sub(0.033).div(0.004);
+    view.assign(mix(view, vec3(0.0014, 0.0014, 0.002).add(K.VIOLET.mul(exp(lip.mul(lip).negate()).mul(0.012))), bar));
+    // Below the pane: the sill, its top edge catching the globe's light.
+    const edge = up.div(0.005);
+    return mix(vec3(0.0012, 0.0012, 0.0018), view, pane).add(K.VIOLET.mul(exp(edge.mul(edge).negate()).mul(0.02)));
+}
+
 /** The dark room: blue-black air, a faint haze drifting through it, distant lights out of focus. */
-function paintRoom(rp, u, { bokeh, octaves, horizonY }) {
-    const air = layer(rp, u, 0.3).toVar();
-    const drift = u.time.mul(0.012);
+function paintRoom(rp, u, {
+    bokeh, octaves, horizonY, K, M,
+}) {
+    const { NIGHT, BLUE } = K;
+    const air = layer(rp, u, 0.3).add(vec2(u.seed.mul(11.3), u.seed.mul(4.7))).toVar();
+    const drift = u.time.mul(0.012 * M.smoke.speed);
     const haze = fbm(air.mul(vec2(0.7, 1.25)).add(vec2(drift, drift.mul(0.4).add(3.1))), octaves).toVar();
     const col = NIGHT.mul(haze.mul(0.9).add(0.55)).toVar();
     col.addAssign(BLUE.mul(haze.sub(0.4).max(0).mul(0.012)));
     // Smoke hanging in still air settles into strata; the broad haze bends them (a cheap warp).
     const strata = fbm(air.mul(vec2(1.3, 3.2)).add(vec2(drift.mul(1.6), haze.mul(1.4))), octaves).toVar();
     const smoke = smoothstep(0.46, 0.78, strata).toVar();
-    col.addAssign(BLUE.mul(smoke.mul(0.003)));
+    col.addAssign(BLUE.mul(smoke.mul(0.003 * M.smoke.gain)));
+    if (M.window) col.addAssign(paintWindow(rp, u, horizonY, K));
     const far = layer(rp, u, 0.12).toVar();
     const near = layer(rp, u, 0.45).toVar();
     const top = u.ext.y.sub(u.focus);
@@ -192,6 +370,19 @@ function paintRoom(rp, u, { bokeh, octaves, horizonY }) {
         const rim = smoothstep(b.size * 0.5, b.size * 0.97, dist).mul(0.4).add(0.7);
         col.addAssign(vec3(...b.tint).mul(disc.mul(rim).mul(b.gain)));
     });
+    if (M.neon) {
+        // Neon signs on the far wall, far out of focus: a pink ring and an amber bar, each a soft
+        // tube of light with a wide glow round it.
+        const ringO = far.sub(vec2(u.ext.x.mul(-0.74), top.mul(0.55).add(0.1)));
+        const ringD = length(ringO).sub(0.15).abs();
+        const barX = far.x.sub(u.ext.x.mul(0.7)).abs().sub(u.ext.x.mul(0.13)).max(0);
+        const barD = length(vec2(barX, far.y.sub(top.mul(0.62).add(0.08))));
+        const tube = (dist, tint) => {
+            const d2 = dist.mul(dist);
+            return vec3(...tint).mul(exp(d2.mul(-520)).mul(0.06).add(exp(d2.mul(-40)).mul(0.012)));
+        };
+        col.addAssign(tube(ringD, [1.0, 0.25, 0.55]).add(tube(barD, [1.0, 0.55, 0.15])));
+    }
     return { col, smoke };
 }
 
@@ -200,7 +391,8 @@ function paintRoom(rp, u, { bokeh, octaves, horizonY }) {
  * it meets the room without a seam), lit round the base by the globe in table coordinates, so the
  * pool of light lies flat and fades into the distance.
  */
-function paintTable(g, charge) {
+function paintTable(g, charge, K, M) {
+    const { VIOLET, MAGENTA } = K;
     const below = float(HORIZON).sub(g.y).max(1e-3).toVar();
     // Perspective: the table's depth behind each pixel, 1 under the base; and the point it shows.
     const depth = float(HORIZON - FOOT_Y).div(below).min(30).toVar();
@@ -208,7 +400,7 @@ function paintTable(g, charge) {
     const tz = depth.sub(1).toVar();
     const reflect = mix(float(0.38), float(1), exp(below.mul(-3))).toVar();
     const grain = gnoise(vec2(tx.mul(1.3), depth.mul(5.5)));
-    const diffuse = vec3(0.0024, 0.0022, 0.0052).mul(grain.mul(0.5).add(0.75)).toVar();
+    const diffuse = vec3(...M.lacquer).mul(grain.mul(0.5).add(0.75)).toVar();
     const pool = exp(tx.mul(tx).mul(-0.45).sub(tz.mul(tz).mul(10)));
     // The lacquer's soft gloss lobe: a tighter sheen of the globe's light right round the foot.
     const sheen = exp(tx.mul(tx).mul(-1.4).sub(tz.mul(tz).mul(40)));
@@ -221,7 +413,10 @@ function paintTable(g, charge) {
  * The base: a flared black cone under a collar ring. Its gloss mirrors the globe's light in the
  * upper flare; a studio streak runs down its front and a blue rim lines its edges.
  */
-function paintBase(gb, pxg, glow) {
+function paintBase(gb, pxg, glow, K) {
+    const {
+        MAGENTA, VIOLET, HOT, BLUE,
+    } = K;
     const { x, y } = gb;
     const edge = pxg.mul(1.5).toVar();
     const f = float(COLLAR).sub(y).div(COLLAR - FOOT_Y).clamp(0, 1)
@@ -283,7 +478,8 @@ function onPanel(ray, light) {
  * window up and to the left with glazing bars, two strip lights behind the globe that draw thin
  * crescents along its rim, and the table below glowing faintly violet.
  */
-function studio(n, nz, charge) {
+function studio(n, nz, charge, K) {
+    const { MAGENTA, VIOLET } = K;
     const ray = vec3(n.x.mul(nz).mul(2), n.y.mul(nz).mul(2), nz.mul(nz).mul(2).sub(1)).toVar();
     const win = onPanel(ray, WINDOW);
     const wa = win.a.toVar();
@@ -307,8 +503,11 @@ function studio(n, nz, charge) {
 /** The electrode: a frosted ball glowing white-hot at its heart, and the lit gas its filaments root in. */
 function paintElectrode(ctx) {
     const {
-        u, gq, rq, pxg, light, glow, blur,
+        u, gq, rq, pxg, light, glow, blur, K,
     } = ctx;
+    const {
+        MAGENTA, VIOLET, HOT,
+    } = K;
     const er = rq.div(ELECTRODE).toVar();
     const enz = sqrt(float(1).sub(er.mul(er)).max(0));
     const soft = pxg.mul(1.5 / ELECTRODE).mul(blur.mul(4).add(1));
@@ -339,8 +538,11 @@ function paintElectrode(ctx) {
  */
 function paintFilament(rows, forks, ctx) {
     const {
-        u, gq, rq, light, reach, flow, coreWidth, minWidth, glowK, tailK, contact, charge, sharp,
+        u, gq, rq, light, reach, flow, coreWidth, minWidth, glowK, tailK, contact, charge, sharp, K,
     } = ctx;
+    const {
+        HOT, PINK_GLOW, BLUE_GLOW, PINK_HAZE, BLUE_HAZE, TIP,
+    } = K;
     const shape = rows[0].toVar();
     const motion = rows[1].toVar();
     const build = rows[2].toVar();
@@ -382,7 +584,7 @@ function paintFilament(rows, forks, ctx) {
     // four seconds from bright to dim at any point, so the plasma lives without ever flickering.
     const swell = sin(k.mul(8).sub(flow.mul(14)).add(phase)).mul(0.15).add(1).toVar();
     // Pink-white at the root, cooling toward blue-violet where it reaches the glass.
-    const glowTint = mix(mix(PINK_GLOW, BLUE_GLOW, branch.w), vec3(0.32, 0.34, 1.0), kc.mul(kc).mul(0.55)).toVar();
+    const glowTint = mix(mix(PINK_GLOW, BLUE_GLOW, branch.w), TIP, kc.mul(kc).mul(0.55)).toVar();
     const hazeTint = mix(PINK_HAZE, BLUE_HAZE, branch.w).toVar();
     // Behind the electrode the lens's narrow focus softens the threads (focus > 1 there).
     const coreScale = coreWidth.mul(build.x).mul(focus).mul(float(1.3).sub(kc.mul(0.5))).toVar();
@@ -455,8 +657,9 @@ function paintFilament(rows, forks, ctx) {
  */
 function paintFern(ctx) {
     const {
-        u, contact, light, charge,
+        u, contact, light, charge, K,
     } = ctx;
+    const { MAGENTA, HOT } = K;
     const o = contact.at;
     const rho = length(o).toVar();
     const dir = o.div(rho.max(1e-4)).toVar();
@@ -483,9 +686,10 @@ function paintFern(ctx) {
  */
 function paintGlass(ctx) {
     const {
-        gq, rq, nz, F, pxg, blur, light, charge,
+        gq, rq, nz, F, pxg, blur, light, charge, K,
     } = ctx;
-    const env = studio(gq, nz, charge).toVar();
+    const { BLUE, VIOLET } = K;
+    const env = studio(gq, nz, charge, K).toVar();
     const smudge = smoothstep(0.5, 0.78, fbm(gq.mul(2.8).add(vec2(7.1, 2.3)), 2)).toVar();
     const shine = env.mul(F).toVar();
     const surface = shine.mul(smudge.mul(0.9).add(0.7)).toVar();
@@ -508,13 +712,212 @@ function paintGlass(ctx) {
     return surface;
 }
 
-export function createStormWorld({ u, quality }) {
+/**
+ * A fingertip on the glass: now and then one filament reaches slowly out to a single spot on the
+ * front of the globe, as if someone had laid a finger there. It thickens and holds on for a few
+ * seconds, the spot glowing in a soft pad with a fern of discharge round it, while the other
+ * filaments give up a little of their light; then it lets go and withdraws. Every change ramps over
+ * a second or more.
+ */
+function paintTouch(ctx, ev, on) {
+    const {
+        gq, light, coreWidth, minWidth, glowK, tailK, contact, flow, K,
+    } = ctx;
+    const {
+        HOT, PINK_GLOW, BLUE_GLOW, PINK_HAZE,
+    } = K;
+    const id = ev.z;
+    // Anywhere on the glass's front face but low down, where the base would hide it.
+    const bearing = id.mul(Math.PI * 1.5).sub(Math.PI * 0.25).toVar();
+    const dir = vec2(cos(bearing), sin(bearing)).toVar();
+    const rho = mix(float(0.45), float(0.76), hash21(vec2(id, 3.3))).toVar();
+    const across = gq.y.mul(dir.x).sub(gq.x.mul(dir.y)).toVar();
+    const k = gq.dot(dir).div(rho).toVar();
+    const kc = k.clamp(0, 1);
+    // It reaches out slowly, holds on, then lets go and withdraws.
+    const tip = smoothstep(0.0, 0.3, ev.y).mul(fadeOut(0.74, 1.0, ev.y)).mul(1 - ELECTRODE).add(ELECTRODE)
+        .toVar();
+    // Pinned at the electrode and at the fingertip, free to wander between.
+    const wander = gnoise(vec2(kc.mul(2.6).add(id.mul(13)), flow.mul(1.4).add(id.mul(5)))).sub(0.5).mul(0.16)
+        .mul(sin(kc.mul(Math.PI)));
+    const d = across.sub(wander);
+    const d2 = d.mul(d).toVar();
+    const fine = coreWidth.mul(1.6).toVar();
+    const w = max(fine, minWidth);
+    const span = smoothstep(ELECTRODE - 0.02, ELECTRODE + 0.03, k).mul(fadeOut(tip.sub(0.08), tip.add(0.005), k))
+        .toVar();
+    const core = exp(d2.div(w.mul(w)).negate()).mul(span).mul(fine.div(w));
+    const glowT = exp(d2.mul(glowK).mul(0.5).negate()).mul(span);
+    const tail = float(1).div(d2.mul(tailK).mul(0.6).add(1)).mul(span);
+    const tint = mix(PINK_GLOW, BLUE_GLOW, 0.35).toVar();
+    light.addAssign(HOT.mul(core.mul(2.4)).add(tint.mul(glowT.mul(0.7))).add(PINK_HAZE.mul(tail.mul(0.025))).mul(on));
+    // The fingertip: a pad of light where the thread holds the glass, foreshortened as the glass turns.
+    const stick = smoothstep(0.24, 0.38, ev.y).mul(fadeOut(0.68, 0.8, ev.y)).mul(on).toVar();
+    const nzT = sqrt(float(1).sub(rho.mul(rho))).max(0.3);
+    const ou = gq.dot(dir).sub(rho).div(nzT).toVar();
+    const rr2 = ou.mul(ou).add(across.mul(across)).toVar();
+    const pad = exp(rr2.div(0.0055).negate());
+    const ring = rr2.sqrt().sub(0.07).div(0.013);
+    light.addAssign(HOT.mul(exp(rr2.mul(-1600)).mul(2.2))
+        .add(tint.mul(pad.mul(0.5).add(exp(ring.mul(ring).negate()).mul(0.28))))
+        .mul(stick));
+    // The fern spreads over the glass round the fingertip.
+    const closer = rr2.lessThan(contact.d).and(stick.greaterThan(0.01));
+    contact.at.assign(select(closer, vec2(ou, across), contact.at));
+    contact.gain.assign(select(closer, stick, contact.gain));
+    contact.seed.assign(select(closer, id.mul(50), contact.seed));
+    contact.d.assign(select(closer, rr2, contact.d));
+}
+
+/** A spark of static: a speck of light that leaves the top of the glass and drifts up, fading. */
+function paintSpark(g, ev, pxg, K) {
+    const id = ev.z;
+    const t = ev.y;
+    // It leaves the glass's upper flank, left or right, and climbs a little way.
+    const side = hash21(vec2(id, 1.9)).sub(0.5).sign();
+    const a = float(Math.PI / 2).add(side.mul(mix(float(0.45), float(1.1), hash21(vec2(id, 2.6)))));
+    const start = vec2(cos(a), sin(a)).mul(1.02);
+    const pos = start.add(vec2(
+        sin(t.mul(6).add(id.mul(30))).mul(0.025).add(cos(a).mul(0.12).mul(t)),
+        t.mul(0.3),
+    ));
+    const o = g.sub(pos);
+    const d2 = o.dot(o).toVar();
+    const w = pxg.mul(1.4).add(0.004);
+    const glint = exp(d2.div(w.mul(w)).negate()).mul(2).add(exp(d2.mul(-900)).mul(0.14));
+    const fade = smoothstep(0, 0.08, t).mul(fadeOut(0.35, 1, t));
+    return mix(K.HOT, K.PINK_GLOW, 0.3).mul(glint).mul(fade);
+}
+
+/**
+ * The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's.
+ * Colours are linear RGB (see paletteOf). `bokeh` the room's distant lights; `window` swaps them
+ * for a rainy window onto a city; `neon` hangs two signs on the far wall; `smoke` how much the
+ * hanging smoke shows and how fast it moves; `lacquer` the table's own colour; `dust` the motes';
+ * `touch`/`spark` the rare events (period s, chance per period).
+ */
+const VIOLET_COLORS = {
+    hot: [1.0, 0.82, 1.0],
+    magenta: [0.78, 0.26, 1.0],
+    violet: [0.46, 0.28, 1.0],
+    blue: [0.22, 0.36, 1.0],
+    night: [0.0026, 0.003, 0.0068],
+    pinkGlow: [1.0, 0.2, 0.78],
+    blueGlow: [0.38, 0.26, 1.0],
+    pinkHaze: [0.5, 0.22, 1.0],
+    blueHaze: [0.2, 0.3, 1.0],
+    tip: [0.32, 0.34, 1.0],
+};
+const VIOLET_GRADE = {
+    shadows: [0.94, 0.94, 1.06], highlights: [1.04, 0.96, 1.04], saturation: 1.05, contrast: 1.06, vignette: 0.5,
+};
+export const MOODS = Object.freeze([
+    {
+        id: 'violet-studio',
+        name: 'Violet Studio',
+        colors: VIOLET_COLORS,
+        bokeh: { tints: [[0.26, 0.4, 1.0], [0.5, 0.36, 1.0], [0.36, 0.3, 0.95], [0.3, 0.58, 1.0]], gain: 1 },
+        window: false,
+        smoke: { gain: 1, speed: 1 },
+        lacquer: [0.0024, 0.0022, 0.0052],
+        dust: [[0.72, 0.56, 1.0], [0.46, 0.56, 1.0]],
+        shaftTint: [0.85, 0.7, 1.0],
+        grade: VIOLET_GRADE,
+        touch: { period: 30, chance: 0.6 },
+        spark: { period: 15, chance: 0.55 },
+    },
+    {
+        id: 'rainy-window',
+        name: 'Rain on the Window',
+        colors: {
+            ...VIOLET_COLORS,
+            magenta: [0.62, 0.3, 1.0],
+            pinkGlow: [0.85, 0.3, 1.0],
+            blueGlow: [0.3, 0.38, 1.0],
+            tip: [0.3, 0.45, 1.0],
+        },
+        bokeh: { tints: [], gain: 0 },
+        window: true,
+        smoke: { gain: 0.6, speed: 1 },
+        lacquer: [0.002, 0.002, 0.0035],
+        dust: [[0.7, 0.62, 1.0], [0.5, 0.6, 1.0]],
+        shaftTint: [0.8, 0.75, 1.0],
+        grade: {
+            shadows: [0.96, 0.95, 1.05], highlights: [1.04, 0.98, 1.0], saturation: 1.05, contrast: 1.06, vignette: 0.5,
+        },
+        touch: { period: 30, chance: 0.6 },
+        spark: { period: 18, chance: 0.5 },
+    },
+    {
+        id: 'teal-smoke',
+        name: 'Teal Smoke',
+        colors: {
+            hot: [0.82, 1.0, 0.98],
+            magenta: [0.2, 0.85, 0.95],
+            violet: [0.12, 0.6, 0.9],
+            blue: [0.1, 0.5, 0.8],
+            night: [0.0018, 0.0036, 0.0046],
+            pinkGlow: [0.25, 1.0, 0.9],
+            blueGlow: [0.15, 0.55, 1.0],
+            pinkHaze: [0.15, 0.75, 0.9],
+            blueHaze: [0.12, 0.4, 1.0],
+            tip: [0.2, 0.55, 1.0],
+        },
+        bokeh: { tints: [[0.2, 0.75, 0.85], [0.25, 0.5, 1.0], [1.0, 0.6, 0.3], [0.3, 0.85, 0.7]], gain: 0.9 },
+        window: false,
+        smoke: { gain: 2.4, speed: 1.6 },
+        lacquer: [0.0018, 0.0032, 0.0036],
+        dust: [[0.5, 0.95, 1.0], [0.4, 0.7, 1.0]],
+        shaftTint: [0.7, 1.0, 1.0],
+        grade: {
+            shadows: [0.94, 1.0, 1.04], highlights: [1.0, 1.02, 1.0], saturation: 1.05, contrast: 1.06, vignette: 0.5,
+        },
+        touch: { period: 30, chance: 0.6 },
+        spark: { period: 15, chance: 0.55 },
+    },
+    {
+        id: 'amber-neon',
+        name: 'Amber Neon',
+        colors: {
+            hot: [1.0, 0.9, 0.8],
+            magenta: [1.0, 0.32, 0.55],
+            violet: [1.0, 0.42, 0.22],
+            blue: [0.7, 0.25, 0.35],
+            night: [0.0052, 0.003, 0.0034],
+            pinkGlow: [1.0, 0.22, 0.62],
+            blueGlow: [1.0, 0.52, 0.14],
+            pinkHaze: [1.0, 0.3, 0.45],
+            blueHaze: [1.0, 0.45, 0.15],
+            tip: [1.0, 0.3, 0.3],
+        },
+        bokeh: { tints: [[1.0, 0.3, 0.6], [1.0, 0.6, 0.2], [0.2, 0.8, 0.8], [1.0, 0.85, 0.6]], gain: 1.4 },
+        window: false,
+        neon: true,
+        smoke: { gain: 1.5, speed: 1 },
+        lacquer: [0.0045, 0.0026, 0.002],
+        dust: [[1.0, 0.7, 0.45], [1.0, 0.45, 0.6]],
+        shaftTint: [1.0, 0.75, 0.6],
+        grade: {
+            shadows: [1.02, 0.95, 0.96],
+            highlights: [1.04, 0.98, 0.94],
+            saturation: 1.05,
+            contrast: 1.06,
+            vignette: 0.5,
+        },
+        touch: { period: 30, chance: 0.6 },
+        spark: { period: 15, chance: 0.55 },
+    },
+]);
+
+export function createStormWorld({ u, quality, mood = MOODS[0] }) {
     const { octaves, detail } = quality;
+    const M = mood;
+    const K = paletteOf(M);
     // Phones keep eight filaments: fewer and the globe reads as a sparse star.
     const count = Math.max(8, Math.round(14 * detail));
     const filaments = filamentData(filamentLayout(count));
     const forks = detail >= 0.6 ? 3 : 2;
-    const bokeh = bokehLayout(Math.round(6 + 8 * detail));
+    const bokeh = M.window ? [] : bokehLayout(Math.round(6 + 8 * detail), M.bokeh.tints, M.bokeh.gain);
     const hazeOctaves = Math.max(2, octaves - 2);
 
     const backdrop = Fn(() => {
@@ -554,7 +957,9 @@ export function createStormWorld({ u, quality }) {
         const mirrored = vec2(g.x, float(2 * HORIZON).sub(g.y)).mul(R).sub(u.pan).mul(u.zoom)
             .toVar();
         const roomP = mix(behind, mirrored, step(g.y, HORIZON)).toVar();
-        const room = paintRoom(roomP, u, { bokeh, octaves: hazeOctaves, horizonY: R.mul(HORIZON) });
+        const room = paintRoom(roomP, u, {
+            bokeh, octaves: hazeOctaves, horizonY: R.mul(HORIZON), K, M,
+        });
 
         // The globe's interior and its glass, only where the (folded) pixel is inside the glass.
         const light = vec3(0).toVar();
@@ -575,15 +980,25 @@ export function createStormWorld({ u, quality }) {
             coreWidth, minWidth, glowK, tailK,
         };
         const ctx = {
-            u, gq, rq, nz, F, pxg, blur, light, charge, glow, reach, flow, contact, sharp, ...widths,
+            u, gq, rq, nz, F, pxg, blur, light, charge, glow, reach, flow, contact, sharp, K, ...widths,
         };
+        // A fingertip on the glass, now and then (paintTouch); the visit's seed sets the timetable.
+        const touchSalt = u.seed.mul(37.1).add(2.3);
+        const touchEv = eventWindow(u.time, float(M.touch.period), float(11), float(M.touch.chance), touchSalt)
+            .toVar();
+        const touchOn = touchEv.x.mul(u.life).toVar();
         If(rq.lessThan(1.02), () => {
             paintElectrode(ctx);
             // Thin luminous gas between the filaments, stirring slowly.
             const wisps = gnoise3(vec3(gq.mul(2.6), u.time.mul(0.05))).toVar();
-            light.addAssign(VIOLET.mul(wisps.mul(wisps).mul(0.035).mul(float(1).sub(rq.mul(rq)).max(0)).mul(charge)));
+            light.addAssign(K.VIOLET.mul(wisps.mul(wisps).mul(0.035).mul(float(1).sub(rq.mul(rq)).max(0)).mul(charge)));
+            // While a finger holds the glass it draws the current: the others give up a little light.
+            const shared = { ...ctx, charge: charge.mul(float(1).sub(touchOn.mul(0.3))).toVar() };
             Loop(count, ({ i }) => {
-                paintFilament(filaments.map((row) => row.element(i)), forks, ctx);
+                paintFilament(filaments.map((row) => row.element(i)), forks, shared);
+            });
+            If(touchOn.greaterThan(0.001), () => {
+                paintTouch(ctx, touchEv, touchOn);
             });
             paintFern(ctx);
             surface.assign(paintGlass(ctx));
@@ -595,8 +1010,8 @@ export function createStormWorld({ u, quality }) {
         const glass = fadeOut(float(1).sub(edge.mul(2)), float(1), rq)
             .mul(smoothstep(holeFront.sub(edge), holeFront.add(edge), gq.y)).toVar();
         const transmit = float(1).sub(F).mul(0.88).toVar();
-        const base = paintBase(gb, pxg, glow);
-        const table = paintTable(g, charge);
+        const base = paintBase(gb, pxg, glow, K);
+        const table = paintTable(g, charge, K, M);
         const globeLight = light.add(surface).toVar();
         const airGlow = (radius) => {
             const away = radius.sub(0.92).max(0);
@@ -608,7 +1023,7 @@ export function createStormWorld({ u, quality }) {
         const image = room.col.mul(float(1).sub(glassM.mul(float(1).sub(transmit))))
             .add(globeLight.mul(glassM).div(blur.mul(1.3).add(1))).toVar();
         image.assign(mix(image, base.col, base.body.mul(belowB)));
-        image.addAssign(VIOLET.mul(airGlow(rq).mul(0.04).mul(charge).mul(belowG)));
+        image.addAssign(K.VIOLET.mul(airGlow(rq).mul(0.04).mul(charge).mul(belowG)));
         const tableColor = table.diffuse.add(image.mul(table.reflect).mul(exp(sunk.mul(-0.5))));
 
         // The scene in front: room or table, then the collar ring, the glass, the base.
@@ -619,28 +1034,51 @@ export function createStormWorld({ u, quality }) {
         col.assign(col.mul(float(1).sub(glassD.mul(float(1).sub(transmit)))).add(globeLight.mul(glassD)));
         col.assign(mix(col, base.col, base.body.mul(float(1).sub(belowB))));
         // The globe's light in the air between us and it, brightest where the haze is thick.
-        const wisp = room.smoke.mul(2.6).add(0.3);
-        col.addAssign(VIOLET.mul(airGlow(r).mul(0.03).mul(charge).mul(wisp)
+        const wisp = room.smoke.mul(2.6 * M.smoke.gain).add(0.3);
+        col.addAssign(K.VIOLET.mul(airGlow(r).mul(0.03).mul(charge).mul(wisp)
             .mul(float(1).sub(glassD.mul(0.6)))));
+        // Now and then a spark of static leaves the top of the glass and drifts up.
+        const sparkSalt = u.seed.mul(23.9).add(7.7);
+        const sparkEv = eventWindow(u.time, float(M.spark.period), float(5), float(M.spark.chance), sparkSalt)
+            .toVar();
+        If(sparkEv.x.mul(u.life).greaterThan(0.0005), () => {
+            col.addAssign(paintSpark(g, sparkEv, pxg, K).mul(sparkEv.x.mul(40).min(1)).mul(u.life));
+        });
         return col;
     })();
 
     return {
         backdrop,
-        motes: {
-            // Dust hanging in the violet light.
-            motion: MOTE_MOTION.wander,
-            count: 140,
-            size: 0.009,
-            speed: 0.3,
-            spread: 0.92,
-            band: [-1.1, 1.2],
-            depth: 2.4,
-            bokeh: 0.2,
-            colorA: [0.72, 0.56, 1.0],
-            colorB: [0.46, 0.56, 1.0],
-            gain: 0.55,
-        },
+        motes: [
+            {
+                // Dust hanging in the light.
+                motion: MOTE_MOTION.wander,
+                count: 140,
+                size: 0.009,
+                speed: 0.3,
+                spread: 0.92,
+                band: [-1.1, 1.2],
+                depth: 2.4,
+                bokeh: 0.2,
+                colorA: M.dust[0],
+                colorB: M.dust[1],
+                gain: 0.55,
+            },
+            {
+                // Closer to the globe the dust catches its glow: finer, brighter specks.
+                motion: MOTE_MOTION.wander,
+                count: 60,
+                size: 0.0055,
+                speed: 0.22,
+                spread: 0.5,
+                band: [-0.55, 0.8],
+                depth: 1.4,
+                bokeh: 0.05,
+                colorA: M.dust[0],
+                colorB: [1.0, 0.95, 1.0],
+                gain: 1.0,
+            },
+        ],
         bloom: {
             strength: 0.3, radius: 0.5, threshold: 0.9, breath: 0.6,
         },
@@ -651,16 +1089,10 @@ export function createStormWorld({ u, quality }) {
             threshold: 1.6,
             decay: 0.95,
             length: 0.4,
-            tint: [0.85, 0.7, 1.0],
+            tint: M.shaftTint,
             breath: 0.75,
         },
-        grade: {
-            shadows: [0.94, 0.94, 1.06],
-            highlights: [1.04, 0.96, 1.04],
-            saturation: 1.05,
-            contrast: 1.06,
-            vignette: 0.5,
-        },
+        grade: M.grade,
         camera: { dolly: 0.04, drift: [0.025, 0.012], period: 60 },
         exposure: 1.0,
     };

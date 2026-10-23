@@ -119,10 +119,10 @@ const facingNode = () => clamp(abs(dot(normalize(normalView), positionViewDirect
  * The reflection: dimmer, cooler, and fading with depth below the floor line (`floorY`, a
  * uniform node) — and nothing above it, should a solid ever dip that far.
  */
-function mirrorOf(colour, floorY) {
+function mirrorOf(colour, floorY, tint = MIRROR_TINT) {
     const under = floorY.sub(positionWorld.y).max(0);
     const fade = exp(under.mul(-1.7)).mul(fadeOut(floorY.sub(0.012), floorY, positionWorld.y));
-    return mix(colour, colour.mul(MIRROR_TINT), 0.45).mul(fade).mul(0.42);
+    return mix(colour, colour.mul(tint), 0.45).mul(fade).mul(0.42);
 }
 
 function additive(side = THREE.FrontSide) {
@@ -155,12 +155,12 @@ function coreMaterial(u, look, hold, seed, floorY) {
         const facing = facingNode().toVar();
         const f2 = facing.mul(facing);
         const axis = f2.mul(f2).toVar();
-        const tint = mix(vec3(...look.tint), WHITE_GOLD, axis);
+        const tint = mix(vec3(...look.tint), look.axis ? vec3(...look.axis) : WHITE_GOLD, axis);
         const light = axis.mul(1.25).add(0.16).mul(nearness()).mul(breathLight(u))
             .mul(look.gain)
             .mul(shimmer(u, hold, seed).add(1));
         const colour = tint.mul(light);
-        return floorY === null ? colour : mirrorOf(colour, floorY);
+        return floorY === null ? colour : mirrorOf(colour, floorY, look.mirror);
     })();
     return material;
 }
@@ -174,7 +174,7 @@ function glowMaterial(u, look, hold, seed, floorY) {
         const light = soft.mul(0.18).mul(nearness()).mul(breathLight(u)).mul(look.gain)
             .mul(shimmer(u, hold, seed).mul(0.6).add(1));
         const colour = vec3(...look.halo).mul(light);
-        return floorY === null ? colour : mirrorOf(colour, floorY);
+        return floorY === null ? colour : mirrorOf(colour, floorY, look.mirror);
     })();
     return material;
 }
@@ -194,10 +194,10 @@ function faceMaterial(u, look, floorY) {
             .add(u.time.mul(0.025));
         const film = cos(vec3(0.0, 0.33, 0.67).add(thickness).mul(TAU)).mul(0.5).add(0.5).toVar();
         // Lean the rainbow toward the temple's gold, violet and rose.
-        const tinted = mix(film, film.mul(vec3(1.0, 0.72, 0.95)), 0.35);
+        const tinted = mix(film, film.mul(look.filmTint ? vec3(...look.filmTint) : vec3(1.0, 0.72, 0.95)), 0.35);
         const light = sheen.mul(0.22).add(0.018).mul(breathLight(u)).mul(look.faces);
         const colour = max(tinted, 0).mul(light);
-        return floorY === null ? colour : mirrorOf(colour, floorY);
+        return floorY === null ? colour : mirrorOf(colour, floorY, look.mirror);
     })();
     return material;
 }
@@ -206,9 +206,9 @@ function faceMaterial(u, look, floorY) {
  * One full hierarchy of the three solids. `floorY` null: the solids themselves; a uniform node:
  * their reflection's materials (the caller mirrors the group).
  */
-function buildHierarchy(u, hold, geometry, floorY) {
+function buildHierarchy(u, hold, geometry, floorY, looks) {
     const root = new THREE.Group();
-    const parts = SOLIDS.map((look, index) => {
+    const parts = looks.map((look, index) => {
         const pivot = new THREE.Group();
         const seed = index * 2.1;
         const core = coreMaterial(u, look, hold, seed, floorY);
@@ -239,8 +239,18 @@ function buildHierarchy(u, hold, geometry, floorY) {
  * @param {object} options
  * @param {object} options.hold uniform 0..1: how deep into the full hold the breath is
  * @param {object} options.floorY uniform: the floor line in hero units (the mirror plane)
+ * @param {object} [options.colors] a mood's colours: tints[3], halos[3] (outer to inner), axis
+ *   (an edge's white-hot core), mirror (the reflection's tint), film (the glass faces' lean)
  */
-export function createSacredSolids(u, { hold, floorY }) {
+export function createSacredSolids(u, { hold, floorY, colors = null }) {
+    const looks = SOLIDS.map((look, index) => (colors ? {
+        ...look,
+        tint: colors.tints[index],
+        halo: colors.halos[index],
+        axis: colors.axis,
+        mirror: colors.mirror ? vec3(...colors.mirror) : MIRROR_TINT,
+        filmTint: colors.film,
+    } : look));
     const geometry = SOLIDS.map((look) => {
         const source = look.make(look.radius);
         return {
@@ -249,8 +259,8 @@ export function createSacredSolids(u, { hold, floorY }) {
             faces: source,
         };
     });
-    const solids = buildHierarchy(u, hold, geometry, null);
-    const mirror = buildHierarchy(u, hold, geometry, floorY);
+    const solids = buildHierarchy(u, hold, geometry, null, looks);
+    const mirror = buildHierarchy(u, hold, geometry, floorY, looks);
 
     /**
      * Closed-form pose (no integration), so a seeked frame is the same frame every time.

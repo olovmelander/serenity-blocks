@@ -4,6 +4,8 @@
  *
  * URL parameters (all optional):
  *   world=<technique id>   which world (default deep-relaxation)
+ *   mood=<index or id>     which of its moods (default 0, the poster's)
+ *   seed=0..1              the visit's own variation (default 0.5)
  *   breath=0..1            pin the lung fill instead of following the pattern
  *   pattern=5,2,7,2        seconds for inhale, hold, exhale, hold
  *   session=retention      session phase (stillness) to preview
@@ -14,11 +16,12 @@
 import * as THREE from 'three/webgpu';
 import { BreathWorldHost } from '../../ui/effects/breathing/stage/breath-world-host.js';
 import { resolveBreath } from '../../ui/effects/breathing/breath-clock.js';
+import { BREATH_WORLD_MOODS } from '../../ui/effects/breathing/worlds/index.js';
 
 export const meta = {
     id: 'breathing',
     title: 'Breathing worlds',
-    description: 'The twelve breathing worlds: ?world=<id>&breath=<0..1>',
+    description: 'The twelve breathing worlds: ?world=<id>&mood=<n>&breath=<0..1>',
 };
 
 export function create({
@@ -37,7 +40,9 @@ export function create({
     host.setReducedMotion(params.get('reduce') === '1');
     host.setSessionPhase(params.get('session'));
     host.setFocus(number('focus', 0.14));
-    host.setWorld(params.get('world') || 'deep-relaxation');
+    let seed = number('seed', 0.5);
+    let mood = params.get('mood') ?? 0;
+    host.setWorld(params.get('world') || 'deep-relaxation', { mood, seed });
     const drawingSize = new THREE.Vector2();
     const sync = () => {
         renderer.getDrawingBufferSize(drawingSize);
@@ -47,10 +52,15 @@ export function create({
     const follow = (time) => host.setBreath(pinned || resolveBreath(pattern, time));
     // Contact sheets switch world and breath in one page; see docs/BREATHING_OVERHAUL_2026-10.md.
     window.__BREATH_LAB__ = {
-        setWorld: (id) => host.setWorld(id),
+        setWorld: (id, nextMood = mood, nextSeed = seed) => {
+            mood = nextMood;
+            seed = nextSeed;
+            return host.setWorld(id, { mood, seed });
+        },
         setBreath: (state) => { pinned = state; },
         setSession: (type) => host.setSessionPhase(type),
         setFocus: (focus) => host.setFocus(focus),
+        moods: (id) => (BREATH_WORLD_MOODS[id] || []).map(({ id: moodId, name }) => ({ id: moodId, name })),
         host,
     };
     return {

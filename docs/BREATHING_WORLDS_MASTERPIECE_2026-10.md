@@ -209,7 +209,7 @@ by reasoning, not by a perf-lane reading (ADR-0016). Software rendering gives pi
   change's compile wait on Windows; the heaviest are Sacred Geometry (50 draws, 275 KB of
   shaders) and Moonlit Waters. Zen Garden's `marchSteps` and Moonlit's wave count are the first
   knobs if Low is tight.
-- **Motes** are additive round glows only: a shape option (a leaf or petal silhouette that spins)
-  and an alpha-blended mode would give Zen Garden real falling leaves and Heart Glow drifting
-  petals; a mirror option would put Heart Glow's fireflies in the water.
+- ~~**Motes** are additive round glows only~~ — done 2026-10-23: shaped, alpha-blended, tumbling
+  motes and four moods per world, in [BREATHING_WORLDS_MOODS_2026-10.md](BREATHING_WORLDS_MOODS_2026-10.md).
+  A mirror option (Heart Glow's fireflies in the water) is still open there.
 - **Minimal** has no grade; a world that wants its exact colour there corrects it itself.

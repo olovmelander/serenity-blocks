@@ -15,6 +15,10 @@
  *   focus      how far above screen centre the hero sits, in the same units
  *   px         one device pixel in those units (pixel-stable edges and stars)
  *   pan, zoom  the breathing camera: it leans in a little with each in-breath and drifts slowly
+ *   seed       0..1, this visit's own variation (offsets clouds, times events): a world drawn twice
+ *              in the same mood still differs in its details
+ *   life       0..1, how much the world's occasional events may happen: 0 under reduced motion,
+ *              lower while a session holds still (multiply every event by it)
  *
  * Backdrop space `p`: origin on the hero, y up, short screen axis spans -1..1. The stage camera
  * maps the z = 0 plane onto exactly that space at rest. As the camera moves, a painted layer
@@ -30,7 +34,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, clamp, dot, exp, float, floor, fract, length, max, min, mix, pow, select, sin, smoothstep, sqrt, step,
+    Fn, clamp, cos, dot, exp, float, floor, fract, length, max, min, mix, pow, select, sin, smoothstep, sqrt, step,
     uniform, uv, vec2, vec3,
 } from 'three/tsl';
 
@@ -49,6 +53,8 @@ export function createBreathUniforms() {
         px: uniform(1 / 450),
         pan: uniform(new THREE.Vector2(0, 0)),
         zoom: uniform(1),
+        seed: uniform(0.5),
+        life: uniform(1),
     };
 }
 
@@ -306,3 +312,60 @@ export const smin = (a, b, k) => {
     const h = max(float(k).sub(a.sub(b).abs()), 0).div(k);
     return min(a, b).sub(h.mul(h).mul(k).mul(0.25));
 };
+
+/**
+ * An occasional event, closed-form in time: each `period` seconds a dice roll (`chance`) decides
+ * whether the event happens, at a random moment inside the period, for `duration` seconds.
+ * Returns (envelope 0..1 with soft ramps, progress 0..1 through the event, a random id for it).
+ * `salt` keeps two events apart; fold `u.seed` into it so every visit has its own timetable.
+ * Multiply what it draws by `u.life`.
+ */
+export const eventWindow = /* @__PURE__ */ Fn(([time, period, duration, chance, salt]) => {
+    const slot = time.div(period).add(salt.mul(7.31)).toVar();
+    const cycle = floor(slot).toVar();
+    const local = fract(slot).mul(period);
+    const start = hash21(vec2(cycle, salt.add(1.7))).mul(max(period.sub(duration), 0));
+    const progress = local.sub(start).div(duration).toVar();
+    const inside = step(0, progress).mul(step(progress, 1));
+    const happens = step(hash21(vec2(cycle.add(3.1), salt)), chance);
+    const envelope = smoothstep(0, 0.18, progress).mul(fadeOut(0.55, 1, progress)).mul(inside).mul(happens);
+    return vec3(envelope, progress.saturate(), hash21(vec2(cycle.mul(1.37), salt.add(9.2))));
+}).setLayout({
+    name: 'br_eventWindow',
+    type: 'vec3',
+    inputs: [
+        { name: 'time', type: 'float' }, { name: 'period', type: 'float' }, { name: 'duration', type: 'float' },
+        { name: 'chance', type: 'float' }, { name: 'salt', type: 'float' },
+    ],
+});
+
+/**
+ * A meteor: now and then a thin streak crosses part of the sky, its tail growing then fading.
+ * Additive light (linear RGB) in hero units; `area` = [x0, y0, x1, y1] where streaks may start.
+ * Small and soft-edged, with ramps of a few hundred milliseconds: a moving glint, never a flash.
+ */
+export function shootingStar(p, u, {
+    period = 21, duration = 1.2, chance = 0.55, salt = 0, area = [-1.2, 0.3, 1.2, 0.9], travel = 0.55,
+    length: tailLength = 0.3, width = 1.1, color = [0.85, 0.92, 1.0], gain = 1,
+} = {}) {
+    const ev = eventWindow(u.time, float(period), float(duration), float(chance), u.seed.mul(53.1).add(salt)).toVar();
+    const pick = ev.z;
+    const start = vec2(
+        mix(float(area[0]), float(area[2]), hash21(vec2(pick, 1.3))),
+        mix(float(area[1]), float(area[3]), hash21(vec2(pick, 2.9))),
+    );
+    // Downhill, to the left or the right.
+    const heading = mix(float(-2.5), float(-0.64), hash21(vec2(pick, 4.1)));
+    const dir = vec2(cos(heading), sin(heading)).toVar();
+    const head = start.add(dir.mul(ev.y.mul(travel)));
+    const rel = p.sub(head).toVar();
+    const behind = dot(rel, dir).negate().toVar();
+    const across = length(rel.add(dir.mul(behind)));
+    const tail = float(tailLength).mul(ev.y.mul(2.5).min(1).mul(0.7).add(0.3));
+    const along = step(0, behind).mul(fadeOut(0, tail, behind));
+    const w = u.px.mul(width);
+    const streak = exp(across.mul(across).div(w.mul(w)).negate()).mul(along.mul(along));
+    const glint = exp(dot(rel, rel).div(w.mul(w).mul(5)).negate());
+    return vec3(...color).mul(streak.add(glint.mul(0.6))).mul(ev.x).mul(u.life)
+        .mul(gain);
+}
