@@ -239,6 +239,6 @@ Playground (`npm run dev:playground`, then `playground.html?effect=thermal-bloom
 | a gust | `t=10&board=1&gust=0.5` |
 | a free camera | `cam=x,y,z,tx,ty,tz,fov` (the Iris close: `t=10&cam=-40,40,-90,-108,0,-205,46`); `sunAz=` and `sunEl=` hold the sun |
 | seasons | `t=40&level=1…6` or `season=0…5` |
-| the icon | `t=40&quality=Ultra&icon=1&iconFov=30&iconYaw=0&iconPitch=5&gust=0.5` at 720×720, then saturation 1.15, contrast 1.08, brightness 1.03 and the 512 px circle (the concept's yaw −34°, pitch −8° framed the Stair once the composition settled) |
+| the icon | `t=40&quality=Ultra&icon=1&iconFov=30&iconYaw=0&iconPitch=5&gust=0.5` at 720×720, then saturation 1.15, contrast 1.08, brightness 1.03 and the 512 px circle (the concept's yaw −34°, pitch −8° framed the Stair once the composition settled). Superseded 2026-10-23 ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)) |
 
 Real game: `?skipIntro=1&unlockAll=1`, then pick Thermal Bloom.

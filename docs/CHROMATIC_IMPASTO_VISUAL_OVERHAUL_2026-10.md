@@ -248,7 +248,7 @@ playground's icon lens
 in an 800 x 800 window), given a colour lift (contrast 1.1, saturation 1.15, brightness 1.03) and
 baked as a 512 px circle. The same file is kept at
 `public/assets/themes/chromatic-impasto-theme-icon.png`. (The file it replaces was a JPEG under a
-`.png` name.)
+`.png` name.) Superseded 2026-10-23 by the plain square frame of the painting ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)).
 
 ## Captured previews
 
