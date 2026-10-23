@@ -26,8 +26,17 @@ plan before executing them.
    bundle, so `build.license` now writes `dist/THIRD_PARTY_LICENSES.md` and the Pages artifact
    check requires it. Still open: Vite 8 / Rolldown + Vitest 5 as their own project, gated by
    `check-boot-closure.mjs` (Rolldown replaces the `manualChunks` rules this build relies on).
-2. The rest of Electron hardening (owner decision 5): deny-by-default permission handler (none
-   today: every request is granted), IPC sender checks, a meta CSP, fuses, `app://`.
+2. Electron hardening. **Part 1 done 2026-10-23** (`feature/electron-hardening`), measured in a
+   packaged build: permissions are denied by default (the game page gets fullscreen, clipboard
+   writing and the wake lock; camera, microphone, location, notifications, clipboard reading,
+   MIDI, HID and Bluetooth picks are refused); every IPC handler, Steam's included, answers only
+   the game's page (a `data:` page in the game window is refused); release builds refuse DevTools
+   and show neither the DevTools row nor the URL-parameters tab (both return with
+   `SERENITY_ENABLE_DIAGNOSTICS=1` and in dev); the CSP has no remote origins left. The header
+   CSP was measured to apply to the packaged `file://` load (eval and injected inline scripts are
+   blocked), so no meta CSP is needed for the desktop. Still open: fuses (they change the exe, and
+   Smart App Control blocks a new unsigned exe on the dev laptop: needs signing or another
+   machine) and `app://` (owner decision; must precede any public build).
 3. Close Dependabot PR #315 (TypeScript 7 removes the compiler API two CI gates use); give majors
    their own PRs; ignore `three` (ADR-0018) and TypeScript majors; merge #297 and #348.
 4. ESLint 8 (end of life) → 9 via FlatCompat, then 10 with vendored airbnb rules and
