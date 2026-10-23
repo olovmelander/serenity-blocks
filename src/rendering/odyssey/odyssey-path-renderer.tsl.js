@@ -57,6 +57,7 @@ import {
     normalize,
     positionLocal,
     positionView,
+    positionWorld,
     pow,
     screenSize,
     sin,
@@ -115,6 +116,28 @@ export const ODYSSEY_PATH_CROSS_SECTION = Object.freeze({
     minSeamWindow: 0.012,
     // widthScale compression: chapter widthScale s -> 1 + (s-1)*widthScaleBlend.
     widthScaleBlend: 0.35,
+});
+
+/**
+ * THE RAIL PASSES BEHIND THE ORBS' WORLDS. The nodes are threaded on the rail, and the follow
+ * camera looks down it, so the rail's last reach before every orb runs toward the eye and is
+ * drawn across the orb's world window (since 2026-10-23 the orb shows its world as a picture).
+ * The board hands the ribbon the nearest few windows each frame (centre + glass radius, world);
+ * where the ribbon lies in front of one, inside its silhouette and within
+ * ODYSSEY_PATH_ORB_OCCLUSION.reach glass radii of it, it is not drawn: the string goes behind
+ * the bead. Rail nearer the eye than that stays in front, as it is.
+ */
+export const ODYSSEY_PATH_ORB_OCCLUDERS = 6;
+export const ODYSSEY_PATH_ORB_OCCLUSION = Object.freeze({
+    // The cut, in glass radii from the orb's centre across the view ray (the window is 0.92 of
+    // the glass, set toward the eye, so it covers ~0.95 of it on screen).
+    edge: 0.97,
+    // The haze fades over this band instead of cutting (it is soft light, not a surface).
+    hazeInner: 0.85,
+    hazeOuter: 1.05,
+    // In front of the orb's centre, glass radii: hidden to `near`, back by `reach`.
+    near: 8.0,
+    reach: 12.0,
 });
 
 /**
@@ -395,7 +418,41 @@ export function createPathChapterUniforms(chapterPositions = [], opts = {}) {
         // THE HORIZON (odyssey-path-horizon.js): the rail is not drawn past this path position
         // (its radius collapses over ODYSSEY_PATH_HORIZON.soft before it). 2 = nothing hidden.
         uHorizon: uniform(PATH_HORIZON_OPEN),
+        // The orbs the rail passes behind (ODYSSEY_PATH_ORB_OCCLUSION): xyz centre, w glass
+        // radius (world); w = 0 is an empty slot.
+        uOrbs: uniformArray(
+            Array.from({ length: ODYSSEY_PATH_ORB_OCCLUDERS }, () => new THREE.Vector4(0, 0, 0, 0)),
+            'vec4',
+        ),
     };
+}
+
+/**
+ * How much of the rail shows at this fragment (1) or lies in front of a listed orb's world
+ * window (0): the view ray to the fragment passes within `inner..outer` glass radii of the
+ * orb's centre, and the fragment sits in front of the orb, nearer it than the reach.
+ * Fragment stage. See ODYSSEY_PATH_ORB_OCCLUSION.
+ */
+function orbOcclusion(chapter, inner, outer) {
+    const O = ODYSSEY_PATH_ORB_OCCLUSION;
+    const toFragment = positionWorld.sub(cameraPosition);
+    const distance = length(toFragment);
+    const ray = toFragment.div(max(distance, 1e-4));
+    let shown = float(1.0);
+    for (let k = 0; k < ODYSSEY_PATH_ORB_OCCLUDERS; k += 1) {
+        const orb = chapter.uOrbs.element(k);
+        const radius = max(orb.w, 1e-4);
+        const toOrb = orb.xyz.sub(cameraPosition);
+        const along = dot(toOrb, ray);
+        const miss = length(toOrb.sub(ray.mul(along))).div(radius);
+        const ahead = along.sub(distance).div(radius);
+        const covered = smoothstep(outer, inner, miss)
+            .mul(step(0.0, ahead))
+            .mul(smoothstep(O.reach, O.near, ahead))
+            .mul(step(1e-3, orb.w));
+        shown = shown.mul(float(1.0).sub(covered));
+    }
+    return shown;
 }
 
 // ── Chapter coordinate + recipe lookup ───────────────────────────────────────────
@@ -804,6 +861,10 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = positionNode;
     material.colorNode = colorNode;
+    // Cut where the rail lies in front of an orb's world (opaque: a clean edge at the glass).
+    const cut = ODYSSEY_PATH_ORB_OCCLUSION.edge;
+    material.opacityNode = orbOcclusion(chapter, cut - 0.01, cut + 0.01);
+    material.alphaTest = 0.5;
     material.transparent = false;
     material.userData.emitsBloom = true;
 
@@ -908,6 +969,7 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
             0.0,
             0.5,
         ).mul(nearFade).mul(farFade).mul(soft)
+            .mul(orbOcclusion(chapter, ODYSSEY_PATH_ORB_OCCLUSION.hazeInner, ODYSSEY_PATH_ORB_OCCLUSION.hazeOuter))
             // The near-eye thinning recipes' haze thins with the body (capture: the white halo of
             // the rail passing ~8 u from the eye at ch4 L26 doubled its apparent width).
             .mul(float(1.0).sub(R.fill.w.mul(float(1.0).sub(smoothstep(

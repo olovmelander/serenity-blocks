@@ -76,22 +76,19 @@ describe('the level-node A/B actually hides the level nodes', () => {
     function managerWithMeshes() {
         const m = Object.create(LevelNodeManager.prototype);
         m.glassInstancedMesh = { visible: true };
-        m.glowInstancedMesh = { visible: true };
-        m.lockInstancedMesh = { visible: true };
+        m.haloMesh = { visible: true };
         m.starInstancedMesh = { visible: true };
-        m.particleSystem = { visible: true };
-        m.innerCoreMesh = { visible: true };
+        m.windowMesh = { visible: true };
         m.nodes = new Map([[1, { group: { visible: true } }]]);
         m._forcedHidden = false;
         return m;
     }
 
-    it('hides the opaque inner core too — 31.8% of the group, and the only depth-writer', () => {
+    it('hides the opaque world windows too — the only depth-writer', () => {
         const m = managerWithMeshes();
         m.setAllVisible(false);
-        expect(m.innerCoreMesh.visible).toBe(false);
-        [m.glassInstancedMesh, m.glowInstancedMesh, m.lockInstancedMesh,
-            m.starInstancedMesh, m.particleSystem].forEach((mesh) => {
+        expect(m.windowMesh.visible).toBe(false);
+        [m.glassInstancedMesh, m.haloMesh, m.starInstancedMesh].forEach((mesh) => {
             expect(mesh.visible).toBe(false);
         });
         expect([...m.nodes.values()][0].group.visible).toBe(false);
@@ -103,7 +100,7 @@ describe('the level-node A/B actually hides the level nodes', () => {
         expect(m._forcedHidden).toBe(true);
         m.setAllVisible(true);
         expect(m._forcedHidden).toBe(false);
-        expect(m.innerCoreMesh.visible).toBe(true);
+        expect(m.windowMesh.visible).toBe(true);
     });
 
     it('the per-frame write in update() consults the latch', () => {
