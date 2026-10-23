@@ -19,21 +19,28 @@
  * that opens with the in-breath, stars washed out near the moon, two decks of cloud in
  * perspective with silver edges where they pass the moon, a low cloud bank far out either side of
  * the moon's open horizon, and islands standing in a band of sea mist.
+ *
+ * Moods (MOODS): the full moon of the poster; a thin crescent under the Milky Way; a harvest moon
+ * just risen, amber over a road of gold; a misty night where fog banks roll over the islands and a
+ * lighthouse's slow beam turns in them. A far light burns at sea (a boat's lantern, a lamp on the
+ * shore) with its column in the water. Now and then a meteor crosses the sky, a fish jumps in the
+ * moon-path and its rings spread through the glitter, or a cloud drifts across the moon and the
+ * moonlight dims and returns over seconds (timed per visit by `u.seed`, gone under reduced motion).
  */
 import {
-    Fn, If, dot, exp, float, mix, normalize, reflect, smoothstep, step, vec2, vec3,
+    Fn, If, cos, dot, exp, float, mix, normalize, reflect, sin, smoothstep, sqrt, step, vec2, vec3,
 } from 'three/tsl';
 import {
-    backdropPoint, fadeOut, fbm, fresnel, gnoise, hash21, softStep, starfield, voronoi, warpedFbm,
+    backdropPoint, eventWindow, fadeOut, fbm, fresnel, gnoise, hash21, shootingStar, softStep, starfield, voronoi,
+    warpedFbm,
 } from '../stage/breath-tsl.js';
 
 /** Focal length in hero units (the screen's short half-axis is 1) on a wide screen: a long lens — big moon, long path. */
 const LENS = 5;
 /** The eye's height above the water, metres. */
 const EYE = 3;
-/** Screen-height fractions from the bottom: the horizon (landscape; tall screens show more sea) and the moon. */
+/** The horizon as a fraction of the screen height from the bottom (landscape; tall screens show more sea). The moon is the mood's. */
 const HORIZON_AT = 0.35;
-const MOON_AT = 0.67;
 /** Gaussian pixel filter for the waves, as (k · footprint)² × FILTER: larger is softer and calmer. */
 const FILTER = 2.5 / 24;
 /** How much of a shown wave's slope turn across one pixel still blurs its glints (anti-aliasing). */
@@ -45,13 +52,8 @@ const MOON_GLINT = 6;
 const SPARKLE_SHARE = 0.7;
 const SPARKLE = 4;
 
-const MOONLIGHT = vec3(0.8, 0.87, 1.0);
 const MOON_HIGHLAND = vec3(1.0, 0.955, 0.87);
 const MOON_MARE = vec3(0.64, 0.63, 0.62);
-const ZENITH = vec3(0.0032, 0.0058, 0.0165);
-const HORIZON_SKY = vec3(0.014, 0.022, 0.044);
-const HAZE = vec3(0.026, 0.034, 0.056);
-const CLOUD = vec3(0.009, 0.013, 0.025);
 const DEEP = vec3(0.0010, 0.0028, 0.0068);
 const SUBSURFACE = vec3(0.003, 0.012, 0.016);
 const LAND = vec3(0.0024, 0.0038, 0.0082);
@@ -183,10 +185,185 @@ function moonFace(q) {
     return albedo.add(MOON_HIGHLAND.mul(bright).mul(0.5)).mul(limb);
 }
 
-/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
-export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+/**
+ * The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's.
+ * `moon`: where it stands (`at`, a fraction of the screen height, or `rise` above the horizon; `x`
+ * across), its radius, the colour of its light, its face and its glints, how much light it gives
+ * (`gain`), the ice halo (`ring`), and for a crescent how thin it is and where its lit limb faces;
+ * `sky`: zenith, horizon, haze and cloud colours; `stars`; `milkyWay`; `clouds` how clear the
+ * decks are (0 as drawn, higher thinner); `bank` the low cloud bank; `mist` the band of sea mist
+ * on the horizon and `fog` banks of sea fog rolling over it; `beacon`: a far light (a boat's
+ * lantern, a lighthouse with a slow beam through fog).
+ */
+export const MOODS = Object.freeze([
+    {
+        id: 'full-moon',
+        name: 'Full Moon',
+        moon: {
+            at: 0.67,
+            x: 0,
+            radius: 0.2,
+            light: [0.8, 0.87, 1.0],
+            face: [1, 1, 1],
+            glint: [1.0, 0.955, 0.87],
+            gain: 1,
+            ring: 1,
+            phase: null,
+        },
+        sky: {
+            zenith: [0.0032, 0.0058, 0.0165],
+            horizon: [0.014, 0.022, 0.044],
+            haze: [0.026, 0.034, 0.056],
+            cloud: [0.009, 0.013, 0.025],
+        },
+        stars: 0.6,
+        milkyWay: false,
+        clouds: 0,
+        bank: 1,
+        mist: 1,
+        fog: 0,
+        beacon: {
+            x: 0.62, e: 0.004, color: [1.0, 0.62, 0.3], gain: 1.1, beam: false,
+        },
+        grade: {
+            shadows: [0.84, 0.94, 1.14],
+            highlights: [1.0, 1.0, 1.03],
+            saturation: 0.86,
+            contrast: 1.05,
+            vignette: 0.5,
+            chroma: 0.35,
+        },
+    },
+    {
+        // A thin crescent low in the west: the sea almost dark, its path a thread of glints, and
+        // the Milky Way standing up out of the horizon with its dust lanes.
+        id: 'crescent-milky-way',
+        name: 'Crescent & Milky Way',
+        moon: {
+            at: 0.6,
+            x: 0.5,
+            radius: 0.12,
+            light: [0.8, 0.86, 1.0],
+            face: [1, 0.98, 0.94],
+            glint: [1.0, 0.96, 0.9],
+            gain: 0.3,
+            ring: 0,
+            phase: { thin: 0.74, limb: [0.6, -0.8] },
+        },
+        sky: {
+            zenith: [0.0011, 0.002, 0.0062],
+            horizon: [0.005, 0.008, 0.017],
+            haze: [0.008, 0.011, 0.02],
+            cloud: [0.003, 0.0045, 0.009],
+        },
+        stars: 1.25,
+        milkyWay: true,
+        clouds: 0.2,
+        bank: 0.6,
+        mist: 0.5,
+        fog: 0,
+        beacon: null,
+        grade: {
+            shadows: [0.86, 0.94, 1.12],
+            highlights: [1.0, 1.0, 1.02],
+            saturation: 0.95,
+            contrast: 1.06,
+            vignette: 0.5,
+            chroma: 0.35,
+        },
+    },
+    {
+        // A harvest moon just risen: huge and amber through the warm haze low over the sea, its
+        // path a road of gold.
+        id: 'harvest-moon',
+        name: 'Harvest Moon',
+        moon: {
+            rise: 0.36,
+            x: -0.1,
+            aureole: 0.35,
+            radius: 0.25,
+            light: [1.0, 0.64, 0.34],
+            face: [1.0, 0.7, 0.42],
+            glint: [1.0, 0.72, 0.42],
+            gain: 0.85,
+            ring: 0,
+            phase: null,
+        },
+        sky: {
+            zenith: [0.002, 0.0038, 0.013],
+            horizon: [0.019, 0.018, 0.03],
+            haze: [0.075, 0.042, 0.022],
+            cloud: [0.01, 0.009, 0.014],
+        },
+        stars: 0.5,
+        milkyWay: false,
+        clouds: 0.1,
+        bank: 0.8,
+        mist: 1,
+        fog: 0,
+        beacon: {
+            x: -0.78, e: 0.012, color: [1.0, 0.75, 0.45], gain: 0.35, beam: false,
+        },
+        grade: {
+            shadows: [0.9, 0.93, 1.08],
+            highlights: [1.04, 1.0, 0.95],
+            saturation: 0.95,
+            contrast: 1.05,
+            vignette: 0.52,
+            chroma: 0.35,
+        },
+    },
+    {
+        // A misty night: banks of sea fog roll over the islands under a veiled moon, and a
+        // lighthouse's slow beam turns in them.
+        id: 'sea-fog',
+        name: 'Sea Fog',
+        moon: {
+            at: 0.72,
+            x: 0,
+            radius: 0.17,
+            light: [0.8, 0.86, 0.96],
+            face: [0.96, 0.97, 1.0],
+            glint: [0.95, 0.95, 0.92],
+            gain: 0.75,
+            ring: 0,
+            phase: null,
+        },
+        sky: {
+            zenith: [0.005, 0.0075, 0.016],
+            horizon: [0.02, 0.026, 0.042],
+            haze: [0.034, 0.042, 0.06],
+            cloud: [0.012, 0.015, 0.024],
+        },
+        stars: 0.25,
+        milkyWay: false,
+        clouds: 0.04,
+        bank: 0,
+        mist: 1.3,
+        fog: 1,
+        beacon: {
+            x: 0.5, e: 0.028, color: [1.0, 0.82, 0.55], gain: 0.6, beam: true,
+        },
+        grade: {
+            shadows: [0.86, 0.95, 1.1],
+            highlights: [1.0, 1.0, 1.02],
+            saturation: 0.8,
+            contrast: 1.03,
+            vignette: 0.5,
+            chroma: 0.35,
+        },
+    },
+]);
 
-export function createMoonlitWorld({ u, quality }) {
+export function createMoonlitWorld({ u, quality, mood }) {
+    const look = MOODS.find((m) => m.id === mood?.id) ?? MOODS[0];
+    const { moon } = look;
+    const MOONLIGHT = vec3(...moon.light);
+    const GLINT = vec3(...moon.glint);
+    const ZENITH = vec3(...look.sky.zenith);
+    const HORIZON_SKY = vec3(...look.sky.horizon);
+    const HAZE = vec3(...look.sky.haze);
+    const CLOUD = vec3(...look.sky.cloud);
     const { octaves } = quality;
     // Lighter tiers drop the shortest ripples (their pixels could not show them); the slope those
     // ripples would have added stays, as roughness, so the path keeps its width on every tier.
@@ -204,20 +381,31 @@ export function createMoonlitWorld({ u, quality }) {
         const tall = u.ext.y.sub(1).max(0).toVar();
         const bottom = u.ext.y.negate().sub(u.focus).toVar();
         const yh = bottom.add(u.ext.y.mul(2).mul(tall.min(1.2).mul(0.1).add(HORIZON_AT))).toVar();
-        const moonC = vec2(0, bottom.add(u.ext.y.mul(2 * MOON_AT))).toVar();
-        const radius = tall.mul(0.035).add(0.2).mul(b.mul(0.025).add(1)).toVar();
+        // The moon: high over the sea, or (a rising moon) a set height over the horizon.
+        const moonY = moon.rise ? yh.add(moon.rise) : bottom.add(u.ext.y.mul(2 * moon.at));
+        const moonC = vec2(moon.x, moonY).toVar();
+        const radius = tall.mul(0.035).add(moon.radius).mul(b.mul(0.025).add(1)).toVar();
         // Tall screens get a longer lens: the sea at the bottom stays far enough away to keep fine
         // ripples (no magnified blobs), and the moon-path runs all the way down the frame.
         const lens = tall.mul(0.5 * LENS).add(LENS).toVar();
         // The sea's clock slows while the lungs are full: the 7-second hold is the stillest part.
         const seaT = u.time.sub(u.breathInt.mul(0.55)).toVar();
-        const glow = b.mul(1.0).add(0.5).toVar();
+        const visit = u.seed.sub(0.5).toVar();
+        // Now and then a cloud drifts across the moon: the moonlight dims and returns over seconds.
+        const pass = eventWindow(u.time, float(83), float(26), float(0.7), u.seed.mul(29.9).add(1.3)).toVar();
+        const passing = pass.x.mul(u.life).toVar();
+        const passY = hash21(vec2(pass.z, 4.1)).sub(0.5).mul(0.4);
+        const passAt = vec2(mix(float(-1.7), float(1.7), pass.y), passY).mul(radius)
+            .toVar();
+        const dim = passing.mul(exp(dot(passAt, passAt).div(radius.mul(radius).mul(1.3)).negate())).mul(0.6).toVar();
+        const glow = b.mul(1.0).add(0.5).mul(float(1).sub(dim)).toVar();
 
         /** The night sky's gradient at elevation e above the horizon (screen units), brighter toward the moon. */
         const skyGradient = (e, x) => {
             const up = e.max(0);
             const base = mix(HORIZON_SKY, ZENITH, float(1).sub(exp(up.mul(-2))));
-            const moonward = exp(x.mul(x).mul(-0.8)).mul(0.8).add(0.45);
+            const mx = x.sub(moon.x);
+            const moonward = exp(mx.mul(mx).mul(-0.8)).mul(0.8).add(0.45);
             return base.add(HAZE.mul(exp(up.mul(-9))).mul(moonward).mul(b.mul(0.3).add(0.85)));
         };
 
@@ -262,10 +450,25 @@ export function createMoonlitWorld({ u, quality }) {
                 const width = mix(float(0.07), float(0.024), smoothstep(-0.004, 0.004, dy));
                 const lay = float(1).div(dy.mul(dy).div(width.mul(width)).add(1)).mul(fadeOut(0.25, 0.45, dy.abs()));
                 const drift = fbm(vec2(x.mul(1.3).add(seaT.mul(0.008)), dy.mul(9).add(3.3)), 3);
-                const moonward = exp(x.mul(x).mul(-0.9)).mul(1.4).add(0.5);
-                haze.assign(HAZE.mul(lay).mul(drift.mul(1.2).add(0.2)).mul(moonward).mul(glow.mul(0.6).add(0.6)));
+                const mx = x.sub(moon.x);
+                const moonward = exp(mx.mul(mx).mul(-0.9)).mul(1.4).add(0.5);
+                haze.assign(HAZE.mul(lay).mul(drift.mul(1.2).add(0.2)).mul(moonward).mul(glow.mul(0.6).add(0.6))
+                    .mul(look.mist));
             });
             return haze;
+        };
+
+        // A far light: a boat's lantern on the water, a lamp on the shore, a lighthouse on the island.
+        // It burns steadily, with only the shimmer of the air over the sea.
+        const beaconAt = look.beacon
+            ? vec2(u.ext.x.mul(look.beacon.x), yh.add(tall.mul(0.35).add(1).mul(look.beacon.e))).toVar() : null;
+        const beaconLight = (q) => {
+            const d = q.sub(beaconAt).toVar();
+            const d2 = dot(d, d).toVar();
+            const core = exp(d2.div(u.px.mul(u.px).mul(3.2)).negate());
+            const halo = float(0.05).div(d2.div(0.00025).add(1)).add(float(0.012).div(d2.div(0.004).add(1)));
+            const shimmer = sin(u.time.mul(1.3).add(sin(u.time.mul(0.47)).mul(2.5))).mul(0.08).add(0.92);
+            return vec3(...look.beacon.color).mul(core.mul(1.5).add(halo)).mul(look.beacon.gain).mul(shimmer);
         };
 
         const sky = vec3(0).toVar();
@@ -283,63 +486,140 @@ export function createMoonlitWorld({ u, quality }) {
             const out2s = out2.div(swell.mul(swell));
             const halo = lorentz(out2, 0.035).mul(0.16).add(lorentz(out2s, 0.13).mul(0.07))
                 .add(lorentz(out2s, 0.32).mul(0.03))
-                .add(lorentz(dist.mul(dist), 0.7).mul(0.022))
+                .add(lorentz(dist.mul(dist), 0.7).mul(0.022 * (moon.aureole ?? 1)))
                 .toVar();
-            c.addAssign(MOONLIGHT.mul(halo).mul(glow));
+            // In fog the moon wears a broad corona.
+            if (look.fog > 0) halo.addAssign(lorentz(out2s, 0.22).mul(0.08 * look.fog));
+            c.addAssign(MOONLIGHT.mul(halo).mul(glow).mul(Math.sqrt(moon.gain)));
             // Stars: drowned by moonlight near the moon and by the haze low down.
-            const starVeil = smoothstep(0.04, 0.4, e).mul(smoothstep(radius.mul(1.6), radius.mul(6), dist));
-            c.addAssign(starfield(p, u, 0.6).mul(starVeil));
-            // A 22° ice halo opens with the in-breath: a sharp, faintly red inner edge, a soft blue-white outside.
-            const ringR = mix(float(0.34), float(0.6), b).add(tall.mul(0.05)).toVar();
-            const dd = dist.sub(ringR).toVar();
-            const width = mix(float(0.02), float(0.09), smoothstep(-0.01, 0.01, dd));
-            const ring = exp(dd.mul(dd).div(width.mul(width)).negate());
-            const veil = gnoise(toMoon.div(dist.max(1e-3)).mul(2.2).add(vec2(seaT.mul(0.003), 4.4))).mul(1.2).max(0.3);
-            const tint = mix(vec3(1.0, 0.78, 0.6), vec3(0.75, 0.86, 1.0), smoothstep(-0.01, 0.07, dd));
-            c.addAssign(tint.mul(ring).mul(veil).mul(smoothstep(0.08, 0.85, b)).mul(0.045));
+            const starVeil = smoothstep(0.04, 0.4, e).mul(smoothstep(radius.mul(1.6), radius.mul(6), dist)).toVar();
+            if (look.milkyWay) {
+                // The Milky Way stands up out of the sea on the left and leans across the sky: a band
+                // of unresolved stars split by dark dust lanes, warm and brightest toward its core
+                // low over the horizon. Its stars crowd the band.
+                const rel = p.sub(vec2(-0.85, yh.sub(0.05)));
+                const along = dot(rel, vec2(0.5, 0.866)).toVar();
+                const across = dot(rel, vec2(-0.866, 0.5)).toVar();
+                const width = along.mul(0.07).add(0.24).toVar();
+                const core = exp(across.mul(across).div(width.mul(width)).negate()).toVar();
+                const band = vec3(0).toVar();
+                If(core.greaterThan(0.004), () => {
+                    const mwOctaves = Math.max(3, octaves - 1);
+                    const clouds = fbm(vec2(along.mul(2.2), across.mul(4.5)).add(vec2(3.3, visit.mul(5))), mwOctaves);
+                    const lanes = fbm(vec2(along.mul(4.4), across.mul(9)).add(9.1), mwOctaves);
+                    const dust = smoothstep(0.47, 0.7, lanes)
+                        .mul(exp(across.mul(across).div(width.mul(width).mul(0.2)).negate()));
+                    const bulge = exp(along.sub(0.25).mul(along.sub(0.25)).mul(-4)).toVar();
+                    const light = mix(vec3(0.068, 0.075, 0.1), vec3(0.095, 0.08, 0.064), bulge)
+                        .mul(bulge.mul(0.5).add(1));
+                    band.assign(light.mul(core).mul(clouds.mul(1.4).sub(0.15).max(0))
+                        .mul(float(1).sub(dust.mul(0.85))));
+                });
+                c.addAssign(band.mul(smoothstep(0.0, 0.12, e)).mul(smoothstep(radius.mul(1.2), radius.mul(4), dist)));
+                c.addAssign(starfield(p, u, core.mul(1.1).add(1).mul(0.6 * look.stars)).mul(starVeil));
+            } else {
+                c.addAssign(starfield(p, u, 0.6 * look.stars).mul(starVeil));
+            }
+            // Now and then a meteor.
+            c.addAssign(shootingStar(p, u, {
+                period: 27,
+                duration: 1.2,
+                chance: 0.6,
+                salt: 5.3,
+                area: [u.ext.x.mul(-0.85), yh.add(0.5), u.ext.x.mul(0.85), yh.add(1.2)],
+                travel: 0.55,
+                length: 0.3,
+                color: [0.85, 0.92, 1.0],
+                gain: 1.1,
+            }).mul(starVeil.mul(0.6).add(0.4)));
+            if (moon.ring > 0) {
+                // A 22 degree ice halo opens with the in-breath: a sharp, faintly red inner edge, a soft blue-white outside.
+                const ringR = mix(float(0.34), float(0.6), b).add(tall.mul(0.05)).toVar();
+                const dd = dist.sub(ringR).toVar();
+                const width = mix(float(0.02), float(0.09), smoothstep(-0.01, 0.01, dd));
+                const ring = exp(dd.mul(dd).div(width.mul(width)).negate());
+                const veil = gnoise(toMoon.div(dist.max(1e-3)).mul(2.2).add(vec2(seaT.mul(0.003), 4.4))).mul(1.2)
+                    .max(0.3);
+                const tint = mix(vec3(1.0, 0.78, 0.6), vec3(0.75, 0.86, 1.0), smoothstep(-0.01, 0.07, dd));
+                c.addAssign(tint.mul(ring).mul(veil).mul(smoothstep(0.08, 0.85, b)).mul(0.045 * moon.ring));
+            }
             // The moon.
             If(dist.lessThan(radius.add(u.px.mul(3))), () => {
-                const face = moonFace(toMoon.div(radius)).mul(b.mul(0.12).add(1).mul(0.8));
+                const q = toMoon.div(radius).toVar();
+                let face = moonFace(q).mul(vec3(...moon.face)).mul(b.mul(0.12).add(1).mul(0.8));
+                if (moon.phase) {
+                    // A crescent, lit by the sun below the horizon; the rest of the disc in earthshine.
+                    const { thin, limb } = moon.phase;
+                    const toLimb = dot(q, vec2(limb[0], limb[1]));
+                    const side = dot(q, vec2(-limb[1], limb[0]));
+                    const terminator = sqrt(float(1).sub(side.mul(side)).max(0)).mul(thin);
+                    const litSide = smoothstep(terminator.sub(0.05), terminator.add(0.05), toLimb);
+                    face = mix(c.mul(0.8).add(face.mul(0.012)), face, litSide);
+                }
+                if (moon.rise) {
+                    // Low over the sea its lower limb is dimmer and redder: more air in the way.
+                    face = face.mul(mix(vec3(0.72, 0.52, 0.42), vec3(1), smoothstep(-1, 0.6, q.y)));
+                }
                 c.assign(mix(c, face, softStep(0, radius.sub(dist), u, 1.2)));
             });
             // Two decks of cloud in perspective, thinned round the moon; their thin edges near the
-            // moon light up silver with forward-scattered moonlight.
+            // moon light up silver with forward-scattered moonlight. Each visit has its own sky.
             const clearing = float(1).sub(exp(dist.mul(dist).div(radius.mul(radius).mul(7)).negate()).mul(0.75));
             const aloft = smoothstep(0.02, 0.22, e).toVar();
             const forward = lorentz(out2, 0.08).mul(1.5).add(lorentz(out2, 0.32).mul(0.3));
-            const silver = MOONLIGHT.mul(forward).mul(glow).toVar();
+            const silver = MOONLIGHT.mul(forward).mul(glow).mul(Math.sqrt(moon.gain)).toVar();
             const deck = (scale, aspect, lift, speed, seed, count) => {
                 const depth = float(1).div(e.add(lift));
                 const drift = seaT.mul(speed);
                 const q = vec2(p.x.mul(depth).mul(aspect), depth.mul(2.4)).mul(scale).add(vec2(drift, seed));
                 return warpedFbm(q, drift.mul(0.4).add(seed), count);
             };
-            const highDeck = smoothstep(0.5, 0.82, deck(0.7, 0.5, 0.55, 0.0032, 11.7, Math.max(3, octaves - 1)))
+            const clear = look.clouds;
+            const highSeed = visit.mul(23).add(11.7);
+            const lowSeed = visit.mul(17).add(3.1);
+            const highField = deck(0.7, 0.5, 0.55, 0.0032, highSeed, Math.max(3, octaves - 1));
+            const highDeck = smoothstep(0.5 + clear, 0.82 + clear, highField)
                 .mul(clearing).mul(aloft).mul(0.7);
-            const lowDeck = smoothstep(0.5, 0.72, deck(1.0, 0.9, 0.4, 0.005, 3.1, octaves)).mul(clearing).mul(aloft);
+            const lowDeck = smoothstep(0.5 + clear, 0.72 + clear, deck(1.0, 0.9, 0.4, 0.005, lowSeed, octaves))
+                .mul(clearing).mul(aloft);
             [highDeck, lowDeck].forEach((density) => {
                 const dens = density.toVar();
                 const edge = dens.mul(float(1).sub(dens)).mul(4);
                 const body = CLOUD.mul(float(1).sub(dens.mul(0.45))).add(silver.mul(edge.mul(0.9).add(0.2)));
                 c.assign(mix(c, body, float(1).sub(exp(dens.mul(-2.6)))));
             });
-            // A low bank of cloud far out over the sea, either side of the moon's open horizon: dark
-            // against the bright haze, translucent, its billowed tops touched with silver toward the moon.
-            If(e.lessThan(0.3), () => {
-                const lumps = fbm(vec2(p.x.mul(2.2).add(seaT.mul(0.0025)), 4.7), Math.max(3, octaves - 1))
-                    .add(gnoise(vec2(p.x.mul(7.5).add(seaT.mul(0.004)), 1.3)).sub(0.5).mul(0.25));
-                const aside = smoothstep(0.28, 0.75, p.x.abs()).toVar();
-                const crown = lumps.mul(0.13).add(0.01).mul(aside).toVar();
-                const inside = smoothstep(-0.02, 0.02, crown.sub(e)).mul(aside).toVar();
-                const billow = fbm(vec2(p.x.mul(9), e.mul(26)).add(vec2(seaT.mul(0.006), 3.1)), 3);
-                const moonward = exp(p.x.mul(p.x).mul(-1.2)).toVar();
-                const crest = exp(crown.sub(e).max(0).mul(-45)).mul(moonward.mul(0.9).add(0.1)).mul(glow);
-                const bank = mix(CLOUD, skyGradient(float(0), p.x), fadeOut(0.002, 0.05, e).mul(0.6))
-                    .mul(billow.mul(0.6).add(0.7))
-                    .add(MOONLIGHT.mul(crest).mul(0.3));
-                c.assign(mix(c, bank, inside.mul(0.78)));
+            // The cloud that now and then drifts across the moon: ragged, dark-bodied, silver-rimmed.
+            If(passing.greaterThan(0.001), () => {
+                // Its billows travel with it; thin parts let the moon glow through.
+                const rel = p.sub(moonC.add(passAt)).div(radius.mul(vec2(3.2, 1.1))).toVar();
+                const shape = exp(dot(rel, rel).negate());
+                const rag = warpedFbm(rel.mul(vec2(2.6, 2.2)).add(vec2(pass.z.mul(30), 1.7)), seaT.mul(0.01), 4);
+                const dens = smoothstep(0.38, 0.72, rag).mul(smoothstep(0.08, 0.6, shape)).mul(passing).toVar();
+                const edge = dens.mul(float(1).sub(dens)).mul(4);
+                const body = CLOUD.mul(float(1).sub(dens.mul(0.45))).add(silver.mul(edge.mul(1.0).add(0.2)));
+                c.assign(mix(c, body, float(1).sub(exp(dens.mul(-2.8)))));
             });
+            if (look.bank > 0) {
+                // A low bank of cloud far out over the sea, either side of the moon's open horizon: dark
+                // against the bright haze, translucent, its billowed tops touched with silver toward the moon.
+                If(e.lessThan(0.3), () => {
+                    const lumps = fbm(vec2(p.x.mul(2.2).add(seaT.mul(0.0025)), 4.7), Math.max(3, octaves - 1))
+                        .add(gnoise(vec2(p.x.mul(7.5).add(seaT.mul(0.004)), 1.3)).sub(0.5).mul(0.25));
+                    const bx = p.x.sub(moon.x).toVar();
+                    const aside = smoothstep(0.28, 0.75, bx.abs()).toVar();
+                    const crown = lumps.mul(0.13).add(0.01).mul(aside).toVar();
+                    const inside = smoothstep(-0.02, 0.02, crown.sub(e)).mul(aside).toVar();
+                    const billow = fbm(vec2(p.x.mul(9), e.mul(26)).add(vec2(seaT.mul(0.006), 3.1)), 3);
+                    const moonward = exp(bx.mul(bx).mul(-1.2)).toVar();
+                    const crest = exp(crown.sub(e).max(0).mul(-45)).mul(moonward.mul(0.9).add(0.1)).mul(glow);
+                    const bank = mix(CLOUD, skyGradient(float(0), p.x), fadeOut(0.002, 0.05, e).mul(0.6))
+                        .mul(billow.mul(0.6).add(0.7))
+                        .add(MOONLIGHT.mul(crest).mul(0.3));
+                    c.assign(mix(c, bank, inside.mul(0.78 * look.bank)));
+                });
+            }
             sky.assign(withLand(c, p.x, e, u.px.mul(1.2)));
+            if (look.beacon) sky.addAssign(beaconLight(p));
         });
         If(p.y.lessThan(yh.add(u.px.mul(2))), () => {
             // The water point under this pixel: a ray from the eye EYE metres up meets the plane.
@@ -391,6 +671,34 @@ export function createMoonlitWorld({ u, quality }) {
                 vx.addAssign(lost.mul(wave.dx * wave.dx));
                 vz.addAssign(lost.mul(wave.dz * wave.dz));
             });
+            // Now and then a fish jumps in the moon-path: a splash where it falls back, then rings
+            // spreading over the water. Their slopes tilt the moon into the eye, so the path's
+            // glitter traces them. A ring is never finer than the pixel's footprint on the water.
+            const splash = float(0).toVar();
+            const rings = float(0).toVar();
+            const fish = eventWindow(u.time, float(31), float(8), float(0.65), u.seed.mul(43.3).add(7.7)).toVar();
+            const jumping = fish.x.mul(u.life).toVar();
+            If(jumping.greaterThan(0.001), () => {
+                const spotZ = mix(float(22), float(36), hash21(vec2(fish.z, 6.1))).toVar();
+                const spot = vec2(spotZ.mul(moon.x).div(lens).add(hash21(vec2(fish.z, 1.9)).sub(0.5).mul(2.4)), spotZ);
+                const off = vec2(wx, wz).sub(spot).toVar();
+                const d = off.length().max(1e-3).toVar();
+                const grow = fish.y.toVar();
+                const w = fz.mul(1.2).max(0.5).toVar();
+                const ripple = float(0).toVar();
+                [[1, 1], [0.64, 0.7], [0.38, 0.45]].forEach(([k, a]) => {
+                    const x = d.sub(grow.mul(5.5).add(0.2).mul(k)).div(w).toVar();
+                    const crest = exp(x.mul(x).negate()).toVar();
+                    ripple.addAssign(x.mul(crest).mul(a));
+                    rings.addAssign(crest.mul(a));
+                });
+                const fade = float(1).sub(grow).toVar();
+                const amp = fade.mul(1.2).mul(float(0.5).div(w)).mul(jumping);
+                sx.addAssign(ripple.mul(amp).mul(off.x.div(d)));
+                sz.addAssign(ripple.mul(amp).mul(off.y.div(d)));
+                splash.assign(exp(d.mul(d).div(0.3).negate()).mul(fadeOut(0.04, 0.16, grow)).mul(jumping));
+                rings.mulAssign(fade.mul(jumping).mul(float(0.5).div(w)));
+            });
             // The sea roughens a touch on the in-breath: more facets find the moon, the path widens.
             const gain = b.mul(0.6).add(0.75).toVar();
             const normal = normalize(vec3(sx.mul(gain).negate(), 1, sz.mul(gain).negate())).toVar();
@@ -412,10 +720,19 @@ export function createMoonlitWorld({ u, quality }) {
             const dm = s.sub(moonC).toVar();
             mirror.addAssign(MOONLIGHT.mul(blurredLobe(dm, radius.add(0.05), bx, by).mul(0.12)
                 .add(blurredLobe(dm, radius.add(0.16), bx, by).mul(0.05))
-                .add(blurredLobe(dm, float(0.6), bx, by).mul(0.022))).mul(glow));
+                .add(blurredLobe(dm, float(0.6), bx, by).mul(0.022))).mul(glow).mul(Math.sqrt(moon.gain)));
             const shore = withLand(mirror, s.x, er, u.px.mul(1.5).add(by.mul(0.3)));
             const fres = fresnel(dot(ray, normal).negate(), 0.02).toVar();
             const water = DEEP.mul(float(1).sub(fres)).add(shore.mul(fres)).toVar();
+            // White water where the fish fell back; the rings' crests catch the moon most in its path.
+            const across = p.x.sub(moonC.x).div(radius.mul(1.6));
+            const inPath = exp(across.mul(across).negate());
+            water.addAssign(GLINT.mul(splash.mul(0.3).add(rings.mul(inPath.mul(0.35).add(0.035)))).mul(glow));
+            if (look.beacon) {
+                // The far light's reflection: a wavering column of it across the water.
+                const lamp = blurredLobe(s.sub(beaconAt), float(0.01), bx, by).mul(look.beacon.gain * 2.5);
+                water.addAssign(vec3(...look.beacon.color).mul(lamp).mul(fres));
+            }
             // The moon-path. `glitter` is the moonlight the water sends this pixel on average: the
             // share of its facets that tilt the moon's disc into the eye. Real glitter is that light
             // gathered into countless tiny points, so most of it is dealt out as sparkles: a jittered
@@ -428,7 +745,8 @@ export function createMoonlitWorld({ u, quality }) {
             // catch the moon: lend the near water a little more light so the path runs all the way down.
             const reachDown = near.mul(tall).mul(0.7).add(1);
             const glitter = blurredDisc(dm, moonPath, bx, by).mul(fres).mul(reachDown)
-                .mul(b.mul(0.8).add(0.45).mul(MOON_GLINT))
+                .mul(b.mul(0.8).add(0.45).mul(MOON_GLINT * moon.gain))
+                .mul(float(1).sub(dim))
                 .toVar();
             // Where the light is densest the cells fill up, but never into one solid sheet.
             const chance = float(1).sub(exp(glitter.mul(-SPARKLE_SHARE / (0.126 * SPARKLE)))).toVar();
@@ -449,7 +767,7 @@ export function createMoonlitWorld({ u, quality }) {
                 const glint = exp(grid.x.mul(grid.x).mul(-20)).mul(hash21(vec2(grid.z.mul(29), 7.7)).mul(0.4).add(0.6));
                 const delivered = chance.mul(0.126 * SPARKLE);
                 const sheen = glitter.sub(delivered).max(0).mul(0.5);
-                water.addAssign(MOON_HIGHLAND.mul(sheen.add(glint.mul(lit).mul(SPARKLE))));
+                water.addAssign(GLINT.mul(sheen.add(glint.mul(lit).mul(SPARKLE))));
             });
             // Out-of-focus glints close to the lens: the long lens is focused on the moon, so the
             // nearest sparkles swell into soft, dim discs that drift in and out over a few seconds.
@@ -461,7 +779,7 @@ export function createMoonlitWorld({ u, quality }) {
                     .mul(lens.mul(2));
                 const byAll = span.mul(SLOPE_VZ).add(rough).sqrt().mul(lens.mul(2));
                 const outline = blurredDisc(vec2(p.x, yh.add(below)).sub(moonC), moonPath, bxAll, byAll);
-                const expect = outline.mul(fresnel(ray.y.negate(), 0.02)).mul(glow);
+                const expect = outline.mul(fresnel(ray.y.negate(), 0.02)).mul(glow).mul(moon.gain);
                 const cell = voronoi(p.div(0.12), seaT.mul(0.08)).toVar();
                 const tick = seaT.mul(0.28).add(cell.z.mul(5.3)).toVar();
                 const beat = tick.floor();
@@ -475,10 +793,10 @@ export function createMoonlitWorld({ u, quality }) {
                 // A soft disc of light with a faintly brighter rim, as a real lens draws one.
                 const rim = smoothstep(size.mul(0.3), size, cell.x).mul(0.35).add(0.65);
                 const disc = fadeOut(size.sub(0.07), size.add(0.01), cell.x).mul(rim);
-                water.addAssign(vec3(0.85, 0.9, 1.0).mul(disc.mul(on).mul(near).mul(0.24)));
+                water.addAssign(GLINT.mul(vec3(0.85, 0.94, 1.15)).mul(disc.mul(on).mul(near).mul(0.24)));
             });
             // A hint of moonlight through the thin crests that face the eye, under the path.
-            const wedge = p.x.div(moonC.y.sub(p.y).mul(0.3).add(radius)).toVar();
+            const wedge = p.x.sub(moonC.x).div(moonC.y.sub(p.y).mul(0.3).add(radius)).toVar();
             const underPath = exp(wedge.mul(wedge).negate());
             water.addAssign(SUBSURFACE.mul(sz.mul(gain).mul(6).saturate()).mul(underPath).mul(glow).mul(0.6));
             // Wisps of mist lying on the far water.
@@ -487,12 +805,56 @@ export function createMoonlitWorld({ u, quality }) {
                 const mq = vec2(p.x.div(lean).mul(0.6), float(0.9).div(lean)).add(vec2(seaT.mul(0.012), 0));
                 const wisps = smoothstep(0.5, 0.8, fbm(mq, 3)).mul(fadeOut(0.02, 0.3, below))
                     .mul(smoothstep(0.003, 0.02, below));
-                water.addAssign(HAZE.mul(wisps).mul(0.35));
+                water.addAssign(HAZE.mul(wisps).mul(0.35 + look.fog * 0.6));
             });
             sea.assign(water);
         });
         const col = mix(sea, sky, softStep(yh, p.y, u)).toVar();
         col.addAssign(mist(p.x, p.y.sub(yh)));
+        if (look.fog > 0) {
+            // Banks of sea fog roll slowly over the islands and the far water, thinning over the near
+            // sea; their tops catch the moon.
+            const dy = p.y.sub(yh).toVar();
+            If(dy.lessThan(0.45).and(dy.greaterThan(-0.6)), () => {
+                const drift = seaT.mul(0.006).toVar();
+                const ridge = fbm(vec2(p.x.mul(1.3).add(drift).add(visit.mul(7)), 2.2), 3);
+                const top = smoothstep(0.3, 0.7, ridge).mul(0.3).add(0.015)
+                    .toVar();
+                const inside = smoothstep(-0.06, 0.02, top.sub(dy));
+                const billow = fbm(vec2(p.x.mul(2.6).add(drift.mul(1.6)), dy.mul(5).sub(drift)).add(5.5), 3);
+                const deep = dy.min(0);
+                const over = float(1).div(deep.mul(deep).div(0.06).add(1));
+                const mx = p.x.sub(moon.x);
+                const moonward = exp(mx.mul(mx).mul(-0.7)).mul(0.9).add(0.4).toVar();
+                const crest = exp(top.sub(dy).max(0).mul(-30)).mul(moonward);
+                const dens = inside.mul(billow.mul(1.1).sub(0.05).saturate()).mul(over).mul(look.fog * 0.8)
+                    .min(0.85);
+                const fogTint = HAZE.mul(2.6).mul(moonward).mul(glow.mul(0.45).add(0.65))
+                    .add(MOONLIGHT.mul(crest).mul(0.03).mul(glow));
+                col.assign(mix(col, fogTint, dens));
+            });
+        }
+        if (look.beacon?.beam) {
+            // The lighthouse's beam turns slowly through the fog, once in 24 seconds. Its lamp stays
+            // steady while the beam swings toward the eye and away: nothing flashes.
+            const turn = u.time.mul((Math.PI * 2) / 24).add(visit.mul(9)).toVar();
+            const sweep = sin(turn).toVar();
+            const facing = cos(turn).mul(0.35).add(0.65);
+            const d = p.sub(beaconAt).toVar();
+            const spread = d.x.abs().mul(0.07).add(0.006);
+            const toward = smoothstep(0, 0.04, d.x.mul(sweep.sign()));
+            const reachB = sweep.abs().mul(1.3).add(0.05);
+            const beam = exp(d.y.mul(d.y).div(spread.mul(spread)).negate()).mul(exp(d.x.abs().div(reachB).negate()))
+                .mul(toward)
+                .mul(facing);
+            col.addAssign(vec3(...look.beacon.color).mul(beam).mul(0.16 * look.fog));
+        }
+        // The lamp itself shines through the fog, wearing a wider glow in it.
+        if (look.beacon && look.fog > 0) {
+            const d = p.sub(beaconAt);
+            const glowInFog = float(0.02 * look.fog).div(dot(d, d).div(0.01).add(1));
+            col.addAssign(beaconLight(p).mul(0.8).add(vec3(...look.beacon.color).mul(glowInFog)));
+        }
         return col;
     })();
 
@@ -501,15 +863,7 @@ export function createMoonlitWorld({ u, quality }) {
         bloom: {
             strength: 0.4, radius: 0.72, threshold: 0.86, breath: 0.55,
         },
-        grade: {
-            shadows: [0.84, 0.94, 1.14],
-            highlights: [1.0, 1.0, 1.03],
-            saturation: 0.86,
-            contrast: 1.05,
-            vignette: 0.5,
-            // Point-like sparkles would fringe toward the corners: keep the lens quiet.
-            chroma: 0.35,
-        },
+        grade: look.grade,
         camera: { dolly: 0.02, drift: [0.03, 0.01], period: 80 },
         exposure: 1.0,
     };
