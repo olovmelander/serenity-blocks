@@ -190,9 +190,15 @@ export function createChapterBreath({
     const raf = globalThis.window?.requestAnimationFrame?.bind(globalThis.window);
     const caf = globalThis.window?.cancelAnimationFrame?.bind(globalThis.window);
 
+    let lastLevel = '';
     const render = () => {
         const state = resolveChapterBreath(elapsed, guidedBreaths);
-        root.style.setProperty('--breath', state.level.toFixed(3));
+        // Held breaths and the rest repeat the same level: no style invalidation for them.
+        const level = state.level.toFixed(3);
+        if (level !== lastLevel) {
+            root.style.setProperty('--breath', level);
+            lastLevel = level;
+        }
         if (state.phase !== lastPhase || state.breath !== lastBreath) {
             root.dataset.phase = state.phase;
             cue.textContent = state.rested && state.phase === 'rest' ? 'You’re ready' : state.cue;

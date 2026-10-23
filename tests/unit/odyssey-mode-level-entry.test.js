@@ -1317,6 +1317,20 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode._isOdysseyNavigatorOpen()).toBe(false);
     });
 
+    it('does not enter from the navigator when the glide to the orb was interrupted', async () => {
+        // Audit 2026-10-23: Play entered the orb even when a scroll had stopped its glide, so the
+        // portal centred on an orb no longer in front of the player.
+        const { mode } = createMode();
+        const levelConfig = createLevelConfig(20, { id: 6, chapterLevel: 1 });
+        mode.isInBoardView = true;
+        mode.boardController = { travelToLevel: vi.fn().mockResolvedValue(false) };
+        mode.launchOdysseyLevel = vi.fn().mockResolvedValue(true);
+        mode.closeOdysseyNavigator = vi.fn();
+        await expect(mode._launchLevelFromNavigator(levelConfig.id)).resolves.toBe(false);
+        expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
+        expect(mode.closeOdysseyNavigator).not.toHaveBeenCalled();
+    });
+
     it('returnToBoard waits for board rebuild before restoring inputs', async () => {
         const { mode } = createMode();
         const order = [];

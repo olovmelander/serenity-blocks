@@ -287,7 +287,10 @@ async function continueWithinChapter(mode, operation) {
     if (reducedMotion && (!await modal.cover() || !canProceed(mode, operation))) return false;
     const traveled = await mode.boardController.travelToLevel(nextLevel.id, {
         pathTravel: true,
-        travelDuration: reducedMotion ? 0 : 1500,
+        // A floor, not the trip: the board gives a trip through the black hole's plunge its
+        // longer time (computeTravelDuration), which a fixed duration here overrode.
+        travelDuration: reducedMotion ? 0 : undefined,
+        minTravelDuration: 1500,
         focus: false,
         isCurrent: () => canProceed(mode, operation),
         isPaused: () => modal.dataset.visibilityHeld === 'true' || document.hidden,
@@ -365,7 +368,9 @@ async function continueAcrossChapter(mode, operation) {
     if (reducedMotion && (!await modal.cover() || !canProceed(mode, operation))) return false;
     const traveled = await mode.boardController?.travelToLevel?.(nextLevel.id, {
         chapterArrival: true,
-        travelDuration: reducedMotion ? 0 : 2200,
+        // A floor (see the orb-to-orb trip above): the 6 -> 7 crossing runs the whole plunge.
+        travelDuration: reducedMotion ? 0 : undefined,
+        minTravelDuration: 2200,
         focusDuration: reducedMotion ? 0 : 450,
         focus: false,
         isCurrent: () => canProceed(mode, operation),

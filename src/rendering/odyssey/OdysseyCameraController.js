@@ -56,6 +56,14 @@ const FREE_CAMERA_WORLD_UP = new THREE.Vector3(0, 1, 0);
 // clock, so a 400 ms main-thread stall moved a glide 8.8% in one frame (audit 2026-10-18);
 // past this step a stall now lengthens the move instead of jumping it.
 const MAX_MOVE_STEP_MS = 50;
+/**
+ * A path trip starts from wherever the camera is — an orb's close-up ~10 u from it, an eye still
+ * lagging its rail point — and eases onto the rail frame over this long (at most TRAVEL_BLEND_SHARE
+ * of the trip). It snapped onto the rail on its first frame: every cross-chapter orb click, the
+ * navigator, arrow keys and the D-pad cut the picture from the close-up (audit 2026-10-23).
+ */
+export const TRAVEL_BLEND_IN_MS = 450;
+const TRAVEL_BLEND_SHARE = 0.45;
 const PATH_FRAME_GRAVITY_UP = new THREE.Vector3(0, 1, 0);
 const ACT_TRAVEL_SPEEDS = Object.freeze({
     [ODYSSEY_ACTS.ORIGIN]: 7.5,
@@ -725,6 +733,10 @@ export function resolveJourneyFraming(
 }
 
 const FALL_CAMERA_KEYS = Object.freeze(['rollDeg', 'fovOffset', 'camForward']);
+// A progress step this large in one frame outside a path trip is a jump (an orb selected, a
+// cut), not travel; the fall's terms then ease over FALL_JUMP_EASE_S (the focus move's length).
+const FALL_JUMP_PROGRESS = 0.002;
+const FALL_JUMP_EASE_S = 0.8;
 
 /** The fall is already smooth in progress; easing it again would carry it into the city. */
 function resolveJourneyFallCamera(progress, chapterPositions, reducedMotion) {
@@ -1349,6 +1361,8 @@ export class OdysseyCameraController {
         const direction = Math.sign(clampedPosition - startPosition);
 
         const now = performance.now();
+        const fromPosition = this.camera.position.clone();
+        if (this._breathApplied) fromPosition.sub(this._breathOffset);
         this.pathTravel = {
             active: true,
             startTime: now,
@@ -1372,13 +1386,63 @@ export class OdysseyCameraController {
                     to: plungeTravelMeasure(clampedPosition, this.chapterPositions),
                 }
                 : null,
+            // The pose the trip eases out of (TRAVEL_BLEND_IN_MS), without this frame's breathing.
+            from: {
+                position: fromPosition,
+                look: this.lookAtTarget.clone(),
+                up: this.followCameraUp.clone(),
+            },
+            blendMs: Math.min(TRAVEL_BLEND_IN_MS, travelDuration * TRAVEL_BLEND_SHARE),
         };
 
         return new Promise((resolve) => {
             this.animationResolve = resolve;
             this.currentPosition = startPosition;
             this.updateFollowPosition({ direct: true });
+            this._blendTravelStart(this.pathTravel);
         });
+    }
+
+    /**
+     * Ease the rail frame the trip has just placed the camera on from the pose the trip started
+     * in (smoothstep over `blendMs` of the trip's own clock), then let go of that pose.
+     * @private
+     */
+    _blendTravelStart(travel) {
+        const from = travel?.from;
+        if (!from) return;
+        const t = travel.blendMs > 0 ? THREE.MathUtils.clamp(travel.elapsed / travel.blendMs, 0, 1) : 1;
+        if (t >= 1) {
+            travel.from = null;
+            return;
+        }
+        const w = t * t * (3 - 2 * t);
+        const b = this._travelBlend || (this._travelBlend = {
+            fromDir: new THREE.Vector3(),
+            railDir: new THREE.Vector3(),
+            turn: new THREE.Quaternion(),
+            partial: new THREE.Quaternion(),
+        });
+        // The VIEW DIRECTION turns, not the look point: lerping from the orb a close-up looks at
+        // to the rail's target far ahead swept the view fastest at the start (7 deg a frame of a
+        // 68 deg turn in the first 100 ms, measured); a slerp spreads the turn over the blend.
+        const fromDistance = b.fromDir.subVectors(from.look, from.position).length();
+        const railDistance = b.railDir.subVectors(this.lookAtTarget, this.camera.position).length();
+        // lerpVectors(a, b, w) reads b per component before writing it, so b may be the target.
+        this.camera.position.lerpVectors(from.position, this.camera.position, w);
+        if (fromDistance > 1e-6 && railDistance > 1e-6) {
+            b.fromDir.divideScalar(fromDistance);
+            b.railDir.divideScalar(railDistance);
+            b.turn.setFromUnitVectors(b.fromDir, b.railDir);
+            b.partial.identity().slerp(b.turn, w);
+            this.lookAtTarget.copy(this.camera.position).addScaledVector(
+                b.fromDir.applyQuaternion(b.partial),
+                THREE.MathUtils.lerp(fromDistance, railDistance, w),
+            );
+        } else {
+            this.lookAtTarget.lerpVectors(from.look, this.lookAtTarget, w);
+        }
+        this.followCameraUp.lerpVectors(from.up, this.followCameraUp, w).normalize();
     }
 
     /**
@@ -1859,16 +1923,42 @@ export class OdysseyCameraController {
         // exponential ease below only filters it.
         const reducedMotion = this.prefersReducedMotion();
         const target = resolveJourneyFraming(this.currentPosition, this.chapterPositions, reducedMotion);
-        const fall = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions, reducedMotion);
+        let fall = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions, reducedMotion);
         const previousFall = this._fallCameraFraming;
         const active = this._activeFraming;
+        const jumpedBy = Math.abs(this.currentPosition - (this._framingProgress ?? this.currentPosition));
+        this._framingProgress = this.currentPosition;
 
         // Snap on the very first frame (avoids a visible ease-in from defaults on load).
         if (!this._framingInitialized) {
             this._framingInitialized = true;
             Object.assign(active, target);
             this._fallCameraFraming = fall;
+            this._fallJumpEase = null;
             return;
+        }
+
+        // The fall is added unfiltered (it must track the drawn position on a trip), so a JUMP
+        // in progress — selecting another orb in chapter 7 sets the position and then focuses
+        // over 800 ms — stepped its roll by up to 14 deg (and its FOV) in one frame (audit
+        // 2026-10-23). A jump into a focus move eases the fall from what was applied; a cut in
+        // follow mode still snaps (it teleports, and settles everything with it).
+        if (this.pathTravel?.active) {
+            this._fallJumpEase = null;
+        } else if (jumpedBy > FALL_JUMP_PROGRESS && this.mode === 'focus') {
+            this._fallJumpEase = { t: 0, from: { ...previousFall } };
+        }
+        if (this._fallJumpEase) {
+            const ease = this._fallJumpEase;
+            ease.t = Math.min(1, ease.t + (Math.max(0, deltaTime) / FALL_JUMP_EASE_S));
+            const e = ease.t * ease.t * (3 - 2 * ease.t);
+            const eased = {};
+            for (let i = 0; i < FALL_CAMERA_KEYS.length; i += 1) {
+                const key = FALL_CAMERA_KEYS[i];
+                eased[key] = THREE.MathUtils.lerp(ease.from[key] ?? 0, fall[key] ?? 0, e);
+            }
+            fall = eased;
+            if (ease.t >= 1) this._fallJumpEase = null;
         }
 
         const lerp = 1 - Math.exp(-Math.max(0, deltaTime) * FRAMING_BLEND_RATE);
@@ -2896,6 +2986,7 @@ export class OdysseyCameraController {
         this.currentPosition = nextPosition;
         this.targetPosition = travel.endPosition;
         this.updateFollowPosition({ position: nextPosition, direct: true });
+        this._blendTravelStart(travel);
 
         if (elapsed >= travel.duration) {
             this.currentPosition = travel.endPosition;

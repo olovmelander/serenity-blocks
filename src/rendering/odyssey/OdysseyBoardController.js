@@ -1239,6 +1239,7 @@ export class OdysseyBoardController {
         if (this.environmentManager && this.cameraController) {
             this.environmentManager.setOnChapterChange((chapterId, previousChapter) => {
                 this.cameraController.onChapterChange(chapterId);
+                this._syncChapterMusic(chapterId);
                 this.onChapterArrival?.({
                     chapterId,
                     previousChapter,
@@ -4127,9 +4128,14 @@ export class OdysseyBoardController {
             const hasWorldScenery = this.oneWorld
                 && this.environmentManager?.suppressedChapters?.has(targetChapter);
             if (!hasEnvironment && !hasWorldScenery) return false;
-            // Reduced motion cuts instead of gliding 0.9-3.5 s (audit 2026-10-18).
+            // Reduced motion cuts instead of gliding 0.9-3.5 s (audit 2026-10-18). A caller's
+            // `minTravelDuration` is a floor under the computed trip, never a cap: the black
+            // hole's plunge needs its extra time (audit 2026-10-23).
             const duration = options.travelDuration
-                ?? (reducedMotion ? 0 : this.computeTravelDuration(currentProgress, targetProgress));
+                ?? (reducedMotion ? 0 : Math.max(
+                    options.minTravelDuration ?? 0,
+                    this.computeTravelDuration(currentProgress, targetProgress),
+                ));
             const travelOptions = options.pathTravel === true || options.isPaused || options.isCurrent
                 ? [{ isCurrent, isPaused: options.isPaused }] : [];
             const arrived = await this.cameraController.travelToPosition(targetProgress, duration, ...travelOptions);
@@ -4238,6 +4244,7 @@ export class OdysseyBoardController {
         // between drawn frames: under the cap that gap is the cap itself (15 ms at 60 on a 131 Hz
         // panel) and would never read as headroom. Uncapped, the two are the same number.
         const frameMs = Math.min(this._slowestTickMs, 50);
+        this._lastFrameGapMs = this._slowestTickMs; // uncapped, for the hitch log
         this._slowestTickMs = 0;
         this.renderFrame(delta, frameMs > 0 ? frameMs : delta * 1000);
     }
@@ -4336,10 +4343,16 @@ export class OdysseyBoardController {
         const runPositionWork = !settled
             || (nowMs - this.lastPositionWorkAtMs) >= this.positionWorkIntervalMs;
 
+        // The corridor's drift clock gets every frame's time, also the frames the gate skips: fed
+        // one frame's delta per throttled run it drifted at ~20 % speed once the camera settled
+        // (audit 2026-10-23).
+        this._corridorPendingDelta = (this._corridorPendingDelta || 0) + delta;
         if (runPositionWork) {
             this.lastPositionWorkAtMs = nowMs;
             // Parallax corridor depth: cross-fade by active progress, drift, follow camera.
-            this.corridorField?.update(this.camera, cameraProgress, delta);
+            const corridorDelta = Math.min(this._corridorPendingDelta, 0.25);
+            this._corridorPendingDelta = 0;
+            this.corridorField?.update(this.camera, cameraProgress, corridorDelta);
         }
 
         // Steam quench: time-driven (it billows) so it runs every frame, not on the throttled
@@ -4633,10 +4646,11 @@ export class OdysseyBoardController {
             // Freeze diagnostics (debug-overlay only, ?odysseyAAA=1): log any large hitch + what
             // changed, so a remaining stall can be classified — a jump in geometries/textures =
             // GPU upload; no jump = compile/CPU. Gated so it never spams/over-heads normal runs.
-            if (this.debugOverlayActive && delta > 0.05 && this.renderer?.info) {
+            // (The delta is clamped to 50 ms, so it never read as a hitch: the raw gap does.)
+            if (this.debugOverlayActive && this._lastFrameGapMs > 50 && this.renderer?.info) {
                 const { memory, render } = this.renderer.info;
                 console.warn(
-                    `[OdysseyPerf] hitch ${(delta * 1000).toFixed(0)}ms @${cameraProgress.toFixed(3)} `
+                    `[OdysseyPerf] hitch ${this._lastFrameGapMs.toFixed(0)}ms @${cameraProgress.toFixed(3)} `
                     + `ch${this.lastActiveChapter ?? '?'} | geom ${memory?.geometries} tex ${memory?.textures} `
                     + `draws ${render?.drawCalls} tris ${render?.triangles}`,
                 );
@@ -5148,7 +5162,12 @@ export class OdysseyBoardController {
             } else {
                 this._playThresholdStinger(boundaryId, seamIntensity, transition);
             }
-            this._startChapterMusicBridge(resolvedBlendState.targetChapter, transition, boundaryId);
+            // Bridge to the chapter the camera is heading INTO: the seam's source going back.
+            this._startChapterMusicBridge(
+                direction < 0 ? resolvedBlendState.sourceChapter : resolvedBlendState.targetChapter,
+                transition,
+                boundaryId,
+            );
             this.pathRenderer?.triggerChapterTransition({
                 fromChapter: resolvedBlendState.sourceChapter,
                 toChapter: resolvedBlendState.targetChapter,
@@ -5201,8 +5220,12 @@ export class OdysseyBoardController {
                 intensity: seamIntensity * envelope,
             });
         } else {
+            const leavingSeam = this.activeSeamBoundaryId !== null;
             this.activeSeamBoundaryId = null;
             this.seamMusicBoundaryId = null;
+            // A seam left on the side it was entered from: the bridge had already moved the
+            // music to the far chapter, which the camera never reached.
+            if (leavingSeam) this._syncChapterMusic(this.environmentManager?.currentChapter);
             // Left the seam without crossing the surface (scrubbed back out): the deferred
             // breach stinger must not fire later from stale state.
             if (this._pendingBreachStinger && cameraProgress < ODYSSEY_BREACH_P) {
@@ -5222,6 +5245,26 @@ export class OdysseyBoardController {
         if (!applyOdysseyChapterMusic(this, track, options)) return false;
         this._odysseyMusicChapter = chapterId;
         return true;
+    }
+
+    /**
+     * The music belongs to the chapter the camera is in. The seam bridge only ever moved it on
+     * entering a seam, and always to the seam's far side, so going back a chapter kept the later
+     * chapter's track, and a cut (reduced motion, an instant trip) never changed it at all
+     * (audit 2026-10-23). Called on the active-chapter flip and on leaving a seam.
+     * @param {number} chapterId
+     * @returns {boolean} whether the music changed
+     */
+    _syncChapterMusic(chapterId) {
+        // Not before the board's own first chapter music (setup flips the chapter before it).
+        if (this._odysseyMusicChapter == null) return false;
+        if (!Number.isFinite(chapterId) || chapterId === this._odysseyMusicChapter) return false;
+        const crossfadeDurationMs = getChapterProfile(chapterId)?.transition?.crossfadeDurationMs || 3500;
+        return this._applyChapterMusic(chapterId, {
+            reason: 'odyssey-chapter-music',
+            fadeOutMs: Math.max(250, Math.round(crossfadeDurationMs * 0.48)),
+            fadeInMs: Math.max(250, Math.round(crossfadeDurationMs * 0.52)),
+        });
     }
 
     _startChapterMusicBridge(chapterId, transition = {}, boundaryId = null) {

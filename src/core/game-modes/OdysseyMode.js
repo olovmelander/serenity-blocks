@@ -59,6 +59,7 @@ import { OdysseyBoardController } from '../../rendering/odyssey/OdysseyBoardCont
 import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntryTransition.js';
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { scheduleWarmPortalGate } from '../../rendering/transitions/portal-gate.js';
+import { scheduleWarmPortalGateWorker } from '../../rendering/transitions/portal-gate-remote.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { renderOdysseyLevelPanel, resetOdysseyPanelPlay } from '../../ui/odyssey/odyssey-level-panel.js';
@@ -336,6 +337,9 @@ export class OdysseyMode extends BaseGameMode {
         if (!this.journeyEntryTransition) this.journeyEntryTransition = new JourneyEntryTransition();
         if (!this.journeyReturnTransition) this.journeyReturnTransition = new JourneyReturnTransition();
         scheduleWarmPortalGate();
+        // The gate draws in a worker where it can (the passage keeps streaming while the orb's
+        // theme builds): start it and bake its sprites when the page is idle, not at the click.
+        scheduleWarmPortalGateWorker(this.deps?.settingsManager?.get?.()?.effectQuality || 'High');
 
         // ═══════════════════════════════════════════════════════════════════
         // PERFORMANCE: Suspend the active theme's render loop while in
@@ -924,7 +928,12 @@ export class OdysseyMode extends BaseGameMode {
                         this._clearGameplayRevealState();
                         this._clearLevelStartCue({ resolveValue: false });
                         this._cleanupPreparedLevelStart();
-                        this._restoreBoardCameraAfterEntryAbort();
+                        // Under the gate's cover the world camera snaps back to the rail unseen.
+                        // Aborted before it covered (Esc or Map in the first ~0.8 s), the world
+                        // is on screen: the snap popped the zoom back to the rail and the focus
+                        // below then swung it to the orb again (audit 2026-10-23). The focus
+                        // glides from where the camera is instead, its lens easing back too.
+                        if (abortResult?.covered !== false) this._restoreBoardCameraAfterEntryAbort();
                         this._restoreUIAfterTransitionAbort(requestedLevelId);
                         this.boardController?.resumeRendering?.();
                         this.deps?.themeManager?.suspendThemes?.();
@@ -1177,48 +1186,11 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Brief node pulse before blackout.
+     * Brief node pulse before blackout (the node manager draws it: it owns the orb's scale).
      * @private
      */
     _pulseJourneyEntryNode(levelId, durationMs = 620) {
-        const node = this.boardController?.nodeManager?.nodes?.get(levelId);
-        const group = node?.group;
-        if (!group) return;
-
-        const glowMesh = node?.glowMesh || null;
-        const baseScale = group.scale.clone();
-        const baseGlowScale = glowMesh?.scale?.clone?.() || null;
-        const baseZ = group.position.z;
-        const startedAt = performance.now();
-
-        const animatePulse = () => {
-            const elapsed = performance.now() - startedAt;
-            const progress = Math.min(elapsed / durationMs, 1);
-            const eased = progress < 0.7
-                ? progress / 0.7
-                : 1 - ((progress - 0.7) / 0.3);
-            const pulse = Math.sin(Math.max(0, eased) * Math.PI);
-
-            group.scale.copy(baseScale).multiplyScalar(1 + (pulse * 0.16));
-            group.position.z = baseZ + (pulse * 0.32);
-
-            if (glowMesh && baseGlowScale) {
-                glowMesh.scale.copy(baseGlowScale).multiplyScalar(1 + (pulse * 0.34));
-            }
-
-            if (progress < 1) {
-                requestAnimationFrame(animatePulse);
-                return;
-            }
-
-            group.scale.copy(baseScale);
-            group.position.z = baseZ;
-            if (glowMesh && baseGlowScale) {
-                glowMesh.scale.copy(baseGlowScale);
-            }
-        };
-
-        requestAnimationFrame(animatePulse);
+        this.boardController?.nodeManager?.pulseNode?.(levelId, durationMs);
     }
 
     /**
@@ -2016,9 +1988,12 @@ export class OdysseyMode extends BaseGameMode {
             return false;
         }
 
+        // Whether a settled focus actually arrived (false: the player interrupted the glide —
+        // a scroll, another orb — or the orb could not be reached).
+        let arrived = true;
         if (settle && this.boardController?.travelToLevel) {
             try {
-                await this.boardController.travelToLevel(requestedLevelId);
+                arrived = (await this.boardController.travelToLevel(requestedLevelId)) !== false;
             } catch (error) {
                 console.warn('[Odyssey] Board focus failed before launch:', error);
             }
@@ -2031,7 +2006,7 @@ export class OdysseyMode extends BaseGameMode {
             this._updateLevelPreview(requestedLevelId);
         }
 
-        return true;
+        return arrived;
     }
 
     async _launchLevelFromNavigator(levelId) {
@@ -2040,10 +2015,13 @@ export class OdysseyMode extends BaseGameMode {
             return false;
         }
 
-        await this._focusBoardLevelForLaunch(requestedLevelId, {
+        const arrived = await this._focusBoardLevelForLaunch(requestedLevelId, {
             updatePreview: true,
             settle: true,
         });
+        // A glide the player interrupted ends here, navigator open and Play ready again: it went
+        // on into a portal centred on an orb no longer in front of them (audit 2026-10-23).
+        if (!arrived) return false;
         this.closeOdysseyNavigator({ restoreBoardPreview: false });
         return this.launchOdysseyLevel(requestedLevelId, { source: 'selector' });
     }
@@ -3206,10 +3184,13 @@ export class OdysseyMode extends BaseGameMode {
             boardContainer.style.pointerEvents = isOdysseyWorldInterlude(this) ? 'none' : 'auto';
         }
 
-        // Resume a parked (kept-alive) board. No-op on a freshly built board —
-        // resumeRendering() early-returns when the loop was never paused.
+        // Resume the board whenever it is revealed. The entry pauses it at the blackout, but it
+        // is only PARKED 1.2 s after the entry completes: a return inside that window (Back to
+        // map right after GO, a theme that failed to start) used to reveal a paused board — no
+        // frames, no chapter music, the wheel ignored (audit 2026-10-23). resumeRendering()
+        // early-returns when the loop is running, so a freshly built board is untouched.
+        this.boardController?.resumeRendering?.();
         if (this._boardParked) {
-            this.boardController?.resumeRendering?.();
             this._boardParked = false;
             this._logBoardMemory('board-resumed');
         }

@@ -150,6 +150,45 @@ function createRafHarness() {
 }
 
 describe('JourneyReturnTransition', () => {
+    it('owns Escape while a plain return plays, ahead of the page, and lets it go after', async () => {
+        // Audit 2026-10-23: Escape during a return opened Settings over the passage.
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        const listeners = new Map();
+        dom.window.addEventListener = vi.fn((type, fn, capture) => listeners.set(`${type}|${capture === true}`, fn));
+        dom.window.removeEventListener = vi.fn((type, fn, capture) => {
+            if (listeners.get(`${type}|${capture === true}`) === fn) listeners.delete(`${type}|${capture === true}`);
+        });
+        const transition = new JourneyReturnTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        let release;
+        const ready = new Promise((resolve) => { release = resolve; });
+        const playing = transition.play({
+            captureEscape: true,
+            timings: {
+                blackoutStartMs: 10, blackoutFullMs: 20, revealDurationMs: 20, maxBlackoutHoldMs: 500,
+            },
+            callbacks: { onBlackoutReached: () => ready },
+        });
+        const key = listeners.get('keydown|true');
+        expect(typeof key).toBe('function');
+        const escape = { key: 'Escape', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+        key(escape);
+        expect(escape.stopImmediatePropagation).toHaveBeenCalledOnce();
+        const other = { key: 'a', preventDefault: vi.fn(), stopImmediatePropagation: vi.fn() };
+        key(other);
+        expect(other.stopImmediatePropagation).not.toHaveBeenCalled();
+        release(true);
+        await harness.flushUntil(() => !transition.activeRun, { stepMs: 10, maxSteps: 40 });
+        await playing;
+        expect(listeners.has('keydown|true')).toBe(false);
+    });
+
     afterEach(() => {
         vi.restoreAllMocks();
     });

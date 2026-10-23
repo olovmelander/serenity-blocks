@@ -315,6 +315,14 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         '0',
     ),
     parameter(
+        'portalGateWorker',
+        'Draws the orb portal in a worker, so its passage keeps moving while the theme of the orb builds; disabling draws it on the page.',
+        OFF,
+        'On where the browser supports it',
+        '0',
+        { sources: ['src/rendering/transitions/portal-gate-remote.js'] },
+    ),
+    parameter(
         'odysseyAdaptiveGpuTiming',
         'Lets automatic quality read GPU time, so it lowers quality only when the GPU is what is slow.',
         OFF,
