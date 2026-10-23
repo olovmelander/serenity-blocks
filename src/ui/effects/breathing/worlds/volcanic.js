@@ -310,22 +310,24 @@ function paintPlume(c) {
         .toVar();
     // Volcanic lightning, seen only as light inside the ash: a lobe of the cloud glows up over a
     // second and more, a second lobe beside it answers, and both sink back. Never a strike.
-    If(bolt.x.greaterThan(0.001), () => {
-        const id = bolt.z;
-        // Off to one flank of the plume, above the fountain's crown.
-        const flank = hash21(vec2(id, 1.3)).sub(0.5).sign().mul(mix(float(0.4), float(0.8), hash21(vec2(id, 3.9))));
-        const at = vec2(flank, mix(float(0.42), float(0.78), hash21(vec2(id, 2.7))).mul(L.reach)).toVar();
-        const d1 = vec2(across.sub(at.x).div(0.26), climb.sub(at.y).div(0.13));
-        const shift = vec2(hash21(vec2(id, 4.1)).sub(0.5).mul(0.8), hash21(vec2(id, 5.9)).mul(0.2).add(0.05));
-        const d2 = d1.sub(vec2(shift.x.div(0.26), shift.y.div(0.13)));
-        const second = smoothstep(0.25, 0.5, bolt.y).mul(fadeOut(0.62, 0.95, bolt.y));
-        const lobes = exp(dot(d1, d1).negate()).mul(bolt.x).add(exp(dot(d2, d2).negate()).mul(second).mul(0.7));
-        // Light branching through the cloud: brighter veins inside the glow.
-        const veins = ridged(vec2(across.mul(3.4), climb.mul(5.5)).add(id.mul(31)), 3).toVar();
-        const v2 = veins.mul(veins).toVar();
-        glowing.addAssign(BOLT.mul(lobes).mul(v2.mul(v2).mul(2.2).add(0.1)).mul(billow.mul(0.8).add(0.2))
-            .mul(M.lightning.gain));
-    });
+    if (M.lightning.chance > 0) {
+        If(bolt.x.greaterThan(0.001), () => {
+            const id = bolt.z;
+            // Off to one flank of the plume, above the fountain's crown.
+            const flank = hash21(vec2(id, 1.3)).sub(0.5).sign().mul(mix(float(0.4), float(0.8), hash21(vec2(id, 3.9))));
+            const at = vec2(flank, mix(float(0.42), float(0.78), hash21(vec2(id, 2.7))).mul(L.reach)).toVar();
+            const d1 = vec2(across.sub(at.x).div(0.26), climb.sub(at.y).div(0.13));
+            const shift = vec2(hash21(vec2(id, 4.1)).sub(0.5).mul(0.8), hash21(vec2(id, 5.9)).mul(0.2).add(0.05));
+            const d2 = d1.sub(vec2(shift.x.div(0.26), shift.y.div(0.13)));
+            const second = smoothstep(0.25, 0.5, bolt.y).mul(fadeOut(0.62, 0.95, bolt.y)).mul(bolt.x);
+            const lobes = exp(dot(d1, d1).negate()).mul(bolt.x).add(exp(dot(d2, d2).negate()).mul(second).mul(0.7));
+            // Light branching through the cloud: brighter veins inside the glow.
+            const veins = ridged(vec2(across.mul(3.4), climb.mul(5.5)).add(id.mul(31)), 3).toVar();
+            const v2 = veins.mul(veins).toVar();
+            glowing.addAssign(BOLT.mul(lobes).mul(v2.mul(v2).mul(2.2).add(0.1)).mul(billow.mul(0.8).add(0.2))
+                .mul(M.lightning.gain));
+        });
+    }
     return vec4(glowing, density.mul(0.94 * M.plume.density));
 }
 
