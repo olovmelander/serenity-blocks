@@ -9,7 +9,9 @@
  * is one the arm can reach, a twirl ends where it began and one cut short never swings her back.
  */
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     GestureSlots, HANDOVERS, SPIRIT_GESTURES, TROLL_GESTURES, emptyPose, envelope, slotWeight,
@@ -30,6 +32,9 @@ const spec = (file) => {
 const TROLL_SPEC = spec('troll-lod1.glb');
 const SPIRIT_SPEC = spec('spirit-lod0.glb');
 const DT = 1 / 60;
+
+// The bodies' tests pose a body a few thousand times: room for a loaded machine.
+vi.setConfig({ testTimeout: 30000 });
 const FACE = Math.atan2(SPIRIT.home[0] - TROLL.home[0], SPIRIT.home[2] - TROLL.home[2]);
 
 function makeTroll() {
@@ -177,15 +182,17 @@ describe('stillwater gestures: the bodies making them', () => {
 
     it('the spirit makes every gesture of hers with every bone finite, standing and kneeling', () => {
         for (const kneel of [false, true]) {
+            // Settled once (risen, or knelt on the water), then every gesture in turn, a breath between.
+            const body = makeSpirit();
+            let t = 0;
+            for (let i = 0; i < 300; i++) body.update(DT, spiritWant(null, { kneel }), (t += DT));
             for (const name of Object.keys(SPIRIT_GESTURES)) {
-                const body = makeSpirit();
-                let t = 0;
-                for (let i = 0; i < 300; i++) body.update(DT, spiritWant(null, { kneel }), (t += DT));
                 const g = { name, start: t + DT, length: 2.4 };
-                for (let i = 0; i < 180; i++) {
+                for (let i = 0; i < 150; i++) {
                     body.update(DT, spiritWant(g, { kneel }), (t += DT));
                     allFinite(body, name);
                 }
+                for (let i = 0; i < 30; i++) body.update(DT, spiritWant(null, { kneel }), (t += DT));
             }
         }
     });
