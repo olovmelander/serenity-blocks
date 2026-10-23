@@ -38,6 +38,9 @@ const hiddenManifestPath = path.join(distDir, '.vite', 'manifest.json');
 const assetsDir = path.join(distDir, 'assets');
 const playgroundReferencesDir = path.join(distDir, 'playground-refs');
 const requiredLegalNotices = ['CREDITS.md', 'README.md'];
+// Written by Vite's build.license from the bundled packages; the bundle itself carries no notices.
+const bundledLicensesPath = path.join(distDir, 'THIRD_PARTY_LICENSES.md');
+const requiredBundledLicenses = ['phaser', 'three'];
 
 function fail(message) {
     console.error(`pages-artifact-check: FAIL - ${message}`);
@@ -76,6 +79,18 @@ for (const file of requiredLegalNotices) {
         fail(`${file} is missing from the repository root; artifact identity cannot be verified.`);
     } else if (!readFileSync(artifactPath).equals(readFileSync(sourcePath))) {
         fail(`${distLabel}/${file} differs byte-for-byte from the repository-root ${file}.`);
+    }
+}
+
+if (!existsSync(bundledLicensesPath)) {
+    fail(`${distLabel}/THIRD_PARTY_LICENSES.md is missing; bundled libraries' licenses must ship.`);
+} else {
+    const bundledLicenses = readFileSync(bundledLicensesPath, 'utf8');
+    for (const name of requiredBundledLicenses) {
+        // A heading, then the license text itself (Vite leaves it out when it finds no file).
+        if (!new RegExp(`^## ${name} - [^\\n]*\\n\\n(?!## )\\S`, 'm').test(bundledLicenses)) {
+            fail(`${distLabel}/THIRD_PARTY_LICENSES.md has no license text for ${name}.`);
+        }
     }
 }
 

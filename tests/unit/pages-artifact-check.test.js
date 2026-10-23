@@ -23,6 +23,17 @@ const repoRoot = path.resolve(
 const checkerPath = path.join(repoRoot, 'scripts', 'pages-artifact-check.mjs');
 const temporaryArtifactRoots = [];
 
+// THIRD_PARTY_LICENSES.md as Vite's build.license writes it; a null text leaves that entry bare.
+function bundledLicenses(phaserText, threeText) {
+    return [
+        '# Licenses',
+        '## phaser - 4.2.1 (MIT)',
+        phaserText,
+        '## three - 0.186.1 (MIT)',
+        threeText,
+    ].filter((line) => line !== null).join('\n\n') + '\n';
+}
+
 function createArtifact() {
     const artifactRoot = mkdtempSync(path.join(tmpdir(), 'serenity-pages-artifact-'));
     const assetsDir = path.join(artifactRoot, 'assets');
@@ -44,6 +55,10 @@ function createArtifact() {
     copyFileSync(
         path.join(repoRoot, 'README.md'),
         path.join(artifactRoot, 'README.md'),
+    );
+    writeFileSync(
+        path.join(artifactRoot, 'THIRD_PARTY_LICENSES.md'),
+        bundledLicenses('MIT License', 'The MIT License'),
     );
     return artifactRoot;
 }
@@ -86,5 +101,21 @@ describe('pages artifact checker', () => {
         expect(stale.stderr).toContain(
             'README.md differs byte-for-byte from the repository-root README.md.',
         );
+    });
+
+    it('rejects an artifact whose bundled-library licenses are missing or empty', () => {
+        const artifactRoot = createArtifact();
+        const licensesPath = path.join(artifactRoot, 'THIRD_PARTY_LICENSES.md');
+
+        writeFileSync(licensesPath, bundledLicenses('MIT License', null));
+        const textless = runChecker(artifactRoot);
+        expect(textless.status).toBe(1);
+        expect(textless.stderr).toContain('THIRD_PARTY_LICENSES.md has no license text for three.');
+        expect(textless.stderr).not.toContain('for phaser');
+
+        rmSync(licensesPath);
+        const missing = runChecker(artifactRoot);
+        expect(missing.status).toBe(1);
+        expect(missing.stderr).toContain('THIRD_PARTY_LICENSES.md is missing');
     });
 });
