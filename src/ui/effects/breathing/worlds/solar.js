@@ -21,9 +21,10 @@
  *
  * Moods: the golden star; a red giant rising like a horizon, its surface a few huge boiling
  * convection cells, wrapped in the dust it sheds; a blue-white hot star with a violet corona and a
- * ringed planet crossing its limb. Behind every star lies the band of its galaxy. Now and then a
- * coronal mass ejection blooms off the limb over several seconds, and a comet crosses with its
- * tails streaming away from the star.
+ * ringed planet crossing its limb; the golden star in total eclipse, its pearl corona round a black
+ * moon with a diamond of sunlight at the edge. Behind every star lies the band of its galaxy. Now
+ * and then a coronal mass ejection blooms off the limb over several seconds, and a comet crosses
+ * with its tails streaming away from the star.
  */
 import { Vector4 } from 'three/webgpu';
 import {
@@ -307,7 +308,9 @@ function tintsFor(mood) {
     const [s0, s1, s2, s3, s4] = ramp(mood.photosphere);
     const [p0, p1, p2, p3] = ramp(mood.plasma);
     const [c0, c1, c2, c3] = ramp(mood.corona);
-    const one = (name, input) => ({ name: `solar_${name}_${key}`, type: 'vec3', inputs: [{ name: input, type: 'float' }] });
+    const one = (name, input) => ({
+        name: `solar_${name}_${key}`, type: 'vec3', inputs: [{ name: input, type: 'float' }],
+    });
     const tints = {
         sunTint: Fn(([t]) => {
             const red = mix(s0, s1, smoothstep(0.0, 0.36, t));
@@ -552,7 +555,8 @@ function galaxyBand(p, u, {
     const spine = exp(spineAt.mul(spineAt).negate()).toVar();
     const clouds = fbm(drift.mul(2.2).add(1.3), 3);
     const riftAt = across.div(width.mul(0.42));
-    const rift = smoothstep(0.47, 0.64, fbm(drift.mul(vec2(3.4, 2.6)).add(8.4), 3)).mul(exp(riftAt.mul(riftAt).negate())).toVar();
+    const rift = smoothstep(0.47, 0.64, fbm(drift.mul(vec2(3.4, 2.6)).add(8.4), 3))
+        .mul(exp(riftAt.mul(riftAt).negate())).toVar();
     const glow = spine.mul(smoothstep(0.3, 0.78, clouds).mul(0.8).add(0.2)).mul(float(1).sub(rift.mul(0.85)));
     const stars = starfield(drift.add(11.3), u, 1.5).mul(spine.mul(0.45).add(0.05)).mul(float(1).sub(rift.mul(0.7)));
     return vec3(...tint).mul(glow).mul(gain).add(stars.mul(0.6));
@@ -573,7 +577,7 @@ export const MOODS = Object.freeze([
         flare: [1.0, 0.85, 0.6],
         space: [0.0032, 0.0012, 0.0018],
         galaxy: {
-            angle: 0.5, offset: 0.1, tint: [0.05, 0.026, 0.022], gain: 3,
+            angle: 0.5, offset: 0.1, tint: [0.046, 0.034, 0.03], gain: 4,
         },
         comet: { head: [0.9, 0.96, 1.0], ion: [0.45, 0.68, 1.0], dust: [1.0, 0.86, 0.62] },
         size: 1,
@@ -607,7 +611,9 @@ export const MOODS = Object.freeze([
         // sheds hangs around it in dim, lit wisps.
         id: 'red-giant',
         name: 'Red Giant',
-        photosphere: [[0.16, 0.01, 0.004], [0.5, 0.045, 0.008], [0.88, 0.15, 0.02], [1.0, 0.3, 0.06], [1.0, 0.46, 0.16]],
+        photosphere: [
+            [0.16, 0.01, 0.004], [0.5, 0.045, 0.008], [0.88, 0.15, 0.02], [1.0, 0.3, 0.06], [1.0, 0.46, 0.16],
+        ],
         plasma: [[0.42, 0.028, 0.04], [0.92, 0.12, 0.05], [1.0, 0.3, 0.08], [1.0, 0.56, 0.26]],
         corona: [[1.0, 0.46, 0.2], [0.86, 0.18, 0.05], [0.42, 0.05, 0.03], [0.15, 0.02, 0.03]],
         chromosphere: [1.0, 0.18, 0.07],
@@ -617,15 +623,15 @@ export const MOODS = Object.freeze([
         flare: [1.0, 0.7, 0.45],
         space: [0.0026, 0.0008, 0.0012],
         galaxy: {
-            angle: -0.32, offset: 0.62, tint: [0.045, 0.024, 0.026], gain: 3,
+            angle: -0.32, offset: 0.62, tint: [0.044, 0.03, 0.03], gain: 4,
         },
         comet: { head: [0.92, 0.95, 1.0], ion: [0.42, 0.62, 1.0], dust: [1.0, 0.78, 0.55] },
         rising: true,
         shell: [0.5, 0.16, 0.07],
         granules: 5.5,
         meso: 2.2,
-        lanes: 1.2,
-        grain: 0.45,
+        lanes: 1.0,
+        grain: 0.6,
         ragged: 0.2,
         boil: 0.07,
         rotation: 1100,
@@ -641,7 +647,11 @@ export const MOODS = Object.freeze([
             strength: 0.42, radius: 0.75, threshold: 0.95, breath: 0.7,
         },
         grade: {
-            shadows: [1.14, 0.88, 0.86], highlights: [1.06, 0.95, 0.86], saturation: 1.05, contrast: 1.07, vignette: 0.45,
+            shadows: [1.14, 0.88, 0.86],
+            highlights: [1.06, 0.95, 0.86],
+            saturation: 1.05,
+            contrast: 1.07,
+            vignette: 0.45,
         },
         exposure: 0.95,
     },
@@ -662,7 +672,7 @@ export const MOODS = Object.freeze([
         flare: [0.9, 0.94, 1.0],
         space: [0.0012, 0.0016, 0.0042],
         galaxy: {
-            angle: 0.95, offset: -0.2, tint: [0.026, 0.032, 0.06], gain: 3,
+            angle: 0.95, offset: -0.2, tint: [0.03, 0.034, 0.06], gain: 4,
         },
         comet: { head: [0.95, 0.98, 1.0], ion: [0.4, 0.75, 1.0], dust: [0.95, 0.9, 0.8] },
         reflection: [0.2, 0.36, 1.0],
@@ -690,9 +700,61 @@ export const MOODS = Object.freeze([
             strength: 0.44, radius: 0.7, threshold: 0.95, breath: 0.8,
         },
         grade: {
-            shadows: [0.92, 0.94, 1.14], highlights: [0.98, 0.99, 1.04], saturation: 1.04, contrast: 1.06, vignette: 0.42,
+            shadows: [0.92, 0.94, 1.14],
+            highlights: [0.98, 0.99, 1.04],
+            saturation: 1.04,
+            contrast: 1.06,
+            vignette: 0.42,
         },
         exposure: 0.8,
+    },
+    {
+        // The golden star in total eclipse behind a moon: its disc black, the pearl corona and
+        // the pink prominences round the rim are the whole show, and a last bead of sunlight
+        // shines at one edge (the diamond ring).
+        id: 'total-eclipse',
+        name: 'Total Eclipse',
+        photosphere: [[0.3, 0.02, 0.003], [0.8, 0.12, 0.012], [1.0, 0.33, 0.045], [1.0, 0.52, 0.14], [1.0, 0.7, 0.32]],
+        plasma: [[0.5, 0.04, 0.12], [1.0, 0.16, 0.3], [1.0, 0.42, 0.5], [1.0, 0.8, 0.82]],
+        corona: [[1.0, 0.96, 0.9], [0.82, 0.84, 0.92], [0.46, 0.48, 0.64], [0.14, 0.15, 0.26]],
+        chromosphere: [1.0, 0.22, 0.42],
+        innerCorona: [1.0, 0.95, 0.88],
+        glare: [0.8, 0.82, 0.95],
+        loopLight: [1.0, 0.9, 0.8],
+        flare: [1.0, 0.9, 0.8],
+        space: [0.0016, 0.002, 0.0046],
+        galaxy: {
+            angle: -0.62, offset: -0.05, tint: [0.034, 0.036, 0.05], gain: 4,
+        },
+        comet: { head: [0.95, 0.98, 1.0], ion: [0.45, 0.68, 1.0], dust: [1.0, 0.92, 0.8] },
+        eclipse: {
+            // The moon's radius and centre (star units), its night side, and the diamond's light.
+            radius: 1.025, offset: [-0.02, -0.033], night: [0.0035, 0.004, 0.0065], bead: [1.0, 0.92, 0.8],
+        },
+        size: 0.66,
+        offset: [0, 0.02],
+        granules: 44,
+        meso: 7.5,
+        lanes: 0.5,
+        grain: 0.26,
+        ragged: 0.9,
+        boil: 0.3,
+        rotation: 420,
+        spots: false,
+        transit: false,
+        combing: 1.2,
+        reach: 1.35,
+        coronaGain: 1.15,
+        prominence: 0.95,
+        bare: [1.0, 1.0, 1.06],
+        shaftTint: [0.9, 0.92, 1.0],
+        bloom: {
+            strength: 0.5, radius: 0.72, threshold: 0.9, breath: 0.8,
+        },
+        grade: {
+            shadows: [0.94, 0.96, 1.1], highlights: [1.02, 1.0, 0.97], saturation: 1.04, contrast: 1.08, vignette: 0.45,
+        },
+        exposure: 0.95,
     },
 ]);
 
@@ -715,6 +777,7 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
     const LOOP_LIGHT = color(mood.loopLight);
     const FLARE = color(mood.flare);
     const { granules } = mood;
+    const cmeScale = rising ? 0.55 : 1;
     const backdrop = Fn(() => {
         const p = backdropPoint(u).toVar();
         const breath = u.breathSoft.toVar();
@@ -732,7 +795,10 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             radius = mix(float(0.7), float(0.76), tall).mul(mood.size).toVar();
             // Star units: the limb at |q| = 1. Wide screens set the star a little low, so the
             // prominences on its crown have room under the top of the frame.
-            centre = vec2(mix(float(mood.offset[0]), float(0), tall), mix(float(mood.offset[1] - 0.05), float(0), tall)).toVar();
+            centre = vec2(
+                mix(float(mood.offset[0]), float(0), tall),
+                mix(float(mood.offset[1] - 0.05), float(0), tall),
+            ).toVar();
         }
         const q = layer(p, u, 1).sub(centre).div(radius).toVar();
         const r = length(q).toVar();
@@ -760,7 +826,8 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
         // The corona, by direction (vec2 noise, so no angle seam), bending a little as it climbs.
         // Streamers reach farther on tall screens, which have more sky above and below the star.
         const reach = mix(float(0.22), float(1.15), breath).mul(tall.mul(0.45).add(1)).mul(mood.reach).toVar();
-        const swirl = turn(dir, above.mul(0.1).add(u.time.mul(0.003))).toVar();
+        // Each visit turns the streamers a little (none at the poster's seed, 0.5).
+        const swirl = turn(dir, above.mul(0.1).add(u.time.mul(0.003)).add(u.seed.sub(0.5).mul(2.4))).toVar();
         // Helmet streamers: a few broad petals, favouring the equator, that narrow as they climb.
         const broad = gnoise(swirl.mul(1.7).add(vec2(3.1, 7.7)));
         // Wide screens favour the equatorial streamers, tall ones the polar plumes: both fill the frame.
@@ -792,16 +859,16 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
         if (mood.shell) {
             // The dust a giant sheds: dim wisps lit by the star around it, and darker knots that
             // stand in front of its corona.
-            If(r.greaterThan(1.2).and(r.lessThan(4.6)), () => {
+            If(r.greaterThan(1.05).and(r.lessThan(4.0)), () => {
                 const s = q.mul(1.1).add(u.seed.mul(vec2(7.7, 3.1))).add(vec2(u.time.mul(0.003), 0)).toVar();
                 const veil = fbm(s, 4).toVar();
                 const knots = fbm(s.mul(2.3).add(5.5), 3);
-                const ring = smoothstep(1.25, 1.85, r).mul(fadeOut(2.6, 4.4, r)).toVar();
+                const ring = smoothstep(1.06, 1.45, r).mul(fadeOut(2.4, 3.9, r)).toVar();
                 const lit = float(1).div(above.mul(above).mul(0.9).add(1));
                 const wisps = smoothstep(0.46, 0.8, veil).mul(ring);
                 const clumps = smoothstep(0.55, 0.76, knots).mul(smoothstep(0.42, 0.62, veil)).mul(ring);
                 col.mulAssign(float(1).sub(clumps.mul(0.45)));
-                col.addAssign(color(mood.shell).mul(wisps.mul(lit).mul(0.45)));
+                col.addAssign(color(mood.shell).mul(wisps.mul(lit).mul(0.6)));
             });
         }
 
@@ -863,7 +930,10 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
 
         // The photosphere, shaded only where the disc is.
         const surface = vec3(0).toVar();
-        If(r.lessThan(pixel.mul(2).add(1)), () => {
+        // Eclipsed: the moon's distance (star units); the photosphere is shaded only where it shows.
+        const moonGap = mood.eclipse ? length(q.sub(vec2(...mood.eclipse.offset))).toVar() : null;
+        const onDisc = r.lessThan(pixel.mul(2).add(1));
+        If(mood.eclipse ? onDisc.and(moonGap.greaterThan(mood.eclipse.radius - 0.01)) : onDisc, () => {
             const mu = sqrt(float(1).sub(r.mul(r)).max(0)).toVar();
             const spin = u.time.mul(TAU / mood.rotation).toVar();
             const body = toBody(vec3(q.x, q.y, mu), spin).toVar();
@@ -901,8 +971,8 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             // small screens) they fade to an even glow instead of shimmering.
             const meso = gnoise3(body.mul(mood.meso).add(vec3(0, 0, u.time.mul(0.02)))).toVar();
             const network = gnoise3(body.mul(2.8).add(3.3)).toVar();
-            const cells = voronoi3(body.mul(granules).add(meso.mul(2.4)).add(ragged.mul(mood.ragged)), u.time.mul(mood.boil))
-                .toVar();
+            const cellAt = body.mul(granules).add(meso.mul(2.4)).add(ragged.mul(mood.ragged));
+            const cells = voronoi3(cellAt, u.time.mul(mood.boil)).toVar();
             const walls = smoothstep(0.0, mood.lanes, cells.y.sub(cells.x));
             const dome = float(1.25).sub(cells.x.mul(0.9));
             const granule = walls.mul(dome).mul(cells.z.mul(0.5).add(0.75)).toVar();
@@ -942,6 +1012,19 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
         col.assign(mix(col, surface, disc));
         // The prominences' feet glow over the very edge of the disc.
         col.addAssign(plasma.mul(disc).mul(smoothstep(0.97, 1.0, r)).mul(0.3));
+        if (mood.eclipse) {
+            // The moon: a black disc a hair larger than the star, faintly mottled by the light of
+            // the corona around it, and the diamond: a bead of the last sunlight at its edge.
+            const e = mood.eclipse;
+            const moon = fadeOut(float(e.radius).sub(pixel.mul(1.2)), pixel.mul(1.2).add(e.radius), moonGap).toVar();
+            const mottle = fbm(q.mul(3.2).add(7.7), 3);
+            col.assign(mix(col, color(e.night).mul(mottle.mul(0.8).add(0.6)), moon));
+            const size = Math.hypot(...e.offset);
+            const beadAt = q.sub(vec2(-e.offset[0] / size, -e.offset[1] / size)).toVar();
+            const b2 = dot(beadAt, beadAt);
+            const bead = exp(b2.div(0.0012).negate()).mul(1.8).add(float(1).div(b2.mul(1400).add(1)).mul(0.5));
+            col.addAssign(color(e.bead).mul(bead).mul(breath.mul(0.25).add(0.8)));
+        }
         if (mood.spots) {
             // Coronal loops arch over the spot groups, in front of the disc and above the limb.
             If(r.lessThan(1.15), () => {
@@ -959,28 +1042,37 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             const pick = cme.z;
             const heading = rising
                 ? pick.sub(0.5).mul(1.3).add(Math.PI / 2)
-                : step(0.5, pick).mul(Math.PI).add(hash21(vec2(pick, 7.7)).sub(0.5).mul(1.1)).add(tall.mul(Math.PI / 2));
+                : step(0.5, pick).mul(Math.PI).add(hash21(vec2(pick, 7.7)).sub(0.5).mul(1.1))
+                    .add(tall.mul(Math.PI / 2));
             const toward = vec2(cos(heading), sin(heading)).toVar();
             const grow = float(1).sub(float(1).sub(cme.y).mul(float(1).sub(cme.y))).toVar();
-            const bubble = grow.mul(0.85).add(0.14).toVar();
+            // (A rising giant is drawn twice as large: its ejection keeps a similar size on screen.)
+            const bubble = grow.mul(0.85).add(0.14).mul(cmeScale).toVar();
             // A light bulb rather than a ring: stretched along its path, its legs still on the limb.
-            const reachOut = bubble.mul(1.2).add(1).add(grow.mul(0.2)).toVar();
+            const reachOut = bubble.mul(1.2).add(1).add(grow.mul(0.2 * cmeScale)).toVar();
             const rel = q.sub(toward.mul(reachOut)).toVar();
             const radial = dot(rel, toward).toVar();
             const dist = length(vec2(radial.div(1.35), rel.x.mul(toward.y).sub(rel.y.mul(toward.x)))).toVar();
             const facing = radial.div(length(rel).max(1e-3));
-            const texture = gnoise(rel.div(bubble).mul(2.5).add(vec2(pick.mul(37), u.time.mul(0.05))))
-                .mul(gnoise(rel.div(bubble).mul(vec2(7, 9)).add(vec2(u.time.mul(0.08), pick.mul(11)))).mul(0.9).add(0.3));
-            const front = dist.sub(bubble).div(bubble.mul(0.12).add(0.025));
-            const shell = exp(front.mul(front).negate()).mul(smoothstep(-0.98, 0.1, facing)).mul(texture.mul(1.5).add(0.15));
+            // Fine strands run along the front (fast across it, slow around it: noise on the unit
+            // direction, so no angle seam), gathered into brighter knots.
+            const around = rel.div(length(rel).max(1e-3)).toVar();
+            const strands = gnoise(around.mul(2.2).add(vec2(dist.div(bubble).mul(11), pick.mul(37))));
+            const knots = gnoise(around.mul(4.5).add(vec2(pick.mul(11), u.time.mul(0.05))));
+            const front = dist.sub(bubble).div(bubble.mul(0.14).add(0.025 * cmeScale));
+            // Brightest across its leading edge, thinning down its flanks toward the limb.
+            const shell = exp(front.mul(front).negate()).mul(smoothstep(-0.7, 0.45, facing))
+                .mul(smoothstep(0.35, 0.75, strands).mul(1.2).add(0.2))
+                .mul(knots.mul(0.9).add(0.35));
             const coreAt = q.sub(toward.mul(reachOut.sub(bubble.mul(0.42)))).div(bubble).toVar();
             const coreD = length(coreAt).div(0.26);
-            const strands = gnoise(coreAt.mul(7).add(pick.mul(19)));
-            const knot = exp(coreD.mul(coreD).negate()).mul(strands.mul(1.4).add(0.2));
+            const twist = gnoise(coreAt.mul(7).add(pick.mul(19)));
+            const knot = exp(coreD.mul(coreD).negate()).mul(twist.mul(1.4).add(0.2));
             const cavity = fadeOut(bubble.mul(0.55), bubble.mul(0.95), dist);
             const fade = cme.x.mul(u.life).div(grow.mul(1.6).add(1)).mul(float(1).sub(disc)).toVar();
             col.mulAssign(float(1).sub(cavity.mul(fade).mul(0.3)));
-            col.addAssign(coronaTint(float(0.12)).mul(shell.mul(1.4)).add(plasmaTint(float(0.7)).mul(knot.mul(0.9))).mul(fade));
+            col.addAssign(coronaTint(float(0.12)).mul(shell.mul(1.2)).add(plasmaTint(float(0.7)).mul(knot.mul(0.9)))
+                .mul(fade));
         });
 
         // A comet, now and then: a slow crossing beside the star, its blue ion tail straight away
@@ -993,7 +1085,10 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             const lane = hash21(vec2(pick, 5.9));
             const travel = comet.y.mul(2).sub(1).mul(sense).toVar();
             const across = rising ? lane.mul(0.3).add(1.22) : lane.mul(0.4).add(1.5);
-            const overhead = vec2(travel.mul(1.75), (rising ? float(1) : side).mul(across.sub(travel.mul(travel).mul(0.12))));
+            const overhead = vec2(
+                travel.mul(1.75),
+                (rising ? float(1) : side).mul(across.sub(travel.mul(travel).mul(0.12))),
+            );
             const sideways = vec2(side.mul(across.sub(travel.mul(travel).mul(0.15))), travel.mul(1.55));
             const upright = rising ? float(1) : step(0.5, tall);
             const head = mix(sideways, overhead, upright).toVar();
@@ -1012,9 +1107,11 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             const dustAt = bent.div(pixel.mul(2.5).add(ahead.mul(0.09)));
             const dust = exp(dustAt.mul(dustAt).negate()).mul(smoothstep(-0.01, 0.05, along)).mul(exp(ahead.mul(-3.2)));
             const d2 = dot(rel, rel);
-            const coma = exp(d2.div(pixel.mul(pixel).mul(4)).negate()).mul(2.5).add(float(1).div(d2.mul(7000).add(1)).mul(0.25));
+            const coma = exp(d2.div(pixel.mul(pixel).mul(4)).negate()).mul(2.5)
+                .add(float(1).div(d2.mul(7000).add(1)).mul(0.25));
             const c = mood.comet;
-            col.addAssign(color(c.head).mul(coma).add(color(c.ion).mul(ion.mul(0.55))).add(color(c.dust).mul(dust.mul(0.4)))
+            col.addAssign(color(c.head).mul(coma).add(color(c.ion).mul(ion.mul(0.55)))
+                .add(color(c.dust).mul(dust.mul(0.4)))
                 .mul(comet.x.mul(u.life)));
         });
 
@@ -1044,7 +1141,8 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             const facing = dot(rel.div(d.max(1e-4)), sunward).toVar();
             const limbAt = d.sub(ring.radius).div(pixel.mul(2.4));
             const air = exp(limbAt.mul(limbAt).negate()).mul(smoothstep(-0.35, 0.9, facing));
-            const halo = exp(d.sub(ring.radius).max(0).mul(-30)).mul(smoothstep(0.1, 1.0, facing)).mul(float(1).sub(body));
+            const halo = exp(d.sub(ring.radius).max(0).mul(-30)).mul(smoothstep(0.1, 1.0, facing))
+                .mul(float(1).sub(body));
             const night = vec3(0.003, 0.004, 0.009).mul(facing.max(0).mul(2).add(1));
             const turned = turn(rel, -ring.tilt).toVar();
             const e = length(vec2(turned.x, turned.y.div(ring.ratio))).div(ring.radius).toVar();
