@@ -246,6 +246,25 @@ describe('astral weave world: the clear', () => {
         world.dispose();
     });
 
+    it('burns every row of a lock that clears in the same step, and keeps their embers', () => {
+        // The game resolves a lock and the clear it makes in one step, and a full row is always
+        // one the locking piece filled: the cleared rows are the lock's own, top to bottom, each
+        // woven a beat after the one above it.
+        const { world } = makeWorld();
+        const rows = [16, 17, 18, 19];
+        world.lock({ rows });
+        world.clear({ rows, lines: 4, combo: 1 });
+        rows.forEach((row) => {
+            // The loom burns a row whose clear is no earlier than its weave (its `cleared`).
+            expect(burn(world, row).x).toBeGreaterThanOrEqual(weft(world, row).x);
+            expect(burn(world, row).y).toBeGreaterThan(0);
+        });
+        world.applyPendingShift();
+        const embers = world.shared.uWeftA.array.slice(WEFT_ROWS).filter((a) => a.y > 0);
+        expect(embers).toHaveLength(rows.length);
+        world.dispose();
+    });
+
     it('lights a row that has no thread yet', () => {
         const { world } = makeWorld();
         world.clear({ rows: [12], lines: 1, combo: 1 });

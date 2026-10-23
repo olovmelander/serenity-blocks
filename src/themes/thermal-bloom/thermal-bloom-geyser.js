@@ -90,6 +90,7 @@ import {
     tbSteamVeil,
 } from './thermal-bloom-tsl.js';
 import { STAIR, stairGenerator } from './thermal-bloom-bake.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 const TAU = Math.PI * 2;
 /** Gravity (m/s²) for the spray. */
@@ -1189,7 +1190,7 @@ export function createSpray(u, tier) {
     // Only a live slot's drops fly (an empty slot's fold away, wherever its row points).
     const alive = step(A.z, drop.y).mul(step(0.3, A.w)).mul(step(slot.add(0.5), float(u.eruptionCount))).mul(released);
     // Drops thin as they fall (they evaporate and spread into the veil): a haze, never snow.
-    const vSprayId = varying(id, 'vSprayId');
+    const vSprayId = flatVarying(id, 'vSprayId'); // flat: a drop glints whole
     // The bow's colour where the drop is: sparkle on top of the bands, never the bands (§3.4).
     const vBow = varying(tbBow(dot(normalize(u.camPos.sub(drop)), u.sunDir)), 'vSprayBow');
     const life = mix(float(1.0).sub(smoothstep(0.45, 1.0, age.div(period))), float(0.8), falling);

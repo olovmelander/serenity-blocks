@@ -203,13 +203,13 @@ export function createNeonSigns(N, signs, glyphTex) {
     const corner = mix(onFront, onWall, orient.x);
 
     // Per-instance values the fragment needs, flat (a hash of an interpolated seed sparkles).
-    const vPos = varying(pos, 'vSignPos').setInterpolation('flat');
-    const vDim = varying(dim, 'vSignDim').setInterpolation('flat');
-    const vCol = varying(col, 'vSignCol').setInterpolation('flat');
-    const vGA = varying(gA, 'vSignGA').setInterpolation('flat');
-    const vGB = varying(gB, 'vSignGB').setInterpolation('flat');
+    const vPos = varying(pos, 'vSignPos').setInterpolation('flat', 'either');
+    const vDim = varying(dim, 'vSignDim').setInterpolation('flat', 'either');
+    const vCol = varying(col, 'vSignCol').setInterpolation('flat', 'either');
+    const vGA = varying(gA, 'vSignGA').setInterpolation('flat', 'either');
+    const vGB = varying(gB, 'vSignGB').setInterpolation('flat', 'either');
     const vCorner = varying(corner, 'vSignCorner');
-    const vOrient = varying(orient, 'vSignOrient').setInterpolation('flat');
+    const vOrient = varying(orient, 'vSignOrient').setInterpolation('flat', 'either');
 
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     material.name = 'odyssey-neon-signs';

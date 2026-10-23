@@ -7,7 +7,7 @@ import * as THREE from 'three/webgpu';
 import {
     abs, attribute, cameraFar, cameraNear, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cos, dot, exp,
     fract, length, linearDepth, max, mix, normalWorld, normalize, positionGeometry, positionWorld, pow, sin,
-    smoothstep, texture, uniform, uv, varying, vec2, vec3, vec4, viewportLinearDepth,
+    smoothstep, step, texture, uniform, uv, varying, vec2, vec3, vec4, viewportLinearDepth,
 } from 'three/tsl';
 
 function additive(name) {
@@ -227,10 +227,12 @@ export function createCaveAir({
         const ray = (axis, other) => exp(abs(other).mul(-34)).mul(exp(abs(axis).mul(-3.4)));
         const star = ray(local.x, local.y).add(ray(local.y, local.x)).add(exp(spot.mul(spot).mul(-30)).mul(1.4));
         const tintOf = (index) => vec3(u.familyColor.element(index));
+        // Families are whole numbers: each glint takes its own family's colour. (A smoothstep
+        // centred on the whole number gave families 1 to 4 half of the next one down.)
         const tint = mix(
-            mix(tintOf(0), tintOf(1), smoothstep(0.5, 1.5, family)),
-            mix(tintOf(2), mix(tintOf(3), tintOf(4), smoothstep(3.5, 4.5, family)), smoothstep(2.5, 3.5, family)),
-            smoothstep(1.5, 2.5, family),
+            mix(tintOf(0), tintOf(1), step(0.5, family)),
+            mix(tintOf(2), mix(tintOf(3), tintOf(4), step(3.5, family)), step(2.5, family)),
+            step(1.5, family),
         );
         material.colorNode = mix(vec3(1), tint, 0.4).mul(2.4);
         material.opacityNode = star.mul(lift).mul(smoothstep(1, 0.75, spot));

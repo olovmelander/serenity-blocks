@@ -28,6 +28,7 @@ import {
     hash21, horizonHaze, landHaze, landLight, shoreOf, skyBase,
 } from './luminous-tides-tsl.js';
 import { bakeOnce } from '../shared/bake-cache.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 /** Where the palms stand (shore a, s; s relative to the jungle's edge) and how they grow. */
 export const PALMS = Object.freeze({
@@ -348,11 +349,15 @@ export function createPalms({
     })();
 
     material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
+    // The palm's seed as the fragment stage reads it: flat. Interpolated across a frond it comes
+    // out a few bits off from pixel to pixel, and the hash of it gave every pixel its own leaflet
+    // length: a dithered fringe crawling along every frond.
+    const palmSeed = flatVarying(aPalm.w, 'vPalmSeed');
     material.fragmentNode = Fn(() => {
         const u = aPalm.x;
         const v = aPalm.y;
         const kind = aPalm.z;
-        const seedP = aPalm.w;
+        const seedP = palmSeed;
 
         // The leaflets: a comb swept toward the frond's tip, each its own length; finer than a
         // pixel it fades to its average cover. The rachis is always there.

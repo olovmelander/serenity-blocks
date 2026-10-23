@@ -44,6 +44,7 @@ import {
     tbHash21,
     tbPart,
 } from './thermal-bloom-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 /** Branch stubs a pine carries (evaluated per fragment; a fixed small loop, unrolled). */
 const STUBS = 8;
@@ -72,7 +73,9 @@ export function createPines(u, count) {
 
     const aTree = attribute('aTree', 'vec4');
     const vLocal = varying(positionGeometry.xy, 'vPineLocal');
-    const vTree = varying(aTree, 'vPineTree');
+    // The tree's own numbers, flat: interpolated, its seed came out a few bits off from pixel to
+    // pixel and every stub's height, side and length with it (ragged, speckled stubs).
+    const vTree = flatVarying(aTree, 'vPineTree');
     /** The card's half-width in metres for a tree of height h (room for the stubs). */
     const halfWidth = (h) => h.mul(0.14).add(0.8);
 

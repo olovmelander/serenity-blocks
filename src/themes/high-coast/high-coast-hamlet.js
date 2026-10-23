@@ -40,6 +40,7 @@ import { PLACES, mulberry32 } from './high-coast-core.js';
 import { groundHeight } from './high-coast-field.js';
 import { aerial } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 /** Parts of a building's surface (the material's aPart): wall, trim, roof, plinth, glass. */
 const WALL = 0;
@@ -161,12 +162,14 @@ function buildingMaterial(u, t) {
     material.side = THREE.DoubleSide;
     const local = attribute('aLocal', 'vec4');
     const width = attribute('aWidth', 'float');
+    // The part, flat: a black roof is 2.0, and read interpolated as 1.9999999 its fract made it red.
+    const partOf = flatVarying(local.z, 'vHamletPart');
     material.colorNode = Fn(() => {
         const P = positionWorld;
         const n = normalize(normalWorld);
         const lu = local.x;
         const lv = local.y;
-        const part = local.z;
+        const part = partOf;
         const seed = fract(local.w);
         const shed = step(1.5, local.w);
         // Falu red: a deep iron-oxide red, a little uneven board by board.

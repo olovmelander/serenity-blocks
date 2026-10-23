@@ -543,11 +543,11 @@ function createFacadeMaterial(uTime, uEnergy, {
 
     // These are constant per tower/face. Perspective interpolation introduces tiny
     // per-pixel seed differences that the hashes amplify into speckled, crawling windows.
-    const aFacade = varying(attribute('aFacade', 'vec4'), 'vCityFacade').setInterpolation('flat');
-    const aDims = varying(attribute('aDims', 'vec3'), 'vCityDimensions').setInterpolation('flat');
-    const n = varying(normalGeometry, 'vCityFaceNormal').setInterpolation('flat');
+    const aFacade = varying(attribute('aFacade', 'vec4'), 'vCityFacade').setInterpolation('flat', 'either');
+    const aDims = varying(attribute('aDims', 'vec3'), 'vCityDimensions').setInterpolation('flat', 'either');
+    const n = varying(normalGeometry, 'vCityFaceNormal').setInterpolation('flat', 'either');
     // The resolve: whole buildings gutter out as uDim rises (per-building threshold).
-    const gutter = varying(hash21(vec2(aFacade.x, 91.7)), 'vCityGutter').setInterpolation('flat');
+    const gutter = varying(hash21(vec2(aFacade.x, 91.7)), 'vCityGutter').setInterpolation('flat', 'either');
     // Corridor-space position (linear in the vertex: interpolated, no per-fragment matrix).
     const pcVarying = neonCityPos(N, 'vCityPos');
 

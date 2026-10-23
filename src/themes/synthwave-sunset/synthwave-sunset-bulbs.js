@@ -37,6 +37,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { rgb, swHash11 } from './synthwave-sunset-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 const linearLemon = rgb(0xffe46a);
 
@@ -92,6 +93,9 @@ export function createBulbField(u, rows, opts = {}) {
     material.vertexNode = cameraProjectionMatrix.mul(vec4(mv.xyz.add(vec3(positionGeometry.xy.mul(size), 0.0)), 1.0));
     const dim = pow(pAttr.w.div(size), 2.0);
 
+    // Each bulb's seed, hashed once and flat: from interpolated attributes it came out a little
+    // different at every pixel, and the twinkle multiplies it by the time (a fizz that grew).
+    const bulbSeed = flatVarying(swHash11(iAttr.x.add(cAttr.x.mul(97.0)).add(pAttr.x.mul(0.37))), 'vBulbSeed');
     material.colorNode = Fn(() => {
         const d = length(uv().sub(0.5)).mul(2.0);
         const program = cAttr.w;
@@ -101,7 +105,7 @@ export function createBulbField(u, rows, opts = {}) {
         const idx = iAttr.x;
         const n = max(iAttr.y, 1.0);
         const t = u.time;
-        const seed = swHash11(idx.add(cAttr.x.mul(97.0)).add(pAttr.x.mul(0.37)));
+        const seed = bulbSeed;
         const twinkle = sin(t.mul(float(1.8).add(seed.mul(1.6))).add(seed.mul(60.0))).mul(0.1).add(0.9);
         // The chase runs on the midway's clock, which quickens as play heats.
         const pace = u.chaseTime ?? t;

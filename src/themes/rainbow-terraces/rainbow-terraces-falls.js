@@ -36,6 +36,7 @@ import { FALL_SWAY, G, WATER_WRAP } from './rainbow-terraces-core.js';
 import {
     bowStrokes, earthShadowAt, horizonHaze, luma, optics, scHash21, scMax3, skyBase,
 } from './rainbow-terraces-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 /** The falls' slots: the Mother, the span, the Twin's three horsetails, four hairlines, the spillway. */
 export const FALL_SLOT = Object.freeze({
@@ -148,7 +149,9 @@ export function createFalls({ tier, U, tex }) {
     const vS = varying(float(0.0), 'vFallS');
     const vU = varying(float(0.0), 'vFallU');
     const vTau = varying(float(0.0), 'vFallTau');
-    const vFall = varying(float(0.0), 'vFallId');
+    // The fall's slot, flat: interpolated it comes out a few bits off from pixel to pixel, and the
+    // hash of it re-rolled every rope's width, brightness and comet per pixel (glitter in the falls).
+    const vFall = flatVarying(float(0.0), 'vFallId');
     const vKind = varying(float(0.0), 'vFallKind');
     const vFlow = varying(float(0.0), 'vFallFlow');
     const vCover = varying(float(1.0), 'vFallCover');
