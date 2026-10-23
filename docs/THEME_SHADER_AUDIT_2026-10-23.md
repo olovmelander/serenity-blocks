@@ -103,15 +103,33 @@ number, the fix rounds it first with `floor(x + 0.5)` instead.
 - A comment in `earth-core.tsl.js` no longer quotes the PURE annotation that Rollup warned it could
   not place.
 
-## 4. Open
+## 4. Follow-up: a render scale the desktop policy sets reaches the theme
 
-- **Desktop dynamic resolution.** This is the Electron loop that runs while the FPS overlay is on.
-  `applyDesktopPerformancePolicy` changes the global render scale but emits no settings event.
-  Only Wolfhour listens for `desktopPerformancePolicyChanged`, so the other themes keep their old
-  pixel ratio until the window resizes (so do the four themes above that never listen for the
-  render scale). A one-line fix would call `themeManager.resize(...)` after
-  `setGlobalRenderScale`; every theme's guard then resizes only on a real change. It is not made
-  here: Wolfhour's own listener has no same-size guard and would then resize twice.
+**The gap.** `applyDesktopPerformancePolicy` changed the global render scale but emitted no
+settings event. It runs for the desktop policy's startup pick, the Electron dynamic resolution
+loop (which runs while the FPS overlay is on) and a GPU health update. Only Wolfhour listened for
+`desktopPerformancePolicyChanged`, so the other themes kept their old pixel ratio until the window
+resized. So did the four themes above that never listen for the render scale.
+
+**The fix.** The policy and the display settings set the scale through one function,
+`applyGlobalRenderScale(scale, themeManager)` in `base-theme.js`, beside `setGlobalRenderScale`.
+It lives there to keep main.js within its line ratchet. When the scale really changed, it resizes
+the active theme (`themeManager.resize`). Each theme's `resize()` compares the pixel ratio, so a
+theme that had already followed the change does nothing.
+- An earlier draft of this record said Wolfhour would then resize twice. It wouldn't: Wolfhour
+  doesn't override `resize()`, and keeps following the policy through its own listener.
+- **Test:** `display-settings-apply.test.js` "hands a new render scale to the active theme, and
+  only a new one", which fails on the old main.js.
+- **In the game** (a single-player run on Forest at 640 × 360):
+  - the display settings at 0.5 took the canvas to 320 × 180;
+  - the desktop policy at 0.75, applied as its dynamic loop applies it (`persist: false`, no
+    settings event), took it to 480 × 270;
+  - before the fix, setting the scale alone, as the policy did, left it at 640 × 360.
+- **Still open:** at the menu no theme is the active one, so a change there reaches only the
+  themes that listen for settings. The dynamic resolution loop only runs during a game.
+
+## 5. Open
+
 - **The production build** needs more than a 2 GB Node heap (`vite build` runs out of memory in an
   environment that defaults to that; CI's runners are larger).
 - **The `chrome-devtools` MCP** is configured to start through `cmd` (Windows), so it cannot run in
@@ -119,8 +137,8 @@ number, the fix rounds it first with `floor(x + 0.5)` instead.
 
 ## Checks
 
-- **Unit tests:** the full suite, including the six new tests (Aurora, Black Hole, Crystal Cave,
-  Blood Moon, Sunfall and Astral Weave). The Urban Dreams test that checks the city's flat inputs
+- **Unit tests:** the full suite, including the seven new tests (Aurora, Black Hole, Crystal Cave,
+  Blood Moon, Sunfall, Astral Weave and the render-scale hand-off). The Urban Dreams test that checks the city's flat inputs
   now requires `flat, either`.
 - **Lint:** the ratchet at its baseline, with no file gaining an error or a warning.
 - **Captures:** thirteen views before and after the fixes, with no WebGPU or console errors. The
