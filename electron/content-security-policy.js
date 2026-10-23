@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 
-const GOOGLE_FONT_ORIGINS = 'https://fonts.googleapis.com https://fonts.gstatic.com';
+// No remote origins: the fonts are self-hosted (public/styles/fonts.css).
 
 export function extractInlineScriptHashes(html) {
     const hashes = [];
@@ -35,11 +35,11 @@ export function createContentSecurityPolicy({
         return [
             "default-src 'self'",
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' http://localhost:5173",
-            `style-src 'self' 'unsafe-inline' ${GOOGLE_FONT_ORIGINS.split(' ')[0]}`,
-            `font-src 'self' data: ${GOOGLE_FONT_ORIGINS.split(' ')[1]}`,
+            "style-src 'self' 'unsafe-inline'",
+            "font-src 'self' data:",
             "img-src 'self' data: blob:",
             "media-src 'self' data: blob:",
-            `connect-src 'self' data: blob: http://localhost:5173 ws://localhost:5173 ${GOOGLE_FONT_ORIGINS}`,
+            "connect-src 'self' data: blob: http://localhost:5173 ws://localhost:5173",
             "worker-src 'self' blob:",
             "object-src 'none'",
             "base-uri 'none'",
@@ -50,11 +50,11 @@ export function createContentSecurityPolicy({
     return [
         "default-src 'self' file:",
         `script-src 'self' file: 'wasm-unsafe-eval'${hashes ? ` ${hashes}` : ''}`,
-        `style-src 'self' file: 'unsafe-inline' ${GOOGLE_FONT_ORIGINS.split(' ')[0]}`,
-        `font-src 'self' file: data: ${GOOGLE_FONT_ORIGINS.split(' ')[1]}`,
+        "style-src 'self' file: 'unsafe-inline'",
+        "font-src 'self' file: data:",
         "img-src 'self' file: data: blob:",
         "media-src 'self' file: data: blob:",
-        `connect-src 'self' file: data: blob: ${GOOGLE_FONT_ORIGINS}`,
+        "connect-src 'self' file: data: blob:",
         "worker-src 'self' file: blob:",
         "object-src 'none'",
         "base-uri 'none'",
