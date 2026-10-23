@@ -61,7 +61,7 @@ import { installPageTeardown } from './utils/page-teardown.js';
 import { normalizeQuality } from './utils/quality.js';
 import { DisplayManager } from './core/display-manager.js';
 import { FrameRateController } from './core/frame-rate-controller.js';
-import { setGlobalRenderScale, setGlobalAntialias } from './themes/base-theme.js';
+import { applyGlobalRenderScale, setGlobalAntialias } from './themes/base-theme.js';
 
 // UI imports
 import {
@@ -972,7 +972,7 @@ class SerenityBlocks {
             detail: policy,
         }));
 
-        setGlobalRenderScale(policy.renderScale);
+        applyGlobalRenderScale(policy.renderScale, this.themeManager);
         this.applyEffectQuality(policy.qualityTier);
         this.desktopPerformanceAdjustmentState.currentRenderScale = policy.renderScale;
         this.desktopPerformanceAdjustmentState.baselineRenderScale = policy.baseRenderScale;
@@ -1558,7 +1558,7 @@ class SerenityBlocks {
 
         // Apply render scale for Three.js themes (affects GPU load significantly)
         if (renderScale !== undefined) {
-            setGlobalRenderScale(renderScale);
+            applyGlobalRenderScale(renderScale, this.themeManager);
             console.log(`[Display] Render scale set to: ${renderScale} (effective DPR: ${this.displayManager.getEffectivePixelRatio(renderScale)})`);
         }
 

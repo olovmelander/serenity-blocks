@@ -39,6 +39,21 @@ export function getGlobalRenderScale() {
 }
 
 /**
+ * Set the global render scale and hand a real change to the theme on screen. A theme reads the
+ * scale when it sizes its canvas, and the desktop policy (its startup pick, the dynamic resolution
+ * loop, a GPU health update) sets it with no settings event. The theme's resize() compares the
+ * pixel ratio: one that already followed the change does nothing.
+ * @param {number} scale
+ * @param {{ resize?: (width: number, height: number) => void } | null} [themeManager]
+ */
+export function applyGlobalRenderScale(scale, themeManager = null) {
+    const before = globalRenderScale;
+    setGlobalRenderScale(scale);
+    if (globalRenderScale === before || typeof window === 'undefined') return;
+    themeManager?.resize?.(window.innerWidth, window.innerHeight);
+}
+
+/**
  * Set the global antialiasing setting for all themes
  * @param {boolean} enabled - Whether antialiasing is enabled
  */
