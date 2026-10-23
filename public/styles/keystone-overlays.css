@@ -2516,17 +2516,24 @@ body:not(.serenity-mode) #serenity-world-bar {
 
 #serenity-world-bar .serenity-world__tile.is-on .serenity-world__tile-icon { color: rgb(var(--world-accent)); }
 
-/* Stop, while Play all runs with the effects tray folded away: a square tile, the icon alone. */
-#serenity-world-bar .serenity-world__tile--stop {
+/* Previous, next and Stop while Play all runs with the effects tray folded away: square tiles,
+   the icon alone. */
+#serenity-world-bar .serenity-world__tile--icon {
     justify-content: center;
     width: 44px;
     padding: 0;
 }
 
-#serenity-world-bar .serenity-world__tile--stop .serenity-world__tile-text { display: none; }
-#serenity-world-bar .serenity-world__tile--stop .serenity-world__tile-icon { color: inherit; }
-#serenity-world-bar .serenity-world__tile--stop .cs-icon { fill: currentColor; }
+#serenity-world-bar .serenity-world__tile--icon .serenity-world__tile-text { display: none; }
+#serenity-world-bar .serenity-world__tile--icon .serenity-world__tile-icon { color: inherit; }
+#serenity-world-bar .serenity-world__tile--icon .cs-icon { fill: currentColor; }
 #serenity-world-bar .serenity-world__tile[hidden] { display: none; }
+
+#serenity-world-bar .serenity-world__tile:disabled {
+    opacity: 0.32;
+    cursor: default;
+    pointer-events: none;
+}
 
 #serenity-world-bar :is(.serenity-world__arrow, .serenity-world__tile):focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
@@ -2535,7 +2542,7 @@ body:not(.serenity-mode) #serenity-world-bar {
 
 /* While the effects tray holds the right edge, the caption, the dock and the notices centre on
    what is left. */
-@media (min-width: 641px) {
+@media (min-width: 901px) and (min-height: 521px) {
     body.serenity-effects-open #serenity-world-bar { --world-tray: max(360px, min(480px, 42vw)); }
     body.serenity-mode.serenity-effects-open #serenity-notification { left: calc((100% - max(360px, min(480px, 42vw))) / 2); }
 }
@@ -2576,7 +2583,7 @@ body:not(.serenity-mode) #serenity-world-bar {
         letter-spacing: 0.1em;
     }
 
-    #serenity-world-bar .serenity-world__tile--stop { width: 40px; padding: 0; }
+    #serenity-world-bar .serenity-world__tile--icon { width: 40px; padding: 0; }
 }
 
 /* ---- The effects tray (serenity-effects-tray.js): the right edge's own night ------------
@@ -2593,6 +2600,8 @@ body:not(.serenity-mode) #serenity-world-bar {
     display: flex;
     flex-direction: column;
     justify-content: center;
+    /* Taller than the window, it starts at the top and scrolls, rather than losing its head. */
+    justify-content: safe center;
     gap: 18px;
     width: min(480px, 42vw);
     min-width: 360px;
@@ -2752,6 +2761,29 @@ body:not(.serenity-mode) #serenity-effects {
     transform: translateY(1px);
 }
 
+#serenity-effects .serenity-effects__effect { position: relative; }
+
+/* The effect that is playing fills a thin line for as long as it plays (--fx-ms, from the
+   player), so you can see how long it lasts and when it is done. */
+#serenity-effects .serenity-effects__effect.is-playing::after {
+    content: '';
+    position: absolute;
+    right: 12px;
+    bottom: 6px;
+    left: 12px;
+    height: 2px;
+    border-radius: 1px;
+    background: rgb(var(--fx-accent));
+    box-shadow: 0 0 8px rgba(var(--fx-accent), 0.6);
+    transform-origin: left center;
+    animation: serenity-fx-run var(--fx-ms, 1s) linear forwards;
+}
+
+@keyframes serenity-fx-run {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
 /* The effect that is playing, and Play all while it walks through them: the world's light. */
 #serenity-effects :is(.serenity-effects__effect.is-playing, .serenity-effects__all.is-on) {
     border-color: rgba(var(--fx-accent), 0.7);
@@ -2795,11 +2827,21 @@ body:not(.serenity-mode) #serenity-effects {
     #serenity-effects .serenity-effects__hint { display: none; }
 }
 
-/* A phone: a short strip along the bottom, so the theme keeps most of the screen. The head is
-   one line (the eyebrow, the theme, Play all, ×); the effects are two rows that scroll sideways
-   together, three groups to a row, fading at the edge where more wait. Notices stand on it (the
-   tray publishes its height); the dock steps out while it is open. */
-@media (max-width: 640px) {
+/* With a mouse, the panel steps back while an effect you pressed plays and the pointer is
+   elsewhere, so the effect can be watched whole; reaching for it brings it straight back, and it
+   returns by itself when the effect is done. The keyboard's focus keeps it. */
+@media (hover: hover) and (min-width: 901px) and (min-height: 521px) {
+    #serenity-effects.is-open.is-watching:not(:hover, :has(:focus-visible)) {
+        opacity: 0.14;
+        transition: opacity 0.8s ease 0.6s, transform 0.45s var(--sb-ease-breathe);
+    }
+}
+
+/* A phone, a tablet held upright, or a short window (a phone on its side): a strip along the
+   bottom, so the theme keeps most of the screen. The head is one line, the theme's name, Play
+   all and × (the chips say what they are). Notices stand on it (the tray publishes its height);
+   the dock steps out while it is open. */
+@media (max-width: 900px), (max-height: 520px) {
     #serenity-effects {
         top: auto;
         left: 0;
@@ -2807,37 +2849,32 @@ body:not(.serenity-mode) #serenity-effects {
         min-width: 0;
         max-height: 50vh;
         justify-content: flex-end;
+        align-items: center;
         gap: 10px;
         padding: 28px 0 max(14px, env(safe-area-inset-bottom));
         background: linear-gradient(0deg, rgba(7, 6, 22, 0.9) 0%, rgba(7, 6, 22, 0.78) 70%, rgba(7, 6, 22, 0) 100%);
         transform: translateY(14px);
     }
 
+    #serenity-effects > * {
+        box-sizing: border-box;
+        width: min(100%, 760px);
+    }
+
     #serenity-effects.is-open { transform: none; }
 
-    /* One line: the theme's name (the chips say what they are), Play all and ×. */
     #serenity-effects .serenity-effects__head {
         grid-template-columns: minmax(0, 1fr) auto auto;
         grid-template-areas: 'title all close';
         column-gap: 8px;
-        padding: 0 16px;
+        padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
     }
 
-    #serenity-effects :is(.serenity-effects__eyebrow, .serenity-effects__subtitle) { display: none; }
+    #serenity-effects :is(.serenity-effects__eyebrow, .serenity-effects__subtitle, .serenity-effects__hint) {
+        display: none;
+    }
+
     #serenity-effects .serenity-effects__head .serenity-effects__title { margin-top: 0; font-size: 18px; }
-
-    #serenity-effects .serenity-effects__groups {
-        grid-template-columns: repeat(3, max-content);
-        gap: 8px 18px;
-        overflow-x: auto;
-        overscroll-behavior-x: contain;
-        padding: 0 40px 0 16px;
-        scrollbar-width: none;
-        -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
-        mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
-    }
-
-    #serenity-effects .serenity-effects__groups::-webkit-scrollbar { display: none; }
 
     #serenity-effects .serenity-effects__group {
         display: flex;
@@ -2863,6 +2900,53 @@ body:not(.serenity-mode) #serenity-effects {
     body.serenity-effects-open #serenity-world-bar .serenity-world__dock {
         visibility: hidden;
         opacity: 0;
+    }
+}
+
+/* Upright with room to spare (a tablet): the groups wrap onto the lines they need, centred, and
+   nothing scrolls. */
+@media (min-width: 641px) and (max-width: 900px) and (min-height: 521px) {
+    #serenity-effects .serenity-effects__head { padding: 0 24px; }
+
+    #serenity-effects .serenity-effects__groups {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px 24px;
+        padding: 0 24px;
+    }
+}
+
+/* A phone: the effects scroll sideways, fading at the edge where more wait. */
+@media (max-width: 640px), (max-height: 520px) {
+    #serenity-effects .serenity-effects__groups {
+        gap: 8px 18px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        padding: 0 40px 0 max(16px, env(safe-area-inset-left));
+        scrollbar-width: none;
+        -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
+        mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
+    }
+
+    #serenity-effects .serenity-effects__groups::-webkit-scrollbar { display: none; }
+}
+
+/* Upright: two rows that scroll together, three groups to a row. */
+@media (max-width: 640px) and (min-height: 521px) {
+    #serenity-effects .serenity-effects__groups { grid-template-columns: repeat(3, max-content); }
+}
+
+/* On its side (a short window): one row, so the strip stays low. */
+@media (max-height: 520px) {
+    #serenity-effects {
+        gap: 8px;
+        padding-top: 20px;
+    }
+
+    #serenity-effects .serenity-effects__groups {
+        grid-auto-columns: max-content;
+        grid-auto-flow: column;
     }
 }
 

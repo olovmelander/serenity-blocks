@@ -7,8 +7,8 @@ import { COLORS, COLS } from '../../src/core/constants.js';
 import { calculateLineClearScore } from '../../src/core/scoring.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import {
-    B2B_MS, BREAK_MS, EFFECTS, EFFECT_GROUPS, FEVER_MS, FLOOR_ROW, LOCK_MS, RUSH_MS, SOURCE, SerenityEffects,
-    TOUR_REST_MS, WAVE_MS, buildEffect, createEffectContext, effectDuration, rowsFromFloor,
+    B2B_MS, BREAK_MS, EFFECTS, EFFECT_GROUPS, FEVER_MS, FLOOR_ROW, LINGER_MS, LOCK_MS, RESTART_MS, RUSH_MS, SOURCE,
+    SerenityEffects, TOUR_REST_MS, WAVE_MS, buildEffect, createEffectContext, effectDuration, rowsFromFloor,
 } from '../../src/ui/serenity-mode/serenity-effects.js';
 
 /**
@@ -290,6 +290,7 @@ describe('the player', () => {
     let states;
     let tour;
     let done;
+    let clock;
     let player;
 
     beforeEach(() => {
@@ -298,11 +299,13 @@ describe('the player', () => {
         states = [];
         tour = [];
         done = 0;
+        clock = 0;
         player = new SerenityEffects({
             emit: (step) => emitted.push(step.type),
             onChange: (state) => states.push(state),
             onTourStep: (effect, index, total) => tour.push([effect.id, index, total]),
             onTourDone: () => { done += 1; },
+            now: () => clock,
         });
     });
 
@@ -311,11 +314,12 @@ describe('the player', () => {
     it('sends the first events at once and the rest on time, then says it is done', () => {
         expect(player.play('cascade-3')).toBe(true);
         expect(emitted).toEqual(['pieceLock', 'lineClear']);
-        expect(states.at(-1)).toEqual({ playing: 'cascade-3', touring: false });
+        // Lit for its waves and a moment after: the tray draws that as the button's progress.
+        expect(states.at(-1)).toEqual({ playing: 'cascade-3', touring: false, ms: 2 * WAVE_MS + LINGER_MS });
         vi.advanceTimersByTime(2 * WAVE_MS);
         expect(emitted).toEqual(['pieceLock', 'lineClear', 'combo', 'lineClear', 'combo', 'lineClear']);
         vi.advanceTimersByTime(1000);
-        expect(states.at(-1)).toEqual({ playing: null, touring: false });
+        expect(states.at(-1)).toEqual({ playing: null, touring: false, ms: 0 });
         expect(player.play('no-such-effect')).toBe(false);
     });
 
@@ -329,14 +333,14 @@ describe('the player', () => {
     it('plays all of them in turn with a rest between, and stops when asked', () => {
         player.playAll();
         expect(tour[0]).toEqual(['lock', 0, EFFECTS.length]);
-        expect(states.at(-1)).toEqual({ playing: 'lock', touring: true });
-        vi.advanceTimersByTime(500 + TOUR_REST_MS);
+        expect(states.at(-1)).toEqual({ playing: 'lock', touring: true, ms: LINGER_MS });
+        vi.advanceTimersByTime(LINGER_MS + TOUR_REST_MS);
         expect(tour[1]).toEqual(['hard-drop', 1, EFFECTS.length]);
         player.stop();
         const sent = emitted.length;
         vi.advanceTimersByTime(60000);
         expect(emitted).toHaveLength(sent);
-        expect(states.at(-1)).toEqual({ playing: null, touring: false });
+        expect(states.at(-1)).toEqual({ playing: null, touring: false, ms: 0 });
         // Stopped is not finished: no "every effect played".
         expect(done).toBe(0);
     });
@@ -355,7 +359,46 @@ describe('the player', () => {
         player.play('quad');
         vi.advanceTimersByTime(5 * 60 * 1000);
         expect(tour).toHaveLength(1);
-        expect(states.at(-1)).toEqual({ playing: null, touring: false });
+        expect(states.at(-1)).toEqual({ playing: null, touring: false, ms: 0 });
         expect(done).toBe(0);
+    });
+
+    it('steps Play all forward at once, ending what was playing', () => {
+        player.playAll();
+        player.skip(1);
+        player.skip(1);
+        expect(tour.map(([id, index]) => [id, index])).toEqual([['lock', 0], ['hard-drop', 1], ['single', 2]]);
+        expect(player.touring).toBe(true);
+        // Lock, Hard drop, then Single's own lock and clear: nothing of the skipped ones after.
+        expect(emitted).toEqual(['pieceLock', 'hardDrop', 'pieceLock', 'pieceLock', 'lineClear']);
+        // On from there by itself, as before.
+        vi.advanceTimersByTime(LINGER_MS + TOUR_REST_MS);
+        expect(tour.at(-1)).toEqual(['double', 3, EFFECTS.length]);
+    });
+
+    it('steps back like a music player: the one before at first, this one again later', () => {
+        player.playAll();
+        player.skip(1);
+        player.skip(1);
+        clock += RESTART_MS - 1;
+        player.skip(-1);
+        expect(tour.at(-1)[0]).toBe('hard-drop');
+        clock += RESTART_MS;
+        player.skip(-1);
+        expect(tour.at(-1)[0]).toBe('hard-drop');
+        player.skip(-1);
+        player.skip(-1);
+        expect(tour.at(-1)[0]).toBe('lock');
+    });
+
+    it('does not step past the last effect, or when Play all is not running', () => {
+        expect(player.skip(1)).toBe(false);
+        player.play('quad');
+        expect(player.skip(1)).toBe(false);
+        player.playAll();
+        for (let n = 1; n < EFFECTS.length; n += 1) player.skip(1);
+        expect(tour.at(-1)).toEqual(['fever', EFFECTS.length - 1, EFFECTS.length]);
+        expect(player.skip(1)).toBe(false);
+        expect(player.touring).toBe(true);
     });
 });
