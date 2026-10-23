@@ -2639,7 +2639,11 @@ export class ThemeManager {
         this.stopRandomThemeInterval();
 
         const intervalMs = intervalMinutes * 60 * 1000;
+        this.randomThemeIntervalMinutes = intervalMinutes;
         this.randomThemeInterval = setInterval(() => {
+            // Never behind the menu or a hidden page: that switch disposed the theme kept warm
+            // there (random-theme-rotation.js owns when this timer runs; this is the backstop).
+            if (this.themesSuspended || (typeof document !== 'undefined' && document.hidden)) return;
             const randomTheme = this.getRandomTheme();
             this.switchTheme(randomTheme);
         }, intervalMs);

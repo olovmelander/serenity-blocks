@@ -720,7 +720,8 @@ export class SharedEffects {
         const cam = this.scene?.cameras?.main;
         if (!cam || typeof cam.zoom !== 'number') return;
         // Overlapping punches must not compound, and must not capture an already
-        // punched zoom as the resting value.
+        // punched zoom as the resting value. A punch whose tween something killed is over.
+        if (this._zoomPunchActive && this._zoomPunchTween?.isDestroyed?.()) this._settleZoomPunch();
         if (this._zoomPunchActive) return;
 
         const base = cam.zoom;
@@ -728,7 +729,7 @@ export class SharedEffects {
         this._zoomPunchActive = true;
         cam.zoom = base * (1 + amount);
 
-        this.scene.tweens.add({
+        this._zoomPunchTween = this.scene.tweens.add({
             targets: cam,
             zoom: base,
             duration,
@@ -737,8 +738,25 @@ export class SharedEffects {
                 cam.zoom = base;
                 this._zoomPunchActive = false;
                 this._zoomPunchBase = null;
+                this._zoomPunchTween = null;
             },
         });
+    }
+
+    /**
+     * End a punch now: the resting zoom back, its tween gone. A knock-out kills every camera
+     * tween (fx-moments.js) and a killed tween never runs onComplete, so the board stayed
+     * zoomed in and the active flag refused every later punch for the rest of the match.
+     */
+    _settleZoomPunch() {
+        if (this._zoomPunchActive && Number.isFinite(this._zoomPunchBase)) {
+            const cam = this.scene?.cameras?.main;
+            if (cam) cam.zoom = this._zoomPunchBase;
+        }
+        this._zoomPunchTween?.remove?.();
+        this._zoomPunchTween = null;
+        this._zoomPunchActive = false;
+        this._zoomPunchBase = null;
     }
 
     /**
@@ -2539,7 +2557,8 @@ export class SharedEffects {
         const MAX_TIMERS = 50;
         if (this.activeTimers.length >= MAX_TIMERS) {
             // Remove completed timers first
-            this.activeTimers = this.activeTimers.filter((t) => t && !t.hasFinished);
+            // A Phaser TimerEvent that has fired reports hasDispatched (there is no hasFinished).
+            this.activeTimers = this.activeTimers.filter((t) => t && !t.hasDispatched);
 
             // If still at limit, remove oldest
             if (this.activeTimers.length >= MAX_TIMERS) {
@@ -2808,6 +2827,7 @@ export class SharedEffects {
 
     /** A new round: the board's colour and light come back. */
     clearKnockout() {
+        this._settleZoomPunch(); // before restoreKnockoutFx kills the camera's tweens
         this._knockoutFxOwner?.dispose();
         this._knockoutFxOwner = null;
         restoreKnockoutFx(this.scene, this._knockoutFilter);
@@ -2905,12 +2925,7 @@ export class SharedEffects {
 
         // A punch in flight when the scene tears down would otherwise leave the
         // camera zoomed in for whatever reuses it.
-        if (this._zoomPunchActive && Number.isFinite(this._zoomPunchBase)) {
-            const cam = this.scene?.cameras?.main;
-            if (cam) cam.zoom = this._zoomPunchBase;
-        }
-        this._zoomPunchActive = false;
-        this._zoomPunchBase = null;
+        this._settleZoomPunch();
 
         // Reset state
         this.lastImpactIntensity = 0;

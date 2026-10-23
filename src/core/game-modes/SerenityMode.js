@@ -47,6 +47,9 @@ export class SerenityMode extends BaseGameMode {
 
         // Serenity Hub instance
         this.serenityHub = null;
+
+        /** Bumped by every start, stop and deactivate: a start the player has left owns nothing. */
+        this._startGeneration = 0;
     }
 
     getModeId() {
@@ -81,7 +84,13 @@ export class SerenityMode extends BaseGameMode {
      * Called when user enters Serenity mode
      */
     async onStart() {
+        // A start the player leaves before it finishes (Settings → Main menu while the music syncs)
+        // must not go on to take the wake lock, the media keys, the drift or the pad on the menu.
+        this._startGeneration += 1;
+        const startGeneration = this._startGeneration;
+        const ownsStart = () => startGeneration === this._startGeneration && this.isActive && this.isRunning;
         await super.onStart();
+        if (!ownsStart()) return;
 
         console.log('[Serenity] Starting Serenity mode...');
 
@@ -91,6 +100,7 @@ export class SerenityMode extends BaseGameMode {
             if (!window.serenityBlocks.serenityHub) {
                 console.log('[Serenity] Global Serenity Hub not initialized yet. Initializing immediately...');
                 await window.serenityBlocks.initializeGlobalSerenityHub();
+                if (!ownsStart()) return;
             }
             console.log('[Serenity] Using global Serenity Hub instance');
             this.serenityHub = window.serenityBlocks.serenityHub;
@@ -116,6 +126,7 @@ export class SerenityMode extends BaseGameMode {
 
         // Ensure selected track and audible playback are synchronized.
         await this._ensureMusicPlaying();
+        if (!ownsStart()) return;
 
         // Setup keyboard controls
         this._setupKeyboardControls();
@@ -125,6 +136,8 @@ export class SerenityMode extends BaseGameMode {
 
         // The world bar, drift, rest, touch, the wake lock and the media keys.
         this._setupSerenityUi();
+        // Settings opened while it started: hold the drift as onPause would have (it had no ui yet).
+        if (this.isPaused) this.ui?.drift?.hold('settings');
 
         // Breathing over the theme belongs to this mode alone.
         const guide = this._guide();
@@ -188,6 +201,7 @@ export class SerenityMode extends BaseGameMode {
      * Called when exiting Serenity mode
      */
     async onStop() {
+        this._startGeneration += 1;
         await super.onStop();
 
         console.log('[Serenity] Stopping Serenity mode...');
@@ -213,6 +227,7 @@ export class SerenityMode extends BaseGameMode {
      * Called when mode is deselected
      */
     async onDeactivate() {
+        this._startGeneration += 1;
         await super.onDeactivate();
 
         console.log('[Serenity] Deactivating...');

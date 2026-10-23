@@ -9,7 +9,12 @@
  * with them: folded before her, cupped for light coming home, held out to the troll, opened wide
  * for the heart, crossed on her breast when she has it, or trailing in the water as she kneels.
  * Under it all she stands in a soft S (her weight on one hip, moving to the other now and then),
- * breathes, and looks: the head first, the chest after.
+ * breathes, and looks: the head first, the chest after, a turn gathering speed and settling and
+ * never faster than a calm head turns. Over all of it she may be making a gesture (a wave, a
+ * curtsy, a twirl on the water: stillwater-gestures.js), in and out on its own envelope.
+ *
+ * Where she drifts to is approached at her own pace: the place she makes for moves toward where she
+ * is asked to be no faster than that, and she follows it on a spring, so a long way is a glide.
  *
  * Frames as for the troll (stillwater-troll-body.js): the walk frame in true metres; the model is
  * one unit tall (her hem at 0, crown at 1), y up, facing +z, x her left, scaled by SPIRIT.height.
@@ -17,13 +22,28 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    Spring3, clamp, smoothstep, solveTwoBone, spring, springAngle, springTo, rotationBetweenFrames, wrapAngle,
+    Spring3, clamp, follower, followTo, smoothstep, solveTwoBone, spring, springAngle, springTo, rotationBetweenFrames,
+    wrapAngle,
 } from './stillwater-motion.js';
+import {
+    GestureSlots, SPIRIT_GESTURES, emptyPose, slotWeight,
+} from './stillwater-gestures.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
 /** Seconds kneeling down and rising take. */
 export const SPIRIT_ACT = Object.freeze({ kneel: 2.2, rise: 1.8 });
+
+/** Metres a second she drifts at most, unless asked to go slower. */
+export const SPIRIT_PACE = 0.6;
+
+/** How her look moves (as the troll's, TROLL_LOOK, a little lighter). */
+export const SPIRIT_LOOK = Object.freeze({
+    head: Object.freeze({ share: 0.45, halfLife: 0.2, speed: 1.4 }),
+    neck: Object.freeze({ share: 0.3, halfLife: 0.3, speed: 1.0 }),
+    chest: Object.freeze({ share: 0.25, halfLife: 0.5, speed: 0.65 }),
+    pitch: Object.freeze({ halfLife: 0.26, speed: 1.3 }),
+});
 
 const hump = (a, b, v) => smoothstep(a, a + (b - a) / 3, v) * (1 - smoothstep(b - (b - a) / 3, b, v));
 
@@ -95,6 +115,13 @@ export class SpiritBody {
     reset(x, y, z, heading) {
         this.root.set(x, y, z);
         this.pos = new Spring3(x, y, z);
+        /** The place she makes for, moving toward where she is asked at her pace. */
+        this.carrot = [x, y, z];
+        if (!this.gestures) this.gestures = new GestureSlots();
+        this.gestures.reset();
+        /** Her turn about herself in a twirl (radians). */
+        this.spin = 0;
+        this.spinRate = 0;
         this.heading = heading;
         this.headingS = spring(heading);
         this.velocity = new THREE.Vector3();
@@ -103,7 +130,7 @@ export class SpiritBody {
         this.mode = 'standing';
         this.act = null;
         this.look = {
-            yaw: spring(), pitch: spring(), neck: spring(), chest: spring(),
+            yaw: follower(), pitch: follower(), neck: follower(), chest: follower(),
         };
         this.lean = spring();
         this.hipShift = spring();
@@ -182,12 +209,28 @@ export class SpiritBody {
     /** She drifts: a slow spring along to where she should be, never while kneeling. */
     updateDrift(dt, want) {
         const held = this.mode !== 'standing';
-        const tx = held ? this.pos.x[0] : want.at[0];
-        const ty = held ? this.pos.x[1] : want.at[1];
-        const tz = held ? this.pos.x[2] : want.at[2];
+        const c = this.carrot;
+        if (held) {
+            c[0] = this.pos.x[0];
+            c[1] = this.pos.x[1];
+            c[2] = this.pos.x[2];
+        } else if (dt > 0) {
+            // The place she makes for moves on at her pace, slowing as it comes to where she is asked.
+            const dx = want.at[0] - c[0];
+            const dy = want.at[1] - c[1];
+            const dz = want.at[2] - c[2];
+            const d = Math.hypot(dx, dy, dz);
+            const pace = Math.min(SPIRIT_PACE, want.pace || SPIRIT_PACE) * clamp(d / 0.7, 0.3, 1);
+            const step = Math.min(d, pace * dt);
+            if (d > 1e-6) {
+                c[0] += (dx / d) * step;
+                c[1] += (dy / d) * step;
+                c[2] += (dz / d) * step;
+            }
+        }
         const px = this.pos.x[0];
         const pz = this.pos.x[2];
-        this.pos.step(tx, ty, tz, 0.85, dt);
+        this.pos.step(c[0], c[1], c[2], 0.45, dt);
         if (dt > 0) {
             this.velocity.set((this.pos.x[0] - px) / dt, 0, (this.pos.x[2] - pz) / dt);
         }
@@ -196,8 +239,8 @@ export class SpiritBody {
         const off = smoothstep(0.26, 0.1, this.pos.x[1]);
         const float = Math.sin(this.time * 1.7) * 0.012 * off;
         this.root.set(this.pos.x[0], this.pos.x[1] + float, this.pos.x[2]);
-        springAngle(this.headingS, want.face, 0.7, dt);
-        this.heading = this.headingS.x;
+        springAngle(this.headingS, want.face, 0.9, dt);
+        this.heading = wrapAngle(this.headingS.x + this.spin);
         this.breath += (dt * Math.PI * 2) / 5.2;
         if (this.breath > Math.PI * 200) this.breath -= Math.PI * 200;
     }
@@ -227,9 +270,93 @@ export class SpiritBody {
         this.global[name].copy(g);
     }
 
+    /**
+     * What the gestures under way do to her this frame, each by how much of it shows. A twirl's turn
+     * is not faded: while it runs it turns her, and if it is cut short what it had turned is kept
+     * (her heading takes it), so she never swings back.
+     */
+    gesturePose(dt, want) {
+        const slots = this.gestures.step(want.gesture || null, this.time, dt);
+        const acc = emptyPose(this._gp || (this._gp = {}));
+        acc.hands = acc.hands || { L: [], R: [] };
+        acc.hands.L.length = 0;
+        acc.hands.R.length = 0;
+        acc.marked = false;
+        const one = this._gpOne || (this._gpOne = {});
+        let spin = 0;
+        for (let i = 0; i < slots.length; i++) {
+            const s = slots[i];
+            const fn = SPIRIT_GESTURES[s.name];
+            if (fn) {
+                const t = this.time - s.start;
+                const k = clamp(t / Math.max(1e-3, s.length), 0, 1);
+                const p = emptyPose(one);
+                fn(k, t, s.length, p);
+                if (s.live) {
+                    spin += p.spin;
+                    s.spinNow = p.spin;
+                } else if (s.spinNow && !s.spinKept) {
+                    s.spinKept = true;
+                    this.headingS.x = wrapAngle(this.headingS.x + s.spinNow);
+                }
+                const w = slotWeight(s);
+                if (w > 0) {
+                    for (let j = 0; j < 3; j++) {
+                        acc.spine[j] += p.spine[j] * w;
+                        acc.chest[j] += p.chest[j] * w;
+                        acc.neck[j] += p.neck[j] * w;
+                        acc.head[j] += p.head[j] * w;
+                        acc.hips[j] += p.hips[j] * w;
+                    }
+                    acc.clav += p.clav * w;
+                    acc.flare += p.flare * w;
+                    acc.look *= 1 - (1 - p.look) * w;
+                    if (p.L && p.L.w > 0) {
+                        p.L.w *= w;
+                        acc.hands.L.push(p.L);
+                    }
+                    if (p.R && p.R.w > 0) {
+                        p.R.w *= w;
+                        acc.hands.R.push(p.R);
+                    }
+                    if (p.marks && s.live) {
+                        for (let m = 0; m < p.marks.length; m++) {
+                            const bit = 1 << m;
+                            if (k >= p.marks[m] && !(s.fired & bit)) {
+                                s.fired |= bit;
+                                acc.marked = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // (A whole turn is no turn: the twirl's last frame and the next agree.)
+        const was = this.spin;
+        this.spin = Math.abs(spin - Math.PI * 2) < 1e-9 ? 0 : spin;
+        if (dt > 0) this.spinRate = wrapAngle(this.spin - was) / dt;
+        this.heading = wrapAngle(this.headingS.x + this.spin);
+        return acc;
+    }
+
+    /** A point given relative to one of her posed bones (or to the water before her), in the model frame. */
+    boneRelative(spec, out) {
+        const { bone, p } = spec;
+        if (bone === 'model') return out.set(p[0], p[1], p[2]);
+        if (bone === 'water') {
+            const water = this.toModel(this._v3.set(this.root.x, 0, this.root.z), out).y;
+            return out.set(p[0], Math.max(water + p[1], this.globalPos.chest.y - 0.38), p[2]);
+        }
+        const g = this.global[bone];
+        const at = this.globalPos[bone];
+        if (!g || !at) return out.set(p[0], p[1], p[2]);
+        return out.set(p[0], p[1], p[2]).applyQuaternion(g).add(at);
+    }
+
     solve(dt, want) {
         const L = this.local;
         Object.values(L).forEach((q) => q.identity());
+        const gp = this.gesturePose(dt, want);
         // ── The act: kneeling down onto the water, rising ──
         let kneel = 0;
         let actLean = 0;
@@ -256,34 +383,61 @@ export class SpiritBody {
         const side = Math.sin(Math.floor(this.time / 8.5) * 2.3) > 0 ? 1 : -1;
         springTo(this.hipShift, side * (1 - kneel), 1.2, dt);
         const shift = this.hipShift.x;
-        this.hipsOffset.set(shift * 0.012, -0.26 * kneel, 0.02 * kneel);
+        this.hipsOffset.set(shift * 0.012 + gp.hips[0], -0.26 * kneel + gp.hips[1], 0.02 * kneel + gp.hips[2]);
         this._e.set(this.lean.x * 0.3 + kneel * 0.1, 0, -shift * 0.045, 'YXZ');
         L.hips.setFromEuler(this._e);
         // ── Spine, chest: lean, breath, look; bowed over the water when she kneels ──
-        this.updateLook(dt, want, kneel);
+        this.updateLook(dt, want, kneel, gp.look);
         const breathe = Math.sin(this.breath);
-        this._e.set(this.lean.x * 0.4 + kneel * 0.3 + actLean, this.look.chest.x * 0.4, shift * 0.04, 'YXZ');
+        this._e.set(
+            this.lean.x * 0.4 + kneel * 0.3 + actLean + gp.spine[0],
+            this.look.chest.x * 0.4 + gp.spine[1],
+            shift * 0.04 + gp.spine[2],
+            'YXZ',
+        );
         L.spine.setFromEuler(this._e);
-        this._e.set(this.lean.x * 0.2 + kneel * 0.25 - breathe * 0.018, this.look.chest.x * 0.6, shift * 0.03, 'YXZ');
+        this._e.set(
+            this.lean.x * 0.2 + kneel * 0.25 - breathe * 0.018 + gp.chest[0],
+            this.look.chest.x * 0.6 + gp.chest[1],
+            shift * 0.03 + gp.chest[2],
+            'YXZ',
+        );
         L.chest.setFromEuler(this._e);
         const bodyPitch = this.lean.x * 0.9 + kneel * 0.55;
-        this._e.set(-bodyPitch * 0.3 + this.look.pitch.x * 0.35, this.look.neck.x, 0, 'YXZ');
+        this._e.set(
+            -bodyPitch * 0.3 + this.look.pitch.x * 0.35 + gp.neck[0],
+            this.look.neck.x + gp.neck[1],
+            gp.neck[2],
+            'YXZ',
+        );
         L.neck.setFromEuler(this._e);
-        this._e.set(-bodyPitch * 0.25 + this.look.pitch.x * 0.65, this.look.yaw.x, -shift * 0.06, 'YXZ');
+        this._e.set(
+            -bodyPitch * 0.25 + this.look.pitch.x * 0.65 + gp.head[0],
+            this.look.yaw.x + gp.head[1],
+            -shift * 0.06 + gp.head[2],
+            'YXZ',
+        );
         L.head.setFromEuler(this._e);
-        const shrug = breathe * 0.015;
+        const shrug = breathe * 0.015 + gp.clav;
         L.clavL.setFromAxisAngle(this._v2.set(0, 0, 1), shrug);
         L.clavR.setFromAxisAngle(this._v2.set(0, 0, 1), -shrug);
         this.forward();
         // ── Her hands ──
-        this.solveHands(dt, want, kneel);
+        this.solveHands(dt, want, kneel, gp);
         this.forward();
         // ── What hangs: the gown's panels and her hair ──
-        this.solveHanging(dt, want, vm, speed, kneel);
+        this.solveHanging(dt, want, vm, speed, kneel, gp);
         this.forward();
+        // A fingertip set down on the water by a gesture.
+        if (gp.marked) {
+            const tip = this.toWalk(this.globalPos.handR, new THREE.Vector3());
+            this.events.push({
+                type: 'touch', x: tip.x, y: 0, z: tip.z, strength: 0.8,
+            });
+        }
     }
 
-    updateLook(dt, want, kneel) {
+    updateLook(dt, want, kneel, keep = 1) {
         let yaw = 0;
         let pitch = 0;
         if (want.look) {
@@ -299,18 +453,20 @@ export class SpiritBody {
             pitch = 0.55;
             yaw = Math.sin(this.time * 0.13) * 0.25;
         }
-        yaw = clamp(yaw, -1.5, 1.5);
-        pitch = clamp(pitch, -0.55, 0.75);
-        springTo(this.look.yaw, yaw * 0.45, 0.16, dt);
-        springTo(this.look.neck, yaw * 0.3, 0.28, dt);
-        springTo(this.look.chest, yaw * 0.25, 0.55, dt);
-        springTo(this.look.pitch, pitch, 0.24, dt);
+        yaw = clamp(yaw, -1.5, 1.5) * keep;
+        pitch = clamp(pitch, -0.55, 0.75) * keep;
+        const S = SPIRIT_LOOK;
+        followTo(this.look.yaw, yaw * S.head.share, S.head.halfLife, dt, S.head.speed);
+        followTo(this.look.neck, yaw * S.neck.share, S.neck.halfLife, dt, S.neck.speed);
+        followTo(this.look.chest, yaw * S.chest.share, S.chest.halfLife, dt, S.chest.speed);
+        followTo(this.look.pitch, pitch, S.pitch.halfLife, dt, S.pitch.speed);
     }
 
     /** The hands' wrist targets (model frame) for what she does with them, eased; then the arms are solved. */
-    solveHands(dt, want, kneel) {
+    solveHands(dt, want, kneel, gp = null) {
         const { chest } = this.globalPos;
-        const mode = kneel > 0.5 ? 'touch' : (want.hands || 'rest');
+        // (Kneeling she trails her fingers in the water, unless her hands have something to do.)
+        const mode = kneel > 0.5 && (!want.hands || want.hands === 'rest') ? 'touch' : (want.hands || 'rest');
         const t = this.time;
         const targets = { L: this._v.set(0, 0, 0), R: this._v2.set(0, 0, 0) };
         const set = (s, x, y, z) => targets[s].set(x, y, z);
@@ -343,10 +499,26 @@ export class SpiritBody {
             set('R', -0.028, 0.6, 0.07);
         }
         const k = mode === 'rest' ? 0.42 : 0.3;
+        const point = this._gpPoint || (this._gpPoint = new THREE.Vector3());
+        const poles = this._gpPoles || (this._gpPoles = { L: new THREE.Vector3(), R: new THREE.Vector3() });
         ['L', 'R'].forEach((s) => {
             const tg = targets[s];
-            this.hands[s].step(tg.x, tg.y, tg.z, k, dt);
-            this.solveArm(s, this._v3.set(this.hands[s].x[0], this.hands[s].x[1], this.hands[s].x[2]));
+            // A gesture's hand, over what she was doing with it by its weight.
+            const sx = s === 'L' ? 1 : -1;
+            const pole = poles[s].set(sx * 0.7, -0.15, -0.6);
+            let busy = 0;
+            const list = gp ? gp.hands[s] : [];
+            for (let i = 0; i < list.length; i++) {
+                const h = list[i];
+                const w = clamp(h.w, 0, 1);
+                this.boneRelative(h, point);
+                tg.lerp(point, w);
+                if (h.pole) pole.lerp(this._v3.set(h.pole[0], h.pole[1], h.pole[2]), w);
+                busy = Math.max(busy, w);
+            }
+            this.hands[s].step(tg.x, tg.y, tg.z, k - 0.18 * busy, dt);
+            const [hx, hy, hz] = this.hands[s].x;
+            this.solveArm(s, this._v3.set(hx, hy, hz), busy > 0 ? pole : null);
         });
         // A fingertip in the water: a ring now and then.
         if (mode === 'touch' && kneel > 0.95 && t - this.lastTouch > 3.2) {
@@ -359,15 +531,17 @@ export class SpiritBody {
         }
     }
 
-    solveArm(side, target) {
+    solveArm(side, target, poleIn = null) {
         const arm = this.arms[side];
         if (!arm) return;
         const [upper, fore, hand] = arm.names;
         this.forward();
         const a = this.globalPos[upper];
         const sx = side === 'L' ? 1 : -1;
-        // Elbows out and back, softly.
-        const pole = this._pole.set(sx * 0.7, -0.15, -0.6).applyQuaternion(this.global.chest);
+        // Elbows out and back, softly (or where a gesture bends them).
+        const pole = this._pole.set(sx * 0.7, -0.15, -0.6);
+        if (poleIn) pole.copy(poleIn);
+        pole.applyQuaternion(this.global.chest);
         solveTwoBone(a, target, arm.l1, arm.l2, pole, this._mid, this._end);
         const restPole = new THREE.Vector3(sx * 0.7, -0.15, -0.6);
         const g1 = rotationBetweenFrames(arm.dir1, restPole, new THREE.Vector3().copy(this._mid).sub(a), pole, new THREE.Quaternion());
@@ -379,7 +553,7 @@ export class SpiritBody {
     }
 
     /** The gown's panels and her hair: they hang, trail her motion and stir in the air. */
-    solveHanging(dt, want, vm, speed, kneel) {
+    solveHanging(dt, want, vm, speed, kneel, gp = null) {
         const wind = want.wind || 0.25;
         const t = this.time;
         // Trailing: opposite to her motion (her own frame), eased so it swings and settles.
@@ -394,7 +568,8 @@ export class SpiritBody {
             dt,
         );
         // The panels: pitched/rolled by the trail, spread on the water by the kneel.
-        const spread = kneel * 0.95;
+        // (Kneeling it lies spread on the water; a twirl or a curtsy flares it.)
+        const spread = kneel * 0.95 + (gp ? gp.flare : 0);
         const sk = this.skirt.x;
         const panel = (name, axis, angle) => {
             if (!this.local[name]) return;
@@ -409,7 +584,15 @@ export class SpiritBody {
         this.forward();
         const swayX = Math.sin(t * 0.8 + 0.4) * 0.03 * (0.5 + wind);
         const swayZ = Math.sin(t * 0.63) * 0.025 * (0.5 + wind);
-        this.hair.step(clamp(-vm.x * 0.35, -0.5, 0.5) + swayX, 0, clamp(-vm.z * 0.5, -0.6, 0.6) + swayZ - kneel * 0.05, 0.3, dt);
+        // (A twirl swings it out behind her and against the turn.)
+        const whirl = clamp(this.spinRate / 4, -1, 1);
+        this.hair.step(
+            clamp(-vm.x * 0.35 - whirl * 0.35, -0.5, 0.5) + swayX,
+            0,
+            clamp(-vm.z * 0.5 - Math.abs(whirl) * 0.3, -0.6, 0.6) + swayZ - kneel * 0.05,
+            0.3,
+            dt,
+        );
         this.hair2.step(this.hair.x[0] * 1.3, 0, this.hair.x[2] * 1.4, 0.45, dt);
         this.hangBone('hair1', this.hair.x, kneel);
         this.forward();

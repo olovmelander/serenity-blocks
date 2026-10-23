@@ -33,6 +33,10 @@ import { crownCard } from '../../src/themes/stillwater/stillwater-trees.js';
 import {
     HEART_FLIGHT, PARTING, chainBond, spiritPathPoint, trollStation,
 } from '../../src/themes/stillwater/stillwater-story.js';
+import { SCENES } from '../../src/themes/stillwater/stillwater-life.js';
+
+/** Who is in each of the two's scenes (stillwater-life.js). */
+const SCENE_WHO = Object.fromEntries(Object.entries(SCENES).map(([name, s]) => [name, s.who]));
 
 // Every test builds a whole world (a noise field, the plans, some twenty node materials).
 vi.setConfig({ testTimeout: 60000 });
@@ -2124,10 +2128,14 @@ describe('stillwater world: a chain', () => {
         expect(world.getState().bond).toBe(0);
         expect(Math.hypot(spiritAt(world).x - SPIRIT.home[0], spiritAt(world).z - SPIRIT.home[2])).toBeLessThan(0.05);
         expect(Math.abs(spiritAt(world).y - SPIRIT.home[1])).toBeLessThan(0.03);
-        // He plods up the bank to his stone, and in time sits down on it.
-        run(world, camera, 25, 30);
-        expect(world.getState().troll).toBeLessThan(0.05);
-        expect(world.getState().trollMode).toBe('seated');
+        // He plods up the bank to his stone, and in time sits down on it. (What he does after that
+        // is his own: a calm night soon has him up and about again.)
+        let sat = false;
+        run(world, camera, 25, 30, () => {
+            const state = world.getState();
+            if (state.troll < 0.05 && state.trollMode === 'seated') sat = true;
+        });
+        expect(sat).toBe(true);
         world.dispose();
     });
 
@@ -2343,11 +2351,15 @@ describe('stillwater world: a chain', () => {
         expect(u.caps.value.x).toBeCloseTo(rest.caps.x, 2);
         expect(u.caps.value.y).toBeCloseTo(rest.caps.y, 2);
         expect(u.shafts.value).toBeCloseTo(rest.shafts, 2);
-        // Their lights burn as they do in a night that never had a chain (at rest they still
-        // glance across now and then, and a meeting of eyes warms both: the same moments in both).
+        // Their lights burn as they do in a night that never had a chain: nothing of the chain is
+        // left in them. (What their own lives lend them now, a meeting of eyes or her song, is
+        // their own: the night that had a chain has brought them nearer, and they live it
+        // differently, so that is taken out of both before they are compared.)
         expect(calm.world.time).toBe(world.time);
-        expect(u.spiritAt.value.w).toBeCloseTo(calm.world.u.spiritAt.value.w, 2);
-        expect(u.lanternAt.value.w).toBeCloseTo(calm.world.u.lanternAt.value.w, 2);
+        const own = (w, who) => 0.15 * w.story.gaze + w.lifeGlow(who, w.time);
+        const bare = (w, uniform, who) => w.u[uniform].value.w - own(w, who);
+        expect(bare(world, 'spiritAt', 'spirit')).toBeCloseTo(bare(calm.world, 'spiritAt', 'spirit'), 2);
+        expect(bare(world, 'lanternAt', 'troll')).toBeCloseTo(bare(calm.world, 'lanternAt', 'troll'), 2);
         calm.world.dispose();
         world.dispose();
     });
@@ -3164,18 +3176,28 @@ describe('stillwater world: random play', () => {
         if (y + z !== 0) fault(`a minute later the tables still hold ${y} strokes, ${z} wisps`);
         const kept = `${world.wisps.length} wisps and ${world.feeds.length} feeds`;
         if (world.wisps.length || world.feeds.length) fault(`a minute later ${kept} are still kept`);
-        // The two are at rest: he by his stone and down on it, she kneeling at the water on her side.
+        // Play has let them go: no chain holds them, nothing of it is left in the story.
         const state = world.getState();
+        if (state.bond !== 0 || world.story.engaged) fault(`a minute later play still has them: bond ${state.bond}`);
+        // In a calm night they live their own lives (stillwater-life.js): wherever they are and
+        // whatever rings they make is that. When neither has done anything of their own for twenty
+        // seconds they are at rest: he by his stone and down on it, she kneeling at the water on
+        // her side, and the only rings still being born are her fingertips', where she kneels.
+        const { life } = world.story;
+        const ownScene = (name, who) => SCENE_WHO[name] === who || SCENE_WHO[name] === 'both';
+        const lately = (who) => life.sceneOf(who) || life.log.some((l) => l.end > time - 20 && ownScene(l.name, who));
         const places = `${state.trollMode} at ${world.trollS}, ${state.spiritMode} at ${world.spiritS}`;
-        if (world.trollS > 0.05 || state.trollMode !== 'seated') fault(`a minute later he is not home: ${places}`);
+        const home = world.trollS <= 0.05 && state.trollMode === 'seated';
+        if (!lately('troll') && !home) fault(`a minute later he is not home: ${places}`);
         const resting = world.spiritS <= 0.35 && state.spiritMode === 'kneeling';
-        if (!resting) fault(`a minute later she is not at rest: ${places}`);
-        // The only rings still being born are her fingertips', where she kneels.
-        const her = spiritAt(world);
-        const late = rings.slice(quiet).filter((ring) => ring.asked > time - 20);
-        const astray = late.filter((ring) => Math.hypot(ring.x - her.x, ring.z - her.z) > 1);
-        if (astray.length) fault(`a minute later ${astray.length} rings are still born away from her`);
-        if (late.length > 8) fault(`a minute later ${late.length} rings in twenty seconds`);
+        if (!lately('spirit') && !resting) fault(`a minute later she is not at rest: ${places}`);
+        if (!lately('troll') && !lately('spirit')) {
+            const her = spiritAt(world);
+            const late = rings.slice(quiet).filter((ring) => ring.asked > time - 20);
+            const astray = late.filter((ring) => Math.hypot(ring.x - her.x, ring.z - her.z) > 1);
+            if (astray.length) fault(`a minute later ${astray.length} rings are still born away from her`);
+            if (late.length > 8) fault(`a minute later ${late.length} rings in twenty seconds`);
+        }
         if (world.u.power.value > 1e-6 || world.u.surge.value > 1e-3) fault('a minute later the wood is still charged');
         if (Math.abs(world.u.breath.value - 1) > 1e-6) fault(`a minute later the breath is ${world.u.breath.value}`);
         world.dispose();
@@ -3197,4 +3219,98 @@ describe('stillwater world: random play', () => {
             expect(stats.mostRings).toBeGreaterThan(3);
         },
     );
+});
+
+describe('stillwater world: the two in a quick run, and in a calm', () => {
+    /** How far a head is turned from its body (degrees, + to its left). */
+    const headTurn = (body) => {
+        const f = new THREE.Vector3(0, 0, 1).applyQuaternion(body.global.head);
+        return (Math.atan2(f.x, f.z) * 180) / Math.PI;
+    };
+
+    // The fault this pins (2026-10-23): in a quick run every light that fell turned the one on its
+    // side to it, and the newest always won, so both heads swung to and fro over the ripples some
+    // sixty times a minute at up to 15 rad/s.
+    it('watches a quick run without their heads darting from splash to splash', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
+        const rand = mulberry32(17);
+        const dt = 1 / 60;
+        const turns = { troll: 0, spirit: 0 };
+        const last = { troll: null, spirit: null };
+        const sign = { troll: 0, spirit: 0 };
+        const swing = { troll: 0, spirit: 0 };
+        let fastest = 0;
+        let nextLock = world.time + 0.3;
+        let n = 0;
+        let combo = 0;
+        const seconds = 60;
+        const t0 = world.time;
+        for (let i = 1; i <= seconds / dt; i++) {
+            const t = t0 + i * dt;
+            if (t >= nextLock) {
+                n += 1;
+                const row = 19 - (n % 8);
+                world.onLock({
+                    u: 0.05 + rand() * 0.9, rows: [row, row - 1], hardDrop: rand() < 0.45, color: '#88ccff',
+                });
+                if (n % 5 === 0) {
+                    combo = rand() < 0.6 ? combo + 1 : 1;
+                    world.onClear({ rows: [19], lines: 1, combo });
+                    world.onCombo(combo);
+                } else if (n % 5 === 2 && combo > 0 && rand() < 0.4) {
+                    combo = 0;
+                    world.onCombo(0);
+                }
+                nextLock += 0.3 + rand() * 0.25;
+            }
+            frame(world, camera, t, dt);
+            for (const who of ['troll', 'spirit']) {
+                const yaw = headTurn(world[who].body);
+                if (last[who] !== null) {
+                    const d = yaw - last[who];
+                    fastest = Math.max(fastest, Math.abs(d) / dt);
+                    const s = Math.sign(d);
+                    if (Math.abs(d) > 1e-4) {
+                        if (sign[who] && s !== sign[who]) {
+                            if (Math.abs(swing[who]) > 4) turns[who] += 1;
+                            swing[who] = 0;
+                        }
+                        sign[who] = s;
+                        swing[who] += d;
+                    }
+                }
+                last[who] = yaw;
+            }
+        }
+        // (Before: about 66 a minute for him and 61 for her; now about 20.)
+        expect(turns.troll).toBeLessThan(35);
+        expect(turns.spirit).toBeLessThan(35);
+        // Degrees a second: a head is never swung round faster than a body turns it.
+        expect(fastest).toBeLessThan(300);
+        world.dispose();
+    });
+
+    it('lives its own life in a long calm: up and about, things done together, every number finite', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
+        world.setKin(0.7);
+        world.seek(world.time);
+        let travelled = 0;
+        let prev = world.troll.body.root.clone();
+        const sceneNames = new Set();
+        run(world, camera, 240, 30, () => {
+            const { root } = world.troll.body;
+            travelled += Math.hypot(root.x - prev.x, root.z - prev.z);
+            prev = root.clone();
+            const { scenes } = world.getState();
+            sceneNames.add(scenes.troll);
+            sceneNames.add(scenes.spirit);
+            expect(Number.isFinite(world.u.lanternAt.value.w)).toBe(true);
+            expect(Number.isFinite(world.u.spiritAt.value.w)).toBe(true);
+        });
+        sceneNames.delete('none');
+        expect(sceneNames.size).toBeGreaterThan(6);
+        expect([...sceneNames].some((name) => SCENE_WHO[name] === 'both')).toBe(true);
+        expect(travelled).toBeGreaterThan(3);
+        world.dispose();
+    });
 });
