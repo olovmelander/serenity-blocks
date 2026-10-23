@@ -6,31 +6,31 @@
  * showing state (locked/unlocked/completed) and stars.
  *
  * WebGPU: this is the live manager. Its node materials are TSL NodeMaterials built by
- * the validated sibling builders in ./level-node-manager.tsl.js (glass shell / glow
- * halo / billboarded sparkle particles / fluid inner core) so they render on
- * THREE.WebGPURenderer. The class API (createNodes/update/updateFromProgress/setCamera/
- * setAAAVisualsEnabled/updateLayout/setPathEvaluator/setCameraProgress + node hit-
- * testing) is unchanged.
+ * the sibling builders in ./level-node-manager.tsl.js — each orb is a world in a glass
+ * marble: the glass shell, the world window (the theme icon on a camera-facing disc), the
+ * halo and the stars (2026-10-23; the design and its state language are documented there).
+ * The class API (createNodes/update/updateFromProgress/setCamera/setAAAVisualsEnabled/
+ * updateLayout/setPathEvaluator/setCameraProgress + node hit-testing) is unchanged.
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { THEME_REGISTRY } from '../../themes/theme-registry.js';
 import { buildThemeIconLookup, resolveThemeIconAssetUrl } from './theme-icon-resolver.js';
-import {
-    ODYSSEY_NODE_STYLES,
-    getChapterProfile,
-} from './chapter-environments/shared/chapter-profile.js';
+import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
+import { makeQuadInstancedGeometry } from './chapter-environments/shared/odyssey-tsl-billboard.js';
 import { getActiveOdysseyChapterPositions } from './path-utils.js';
 import {
-    createGlassShellTSL,
-    createGlowHaloTSL,
-    createNodeParticlesTSL,
-    createNodeParticleGeometry,
+    ORB_STAR_SIZE,
+    ORB_STAR_SLOTS,
     createFluidInnerTSL,
-    createFluidInnerInstancedTSL,
+    createGlassShellTSL,
+    createOrbHaloTSL,
+    createOrbStarsTSL,
+    createOrbWindowTSL,
 } from './level-node-manager.tsl.js';
 import { PATH_HORIZON_OPEN, odysseyPathHorizonWeight } from './odyssey-path-horizon.js';
+import { ODYSSEY_PATH_ORB_OCCLUDERS } from './odyssey-path-renderer.tsl.js';
 
 const THEME_ICON_MODULES = import.meta.glob('../../themes/*/*-theme-icon.{png,svg}', {
     import: 'default',
@@ -38,12 +38,11 @@ const THEME_ICON_MODULES = import.meta.glob('../../themes/*/*-theme-icon.{png,sv
 const THEME_ICON_LOOKUP = buildThemeIconLookup(THEME_REGISTRY, THEME_ICON_MODULES);
 
 /**
- * LEVER 1 (core texture-atlas instancing). DEFAULT ON in the browser — capture-confirmed
- * 2026-06-22 (instanced cores read identical to the legacy per-node path). Collapses all 55
- * inner fluid cores to ONE InstancedMesh + ONE material + ONE pipeline + a shared theme-icon
- * DataArrayTexture (−54 cold-start pipeline compiles + draws). Opt OUT via
- * `?odysseyCoreInstanced=0` to restore the legacy per-node inner-core Mesh path. Non-browser
- * (tests/SSR) stays on the legacy path so unit suites remain deterministic.
+ * LEVER 1 (core texture-atlas instancing). DEFAULT ON in the browser. All the orbs' worlds
+ * are ONE instanced draw (the world windows) + ONE material + ONE pipeline + a shared
+ * theme-icon DataArrayTexture (−54 cold-start pipeline compiles + draws). Opt OUT via
+ * `?odysseyCoreInstanced=0` to restore the legacy per-node inner-core sphere (the pre-window
+ * look). Non-browser (tests/SSR) stays on the legacy path so unit suites remain deterministic.
  */
 function readOdysseyCoreInstancedFlag() {
     if (typeof window === 'undefined') return false; // tests/SSR: legacy path (deterministic)
@@ -54,41 +53,12 @@ function readOdysseyCoreInstancedFlag() {
     return true;
 }
 
-// P3b: map each per-world node shell style to a shader style index.
-export const ODYSSEY_NODE_SHELL_STYLE_INDEX = Object.freeze({
-    [ODYSSEY_NODE_STYLES.MAGMA_GEODE]: 0,
-    [ODYSSEY_NODE_STYLES.BUBBLE_PEARL]: 1,
-    [ODYSSEY_NODE_STYLES.SEED_LANTERN]: 2,
-    [ODYSSEY_NODE_STYLES.CAIRN_LANTERN]: 3,
-    [ODYSSEY_NODE_STYLES.CLOUD_WISP]: 4,
-    [ODYSSEY_NODE_STYLES.STARLIT_ORB]: 5,
-    [ODYSSEY_NODE_STYLES.LENSED_SHARD]: 6,
-    [ODYSSEY_NODE_STYLES.NEON_SIGN]: 7,
-});
-
-export function resolveOdysseyNodeShellStyle(chapter, levelId = 1) {
-    const profile = getChapterProfile(chapter);
-    const style = profile.node?.style || ODYSSEY_NODE_STYLES.MAGMA_GEODE;
-    const baseColor = profile.palette?.primary ?? 0xffffff;
-    const accentColor = profile.palette?.accent ?? baseColor;
-    const seed = (((profile.id || 1) * 97) + ((levelId || 1) * 37)) % 997;
-
-    return {
-        style,
-        index: ODYSSEY_NODE_SHELL_STYLE_INDEX[style] ?? 0,
-        baseColor,
-        accentColor,
-        seed: seed / 997,
-    };
-}
 const GLASS_ORB_SCALE = 1.4; // Slightly larger for better visibility and premium feel
 const GLASS_INNER_RADIUS = 0.95 * GLASS_ORB_SCALE;
 const GLASS_OUTER_RADIUS = 1.0 * GLASS_ORB_SCALE;
 const GLASS_GLOW_RADIUS = 1.12 * GLASS_ORB_SCALE;
-// Snow-globe: render the themed inner core at a fraction of the shell radius so it reads as
-// an object SUSPENDED inside the clear glass globe (glass-rim gap + orbiting sparkle "snow"),
-// instead of a magma ball that fills the shell and makes the transparent glass look solid.
-// Kept large enough (radius ≈0.70) to still cover the path line passing ≈0.45 behind centre.
+// The legacy per-node core sphere (?odysseyCoreInstanced=0) at a fraction of the shell radius,
+// suspended inside the clear glass; large enough to cover the rail threaded through the orb.
 const INNER_CORE_DISPLAY_SCALE = 0.66;
 
 /**
@@ -151,30 +121,28 @@ const UPDATE_PROGRESS_EPSILON = 1e-4;
 
 // Portable "hidden instance" matrix: far-below translation + zero scale. Zero scale alone
 // hides an instance on r181 (vertices collapse to a point), but on r185 the instance matrix
-// is applied BEFORE positionNode runs, so an additive positionNode (the inner-core wobble,
-// the AAA shell displacement) re-inflates a scale-0 instance into a small blob at its
-// translation. Parking hidden instances at y=-99999 keeps them invisible on BOTH versions.
-// Only used for meshes whose material has a positionNode; the fixed-function lock/star/glow
-// hides stay plain scale-0 (no positionNode → nothing can re-inflate them).
+// is applied BEFORE positionNode runs, so an additive positionNode (the old core wobble and
+// shell displacement) re-inflated a scale-0 instance into a small blob at its translation.
+// The glass keeps it: parked far below, a hidden orb also stays out of the raycast. The
+// star/marker hides stay plain scale-0 (no positionNode → nothing can re-inflate them).
 const HIDDEN_INSTANCE_MATRIX = new THREE.Matrix4().compose(
     new THREE.Vector3(0, -99999, 0),
     new THREE.Quaternion(),
     new THREE.Vector3(0, 0, 0),
 );
 
-// Lock/star indicator placement relative to the orb, expressed in the CAMERA basis
+// Star/marker indicator placement relative to the orb is expressed in the CAMERA basis
 // (camera-right, camera-up, toward-camera) and multiplied by node scale. Placing them in
-// screen space — instead of a fixed world offset — keeps them directly above the orb and
-// facing the camera at every chapter's wildly different camera angle. `toward` pushes them
-// in FRONT of the orb's opaque core (radius ~1.06×scale) so the core never occludes them,
-// while still leaving depth-test on so a far level's indicator can't bleed over a nearer orb.
-// Applied each frame in _updateIndicatorBillboards().
-const LOCK_PLACEMENT = Object.freeze({ up: 1.32, toward: 1.0, size: 0.5 });
-// The padlock / duel / boss glyphs scale with their orb, so the orb's near-lens cap bounds them
-// too (a node passing the camera at the 4->5 seam once put a padlock the size of a quarter of the
+// screen space — instead of a fixed world offset — keeps them where they belong round the orb
+// and facing the camera at every chapter's wildly different camera angle. `toward` pushes them
+// in FRONT of the orb's opaque world window so it never occludes them, while still leaving
+// depth-test on so a far level's indicator can't bleed over a nearer orb. Applied each frame
+// in _updateIndicatorBillboards(). (The padlock lives in the locked window's frost now.)
+// The duel / boss glyphs scale with their orb, so the orb's near-lens cap bounds them too (a
+// node passing the camera at the 4->5 seam once put a padlock the size of a quarter of the
 // frame on screen). Only the FOCUSED orb, which the cap leaves alone, still eases its glyphs down
 // in its close-up — as it always has. Passing orbs keep theirs until they leave the frame.
-const LOCK_NEAR_FADE = Object.freeze({ start: 5, end: 14 });
+const GLYPH_NEAR_FADE = Object.freeze({ start: 5, end: 14 });
 /**
  * THE NEAR-LENS CAP: an orb is never drawn larger on screen than `maxDeg` of apparent radius
  * (its glow shell, from the eye) — about what the focus close-up shows. Only the excess is taken
@@ -215,13 +183,6 @@ export function getOdysseyNodeGlowRadius(chapter) {
 const MARKER_PLACEMENT = Object.freeze({ out: 1.38, toward: 1.0, size: 0.56 });
 // A marker keeps its side of the path until that side climbs this far above the orb.
 const MARKER_SIDE_SWAP = 0.2;
-// A completed orb's stars still to earn: the same star, dimmed to an empty slot.
-const STAR_SLOT_UNEARNED = new THREE.Color(0.20, 0.19, 0.24);
-const STAR_PLACEMENT = Object.freeze([
-    Object.freeze({ right: -0.6, up: 1.5, toward: 0.9 }),
-    Object.freeze({ right: 0.0, up: 1.72, toward: 0.95 }),
-    Object.freeze({ right: 0.6, up: 1.5, toward: 0.9 }),
-]);
 
 /** The marker an orb wears on the path: a rival duel, a chapter boss, or none. */
 export function resolveOdysseyNodeMarker(levelConfig) {
@@ -261,12 +222,9 @@ export class LevelNodeManager {
         // reads identically at gameplay distance.
         this.sharedInnerGeo = new THREE.SphereGeometry(GLASS_INNER_RADIUS, 24, 24);
         this.sharedGlassGeo = new THREE.SphereGeometry(GLASS_OUTER_RADIUS, 32, 32);
-        this.sharedGlowGeo = new THREE.IcosahedronGeometry(GLASS_GLOW_RADIUS, 2);
 
         // Shared canvas textures (identical across all nodes)
         this.fallbackIconTexture = this.createFallbackIconTexture();
-        this.sharedLockTextures = this._createSharedLockTextures();
-        this.sharedStarTexture = this.createStarTexture(128);
         this.sharedMarkerTextures = this._createSharedMarkerTextures();
         this.sharedGlowTexture = this.createGlowTexture(64);
 
@@ -275,49 +233,43 @@ export class LevelNodeManager {
         // Instanced Mesh state
         this.instanceCount = 0;
         this.glassInstancedMesh = null;
-        this.glowInstancedMesh = null;
-        this.lockInstancedMesh = null;
+        this.haloMesh = null;
         this.starInstancedMesh = null;
         this.rivalMarkerMesh = null;
         this.bossMarkerMesh = null;
-        this.particleSystem = null;
         this.instanceIdMap = new Map(); // levelId -> instanceIndex
         this.nodeIds = []; // index -> levelId
         this.camera = null;
 
-        // LEVER 1: instanced inner-core state (default OFF; see readOdysseyCoreInstancedFlag).
-        // When ON, all 55 inner fluid cores collapse to ONE InstancedMesh + ONE material +
-        // ONE pipeline + a shared DataArrayTexture of theme icons (per-instance layer index).
+        // LEVER 1: the instanced world windows (see readOdysseyCoreInstancedFlag). When ON,
+        // every orb's world is ONE instanced draw + ONE material + ONE pipeline + a shared
+        // DataArrayTexture of theme icons (per-instance layer index).
         this.coreInstanced = readOdysseyCoreInstancedFlag();
         // Set by setAllVisible(false); makes the A/B's hidden state stick against the
         // per-frame visibility write in update().
         this._forcedHidden = false;
-        this.innerCoreMesh = null;
-        this.innerCoreMaterial = null;
+        this.windowMesh = null;
         this.coreArrayTexture = null;
         this.coreAtlasSize = 256;
         this.iconUrlToLayer = new Map(); // resolved iconUrl -> layer index (>=1)
         this.levelLayer = new Map(); // levelId -> layer index (-1 = no icon → procedural magma)
-        this._scratchMatrix2 = new THREE.Matrix4();
-        this._scratchInnerScaleVec = new THREE.Vector3();
 
         // P3 focal hierarchy (AAA): the player's current/next node blazes + beat-pulses.
         this.focalHierarchy = false;
-        this.worldShellsEnabled = false;
         this.currentLevelId = 1;
         // The furthest UNLOCKED level — the ribbon's lit frontier ends at its node.
         this.frontierLevelId = 1;
         this._beatPulse = 0;
 
         // QW11 (perf): reused per-frame scratch so update() allocates nothing per node.
-        // The matrix, the scale vec, the camera-basis vectors used to place the lock/star
+        // The matrix, the scale vec, the camera-basis vectors used to place the star/marker
         // indicators in screen space, and a white fallback Color are all hoisted here and
         // .copy()'d into rather than re-`new`d / `.clone()`d each of the ~55 nodes/frame.
         this._scratchMatrix = new THREE.Matrix4();
         this._scratchScaleVec = new THREE.Vector3();
-        // Camera-basis scratch for placing the lock/star indicators in screen space every
-        // frame (always above the orb, facing & slightly toward the camera). See
-        // _updateIndicatorBillboards() + LOCK_PLACEMENT / STAR_PLACEMENT.
+        // Camera-basis scratch for placing the star/marker indicators in screen space every
+        // frame (round the orb, facing & slightly toward the camera). See
+        // _updateIndicatorBillboards() + ORB_STAR_SLOTS / MARKER_PLACEMENT.
         this._scratchCamRight = new THREE.Vector3();
         this._scratchCamUp = new THREE.Vector3();
         this._scratchCamPos = new THREE.Vector3();
@@ -330,7 +282,7 @@ export class LevelNodeManager {
         this._lastUploadCamPos = new THREE.Vector3(NaN, NaN, NaN);
         this._nearFadeLive = false;
         this._fallbackColor = new THREE.Color(0xffffff);
-        this._scratchLockColor = new THREE.Color();
+        this._scratchGlyphColor = new THREE.Color();
 
         // QW11 (perf): gate the ~7040-particle + 4-instanced-attribute GPU re-upload so
         // it only happens when something the buffers depend on actually changed (camera
@@ -341,11 +293,10 @@ export class LevelNodeManager {
         this._uploadDirty = true;
         this._lastUploadProgress = NaN;
 
-        // Shared TSL uniform nodes (WebGPU): one uTime ticks every node material,
-        // uAAA gates the per-world shell identity, uBeatPulse drives the focal glow.
-        // These are passed into the .tsl builders so update() keeps a single tick path.
+        // Shared TSL uniform nodes (WebGPU): one uTime ticks every node material, uBeatPulse
+        // drives the current orb's halo. These are passed into the .tsl builders so update()
+        // keeps a single tick path.
         this.uTime = uniform(0);
-        this.uAAA = uniform(this.worldShellsEnabled ? 1 : 0);
         this.uBeatPulse = uniform(0);
     }
 
@@ -359,16 +310,8 @@ export class LevelNodeManager {
     }
 
     setAAAVisualsEnabled(enabled) {
-        const active = !!enabled;
-        this.focalHierarchy = active;
-        this.worldShellsEnabled = active;
-        this._syncAAAVisualUniforms();
+        this.focalHierarchy = !!enabled;
         this._markUploadDirty();
-    }
-
-    _syncAAAVisualUniforms() {
-        // Shared TSL node uniform — the glass shell builder reads this same node.
-        this.uAAA.value = this.worldShellsEnabled ? 1 : 0;
     }
 
     setCamera(camera) {
@@ -484,74 +427,19 @@ export class LevelNodeManager {
     }
 
     /**
-     * Extra near-lens easing for an orb's padlock / duel / boss glyph: only on the focused orb
-     * (every other orb is already held to NODE_NEAR_CAP, which bounds its glyphs with it).
+     * Extra near-lens easing for an orb's duel / boss glyph: only on the focused orb (every
+     * other orb is already held to NODE_NEAR_CAP, which bounds its glyphs with it).
      * @private
      */
     _glyphNearScale(node, camPos) {
         if (node.config.id !== this.focusedLevelId) return 1;
         const distance = camPos.distanceTo(node.group.position);
-        return THREE.MathUtils.smoothstep(distance, LOCK_NEAR_FADE.start, LOCK_NEAR_FADE.end);
-    }
-
-    _createSharedLockTextures() {
-        // Padlock GLYPH: a white silhouette with the keyhole cut through, tinted per node by
-        // the lock mesh's instanceColor (the chapter's light). It was a red/pink sticker that
-        // clashed with every blue and green world.
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, 128, 128);
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 11;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.arc(64, 52, 25, Math.PI, 0, false);
-        ctx.moveTo(39, 52);
-        ctx.lineTo(39, 64);
-        ctx.moveTo(89, 52);
-        ctx.lineTo(89, 64);
-        ctx.stroke();
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.roundRect(26, 62, 76, 52, 10);
-        ctx.fill();
-        // Cut the keyhole out (transparent), so the glyph reads as one shape at any tint.
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.beginPath();
-        ctx.arc(64, 82, 8, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(59.5, 85);
-        ctx.lineTo(64, 101);
-        ctx.lineTo(68.5, 85);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
-        const lockTexture = new THREE.CanvasTexture(canvas);
-        lockTexture.colorSpace = THREE.SRGBColorSpace;
-        lockTexture.needsUpdate = true;
-
-        // Lock glow texture
-        const glowCanvas = document.createElement('canvas');
-        glowCanvas.width = 64;
-        glowCanvas.height = 64;
-        const glowCtx = glowCanvas.getContext('2d');
-        const gradient = glowCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
-        gradient.addColorStop(0, 'rgba(255, 100, 100, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(255, 50, 50, 0.3)');
-        gradient.addColorStop(1, 'rgba(200, 0, 0, 0)');
-        glowCtx.fillStyle = gradient;
-        glowCtx.fillRect(0, 0, 64, 64);
-        const lockGlowTexture = new THREE.CanvasTexture(glowCanvas);
-
-        return { lockTexture, lockGlowTexture };
+        return THREE.MathUtils.smoothstep(distance, GLYPH_NEAR_FADE.start, GLYPH_NEAR_FADE.end);
     }
 
     _createSharedMarkerTextures() {
-        // White glyphs tinted per node like the padlock: crossed blades for a rival duel, a
-        // three-point crown for a chapter boss. Both read at the lock's size from any angle.
+        // White glyphs tinted per node by the chapter light: crossed blades for a rival duel, a
+        // three-point crown for a chapter boss. Both read at their size from any angle.
         const glyph = (draw) => {
             const canvas = document.createElement('canvas');
             canvas.width = 128;
@@ -611,11 +499,11 @@ export class LevelNodeManager {
         this._setupInstancedMeshes();
 
         // LEVER 1: build the shared theme-icon DataArrayTexture + the single instanced
-        // inner-core mesh ONCE before the node batch loop (so layer indices exist when
+        // world-window mesh ONCE before the node batch loop (so layer indices exist when
         // createGlassNode assigns each node its coreLayer). Only when the flag is ON.
         if (this.coreInstanced) {
             await this._buildCoreArrayTexture(levelData);
-            this._setupInnerCoreInstancedMesh();
+            this._setupWindowMesh();
         }
 
         const batchSize = 5;
@@ -625,10 +513,8 @@ export class LevelNodeManager {
             // eslint-disable-next-line no-await-in-loop
             const batchNodes = await Promise.all(batch.map((level) => this.createNode(level)));
 
-            const glassStyleAttr = this.glassInstancedMesh.geometry.getAttribute('aNodeStyle');
             const glassColorAttr = this.glassInstancedMesh.geometry.getAttribute('aNodeColor');
             const glassAccentAttr = this.glassInstancedMesh.geometry.getAttribute('aNodeAccentColor');
-            const glassSeedAttr = this.glassInstancedMesh.geometry.getAttribute('aNodeSeed');
 
             batchNodes.forEach((node, index) => {
                 const level = batch[index];
@@ -644,18 +530,13 @@ export class LevelNodeManager {
                     node.group.scale,
                 );
                 this.glassInstancedMesh.setMatrixAt(idx, matrix);
-                this.glowInstancedMesh.setMatrixAt(idx, matrix);
 
-                // P3b: static per-world shell style + chapter colour for this node.
-                const chapter = level.chapter || 1;
-                const shell = resolveOdysseyNodeShellStyle(chapter, level.id);
-                const look = getOdysseyNodeChapterLook(chapter);
+                // The glass rim's chapter light and the selection ring's accent (static).
+                const look = getOdysseyNodeChapterLook(level.chapter || 1);
                 const shellColor = node.group.userData.chapterColor || new THREE.Color(look.glow);
                 const accentColor = new THREE.Color(look.accent);
-                glassStyleAttr.setX(idx, shell.index);
                 glassColorAttr.setXYZ(idx, shellColor.r, shellColor.g, shellColor.b);
                 glassAccentAttr.setXYZ(idx, accentColor.r, accentColor.g, accentColor.b);
-                glassSeedAttr.setX(idx, shell.seed);
             });
 
             if (yieldFn) {
@@ -665,26 +546,20 @@ export class LevelNodeManager {
         }
 
         this.glassInstancedMesh.instanceMatrix.needsUpdate = true;
-        this.glassInstancedMesh.geometry.getAttribute('aNodeStyle').needsUpdate = true;
         this.glassInstancedMesh.geometry.getAttribute('aNodeColor').needsUpdate = true;
         this.glassInstancedMesh.geometry.getAttribute('aNodeAccentColor').needsUpdate = true;
-        this.glassInstancedMesh.geometry.getAttribute('aNodeSeed').needsUpdate = true;
-        this.glowInstancedMesh.instanceMatrix.needsUpdate = true;
-        this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
         if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
         if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
-        // Padlock glyph tint = the node's chapter light (it was a pink sticker everywhere).
+        // Marker glyph tint = the node's chapter light.
         this.nodes.forEach((node) => {
             const idx = this.instanceIdMap.get(node.config.id);
             const tint = node.group.userData.chapterColor;
             if (Number.isInteger(idx) && tint) {
-                this.lockInstancedMesh.setColorAt(idx, this._scratchLockColor.copy(tint).multiplyScalar(0.9));
-                this.rivalMarkerMesh?.setColorAt(idx, this._scratchLockColor.copy(tint).multiplyScalar(1.05));
-                this.bossMarkerMesh?.setColorAt(idx, this._scratchLockColor.copy(tint).multiplyScalar(1.05));
+                this.rivalMarkerMesh?.setColorAt(idx, this._scratchGlyphColor.copy(tint).multiplyScalar(1.05));
+                this.bossMarkerMesh?.setColorAt(idx, this._scratchGlyphColor.copy(tint).multiplyScalar(1.05));
             }
         });
-        if (this.lockInstancedMesh.instanceColor) this.lockInstancedMesh.instanceColor.needsUpdate = true;
         if (this.rivalMarkerMesh?.instanceColor) this.rivalMarkerMesh.instanceColor.needsUpdate = true;
         if (this.bossMarkerMesh?.instanceColor) this.bossMarkerMesh.instanceColor.needsUpdate = true;
 
@@ -694,143 +569,62 @@ export class LevelNodeManager {
     _setupInstancedMeshes() {
         const count = this.instanceCount;
 
-        // 1. Glass Instanced Mesh
-        // We use a TSL NodeMaterial to support per-instance state on WebGPU.
-        // P3b: when uAAA>0.5 the shell adopts a per-world identity from per-instance
-        // aNodeStyle + aNodeColor (magma geode / bubble / ley-lantern / cairn-crystal /
-        // cloud-wisp / starlit / lensed-shard / neon-sign). Off → the original glass.
-        // The GLSL ShaderMaterial was ported to the validated createGlassShellTSL builder;
-        // we feed it this manager's shared uTime/uAAA so update() ticks one source.
-        const glass = createGlassShellTSL(this.uTime, this.uAAA);
-        const glassMat = glass.material;
-
-        this.glassInstancedMesh = new THREE.InstancedMesh(this.sharedGlassGeo, glassMat, count);
+        // 1. The glass marbles (InstancedMesh, TSL NodeMaterial with per-instance state). The
+        // raycast picks against these; aNodeColor / aNodeAccentColor are set in createNodes.
+        const glass = createGlassShellTSL(this.uTime);
+        this.glassInstancedMesh = new THREE.InstancedMesh(this.sharedGlassGeo, glass.material, count);
         this.glassInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        // Same stale-cached-bounding-sphere hazard as the lock/star/core meshes below: three
+        // Same stale-cached-bounding-sphere hazard as the star/window meshes below: three
         // computes an InstancedMesh's bounding sphere ONCE, lazily, from whatever matrices exist
         // at its first render. Rendered before createNodes() placed the instances (any frame
         // during the async node build), the sphere is cached around the origin and every shell
         // is culled for the rest of the session. The orbs hug the camera path; culling bought
         // nothing. Raycasting reads the same cached sphere, so raycast() refreshes it first.
         this.glassInstancedMesh.frustumCulled = false;
-
-        // Custom attributes
-        const stateArray = new Float32Array(count * 4);
-        this.glassInstancedMesh.geometry.setAttribute('aState', new THREE.InstancedBufferAttribute(stateArray, 4));
-
-        // P3b: per-instance shell style + chapter colour (static; set in createNodes).
-        const nodeStyleArray = new Float32Array(count);
-        const nodeColorArray = new Float32Array(count * 3);
-        const nodeAccentColorArray = new Float32Array(count * 3);
-        const nodeSeedArray = new Float32Array(count);
-        this.glassInstancedMesh.geometry.setAttribute(
-            'aNodeStyle',
-            new THREE.InstancedBufferAttribute(nodeStyleArray, 1),
-        );
-        this.glassInstancedMesh.geometry.setAttribute(
-            'aNodeColor',
-            new THREE.InstancedBufferAttribute(nodeColorArray, 3),
-        );
-        this.glassInstancedMesh.geometry.setAttribute(
-            'aNodeAccentColor',
-            new THREE.InstancedBufferAttribute(nodeAccentColorArray, 3),
-        );
-        this.glassInstancedMesh.geometry.setAttribute(
-            'aNodeSeed',
-            new THREE.InstancedBufferAttribute(nodeSeedArray, 1),
-        );
-
+        const glassGeo = this.glassInstancedMesh.geometry;
+        glassGeo.setAttribute('aState', new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4));
+        glassGeo.setAttribute('aNodeColor', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
+        glassGeo.setAttribute('aNodeAccentColor', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
         this.scene.add(this.glassInstancedMesh);
 
-        // 2. Glow Instanced Mesh
-        // P3 focal hierarchy: aState.z flags the player's "current" node so it blazes
-        // and beat-pulses (uBeatPulse). z stays 0 unless focalHierarchy is enabled, so
-        // the default look is unchanged. Ported to createGlowHaloTSL, sharing this
-        // manager's uTime/uBeatPulse uniforms.
-        const glow = createGlowHaloTSL(this.uTime, this.uBeatPulse);
-        const glowMat = glow.material;
+        // 2. The halos: instanced camera-facing quads (a smooth corona — the icosahedron shell
+        // they replace showed its facets). aHalo.w = 0 hides one. Additive, after the glass.
+        const halo = createOrbHaloTSL(this.uTime, this.uBeatPulse);
+        this.haloMesh = new THREE.Mesh(makeQuadInstancedGeometry(count, {
+            aHalo: { array: new Float32Array(count * 4), itemSize: 4 },
+            aColor: { array: new Float32Array(count * 3), itemSize: 3 },
+            aState: { array: new Float32Array(count * 4), itemSize: 4 },
+        }), halo.material);
+        this.haloMesh.frustumCulled = false; // repositioned every frame, see the glass above
+        this.haloMesh.renderOrder = 1;
+        this.scene.add(this.haloMesh);
 
-        this.glowInstancedMesh = new THREE.InstancedMesh(this.sharedGlowGeo, glowMat, count);
-        this.glowInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        this.glowInstancedMesh.frustumCulled = false; // see the glass shell above
-
-        const colorArray = new Float32Array(count * 3);
-        // aState = (locked, hovered + 2*selected, current, completed).
-        const glowStateArray = new Float32Array(count * 4);
-        this.glowInstancedMesh.geometry.setAttribute('aColor', new THREE.InstancedBufferAttribute(colorArray, 3));
-        this.glowInstancedMesh.geometry.setAttribute('aState', new THREE.InstancedBufferAttribute(glowStateArray, 4));
-
-        this.scene.add(this.glowInstancedMesh);
-
-        // 3. Lock Instanced Mesh (Plane Mesh)
-        // The lock is placed in FRONT of its own orb (offset toward the camera in
-        // _updateIndicatorBillboards) so the orb's opaque core never occludes it, and a high
-        // renderOrder paints it after the (depth-write-free) glass shell/glow. depthTest stays
-        // ON so a FAR level's lock can't bleed over a nearer orb. DoubleSide (was BackSide — a
-        // latent bug that dropped it at grazing angles) keeps it visible whichever way it faces.
-        const lockGeo = new THREE.PlaneGeometry(0.9, 0.9);
-        const lockMat = new THREE.MeshBasicMaterial({
-            map: this.sharedLockTextures.lockTexture,
-            transparent: true,
-            alphaTest: 0.1,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            // FLAT SURFACE, ONE PASS (plan item: forceSinglePass audit, 2026-08-22). `transparent +
-            // DoubleSide` makes three draw the object TWICE — BackSide then FrontSide (Renderer.js
-            // renderObject / _renderTransparents) — which exists so a CLOSED transparent shell sorts
-            // against itself. Every surface here is a single facet (a billboard quad, a plane, an open
-            // cone) with depthWrite off, so the second pass re-shades the same fragments: it doubles the
-            // fill and, because the passes differ only in `material.side`, it compiles a SECOND pipeline
-            // per material (33 of them across the startup groups). Precedent: odyssey-planet-aurora.js.
-            forceSinglePass: true,
-        });
-        this.lockInstancedMesh = new THREE.InstancedMesh(lockGeo, lockMat, count);
-        this.lockInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        this.lockInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
+        // 3. Star Instanced Mesh (Plane Mesh) - 3 stars per level, vector-drawn (aStar: earned
+        // or a slot still to earn). Placed in front of the orb (so its window can't hide them)
+        // with a high renderOrder, depthTest kept on (so a far level's stars can't bleed over a
+        // nearer orb — that bleed was making stars look like they sat on unfinished levels).
+        const starGeo = new THREE.PlaneGeometry(1, 1);
+        // position + uv + instanceMatrix (4) + aStar: well inside the 8-vertex-buffer limit.
+        starGeo.deleteAttribute('normal');
+        starGeo.setAttribute('aStar', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 1));
+        this.starInstancedMesh = new THREE.InstancedMesh(starGeo, createOrbStarsTSL().material, count * 3);
+        this.starInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.starInstancedMesh.renderOrder = 10; // Paint after the orb shells/halo
         // Disable whole-mesh frustum culling: this InstancedMesh is repositioned in world space
         // every frame (only the ~proximity window gets real matrices; the rest stay scale-0), but
         // three.js computes its bounding sphere LAZILY from the matrices present at first render —
-        // which are confined to the path start — and caches it forever. Once the camera climbs
-        // past the start, that stale start-region sphere leaves the frustum and the ENTIRE lock
-        // mesh is culled, so every later orb's lock vanished. Per-instance scale-0 already hides
-        // off-window locks, so this only stops the bogus whole-mesh cull. (Matches particleSystem +
-        // innerCoreMesh, which are repositioned the same way and already set frustumCulled=false.)
-        this.lockInstancedMesh.frustumCulled = false;
-        // instanceColor must exist BEFORE warm-up (it changes the pipeline): seed it white
-        // here, tint per chapter in createNodes.
-        for (let i = 0; i < count; i += 1) this.lockInstancedMesh.setColorAt(i, this._fallbackColor);
-        this.scene.add(this.lockInstancedMesh);
-
-        // 4. Star Instanced Mesh (Plane Mesh) - 3 stars per level
-        // Same treatment as the lock: placed in front of the orb (so the core can't hide it)
-        // with a high renderOrder, depthTest kept on (so a far level's stars can't bleed over
-        // a nearer orb — that bleed was making stars look like they sat on unfinished levels).
-        const starGeo = new THREE.PlaneGeometry(0.7, 0.7);
-        const starMat = new THREE.MeshBasicMaterial({
-            map: this.sharedStarTexture,
-            transparent: true,
-            opacity: 0.74,
-            alphaTest: 0.1,
-            depthWrite: false,
-            side: THREE.DoubleSide,
-            forceSinglePass: true,
-        });
-        this.starInstancedMesh = new THREE.InstancedMesh(starGeo, starMat, count * 3);
-        this.starInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        this.starInstancedMesh.renderOrder = 10; // Paint after the orb shells/glow
-        // Same stale-cached-bounding-sphere fix as the lock mesh above: without this the whole star
-        // InstancedMesh gets frustum-culled once the camera leaves the path-start region, so every
-        // later orb's star rating disappeared. Per-instance scale-0 still hides off-window stars.
+        // which are confined to the path start — and caches it forever. Once the camera climbed
+        // past the start, that stale start-region sphere left the frustum and the ENTIRE mesh was
+        // culled, so every later orb's star rating vanished. Per-instance scale-0 already hides
+        // off-window stars, so this only stops the bogus whole-mesh cull.
         this.starInstancedMesh.frustumCulled = false;
-        // instanceColor before warm-up, like the lock's: a completed orb shows its unearned slots
-        // dimmed (STAR_SLOT_UNEARNED), so 1 star of 3 reads differently from 3 of 3 (audit
-        // 2026-10-18: a completed orb drew only the stars it had earned).
-        for (let i = 0; i < count * 3; i += 1) this.starInstancedMesh.setColorAt(i, this._fallbackColor);
+        // A completed orb shows its unearned slots too, so 1 star of 3 reads differently from
+        // 3 of 3 (audit 2026-10-18: a completed orb drew only the stars it had earned).
         this._starSlotState = new Int8Array(count * 3);
         this.scene.add(this.starInstancedMesh);
 
-        // 4b. Rival and boss markers (Plane Mesh each) — the same treatment as the lock: in
-        // front of the orb, painted after the shells, depth-tested, one pass, never culled whole.
+        // 4. Rival and boss markers (Plane Mesh each) — in front of the orb, painted after the
+        // shells, depth-tested, one pass, never culled whole.
         const createMarkerMesh = (texture) => {
             const geometry = new THREE.PlaneGeometry(0.9, 0.9);
             const material = new THREE.MeshBasicMaterial({
@@ -840,74 +634,27 @@ export class LevelNodeManager {
                 alphaTest: 0.1,
                 depthWrite: false,
                 side: THREE.DoubleSide,
+                // FLAT SURFACE, ONE PASS (plan item: forceSinglePass audit, 2026-08-22).
+                // `transparent + DoubleSide` makes three draw the object TWICE — BackSide then
+                // FrontSide (Renderer.js renderObject / _renderTransparents) — which exists so a
+                // CLOSED transparent shell sorts against itself. A plane with depthWrite off only
+                // re-shades the same fragments: double the fill and, because the passes differ
+                // only in `material.side`, a SECOND pipeline per material. Precedent:
+                // odyssey-planet-aurora.js.
                 forceSinglePass: true,
             });
             const mesh = new THREE.InstancedMesh(geometry, material, count);
             mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             mesh.renderOrder = 10;
             mesh.frustumCulled = false;
+            // instanceColor must exist BEFORE warm-up (it changes the pipeline): seed it white
+            // here, tint per chapter in createNodes.
             for (let i = 0; i < count; i += 1) mesh.setColorAt(i, this._fallbackColor);
             this.scene.add(mesh);
             return mesh;
         };
         this.rivalMarkerMesh = createMarkerMesh(this.sharedMarkerTextures.rivalTexture);
         this.bossMarkerMesh = createMarkerMesh(this.sharedMarkerTextures.bossTexture);
-
-        // 5. High-Fidelity Particles (instanced billboard quads on WebGPU)
-        // 96 particles per node * 55 nodes = ~5280 particles in one draw call.
-        // THREE.Points renders as 1px on WebGPU, so the sparkle cloud is drawn as
-        // camera-facing instanced quads via createNodeParticlesTSL + the shared billboard
-        // helper. Per-particle attributes (aOffset/aPState/aNodePos/aNodeScale/aNodeLocked)
-        // are identical to the old GLSL Points and are still ticked in update().
-        const particleCountPerNode = 96; // trimmed from 128 (always-present sparkle cloud); MUST match in build + update
-        const totalParticles = count * particleCountPerNode;
-
-        const offsetArray = new Float32Array(totalParticles * 3); // Position within the orb
-        const pStateArray = new Float32Array(totalParticles * 2); // x: speed mult, y: phase offset
-
-        for (let i = 0; i < count; i++) {
-            for (let j = 0; j < particleCountPerNode; j++) {
-                const idx = i * particleCountPerNode + j;
-
-                // Glints live in the GAP between the core (r 0.88) and the glass (r 1.4): a
-                // sprinkle inside the globe. Spread through the core volume they bunched at the
-                // core's silhouette (the inner ones are depth-hidden) into one bright ring.
-                const r = 0.95 + (Math.random() * 0.4);
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
-
-                offsetArray[idx * 3] = r * Math.sin(phi) * Math.cos(theta);
-                offsetArray[idx * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-                offsetArray[idx * 3 + 2] = r * Math.cos(phi);
-
-                pStateArray[idx * 2] = 0.5 + Math.random(); // speed
-                pStateArray[idx * 2 + 1] = Math.random() * Math.PI * 2; // phase
-            }
-        }
-
-        // Per-node placement attributes (updated each frame from node positions/state).
-        const nodePosArray = new Float32Array(totalParticles * 3);
-        const nodeScaleArray = new Float32Array(totalParticles);
-        const nodeLockedArray = new Float32Array(totalParticles);
-
-        // Instanced billboard-quad geometry carries all per-particle attributes.
-        const particleGeo = createNodeParticleGeometry(totalParticles, {
-            offsetArray,
-            pStateArray,
-            nodePosArray,
-            nodeScaleArray,
-            nodeLockedArray,
-        });
-
-        const particles = createNodeParticlesTSL(
-            this.uTime,
-            [1, 2, 3, 4, 5, 6, 7, 8].map((chapter) => getOdysseyNodeChapterLook(chapter).accent),
-        );
-        const particleMat = particles.material;
-
-        this.particleSystem = new THREE.Mesh(particleGeo, particleMat);
-        this.particleSystem.frustumCulled = false; // Always update all for now, or chunk it
-        this.scene.add(this.particleSystem);
     }
 
     /**
@@ -957,7 +704,7 @@ export class LevelNodeManager {
             // Inner sphere acts as the solid core, hiding the path line that passes through
             innerMat = this.createFluidInnerMaterial(themeTex, chapterColor, levelConfig.id);
             innerMesh = new THREE.Mesh(this.sharedInnerGeo, innerMat);
-            // Same convention as innerCoreMesh/lock/star (see _createSharedIndicators): this
+            // Same convention as the window/star meshes (frustumCulled = false): this
             // mesh rides a group whose position BOBS every frame, so default frustum culling
             // flips its draw on/off at the frustum edge — the 92<->93 draw flicker that voids
             // the gpu-split harness's content-matched pairs. The orbs hug the camera path, so
@@ -1048,11 +795,11 @@ export class LevelNodeManager {
 
     /**
      * LEVER 1 — build the shared theme-icon DataArrayTexture (one layer per DISTINCT resolved
-     * icon url; layer 0 reserved = white fallback). Distinct themeIds dedup onto layers
-     * (mirrors themeTextureCache keyed by iconUrl). All layers are forced to coreAtlasSize²
-     * by redrawing each icon through a canvas (DataArrayTexture requires uniform layer dims).
-     * Icons decode async + back-fill into their layer; until then a node shows the procedural
-     * magma fallback (aCore.x = -1), identical to today's null-texture path.
+     * icon url; layer 0 reserved). Distinct themeIds dedup onto layers (mirrors
+     * themeTextureCache keyed by iconUrl). All layers are forced to coreAtlasSize² by
+     * redrawing each icon through a canvas (DataArrayTexture requires uniform layer dims).
+     * Icons decode async + back-fill into their layer; until then a window shows dark glass.
+     * A level with no icon (aCore.x = -1) keeps the procedural magma core.
      */
     async _buildCoreArrayTexture(levelData) {
         const SZ = this.coreAtlasSize;
@@ -1064,7 +811,7 @@ export class LevelNodeManager {
             const iconUrl = await resolveThemeIconAssetUrl(themeId, THEME_ICON_LOOKUP);
             if (iconUrl) urlByLevel.set(level.id, iconUrl);
         }));
-        let nextLayer = 1; // layer 0 = white fallback
+        let nextLayer = 1; // layer 0 reserved
         urlByLevel.forEach((url, levelId) => {
             if (!this.iconUrlToLayer.has(url)) {
                 this.iconUrlToLayer.set(url, nextLayer);
@@ -1076,7 +823,10 @@ export class LevelNodeManager {
             if (!this.levelLayer.has(level.id)) this.levelLayer.set(level.id, -1);
         });
         const LAYERS = Math.max(this.iconUrlToLayer.size + 1, 1);
-        const data = new Uint8Array(SZ * SZ * 4 * LAYERS).fill(255); // white = safe fallback
+        const data = new Uint8Array(SZ * SZ * 4 * LAYERS);
+        // Dark glass until an icon lands (RGBA 22,24,32,255: little-endian words). It was white,
+        // which flashed every window at boot once the icon was no longer re-graded to the chapter.
+        new Uint32Array(data.buffer).fill(0xff201816);
         this.coreArrayTexture = new THREE.DataArrayTexture(data, SZ, SZ, LAYERS);
         this.coreArrayTexture.colorSpace = THREE.SRGBColorSpace;
         this.coreArrayTexture.minFilter = THREE.LinearFilter;
@@ -1132,26 +882,18 @@ export class LevelNodeManager {
         this.iconUrlToLayer.forEach((layer, url) => { blit(url, layer); });
     }
 
-    /** LEVER 1 — the single InstancedMesh that draws all inner cores (8-buffer-safe: sphere
-     *  position+normal+uv = 3 + instanceMatrix = 4 + the ONE packed aCore vec4 = 8). */
-    _setupInnerCoreInstancedMesh() {
+    /** LEVER 1 — the one instanced draw of every orb's world window: camera-facing quads with
+     *  aWindow (centre + glass radius; w = 0 hides it, which is how every one starts) and the
+     *  packed aCore. Opaque and depth-writing, so it draws with the opaque pass. */
+    _setupWindowMesh() {
         const count = this.instanceCount;
-        const inner = createFluidInnerInstancedTSL(this.coreArrayTexture, this.uTime);
-        this.innerCoreMaterial = inner.material;
-        this.innerCoreMesh = new THREE.InstancedMesh(this.sharedInnerGeo, inner.material, count);
-        this.innerCoreMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        this.innerCoreMesh.frustumCulled = false;
-        this.innerCoreMesh.geometry.setAttribute(
-            'aCore',
-            new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4),
-        );
-        // MUST-FIX: seed hidden matrices so nothing renders before the first update()
-        // composes each instance (the shells set theirs in createNodes). HIDDEN_INSTANCE_MATRIX
-        // (far-away + scale-0, not scale-0 alone) so the wobble positionNode can't re-inflate
-        // the seeds into a blob on r185; this mesh is frustumCulled=false, so no CPU-side change.
-        for (let i = 0; i < count; i += 1) this.innerCoreMesh.setMatrixAt(i, HIDDEN_INSTANCE_MATRIX);
-        this.innerCoreMesh.instanceMatrix.needsUpdate = true;
-        this.scene.add(this.innerCoreMesh);
+        const { material } = createOrbWindowTSL(this.coreArrayTexture, this.uTime);
+        this.windowMesh = new THREE.Mesh(makeQuadInstancedGeometry(count, {
+            aWindow: { array: new Float32Array(count * 4), itemSize: 4 },
+            aCore: { array: new Float32Array(count * 4), itemSize: 4 },
+        }), material);
+        this.windowMesh.frustumCulled = false;
+        this.scene.add(this.windowMesh);
     }
 
     /** LEVER 1 — pack a THREE.Color into one float as 5-5-5 bits (exact in float32, ≤32767). */
@@ -1170,62 +912,6 @@ export class LevelNodeManager {
         return texture;
     }
     // Old sprite methods removed
-
-    /**
-     * Create a 5-pointed star texture via canvas
-     * @param {number} size - Canvas size
-     * @returns {THREE.CanvasTexture}
-     */
-    createStarTexture(size) {
-        const canvas = document.createElement('canvas');
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-
-        const cx = size / 2;
-        const cy = size / 2;
-        const outerRadius = size * 0.4;
-        const innerRadius = size * 0.18;
-        const spikes = 5;
-
-        // Clear
-        ctx.clearRect(0, 0, size, size);
-
-        // Draw star with gradient fill
-        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerRadius);
-        gradient.addColorStop(0, '#ffffcc'); // Bright center
-        gradient.addColorStop(0.3, '#ffdd00'); // Golden
-        gradient.addColorStop(0.7, '#ffaa00'); // Deep gold
-        gradient.addColorStop(1, '#ff8800'); // Orange edge
-
-        ctx.fillStyle = gradient;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-
-        for (let i = 0; i < spikes * 2; i++) {
-            const radius = i % 2 === 0 ? outerRadius : innerRadius;
-            const angle = (i * Math.PI) / spikes - Math.PI / 2;
-            const x = cx + Math.cos(angle) * radius;
-            const y = cy + Math.sin(angle) * radius;
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
-        }
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Add shine highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.beginPath();
-        ctx.arc(cx - outerRadius * 0.2, cy - outerRadius * 0.2, outerRadius * 0.15, 0, Math.PI * 2);
-        ctx.fill();
-
-        return new THREE.CanvasTexture(canvas);
-    }
 
     /**
      * Create a radial glow texture for sprites
@@ -1593,17 +1279,15 @@ export class LevelNodeManager {
         this._beatPulse = beatPulse;
 
         if (!this.glassInstancedMesh
-            || !this.glowInstancedMesh
-            || !this.particleSystem
+            || !this.haloMesh
             || !this.camera
-            || !this.lockInstancedMesh
             || !this.starInstancedMesh) {
             return;
         }
 
-        // Tick the shared TSL node uniforms (one source feeds glass/glow/particles/inner).
-        // These ALWAYS tick (even when the buffers are clean) so the in-shader sparkle /
-        // iridescence / focal beat-pulse keep animating between settled frames.
+        // Tick the shared TSL node uniforms (one source feeds glass/halo/window).
+        // These ALWAYS tick (even when the buffers are clean) so the in-shader glints /
+        // breathing / focal beat-pulse keep animating between settled frames.
         this.uTime.value = this.time;
         this.uBeatPulse.value = this.focalHierarchy ? beatPulse : 0;
 
@@ -1615,9 +1299,9 @@ export class LevelNodeManager {
             <= UPDATE_PROGRESS_EPSILON); // NaN-safe: first frame forces a flush.
         const needsUpload = this._uploadDirty || progressMoved || this._nearFadeStale();
         if (!needsUpload) {
-            // The heavy glass/glow/particle buffers are settled, but the camera can still
+            // The heavy glass/halo/window buffers are settled, but the camera can still
             // move without path progress changing (free-look / idle sway). Keep the cheap
-            // lock/star billboards tracking the camera so they always read above the orb.
+            // star/marker billboards tracking the camera so they always sit round the orb.
             this._updateIndicatorBillboards(false);
             return;
         }
@@ -1627,15 +1311,12 @@ export class LevelNodeManager {
         let nearFadeLive = false;
 
         const glassStateAttr = this.glassInstancedMesh.geometry.getAttribute('aState');
-        const glowColorAttr = this.glowInstancedMesh.geometry.getAttribute('aColor');
-        const glowStateAttr = this.glowInstancedMesh.geometry.getAttribute('aState');
-        // LEVER 1: the packed per-instance core attribute (null when the lever is OFF).
-        const aCoreAttr = this.innerCoreMesh ? this.innerCoreMesh.geometry.getAttribute('aCore') : null;
-
-        const particleCountPerNode = 96; // trimmed from 128 (always-present sparkle cloud); MUST match in build + update
-        const particleNodePosAttr = this.particleSystem.geometry.getAttribute('aNodePos');
-        const particleNodeScaleAttr = this.particleSystem.geometry.getAttribute('aNodeScale');
-        const particleNodeLockedAttr = this.particleSystem.geometry.getAttribute('aNodeLocked');
+        const haloAttr = this.haloMesh.geometry.getAttribute('aHalo');
+        const haloColorAttr = this.haloMesh.geometry.getAttribute('aColor');
+        const haloStateAttr = this.haloMesh.geometry.getAttribute('aState');
+        // LEVER 1: the world windows (null when the lever is OFF).
+        const windowAttr = this.windowMesh ? this.windowMesh.geometry.getAttribute('aWindow') : null;
+        const aCoreAttr = this.windowMesh ? this.windowMesh.geometry.getAttribute('aCore') : null;
 
         // Reused scratch (hoisted to the instance) — no per-node allocation below.
         const matrix = this._scratchMatrix;
@@ -1659,24 +1340,17 @@ export class LevelNodeManager {
             node.group.visible = isVisible;
 
             if (!isVisible) {
-                // Glass has a positionNode (AAA shell displacement) → hide it via the portable
-                // HIDDEN_INSTANCE_MATRIX; glow/lock/star have none, so plain scale-0 stays.
+                // The glass parks below the map (out of the raycast too); the halo and the
+                // window collapse to nothing (radius 0); stars and markers scale to 0.
                 this.glassInstancedMesh.setMatrixAt(idx, HIDDEN_INSTANCE_MATRIX);
+                haloAttr.setW(idx, 0);
+                windowAttr?.setW(idx, 0);
                 matrix.makeScale(0, 0, 0);
-                this.glowInstancedMesh.setMatrixAt(idx, matrix);
-                this.lockInstancedMesh.setMatrixAt(idx, matrix);
                 for (let s = 0; s < 3; s++) this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
                 // The duel/boss markers too: the billboard pass skips hidden orbs, so a culled
                 // orb's marker otherwise stayed on screen at its last place.
                 this.rivalMarkerMesh?.setMatrixAt(idx, matrix);
                 this.bossMarkerMesh?.setMatrixAt(idx, matrix);
-                // LEVER 1: hide the inner core too (wobble positionNode → same portable matrix).
-                if (this.innerCoreMesh) this.innerCoreMesh.setMatrixAt(idx, HIDDEN_INSTANCE_MATRIX);
-
-                // Hide particles for this node
-                for (let p = 0; p < particleCountPerNode; p++) {
-                    particleNodeScaleAttr.setX(idx * particleCountPerNode + p, 0);
-                }
                 return;
             }
 
@@ -1715,31 +1389,18 @@ export class LevelNodeManager {
             // Sync instance matrices
             matrix.compose(node.group.position, node.group.quaternion, node.group.scale);
             this.glassInstancedMesh.setMatrixAt(idx, matrix);
-            this.glowInstancedMesh.setMatrixAt(idx, matrix);
 
-            // Lock/star indicator PLACEMENT now runs every frame in _updateIndicatorBillboards()
-            // (camera-relative + drawn on top) so it tracks free-look / idle camera moves where
-            // path progress — and thus this gated block — is frozen. Here we only still read
-            // locked/completed because the glass/glow/particle attributes below depend on them;
-            // invisible nodes are zeroed in the !isVisible branch above.
+            // Star/marker PLACEMENT runs every frame in _updateIndicatorBillboards() (camera-
+            // relative) so it tracks free-look / idle camera moves where path progress — and
+            // thus this gated block — is frozen. Here we only read the state the glass, halo
+            // and window attributes depend on; invisible nodes were zeroed above.
             const isLocked = node.group.userData.locked;
             const isCompleted = node.group.userData.completed;
             const isCurrent = (this.focalHierarchy && levelId === this.currentLevelId && !isLocked) ? 1.0 : 0.0;
-            // Particles pack locked + 2*completed + 4*chapterIndex into one float (8-buffer ceiling).
-            const chapterIndex = Math.max(0, Math.min(7, (node.config.chapter || 1) - 1));
-            const particlePacked = (isLocked ? 1 : 0) + (isCompleted ? 2 : 0) + (chapterIndex * 4);
-
-            // Sync particle attributes
-            for (let p = 0; p < particleCountPerNode; p++) {
-                const pIdx = idx * particleCountPerNode + p;
-                particleNodePosAttr.setXYZ(pIdx, node.group.position.x, node.group.position.y, node.group.position.z);
-                particleNodeScaleAttr.setX(pIdx, node.group.scale.x);
-                particleNodeLockedAttr.setX(pIdx, particlePacked);
-            }
-
-            // Sync instance attributes
             const isHovered = (this.hoveredNode === levelId) ? 1.0 : 0.0;
             const isSelected = (this.selectedNode === levelId) ? 1.0 : 0.0;
+            const { position } = node.group;
+            const glassRadius = GLASS_OUTER_RADIUS * node.group.scale.x;
 
             // Glass aState = (locked, completed, hovered + 2*current, selected).
             glassStateAttr.setXYZW(
@@ -1750,20 +1411,12 @@ export class LevelNodeManager {
                 isSelected,
             );
 
-            // LEVER 1: inner-core instance matrix + packed aCore vec4. The legacy per-node
-            // innerMesh was a child scaled by INNER_CORE_DISPLAY_SCALE and hidden when
-            // chapterOneQuench >= 0.92; reproduce both here (HIDDEN_INSTANCE_MATRIX = hidden).
-            // aCore packs layer+0.5 / -1, seed, the locked|completed|hovered|selected bitfield,
-            // and the 5-5-5 fallback colour. setNode*/hover/select mark dirty so this reflushes.
-            if (this.coreInstanced && this.innerCoreMesh && aCoreAttr) {
-                const innerMat4 = chapterOneQuench < 0.92
-                    ? this._scratchMatrix2.compose(
-                        node.group.position,
-                        node.group.quaternion,
-                        this._scratchInnerScaleVec.setScalar(node.group.scale.x * INNER_CORE_DISPLAY_SCALE),
-                    )
-                    : HIDDEN_INSTANCE_MATRIX;
-                this.innerCoreMesh.setMatrixAt(idx, innerMat4);
+            // LEVER 1: the world window, at the orb's centre with its glass radius (0 = hidden,
+            // as the legacy core sphere was once chapterOneQuench reached 0.92), and the packed
+            // aCore: layer+0.5 / -1, seed, the locked|completed|hovered|selected|current bits and
+            // the 5-5-5 chapter light. setNode*/hover/select mark dirty so this reflushes.
+            if (windowAttr && aCoreAttr) {
+                windowAttr.setXYZW(idx, position.x, position.y, position.z, chapterOneQuench < 0.92 ? glassRadius : 0);
                 const layer = node.group.userData.coreLayer ?? -1;
                 const layerEnc = layer >= 0 ? (layer + 0.5) : -1.0;
                 const coreSeed = ((levelId || 1) * 0.61803398875) % 1000;
@@ -1773,10 +1426,12 @@ export class LevelNodeManager {
                 aCoreAttr.setXYZW(idx, layerEnc, coreSeed, stateBits, packedFb);
             }
 
+            // The halo: none round a locked orb (and no quad to fill for it).
+            haloAttr.setXYZW(idx, position.x, position.y, position.z, isLocked ? 0 : glassRadius);
             // QW11: reuse a shared fallback Color instead of allocating one per node.
             const color = node.group.userData.chapterColor || this._fallbackColor;
-            glowColorAttr.setXYZ(idx, color.r, color.g, color.b);
-            glowStateAttr.setXYZW(
+            haloColorAttr.setXYZ(idx, color.r, color.g, color.b);
+            haloStateAttr.setXYZW(
                 idx,
                 isLocked ? 1.0 : 0.0,
                 isHovered + (isSelected * 2),
@@ -1794,39 +1449,75 @@ export class LevelNodeManager {
 
         // QW11: this whole re-upload block is reached only when needsUpload was true
         // (camera moved / visibility / hover / select / state / layout changed). When the
-        // board is settled we early-out above, so the ~7040-particle + 4 instanced-buffer
-        // GPU re-upload no longer happens every frame.
+        // board is settled we early-out above, so the instanced-buffer GPU re-upload no
+        // longer happens every frame.
         this.glassInstancedMesh.instanceMatrix.needsUpdate = true;
-        this.glowInstancedMesh.instanceMatrix.needsUpdate = true;
-        this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
         if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
         if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
-        if (this.innerCoreMesh && aCoreAttr) {
-            this.innerCoreMesh.instanceMatrix.needsUpdate = true;
+        if (windowAttr && aCoreAttr) {
+            windowAttr.needsUpdate = true;
             aCoreAttr.needsUpdate = true;
         }
         glassStateAttr.needsUpdate = true;
-        glowColorAttr.needsUpdate = true;
-        glowStateAttr.needsUpdate = true;
+        haloAttr.needsUpdate = true;
+        haloColorAttr.needsUpdate = true;
+        haloStateAttr.needsUpdate = true;
 
-        particleNodePosAttr.needsUpdate = true;
-        particleNodeScaleAttr.needsUpdate = true;
-        particleNodeLockedAttr.needsUpdate = true;
-        // particle uTime is the shared node uniform ticked at the top of update().
-
-        // Re-place the lock/star billboards against the current camera. Forced because the
+        // Re-place the star/marker billboards against the current camera. Forced because the
         // gated block just moved node positions (float Y) / state this frame.
         this._updateIndicatorBillboards(true);
     }
 
     /**
-     * Place the lock / star indicator billboards in screen space against the CURRENT camera
-     * so they always read directly above the orb, face the camera, and sit slightly toward it
-     * (near hemisphere). Combined with the materials' depthTest:false + high renderOrder, the
-     * indicators are never occluded by the orb at any viewing angle.
+     * The world windows the rail passes behind (OdysseyPathRenderer.setOrbOccluders): the
+     * nearest ones drawn to the eye, packed (x, y, z, glass radius) in world units, nearest
+     * first, read from the window buffer so they are exactly what is on screen. Empty without
+     * windows (the legacy core sphere is smaller than the glass; the rail stays in front of it).
+     * @returns {Float32Array} ODYSSEY_PATH_ORB_OCCLUDERS * 4 numbers (reused)
+     */
+    getWindowOccluders() {
+        const K = ODYSSEY_PATH_ORB_OCCLUDERS;
+        if (!this._occluders) {
+            this._occluders = new Float32Array(K * 4);
+            this._occluderDistance = new Float32Array(K);
+        }
+        const out = this._occluders;
+        const distance = this._occluderDistance;
+        out.fill(0);
+        distance.fill(Infinity);
+        const windowAttr = this.windowMesh?.geometry.getAttribute('aWindow');
+        if (!windowAttr || !this.camera || this._forcedHidden) return out;
+        const eye = this.camera.position;
+        const w = windowAttr.array;
+        for (let i = 0; i < windowAttr.count; i += 1) {
+            if (w[(i * 4) + 3] > 0) {
+                const dx = w[i * 4] - eye.x;
+                const dy = w[(i * 4) + 1] - eye.y;
+                const dz = w[(i * 4) + 2] - eye.z;
+                const d = (dx * dx) + (dy * dy) + (dz * dz);
+                // Insert into the K nearest, kept sorted.
+                let k = K - 1;
+                if (d < distance[k]) {
+                    while (k > 0 && distance[k - 1] > d) {
+                        distance[k] = distance[k - 1];
+                        out.copyWithin(k * 4, (k - 1) * 4, k * 4);
+                        k -= 1;
+                    }
+                    distance[k] = d;
+                    out.set(w.subarray(i * 4, (i * 4) + 4), k * 4);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Place the star / marker billboards in screen space against the CURRENT camera so they
+     * always sit round the orb, face the camera, and sit slightly toward it (near hemisphere),
+     * in front of the orb's opaque world window at any viewing angle.
      *
-     * Runs every frame — decoupled from the gated glass/glow/particle re-upload in update() —
+     * Runs every frame — decoupled from the gated glass/halo/window re-upload in update() —
      * because the camera can rotate without path progress changing (free-look / idle sway), and
      * the indicators must keep tracking it. Only visible nodes are written here; invisible nodes
      * are scaled to 0 by the gated update() loop and skipped.
@@ -1834,7 +1525,7 @@ export class LevelNodeManager {
      *   block just moved node positions / state this frame).
      */
     _updateIndicatorBillboards(forcePlace = false) {
-        if (!this.lockInstancedMesh || !this.starInstancedMesh || !this.camera) {
+        if (!this.starInstancedMesh || !this.camera) {
             return;
         }
 
@@ -1857,7 +1548,8 @@ export class LevelNodeManager {
         const camRight = this._scratchCamRight.setFromMatrixColumn(this.camera.matrixWorld, 0).normalize();
         const camUp = this._scratchCamUp.setFromMatrixColumn(this.camera.matrixWorld, 1).normalize();
         const camPos = this._scratchCamPos.setFromMatrixColumn(this.camera.matrixWorld, 3);
-        let starColorsChanged = false;
+        const starAttr = this.starInstancedMesh.geometry.getAttribute('aStar');
+        let starsChanged = false;
 
         this.nodes.forEach((node) => {
             // Invisible nodes are scaled to 0 by the gated update() loop; nothing to place.
@@ -1868,40 +1560,28 @@ export class LevelNodeManager {
             const scale = node.group.scale.x;
             const pos = node.group.position;
             const toCam = this._scratchToCam.copy(camPos).sub(pos).normalize();
+            const glassRadius = GLASS_OUTER_RADIUS * scale;
 
-            // Lock — single billboard centred above the orb, facing the camera.
-            if (node.group.userData.locked) {
-                matrix.copy(this.camera.matrixWorld);
-                matrix.setPosition(this._scratchIndicatorPos.copy(pos)
-                    .addScaledVector(camUp, LOCK_PLACEMENT.up * scale)
-                    .addScaledVector(toCam, LOCK_PLACEMENT.toward * scale));
-                const s = scale * LOCK_PLACEMENT.size * this._glyphNearScale(node, camPos);
-                matrix.scale(scaleVec.set(s, s, s));
-                this.lockInstancedMesh.setMatrixAt(idx, matrix);
-            } else {
-                this.lockInstancedMesh.setMatrixAt(idx, matrix.makeScale(0, 0, 0));
-            }
-
-            // Stars — up to 3, arced above the orb (spread along camera-right).
+            // Stars — three, arced over the marble's crown (ORB_STAR_SLOTS, in glass radii).
             const isCompleted = node.group.userData.completed;
             const stars = node.group.userData.stars || 0;
             for (let s = 0; s < 3; s += 1) {
                 if (isCompleted) {
-                    // 1 = earned, 2 = still to earn; recoloured only when a slot changes.
+                    // 1 = earned, 2 = still to earn; written only when a slot changes.
                     const slotState = s < stars ? 1 : 2;
                     const slot = idx * 3 + s;
                     if (this._starSlotState && this._starSlotState[slot] !== slotState) {
                         this._starSlotState[slot] = slotState;
-                        this.starInstancedMesh.setColorAt(slot, slotState === 1 ? this._fallbackColor : STAR_SLOT_UNEARNED);
-                        starColorsChanged = true;
+                        starAttr?.setX(slot, slotState === 1 ? 1 : 0);
+                        starsChanged = true;
                     }
-                    const place = STAR_PLACEMENT[s];
+                    const place = ORB_STAR_SLOTS[s];
                     matrix.copy(this.camera.matrixWorld);
                     matrix.setPosition(this._scratchIndicatorPos.copy(pos)
-                        .addScaledVector(camRight, place.right * scale)
-                        .addScaledVector(camUp, place.up * scale)
-                        .addScaledVector(toCam, place.toward * scale));
-                    const starScale = scale * 0.52;
+                        .addScaledVector(camRight, place.right * glassRadius)
+                        .addScaledVector(camUp, place.up * glassRadius)
+                        .addScaledVector(toCam, place.toward * glassRadius));
+                    const starScale = ORB_STAR_SIZE * glassRadius;
                     matrix.scale(scaleVec.set(starScale, starScale, starScale));
                     this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
                 } else {
@@ -1929,11 +1609,8 @@ export class LevelNodeManager {
             });
         });
 
-        this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
-        if (starColorsChanged && this.starInstancedMesh.instanceColor) {
-            this.starInstancedMesh.instanceColor.needsUpdate = true;
-        }
+        if (starsChanged && starAttr) starAttr.needsUpdate = true;
         if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
         if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
     }
@@ -1984,19 +1661,16 @@ export class LevelNodeManager {
         const on = visible !== false;
         [
             this.glassInstancedMesh,
-            this.glowInstancedMesh,
-            this.lockInstancedMesh,
+            this.haloMesh,
             this.starInstancedMesh,
             this.rivalMarkerMesh,
             this.bossMarkerMesh,
-            this.particleSystem,
-            // innerCoreMesh WAS MISSING (fixed 2026-08-12) and it is the one that mattered
-            // most: 60,720 of the group's 190,740 triangles, and the only OPAQUE,
-            // depth-writing part. Because `odysseyCoreInstanced` defaults true, the per-node
-            // inner meshes that `node.group.visible` would have hidden are never built — so
-            // the "hidden" half of the A/B was still drawing 31.8% of the group, and the
-            // docstring's claim that the difference is "the rasterisation alone" was false.
-            this.innerCoreMesh,
+            // The instanced core WAS MISSING here (fixed 2026-08-12) and it was the one that
+            // mattered most: the only OPAQUE, depth-writing part. Because
+            // `odysseyCoreInstanced` defaults true, the per-node inner meshes that
+            // `node.group.visible` would have hidden are never built — so the "hidden" half of
+            // the A/B was still drawing it. Its successor, the world windows, is listed too.
+            this.windowMesh,
         ].forEach((mesh) => { if (mesh) mesh.visible = on; });
         this.nodes.forEach((node) => { if (node?.group) node.group.visible = on; });
         // Latch it so the per-frame update() cannot re-show what the A/B just hid; update()
@@ -2016,12 +1690,8 @@ export class LevelNodeManager {
         // Dispose shared geometries
         this.sharedInnerGeo?.dispose();
         this.sharedGlassGeo?.dispose();
-        this.sharedGlowGeo?.dispose();
 
         // Dispose shared textures
-        this.sharedLockTextures?.lockTexture?.dispose();
-        this.sharedLockTextures?.lockGlowTexture?.dispose();
-        this.sharedStarTexture?.dispose();
         this.sharedMarkerTextures?.rivalTexture?.dispose();
         this.sharedMarkerTextures?.bossTexture?.dispose();
         this.sharedGlowTexture?.dispose();
@@ -2032,16 +1702,10 @@ export class LevelNodeManager {
             this.glassInstancedMesh.material.dispose();
             this.scene.remove(this.glassInstancedMesh);
         }
-        if (this.glowInstancedMesh) {
-            this.glowInstancedMesh.geometry.dispose();
-            this.glowInstancedMesh.material.dispose();
-            this.scene.remove(this.glowInstancedMesh);
-        }
-
-        if (this.lockInstancedMesh) {
-            this.lockInstancedMesh.geometry.dispose();
-            this.lockInstancedMesh.material.dispose();
-            this.scene.remove(this.lockInstancedMesh);
+        if (this.haloMesh) {
+            this.haloMesh.geometry.dispose();
+            this.haloMesh.material.dispose();
+            this.scene.remove(this.haloMesh);
         }
         if (this.starInstancedMesh) {
             this.starInstancedMesh.geometry.dispose();
@@ -2055,18 +1719,12 @@ export class LevelNodeManager {
             this.scene.remove(mesh);
         });
 
-        if (this.particleSystem) {
-            this.particleSystem.geometry.dispose();
-            this.particleSystem.material.dispose();
-            this.scene.remove(this.particleSystem);
-        }
-        // LEVER 1: free the instanced inner-core material + the shared theme-icon array
-        // texture. The geometry is this.sharedInnerGeo (disposed above) — do NOT double-dispose.
-        if (this.innerCoreMesh) {
-            this.innerCoreMesh.material.dispose();
-            this.scene.remove(this.innerCoreMesh);
-            this.innerCoreMesh = null;
-            this.innerCoreMaterial = null;
+        // LEVER 1: free the world windows + the shared theme-icon array texture.
+        if (this.windowMesh) {
+            this.windowMesh.geometry.dispose();
+            this.windowMesh.material.dispose();
+            this.scene.remove(this.windowMesh);
+            this.windowMesh = null;
         }
         if (this.coreArrayTexture) {
             this.coreArrayTexture.dispose();
