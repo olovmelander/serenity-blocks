@@ -449,11 +449,13 @@ export default class FallTheme extends BaseTheme {
             }
             return;
         }
+        // renderScale = pixel ratio only. resize() compares the ratio, so only a real change
+        // resizes: every save carries all the settings, and a forced resize set the canvas's
+        // size again out of the frame loop (black flashes as a theme picked in play came in).
         if (settingUpdate(payload, 'renderScale').present) {
             const generation = this.runtimeGeneration;
             queueMicrotask(() => {
                 if (!this.isActive || generation !== this.runtimeGeneration) return;
-                this.appliedSize = null;
                 const { width, height } = getViewport();
                 this.resize(width, height);
             });
