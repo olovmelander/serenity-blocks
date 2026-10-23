@@ -16,15 +16,21 @@
  * The rhythm is quick (3 s in, 2 s out), so every phase has to hold up on its own: empty lungs
  * leave a low, churning fountain over a glowing lake, full lungs a tall column with its plume and
  * the lake's seams lit. Surges ramp with the breath; nothing flashes.
+ *
+ * Moods (MOODS): the night eruption (the poster); a violet dusk with the far cone black against
+ * the afterglow; a clear, starlit night with a moon, the galaxy and a quieter vent over a livelier
+ * lake; an ash storm under a low red ceiling, wind-driven ash sweeping the lake. Ash falls out of
+ * the plume as tumbling flakes. Rare events, seeded per visit: volcanic lightning as a slow glow
+ * inside the plume (never a strike), and a lava bomb that arcs out over the lake and splashes down.
  */
 import {
-    Fn, If, exp, float, log, max, mix, smoothstep, sqrt, vec2, vec3, vec4,
+    Fn, If, dot, exp, float, log, max, mix, smoothstep, sqrt, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    backdropPoint, fadeOut, fbm, fbm3, gnoise, hash21, hash22, heatColor, layer, ridged, softStep, starfield,
-    voronoi,
+    backdropPoint, eventWindow, fadeOut, fbm, fbm3, gnoise, hash21, hash22, heatColor, layer, ridged, softStep,
+    starfield, voronoi,
 } from '../stage/breath-tsl.js';
-import { MOTE_MOTION } from '../stage/breath-motes.js';
+import { MOTE_MOTION, MOTE_SHAPE } from '../stage/breath-motes.js';
 import { createSpatter } from './volcanic-spatter.js';
 
 /** The vent sits on the screen's centre line. */
@@ -33,14 +39,23 @@ const VENT_X = 0;
 const PLATES = 8;
 /** The plume rises off the lake a little behind the vent, drifting downwind as it climbs. */
 const PLUME_X = 0.06;
-const NIGHT = vec3(0.0032, 0.0034, 0.0085);
-const SKY_GLOW = vec3(0.03, 0.0075, 0.004);
-const ASH = vec3(0.016, 0.013, 0.013);
-const FIRELIGHT = vec3(1.0, 0.3, 0.07);
-const EMBER = vec3(0.85, 0.14, 0.03);
-const BASALT = vec3(0.014, 0.0105, 0.0098);
-const HAZE = vec3(0.075, 0.017, 0.0075);
-const SEAM_TINT = vec3(0.92, 0.7, 0.6);
+/** Volcanic lightning seen through the ash: a cool violet-white, so it never reads as more fire. */
+const BOLT = vec3(0.5, 0.55, 1.0);
+
+/** A mood's colours as nodes (linear RGB). */
+function paletteOf(mood) {
+    const c = mood.colors;
+    return {
+        NIGHT: vec3(...c.night),
+        SKY_GLOW: vec3(...c.skyGlow),
+        ASH: vec3(...c.ash),
+        FIRELIGHT: vec3(...c.firelight),
+        EMBER: vec3(...c.ember),
+        BASALT: vec3(...c.basalt),
+        HAZE: vec3(...c.haze),
+        SEAM_TINT: vec3(...c.seamTint),
+    };
+}
 
 /**
  * Where things sit, in hero units (plain JS numbers or uniform nodes). Tall screens sink the lake and
@@ -64,8 +79,11 @@ function calderaLayout(tall) {
     };
 }
 
-/** The fountain's height: a low boil at empty lungs, a tall column at full ones. */
-const fountainHeight = (surge, reach) => surge.mul(0.7).add(0.28).mul(reach);
+/**
+ * The fountain's height: a low boil at empty lungs, a tall column at full ones. `scale` < 1 is a
+ * quieter vent (the starlit lake's), whose leap is smaller but still follows every breath.
+ */
+const fountainHeight = (surge, reach, scale = 1) => surge.mul(0.7 * scale).add(0.28 * (0.5 + 0.5 * scale)).mul(reach);
 
 /** The far wall's skyline in its own layer: a bowl that climbs toward the frame, crags on top. */
 function wallSkyline(x, u, L) {
@@ -109,29 +127,78 @@ const RIVERS = [[-0.015, 0.16, 0.34, 1.3], [0.03, -0.2, 0.3, 4.1], [0.005, -0.02
 /** Night sky, the ash ceiling and the distant slopes, far to near. */
 function paintSky(c) {
     const {
-        ps, u, L, fire, octaves, detail,
+        ps, u, L, fire, octaves, detail, C, M,
     } = c;
+    const {
+        NIGHT, SKY_GLOW, ASH, EMBER,
+    } = C;
+    const tw = M.twilight;
     const sq = layer(ps, u, 0.06).toVar();
     const alt = sq.y.sub(L.shore).toVar();
     // The low sky glows with the eruption's light; above, the night closes in.
     const dx = sq.x.sub(PLUME_X).toVar();
     const plumeGlow = exp(dx.mul(dx).mul(-0.9)).toVar();
-    const sky = mix(SKY_GLOW, NIGHT, smoothstep(-0.1, 1.3, alt.sub(plumeGlow.mul(0.3)))).toVar();
+    let sky;
+    if (tw) {
+        // Dusk: the afterglow of a sun just set behind the far range, orange low on the horizon
+        // through rose and violet to the first night overhead (or the blue of a clear night's
+        // horizon, with no sun). Tall screens see more of the night.
+        sky = mix(vec3(...tw.horizon), vec3(...tw.mid), smoothstep(-0.04, 0.5, alt)).toVar();
+        sky.assign(mix(sky, NIGHT, smoothstep(0.3, 1.5, alt)));
+        if (tw.sun) {
+            const sunDx = sq.x.sub(u.ext.x.mul(tw.sunX));
+            sky.addAssign(vec3(...tw.sun).mul(exp(sunDx.mul(sunDx).mul(-0.7).sub(alt.max(0).mul(4)))));
+        }
+    } else {
+        sky = mix(SKY_GLOW, NIGHT, smoothstep(-0.1, 1.3, alt.sub(plumeGlow.mul(0.3)))).toVar();
+    }
     sky.addAssign(EMBER.mul(plumeGlow).mul(exp(alt.max(0).mul(-1.8))).mul(0.035).mul(fire));
     // The ash ceiling: a high, broken deck of cloud. Its ragged edges catch the eruption's light from
-    // below, brightest toward the fire; night and a few stars show through the gaps.
+    // below, brightest toward the fire; night and a few stars show through the gaps. The visit's seed
+    // moves the deck, so no two visits share a sky.
     const vq = layer(ps, u, 0.1).toVar();
     const drift = u.time.mul(0.008);
-    const deckAt = vec2(vq.x.mul(0.85).add(drift), vq.y.mul(1.9).sub(drift.mul(0.5))).add(vec2(3.3, 1.1));
+    const deckAt = vec2(vq.x.mul(0.85).add(drift), vq.y.mul(1.9).sub(drift.mul(0.5)))
+        .add(vec2(u.seed.mul(13.7).add(3.3), u.seed.mul(5.1).add(1.1)));
     const deck = fbm(deckAt, octaves).toVar();
-    const ceiling = smoothstep(0.44, 0.6, deck.add(smoothstep(0.1, 1.1, alt).mul(0.3)).sub(0.06)).toVar();
+    const ceiling = smoothstep(0.44, 0.6, deck.add(smoothstep(0.1, 1.1, alt).mul(0.3)).sub(0.06 - M.deck)).toVar();
     const vx = vq.x.sub(PLUME_X);
     const underlit = exp(vx.mul(vx).mul(-0.28)).mul(exp(alt.max(0).mul(-0.7))).mul(fire).toVar();
-    const edge = ceiling.mul(float(1).sub(ceiling)).mul(4);
-    const ash = ASH.mul(deck.mul(0.6).add(0.25)).add(EMBER.mul(underlit).mul(edge.mul(0.13).add(ceiling.mul(0.025))));
-    // Stars only where the deck breaks, and only high above the glow.
-    const stars = starfield(layer(ps, u, 0), u, 0.7).mul(float(1).sub(ceiling)).mul(smoothstep(0.35, 1.0, alt));
-    sky.assign(mix(sky.add(stars), ash, ceiling.mul(0.9)));
+    const edge = ceiling.mul(float(1).sub(ceiling)).mul(4).toVar();
+    const ash = ASH.mul(deck.mul(0.6).add(0.25)).add(EMBER.mul(underlit).mul(edge.mul(0.13).add(ceiling.mul(0.025))))
+        .toVar();
+    if (tw?.cloud) {
+        // The low cloud's undersides still hold the sunset (or the moon's light).
+        const sunDx = vq.x.sub(u.ext.x.mul(tw.sunX));
+        const afterglow = exp(alt.max(0).mul(-1.3)).mul(exp(sunDx.mul(sunDx).mul(-0.25)).mul(0.6).add(0.4));
+        ash.addAssign(vec3(...tw.cloud).mul(afterglow).mul(edge.mul(0.7).add(ceiling.mul(0.3))));
+    }
+    // Stars only where the deck breaks, and only high above the glow. A clear night shows a faint
+    // band of the galaxy, crowded with stars.
+    if (M.stars > 0) {
+        const sp = layer(ps, u, 0).toVar();
+        let density = float(M.stars);
+        if (M.milky > 0) {
+            const across = sp.y.mul(0.94).sub(sp.x.mul(0.34)).sub(L.shore.add(0.72)).toVar();
+            const lane = exp(across.mul(across).mul(-7)).toVar();
+            const dust = fbm(vec2(sp.x.mul(2.2).add(sp.y.mul(0.8)), across.mul(5)).add(u.seed.mul(9.1)), 3).toVar();
+            const glow = lane.mul(smoothstep(0.35, 0.75, dust)).mul(smoothstep(0.2, 0.8, alt));
+            sky.addAssign(vec3(0.016, 0.018, 0.03).mul(glow).mul(M.milky));
+            density = density.add(lane.mul(dust).mul(M.milky));
+        }
+        const stars = starfield(sp, u, density).mul(float(1).sub(ceiling)).mul(smoothstep(0.35, 1.0, alt));
+        sky.addAssign(stars);
+    }
+    if (M.moon) {
+        // A small, high moon in a soft halo, behind the broken deck.
+        const mo = layer(ps, u, 0).sub(vec2(u.ext.x.mul(M.moon[0]), L.shore.add(M.moon[1]))).toVar();
+        const md = mo.length().toVar();
+        const disc = fadeOut(float(0.042).sub(u.px.mul(1.2)), float(0.042).add(u.px.mul(1.2)), md);
+        const maria = gnoise(mo.mul(55).add(3.1)).mul(0.35).add(0.7);
+        const halo = exp(md.mul(md).mul(-90)).mul(0.05).add(exp(md.mul(md).mul(-8)).mul(0.012));
+        sky.addAssign(vec3(0.85, 0.9, 1.0).mul(disc.mul(maria).mul(0.75).add(halo)));
+    }
+    sky.assign(mix(sky, ash, ceiling.mul(M.deckOpacity)));
 
     // Distant volcanic slopes in silhouette, thin lava rivers threading down their flanks.
     const mq = layer(ps, u, 0.16).toVar();
@@ -160,8 +227,8 @@ function paintSky(c) {
         // Aerial perspective: the far flanks melt into the glowing haze that fills the valleys at
         // their feet, and the air just behind their skyline is lit by the eruption.
         const valley = exp(mq.y.sub(L.shore).max(0).mul(-5));
-        const haze = SKY_GLOW.mul(1.6).add(EMBER.mul(0.012).mul(fire));
-        const rock = mix(vec3(0.004, 0.003, 0.0035), haze, valley.mul(0.75))
+        const haze = (tw ? vec3(...tw.horizon).mul(0.22) : SKY_GLOW.mul(1.6)).add(EMBER.mul(0.012).mul(fire));
+        const rock = mix(vec3(0.004, 0.003, 0.0035), haze, valley.mul(0.75).add(M.thick).min(0.95))
             .add(EMBER.mul(exp(fall.mul(-30))).mul(0.006))
             .toVar();
         const rivers = float(0).toVar();
@@ -188,8 +255,9 @@ function paintSky(c) {
 /** The caldera's far wall: a dark, ragged silhouette whose rocky foot glows red with the lake's light. */
 function paintWall(c) {
     const {
-        wq, L, fire,
+        wq, L, fire, C,
     } = c;
+    const { FIRELIGHT, BASALT, HAZE } = C;
     const h = wq.y.sub(L.shore).max(0).toVar();
     // Crags and ledges: ridged noise, a little taller than wide, so the cliff reads as broken rock.
     const bend = gnoise(vec2(wq.x.mul(3.1), h.mul(3.1).add(1.9))).sub(0.5);
@@ -212,8 +280,9 @@ function paintWall(c) {
  */
 function paintPlume(c) {
     const {
-        u, across, climb, fire, surge, plumeOctaves,
+        u, across, climb, fire, surge, plumeOctaves, C, M, bolt, L,
     } = c;
+    const { FIRELIGHT, EMBER, ASH } = C;
     const drift = u.time.mul(0.045).add(u.breathInt.mul(0.012)).toVar();
     // Billows grow as they climb: height runs on a log scale through the noise.
     const v = log(climb.add(0.28)).mul(1.7).toVar();
@@ -237,15 +306,37 @@ function paintPlume(c) {
     const facing = smoke.sub(lower).mul(5).add(0.5).saturate();
     const tint = mix(FIRELIGHT, EMBER, smoothstep(0.1, 0.9, climb));
     const lit = tint.mul(light).mul(facing.mul(facing).mul(0.95).add(0.3)).mul(billow.add(0.3));
-    const glowing = ASH.mul(billow.mul(0.8).add(0.3)).add(lit).add(EMBER.mul(exp(climb.mul(-0.6))).mul(0.02).mul(fire));
-    return vec4(glowing, density.mul(0.94));
+    const glowing = ASH.mul(billow.mul(0.8).add(0.3)).add(lit).add(EMBER.mul(exp(climb.mul(-0.6))).mul(0.02).mul(fire))
+        .toVar();
+    // Volcanic lightning, seen only as light inside the ash: a lobe of the cloud glows up over a
+    // second and more, a second lobe beside it answers, and both sink back. Never a strike.
+    If(bolt.x.greaterThan(0.001), () => {
+        const id = bolt.z;
+        // Off to one flank of the plume, above the fountain's crown.
+        const flank = hash21(vec2(id, 1.3)).sub(0.5).sign().mul(mix(float(0.4), float(0.8), hash21(vec2(id, 3.9))));
+        const at = vec2(flank, mix(float(0.42), float(0.78), hash21(vec2(id, 2.7))).mul(L.reach)).toVar();
+        const d1 = vec2(across.sub(at.x).div(0.26), climb.sub(at.y).div(0.13));
+        const shift = vec2(hash21(vec2(id, 4.1)).sub(0.5).mul(0.8), hash21(vec2(id, 5.9)).mul(0.2).add(0.05));
+        const d2 = d1.sub(vec2(shift.x.div(0.26), shift.y.div(0.13)));
+        const second = smoothstep(0.25, 0.5, bolt.y).mul(fadeOut(0.62, 0.95, bolt.y));
+        const lobes = exp(dot(d1, d1).negate()).mul(bolt.x).add(exp(dot(d2, d2).negate()).mul(second).mul(0.7));
+        // Light branching through the cloud: brighter veins inside the glow.
+        const veins = ridged(vec2(across.mul(3.4), climb.mul(5.5)).add(id.mul(31)), 3).toVar();
+        const v2 = veins.mul(veins).toVar();
+        glowing.addAssign(BOLT.mul(lobes).mul(v2.mul(v2).mul(2.2).add(0.1)).mul(billow.mul(0.8).add(0.2))
+            .mul(M.lightning.gain));
+    });
+    return vec4(glowing, density.mul(0.94 * M.plume.density));
 }
 
 /** The lava lake in perspective: drifting crust plates, open and closed seams, molten patches, the vent's pool. */
 function paintLake(c) {
     const {
-        ps, u, L, fire, surge, height, fine,
+        ps, u, L, fire, surge, height, fine, C, M,
     } = c;
+    const {
+        BASALT, EMBER, FIRELIGHT, HAZE, SEAM_TINT,
+    } = C;
     // Depth by one fixed-point step through the parallax (k = 1 at the vent's depth).
     const v0 = L.horizon.sub(ps.y).max(0.01);
     const lq = layer(ps, u, v0.div(L.camH).min(4)).toVar();
@@ -280,7 +371,8 @@ function paintLake(c) {
     // and each seam opens and closes along its own length.
     const opening = gnoise(cellP.mul(0.4).add(vec2(3.1, flow.mul(1.5)))).toVar();
     const along = gnoise(cellP.mul(1.7).add(5.1));
-    const open = smoothstep(0.45, 0.8, opening.add(along.sub(0.5).mul(0.5)).add(nearVent.mul(0.3)).add(surge.mul(0.05)))
+    const open = smoothstep(0.45, 0.8, opening.add(along.sub(0.5).mul(0.5)).add(nearVent.mul(0.3)).add(surge.mul(0.05))
+        .add(M.lake.open))
         .toVar();
     // Where the field peaks, a rift has pulled wide open into a molten channel.
     const channel = smoothstep(0.74, 0.92, opening.add(along.sub(0.5).mul(0.3))).toVar();
@@ -318,6 +410,11 @@ function paintLake(c) {
     const lightPool = fire.mul(height.add(0.3)).div(ventDist2.mul(22).add(1));
     crust.addAssign(FIRELIGHT.mul(lightPool).mul(0.025).mul(ropes.add(0.2)));
     crust.addAssign(HAZE.mul(fire).mul(gloss).mul(smoothstep(0.6, 2.0, depth)).mul(0.5));
+    if (M.twilight) {
+        // At dusk the glassy plates also mirror the afterglow, most on the far lake.
+        crust.addAssign(vec3(...M.twilight.horizon).mul(gloss).mul(smoothstep(0.7, 2.4, depth))
+            .mul(M.twilight.reflect));
+    }
     // Reflection: the fountain mirrored about the vent line, smeared down the lake toward the eye.
     const mirror = L.base.sub(lq.y).max(0).toVar();
     const rx = lq.x.sub(VENT_X).toVar();
@@ -332,10 +429,13 @@ function paintLake(c) {
     // vent's own boil, where crust never forms.
     const thin = fbm(vec2(lx.mul(1.5).add(flow.mul(0.6)), lz.mul(1.9).sub(flow.mul(0.9))), 3).toVar();
     const boil = exp(ventDist2.mul(-38)).toVar();
-    const molten = smoothstep(0.64, 0.68, thin.add(boil.mul(0.6))).mul(smoothstep(0.75, 1.0, depth).max(boil)).toVar();
+    const molten = smoothstep(0.64 - M.lake.molten, 0.68 - M.lake.molten, thin.add(boil.mul(0.6)))
+        .mul(smoothstep(0.75, 1.0, depth).max(boil)).toVar();
     If(molten.greaterThan(0.001), () => {
         const swirl = fbm3(vec3(lx.mul(7), lz.mul(8), u.time.mul(0.15)), 2);
-        const lava = heatColor(swirl.mul(0.3).add(0.36).add(boil.mul(0.24)).add(surge.mul(0.05)));
+        // Far melt cools to a dull orange under the fume: a flat yellow smear on the horizon read wrong.
+        const lava = heatColor(swirl.mul(0.3).add(0.36).add(boil.mul(0.24)).add(surge.mul(0.05))
+            .sub(smoothstep(1.3, 3.0, depth).mul(0.14)));
         // Crust fragments float in the melt, pushed away from the vent.
         const floating = smoothstep(0.03, 0.16, seam).mul(fadeOut(0.5, 1.0, boil));
         lake.assign(mix(lake, lava, molten.mul(float(1).sub(floating.mul(0.75)))));
@@ -343,7 +443,7 @@ function paintLake(c) {
     const pool = exp(ventDist2.mul(-260)).toVar();
     lake.addAssign(heatColor(pool.mul(0.35).add(0.55)).mul(pool).mul(fire));
     // Aerial perspective: fume over the lake swallows the far shore in lit haze.
-    const fog = smoothstep(0.8, 2.3, depth).mul(0.6);
+    const fog = smoothstep(0.8 - M.thick, 2.3, depth).mul(0.6 + 0.35 * M.thick);
     lake.assign(mix(lake, HAZE.mul(fire), fog));
     return vec4(lake, softStep(lq.y, L.shore, u));
 }
@@ -399,13 +499,206 @@ function paintFountain(c) {
     return vec4(flame, smoothstep(0.06, 0.3, heat).mul(0.88));
 }
 
-/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
-export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+/**
+ * A lava bomb: now and then the fountain hurls one big clot high and wide. It arcs out over the
+ * lake trailing light, lands with a ring running out over the crust and a pool of glow that cools
+ * away over a second and more. Small and moving: a glint, never a flash.
+ */
+function paintBomb(c, ev) {
+    const {
+        fq, u, height, C,
+    } = c;
+    const id = ev.z;
+    const side = hash21(vec2(id, 1.7)).sub(0.5).sign();
+    const reach = mix(float(0.32), float(0.72), hash21(vec2(id, 2.3))).mul(u.ext.x.min(1.5)).mul(side).toVar();
+    const landY = mix(float(-0.03), float(-0.12), hash21(vec2(id, 3.1))).toVar();
+    const startY = height.mul(0.55).toVar();
+    const arc = height.mul(mix(float(0.45), float(0.8), hash21(vec2(id, 4.7)))).add(0.12).toVar();
+    // The flight takes the first 60 % of the event, the splash the rest.
+    const q = ev.y.div(0.6).toVar();
+    const flying = fadeOut(0.97, 1.0, q).mul(smoothstep(0, 0.08, q));
+    const head = vec2(reach.mul(q), mix(startY, landY, q).add(arc.mul(4).mul(q).mul(float(1).sub(q)))).toVar();
+    const vel = vec2(reach, landY.sub(startY).add(arc.mul(4).mul(float(1).sub(q.mul(2))))).toVar();
+    const dir = vel.div(vel.length().max(1e-4)).toVar();
+    const rel = fq.sub(head).toVar();
+    const behind = dot(rel, dir).negate().toVar();
+    const off = rel.add(dir.mul(behind)).length();
+    const w = u.px.mul(1.6).add(0.0035).toVar();
+    const trail = exp(off.mul(off).div(w.mul(w)).negate()).mul(smoothstep(0, 0.004, behind))
+        .mul(fadeOut(0, 0.11, behind));
+    const r2 = dot(rel, rel).toVar();
+    const core = exp(r2.div(w.mul(w).mul(2.5)).negate());
+    const halo = exp(r2.div(0.0022).negate()).mul(0.07);
+    const flight = heatColor(float(0.95).sub(q.mul(0.3))).mul(core.mul(1.5).add(trail.mul(0.6)).add(halo)).mul(flying);
+    // The splash, flattened by the lake's perspective.
+    const sp = ev.y.sub(0.6).div(0.4).saturate().toVar();
+    const o = vec2(fq.x.sub(reach), fq.y.sub(landY).div(0.3));
+    const rr = o.length().toVar();
+    const cool = float(1).sub(sp).toVar();
+    const ringD = rr.sub(sqrt(sp).mul(0.085).add(0.008)).div(0.0075);
+    const ring = exp(ringD.mul(ringD).negate()).mul(cool.mul(cool));
+    const pool = exp(rr.mul(rr).div(0.0011).negate()).mul(cool.mul(cool).mul(cool));
+    const wide = exp(rr.mul(rr).div(0.012).negate()).mul(cool.mul(cool)).mul(0.1);
+    const splash = heatColor(float(0.78).sub(sp.mul(0.4))).mul(ring.mul(0.8).add(pool.mul(1.1)))
+        .add(C.FIRELIGHT.mul(wide))
+        .mul(smoothstep(0, 0.2, sp))
+        .mul(smoothstep(0.59, 0.61, ev.y));
+    return flight.add(splash).mul(ev.x.mul(40).min(1)).mul(u.life);
+}
 
-export function createVolcanicWorld({ u, quality, random }) {
+/**
+ * The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's.
+ * Colours are linear RGB. `twilight` paints a dusk sky instead of the night; `deck` thickens (> 0)
+ * or clears (< 0) the ash ceiling; `stars`/`milky` how much night shows; `fountain` and `fire` scale
+ * the vent; `plume` its width and density; `lake` how much melt and how many open seams;
+ * `lightning`/`bomb` the rare events (period s, chance per period); `ash` the falling ash (count).
+ */
+const NIGHT_COLORS = {
+    night: [0.0032, 0.0034, 0.0085],
+    skyGlow: [0.03, 0.0075, 0.004],
+    ash: [0.016, 0.013, 0.013],
+    firelight: [1.0, 0.3, 0.07],
+    ember: [0.85, 0.14, 0.03],
+    basalt: [0.014, 0.0105, 0.0098],
+    haze: [0.075, 0.017, 0.0075],
+    seamTint: [0.92, 0.7, 0.6],
+};
+export const MOODS = Object.freeze([
+    {
+        id: 'night-eruption',
+        name: 'Night Eruption',
+        colors: NIGHT_COLORS,
+        twilight: null,
+        deck: 0,
+        deckOpacity: 0.9,
+        thick: 0,
+        moon: null,
+        mist: [1, 1],
+        ashLit: [0.2, 0.075, 0.035],
+        stars: 0.7,
+        milky: 0,
+        fountain: 1,
+        fire: 1,
+        plume: { width: 1, density: 1 },
+        lake: { molten: 0, open: 0 },
+        lightning: { period: 23, chance: 0.55, gain: 0.5 },
+        bomb: { period: 16, chance: 0.65 },
+        embers: 150,
+        ash: 60,
+    },
+    {
+        id: 'violet-dusk',
+        name: 'Violet Dusk',
+        colors: {
+            ...NIGHT_COLORS,
+            night: [0.0045, 0.0035, 0.014],
+            ash: [0.03, 0.02, 0.034],
+            basalt: [0.015, 0.0115, 0.013],
+            haze: [0.07, 0.022, 0.026],
+        },
+        sunset: true,
+        twilight: {
+            horizon: [0.5, 0.15, 0.045],
+            mid: [0.1, 0.03, 0.085],
+            sun: [0.55, 0.17, 0.03],
+            sunX: -0.5,
+            cloud: [0.42, 0.12, 0.09],
+            reflect: 0.22,
+        },
+        deck: -0.05,
+        deckOpacity: 0.85,
+        thick: 0,
+        moon: null,
+        mist: [1, 1],
+        ashLit: [0.24, 0.1, 0.07],
+        stars: 0.4,
+        milky: 0,
+        fountain: 0.95,
+        fire: 0.95,
+        plume: { width: 0.9, density: 0.85 },
+        lake: { molten: 0, open: 0 },
+        lightning: { period: 26, chance: 0.4, gain: 0.45 },
+        bomb: { period: 17, chance: 0.6 },
+        embers: 120,
+        ash: 36,
+    },
+    {
+        id: 'starlit-lake',
+        name: 'Starlit Lake',
+        colors: {
+            ...NIGHT_COLORS,
+            night: [0.0026, 0.0042, 0.013],
+            skyGlow: [0.02, 0.0075, 0.0075],
+            ash: [0.011, 0.011, 0.015],
+            basalt: [0.012, 0.0102, 0.0108],
+            haze: [0.045, 0.013, 0.009],
+        },
+        // A clear night's horizon is blue, not black; a small moon rims the deck's broken edges.
+        twilight: {
+            horizon: [0.016, 0.022, 0.055],
+            mid: [0.006, 0.009, 0.03],
+            sun: null,
+            sunX: 0,
+            cloud: [0.02, 0.026, 0.05],
+            reflect: 0.12,
+        },
+        deck: -0.17,
+        deckOpacity: 0.7,
+        thick: 0,
+        moon: [0.55, 0.68],
+        mist: [0.8, 1],
+        ashLit: [0.2, 0.075, 0.035],
+        stars: 1.25,
+        milky: 1,
+        fountain: 0.6,
+        fire: 0.85,
+        plume: { width: 0.62, density: 0.42 },
+        lake: { molten: 0, open: 0.1 },
+        lightning: { period: 30, chance: 0, gain: 0 },
+        bomb: { period: 19, chance: 0.6 },
+        embers: 110,
+        ash: 0,
+    },
+    {
+        id: 'ash-storm',
+        name: 'Ash Storm',
+        colors: {
+            ...NIGHT_COLORS,
+            night: [0.006, 0.0035, 0.0035],
+            skyGlow: [0.055, 0.012, 0.005],
+            ash: [0.026, 0.019, 0.017],
+            basalt: [0.02, 0.0165, 0.0155],
+            haze: [0.1, 0.022, 0.009],
+        },
+        twilight: null,
+        deck: 0.3,
+        deckOpacity: 0.97,
+        thick: 0.35,
+        moon: null,
+        // Wind-driven ash sweeping low across the lake.
+        mist: [2.4, 1.9],
+        ashLit: [0.34, 0.12, 0.05],
+        stars: 0,
+        milky: 0,
+        fountain: 1.05,
+        fire: 1.05,
+        plume: { width: 1.5, density: 1 },
+        lake: { molten: 0, open: -0.04 },
+        lightning: { period: 13, chance: 0.8, gain: 0.65 },
+        bomb: { period: 14, chance: 0.7 },
+        embers: 190,
+        ash: 260,
+    },
+]);
+
+export function createVolcanicWorld({
+    u, quality, random, mood = MOODS[0],
+}) {
     const { octaves, detail } = quality;
     const fine = detail >= 0.6;
     const plumeOctaves = Math.max(3, octaves - 1);
+    const M = mood;
+    const C = paletteOf(M);
 
     // Shared by the backdrop and the sprites. The breath drives two things: `surge` (the leap,
     // lung fill with a little follow-through) and `clock` (flow that quickens on the in-breath).
@@ -424,8 +717,8 @@ export function createVolcanicWorld({ u, quality, random }) {
             reach: lay.reach.toVar(),
         };
         const surge = surgeOf().toVar();
-        const fire = u.breathSoft.mul(0.4).add(0.68).toVar();
-        const height = fountainHeight(surge, L.reach).toVar();
+        const fire = u.breathSoft.mul(0.4).add(0.68).mul(M.fire).toVar();
+        const height = fountainHeight(surge, L.reach, M.fountain).toVar();
         const rise = u.time.mul(0.9).add(u.breathInt.mul(1.3)).toVar();
         const margin = u.px.mul(4).toVar();
 
@@ -447,10 +740,35 @@ export function createVolcanicWorld({ u, quality, random }) {
         const skyline = wallSkyline(wq.x, u, L).toVar();
         const pq = layer(ps, u, 0.62).toVar();
         const climb = pq.y.sub(L.base.add(0.05)).max(0).toVar();
-        const plumeWidth = climb.mul(0.58).add(0.24).mul(L.reach.mul(0.5).add(0.5)).toVar();
+        const plumeWidth = climb.mul(0.58).add(0.24).mul(L.reach.mul(0.5).add(0.5)).mul(M.plume.width)
+            .toVar();
         const across = pq.x.sub(climb.mul(climb).mul(0.11).add(PLUME_X)).div(plumeWidth).toVar();
+        // Volcanic lightning in the plume: a rare, slow glow (see paintPlume).
+        const bolting = M.lightning;
+        const boltSalt = u.seed.mul(29.3).add(1.9);
+        const boltEv = eventWindow(u.time, float(bolting.period), float(8), float(bolting.chance), boltSalt);
+        const bolt = vec3(boltEv.x.mul(u.life).mul(M.lightning.chance > 0 ? 1 : 0), boltEv.y, boltEv.z).toVar();
         const c = {
-            p, ps, u, L, fire, surge, height, rise, fq, s, wq, across, climb, octaves, detail, fine, plumeOctaves,
+            p,
+            ps,
+            u,
+            L,
+            fire,
+            surge,
+            height,
+            rise,
+            fq,
+            s,
+            wq,
+            across,
+            climb,
+            octaves,
+            detail,
+            fine,
+            plumeOctaves,
+            C,
+            M,
+            bolt,
         };
         const col = vec3(0).toVar();
         If(wq.y.greaterThan(skyline.sub(margin)), () => {
@@ -470,10 +788,13 @@ export function createVolcanicWorld({ u, quality, random }) {
 
         // Fume drifting low over the far lake and the foot of the wall, lit from below.
         const fromShore = ps.y.sub(L.shore).toVar();
-        If(fromShore.abs().lessThan(0.2), () => {
-            const mist = fbm3(vec3(pq.x.mul(1.6).add(u.time.mul(0.03)), ps.y.mul(5), u.time.mul(0.05)), 2);
-            const band = exp(fromShore.mul(fromShore).mul(-160));
-            col.addAssign(HAZE.mul(band).mul(mist.mul(1.2).add(0.1)).mul(fire).mul(0.6));
+        If(fromShore.abs().lessThan(0.2 * M.mist[1]), () => {
+            const [, mistSpan] = M.mist;
+            const mistX = pq.x.mul(1.6).add(u.time.mul(0.03 * mistSpan));
+            const mistAt = vec3(mistX, ps.y.mul(5 / mistSpan), u.time.mul(0.05));
+            const mist = fbm3(mistAt, 2);
+            const band = exp(fromShore.mul(fromShore).mul(-160 / (M.mist[1] * M.mist[1])));
+            col.addAssign(C.HAZE.mul(band).mul(mist.mul(1.2).add(0.1)).mul(fire).mul(0.6 * M.mist[0]));
         });
 
         // Wide enough for the crown's outermost tongues and its sway: no tongue is ever clipped by the test.
@@ -482,11 +803,19 @@ export function createVolcanicWorld({ u, quality, random }) {
             col.assign(col.mul(float(1).sub(flame.a)).add(flame.rgb));
         });
 
+        // Now and then a lava bomb arcs out over the lake and splashes down.
+        const bombSalt = u.seed.mul(41.7).add(5.3);
+        const bombEv = eventWindow(u.time, float(M.bomb.period), float(4), float(M.bomb.chance), bombSalt)
+            .toVar();
+        If(bombEv.x.mul(u.life).greaterThan(0.0005), () => {
+            col.addAssign(paintBomb(c, bombEv));
+        });
+
         // Painted glow (the lightest tier has no bloom): a halo around the column and the vent.
         const glowX = fq.x.mul(fq.x).toVar();
         const mid = fq.y.sub(height.mul(0.35));
         const halo = exp(glowX.mul(-6).sub(mid.mul(mid).div(height.mul(height).mul(0.6).add(0.02))));
-        col.addAssign(FIRELIGHT.mul(halo).mul(0.1).mul(fire));
+        col.addAssign(C.FIRELIGHT.mul(halo).mul(0.1).mul(fire));
         col.addAssign(vec3(1.0, 0.55, 0.2).mul(exp(glowX.mul(-60).sub(fq.y.mul(fq.y).mul(400)))).mul(0.3).mul(fire));
         return col;
     })();
@@ -495,7 +824,7 @@ export function createVolcanicWorld({ u, quality, random }) {
     const lay = layoutOf();
     const spatterScene = {
         vent: [float(VENT_X), lay.base],
-        height: fountainHeight(surgeOf(), lay.reach),
+        height: fountainHeight(surgeOf(), lay.reach, M.fountain),
         clock: u.time.mul(0.7).add(u.breathInt.mul(0.8)),
         share: u.breathSoft.mul(0.6).add(0.4),
     };
@@ -508,30 +837,65 @@ export function createVolcanicWorld({ u, quality, random }) {
         }),
     ];
 
+    const motes = [
+        {
+            // Embers drifting up out of the caldera everywhere, cooling as they climb.
+            motion: MOTE_MOTION.ember,
+            count: M.embers,
+            size: 0.016,
+            speed: 0.55,
+            spread: 1,
+            depth: 2.2,
+            bokeh: 0.09,
+            colorA: [1.0, 0.5, 0.12],
+            colorB: [0.55, 0.06, 0.015],
+            gain: 1.1,
+        },
+    ];
+    if (M.ash > 0) {
+        motes.push({
+            // Ash falling out of the plume: dark flakes that tumble as they come down, the nearer
+            // ones lit dull orange by the fire; dark specks crossing the fountain's light.
+            motion: MOTE_MOTION.fall,
+            shape: MOTE_SHAPE.leaf,
+            blend: 'alpha',
+            count: M.ash,
+            size: M.ash > 100 ? 0.015 : 0.011,
+            speed: 0.42,
+            spread: 1.05,
+            depth: 2.4,
+            bokeh: 0.12,
+            spin: 1.4,
+            tumble: 0.8,
+            flutter: 0.5,
+            colorA: [0.035, 0.03, 0.03],
+            colorB: M.ashLit,
+            gain: M.ash > 100 ? 1 : 0.85,
+        });
+    }
+
     return {
         backdrop,
         objects,
-        motes: [
-            {
-                // Embers drifting up out of the caldera everywhere, cooling as they climb.
-                motion: MOTE_MOTION.ember,
-                count: 150,
-                size: 0.016,
-                speed: 0.55,
-                spread: 1,
-                depth: 2.2,
-                bokeh: 0.09,
-                colorA: [1.0, 0.5, 0.12],
-                colorB: [0.55, 0.06, 0.015],
-                gain: 1.1,
-            },
-        ],
+        motes,
         bloom: {
             strength: 0.36, radius: 0.62, threshold: 0.8, breath: 0.45,
         },
-        grade: {
-            shadows: [0.98, 0.93, 1.02], highlights: [1.05, 0.98, 0.9], saturation: 1.1, contrast: 1.08, vignette: 0.5,
-        },
+        grade: M.sunset
+            ? {
+                shadows: [0.98, 0.92, 1.06],
+                highlights: [1.05, 0.97, 0.94],
+                saturation: 1.08,
+                contrast: 1.06,
+                vignette: 0.45,
+            }
+            : {
+                shadows: [0.98, 0.93, 1.02],
+                highlights: [1.05, 0.98, 0.9],
+                saturation: 1.1,
+                contrast: 1.08,
+                vignette: 0.5,
+            },
         camera: { dolly: 0.04, drift: [0.03, 0.012], period: 50 },
         exposure: 1.0,
     };
