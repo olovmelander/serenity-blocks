@@ -145,7 +145,9 @@ export class VerdantHillsLife {
         const span = positionGeometry.x.mul(look.y);
         const local = vec3(span.mul(cos(beat)), span.abs().mul(sin(beat)), positionGeometry.z.mul(look.y));
         material.positionNode = position.add(right.mul(local.x)).add(vec3(0, local.y, 0)).sub(heading.mul(local.z));
-        const tone = uniformArray(WING_COLOURS.map((hex) => new THREE.Color(hex))).element(look.x.toInt());
+        // Rounded: read interpolated, a colour index a bit under itself truncated to the one before.
+        const wingColour = look.x.add(0.5).toInt();
+        const tone = uniformArray(WING_COLOURS.map((hex) => new THREE.Color(hex))).element(wingColour);
         // Lit from either side, a little darker at the wing's root, and glowing against the sun.
         const shade = wing.abs().mul(0.3).add(0.7);
         const lit = tone.mul(shade)

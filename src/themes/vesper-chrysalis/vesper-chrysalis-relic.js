@@ -59,6 +59,7 @@ import {
     vcSkyBase,
     vcSkyLight,
 } from './vesper-chrysalis-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 /** Where the silk is made fast to the chrysalis: the top of its stalk. */
 export const STALK = Object.freeze([CHRYSALIS.x, CHRYSALIS.foot + CHRYSALIS.length, CHRYSALIS.z]);
@@ -374,6 +375,9 @@ export function createThreads(u, threads) {
 
     const aInfo = attribute('aInfo', 'vec4');
     const vInfo = varying(aInfo, 'vThread');
+    // The thread's seed and kind, flat: interpolated, the seed (times 977 for the dew) picked
+    // a different set of beads at every pixel.
+    const vThreadSeed = flatVarying(aInfo.w, 'vThreadSeed');
     const vAcross = varying(aInfo.y, 'vThreadAcross');
 
     material.vertexNode = Fn(() => {
@@ -397,8 +401,8 @@ export function createThreads(u, threads) {
 
     const light = Fn(() => {
         const s = vInfo.x;
-        const long = step(1.5, vInfo.w);
-        const seed = fract(vInfo.w);
+        const long = step(1.5, vThreadSeed);
+        const seed = fract(vThreadSeed);
         const profile = float(1.0).sub(abs(vAcross));
         // Silk: next to nothing, except where it catches the evening.
         const sheen = sin(s.mul(31.0).add(seed.mul(60.0)).add(u.drift.mul(0.35))).mul(0.5).add(0.5);

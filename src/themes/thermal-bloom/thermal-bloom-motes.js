@@ -39,6 +39,7 @@ import {
     tbHash21,
     tbPart,
 } from './thermal-bloom-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 /** The near air the motes fill (metres along the rest rig's view rays). */
 const NEAR = 14;
@@ -83,7 +84,7 @@ export function createMotes(u, count) {
     const alive = step(h1, mix(float(0.35), float(1.0), cold)).mul(step(0.5, seed));
     const vFade = varying(alive.mul(sin(phase.mul(Math.PI))), 'vMoteFade');
     const vCorner = varying(positionGeometry.xy, 'vMoteCorner');
-    const vSeed = varying(seed, 'vMoteSeed');
+    const vSeed = flatVarying(seed, 'vMoteSeed'); // flat: a mote flashes whole
     const vDist = varying(length(u.camPos.sub(centre)), 'vMoteDist');
 
     const material = tbFxMaterial('ThermalBloomMotes');

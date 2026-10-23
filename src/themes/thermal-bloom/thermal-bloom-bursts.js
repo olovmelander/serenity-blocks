@@ -52,6 +52,7 @@ import {
     tbHash21,
     tbPart,
 } from './thermal-bloom-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 const G = 9.81;
 const TAU = Math.PI * 2;
@@ -133,7 +134,7 @@ export function createBursts(u, perBurst) {
             .add(u.windDir.y.mul(0.6)),
     );
     const alive = live.mul(step(A.y.sub(0.2), drop.y));
-    const vId = varying(slot.mul(97.0).add(k), 'vBurstId');
+    const vId = flatVarying(slot.mul(97.0).add(k), 'vBurstId'); // flat: a drop flashes whole
     const vTint = varying(B.xyz, 'vBurstTint');
     const vJet = varying(isJet, 'vBurstJet');
     // Drops thin toward the end of their flight; a fountain fades in and out over its life.

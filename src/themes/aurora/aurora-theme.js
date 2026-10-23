@@ -300,12 +300,14 @@ export default class AuroraTheme extends BaseTheme {
             this.world?.director.calm();
         }
         this.applyMotionPreference();
+        // renderScale = pixel ratio only. resize() compares the ratio, so only a real change
+        // resizes: every save carries all the settings, and a forced resize set the canvas's
+        // size again out of the frame loop (black flashes as a theme picked in play came in).
         if (detail.type === 'renderScale' || detail.renderScale !== undefined
             || detail.settings?.renderScale !== undefined || detail.changed?.renderScale !== undefined) {
             const generation = this.runtimeGeneration;
             queueMicrotask(() => {
                 if (!this.isActive || generation !== this.runtimeGeneration) return;
-                this.appliedSize = null;
                 const { width, height } = getViewport();
                 this.resize(width, height);
             });

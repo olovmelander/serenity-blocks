@@ -1169,7 +1169,9 @@ export function createDebrisNodeMaterial(params = {}) {
     const miscStorage = useCompute
         ? storage(debrisCompute.getMiscBuffer(), 'vec4', debrisCompute.count)
         : null;
-    const computeIndex = useCompute ? instanceIndex.add(floor(aComputeOffset)) : null;
+    // Rounded: the fragment stage reads the offset interpolated, and a whole number a bit under
+    // itself floored to the particle before (a sprite drawn from two particles' data).
+    const computeIndex = useCompute ? instanceIndex.add(floor(aComputeOffset.add(0.5))) : null;
 
     const computePosition = useCompute
         ? positionStorage.element(computeIndex).xyz
