@@ -11,6 +11,9 @@
  *
  *       [ ◌ Drift · with the music ]  [ ☾ Rest off ]  [ ✦ Effects ]      (the dock, below)
  *
+ * While Play all runs with the effects tray folded away, the effects tile says how far it has
+ * come ("Effects · 5 of 16") and a Stop tile stands beside it.
+ *
  * The arrows step between your themes as the guide's step between its worlds (the same keys,
  * ← and →). It is there when you reach for it — pointer movement, a key, a change of theme or
  * song — and leaves when you are still, so the theme has the screen. It never shows over the
@@ -42,15 +45,17 @@ export class SerenityWorldBar {
      * @param {() => void} options.onDrift a press on the drift tile
      * @param {() => void} options.onRest a press on the rest tile
      * @param {() => void} [options.onEffects] a press on the effects tile
+     * @param {() => void} [options.onStopEffects] a press on Stop (while Play all runs)
      * @param {HTMLElement} [options.host]
      */
     constructor({
-        onStep, onDrift, onRest, onEffects = () => {}, host = document.body,
+        onStep, onDrift, onRest, onEffects = () => {}, onStopEffects = () => {}, host = document.body,
     }) {
         this.onStep = onStep;
         this.onDrift = onDrift;
         this.onRest = onRest;
         this.onEffects = onEffects;
+        this.onStopEffects = onStopEffects;
         this.timer = null;
         this.covered = false;
         this.stripTotal = -1;
@@ -116,13 +121,19 @@ export class SerenityWorldBar {
         this.restChip = rest.button;
         this.restText = rest.text;
         this.effectsChip = effects.button;
+        this.effectsText = effects.text;
         effects.text.textContent = 'Effects';
         this.effectsChip.setAttribute('aria-controls', TRAY_ID);
         this.effectsChip.setAttribute('aria-expanded', 'false');
         this.effectsChip.setAttribute('aria-label', 'Theme effects: watch what this theme does when you play');
+        // Only while Play all runs with the tray folded away: the tray has its own Stop.
+        const stop = tile('stop', 'square');
+        this.stopChip = stop.button;
+        this.stopChip.setAttribute('aria-label', 'Stop playing every effect');
+        this.stopChip.hidden = true;
         const dock = el('nav', 'serenity-world__dock');
         dock.setAttribute('aria-label', 'Serenity');
-        dock.append(this.driftChip, this.restChip, this.effectsChip);
+        dock.append(this.driftChip, this.restChip, this.effectsChip, this.stopChip);
 
         root.append(top, bottom, caption, dock);
 
@@ -134,6 +145,7 @@ export class SerenityWorldBar {
             else if (kind === 'drift') this.onDrift();
             else if (kind === 'rest') this.onRest();
             else if (kind === 'effects') this.onEffects();
+            else if (kind === 'stop') this.onStopEffects();
             else return;
             this.wake();
         }, { signal });
@@ -162,6 +174,8 @@ export class SerenityWorldBar {
      * @param {string} state.restChip @param {string} state.restLabel
      * @param {boolean} [state.arriving] the theme is still being built
      * @param {boolean} [state.effectsOpen] the effects tray is open
+     * @param {{index: number, total: number}|null} [state.effectsTour] where Play all has got to
+     *   (0-based), while it runs
      */
     update(state) {
         const alone = !(state.total > 1);
@@ -181,8 +195,12 @@ export class SerenityWorldBar {
         setText(this.restText, state.restChip);
         this.restChip.setAttribute('aria-label', state.restLabel);
         this.restChip.classList.toggle('is-on', state.restChip !== 'Rest off');
-        this.effectsChip.classList.toggle('is-on', Boolean(state.effectsOpen));
+        const tour = state.effectsTour || null;
+        const folded = Boolean(tour) && !state.effectsOpen;
+        setText(this.effectsText, folded ? `Effects · ${tour.index + 1} of ${tour.total}` : 'Effects');
+        this.effectsChip.classList.toggle('is-on', Boolean(state.effectsOpen) || Boolean(tour));
         this.effectsChip.setAttribute('aria-expanded', String(Boolean(state.effectsOpen)));
+        this.stopChip.hidden = !folded;
         this.root.classList.toggle('is-alone', alone);
         this.root.classList.toggle('is-arriving', Boolean(state.arriving));
         this.prev.disabled = alone;
@@ -233,6 +251,11 @@ export class SerenityWorldBar {
         if (this.timer !== null) clearTimeout(this.timer);
         this.timer = null;
         this.root.classList.remove('is-awake');
+    }
+
+    /** The keyboard follows Play all out of the folded tray, to the dock's Stop. */
+    focusStop() {
+        if (!this.stopChip.hidden) this.stopChip.focus({ preventScroll: true });
     }
 
     /** Something else has the screen (the Hub, the breathing guide, the rest veil). */

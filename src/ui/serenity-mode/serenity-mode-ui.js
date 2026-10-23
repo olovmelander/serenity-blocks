@@ -56,6 +56,8 @@ export class SerenityModeUi {
         this.touch = null;
         this.effects = null;
         this.effectsTray = null;
+        /** Where Play all has got to, while it runs. @type {{index: number, total: number}|null} */
+        this.effectsTour = null;
         this.resting = false;
         this.restAsleep = false;
         this.restTimer = null;
@@ -108,6 +110,7 @@ export class SerenityModeUi {
             onDrift: () => this.setDrift(nextDriftOption(this.drift.pace)),
             onRest: () => this.setRest(nextRestOption(this.restTimer.minutes)),
             onEffects: () => this.toggleEffects(),
+            onStopEffects: () => this.stopEffects(),
         });
         this.drift = new SerenityDrift({
             activeTheme: () => themeManager?.activeThemeName || null,
@@ -132,13 +135,23 @@ export class SerenityModeUi {
         });
         this.effects = new SerenityEffects({
             colorFor: (shapeKey) => this.pieceColor(shapeKey),
-            onChange: (state) => this.effectsTray?.setState(state),
-            onTourStep: (effect, index, total) => showSerenityNotice(`${effect.name} · ${index + 1} of ${total}`, 3200),
+            onChange: (state) => {
+                if (!state.touring) this.effectsTour = null;
+                this.effectsTray?.setState(state);
+                this._holdForEffects();
+                this.refresh();
+            },
+            onTourStep: (effect, index, total) => {
+                this.effectsTour = { index, total };
+                showSerenityNotice(`${effect.name} · ${index + 1} of ${total}`, 3200);
+            },
+            onTourDone: () => showSerenityNotice('Every effect played'),
         });
         this.effectsTray = new SerenityEffectsTray({
             onPlay: (id) => this.playEffect(id),
             onPlayAll: () => this.playAllEffects(),
             onClose: () => this.closeEffects(),
+            onStop: () => this.stopEffects(),
             keys: {
                 effects: keycap(this.mode.keyFor('toggleEffects')),
                 previous: keycap(this.mode.keyFor('previousTheme')),
@@ -180,7 +193,9 @@ export class SerenityModeUi {
             }
             if (!this.worldVisible) return;
             this.bar?.announce();
-            if (takeHintVisit()) this.removeHints = showFirstHints(this.hintItems());
+            // Effects opened this early have the bottom of the screen: the keys wait for a visit.
+            const effectsBusy = this.effectsOpen || Boolean(this.effects?.touring);
+            if (!effectsBusy && takeHintVisit()) this.removeHints = showFirstHints(this.hintItems());
         }, tries === 0 ? HINT_DELAY_MS : LOADING_WAIT_MS);
     }
 
@@ -276,6 +291,7 @@ export class SerenityModeUi {
                 ? `Rest timer: ${restChipLabel(restLeft).replace('Rest · ', '')}` : 'Rest timer: off',
             arriving: Boolean(this.stepper.target) || Boolean(themeManager?.isTransitioning),
             effectsOpen: this.effectsOpen,
+            effectsTour: this.effectsTour,
         });
         this.effectsTray?.setTheme(themeName(shown));
         this.effectsTray?.setNote(this.effectsNote());
@@ -385,20 +401,36 @@ export class SerenityModeUi {
             return;
         }
         this.removeHints?.();
-        // The world you are watching stays while you try its effects.
-        this.drift.hold('effects');
         this.effectsTray.open({ focus });
+        this._holdForEffects();
         this.refresh();
     }
 
-    /** E, Esc (the tray's own), its ×: close it. @returns {boolean} whether it was open */
+    /**
+     * E, Esc (the tray's own), its ×: close it. Only the tray goes: what is playing plays on,
+     * so it can be watched with the whole screen. @returns {boolean} whether it was open
+     */
     closeEffects() {
         if (!this.effectsOpen) return false;
-        this.effects?.stop();
         this.effectsTray.close();
-        this.drift.release('effects');
+        this._holdForEffects();
         this.refresh();
         return true;
+    }
+
+    /** Stop what is playing: the dock's Stop, Esc with the tray folded away, the tray's Stop. */
+    stopEffects() {
+        if (!this.effects) return;
+        this.effects.stop();
+        hideSerenityNotice();
+    }
+
+    /** The world you are watching stays while you try its effects and while they play. */
+    _holdForEffects() {
+        if (!this.drift) return;
+        const busy = this.effectsOpen || Boolean(this.effects?.playing) || Boolean(this.effects?.touring);
+        if (busy) this.drift.hold('effects');
+        else this.drift.release('effects');
     }
 
     /**
@@ -412,15 +444,23 @@ export class SerenityModeUi {
         return this.effects.play(id);
     }
 
-    /** Every effect in turn; a second press stops. */
+    /**
+     * Every effect in turn; a second press stops. The tray folds away as it starts, so the theme
+     * has the whole screen: each effect is named in a notice, and the dock shows Stop.
+     */
     playAllEffects() {
         if (this.wakeFromRest() || !this.worldVisible || !this.effects) return;
         if (this.effects.touring) {
-            this.effects.stop();
-            hideSerenityNotice();
+            this.stopEffects();
             return;
         }
+        const fromKeyboard = this.effectsTray?.hasKeyboardFocus() === true;
         this.effects.playAll();
+        if (this.closeEffects()) {
+            // Say where Stop went; from the keyboard, take the focus there too.
+            this.bar?.announce();
+            if (fromKeyboard) this.bar?.focusStop();
+        }
     }
 
     /** Why the theme may not answer: its reactions are switched off in Settings. */

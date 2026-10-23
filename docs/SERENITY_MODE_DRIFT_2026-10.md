@@ -74,7 +74,7 @@ anywhere, the key again, or ten seconds, and it is gone.
 | ← → | Previous / next theme (in a practice: its breathing world, as before) | D-pad ← → (with the Hub closed) |
 | B | Random theme (kept as your choice) | L3 |
 | D | Drift on / off (at the last pace chosen) | the Hub's Themes tab |
-| E | The effects tray: every reaction the theme has to play (focus moves into it) | — |
+| E | The effects tray: every reaction the theme has to play (focus moves into it); closing it leaves what is playing to play on | — |
 | ↑ ↓ | Music volume (repeats while held) | LT / RT (one step every 60 ms) |
 | , . | Previous / next song | LB / RB |
 | M | Mute music | — |
@@ -155,8 +155,9 @@ are theirs alone.
 `src/ui/serenity-mode/serenity-effects.js` (the effects), `serenity-effects-tray.js` (the tray).
 Everything a theme does when you play, on demand, so you can watch each world's reactions without
 playing a game. **E**, or the dock's **Effects** tile, opens the tray. It holds the right edge over
-its own night shade, deepening toward the edge, in the guide's words and tiles (along the bottom
-on a phone); while it is open the caption and the dock centre on the rest of the screen:
+its own night shade, deepening toward the edge, in the guide's words and tiles (a short strip
+along the bottom on a phone); while it is open the caption, the dock and the notices centre on
+the rest of the screen:
 
 ```
 ■ EFFECTS                                 [ PLAY ALL ]  [ × ]
@@ -173,7 +174,13 @@ Moments      [T-spin] [Perfect clear] [Level up]
 - **Press an effect** and the theme on screen plays it; the button stays lit while it runs. The
   arrows still change the theme, so one effect can be compared across worlds: press, →, press.
   **Play all** walks through every effect with a quiet pause after each and names each one in a
-  notice ("Quad · four lines · 6 of 14"); press it again, or any effect, to stop.
+  notice ("Quad · four lines · 6 of 16"). It **folds the tray away** as it starts, so the theme
+  has the whole screen: while it runs the dock's Effects tile counts ("Effects · 6 of 16") and a
+  Stop tile stands beside it (from the keyboard the focus lands on Stop). That Stop, the tray's
+  own (Play all reads Stop while it runs), any effect, or **Esc** ends it; Esc stops it before
+  it can leave the mode. When it reaches the end a notice says "Every effect played".
+- **Closing the tray only puts it away** (E, Esc, its ×, the chip): what is playing plays on,
+  so an effect can be pressed and then watched with the whole screen.
 - **What the themes receive is what play sends.** Each effect is a short script of the gameplay
   events in the pinned physics order (ADR-0011, `physics-callback-schedule.test.js`): HARD_DROP
   and PIECE_LOCK in one tick; then per wave COMBO (the cascade depth, from the second wave),
@@ -191,12 +198,16 @@ Moments      [T-spin] [Perfect clear] [Level up]
   up climbs one level each time.
 - One effect at a time: a new one ends the one before it (play never overlaps two locks).
 - The tray stands at the right edge on a wide screen, clear of the middle where the board would
-  be and where themes play their effects; on a phone it lies along the bottom, each group one row
-  that scrolls sideways, and notices step up above it. It stays until closed (E, Esc, its ×, the
-  chip), steps aside with the world bar whenever something else has the screen (the Hub, the
-  breathing guide, a Hale session, the rest veil) and ends what it was playing. Drift holds while
-  it is open, so the world you are trying stays. While it is in view it owns Esc, as the Hub
-  does (it listens on the way down, before Settings' handler in `controls.js`).
+  be and where themes play their effects. On a phone it is a short strip along the bottom (about
+  a fifth of the screen, where it was over half): one line with the theme's name, Play all and
+  ×, then the effects in two rows that scroll sideways together, three groups to a row, fading
+  at the edge where more wait. Notices stand on it (the tray publishes its height as
+  `--serenity-effects-h`), and the dock steps out while it is open. It steps aside with the
+  world bar whenever something else has the screen (the Hub, the breathing guide, a Hale
+  session, the rest veil), and that ends what was playing. Drift holds while it is open or an
+  effect plays, so the world you are trying stays. While it is in view, or Play all runs with it
+  folded away, it owns Esc, as the Hub does (it listens on the way down, before Settings'
+  handler in `controls.js`).
 - If **Background reacts to combos** is off (Settings › Visual), the tray says so: themes ignore
   these events then.
 - For captures and scripts: `serenityBlocks.gameModeManager.getCurrentMode().playEffect('quad')`
@@ -257,7 +268,8 @@ the arrows' order, delay and save, the rest timer, touch rhythm), `camera-breath
 between the two places, GPU release, never in a session or outside Serenity),
 `serenity-effects.test.js` (every effect's events against the physics order, through the real
 emitters and the consumer-audit payload rules, effects standing on their own against
-`ComboTracker`, the player's timing, Play all, stopping), and the updated
+`ComboTracker`, the player's timing, Play all, stopping, and "every effect played" only at the
+end), and the updated
 `serenity-random-theme.test.js` / `serenity-breathing-session-input.test.js`.
 
 ## Verification
@@ -291,6 +303,19 @@ listeners each; Esc closed the tray both with focus inside it and on the page, a
 Esc opened Settings; no horizontal scroll on either size; no console errors or warnings besides
 SwiftShader's own driver notes. The phone pass found group labels running into the buttons, fixed
 before commit.
+
+**Effects out of the way** (2026-10-23, after Olov found the tray hid most of the theme while
+Play all ran, stopped everything when closed, and covered a phone screen): the real game on
+SwiftShader (`index.html?skipIntro=1&forceWebGL=1&unlockAll=1`, Forest, 1440×900 and 390×844 with
+touch) and a scratch page running the real `SerenityModeUi`, bar, tray and stylesheets over a
+still image (same sizes, at full frame rate), through a scratch Playwright driver, with no console
+errors: Play all folded the tray, the dock read "Effects · 6 of 16" with Stop beside it, and Esc
+stopped the tour and stayed in Serenity Mode; Fever pressed and the tray closed kept playing; from
+the keyboard, Enter on Play all left the focus on the dock's Stop; on the phone the tray measured
+172 px of 844 (it was up to 56 %), and notices stood on it. The same pass found notices on a phone
+wrapping after a word or two (a fixed box at `left: 50%` only had the right half of the screen
+to grow into); they now take their own width. SwiftShader in that container draws about a frame
+a second there, so its 1440 px captures lag the page's state; the scratch page shows the layout.
 
 Captures were taken in the session's scratch space and are not committed.
 
