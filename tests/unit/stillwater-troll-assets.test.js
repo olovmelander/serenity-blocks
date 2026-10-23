@@ -11,10 +11,10 @@ import { describe, expect, it } from 'vitest';
 
 /** Each file and the band its triangle count is kept in (the sculpt is retuned within it). */
 const TROLL_LODS = [
-    { file: 'troll-lod0.glb', triangles: 32_000 },
-    { file: 'troll-lod1.glb', triangles: 17_000 },
-    { file: 'troll-lod2.glb', triangles: 9_700 },
-    { file: 'troll-lod3.glb', triangles: 3_700 },
+    { file: 'troll-lod0.glb', triangles: 52_000 },
+    { file: 'troll-lod1.glb', triangles: 28_000 },
+    { file: 'troll-lod2.glb', triangles: 15_000 },
+    { file: 'troll-lod3.glb', triangles: 6_000 },
 ];
 const SPIRIT_LODS = [
     { file: 'spirit-lod0.glb', triangles: 11_166 },
@@ -218,8 +218,10 @@ describe('Stillwater figure assets', () => {
     it('keeps the troll\'s source asset, and every shipping mesh far smaller than it', () => {
         expect(existsSync(assetUrl('troll.glb'))).toBe(true);
         const sourceSize = statSync(assetUrl('troll.glb')).size;
+        // (A tenth of it at most: the finest troll, his mane in hundreds of locks and the way each
+        // of them runs, is about a megabyte.)
         LODS.forEach(({ file }) => {
-            expect(statSync(assetUrl(file)).size, file).toBeLessThan(sourceSize * 0.06);
+            expect(statSync(assetUrl(file)).size, file).toBeLessThan(sourceSize * 0.1);
         });
     });
 });

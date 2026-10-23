@@ -18,12 +18,17 @@ from . import troll_shape as ts
 from .figure_glb import write_figure
 from .rigs import TROLL, build_armature
 
-#: Triangles per LOD (Ultra/Extreme, High, Medium, Low/Minimal).
-LOD_TRIANGLES = (32000, 17000, 9700, 3700)
+#: Triangles per LOD (Ultra/Extreme, High, Medium, Low/Minimal). (The mane is many thin locks: it
+#: needs more of them than the smooth masses of the first design did.)
+LOD_TRIANGLES = (52000, 28000, 15000, 6000)
+
+#: The groups of the mane drawn as pale beard-lichen, not moss (`r` 0.18 on them: see PACK).
+LICHEN = ('beard', 'tuft', 'lichen')
 
 #: What each part is packed as: (r skin, a kind); b is the moss share, g the occlusion.
-#: r: 1 his ruddy face, 0.65 his hide, 0.2 an eye. a: the lock's tone (0..0.6) on moss, 0.7 an eye,
-#: 1 a mushroom. Leather is all zero.
+#: r: 1 his ruddy face, 0.65 his hide, 0.2 an eye, 0.18 beard-lichen (on moss). a: the lock's tone
+#: (0..0.6) on moss, 0.7 an eye, 1 a mushroom. Leather (his loincloth, nails, the twigs in his hair)
+#: is all zero.
 PACK = {
     'skin': (1.0, 0.0),
     'hide': (0.65, 0.0),
@@ -105,13 +110,18 @@ def pack_parts(obj, prims):
     """Write `Pack` = (skin, 0, moss, kind) for each vertex of `obj`; return the part shares and lock groups."""
     me = obj.data
     P = np.array([v.co[:] for v in me.vertices])
-    W, tone, group = ts.parts_at(prims, P)
+    W, tone, group, flow = ts.parts_at(prims, P)
     ix = {name: i for i, name in enumerate(ts.PARTS)}
     r = sum(W[:, ix[k]] * PACK[k][0] for k in PACK)
+    # (Beard-lichen is moss told apart by a little `r`, which no other moss has.)
+    r = r + W[:, ix['pelt']] * np.isin(group, LICHEN) * 0.18
     a = sum(W[:, ix[k]] * (tone if PACK[k][1] is None else PACK[k][1]) for k in PACK)
     b = W[:, ix['pelt']]
     pack = me.color_attributes.new('Pack', 'FLOAT_COLOR', 'POINT')
     pack.data.foreach_set('color', np.stack([r, np.zeros_like(r), b, a], 1).ravel().astype(np.float32))
+    # The way the hair runs at each vertex (its lock's root to tip), for the strands in the shader.
+    attr = me.attributes.new('Flow', 'FLOAT_VECTOR', 'POINT')
+    attr.data.foreach_set('vector', flow.astype(np.float32).ravel())
     return W, group
 
 
@@ -120,22 +130,35 @@ def _ramp(a, b, x):
 
 
 def mane_weights(P, group):
-    """How the mane hangs: beard and brows on his head; the crown's locks from his head, then down
-    his torso by height; the mantle by height down his torso, its shoulder locks partly on his
-    collarbones (which shrug)."""
+    """How the mane hangs: brows and the tufts at his ears on his head; his beard from his head,
+    handing over through his neck to his chest as it falls (so it bends smoothly as he bows his
+    head); the crown's locks (and the strays and twigs among them) from his head, then down his
+    torso by height; the mantle by height down his torso, its shoulder locks partly on his
+    collarbones (which shrug); the moss over his shoulders on his upper arms, out from his
+    collarbones."""
     z = P[:, 2]
-    on_head = np.isin(group, ['beard', 'fringe'])
-    crown = group == 'crown'
-    head = np.where(on_head, 1.0, np.where(crown, _ramp(0.15, 0.25, z), 0.0))
-    rest = 1.0 - head
+    on_head = np.isin(group, ['fringe', 'tuft'])
+    crown = np.isin(group, ['crown', 'stray', 'twig'])
+    beard = group == 'beard'
+    head = np.where(on_head, 1.0, np.where(crown, _ramp(0.15, 0.25, z), np.where(beard, _ramp(0.12, 0.2, z), 0.0)))
+    neck = np.where(beard, _ramp(-0.04, 0.1, z), 0.0) * (1.0 - head)
+    rest = 1.0 - head - neck
     chest = _ramp(-0.04, 0.07, z) * rest
     spine = _ramp(-0.18, -0.08, z) * (rest - chest)
     hips = np.maximum(rest - chest - spine, 0.0)
-    shoulder = np.where(on_head, 0.0, 0.55 * _ramp(0.13, 0.21, np.abs(P[:, 0])) * _ramp(-0.12, 0.0, z))
+    shoulder = np.where(on_head | beard, 0.0, 0.55 * _ramp(0.13, 0.21, np.abs(P[:, 0])) * _ramp(-0.12, 0.0, z))
+    pauldron = group == 'shoulder'
+    arm = 0.8 * _ramp(0.15, 0.22, np.abs(P[:, 0]))
     out = []
     for i in range(len(P)):
+        if pauldron[i]:
+            side = 'L' if P[i, 0] > 0 else 'R'
+            w = {'upper' + side: arm[i], 'clav' + side: (1.0 - arm[i]) * 0.65, 'chest': (1.0 - arm[i]) * 0.35}
+            out.append({k: v for k, v in w.items() if v > 1e-4})
+            continue
         keep = 1.0 - shoulder[i]
-        w = {'head': head[i] * keep, 'chest': chest[i] * keep, 'spine': spine[i] * keep, 'hips': hips[i] * keep}
+        w = {'head': head[i] * keep, 'neck': neck[i] * keep, 'chest': chest[i] * keep, 'spine': spine[i] * keep,
+             'hips': hips[i] * keep}
         if shoulder[i] > 0:
             w['clavL' if P[i, 0] > 0 else 'clavR'] = shoulder[i]
         out.append({k: v for k, v in w.items() if v > 1e-4})
@@ -169,8 +192,10 @@ def make_lods(work, prims, log=print):
         bpy.ops.object.parent_set(type='ARMATURE_AUTO')
         lme = lod.data
         P = np.array([v.co[:] for v in lme.vertices])
-        # (The mushrooms grow in the moss and hang with it; an eye is of his head.)
-        moss = np.minimum(W[:, ix['pelt']] + W[:, ix['cap']], 1.0)
+        # (The mushrooms grow in the moss and hang with it, and so do the twigs caught in it; an eye
+        # is of his head.)
+        twig = (group == 'twig') * W[:, ix['leather']]
+        moss = np.minimum(W[:, ix['pelt']] + W[:, ix['cap']] + twig, 1.0)
         eye = W[:, ix['eye']]
         hang = mane_weights(P, group)
         groups = {g.name: g for g in lod.vertex_groups}
@@ -294,15 +319,22 @@ def build(out_dir, log=print, preview_dir=None, voxel=0.003):
         pack = lod.data.color_attributes['Pack']
         ao = lod.data.color_attributes['AO']
 
+        flows = lod.data.attributes['Flow']
+
         def colour(i, pack=pack, ao=ao):
             p = pack.data[i].color
             return (p[0], ao.data[i].color[0], p[2], p[3])
+
+        def flow(i, flows=flows):
+            return tuple(flows.data[i].vector)
         path = out_dir / f'troll-lod{li}.glb'
         n, tris, size = write_figure(lod, TROLL, colour, str(path), 'Serenity Blocks - Stillwater troll (Blender, built from numbers)', {
-            'stillwaterTroll': 3,
-            'colour': 'r skin (1 his ruddy face, 0.65 his hide, 0.2 an eye), g ambient occlusion, b moss, '
-                      "a kind (the moss lock's tone 0..0.6, 0.7 an eye, 1 a mushroom); all but g zero = leather",
-        })
+            'stillwaterTroll': 4,
+            'flow': '_FLOW: the way the hair runs at each vertex (its lock, root to tip), int8 unit vectors',
+            'colour': 'r skin (1 his ruddy face, 0.65 his hide, 0.2 an eye, 0.18 beard-lichen on moss), '
+                      "g ambient occlusion, b moss, a kind (the moss lock's tone 0..0.6, 0.7 an eye, 1 a mushroom); "
+                      'all but g zero = leather (loincloth, nails, twigs)',
+        }, flow=flow)
         log(f'wrote {path.name}: {n} vertices, {tris} triangles, {size} bytes')
         written.append(path)
     return written
