@@ -7,6 +7,7 @@ import { eventBus, EVENTS } from '../events/event-bus.js';
 import {
     LEGACY_SCORE_MODE, addGameToModeStatistics, mergeStatisticsSnapshots, modeStatisticsOf,
 } from '../core/progression/score-statistics.js';
+import { openDatabaseOnce } from '../utils/indexed-db-open.js';
 
 /** What a run records besides its score (Infinity): its deepest cascade and its seconds. */
 const RUN_DETAILS = ['cascade', 'duration'];
@@ -82,20 +83,15 @@ export class HighScoreManager {
     }
 
     /**
-     * Initializes the IndexedDB database
+     * Opens the IndexedDB database once (utils/indexed-db-open.js: concurrent callers share it,
+     * and it gives way to a newer version of the game in another tab).
      * @returns {Promise<void>}
      */
     async init() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
-
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-                this.db = request.result;
-                resolve();
-            };
-
-            request.onupgradeneeded = (event) => {
+        return openDatabaseOnce(this, {
+            name: this.DB_NAME,
+            version: this.DB_VERSION,
+            upgrade: (event) => {
                 const db = event.target.result;
 
                 // High Scores Store - sorted by score descending
@@ -137,7 +133,7 @@ export class HighScoreManager {
                         cursor.continue();
                     };
                 }
-            };
+            },
         });
     }
 

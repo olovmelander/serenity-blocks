@@ -115,6 +115,8 @@ import { SoundManager } from './audio/sound-manager.js';
 import { ThemeManager } from './themes/theme-manager.js';
 import { getThemeCollection } from './themes/theme-collection.js';
 import { syncRandomThemeRotation } from './themes/random-theme-rotation.js';
+import { scheduleBrowserIdleTask } from './utils/browser-idle-task.js';
+import { adoptLateApp } from './utils/late-app-adoption.js';
 import { ensurePreferredMenuMusic } from './ui/startup-music.js';
 import {
     themeCollectionDependencies, sanitizeCollectionThemeSetting, focusThemeCollectionTarget, switchToRandomCollectedTheme,
@@ -396,53 +398,6 @@ function onNextPaint() {
 
         requestAnimationFrame(() => requestAnimationFrame(resolve));
     });
-}
-
-function scheduleBrowserIdleTask(task, { delayMs = 0, timeout = 2000 } = {}) {
-    let timeoutId = null;
-    let idleId = null;
-    let cancelled = false;
-
-    const runTask = () => {
-        if (cancelled) {
-            return;
-        }
-
-        idleId = null;
-        timeoutId = null;
-        Promise.resolve(task()).catch((error) => {
-            console.warn('[Startup] Deferred task failed:', error);
-        });
-    };
-
-    const startTask = () => {
-        if (cancelled) {
-            return;
-        }
-
-        timeoutId = null;
-
-        if (typeof requestIdleCallback === 'function') {
-            idleId = requestIdleCallback(runTask, { timeout });
-            return;
-        }
-
-        timeoutId = setTimeout(runTask, 0);
-    };
-
-    timeoutId = setTimeout(startTask, delayMs);
-
-    return () => {
-        cancelled = true;
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-            timeoutId = null;
-        }
-        if (typeof cancelIdleCallback === 'function' && idleId !== null) {
-            cancelIdleCallback(idleId);
-            idleId = null;
-        }
-    };
 }
 
 function updateStartupShellStatus() {
@@ -5116,32 +5071,53 @@ async function bootstrap() {
             + `intro ${menuPipelineSnapshot.introStatus} in `
             + `${Math.round(menuPipelineSnapshot.metrics.introDurationMs || 0)}ms`,
         );
-        app?.markBootStage?.('menu-ready', {
-            safeMode,
-        });
         installFirstInteractionPerformanceReport(app, (event) => {
             void app?.startDeferredDesktopServices?.(`first-interaction:${event?.type || 'unknown'}`);
         });
-        if (app && typeof window !== 'undefined') {
-            installPageTeardown(app); // pagehide, and the desktop quit's save flush (LIFE-14)
+        // What needs the app once the menu is up: run now, or for an app the watchdog's degraded
+        // menu beat, when it arrives (utils/late-app-adoption.js).
+        const wireStartedApp = (startedApp) => {
+            startedApp.markBootStage?.('menu-ready', {
+                safeMode,
+            });
+            if (typeof window !== 'undefined') {
+                installPageTeardown(startedApp); // pagehide, and the desktop quit's save flush (LIFE-14)
 
-            app.deferredDesktopServicesTimer = window.setTimeout(() => {
-                void app.startDeferredDesktopServices('menu-idle');
-            }, 2000);
-            app.cleanupHandlers.push(() => {
-                if (app.deferredDesktopServicesTimer) {
-                    clearTimeout(app.deferredDesktopServicesTimer);
-                    app.deferredDesktopServicesTimer = null;
-                }
+                startedApp.deferredDesktopServicesTimer = window.setTimeout(() => {
+                    void startedApp.startDeferredDesktopServices('menu-idle');
+                }, 2000);
+                startedApp.cleanupHandlers.push(() => {
+                    if (startedApp.deferredDesktopServicesTimer) {
+                        clearTimeout(startedApp.deferredDesktopServicesTimer);
+                        startedApp.deferredDesktopServicesTimer = null;
+                    }
+                });
+            }
+            if (!safeMode && deferInitialThemeLoad && startedApp.loadInitialTheme) {
+                scheduleBrowserIdleTask(async () => {
+                    await startedApp.loadInitialTheme();
+                    await reportDesktopStartupPhase('initial-theme-ready');
+                }, { delayMs: 900, timeout: 3200 });
+            }
+            // Enable gamepad navigation for game mode selection
+            startedApp.gamepadController?.enableGameModeSelection();
+            startedApp.syncPerformanceMonitorSampling?.();
+        };
+        if (app) {
+            wireStartedApp(app);
+        } else {
+            adoptLateApp(appInitPromise, (lateApp) => {
+                app = lateApp;
+                lateApp.setBootCoordinator?.(desktopBootCoordinator);
+                lateApp.markBootStage?.('core-ready', { appMode: desktopRuntimeConfig.appMode });
+                lateApp.startEssentialDesktopServices?.('late-init');
+                lateApp.modalManager?.show('start');
+                lateApp.allowCustomCursorMount?.();
+                wireStartedApp(lateApp);
+                if (typeof window !== 'undefined') window.serenityBlocks = lateApp;
             });
         }
-
-        if (!safeMode && deferInitialThemeLoad && app?.loadInitialTheme) {
-            scheduleBrowserIdleTask(async () => {
-                await app.loadInitialTheme();
-                await reportDesktopStartupPhase('initial-theme-ready');
-            }, { delayMs: 900, timeout: 3200 });
-        } else if (safeMode) {
+        if (safeMode) {
             performanceMonitor.recordEvent('startup_initial_theme_skipped', {
                 safeMode: true,
             });
@@ -5153,13 +5129,7 @@ async function bootstrap() {
             }, { delayMs: 650, timeout: 2600 });
         }
 
-        // Enable gamepad navigation for game mode selection (no app on the degraded path)
-        if (app?.gamepadController) {
-            app.gamepadController.enableGameModeSelection();
-        }
-
         performanceMonitor.setSamplingReason?.('startup', false);
-        app?.syncPerformanceMonitorSampling?.();
 
         // Expose to window for debugging (can be removed in production)
         if (typeof window !== 'undefined') {

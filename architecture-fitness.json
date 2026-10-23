@@ -3,7 +3,7 @@
   "capturedAt": "2026-10-23",
   "metrics": {
     "lines:ffa-p2p-game-state": 4308,
-    "lines:main": 5203,
+    "lines:main": 5173,
     "lines:OdysseyMode": 4271,
     "lines:LocalMultiplayerMode": 2467,
     "lines:OnlineMultiplayerMode": 2784,
