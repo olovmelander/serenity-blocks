@@ -199,7 +199,7 @@ export function create({ scene, camera, params }) {
                 }
             });
             const meshes = {};
-            ['glassInstancedMesh', 'glowInstancedMesh', 'innerCoreMesh', 'particleSystem', 'lockInstancedMesh']
+            ['glassInstancedMesh', 'haloMesh', 'windowMesh', 'starInstancedMesh']
                 .forEach((key) => {
                     const mesh = nodeManager[key];
                     if (!mesh) return;
@@ -237,7 +237,10 @@ export function create({ scene, camera, params }) {
                 nodeManager.setCameraProgress(cameraProgress);
             }
             pathRenderer.update(delta, directorState);
-            if (nodesReady) nodeManager.update(delta, directorState?.path?.beatPulse ?? 0);
+            if (nodesReady) {
+                nodeManager.update(delta, directorState?.path?.beatPulse ?? 0);
+                pathRenderer.setOrbOccluders(nodeManager.getWindowOccluders());
+            }
             // Phase lock: the playground's ?t= holds time; the renderer/manager clocks follow it.
             pathRenderer.time = time;
             nodeManager.time = time;
