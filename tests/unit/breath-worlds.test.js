@@ -105,6 +105,27 @@ describe('breathing world host', () => {
         host.dispose();
     });
 
+    it.each(BREATH_WORLDS.map((world) => world.id))('builds %s again after leaving it, sharing nothing it disposed', (id) => {
+        // Leaving a world disposes its geometry and materials. A second build that reused one of
+        // them (three's shared Sprite geometry, a module-level buffer) would submit a destroyed
+        // buffer and never draw: Heart Glow's halos did, on every return and mood change.
+        const { host } = createHost();
+        const parts = () => {
+            const found = new Set();
+            host.root.traverse((node) => {
+                if (node.geometry) found.add(node.geometry);
+                [node.material].flat().forEach((material) => material && found.add(material));
+            });
+            return found;
+        };
+        host.setWorld(id, { mood: 0, seed: 0.5 });
+        const first = parts();
+        // Another visit seed: the same world, rebuilt.
+        host.setWorld(id, { mood: 0, seed: 0.25 });
+        parts().forEach((part) => expect(first.has(part), `${id} reuses a disposed ${part.type}`).toBe(false));
+        host.dispose();
+    });
+
     it('maps the z = 0 plane onto hero space at any aspect, with the hero above centre', () => {
         const { host, camera } = createHost();
         host.setFocus(0.2);
