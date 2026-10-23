@@ -23,6 +23,13 @@
  *
  * A foreground overlay, drawn after the galaxy, holds the nearest dust (dark, out of focus, in the
  * bottom corners), the nearest stars, and a few bright stars with diffraction spikes.
+ *
+ * Moods change the light, not the place: the Hubble palette, emerald and gold (O-III and
+ * H-alpha) around a galaxy turned nearly face-on, hydrogen crimson against blue oxygen around one
+ * seen nearly edge-on, and a dark nebula whose lane of cold dust crosses in front of the galaxy.
+ * Specks of dust drift between us and the galaxy, some close to the lens. Now and then a distant
+ * nova brightens and fades over several seconds with a faint light echo swelling round it, and a
+ * meteor crosses high in the frame.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -30,8 +37,8 @@ import {
     smoothstep, step, uniform, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    backdropPoint, eventWindow, fadeOut, fbm, fbm3, gnoise, gnoise3, hash21, layer, ridged, shootingStar, smin, starfield,
-    turn,
+    backdropPoint, eventWindow, fadeOut, fbm, fbm3, gnoise, gnoise3, hash21, layer, ridged, shootingStar, smin,
+    starfield, turn,
 } from '../stage/breath-tsl.js';
 
 const TAU = Math.PI * 2;
@@ -444,11 +451,13 @@ function farSky(p, u, {
     const t = u.time;
     const col = pal.void.add(starfield(layer(p, u, 0.02), u, 1.0).mul(0.68)).toVar();
     const qA = layer(p, u, 0.12).toVar();
-    const warpA = vec2(gnoise(qA.mul(0.6).add(vec2(t.mul(0.01), 0))), gnoise(qA.mul(0.6).add(vec2(5.2, 1.3))))
+    // Each visit moves the gas a little (none at the poster's seed, 0.5); the light stays put.
+    const qV = qA.add(u.seed.sub(0.5).mul(vec2(3.7, 2.3))).toVar();
+    const warpA = vec2(gnoise(qV.mul(0.6).add(vec2(t.mul(0.01), 0))), gnoise(qV.mul(0.6).add(vec2(5.2, 1.3))))
         .sub(0.5).toVar();
-    const cloudA = fbm3(vec3(qA.mul(1.05).add(warpA.mul(1.6)), t.mul(0.008)), 4).toVar();
-    const wispA = ridged(qA.mul(2.3).add(warpA.mul(2.4)).add(20.0), Math.max(3, octaves - 1)).toVar();
-    const hueA = gnoise(qA.mul(0.45).add(40.0)).toVar();
+    const cloudA = fbm3(vec3(qV.mul(1.05).add(warpA.mul(1.6)), t.mul(0.008)), 4).toVar();
+    const wispA = ridged(qV.mul(2.3).add(warpA.mul(2.4)).add(20.0), Math.max(3, octaves - 1)).toVar();
+    const hueA = gnoise(qV.mul(0.45).add(40.0)).toVar();
     const lightA = keyLight(qA.mul(1.15)).toVar();
     const brightA = smoothstep(0.3, 0.85, cloudA).toVar();
     const tintA = mix(pal.oiii, pal.hAlpha, smoothstep(0.42, 0.62, hueA.add(lightA.oneMinus().mul(0.55)).sub(0.12)))
@@ -466,7 +475,7 @@ function farSky(p, u, {
     col.addAssign(starfield(layer(p, u, 0.3).add(vec2(13.7, 5.1)), u, 0.4).mul(0.6));
     // Dark lanes: sinuous filaments along one contour of a warped field; forward scattering lights
     // their edges in the colour of the glow behind them.
-    const qL = layer(p, u, 0.26).toVar();
+    const qL = layer(p, u, 0.26).add(u.seed.sub(0.5).mul(vec2(2.9, 1.7))).toVar();
     // A finer fibrous field frays their edges and thins their cores, so they read as smoke and
     // filaments rather than smooth tubes.
     const laneN = fbm(qL.mul(vec2(1.5, 2.1)).add(warpA.mul(0.9)).add(60.0), 4).toVar();
@@ -531,7 +540,11 @@ export const MOODS = Object.freeze([
             strength: 0.55, radius: 0.72, threshold: 0.6, breath: 0.5,
         },
         grade: {
-            shadows: [0.9, 1.04, 0.98], highlights: [1.05, 1.02, 0.92], saturation: 1.08, contrast: 1.05, vignette: 0.42,
+            shadows: [0.9, 1.04, 0.98],
+            highlights: [1.05, 1.02, 0.92],
+            saturation: 1.08,
+            contrast: 1.05,
+            vignette: 0.42,
         },
         exposure: 1.0,
     },
@@ -564,7 +577,11 @@ export const MOODS = Object.freeze([
             strength: 0.55, radius: 0.72, threshold: 0.6, breath: 0.5,
         },
         grade: {
-            shadows: [0.98, 0.9, 1.12], highlights: [1.06, 0.98, 0.96], saturation: 1.08, contrast: 1.06, vignette: 0.42,
+            shadows: [0.98, 0.9, 1.12],
+            highlights: [1.06, 0.98, 0.96],
+            saturation: 1.08,
+            contrast: 1.06,
+            vignette: 0.42,
         },
         exposure: 1.0,
     },
@@ -766,22 +783,25 @@ export function createNebulaWorld({
             const pick = nova.z;
             const qN = layer(p, u, 0.3).toVar();
             const side = step(0.5, hash21(vec2(pick, 2.2))).mul(2).sub(1);
+            // Beside the galaxy, in the window every screen keeps clear of walls.
             const at = vec2(
-                side.mul(mix(float(0.42), float(0.88), hash21(vec2(pick, 4.4)))).mul(u.ext.x),
-                mix(float(0.3), float(0.85), hash21(vec2(pick, 6.6))).mul(top),
+                side.mul(mix(float(0.3), float(0.85), hash21(vec2(pick, 4.4)))).mul(u.ext.x),
+                mix(float(0.28), float(0.66), hash21(vec2(pick, 6.6))),
             );
             const d = turn(qN.sub(at), 0.26).toVar();
             const d2 = dot(d, d).toVar();
             const pxx = u.px.mul(u.px).toVar();
             const core = exp(d2.div(pxx.mul(3.2)).negate()).mul(5);
-            const halo = float(1).div(d2.mul(1600).add(1)).mul(0.4);
+            const halo = float(1).div(d2.mul(1200).add(1)).mul(0.45);
             const spikeAt = (along, across) => exp(across.mul(across).div(pxx.mul(1.2)).negate())
                 .mul(float(0.004).div(along.abs().add(0.004))).mul(fadeOut(0.0, 0.07, along.abs()));
             const spikes = spikeAt(d.x, d.y).add(spikeAt(d.y, d.x)).mul(2.2);
-            const shellAt = d2.sqrt().sub(nova.y.mul(0.07).add(0.012)).div(0.006);
-            const shell = exp(shellAt.mul(shellAt).negate()).mul(float(1).sub(nova.y)).mul(0.12);
-            const tint = mix(vec3(...mood.nova[0]), vec3(...mood.nova[1]), smoothstep(0.3, 0.9, nova.y));
-            col.addAssign(tint.mul(core.add(halo).add(spikes).add(shell)).mul(nova.x.mul(u.life)).mul(clear));
+            // The light echo: a faint ring of lit gas swelling outward in the fading colour.
+            const shellAt = d2.sqrt().sub(nova.y.mul(0.09).add(0.015)).div(nova.y.mul(0.01).add(0.005));
+            const shell = exp(shellAt.mul(shellAt).negate()).mul(smoothstep(0.05, 0.3, nova.y)).mul(0.22);
+            const late = vec3(...mood.nova[1]);
+            const tint = mix(vec3(...mood.nova[0]), late, smoothstep(0.3, 0.9, nova.y));
+            col.addAssign(tint.mul(core.add(halo).add(spikes)).add(late.mul(shell)).mul(nova.x.mul(u.life)).mul(clear));
         });
 
         // The galaxy's bulge and core, behind the disc (its near-side lanes cross in front).
@@ -897,14 +917,14 @@ export function createNebulaWorld({
         motes: {
             motion: 'drift',
             count: 90,
-            size: 0.012,
+            size: 0.014,
             speed: 0.5,
             band: [-2.3, 1.9],
             depth: 1.6,
             bokeh: 0.28,
             colorA: mood.motes[0],
             colorB: mood.motes[1],
-            gain: 0.55,
+            gain: 0.8,
         },
         bloom: { ...mood.bloom },
         grade: { ...mood.grade },
