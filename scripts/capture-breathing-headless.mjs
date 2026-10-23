@@ -14,7 +14,7 @@
  *
  *   --baseUrl=URL      dev server (default http://127.0.0.1:5173)
  *   --out=DIR          where sheets go (default artifacts/breathing-headless)
- *   --sheet=a,b        pairs | portrait | webgl | motion | single | tiers (default pairs)
+ *   --sheet=a,b        pairs | portrait | webgl | motion | single | tiers | moods (default pairs)
  *   --posters          write public/assets/breathing/<id>.webp, the stills the Hub's cards show
  *   --worlds=a,b       limit to these technique ids
  *   --breath=0..1      lung fill for `single` (default 0.75)
@@ -98,9 +98,13 @@ function breathAt(pattern, t) {
 const RENDER_TILES = `async (tiles, cols, tileWidth, type, quality) => {
     const source = document.querySelector('#stage canvas');
     const raf = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    // A tile with allMoods stands for one tile per mood of its world.
+    tiles = tiles.flatMap((tile) => (tile.allMoods
+        ? window.__BREATH_LAB__.moods(tile.world).map((mood, index) => ({ ...tile, mood: index, label: tile.label + ' · ' + mood.name }))
+        : [tile]));
     const draw = async (tile) => {
         const lab = window.__BREATH_LAB__;
-        lab.setWorld(tile.world);
+        lab.setWorld(tile.world, tile.mood ?? 0, tile.seed ?? 0.5);
         lab.setSession(tile.session || null);
         lab.setBreath({ breath: tile.breath, phase: tile.phase, progress: tile.progress });
         // A tile may carry the scene clock and the breath integral that a real run would have reached.
@@ -182,6 +186,15 @@ function jobs() {
             cols: 6,
             tileWidth: 300,
             tiles: WORLDS.map(([id, name]) => tile(id, name, 0.7)),
+        },
+        moods: {
+            backend: 'webgpu',
+            width: 1280,
+            height: 720,
+            query: '',
+            cols: 4,
+            tileWidth: 480,
+            tiles: WORLDS.map(([id, name]) => ({ ...tile(id, name, 0.85), allMoods: true })),
         },
         webgl: {
             backend: 'webgl2',

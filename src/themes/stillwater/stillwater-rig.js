@@ -113,6 +113,15 @@ export function buildFigure(gltf, material) {
         }));
     } else geometry.computeVertexNormals();
     if (src.attributes.color) geometry.setAttribute('color', compact(src.attributes.color));
+    // (The way the hair runs at each vertex, where the file has it: the troll's `_FLOW`.)
+    if (src.attributes._flow) {
+        geometry.setAttribute('flow', widen(src.attributes._flow, 3, (v) => {
+            const l = Math.hypot(v[0], v[1], v[2]) || 1;
+            v[0] /= l;
+            v[1] /= l;
+            v[2] /= l;
+        }));
+    }
     geometry.setAttribute('skinIndex', compact(src.attributes.skinIndex));
     geometry.setAttribute('skinWeight', compact(src.attributes.skinWeight));
     if (src.index) geometry.setIndex(compact(src.index));

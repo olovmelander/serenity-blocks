@@ -51,6 +51,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import trollLod0Url from './assets/troll-lod0.glb?url';
 import trollLod1Url from './assets/troll-lod1.glb?url';
 import trollLod2Url from './assets/troll-lod2.glb?url';
@@ -114,7 +115,23 @@ export const TROLL_LOOKS = Object.freeze({
     }),
 });
 
-/** The staff in its own frame: y from its foot up, the crook bending toward +z at the top. */
+/** Metres of the staff's radius where his hand slides on it (his fist closes on so much: the
+ * sculpt's grip, troll_shape.py `STAFF_R`), and the stretch of it his hand may hold (metres from
+ * its foot: the planned grip, slid down or up as far as FIST_HOLD lets it). */
+export const STAFF_GRIP = Object.freeze({ radius: 0.046, from: 0.24, to: 1.5 });
+
+const smooth01 = (a, b, x) => {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+};
+
+/**
+ * The staff in its own frame: y from its foot up, the crook bending toward +z at the top. An old
+ * branch: a knob of root for its foot, its grain twisting round it in flutes (gentle where his hand
+ * slides, so his fist closes on it), knots above his reach, a few twigs broken off short, and the
+ * crook its top bends into, thinning to its end. The uv runs along it (x: 0 at the foot, 1 at the
+ * crook's end) and round it (y), the twigs too.
+ */
 export function createStaffGeometry(long = STAFF.length) {
     const pts = [
         [0, 0, 0], [0.018, long * 0.22, 0.008], [-0.014, long * 0.45, -0.006], [0.012, long * 0.68, 0.01],
@@ -122,21 +139,106 @@ export function createStaffGeometry(long = STAFF.length) {
         [0, long * 0.955, 0.215],
     ].map((p) => new THREE.Vector3(p[0], p[1], p[2]));
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
-    const geometry = new THREE.TubeGeometry(curve, 56, 0.032, 7, false);
-    // Thicker at the foot, thinner toward the crook, with a knot here and there.
-    const pos = geometry.attributes.position;
+    const SEG = 120;
+    const RAD = 10;
+    const tube = new THREE.TubeGeometry(curve, SEG, 1, RAD, false);
+    const pos = tube.attributes.position;
     const centre = new THREE.Vector3();
     const p = new THREE.Vector3();
+    const bump = (s, at, width, height) => height * Math.exp(-(((s - at) / width) ** 2));
+    const g = STAFF_GRIP;
     for (let i = 0; i < pos.count; i++) {
-        const ring = Math.floor(i / 8);
-        const t = Math.min(1, ring / 56);
-        curve.getPointAt(Math.min(1, t), centre);
+        const t = Math.floor(i / (RAD + 1)) / SEG;
+        const phi = ((i % (RAD + 1)) / RAD) * Math.PI * 2;
+        const s = t * long;
+        curve.getPointAt(t, centre);
         p.fromBufferAttribute(pos, i).sub(centre);
-        const knot = 1 + 0.35 * Math.exp(-(((t - 0.31) * 30) ** 2)) + 0.28 * Math.exp(-(((t - 0.62) * 34) ** 2));
-        p.multiplyScalar((1.15 - 0.45 * t) * knot);
+        let r = g.radius + 0.002 - 0.007 * t;
+        r *= 1 - 0.18 * smooth01(0.84, 0.94, t) - 0.3 * smooth01(0.94, 1, t);
+        r += bump(s, 0, 0.08, 0.022) + bump(s, 0.11, 0.035, 0.005);
+        r += bump(s, 1.68, 0.05, 0.012) + bump(s, 1.98, 0.04, 0.009) + bump(s, 2.2, 0.035, 0.006);
+        const hand = smooth01(g.from - 0.06, g.from + 0.04, s) * (1 - smooth01(g.to - 0.04, g.to + 0.08, s));
+        const flute = 0.075 * Math.sin(3 * phi + s * 2.4) + 0.04 * Math.sin(5 * phi - s * 4.1 + 1.3);
+        r *= 1 + flute * (1 - 0.65 * hand);
+        p.multiplyScalar(r);
         pos.setXYZ(i, centre.x + p.x, centre.y + p.y, centre.z + p.z);
     }
-    geometry.computeVertexNormals();
+    tube.computeVertexNormals();
+    // Twigs broken off short, angled up out of it (above his reach: his hand never meets them).
+    const parts = [tube];
+    const tangent = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    [[1.62, [1, 0, 0.2], 0.1, 0.016], [1.88, [-0.8, 0, 0.5], 0.13, 0.017], [2.08, [0.3, 0, -1], 0.07, 0.013],
+        [2.28, [0.9, 0, -0.3], 0.06, 0.011]].forEach(([s, out, len, radius]) => {
+        const t = s / long;
+        curve.getPointAt(t, centre);
+        curve.getTangentAt(t, tangent);
+        dir.set(out[0], out[1], out[2]).normalize().multiplyScalar(0.75).addScaledVector(tangent, 0.65)
+            .normalize();
+        const twig = new THREE.CylinderGeometry(radius * 0.45, radius, len, 6, 2, false);
+        twig.translate(0, len * 0.5, 0);
+        // (Along it as the staff's uv runs: x by height, y round.)
+        const uvs = twig.attributes.uv;
+        for (let i = 0; i < uvs.count; i++) {
+            const around = uvs.getX(i);
+            uvs.setXY(i, t + uvs.getY(i) * (len / long), around);
+        }
+        q.setFromUnitVectors(yAxis, dir);
+        twig.applyQuaternion(q);
+        twig.translate(centre.x - dir.x * 0.02, centre.y - dir.y * 0.02, centre.z - dir.z * 0.02);
+        parts.push(twig);
+    });
+    const geometry = mergeGeometries(parts, false);
+    parts.forEach((part) => part.dispose());
+    return geometry;
+}
+
+/**
+ * The lantern's frame (its own frame: hung from y = 0, the cage below): a foot of dark iron, six
+ * posts up the corners of its horn panes, a band round their top, the cap, a knob on it and the
+ * bail it hangs by.
+ */
+export function createLanternFrameGeometry() {
+    const parts = [];
+    const foot = new THREE.CylinderGeometry(0.1, 0.094, 0.032, 6, 1, false);
+    foot.translate(0, -0.272, 0);
+    parts.push(foot);
+    const band = new THREE.CylinderGeometry(0.084, 0.084, 0.02, 6, 1, false);
+    band.translate(0, -0.046, 0);
+    parts.push(band);
+    const cap = new THREE.ConeGeometry(0.1, 0.08, 6, 1, false);
+    parts.push(cap);
+    const knob = new THREE.SphereGeometry(0.018, 6, 4);
+    knob.translate(0, 0.046, 0);
+    parts.push(knob);
+    const bail = new THREE.TorusGeometry(0.032, 0.0055, 4, 12, Math.PI);
+    bail.translate(0, 0.04, 0);
+    parts.push(bail);
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const d = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    for (let k = 0; k < 6; k++) {
+        const ang = (k / 6) * Math.PI * 2;
+        a.set(Math.sin(ang) * 0.092, -0.26, Math.cos(ang) * 0.092);
+        b.set(Math.sin(ang) * 0.077, -0.04, Math.cos(ang) * 0.077);
+        const len = d.copy(b).sub(a).length();
+        const post = new THREE.CylinderGeometry(0.0075, 0.0075, len, 4, 1, false);
+        q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+        post.applyQuaternion(q);
+        post.translate((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+        parts.push(post);
+    }
+    const nonIndexed = parts.map((part) => {
+        const flat = part.index ? part.toNonIndexed() : part;
+        flat.deleteAttribute('uv');
+        return flat;
+    });
+    const geometry = mergeGeometries(nonIndexed, false);
+    parts.forEach((part) => part.dispose());
+    nonIndexed.forEach((part) => part.dispose());
     return geometry;
 }
 
@@ -183,10 +285,11 @@ export function createTroll(u, opts = {}) {
     material.fog = false;
     material.toneMapped = false;
     const col = attribute('color', 'vec4');
-    const vModel = varying(positionLocal, 'vTrollModel');
     // (His hide's grain is laid on his rest pose, so it stays on his skin however he moves.)
     const vRest = varying(positionGeometry, 'vTrollRest');
     const vRestN = varying(normalGeometry, 'vTrollRestN');
+    // (The way his hair runs at each vertex, root to tip, on his rest pose: the file's `_FLOW`.)
+    const vFlow = varying(attribute('flow', 'vec3'), 'vTrollFlow');
     material.positionNode = Fn(() => {
         const P = positionLocal;
         // The pelt hangs free below his shoulders, the more so the lower it hangs.
@@ -206,19 +309,27 @@ export function createTroll(u, opts = {}) {
         const ao = col.y;
         const hair = col.z;
         const kind = col.w;
-        const M = vModel;
         // What he is (the file's colour: skin 1 his ruddy face and ears, 0.65 his hide, 0.2 an eye;
-        // moss, with its lock's shade in `kind` (0..0.6); kind 0.7 an eye, 1 a mushroom; nothing = the
-        // leather of his loincloth).
+        // moss, with its lock's shade in `kind` (0..0.6), and skin 0.18 on moss his beard-lichen;
+        // kind 0.7 an eye, 1 a mushroom; nothing = leather: his loincloth, his nails, twigs in his hair).
         const notHair = float(1.0).sub(hair);
         const fleshy = smoothstep(0.3, 0.55, skin);
         const rosy = smoothstep(0.75, 0.95, skin);
+        const lichen = smoothstep(0.08, 0.15, skin).mul(float(1.0).sub(smoothstep(0.24, 0.3, skin))).mul(hair)
+            .toVar();
         const eye = smoothstep(0.1, 0.16, skin).mul(float(1.0).sub(smoothstep(0.24, 0.3, skin)))
             .mul(smoothstep(0.55, 0.65, kind)).mul(notHair);
         const cap = smoothstep(0.85, 0.95, kind).mul(notHair).mul(float(1.0).sub(fleshy));
-        // Fine strands down his locks, in light relief (the locks themselves are the shape; a
-        // surface-gradient bump from the screen derivatives of their height).
-        const strand = u.noise(vec2(M.x.mul(46.0).add(M.z.mul(39.0)), M.y.mul(5.0))).g;
+        // Strands along each lock, the way it runs (the file's flow), at two sizes and in relief: the
+        // locks themselves are the shape; the strands are laid on his rest pose, so they stay on
+        // the hair however he moves (a surface-gradient bump from the screen derivatives of their height).
+        const fl = normalize(vFlow);
+        const across = normalize(cross(fl, normalize(vRestN)).add(vec3(1e-4, 0.0, 0.0)));
+        const sAcross = dot(vRest, across);
+        const sAlong = dot(vRest, fl);
+        const strandA = u.noise(vec2(sAcross.mul(58.0), sAlong.mul(4.0))).g;
+        const strandB = u.noise(vec2(sAcross.mul(170.0), sAlong.mul(9.0)).add(0.31)).b;
+        const strand = strandA.mul(0.6).add(strandB.mul(0.4)).toVar();
         // His hide (face, hands, limbs): old troll skin, read off his rest pose three ways at once.
         const flesh01 = fleshy.mul(notHair).mul(float(1.0).sub(eye)).toVar();
         const R0 = vRest;
@@ -229,18 +340,26 @@ export function createTroll(u, opts = {}) {
             .add(u.noise(R0.xz.mul(k).add(0.37)).mul(wR.y))
             .add(u.noise(R0.xy.mul(k).add(0.71)).mul(wR.z));
         const coarse = tri(4.0).toVar();
-        const fine = tri(17.0).toVar();
-        // Metres a pixel spans on him: the finer grain gives way as he grows small in the frame.
+        const mid = tri(9.5).toVar();
+        const fine = tri(23.0).toVar();
+        // Metres a pixel spans on him: each grain of his skin gives way as he grows small in the frame.
+        // In play he is about 1.4 cm a pixel: the lumps and the folds of his old skin carry there; the
+        // creases and pores come in as he comes nearer (never as speckle).
         const pxm = length(P.sub(cameraPosition)).mul(u.pixelAngle);
-        // (A crease is a few centimetres: drawn only where a pixel is a few millimetres, never as speckle.)
-        const lumpsOn = float(1.0).sub(smoothstep(0.014, 0.035, pxm));
-        const creasesOn = float(1.0).sub(smoothstep(0.003, 0.008, pxm));
-        // Lumps and warts; a net of deep creases; a little grain.
-        const lumps = smoothstep(0.5, 0.85, coarse.b).mul(lumpsOn);
+        const lumpsOn = float(1.0).sub(smoothstep(0.02, 0.05, pxm));
+        const foldsOn = float(1.0).sub(smoothstep(0.009, 0.024, pxm));
+        const creasesOn = float(1.0).sub(smoothstep(0.004, 0.011, pxm));
+        // Lumps and warts, big and soft; folds of old skin, a net of them; fine creases, pores, grain.
+        const lumps = smoothstep(0.45, 0.85, coarse.b).mul(lumpsOn);
+        const fold = smoothstep(0.8, 0.97, float(1.0).sub(abs(mid.g.mul(2.0).sub(1.0)))).mul(foldsOn).toVar();
         const crease = smoothstep(0.86, 0.98, float(1.0).sub(abs(fine.g.mul(2.0).sub(1.0)))).mul(creasesOn).toVar();
+        const pores = smoothstep(0.72, 0.9, fine.b).mul(creasesOn);
         const grain = fine.r.sub(0.5).mul(creasesOn);
-        const hideHeight = lumps.mul(0.011).sub(crease.mul(0.0035)).add(grain.mul(0.0012)).mul(flesh01);
-        const height = strand.mul(hair).mul(0.004).add(hideHeight);
+        const hideHeight = lumps.mul(0.016).sub(fold.mul(0.005)).sub(crease.mul(0.003)).sub(pores.mul(0.0009))
+            .add(grain.mul(0.0012))
+            .mul(flesh01);
+        // (Lichen is stringier than moss: finer strands, less relief.)
+        const height = strand.mul(hair).mul(float(0.007).sub(lichen.mul(0.003))).add(hideHeight);
         const dpx = dFdx(P);
         const dpy = dFdy(P);
         const r1 = cross(dpy, N0);
@@ -255,29 +374,51 @@ export function createTroll(u, opts = {}) {
         const mossLo = mix(look.mossLo, u.moss.mul(1.1), hour);
         const mossHi = mix(look.mossHi, u.moss.mul(1.6).add(u.stone.mul(0.5)), hour);
         const shadeOfLock = clamp(kind.div(0.6).mul(0.7).add(upward.mul(0.45)).sub(0.12), 0.0, 1.0);
-        const pelt = mix(mossLo, mossHi, shadeOfLock).mul(strand.mul(0.3).add(0.82));
+        // A few of his locks are old moss gone russet; the rest green, darker deep in the mane and
+        // paler and yellower where they are outermost and lit; the strands light and dark.
+        const russet = smoothstep(0.8, 0.9, fract(kind.mul(13.7)));
+        const mossCol = mix(mossLo, mossHi, shadeOfLock);
+        const outer = smoothstep(0.55, 0.95, ao).mul(upward.mul(0.6).add(0.4));
+        const greenMoss = mix(mossCol, mossCol.mul(vec3(1.25, 1.15, 0.7)), outer.mul(0.6));
+        const pelt = mix(greenMoss, mossCol.mul(vec3(1.4, 0.78, 0.42)), russet.mul(0.85))
+            .mul(strand.mul(0.5).add(0.72));
+        // His beard is beard-lichen: pale grey-green strings, darker within.
+        const lichenCol = mix(vec3(0.07, 0.083, 0.062), vec3(0.2, 0.225, 0.165), strand.mul(0.7).add(outer.mul(0.3)));
+        const hairCol = mix(pelt, mix(lichenCol, u.stone.mul(1.6), hour.mul(0.35)), lichen);
         const leather = mix(look.hide, u.stone, hour.mul(0.6));
-        // His skin is not one colour: olive and lichen-grey blotches over its earth, darker spots of
-        // age, the creases dark, the lumps a shade paler, and the ends of him flushed like his face
-        // (his hands hang at his sides in his rest pose, his feet are lowest).
+        // His skin is not one colour: olive and lichen-grey blotches over its earth at two sizes,
+        // darker spots of age, the folds and creases dark and stained green with moss, the lumps a
+        // shade paler, lichen grown in pale specks on his shoulders, and the ends of him flushed like
+        // his face (his hands hang at his sides in his rest pose, his feet are lowest).
         const ends = smoothstep(0.24, 0.3, abs(R0.x)).mul(smoothstep(-0.02, -0.16, R0.y))
             .add(smoothstep(-0.41, -0.46, R0.y))
             .min(1.0);
         const flush = max(rosy, ends.mul(0.55));
         const ruddy = mix(look.bare, look.skin, flush);
-        const blotch = smoothstep(0.5, 0.74, coarse.r).mul(0.7);
-        const spots = smoothstep(0.62, 0.86, coarse.a).mul(0.18);
-        const mottled = mix(ruddy, ruddy.mul(vec3(0.8, 0.95, 0.7)), blotch).mul(float(1.0).sub(spots))
-            .mul(float(1.0).sub(crease.mul(0.3)))
-            .mul(lumps.mul(0.07).add(1.0));
+        const blotch = smoothstep(0.45, 0.72, coarse.r).mul(0.75);
+        const blotch2 = smoothstep(0.5, 0.78, mid.r).mul(0.55).mul(foldsOn.mul(0.6).add(0.4));
+        const spots = smoothstep(0.62, 0.86, coarse.a).mul(0.15)
+            .add(smoothstep(0.76, 0.9, mid.a).mul(0.1).mul(foldsOn));
+        const olive = mix(ruddy, ruddy.mul(vec3(0.78, 0.93, 0.66)), blotch);
+        const grey = mix(olive, olive.mul(vec3(0.86, 0.9, 0.94)).add(0.008), blotch2);
+        const stained = mix(grey, grey.mul(vec3(0.55, 0.64, 0.46)), fold.mul(0.5).add(crease.mul(0.35)).min(1.0));
+        const speck = smoothstep(0.82, 0.9, mid.b).mul(smoothstep(-0.02, 0.1, R0.y)).mul(upward).mul(0.85);
+        const mottled = mix(
+            stained.mul(float(1.0).sub(spots)).mul(lumps.mul(0.12).add(1.0)),
+            vec3(0.3, 0.33, 0.26),
+            speck.mul(float(1.0).sub(rosy)),
+        );
         const flesh = mix(mottled, u.stone.mul(1.3), hour.mul(0.6));
-        const body = mix(mix(leather, pelt, hair), flesh, fleshy.mul(notHair));
+        const body = mix(mix(leather, hairCol, hair), flesh, fleshy.mul(notHair));
         // Dark wet eyes; pale mushroom caps.
         const withParts = mix(mix(body, vec3(0.012, 0.009, 0.007), eye), vec3(0.42, 0.4, 0.33), cap);
         // (His occlusion was baked with his arms hanging against his hips: on his arms it is let
         // off lightly, or the hip's shadow would ride up with an arm he lifts.)
         const limb = smoothstep(0.19, 0.25, abs(R0.x)).mul(smoothstep(-0.34, -0.28, R0.y)).mul(flesh01);
-        const albedo = withParts.mul(mix(ao, max(ao, 0.82), limb).mul(0.85).add(0.15));
+        // (Deep in his mane the occlusion is let off a little too: each lock darkened all round where it
+        // meets the next reads as a separate tube, not as hair.)
+        const shut = mix(mix(ao, max(ao, 0.82), limb), ao.mul(0.55).add(0.4), hair.mul(0.6));
+        const albedo = withParts.mul(shut.mul(0.85).add(0.15));
         // (Moss and leather take the light softly; his skin takes it with less wrap, so the moon
         // models his face, his arms and his belly instead of lighting them all alike.)
         const soft = swLight(u, albedo, N, P, { wrap: 0.6, local: look.lampGain.mul(0.25) });
@@ -340,6 +481,17 @@ export function createTroll(u, opts = {}) {
             .mul(u.breath.mul(0.5).add(0.5));
         lit.addAssign(lampOnHim.mul(sheenLamp).add(u.moonLight.mul(sheenMoon)).mul(fres).mul(damp)
             .mul(flesh01));
+        // Moss is velvet: it gathers light along its edges, softly, and his beard-lichen glows where
+        // his lantern or the moon is behind it (light goes through thin strings).
+        const fuzz = float(1.0).sub(abs(dot(N0, V))).pow(2.0).mul(hair)
+            .mul(float(1.0).sub(lichen.mul(0.7)));
+        lit.addAssign(mix(u.moonLight, lampOnHim, 0.35).mul(albedo).mul(fuzz).mul(0.5)
+            .mul(u.breath.mul(0.5).add(0.5)));
+        const lampBehind = max(dot(V, lampDir), 0.0).pow(2.5);
+        const moonBehind = max(dot(V, u.moonDir), 0.0).pow(4.0);
+        lit.addAssign(lampOnHim.mul(lampBehind).mul(lampFall).mul(1.2).add(u.moonLight.mul(moonBehind).mul(0.3))
+            .mul(lichenCol)
+            .mul(lichen));
         // The mushrooms in his moss glow the colour of the ones on the banks, faint at rest and
         // waking with the chain as theirs do.
         const wake = u.caps.y.mul(0.85).add(0.15);
@@ -357,10 +509,29 @@ export function createTroll(u, opts = {}) {
     staffMaterial.fragmentNode = Fn(() => {
         const P = positionWorld;
         const N = normalize(normalWorld);
-        const G = positionGeometry;
-        const grain = u.noise(vec2(G.y.mul(3.0), G.x.add(G.z).mul(40.0))).r;
-        const wood = u.bark.mul(grain.mul(0.5).add(0.65)).add(vec3(0.02, 0.014, 0.008));
-        return vec4(swFog(u, swLight(u, wood, N, P, { wrap: 0.6, local: 0.8 }), P), 1.0);
+        const st = uv();
+        const along = st.x.mul(STAFF.length);
+        // Bark: fissures down it, winding a little with its grain, pale ridges between them and a
+        // finer grain; worn smooth and dark where his hand slides; moss about its foot. (Round it
+        // by whole turns of the noise, so its seam does not show.)
+        const fis = u.noise(vec2(st.y.mul(4.0).add(along.mul(0.38)), along.mul(0.9))).toVar();
+        const fissure = smoothstep(0.62, 0.8, float(1.0).sub(abs(fis.g.mul(2.0).sub(1.0))));
+        const grain = u.noise(vec2(st.y.mul(9.0).add(along.mul(0.8)), along.mul(5.0))).r;
+        const worn = smoothstep(STAFF_GRIP.from - 0.04, STAFF_GRIP.from + 0.12, along)
+            .mul(float(1.0).sub(smoothstep(STAFF_GRIP.to - 0.12, STAFF_GRIP.to + 0.06, along)));
+        const bark = u.bark.mul(grain.mul(0.45).add(0.7)).add(vec3(0.02, 0.014, 0.008));
+        const ridged = mix(bark.mul(1.3), bark.mul(0.35), fissure.mul(float(1.0).sub(worn.mul(0.75))));
+        const handled = mix(ridged, ridged.mul(vec3(1.15, 0.9, 0.72)).mul(0.85), worn.mul(0.8));
+        const mossy = float(1.0).sub(smoothstep(0.06, 0.34, along)).mul(smoothstep(0.42, 0.6, fis.b));
+        const wood = mix(handled, vec3(0.03, 0.07, 0.022), mossy);
+        // Handled wood shines a little in his lantern's light.
+        const V = normalize(P.sub(cameraPosition));
+        const toLamp = normalize(u.lanternAt.xyz.sub(P));
+        const R = V.sub(N.mul(dot(V, N).mul(2.0)));
+        const gloss = max(dot(R, toLamp), 0.0).pow(18.0).mul(worn).mul(u.lanternAt.w)
+            .mul(0.35);
+        const lit = swLight(u, wood, N, P, { wrap: 0.6, local: 0.8 }).add(u.lantern.mul(gloss).mul(u.breath));
+        return vec4(swFog(u, lit, P), 1.0);
     })();
     const staffGeometry = createStaffGeometry();
     const staff = new THREE.Mesh(staffGeometry, staffMaterial);
@@ -373,8 +544,7 @@ export function createTroll(u, opts = {}) {
     lantern.name = 'StillwaterLantern';
     const cageGeometry = new THREE.CylinderGeometry(0.075, 0.09, 0.22, 6, 1, true);
     cageGeometry.translate(0, -0.15, 0);
-    const capGeometry = new THREE.ConeGeometry(0.1, 0.08, 6, 1, false);
-    capGeometry.translate(0, -0.0, 0);
+    const capGeometry = createLanternFrameGeometry();
     const cageMaterial = new THREE.MeshBasicNodeMaterial();
     cageMaterial.name = 'StillwaterLanternCage';
     cageMaterial.side = THREE.DoubleSide;
@@ -382,9 +552,14 @@ export function createTroll(u, opts = {}) {
     cageMaterial.toneMapped = false;
     cageMaterial.fragmentNode = Fn(() => {
         const st = uv();
-        // Horn panes between dark bars: the flame shows through, warmest at its height.
-        const bars = smoothstep(0.42, 0.5, abs(fract(st.x.mul(6.0)).sub(0.5)));
-        const pane = u.lantern.mul(exp(abs(st.y.sub(0.45)).mul(-3.5))).mul(u.lanternAt.w.mul(2.6).add(0.2));
+        // Horn panes (the posts of the frame stand at their corners): the flame shows through,
+        // warmest at its height, the horn clouded unevenly and sooted toward the top.
+        const bars = smoothstep(0.44, 0.5, abs(fract(st.x.mul(6.0)).sub(0.5)));
+        const horn = u.noise(vec2(st.x.mul(2.0), st.y.mul(0.6).add(0.37))).r.mul(0.6).add(0.7);
+        const soot = smoothstep(0.6, 1.0, st.y).mul(0.55);
+        const pane = u.lantern.mul(exp(abs(st.y.sub(0.42)).mul(-3.5))).mul(u.lanternAt.w.mul(2.6).add(0.2))
+            .mul(horn)
+            .mul(float(1.0).sub(soot));
         return vec4(mix(pane, vec3(0.012, 0.01, 0.008), bars).mul(u.breath.mul(0.7).add(0.3)), 1.0);
     })();
     const capMaterial = new THREE.MeshBasicNodeMaterial();

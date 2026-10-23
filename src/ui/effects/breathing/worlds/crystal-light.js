@@ -110,11 +110,6 @@ export const prismBeam = /* @__PURE__ */ Fn(([q, beam]) => {
     inputs: [{ name: 'q', type: 'vec2' }, { name: 'beam', type: 'vec4' }],
 });
 
-/** The grotto's air colour: deep indigo overhead, a cold teal glow down by the wet floor. */
-const AIR_HIGH = vec3(0.003, 0.005, 0.016);
-const AIR_LOW = vec3(0.008, 0.026, 0.034);
-const WHITE = vec3(1.0, 0.97, 0.94);
-
 /**
  * What the crystal sees along a world direction (camera-aligned: x right, y up, z toward the
  * viewer): the grotto's dark vault and teal floor glow, a band of misty light at eye level, the
@@ -122,30 +117,36 @@ const WHITE = vec3(1.0, 0.97, 0.94);
  * that bend a view ray that far catch its colour), and the beam's source as a small white-hot
  * patch up the beam (the fire and the glints). Nothing in it is a tiny hard-edged point: a flat
  * facet magnifies whatever it refracts, and a pin-point would come out as a flat block of colour.
- * `sky` = (source gain, haze glow, unused, unused).
+ * `sky` = (source gain, haze glow, unused, unused). The grotto's colours come from its mood:
+ * `airLow` (down by the wet floor), `airHigh` (the vault), `band` (the misty light at eye level),
+ * `sun` (the beam's colour), `fanTint` (the spectrum's lean).
  */
-export const prismEnvironment = /* @__PURE__ */ Fn(([dir, fan, look, beam, sky]) => {
+export const prismEnvironment = /* @__PURE__ */ Fn(([
+    dir, fan, look, beam, sky, airLow, airHigh, band, sun, fanTint,
+]) => {
     const up = dir.y;
-    const col = mix(AIR_LOW, AIR_HIGH, smoothstep(-0.45, 0.65, up)).toVar();
-    col.addAssign(vec3(0.02, 0.05, 0.06).mul(exp(up.mul(up).mul(-14))).mul(sky.y));
+    const col = mix(airLow, airHigh, smoothstep(-0.45, 0.65, up)).toVar();
+    col.addAssign(band.mul(exp(up.mul(up).mul(-14))).mul(sky.y));
     // The fan, seen from where it starts: colour along the hero plane (z ~ 0) on the fan's side.
     const flat = exp(dir.z.mul(dir.z).mul(-9));
-    col.addAssign(prismFan(dir.xy, fan, look).mul(flat).mul(3.5));
+    col.addAssign(prismFan(dir.xy, fan, look).mul(fanTint).mul(flat).mul(3.5));
     // The source: the beam seen from inside its own path, a tiny white-hot sky with a soft corona.
     const toSource = normalize(vec3(beam.x.negate(), beam.y.negate(), -0.18));
     const facing = dot(dir, toSource).toVar();
     // Bright enough to flare, soft enough that a facet's fire grades through the colours — and wide
     // enough that a turning facet takes more than a second to pass through it (no flashes).
-    const sun = exp(facing.sub(1).mul(100)).mul(2.6).add(exp(facing.sub(1).mul(30)).mul(0.45))
+    const glare = exp(facing.sub(1).mul(100)).mul(2.6).add(exp(facing.sub(1).mul(30)).mul(0.45))
         .add(exp(facing.sub(1).mul(8)).mul(0.08));
-    col.addAssign(WHITE.mul(sun).mul(sky.x));
+    col.addAssign(sun.mul(glare).mul(sky.x));
     return col;
 }).setLayout({
     name: 'prism_environment',
     type: 'vec3',
     inputs: [
         { name: 'dir', type: 'vec3' }, { name: 'fan', type: 'vec4' }, { name: 'look', type: 'vec4' },
-        { name: 'beam', type: 'vec4' }, { name: 'sky', type: 'vec4' },
+        { name: 'beam', type: 'vec4' }, { name: 'sky', type: 'vec4' }, { name: 'airLow', type: 'vec3' },
+        { name: 'airHigh', type: 'vec3' }, { name: 'band', type: 'vec3' }, { name: 'sun', type: 'vec3' },
+        { name: 'fanTint', type: 'vec3' },
     ],
 });
 
