@@ -91,8 +91,8 @@ export function createNeonSkybridges(N, towers) {
     const seeds = new Float32Array(Math.max(1, seats.length));
     seats.forEach(({ seed }, i) => { seeds[i] = seed; });
     geometry.setAttribute('aBridgeSeed', new THREE.InstancedBufferAttribute(seeds, 1));
-    const seedV = varying(attribute('aBridgeSeed', 'float'), 'vBridgeSeed').setInterpolation('flat');
-    const nV = varying(normalGeometry, 'vBridgeNormal').setInterpolation('flat');
+    const seedV = varying(attribute('aBridgeSeed', 'float'), 'vBridgeSeed').setInterpolation('flat', 'either');
+    const nV = varying(normalGeometry, 'vBridgeNormal').setInterpolation('flat', 'either');
     const pcV = neonCityPos(N, 'vBridgePos');
 
     const material = new THREE.MeshBasicNodeMaterial();
