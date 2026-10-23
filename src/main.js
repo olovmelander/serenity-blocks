@@ -114,6 +114,7 @@ import { SoundManager } from './audio/sound-manager.js';
 // Theme imports
 import { ThemeManager } from './themes/theme-manager.js';
 import { getThemeCollection } from './themes/theme-collection.js';
+import { syncRandomThemeRotation } from './themes/random-theme-rotation.js';
 import { ensurePreferredMenuMusic } from './ui/startup-music.js';
 import {
     themeCollectionDependencies, sanitizeCollectionThemeSetting, focusThemeCollectionTarget, switchToRandomCollectedTheme,
@@ -1224,6 +1225,8 @@ class SerenityBlocks {
                 break;
             }
         }
+
+        syncRandomThemeRotation(this);
 
         // Emit event for other systems to respond
         window.dispatchEvent(new CustomEvent('tabVisibilityChanged', {
@@ -2456,12 +2459,14 @@ class SerenityBlocks {
         this.gameModeManager.on('modeStarted', ({ modeId }) => {
             console.log(`[Main] Mode started: ${modeId}`);
             this.syncPerformanceMonitorSampling();
+            syncRandomThemeRotation(this);
         });
 
         this.gameModeManager.on('modeStopped', ({ modeId }) => {
             console.log(`[Main] Mode stopped: ${modeId}`);
             this.serenityHub?.cancelGuidedSession();
             this.syncPerformanceMonitorSampling();
+            syncRandomThemeRotation(this);
         });
         // Setup start button click handler (for old button-based UI)
         const startGameBtn = document.getElementById('start-game-btn');
@@ -2518,8 +2523,8 @@ class SerenityBlocks {
             initialTheme = this.themeManager.restartLevelJourney(1, settings.backgroundTheme);
             break;
         case 'Random':
+            // Its timer starts with a game (syncRandomThemeRotation), never on the menu.
             initialTheme = this.themeManager.getRandomTheme();
-            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
             break;
         }
 
@@ -3085,21 +3090,14 @@ class SerenityBlocks {
                 );
                 this.updateGamepadStatusDisplay();
             },
+            // The Random timer follows from handleSettingsChange (syncRandomThemeRotation).
             onBackgroundModeChange: (mode) => {
                 const settings = this.settingsManager.get();
                 if (mode === 'Specific') {
                     this.themeManager.switchTheme(settings.backgroundTheme);
-                    this.themeManager.stopRandomThemeInterval();
-                } else if (mode === 'Random') {
-                    if (settings.autoThemeChange) {
-                        this.themeManager.startRandomThemeInterval(
-                            settings.randomThemeInterval / 60,
-                        );
-                    }
                 } else if (mode === 'Level') {
                     // The journey goes on from the theme on screen: no switch now.
                     this.themeManager.restartLevelJourney(this.getActiveGameState()?.level || 1);
-                    this.themeManager.stopRandomThemeInterval();
                 }
             },
             onThemeLinkedSfxChange: (enabled) => {
@@ -4002,17 +4000,12 @@ class SerenityBlocks {
         if (changes.reduceFlashing !== undefined) applyReduceFlashingClass(settings.reduceFlashing === true);
 
         // Handle theme mode changes
-        if (changes.backgroundMode || changes.backgroundTheme) {
-            if (settings.backgroundMode === 'Specific') {
-                this.themeManager.switchTheme(settings.backgroundTheme);
-                this.themeManager.stopRandomThemeInterval();
-            } else if (settings.backgroundMode === 'Random') {
-                this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
-            }
+        if ((changes.backgroundMode || changes.backgroundTheme) && settings.backgroundMode === 'Specific') {
+            this.themeManager.switchTheme(settings.backgroundTheme);
         }
-
-        if (changes.randomThemeInterval !== undefined && settings.backgroundMode === 'Random') {
-            this.themeManager.startRandomThemeInterval(settings.randomThemeInterval / 60);
+        // Every way in (the select, Steam Cloud, a preset): the Random timer runs only in a game.
+        if (changes.backgroundMode !== undefined || changes.randomThemeInterval !== undefined) {
+            syncRandomThemeRotation(this);
         }
 
         if (changes.effectQuality) {

@@ -23,6 +23,9 @@
  *                            so a strip of frames shows one continuous story. Comma-separated
  *                            kind@time[:arg]: c combo n, l lock at u, d hard drop at u, x clear n
  *                            lines, q four lines, v level up, g game over (e.g. c@6:1,x@6:1,q@14)
+ *   kin=<0..1>               how near the two have grown (which of their scenes may come)
+ *   scene=<name@t,...>       begin one of their scenes (stillwater-life.js SCENES) at time t,
+ *                            whatever they are doing (e.g. scene=skip@4 or scene=greet@3,gift@20)
  *   parts=sky,water,crowns,veil,...   draw only these parts (STILLWATER_PARTS)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -138,6 +141,13 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('kin')) world.setKin(num(params, 'kin', 0.1));
+    /** Scenes of theirs asked for at set times (`scene=`): cued again after every seek. */
+    const sceneCues = (params.get('scene') || '').split(',').map((token) => {
+        const m = /^([a-z]+)@([\d.]+)$/.exec(token.trim());
+        return m ? { name: m[1], at: Number(m[2]) } : null;
+    }).filter(Boolean);
+    const cueScenes = () => sceneCues.forEach((c) => world.cueScene(c.name, c.at));
     if (params.has('trollLook')) world.troll?.setLook(params.get('trollLook'));
     // A capture that names its level wants that hour, not that hour plus however long `t` is.
     if (params.has('level')) world.setHourDrift(false);
@@ -251,6 +261,7 @@ export function create({
     };
     const seekStory = (time) => {
         world.seek(0);
+        cueScenes();
         if (level > 1) world.levelUp(level, { silent: true });
         frame(0, 0);
         let cursor = 0;
@@ -266,13 +277,14 @@ export function create({
     };
 
     const seekTo = (time) => {
-        if (storyScript.length) {
+        if (storyScript.length || sceneCues.length) {
             seekStory(time);
             return;
         }
         const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
         world.seek(start);
+        cueScenes();
         if (level > 1) world.levelUp(level, { silent: true });
         frame(start, 0);
         // Locks played before the event: the wisps they leave standing over the water.

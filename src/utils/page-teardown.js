@@ -29,14 +29,29 @@ export async function prepareForQuit(app) {
 
 /**
  * @param {{ cleanup: () => Promise<unknown>, cleanupHandlers: Array<() => void> }} app
- * @param {{ target?: Window, desktopApi?: { onPrepareQuit?: (prepare: () => Promise<void>) => void } }} [options]
+ * @param {{
+ *   target?: Window,
+ *   desktopApi?: { onPrepareQuit?: (prepare: () => Promise<void>) => void },
+ *   reload?: () => void,
+ * }} [options]
  */
 export function installPageTeardown(app, {
     target = window,
     desktopApi = /** @type {any} */ (window).electronAPI,
+    reload = () => window.location.reload(),
 } = {}) {
-    const handlePageHide = () => { app.cleanup(); };
+    let tornDown = false;
+    const handlePageHide = () => {
+        tornDown = true;
+        app.cleanup();
+    };
     target.addEventListener('pagehide', handlePageHide);
     app.cleanupHandlers.push(() => target.removeEventListener('pagehide', handlePageHide));
+    // A browser can keep the page in its back/forward cache after that pagehide, and Back then
+    // brought the torn-down app back: a dead menu. The cleanup has already saved what it saves,
+    // so a restored page starts over. (Not added to cleanupHandlers: the cleanup empties them.)
+    target.addEventListener('pageshow', (event) => {
+        if (/** @type {PageTransitionEvent} */ (event).persisted && tornDown) reload();
+    });
     desktopApi?.onPrepareQuit?.(() => prepareForQuit(app));
 }

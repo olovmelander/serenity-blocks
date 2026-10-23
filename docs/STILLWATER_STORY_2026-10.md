@@ -1,5 +1,7 @@
 # Stillwater — the troll and the spirit
 
+> 2026-10-23: how the two look (a look held a while; a quick run watched as one place), their own life between the moments play gives them, their gestures, and a story that grows across the night are in `docs/STILLWATER_FIGURES_LIFE_2026-10.md`. The figures, the story's beats, the heart's flight and the path of light below still stand; the "Idle glances" of this record are now one of the things each of them may look at, chosen with the rest.
+
 Implemented 2026-10-18 on `feature/stillwater-story`, on top of the tarn rebuilt on 2026-10-09
 (`docs/STILLWATER_VISUAL_OVERHAUL_2026-10.md`, whose place, water, wood, hours and event language
 stand). This pass rebuilt the two figures and gave them a story. It supersedes that record's

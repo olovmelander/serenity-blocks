@@ -220,6 +220,12 @@ export class SunfallDirector {
         this.reducedMotion = Boolean(flag);
     }
 
+    /** The quality tier's cap on New Growth shoots alive at once (never below 8). */
+    setNewGrowthLimit(limit) {
+        this.maxNewGrowth = Math.max(8, Number.isFinite(limit) ? limit : 48);
+        if (this.newGrowthShoots.length > this.maxNewGrowth) this.newGrowthShoots.length = this.maxNewGrowth;
+    }
+
     /**
      * Pin or release a specific solar station (`0..4` or station id).
      * @param {number|string|null} station
@@ -669,6 +675,12 @@ export class SunfallDirector {
     onGameOver() {
         this.gameOverActive = true;
         this.morningPulse = 0;
+    }
+
+    /** A new run (any mode start, Play again included): morning, the session afresh, level 1. */
+    startRun() {
+        this.resetSession();
+        this.level = 1;
     }
 
     /**
