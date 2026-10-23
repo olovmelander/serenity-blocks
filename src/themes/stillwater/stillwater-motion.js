@@ -48,6 +48,31 @@ export function springTo(s, target, halfLife, dt) {
 /** A scalar spring state. */
 export const spring = (x = 0) => ({ x, v: 0 });
 
+/**
+ * A head's turn: a spring that follows a spring (`s = { x, v, lead: { x, v } }`). The lead takes
+ * the target and the second follows the lead, so a turn gathers speed, peaks and settles with no
+ * jolt at either end; `maxSpeed` (units a second) caps how fast the second may go, so a sudden
+ * far look is a sweep, never a snap. Together the two settle about as one spring of `halfLife`.
+ */
+export function followTo(s, target, halfLife, dt, maxSpeed = Infinity) {
+    if (!(dt > 0)) return s;
+    springTo(s.lead, target, halfLife * 0.6, dt);
+    const was = s.x;
+    springTo(s, s.lead.x, halfLife * 0.6, dt);
+    const limit = maxSpeed * dt;
+    if (s.x - was > limit) {
+        s.x = was + limit;
+        s.v = Math.min(s.v, maxSpeed);
+    } else if (s.x - was < -limit) {
+        s.x = was - limit;
+        s.v = Math.max(s.v, -maxSpeed);
+    }
+    return s;
+}
+
+/** A follower's state (see followTo). */
+export const follower = (x = 0) => ({ x, v: 0, lead: { x, v: 0 } });
+
 /** The same spring on an angle: it goes the short way round. */
 export function springAngle(s, target, halfLife, dt) {
     const goal = s.x + wrapAngle(target - s.x);

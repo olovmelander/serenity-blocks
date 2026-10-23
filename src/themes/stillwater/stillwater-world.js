@@ -106,7 +106,8 @@ import {
 } from './stillwater-flora.js';
 import { createSpirit } from './stillwater-spirit.js';
 import { createTroll } from './stillwater-troll.js';
-import { StillwaterStory, spiritPathPoint } from './stillwater-story.js';
+import { KNEEL_AT, StillwaterStory, spiritPathPoint } from './stillwater-story.js';
+import { arcAt, boatAt, skipAt } from './stillwater-life.js';
 import {
     createDrops, createEyes, createFireflies, createHeartOrb, createMist, createSparks, createVeil, createWisps,
 } from './stillwater-fx.js';
@@ -135,9 +136,10 @@ export const HERO_LAYER = 1;
 export const HOUR_TURN = 3.2;
 
 /** Where on her path the spirit kneels on the water when all is calm (0 = her stone). */
-const KNEEL_AT = 0.28;
 /** Seconds between the rings her hem leaves as she drifts over the water. */
 const WAKE_EVERY = 0.55;
+/** Seconds the little boat of light takes to rise from the water into her hands. */
+const BOAT_RISE = 1.2;
 /** The ring across the picture: how fast it fades, and how long it is still on screen. */
 const SHOCK_FADE = 0.75;
 const SHOCK_CROSS = 0.8;
@@ -205,6 +207,9 @@ export class StillwaterWorld {
         this._heartOf = [SPIRIT.home[0], SPIRIT.home[1] + SPIRIT.height * 0.7, SPIRIT.home[2]];
         this._lantern = [TROLL.home[0] - 0.9, TROLL.home[1] + 2.2, TROLL.home[2] + 1.2];
         this._wisp = [0, 0, 0, 0];
+        this._lifeRGB = [1, 1, 1];
+        this._lifeP = [0, 0, 0];
+        this._lifeV = new THREE.Vector3();
         this._orb = [0, 0, 0, 0];
         this._trollWant = {};
         this._spiritWant = {};
@@ -287,6 +292,15 @@ export class StillwaterWorld {
         this.trollS = 0;
         this.lastWake = -10;
         this.streamSlot = -1;
+        /**
+         * Lights the two's own life sets in motion (stillwater-life.js): a firefly held in her
+         * hands or his, one sent across the water, one let go, a little boat of light. Each is
+         * the life's own event object (its length may change after it begins).
+         */
+        this.lifeLights = [];
+        /** Glows the life lends them: the lantern trimmed, her song. [{ who, start, length, amount }] */
+        this.lifeGlows = [];
+        this.boatWake = -10;
         this.story?.reset(time);
         this.resetFigures();
         this.lastLanding = null;
@@ -548,6 +562,16 @@ export class StillwaterWorld {
         const k = smooth(0, 1, (this.time - this.turn.time) / HOUR_TURN);
         const base = this.turn.from + (this.turn.to - this.turn.from) * k;
         return base + (this.hourDrift ? Math.max(0, this.time) / HOUR_SECONDS : 0);
+    }
+
+    /** How near the two have grown (0..1): captures set it; a seek keeps it. */
+    setKin(kin) {
+        this.story.setKin(kin);
+    }
+
+    /** Begin one of their scenes at `time` (captures): whatever they were doing gives way. */
+    cueScene(name, time) {
+        this.story.life.cue(name, time);
     }
 
     /** Jump the clock (captures): drops every event in flight. */
@@ -1293,7 +1317,21 @@ export class StillwaterWorld {
         at.lantern[0] = this._lantern[0] / sq;
         at.lantern[1] = this._lantern[1];
         at.lantern[2] = this._lantern[2];
+        // (What each is doing with their body, for the scenes of their life.)
+        const tb = this.troll?.body;
+        at.trollMode = tb ? tb.mode : 'seated';
+        at.trollSpeed = tb ? tb.speed : 0;
+        const sr = this.spirit?.rootWalk();
+        if (sr) {
+            at.spirit = at.spirit || [0, 0, 0];
+            at.spirit[0] = sr.x / sq;
+            at.spirit[1] = sr.y;
+            at.spirit[2] = sr.z;
+        }
+        at.spiritMode = this.spirit?.body?.mode || 'standing';
         this.story.update(t, dt, at);
+        const events = this.story.life.drain();
+        if (events) events.forEach((e) => this.lifeEvent(e));
         const toWorld = (p, out) => {
             if (!p) return null;
             out[0] = p[0] * sq;
@@ -1308,19 +1346,30 @@ export class StillwaterWorld {
             // (The story's places are the stage's: he walks in true metres.)
             want.at[0] *= sq;
             want.look = toWorld(want.look, this._lookW);
-            // He faces her across the water, reckoned where he really stands.
-            if (trollRoot) {
+            // He faces her across the water, reckoned where he really stands (unless what he is
+            // doing turns him some other way).
+            if (trollRoot && !want.faceFixed) {
                 want.face = Math.atan2(this._heartOf[0] - (want.at[0]), this._heartOf[2] - want.at[1]);
             }
             // (His cloak takes the wind a hot run raises in the wood.)
             const stir = this.reducedMotion ? 0.3 : 1;
             want.wind = this.gust * 1.5 + this.surge * 0.5 + (0.3 * this.hotness + 0.35 * this.heat.fever) * stir;
             want.startle = !this.reducedMotion;
-            const events = this.troll.update(dt, want, t);
-            for (let i = 0; i < events.length; i++) {
-                const e = events[i];
-                // A step or the staff in the water leaves a ring.
-                if (e.y < 0) this.ring(e.x, e.z, t, e.type === 'staff' ? 0.16 : 0.32 * e.strength, this._palette.lantern, e.type === 'staff' ? 0.3 : 0.55);
+            const steps = this.troll.update(dt, want, t);
+            for (let i = 0; i < steps.length; i++) {
+                const e = steps[i];
+                // A step or the staff in the water leaves a ring (a knock on it, a ring to cross to her).
+                if (e.y < 0) {
+                    const staff = e.type === 'staff';
+                    const knock = staff && e.strength >= 1;
+                    let strength = 0.32 * e.strength;
+                    let reach = 0.55;
+                    if (staff) {
+                        strength = knock ? 0.6 : 0.16;
+                        reach = knock ? 1.5 : 0.3;
+                    }
+                    this.ring(e.x, e.z, t, strength, this._palette.lantern, reach);
+                }
             }
             this.troll.lanternWorld(this._lantern);
             if (trollRoot) {
@@ -1336,23 +1385,30 @@ export class StillwaterWorld {
             let s = 0;
             if (want.kneel) s = KNEEL_AT;
             else if (want.out > 0.02) s = 0.24 + 0.76 * want.out;
-            const point = spiritPathPoint(s, this._from);
+            const point = want.at || spiritPathPoint(s, this._from);
             const b = this._spiritBody;
             b.at[0] = point[0] * sq;
             b.at[1] = point[1];
             b.at[2] = point[2];
-            // She faces out over the water toward him; at rest a little more toward the tarn's heart.
+            // She faces out over the water toward him; at rest a little more toward the tarn's heart;
+            // where she drifts, the way she goes; going home, toward her stone (looking back at him
+            // over her shoulder). What she merely glances at turns her head, not all of her.
             const root = this.spirit.rootWalk();
             const toLantern = Math.atan2(this._lantern[0] - root.x, this._lantern[2] - root.z);
             const toHeart = Math.atan2(HEART[0] * sq - root.x, HEART[2] - root.z);
-            b.face = want.out > 0.05 || want.look ? toLantern : toHeart + (toLantern - toHeart) * 0.4;
-            // Going back she turns toward her stone and looks back at him over her shoulder.
-            if (want.back) {
-                const dx = SPIRIT.home[0] * sq - root.x;
-                const dz = SPIRIT.home[2] - root.z;
-                if (Math.hypot(dx, dz) > 0.4) b.face = Math.atan2(dx, dz);
-            }
+            const rest = toHeart + (toLantern - toHeart) * 0.4;
+            b.face = want.faceMode === 'lantern' ? toLantern : rest;
+            const away = (x, z) => {
+                const dx = x - root.x;
+                const dz = z - root.z;
+                return Math.hypot(dx, dz) > 0.4 ? Math.atan2(dx, dz) : null;
+            };
+            if (want.faceMode === 'home') b.face = away(SPIRIT.home[0] * sq, SPIRIT.home[2]) ?? b.face;
+            else if (want.faceMode === 'path') b.face = away(b.at[0], b.at[2]) ?? rest;
+            else if (want.faceMode === 'abs' && Number.isFinite(want.face)) b.face = want.face;
             b.kneel = want.kneel;
+            b.pace = want.pace;
+            b.gesture = want.gesture;
             b.hands = want.hands;
             b.look = toWorld(want.look, this._lookS);
             b.gazeDown = want.gazeDown;
@@ -1361,12 +1417,13 @@ export class StillwaterWorld {
             // Her motes rise thicker with every heart she holds, and as play runs hot.
             const holds = this.story.heartTaken(t) * 1.2 + this.story.heartsHeld(t) * 0.3;
             this.spirit.uFed.value = Math.min(1.5, this.fedL + holds + 0.15 * this.hotness + 0.25 * this.heat.fever
-                + 0.3 * this.crown);
-            const events = this.spirit.update(dt, b, t);
-            for (let i = 0; i < events.length; i++) {
-                const e = events[i];
-                // Her fingertips in the water.
-                this.ring(e.x, e.z, t, 0.18, this._palette.spirit, 0.4);
+                + 0.3 * this.crown + this.lifeGlow('spirit', t) * 1.4);
+            const touches = this.spirit.update(dt, b, t);
+            for (let i = 0; i < touches.length; i++) {
+                const e = touches[i];
+                // Her fingertips in the water (set down to answer him, a ring to cross to him).
+                const answer = e.strength > 0.7;
+                this.ring(e.x, e.z, t, answer ? 0.6 : 0.18, this._palette.spirit, answer ? 1.5 : 0.4);
             }
             // As she drifts over the water her hem leaves a soft wake.
             const v = this.spirit.body?.velocity;
@@ -1378,6 +1435,188 @@ export class StillwaterWorld {
             const home = spiritPathPoint(1);
             this.spiritS = clamp01(Math.hypot(root.x / sq - SPIRIT.home[0], root.z - SPIRIT.home[2])
                 / Math.hypot(home[0] - SPIRIT.home[0], home[2] - SPIRIT.home[2]));
+        }
+    }
+
+    /**
+     * Something the two's own life sets in motion (stillwater-life.js): a stone skipped across the
+     * water (its rings), a light held, sent across or let go, a little boat of light, a lantern
+     * trimmed, a song. All in the stage's coordinates; the water and the lights take them here.
+     */
+    lifeEvent(e) {
+        const sq = this.squeeze;
+        const pal = this._palette;
+        if (e.type === 'skip') {
+            // A pebble warmed in his lantern, skipped across to her: it touches the water at each
+            // skip (a ring with its glow on the crest, a little splash), and sinks.
+            const glow = [0, 1, 2].map((c) => 0.55 * pal.lantern[c] + 0.45);
+            e.path.forEach((b, i) => {
+                const time = e.start + b.t;
+                this.ring(b.x * sq, b.z, time, 0.24 + 0.3 * b.strength, glow, 0.6 + 0.5 * b.strength);
+                this.sparks?.emit({
+                    at: [b.x * sq, 0.02, b.z],
+                    n: Math.max(2, Math.round((4 + 7 * b.strength) * this.sparkShare())),
+                    rgb: glow,
+                    time,
+                    vel: [0, 1.0 + b.strength * 1.0, 0],
+                    spread: 0.45,
+                    life: [0.35, 0.7],
+                    size: 0.06,
+                    splash: true,
+                });
+                if (i === e.path.length - 1) this.ring(b.x * sq, b.z, time + 0.35, 0.14, glow, 0.45);
+            });
+            this.lifeLights.push({
+                type: 'stone', start: e.start, from: e.from, path: e.path, length: e.path.at(-1).t + 0.5,
+            });
+        } else if (e.type === 'held' || e.type === 'gift' || e.type === 'release' || e.type === 'boat') {
+            this.lifeLights.push(e);
+            if (this.lifeLights.length > 8) this.lifeLights.shift();
+            // The one it goes to makes ready for it: his lantern lifted, her hands cupped.
+            if (e.type === 'gift') this.story.onArrival(e.to === 'troll' ? 1 : -1, e.start + e.length);
+            if (e.type === 'boat') this.story.onArrival(-1, e.start + e.length + BOAT_RISE);
+        } else if (e.type === 'tend' || e.type === 'song') {
+            const tend = e.type === 'tend';
+            this.lifeGlows.push({
+                who: tend ? 'troll' : 'spirit', start: e.start, length: e.length, amount: tend ? 0.45 : 0.35,
+            });
+            if (this.lifeGlows.length > 4) this.lifeGlows.shift();
+        } else if (e.type === 'twirl') {
+            // Rings about her as she turns on the water.
+            const r = this.spirit?.rootWalk();
+            if (r && r.y < 0.2) {
+                [0.5, 1.5, 2.6].forEach((at, i) => this.ring(r.x, r.z, e.start + at, 0.12 - i * 0.02, pal.spirit, 0.5));
+            }
+        }
+    }
+
+    /** How much the life's glows lend `who` now (0..). */
+    lifeGlow(who, t) {
+        let sum = 0;
+        for (let i = 0; i < this.lifeGlows.length; i++) {
+            const g = this.lifeGlows[i];
+            if (g.who !== who) continue;
+            const k = (t - g.start) / g.length;
+            if (k > 0 && k < 1) sum += g.amount * Math.sin(Math.PI * k) ** 0.5;
+        }
+        return sum;
+    }
+
+    /**
+     * Where one of the life's lights is now (world) and how brightly it burns; null when it is not
+     * lit. Its colour into `rgb`. (Pure of the clock and of where the two are now.)
+     */
+    lifeLightAt(e, t, out, rgb) {
+        const sq = this.squeeze;
+        const pal = this._palette;
+        const fire = pal.firefly || pal.spirit;
+        const spiritHands = () => (this.spirit?.body ? this.spirit.body.handsWalk(this._lifeV) : null);
+        const trollHand = () => {
+            const b = this.troll?.body;
+            return b ? b.toWalk(b.globalPos.handR, this._lifeV) : null;
+        };
+        const age = t - e.start;
+        if (age < 0) return null;
+        rgb[0] = fire[0];
+        rgb[1] = fire[1];
+        rgb[2] = fire[2];
+        if (e.type === 'held') {
+            if (age > e.length) return null;
+            const p = e.who === 'troll' ? trollHand() : spiritHands();
+            if (!p) return null;
+            const k = Math.min(1, age / 0.35) * Math.min(1, (e.length - age) / 0.2 + 0.001);
+            out[0] = p.x;
+            out[1] = p.y + (e.who === 'troll' ? 0.08 : 0.04);
+            out[2] = p.z + (e.who === 'troll' ? 0.05 : 0.03);
+            out[3] = 0.85 * Math.min(1, k);
+            return out;
+        }
+        if (e.type === 'gift') {
+            const k = age / e.length;
+            if (k > 1) return null;
+            // (Where it set out from is kept when it sets out; where it goes is followed.)
+            if (!e.from3) {
+                const p = e.from === 'spirit' ? spiritHands() : null;
+                const l = this._lantern;
+                e.from3 = p ? [p.x, p.y, p.z] : [l[0], l[1] + 0.1, l[2]];
+            }
+            const end = e.to === 'troll' ? this._lantern : this._heartOf;
+            const to = [end[0], end[1], end[2]];
+            arcAt(e.from3, to, k, 1.3, out);
+            out[3] = 1.1 * (1 - Math.max(0, k - 0.9) * 10);
+            if (e.to === 'spirit') {
+                rgb[0] = (fire[0] + pal.lantern[0]) * 0.5;
+                rgb[1] = (fire[1] + pal.lantern[1]) * 0.5;
+                rgb[2] = (fire[2] + pal.lantern[2]) * 0.5;
+            }
+            return out;
+        }
+        if (e.type === 'release') {
+            if (age > e.length) return null;
+            if (!e.from3) {
+                const p = spiritHands();
+                e.from3 = p ? [p.x, p.y, p.z] : [this._heartOf[0], this._heartOf[1], this._heartOf[2]];
+            }
+            const k = age / e.length;
+            out[0] = e.from3[0] + Math.sin(age * 2.2) * 0.25 * k + 0.4 * k;
+            out[1] = e.from3[1] + age * 0.75;
+            out[2] = e.from3[2] + Math.cos(age * 1.7) * 0.2 * k;
+            out[3] = 0.9 * (1 - k * k);
+            return out;
+        }
+        if (e.type === 'stone') {
+            if (age > e.length) return null;
+            const p = skipAt(e.path, e.from, age, out);
+            if (!p) return null;
+            out[0] *= sq;
+            const last = e.path.at(-1).t;
+            // (Warm from his lantern; it goes out as it sinks.)
+            out[3] = 0.7 * (age > last ? Math.max(0, 1 - (age - last) / 0.4) : 1);
+            rgb[0] = pal.lantern[0];
+            rgb[1] = pal.lantern[1];
+            rgb[2] = pal.lantern[2];
+            return out;
+        }
+        if (e.type === 'boat') {
+            const from = [e.from[0] * sq, 0, e.from[2]];
+            const to = [e.to[0] * sq, 0, e.to[2]];
+            if (age <= e.length) {
+                boatAt(from, to, age, e.length, out);
+                out[3] = 0.85;
+                return out;
+            }
+            // At the end it rises into her hands, and is hers.
+            const k = (age - e.length) / BOAT_RISE;
+            if (k > 1) return null;
+            const end = boatAt(from, to, e.length, e.length, [0, 0, 0]);
+            const p = spiritHands();
+            arcAt(end, p ? [p.x, p.y, p.z] : this._heartOf, k, 0.3, out);
+            out[3] = 0.85 + 0.4 * Math.sin(Math.PI * k);
+            return out;
+        }
+        return null;
+    }
+
+    /** The life's lights: their rings and their arrivals (light given is light received). */
+    stepLifeLights(t) {
+        for (let i = this.lifeLights.length - 1; i >= 0; i--) {
+            const e = this.lifeLights[i];
+            const age = t - e.start;
+            if (e.type === 'boat' && age > 0 && age < e.length && t - this.boatWake > 0.9) {
+                // A soft wake behind the little boat.
+                this.boatWake = t;
+                const sq = this.squeeze;
+                const from = [e.from[0] * sq, 0, e.from[2]];
+                const p = boatAt(from, [e.to[0] * sq, 0, e.to[2]], age, e.length, this._lifeP);
+                this.ring(p[0], p[2], t, 0.07, this._palette.firefly || this._palette.spirit, 0.3);
+            }
+            const ends = e.type === 'boat' ? e.length + BOAT_RISE : e.length;
+            if (!e.arrived && age >= ends && (e.type === 'gift' || e.type === 'boat')) {
+                e.arrived = true;
+                if (e.to === 'troll') this.fedR = Math.min(1.4, this.fedR + 0.45);
+                else this.fedL = Math.min(1.4, this.fedL + 0.5);
+            }
+            if (age > ends + 1) this.lifeLights.splice(i, 1);
         }
     }
 
@@ -1488,6 +1727,7 @@ export class StillwaterWorld {
         // A fever of play draws the two out to the water's edge, chain or none.
         this.story.setFervour(smooth(0.35, 0.9, fever));
         this.placeFigures(dt);
+        this.stepLifeLights(t);
         this.streamLight(t);
 
         // ── Event tables: live rows packed at the front ──
@@ -1533,6 +1773,23 @@ export class StillwaterWorld {
             side[4] += w.rgb[0] * at[3];
             side[5] += w.rgb[1] * at[3];
             side[6] += w.rgb[2] * at[3];
+            live += 1;
+        }
+        // The lights of their own life, in the wisps' table after the wisps.
+        for (let i = 0; i < this.lifeLights.length && live < WISP_SLOTS; i++) {
+            const at = this.lifeLightAt(this.lifeLights[i], t, this._wisp, this._lifeRGB);
+            if (!at || !(at[3] > 0)) continue;
+            const c = this._lifeRGB;
+            u.wispRows[live * 2].set(at[0], at[1], at[2], at[3]);
+            u.wispRows[live * 2 + 1].set(c[0], c[1], c[2], (0.37 + i * 0.11) % 1);
+            const side = pool[at[0] < 0 ? 0 : 1];
+            side[0] += at[0] * at[3];
+            side[1] += at[1] * at[3];
+            side[2] += at[2] * at[3];
+            side[3] += at[3];
+            side[4] += c[0] * at[3];
+            side[5] += c[1] * at[3];
+            side[6] += c[2] * at[3];
             live += 1;
         }
         u.counts.value.set(rings, strokes, live, 0);
@@ -1584,11 +1841,12 @@ export class StillwaterWorld {
         const glow = 0.25 * warm + 0.3 * hot + 0.35 * fever;
         const h = this._heartOf;
         u.spiritAt.value.set(h[0], h[1], h[2], 0.6 + this.power * 0.3 + this.fedL * 0.6 + this.stepFlash * 0.25 + taken * 1.6
-            + this.story.gaze * 0.15 + held * 0.45 + glow + this.crown * 0.5 + this.flare * 0.5);
+            + this.story.gaze * 0.15 + held * 0.45 + glow + this.crown * 0.5 + this.flare * 0.5
+            + this.lifeGlow('spirit', t));
         const l = this._lantern;
         // (When their eyes meet, both lights warm a little.)
         u.lanternAt.value.set(l[0], l[1], l[2], 0.5 + this.power * 0.35 + this.fedR * 0.7 + this.stepFlash * 0.2
-            + this.story.gaze * 0.15 + glow * 1.15 + this.crown * 0.4 + this.flare * 1.1);
+            + this.story.gaze * 0.15 + glow * 1.15 + this.crown * 0.4 + this.flare * 1.1 + this.lifeGlow('troll', t));
         // The path of light that runs between them on the water while the chain holds them near
         // (a back-to-back sends it running out from both for a moment, further for a second one).
         const sr = this.spirit?.rootWalk();
@@ -1655,6 +1913,13 @@ export class StillwaterWorld {
             bond: this.story.bond,
             path: this.story.path,
             gaze: this.story.gaze,
+            kin: this.story.kin,
+            busy: this.story.busy,
+            // (What each is doing between times and watching: a name, or 'none'.)
+            scenes: {
+                troll: this.story.life.sceneOf('troll') || 'none', spirit: this.story.life.sceneOf('spirit') || 'none',
+            },
+            looks: { troll: this.story.lookKey.troll || 'none', spirit: this.story.lookKey.spirit || 'none' },
             eyes: this.eyes,
             heart: this.heart,
             fed: [this.fedL, this.fedR],
