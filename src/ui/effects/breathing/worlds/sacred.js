@@ -25,7 +25,8 @@
  *
  * Moods: the golden temple in its violet void (the poster); a moonstone temple of silver light in
  * a blue night where frost glitters down through the air and meteors cross; an emerald temple
- * where rose-gold light falls through green haze and petals drift down. Every mood keeps a low
+ * where rose-gold light falls through green haze and petals drift down; and dawn, copper light
+ * over a pale marble floor, the sky warming on one side and dust rising. Every mood keeps a low
  * bank of mist on the floor, and two rare events: now and then a constellation draws itself
  * star by star beside the gate (a hexagram) and fades, and a wave of light runs out along the
  * floor's inscription from the centre to the great circle.
@@ -146,11 +147,12 @@ export const MOODS = Object.freeze([
         white: [1.0, 0.96, 0.92],
         far: [0.1, 0.78, 0.52],
         warm: [1.0, 0.42, 0.44],
-        voidLow: [0.004, 0.024, 0.02],
-        voidHigh: [0.0008, 0.0036, 0.0036],
+        voidLow: [0.004, 0.022, 0.018],
+        voidHigh: [0.0006, 0.0024, 0.003],
         stone: [0.0012, 0.0036, 0.003],
-        haze: [[0.04, 0.5, 0.34], [0.2, 0.62, 0.58]],
-        hazeGain: 0.16,
+        // Emerald wisps with dusky rose ones among them.
+        haze: [[0.04, 0.5, 0.32], [0.6, 0.3, 0.32]],
+        hazeGain: 0.15,
         stars: 0.45,
         mist: { colour: [0.36, 0.95, 0.7], gain: 0.06 },
         meteors: false,
@@ -187,6 +189,54 @@ export const MOODS = Object.freeze([
             shadows: [0.9, 1.06, 1.0], highlights: [1.06, 0.98, 0.94], saturation: 1.06, contrast: 1.05,
         },
     },
+    {
+        // Another hour: dawn breaking low on one side, copper light on a pale marble floor, a
+        // morning mist lying on the stone and dust rising slowly through the light.
+        id: 'alabaster-dawn',
+        name: 'Alabaster Dawn',
+        gold: [1.0, 0.5, 0.24],
+        whiteGold: [1.0, 0.8, 0.6],
+        white: [1.0, 0.95, 0.88],
+        far: [0.75, 0.42, 0.6],
+        warm: [1.0, 0.56, 0.42],
+        voidLow: [0.05, 0.036, 0.075],
+        voidHigh: [0.006, 0.011, 0.04],
+        stone: [0.05, 0.042, 0.04],
+        haze: [[0.62, 0.36, 0.5], [1.0, 0.6, 0.4]],
+        hazeGain: 0.1,
+        stars: 0.18,
+        dawn: { glow: [0.26, 0.11, 0.06], sun: [0.55, 0.24, 0.09], x: -1.05 },
+        marble: 0.5,
+        mist: { colour: [1.0, 0.74, 0.6], gain: 0.1 },
+        meteors: false,
+        solids: {
+            tints: [[1.0, 0.62, 0.44], [1.0, 0.78, 0.5], [1.0, 0.88, 0.8]],
+            halos: [[0.95, 0.38, 0.24], [1.0, 0.5, 0.2], [1.0, 0.55, 0.45]],
+            axis: [1.0, 0.92, 0.8],
+            mirror: [1.0, 0.8, 0.72],
+            film: [1.0, 0.86, 0.76],
+        },
+        inscription: { gold: [0.95, 0.46, 0.22], whiteGold: [1.0, 0.8, 0.6], amber: [0.85, 0.36, 0.2] },
+        dust: { halo: [[1.0, 0.82, 0.6], [1.0, 0.6, 0.36]], air: [[1.0, 0.86, 0.68], [1.0, 0.7, 0.55]] },
+        extraMotes: {
+            // Dust rising slowly through the morning light.
+            motion: MOTE_MOTION.rise,
+            count: 60,
+            size: 0.008,
+            speed: 0.22,
+            spread: 1,
+            depth: 2.4,
+            bokeh: 0.2,
+            colorA: [1.0, 0.86, 0.66],
+            colorB: [1.0, 0.68, 0.48],
+            gain: 0.32,
+        },
+        shaftTint: [1.0, 0.8, 0.62],
+        exposure: 0.95,
+        grade: {
+            shadows: [1.0, 0.95, 1.05], highlights: [1.04, 0.99, 0.92], saturation: 1.04, contrast: 1.04,
+        },
+    },
 ]);
 
 /** A mood's colours as nodes (each world build makes its own). */
@@ -204,6 +254,9 @@ function paletteOf(mood) {
         HAZE_A: v(mood.haze[0]),
         HAZE_B: v(mood.haze[1]),
         hazeGain: mood.hazeGain,
+        DAWN: mood.dawn ? v(mood.dawn.glow) : null,
+        SUNRISE: mood.dawn ? v(mood.dawn.sun) : null,
+        dawnX: mood.dawn?.x ?? 0,
     };
 }
 
@@ -352,6 +405,13 @@ function voidAt(s, u, {
     const centred = float(1).div(s.x.mul(s.x).mul(1.6).add(1)).toVar();
     const band = exp(above.mul(above).mul(-60)).mul(centred.mul(0.85).add(0.15));
     col.addAssign(mix(VIOLET, mix(ROSE, GOLD, 0.5), centred.mul(0.55)).mul(band).mul(0.035).mul(glow));
+    if (P.DAWN) {
+        // Dawn: a warm band along the horizon, brightest on the side where the sun will rise.
+        const rise = above.max(0).toVar();
+        const sunSide = float(1).div(s.x.sub(P.dawnX).pow2().mul(1.4).add(1)).toVar();
+        col.addAssign(P.DAWN.mul(exp(rise.mul(-3.2))).mul(sunSide.mul(0.6).add(0.4)));
+        col.addAssign(P.SUNRISE.mul(exp(rise.mul(-9))).mul(sunSide.mul(sunSide)));
+    }
     return col;
 }
 
@@ -380,8 +440,8 @@ function constellation(p, u, P, gate, centre) {
         const h2 = hash21(vec2(ev.z, 6.3)).toVar();
         const side = step(0.5, hash21(vec2(ev.z, 3.7))).mul(2).sub(1);
         const at = vec2(
-            mix(side.mul(gate.add(mix(0.42, 0.78, h1))), h1.sub(0.5).mul(0.7), tall),
-            mix(centre.add(mix(0.16, 0.4, h2)), centre.add(gate).add(mix(0.24, 0.36, h2)), tall),
+            side.mul(mix(gate.add(mix(0.42, 0.78, h1)), mix(float(0.3), float(0.58), h1), tall)),
+            mix(centre.add(mix(0.16, 0.4, h2)), centre.add(gate).add(mix(0.3, 0.4, h2)), tall),
         );
         const radius = mix(float(0.12), float(0.16), hash21(vec2(ev.z, 8.8))).toVar();
         const spin = hash21(vec2(ev.z, 9.9)).mul(TAU).add(u.time.mul(0.008)).toVar();
@@ -517,7 +577,7 @@ export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
         if (mood.meteors) {
             // Now and then a meteor crosses the night beside the gate.
             col.addAssign(shootingStar(layer(p, u, 0.04), u, {
-                period: 23, duration: 1.3, chance: 0.6, salt: 2.3, area: [-1.7, 0.3, 1.7, 0.95], color: mood.white,
+                period: 23, duration: 1.3, chance: 0.6, salt: 2.3, area: [-1.7, 0.25, 1.7, 0.72], color: mood.white,
             }).mul(clear).mul(aboveHorizon));
         }
         const rosette = roseWindow(layer(p, u, 0.5).sub(vec2(0, centre)), u, Math.min(3, octaves - 1), P);
@@ -552,6 +612,13 @@ export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
             ...look, octaves: 2, lit: float(0.9).div(c2m.mul(0.9).add(1)).add(0.45), blurred: true,
         });
         const floorColour = P.OBSIDIAN.add(reflected.mul(mirrorGain)).toVar();
+        if (mood.marble) {
+            // Pale marble: fine grey veins wandering through the stone (gone where a pixel spans
+            // more floor than a vein is wide).
+            const veinNoise = fbm(floorPoint.mul(0.85).add(vec2(2.7, 8.1)), 3).sub(0.5).toVar();
+            const veins = exp(veinNoise.mul(veinNoise).mul(-700)).mul(near);
+            floorColour.mulAssign(float(1).sub(veins.mul(mood.marble)));
+        }
         // The core mirrored, its glow drawn out into a vertical streak as on any glossy floor.
         const streak = exp(toCoreMirror.x.mul(toCoreMirror.x).mul(-55))
             .mul(exp(toCoreMirror.y.mul(toCoreMirror.y).mul(-1.6)));
@@ -691,7 +758,7 @@ export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
             ...mood.grade,
         },
         camera: { dolly: 0.04, drift: [0.026, 0.012], period: 60 },
-        exposure: 1.0,
+        exposure: mood.exposure ?? 1.0,
         update({
             time, delta, breathSoft, phase, progress, ext,
         }) {
