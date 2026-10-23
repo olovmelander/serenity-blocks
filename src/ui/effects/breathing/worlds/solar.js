@@ -633,6 +633,8 @@ export const MOODS = Object.freeze([
         lanes: 1.0,
         grain: 0.6,
         ragged: 0.2,
+        // Giant cells are plumes, not domes: less light gathered at each one's centre.
+        dome: 0.45,
         boil: 0.07,
         rotation: 1100,
         spots: false,
@@ -974,7 +976,7 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             const cellAt = body.mul(granules).add(meso.mul(2.4)).add(ragged.mul(mood.ragged));
             const cells = voronoi3(cellAt, u.time.mul(mood.boil)).toVar();
             const walls = smoothstep(0.0, mood.lanes, cells.y.sub(cells.x));
-            const dome = float(1.25).sub(cells.x.mul(0.9));
+            const dome = float(1.25).sub(cells.x.mul(0.9 * (mood.dome ?? 1)));
             const granule = walls.mul(dome).mul(cells.z.mul(0.5).add(0.75)).toVar();
             const sharp = smoothstep(1.5, 4.0, mu.max(0.02).div(pixel.mul(granules))).mul(meso.mul(0.8).add(0.6));
             const grain = granule.sub(0.62).mul(mood.grain).mul(sharp)
