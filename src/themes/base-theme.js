@@ -70,6 +70,13 @@ export function getGlobalAntialias() {
     return globalAntialiasEnabled;
 }
 
+/** Where sizeRenderer() reads a renderer's size (three's getSize only calls target.set). */
+const RENDERER_SIZE_PROBE = {
+    x: 0,
+    y: 0,
+    set(x, y) { this.x = x; this.y = y; return this; },
+};
+
 // Automatically squash the render scale globally if performance drops
 eventBus.on(EVENTS.PERFORMANCE_DOWNSCALE, () => {
     const currentScale = getGlobalRenderScale();
@@ -1287,6 +1294,26 @@ export class BaseTheme {
      */
     getEffectivePixelRatio(maxRatio = 2, sceneType = 'theme') {
         return BaseTheme.getEffectivePixelRatio(maxRatio, sceneType);
+    }
+
+    /**
+     * Size a renderer's canvas, only when its size or pixel ratio changes. Sizing a canvas again,
+     * even to the size it has, leaves it blank until the next frame is drawn, and a resize can
+     * come outside the frame loop (a window event, the theme manager, a settings save).
+     * @param {{ getSize?: Function, getPixelRatio?: Function, setPixelRatio: Function, setSize: Function }} renderer
+     * @param {number} width CSS pixels
+     * @param {number} height CSS pixels
+     * @param {number} pixelRatio
+     * @returns {boolean} whether the canvas was sized
+     */
+    sizeRenderer(renderer, width, height, pixelRatio) {
+        const drawn = renderer.getSize?.(RENDERER_SIZE_PROBE);
+        if (drawn && drawn.x === width && drawn.y === height && renderer.getPixelRatio?.() === pixelRatio) {
+            return false;
+        }
+        renderer.setPixelRatio(pixelRatio);
+        renderer.setSize(width, height);
+        return true;
     }
 
     /**
