@@ -88,7 +88,7 @@ const LAKE_CENTER_X = 0;
 const LAKE_CENTER_Z = 0;
 // The air over the lava, lit by the lake: the far lake hazes into it and its rim melts into it,
 // matching the glow the vault's low walls take from the same lake (createVolcanoBackgroundTSL).
-// A TSL node; `/* @__PURE__ */` keeps it tree-shakeable like the other module-level nodes.
+// A TSL node, annotated pure so it tree-shakes like the other module-level nodes.
 const LAKE_LIT_AIR = /* @__PURE__ */ vec3(0.30, 0.095, 0.03);
 
 /**
