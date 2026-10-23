@@ -161,7 +161,7 @@ Medium up.
   branching coral), chosen from eight candidates at the picker's 80 px beside its neighbours
   (`?effect=ocean&t=20&quality=Extreme&hour=0.6&icon=1&iconFov=26&iconYaw=-0.62&iconPitch=-0.38`,
   840 px square, baked to the 512 px circle with saturation 1.35 and contrast 1.15). Both copies
-  (`src/themes/ocean/` and `public/assets/themes/`) were replaced.
+  (`src/themes/ocean/` and `public/assets/themes/`) were replaced. Superseded 2026-10-23 by a manta in the shafts over the coral wall ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)).
 
 ![The icon at picker size, beside its neighbours](ocean-overhaul/icon-at-picker-size.png)
 - The six hours' palettes, the hour's length (100 s) and the size of the event effects are my
