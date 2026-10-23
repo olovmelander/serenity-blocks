@@ -21,16 +21,39 @@
  * it; he sits with his staff against his shoulder and nods off, and wakes with a start when a light
  * falls hard; now and then one of them looks across, and sometimes the other is looking back.
  *
+ * Between the moments play gives them they live their own small lives, and grow nearer the longer
+ * the night goes on (stillwater-life.js): the story asks the life what each is doing, and play
+ * always comes first.
+ *
+ * Where each of them looks is chosen, not dictated (stillwater-attention.js): every frame the story
+ * offers each what there is to watch, and a look is held a while before it is let go. A quick run
+ * of play does not set their heads darting after every light: the lights falling on a side are
+ * gathered into one place that moves smoothly, and that is what they watch.
+ *
  * This module only decides what each of them means to do (`trollWant`, `spiritWant`) and the
  * story's own beats (the heart's flight, the path of light, a meeting of eyes); the bodies
  * (stillwater-troll-body.js, stillwater-spirit-body.js) carry it out. Everything is a function of
- * the clock and the events it was told, so a replay meets the same story.
+ * the clock and the events it was told, so a replay meets the same story; reading a want changes
+ * nothing.
  */
 
 import {
     APPROACH_STEPS, HEART, HUSH_HOLD, SPIRIT, TROLL, clamp01, lerp, smooth,
 } from './stillwater-core.js';
 import { Swell, softCeiling } from '../shared/swell.js';
+import { ATTENTION, Area, Attention } from './stillwater-attention.js';
+import { KIN, StillwaterLife } from './stillwater-life.js';
+
+/** How far along her path she kneels on the water off her stone. */
+export const KNEEL_AT = 0.28;
+/** Seconds of calm before a hard drop makes him start (in a quick run he is alert, not jolted). */
+export const STARTLE_CALM = 2.5;
+/** Locks counted over this many seconds make play "busy" (see `busy`). */
+const RATE_TIME = 3;
+/** A light falling where nothing else is happening is followed down; in a busy run it is not. */
+const FOLLOW_BELOW = 0.35;
+/** Seconds they wait at the water after a chain lets them go, in the quickest play (none when calm). */
+export const LINGER = 4;
 
 /** Seconds the two hold each other's eyes when a chain breaks, before they go back. */
 export const PARTING = 2.6;
@@ -105,9 +128,11 @@ export class StillwaterStory {
     reset(time = 0) {
         this.time = time;
         this.combo = 0;
-        /** How far the chain has drawn them (0..1), as the bodies are asked to go. */
+        /** How far the chain has drawn them (0..1), and how far out they stand for it (`drawn`). */
         this.bond = 0;
         this.bondTarget = 0;
+        this.drawn = 0;
+        this.fallSince = -1;
         /** A chain that broke: when, and how long they hold each other's eyes before going back. */
         this.partingUntil = -1;
         this.lastEvent = time - 30;
@@ -144,6 +169,45 @@ export class StillwaterStory {
         this.gaze = 0;
         this.ended = false;
         this.lastBondAt = -100;
+        /** How quick play runs: locks counted over a few seconds, and that read as 0..1. */
+        this.rate = 0;
+        this.busy = 0;
+        /** Where a run of lights is falling, on her side and on his. */
+        if (!this.areas) this.areas = { spirit: new Area(), troll: new Area() };
+        this.areas.spirit.reset();
+        this.areas.troll.reset();
+        this.locks = 0;
+        /** Where each is looking (chosen every update), and what else there was to look at. */
+        if (!this.attention) {
+            this.attention = { troll: new Attention(ATTENTION.troll), spirit: new Attention(ATTENTION.spirit) };
+            this.interests = { troll: [], spirit: [] };
+            this._pool = { troll: [], spirit: [] };
+        }
+        this.attention.troll.reset(time);
+        this.attention.spirit.reset(time);
+        this.lookOf = { troll: null, spirit: null };
+        this.lookKey = { troll: null, spirit: null };
+        /** Their eyes met (both looking at the other), and since when. */
+        this.meeting = false;
+        this.meetSince = -100;
+        /** A small answer to a clear while they watch play: a nod, a clap. */
+        this.reflex = { troll: null, spirit: null, at: -100 };
+        /** Whether play has them now (a chain, the heart, a parting): the life waits. */
+        this.engaged = false;
+        if (!this.life) this.life = new StillwaterLife();
+        this.life.reset(time, this.kinAtReset ?? KIN.start);
+        this._ctx = {};
+    }
+
+    /** How near the two have grown (0..1). */
+    get kin() {
+        return this.life.kin;
+    }
+
+    /** Set how near they have grown (captures; a seek keeps it through the reset). */
+    setKin(kin) {
+        this.kinAtReset = clamp01(Number(kin) || 0);
+        this.life.kin = this.kinAtReset;
     }
 
     // ── What happened ───────────────────────────────────────────────────────────
@@ -152,22 +216,35 @@ export class StillwaterStory {
     onLock({
         time, side = 1, at = null, hardDrop = false,
     }) {
+        const calm = time - this.lastEvent;
         this.lastEvent = time;
+        this.rate += 1;
+        this.locks += 1;
+        const who = side < 0 ? 'spirit' : 'troll';
         if (at) {
             const point = [at[0], 0.1, at[1]];
             this.lastLock = point;
-            // The one whose side it fell on turns to it; a hard drop turns both.
-            const who = side < 0 ? 'spirit' : 'troll';
-            this.looks.push({
-                who, at: point, from: time + 0.12, until: time + 1.7,
-            });
-            if (hardDrop) {
+            this.areas[who].add(point);
+            // In a calm night the one whose side it fell on follows it down, and a hard drop turns
+            // both; in a quick run they watch where the lights are falling, not each light.
+            if (this.busy < FOLLOW_BELOW) {
+                const key = `lock${this.locks}`;
+                // (A hard one out of a calm is a start: it takes the eyes from anything but the heart.)
+                let weight = hardDrop ? 1 : 0.6;
+                if (hardDrop && calm > STARTLE_CALM) weight = 1.35;
                 this.looks.push({
-                    who: who === 'spirit' ? 'troll' : 'spirit', at: point, from: time + 0.3, until: time + 1.4,
+                    who, at: point, from: time + 0.12, until: time + 1.7, key, weight,
                 });
+                if (hardDrop) {
+                    const other = who === 'spirit' ? 'troll' : 'spirit';
+                    this.looks.push({
+                        who: other, at: point, from: time + 0.3, until: time + 1.5, key, weight: 0.6,
+                    });
+                }
             }
         }
-        if (hardDrop) this.startleAt = time;
+        // A hard drop out of a calm makes him start; one in a quick run he takes in his stride.
+        if (hardDrop && calm > STARTLE_CALM) this.startleAt = time;
         this.ended = false;
     }
 
@@ -202,12 +279,24 @@ export class StillwaterStory {
         this.clearAt = time;
         const quad = lines >= 4 || perfect;
         if (quad) this.raiseHeart(time, perfect ? 1.4 : 1);
-        // Both look out to the tarn's heart, where the swells come from.
+        this.life.grow(KIN.line * Math.max(1, Number(lines) || 1));
+        // Both look out to the tarn's heart, where the swells come from: in a calm night fully, in
+        // a quick run only if nothing holds them more (they are watching their own sides).
+        const weight = quad ? 0.8 : 0.3 + 0.6 * (1 - this.busy);
         ['troll', 'spirit'].forEach((who) => {
+            const until = time + (quad ? 1.6 : 1.3);
             this.looks.push({
-                who, at: [HEART[0], 0.2, HEART[2]], from: time + 0.05, until: time + (quad ? 1.2 : 0.9),
+                who, at: [HEART[0], 0.2, HEART[2]], from: time + 0.05, until, key: 'tarn', weight,
             });
         });
+        // While they watch play they answer a clear in small ways: he nods, she claps for more
+        // than one line (not every clear: they are not puppets of it).
+        if (!quad && this.busy < 0.6 && time - this.reflex.at > 6) {
+            this.reflex.at = time;
+            this.reflex.troll = { name: 'nod', start: time + 0.35, length: 1.3 };
+            const clap = lines >= 2;
+            this.reflex.spirit = { name: clap ? 'clap' : 'nod', start: time + 0.25, length: clap ? 1.8 : 1.3 };
+        }
         this.ended = false;
     }
 
@@ -234,10 +323,10 @@ export class StillwaterStory {
         const spirit = at.spiritHeart || [SPIRIT.home[0], SPIRIT.home[1] + 1.2, SPIRIT.home[2]];
         const lantern = at.lantern || [TROLL.home[0] - 0.4, 2.4, TROLL.home[2] + 0.3];
         this.looks.push({
-            who: 'troll', at: [spirit[0], spirit[1], spirit[2]], from: time + 0.05, until: time + 1.8,
+            who: 'troll', at: spirit, from: time + 0.05, until: time + 1.8, key: 'partner', weight: 0.9,
         });
         this.looks.push({
-            who: 'spirit', at: [lantern[0], lantern[1], lantern[2]], from: time + 0.05, until: time + 1.8,
+            who: 'spirit', at: lantern, from: time + 0.05, until: time + 1.8, key: 'partner', weight: 0.9,
         });
         this.ended = false;
     }
@@ -252,6 +341,7 @@ export class StillwaterStory {
         const n = Math.max(0, Math.round(Number(combo) || 0));
         const was = this.combo;
         const b = chainBond(n);
+        if (n > was && n >= 2) this.life.grow(KIN.chain * (n - Math.max(1, was)));
         if (n < was) {
             // The chain broke (or broke and a new one has already begun): if that leaves them less
             // near, they hold each other's eyes a while before they go back to where the new one has them.
@@ -288,6 +378,9 @@ export class StillwaterStory {
     onEnd(time) {
         this.combo = 0;
         this.bondTarget = 0;
+        // (Play has stopped: nothing is quick about it now, so nobody lingers at the water.)
+        this.rate = 0;
+        this.busy = 0;
         this.partingUntil = time + 0.8;
         this.ended = true;
         this.lastEvent = time;
@@ -301,6 +394,7 @@ export class StillwaterStory {
      * @param {object} at  where things are now (world): { spiritHeart, lantern, troll: [x, z] }
      */
     update(time, dt, at) {
+        const prev = this.time;
         this.time = time;
         if (this.partingUntil >= 0 && time >= this.partingUntil) {
             // The parting is over: they go back to where the chain (if a new one runs) has them.
@@ -310,15 +404,30 @@ export class StillwaterStory {
         // The bond is what they are asked: up at once, down only after the parting. A fever of play
         // draws them out too, chain or none, and lets them go as it cools.
         this.bond = Math.max(this.bondTarget, FERVOUR_BOND * this.fervour);
-        this.trollAt = trollStation(this.bond, this.trollAt);
+        // Where they stand follows the bond out at once; back, in a quick run, only once it has
+        // stayed lower a few seconds (another chain is likely on its way: they wait at the water
+        // for it instead of trudging home to come straight back).
+        if (this.bond >= this.drawn) {
+            this.drawn = this.bond;
+            this.fallSince = -1;
+        } else {
+            if (this.fallSince < 0) this.fallSince = time;
+            if (time - this.fallSince >= LINGER * this.busy) this.drawn = this.bond;
+        }
+        this.trollAt = trollStation(this.drawn, this.trollAt);
         // (A chain of one gets him up off his stone; he sits again only after a calm.)
-        if (this.trollAt !== 'home' || this.bond > 0.2) this.trollHomeSince = time;
-        if (this.bond > 0.05) this.spiritHomeSince = time;
+        if (this.trollAt !== 'home' || this.drawn > 0.2) this.trollHomeSince = time;
+        if (this.drawn > 0.05) this.spiritHomeSince = time;
         // (Kept here, not where her wants are read: reading them must not change the story.)
-        if (this.bond >= 0.05) this.lastBondAt = time;
+        if (this.drawn >= 0.05) this.lastBondAt = time;
         // Old looks and arrivals drop away.
         this.looks = this.looks.filter((l) => l.until > time);
         this.arrivals = this.arrivals.filter((a) => a.at > time - 2);
+        // Every heart she takes brings them nearer.
+        for (let i = 0; i < this.hearts.length; i++) {
+            const taken = this.hearts[i].time + HEART_FLIGHT.taken;
+            if (prev < taken && time >= taken) this.life.grow(KIN.heart * this.hearts[i].gain);
+        }
         for (let i = this.hearts.length - 1; i >= 0; i--) {
             const h = this.hearts[i];
             if (time <= h.time + HEART_FLIGHT.held + 2) continue;
@@ -331,8 +440,112 @@ export class StillwaterStory {
         const pathTarget = this.bond >= 0.6 && this.partingUntil < 0 ? 1 : 0;
         const rate = pathTarget > this.path ? 0.35 : 0.6;
         this.path += (pathTarget - this.path) * (1 - Math.exp(-rate * dt * 2));
+        if (this.path > 0.5) this.life.grow(KIN.path * Math.max(0, dt));
         this.at = at;
+        // How quick play runs, and where its lights are falling.
+        if (dt > 0) this.rate *= Math.exp(-dt / RATE_TIME);
+        this.busy = clamp01((this.rate - 2) / 4);
+        this.areas.troll.step(dt);
+        this.areas.spirit.step(dt);
+        // Play has them (a chain, the heart, a parting, the walk home after): the life waits.
+        this.engaged = this.drawn > 0.05 || this.partingUntil >= 0 || this.hearts.length > 0
+            || this.lastBondAt > time - 7 || this.trollAt !== 'home';
+        this.updateLife(time, dt);
+        this.updateLooks(time);
         this.updateGaze(time, dt);
+    }
+
+    /** Step the life the two live between the moments play gives them. */
+    updateLife(time, dt) {
+        const at = this.at || {};
+        const c = this._ctx;
+        c.calm = time - this.lastEvent;
+        c.busy = this.busy;
+        c.engaged = this.engaged;
+        c.meet = this.meeting;
+        c.troll = at.troll || [TROLL.home[0], TROLL.home[2]];
+        c.trollMode = at.trollMode || 'standing';
+        c.trollSpeed = at.trollSpeed || 0;
+        c.spirit = at.spirit || SPIRIT.home;
+        c.spiritMode = at.spiritMode || 'standing';
+        c.lantern = at.lantern || [TROLL.home[0] - 0.4, 2.4, TROLL.home[2] + 0.3];
+        c.spiritHeart = at.spiritHeart || [SPIRIT.home[0], SPIRIT.home[1] + 1.2, SPIRIT.home[2]];
+        this.life.update(time, dt, c);
+    }
+
+    /** The things one of them might look at now, each with what it is worth to them. */
+    interestsOf(who, time) {
+        const list = this.interests[who];
+        const pool = this._pool[who];
+        list.length = 0;
+        const add = (key, at, weight) => {
+            for (let i = 0; i < list.length; i++) {
+                // (One thing offered twice is worth the more of the two.)
+                if (list[i].key === key) {
+                    if (weight > list[i].weight) {
+                        list[i].weight = weight;
+                        list[i].at = at;
+                    }
+                    return;
+                }
+            }
+            const it = pool[list.length] || (pool[list.length] = { key: '', at: null, weight: 0 });
+            it.key = key;
+            it.at = at;
+            it.weight = weight;
+            list.push(it);
+        };
+        const at = this.at || {};
+        const troll = who === 'troll';
+        const me = at.troll || [TROLL.home[0], TROLL.home[2]];
+        const partner = troll
+            ? (at.spiritHeart || [SPIRIT.home[0], 1.2, SPIRIT.home[2]])
+            : (at.lantern || [TROLL.home[0] - 0.4, 2.4, TROLL.home[2] + 0.3]);
+        // At rest: the water before him; down into the water before her.
+        if (troll) add('water', [me[0] - 3.5, 0.0, me[1] + 0.8], 0.3);
+        else add('down', null, 0.3);
+        // The other, across the water: more for a glance, a chain, a parting, her way home.
+        let other = 0.12 + 0.18 * this.life.kin;
+        if (this.glance(who, time)) other = 0.62;
+        if (this.bond > 0.3) other = 0.78 + 0.12 * this.bond;
+        if (!troll && this.drawn < 0.05 && this.lastBondAt > time - 7) other = 0.8;
+        if (this.partingUntil >= 0) other = 0.95;
+        add('partner', partner, other);
+        // Where the lights of a quick run are falling on their side.
+        const area = this.areas[who];
+        if (area.at && this.busy > 0.1) add('area', area.at, 0.35 + 0.45 * this.busy);
+        // What play pointed them at.
+        for (let i = 0; i < this.looks.length; i++) {
+            const l = this.looks[i];
+            if (l.who === who && time >= l.from && time < l.until) add(l.key || `look${i}`, l.at, l.weight ?? 0.8);
+        }
+        // The sky turning.
+        if (time - this.skyAt < 2.4) add('sky', troll ? [me[0] - 6, 14, me[1] - 20] : [-12, 18, -40], 0.85);
+        // The heart in flight, above all.
+        for (let i = this.hearts.length - 1; i >= 0; i--) {
+            const t = time - this.hearts[i].time;
+            if (t >= HEART_FLIGHT.rise && t < HEART_FLIGHT.taken) {
+                const h = this.heartAt(time);
+                if (h) add('heart', [h[0], h[1], h[2]], 1.2);
+                break;
+            }
+        }
+        // What they are doing between times.
+        const life = this.life[who];
+        if (!this.engaged && life.look) add(life.look.key, life.look.at, life.look.weight);
+        return list;
+    }
+
+    /** Each chooses what to look at (holding a look a while before letting it go). */
+    updateLooks(time) {
+        ['troll', 'spirit'].forEach((who) => {
+            const pick = this.attention[who].choose(time, this.interestsOf(who, time));
+            this.lookOf[who] = pick ? pick.at : null;
+            this.lookKey[who] = pick ? pick.key : null;
+        });
+        const meeting = this.lookKey.troll === 'partner' && this.lookKey.spirit === 'partner';
+        if (meeting && !this.meeting) this.meetSince = time;
+        this.meeting = meeting;
     }
 
     /** Idle glances: every so often one looks across; sometimes the other looks back. */
@@ -347,7 +560,7 @@ export class StillwaterStory {
     }
 
     updateGaze(time, dt) {
-        const meet = (this.glance('troll', time) && this.glance('spirit', time)) || time - this.b2bAt < 1.8 ? 1 : 0;
+        const meet = this.meeting || time - this.b2bAt < 1.8 ? 1 : 0;
         const parting = this.partingUntil >= 0 ? 1 : 0;
         const target = Math.max(meet, parting, this.bond >= 0.6 ? 0.6 : 0);
         this.gaze += (target - this.gaze) * (1 - Math.exp(-dt * (target > this.gaze ? 2.5 : 1.2)));
@@ -465,8 +678,10 @@ export class StillwaterStory {
         out.face = Math.atan2(spirit[0] - me[0], spirit[2] - me[1]);
         const calm = time - this.lastEvent;
         out.sit = station === 'home' && time - this.trollHomeSince > SIT_AFTER && this.partingUntil < 0;
-        // Going back he walks a little slower, and carries the lantern up where she can see it.
-        const goingHome = station === 'home' && me && Math.hypot(me[0] - spot[0], me[1] - spot[2]) > 0.5;
+        // Going back from a chain he walks a little slower, and carries the lantern up where she can
+        // see it. (Not on his way back from his own errands: that is just a walk.)
+        const fromChain = !(this.life.troll.scene && !this.engaged) && this.lastBondAt > time - 25;
+        const goingHome = station === 'home' && fromChain && me && Math.hypot(me[0] - spot[0], me[1] - spot[2]) > 0.5;
         out.pace = goingHome ? 0.42 : 0.55;
         out.heavy = goingHome;
         // The staff: lifted for light coming home, held out to her while the chain holds, lowered
@@ -495,17 +710,31 @@ export class StillwaterStory {
             out.staff = 'offer';
             out.reach = 0.0;
         } else if (goingHome) out.staff = 'high';
-        // What he watches: an event, the heart, her (glances, the chain), or the water before him.
-        let look = this.eventLook('troll', time);
-        if (flying) {
-            const h = this.heartAt(time);
-            if (h) look = [h[0], h[1], h[2]];
+        out.faceFixed = false;
+        out.gesture = null;
+        out.scene = null;
+        // Between the moments play gives him, what he is doing with his night.
+        const life = this.engaged ? null : this.life.troll;
+        if (life && life.scene) {
+            out.scene = life.scene;
+            if (life.at) out.at = [life.at[0], life.at[1]];
+            if (life.sit !== null) out.sit = life.sit;
+            if (life.crouch !== null) out.crouch = life.crouch;
+            if (life.pace) out.pace = life.pace;
+            if (life.face !== null) {
+                out.face = life.face;
+                out.faceFixed = true;
+            }
+            // (Light coming home still lifts the lantern: that is play's.)
+            if (life.staff && out.staff === 'walk') out.staff = life.staff;
+            out.gesture = life.gesture;
         }
-        if (!look && (this.glance('troll', time) || this.bond > 0.3 || this.partingUntil >= 0)) look = spirit;
-        if (!look && time - this.skyAt < 2.4) look = [me[0] - 6, 14, me[1] - 20];
-        if (!look) look = [me[0] - 3.5, 0.0, me[1] + 0.8];
-        out.look = look;
-        out.doze = out.sit && calm > DOZE_AFTER;
+        const reflex = this.reflex.troll;
+        if (!out.gesture && reflex && time >= reflex.start && time < reflex.start + reflex.length) out.gesture = reflex;
+        // What he watches (chosen in the update, and held a while: see stillwater-attention.js).
+        out.look = this.lookOf.troll;
+        out.lookKey = this.lookKey.troll;
+        out.doze = out.sit && calm > DOZE_AFTER && !out.scene;
         // (The moment of the start, for the body to take once however slow the frames are.)
         out.startleAt = this.startleAt;
         out.wind = 0;
@@ -514,12 +743,10 @@ export class StillwaterStory {
 
     /** The spirit's intent for her body: how far out over the water, what her hands do, where she looks. */
     spiritWant(time, out = {}) {
-        const at = this.at || {};
-        out.out = this.bond;
-        const lantern = at.lantern || [TROLL.home[0] - 0.4, 2.4, TROLL.home[2] + 0.3];
+        out.out = this.drawn;
         // (Not only in a long silence: while the chain sleeps she goes back down to the water,
         // and pieces falling do not call her up; a chain does.)
-        out.kneel = this.bond < 0.05 && time - this.spiritHomeSince > KNEEL_AFTER && !this.hearts.length;
+        out.kneel = this.drawn < 0.05 && time - this.spiritHomeSince > KNEEL_AFTER && !this.hearts.length;
         // Open for a heart on its way (before the one she holds), else holding one to her breast.
         let open = false;
         let holding = false;
@@ -533,19 +760,39 @@ export class StillwaterStory {
         else if (holding) out.hands = 'heart';
         else if (this.arrivals.some((a) => a.side < 0 && a.at > time - 0.3 && a.at < time + 0.9)) out.hands = 'receive';
         else if (this.bond >= 0.6 && this.partingUntil < 0) out.hands = 'reach';
-        let look = this.eventLook('spirit', time);
-        if (open) {
-            const h = this.heartAt(time);
-            if (h) look = [h[0], h[1], h[2]];
+        out.back = this.drawn < 0.05 && this.lastBondAt > time - 7;
+        // How she turns: out to him, back to her stone, at rest a little toward the tarn's heart.
+        // (Not by what she glances at: her head turns for a glance, not all of her.)
+        out.faceMode = 'rest';
+        if (this.drawn > 0.05) out.faceMode = 'lantern';
+        else if (out.back) out.faceMode = 'home';
+        out.face = null;
+        out.at = null;
+        out.pace = null;
+        out.gesture = null;
+        out.scene = null;
+        const life = this.engaged ? null : this.life.spirit;
+        if (life && life.scene) {
+            out.scene = life.scene;
+            if (life.at) {
+                out.at = [life.at[0], life.at[1], life.at[2]];
+                out.faceMode = 'path';
+            }
+            if (life.kneel !== null) out.kneel = life.kneel;
+            if (life.pace) out.pace = life.pace;
+            if (life.face !== null) {
+                out.face = life.face;
+                out.faceMode = 'abs';
+            }
+            if (life.hands && out.hands === 'rest') out.hands = life.hands;
+            out.gesture = life.gesture;
         }
-        if (!look && (this.glance('spirit', time) || this.bond > 0.3 || this.partingUntil >= 0)) look = lantern;
-        if (!look && time - this.skyAt < 2.6) look = [-12, 18, -40];
-        // Going back to her stone she looks back at him over her shoulder.
-        if (!look && this.bond < 0.05 && this.lastBondAt > time - 7) look = lantern;
-        out.look = look;
-        // At rest she looks down into the water before her stone.
-        out.gazeDown = !look;
-        out.back = this.bond < 0.05 && this.lastBondAt > time - 7;
+        const reflex = this.reflex.spirit;
+        if (!out.gesture && reflex && time >= reflex.start && time < reflex.start + reflex.length) out.gesture = reflex;
+        // What she watches (chosen in the update, held a while); at rest, down into the water.
+        out.look = this.lookOf.spirit;
+        out.lookKey = this.lookKey.spirit;
+        out.gazeDown = !out.look;
         return out;
     }
 }
