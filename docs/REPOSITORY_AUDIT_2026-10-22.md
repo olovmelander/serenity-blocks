@@ -43,25 +43,32 @@ plan before executing them.
    `eslint-plugin-import-x`; decide Prettier (it disagrees with the lint rules on 1,746 files);
    lint `electron/`.
 
-**Bugs**
-5. Sunfall: a failed build is swallowed into a blank theme with no Forest fallback; it ignores
+**Bugs** (5, 7, 8, 10, 11 and the first of 9 fixed 2026-10-23 on `fix/player-bugs`; the rest open)
+5. ~~Sunfall: a failed build is swallowed into a blank theme with no Forest fallback; it ignores
    render scale, drops a quality change made while parked, never resets on game over, and `||`
-   turns Minimal's 0 into more effects than Low.
+   turns Minimal's 0 into more effects than Low.~~ Fixed: game over closes the cloud deck and a
+   new run opens it (checked in the packaged app).
 6. Steam: a renderer crash or reload leaves the player as a ghost lobby owner; `currentLobby` is
    replaced without `leave()`; accepting an invite mid-match tears the match down halfway, and one
    to your own lobby demotes the host; rich presence is not cleared while reconnecting;
    leaderboard details are never sent and `FFAWinRate` uses KeepBest; `setStat('odyssey_stars')`
    can lower the stat; lobby `status` can inject CSS classes.
-7. Serenity mode `onStart` has no liveness check after its awaits: leaving mid-start keeps the
-   wake lock, theme drift and media keys on the menu.
-8. The Random-theme timer runs on the menu and while hidden, disposing the parked warm theme; two
-   handlers disagree about starting it.
-9. Web build: `pagehide` tears the app down even for the back/forward cache (a dead menu on
-   Back); the high-score IndexedDB opens duplicate connections and can hang across a version
-   change; a startup that loses to the 45 s watchdog never starts Steam or the save flush.
-10. A knock-out right after a zoom punch leaves the board camera zoomed and blocks later punches;
-    two Phaser cleanup checks test fields Phaser 4 does not have (`hasFinished`, `emitter.on`).
-11. The chapter 7 warp reads only the OS reduced-motion setting, every frame.
+7. ~~Serenity mode `onStart` has no liveness check after its awaits: leaving mid-start keeps the
+   wake lock, theme drift and media keys on the menu.~~ Fixed (a start generation, as local versus).
+8. ~~The Random-theme timer runs on the menu and while hidden, disposing the parked warm theme; two
+   handlers disagree about starting it.~~ Fixed: one owner (`themes/random-theme-rotation.js`),
+   only in a running game on a visible page, never in Serenity or Odyssey.
+9. Web build: ~~`pagehide` tears the app down even for the back/forward cache (a dead menu on
+   Back)~~ (fixed: a restored page reloads); still open: the high-score IndexedDB (and
+   DemoManager) open a connection per concurrent caller with no `onversionchange`/`onblocked`,
+   so the next `DB_VERSION` bump can hang the results screen while an old tab is open; a startup
+   that loses to the 45 s watchdog never adopts the late app, so Steam, the quit flush and the
+   deferred services never start (needs the post-app wiring in `main.js` made re-runnable).
+10. ~~A knock-out right after a zoom punch leaves the board camera zoomed and blocks later punches;
+    two Phaser cleanup checks test fields Phaser 4 does not have (`hasFinished`, `emitter.on`).~~
+    Fixed.
+11. ~~The chapter 7 warp reads only the OS reduced-motion setting, every frame.~~ Fixed (the shared
+    `prefersReducedMotion()`).
 
 **Performance and VRAM**
 12. The Odyssey charm-icon stage: its own WebGPU device, ~14 synchronous pipelines on the first
