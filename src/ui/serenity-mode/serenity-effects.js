@@ -484,6 +484,7 @@ export class SerenityEffects {
      *   for a piece (none: the standard colour)
      * @param {(state: { playing: string|null, touring: boolean }) => void} [options.onChange]
      * @param {(effect: EffectDefinition, index: number, total: number) => void} [options.onTourStep]
+     * @param {() => void} [options.onTourDone] Play all reached the end (not when it was stopped)
      */
     constructor({
         emit = emitEffectStep,
@@ -492,12 +493,14 @@ export class SerenityEffects {
         colorFor,
         onChange = () => {},
         onTourStep = () => {},
+        onTourDone = () => {},
     } = {}) {
         this.emit = emit;
         this.setTimer = setTimer;
         this.clearTimer = clearTimer;
         this.onChange = onChange;
         this.onTourStep = onTourStep;
+        this.onTourDone = onTourDone;
         this.ctx = createEffectContext({ colorFor });
         /** @type {any[]} */
         this.timers = [];
@@ -525,6 +528,7 @@ export class SerenityEffects {
         const next = (index) => {
             if (index >= EFFECTS.length) {
                 this._settle();
+                this.onTourDone();
                 return;
             }
             const effect = EFFECTS[index];

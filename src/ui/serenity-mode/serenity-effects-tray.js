@@ -13,10 +13,12 @@
  *     ← → another theme · E closes
  *
  * On a wide screen it stands at the right edge, clear of the middle where the board would be
- * and where the themes play their effects; on a phone it lies along the bottom. It stays until
- * you close it (E, Esc, its ×, the world bar's chip); it steps aside whenever something else
- * has the screen (the Hub, the breathing guide, the rest veil). While it is in view it owns
- * Esc, as the Hub does.
+ * and where the themes play their effects; on a phone it is a short strip along the bottom. It
+ * stays until you close it (E, Esc, its ×, the world bar's chip), and closing it is only getting
+ * it out of the way: what is playing plays on. Play all folds it away by itself, so the theme
+ * has the whole screen; the world bar's dock offers Stop meanwhile. It steps aside whenever
+ * something else has the screen (the Hub, the breathing guide, the rest veil). While it is in
+ * view it owns Esc, as the Hub does; folded away while Play all runs, Esc stops that first.
  *
  * The effects themselves are serenity-effects.js. Styles: public/styles/keystone-overlays.css
  * (`#serenity-effects`). `.serenity-hub` keeps a press on it from also touching the world.
@@ -38,17 +40,23 @@ export class SerenityEffectsTray {
      * @param {(id: string) => void} options.onPlay
      * @param {() => void} options.onPlayAll a press on Play all (or Stop, while it plays)
      * @param {() => void} options.onClose
+     * @param {() => void} [options.onStop] Esc while Play all runs with the tray folded away
      * @param {{ effects: string, previous: string, next: string }} [options.keys] keycap text
      * @param {HTMLElement} [options.host]
      */
     constructor({
-        onPlay, onPlayAll, onClose, keys = { effects: 'E', previous: '←', next: '→' }, host = document.body,
+        onPlay, onPlayAll, onClose, onStop = () => {}, keys = { effects: 'E', previous: '←', next: '→' },
+        host = document.body,
     }) {
         this.onPlay = onPlay;
         this.onPlayAll = onPlayAll;
         this.onClose = onClose;
+        this.onStop = onStop;
         this.isOpen = false;
         this.covered = false;
+        this.touring = false;
+        /** @type {ResizeObserver|null} */
+        this.sizer = null;
         this.abort = new AbortController();
         /** @type {Map<string, HTMLButtonElement>} */
         this.buttons = new Map();
@@ -125,17 +133,28 @@ export class SerenityEffectsTray {
             const activates = event.key === ' ' || event.key === 'Enter';
             if (activates && event.target.closest?.('button')) event.stopPropagation();
         }, { signal });
-        // Esc closes the tray first. The document's other Esc owners (Settings, in controls.js)
-        // listen as it bubbles; this one listens on the way down, only while the tray is in view.
+        // Esc closes the tray first, and with the tray folded away it stops Play all before it
+        // can leave the mode. The document's other Esc owners (Settings, in controls.js) listen
+        // as it bubbles; this one listens on the way down, only while the effects have the world.
         document.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape' || !this.isOpen || this.covered) return;
+            if (event.key !== 'Escape' || this.covered || !(this.isOpen || this.touring)) return;
             if (document.getElementById('settings-modal')?.classList.contains('visible')) return;
             event.preventDefault();
             event.stopImmediatePropagation();
-            this.onClose();
+            if (this.isOpen) this.onClose();
+            else this.onStop();
         }, { signal, capture: true });
+        // On a phone the notices stand on the tray: they read its height from the page.
+        if (typeof ResizeObserver === 'function') {
+            this.sizer = new ResizeObserver(() => this._publishHeight());
+        }
         this.root = root;
         host.appendChild(root);
+    }
+
+    _publishHeight() {
+        if (!this.isOpen) return;
+        document.body.style.setProperty('--serenity-effects-h', `${Math.round(this.root.offsetHeight)}px`);
     }
 
     /** @param {{ focus?: boolean }} [options] focus the first effect (opened from the keyboard) */
@@ -146,6 +165,8 @@ export class SerenityEffectsTray {
         void this.root.offsetWidth; // eslint-disable-line no-void
         this.root.classList.add('is-open');
         document.body.classList.add('serenity-effects-open');
+        this._publishHeight();
+        this.sizer?.observe(this.root);
         if (focus) this.buttons.values().next().value?.focus({ preventScroll: true });
     }
 
@@ -156,6 +177,14 @@ export class SerenityEffectsTray {
         this.root.classList.remove('is-open');
         this.root.hidden = true;
         document.body.classList.remove('serenity-effects-open');
+        this.sizer?.disconnect();
+        document.body.style.removeProperty('--serenity-effects-h');
+    }
+
+    /** Whether a key put the focus on one of the tray's buttons (it shows its ring). */
+    hasKeyboardFocus() {
+        const active = document.activeElement;
+        return Boolean(active && this.root.contains(active) && active.matches?.(':focus-visible'));
     }
 
     /** Something else has the screen (the Hub, the breathing guide, the rest veil). */
@@ -166,6 +195,7 @@ export class SerenityEffectsTray {
 
     /** @param {{ playing: string|null, touring: boolean }} state */
     setState({ playing, touring }) {
+        this.touring = Boolean(touring);
         this.buttons.forEach((button, id) => button.classList.toggle('is-playing', id === playing));
         this.playAll.textContent = touring ? 'Stop' : 'Play all';
         this.playAll.classList.toggle('is-on', touring);

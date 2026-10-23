@@ -289,6 +289,7 @@ describe('the player', () => {
     let emitted;
     let states;
     let tour;
+    let done;
     let player;
 
     beforeEach(() => {
@@ -296,10 +297,12 @@ describe('the player', () => {
         emitted = [];
         states = [];
         tour = [];
+        done = 0;
         player = new SerenityEffects({
             emit: (step) => emitted.push(step.type),
             onChange: (state) => states.push(state),
             onTourStep: (effect, index, total) => tour.push([effect.id, index, total]),
+            onTourDone: () => { done += 1; },
         });
     });
 
@@ -334,6 +337,8 @@ describe('the player', () => {
         vi.advanceTimersByTime(60000);
         expect(emitted).toHaveLength(sent);
         expect(states.at(-1)).toEqual({ playing: null, touring: false });
+        // Stopped is not finished: no "every effect played".
+        expect(done).toBe(0);
     });
 
     it('walks through every effect to the end, then rests', () => {
@@ -342,6 +347,7 @@ describe('the player', () => {
         expect(tour.map(([id]) => id)).toEqual(EFFECTS.map((effect) => effect.id));
         expect(player.touring).toBe(false);
         expect(player.playing).toBe(null);
+        expect(done).toBe(1);
     });
 
     it('lets one effect end Play all', () => {
@@ -350,5 +356,6 @@ describe('the player', () => {
         vi.advanceTimersByTime(5 * 60 * 1000);
         expect(tour).toHaveLength(1);
         expect(states.at(-1)).toEqual({ playing: null, touring: false });
+        expect(done).toBe(0);
     });
 });
