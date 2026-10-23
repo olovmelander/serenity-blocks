@@ -483,7 +483,7 @@ function constellation(p, u, P, gate, centre) {
  * through the most of it, thinning toward the viewer and lifting a little into the void. It
  * drifts slowly sideways and is lit by the crystal above it.
  */
-function floorMist(p, hero, u, horizon, mood, glow, coreX) {
+function floorMist(p, hero, u, horizon, mood, glow, coreX, octaves) {
     const mq = layer(p, u, 0.45).toVar();
     const dy = p.y.sub(horizon).toVar();
     const bank = exp(dy.max(0).div(0.075).pow2().negate()).mul(exp(dy.min(0).div(0.26).pow2().negate()));
@@ -491,7 +491,7 @@ function floorMist(p, hero, u, horizon, mood, glow, coreX) {
         mq.x.mul(1.3).add(u.time.mul(0.03)).add(u.seed.mul(17)),
         dy.mul(6.5).sub(u.time.mul(0.01)),
         u.time.mul(0.02),
-    ), 3);
+    ), octaves);
     const density = smoothstep(0.34, 0.78, wisp).mul(bank).toVar();
     const dx = hero.x.sub(coreX);
     const lit = float(0.75).div(dx.mul(dx).mul(1.6).add(1)).add(0.25);
@@ -666,7 +666,7 @@ export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
             .mul(centredEdge.mul(0.07).add(0.008))
             .mul(glow));
         // A low bank of mist on the floor, lit by the crystal.
-        col.addAssign(floorMist(p, hero, u, horizon, mood, glow, float(0)));
+        col.addAssign(floorMist(p, hero, u, horizon, mood, glow, float(0), octaves >= 5 ? 3 : 2));
 
         // ---------- Light in the air: aura, rays, the core ----------
         const above = smoothstep(floorY.sub(0.02), floorY.add(0.08), hero.y).toVar();
