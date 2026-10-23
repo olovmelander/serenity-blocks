@@ -133,7 +133,7 @@ a chain in the rain, four lines at 0.7 s and 2.2 s), `drift.jpg` (the clock alon
   palettes, 0 matches, 0 warnings: the legacy format warning is gone), URL catalogue test.
 
 Not done: a perf-lane reading; a real phone; the multiplayer and Odyssey layouts were not captured.
-The icon was chosen from SwiftShader renders (the WebGL2 backend of the same code and post).
+The icon was chosen from SwiftShader renders (the WebGL2 backend of the same code and post). Superseded 2026-10-23 by a GPU frame of the dusk beach ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)).
 
 ## The land in depth (2026-10-15)
 

@@ -109,7 +109,7 @@ Frames at `t=14` or earlier rest on the level's own hour; later ones show where 
 carried the light.
 
 The icon is the playground frame `effect=tornado&icon=1&t=14&orbit=0&locks=6&iconFov=44`,
-centre square, baked to a 512 px circle.
+centre square, baked to a 512 px circle. Superseded 2026-10-23 by the storm holding two ribbons ([THEME_ICON_AUDIT_2026-10-23.md](THEME_ICON_AUDIT_2026-10-23.md)).
 
 ## Verification
 
