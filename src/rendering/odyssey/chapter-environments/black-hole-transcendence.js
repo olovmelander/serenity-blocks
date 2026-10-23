@@ -106,6 +106,9 @@ export const CH7_GARGANTUA = Object.freeze({
     // Photon ring radii as multiples of the shadow radius.
     photonInner: 1.0,
     photonOuter: 1.075,
+    // How much more the ring's profile is drawn in toward the shadow once the hole has grown past
+    // ~40 deg in the plunge (uRazor = 1 + this): it stays a razor where it sweeps past the edges.
+    photonRazor: 1.6,
     // Infall embers are authored at ~70-260 u; scaled onto the disk's radii.
     emberScale: 2.2,
     // Slow precession of the whole hero about the view axis (rad/s).
@@ -191,11 +194,13 @@ function createGargantua(uniforms) {
     face.add(horizon);
 
     const uSwell = uniform(0);
+    const uRazor = uniform(1);
     const photon = createGargantuaPhotonRingTSL(uniforms.uTime, {
         innerRadius: S * CH7_GARGANTUA.photonInner,
         outerRadius: S * CH7_GARGANTUA.photonOuter,
         shadowRadius: S,
         uSwell,
+        uRazor,
     });
     photon.mesh.name = 'gargantua-photon-ring';
     face.add(photon.mesh);
@@ -250,6 +255,7 @@ function createGargantua(uniforms) {
     group.userData.photonRing = photon.mesh;
     group.userData.foldArcs = [topFold, bottomFold];
     group.userData.uSwell = uSwell;
+    group.userData.uRazor = uRazor;
     group.userData.uDiskFade = uDiskFade;
     group.userData.singularity = singularity.uniforms;
     return group;
@@ -673,17 +679,43 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     // fold arcs and the infall embers collapse into the light; dust, shards and the far stars
     // are gone by the boundary, so no chapter-7 motif lingers over the city.
     if (hero?.uSwell) hero.uSwell.value = fill;
-    if (hero?.photonRing) hero.photonRing.scale.setScalar(1 + fill * 0.08);
+    // THE RING ON THE SILHOUETTE (2026-10-23). The photon ring lay in the plane through the hole's
+    // centre, which is the shadow's edge only while the hole is small: a sphere's silhouette is
+    // the circle of its tangent points, R cos(alpha) across and R sin(alpha) nearer the eye. From
+    // ~20 deg the shadow hid the razor, and the plunge was a flat black disc growing over the
+    // frame. The ring now rides the silhouette, a razor ~1.5 deg wide at any size, and sweeps out
+    // past the frame's edges as the eye crosses — until the exit's mouth opens, where it swells
+    // into the new sun's limb from the centre plane as before (at that swap it is past the frame's
+    // edges or behind the shadow, so the move is never seen).
+    if (hero?.photonRing) {
+        const S = CH7_GARGANTUA.shadowRadius;
+        const heroDistance = group.userData.lensWorldPos && camera?.position
+            ? group.userData.lensWorldPos.distanceTo(camera.position) : Infinity;
+        const sinA = Math.min(0.995, (S * (group.userData.heroScale ?? 1)) / Math.max(1e-3, heroDistance));
+        // (Without a camera there is no silhouette to ride: the centre plane.)
+        const onSilhouette = !(open > 0) && sinA > 1e-4;
+        // A hair nearer the eye than the tangent points (0.4 % of the way), so the razor never
+        // fights the shadow's depth at any size.
+        const toPlane = onSilhouette ? (S / sinA) - (S * sinA) : 0;
+        hero.photonRing.position.z = onSilhouette ? (S * sinA) + (0.004 * toPlane) : 0;
+        hero.photonRing.scale.setScalar((onSilhouette ? Math.sqrt(1 - (sinA * sinA)) : 1) * (1 + fill * 0.08));
+        // Drawn in toward the shadow as the hole grows: a razor where it sweeps past the edges.
+        if (hero.uRazor) {
+            const sizeDeg = THREE.MathUtils.radToDeg(Math.asin(sinA));
+            hero.uRazor.value = onSilhouette
+                ? 1 + (CH7_GARGANTUA.photonRazor * THREE.MathUtils.smoothstep(sizeDeg, 14, 40))
+                : 1;
+        }
+    }
     if (hero?.uDiskFade) hero.uDiskFade.value = band;
     // THE FAR DISK'S IMAGE IS A VIEW FROM OUTSIDE (overhaul 2026-10-20). The lensed halo spans 1-2.2
     // shadow radii: once the hole outgrows ~9 deg it would flood the frame with amber (the 6->7
-    // gate read 100 luma at p 0.893), so it fades out by ~19 deg, and the photon ring — a razor at
-    // a distance, a fat band at the frame's edge — dims as it passes the corners.
+    // gate read 100 luma at p 0.893), so it fades out by ~19 deg. The photon ring stays: on the
+    // silhouette it is a razor at every size (it used to dim from 12 deg as a fat band).
     const holeDeg = THREE.MathUtils.radToDeg(fall.alpha ?? 0);
     const imageFade = 1 - THREE.MathUtils.smoothstep(holeDeg, 9, 19);
-    const ringFade = THREE.MathUtils.lerp(1 - 0.65 * THREE.MathUtils.smoothstep(holeDeg, 12, 28), 1, fill);
     scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, band * imageFade);
-    scaleBridge(hero?.photonRing?.material?.uniforms?.uOpacity, ringFade);
+    scaleBridge(hero?.photonRing?.material?.uniforms?.uOpacity, 1);
     const {
         infallEmbers, corridorDust: dust, shards: shardMesh, lensingStarfield: stars,
     } = group.userData;
