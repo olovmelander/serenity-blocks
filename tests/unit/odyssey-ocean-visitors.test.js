@@ -1,8 +1,9 @@
 /**
  * Chapter 2's visitors (a whale shark and a manta, composition/odyssey-ocean-visitors.js): the
  * copied asset parses, both kinds build for WebGPU (WGSL) and the WebGL2 fallback (GLSL) on a
- * device-less renderer, nothing draws before the board marks it ready, and an animal swimming its
- * loop is never belly-up (orientation from world up, the creature-orientation trap).
+ * device-less renderer, nothing draws before the board marks it ready, and an animal escorting the
+ * eye (odyssey-ocean-escort.js) is never belly-up (orientation from world up, the
+ * creature-orientation trap).
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -41,7 +42,6 @@ function stubRenderer(forceWebGL) {
 async function loadedVisitors() {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => GLB.buffer.slice(GLB.byteOffset, GLB.byteOffset + GLB.byteLength) })));
     const visitors = createOceanVisitors({
-        axis: { x: -4, z: 6 },
         seaLevel: 287.31,
         shallowColour: new THREE.Color(0.1, 0.3, 0.45),
         deepColour: new THREE.Color(0.01, 0.04, 0.08),
@@ -72,44 +72,70 @@ describe('ocean visitors — the asset', () => {
     });
 });
 
+/** The escort's view of a camera (the board passes stepEscortFrame over its rail camera). */
+function viewOf(camera) {
+    camera.updateMatrixWorld(true);
+    const forward = camera.getWorldDirection(new THREE.Vector3());
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    return {
+        position: camera.position,
+        forward,
+        up,
+        right: new THREE.Vector3().crossVectors(forward, up),
+        tanHalf: Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)),
+        aspect: camera.aspect,
+    };
+}
+
+/** A camera in the deep, looking up the water column the way the ascent does. */
+function lookingUp(y) {
+    const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
+    camera.position.set(-6, y, 4);
+    camera.up.set(0, 0, -1);
+    camera.lookAt(-6, y + 100, 4.5);
+    return camera;
+}
+
 describe('ocean visitors — lifecycle and swimming', () => {
-    it('stays hidden until the board marks it ready, then shows in its window', async () => {
+    it('stays hidden until the board marks it ready, then shows; never out of the water', async () => {
         const visitors = await loadedVisitors();
-        const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
-        // Inside the whale shark's stretch (orbs 6-7).
-        camera.position.set(-6, 130, 4);
-        visitors.update(10, 0.016, camera, 1, true, 1);
+        const camera = lookingUp(130);
+        visitors.update(10, 0.016, camera, 1, true, 1, viewOf(camera));
         expect(visitors.group.visible).toBe(false);
         visitors.markReady();
-        for (let i = 0; i < 200; i += 1) visitors.update(10 + (i * 0.016), 0.016, camera, 1, true, 1);
+        for (let i = 0; i < 200; i += 1) visitors.update(10 + (i * 0.016), 0.016, camera, 1, true, 1, viewOf(camera));
         expect(visitors.group.visible).toBe(true);
-        // Above the water (submerged 0) or outside the chapter, nothing.
-        visitors.update(20, 0.016, camera, 0, true, 1);
-        for (let i = 0; i < 200; i += 1) visitors.update(20 + (i * 0.016), 0.016, camera, 0, true, 1);
+        // No escort view (no camera to escort), above the water (submerged 0) or outside the
+        // chapter: nothing.
+        visitors.update(20, 0.016, camera, 1, true, 1, null);
+        expect(visitors.group.visible).toBe(false);
+        visitors.update(20, 0.016, camera, 0, true, 1, viewOf(camera));
+        expect(visitors.group.visible).toBe(false);
+        visitors.update(20, 0.016, camera, 1, false, 1, viewOf(camera));
         expect(visitors.group.visible).toBe(false);
     });
 
     it('never swims belly-up, and keeps above the eye while it keeps you company', async () => {
         const visitors = await loadedVisitors();
         visitors.markReady();
-        const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
         const up = new THREE.Vector3();
         const seen = [];
-        for (let y = 120; y <= 236; y += 4) {
-            camera.position.set(-6, y, 4);
+        for (let y = 120; y <= 200; y += 8) {
+            const camera = lookingUp(y);
             for (let i = 0; i < 90; i += 1) {
-                visitors.update((y * 3) + (i * 0.1), 0.1, camera, 1, true, 1);
+                visitors.update((y * 3) + (i * 0.1), 0.1, camera, 1, true, 1, viewOf(camera));
             }
             visitors.group.children.forEach((mesh) => {
                 if (!mesh.visible) return;
                 up.set(0, 1, 0).applyQuaternion(mesh.quaternion);
                 expect(up.y, `${mesh.name} at eye ${y}`).toBeGreaterThan(0.6);
-                // Leaving, it dives under the eye on purpose (stepVisitorPassage).
-                if (mesh.userData.passage === 'in') expect(mesh.position.y).toBeGreaterThan(y);
+                // The eye looks up the column: its escort is overhead, under the surface.
+                expect(mesh.position.y).toBeGreaterThan(y);
+                expect(mesh.position.y).toBeLessThan(287.31);
                 seen.push(mesh.name);
             });
         }
-        expect(seen.length).toBeGreaterThan(10);
+        expect(new Set(seen).size).toBe(2);
     });
 });
 

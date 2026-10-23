@@ -29,30 +29,22 @@ import {
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter2CreatureAssetById } from '../chapter-environments/shared/chapter-02-creature-assets.js';
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
-import { stepVisitorPassage } from './odyssey-ocean-visitors.js';
+import { placeEscorted } from './odyssey-ocean-visitors.js';
+import { OCEAN_ESCORT, escortHeading } from './odyssey-ocean-escort.js';
 
 /** Whale length in world units (the GLB is auto-scaled to this by its largest bound). */
 const MOTHER_LENGTH = 58;
 const CALF_LENGTH = 26;
 /**
- * THE PAIR'S STRETCH (2026-10-22, one encounter per stretch; see odyssey-ocean-visitors.js). The
- * pair used to circle the rail itself at 32 u, 42 u under the surface, on show for the whole climb
- * (eye 97-273), so at orb 9 it swam 38 u over the eye, overflowing the frame, among the whale
- * shark and the manta, and from orb 10 (eye 272, looking ahead along the surface) it was behind
- * the eye. It now owns orb 9 (the eye parks at y ~207): a loop centred on the rail just past it
- * (the board puts `at` of chapter 2's span there), the mother 13 u under the surface on a 28 u lane
- * and the calf on an inner lane above her, scored on the real camera: the mother in frame for
- * ~85 % of a lap at ~0.7 of the frame and never over the orb. It arrives and leaves by swimming
- * with the eye's height (stepVisitorPassage): from 190 (after the whale shark has gone) until the
- * eye heads for orb 10, where the manta waits.
+ * THE PAIR ESCORTS THE EYE (2026-10-23; see odyssey-ocean-escort.js). It owned one stretch of the
+ * climb (orb 9, 2026-10-22) and was in frame for ~4 s of the journey's own drift up the ocean. Now
+ * it keeps the eye company through the whole chapter: the mother swims loops round her escort
+ * anchor (OCEAN_ESCORT.whales, the right of the view), and the calf keeps an inner lane just above
+ * her, a little ahead.
  */
-export const WHALE_PASS_STAGE = Object.freeze({
-    at: 0.62,
-    window: Object.freeze([190, 250]),
-    mother: Object.freeze({ radius: 28, depth: 13 }),
-    calf: Object.freeze({ radius: 20, depth: 8 }),
+export const WHALE_PASS_PAIR = Object.freeze({
+    calf: Object.freeze({ radius: 13, phaseLead: 0.5, above: 5 }),
 });
-const ORBIT_PERIOD_S = 92;
 
 /**
  * Model-space bounds from the BIND-POSE geometry bounds. `Box3.setFromObject` on a skinned mesh
@@ -110,14 +102,12 @@ function createWhaleMaterial(uWater, uFade) {
 
 /**
  * @param {object} opts
- * @param {{x:number, z:number}} opts.axis world XZ of the pair's loop centre (the board: the rail at
- *   WHALE_PASS_STAGE.at of chapter 2's span)
  * @param {number} opts.seaLevel world Y of the sea surface
  * @param {THREE.Color} opts.shallowColour water colour near the surface
  * @param {THREE.Color} opts.deepColour water colour in the abyss
  */
 export function createWhalePass({
-    axis, seaLevel, shallowColour, deepColour,
+    seaLevel, shallowColour, deepColour,
 }) {
     const group = new THREE.Group();
     group.name = 'odyssey-whale-pass';
@@ -128,11 +118,20 @@ export function createWhalePass({
     const actors = [];
     let ready = false;
     let loaded = false;
-    // The pair's passage: in from the blue when the eye reaches its stretch, away when it leaves.
-    const passageState = {};
+    // The pair's escort: one anchor (the mother's), arriving from the blue the first time.
+    let escortState = {};
     const scratchColour = new THREE.Color();
+    const position = new THREE.Vector3();
+    const velocity = new THREE.Vector3();
+    const heading = new THREE.Vector3();
+    const slot = OCEAN_ESCORT.whales;
+    const calfLoop = Object.freeze({
+        ...slot.loop,
+        radius: WHALE_PASS_PAIR.calf.radius,
+        phase: slot.loop.phase + WHALE_PASS_PAIR.calf.phaseLead,
+    });
 
-    async function addActor(url, bodyLength, phase, radius, depth) {
+    async function addActor(url, bodyLength, phase, loop, above) {
         const { scene: model, animations } = await loadOdysseyGltfCached(url);
         const size = bindPoseBounds(model).getSize(new THREE.Vector3());
         model.scale.setScalar(bodyLength / Math.max(size.x, size.y, size.z, 1e-3));
@@ -154,7 +153,7 @@ export function createWhalePass({
             action.time = phase * (animations[0].duration || 1);
         }
         actors.push({
-            holder, mixer, phase, radius, depth,
+            holder, mixer, phase, loop, above, state: escortState, yaw: null, turn: 0,
         });
     }
 
@@ -165,8 +164,8 @@ export function createWhalePass({
             if (loaded) return true;
             const rec = getChapter2CreatureAssetById('whale-glide');
             if (!rec?.url) return false;
-            await addActor(rec.url, MOTHER_LENGTH, 0, WHALE_PASS_STAGE.mother.radius, WHALE_PASS_STAGE.mother.depth);
-            await addActor(rec.url, CALF_LENGTH, 0.37, WHALE_PASS_STAGE.calf.radius, WHALE_PASS_STAGE.calf.depth);
+            await addActor(rec.url, MOTHER_LENGTH, 0, slot.loop, 0);
+            await addActor(rec.url, CALF_LENGTH, 0.37, calfLoop, WHALE_PASS_PAIR.calf.above);
             loaded = true;
             return true;
         },
@@ -183,18 +182,21 @@ export function createWhalePass({
          * @param {number} [presence] 0..1 ocean-life presence from the world's 1->2 carry
          *   (`oneWorld.state.lifePresence`): the pair arrives with the fish as the quench thins,
          *   never inside Earth Core's cavern. Defaults to 1 (no carry wired = today's behaviour).
+         * @param {import('./odyssey-ocean-escort.js').EscortView|null} [view] the escort formation's
+         *   view (the board: stepEscortFrame over the rail camera); none, nothing is drawn
          */
-        update(time, delta, camera, submerged, inChapter, presence = 1) {
+        update(time, delta, camera, submerged, inChapter, presence = 1, view = null) {
             const camY = camera?.position?.y ?? seaLevel;
             const depth = seaLevel - camY;
             const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
-            const on = ready && inChapter && submerged > 0.5 && life > 0.001;
-            const passage = stepVisitorPassage(passageState, {
-                camY, on, dt: Math.max(0, delta || 0), window: WHALE_PASS_STAGE.window,
-            });
-            uFade.value = passage.shown ? passage.alpha * life : 0;
-            group.visible = passage.shown && uFade.value > 0.01;
-            if (!group.visible) return;
+            const dt = Math.min(Math.max(Number.isFinite(delta) ? delta : 0, 0), 0.1);
+            const on = ready && !!view && inChapter && submerged > 0.5 && life > 0.001;
+            if (!on) {
+                // Out of the water (or the chapter): the pair arrives afresh next time.
+                escortState = {};
+                group.visible = false;
+                return;
+            }
 
             // Water colour at the camera's depth: shallow near the surface, abyss far below.
             const t = THREE.MathUtils.clamp((depth - 20) / 220, 0, 1);
@@ -203,23 +205,33 @@ export function createWhalePass({
             uWater.value.copy(scratchColour.copy(shallowColour).lerp(deepColour, t))
                 .multiplyScalar(odysseyDeepWaterDim(depth / 140));
 
-            const omega = (Math.PI * 2) / ORBIT_PERIOD_S;
-            actors.forEach((actor) => {
-                if (actor.mixer) actor.mixer.update(Math.max(0, delta) * 0.8);
-                // Calf slightly ahead on an inner lane; both bob and bank gently into the turn.
-                const a = (time * omega) + (actor.phase * 0.9);
-                // Arriving or leaving: farther out along the same bearing (and, leaving past the
-                // eye, down under it).
-                const radius = actor.radius + passage.radial;
-                const x = axis.x + Math.cos(a) * radius;
-                const z = axis.z + Math.sin(a) * radius;
-                const y = seaLevel - actor.depth + (Math.sin((time * 0.27) + (actor.phase * 5)) * 3.5) + passage.up;
-                actor.holder.position.set(x, y, z);
-                // Heading along the orbit tangent (counter-clockwise). The GLB leads with -Z
-                // (see deep-ocean-manta.js _whaleBaseFwd), so yaw so that -Z points along the
-                // tangent (-sin a, 0, cos a).
-                actor.holder.rotation.set(0, Math.atan2(Math.sin(a), -Math.cos(a)), -0.12);
+            let fade = 0;
+            actors.forEach((actor, i) => {
+                if (actor.mixer) actor.mixer.update(dt * 0.8);
+                // Both ride the one anchor: the mother's escort, stepped once (by the mother); the
+                // calf only reads it, on its inner lane above her.
+                const state = escortState;
+                const arrived = i === 0
+                    ? placeEscorted(state, view, slot, seaLevel, time, dt, position, velocity, actor.loop, actor.above)
+                    : placeEscorted(state, view, slot, seaLevel, time, 0, position, velocity, actor.loop, actor.above);
+                if (i === 0) fade = arrived;
+                // A gentle bob of its own.
+                position.y += Math.sin((time * 0.27) + (actor.phase * 5)) * 2.5;
+                actor.holder.position.copy(position);
+                // Heading from its velocity, mostly level. The GLB leads with -Z (see
+                // deep-ocean-manta.js _whaleBaseFwd), so yaw so that -Z points along it.
+                escortHeading(velocity, heading, { x: 0, y: 0, z: 1 });
+                const yaw = Math.atan2(-heading.x, -heading.z);
+                if (actor.yaw !== null && dt > 0) {
+                    const d = Math.atan2(Math.sin(yaw - actor.yaw), Math.cos(yaw - actor.yaw));
+                    actor.turn += ((d / dt) - actor.turn) * (1 - Math.exp(-dt * 2));
+                }
+                actor.yaw = yaw;
+                // It banks a little into its turn.
+                actor.holder.rotation.set(0, yaw, THREE.MathUtils.clamp(-actor.turn * 0.9, -0.3, 0.3));
             });
+            uFade.value = fade * life;
+            group.visible = uFade.value > 0.01;
         },
         dispose() {
             actors.forEach((a) => a.mixer?.stopAllAction());
