@@ -290,6 +290,21 @@ export class OdysseyPathRenderer {
     }
 
     /**
+     * The orbs the rail passes behind this frame (ODYSSEY_PATH_ORB_OCCLUSION): packed
+     * (x, y, z, glass radius) per orb in world units, nearest first; missing slots are emptied.
+     * @param {ArrayLike<number>|null} spheres up to ODYSSEY_PATH_ORB_OCCLUDERS * 4 numbers
+     */
+    setOrbOccluders(spheres) {
+        const slots = this._chapterUniforms?.uOrbs?.array;
+        if (!slots) return;
+        const count = spheres ? Math.floor(spheres.length / 4) : 0;
+        slots.forEach((slot, k) => {
+            if (k < count) slot.fromArray(spheres, k * 4);
+            else slot.set(0, 0, 0, 0);
+        });
+    }
+
+    /**
      * The path position past which the rail is not drawn (resolveOdysseyPathHorizon): through
      * chapter 6 the rail vanishes into the black hole. A uniform, so it never recompiles.
      * @param {number} horizon path progress (>= 1 + the taper: nothing hidden)
