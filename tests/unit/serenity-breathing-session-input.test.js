@@ -214,6 +214,54 @@ describe('Serenity mode exit cancels guided journeys', () => {
         expect(mode.breathingIndicatorActive).toBe(true);
     });
 
+    it('takes nothing on the menu when the player leaves while it starts', async () => {
+        indicator.isExternallyControlled = false;
+        indicator.isActive = false;
+        mode.isActive = true;
+        let musicSynced;
+        mode._ensureMusicPlaying = vi.fn(() => new Promise((resolve) => { musicSynced = resolve; }));
+        mode._setupKeyboardControls = vi.fn();
+        mode._setupCursorAutoHide = vi.fn();
+        mode._setupSerenityUi = vi.fn();
+        mode.serenityHub.setMode = vi.fn();
+        window.serenityBlocks = { serenityHub: mode.serenityHub };
+        settingsManager.get.mockReturnValue({ breathingTechnique: 'coherence', breathingGuideAutoStart: true });
+
+        const starting = mode.onStart();
+        for (let i = 0; i < 10 && !musicSynced; i += 1) await Promise.resolve();
+        expect(mode._ensureMusicPlaying).toHaveBeenCalledOnce();
+        await mode.onStop(); // Settings → Main menu while the music syncs
+        musicSynced();
+        await starting;
+
+        expect(mode._setupKeyboardControls).not.toHaveBeenCalled();
+        expect(mode._setupCursorAutoHide).not.toHaveBeenCalled();
+        expect(mode._setupSerenityUi).not.toHaveBeenCalled(); // the wake lock, media keys and drift
+        expect(indicator.start).not.toHaveBeenCalled();
+    });
+
+    it('lets only the latest start set up when the player leaves and comes straight back', async () => {
+        mode.isActive = true;
+        let firstSynced;
+        mode._ensureMusicPlaying = vi.fn()
+            .mockImplementationOnce(() => new Promise((resolve) => { firstSynced = resolve; }))
+            .mockResolvedValue(undefined);
+        mode._setupKeyboardControls = vi.fn();
+        mode._setupCursorAutoHide = vi.fn();
+        mode._setupSerenityUi = vi.fn();
+        mode.serenityHub.setMode = vi.fn();
+        window.serenityBlocks = { serenityHub: mode.serenityHub };
+
+        const stale = mode.onStart();
+        for (let i = 0; i < 10 && !firstSynced; i += 1) await Promise.resolve();
+        await mode.onStop();
+        mode.isRunning = true;
+        await mode.onStart();
+        firstSynced();
+        await stale;
+        expect(mode._setupSerenityUi).toHaveBeenCalledOnce();
+    });
+
     it('keeps its flag and the saved preference in step when the guide ends itself', () => {
         mode.breathingIndicatorActive = true;
         mode.onBreathingGuideChange(false);

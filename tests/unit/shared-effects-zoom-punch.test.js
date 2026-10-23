@@ -123,6 +123,25 @@ describe('_zoomPunch', () => {
         expect(quadScene.cameras.main.zoom).toBeGreaterThan(single);
     });
 
+    it('settles a punch a knock-out cuts off, and punches again afterwards', () => {
+        fx._zoomPunch(0.03, 300);
+        expect(scene.cameras.main.zoom).toBeCloseTo(1.03, 5);
+        // A knock-out kills the camera's tweens, whose onComplete then never runs (fx-moments.js).
+        fx.clearKnockout();
+        expect(scene.cameras.main.zoom).toBe(1);
+        fx._zoomPunch(0.02, 130);
+        expect(scene.cameras.main.zoom).toBeCloseTo(1.02, 5);
+    });
+
+    it('treats a punch whose tween something else killed as over', () => {
+        fx._zoomPunch(0.03, 300);
+        const killed = zoomTween(scene);
+        killed.isDestroyed = () => true;
+        scene.cameras.main.zoom = 1.012; // frozen mid-ease
+        fx._zoomPunch(0.02, 130);
+        expect(scene.cameras.main.zoom).toBeCloseTo(1.02, 5);
+    });
+
     it('gives the perfect clear the biggest kick of all', () => {
         fx.playLineClearImpact(4);
         const quad = scene.cameras.main.zoom;

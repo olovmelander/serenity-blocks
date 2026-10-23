@@ -44,6 +44,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
+import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import {
@@ -564,11 +565,6 @@ function readCh7ThrottleOverride() {
     return Number.isFinite(value) ? Math.max(0, Math.min(1.6, value)) : null;
 }
 
-function prefersReducedMotionCh7() {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches === true;
-}
-
 export function updateBlackHoleTranscendenceEnvironment(group, delta, time, camera, ...updateArgs) {
     const [cameraProgress = null, directorState = null] = updateArgs;
     const chapterPositions = getActiveOdysseyChapterPositions();
@@ -643,7 +639,9 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         group.userData.throttleOverride = readCh7ThrottleOverride();
     }
     advanceWarpDrive(drive, delta, cameraProgress, fall.warp, {
-        reducedMotion: prefersReducedMotionCh7(),
+        // Settings > Reduce motion or the system's, as the chapter camera reads it (the system's
+        // alone, re-queried every frame, missed the in-game setting).
+        reducedMotion: prefersReducedMotion(),
         override: group.userData.throttleOverride,
     });
     if (windowUniforms) {

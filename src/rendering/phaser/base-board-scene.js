@@ -2013,8 +2013,9 @@ export function createBaseBoardScene(
                 try {
                     const particleArray = Array.from(this.sharedEffects.activeParticleSystems);
                     particleArray.forEach((emitter) => {
-                        // Check if emitter is actually dead/stopped
-                        if (emitter && emitter.on === false) {
+                        // A destroyed emitter (GameObject.destroy clears scene and active).
+                        // Not `emitting`: burst emitters idle with it off while still alive.
+                        if (emitter && (!emitter.scene || emitter.active === false)) {
                             this.sharedEffects.activeParticleSystems.delete(emitter);
                         }
                     });

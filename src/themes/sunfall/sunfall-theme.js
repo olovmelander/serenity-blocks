@@ -12,7 +12,7 @@ import {
 } from './sunfall-quality.js';
 import { SUNFALL_TETROMINOS } from './sunfall-tetrominos.js';
 import { SunfallDirector } from './sunfall-director.js';
-import { wireSunfallEvents } from './sunfall-events.js';
+import { subscribeSunfallRuns, wireSunfallEvents } from './sunfall-events.js';
 import { SunfallWorld } from './sunfall-world.js';
 import { SunfallPost, createPassThroughPipeline, resolveSunfallPostLook } from './sunfall-post.js';
 import { readBoardViewport } from './sunfall-composition.js';
@@ -33,6 +33,7 @@ export default class SunfallTheme extends BaseTheme {
         Object.assign(this, { runtimeGeneration: 0, eventUnsubscribers: [], gpuSurfaceUnregister: null });
         Object.assign(this, { gpuRecoveryAttempted: false, reducedMotion: false, reactionsEnabled: true });
         Object.assign(this, { lockRippleEnabled: true, appliedSize: null, rebuildQueued: false });
+        Object.assign(this, { rebuildPending: false, modeManager: null });
         this.pointer = {
             x: 0, y: 0, sx: 0, sy: 0,
         };
@@ -77,11 +78,9 @@ export default class SunfallTheme extends BaseTheme {
             this.world = new SunfallWorld({ quality: this.quality, parts: this.flags.parts, assets });
             this.scene = this.world.scene;
             this.camera = this.world.camera;
-            this.director ??= new SunfallDirector({
-                level: this.level,
-                reducedMotion: this.reducedMotion,
-                maxNewGrowth: this.qualityPreset.newGrowthSlots || 36,
-            });
+            this.director ??= new SunfallDirector({ level: this.level, reducedMotion: this.reducedMotion });
+            // The tier's cap, on a director kept from the last build too (Minimal's 0 is a cap: 8).
+            this.director.setNewGrowthLimit(this.qualityPreset.newGrowthSlots);
             this.setupPost();
         } catch (error) {
             if (isCurrent() && generation === this.runtimeGeneration) this.disposeRuntime();
@@ -95,7 +94,9 @@ export default class SunfallTheme extends BaseTheme {
         this.resize(width, height);
         this.setupEvents();
         this.applyReactionSettings(null);
-        if (this.flags.time !== null) { this.time = this.flags.time; this.director.time = this.flags.time; }
+        // A restart for a tier chosen behind the menu keeps the run's clock (BaseTheme.resume()).
+        const startTime = this.flags.time ?? this.takeRestartTime(null);
+        if (startTime !== null) { this.time = startTime; this.director.time = startTime; }
         this.world.applySnapshot(this.director.step(0));
         if (!this.isPaused) this.animate();
     }
@@ -165,6 +166,8 @@ export default class SunfallTheme extends BaseTheme {
             const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
             this.resize(view.width, view.height);
         });
+        this.modeManager = null;
+        subscribeSunfallRuns(this);
     }
 
     applyReactionSettings(payload) {
@@ -181,14 +184,40 @@ export default class SunfallTheme extends BaseTheme {
         this.applyReactionSettings(payload);
         if (!this.renderer) return;
         const q = readSunfallSettingUpdate(payload, 'effectQuality');
-        if (q.present && normalizeQuality(q.value) !== (this.pendingQuality ?? this.quality) && !this.rebuildQueued) {
+        if (q.present && normalizeQuality(q.value) !== (this.pendingQuality ?? this.quality)) {
             this.pendingQuality = normalizeQuality(q.value);
-            this.rebuildQueued = true;
+            this.queueRebuild();
+            return;
+        }
+        // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        if (readSunfallSettingUpdate(payload, 'renderScale').present) {
             queueMicrotask(() => {
-                this.rebuildQueued = false;
-                if (this.isActive && !this.isPaused) this.createScene().catch(() => {});
+                if (!this.isActive) return;
+                const { width, height } = getViewport();
+                this.resize(width, height);
             });
         }
+    }
+
+    queueRebuild() {
+        if (this.rebuildQueued) return;
+        this.rebuildQueued = true;
+        const scheduled = this.runtimeGeneration;
+        queueMicrotask(() => {
+            this.rebuildQueued = false;
+            if (!this.isActive || scheduled !== this.runtimeGeneration) return;
+            if (this.isPaused) {
+                this.rebuildPending = true; // rebuild on resume, never behind the menu
+                return;
+            }
+            // A failed rebuild has already let the old runtime go: hand it to the manager's
+            // fallback instead of leaving an empty theme.
+            this.createScene().catch((error) => {
+                console.error('[Sunfall] Settings rebuild failed:', error);
+                this.onRuntimeFailure?.(error);
+            });
+        });
     }
 
     resize(width, height) {
@@ -216,6 +245,7 @@ export default class SunfallTheme extends BaseTheme {
 
     stepFrame(now) {
         if (!this.world || !this.renderer || !this.camera || !this.director) return;
+        subscribeSunfallRuns(this);
         const t = Number.isFinite(now) ? now : performance.now();
         const rawDt = this.lastFrameMs === null ? 1 / 60 : (t - this.lastFrameMs) / 1000;
         const wall = Math.min(MAX_DELTA_S, Math.max(0, rawDt));

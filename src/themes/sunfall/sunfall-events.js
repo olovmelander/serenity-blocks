@@ -129,5 +129,27 @@ export function wireSunfallEvents(theme) {
         theme.level = finite(p?.level, finite(p?.newLevel, theme.level + 1));
         theme.director?.onLevelUp(theme.level);
     });
+    // Game over (Single Player and Infinity send it on the window) closes the cloud deck; the
+    // next run opens it again (subscribeSunfallRuns).
+    if (typeof window !== 'undefined') {
+        const onGameOver = () => { if (theme.isActive) theme.director?.onGameOver(); };
+        window.addEventListener('gameOver', onGameOver);
+        offs.push(() => window.removeEventListener('gameOver', onGameOver));
+    }
     return offs;
+}
+
+/**
+ * A new run (any mode start, Play again included) opens the deck on a fresh session at level 1.
+ * The mode manager may appear after the first build (boot prewarm), so the theme calls this every
+ * frame; it subscribes once the manager is there.
+ */
+export function subscribeSunfallRuns(theme) {
+    const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+    if (!manager?.on || manager === theme.modeManager) return;
+    theme.modeManager = manager;
+    theme.eventUnsubscribers.push(manager.on('modeStarted', () => {
+        theme.level = 1;
+        theme.director?.startRun();
+    }));
 }

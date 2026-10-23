@@ -3,11 +3,17 @@
  * along the path, integrated on the CPU. Pins the feel (cruise parked, a punch on every glide, a
  * slower coast) and the safety rails (no phase jumps, teleports ignored, reduced motion capped).
  */
-import { describe, expect, it } from 'vitest';
+import * as THREE from 'three/webgpu';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import {
     advanceWarpDrive,
     CH7_WARP_DRIVE,
+    createBlackHoleTranscendenceEnvironment,
+    updateBlackHoleTranscendenceEnvironment,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.js';
+import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
 
 const DT = 1 / 120;
 
@@ -76,5 +82,33 @@ describe('chapter 7 warp drive', () => {
     it('holds an override throttle for captures', () => {
         const state = run({}, 0.5, 0, 1, { override: 1.3 });
         expect(state.throttle).toBeCloseTo(1.3, 6);
+    });
+});
+
+describe('chapter 7 warp: the in-game Reduce motion setting', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    /** Glide through the tunnel at a full glide's speed; the drive's last throttle and the query count. */
+    function glideThroughTunnel(settings) {
+        const matchMedia = vi.fn(() => ({ matches: false })); // the system asks for no reduction
+        vi.stubGlobal('window', { settings, matchMedia });
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 9000);
+        const positions = getActiveOdysseyChapterPositions();
+        let progress = positions[6] + (positions[7] - positions[6]) * 0.5;
+        for (let i = 0; i < 60; i += 1) {
+            progress += CH7_WARP_DRIVE.refSpeed * 1.4 * DT;
+            updateBlackHoleTranscendenceEnvironment(group, DT, i * DT, camera, progress);
+        }
+        return { throttle: group.userData.warpDrive.throttle, queries: matchMedia.mock.calls.length };
+    }
+
+    it('caps the warp when only the game asks for reduced motion, and asks the system once', () => {
+        const free = glideThroughTunnel({ reducedMotion: false });
+        const reduced = glideThroughTunnel({ reducedMotion: true });
+        const cap = CH7_WARP_DRIVE.cruise * 0.6;
+        expect(free.throttle).toBeGreaterThan(cap);
+        expect(reduced.throttle).toBeLessThanOrEqual(cap + 1e-9);
+        expect(free.queries).toBeLessThanOrEqual(1);
     });
 });
