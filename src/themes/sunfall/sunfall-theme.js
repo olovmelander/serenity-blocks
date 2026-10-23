@@ -225,10 +225,14 @@ export default class SunfallTheme extends BaseTheme {
         const w = Math.max(1, Math.round(Number(width) || 1));
         const h = Math.max(1, Math.round(Number(height) || 1));
         const pr = this.getEffectivePixelRatio(SUNFALL_PIXEL_RATIO_CAP[this.quality] ?? 1.15, 'theme');
-        this.appliedSize = { w, h, pixelRatio: pr };
-        this.world?.setAspect(w, h);
-        this.renderer.setPixelRatio(pr);
-        this.renderer.setSize(w, h, false);
+        const last = this.appliedSize;
+        // Only a real change sizes the canvas: sizing it again blanks it until the next frame.
+        if (!last || last.w !== w || last.h !== h || last.pixelRatio !== pr) {
+            this.appliedSize = { w, h, pixelRatio: pr };
+            this.world?.setAspect(w, h);
+            this.renderer.setPixelRatio(pr);
+            this.renderer.setSize(w, h, false);
+        }
         this.renderer.getDrawingBufferSize(this.bufferSize);
         this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
         this.world?.setViewportHeight(this.bufferSize.y);

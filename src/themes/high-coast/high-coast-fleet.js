@@ -41,6 +41,7 @@ import {
 } from './high-coast-core.js';
 import { aerial } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 /** The loops (centre x, z, radii, yaw), checked against the bake (all water, bearings in frame). */
 export const LANES = Object.freeze([
@@ -198,7 +199,8 @@ function boatMaterial(u, t) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     material.name = 'HighCoastBoats';
     material.fog = false;
-    const part = attribute('aPart', 'float');
+    // Flat: the part is tested for equality, which an interpolated value fails here and there.
+    const part = flatVarying(attribute('aPart', 'float'), 'vBoatPart');
     material.colorNode = Fn(() => {
         const P = positionWorld;
         const n = normalize(normalWorld);

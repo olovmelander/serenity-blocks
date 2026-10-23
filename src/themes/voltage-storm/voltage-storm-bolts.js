@@ -58,6 +58,7 @@ import {
     vsHash11,
     vsHash12,
 } from './voltage-storm-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 // ── Geometry ────────────────────────────────────────────────────────────────────
 
@@ -203,6 +204,8 @@ export function createBoltMesh(u, { detail = 2, mirror = false } = {}) {
     const vAcross = varyingProperty('float', 'vsBoltAcross');
     /** (place along the whole bolt for the leader's growth, taper, depth, seed) */
     const vAlong = varyingProperty('vec4', 'vsBoltAlong');
+    // A rib's seed, flat (its hashes break on the bits an interpolated copy is off by).
+    const vRibSeed = flatVarying(float(0.0), 'vsBoltSeed');
     const vLight = varyingProperty('vec4', 'vsBoltLight');
     const vTint = varyingProperty('vec4', 'vsBoltTint');
 
@@ -327,6 +330,7 @@ export function createBoltMesh(u, { detail = 2, mirror = false } = {}) {
             grow,
         ));
         vAlong.assign(vec4(place, taper, depth, seed.add(rib.w)));
+        vRibSeed.assign(seed.add(rib.w));
         // The part of a strike that is inside the cloud is a glow, not a line.
         const sag = float(STORM.cloudBase - STORM.cloudSag);
         const inCloud = smoothstep(sag.sub(4.0), sag.add(60.0), abs(here.y));
@@ -358,10 +362,10 @@ export function createBoltMesh(u, { detail = 2, mirror = false } = {}) {
         // The leader: a dim, trembling thread with a bright head that has come as far as `grow`.
         const reached = step(place, grow.mul(1.02));
         const head = exp(max(grow.sub(place), 0.0).mul(-34.0));
-        const tremble = vsHash11(floor(u.time.mul(60.0)).add(vAlong.w).add(floor(place.mul(40.0)))).mul(0.5).add(0.5);
+        const tremble = vsHash11(floor(u.time.mul(60.0)).add(vRibSeed).add(floor(place.mul(40.0)))).mul(0.5).add(0.5);
         const leader = vLight.x.mul(reached).mul(head.mul(12.0).add(tremble.mul(1.7)));
         // The channel cooling: it breaks into beads before it goes out.
-        const beadNoise = vsHash11(floor(place.mul(46.0)).add(vAlong.w));
+        const beadNoise = vsHash11(floor(place.mul(46.0)).add(vRibSeed));
         const beads = smoothstep(0.25, 0.8, beadNoise).mul(0.8).add(0.2);
         const glow = vLight.z.mul(beads).mul(1.6);
         const light = leader.add(vLight.y.mul(42.0)).add(glow).mul(vTint.w);

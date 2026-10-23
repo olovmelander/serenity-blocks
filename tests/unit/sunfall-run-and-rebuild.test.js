@@ -123,4 +123,20 @@ describe('Sunfall: settings that rebuild or resize', () => {
         await flush();
         expect(resize).toHaveBeenCalledTimes(1);
     });
+
+    it('sizes its canvas only when the size or the pixel ratio changes', () => {
+        // Every save carries all the settings, the render scale with them, and sizing the canvas
+        // again blanks it until the next frame.
+        const theme = liveTheme();
+        theme.camera = {};
+        theme.renderer = { setPixelRatio: vi.fn(), setSize: vi.fn(), getDrawingBufferSize: vi.fn() };
+        theme.resize(1280, 720);
+        theme.resize(1280, 720);
+        expect(theme.renderer.setSize).toHaveBeenCalledTimes(1);
+        expect(theme.renderer.setPixelRatio).toHaveBeenCalledTimes(1);
+        vi.spyOn(theme, 'getEffectivePixelRatio').mockReturnValue(0.5);
+        theme.resize(1280, 720);
+        expect(theme.renderer.setPixelRatio).toHaveBeenLastCalledWith(0.5);
+        expect(theme.renderer.setSize).toHaveBeenCalledTimes(2);
+    });
 });

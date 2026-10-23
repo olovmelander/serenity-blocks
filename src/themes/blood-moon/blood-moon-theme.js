@@ -66,6 +66,8 @@ export default class BloodMoonTheme extends BaseTheme {
         this.rebuildQueued = false;
         this.rebuildPending = false;
         this.resizeQueued = false;
+        /** The size and pixel ratio the canvas was last given ({ w, h, pixelRatio }). */
+        this.appliedSize = null;
         this.layoutClock = 0;
         this.layoutDue = new Float64Array(3).fill(Infinity);
         this.modeManager = null;
@@ -336,8 +338,16 @@ export default class BloodMoonTheme extends BaseTheme {
         this.width = Math.max(1, Number.isFinite(width) ? width : view.width || 1);
         this.height = Math.max(1, Number.isFinite(height) ? height : view.height || 1);
         // Preserve the previous theme's pixel-ratio policy; savings come from the scene itself.
-        this.renderer.setPixelRatio(this.getEffectivePixelRatio());
-        this.renderer.setSize(this.width, this.height);
+        const pixelRatio = this.getEffectivePixelRatio();
+        const last = this.appliedSize;
+        // The canvas is sized only when its size or ratio changes: sizing it again, even to the
+        // same size, leaves it blank until the next frame, and every settings save carries
+        // renderScale (black flashes as the theme, picked in play, came in).
+        if (!last || last.w !== this.width || last.h !== this.height || last.pixelRatio !== pixelRatio) {
+            this.appliedSize = { w: this.width, h: this.height, pixelRatio };
+            this.renderer.setPixelRatio(pixelRatio);
+            this.renderer.setSize(this.width, this.height);
+        }
         this.runtime?.resize(this.width, this.height);
         this.scheduleLayout();
     }
@@ -420,6 +430,7 @@ export default class BloodMoonTheme extends BaseTheme {
         this.runtimeEntry = null;
         this.runtime = null;
         this.renderer = null;
+        this.appliedSize = null;
         this.scene = null;
         this.camera = null;
         this.retireEntry(entry);

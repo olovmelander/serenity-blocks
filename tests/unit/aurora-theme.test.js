@@ -290,6 +290,21 @@ describe('Aurora theme lifecycle', () => {
         expect(container.children).toEqual([rendererState.candidates[1].domElement]);
     });
 
+    it('leaves its canvas alone on a save that keeps the pixel ratio', async () => {
+        // Every save carries all the settings, the render scale with them.
+        const theme = await started();
+        const [renderer] = rendererState.candidates;
+        const calls = renderer.setSize.mock.calls.length;
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, { settings: { effectQuality: 'High', renderScale: 1 } });
+        await Promise.resolve();
+        expect(renderer.setSize).toHaveBeenCalledTimes(calls);
+        vi.spyOn(theme, 'getEffectivePixelRatio').mockReturnValue(0.5);
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, { type: 'renderScale', value: 0.5 });
+        await Promise.resolve();
+        expect(renderer.setPixelRatio).toHaveBeenLastCalledWith(0.5);
+        expect(renderer.setSize).toHaveBeenCalledTimes(calls + 1);
+    });
+
     it('resizes once per real change, at the tier pixel ratio', async () => {
         const theme = await started();
         const [renderer] = rendererState.candidates;

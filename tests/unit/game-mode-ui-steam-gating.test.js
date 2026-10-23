@@ -38,7 +38,7 @@ describe('GameModeUI Steam gating', () => {
     });
 
     afterEach(() => {
-        vi.unmock('../../src/core/steam/steam-service.js');
+        vi.doUnmock('../../src/core/steam/steam-service.js');
         vi.unstubAllGlobals();
     });
 

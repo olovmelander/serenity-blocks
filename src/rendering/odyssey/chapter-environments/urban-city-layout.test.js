@@ -64,7 +64,9 @@ describe('Urban city window stability', () => {
             builder.material = towers.material;
             builder.build();
             for (const name of ['vCityFacade', 'vCityDimensions', 'vCityFaceNormal', 'vCityGutter']) {
-                const flatInput = new RegExp(`@interpolate\\(\\s*flat\\s*\\)\\s+${name}\\s*:`);
+                // Flat with `either` sampling: WebGPU's compatibility mode rejects plain `flat`
+                // (that is, `flat, first`) when it builds the pipeline.
+                const flatInput = new RegExp(`@interpolate\\(\\s*flat\\s*,\\s*either\\s*\\)\\s+${name}\\s*:`);
                 expect(builder.fragmentShader).toMatch(flatInput);
             }
         } finally { dispose(); }

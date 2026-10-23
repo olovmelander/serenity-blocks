@@ -10,6 +10,7 @@ import CrystalCaveTheme, {
     readCrystalCaveEventCount,
 } from '../../src/themes/crystal-cave/crystal-cave-theme.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { getViewport } from '../../src/utils/viewport.js';
 
 const rendererState = vi.hoisted(() => ({ candidates: [], init: () => Promise.resolve() }));
 
@@ -333,6 +334,26 @@ describe('Crystal Cave quality and responsive scene routing', () => {
         theme.resize(width, height);
         expect(world.prepareCamera).toHaveBeenCalledOnce();
         expect(theme.renderer.setSize).toHaveBeenCalledOnce();
+    });
+
+    it('leaves its canvas alone on a save that keeps the pixel ratio', async () => {
+        // Every save carries all the settings, the render scale with them.
+        const theme = createTheme();
+        buildStubScene(theme);
+        theme.isActive = true;
+        theme.renderer = new THREE.WebGPURenderer({ forceWebGL: true });
+        const { width, height } = getViewport();
+        theme.resize(width, height);
+        theme.renderer.setSize.mockClear();
+        theme.renderer.setPixelRatio.mockClear();
+        theme.handleSettingsChanged({ settings: { effectQuality: theme.quality, renderScale: 1 } });
+        await Promise.resolve();
+        expect(theme.renderer.setSize).not.toHaveBeenCalled();
+        vi.spyOn(theme, 'getEffectivePixelRatio').mockReturnValue(0.5);
+        theme.handleSettingsChanged({ type: 'renderScale', value: 0.5 });
+        await Promise.resolve();
+        expect(theme.renderer.setPixelRatio).toHaveBeenCalledExactlyOnceWith(0.5);
+        expect(theme.renderer.setSize).toHaveBeenCalledExactlyOnceWith(width, height);
     });
 
     it('coalesces a quality rebuild and cancels queued work after switching away', async () => {

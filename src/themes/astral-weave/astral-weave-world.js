@@ -611,6 +611,10 @@ export class AstralWeaveWorld {
             meanY += this.rowY(row) / count;
             // A row with no thread yet still burns: lay it first, then light it.
             if (uWeftA.array[row].y <= 0) uWeftA.array[row].set(this.time - 10, 1, 1, 0);
+            // So does a row the lock is still to weave: the game resolves a lock and the clear it
+            // makes in one step, and each of the lock's rows waits a beat after the one above it.
+            // A burn that came before its weave never showed, and the row went out unburnt.
+            else if (uWeftA.array[row].x > this.time) uWeftA.array[row].x = this.time;
             uWeftB.array[row].x = this.time;
             uWeftB.array[row].y = gain;
             const y = this.rowY(row);

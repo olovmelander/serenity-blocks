@@ -41,6 +41,7 @@ import {
 import {
     swFog, swHash11, swLight, swPart,
 } from './stillwater-tsl.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 const lit = (name) => {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -186,6 +187,8 @@ export function createFerns(u, plan) {
     material.side = THREE.DoubleSide;
     const aAt = attribute('aFernAt', 'vec4');
     const aMore = attribute('aFernMore', 'vec2');
+    // Each plant's seed, flat: interpolated, its tone was hashed afresh at every pixel (grain).
+    const fernSeed = flatVarying(aMore.y, 'vFernSeed');
     material.positionNode = Fn(() => {
         const st = uv();
         // The tips nod with the air.
@@ -201,7 +204,7 @@ export function createFerns(u, plan) {
         const reach = envelope.mul(float(0.3).add(float(0.7).mul(float(1.0).sub(tooth))));
         abs(st.y).greaterThan(max(reach, 0.06)).discard();
         const P = positionWorld;
-        const tone = swHash11(aMore.y.mul(31.0)).mul(0.4).add(0.75);
+        const tone = swHash11(fernSeed.mul(31.0)).mul(0.4).add(0.75);
         const albedo = mix(u.moss.mul(0.95), u.moss.mul(1.5).add(u.needle.mul(0.2)), st.x).mul(tone)
             .mul(float(1.0).sub(abs(st.y).mul(0.35)));
         const col = swLight(u, albedo, normalize(vec3(0.0, 1.0, 0.3)), P, { wrap: 0.9 });
@@ -246,6 +249,7 @@ export function createReeds(u, plan) {
     material.side = THREE.DoubleSide;
     const aAt = attribute('aReedAt', 'vec4');
     const aMore = attribute('aReedMore', 'vec3');
+    const reedSeed = flatVarying(aMore.y, 'vReedSeed'); // flat, as the ferns'
     material.positionNode = Fn(() => {
         const s = positionGeometry.y;
         const bend = s.mul(s);
@@ -261,9 +265,9 @@ export function createReeds(u, plan) {
     material.fragmentNode = Fn(() => {
         const st = uv();
         const P = positionWorld;
-        const tone = swHash11(aMore.y.mul(17.0)).mul(0.5).add(0.7);
+        const tone = swHash11(reedSeed.mul(17.0)).mul(0.5).add(0.7);
         // Last year's stalks among this year's: some are pale straw.
-        const straw = step(0.72, swHash11(aMore.y.mul(5.3)));
+        const straw = step(0.72, swHash11(reedSeed.mul(5.3)));
         const green = mix(u.needle.mul(1.2), u.moss.mul(1.25), st.y);
         const albedo = mix(green, u.moss.mul(0.7).add(u.stone.mul(0.9)), straw.mul(0.8)).mul(tone);
         const col = swLight(u, albedo, normalize(vec3(0.0, 0.8, 0.5)), P, { wrap: 1.0 });
@@ -308,6 +312,7 @@ export function createPads(u, plan) {
     const material = lit('StillwaterPads');
     material.side = THREE.DoubleSide;
     const aPad = attribute('aPad', 'vec4');
+    const padYaw = flatVarying(aPad.w, 'vPadYaw'); // flat, as the ferns' seed
     material.positionNode = stand(positionGeometry, vec3(aPad.x, 0.012, aPad.y), aPad.w, vec2(aPad.z, 1.0));
     material.fragmentNode = Fn(() => {
         const st = uv().sub(0.5).mul(2.0);
@@ -317,7 +322,7 @@ export function createPads(u, plan) {
         const veins = abs(fract(atan(st.y, st.x).mul(1.75)).sub(0.5));
         const leaf = mix(u.moss.mul(0.75), u.moss.mul(1.5), r.mul(r))
             .mul(float(1.0).sub(smoothstep(0.42, 0.5, veins).mul(0.16).mul(smoothstep(0.1, 0.5, r))));
-        const tone = swHash11(aPad.w.mul(11.0)).mul(0.4).add(0.8);
+        const tone = swHash11(padYaw.mul(11.0)).mul(0.4).add(0.8);
         const col = swLight(u, leaf.mul(tone), vec3(0.0, 1.0, 0.0), P, { wrap: 0.2 }).toVar();
         // A wet leaf throws the moon back where it faces it.
         col.addAssign(u.moonLight.mul(smoothstep(0.82, 1.0, r)).mul(0.035));

@@ -811,7 +811,7 @@ export function createGeneratedShops(u, shops, opts) {
             const lc = vec2(uM.sub(b0.x.add(0.12)), vM.sub(b0.y.add(boardH.mul(0.05)))).div(logoSize);
             const inLogo = step(0.0, lc.x).mul(step(lc.x, 1.0)).mul(step(0.0, lc.y)).mul(step(lc.y, 1.0))
                 .mul(hasLogo);
-            const li = max(logo.x, 0.0);
+            const li = floor(max(logo.x, 0.0).add(0.5)); // rounded: read interpolated
             const lgc = vec2(mod(li, logos.grid), floor(li.div(logos.grid)));
             const lt = texture(logos.texture, lgc.add(clamp(lc, 0.01, 0.99)).div(logos.grid));
             const frames = ndLogoFrames(logo.y, logo.z, u.time, seed, u.breath);

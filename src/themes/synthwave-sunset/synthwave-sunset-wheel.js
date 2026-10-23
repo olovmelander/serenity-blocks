@@ -59,6 +59,7 @@ import {
 import {
     box, makeOut, ringPoints, strut, toGeometry, tube,
 } from './synthwave-sunset-geo.js';
+import { flatVarying } from '../shared/flat-varying.js';
 
 export { WHEEL };
 
@@ -278,7 +279,9 @@ function createBulbs(u) {
     material.fog = false;
 
     const A = attribute('iBulbA', 'vec4');
-    const B = attribute('iBulbB', 'vec4');
+    // Flat: every third and fifth bulb sits exactly on a wrap of its index, which an
+    // interpolated index crosses (a pink or mint bulb burning warm, flickering as the eye drifts).
+    const B = flatVarying(attribute('iBulbB', 'vec4'), 'vWheelBulb');
     const WORLD_SIZE = 0.62;
 
     // Size in metres, floored at ~1.4 buffer pixels; the floor's extra area dims the bulb.

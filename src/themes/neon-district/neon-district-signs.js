@@ -561,7 +561,7 @@ export function createMarks(u, marks, opts) {
         const side = dim.x.sub(0.12);
         const lc = vec2(metres.x.sub(0.06).div(side), metres.y.sub(dim.y.sub(side).sub(0.06)).div(side));
         const inLogo = step(0.0, lc.x).mul(step(lc.x, 1.0)).mul(step(0.0, lc.y)).mul(step(lc.y, 1.0));
-        const li = max(logo.x, 0.0);
+        const li = floor(max(logo.x, 0.0).add(0.5)); // rounded: read interpolated
         const gc = vec2(mod(li, logos.grid), floor(li.div(logos.grid)));
         const lt = texture(logos.texture, gc.add(clamp(lc, 0.01, 0.99)).div(logos.grid));
         const frames = ndLogoFrames(logo.y, logo.z, u.time, seed, u.breath);
