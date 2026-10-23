@@ -28,10 +28,20 @@ import { fadeOut } from '../stage/breath-tsl.js';
 import { pondPlane, screenPoint } from './lotus-pond.js';
 
 const TAU = Math.PI * 2;
-const GOLD = vec3(1.0, 0.72, 0.32);
-/** The night's light on what faces the sky, and the cool cast of everything seen in the water. */
-const SKYLIGHT = vec3(0.012, 0.012, 0.032);
-const DEEP_WATER_TINT = vec3(0.72, 0.6, 1.0);
+/**
+ * The flower's look in the poster's mood: the heart's gold, the sky's light on what faces it
+ * (`wrap` 0: only faces turned up; 1: a soft daylight that reaches round), the cast of everything
+ * seen in the water, the halo's outer tint, and each ring's pigment (outer to inner; the sepals
+ * keep theirs). A mood may override any of it.
+ */
+export const LOTUS_LOOK = Object.freeze({
+    gold: [1.0, 0.72, 0.32],
+    skylight: [0.012, 0.012, 0.032],
+    wrap: 0,
+    imageTint: [0.72, 0.6, 1.0],
+    halo: [1.0, 0.4, 0.55],
+    pigments: null,
+});
 /**
  * Outer to inner. count, length, width; hinge radius and lift above the base; closed and open
  * angle of the claw from the flower's axis (radians); cup across the petal and bend along it
@@ -189,13 +199,13 @@ function stamenGeometry(count, radius, length, width) {
  * pad lies on the water in front of it. `plane` is (normal.xyz, offset): a point P lies on the
  * water where dot(normal, P) = offset.
  */
-function underwater(color, u, light, padField = null) {
+function underwater(color, u, light, look, padField = null) {
     const below = light.plane.w.sub(dot(light.plane.xyz, positionWorld)).max(0).toVar();
     const fade = exp(below.mul(below).mul(-3.5)).mul(exp(below.mul(-1.1)));
     const swell = sin(positionWorld.y.mul(64).add(sin(positionWorld.x.mul(8).add(u.time.mul(0.3))).mul(1.8))
         .add(u.time.mul(0.8)));
     const bands = float(1).sub(smoothstep(0.3, 1.0, swell).mul(0.5).mul(smoothstep(0.015, 0.1, below)));
-    let image = color.mul(DEEP_WATER_TINT).mul(fade).mul(bands).mul(0.42);
+    let image = color.mul(vec3(...look.imageTint)).mul(fade).mul(bands).mul(0.42);
     if (padField) {
         const pond = pondPlane(screenPoint(u), u);
         image = image.mul(float(1).sub(padField(pond.plane, pond.planePx, false).cover));
@@ -260,7 +270,7 @@ function petalPlacement(petals) {
  * Petal colour under the heart's light, for every ring (each ring's pigment comes from its
  * geometry). `mirror`: the same petals as the pond shows them, hidden behind the lily pads.
  */
-function petalMaterial(u, light, petals, mirror, padField) {
+function petalMaterial(u, light, look, petals, mirror, padField) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     if (mirror) asImage(material);
     const placement = petalPlacement(petals);
@@ -296,20 +306,21 @@ function petalMaterial(u, light, petals, mirror, padField) {
         col.addAssign(pigment.mul(inner).mul(veil));
         // Thin margins pass the most light.
         col.addAssign(pigment.mul(smoothstep(0.7, 1.0, across)).mul(reach).mul(0.25));
-        // The night sky on whatever faces up.
-        col.addAssign(SKYLIGHT.mul(normal.y.max(0)).mul(pigment.add(0.3)));
+        // The sky's light on whatever faces up (by day it wraps round the whole flower).
+        const facingSky = look.wrap > 0 ? mix(normal.y.max(0), normal.y.mul(0.5).add(0.5), look.wrap) : normal.y.max(0);
+        col.addAssign(vec3(...look.skylight).mul(facingSky).mul(pigment.add(0.3)));
         // Fresnel rim, with a faint violet-to-gold sheen along the petal.
         const m = float(1).sub(toward).toVar();
         const rim = m.mul(m).mul(m).toVar();
         const sheen = mix(vec3(0.62, 0.5, 0.95), vec3(1.0, 0.78, 0.7), along);
         col.addAssign(sheen.mul(rim).mul(pigment.add(0.25)).mul(light.glow.mul(0.12).add(0.14)));
-        return mirror ? underwater(col, u, light, padField) : col;
+        return mirror ? underwater(col, u, light, look, padField) : col;
     })();
     return material;
 }
 
 /** The seed head: a flat-topped golden cup with a ring of seeds set into its face. */
-function receptacleMaterial(u, light, mirror) {
+function receptacleMaterial(u, light, look, mirror) {
     const material = new THREE.MeshBasicNodeMaterial();
     if (mirror) asImage(material);
     material.colorNode = Fn(() => {
@@ -325,26 +336,26 @@ function receptacleMaterial(u, light, mirror) {
         const face0 = mix(vec3(1.0, 0.82, 0.34), vec3(0.42, 0.36, 0.06), seeds.mul(0.85));
         const wall = mix(vec3(0.3, 0.34, 0.06), vec3(0.85, 0.66, 0.2), smoothstep(-0.02, 0.02, positionLocal.y));
         const col = mix(wall, face0, top).mul(light.glow.mul(1.1).add(0.3));
-        return mirror ? underwater(col, u, light) : col;
+        return mirror ? underwater(col, u, light, look) : col;
     })();
     return material;
 }
 
 /** Filaments warm gold, anthers bright: the hottest light in the flower. */
-function stamenMaterial(u, light, mirror) {
+function stamenMaterial(u, light, look, mirror) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     if (mirror) asImage(material);
     material.colorNode = Fn(() => {
         const t = uv().y;
         const col = mix(vec3(0.6, 0.3, 0.08), vec3(1.0, 0.8, 0.38), smoothstep(0.55, 0.85, t))
             .mul(smoothstep(0.55, 0.9, t).mul(1.6).add(0.45)).mul(light.glow.mul(0.9).add(0.2));
-        return mirror ? underwater(col, u, light) : col;
+        return mirror ? underwater(col, u, light, look) : col;
     })();
     return material;
 }
 
 /** A soft halo of light around the heart, drawn over the petals: the flower glows from within. */
-function haloSprite(u, light, { strength, depthTest }) {
+function haloSprite(u, light, look, { strength, depthTest }) {
     const material = new THREE.SpriteNodeMaterial({
         transparent: true, depthWrite: false, depthTest, blending: THREE.AdditiveBlending,
     });
@@ -353,10 +364,13 @@ function haloSprite(u, light, { strength, depthTest }) {
     // Closed, the light is spread through the bud; the bright core gathers only as it opens.
     const core = exp(r.mul(r).mul(-16)).mul(u.breathSoft.mul(0.8).add(0.2));
     const wide = exp(r.mul(r).mul(-4.5)).mul(fadeOut(0.6, 1.0, r));
-    material.colorNode = GOLD.mul(core.mul(0.7)).add(vec3(1.0, 0.4, 0.55).mul(wide.mul(0.16)))
+    material.colorNode = vec3(...look.gold).mul(core.mul(0.7)).add(vec3(...look.halo).mul(wide.mul(0.16)))
         .mul(light.glow.mul(strength));
     material.opacityNode = float(1);
     const sprite = new THREE.Sprite(material);
+    // Every Sprite shares one geometry; the host disposes a world's geometries when it leaves, so a
+    // sprite needs its own (else the next Heart Glow draws from destroyed buffers).
+    sprite.geometry = sprite.geometry.clone();
     sprite.frustumCulled = false;
     return sprite;
 }
@@ -366,10 +380,10 @@ function haloSprite(u, light, { strength, depthTest }) {
  * (each ring in the gaps of the one outside it), a little twist and size, and its own phase for
  * the idle sway. Ordered ring by ring, as the bloom geometry is built.
  */
-function petalLayout() {
-    return RINGS.flatMap((ring, ringIndex) => Array.from({ length: ring.count }, (_, i) => ({
+function petalLayout(rings) {
+    return rings.flatMap((ring, ringIndex) => Array.from({ length: ring.count }, (_, i) => ({
         ring,
-        order: Math.max(0, ringIndex - 1) / (RINGS.length - 2),
+        order: Math.max(0, ringIndex - 1) / (rings.length - 2),
         turn: ((i + (ringIndex % 2) * 0.5) / ring.count) * TAU + Math.sin(i * 3.7 + ringIndex) * 0.07,
         twist: Math.sin(i * 5.3 + ringIndex * 2.1) * 0.06,
         size: 1 + Math.sin(i * 2.9 + ringIndex * 4.1) * 0.05,
@@ -379,9 +393,9 @@ function petalLayout() {
 }
 
 /** Every petal of every ring in one geometry; `aPetal` says which matrix each vertex follows. */
-function bloomGeometry() {
+function bloomGeometry(rings) {
     const parts = [];
-    RINGS.forEach((ring) => {
+    rings.forEach((ring) => {
         const petal = petalGeometry(ring);
         for (let i = 0; i < ring.count; i++) {
             const part = petal.clone();
@@ -416,14 +430,14 @@ function placePetal(target, petal, angle) {
  * `petals` holds the petal matrices, shared with the other flower: the image differs only by its
  * mirrored parent.
  */
-function buildFlower(u, light, geometries, petals, mirror, padField) {
+function buildFlower(u, light, look, geometries, petals, mirror, padField) {
     const tilt = new THREE.Group();
     const body = new THREE.Group();
     tilt.add(body);
-    const bloom = new THREE.Mesh(geometries.bloom, petalMaterial(u, light, petals, mirror, padField));
-    const seedHead = new THREE.Mesh(geometries.receptacle, receptacleMaterial(u, light, mirror));
+    const bloom = new THREE.Mesh(geometries.bloom, petalMaterial(u, light, look, petals, mirror, padField));
+    const seedHead = new THREE.Mesh(geometries.receptacle, receptacleMaterial(u, light, look, mirror));
     seedHead.position.y = HEART_HEIGHT - 0.024;
-    const stamens = new THREE.Mesh(geometries.stamens, stamenMaterial(u, light, mirror));
+    const stamens = new THREE.Mesh(geometries.stamens, stamenMaterial(u, light, look, mirror));
     stamens.position.y = HEART_HEIGHT - 0.04;
     // The image draws first (its depth-only twins before it), then the flower, then the halo over all.
     [bloom, seedHead, stamens].forEach((mesh) => {
@@ -437,7 +451,7 @@ function buildFlower(u, light, geometries, petals, mirror, padField) {
         withDepthTwin(seedHead, depthMaterial);
         withDepthTwin(stamens, depthMaterial);
     }
-    const halo = haloSprite(u, light, mirror ? { strength: 0.08, depthTest: true } : { strength: 0.28, depthTest: false });
+    const halo = haloSprite(u, light, look, mirror ? { strength: 0.08, depthTest: true } : { strength: 0.28, depthTest: false });
     halo.position.y = HEART_HEIGHT + 0.01;
     halo.renderOrder = mirror ? 6 : 12;
     body.add(halo);
@@ -449,10 +463,21 @@ function buildFlower(u, light, geometries, petals, mirror, padField) {
 /**
  * The lotus and its reflection.
  * @param {object} u breath uniforms
- * @param {{ waterline: number, scale: number, padField: Function }} options flower base height (hero
- *   units), size, and the pond's lily pads (they hide the reflection where they lie in front of it)
+ * @param {{ waterline: number, scale: number, padField: Function, look?: object }} options flower base
+ *   height (hero units), size, the pond's lily pads (they hide the reflection where they lie in front
+ *   of it), and the mood's look (LOTUS_LOOK's fields; `pigments`: [claw, body, tip] per ring, outer
+ *   to inner, null to keep a ring's own)
  */
-export function createLotus(u, { waterline, scale, padField }) {
+export function createLotus(u, {
+    waterline, scale, padField, look: lookIn = {},
+}) {
+    const look = { ...LOTUS_LOOK, ...lookIn };
+    const rings = RINGS.map((ring, index) => {
+        const pigment = look.pigments?.[index];
+        return pigment ? {
+            ...ring, claw: pigment[0], body: pigment[1], tip: pigment[2],
+        } : ring;
+    });
     const light = {
         /** The heart, in world space, and its image under the water. */
         heart: uniform(new THREE.Vector3(0, waterline, 0)),
@@ -465,16 +490,16 @@ export function createLotus(u, { waterline, scale, padField }) {
         glow: uniform(1),
     };
     const geometries = {
-        bloom: bloomGeometry(),
+        bloom: bloomGeometry(rings),
         receptacle: new THREE.CylinderGeometry(0.058, 0.036, 0.048, 32, 1),
         stamens: stamenGeometry(56, 0.05, 0.065, 0.005),
     };
     // Every petal's matrix, written once a frame and read by the flower and its image alike.
-    const layout = petalLayout();
+    const layout = petalLayout(rings);
     const matrices = layout.map(() => new THREE.Matrix4());
     const petals = uniformArray(matrices, 'mat4');
-    const flower = buildFlower(u, light, geometries, petals, false, null);
-    const image = buildFlower(u, light, geometries, petals, true, padField);
+    const flower = buildFlower(u, light, look, geometries, petals, false, null);
+    const image = buildFlower(u, light, look, geometries, petals, true, padField);
     flower.tilt.scale.setScalar(scale);
     flower.tilt.position.set(0, waterline, 0);
     image.tilt.scale.set(scale, -scale, scale);
