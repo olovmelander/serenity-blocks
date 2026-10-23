@@ -12,9 +12,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    DOZE_AFTER, FERVOUR_BOND, HEART_FLIGHT, HEART_GAP, HEART_QUEUE, KNEEL_AFTER, PARTING, SIT_AFTER, StillwaterStory,
-    bondForCombo, chainBond, spiritPathPoint, trollStation,
+    DOZE_AFTER, FERVOUR_BOND, HEART_FLIGHT, HEART_GAP, HEART_QUEUE, KNEEL_AFTER, LINGER, PARTING, SIT_AFTER,
+    STARTLE_CALM, StillwaterStory, bondForCombo, chainBond, spiritPathPoint, trollStation,
 } from '../../src/themes/stillwater/stillwater-story.js';
+import { ATTENTION } from '../../src/themes/stillwater/stillwater-attention.js';
 import {
     APPROACH_STEPS, HEART, SPIRIT, TROLL,
 } from '../../src/themes/stillwater/stillwater-core.js';
@@ -714,5 +715,114 @@ describe('stillwater story: a replay', () => {
         }
         const out = [0, 0, 0];
         expect(spiritPathPoint(0.5, out)).toBe(out);
+    });
+});
+
+describe('stillwater story: a quick run', () => {
+    /** The n-th light's landing: on alternate sides, scattered over the water. */
+    const scattered = (n) => {
+        const side = n % 2 ? 1 : -1;
+        return [side * (3 + ((n * 1.7) % 5)), -3 - ((n * 2.3) % 8)];
+    };
+
+    /** Locks every `every` seconds from `from` to `to`, alternating sides at scattered points. */
+    function quickRun(story, from, to, every = 0.4, { hard = () => false } = {}) {
+        let n = 0;
+        let next = from;
+        runTo(story, to, (time) => {
+            if (time < next) return;
+            n += 1;
+            const side = n % 2 ? 1 : -1;
+            story.onLock({
+                time, side, at: scattered(n), hardDrop: hard(n),
+            });
+            next += every;
+        });
+        return n;
+    }
+
+    it('watches where the lights are falling, not each light: their looks change no oftener than they hold one', () => {
+        const story = storyAt(0);
+        const keys = { troll: [], spirit: [] };
+        quickRun(story, 1, 61);
+        const seen = { troll: new Set(), spirit: new Set() };
+        let lastKey = { troll: null, spirit: null };
+        const turns = { troll: 0, spirit: 0 };
+        runTo(story, 121, null);
+        // (Read back over a second quick minute, the story already busy.)
+        let n = 0;
+        let next = story.time;
+        runTo(story, story.time + 60, (time) => {
+            if (time >= next) {
+                n += 1;
+                story.onLock({ time, side: n % 2 ? 1 : -1, at: scattered(n) });
+                next += 0.4;
+            }
+            for (const who of ['troll', 'spirit']) {
+                const key = story.lookKey[who];
+                seen[who].add(key);
+                keys[who].push(key);
+                if (key !== lastKey[who]) turns[who] += 1;
+                lastKey = { ...lastKey, [who]: key };
+            }
+        });
+        expect(story.busy).toBeGreaterThan(0.9);
+        for (const who of ['troll', 'spirit']) {
+            // No light of the run is followed down by itself.
+            expect([...seen[who]].some((k) => String(k).startsWith('lock')), who).toBe(false);
+            expect(turns[who], who).toBeLessThanOrEqual(Math.ceil(60 / ATTENTION[who].dwell));
+            expect(keys[who].filter((k) => k === 'area').length / keys[who].length, who).toBeGreaterThan(0.5);
+        }
+    });
+
+    it('follows a light down in a calm night, and makes him start at a hard one only out of a calm', () => {
+        const story = storyAt(0);
+        runTo(story, 5);
+        story.onLock({
+            time: 5, side: 1, at: [4, -6], hardDrop: true,
+        });
+        runTo(story, 5.5);
+        expect(story.trollWant(5.5).startleAt).toBe(5);
+        expect(story.lookKey.troll).toMatch(/^lock/);
+        // A hard one in a quick run: no start.
+        const quick = storyAt(0);
+        quickRun(quick, 1, 20, 0.4, { hard: () => true });
+        const startles = new Set();
+        runTo(quick, 21, (time) => startles.add(quick.trollWant(time).startleAt));
+        // (Only the first, out of the calm the night began in.)
+        expect([...startles].filter((at) => at > 1 + STARTLE_CALM)).toEqual([]);
+    });
+
+    it('waits at the water a while after a chain lets them go in a quick run, and not in a calm one', () => {
+        const away = (story) => {
+            let left = null;
+            const broke = story.time;
+            runTo(story, broke + PARTING + LINGER + 2, (time) => {
+                if (left === null && story.trollAt === 'home') left = time - broke;
+            });
+            return left;
+        };
+        const calm = storyAt(0);
+        calm.onCombo(5, 1);
+        runTo(calm, 6);
+        calm.onCombo(0, 6);
+        const calmLeft = away(calm);
+        const quick = storyAt(0);
+        quick.onCombo(5, 1);
+        quickRun(quick, 1.2, 6);
+        quick.onCombo(0, 6);
+        let n = 0;
+        let next = quick.time;
+        let left = null;
+        runTo(quick, quick.time + PARTING + LINGER + 2, (time) => {
+            if (time >= next) {
+                n += 1;
+                quick.onLock({ time, side: n % 2 ? 1 : -1, at: [3, -4] });
+                next += 0.4;
+            }
+            if (left === null && quick.trollAt === 'home') left = time - 6;
+        });
+        expect(calmLeft).toBeLessThanOrEqual(PARTING + 0.1);
+        expect(left).toBeGreaterThan(PARTING + LINGER * 0.5);
     });
 });
