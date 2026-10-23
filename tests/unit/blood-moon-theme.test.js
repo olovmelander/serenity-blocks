@@ -391,6 +391,31 @@ describe('Blood Moon production lifecycle', () => {
         expect(scene.setLayout).toHaveBeenCalledTimes(1);
     });
 
+    it('leaves its canvas alone on a save that keeps the pixel ratio, and follows a real change', async () => {
+        // Every save carries all the settings, the render scale with them: the song a theme links
+        // to and a theme picked in play are both saved as the theme comes in.
+        const value = theme();
+        const { gpu, scene } = allocation();
+        await value.createScene();
+        gpu.setSize.mockClear();
+        gpu.setPixelRatio.mockClear();
+        scene.resize.mockClear();
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, {
+            settings: { ...win.settings, renderScale: 1, musicTrack: 'nocturne' },
+            dirtyKeys: ['musicTrack'],
+            source: 'local',
+        });
+        await Promise.resolve();
+        expect(gpu.setSize).not.toHaveBeenCalled();
+        expect(gpu.setPixelRatio).not.toHaveBeenCalled();
+        expect(scene.resize).toHaveBeenLastCalledWith(1920, 1080); // the scene's own layout still follows
+        vi.spyOn(value, 'getEffectivePixelRatio').mockReturnValue(0.5);
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, { type: 'renderScale', value: 0.5 });
+        await Promise.resolve();
+        expect(gpu.setPixelRatio).toHaveBeenCalledExactlyOnceWith(0.5);
+        expect(gpu.setSize).toHaveBeenCalledExactlyOnceWith(1920, 1080);
+    });
+
     it('cleanup is terminal and idempotent while preserving the registry-owned container', async () => {
         const value = theme();
         const { scene, gpu } = allocation();
