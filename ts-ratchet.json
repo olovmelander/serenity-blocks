@@ -113,6 +113,8 @@
     "src/ui/startup-shell-clock.js",
     "src/ui/theme-keys.js",
     "src/utils/gpu-loss-coordinator.js",
+    "src/utils/indexed-db-open.js",
+    "src/utils/late-app-adoption.js",
     "src/utils/page-teardown.js",
     "src/utils/photosensitivity.js",
     "src/utils/viewport.js"
