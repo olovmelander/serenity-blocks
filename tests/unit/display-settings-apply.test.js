@@ -18,6 +18,8 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({ BoardJuice: class 
 
 let SerenityBlocks;
 let DisplayManager;
+let getGlobalRenderScale;
+let applyGlobalRenderScale;
 
 beforeAll(async () => {
     // main.js reads a few browser globals while it loads.
@@ -60,6 +62,7 @@ beforeAll(async () => {
     vi.stubGlobal('requestAnimationFrame', () => 0);
     ({ SerenityBlocks } = await import('../../src/main.js'));
     ({ DisplayManager } = await import('../../src/core/display-manager.js'));
+    ({ applyGlobalRenderScale, getGlobalRenderScale } = await import('../../src/themes/base-theme.js'));
 });
 
 function createApp({ setDisplayMode = vi.fn(async () => true) } = {}) {
@@ -73,6 +76,7 @@ function createApp({ setDisplayMode = vi.fn(async () => true) } = {}) {
         webglRenderer: { setInternalResolution: vi.fn() },
         showFPSCounter: vi.fn(),
         hideFPSCounter: vi.fn(),
+        themeManager: { resize: vi.fn() },
     };
     const apply = (settings) => SerenityBlocks.prototype.applyDisplaySettings.call(app, {
         displayMode: 'windowed', renderScale: 1, enableAntialiasing: true, showFPSCounter: false, ...settings,
@@ -98,6 +102,23 @@ describe('applyDisplaySettings', () => {
         await apply({ displayMode: 'fullscreen' });
         expect(setDisplayMode).toHaveBeenCalledTimes(2);
         expect(setDisplayMode).toHaveBeenLastCalledWith('fullscreen', { width: 1920, height: 1080 });
+    });
+
+    it('hands a new render scale to the active theme, and only a new one', async () => {
+        // A theme reads the scale when it sizes its canvas, and the desktop policy's changes (the
+        // dynamic resolution loop, a GPU health update) come with no settings event.
+        vi.stubGlobal('innerWidth', 1280);
+        vi.stubGlobal('innerHeight', 720);
+        const { app, apply } = createApp();
+        await apply({ renderScale: 1 });
+        app.themeManager.resize.mockClear();
+        await apply({ renderScale: 0.75 });
+        expect(app.themeManager.resize).toHaveBeenCalledExactlyOnceWith(1280, 720);
+        await apply({ renderScale: 0.75, showFPSCounter: true });
+        expect(app.themeManager.resize).toHaveBeenCalledOnce();
+        applyGlobalRenderScale(0.5, app.themeManager); // as the desktop policy does
+        expect(getGlobalRenderScale()).toBe(0.5);
+        expect(app.themeManager.resize).toHaveBeenCalledTimes(2);
     });
 
     it('tries again next time when applying the mode failed', async () => {
