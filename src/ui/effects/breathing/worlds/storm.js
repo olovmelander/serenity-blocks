@@ -184,64 +184,111 @@ function bokehLayout(count, tints, gainScale = 1) {
     });
 }
 
+/** The city's lights: sodium most of all, warm white windows, a few tail lights, the odd teal sign. */
+const SODIUM = vec3(1.0, 0.5, 0.16);
+const WARM_WHITE = vec3(1.0, 0.82, 0.6);
+const TAIL_LIGHT = vec3(1.0, 0.1, 0.05);
+const TEAL_SIGN = vec3(0.15, 0.8, 0.7);
+
 /**
- * A city at night out of focus: one soft disc per cell (hashed size, place and colour), crowded at
- * street level and sparse among the towers above. `up` is the height above the window sill.
+ * One row of a night city's lights seen far out of focus: at most one disc per cell along x, at
+ * `y0` (give or take `spread`) above the sill, each with its own size, colour and brightness. A slow
+ * noise along the row gathers the lights into clusters with dark gaps between them. Every disc fits
+ * inside its cell (size < 0.2 / cells), so no cell edge ever cuts one.
  */
-const cityLights = /* @__PURE__ */ Fn(([p, cells, salt, up]) => {
-    const q = p.mul(cells).toVar();
+const cityRow = /* @__PURE__ */ Fn(([p, up, y0, spread, cells, size, density, salt]) => {
+    const q = p.x.mul(cells).add(salt.mul(17.3)).toVar();
     const cell = floor(q).toVar();
-    const h = hash22(cell.add(salt.mul(7.1))).toVar();
-    const o = fract(q).sub(0.5).sub(h.sub(0.5).mul(0.2)).toVar();
-    const r = h.x.mul(0.16).add(0.22).toVar();
-    // A six-bladed aperture rounds each light into a soft hexagon with a slightly brighter rim.
-    const hex = max(o.x.abs().mul(0.866).add(o.y.abs().mul(0.5)), o.y.abs());
-    const dist = mix(length(o), hex.mul(1.06), 0.35);
-    const disc = fadeOut(r.mul(0.84), r, dist).mul(smoothstep(r.mul(0.4), r.mul(0.96), dist).mul(0.4).add(0.7));
-    const amount = fadeOut(0.05, 1.6, up).mul(0.4).add(0.3);
-    const on = step(hash21(cell.add(salt.mul(3.3))), amount).mul(step(0, up));
-    const kind = hash21(cell.add(salt.mul(5.7))).toVar();
-    // Sodium streetlights most of all, then cool windows, a few tail lights, a teal sign.
+    const h = hash22(vec2(cell, salt)).toVar();
+    const k = hash22(vec2(cell, salt.add(5.1))).toVar();
+    // Many small lights, a few large ones.
+    const r = size.mul(h.x.mul(h.x).mul(1.2).add(0.5)).toVar();
+    const cx = fract(q).sub(0.5).sub(h.y.sub(0.5).mul(0.3)).div(cells);
+    const cy = up.sub(y0.add(k.x.sub(0.5).mul(spread)));
+    const d = length(vec2(cx, cy)).toVar();
+    const cluster = smoothstep(0.36, 0.6, gnoise(vec2(cell.mul(0.23), salt.mul(3.7))));
+    const on = step(k.y, density.mul(cluster));
+    // Lens bokeh: a soft disc with a faint brighter rim.
+    const disc = fadeOut(r.mul(0.6), r, d).mul(smoothstep(r.mul(0.4), r.mul(0.9), d).mul(0.3).add(0.72));
+    const kind = hash21(vec2(cell.add(3.3), salt)).toVar();
     const tint = mix(
-        mix(vec3(1.0, 0.48, 0.14), vec3(0.55, 0.68, 1.0), step(0.55, kind)),
-        mix(vec3(1.0, 0.1, 0.05), vec3(0.15, 0.85, 0.7), step(0.92, kind)),
-        step(0.8, kind),
+        mix(SODIUM, WARM_WHITE, step(0.6, kind)),
+        mix(TAIL_LIGHT, TEAL_SIGN, step(0.975, kind)),
+        step(0.93, kind),
     );
-    const gain = hash21(cell.add(salt.mul(9.9))).toVar();
-    return tint.mul(disc).mul(on).mul(gain.mul(gain).mul(0.06).add(0.012));
+    const gain = hash21(vec2(cell.add(9.9), salt)).toVar();
+    return tint.mul(disc).mul(on).mul(gain.mul(gain).mul(0.7).add(0.3));
 }).setLayout({
-    name: 'storm_cityLights',
+    name: 'storm_cityRow',
     type: 'vec3',
     inputs: [
-        { name: 'p', type: 'vec2' }, { name: 'cells', type: 'float' }, { name: 'salt', type: 'float' },
-        { name: 'up', type: 'float' },
+        { name: 'p', type: 'vec2' }, { name: 'up', type: 'float' }, { name: 'y0', type: 'float' },
+        { name: 'spread', type: 'float' }, { name: 'cells', type: 'float' }, { name: 'size', type: 'float' },
+        { name: 'density', type: 'float' }, { name: 'salt', type: 'float' },
     ],
 });
 
 /**
- * Runnels on the pane: in about half the columns a drop slides slowly down at its own pace,
- * trailing a wet line, and catches a glint on its side toward the globe (`toward`, a unit vector).
+ * The night city through the window, far out of focus: dark sky above, the faint sodium haze of the
+ * streets near the bottom, a soft skyline of dark blocks, and its lights in a few clustered rows,
+ * streets low down, lit floors on the blocks, and a few large, dim discs nearer the lens.
+ * `up` is the height above the sill.
+ */
+function cityAt(q, up) {
+    const haze = vec3(0.04, 0.017, 0.007).mul(exp(up.max(0).mul(-2.6)));
+    const sky = vec3(0.0018, 0.0024, 0.0075).add(haze);
+    // Blocks of different heights; the defocus softens their roofs and corners.
+    const bx = q.x.mul(2.4).add(0.3);
+    const block = floor(bx);
+    const heightOf = (b) => {
+        const hh = hash21(vec2(b, 7.7));
+        return hh.mul(hh).mul(0.8).add(0.3);
+    };
+    const roof = mix(heightOf(block), heightOf(block.add(1)), smoothstep(0.86, 1.0, fract(bx)));
+    const mass = fadeOut(roof.sub(0.03), roof.add(0.03), up).toVar();
+    const building = vec3(0.0016, 0.0015, 0.0019).add(haze.mul(0.35));
+    const row = (y0, spread, cells, size, density, salt) => {
+        const args = [y0, spread, cells, size, density, salt].map((v) => float(v));
+        return cityRow(q, up, ...args);
+    };
+    const streets = row(0.07, 0.05, 5, 0.036, 0.9, 1).mul(0.14).add(row(0.17, 0.05, 8, 0.022, 0.75, 2).mul(0.1));
+    const floors = row(0.36, 0.05, 6, 0.026, 0.6, 3).mul(0.075)
+        .add(row(0.58, 0.04, 6, 0.024, 0.5, 4).mul(0.06))
+        .add(row(0.82, 0.04, 6, 0.022, 0.45, 6).mul(0.05));
+    const nearer = row(0.3, 0.45, 1.4, 0.12, 0.65, 5).mul(0.06).add(row(0.75, 0.5, 1.1, 0.16, 0.5, 7).mul(0.04));
+    return mix(sky, building, mass).add(streets).add(floors.mul(mass)).add(nearer);
+}
+
+/**
+ * Runnels on the pane: in a handful of columns a drop slides slowly down at its own pace, trailing
+ * a wet line; drop and trail catch a glint on their side toward the globe (`toward`, a unit vector).
  * Returns (wet coverage, glint, dark rim).
  */
 const runnels = /* @__PURE__ */ Fn(([p, t, toward]) => {
-    const x = p.x.mul(4).toVar();
+    const x = p.x.mul(3).toVar();
     const column = floor(x).toVar();
     const pick = hash21(vec2(column, 3.7)).toVar();
-    const wiggle = sin(p.y.mul(9).add(pick.mul(40))).mul(0.06).add(sin(p.y.mul(23).add(pick.mul(13))).mul(0.025));
+    // A gentle meander, not a wave: water finds its way down the glass.
+    const wiggle = sin(p.y.mul(3.5).add(pick.mul(40))).mul(0.035).add(sin(p.y.mul(9).add(pick.mul(13))).mul(0.008));
     const dx = fract(x).sub(0.5).sub(pick.sub(0.5).mul(0.5)).sub(wiggle)
-        .div(4)
+        .div(3)
         .toVar();
-    const head = float(1.6).sub(fract(hash21(vec2(column, 9.1)).add(t.mul(pick.mul(0.012).add(0.008)))).mul(4)).toVar();
+    const pace = pick.mul(0.016).add(0.012);
+    const head = float(1.3).sub(fract(hash21(vec2(column, 9.1)).add(t.mul(pace))).mul(2.6)).toVar();
     const dy = p.y.sub(head).toVar();
-    const dropR = vec2(dx.div(0.016), dy.div(0.022)).toVar();
+    const dropR = vec2(dx.div(0.017), dy.div(0.024)).toVar();
     const reach = dropR.length().toVar();
-    const drop = fadeOut(0.75, 1, reach).toVar();
+    const drop = fadeOut(0.72, 1, reach).toVar();
     const dropG = dropR.sub(toward.mul(0.42));
-    const trail = fadeOut(0.004, 0.006, dx.abs()).mul(smoothstep(0, 0.02, dy)).mul(fadeOut(0.05, 0.7, dy));
-    const running = step(0.45, pick).toVar();
-    const wet = drop.add(trail.mul(0.8)).min(1).mul(running);
-    const shine = exp(dropG.dot(dropG).mul(-10)).mul(drop).add(trail.mul(0.3)).mul(running);
-    return vec3(wet, shine, smoothstep(0.5, 1, reach).mul(drop).mul(running));
+    const along = smoothstep(0, 0.02, dy).mul(fadeOut(0.1, 1.1, dy)).toVar();
+    const trail = fadeOut(0.0035, 0.006, dx.abs()).mul(along);
+    // The trail's edge toward the globe holds a thin line of its light.
+    const edge = fadeOut(0.002, 0.0045, dx.sub(toward.x.mul(0.003)).abs()).mul(along);
+    const running = step(0.4, pick).toVar();
+    const wet = drop.add(trail.mul(0.85)).min(1).mul(running);
+    const shine = exp(dropG.dot(dropG).mul(-9)).mul(drop).add(trail.mul(0.35)).add(edge.mul(0.9))
+        .mul(running);
+    return vec3(wet, shine, smoothstep(0.45, 1, reach).mul(drop).mul(running));
 }).setLayout({
     name: 'storm_runnels',
     type: 'vec3',
@@ -249,50 +296,46 @@ const runnels = /* @__PURE__ */ Fn(([p, t, toward]) => {
 });
 
 /**
- * A tall window behind the globe on a rainy night: the city's glow (sodium low, deep blue above),
- * its lights out of focus, mullions, and rain on the pane. Each bead is a tiny wide-angle lens: it
- * shows the city small and upside down inside a dark rim, and a glint of the globe on the side
- * that faces it.
+ * A tall window behind the globe on a rainy night: the city out of focus (cityAt), mullions, and rain
+ * on the pane. Each bead is a tiny wide-angle lens: it shows the city small and upside down inside a
+ * dark rim, and holds a glint of the globe's violet on the side that faces it.
  */
 function paintWindow(rp, u, horizonY, K) {
     const w = layer(rp, u, 0.2).toVar();
     const sill = horizonY.add(0.035);
     const up = w.y.sub(sill).toVar();
     const pane = smoothstep(-0.004, 0.004, up).toVar();
-    const skyAt = (h) => mix(vec3(0.026, 0.011, 0.005), vec3(0.0025, 0.0035, 0.011), smoothstep(0.0, 1.1, h));
-    const lightsAt = (q, h) => cityLights(q, float(3.2), float(1), h)
-        .add(cityLights(q.add(vec2(0.37, 0.11)), float(5.6), float(2), h).mul(0.6)).mul(1.5);
-    const city = skyAt(up).add(lightsAt(w, up)).toVar();
+    const city = cityAt(w, up).toVar();
     // The globe stands at the origin: every drop catches its light on the side facing it.
     const toward = w.negate().div(w.length().max(1e-3)).toVar();
     const near = float(1).div(w.dot(w).mul(1.2).add(1)).toVar();
-    // Beads of all sizes, anywhere in their cell, in fewer than half the cells.
+    // Beads of all sizes, anywhere in their cell, in about a quarter of the cells.
     const rq = w.add(vec2(0, u.seed.mul(3))).mul(7).toVar();
     const cell = floor(rq).toVar();
     const r = pow(hash21(cell.add(7.3)), float(1.5)).mul(0.26).add(0.1).toVar();
     const o = fract(rq).sub(0.5).sub(hash22(cell.add(3.1)).sub(0.5).mul(float(0.9).sub(r.mul(2)))).toVar();
     const d = length(vec2(o.x, o.y.mul(1.12))).toVar();
-    const bead = fadeOut(r.mul(0.8), r, d).mul(step(0.5, hash21(cell.add(41.7)))).toVar();
+    const bead = fadeOut(r.mul(0.8), r, d).mul(step(0.74, hash21(cell.add(41.7)))).toVar();
     const rim = smoothstep(r.mul(0.55), r, d).mul(bead);
     const g = o.sub(toward.mul(r.mul(0.4)));
-    const glint = exp(g.dot(g).div(r.mul(r).mul(0.07)).negate()).mul(bead);
+    const glint = exp(g.dot(g).div(r.mul(r).mul(0.11)).negate()).mul(bead);
     const view = city.toVar();
     If(bead.greaterThan(0.001), () => {
         // Seen through the bead, the city is inverted and drawn in from far around it.
         const seen = w.sub(o.div(7).mul(8)).toVar();
-        const upSeen = seen.y.sub(sill);
-        const inverted = skyAt(upSeen).add(lightsAt(seen, upSeen)).mul(1.8);
-        view.assign(mix(view, inverted, bead.mul(0.9)));
+        view.assign(mix(view, cityAt(seen, seen.y.sub(sill)).mul(1.7), bead.mul(0.9)));
     });
     const run = runnels(w.add(vec2(0, u.seed.mul(3))), u.time, toward).toVar();
-    view.assign(mix(view, city.mul(1.6).add(skyAt(up).mul(0.6)), run.x));
+    view.assign(mix(view, city.mul(1.7), run.x));
     view.mulAssign(float(1).sub(rim.add(run.z).min(1).mul(0.7)));
-    view.addAssign(K.MAGENTA.mul(glint.add(run.y).mul(near).mul(0.3)));
+    // Beads and runnels hold the globe's violet: a glint on the near side, a faint glow through them.
+    const lit = glint.add(run.y).add(bead.add(run.x).min(1).mul(0.06));
+    view.addAssign(mix(K.MAGENTA, K.VIOLET, 0.4).mul(lit.mul(near.mul(0.7).add(0.15)).mul(0.6)));
     // Mullions and a transom high up (a tall screen sees it), lit along their edges by the globe.
     const mx = min(w.x.abs().sub(1.12).abs(), up.sub(1.25).abs()).toVar();
-    const bar = fadeOut(0.026, 0.03, mx);
-    const lip = mx.sub(0.028).div(0.004);
-    view.assign(mix(view, vec3(0.0016, 0.0016, 0.0024).add(K.VIOLET.mul(exp(lip.mul(lip).negate()).mul(0.012))), bar));
+    const bar = fadeOut(0.03, 0.036, mx);
+    const lip = mx.sub(0.033).div(0.004);
+    view.assign(mix(view, vec3(0.0014, 0.0014, 0.002).add(K.VIOLET.mul(exp(lip.mul(lip).negate()).mul(0.012))), bar));
     // Below the pane: the sill, its top edge catching the globe's light.
     const edge = up.div(0.005);
     return mix(vec3(0.0012, 0.0012, 0.0018), view, pane).add(K.VIOLET.mul(exp(edge.mul(edge).negate()).mul(0.02)));
