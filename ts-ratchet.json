@@ -81,6 +81,7 @@
     "src/rendering/odyssey/chapter-environments/registry.js",
     "src/rendering/odyssey/chapter-environments/shared/odyssey-resident-textures.js",
     "src/rendering/odyssey/odyssey-path-horizon.js",
+    "src/rendering/odyssey/odyssey-path-inflow.js",
     "src/rendering/webgpu-compute-pipeline-async.js",
     "src/themes/shared/bloom-dispose.js",
     "src/themes/shared/camera-breath.js",

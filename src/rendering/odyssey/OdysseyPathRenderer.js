@@ -20,6 +20,7 @@ import { buildOdysseyPathCurve } from './path-utils.js';
 import {
     createPathOuterTSL,
     createPathGlowTSL,
+    createPathInflowTSL,
     createPathChapterUniforms,
     createPathCentreLineGeometry,
     ODYSSEY_PATH_CROSS_SECTION,
@@ -28,6 +29,14 @@ import {
     ODYSSEY_CHAPTER_PROFILES,
 } from './chapter-environments/shared/chapter-profile.js';
 import { PATH_HORIZON_OPEN } from './odyssey-path-horizon.js';
+import {
+    ODYSSEY_PATH_INFLOW,
+    buildOdysseyPathInflow,
+    createOdysseyPathInflowStream,
+    writeOdysseyPathInflowStrip,
+} from './odyssey-path-inflow.js';
+
+const _inflowRight = new THREE.Vector3();
 
 // ── Path-tube tessellation ───────────────────────────────────────────────────────
 // The path is ALWAYS ON (drawn in every chapter). Centre-line geometry: the radius lives in
@@ -85,6 +94,8 @@ export class OdysseyPathRenderer {
         // cleared whenever a transition branch runs, so the steady-state reset is applied
         // exactly ONCE per return-to-rest and then skipped — byte-identical end state.
         this._steadyStateApplied = false;
+        // The rail's last reach into the black hole (setInflow).
+        this._inflow = null;
     }
 
     /**
@@ -127,6 +138,8 @@ export class OdysseyPathRenderer {
 
         // Chapter thresholds live in the ribbon shader (no marker meshes).
         this.createChapterMarkers(pathData.chapterPositions);
+
+        this.createPathInflow();
 
         console.log('[OdysseyPath] Path built with', pathData.controlPoints.length, 'control points');
     }
@@ -201,6 +214,62 @@ export class OdysseyPathRenderer {
         // Fresh tube uniform sets start at the rest pose but the transition uniforms still need
         // their one-time reset applied — clear the latch so updateChapterTransition re-applies.
         this._steadyStateApplied = false;
+    }
+
+    /**
+     * THE INFLOW (odyssey-path-inflow.js): the rail's last reach, from the mouth orb (chapter 7's
+     * first, where the rail ends through chapter 6) into the black hole. Hidden until setInflow().
+     */
+    createPathInflow() {
+        const mouth = this._chapterBounds?.[6];
+        if (!this.pathCurve || !Number.isFinite(mouth) || mouth >= 1) return;
+        const built = createPathInflowTSL(this._uTime, {
+            segments: ODYSSEY_PATH_INFLOW.segments,
+            glow: ODYSSEY_PATH_INFLOW.glow,
+        });
+        this._inflow = {
+            ...built,
+            start: this.pathCurve.getPointAt(mouth),
+            tangent: this.pathCurve.getTangentAt(mouth).normalize(),
+            stream: createOdysseyPathInflowStream(ODYSSEY_PATH_INFLOW.segments),
+        };
+        this.scene.add(built.mesh);
+    }
+
+    /**
+     * Lay the inflow into this frame's hole, or hide it.
+     * @param {{ weight: number, camera: THREE.PerspectiveCamera, centre: THREE.Vector3,
+     *   radius: number }|null} frame the hole as posed this frame (world) and the inflow's weight
+     *   (resolveOdysseyPathInflowWeight)
+     */
+    setInflow(frame) {
+        const inflow = this._inflow;
+        if (!inflow) return;
+        const camera = frame?.camera;
+        if (!(frame?.weight > 0.001) || !camera?.position || !frame.centre || !(frame.radius > 0)) {
+            inflow.mesh.visible = false;
+            return;
+        }
+        const laid = buildOdysseyPathInflow({
+            eye: camera.position,
+            right: _inflowRight.set(1, 0, 0).applyQuaternion(camera.quaternion),
+            tanHalfFov: Math.tan(THREE.MathUtils.degToRad((camera.fov ?? 60) / 2)),
+            centre: frame.centre,
+            radius: frame.radius,
+            start: inflow.start,
+            tangent: inflow.tangent,
+        }, inflow.stream);
+        const weight = frame.weight * inflow.stream.visibility;
+        if (!laid || !(weight > 0.001)) {
+            inflow.mesh.visible = false;
+            return;
+        }
+        const { position, aInflow } = inflow.geometry.attributes;
+        writeOdysseyPathInflowStrip(inflow.stream, camera.position, position.array, aInflow.array);
+        position.needsUpdate = true;
+        aInflow.needsUpdate = true;
+        inflow.uniforms.uWeight.value = weight;
+        inflow.mesh.visible = true;
     }
 
     /**
@@ -417,6 +486,13 @@ export class OdysseyPathRenderer {
             this.pathGlowMesh.material.dispose();
             this.scene.remove(this.pathGlowMesh);
             this.pathGlowMesh = null;
+        }
+
+        if (this._inflow) {
+            this._inflow.geometry.dispose();
+            this._inflow.material.dispose();
+            this.scene.remove(this._inflow.mesh);
+            this._inflow = null;
         }
 
         this.chapterMarkers = [];

@@ -80,6 +80,8 @@ import {
 } from './odyssey-warmup-plan.js';
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
 import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
+import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
+import { plungeTravelExtraMs } from './transitions/odyssey-black-hole-fall.js';
 import { resolveChapterArrivalProgress, resolveOrbParkProgress } from './odyssey-chapter-arrival.js';
 import {
     normalizeOdysseyWarmupMode,
@@ -2712,6 +2714,93 @@ export class OdysseyBoardController {
     }
 
     /**
+     * THE PATH FLOWS INTO THE HOLE (odyssey-path-inflow.js): from the rail's end at the mouth orb
+     * a stream of its light winds into whichever black hole is drawn this frame — chapter 6's
+     * omen until chapter 7's Gargantua takes the shadow over — as the environments posed it.
+     * @private
+     */
+    _updatePathInflow(cameraProgress) {
+        if (!this.pathRenderer?.setInflow) return;
+        const layout = this.presentationLayout;
+        const weight = resolveOdysseyPathInflowWeight(cameraProgress, layout?.chapterPositions, layout?.levelPositions);
+        const hole = weight > 0 ? this._resolveInflowHole() : null;
+        this.pathRenderer.setInflow(hole
+            ? {
+                weight: weight * hole.reveal, camera: this.camera, centre: hole.centre, radius: hole.radius,
+            }
+            : null);
+    }
+
+    /**
+     * B4 / Batch5: feed the Black Hole (ch7) screen-space lensing centre to the post
+     * pipeline — but ONLY when the BH chapter is relevant. The lens centre projection
+     * (getWorldDirection-derived world pos → NDC) is ch7-specific work; chapters 1-6/8
+     * must not pay it. We gate on activeChapter===7 OR the 6→7 / 7→8 seam (source or
+     * target chapter is 7), matching the window where the BH env is on-screen and its
+     * lensWorldPos is being maintained. The pipeline still smooths/decays the centre on
+     * exit via its internal lerp + the per-frame _lensActive reset.
+     * Chapter 6's omen bends the sky as it nears (2026-10-19): set first, so at the 6->7 seam
+     * chapter 7's hero — the same spot there — has the last word on the lens centre.
+     * ...but only until chapter 7's shadow has taken over (2026-10-23): from there the two are
+     * the same hole only at rest, and through the plunge Gargantua grows while the omen's target
+     * stays small. Both fed the lens each frame, so its smoothing settled between them (a lens
+     * radius of 0.38 for a shadow of 0.59 at p 0.877): the bloom mask and the bend sat inside
+     * the hole and painted a ghost of the photon ring across the shadow.
+     * @private
+     */
+    _feedBlackHoleLens(blendState) {
+        const post = this.postProcessingStack;
+        if (!post?.setLensTarget || !this.cinematicJourneyActive) return;
+        const environments = this.environmentManager?.environments;
+        const omenRelevant = (this.lastActiveChapter === 6
+            || (blendState?.inSeam === true && (blendState.sourceChapter === 6 || blendState.targetChapter === 6)))
+            && !this._isGargantuaShadowLive();
+        const omenLens = omenRelevant && environments?.get(6)?.group?.userData?.lensWorldPos;
+        if (omenLens?.lensStrength > 0) post.setLensTarget(omenLens);
+        const bhRelevant = this.lastActiveChapter === 7
+            || (blendState?.inSeam === true
+                && (blendState.sourceChapter === 7 || blendState.targetChapter === 7));
+        const lensWorldPos = bhRelevant && environments?.get(7)?.group?.userData?.lensWorldPos;
+        if (lensWorldPos) post.setLensTarget(lensWorldPos);
+    }
+
+    /**
+     * Whether chapter 7's Gargantua draws the black hole's shadow this frame (it takes the shadow
+     * over from chapter 6's omen at the 6->7 hand-over and keeps it until the exit's mouth opens).
+     * @private
+     */
+    _isGargantuaShadowLive() {
+        const ch7 = this.environmentManager?.environments?.get(7)?.group;
+        return !!(ch7 && ch7.visible !== false && ch7.userData?.distantHole?.userData?.horizon?.visible);
+    }
+
+    /**
+     * The black hole whose shadow is drawn this frame (exactly one is, from chapter 6's omen to
+     * chapter 7's Gargantua): its world centre and shadow radius, from the lens targets the
+     * chapters keep for the post pass. null when neither is on screen.
+     * @private
+     */
+    _resolveInflowHole() {
+        const environments = this.environmentManager?.environments;
+        const lens7 = environments?.get(7)?.group?.userData?.lensWorldPos;
+        if (this._isGargantuaShadowLive() && lens7?.lensRadius > 0) {
+            return { centre: lens7, radius: lens7.lensRadius, reveal: 1 };
+        }
+        const ch6 = environments?.get(6)?.group;
+        const omen = ch6?.userData?.blackHole;
+        const shadow = omen?.userData?.shadow;
+        const lens6 = ch6?.userData?.lensWorldPos;
+        if (ch6?.visible !== false && omen?.visible !== false && shadow?.visible && lens6?.lensRadius > 0) {
+            return {
+                centre: lens6,
+                radius: lens6.lensRadius * shadow.scale.x,
+                reveal: omen.userData.uReveal?.value ?? 1,
+            };
+        }
+        return null;
+    }
+
+    /**
      * Give up on the One World and hand chapters 2-5 back to their dioramas — LOUDLY, after
      * the fallback is arranged (Wave 4/6 audit prerequisite): a player-visible banner and a
      * persisted localStorage log. Silent recovery is how we would have retired the fallback
@@ -4421,6 +4510,9 @@ export class OdysseyBoardController {
                 cameraProgress,
                 this.cinematicJourneyActive ? directorState : null,
             );
+            // ...and from the rail's end the path flows on into the hole the environments have
+            // just posed (odyssey-path-inflow.js).
+            this._updatePathInflow(cameraProgress);
 
             // ONE WORLD owns the air. The manager above is still cross-fading scene fog and the
             // clear colour from the profiles of chapters 2-5 — chapters that no longer draw
@@ -4463,31 +4555,7 @@ export class OdysseyBoardController {
 
         this.thresholdDirector?.update(delta, this.camera, directorState);
 
-        // B4 / Batch5: feed the Black Hole (ch7) screen-space lensing centre to the post
-        // pipeline — but ONLY when the BH chapter is relevant. The lens centre projection
-        // (getWorldDirection-derived world pos → NDC) is ch7-specific work; chapters 1-6/8
-        // must not pay it. We gate on activeChapter===7 OR the 6→7 / 7→8 seam (source or
-        // target chapter is 7), matching the window where the BH env is on-screen and its
-        // lensWorldPos is being maintained. The pipeline still smooths/decays the centre on
-        // exit via its internal lerp + the per-frame _lensActive reset.
-        // Chapter 6's omen bends the sky as it nears (2026-10-19): set first, so at the 6->7 seam
-        // chapter 7's hero — the same spot there — has the last word on the lens centre.
-        const omenRelevant = this.lastActiveChapter === 6
-            || (blendState?.inSeam === true && (blendState.sourceChapter === 6 || blendState.targetChapter === 6));
-        const omenLens = omenRelevant && this.environmentManager?.environments?.get(6)?.group?.userData?.lensWorldPos;
-        if (omenLens?.lensStrength > 0 && this.postProcessingStack?.setLensTarget && this.cinematicJourneyActive) {
-            this.postProcessingStack.setLensTarget(omenLens);
-        }
-        const bhRelevant = this.lastActiveChapter === 7
-            || (blendState?.inSeam === true
-                && (blendState.sourceChapter === 7 || blendState.targetChapter === 7));
-        if (bhRelevant && this.postProcessingStack?.setLensTarget && this.cinematicJourneyActive) {
-            const bhGroup = this.environmentManager?.environments?.get(7)?.group;
-            const lensWorldPos = bhGroup?.userData?.lensWorldPos;
-            if (lensWorldPos) {
-                this.postProcessingStack.setLensTarget(lensWorldPos);
-            }
-        }
+        this._feedBlackHoleLens(blendState);
 
         // Update and render via PostProcessingStack.
         // When the cinematic pipeline is active it consumes director state (exposure/grade/
@@ -4972,7 +5040,10 @@ export class OdysseyBoardController {
 
     computeTravelDuration(fromPosition, toPosition) {
         const distance = Math.abs((toPosition ?? 0) - (fromPosition ?? 0));
-        return Math.round(900 + (distance * 2600));
+        // A short trip through the black hole's plunge is given the time to show it (the camera
+        // controller slows the trip there: CH7_PLUNGE_TRAVEL).
+        const plunge = plungeTravelExtraMs(fromPosition, toPosition, this.presentationLayout?.chapterPositions);
+        return Math.round(900 + (distance * 2600) + plunge);
     }
 
     /**

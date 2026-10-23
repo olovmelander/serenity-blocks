@@ -22,7 +22,13 @@ import {
     smooth01,
     smoother01,
 } from './transitions/odyssey-seam-schedule.js';
-import { resolveBlackHoleFallCamera, resolveBlackHoleFallExit } from './transitions/odyssey-black-hole-fall.js';
+import {
+    plungeTravelMeasure,
+    plungeTravelProgress,
+    plungeTravelTouches,
+    resolveBlackHoleFallCamera,
+    resolveBlackHoleFallExit,
+} from './transitions/odyssey-black-hole-fall.js';
 
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
@@ -1358,6 +1364,14 @@ export class OdysseyCameraController {
             direction,
             progress: 0,
             crossedBoundaryIds: [],
+            // Through the black hole's plunge the trip eases in its travel measure, so it slows
+            // there instead of crossing it in a few frames (CH7_PLUNGE_TRAVEL).
+            plunge: plungeTravelTouches(startPosition, clampedPosition, this.chapterPositions)
+                ? {
+                    from: plungeTravelMeasure(startPosition, this.chapterPositions),
+                    to: plungeTravelMeasure(clampedPosition, this.chapterPositions),
+                }
+                : null,
         };
 
         return new Promise((resolve) => {
@@ -2863,11 +2877,12 @@ export class OdysseyCameraController {
         const easedProgress = rawProgress < 0.5
             ? 4 * rawProgress * rawProgress * rawProgress
             : 1 - ((-2 * rawProgress + 2) ** 3) / 2;
-        const nextPosition = THREE.MathUtils.lerp(
-            travel.startPosition,
-            travel.endPosition,
-            easedProgress,
-        );
+        const nextPosition = travel.plunge
+            ? plungeTravelProgress(
+                THREE.MathUtils.lerp(travel.plunge.from, travel.plunge.to, easedProgress),
+                this.chapterPositions,
+            )
+            : THREE.MathUtils.lerp(travel.startPosition, travel.endPosition, easedProgress);
 
         const crossings = this.getCrossedBoundaryIds(travel.lastPosition, nextPosition);
         crossings.forEach((boundaryId) => {
