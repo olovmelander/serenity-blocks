@@ -117,7 +117,9 @@ export default defineConfig(({ command }) => ({
     port: 5173,  // Standard Vite port (changed from 3000 for Electron compatibility)
     strictPort: true,  // Don't try another port if 5173 is in use
     open: false,  // Don't auto-open browser (we're using Electron)
-    host: true,
+    // Loopback only: the dev server serves the source tree, so it should not listen on every
+    // network interface. `npm run dev -- --host` opens it to the LAN when a device needs it.
+    host: '127.0.0.1',
     watch: {
       ignored: ['**/three_js_example_repo/**', '**/artifacts/**'],
     },
@@ -131,6 +133,10 @@ export default defineConfig(({ command }) => ({
     // Keep the manifest at a visible path so the startup loader can resolve the
     // hashed desktop entry after deployment.
     manifest: 'manifest.json',
+    // The license of every bundled package (Phaser, three, ...), in full. Vite 7 strips license
+    // comments from the bundle, which were the only notice before; same visible-path reason as
+    // the manifest. scripts/pages-artifact-check.mjs fails a release without it.
+    license: { fileName: 'THIRD_PARTY_LICENSES.md' },
     sourcemap: process.env.VITE_BUILD_SOURCEMAP === 'true',
     // Electron loads the packaged app from file://, so Vite's module-preload
     // rewrites add startup indirection without providing browser-network wins.

@@ -58,6 +58,29 @@ describe('electron/main.js desktop helper wiring', () => {
         expect(mainSource).toMatch(/Menu\.setApplicationMenu\(debugKeys \? Menu\.buildFromTemplate\(/);
     });
 
+    it('refuses DevTools requests from release builds (audit R-07 step 7)', () => {
+        expect(mainSource).toMatch(
+            /function requestDevToolsOpen\(source\) \{[\s\S]{0,400}?if \(!mainWindow \|\| mainWindow\.isDestroyed\(\) \|\| !debugKeysEnabled\(\{ isPackaged, diagnosticsEnabled \}\)\) \{\s*return \{ accepted: false/,
+        );
+    });
+
+    it('guards every IPC handler before the first one is registered (audit R-07)', () => {
+        expect(mainSource).toContain("from './ipc-sender-guard.js'");
+        const guardAt = mainSource.indexOf('guardIpcHandlers(\n    ipcMain,');
+        expect(guardAt).toBeGreaterThan(-1);
+        expect(guardAt).toBeLessThan(mainSource.indexOf('ipcMain.handle('));
+        expect(mainSource).toMatch(/isGameSender\(event, \{ webContents: gameWebContents\(\), isGameUrl: isAllowedAppNavigation \}\)/);
+        // Steam's handlers register later through the same (guarded) ipcMain.handle.
+        expect(steamSource).toContain("ipcMain.handle('steam:cloudWrite'");
+    });
+
+    it('denies permissions by default and cancels Web Bluetooth device picks (audit R-07 step 5)', () => {
+        expect(mainSource).toContain("from './permission-policy.js'");
+        expect(mainSource).toMatch(/setPermissionRequestHandler\([\s\S]{0,200}?callback\(decide\('request'/);
+        expect(mainSource).toMatch(/setPermissionCheckHandler\([\s\S]{0,200}?decide\('check'/);
+        expect(mainSource).toMatch(/on\('select-bluetooth-device', \(event, _devices, callback\) => \{\s*event\.preventDefault\(\);\s*callback\(''\);/);
+    });
+
     it('refuses to send a P2P packet bigger than receivers accept (audit NET-08)', () => {
         expect(steamSource).toMatch(/const buffer = encodeP2PPacketBody\(data\);\s*\/\/[^\n]*\n[^\n]*\n\s*if \(buffer\.byteLength > MAX_P2P_PACKET_BYTES\) \{[\s\S]{0,200}?return \{ sent: false/);
         expect(steamSource).toMatch(/if \(size > MAX_P2P_PACKET_BYTES\) \{/);
@@ -65,7 +88,7 @@ describe('electron/main.js desktop helper wiring', () => {
 
     it('opens no window in a second instance, which only hands focus over and quits', () => {
         expect(mainSource).toMatch(/const gotLock = app\.requestSingleInstanceLock\(\);\s*if \(!gotLock\) \{\s*app\.quit\(\);/);
-        expect(mainSource).toMatch(/app\.whenReady\(\)\.then\(\(\) => \{\s*if \(!gotLock\) return;\s*installContentSecurityPolicy\(\);\s*createWindow\(\);/);
+        expect(mainSource).toMatch(/app\.whenReady\(\)\.then\(\(\) => \{\s*if \(!gotLock\) return;\s*installContentSecurityPolicy\(\);\s*installPermissionPolicy\(\);\s*createWindow\(\);/);
         expect(mainSource).toMatch(/app\.on\('activate', \(\) => \{\s*if \(gotLock && BrowserWindow\.getAllWindows\(\)\.length === 0\)/);
     });
 

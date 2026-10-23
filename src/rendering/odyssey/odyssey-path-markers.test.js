@@ -12,7 +12,8 @@ import {
  * body and the chapter colour in emissive, animated every frame by updateChapterTransition).
  * Those rings are gone: the thresholds are two collars drawn by the ribbon shader itself at
  * each interior boundary. The new intent pinned here:
- *   - the path draws exactly two meshes (body + haze) and no marker meshes at all,
+ *   - the path draws exactly two meshes (body + haze) and no marker meshes at all (plus, since
+ *     2026-10-23, the inflow: the rail's last reach into the black hole, hidden until laid),
  *   - nothing in the path renderer is a LIT material (lit pipelines depend on the scene's
  *     per-chapter light set — the rings were the only lit pipeline in the ribbon/nodes),
  *   - every interior chapter boundary reaches the shader as a threshold position,
@@ -32,16 +33,18 @@ function buildRenderer() {
 }
 
 describe('Odyssey chapter thresholds (folded into the ribbon shader)', () => {
-    it('builds the ribbon as two unlit meshes and no marker meshes', async () => {
+    it('builds the ribbon as two unlit meshes (and the inflow) and no marker meshes', async () => {
         const { renderer, added } = buildRenderer();
         await renderer.buildPath(getActiveOdysseyPathData());
 
         expect(renderer.chapterMarkers).toEqual([]);
-        expect(added).toHaveLength(2);
+        expect(added).toHaveLength(3);
         expect(added.map((mesh) => mesh.name).sort()).toEqual([
             'odyssey-path-glow-tsl',
+            'odyssey-path-inflow-tsl',
             'odyssey-path-outer-tsl',
         ]);
+        expect(added.find((mesh) => mesh.name === 'odyssey-path-inflow-tsl').visible).toBe(false);
         added.forEach((mesh) => {
             expect(mesh.material.isNodeMaterial).toBe(true);
             // Unlit only: the basic node material's output is its diffuse colour (its

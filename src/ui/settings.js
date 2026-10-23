@@ -10,6 +10,7 @@ import { eventBus, EVENTS } from '../events/event-bus.js';
 import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
 import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
+import { developerSurfacesEnabled } from './developer-surfaces.js';
 
 /** Saved game modes the game has since renamed: Fault Lines became Stillfall (2026-10-18). */
 const RENAMED_GAME_MODES = Object.freeze({ 'fault-lines': GAME_MODES.STILLFALL });
@@ -1225,11 +1226,19 @@ function setupSettingsSheet(listen) {
     }
 }
 
-/** Optional development reference; loaded only when its tab is first selected. */
+/**
+ * Optional development reference, loaded only when its tab is first selected. Release builds
+ * have no such tab (src/ui/developer-surfaces.js).
+ */
 function setupUrlParameterReference(listen, signal) {
     const modal = document.getElementById('settings-modal');
     const panel = document.getElementById('settings-url-parameters');
     if (!modal || !panel) return;
+    if (!developerSurfacesEnabled()) {
+        document.getElementById('settings-tab-url-parameters')?.remove();
+        panel.remove();
+        return;
+    }
     let loading = null;
     const load = () => {
         if (loading || signal.aborted) return;
@@ -1900,7 +1909,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
     const openDevToolsBtn = document.getElementById('open-devtools-btn');
     const openDevToolsStatus = document.getElementById('open-devtools-status');
     const openDesktopDebugTool = window.electronAPI?.openRendererDebugger || window.electronAPI?.openDevTools;
-    if (desktopDevToolsSetting && openDevToolsBtn && openDesktopDebugTool) {
+    if (desktopDevToolsSetting && openDevToolsBtn && openDesktopDebugTool && developerSurfacesEnabled()) {
         const DEVTOOLS_BUTTON_TIMEOUT_MS = 5000;
         let pendingDevToolsRequestId = null;
         let pendingDevToolsTimeoutId = null;

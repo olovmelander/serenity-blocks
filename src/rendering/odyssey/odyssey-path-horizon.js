@@ -28,8 +28,11 @@ import { resolveBlackHoleInsideProgress } from './transitions/odyssey-black-hole
 export const ODYSSEY_PATH_HORIZON = Object.freeze({
     // The chapter whose end the rail vanishes into (1-indexed): 6, Space.
     chapter: 6,
-    // The taper before the horizon, in progress (~15 u of path).
+    // The taper before the horizon, in progress (~15 u of path): the nodes scale out over it.
     soft: 0.006,
+    // The rail itself ends within this much of the taper's start (~4.5 u, inside the last node's
+    // glass), where the inflow carries it on into the hole (odyssey-path-inflow.js).
+    railSoft: 0.0018,
     // Without a fall schedule or node positions: the way on is laid out over this fraction of the
     // outgoing seam half-width, ending at the boundary.
     revealFraction: 0.3,
@@ -45,6 +48,34 @@ const HORIZON_FAR = 1 + (ODYSSEY_PATH_HORIZON.soft * 2);
 function smooth01(x) {
     const t = Math.min(1, Math.max(0, x));
     return t * t * (3 - (2 * t));
+}
+
+/**
+ * Where the way on is laid out: from the eye being inside the hole to the next node (the path
+ * inflow, odyssey-path-inflow.js, hands over to the real rail on the same stretch).
+ * @param {number[]} chapterPositions the active layout's chapter starts
+ * @param {number[]|null} [levelPositions] the layout's node positions
+ * @returns {{ start: number, end: number }|null} null for an unknown layout
+ */
+export function resolveOdysseyPathReveal(chapterPositions, levelPositions = null) {
+    const H = ODYSSEY_PATH_HORIZON;
+    const start = chapterPositions?.[H.chapter - 1];
+    const end = chapterPositions?.[H.chapter];
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    const wOut = getChapterTransitionForChapter(H.chapter)?.seamWidth ?? 0.0222;
+    const inside = resolveBlackHoleInsideProgress(chapterPositions);
+    if (!Number.isFinite(inside)) {
+        // No fall schedule: laid out over the end of the chapter.
+        return { start: end - (wOut * H.revealFraction), end };
+    }
+    let next = null;
+    if (Array.isArray(levelPositions)) {
+        levelPositions.forEach((x) => {
+            if (x > inside + 1e-6 && (next === null || x < next)) next = x;
+        });
+    }
+    // No node past the inside point: laid out just after it.
+    return { start: inside, end: next ?? inside + (wOut * H.revealFraction) };
 }
 
 /**
@@ -64,31 +95,16 @@ export function resolveOdysseyPathHorizon(progress, chapterPositions, levelPosit
     }
     // Seam k sits between chapters k and k+1 and takes chapter k's transition.
     const wIn = getChapterTransitionForChapter(H.chapter - 1)?.seamWidth ?? 0.0222;
-    const wOut = getChapterTransitionForChapter(H.chapter)?.seamWidth ?? 0.0222;
     const held = end + H.soft;
     if (progress <= start - wIn) return PATH_HORIZON_OPEN;
     if (progress < start + wIn) {
         return HORIZON_FAR + ((held - HORIZON_FAR) * smooth01((progress - (start - wIn)) / (2 * wIn)));
     }
     // The way on is laid out from the moment the eye is inside the hole to the next node.
-    let revealStart = resolveBlackHoleInsideProgress(chapterPositions);
-    let revealEnd = null;
-    if (Number.isFinite(revealStart) && Array.isArray(levelPositions)) {
-        levelPositions.forEach((x) => {
-            if (x > revealStart + 1e-6 && (revealEnd === null || x < revealEnd)) revealEnd = x;
-        });
-    }
-    if (!Number.isFinite(revealStart)) {
-        // No fall schedule: laid out over the end of the chapter.
-        revealStart = end - (wOut * H.revealFraction);
-        revealEnd = end;
-    } else if (revealEnd === null) {
-        // No node past the inside point: laid out just after it.
-        revealEnd = revealStart + (wOut * H.revealFraction);
-    }
-    if (progress <= revealStart) return held;
-    if (progress >= revealEnd) return PATH_HORIZON_OPEN;
-    return held + ((HORIZON_FAR - held) * smooth01((progress - revealStart) / (revealEnd - revealStart)));
+    const reveal = resolveOdysseyPathReveal(chapterPositions, levelPositions);
+    if (progress <= reveal.start) return held;
+    if (progress >= reveal.end) return PATH_HORIZON_OPEN;
+    return held + ((HORIZON_FAR - held) * smooth01((progress - reveal.start) / (reveal.end - reveal.start)));
 }
 
 /**
