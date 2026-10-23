@@ -162,8 +162,81 @@ def J(name, end='head'):
 PARTS = ('skin', 'hide', 'pelt', 'leather', 'eye', 'cap')
 
 
+#: Where the staff runs through his left fist, in the hand's own frame (model units from the
+#: wrist): along the hand, and off the palm on its inside (the runtime's FIST,
+#: stillwater-troll-body.js); and the staff's radius there (its 4.6 cm over his 2.9 m).
+FIST_ALONG = 0.085
+FIST_OFF = 0.046
+STAFF_R = 0.0158
+
+
+def _fist(prims, W, h, out, lead):
+    """The fingers and thumb of his left hand closed round the staff: the fingers from their
+    knuckles over the front of it and round under it, their nails outward; the thumb from the heel
+    of his hand round the other way and over his first finger. (The staff runs along `lead`, the
+    thumb's side toward its top.)"""
+    inward = -out
+    C = W + h * FIST_ALONG + inward * FIST_OFF
+
+    def on(theta, rad, axial):
+        return C + (h * math.cos(theta) + inward * math.sin(theta)) * rad + lead * axial
+
+    def radial(theta):
+        return h * math.cos(theta) + inward * math.sin(theta)
+
+    ring = STAFF_R + 0.0185
+    # First finger (by the thumb), middle, last: a little shorter and curled a little tighter each.
+    # (Each a little apart from the next, so the grooves between them show.)
+    for axial, r0, tighten in ((0.038, 0.0205, 0.0), (0.0, 0.0205, 0.06), (-0.037, 0.019, 0.14)):
+        base = W + h * 0.104 + lead * axial + out * 0.004
+        # The knuckle stands out on the back of a closed hand.
+        prims.append(Prim('ell', 'hide', 0.008, c=base + out * 0.018 + h * 0.004, r=V(0.018, 0.013, 0.017),
+                          R=frame(h, out)))
+        th = (0.15 + tighten, 1.55 + tighten, 2.3 + tighten)
+        m1 = on(th[0], ring, axial)
+        m2 = on(th[1], ring, axial)
+        tip = on(th[2], ring * 0.96, axial)
+        prims.append(Prim('cone', 'hide', 0.007, a=base, b=m1, r1=r0, r2=r0 * 0.84))
+        prims.append(Prim('ell', 'hide', 0.005, c=m1 + radial(th[0]) * 0.004, r=V(0.0165, 0.0155, 0.0165), R=IDENTITY))
+        prims.append(Prim('cone', 'hide', 0.006, a=m1, b=m2, r1=r0 * 0.84, r2=r0 * 0.72))
+        prims.append(Prim('ell', 'hide', 0.005, c=m2 + radial(th[1]) * 0.003, r=V(0.0155, 0.0145, 0.0155), R=IDENTITY))
+        prims.append(Prim('cone', 'hide', 0.005, a=m2, b=tip, r1=r0 * 0.72, r2=r0 * 0.6))
+        d3 = (tip - m2) / np.linalg.norm(tip - m2)
+        n3 = radial(th[2])
+        n3 = n3 - d3 * (n3 @ d3)
+        n3 /= np.linalg.norm(n3)
+        prims.append(Prim('ell', 'leather', 0.003, c=tip - d3 * 0.005 + n3 * 0.0085, r=V(0.012, 0.0055, 0.0105),
+                          R=frame(d3, n3)))
+    # The thumb: from the heel of his hand round the staff's near side and over his first finger.
+    tb = W + h * 0.035 + lead * 0.03 - out * 0.008
+    t1 = on(math.radians(178), 0.043, 0.05)
+    t2 = on(math.radians(122), 0.047, 0.046)
+    tt = on(math.radians(80), 0.051, 0.038)
+    prims.append(Prim('cone', 'hide', 0.012, a=tb, b=t1, r1=0.024, r2=0.02))
+    prims.append(Prim('cone', 'hide', 0.006, a=t1, b=t2, r1=0.02, r2=0.0175))
+    prims.append(Prim('cone', 'hide', 0.005, a=t2, b=tt, r1=0.0175, r2=0.0145))
+    d3 = (tt - t2) / np.linalg.norm(tt - t2)
+    n3 = radial(math.radians(80))
+    n3 = n3 - d3 * (n3 @ d3)
+    n3 /= np.linalg.norm(n3)
+    prims.append(Prim('ell', 'leather', 0.003, c=tt - d3 * 0.005 + n3 * 0.0085, r=V(0.012, 0.0055, 0.011),
+                      R=frame(d3, n3)))
+
+
+def grip_cut():
+    """The way through his left fist the staff takes (taken out, so the fist closes on nothing)."""
+    W = J('handL')
+    h = (J('handL', 'tail') - W) / np.linalg.norm(J('handL', 'tail') - W)
+    out = frame(h, V(1, 0, 0))[1]
+    width = frame(h, V(1, 0, 0))[2]
+    lead = width * math.copysign(1.0, float(width @ V(0, -1, 0)))
+    C = W + h * FIST_ALONG - out * FIST_OFF
+    return [Prim('cone', 'hide', 0.004, op='sub', a=C - lead * 0.09, b=C + lead * 0.09, r1=STAFF_R, r2=STAFF_R)]
+
+
 def _limb_hand(prims, side, curl, rng):
-    """A big hand: a heavy palm, three thick fingers and a thumb, curled by `curl` (0 open, 1 fist)."""
+    """A big hand: a heavy palm with knuckles, three thick fingers and a thumb, each ending in a
+    nail of dark horn, curled by `curl` (0 open, 1 fist; None: closed round his staff)."""
     s = 1.0 if side == 'L' else -1.0
     W = J('hand' + side)
     tip = J('hand' + side, 'tail')
@@ -172,21 +245,35 @@ def _limb_hand(prims, side, curl, rng):
     across = V(s, 0, 0)
     R = frame(h, across)  # rows: along the hand, toward the back of the hand (out), and its width
     out, width = R[1], R[2]
-    palm_c = W + h * 0.06
-    prims.append(Prim('ell', 'hide', 0.018, c=palm_c, r=V(0.058, 0.027, 0.048), R=R))
-    prims.append(Prim('cone', 'hide', 0.02, a=W - h * 0.01, b=palm_c, r1=0.038, r2=0.04))
+    palm_c = W + h * 0.062
+    prims.append(Prim('ell', 'hide', 0.02, c=palm_c, r=V(0.064, 0.031, 0.054), R=R))
+    prims.append(Prim('cone', 'hide', 0.02, a=W - h * 0.012, b=palm_c, r1=0.044, r2=0.044))
+    # A fleshy heel of the hand under the thumb.
+    prims.append(Prim('ell', 'hide', 0.016, c=W + h * 0.04 - out * 0.016, r=V(0.034, 0.02, 0.03), R=R))
     palm_side = -out  # the way the fingers curl
-    for i, off in enumerate((-0.03, 0.0, 0.03)):
-        base = W + h * 0.1 + width * off + out * 0.004
-        length = (0.05, 0.056, 0.048)[i]
+    if curl is None:
+        lead = width * math.copysign(1.0, float(width @ V(0, -1, 0)))
+        _fist(prims, W, h, out, lead)
+        return
+    for i, off in enumerate((-0.032, 0.0, 0.032)):
+        base = W + h * 0.104 + width * off + out * 0.004
+        length = (0.054, 0.06, 0.052)[i]
+        # The knuckle: a knob on the back of the hand where the finger begins.
+        prims.append(Prim('ell', 'hide', 0.008, c=base + out * 0.016, r=V(0.017, 0.012, 0.016), R=R))
         a1 = 0.35 * curl + 0.05 * rng.standard_normal()
         d1 = h * math.cos(a1) + palm_side * math.sin(a1)
         m = base + d1 * length
         a2 = a1 + 0.6 * curl + 0.2
         d2 = h * math.cos(a2) + palm_side * math.sin(a2)
         t2 = m + d2 * length * 0.8
-        prims.append(Prim('cone', 'hide', 0.01, a=base, b=m, r1=0.019, r2=0.016))
-        prims.append(Prim('cone', 'hide', 0.006, a=m, b=t2, r1=0.016, r2=0.0125))
+        prims.append(Prim('cone', 'hide', 0.01, a=base, b=m, r1=0.022, r2=0.0185))
+        prims.append(Prim('ell', 'hide', 0.006, c=m + out * 0.004, r=V(0.017, 0.016, 0.017), R=R))
+        prims.append(Prim('cone', 'hide', 0.006, a=m, b=t2, r1=0.0185, r2=0.014))
+        # A thick nail of dark horn on the back of the last joint.
+        nail_out = np.cross(d2, width)
+        nail_out = nail_out * math.copysign(1.0, float(nail_out @ out))
+        prims.append(Prim('ell', 'leather', 0.003, c=t2 - d2 * 0.006 + nail_out * 0.009,
+                          r=V(0.013, 0.006, 0.011), R=frame(d2, nail_out)))
     # The thumb: from the heel of the hand on its leading edge (the front of a hanging hand, the
     # top of one held out), toward the palm.
     lead = width * math.copysign(1.0, float(width @ (V(0, -1, 0) if side == 'L' else V(0, 0, 1))))
@@ -196,8 +283,14 @@ def _limb_hand(prims, side, curl, rng):
     tm = tb + t_dir * 0.035
     t2 = h * 0.8 + palm_side * (0.3 + 0.5 * curl) + lead * 0.1
     tt = tm + t2 / np.linalg.norm(t2) * 0.032
-    prims.append(Prim('cone', 'hide', 0.012, a=tb, b=tm, r1=0.02, r2=0.017))
-    prims.append(Prim('cone', 'hide', 0.006, a=tm, b=tt, r1=0.017, r2=0.013))
+    prims.append(Prim('cone', 'hide', 0.012, a=tb, b=tm, r1=0.023, r2=0.019))
+    prims.append(Prim('cone', 'hide', 0.006, a=tm, b=tt, r1=0.019, r2=0.0145))
+    t3 = tt - tm
+    t3 /= np.linalg.norm(t3)
+    tn = np.cross(t3, width)
+    tn = tn * math.copysign(1.0, float(tn @ out))
+    prims.append(Prim('ell', 'leather', 0.003, c=tt - t3 * 0.005 + tn * 0.009, r=V(0.012, 0.0055, 0.011),
+                      R=frame(t3, tn)))
 
 
 def _limb_foot(prims, side, rng):
@@ -222,6 +315,8 @@ def _limb_foot(prims, side, rng):
         length = (0.085 if big else 0.07 - 0.02 * abs(off) / 0.045) + 0.005 * rng.standard_normal()
         tip = root + fwd * length + V(0, 0, -0.008)
         prims.append(Prim('cone', 'hide', 0.012, a=root, b=tip, r1=r, r2=r * 0.85))
+        prims.append(Prim('ell', 'leather', 0.003, c=tip + V(0, 0, r * 0.55) - fwd * 0.004,
+                          r=V(r * 0.7, r * 0.75, r * 0.32), R=frame(fwd, V(1, 0, 0))))
 
 
 def body_prims(rng):
@@ -235,6 +330,16 @@ def body_prims(rng):
     for s in (1, -1):
         P.append(Prim('ell', 'hide', 0.045, c=V(0.158 * s, -0.045, 0.092), r=V(0.08, 0.072, 0.066), R=IDENTITY))
     P.append(Prim('cone', 'hide', 0.05, a=V(0, -0.03, 0.11), b=V(0, -0.12, 0.215), r1=0.088, r2=0.072))
+    # An old man's chest, sagging over his belly, and a navel in it.
+    for s in (1, -1):
+        P.append(Prim('ell', 'hide', 0.04, c=V(0.075 * s, -0.128, 0.055), r=V(0.064, 0.036, 0.048), R=IDENTITY))
+    P.append(Prim('ell', 'hide', 0.008, op='sub', c=V(0.0, -0.238, -0.092), r=V(0.011, 0.012, 0.014), R=IDENTITY))
+    # A hump of old muscle over his shoulders and the top of his back (his head hangs before it).
+    P.append(Prim('ell', 'hide', 0.06, c=V(0, 0.06, 0.15), r=V(0.15, 0.09, 0.07),
+                  R=frame(V(1, 0, 0), V(0, 0.3, 1))))
+    for s in (1, -1):
+        # The slope from his neck to each shoulder (the trapezius), heavy.
+        P.append(Prim('cone', 'hide', 0.04, a=V(0.03 * s, -0.02, 0.17), b=V(0.15 * s, -0.06, 0.12), r1=0.06, r2=0.05))
     # The head: carried low and forward; the brow heavy, the jowls wide, the nose long and drooping.
     P.append(Prim('ell', 'skin', 0.04, c=V(0, -0.15, 0.335), r=V(0.112, 0.112, 0.118), R=IDENTITY))
     P.append(Prim('ell', 'skin', 0.04, c=V(0, -0.195, 0.255), r=V(0.118, 0.1, 0.082), R=IDENTITY))
@@ -250,6 +355,10 @@ def body_prims(rng):
         P.append(Prim('ell', 'skin', 0.012, c=V(0.03 * s, -0.33, 0.205), r=V(0.02, 0.022, 0.018), R=IDENTITY))
     # A wide upper lip under it, and a lower lip (the beard hides the rest).
     P.append(Prim('cone', 'skin', 0.02, a=V(-0.05, -0.286, 0.193), b=V(0.05, -0.286, 0.193), r1=0.02, r2=0.02))
+    # Heavy jowls either side of his mouth.
+    for s in (1, -1):
+        P.append(Prim('ell', 'skin', 0.03, c=V(0.075 * s, -0.235, 0.215), r=V(0.045, 0.04, 0.05), R=IDENTITY))
+    # Warts: on his nose, by it, on a cheek, on his brow (set on his skin: see warts()).
     # Ears: long, pointed, held out to the sides and drooping a little.
     for s in (1, -1):
         root = V(0.1 * s, -0.152, 0.322)
@@ -262,20 +371,59 @@ def body_prims(rng):
             tall = 0.05 * (1.0 - t) ** 0.85 + 0.006
             thin = 0.016 * (1.0 - 0.55 * t) + 0.003
             P.append(Prim('ell', 'skin', 0.022, c=c, r=V(along, tall, thin), R=R))
-    # Arms: thick, long, a heavy forearm.
+    # Arms: long and heavy: a round shoulder, a thick upper arm, a knob of an elbow, a forearm that
+    # swells toward the elbow (a troll's are bigger than his upper arms) and a thick wrist.
     for side, s in (('L', 1), ('R', -1)):
         S, E, W = J('upper' + side), J('fore' + side), J('hand' + side)
-        P.append(Prim('cone', 'hide', 0.035, a=S + V(-0.012 * s, 0, 0), b=E, r1=0.064, r2=0.047))
-        P.append(Prim('cone', 'hide', 0.02, a=E, b=W, r1=0.047, r2=0.037))
-        P.append(Prim('cone', 'hide', 0.025, a=E + (W - E) * 0.12, b=E + (W - E) * 0.55, r1=0.056, r2=0.05))
-        _limb_hand(P, side, 0.55 if side == 'L' else 0.3, rng)
+        up = (E - S) / np.linalg.norm(E - S)
+        fore = (W - E) / np.linalg.norm(W - E)
+        P.append(Prim('ell', 'hide', 0.04, c=S + V(0.012 * s, 0, 0.012) + up * 0.02, r=V(0.072, 0.07, 0.066),
+                      R=IDENTITY))
+        P.append(Prim('cone', 'hide', 0.035, a=S + V(-0.012 * s, 0, 0), b=E, r1=0.07, r2=0.05))
+        P.append(Prim('ell', 'hide', 0.03, c=S + (E - S) * 0.45 + V(0, -0.012, 0), r=V(0.062, 0.05, 0.058),
+                      R=frame(up, V(0, -1, 0))))
+        # The elbow's knob, behind.
+        back = np.cross(up, V(s, 0, 0))
+        back = back * math.copysign(1.0, float(back @ V(0, 1, 0)))
+        P.append(Prim('ell', 'hide', 0.014, c=E + back * 0.028, r=V(0.03, 0.026, 0.03), R=IDENTITY))
+        P.append(Prim('cone', 'hide', 0.02, a=E, b=W, r1=0.05, r2=0.043))
+        P.append(Prim('cone', 'hide', 0.03, a=E + fore * 0.03, b=E + (W - E) * 0.6, r1=0.066, r2=0.054))
+        _limb_hand(P, side, None if side == 'L' else 0.3, rng)
     # Legs: short and heavy.
     for side, s in (('L', 1), ('R', -1)):
         H, K, A = J('thigh' + side), J('shin' + side), J('foot' + side)
         P.append(Prim('cone', 'hide', 0.045, a=H + V(-0.01 * s, 0, 0.02), b=K, r1=0.09, r2=0.064))
         P.append(Prim('cone', 'hide', 0.02, a=K, b=A, r1=0.062, r2=0.046))
         P.append(Prim('ell', 'hide', 0.03, c=K + (A - K) * 0.32 + V(0, 0.022, 0), r=V(0.052, 0.056, 0.058), R=IDENTITY))
+        # A knobbed kneecap.
+        P.append(Prim('ell', 'hide', 0.016, c=K + V(0.004 * s, -0.052, 0.008), r=V(0.034, 0.024, 0.036), R=IDENTITY))
         _limb_foot(P, side, rng)
+    return P
+
+
+def _onto(prims, guess, centre, steps=200):
+    """The point of the surface of `prims` on the line from `centre` out through `guess`."""
+    d = guess - centre
+    d /= np.linalg.norm(d)
+    q = centre + d * 0.3
+    for _ in range(steps):
+        s = field_at(prims, q[None])[0]
+        if s < 0.0005:
+            break
+        q = q - d * min(max(s, 0.0005), 0.02)
+    return q
+
+
+def warts(body):
+    """Warts set on his skin: on his nose and by it, on a cheek, on his brow."""
+    P = []
+    nose = V(0, -0.348, 0.226)
+    head = V(0, -0.17, 0.3)
+    for guess, centre, r in ((V(0.03, -0.37, 0.25), nose, 0.0105), (V(-0.015, -0.392, 0.215), nose, 0.0085),
+                             (V(-0.03, -0.32, 0.29), nose, 0.008), (V(0.09, -0.25, 0.255), head, 0.0095),
+                             (V(-0.08, -0.24, 0.235), head, 0.008), (V(0.06, -0.25, 0.37), head, 0.009)):
+        q = _onto(body, guess, centre)
+        P.append(Prim('ell', 'skin', 0.004, c=q, r=V(r, r, r * 0.9), R=IDENTITY))
     return P
 
 
@@ -423,122 +571,283 @@ def _on_head(alpha, beta, lift=0.0):
 
 
 def mane_prims(body, rng, log=print):
-    """The locks: crown, fringe, a cloak of two rows from his shoulders and back, and a beard."""
+    """His hair: moss over his scalp, a shaggy crown, a mantle of many locks over his back, stray
+    tufts that break his outline, twigs caught in it, lichen grown on his shoulders, bushy brows,
+    and a long beard of beard-lichen with a drooping moustache.
+
+    Each lock is draped (it falls from its root under gravity and lies on what is under it) and
+    tapers to a ragged point; the locks are thin and few of them fuse, so the mane reads as hair
+    and not as one mass. Groups: crown, cloak, shoulder, stray, fringe (brows), beard, tuft (ears),
+    lichen, twig (bark: part leather)."""
     tone = {}
     out = []
     lid = [0]
 
-    def add(lines, group, k, base_tone):
+    def add(lines, group, k, base_tone, part='pelt'):
         for line in lines:
             lid[0] += 1
             t = float(np.clip(base_tone + 0.18 * rng.standard_normal(), 0.0, 0.62))
             tone[lid[0]] = t
-            out.extend(lock_prims([line], k=k, tag={'lock': lid[0], 'tone': t, 'group': group}))
+            out.extend(lock_prims([line], part=part, k=k, tag={'lock': lid[0], 'tone': t, 'group': group}))
 
-    def flare_from(cy):
+    def flare_from(cy, amount=0.18):
         def f(p):
             v = p.copy()
             v[:, 2] = 0.0
             v[:, 1] -= cy
             n = np.linalg.norm(v, axis=1, keepdims=True)
-            return v / np.maximum(n, 1e-6) * 0.18
+            return v / np.maximum(n, 1e-6) * amount
         return f
 
-    # Moss over his scalp, from a hairline over his brow down to the nape: the locks grow out of it.
+    # Moss over his scalp, from a hairline over his brow down to the nape (the locks grow out of it).
     hair_n = V(0, 0.42, 1.0)
     hair_n /= np.linalg.norm(hair_n)
-    out.append(Prim('cap', 'pelt', 0.012, c=HEAD_C + V(0, 0.004, 0.004), r=HEAD_R + V(0.007, 0.009, 0.008),
-                    o=V(0, -0.15, 0.372), n=hair_n, tag={'lock': 0, 'tone': 0.3, 'group': 'crown'}))
-    obstacles = list(body) + out
-    # The mantle first (it lies on his shoulders and back), then the crown over it. Its roots are
-    # found on a yoke round the base of his neck, coming down onto him from above and outside.
+    scalp = [Prim('cap', 'pelt', 0.018, c=HEAD_C + V(0, 0.004, 0.004), r=HEAD_R + V(0.007, 0.009, 0.008),
+                  o=V(0, -0.15, 0.372), n=hair_n, tag={'lock': 0, 'tone': 0.3, 'group': 'crown'})]
+    out.extend(scalp)
+    under = list(body) + scalp
+
+    # ── The mantle: many locks from a yoke round the base of his neck and from his back ──
     neck = V(0, -0.02, 0.17)
 
-    def yoke_root(beta, ring, dz):
-        bb = math.radians(beta)
-        out_d = V(math.sin(bb), math.cos(bb), 0.0)
-        start = neck + out_d * 0.5 + V(0, 0, 0.32)
-        goal = neck + out_d * ring + V(0, 0, dz)
-        d = goal - start
-        d /= np.linalg.norm(d)
+    def onto(start, d):
         q = start.copy()
         for _ in range(160):
-            s = field_at(obstacles, q[None])[0]
+            s = field_at(under, q[None])[0]
             if s < 0.004:
                 break
-            q = q - d * -min(max(s, 0.003), 0.02)
-        return q, out_d
+            q = q + d * min(max(s, 0.003), 0.02)
+        return q
 
+    def yoke(rows, jitter=3.5):
+        roots, dirs, lens, r0s = [], [], [], []
+        for ring, dz, count, span, length, rr in rows:
+            for b in np.linspace(-span, span, count):
+                bb = math.radians(b + rng.uniform(-jitter, jitter))
+                out_d = V(math.sin(bb), math.cos(bb), 0.0)
+                start = neck + out_d * 0.5 + V(0, 0, 0.32 + dz)
+                goal = neck + out_d * ring + V(0, 0, dz)
+                d = goal - start
+                d /= np.linalg.norm(d)
+                roots.append(onto(start, d))
+                dirs.append(out_d * 0.4 + V(0, 0, -1.0))
+                lens.append(length * max(1.0 - 0.5 * (abs(b) / 90.0) ** 2, 0.3) * rng.uniform(0.85, 1.12))
+                r0s.append(rr * rng.uniform(0.85, 1.15))
+        return np.array(roots), np.array(dirs), np.array(lens), np.array(r0s)
+
+    # Under it all a dense mat of moss (thick locks, fused), so no skin shows between the locks.
+    roots, dirs, lens, r0s = yoke(((0.075, 0.07, 19, 104, 0.56, 0.03), (0.18, -0.02, 14, 80, 0.46, 0.03)))
+    lines = drape(under, roots, dirs, lens, r0s, r0s * 0.45, rng, flare=flare_from(0.02, 0.12), wave=0.003, hug=0.8)
+    mat_start = len(out)
+    add(lines, 'cloak', 0.02, 0.16)
+    under = under + out[mat_start:]
+    # Over it, many thin locks with ragged ends.
     roots, dirs, lens, r0s = [], [], [], []
-    for ring, dz, betas, length, rr in (
-            (0.075, 0.07, np.linspace(-84, 84, 14), 0.66, 0.029),
-            (0.18, -0.01, np.linspace(-70, 70, 11), 0.54, 0.028),
-    ):
-        for b in betas:
-            b = b + rng.uniform(-3, 3)
-            q, out_d = yoke_root(b, ring, dz)
-            roots.append(q)
+    for ring, dz, count, span, length, rr in ((0.075, 0.07, 28, 108, 0.66, 0.02), (0.18, -0.01, 20, 84, 0.56, 0.02),
+                                             (0.26, -0.12, 14, 64, 0.42, 0.019)):
+        for b in np.linspace(-span, span, count):
+            bb = math.radians(b + rng.uniform(-3.5, 3.5))
+            out_d = V(math.sin(bb), math.cos(bb), 0.0)
+            start = neck + out_d * 0.5 + V(0, 0, 0.32 + dz)
+            goal = neck + out_d * ring + V(0, 0, dz)
+            d = goal - start
+            d /= np.linalg.norm(d)
+            roots.append(onto(start, d))
             dirs.append(out_d * 0.4 + V(0, 0, -1.0))
-            lens.append(length * (1.0 - 0.55 * (abs(b) / 84.0) ** 2) * rng.uniform(0.9, 1.08))
-            r0s.append(rr * rng.uniform(0.92, 1.08))
-    # A row lower on his back fills in under them.
-    for b in np.linspace(-68, 68, 10):
-        bb = math.radians(b + rng.uniform(-3, 3))
-        d = V(math.sin(bb), math.cos(bb), 0.0)
-        q = V(0, 0.02, 0.0) + d * 0.45
-        for _ in range(120):
-            s = field_at(obstacles, q[None])[0]
-            if s < 0.004:
-                break
-            q = q - d * min(max(s, 0.003), 0.02)
-        roots.append(q)
-        dirs.append(d * 0.5 + V(0, 0, -1))
-        lens.append(0.36 * rng.uniform(0.9, 1.1))
-        r0s.append(0.027)
-    lines = drape(obstacles, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.22, rng,
-                  flare=flare_from(0.02), wave=0.004, hug=0.7)
-    add(lines, 'cloak', 0.022, 0.28)
-    obstacles = list(body) + out
-    # The crown: rows of locks from the top and back of his head falling over the back of it.
+            lens.append(length * max(1.0 - 0.5 * (abs(b) / 90.0) ** 2, 0.3) * rng.uniform(0.82, 1.15))
+            r0s.append(rr * rng.uniform(0.85, 1.15))
+    lines = drape(under, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.14, rng,
+                  flare=flare_from(0.02), wave=0.005, hug=0.7)
+    add(lines, 'cloak', 0.01, 0.28)
+    cloak_lines = lines
+
+    # ── Moss grown over his shoulders: cushions of it round the cap of each (top, outside, front
+    # and back: the camera sees his near shoulder from the side and in front as he reaches), and
+    # locks from it falling down the outside of his upper arms (no bare ball of a shoulder by his
+    # lantern) ──
     roots, dirs, lens, r0s = [], [], [], []
-    for alpha, betas, length, rr in (
-            (12, (-75, -25, 25, 75, 180), 0.42, 0.027),
-            (38, np.linspace(-110, 110, 12), 0.42, 0.028),
-            (68, np.linspace(-100, 100, 10), 0.5, 0.027),
-            (95, np.linspace(-66, 66, 7), 0.46, 0.026),
-    ):
-        for b in betas:
-            if alpha == 12 and b == 180:
+    pads = []
+    for side, s in (('L', 1), ('R', -1)):
+        S, E = J('upper' + side), J('fore' + side)
+        centre = S + V(0.012 * s, 0, 0.012) + (E - S) / np.linalg.norm(E - S) * 0.02
+        for d in (V(0, 0, 1), V(0.7 * s, 0, 0.7), V(0.9 * s, -0.35, 0.25), V(0.45 * s, -0.75, 0.45),
+                  V(0.95 * s, 0.2, -0.15), V(0.3 * s, 0.6, 0.7), V(0.6 * s, -0.7, -0.1), V(0.75 * s, 0.55, 0.2)):
+            d = d / np.linalg.norm(d)
+            q = _onto(under, centre + d * 0.12, centre)
+            n = _grad(under, q[None])[0]
+            rr = rng.uniform(0.042, 0.056)
+            pads.append(Prim('ell', 'pelt', 0.024, c=q - n * 0.002, r=V(0.013, rr, rr * 0.9), R=frame(n, V(0, 0, 1)),
+                             tag={'lock': -3, 'tone': float(rng.uniform(0.2, 0.45)), 'group': 'shoulder'}))
+        for _ in range(20):
+            d = V(s * rng.uniform(0.2, 1.0), rng.uniform(-0.8, 0.6), rng.uniform(0.0, 0.9))
+            d = d / np.linalg.norm(d)
+            roots.append(_onto(under, centre + d * 0.12, centre) + d * 0.006)
+            dirs.append(V(0.5 * s, rng.uniform(-0.25, 0.25), -1.0))
+            lens.append(rng.uniform(0.08, 0.16))
+            r0s.append(rng.uniform(0.015, 0.022))
+    out.extend(pads)
+    under = under + pads
+    lines = drape(under, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.2, rng,
+                  flare=flare_from(0.0, 0.1), wave=0.004, rest=0.5, hug=0.75)
+    add(lines, 'shoulder', 0.012, 0.3)
+    cloak_lines = cloak_lines + lines
+
+    # ── The crown: many thin locks from his head, fused into combed-back hair lying flat to it and
+    # falling over its back and sides (his face and ears free) ──
+    roots, dirs, lens, r0s = [], [], [], []
+    for alpha, count, span, length, rr in ((14, 9, 118, 0.42, 0.013), (28, 14, 118, 0.44, 0.014),
+                                          (44, 16, 116, 0.46, 0.014), (62, 15, 108, 0.46, 0.014),
+                                          (82, 13, 94, 0.42, 0.014), (100, 9, 72, 0.36, 0.013)):
+        for b in np.linspace(-span, span, count):
+            p, n = _on_head(alpha, b + rng.uniform(-6, 6), lift=0.0)
+            if (p - HEAD_C) @ hair_n < -0.03:
                 continue
-            p, n = _on_head(alpha, b + rng.uniform(-4, 4), lift=0.0)
             roots.append(p)
-            back = V(0, 1, 0)
-            dirs.append(n * 0.6 + back * 0.8 + V(0, 0, -0.2))
-            side = abs(b) / 110.0
-            lens.append(length * (1.0 - 0.35 * side) * rng.uniform(0.9, 1.1))
-            r0s.append(rr)
-    lines = drape(obstacles, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.24, rng,
-                  flare=flare_from(0.0), wave=0.004, hug=0.6)
-    add(lines, 'crown', 0.02, 0.35)
-    obstacles = list(body) + out
-    # Bushy moss brows over his eyes, swept out to the sides and up a little at their ends.
+            dirs.append(n * 0.65 + V(0, 1, 0) * 0.7 + V(0, 0, -0.15))
+            side = abs(b) / 120.0
+            lens.append(length * (1.0 - 0.3 * side) * rng.uniform(0.8, 1.15))
+            r0s.append(rr * rng.uniform(0.85, 1.15))
+    lines = drape(under, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.2, rng,
+                  flare=flare_from(0.0, 0.16), wave=0.003, rest=0.4, hug=0.85)
+    add(lines, 'crown', 0.013, 0.34)
+    crown_lines = lines
+
+    # ── Strays: short tufts standing out of the mane, so his outline is shaggy, not smooth ──
+    strays = []
+    pool = cloak_lines + crown_lines
+    picks = rng.choice(len(pool), size=min(34, len(pool)), replace=False)
+    for k in picks:
+        line, radii = pool[k]
+        if len(line) < 6:
+            continue
+        i = int(rng.uniform(0.3, 0.85) * (len(line) - 1))
+        p = line[i]
+        o = p - V(0, 0.0, p[2] * 0.3)
+        o = p - V(0.0, -0.02, 0.05)
+        o[2] *= 0.25
+        o /= max(np.linalg.norm(o), 1e-6)
+        d = o * 0.8 + V(0, 0, -0.55) + V(*rng.uniform(-0.25, 0.25, 3))
+        d /= np.linalg.norm(d)
+        n = 5
+        length = rng.uniform(0.045, 0.1)
+        pts = np.array([p + d * length * (j / (n - 1)) + V(0, 0, -0.25 * length * (j / (n - 1)) ** 2) for j in range(n)])
+        r0 = radii[i] * rng.uniform(0.55, 0.75)
+        strays.append((pts, r0 * (1.0 - 0.85 * np.linspace(0, 1, n) ** 1.2)))
+    add(strays, 'stray', 0.004, 0.36)
+
+    # ── Twigs caught in his mane (bark: dark), each with a fork ──
+    twigs = []
+    for guess, d in ((V(0.07, 0.02, 0.44), V(0.5, 0.5, 0.7)), (V(-0.12, 0.12, 0.3), V(-0.7, 0.4, 0.5)),
+                     (V(0.15, 0.18, 0.12), V(0.8, 0.3, 0.4))):
+        d = d / np.linalg.norm(d)
+        q = guess.copy()
+        for _ in range(80):
+            s = field_at(under + out, q[None])[0]
+            if s < -0.004:
+                break
+            q = q - d * min(max(s, 0.002), 0.015)
+        tip = q + d * 0.12
+        twigs.append((np.array([q - d * 0.02, q + d * 0.06, tip]), np.array([0.0075, 0.0055, 0.0025])))
+        side = np.cross(d, V(0, 0, 1))
+        side /= max(np.linalg.norm(side), 1e-6)
+        mid = q + d * 0.06
+        fork = mid + (d * 0.6 + side * 0.8) * 0.05
+        twigs.append((np.array([mid, fork]), np.array([0.0045, 0.002])))
+    add(twigs, 'twig', 0.003, 0.0, part='leather')
+
+    # ── Lichen grown on him: pale patches on the tops of his shoulders and his back ──
+    lichen = []
+    for guess in (V(0.17, 0.02, 0.17), V(-0.16, 0.03, 0.16), V(0.08, 0.12, 0.2), V(-0.05, 0.16, 0.08)):
+        q = _onto(under, guess, V(guess[0] * 0.3, guess[1] * 0.3 - 0.02, 0.0))
+        n = _grad(under, q[None])[0]
+        for j in range(3):
+            c = q + V(*rng.uniform(-0.025, 0.025, 3))
+            c = _onto(under, c, c - n * 0.2) + n * 0.003
+            r = rng.uniform(0.016, 0.026)
+            out.append(Prim('ell', 'pelt', 0.006, c=c, r=V(r * 0.35, r, r * 0.9), R=frame(n, V(0, 0, 1)),
+                            tag={'lock': -1, 'tone': 0.5, 'group': 'lichen'}))
+
+    # ── Bushy brows over his eyes, swept out and up at their ends ──
     lines = []
     for sx in (1, -1):
-        for x, y, z, ln, r in ((0.016, -0.282, 0.336, 0.075, 0.016), (0.03, -0.277, 0.346, 0.07, 0.014)):
+        for x, y, z, ln, r in ((0.014, -0.284, 0.334, 0.08, 0.018), (0.03, -0.278, 0.346, 0.075, 0.016),
+                               (0.022, -0.276, 0.356, 0.06, 0.012)):
             t = np.linspace(0.0, 1.0, 8)
-            pts = np.stack([sx * (x + ln * t), y + 0.03 * t ** 1.5, z + 0.012 * np.sin(math.pi * t * 0.8) - 0.004 * t], 1)
-            lines.append((pts, r * (1.0 - 0.55 * t ** 1.4)))
-    add(lines, 'fringe', 0.008, 0.45)
-    # The beard: moss from his jaw, falling over his chest.
-    roots, dirs, lens = [], [], []
-    for phi in (-62, -38, -14, 12, 36, 60):
-        f = math.radians(phi + rng.uniform(-4, 4))
-        root = V(0.085 * math.sin(f), -0.2 - 0.075 * math.cos(f), 0.205 + 0.02 * abs(math.sin(f)))
-        roots.append(root)
-        dirs.append(V(0.2 * math.sin(f), -0.35, -1))
-        lens.append((0.2 - 0.06 * abs(math.sin(f))) * rng.uniform(0.9, 1.1))
-    lines = drape(body, np.array(roots), np.array(dirs), np.array(lens), 0.027, 0.012, rng, wave=0.007, rest=0.7)
-    add(lines, 'beard', 0.009, 0.42)
+            pts = np.stack([sx * (x + ln * t), y + 0.035 * t ** 1.5, z + 0.016 * np.sin(math.pi * t * 0.8) - 0.004 * t], 1)
+            lines.append((pts, r * (1.0 - 0.7 * t ** 1.4)))
+    add(lines, 'fringe', 0.006, 0.45)
+
+    # ── Tufts at the tips of his ears ──
+    tufts = []
+    for s in (1, -1):
+        tip = V(0.262 * s, -0.11, 0.282)
+        for j in range(3):
+            d = V(0.6 * s, rng.uniform(-0.3, 0.3), rng.uniform(-0.2, 0.5))
+            d /= np.linalg.norm(d)
+            pts = np.array([tip - d * 0.01, tip + d * 0.03, tip + d * 0.055 + V(0, 0, -0.01)])
+            tufts.append((pts, np.array([0.006, 0.004, 0.0015])))
+    add(tufts, 'tuft', 0.003, 0.5)
+
+    # ── His beard: beard-lichen, long, from his jaw and chin over his chest to a ragged point at his
+    # belly ──
+    # (A core from his chin down his chest, narrowing as it falls: the tresses lie on it, so no skin
+    # shows between them, and only their ends go ragged below it.)
+    beard_tag = {'lock': -2, 'tone': 0.4, 'group': 'beard'}
+    beard_core = [
+        Prim('ell', 'pelt', 0.035, c=V(0, -0.256, 0.165), r=V(0.084, 0.05, 0.075),
+             R=frame(V(0, -0.25, -1), V(1, 0, 0))[[1, 2, 0]], tag=dict(beard_tag)),
+        Prim('ell', 'pelt', 0.035, c=V(0, -0.262, 0.07), r=V(0.066, 0.046, 0.085), R=IDENTITY, tag=dict(beard_tag)),
+        Prim('ell', 'pelt', 0.03, c=V(0, -0.254, -0.03), r=V(0.042, 0.04, 0.07), R=IDENTITY, tag=dict(beard_tag)),
+    ]
+    out.extend(beard_core)
+    rest = list(body) + beard_core
+    # Tresses: a few roots strewn over his jaw and chin, each with a sibling or two beside it (beard-
+    # lichen hangs in strings that cling together), gathered toward his middle as they fall.
+    roots, dirs, lens, r0s = [], [], [], []
+    for _ in range(19):
+        phi = rng.uniform(-84, 84)
+        f = math.radians(phi)
+        side = abs(phi) / 90.0
+        rad = rng.uniform(0.05, 0.095) * (1.0 - 0.15 * side)
+        dz = 0.15 + 0.07 * side + rng.uniform(-0.02, 0.02)
+        root = V(rad * math.sin(f), -0.205 - (rad * 0.85) * math.cos(f), dz)
+        length = (0.4 - 0.16 * side ** 1.3) * rng.uniform(0.75, 1.18)
+        rr = rng.uniform(0.013, 0.021)
+        for j in range(int(rng.integers(1, 4))):
+            off = V(*rng.uniform(-0.009, 0.009, 3)) if j else V(0, 0, 0)
+            roots.append(root + off)
+            dirs.append(V(-0.15 * math.sin(f), -0.45, -1))
+            lens.append(length * rng.uniform(0.85, 1.1))
+            r0s.append(rr * (0.8 if j else 1.0))
+
+    def gather(p):
+        # Toward his middle (x = 0) and a little forward over his belly, more the further out.
+        v = np.zeros_like(p)
+        v[:, 0] = -p[:, 0] * 2.6
+        v[:, 1] = -0.05
+        return v
+    lines = drape(rest, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.12, rng,
+                  flare=gather, wave=0.006, rest=0.45, hug=0.55)
+    add(lines, 'beard', 0.013, 0.42)
+    # Sideburns of it down from his temples, before his ears, to his jaw where the beard begins
+    # (his hair and his beard are one growth).
+    roots, dirs, lens, r0s = [], [], [], []
+    for s in (1, -1):
+        for beta, r0 in ((112, 0.016), (124, 0.015), (136, 0.013)):
+            roots.append(_on_head(rng.uniform(84, 92), s * (beta + rng.uniform(-3, 3)), lift=-0.004)[0])
+            dirs.append(V(0, -0.25, -1.0))
+            lens.append(rng.uniform(0.11, 0.14))
+            r0s.append(r0)
+    lines = drape(rest, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.5, rng,
+                  wave=0.002, rest=0.55, hug=0.8)
+    add(lines, 'beard', 0.01, 0.4)
+    # A moustache drooping from under his nose, past his mouth.
+    lines = []
+    for s in (1, -1):
+        t = np.linspace(0.0, 1.0, 10)
+        pts = np.stack([s * (0.012 + 0.07 * t ** 0.8), -0.33 + 0.045 * t, 0.205 - 0.11 * t ** 1.6], 1)
+        lines.append((pts, 0.016 * (1.0 - 0.8 * t ** 1.3) + 0.002))
+    add(lines, 'beard', 0.006, 0.4)
     log(f'mane: {lid[0]} locks, {len(out)} segments')
     return out
 
@@ -575,7 +884,8 @@ def design(seed=11, log=print):
     """Every primitive of him, in the order the field is built."""
     rng = np.random.default_rng(seed)
     body = body_prims(rng)
-    cuts = face_cuts()
+    body = body + warts(body)
+    cuts = face_cuts() + grip_cut()
     wrap = wrap_prims()
     solid = body + cuts
     mane = mane_prims(solid + wrap, rng, log=log)
@@ -630,13 +940,21 @@ def surface(prims, voxel=0.003, log=print):
     return verts, np.asarray(quads, int)
 
 
+#: The way hair runs where a tagged primitive has no length of its own (the moss over his scalp
+#: runs back from his brow; a lump of moss or lichen hangs down).
+SCALP_FLOW = np.array([0.0, 0.8, -0.6]) / 1.0
+HANG_FLOW = np.array([0.0, 0.0, -1.0])
+
+
 def parts_at(prims, P, soft=0.006):
-    """What each point is: soft shares of each part (n, len(PARTS)), the nearest lock's tone and group."""
+    """What each point is: soft shares of each part (n, len(PARTS)), the nearest lock's tone, group
+    and direction (the way its strands run: root to tip; unit vectors)."""
     n = len(P)
     best = {name: np.full(n, 1e3) for name in PARTS}
     lock_d = np.full(n, 1e3)
     lock_tone = np.zeros(n)
     lock_group = np.full(n, '', dtype=object)
+    lock_dir = np.tile(HANG_FLOW, (n, 1))
     for pr in prims:
         if pr.op != 'add':
             continue
@@ -649,15 +967,22 @@ def parts_at(prims, P, soft=0.006):
         d = np.abs(pr.sdf(P[sel]))
         cur = best[pr.part][sel]
         best[pr.part][sel] = np.minimum(cur, d)
-        if pr.part == 'pelt':
+        if pr.tag.get('group'):
             ld = lock_d[sel]
             closer = d < ld
             idx = np.nonzero(sel)[0][closer]
             lock_d[idx] = d[closer]
             lock_tone[idx] = pr.tag.get('tone', 0.3)
             lock_group[idx] = pr.tag.get('group', '')
+            if pr.kind == 'cone':
+                d = pr.p['b'] - pr.p['a']
+                lock_dir[idx] = d / max(np.linalg.norm(d), 1e-9)
+            elif pr.kind == 'cap':
+                lock_dir[idx] = SCALP_FLOW / np.linalg.norm(SCALP_FLOW)
+            else:
+                lock_dir[idx] = HANG_FLOW
     D = np.stack([best[name] for name in PARTS], 1)
     dmin = D.min(1, keepdims=True)
     W = np.exp(-(D - dmin) / soft)
     W /= W.sum(1, keepdims=True)
-    return W, lock_tone, lock_group
+    return W, lock_tone, lock_group, lock_dir
