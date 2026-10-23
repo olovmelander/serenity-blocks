@@ -176,6 +176,38 @@ describe('JourneyEntryTransition', () => {
         expect(transition.createRun({ anchor: { x: 0.42, y: 0.38, radius: 0.12 } }).anchor).toEqual(anchor);
     });
 
+    it('does not count a stretch with no frames (a hidden window) against the readiness hold', async () => {
+        // Audit 2026-10-23: alt-tab during a hold, come back, "That orb took too long to open".
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        const transition = new JourneyEntryTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        const reasons = [];
+        let blackout = false;
+        const done = transition.play({
+            timings: {
+                ignitionDelayMs: 10, blackoutStartMs: 20, blackoutFullMs: 40, revealDurationMs: 30, maxBlackoutHoldMs: 400,
+            },
+            callbacks: {
+                onBlackoutReached: () => { blackout = true; return new Promise(() => {}); },
+                onAbort: async (result) => { reasons.push(result.reason); },
+            },
+        });
+        await harness.flushUntil(() => blackout, { stepMs: 10, maxSteps: 20 });
+        harness.step(10_000); // the window was hidden: no frames for 10 s
+        await harness.flushUntil(() => reasons.length > 0, { stepMs: 16, maxSteps: 12 });
+        expect(reasons).toEqual([]);
+        // Real hold time still runs out.
+        await harness.flushUntil(() => reasons.length > 0, { stepMs: 16, maxSteps: 60 });
+        expect(reasons).toEqual(['blackout-timeout']);
+        await done;
+    });
+
     it('runs blackout before reveal and waits for readiness before completing', async () => {
         const harness = createRafHarness();
         const dom = createDomHarness();

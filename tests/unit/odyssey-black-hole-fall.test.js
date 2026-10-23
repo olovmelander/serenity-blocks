@@ -204,6 +204,40 @@ describe('the ch7 fall schedule', () => {
         expect(controller._activeFraming.rollDeg).toBeCloseTo(resolveBlackHoleFallCamera(local, exit).rollDeg, 9);
     });
 
+    it('eases the fall roll when selecting another orb jumps the camera into a focus move', () => {
+        // Audit 2026-10-23: the fall is added unfiltered, so selecting an orb (position set,
+        // then an 800 ms focus) stepped the roll by up to 14 deg in one frame.
+        setOdysseyCameraReducedMotion(false);
+        const settledRoll = (local) => {
+            const probe = new OdysseyCameraController(
+                new THREE.PerspectiveCamera(64, 16 / 9, 0.1, 20000),
+                getOdysseyPathCurve(),
+                { chapterPositions: positions, startPosition: at(local), idleAutoDrift: false },
+            );
+            probe.updateChapterFraming(1 / 60);
+            return probe._activeFraming.rollDeg;
+        };
+        const from = 0.15;
+        const rollA = settledRoll(from);
+        const to = [0.3, 0.45, 0.6, 0.75, 0.9].reduce((best, local) => (
+            Math.abs(settledRoll(local) - rollA) > Math.abs(settledRoll(best) - rollA) ? local : best));
+        const rollB = settledRoll(to);
+        expect(Math.abs(rollB - rollA)).toBeGreaterThan(2);
+
+        const controller = new OdysseyCameraController(
+            new THREE.PerspectiveCamera(64, 16 / 9, 0.1, 20000),
+            getOdysseyPathCurve(),
+            { chapterPositions: positions, startPosition: at(from), idleAutoDrift: false },
+        );
+        controller.updateChapterFraming(1 / 60);
+        controller.currentPosition = at(to);
+        controller.mode = 'focus';
+        controller.updateChapterFraming(1 / 60);
+        expect(Math.abs(controller._activeFraming.rollDeg - rollA)).toBeLessThan(Math.abs(rollB - rollA) * 0.1);
+        for (let i = 0; i < 90; i += 1) controller.updateChapterFraming(1 / 60);
+        expect(Math.abs(controller._activeFraming.rollDeg - rollB)).toBeLessThan(Math.abs(rollB - rollA) * 0.15);
+    });
+
     it('keeps the fall FOV separate when a pulse or focus animation owns the lens', () => {
         setOdysseyCameraReducedMotion(false);
         const camera = new THREE.PerspectiveCamera(64, 16 / 9, 0.1, 20000);

@@ -733,8 +733,28 @@ export class ChapterEnvironmentManager {
         // largest single startup win in the rebuild.
         if (this.suppressedChapters.has(chapterId)) return null;
 
+        // One build per chapter at a time. The background loader, residency and the board's
+        // boundary request all call this, and the module import is awaited before the build is
+        // recorded: two callers inside that window each built the chapter, the first group stayed
+        // under environmentGroup for good and its rig lights doubled the ambient (audit 2026-10-23).
+        if (!this._chapterBuilds) this._chapterBuilds = new Map();
+        const inFlight = this._chapterBuilds.get(chapterId);
+        if (inFlight) return inFlight;
+        const build = this._buildChapterEnvironment(chapterId)
+            .finally(() => this._chapterBuilds?.delete(chapterId));
+        this._chapterBuilds.set(chapterId, build);
+        return build;
+    }
+
+    /**
+     * The build behind createChapterEnvironment (which de-duplicates concurrent calls).
+     * @private
+     * @param {number} chapterId
+     */
+    async _buildChapterEnvironment(chapterId) {
         const def = await loadChapterModule(chapterId);
         if (this._disposed) return null; // torn down while the module was loading
+        if (this.environments.has(chapterId)) return this.environments.get(chapterId).group;
 
         if (!def) {
             console.warn(`[ChapterEnvironmentManager] No module for chapter ${chapterId}`);
@@ -1400,13 +1420,15 @@ export class ChapterEnvironmentManager {
      * @param {object|null} directorState - Optional OdysseyDirector state for audio-reactive environments
      */
     update(delta, camera = null, cameraProgress = null, directorState = null) {
-        // Clamp delta to [0, 1/30s] ONCE here (Wave-0 F): the manager owns `this.time`, which
-        // feeds every chapter's shader uTime and all env.update() integration, plus the
-        // transition timer below. A tab-refocus or GC stall yields a huge raw delta that,
-        // unclamped, jerks every chapter's animation forward in one visible jump. Capping at
-        // 33 ms (a 30 fps floor) turns the spike into a gentle catch-up and guards negative
-        // deltas — one place instead of a clamp in all eight chapter update() loops.
-        const dt = Math.min(Math.max(delta, 0), 1 / 30);
+        // Clamp delta ONCE here (Wave-0 F): the manager owns `this.time`, which feeds every
+        // chapter's shader uTime and all env.update() integration, plus the transition timer
+        // below. A tab-refocus or GC stall yields a huge raw delta that, unclamped, jerks every
+        // chapter's animation forward in one visible jump; the cap turns the spike into a gentle
+        // catch-up and guards negative deltas — one place instead of a clamp in all eight
+        // chapter update() loops. The cap is the board's own (50 ms): at 33 ms, a device below
+        // 30 fps ran every chapter slower than the orbs, path and post beside it (66-83 % speed
+        // at 20-25 fps), drifting out of step with them (audit 2026-10-23).
+        const dt = Math.min(Math.max(delta, 0), 0.05);
         this.time += dt;
 
         // Update each visible environment, then QW4-crossfade its rig lights by the SAME

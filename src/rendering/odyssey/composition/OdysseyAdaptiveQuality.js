@@ -332,6 +332,12 @@ export class OdysseyAdaptiveQuality {
             const tierCooled = now - this._lastTierChangeAt >= TIER_ESCALATE_COOLDOWN_MS;
             if (this._pressureTier < MAX_PRESSURE_TIER && heldUnderPressure && tierCooled) {
                 this._pressureTier += 1;
+                // A rung that sheds nothing (the board's bloom already runs at the quarter
+                // tier 1 asks for) is stepped over, not waited out: it cost a whole cooldown
+                // each way under pressure (audit 2026-10-23).
+                if (this._tierIsNoop(this._pressureTier) && this._pressureTier < MAX_PRESSURE_TIER) {
+                    this._pressureTier += 1;
+                }
                 this._lastTierChangeAt = now;
                 this._floorPressureSince = now; // require another full hold before the next step
                 this._applyPressureTier(ctx);
@@ -349,6 +355,7 @@ export class OdysseyAdaptiveQuality {
             const tierCooled = now - this._lastTierChangeAt >= TIER_RECOVER_COOLDOWN_MS;
             if (tierCooled) {
                 this._pressureTier -= 1;
+                if (this._pressureTier > 0 && this._tierIsNoop(this._pressureTier)) this._pressureTier -= 1;
                 this._lastTierChangeAt = now;
                 this._applyPressureTier(ctx);
                 this._noteStep(now, 1);
@@ -443,6 +450,16 @@ export class OdysseyAdaptiveQuality {
      */
     _resolutionFloor() {
         return this.resolutionFloor;
+    }
+
+    /**
+     * Whether a pressure tier sheds nothing on top of the one below it: tier 1 lowers bloom's
+     * working resolution to BLOOM_SCALE_FLOOR, which is no change when the baseline already
+     * runs there.
+     * @private
+     */
+    _tierIsNoop(tier) {
+        return tier === 1 && this._baselineBloomScale <= BLOOM_SCALE_FLOOR;
     }
 
     /**

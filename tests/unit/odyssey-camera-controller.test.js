@@ -7,7 +7,7 @@ import {
     vi,
 } from 'vitest';
 import * as THREE from 'three';
-import { OdysseyCameraController } from '../../src/rendering/odyssey/OdysseyCameraController.js';
+import { OdysseyCameraController, TRAVEL_BLEND_IN_MS } from '../../src/rendering/odyssey/OdysseyCameraController.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
 
@@ -114,6 +114,29 @@ describe('OdysseyCameraController path travel', () => {
         const steady = controller.getTravelState().progress - afterStall;
         expect(afterStall - before).toBeLessThan(steady * 4);
         run(controller, now + 2000);
+        await expect(travel).resolves.toBe(true);
+    });
+
+    it('eases a trip out of an orb close-up instead of cutting to the rail', async () => {
+        // Audit 2026-10-23: a trip snapped onto the rail frame on its first frame, so every
+        // cross-chapter orb click (and the navigator, the arrow keys, the D-pad) cut the picture.
+        const controller = createController();
+        controller.setCurrentPosition(0.1);
+        controller.updateFollowPosition({ direct: true });
+        const orb = controller.computeFollowFrame(0.1).lookTarget.clone();
+        await controller.focusOnNode(orb, 0);
+        const start = controller.camera.position.clone();
+        const railAtStart = controller.computeFollowFrame(0.1).camPos.clone();
+        expect(start.distanceTo(railAtStart)).toBeGreaterThan(5);
+
+        const travel = controller.travelToPosition(0.25, 1500);
+        run(controller, 16);
+        expect(controller.camera.position.distanceTo(start)).toBeLessThan(start.distanceTo(railAtStart) * 0.05);
+
+        run(controller, TRAVEL_BLEND_IN_MS + 48);
+        const rail = controller.computeFollowFrame(controller.getCurrentPosition()).camPos.clone();
+        expect(controller.camera.position.distanceTo(rail)).toBeLessThan(0.5);
+        run(controller, 3000);
         await expect(travel).resolves.toBe(true);
     });
 

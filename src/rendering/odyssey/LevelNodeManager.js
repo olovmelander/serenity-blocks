@@ -1295,14 +1295,19 @@ export class LevelNodeManager {
         // derived from |pathPosition - cameraProgress|). Combined with the interaction
         // dirty flag, this decides whether the per-node CPU loop + GPU buffer re-upload
         // runs this frame. When nothing changed we early-out and let the shaders animate.
+        // An entry pulse re-runs the full pass for its few hundred ms (scale, window, halo).
+        if (this._pulse) {
+            this._uploadDirty = true;
+            if (performance.now() - this._pulse.startedAt >= this._pulse.durationMs) this._pulse = null;
+        }
         const progressMoved = !(Math.abs(this.cameraProgress - this._lastUploadProgress)
             <= UPDATE_PROGRESS_EPSILON); // NaN-safe: first frame forces a flush.
         const needsUpload = this._uploadDirty || progressMoved || this._nearFadeStale();
         if (!needsUpload) {
-            // The heavy glass/halo/window buffers are settled, but the camera can still
-            // move without path progress changing (free-look / idle sway). Keep the cheap
-            // star/marker billboards tracking the camera so they always sit round the orb.
-            this._updateIndicatorBillboards(false);
+            // The buffers are settled, but the drawn orbs still bob (a cheap pass over just
+            // them), and the star/marker billboards follow them and the camera.
+            this._bobDrawnNodes();
+            this._updateIndicatorBillboards(true);
             return;
         }
         this._uploadDirty = false;
@@ -1358,16 +1363,7 @@ export class LevelNodeManager {
 
             // Floating animation: bob on X, Y, Z slowly and organically around base position
             const basePos = this.cachedBasePositions.get(levelId);
-            if (basePos) {
-                const floatX = Math.sin(this.time * 0.8 + levelId * 1.5) * 0.12;
-                const floatY = Math.sin(this.time * 1.2 + levelId * 2.2) * 0.12;
-                const floatZ = Math.cos(this.time * 0.9 + levelId * 0.7) * 0.12;
-                node.group.position.set(
-                    basePos.x + floatX,
-                    basePos.y + floatY,
-                    basePos.z + floatZ,
-                );
-            }
+            this._applyBob(node, basePos);
             const baseScale = node.group.userData.baseScale ?? 1.0;
             const hoverScale = this.hoveredNode === levelId ? 1.16 : 1.0;
             const quenchScale = THREE.MathUtils.lerp(1.0, CHAPTER_1_NODE_MIN_SCALE, chapterOneQuench);
@@ -1381,7 +1377,9 @@ export class LevelNodeManager {
                 )
                 : 1;
             if (nearScale < 1) nearFadeLive = true;
-            node.group.scale.setScalar(baseScale * hoverScale * quenchScale * nearScale * horizonWeight);
+            node.group.scale.setScalar(
+                baseScale * hoverScale * quenchScale * nearScale * horizonWeight * this._pulseScale(levelId),
+            );
             if (node.innerMesh) {
                 node.innerMesh.visible = chapterOneQuench < 0.92;
             }
@@ -1470,6 +1468,71 @@ export class LevelNodeManager {
     }
 
     /**
+     * The swell of an orb the player has just chosen to enter, before the gate gathers on it:
+     * up quickly, down slowly, to 1.16 of its size, over `durationMs`. (OdysseyMode scaled the
+     * node's group itself, which this manager rewrites, and a glow mesh that no longer exists:
+     * the pulse never showed. Audit 2026-10-23.)
+     * @param {number} levelId
+     * @param {number} [durationMs]
+     */
+    pulseNode(levelId, durationMs = 620) {
+        if (!this.nodes.has(levelId) || !(durationMs > 0)) return;
+        this._pulse = { levelId, startedAt: performance.now(), durationMs };
+        this._markUploadDirty();
+    }
+
+    /** @private this frame's pulse factor for an orb (1 when it is not pulsing) */
+    _pulseScale(levelId) {
+        const pulse = this._pulse;
+        if (!pulse || pulse.levelId !== levelId) return 1;
+        const t = THREE.MathUtils.clamp((performance.now() - pulse.startedAt) / pulse.durationMs, 0, 1);
+        const smooth = (x) => x * x * (3 - (2 * x));
+        const swell = t < 0.3 ? smooth(t / 0.3) : 1 - smooth((t - 0.3) / 0.7);
+        return 1 + (swell * 0.16);
+    }
+
+    /** The orb's slow float round its seat (X, Y, Z on their own rates and phases). @private */
+    _applyBob(node, basePos) {
+        if (!basePos) return;
+        const levelId = node.config.id;
+        node.group.position.set(
+            basePos.x + (Math.sin(this.time * 0.8 + levelId * 1.5) * 0.12),
+            basePos.y + (Math.sin(this.time * 1.2 + levelId * 2.2) * 0.12),
+            basePos.z + (Math.cos(this.time * 0.9 + levelId * 0.7) * 0.12),
+        );
+    }
+
+    /**
+     * The bob on frames the buffers are otherwise settled: only the drawn orbs' glass matrices
+     * and window/halo centres move. Written only on dirty frames, the bob stepped at ~10 Hz
+     * while the camera drifted (progress crosses its epsilon every 8-14 frames) and froze while
+     * it was parked (audit 2026-10-23). The dirty pass gating once saved re-uploading a 5,760
+     * instance sparkle buffer each frame; these few matrices and vec4s cost next to nothing.
+     * @private
+     */
+    _bobDrawnNodes() {
+        const windowAttr = this.windowMesh?.geometry.getAttribute('aWindow') || null;
+        const haloAttr = this.haloMesh?.geometry.getAttribute('aHalo') || null;
+        const matrix = this._scratchMatrix;
+        let moved = false;
+        this.nodes.forEach((node) => {
+            if (!node.group.visible) return;
+            const idx = this.instanceIdMap.get(node.config.id);
+            this._applyBob(node, this.cachedBasePositions.get(node.config.id));
+            const { position } = node.group;
+            matrix.compose(position, node.group.quaternion, node.group.scale);
+            this.glassInstancedMesh.setMatrixAt(idx, matrix);
+            windowAttr?.setXYZ(idx, position.x, position.y, position.z);
+            haloAttr?.setXYZ(idx, position.x, position.y, position.z);
+            moved = true;
+        });
+        if (!moved) return;
+        this.glassInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (windowAttr) windowAttr.needsUpdate = true;
+        if (haloAttr) haloAttr.needsUpdate = true;
+    }
+
+    /**
      * The world windows the rail passes behind (OdysseyPathRenderer.setOrbOccluders): the
      * nearest ones drawn to the eye, packed (x, y, z, glass radius) in world units, nearest
      * first, read from the window buffer so they are exactly what is on screen. Empty without
@@ -1550,6 +1613,9 @@ export class LevelNodeManager {
         const camPos = this._scratchCamPos.setFromMatrixColumn(this.camera.matrixWorld, 3);
         const starAttr = this.starInstancedMesh.geometry.getAttribute('aStar');
         let starsChanged = false;
+        // Built once: this loop runs every frame for every drawn orb.
+        const markerMeshes = this._markerMeshPairs
+            || (this._markerMeshPairs = [['rival', this.rivalMarkerMesh], ['boss', this.bossMarkerMesh]]);
 
         this.nodes.forEach((node) => {
             // Invisible nodes are scaled to 0 by the gated update() loop; nothing to place.
@@ -1592,11 +1658,11 @@ export class LevelNodeManager {
             // Rival or boss marker — one billboard off the path's lower side, facing the camera.
             const { marker } = node.group.userData;
             const markerSide = marker ? this._markerScreenSide(node, camRight, camUp) : null;
-            [['rival', this.rivalMarkerMesh], ['boss', this.bossMarkerMesh]].forEach(([kind, mesh]) => {
-                if (!mesh) return;
+            for (const [kind, mesh] of markerMeshes) {
+                if (!mesh) continue;
                 if (marker !== kind) {
                     mesh.setMatrixAt(idx, matrix.makeScale(0, 0, 0));
-                    return;
+                    continue;
                 }
                 matrix.copy(this.camera.matrixWorld);
                 matrix.setPosition(this._scratchIndicatorPos.copy(pos)
@@ -1606,7 +1672,7 @@ export class LevelNodeManager {
                 const markerScale = scale * MARKER_PLACEMENT.size * this._glyphNearScale(node, camPos);
                 matrix.scale(scaleVec.set(markerScale, markerScale, markerScale));
                 mesh.setMatrixAt(idx, matrix);
-            });
+            }
         });
 
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;

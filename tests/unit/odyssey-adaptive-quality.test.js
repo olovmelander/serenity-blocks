@@ -202,13 +202,13 @@ describe('OdysseyAdaptiveQuality — the bloom ladder never ratchets upward', ()
 
         fill(ctrl, SLOW, 30);
         ctrl.update(1000, ctx);
-        ctrl.update(7001, ctx); // ≥6s of floor pressure → Tier 1
-        expect(ctrl._pressureTier).toBe(1);
+        ctrl.update(7001, ctx); // ≥6s of floor pressure → Tier 2 (Tier 1 sheds nothing here)
+        expect(ctrl._pressureTier).toBe(2);
 
         // 60, not 30: the ring holds 60 samples, so a 30-frame refill leaves it half-SLOW
         // and p95 never drops below the up threshold — the ladder would escalate, not recover.
         fill(ctrl, FAST, 60); // headroom returns
-        ctrl.update(19002, ctx); // ≥12s later → Tier 1 → 0
+        ctrl.update(19002, ctx); // ≥12s later → Tier 2 → 0, stepping over the inert Tier 1
         expect(ctrl._pressureTier).toBe(0);
 
         // BEFORE the fix this is [[0.5]] — the ratchet, caught with no GPU involved.
@@ -255,13 +255,13 @@ describe('OdysseyAdaptiveQuality — the bloom ladder never ratchets upward', ()
         expect(ctrl.getState().bloomScale).toBeLessThanOrEqual(0.15);
     });
 
-    it('leaves Tier 1 an inert rung when the baseline is already at or below the floor', () => {
-        // KNOWN LIMITATION, pinned deliberately rather than left to be rediscovered. The ladder's
-        // bloom rung is BLOOM_SCALE_FLOOR (0.25) and the board ships ODYSSEY_BLOOM_SCALE = 0.25,
-        // so Math.min(floor, baseline) === baseline and the Tier-1 escalation changes nothing.
-        // Stopping the ratchet does NOT make Tier 1 useful — that needs a floor below 0.25, which
-        // is a visual change (bloom scale sets the glow's screen-space radius, not just its cost)
-        // and owes a playground capture under ADR-0007. Follow-up, not part of this fix.
+    it('steps over Tier 1 when the baseline is already at or below the floor', () => {
+        // The ladder's bloom rung is BLOOM_SCALE_FLOOR (0.25) and the board ships
+        // ODYSSEY_BLOOM_SCALE = 0.25, so Math.min(floor, baseline) === baseline and Tier 1 sheds
+        // nothing. It used to be waited out anyway: relief (Tier 2, bloom off) came a whole
+        // escalate cooldown late, and the way back paid a recover cooldown for it (audit
+        // 2026-10-23). Making Tier 1 useful needs a floor below 0.25, a visual change (bloom
+        // scale sets the glow's screen-space radius) that owes a capture under ADR-0007.
         const ctrl = new OdysseyAdaptiveQuality({
             renderScale: 0.5,
             baselineBloomScale: 0.25, // the shipped value
@@ -270,11 +270,9 @@ describe('OdysseyAdaptiveQuality — the bloom ladder never ratchets upward', ()
         const ctx = makeCtx();
         fill(ctrl, SLOW, 30);
         ctrl.update(1000, ctx);
-        ctrl.update(7001, ctx); // → Tier 1
-        expect(ctrl._pressureTier).toBe(1);
+        ctrl.update(7001, ctx); // one cooldown → straight to Tier 2
+        expect(ctrl._pressureTier).toBe(2);
         expect(ctx.pipeline.setBloomScale).not.toHaveBeenCalled();
-        // Tier 2 is where relief actually arrives today.
-        ctrl.update(13002, ctx);
         expect(ctx.pipeline.setBloomEnabled).toHaveBeenLastCalledWith(false);
     });
 });
