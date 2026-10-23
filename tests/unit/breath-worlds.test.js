@@ -5,20 +5,20 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { BREATH_WORLDS } from '../../src/ui/effects/breathing/breath-catalogue.js';
-import { BREATH_WORLD_BUILDERS } from '../../src/ui/effects/breathing/worlds/index.js';
+import { BREATH_WORLD_BUILDERS, BREATH_WORLD_MOODS } from '../../src/ui/effects/breathing/worlds/index.js';
 import { BREATH_QUALITY, BreathWorldHost } from '../../src/ui/effects/breathing/stage/breath-world-host.js';
 import { BreathworkSessionManager, SESSION_WORLDS } from '../../src/ui/effects/breathwork-session-manager.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 
 /** The lightest tier draws without a post pipeline, so a stub renderer is enough to mount a world. */
-function createHost(quality = 'Minimal') {
+function createHost(quality = 'Minimal', pickMood = () => 0) {
     const renderer = { render: vi.fn(), toneMapping: 0, toneMappingExposure: 1 };
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(20, 1, 0.1, 60);
     return {
         host: new BreathWorldHost({
-            renderer, scene, camera, quality,
+            renderer, scene, camera, quality, pickMood,
         }),
         renderer,
         scene,
@@ -69,7 +69,9 @@ describe('breathing world registry', () => {
 
 describe('breathing world host', () => {
     it.each(BREATH_WORLDS.map((world) => world.id))('builds and disposes %s', (id) => {
-        const { host, scene, renderer, camera } = createHost();
+        const {
+            host, scene, renderer, camera,
+        } = createHost();
         expect(host.setWorld(id)).toBe(id);
         const backdrop = host.root.children[0];
         expect(backdrop.material.colorNode).toBeTruthy();
@@ -179,6 +181,80 @@ describe('breathing world host', () => {
         host.step(1 / 60);
         expect(host.uniforms.zoom.value).toBe(1);
         expect(host.uniforms.pan.value.length()).toBe(0);
+        host.dispose();
+    });
+});
+
+describe('breathing world moods', () => {
+    const cases = BREATH_WORLDS.flatMap((world) => BREATH_WORLD_MOODS[world.id]
+        .map((mood, index) => [world.id, mood.id, index]));
+
+    it('gives every world named moods with ids of their own', () => {
+        BREATH_WORLDS.forEach((world) => {
+            const moods = BREATH_WORLD_MOODS[world.id];
+            expect(moods.length, world.id).toBeGreaterThan(0);
+            expect(new Set(moods.map((mood) => mood.id)).size, world.id).toBe(moods.length);
+            moods.forEach((mood) => {
+                expect(mood.id, world.id).toMatch(/^[a-z][a-z0-9-]*$/);
+                expect(mood.name, world.id).toBeTruthy();
+            });
+        });
+    });
+
+    it.each(cases)('builds %s in its %s mood', (id, moodId, index) => {
+        const { host } = createHost();
+        host.setWorld(id, { mood: index, seed: 0.3 });
+        expect(host.mood.id).toBe(moodId);
+        expect(host.getDiagnostics().mood).toBe(moodId);
+        host.setSize(1280, 720);
+        host.setBreath({ breath: 0.6, phase: 0, progress: 0.4 });
+        host.step(1 / 60);
+        host.render();
+        host.dispose();
+        expect(host.root.children).toHaveLength(0);
+    });
+
+    it('keeps a world\'s mood and seed for the host\'s life, and pins a requested one', () => {
+        const picks = [];
+        const { host } = createHost('Minimal', (id, count) => {
+            picks.push(id);
+            return count - 1;
+        });
+        host.setWorld('zen-garden');
+        const first = host.mood;
+        const seed = host.uniforms.seed.value;
+        host.setWorld('calm-sleep');
+        host.setWorld('zen-garden');
+        expect(host.mood).toBe(first);
+        expect(host.uniforms.seed.value).toBe(seed);
+        expect(picks.filter((id) => id === 'zen-garden')).toHaveLength(1);
+        host.setWorld('zen-garden', { mood: 0, seed: 0.25 });
+        expect(host.mood).toBe(BREATH_WORLD_MOODS['zen-garden'][0]);
+        expect(host.uniforms.seed.value).toBe(0.25);
+        // Asking again for what is on screen does not rebuild it.
+        const backdrop = host.root.children[0];
+        host.setWorld('zen-garden', { mood: 0, seed: 0.25 });
+        expect(host.root.children[0]).toBe(backdrop);
+        host.dispose();
+    });
+
+    it('lets events happen only while the world is free to move', () => {
+        const { host } = createHost();
+        host.setWorld('calm-sleep');
+        host.seek(0);
+        expect(host.uniforms.life.value).toBe(1);
+        host.setSessionPhase('retention');
+        host.seek(0);
+        expect(host.uniforms.life.value).toBeCloseTo(0.25, 6);
+        host.setSessionPhase(null);
+        host.setReducedMotion(true);
+        host.seek(0);
+        expect(host.uniforms.life.value).toBe(0);
+        // It eases back rather than switching on.
+        host.setReducedMotion(false);
+        host.step(0.1);
+        expect(host.uniforms.life.value).toBeGreaterThan(0);
+        expect(host.uniforms.life.value).toBeLessThan(0.2);
         host.dispose();
     });
 });

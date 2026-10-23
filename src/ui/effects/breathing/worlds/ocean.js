@@ -131,6 +131,9 @@ function foamWeb(point, time, radius) {
     return { web: smoothstep(hole, hole.add(0.05), cells.x), cells };
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createOceanWorld({ u, quality }) {
     const { octaves, detail } = quality;
     const fine = detail >= 0.6;

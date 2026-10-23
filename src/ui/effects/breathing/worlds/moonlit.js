@@ -183,6 +183,9 @@ function moonFace(q) {
     return albedo.add(MOON_HIGHLAND.mul(bright).mul(0.5)).mul(limb);
 }
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createMoonlitWorld({ u, quality }) {
     const { octaves } = quality;
     // Lighter tiers drop the shortest ripples (their pixels could not show them); the slope those

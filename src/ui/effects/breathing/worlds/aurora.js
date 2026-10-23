@@ -615,6 +615,9 @@ const snowFace = /* @__PURE__ */ Fn(([q, shape, rock, scene]) => {
     ],
 });
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createAuroraWorld({ u, quality }) {
     const curtains = quality.detail >= 0.6 ? CURTAINS : CURTAINS.filter((c) => !c.optional);
     const rows = quality.detail >= 0.6 ? ROWS : ROWS.filter((_, index) => index % 2 === 0 || index === ROWS.length - 1);

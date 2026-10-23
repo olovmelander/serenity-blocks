@@ -272,6 +272,9 @@ const druseLocal = (rel, lean, offset) => {
     return vec2(from.x.mul(lean.x).add(from.y.mul(lean.y)), from.x.mul(lean.y).sub(from.y.mul(lean.x)));
 };
 
+/** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
+export const MOODS = Object.freeze([{ id: 'classic', name: 'Classic' }]);
+
 export function createCrystalWorld({ u, quality }) {
     const { octaves } = quality;
     // Phones (Low) and the lightest tier take fewer octaves where the eye cannot tell.
