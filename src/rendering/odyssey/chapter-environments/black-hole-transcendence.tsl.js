@@ -519,7 +519,11 @@ export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
     // Radial position across the ring, from its local geometry: RingGeometry's UV is PLANAR
     // (a square projection), so uv().y ran 0 -> 1 bottom-to-top of the whole ring, not inner-to-
     // outer, and the razor vanished at the top and bottom of the shadow (pre-merge review).
-    const across = clamp(length(positionLocal.xy).sub(inner).div(Math.max(outer - inner, 1e-3)), 0.0, 1.0);
+    let across = clamp(length(positionLocal.xy).sub(inner).div(Math.max(outer - inner, 1e-3)), 0.0, 1.0);
+    // THE PLUNGE (chapter 7's hero only passes `uRazor`, >= 1): the profile is drawn in toward the
+    // shadow as the hole grows, so the ring stays a razor where it sweeps past the frame's edges
+    // instead of a broad band of light. Builders without it compile the unchanged graph.
+    if (options.uRazor) across = clamp(across.mul(options.uRazor), 0.0, 1.0);
     // A razor: bright against the shadow, a soft fall outward.
     const profile = smoothstep(0.0, 0.18, across).mul(oneMinus(smoothstep(0.30, 1.0, across)));
     const beam = pow(clamp(side.mul(0.45).add(1.0), 0.45, 1.5), 2.0);

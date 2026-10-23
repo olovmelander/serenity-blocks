@@ -191,10 +191,10 @@ seam, a pass of its own.
 
 ## Still open
 
-- **Chapter 7's hole loses its glow on the approach.** By design (the 2026-10-20 overhaul), the
-  lensed halo fades out as the hole grows past ~9–19° and the photon ring dims past ~12–28°, so
-  the frame is not flooded with amber. From p 0.887 to the plunge the hole reads as a bare black
-  disc with the disk band across it. A pass of its own if it should keep a rim.
+- **Chapter 7's hole loses its glow on the approach.** *Rim done 2026-10-23*
+  ([ODYSSEY_CH7_FALL_2026-10.md](ODYSSEY_CH7_FALL_2026-10.md) §6): the photon ring was not only
+  dimmed, it sat in the centre plane where the shadow hid it from ~20°; it now rides the
+  silhouette, a razor all the way in. The lensed halo still fades out by ~19° (the amber flood).
 - **Chapter 5's summit** — see above.
 - **Chapter 2's mid-water** is atmospheric but sparse. The whale shark and manta pass on their own
   clocks (38 s / 64 s) and are not in every frame; a frozen-clock gallery shows the water without

@@ -207,6 +207,115 @@ export function resolveBlackHoleInsideProgress(chapterPositions) {
 }
 
 /**
+ * THE PLUNGE TAKES ITS TIME (2026-10-23). Olov: "it feels like the orb path just quits before we
+ * go into the black hole". A trip between orbs eases over ~1 s, and the plunge (the mouth to the
+ * eye being inside) was a third of the 48 -> 49 trip, in its middle, where the ease runs fastest:
+ * the hole grew from 8 deg to swallowing the frame in ~0.12 s — seven frames, a cut. Every path
+ * travel now spends its time as if the plunge were `dwell` times longer (the camera controller's
+ * travel eases in this measure, not in progress), and a short trip through it is given `extraMs`
+ * more: the hole looms, the rail's inflow draws the eye in, and the photon ring sweeps past the
+ * frame over ~1.4 s, then the tunnel takes the eye on at full speed.
+ */
+export const CH7_PLUNGE_TRAVEL = Object.freeze({
+    /** How much more a unit of progress through the plunge weighs than open path. */
+    dwell: 12,
+    /** Progress over which that weight eases in before the mouth and out after the inside point. */
+    shoulder: 0.004,
+    /** Time added to a trip that crosses the whole plunge... */
+    extraMs: 2600,
+    /** ...in full up to this trip length (progress), fading to none by `longTrip + longFade`
+     * (a trip across the journey has seconds of its own to spend in the hole). */
+    longTrip: 0.04,
+    longFade: 0.1,
+});
+
+/**
+ * The plunge stretch: from the mouth (chapter 7's start) to where the eye is inside the hole.
+ * @param {number[]} chapterPositions live chapter boundaries
+ * @returns {{ from: number, to: number }|null} null without a usable layout
+ */
+export function resolvePlungeStretch(chapterPositions) {
+    const inside = resolveBlackHoleInsideProgress(chapterPositions);
+    if (!Number.isFinite(inside)) return null;
+    return { from: chapterPositions[6], to: inside };
+}
+
+// ∫0..x of smooth01: x^3 - x^4 / 2 (so 1/2 over a whole shoulder).
+const shoulderArea = (x) => {
+    const t = Math.min(1, Math.max(0, x));
+    return (t ** 3) - ((t ** 4) / 2);
+};
+
+/**
+ * The travel measure of progress `p`: progress itself plus the plunge's extra weight up to `p`
+ * (monotone, so it inverts). Travel eased in this measure slows through the plunge.
+ * @param {number} p path progress
+ * @param {number[]} chapterPositions live chapter boundaries
+ * @returns {number}
+ */
+export function plungeTravelMeasure(p, chapterPositions) {
+    const stretch = resolvePlungeStretch(chapterPositions);
+    if (!stretch || !Number.isFinite(p)) return p;
+    const { dwell, shoulder: s } = CH7_PLUNGE_TRAVEL;
+    const a = stretch.from;
+    const b = stretch.to;
+    let area;
+    if (p <= a - s) area = 0;
+    else if (p <= a) area = s * shoulderArea((p - (a - s)) / s);
+    else if (p <= b) area = (s / 2) + (p - a);
+    else {
+        const x = Math.min(1, (p - b) / s);
+        area = (s / 2) + (b - a) + (s * (x - shoulderArea(x)));
+    }
+    return p + ((dwell - 1) * area);
+}
+
+/**
+ * The progress at travel measure `m` (the inverse of plungeTravelMeasure).
+ * @param {number} m travel measure
+ * @param {number[]} chapterPositions live chapter boundaries
+ * @returns {number}
+ */
+export function plungeTravelProgress(m, chapterPositions) {
+    if (!resolvePlungeStretch(chapterPositions) || !Number.isFinite(m)) return m;
+    // The measure grows at least as fast as progress, so the answer lies in [m - extra, m].
+    let lo = m - ((CH7_PLUNGE_TRAVEL.dwell - 1) * 1.01);
+    let hi = m;
+    for (let i = 0; i < 48; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (plungeTravelMeasure(mid, chapterPositions) < m) lo = mid;
+        else hi = mid;
+    }
+    return (lo + hi) / 2;
+}
+
+/**
+ * Whether a trip between `p0` and `p1` passes through the plunge's weighted stretch at all.
+ * @returns {boolean}
+ */
+export function plungeTravelTouches(p0, p1, chapterPositions) {
+    const stretch = resolvePlungeStretch(chapterPositions);
+    if (!stretch || !Number.isFinite(p0) || !Number.isFinite(p1)) return false;
+    const s = CH7_PLUNGE_TRAVEL.shoulder;
+    return Math.max(p0, p1) > stretch.from - s && Math.min(p0, p1) < stretch.to + s;
+}
+
+/**
+ * The time a trip between `p0` and `p1` is given on top of its own for the plunge (ms).
+ * @returns {number}
+ */
+export function plungeTravelExtraMs(p0, p1, chapterPositions) {
+    const stretch = resolvePlungeStretch(chapterPositions);
+    if (!stretch || !Number.isFinite(p0) || !Number.isFinite(p1)) return 0;
+    const lo = Math.min(p0, p1);
+    const hi = Math.max(p0, p1);
+    const crossed = Math.max(0, Math.min(hi, stretch.to) - Math.max(lo, stretch.from)) / (stretch.to - stretch.from);
+    const T = CH7_PLUNGE_TRAVEL;
+    const short = 1 - smooth01(((hi - lo) - T.longTrip) / T.longFade);
+    return T.extraMs * crossed * short;
+}
+
+/**
  * How far ahead of the eye the hero's centre must sit so that a shadow of angular radius `alpha`
  * keeps its near surface at least `nearSurface` away: never closer than the lock itself.
  * @param {number} alpha angular radius (rad)
