@@ -207,7 +207,8 @@ export class StillwaterPost {
             calm.mulAssign(this.uCalmStrength);
 
             // ── The picture: laid down in washes where the brush runs, as rendered elsewhere ──
-            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            const raw = vec3(sceneColor.sample(st).rgb).toVar();
+            const S = vec3(raw).toVar();
             if (brush > 0) {
                 // Kuwahara, four quadrants: each pixel takes the mean of whichever quadrant round
                 // it varies least. Flat regions go flatter; edges stay where they are.
@@ -260,11 +261,14 @@ export class StillwaterPost {
                     .add(fromHeart.div(max(reach, 1e-3)).mul(ring.mul(0.02)).div(vec2(this.uAspect, 1.0)))
                     .toVar();
                 If(fringe.add(ring).greaterThan(2e-4), () => {
-                    S.assign(vec3(
-                        sceneColor.sample(st.sub(split)).level(0).r,
-                        S.g,
-                        sceneColor.sample(st.add(split)).level(0).b,
-                    ));
+                    // The scene's own split, carried onto the picture as the brush left it: its red
+                    // and blue taken whole from the unwashed scene against the washed green would
+                    // outline every edge the brush moved in green on one side and magenta on the other.
+                    S.assign(max(S.add(vec3(
+                        sceneColor.sample(st.sub(split)).level(0).r.sub(raw.r),
+                        0.0,
+                        sceneColor.sample(st.add(split)).level(0).b.sub(raw.b),
+                    )), vec3(0.0)));
                 });
             }
             // The ring itself carries a little light.

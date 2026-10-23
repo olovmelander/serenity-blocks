@@ -444,12 +444,14 @@ export default class VoidEmberTheme extends BaseTheme {
         }
         this.applyReactionSettings(payload);
         // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
-        // deferred a microtask so main.js has applied setGlobalRenderScale() first.
+        // deferred a microtask so main.js has applied setGlobalRenderScale() first. resize()
+        // compares the ratio, so only a real change resizes: every save carries all the settings,
+        // and a forced resize set the canvas's size again out of the frame loop (black flashes
+        // as a theme picked in play came in).
         if (readSettingUpdate(payload, 'renderScale').present) {
             queueMicrotask(() => {
                 if (!this.isActive) return;
                 const { width, height } = getViewport();
-                this.appliedSize = null;
                 this.resize(width, height);
             });
         }
