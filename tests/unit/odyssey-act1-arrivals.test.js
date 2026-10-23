@@ -1,40 +1,35 @@
 /**
- * THE OCEAN'S ANIMALS ARE MET, AND LEAVE OUT OF VIEW (2026-10-20, in-game feedback: coming up
- * from chapter 1 "the whale and things just pop up", and the visitors dissolved in plain view).
+ * THE OCEAN'S ANIMALS ARE MET, NOT SWITCHED ON (2026-10-20, in-game feedback: coming up from
+ * chapter 1 "the whale and things just pop up").
  *
- * Both were switched on by progress. The glide from orb 5 to orb 6 takes about a second, and in
- * that second the steam cleared, the ocean's life came on and the whales' and the shark's fades
- * ran 0 -> 1 with the animals already in frame 65-130 u from the eye. Now they ARRIVE on the
- * clock, swimming in from the blue (stepVisitorPassage, the whales' too since 2026-10-22), and
- * LEAVE by diving outward and under the eye, which looks up — out of frame before their alpha
- * drops.
+ * The glide from orb 5 to orb 6 takes about a second, and in that second the steam clears and the
+ * ocean's life comes on. The animals ARRIVE: they swim in from the blue, from far beyond their place,
+ * faint, once the steam has thinned. Since 2026-10-23 they then keep the eye company for the rest of
+ * the ocean (odyssey-ocean-escort.js), and only the water ending (the breach, the chapter's edge)
+ * ends them.
  *
  * Plays the journey through the ocean on the real camera (tests/unit/helpers/odyssey-camera-rig):
- * a one-second glide between orbs and a long park at each, the passage stepped on that clock.
+ * a one-second glide between orbs and a long park at each, the escort stepped on that clock.
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { getOdysseyPathPointAt } from '../../src/rendering/odyssey/path-utils.js';
 import { ODYSSEY_SEA_LEVEL } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { odysseyQuenchCarry } from '../../src/rendering/odyssey/world/odyssey-world-renderer.js';
 import { steamQuenchSeamT } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
 import {
-    OCEAN_VISITOR_CAST, VISITOR_PASSAGE, resolveOceanVisitorCentre, stepVisitorPassage,
-} from '../../src/rendering/odyssey/composition/odyssey-ocean-visitors.js';
-import { WHALE_PASS_STAGE } from '../../src/rendering/odyssey/composition/odyssey-whale-pass.js';
+    OCEAN_ESCORT, resolveEscortTarget, stepEscortFrame,
+} from '../../src/rendering/odyssey/composition/odyssey-ocean-escort.js';
+import { placeEscorted } from '../../src/rendering/odyssey/composition/odyssey-ocean-visitors.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 
 const DT = 1 / 30;
 const GLIDE_S = 1;
 const PARK_S = 20;
-const FRAME = 1.1;
 
 describe("Act I's ocean animals (real camera, the board's clock)", () => {
     const rig = createOdysseyCameraRig();
+    rig.camera.aspect = 16 / 9;
     const [c1, c2] = [rig.cp[1], rig.cp[2]];
-    // Each animal's loop centre: the rail at its `at` of chapter 2's span (the board's placeOf).
-    const centreOf = (at) => getOdysseyPathPointAt(c1 + ((c2 - c1) * at));
-    const whaleAxis = centreOf(WHALE_PASS_STAGE.at);
 
     /** The journey through the ocean as the player makes it: glide, park, glide, park... */
     function* playthrough() {
@@ -56,94 +51,66 @@ describe("Act I's ocean animals (real camera, the board's clock)", () => {
         return { submerged, life, inChapter: p > c1 && p < c2 + 0.01 };
     }
 
-    /** A visitor's loop, every bearing, as world points with the passage offset. */
-    function visitorPlaces(cast, offset) {
-        const { loop } = cast;
-        const centre = resolveOceanVisitorCentre(cast, rig.cp);
-        return Array.from({ length: 36 }, (_, i) => {
-            const a = (i / 36) * Math.PI * 2;
-            const r = loop.radius + (Math.sin((a * 2) + (loop.phase * 3)) * loop.wobble) + offset.radial;
-            return new THREE.Vector3(
-                centre.x + (Math.cos(a) * r),
-                cast.y + (Math.sin((a * 1.5) + loop.phase) * loop.lift) + offset.up,
-                centre.z + (Math.sin(a) * r),
-            );
-        });
+    function viewOf(camera) {
+        camera.updateMatrixWorld(true);
+        const forward = camera.getWorldDirection(new THREE.Vector3());
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+        return {
+            position: camera.position.clone(),
+            forward,
+            up,
+            right: new THREE.Vector3().crossVectors(forward, up),
+            tanHalf: Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)),
+            aspect: 16 / 9,
+        };
     }
 
-    OCEAN_VISITOR_CAST.forEach((cast) => {
-        it(`${cast.name}: arrives from the blue, keeps you company, and is out of frame before it fades`, () => {
-            const state = {};
+    Object.entries(OCEAN_ESCORT).forEach(([name, slot]) => {
+        it(`${name}: met far off and faint once the steam has thinned, then keeps you company`, () => {
+            const frame = {};
+            let state = {};
             let met = null;
             let company = 0;
-            let left = false;
-            let breached = false;
+            let ended = false;
+            let t = 0;
+            const at = new THREE.Vector3();
+            const velocity = new THREE.Vector3();
             for (const p of playthrough()) {
+                t += DT;
                 const camera = rig.poseAt(p);
-                const eyeY = camera.position.y;
-                const water = waterAt(p, eyeY);
+                camera.aspect = 16 / 9;
+                camera.updateProjectionMatrix();
+                const view = stepEscortFrame(frame, viewOf(camera), DT);
+                const water = waterAt(p, camera.position.y);
                 const on = water.inChapter && water.submerged > 0.5 && water.life > 0.001;
-                const wasWith = state.phase === 'in';
-                const passage = stepVisitorPassage(state, {
-                    camY: eyeY, on, dt: DT, window: cast.window,
-                });
-                // The eye leaving the water ends every animal at once: there is nothing to see.
-                if (wasWith && !on && state.phase !== 'in' && state.phase !== 'out') breached = true;
-                const alpha = passage.alpha * water.life;
-                if (!passage.shown || alpha <= 0.01) continue;
-                const places = visitorPlaces(cast, passage);
-                const nearest = Math.min(...places.map((pt) => pt.distanceTo(camera.position)));
-                if (met === null) met = { p, nearest, alpha };
-                if (state.phase === 'in' && passage.radial < 1) company += DT;
-                if (state.phase === 'out') {
-                    left = true;
-                    // Fading (alpha below full) only once nothing of it can be in frame.
-                    if (alpha < 0.99) {
-                        const inView = places.filter((pt) => rig.inFrame(camera, pt, FRAME)).length;
-                        expect(inView, `${cast.name} in frame while fading at p=${p.toFixed(4)}`).toBe(0);
-                    }
+                if (!on) {
+                    // The board resets it out of the water: it arrives afresh next time.
+                    if (state.pos) ended = true;
+                    state = {};
+                    continue;
                 }
+                const fade = placeEscorted(state, view, slot, ODYSSEY_SEA_LEVEL, t, DT, at, velocity) * water.life;
+                if (fade <= 0.01) continue;
+                if (met === null) {
+                    const home = resolveEscortTarget(view, slot, ODYSSEY_SEA_LEVEL, { x: 0, y: 0, z: 0 });
+                    met = {
+                        p,
+                        distance: at.distanceTo(camera.position),
+                        home: new THREE.Vector3(home.x, home.y, home.z).distanceTo(camera.position),
+                        fade,
+                    };
+                }
+                if (fade > 0.9 && rig.inFrame(camera, at, 1)) company += DT;
             }
-            // Met far off, faint, after the steam has thinned: never switched on at the eye. (Its
-            // whole arrival ring is measured, and a loop centred ahead of the eye, like the manta's,
-            // brings the ring's near side to ~0.65 of the reach.)
+            // Met far off (out beyond its place), faint, in the ocean: never switched on at the eye.
             expect(met).not.toBeNull();
-            expect(met.nearest).toBeGreaterThan(VISITOR_PASSAGE.reach * 0.6);
-            expect(met.alpha).toBeLessThan(0.2);
             expect(met.p).toBeGreaterThan(c1);
-            // It did keep company on its loop for a while, and did leave.
-            expect(company).toBeGreaterThan(10);
-            // It left by swimming away, or (the manta, which waits just under the surface at the
-            // last orb) was still with you when the eye broke the surface.
-            expect(left || breached).toBe(true);
+            expect(met.distance).toBeGreaterThan(met.home * 1.3);
+            expect(met.fade).toBeLessThan(0.2);
+            // It keeps company for most of the ocean's parks (5 parks of 20 s), and the water ending
+            // (the breach) is what ends it.
+            expect(company, `${name} in frame and arrived`).toBeGreaterThan(60);
+            expect(ended).toBe(true);
         });
-    });
-
-    it('the whale pair swims in from beyond its orbit, faint at first, once the steam has thinned', () => {
-        // On the journey: the first frame the pair may show, it is far beyond its lane and faint.
-        const state = {};
-        let met = null;
-        for (const p of playthrough()) {
-            const camera = rig.poseAt(p);
-            const water = waterAt(p, camera.position.y);
-            const on = water.inChapter && water.submerged > 0.5 && water.life > 0.001;
-            const passage = stepVisitorPassage(state, {
-                camY: camera.position.y, on, dt: DT, window: WHALE_PASS_STAGE.window,
-            });
-            if (!passage.shown || passage.alpha * water.life <= 0.01) continue;
-            const { radius, depth } = WHALE_PASS_STAGE.mother;
-            let nearest = Infinity;
-            for (let a = 0; a < Math.PI * 2; a += 0.2) {
-                const r = radius + passage.radial;
-                const pt = new THREE.Vector3(whaleAxis.x + (Math.cos(a) * r), ODYSSEY_SEA_LEVEL - depth, whaleAxis.z + (Math.sin(a) * r));
-                nearest = Math.min(nearest, pt.distanceTo(camera.position));
-            }
-            met = { p, nearest, alpha: passage.alpha };
-            break;
-        }
-        expect(met).not.toBeNull();
-        expect(met.p).toBeGreaterThan(c1);
-        expect(met.nearest).toBeGreaterThan(VISITOR_PASSAGE.reach * 0.8);
-        expect(met.alpha).toBeLessThan(0.2);
     });
 });
