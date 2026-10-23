@@ -16,6 +16,7 @@
 import * as THREE from 'three/webgpu';
 import { BreathWorldHost } from '../../ui/effects/breathing/stage/breath-world-host.js';
 import { resolveBreath } from '../../ui/effects/breathing/breath-clock.js';
+import { BREATH_WORLD_MOODS } from '../../ui/effects/breathing/worlds/index.js';
 
 export const meta = {
     id: 'breathing',
@@ -59,6 +60,7 @@ export function create({
         setBreath: (state) => { pinned = state; },
         setSession: (type) => host.setSessionPhase(type),
         setFocus: (focus) => host.setFocus(focus),
+        moods: (id) => (BREATH_WORLD_MOODS[id] || []).map(({ id: moodId, name }) => ({ id: moodId, name })),
         host,
     };
     return {
