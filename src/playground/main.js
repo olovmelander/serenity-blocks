@@ -69,6 +69,20 @@ function mulberry32(seed) {
 let rngSeed = params.has('seed') ? (Number.parseInt(params.get('seed'), 10) >>> 0) : DEFAULT_SEED;
 let rng = mulberry32(rngSeed);
 
+// The game's own builders (the Odyssey's chapter assemblies, which several effects mount as
+// they ship) draw from Math.random. While an effect mounts, Math.random draws from a stream of
+// the same seed, so those builds are as reproducible as `rng`. The stream is a separate one,
+// so what `rng` hands an effect is unchanged.
+function withSeededMathRandom(build) {
+    const unseeded = Math.random;
+    Math.random = mulberry32(rngSeed ^ 0x9e3779b9);
+    try {
+        return build();
+    } finally {
+        Math.random = unseeded;
+    }
+}
+
 const PROFILE_CAPACITY = 1200;
 // A frame counts as "dropped" when its wall interval exceeds a 60 Hz budget — the same
 // 16.7 ms reference the Definition of Success uses for the p95 target.
@@ -393,7 +407,7 @@ function resetEffect(seed) {
     if (seed !== undefined && Number.isFinite(Number(seed))) rngSeed = Number(seed) >>> 0;
     rng = mulberry32(rngSeed);
     if (profileEnabled) resetProfile();
-    current?.reset?.(rng, rngSeed);
+    withSeededMathRandom(() => current?.reset?.(rng, rngSeed));
 }
 
 function seekTo(time) {
@@ -429,7 +443,7 @@ function mountEffect(id) {
     rng = mulberry32(rngSeed);
     scene.overrideMaterial = null;
     try {
-        current = mod.create({
+        current = withSeededMathRandom(() => mod.create({
             THREE,
             scene,
             camera,
@@ -438,7 +452,7 @@ function mountEffect(id) {
             params,
             rng,
             seed: rngSeed,
-        });
+        }));
     } catch (e) {
         showError(`Effect "${id}" create() failed:\n${e?.stack || e}`);
     }

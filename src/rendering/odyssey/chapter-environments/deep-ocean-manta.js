@@ -124,6 +124,13 @@ function createWhaleBioluminescentMaterial(uniforms) {
 }
 
 async function loadCreature(group, uniforms, corridor, record, role) {
+    // The seat (a random angle round the corridor) is drawn before the load, while the chapter
+    // is built, not when the GLB lands: a build whose randomness is seeded (the playground's
+    // captures) then seats the creature the same way every time.
+    const seatT = role === 'whale' ? WHALE_PASS_T : MANTA_PASS_T;
+    const seat = corridor?.ok
+        ? corridor.sample(seatT, 6)
+        : { x: 0, y: role === 'whale' ? -5 : 2, z: -34 };
     let gltf;
     try {
         gltf = await loadOdysseyGltfCached(record.url);
@@ -156,10 +163,6 @@ async function loadCreature(group, uniforms, corridor, record, role) {
     root.name = `deep-ocean-${role}`;
     root.add(model);
 
-    const seatT = role === 'whale' ? WHALE_PASS_T : MANTA_PASS_T;
-    const seat = corridor?.ok
-        ? corridor.sample(seatT, 6)
-        : { x: 0, y: role === 'whale' ? -5 : 2, z: -34 };
     root.userData.seat = seat;
     root.userData.phase = role === 'whale' ? 3.14 : 0.0;
     root.userData.role = role;
