@@ -55,7 +55,7 @@ import {
     GLYPH_GRID, GLYPH_RANGE, bakeGlyphAtlas,
 } from './neon-district-glyphs.js';
 import { MAX_SIGN_GLYPHS, TEXT_WIDTH } from './neon-district-layout.js';
-import { ndTextDistance } from './neon-district-text.js';
+import { ndGlyphFootprint, ndTextDistance } from './neon-district-text.js';
 import {
     LOGOS, LOGO_ANIMS, LOGO_GRID, LOGO_RANGE, bakeLogoAtlas,
 } from './neon-district-logos.js';
@@ -243,7 +243,8 @@ export function createSigns(u, signs, glyphTex) {
         id = floor(id.add(0.5));
         const gc = vec2(mod(id, GLYPH_GRID), floor(id.div(GLYPH_GRID)));
         const auv = gc.add(clamp(guv, 0.015, 0.985)).div(GLYPH_GRID);
-        const d = float(1.0).sub(texture(glyphTex, auv).r).mul(GLYPH_RANGE);
+        const foot = ndGlyphFootprint(guv);
+        const d = float(1.0).sub(texture(glyphTex, auv).grad(foot.gx, foot.gy).r).mul(GLYPH_RANGE);
         const aa = fwidth(d).mul(0.9).add(0.003);
 
         // ── Life: a steady hum, the odd buzzing sign, the odd dying character ──
