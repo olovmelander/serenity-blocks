@@ -674,7 +674,7 @@ export default class WolfhourTheme extends BaseTheme {
         };
 
         // Resize handler reference
-        this.resizeHandler = null;
+        this.resizeUnsub = null;
 
         console.log('[Wolfhour] Theme constructed');
     }
@@ -1601,8 +1601,8 @@ export default class WolfhourTheme extends BaseTheme {
         this.camera.lookAt(0, 0, 0);
 
         // Setup resize handler
-        this.resizeHandler = () => this.handleResize();
-        window.addEventListener('resize', this.resizeHandler);
+        // The window's size through the viewport broadcaster: debounced, and only a real change.
+        this.resizeUnsub = eventBus.on(EVENTS.VIEWPORT_RESIZED, () => this.handleResize());
 
         this.configureRendererColorPipeline();
 
@@ -1718,8 +1718,7 @@ export default class WolfhourTheme extends BaseTheme {
         }
 
         const pixelRatio = this.getEffectivePixelRatio();
-        this.renderer.setPixelRatio(pixelRatio);
-        this.renderer.setSize(width, height);
+        this.sizeRenderer(this.renderer, width, height, pixelRatio);
         this.updatePixelRatioUniforms(pixelRatio);
         if (this.postProcessing && this.postProcessing.setSize) {
             this.postProcessing.setSize(width, height);
@@ -5603,9 +5602,9 @@ export default class WolfhourTheme extends BaseTheme {
         this.resetBaselineSamples();
         this.disposeComputeSystems();
 
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
+        if (this.resizeUnsub) {
+            this.resizeUnsub();
+            this.resizeUnsub = null;
         }
 
         if (this.webglContextLostHandler && this.renderer?.domElement) {

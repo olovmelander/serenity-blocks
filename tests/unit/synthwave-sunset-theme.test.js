@@ -161,7 +161,12 @@ describe('synthwave-sunset theme wiring', () => {
         expect(world.onLineClear).toHaveBeenCalledTimes(2);
 
         expect(win.listenerCount('pointermove')).toBe(1);
-        expect(win.listenerCount('resize')).toBe(1);
+        // The window's size comes through the viewport broadcaster, not a raw resize listener.
+        expect(win.listenerCount('resize')).toBe(0);
+        const resize = vi.spyOn(theme, 'resize').mockImplementation(() => {});
+        eventBus.emit(EVENTS.VIEWPORT_RESIZED, { width: 800, height: 600, dpr: 1 });
+        expect(resize).toHaveBeenCalledTimes(1);
+        resize.mockRestore();
 
         win.settings.backgroundComboEffects = false;
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
@@ -175,6 +180,9 @@ describe('synthwave-sunset theme wiring', () => {
         expect(world.onLineClear).toHaveBeenCalledTimes(2);
         expect(win.listenerCount('pointermove')).toBe(0);
         expect(win.listenerCount('resize')).toBe(0);
+        const late = vi.spyOn(theme, 'resize').mockImplementation(() => {});
+        eventBus.emit(EVENTS.VIEWPORT_RESIZED, { width: 640, height: 480, dpr: 1 });
+        expect(late).not.toHaveBeenCalled();
     });
 
     it('counts the true combo whatever the setting; hands over hard drops, T-spins, B2B, perfect clears, waves', () => {

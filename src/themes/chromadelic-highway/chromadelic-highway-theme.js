@@ -257,7 +257,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.animationFrameId = null;
         this.loopGeneration = 0;
         this.consecutiveFrameErrors = 0;
-        this.resizeHandler = null;
+        this.resizeUnsub = null;
         this.lastFrameTime = null;
         this.time = 0;
         this.simFrozen = false;
@@ -702,10 +702,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     }
 
     removeResizeListener() {
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-            this.resizeHandler = null;
-        }
+        this.resizeUnsub?.();
+        this.resizeUnsub = null;
     }
 
     disposePostProcessingStack() {
@@ -2028,8 +2026,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.world?.onLevelUp(Number.isFinite(data?.level) ? data.level : undefined);
         });
 
-        this.resizeHandler = () => this.resize(window.innerWidth, window.innerHeight);
-        window.addEventListener('resize', this.resizeHandler);
+        const onResize = () => this.resize(window.innerWidth, window.innerHeight);
+        // The window's size through the viewport broadcaster: debounced, and only a real change.
+        this.resizeUnsub = eventBus.on(EVENTS.VIEWPORT_RESIZED, onResize);
 
         const onPointerMove = (e) => {
             if (!this.isActive) return;
@@ -2220,10 +2219,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
     resize(width, height) {
         this.updateCameraProjection(width, height);
-        if (this.renderer) {
-            this.renderer.setPixelRatio(this.getRendererPixelRatio(1.5));
-            this.renderer.setSize(width, height);
-        }
+        if (this.renderer) this.sizeRenderer(this.renderer, width, height, this.getRendererPixelRatio(1.5));
         this.syncViewport(width, height);
         // The composition is solved per aspect now; the DOM rects are re-read (debounced) after.
         if (this.world && this.layoutState) {
