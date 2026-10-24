@@ -413,6 +413,26 @@ async function pageHostOnline({ players }) {
     return { ok: true };
 }
 
+/**
+ * Keep every seat in the session while the capture holds a window still. Each page measures
+ * the others' silence on its own clock, and while one window is frozen (or drawing a themed
+ * frame for seconds on SwiftShader) the rest would take it for gone and drop it, outside a
+ * round after 15 s, mid-round after 5 s. A network that cannot tell reports 0 silence, and
+ * nobody is taken for gone (core/network/host-migration.js, multiplayer/ffa/presence.js).
+ */
+async function pageHoldPresence() {
+    for (let w = 0; w < 300; w += 1) {
+        const net = window.__getFfa?.()?.network || window.__getMode?.()?.steamNetworking;
+        if (net && typeof net.peerSilenceMs === 'function') {
+            Object.getPrototypeOf(net).peerSilenceMs = () => 0;
+            return true;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await window.__trailerClock.realSleep(100);
+    }
+    return false;
+}
+
 async function pageOnlinePlayers() {
     return window.__getFfa?.()?.players?.size || 0;
 }
@@ -587,6 +607,7 @@ class Session {
     async startOnline(id, players) {
         const hosted = await this.run(pageHostOnline, { players });
         if (!hosted.ok) throw new Error(hosted.reason);
+        log(id, `host presence held: ${await this.run(pageHoldPresence)}`);
         for (let i = 1; i < players; i += 1) {
             // The host draws nothing while frozen, leaving the CPU to the peer's boot.
             await this.run(() => window.__trailerClock.freeze());
@@ -605,7 +626,7 @@ class Session {
             // Online Versus starts on the theme already running: make that the light one first
             // (the menu's Forest times out starting on a peer), while the host still holds still.
             await peer.evaluate(pageSwitchTheme, { themeId: 'voltage-storm' });
-            const peerTheme = await peer.evaluate(pageWaitThemeIdle, { themeId: 'voltage-storm', timeoutMs: 600000 });
+            const peerTheme = await peer.evaluate(pageWaitThemeIdle, { themeId: 'voltage-storm', timeoutMs: 180000 });
             log(id, `peer ${i} theme ${JSON.stringify(peerTheme)}`);
             await this.run(() => window.__trailerClock.thaw());
             this.peers.push(peer);
@@ -623,6 +644,7 @@ class Session {
                 });
                 if (!joined) log(id, `peer ${i} join attempt ${attempt} failed`);
             }
+            log(id, `peer ${i} presence held: ${await peer.evaluate(pageHoldPresence)}`);
             for (let k = 0; k < 120 && (await this.run(pageOnlinePlayers)) < i + 1; k += 1) {
                 await this.run((ms) => window.__trailerClock.realSleep(ms), 1000);
             }
