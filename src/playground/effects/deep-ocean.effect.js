@@ -27,7 +27,7 @@ export const meta = {
 
 const TRAVEL_SECONDS = 24; // seconds to climb the whole chapter corridor
 
-export function create({ scene, camera }) {
+export function create({ scene, camera, renderer }) {
     const group = createDeepOceanEnvironment({ particleCount: 600 });
     scene.add(group);
     if (typeof window !== 'undefined') window.__DO_GROUP__ = group; // review-only introspection handle
@@ -47,6 +47,7 @@ export function create({ scene, camera }) {
 
     const p = new THREE.Vector3();
 
+    let lastTime = 0;
     const chapterFrac = (time) => THREE.MathUtils.clamp((time % TRAVEL_SECONDS) / TRAVEL_SECONDS, 0, 1);
     const globalProgress = (time) => tStart + (tEnd - tStart) * chapterFrac(time);
 
@@ -79,7 +80,16 @@ export function create({ scene, camera }) {
             cam.lookAt(p.x, p.y + 9, p.z - 70);
         },
         update(time, dt) {
+            lastTime = time;
             updateDeepOceanEnvironment(group, dt ?? 0.016, time, camera, globalProgress(time));
+        },
+        // The first frame waits for the manta and whale, which load as two GLBs, and poses them
+        // at this frame's time: drawn before them, a capture caught the corridor with or without
+        // them, or with them still at their seats.
+        async renderAsync() {
+            await group.userData.mantasLoaded;
+            updateDeepOceanEnvironment(group, 0, lastTime, camera, globalProgress(lastTime));
+            renderer.render(scene, camera);
         },
         dispose() {
             scene.remove(group);

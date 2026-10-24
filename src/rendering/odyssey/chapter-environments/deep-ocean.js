@@ -259,14 +259,15 @@ export function createDeepOceanEnvironment(options = {}) {
     group.add(creatures);
 
     // Hero manta GLB (fire-and-forget; no-op without the asset). Init the registries
-    // first so the update loop is safe before the async load resolves.
+    // first so the update loop is safe before the async load resolves. The load's promise
+    // stays on userData for a caller that must wait for it (a reproducible capture).
     group.userData.mantaFlights = [];
     group.userData.mantaMixers = [];
-    if (useGlbMantas) {
-        loadDeepOceanMantas(group, uniforms, corridor).catch((err) => {
+    group.userData.mantasLoaded = useGlbMantas
+        ? loadDeepOceanMantas(group, uniforms, corridor).catch((err) => {
             console.warn('[DeepOcean] manta load error:', err);
-        });
-    }
+        })
+        : Promise.resolve();
 
     // 3e. Hydrothermal vent glow (creative plan asset 9) — Chapter 1's drowned First
     // Heart, refracted and wobbling below the camera for the chapter's first few
