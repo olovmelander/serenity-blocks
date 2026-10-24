@@ -690,7 +690,7 @@ async function collectMetrics(win, extra = {}) {
                 })(),
                 occluders: {
                     steamQuenchVisible: bc?.steamQuench?.mesh?.visible ?? null,
-                    cloudBankVisible: bc?.cloudBank?.mesh?.visible ?? null,
+                    earthVisible: bc?.orbitEarth?.mesh?.visible ?? null,
                 },
                 visibleMeshes: (() => {
                     const names = [];

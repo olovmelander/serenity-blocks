@@ -259,9 +259,10 @@ const CONFIGURATIONS = [
         flags: { odysseyCh6NoAurora: '1' },
         note: 'ch6 hero auroral crown withheld — curtain mesh AND the gas-giant surface term',
     },
-    // THE 5->6 SEAM LIMB. `odysseyNoCloudBank=1` skips createCloudBank entirely
+    // THE 5->6 EARTH BELOW. `odysseyNoEarth=1` skips createOrbitEarth entirely
     // (OdysseyBoardController.js), so this prices the whole object — draws, fill, vertex AND
-    // its pipeline compile — the same lever SHAPE as `no-water`, not a material swap.
+    // its pipeline compile — the same lever SHAPE as `no-water`, not a material swap. (It was
+    // the cloud bank's lever, `odysseyNoCloudBank`, until the Earth replaced the bank.)
     //
     // ⚠️ The seam has NEVER been priced. `render.gpuMs` in the chapter-capture sidecars reads
     // 0 at all 18 stations and always has: that harness sends `odysseyOverlay=0`, which makes
@@ -275,9 +276,9 @@ const CONFIGURATIONS = [
     // where the old one was exactly 0, and the camera is INSIDE the r=620 ellipsoid where it
     // was outside the r=150 one.
     {
-        id: 'no-cloud-bank',
-        flags: { odysseyNoCloudBank: '1' },
-        note: 'the ch5->6 limb bank is never built (draws + fill + vertex + pipeline compile)',
+        id: 'no-earth',
+        flags: { odysseyNoEarth: '1' },
+        note: 'the ch5->6 Earth below is never built (draws + fill + vertex + pipeline compile)',
     },
     // THE LAVA LAKE (docs/ODYSSEY_EARTH_CORE_LAVA_LAKE_REMAKE_2026-08.md §4, gate G1/G2). Prices
     // the lake's fill on each lane: `no-lake` withholds the mesh (earth-core.js bisect lever),

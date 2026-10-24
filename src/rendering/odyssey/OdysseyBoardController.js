@@ -28,11 +28,10 @@ import {
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { releaseDisposedRenderer, warmWebGpuDevice } from '../webgpu-device-warm.js';
 import {
+    ONE_WORLD_DEPARTURE_VOID,
     isWorldVisibleAtProgress,
-    worldAtmosphericThin,
+    worldClimbScale,
     worldDepartureFade,
-    worldDepartureRecede,
-    worldRecedeScale,
 } from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
@@ -43,7 +42,12 @@ import {
     createSteamQuench,
     steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
-import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
+import {
+    createOrbitEarth,
+    orbitEarthAirglowElevation,
+    orbitEarthAt,
+    orbitEarthSunDirection,
+} from './composition/odyssey-orbit-earth.js';
 import { createWhalePass } from './composition/odyssey-whale-pass.js';
 import { createOceanVisitors } from './composition/odyssey-ocean-visitors.js';
 import { createSummitBirds } from './composition/odyssey-summit-birds.js';
@@ -121,7 +125,7 @@ import {
 
 // Chapter 6's own fog tone — the void the world recedes into. Not the live fog: see the note
 // at the call site for why fading toward the CURRENT sky brightened the world instead.
-const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(0x05060f);
+const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(ONE_WORLD_DEPARTURE_VOID);
 // Chapters whose orb close-ups look along the rail (see _focusFramingFor), and how far off it.
 // `level`: how much of the rail's climb the close-up flattens out. Chapter 6 turns RIGHT of the
 // rail, further, and climbs with it (2026-10-19): its black hole hangs on the rail's own line
@@ -230,7 +234,8 @@ const ONE_WORLD_CHAPTERS = [2, 3, 4, 5];
 // The quench's window half-widths (approach 0.06 / exit 0.03, with the full MEASURED
 // rationale) moved 2026-08-13 to odyssey-steam-quench.js beside the volume they window, so
 // the board and the seam-12-dive playground drive the same quench by construction. The
-// ch5->ch6 cloud bank has its own window now (odyssey-cloud-bank.js cloudBankHalfWidth, 152 u).
+// ch5->ch6 cloud bank is gone: the Earth below (composition/odyssey-orbit-earth.js, 2026-10-24)
+// is what the climb leaves.
 
 function readBooleanUrlFlag(name) {
     const value = getUrlSearchParams()?.get(name);
@@ -501,8 +506,7 @@ export class OdysseyBoardController {
         this._steamBoundary = NaN;
         this.whalePass = null;
         this.oceanVisitors = null;
-        this.cloudBank = null;
-        this._cloudBankBoundary = NaN;
+        this.orbitEarth = null;
         this.summitBirds = null;
         // Act II life (2026-10-20): the lowland flights (one opaque draw, uniforms only) and the
         // massif's eagle (the whale pass's fetch -> live-compile -> ready lifecycle).
@@ -3222,34 +3226,19 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] ocean visitors unavailable (non-fatal):', error);
                     this.oceanVisitors = null;
                 }
-                // THE CLOUD BANK — the ch5 -> ch6 occlusion moment (summit into cosmos), the
-                // quench's sibling at the other act edge. Its colour ramp runs THROUGH the
-                // authored SEAM_56_AURORA_BRIDGE tone, so it is continuous with the shipped
-                // handoff by construction; the bridge itself stays and colours the frame
-                // around the bank (build first — see the plan's occlusion item).
-                // BISECT LEVER: ?odysseyNoCloudBank=1. The bank is a separate system from the
-                // world deck, so `odysseyWorldNoClouds` never removed it — and a 2026-08-13
-                // bisect that used only that flag concluded the mottled ch5 sky at p=0.60 was
-                // chapter SIX bleeding in, when in fact the bank's window opens at 0.588. An
-                // occluder with no off switch cannot be ruled out of a frame.
+                // THE EARTH BELOW (2026-10-24, docs/ODYSSEY_INTO_SPACE_2026-10.md step 2) — the
+                // round planet the 5->6 climb leaves. It replaces the cloud bank, whose band of
+                // cloud was painted above the horizon. Driven by orbitEarthAt in the update below.
+                // BISECT LEVER: ?odysseyNoEarth=1.
                 try {
-                    const boundary56 = this.presentationLayout?.chapterPositions?.[5];
-                    if (Number.isFinite(boundary56) && !readBooleanUrlFlag('odysseyNoCloudBank')) {
-                        // The act's own cloud palette, when the world built one — see
-                        // createCloudBank's `palette` option and createOdysseyWorld's
-                        // `cloudPalette`. Null on the recovery path, which is handled there.
-                        this.cloudBank = createCloudBank({
-                            palette: this.oneWorld?.cloudPalette || null,
-                        });
-                        const at56 = getOdysseyPathPointAt(boundary56);
-                        this.cloudBank.mesh.position.set(at56.x, at56.y, at56.z);
-                        this.cloudBank.mesh.visible = false; // gated in the update below
-                        this.scene.add(this.cloudBank.mesh);
-                        this._cloudBankBoundary = boundary56;
+                    if (!readBooleanUrlFlag('odysseyNoEarth')) {
+                        // It arrives wearing the world's own air (THE SEAM in its module).
+                        this.orbitEarth = createOrbitEarth({ haze: this.oneWorld?.hazeFor ?? null });
+                        this.scene.add(this.orbitEarth.mesh);
                     }
                 } catch (error) {
-                    console.warn('[OdysseyBoard] cloud bank unavailable (non-fatal):', error);
-                    this.cloudBank = null;
+                    console.warn('[OdysseyBoard] the Earth below unavailable (non-fatal):', error);
+                    this.orbitEarth = null;
                 }
                 // THE SUMMIT BIRDS — a kettle soaring beside the chapter-5 mountain (see
                 // composition/odyssey-summit-birds.js). One opaque instanced draw, created here
@@ -4351,31 +4340,35 @@ export class OdysseyBoardController {
             this._steamFogT = quenchT;
         }
         if (this.oceanVisitors) this._tickOceanVisitors(delta, cameraProgress);
-        if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
-            // ⚠️ The bank's fast exit is the single largest step left in the 5->6 transition
-            // (-81.5 luma at p=0.668; `?odysseyNoCloudBank=1` turns that into -4.4). The
-            // obvious fix — a longer, asymmetric exit window like the steam quench's — was
-            // TRIED AND REVERTED: the bank's own colour ramp keys `toVoid` off raw window
-            // progress (`smoothstep(0.45, 1.0, uAltitude)`), which silently assumes the peak
-            // sits at t=0.5. Stretching the exit put p=0.678 at t=0.43, BELOW the tint
-            // threshold, so the bank stayed fully bridge-coloured into space and the frame
-            // ended at luma 201 instead of ~26. Fixing the exit means re-basing that colour
-            // ramp on the peak first; the window is not the only thing that assumes symmetry.
-            // The bank's own window (152 u, converted on the live spline — see cloudBankHalfWidth).
-            const bankHalf = cloudBankHalfWidth();
-            const lo = this._cloudBankBoundary - bankHalf;
-            const hi = this._cloudBankBoundary + bankHalf;
-            const inWindow = cameraProgress > lo && cameraProgress < hi;
-            this.cloudBank.mesh.visible = inWindow;
-            if (inWindow) {
-                // The aurora that lights the cloud tops is chapter 6's band, read live (one frame
-                // late — the environments update after this — which is invisible on a glow ramp).
-                const auroraBand = this.environmentManager?.environments?.get(6)?.group?.userData?.auroraBridge;
-                const auroraGlow = auroraBand?.visible ? (auroraBand.userData?.uGlow?.value ?? 0) : 0;
-                this.cloudBank.update(this.time, (cameraProgress - lo) / (hi - lo), auroraGlow);
-                // ...and the world's airglow line yields to the curtains rising out of it.
-                this.oneWorld?.setAuroraGlow?.(auroraGlow);
+        if (this.orbitEarth) {
+            // THE EARTH BELOW: where it is (presence, the eye's height, the setting sun) is one
+            // function of progress, shared with the camera's lean over it.
+            const earth = orbitEarthAt(cameraProgress, this.presentationLayout?.chapterPositions);
+            const eye = this.camera?.position;
+            this._orbitEarthSun = orbitEarthSunDirection(earth.sunElevation, this._orbitEarthSun);
+            if (eye) {
+                this._orbitEarthTrack = this._orbitEarthTrack || new THREE.Vector3();
+                this._orbitEarthTrack.set(eye.x * 0.2, 0, eye.z * 0.2);
             }
+            this.orbitEarth.update({
+                altitude: earth.altitude,
+                sun: this._orbitEarthSun,
+                presence: earth.presence,
+                aurora: earth.aurora,
+                eye,
+                time: this.time,
+                track: this._orbitEarthTrack,
+                frontSin: earth.frontSin,
+                veil: earth.veil,
+                cloudsAway: earth.cloudsAway,
+                covers: earth.covers,
+            });
+            // The dome's straight limb yields to the Earth's rim, and its airglow line sits at the
+            // airglow layer over the Earth's limb.
+            const airglow = orbitEarthAirglowElevation(earth.altitude, earth.presence);
+            this.oneWorld?.setEarth?.(earth.presence, airglow, earth.covers);
+            // The world's airglow line yields to the aurora's curtains rising out of it.
+            this.oneWorld?.setAuroraGlow?.(earth.aurora);
         }
 
         // The summit birds: time-driven (they wheel), revealed by progress; hidden elsewhere.
@@ -4487,24 +4480,14 @@ export class OdysseyBoardController {
                         ONE_WORLD_DEPARTURE_TARGET,
                     );
                 }
-                // Past actEnd the faded planet shrinks away beneath the eye, so the gate
-                // above never hides a silhouette that is still covering chapter 6's stars.
-                this.oneWorld.setDepartureRecede?.(
-                    worldRecedeScale(worldDepartureRecede(cameraProgress, actEnd)),
+                // THE CLIMB (2026-10-24): from late chapter 5 the world shrinks beneath the eye,
+                // which the eye sees as climbing above the clouds; by the time the gate fires it
+                // is a speck straight down, so the gate never hides a silhouette that still
+                // covers chapter 6's stars (odyssey-world-act-gate.js `worldClimbScale`).
+                this.oneWorld.setClimb?.(
+                    worldClimbScale(cameraProgress, this.presentationLayout.chapterPositions[4], actEnd),
                     this.camera?.position,
                 );
-
-                // ── ATMOSPHERIC THINNING (Wave 3 / F3) ───────────────────────────────
-                // The deck loses contrast, saturation and apparent scale as the rail
-                // climbs, instead of holding full cumulus form to the last drawn frame.
-                // Same shape as the fade above: schedule derived from the act edge, in
-                // fractions, so a re-layout carries it.
-                if (typeof this.oneWorld.setAtmosphericThin === 'function') {
-                    const skyStart = this.presentationLayout.chapterPositions[4];
-                    this.oneWorld.setAtmosphericThin(
-                        worldAtmosphericThin(cameraProgress, skyStart, actEnd),
-                    );
-                }
 
                 // Only update it while it draws. `heightAt` and `fog` are plain data and stay
                 // readable either way, so the level-orb seating and the fog handover below are
@@ -5392,10 +5375,10 @@ export class OdysseyBoardController {
             this.steamQuench.dispose();
             this.steamQuench = null;
         }
-        if (this.cloudBank) {
-            this.scene.remove(this.cloudBank.mesh);
-            this.cloudBank.dispose();
-            this.cloudBank = null;
+        if (this.orbitEarth) {
+            this.scene.remove(this.orbitEarth.mesh);
+            this.orbitEarth.dispose();
+            this.orbitEarth = null;
         }
         if (this.whalePass) {
             this.whalePass.dispose();

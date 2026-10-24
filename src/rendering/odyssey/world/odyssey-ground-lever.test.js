@@ -79,7 +79,10 @@ describe('the painted ground ships and can be flattened for measurement', () => 
         // assignment consumes `groundColour`, not how many tuning parameters applyAerial takes.
         // It first failed when the ground gained its own aerial rate and ceiling — a real
         // change, but not the one this assertion exists to catch.
-        expect(RENDERER).toMatch(/groundMat\.colorNode = toOutput\(applyAerial\(groundColour, positionWorld/);
+        // (Wrapped in meltIntoSky since 2026-10-24: the far edge fades into the dome's colour.)
+        expect(RENDERER).toMatch(
+            /groundMat\.colorNode = meltIntoSky\(\s*toOutput\(applyAerial\(groundColour, positionWorld/,
+        );
         expect(RENDERER).not.toMatch(/groundMat\.colorNode = toOutput\(applyAerial\(lit,/);
     });
 

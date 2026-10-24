@@ -13,6 +13,7 @@
  *   - 7->8: a 78 deg quaternion step (the city's stage basis adopted only after the boundary).
  * and in live play a wall-clock FOV pulse (+7-8 deg) fired at seam entry and again at the boundary.
  */
+import { orbitEarthAt } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
@@ -137,15 +138,33 @@ describe('Odyssey seam camera continuity (real camera, live spline)', () => {
         expect(resolveJourneyFraming(start + 1.4 * seamHalfWidth(7), chapterPositions).stage).toBeCloseTo(1, 6);
     });
 
+    // Across 5->6 the view also leans over the Earth below (composition/odyssey-orbit-earth.js):
+    // a continuous function of progress added after the chapter blend, so the plain framing a seam
+    // edge must equal carries it too.
+    const withEarth = (framing, p) => {
+        const earth = orbitEarthAt(p, chapterPositions);
+        return {
+            ...framing,
+            pitchDeg: (framing.pitchDeg ?? 0) + earth.lookDownDeg,
+            fovOffset: (framing.fovOffset ?? 0) + earth.widenDeg,
+        };
+    };
+
     it('equals the plain chapter framing at every seam window edge (continuous by construction)', () => {
         for (let source = 1; source <= 7; source += 1) {
             const boundary = chapterPositions[source];
             const w = seamHalfWidth(source);
             const local = (id, p) => (p - chapterPositions[id - 1]) / (chapterPositions[id] - chapterPositions[id - 1]);
             const atStart = resolveJourneyFraming(boundary - w, chapterPositions);
-            const plainStart = resolveChapterFramingForProgress(source, local(source, boundary - w));
+            const plainStart = withEarth(
+                resolveChapterFramingForProgress(source, local(source, boundary - w)),
+                boundary - w,
+            );
             const atEnd = resolveJourneyFraming(boundary + w, chapterPositions);
-            const plainEnd = resolveChapterFramingForProgress(source + 1, local(source + 1, boundary + w));
+            const plainEnd = withEarth(
+                resolveChapterFramingForProgress(source + 1, local(source + 1, boundary + w)),
+                boundary + w,
+            );
             Object.keys(plainStart).forEach((key) => {
                 expect(atStart[key], `${source}->${source + 1} start ${key}`).toBeCloseTo(plainStart[key], 5);
                 expect(atEnd[key], `${source}->${source + 1} end ${key}`).toBeCloseTo(plainEnd[key], 5);

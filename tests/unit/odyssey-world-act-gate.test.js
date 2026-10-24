@@ -5,16 +5,16 @@ import { describe, expect, it } from 'vitest';
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
 import {
     ONE_WORLD_ACT_MARGIN,
+    ONE_WORLD_CLIMB_END_SCALE,
+    ONE_WORLD_CLIMB_LEAD,
     ONE_WORLD_DEPARTURE_LEAD,
-    ONE_WORLD_RECEDE_END_SCALE,
-    ONE_WORLD_THIN_LEAD,
-    ONE_WORLD_THIN_MAX,
     isWorldVisibleAtProgress,
-    worldAtmosphericThin,
+    worldClimbScale,
     worldDepartureFade,
-    worldDepartureRecede,
-    worldRecedeScale,
 } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
+import { ODYSSEY_CLOUD_FIELD_SPECS } from '../../src/rendering/odyssey/world/odyssey-cloud-field-specs.js';
+import { ODYSSEY_SEA_LEVEL } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
+import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 import {
     DEFAULT_ODYSSEY_TRANSITION,
     ODYSSEY_CHAPTER_PROFILES,
@@ -168,92 +168,71 @@ describe('the world RECEDES before the gate fires (Wave 1B)', () => {
     });
 });
 
-describe('the faded planet shrinks away beneath the eye before the gate (audit 2026-10-18)', () => {
+describe('the eye climbs above the clouds (2026-10-24)', () => {
+    // Olov: "are we not supposed to get over the clouds, not having the clouds fade away right in
+    // front of us?" The world shrinks toward the point beneath the eye, which the eye sees as
+    // climbing to 1 / scale times its height: the cumulus sink below instead of dissolving.
     const cp = getActiveOdysseyChapterPositions();
+    const skyStart = cp[4];
     const actEnd = cp[5];
     const gateFires = actEnd + ONE_WORLD_ACT_MARGIN;
-    const scaleAt = (p) => worldRecedeScale(worldDepartureRecede(p, actEnd));
+    const climbStart = actEnd - ((actEnd - skyStart) * ONE_WORLD_CLIMB_LEAD);
+    const scaleAt = (p) => worldClimbScale(p, skyStart, actEnd);
 
-    it('leaves the world full size until its colour fade has finished', () => {
-        expect(scaleAt(cp[1])).toBe(1);
-        expect(scaleAt(cp[4])).toBe(1);
-        expect(scaleAt(actEnd)).toBe(1);
-        expect(worldDepartureFade(actEnd, cp[4], actEnd)).toBeCloseTo(1, 6);
+    it('leaves the world full size until the climb opens, after the sky has begun to deepen', () => {
+        for (let i = 0; i <= 20; i += 1) {
+            const p = cp[1] + ((climbStart - cp[1]) * (i / 20));
+            expect(scaleAt(p), `p=${p.toFixed(3)}`).toBe(1);
+        }
+        expect(ONE_WORLD_CLIMB_LEAD).toBeLessThan(ONE_WORLD_DEPARTURE_LEAD);
     });
 
-    it('is a speck by the time the gate fires, and shrinks without steps on the way', () => {
-        expect(scaleAt(gateFires)).toBeCloseTo(ONE_WORLD_RECEDE_END_SCALE, 9);
+    it('takes the eye above every cumulus top by orb 34, on the real camera', () => {
+        // The cloud field's tallest masses stand ~1.7 km over the sea; the rail itself only
+        // rises ~150 u through this stretch, so without the climb the eye stays among them.
+        const tops = ODYSSEY_CLOUD_FIELD_SPECS.map((c) => c.base + c.h);
+        const highest = Math.max(...tops) - ODYSSEY_SEA_LEVEL;
+        const rig = createOdysseyCameraRig();
+        const orb34 = rig.layout.levelPositionsById[34];
+        const eyeY = rig.poseAt(orb34).position.y;
+        const climbed = (eyeY - ODYSSEY_SEA_LEVEL) / scaleAt(orb34);
+        expect(eyeY - ODYSSEY_SEA_LEVEL).toBeLessThan(highest);
+        expect(climbed).toBeGreaterThan(highest * 1.1);
+    });
+
+    it('climbs evenly in the logarithm of the height, with no step on the way', () => {
         let prev = 1;
-        for (let i = 0; i <= 40; i += 1) {
-            const s = scaleAt(actEnd + (ONE_WORLD_ACT_MARGIN * (i / 40)));
+        const steps = 80;
+        for (let i = 0; i <= steps; i += 1) {
+            const p = climbStart + ((gateFires - climbStart) * (i / steps));
+            const s = scaleAt(p);
             expect(s).toBeLessThanOrEqual(prev);
-            // The edge's angle goes as ~1/scale: no single 1/40 of the margin moves it by
-            // more than a fifth of the whole sweep.
-            expect((1 / s) - (1 / prev)).toBeLessThan((1 / ONE_WORLD_RECEDE_END_SCALE) * 0.2);
+            // No 1/80 of the climb takes the height up by more than 6 % of the whole climb's
+            // doublings (an even climb would be 1.25 %; the smoothstep peaks at 1.9 %).
+            expect(Math.log(prev / s) / Math.log(1 / ONE_WORLD_CLIMB_END_SCALE)).toBeLessThan(0.06);
             prev = s;
         }
     });
 
-    it('degrades to full size on an unreadable layout', () => {
-        expect(worldDepartureRecede(NaN, actEnd)).toBe(0);
-        expect(worldDepartureRecede(0.8, undefined)).toBe(0);
-        expect(worldRecedeScale(NaN)).toBe(1);
-    });
-
-    it('is driven by the board every frame, beside the colour fade', () => {
-        expect(BOARD).toMatch(
-            /setDepartureRecede\?\.\(\s*worldRecedeScale\(worldDepartureRecede\(cameraProgress, actEnd\)\)/,
-        );
-    });
-});
-
-describe('the SKY thins with altitude before the world leaves (Wave 3 / F3)', () => {
-    const cp = getActiveOdysseyChapterPositions();
-    const actEnd = cp[5];
-    const skyStart = cp[4];
-    const thin = (p) => worldAtmosphericThin(p, skyStart, actEnd);
-    const thinStart = actEnd - (actEnd - skyStart) * ONE_WORLD_THIN_LEAD;
-
-    it('leaves the deck at full form through everything below the climb', () => {
-        // F3's fix must not quietly flatten the deck for the whole act — the thinning is
-        // an ALTITUDE read, and below the climb there is no altitude story to tell.
-        for (let i = 0; i <= 20; i += 1) {
-            const p = cp[1] + ((thinStart - cp[1]) * (i / 20));
-            expect(thin(p), `p=${p.toFixed(3)} must be untouched`).toBe(0);
-        }
-    });
-
-    it('opens EARLIER than the departure fade, and never completes', () => {
-        // The thinning is the sky losing body while the world below is still vivid; the
-        // fade is the whole world leaving. Order matters: thin first, then fade.
-        expect(ONE_WORLD_THIN_LEAD).toBeGreaterThan(ONE_WORLD_DEPARTURE_LEAD);
-        // A deck at zero would hand the limb bank nothing to cross — the cap is the
-        // difference between thinning the sky and deleting it.
-        expect(thin(actEnd)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
-        expect(ONE_WORLD_THIN_MAX).toBeLessThan(1);
-        expect(thin(actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
-    });
-
-    it('is monotonic and smooth across the climb', () => {
-        let prev = -1;
-        for (let i = 0; i <= 60; i += 1) {
-            const p = skyStart + ((actEnd - skyStart) * (i / 60));
-            const v = thin(p);
-            expect(v).toBeGreaterThanOrEqual(prev);
-            expect(v).toBeLessThanOrEqual(ONE_WORLD_THIN_MAX + 1e-9);
-            prev = v;
-        }
+    it('is a speck straight down by the time the gate fires, and never shrinks past it', () => {
+        expect(scaleAt(gateFires)).toBeCloseTo(ONE_WORLD_CLIMB_END_SCALE, 9);
+        expect(scaleAt(gateFires + 0.05)).toBeCloseTo(ONE_WORLD_CLIMB_END_SCALE, 9);
+        expect(isWorldVisibleAtProgress(gateFires - 1e-4, cp[1], actEnd)).toBe(true);
     });
 
     it('survives a re-layout, because it is expressed in fractions', () => {
         const alt = { skyStart: 0.3882, actEnd: 0.701 };
-        const altThin = (p) => worldAtmosphericThin(p, alt.skyStart, alt.actEnd);
-        expect(altThin(alt.skyStart)).toBe(0);
-        expect(altThin(alt.actEnd)).toBeCloseTo(ONE_WORLD_THIN_MAX, 6);
+        const altScale = (p) => worldClimbScale(p, alt.skyStart, alt.actEnd);
+        expect(altScale(alt.skyStart)).toBe(1);
+        expect(altScale(alt.actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(ONE_WORLD_CLIMB_END_SCALE, 9);
     });
 
-    it('degrades to zero on an unreadable layout', () => {
-        expect(worldAtmosphericThin(NaN, skyStart, actEnd)).toBe(0);
-        expect(worldAtmosphericThin(0.7, undefined, actEnd)).toBe(0);
+    it('degrades to full size on an unreadable layout', () => {
+        expect(worldClimbScale(NaN, skyStart, actEnd)).toBe(1);
+        expect(worldClimbScale(0.7, undefined, actEnd)).toBe(1);
+    });
+
+    it('is driven by the board every frame, beside the colour fade', () => {
+        expect(BOARD).toMatch(/setClimb\?\.\(\s*worldClimbScale\(cameraProgress, /);
     });
 });
