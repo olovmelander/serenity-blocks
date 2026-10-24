@@ -183,8 +183,22 @@ async function pagePrepare() {
     // A theme's start is timed in real milliseconds (10 s, 20 s for heavy ones), sized for a GPU;
     // on SwiftShader a heavy start can outlast it and the switch fails over to a retry.
     tm.getThemeLifecycleTimeout = () => 120000;
+    // Each theme brings up its own WebGPU device, timed in real milliseconds (5.5–10 s). On
+    // SwiftShader a new device queued behind the outgoing theme's busy one can take longer; the
+    // theme then falls back to WebGL2, which draws nothing here (a blank world).
+    let base = tm.activeTheme ? Object.getPrototypeOf(tm.activeTheme) : null;
+    while (base && !Object.prototype.hasOwnProperty.call(base, 'initializeRendererCandidate')) {
+        base = Object.getPrototypeOf(base);
+    }
+    if (base && !base.__trailerInitTimeout) {
+        const initialize = base.initializeRendererCandidate;
+        base.initializeRendererCandidate = function initializeRendererCandidate(renderer, options = {}) {
+            return initialize.call(this, renderer, { ...options, timeoutMs: Math.max(options.timeoutMs ?? 0, 120000) });
+        };
+        base.__trailerInitTimeout = true;
+    }
     window.performanceMonitor?.disable?.();
-    return { theme: tm.activeThemeName };
+    return { theme: tm.activeThemeName, rendererInitPatched: Boolean(base?.__trailerInitTimeout) };
 }
 
 async function pageWaitThemeIdle({ themeId, timeoutMs = 600000 }) {
@@ -539,9 +553,14 @@ class Session {
         const page = this.page;
         page.on('pageerror', (error) => log('pageerror:', String(error.message).slice(0, 200)));
         page.on('console', (message) => {
-            if (message.type() !== 'error') return;
             const text = message.text();
-            if (/GL Driver|WebGPU Context|ReadPixels|Automatic fallback|favicon/.test(text)) return;
+            // A theme on the WebGL2 backend draws nothing under SwiftShader: say so.
+            if (/Automatic fallback|trying the WebGL2 backend/.test(text)) {
+                log('renderer fallback:', text.slice(0, 200));
+                return;
+            }
+            if (message.type() !== 'error') return;
+            if (/GL Driver|WebGPU Context|ReadPixels|favicon/.test(text)) return;
             log('console.error:', text.slice(0, 200));
         });
         // On the context, so the online peer windows get them too.
@@ -564,7 +583,7 @@ class Session {
         await page.addStyleTag({ content: HIDE_CSS });
         await page.addScriptTag({ content: this.autoplaySource });
         const prepared = await page.evaluate(pagePrepare);
-        log(`booted in ${Math.round((Date.now() - started) / 1000)} s (theme ${prepared.theme})`);
+        log(`booted in ${Math.round((Date.now() - started) / 1000)} s (theme ${prepared.theme}; renderer init patched: ${prepared.rendererInitPatched})`);
         this.mode = null;
     }
 
