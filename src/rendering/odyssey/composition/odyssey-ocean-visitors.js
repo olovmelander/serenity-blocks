@@ -20,6 +20,12 @@
  * shark over orbs 6-8, the whales over orb 9 (odyssey-whale-pass.js), the manta under the bright
  * surface ahead of orb 10. It arrives and leaves by swimming, whichever way the eye goes.
  *
+ * THEY ROAM (2026-10-24). From 2026-10-23 they escorted the eye (a slot each in the journey's
+ * view), and Olov did not want them following the camera's movement: "i just want them to swim
+ * around freely and so they can be seen when we are moving along the journey". Each now swims its
+ * own route in the world, on the clock alone (odyssey-ocean-roam.js), placed where the climb sees
+ * it. The camera moves past them.
+ *
  * The bodies are the Ocean theme's (built in Blender from numbers), copied into Odyssey's own
  * asset by scripts/odyssey-extract-ocean-visitors.mjs — themes are islands; this file parses that
  * copy with its own reader and swims it with a contained port of the theme's ray and fish strokes
@@ -67,15 +73,8 @@ import {
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
 import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import {
-    OCEAN_ESCORT,
-    OCEAN_ESCORT_MOTION,
-    escortArrivalOut,
-    escortHeading,
-    escortLoop,
-    escortLoopScale,
-    resolveEscortTarget,
-    stepEscortAnchor,
-} from './odyssey-ocean-escort.js';
+    OCEAN_ROAM, roamAt, roamHeading, stepRoamArrival,
+} from './odyssey-ocean-roam.js';
 
 export const OCEAN_VISITORS_URL = new URL('../assets/chapter-02/visitors/ocean-visitors.glb', import.meta.url).href;
 
@@ -180,7 +179,7 @@ export function parseOceanVisitors(source) {
 /**
  * The cast. `size` is world units (a ray across its wings, a fish nose to tail); `stroke` seconds
  * per beat at full size; `ray` the manta's wing stroke (else the fish stroke); `bankMax` how far it
- * leans into a turn (rad). Where each swims is its escort slot (odyssey-ocean-escort.js).
+ * leans into a turn (rad). Where each swims is its route (odyssey-ocean-roam.js).
  */
 export const OCEAN_VISITOR_CAST = Object.freeze([
     Object.freeze({
@@ -199,54 +198,6 @@ export const OCEAN_VISITOR_CAST = Object.freeze([
         bankMax: 0.3,
     }),
 ]);
-
-const smooth = (x) => {
-    const t = Math.min(1, Math.max(0, x));
-    return t * t * (3 - (2 * t));
-};
-
-const _target = { x: 0, y: 0, z: 0 };
-const _loop = { x: 0, y: 0, z: 0 };
-const _loopVelocity = { x: 0, y: 0, z: 0 };
-
-/**
- * One escorting animal's place this frame (shared by the visitors and the whale pair): its anchor
- * swims after its slot in the formation's view, it arrives from the blue the first time it can be
- * seen (or after a jump), and it swims its loop round the anchor. Writes `out` (world position) and
- * `velocity`; returns its fade (0..1, the arrival's).
- * @param {{ pos?: object|null, vel?: object, arrive?: number }} state
- * @param {import('./odyssey-ocean-escort.js').EscortView} view the formation's view (stepEscortFrame)
- * @param {object} slot OCEAN_ESCORT[...]
- * @param {number} seaLevel
- * @param {number} time seconds
- * @param {number} dt seconds
- * @param {THREE.Vector3} out
- * @param {THREE.Vector3} velocity
- * @param {object} [loop] its loop (default the slot's)
- * @param {number} [lift] world units it rides above the anchor
- * @returns {number} fade
- */
-export function placeEscorted(state, view, slot, seaLevel, time, dt, out, velocity, loop = slot.loop, lift = 0) {
-    const target = resolveEscortTarget(view, slot, seaLevel, _target);
-    if (stepEscortAnchor(state, target, dt)) state.arrive = 0;
-    state.arrive = Math.min(1, (state.arrive ?? 0) + (dt / OCEAN_ESCORT_MOTION.arriveS));
-    const k = escortLoopScale(view.position, target, slot);
-    escortLoop(loop, time, _loop, _loopVelocity);
-    // Arriving, it swims in along the eye's line of sight from `reach` times as far.
-    const outFactor = escortArrivalOut(state.arrive) * (OCEAN_ESCORT_MOTION.reach - 1);
-    const eye = view.position;
-    out.set(
-        state.pos.x + (_loop.x * k) + ((state.pos.x - eye.x) * outFactor),
-        state.pos.y + ((_loop.y + lift) * k) + ((state.pos.y - eye.y) * outFactor),
-        state.pos.z + (_loop.z * k) + ((state.pos.z - eye.z) * outFactor),
-    );
-    velocity.set(
-        state.vel.x + (_loopVelocity.x * k),
-        state.vel.y + (_loopVelocity.y * k),
-        state.vel.z + (_loopVelocity.z * k),
-    );
-    return smooth(state.arrive);
-}
 
 /**
  * Per kind, from the theme's tables (ocean-giants.js SWIM / SKINS): stroke shape and colours.
@@ -434,8 +385,8 @@ export function createOceanVisitors({
             const kinds = parseOceanVisitors(await response.arrayBuffer());
             OCEAN_VISITOR_CAST.forEach((cast) => {
                 const body = kinds[cast.name];
-                const slot = OCEAN_ESCORT[cast.name];
-                if (!body || !slot) return;
+                const path = OCEAN_ROAM[cast.name];
+                if (!body || !path) return;
                 const mesh = new THREE.Mesh(body.geometry, material);
                 mesh.name = `odyssey-visitor-${cast.name}`;
                 mesh.frustumCulled = false;
@@ -444,12 +395,12 @@ export function createOceanVisitors({
                 group.add(mesh);
                 actors.push({
                     cast,
-                    slot,
+                    path,
                     mesh,
-                    phase: slot.loop.phase,
-                    beatPhase: slot.loop.phase,
+                    phase: path.phase,
+                    beatPhase: path.phase,
                     fade: 0,
-                    escort: {},
+                    roam: {},
                     heading: null,
                     turn: 0,
                 });
@@ -468,14 +419,12 @@ export function createOceanVisitors({
          * @param {number} submerged 0..1
          * @param {boolean} inChapter
          * @param {number} [presence] ocean-life presence from the world's 1->2 carry
-         * @param {import('./odyssey-ocean-escort.js').EscortView|null} [view] the escort formation's
-         *   view (the board: stepEscortFrame over the rail camera); none, nothing is drawn
          */
-        update(time, delta, camera, submerged, inChapter, presence = 1, view = null) {
+        update(time, delta, camera, submerged, inChapter, presence = 1) {
             const camY = camera?.position?.y ?? seaLevel;
             const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
             const dt = Math.min(Math.max(Number.isFinite(delta) ? delta : 0, 0), 0.1);
-            const on = ready && !!view && inChapter && submerged > 0.5 && life > 0.001;
+            const on = ready && inChapter && submerged > 0.5 && life > 0.001;
             let any = false;
             const depth = seaLevel - camY;
             const t01 = THREE.MathUtils.clamp((depth - 20) / 220, 0, 1);
@@ -483,17 +432,17 @@ export function createOceanVisitors({
                 .multiplyScalar(odysseyDeepWaterDim(depth / 140));
             uSurface.value = 0.35 + (0.65 * (1 - THREE.MathUtils.clamp(depth / 200, 0, 1)));
             actors.forEach((actor) => {
-                const { cast, slot, mesh } = actor;
+                const { cast, path, mesh } = actor;
                 if (!on) {
                     // Out of the water (or the chapter): it arrives afresh next time.
-                    actor.escort = {};
+                    actor.roam = {};
                     actor.heading = null;
                     mesh.visible = false;
                     return;
                 }
-                // Its place in the escort: after its slot, arriving from the blue, round its loop.
-                const arrived = placeEscorted(actor.escort, view, slot, seaLevel, time, dt, mesh.position, velocity);
-                actor.fade = arrived * life;
+                // Its place on its own route (the clock's, never the camera's), faint as it arrives.
+                roamAt(path, time, mesh.position, velocity);
+                actor.fade = stepRoamArrival(actor.roam, dt) * life;
                 mesh.userData.fade = actor.fade;
                 mesh.visible = actor.fade > 0.01;
                 if (!mesh.visible) return;
@@ -505,7 +454,7 @@ export function createOceanVisitors({
                 mesh.userData.swimPhase = actor.phase;
                 mesh.userData.swimBeat = beat;
                 // Heading from its velocity, mostly level (orientation from WORLD up).
-                escortHeading(velocity, vF, actor.heading || { x: 0, y: 0, z: 1 });
+                roamHeading(velocity, vF, actor.heading || { x: 0, y: 0, z: 1 });
                 vF.normalize();
                 // Turn: how fast the heading swings toward its side (per half second), eased.
                 if (actor.heading && dt > 0) {

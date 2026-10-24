@@ -46,7 +46,6 @@ import {
 import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { createWhalePass } from './composition/odyssey-whale-pass.js';
 import { createOceanVisitors } from './composition/odyssey-ocean-visitors.js';
-import { stepEscortFrame } from './composition/odyssey-ocean-escort.js';
 import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
@@ -2337,36 +2336,7 @@ export class OdysseyBoardController {
             worldState?.submerged ?? 0,
             inChapter,
             worldState?.lifePresence ?? 1,
-            this._oceanEscortView(delta),
         );
-    }
-
-    /**
-     * THE OCEAN'S ESCORT (odyssey-ocean-escort.js): the one view frame every chapter 2 animal takes
-     * its slot in, stepped once a frame (the whale pass and the visitors both ask for it): the rail
-     * camera — where the follow camera stands at the eye's progress, whatever an orb close-up or a
-     * free look is doing — followed quickly where it looks and slowly in its spin.
-     * @private
-     */
-    _oceanEscortView(delta) {
-        // Once per frame (the board's clock moves every frame).
-        if (this._escortViewAt === this.time && this._escortView) return this._escortView;
-        const cam = this.camera?.userData?.railCamera || this.camera;
-        if (!cam?.isPerspectiveCamera) return null;
-        cam.updateMatrixWorld();
-        const forward = cam.getWorldDirection(this._escortForward || (this._escortForward = new THREE.Vector3()));
-        const up = (this._escortUp || (this._escortUp = new THREE.Vector3())).set(0, 1, 0).applyQuaternion(cam.quaternion);
-        this._escortFrame = this._escortFrame || {};
-        this._escortView = stepEscortFrame(this._escortFrame, {
-            position: cam.position,
-            forward,
-            up,
-            right: (this._escortRight || (this._escortRight = new THREE.Vector3())).crossVectors(forward, up),
-            tanHalf: Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)),
-            aspect: cam.aspect || 16 / 9,
-        }, delta);
-        this._escortViewAt = this.time;
-        return this._escortView;
     }
 
     /**
@@ -2464,7 +2434,6 @@ export class OdysseyBoardController {
             worldState?.submerged ?? 0,
             inChapter,
             worldState?.lifePresence ?? 1,
-            this._oceanEscortView(delta),
         );
     }
 
@@ -3217,7 +3186,7 @@ export class OdysseyBoardController {
                     const noWhales = typeof window !== 'undefined'
                         && new URLSearchParams(window.location?.search || '').get('odysseyNoWhales') === '1';
                     if (this.oneWorldEnabled && !noWhales && Number.isFinite(c1) && Number.isFinite(c2)) {
-                        // The pair escorts the eye through the ocean (odyssey-ocean-escort.js).
+                        // The pair roams its own route in the ocean (odyssey-ocean-roam.js).
                         this.whalePass = createWhalePass({
                             seaLevel: ODYSSEY_SEA_LEVEL,
                             shallowColour: new THREE.Color(...sampleColourScript(0.12).skyHorizon),
@@ -3240,7 +3209,7 @@ export class OdysseyBoardController {
                     const noVisitors = typeof window !== 'undefined'
                         && new URLSearchParams(window.location?.search || '').get('odysseyNoVisitors') === '1';
                     if (this.oneWorldEnabled && !noVisitors && Number.isFinite(c1) && Number.isFinite(c2)) {
-                        // They escort the eye through the ocean with the whales (odyssey-ocean-escort.js).
+                        // They roam their own routes in the ocean, as the whales do (odyssey-ocean-roam.js).
                         this.oceanVisitors = createOceanVisitors({
                             seaLevel: ODYSSEY_SEA_LEVEL,
                             shallowColour: new THREE.Color(...sampleColourScript(0.12).skyHorizon),

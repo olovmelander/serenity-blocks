@@ -29,21 +29,24 @@ import {
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter2CreatureAssetById } from '../chapter-environments/shared/chapter-02-creature-assets.js';
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
-import { placeEscorted } from './odyssey-ocean-visitors.js';
-import { OCEAN_ESCORT, escortHeading } from './odyssey-ocean-escort.js';
+import {
+    OCEAN_ROAM, roamAt, roamHeading, roamLane, stepRoamArrival,
+} from './odyssey-ocean-roam.js';
 
 /** Whale length in world units (the GLB is auto-scaled to this by its largest bound). */
 const MOTHER_LENGTH = 58;
 const CALF_LENGTH = 26;
 /**
- * THE PAIR ESCORTS THE EYE (2026-10-23; see odyssey-ocean-escort.js). It owned one stretch of the
- * climb (orb 9, 2026-10-22) and was in frame for ~4 s of the journey's own drift up the ocean. Now
- * it keeps the eye company through the whole chapter: the mother swims loops round her escort
- * anchor (OCEAN_ESCORT.whales, the right of the view), and the calf keeps an inner lane just above
- * her, a little ahead.
+ * THE PAIR ROAMS (2026-10-24; see odyssey-ocean-roam.js). It owned one stretch of the climb (orb 9,
+ * 2026-10-22), then escorted the eye from a slot in the journey's view (2026-10-23), and Olov did
+ * not want it following the camera. Now the mother swims her own route in the world
+ * (OCEAN_ROAM.whales, high on the right of the climb's view), and the calf keeps an inner lane
+ * beside her, just above and a little ahead, on the same clock.
  */
 export const WHALE_PASS_PAIR = Object.freeze({
-    calf: Object.freeze({ radius: 13, phaseLead: 0.5, above: 5 }),
+    calf: Object.freeze({
+        inward: 12, shorter: 8, above: 5, lead: 0.35,
+    }),
 });
 
 /**
@@ -120,20 +123,16 @@ export function createWhalePass({
     const actors = [];
     let ready = false;
     let loaded = false;
-    // The pair's escort: one anchor (the mother's), arriving from the blue the first time.
-    let escortState = {};
+    // The pair's arrival (one, the mother's): it fades in from the blue once the water allows it.
+    let arrival = {};
     const scratchColour = new THREE.Color();
     const position = new THREE.Vector3();
     const velocity = new THREE.Vector3();
     const heading = new THREE.Vector3();
-    const slot = OCEAN_ESCORT.whales;
-    const calfLoop = Object.freeze({
-        ...slot.loop,
-        radius: WHALE_PASS_PAIR.calf.radius,
-        phase: slot.loop.phase + WHALE_PASS_PAIR.calf.phaseLead,
-    });
+    const motherRoute = OCEAN_ROAM.whales;
+    const calfRoute = roamLane(motherRoute, WHALE_PASS_PAIR.calf);
 
-    async function addActor(url, bodyLength, phase, loop, above) {
+    async function addActor(url, bodyLength, phase, path) {
         const { scene: model, animations } = await loadOdysseyGltfCached(url);
         const size = bindPoseBounds(model).getSize(new THREE.Vector3());
         model.scale.setScalar(bodyLength / Math.max(size.x, size.y, size.z, 1e-3));
@@ -155,7 +154,7 @@ export function createWhalePass({
             action.time = phase * (animations[0].duration || 1);
         }
         actors.push({
-            holder, mixer, phase, loop, above, state: escortState, yaw: null, turn: 0,
+            holder, mixer, phase, path, yaw: null, turn: 0,
         });
     }
 
@@ -166,8 +165,8 @@ export function createWhalePass({
             if (loaded) return true;
             const rec = getChapter2CreatureAssetById('whale-glide');
             if (!rec?.url) return false;
-            await addActor(rec.url, MOTHER_LENGTH, 0, slot.loop, 0);
-            await addActor(rec.url, CALF_LENGTH, 0.37, calfLoop, WHALE_PASS_PAIR.calf.above);
+            await addActor(rec.url, MOTHER_LENGTH, 0, motherRoute);
+            await addActor(rec.url, CALF_LENGTH, 0.37, calfRoute);
             loaded = true;
             return true;
         },
@@ -184,18 +183,16 @@ export function createWhalePass({
          * @param {number} [presence] 0..1 ocean-life presence from the world's 1->2 carry
          *   (`oneWorld.state.lifePresence`): the pair arrives with the fish as the quench thins,
          *   never inside Earth Core's cavern. Defaults to 1 (no carry wired = today's behaviour).
-         * @param {import('./odyssey-ocean-escort.js').EscortView|null} [view] the escort formation's
-         *   view (the board: stepEscortFrame over the rail camera); none, nothing is drawn
          */
-        update(time, delta, camera, submerged, inChapter, presence = 1, view = null) {
+        update(time, delta, camera, submerged, inChapter, presence = 1) {
             const camY = camera?.position?.y ?? seaLevel;
             const depth = seaLevel - camY;
             const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
             const dt = Math.min(Math.max(Number.isFinite(delta) ? delta : 0, 0), 0.1);
-            const on = ready && !!view && inChapter && submerged > 0.5 && life > 0.001;
+            const on = ready && inChapter && submerged > 0.5 && life > 0.001;
             if (!on) {
                 // Out of the water (or the chapter): the pair arrives afresh next time.
-                escortState = {};
+                arrival = {};
                 group.visible = false;
                 return;
             }
@@ -207,22 +204,15 @@ export function createWhalePass({
             uWater.value.copy(scratchColour.copy(shallowColour).lerp(deepColour, t))
                 .multiplyScalar(odysseyDeepWaterDim(depth / 140));
 
-            let fade = 0;
-            actors.forEach((actor, i) => {
+            const fade = stepRoamArrival(arrival, dt);
+            actors.forEach((actor) => {
                 if (actor.mixer) actor.mixer.update(dt * 0.8);
-                // Both ride the one anchor: the mother's escort, stepped once (by the mother); the
-                // calf only reads it, on its inner lane above her.
-                const state = escortState;
-                const arrived = i === 0
-                    ? placeEscorted(state, view, slot, seaLevel, time, dt, position, velocity, actor.loop, actor.above)
-                    : placeEscorted(state, view, slot, seaLevel, time, 0, position, velocity, actor.loop, actor.above);
-                if (i === 0) fade = arrived;
-                // A gentle bob of its own.
-                position.y += Math.sin((time * 0.27) + (actor.phase * 5)) * 2.5;
+                // Each on its own route (the clock's, never the camera's); the calf's beside hers.
+                roamAt(actor.path, time, position, velocity);
                 actor.holder.position.copy(position);
                 // Heading from its velocity, mostly level. The GLB leads with -Z (see
                 // deep-ocean-manta.js _whaleBaseFwd), so yaw so that -Z points along it.
-                escortHeading(velocity, heading, { x: 0, y: 0, z: 1 });
+                roamHeading(velocity, heading, { x: 0, y: 0, z: 1 });
                 const yaw = Math.atan2(-heading.x, -heading.z);
                 if (actor.yaw !== null && dt > 0) {
                     const d = Math.atan2(Math.sin(yaw - actor.yaw), Math.cos(yaw - actor.yaw));
