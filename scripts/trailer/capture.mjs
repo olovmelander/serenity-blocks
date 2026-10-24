@@ -533,6 +533,33 @@ class Session {
         log(id, `online phases: ${JSON.stringify(await Promise.all([this.page, ...this.peers].map((p) => p.evaluate(pageOnlinePhase).catch(() => null))))}`);
     }
 
+    /**
+     * Wait for the world to be on screen before recording. A theme can report itself ready while
+     * its pipelines still compile in the GPU process (in real time, and slowly on SwiftShader):
+     * its first frames would be blank and the world would pop in mid-shot. The left edge of the
+     * frame is world in every mode (the board and HUD sit centre and right), so sample it every
+     * few real seconds, one game frame apart, until it holds content and stops changing.
+     */
+    async warmUntilDrawn(id, stepAll) {
+        const { page, cdp } = this;
+        const clip = { x: 0, y: 0, width: Math.round(width * 0.22), height, scale: 0.5 };
+        let previous = 0;
+        let steady = 0;
+        for (let i = 0; i < 80; i += 1) {
+            const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip });
+            const size = data.length * 0.75;
+            steady = size > 4000 && previous > 0 && Math.abs(size - previous) / previous < 0.15 ? steady + 1 : 0;
+            if (steady >= 2) {
+                if (i > 2) log(`${id}: world drawn after ${i} checks`);
+                return;
+            }
+            previous = size;
+            await page.evaluate((ms) => window.__trailerClock.realSleep(ms), 2500);
+            await stepAll();
+        }
+        log(`${id}: the world never settled on screen; recording anyway`);
+    }
+
     /** Freeze time and record `frames` frames into `file`. */
     async record(id, shot, frames, file) {
         const { page, cdp } = this;
@@ -548,6 +575,7 @@ class Session {
         for (let i = 0; i < preroll; i += 1) {
             await stepAll();
         }
+        await this.warmUntilDrawn(id, stepAll);
         if (shot.kind === 'odyssey' && !shot.level) {
             await page.evaluate(pageOdysseyFlyover, { seconds: frames / fps });
         }
