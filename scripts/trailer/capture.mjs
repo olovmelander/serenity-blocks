@@ -529,14 +529,19 @@ class Session {
         if (['single', 'infinity', 'stillfall', 'odyssey'].includes(kind) && (kind !== 'odyssey' || shot.level)) {
             if (shot.prefill !== 0 && kind !== 'stillfall') {
                 const placed = await this.run((options) => window.__trailerAutoplay.prefill(options), {
-                    pieces: shot.prefill ?? (kind === 'infinity' ? 40 : 18), seed: shot.seed ?? 7,
+                    pieces: shot.prefill ?? (kind === 'infinity' ? 70 : 18),
+                    maxHeight: shot.prefillHeight ?? (kind === 'infinity' ? 26 : 9),
+                    seed: shot.seed ?? 7,
                 });
                 log(id, `prefilled ${placed} pieces`);
             }
             if (kind === 'stillfall') {
-                await this.run((options) => window.__trailerAutoplay.startStillfall(options), {
-                    thinkMs: shot.thinkMs ?? 650,
+                const prepared = await this.run((options) => window.__trailerAutoplay.prepareStillfall(options), {
+                    puzzle: shot.puzzle, steps: shot.presolve ?? 0,
                 });
+                log(id, 'stillfall', JSON.stringify(prepared));
+                // The solver starts with the recording (record()): its pause over the decisive
+                // piece must fall in the shot, not in the warm-up.
             } else {
                 await this.run((options) => window.__trailerAutoplay.start(options), {
                     difficulty: shot.difficulty ?? 8, seed: shot.seed ?? 1337,
@@ -625,6 +630,11 @@ class Session {
             await stepAll();
         }
         if (shot.warm !== false && shot.kind !== 'hale') await this.warmUntilDrawn(id, stepAll);
+        if (shot.kind === 'stillfall') {
+            await page.evaluate((options) => window.__trailerAutoplay.startStillfall(options), {
+                thinkMs: shot.thinkMs ?? 650,
+            });
+        }
         if (shot.kind === 'odyssey' && !shot.level) {
             await page.evaluate(pageOdysseyFlyover, { seconds: frames / fps });
         }
