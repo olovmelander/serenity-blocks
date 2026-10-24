@@ -73,9 +73,11 @@ bordered well; no copy names another game.
    draws a frame for seconds on SwiftShader) the others would take it for gone, so the capture
    has each page's transport report no silence. Each peer window costs about ten minutes of
    boot on SwiftShader and slows every frame, hence two seats; on a GPU, raise `players`.
-6. **The world flip** holds the game (`gameState.isPaused`), thaws time while the next theme
-   loads behind the board and the outgoing one fades, then freezes again and resumes: the board
-   and the bot continue exactly where they were, and the world has changed on the beat.
+6. **The world flip** holds the game (`gameState.isPaused`) and the bot, thaws time while the
+   next theme loads behind the board, then freezes again and steps frames, still held, until the
+   theme manager has revealed the new world and it is on screen (a theme reports itself running
+   while its in-play switch still builds it hidden). Only then does play resume: the board and
+   the bot continue exactly where they were, and the world has changed on the beat.
 7. **`render-overlay.mjs`** draws the title layer (`overlay.mjs`: an HTML page positioned purely
    from the timeline, fonts and artwork inlined from `public/`) to a transparent PNG sequence.
 8. **`assemble.mjs`** cuts the clips, the camera moves, the overlay and the music edit together
@@ -113,6 +115,11 @@ All of it is data in `scripts/trailer/trailer-config.mjs`:
   theme), so the first cut draws the themes' 3D at 0.75 render scale on the High tier (the board
   and HUD stay at full resolution). A GPU capture at Extreme and full scale will be richer;
   timing is unaffected.
+- SwiftShader needs more real time than the game allows a GPU: the capture raises the theme
+  start limit and each theme's renderer bring-up limit to 120 s (`pagePrepare`). At the game's
+  own 5.5 s a renderer queued behind the outgoing theme's device falls back to WebGL2, which
+  draws nothing under SwiftShader (a blank world); the capture logs any such fallback.
+  Voltage Storm still never draws here, so Chromadelic Highway stands in for it in the flip.
 - Audio is the music only; the game's sound effects are muted during capture (the analyser
   sits before the music gain, so music-reactive visuals are still while muted).
 - The music was chosen and cut from analysis (beat tracking, bar energy, bass onsets), not by
