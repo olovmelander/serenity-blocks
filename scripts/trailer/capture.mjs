@@ -132,6 +132,25 @@ export function shotLengths(trailer) {
 
 const log = (...parts) => console.log(`[trailer ${new Date().toISOString().slice(11, 19)}]`, ...parts);
 
+/**
+ * SwiftShader's WebGPU rejects texture views with a `swizzle` (the breathing worlds ask for one);
+ * drop it, as scripts/capture-hale-sessions.mjs does. A GPU never reaches this.
+ */
+function swiftShaderViewPolyfill() {
+    // eslint-disable-next-line no-undef
+    if (typeof GPUTexture === 'undefined') return;
+    // eslint-disable-next-line no-undef
+    const original = GPUTexture.prototype.createView;
+    // eslint-disable-next-line no-undef
+    GPUTexture.prototype.createView = function createView(descriptor) {
+        if (descriptor && typeof descriptor.swizzle === 'string') {
+            const { swizzle, ...rest } = descriptor;
+            return original.call(this, rest);
+        }
+        return original.call(this, descriptor);
+    };
+}
+
 // ---------------------------------------------------------------------------------------------
 // In-page steps. Each runs inside the game page (page.evaluate) and must be self-contained.
 // ---------------------------------------------------------------------------------------------
@@ -248,14 +267,40 @@ async function pageStartVersus({ seats = 4 }) {
     return { ok: Boolean(mode.isRunning) };
 }
 
-async function pageStartHale({ session = 'FIRST' }) {
+async function pageStartHale({ session = 'FIRST', stage = 1 }) {
+    // As scripts/capture-hale-sessions.mjs does: start the session, hold its clock, load the
+    // stage's world behind the guide and wait for it to be drawn. The stage itself starts with
+    // the recording (pageRunHaleStage), so its title card and its first breath land on frame 0.
+    const sleep = (ms) => window.__trailerClock.realSleep(ms);
     const app = window.serenityBlocks;
     await app.startDeferredDesktopServices?.('menu-hale');
     const hub = app.serenityHub || await app.initializeGlobalSerenityHub();
     hub.openHaleSessions();
-    await window.__trailerClock.realSleep(1500);
+    await sleep(1500);
     hub.sessionsTab.startSession(session);
-    return { ok: true };
+    await sleep(1500);
+    const manager = app.serenityHub.sessionManager;
+    manager.phaseTimeouts.forEach((entry) => clearTimeout(entry.timer));
+    manager.phaseTimeouts.clear();
+    clearInterval(manager.progressUpdateTimer);
+    manager.progressUpdateTimer = null;
+    window.breathingIndicator?._hideChapter?.();
+    const world = manager._worldFor(manager.activeSession.phases[stage]);
+    window.breathingIndicator.setTechnique(world);
+    let live = false;
+    for (let i = 0; i < 1500 && !live; i += 1) {
+        live = Boolean(document.querySelector('.breath-guide')?.classList.contains('is-live'));
+        if (!live) await sleep(200);
+    }
+    await sleep(1500);
+    return { ok: live, world };
+}
+
+async function pageRunHaleStage({ stage = 1 }) {
+    const manager = window.serenityBlocks.serenityHub.sessionManager;
+    manager.currentPhaseIndex = stage;
+    manager._runPhase();
+    return { phase: manager.activeSession.phases[stage]?.name ?? stage };
 }
 
 async function pageStartOdyssey({ level }) {
@@ -396,6 +441,7 @@ class Session {
             if (/GL Driver|WebGPU Context|ReadPixels|Automatic fallback|favicon/.test(text)) return;
             log('console.error:', text.slice(0, 200));
         });
+        await page.addInitScript(swiftShaderViewPolyfill);
         await page.addInitScript(`(${installVirtualClock.toString()})();`
             + `try{localStorage.setItem('serenityBlocksSettings',${JSON.stringify(JSON.stringify(SETTINGS))});`
             + "localStorage.setItem('serenity.photosensitivityWarning','0');"
@@ -449,7 +495,7 @@ class Session {
             log(id, 'versus', JSON.stringify(await this.run(pageStartVersus, { seats: shot.seats || 4 })));
             break;
         case 'hale':
-            log(id, 'hale', JSON.stringify(await this.run(pageStartHale, { session: shot.session || 'FIRST' })));
+            log(id, 'hale', JSON.stringify(await this.run(pageStartHale, { session: shot.session || 'FIRST', stage: shot.stage ?? 1 })));
             break;
         case 'odyssey':
             log(id, 'odyssey', JSON.stringify(await this.run(pageStartOdyssey, { level: shot.level || 0 })));
@@ -571,11 +617,12 @@ class Session {
         await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
         for (const peer of peers) await peer.evaluate(() => window.__trailerClock.freeze());
         await page.evaluate(() => window.__trailerClock.freeze());
+        if (shot.kind === 'hale') log(id, JSON.stringify(await page.evaluate(pageRunHaleStage, { stage: shot.stage ?? 1 })));
         const preroll = Math.round((shot.preroll ?? PREROLL) * fps);
         for (let i = 0; i < preroll; i += 1) {
             await stepAll();
         }
-        await this.warmUntilDrawn(id, stepAll);
+        if (shot.warm !== false && shot.kind !== 'hale') await this.warmUntilDrawn(id, stepAll);
         if (shot.kind === 'odyssey' && !shot.level) {
             await page.evaluate(pageOdysseyFlyover, { seconds: frames / fps });
         }

@@ -8,10 +8,11 @@
  * `step(ms)` is called, so each captured frame is exactly 1/fps of game time later than the last,
  * however long it took to draw.
  *
- * It starts thawed (real time, every call passed through), so the app boots and loads at full
- * speed; the capture script freezes it around a shot and thaws it between shots. Thawing carries
- * the clock on from where virtual time stopped (time never runs backwards) and hands any pending
- * virtual timers to real ones.
+ * It starts thawed (real time), so the app boots and loads at full speed; the capture script
+ * freezes it around a shot and thaws it between shots. Thawing carries the clock on from where
+ * virtual time stopped (time never runs backwards). Every timer lives in one registry and is
+ * backed by a real timer while thawed and by the virtual schedule while frozen, so a timer set
+ * before a freeze (a session's next stage, say) waits on virtual time like the rest.
  *
  * CSS animations and transitions run on the browser's own clock; the capture script pauses the
  * document timeline (CDP Animation.setPlaybackRate 0) and `step()` advances every animation by
@@ -29,7 +30,6 @@ export function installVirtualClock() {
     const realRaf = window.requestAnimationFrame.bind(window);
     const realSetTimeout = window.setTimeout.bind(window);
     const realClearTimeout = window.clearTimeout.bind(window);
-    const realSetInterval = window.setInterval.bind(window);
     const realClearInterval = window.clearInterval.bind(window);
 
     const dateOffset = realDateNow() - realPerfNow();
@@ -72,45 +72,10 @@ export function installVirtualClock() {
         rafQueue.delete(id);
     };
 
-    // ---- timers: virtual while frozen, real while thawed ----
-    const VIRTUAL_ID_BASE = 2e9;
-    let timerSeq = VIRTUAL_ID_BASE;
-    const virtualTimers = new Map(); // id -> { due, delay, callback, args, repeat }
-    const handedOff = new Map(); // virtual id -> real id, after a thaw
-    const addVirtualTimer = (callback, delay, args, repeat) => {
-        timerSeq += 1;
-        const wait = Math.max(0, Number(delay) || 0);
-        virtualTimers.set(timerSeq, {
-            due: virtualNow + wait, delay: wait, callback, args, repeat,
-        });
-        return timerSeq;
-    };
-    const clearAny = (id, realClear) => {
-        if (virtualTimers.delete(id)) return;
-        if (handedOff.has(id)) {
-            realClear(handedOff.get(id));
-            handedOff.delete(id);
-            return;
-        }
-        realClear(id);
-    };
-    window.setTimeout = (callback, delay, ...args) => (frozen
-        ? addVirtualTimer(callback, delay, args, false)
-        : realSetTimeout(callback, delay, ...args));
-    window.setInterval = (callback, delay, ...args) => (frozen
-        ? addVirtualTimer(callback, delay, args, true)
-        : realSetInterval(callback, delay, ...args));
-    window.clearTimeout = (id) => clearAny(id, realClearTimeout);
-    window.clearInterval = (id) => clearAny(id, realClearInterval);
-    // Idle callbacks would otherwise run on the real clock between frozen frames.
-    if (typeof window.requestIdleCallback === 'function') {
-        const realRequestIdle = window.requestIdleCallback.bind(window);
-        const realCancelIdle = window.cancelIdleCallback.bind(window);
-        window.requestIdleCallback = (callback, options) => (frozen
-            ? addVirtualTimer(() => callback({ didTimeout: false, timeRemaining: () => 8 }), 1, [], false)
-            : realRequestIdle(callback, options));
-        window.cancelIdleCallback = (id) => clearAny(id, realCancelIdle);
-    }
+    // ---- timers: one registry, each timer backed by a real timer while thawed and by the virtual
+    // schedule while frozen, so a timer set before a freeze still waits on virtual time ----
+    let timerSeq = 2e9;
+    const timers = new Map(); // id -> { callback, args, delay, repeat, due, realId }
     const runTimer = (timer) => {
         if (typeof timer.callback !== 'function') return;
         try {
@@ -119,6 +84,55 @@ export function installVirtualClock() {
             console.error(error);
         }
     };
+    const armReal = (id, timer) => {
+        // eslint-disable-next-line no-param-reassign
+        timer.realId = realSetTimeout(() => {
+            // eslint-disable-next-line no-param-reassign
+            timer.realId = null;
+            if (frozen || timers.get(id) !== timer) return;
+            if (timer.repeat) {
+                // eslint-disable-next-line no-param-reassign
+                timer.due = now() + Math.max(1, timer.delay);
+                armReal(id, timer);
+            } else {
+                timers.delete(id);
+            }
+            runTimer(timer);
+        }, Math.max(0, timer.due - now()));
+    };
+    const addTimer = (callback, delay, args, repeat) => {
+        timerSeq += 1;
+        const wait = Math.max(0, Number(delay) || 0);
+        const timer = {
+            callback, args, delay: wait, repeat, due: now() + wait, realId: null,
+        };
+        timers.set(timerSeq, timer);
+        if (!frozen) armReal(timerSeq, timer);
+        return timerSeq;
+    };
+    const clearTimer = (id) => {
+        const timer = timers.get(id);
+        if (!timer) {
+            realClearTimeout(id);
+            realClearInterval(id);
+            return;
+        }
+        if (timer.realId !== null) realClearTimeout(timer.realId);
+        timers.delete(id);
+    };
+    window.setTimeout = (callback, delay, ...args) => addTimer(callback, delay, args, false);
+    window.setInterval = (callback, delay, ...args) => addTimer(callback, delay, args, true);
+    window.clearTimeout = clearTimer;
+    window.clearInterval = clearTimer;
+    // Idle callbacks would otherwise run on the real clock between frozen frames.
+    if (typeof window.requestIdleCallback === 'function') {
+        const realRequestIdle = window.requestIdleCallback.bind(window);
+        const realCancelIdle = window.cancelIdleCallback.bind(window);
+        window.requestIdleCallback = (callback, options) => (frozen
+            ? addTimer(() => callback({ didTimeout: false, timeRemaining: () => 8 }), 1, [], false)
+            : realRequestIdle(callback, options));
+        window.cancelIdleCallback = (id) => (timers.has(id) ? clearTimer(id) : realCancelIdle(id));
+    }
 
     // ---- clocks ----
     performance.now = now;
@@ -155,19 +169,19 @@ export function installVirtualClock() {
             if (frozen) return;
             virtualNow = realPerfNow() + perfOffset;
             frozen = true;
+            // Pending real timers now wait on virtual time (their due times carry straight over:
+            // the clock reads the same value either side of the freeze).
+            timers.forEach((timer) => {
+                if (timer.realId !== null) realClearTimeout(timer.realId);
+                // eslint-disable-next-line no-param-reassign
+                timer.realId = null;
+            });
         },
         thaw() {
             if (!frozen) return;
             frozen = false;
             perfOffset = virtualNow - realPerfNow();
-            virtualTimers.forEach((timer, id) => {
-                const remaining = Math.max(0, timer.due - virtualNow);
-                const realId = timer.repeat
-                    ? realSetInterval(timer.callback, timer.delay, ...timer.args)
-                    : realSetTimeout(timer.callback, remaining, ...timer.args);
-                handedOff.set(id, realId);
-            });
-            virtualTimers.clear();
+            timers.forEach((timer, id) => armReal(id, timer));
             if (rafQueue.size) schedulePump();
         },
         /**
@@ -181,7 +195,7 @@ export function installVirtualClock() {
             for (let guard = 0; guard < 10000; guard += 1) {
                 let nextId = null;
                 let next = null;
-                virtualTimers.forEach((timer, id) => {
+                timers.forEach((timer, id) => {
                     if (timer.due <= target && (!next || timer.due < next.due)) {
                         next = timer;
                         nextId = id;
@@ -192,7 +206,7 @@ export function installVirtualClock() {
                 if (next.repeat) {
                     next.due = virtualNow + Math.max(1, next.delay);
                 } else {
-                    virtualTimers.delete(nextId);
+                    timers.delete(nextId);
                 }
                 runTimer(next);
                 // Let promise chains the timer started run (and maybe set more timers).
