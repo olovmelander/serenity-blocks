@@ -194,7 +194,9 @@ export class SummerMeadow {
         // sun is straight behind it, along its upper half.
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 3);
         const behind = saturate(toSun.negate());
-        const glow = pow(blade, vec3(0.8)).mul(vec3(0.92, 1.2, 0.3))
+        // (Saturated: with MSAA a root pixel extrapolates st.y below 0, which can take a channel
+        // under 0, and its power NaN.)
+        const glow = pow(saturate(blade), vec3(0.8)).mul(vec3(0.92, 1.2, 0.3))
             .mul(through.mul(behind.mul(0.7).add(0.45)).add(0.05))
             .mul(st.y.mul(st.y));
         // A blade the wind has laid over shows the sky on its back.

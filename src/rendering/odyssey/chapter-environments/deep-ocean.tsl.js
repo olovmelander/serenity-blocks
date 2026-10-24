@@ -173,7 +173,7 @@ function causticProjection(planarUv, time, freq = 0.15) {
     const c1 = snoise3(vec3(cUv.x, cUv.y, time.mul(0.2)));
     const c2 = snoise3(vec3(cUv.x.mul(1.4), cUv.y.mul(1.4), time.mul(-0.15)));
     // Sharper exponent => bright veins with dark water between (refracted light, not haze).
-    return pow(c1.add(c2).mul(0.5).add(0.5), 4.0);
+    return pow(clamp(c1.add(c2).mul(0.5).add(0.5), 0.0, 1.0), 4.0);
 }
 
 // ── Volumetric god-ray cones (additive, bloom-eligible) — HERO of the chapter ─────
@@ -190,7 +190,10 @@ export function createGodRaysTSL(uTime, options = {}) {
     // feather to nothing as they descend — the iconic ocean light-shaft cue. Cone uv.y
     // runs 0 (apex) -> 1 (base); the cone is translated so its wide base is up top, so
     // brightness should track (1 - uv.y) softened with a gentle power.
-    const verticalFade = pow(oneMinus(vUv.y), 1.15);
+    // Clamped: with MSAA a pixel at the cone's tip, where its slivers meet, is shaded at a centre
+    // past the tip, so uv.y runs over 1, and pow of a negative base is NaN, which the bloom spreads
+    // into a black block. (The same at the cone's seam, where uv.x runs past 0 or 1.)
+    const verticalFade = pow(clamp(oneMinus(vUv.y), 0.0, 1.0), 1.15);
 
     // Internal volume: bias toward distinct soft columns, but keep it SOFT (lower
     // exponent than a hard volumetric, so no crisp white edges -> no blowout).
@@ -208,7 +211,7 @@ export function createGodRaysTSL(uTime, options = {}) {
     ).mul(0.55).add(0.6);
 
     // Feather hard at the cone edges so shafts melt into the water (no flat blob).
-    const edgeFade = pow(oneMinus(pow(abs(vUv.x.sub(0.5)).mul(2.0), 1.6)), 1.4);
+    const edgeFade = pow(oneMinus(pow(min(abs(vUv.x.sub(0.5)).mul(2.0), 1.0), 1.6)), 1.4);
     const shimmer = sin(vPos.y.mul(0.28).add(time.mul(1.6))).mul(0.16).add(0.84);
     // Brighter than before (0.30 -> 0.45) so the rays carry the frame as the hero, but
     // still soft-feathered and capped well below blowout (ACES + bloom act downstream).

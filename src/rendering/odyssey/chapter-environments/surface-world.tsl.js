@@ -48,6 +48,7 @@ import {
     positionLocal,
     positionWorld,
     pow,
+    pow2,
     reflector,
     sin,
     smoothstep,
@@ -985,7 +986,7 @@ export function createLandscapeTSL(uTime = uniform(0), waterLevel = 60.0) {
     const coolFill = vec3(0.55, 0.64, 0.70).mul(0.34);
     color = color.mul(warmKey.add(coolFill));
     // Cool sky rim/backlight on grazing slope edges (was amber → now a soft sky-blue lift, capped).
-    const rimFactor = pow(oneMinus(max(dot(vNormal, normalize(cameraPosition.sub(vPosition))), 0.0)), 2.0);
+    const rimFactor = pow2(oneMinus(max(dot(vNormal, normalize(cameraPosition.sub(vPosition))), 0.0)));
     color = color.add(vec3(0.82, 0.90, 0.98).mul(rimFactor).mul(0.10));
     // Fake long-shadow banding: project worldXZ onto the sun azimuth and band it so the
     // raking light reads as long cast shadows across the valley (subtle, value-only).
@@ -1956,7 +1957,7 @@ export function createSpruceTreesTSL(uTime = uniform(0), count = 22, options = {
     // not, because the view vector is built explicitly in WORLD space from cameraPosition.
     // Mixing the spaces made the tree rim strengthen and weaken with camera yaw rather than
     // with the geometry, which on a forest reads as the whole stand shimmering.
-    const rim = pow(oneMinus(max(dot(normalize(normalWorld), normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
+    const rim = pow2(oneMinus(max(dot(normalize(normalWorld), normalize(cameraPosition.sub(positionWorld))), 0.0)));
 
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.25);
@@ -2104,7 +2105,7 @@ export function createGreatTreeTSL(uTime = uniform(0)) {
     // not, because the view vector is built explicitly in WORLD space from cameraPosition.
     // Mixing the spaces made the tree rim strengthen and weaken with camera yaw rather than
     // with the geometry, which on a forest reads as the whole stand shimmering.
-    const rim = pow(oneMinus(max(dot(normalize(normalWorld), normalize(cameraPosition.sub(positionWorld))), 0.0)), 2.0);
+    const rim = pow2(oneMinus(max(dot(normalize(normalWorld), normalize(cameraPosition.sub(positionWorld))), 0.0)));
 
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.22); // slow, heavy whole-tree sway

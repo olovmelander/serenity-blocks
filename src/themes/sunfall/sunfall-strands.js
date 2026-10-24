@@ -36,6 +36,7 @@ import {
     smoothstep,
     uv,
     vec3,
+    pow2, pow3,
 } from 'three/tsl';
 import {
     BACKLIT_LEAF_RGB, MATURE_LEAF_RGB, clamp01, mulberry32,
@@ -104,7 +105,7 @@ export function createLeafMaterial(u) {
         const k = clamp(age.div(0.45), 0.0, 1.0);
         // Ease out with overshoot: the bud snaps open.
         const c1 = 1.70158;
-        const back = float(1.0).add(pow(k.sub(1.0), 3.0).mul(c1 + 1)).add(pow(k.sub(1.0), 2.0).mul(c1));
+        const back = float(1.0).add(pow3(k.sub(1.0)).mul(c1 + 1)).add(pow2(k.sub(1.0)).mul(c1));
         const open = select(C.x.lessThan(-0.5), float(1.0), clamp(back, 0.0, 1.2));
         const size = A.w.mul(open);
         const yaw = B.w.add(sin(u.time.mul(2.7).add(B.w.mul(9.0))).mul(0.12));

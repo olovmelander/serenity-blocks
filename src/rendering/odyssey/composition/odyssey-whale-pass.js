@@ -85,7 +85,9 @@ function createWhaleMaterial(uWater, uFade) {
     const nW = normalize(normalWorld);
     const belly = clamp(nW.y.negate(), 0.0, 1.0);
     const towardSurface = clamp(nW.y, 0.0, 1.0);
-    const fres = pow(oneMinus(abs(dot(normalize(normalView), vec3(0, 0, 1)))), 2.5);
+    // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
+    // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+    const fres = pow(clamp(oneMinus(abs(dot(normalize(normalView), vec3(0, 0, 1)))), 0.0, 1.0), 2.5);
     let body = mix(vec3(0.016, 0.042, 0.064), vec3(0.085, 0.17, 0.22), pow(belly, 1.4).mul(0.85));
     body = body.add(vec3(0.50, 0.80, 0.90).mul(fres).mul(towardSurface.mul(0.6).add(0.25)).mul(0.5));
     const dist = length(positionWorld.sub(cameraPosition));

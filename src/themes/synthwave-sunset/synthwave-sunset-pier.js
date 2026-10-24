@@ -30,10 +30,10 @@ import {
     normalWorld,
     normalize,
     positionWorld,
-    pow,
     select,
     smoothstep,
     sqrt,
+    pow3,
 } from 'three/tsl';
 import { RIG, linearColor, rgb } from './synthwave-sunset-tsl.js';
 import { PIER, PIER_HEAD, pierFrame } from './synthwave-sunset-layout.js';
@@ -234,7 +234,7 @@ function createPierMaterial(u) {
         const duskLight = mix(float(1.0), float(0.55), u.dusk);
         // Dusk light: a lilac sky from above, the sunset behind as a warm rim.
         const sky = rgb(0x8a7aa8, 0.3).mul(float(0.55).add(max(N.y, 0.0).mul(0.45))).mul(duskLight);
-        const rim = pow(float(1.0).sub(facing), 3.0).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2))
+        const rim = pow3(float(1.0).sub(facing)).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2))
             .mul(rgb(0xff8a5c, 0.5)).mul(mix(float(1.0), float(0.35), u.dusk));
         // The railing bulbs wash the fascia and the walls just above the deck in warm light.
         const h = p.y.sub(PIER.deckY);

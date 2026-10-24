@@ -10,6 +10,7 @@ import * as THREE from 'three/webgpu';
 import {
     cameraPosition, cross, dot, exp, float, instancedDynamicBufferAttribute, length, mix, normalize, positionGeometry,
     pow, saturate, uv, vec3,
+    max,
 } from 'three/tsl';
 import { GoldenForestSparkSim } from './golden-forest-spark-sim.js';
 
@@ -66,7 +67,9 @@ export class GoldenForestSparks {
         const core = pow(saturate(float(1).sub(radius)), 3);
         const halo = exp(radius.mul(-4.2)).mul(saturate(float(1).sub(radius)));
         // A streak is brightest at its head and trails away behind.
-        const comet = mix(float(1), pow(st.y, 1.6).mul(0.8).add(0.2), glow.z);
+        // Clamped: with MSAA a pixel whose centre lies off the quad extrapolates its uv past the
+        // tail, and pow of a negative base is NaN.
+        const comet = mix(float(1), pow(max(st.y, 0), 1.6).mul(0.8).add(0.2), glow.z);
         // Amber at rest, pale gold when a combo heats them; never so bright that the
         // bloom washes the colour out of them.
         const ember = mix(vec3(1.0, 0.42, 0.05), vec3(1.0, 0.68, 0.22), glow.y);

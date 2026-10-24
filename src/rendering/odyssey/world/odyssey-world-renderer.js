@@ -5,6 +5,7 @@ import {
     length, max, min, mix, reflect, select, sign, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
     screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition, cameraViewMatrix,
+    pow2,
 } from 'three/tsl';
 
 import {
@@ -1373,7 +1374,7 @@ export function createOdysseyWorld({
             // capture-measured at p=0.130 as 90% of the frame's pixels in ONE luma band. A
             // grazing ray is a long horizontal water column and must darken like one.
             const surfaceGlow = clamp(dirY, 0, 1).pow(2.2).mul(0.55);
-            const grazing = float(1).sub(abs(dirY)).pow(3);
+            const grazing = clamp(float(1).sub(abs(dirY)), 0.0, 1.0).pow(3);
             // BANDED DEPTH, not one exponential (plan §3.4.1 — Ponyo's stacked plates). Depth is
             // shown as discrete hue steps within one temperature family, which is how every
             // adopted reference does it and why none of them need grey scattering. The band index
@@ -2149,7 +2150,9 @@ export function createOdysseyWorld({
         const viewDir = normalize(cameraPosition.sub(positionWorld));
         // The rim reads the FORM's normal: on the flutes' tilted one it lit every flute edge,
         // and the cone turned to brushed chrome.
-        const rim = float(1).sub(abs(dot(normal, viewDir))).pow(4)
+        // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
+        // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+        const rim = clamp(float(1).sub(abs(dot(normal, viewDir))), 0.0, 1.0).pow(4)
             .mul(kSnow)
             .mul(0.14);
         // NOTE the wide occlusion is NOT multiplied in here. It reaches the image through
@@ -2301,7 +2304,7 @@ export function createOdysseyWorld({
         // View-angle sky reflection. `uSkyHorizon` rather than the zenith: a lake
         // reflects the sky it can SEE at a grazing angle, which is the horizon band.
         const lakeView = normalize(cameraPosition.sub(positionWorld));
-        const graze = float(1).sub(abs(lakeView.y)).pow(LAKE_TINT.grazePow);
+        const graze = clamp(float(1).sub(abs(lakeView.y)), 0.0, 1.0).pow(LAKE_TINT.grazePow);
         const skyInWater = mix(uSkyHorizon, uSkyZenith, float(0.25)).mul(LAKE_TINT.skyLevel);
         const lakeCol = mix(body, skyInWater, graze.mul(LAKE_TINT.grazeMax))
             .add(uSunColour.mul(glint).mul(LAKE_TINT.glintGain));
@@ -2401,9 +2404,9 @@ export function createOdysseyWorld({
             const edgeDist = min(uViewFar.div(max(dot(skyFlat, uViewFwdXZ), 0.3)), uSeaReach);
             const edgeY = uEyeH.negate().div(sqrt(uEyeH.mul(uEyeH).add(edgeDist.mul(edgeDist))));
             const limbRise = skyDir.y.sub(edgeY.add(0.004));
-            const limbBand = exp(limbRise.div(select(limbRise.greaterThan(0), limbWidth, float(0.008))).pow(2).negate())
+            const limbBand = exp(pow2(limbRise.div(select(limbRise.greaterThan(0), limbWidth, float(0.008)))).negate())
                 .mul(mix(float(0.22), float(1.25), limbAz.mul(limbAz)));
-            const airglowBand = exp(skyDir.y.sub(0.075).div(0.012).pow(2).negate());
+            const airglowBand = exp(pow2(skyDir.y.sub(0.075).div(0.012)).negate());
             const airglowYield = float(1).sub(uAuroraGlow.mul(0.8));
             out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).mul(uLimbGlow)
                 .add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)).mul(uAirglowGlow))
@@ -3800,7 +3803,9 @@ export function createOdysseyWorld({
         // standing as a full-height pipe.
         // 1.6 -> 2.4 (audit 2026-10-18): seen from beside or above, the deep half still glowed
         // where the floor cut it, and the shafts read as glass rods standing on the bed.
-        const vFade = float(1).sub(rUv.y).pow(2.4).mul(smoothstep(float(0.0), float(0.14), rUv.y));
+        // (Clamped: with MSAA the tip's pixel is shaded past it, at uv.y over 1, and pow of a negative
+        // base is NaN. Today the floor hides the tips.)
+        const vFade = clamp(float(1).sub(rUv.y), 0.0, 1.0).pow(2.4).mul(smoothstep(float(0.0), float(0.14), rUv.y));
         // FACING fade, not a uv.x feather. On a ConeGeometry uv.x runs around the
         // CIRCUMFERENCE, so the ported `abs(uv.x - 0.5)` lit one side of the cone and left a
         // hard seam on the other — in-game that read as solid triangular wedges, not light.
