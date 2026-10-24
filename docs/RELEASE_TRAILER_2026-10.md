@@ -17,17 +17,22 @@ so the trailer gets the track's whole arc in 89 s: the riser and first groove, t
 first breakdown and drop, the second breakdown and drop, and the last hit with its tail. Every
 picture cut lands on a bar line.
 
+All eight modes are in it, and 32 different themes plus a breathing world, none shown twice.
+
 | Trailer time | Music | Picture | Copy |
 |---|---|---|---|
-| 0:00–0:07 | riser | Serenity Mode, Koi Pond, out of black | FIND YOUR FLOW |
+| 0:00–0:07 | riser | Serenity Mode, Koi Pond, out of black, letterboxed | FIND YOUR FLOW |
 | 0:07–0:12 | groove starts | same | Logo · STACK · BREATH · ASCEND |
 | 0:12–0:22 | groove | Single Player in Aurora, Neon District, Sakura Twilight | STACK — Clear lines. Raise the level. Chase your best. |
-| 0:22–0:36 | 8-bar build | Infinity (Galaxy), Stillfall (Crystal Cave), Local Versus with four bots (Synthwave Sunset), Pyrestorm, Ocean | mode wordmarks with the menu's own lines |
-| 0:36–0:42 | breakdown | Black Hole | 63 living worlds · Each one answers the way you play. |
-| 0:42–0:56 | drop | one bar each: Golden Forest, Kaleidosonic, High Coast, Voltage Storm, Winter, Nebula Flow, Midsommar, Wolfhour | theme names |
-| 0:56–1:04 | second breakdown | Serenity Mode (Aurora), a Hale session | BREATH — Nothing to play. A living world and its music. · HALE SESSIONS |
-| 1:04–1:18 | second drop | Odyssey: the journey map, then orbs across the chapters | ASCEND — From the molten core of the Earth to the edge of a black hole. · ODYSSEY — Eight chapters. Sixty orbs. · …and beyond. |
+| 0:22–0:36 | 8-bar build | Infinity (Galaxy), Stillfall (Crystal Cave), Local Versus with four bots (Synthwave Sunset), Online Versus with four seats (Neon Dusk) | each mode's wordmark with the menu's own line |
+| 0:36–0:42 | breakdown | Painted Ages | 63 living worlds · Each one answers the way you play. |
+| 0:42–0:56 | drop | **the world flip**: one game, the same board, and the world around it changes on every half-bar through 16 themes (Golden Forest, Kaleidosonic, High Coast, Voltage Storm, Pyrestorm, Ocean, Winter, Nebula Flow, Rainbow Terraces, Chromatic Impasto, Vesper Chrysalis, Midsommar, Ice Temple, Blood Moon, Sunbraid, Wolfhour) | each world's name |
+| 0:56–1:04 | second breakdown | Serenity Mode (Stillwater), a Hale session | BREATH — Nothing to play. A living world and its music. · HALE SESSIONS — Nine voice-guided breathing sessions. |
+| 1:04–1:18 | second drop | Odyssey: the journey map flown over, letterboxed; then orbs up the journey — Ashen Dawn (the Earth's core), Sunken Depths, Everest Ascent, Stellar Flare, The Singularity | ASCEND — From the molten core of the Earth to the edge of a black hole. · ODYSSEY — Eight chapters. Sixty orbs. · …and beyond. |
 | 1:18–1:29 | last hit, tail | Sunset under a dark scrim | Logo · COMING SOON · PC · Steam |
+
+Every shot but the world flip and the flyover carries a slow camera move made in post (push,
+pull, drift, rise; `MOVES` in assemble.mjs), resampled at sub-pixel positions so it glides.
 
 Every claim comes from the build: the mode lines are the menu's own copy
 (`src/ui/main-menu/main-menu.js`), 63 is the theme registry's count, eight chapters and sixty
@@ -41,11 +46,13 @@ bordered well; no copy names another game.
 
 ## How it is made
 
-1. **`capture.mjs`** boots the built game (`npm run build`, `npx vite preview`) in Chromium with
-   capture flags (`skipIntro`, `unlockAll`, no warm-up, no frame cap, every adaptive-quality loop
-   held), sets each shot up through `window.serenityBlocks` (mode, theme, the game's own CPU bot
-   on the board), and records it.
-2. **The virtual clock** (`virtual-clock.js`) is what makes that possible without a GPU. It is
+1. **`build.mjs`** builds the game for capture into `artifacts/trailer-build` (git-ignored): the
+   production build plus the console test harness (`VITE_DEV_HARNESS=1`), whose mock transport
+   runs the real Online Versus netcode between windows of one browser. `--serve` serves it.
+2. **`capture.mjs`** boots that build in Chromium with capture flags (`skipIntro`, `unlockAll`,
+   no warm-up, no frame cap, every adaptive-quality loop held), sets each shot up through
+   `window.serenityBlocks` (mode, theme, the game's own CPU bot on the board) and records it.
+3. **The virtual clock** (`virtual-clock.js`) is what makes that possible without a GPU. It is
    injected before any page script and replaces `requestAnimationFrame`, `performance.now`,
    `Date`, timers and idle callbacks. Thawed, it passes everything through so the game boots and
    loads at full speed; frozen, time moves only when the capture script calls `step(1000/30)`.
@@ -53,47 +60,56 @@ bordered well; no copy names another game.
    and advances every CSS animation by hand (the document timeline is paused through CDP). Each
    captured frame is therefore exactly 1/30 s of game time after the last, however long
    SwiftShader took to draw it, and the clip plays at the game's real speed.
-3. **Autoplay** (`autoplay-entry.js`, bundled with esbuild at capture time) is
+4. **Autoplay** (`autoplay-entry.js`, bundled with esbuild at capture time) is
    `PuzzleBotController`, the Local Versus CPU opponent, driving the player's board through the
    keyboard's own entry points (`window.move/rotate/softDrop/hardDrop`), ticked from
    `requestAnimationFrame` so it plays on the virtual clock. Before recording it places a number
    of pieces at once (its plan applied immediately, the drop's animations skipped as a replay
-   seek skips them) so every shot opens on a lived-in board. Stillfall plays the puzzle's stored
+   seek skips them) so a shot opens on a lived-in board. Stillfall plays the puzzle's stored
    solution, pausing over each choice.
-4. **`render-overlay.mjs`** draws the title layer (`overlay.mjs`: an HTML page positioned purely
+5. **Online Versus** is hosted by the capture page over the mock transport; three small peer
+   windows join, every seat a bot, and the peers are stepped in lockstep with the host under the
+   same virtual clock, so the netcode sees one consistent time.
+6. **The world flip** holds the game (`gameState.isPaused`), thaws time while the next theme
+   loads behind the board and the outgoing one fades, then freezes again and resumes: the board
+   and the bot continue exactly where they were, and the world has changed on the beat.
+7. **`render-overlay.mjs`** draws the title layer (`overlay.mjs`: an HTML page positioned purely
    from the timeline, fonts and artwork inlined from `public/`) to a transparent PNG sequence.
-5. **`assemble.mjs`** cuts the clips, the overlay and the music edit together with ffmpeg
-   (crossfades straddle their cut so cuts stay on the beat; 20 ms fades at each music splice;
-   loudness normalised to −14 LUFS) into `artifacts/trailer/serenity-blocks-trailer.mp4`.
+8. **`assemble.mjs`** cuts the clips, the camera moves, the overlay and the music edit together
+   with ffmpeg (crossfades straddle their cut so cuts stay on the beat; 20 ms fades at each music
+   splice; loudness normalised to −14 LUFS) into `artifacts/trailer/serenity-blocks-trailer.mp4`.
 
 ```bash
-npm run build && npx vite preview --port 4173 &   # the built game
-npm run trailer:capture                            # every shot → artifacts/trailer/shots/*.mp4
-npm run trailer:capture -- --only=m3,m4            # re-take some shots
-npm run trailer:overlay                            # title layer → artifacts/trailer/overlay/
-npm run trailer:assemble                           # → artifacts/trailer/serenity-blocks-trailer.mp4
+npm run trailer:build -- --serve &                  # the capture build on :4174
+npm run trailer:capture -- --render-scale=0.75      # every shot → artifacts/trailer/shots/*.mp4
+npm run trailer:capture -- --only=online,ody-c      # re-take some shots (--missing: only absent ones)
+npm run trailer:overlay                             # title layer → artifacts/trailer/overlay/
+npm run trailer:assemble                            # → artifacts/trailer/serenity-blocks-trailer.mp4
 ```
 
 On a machine with a GPU, `--gpu` drops the SwiftShader flags and opens a headed window, and
-`--quality=Extreme` lifts the effect tier; the virtual clock makes the result the same timing
+`--quality=Extreme --render-scale=1` lift the picture; the virtual clock makes the timing the same
 either way. `artifacts/` is git-ignored: the trailer and its clips are build outputs.
 
 ## Changing it
 
 All of it is data in `scripts/trailer/trailer-config.mjs`:
 
-- **A shot**: its `kind`, `theme`, `level` (Odyssey orb), bot `difficulty`, `prefill` pieces.
-  Re-take only what changed with `--only`.
+- **A shot**: its `kind`, `theme`, `level` (Odyssey orb), bot `difficulty`, `prefill` pieces,
+  `worlds` (a world flip). Re-take only what changed with `--only`.
 - **A cut**: move an `EDIT` entry's `at`; keep it on a bar time (listed in the file's header).
-  `fade` makes the entry cross-dissolve in.
-- **Copy**: the `OVERLAY` list (types `scrim`, `logo`, `section`, `mode`, `line`, `flash`).
+  `fade` makes the entry cross-dissolve in, `move` picks its camera move.
+- **Copy**: the `OVERLAY` list (types `scrim`, `letterbox`, `logo`, `section`, `mode`, `line`,
+  `flash`).
   `node scripts/trailer/render-overlay.mjs --still=12.6` renders one moment to check a card.
 - **Music**: `TRAILER.music.segments` (source in/out points on downbeats).
 
 ## Known limits
 
-- Captured on SwiftShader: WebGPU runs on the CPU, so the picture is the game's real renderer
-  but at the High tier; a GPU capture at Extreme will be richer. Timing is unaffected.
+- Captured on SwiftShader: WebGPU runs on the CPU (about 6 s a frame at 1080p for a heavy
+  theme), so the first cut draws the themes' 3D at 0.75 render scale on the High tier (the board
+  and HUD stay at full resolution). A GPU capture at Extreme and full scale will be richer;
+  timing is unaffected.
 - Audio is the music only; the game's sound effects are muted during capture (the analyser
   sits before the music gain, so music-reactive visuals are still while muted).
 - The music was chosen and cut from analysis (beat tracking, bar energy, bass onsets), not by

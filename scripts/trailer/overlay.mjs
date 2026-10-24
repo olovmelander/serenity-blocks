@@ -52,6 +52,8 @@ function itemMarkup(root, item, index) {
         return `<div id="${id}" class="line ${item.position || 'center'} ${item.size || 'md'}">${escapeHtml(item.text)}</div>`;
     case 'flash':
         return `<div id="${id}" class="flash"></div>`;
+    case 'letterbox':
+        return `<div id="${id}" class="letterbox"><i class="bar-top"></i><i class="bar-bottom"></i></div>`;
     default:
         throw new Error(`overlay: unknown item type ${item.type}`);
     }
@@ -101,6 +103,10 @@ body>div{position:absolute;opacity:0;will-change:opacity,transform}
 .line.lg{font:700 calc(64*var(--u)) Unbounded;letter-spacing:.02em}
 .line.sm{font-size:calc(28*var(--u));letter-spacing:.3em;text-transform:uppercase;color:#e9e3ff}
 .flash{inset:0;background:#fff6e9}
+.letterbox{inset:0;opacity:1}
+.letterbox i{position:absolute;left:0;right:0;height:calc(138*var(--u));background:#05050d;display:block}
+.letterbox .bar-top{top:0;transform-origin:top}
+.letterbox .bar-bottom{bottom:0;transform-origin:bottom}
 </style></head><body>
 ${items}
 <script>
@@ -138,6 +144,12 @@ window.__overlay = {
                 transform = 'scale(' + s.toFixed(5) + ')';
                 const word = el.querySelector('.section-word');
                 word.style.letterSpacing = (0.02 + 0.06 * easeOut(local / 1.2)).toFixed(4) + 'em';
+            } else if (item.type === 'letterbox') {
+                // 2.39:1 bars that slide in and out rather than fade.
+                el.style.opacity = a > 0 ? '1' : '0';
+                const k = a.toFixed(4);
+                el.querySelectorAll('i').forEach((bar) => { bar.style.transform = 'scaleY(' + k + ')'; });
+                return;
             } else if (item.type === 'mode' || item.type === 'line') {
                 transform = 'translateY(' + ((1 - easeOut(inP)) * 18).toFixed(2) + 'px)';
             }
