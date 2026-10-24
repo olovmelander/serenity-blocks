@@ -173,7 +173,8 @@ export const OVERLAY = [
 
     // End card on the last hit.
     { type: 'flash', start: 78.391, end: 78.75, fadeIn: 0, fadeOut: 0.36, opacity: 0.7 },
-    { type: 'scrim', style: 'full', start: 78.391, end: 88.788, fadeIn: 0.25, fadeOut: 0, opacity: 0.8 },
+    { type: 'scrim', style: 'full', start: 78.391, end: 88.788, fadeIn: 0.25, fadeOut: 0, opacity: 0.45 },
+    { type: 'scrim', style: 'vignette', start: 78.391, end: 88.788, fadeIn: 0.25, fadeOut: 0 },
     {
         type: 'logo', start: 78.55, end: 88.788, fadeIn: 0.7, fadeOut: 0, tagline: ['Stack', 'Breath', 'Ascend'],
         line: 'COMING SOON', subline: 'PC · Steam',
