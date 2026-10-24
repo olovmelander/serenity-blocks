@@ -55,6 +55,8 @@ const perform = (action) => {
 };
 
 let running = null;
+/** The last start(), for resume(). */
+let lastStart = null;
 
 function currentMode() {
     return window.serenityBlocks?.gameModeManager?.getCurrentMode?.() ?? null;
@@ -81,6 +83,7 @@ window.__trailerAutoplay = {
      */
     start({ difficulty = 8, seed = 1337 } = {}) {
         this.stop();
+        lastStart = { difficulty, seed };
         const mode = currentMode();
         const rng = mulberry32(seed);
         const bot = new PuzzleBotController({
@@ -171,6 +174,13 @@ window.__trailerAutoplay = {
         }
         await yieldTask();
         return { dealt: mode._dealt, puzzle: mode.puzzle?.id ?? null, outcome: run.outcome };
+    },
+    /** Stop the board bot while the game is held (a world flip); resume() starts it again. */
+    pause() {
+        if (running?.bot) this.stop();
+    },
+    resume() {
+        if (!running && lastStart) this.start(lastStart);
     },
     stop() {
         if (!running) return;

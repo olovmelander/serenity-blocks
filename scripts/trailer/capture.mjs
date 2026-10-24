@@ -46,6 +46,8 @@ const QUALITY = String(args.quality || 'High');
 const RENDER_SCALE = Number(args['render-scale'] || 1);
 const PER_SESSION = Number(args['per-session'] || 5);
 const PREROLL = Number(args.preroll ?? 0.3);
+// Testing aid: record at most this many seconds of each shot.
+const MAX_SECONDS = args.seconds ? Number(args.seconds) : Infinity;
 const { fps, width, height } = TRAILER;
 const STEP_MS = 1000 / fps;
 
@@ -377,12 +379,14 @@ async function pageOdysseyPose({ chapter = 0 }) {
 
 async function pageFlipWorld({ themeId, settleMs }) {
     // Change the world under a running game: hold the game (no gravity, no bot), let real time
-    // run while the new theme loads and the outgoing one fades, then hold time again and resume.
+    // run while the new theme loads and the outgoing one fades, then hold time again. The game
+    // stays held (pageHoldGame resumes it) until record() sees the new world on screen.
     const app = window.serenityBlocks;
     const tm = app.themeManager;
+    const started = window.__trailerClock.realNow();
     const mode = app.gameModeManager.getCurrentMode?.();
     const gs = mode?.getGameState?.() ?? mode?.gameState ?? null;
-    const started = window.__trailerClock.realNow();
+    window.__trailerAutoplay?.pause();
     if (gs) gs.isPaused = true;
     window.__trailerClock.thaw();
     try {
@@ -397,12 +401,37 @@ async function pageFlipWorld({ themeId, settleMs }) {
         await window.__trailerClock.realSleep(settleMs);
     } finally {
         window.__trailerClock.freeze();
-        if (gs) {
-            gs.lastTime = performance.now();
-            gs.isPaused = false;
-        }
     }
     return { active: tm.activeThemeName, seconds: Math.round((window.__trailerClock.realNow() - started) / 1000) };
+}
+
+/**
+ * Where a theme switch stands: an in-play switch builds the incoming theme hidden while the
+ * outgoing one plays on, reveals it when its pipelines are quiet and fades the outgoing one out
+ * under it (themes/theme-manager.js). Done means the new world is revealed.
+ */
+function pageSwitchState() {
+    const tm = window.serenityBlocks.themeManager;
+    const state = {
+        active: tm.activeThemeName,
+        behind: Boolean(tm._behindBuild),
+        fading: tm._fadingThemes?.size || 0,
+        covering: tm._loadingSurfaceCovering || 0,
+    };
+    // The outgoing world may still be fading out under the new one: that is drawn on top.
+    state.done = !state.behind && state.covering <= 0 && tm.activeTheme?.lifecycleState === 'running';
+    return state;
+}
+
+/** Hold the running game (no gravity, no clock) or let it go on from where it was. */
+function pageHoldGame(hold) {
+    const mode = window.serenityBlocks.gameModeManager.getCurrentMode?.();
+    const gs = mode?.getGameState?.() ?? mode?.gameState ?? null;
+    if (!gs) return false;
+    if (!hold) gs.lastTime = performance.now();
+    gs.isPaused = hold;
+    if (!hold) window.__trailerAutoplay?.resume();
+    return true;
 }
 
 async function pageHostOnline({ players }) {
@@ -674,7 +703,7 @@ class Session {
      * frame is world in every mode (the board and HUD sit centre and right), so sample it every
      * few real seconds, one game frame apart, until it holds content and stops changing.
      */
-    async warmUntilDrawn(id, stepAll) {
+    async warmUntilDrawn(id, stepAll, { report = false, ready = null } = {}) {
         const { page, cdp } = this;
         const clip = { x: 0, y: 0, width: Math.round(width * 0.22), height, scale: 0.5 };
         let previous = 0;
@@ -683,8 +712,9 @@ class Session {
             const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip });
             const size = data.length * 0.75;
             steady = size > 4000 && previous > 0 && Math.abs(size - previous) / previous < 0.15 ? steady + 1 : 0;
+            if (ready && steady > 0 && !(await ready())) steady = 0;
             if (steady >= 2) {
-                if (i > 2) log(`${id}: world drawn after ${i} checks`);
+                if (i > 2 || report) log(`${id}: world drawn after ${i} checks`);
                 return;
             }
             previous = size;
@@ -750,6 +780,15 @@ class Session {
                 const result = await page.evaluate(pageFlipWorld, { themeId: flip.theme, settleMs: shot.settle ?? 4000 });
                 await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
                 log(`${id}: frame ${i} → ${flip.theme} ${JSON.stringify(result)}`);
+                // A theme can report itself running while its pipelines still compile in real
+                // time: step it, the game held, until it is on screen (a flip to a blank world
+                // reads as a dropped frame).
+                await this.warmUntilDrawn(`${id} ${flip.theme}`, stepAll, {
+                    report: true,
+                    ready: async () => (await page.evaluate(pageSwitchState)).done,
+                });
+                log(`${id}: ${flip.theme} ${JSON.stringify(await page.evaluate(pageSwitchState))}`);
+                await page.evaluate(pageHoldGame, false);
                 nextFlip += 1;
             }
             const stepStart = Date.now();
@@ -797,7 +836,7 @@ async function main() {
     const failed = [];
     for (const id of ids) {
         const shot = TRAILER.shots[id];
-        const frames = Math.ceil(lengths[id] * fps) + 2;
+        const frames = Math.ceil(Math.min(lengths[id], MAX_SECONDS) * fps) + 2;
         const file = path.join(SHOT_DIR, `${id}.mp4`);
         let ok = false;
         for (let attempt = 1; attempt <= 2 && !ok; attempt += 1) {
