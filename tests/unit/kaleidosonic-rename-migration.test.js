@@ -60,15 +60,16 @@ describe('Kaleidosonic took the Singing Bowl orb: what a player already has now 
         });
     });
 
-    it('renames the placeholder song with the theme and keeps the old track key selectable', () => {
+    it('renames the song with the theme and keeps the old track key selectable', () => {
         const song = getThemeMusic('kaleidosonic');
         expect(song).toMatchObject({
             name: 'Kaleidosonic',
-            path: './assets/music/blood-moon.mp3?song=kaleidosonic',
+            file: 'kaleidosonic.mp3',
+            path: './assets/music/kaleidosonic.mp3',
             trackKey: 'Kaleidosonic',
-            placeholder: true,
-            placeholderSource: 'blood-moon.mp3',
+            placeholder: false,
         });
+        expect(song).not.toHaveProperty('placeholderSource');
         expect(getThemeMusic(OLD_THEME)).toBe(song);
         expect(THEME_MUSIC_CATALOG.some((entry) => entry.trackKey === OLD_TRACK)).toBe(false);
         expect(resolveMusicTrackKey(OLD_TRACK)).toBe('Kaleidosonic');

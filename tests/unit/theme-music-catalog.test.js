@@ -27,9 +27,12 @@ describe('one soundtrack per collectible theme', () => {
             expect(new Set(THEME_MUSIC_CATALOG.map((song) => song[field])).size).toBe(63);
         }
         // Placeholders share Blood Moon's file; every recording is its own.
-        expect(new Set(THEME_MUSIC_CATALOG.map((song) => song.file)).size).toBe(31);
-        expect(THEME_MUSIC_CATALOG.filter((song) => !song.placeholder)).toHaveLength(31);
-        expect(THEME_MUSIC_CATALOG.filter((song) => song.placeholder)).toHaveLength(32);
+        expect(new Set(THEME_MUSIC_CATALOG.map((song) => song.file)).size).toBe(56);
+        expect(THEME_MUSIC_CATALOG.filter((song) => !song.placeholder)).toHaveLength(56);
+        expect(THEME_MUSIC_CATALOG.filter((song) => song.placeholder).map((song) => song.themeId)).toEqual([
+            'winter', 'tornado', 'verdant-hills', 'chromatic-impasto', 'voltage-storm', 'void-ember',
+            'vesper-chrysalis',
+        ]);
     });
 
     it('keeps Forest’s existing default recording and stable default key', () => {
@@ -55,7 +58,7 @@ describe('one soundtrack per collectible theme', () => {
 
     it('replaces the former sharing of the Murmuration recording with a Chromadelic song of its own', () => {
         expect(getThemeMusic('chromadelic-highway')).toMatchObject({
-            trackKey: 'ChromadelicHighway', path: './assets/music/blood-moon.mp3?song=chromadelic-highway', placeholder: true,
+            trackKey: 'ChromadelicHighway', path: './assets/music/chromadelic-highway.mp3', placeholder: false,
         });
         expect(getThemeForMusic('Murmuration')).toBe('murmuration');
     });
@@ -76,8 +79,8 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('high-coast')).toMatchObject({
             name: 'High Coast',
             trackKey: 'HighCoast',
-            path: './assets/music/blood-moon.mp3?song=high-coast',
-            placeholder: true,
+            path: './assets/music/high-coast.mp3',
+            placeholder: false,
         });
         expect(getThemeForMusic('Mountain')).toBe('high-coast');
         expect(getThemeMusic('mountain')).toBe(getThemeMusic('high-coast'));
@@ -89,8 +92,8 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('kaleidosonic')).toMatchObject({
             name: 'Kaleidosonic',
             trackKey: 'Kaleidosonic',
-            path: './assets/music/blood-moon.mp3?song=kaleidosonic',
-            placeholder: true,
+            path: './assets/music/kaleidosonic.mp3',
+            placeholder: false,
         });
         expect(getThemeForMusic('SingingBowl')).toBe('kaleidosonic');
         expect(getThemeMusic('singing-bowl')).toBe(getThemeMusic('kaleidosonic'));
