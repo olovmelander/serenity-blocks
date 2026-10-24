@@ -784,7 +784,12 @@ class Session {
             await page.evaluate((ms) => window.__trailerClock.realSleep(ms), 2500);
             await stepAll();
         }
-        log(`${id}: the world never settled on screen; recording anyway`);
+        // Keep what the probe last saw, to tell a blank world from a busy one.
+        const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 70 });
+        const probe = path.join(OUT, 'stills', `unsettled-${id.replace(/\W+/g, '-')}.jpg`);
+        mkdirSync(path.dirname(probe), { recursive: true });
+        writeFileSync(probe, Buffer.from(data, 'base64'));
+        log(`${id}: the world never settled on screen; recording anyway (last look: ${path.relative(ROOT, probe)})`);
     }
 
     /** Freeze time and record `frames` frames into `file`. */
