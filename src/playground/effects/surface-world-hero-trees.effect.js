@@ -95,7 +95,7 @@ function makeGroundMaterial() {
     return mat;
 }
 
-export function create({ scene }) {
+export function create({ scene, rng }) {
     const uTime = uniform(0);
     const uSeason = uniform(0.12);
     const disposables = [];
@@ -150,23 +150,23 @@ export function create({ scene }) {
         const crown = t.h * 0.86;
         const nBlobs = 6;
         for (let k = 0; k < nBlobs; k += 1) {
-            const ang = (k / nBlobs) * Math.PI * 2 + Math.random();
-            const rad = (0.6 + Math.random() * 1.1) * t.s;
+            const ang = (k / nBlobs) * Math.PI * 2 + rng();
+            const rad = (0.6 + rng() * 1.1) * t.s;
             const bx = t.x + Math.cos(ang) * rad * 2.1;
             const bz = t.z + Math.sin(ang) * rad * 2.1;
-            const by = crown + (Math.random() - 0.35) * t.h * 0.42;
-            const br = (2.4 + Math.random() * 1.6) * t.s;
+            const by = crown + (rng() - 0.35) * t.h * 0.42;
+            const br = (2.4 + rng() * 1.6) * t.s;
             // Per-instance green: lush spring green, warmed/cooled per tree + per blob jitter.
-            const g = 0.30 + Math.random() * 0.12;
+            const g = 0.30 + rng() * 0.12;
             blobs.push({
                 pos: [bx, by, bz],
                 scl: br,
                 tint: [
-                    0.16 + t.warm + Math.random() * 0.06,
+                    0.16 + t.warm + rng() * 0.06,
                     g,
-                    0.10 + Math.random() * 0.05,
+                    0.10 + rng() * 0.05,
                 ],
-                phase: Math.random() * Math.PI * 2,
+                phase: rng() * Math.PI * 2,
             });
         }
     });

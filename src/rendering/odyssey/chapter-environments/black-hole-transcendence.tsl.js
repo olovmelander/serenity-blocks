@@ -59,6 +59,7 @@ import {
     vec2,
     vec3,
     vec4,
+    min,
 } from 'three/tsl';
 import { fbm3, hash21, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
@@ -200,6 +201,11 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // constant); the travel rides uPhase.
     const twist = logDepth.mul(warp.mul(0.22).add(0.08)).add(uTime.mul(0.035));
     const ang = atan(ray.y, ray.x).add(twist);
+    // The same angle with atan's cut half a turn round. A lane coordinate built from `ang` leaps
+    // a whole turn's lanes across the cut, where its fwidth would widen every streak's AA to its
+    // cap; of the two coordinates' rates the smaller is the true one.
+    const angTurned = atan(ray.y.negate(), ray.x.negate()).add(Math.PI).add(twist);
+    const laneRate = (at) => min(fwidth(at(ang)), fwidth(at(angTurned)));
     // The angle from the axis, for the starbow and the AA of the near layers.
     const theta = atan(sinT, cosT);
 
@@ -207,7 +213,8 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // centre and runs at the edge at one rate). Lane rates are quantised to 1/64 so the phase can
     // wrap without a visible jump.
     const LANES = 72;
-    const lanePos = ang.div(TAU).add(0.5).mul(LANES);
+    const lanePosAt = (a) => a.div(TAU).add(0.5).mul(LANES);
+    const lanePos = lanePosAt(ang);
     const lane = mod(floor(lanePos), LANES);
     const laneF = fract(lanePos);
     const r1 = hash21(vec2(lane, 7.13));
@@ -217,12 +224,13 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // At speed the heads stretch: a streak's length is how far it travelled in the shutter.
     const headLen = mix(float(0.30), float(0.62), speedLook);
     const head = smoothstep(0.0, headLen, seg).mul(oneMinus(smoothstep(headLen, headLen.add(0.06), seg)));
-    const laneAA = clamp(fwidth(lanePos), 0.018, 0.24);
+    const laneAA = clamp(laneRate(lanePosAt), 0.018, 0.24);
     const core = oneMinus(smoothstep(0.025, laneAA.add(0.06), abs(laneF.sub(0.5))));
     const lit = smoothstep(0.62, 0.88, r2.add(warp.mul(0.20)).add(speedLook.mul(0.08)));
     const streaks = head.mul(core).mul(lit);
 
-    const finePos = ang.add(0.23).sub(logDepth.mul(0.10)).div(TAU).mul(116);
+    const finePosAt = (a) => a.add(0.23).sub(logDepth.mul(0.10)).div(TAU).mul(116);
+    const finePos = finePosAt(ang);
     const fineLane = mod(floor(finePos), 116);
     const fineSeed = hash21(vec2(fineLane, 23.71));
     const finePhase = fract(logDepth.mul(1.8).add(uPhase.mul(1.625)).add(fineSeed.mul(13.0)));
@@ -230,7 +238,7 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
         .mul(oneMinus(smoothstep(0.40, 0.45, finePhase)));
     const fineCore = oneMinus(smoothstep(
         0.015,
-        clamp(fwidth(finePos), 0.015, 0.20).add(0.035),
+        clamp(laneRate(finePosAt), 0.015, 0.20).add(0.035),
         abs(fract(finePos).sub(0.5)),
     ));
     const fineStreaks = fineHead.mul(fineCore).mul(smoothstep(0.75, 0.94, fineSeed)).mul(warp);
@@ -240,8 +248,9 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // same angle. That difference is parallax: the near field rushes past while the far field
     // crawls, which is what makes a tunnel read as flight rather than as a zoom.
     const NEAR_LANES = 40;
-    const nearPos = ang.mul(1.0).sub(0.6).div(TAU).add(0.5)
+    const nearPosAt = (a) => a.mul(1.0).sub(0.6).div(TAU).add(0.5)
         .mul(NEAR_LANES);
+    const nearPos = nearPosAt(ang);
     const nearLane = mod(floor(nearPos), NEAR_LANES);
     const n1 = hash21(vec2(nearLane, 3.37));
     const n2 = hash21(vec2(nearLane, 9.11));
@@ -250,7 +259,7 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     const nearSeg = fract(nearDepth.mul(mix(0.16, 0.26, n2)).add(uPhase.mul(nearRate)).add(n1.mul(11.0)));
     const nearHead = smoothstep(0.0, headLen.mul(0.8), nearSeg)
         .mul(oneMinus(smoothstep(headLen.mul(0.8), headLen.mul(0.8).add(0.05), nearSeg)));
-    const nearAA = clamp(fwidth(nearPos), 0.02, 0.3);
+    const nearAA = clamp(laneRate(nearPosAt), 0.02, 0.3);
     const nearCore = oneMinus(smoothstep(0.03, nearAA.add(0.07), abs(fract(nearPos).sub(0.5))));
     // Only near the frame's edge (theta > ~16 deg): the near tube is never seen at the centre.
     const nearMask = smoothstep(0.28, 0.5, theta).mul(smoothstep(0.55, 0.85, n2));

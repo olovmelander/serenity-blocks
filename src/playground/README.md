@@ -89,4 +89,8 @@ agent via `window.__PLAYGROUND__`: `setEffect(id)`, `setTime(s)`, `clearFixedTim
 `pause(bool)`, `setReference(url, opts)`, `backend()`, `listEffects()`.
 
 For reproducible captures use a fixed `?t=` and wait on `window.__PLAYGROUND_READY__`.
+While an effect mounts (`create()`, `reset()`), `Math.random` draws from a stream of the same
+seed, so game code an effect mounts as it ships (the Odyssey's chapter builders use
+`Math.random`) builds the same way every time. Work deferred past an `await` is not covered:
+draw before awaiting, and await anything the first frame needs in `renderAsync()`.
 ⚠️ Keep sessions to a single small effect — full WebGPU journey captures have TDR-crashed the dev iGPU.

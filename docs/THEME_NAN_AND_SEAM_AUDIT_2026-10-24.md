@@ -119,7 +119,8 @@ range and not found.
     path beacons are unchanged.
 - **Six Odyssey views aren't deterministic at a fixed `t`:** Cosmic Expanse, chapter 7, the deep
   ocean, two of Surface World and the mountain peaks. Two captures of the same code differ as much
-  as before and after do, so they show only that the code compiles and renders.
+  as before and after do, so they show only that the code compiles and renders. (Since fixed:
+  section 6.)
 - No capture logged a WebGPU validation error or a console error.
 
 **Maps of where the old base goes negative.**
@@ -155,7 +156,43 @@ transition set the canvas's size again, blanking it until the next frame.
   `stop()`.
 - **Fitness:** `architecture-fitness.json` locks the shrink in (resize listeners 18 to 13).
 
-## 6. Open
+## 6. Follow-up: reproducible Odyssey captures, and chapter 7's tunnel
+
+**The six Odyssey views.** The playground's contract is that a fixed `?t=` gives the same
+picture every time, and that effects draw randomness only from the `rng` it hands them. These
+effects mount the Odyssey's chapter builders as they ship, and those draw from `Math.random`.
+- **While an effect mounts** (`src/playground/main.js`), `Math.random` now draws from a stream of
+  the same seed. It is a separate stream, so what `rng` gives an effect is unchanged. The README
+  says what it covers.
+  - Surface World's two views, chapter 7, Cosmic Expanse and the mountain peaks were then
+    pixel-identical from capture to capture.
+- **The deep ocean needed two more fixes:**
+  - **Its manta and whale arrive as two GLBs**, after the first frame. The effect now waits for
+    them in `renderAsync()` (the load's promise is kept on `group.userData.mantasLoaded`) and
+    poses them before that frame.
+  - **Each creature's seat**, a random angle round the corridor, was drawn when its GLB landed,
+    outside any seeded build. It is now drawn while the chapter is built, so the game still seats
+    them at random. A test (`deep-ocean-manta.test.js`) fails on the old order.
+  - Three captures were then pixel-identical.
+- **The hero-trees effect** drew from `Math.random` itself, which the contract forbids. It now
+  draws from `rng`.
+
+**Chapter 7's tunnel** (the case these captures were blocking).
+- **The fault:** the streak lanes are built from `atan(ray.y, ray.x)`, a whole number per turn,
+  so their content meets across the cut. Their `fwidth`, which sets each streak's anti-aliasing,
+  leaps a whole turn's lanes there and snaps to its cap. Where a lit streak crossed the cut, that
+  drew a bright 2 px bulge on a line from the centre to the frame's left edge, sparkling as the
+  lanes scroll.
+- **The fix:** each lane coordinate's rate is the smaller of its own and that of the same
+  coordinate built from the angle with its cut half a turn round.
+- **Captured** at `t=6`, `12` and `18`: 122, 181 and 64 px change, all on that line, up to 711 of
+  765 ([image](theme-shader-audit/odyssey-ch7-lane-cut.png): before above, after below).
+
+**Thermal Bloom's basin** builds its runoff fingers from an angle too, and its cut does run
+through the frame. Seen 4× along the cut, nothing shows: three of the four finger families don't
+repeat a whole number of times per turn, so the cut was never meant to be crossed. Left as it is.
+
+## 7. Open
 
 - **Nothing here ran on a GPU.** Worth a look on the laptop at High:
   - Aurora: a 3-line clear, for the meteors;
@@ -164,3 +201,6 @@ transition set the canvas's size again, blanking it until the next frame.
   - Neon District's signs.
 - **Earth Core's basalt columns** still hash an interpolated facet normal (see the previous
   record).
+- **Thirteen raw window `resize` listeners remain**, none in a theme: the 2D renderer, the
+  Odyssey board (debounced), transitions, the intro screens, UI widgets and the playground.
+  Moving them is plan §4.4's migration.
