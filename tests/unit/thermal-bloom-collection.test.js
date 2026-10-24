@@ -201,15 +201,14 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
         });
     });
 
-    it('brings its placeholder song home with the theme', () => {
+    it('brings its song home with the theme', () => {
         expect(getThemeMusic(THEME)).toEqual({
             themeId: THEME,
             trackKey: 'ThermalBloom',
             name: 'Thermal Bloom',
-            file: 'blood-moon.mp3',
-            path: './assets/music/blood-moon.mp3?song=thermal-bloom',
-            placeholder: true,
-            placeholderSource: 'blood-moon.mp3',
+            file: 'thermal-bloom.mp3',
+            path: './assets/music/thermal-bloom.mp3',
+            placeholder: false,
         });
         expect(getThemeForMusic('ThermalBloom')).toBe(THEME);
 

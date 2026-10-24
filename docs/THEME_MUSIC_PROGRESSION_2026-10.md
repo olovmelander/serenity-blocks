@@ -2,6 +2,12 @@
 
 Date: 2026-10-08. Status: implemented and verified on the feature branch; native listening remains pending.
 
+> **Update 2026-10-24:** 25 placeholder themes now have recordings of their own, titled as
+> their placeholders were, so every saved track key still holds. The collection is 56
+> recordings and 7 placeholders (Winter, Tornado, Verdant Hills, Chromatic Impasto, Voltage
+> Storm, Void Ember, Vesper Chrysalis), which still play Blood Moon's file under a URL of
+> their own (2026-10-22). Prompts and status: `docs/SUNO_PLACEHOLDER_PROMPTS_2026-10.md`.
+
 Every active theme has exactly one soundtrack assignment and its own song file. The active
 collection contains **62 themes and 62 songs**. Forest and **Echoes of the Soul** are available
 on a fresh installation. Successfully completing an Odyssey orb permanently grants its
