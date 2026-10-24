@@ -245,3 +245,67 @@ escort.
 
 **Cost.** No new draws, pipelines or textures. Per frame in the ocean: one formation frame and three
 slot solves (a 14-step bisection at most) on the CPU.
+
+## 8. The ocean's animals roam (2026-10-24)
+
+Olov: *"in odyssey mode, i dont want the big fishes to follow the movement of the camera, i just want
+them to swim around freely and so they can be seen when we are moving along the journey!"*
+
+**What was wrong.** §7's escort kept each animal at a slot in the journey's view. On screen they held
+their places while the sea moved past, so they read as attached to the lens rather than living in
+the water.
+
+**What changed.** Each animal swims its own route in the world, as a function of the clock alone
+(`composition/odyssey-ocean-roam.js`, pure, replacing `odyssey-ocean-escort.js`). The camera moves
+past them and they never move with it. The board no longer hands them a view (`_oceanEscortView` is
+gone).
+
+- **Where.** The drift climbs a column of water (the rail stays within ~13 u of x -8, z 3 from y 108
+  to the surface) looking up it. A visibility map of the drift (each world point's share of frames
+  in view) showed three useful regions. From the deep, the water seen most is high in the column, on
+  the screen's left and right (the frame's wide axis). After the bend toward -x -z (from y ~210) the
+  frame holds only a wedge of water under the surface ahead. So:
+  - the **whale shark** loops high on the screen's left (+x -z of the column, y ~267), seen from the
+    deep and the middle of the climb;
+  - the **mother and calf** loop high on its right (-x +z, y ~270), seen from the deep. The calf
+    keeps an inner lane beside her (`roamLane`: 12 u nearer the column, 5 u above, a little ahead,
+    on her period);
+  - the **manta** glides under the surface out past the bend (-x -z, y ~280), seen from the bend to
+    the breach and from orb 10.
+- **Free, not a turntable.** Each route is a loop round its own centre, never turning tighter than
+  ~0.3 of the animal's length. Its pace swells and slackens (±35 %), its length breathes and its
+  depth rises and falls, at mean speeds of 2-3 u/s. Each keeps clear of the camera's path (45-55 u
+  for the big ones), of the others, and of the surface.
+- **Arrival.** Once the water allows it (the steam thinning on the way up from chapter 1, a jump into
+  the ocean), it fades in from the water colour over 5 s at its place, which is 140-185 u from the
+  eye at that point, so it is met far off and faint. The water ending (the breach, the chapter's
+  edge) ends it.
+- **Placed by scoring.** The routes came from a constrained search on the real camera over the drift
+  from eight clock phases. The clock is wherever the player's time has put it, so a route has to
+  work at any phase. The search had hard limits (clearance, depth, separation, turn radius) and
+  penalties for covering the orb or crowding each other on screen.
+
+**Measured.** On the real camera (unit test, eight phases), at least one big animal is in frame for
+80-100 % of the drift (mean 88 %), and in every sixth of the climb. Each animal is in frame for
+29-46 % of it (whale shark 42 %, manta 46 %, mother 29 %, calf 41 %), never over the orb ahead. At
+the parks, one is in frame 97 % of the time at orbs 6-7, 93 % at orb 8, 61 % at orb 9 and 100 % at
+orb 10. **Live** (the journey's own drift, sampled each second, RTX 5080): one in frame for 41 of 44 s
+of clear water; whale shark 26 s, manta 25 s, mother 13 s, calf 17 s. The one gap is ~3 s at the bend
+(eye y 224-234), where the whale shark's tail slides out of the corner as the eye passes it. Console
+clean.
+
+**The trade.** The escort had every animal in frame most of the climb (all four together for 27 of
+44 s). Roaming animals are met, approached and passed, so each is in view for part of the climb. That
+is what not following the camera means here.
+
+![The drift up the ocean at 18, 27, 36, 46 and 58 s. Top: the escort (§7). Bottom: roaming](images/odyssey-ch2-roam-2026-10-24/ch2-drift-escort-vs-roam.jpg)
+
+**Tests.** `odyssey-ch2-roam` (new, replaces `odyssey-ch2-escort`): coverage over the drift from
+eight clock phases and in every stretch; each animal's share; the parks; never over the orb and
+readable sizes; clear of the eye (drift and parks) and of each other; under the surface; turn
+radius and pace. `odyssey-ocean-visitors`: wherever the camera goes or looks, the clock alone places
+an animal. `odyssey-act1-arrivals`: met far off and faint, seen through part of the parks, ended by
+the breach.
+
+**Cost.** Less than §7: per animal per frame, three route evaluations (a few trig calls each), and
+no formation frame or slot solves. No new draws, pipelines or textures.
