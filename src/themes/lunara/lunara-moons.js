@@ -60,7 +60,7 @@ export function createMoon(u, map, mapFade, { companion = false, relief = true }
     material.colorNode = Fn(() => {
         const N = normalize(positionWorld.sub(uniforms.place.xyz)).toVar();
         const toCam = normalize(cameraPosition.sub(positionWorld)).toVar();
-        const ndv = max(dot(N, toCam), 0.0).toVar();
+        const ndv = clamp(dot(N, toCam), 0.0, 1.0).toVar();
         const st = uv().add(vec2(uniforms.turn, 0.0)).toVar();
         const tone = (at) => luLuma(map.sample(at).rgb);
         const lum = mix(float(0.5), tone(st), mapFade).toVar();

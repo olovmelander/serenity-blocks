@@ -10,6 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, cos, cross, dot, normalize, positionWorld, pow, saturate, sin, smoothstep, uniform, uv, vec3,
+    max,
 } from 'three/tsl';
 
 // Colour, turns around the board, starting angle, radius, half-width, phase.
@@ -71,7 +72,7 @@ export class SummerGarlands {
             const across = st.y.mul(2).sub(1);
             // The ribbon twists along its length, so it shows now its face and now its edge.
             const twist = cos(st.x.mul(11).add(t.mul(0.8)).add(phase));
-            const breadth = pow(sin(st.x.mul(Math.PI)), 0.5).mul(width).mul(twist.abs().mul(0.8).add(0.2));
+            const breadth = pow(max(sin(st.x.mul(Math.PI)), 0.0), 0.5).mul(width).mul(twist.abs().mul(0.8).add(0.2));
             material.positionNode = here.add(side.mul(across.mul(breadth)));
             const world = positionWorld;
             const view = normalize(cameraPosition.sub(world));

@@ -18,6 +18,7 @@ import {
     Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, length, max, mix,
     normalWorld, normalize, positionGeometry, positionWorld, pow, reflector, screenUV, sin, smoothstep, step,
     texture, uniformArray, vec2, vec3,
+    pow3,
 } from 'three/tsl';
 import { fbm2, ridged2 } from './aurora-noise.js';
 import { AURORA_COLORS } from './aurora-palette.js';
@@ -518,7 +519,7 @@ export class AuroraLandscape {
         const overhead = max(dot(normal, vec3(0.12, 0.86, -0.3)), 0);
         const fill = max(dot(normal, vec3(0, 0.45, 0.9)), 0);
         const facing = abs(dot(normal, normalize(cameraPosition.sub(positionWorld))));
-        const rim = float(1).sub(facing).pow(3).mul(max(normal.y, 0))
+        const rim = pow3(float(1).sub(facing)).mul(max(normal.y, 0))
             .toVar();
         const light = vec3(0.013, 0.022, 0.047).mul(normal.y.mul(0.55).add(0.45))
             .add(bleached.mul(overhead.mul(1.15).add(fill.mul(0.16)).add(rim.mul(0.5)).add(0.03)))

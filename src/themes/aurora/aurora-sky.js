@@ -266,7 +266,9 @@ export class AuroraSky {
             const offset = across.mul(positionGeometry.y.mul(c.z).mul(2));
             return select(alive, vec4(clip.xy.add(offset.mul(clip.w)), clip.z, clip.w), vec4(0, 0, 2, 1));
         })();
-        const lengthwise = uv().x;
+        // Clamped: with MSAA a pixel whose centre lies off the quad extrapolates its uv past it,
+        // and pow of a negative base is NaN, which the bloom spreads into a black block.
+        const lengthwise = clamp(uv().x, 0, 1);
         const sideways = uv().y.sub(0.5).mul(2);
         const trail = lengthwise.pow(2.4).mul(exp(sideways.mul(sideways).mul(-9)));
         const headGlow = exp(lengthwise.oneMinus().mul(-26)).mul(exp(sideways.mul(sideways).mul(-3.5)));

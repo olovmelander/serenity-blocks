@@ -57,6 +57,7 @@ import {
     vec2,
     vec3,
     vec4,
+    pow2,
 } from 'three/tsl';
 import {
     EVENT_ROWS,
@@ -121,7 +122,7 @@ export function skyLight(u, d, footprint, {
         // its leading edge whose colours split a little (blue leads, red trails), like a shock
         // seen through glass.
         const wake = exp(max(x.negate(), 0.0).mul(-1.4)).mul(smoothstep(0.0, -0.6, x)).mul(0.12);
-        const crest = (k) => exp(x.sub(k).mul(2.2).pow(2.0).negate());
+        const crest = (k) => exp(pow2(x.sub(k).mul(2.2)).negate());
         const edge = vec3(crest(0.24), crest(0.4), crest(0.56));
         const crestLight = edge.mul(mix(C.rgb, vec3(1.0), 0.45)).mul(1.15);
         waveLit.addAssign(C.rgb.mul(g.mul(0.32).add(wake)).add(crestLight).mul(A.z));
@@ -340,7 +341,7 @@ export function skyLight(u, d, footprint, {
         const rimRing = exp(off.mul(off).mul(sharp.negate())).mul(4.2).mul(arcs)
             .add(exp(off.mul(off).mul(-180.0)).mul(0.55))
             // A second, fainter ring a little outside: light that went round the throat twice.
-            .add(exp(off.sub(0.07).pow(2.0).mul(sharp.mul(-1.4))).mul(0.7));
+            .add(exp(pow2(off.sub(0.07)).mul(sharp.mul(-1.4))).mul(0.7));
         const halo = float(0.28).div(float(1.0).add(off.mul(off).mul(22.0)))
             .add(float(0.025).div(float(1.0).add(th.mul(th).mul(14.0))));
         const ringHot = mix(mix(u.glow, u.gateCol, 0.45), u.gateCol.mul(vec3(0.9, 0.97, 1.12)), beam);
@@ -421,7 +422,7 @@ export function skyLight(u, d, footprint, {
                 // The lane's half width in lane units: a pixel of view at this angle off the axis.
                 const pixLane = pix.div(max(sin(min(th, 1.5)), 0.02)).mul(count / TAU);
                 const w = max(pixLane.mul(0.75), 0.012);
-                const line = exp(across.div(w).pow(2.0).negate()).mul(min(pixLane.mul(0.75).div(w), 1.0).mul(0.5).add(0.5));
+                const line = exp(pow2(across.div(w)).negate()).mul(min(pixLane.mul(0.75).div(w), 1.0).mul(0.5).add(0.5));
                 const col = mix(mix(u.thereGlow, u.thereGate, dh.z), u.thereAccent, step(0.82, dh.x));
                 streaks.addAssign(col.mul(line.mul(shape).mul(step(0.42, dh.x)).mul(gain)));
             };
@@ -430,7 +431,7 @@ export function skyLight(u, d, footprint, {
             // Thin rings rushing past toward us, a few at a time (not filled bands).
             const ringAt = fract(deep.mul(1.1).sub(u.jumpClock.mul(1.7)));
             const ringW = max(pix.div(max(th, 0.02)).mul(1.1 * 1.5), 0.012);
-            const rings = exp(ringAt.sub(0.5).div(ringW).pow(2.0).negate()).mul(0.9);
+            const rings = exp(pow2(ringAt.sub(0.5).div(ringW)).negate()).mul(0.9);
             const tunnel = wallGlow
                 .add(streaks)
                 .add(mix(u.thereGlow, u.thereGate, 0.5).mul(rings))

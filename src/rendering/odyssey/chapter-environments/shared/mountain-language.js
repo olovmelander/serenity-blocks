@@ -501,7 +501,9 @@ export function mountainColorNode(a) {
 
     // Cool silhouette rim.
     const viewDir = normalize(cameraPosition.sub(vWorldPosition));
-    const rim = pow(oneMinus(max(dot(n, viewDir), 0.0)), float(MOUNTAIN_SHADING.rimPower));
+    // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
+    // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+    const rim = pow(max(oneMinus(max(dot(n, viewDir), 0.0)), 0.0), float(MOUNTAIN_SHADING.rimPower));
     color = color.add(uRim.mul(rim).mul(MOUNTAIN_SHADING.rimStrength));
 
     // Atmospheric perspective — distance fog capped so peaks keep a crisp silhouette.

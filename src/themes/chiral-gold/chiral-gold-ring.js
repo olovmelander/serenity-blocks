@@ -22,13 +22,13 @@ import {
     mix,
     normalView,
     positionViewDirection,
-    pow,
     smoothstep,
     step,
     uniform,
     uv,
     vec2,
     vec3,
+    pow2,
 } from 'three/tsl';
 import {
     AURUM,
@@ -98,7 +98,7 @@ function bandMaterial(u) {
     // The crown (aurum.w): a back-to-back and a perfect clear light the top of the arch in the
     // alloy's own colour, and it stays lit while the back-to-backs keep coming.
     const crown = exp(fromCrown.mul(fromCrown).mul(-7.0)).mul(u.aurum.w);
-    const rim = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
+    const rim = pow2(float(1.0).sub(abs(dot(normalView, positionViewDirection))));
     const hot = mix(u.glow, vec3(1.0, 0.93, 0.78), 0.55);
     // The blaze burns in the alloy's own gold, its brushing showing through: a ring of molten
     // colour, not a white hoop that hazes the hall.

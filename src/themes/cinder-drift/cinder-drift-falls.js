@@ -116,7 +116,8 @@ export function createFalls(u, plan) {
     material.colorNode = Fn(() => {
         const st = uv();
         const across = vAcross.x.div(max(vAcross.y, 1e-6)).mul(HALO); // ±0.5 = the edges of the lava
-        const along = st.y;
+        // Clamped: MSAA can extrapolate a varying past the strip's ends, and sqrt below 0 is NaN.
+        const along = clamp(st.y, 0.0, 1.0);
         const gain = vRun.x;
         const k = vRun.y;
         const seed = vRun.z;

@@ -98,7 +98,9 @@ const LAKE_LIT_AIR = /* @__PURE__ */ vec3(0.30, 0.095, 0.03);
  * pass an analytically-recomputed view normal; defaults to the built-in normalView.
  */
 function viewFresnel(k = 3.0, nView = normalView) {
-    return pow(oneMinus(abs(dot(normalize(nView), positionViewDirection))), k);
+    // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
+    // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+    return pow(clamp(oneMinus(abs(dot(normalize(nView), positionViewDirection))), 0.0, 1.0), k);
 }
 
 // ── Shared fbm (mirrors earth-core.js noiseGLSL `fbm`, 4 octaves) ────────────────

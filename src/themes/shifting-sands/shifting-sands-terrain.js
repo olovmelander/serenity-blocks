@@ -57,6 +57,7 @@ import {
     vec3,
     vec4,
     vertexStage,
+    pow2,
 } from 'three/tsl';
 import {
     mulberry32, ssHash21, ssHash22, ssTexNoise,
@@ -629,7 +630,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         const dpC = p.sub(C);
         const reachDown = mix(0.016, 0.075, smoothstep(250.0, 1600.0, dist));
         const brinkW = select(dpC.lessThan(0.0), w.mul(1.5).add(reachDown), w.mul(1.2).add(0.014));
-        const brink = exp(dpC.div(brinkW).pow(2.0).negate())
+        const brink = exp(pow2(dpC.div(brinkW)).negate())
             .mul(aDune.w.div(37.0)).mul(detail.mul(0.7).add(0.3));
         const backlit = pow(clamp(dot(V.negate(), uSunA).mul(0.5).add(0.5), 0.0, 1.0), 5.0);
         // The heat of play makes them burn hotter (uHeat.w: 0 at rest).

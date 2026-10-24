@@ -49,6 +49,7 @@ import {
     vec2,
     vec3,
     vec4,
+    pow2,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -473,7 +474,7 @@ export function createTroll(u, opts = {}) {
             .mul(flesh01)
             .mul(u.breath.mul(0.5).add(0.5)));
         const toEye = V.negate();
-        const fres = float(1.0).sub(max(dot(N, toEye), 0.0)).pow(5.0).mul(0.6)
+        const fres = float(1.0).sub(clamp(dot(N, toEye), 0.0, 1.0)).pow(5.0).mul(0.6)
             .add(0.08);
         const damp = rosy.mul(0.65).add(0.35).mul(float(1.0).sub(crease)).mul(fine.a.mul(0.4).add(0.6));
         const sheenLamp = max(dot(N, normalize(lampDir.add(toEye))), 0.0).pow(28.0).mul(lampFall).mul(1.2);
@@ -483,7 +484,7 @@ export function createTroll(u, opts = {}) {
             .mul(flesh01));
         // Moss is velvet: it gathers light along its edges, softly, and his beard-lichen glows where
         // his lantern or the moon is behind it (light goes through thin strings).
-        const fuzz = float(1.0).sub(abs(dot(N0, V))).pow(2.0).mul(hair)
+        const fuzz = pow2(float(1.0).sub(abs(dot(N0, V)))).mul(hair)
             .mul(float(1.0).sub(lichen.mul(0.7)));
         lit.addAssign(mix(u.moonLight, lampOnHim, 0.35).mul(albedo).mul(fuzz).mul(0.5)
             .mul(u.breath.mul(0.5).add(0.5)));

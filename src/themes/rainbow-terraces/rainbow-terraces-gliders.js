@@ -16,6 +16,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cos, cross, dot, float, length, max, min, mix, normalGeometry,
     normalize, positionGeometry, pow, sin, varying, vec3, vec4,
+    pow2,
 } from 'three/tsl';
 import { scWrap, skyBase } from './rainbow-terraces-tsl.js';
 
@@ -102,7 +103,7 @@ export function createGliders({ capacity, U }) {
         const H = normalize(L.add(V));
         col.addAssign(light.key.mul(pow(clamp(dot(N, H), 0.0, 1.0), 48.0)).mul(U.keyGain).mul(1.2));
         // Translucent edges: a little of the sky through the paper.
-        col.addAssign(skyBase(V.negate(), U).mul(pow(float(1.0).sub(abs(dot(N, V))), 2.0)).mul(0.25));
+        col.addAssign(skyBase(V.negate(), U).mul(pow2(float(1.0).sub(abs(dot(N, V))))).mul(0.25));
         // The inner glow: the hour's warmth, or the link's colour while painting.
         const warm = light.hearth.mul(U.gliderGlow).mul(1.4);
         const own = vCol.xyz.mul(vCol.w).mul(2.2);

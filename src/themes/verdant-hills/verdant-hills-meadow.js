@@ -187,7 +187,9 @@ export class VerdantHillsMeadow {
         // stands straight behind it, a warm green rather than a lime.
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 2.4);
         const behind = saturate(toSun.negate());
-        const glow = pow(blade, vec3(0.8)).mul(vec3(0.92, 1.08, 0.42))
+        // (Saturated: with MSAA a root pixel extrapolates st.y below 0, which can take a channel
+        // under 0, and its power NaN.)
+        const glow = pow(saturate(blade), vec3(0.8)).mul(vec3(0.92, 1.08, 0.42))
             .mul(through.mul(behind.mul(0.6).add(0.4)).mul(0.75).add(0.05))
             .mul(st.y.mul(st.y));
         // A blade the wind has laid over shows the sky on its back.

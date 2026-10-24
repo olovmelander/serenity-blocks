@@ -51,6 +51,7 @@ import {
     vec2,
     vec3,
     vec4,
+    pow3,
 } from 'three/tsl';
 import { rgb, swHash11 } from './synthwave-sunset-tsl.js';
 import {
@@ -200,7 +201,7 @@ function createStructureMaterial(u) {
         const N = normalize(modelWorldMatrix.mul(vec4(vNormal, 0.0)).xyz).toVar();
         const facing = abs(dot(N, V));
         // Backlit steel: dark, a warm rim where the surface turns toward the sun behind it.
-        const rim = pow(float(1.0).sub(facing), 3.0).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2));
+        const rim = pow3(float(1.0).sub(facing)).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2));
         const steel = rgb(0x1f1626).add(rgb(0xff8a5c).mul(rim.mul(0.55)).mul(mix(float(1.0), float(0.4), u.dusk)));
         // The bulbs light the rim and the spokes near it (cheap: by local radius).
         const local = positionGeometry;
