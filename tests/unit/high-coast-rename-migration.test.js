@@ -59,15 +59,16 @@ describe('High Coast took the Mountain orb: what a player already has now means 
         });
     });
 
-    it('renames the placeholder song with the theme and keeps the old track key selectable', () => {
+    it('renames the song with the theme and keeps the old track key selectable', () => {
         const song = getThemeMusic('high-coast');
         expect(song).toMatchObject({
             name: 'High Coast',
-            path: './assets/music/blood-moon.mp3?song=high-coast',
+            file: 'high-coast.mp3',
+            path: './assets/music/high-coast.mp3',
             trackKey: 'HighCoast',
-            placeholder: true,
-            placeholderSource: 'blood-moon.mp3',
+            placeholder: false,
         });
+        expect(song).not.toHaveProperty('placeholderSource');
         expect(getThemeMusic(OLD_THEME)).toBe(song);
         expect(THEME_MUSIC_CATALOG.some((entry) => entry.trackKey === OLD_TRACK)).toBe(false);
         expect(resolveMusicTrackKey(OLD_TRACK)).toBe('HighCoast');

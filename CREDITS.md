@@ -144,7 +144,7 @@ third-party or CC assets:
 
 ## 4. Music
 
-All ~36 soundtrack tracks were **generated with Suno** (AI music generation) by the
+All ~61 soundtrack tracks were **generated with Suno** (AI music generation) by the
 project owner — self-generated from the owner's own prompts under a **paid Suno
 subscription** whose terms grant commercial-use and ownership rights in the generated
 output. The subscription and terms records, the per-track prompts, and the Suno output
@@ -154,7 +154,9 @@ their metadata) are retained by the project as the ownership/licensing record.
 The tracks are the game's own soundtrack — generated from the owner's original prompts,
 **not** taken from any third-party library or existing song. The **project owner has
 listened through all tracks and confirms none reproduces** the *Korobeiniki* / "Tetris®
-Type-A" melody (2026-07-15). Gameplay sound effects are procedurally synthesised (no
+Type-A" melody (2026-07-15). The 25 tracks added on 2026-10-24 (listed below) postdate
+that listen-through and still need the same confirmation. Gameplay sound effects are
+procedurally synthesised (no
 melody), so the melody-match concern is limited to — and cleared for — the music tracks.
 *(Rigor note: this is the owner's listen-through, which is the practical check; an
 independent musicologist review or automated melody fingerprinting remains optional extra
@@ -180,6 +182,16 @@ Ocean Deep · Rainbark (titled "Cosmic Chimes" until October 2026) ·
 Shifting Sands · Spring (titled "Moonlit Forest" until October 2026) · Starlight ·
 Stellar Drift · Stillwater · Sunbraid (titled "Rainy Window" until October 2026) ·
 Waves · Wolfhour · Black Hole · Aether Tides.
+
+Added on 2026-10-24, one for each theme that had played Blood Moon as a placeholder (they keep
+their `suno.com` output IDs in their metadata; the prompts are in
+`docs/SUNO_PLACEHOLDER_PROMPTS_2026-10.md`):
+
+Astral Weave · Chiral Gold · Chromadelic Highway · Fall · Golden Forest · Halcyon Apex ·
+High Coast · Kaleidosonic · Koi Pond · Luminous Tides · Midsommar · Nebula Flow ·
+Nimbus Veil · Painted Ages · Pyrestorm · Rainbow Terraces · Sakura Twilight ·
+Serenity Warp · Solar Eclipse · Stellar Velocity · Sunfall · Sunset · Supernova ·
+Synthwave Sunset · Thermal Bloom.
 
 Sound effects are generated procedurally in code (`src/audio/sound-effects.js`); no
 third-party audio samples are bundled. Fonts are self-hosted under the SIL Open Font
