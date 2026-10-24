@@ -589,6 +589,12 @@ class Session {
             const peer = await this.context.newPage();
             await peer.setViewportSize({ width: 480, height: 270 });
             peer.on('pageerror', (error) => log(`peer ${i} pageerror:`, String(error.message).slice(0, 160)));
+            peer.on('console', (message) => {
+                const text = message.text();
+                if (/LOCAL MP|lobb|Lobb|join|Join|trailer|failed|rror/.test(text) && !/GL Driver|WebGPU Context/.test(text)) {
+                    log(`peer ${i}:`, text.slice(0, 200));
+                }
+            });
             await peer.goto(`${BASE}/?${QUERY}&trailerPeer=1`, { waitUntil: 'load', timeout: 300000 });
             await peer.addScriptTag({ content: this.autoplaySource });
             await peer.evaluate(pagePrepare);
