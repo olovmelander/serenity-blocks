@@ -96,7 +96,8 @@ const HIDE_CSS = `
 #serenity-first-hints, #serenity-notification, #serenity-world-bar, .lv-coach,
 #odyssey-navigator-btn, #demo-indicator, #playback-controls, #sb-toast-region,
 .custom-cursor-container, .headphone-badge, .global-corner-controls,
-.breath-guide__controls { display: none !important; }
+.breath-guide__controls, #odyssey-level-panel, #odyssey-map-header, #odyssey-header-charms,
+#odyssey-chapter-arrival-card { display: none !important; }
 * { cursor: none !important; }`;
 
 async function loadPlaywright() {
