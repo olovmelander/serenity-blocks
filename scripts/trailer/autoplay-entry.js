@@ -11,7 +11,7 @@
 import { PuzzleBotController } from '../../src/core/ai/puzzle-bot-controller.js';
 import { BotInputScheduler } from '../../src/core/ai/bot-input-scheduler.js';
 import { getBotDifficultyConfig } from '../../src/core/ai/bot-difficulty.js';
-import { solutionPlacement } from '../../src/core/stillfall/stillfall-sim.js';
+import { applyPlacement, createRun, solutionPlacement } from '../../src/core/stillfall/stillfall-sim.js';
 import { solveFrom } from '../../src/core/stillfall/stillfall-solver.js';
 
 const mulberry32 = (seed) => {
@@ -145,35 +145,32 @@ window.__trailerAutoplay = {
         return true;
     },
     /**
-     * Stillfall: load `puzzle` from the bank and play the first `steps` moves of its stored
-     * solution at once (drop animations skipped), so the shot opens on the decisive piece.
+     * Stillfall: load `puzzle` from the bank and set the board to where the first `steps` moves
+     * of its stored solution leave it, so the shot opens on the decisive piece. The position is
+     * worked out with the mode's own pure simulator and restored as a turn, as undo restores one.
      */
     async prepareStillfall({ puzzle, steps = 0 } = {}) {
         const mode = currentMode();
-        if (puzzle && mode?._loadPuzzle) {
-            mode._loadPuzzle(puzzle);
-            await yieldTask();
-        }
+        if (!mode?._loadPuzzle) return { error: 'not in Stillfall' };
+        if (puzzle) mode._loadPuzzle(puzzle);
+        let run = createRun(mode.puzzle);
         for (let step = 0; step < steps; step += 1) {
-            let gs = liveState(currentMode());
-            for (let wait = 0; wait < 2000 && (!gs?.currentPiece || gs.isProcessingPhysics); wait += 1) {
-                // eslint-disable-next-line no-await-in-loop
-                await yieldTask();
-                gs = liveState(currentMode());
-            }
-            const run = mode._liveRun();
-            const placement = solutionPlacement(run, mode.puzzle.solution[mode._dealt]);
-            if (!gs || !placement) break;
-            gs.isSeeking = true;
-            placement.actions.forEach(perform);
-            ACTIONS.hardDrop();
-            // eslint-disable-next-line no-await-in-loop
-            if (gs.latestPhysicsPromise) await gs.latestPhysicsPromise.catch(() => {});
-            gs.isSeeking = false;
-            // eslint-disable-next-line no-await-in-loop
-            await yieldTask();
+            const placement = solutionPlacement(run, mode.puzzle.solution[step]);
+            if (!placement) break;
+            ({ run } = applyPlacement(run, placement));
         }
-        return { dealt: mode?._dealt ?? null, puzzle: mode?.puzzle?.id ?? null };
+        if (run.dealt > 0) {
+            mode._restoreTurn({
+                lockedPieces: run.lockedPieces,
+                nextPieces: mode.puzzle.supply.slice(run.dealt),
+                pieceIdCounter: run.nextPieceId - 1,
+                lines: run.lines,
+                bestWaves: run.bestWaves,
+                dealt: run.dealt,
+            });
+        }
+        await yieldTask();
+        return { dealt: mode._dealt, puzzle: mode.puzzle?.id ?? null, outcome: run.outcome };
     },
     stop() {
         if (!running) return;
