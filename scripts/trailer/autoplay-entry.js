@@ -54,10 +54,18 @@ function currentMode() {
 }
 
 function liveState(mode) {
+    // Online versus: the local player's predicted board (the inputs go to the host).
+    const online = mode?.ffaGameState?.getLocalPlayer?.()?.gameState;
+    if (online) return online;
     return mode?.getGameState?.() ?? mode?.gameState ?? null;
 }
 
-const sleepFrame = () => new Promise((resolve) => { requestAnimationFrame(resolve); });
+// Prefill runs while the clock is thawed and a themed frame can take seconds to draw, so it
+// waits on the event loop, not on frames.
+const yieldTask = () => new Promise((resolve) => {
+    if (window.__trailerClock) window.__trailerClock.realSleep(4).then(resolve);
+    else setTimeout(resolve, 4);
+});
 
 window.__trailerAutoplay = {
     /**
@@ -149,12 +157,12 @@ window.__trailerAutoplay = {
             playerIndex: 0, playerState: liveState(mode), difficulty, rng, actions: ACTIONS,
         });
         let placed = 0;
-        for (let guard = 0; guard < pieces * 20 && placed < pieces; guard += 1) {
+        for (let guard = 0; guard < pieces * 400 && placed < pieces; guard += 1) {
             const gs = liveState(currentMode());
             if (!gs || gs.isGameOver) break;
             if (!gs.currentPiece || gs.isProcessingPhysics) {
                 // eslint-disable-next-line no-await-in-loop
-                await sleepFrame();
+                await yieldTask();
                 continue;
             }
             bot.playerState = gs;
@@ -173,7 +181,7 @@ window.__trailerAutoplay = {
             const height = firstFilled < 0 ? 0 : rows.length - firstFilled;
             if (height > maxHeight + 4) break; // grid includes hidden rows
             // eslint-disable-next-line no-await-in-loop
-            await sleepFrame();
+            await yieldTask();
         }
         const gs = liveState(currentMode());
         if (gs) gs.isSeeking = false;

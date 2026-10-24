@@ -7,12 +7,12 @@
  * plays smoothly at full speed however slowly the frames were drawn. On a machine without a GPU
  * the page renders through SwiftShader (WebGPU on the CPU): slow, but the same pixels.
  *
- * Usage (a server for the built game must be running: `npm run build && npx vite preview`):
+ * Usage (the capture build must be served: `npm run trailer:build -- --serve`, see build.mjs):
  *   node scripts/trailer/capture.mjs                       every shot in trailer-config.mjs
  *   node scripts/trailer/capture.mjs --only=stack-a,m3     just these
  *   node scripts/trailer/capture.mjs --missing             only shots without a clip yet
  *
- *   --base-url=URL     the game (default http://127.0.0.1:4173, `vite preview`)
+ *   --base-url=URL     the game (default http://127.0.0.1:4174, build.mjs --serve)
  *   --out=DIR          output root (default artifacts/trailer; clips go to DIR/shots)
  *   --gpu              use the machine's GPU instead of SwiftShader (headed window)
  *   --quality=Extreme  effect quality tier (Minimal … Extreme; default High)
@@ -37,7 +37,7 @@ const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith
     const [key, ...value] = a.slice(2).split('=');
     return [key, value.join('=') || true];
 }));
-const BASE = String(args['base-url'] || 'http://127.0.0.1:4173');
+const BASE = String(args['base-url'] || 'http://127.0.0.1:4174');
 const OUT = path.resolve(ROOT, String(args.out || 'artifacts/trailer'));
 const SHOT_DIR = path.join(OUT, 'shots');
 const QUALITY = String(args.quality || 'High');
@@ -303,6 +303,67 @@ async function pageOdysseyFlyover({ seconds }) {
     return { ok: true, from, to };
 }
 
+async function pageFlipWorld({ themeId, settleMs }) {
+    // Change the world under a running game: hold the game (no gravity, no bot), let real time
+    // run while the new theme loads and the outgoing one fades, then hold time again and resume.
+    const app = window.serenityBlocks;
+    const tm = app.themeManager;
+    const mode = app.gameModeManager.getCurrentMode?.();
+    const gs = mode?.getGameState?.() ?? mode?.gameState ?? null;
+    const started = window.__trailerClock.realNow();
+    if (gs) gs.isPaused = true;
+    window.__trailerClock.thaw();
+    try {
+        app.settingsManager?.update?.({ backgroundMode: 'Specific', backgroundTheme: themeId });
+        await tm.switchTheme(themeId, true);
+        for (let i = 0; i < 2400; i += 1) {
+            if (!tm.isTransitioning && !tm.switchDrainPromise && !tm.queuedSwitchRequest
+                && tm.activeTheme?.lifecycleState === 'running' && tm.activeThemeName === themeId) break;
+            await window.__trailerClock.realSleep(250);
+        }
+        try { await tm.activeTheme?.whenCriticalReady?.(); } catch { /* best effort */ }
+        await window.__trailerClock.realSleep(settleMs);
+    } finally {
+        window.__trailerClock.freeze();
+        if (gs) {
+            gs.lastTime = performance.now();
+            gs.isPaused = false;
+        }
+    }
+    return { active: tm.activeThemeName, seconds: Math.round((window.__trailerClock.realNow() - started) / 1000) };
+}
+
+async function pageHostOnline({ players }) {
+    // The mock transport (src/dev/console-harness.js): real Online Versus netcode between
+    // windows of one browser over BroadcastChannel, lobbies in localStorage.
+    if (typeof window.localMpHost !== 'function') {
+        return { ok: false, reason: 'no online test harness: capture from a VITE_DEV_HARNESS=1 build (build.mjs)' };
+    }
+    await window.localMpHost({ autoStart: false, maxPlayers: players });
+    await window.__trailerClock.realSleep(1500);
+    return { ok: true };
+}
+
+async function pageOnlinePlayers() {
+    return window.__getFfa?.()?.players?.size || 0;
+}
+
+async function pageOnlineStart({ host }) {
+    const ffa = window.__getFfa?.();
+    if (!ffa) return { ok: false };
+    if (host) {
+        const config = window.__getMode().ffaGameState.matchConfig;
+        config.endCondition = 'frags';
+        config.endConditionValue = 99; // rounds may end, the match does not
+    }
+    ffa.setReady?.(true);
+    return { ok: true };
+}
+
+async function pageOnlinePhase() {
+    return window.__getFfa?.()?.gamePhase || null;
+}
+
 // ---------------------------------------------------------------------------------------------
 
 class Session {
@@ -312,6 +373,8 @@ class Session {
         this.browser = null;
         this.page = null;
         this.cdp = null;
+        this.context = null;
+        this.peers = [];
         this.shotsTaken = 0;
     }
 
@@ -321,6 +384,7 @@ class Session {
         const context = await this.browser.newContext({
             viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'no-preference',
         });
+        this.context = context;
         this.page = await context.newPage();
         const page = this.page;
         page.on('pageerror', (error) => log('pageerror:', String(error.message).slice(0, 200)));
@@ -360,7 +424,7 @@ class Session {
         const kind = shot.kind;
         const modeFor = {
             single: 'single', infinity: 'infinity', stillfall: 'stillfall', serenity: 'serenity',
-            versus: 'local-multiplayer', odyssey: 'odyssey', hale: null,
+            versus: 'local-multiplayer', odyssey: 'odyssey', hale: null, online: 'online-multiplayer',
         }[kind];
         const sameMode = this.mode && this.mode === modeFor && kind !== 'hale' && kind !== 'versus';
         if (!sameMode && this.mode !== undefined) {
@@ -388,6 +452,9 @@ class Session {
         case 'odyssey':
             log(id, 'odyssey', JSON.stringify(await this.run(pageStartOdyssey, { level: shot.level || 0 })));
             break;
+        case 'online':
+            await this.startOnline(id, shot.players || 4);
+            break;
         default:
             throw new Error(`unknown shot kind ${kind}`);
         }
@@ -401,6 +468,14 @@ class Session {
         }
         // Let late pipelines and streamed textures land before time freezes.
         await this.run((ms) => window.__trailerClock.realSleep(ms), shot.settle ?? 4000);
+        if (kind === 'online') {
+            // Every seat plays: the peers' own bots, then the host's.
+            for (const peer of [...this.peers, this.page]) {
+                await peer.evaluate((options) => window.__trailerAutoplay.start(options), {
+                    difficulty: shot.difficulty ?? 8, seed: (shot.seed ?? 1337) + this.peers.indexOf(peer) + 1,
+                });
+            }
+        }
         if (['single', 'infinity', 'stillfall', 'odyssey'].includes(kind) && (kind !== 'odyssey' || shot.level)) {
             if (shot.prefill !== 0 && kind !== 'stillfall') {
                 const placed = await this.run((options) => window.__trailerAutoplay.prefill(options), {
@@ -420,14 +495,56 @@ class Session {
         }
     }
 
+    /**
+     * Online Versus: this page hosts a mock lobby, `players - 1` small peer windows join it and
+     * every seat readies. The peers run in lockstep with the host under the same virtual clock
+     * (record() steps them every frame), on a light theme so they cost little to draw.
+     */
+    async startOnline(id, players) {
+        const hosted = await this.run(pageHostOnline, { players });
+        if (!hosted.ok) throw new Error(hosted.reason);
+        for (let i = 1; i < players; i += 1) {
+            const peer = await this.context.newPage();
+            await peer.setViewportSize({ width: 480, height: 270 });
+            peer.on('pageerror', (error) => log(`peer ${i} pageerror:`, String(error.message).slice(0, 160)));
+            await peer.goto(`${BASE}/?${QUERY}&localMp=join`, { waitUntil: 'load', timeout: 300000 });
+            await peer.addScriptTag({ content: this.autoplaySource });
+            await peer.evaluate(pagePrepare);
+            this.peers.push(peer);
+            for (let k = 0; k < 120 && (await this.run(pageOnlinePlayers)) < i + 1; k += 1) {
+                await this.run((ms) => window.__trailerClock.realSleep(ms), 1000);
+            }
+        }
+        log(id, `online lobby: ${await this.run(pageOnlinePlayers)} players`);
+        for (const peer of this.peers) {
+            await peer.evaluate(pageSwitchTheme, { themeId: 'voltage-storm' }).catch(() => {});
+            await peer.evaluate(pageOnlineStart, { host: false });
+        }
+        await this.run(pageOnlineStart, { host: true });
+        await this.run((ms) => window.__trailerClock.realSleep(ms), 1000);
+        await this.run(() => window.__getMode().lobbyWaitingRoom?.startMatch?.());
+        for (let k = 0; k < 240; k += 1) {
+            const phases = await Promise.all([this.page, ...this.peers].map((p) => p.evaluate(pageOnlinePhase).catch(() => null)));
+            if (phases.every((phase) => phase === 'playing')) break;
+            await this.run((ms) => window.__trailerClock.realSleep(ms), 500);
+        }
+        log(id, `online phases: ${JSON.stringify(await Promise.all([this.page, ...this.peers].map((p) => p.evaluate(pageOnlinePhase).catch(() => null))))}`);
+    }
+
     /** Freeze time and record `frames` frames into `file`. */
     async record(id, shot, frames, file) {
         const { page, cdp } = this;
+        const { peers } = this;
+        const stepAll = async () => {
+            await Promise.all(peers.map((peer) => peer.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS)));
+            await page.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS);
+        };
         await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
+        for (const peer of peers) await peer.evaluate(() => window.__trailerClock.freeze());
         await page.evaluate(() => window.__trailerClock.freeze());
         const preroll = Math.round((shot.preroll ?? PREROLL) * fps);
         for (let i = 0; i < preroll; i += 1) {
-            await page.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS);
+            await stepAll();
         }
         if (shot.kind === 'odyssey' && !shot.level) {
             await page.evaluate(pageOdysseyFlyover, { seconds: frames / fps });
@@ -443,11 +560,22 @@ class Session {
         const done = new Promise((resolve, reject) => {
             ffmpeg.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`))));
         });
+        // World flips (shot.worlds): the theme changes before these frames, the game held meanwhile.
+        const flips = (shot.worlds || []).slice(1).map((world) => ({ frame: Math.round(world.at * fps), ...world }));
+        let nextFlip = 0;
         const started = Date.now();
         let stepMs = 0;
         for (let i = 0; i < frames; i += 1) {
+            while (nextFlip < flips.length && flips[nextFlip].frame <= i) {
+                const flip = flips[nextFlip];
+                await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 });
+                const result = await page.evaluate(pageFlipWorld, { themeId: flip.theme, settleMs: shot.settle ?? 4000 });
+                await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
+                log(`${id}: frame ${i} → ${flip.theme} ${JSON.stringify(result)}`);
+                nextFlip += 1;
+            }
             const stepStart = Date.now();
-            await page.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS);
+            await stepAll();
             stepMs += Date.now() - stepStart;
             const { data } = await cdp.send('Page.captureScreenshot', {
                 format: 'jpeg', quality: 94, optimizeForSpeed: true,
@@ -463,6 +591,7 @@ class Session {
         }
         ffmpeg.stdin.end();
         await done;
+        for (const peer of peers) await peer.evaluate(() => window.__trailerClock.thaw());
         await page.evaluate(() => window.__trailerClock.thaw());
         await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 });
     }
@@ -477,8 +606,10 @@ async function main() {
     }
     if (args.missing) ids = ids.filter((id) => !existsSync(path.join(SHOT_DIR, `${id}.mp4`)));
     // Shots of one kind back to back: a mode is entered once and only the theme changes.
-    const KIND_ORDER = ['single', 'infinity', 'stillfall', 'versus', 'serenity', 'hale', 'odyssey'];
-    ids.sort((a, b) => KIND_ORDER.indexOf(TRAILER.shots[a].kind) - KIND_ORDER.indexOf(TRAILER.shots[b].kind));
+    // The plain board shots last: every other setup gets tried (and can be fixed) early on.
+    const KIND_ORDER = ['serenity', 'hale', 'stillfall', 'infinity', 'versus', 'online', 'odyssey', 'single'];
+    const rank = (id) => KIND_ORDER.indexOf(TRAILER.shots[id].kind) * 2 + (TRAILER.shots[id].worlds ? 0 : 1);
+    ids.sort((a, b) => rank(a) - rank(b));
     mkdirSync(SHOT_DIR, { recursive: true });
     log(`${ids.length} shots: ${ids.join(', ')}`);
 
@@ -493,7 +624,10 @@ async function main() {
         let ok = false;
         for (let attempt = 1; attempt <= 2 && !ok; attempt += 1) {
             try {
-                if (!session || session.shotsTaken >= PER_SESSION) {
+                // Online shots get a browser of their own: their peer windows and mock lobby end
+                // with it.
+                const fresh = shot.kind === 'online' || session?.peers.length;
+                if (!session || session.shotsTaken >= PER_SESSION || fresh) {
                     await session?.close();
                     session = new Session(playwright, autoplaySource);
                     await session.open();

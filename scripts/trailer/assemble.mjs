@@ -25,6 +25,45 @@ const { fps, width, height } = TRAILER;
 const frame = 1 / fps;
 const snap = (t) => Math.round(t * fps) / fps;
 
+/**
+ * Camera moves made in post: zoom `z` and centre offset `dx`/`dy` (fractions of the frame) at
+ * the start and end of the entry, eased in between. Done with ffmpeg's perspective filter, which
+ * resamples at sub-pixel positions, so slow pushes and drifts glide instead of stepping a pixel
+ * at a time. Zooms stay small (≤ 6 %) so the game's own pixels are barely enlarged.
+ */
+export const MOVES = {
+    push: { from: { z: 1.0, dx: 0, dy: 0 }, to: { z: 1.05, dx: 0, dy: 0 } },
+    pushSlow: { from: { z: 1.0, dx: 0, dy: 0 }, to: { z: 1.035, dx: 0, dy: 0 } },
+    pull: { from: { z: 1.05, dx: 0, dy: 0 }, to: { z: 1.0, dx: 0, dy: 0 } },
+    driftLeft: { from: { z: 1.045, dx: 0.016, dy: 0 }, to: { z: 1.045, dx: -0.016, dy: 0 } },
+    driftRight: { from: { z: 1.045, dx: -0.016, dy: 0 }, to: { z: 1.045, dx: 0.016, dy: 0 } },
+    rise: { from: { z: 1.045, dx: 0, dy: 0.016 }, to: { z: 1.045, dx: 0, dy: -0.016 } },
+};
+
+/** The perspective filter for a move over `frames` frames, or '' for none. */
+export function moveFilter(name, frames) {
+    if (!name) return '';
+    const move = MOVES[name];
+    if (!move) throw new Error(`unknown camera move ${name}`);
+    const n = Math.max(1, frames - 1);
+    // Smoothstep on the frame index: the move starts and settles gently.
+    const p = `(min(1,in/${n})*min(1,in/${n})*(3-2*min(1,in/${n})))`;
+    const lerp = (a, b) => (a === b ? `${a}` : `(${a}+(${b - a})*${p})`);
+    const z = lerp(move.from.z, move.to.z);
+    const cx = `(W/2+W*${lerp(move.from.dx, move.to.dx)})`;
+    const cy = `(H/2+H*${lerp(move.from.dy, move.to.dy)})`;
+    const hw = `(W/(2*${z}))`;
+    const hh = `(H/(2*${z}))`;
+    const left = `${cx}-${hw}`;
+    const right = `${cx}+${hw}`;
+    const top = `${cy}-${hh}`;
+    const bottom = `${cy}+${hh}`;
+    const q = (expr) => `'${expr}'`;
+    return `,perspective=x0=${q(left)}:y0=${q(top)}:x1=${q(right)}:y1=${q(top)}`
+        + `:x2=${q(left)}:y2=${q(bottom)}:x3=${q(right)}:y3=${q(bottom)}`
+        + ':interpolation=cubic:sense=source:eval=frame';
+}
+
 export function planEdit(edit, duration) {
     return edit.map((entry, i) => {
         const next = edit[i + 1];
@@ -62,8 +101,10 @@ function main() {
         if (!existsSync(file)) throw new Error(`missing shot ${entry.shot} (${file}); run capture first`);
         inputs.push('-i', file);
         const from = entry.in || 0;
+        const frames = Math.round(entry.clipLength * fps);
         filters.push(`[${i}:v]trim=start=${from.toFixed(4)}:duration=${entry.clipLength.toFixed(4)},`
-            + `setpts=PTS-STARTPTS,fps=${fps},scale=${width}:${height}:flags=lanczos,setsar=1,format=yuv420p,settb=1/${fps}[v${i}]`);
+            + `setpts=PTS-STARTPTS,fps=${fps},scale=${width}:${height}:flags=lanczos,setsar=1`
+            + `${moveFilter(entry.move, frames)},format=yuv420p,settb=1/${fps}[v${i}]`);
     });
 
     // Chain: a crossfade (xfade) where an entry asks for one, else a straight cut (concat).

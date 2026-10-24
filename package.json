@@ -43,6 +43,7 @@
     "perf:odyssey:nightly": "node scripts/odyssey-perf-nightly.mjs",
     "perf:budgets:gate": "node scripts/perf-budgets-gate.mjs",
     "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs",
+    "trailer:build": "node scripts/trailer/build.mjs",
     "trailer:capture": "node scripts/trailer/capture.mjs",
     "trailer:overlay": "node scripts/trailer/render-overlay.mjs",
     "trailer:assemble": "node scripts/trailer/assemble.mjs",
