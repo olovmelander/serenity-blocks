@@ -442,8 +442,9 @@ class Session {
             if (/GL Driver|WebGPU Context|ReadPixels|Automatic fallback|favicon/.test(text)) return;
             log('console.error:', text.slice(0, 200));
         });
-        await page.addInitScript(swiftShaderViewPolyfill);
-        await page.addInitScript(`(${installVirtualClock.toString()})();`
+        // On the context, so the online peer windows get them too.
+        await context.addInitScript(swiftShaderViewPolyfill);
+        await context.addInitScript(`(${installVirtualClock.toString()})();`
             + `try{localStorage.setItem('serenityBlocksSettings',${JSON.stringify(JSON.stringify(SETTINGS))});`
             + "localStorage.setItem('serenity.photosensitivityWarning','0');"
             + "localStorage.setItem('serenity.noThemeFpsCap','1');"
