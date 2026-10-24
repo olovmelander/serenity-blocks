@@ -178,6 +178,9 @@ async function pagePrepare() {
     tm.queueAdjacentThemePreload = () => {};
     tm.stopRandomThemeInterval?.();
     tm.startRandomThemeInterval = () => {};
+    // A theme's start is timed in real milliseconds (10 s, 20 s for heavy ones), sized for a GPU;
+    // on SwiftShader a heavy start can outlast it and the switch fails over to a retry.
+    tm.getThemeLifecycleTimeout = () => 120000;
     window.performanceMonitor?.disable?.();
     return { theme: tm.activeThemeName };
 }
