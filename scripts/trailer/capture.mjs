@@ -186,19 +186,27 @@ async function pagePrepare() {
     // Each theme brings up its own WebGPU device, timed in real milliseconds (5.5–10 s). On
     // SwiftShader a new device queued behind the outgoing theme's busy one can take longer; the
     // theme then falls back to WebGL2, which draws nothing here (a blank world).
-    let base = tm.activeTheme ? Object.getPrototypeOf(tm.activeTheme) : null;
-    while (base && !Object.prototype.hasOwnProperty.call(base, 'initializeRendererCandidate')) {
-        base = Object.getPrototypeOf(base);
-    }
-    if (base && !base.__trailerInitTimeout) {
-        const initialize = base.initializeRendererCandidate;
-        base.initializeRendererCandidate = function initializeRendererCandidate(renderer, options = {}) {
-            return initialize.call(this, renderer, { ...options, timeoutMs: Math.max(options.timeoutMs ?? 0, 120000) });
-        };
-        base.__trailerInitTimeout = true;
-    }
+    // The patch goes on the themes' shared base class, reached through any live theme instance
+    // (there may be none yet at boot): pageSwitchTheme and pageFlipWorld apply it before switching.
+    window.__trailerPatchThemeInit = () => {
+        const instance = tm.activeTheme || tm.pendingThemeInstance || tm.themeInstances?.values?.().next?.().value;
+        let base = instance ? Object.getPrototypeOf(instance) : null;
+        while (base && !Object.prototype.hasOwnProperty.call(base, 'initializeRendererCandidate')) {
+            base = Object.getPrototypeOf(base);
+        }
+        if (!base) return false;
+        if (!base.__trailerInitTimeout) {
+            const initialize = base.initializeRendererCandidate;
+            base.initializeRendererCandidate = function initializeRendererCandidate(renderer, options = {}) {
+                return initialize.call(this, renderer, { ...options, timeoutMs: Math.max(options.timeoutMs ?? 0, 120000) });
+            };
+            base.__trailerInitTimeout = true;
+        }
+        return true;
+    };
+    const patchPoll = setInterval(() => { if (window.__trailerPatchThemeInit()) clearInterval(patchPoll); }, 50);
     window.performanceMonitor?.disable?.();
-    return { theme: tm.activeThemeName, rendererInitPatched: Boolean(base?.__trailerInitTimeout) };
+    return { theme: tm.activeThemeName, rendererInitPatched: window.__trailerPatchThemeInit() };
 }
 
 async function pageWaitThemeIdle({ themeId, timeoutMs = 600000 }) {
@@ -219,6 +227,8 @@ async function pageSwitchTheme({ themeId }) {
     const app = window.serenityBlocks;
     const tm = app.themeManager;
     if (tm.activeThemeName === themeId && tm.activeTheme?.lifecycleState === 'running') return { switched: false };
+    const patched = window.__trailerPatchThemeInit?.();
+    if (!patched) console.warn('[trailer] renderer init timeout not patched before switching to', themeId);
     app.settingsManager?.update?.({ backgroundMode: 'Specific', backgroundTheme: themeId });
     await tm.switchTheme(themeId, true);
     return { switched: true };
@@ -404,6 +414,7 @@ async function pageFlipWorld({ themeId, settleMs }) {
     if (gs) gs.isPaused = true;
     window.__trailerClock.thaw();
     try {
+        if (!window.__trailerPatchThemeInit?.()) console.warn('[trailer] renderer init timeout not patched before', themeId);
         app.settingsManager?.update?.({ backgroundMode: 'Specific', backgroundTheme: themeId });
         await tm.switchTheme(themeId, true);
         for (let i = 0; i < 2400; i += 1) {
@@ -555,7 +566,8 @@ class Session {
         page.on('console', (message) => {
             const text = message.text();
             // A theme on the WebGL2 backend draws nothing under SwiftShader: say so.
-            if (/Automatic fallback|trying the WebGL2 backend/.test(text)) {
+            if (/Automatic fallback|WebGL2|Device Lost|device lost|not patched/.test(text)
+                && !/GL Driver/.test(text)) {
                 log('renderer fallback:', text.slice(0, 200));
                 return;
             }
