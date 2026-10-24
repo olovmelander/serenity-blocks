@@ -342,18 +342,30 @@ async function pageStartOdyssey({ level }) {
     return { ok: Boolean(om.levelRunStarted), id: target.id, name: target.name ?? null };
 }
 
-async function pageOdysseyFlyover({ seconds }) {
-    // Glide the journey camera up the map from the first chapter over the shot's length.
+async function pageOdysseyFlyover({ seconds, from = 0, to = 2 }) {
+    // Glide the journey camera from one chapter's start to another's over the shot's length.
     const bc = window.odysseyMode?.boardController;
     const cam = bc?.cameraController;
     if (!cam) return { ok: false };
-    const positions = bc.presentationLayout?.chapterPositions || [0, 0.125];
-    const from = positions[0] ?? 0;
-    const to = positions[2] ?? 0.25;
-    cam.setCurrentPosition?.(from);
-    cam.updateFollowPosition?.(from);
-    cam.panToPosition?.(to, seconds * 1000);
-    return { ok: true, from, to };
+    const positions = bc.presentationLayout?.chapterPositions || [];
+    const at = (chapter) => positions[chapter] ?? chapter / 8;
+    cam.setCurrentPosition?.(at(from));
+    cam.updateFollowPosition?.(at(from));
+    cam.panToPosition?.(at(to), seconds * 1000);
+    return { ok: true, from: at(from), to: at(to) };
+}
+
+async function pageOdysseyPose({ chapter = 0 }) {
+    // Park the journey camera at a chapter's start before the world-drawn check and the shot.
+    const bc = window.odysseyMode?.boardController;
+    const cam = bc?.cameraController;
+    if (!cam) return { ok: false };
+    const positions = bc.presentationLayout?.chapterPositions || [];
+    const position = positions[chapter] ?? chapter / 8;
+    cam.setCurrentPosition?.(position);
+    cam.updateFollowPosition?.(position);
+    await window.__trailerClock.realSleep(4000);
+    return { ok: true, position };
 }
 
 async function pageFlipWorld({ themeId, settleMs }) {
@@ -658,6 +670,11 @@ class Session {
         for (let i = 0; i < preroll; i += 1) {
             await stepAll();
         }
+        if (shot.kind === 'odyssey' && !shot.level && shot.flyover) {
+            await page.evaluate(() => window.__trailerClock.thaw());
+            await page.evaluate(pageOdysseyPose, { chapter: shot.flyover.from ?? 0 });
+            await page.evaluate(() => window.__trailerClock.freeze());
+        }
         if (shot.warm !== false && shot.kind !== 'hale') await this.warmUntilDrawn(id, stepAll);
         if (shot.kind === 'stillfall') {
             await page.evaluate((options) => window.__trailerAutoplay.startStillfall(options), {
@@ -665,7 +682,7 @@ class Session {
             });
         }
         if (shot.kind === 'odyssey' && !shot.level) {
-            await page.evaluate(pageOdysseyFlyover, { seconds: frames / fps });
+            await page.evaluate(pageOdysseyFlyover, { seconds: frames / fps, ...(shot.flyover || {}) });
         }
         // A still of the first frame, to check a setup without opening the clip.
         mkdirSync(path.join(OUT, 'stills'), { recursive: true });

@@ -62,7 +62,8 @@ const WORLDS_END = 56.401;
  *   online            — Online Versus over the mock transport, `players` seats, every one a bot
  *   serenity          — Serenity Mode on `theme` (no board)
  *   hale              — a Hale breathing session (`session`)
- *   odyssey           — the Odyssey journey map flown over, or `level` (an orb) played by the bot
+ *   odyssey           — an orb (`level`) played by the bot, or the journey flown over from one
+ *                       chapter's start to another's (`flyover: { from, to }`, chapters from 0)
  * Board shots open on a lived-in stack: before recording, the bot places `prefill` pieces at
  * once (default 18, Infinity 40; 0 for an empty well), then plays live at `difficulty` (1–10,
  * default 8) from `seed`. `settle` is real ms to wait after the theme is ready (default 4000),
@@ -84,13 +85,14 @@ export const SHOTS = {
     worlds: { kind: 'single', theme: WORLDS[0].theme, worlds: WORLDS, difficulty: 9 },
     serenity: { kind: 'serenity', theme: 'stillwater' },
     hale: { kind: 'hale', session: 'FIRST' },
-    'odyssey-map': { kind: 'odyssey' },
+    // The journey flown over: the Earth's core up through the ocean to the surface; later the
+    // last air into space; and the climb into the black hole.
+    'odyssey-map': { kind: 'odyssey', flyover: { from: 0, to: 2 } },
     // Orbs start on their own authored boards (no prefill: a goal must not be met before the shot).
     'ody-a': { kind: 'odyssey', level: 1, prefill: 0, preroll: 1.2 }, // Ashen Dawn, the Earth's core
     'ody-b': { kind: 'odyssey', level: 7, prefill: 0, preroll: 1.2 }, // Sunken Depths
-    'ody-c': { kind: 'odyssey', level: 23, prefill: 0, preroll: 1.2 }, // Everest Ascent
-    'ody-d': { kind: 'odyssey', level: 37, prefill: 0, preroll: 1.2 }, // Stellar Flare
-    'ody-e': { kind: 'odyssey', level: 47, prefill: 0, preroll: 1.2 }, // The Singularity
+    'odyssey-space': { kind: 'odyssey', flyover: { from: 4, to: 5 } },
+    'odyssey-hole': { kind: 'odyssey', flyover: { from: 5, to: 6 } },
     end: { kind: 'serenity', theme: 'sunset' },
 };
 
@@ -115,9 +117,8 @@ export const EDIT = [
     { at: 63.716, shot: 'odyssey-map' },
     { at: 67.384, shot: 'ody-a', move: 'push' },
     { at: 69.219, shot: 'ody-b', move: 'pull' },
-    { at: 71.053, shot: 'ody-c', move: 'push' },
-    { at: 72.887, shot: 'ody-d', move: 'pull' },
-    { at: 74.721, shot: 'ody-e', move: 'pushSlow' },
+    { at: 71.053, shot: 'odyssey-space' },
+    { at: 74.721, shot: 'odyssey-hole' },
     { at: 78.391, shot: 'end', move: 'pull' },
 ];
 
