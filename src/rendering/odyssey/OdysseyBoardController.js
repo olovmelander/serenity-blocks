@@ -3232,7 +3232,8 @@ export class OdysseyBoardController {
                 // BISECT LEVER: ?odysseyNoEarth=1.
                 try {
                     if (!readBooleanUrlFlag('odysseyNoEarth')) {
-                        this.orbitEarth = createOrbitEarth();
+                        // It arrives wearing the world's own air (THE SEAM in its module).
+                        this.orbitEarth = createOrbitEarth({ haze: this.oneWorld?.hazeFor ?? null });
                         this.scene.add(this.orbitEarth.mesh);
                     }
                 } catch (error) {
@@ -4357,11 +4358,15 @@ export class OdysseyBoardController {
                 eye,
                 time: this.time,
                 track: this._orbitEarthTrack,
+                frontSin: earth.frontSin,
+                veil: earth.veil,
+                cloudsAway: earth.cloudsAway,
+                covers: earth.covers,
             });
             // The dome's straight limb yields to the Earth's rim, and its airglow line sits at the
             // airglow layer over the Earth's limb.
             const airglow = orbitEarthAirglowElevation(earth.altitude, earth.presence);
-            this.oneWorld?.setEarth?.(earth.presence, airglow);
+            this.oneWorld?.setEarth?.(earth.presence, airglow, earth.covers);
             // The world's airglow line yields to the aurora's curtains rising out of it.
             this.oneWorld?.setAuroraGlow?.(earth.aurora);
         }

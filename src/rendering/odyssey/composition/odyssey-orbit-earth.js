@@ -35,12 +35,20 @@
  * (-100), before every transparent thing at 0 or above (the orb glass, the rail's glow), which so
  * draw over it. Premultiplied: the disc whole, the rim a little, the aurora not at all (it only
  * adds light), and depth-tested so whatever is near and opaque stays in front. It writes no depth,
- * so the stars behind the aurora and the rim show. Once it covers the world (presence 1, when the
- * board hides the world's surfaces) it draws at `frontRadius`, in front of the far heroes, and a
- * depth-only twin (`occluder`) marks its disc in the depth buffer, so everything farther that
- * draws after it (the star shells, the nebula, the giant's rings, the black hole) is hidden behind
- * the planet by depth, whatever its own draw order. While the world still shows the backdrop
- * stays at `radius`, behind the world's far sea, which it fades in over.
+ * so the stars behind the aurora and the rim show. It sits at `radius`, inside every far thing
+ * (the world's sea below the climbing eye, the giant) and outside the journey, so it comes in OVER
+ * the world's far surfaces (see THE SEAM) and, once it covers the world (presence 1, when the
+ * board hides the world's surfaces), a depth-only twin (`occluder`) marks its disc in the depth
+ * buffer, so everything farther that draws after it (the star shells, the nebula, the giant's
+ * rings, the black hole) is hidden behind the planet by depth, whatever its own draw order.
+ *
+ * THE SEAM (2026-10-24, Olov: "the earth just pops up and feel totally disconnected to the world
+ * with mountains ocean and clouds"). The Earth never replaces the world in one frame. It comes in
+ * over the world from the horizon down (`frontSin`, a front sweeping from the limb to the nadir as
+ * it arrives), wearing the world's own air: veiled (`veil`) in exactly the colour the world gives
+ * its far sea and its sky for that direction (`haze`, handed in by the world), which is also what
+ * the world melts its sea and its clouds into just ahead of the front. So where the Earth arrives
+ * nothing changes; then, above the haze, the veil clears and the round Earth comes up out of it.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -77,11 +85,12 @@ import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profil
 import { AURORA_PALETTE } from '../chapter-environments/odyssey-planet-aurora.js';
 
 export const ORBIT_EARTH = Object.freeze({
-    /** The backdrop sphere's radius round the eye (world units) while the world still shows, and
-     * once the Earth covers it: inside every far hero (the giant is >= ~870 u away while the Earth
-     * shows), outside the journey (the orbs ahead are <= ~430 u, above the limb). See DRAW ORDER. */
+    /** The backdrop sphere's radius round the eye (world units) while the world shows (behind it:
+     * the world shows the Earth on its own surfaces), and once the Earth covers the world: inside
+     * every far hero (the giant is >= ~600 u away while the Earth shows), outside the journey (the
+     * orbs ahead are <= ~430 u, above the limb). See DRAW ORDER. */
     radius: 1650,
-    frontRadius: 320,
+    nearRadius: 320,
     /** Weather cells per radian of the Earth's arc (the broad systems; detail is finer). */
     cells: 70,
     /** Scale height of the rim's glow, in Earth radii. */
@@ -161,6 +170,15 @@ export const ORBIT_EARTH_SCHEDULE = Object.freeze({
      * b + rise[1]], so it comes up over the Earth's edge while the aurora is up. */
     rise: Object.freeze([0.105, 0.15]),
     riseDeg: 27,
+    /** THE SEAM: the Earth's front sweeps from its limb to the nadir as it arrives (eased by this
+     * power, so it crosses the frame's lower half early), and its veil of the world's air clears
+     * across [b - veil[0], b - veil[1]], once the front has crossed the frame. */
+    frontPower: 1.5,
+    veil: Object.freeze([0.36, 0.20]),
+    /** The world's clouds go into the Earth (melt into what it shows behind them) across
+     * [b - clouds[0], b - clouds[1]], once the climb has made them small; the Earth covers the
+     * world when they have and it has fully arrived. */
+    clouds: Object.freeze([0.44, 0.28]),
 });
 
 /** The presence at which the Earth covers the world: the board hides the world's surfaces, and
@@ -181,10 +199,13 @@ const smooth01 = (x) => {
  * @param {number} p journey progress 0..1
  * @param {number[]} chapterPositions the live chapter boundaries
  * @returns {{ presence: number, dip: number, altitude: number, sunElevation: number,
- *   aurora: number, lookDownDeg: number, widenDeg: number, planetRise: number }} dip and
- *   sunElevation in radians; altitude in Earth radii; aurora 0..1; the view's lean (negative =
- *   down) and lens widening in degrees; planetRise 0..1, how far the giant has risen from behind
- *   the limb to its seat (1 without a layout)
+ *   aurora: number, lookDownDeg: number, widenDeg: number, planetRise: number, frontSin: number,
+ *   veil: number, cloudsAway: number, covers: boolean }} dip and sunElevation in radians; altitude in Earth radii; aurora 0..1; the
+ *   view's lean (negative = down) and lens widening in degrees; planetRise 0..1, how far the giant
+ *   has risen from behind the limb to its seat (1 without a layout); frontSin, the sine of the
+ *   depression the Earth has come in to from its limb (1 = all of it); veil 0..1, how much of the
+ *   world's air it still wears; cloudsAway 0..1, how far the world's clouds have gone into it;
+ *   covers, whether it now covers the world (the world's surfaces are hidden)
  */
 export function orbitEarthAt(p, chapterPositions) {
     const S = ORBIT_EARTH_SCHEDULE;
@@ -199,13 +220,17 @@ export function orbitEarthAt(p, chapterPositions) {
         lookDownDeg: 0,
         widenDeg: 0,
         planetRise: 1,
+        frontSin: 1,
+        veil: 0,
+        cloudsAway: 0,
+        covers: false,
     };
     if (!Number.isFinite(p) || !Number.isFinite(b) || !Number.isFinite(c) || c <= b) return none;
     const span = c - b;
     const start = b - (span * S.inFrom);
     const settle = b + (span * S.outFrom);
-    const presence = smooth01((p - start) / (span * (S.inFrom - S.inTo)))
-        * (1 - smooth01((p - settle) / (span * (S.outTo - S.outFrom))));
+    const arrive = smooth01((p - start) / (span * (S.inFrom - S.inTo)));
+    const presence = arrive * (1 - smooth01((p - settle) / (span * (S.outTo - S.outFrom))));
     const u = Math.min(1, Math.max(0, (p - start) / (settle - start)));
     const dipDeg = S.dipStart + (S.dipGrowth * (u ** S.dipPower));
     const dip = dipDeg * (Math.PI / 180);
@@ -219,6 +244,7 @@ export function orbitEarthAt(p, chapterPositions) {
     const leanIn = smooth01((p - start) / (span * (S.inFrom - S.leanIn)));
     const leanOut = smooth01((p - (b + (span * S.holdTo))) / (span * (S.leanOut - S.holdTo)));
     const lean = leanIn * (1 - leanOut);
+    const cloudsAway = smooth01((p - (b - (span * S.clouds[0]))) / (span * (S.clouds[0] - S.clouds[1])));
     return {
         presence,
         dip,
@@ -228,6 +254,10 @@ export function orbitEarthAt(p, chapterPositions) {
         lookDownDeg: -S.lean * lean,
         widenDeg: S.widen * lean,
         planetRise: smooth01((p - (b - (span * S.rise[0]))) / (span * (S.rise[0] + S.rise[1]))),
+        frontSin: Math.sin(dip + (((Math.PI / 2) - dip) * (arrive ** S.frontPower))),
+        veil: 1 - smooth01((p - (b - (span * S.veil[0]))) / (span * (S.veil[0] - S.veil[1]))),
+        cloudsAway,
+        covers: presence >= ORBIT_EARTH_COVERS && cloudsAway >= 0.999,
     };
 }
 
@@ -276,174 +306,235 @@ const SHEET_PATH = Math.sqrt(Math.PI) * ORBIT_EARTH_AURORA.width;
  * the wander, the poleward sheets' offsets and own folds, and the glow round them. */
 const OVAL_REACH = (ORBIT_EARTH_AURORA.fold * (1 + 0.3 + 0.45)) + (ORBIT_EARTH_AURORA.width * (5.4 + 3.2 * 2.5));
 
+// ── ONE EARTH, ONE LOOK ──────────────────────────────────────────────────────────────
+// The Earth's state is the module's, not one mesh's: its backdrop draws it, and while it arrives
+// the world's own sea, ground and clouds show it on their surfaces (THE SEAM, orbitEarthOver).
+const U = {
+    alt: uniform(0.01),
+    sun: uniform(new THREE.Vector3(0, 1, 0)),
+    presence: uniform(0),
+    // The sine of the depression its front has come in to from its limb; -2 = not begun.
+    frontSin: uniform(-2),
+    veil: uniform(0),
+    cloudsAway: uniform(0),
+    aurora: uniform(0),
+    track: uniform(new THREE.Vector3(0, 0, 0)),
+    time: uniform(0),
+};
+// The oval's pole and two axes round it (world frame, from the sun's bearing): fixed.
+const NIGHT_AZIMUTH = ORBIT_EARTH_SUN_AZIMUTH + Math.PI;
+const POLE = new THREE.Vector3(
+    Math.sin(ORBIT_EARTH_AURORA.poleArc) * Math.cos(NIGHT_AZIMUTH),
+    Math.cos(ORBIT_EARTH_AURORA.poleArc),
+    Math.sin(ORBIT_EARTH_AURORA.poleArc) * Math.sin(NIGHT_AZIMUTH),
+).normalize();
+const AXIS1 = new THREE.Vector3().crossVectors(POLE, new THREE.Vector3(0, 1, 0)).normalize();
+const uPole = uniform(POLE);
+const uAxis1 = uniform(AXIS1);
+const uAxis2 = uniform(new THREE.Vector3().crossVectors(POLE, AXIS1).normalize());
+const N_LAT = LATTICE_NOISE_PERIOD;
+/** How far behind its front (in the sine of the depression) the Earth has cleared of the world's
+ * air: it arrives in the world's haze and comes up out of it just behind its edge. */
+const VEIL_BEHIND = 0.16;
+
+// The oval at a point `n` on the unit sphere (its direction from the centre): its angle from
+// the pole, the folded centre line of its sheets there, the sheets' activity and rays (which
+// run along the oval, so a curtain seen side-on shows them upright, field-aligned), and a broad
+// glow round their feet for the light they cast on the cloud below.
+function ovalAt(n) {
+    const ang = acos(clamp(dot(n, uPole), -1, 1));
+    const phi = atan(dot(n, uAxis2), dot(n, uAxis1));
+    const turn = phi.div(TWO_PI).add(0.5); // 0..1 round the oval, seamless
+    const t = U.time;
+    // Folds fast enough round the oval that the stretch in view meanders (only ~1/10 of the
+    // oval is ever on screen): integer frequencies, so the seam round the oval joins.
+    const fold = sin(phi.mul(11).add(t.mul(0.031))).mul(0.5)
+        .add(sin(phi.mul(27).sub(t.mul(0.047)).add(1.7)).mul(0.3))
+        .add(sin(phi.mul(53).add(t.mul(0.083)).add(4.1)).mul(0.2));
+    const wander = latticeNoise3(vec3(turn.mul(N_LAT * 4), 7.1, t.mul(0.04))).sub(0.5);
+    const centre = float(ORBIT_EARTH_AURORA.radius).add(fold.mul(ORBIT_EARTH_AURORA.fold))
+        .add(wander.mul(ORBIT_EARTH_AURORA.fold * 0.6));
+    // The poleward sheets keep their own folds, so the stack is never three copies.
+    const own2 = sin(phi.mul(19).add(t.mul(0.057)).add(2.3)).mul(ORBIT_EARTH_AURORA.fold * 0.35);
+    const own3 = sin(phi.mul(37).sub(t.mul(0.069)).add(5.2)).mul(ORBIT_EARTH_AURORA.fold * 0.45);
+    const near = ang.sub(centre.sub(ORBIT_EARTH_AURORA.width * 2.6)).div(0.03);
+    const glow = exp(near.mul(near).negate());
+    const activity = smoothstep(0.32, 0.74, latticeNoise3(vec3(turn.mul(N_LAT * 3), 3.3, t.mul(0.05))))
+        .mul(0.92).add(0.08);
+    const ray = latticeNoise3(vec3(turn.mul(N_LAT * 20).add(fold.mul(2.4)), 1.0, t.mul(0.22)));
+    const rays = ray.mul(ray).mul(1.6);
+    return {
+        ang, centre, own2, own3, activity, rays, glow,
+    };
+}
+
+/**
+ * The Earth along the unit view direction `dir` (world frame) from the eye, inside a Fn: its
+ * colour, premultiplied by how much of the view it fills (the surface inside the disc, the air's
+ * rim a little outside it), worn in the world's `air` (a colour node) just behind its front while
+ * it arrives, and `alpha`, how much of the view it covers once its front and its presence are
+ * counted. The aurora's curtains are the backdrop's own (createOrbitEarth).
+ */
+function earthLook(dir, air = null) {
+    const E = ORBIT_EARTH;
+    const h = U.alt;
+    const k = h.add(1).toVar();
+    const dy = dir.y.toVar();
+    const disc = k.mul(k).mul(dy).mul(dy)
+        .sub(h.mul(h.add(2)))
+        .toVar();
+    // The altitude of the ray's closest approach to the planet (radii): negative inside the
+    // disc. A ray that climbs is nearest at the eye itself.
+    const cosH = sqrt(max(float(1).sub(dy.mul(dy)), 0)).toVar();
+    const aClose = select(dy.lessThan(0), k.mul(cosH).sub(1), h).toVar();
+
+    // ── THE SURFACE (evaluated at the limb for rays that miss: finite, then blended away) ──
+    const t = k.mul(dy).negate().sub(sqrt(max(disc, 0))).toVar();
+    const N = normalize(dir.mul(t).add(vec3(0, k, 0))).toVar();
+    const mu = clamp(dot(N, dir.negate()), 0, 1).toVar();
+    // The cloud sea, as weather seen from orbit: broad systems swirled by a slow warp, a cloud
+    // fraction that runs from clear ocean to overcast across them, and detail octaves that
+    // fade out where their cells fall under a pixel (they would only shimmer there). The
+    // domain slides with the eye's travel and a slow drift.
+    const p0 = N.mul(E.cells).add(U.track).add(vec3(U.time.mul(0.002), 0, U.time.mul(-0.0015))).toVar();
+    const foot = length(fwidth(p0)).toVar();
+    const room = (freq) => float(1).sub(smoothstep(0.22, 0.55, foot.mul(freq)));
+    const warp = vec3(
+        latticeNoise3(p0.mul(0.35).add(vec3(3.1, 7.7, 1.9))),
+        0.5,
+        latticeNoise3(p0.mul(0.35).add(vec3(11.3, 2.2, 5.4))),
+    ).sub(0.5).mul(2.2);
+    const pw = p0.add(warp).toVar();
+    const n1 = latticeNoise3(pw);
+    const n2 = mix(float(0.5), latticeNoise3(pw.mul(2.03).add(vec3(17.1, 3.3, 9.7))), room(2.03));
+    const n3 = mix(float(0.5), latticeNoise3(pw.mul(4.11).add(vec3(5.2, 31.4, 13.6))), room(4.11));
+    const n4 = mix(float(0.5), latticeNoise3(pw.mul(8.3).add(vec3(29.7, 13.1, 3.8))), room(8.3));
+    const cloudN = n1.mul(0.5).add(n2.mul(0.25)).add(n3.mul(0.15))
+        .add(n4.mul(0.10))
+        .toVar();
+    const fraction = latticeNoise3(p0.mul(0.18).add(vec3(23.0, 9.0, 17.0)));
+    const thresh = mix(float(0.62), float(0.38), fraction).toVar();
+    const cover = smoothstep(thresh.sub(0.10), thresh.add(0.08), cloudN).toVar();
+    const thick = smoothstep(thresh, thresh.add(0.22), cloudN);
+    const albedo = mix(vec3(...OCEAN), vec3(...CLOUD).mul(thick.mul(0.28).add(0.72)), cover).toVar();
+    // The sun: light reaches a little past the terminator (twilight), warm along it.
+    const sd = dot(N, U.sun).toVar();
+    const lit = smoothstep(-0.07, 0.10, sd);
+    const warm = float(1).sub(smoothstep(0.0, 0.32, sd));
+    const sunCol = mix(
+        mix(vec3(...SUNLIGHT), vec3(...SUNSET), warm),
+        vec3(...SUNSET_DEEP),
+        float(1).sub(smoothstep(-0.05, 0.03, sd)),
+    );
+    const night = float(1).sub(smoothstep(-0.10, 0.05, sd)).toVar();
+    const surf = albedo.mul(sunCol).mul(lit).add(albedo.mul(vec3(...NIGHT_LIGHT))).toVar();
+    // The aurora lights the cloud tops under it green (a broad glow round the oval's foot).
+    If(U.aurora.greaterThan(0.001), () => {
+        const under = ovalAt(N);
+        surf.addAssign(albedo.mul(vec3(...AURORA_PALETTE.greenWarm)).mul(under.glow.mul(under.activity))
+            .mul(U.aurora.mul(night).mul(0.16)));
+    });
+    // The air between the eye and the surface: more of it toward the limb.
+    const airT = float(1).sub(exp(float(E.airTau).negate().div(max(mu, 0.03)))).toVar();
+    const day = smoothstep(-0.12, 0.25, sd);
+    const airCol = mix(vec3(...AIR_NIGHT), vec3(...AIR_DAY).mul(0.55), day)
+        .add(vec3(...SUNSET).mul(warm.mul(day).mul(0.35)));
+    const surface = mix(surf, airCol, airT.mul(0.92));
+
+    // ── THE RIM: the air seen edge-on just outside the limb ──
+    const tc = max(k.mul(dy).negate(), 0);
+    const Q = normalize(dir.mul(tc).add(vec3(0, k, 0)));
+    const sdRim = dot(Q, U.sun).toVar();
+    const above = max(aClose, 0);
+    // Only rays that look down toward the limb see the rim: it tapers from the limb to nothing
+    // at the level, over the limb's own dip, so the sky above belongs to the dome (and to the
+    // dark) however high the eye, with no edge where the taper ends.
+    const sinDip = sqrt(h.mul(h.add(2))).div(k);
+    const glow = exp(above.div(E.rimHeight).negate())
+        .mul(smoothstep(0.0, sinDip, dy.negate())).toVar();
+    const dayRim = smoothstep(-0.10, 0.20, sdRim);
+    const warmRim = float(1).sub(smoothstep(-0.02, 0.30, sdRim)).mul(smoothstep(-0.16, 0.0, sdRim));
+    // Layered at the sunset: red low, blue above it.
+    const layered = mix(vec3(...SUNSET), vec3(...AIR_DAY), smoothstep(0.0, E.rimHeight * 2.2, above));
+    const rimCol = mix(vec3(...AIR_NIGHT).mul(2.2), vec3(...AIR_DAY).mul(0.55), dayRim)
+        .add(layered.mul(warmRim).mul(0.9));
+    const airglowLine = exp(above.sub(E.airglowAlt).div(E.airglowWidth).pow2().negate())
+        .mul(float(1).sub(dayRim)).mul(0.07);
+    const rim = rimCol.mul(glow).add(vec3(...AIRGLOW).mul(airglowLine));
+    const rimAlpha = clamp(glow.mul(mix(float(0.25), float(0.55), dayRim)), 0, 1);
+
+    // ── ONE EDGE: coverage of the disc over the limb's own screen derivative ──
+    const edge = max(fwidth(aClose), 1e-7);
+    const coverage = clamp(float(0.5).sub(aClose.div(edge)), 0, 1);
+    const rgb = mix(rim, surface, coverage).toVar();
+    const alpha = mix(rimAlpha, float(1), coverage).toVar();
+    // THE SEAM: it arrives in the world's air and clears just behind its front, and it covers the
+    // view only where its front has come in, from the horizon down.
+    const down = dy.negate();
+    if (air) {
+        const veil = float(1).sub(smoothstep(float(0), float(VEIL_BEHIND), U.frontSin.sub(down))).mul(U.veil);
+        rgb.assign(mix(rgb, air.mul(alpha), veil));
+    }
+    const arrived = float(1).sub(smoothstep(U.frontSin.sub(0.03), U.frontSin.add(0.03), down))
+        .mul(U.presence)
+        .toVar();
+    return {
+        colour: rgb, alpha: alpha.mul(arrived).toVar(), arrived, h, k, dy, disc, t,
+    };
+}
+
+/**
+ * THE SEAM, for the world's own surfaces: what the eye sees along `dir` where the world's `air` (a
+ * colour node: what the world's far sea and sky meet in there) lies behind the Earth: the Earth
+ * where it has come in, the air elsewhere. Call inside a Fn.
+ */
+export function orbitEarthOver(dir, air) {
+    const look = earthLook(dir, air);
+    return look.colour.add(air.mul(float(1).sub(look.alpha)));
+}
+
+/** The Earth's live seam state for the world's materials: its presence, its front (sine of the
+ * depression; -2 before it begins) and how far the world's clouds have gone into it (0..1). */
+export const ORBIT_EARTH_SEAM = Object.freeze({
+    presence: U.presence,
+    frontSin: U.frontSin,
+    cloudsAway: U.cloudsAway,
+});
+
 /**
  * @param {object} [opts]
  * @param {number} [opts.radius] backdrop radius (world units)
+ * @param {(dir: *) => *} [opts.haze] the world's air for a view direction (a TSL node builder:
+ *   the colour the world gives its far sea and sky there), which the Earth wears while it arrives
  * @returns {{
  *   mesh: THREE.Mesh,
  *   occluder: THREE.Mesh,
  *   update: (s: { altitude: number, sun: {x:number,y:number,z:number}, presence: number,
  *     aurora?: number, track?: {x:number,y:number,z:number}, eye: {x:number,y:number,z:number},
- *     time?: number }) => void,
+ *     time?: number, frontSin?: number, veil?: number, cloudsAway?: number,
+ *     covers?: boolean }) => void,
  *   dispose: () => void,
  * }}
  */
-export function createOrbitEarth({ radius = ORBIT_EARTH.radius } = {}) {
+export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null } = {}) {
     const E = ORBIT_EARTH;
     const A = ORBIT_EARTH_AURORA;
-    const uAlt = uniform(0.01);
-    const uSun = uniform(new THREE.Vector3(0, 1, 0));
-    const uPresence = uniform(0);
-    const uAurora = uniform(0);
-    const uTrack = uniform(new THREE.Vector3(0, 0, 0));
-    const uTime = uniform(0);
-    // The oval's pole and two axes round it (world frame, from the sun's bearing): set once.
-    const nightAz = ORBIT_EARTH_SUN_AZIMUTH + Math.PI;
-    const pole = new THREE.Vector3(
-        Math.sin(A.poleArc) * Math.cos(nightAz),
-        Math.cos(A.poleArc),
-        Math.sin(A.poleArc) * Math.sin(nightAz),
-    ).normalize();
-    const axis1 = new THREE.Vector3().crossVectors(pole, new THREE.Vector3(0, 1, 0)).normalize();
-    const axis2 = new THREE.Vector3().crossVectors(pole, axis1).normalize();
-    const uPole = uniform(pole);
-    const uAxis1 = uniform(axis1);
-    const uAxis2 = uniform(axis2);
     const greenWarm = vec3(...AURORA_PALETTE.greenWarm);
     const greenCool = vec3(...AURORA_PALETTE.greenCool);
     const crimson = vec3(...AURORA_PALETTE.crimson);
-    const N_LAT = LATTICE_NOISE_PERIOD;
-
-    // The oval at a point `n` on the unit sphere (its direction from the centre): its angle from
-    // the pole, the folded centre line of its sheets there, the sheets' activity and rays (which
-    // run along the oval, so a curtain seen side-on shows them upright, field-aligned), and a broad
-    // glow round their feet for the light they cast on the cloud below.
-    const ovalAt = (n) => {
-        const ang = acos(clamp(dot(n, uPole), -1, 1));
-        const phi = atan(dot(n, uAxis2), dot(n, uAxis1));
-        const turn = phi.div(TWO_PI).add(0.5); // 0..1 round the oval, seamless
-        const t = uTime;
-        // Folds fast enough round the oval that the stretch in view meanders (only ~1/10 of the
-        // oval is ever on screen): integer frequencies, so the seam round the oval joins.
-        const fold = sin(phi.mul(11).add(t.mul(0.031))).mul(0.5)
-            .add(sin(phi.mul(27).sub(t.mul(0.047)).add(1.7)).mul(0.3))
-            .add(sin(phi.mul(53).add(t.mul(0.083)).add(4.1)).mul(0.2));
-        const wander = latticeNoise3(vec3(turn.mul(N_LAT * 4), 7.1, t.mul(0.04))).sub(0.5);
-        const centre = float(A.radius).add(fold.mul(A.fold)).add(wander.mul(A.fold * 0.6));
-        // The poleward sheets keep their own folds, so the stack is never three copies.
-        const own2 = sin(phi.mul(19).add(t.mul(0.057)).add(2.3)).mul(A.fold * 0.35);
-        const own3 = sin(phi.mul(37).sub(t.mul(0.069)).add(5.2)).mul(A.fold * 0.45);
-        const near = ang.sub(centre.sub(A.width * 2.6)).div(0.03);
-        const glow = exp(near.mul(near).negate());
-        const activity = smoothstep(0.32, 0.74, latticeNoise3(vec3(turn.mul(N_LAT * 3), 3.3, t.mul(0.05))))
-            .mul(0.92).add(0.08);
-        const ray = latticeNoise3(vec3(turn.mul(N_LAT * 20).add(fold.mul(2.4)), 1.0, t.mul(0.22)));
-        const rays = ray.mul(ray).mul(1.6);
-        return {
-            ang, centre, own2, own3, activity, rays, glow,
-        };
-    };
-
     const shade = Fn(() => {
         const dir = normalize(positionWorld.sub(cameraPosition)).toVar();
-        const h = uAlt;
-        const k = h.add(1).toVar();
-        const dy = dir.y.toVar();
-        const disc = k.mul(k).mul(dy).mul(dy)
-            .sub(h.mul(h.add(2)))
-            .toVar();
-        // The altitude of the ray's closest approach to the planet (radii): negative inside the
-        // disc. A ray that climbs is nearest at the eye itself.
-        const cosH = sqrt(max(float(1).sub(dy.mul(dy)), 0)).toVar();
-        const aClose = select(dy.lessThan(0), k.mul(cosH).sub(1), h).toVar();
-
-        // ── THE SURFACE (evaluated at the limb for rays that miss: finite, then blended away) ──
-        const t = k.mul(dy).negate().sub(sqrt(max(disc, 0))).toVar();
-        const N = normalize(dir.mul(t).add(vec3(0, k, 0))).toVar();
-        const mu = clamp(dot(N, dir.negate()), 0, 1).toVar();
-        // The cloud sea, as weather seen from orbit: broad systems swirled by a slow warp, a cloud
-        // fraction that runs from clear ocean to overcast across them, and detail octaves that
-        // fade out where their cells fall under a pixel (they would only shimmer there). The
-        // domain slides with the eye's travel and a slow drift.
-        const p0 = N.mul(E.cells).add(uTrack).add(vec3(uTime.mul(0.002), 0, uTime.mul(-0.0015))).toVar();
-        const foot = length(fwidth(p0)).toVar();
-        const room = (freq) => float(1).sub(smoothstep(0.22, 0.55, foot.mul(freq)));
-        const warp = vec3(
-            latticeNoise3(p0.mul(0.35).add(vec3(3.1, 7.7, 1.9))),
-            0.5,
-            latticeNoise3(p0.mul(0.35).add(vec3(11.3, 2.2, 5.4))),
-        ).sub(0.5).mul(2.2);
-        const pw = p0.add(warp).toVar();
-        const n1 = latticeNoise3(pw);
-        const n2 = mix(float(0.5), latticeNoise3(pw.mul(2.03).add(vec3(17.1, 3.3, 9.7))), room(2.03));
-        const n3 = mix(float(0.5), latticeNoise3(pw.mul(4.11).add(vec3(5.2, 31.4, 13.6))), room(4.11));
-        const n4 = mix(float(0.5), latticeNoise3(pw.mul(8.3).add(vec3(29.7, 13.1, 3.8))), room(8.3));
-        const cloudN = n1.mul(0.5).add(n2.mul(0.25)).add(n3.mul(0.15))
-            .add(n4.mul(0.10))
-            .toVar();
-        const fraction = latticeNoise3(p0.mul(0.18).add(vec3(23.0, 9.0, 17.0)));
-        const thresh = mix(float(0.62), float(0.38), fraction).toVar();
-        const cover = smoothstep(thresh.sub(0.10), thresh.add(0.08), cloudN).toVar();
-        const thick = smoothstep(thresh, thresh.add(0.22), cloudN);
-        const albedo = mix(vec3(...OCEAN), vec3(...CLOUD).mul(thick.mul(0.28).add(0.72)), cover).toVar();
-        // The sun: light reaches a little past the terminator (twilight), warm along it.
-        const sd = dot(N, uSun).toVar();
-        const lit = smoothstep(-0.07, 0.10, sd);
-        const warm = float(1).sub(smoothstep(0.0, 0.32, sd));
-        const sunCol = mix(
-            mix(vec3(...SUNLIGHT), vec3(...SUNSET), warm),
-            vec3(...SUNSET_DEEP),
-            float(1).sub(smoothstep(-0.05, 0.03, sd)),
-        );
-        const night = float(1).sub(smoothstep(-0.10, 0.05, sd)).toVar();
-        const surf = albedo.mul(sunCol).mul(lit).add(albedo.mul(vec3(...NIGHT_LIGHT))).toVar();
-        // The aurora lights the cloud tops under it green (a broad glow round the oval's foot).
-        If(uAurora.greaterThan(0.001), () => {
-            const under = ovalAt(N);
-            surf.addAssign(albedo.mul(greenWarm).mul(under.glow.mul(under.activity))
-                .mul(uAurora.mul(night).mul(0.16)));
-        });
-        // The air between the eye and the surface: more of it toward the limb.
-        const airT = float(1).sub(exp(float(E.airTau).negate().div(max(mu, 0.03)))).toVar();
-        const day = smoothstep(-0.12, 0.25, sd);
-        const airCol = mix(vec3(...AIR_NIGHT), vec3(...AIR_DAY).mul(0.55), day)
-            .add(vec3(...SUNSET).mul(warm.mul(day).mul(0.35)));
-        const surface = mix(surf, airCol, airT.mul(0.92));
-
-        // ── THE RIM: the air seen edge-on just outside the limb ──
-        const tc = max(k.mul(dy).negate(), 0);
-        const Q = normalize(dir.mul(tc).add(vec3(0, k, 0)));
-        const sdRim = dot(Q, uSun).toVar();
-        const above = max(aClose, 0);
-        // Only rays that look down toward the limb see the rim: it tapers from the limb to nothing
-        // at the level, over the limb's own dip, so the sky above belongs to the dome (and to the
-        // dark) however high the eye, with no edge where the taper ends.
-        const sinDip = sqrt(h.mul(h.add(2))).div(k);
-        const glow = exp(above.div(E.rimHeight).negate())
-            .mul(smoothstep(0.0, sinDip, dy.negate())).toVar();
-        const dayRim = smoothstep(-0.10, 0.20, sdRim);
-        const warmRim = float(1).sub(smoothstep(-0.02, 0.30, sdRim)).mul(smoothstep(-0.16, 0.0, sdRim));
-        // Layered at the sunset: red low, blue above it.
-        const layered = mix(vec3(...SUNSET), vec3(...AIR_DAY), smoothstep(0.0, E.rimHeight * 2.2, above));
-        const rimCol = mix(vec3(...AIR_NIGHT).mul(2.2), vec3(...AIR_DAY).mul(0.55), dayRim)
-            .add(layered.mul(warmRim).mul(0.9));
-        const airglowLine = exp(above.sub(E.airglowAlt).div(E.airglowWidth).pow2().negate())
-            .mul(float(1).sub(dayRim)).mul(0.07);
-        const rim = rimCol.mul(glow).add(vec3(...AIRGLOW).mul(airglowLine));
-        const rimAlpha = clamp(glow.mul(mix(float(0.25), float(0.55), dayRim)), 0, 1);
-
-        // ── ONE EDGE: coverage of the disc over the limb's own screen derivative ──
-        const edge = max(fwidth(aClose), 1e-7);
-        const coverage = clamp(float(0.5).sub(aClose.div(edge)), 0, 1);
-        const rgb = mix(rim, surface, coverage).toVar();
-        const alpha = mix(rimAlpha, float(1), coverage).toVar();
+        const look = earthLook(dir, haze ? haze(dir) : null);
+        const {
+            k, dy, disc, t,
+        } = look;
 
         // ── THE AURORA'S CURTAINS: walked along the ray through the air they stand in ──
         // The ray's stretch inside the shell between the curtains' foot (r1) and top (r2), in
         // front of the surface: [outer in, inner in] and [inner out, outer out], clipped to the eye
         // and the ground. The closest approach is at tStar = -k dy, radius^2 rMin2 there.
         const light = vec3(0).toVar();
-        If(uAurora.greaterThan(0.001), () => {
+        If(U.aurora.greaterThan(0.001), () => {
             // The point `tv` along the ray, in the Earth's frame (radii, its centre at the origin).
             const along = (tv) => vec3(dir.x.mul(tv), dir.y.mul(tv).add(k), dir.z.mul(tv));
             const r1 = 1 + A.foot;
@@ -531,13 +622,12 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius } = {}) {
             light.mulAssign(A.gain);
             // The soft shoulder (by the brightest channel, so the hue holds).
             light.divAssign(max(light.x, max(light.y, light.z)).mul(A.shoulder).add(1));
-            light.mulAssign(uAurora);
+            light.mulAssign(U.aurora);
         });
-        rgb.addAssign(light);
-        const out = alpha.mul(uPresence).toVar();
+        const out = look.alpha;
         // Nothing outside the disc, its rim and the aurora (it only adds light, so no alpha).
         Discard(out.lessThan(0.004).and(dot(light, vec3(1)).lessThan(0.002)));
-        return vec4(rgb.mul(uPresence), out);
+        return vec4(look.colour.add(light).mul(look.arrived), out);
     })();
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -571,8 +661,8 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius } = {}) {
     occluderMaterial.fog = false;
     occluderMaterial.outputNode = Fn(() => {
         const dy = normalize(positionWorld.sub(cameraPosition)).y.toVar();
-        const k = uAlt.add(1);
-        Discard(dy.greaterThanEqual(0).or(k.mul(k).mul(dy).mul(dy).lessThanEqual(uAlt.mul(uAlt.add(2)))));
+        const k = U.alt.add(1);
+        Discard(dy.greaterThanEqual(0).or(k.mul(k).mul(dy).mul(dy).lessThanEqual(U.alt.mul(U.alt.add(2)))));
         return vec4(0, 0, 0, 1);
     })();
     const occluder = new THREE.Mesh(mesh.geometry, occluderMaterial);
@@ -586,21 +676,27 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius } = {}) {
         mesh,
         occluder,
         update({
-            altitude, sun, presence, aurora = 0, track = null, eye, time = 0,
+            altitude, sun, presence, aurora = 0, track = null, eye, time = 0, frontSin = 1, veil = 0,
+            cloudsAway = 0, covers = false,
         }) {
             const pr = Math.min(Math.max(Number.isFinite(presence) ? presence : 0, 0), 1);
             mesh.visible = pr > 0.001 && !!eye;
+            // The seam state is read by the world's materials too: nothing while there is no Earth.
+            U.presence.value = mesh.visible ? pr : 0;
+            U.frontSin.value = mesh.visible && Number.isFinite(frontSin) ? frontSin : -2;
+            U.cloudsAway.value = mesh.visible ? Math.min(Math.max(Number.isFinite(cloudsAway) ? cloudsAway : 0, 0), 1) : 0;
+            U.veil.value = Math.min(Math.max(Number.isFinite(veil) ? veil : 0, 0), 1);
             if (!mesh.visible) return;
-            uPresence.value = pr;
-            uAurora.value = Math.min(Math.max(Number.isFinite(aurora) ? aurora : 0, 0), 1);
-            uAlt.value = Math.max(Number.isFinite(altitude) ? altitude : 0.01, 1e-5);
-            uSun.value.set(sun.x, sun.y, sun.z).normalize();
-            if (track) uTrack.value.set(track.x, track.y, track.z);
-            uTime.value = time;
+            U.aurora.value = Math.min(Math.max(Number.isFinite(aurora) ? aurora : 0, 0), 1);
+            U.alt.value = Math.max(Number.isFinite(altitude) ? altitude : 0.01, 1e-5);
+            U.sun.value.set(sun.x, sun.y, sun.z).normalize();
+            if (track) U.track.value.set(track.x, track.y, track.z);
+            U.time.value = time;
             mesh.position.set(eye.x, eye.y, eye.z);
-            const covers = pr >= ORBIT_EARTH_COVERS;
-            mesh.scale.setScalar(covers ? E.frontRadius / radius : 1);
-            occluder.visible = covers;
+            // Behind the world while it shows (the world shows the Earth on its own surfaces); in
+            // front of the far heroes, its disc in depth, once it covers the world.
+            mesh.scale.setScalar(covers ? E.nearRadius / radius : 1);
+            occluder.visible = !!covers;
         },
         dispose() {
             mesh.geometry.dispose();

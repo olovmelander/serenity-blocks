@@ -45,7 +45,7 @@ The journey's own idle drift from late chapter 5 (p 0.64) into chapter 6, live, 
    rings first, then the whole ringed body clears the curved horizon over ~20–30 s of drift.
    *Done (§4).*
 5. **Then deep space, one thing at a time.** As the Earth falls away, the stars, the Milky Way and
-   the nebula come up, then the black hole grows, each in clear sky.
+   the nebula come up, then the black hole grows, each in clear sky. *Done (§5).*
 
 Step 1 stands alone; step 2 is the backbone of steps 3 and 4. Each is iterated in the playground
 first and checked on the live drift (`scratchpad odyssey-drift.cjs` + `sky-probe.js` in the
@@ -147,8 +147,8 @@ climb's frame; the melt only while the departure runs.
     where the sunset meets the limb, deep blue at night, with a faint airglow line.
 - **Its schedule** is `orbitEarthAt(p)`, in fractions of chapter 6's span, so a re-layout carries
   it.
-  - It fades in over the climb's far sea (p 0.690–0.712), at the flat world's own horizon dip
-    (5.4°).
+  - It arrives over the world from the horizon down (p 0.690–0.712), its limb at the flat
+    world's own horizon dip (5.4°). See *The seam, reworked* below.
   - The eye keeps climbing: the limb dips to ~12° by the boundary and ~45° as the Earth sinks out
     (p 0.807–0.818).
   - The sun sets at the eye (it crosses the horizon at p ≈ 0.735, is −7° at the boundary and −18°
@@ -163,12 +163,15 @@ climb's frame; the melt only while the departure runs.
   - the cloud bank (`odyssey-cloud-bank.js`, a flat dark band painted above the horizon);
   - the world dome's straight limb line, whose glow and airglow now yield to the Earth's rim
     (`setEarth`);
-  - the flat world under the planet. Once the Earth covers it (presence 1), the board hides the
-    world's surfaces, cumulus, heroes and forest.
+  - the flat world under the planet. The world's surfaces show the Earth in place and its clouds
+    go into it (see *The seam, reworked*); once they have (p 0.722), the board switches the world's
+    surfaces, cumulus, heroes and forest off, and nothing on screen changes.
 - **Draw order.** The Earth is the nearest thing in the sky: in front of everything in space,
   behind the journey.
   - It draws at renderOrder −0.5: after the sky domes, before every transparent thing at 0 or
     above.
+  - While the world shows it, its backdrop sits at 1,650 u, behind the world (it shows only past
+    the world's drawn edge; the world shows the Earth on its own surfaces).
   - Once it covers the world it comes in to 320 u, inside every far hero (every part of the giant
     is ≥ ~600 u away while the Earth shows) and outside any orb seen over its disc.
   - A depth-only twin (`occluder`) marks the disc in the depth buffer. So the star shells, the
@@ -180,6 +183,63 @@ climb's frame; the melt only while the departure runs.
 - **Playground:** `?effect=odyssey-orbit-earth&p=0.755` shows the game's own height, sun and aurora
   at that progress, looking along the rail's bearing. `alt`, `sunEl`, `aurora`, `pitch` and `yaw`
   override them.
+
+### The seam, reworked (2026-10-24, same day)
+
+Olov, on the first version: *"now the earth just pops in and does not feel connected to the world
+with the clouds … feel totally disconnected to the world with mountains ocean and clouds."*
+
+**What the player saw** (the drift, p 0.689–0.718, top row below):
+
+- The climbed world had become a grey slab. Its sea was one hazy grey-blue plane with a straight,
+  kinked drawn edge under the horizon glow, and the shrunken cumulus read like rocks lying on it.
+- At p 0.712 the Earth appeared whole, in one frame: a saturated blue planet with large white
+  weather. It had faded in behind the world's sea, hidden by depth, and showed only when the world's
+  surfaces were switched off.
+
+**What changed.** There is no switch any more. The world becomes the Earth in place:
+
+- **The Earth's look is one function of the view direction** (`earthLook` in
+  `odyssey-orbit-earth.js`), on one shared state. Its backdrop draws it, and while it arrives the
+  world's own materials draw it too (`orbitEarthOver`).
+- **It comes in from the horizon down.** A front sweeps from its limb to the nadir as it arrives
+  (`frontSin`, p 0.690–0.712, eased so it crosses the frame's lower half by ~0.700). Behind the
+  front, and a little ahead of it, the world's sea and ground show what the Earth shows in that
+  direction (`meltIntoSky`): the world's own air just ahead of the front, the planet behind it.
+- **It arrives in the world's air.** Just behind its front it wears exactly the colour the world
+  gives its far sea and sky there (`hazeFor`, the world's own shader expression), and clears
+  within a few degrees behind the edge (`veil`). The planet comes up out of the haze line as the
+  line rolls toward the eye.
+- **The cumulus stay real clouds.** They are not melted by the front. They stay in front of the
+  Earth and lit over it (the departing world's fade toward the void no longer greys them while the
+  Earth is there), and the climb takes them down below the eye. Only once they are small
+  (p 0.703–0.722, `cloudsAway`) do they go into the Earth, melting into what it shows behind
+  them, never into the sky in front of the eye.
+- **Only then is the world switched off** (`covers`, p 0.722), under a planet that already looks
+  exactly as it does. Only then does the Earth come in to 320 u with its disc in depth, before the
+  ringed giant's reveal at 0.725.
+
+**Measured.**
+
+- The frame's mean brightness runs smoothly through the seam: 115, 122, 98, 89, 83 at
+  p 0.689, 0.699, 0.706, 0.711, 0.717.
+- The largest step left in 0.68–0.735 is the sunset darkening the Earth's day side around
+  p 0.73: −79 luma per 0.01 p, over ~15 s. The pop version measured −150 there.
+- The world's materials build clean on WGSL and GLSL with the Earth's look inside them
+  (`odyssey-world-climb`).
+- The Earth's look runs only in a uniform branch while the Earth is there, so the rest of Act II
+  pays nothing for it.
+
+![Before (top) and after (bottom), the live drift at p 0.689, 0.699, 0.706, 0.711 and 0.717](images/odyssey-into-space-2026-10-24/ch5-earth-seam-before-after.jpg)
+
+**Tests.** `odyssey-orbit-earth` pins the new contract:
+
+- it arrives from the horizon down, wearing the world's air until its front has crossed the
+  frame's lower half;
+- it takes the world's clouds into it only after that;
+- it covers the world only once they have gone and it has fully arrived, before the giant shows;
+- it stays behind the world while the world shows it, and comes near with its disc in depth once
+  it covers.
 
 ## §3. The aurora on the night side (2026-10-24)
 
@@ -248,8 +308,8 @@ The emergence takes ~24 s of the live drift; the whole rise ~57 s.
 
 ![After: the live drift at p 0.735, 0.745, 0.750, 0.753, 0.756, 0.760, 0.768 and 0.785: sunset on the cloud sea, the aurora at the limb, the giant rising behind its curtains, then the black hole growing as the Earth falls away](images/odyssey-into-space-2026-10-24/ch5-ch6-earth-after.jpg)
 
-**Not changed (step 5).** The Milky Way, the nebula and the black hole still arrive by the space
-gate (p 0.754–0.773), while the aurora and the planetrise are up.
+**Then (§5).** The Milky Way, the gas and the black hole's light used to arrive on the space gate
+(p 0.754–0.773), under the aurora and the planetrise; they now come up after them, one at a time.
 
 **Tests.**
 
@@ -276,3 +336,47 @@ gate (p 0.754–0.773), while the aurora and the planetrise are up.
   the world.
 - The aurora's march runs only while it is lit, and only for rays near the oval.
 - Gone: the cloud bank's draws and the aurora bridge.
+
+## §5. Deep space, one thing at a time (2026-10-24)
+
+**What the player saw.** On the real camera, the Milky Way (painted into the void dome, so it came
+up with the dome), the black hole's light, its debris and the gas all began in the same 0.005 of
+progress, p ~0.755–0.760, under the aurora at its height and the rising planet.
+
+**What changed.** `DEEP_SPACE_BEATS` (in `cosmic-expanse.js`), in fractions of chapter 6's span
+past the boundary, stages what is in space after the Earth's beats:
+
+| Beat | p | What comes up |
+|---|---|---|
+| The Milky Way | 0.772–0.788 | the dome's painted cosmos (a new `uGlow` on the dome raises it out of its floor, so the dome still owns the background, near-black, from the boundary) and the far star tier, a share of which is seated in its band |
+| The gas | 0.782–0.801 | the nebula field and sprites, and the disk light that paints them |
+| The black hole | 0.789–0.822 | its disk, rings and halo (`uReveal`) and its debris, which glittered alone in the dark before |
+
+- The hole's shadow and its lens are there from the boundary, as before: a void at the rail's end
+  that bends the stars before it lights.
+- It all starts after the aurora is out (0.773) and the planet has risen (0.772), as the Earth
+  falls away.
+- Between the aurora and the Milky Way the sky is clear and dark: stars, the risen giant and the
+  sinking Earth.
+- Headless callers (a chapter-local progress) still see the chapter whole.
+- Chapter 7 seats the same baked sky with its glow at 1.
+
+**Measured** (the live drift, before and after, from p 0.745):
+
+- Brightness is the same to p 0.756.
+- Space then stays darker while it waits: luma ~11–18 against ~17–24 before.
+- The two converge by ~0.815.
+- No step is added. The largest step in both runs is the same near orb leaving the frame at
+  0.769.
+
+![After: the live drift at p 0.767, 0.776, 0.782, 0.792, 0.803 and 0.826: the aurora goes out; a clear dark pause; the Milky Way; then the gas and the black hole's light](images/odyssey-into-space-2026-10-24/ch6-deep-space-after.jpg)
+
+**Tests.** `odyssey-deep-space-beats` (new) pins:
+
+- the beats by progress: whole without a layout, monotone, starting after the aurora and the
+  planetrise, each once the one before is under way;
+- the real chapter 6 on the game's camera: dark and clear before the Milky Way (the dome opaque,
+  its glow 0, no far stars, no gas, the hole unlit, no debris); the Milky Way before the gas, the
+  gas before the hole's light; the whole sky up after;
+- the dome's glow building on both backends.
+

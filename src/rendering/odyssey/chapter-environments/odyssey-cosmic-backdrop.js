@@ -31,7 +31,7 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    dot, float, mix, texture as textureNode, uniform, uv, vec3,
+    dot, float, min, mix, texture as textureNode, uniform, uv, vec3,
 } from 'three/tsl';
 
 import {
@@ -200,9 +200,18 @@ export function bakeCosmicBackdropTextureSliced(options = {}, { sliceMs = 4 } = 
  * The baked void dome — same contract as the retired FBM dome (BackSide sphere 2400,
  * renderOrder −100, depthWrite off, opacity driven by uVoidSkyOpacity, energy
  * breathing) with the field read from the bake. The sky does not drift (see below).
+ * `uGlow` (0..1, default 1) raises the painted cosmos — the Milky Way's band and its pockets —
+ * out of the floor: at 0 every texel is held at the floor's top, so the dome still owns the
+ * background, near-black, while the Milky Way waits (chapter 6's DEEP_SPACE_BEATS).
  */
-// eslint-disable-next-line no-unused-vars -- uTime stays in the signature for callers
-export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bakeOptions = {}) {
+export function createBakedVoidSkyTSL(
+    // eslint-disable-next-line no-unused-vars -- uTime stays in the signature for callers
+    uTime,
+    uEnergy,
+    uOpacity = uniform(1),
+    bakeOptions = {},
+    uGlow = uniform(1),
+) {
     const energy = uEnergy ?? uniform(0.3);
     const bake = bakeCosmicBackdropTextureSliced(bakeOptions);
 
@@ -219,7 +228,9 @@ export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bak
     // back as vivid magenta competing with the masses in both value AND chroma, which
     // the flat NoToneMapping rig cannot show. Now dimmer AND desaturated toward its
     // own luma, so the backdrop reads as depth rather than as a rival subject.
-    const baked = textureNode(bake.texture, drift).rgb.mul(energy.mul(0.5).add(0.7));
+    const field = textureNode(bake.texture, drift).rgb;
+    const floorTop = vec3(...(bakeOptions.floorTop ?? COSMIC_BACKDROP_DEFAULTS.floorTop));
+    const baked = mix(min(field, floorTop), field, uGlow).mul(energy.mul(0.5).add(0.7));
     const bakedLuma = dot(baked, vec3(0.2126, 0.7152, 0.0722));
     // Desaturation 0.34 -> 0.16 (2026-10-03): the Milky Way keeps its blue-and-gold.
     material.colorNode = mix(baked, vec3(bakedLuma), float(0.16)).mul(0.45);
