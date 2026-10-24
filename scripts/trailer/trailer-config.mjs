@@ -77,8 +77,9 @@ export const SHOTS = {
     // Watchtower (tier 12): four pieces stacked on the tower before the shot, then the T fires
     // four waves deep on camera.
     stillfall: { kind: 'stillfall', theme: 'crystal-cave', puzzle: 'watchtower', presolve: 4, thinkMs: 450 },
-    versus: { kind: 'versus', theme: 'synthwave-sunset', seats: 4 },
-    online: { kind: 'online', theme: 'neon-dusk', players: 4, preroll: 2 },
+    // The versus matches play a few seconds before the shot, so the boards have stacks and garbage.
+    versus: { kind: 'versus', theme: 'synthwave-sunset', seats: 4, preroll: 7 },
+    online: { kind: 'online', theme: 'neon-dusk', players: 4, preroll: 6 },
     breakdown: { kind: 'single', theme: 'painted-ages' },
     worlds: { kind: 'single', theme: WORLDS[0].theme, worlds: WORLDS, difficulty: 9 },
     serenity: { kind: 'serenity', theme: 'stillwater' },
