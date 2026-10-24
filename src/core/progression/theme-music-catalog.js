@@ -37,6 +37,34 @@ const AUTHORED_SONGS = Object.freeze({
     'blood-moon': ['Blood Moon', 'blood-moon.mp3'],
     'stellar-drift': ['Stellar Drift', 'stellar-drift.mp3'],
     parhelion: ['Ethereal Echoes', 'ethereal-echoes.mp3'],
+    // Recorded for themes that had played the placeholder, titled as the placeholder was, so
+    // every saved track key still holds (2026-10-24; prompts in
+    // docs/SUNO_PLACEHOLDER_PROMPTS_2026-10.md).
+    'halcyon-apex': ['Halcyon Apex', 'halcyon-apex.mp3'],
+    sunset: ['Sunset', 'sunset.mp3'],
+    'high-coast': ['High Coast', 'high-coast.mp3'],
+    fall: ['Fall', 'fall.mp3'],
+    summer: ['Midsommar', 'midsommar.mp3'],
+    'sakura-twilight': ['Sakura Twilight', 'sakura-twilight.mp3'],
+    'koi-pond': ['Koi Pond', 'koi-pond.mp3'],
+    'serenity-warp': ['Serenity Warp', 'serenity-warp.mp3'],
+    kaleidosonic: ['Kaleidosonic', 'kaleidosonic.mp3'],
+    'golden-forest': ['Golden Forest', 'golden-forest.mp3'],
+    'luminous-tides': ['Luminous Tides', 'luminous-tides.mp3'],
+    'nebula-flow': ['Nebula Flow', 'nebula-flow.mp3'],
+    'solar-eclipse': ['Solar Eclipse', 'solar-eclipse.mp3'],
+    sunfall: ['Sunfall', 'sunfall.mp3'],
+    supernova: ['Supernova', 'supernova.mp3'],
+    'chiral-gold': ['Chiral Gold', 'chiral-gold.mp3'],
+    'nimbus-veil': ['Nimbus Veil', 'nimbus-veil.mp3'],
+    'rainbow-terraces': ['Rainbow Terraces', 'rainbow-terraces.mp3'],
+    pyrestorm: ['Pyrestorm', 'pyrestorm.mp3'],
+    'synthwave-sunset': ['Synthwave Sunset', 'synthwave-sunset.mp3'],
+    'chromadelic-highway': ['Chromadelic Highway', 'chromadelic-highway.mp3'],
+    'astral-weave': ['Astral Weave', 'astral-weave.mp3'],
+    'stellar-velocity': ['Stellar Velocity', 'stellar-velocity.mp3'],
+    'painted-ages': ['Painted Ages', 'painted-ages.mp3'],
+    'thermal-bloom': ['Thermal Bloom', 'thermal-bloom.mp3'],
 });
 
 /** What a theme without a recording of its own plays. */
