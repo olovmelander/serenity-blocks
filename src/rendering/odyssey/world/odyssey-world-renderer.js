@@ -3,8 +3,9 @@ import {
     Fn, If,
     abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, frontFacing,
     length, max, min, mix, reflect, select, sign, sqrt,
-    normalize, normalWorld, positionGeometry, positionLocal, positionWorld, sin, smoothstep,
-    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition, cameraViewMatrix,
+    normalize, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin, smoothstep,
+    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition as cameraPositionNode,
+    cameraViewMatrix,
     pow2,
 } from 'three/tsl';
 
@@ -53,6 +54,7 @@ import {
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
 import { steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
+import { ORBIT_EARTH_SEAM, orbitEarthOver } from '../composition/odyssey-orbit-earth.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
 export { bakeOdysseyCloudField };
@@ -474,6 +476,9 @@ export function odysseySprayEnvelope(age) {
  */
 const DEPART_ZENITH_POW = 0.55;
 const DEPART_HORIZON_POW = 1.8;
+/** How far (in the sine of the depression) the world's surfaces give way ahead of the Earth's
+ * front, so the front always arrives over the world's air (THE SEAM, meltIntoSky). */
+const EARTH_MELT_LEAD = 0.05;
 /** The atmospheric limb (Rayleigh blue) and the thin airglow line just above it. */
 const DEPART_LIMB = Object.freeze([0.22, 0.48, 0.95]);
 const DEPART_AIRGLOW = Object.freeze([0.20, 0.78, 0.46]);
@@ -487,13 +492,6 @@ const DEPART_AIRGLOW = Object.freeze([0.20, 0.78, 0.46]);
 const SCRIPT_RUNOUT_FROM = 0.82;
 /** Peak opacity of the valley mist (item 7) — a veil, never a fog bank. */
 const VALLEY_MIST_GAIN = 0.20;
-/**
- * ATMOSPHERIC THINNING (Wave 3 / F3): how much of each mass's body the full thin removes,
- * as a fraction of its distance to the mass centre. 0.30 at the schedule's 0.85 cap means
- * a mass ends the climb at ~74% of its authored size — visibly losing scale, still a cloud.
- * The pull rides INSIDE cfOffset so the vertex position and the cfWorld varying agree.
- */
-const FIELD_THIN_SHRINK = 0.30;
 /**
  * RIGID DRIFT (plan Wave 3). Amplitudes in world units and the period band in seconds.
  *
@@ -1031,6 +1029,23 @@ export function createOdysseyWorld({
     // piece is baked right here, synchronously, as before — one code path, pinned by goldens.
     prebaked = null,
 } = {}) {
+    // ── THE CLIMB'S FRAME (2026-10-24) ──────────────────────────────────────────────────
+    // At the end of chapter 5 the board shrinks this whole group toward the sea-level point
+    // beneath the eye (`setClimb`, odyssey-world-act-gate.js `worldClimbScale`): a world shrunk
+    // by s about that point looks exactly like the world seen from 1/s times as high, so the eye
+    // climbs above the clouds. Every material below was written for an identity group, and
+    // distances drive their haze, their detail and their fades, so they all read positions and
+    // the eye in the group's OWN frame: there the world keeps its size and the eye stands as high
+    // as the climb has taken it. These two names shadow three's nodes for the whole build; with
+    // the group at identity (everywhere but the climb) they ARE positionWorld and cameraPosition.
+    // Directions are unchanged by a scale about a point, so anything that only looks along a
+    // view direction reads the same either way.
+    const uClimb = uniform(1); // 1 / the group's scale
+    const uClimbCentre = uniform(new THREE.Vector3(0, ODYSSEY_SEA_LEVEL, 0));
+    const inClimbFrame = (p) => uClimbCentre.add(p.sub(uClimbCentre).mul(uClimb));
+    const positionWorld = inClimbFrame(positionWorldNode);
+    const cameraPosition = inClimbFrame(cameraPositionNode);
+
     const q = ODYSSEY_WORLD_QUALITY[quality] || ODYSSEY_WORLD_QUALITY.high;
     const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
@@ -2197,12 +2212,6 @@ export function createOdysseyWorld({
     // cathedral was the proof case). It simply no longer has anything visible left to hide.
     const uWorldFade = uniform(0);
     const uWorldFadeColour = uniform(new THREE.Color(0x09283f));
-    // ── ATMOSPHERIC THINNING (Wave 3 / F3) — consumed only by the cloud FIELD. ──────
-    // 0 = full cumulus form; toward 1 the paint collapses into a flat haze family and
-    // each mass shrinks toward its own centre (see the field material). Driven by the
-    // board from `worldAtmosphericThin` in odyssey-world-act-gate.js — the schedule
-    // lives beside the departure fade because the two are halves of one departure.
-    const uWorldThin = uniform(0);
     // The two paces of the ordered departure and the limb's own envelope (item 10), all
     // computed on the CPU in setDepartureFade — three scalar uniforms instead of a pow per pixel.
     const uFadeZenith = uniform(0);
@@ -2212,6 +2221,12 @@ export function createOdysseyWorld({
     // is only ever seen against night; under the limb's envelope alone it drew a mint stripe
     // across a still-blue sky at the top of the climb (all-angles pass, p 0.715).
     const uAirglowGlow = uniform(0);
+    // THE EARTH BELOW (2026-10-24, composition/odyssey-orbit-earth.js): once the round planet has
+    // arrived, its own rim is the limb, so the dome's straight limb line yields to it, and the
+    // airglow line sits at the airglow layer's height over that limb (sin of its elevation;
+    // 0.075 is the line's place before the Earth, ~4 deg over the level).
+    const uLimbYield = uniform(1);
+    const uAirglowSin = uniform(0.075);
     // WHERE THE SEA ENDS, seen from the eye (all-angles pass, 2026-10-18). The limb used to sit
     // at elevation +0.01, the horizon of an endless sea. The sea is not endless: the camera's
     // far plane cuts it along a straight line, and from ~900 u up at the top of the climb that
@@ -2227,19 +2242,82 @@ export function createOdysseyWorld({
     // the airglow line, the line yields to them (owner 2026-10-02: "it feels like we have two
     // different auroras" — a straight green line under the curtains read as a second one).
     const uAuroraGlow = uniform(0);
-    // How far the departure has dissolved the cloud FIELD into the cloud sea below (item 10).
-    const uFieldGone = uniform(0);
     const toOutputFaded = (c, fadeAmt) => {
         const scaled = (applyExposure ? c.mul(uExposure) : c).mul(uOutputScale);
         const graded = mix(vec3(dot(scaled, vec3(0.2126, 0.7152, 0.0722))), scaled, uOutputSat);
         return mix(graded, uWorldFadeColour, fadeAmt);
     };
     const toOutput = (c) => toOutputFaded(c, uWorldFade);
+    // The world's air for a view direction: the colour its far sea and its sky meet in (the dome's
+    // own, faded at the horizon's pace). What the world melts into, and what the Earth wears.
+    const airFor = (dir) => toOutputFaded(skyColourFor(dir.y), uFadeHorizon);
+    // THE WORLD ENDS IN THE SKY (2026-10-24). The sea is drawn out to the camera's far plane (a
+    // straight cut) or, high in the climb, to the clipmap's square, and past it the dome shows the
+    // sky below the horizon. Through the departure the two met at a visible edge: the far sea
+    // fades with the world (uWorldFade) and the dome below the horizon with the horizon
+    // (uFadeHorizon), so in the climb the sea read as a grey slab with a pale band beyond it. Over
+    // the last stretch before the drawn edge the world now takes the dome's own colour for its
+    // direction, so the cut and the square's corners vanish into the haze, and the limb glow sits
+    // just above. Only while the departure runs (a uniform branch, so Act II pays nothing for
+    // it): Act II's horizon is untouched.
+    const meltIntoSky = (out, wp) => Fn(() => {
+        const res = out.toVar();
+        If(uWorldFade.greaterThan(0.001), () => {
+            const to = wp.sub(cameraPosition);
+            const d = length(to);
+            const dir = to.div(max(d, float(0.001)));
+            const flat = normalize(dir.xz.add(vec2(1e-4, 0)));
+            // The drawn edge in this direction (see uEyeH), taken into the climb's frame.
+            const edge = min(uViewFar.div(max(dot(flat, uViewFwdXZ), 0.3)), uSeaReach).mul(uClimb);
+            const w = smoothstep(float(0.55), float(0.97), d.div(edge))
+                .mul(smoothstep(float(0), float(0.2), uWorldFade))
+                .mul(float(1).sub(uSubmerged));
+            res.assign(mix(res, airFor(dir), w));
+            // THE SEAM (2026-10-24, Olov: the Earth "just pops up and feel totally disconnected to
+            // the world with mountains ocean and clouds"). The round Earth comes in from the horizon
+            // down (composition/odyssey-orbit-earth.js); behind its front, and a little ahead of it,
+            // the world's surface shows what the Earth shows in that direction (its air ahead of the
+            // front, the planet behind it), so the sea becomes the planet in place, and when the
+            // world's surfaces are switched off under it nothing on screen changes.
+            If(ORBIT_EARTH_SEAM.presence.greaterThan(0.001), () => {
+                const down = dir.y.negate();
+                const lead = ORBIT_EARTH_SEAM.frontSin.add(EARTH_MELT_LEAD);
+                const behind = float(1).sub(smoothstep(lead.sub(0.04), lead.add(0.04), down))
+                    .mul(smoothstep(float(0), float(0.03), down))
+                    .mul(float(1).sub(uSubmerged));
+                res.assign(mix(res, orbitEarthOver(dir, airFor(dir)), behind));
+            });
+        });
+        return res;
+    })();
     // Land ceiling + rate, valley mist on, no haze floor, the per-fragment medium (breach band).
     const GROUND_AERIAL_ARGS = [AERIAL_CEIL_LAND, AERIAL_RATE_LAND, true, null, true];
-    groundMat.colorNode = toOutput(applyAerial(groundColour, positionWorld, ...GROUND_AERIAL_ARGS));
+    groundMat.colorNode = meltIntoSky(
+        toOutput(applyAerial(groundColour, positionWorld, ...GROUND_AERIAL_ARGS)),
+        positionWorld,
+    );
+
+    // THE SEAM for the clouds: they stay real clouds in front of the Earth while the climb takes
+    // them down below the eye, and only once they are small go into it, melting into what the
+    // Earth shows behind them, never into the sky in front of the eye.
+    // While the Earth is there, the clouds are lit over it, not fading toward the void with the rest
+    // of the departing world (that fade is what turned them into grey ghosts over the planet).
+    const notOverEarth = float(1).sub(ORBIT_EARTH_SEAM.presence);
+    const intoEarth = (out) => Fn(() => {
+        const res = out.toVar();
+        If(ORBIT_EARTH_SEAM.cloudsAway.greaterThan(0.001), () => {
+            const dir = normalize(positionWorld.sub(cameraPosition));
+            res.assign(mix(res, orbitEarthOver(dir, airFor(dir)), ORBIT_EARTH_SEAM.cloudsAway));
+        });
+        return res;
+    })();
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
+    const lakeMeshes = [];
+    // Once the Earth below has fully arrived it covers the surface out to its own backdrop, and
+    // the near world inside that (straight down, already faded) would show as a dark patch on it:
+    // the surfaces stop drawing (setEarth). The sky dome stays.
+    let earthCovers = false;
     groundMesh.frustumCulled = false;
     groundMesh.matrixAutoUpdate = false;
     groundMesh.updateMatrix();
@@ -2334,6 +2412,7 @@ export function createOdysseyWorld({
         lakeMesh.updateMatrix();
         lakeMesh.name = `odyssey-world-north-lake-${li}`;
         group.add(lakeMesh);
+        lakeMeshes.push(lakeMesh);
     });
 
     // ── sky ──
@@ -2406,10 +2485,10 @@ export function createOdysseyWorld({
             const limbRise = skyDir.y.sub(edgeY.add(0.004));
             const limbBand = exp(pow2(limbRise.div(select(limbRise.greaterThan(0), limbWidth, float(0.008)))).negate())
                 .mul(mix(float(0.22), float(1.25), limbAz.mul(limbAz)));
-            const airglowBand = exp(pow2(skyDir.y.sub(0.075).div(0.012)).negate());
+            const airglowBand = exp(pow2(skyDir.y.sub(uAirglowSin).div(0.012)).negate());
             const airglowYield = float(1).sub(uAuroraGlow.mul(0.8));
-            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).mul(uLimbGlow)
-                .add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)).mul(uAirglowGlow))
+            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).mul(uLimbGlow.mul(uLimbYield))
+                .add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)).mul(uAirglowGlow.mul(uLimbYield)))
                 .mul(uOutputScale)
                 .mul(float(1).sub(uSubmerged))));
         });
@@ -2925,7 +3004,7 @@ export function createOdysseyWorld({
         });
         return col.add(vec3(0.95, 0.99, 1.0).mul(meniscus));
     })();
-    waterMat.colorNode = toOutput(applyAerial(waterShaded, positionWorld));
+    waterMat.colorNode = meltIntoSky(toOutput(applyAerial(waterShaded, positionWorld)), positionWorld);
     // The film thins toward the LIVE waterline (the swash), and foam is opaque where the
     // film under it is not — otherwise the lapping front would be drawn at ~20 % alpha.
     waterMat.opacityNode = clamp(max(
@@ -3259,7 +3338,7 @@ export function createOdysseyWorld({
         const weight = clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.52);
         return mix(deckLit, skyColourFor(dirY), weight);
     };
-    cloudMat.colorNode = toOutput(cloudAerial(cloudCol, positionWorld));
+    cloudMat.colorNode = intoEarth(toOutputFaded(cloudAerial(cloudCol, positionWorld), uWorldFade.mul(notOverEarth)));
     // NEAR FADE: Ch5's rail crosses the deck's altitude, so without this the camera meets
     // paper-thin billowed geometry edge-on — ragged shards filling the frame. Fading by
     // distance to the EYE (not by altitude band) keeps the deck solid at range in every
@@ -3454,7 +3533,7 @@ export function createOdysseyWorld({
         const weight = clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82).mul(0.42);
         return mix(heroLit, skyColourFor(dirY), weight);
     };
-    heroMat.colorNode = toOutput(heroAerial(heroCol, positionWorld));
+    heroMat.colorNode = intoEarth(toOutputFaded(heroAerial(heroCol, positionWorld), uWorldFade.mul(notOverEarth)));
     // OPAQUE, and each of these is load-bearing: `transparent:false` keeps the mesh in the
     // opaque queue, where hardware depth — not renderOrder — resolves it against the mountains
     // and the deck; FrontSide culls the far half of every closed lobe, a real ~2x cut on the
@@ -3565,18 +3644,10 @@ export function createOdysseyWorld({
     // The rule that follows is cheap: build it as a PLAIN EXPRESSION, so each consumer inlines
     // its own copy. A few duplicated ALU beats a silent zero.
     //
-    // ATMOSPHERIC THINNING (Wave 3): a third offset term pulls every vertex toward its own
-    // mass centre as `uWorldThin` rises, shrinking the mass in place (same centres, smaller
-    // bodies — the deck opens sky between masses instead of holding full form to the end).
-    // Written as another PLAIN term inside cfOffset so the vertex position and the `cfWorld`
-    // varying stay in the exact agreement the note above paid for.
-    // ...and the DEPARTURE now finishes the job the same way (2026-10-02): as `uFieldGone` rises
-    // each mass keeps shrinking toward its centre until it is gone, instead of dissolving into a
-    // per-pixel stipple — a screen-space scatter of kept pixels that read as grainy noise over the
-    // limb in captures (p 0.71-0.72) and as sparkle in motion. `keep` is the surviving fraction.
-    const cfKeep = float(1).sub(uWorldThin.mul(FIELD_THIN_SHRINK)).mul(float(1).sub(uFieldGone.mul(0.97)));
-    const cfThinPull = positionLocal.sub(cfCentre).mul(cfKeep.sub(1));
-    const cfOffset = cfDrift.add(cfBreath).add(cfThinPull);
+    // (The departure used to shrink every mass toward its own centre here, first a little as the
+    // sky "thinned" and then to nothing, so the clouds dissolved in front of the eye. The eye now
+    // climbs above them instead — THE CLIMB'S FRAME — and the masses keep their size.)
+    const cfOffset = cfDrift.add(cfBreath);
     const cfWorld = varying(positionLocal.add(cfOffset), 'cfWorld');
     const cfGeoN = normalWorld.toVar('fieldGeoN');
     const cfRadial = cfWorld.sub(cfCentre);
@@ -3679,10 +3750,6 @@ export function createOdysseyWorld({
         mix(mix(cloudShade, uSkyHorizon, float(0.30)), cloudWhite, cfUnderness.mul(0.9)),
         cfEdge.mul(mix(float(0.55).mul(float(1).sub(cfBand.mul(0.85))), float(0.62), cfUnderness)),
     ).add(uSunColour.mul(cfSilver).mul(FIELD_MIE_GAIN));
-    // ATMOSPHERIC THINNING (Wave 3 / F3): the paint half. As `uWorldThin` rises the whole
-    // Witness band structure (lit/shade/underside/Mie) collapses toward one flat, low-sat
-    // haze family — contrast and saturation leave together, which is what altitude does to
-    // cumulus. Applied BEFORE the aerial so distance still grades the thinned colour.
     // SOFT RIMS (2026-10-20 overhaul): the outermost rim of a mass is its thinnest cloud, and a
     // thin cloud shows the sky behind it — so the last few pixels of every silhouette lean toward
     // the sky colour along that ray (a little white kept), and the sticker-like hard outline
@@ -3691,11 +3758,10 @@ export function createOdysseyWorld({
     const cfSoftRim = smoothstep(float(0.80), float(0.985), cfRim)
         .mul(mix(float(FIELD_SOFT_RIM), float(FIELD_SOFT_RIM * 0.45), cfUnderness));
     const fieldCol = mix(fieldPaint, mix(cfBehind, cloudWhite, float(0.35)), cfSoftRim);
-    const fieldThinned = mix(fieldCol, mix(cloudShade, uSkyHorizon, float(0.65)), uWorldThin);
     const fieldMat = new THREE.MeshBasicNodeMaterial();
     // The cloud tops below are the last thing the departure takes (item 10): they fade at the
     // horizon pace, so the climb leaves a lit cloud sea under a black sky — the edge of space.
-    fieldMat.colorNode = toOutputFaded(heroAerial(fieldThinned, cfWorld), uFadeHorizon);
+    fieldMat.colorNode = intoEarth(toOutputFaded(heroAerial(fieldCol, cfWorld), uFadeHorizon.mul(notOverEarth)));
     // Built from the plain `cfOffset` EXPRESSION, never from a shared var — see the note at
     // its definition. This line reading zero while the colour graph read the right value is
     // exactly what "the clouds do not move" looked like.
@@ -5073,38 +5139,36 @@ export function createOdysseyWorld({
             uLimbGlow.value = (f ** 3) * (1 - f) * 9.48;
             const dark = Math.min(Math.max((uFadeHorizon.value - 0.62) / (0.85 - 0.62), 0), 1);
             uAirglowGlow.value = uLimbGlow.value * dark * dark * (3 - (2 * dark));
-            const gone = Math.min(Math.max((f - 0.55) / (0.92 - 0.55), 0), 1);
-            uFieldGone.value = gone * gone * (3 - (2 * gone));
             if (colour) uWorldFadeColour.value.copy(colour);
         },
         /**
-         * The recession below (odyssey-world-act-gate.js `worldDepartureRecede`): shrink the
-         * whole group by `scale` toward the sea-level point beneath `eye`. Every material
-         * builds its geometry in the group's local space, so the world shrinks as one piece;
-         * its colour is already flat when the caller starts this, so only the edge moves.
+         * THE CLIMB (odyssey-world-act-gate.js `worldClimbScale`): shrink the whole group by
+         * `scale` toward the sea-level point beneath `eye`, which the eye sees as climbing to
+         * 1 / scale times its height above the sea. The materials shade in the group's own frame
+         * (THE CLIMB'S FRAME, top of this file), so haze and detail follow the climbed height.
+         * The sky dome only looks along directions and keeps its size (it is counter-scaled):
+         * shrunk with the rest, it would come inside the view as a ball below the eye.
          * @param {number} scale 1 = untouched
          * @param {{x:number,z:number}} eye camera position
          */
-        setDepartureRecede(scale, eye) {
-            const s = Number.isFinite(scale) ? Math.min(Math.max(scale, 1e-3), 1) : 1;
-            if (s === 1 || !eye) {
+        setClimb(scale, eye) {
+            const s = Number.isFinite(scale) && eye ? Math.min(Math.max(scale, 1e-3), 1) : 1;
+            if (s === 1) {
                 if (group.scale.x !== 1) {
                     group.scale.setScalar(1);
                     group.position.set(0, 0, 0);
+                    skyMesh.scale.setScalar(1);
+                    skyMesh.position.set(0, 0, 0);
                 }
+                uClimb.value = 1;
                 return;
             }
             group.scale.setScalar(s);
             group.position.set(eye.x * (1 - s), ODYSSEY_SEA_LEVEL * (1 - s), eye.z * (1 - s));
-        },
-        /**
-         * ATMOSPHERIC THINNING (Wave 3 / F3). `setAtmosphericThin(t)` collapses the cloud
-         * field's paint toward a flat haze family and shrinks each mass toward its centre
-         * as t goes 0 -> 1. The caller owns the schedule (`worldAtmosphericThin`, beside
-         * the departure fade in odyssey-world-act-gate.js). Touches ONLY the cloud field.
-         */
-        setAtmosphericThin(t) {
-            uWorldThin.value = Math.min(Math.max(t, 0), 1);
+            skyMesh.scale.setScalar(1 / s);
+            skyMesh.position.copy(group.position).multiplyScalar(-1 / s);
+            uClimb.value = 1 / s;
+            uClimbCentre.value.set(eye.x, ODYSSEY_SEA_LEVEL, eye.z);
         },
         /**
          * THE 1->2 CARRY (cross-session interface, seamless pass). `t` is the steam quench's own
@@ -5117,6 +5181,26 @@ export function createOdysseyWorld({
          * THE AIRGLOW YIELDS TO THE AURORA. `setAuroraGlow(g)` (0..1, the chapter-6 band's live
          * glow, from the board) dims the airglow line as the curtains rise out of it.
          */
+        /**
+         * THE EARTH BELOW: `presence` (0..1) of the round planet, whose rim takes over the limb,
+         * the airglow line's elevation (radians) over its limb, and whether it now `covers` the
+         * world (its surfaces and clouds have become the Earth's look, so they are switched off).
+         * THE SEAM itself (the world showing the Earth on its surfaces) reads the Earth's own state.
+         */
+        setEarth(presence, airglowElevation, covers = false) {
+            const pr = Math.min(Math.max(Number.isFinite(presence) ? presence : 0, 0), 1);
+            uLimbYield.value = 1 - pr;
+            uAirglowSin.value = Number.isFinite(airglowElevation) ? Math.sin(airglowElevation) : 0.075;
+            if (!!covers !== earthCovers) {
+                earthCovers = !!covers;
+                // The surfaces with no per-frame gate of their own; the rest AND this in update().
+                [groundMesh, waterMesh, ...lakeMeshes].forEach((m) => {
+                    if (m) m.visible = !earthCovers && m.userData.filterVisible !== false;
+                });
+            }
+        },
+        /** The world's air for a view direction (a TSL node), which the Earth wears as it arrives. */
+        hazeFor: airFor,
         setAuroraGlow(glow) {
             uAuroraGlow.value = Math.min(Math.max(Number.isFinite(glow) ? glow : 0, 0), 1);
         },
@@ -5158,7 +5242,17 @@ export function createOdysseyWorld({
          */
         update(time, railPoint, progress, eyeY = null, viewCamera = null) {
             uTime.value = time;
-            uLodCenter.value.set(railPoint.x, railPoint.z);
+            // The lattice centres on the rail's ground track IN THE CLIMB'S FRAME, so the rings
+            // stay round the point beneath the climbed eye (a 30 u offset is 1,500 u at x50).
+            if (uClimb.value === 1) {
+                uLodCenter.value.set(railPoint.x, railPoint.z);
+            } else {
+                const c = uClimbCentre.value;
+                uLodCenter.value.set(
+                    c.x + ((railPoint.x - c.x) * uClimb.value),
+                    c.z + ((railPoint.z - c.z) * uClimb.value),
+                );
+            }
             // The limb's anchor: the sea's drawn edge from this eye (see uEyeH).
             uEyeH.value = Number.isFinite(eyeY) ? Math.max(eyeY - ODYSSEY_SEA_LEVEL, 0) : 0;
             uSeaReach.value = waterGeo.reach * group.scale.x;
@@ -5307,12 +5401,14 @@ export function createOdysseyWorld({
             // ground obeyed it (they have no per-frame write) while the clouds and the forest
             // never did. Found while trying to isolate one forest LOD tier for a wind capture.
             const authored = (mesh) => mesh.userData.filterVisible !== false;
-            if (cloudMesh) cloudMesh.visible = authored(cloudMesh) && clouds && uSubmerged.value < 0.999;
-            if (heroMesh) heroMesh.visible = authored(heroMesh) && heroes && uSubmerged.value < 0.999;
+            if (cloudMesh) {
+                cloudMesh.visible = authored(cloudMesh) && clouds && uSubmerged.value < 0.999 && !earthCovers;
+            }
+            if (heroMesh) heroMesh.visible = authored(heroMesh) && heroes && uSubmerged.value < 0.999 && !earthCovers;
             // Same underwater gate as the heroes — the probe shares their material and their
             // altitude band, so it must share their CPU `.visible` write too.
             if (fieldProbeMesh) {
-                fieldProbeMesh.visible = authored(fieldProbeMesh) && uSubmerged.value < 0.999;
+                fieldProbeMesh.visible = authored(fieldProbeMesh) && uSubmerged.value < 0.999 && !earthCovers;
             }
             // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
             // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
@@ -5343,7 +5439,7 @@ export function createOdysseyWorld({
             if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
-            const forestDrawable = uSubmerged.value < 0.999;
+            const forestDrawable = uSubmerged.value < 0.999 && !earthCovers;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
                 // ⚠️ AND-ed WITH THE AUTHORED FLAG, because this per-frame write silently

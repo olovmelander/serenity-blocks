@@ -6,6 +6,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { orbitEarthAt } from './composition/odyssey-orbit-earth.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import {
     ODYSSEY_ACTS,
@@ -691,6 +692,18 @@ export function resolveJourneyFraming(
     chapterPositions = DEFAULT_CHAPTER_POSITIONS,
     reducedMotion = prefersReducedMotion(),
 ) {
+    const out = resolveChapterBlendFraming(progress, chapterPositions, reducedMotion);
+    // THE EARTH BELOW (2026-10-24, docs/ODYSSEY_INTO_SPACE_2026-10.md step 2): across the 5->6
+    // departure the view leans down over the planet the climb leaves, on a wider lens, and lifts
+    // back to the rail as it sinks out. A function of progress, added after the chapter blend,
+    // so it is continuous across the seam by construction.
+    const earth = orbitEarthAt(progress, chapterPositions);
+    out.pitchDeg = (out.pitchDeg ?? 0) + earth.lookDownDeg;
+    out.fovOffset = (out.fovOffset ?? 0) + earth.widenDeg;
+    return out;
+}
+
+function resolveChapterBlendFraming(progress, chapterPositions, reducedMotion) {
     const seam = seamWindowAt(progress, chapterPositions);
     if (!seam) {
         const chapterId = chapterAtProgress(progress, chapterPositions);

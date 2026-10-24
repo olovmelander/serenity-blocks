@@ -78,10 +78,10 @@ import { createBakedVoidSkyTSL, GALACTIC_BAND_AXIS } from './odyssey-cosmic-back
 import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
-import { createAuroraBridgeBand, resolveAuroraBridgeEnvelope } from './cosmic-expanse-aurora.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { pickStellarClass } from './odyssey-stellar-ramp.js';
+import { ORBIT_EARTH_SCHEDULE, orbitEarthAt } from '../composition/odyssey-orbit-earth.js';
 
 /**
  * Cosmic Expanse environment configuration
@@ -520,6 +520,11 @@ const _heroPlaces = {
     revision: 0,
     omen: new THREE.Vector3(),
     planet: new THREE.Vector3(),
+    // The planetrise (see below): where the giant hangs before it, and the arc it rises on (a
+    // turn about the rail point at the rise's middle, about this horizontal axis).
+    planetBelow: new THREE.Vector3(),
+    planetRiseCentre: new THREE.Vector3(),
+    planetRiseAxis: new THREE.Vector3(1, 0, 0),
     galaxy: new THREE.Vector3(),
     // Where the galaxy turns to face, once: the spine at the chapter's middle.
     galaxyFaces: new THREE.Vector3(),
@@ -531,6 +536,23 @@ const _heroPlaces = {
 };
 const _seatOrigin = new THREE.Vector3();
 const _toRail = new THREE.Vector3();
+const _riseTurn = new THREE.Quaternion();
+
+/**
+ * The turn that carries the giant from its seat back down the planetrise's arc at `rise` (0 = it
+ * hangs below the limb, 1 = it is at its seat): identity at the seat.
+ */
+export function resolvePlanetRiseTurn(places, rise, out = new THREE.Quaternion()) {
+    const down = (1 - THREE.MathUtils.clamp(rise, 0, 1)) * THREE.MathUtils.degToRad(ORBIT_EARTH_SCHEDULE.riseDeg);
+    return out.setFromAxisAngle(places.planetRiseAxis, -down);
+}
+
+/** The giant's world place at `rise` on the planetrise's arc (see resolveCh6HeroPlaces). */
+export function resolvePlanetRisePlace(places, rise, out = new THREE.Vector3()) {
+    resolvePlanetRiseTurn(places, rise, _riseTurn);
+    return out.copy(places.planet).sub(places.planetRiseCentre).applyQuaternion(_riseTurn)
+        .add(places.planetRiseCentre);
+}
 
 /**
  * World positions of the heroes for the active layout (cached per curve + chapter layout).
@@ -569,6 +591,20 @@ export function resolveCh6HeroPlaces(chapterPositions) {
             .addScaledVector(_spineUp, GALAXY_SKY_SEAT.up)
             .addScaledVector(_spineRight, GALAXY_SKY_SEAT.right)
             .normalize();
+        // THE PLANETRISE (docs/ODYSSEY_INTO_SPACE_2026-10.md §4). The Earth's limb always lies below
+        // the level and the giant's seat above it, so before it rises the giant hangs at ONE point
+        // `riseDeg` straight below its seat, seen from the rail at the rise's middle, behind the
+        // limb. It rises on one arc about that rail point to its seat (`orbitEarthAt().planetRise`),
+        // turned with the arc so it looks as it will hang, and never moves again.
+        const R = ORBIT_EARTH_SCHEDULE;
+        resolveSpineFramePoint(
+            ch6Start + span * ((R.rise[1] - R.rise[0]) / 2),
+            { along: 0, up: 0, right: 0 },
+            _heroPlaces.planetRiseCentre,
+        );
+        _toRail.copy(_heroPlaces.planet).sub(_heroPlaces.planetRiseCentre);
+        _heroPlaces.planetRiseAxis.crossVectors(_toRail, SPINE_WORLD_UP).normalize();
+        resolvePlanetRisePlace(_heroPlaces, 0, _heroPlaces.planetBelow);
         _heroPlaces.curve = curve;
         _heroPlaces.key = key;
         _heroPlaces.revision += 1;
@@ -651,6 +687,48 @@ export const COSMIC_ENTRY_CONTINUITY_SETTINGS = Object.freeze({
     destinationFloor: 0.16,
     starFloor: 0.08,
 });
+
+/**
+ * DEEP SPACE, ONE THING AT A TIME (2026-10-24, step 5 of docs/ODYSSEY_INTO_SPACE_2026-10.md).
+ * Past the 5->6 boundary the Earth's aurora is up and the ringed giant rises over its edge
+ * (composition/odyssey-orbit-earth.js) until ~0.15 of the chapter, and the dome's Milky Way, the
+ * gas and the black hole's light all used to arrive in the same 0.005 of p under them, on the
+ * space gate. Each now comes up in clear sky after the one before, as the Earth falls away: the
+ * Milky Way (the dome's painted cosmos, and the far star tier seated in its band), then the gas
+ * (the nebula field and sprites, and the disk light that paints them), then the black hole's
+ * light (its disk, rings and lens; its shadow is there from the boundary, a void at the rail's
+ * end). Fractions of chapter 6's span past the boundary, so a re-layout carries them. The space
+ * gate still decides whether space is drawn at all; these only stage what is in it.
+ */
+export const DEEP_SPACE_BEATS = Object.freeze({
+    milkyWay: Object.freeze([0.15, 0.29]),
+    nebula: Object.freeze([0.24, 0.40]),
+    hole: Object.freeze([0.30, 0.58]),
+});
+
+const DEEP_SPACE_WHOLE = Object.freeze({ milkyWay: 1, nebula: 1, hole: 1 });
+
+/**
+ * How far each deep-space beat has come at journey progress `progress` (0..1 each); all 1
+ * without a layout.
+ * @param {number} progress global journey progress
+ * @param {number[]} chapterPositions the live chapter boundaries
+ * @returns {{ milkyWay: number, nebula: number, hole: number }}
+ */
+export function resolveDeepSpaceBeats(progress, chapterPositions) {
+    const b = chapterPositions?.[5];
+    const c = chapterPositions?.[6];
+    if (!Number.isFinite(progress) || !Number.isFinite(b) || !Number.isFinite(c) || c <= b) {
+        return DEEP_SPACE_WHOLE;
+    }
+    const span = c - b;
+    const at = ([from, to]) => rampBetween(progress, b + span * from, b + span * to);
+    return {
+        milkyWay: at(DEEP_SPACE_BEATS.milkyWay),
+        nebula: at(DEEP_SPACE_BEATS.nebula),
+        hole: at(DEEP_SPACE_BEATS.hole),
+    };
+}
 
 function smoothstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -882,6 +960,8 @@ export function createCosmicExpanseEnvironment(options = {}) {
         // The void dome is deliberately held out of the first Sky→Space hand-off beats
         // so Chapter 5's aurora can pass overhead before hard vacuum takes the frame.
         uVoidSkyOpacity: uniform(0),
+        // ...and its painted cosmos (the Milky Way) comes up on its own beat (DEEP_SPACE_BEATS).
+        uVoidSkyGlow: uniform(1),
     };
     group.userData.uniforms = uniforms;
     // The omen's lens target (see OMEN_LENS): world centre + lensRadius / lensStrength / lensReach.
@@ -1147,16 +1227,8 @@ export function createCosmicExpanseEnvironment(options = {}) {
     corridor.add(comet);
     group.userData.comet = comet;
 
-    // THE AURORA BRIDGE (seamless pass, 2026-10) — see cosmic-expanse-aurora.js. A curtain band
-    // around the eye whose foot sits on the One World's airglow line: it grows out of that
-    // line across the final climb, peaks just before the 5->6 boundary and only falls after
-    // it, so the air's last light carries straight into space. Parented to the chapter GROUP
-    // (translated, never rotated) because its axis is WORLD up, like the airglow it stands on;
-    // update() re-seats it on the camera every frame. Driven by global progress through its
-    // own uniforms — outside the entryContinuity buckets, which wait for `spaceReveal`.
-    const auroraBridge = createAuroraBridgeBand(uniforms.uTime);
-    group.add(auroraBridge);
-    group.userData.auroraBridge = auroraBridge;
+    // (The aurora bridge, a curtain band round the eye, lived here until 2026-10-24: the aurora is
+    // now the Earth below's, on its night side — composition/odyssey-orbit-earth.js.)
     // Buckets tolerate bisected-out tiers: filter(Boolean) so update()'s forEach walks
     // only what was actually built.
     group.userData.entryContinuity = {
@@ -1165,7 +1237,9 @@ export function createCosmicExpanseEnvironment(options = {}) {
         // starfield in daylight reads as noise; a few bright early stars read as dusk).
         stars: [starsFar].filter(Boolean),
         starsNear: [starsNear].filter(Boolean),
-        destination: [blackHole, debris].filter(Boolean),
+        destination: [blackHole].filter(Boolean),
+        // The hole's debris glitters only in its light, so it comes up with that (DEEP_SPACE_BEATS).
+        debris: [debris].filter(Boolean),
         // EARTH AT THE SUMMIT: the gas giant is staged on its own GLOBAL-progress reveal
         // so it can rise over the still-bright Ch5 sky (see SUMMIT_EARTH_REVEAL). Every
         // other Space element — the galaxy included — stays behind the post-boundary
@@ -1223,7 +1297,13 @@ function createBakedVoidSky(uniforms) {
     // measured at 13.37 ms of the 17.04 ms Lane B reef frame (78%, plus the whole
     // frame tail). Same contract as the FBM dome: renderOrder −100, BackSide,
     // depthWrite off, uVoidSkyOpacity staging.
-    const { mesh } = createBakedVoidSkyTSL(uniforms.uTime, uniforms.uEnergy, uniforms.uVoidSkyOpacity);
+    const { mesh } = createBakedVoidSkyTSL(
+        uniforms.uTime,
+        uniforms.uEnergy,
+        uniforms.uVoidSkyOpacity,
+        {},
+        uniforms.uVoidSkyGlow,
+    );
     return mesh;
 }
 
@@ -2242,6 +2322,10 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         : 0;
     const spaceArrival = Math.max(entryState.nebulaReveal, seamHandover);
     group.userData.summitEarthStaging = staging;
+    // DEEP SPACE, ONE THING AT A TIME (DEEP_SPACE_BEATS): by global progress on the journey;
+    // headless callers (a chapter-local progress) see the chapter whole.
+    const deep = camera ? resolveDeepSpaceBeats(cameraProgress, chapterPositions) : DEEP_SPACE_WHOLE;
+    group.userData.deepSpaceBeats = deep;
     // The earth, once shown from the summit, never dips back out (the ask was that we
     // "still see it" once space darkens) — hence max() against the staged hero reveal.
     const earthReveal = Math.max(entryState.heroReveal, staging.earthReveal);
@@ -2267,7 +2351,10 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // deg from the first frame of space; its disk, photon ring and lensed halo now fade in over the
     // chapter's first ~60 % instead of popping in whole (the 5->6 gate's +14 luma rise), while
     // the aurora fades out — the hole materialises as the sky darkens.
-    const omenReveal = spaceReveal * smoothstep01(THREE.MathUtils.clamp(beatT / 0.5, 0, 1));
+    // (2026-10-24) On the journey it comes up last, in clear sky, as the Earth falls away
+    // (DEEP_SPACE_BEATS.hole); headless, over the chapter's first half as before.
+    const holeBeat = camera ? deep.hole : smoothstep01(THREE.MathUtils.clamp(beatT / 0.5, 0, 1));
+    const omenReveal = spaceReveal * holeBeat;
     if (blackHole?.userData?.uReveal) blackHole.userData.uReveal.value = omenReveal;
     if (blackHole) {
         // THE HOLE RIDES THE PATH (resolveOmenPathPlace): placed by the progress the eased eye
@@ -2351,11 +2438,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // group never turns, so the rings never swing). Nothing here reads the camera.
         heroPlanet.scale.setScalar(PLANET_WORLD_SEAT.radius / HERO_PLANET_RADIUS);
         if (heroPlaces) {
-            heroPlanet.position.copy(heroPlaces.planet).sub(group.position);
-            if (heroPlanet.userData.posedRevision !== heroPlaces.revision) {
-                heroPlanet.quaternion.setFromUnitVectors(SPINE_WORLD_UP, heroPlaces.planetPole);
-                heroPlanet.userData.uLight?.value.copy(heroPlaces.planetLight);
+            // From behind the Earth's limb up to its seat (the planetrise, by progress alone, so an
+            // orb close-up never moves it); headless callers see it at its seat.
+            const rise = camera ? orbitEarthAt(cameraProgress, chapterPositions).planetRise : 1;
+            resolvePlanetRisePlace(heroPlaces, rise, heroPlanet.position).sub(group.position);
+            if (heroPlanet.userData.posedRevision !== heroPlaces.revision || heroPlanet.userData.posedRise !== rise) {
+                resolvePlanetRiseTurn(heroPlaces, rise, _riseTurn);
+                heroPlanet.quaternion.setFromUnitVectors(SPINE_WORLD_UP, heroPlaces.planetPole).premultiply(_riseTurn);
+                heroPlanet.userData.uLight?.value.copy(heroPlaces.planetLight).applyQuaternion(_riseTurn);
                 heroPlanet.userData.posedRevision = heroPlaces.revision;
+                heroPlanet.userData.posedRise = rise;
             }
         } else {
             heroPlanet.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);
@@ -2405,8 +2497,9 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
 
     const { diskLight } = group.userData;
     if (diskLight) {
+        // It paints the gas, so it arrives with it (DEEP_SPACE_BEATS.nebula).
         const lightReveal = Math.max(destinationReveal, entryState.nebulaReveal * 0.75)
-            * spaceReveal;
+            * spaceReveal * deep.nebula;
         // No breath of its own (it pulsed on a 9 s sine): it follows the music's energy only.
         diskLight.intensity = (1.0 + (uniforms?.uEnergy?.value ?? 0) * 0.4) * lightReveal;
     }
@@ -2428,26 +2521,6 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             asteroids.setMatrixAt(i, _asteroidDummy.matrix);
         }
         asteroids.instanceMatrix.needsUpdate = true;
-    }
-
-    // THE AURORA BRIDGE: grow out of the airglow before the boundary, only fall after it.
-    const { auroraBridge } = group.userData;
-    if (auroraBridge?.userData?.uGlow) {
-        const envelope = resolveAuroraBridgeEnvelope(cameraProgress, chapterPositions?.[5], chapterPositions?.[6]);
-        auroraBridge.userData.uGrow.value = envelope.grow;
-        auroraBridge.userData.uGlow.value = envelope.glow;
-        auroraBridge.userData.uCrimson.value = envelope.crimson;
-        // Hidden whenever it is dark: it used to keep rasterising its planes at alpha 0 for
-        // ~80 % of the chapter. Visibility is a draw-list toggle, never a new pipeline (the
-        // band is built, and compiled at warm-up, with the chapter).
-        auroraBridge.visible = envelope.glow > 0.002 && !!camera?.position;
-        if (camera?.position) {
-            auroraBridge.position.set(
-                camera.position.x - group.position.x,
-                camera.position.y - group.position.y + auroraBridge.userData.bandCentreY,
-                camera.position.z - group.position.z,
-            );
-        }
     }
 
     const chapterOpacity = group.userData.chapterOpacity ?? 1;
@@ -2473,6 +2546,8 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     if (uniforms?.uVoidSkyOpacity) {
         uniforms.uVoidSkyOpacity.value = voidSkyOpacity;
     }
+    // The dome owns the background from the boundary, near-black; its Milky Way comes up later.
+    if (uniforms?.uVoidSkyGlow) uniforms.uVoidSkyGlow.value = deep.milkyWay;
     if (group.userData.voidSky) {
         group.userData.voidSky.visible = voidSkyOpacity > 0.002;
     }
@@ -2494,7 +2569,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // delivered as a uniform driving the dithered opaque dissolve.
     const nebulaFieldMesh = group.userData.nebulaField;
     if (nebulaFieldMesh?.userData?.uReveal) {
-        const fieldReveal = spaceArrival * spaceReveal * chapterOpacity;
+        const fieldReveal = spaceArrival * spaceReveal * chapterOpacity * deep.nebula;
         nebulaFieldMesh.userData.uReveal.value = fieldReveal;
         nebulaFieldMesh.visible = fieldReveal > 0.002;
         // THE BEAT and THE KEY (2026-10-03): each mass fades in on its own window of the
@@ -2557,9 +2632,10 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
 
     const entryTargets = group.userData.entryContinuity;
     if (entryTargets) {
+        // The far tier is the Milky Way's (a share of it is seated in the galactic band).
         entryTargets.stars.forEach((object) => setOpacityScale(
             object,
-            entryState.starReveal * spaceReveal,
+            entryState.starReveal * spaceReveal * deep.milkyWay,
             chapterOpacity,
         ));
         // STARS BEFORE DARK (Wave 3): the near tier alone may arrive pre-boundary,
@@ -2586,6 +2662,11 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             destinationReveal * spaceReveal,
             chapterOpacity,
         ));
+        (entryTargets.debris || []).forEach((object) => setOpacityScale(
+            object,
+            destinationReveal * spaceReveal * deep.hole,
+            chapterOpacity,
+        ));
         // The earth is the ONE element allowed through before the boundary.
         entryTargets.earth.forEach((object) => setOpacityScale(object, earthReveal, chapterOpacity));
         entryTargets.heroes.forEach((object) => setOpacityScale(
@@ -2595,7 +2676,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         ));
         entryTargets.nebula.forEach((object) => setOpacityScale(
             object,
-            entryState.nebulaReveal * spaceReveal,
+            entryState.nebulaReveal * spaceReveal * deep.nebula,
             chapterOpacity,
         ));
         entryTargets.clutter.forEach((object) => setOpacityScale(

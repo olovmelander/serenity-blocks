@@ -10,7 +10,13 @@
  * one continuous surface, with no chapter environments, no crossfade and no seams.
  */
 
+import * as THREE from 'three/webgpu';
 import { createOdysseyWorld } from '../../rendering/odyssey/world/odyssey-world-renderer.js';
+import {
+    ONE_WORLD_DEPARTURE_VOID,
+    worldClimbScale,
+    worldDepartureFade,
+} from '../../rendering/odyssey/world/odyssey-world-act-gate.js';
 import { ODYSSEY_EYE_RAIL_OFFSET_Y } from '../../rendering/odyssey/world/odyssey-world-height.js';
 import {
     getActiveOdysseyChapterPositions,
@@ -72,8 +78,15 @@ export function create({ scene, camera, params }) {
     const ACT_END = cp[5];
     const LOOP_SECONDS = 60;
 
-    const railAt = (time) => ACT_START
-        + ((ACT_END - ACT_START) * Math.min(1, Math.max(0, (time % LOOP_SECONDS) / LOOP_SECONDS)));
+    // `?p=` pins the rail at one journey progress, and from there the board's departure runs as
+    // in the game: the colour fade and the climb (odyssey-world-act-gate.js), from the same
+    // functions. `?climb=0` leaves the departure out, for an A/B.
+    const pinned = Number.parseFloat(params?.get?.('p'));
+    const DEPART = params?.get?.('climb') !== '0';
+    const departVoid = new THREE.Color(ONE_WORLD_DEPARTURE_VOID);
+    let eye = null;
+    const railAt = (time) => (Number.isFinite(pinned) ? pinned : ACT_START
+        + ((ACT_END - ACT_START) * Math.min(1, Math.max(0, (time % LOOP_SECONDS) / LOOP_SECONDS))));
 
     /**
      * AERIAL REVIEW CAMERA — `?worldAerial=1`, with `&aerialH=` / `&aerialR=` / `&aerialYaw=`.
@@ -114,9 +127,14 @@ export function create({ scene, camera, params }) {
             const eyeY = AERIAL
                 ? AERIAL_CENTRE.y + aerialH
                 : pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y;
-            world.update(time, pt, (p - ACT_START) / (ACT_END - ACT_START), eyeY);
+            if (DEPART && !AERIAL) {
+                world.setDepartureFade(worldDepartureFade(p, cp[4], ACT_END), departVoid);
+                world.setClimb(worldClimbScale(p, cp[4], ACT_END), eye?.position);
+            }
+            world.update(time, pt, (p - ACT_START) / (ACT_END - ACT_START), eyeY, eye);
         },
         camera(time, cam) {
+            eye = cam;
             if (AERIAL) {
                 cam.position.set(
                     AERIAL_CENTRE.x + (Math.sin(aerialYaw) * aerialR),

@@ -539,7 +539,7 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyNoSpindrift', 'Removes the snow plume streaming off the summit in chapters 3 to 5.', {
         scope: 'Odyssey summit plume, One World enabled',
     }),
-    toggle('odysseyNoCloudBank', 'Removes the cloud-bank transition from the summit into space.', {
+    toggle('odysseyNoEarth', 'Removes the round Earth below the climb from the summit into space.', {
         scope: 'Odyssey, chapter 5–6 transition',
     }),
     parameter(

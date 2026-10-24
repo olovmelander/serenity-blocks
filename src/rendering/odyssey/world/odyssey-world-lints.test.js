@@ -158,15 +158,26 @@ describe('every world material opts out of scene fog', () => {
         // to be, so a graph reading `positionWorld` would shade and fade the mass at its old
         // place — silently, and only visibly once the drift amplitude grew.
         expect(source).toMatch(/const cfWorld = varying\(positionLocal\.add\(cfOffset\)/);
-        // Wave 3's atmospheric thinning sits between the paint stack and the aerial:
-        // `fieldThinned` mixes fieldCol toward the haze family by uWorldThin, and the
-        // aerial must read THAT (and still the drifted cfWorld), or the thinned deck
-        // would be graded at full-form colour.
-        expect(source).toMatch(/const fieldThinned = mix\(fieldCol, /);
-        expect(source).toMatch(/heroAerial\(fieldThinned, cfWorld\)/);
-        // The thinning's shrink must ride INSIDE cfOffset (a plain term), so the vertex
-        // position and the cfWorld varying stay in the agreement this lint enforces.
-        expect(source).toMatch(/const cfOffset = cfDrift\.add\(cfBreath\)\.add\(cfThinPull\)/);
+        // The aerial grades the painted colour at the drifted cfWorld.
+        expect(source).toMatch(/heroAerial\(fieldCol, cfWorld\)/);
+        // The offset is a plain expression of the drift and the breath, so the vertex position
+        // and the cfWorld varying stay in the agreement this lint enforces. (The departure no
+        // longer shrinks the masses in place: the eye climbs above them, 2026-10-24.)
+        expect(source).toMatch(/const cfOffset = cfDrift\.add\(cfBreath\);/);
+    });
+
+    it('every material reads positions and the eye in the climb frame (2026-10-24)', () => {
+        // The world shrinks beneath the eye at the end of chapter 5 (setClimb). A material that
+        // read three's raw positionWorld or cameraPosition would measure its haze, detail and
+        // fades on the shrunken distances: so the raw nodes are imported under other names and
+        // used exactly once each, to build the frame every material reads.
+        const source = readFileSync(path.join(WORLD_DIR, 'odyssey-world-renderer.js'), 'utf8');
+        expect(source).toMatch(/positionWorld as positionWorldNode/);
+        expect(source).toMatch(/cameraPosition as cameraPositionNode/);
+        expect(source).toMatch(/const positionWorld = inClimbFrame\(positionWorldNode\);/);
+        expect(source).toMatch(/const cameraPosition = inClimbFrame\(cameraPositionNode\);/);
+        expect(source.match(/positionWorldNode/g)).toHaveLength(2);
+        expect(source.match(/cameraPositionNode/g)).toHaveLength(2);
     });
 
     it('the fog opt-out list names every material the renderer constructs', () => {

@@ -37,7 +37,7 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         [
             'voidSky', 'blackHole', 'heroPlanet', 'galaxy', 'debris',
             'starsFar', 'starsNear', 'nebulaField',
-            'dustNear', 'dustFar', 'streakMotes', 'asteroids', 'auroraBridge',
+            'dustNear', 'dustFar', 'streakMotes', 'asteroids',
         ].forEach((key) => {
             expect(group.userData[key], key).toBeTruthy();
         });
