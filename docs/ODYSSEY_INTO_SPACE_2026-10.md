@@ -36,13 +36,14 @@ The journey's own idle drift from late chapter 5 (p 0.64) into chapter 6, live, 
    and the shrinking flat world: the cloud sea on it, a thin glowing atmosphere at its edge, and
    an orbital sunset along that edge. As the eye climbs, the limb curves and drops, and the Earth
    sinks out of the bottom of the frame instead of vanishing. The dusk light on the cloud tops
-   belongs here too (see §1, *Moved to step 2*).
+   belongs here too (see §1, *Moved to step 2*). *Done (§2).*
 3. **The aurora on Earth's night side, seen from above.** Green ribbons lying on the curved night
    side, curtains rising toward the eye, following the curve; it slides away with the Earth and is
    gone before the black hole arrives. One aurora: the airglow line and the green light on the
-   clouds come from it.
+   clouds come from it. *Done (§3).*
 4. **The planet rises over Earth's edge.** No fade: a thin sunlit crescent and the tips of the
    rings first, then the whole ringed body clears the curved horizon over ~20–30 s of drift.
+   *Done (§4).*
 5. **Then deep space, one thing at a time.** As the Earth falls away, the stars, the Milky Way and
    the nebula come up, then the black hole grows, each in clear sky.
 
@@ -129,3 +130,149 @@ the cloud field's offset is the drift and the breath). `odyssey-ground-lever` fo
 
 **Cost.** No new draws, pipelines or textures. A few multiply-adds per world fragment for the
 climb's frame; the melt only while the departure runs.
+
+## §2. The round Earth below (2026-10-24)
+
+**What changed.**
+
+- **One planet below the eye** (`composition/odyssey-orbit-earth.js`, `createOrbitEarth`). It is
+  one exact sphere, solved per view direction in Earth radii with the eye at the origin, and drawn
+  on a backdrop sphere round the camera. A ray meets it where `(k d.y)² > h(2 + h)`. The altitude
+  of the ray's closest approach is negative exactly inside the disc, and that one number
+  anti-aliases the limb and drives the rim.
+  - **The surface** is a sea of cloud: broad weather systems, clear ocean between them, and detail
+    octaves that fade where they fall under a pixel. It is white in sunlight, orange then red
+    along the terminator, dim slate at night, and it sinks into the air toward the limb.
+  - **The rim** is a thin band of air just outside the limb: blue on the day side, red under blue
+    where the sunset meets the limb, deep blue at night, with a faint airglow line.
+- **Its schedule** is `orbitEarthAt(p)`, in fractions of chapter 6's span, so a re-layout carries
+  it.
+  - It fades in over the climb's far sea (p 0.690–0.712), at the flat world's own horizon dip
+    (5.4°).
+  - The eye keeps climbing: the limb dips to ~12° by the boundary and ~45° as the Earth sinks out
+    (p 0.807–0.818).
+  - The sun sets at the eye (it crosses the horizon at p ≈ 0.735, is −7° at the boundary and −18°
+    later), so the terminator comes in over the horizon ahead and passes under the eye. The
+    journey flies into the night.
+  - The view leans down 26° on a lens 8° wider (`resolveJourneyFraming`), so the Earth and the
+    next orbs both fit. It is held to p 0.766 and back on the rail by p 0.799.
+- **This is the dusk light moved from §1.** The gold, then rose, light lands on the Earth's cloud
+  sea (p 0.70–0.736), designed with the sunset, not as a colour-script keyframe. The script's
+  horizon and seam rules are untouched.
+- **It replaces three things:**
+  - the cloud bank (`odyssey-cloud-bank.js`, a flat dark band painted above the horizon);
+  - the world dome's straight limb line, whose glow and airglow now yield to the Earth's rim
+    (`setEarth`);
+  - the flat world under the planet. Once the Earth covers it (presence 1), the board hides the
+    world's surfaces, cumulus, heroes and forest.
+- **Draw order.** The Earth is the nearest thing in the sky: in front of everything in space,
+  behind the journey.
+  - It draws at renderOrder −0.5: after the sky domes, before every transparent thing at 0 or
+    above.
+  - Once it covers the world it comes in to 320 u, inside every far hero (every part of the giant
+    is ≥ ~600 u away while the Earth shows) and outside any orb seen over its disc.
+  - A depth-only twin (`occluder`) marks the disc in the depth buffer. So the star shells, the
+    nebula, the giant's rings and the black hole are hidden behind the planet by depth, whatever
+    their own draw order.
+  - **Found on the way:** at renderOrder 0.5 the Earth was drawn after the orb glass (transparent,
+    renderOrder 0), so an orb passing over the disc lost its glass shell. That happens when orb 36
+    passes at p 0.775. Drawn at −0.5, the orbs and the rail's glow stay in front.
+- **Playground:** `?effect=odyssey-orbit-earth&p=0.755` shows the game's own height, sun and aurora
+  at that progress, looking along the rail's bearing. `alt`, `sunEl`, `aurora`, `pitch` and `yaw`
+  override them.
+
+## §3. The aurora on the night side (2026-10-24)
+
+**What changed.**
+
+- **One aurora.** It is the Earth's: an oval round a pole that lies toward the night (opposite the
+  sun's bearing). Its near arc passes ~3.4° of arc ahead of the eye and curves away to the limb on
+  both sides. There are three folded sheets, the poleward ones fainter and each with its own folds.
+  The old chapter-6 aurora bridge (`cosmic-expanse-aurora.js`) is removed.
+- **The sheets are surfaces, not a fog.**
+  - Each view ray is walked through the shell where the curtains stand (28 steps), and each sheet
+    is crossed where its signed distance changes sign.
+  - Each crossing is lit by its height: a sharp green foot, a body dying upward, a faint crimson
+    top.
+  - Its rays run along the oval, so a curtain seen side-on shows them upright, field-aligned.
+  - It is lit over the path the ray spends inside a sheet of the given width, so a curtain seen
+    edge-on brightens.
+  - A faint glow gives the sheets their thickness (the ray just past a fold's silhouette still
+    passes through the curtain's edge), and a soft shoulder holds the hue.
+  - The aurora also greens the cloud under it.
+- **Timing.** It lights at dusk (p 0.731), is whole from 0.745 to 0.761, and is gone by 0.773, as
+  the black hole grows.
+- **First live pass, and what fixed it.** The near arc ran under the eye, just above the curtain
+  tops, so the curtains smeared into screen-tall green streaks: a wall over the lower half of the
+  frame, its far arc burning white. Four changes fixed it:
+  - the arc moved ahead of the eye (`poleArc` 0.375 → 0.41);
+  - each sheet is crossed instead of marched as a volume (16 steps had widened every thin sheet
+    over a whole step);
+  - the screen-column streaks were dropped;
+  - the light gets a lower ceiling (`shoulder` 0.65 → 1.4, `gain` 520 → 170).
+- **Cost control.** A ray whose stretch through the shell never comes within the oval's reach of
+  its mean radius skips the march. The shell is thin, so the stretch's two ends and its middle
+  bound it.
+
+## §4. The planetrise (2026-10-24)
+
+**What changed.**
+
+- **The geometry.** The Earth's limb always lies below the level line, and the ringed giant's seat
+  lies above it (+4–7° through the passage). A giant that never moved could therefore never be
+  behind the Earth.
+- **Its one move.** Before its rise it hangs at ONE point 27° straight below its seat, as seen from
+  the rail at the rise's middle, at the same distance, behind the limb (`planetBelow`).
+  - It rises on one arc about that rail point to its seat over p 0.742–0.772
+    (`orbitEarthAt().planetRise`, `resolvePlanetRisePlace`).
+  - It is turned with the arc (`resolvePlanetRiseTurn`, its pole and its light), so it rises
+    looking as it will hang.
+  - It moves by progress alone, so an orb close-up never moves it.
+  - Then it holds its one place, as Olov asked on 2026-10-20 ("placed in space on 1 place").
+- **The summit fade** (p 0.725–0.75) now runs while the giant is behind the Earth, so no fade is
+  ever seen.
+- **The Earth is in front of it.** Its air rim and the aurora's curtains draw over the rising giant
+  (§2's draw order).
+
+**Measured** (the real camera leaning over the Earth, `odyssey-planetrise.test.js`, and the live
+drift):
+
+| p | what the player sees |
+|---|---|
+| 0.725–0.748 | the giant is hidden, its top ≥ 2° below the limb |
+| ~0.748 | its top and the tips of its rings come over the edge, behind the aurora's curtains (aurora at full) |
+| ~0.760 | its body is clear of the limb |
+| 0.772 | it is in its seat, 13° clear |
+
+The emergence takes ~24 s of the live drift; the whole rise ~57 s.
+
+![After: the live drift at p 0.735, 0.745, 0.750, 0.753, 0.756, 0.760, 0.768 and 0.785: sunset on the cloud sea, the aurora at the limb, the giant rising behind its curtains, then the black hole growing as the Earth falls away](images/odyssey-into-space-2026-10-24/ch5-ch6-earth-after.jpg)
+
+**Not changed (step 5).** The Milky Way, the nebula and the black hole still arrive by the space
+gate (p 0.754–0.773), while the aurora and the planetrise are up.
+
+**Tests.**
+
+- `odyssey-orbit-earth` (new) pins:
+  - the schedule: the Earth arrives and leaves with no step, the limb only dips, the sun sets
+    before the boundary, the aurora is lit at dusk and whole after sunset, and the giant rises
+    once while the aurora is up;
+  - the draw order: before the orb glass, at its backdrop radius while the world shows, in front
+    of the far heroes with its disc in depth once it covers;
+  - the planet and its depth twin building on WGSL and GLSL with nothing said and no unassigned
+    reads.
+- `odyssey-planetrise` (new) checks, on the real camera and the real chapter 6:
+  - the giant is hidden behind the limb from its reveal to its rise;
+  - it comes over the edge while the aurora is at full, and is clear when the rise ends;
+  - it is always farther than the Earth's front radius, and every orb seen over the disc nearer.
+- `odyssey-ch6-hero-framing`: the giant hangs at one point below the limb, rises on one arc only
+  upward, by progress alone, then holds one place and one pole.
+- `odyssey-seam-camera-continuity`: the seams' framings carry the Earth's lean.
+- The cloud bank's and the aurora bridge's tests went with them.
+
+**Cost.**
+
+- The Earth is one transparent draw (fragment ~27 KB WGSL) plus a depth-only twin while it covers
+  the world.
+- The aurora's march runs only while it is lit, and only for rays near the oval.
+- Gone: the cloud bank's draws and the aurora bridge.

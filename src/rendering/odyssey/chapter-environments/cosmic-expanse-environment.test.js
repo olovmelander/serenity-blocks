@@ -196,9 +196,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
             // must never touch its opaque material) — held shut in the summit window.
             expect(group.userData.nebulaField.userData.uReveal.value).toBeLessThan(0.01);
             expect(group.userData.nebulaField.visible).toBe(false);
-            // The aurora is growing out of the limb (its band is only shown with a camera to seat it
-            // on; headless, read its envelope).
-            expect(group.userData.auroraBridge.userData.uGlow.value).toBeGreaterThan(0.1);
+            // (The aurora is the Earth below's since 2026-10-24: composition/odyssey-orbit-earth.js.)
             expect(group.userData.voidSky.visible).toBe(false);
             expect(group.userData.diskLight.intensity).toBe(0);
             // ...and by the window's end the giant is fully risen.
@@ -243,8 +241,8 @@ describe('setOpacityScale re-arm (Act II->Space §8.4)', () => {
     it('ends every opacityNode assignment with .mul(materialOpacity)', () => {
         // Assignments may span lines, so match up to the terminating semicolon.
         const assignments = source.match(/^\s*\w+\.opacityNode = [\s\S]*?;$/gm) || [];
-        // 8 -> 7 (seamless pass): the aurora bridge moved to cosmic-expanse-aurora.js and is
-        // staged by its own progress-driven uniforms, outside setOpacityScale's buckets.
+        // 8 -> 7 (seamless pass): the aurora bridge left this file (since 2026-10-24 the aurora is
+        // the Earth's, composition/odyssey-orbit-earth.js), outside setOpacityScale's buckets.
         expect(assignments.length).toBeGreaterThanOrEqual(7);
 
         const unarmed = assignments.filter((a) => !a.includes('materialOpacity'));

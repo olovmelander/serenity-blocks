@@ -31,9 +31,11 @@ import {
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
     GALAXY_SKY_SEAT,
+    resolveCh6HeroPlaces,
     resolveOmenHandoffWindow,
     SUMMIT_EARTH_REVEAL,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
+import { ORBIT_EARTH_SCHEDULE } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
 import {
     HERO_PLANET_RADIUS,
     OMEN_SHADOW_RADIUS,
@@ -177,10 +179,17 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         };
     };
 
+    // The planetrise (docs/ODYSSEY_INTO_SPACE_2026-10.md §4): until it ends the giant is still
+    // coming up over the Earth's edge, partly behind it by design, seen on the game's camera
+    // leaning down over the Earth (tests/unit/odyssey-planetrise.test.js); this bare follow frame
+    // has no lean.
+    const planetriseEnd = ch6Start + (ch6End - ch6Start) * ORBIT_EARTH_SCHEDULE.rise[1];
+
     it('keeps all three heroes inside the frame for the whole chapter', () => {
         samples.forEach((progress) => {
             const frame = frameAt(controller, chapterPositions, 6, progress);
             const heroes = heroesAt(env, frame.camPos, progress);
+            if (progress < planetriseEnd) delete heroes.heroPlanet;
             ASPECTS.forEach((aspect) => {
                 Object.entries(heroes).forEach(([name, world]) => {
                     const r = project(frame, world, aspect);
@@ -264,18 +273,25 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         });
     });
 
-    it('raises the gas giant after dark at ONE place in the world and never moves it again', () => {
+    it('raises the gas giant after dark from behind the Earth, then holds ONE place in the world', () => {
         // Owner 2026-10-20: "how can we not have the planets like moving as we move along the
         // odyssey path? I want them to be placed in space on 1 place." The giant used to be held
         // at a fixed SCREEN spot on the rail camera from its rise to p 0.775 (PLANET_SEAM_LOCK),
-        // so it slid ~32 deg against the stars as the camera turned — moving with you. It now
-        // hangs at one world point (PLANET_WORLD_SEAT) from the first frame it shows: same place,
-        // same pole, same size, whatever the camera does; it may only move on screen by the
-        // parallax of the camera's own travel.
+        // so it slid ~32 deg against the stars as the camera turned — moving with you. It hangs at
+        // one world point (PLANET_WORLD_SEAT), same place, same pole, same size, whatever the
+        // camera does; it may only move on screen by the parallax of the camera's own travel.
+        // ONE MOVE, THE PLANETRISE (2026-10-24, docs/ODYSSEY_INTO_SPACE_2026-10.md §4; the agreed
+        // plan: "the planet rises over Earth's edge"). The Earth's limb always lies below the
+        // level and the seat above it, so a giant that never moved could never be behind the
+        // Earth. Before the rise it hangs at ONE point below the limb; it rises on ONE arc to the
+        // seat, by progress alone (an orb close-up never moves it), and never moves again.
         const cpAll = getActiveOdysseyChapterPositions();
         const skySpan = cpAll[5] - cpAll[4];
-        const riseStart = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
-        const riseEnd = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
+        const span = cpAll[6] - cpAll[5];
+        const revealStart = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
+        const riseFrom = cpAll[5] - span * ORBIT_EARTH_SCHEDULE.rise[0];
+        const riseTo = cpAll[5] + span * ORBIT_EARTH_SCHEDULE.rise[1];
+        const places = resolveCh6HeroPlaces(cpAll);
         const cam = new THREE.PerspectiveCamera(BEYOND.fovBase, 16 / 9, 0.1, 20000);
         const measure = (progress, orbEye = false) => {
             const chapterId = progress < cpAll[5] ? 5 : 6;
@@ -304,34 +320,51 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
             };
         };
 
-        // Not in the daylight: hidden until after dark.
-        expect(measure(riseStart - 0.01).opacity).toBeLessThan(0.01);
-        const first = measure(riseStart);
-        const risen = measure(riseEnd);
+        // Not in the daylight: hidden until after dark, and faded up while it is behind the Earth.
+        expect(measure(revealStart - 0.01).opacity).toBeLessThan(0.01);
+        expect(revealStart).toBeLessThan(riseFrom);
+        const below = measure(revealStart);
+        expect(measure(riseFrom).opacity).toBeGreaterThan(0.6);
+        const risen = measure(riseTo);
         expect(risen.opacity).toBeGreaterThan(0.95);
+        expect(below.world.distanceTo(places.planetBelow)).toBeLessThan(1e-6);
+        expect(risen.world.distanceTo(places.planet)).toBeLessThan(1e-6);
         expect(risen.behind).toBe(false);
         // Lower right, clear of the rail.
         expect(risen.x).toBeGreaterThan(0.15);
         expect(risen.y).toBeLessThan(0);
-        // A large planet: its world radius reads at >= 7 deg from the rail at the boundary.
+        // A large planet: its world radius reads at >= 7 deg from the rail.
         const radius = HERO_PLANET_RADIUS * risen.scale;
         expect(THREE.MathUtils.radToDeg(Math.asin(radius / risen.dist))).toBeGreaterThan(7);
-        let prev = first;
-        for (let p = riseStart; p <= ch6End; p += 0.003) {
+        const arc = places.planet.distanceTo(places.planetRiseCentre);
+        let prev = below;
+        let prevHeight = -Infinity;
+        for (let p = revealStart; p <= ch6End; p += 0.003) {
             const where = `@p=${p.toFixed(4)}`;
             const r = measure(p);
             const orb = measure(p, true);
-            // ONE place, ONE pole, ONE size — on the rail and with the eye off it.
-            expect(r.world.distanceTo(first.world), `moved ${where}`).toBeLessThan(1e-6);
-            expect(orb.world.distanceTo(first.world), `orb eye moved it ${where}`).toBeLessThan(1e-6);
-            expect(r.quaternion.angleTo(first.quaternion), `turned ${where}`).toBeLessThan(1e-6);
-            expect(r.scale).toBeCloseTo(first.scale, 9);
-            // Against the sky it moves only by the parallax of the camera's own travel.
-            const step = r.world.clone().sub(r.camPos).normalize()
-                .angleTo(prev.world.clone().sub(prev.camPos).normalize());
-            const parallax = r.camPos.distanceTo(prev.camPos) / Math.min(r.dist, prev.dist);
-            expect(step, `slid against the sky ${where}`).toBeLessThanOrEqual(parallax * 1.02 + 1e-9);
-            if (p >= riseEnd) {
+            // By progress alone; one size.
+            expect(orb.world.distanceTo(r.world), `orb eye moved it ${where}`).toBeLessThan(1e-6);
+            expect(r.scale).toBeCloseTo(below.scale, 9);
+            if (p <= riseFrom) {
+                expect(r.world.distanceTo(places.planetBelow), `moved below the limb ${where}`).toBeLessThan(1e-6);
+            } else if (p < riseTo) {
+                // On the arc, and only ever up it.
+                expect(r.world.distanceTo(places.planetRiseCentre), `off the arc ${where}`).toBeCloseTo(arc, 3);
+                const height = r.world.clone().sub(places.planetRiseCentre).normalize().y;
+                expect(height, `fell back ${where}`).toBeGreaterThanOrEqual(prevHeight - 1e-9);
+                prevHeight = height;
+            } else {
+                // ONE place, ONE pole — on the rail and with the eye off it.
+                expect(r.world.distanceTo(places.planet), `moved ${where}`).toBeLessThan(1e-6);
+                expect(r.quaternion.angleTo(risen.quaternion), `turned ${where}`).toBeLessThan(1e-6);
+                // Against the sky it moves only by the parallax of the camera's own travel.
+                if (prev.world.distanceTo(places.planet) < 1e-6) {
+                    const step = r.world.clone().sub(r.camPos).normalize()
+                        .angleTo(prev.world.clone().sub(prev.camPos).normalize());
+                    const parallax = r.camPos.distanceTo(prev.camPos) / Math.min(r.dist, prev.dist);
+                    expect(step, `slid against the sky ${where}`).toBeLessThanOrEqual(parallax * 1.02 + 1e-9);
+                }
                 expect(r.behind, `behind ${where}`).toBe(false);
                 expect(Math.abs(r.x), `ndcX ${where}`).toBeLessThan(0.88);
                 expect(Math.abs(r.y), `ndcY ${where}`).toBeLessThan(0.88);
