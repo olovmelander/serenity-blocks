@@ -1,0 +1,527 @@
+/**
+ * Capture the trailer's shots from the real game, frame by frame.
+ *
+ * Boots the built game in Chromium, sets each shot up (mode, theme, the game's own CPU bot on the
+ * board), then freezes time with the virtual clock (virtual-clock.js) and records: every frame is
+ * one step of exactly 1/fps of game time followed by a screenshot piped into ffmpeg, so the clip
+ * plays smoothly at full speed however slowly the frames were drawn. On a machine without a GPU
+ * the page renders through SwiftShader (WebGPU on the CPU): slow, but the same pixels.
+ *
+ * Usage (a server for the built game must be running: `npm run build && npx vite preview`):
+ *   node scripts/trailer/capture.mjs                       every shot in trailer-config.mjs
+ *   node scripts/trailer/capture.mjs --only=stack-a,m3     just these
+ *   node scripts/trailer/capture.mjs --missing             only shots without a clip yet
+ *
+ *   --base-url=URL     the game (default http://127.0.0.1:4173, `vite preview`)
+ *   --out=DIR          output root (default artifacts/trailer; clips go to DIR/shots)
+ *   --gpu              use the machine's GPU instead of SwiftShader (headed window)
+ *   --quality=Extreme  effect quality tier (Minimal … Extreme; default High)
+ *   --render-scale=0.75  the themes' 3D resolution against the page (default 1); the board and
+ *                      HUD stay sharp at full size, and software rendering gets much faster
+ *   --per-session=N    shots per browser before a fresh boot (default 5)
+ *   --preroll=SEC      virtual seconds stepped before recording starts (default 0.3)
+ */
+/* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop, no-console */
+import { execSync, spawn } from 'node:child_process';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { build } from 'esbuild';
+import { TRAILER } from './trailer-config.mjs';
+import { planEdit } from './assemble.mjs';
+import { installVirtualClock } from './virtual-clock.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith('--')).map((a) => {
+    const [key, ...value] = a.slice(2).split('=');
+    return [key, value.join('=') || true];
+}));
+const BASE = String(args['base-url'] || 'http://127.0.0.1:4173');
+const OUT = path.resolve(ROOT, String(args.out || 'artifacts/trailer'));
+const SHOT_DIR = path.join(OUT, 'shots');
+const QUALITY = String(args.quality || 'High');
+const RENDER_SCALE = Number(args['render-scale'] || 1);
+const PER_SESSION = Number(args['per-session'] || 5);
+const PREROLL = Number(args.preroll ?? 0.3);
+const { fps, width, height } = TRAILER;
+const STEP_MS = 1000 / fps;
+
+const LAUNCH = args.gpu
+    ? ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-gpu-rasterization']
+    : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
+        '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'];
+
+// Capture flags: no intro or warning, every theme open, no warm-up, no frame cap, and every
+// adaptive-quality loop held still (see src/ui/url-parameters/*). odysseyDebug exposes the
+// Odyssey test hooks in a built game.
+const QUERY = [
+    'skipIntro=1', 'photosensitivityWarning=0', 'unlockAll=1', 'noThemeWarm=1', 'noThemeFpsCap=1',
+    'portalGateWorker=0', 'odysseyDebug=1', 'odysseyOverlay=0', 'odysseyDisableAdaptiveQuality=1',
+    'odysseyAdaptiveGpuTiming=0', 'blackHoleNoDrs=1', 'blackHoleNoGpuDrs=1', 'noDRS=1', 'noAdaptivePacing=1',
+].join('&');
+
+const SETTINGS = {
+    effectQuality: QUALITY,
+    renderScale: RENDER_SCALE,
+    targetFrameRate: 60,
+    vsyncEnabled: true,
+    enableAntialiasing: true,
+    enableBloom: true,
+    enableShadows: true,
+    particleQuality: 'ultra',
+    textureQuality: 'ultra',
+    showFPSCounter: false,
+    backgroundTabBehavior: 'continue',
+    pauseOnFocusLoss: false,
+    reducedMotion: false,
+    reduceFlashing: false,
+    customCursorEnabled: false,
+    backgroundMode: 'Specific',
+    backgroundTheme: 'forest',
+    autoThemeChange: false,
+    serenityDrift: 'off',
+    breathingGuideAutoStart: false,
+    odysseyAutoContinue: false,
+    musicVolume: 0,
+    sfxVolume: 0,
+};
+
+// Chrome that has no place in footage: debug readouts, menu buttons, hints, toasts, cursor.
+const HIDE_CSS = `
+#fps-counter, #performance-overlay, #odyssey-aaa-debug-overlay, #desktop-gpu-remediation-panel,
+#serenity-hub-icon, #settings-btn-global, .hale-sessions-entry, #gamepad-hints-overlay,
+#serenity-first-hints, #serenity-notification, #serenity-world-bar, .lv-coach,
+#odyssey-navigator-btn, #demo-indicator, #playback-controls, #sb-toast-region,
+.custom-cursor-container, .headphone-badge, .global-corner-controls { display: none !important; }
+* { cursor: none !important; }`;
+
+async function loadPlaywright() {
+    try {
+        return await import('playwright');
+    } catch {
+        const root = execSync('npm root -g', { encoding: 'utf8' }).trim();
+        return createRequire(path.join(root, '/'))('playwright');
+    }
+}
+
+async function bundleAutoplay() {
+    const result = await build({
+        entryPoints: [path.join(ROOT, 'scripts', 'trailer', 'autoplay-entry.js')],
+        bundle: true,
+        format: 'iife',
+        write: false,
+        target: 'es2022',
+        logLevel: 'silent',
+        define: { 'import.meta.env.DEV': 'false' },
+    });
+    return result.outputFiles[0].text;
+}
+
+/** How many frames each shot needs: the longest stretch the cut list takes from it. */
+export function shotLengths(trailer) {
+    const lengths = {};
+    planEdit(trailer.edit, trailer.duration).forEach((entry) => {
+        const need = (entry.in || 0) + entry.clipLength;
+        lengths[entry.shot] = Math.max(lengths[entry.shot] || 0, need);
+    });
+    return lengths;
+}
+
+const log = (...parts) => console.log(`[trailer ${new Date().toISOString().slice(11, 19)}]`, ...parts);
+
+// ---------------------------------------------------------------------------------------------
+// In-page steps. Each runs inside the game page (page.evaluate) and must be self-contained.
+// ---------------------------------------------------------------------------------------------
+
+async function pagePrepare() {
+    const sleep = (ms) => window.__trailerClock.realSleep(ms);
+    const ready = () => window.serenityBlocks?.isInitialized
+        && window.serenityBlocks.gameModeManager && window.serenityBlocks.themeManager;
+    for (let i = 0; i < 3000 && !ready(); i += 1) await sleep(200);
+    if (!ready()) throw new Error('the game did not finish booting');
+    const app = window.serenityBlocks;
+    if (app.soundManager && !app.soundManager.isMuted) {
+        if (typeof app.soundManager.toggleMute === 'function') app.soundManager.toggleMute();
+        app.soundManager.isMuted = true;
+    }
+    const tm = app.themeManager;
+    tm.clearAdjacentThemePreloadQueue?.();
+    tm.deferAdjacentThemePreload = true;
+    tm.queueAdjacentThemePreload = () => {};
+    tm.stopRandomThemeInterval?.();
+    tm.startRandomThemeInterval = () => {};
+    window.performanceMonitor?.disable?.();
+    return { theme: tm.activeThemeName };
+}
+
+async function pageWaitThemeIdle({ themeId, timeoutMs = 600000 }) {
+    const sleep = (ms) => window.__trailerClock.realSleep(ms);
+    const tm = window.serenityBlocks.themeManager;
+    const started = window.__trailerClock.realNow();
+    const settled = () => !tm.isTransitioning && !tm.switchDrainPromise && !tm.queuedSwitchRequest
+        && tm.activeTheme?.lifecycleState === 'running' && (!themeId || tm.activeThemeName === themeId);
+    while (!settled()) {
+        if (window.__trailerClock.realNow() - started > timeoutMs) return { ok: false, active: tm.activeThemeName };
+        await sleep(250);
+    }
+    try { await tm.activeTheme?.whenCriticalReady?.(); } catch { /* best effort */ }
+    return { ok: true, active: tm.activeThemeName };
+}
+
+async function pageSwitchTheme({ themeId }) {
+    const app = window.serenityBlocks;
+    const tm = app.themeManager;
+    if (tm.activeThemeName === themeId && tm.activeTheme?.lifecycleState === 'running') return { switched: false };
+    app.settingsManager?.update?.({ backgroundMode: 'Specific', backgroundTheme: themeId });
+    await tm.switchTheme(themeId, true);
+    return { switched: true };
+}
+
+async function pageStartMode({ mode }) {
+    const sleep = (ms) => window.__trailerClock.realSleep(ms);
+    const gm = window.serenityBlocks.gameModeManager;
+    if (gm.getCurrentModeId?.() === mode && gm.getCurrentMode?.()?.isRunning) return { already: true };
+    window.dispatchEvent(new CustomEvent('startGameWithMode', { detail: { mode } }));
+    for (let i = 0; i < 3000; i += 1) {
+        if (gm.getCurrentModeId?.() === mode && gm.getCurrentMode?.()?.isRunning) break;
+        await sleep(200);
+    }
+    for (let i = 0; i < 300 && document.getElementById('cinematic-loading-overlay'); i += 1) await sleep(200);
+    return { running: Boolean(gm.getCurrentMode?.()?.isRunning), mode: gm.getCurrentModeId?.() };
+}
+
+async function pageReturnToMenu() {
+    const sleep = (ms) => window.__trailerClock.realSleep(ms);
+    window.__trailerAutoplay?.stop();
+    const app = window.serenityBlocks;
+    try { app.serenityHub?.cancelGuidedSession?.(); } catch { /* not in a session */ }
+    try { app.modalManager?.hideAll?.(); } catch { /* nothing open */ }
+    if (app.gameModeManager.getCurrentModeId?.()) await app._returnToMainMenu?.();
+    await sleep(1500);
+    return { mode: app.gameModeManager.getCurrentModeId?.() ?? null };
+}
+
+async function pageRestartRun() {
+    // A fresh run of the current mode (Single/Infinity): an empty well and level 1 again.
+    const app = window.serenityBlocks;
+    window.__trailerAutoplay?.stop();
+    try { app.modalManager?.hideAll?.(); } catch { /* nothing open */ }
+    const gm = app.gameModeManager;
+    const mode = gm.getCurrentMode?.();
+    if (mode?.isRunning) await gm.stopCurrentMode?.();
+    await gm.startCurrentMode?.({});
+    await window.__trailerClock.realSleep(800);
+    return { running: Boolean(gm.getCurrentMode?.()?.isRunning) };
+}
+
+async function pageStartVersus({ seats = 4 }) {
+    const sleep = (ms) => window.__trailerClock.realSleep(ms);
+    const gm = window.serenityBlocks.gameModeManager;
+    window.dispatchEvent(new CustomEvent('startGameWithMode', { detail: { mode: 'local-multiplayer' } }));
+    let mode = null;
+    for (let i = 0; i < 3000; i += 1) {
+        mode = gm.getCurrentModeId?.() === 'local-multiplayer' ? gm.getCurrentMode() : null;
+        if (mode?.configModal) break;
+        await sleep(200);
+    }
+    if (!mode?.configModal) return { ok: false, reason: 'no config modal' };
+    const skills = [9, 8, 9, 7].slice(0, seats);
+    const setup = {
+        numPlayers: String(seats), matchMode: 'ffa', attackStyle: 'standard', endCondition: 'never',
+        endConditionValue: '7', startLevel: '3', levelProgression: 'on',
+    };
+    skills.forEach((skill, i) => Object.assign(setup, {
+        [`player${i + 1}Kind`]: 'bot',
+        [`player${i + 1}BotDifficulty`]: String(skill),
+        [`player${i + 1}Handicap`]: '2',
+        [`player${i + 1}Team`]: String(i),
+    }));
+    mode.configModal.restoreSetup(setup);
+    mode.configModal.handleSubmit();
+    for (let i = 0; i < 3000; i += 1) {
+        if (mode.isRunning && mode.botManager && mode.multiplayerState && !mode.multiplayerState.isPaused) break;
+        await sleep(200);
+    }
+    return { ok: Boolean(mode.isRunning) };
+}
+
+async function pageStartHale({ session = 'FIRST' }) {
+    const app = window.serenityBlocks;
+    await app.startDeferredDesktopServices?.('menu-hale');
+    const hub = app.serenityHub || await app.initializeGlobalSerenityHub();
+    hub.openHaleSessions();
+    await window.__trailerClock.realSleep(1500);
+    hub.sessionsTab.startSession(session);
+    return { ok: true };
+}
+
+async function pageStartOdyssey({ level }) {
+    const sleep = (ms) => window.__trailerClock.realSleep(ms);
+    if (!window.odysseyMode?.boardController?.isActive) {
+        window.dispatchEvent(new CustomEvent('startGameWithMode', { detail: { mode: 'odyssey' } }));
+        for (let i = 0; i < 6000 && !window.odysseyMode?.boardController?.isActive; i += 1) await sleep(200);
+        await sleep(800);
+        document.querySelector('[data-flow-action="map"]')?.click();
+        await sleep(800);
+    }
+    const om = window.odysseyMode;
+    if (!om) return { ok: false, reason: 'no odyssey mode' };
+    window.__trailerAutoplay?.stop();
+    if (om.levelRunStarted) {
+        // Back to the map from the last orb, rather than rebuilding the journey from the menu.
+        await om.returnToBoard();
+        for (let i = 0; i < 3000 && (om.levelRunStarted || !om.boardController?.isActive); i += 1) await sleep(200);
+        await sleep(1000);
+    }
+    if (!level) {
+        const bc = om.boardController;
+        for (let i = 0; i < 3000; i += 1) {
+            if ((bc.environmentManager?.environments?.size ?? 8) >= 8 && !(bc.pendingChapterLoads?.size)) break;
+            await sleep(200);
+        }
+        return { ok: true, map: true };
+    }
+    const all = om.levelRegistry.getAllLevels();
+    const target = all[Math.min(all.length, Math.max(1, level)) - 1];
+    window.testOdysseyLevel(target.id);
+    for (let i = 0; i < 6000 && !(om.levelRunStarted && om.gameState); i += 1) await sleep(200);
+    return { ok: Boolean(om.levelRunStarted), id: target.id, name: target.name ?? null };
+}
+
+async function pageOdysseyFlyover({ seconds }) {
+    // Glide the journey camera up the map from the first chapter over the shot's length.
+    const bc = window.odysseyMode?.boardController;
+    const cam = bc?.cameraController;
+    if (!cam) return { ok: false };
+    const positions = bc.presentationLayout?.chapterPositions || [0, 0.125];
+    const from = positions[0] ?? 0;
+    const to = positions[2] ?? 0.25;
+    cam.setCurrentPosition?.(from);
+    cam.updateFollowPosition?.(from);
+    cam.panToPosition?.(to, seconds * 1000);
+    return { ok: true, from, to };
+}
+
+// ---------------------------------------------------------------------------------------------
+
+class Session {
+    constructor(playwright, autoplaySource) {
+        this.playwright = playwright;
+        this.autoplaySource = autoplaySource;
+        this.browser = null;
+        this.page = null;
+        this.cdp = null;
+        this.shotsTaken = 0;
+    }
+
+    async open() {
+        const { chromium } = this.playwright;
+        this.browser = await chromium.launch({ headless: !args.gpu, args: LAUNCH });
+        const context = await this.browser.newContext({
+            viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'no-preference',
+        });
+        this.page = await context.newPage();
+        const page = this.page;
+        page.on('pageerror', (error) => log('pageerror:', String(error.message).slice(0, 200)));
+        page.on('console', (message) => {
+            if (message.type() !== 'error') return;
+            const text = message.text();
+            if (/GL Driver|WebGPU Context|ReadPixels|Automatic fallback|favicon/.test(text)) return;
+            log('console.error:', text.slice(0, 200));
+        });
+        await page.addInitScript(`(${installVirtualClock.toString()})();`
+            + `try{localStorage.setItem('serenityBlocksSettings',${JSON.stringify(JSON.stringify(SETTINGS))});`
+            + "localStorage.setItem('serenity.photosensitivityWarning','0');"
+            + "localStorage.setItem('serenity.noThemeFpsCap','1');"
+            + "localStorage.setItem('serenity.serenityMode.hints','3');}catch(e){}");
+        this.cdp = await context.newCDPSession(page);
+        await this.cdp.send('Animation.enable');
+        const started = Date.now();
+        await page.goto(`${BASE}/?${QUERY}`, { waitUntil: 'load', timeout: 300000 });
+        await page.addStyleTag({ content: HIDE_CSS });
+        await page.addScriptTag({ content: this.autoplaySource });
+        const prepared = await page.evaluate(pagePrepare);
+        log(`booted in ${Math.round((Date.now() - started) / 1000)} s (theme ${prepared.theme})`);
+        this.mode = null;
+    }
+
+    async close() {
+        await this.browser?.close().catch(() => {});
+        this.browser = null;
+    }
+
+    run(fn, payload) {
+        return this.page.evaluate(fn, payload);
+    }
+
+    /** Put the game in the state the shot asks for. */
+    async setup(id, shot) {
+        const kind = shot.kind;
+        const modeFor = {
+            single: 'single', infinity: 'infinity', stillfall: 'stillfall', serenity: 'serenity',
+            versus: 'local-multiplayer', odyssey: 'odyssey', hale: null,
+        }[kind];
+        const sameMode = this.mode && this.mode === modeFor && kind !== 'hale' && kind !== 'versus';
+        if (!sameMode && this.mode !== undefined) {
+            await this.run(pageReturnToMenu);
+        }
+        if (shot.theme) {
+            await this.run(pageSwitchTheme, { themeId: shot.theme });
+        }
+        switch (kind) {
+        case 'single':
+        case 'infinity':
+        case 'stillfall':
+            if (sameMode) await this.run(pageRestartRun);
+            else log(id, 'mode', JSON.stringify(await this.run(pageStartMode, { mode: modeFor })));
+            break;
+        case 'serenity':
+            log(id, 'mode', JSON.stringify(await this.run(pageStartMode, { mode: 'serenity' })));
+            break;
+        case 'versus':
+            log(id, 'versus', JSON.stringify(await this.run(pageStartVersus, { seats: shot.seats || 4 })));
+            break;
+        case 'hale':
+            log(id, 'hale', JSON.stringify(await this.run(pageStartHale, { session: shot.session || 'FIRST' })));
+            break;
+        case 'odyssey':
+            log(id, 'odyssey', JSON.stringify(await this.run(pageStartOdyssey, { level: shot.level || 0 })));
+            break;
+        default:
+            throw new Error(`unknown shot kind ${kind}`);
+        }
+        this.mode = modeFor;
+        if (shot.theme) {
+            await this.run(pageSwitchTheme, { themeId: shot.theme });
+            const idle = await this.run(pageWaitThemeIdle, { themeId: shot.theme });
+            log(id, 'theme', JSON.stringify(idle));
+        } else {
+            await this.run(pageWaitThemeIdle, {});
+        }
+        // Let late pipelines and streamed textures land before time freezes.
+        await this.run((ms) => window.__trailerClock.realSleep(ms), shot.settle ?? 4000);
+        if (['single', 'infinity', 'stillfall', 'odyssey'].includes(kind) && (kind !== 'odyssey' || shot.level)) {
+            if (shot.prefill !== 0 && kind !== 'stillfall') {
+                const placed = await this.run((options) => window.__trailerAutoplay.prefill(options), {
+                    pieces: shot.prefill ?? (kind === 'infinity' ? 40 : 18), seed: shot.seed ?? 7,
+                });
+                log(id, `prefilled ${placed} pieces`);
+            }
+            if (kind === 'stillfall') {
+                await this.run((options) => window.__trailerAutoplay.startStillfall(options), {
+                    thinkMs: shot.thinkMs ?? 650,
+                });
+            } else {
+                await this.run((options) => window.__trailerAutoplay.start(options), {
+                    difficulty: shot.difficulty ?? 8, seed: shot.seed ?? 1337,
+                });
+            }
+        }
+    }
+
+    /** Freeze time and record `frames` frames into `file`. */
+    async record(id, shot, frames, file) {
+        const { page, cdp } = this;
+        await cdp.send('Animation.setPlaybackRate', { playbackRate: 0 });
+        await page.evaluate(() => window.__trailerClock.freeze());
+        const preroll = Math.round((shot.preroll ?? PREROLL) * fps);
+        for (let i = 0; i < preroll; i += 1) {
+            await page.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS);
+        }
+        if (shot.kind === 'odyssey' && !shot.level) {
+            await page.evaluate(pageOdysseyFlyover, { seconds: frames / fps });
+        }
+        // A still of the first frame, to check a setup without opening the clip.
+        mkdirSync(path.join(OUT, 'stills'), { recursive: true });
+        await page.screenshot({ path: path.join(OUT, 'stills', `${id}.jpg`), type: 'jpeg', quality: 85 });
+        const ffmpeg = spawn('ffmpeg', [
+            '-y', '-hide_banner', '-loglevel', 'error',
+            '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-',
+            '-c:v', 'libx264', '-preset', 'medium', '-crf', '12', '-pix_fmt', 'yuv420p', file,
+        ], { stdio: ['pipe', 'inherit', 'inherit'] });
+        const done = new Promise((resolve, reject) => {
+            ffmpeg.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}`))));
+        });
+        const started = Date.now();
+        let stepMs = 0;
+        for (let i = 0; i < frames; i += 1) {
+            const stepStart = Date.now();
+            await page.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS);
+            stepMs += Date.now() - stepStart;
+            const { data } = await cdp.send('Page.captureScreenshot', {
+                format: 'jpeg', quality: 94, optimizeForSpeed: true,
+            });
+            if (!ffmpeg.stdin.write(Buffer.from(data, 'base64'))) {
+                await new Promise((resolve) => { ffmpeg.stdin.once('drain', resolve); });
+            }
+            if (i % 30 === 29) {
+                const per = (Date.now() - started) / (i + 1);
+                log(`${id}: ${i + 1}/${frames} frames, ${(per / 1000).toFixed(2)} s/frame`
+                    + ` (${(stepMs / (i + 1) / 1000).toFixed(2)} s of it drawing)`);
+            }
+        }
+        ffmpeg.stdin.end();
+        await done;
+        await page.evaluate(() => window.__trailerClock.thaw());
+        await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 });
+    }
+}
+
+async function main() {
+    const lengths = shotLengths(TRAILER);
+    let ids = Object.keys(TRAILER.shots).filter((id) => lengths[id]);
+    if (args.only) {
+        const only = String(args.only).split(',');
+        ids = ids.filter((id) => only.includes(id));
+    }
+    if (args.missing) ids = ids.filter((id) => !existsSync(path.join(SHOT_DIR, `${id}.mp4`)));
+    // Shots of one kind back to back: a mode is entered once and only the theme changes.
+    const KIND_ORDER = ['single', 'infinity', 'stillfall', 'versus', 'serenity', 'hale', 'odyssey'];
+    ids.sort((a, b) => KIND_ORDER.indexOf(TRAILER.shots[a].kind) - KIND_ORDER.indexOf(TRAILER.shots[b].kind));
+    mkdirSync(SHOT_DIR, { recursive: true });
+    log(`${ids.length} shots: ${ids.join(', ')}`);
+
+    const playwright = await loadPlaywright();
+    const autoplaySource = await bundleAutoplay();
+    let session = null;
+    const failed = [];
+    for (const id of ids) {
+        const shot = TRAILER.shots[id];
+        const frames = Math.ceil(lengths[id] * fps) + 2;
+        const file = path.join(SHOT_DIR, `${id}.mp4`);
+        let ok = false;
+        for (let attempt = 1; attempt <= 2 && !ok; attempt += 1) {
+            try {
+                if (!session || session.shotsTaken >= PER_SESSION) {
+                    await session?.close();
+                    session = new Session(playwright, autoplaySource);
+                    await session.open();
+                }
+                log(`${id}: setting up ${JSON.stringify(shot)} (${frames} frames)`);
+                await session.setup(id, shot);
+                await session.record(id, shot, frames, file);
+                session.shotsTaken += 1;
+                log(`${id}: done → ${path.relative(ROOT, file)} (${(statSync(file).size / 1e6).toFixed(1)} MB)`);
+                ok = true;
+            } catch (error) {
+                log(`${id}: attempt ${attempt} failed: ${error.stack || error}`);
+                await session?.close();
+                session = null;
+            }
+        }
+        if (!ok) failed.push(id);
+    }
+    await session?.close();
+    if (failed.length) {
+        log(`failed: ${failed.join(', ')}`);
+        process.exitCode = 1;
+    }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    main().catch((error) => {
+        console.error(error);
+        process.exit(1);
+    });
+}
