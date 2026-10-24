@@ -28,11 +28,10 @@ import {
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { releaseDisposedRenderer, warmWebGpuDevice } from '../webgpu-device-warm.js';
 import {
+    ONE_WORLD_DEPARTURE_VOID,
     isWorldVisibleAtProgress,
-    worldAtmosphericThin,
+    worldClimbScale,
     worldDepartureFade,
-    worldDepartureRecede,
-    worldRecedeScale,
 } from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
@@ -121,7 +120,7 @@ import {
 
 // Chapter 6's own fog tone — the void the world recedes into. Not the live fog: see the note
 // at the call site for why fading toward the CURRENT sky brightened the world instead.
-const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(0x05060f);
+const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(ONE_WORLD_DEPARTURE_VOID);
 // Chapters whose orb close-ups look along the rail (see _focusFramingFor), and how far off it.
 // `level`: how much of the rail's climb the close-up flattens out. Chapter 6 turns RIGHT of the
 // rail, further, and climbs with it (2026-10-19): its black hole hangs on the rail's own line
@@ -4487,24 +4486,14 @@ export class OdysseyBoardController {
                         ONE_WORLD_DEPARTURE_TARGET,
                     );
                 }
-                // Past actEnd the faded planet shrinks away beneath the eye, so the gate
-                // above never hides a silhouette that is still covering chapter 6's stars.
-                this.oneWorld.setDepartureRecede?.(
-                    worldRecedeScale(worldDepartureRecede(cameraProgress, actEnd)),
+                // THE CLIMB (2026-10-24): from late chapter 5 the world shrinks beneath the eye,
+                // which the eye sees as climbing above the clouds; by the time the gate fires it
+                // is a speck straight down, so the gate never hides a silhouette that still
+                // covers chapter 6's stars (odyssey-world-act-gate.js `worldClimbScale`).
+                this.oneWorld.setClimb?.(
+                    worldClimbScale(cameraProgress, this.presentationLayout.chapterPositions[4], actEnd),
                     this.camera?.position,
                 );
-
-                // ── ATMOSPHERIC THINNING (Wave 3 / F3) ───────────────────────────────
-                // The deck loses contrast, saturation and apparent scale as the rail
-                // climbs, instead of holding full cumulus form to the last drawn frame.
-                // Same shape as the fade above: schedule derived from the act edge, in
-                // fractions, so a re-layout carries it.
-                if (typeof this.oneWorld.setAtmosphericThin === 'function') {
-                    const skyStart = this.presentationLayout.chapterPositions[4];
-                    this.oneWorld.setAtmosphericThin(
-                        worldAtmosphericThin(cameraProgress, skyStart, actEnd),
-                    );
-                }
 
                 // Only update it while it draws. `heightAt` and `fog` are plain data and stay
                 // readable either way, so the level-orb seating and the fog handover below are

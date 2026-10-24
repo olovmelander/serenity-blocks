@@ -62,6 +62,9 @@ export function isWorldVisibleAtProgress(progress, actStart, actEnd) {
  * Staggering them is the fix — the world does its leaving BEFORE the crossfade does its own.
  */
 export const ONE_WORLD_DEPARTURE_LEAD = 0.30;
+
+/** The colour the departure fades the world into: chapter 6's own void (sRGB hex). */
+export const ONE_WORLD_DEPARTURE_VOID = 0x05060f;
 export const ONE_WORLD_DEPARTURE_CLOSE = 0.0;
 
 /**
@@ -94,62 +97,46 @@ export function worldDepartureFade(progress, skyStart, actEnd) {
 }
 
 /**
- * THE RECESSION BELOW — the third part of the departure (audit 2026-10-18).
+ * THE CLIMB (2026-10-24) — the third part of the departure, and the one that leaves the weather.
  *
- * The fade above recolours the world, so by actEnd it is a flat void-coloured planet. It still
- * WRITES DEPTH, though: chapter 6's stars and Milky Way behind its ground stayed hidden until
- * the gate fired at actEnd + margin, then the lower third of the frame filled with stars in
- * one frame (captured p 0.7750 vs 0.7786). Across that margin the planet now shrinks toward
- * the point beneath the eye, so its edge sinks out of the bottom of the frame and the stars
- * come up behind it; by the time the gate fires it is a speck straight down.
+ * Olov: "are we not supposed to get over the clouds, not having the clouds fade away right in
+ * front of us?" The rail rises only ~150 u through the end of chapter 5 (the eye from y ~1000 to
+ * ~1150) while the cumulus stand from ~830 to ~1900, so the eye never got above them. Instead the
+ * departure thinned their paint, then shrank each mass toward its own centre until it was gone,
+ * so the clouds dissolved in front of the eye as the sky went black; and only past the act edge,
+ * when everything was already the void's colour, did the world shrink away beneath the eye.
  *
- * Returns the shrink's progress, 0 at actEnd, 1 at the gate. Colour is already flat by then,
- * so the shrink only ever moves the silhouette.
+ * Now the eye climbs. The world shrinks toward the sea-level point beneath the eye, and a world
+ * shrunk by `s` about that point looks exactly like the same world seen from `1/s` times as high:
+ * a perspective view has no scale. So the near cumulus sink below first and the far ones after,
+ * the island falls away under them and the horizon drops. Every world material shades in the
+ * world's own frame (THE CLIMB'S FRAME in odyssey-world-renderer.js), so the haze and the detail
+ * follow the height the eye has climbed to, not the shrunken distances.
  *
+ * It opens ONE_WORLD_CLIMB_LEAD of the sky chapter before the act edge (after the orb at ~0.653,
+ * before the cumulus used to dissolve) and runs to the visibility gate, where the world is a speck
+ * straight down, as the old recession left it. The climb is even in the LOGARITHM of the height
+ * (a smoothstep of it), the way an ascent feels: each doubling takes about as long as the last.
+ * FRACTIONS of the sky chapter, so a re-layout carries it.
+ */
+export const ONE_WORLD_CLIMB_LEAD = 0.22;
+
+/** The world's scale when the gate fires: seen from fifty times as high. */
+export const ONE_WORLD_CLIMB_END_SCALE = 0.02;
+
+/**
  * @param {number} progress camera progress along the whole journey, 0..1
+ * @param {number} skyStart chapter 5's start (chapterPositions[4])
  * @param {number} actEnd   Act II's last chapter boundary (chapterPositions[5])
- * @returns {number} 0 = full size, 1 = fully receded
+ * @returns {number} the world's scale toward the point beneath the eye: 1 = untouched; the eye
+ *   then sees the world as from its own height above the sea divided by this
  */
-export function worldDepartureRecede(progress, actEnd) {
-    if (!Number.isFinite(progress) || !Number.isFinite(actEnd)) return 0;
-    const t = Math.min(Math.max((progress - actEnd) / ONE_WORLD_ACT_MARGIN, 0), 1);
-    return t * t * (3 - 2 * t);
-}
-
-/** The planet's scale when the gate fires. */
-export const ONE_WORLD_RECEDE_END_SCALE = 0.02;
-
-/**
- * Scale for a recession amount. 1/(1 + k·t) rather than a lerp: the edge's angle below the
- * eye goes roughly as 1/scale, so this sweeps the silhouette down the frame at an even pace
- * instead of holding it at the horizon and then dropping it all at the end.
- * @param {number} t 0..1 from worldDepartureRecede
- */
-export function worldRecedeScale(t) {
-    const k = (1 / ONE_WORLD_RECEDE_END_SCALE) - 1;
-    return 1 / (1 + (k * Math.min(Math.max(Number.isFinite(t) ? t : 0, 0), 1)));
-}
-
-/**
- * ATMOSPHERIC THINNING (Act II -> Space, Wave 3 / F3). Real atmosphere thins, recedes and
- * loses contrast with altitude; the sculpted cloud deck instead held full cumulus form to
- * the last drawn frame, which is the audit's F3. This ramp drives the deck's paint toward
- * a flat haze family and shrinks each mass toward its own centre as the rail climbs, so
- * "leaving the weather" is something the clouds DO rather than something that happens to
- * the frame.
- *
- * Distinct from `worldDepartureFade` on purpose: the fade is the whole WORLD leaving into
- * the void; the thinning is the SKY losing body while the world below is still vivid — it
- * opens earlier (0.40 of the sky span, as the climb enters the deck band around y~900)
- * and never completes (max 0.85), because a deck at zero would hand the limb bank nothing
- * to cross. FRACTIONS, so a re-layout carries it unedited.
- */
-export const ONE_WORLD_THIN_LEAD = 0.40;
-export const ONE_WORLD_THIN_MAX = 0.85;
-export function worldAtmosphericThin(progress, skyStart, actEnd) {
-    if (!Number.isFinite(progress) || !Number.isFinite(skyStart) || !Number.isFinite(actEnd)) return 0;
+export function worldClimbScale(progress, skyStart, actEnd) {
+    if (!Number.isFinite(progress) || !Number.isFinite(skyStart) || !Number.isFinite(actEnd)) return 1;
     const skySpan = Math.max(1e-5, actEnd - skyStart);
-    const start = actEnd - skySpan * ONE_WORLD_THIN_LEAD;
-    const t = Math.min(Math.max((progress - start) / Math.max(1e-5, actEnd - start), 0), 1);
-    return t * t * (3 - 2 * t) * ONE_WORLD_THIN_MAX;
+    const start = actEnd - (skySpan * ONE_WORLD_CLIMB_LEAD);
+    const end = actEnd + ONE_WORLD_ACT_MARGIN;
+    const t = Math.min(Math.max((progress - start) / Math.max(1e-5, end - start), 0), 1);
+    if (t <= 0) return 1;
+    return ONE_WORLD_CLIMB_END_SCALE ** (t * t * (3 - (2 * t)));
 }
