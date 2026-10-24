@@ -22,6 +22,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn, Loop, abs, atan, cameraPosition, clamp, dot, exp, float, floor, fract, int, length, max, min, mix, normalize,
     positionGeometry, positionWorld, select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
+    dFdx, dFdy,
 } from 'three/tsl';
 import {
     DEG, SHORE_FRAME, SURF, SWASH, TAU,
@@ -163,8 +164,12 @@ function surfAt(a, s, t, full, noise = null) {
     const slope = g.mul(dFront.add(dBack)).mul(wet);
 
     // Each crest breaks in sections, brighter here and dimmer there, different for every wave.
+    // (Its footprint from `a` alone: `n` steps on every crest line, and taken from the read's own
+    // coordinates it would read the smallest mip along that line, right where the lip burns.)
+    const sectionDx = vec2(dFdx(a).mul(0.027), 0.0);
+    const sectionDy = vec2(dFdy(a).mul(0.027), 0.0);
     const sectionOf = (n) => smoothstep(0.22, 0.78, texture(noise, vec2(a.mul(0.027).add(n.mul(0.173)), n.mul(0.061)
-        .add(0.29))).a).mul(0.85).add(0.15);
+        .add(0.29))).grad(sectionDx, sectionDy).a).mul(0.85).add(0.15);
     const sec = sectionOf(k).toVar();
     const secN = sectionOf(k.add(1.0)).toVar();
     // The light. The lip as a wave breaks, and the burst of foam just behind it; the front of a

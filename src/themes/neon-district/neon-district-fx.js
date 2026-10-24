@@ -59,6 +59,7 @@ import {
     ndQuadGeometry,
 } from './neon-district-tsl.js';
 import { GLYPH_GRID, GLYPH_RANGE } from './neon-district-glyphs.js';
+import { ndGlyphFootprint } from './neon-district-text.js';
 
 const finish = (name, geometry, material, renderOrder, reflected) => {
     const mesh = new THREE.Mesh(geometry, material);
@@ -306,8 +307,10 @@ export function createCounter(u, glyphTex) {
         const cu = vec2(fract(gx), st.y);
         const guv = mix(cu, cu.sub(vec2(0.5, 0.36)).mul(1.5).add(0.5), isX);
         const gc = vec2(mod(id, GLYPH_GRID), floor(id.div(GLYPH_GRID)));
+        const foot = ndGlyphFootprint(guv);
         const sample = (offset) => float(1.0)
-            .sub(texture(glyphTex, gc.add(clamp(guv.add(offset), 0.02, 0.98)).div(GLYPH_GRID)).r).mul(GLYPH_RANGE);
+            .sub(texture(glyphTex, gc.add(clamp(guv.add(offset), 0.02, 0.98)).div(GLYPH_GRID)).grad(foot.gx, foot.gy).r)
+            .mul(GLYPH_RANGE);
         // A hologram tears: each scanline band slips sideways now and then.
         const band = floor(st.y.mul(26.0));
         const slip = ndHash21(vec2(band, floor(u.time.mul(14.0)))).sub(0.5)
