@@ -17,18 +17,18 @@ so the trailer gets the track's whole arc in 89 s: the riser and first groove, t
 first breakdown and drop, the second breakdown and drop, and the last hit with its tail. Every
 picture cut lands on a bar line.
 
-All eight modes are in it, and 32 different themes plus a breathing world, none shown twice.
+All eight modes are in it, and 29 different themes plus a breathing world and the Odyssey journey, none shown twice.
 
 | Trailer time | Music | Picture | Copy |
 |---|---|---|---|
 | 0:00–0:07 | riser | Serenity Mode, Koi Pond, out of black, letterboxed | FIND YOUR FLOW |
 | 0:07–0:12 | groove starts | same | Logo · STACK · BREATH · ASCEND |
 | 0:12–0:22 | groove | Single Player in Aurora, Neon District, Sakura Twilight | STACK — Clear lines. Raise the level. Chase your best. |
-| 0:22–0:36 | 8-bar build | Infinity (Galaxy), Stillfall (Crystal Cave), Local Versus with four bots (Synthwave Sunset), Online Versus with four seats (Neon Dusk) | each mode's wordmark with the menu's own line |
+| 0:22–0:36 | 8-bar build | Infinity (Galaxy, a 19-row stack), Stillfall (the tier-12 Watchtower puzzle in Crystal Cave: its last piece fires four waves), Local Versus with four bots (Synthwave Sunset), Online Versus with four seats (Neon Dusk) | each mode's wordmark with the menu's own line |
 | 0:36–0:42 | breakdown | Painted Ages | 63 living worlds · Each one answers the way you play. |
 | 0:42–0:56 | drop | **the world flip**: one game, the same board, and the world around it changes on every half-bar through 16 themes (Golden Forest, Kaleidosonic, High Coast, Voltage Storm, Pyrestorm, Ocean, Winter, Nebula Flow, Rainbow Terraces, Chromatic Impasto, Vesper Chrysalis, Midsommar, Ice Temple, Blood Moon, Sunbraid, Wolfhour) | each world's name |
 | 0:56–1:04 | second breakdown | Serenity Mode (Stillwater), a Hale session | BREATH — Nothing to play. A living world and its music. · HALE SESSIONS — Nine voice-guided breathing sessions. |
-| 1:04–1:18 | second drop | Odyssey: the journey map flown over, letterboxed; then orbs up the journey — Ashen Dawn (the Earth's core), Sunken Depths, Everest Ascent, Stellar Flare, The Singularity | ASCEND — From the molten core of the Earth to the edge of a black hole. · ODYSSEY — Eight chapters. Sixty orbs. · …and beyond. |
+| 1:04–1:18 | second drop | Odyssey, letterboxed: the journey flown from the Earth's core up through the ocean to the surface; the orbs Ashen Dawn (the core) and Sunken Depths (a cascade goal on a glowing night beach); then the journey flown again, the last air into space and the climb into the black hole | ASCEND — From the molten core of the Earth to the edge of a black hole. · ODYSSEY — Eight chapters. Sixty orbs. · …and beyond. |
 | 1:18–1:29 | last hit, tail | Sunset under a dark scrim | Logo · COMING SOON · PC · Steam |
 
 Every shot but the world flip and the flyover carries a slow camera move made in post (push,
