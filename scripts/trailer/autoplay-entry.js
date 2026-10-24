@@ -24,6 +24,13 @@ const mulberry32 = (seed) => {
     };
 };
 
+/** What changes when a piece is placed (the bot's own notion of a new spawn). */
+const spawnToken = (gs) => {
+    if (Number.isFinite(gs?.piecesPlaced)) return `count:${gs.piecesPlaced}`;
+    if (Number.isFinite(gs?.pieceSpawnTime)) return `time:${gs.pieceSpawnTime}`;
+    return gs?.currentPiece ?? null;
+};
+
 const ACTIONS = {
     moveLeft: () => window.move(-1),
     moveRight: () => window.move(1),
@@ -113,7 +120,8 @@ window.__trailerAutoplay = {
             const mode = currentMode();
             const gs = liveState(mode);
             if (last !== null && gs?.currentPiece && !gs.isProcessingPhysics && mode?.puzzle) {
-                const pieceToken = `${mode._dealt}:${gs.currentPiece.shape ?? ''}`;
+                // One plan per piece dealt (rotating the piece must not count as a new one).
+                const pieceToken = String(mode._dealt);
                 if (pieceToken !== token) {
                     token = pieceToken;
                     planned = false;
@@ -135,6 +143,37 @@ window.__trailerAutoplay = {
         state.raf = requestAnimationFrame(tick);
         running = state;
         return true;
+    },
+    /**
+     * Stillfall: load `puzzle` from the bank and play the first `steps` moves of its stored
+     * solution at once (drop animations skipped), so the shot opens on the decisive piece.
+     */
+    async prepareStillfall({ puzzle, steps = 0 } = {}) {
+        const mode = currentMode();
+        if (puzzle && mode?._loadPuzzle) {
+            mode._loadPuzzle(puzzle);
+            await yieldTask();
+        }
+        for (let step = 0; step < steps; step += 1) {
+            let gs = liveState(currentMode());
+            for (let wait = 0; wait < 2000 && (!gs?.currentPiece || gs.isProcessingPhysics); wait += 1) {
+                // eslint-disable-next-line no-await-in-loop
+                await yieldTask();
+                gs = liveState(currentMode());
+            }
+            const run = mode._liveRun();
+            const placement = solutionPlacement(run, mode.puzzle.solution[mode._dealt]);
+            if (!gs || !placement) break;
+            gs.isSeeking = true;
+            placement.actions.forEach(perform);
+            ACTIONS.hardDrop();
+            // eslint-disable-next-line no-await-in-loop
+            if (gs.latestPhysicsPromise) await gs.latestPhysicsPromise.catch(() => {});
+            gs.isSeeking = false;
+            // eslint-disable-next-line no-await-in-loop
+            await yieldTask();
+        }
+        return { dealt: mode?._dealt ?? null, puzzle: mode?.puzzle?.id ?? null };
     },
     stop() {
         if (!running) return;
@@ -167,14 +206,24 @@ window.__trailerAutoplay = {
             }
             bot.playerState = gs;
             gs.isSeeking = true;
+            // The hit-stop after a lock is a beat of drama, ticked down by frames: with a themed
+            // frame taking seconds, it would swallow every input of the next piece.
+            if (gs.hitStopRemaining > 0) gs.hitStopRemaining = 0;
+            const before = spawnToken(gs);
             const plan = bot.plan();
             if (!plan) break;
             plan.actions.forEach((action) => { if (action.type !== 'hardDrop') perform(action); });
             ACTIONS.hardDrop();
-            placed += 1;
             // eslint-disable-next-line no-await-in-loop
             if (gs.latestPhysicsPromise) await gs.latestPhysicsPromise.catch(() => {});
             gs.isSeeking = false;
+            if (spawnToken(gs) === before && gs.currentPiece) {
+                // The drop was refused (the game was between states): try this piece again.
+                // eslint-disable-next-line no-await-in-loop
+                await yieldTask();
+                continue;
+            }
+            placed += 1;
             const grid = gs.boardGrid || gs.board;
             const rows = Array.isArray(grid) ? grid : [];
             const firstFilled = rows.findIndex((row) => Array.isArray(row) && row.some(Boolean));

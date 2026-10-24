@@ -56,7 +56,8 @@ const WORLDS_END = 56.401;
  * How each shot is set up in the running game. `kind` picks the driver in capture.mjs:
  *   single | infinity — that mode with a CPU bot playing the board, in `theme`
  *                       (`worlds`: switch the world at those times, the game paused meanwhile)
- *   stillfall         — a Stillfall puzzle, its stored solution played
+ *   stillfall         — Stillfall `puzzle`, its stored solution played (`presolve` moves before the
+ *                       shot, `thinkMs` over each choice on camera)
  *   versus            — Local Versus, every seat a bot
  *   online            — Online Versus over the mock transport, `players` seats, every one a bot
  *   serenity          — Serenity Mode on `theme` (no board)
@@ -73,7 +74,9 @@ export const SHOTS = {
     'stack-b': { kind: 'single', theme: 'neon-district' },
     'stack-c': { kind: 'single', theme: 'sakura-twilight' },
     infinity: { kind: 'infinity', theme: 'galaxy' },
-    stillfall: { kind: 'stillfall', theme: 'crystal-cave' },
+    // Watchtower (tier 12): four pieces stacked on the tower before the shot, then the T fires
+    // four waves deep on camera.
+    stillfall: { kind: 'stillfall', theme: 'crystal-cave', puzzle: 'watchtower', presolve: 4, thinkMs: 450 },
     versus: { kind: 'versus', theme: 'synthwave-sunset', seats: 4 },
     online: { kind: 'online', theme: 'neon-dusk', players: 4, preroll: 2 },
     breakdown: { kind: 'single', theme: 'painted-ages' },
