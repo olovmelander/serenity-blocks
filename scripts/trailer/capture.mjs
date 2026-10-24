@@ -23,7 +23,9 @@
  */
 /* eslint-disable import/no-extraneous-dependencies, import/no-unresolved, no-await-in-loop, no-console */
 import { execSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import {
+    existsSync, mkdirSync, statSync, writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -551,7 +553,9 @@ class Session {
         }
         // A still of the first frame, to check a setup without opening the clip.
         mkdirSync(path.join(OUT, 'stills'), { recursive: true });
-        await page.screenshot({ path: path.join(OUT, 'stills', `${id}.jpg`), type: 'jpeg', quality: 85 });
+        // Through CDP like the frames: no timeout, and a world's first frame can take a minute.
+        const still = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 85 });
+        writeFileSync(path.join(OUT, 'stills', `${id}.jpg`), Buffer.from(still.data, 'base64'));
         const ffmpeg = spawn('ffmpeg', [
             '-y', '-hide_banner', '-loglevel', 'error',
             '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'mjpeg', '-i', '-',
