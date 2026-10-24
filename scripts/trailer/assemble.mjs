@@ -6,6 +6,8 @@
  * point (half before, half after), so every cut still lands on the beat it was placed on.
  *
  * Usage: node scripts/trailer/assemble.mjs [--out=artifacts/trailer] [--crf=17]
+ *   --preview          half size, fast encode, written as trailer-preview.mp4 (for checking a cut)
+ *   --shots=DIR        read the clips from DIR instead of OUT/shots
  */
 /* eslint-disable no-console */
 import { spawnSync } from 'node:child_process';
@@ -20,8 +22,12 @@ const args = Object.fromEntries(process.argv.slice(2).filter((a) => a.startsWith
     return [key, value.join('=') || true];
 }));
 const OUT = path.resolve(ROOT, String(args.out || 'artifacts/trailer'));
-const CRF = Number(args.crf || 17);
-const { fps, width, height } = TRAILER;
+const PREVIEW = Boolean(args.preview);
+const CRF = Number(args.crf || (PREVIEW ? 26 : 17));
+const SHOTS = path.resolve(ROOT, String(args.shots || path.join(OUT, 'shots')));
+const { fps } = TRAILER;
+const width = PREVIEW ? TRAILER.width / 2 : TRAILER.width;
+const height = PREVIEW ? TRAILER.height / 2 : TRAILER.height;
 const frame = 1 / fps;
 const snap = (t) => Math.round(t * fps) / fps;
 
@@ -97,7 +103,7 @@ function main() {
     const filters = [];
 
     plan.forEach((entry, i) => {
-        const file = path.join(OUT, 'shots', `${entry.shot}.mp4`);
+        const file = path.join(SHOTS, `${entry.shot}.mp4`);
         if (!existsSync(file)) throw new Error(`missing shot ${entry.shot} (${file}); run capture first`);
         inputs.push('-i', file);
         const from = entry.in || 0;
@@ -129,7 +135,8 @@ function main() {
     const overlayIndex = plan.length;
     inputs.push('-thread_queue_size', '512', '-framerate', String(fps), '-i', path.join(OUT, 'overlay', '%05d.png'));
     filters.push(`[${acc}]trim=duration=${duration.toFixed(4)},setpts=PTS-STARTPTS[base]`);
-    filters.push(`[${overlayIndex}:v]format=rgba,trim=duration=${duration.toFixed(4)},setpts=PTS-STARTPTS[ovl]`);
+    filters.push(`[${overlayIndex}:v]format=rgba,scale=${width}:${height},trim=duration=${duration.toFixed(4)},`
+        + 'setpts=PTS-STARTPTS[ovl]');
     filters.push('[base][ovl]overlay=format=auto:shortest=1,format=yuv420p[vout]');
 
     // Music: the cut list from the track, joined on downbeats with 20 ms fades, then a tail fade.
@@ -149,20 +156,20 @@ function main() {
     mkdirSync(OUT, { recursive: true });
     const graphFile = path.join(OUT, 'edit.ffgraph');
     writeFileSync(graphFile, filters.join(';\n'));
-    const target = path.join(OUT, TRAILER.outputName);
+    const target = path.join(OUT, PREVIEW ? 'trailer-preview.mp4' : TRAILER.outputName);
     run('ffmpeg', [
         '-y', '-hide_banner', '-loglevel', 'warning', '-stats',
         ...inputs,
         '-filter_complex_script', graphFile,
         '-map', '[vout]', '-map', '[aout]',
-        '-c:v', 'libx264', '-preset', 'slow', '-crf', String(CRF), '-pix_fmt', 'yuv420p',
+        '-c:v', 'libx264', '-preset', PREVIEW ? 'veryfast' : 'slow', '-crf', String(CRF), '-pix_fmt', 'yuv420p',
         '-profile:v', 'high', '-r', String(fps),
         '-c:a', 'aac', '-b:a', '256k',
         '-movflags', '+faststart',
         '-t', duration.toFixed(4),
         target,
     ]);
-    console.log(`trailer → ${path.relative(ROOT, target)} (${duration.toFixed(2)} s, ${frame ? fps : ''} fps)`);
+    console.log(`trailer → ${path.relative(ROOT, target)} (${duration.toFixed(2)} s, ${width}×${height}, ${fps} fps)`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
