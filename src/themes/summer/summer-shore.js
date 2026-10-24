@@ -123,7 +123,9 @@ export class SummerShore {
         const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide }));
         material.name = 'SummerReeds';
         const st = uv();
-        const spike = attribute('spike', 'float');
+        // Saturated, as is the blade's colour below: with MSAA a pixel at the edge of a bulrush head
+        // is shaded past it, the ramp runs over 1 and a channel under 0, and its power is NaN.
+        const spike = saturate(attribute('spike', 'float'));
         const t = light.uTime;
         const front = light.front(positionLocal.x);
         const force = light.uWind.add(light.uGust).add(front);
@@ -146,7 +148,7 @@ export class SummerShore {
             smoothstep(0.8, 0.95, st.x).mul(st.y),
         );
         const blade = mix(reed, color(0x2a170c), spike);
-        const glowing = pow(blade, vec3(0.7)).mul(vec3(1.2, 1.2, 0.3)).mul(spike.oneMinus());
+        const glowing = pow(saturate(blade), vec3(0.7)).mul(vec3(1.2, 1.2, 0.3)).mul(spike.oneMinus());
         const sun = light.sunlight();
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 3);
         const normal = normalize(normalWorld);

@@ -27,6 +27,7 @@ import {
     smoothstep,
     vec2,
     vec3,
+    pow4,
 } from 'three/tsl';
 import {
     TERRAIN, luAtmosphere, luBell, luClearLight, luLockLight, luMoonDiscs, luPart, luSkyBase, mulberry32,
@@ -70,7 +71,7 @@ function facetColor(u, { frostLine, glints = true, veins = 0 }) {
             col.addAssign(u.moonCol.mul(sheen).mul(frost.mul(0.5).add(0.06)).mul(u.breath));
         }
         // Grazing facets pick up the sky (wet stone at night).
-        const fres = pow(float(1.0).sub(max(dot(N, toCam), 0.0)), 4.0);
+        const fres = pow4(float(1.0).sub(max(dot(N, toCam), 0.0)));
         col.addAssign(luSkyBase(u, R).add(luMoonDiscs(u, R).mul(0.12)).mul(fres).mul(0.12));
 
         // Crystal veins in the bare rock: thin seams of the palette's light, as in a split geode.

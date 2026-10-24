@@ -47,6 +47,7 @@ import {
     varying,
     vec2,
     vec3,
+    pow3,
 } from 'three/tsl';
 import {
     STREET,
@@ -226,7 +227,7 @@ export function createFacades(u, boxes, opts = {}) {
         // Rain runs down the walls: at a glancing angle they mirror the street's neon.
         const ndv = max(dot(V.negate(), N), 0.0);
         const rivulets = u.noise(vec2(uM.mul(1.7).add(seed.mul(0.11)), vM.mul(0.08).add(u.time.mul(0.045)))).b;
-        const sheen = pow(float(1.0).sub(ndv), 3.0).mul(smoothstep(0.3, 0.72, rivulets).mul(0.75).add(0.25)).mul(u.rain);
+        const sheen = pow3(float(1.0).sub(ndv)).mul(smoothstep(0.3, 0.72, rivulets).mul(0.75).add(0.25)).mul(u.rain);
         const wall = albedo.mul(wallShade).mul(vec3(0.028, 0.038, 0.066).add(glow.mul(0.85)).add(skyLight.mul(3.4)))
             .add(albedo.mul(pulse).mul(3.6))
             .add(glow.add(pulse).mul(ledge).mul(0.026).mul(detail))
@@ -356,7 +357,7 @@ export function createFacades(u, boxes, opts = {}) {
             const floorHash = ndHash21(vec2(cell.y, seedA.add(seedB.mul(7.0))));
             roomLight = float(0.7).mul(mix(float(1.0), float(1.7), step(floorHash, 0.14)));
         }
-        const fres = pow(float(1.0).sub(max(dot(V.negate(), N), 0.0)), 3.0);
+        const fres = pow3(float(1.0).sub(max(dot(V.negate(), N), 0.0)));
         const glass = u.hazeLow.mul(0.3).add(glow.mul(0.35)).mul(fres.mul(0.85).add(0.06));
         const mains = u.neon.mul(0.94).add(0.06);
         const roomOut = roomCol.mul(roomLight).mul(bright).mul(mains).mul(1.15);

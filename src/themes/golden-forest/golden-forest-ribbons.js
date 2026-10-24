@@ -9,6 +9,7 @@
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, cos, cross, exp, float, mix, normalize, pow, sin, smoothstep, uniform, uv, vec2, vec3,
+    max,
 } from 'three/tsl';
 
 // From, to, how high the arch lifts, how far it wanders, width and a phase.
@@ -61,7 +62,9 @@ export class GoldenForestRibbons {
             const side = normalize(cross(tangent, normalize(cameraPosition.sub(here))));
             const across = st.y.mul(2).sub(1);
             const swell = sin(st.x.mul(9).sub(t.mul(0.8)).add(phase)).mul(0.4).add(0.6);
-            const breadth = pow(sin(st.x.mul(Math.PI)), 0.6).mul(width).mul(swell).mul(this.uLevel.mul(0.65).add(0.35));
+            // (sin of float32 π is a hair below zero at the far end, and its power NaN.)
+            const breadth = pow(max(sin(st.x.mul(Math.PI)), 0), 0.6).mul(width).mul(swell)
+                .mul(this.uLevel.mul(0.65).add(0.35));
             material.positionNode = here.add(side.mul(across.mul(breadth)));
             // Strands flow along the ribbon; it draws itself from the sun's end as the combo builds.
             const broad = vec2(st.x.mul(2.2).sub(t.mul(0.06)).sub(phase), across.mul(0.18).add(phase));
@@ -76,7 +79,9 @@ export class GoldenForestRibbons {
             }
             // A breath of glow between the filaments, uneven like drifting smoke.
             strands = strands.add(smoothstep(0.4, 0.8, flow).mul(0.16));
-            const edge = pow(across.mul(across).oneMinus(), 1.5);
+            // Clamped: with MSAA an edge pixel's centre can lie off the ribbon, where `across` runs
+            // past ±1, and pow of a negative base is NaN (NaN · 0 too: uLevel doesn't hide it).
+            const edge = pow(max(across.mul(across).oneMinus(), 0), 1.5);
             const ends = smoothstep(0, 0.12, st.x).mul(smoothstep(1, 0.82, st.x));
             const reveal = smoothstep(st.x.sub(0.3), st.x, this.uLevel.mul(1.3));
             material.colorNode = mix(vec3(1.0, 0.36, 0.05), vec3(1.0, 0.7, 0.26), this.uHeat).mul(1.5);

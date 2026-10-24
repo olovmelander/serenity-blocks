@@ -42,6 +42,7 @@ import {
     varying,
     vec2,
     vec3,
+    pow2,
 } from 'three/tsl';
 import {
     HELIX,
@@ -301,7 +302,7 @@ export function createGoldMaterial(u, { wire = false } = {}) {
     const hot = mix(u.glow, vec3(1.0, 0.86, 0.6), smoothstep(0.25, 1.0, band).mul(share).mul(share));
     const pulse = hot.mul(band).mul(brush.mul(0.9).add(0.55)).mul(wire ? 3.4 : 2.2).mul(share);
     // After a clear the whole tower holds a glow, strongest on its edges.
-    const rim = pow(float(1.0).sub(abs(dot(normalView, positionViewDirection))), 2.0);
+    const rim = pow2(float(1.0).sub(abs(dot(normalView, positionViewDirection))));
     const held = u.glow.mul(flare).mul(rim.mul(0.75).add(brush.mul(0.08)).add(0.02)).mul(wire ? 1.6 : 1.0);
     // The gold the towers take up: play fills them with molten gold from the water up (u.play.z,
     // the fill line in the tower's own height). Below the line the polished mirror gives way to

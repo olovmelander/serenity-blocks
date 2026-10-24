@@ -381,7 +381,8 @@ export default class NeonDuskTheme extends BaseTheme {
         };
         const onResize = () => this.resize(window.innerWidth, window.innerHeight);
         window.addEventListener('pointermove', onPointerMove);
-        window.addEventListener('resize', onResize);
+        // The window's size through the viewport broadcaster: debounced, and only a real change.
+        const resizeUnsub = eventBus.on(EVENTS.VIEWPORT_RESIZED, onResize);
         this.eventUnsubscribers.push(
             dropUnsub,
             lockUnsub,
@@ -392,7 +393,7 @@ export default class NeonDuskTheme extends BaseTheme {
             b2bUnsub,
             perfectUnsub,
             () => window.removeEventListener('pointermove', onPointerMove),
-            () => window.removeEventListener('resize', onResize),
+            resizeUnsub,
         );
     }
 
@@ -519,8 +520,7 @@ export default class NeonDuskTheme extends BaseTheme {
         if (!this.renderer || !this.camera) return;
         const w = Math.max(1, width);
         const h = Math.max(1, height);
-        this.renderer.setPixelRatio(this.getDynamicPixelRatio());
-        this.renderer.setSize(w, h);
+        this.sizeRenderer(this.renderer, w, h, this.getDynamicPixelRatio());
         if (this.world) {
             this.world.setLayout(w / h, this.appliedBoard ?? null);
             this.syncCamera();

@@ -396,7 +396,7 @@ export function createFalls({ tier, U, tex }) {
         // Over the lip the water is still glass: the pool's jade body under the sky it reflects
         // (more of the sky the flatter we see it), long smooth highlights along its ropes; it
         // aerates unevenly across the width.
-        const fres = float(1.0).sub(max(dot(N, V), 0.0)).pow(5.0).mul(0.9)
+        const fres = float(1.0).sub(clamp(dot(N, V), 0.0, 1.0)).pow(5.0).mul(0.9)
             .add(0.1);
         const body = light.water.mul(keyLight.mul(0.3).add(vAmb.mul(0.35)));
         const gloss = smoothstep(0.6, 0.95, rope).mul(keyLight).mul(0.3);

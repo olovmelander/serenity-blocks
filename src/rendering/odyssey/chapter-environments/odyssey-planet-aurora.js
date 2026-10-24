@@ -298,7 +298,8 @@ export function createAuroraCrownMaterial(uTime, uLightDir, uReveal) {
     // Bright at the foot, dissolving upward — the red tips are meant to be faint, and
     // steeply so: exponent 1.5 left them reading as a solid second ring.
     const foot = smoothstep(0.0, 0.06, height);
-    const fade = pow(oneMinus(height), 2.6);
+    // (Clamped: with MSAA the crown's top edge is shaded past it, and pow of a negative base is NaN.)
+    const fade = pow(clamp(oneMinus(height), 0.0, 1.0), 2.6);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = colour;

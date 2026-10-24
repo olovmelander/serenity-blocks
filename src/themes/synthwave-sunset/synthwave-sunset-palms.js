@@ -35,6 +35,7 @@ import {
     step,
     uv,
     vec3,
+    pow3,
 } from 'three/tsl';
 import { SHORE, rgb } from './synthwave-sunset-tsl.js';
 import { inlandOf } from './synthwave-sunset-sea.js';
@@ -256,7 +257,7 @@ export function createPalms(u, { rand, count }) {
         const low = clamp(float(1.0).sub(heightFrac), 0.0, 1.0);
         const bounce = rgb(0xff5fa8).mul(low.mul(low).mul(0.035).mul(float(1.0).sub(isFrond)).mul(near));
         const facing = abs(dot(normalize(normalWorld), V));
-        const rim = rgb(0xff8a6a).mul(pow(float(1.0).sub(facing), 3.0).mul(0.12).mul(mix(float(1.0), float(0.4), u.dusk)));
+        const rim = rgb(0xff8a6a).mul(pow3(float(1.0).sub(facing)).mul(0.12).mul(mix(float(1.0), float(0.4), u.dusk)));
         return rgb(0x0e0814).add(translucent).add(bounce).add(rim);
     })();
 

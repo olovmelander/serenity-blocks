@@ -46,6 +46,7 @@ import {
     vec2,
     vec3,
     vec4,
+    pow3,
 } from 'three/tsl';
 import {
     METEOR_SLOTS, METEOR_TRAIN, MOTE_TRAIN, RING_RATE, TAU, mulberry32, sdFxMaterial, sdPart, sdQuadGeometry,
@@ -189,7 +190,7 @@ export function createIce(u, counts, seed = 77) {
             const through = pow(max(dot(V, S).negate(), 0.0), 2.0).mul(float(1.0).sub(abs(m0))).mul(0.5);
             const halfway = normalize(S.add(V));
             const glint = pow(max(dot(N, halfway), 0.0), 60.0).mul(2.4);
-            const rim = pow(float(1.0).sub(max(dot(N, V), 0.0)), 3.0);
+            const rim = pow3(float(1.0).sub(max(dot(N, V), 0.0)));
             // What reaches its dark faces: the giant's light from one side, the sky's from all.
             const toGiant = normalize(vAt.negate());
             const fill = u.shine.mul(max(dot(N, toGiant), 0.0).mul(0.06)).add(u.night.mul(0.05))
