@@ -95,7 +95,8 @@ const HIDE_CSS = `
 #serenity-hub-icon, #settings-btn-global, .hale-sessions-entry, #gamepad-hints-overlay,
 #serenity-first-hints, #serenity-notification, #serenity-world-bar, .lv-coach,
 #odyssey-navigator-btn, #demo-indicator, #playback-controls, #sb-toast-region,
-.custom-cursor-container, .headphone-badge, .global-corner-controls { display: none !important; }
+.custom-cursor-container, .headphone-badge, .global-corner-controls,
+.breath-guide__controls { display: none !important; }
 * { cursor: none !important; }`;
 
 async function loadPlaywright() {
