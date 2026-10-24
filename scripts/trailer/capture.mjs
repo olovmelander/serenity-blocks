@@ -771,12 +771,21 @@ class Session {
         const clip = { x: 0, y: 0, width: Math.round(width * 0.22), height, scale: 0.5 };
         let previous = 0;
         let steady = 0;
+        // A busy world (snowfall, shoals, rain) may never hold still between checks: one that
+        // has shown content check after check is drawn too. An empty frame is about 2.6 KB here.
+        let drawn = 0;
+        const sizes = [];
         for (let i = 0; i < 80; i += 1) {
             const { data } = await cdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip });
             const size = data.length * 0.75;
+            sizes.push(Math.round(size / 100) / 10);
             steady = size > 4000 && previous > 0 && Math.abs(size - previous) / previous < 0.15 ? steady + 1 : 0;
-            if (ready && steady > 0 && !(await ready())) steady = 0;
-            if (steady >= 2) {
+            drawn = size > 4000 ? drawn + 1 : 0;
+            if (ready && (steady > 0 || drawn > 0) && !(await ready())) {
+                steady = 0;
+                drawn = 0;
+            }
+            if (steady >= 2 || drawn >= 4) {
                 if (i > 2 || report) log(`${id}: world drawn after ${i} checks`);
                 return;
             }
@@ -789,7 +798,8 @@ class Session {
         const probe = path.join(OUT, 'stills', `unsettled-${id.replace(/\W+/g, '-')}.jpg`);
         mkdirSync(path.dirname(probe), { recursive: true });
         writeFileSync(probe, Buffer.from(data, 'base64'));
-        log(`${id}: the world never settled on screen; recording anyway (last look: ${path.relative(ROOT, probe)})`);
+        log(`${id}: the world never settled on screen; recording anyway (last look: ${path.relative(ROOT, probe)};`
+            + ` probe KB ${sizes.slice(-12).join(' ')})`);
     }
 
     /** Freeze time and record `frames` frames into `file`. */
