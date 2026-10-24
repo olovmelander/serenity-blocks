@@ -598,6 +598,11 @@ class Session {
             await peer.goto(`${BASE}/?${QUERY}&trailerPeer=1`, { waitUntil: 'load', timeout: 300000 });
             await peer.addScriptTag({ content: this.autoplaySource });
             await peer.evaluate(pagePrepare);
+            // Online Versus starts on the theme already running: make that the light one first
+            // (the menu's Forest times out starting on a peer), while the host still holds still.
+            await peer.evaluate(pageSwitchTheme, { themeId: 'voltage-storm' });
+            const peerTheme = await peer.evaluate(pageWaitThemeIdle, { themeId: 'voltage-storm', timeoutMs: 600000 });
+            log(id, `peer ${i} theme ${JSON.stringify(peerTheme)}`);
             await this.run(() => window.__trailerClock.thaw());
             this.peers.push(peer);
             // Join once the peer is fully up (the harness's own ?localMp=join fires at boot,
