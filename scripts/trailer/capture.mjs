@@ -475,10 +475,39 @@ async function pageOnlineStart({ host }) {
     if (host) {
         const config = window.__getMode().ffaGameState.matchConfig;
         config.endCondition = 'frags';
-        config.endConditionValue = 99; // rounds may end, the match does not
+        config.endConditionValue = 10; // no seat tops out ten times inside a shot
     }
     ffa.setReady?.(true);
     return { ok: true };
+}
+
+/**
+ * The mock transport names every seat Dev_<n> (core/steam/steam-networking.js); on screen they
+ * read as player names. Swap them in the page's text, and keep swapping as the HUD redraws.
+ */
+async function pageOnlineNames({ names }) {
+    const ffa = window.__getFfa?.();
+    if (!ffa) return {};
+    const swaps = new Map();
+    Array.from(ffa.players.values()).forEach((player, i) => {
+        if (player?.name && names[i]) swaps.set(player.name, names[i]);
+    });
+    const fix = (node) => {
+        if (node.nodeType !== Node.TEXT_NODE) return;
+        let text = node.nodeValue;
+        swaps.forEach((to, from) => { if (text.includes(from)) text = text.split(from).join(to); });
+        if (text !== node.nodeValue) node.nodeValue = text;
+    };
+    const sweep = (root) => {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) fix(node);
+    };
+    sweep(document.body);
+    new MutationObserver((records) => records.forEach((record) => {
+        if (record.type === 'characterData') fix(record.target);
+        record.addedNodes.forEach((node) => (node.nodeType === Node.TEXT_NODE ? fix(node) : sweep(node)));
+    })).observe(document.body, { subtree: true, childList: true, characterData: true });
+    return Object.fromEntries(swaps);
 }
 
 async function pageOnlinePhase() {
@@ -694,6 +723,9 @@ class Session {
             await this.run((ms) => window.__trailerClock.realSleep(ms), 500);
         }
         log(id, `online phases: ${JSON.stringify(await Promise.all([this.page, ...this.peers].map((p) => p.evaluate(pageOnlinePhase).catch(() => null))))}`);
+        log(id, `online names: ${JSON.stringify(await this.run(pageOnlineNames, {
+            names: ['Juniper', 'Kestrel', 'Marlow', 'Sable', 'Wren', 'Orrin', 'Tamsin', 'Ash'],
+        }))}`);
     }
 
     /**
