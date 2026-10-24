@@ -54,6 +54,7 @@ import {
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
 import { steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
+import { ORBIT_EARTH_COVERS } from '../composition/odyssey-orbit-earth.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
 export { bakeOdysseyCloudField };
@@ -2217,6 +2218,12 @@ export function createOdysseyWorld({
     // is only ever seen against night; under the limb's envelope alone it drew a mint stripe
     // across a still-blue sky at the top of the climb (all-angles pass, p 0.715).
     const uAirglowGlow = uniform(0);
+    // THE EARTH BELOW (2026-10-24, composition/odyssey-orbit-earth.js): once the round planet has
+    // arrived, its own rim is the limb, so the dome's straight limb line yields to it, and the
+    // airglow line sits at the airglow layer's height over that limb (sin of its elevation;
+    // 0.075 is the line's place before the Earth, ~4 deg over the level).
+    const uLimbYield = uniform(1);
+    const uAirglowSin = uniform(0.075);
     // WHERE THE SEA ENDS, seen from the eye (all-angles pass, 2026-10-18). The limb used to sit
     // at elevation +0.01, the horizon of an endless sea. The sea is not endless: the camera's
     // far plane cuts it along a straight line, and from ~900 u up at the top of the climb that
@@ -2271,6 +2278,11 @@ export function createOdysseyWorld({
     );
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
+    const lakeMeshes = [];
+    // Once the Earth below has fully arrived it covers the surface out to its own backdrop, and
+    // the near world inside that (straight down, already faded) would show as a dark patch on it:
+    // the surfaces stop drawing (setEarth). The sky dome stays.
+    let earthCovers = false;
     groundMesh.frustumCulled = false;
     groundMesh.matrixAutoUpdate = false;
     groundMesh.updateMatrix();
@@ -2365,6 +2377,7 @@ export function createOdysseyWorld({
         lakeMesh.updateMatrix();
         lakeMesh.name = `odyssey-world-north-lake-${li}`;
         group.add(lakeMesh);
+        lakeMeshes.push(lakeMesh);
     });
 
     // ── sky ──
@@ -2437,10 +2450,10 @@ export function createOdysseyWorld({
             const limbRise = skyDir.y.sub(edgeY.add(0.004));
             const limbBand = exp(pow2(limbRise.div(select(limbRise.greaterThan(0), limbWidth, float(0.008)))).negate())
                 .mul(mix(float(0.22), float(1.25), limbAz.mul(limbAz)));
-            const airglowBand = exp(pow2(skyDir.y.sub(0.075).div(0.012)).negate());
+            const airglowBand = exp(pow2(skyDir.y.sub(uAirglowSin).div(0.012)).negate());
             const airglowYield = float(1).sub(uAuroraGlow.mul(0.8));
-            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).mul(uLimbGlow)
-                .add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)).mul(uAirglowGlow))
+            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).mul(uLimbGlow.mul(uLimbYield))
+                .add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)).mul(uAirglowGlow.mul(uLimbYield)))
                 .mul(uOutputScale)
                 .mul(float(1).sub(uSubmerged))));
         });
@@ -5133,6 +5146,23 @@ export function createOdysseyWorld({
          * THE AIRGLOW YIELDS TO THE AURORA. `setAuroraGlow(g)` (0..1, the chapter-6 band's live
          * glow, from the board) dims the airglow line as the curtains rise out of it.
          */
+        /**
+         * THE EARTH BELOW: `presence` (0..1) of the round planet, whose rim takes over the limb,
+         * and the airglow line's elevation (radians) over its limb.
+         */
+        setEarth(presence, airglowElevation) {
+            const pr = Math.min(Math.max(Number.isFinite(presence) ? presence : 0, 0), 1);
+            uLimbYield.value = 1 - pr;
+            uAirglowSin.value = Number.isFinite(airglowElevation) ? Math.sin(airglowElevation) : 0.075;
+            const covers = pr >= ORBIT_EARTH_COVERS;
+            if (covers !== earthCovers) {
+                earthCovers = covers;
+                // The surfaces with no per-frame gate of their own; the rest AND this in update().
+                [groundMesh, waterMesh, ...lakeMeshes].forEach((m) => {
+                    if (m) m.visible = !covers && m.userData.filterVisible !== false;
+                });
+            }
+        },
         setAuroraGlow(glow) {
             uAuroraGlow.value = Math.min(Math.max(Number.isFinite(glow) ? glow : 0, 0), 1);
         },
@@ -5333,12 +5363,14 @@ export function createOdysseyWorld({
             // ground obeyed it (they have no per-frame write) while the clouds and the forest
             // never did. Found while trying to isolate one forest LOD tier for a wind capture.
             const authored = (mesh) => mesh.userData.filterVisible !== false;
-            if (cloudMesh) cloudMesh.visible = authored(cloudMesh) && clouds && uSubmerged.value < 0.999;
-            if (heroMesh) heroMesh.visible = authored(heroMesh) && heroes && uSubmerged.value < 0.999;
+            if (cloudMesh) {
+                cloudMesh.visible = authored(cloudMesh) && clouds && uSubmerged.value < 0.999 && !earthCovers;
+            }
+            if (heroMesh) heroMesh.visible = authored(heroMesh) && heroes && uSubmerged.value < 0.999 && !earthCovers;
             // Same underwater gate as the heroes — the probe shares their material and their
             // altitude band, so it must share their CPU `.visible` write too.
             if (fieldProbeMesh) {
-                fieldProbeMesh.visible = authored(fieldProbeMesh) && uSubmerged.value < 0.999;
+                fieldProbeMesh.visible = authored(fieldProbeMesh) && uSubmerged.value < 0.999 && !earthCovers;
             }
             // THE FOREST IS SUBMITTED UNDER WATER AND CANNOT BE SEEN (MEASURED 2026-08-13).
             // The trees are legitimately the far SHORE -- scatterTrees rejects any site below
@@ -5369,7 +5401,7 @@ export function createOdysseyWorld({
             if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
-            const forestDrawable = uSubmerged.value < 0.999;
+            const forestDrawable = uSubmerged.value < 0.999 && !earthCovers;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
                 // ⚠️ AND-ed WITH THE AUTHORED FLAG, because this per-frame write silently
