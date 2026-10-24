@@ -49,10 +49,14 @@ const PREROLL = Number(args.preroll ?? 0.3);
 const { fps, width, height } = TRAILER;
 const STEP_MS = 1000 / fps;
 
-const LAUNCH = args.gpu
+// The online peers are tabs beside the host: none of them may be throttled as a background tab
+// (frames stopped, timers slowed), as scripts/mp-soak.mjs also launches.
+const UNTHROTTLED = ['--disable-renderer-backgrounding', '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows'];
+const LAUNCH = [...UNTHROTTLED, ...(args.gpu
     ? ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-gpu-rasterization']
     : ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader',
-        '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'];
+        '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--ignore-gpu-blocklist'])];
 
 // Capture flags: no intro or warning, every theme open, no warm-up, no frame cap, and every
 // adaptive-quality loop held still (see src/ui/url-parameters/*). odysseyDebug exposes the
@@ -669,6 +673,7 @@ class Session {
     async record(id, shot, frames, file) {
         const { page, cdp } = this;
         const { peers } = this;
+        if (peers.length) await page.bringToFront();
         const stepAll = async () => {
             await Promise.all(peers.map((peer) => peer.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS)));
             await page.evaluate((ms) => window.__trailerClock.step(ms), STEP_MS);
