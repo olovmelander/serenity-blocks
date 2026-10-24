@@ -335,6 +335,10 @@ async function pageStartOdyssey({ level }) {
     const target = all[Math.min(all.length, Math.max(1, level)) - 1];
     window.testOdysseyLevel(target.id);
     for (let i = 0; i < 6000 && !(om.levelRunStarted && om.gameState); i += 1) await sleep(200);
+    // The run can be flagged as started while the loading surface still covers the orb (its
+    // world is still compiling): wait for the surface to give way.
+    for (let i = 0; i < 6000 && document.getElementById('cinematic-loading-overlay'); i += 1) await sleep(200);
+    await sleep(1500);
     return { ok: Boolean(om.levelRunStarted), id: target.id, name: target.name ?? null };
 }
 
