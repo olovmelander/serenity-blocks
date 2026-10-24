@@ -520,7 +520,7 @@ class Session {
         // Online peer windows (?trailerPeer=1) boot light: a cheap theme on the lowest tier, so
         // they start (a heavy theme's start times out under software rendering) and cost little.
         const peerSettings = {
-            ...SETTINGS, backgroundTheme: 'voltage-storm', effectQuality: 'Minimal', renderScale: 0.5,
+            ...SETTINGS, backgroundTheme: 'tornado', effectQuality: 'Minimal', renderScale: 0.5,
         };
         await context.addInitScript(`(${installVirtualClock.toString()})();`
             + `try{localStorage.setItem('serenityBlocksSettings',location.search.includes('trailerPeer=1')`
@@ -657,8 +657,8 @@ class Session {
             await peer.evaluate(pagePrepare);
             // Online Versus starts on the theme already running: make that the light one first
             // (the menu's Forest times out starting on a peer), while the host still holds still.
-            await peer.evaluate(pageSwitchTheme, { themeId: 'voltage-storm' });
-            const peerTheme = await peer.evaluate(pageWaitThemeIdle, { themeId: 'voltage-storm', timeoutMs: 180000 });
+            await peer.evaluate(pageSwitchTheme, { themeId: 'tornado' });
+            const peerTheme = await peer.evaluate(pageWaitThemeIdle, { themeId: 'tornado', timeoutMs: 180000 });
             log(id, `peer ${i} theme ${JSON.stringify(peerTheme)}`);
             await this.run(() => window.__trailerClock.thaw());
             this.peers.push(peer);
