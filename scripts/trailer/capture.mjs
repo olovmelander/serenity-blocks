@@ -514,8 +514,9 @@ class Session {
             await this.run(pageSwitchTheme, { themeId: shot.theme });
             const idle = await this.run(pageWaitThemeIdle, { themeId: shot.theme });
             log(id, 'theme', JSON.stringify(idle));
-        } else if (kind !== 'hale') {
-            // (A Hale session draws a breathing world, not a theme: pageStartHale waited for it.)
+        } else if (kind !== 'hale' && !(kind === 'odyssey' && !shot.level)) {
+            // (A Hale session draws a breathing world and the Odyssey map its journey, not a
+            // theme: their own setups waited for them, and this wait would sit out its timeout.)
             await this.run(pageWaitThemeIdle, {});
         }
         // Let late pipelines and streamed textures land before time freezes.
