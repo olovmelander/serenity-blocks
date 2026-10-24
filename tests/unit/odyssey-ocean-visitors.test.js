@@ -1,9 +1,9 @@
 /**
  * Chapter 2's visitors (a whale shark and a manta, composition/odyssey-ocean-visitors.js): the
  * copied asset parses, both kinds build for WebGPU (WGSL) and the WebGL2 fallback (GLSL) on a
- * device-less renderer, nothing draws before the board marks it ready, and an animal escorting the
- * eye (odyssey-ocean-escort.js) is never belly-up (orientation from world up, the
- * creature-orientation trap).
+ * device-less renderer, nothing draws before the board marks it ready, an animal swims its own
+ * route (odyssey-ocean-roam.js) whatever the camera does, and is never belly-up (orientation from
+ * world up, the creature-orientation trap).
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -72,21 +72,6 @@ describe('ocean visitors — the asset', () => {
     });
 });
 
-/** The escort's view of a camera (the board passes stepEscortFrame over its rail camera). */
-function viewOf(camera) {
-    camera.updateMatrixWorld(true);
-    const forward = camera.getWorldDirection(new THREE.Vector3());
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
-    return {
-        position: camera.position,
-        forward,
-        up,
-        right: new THREE.Vector3().crossVectors(forward, up),
-        tanHalf: Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)),
-        aspect: camera.aspect,
-    };
-}
-
 /** A camera in the deep, looking up the water column the way the ascent does. */
 function lookingUp(y) {
     const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
@@ -100,22 +85,41 @@ describe('ocean visitors — lifecycle and swimming', () => {
     it('stays hidden until the board marks it ready, then shows; never out of the water', async () => {
         const visitors = await loadedVisitors();
         const camera = lookingUp(130);
-        visitors.update(10, 0.016, camera, 1, true, 1, viewOf(camera));
+        visitors.update(10, 0.016, camera, 1, true, 1);
         expect(visitors.group.visible).toBe(false);
         visitors.markReady();
-        for (let i = 0; i < 200; i += 1) visitors.update(10 + (i * 0.016), 0.016, camera, 1, true, 1, viewOf(camera));
+        for (let i = 0; i < 200; i += 1) visitors.update(10 + (i * 0.016), 0.016, camera, 1, true, 1);
         expect(visitors.group.visible).toBe(true);
-        // No escort view (no camera to escort), above the water (submerged 0) or outside the
-        // chapter: nothing.
-        visitors.update(20, 0.016, camera, 1, true, 1, null);
+        // Above the water (submerged 0) or outside the chapter: nothing.
+        visitors.update(20, 0.016, camera, 0, true, 1);
         expect(visitors.group.visible).toBe(false);
-        visitors.update(20, 0.016, camera, 0, true, 1, viewOf(camera));
-        expect(visitors.group.visible).toBe(false);
-        visitors.update(20, 0.016, camera, 1, false, 1, viewOf(camera));
+        visitors.update(20, 0.016, camera, 1, false, 1);
         expect(visitors.group.visible).toBe(false);
     });
 
-    it('never swims belly-up, and keeps above the eye while it keeps you company', async () => {
+    it('swims its own route: wherever the camera goes or looks, the clock alone places it', async () => {
+        const visitors = await loadedVisitors();
+        visitors.markReady();
+        const places = (camera, t0) => {
+            for (let i = 0; i < 60; i += 1) visitors.update(t0 + (i * 0.05), 0.05, camera, 1, true, 1);
+            return visitors.group.children.map((mesh) => mesh.position.clone());
+        };
+        const deep = places(lookingUp(130), 40);
+        // The same moment seen from higher up the climb, and from a camera turned aside.
+        const higher = places(lookingUp(210), 40);
+        const turned = lookingUp(160);
+        turned.lookAt(60, 200, -80);
+        const aside = places(turned, 40);
+        deep.forEach((at, i) => {
+            expect(higher[i].distanceTo(at)).toBeLessThan(1e-6);
+            expect(aside[i].distanceTo(at)).toBeLessThan(1e-6);
+        });
+        // ...and the clock moving on moves it along its route.
+        const later = places(lookingUp(130), 50);
+        deep.forEach((at, i) => expect(later[i].distanceTo(at)).toBeGreaterThan(5));
+    });
+
+    it('never swims belly-up, and swims high in the column above the climb', async () => {
         const visitors = await loadedVisitors();
         visitors.markReady();
         const up = new THREE.Vector3();
@@ -123,13 +127,13 @@ describe('ocean visitors — lifecycle and swimming', () => {
         for (let y = 120; y <= 200; y += 8) {
             const camera = lookingUp(y);
             for (let i = 0; i < 90; i += 1) {
-                visitors.update((y * 3) + (i * 0.1), 0.1, camera, 1, true, 1, viewOf(camera));
+                visitors.update((y * 3) + (i * 0.1), 0.1, camera, 1, true, 1);
             }
             visitors.group.children.forEach((mesh) => {
                 if (!mesh.visible) return;
                 up.set(0, 1, 0).applyQuaternion(mesh.quaternion);
                 expect(up.y, `${mesh.name} at eye ${y}`).toBeGreaterThan(0.6);
-                // The eye looks up the column: its escort is overhead, under the surface.
+                // The eye looks up the column: they swim overhead, under the surface.
                 expect(mesh.position.y).toBeGreaterThan(y);
                 expect(mesh.position.y).toBeLessThan(287.31);
                 seen.push(mesh.name);
