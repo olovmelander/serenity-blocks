@@ -36,7 +36,7 @@ export const WORLDS = [
     { at: 0, theme: 'golden-forest', name: 'Golden Forest' },
     { at: 0.917, theme: 'kaleidosonic', name: 'Kaleidosonic' },
     { at: 1.834, theme: 'high-coast', name: 'High Coast' },
-    { at: 2.740, theme: 'voltage-storm', name: 'Voltage Storm' },
+    { at: 2.740, theme: 'chromadelic-highway', name: 'Chromadelic Highway' },
     { at: 3.645, theme: 'pyrestorm', name: 'Pyrestorm' },
     { at: 4.562, theme: 'ocean', name: 'Ocean' },
     { at: 5.480, theme: 'winter', name: 'Winter' },
