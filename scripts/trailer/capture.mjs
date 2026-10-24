@@ -449,8 +449,14 @@ class Session {
         });
         // On the context, so the online peer windows get them too.
         await context.addInitScript(swiftShaderViewPolyfill);
+        // Online peer windows (?trailerPeer=1) boot light: a cheap theme on the lowest tier, so
+        // they start (a heavy theme's start times out under software rendering) and cost little.
+        const peerSettings = {
+            ...SETTINGS, backgroundTheme: 'voltage-storm', effectQuality: 'Minimal', renderScale: 0.5,
+        };
         await context.addInitScript(`(${installVirtualClock.toString()})();`
-            + `try{localStorage.setItem('serenityBlocksSettings',${JSON.stringify(JSON.stringify(SETTINGS))});`
+            + `try{localStorage.setItem('serenityBlocksSettings',location.search.includes('trailerPeer=1')`
+            + `?${JSON.stringify(JSON.stringify(peerSettings))}:${JSON.stringify(JSON.stringify(SETTINGS))});`
             + "localStorage.setItem('serenity.photosensitivityWarning','0');"
             + "localStorage.setItem('serenity.noThemeFpsCap','1');"
             + "localStorage.setItem('serenity.serenityMode.hints','3');}catch(e){}");
@@ -566,20 +572,36 @@ class Session {
         const hosted = await this.run(pageHostOnline, { players });
         if (!hosted.ok) throw new Error(hosted.reason);
         for (let i = 1; i < players; i += 1) {
+            // The host draws nothing while frozen, leaving the CPU to the peer's boot.
+            await this.run(() => window.__trailerClock.freeze());
             const peer = await this.context.newPage();
             await peer.setViewportSize({ width: 480, height: 270 });
             peer.on('pageerror', (error) => log(`peer ${i} pageerror:`, String(error.message).slice(0, 160)));
-            await peer.goto(`${BASE}/?${QUERY}&localMp=join`, { waitUntil: 'load', timeout: 300000 });
+            await peer.goto(`${BASE}/?${QUERY}&trailerPeer=1`, { waitUntil: 'load', timeout: 300000 });
             await peer.addScriptTag({ content: this.autoplaySource });
             await peer.evaluate(pagePrepare);
+            await this.run(() => window.__trailerClock.thaw());
             this.peers.push(peer);
+            // Join once the peer is fully up (the harness's own ?localMp=join fires at boot,
+            // before the mode can start).
+            let joined = null;
+            for (let attempt = 1; attempt <= 3 && !joined; attempt += 1) {
+                joined = await peer.evaluate(async () => {
+                    for (let w = 0; w < 300 && typeof window.localMpJoin !== 'function'; w += 1) {
+                        await window.__trailerClock.realSleep(200);
+                    }
+                    return window.localMpJoin()
+                        .then((lobby) => (lobby ? String(lobby) : null))
+                        .catch((error) => { console.error(`[trailer] join failed: ${error.message}`); return null; });
+                });
+                if (!joined) log(id, `peer ${i} join attempt ${attempt} failed`);
+            }
             for (let k = 0; k < 120 && (await this.run(pageOnlinePlayers)) < i + 1; k += 1) {
                 await this.run((ms) => window.__trailerClock.realSleep(ms), 1000);
             }
+            log(id, `peer ${i}: ${joined ? `joined ${joined}` : 'did not join'}; lobby has ${await this.run(pageOnlinePlayers)}`);
         }
-        log(id, `online lobby: ${await this.run(pageOnlinePlayers)} players`);
         for (const peer of this.peers) {
-            await peer.evaluate(pageSwitchTheme, { themeId: 'voltage-storm' }).catch(() => {});
             await peer.evaluate(pageOnlineStart, { host: false });
         }
         await this.run(pageOnlineStart, { host: true });
