@@ -81,8 +81,10 @@ export const SHOTS = {
     stillfall: { kind: 'stillfall', theme: 'crystal-cave', puzzle: 'watchtower', presolve: 4, thinkMs: 450 },
     // The versus matches play a few seconds before the shot, so the boards have stacks and garbage.
     versus: { kind: 'versus', theme: 'synthwave-sunset', seats: 4, preroll: 7 },
-    // Two seats: more peer windows than one cannot all stay joined under software rendering.
-    online: { kind: 'online', theme: 'neon-dusk', players: 2, preroll: 6 },
+    // Two seats: more peer windows than one cannot all stay joined under software rendering. A light
+    // theme, so the host answers the join handshake in time (a heavy one held it past the peer's
+    // patience).
+    online: { kind: 'online', theme: 'tornado', players: 2, preroll: 6 },
     breakdown: { kind: 'single', theme: 'painted-ages' },
     worlds: { kind: 'single', theme: WORLDS[0].theme, worlds: WORLDS, difficulty: 9 },
     serenity: { kind: 'serenity', theme: 'stillwater' },
