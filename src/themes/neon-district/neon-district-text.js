@@ -10,6 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
     clamp, float, floor, mod, step, texture, vec2,
+    abs, dFdx, dFdy, fract, mix,
 } from 'three/tsl';
 import {
     GLYPH_BLANK, GLYPH_GRID, GLYPH_RANGE, glyphFor,
@@ -47,8 +48,8 @@ export function createTextTexture(lines, width) {
 /**
  * Distance (in character cells) from a point in character `index` of line `row` to its strokes.
  * `cell` is the point inside the character's cell (0..1, y up); a blank answers GLYPH_RANGE.
- * Both lookups are plain texture() reads: call it in uniform control flow, so their derivatives
- * hold. `rows` and `width` are the texture's size in lines and characters.
+ * Both lookups take screen derivatives (the glyph's through ndGlyphFootprint): call it in uniform
+ * control flow, so they hold. `rows` and `width` are the texture's size in lines and characters.
  */
 export function ndTextDistance(textTex, glyphTex, rows, width, row, index, cell) {
     const tuv = vec2(index.add(0.5).div(width), row.add(0.5).div(rows));
@@ -57,6 +58,24 @@ export function ndTextDistance(textTex, glyphTex, rows, width, row, index, cell)
     const g = id.mul(float(1.0).sub(blank));
     const gc = vec2(mod(g, GLYPH_GRID), floor(g.div(GLYPH_GRID)));
     const auv = gc.add(clamp(cell, 0.015, 0.985)).div(GLYPH_GRID);
-    const d = float(1.0).sub(texture(glyphTex, auv).r).mul(GLYPH_RANGE);
+    const foot = ndGlyphFootprint(cell);
+    const d = float(1.0).sub(texture(glyphTex, auv).grad(foot.gx, foot.gy).r).mul(GLYPH_RANGE);
     return d.add(blank.mul(GLYPH_RANGE));
+}
+
+/**
+ * The footprint of a glyph read from the atlas, `texture(glyphTex, auv).grad(gx, gy)`, taken from
+ * `cell`, the point in its character cell. Between two characters the atlas coordinate leaps to
+ * another glyph, and a plain read takes that pixel from the atlas's smallest mip: a faint line of
+ * its mean between the letters, which a sign's glow and fwidth then widen. `cell` wraps there too,
+ * so of it and the same point wrapped at the cell's middle, the slower rate is the true one.
+ * Fragment stage, uniform control flow.
+ */
+export function ndGlyphFootprint(cell) {
+    const mid = fract(cell.add(0.5));
+    const slower = (a, b) => mix(b, a, step(abs(a), abs(b)));
+    return {
+        gx: slower(dFdx(cell), dFdx(mid)).div(GLYPH_GRID),
+        gy: slower(dFdy(cell), dFdy(mid)).div(GLYPH_GRID),
+    };
 }

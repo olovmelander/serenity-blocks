@@ -148,7 +148,9 @@ export class GoldenForestShore {
         // Reeds: green at the root, straw at the tip. Grass: moss and the first dry blades.
         const straw = mix(color(0x8a7422), color(0xc49a3a), st.x);
         const reedColour = mix(color(0x23280c), straw, smoothstep(0.1, 0.9, st.y));
-        const grassColour = mix(color(0x161c08), mix(color(0x4a4a14), color(0x8a6a22), st.x), st.y);
+        // (Clamped: with MSAA a short blade's root pixel extrapolates st.y below 0, which takes the
+        // moss below black and its power to NaN.)
+        const grassColour = mix(color(0x161c08), mix(color(0x4a4a14), color(0x8a6a22), st.x), saturate(st.y));
         const blade = mix(grassColour, reedColour, look.x);
         const glowing = pow(blade, vec3(0.7)).mul(vec3(1.15, 0.72, 0.2));
         const sun = light.sunlight();

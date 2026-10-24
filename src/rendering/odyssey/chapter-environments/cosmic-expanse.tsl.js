@@ -605,7 +605,9 @@ export function createAsteroidRockTSL() {
     // (2026-10-03) AMBER, not rose: the rim is the black hole's disk light on dark stone — the
     // same single key the gas is painted by. The rose-over-violet rim made a ring of pink candy
     // round the hole in every late-chapter frame.
-    const fres = pow(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 2.2);
+    // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
+    // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+    const fres = pow(clamp(oneMinus(max(0.0, dot(normalView, positionViewDirection))), 0.0, 1.0), 2.2);
     color = color.add(mix(vec3(0.26, 0.26, 0.48), vec3(1.0, 0.58, 0.26), fres).mul(fres).mul(0.42));
 
     const material = new THREE.MeshBasicNodeMaterial();

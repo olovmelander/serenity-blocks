@@ -63,6 +63,7 @@ import {
     vec2,
     vec3,
     vec4,
+    pow3,
 } from 'three/tsl';
 import {
     PILLAR_LIFE,
@@ -277,7 +278,10 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
         const face = normalize(cross(dFdx(p), dFdy(p))).toVar();
         const N = face.mul(dot(face, toCam).sign()).toVar();
         const V = toCam.negate().toVar();
-        const t = facet.y.toVar();
+        // Under MSAA an edge pixel is shaded at its centre even when that lies off the triangle, so
+        // a spire's point extrapolates facet.y past 1, and its powers of 1 - t go NaN: hold it to the
+        // facet (as geode-crystals.js does).
+        const t = clamp(facet.y, 0.0, 1.0).toVar();
         const ndv = max(dot(N, toCam), 0.0).toVar();
         const tint = stoneTint(u, vLook.x).toVar();
         const rnd = vLook.y;
@@ -286,7 +290,7 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
         const R = reflect(V, N).toVar();
         const Rup = vec3(R.x, abs(R.y), R.z);
         const mirror = luSkyBase(u, Rup).mul(1.5).add(luMoonDiscs(u, Rup));
-        const fres = pow(float(1.0).sub(ndv), 3.0).mul(0.9).add(0.07);
+        const fres = pow3(float(1.0).sub(ndv)).mul(0.9).add(0.07);
 
         // ── Through: the sky behind, bent by the facet, tinted by the stone ──
         const bend = (eta) => {
@@ -444,7 +448,9 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
             // The column shoots up, stands, then thins from the foot.
             const shot = float(1.0).sub(smoothstep(a.mul(7.0).sub(0.25), a.mul(7.0), st.y))
                 .mul(smoothstep(a.mul(0.42).sub(0.3), a.mul(0.42), st.y));
-            const height = pow(float(1.0).sub(st.y), 1.6);
+            // Clamped: with MSAA a pixel above the column's top extrapolates st.y past 1, and pow of a
+            // negative base is NaN.
+            const height = pow(max(float(1.0).sub(st.y), 0.0), 1.6);
             const env = exp(a.mul(-1.6)).mul(smoothstep(0.0, 0.05, a));
             const flicker = sin(st.y.mul(60.0).sub(a.mul(34.0))).mul(0.12).add(0.88);
             return vec4(vPillar.rgb.mul(across.mul(0.4).add(core.mul(1.5))).mul(shot).mul(height).mul(env)

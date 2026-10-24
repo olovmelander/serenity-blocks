@@ -26,9 +26,9 @@ import {
     normalWorld,
     normalize,
     positionWorld,
-    pow,
     select,
     smoothstep,
+    pow3,
 } from 'three/tsl';
 import { linearColor, rgb } from './synthwave-sunset-tsl.js';
 import { PIER, pierFrame } from './synthwave-sunset-layout.js';
@@ -234,7 +234,7 @@ function createCoasterMaterial(u, name) {
         const facing = abs(dot(N, V));
         const duskLight = mix(float(1.0), float(0.55), u.dusk);
         const sky = rgb(0x8a7aa8, 0.3).mul(float(0.55).add(max(N.y, 0.0).mul(0.45))).mul(duskLight);
-        const rim = pow(float(1.0).sub(facing), 3.0).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2))
+        const rim = pow3(float(1.0).sub(facing)).mul(max(dot(N, u.sunDir), 0.0).mul(0.8).add(0.2))
             .mul(rgb(0xff8a5c, 0.55)).mul(mix(float(1.0), float(0.35), u.dusk));
         // The track's bulbs wash the beam and the top of the trestle.
         const glow = rgb(0xbff0e0, 0.05).mul(u.pierGlow);

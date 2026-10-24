@@ -258,7 +258,7 @@ export class SakuraGarden {
         const ring = varying(light.rings(positionWorld.xz).band);
         const moon = light.moonlight();
         // The moon silvers the tips it catches: a cool sheen, not a brighter green.
-        const sheen = vec3(0.5, 0.56, 0.86).mul(pow(st.x, 2.5)).mul(through.mul(0.8).add(0.12)).mul(moon);
+        const sheen = vec3(0.5, 0.56, 0.86).mul(pow(saturate(st.x), 2.5)).mul(through.mul(0.8).add(0.12)).mul(moon);
         // The nearest grass stands in the shade of the knoll's lip: a dark frame for the garden.
         const shade = smoothstep(2.5, 9, length(offset)).mul(0.45).add(0.55);
         const lit = blade.mul(light.uMoonColor).mul(through.mul(1.3).add(0.42)).mul(moon)

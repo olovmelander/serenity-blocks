@@ -833,7 +833,9 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
             .add(R.accent.rgb.mul(packet).mul(0.5).mul(detail).mul(dormant));
 
         // The world's air at the silhouette — the ribbon's edge melts into its atmosphere.
-        const rim = pow(float(1.0).sub(ndv), 2.0);
+        // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
+        // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+        const rim = pow(clamp(float(1.0).sub(ndv), 0.0, 1.0), 2.0);
         let color = body.add(emissive).add(R.haze.rgb.mul(rim).mul(R.haze.w).mul(3.0));
         color = color.mul(uEmission);
         // Hue-preserving cap: scale by the brightest channel (a per-channel clamp turns an
