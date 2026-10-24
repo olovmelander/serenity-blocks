@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
+import { vec3 } from 'three/tsl';
 
 import {
     createOrbitEarth,
@@ -99,6 +100,44 @@ describe('orbitEarthAt — the Earth, its sun, its aurora and the planetrise by 
         expect(S.leanOut).toBeLessThan(S.outFrom);
     });
 
+    it('arrives over the world from the horizon down, wearing the world\'s air until it has', () => {
+        // THE SEAM (Olov: "the earth just pops up and feel totally disconnected to the world"):
+        // its front starts at its own limb and reaches the nadir as it arrives; it wears the
+        // world's air (the veil) until the front has crossed the frame's lower half, then clears
+        // before the boundary.
+        const start = b - span * S.inFrom;
+        const first = orbitEarthAt(start + 0.0005, cp);
+        expect(first.frontSin).toBeCloseTo(Math.sin(first.dip), 2);
+        expect(first.veil).toBe(1);
+        let prev = -1;
+        sweep.filter(([p]) => p >= start && p <= b).forEach(([p, s]) => {
+            expect(s.frontSin, `p ${p.toFixed(4)}`).toBeGreaterThanOrEqual(prev - 1e-12);
+            ({ frontSin: prev } = s);
+            if (s.frontSin < Math.sin(35 / DEG)) expect(s.veil, `p ${p.toFixed(4)}`).toBe(1);
+            if (s.presence >= ORBIT_EARTH_COVERS) expect(s.frontSin).toBeGreaterThan(0.999);
+        });
+        expect(orbitEarthAt(b, cp).veil).toBe(0);
+        expect(orbitEarthAt(b + span * 0.5, cp).frontSin).toBe(1);
+    });
+
+    it('takes the world\'s clouds into it once they are small, and covers the world only then', () => {
+        // The clouds stay real clouds in front of the Earth while the climb takes them below the
+        // eye (they used to melt in front of it), going into it only after its front has crossed
+        // the frame; the world's surfaces are switched off only once they have and it has fully
+        // arrived, before the ringed giant can show behind it.
+        const [from, to] = S.clouds;
+        expect(orbitEarthAt(b - span * from - 0.0005, cp).cloudsAway).toBe(0);
+        expect(orbitEarthAt(b - span * from, cp).frontSin).toBeGreaterThan(Math.sin(35 / DEG));
+        expect(orbitEarthAt(b - span * to + 0.0005, cp).cloudsAway).toBe(1);
+        const firstCover = sweep.find(([, s]) => s.covers);
+        expect(firstCover).toBeTruthy();
+        expect(firstCover[1].cloudsAway).toBeGreaterThan(0.999);
+        expect(firstCover[1].presence).toBeGreaterThanOrEqual(ORBIT_EARTH_COVERS);
+        expect(firstCover[0]).toBeLessThan(cp[5] - (cp[5] - cp[4]) * 0.0723);
+        sweep.filter(([p]) => p > firstCover[0] && p < b + span * S.outFrom)
+            .forEach(([p, s]) => expect(s.covers, `p ${p.toFixed(4)}`).toBe(true));
+    });
+
     it('keeps the airglow line over the limb once the eye is above it', () => {
         const s = orbitEarthAt(b, cp);
         expect(orbitEarthAirglowElevation(s.altitude, 1)).toBeLessThan(0);
@@ -111,8 +150,8 @@ describe('the Earth draws in front of space and behind the journey', () => {
     const earth = createOrbitEarth();
     const eye = { x: 10, y: 1100, z: -900 };
     const sun = new THREE.Vector3(0.3, -0.2, 0.9);
-    const state = (presence) => ({
-        altitude: 0.02, sun, presence, eye, aurora: 0.5,
+    const state = (presence, covers = false) => ({
+        altitude: 0.02, sun, presence, eye, aurora: 0.5, covers,
     });
 
     it('draws after the sky domes and before everything at 0 (the orb glass, the rail glow)', () => {
@@ -123,7 +162,11 @@ describe('the Earth draws in front of space and behind the journey', () => {
         expect(earth.mesh.frustumCulled).toBe(false);
     });
 
-    it('stays behind the world it fades in over, at its backdrop radius, with no disc in depth', () => {
+    it('stays behind the world while the world shows it, with no disc in depth yet', () => {
+        // THE SEAM: while it arrives the world's own surfaces show the Earth in place, so its
+        // backdrop stays behind them (shown only past the world's drawn edge).
+        earth.mesh.geometry.computeBoundingSphere();
+        expect(earth.mesh.geometry.boundingSphere.radius).toBeCloseTo(ORBIT_EARTH.radius, 3);
         earth.update(state(0.5));
         expect(earth.mesh.visible).toBe(true);
         expect(earth.mesh.scale.x).toBe(1);
@@ -133,10 +176,10 @@ describe('the Earth draws in front of space and behind the journey', () => {
     });
 
     it('once it covers the world, comes in front of the far heroes and marks its disc in depth', () => {
-        earth.update(state(1));
+        earth.update(state(1, true));
         earth.mesh.updateMatrixWorld(true);
         const drawn = ORBIT_EARTH.radius * earth.mesh.scale.x;
-        expect(drawn).toBeCloseTo(ORBIT_EARTH.frontRadius, 6);
+        expect(drawn).toBeCloseTo(ORBIT_EARTH.nearRadius, 6);
         expect(earth.occluder.visible).toBe(true);
         expect(earth.occluder.parent).toBe(earth.mesh);
         // The occluder is opaque (written before anything transparent), writes depth and no
@@ -155,7 +198,13 @@ describe('the Earth draws in front of space and behind the journey', () => {
 describe('the Earth builds on both backends', () => {
     const earth = createOrbitEarth();
     const backends = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
-    [['the planet', earth.mesh, 15000], ['its depth twin', earth.occluder, 800]].forEach(([name, mesh, size]) => {
+    // ...and wearing an air handed in, as the world hands it its own (THE SEAM).
+    const veiled = createOrbitEarth({ haze: (dir) => vec3(0.42, 0.5, 0.6).add(dir.mul(0.01)) });
+    [
+        ['the planet', earth.mesh, 15000],
+        ['its depth twin', earth.occluder, 800],
+        ['the planet in the world\'s air', veiled.mesh, 15000],
+    ].forEach(([name, mesh, size]) => {
         backends.forEach(([label, Builder]) => {
             it(`${name} (${label})`, () => {
                 const out = build(Builder, mesh);

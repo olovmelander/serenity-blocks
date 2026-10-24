@@ -54,7 +54,7 @@ import {
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
 import { steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
-import { ORBIT_EARTH_COVERS } from '../composition/odyssey-orbit-earth.js';
+import { ORBIT_EARTH_SEAM, orbitEarthOver } from '../composition/odyssey-orbit-earth.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
 export { bakeOdysseyCloudField };
@@ -476,6 +476,9 @@ export function odysseySprayEnvelope(age) {
  */
 const DEPART_ZENITH_POW = 0.55;
 const DEPART_HORIZON_POW = 1.8;
+/** How far (in the sine of the depression) the world's surfaces give way ahead of the Earth's
+ * front, so the front always arrives over the world's air (THE SEAM, meltIntoSky). */
+const EARTH_MELT_LEAD = 0.05;
 /** The atmospheric limb (Rayleigh blue) and the thin airglow line just above it. */
 const DEPART_LIMB = Object.freeze([0.22, 0.48, 0.95]);
 const DEPART_AIRGLOW = Object.freeze([0.20, 0.78, 0.46]);
@@ -2245,6 +2248,9 @@ export function createOdysseyWorld({
         return mix(graded, uWorldFadeColour, fadeAmt);
     };
     const toOutput = (c) => toOutputFaded(c, uWorldFade);
+    // The world's air for a view direction: the colour its far sea and its sky meet in (the dome's
+    // own, faded at the horizon's pace). What the world melts into, and what the Earth wears.
+    const airFor = (dir) => toOutputFaded(skyColourFor(dir.y), uFadeHorizon);
     // THE WORLD ENDS IN THE SKY (2026-10-24). The sea is drawn out to the camera's far plane (a
     // straight cut) or, high in the climb, to the clipmap's square, and past it the dome shows the
     // sky below the horizon. Through the departure the two met at a visible edge: the far sea
@@ -2266,7 +2272,21 @@ export function createOdysseyWorld({
             const w = smoothstep(float(0.55), float(0.97), d.div(edge))
                 .mul(smoothstep(float(0), float(0.2), uWorldFade))
                 .mul(float(1).sub(uSubmerged));
-            res.assign(mix(res, toOutputFaded(skyColourFor(dir.y), uFadeHorizon), w));
+            res.assign(mix(res, airFor(dir), w));
+            // THE SEAM (2026-10-24, Olov: the Earth "just pops up and feel totally disconnected to
+            // the world with mountains ocean and clouds"). The round Earth comes in from the horizon
+            // down (composition/odyssey-orbit-earth.js); behind its front, and a little ahead of it,
+            // the world's surface shows what the Earth shows in that direction (its air ahead of the
+            // front, the planet behind it), so the sea becomes the planet in place, and when the
+            // world's surfaces are switched off under it nothing on screen changes.
+            If(ORBIT_EARTH_SEAM.presence.greaterThan(0.001), () => {
+                const down = dir.y.negate();
+                const lead = ORBIT_EARTH_SEAM.frontSin.add(EARTH_MELT_LEAD);
+                const behind = float(1).sub(smoothstep(lead.sub(0.04), lead.add(0.04), down))
+                    .mul(smoothstep(float(0), float(0.03), down))
+                    .mul(float(1).sub(uSubmerged));
+                res.assign(mix(res, orbitEarthOver(dir, airFor(dir)), behind));
+            });
         });
         return res;
     })();
@@ -2276,6 +2296,21 @@ export function createOdysseyWorld({
         toOutput(applyAerial(groundColour, positionWorld, ...GROUND_AERIAL_ARGS)),
         positionWorld,
     );
+
+    // THE SEAM for the clouds: they stay real clouds in front of the Earth while the climb takes
+    // them down below the eye, and only once they are small go into it, melting into what the
+    // Earth shows behind them, never into the sky in front of the eye.
+    // While the Earth is there, the clouds are lit over it, not fading toward the void with the rest
+    // of the departing world (that fade is what turned them into grey ghosts over the planet).
+    const notOverEarth = float(1).sub(ORBIT_EARTH_SEAM.presence);
+    const intoEarth = (out) => Fn(() => {
+        const res = out.toVar();
+        If(ORBIT_EARTH_SEAM.cloudsAway.greaterThan(0.001), () => {
+            const dir = normalize(positionWorld.sub(cameraPosition));
+            res.assign(mix(res, orbitEarthOver(dir, airFor(dir)), ORBIT_EARTH_SEAM.cloudsAway));
+        });
+        return res;
+    })();
 
     const groundMesh = new THREE.Mesh(ground.geometry, groundMat);
     const lakeMeshes = [];
@@ -3303,7 +3338,7 @@ export function createOdysseyWorld({
         const weight = clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.52);
         return mix(deckLit, skyColourFor(dirY), weight);
     };
-    cloudMat.colorNode = toOutput(cloudAerial(cloudCol, positionWorld));
+    cloudMat.colorNode = intoEarth(toOutputFaded(cloudAerial(cloudCol, positionWorld), uWorldFade.mul(notOverEarth)));
     // NEAR FADE: Ch5's rail crosses the deck's altitude, so without this the camera meets
     // paper-thin billowed geometry edge-on — ragged shards filling the frame. Fading by
     // distance to the EYE (not by altitude band) keeps the deck solid at range in every
@@ -3498,7 +3533,7 @@ export function createOdysseyWorld({
         const weight = clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82).mul(0.42);
         return mix(heroLit, skyColourFor(dirY), weight);
     };
-    heroMat.colorNode = toOutput(heroAerial(heroCol, positionWorld));
+    heroMat.colorNode = intoEarth(toOutputFaded(heroAerial(heroCol, positionWorld), uWorldFade.mul(notOverEarth)));
     // OPAQUE, and each of these is load-bearing: `transparent:false` keeps the mesh in the
     // opaque queue, where hardware depth — not renderOrder — resolves it against the mountains
     // and the deck; FrontSide culls the far half of every closed lobe, a real ~2x cut on the
@@ -3726,7 +3761,7 @@ export function createOdysseyWorld({
     const fieldMat = new THREE.MeshBasicNodeMaterial();
     // The cloud tops below are the last thing the departure takes (item 10): they fade at the
     // horizon pace, so the climb leaves a lit cloud sea under a black sky — the edge of space.
-    fieldMat.colorNode = toOutputFaded(heroAerial(fieldCol, cfWorld), uFadeHorizon);
+    fieldMat.colorNode = intoEarth(toOutputFaded(heroAerial(fieldCol, cfWorld), uFadeHorizon.mul(notOverEarth)));
     // Built from the plain `cfOffset` EXPRESSION, never from a shared var — see the note at
     // its definition. This line reading zero while the colour graph read the right value is
     // exactly what "the clouds do not move" looked like.
@@ -5148,21 +5183,24 @@ export function createOdysseyWorld({
          */
         /**
          * THE EARTH BELOW: `presence` (0..1) of the round planet, whose rim takes over the limb,
-         * and the airglow line's elevation (radians) over its limb.
+         * the airglow line's elevation (radians) over its limb, and whether it now `covers` the
+         * world (its surfaces and clouds have become the Earth's look, so they are switched off).
+         * THE SEAM itself (the world showing the Earth on its surfaces) reads the Earth's own state.
          */
-        setEarth(presence, airglowElevation) {
+        setEarth(presence, airglowElevation, covers = false) {
             const pr = Math.min(Math.max(Number.isFinite(presence) ? presence : 0, 0), 1);
             uLimbYield.value = 1 - pr;
             uAirglowSin.value = Number.isFinite(airglowElevation) ? Math.sin(airglowElevation) : 0.075;
-            const covers = pr >= ORBIT_EARTH_COVERS;
-            if (covers !== earthCovers) {
-                earthCovers = covers;
+            if (!!covers !== earthCovers) {
+                earthCovers = !!covers;
                 // The surfaces with no per-frame gate of their own; the rest AND this in update().
                 [groundMesh, waterMesh, ...lakeMeshes].forEach((m) => {
-                    if (m) m.visible = !covers && m.userData.filterVisible !== false;
+                    if (m) m.visible = !earthCovers && m.userData.filterVisible !== false;
                 });
             }
         },
+        /** The world's air for a view direction (a TSL node), which the Earth wears as it arrives. */
+        hazeFor: airFor,
         setAuroraGlow(glow) {
             uAuroraGlow.value = Math.min(Math.max(Number.isFinite(glow) ? glow : 0, 0), 1);
         },

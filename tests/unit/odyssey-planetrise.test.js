@@ -16,7 +16,6 @@ import {
 import { getChapterPathRange, getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
 import {
     ORBIT_EARTH,
-    ORBIT_EARTH_COVERS,
     ORBIT_EARTH_SCHEDULE,
     orbitEarthAt,
 } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
@@ -80,7 +79,7 @@ describe('the ringed giant rises over the Earth\'s edge', () => {
             if (s.opacity < 0.01) continue;
             shown += 1;
             const top = Math.max(s.air.top, s.rings.top);
-            expect(s.earth.presence, `p ${p.toFixed(4)}`).toBeGreaterThanOrEqual(ORBIT_EARTH_COVERS);
+            expect(s.earth.covers, `p ${p.toFixed(4)}`).toBe(true);
             expect(top, `p ${p.toFixed(4)}: top ${top.toFixed(1)} vs limb ${s.limb.toFixed(1)}`)
                 .toBeLessThan(s.limb - 1);
         }
@@ -106,7 +105,7 @@ describe('the ringed giant rises over the Earth\'s edge', () => {
     });
 
     it('is drawn behind the Earth, and every orb over the disc in front of it', () => {
-        // The Earth's backdrop comes in to `frontRadius` once it covers the world: nearer than any
+        // The Earth's backdrop comes in to `nearRadius` once it covers the world: nearer than any
         // part of the giant while it does, farther than any orb seen over its disc.
         const orbs = Object.values(rig.layout.levelPositionsById)
             .filter((q) => q > cp[5] - span && q < cp[6])
@@ -120,10 +119,10 @@ describe('the ringed giant rises over the Earth\'s edge', () => {
         let covered = 0;
         poses.forEach((p) => {
             const s = at(p);
-            if (s.earth.presence < ORBIT_EARTH_COVERS) return;
+            if (!s.earth.covers) return;
             covered += 1;
             const nearest = Math.min(s.body.near, s.rings.near, s.air.near);
-            expect(nearest, `giant @${p.toFixed(4)}`).toBeGreaterThan(ORBIT_EARTH.frontRadius * 1.1);
+            expect(nearest, `giant @${p.toFixed(4)}`).toBeGreaterThan(ORBIT_EARTH.nearRadius * 1.1);
             const cam = rig.camera;
             orbs.forEach((pt) => {
                 if (!rig.inFrame(cam, pt, 1.05)) return;
@@ -131,7 +130,7 @@ describe('the ringed giant rises over the Earth\'s edge', () => {
                 const el = Math.asin(v.y / v.length()) * DEG;
                 if (el < s.limb) {
                     const where = `orb over the disc @${p.toFixed(4)}`;
-                    expect(v.length(), where).toBeLessThan(ORBIT_EARTH.frontRadius * 0.9);
+                    expect(v.length(), where).toBeLessThan(ORBIT_EARTH.nearRadius * 0.9);
                 }
             });
         });
