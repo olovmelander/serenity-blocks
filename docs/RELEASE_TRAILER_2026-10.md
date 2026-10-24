@@ -24,7 +24,7 @@ All eight modes are in it, and 29 different themes plus a breathing world and th
 | 0:00–0:07 | riser | Serenity Mode, Koi Pond, out of black, letterboxed | FIND YOUR FLOW |
 | 0:07–0:12 | groove starts | same | Logo · STACK · BREATH · ASCEND |
 | 0:12–0:22 | groove | Single Player in Aurora, Neon District, Sakura Twilight | STACK — Clear lines. Raise the level. Chase your best. |
-| 0:22–0:36 | 8-bar build | Infinity (Galaxy, a 19-row stack), Stillfall (the tier-12 Watchtower puzzle in Crystal Cave: its last piece fires four waves), Local Versus with four bots (Synthwave Sunset), Online Versus with four seats (Neon Dusk) | each mode's wordmark with the menu's own line |
+| 0:22–0:36 | 8-bar build | Infinity (Galaxy, a 19-row stack), Stillfall (the tier-12 Watchtower puzzle in Crystal Cave: its last piece fires four waves), Local Versus with four bots (Synthwave Sunset), Online Versus, a two-seat lobby (Tornado) | each mode's wordmark with the menu's own line |
 | 0:36–0:42 | breakdown | Painted Ages | 63 living worlds · Each one answers the way you play. |
 | 0:42–0:56 | drop | **the world flip**: one game, the same board, and the world around it changes on every half-bar through 16 themes (Golden Forest, Kaleidosonic, High Coast, Voltage Storm, Pyrestorm, Ocean, Winter, Nebula Flow, Rainbow Terraces, Chromatic Impasto, Vesper Chrysalis, Midsommar, Ice Temple, Blood Moon, Sunbraid, Wolfhour) | each world's name |
 | 0:56–1:04 | second breakdown | Serenity Mode (Stillwater), a Hale session | BREATH — Nothing to play. A living world and its music. · HALE SESSIONS — Nine voice-guided breathing sessions. |
@@ -67,9 +67,12 @@ bordered well; no copy names another game.
    of pieces at once (its plan applied immediately, the drop's animations skipped as a replay
    seek skips them) so a shot opens on a lived-in board. Stillfall plays the puzzle's stored
    solution, pausing over each choice.
-5. **Online Versus** is hosted by the capture page over the mock transport; three small peer
-   windows join, every seat a bot, and the peers are stepped in lockstep with the host under the
-   same virtual clock, so the netcode sees one consistent time.
+5. **Online Versus** is hosted by the capture page over the mock transport; a small peer window
+   joins, every seat a bot, and the peer is stepped in lockstep with the host under the same
+   virtual clock, so the netcode sees one consistent time. While one window is held still (or
+   draws a frame for seconds on SwiftShader) the others would take it for gone, so the capture
+   has each page's transport report no silence. Each peer window costs about ten minutes of
+   boot on SwiftShader and slows every frame, hence two seats; on a GPU, raise `players`.
 6. **The world flip** holds the game (`gameState.isPaused`), thaws time while the next theme
    loads behind the board and the outgoing one fades, then freezes again and resumes: the board
    and the bot continue exactly where they were, and the world has changed on the beat.
