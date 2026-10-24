@@ -52,14 +52,16 @@ describe('Sky Children was renamed Rainbow Terraces: what a player already has n
         });
     });
 
-    it('retitles the placeholder song with the theme and keeps the old track key selectable', () => {
+    it('retitles the song with the theme and keeps the old track key selectable', () => {
         const song = getThemeMusic('rainbow-terraces');
         expect(song).toMatchObject({
             name: 'Rainbow Terraces',
-            path: './assets/music/blood-moon.mp3?song=rainbow-terraces',
+            file: 'rainbow-terraces.mp3',
+            path: './assets/music/rainbow-terraces.mp3',
             trackKey: 'RainbowTerraces',
-            placeholder: true,
+            placeholder: false,
         });
+        expect(song).not.toHaveProperty('placeholderSource');
         expect(getThemeMusic(OLD_THEME)).toBe(song);
         expect(getThemeMusic(OLDER_THEME)).toBe(song);
         expect(THEME_MUSIC_CATALOG.some((entry) => entry.trackKey === OLD_TRACK)).toBe(false);
