@@ -18,7 +18,8 @@
  * 74.721 76.555 78.391.
  *
  * Every mode is in it (Single Player, Infinity, Stillfall, Local Versus, Online Versus,
- * Serenity, Hale Sessions, Odyssey) and 33 different worlds, no world shown twice.
+ * Serenity, Hale Sessions, Odyssey) and 29 different themes (plus a breathing world and the Odyssey
+ * journey), no theme shown twice.
  *
  * To re-cut: change a shot's theme or setup in SHOTS, move a cut in EDIT (keep cuts on the bar
  * times), or edit the copy in OVERLAY; then re-run capture for the shots you touched
