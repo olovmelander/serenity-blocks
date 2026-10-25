@@ -64,6 +64,17 @@ import { flatVarying } from '../shared/flat-varying.js';
 
 export { WHEEL };
 
+/**
+ * The inner neon ring's colours (scene-linear, HDR): pink and mint, and the blue-violet the ring
+ * turns through between them (pink and mint stand almost opposite on the colour wheel, so the
+ * way round has to be named: a straight mix is a pale grey-white, the other way round is amber).
+ * The world melts the ring along them into u.wheelNeon.
+ */
+export const NEON_RING = Object.freeze([[0xff5fa8, 3.2], [0x8f6cff, 3.6], [0x7ff0d4, 3.0]].map(([hex, k]) => {
+    const c = new THREE.Color(hex);
+    return Object.freeze([c.r * k, c.g * k, c.b * k]);
+}));
+
 const KIND = {
     static: 0, turning: 1, cabin: 2, neon: 3,
 };
@@ -227,8 +238,8 @@ function createStructureMaterial(u) {
             .mul(float(1.0).sub(step(0.9, abs(N.y))));
         const cabin = cabinCol.mul(0.16).add(rgb(0xffd8a8, 1.6).mul(window).mul(u.wheelGlow));
 
-        // The inner neon ring.
-        const neonCol = mix(rgb(0xff5fa8, 3.2), rgb(0x7ff0d4, 3.0), u.wheelNeonMix).mul(u.wheelGlow);
+        // The inner neon ring (its colour melts on the world's side: NEON_RING into u.wheelNeon).
+        const neonCol = u.wheelNeon.mul(u.wheelGlow);
 
         return select(kind.lessThan(1.5), warmed, select(kind.lessThan(2.5), cabin, neonCol));
     })();
@@ -336,7 +347,7 @@ function createBulbs(u) {
 }
 
 /**
- * @param {object} u  shared world uniforms (wheelAngle, wheelGlow, wheelNeonMix, time, sunDir, dusk)
+ * @param {object} u  shared world uniforms (wheelAngle, wheelGlow, wheelNeon, time, sunDir, dusk)
  * @param {object} [opts]
  * @param {number} [opts.mirrorLayer]  also draw on this layer (the sea's reflection pass)
  * @returns {THREE.Group}

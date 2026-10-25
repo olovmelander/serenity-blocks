@@ -9,9 +9,11 @@
  * screen (menus) the camera faces the sun. Layout changes ease in as a slow pan. The lens is Hor+
  * (fixed vertical FOV, horizontal capped), and the pitch puts the horizon at RIG.horizonFrac.
  *
- * The evening runs on one number, `dusk` (0..1). It rests at DUSK.rest in the menus; while a game
- * is played it deepens with the clock and steps on each level, so the sun sinks into the sea and
- * the pier's lights come on from the land end out to the wheel.
+ * The evening runs on one number, `dusk` (0..1). It walks by the world's clock in every mode, the
+ * menus and Serenity included (EVENING_WALK): from DUSK.rest, the sun on the sea, to the
+ * afterglow and back, resting on the way, so the sun sinks into the sea and the pier's lights come
+ * on from the land end out to the wheel, then the sun rises out of the sea again. A level steps it
+ * on along the same walk, and the wheel's neon ring turns to its other colour at every stop.
  *
  * Gameplay:
  *   lock         two bands of the piece's colour run round the wheel's rims from the side of its
@@ -33,8 +35,8 @@
  *                (faster and with a longer trail for a longer chain, twice round from ten), and
  *                the lemon drains down the lift instead of going dark. A chain built during a
  *                ride charges the lift ahead of the train, which climbs it on its return
- *   level up     the evening steps on, the wheel's neon ring turns on to its next colour, two
- *                shells
+ *   level up     the evening steps on along its walk, the wheel's neon ring turns on to its
+ *                next colour, two shells (the shells and the surge only with reactions on)
  *
  * The crescendo (src/themes/shared/gameplay-surge.js, sampled once a frame on the world's clock):
  * as play heats, the pleasure pier powers up ahead of the evening. Warm: the pier's lights race
@@ -48,10 +50,13 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
+import {
+    MOOD_HOLD, meltColour, moodDrift, pingPong,
+} from '../shared/mood-clock.js';
 import { RIG, SUN } from './synthwave-sunset-tsl.js';
 import { createSky } from './synthwave-sunset-sky.js';
 import { createSea } from './synthwave-sunset-sea.js';
-import { WHEEL, createWheel } from './synthwave-sunset-wheel.js';
+import { NEON_RING, WHEEL, createWheel } from './synthwave-sunset-wheel.js';
 import { createPier } from './synthwave-sunset-pier.js';
 import { createCoaster } from './synthwave-sunset-coaster.js';
 import { createPromenade } from './synthwave-sunset-promenade.js';
@@ -161,14 +166,36 @@ export const WORLD_QUALITY = Object.freeze({
     },
 });
 
-/** The evening: its rest value, how long a game takes to reach full dusk, a level's step. */
+/** The evening: its rest value (where the walk sets out: the sun on the sea), a level's step. */
 export const DUSK = Object.freeze({
     rest: 0.14,
-    fullAfter: 480,
     levelStep: 0.08,
-    /** Play counts as ongoing for this long after the last gameplay event (s). */
-    activeFor: 25,
 });
+
+/**
+ * The evening walks by the clock (shared/mood-clock.js), there and back between DUSK.rest and the
+ * afterglow: the sun on the sea, the sun half sunk, the afterglow, half sunk again, the sun on the
+ * sea. Each stop rests `hold` of its `seconds` and then melts into the next, so a whole walk there
+ * and back takes 2 · stops · seconds (eight minutes); `stops` is the stops a leg has.
+ */
+export const EVENING_WALK = Object.freeze({ seconds: 120, hold: MOOD_HOLD, stops: 2 });
+
+/**
+ * The stops the clock alone has walked the evening by `time` (whole: a stop; between: the melt).
+ * @param {number} time
+ */
+export const eveningStops = (time) => moodDrift(time, EVENING_WALK.seconds, EVENING_WALK.hold);
+
+/**
+ * The evening at `time` with `steps` (dusk units, a level's DUSK.levelStep each) walked on top of
+ * the clock: folded there and back between DUSK.rest and 1, so it never comes to rest at either end.
+ * @param {number} steps
+ * @param {number} time
+ */
+export function eveningAt(steps, time) {
+    const span = 1 - DUSK.rest;
+    return DUSK.rest + span * pingPong(steps / span + eveningStops(time) / EVENING_WALK.stops);
+}
 
 /** The theme's piece palette (synthwave-sunset-tetrominos.js), for a lock's chase colour. */
 export const PIECE_COLORS = Object.freeze(Object.fromEntries(['I', 'O', 'T', 'S', 'Z', 'J', 'L']
@@ -273,7 +300,9 @@ export function createWorldUniforms() {
         /** The ferris wheel: its angle (rad), how bright its lights burn, the neon ring's hue. */
         wheelAngle: uniform(0),
         wheelGlow: uniform(1),
+        /** How far the neon ring has turned from pink (0) to mint (1), and its colour (NEON_RING). */
         wheelNeonMix: uniform(0),
+        wheelNeon: uniform(new THREE.Color(...NEON_RING[0])),
         /** The pier: how far its lights have come on (0..1, from the land end), how bright. */
         pierPower: uniform(1),
         pierGlow: uniform(1),
@@ -343,10 +372,12 @@ export class SynthwaveWorld {
         this.sunUp = new THREE.Vector3(0, 1, 0);
         this.sunRight = new THREE.Vector3(1, 0, 0);
         this.dusk = DUSK.rest;
-        this.duskTarget = DUSK.rest;
+        /** The levels' steps along the evening's walk (dusk units), eased toward duskTarget. */
+        this.duskSteps = 0;
+        this.duskTarget = 0;
+        /** An evening held still (the playground's dusk=): duskBase, whatever the clock. */
         this.duskBase = DUSK.rest;
         this.duskHeld = false;
-        this.lastPlayed = -1e6;
         /**
          * What play adds to the bay's lights this frame (updateSurge writes it, applyDusk folds it
          * in): the pier's light front, the bulbs' glow, the town's lights; and the wheel's extra
@@ -360,9 +391,13 @@ export class SynthwaveWorld {
         // Reactive state
         this.chases = Array.from({ length: CHASE_SLOTS }, () => ({ t0: -1e6, strength: 0 }));
         this.lastLockColor = new THREE.Color(FIREWORK_COLORS[0]);
-        /** The neon ring's colour walk: each level turns it on to the next colour, never back. */
+        /**
+         * The neon ring's colour walk: the clock turns it on to its other colour at every stop of
+         * the evening, and each level turns it on once more (eased), never back.
+         */
         this.neonTarget = 0;
         this.neonPhase = 0;
+        this._neonRgb = [0, 0, 0];
         /**
          * The coaster. `notch` is the live chain; `meter`/`charge` what the lift shows (eased: it
          * drains, never snaps); on a ride `lap` counts the wraps of `laps`, `launch` is the crest
@@ -447,16 +482,25 @@ export class SynthwaveWorld {
     // ── The evening ──────────────────────────────────────────────────────────
 
     /**
-     * Set the evening (0..1) at once. The sun sinks from its rest height on the sea to below the
-     * horizon (SUN.lift → SUN.setLift, in disc radii); the sky's colours follow `u.dusk`.
+     * Set the evening (0..1) at once; with `hold` it stays there whatever the clock (the next
+     * frame otherwise takes it back to the walk). The sun sinks from its rest height on the sea to
+     * below the horizon (SUN.lift → SUN.setLift, in disc radii); the sky's colours follow `u.dusk`.
      */
     setDusk(value, { hold = false } = {}) {
         const dusk = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
         this.dusk = dusk;
-        this.duskTarget = dusk;
         this.duskBase = dusk;
         if (hold) this.duskHeld = true;
         this.applyDusk();
+    }
+
+    /**
+     * Where the evening's walk stands at `time`: the clock's walk there and back plus the levels'
+     * steps along it (DUSK.rest..1: DUSK.rest at time 0 with no level).
+     * @param {number} time
+     */
+    eveningAt(time) {
+        return eveningAt(this.duskSteps, time);
     }
 
     applyDusk() {
@@ -477,11 +521,6 @@ export class SynthwaveWorld {
         this.u.wheelGlow.value = (0.85 + dusk * 0.5) * (1 + bay.glow);
         this.u.pierGlow.value = (0.85 + dusk * 0.5) * (1 + bay.glow * 0.8);
         this.u.townLights.value = Math.min(1.35, 0.5 + dusk * 0.5 + bay.town);
-    }
-
-    /** Mark the game as being played (any gameplay event). */
-    notePlay() {
-        this.lastPlayed = this.time;
     }
 
     // ── Composition ─────────────────────────────────────────────────────────
@@ -604,20 +643,29 @@ export class SynthwaveWorld {
         u.wheelAngle.value = ((t - this.wheelLag) * (Math.PI * 2)) / WHEEL.period;
         this.gullLag = (this.gullLag ?? 0) + dt * (1 - motion) * 0.6;
         u.gullTime.value = t - this.gullLag;
-        // The neon ring walks on to its next colour (pink, mint, pink…), never back.
+        // The neon ring walks on to its next colour (pink, mint, pink…), never back: at every stop
+        // of the evening's walk, and once more for each level.
         this.neonPhase += (this.neonTarget - this.neonPhase) * approach(0.8, dt);
-        u.wheelNeonMix.value = 0.5 - 0.5 * Math.cos(Math.PI * this.neonPhase);
+        if (Math.abs(this.neonTarget - this.neonPhase) < 1e-4) this.neonPhase = this.neonTarget;
+        const neon = 0.5 - 0.5 * Math.cos(Math.PI * (this.neonPhase + eveningStops(t)));
+        u.wheelNeonMix.value = neon;
+        // Round the colour wheel through blue-violet (NEON_RING[1]): a straight mix of pink and
+        // mint is a pale grey-white, and the clock's turn lingers between them for a minute.
+        const half = neon * 2;
+        const rgbNeon = half <= 1
+            ? meltColour(NEON_RING[0], NEON_RING[1], half, this._neonRgb)
+            : meltColour(NEON_RING[1], NEON_RING[2], half - 1, this._neonRgb);
+        u.wheelNeon.value.setRGB(rgbNeon[0], rgbNeon[1], rgbNeon[2], THREE.LinearSRGBColorSpace);
         // The chase lights run on their own clock, quicker with play (not under reduced motion);
         // the breeze on the palms freshens with it.
         this.chaseClock += dt * (1 + (bay.chase - 1) * motion);
         u.chaseTime.value = this.chaseClock;
         u.breeze.value = 1 + (bay.breeze - 1) * motion;
 
-        // The evening deepens while a game is being played, and eases toward its target.
-        if (!this.duskHeld) {
-            if (t - this.lastPlayed < DUSK.activeFor) this.duskTarget = Math.min(1, this.duskTarget + dt / DUSK.fullAfter);
-            this.dusk += (this.duskTarget - this.dusk) * approach(0.6, dt);
-        }
+        // The evening walks by the clock in every mode; a level's step eases in on top.
+        this.duskSteps += (this.duskTarget - this.duskSteps) * approach(0.6, dt);
+        if (Math.abs(this.duskTarget - this.duskSteps) < 1e-5) this.duskSteps = this.duskTarget;
+        this.dusk = this.duskHeld ? this.duskBase : this.eveningAt(t);
         this.applyDusk();
 
         this.updateCoaster(dt, motion);
@@ -801,13 +849,13 @@ export class SynthwaveWorld {
 
     /**
      * Seek (deterministic captures): no events in flight, the train at the station, the evening
-     * back where it was set (a capture replays its events on every frame), play cold.
+     * where the clock alone has walked it (or where it is held) with no level's step on top and
+     * the neon ring on the clock's colour (a capture replays its events on every frame), play cold.
      */
     seek(time) {
         this.time = time;
         this.u.time.value = time;
         this.u.gullTime.value = time - (this.gullLag ?? 0);
-        this.lastPlayed = -1e6;
         this.surge.reset();
         this.crown.reset();
         this.spin.reset();
@@ -823,9 +871,12 @@ export class SynthwaveWorld {
         this.nextFeverShoot = -1e6;
         this.chaseClock = time;
         this.u.chaseTime.value = time;
-        this.dusk = this.duskBase;
-        this.duskTarget = this.duskBase;
+        this.duskSteps = 0;
+        this.duskTarget = 0;
+        this.dusk = this.duskHeld ? this.duskBase : this.eveningAt(time);
         this.applyDusk();
+        this.neonTarget = 0;
+        this.neonPhase = 0;
         this.chases.forEach((ch, i) => {
             ch.t0 = -1e6;
             ch.strength = 0;
@@ -858,7 +909,6 @@ export class SynthwaveWorld {
      * hard drop's bands burn brighter.
      */
     onPieceLock(piece, { hardDrop = false } = {}) {
-        this.notePlay();
         const color = (() => {
             if (typeof piece?.color === 'string' || typeof piece?.color === 'number') {
                 try {
@@ -916,7 +966,6 @@ export class SynthwaveWorld {
     onLineClear(lines = 1, {
         cascade = 1, combo = 0, tspin = false, b2b = false,
     } = {}) {
-        this.notePlay();
         const n = Math.max(1, Math.min(4, lines | 0));
         const depth = Math.max(1, cascade | 0);
         const t = this.time;
@@ -963,7 +1012,6 @@ export class SynthwaveWorld {
                     high,
                 });
             }
-            this.duskTarget = Math.min(1, this.duskTarget + 0.004 * n);
         } else {
             // The finale: a volley over a second and a half (fuller and quicker as play heats), a
             // gold willow to close (its sky glow gold too).
@@ -987,7 +1035,6 @@ export class SynthwaveWorld {
                 delay: shells * gap + 0.2,
                 stars: Math.round(stars * 1.3),
             });
-            this.duskTarget = Math.min(1, this.duskTarget + 0.02);
         }
         if (b2b) this.salute(stars);
         // Each cascade wave past the first sends a band round the rims, brighter the deeper.
@@ -1019,7 +1066,6 @@ export class SynthwaveWorld {
 
     /** A T-spin that cleared nothing: the wheel whirls a little and a lilac band runs round. */
     onTSpin() {
-        this.notePlay();
         this.spin.hit(0.5, this.time);
         this.runChase(RIM_BOTTOM, LILAC, 1.2);
         this.surgeBonus('tspin', 0.45);
@@ -1031,7 +1077,6 @@ export class SynthwaveWorld {
      * sky, the rims ringing round in gold, the whole bay at full blaze, shooting stars.
      */
     onPerfectClear() {
-        this.notePlay();
         const t = this.time;
         this.crown.hit(1, t);
         this.surgeBonus('perfect');
@@ -1071,7 +1116,6 @@ export class SynthwaveWorld {
      * ten, the wheel's rims ringing round with the riders' cheer.
      */
     onChain(count) {
-        this.notePlay();
         const c = this.coaster;
         const n = Math.max(0, count | 0);
         if (n > 0) {
@@ -1112,15 +1156,20 @@ export class SynthwaveWorld {
 
     /** Cascade depth (bus COMBO): each wave's own clear already builds on the last. */
     onCombo() {
-        this.notePlay();
+        // Nothing of its own: the wave's clear carries its depth.
     }
 
-    /** A level: the evening steps on, the neon ring turns on to its next colour, two shells go up. */
-    onLevelUp() {
-        this.notePlay();
-        this.duskTarget = Math.min(1, this.duskTarget + DUSK.levelStep);
+    /**
+     * A level: the evening steps on along its walk (eased in, on top of the clock), the neon ring
+     * turns on to its next colour, two shells go up. With reactions off (`react: false`) the light
+     * still steps; the shells and the surge do not.
+     * @param {{ react?: boolean }} [opts]
+     */
+    onLevelUp({ react = true } = {}) {
+        this.duskTarget += DUSK.levelStep;
         // Always forward: a second level mid-turn carries it on to the colour after.
         this.neonTarget = Math.floor(this.neonTarget + 1e-6) + 1;
+        if (!react) return;
         this.surge.levelUp(this.time);
         const t = this.time;
         this.fireworks.launch(t, {

@@ -18,7 +18,9 @@
  *   parts=sky,sea,...        draw only these parts (SYNTHWAVE_PARTS: sky sea wheel pier coaster
  *                            promenade palms gulls fireworks)
  *   dusk=<0..1>              hold the evening: 0 = the sun on the sea, 1 = afterglow (default:
- *                            the menu's rest value)
+ *                            the clock walks it, DUSK.rest → afterglow → DUSK.rest, a stop every
+ *                            EVENING_WALK.seconds, the neon ring turning at each)
+ *   level=<n>                the run is at level n: its steps along the walk on top of ?t=
  *   icon=1                   the theme-icon framing: a narrow lens on the wheel in front of the
  *                            setting sun, its reflection below (iconFov=36; iconYaw=2.4 and
  *                            iconPitch=4.5 aim it, azimuth and elevation in degrees)
@@ -188,10 +190,20 @@ export function create({
         world.update(sim(time, dt));
         pushPost(time);
     };
+    // level=<n>: the run is at level n, its n − 1 steps along the evening's walk (and turns of the
+    // neon ring) already eased in, on top of the clock's walk.
+    const levelSteps = Math.max(0, Math.round(num(params, 'level', 1)) - 1);
+    const reachLevel = () => {
+        for (let i = 0; i < levelSteps; i += 1) world.onLevelUp({ react: false });
+        world.duskSteps = world.duskTarget;
+        world.neonPhase = world.neonTarget;
+    };
+    reachLevel();
     // Seek: rebuild the event state at (t − age) so every capture of `t` is identical.
     const seekTo = (time) => {
         const t0 = Math.max(0, time - (eventName ? eventAge : 0));
         world.seek(t0);
+        reachLevel();
         step(t0, 0);
         if (eventName) {
             fireEvent();
