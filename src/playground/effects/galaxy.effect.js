@@ -11,7 +11,7 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the nucleus's charge)
- *   level=<n>                rest on level n's palette
+ *   level=<n>                level n's step on top of the clock's palette
  *   locks=<n>                before anything else, play n locks (the galaxy holding their light)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
