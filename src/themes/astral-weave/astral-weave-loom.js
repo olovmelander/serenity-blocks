@@ -140,7 +140,7 @@ export function createRosette(shared, count, segments) {
     const geometry = awThreadGeometry(count, segments, 4242);
     const material = awFxMaterial('astral-weave-rosette');
     const {
-        uTime, uViewport, uPxScale, uLoomPx, uK, uPhase, uSpin, uHeat, uEnergy, uPluck, uFade, uFlow,
+        uTime, uViewport, uPxScale, uLoomPx, uK, uPhase, uSpin, uHeat, uEnergy, uPluck, uFade, uFlow, uMood,
     } = shared;
     const th = attribute('aThread', 'vec4');
     const t = positionGeometry.x;
@@ -231,7 +231,8 @@ export function createRosette(shared, count, segments) {
         const tint = awSpectrum(vTh.x.add(tt.mul(0.12)).add(uTime.mul(0.006)), uHeat);
         // The hottest pile-ups (the caustics, the fan) burn toward white.
         const col = mix(tint, vec3(1.0, 0.97, 0.92), clamp(vGlow.mul(0.5), 0.0, 0.7));
-        return vec4(col.mul(k).mul(ends).mul(uFade), 0.0);
+        // The mood balances the weave's glow against its sky (astral-weave-moods.js).
+        return vec4(col.mul(k).mul(ends).mul(uFade).mul(uMood.weave), 0.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);

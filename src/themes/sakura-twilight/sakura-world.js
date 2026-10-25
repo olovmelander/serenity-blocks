@@ -24,10 +24,14 @@ import { SAKURA_STAGE_DEPTH, SakuraStage } from './sakura-stage.js';
 import { SakuraTerrain, sakuraLand, sakuraSurfaceHeight } from './sakura-terrain.js';
 import { SAKURA_UNMIRRORED_LAYER, SakuraWater } from './sakura-water.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { easeStep, nearestStep } from '../shared/mood-clock.js';
+import { SAKURA_HOURS, sakuraHourDrift, sakuraHourName } from './sakura-hours.js';
 
 const UNMIRRORED = /^Sakura(SpringGrass|FallenBlossom|Fireflies|Foxfire|PetalFlashes|MistBank|PetalsInTheAir)/;
 // Open water whatever the shape of the banks: straight out from the cove.
 const LAKE_HEART_Z = -22;
+/** How quickly the night takes a level's step, per second: most of the way in four seconds. */
+const HOUR_FOLLOW = 0.6;
 
 export class SakuraWorld {
     constructor({
@@ -51,6 +55,10 @@ export class SakuraWorld {
         this.scratch = new THREE.Vector3();
         this.scratchRight = new THREE.Vector3();
         this.scratchUp = new THREE.Vector3();
+        // The hour of the night (sakura-hours.js): the clock turns it, and every level is one
+        // hour on. `hourStep` is the levels' share, eased toward `level - 1` the short way round.
+        this.level = 1;
+        this.hourStep = 0;
     }
 
     build() {
@@ -187,6 +195,23 @@ export class SakuraWorld {
         return this.spirits?.launchWater(lakeX, lakeZ, vx, vz, power) ?? false;
     }
 
+    /**
+     * A new level: the night turns one hour on from wherever the clock has brought it. Aloud it
+     * eases there (see `update`); `silent` (a rebuilt world, a capture) is there at once. A new
+     * run goes back to the first level's hour the short way round the night.
+     */
+    setLevel(level, { silent = false } = {}) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
+        if (silent) this.hourStep = nearestStep(this.hourStep, this.level - 1, SAKURA_HOURS.length);
+        return this.level;
+    }
+
+    /** How many hours into the night it is at `time`: the level's step and the clock's turn. */
+    hourPhase(time = this.light?.uTime.value ?? 0) {
+        return this.hourStep + sakuraHourDrift(time);
+    }
+
     /** The measured board card in screen fractions (y down), or null for the default. */
     setBoard(rect) {
         if (!this.stage) return;
@@ -247,6 +272,13 @@ export class SakuraWorld {
         this.foxes.update(dt, frame);
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
         this.foxes.kicks.forEach((kick) => env.fields.push(kick));
+        // The hour: the clock turns it by itself (a function of the time alone, so a seek and a
+        // night lived through agree); a level's step eases in on top, the short way round. A slow
+        // change of colour is not motion: neither reduced motion nor the effects setting holds it.
+        const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+        const follow = 1 - Math.exp(-step * HOUR_FOLLOW);
+        this.hourStep = easeStep(this.hourStep, this.level - 1, follow, SAKURA_HOURS.length);
+        light.setHour(this.hourPhase(Number.isFinite(time) ? Math.max(0, time) : light.uTime.value));
         light.update(time, { ...frame, front: env.front, fronts: env.fronts });
         this.petals.update(dt, env, frame.heat);
         this.sky.update(frame);
@@ -263,6 +295,10 @@ export class SakuraWorld {
             lanterns: this.lanterns?.length || 0,
             lamps: this.light?.lampCount || 0,
             petals: this.petals?.sim?.counts() || null,
+            level: this.level,
+            // The hour the night is nearest, and how far round it is.
+            hour: sakuraHourName(this.light?.hourPhase ?? 0),
+            hourPhase: this.light?.hourPhase ?? 0,
         };
     }
 

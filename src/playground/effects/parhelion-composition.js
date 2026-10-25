@@ -30,6 +30,28 @@ const SIN_E = Math.sin(E);
 const COS_E = Math.cos(E);
 
 /**
+ * The Lower Sun's light, as the warmth the shaders read (uWarmth): level 1 rests at `rest`, a
+ * level adds `step`, and the clock walks it out to `far`, a late, low, golden polar sun. The
+ * low-sun grade (an amber-rose horizon, a deeper zenith, golden snow, rose-lit ridges, warmer
+ * hounds) rises from `from` to `far`, so level 1 keeps its cold high light however the warmth
+ * breathes (rest · 1.08 stays under `from`).
+ */
+export const LOWER_SUN_LIGHT = Object.freeze({
+    rest: 0.1, step: 0.055, from: 0.12, far: 0.95,
+});
+
+/**
+ * The low-sun grade (0 the cold high sun, 1 the late golden one) for a warmth: the CPU twin of
+ * the shaders' smoothstep(from, far, uWarmth).
+ * @param {number} warmth
+ */
+export function lowSunOf(warmth) {
+    const span = LOWER_SUN_LIGHT.far - LOWER_SUN_LIGHT.from;
+    const x = Math.min(1, Math.max(0, (warmth - LOWER_SUN_LIGHT.from) / span));
+    return x * x * (3 - 2 * x);
+}
+
+/**
  * Vertical field of view (deg), fixed at every aspect. Tunable 45–47 in this module only
  * (risk 4). 46 needs no tuning: the right sundog's core clears the HUD glass at all six
  * measured viewports, tightest at 1366×768 (7.6 px at rest, 4 px at worst breathing).

@@ -266,7 +266,9 @@ Run `npm run dev:playground` and open:
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=lock&eventAge=0.3&color=%23ff88ee&column=7&drop=12`
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=quad&eventAge=0.8`
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=combo&combo=6&eventAge=0.8`
-- `/playground.html?effect=aurora&quality=High&t=310` (a quiet night under pulsating patches)
+- `/playground.html?effect=aurora&quality=High&t=310` (a quiet night under pulsating patches;
+  since the mood clocks (THEME_MOOD_CLOCKS_2026-10.md) `t` also turns the hours of the night, so
+  t=310 now melts toward the moonlit hour; t below 38 is today's quiet night)
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=rush&eventAge=0.3&column=3`
 - `/playground.html?effect=aurora&quality=High&t=40&board=1&event=storm&eventAge=8`
 - `/playground.html?effect=aurora&quality=Low&t=20&forceWebGL=1`

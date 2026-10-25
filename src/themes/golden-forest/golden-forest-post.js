@@ -73,7 +73,8 @@ export class GoldenForestPost {
             this.shaftsBlur = bilateralBlur(this.godraysNode.getTextureNode(), null, 3, 0.12);
             const centred = screenUV.sub(this.uSunScreen).mul(vec2(this.uAspect, 1));
             const toward = float(1).sub(saturate(length(centred).mul(0.78)));
-            const shaftColour = mix(vec3(0.16, 0.06, 0.035), vec3(1.6, 0.8, 0.24), pow(toward, 2.1));
+            // The hour sets the shafts' colour away from the sun and toward it (golden-forest-moods.js).
+            const shaftColour = mix(light.uShaftShade, light.uShaftSun, pow(toward, 2.1));
             // The shadow box ends about 300 m out, so the march counts everything beyond it as lit
             // air and laid a veil over the ridges and the sky. Past the far forest the shafts keep
             // only the glow round the sun; the haze and the dome carry the distance.
@@ -149,7 +150,9 @@ export class GoldenForestPost {
         const fever = unit(frame.fever);
         const gold = Number.isFinite(frame.gold) ? THREE.MathUtils.clamp(frame.gold, 0, 1.5) : 0;
         const flash = flashScale();
-        this.uExposure.value = this.exposure + warmth * 0.035 * flash
+        // The hour asks a little more or less of the iris (golden-forest-moods.js), play adds to it.
+        const hour = Number.isFinite(this.light?.exposureScale) ? this.light.exposureScale : 1;
+        this.uExposure.value = this.exposure * hour + warmth * 0.035 * flash
             - Math.max(0, level - 0.2) * 0.1 - fever * 0.05;
         if (this.camera?.isCamera) {
             this.uNear.value = this.camera.near;

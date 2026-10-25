@@ -4,7 +4,8 @@
  *
  * GoldenForestWorld is the composition root: it owns the light rig, the shores, the
  * conifers, the lake and the air, frames the camera, and forwards gameplay envelopes to
- * them each frame.
+ * them each frame. It also keeps the lake's hour: the clock turns it by itself and every level
+ * is one hour on (golden-forest-moods.js).
  */
 import * as THREE from 'three/webgpu';
 import { GoldenForestAtmosphere } from './golden-forest-atmosphere.js';
@@ -14,6 +15,7 @@ import { goldenForestEye, goldenForestViewFor } from './golden-forest-compositio
 import { GoldenForestForest } from './golden-forest-forest.js';
 import { GOLDEN_FOREST_MIRROR_LAYER, GoldenForestLake } from './golden-forest-lake.js';
 import { GoldenForestLight } from './golden-forest-light.js';
+import { GOLDEN_FOREST_MOODS, goldenForestMoodDrift, goldenForestMoodName } from './golden-forest-moods.js';
 import { goldenForestTier } from './golden-forest-quality.js';
 import { GoldenForestRibbons } from './golden-forest-ribbons.js';
 import { GoldenForestShore } from './golden-forest-shore.js';
@@ -22,6 +24,10 @@ import { GoldenForestSparks } from './golden-forest-sparks.js';
 import { GoldenForestStage } from './golden-forest-stage.js';
 import { GoldenForestTerrain, goldenForestGroundHeight } from './golden-forest-terrain.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { easeStep, nearestStep } from '../shared/mood-clock.js';
+
+/** How quickly the lake takes a level's step, per second: most of the way in four seconds. */
+const MOOD_FOLLOW = 0.6;
 
 export class GoldenForestWorld {
     constructor({
@@ -39,6 +45,12 @@ export class GoldenForestWorld {
         this.group.name = 'Golden Forest — the lake at the golden hour';
         this.disposed = false;
         this.built = false;
+        // The lake's hour: the clock turns it, and every level is one hour on. `moodStep` is the
+        // level's step as eased so far, and `moodStart` the seconds of evening the theme had
+        // already lived before this world's clock began (a rebuild picks the hour up there).
+        this.level = 1;
+        this.moodStep = 0;
+        this.moodStart = 0;
         /** Reduce motion's share (setMotion), and the envelopes as worn (wear()). */
         this.motion = 1;
         this.worn = {
@@ -188,6 +200,31 @@ export class GoldenForestWorld {
         this.lake?.watch(camera);
     }
 
+    /**
+     * A new level: the lake turns one hour on from wherever the clock has brought it. Aloud it
+     * eases there (see `update`); `silent` (a rebuilt world, a capture) is there at once. A new
+     * run goes back to the first level's hour the short way round.
+     * @param {number} level
+     * @param {{ silent?: boolean }} [options]
+     */
+    setLevel(level, { silent = false } = {}) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
+        if (silent) this.moodStep = nearestStep(this.moodStep, this.level - 1, GOLDEN_FOREST_MOODS.length);
+        return this.level;
+    }
+
+    /** Seconds of evening lived at `time` on this world's clock, with what came before it. */
+    moodLived(time = this.light?.uTime.value ?? 0) {
+        const before = Number.isFinite(this.moodStart) ? Math.max(0, this.moodStart) : 0;
+        return before + (Number.isFinite(time) ? Math.max(0, time) : 0);
+    }
+
+    /** How many hours into the evening it is at `time`: the level's step and the clock's turn. */
+    moodPhase(time = this.light?.uTime.value ?? 0) {
+        return this.moodStep + goldenForestMoodDrift(this.moodLived(time));
+    }
+
     /** The theme is built hidden behind the one playing: the combo ribbons draw (unseen) meanwhile. */
     setWarming(on) {
         if (this.ribbons) this.ribbons.warming = on === true;
@@ -247,6 +284,12 @@ export class GoldenForestWorld {
         const direction = light.uWindDir.value;
         const worn = this.wear(frame || {}, dt);
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z }, worn);
+        // The hour: the clock turns it by itself (a function of the time alone, so a seek and an
+        // evening lived through agree); a level's step eases in on top, the short way round. A slow
+        // change of colour is not motion and no effect: neither setting holds it back.
+        const follow = 1 - Math.exp(-dt * MOOD_FOLLOW);
+        this.moodStep = easeStep(this.moodStep, this.level - 1, follow, GOLDEN_FOREST_MOODS.length);
+        light.setMood(this.moodPhase(time));
         light.update(time, frame, worn, env.fronts);
         this.sparks.update(dt, env);
         this.birds.update(frame, dt, worn);
@@ -264,6 +307,11 @@ export class GoldenForestWorld {
             birds: this.birds?.count || 0,
             sparks: this.sparks?.sim?.counts() || null,
             rings: this.lake?.ripples.active() || 0,
+            level: this.level,
+            // The hour the lake is turning to, and how far round it is.
+            mood: goldenForestMoodName(nearestStep(this.moodStep, this.level - 1, GOLDEN_FOREST_MOODS.length)
+                + goldenForestMoodDrift(this.moodLived())),
+            moodPhase: this.light?.moodPhase ?? 0,
         };
     }
 

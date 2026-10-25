@@ -6,6 +6,10 @@
  * a shared shadow node (one static shadow map of the shores) says where the sun reaches,
  * `haze()` lays the same golden aerial perspective over every surface so the forest falls
  * back in warm layers, and `wind()` moves bark and needles together.
+ *
+ * The hour turns by the clock (golden-forest-moods.js): `setMood()` lays an hour's colours, haze
+ * and exposure on the rig as its resting light, and hot play deepens whichever hour it is toward
+ * sunset. The sun never moves, so the shores' static shadow map stays true at every hour.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -14,6 +18,7 @@ import {
 } from 'three/tsl';
 import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { GOLDEN_FOREST_MOODS, createGoldenForestMood, goldenForestMoodAt } from './golden-forest-moods.js';
 
 /** The resting breeze; play raises it (update()). */
 export const GOLDEN_FOREST_BREEZE = 0.24;
@@ -21,6 +26,11 @@ const FRONT_WIDTH = 22;
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-21);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
 const TAU = Math.PI * 2;
+/** The hour a session opens in (the golden hour), whose colours the rig is built with. */
+const FIRST_MOOD = GOLDEN_FOREST_MOODS[0];
+/** How bright a sun's light reads (Rec. 709 luma, linear). */
+const luma = (rgb) => 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+const FIRST_SUN = luma(FIRST_MOOD.sun);
 
 /** Unit vector from the scene toward the sun (over the far shore, left of the board). */
 export const GOLDEN_FOREST_SUN_DIRECTION = Object.freeze(new THREE.Vector3(
@@ -67,22 +77,33 @@ export class GoldenForestLight {
         this.tier = tier;
         this.uTime = uniform(0);
         this.uSunDir = uniform(GOLDEN_FOREST_SUN_DIRECTION.clone());
-        this.uSunColor = uniform(new THREE.Color(4.2, 2.1, 0.62));
-        this.uSkyLight = uniform(new THREE.Color(0.36, 0.18, 0.17));
-        this.uBounce = uniform(new THREE.Color(0.3, 0.12, 0.045));
+        // Every colour of the lake is an hour's (golden-forest-moods.js) and starts at the golden hour's.
+        const colour = (key) => uniform(new THREE.Color(...FIRST_MOOD[key]));
+        this.uSunColor = colour('sun');
+        this.uSkyLight = colour('skyLight');
+        this.uBounce = colour('bounce');
         // The sky: dusk blue overhead, a rose and mauve middle, ember orange low down and molten
         // gold where the sun stands. The cool top gives the gold something to stand against, and
         // the lake mirrors it in the near water.
-        this.uZenith = uniform(new THREE.Color(0.045, 0.05, 0.13));
-        this.uSkyMid = uniform(new THREE.Color(0.36, 0.14, 0.16));
-        this.uSkyAway = uniform(new THREE.Color(0.6, 0.21, 0.11));
-        this.uSkyToward = uniform(new THREE.Color(1.5, 0.66, 0.14));
+        this.uZenith = colour('zenith');
+        this.uSkyMid = colour('skyMid');
+        this.uSkyAway = colour('skyAway');
+        this.uSkyToward = colour('skyToward');
         // Shaded air is a dusty rose-amber that cools toward mauve; sunlit air is added by the
         // volumetric shafts where the tier has them, and by this analytic glow where it does not.
-        this.uHazeCool = uniform(new THREE.Color(0.4, 0.165, 0.11));
-        this.uHazeWarm = uniform(new THREE.Color(1.15, 0.52, 0.12));
+        this.uHazeCool = colour('hazeCool');
+        this.uHazeWarm = colour('hazeWarm');
+        // The bars of evening cloud: their bodies near the sun and away from it, low and high, and
+        // the thin edges that burn; and the shafts' colour away from the sun and toward it.
+        this.uCloudEmber = colour('cloudEmber');
+        this.uCloudGlow = colour('cloudGlow');
+        this.uCloudDusk = colour('cloudDusk');
+        this.uCloudHigh = colour('cloudHigh');
+        this.uCloudGilt = colour('cloudGilt');
+        this.uShaftShade = colour('shaftShade');
+        this.uShaftSun = colour('shaftSun');
         this.uHazeSun = uniform(tier.godrays > 0 ? 0.5 : 1);
-        this.uHaze = uniform(0.0025);
+        this.uHaze = uniform(FIRST_MOOD.haze);
         this.uGroundLevel = uniform(0);
         // Wind: a steady breeze, gusts that roll across the water, and a travelling front.
         this.uWindDir = uniform(new THREE.Vector3(0.92, 0, 0.39));
@@ -99,8 +120,8 @@ export class GoldenForestLight {
         this.uFlare = uniform(0);
         // The rising wind clears the air: the haze thins and the mist lifts off the water (0..1).
         this.uClearAir = uniform(0);
-        // The colours the golden hour rests at; hot play deepens them toward sunset (update()).
-        // `haze` is the resting density of the air (a lens may set it, as the icon's does).
+        // The colours the hour rests at (setMood); hot play deepens them toward sunset (update()).
+        // `haze` is the resting density of the air.
         this.resting = {
             sun: this.uSunColor.value.clone(),
             toward: this.uSkyToward.value.clone(),
@@ -109,6 +130,15 @@ export class GoldenForestLight {
             hazeWarm: this.uHazeWarm.value.clone(),
             haze: this.uHaze.value,
         };
+        // The hour the lake stands in (setMood): its colours and numbers, how far round the hours
+        // it is, how bright its sun is against the golden hour's (play deepens a dim sun as far in
+        // its own terms) and the exposure it asks of the lens against rest. A lens may pin the
+        // haze over every hour, as the icon's does.
+        this.mood = createGoldenForestMood();
+        this.moodPhase = 0;
+        this.deepenScale = 1;
+        this.exposureScale = FIRST_MOOD.exposure;
+        this.hazePin = null;
         this.noiseTexture = createNoiseTexture(rng);
 
         this.sun = new THREE.DirectionalLight(0xffffff, 1);
@@ -229,6 +259,39 @@ export class GoldenForestLight {
     }
 
     /**
+     * Turn the lake to `phase` hours in (see golden-forest-moods.js): every colour of the rig
+     * takes the hour's, melted between the two it lies between; the colours play deepens become
+     * the resting light update() deepens from. Uniform values only; nothing is rebuilt. Call it
+     * before update().
+     * @param {number} phase
+     */
+    setMood(phase) {
+        this.moodPhase = Number.isFinite(phase) ? phase : 0;
+        const mood = goldenForestMoodAt(this.moodPhase, this.mood);
+        const paint = (color, rgb) => color.setRGB(rgb[0], rgb[1], rgb[2]);
+        paint(this.uSkyLight.value, mood.skyLight);
+        paint(this.uBounce.value, mood.bounce);
+        paint(this.uSkyAway.value, mood.skyAway);
+        paint(this.uHazeCool.value, mood.hazeCool);
+        paint(this.uCloudEmber.value, mood.cloudEmber);
+        paint(this.uCloudGlow.value, mood.cloudGlow);
+        paint(this.uCloudDusk.value, mood.cloudDusk);
+        paint(this.uCloudHigh.value, mood.cloudHigh);
+        paint(this.uCloudGilt.value, mood.cloudGilt);
+        paint(this.uShaftShade.value, mood.shaftShade);
+        paint(this.uShaftSun.value, mood.shaftSun);
+        const { resting } = this;
+        paint(resting.sun, mood.sun);
+        paint(resting.toward, mood.skyToward);
+        paint(resting.mid, mood.skyMid);
+        paint(resting.zenith, mood.zenith);
+        paint(resting.hazeWarm, mood.hazeWarm);
+        resting.haze = Number.isFinite(this.hazePin) ? this.hazePin : mood.haze;
+        this.deepenScale = luma(mood.sun) / FIRST_SUN;
+        this.exposureScale = mood.exposure;
+    }
+
+    /**
      * One frame of light and wind. `worn` is the world's reading of the envelopes (eased gust and
      * warmth, how hot play runs, Reduce motion's share: GoldenForestWorld.wear); `fronts` the
      * fronts crossing, in world x ({ x, strength }).
@@ -252,33 +315,22 @@ export class GoldenForestLight {
         // The golden hour deepens as play runs hot: the sun sinks into molten orange, the sky's
         // low band burns redder and the zenith darkens, so heat reads as richer colour, not paler.
         // The wind it raises clears the air, so the far shore stands out instead of milking over.
+        // Whichever hour the clock has brought, play deepens it the same way, as far in its own
+        // terms: a dim sun by as much of itself as the golden hour's by its own.
         const deepen = level * 0.45 + fever * 0.55;
+        const by = deepen * this.deepenScale;
         const { resting } = this;
-        this.uSunColor.value.setRGB(
-            resting.sun.r + deepen * 0.4,
-            resting.sun.g - deepen * 0.5,
-            resting.sun.b - deepen * 0.26,
+        const lay = (color, r, g, b) => color.setRGB(Math.max(0, r), Math.max(0, g), Math.max(0, b));
+        lay(this.uSunColor.value, resting.sun.r + by * 0.4, resting.sun.g - by * 0.5, resting.sun.b - by * 0.26);
+        lay(
+            this.uSkyToward.value,
+            resting.toward.r + by * 0.1,
+            resting.toward.g - by * 0.18,
+            resting.toward.b - by * 0.06,
         );
-        this.uSkyToward.value.setRGB(
-            resting.toward.r + deepen * 0.1,
-            resting.toward.g - deepen * 0.18,
-            resting.toward.b - deepen * 0.06,
-        );
-        this.uSkyMid.value.setRGB(
-            resting.mid.r + deepen * 0.04,
-            resting.mid.g - deepen * 0.03,
-            resting.mid.b - deepen * 0.01,
-        );
-        this.uZenith.value.setRGB(
-            resting.zenith.r - deepen * 0.015,
-            resting.zenith.g - deepen * 0.025,
-            resting.zenith.b,
-        );
-        this.uHazeWarm.value.setRGB(
-            resting.hazeWarm.r,
-            resting.hazeWarm.g - deepen * 0.12,
-            resting.hazeWarm.b - deepen * 0.05,
-        );
+        lay(this.uSkyMid.value, resting.mid.r + by * 0.04, resting.mid.g - by * 0.03, resting.mid.b - by * 0.01);
+        lay(this.uZenith.value, resting.zenith.r - by * 0.015, resting.zenith.g - by * 0.025, resting.zenith.b);
+        lay(this.uHazeWarm.value, resting.hazeWarm.r, resting.hazeWarm.g - by * 0.12, resting.hazeWarm.b - by * 0.05);
         this.uClearAir.value = deepen;
         this.uHaze.value = resting.haze * (1 - deepen * 0.3);
         const at = (index) => {

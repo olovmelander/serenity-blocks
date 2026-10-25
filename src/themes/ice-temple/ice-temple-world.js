@@ -28,7 +28,12 @@
  *   B2B      the Great Crystal answers twice: an echo wave follows the first, in the fringe colour.
  *   perfect  (it comes ~360 ms after its clear) the crown on the answer still playing: the snow
  *            stands still in the air, the snowflake takes a halo, a diamond wave follows the last.
- *   level    the aurora changes its colours.
+ *   level    the Great Crystal flares and the aurora moves on one palette (eased over a few
+ *            seconds, the short way round its wheel).
+ *
+ * The aurora turns through its palettes by the clock as well, in every mode (a match, Infinity
+ * and the menus never level up): each is seen pure for a while, then melts into the next
+ * (auroraDrift), and a level is one step on top.
  *
  * And the temple builds with play (src/themes/shared/gameplay-surge.js): every answer ADDS to
  * what is still lit (Swells), and the heat of play is spent on the temple's own voice. Warm: the
@@ -51,6 +56,7 @@
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
+import { easeStep, wheelAt } from '../shared/mood-clock.js';
 import {
     AURORA_PALETTES,
     CLEAR_AFTERGLOW,
@@ -69,6 +75,8 @@ import {
     OVERDRIVE_COOL,
     REST_RIG,
     approach,
+    auroraAt,
+    auroraDrift,
     clamp01,
     createNoiseTexture,
     createTempleUniforms,
@@ -152,6 +160,7 @@ const PARTS = [
 const paletteRGB = (palette) => ({
     a: linRGB(palette.a), b: linRGB(palette.b), c: linRGB(palette.c), heart: linRGB(palette.heart),
 });
+const WHEEL = { a: 0, b: 0, melt: 0 };
 
 export class IceTempleWorld {
     /**
@@ -263,7 +272,8 @@ export class IceTempleWorld {
         this.resRadius = 0;
         this.overdrive = 0;
         this.level = 1;
-        this.paletteIndex = 0;
+        /** The level's share of the aurora's turn, eased toward level - 1 (the clock adds its own). */
+        this.paletteStep = 0;
         this.frost = 0;
         this.swirlRate = 0;
         this.swirl = 0;
@@ -390,7 +400,7 @@ export class IceTempleWorld {
         this.reducedMotion = reduced === true;
     }
 
-    /** Jump the clock (captures): drops every event in flight. */
+    /** Jump the clock (captures): drops every event in flight; the aurora shows the clock's palette. */
     seek(time) {
         this.resetState(Math.max(0, time));
         this.applyPalette(1);
@@ -398,7 +408,8 @@ export class IceTempleWorld {
 
     /**
      * A new run: the temple back at rest (the snow keeps falling where it was and eases back to
-     * its fall; the aurora and the Great Crystal keep their phase).
+     * its fall; the aurora and the Great Crystal keep their phase, and the aurora keeps the
+     * clock's palette, dropping only the level's steps).
      */
     resetSession() {
         const {
@@ -533,7 +544,7 @@ export class IceTempleWorld {
         const strike = this.screenToIce(sx, sy);
         const slot = this.lockSlot();
         this.lockCursor += 1;
-        const rgb = pieceColor(color, AURORA_PALETTES[this.paletteIndex].b);
+        const rgb = pieceColor(color, AURORA_PALETTES[this.paletteShown()].b);
         const strength = hardDrop ? 1.3 : 0.8;
         uniforms.lockA[slot].value.set(strike.x, strike.z, this.time, strength);
         uniforms.lockC[slot].value.set(rgb[0] * 1.5, rgb[1] * 1.5, rgb[2] * 1.5);
@@ -836,10 +847,9 @@ export class IceTempleWorld {
         this.combo = n;
     }
 
-    /** A new level: the aurora changes its colours. */
+    /** A new level: the Great Crystal flares and the aurora moves on one palette. */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.paletteIndex = (this.level - 1) % AURORA_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             this.flareSwell.hit(0.7, this.time);
@@ -848,16 +858,28 @@ export class IceTempleWorld {
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the aurora is heading on its wheel of palettes: one step for every level, turned on
+     * by the clock. The whole part names a palette, the fraction is how far it has melted into
+     * the next.
+     */
+    palettePhase() {
+        return (this.level - 1) + auroraDrift(this.time);
+    }
+
+    /** The palette the aurora is heading for (the nearest whole step of its phase). */
+    paletteShown() {
+        return wheelAt(Math.round(this.palettePhase()), AURORA_PALETTES.length, WHEEL).a;
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek
+     * and a replay agree); the level's step eases in by `k` (1 snaps), the short way round the
+     * wheel.
+     */
     applyPalette(k) {
-        const target = paletteRGB(AURORA_PALETTES[this.paletteIndex]);
-        const p = this._palette;
-        for (let c = 0; c < 3; c++) {
-            p.a[c] += (target.a[c] - p.a[c]) * k;
-            p.b[c] += (target.b[c] - p.b[c]) * k;
-            p.c[c] += (target.c[c] - p.c[c]) * k;
-            p.heart[c] += (target.heart[c] - p.heart[c]) * k;
-        }
+        this.paletteStep = easeStep(this.paletteStep, this.level - 1, k, AURORA_PALETTES.length);
+        auroraAt(this.paletteStep + auroraDrift(this.time), this._palette);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1097,7 +1119,9 @@ export class IceTempleWorld {
             heat: { ...this.heat },
             lift: this.lift,
             level: this.level,
-            palette: AURORA_PALETTES[this.paletteIndex].name,
+            // (the palette it is heading for, and where on the wheel it is showing now)
+            palette: AURORA_PALETTES[this.paletteShown()].name,
+            aurora: this.paletteStep + auroraDrift(this.time),
             counts: { ...this.counts },
             hush: this.time < this.hushUntil,
             flake: this.time < this.flakeUntil,

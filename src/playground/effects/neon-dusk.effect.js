@@ -18,6 +18,8 @@
  *   noPost=1                 raw scene (no bloom/grade)
  *   reflect=<scale> blur=<mip> msaa=<n> chroma=0 bloom=0 dust=<n>   A/B overrides
  *   pointerX / pointerY      hold a pointer-parallax offset (-1..1)
+ *   level=<n>                the game's level: each is one mood forward on top of the clock's
+ *                            (t=<s> shows the clock's mood; neon-dusk-moods.js MOOD_PERIOD)
  */
 import * as THREE from 'three/webgpu';
 import { RIG } from '../../themes/neon-dusk/neon-dusk-tsl.js';
@@ -90,6 +92,7 @@ export function create({
         scene, quality, random: rng || Math.random, overrides,
     }).build();
     world.bindCamera(camera);
+    world.setLevel(num(params, 'level', 1), { silent: true });
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 

@@ -9,6 +9,8 @@
  * points.
  */
 
+import { MOOD_HOLD, MOOD_SECONDS, moodDrift } from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 
 // ── The fluid's event table ─────────────────────────────────────────────────────
@@ -156,7 +158,8 @@ export function pieceColor(value, fallback = 0x8a5cff) {
 // ── Palettes ────────────────────────────────────────────────────────────────────
 
 /**
- * Nebula palettes, one per level (cycled), all scene-linear:
+ * Nebula palettes, turned by the clock (paletteDrift) with a level a step on top, cycled; all
+ * scene-linear:
  *   gasA / gasB / gasC   the three emission colours the resting nebula is woven from
  *   dust                 what the dark lanes scatter when a star lights them
  *   star / companion     the Tide Star and its companion
@@ -224,6 +227,24 @@ export const AETHER_PALETTES = Object.freeze([
 export const PALETTE_KEYS = Object.freeze([
     'gasA', 'gasB', 'gasC', 'dust', 'star', 'companion', 'deep', 'shock',
 ]);
+
+/**
+ * Seconds one nebula's colours last when only the clock turns them (every mode: Infinity and a
+ * match never level up), and the share of that time they rest, pure, before melting into the
+ * next: a whole wheel of palettes in about eight minutes.
+ */
+export const PALETTE_SECONDS = MOOD_SECONDS;
+export const PALETTE_HOLD = MOOD_HOLD;
+/** Seconds a level's step takes to turn the colours (smoothstep). */
+export const PALETTE_TURN = 2.6;
+
+/**
+ * How far the clock alone has turned the palettes by `time`: the whole part counts the palettes
+ * passed, the fraction is the melt into the next. A function of the time alone.
+ */
+export function paletteDrift(time) {
+    return moodDrift(time, PALETTE_SECONDS, PALETTE_HOLD);
+}
 
 /** The colour a four-line clear burns in. */
 export const STARFIRE = Object.freeze([1.0, 0.9, 0.72]);

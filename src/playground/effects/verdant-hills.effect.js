@@ -38,6 +38,11 @@ export function create({
         shadows: renderer.shadowMap.enabled,
     };
     const quality = params.get('quality') || 'High';
+    // ?level=<n> sets the level the day stands on: every level is one weather on (kite day, honey
+    // afternoon, long gold, showers coming, after the rain, and round again). The clock turns the
+    // weathers too, so ?t= past 38 s shows one melting into the next (verdant-hills-moods.js).
+    const rawLevel = Number(params.get('level') ?? 1);
+    const level = Number.isFinite(rawLevel) ? Math.max(1, Math.round(rawLevel)) : 1;
     // ?msaa=<n> overrides the scene pass's samples (the theme's own: 4 from High up, else 0 + FXAA).
     const samples = params.has('msaa')
         ? Math.max(0, Math.round(Number(params.get('msaa')) || 0)) : sceneSamples(quality);
@@ -100,10 +105,11 @@ export function create({
             });
         }
         // Tuning knobs: ?exposure= ?haze= ?cover= (share of the sky under cloud) ?clouds=x,y
-        // (where the cloud field stands, in tiles).
+        // (where the cloud field stands, in tiles). The haze and the cover are pinned over every
+        // weather; the exposure is the lens's resting one, which the weather scales.
         const { light } = world;
-        if (knob('haze') !== null) light.uHaze.value = knob('haze');
-        if (knob('cover') !== null) light.uCloudCover.value = knob('cover');
+        if (knob('haze') !== null) light.pinned.haze = knob('haze');
+        if (knob('cover') !== null) light.pinned.cover = knob('cover');
         // ?sky=sigma,veil,shade,soft,carve tunes the cumulus (blank entries keep their values).
         const sky = (params.get('sky') || '').split(',');
         const dials = [world.sky.uSigma, world.sky.uVeil, world.sky.uShade, light.uCloudSoft, light.uCloudCarve];
@@ -128,6 +134,7 @@ export function create({
         world = new VerdantHillsWorld({
             scene, camera, quality, rng, assets,
         }).build();
+        world.setLevel(level, { silent: true });
         timing.world = Math.round(performance.now() - built);
         aim();
         post = new VerdantHillsPost({
@@ -175,8 +182,11 @@ export function create({
             BAG.forEach((shapeKey) => reactions.onPieceLock({ piece: pieceOf(shapeKey) }));
         } else if (event === 'spin') reactions.onTSpin({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
-        else if (event === 'level') reactions.onLevelUp();
-        else if (event === 'over') reactions.onGameOver();
+        else if (event === 'level') {
+            // As the theme does: the flourish, and the day one weather on.
+            reactions.onLevelUp();
+            world?.setLevel(world.level + 1);
+        } else if (event === 'over') reactions.onGameOver();
     };
     const seek = (time) => {
         if (!Number.isFinite(time)) return;
@@ -188,6 +198,8 @@ export function create({
         const target = Math.max(0, time);
         reactions.reset();
         world.rewind();
+        // The replay begins on the level asked for; the clock turns the weather from there.
+        world.setLevel(level, { silent: true });
         // ?clouds=x,y places the cloud field (in tiles) before the replay lets it drift.
         const clouds = (params.get('clouds') || '').split(',').map(Number);
         if (clouds.length === 2 && clouds.every(Number.isFinite)) world.light.uCloudOffset.value.set(...clouds);

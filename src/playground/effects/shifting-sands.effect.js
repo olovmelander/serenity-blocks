@@ -12,7 +12,9 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   event=lock|combo|clear|tetris|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, level=<n>)
- *   dusk=0..1                hold the level-progression dusk
+ *   dusk=0..1                hold the dusk still (otherwise the clock walks it: golden hour,
+ *                            halfway, deep dusk and back, a stop every DUSK_WALK.seconds)
+ *   level=<n>                (no event) the run is at level n: its steps along the walk on top
  *   parts=dunes,sky,...      draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -97,9 +99,12 @@ export function create({
     }
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
-    if (params.has('dusk')) {
-        world.duskTarget = num(params, 'dusk');
-        world.dusk = world.duskTarget;
+    if (params.has('dusk')) world.duskHold = num(params, 'dusk');
+    // level=<n> (without an event): the run has reached level n, its steps along the dusk's walk
+    // already eased in, so ?t= shows the clock's walk with the level on top.
+    if (params.has('level') && !params.get('event')) {
+        world.onLevelUp(num(params, 'level', 1), { react: false });
+        world.duskSteps = world.duskTarget;
     }
 
     camera.near = REST_RIG.near;

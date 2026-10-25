@@ -112,7 +112,7 @@ export function createCaveAir({
             .mul(0.65).add(0.5);
         const ends = smoothstep(0, 0.12, uv().y).mul(smoothstep(1, 0.72, uv().y));
         const soft = smoothstep(0, 4, viewportLinearDepth.sub(linearDepth()).mul(cameraFar.sub(cameraNear)));
-        material.colorNode = vec3(0.56, 0.78, 1.0);
+        material.colorNode = vec3(0.56, 0.78, 1.0).mul(u.skyTint);
         material.opacityNode = core.mul(streak).mul(ends).mul(soft).mul(0.1)
             .mul(controls.shaft)
             .mul(u.energy.mul(0.3).add(1));

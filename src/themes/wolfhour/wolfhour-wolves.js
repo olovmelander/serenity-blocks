@@ -36,7 +36,7 @@ import {
 import {
     REPERTOIRES, TURN, YOUNG_MOVES, behaviourAt, busyAt, glide, glidePace,
 } from './wolfhour-wolf-behaviour.js';
-import { makeWolfhourNoiseTexture } from './wolfhour-sky.js';
+import { createWolfhourNightLight, makeWolfhourNoiseTexture } from './wolfhour-sky.js';
 
 /** Coat, moon rim and eye glint (linear, before the grade). */
 const COAT = vec3(0.0045, 0.006, 0.0105);
@@ -307,7 +307,7 @@ export function scoutLookout(pause) {
 
 /* ── The silhouette shader ─────────────────────────────────────────────────────────── */
 
-function createWolfMaterial(noise, seed) {
+function createWolfMaterial(noise, seed, uMoonTint) {
     const rows = Array.from({ length: CAPSULE_COUNT * 2 }, () => new THREE.Vector4(0, 0, 0, 0));
     const capsules = uniformArray(rows, 'vec4');
     const uMoon = uniform(new THREE.Vector2(MOON_SCREEN.x, MOON_SCREEN.y));
@@ -357,7 +357,8 @@ function createWolfMaterial(noise, seed) {
         const eyeB = p.sub(uEye2.xy);
         const glint = exp(dot(eyeA, eyeA).mul(-2.6)).mul(uEye.z)
             .add(exp(dot(eyeB, eyeB).mul(-2.6)).mul(uEye2.z));
-        const colour = COAT.mul(sheen.add(1)).add(RIM.mul(rim)).add(GLINT.mul(glint));
+        // (The rim is moonlight: the hour of the night tints it.)
+        const colour = COAT.mul(sheen.add(1)).add(RIM.mul(uMoonTint).mul(rim)).add(GLINT.mul(glint));
         return vec4(colour, cover.mul(uFade));
     })();
     material.colorNode = shape.rgb;
@@ -403,7 +404,9 @@ function createVapour(capacity) {
  * `answerer.group` and `scout.group` stand elsewhere. Each takes `settle(groundAt)`: the ridge's
  * height under any x of its own frame.
  */
-export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
+export function createWolfhourPack({
+    quality = 'High', noiseMap = null, nightLight = createWolfhourNightLight(),
+} = {}) {
     const ownsNoise = !noiseMap;
     const noise = noiseMap || makeWolfhourNoiseTexture();
     const lowTier = quality === 'Minimal' || quality === 'Low';
@@ -413,7 +416,7 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
     const materials = [];
 
     const makeWolf = (spec, index) => {
-        const { material, rows, uniforms } = createWolfMaterial(noise, 0.13 + index * 0.29);
+        const { material, rows, uniforms } = createWolfMaterial(noise, 0.13 + index * 0.29, nightLight.uMoon);
         materials.push(material);
         const mesh = new THREE.Mesh(quad, material);
         mesh.name = `Wolfhour wolf (${spec.name})`;

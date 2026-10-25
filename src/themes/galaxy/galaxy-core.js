@@ -7,6 +7,10 @@
  * nursery or a ripple keeps its coordinates while the stars of the old disc stream through.
  */
 
+import {
+    MOOD_HOLD, MOOD_SECONDS, meltPalettes, moodDrift,
+} from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -201,7 +205,8 @@ export function pieceColor(value, fallback = 0xd050ff) {
 }
 
 /**
- * Galaxy palettes, one per level (cycled), all scene-linear:
+ * Galaxy palettes, the galaxies it wears in turn (the clock turns them, a level is a step on
+ * top; see galaxyDrift), all scene-linear:
  *   core              the bulge's old light; `nucleus` is the point at its heart
  *   armInner / armOuter  the young light of the arms, near the bar and at the rim
  *   nursery           the star-forming knots along the arms (their own glow, at rest)
@@ -281,6 +286,34 @@ export const GALAXY_PALETTES = Object.freeze([
 export const PALETTE_KEYS = Object.freeze([
     'core', 'nucleus', 'armInner', 'armOuter', 'nursery', 'dust', 'jet', 'nebulaA', 'nebulaB', 'void',
 ]);
+
+/**
+ * Seconds the galaxy wears each palette when only the clock is turning it (a run with no
+ * level-up, Infinity, a match, the menus), and the share of that it rests on the pure palette
+ * before it melts into the next: the whole round takes a little over eight minutes. A level is a
+ * step on top.
+ */
+export const GALAXY_SECONDS = MOOD_SECONDS;
+export const GALAXY_HOLD = MOOD_HOLD;
+
+/**
+ * How far the clock alone has turned the galaxy through its palettes by `time`: the whole part
+ * counts the palettes passed, the fraction is the melt into the next (0 through the rest).
+ */
+export const galaxyDrift = (time) => moodDrift(time, GALAXY_SECONDS, GALAXY_HOLD);
+
+/**
+ * The palette at `phase` round the wheel, written into `out`: on a whole phase it is that palette
+ * exactly; between two, every colour melts the short way round the colour wheel (a straight mix
+ * of andromeda's violet arms and sombrero's amber ones is a grey).
+ */
+export const paletteAt = (phase, out = {}) => meltPalettes(GALAXY_PALETTES, PALETTE_KEYS, phase, out);
+
+/** The palette a phase round the wheel stands nearest. */
+export const paletteNear = (phase) => {
+    const count = GALAXY_PALETTES.length;
+    return GALAXY_PALETTES[((Math.round(phase) % count) + count) % count];
+};
 
 /** The colour a four-line clear fires in. */
 export const STARFIRE = Object.freeze([1.0, 0.9, 0.72]);

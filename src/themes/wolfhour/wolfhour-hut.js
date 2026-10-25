@@ -7,8 +7,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    exp, float, mix, smoothstep, texture, uniform, uv, vec2, vec3, vec4,
+    color, exp, float, mix, smoothstep, texture, uniform, uv, vec2, vec3, vec4,
 } from 'three/tsl';
+import { createWolfhourNightLight } from './wolfhour-sky.js';
 
 const WALL = new THREE.Color(0.0055, 0.007, 0.012);
 /** Moonlit snow lying on the roof (linear). */
@@ -60,7 +61,9 @@ export function hutFlicker(time) {
 }
 
 /** Creates the hut. `noiseMap` (the sky's noise tile) frays the smoke; without it there is none. */
-export function createWolfhourHut({ quality = 'High', noiseMap = null } = {}) {
+export function createWolfhourHut({
+    quality = 'High', noiseMap = null, nightLight = createWolfhourNightLight(),
+} = {}) {
     const group = new THREE.Group();
     group.name = 'Wolfhour hut';
     const uTime = uniform(0);
@@ -80,11 +83,10 @@ export function createWolfhourHut({ quality = 'High', noiseMap = null } = {}) {
         name: 'Wolfhour hut walls', color: WALL, side: THREE.DoubleSide,
     }));
 
-    const snow = mesh(
-        'Wolfhour hut roof snow',
-        new THREE.ShapeGeometry(roofSnowShape(), 1),
-        new THREE.MeshBasicNodeMaterial({ name: 'Wolfhour hut roof snow', color: ROOF_SNOW, side: THREE.DoubleSide }),
-    );
+    // The roof's snow is moonlit: the hour of the night tints it as it does the ranges' snow.
+    const roofSnow = new THREE.MeshBasicNodeMaterial({ name: 'Wolfhour hut roof snow', side: THREE.DoubleSide });
+    roofSnow.colorNode = color(ROOF_SNOW).mul(nightLight.uMoon);
+    const snow = mesh('Wolfhour hut roof snow', new THREE.ShapeGeometry(roofSnowShape(), 1), roofSnow);
     snow.position.z = 0.1;
 
     // The window: four panes of firelight split by a dark cross, brighter low where the fire is.
@@ -129,7 +131,7 @@ export function createWolfhourHut({ quality = 'High', noiseMap = null } = {}) {
         const width = rise.mul(0.17).add(0.035);
         const thread = exp(across.div(width).pow2().mul(-1.6));
         const fade = smoothstep(0, 0.06, rise).mul(float(1).sub(smoothstep(0.35, 1, rise)));
-        smokeMaterial.colorNode = mix(vec3(0.07, 0.085, 0.12), vec3(0.11, 0.13, 0.18), rise);
+        smokeMaterial.colorNode = mix(vec3(0.07, 0.085, 0.12), vec3(0.11, 0.13, 0.18), rise).mul(nightLight.uAir);
         smokeMaterial.opacityNode = thread.mul(fade).mul(fray.mul(0.7).add(0.45)).mul(0.5).clamp(0, 1);
         mesh('Wolfhour hut smoke', new THREE.PlaneGeometry(26, 46), smokeMaterial)
             .position.set(CHIMNEY.x, CHIMNEY.y + 23, -0.2);

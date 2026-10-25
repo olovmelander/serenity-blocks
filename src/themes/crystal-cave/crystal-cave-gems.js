@@ -319,7 +319,8 @@ export function createGemField({
         const rigid = origin.mul(size).toVar();
         const view = normalize(rigid.sub(vEye)).toVar();
         const event = light.eventLight.toVar();
-        const far = (direction, spread) => light.environment(rotate(direction, vQuat), float(spread), event);
+        const sky = light.skyLight.toVar();
+        const far = (direction, spread) => light.environment(rotate(direction, vQuat), float(spread), event, sky);
         // Where the stone sits in the world: its entry point less the canonical offset.
         const centre = vWorld.sub(rotate(vCanonical.mul(vScale), vQuat)).toVar();
 
@@ -361,7 +362,8 @@ export function createGemField({
         // The carpet of small points glows less than the stones of size: in the rock they read
         // as glinting mineral, not as lamps (a third of the light at the smallest).
         const small = float(1).sub(smoothstep(0.2, 0.75, girth)).toVar();
-        const glow = vLook.y.mul(level).mul(mix(float(1), float(0.32), small)).toVar();
+        // (The hour above the cave sets how strongly the stones glow: most when the shaft has gone.)
+        const glow = vLook.y.mul(level).mul(mix(float(1), float(0.32), small)).mul(u.stoneGlow).toVar();
         const age = max(u.time.sub(vPulse.x), 0).toVar();
         // A pulse may be scheduled ahead (a wave reaches each crystal in turn). What an earlier
         // pulse still rings is carried beside it (vLook.w, kept on the same start and decay), so

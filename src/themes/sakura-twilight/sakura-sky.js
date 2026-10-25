@@ -13,7 +13,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, color, cross, dot, exp, float, floor, fract, instancedBufferAttribute, length, max, mix,
+    cameraPosition, cross, dot, exp, float, floor, fract, instancedBufferAttribute, length, max, mix,
     normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step, uniform, uniformArray, uv, vec2,
     vec3,
 } from 'three/tsl';
@@ -191,11 +191,12 @@ export class SakuraSky {
         const flat = normalize(vec2(direction.x, direction.z).add(vec2(0.0001, 0)));
         const toward = dot(flat, light.uGlowDir).mul(0.5).add(0.5);
         const lowness = pow(saturate(direction.y).oneMinus(), 3);
-        const cloud = mix(color(0x241a3c), color(0x4a3a6e), streaks)
+        const cloud = mix(light.uCloudShade, light.uCloudLit, streaks)
             .add(light.uAfterglow.mul(pow(toward, 2).mul(lowness).mul(0.5)))
             .add(light.uMoonColor.mul(pow(moonward, 5).mul(0.2).add(pow(moonward, 40).mul(0.5))));
         const clear = cover.mul(0.72).oneMinus();
-        const starlight = this.stars(direction).mul(smoothstep(0.02, 0.3, direction.y)).mul(clear)
+        // (How many show is the hour's: few in the afterglow and at dawn, the most in deep night.)
+        const starlight = this.stars(direction).mul(light.uStars).mul(smoothstep(0.02, 0.3, direction.y)).mul(clear)
             .mul(pow(moonward, 12).mul(0.85).oneMinus())
             .mul(pow(toward, 3).mul(lowness).oneMinus());
         const starColour = mix(vec3(0.8, 0.88, 1.25), vec3(1.25, 1.0, 0.85), fract(direction.x.mul(91.7).add(direction.z.mul(47.3))));

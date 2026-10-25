@@ -18,6 +18,9 @@
  *
  * Everything is a function of the screen position (view units) plus a small parallax shift, so the
  * sky costs the same at any tilt of the loom and never swims against the card.
+ *
+ * Its colours are the mood's (astral-weave-moods.js), turned by the clock: the gas, the dark
+ * between the stars, the lamps, the heart's cool light, the filaments and the cloud sheen.
  */
 
 import * as THREE from 'three/webgpu';
@@ -81,7 +84,8 @@ const RIVER_ANGLE = 0.47;
 /**
  * The two hot stars embedded in the gas, in FRAME units (x: −1..1 across the frame, y: −1..1 up
  * it), one in each free corner the river crosses. Portrait frames move them into the strips above
- * and below the card. Brightness is their light in the gas; tint is the star's own colour.
+ * and below the card. Brightness is their light in the gas; tint is the star's own colour in the
+ * first mood (the mood sets it live: uLampA, uLampB).
  */
 export const LAMPS = Object.freeze([
     {
@@ -135,7 +139,7 @@ export function createSky(shared, quality = 'High') {
     const tier = SKY_TIERS[quality] || SKY_TIERS.High;
     const {
         uTime, uAspect, uViewport, uSkyShift, uParallax, uLoom, uLamps, uLampFlare, uHeat, uEnergy, uShockR, uShockG,
-        uCore, noiseTex,
+        uCore, noiseTex, uMood,
     } = shared;
 
     const geometry = new THREE.PlaneGeometry(2, 2);
@@ -148,8 +152,8 @@ export function createSky(shared, quality = 'High') {
     material.vertexNode = vec4(positionGeometry.xy, 0.9995, 1.0);
 
     const [l1, l2] = LAMPS;
-    const lampTint1 = vec3(...l1.tint);
-    const lampTint2 = vec3(...l2.tint);
+    const lampTint1 = uMood.lampA;
+    const lampTint2 = uMood.lampB;
 
     material.colorNode = Fn(() => {
         // View units: origin at the screen centre, y up, one unit = the view height.
@@ -186,15 +190,14 @@ export function createSky(shared, quality = 'High') {
         cloud.mulAssign(float(1.0).sub(lane.mul(0.85)));
 
         const hueT = broad.z.mul(0.62).add(a.mul(0.2)).add(detail.z.mul(0.2)).add(0.08);
-        const teal = vec3(0.012, 0.21, 0.27);
-        const indigo = vec3(0.07, 0.055, 0.33);
-        const rose = vec3(0.36, 0.05, 0.2);
-        const gas = mix(mix(teal, indigo, smoothstep(0.34, 0.56, hueT)), rose, smoothstep(0.56, 0.82, hueT)).toVar();
+        // The mood's gas: heart, body and edges (teal, indigo and rose in the first mood).
+        const { gasA, gasB, gasC } = uMood;
+        const gas = mix(mix(gasA, gasB, smoothstep(0.34, 0.56, hueT)), gasC, smoothstep(0.56, 0.82, hueT)).toVar();
         // The combo temperature warms the gas a little; it never turns the sky to fire.
         gas.assign(mix(gas, vec3(0.42, 0.17, 0.06), uHeat.mul(0.3).mul(smoothstep(0.3, 0.9, density))));
 
         // ── The lights in the gas: the hoop's heart and the two embedded stars ──
-        const glowTint = mix(vec3(0.3, 0.5, 0.95), vec3(1.0, 0.56, 0.2), uHeat).toVar();
+        const glowTint = mix(uMood.glow, vec3(1.0, 0.56, 0.2), uHeat).toVar();
         const toHeart = uLoom.xy.sub(view);
         const dHeart = max(length(toHeart), 1e-3);
         const lr = dHeart.div(max(uLoom.z, 1e-3)).toVar();
@@ -231,7 +234,7 @@ export function createSky(shared, quality = 'High') {
             shade = smoothstep(0.0, 0.08, relief.negate());
         }
 
-        const sky = vec3(0.0022, 0.0034, 0.0105).add(vec3(0.0035, 0.005, 0.017).mul(band)).toVar();
+        const sky = uMood.space.add(uMood.band.mul(band)).toVar();
         // The gas's own glow, darker on the faces turned from the light.
         sky.addAssign(gas.mul(cloud).mul(0.4).mul(float(1.0).sub(shade.mul(0.45))));
         // Lit gas: its own hue, raised and drawn a little toward the light's colour, brightest on
@@ -257,9 +260,9 @@ export function createSky(shared, quality = 'High') {
         const litGas = mix(warmed, towardLight, float(0.25).mul(float(1.0).sub(uHeat.mul(0.6))));
         sky.addAssign(litGas.mul(lightSum).mul(cloud).mul(rim.mul(2.0).add(0.2))
             .mul(float(1.0).sub(shade.mul(0.65))));
-        sky.addAssign(mix(vec3(0.3, 0.62, 0.8), vec3(0.8, 0.42, 0.62), smoothstep(0.4, 0.8, hueT))
+        sky.addAssign(mix(uMood.filamentA, uMood.filamentB, smoothstep(0.4, 0.8, hueT))
             .mul(filament).mul(lightSum.mul(0.5).add(0.12)));
-        sky.addAssign(vec3(0.55, 0.7, 0.9).mul(pow(cloud, float(3.0))).mul(0.08));
+        sky.addAssign(uMood.highlight.mul(pow(cloud, float(3.0))).mul(0.08));
 
         // ── Stars ──
         const veil = float(1.0).sub(cloud.mul(0.5)).sub(lane.mul(0.45));
@@ -268,7 +271,7 @@ export function createSky(shared, quality = 'High') {
         if (tier.starLayers > 1) {
             stars.addAssign(starLayer(sp.add(vec2(3.7, 1.9)), float(15.0), uPxView, uTime, float(1.0)).mul(1.6));
         }
-        sky.addAssign(stars.mul(max(veil, 0.0)).mul(uEnergy.mul(0.25).add(1.0)));
+        sky.addAssign(stars.mul(max(veil, 0.0)).mul(uEnergy.mul(0.25).add(1.0)).mul(uMood.stars));
 
         // ── The lamps themselves: hot stars in a haze of their own light ──
         const lampStar = (toL, d, tint, gain) => {

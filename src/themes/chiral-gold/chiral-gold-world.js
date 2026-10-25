@@ -34,7 +34,12 @@
  *   perfect clear (late, after the clear's last wave)
  *             the crown on the strike still burning: the towers brim over at the top, the ring's
  *             crown blazes, comets leave it. Never a second hush.
- *   level up  the next alloy is poured up the towers.
+ *   level up  comets climb the towers, both towers hold a flare, and the next alloy is poured up
+ *             them.
+ *
+ * The clock pours the next alloy as well, quietly, at every whole ALLOY_SECONDS in every mode, so
+ * a game that never levels up still sees the hall in rose, white, green and red gold; a level is
+ * one alloy on top.
  *
  * And it BUILDS (src/themes/shared/gameplay-surge.js): nothing restarts what is still lit. The
  * heat of play fills the towers with molten gold from the water up (calm: nothing; warm: a molten
@@ -50,6 +55,7 @@
 import * as THREE from 'three/webgpu';
 import {
     ALLOYS,
+    ALLOY_SECONDS,
     AURUM,
     COMET_FADE,
     COMET_SLOTS,
@@ -63,7 +69,8 @@ import {
     SURGE_FADE,
     SURGE_SLOTS,
     TAU,
-    alloyForLevel,
+    alloyIndex,
+    alloyTurns,
     approach,
     bandsForCombo,
     clamp01,
@@ -145,6 +152,8 @@ const FLARE_KNEE = 0.5;
 const FILL_TOP = 9.2;
 /** Seconds a pour takes to reach past the top of the towers. */
 const POUR_SPAN = (HELIX.top + 0.5 - HELIX.bottom) / 5.5;
+/** Scratch for the glow as shown. */
+const GLOW = [0, 0, 0];
 
 export class ChiralGoldWorld {
     /**
@@ -206,8 +215,11 @@ export class ChiralGoldWorld {
         this.tspinAt = -100;
         this.pirouette = { from: 0, to: 0 };
         this.pourAt = -100;
-        /** A level reached while the last pour still climbs: poured once it is done. */
-        this.queuedLevel = 0;
+        /**
+         * The alloy (an index into ALLOYS) the towers are cast in, or being poured in. When the
+         * clock or a level asks for another while a pour still climbs, it pours once that is done.
+         */
+        this.poured = 0;
         this.dip = 0;
         this.dolly = 0;
         // Everything an event lights ADDS to what is still lit (src/themes/shared/swell.js): a weak
@@ -237,7 +249,9 @@ export class ChiralGoldWorld {
         this.fill = 0;
         /** Leaf the crowns shed in a fever, as a running count. */
         this.shed = 0;
+        /** The alloy's glow, and the glow the last pour began from (it melts as the pour climbs). */
         this.glowBase = [...ALLOYS[0].glow];
+        this.glowFrom = [...ALLOYS[0].glow];
         this.counts = {
             locks: 0, clears: 0, strikes: 0, crowns: 0, spins: 0, b2b: 0,
         };
@@ -309,7 +323,7 @@ export class ChiralGoldWorld {
         this.tally = atlas ? add('tally', createTally(u, atlas)) : null;
 
         this.scene.add(this.root);
-        this.applyAlloy(alloyForLevel(1), true);
+        this.settleAlloy();
         this.applyLayout(true);
         this.pose(0);
         return this;
@@ -526,7 +540,7 @@ export class ChiralGoldWorld {
     eventColor(hex) {
         if (!hex) return GOLD;
         const [r, g, b] = linRGB(hex);
-        const { glow } = alloyForLevel(this.level);
+        const glow = this.glowBase;
         return [lerp(r, glow[0], 0.4) * 1.1, lerp(g, glow[1], 0.4) * 1.1, lerp(b, glow[2], 0.4) * 1.1];
     }
 
@@ -938,31 +952,58 @@ export class ChiralGoldWorld {
     }
 
     /**
-     * Pour the alloy for `level` up the towers. `silent` = it is simply there. A level reached
-     * while the last pour still climbs waits for it (the towers never jump to an alloy half way).
+     * A new level: comets, a held flare, and the next alloy poured up the towers on top of the
+     * clock's. `silent` = it is simply there. A level reached while the last pour still climbs
+     * waits for it (the towers never jump to an alloy half way).
      */
     levelUp(level, { silent = false } = {}) {
         const next = Math.max(1, Math.round(level || 1));
         if (next === this.level && !silent) return;
         this.level = next;
         if (silent) {
-            this.queuedLevel = 0;
-            this.applyAlloy(alloyForLevel(next), true);
+            this.cast(this.alloyTarget(this.time));
             return;
         }
         this.surge.levelUp(this.time);
-        const pouring = this.time - this.pourAt < POUR_SPAN;
-        if (pouring) this.queuedLevel = next;
-        else this.pour(next);
+        if (this.time - this.pourAt >= POUR_SPAN) this.pour(this.alloyTarget(this.time), this.time);
         this.comets(this.time, 0.8, 1);
         this.holdFlare(0, 0.4);
         this.holdFlare(1, 0.4);
     }
 
-    /** Start pouring `level`'s alloy up the towers now. */
-    pour(level) {
-        this.applyAlloy(alloyForLevel(level), false);
-        this.pourAt = this.time;
+    /** The alloy the clock and the level ask for at `time` (an index into ALLOYS). */
+    alloyTarget(time) {
+        return alloyIndex(this.level, time);
+    }
+
+    /**
+     * The hall in the alloy the clock and the level give at this instant. A clock's pour still
+     * climbing climbs on from where a run would have it, so a seek and a replay agree.
+     */
+    settleAlloy() {
+        const t = this.time;
+        const target = this.alloyTarget(t);
+        const due = alloyTurns(t) * ALLOY_SECONDS;
+        if (due > 0 && t - due < POUR_SPAN) {
+            this.cast((target + ALLOYS.length - 1) % ALLOYS.length);
+            this.pour(target, due);
+        } else {
+            this.cast(target);
+        }
+    }
+
+    /** Alloy `index`, simply there. */
+    cast(index) {
+        this.poured = index;
+        this.applyAlloy(ALLOYS[index], true);
+    }
+
+    /** Start pouring alloy `index` up the towers, from `at`. */
+    pour(index, at) {
+        this.poured = index;
+        this.applyAlloy(ALLOYS[index], false);
+        this.pourAt = at;
+        this.showGlow();
     }
 
     applyAlloy(alloy, instantly) {
@@ -974,22 +1015,32 @@ export class ChiralGoldWorld {
             u.prevB.value.copy(u.alloyB.value);
             u.prevC.value.copy(u.alloyC.value);
         }
+        // The glow melts from what it shows now (a pour cut short included) as the new one climbs.
+        this.glowNow(this.glowFrom);
         u.alloyA.value.set(...alloy.ribbons[0]);
         u.alloyB.value.set(...alloy.ribbons[1]);
         u.alloyC.value.set(...alloy.ribbons[2]);
         for (let i = 0; i < 3; i++) this.glowBase[i] = alloy.glow[i];
-        this.showGlow();
         if (instantly) {
             u.prevA.value.copy(u.alloyA.value);
             u.prevB.value.copy(u.alloyB.value);
             u.prevC.value.copy(u.alloyC.value);
+            for (let i = 0; i < 3; i++) this.glowFrom[i] = alloy.glow[i];
         }
+        this.showGlow();
+    }
+
+    /** The alloy's glow at this instant, melting from the last pour's start toward the alloy's. */
+    glowNow(out) {
+        const k = smooth(0, POUR_SPAN, this.time - this.pourAt);
+        for (let i = 0; i < 3; i++) out[i] = lerp(this.glowFrom[i], this.glowBase[i], k);
+        return out;
     }
 
     /** The alloy's glow as the hall wears it: a fever runs it molten, deeper and redder. */
     showGlow() {
         const f = this.play.fever;
-        const g = this.glowBase;
+        const g = this.glowNow(GLOW);
         this.u.glow.value.set(g[0], g[1] * (1 - 0.2 * f), g[2] * (1 - 0.55 * f));
     }
 
@@ -1013,7 +1064,6 @@ export class ChiralGoldWorld {
         this.tspinAt = -100;
         this.pirouette.from = 0;
         this.pirouette.to = 0;
-        this.queuedLevel = 0;
         this.dip = 0;
         this.dolly = 0;
         const swells = [
@@ -1035,8 +1085,9 @@ export class ChiralGoldWorld {
         this.sparks?.reset();
         this.blades?.reset();
         this.flares?.reset();
+        // Back to level one, in the alloy the clock has reached (it keeps turning between runs).
         this.level = 1;
-        this.applyAlloy(ALLOYS[0], true);
+        this.settleAlloy();
     }
 
     /** Jump to `time` with the hall at rest (captures replay events from here). */
@@ -1165,12 +1216,13 @@ export class ChiralGoldWorld {
 
         this.placeTally(dt);
 
-        // The level-up's pour climbs the towers; a level reached during it pours next.
-        const pourAge = t - this.pourAt;
-        if (this.queuedLevel > 0 && pourAge >= POUR_SPAN) {
-            const next = this.queuedLevel;
-            this.queuedLevel = 0;
-            this.pour(next);
+        // A pour climbs the towers (a level-up's, or the clock's at every whole period); whatever
+        // the clock and the level ask for next pours once it is done, never piling up. It is
+        // dated from when it was due, so a run at any frame rate pours at the same instants.
+        const alloy = this.alloyTarget(t);
+        if (alloy !== this.poured && t - this.pourAt >= POUR_SPAN) {
+            const due = Math.max(alloyTurns(t) * ALLOY_SECONDS, this.pourAt + POUR_SPAN);
+            this.pour(alloy, Math.min(t, due));
         }
         const pourNow = t - this.pourAt;
         u.pour.value = pourNow >= 0 && pourNow < 4 ? HELIX.bottom + pourNow * 5.5 : 100;
@@ -1311,6 +1363,7 @@ export class ChiralGoldWorld {
             quality: this.quality,
             time: this.time,
             level: this.level,
+            alloy: ALLOYS[this.poured].name,
             combo: this.combo,
             heat: this.u.heat.value,
             emit: this.u.emit.value,

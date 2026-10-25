@@ -127,4 +127,42 @@ describe('sunfall-director', () => {
         expect(snap.weather.id).toBe('shower');
         expect(snap.fringeDegrees).toBeCloseTo(30, 3);
     });
+
+    describe('the clock turns the light under reduced motion too', () => {
+        const run = (dir, seconds, dt = 0.25) => {
+            let snap = dir.getSnapshot();
+            for (let t = 0; t < seconds - 1e-9; t += dt) snap = dir.step(dt);
+            return snap;
+        };
+
+        it('walks the sun a station each stationSeconds with no level-up, as with full motion', () => {
+            const reduced = new SunfallDirector({ level: 1, reducedMotion: true });
+            const full = new SunfallDirector({ level: 1 });
+            const { stationFloat: start, id: startId } = reduced.getSnapshot().station;
+            const a = run(reduced, SUNFALL_TIMINGS.stationSeconds);
+            const b = run(full, SUNFALL_TIMINGS.stationSeconds);
+            expect(a.station.stationFloat - start).toBeCloseTo(1, 3);
+            expect(a.station.id).not.toBe(startId);
+            // Full motion eases a little behind its target; reduced motion follows it exactly.
+            expect(b.station.stationFloat).toBeCloseTo(a.station.stationFloat, 1);
+        });
+
+        it('lets the weather change on its own under reduced motion', () => {
+            const dir = new SunfallDirector({ level: 1, reducedMotion: true });
+            const first = dir.getSnapshot().weather.id;
+            const snap = run(dir, SUNFALL_TIMINGS.weatherHoldMax + SUNFALL_TIMINGS.weatherCrossfade * 2);
+            expect(snap.weather.id).not.toBe(first);
+        });
+
+        it('a level-up still walks the light one station on top of the clock (at once) and lights its pan', () => {
+            const dir = new SunfallDirector({ level: 1, reducedMotion: true });
+            const before = run(dir, 10).station.stationFloat;
+            dir.onLevelUp(2);
+            const snap = dir.step(0.1);
+            const clock = 0.1 / SUNFALL_TIMINGS.stationSeconds;
+            expect(snap.station.stationFloat - before).toBeCloseTo(SUNFALL_TIMINGS.levelAdvance + clock, 4);
+            expect(snap.levelPanPulse).toBeGreaterThan(0.9);
+            expect(snap.level).toBe(2);
+        });
+    });
 });

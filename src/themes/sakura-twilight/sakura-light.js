@@ -14,6 +14,7 @@ import {
     Fn, Loop, cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
+import { sakuraHourAt } from './sakura-hours.js';
 
 const TAU = Math.PI * 2;
 /** The steady evening breeze; hot play freshens it (update()). */
@@ -84,6 +85,10 @@ export class SakuraLight {
         this.uBounce = uniform(new THREE.Color(0.06, 0.035, 0.07));
         this.uHaze = uniform(0.0018);
         this.uMist = uniform(0.003);
+        // The high cirrus in shade and lit, and how many stars show (the hours turn them).
+        this.uCloudShade = uniform(new THREE.Color(0x241a3c));
+        this.uCloudLit = uniform(new THREE.Color(0x4a3a6e));
+        this.uStars = uniform(1);
         this.uWaterLevel = uniform(0);
         // Wind: a steady breeze, gusts that roll across the garden, and up to three travelling
         // fronts (SakuraReactions' slots): the first in uFront (x, strength, width), the other
@@ -98,6 +103,10 @@ export class SakuraLight {
         this.uSpirit = uniform(0);
         this.uLampGain = uniform(1);
         this.uLampColor = uniform(new THREE.Color(2.9, 1.28, 0.4));
+        // The hour of the night (sakura-hours.js): the colours above are the first hour's, and
+        // setHour() turns them. The lanterns' burn and the lens's iris follow it too.
+        this.hour = sakuraHourAt(0);
+        this.hourPhase = 0;
         this.lampCount = Math.min(tier.lamps, lamps.length);
         this.lampList = lamps.slice(0, this.lampCount);
         this.lampData = this.lampList.map((lamp) => new THREE.Vector4(lamp.x, lamp.y, lamp.z, lamp.power ?? 1));
@@ -338,6 +347,38 @@ export class SakuraLight {
     }
 
     /**
+     * The hour of the night, `phase` hours in (sakura-hours.js): the moonlight, the sky, the air,
+     * the cirrus, the stars and the lanterns' flame take its colours. The moon stays where it is,
+     * so the static shadow map stands.
+     */
+    setHour(phase) {
+        const p = Number.isFinite(phase) ? phase : this.hourPhase;
+        this.hourPhase = p;
+        const hour = sakuraHourAt(p, this.hour);
+        const paint = (node, rgb) => node.value.setRGB(rgb[0], rgb[1], rgb[2]);
+        paint(this.uMoonColor, hour.moon);
+        paint(this.uZenith, hour.zenith);
+        paint(this.uVault, hour.vault);
+        paint(this.uHorizon, hour.horizon);
+        paint(this.uAfterglow, hour.afterglow);
+        paint(this.uEmber, hour.ember);
+        paint(this.uSkyLight, hour.skyLight);
+        paint(this.uBounce, hour.bounce);
+        paint(this.uLampColor, hour.lampColor);
+        paint(this.uCloudShade, hour.cloudShade);
+        paint(this.uCloudLit, hour.cloudLit);
+        this.uHaze.value = hour.haze;
+        this.uMist.value = hour.mist;
+        this.uStars.value = hour.stars;
+        return hour;
+    }
+
+    /** How the hour sets the lens's iris (SakuraPost multiplies its exposure by it). */
+    get hourExposure() {
+        return this.hour.exposure;
+    }
+
+    /**
      * `frame` is the reactions' frame (with `front`, the strongest front in world x, and `fronts`,
      * every front crossing, from SakuraPetalDirector). The boughs bend under `sway` (the gust on
      * its spring) when it is given, else the gust itself.
@@ -358,8 +399,9 @@ export class SakuraLight {
         this.uWind.value = SAKURA_BREEZE + (0.07 * level + 0.06 * fever) * motion * (1 - hush);
         this.uGlow.value = clamp01(Math.max(clamp01(frame.glow), 0.3 * level + 0.35 * fever));
         this.uSpirit.value = clamp01(frame.spirit);
+        // (The hour sets how the lanterns burn at rest: brightest in the lantern night, low at dawn.)
         this.uLampGain.value = (1 + clamp01(frame.lanterns) * 0.7 * (1 - 0.35 * level)
-            + 0.3 * level + 0.35 * fever) * (1 - hush * 0.7);
+            + 0.3 * level + 0.35 * fever) * (1 - hush * 0.7) * this.hour.lampGain;
         const fronts = Array.isArray(frame.fronts) && frame.fronts.length ? frame.fronts : null;
         const at = (index) => {
             let front = index === 0 ? frame.front : null;

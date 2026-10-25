@@ -114,9 +114,11 @@ export class SakuraPost {
         const level = clamp01(frame.level);
         const fever = clamp01(frame.fever);
         const crown = clamp01(frame.crown) * flash;
-        // The iris closes as play heats, so the garden's added light stays colour.
-        this.uExposure.value = 1.0 + glow * 0.06 * (1 - 0.4 * level) - 0.09 * Math.max(0, level - 0.15)
-            - 0.03 * fever;
+        // The iris closes as play heats, so the garden's added light stays colour; the hour of the
+        // night (sakura-hours.js) sets where it rests.
+        const hour = Number.isFinite(this.light?.hourExposure) ? this.light.hourExposure : 1;
+        this.uExposure.value = (1.0 + glow * 0.06 * (1 - 0.4 * level) - 0.09 * Math.max(0, level - 0.15)
+            - 0.03 * fever) * hour;
         // The beams are a veil over the whole garden, the dark grass and water included: each
         // event's flare is held lower as play heats (the fever brightens the moon's own halo in
         // the sky instead of pinning the whole frame pale), and the perfect clear's crown opens them.

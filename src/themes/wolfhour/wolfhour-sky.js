@@ -59,6 +59,42 @@ export function makeWolfhourNoiseTexture() {
 }
 
 /**
+ * The night's light (wolfhour-hours.js): the uniforms an hour of the night sets, shared by every
+ * part of the valley that wears it (the sky, the ranges, the mist, the spruce, the wolves, the
+ * spindrift, the hut's smoke). Every tint is 1 and the sky's base is its authored colour until
+ * setHour() turns them: the night as it always was.
+ */
+export function createWolfhourNightLight() {
+    const white = () => uniform(new THREE.Vector3(1, 1, 1));
+    const light = {
+        uMoon: white(),
+        uShade: white(),
+        uAir: white(),
+        uSkyLow: uniform(new THREE.Vector3(0.0062, 0.0095, 0.021)),
+        uSkyHigh: uniform(new THREE.Vector3(0.0006, 0.0009, 0.0026)),
+        uGlow: white(),
+        uCloud: white(),
+        uDisc: white(),
+        uStars: uniform(1),
+        /** An hour (wolfhour-hours.js wolfhourHourAt) into the uniforms. */
+        setHour(hour) {
+            if (!hour) return;
+            const paint = (node, rgb) => { if (rgb) node.value.set(rgb[0], rgb[1], rgb[2]); };
+            paint(light.uMoon, hour.moon);
+            paint(light.uShade, hour.shade);
+            paint(light.uAir, hour.air);
+            paint(light.uSkyLow, hour.skyLow);
+            paint(light.uSkyHigh, hour.skyHigh);
+            paint(light.uGlow, hour.glow);
+            paint(light.uCloud, hour.cloud);
+            paint(light.uDisc, hour.disc);
+            if (Number.isFinite(hour.stars)) light.uStars.value = hour.stars;
+        },
+    };
+    return light;
+}
+
+/**
  * The halo plane reaches HALO_SPAN times the corona's old reach, so the lunar halo ring fits on it;
  * the corona is computed in the same units as before (identical at rest).
  */
@@ -72,7 +108,7 @@ const HALO_RING = Object.freeze({ radius: 0.92, width: 0.06 });
  * round the moon in the ice of high cirrus with two brighter moon dogs on it either side: hot
  * play brings it out faintly, a fever or a perfect clear in full.
  */
-function createCorona(maxPulses, noiseMap, uWake, uHalo) {
+function createCorona(maxPulses, noiseMap, uWake, uHalo, uGlow) {
     const uTime = uniform(0);
     const pulseValues = Array.from({ length: maxPulses }, () => new THREE.Vector4());
     const pulseData = uniformArray(pulseValues, 'vec4');
@@ -103,7 +139,8 @@ function createCorona(maxPulses, noiseMap, uWake, uHalo) {
         rings = rings.add(softArc.mul(envelope).mul(brokenArc).div(age.mul(2.2).add(1)));
         tint = tint.add(envelope.mul(pulse.w));
     }
-    const haloColor = mix(vec3(0.46, 0.57, 0.80), vec3(0.78, 0.85, 0.98), clamp(tint, 0, 1));
+    // (The hour of the night tints the corona with the moon's light on the sky.)
+    const haloColor = mix(vec3(0.46, 0.57, 0.80), vec3(0.78, 0.85, 0.98), clamp(tint, 0, 1)).mul(uGlow);
     const alpha = clamp(corona.add(rings.mul(0.14)), 0, uWake.mul(0.14).add(0.18))
         .mul(float(1).sub(smoothstep(0.83, 1, radius)));
     // The halo ring: a sharp inner edge, a soft outer one, broken a little by the ice it shines
@@ -130,7 +167,9 @@ function createCorona(maxPulses, noiseMap, uWake, uHalo) {
     };
 }
 
-export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) {
+export function createWolfhourSky({
+    scene, quality = 'High', aspect = 16 / 9, nightLight = createWolfhourNightLight(),
+}) {
     const group = new THREE.Group();
     group.name = 'Wolfhour celestial sky';
     scene.add(group);
@@ -151,8 +190,8 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     // must not make the cloud/noise pattern slide over the surface.
     const p = positionGeometry.xy;
     const horizon = smoothstep(-380, 580, p.y);
-    // Night blue: a deep indigo zenith over a slate-blue horizon glow.
-    const skyBase = mix(vec3(0.0062, 0.0095, 0.021), vec3(0.0006, 0.0009, 0.0026), horizon);
+    // Night blue: a deep indigo zenith over a slate-blue horizon glow (the hour of the night's).
+    const skyBase = mix(nightLight.uSkyLow, nightLight.uSkyHigh, horizon);
     const n = texture(noiseMap, p.mul(vec2(0.00065, 0.0011)).add(vec2(uTime.mul(0.00045), 0))).r;
     const fine = texture(noiseMap, p.mul(vec2(0.002, 0.0035))).r;
     const bandDistance = p.y.sub(p.x.mul(0.39)).sub(320).add(n.sub(0.5).mul(170));
@@ -166,8 +205,8 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
         .mul(exp(p.y.sub(45).div(230).pow2().negate()));
     const skyColor = skyBase
         .add(vec3(0.0028, 0.0034, 0.0052).mul(band).mul(dust).mul(uOpen.mul(1.3).add(1)))
-        .add(vec3(0.0052, 0.0068, 0.0115).mul(moonScatter).mul(uWake.mul(0.9).add(1)))
-        .add(vec3(0.0045, 0.0062, 0.0105).mul(moonGlow).mul(uWake.mul(1.5).add(1)))
+        .add(vec3(0.0052, 0.0068, 0.0115).mul(nightLight.uGlow).mul(moonScatter).mul(uWake.mul(0.9).add(1)))
+        .add(vec3(0.0045, 0.0062, 0.0105).mul(nightLight.uGlow).mul(moonGlow).mul(uWake.mul(1.5).add(1)))
         .add(vec3(0.008, 0.0092, 0.0125).mul(cirrus).mul(float(0.1).add(uPulse.mul(0.04))));
     const skyMaterial = new THREE.MeshBasicNodeMaterial({ depthWrite: false });
     skyMaterial.colorNode = skyColor;
@@ -209,10 +248,11 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const starShape = starCore.add(rayX.add(rayY).mul(a.w).mul(0.085));
     const starTint = mix(vec3(0.74, 0.82, 1.0), vec3(1, 0.94, 0.86), smoothstep(0.85, 1, a.x.div(6.283)));
     starsMaterial.colorNode = starTint.mul(a.z);
-    starsMaterial.opacityNode = clamp(starShape.mul(twinkle).mul(moonSuppression)
+    // (How many show is the hour's: the most at deep midnight, few as the day comes.)
+    starsMaterial.opacityNode = clamp(starShape.mul(twinkle).mul(moonSuppression).mul(nightLight.uStars)
         .mul(float(0.94).add(uPulse.mul(0.06)).add(uStarGain.mul(0.4))), 0, 1);
     starsMaterial.emissiveNode = starTint.mul(starShape).mul(a.z).mul(twinkle).mul(moonSuppression)
-        .mul(uStarGain.mul(0.1).add(0.14));
+        .mul(nightLight.uStars.mul(uStarGain.mul(0.1).add(0.14)));
     const stars = new THREE.InstancedMesh(geometry, starsMaterial, count);
     stars.name = 'Wolfhour stars';
     stars.frustumCulled = false;
@@ -265,7 +305,7 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const lunarLight = clamp(lightCos.div(lightCos.add(viewCos).add(0.06)).mul(1.8), 0, 1)
         .mul(smoothstep(-0.035, 0.085, incidence));
     const lunarColor = moonSample.mul(mix(vec3(0.034, 0.044, 0.068), vec3(0.93, 0.955, 1.0), lunarLight))
-        .mul(moonIllumination.add(moonPulse.mul(0.085)));
+        .mul(moonIllumination.add(moonPulse.mul(0.085))).mul(nightLight.uDisc);
     const moonMaterial = new THREE.MeshBasicNodeMaterial();
     moonMaterial.colorNode = lunarColor;
     moonMaterial.emissiveNode = lunarColor.mul(0.06);
@@ -277,7 +317,7 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     group.add(moon);
     const haloData = createCorona({
         Minimal: 2, Low: 2, Medium: 3, High: 4, Ultra: 6, Extreme: 6,
-    }[quality] || 4, noiseMap, uWake, uHalo);
+    }[quality] || 4, noiseMap, uWake, uHalo, nightLight.uGlow);
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(670 * HALO_SPAN, 670 * HALO_SPAN), haloData.material);
     halo.name = 'Wolfhour lunar atmosphere';
     halo.position.set(-500, 225, -2740);
@@ -307,7 +347,7 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
         const cloudMaterial = new THREE.MeshBasicNodeMaterial({
             name: 'Wolfhour moonlit clouds', transparent: true, depthWrite: false,
         });
-        cloudMaterial.colorNode = lit.add(silver);
+        cloudMaterial.colorNode = lit.add(silver).mul(nightLight.uCloud);
         // The sky opens as play runs hot: the cloud thins away.
         cloudMaterial.opacityNode = cover.mul(float(0.8).sub(uOpen.mul(0.42)));
         clouds = new THREE.Mesh(new THREE.PlaneGeometry(6200, 1300), cloudMaterial);
@@ -362,6 +402,12 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
         noiseMap,
         moonNodeData: { material: moonMaterial, uniforms: { uPulse: moonPulse } },
         moonHaloNodeData: haloData,
+        /** The night's light: every part of the valley built with it wears the sky's hour. */
+        nightLight,
+        /** Wear an hour of the night (wolfhour-hours.js wolfhourHourAt). */
+        setHour(hour) {
+            nightLight.setHour(hour);
+        },
         update(time, state = {}) {
             uTime.value = time;
             uPulse.value = Math.min(1.5, state.nebulaDefinition || 0);

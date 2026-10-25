@@ -308,10 +308,11 @@ export function createCloudSea(u, opts = {}) {
         // The sun is low: a flat crown gets a grazing 0.17; faces toward it blaze, faces away
         // fall into the violet shade.
         const diff = clamp(ndl.mul(1.15).add(0.16), 0.0, 1.0).toVar();
-        const sunCol = rgb(0xffc48c, 1.85);
+        // The key light and the sky's fill are the mood's (gold and lavender in today's).
+        const sunCol = u.mood.sunLight;
         // Sky light: lavender-blue from the zenith on the crowns, rose from the horizon on the
         // flanks; creases see less of the sky.
-        const sky = mix(rgb(0xa37fb0, 0.3), rgb(0x8186d0, 0.44), n.y.mul(0.5).add(0.5));
+        const sky = mix(u.mood.skyLow, u.mood.skyHigh, n.y.mul(0.5).add(0.5));
         const creaseDark = mix(float(0.5), float(0.85), smoothstep(150.0, 700.0, dist));
         const ao = mix(creaseDark, float(1.0), smoothstep(0.0, 0.55, f.hd.x))
             .mul(mix(float(0.85), float(1.0), smoothstep(0.0, 0.5, cauli)));
@@ -348,12 +349,12 @@ export function createCloudSea(u, opts = {}) {
             .mul(mix(float(0.6).sub(ring.heat.mul(0.35)), float(1.0), lit))));
 
         // ── Mist pooled in the creases: violet, warm toward the sun ──
-        const mist = mix(rgb(0xb8a6d8, 0.62), rgb(0xffd2b0, 0.95), clamp(lobe.mul(2.0), 0.0, 1.0));
+        const mist = mix(u.mood.mistA, u.mood.mistT, clamp(lobe.mul(2.0), 0.0, 1.0));
         col.assign(mix(col, mist, float(1.0).sub(smoothstep(0.0, 0.3, f.hd.x)).mul(0.4)));
         // Event glow: the whole sea warms a little on combos.
         col.mulAssign(float(1.0).add(u.seaGlow.mul(0.18)));
 
-        return nvApplyHaze(col, rel, float(SEA_HAZE), u.sunPulse);
+        return nvApplyHaze(u, col, rel, float(SEA_HAZE), u.sunPulse);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);

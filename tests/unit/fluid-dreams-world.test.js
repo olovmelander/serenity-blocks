@@ -6,8 +6,9 @@ import {
     FluidDreamsWorld, REST_RIG, SITE, fovForAspect, horizonY, restBounds, restProject, restRay,
 } from '../../src/themes/fluid-dreams/fluid-dreams-world.js';
 import {
-    DEG, DREAMFIRE, FLIGHT_TIME, FLUID_PALETTES, GROUP_COUNT, GROUP_HERO, GROUP_KIN, GROUP_LEFT, GROUP_RIGHT,
-    GROUP_START, HERO, HUSH_HOLD, JET_TIME, PALETTE_KEYS, PLUNGE, pieceColor, powerForCombo, sceneAnchors,
+    DEG, DREAMFIRE, DREAM_HOLD, DREAM_SECONDS, FLIGHT_TIME, FLUID_PALETTES, GROUP_COUNT, GROUP_HERO, GROUP_KIN,
+    GROUP_LEFT, GROUP_RIGHT, GROUP_START, HERO, HUSH_HOLD, JET_TIME, PALETTE_KEYS, PLUNGE, dreamDrift, paletteAt,
+    pieceColor, powerForCombo, sceneAnchors,
 } from '../../src/themes/fluid-dreams/fluid-dreams-core.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/fluid-dreams/fluid-dreams-quality.js';
 import {
@@ -1383,8 +1384,10 @@ describe('fluid dreams world: clears, combos and levels', () => {
         expect(moved).toBeGreaterThan(0);
         expect(moved).toBeLessThan(whole * 0.25);
         run(world, camera, 30, 600);
+        // (on top of the clock's turn by now)
+        const second = paletteAt(1 + dreamDrift(world.time));
         for (const key of PALETTE_KEYS) {
-            expect(world.u[key].value.distanceTo(new THREE.Vector3(...FLUID_PALETTES[1][key])), key).toBeLessThan(1e-3);
+            expect(world.u[key].value.distanceTo(new THREE.Vector3(...second[key])), key).toBeLessThan(1e-3);
         }
         // Past the last palette it starts again.
         for (let level = 1; level <= FLUID_PALETTES.length * 2 + 1; level++) {
@@ -1398,14 +1401,65 @@ describe('fluid dreams world: clears, combos and levels', () => {
         expect(clears).not.toHaveBeenCalled();
         world.update({ time: world.u.time.value, delta: 0 }, camera);
         expect(world.getState()).toMatchObject({ level: 3, palette: FLUID_PALETTES[2].name });
+        const third = paletteAt(2 + dreamDrift(world.time));
         for (const key of PALETTE_KEYS) {
-            expect(world.u[key].value.toArray(), key).toEqual(FLUID_PALETTES[2][key]);
+            expect(world.u[key].value.distanceTo(new THREE.Vector3(...third[key])), key).toBeLessThan(1e-9);
         }
         // Nonsense is level one.
         world.levelUp(NaN);
         expect(world.getState().level).toBe(1);
         world.levelUp(-3);
         expect(world.getState().level).toBe(1);
+        world.dispose();
+    });
+
+    it('turns through its palettes by the clock alone, a level a step on top', () => {
+        const { camera, world } = makeWorld('Low');
+        const count = FLUID_PALETTES.length;
+        const expectPalette = (index, label) => {
+            for (const key of PALETTE_KEYS) {
+                const want = new THREE.Vector3(...FLUID_PALETTES[index][key]);
+                expect(world.u[key].value.distanceTo(want), `${label} ${key}`).toBeLessThan(1e-9);
+            }
+        };
+        const at = (time) => {
+            world.seek(time);
+            world.updateCamera(camera, { time, delta: 0 });
+            world.update({ time, delta: 0 }, camera);
+        };
+        // No level-up at all (Infinity, a match, the menus): each palette rests pure for its hold,
+        // then melts into the next; the round comes back to the first.
+        at(DREAM_SECONDS * DREAM_HOLD * 0.5);
+        expectPalette(0, 'rest');
+        for (let k = 1; k <= count; k++) {
+            at(DREAM_SECONDS * k);
+            expectPalette(k % count, `palette ${k}`);
+            expect(world.getState()).toMatchObject({ level: 1, palette: FLUID_PALETTES[k % count].name });
+        }
+        // Mid-melt it is neither.
+        at(DREAM_SECONDS * (DREAM_HOLD + (1 - DREAM_HOLD) / 2));
+        const horizon = (index) => new THREE.Vector3(...FLUID_PALETTES[index].horizon);
+        expect(world.u.horizon.value.distanceTo(horizon(0))).toBeGreaterThan(0.05);
+        expect(world.u.horizon.value.distanceTo(horizon(1))).toBeGreaterThan(0.05);
+
+        // A level steps on a palette, on top of the clock's, eased; the sea still marks it.
+        at(DREAM_SECONDS);
+        const marks = vi.spyOn(world.choreo, 'levelUp');
+        world.levelUp(2);
+        expect(marks).toHaveBeenCalledTimes(1);
+        expect(world.getState().palette).toBe(FLUID_PALETTES[2].name);
+        run(world, camera, 1 / 60, 1);
+        expect(world.getState().waves).toBe(1);
+        expect(world.getPostState().flash).toBeGreaterThan(0);
+        expect(world.paletteStep).toBeGreaterThan(0);
+        expect(world.paletteStep).toBeLessThan(0.25);
+        run(world, camera, 12, 240);
+        expect(world.time).toBeLessThan(DREAM_SECONDS * (1 + DREAM_HOLD));
+        expectPalette(2, 'level 2 on palette 1');
+        // A new run drops the level's share and keeps the clock's.
+        world.resetSession();
+        run(world, camera, 12, 240);
+        expectPalette(1, 'new run');
         world.dispose();
     });
 });
@@ -1519,10 +1573,12 @@ describe('fluid dreams world: time', () => {
         expect(world.getState()).toMatchObject({
             combo: 0, charge: 0, stains: 0, waves: 0, rings: 0, layoutLive: true,
         });
-        // A capture starts from the first level's colours, at once: whatever level was played before.
+        // A capture starts from the clock's colours, at once: whatever level was played before.
         expect(world.getState()).toMatchObject({ level: 1, palette: FLUID_PALETTES[0].name });
+        expect(world.paletteStep).toBe(0);
+        const clock = paletteAt(dreamDrift(40));
         for (const key of PALETTE_KEYS) {
-            expect(world.u[key].value.toArray(), key).toEqual(FLUID_PALETTES[0][key]);
+            expect(world.u[key].value.toArray(), key).toEqual(clock[key]);
         }
         expect(world.u.prism.value.y).toBe(0);
         expect(thrown(world.parts.spray)).toBe(0);
@@ -1591,10 +1647,11 @@ describe('fluid dreams world: time', () => {
         expect(locks[1].to[0]).toBeGreaterThan(world.choreo.scene.foot[0]);
         run(world, camera, 1 / 60, 1);
         expect(world.getState().balls[GROUP_LEFT]).toBe(1);
-        // The first level's colours, in the end.
+        // The first level's colours, in the end (as far as the clock has turned them by now).
         run(world, camera, 30, 600);
+        const clock = paletteAt(dreamDrift(world.time));
         for (const key of PALETTE_KEYS) {
-            expect(world.u[key].value.distanceTo(new THREE.Vector3(...FLUID_PALETTES[0][key])), key).toBeLessThan(1e-3);
+            expect(world.u[key].value.distanceTo(new THREE.Vector3(...clock[key])), key).toBeLessThan(1e-3);
         }
         expect(world.getState()).toMatchObject({ level: 1, palette: FLUID_PALETTES[0].name });
         world.dispose();
@@ -1798,16 +1855,20 @@ describe('fluid dreams world: play builds', () => {
         expect(saturation(u.horizon.value)).toBeGreaterThan(saturation(restHorizon) * 1.1);
         expect(world.getPostState().exposure).toBeLessThan(first.exposure);
         expect(world.getPostState().exposure).toBeGreaterThan(0.6);
-        // the darks keep their dark
+        // the darks keep their dark (the clock's own)
+        const clock = paletteAt(dreamDrift(world.time));
         for (const key of ['zenith', 'mid', 'deep']) {
-            expect(u[key].value.toArray(), key).toEqual(FLUID_PALETTES[0][key]);
+            expect(u[key].value.toArray(), key).toEqual(clock[key]);
         }
         // The hands rest.
         world.onCombo(0);
         run(world, camera, 25, 500);
         expect(u.heat.value.x).toBeLessThan(0.01);
         expect(u.heat.value.y).toBe(0);
-        expect(u.horizon.value.distanceTo(restHorizon)).toBeLessThan(1e-6);
+        // (the resting sea line the clock has turned to by now)
+        const restNow = new THREE.Vector3(...paletteAt(dreamDrift(world.time)).horizon);
+        expect(restHorizon.distanceTo(new THREE.Vector3(...FLUID_PALETTES[0].horizon))).toBeLessThan(1e-6);
+        expect(u.horizon.value.distanceTo(restNow)).toBeLessThan(1e-6);
         expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 3);
         expect(world.getPostState().bloomBoost).toBeLessThan(0.01);
         world.dispose();

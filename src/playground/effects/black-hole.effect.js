@@ -33,6 +33,8 @@ const STREAK_SPACING = 0.9;
  *   lines=1  combo=5  column=4.5  row=20  drop=0  color=%23f8b24f
  *   board=1                 draw a stand-in board and launch fed pieces from it
  *   reduce=1                reduced-motion behaviour
+ *   level=2                 the game's level: each is one mood forward on top of the clock's
+ *                           (t= shows the clock's mood; black-hole-moods.js MOOD_PERIOD)
  *   icon=1                  the theme-icon framing (iconFov, iconRoll, iconAz, iconEl override it)
  *   disk= ring= heat=       scale what the director set; sky= stars= doppler= corona= nebula= bloom=
  *                           exposure= set the term outright — for bisecting a look one term at a time
@@ -46,6 +48,7 @@ export function create({
         renderer, scene, camera, preset: world.preset, tone: params.get('tone') || undefined,
     });
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('level')) world.setLevel(Number(params.get('level')), { silent: true });
     const number = (key, fallback) => {
         const value = Number(params.get(key) ?? fallback);
         return Number.isFinite(value) ? value : fallback;

@@ -9,6 +9,10 @@
  * into itself.
  */
 
+import {
+    MOOD_HOLD, MOOD_SECONDS, meltPalettes, moodDrift,
+} from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -292,7 +296,9 @@ export function pulseArrival(s) {
 // ── Light ───────────────────────────────────────────────────────────────────────
 
 /**
- * Sanctuary palettes, one per level (cycled), all scene-linear:
+ * Sanctuary palettes, the hours the sanctuary passes through in turn (the clock turns them, a
+ * level is a step on top; see hourDrift). Colour only: the sun stands where it stands, so its
+ * shadows are drawn once. All scene-linear:
  *   sun               the sun's own light (colour × strength)
  *   zenith / horizon  the sky's ends; `glow` is the scatter round the sun, `rose` the band that
  *                     lies opposite it
@@ -384,6 +390,33 @@ export const HALCYON_PALETTES = Object.freeze([
 export const PALETTE_KEYS = Object.freeze([
     'sun', 'zenith', 'horizon', 'glow', 'rose', 'cloud', 'cloudShade', 'shallow', 'deep', 'crystal', 'ley', 'stone',
 ]);
+
+/**
+ * Seconds the sanctuary stands in each hour when only the clock is turning it (a run with no
+ * level-up, Infinity, a match, the menus), and the share of that it rests in the pure hour before
+ * it melts into the next: the whole round of hours takes a little over eight minutes. A level is a
+ * step on top.
+ */
+export const HOUR_SECONDS = MOOD_SECONDS;
+export const HOUR_HOLD = MOOD_HOLD;
+
+/**
+ * How far the clock alone has turned the sanctuary through its hours by `time`: the whole part
+ * counts the hours passed, the fraction is the melt into the next (0 through the rest).
+ */
+export const hourDrift = (time) => moodDrift(time, HOUR_SECONDS, HOUR_HOLD);
+
+/**
+ * The palette at `phase` round the hours, written into `out`: on a whole phase it is that hour's
+ * palette exactly; between two, every colour melts the short way round the colour wheel.
+ */
+export const paletteAt = (phase, out = {}) => meltPalettes(HALCYON_PALETTES, PALETTE_KEYS, phase, out);
+
+/** The hour a phase round the wheel stands nearest. */
+export const hourNear = (phase) => {
+    const count = HALCYON_PALETTES.length;
+    return HALCYON_PALETTES[((Math.round(phase) % count) + count) % count];
+};
 
 /** The colour a four-line clear fires in. */
 export const SUNFIRE = Object.freeze([1.0, 0.84, 0.52]);

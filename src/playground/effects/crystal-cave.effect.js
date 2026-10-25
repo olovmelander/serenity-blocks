@@ -44,6 +44,14 @@ export function create({
     let pendingSeek = null;
     let sought = null;
     let randomState = 1;
+    // ?level=<n> stands the day above <n - 1> hours on from the clock's (every level is an hour on);
+    // ?event=level steps it one more, eased, as a level-up in play does.
+    const startLevel = Math.max(1, Math.round(Number(params.get('level')) || 1));
+    const standLevel = () => {
+        if (!world) return;
+        world.hourStep = 0;
+        world.setLevel(startLevel, { silent: true });
+    };
     const reactions = new CrystalCaveReactions({
         rng: () => {
             randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0;
@@ -79,6 +87,7 @@ export function create({
         world = new CrystalCaveWorld({
             scene, camera, assets, quality,
         });
+        standLevel();
         post = new CrystalCavePost({
             renderer,
             scene,
@@ -126,7 +135,10 @@ export function create({
         }
         if (event === 'spin') reactions.onTSpin(detail);
         if (event === 'perfect') reactions.onPerfectClear();
-        if (event === 'level') reactions.onLevelUp();
+        if (event === 'level') {
+            reactions.onLevelUp();
+            world.setLevel(world.level + 1);
+        }
         if (event === 'over') reactions.onGameOver();
     };
     const step = (time, dt) => {
@@ -146,6 +158,7 @@ export function create({
         randomState = 1;
         reactions.reset();
         world.reset();
+        standLevel();
         const ageValue = Number(params.get('eventAge') ?? 0.4);
         const eventTime = Math.max(0, target - (Number.isFinite(ageValue) ? Math.max(0, ageValue) : 0.4));
         // Play a short game before the event so the shore has something growing on it.

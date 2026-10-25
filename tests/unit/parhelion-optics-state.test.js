@@ -6,6 +6,8 @@ import {
     ARC_MODE,
     ARC_SLOT,
     BURST_MODE,
+    LOWER_SUN_SPAN,
+    LOWER_SUN_WALK,
     PARHELION_CLOCK_RATES,
     PARHELION_LUMEN_RETURN,
     PARHELION_OPTICS_CAPS,
@@ -16,6 +18,7 @@ import {
     envelopeValue,
     hushIntegral,
     hushWeight,
+    lowerSunSteps,
     resolveOpticsTierCaps,
     screenYToPillarV,
 } from '../../src/themes/parhelion/sim/parhelion-optics-state.js';
@@ -29,6 +32,8 @@ import {
     rowToPhi,
     stationPhi,
     writePillarPlaces,
+    LOWER_SUN_LIGHT,
+    lowSunOf,
 } from '../../src/playground/effects/parhelion-composition.js';
 
 /**
@@ -751,18 +756,92 @@ describe('Parhelion resonance, level and ambient life (§7.4, §8)', () => {
         expect(lowOut.prism).toBe(0);
     });
 
-    it('eases the Lower Sun warmth over 3 s, caps it, and eases back on resetSession', () => {
+    it('eases the Lower Sun warmth over 3 s, folds it back past the lowest sun, and eases back on resetSession', () => {
         const state = createState();
         const warmthAt = (t) => state.update(t, FRAME).warmth / (1 + 0.08 * Math.sin((2 * Math.PI * t) / 90));
         expect(warmthAt(0)).toBeCloseTo(0.1, 9);
         state.setLevel(5, 10);
         expect(warmthAt(11.5)).toBeCloseTo(0.1 + 0.22 * smoothstep(0, 3, 1.5), 9);
         expect(warmthAt(13)).toBeCloseTo(0.1 + 4 * 0.055, 9);
+        // A leg of the walk runs from level 1's warmth to the late golden sun's, a level a step ...
+        expect(LOWER_SUN_SPAN).toBeCloseTo((LOWER_SUN_LIGHT.far - 0.1) / 0.055, 9);
         state.setLevel(30, 13);
-        expect(warmthAt(20)).toBeCloseTo(0.6, 9);
+        // ... and a level past its far end walks on back up instead of pinning there.
+        const far = 0.1 + 0.055 * lowerSunSteps(29);
+        expect(far).toBeLessThan(LOWER_SUN_LIGHT.far - 0.05);
+        expect(warmthAt(20)).toBeCloseTo(far, 9);
         state.resetSession();
-        expect(warmthAt(20)).toBeCloseTo(0.6, 9);
+        expect(warmthAt(20)).toBeCloseTo(far, 9);
+        // Back to rest by the nearest way: never through the lowest sun on the way.
+        let peak = 0;
+        for (let t = 20; t <= 23; t += 0.25) peak = Math.max(peak, warmthAt(t));
+        expect(peak).toBeCloseTo(far, 9);
         expect(warmthAt(23)).toBeCloseTo(0.1, 9);
+    });
+
+    it('walks the Lower Sun there and back by the clock alone: the high sun, half lowered, the lowest sun', () => {
+        const state = createState();
+        const { seconds, hold, stops } = LOWER_SUN_WALK;
+        const at = (t) => {
+            const out = state.update(t, 0);
+            return {
+                warmth: out.warmth / (1 + 0.08 * Math.sin((2 * Math.PI * t) / 90)),
+                halo: out.k0[0],
+                density: out.density,
+            };
+        };
+        // Mood 0 is the opening look (level 1) through the first rest.
+        const opening = at(0);
+        expect(opening.warmth).toBeCloseTo(PARHELION_OPTICS_IDLE.warmth, 9);
+        expect(at(seconds * hold * 0.9).warmth).toBeCloseTo(PARHELION_OPTICS_IDLE.warmth, 9);
+        for (let k = 0; k <= 2 * stops; k++) {
+            const steps = (LOWER_SUN_SPAN * Math.min(k, 2 * stops - k)) / stops;
+            expect(at(k * seconds).warmth, `stop ${k}`).toBeCloseTo(PARHELION_OPTICS_IDLE.warmth + 0.055 * steps, 9);
+        }
+        // The late golden sun with no level-up: past today's level-10 warmth, the low-sun grade
+        // full, the halo brighter, the hounds warmer, the dust thicker.
+        const lowest = at(stops * seconds);
+        expect(lowest.warmth).toBeCloseTo(LOWER_SUN_LIGHT.far, 9);
+        expect(lowSunOf(lowest.warmth)).toBeCloseTo(1, 9);
+        expect(lowSunOf(opening.warmth * 1.08)).toBe(0); // level 1 keeps its light through the breath
+        expect(lowest.halo).toBeGreaterThan(opening.halo);
+        expect(state.update(stops * seconds, 0).dogTint).toBeGreaterThan(0.5);
+        expect(lowest.density).toBeGreaterThan(opening.density);
+        expect(at(seconds).halo).toBeGreaterThan(opening.halo);
+        // It melts between stops, never jumps.
+        let last = at(0).warmth;
+        for (let t = 0.25; t <= 2 * stops * seconds; t += 0.25) {
+            const w = at(t).warmth;
+            expect(Math.abs(w - last)).toBeLessThan(0.005);
+            last = w;
+        }
+        // A seek lands on the same light as frame-stepping.
+        const stepped = createState();
+        for (let t = 0; t < 150; t += 0.5) stepped.update(t, 0.5);
+        const outStepped = stepped.update(150, 0.5).warmth;
+        state.seek(150);
+        expect(state.update(150, 0).warmth).toBeCloseTo(outStepped, 9);
+    });
+
+    it('steps the Lower Sun a level along the walk on top of the clock, and still lifts the surge', () => {
+        const state = createState();
+        const { seconds } = LOWER_SUN_WALK;
+        const t1 = seconds; // resting half lowered
+        const warmthAt = (t) => state.update(t, FRAME).warmth / (1 + 0.08 * Math.sin((2 * Math.PI * t) / 90));
+        const half = warmthAt(t1);
+        expect(half).toBeCloseTo(0.1 + (0.055 * LOWER_SUN_SPAN) / 2, 9);
+        state.setLevel(3, t1);
+        expect(warmthAt(t1 + 3)).toBeCloseTo(half + 2 * 0.055, 9);
+        state.sampleHeat(t1 + 3);
+        expect(state.heat.level).toBeGreaterThan(0); // the level-up's warmth of play
+        // Reactions off: the light still steps, the surge stays cold.
+        const quiet = createState();
+        quiet.configure({ intensity: 0 });
+        quiet.setLevel(2, 1);
+        quiet.sampleHeat(4);
+        expect(quiet.heat.level).toBe(0);
+        expect(quiet.update(4, FRAME).warmth / (1 + 0.08 * Math.sin((2 * Math.PI * 4) / 90)))
+            .toBeCloseTo(0.1 + 0.055, 9);
     });
 
     it('breathes on a 10 s period, ±15%, and clocks run at their §7.2 rates', () => {

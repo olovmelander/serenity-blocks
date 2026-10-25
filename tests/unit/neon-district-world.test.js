@@ -3,11 +3,11 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    BLACKOUT_HOLD, CRUISE_SPEED, DISTRICT_PALETTES, NeonDistrictWorld, REST_RIG, SCROLL_REBASE, fovForAspect,
-    pieceColor, powerForCombo,
+    BLACKOUT_HOLD, CRUISE_SPEED, DISTRICT_HOLD, DISTRICT_KEYS, DISTRICT_PALETTES, DISTRICT_PERIOD, NeonDistrictWorld,
+    REST_RIG, SCROLL_REBASE, districtAt, districtDrift, fovForAspect, isLimeLight, pieceColor, powerForCombo,
 } from '../../src/themes/neon-district/neon-district-world.js';
 import {
-    CLEAR_SLOTS, CLEAR_TRAVEL, LOCK_SLOTS, STREET,
+    CLEAR_SLOTS, CLEAR_TRAVEL, LOCK_SLOTS, STREET, linRGB,
 } from '../../src/themes/neon-district/neon-district-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/neon-district/neon-district-quality.js';
 import { fallbackLayout } from '../../src/themes/neon-district/neon-district-composition.js';
@@ -689,6 +689,107 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         expect(world.getState().palette).toBe(DISTRICT_PALETTES[0].name);
         world.levelUp(3, { silent: true });
         expect(world.getState().palette).toBe(DISTRICT_PALETTES[2].name);
+        world.dispose();
+    });
+});
+
+describe('neon district world: the palettes turn by the clock', () => {
+    const UNIFORMS = ['accentA', 'accentB', 'hazeLow', 'hazeHigh'];
+    /** The district's live colours, as the shaders read them (no heat at rest). */
+    const coloursOf = (world) => UNIFORMS.map((name) => world.u[name].value.toArray());
+    const paletteOf = (index) => {
+        const palette = DISTRICT_PALETTES[index];
+        return [linRGB(palette.a), linRGB(palette.b), [...palette.low], [...palette.high]];
+    };
+    const expectColours = (actual, expected, digits = 6) => {
+        actual.forEach((rgb, i) => rgb.forEach((v, c) => expect(v, UNIFORMS[i]).toBeCloseTo(expected[i][c], digits)));
+    };
+    const distance = (x, y) => Math.hypot(...x.flat().map((v, i) => v - y.flat()[i]));
+    /** Seek and draw one frame there (what a capture or a rebuild that carries the clock does). */
+    const seekTo = (world, camera, time) => {
+        world.seek(time);
+        world.update({ time, delta: 0 }, camera);
+    };
+
+    it('walks through every palette with no level-up, each seen pure for its hold', () => {
+        const { camera, world } = makeWorld('Low');
+        for (let k = 0; k < DISTRICT_PALETTES.length; k++) {
+            seekTo(world, camera, k * DISTRICT_PERIOD);
+            expectColours(coloursOf(world), paletteOf(k));
+            expect(world.getState().palette).toBe(DISTRICT_PALETTES[k].name);
+            seekTo(world, camera, (k + DISTRICT_HOLD * 0.98) * DISTRICT_PERIOD);
+            expectColours(coloursOf(world), paletteOf(k));
+            seekTo(world, camera, (k + (1 + DISTRICT_HOLD) / 2) * DISTRICT_PERIOD);
+            const melting = coloursOf(world);
+            expect(distance(melting, paletteOf(k))).toBeGreaterThan(0.1);
+            expect(distance(melting, paletteOf((k + 1) % DISTRICT_PALETTES.length))).toBeGreaterThan(0.1);
+        }
+        seekTo(world, camera, DISTRICT_PALETTES.length * DISTRICT_PERIOD);
+        expectColours(coloursOf(world), paletteOf(0));
+        world.dispose();
+    });
+
+    it('melts without a jump and never through lime', () => {
+        const flat = (out) => DISTRICT_KEYS.map((key) => [...out[key]]);
+        let last = flat(districtAt(0));
+        for (let i = 1; i <= DISTRICT_PALETTES.length * 200; i++) {
+            const out = districtAt(i / 200);
+            const now = flat(out);
+            expect(distance(now, last), `phase ${i / 200}`).toBeLessThan(0.1);
+            DISTRICT_KEYS.forEach((key) => expect(isLimeLight(out[key]), `${key} at ${i / 200}`).toBe(false));
+            last = now;
+        }
+        expect(districtDrift(DISTRICT_PERIOD * DISTRICT_HOLD * 0.99)).toBe(0);
+        expect(districtDrift(DISTRICT_PERIOD * 4)).toBe(4);
+    });
+
+    it('steps one palette on top of the clock at a level-up, the short way round, with its lightning', () => {
+        const { camera, world } = makeWorld('Low');
+        // The clock alone has reached arcade.
+        seekTo(world, camera, 2 * DISTRICT_PERIOD + 1);
+        expectColours(coloursOf(world), paletteOf(2));
+        world.levelUp(2);
+        expect(world.getState().palette).toBe('lantern');
+        expect(world.stormHits.valueAt(world.time + 0.1)).toBeGreaterThan(0.3);
+        expect(world.flashHits.valueAt(world.time + 0.05)).toBeGreaterThan(0.05);
+        run(world, camera, 1);
+        const easing = coloursOf(world);
+        expect(distance(easing, paletteOf(2))).toBeGreaterThan(0.05);
+        expect(distance(easing, paletteOf(3))).toBeGreaterThan(0.05);
+        run(world, camera, 12);
+        expectColours(coloursOf(world), paletteOf(3), 3);
+        // Level 5 over the clock's ultraviolet is lantern (4 + 4 = 8), taken the short way.
+        seekTo(world, camera, 4 * DISTRICT_PERIOD + 1);
+        world.levelUp(5, { silent: true });
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(coloursOf(world), paletteOf(3));
+        expect(world.getState().paletteTurn).toBeCloseTo(3, 6);
+        // Level 6 is level 1's step again: one step on (lantern to ultraviolet), not four back.
+        world.levelUp(6);
+        run(world, camera, 0.5);
+        expect(world.getState().paletteTurn).toBeGreaterThan(3);
+        expect(world.getState().paletteTurn).toBeLessThan(4);
+        run(world, camera, 12);
+        expectColours(coloursOf(world), paletteOf(4), 3);
+        world.dispose();
+    });
+
+    it('lands on the clock\'s palette after a seek or a new run, dropping only the level\'s steps', () => {
+        const { camera, world } = makeWorld('Low');
+        seekTo(world, camera, 3 * DISTRICT_PERIOD + 5);
+        world.levelUp(3, { silent: true });
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(coloursOf(world), paletteOf(0));
+        world.resetSession();
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(coloursOf(world), paletteOf(3));
+        // A replay frame by frame lands where a seek does.
+        const { camera: other, world: replay } = makeWorld('Low');
+        seekTo(replay, other, 3.6 * DISTRICT_PERIOD - 3);
+        run(replay, other, 3, 90);
+        seekTo(world, camera, 3.6 * DISTRICT_PERIOD);
+        expectColours(coloursOf(replay), coloursOf(world), 6);
+        replay.dispose();
         world.dispose();
     });
 });

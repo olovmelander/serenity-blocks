@@ -7,8 +7,8 @@ import {
     SNOW_FALL, SNOW_TURN, fovForAspect,
 } from '../../src/themes/ice-temple/ice-temple-world.js';
 import {
-    AURORA_PALETTES, CLEAR_TRAVEL, CROWN_LIFE, CROWN_SPIKES, FLAKE_LIFE, HUSH_HOLD, LOCK_SLOTS, NAVE,
-    linRGB,
+    AURORA_HOLD, AURORA_KEYS, AURORA_PALETTES, AURORA_PERIOD, CLEAR_TRAVEL, CROWN_LIFE, CROWN_SPIKES, FLAKE_LIFE,
+    HUSH_HOLD, LOCK_SLOTS, NAVE, auroraAt, auroraDrift, isWarm, linRGB,
 } from '../../src/themes/ice-temple/ice-temple-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/ice-temple/ice-temple-quality.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/ice-temple/ice-temple-composition.js';
@@ -531,6 +531,106 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         world.update({ time: world.time, delta: 0 }, camera);
         expect(world.u.auroraA.value.x).toBeCloseTo(target[0], 5);
         expect(world.u.auroraA.value.y).toBeCloseTo(target[1], 5);
+        world.dispose();
+    });
+});
+
+describe('ice temple world: the aurora turns by the clock', () => {
+    /** The aurora's live colours, as the shaders read them. */
+    const auroraOf = (world) => ['auroraA', 'auroraB', 'auroraC'].map((name) => world.u[name].value.toArray());
+    const paletteOf = (index) => ['a', 'b', 'c'].map((key) => linRGB(AURORA_PALETTES[index][key]));
+    const expectColours = (actual, expected, digits = 5) => {
+        actual.forEach((rgb, i) => rgb.forEach((v, c) => expect(v).toBeCloseTo(expected[i][c], digits)));
+    };
+    const distance = (x, y) => Math.hypot(...x.flat().map((v, i) => v - y.flat()[i]));
+    /** Seek and draw one frame there (what a capture or a rebuild that carries the clock does). */
+    const seekTo = (world, camera, time) => {
+        world.seek(time);
+        world.update({ time, delta: 0 }, camera);
+    };
+
+    it('walks through every palette with no level-up, each seen pure for its hold', () => {
+        const { camera, world } = makeWorld('Minimal');
+        for (let k = 0; k < AURORA_PALETTES.length; k++) {
+            seekTo(world, camera, k * AURORA_PERIOD);
+            expectColours(auroraOf(world), paletteOf(k));
+            expect(world.getState().palette).toBe(AURORA_PALETTES[k].name);
+            // Still pure at the end of the hold; well into the melt it is neither neighbour.
+            seekTo(world, camera, (k + AURORA_HOLD * 0.98) * AURORA_PERIOD);
+            expectColours(auroraOf(world), paletteOf(k));
+            seekTo(world, camera, (k + (1 + AURORA_HOLD) / 2) * AURORA_PERIOD);
+            const melting = auroraOf(world);
+            expect(distance(melting, paletteOf(k))).toBeGreaterThan(0.1);
+            expect(distance(melting, paletteOf((k + 1) % AURORA_PALETTES.length))).toBeGreaterThan(0.1);
+        }
+        // Round the wheel and back to boreal.
+        seekTo(world, camera, AURORA_PALETTES.length * AURORA_PERIOD);
+        expectColours(auroraOf(world), paletteOf(0));
+        world.dispose();
+    });
+
+    it('melts without a jump and never through a warm colour', () => {
+        const turn = AURORA_PALETTES.length;
+        let last = auroraAt(0);
+        last = AURORA_KEYS.map((key) => [...last[key]]);
+        for (let i = 1; i <= turn * 200; i++) {
+            const out = auroraAt(i / 200);
+            const now = AURORA_KEYS.map((key) => [...out[key]]);
+            expect(distance(now, last), `phase ${i / 200}`).toBeLessThan(0.08);
+            ['a', 'b', 'c'].forEach((key) => expect(isWarm(out[key]), `${key} at ${i / 200}`).toBe(false));
+            last = now;
+        }
+        expect(auroraDrift(AURORA_PERIOD * AURORA_HOLD * 0.99)).toBe(0);
+        expect(auroraDrift(AURORA_PERIOD * 3)).toBe(3);
+    });
+
+    it('steps one palette on top of the clock at a level-up, the short way round, with its flare', () => {
+        const { camera, world } = makeWorld('Minimal');
+        // The clock alone has reached glacier.
+        seekTo(world, camera, 2 * AURORA_PERIOD + 1);
+        expectColours(auroraOf(world), paletteOf(2));
+        world.levelUp(2);
+        expect(world.flare).toBeGreaterThan(0.5);
+        expect(world.flash).toBeGreaterThan(0.1);
+        expect(world.getState().palette).toBe('rose');
+        run(world, camera, 1);
+        const easing = auroraOf(world);
+        expect(distance(easing, paletteOf(2))).toBeGreaterThan(0.05);
+        expect(distance(easing, paletteOf(3))).toBeGreaterThan(0.05);
+        run(world, camera, 12);
+        expectColours(auroraOf(world), paletteOf(3), 3);
+        // Level 5 over the clock's solar is rose (4 + 4 = 8), taken the short way: one step back.
+        seekTo(world, camera, 4 * AURORA_PERIOD + 1);
+        world.levelUp(5, { silent: true });
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(auroraOf(world), paletteOf(3));
+        expect(world.getState().aurora).toBeCloseTo(3, 6);
+        // Level 6 is level 1's step again: one step on (rose to solar), not four back.
+        world.levelUp(6);
+        run(world, camera, 0.5);
+        expect(world.getState().aurora).toBeGreaterThan(3);
+        expect(world.getState().aurora).toBeLessThan(4);
+        run(world, camera, 12);
+        expectColours(auroraOf(world), paletteOf(4), 3);
+        world.dispose();
+    });
+
+    it('lands on the clock\'s palette after a seek or a new run, dropping only the level\'s steps', () => {
+        const { camera, world } = makeWorld('Minimal');
+        seekTo(world, camera, AURORA_PERIOD + 5);
+        world.levelUp(3, { silent: true });
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(auroraOf(world), paletteOf(3));
+        world.resetSession();
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(auroraOf(world), paletteOf(1));
+        // A replay frame by frame lands where a seek does.
+        const { camera: other, world: replay } = makeWorld('Minimal');
+        seekTo(replay, other, 1.6 * AURORA_PERIOD - 3);
+        run(replay, other, 3, 90);
+        seekTo(world, camera, 1.6 * AURORA_PERIOD);
+        expectColours(auroraOf(replay), auroraOf(world), 6);
+        replay.dispose();
         world.dispose();
     });
 });

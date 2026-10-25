@@ -11,12 +11,17 @@
  * that spread from the foot of the board, and the fronts (up to three at once) that cross the
  * valley when the game asks for them. Hot play raises a gale on top of the wind dial and thins
  * the cumulus a little (`update()`: `gale`, `coverShift`, from verdant-hills-surge.js).
+ *
+ * The day's weather turns by the clock (verdant-hills-moods.js): `setMood()` lays a weather's
+ * colours, haze, cloud cover and exposure on the rig, and play builds on whichever it is. The sun
+ * never moves, so the oak's static shadow map stays true in every weather.
  */
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     smoothstep, texture, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
+import { VERDANT_HILLS_MOODS, createVerdantHillsMood, verdantHillsMoodAt } from './verdant-hills-moods.js';
 import { VerdantHillsRings } from './verdant-hills-rings.js';
 
 export const VERDANT_HILLS_SUN_AZIMUTH_DEGREES = 30;
@@ -44,8 +49,10 @@ export const VERDANT_HILLS_CLOUD_SCHEMA = 1;
 const CLOUD_DRIFT = 11;
 /** How much of the haze the strongest wind of a fever clears from the valley. */
 const CLEARED_HAZE = 0.4;
+/** The weather a session opens in (the kite day), whose colours the rig is built with. */
+const FIRST_MOOD = VERDANT_HILLS_MOODS[0];
 /** The share of the sky under cloud on a fair day. */
-const CLOUD_COVER = 0.25;
+const CLOUD_COVER = FIRST_MOOD.cover;
 /** Where the field stands when a session starts: the home hill in the sun, a shadow on its way. */
 const CLOUD_START = Object.freeze([0.25, 0.8125]);
 
@@ -243,20 +250,27 @@ export class VerdantHillsLight {
         const seed = Math.floor(rng() * 4096);
         this.uTime = uniform(0);
         this.uSunDir = uniform(VERDANT_HILLS_SUN_DIRECTION.clone());
-        this.uSunColor = uniform(new THREE.Color(3.5, 3.2, 2.7));
-        this.uSkyLight = uniform(new THREE.Color(0.3, 0.44, 0.66));
-        this.uBounce = uniform(new THREE.Color(0.13, 0.2, 0.07));
+        // Every colour of the day is a weather's (verdant-hills-moods.js) and starts at the kite day's.
+        const colour = (key) => uniform(new THREE.Color(...FIRST_MOOD[key]));
+        this.uSunColor = colour('sun');
+        this.uSkyLight = colour('skyLight');
+        this.uBounce = colour('bounce');
         // A washed summer sky: deep blue overhead, milk at the rim, and a glow toward the sun.
-        this.uZenith = uniform(new THREE.Color(0.035, 0.15, 0.5));
-        this.uSkyMid = uniform(new THREE.Color(0.1, 0.34, 0.74));
-        this.uHorizon = uniform(new THREE.Color(0.42, 0.6, 0.8));
-        this.uHorizonSun = uniform(new THREE.Color(0.86, 0.86, 0.78));
+        this.uZenith = colour('zenith');
+        this.uSkyMid = colour('skyMid');
+        this.uHorizon = colour('horizon');
+        this.uHorizonSun = colour('horizonSun');
         // Shaded air is the blue of distance; sunlit air is added by the shafts between the
         // clouds where the tier has them, and by this analytic glow where it does not.
-        this.uHazeCool = uniform(new THREE.Color(0.24, 0.38, 0.58));
-        this.uHazeWarm = uniform(new THREE.Color(0.8, 0.76, 0.6));
+        this.uHazeCool = colour('hazeCool');
+        this.uHazeWarm = colour('hazeWarm');
+        // A cumulus's own shade, from its flat base (which sees only the dim ground) up its tower,
+        // and the high cirrus.
+        this.uCloudBase = colour('cloudBase');
+        this.uCloudTop = colour('cloudTop');
+        this.uCirrus = colour('cirrus');
         this.uHazeSun = uniform(tier.shafts > 0 ? 0.3 : 1);
-        this.uHaze = uniform(0.00016);
+        this.uHaze = uniform(FIRST_MOOD.haze);
         this.uGroundLevel = uniform(20);
         // Wind: a steady breeze up the valley, gusts that roll through the grass in bands,
         // and a travelling front. `uWindClock` runs faster the harder it blows.
@@ -289,6 +303,13 @@ export class VerdantHillsLight {
         this.coverShift = 0;
         this.clearAir = 0;
         this.hazeRest = null;
+        // The weather the day stands in (setMood): its colours and numbers, how far round the
+        // weathers it is, and the exposure it asks of the lens against rest. A playground knob
+        // may pin the haze or the cover over every weather.
+        this.mood = createVerdantHillsMood();
+        this.moodPhase = 0;
+        this.exposureScale = FIRST_MOOD.exposure;
+        this.pinned = { haze: null, cover: null };
         // The clock at the last frame: the breeze eases by the time between two of them.
         this.windTime = 0;
         // Gusts that spread through the grass from the foot of the board.
@@ -539,6 +560,38 @@ export class VerdantHillsLight {
         return {
             push, gust: saturate(force.mul(0.9)), band: gust, bloom: saturate(bloom), front: saturate(front),
         };
+    }
+
+    /**
+     * Turn the day to `phase` weathers in (see verdant-hills-moods.js): every colour of the rig
+     * takes the weather's, melted between the two it lies between, and the haze, the cloud cover
+     * and the exposure follow. Uniform values only; nothing is rebuilt. Call it before update(),
+     * which draws the cover and lets play clear the haze from the weather's own.
+     * @param {number} phase
+     */
+    setMood(phase) {
+        this.moodPhase = Number.isFinite(phase) ? phase : 0;
+        const mood = verdantHillsMoodAt(this.moodPhase, this.mood);
+        const paint = (node, rgb) => node.value.setRGB(rgb[0], rgb[1], rgb[2]);
+        paint(this.uSunColor, mood.sun);
+        paint(this.uSkyLight, mood.skyLight);
+        paint(this.uBounce, mood.bounce);
+        paint(this.uZenith, mood.zenith);
+        paint(this.uSkyMid, mood.skyMid);
+        paint(this.uHorizon, mood.horizon);
+        paint(this.uHorizonSun, mood.horizonSun);
+        paint(this.uHazeCool, mood.hazeCool);
+        paint(this.uHazeWarm, mood.hazeWarm);
+        paint(this.uCloudBase, mood.cloudBase);
+        paint(this.uCloudTop, mood.cloudTop);
+        paint(this.uCirrus, mood.cirrus);
+        const { pinned } = this;
+        const haze = Number.isFinite(pinned.haze) ? pinned.haze : mood.haze;
+        // While play is clearing the air it clears it from the weather's haze.
+        if (this.hazeRest !== null) this.hazeRest = haze;
+        else this.uHaze.value = haze;
+        this.uCloudCover.value = Number.isFinite(pinned.cover) ? pinned.cover : mood.cover;
+        this.exposureScale = mood.exposure;
     }
 
     update(time, frame = {}) {

@@ -38,6 +38,9 @@ import {
     BLOW_SLOTS, FX_TIERS, createDustGeysers, createGoldMotes, createSpindrift, createWormSand,
 } from './shifting-sands-fx.js';
 import { drainSteps } from '../shared/build-steps.js';
+import {
+    MOOD_HOLD, MOOD_SECONDS, moodDrift, pingPong,
+} from '../shared/mood-clock.js';
 
 const DEG = Math.PI / 180;
 
@@ -53,6 +56,23 @@ export const WORLD_TIERS = Object.freeze({
 
 /** Degrees each sun sinks by full dusk. */
 const DUSK_SINK = Object.freeze({ a: 2.2, b: 4.0 });
+
+/**
+ * The dusk walks by the clock in every mode (shared/mood-clock.js), there and back: golden hour,
+ * the sinking gold halfway, deep dusk, halfway again, golden hour. Each of those stops rests for
+ * `hold` of its `seconds` and then melts into the next, so a whole walk there and back takes
+ * 2 · stops · seconds (about seven minutes). `stops` is the stops a leg has (golden → deep dusk).
+ */
+export const DUSK_WALK = Object.freeze({ seconds: MOOD_SECONDS, hold: MOOD_HOLD, stops: 2 });
+/** A level is a step along the same walk: level 15 has walked a whole leg on (as it always deepened it). */
+export const DUSK_LEVEL_STEP = 1 / 14;
+
+/**
+ * How far the clock alone has walked the dusk by `time`, in legs: 0 golden hour, 1 deep dusk, 2
+ * golden again (fold it with pingPong). Closed form, so a seek or a replay lands on the same light.
+ * @param {number} time
+ */
+export const duskWalk = (time) => moodDrift(time, DUSK_WALK.seconds, DUSK_WALK.hold) / DUSK_WALK.stops;
 
 /** Where the drum stands: on the sand just beyond the foot of the board. */
 const DRUM = Object.freeze({ x: 0, z: -150 });
@@ -117,8 +137,14 @@ export class ShiftingSandsWorld {
         this.group = new THREE.Group();
         this.group.name = 'shifting-sands-world';
         this.time = 0;
-        this.dusk = 0; // 0 golden hour → 1 deep dusk (level progression)
+        this.dusk = 0; // 0 golden hour → 1 deep dusk: the clock's walk plus the level's steps
+        /** The level's steps along the walk (in legs), eased toward duskTarget. */
+        this.duskSteps = 0;
         this.duskTarget = 0;
+        /** Whole walks there and back the steps had made when the last session ended (see resetSession). */
+        this.duskBase = 0;
+        /** A dusk held still (the playground's ?dusk=); null lets the clock walk it. */
+        this.duskHold = null;
         this.restPosition = new THREE.Vector3();
         this.restPitch = REST_RIG.pitchDeg * DEG;
         this.pointer = { x: 0, y: 0 };
@@ -310,6 +336,15 @@ export class ShiftingSandsWorld {
     }
 
     /**
+     * Where the dusk stands at `time` (0 golden hour → 1 deep dusk): the clock's walk there and
+     * back plus the level's steps along it, folded, so it never comes to rest at either end.
+     * @param {number} time
+     */
+    duskAt(time) {
+        return pingPong(this.duskSteps + duskWalk(time));
+    }
+
+    /**
      * The deepening dusk: every atmosphere colour slides toward its dusk value and both suns
      * sink (the bake stores horizon TANGENTS, so lower suns cast longer shadows for free).
      */
@@ -387,11 +422,14 @@ export class ShiftingSandsWorld {
     }
 
     /**
-     * Game over / new game: the dusk returns to golden hour. A worm that has been called still
-     * runs its course — forgetting it here would cut it out of the air in a single frame.
+     * Game over / new game: the level's steps walk back to golden hour, so the light returns to
+     * where the clock alone has it (by the nearest way: a run long enough to have walked there
+     * and back keeps its whole walks). A worm that has been called still runs its course —
+     * forgetting it here would cut it out of the air in a single frame.
      */
     resetSession() {
-        this.duskTarget = 0;
+        this.duskBase = 2 * Math.round(this.duskSteps / 2);
+        this.duskTarget = this.duskBase;
         // A new run starts a new chain (the storm itself settles on its own).
         for (let i = 0; i < this.trackers.length; i++) this.trackers[i].reset();
         this.chain = 0;
@@ -648,7 +686,8 @@ export class ShiftingSandsWorld {
      */
     onLevelUp(level, { react = true } = {}) {
         const n = Number.isFinite(level) ? level : 1;
-        this.duskTarget = Math.min(1, Math.max(0, (n - 1) / 14));
+        // A step along the dusk's walk (eased in update()), on top of the clock's own walk.
+        this.duskTarget = this.duskBase + Math.max(0, n - 1) * DUSK_LEVEL_STEP;
         if (!react) return;
         this.surge.levelUp(this.time);
         this.flareSwell.hit(0.25, this.time);
@@ -719,7 +758,9 @@ export class ShiftingSandsWorld {
         const dt = Math.max(0, sim.delta || 0);
         const s = this.shared;
         s.uTime.value = t;
-        this.dusk += (this.duskTarget - this.dusk) * approach(0.6, dt);
+        this.duskSteps += (this.duskTarget - this.duskSteps) * approach(0.6, dt);
+        if (Math.abs(this.duskTarget - this.duskSteps) < 1e-4) this.duskSteps = this.duskTarget;
+        this.dusk = Number.isFinite(this.duskHold) ? this.duskHold : this.duskAt(t);
         this.applyDusk(this.dusk);
         const heat = this.sampleHeat(t);
         // The storm breaks: the worm comes for the drummer (once a fever, never over a summons).

@@ -8,6 +8,8 @@
  * in [0, ~1.5], where 1 is RELIEF.thickness canvas units of oil standing off the cloth.
  */
 
+import { MOOD_SECONDS } from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -109,7 +111,8 @@ export function pigmentFromHex(hex) {
 }
 
 /**
- * The periods. Each is a set of tube colours (scene-linear pigments):
+ * The periods, turned by the clock (periodIndex) with a level a step on top. Each is a set of tube
+ * colours (scene-linear pigments):
  *   ground   the toned cloth
  *   darks    the first lay-in: wide thin passes that cover the ground
  *   masses   the big colour areas, by region of the picture
@@ -181,6 +184,29 @@ export const IMPASTO_PERIODS = Object.freeze([
         key: [0.95, 1.0, 0.97],
     }),
 ]);
+
+/**
+ * Seconds the painting stays in one period when only the clock turns them (every mode: Infinity
+ * and a match never level up): at each whole period the painter goes over the picture in the next
+ * period's tubes. The five come round in about eight minutes.
+ */
+export const PERIOD_SECONDS = MOOD_SECONDS;
+/**
+ * Seconds the painter takes over the picture into a new period: a level's is a quick moment of
+ * its own; the clock's is unhurried. The lamp's colour melts over the same time.
+ */
+export const LEVEL_OVERPAINT = 2.6;
+export const CLOCK_OVERPAINT = 12;
+
+/** How many periods the clock alone has turned by `time`: one at every whole PERIOD_SECONDS. */
+export function periodTurns(time) {
+    return Math.floor(Math.max(0, Number(time) || 0) / PERIOD_SECONDS);
+}
+
+/** The period (an index into IMPASTO_PERIODS) for `level` at `time`: a level a step on the clock. */
+export function periodIndex(level, time) {
+    return (Math.max(1, Math.round(Number(level) || 1)) - 1 + periodTurns(time)) % IMPASTO_PERIODS.length;
+}
 
 /** Gold leaf: a four-line clear is answered in it. (Scene-linear reflectance.) */
 export const GOLD = Object.freeze([1.0, 0.71, 0.29]);

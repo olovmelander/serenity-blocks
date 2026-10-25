@@ -11,7 +11,7 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the sea's charge, the Drop's satellites)
- *   level=<n>                rest on level n's palette
+ *   level=<n>                level n's step on top of the clock's palette
  *   locks=<n>                before anything else, play n locks (the sea holding their colours)
  *   quads=<n>                then n four-line clears, 6 s apart: each carries the Great Drop to
  *                            a new home (the sequence is seeded, so a shot reproduces)

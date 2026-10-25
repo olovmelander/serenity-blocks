@@ -3,6 +3,8 @@
  * Three-free: the plan, the director and their tests import only this.
  */
 
+import { meltColour, moodDrift, wheelAt } from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 const DEG = Math.PI / 180;
 
@@ -192,8 +194,9 @@ export function linRGB(hex) {
 }
 
 /**
- * Aurora palettes, one per level (cycled). `a` is the curtain's bright lower border, `b` its
- * body, `c` the fringe high above; `heart` tints the Great Crystal.
+ * Aurora palettes, a wheel the clock turns (auroraDrift) with a level one step on top. `a` is
+ * the curtain's bright lower border, `b` its body, `c` the fringe high above; `heart` tints the
+ * Great Crystal.
  *
  * The resonance lights the ice from within in these colours, and a warm light inside blue ice
  * mixes to grey: every colour here is one that stays a colour in ice (greens, blues, violets,
@@ -216,6 +219,74 @@ export const AURORA_PALETTES = Object.freeze([
         name: 'solar', a: 0xff4a78, b: 0x3fffa6, c: 0xb45cff, heart: 0xffc4d6,
     }),
 ]);
+
+/**
+ * Seconds the aurora holds one palette when only the clock is turning it (a match, Infinity and
+ * the menus never level up), and the share of that time it is seen pure before it melts into
+ * the next: the whole wheel turns in a little over eight minutes.
+ */
+export const AURORA_PERIOD = 100;
+export const AURORA_HOLD = 0.35;
+
+/**
+ * How far the clock alone has turned the aurora's palettes by `time`: the whole part counts the
+ * palettes passed, the fraction is the melt into the next. A function of the time alone.
+ * @param {number} time
+ */
+export const auroraDrift = (time) => moodDrift(time, AURORA_PERIOD, AURORA_HOLD);
+
+/** The colours of a palette the world reads, in the order it reads them. */
+export const AURORA_KEYS = Object.freeze(['a', 'b', 'c', 'heart']);
+
+/** The aurora's palettes, scene-linear. */
+const AURORA_RGB = Object.freeze(AURORA_PALETTES.map((palette) => Object.freeze(Object.fromEntries(
+    AURORA_KEYS.map((key) => [key, Object.freeze(linRGB(palette[key]))]),
+))));
+
+/** A colour a warm light would give: red high, green above blue (inside blue ice, a grey). */
+export const isWarm = (rgb) => rgb[0] > 0.5 && rgb[1] > rgb[2];
+
+/**
+ * The short way round the colour wheel from solar's rose border to boreal's green runs through
+ * orange and gold. A melt that would warm on its way goes by an ice violet instead: for every
+ * palette, the keys whose melt into the next one needs the detour.
+ */
+const ICE_WAY = Object.freeze(linRGB(0x8f7bff));
+const MELT_WAY = Object.freeze(AURORA_RGB.map((from, i) => {
+    const to = AURORA_RGB[(i + 1) % AURORA_RGB.length];
+    const probe = [0, 0, 0];
+    return Object.freeze(AURORA_KEYS.filter((key) => {
+        for (let m = 1; m < 32; m++) {
+            if (isWarm(meltColour(from[key], to[key], m / 32, probe))) return true;
+        }
+        return false;
+    }));
+}));
+
+const WHEEL = { a: 0, b: 0, melt: 0 };
+
+/**
+ * The aurora's palette at `phase` round its wheel, scene-linear, written into `out[key]` for
+ * every key (arrays made as needed): on a whole phase that palette exactly, between two the melt
+ * the short way round the colour wheel, never through a warm colour. Returns `out`.
+ * @param {number} phase
+ * @param {Record<string, number[]>} [out]
+ */
+export function auroraAt(phase, out = {}) {
+    wheelAt(phase, AURORA_RGB.length, WHEEL);
+    const from = AURORA_RGB[WHEEL.a];
+    const to = AURORA_RGB[WHEEL.b];
+    const detour = MELT_WAY[WHEEL.a];
+    const { melt } = WHEEL;
+    for (let i = 0; i < AURORA_KEYS.length; i++) {
+        const key = AURORA_KEYS[i];
+        const rgb = out[key] || (out[key] = [0, 0, 0]);
+        if (!detour.includes(key)) meltColour(from[key], to[key], melt, rgb);
+        else if (melt < 0.5) meltColour(from[key], ICE_WAY, melt * 2, rgb);
+        else meltColour(ICE_WAY, to[key], melt * 2 - 1, rgb);
+    }
+    return out;
+}
 
 /**
  * A piece colour (CSS hex string or number) as a scene-linear, peak-normalised [r, g, b] with a

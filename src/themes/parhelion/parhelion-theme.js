@@ -16,7 +16,11 @@
  *   → runtime.cue/count/setResonance/setLevel. Gated on isActive && !isPaused &&
  *   backgroundComboEffects; pieceLockRipple reaches the director through configure()
  *   (lockRipple), which drops LOCK/STONEFALL cues but still counts the lock — dropping the
- *   PIECE_LOCK event itself would break the true-combo tracker.
+ *   PIECE_LOCK event itself would break the true-combo tracker. The one exception: a level is
+ *   the world's light (the Lower Sun, which also walks by the clock in every mode), so with
+ *   reactions off LEVEL_UP still steps it (runtime.setLevel), without the surge.
+ * - Clock: elapsedTime drives the Lower Sun's walk; an in-place rebuild and a restart carry it
+ *   (and the level) on, so a new quality tier keeps the light where it was.
  * - Layout: DOM rects (composition/parhelion-board-rects.js) → runtime.setLayout, re-read inside
  *   the frame loop on frame time (now, +0.5 s, +1.5 s after a trigger); never from a handler.
  * - Warm: none shipped (small-theme law, spec §6: every pool is always visible with zero-size
@@ -167,6 +171,8 @@ export default class ParhelionTheme extends BaseTheme {
         this.animationDriver = null;
         this.lastFrameTimeMs = null;
         this.elapsedTime = 0;
+        /** The run's level (the Lower Sun's steps), carried through a rebuild of the runtime. */
+        this.level = 1;
         this.fixedDelta = 0;
         this.layoutDue = new Float64Array(LAYOUT_REREAD_OFFSETS.length).fill(Infinity);
 
@@ -190,7 +196,11 @@ export default class ParhelionTheme extends BaseTheme {
         const container = document.getElementById(`${this.name}-theme`);
         if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
+        // The clock lives on through a rebuild in place (and a restart hands it over): the Lower
+        // Sun's walk stays where it was. An ordinary start comes after stop(), at 0.
+        const resumeAt = this.takeRestartTime(this.elapsedTime);
         this.disposeRuntime();
+        this.elapsedTime = resumeAt;
         const generation = ++this.runtimeGeneration;
         const isCurrent = () => generation === this.runtimeGeneration
             && ownerGeneration === this.lifecycleGeneration
@@ -240,6 +250,8 @@ export default class ParhelionTheme extends BaseTheme {
         try {
             this.runtime = createParhelionScene(this.createRuntimeContext(params, width, height));
             this.postProcessing = this.runtime.post?.pipeline ?? null;
+            // A rebuilt runtime starts at level 1: give it back the run's level.
+            if (this.level > 1) this.runtime.setLevel?.(this.level);
             this.runtime.camera?.(0, this.camera);
             this.setupReactions();
             this.applyLayout();
@@ -352,7 +364,7 @@ export default class ParhelionTheme extends BaseTheme {
                 cue: (c) => this.runtime?.cue?.(c),
                 count: (n) => this.runtime?.count?.(n),
                 resonance: (r) => this.runtime?.setResonance?.(r),
-                levelUp: (n) => this.runtime?.setLevel?.(n),
+                levelUp: (n) => this.setRunLevel(n),
             },
         });
         if (this.appliedSize) this.director.setViewport(this.appliedSize.w, this.appliedSize.h);
@@ -374,6 +386,8 @@ export default class ParhelionTheme extends BaseTheme {
             this.eventUnsubscribers.push(eventBus.on(eventName, (payload) => {
                 // Stage only: the director resolves in update(), first thing in the frame.
                 if (this.effectsAllowed()) this.director?.[method](payload);
+                // Reactions off: a level still steps the Lower Sun (the world's light, no surge).
+                else if (key === 'LEVEL_UP' && this.isActive && !this.isPaused) this.setRunLevel(payload?.level);
             }));
         });
 
@@ -456,10 +470,26 @@ export default class ParhelionTheme extends BaseTheme {
     /** Window 'gameOver' and modeStopped: forget chains, counts and the Lower Sun level. */
     resetReactions() {
         this.director?.reset();
+        this.level = 1;
         const { runtime } = this;
         if (!runtime) return;
         if (typeof runtime.resetSession === 'function') runtime.resetSession();
         else runtime.setLevel?.(1);
+    }
+
+    /**
+     * A level reached the world: the Lower Sun steps on along its walk (the runtime eases it),
+     * and the run keeps it for a rebuild.
+     * @param {number} n
+     */
+    setRunLevel(n) {
+        this.level = Math.max(1, Math.trunc(Number(n)) || 1);
+        this.runtime?.setLevel?.(this.level);
+    }
+
+    /** A restart after a quality change behind the menu carries the clock (elapsedTime) too. */
+    captureRestartRun() {
+        return { ...super.captureRestartRun(), time: this.elapsedTime };
     }
 
     // ── settings ────────────────────────────────────────────────────────────────
@@ -742,6 +772,8 @@ export default class ParhelionTheme extends BaseTheme {
     stop() {
         super.stop();
         this.disposeRuntime();
+        // The run ends here: only a restart (applyRestartRun) or a rebuild in place carries it on.
+        this.level = 1;
     }
 
     cleanup() {

@@ -14,11 +14,14 @@ import * as THREE from 'three/webgpu';
 import SynthwaveSunsetTheme from '../../src/themes/synthwave-sunset/synthwave-sunset-theme.js';
 import {
     DUSK,
+    EVENING_WALK,
     PIECE_COLORS,
     SynthwaveWorld,
     WORLD_QUALITY,
     boardRectsDiffer,
+    eveningAt,
 } from '../../src/themes/synthwave-sunset/synthwave-sunset-world.js';
+import { pingPong } from '../../src/themes/shared/mood-clock.js';
 import { RIG, SHORE, SUN } from '../../src/themes/synthwave-sunset/synthwave-sunset-tsl.js';
 import { WHEEL, pierFrame, wheelWorldPosition } from '../../src/themes/synthwave-sunset/synthwave-sunset-layout.js';
 import { COASTER } from '../../src/themes/synthwave-sunset/synthwave-sunset-coaster.js';
@@ -140,6 +143,7 @@ describe('synthwave-sunset theme wiring', () => {
         });
         expect(world.onCombo).toHaveBeenCalledWith(3);
         expect(world.onLevelUp).toHaveBeenCalledTimes(1);
+        expect(world.onLevelUp).toHaveBeenLastCalledWith({ react: true });
         expect(world.onChain).toHaveBeenLastCalledWith(1);
 
         // A second clearing lock extends the chain; a lock that clears nothing breaks it.
@@ -172,6 +176,13 @@ describe('synthwave-sunset theme wiring', () => {
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
         theme.flushEvents();
         expect(world.onLineClear).toHaveBeenCalledTimes(2);
+        // A level is the world's light too: it still steps the evening, without its shells; a
+        // second board's level does not.
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3, player: 2 });
+        theme.flushEvents();
+        expect(world.onLevelUp).toHaveBeenCalledTimes(2);
+        expect(world.onLevelUp).toHaveBeenLastCalledWith({ react: false });
 
         win.settings.backgroundComboEffects = true;
         theme.stop();
@@ -696,26 +707,96 @@ describe('synthwave-sunset world', () => {
         world.dispose();
     });
 
-    it('deepens the evening while a game is played, steps it on a level, and holds it in the menus', () => {
-        const { world, camera } = builtWorld();
-        let t = run(world, camera, 0, 60);
-        expect(world.dusk).toBeCloseTo(DUSK.rest, 5);
-        world.onPieceLock({ type: 'O', x: 4, rotation: 0 });
-        t = run(world, camera, t, 20);
-        expect(world.dusk).toBeGreaterThan(DUSK.rest + 0.02);
-        const before = world.duskTarget;
-        world.onLevelUp();
-        expect(world.duskTarget).toBeCloseTo(before + DUSK.levelStep, 6);
-        // The sun sinks and the pier's lights spread with it.
-        const sunY = world.sunDir.y;
-        const power = world.u.pierPower.value;
-        run(world, camera, t, 10);
-        expect(world.sunDir.y).toBeLessThan(sunY);
-        expect(world.u.pierPower.value).toBeGreaterThan(power);
-        // A capture's seek puts the evening back where it was set.
-        world.seek(5);
-        expect(world.dusk).toBeCloseTo(DUSK.rest, 6);
+    it('walks the evening there and back by the clock alone, in the menus too, the neon ring turning at each stop', () => {
+        const { world } = builtWorld();
+        const { seconds, hold, stops } = EVENING_WALK;
+        const at = (time) => {
+            world.update({ time, delta: 0 });
+            return {
+                dusk: world.dusk, sunY: world.sunDir.y, power: world.u.pierPower.value, neon: world.u.wheelNeonMix.value,
+            };
+        };
+        // Mood 0 is the opening look: the sun on the sea, the ring pink, through the first rest
+        // (no gameplay at all: the menus and Serenity walk the same evening).
+        const opening = at(0);
+        expect(opening.dusk).toBe(DUSK.rest);
+        expect(opening.neon).toBe(0);
+        expect(at(seconds * hold * 0.9).dusk).toBe(DUSK.rest);
+        const span = 1 - DUSK.rest;
+        for (let k = 0; k <= 2 * stops; k += 1) {
+            const s = at(k * seconds);
+            expect(s.dusk, `stop ${k}`).toBeCloseTo(DUSK.rest + span * pingPong(k / stops), 9);
+            expect(s.neon, `ring at stop ${k}`).toBeCloseTo(k % 2, 9);
+        }
+        // The afterglow with no level-up: the sun sunk, the pier's lights out to the wheel.
+        const afterglow = at(stops * seconds);
+        expect(afterglow.dusk).toBe(1);
+        expect(afterglow.sunY).toBeLessThan(opening.sunY);
+        expect(afterglow.power).toBeGreaterThan(opening.power);
+        // It melts between stops, never jumps.
+        let last = at(0).dusk;
+        for (let time = 0.5; time <= 2 * stops * seconds; time += 0.5) {
+            const d = at(time).dusk;
+            expect(Math.abs(d - last)).toBeLessThan(0.01);
+            last = d;
+        }
+        // Halfway round, the ring burns blue-violet (the short way round the colour wheel), not
+        // the pale grey-white of a straight mix of pink and mint.
+        world.neonPhase = 0.5;
+        world.neonTarget = 0.5;
+        at(0);
+        expect(world.u.wheelNeonMix.value).toBeCloseTo(0.5, 9);
+        const ring = world.u.wheelNeon.value;
+        expect(ring.b).toBeGreaterThan(Math.max(ring.r, ring.g) * 1.5);
         world.dispose();
+    });
+
+    it('steps the evening on a level, on top of the clock, turns the ring, and never pins it at the afterglow', () => {
+        const { world, camera } = builtWorld();
+        const { seconds, stops } = EVENING_WALK;
+        const t1 = seconds; // resting half sunk, the ring mint
+        world.update({ time: t1, delta: 0 });
+        const half = world.dusk;
+        const sunY = world.sunDir.y;
+        world.onLevelUp();
+        expect(world.duskTarget).toBeCloseTo(DUSK.levelStep, 9);
+        let t = run(world, camera, t1, 0.5);
+        expect(world.dusk).toBeGreaterThan(half); // eased in, not snapped
+        expect(world.dusk).toBeLessThan(half + DUSK.levelStep);
+        t = run(world, camera, t, 15);
+        expect(world.dusk).toBeCloseTo(half + DUSK.levelStep, 4);
+        expect(world.sunDir.y).toBeLessThan(sunY);
+        expect(world.u.wheelNeonMix.value).toBeCloseTo(0, 3); // mint turned on to pink
+        // A long run walks on past the afterglow instead of stopping there, and the clock still
+        // turns it.
+        for (let i = 0; i < 20; i += 1) world.onLevelUp();
+        t = run(world, camera, t, 20);
+        const late = world.dusk;
+        expect(late).toBeCloseTo(eveningAt(21 * DUSK.levelStep, t), 4);
+        expect(late).toBeLessThan(1);
+        world.update({ time: t + seconds * stops * 0.5, delta: 0 });
+        expect(Math.abs(world.dusk - late)).toBeGreaterThan(0.05);
+        // A capture's seek puts the evening back on the clock's own walk.
+        world.seek(5);
+        expect(world.dusk).toBe(DUSK.rest);
+        expect(world.duskTarget).toBe(0);
+        world.dispose();
+    });
+
+    it('still sends up its shells on a level-up, and steps the light without them when reactions are off', () => {
+        const { world, camera } = builtWorld();
+        run(world, camera, 0, 1);
+        const before = world.fireworks.pending.length;
+        world.onLevelUp();
+        expect(world.fireworks.pending.length).toBe(before + 2);
+        const quiet = builtWorld();
+        const shells = quiet.world.fireworks.pending.length;
+        quiet.world.onLevelUp({ react: false });
+        expect(quiet.world.fireworks.pending.length).toBe(shells);
+        run(quiet.world, quiet.camera, 0, 15);
+        expect(quiet.world.dusk).toBeCloseTo(DUSK.rest + DUSK.levelStep, 4);
+        world.dispose();
+        quiet.world.dispose();
     });
 
     it('holds the fireworks\' sky glow under Reduce flashing and fades the stars in', () => {

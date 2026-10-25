@@ -54,6 +54,7 @@ import * as THREE from 'three/webgpu';
 import { float, shadow } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
+import { easeStep } from '../shared/mood-clock.js';
 import {
     CLEAR_AFTERGLOW,
     CLEAR_SLOTS,
@@ -81,7 +82,10 @@ import {
     compositionFor,
     createNoiseTexture,
     createSanctuaryUniforms,
+    hourDrift,
+    hourNear,
     mulberry32,
+    paletteAt,
     pieceColor,
     powerForCombo,
     siteToWorld,
@@ -262,7 +266,8 @@ export class HalcyonApexWorld {
         this.surge = 0;
         this.stir = 0;
         this.level = 1;
-        this.paletteIndex = 0;
+        /** The level's step round the hours as it eases in (the clock's turn is added on top). */
+        this.hourStep = 0;
         this.flash = 0;
         this.kick = 0;
         this.dip = 0;
@@ -1194,10 +1199,9 @@ export class HalcyonApexWorld {
         this.combo = n;
     }
 
-    /** A new level: the hour changes. */
+    /** A new level: the hour moves on, on top of the clock's. */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.paletteIndex = (this.level - 1) % HALCYON_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             this.stir = Math.max(this.stir, 0.8);
@@ -1207,14 +1211,21 @@ export class HalcyonApexWorld {
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the sanctuary is heading round its hours: one step for every level, turned on by the
+     * clock. The whole part names an hour, the fraction is how far it has melted into the next.
+     */
+    hourPhase() {
+        return (this.level - 1) + hourDrift(this.time);
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek and
+     * a replay agree); the level's step eases in by `k` (1 snaps), the short way round the hours.
+     */
     applyPalette(k) {
-        const target = HALCYON_PALETTES[this.paletteIndex];
-        const p = this._palette;
-        for (let i = 0; i < PALETTE_KEYS.length; i++) {
-            const key = PALETTE_KEYS[i];
-            for (let c = 0; c < 3; c++) p[key][c] += (target[key][c] - p[key][c]) * k;
-        }
+        this.hourStep = easeStep(this.hourStep, this.level - 1, k, HALCYON_PALETTES.length);
+        paletteAt(this.hourStep + hourDrift(this.time), this._palette);
     }
 
     /** Resolve everything whose moment has come. */
@@ -1478,7 +1489,8 @@ export class HalcyonApexWorld {
             stir: this.stir,
             breath: this.breath,
             level: this.level,
-            palette: HALCYON_PALETTES[this.paletteIndex].name,
+            palette: hourNear(this.hourPhase()).name,
+            hour: this.hourStep + hourDrift(this.time),
             counts: { ...this.counts },
             held: [...this.held],
             /** How hot play runs: the level (0..1), the fever (0..1) and the act (0 calm .. 3 fever). */

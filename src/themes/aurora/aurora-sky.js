@@ -6,11 +6,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp,
-    instanceIndex, instancedBufferAttribute, max, mix, normalize, positionGeometry,
-    positionWorld, select, sin, smoothstep, texture, uniformArray, uv, vec2, vec3, vec4,
+    Fn, abs, atan, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float,
+    instanceIndex, instancedBufferAttribute, length, max, mix, normalize, positionGeometry,
+    positionWorld, select, sin, smoothstep, sqrt, texture, uniformArray, uv, vec2, vec3, vec4,
 } from 'three/tsl';
-import { AURORA_COLORS } from './aurora-palette.js';
+import { MOON_DIRECTION, MOON_RADIUS } from './aurora-hours.js';
 
 const DOME_RADIUS = 9000;
 const STAR_RADIUS = 8200;
@@ -21,7 +21,6 @@ const STAR_AZIMUTH = 80 * DEG;
 const STAR_LOW = Math.sin(-3 * DEG);
 const STAR_HIGH = Math.sin(84 * DEG);
 
-const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
 const direction = (azimuth, elevation) => new THREE.Vector3(
     Math.cos(elevation) * Math.sin(azimuth),
     Math.sin(elevation),
@@ -34,6 +33,36 @@ const GALAXY_B = direction(14 * DEG, 64 * DEG);
 export const GALAXY_NORMAL = new THREE.Vector3().crossVectors(GALAXY_A, GALAXY_B).normalize();
 const GALAXY_U = GALAXY_A.clone();
 const GALAXY_V = new THREE.Vector3().crossVectors(GALAXY_NORMAL, GALAXY_U).normalize();
+
+/** The moon, and a frame across its face for the maria. */
+const MOON = new THREE.Vector3(...MOON_DIRECTION);
+const MOON_U = new THREE.Vector3().crossVectors(MOON, new THREE.Vector3(0, 1, 0)).normalize();
+const MOON_V = new THREE.Vector3().crossVectors(MOON_U, MOON);
+/** Radiance of the full moon's face: bright against the night, never a blinding disc. */
+const MOON_BRIGHTNESS = 0.85;
+const vector = (v) => vec3(v.x, v.y, v.z);
+
+/**
+ * The moon along `rd` in the moonlit hour (aurora-hours.js; `u.moonGlow` is how much of it
+ * stands): a small pale disc with a softly darkened limb and grey maria, and the glow it lifts
+ * in the sky round it. The dome draws it and the cheapest tiers' analytic lake mirrors it.
+ * @param {object} u shared world uniforms (moonGlow)
+ * @param {import('three/tsl').ShaderNodeObject<any>} rd unit view direction
+ * @param {THREE.Texture} noiseTexture shared noise tile
+ */
+export function moonRadiance(u, rd, noiseTexture) {
+    const offset = rd.sub(vector(MOON)).toVar();
+    const chord = length(offset);
+    const face = vec2(dot(offset, vector(MOON_U)), dot(offset, vector(MOON_V))).div(MOON_RADIUS).toVar();
+    const r2 = dot(face, face);
+    const disc = float(1).sub(smoothstep(0.84, 1.0, sqrt(r2)));
+    const limb = sqrt(max(float(1).sub(r2), 0)).mul(0.35).add(0.65);
+    const maria = texture(noiseTexture, face.mul(0.21).add(vec2(0.41, 0.63))).level(0);
+    const albedo = mix(0.6, 1, smoothstep(0.32, 0.72, maria.b.mul(0.7).add(maria.r.mul(0.3))));
+    const light = vec3(1.0, 0.97, 0.9).mul(disc.mul(limb).mul(albedo).mul(MOON_BRIGHTNESS));
+    const glow = vec3(0.55, 0.63, 0.8).mul(exp(chord.mul(-26)).mul(0.03).add(exp(chord.mul(-130)).mul(0.07)));
+    return light.add(glow).mul(u.moonGlow);
+}
 
 const STAR_TINTS = [
     [0.7, 0.81, 1.0],
@@ -94,7 +123,8 @@ export class AuroraSky {
      * @param {object} options.preset quality preset
      * @param {import('./aurora-curtains.js').AuroraCurtains} options.curtains
      * @param {THREE.Texture} options.noiseTexture shared noise tile (not owned)
-     * @param {object} options.uniforms shared world uniforms (time, activity, viewHeight, aspect)
+     * @param {object} options.uniforms shared world uniforms (time, activity, viewHeight, aspect, and
+     *   the hour of the night: skyZenith, skyHorizon, airglow, starGain, galaxyGain, moonGlow)
      * @param {Function} options.random seeded generator for the catalogue
      */
     constructor({
@@ -124,12 +154,10 @@ export class AuroraSky {
         material.colorNode = Fn(() => {
             const rd = normalize(positionWorld.sub(cameraPosition)).toVar();
             const up = clamp(rd.y, 0, 1).toVar();
-            const sky = mix(
-                triple(AURORA_COLORS.skyZenith),
-                triple(AURORA_COLORS.skyHorizon),
-                exp(up.mul(-5.2)),
-            ).toVar();
-            sky.addAssign(triple(AURORA_COLORS.airglow).mul(exp(up.mul(-13))));
+            // The hour of the night (aurora-hours.js) sets the gradient and the horizon band:
+            // green airglow, or the deep blue rim of the last twilight.
+            const sky = mix(u.skyZenith, u.skyHorizon, exp(up.mul(-5.2))).toVar();
+            sky.addAssign(u.airglow.mul(exp(up.mul(-13))));
 
             // Milky Way: a soft band along the galactic plane, broken by cloud structure
             // and a dark dust lane, fading into the horizon haze.
@@ -154,11 +182,13 @@ export class AuroraSky {
                 .add(vec3(0.95, 0.74, 0.52).mul(band.mul(band).mul(clouds).mul(0.55)))
                 .add(vec3(0.42, 0.5, 0.72).mul(exp(plane.mul(plane).mul(-8)).mul(0.1)))
                 .mul(lane.mul(0.85).oneMinus())
-                .mul(smoothstep(0.02, 0.3, rd.y).mul(0.12));
+                .mul(smoothstep(0.02, 0.3, rd.y).mul(u.galaxyGain.mul(0.12)));
             sky.addAssign(galaxy);
 
             // A bright display lifts the whole sky a little, as it does to the eye.
             sky.mulAssign(u.activity.mul(0.35).add(1));
+            // The moon stands behind the display: the curtains' light adds over it.
+            sky.addAssign(moonRadiance(u, rd, noiseTexture));
             sky.addAssign(curtains.sample(rd));
             // Below the horizon only the lake and the shore are ever drawn.
             sky.mulAssign(smoothstep(-0.06, 0.0, rd.y).mul(0.75).add(0.25));
@@ -215,7 +245,8 @@ export class AuroraSky {
         const energy = pixels.div(drawn).mul(pixels.div(drawn));
         const horizon = smoothstep(0.0, 0.13, dir.y);
         const reddened = mix(vec3(1.0, 0.78, 0.6), vec3(1), smoothstep(0.02, 0.3, dir.y));
-        material.colorNode = tint.mul(reddened).mul(data.y).mul(core.add(spikes))
+        // A moonlit or a twilit sky hides the faint stars: the hour scales them all.
+        material.colorNode = tint.mul(reddened).mul(data.y.mul(u.starGain)).mul(core.add(spikes))
             .mul(twinkle)
             .mul(energy)
             .mul(horizon);

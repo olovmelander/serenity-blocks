@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    SAND_FLOW, ShiftingSandsWorld, WORLD_TIERS, idleWind,
+    DUSK_LEVEL_STEP, DUSK_WALK, SAND_FLOW, ShiftingSandsWorld, WORLD_TIERS, idleWind,
 } from '../../src/themes/shifting-sands/shifting-sands-world.js';
+import { pingPong } from '../../src/themes/shared/mood-clock.js';
 import { BLOW_SLOTS, FX_TIERS } from '../../src/themes/shifting-sands/shifting-sands-fx.js';
 import { GROUND_PULSE_SLOTS, TERRAIN_TIERS } from '../../src/themes/shifting-sands/shifting-sands-terrain.js';
 import { POST_LOOK } from '../../src/themes/shifting-sands/shifting-sands-post.js';
@@ -209,6 +210,76 @@ describe('shifting sands world', () => {
         world.update({ time: 2, delta: 30 }, camera);
         expect(world.dusk).toBeLessThan(0.05);
         world.dispose();
+    });
+
+    it('walks the dusk there and back by the clock alone, resting at golden, halfway and deep dusk', () => {
+        const { world, camera } = makeWorld();
+        const { seconds, hold, stops } = DUSK_WALK;
+        const at = (t) => {
+            world.update({ time: t, delta: 0 }, camera);
+            return { dusk: world.dusk, zenith: world.shared.uZenith.value.clone(), sunY: world.shared.uSunA.value.y };
+        };
+        // Mood 0 is the opening look: golden hour through the first rest.
+        const opening = at(0);
+        expect(opening.dusk).toBe(0);
+        expect(at(seconds * hold * 0.9).dusk).toBe(0);
+        // Every stop is exact, and the light differs from its neighbour's.
+        const stopsSeen = [];
+        for (let k = 0; k <= 2 * stops; k++) stopsSeen.push(at(k * seconds));
+        stopsSeen.forEach((s, k) => expect(s.dusk, `stop ${k}`).toBeCloseTo(pingPong(k / stops), 9));
+        expect(stopsSeen[stops].dusk).toBe(1); // deep dusk with no level-up at all
+        expect(stopsSeen[1].zenith.equals(opening.zenith)).toBe(false);
+        expect(stopsSeen[stops].sunY).toBeLessThan(opening.sunY);
+        expect(stopsSeen[2 * stops].dusk).toBe(0); // and back to golden hour
+        // It melts between stops, never jumps.
+        let last = at(0).dusk;
+        for (let t = 0.5; t <= 2 * stops * seconds; t += 0.5) {
+            const d = at(t).dusk;
+            expect(Math.abs(d - last)).toBeLessThan(0.01);
+            last = d;
+        }
+        world.dispose();
+    });
+
+    it('steps the dusk along the walk on a level-up, on top of the clock, and never pins it', () => {
+        const { world, camera } = makeWorld();
+        const { seconds, stops } = DUSK_WALK;
+        const t1 = seconds; // resting halfway, on the way to deep dusk
+        world.update({ time: t1, delta: 0 }, camera);
+        const halfway = world.dusk;
+        world.onLevelUp(3);
+        world.update({ time: t1 + 0.5, delta: 0.5 }, camera);
+        expect(world.dusk).toBeGreaterThan(halfway); // eased, not snapped
+        expect(world.dusk).toBeLessThan(halfway + 2 * DUSK_LEVEL_STEP);
+        world.update({ time: t1 + 1, delta: 30 }, camera);
+        expect(world.dusk).toBeCloseTo(halfway + 2 * DUSK_LEVEL_STEP, 9);
+        // A long run walks on past deep dusk instead of stopping there, and the clock still turns it.
+        world.onLevelUp(40);
+        world.update({ time: t1 + 2, delta: 30 }, camera);
+        const late = world.dusk;
+        expect(late).toBeCloseTo(pingPong(39 * DUSK_LEVEL_STEP + 1 / stops), 9);
+        world.update({ time: t1 + seconds, delta: 0 }, camera);
+        expect(world.dusk).not.toBeCloseTo(late, 3);
+        world.dispose();
+    });
+
+    it('still flares the suns and lifts the surge on a level-up', () => {
+        const { world, camera } = makeWorld();
+        world.seek(5);
+        world.update({ time: 5, delta: 0 }, camera);
+        const flare = world.shared.uSunFlare.value;
+        world.onLevelUp(2);
+        world.update({ time: 5.2, delta: 0.2 }, camera);
+        expect(world.shared.uSunFlare.value).toBeGreaterThan(flare + 0.05);
+        expect(world.heat.level).toBeGreaterThan(0);
+        // Background reactions off: no flare, but the light still steps.
+        const quiet = makeWorld();
+        quiet.world.onLevelUp(2, { react: false });
+        quiet.world.update({ time: 5.2, delta: 30 }, quiet.camera);
+        expect(quiet.world.shared.uSunFlare.value).toBe(0);
+        expect(quiet.world.dusk).toBeCloseTo(DUSK_LEVEL_STEP, 9);
+        world.dispose();
+        quiet.world.dispose();
     });
 
     it('rolls beats closer than a tick out as one louder drum ring', () => {

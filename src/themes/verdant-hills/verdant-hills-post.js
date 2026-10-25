@@ -149,7 +149,9 @@ export class VerdantHillsPost {
         // The frame as the world wears it: the surge's warmth and shafts, the iris and the grade.
         const worn = wearVerdantHillsFrame(frame, this.worn);
         const { warmth, shafts } = worn;
-        this.uExposure.value = this.exposure + warmth * 0.04 - worn.iris;
+        // The weather asks a little more or less of the iris (verdant-hills-moods.js), play adds to it.
+        const weather = Number.isFinite(this.light?.exposureScale) ? this.light.exposureScale : 1;
+        this.uExposure.value = this.exposure * weather + warmth * 0.04 - worn.iris;
         this.uShafts.value = 1 + shafts * 0.7;
         this.uSaturation.value = SATURATION + worn.saturation;
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + warmth * 0.06;

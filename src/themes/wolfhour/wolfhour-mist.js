@@ -10,7 +10,7 @@ import * as THREE from 'three/webgpu';
 import {
     float, mix, positionGeometry, smoothstep, texture, uniform, uv, vec2, vec3,
 } from 'three/tsl';
-import { makeWolfhourNoiseTexture } from './wolfhour-sky.js';
+import { createWolfhourNightLight, makeWolfhourNoiseTexture } from './wolfhour-sky.js';
 
 /**
  * The banks, farthest first. `y` is the bank's centre, `response` its share of the camera's
@@ -60,7 +60,7 @@ const TIERS = Object.freeze({
 const MIST_FOOT = vec3(0.046, 0.064, 0.108);
 const MIST_TOP = vec3(0.07, 0.094, 0.15);
 
-function createBankMaterial(bank, noiseMap, uTime, uGlow) {
+function createBankMaterial(bank, noiseMap, uTime, uGlow, uAir) {
     const material = new THREE.MeshBasicNodeMaterial({
         name: bank.name,
         transparent: true,
@@ -90,13 +90,16 @@ function createBankMaterial(bank, noiseMap, uTime, uGlow) {
         .clamp(0, 1);
     // The moon stands over the left: that side of every bank carries more of its light.
     const moonSide = smoothstep(700, -1300, p.x).mul(0.36).add(0.82);
+    // (The hour of the night tints it, as it does the valley air the ranges fade into.)
     material.colorNode = mix(MIST_FOOT, MIST_TOP, smoothstep(0.2, 0.85, v))
-        .mul(moonSide).mul(uGlow.mul(0.35).add(1));
+        .mul(moonSide).mul(uGlow.mul(0.35).add(1)).mul(uAir);
     return material;
 }
 
 /** Creates the mist banks for a quality tier (no renderer, no texture fetch). */
-export function createWolfhourMist({ scene = null, quality = 'High', noiseMap = null } = {}) {
+export function createWolfhourMist({
+    scene = null, quality = 'High', noiseMap = null, nightLight = createWolfhourNightLight(),
+} = {}) {
     const tier = TIERS[quality] ?? 2;
     const ownsNoise = !noiseMap;
     const noise = noiseMap || makeWolfhourNoiseTexture();
@@ -109,7 +112,7 @@ export function createWolfhourMist({ scene = null, quality = 'High', noiseMap = 
         if (bank.minTier > tier) continue;
         const mesh = new THREE.Mesh(
             new THREE.PlaneGeometry(5200, bank.height),
-            createBankMaterial(bank, noise, uTime, uGlow),
+            createBankMaterial(bank, noise, uTime, uGlow, nightLight.uAir),
         );
         mesh.name = bank.name;
         mesh.position.set(0, bank.y, bank.z);

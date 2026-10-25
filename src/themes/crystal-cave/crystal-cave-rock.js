@@ -139,7 +139,8 @@ export function createCaveRock({
         ).mul(1.5), 3.2);
         const poolLight = vec3(0.1, 0.72, 0.78).mul(lit1.y.mul(lightScale[5]))
             .mul(caustic.mul(1.9).add(0.25)).mul(controls.poolGain);
-        const skyLight = vec3(0.66, 0.82, 1.0).mul(lit1.z.mul(lightScale[6])).mul(controls.skyGain);
+        // (The hour above the cave tints the light that came down the chimney.)
+        const skyLight = vec3(0.66, 0.82, 1.0).mul(u.skyTint).mul(lit1.z.mul(lightScale[6])).mul(controls.skyGain);
         // Waves of light crossing the cave.
         const shell = controls.shell(point, 0.42).toVar();
         const irradiance = crystals.mul(controls.gain).mul(shell.mul(1.6).add(1))

@@ -23,6 +23,11 @@ export function create({
         shadows: renderer.shadowMap.enabled,
     };
     const quality = params.get('quality') || 'High';
+    // ?level=<n> sets the level the grove stands on: every level is one light on (quiet afternoon,
+    // amber hour, rose dusk, blue mist, bright October, and round again). The clock turns the
+    // lights too, so ?t= past 38 s shows one melting into the next (fall-moods.js).
+    const rawLevel = Number(params.get('level') ?? 1);
+    const level = Number.isFinite(rawLevel) ? Math.max(1, Math.round(rawLevel)) : 1;
     // ?msaa=<n> overrides the scene pass's samples (the theme's own: 4 from High up, else 0 + FXAA).
     const samples = params.has('msaa')
         ? Math.max(0, Math.round(Number(params.get('msaa')) || 0)) : sceneSamples(quality);
@@ -62,6 +67,7 @@ export function create({
         world = new FallWorld({
             scene, camera, quality, rng, assets,
         }).build();
+        world.setLevel(level, { silent: true });
         post = new FallPost({
             renderer, scene, camera, quality, light: world.light, samples,
         });
@@ -100,7 +106,11 @@ export function create({
         } else if (event === 'spin') reactions.onTSpin({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'b2b') reactions.onBackToBack();
-        else if (event === 'level') reactions.onLevelUp();
+        else if (event === 'level') {
+            // As the theme does: the flourish, and the grove one light on.
+            reactions.onLevelUp();
+            world?.setLevel(world.level + 1);
+        }
     };
     const seek = (time) => {
         if (!Number.isFinite(time)) return;
@@ -112,6 +122,8 @@ export function create({
         const target = Math.max(0, time);
         reactions.reset();
         world.resetEffects();
+        // The replay begins on the level asked for; the clock turns the light from there.
+        world.setLevel(level, { silent: true });
         randomIndex = 0;
         const age = Number(params.get('eventAge') ?? 0.35);
         const eventTime = Math.max(0, target - (Number.isFinite(age) ? Math.max(0, age) : 0.35));

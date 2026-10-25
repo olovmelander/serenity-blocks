@@ -24,6 +24,11 @@
  *            grid's bands, a meteor shower falls away from it, the dust streams up.
  * A perfect clear crowns it: the slits close and the whole disc burns gold, every range lights
  * up and the glass breathes the light back out to the horizon. The end of a chain exhales too.
+ *
+ * The light itself turns by the clock, in every mode (neon-dusk-moods.js): five moods of the dusk
+ * (magenta dusk, violet twilight, teal night, ultraviolet midnight, amber dawn), each resting a
+ * while and then melting into the next. A level is one mood forward on top, eased in over a few
+ * seconds while the level-up's burst plays.
  */
 
 import * as THREE from 'three/webgpu';
@@ -44,6 +49,10 @@ import {
     GameplaySurge, SURGE_WEIGHTS, Swell, softCeiling,
 } from '../shared/gameplay-surge.js';
 import { ComboTracker } from '../../core/combo-tracker.js';
+import { easeStep, moodDrift } from '../shared/mood-clock.js';
+import {
+    MOODS, MOOD_COUNT, MOOD_HOLD, MOOD_KEYS, MOOD_PERIOD, moodAt, moodName,
+} from './neon-dusk-moods.js';
 
 /**
  * Per-tier content. Every tier keeps the composition; tiers trade detail, not layout.
@@ -280,8 +289,15 @@ export function createWorldUniforms() {
         /** The dust's clock (the world's time at rest; quicker as play heats) and its light. */
         dustRun: uniform(0),
         dustGain: uniform(1.6),
+        /** The live mood's colours (neon-dusk-moods.js MOOD_KEYS), scene-linear. */
+        mood: Object.fromEntries(MOOD_KEYS.map((key) => [key, uniform(new THREE.Vector3(...MOODS[0][key]))])),
+        /** The live mood's starlight (1 in today's). */
+        starGain: uniform(MOODS[0].stars),
     };
 }
+
+/** Frame-rate independent approach factor of a level's step toward its mood (1/s). */
+const MOOD_EASE = 0.8;
 
 /** At rest a shooting star crosses the sky once in each window of this many seconds. */
 export const AMBIENT_SHOOT_PERIOD = 19;
@@ -369,6 +385,10 @@ export class NeonDuskWorld {
         this.slitPhase = 0;
         this.dustRun = 0;
         this.meteorDue = 0;
+        /** The game's level (a level is one mood forward) and its eased step on the wheel. */
+        this.level = 1;
+        this.moodStep = 0;
+        this._mood = {};
 
         const slots = (n, make) => Array.from({ length: n }, make);
         this.rings = slots(SLOTS.rings, () => ({ t0: -1e6, energy: 0, out: false }));
@@ -600,7 +620,49 @@ export class NeonDuskWorld {
         d.exposure = 1 - 0.04 * warm - 0.04 * hot - 0.04 * fever - 0.05 * Math.min(1, crown);
         d.bloomGain = 1 + 0.08 * hot + 0.1 * fever;
 
+        this.applyMood(approach(MOOD_EASE, dt));
         this.updateSlots(t);
+    }
+
+    // ── Mood: the clock turns the light, a level is a step on top ───────────
+
+    /**
+     * The game's level. Each level is one mood forward on top of the clock's own turn; the step
+     * eases in over a few seconds (`silent` snaps it, for a rebuild or a seek).
+     */
+    setLevel(level, { silent = false } = {}) {
+        const asked = Math.round(Number(level));
+        this.level = Number.isFinite(asked) ? Math.max(1, asked) : 1;
+        if (silent) this.applyMood(1);
+    }
+
+    /**
+     * Where the dusk stands on its wheel of moods, heading for: one step a level, turned on by the
+     * clock. The whole part names a mood, the fraction is how far it has melted into the next.
+     */
+    moodPhase() {
+        return (this.level - 1) + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD);
+    }
+
+    /** The live mood's name (diagnostics). */
+    moodName() {
+        return moodName(this.moodStep + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD));
+    }
+
+    /**
+     * Set the live mood's uniforms. The clock's turn is exact (a function of the time alone, so a
+     * seek and a replay agree); the level's step eases in by `k` (1 snaps), the short way round.
+     */
+    applyMood(k) {
+        this.moodStep = easeStep(this.moodStep, this.level - 1, k, MOOD_COUNT);
+        const mood = moodAt(this.moodStep + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD), this._mood);
+        const { u } = this;
+        for (let i = 0; i < MOOD_KEYS.length; i += 1) {
+            const key = MOOD_KEYS[i];
+            const c = mood[key];
+            u.mood[key].value.set(c[0], c[1], c[2]);
+        }
+        u.starGain.value = mood.stars;
     }
 
     /** The event layers' uniforms from their slots (plain loops: nothing allocated a frame). */
@@ -698,6 +760,7 @@ export class NeonDuskWorld {
         this.contours.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
         this.ambientShootWindow = undefined;
         this.fx?.clear();
+        this.applyMood(1);
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
@@ -844,6 +907,10 @@ export class NeonDuskWorld {
         if (c >= 3) this.triggerHolo(0.5 + 0.12 * c);
     }
 
+    /**
+     * A level-up's burst (the mood's step comes with setLevel, which the theme calls whether or not
+     * background effects are on: that setting gates reactions, not the light).
+     */
     onLevelUp() {
         const t = this.time;
         this.sunSwell.hit(0.8, t);

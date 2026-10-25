@@ -27,6 +27,11 @@ export function create({
         shadows: renderer.shadowMap.enabled,
     };
     const quality = params.get('quality') || 'High';
+    // ?level=<n> sets the level the lake stands on: every level is one hour on (golden hour, ember
+    // sunset, alpenglow, white night, morning gold, and round again). The clock turns the hours
+    // too, so ?t= past 42 s shows one melting into the next (golden-forest-moods.js).
+    const rawLevel = Number(params.get('level') ?? 1);
+    const level = Number.isFinite(rawLevel) ? Math.max(1, Math.round(rawLevel)) : 1;
     // ?msaa=<n> overrides the scene pass's samples (the theme's own: 4 from High up, else 0 + FXAA).
     const samples = params.has('msaa')
         ? Math.max(0, Math.round(Number(params.get('msaa')) || 0)) : sceneSamples(quality);
@@ -69,7 +74,7 @@ export function create({
             world.stage.refresh();
             // At 80 px an icon needs deep silhouettes: thinner air and a darker print.
             world.light.uHaze.value = 0.0014;
-            world.light.resting.haze = 0.0014;
+            world.light.hazePin = 0.0014;
             if (post) {
                 post.exposure = 0.74;
                 post.godraysDensity = 0.09;
@@ -86,6 +91,7 @@ export function create({
         world = new GoldenForestWorld({
             scene, camera, quality, rng, assets, samples,
         }).build();
+        world.setLevel(level, { silent: true });
         aim();
         post = new GoldenForestPost({
             renderer, scene, camera, quality, light: world.light, samples,
@@ -125,8 +131,11 @@ export function create({
             }
         } else if (event === 'spin') reactions.onTSpin({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
-        else if (event === 'level') reactions.onLevelUp();
-        else if (event === 'over') reactions.onGameOver();
+        else if (event === 'level') {
+            // As the theme does: the flourish, and the lake one hour on.
+            reactions.onLevelUp();
+            world?.setLevel(world.level + 1);
+        } else if (event === 'over') reactions.onGameOver();
     };
     const seek = (time) => {
         if (!Number.isFinite(time)) return;
@@ -138,6 +147,8 @@ export function create({
         const target = Math.max(0, time);
         reactions.reset();
         world.resetEffects();
+        // The replay begins on the level asked for; the clock turns the hour from there.
+        world.setLevel(level, { silent: true });
         randomIndex = 0;
         const age = Number(params.get('eventAge') ?? 0.35);
         const eventTime = Math.max(0, target - (Number.isFinite(age) ? Math.max(0, age) : 0.35));

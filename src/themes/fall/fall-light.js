@@ -11,6 +11,10 @@
  * over a fraction of a second instead of jerking to a new pose in one frame. The light itself
  * (warmth, glow) answers at once. As play heats the low sun deepens to late amber and the air
  * clears; a perfect clear's sunburst brightens it (frame-wide, so under Reduce flashing).
+ *
+ * The light itself turns by the clock (fall-moods.js): `setMood()` lays a light's colours, haze
+ * and exposure on the rig as its rest, and play turns whichever light it is toward late amber.
+ * The sun never moves, so the grove's static shadow map stays true in every light.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -19,18 +23,25 @@ import {
 } from 'three/tsl';
 import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { FALL_MOODS, createFallMood, fallMoodAt } from './fall-moods.js';
 
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-23.4);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
 const TAU = Math.PI * 2;
-/** The low sun as it stands in a quiet afternoon, and the late amber a fever turns it to. */
-const SUN_COLOUR = Object.freeze([3.6, 2.15, 1.02]);
+/** The light a session opens in (the quiet afternoon), whose colours the rig is built with. */
+const FIRST_MOOD = FALL_MOODS[0];
+/**
+ * The low sun as it stands in a quiet afternoon, and the late amber a fever turns it to. Every
+ * light the clock brings turns the same way, by the same share of each channel.
+ */
+const SUN_COLOUR = FIRST_MOOD.sun;
 const SUN_LATE = Object.freeze([3.9, 1.82, 0.62]);
+const SUN_LATE_SHARE = Object.freeze(SUN_LATE.map((late, i) => late / SUN_COLOUR[i]));
 /** How far the colour of play turns the sun toward late amber (at a turn of 1). */
 const SUN_TURN = 0.8;
 /** How much brighter the sun burns at the height of a perfect clear's sunburst. */
 const SUN_CROWN = 0.14;
-const HAZE = 0.0095;
+const HAZE = FIRST_MOOD.haze;
 /** How much the air clears in a fever (the far trees come forward, the colours hold). */
 const HAZE_CLEAR = 0.22;
 /** Spring rates (rad/s): the gust the boughs feel, the standing breeze, the wisps' wander. */
@@ -100,17 +111,27 @@ export class FallLight {
         this.tier = tier;
         this.uTime = uniform(0);
         this.uSunDir = uniform(FALL_SUN_DIRECTION.clone());
-        this.uSunColor = uniform(new THREE.Color(...SUN_COLOUR));
-        this.uSkyLight = uniform(new THREE.Color(0.2, 0.3, 0.5));
-        this.uBounce = uniform(new THREE.Color(0.34, 0.2, 0.1));
-        this.uZenith = uniform(new THREE.Color(0.02, 0.092, 0.21));
-        this.uSkyCool = uniform(new THREE.Color(0.13, 0.27, 0.41));
-        this.uSkyWarm = uniform(new THREE.Color(1.75, 0.98, 0.42));
-        this.uSkyRose = uniform(new THREE.Color(0.44, 0.28, 0.31));
+        // Every colour of the grove is a light's (fall-moods.js) and starts at the quiet afternoon's.
+        const colour = (key) => uniform(new THREE.Color(...FIRST_MOOD[key]));
+        this.uSunColor = colour('sun');
+        this.uSkyLight = colour('skyLight');
+        this.uBounce = colour('bounce');
+        this.uZenith = colour('zenith');
+        this.uSkyCool = colour('skyCool');
+        this.uSkyWarm = colour('skyWarm');
+        this.uSkyRose = colour('skyRose');
         // Shaded air is cool; sunlit air is added by the volumetric shafts where the tier
         // has them, and by this analytic glow where it does not.
-        this.uHazeCool = uniform(new THREE.Color(0.15, 0.22, 0.33));
-        this.uHazeWarm = uniform(new THREE.Color(1.0, 0.6, 0.27));
+        this.uHazeCool = colour('hazeCool');
+        this.uHazeWarm = colour('hazeWarm');
+        // The cloud deck's undersides away from the sun and toward it, and its bodies the same;
+        // and the shafts' colour away from the sun and toward it.
+        this.uCloudShade = colour('cloudShade');
+        this.uCloudLit = colour('cloudLit');
+        this.uCloudBody = colour('cloudBody');
+        this.uCloudBodyWarm = colour('cloudBodyWarm');
+        this.uShaftShade = colour('shaftShade');
+        this.uShaftSun = colour('shaftSun');
         this.uHazeSun = uniform(tier.godrays > 0 ? 0.3 : 1);
         this.uHaze = uniform(HAZE);
         this.uGroundLevel = uniform(0);
@@ -128,6 +149,15 @@ export class FallLight {
         this.uStir = uniform(0);
         // How far play has turned the leaves from gold toward crimson (0..1).
         this.uTurn = uniform(0);
+        // The light the grove stands in (setMood): its colours and numbers, how far round the
+        // lights it is, its sun at rest and turned late, its haze and the exposure it asks of the
+        // lens against rest.
+        this.mood = createFallMood();
+        this.moodPhase = 0;
+        this.restSun = [...SUN_COLOUR];
+        this.lateSun = [...SUN_LATE];
+        this.restHaze = HAZE;
+        this.exposureScale = FIRST_MOOD.exposure;
         this.frontSlots = new Float64Array(FALL_LIGHT_FRONTS * 2);
         this.oneFront = [null];
         this.springs = {
@@ -249,6 +279,39 @@ export class FallLight {
     }
 
     /**
+     * Turn the grove to `phase` lights in (see fall-moods.js): every colour of the rig takes the
+     * light's, melted between the two it lies between; its sun and haze become the rest update()
+     * turns and clears from. Uniform values only; nothing is rebuilt. Call it before update().
+     * @param {number} phase
+     */
+    setMood(phase) {
+        this.moodPhase = Number.isFinite(phase) ? phase : 0;
+        const mood = fallMoodAt(this.moodPhase, this.mood);
+        const paint = (node, rgb) => node.value.setRGB(rgb[0], rgb[1], rgb[2]);
+        paint(this.uSkyLight, mood.skyLight);
+        paint(this.uBounce, mood.bounce);
+        paint(this.uZenith, mood.zenith);
+        paint(this.uSkyCool, mood.skyCool);
+        paint(this.uSkyWarm, mood.skyWarm);
+        paint(this.uSkyRose, mood.skyRose);
+        paint(this.uHazeCool, mood.hazeCool);
+        paint(this.uHazeWarm, mood.hazeWarm);
+        paint(this.uCloudShade, mood.cloudShade);
+        paint(this.uCloudLit, mood.cloudLit);
+        paint(this.uCloudBody, mood.cloudBody);
+        paint(this.uCloudBodyWarm, mood.cloudBodyWarm);
+        paint(this.uShaftShade, mood.shaftShade);
+        paint(this.uShaftSun, mood.shaftSun);
+        for (let i = 0; i < 3; i += 1) {
+            this.restSun[i] = mood.sun[i];
+            // The quiet afternoon's own late amber exactly; any other light turned as far.
+            this.lateSun[i] = mood.sun[i] === SUN_COLOUR[i] ? SUN_LATE[i] : mood.sun[i] * SUN_LATE_SHARE[i];
+        }
+        this.restHaze = mood.haze;
+        this.exposureScale = mood.exposure;
+    }
+
+    /**
      * `frame` is the director's frame with the gust fronts in world x (`fronts`, or one `front`);
      * `dt` moves the springs (none on a zero or invalid step: what moves holds still).
      */
@@ -294,12 +357,13 @@ export class FallLight {
         // brightens it a moment (frame-wide: Reduce flashing keeps a trace of it).
         const late = turn * SUN_TURN;
         const burst = 1 + SUN_CROWN * Math.max(0, Math.min(1.2, Number(frame.crown) || 0)) * flashScale();
+        const { restSun, lateSun } = this;
         this.uSunColor.value.setRGB(
-            (SUN_COLOUR[0] + (SUN_LATE[0] - SUN_COLOUR[0]) * late) * burst,
-            (SUN_COLOUR[1] + (SUN_LATE[1] - SUN_COLOUR[1]) * late) * burst,
-            (SUN_COLOUR[2] + (SUN_LATE[2] - SUN_COLOUR[2]) * late) * burst,
+            (restSun[0] + (lateSun[0] - restSun[0]) * late) * burst,
+            (restSun[1] + (lateSun[1] - restSun[1]) * late) * burst,
+            (restSun[2] + (lateSun[2] - restSun[2]) * late) * burst,
         );
-        this.uHaze.value = HAZE * (1 - HAZE_CLEAR * fever);
+        this.uHaze.value = this.restHaze * (1 - HAZE_CLEAR * fever);
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
         // over the first frames so no late tree is missing from the static map.
         this.shadowFrames += 1;

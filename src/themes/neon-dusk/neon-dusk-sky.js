@@ -54,19 +54,21 @@ import {
 export const SKY_RADIUS = 6000;
 
 /**
- * The sun's face colour for a vertical position v on the disc (−1 bottom … 1 top): a pale gold
- * crown, gold, molten orange, red-orange and hot magenta at the base. The gradient runs over the
- * part of the disc that clears the pass (v ≳ −0.6). Saturated, with the green low, and only a
- * little above 1, so the tone curve keeps its colour.
+ * The sun's face colour for a vertical position v on the disc (−1 bottom … 1 top), from the live
+ * mood's five stops (u.mood.sun0 at the base … sun4 at the crown; today: hot magenta, red-orange,
+ * molten orange, gold and a pale gold crown). The gradient runs over the part of the disc that
+ * clears the pass (v ≳ −0.6). Saturated, with the green low, and only a little above 1, so the
+ * tone curve keeps its colour. Inline (it reads uniforms; see ndSkyGradient).
  */
-export const ndSunColor = /* @__PURE__ */ Fn(([v]) => {
+export const ndSunColor = (u, v) => {
+    const m = u.mood;
     const t = clamp(v.add(0.62).div(1.62), 0.0, 1.0);
-    const c = mix(rgb(0xff1872, 1.2), rgb(0xff3a24, 1.25), smoothstep(0.02, 0.3, t)).toVar();
-    c.assign(mix(c, rgb(0xff7a14, 1.35), smoothstep(0.26, 0.55, t)));
-    c.assign(mix(c, rgb(0xffc632, 1.5), smoothstep(0.52, 0.82, t)));
-    c.assign(mix(c, rgb(0xffeb98, 1.7), smoothstep(0.84, 1.0, t)));
+    const c = mix(m.sun0, m.sun1, smoothstep(0.02, 0.3, t)).toVar();
+    c.assign(mix(c, m.sun2, smoothstep(0.26, 0.55, t)));
+    c.assign(mix(c, m.sun3, smoothstep(0.52, 0.82, t)));
+    c.assign(mix(c, m.sun4, smoothstep(0.84, 1.0, t)));
     return c;
-}).setLayout({ name: 'nd_sunColor', type: 'vec3', inputs: [{ name: 'v', type: 'float' }] });
+};
 
 /**
  * The sun's slits: open bands across the lower face, widening toward the base and sliding slowly
@@ -166,7 +168,7 @@ export function createSky(u, opts = {}) {
         // Footprints up front: fwidth needs uniform control flow.
         const fwA = max(fwidth(az), 1e-5).toVar();
         const fwE = max(fwidth(e), 1e-6).toVar();
-        const col = ndSkyGradient(e, sa).toVar();
+        const col = ndSkyGradient(u, e, sa).toVar();
 
         // World angle from the sun (the broad glows) and the disc in the image plane (the face,
         // its slits, the halo hugging its rim and the hologram rings: round on screen).
@@ -184,7 +186,7 @@ export function createSky(u, opts = {}) {
 
         // ── Stars: hashed cells in sky coordinates, fading out toward the warm horizon ──
         if (starDensity > 0) {
-            const fadeIn = smoothstep(0.08, 0.34, e).mul(float(1.0).sub(sa.mul(0.65))).toVar();
+            const fadeIn = smoothstep(0.08, 0.34, e).mul(float(1.0).sub(sa.mul(0.65))).mul(u.starGain).toVar();
             const sp = vec2(az.mul(95.0), e.mul(95.0));
             const fwS = max(fwA, fwE).mul(95.0);
             const cell = floor(sp);
@@ -226,7 +228,7 @@ export function createSky(u, opts = {}) {
             .mul(mix(float(1.0), float(0.3), inside)).mul(facing)
             .toVar();
         const band = exp(abs(e).mul(-30.0)).mul(exp(abs(lx).mul(-1.8))).mul(0.5).mul(facing);
-        col.addAssign(rgb(0xff2a7a).mul(wide).add(rgb(0xff6a2e).mul(halo)).add(rgb(0xff5a5e).mul(band)));
+        col.addAssign(u.mood.glowWide.mul(wide).add(u.mood.glowHalo.mul(halo)).add(u.mood.glowBand.mul(band)));
 
         // ── The sun: a banded gradient disc, its slits widening toward the base. As play heats
         // the face burns toward its gold crown; a perfect clear closes the slits (the crown) ──
@@ -234,7 +236,7 @@ export function createSky(u, opts = {}) {
             .mul(facing).mul(above)
             .toVar();
         const slit = mix(ndSunSlits(v, fwV, u.slitPhase), float(1.0), u.crown);
-        const sunCol = mix(ndSunColor(v.add(u.sunHeat.mul(0.25))), SUN_CROWN, u.crown.mul(0.6))
+        const sunCol = mix(ndSunColor(u, v.add(u.sunHeat.mul(0.25))), SUN_CROWN, u.crown.mul(0.6))
             .mul(float(1.0).add(pulse.mul(0.45))).toVar();
         col.assign(mix(col, sunCol, discMask.mul(slit)));
 
@@ -244,12 +246,13 @@ export function createSky(u, opts = {}) {
         if (withClouds) {
             If(e.lessThan(0.26), () => {
                 const near = clamp(exp(ang.mul(-2.2)).mul(1.15), 0.0, 1.0);
+                const m = u.mood;
                 const litCol = mix(
-                    rgb(0xb02a6a, 0.5),
-                    mix(rgb(0xff3f7c, 1.0), rgb(0xffa040, 1.45), smoothstep(0.6, 0.95, near)),
+                    m.cloudLitFar,
+                    mix(m.cloudLit, m.cloudLitSun, smoothstep(0.6, 0.95, near)),
                     smoothstep(0.08, 0.55, near),
                 );
-                const shadeCol = mix(rgb(0x1c0b30), rgb(0x3c1240), near);
+                const shadeCol = mix(m.cloudShadeFar, m.cloudShadeNear, near);
                 // Across the disc a bar stands in FRONT of the sun: it dims the face it covers and
                 // glows at its rims, so it reads as cloud, not as a ring passing behind.
                 const veil = sunCol.mul(0.42).add(litCol.mul(0.25));
@@ -311,7 +314,7 @@ export function createSky(u, opts = {}) {
             col.addAssign(rgb(0xd8f4ff, 3.0).mul(min(stars, 1.0)).mul(above));
         });
 
-        return mix(ndHazeColor(sa), col, above);
+        return mix(ndHazeColor(u, sa), col, above);
     })();
 
     const geometry = new THREE.SphereGeometry(SKY_RADIUS, 48, 24);

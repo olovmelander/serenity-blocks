@@ -6,9 +6,10 @@ import {
     CLEAR_KICK_DELAY, HALCYON_APEX_PARTS, HalcyonApexWorld, REST_RIG, SUN_FLOOR, SURGE_COOL, fovForAspect,
 } from '../../src/themes/halcyon-apex/halcyon-apex-world.js';
 import {
-    CLEAR_REACH, CLEAR_SHAPE, CLEAR_SLOTS, CLEAR_TRAVEL, DEG, HALCYON_PALETTES, HOLD_FADE, HOLD_MAX, HUSH_HOLD, LEY_A,
-    LEY_B, LIFT_MAX, LOCK_SLOTS, PULSE_SLOTS, PULSE_SPEED, RING_REACH, RING_TAU, SITE, SUNFIRE, WISP_SLOTS, WISP_TAIL,
-    clearPassTime, clearRadius, compositionFor, pieceColor, powerForCombo, pulseArrival, ringRadius,
+    CLEAR_REACH, CLEAR_SHAPE, CLEAR_SLOTS, CLEAR_TRAVEL, DEG, HALCYON_PALETTES, HOLD_FADE, HOLD_MAX, HOUR_HOLD,
+    HOUR_SECONDS, HUSH_HOLD, LEY_A, LEY_B, LIFT_MAX, LOCK_SLOTS, PULSE_SLOTS, PULSE_SPEED, RING_REACH, RING_TAU, SITE,
+    SUNFIRE, WISP_SLOTS, WISP_TAIL, clearPassTime, clearRadius, compositionFor, hourDrift, paletteAt, pieceColor,
+    powerForCombo, pulseArrival, ringRadius,
 } from '../../src/themes/halcyon-apex/halcyon-apex-core.js';
 import { GEM } from '../../src/themes/halcyon-apex/halcyon-apex-plan.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/halcyon-apex/halcyon-apex-quality.js';
@@ -1683,13 +1684,18 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
         for (const key of plainKeys) expect(gap(key, 2), key).toBeLessThan(1e-12); // not yet moved
         run(world, camera, 0.5);
         const next = 3 % names.length;
+        const round = ((world.hourStep % names.length) + names.length) % names.length;
+        expect(round).toBeGreaterThan(2);
+        expect(round).toBeLessThan(3);
+        const between = paletteAt(world.hourStep + hourDrift(world.time));
         for (const key of plainKeys) {
             const whole = Math.hypot(...HALCYON_PALETTES[next][key].map((c, k) => c - HALCYON_PALETTES[2][key][k]));
             if (whole > 1e-6) {
-                // On its way: no longer the old hour, not yet the new one.
+                // On its way: no longer the old hour, not yet the new one, melting the short way
+                // round the colour wheel.
                 expect(gap(key, 2), key).toBeGreaterThan(whole * 0.05);
                 expect(gap(key, next), key).toBeGreaterThan(whole * 0.05);
-                expect(gap(key, 2) + gap(key, next), key).toBeCloseTo(whole, 9); // straight across
+                world.u[key].value.toArray().forEach((c, k) => expect(c, key).toBeCloseTo(between[key][k], 9));
             }
         }
         run(world, camera, 16);
@@ -1699,6 +1705,60 @@ describe('halcyon apex world: clears, combos and the four-line clear', () => {
             world.levelUp(given, { silent: true });
             expect(world.level, String(given)).toBe(taken);
         }
+        world.dispose();
+    });
+
+    it('turns through its hours by the clock alone, a level a step on top', () => {
+        const { camera, world } = makeWorld('Low');
+        const count = HALCYON_PALETTES.length;
+        const plainKeys = ['zenith', 'rose', 'cloud', 'cloudShade', 'shallow', 'deep', 'stone'];
+        const expectHour = (index, label) => {
+            for (const key of plainKeys) {
+                HALCYON_PALETTES[index][key].forEach((channel, k) => {
+                    expect(world.u[key].value.getComponent(k), `${label} ${key}`).toBeCloseTo(channel, 9);
+                });
+            }
+        };
+        const at = (time) => {
+            world.seek(time);
+            settle(world, camera);
+        };
+        // No level-up at all (Infinity, a match, the menus): each hour rests pure for its hold,
+        // then melts into the next; the round comes back to the first.
+        at(HOUR_SECONDS * HOUR_HOLD * 0.5);
+        expectHour(0, 'rest');
+        for (let k = 1; k <= count; k++) {
+            at(HOUR_SECONDS * k);
+            expectHour(k % count, `hour ${k}`);
+            expect(world.getState()).toMatchObject({ level: 1, palette: HALCYON_PALETTES[k % count].name });
+        }
+        // Mid-melt it is neither hour.
+        at(HOUR_SECONDS * (HOUR_HOLD + (1 - HOUR_HOLD) / 2));
+        const zenith = (index) => new THREE.Vector3(...HALCYON_PALETTES[index].zenith);
+        expect(world.u.zenith.value.distanceTo(zenith(0))).toBeGreaterThan(0.01);
+        expect(world.u.zenith.value.distanceTo(zenith(1))).toBeGreaterThan(0.01);
+        // A single line answers in the hour's ley light, whichever turned it there.
+        at(HOUR_SECONDS);
+        world.onClear({ lines: 1 });
+        expect(hueGap(world.u.clearC[0].value.toArray(), HALCYON_PALETTES[1].ley)).toBeLessThan(1e-6);
+
+        // A level steps on an hour, on top of the clock's, eased; the sanctuary still marks it.
+        at(HOUR_SECONDS);
+        world.levelUp(2);
+        expect(world.stir).toBeGreaterThan(0);
+        expect(world.flash).toBeGreaterThan(0);
+        expect(world.u.shock.value.x).toBe(world.time);
+        expect(world.getState().palette).toBe(HALCYON_PALETTES[2].name);
+        run(world, camera, 1 / 60, 1);
+        expect(world.hourStep).toBeGreaterThan(0);
+        expect(world.hourStep).toBeLessThan(0.1);
+        run(world, camera, 16);
+        expect(world.time).toBeLessThan(HOUR_SECONDS * (1 + HOUR_HOLD));
+        expectHour(2, 'level 2 at hour 1');
+        // A new run drops the level's share and keeps the clock's.
+        world.resetSession();
+        settle(world, camera);
+        expectHour(1, 'new run');
         world.dispose();
     });
 });

@@ -15,6 +15,9 @@ import {
 import { GoldenForestForest } from '../../src/themes/golden-forest/golden-forest-forest.js';
 import { GOLDEN_FOREST_MIRROR_LAYER } from '../../src/themes/golden-forest/golden-forest-lake.js';
 import { GOLDEN_FOREST_SUN_DIRECTION } from '../../src/themes/golden-forest/golden-forest-light.js';
+import {
+    GOLDEN_FOREST_MOODS, GOLDEN_FOREST_MOOD_HOLD, GOLDEN_FOREST_MOOD_SECONDS,
+} from '../../src/themes/golden-forest/golden-forest-moods.js';
 import { GoldenForestPost } from '../../src/themes/golden-forest/golden-forest-post.js';
 import { GOLDEN_FOREST_TIERS, goldenForestTier } from '../../src/themes/golden-forest/golden-forest-quality.js';
 import {
@@ -29,6 +32,8 @@ import {
 } from '../../src/themes/golden-forest/golden-forest-terrain.js';
 import { GoldenForestWorld } from '../../src/themes/golden-forest/golden-forest-world.js';
 
+/** What a world's diagnostics say of its hour before the clock has turned it: the first level, the golden hour. */
+const OPENING_HOUR = Object.freeze({ level: 1, mood: GOLDEN_FOREST_MOODS[0].name, moodPhase: 0 });
 const assetDirectory = new URL('../../src/themes/golden-forest/assets/', import.meta.url);
 const TREE_NAMES = Object.keys(GOLDEN_FOREST_TREE_URLS);
 const TIER_NAMES = Object.keys(GOLDEN_FOREST_TIERS);
@@ -795,6 +800,7 @@ describe('Golden Forest world scene contracts', () => {
             birds: tier.birds,
             sparks: { ambient: sim.ambient, reserve: sim.reserve, live: 0 },
             rings: 0,
+            ...OPENING_HOUR,
         });
 
         expect(camera.fov).toBe(GOLDEN_FOREST_VIEWS.landscape.fov);
@@ -1747,7 +1753,7 @@ describe('Golden Forest world ownership', () => {
             world.resetEffects();
         }).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, rings: 0,
+            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, rings: 0, ...OPENING_HOUR,
         });
 
         // The bundle is released by whoever loaded it, once.
@@ -1778,7 +1784,7 @@ describe('Golden Forest world ownership', () => {
         expect(unspecified.quality).toBe('High');
         expect(unspecified.tier).toBe(GOLDEN_FOREST_TIERS.High);
         expect(unspecified.getDiagnostics()).toEqual({
-            quality: 'High', farTrees: 0, birds: 0, sparks: null, rings: 0,
+            quality: 'High', farTrees: 0, birds: 0, sparks: null, rings: 0, ...OPENING_HOUR,
         });
         const world = new GoldenForestWorld({ scene, camera: new THREE.PerspectiveCamera(), quality: 'Minimal' });
         owned.push(world);
@@ -1793,7 +1799,7 @@ describe('Golden Forest world ownership', () => {
             world.resetEffects();
         }).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, rings: 0,
+            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, rings: 0, ...OPENING_HOUR,
         });
         // Once the assets are there the same world builds.
         world.assets = await loadBundle();
@@ -2253,4 +2259,65 @@ describe('Golden Forest mirror samples', () => {
         const plain = (await buildWorld('Minimal')).world;
         expect(plain.lake.reflection.reflector.samples).toBe(0);
     });
+});
+
+describe('Golden Forest hours in the world', () => {
+    const PERIOD = GOLDEN_FOREST_MOOD_SECONDS;
+    const HOLD = GOLDEN_FOREST_MOOD_HOLD;
+    const N = GOLDEN_FOREST_MOODS.length;
+    /** The resting sun and sky the light shows: what play deepens from. */
+    const restingLight = (light) => [light.uSunColor.value.toArray(), light.uSkyToward.value.toArray(),
+        light.uZenith.value.toArray(), light.uHazeCool.value.toArray()];
+    const hourOf = (mood) => [[...mood.sun], [...mood.skyToward], [...mood.zenith], [...mood.hazeCool]];
+
+    it('turns through every hour by the clock alone, with no level-up', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        expect(world.level).toBe(1);
+        for (let k = 0; k <= N; k++) {
+            const mood = GOLDEN_FOREST_MOODS[k % N];
+            world.update(k * PERIOD, STEP, {});
+            expect(restingLight(light), mood.name).toEqual(hourOf(mood));
+            expect(world.getDiagnostics().mood).toBe(mood.name);
+            // Still that hour at the end of its rest; half-way through the melt it is neither.
+            world.update((k + HOLD * 0.99) * PERIOD, STEP, {});
+            expect(restingLight(light), mood.name).toEqual(hourOf(mood));
+            world.update((k + HOLD + (1 - HOLD) * 0.5) * PERIOD, STEP, {});
+            expect(restingLight(light)).not.toEqual(hourOf(mood));
+            expect(restingLight(light)).not.toEqual(hourOf(GOLDEN_FOREST_MOODS[(k + 1) % N]));
+        }
+        // A function of the time alone: back to the start is the golden hour again.
+        world.update(2, STEP, {});
+        expect(restingLight(light)).toEqual(hourOf(GOLDEN_FOREST_MOODS[0]));
+    }, SLOW);
+
+    it('takes a level-up as one hour on top of the clock, eased, the short way round', async () => {
+        const { world } = await buildWorld('Minimal');
+        world.update(2, STEP, {});
+        world.setLevel(2);
+        world.update(2, STEP, {});
+        // Eased: a moment after the level-up the lake is on its way, not there.
+        expect(world.moodStep).toBeGreaterThan(0);
+        expect(world.moodStep).toBeLessThan(0.1);
+        let time = 2;
+        for (let frame = 0; frame < 60 * 30; frame++) {
+            time += STEP;
+            world.update(time, STEP, {});
+        }
+        expect(time).toBeLessThan(HOLD * PERIOD);
+        expect(world.moodStep).toBe(1);
+        expect(restingLight(world.light)).toEqual(hourOf(GOLDEN_FOREST_MOODS[1]));
+        // On top of the clock: a whole period later it is the hour after.
+        expect(world.moodPhase(PERIOD + 2)).toBe(2);
+        // A new run goes back to the first level's hour the short way round.
+        world.setLevel(N, { silent: true });
+        expect(world.moodStep).toBe(-1);
+        world.setLevel(1, { silent: true });
+        expect(world.moodStep).toBe(0);
+        // A rebuilt world picks the evening up where the last one left it.
+        const lived = world.moodLived(time);
+        const after = (await buildWorld('Minimal')).world;
+        after.moodStart = lived;
+        expect(after.moodPhase(0)).toBe(world.moodPhase(time));
+    }, SLOW);
 });

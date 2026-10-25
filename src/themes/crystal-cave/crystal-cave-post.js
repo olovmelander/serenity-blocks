@@ -45,6 +45,8 @@ export class CrystalCavePost {
         this.uReaction = uniform(0);
         /** How hot play runs (0..1): the colours deepen with it instead of the light rising. */
         this.uVivid = uniform(0);
+        /** The hour above the cave (the world's, crystal-cave-hours.js): where the iris rests. */
+        this.hour = atmosphere?.hour ?? null;
         if (this.disabled) return;
 
         this.pipeline = new THREE.RenderPipeline(renderer);
@@ -104,8 +106,9 @@ export class CrystalCavePost {
         const iris = 1 - Math.max(0, level - 0.2) * 0.14 - fever * 0.06;
         this.uVivid.value = (Math.max(0, level - 0.15) / 0.85) * 0.6 + fever * 0.4;
         // The cave brightens a little with play; it never whites out the board.
+        const hour = Number.isFinite(this.hour?.exposure) ? this.hour.exposure : 1;
         this.uExposure.value = CRYSTAL_CAVE_EXPOSURE * (1 + reaction * 0.06) * (1 - bounded(response.dim) * 0.25)
-            * iris;
+            * iris * hour;
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + reaction * 0.16 + fever * 0.05;
     }
 

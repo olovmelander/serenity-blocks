@@ -4,7 +4,8 @@
  * World frame: the sun sits at azimuth 0 (straight down −z), low over a sea of clouds; the
  * camera yaws (nimbus-veil-world.js) so the sun lands in the free screen zone beside the board.
  *
- * Every helper carries a `setLayout`, so TSL emits it once as a real WGSL/GLSL function. No
+ * Every pure helper carries a `setLayout`, so TSL emits it once as a real WGSL/GLSL function (the
+ * ones that read the mood's colours are inline: see nvHazeColor). No
  * `mx_noise_*` (a DXC compile pathology on this project's machines): value noise over a Hoskins
  * hash, with ANALYTIC derivatives where the cloud sea needs lighting normals — one evaluation
  * per octave instead of three extra fbm calls for finite differences.
@@ -246,76 +247,61 @@ export const nvDomesH = /* @__PURE__ */ Fn(([pIn, period]) => {
 /** Sun alignment of a horizontal direction (dz = z of the NORMALISED horizontal direction). */
 export const nvSunAlign = (dz) => exp(float(1.0).add(dz).mul(-3.2));
 
-/** Horizon haze: soft lavender-rose away from the sun, warm gold toward it. */
-export const nvHazeColor = (sa) => mix(rgb(0xb895bd), rgb(0xffcb92, 1.12), sa);
+/*
+ * The colours of the air are the live mood's (u.mood, nimbus-veil-moods.js), so the helpers below
+ * are inline functions that take the world uniforms `u`, not laid-out ones: a laid-out function
+ * is emitted once and reused by every later material, and a uniform it closed over would be
+ * declared only in the first. Each material calls each of them once.
+ */
+
+/** Horizon haze: soft lavender-rose away from the sun, warm gold toward it (in today's mood). */
+export const nvHazeColor = (u, sa) => mix(u.mood.hazeA, u.mood.hazeT, sa);
 
 /**
- * The sun's light in the air along a view direction (inline): a wide warm aureole, a tight core
- * glow and a band along the horizon under the sun. Continuous across the horizon, so the sky
- * above it and the haze over the cloud sea below it carry the same light. `pulse` = the gameplay
- * sun pulse.
+ * The sun's light in the air along a view direction: a wide warm aureole, a tight core glow and a
+ * band along the horizon under the sun. Continuous across the horizon, so the sky above it and the
+ * haze over the cloud sea below it carry the same light. `pulse` = the gameplay sun pulse.
  */
-const sunGlowInline = (dir, pulse) => {
+export const nvSunGlow = (u, dir, pulse) => {
+    const m = u.mood;
     const ang = acos(clamp(dot(dir, vec3(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2])), -1.0, 1.0));
     const wide = exp(ang.mul(-2.6)).mul(pulse.mul(0.4).add(0.55));
     const core = exp(ang.mul(-14.0)).mul(pulse.mul(1.2).add(1.1));
     const front = smoothstep(0.0, 0.5, dir.z.negate());
     const band = exp(abs(dir.y).mul(-22.0)).mul(exp(abs(dir.x).mul(-2.2))).mul(front).mul(0.5);
-    return rgb(0xffb070).mul(wide).add(rgb(0xffe2b0).mul(core)).add(rgb(0xffc18a).mul(band));
+    return m.glowWide.mul(wide).add(m.glowCore.mul(core)).add(m.glowBand.mul(band));
 };
 
-/** The colour of the air on the horizon along a direction (inline): haze plus the sun's glow. */
-const airInline = (dir, pulse) => {
+/** The colour of the air on the horizon along a direction: haze plus the sun's glow. */
+export const nvAir = (u, dir, pulse) => {
     const hLen = max(sqrt(dir.x.mul(dir.x).add(dir.z.mul(dir.z))), 1e-4);
-    return nvHazeColor(nvSunAlign(dir.z.div(hLen))).add(sunGlowInline(dir, pulse));
+    return nvHazeColor(u, nvSunAlign(dir.z.div(hLen))).add(nvSunGlow(u, dir, pulse));
 };
 
-export const nvSunGlow = /* @__PURE__ */ Fn(([dir, pulse]) => sunGlowInline(dir, pulse)).setLayout({
-    name: 'nv_sunGlow',
-    type: 'vec3',
-    inputs: [{ name: 'dir', type: 'vec3' }, { name: 'pulse', type: 'float' }],
-});
-
-export const nvAir = /* @__PURE__ */ Fn(([dir, pulse]) => airInline(dir, pulse)).setLayout({
-    name: 'nv_air',
-    type: 'vec3',
-    inputs: [{ name: 'dir', type: 'vec3' }, { name: 'pulse', type: 'float' }],
-});
-
-/** Sky gradient over elevation e (no sun, no cirrus): haze → peach → lavender → azure. */
-export const nvSkyGradient = /* @__PURE__ */ Fn(([e, sa]) => {
+/** Sky gradient over elevation e (no sun, no cirrus): haze, peach, lavender, azure (today). */
+export const nvSkyGradient = (u, e, sa) => {
+    const m = u.mood;
     const s = sqrt(max(e, 0.0));
-    const c = nvHazeColor(sa).toVar();
-    c.assign(mix(c, mix(rgb(0xe9b3b8), rgb(0xffc79a), sa), smoothstep(0.02, 0.2, s)));
-    c.assign(mix(c, rgb(0xa39cd0), smoothstep(0.16, 0.4, s)));
-    c.assign(mix(c, rgb(0x5f7fc6), smoothstep(0.33, 0.58, s)));
-    c.assign(mix(c, rgb(0x2b4f9e), smoothstep(0.5, 0.82, s)));
+    const c = nvHazeColor(u, sa).toVar();
+    c.assign(mix(c, mix(m.lowA, m.lowT, sa), smoothstep(0.02, 0.2, s)));
+    c.assign(mix(c, m.mid, smoothstep(0.16, 0.4, s)));
+    c.assign(mix(c, m.upper, smoothstep(0.33, 0.58, s)));
+    c.assign(mix(c, m.zenith, smoothstep(0.5, 0.82, s)));
     return c;
-}).setLayout({
-    name: 'nv_skyGradient',
-    type: 'vec3',
-    inputs: [{ name: 'e', type: 'float' }, { name: 'sa', type: 'float' }],
-});
+};
 
 /**
  * Distance fog into the colour of the air on that bearing's horizon (nvAir), so whatever stands
- * in the distance dissolves into exactly the sky behind it; `rel` = worldPos − cameraPos.
+ * in the distance dissolves into exactly the sky behind it; `rel` = worldPos - cameraPos.
  */
-export const nvApplyHaze = /* @__PURE__ */ Fn(([col, rel, k, pulse]) => {
+export const nvApplyHaze = (u, col, rel, k, pulse) => {
     const dist = sqrt(rel.x.mul(rel.x).add(rel.z.mul(rel.z)));
     const fk = dist.mul(k);
     const amount = float(1.0).sub(exp(fk.mul(fk).negate()));
     // The horizon on this bearing (level direction): the sea line's own colour.
     const level = vec3(rel.x, 0.0, rel.z).div(max(dist, 1e-3));
-    return mix(col, airInline(level, pulse), min(amount, 1.0));
-}).setLayout({
-    name: 'nv_applyHaze',
-    type: 'vec3',
-    inputs: [
-        { name: 'col', type: 'vec3' }, { name: 'rel', type: 'vec3' },
-        { name: 'k', type: 'float' }, { name: 'pulse', type: 'float' },
-    ],
-});
+    return mix(col, nvAir(u, level, pulse), min(amount, 1.0));
+};
 
 /** Max of the three channels. */
 export const nvMax3 = (c) => max(c.x, max(c.y, c.z));

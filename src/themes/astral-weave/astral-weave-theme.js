@@ -240,6 +240,9 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.modeManager = null;
 
         this.time = this.flags.time ?? this.takeRestartTime(0);
+        // A restart carries the moods the levels have moved the light on, as well as the clock.
+        const moodSteps = this.restartRun?.moodSteps;
+        if (Number.isFinite(moodSteps)) this.world.setMoodSteps(moodSteps);
         this.scheduleLayoutReads();
         this.world.seek(this.time);
         this.world.updateCamera(this.camera, this.buildSim(0));
@@ -380,6 +383,12 @@ export default class AstralWeaveTheme extends BaseTheme {
         }
     }
 
+    /** The run a restart carries: the clock, and the moods the levels have moved the light on. */
+    captureRestartRun() {
+        const moodSteps = this.world?.moodSteps;
+        return { ...super.captureRestartRun(), moodSteps: Number.isFinite(moodSteps) ? moodSteps : null };
+    }
+
     /** A new run: an empty tapestry, no combo in flight. */
     resetSession() {
         this.director?.reset();
@@ -434,9 +443,14 @@ export default class AstralWeaveTheme extends BaseTheme {
                 this.rebuildPending = true; // rebuild on resume, never behind the menu
                 return;
             }
+            // A new tier keeps the light where it stands: the clock and the levels' moods.
+            const run = this.captureRestartRun();
+            this.restartRun = run;
             this.createScene().catch((error) => {
                 console.error(`${LOG_PREFIX} Settings rebuild failed:`, error);
                 this.onRuntimeFailure?.(error);
+            }).finally(() => {
+                if (this.restartRun === run) this.restartRun = null;
             });
         });
     }

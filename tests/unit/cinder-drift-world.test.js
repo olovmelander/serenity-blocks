@@ -6,9 +6,9 @@ import {
     CINDER_DRIFT_PARTS, CinderDriftWorld, FOUNTAINS_FOR_LINES, REST_RIG, SURGE_COOL, fovForAspect,
 } from '../../src/themes/cinder-drift/cinder-drift-world.js';
 import {
-    BOMB_SLOTS, BOMB_TAIL, CINDER_PALETTES, CLEAR_SLOTS, CLEAR_TRAVEL, DEG, DRIFT_SPEED, FOUNTAIN_SLOTS, GRAVITY,
-    HUSH_HOLD, LAKE, PALETTE_KEYS, RING_SLOTS, SKYLIGHT, STREAM_SLOTS, WHITE_HEAT, clearPassTime, fissuresForCombo,
-    flightTime, powerForCombo, rigForAspect,
+    BOMB_SLOTS, BOMB_TAIL, CINDER_PALETTES, CLEAR_SLOTS, CLEAR_TRAVEL, DEG, DRIFT_SPEED, FIRE_HOLD, FIRE_SECONDS,
+    FOUNTAIN_SLOTS, GRAVITY, HUSH_HOLD, LAKE, PALETTE_KEYS, RING_SLOTS, SKYLIGHT, STREAM_SLOTS, WHITE_HEAT,
+    clearPassTime, fireDrift, fissuresForCombo, flightTime, paletteAt, powerForCombo, rigForAspect,
 } from '../../src/themes/cinder-drift/cinder-drift-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/cinder-drift/cinder-drift-quality.js';
 import {
@@ -1334,7 +1334,9 @@ describe('cinder drift world: clears', () => {
         expect(world.getPostState().exposure).toBeGreaterThan(0.99);
         expect(world.getPostState().shafts).toBeCloseTo(rest.shafts, 2);
         expect(world.getPostState().haze).toBeCloseTo(1, 2);
-        expect(world.u.hot.value.distanceTo(restHot)).toBeLessThan(1e-3);
+        // (back to the fire the clock has turned to by now)
+        expect(world.u.hot.value.distanceTo(new THREE.Vector3(...paletteAt(fireDrift(world.time)).hot)))
+            .toBeLessThan(1e-3);
         expect(world.counts).toMatchObject({ clears: 1, quads: 1, bombs: thrown });
         world.dispose();
     });
@@ -1575,6 +1577,64 @@ describe('cinder drift world: combos and levels', () => {
         expect(world.getState().level).toBe(1);
         world.levelUp('4');
         expect(world.getState().level).toBe(4);
+        world.dispose();
+    });
+
+    it('turns through its fires by the clock alone, a level a step on top', () => {
+        const { camera, world } = makeWorld('Low');
+        const count = CINDER_PALETTES.length;
+        const expectPalette = (index, label) => {
+            for (const name of PALETTE_KEYS) {
+                CINDER_PALETTES[index][name].forEach((channel, k) => {
+                    expect(world.u[name].value.getComponent(k), `${label} ${name}`).toBeCloseTo(channel, 9);
+                });
+            }
+        };
+        const at = (time) => {
+            world.seek(time);
+            freeze(world, camera);
+        };
+        // No level-up at all (Infinity, a match, the menus): each fire rests pure for its hold,
+        // then melts into the next; the round comes back to the first.
+        at(FIRE_SECONDS * FIRE_HOLD * 0.5);
+        expectPalette(0, 'rest');
+        for (let k = 1; k <= count; k++) {
+            at(FIRE_SECONDS * k);
+            expectPalette(k % count, `fire ${k}`);
+            expect(world.getState()).toMatchObject({ level: 1, palette: CINDER_PALETTES[k % count].name });
+        }
+        // Mid-melt it is neither fire.
+        at(FIRE_SECONDS * (FIRE_HOLD + (1 - FIRE_HOLD) / 2));
+        const vector = (rgb) => new THREE.Vector3(rgb[0], rgb[1], rgb[2]);
+        expect(world.u.cool.value.distanceTo(vector(CINDER_PALETTES[0].cool))).toBeGreaterThan(0.01);
+        expect(world.u.cool.value.distanceTo(vector(CINDER_PALETTES[1].cool))).toBeGreaterThan(0.01);
+        expect(fireDrift(FIRE_SECONDS * (2 + FIRE_HOLD * 0.5))).toBe(2);
+
+        // A level steps on a fire, on top of the clock's, eased; the burst still plays.
+        at(FIRE_SECONDS);
+        world.levelUp(2);
+        expect(world.storm).toBeGreaterThan(0);
+        expect(world.flash).toBeGreaterThan(0);
+        expect(world.u.shock.value.x).toBe(world.time);
+        expect(world.getState().palette).toBe(CINDER_PALETTES[2].name);
+        run(world, camera, 1 / 60, 1);
+        expect(world.fireStep).toBeGreaterThan(0);
+        expect(world.fireStep).toBeLessThan(0.1);
+        run(world, camera, 14);
+        expect(world.time).toBeLessThan(FIRE_SECONDS * (1 + FIRE_HOLD));
+        expectPalette(2, 'level 2 on fire 1');
+        // A new run drops the level's share and keeps the clock's.
+        world.resetSession();
+        freeze(world, camera);
+        expectPalette(1, 'new run');
+        // A level turns the short way round: from the last fire on to the first, not back.
+        world.levelUp(count, { silent: true });
+        const last = world.fireStep;
+        expect(((last % count) + count) % count).toBe(count - 1);
+        world.levelUp(count + 1);
+        run(world, camera, 1 / 60, 1);
+        expect(world.fireStep).toBeGreaterThan(last);
+        expect(world.fireStep).toBeLessThan(last + 1);
         world.dispose();
     });
 
@@ -1869,14 +1929,16 @@ describe('cinder drift world: time', () => {
         expect(standing(world)).toHaveLength(0);
         expect(world.heat.ref).toBe(40);
         expect(world.heat.data.every((heat) => heat === 0)).toBe(true);
-        // The next frame draws the chamber at rest, in its first palette.
+        // The next frame draws the chamber at rest, in the fire the clock has turned to by forty
+        // seconds (the level's step is dropped).
         freeze(world, camera);
         expect(world.u.time.value).toBe(40);
         expect(world.u.drift.value).toBe(world.drift);
         expect(world.u.ringsLive.value).toBe(0);
         expect(world.u.clearLive.value).toBe(0);
         expect(world.u.curtain.value).toBe(0);
-        CINDER_PALETTES[0].mid.forEach((channel, k) => {
+        expect(world.fireStep).toBe(0);
+        paletteAt(fireDrift(40)).mid.forEach((channel, k) => {
             expect(world.u.mid.value.getComponent(k)).toBeCloseTo(channel, 9);
         });
         expect(world.getPostState()).toMatchObject(AT_REST);

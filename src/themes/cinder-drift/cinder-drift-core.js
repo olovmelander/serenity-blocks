@@ -8,6 +8,10 @@
  * chamber on every side.
  */
 
+import {
+    MOOD_HOLD, MOOD_SECONDS, meltPalettes, moodDrift,
+} from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -179,7 +183,8 @@ export function pieceColor(value, fallback = 0xff8800) {
 }
 
 /**
- * Chamber palettes, one per level (cycled), all scene-linear:
+ * Chamber palettes, the fires it burns in turn (the clock turns them, a level is a step on top;
+ * see fireDrift), all scene-linear:
  *   hot / mid / deep   the lava's own light, from its white heart through its body to its skin
  *   haze               the glow that hangs in the far air
  *   rock               the basalt
@@ -240,6 +245,32 @@ export const CINDER_PALETTES = Object.freeze([
 ]);
 
 export const PALETTE_KEYS = Object.freeze(['hot', 'mid', 'deep', 'haze', 'rock', 'cool', 'spark']);
+
+/**
+ * Seconds the chamber burns each fire when only the clock is turning it (a run with no level-up,
+ * Infinity, a match, the menus), and the share of that it rests on the pure fire before it melts
+ * into the next: the whole round of fires takes eight minutes. A level is a step on top.
+ */
+export const FIRE_SECONDS = MOOD_SECONDS;
+export const FIRE_HOLD = MOOD_HOLD;
+
+/**
+ * How far the clock alone has turned the chamber through its fires by `time`: the whole part
+ * counts the fires passed, the fraction is the melt into the next (0 through the rest).
+ */
+export const fireDrift = (time) => moodDrift(time, FIRE_SECONDS, FIRE_HOLD);
+
+/**
+ * The palette at `phase` round the fires, written into `out`: on a whole phase it is that fire's
+ * palette exactly; between two, every colour melts the short way round the colour wheel.
+ */
+export const paletteAt = (phase, out = {}) => meltPalettes(CINDER_PALETTES, PALETTE_KEYS, phase, out);
+
+/** The fire a phase round the wheel stands nearest. */
+export const fireNear = (phase) => {
+    const count = CINDER_PALETTES.length;
+    return CINDER_PALETTES[((Math.round(phase) % count) + count) % count];
+};
 
 /** The colour a four-line clear fires in: the white of the forge. */
 export const WHITE_HEAT = Object.freeze([1.0, 0.9, 0.66]);

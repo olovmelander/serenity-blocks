@@ -61,6 +61,8 @@ function createStage() {
         b2b: false,
         perfect: false,
         levelUps: 0,
+        /** Whether a staged level-up may fire its shells and surge (backgroundComboEffects). */
+        levelReact: false,
     };
 }
 
@@ -164,7 +166,8 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.flags = this.readFlags();
         this.random = Number.isFinite(this.flags.seed) ? this.seededRandom(this.flags.seed) : Math.random;
         this.currentQuality = this.getGraphicsQuality();
-        this.time = 0;
+        // A restart (quality change, GPU loss) resumes the world's clock: the evening's walk too.
+        this.time = this.takeRestartTime(0);
         this.combo = new ComboTracker();
         this.staged = createStage();
         this.lastFrameTime = null;
@@ -432,9 +435,12 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             if (!reactive() || !local(data)) return;
             stage.perfect = true;
         });
+        // A level is the world's light as well as a reaction: it always steps the evening on (and
+        // turns the neon ring); only its shells and surge wait on the setting.
         const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
-            if (!reactive() || !local(data)) return;
+            if (!this.isActive || !local(data)) return;
             stage.levelUps += 1;
+            if (reactive()) stage.levelReact = true;
         });
 
         const onPointerMove = (e) => {
@@ -542,7 +548,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         if (!this.world) return;
         const { world } = this;
         const { combo } = this.combo;
-        if (stage.levelUps > 0) world.onLevelUp();
+        if (stage.levelUps > 0) world.onLevelUp({ react: stage.levelReact });
         if (stage.lock) world.onPieceLock(stage.lock, { hardDrop: stage.hardDrop });
         for (let i = 0; i < stage.waves; i += 1) {
             world.onLineClear(stage.waveLines[i], {
@@ -568,6 +574,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         stage.b2b = false;
         stage.perfect = false;
         stage.levelUps = 0;
+        stage.levelReact = false;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

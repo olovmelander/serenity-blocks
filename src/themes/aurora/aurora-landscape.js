@@ -20,8 +20,10 @@ import {
     texture, uniformArray, vec2, vec3,
     pow3,
 } from 'three/tsl';
+import { MOON_DIRECTION } from './aurora-hours.js';
 import { fbm2, ridged2 } from './aurora-noise.js';
 import { AURORA_COLORS } from './aurora-palette.js';
+import { moonRadiance } from './aurora-sky.js';
 
 /** Far shore: where the lake meets the foot of the range. */
 export const SHORE_Z = -640;
@@ -467,7 +469,8 @@ export class AuroraLandscape {
      * @param {import('./aurora-curtains.js').AuroraCurtains} options.curtains
      * @param {import('./aurora-atmosphere.js').AuroraAtmosphere} options.atmosphere
      * @param {THREE.Texture} options.noiseTexture shared noise tile (not owned)
-     * @param {object} options.uniforms shared world uniforms (time, activity, auroraLight)
+     * @param {object} options.uniforms shared world uniforms (time, activity, auroraLight, and the
+     *   hour of the night: skylight, moonLight, skyZenith, skyHorizon, airglow)
      * @param {Function} options.random seeded generator
      * @param {number} options.seed
      * @param {number} options.eyeHeight camera height above the lake
@@ -512,6 +515,9 @@ export class AuroraLandscape {
      * every slope facing away falls into blue shadow. `aurora` is the radiance of the display
      * standing over the surface: it gives facing snow the curtain's own colour and lights
      * rims that stand against it. `backlit` (0..1) says how much of the surface can glow so.
+     * The hour of the night (aurora-hours.js) sets the skylight, and a risen moon over the
+     * range silvers whatever faces it: tops and ridges, the slopes turned to the eye left in
+     * blue shadow (no shadow map: the moonlight is soft, the land lit only where it faces).
      */
     litSurface(albedo, normal, { aurora = null, backlit = 1 } = {}) {
         const u = this.uniforms;
@@ -521,8 +527,10 @@ export class AuroraLandscape {
         const facing = abs(dot(normal, normalize(cameraPosition.sub(positionWorld))));
         const rim = pow3(float(1).sub(facing)).mul(max(normal.y, 0))
             .toVar();
-        const light = vec3(0.013, 0.022, 0.047).mul(normal.y.mul(0.55).add(0.45))
+        const moon = max(dot(normal, vec3(MOON_DIRECTION[0], MOON_DIRECTION[1], MOON_DIRECTION[2])), 0);
+        const light = u.skylight.mul(normal.y.mul(0.55).add(0.45))
             .add(bleached.mul(overhead.mul(1.15).add(fill.mul(0.16)).add(rim.mul(0.5)).add(0.03)))
+            .add(u.moonLight.mul(moon))
             .toVar();
         if (aurora) {
             // The display itself: a soft wash on whatever faces the sky, and a bright rim
@@ -842,9 +850,10 @@ export class AuroraLandscape {
                     view.z.negate(),
                 )).toVar();
                 const up = clamp(bounced.y, 0, 1);
-                const sky = mix(triple(AURORA_COLORS.skyZenith), triple(AURORA_COLORS.skyHorizon), exp(up.mul(-5.2)))
-                    .add(triple(AURORA_COLORS.airglow).mul(exp(up.mul(-13))))
+                const sky = mix(u.skyZenith, u.skyHorizon, exp(up.mul(-5.2)))
+                    .add(u.airglow.mul(exp(up.mul(-13))))
                     .mul(u.activity.mul(0.35).add(1))
+                    .add(moonRadiance(u, bounced, noiseTexture))
                     .add(curtains.sample(bounced));
                 const azimuth = atan(bounced.x, bounced.z.negate()).div(Math.PI).add(0.5);
                 const skyline = texture(profileTexture, vec2(azimuth, 0.5)).level(0).r.mul(PROFILE_MAX_ELEVATION);
