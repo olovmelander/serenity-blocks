@@ -7,6 +7,7 @@
 
 import * as THREE from 'three/webgpu';
 import { orbitEarthAt } from './composition/odyssey-orbit-earth.js';
+import { odysseyScrollPace } from './odyssey-scroll-pace.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import {
     ODYSSEY_ACTS,
@@ -32,6 +33,8 @@ import {
 } from './transitions/odyssey-black-hole-fall.js';
 
 const DEFAULT_CHAPTER_POSITIONS = ODYSSEY_PATH_DATA.chapterPositions || [0, 1];
+// The progress a wheel step is walked through the scroll's pace in (odyssey-scroll-pace.js).
+const SCROLL_PACE_WALK = 0.002;
 const CHAPTER_1_LOOK_DOWN = new THREE.Vector3(0, -26, 0);
 const CHAPTER_1_LOOK_FADE_RANGE = 0.035;
 // THE EYE STARTED INSIDE THE LAVA (user report 2026-08-12; recorded but never actioned in the
@@ -1270,13 +1273,25 @@ export class OdysseyCameraController {
             }
         }
 
+        // THE PACE (odyssey-scroll-pace.js): the wheel slows through the climb into space, where
+        // the picture changes far faster per unit of progress than anywhere else. Walked in small
+        // steps, so a long swipe that runs on into the climb slows where it enters it, not only
+        // where it began (a swipe from the sky used to carry the target across the whole climb).
+        const wheel = effectiveDelta * this.config.scrollSpeed;
+        const direction = Math.sign(wheel);
+        let paced = this.targetPosition;
+        for (let left = Math.abs(wheel); left > 1e-9; left -= SCROLL_PACE_WALK) {
+            paced += direction * Math.min(left, SCROLL_PACE_WALK) * odysseyScrollPace(paced, this.chapterPositions);
+        }
+        const advance = paced - this.targetPosition;
+
         this.targetPosition = THREE.MathUtils.clamp(
-            this.targetPosition + effectiveDelta * this.config.scrollSpeed,
+            paced,
             this.config.minPosition,
             this.maxTravelPosition(),
         );
         this.travelModel.lastInputAt = performance.now();
-        this.travelModel.inputVelocity += effectiveDelta * this.config.scrollSpeed * 2.4;
+        this.travelModel.inputVelocity += advance * 2.4;
     }
 
     findNearestLevel(position) {
@@ -2391,8 +2406,15 @@ export class OdysseyCameraController {
         const lerp = 1 - Math.exp(-dt * 2.8);
         this.travelModel.velocity = THREE.MathUtils.lerp(this.travelModel.velocity, targetVelocity, lerp);
         // Cap the manual scroll velocity so a hard flick can't outrun the background chapter
-        // render-warm (and stays cinematically readable). autoVelocity is well under this.
-        const maxV = this.config.maxScrollVelocity;
+        // render-warm (and stays cinematically readable). autoVelocity is well under this. The cap
+        // follows the wheel's pace too, so a flick cannot rush the climb into space either: the
+        // slower of the eye's and the target's, so a swipe's glide from the sky slows as soon as
+        // it carries the target into the climb.
+        const pace = Math.min(
+            odysseyScrollPace(this.currentPosition, this.chapterPositions),
+            odysseyScrollPace(this.targetPosition, this.chapterPositions),
+        );
+        const maxV = this.config.maxScrollVelocity * pace;
         if (maxV > 0) {
             this.travelModel.velocity = THREE.MathUtils.clamp(this.travelModel.velocity, -maxV, maxV);
         }
@@ -2445,7 +2467,7 @@ export class OdysseyCameraController {
             this.targetPosition,
             lerpFactor,
         );
-        const maxV = this.config.maxScrollVelocity;
+        const maxV = this.config.maxScrollVelocity * odysseyScrollPace(this.currentPosition, this.chapterPositions);
         if (maxV > 0 && deltaTime > 0) {
             const maxStep = maxV * deltaTime;
             const step = nextPosition - this.currentPosition;

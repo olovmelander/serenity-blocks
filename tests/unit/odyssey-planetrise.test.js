@@ -104,6 +104,51 @@ describe('the ringed giant rises over the Earth\'s edge', () => {
         expect(end.opacity).toBeGreaterThan(0.95);
     });
 
+    it('rises in the open: its rings clear of the rail and of every orb, at 16:9 and 4:3', () => {
+        // 2026-10-25, Olov on the old rise ("i dont like the reveal of the planet"): it came up
+        // straight behind the rail, with an orb in front of it. It now comes up from the lower
+        // right, slowly enough that the orb passing level with its seat goes by while it is still
+        // low and to the right (ORBIT_EARTH_SCHEDULE.riseSlant / riseDeg / rise).
+        const orbs = Object.values(rig.layout.levelPositionsById)
+            .filter((q) => q > riseFrom - 0.02 && q < riseTo + 0.06)
+            .map((q) => getOdysseyPathCurve().getPointAt(q));
+        const centre = new THREE.Vector3();
+        const o = new THREE.Vector3();
+        let seen = 0;
+        let orbsSeen = 0;
+        for (let p = riseFrom; p <= riseTo + 0.01; p += 0.0025) {
+            const s = at(p);
+            if (Math.max(s.air.top, s.rings.top) <= s.limb) continue;
+            seen += 1;
+            rings.geometry.computeBoundingSphere();
+            const ringRadius = rings.geometry.boundingSphere.radius
+                * new THREE.Vector3().setFromMatrixScale(rings.matrixWorld).x;
+            for (const aspect of [16 / 9, 4 / 3]) {
+                const cam = rig.camera.clone();
+                cam.aspect = aspect;
+                cam.updateProjectionMatrix();
+                cam.updateMatrixWorld(true);
+                rings.getWorldPosition(centre);
+                const d = centre.distanceTo(cam.position);
+                // The rings' reach on screen, in ndc heights (x is scaled by the aspect below).
+                const reach = Math.tan(Math.asin(Math.min(1, ringRadius / d))) / Math.tan((cam.fov / 2) / DEG);
+                centre.project(cam);
+                const rail = getOdysseyPathCurve().getPointAt(Math.min(p + 0.01, 1)).project(cam);
+                const where = `@${p.toFixed(4)} ${aspect.toFixed(2)}`;
+                expect(((centre.x - rail.x) * aspect) - reach, `rail ${where}`).toBeGreaterThan(0.12);
+                for (const pt of orbs) {
+                    o.copy(pt).project(cam);
+                    if (o.z > 1 || Math.abs(o.x) > 1.1 || Math.abs(o.y) > 1.1) continue;
+                    orbsSeen += 1;
+                    const gap = Math.hypot((o.x - centre.x) * aspect, o.y - centre.y) - reach;
+                    expect(gap, `orb ${where}`).toBeGreaterThan(0.12);
+                }
+            }
+        }
+        expect(seen).toBeGreaterThan(10);
+        expect(orbsSeen).toBeGreaterThan(10);
+    });
+
     it('is drawn behind the Earth, and every orb over the disc in front of it', () => {
         // The Earth's backdrop comes in to `nearRadius` once it covers the world: nearer than any
         // part of the giant while it does, farther than any orb seen over its disc.
