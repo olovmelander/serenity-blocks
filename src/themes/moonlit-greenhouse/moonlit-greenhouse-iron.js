@@ -41,7 +41,9 @@ import {
 import {
     ARC, HOUSE, clamp01, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
-import { mgHash21, mgMoonVis, mgSurface } from './moonlit-greenhouse-tsl.js';
+import {
+    TUNE, mgHash21, mgMoonVis, mgSurface,
+} from './moonlit-greenhouse-tsl.js';
 
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
 
@@ -712,7 +714,7 @@ export function glassGlow(r, U) {
     const halo = exp(away.mul(-1.0 / 0.06)).mul(0.55).add(exp(away.mul(-1.0 / 0.3)).mul(0.16)).add(0.025);
     const up = smoothstep(-0.25, 0.35, r.y);
     const air = mix(night.horizon, night.zenith, clamp(r.y, 0.0, 1.0)).mul(0.9);
-    return night.glassFog.mul(halo).add(air).mul(U.moonLight).mul(up);
+    return night.glassFog.mul(halo.mul(TUNE.glassVeil)).add(air).mul(U.moonLight).mul(up);
 }
 
 /**

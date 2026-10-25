@@ -275,3 +275,23 @@ Not measured: frame time. The pass adds a power and a few mixes to each march st
 and Minimal from four upsample taps to nine (each a depth read and an air read at full
 resolution); the theme perf lane (ADR-0016) has not been run on it, and the GPU here is far
 above what Low and Minimal are for.
+
+## A softer moon (2026-10-25)
+
+Olov found the moonlight too strong. Looking toward the moon, as the game's camera does, the
+left third of the frame was a milky blue-grey wash. Turning each term off in the playground
+showed where it came from: mostly the beams' in-scatter, then the sky's wide glow round the
+moon lighting the glazing near it. The moon's key light on surfaces hardly mattered.
+
+| `TUNE` | Was | Now |
+| --- | --- | --- |
+| `airBeam` (the beams' in-scatter) | 0.8 | 0.45 |
+| `moonGlow` (the wide glow round the moon) | 0.16 | 0.1 |
+| `moonDisc` (the disc's brightness) | 1.95 | 1.7 |
+| `glassVeil` (new: the condensation's halo on the panes and in what mirrors them) | 1.0 | 0.7 |
+
+The beams still stand in the mist, the plants toward the moon read through them, and the
+events still lift the moonlight from the new rest (the four-line flood lights the whole
+glazing). Checked in the playground at High (silver moon, harvest moon, blue hour, four lines at
+1.2 s) and at Low on the RTX 5080, with no WebGPU errors in the console; the 14
+`tests/unit/moonlit-greenhouse-*` files pass (228 tests).
