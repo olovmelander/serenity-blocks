@@ -309,3 +309,85 @@ the breach.
 
 **Cost.** Less than §7: per animal per frame, three route evaluations (a few trig calls each), and
 no formation frame or slot solves. No new draws, pipelines or textures.
+
+## 9. Closer to the path, and already there behind the steam (2026-10-25)
+
+Olov: *"I think the big fishes can swim a little closer around the path!"*, and *"everything in the
+chapter 2 needs to be rendered a little earlier, hidden by the smoke and steam! We have a little pop
+when we get out from the steam right now! Everything needs to be there visible when getting out from
+the steam."*
+
+### The steam: the ocean's life is there behind it
+
+**What the player saw.** The sea's life came in only as the steam thinned:
+- the fish, kelp, spires and light shafts from ~85 % density;
+- the visiting animals (whale shark, manta, whales) after the boundary, each fading in over 5 s.
+
+They faded up from the WATER's colour, a dark teal against the pale vapour. So at p 0.067, with the
+steam still ~80 % dense, a kelp crown appeared top right as a dark wedge, with fish specks, then the
+whale shark's silhouette.
+
+**What changed.**
+- **The life is whole just past the boundary** (`odysseyQuenchCarry` life whole by seamT 0.53, at
+  density ~0.88). The visitors arrive at once while the steam is thick (`steamVeilWeight` > 0.3).
+- **It lies behind the steam.** The eye is inside the steam's sphere for the whole window, and the
+  shell covers everything beyond it with its own billows. So while the window is open, the fish,
+  kelp, spires, visitors and whales write their depth just past the shell along their view ray,
+  ordered among themselves by their own distance (`behindSteamDepth`, a `depthNode`). The shell
+  covers them exactly as it covers the water and lets them through exactly as fast as it clears.
+  The light shafts write no depth, so the shell already covered them.
+- **Tried first:** painting the life in the vapour's mean colour. It left flat grey silhouettes over
+  the billows, because these objects sit inside the shell, in front of its surface.
+
+![The steam's exit at p 0.065, 0.067, 0.069, 0.070 and 0.072. Top: before (kelp and fish appear through the dense steam). Bottom: after (the sea comes out of the steam whole)](images/odyssey-ch2-closer-2026-10-25/ch2-steam-exit-before-after.jpg)
+
+### The big fish swim closer to the path
+
+**Why they were far.** The eye climbs within ~6 u of the column's axis, looking almost straight
+up, and each route's nearest point to the column was exactly at its eye-clearance limit. They were
+held out by those limits, not by their loops. Lowering them does not help: an animal at the eye's
+depth is beside it, out of a frame that looks up (the whale shark's share in frame fell from 42 %
+to 8 % at y 215).
+
+**What changed.**
+- **The clearances are eased by ~15 %:** whale shark 45 → 38 u, manta 30 → 26, mother 55 → 46,
+  calf 36 → 30. The nearest part of each body still passes 14–17 u from the lens.
+- **The whale shark and the whales were re-placed** by the same constrained search on the real
+  camera over the drift from eight clock phases. The search held every limit the roam test pins:
+  - coverage in every phase and every stretch;
+  - the orb parks;
+  - never over the orb;
+  - readable sizes;
+  - apart from each other;
+  - under the surface;
+  - turn radius.
+- **The manta stays where it was.** It was already the nearest (median 89 u), and is boxed in near
+  the surface.
+
+| | typical distance on screen | in frame (8 clock phases) |
+|---|---|---|
+| whale shark | 138 → **118 u** | 42 → 45 % |
+| mother | 151 → **139 u** | 29 → 35 % |
+| calf | 139 → **132 u** | 41 → 44 % |
+| manta | 89 u | 46 % |
+
+Something big is in frame for 89 % of the drift (was 88 %). Live, the whale shark now swims close
+past the rail through the middle of the climb, at times a third of the frame tall.
+
+![The drift up the ocean at p 0.073, 0.082, 0.093, 0.098, 0.107 and 0.131](images/odyssey-ch2-closer-2026-10-25/ch2-drift-closer.jpg)
+
+**Tests.**
+- `odyssey-ch2-roam`: the eased clearances, with every other limit unchanged.
+- `odyssey-world-carry`: life is out of the cavern and whole while the steam is still dense.
+- `odyssey-steam-quench`:
+  - the steam's state for the life;
+  - the behind-the-shell depth builds on both backends;
+  - the board writes it every frame;
+  - the world's fish, kelp and spires carry it.
+- `odyssey-ocean-visitors`: under a thick veil it arrives at once and writes its depth behind the
+  steam.
+
+**Cost.** No new draws, pipelines or textures. The fish, kelp, spires, visitors and whales now
+write their own fragment depth, so those draws lose early depth rejection; they are small and few.
+The sea life is now submitted from the boundary rather than from ~85 % steam density, about 1 s of
+drift earlier.

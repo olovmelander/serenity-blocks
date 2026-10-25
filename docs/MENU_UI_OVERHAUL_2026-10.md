@@ -724,6 +724,30 @@ window allows, with every number in one place beside it.
   | 2560 × 1440 | — | 636 × 1272 |
   | 390 × 844 (phone) | 296 × 592, the stats pushed off the screen | 310 × 621, the strip under it |
 
+- **The theme's share (2026-10-25).** Olov: "we can make the game canvases a little
+  smaller, to make a little more room for the theme behind." Every mode's board now stands
+  at 85 % of the height it could fill (`--sb-board-fill` on `:root`, keystone-overlays.css),
+  never shorter than 520 px unless the room itself is (`--sb-board-floor`), and the queue
+  and the well stand in the middle of the window instead of hanging from the tray's row.
+  Portrait screens keep the whole height. The solo well (single player, Infinity,
+  Stillfall, Odyssey) applies it in `keystone-solo.css` (`--sp-board-h`; `--sp-top` now
+  follows the board, so the room is measured from `--sp-head`, the tray's row);
+  `local-versus-layout.js` reads the same tokens for both versus stages (`BOARD_FILL`,
+  `boardShare`), and online versus centres your station and keeps the field no taller than
+  it. The same pass removed the old card's `backdrop-filter: blur(4px)`
+  (`multiplayer-ui.css .player-card`), which frosted the theme round the queue and left an
+  empty frosted band over Stillfall's well. Tests: `board-fill-layout.test.js`, the two
+  versus layout tests.
+
+  | Window | Solo board before | Solo board now | 2-player versus block |
+  |---|---|---|---|
+  | 1280 × 720 | 285 × 569 | 260 × 520 (the floor) | 25 → 25 |
+  | 1600 × 900 | 369 × 738 | ≈ 314 × 627 | 33 → 29 |
+  | 1709 × 1068 (2560 × 1600 at 150 %) | 450 × 900 | 383 × 765 | 40 → 35 |
+  | 1920 × 1080 | 456 × 912 | ≈ 388 × 775 | 41 → 35 |
+  | 2560 × 1440 | 636 × 1272 | ≈ 541 × 1081 | 56 → 49 |
+  | 390 × 844 (phone) | 310 × 621 | 310 × 621 | — |
+
 - **The queue:** on the well's mouth, as in local versus: "Next", the next piece in a
   tile lit in the mode's hue, the two after it smaller and quieter, each preview fitted
   and centred on the piece itself.

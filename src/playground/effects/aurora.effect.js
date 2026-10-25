@@ -11,6 +11,13 @@ export const meta = {
 const STEP = 1 / 60;
 /** Seconds between the clears of a replayed streak. */
 const STREAK_SPACING = 0.9;
+/** A hot run into a fever: lines per clearing lock, one lock every STORM_SPACING seconds. */
+const STORM_CHAIN = [1, 1, 2, 1, 2, 2, 3, 2, 2, 3, 3, 4];
+const STORM_SPACING = 0.64;
+const STORM_COLORS = ['#6cf5ff', '#ff88ee', '#ffd166', '#9b8cff', '#7dff9a'];
+/** Quick hands: this many locks, one every RUSH_SPACING seconds, none clearing. */
+const RUSH_LOCKS = 12;
+const RUSH_SPACING = 0.42;
 /** The theme-icon lens: vertical field of view and yaw in degrees, horizon as a frame fraction. */
 const ICON_LENS = {
     fov: 48, yaw: 7, horizon: 0.29, reach: 60,
@@ -19,8 +26,10 @@ const ICON_LENS = {
 /**
  * URL parameters (all optional):
  *   quality=High            tier
- *   event=lock|clear|quad|tspin|perfect|level|combo   gameplay cue to replay under ?t=
- *   eventAge=0.45           seconds between the cue and the captured frame
+ *   event=lock|clear|quad|tspin|perfect|level|combo|storm|rush   gameplay cue to replay under ?t=
+ *                           (storm: a hot run of twelve clearing locks into a fever;
+ *                           rush: twelve quick locks that clear nothing)
+ *   eventAge=0.45           seconds between the cue (a streak's or storm's last) and the frame
  *   lines=1  combo=5  column=4.5  drop=0  color=%236cf5ff
  *   board=1                 draw a stand-in board and aim events above it
  *   reduce=1                reduced-motion behaviour
@@ -78,13 +87,13 @@ export function create({
     };
     syncViewport();
 
-    const piece = () => ({
+    const piece = (color = params.get('color') || '#6cf5ff') => ({
         x: number('column', 4.5) - 1.5,
         y: 18,
         shape: [[1, 1, 1, 1]],
-        color: params.get('color') || '#6cf5ff',
+        color,
     });
-    const fire = (kind, lines = number('lines', 1)) => {
+    const fire = (kind, lines = number('lines', 1), color = undefined) => {
         const { director } = world;
         if (kind === 'level') {
             director.onLevelUp({ level: 2 });
@@ -92,7 +101,7 @@ export function create({
         }
         const drop = number('drop', 0);
         if (drop > 0) director.onHardDrop({ distance: drop });
-        director.onPieceLock({ piece: piece() });
+        director.onPieceLock({ piece: piece(color) });
         if (kind === 'lock') return;
         const count = kind === 'quad' ? 4 : Math.max(1, Math.min(4, kind === 'tspin' ? 2 : lines));
         director.onLineClear({ lineCount: count, clearedRows: Array.from({ length: count }, (_, i) => 23 - i) });
@@ -114,17 +123,28 @@ export function create({
         world.reset();
         const kind = params.get('event');
         const last = Math.max(0, sought - Math.max(0, number('eventAge', 0.45)));
-        // A streak is replayed as real consecutive clears, so the combo is earned.
+        // A streak is replayed as real consecutive clears, so the combo is earned; a storm
+        // as a hot run of them, so the fever is earned too; a rush as quick locks alone.
+        const storm = kind === 'storm';
+        const rush = kind === 'rush';
         const streak = kind === 'combo' ? Math.max(2, Math.floor(number('combo', 5))) : 1;
-        const cues = Array.from({ length: streak }, (_, i) => last - (streak - 1 - i) * STREAK_SPACING)
-            .filter((at) => at >= 0);
+        let count = streak;
+        if (storm) count = STORM_CHAIN.length;
+        else if (rush) count = RUSH_LOCKS;
+        let spacing = STREAK_SPACING;
+        if (storm) spacing = STORM_SPACING;
+        else if (rush) spacing = RUSH_SPACING;
+        const cues = Array.from({ length: count }, (_, i) => last - (count - 1 - i) * spacing);
         const steps = Math.max(1, Math.ceil(sought / STEP));
         const dt = sought / steps;
         let next = 0;
+        while (next < cues.length && cues[next] < 0) next += 1;
         for (let i = 1; i <= steps; i += 1) {
             const t = dt * i;
             while (kind && next < cues.length && t >= cues[next]) {
-                fire(kind === 'combo' ? 'clear' : kind);
+                if (storm) fire('clear', STORM_CHAIN[next], STORM_COLORS[next % STORM_COLORS.length]);
+                else if (rush) fire('lock', 0, STORM_COLORS[next % STORM_COLORS.length]);
+                else fire(kind === 'combo' ? 'clear' : kind);
                 next += 1;
             }
             frame(t, dt);

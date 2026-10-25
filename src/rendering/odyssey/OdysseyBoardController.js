@@ -40,10 +40,12 @@ import {
     steamQuenchDensity,
     steamQuenchFogColour,
     createSteamQuench,
+    setSteamVeil,
     steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
 import {
     createOrbitEarth,
+    ORBIT_EARTH,
     orbitEarthAirglowElevation,
     orbitEarthAt,
     orbitEarthSunDirection,
@@ -4338,6 +4340,9 @@ export class OdysseyBoardController {
             this.oneWorld?.setQuenchCarry?.(quenchT);
             this._steamFogWeight = inWindow ? steamQuenchDensity(quenchT) ** 2 : 0;
             this._steamFogT = quenchT;
+            // ...and the ocean's life lies behind the steam while it is up (odyssey-steam-quench.js
+            // setSteamVeil): there from the boundary, covered by the shell, never popping in.
+            setSteamVeil(inWindow ? steamQuenchDensity(quenchT) : 0, this.steamQuench.mesh.position);
         }
         if (this.oceanVisitors) this._tickOceanVisitors(delta, cameraProgress);
         if (this.orbitEarth) {
@@ -4348,7 +4353,7 @@ export class OdysseyBoardController {
             this._orbitEarthSun = orbitEarthSunDirection(earth.sunElevation, this._orbitEarthSun);
             if (eye) {
                 this._orbitEarthTrack = this._orbitEarthTrack || new THREE.Vector3();
-                this._orbitEarthTrack.set(eye.x * 0.2, 0, eye.z * 0.2);
+                this._orbitEarthTrack.set(eye.x, 0, eye.z).multiplyScalar(ORBIT_EARTH.trackPerUnit);
             }
             this.orbitEarth.update({
                 altitude: earth.altitude,

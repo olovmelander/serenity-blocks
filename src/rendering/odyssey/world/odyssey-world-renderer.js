@@ -53,7 +53,7 @@ import {
 } from '../odyssey-colour-script.js';
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
-import { steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
+import { behindSteamDepth, steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
 import { ORBIT_EARTH_SEAM, orbitEarthOver } from '../composition/odyssey-orbit-earth.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
@@ -445,9 +445,11 @@ export function odysseyQuenchCarry(seamT) {
     const tint = t < 0.5
         ? QUENCH_EMBER.map((c, i) => c + ((QUENCH_WHITE[i] - c) * smooth01(0.25, 0.5, t)))
         : QUENCH_WHITE.map((c, i) => c + ((QUENCH_CYAN[i] - c) * smooth01(0.5, 0.8, t)));
-    // 0 until the boundary (the cavern side), then follows the veil thinning — but only once
-    // most of it is gone, so a fish never stands crisp against white vapour.
-    const life = t <= 0.5 ? 0 : smooth01(0.15, 0.95, 1 - steamQuenchDensity(t));
+    // 0 until the boundary (the cavern side), then whole within the steam's densest stretch, so
+    // when it clears the ocean's life is already there (2026-10-25: it used to follow the veil
+    // thinning, and came in as the steam cleared). It lies behind the steam's shell meanwhile
+    // (behindSteamDepth), so a fish never stands crisp against white vapour.
+    const life = t <= 0.5 ? 0 : smooth01(0.5, 0.53, t);
     return {
         carry, bubble, tint, life,
     };
@@ -2248,9 +2250,17 @@ export function createOdysseyWorld({
         return mix(graded, uWorldFadeColour, fadeAmt);
     };
     const toOutput = (c) => toOutputFaded(c, uWorldFade);
+    // BELOW THE HORIZON THE AIR FADES AT THE SEA'S PACE (2026-10-25). The departure takes the sky
+    // overhead first and the horizon last (uFadeZenith, uFadeHorizon), and the sea with the world
+    // (uWorldFade, ahead of the horizon). Below the horizon the dome had the horizon's pace, so
+    // where the climb dropped the sea's drawn edge below the horizon it opened onto air far paler
+    // than the sea beside it, and the Earth arriving there wore that pale air: a white band that
+    // widened down the frame as the eye rose. Below the horizon the air now fades as the sea does;
+    // the horizon itself keeps its own pace, a thin bright line. (Act II: every fade is 0.)
+    const fadeBelowHorizon = (dirY) => mix(uWorldFade, uFadeHorizon, smoothstep(float(-0.06), float(0), dirY));
     // The world's air for a view direction: the colour its far sea and its sky meet in (the dome's
-    // own, faded at the horizon's pace). What the world melts into, and what the Earth wears.
-    const airFor = (dir) => toOutputFaded(skyColourFor(dir.y), uFadeHorizon);
+    // own, faded at the departure's pace there). What the world melts into, and what the Earth wears.
+    const airFor = (dir) => toOutputFaded(skyColourFor(dir.y), fadeBelowHorizon(dir.y));
     // THE WORLD ENDS IN THE SKY (2026-10-24). The sea is drawn out to the camera's far plane (a
     // straight cut) or, high in the climb, to the clipmap's square, and past it the dome shows the
     // sky below the horizon. Through the departure the two met at a visible edge: the far sea
@@ -2285,7 +2295,7 @@ export function createOdysseyWorld({
                 const behind = float(1).sub(smoothstep(lead.sub(0.04), lead.add(0.04), down))
                     .mul(smoothstep(float(0), float(0.03), down))
                     .mul(float(1).sub(uSubmerged));
-                res.assign(mix(res, orbitEarthOver(dir, airFor(dir)), behind));
+                res.assign(mix(res, orbitEarthOver(dir, airFor(dir), res), behind));
             });
         });
         return res;
@@ -2447,7 +2457,7 @@ export function createOdysseyWorld({
     // ZENITH FIRST (item 10): overhead runs ahead of the act fade, the horizon behind it, and
     // a thin limb + airglow line glow at the horizon while the sky is half gone. With
     // uWorldFade at 0 every term here is exactly the old sky.
-    const skyFade = mix(uFadeHorizon, uFadeZenith, smoothstep(float(-0.05), float(0.55), skyDir.y));
+    const skyFade = mix(fadeBelowHorizon(skyDir.y), uFadeZenith, smoothstep(float(-0.05), float(0.55), skyDir.y));
     // UNIFORM-GATED (seamless pass): the water dome only under water, the limb + airglow (two
     // exps and two pows per sky pixel) only while the departure lights them. Both were built for
     // every sky fragment of the act and multiplied away by a zero uniform — not dead code here.
@@ -4454,6 +4464,7 @@ export function createOdysseyWorld({
         const fLit = fAlbedo.mul(fLight)
             .add(vec3(0.82, 0.96, 1.0).mul(fFlash).mul(float(1).sub(fDorsal.mul(0.6))));
         fishMat.colorNode = toOutput(applyAerial(fLit, positionWorld, AERIAL_CEIL_WATER, 1, false, float(1).sub(uLife)));
+        fishMat.depthNode = behindSteamDepth(positionWorld);
         fishMat.side = THREE.DoubleSide;
         fishMat.fog = false;
         fishMesh = new THREE.Mesh(fInst, fishMat);
@@ -4495,6 +4506,7 @@ export function createOdysseyWorld({
         const sLight = mix(float(0.42), float(1.1), sDown.pow(1.3)).mul(float(1).sub(formDepth.mul(0.5)));
         const sLit = sAlbedo.mul(sLight);
         spireMat.colorNode = toOutput(applyAerial(sLit, positionWorld, AERIAL_CEIL_WATER, 1, false, formLifeHaze));
+        spireMat.depthNode = behindSteamDepth(positionWorld);
         spireMat.fog = false;
         spireMesh = new THREE.InstancedMesh(buildSpireGeometry(), spireMat, oceanPlan.spires.length);
         const sm4 = new THREE.Matrix4();
@@ -4532,6 +4544,7 @@ export function createOdysseyWorld({
             .add(vec3(0.26, 0.34, 0.10).mul(kBack))
             .mul(float(1).sub(formDepth.mul(0.45)));
         kelpMat.colorNode = toOutput(applyAerial(kLit, positionWorld, AERIAL_CEIL_WATER, 1, false, formLifeHaze));
+        kelpMat.depthNode = behindSteamDepth(positionWorld);
         kelpMat.side = THREE.DoubleSide;
         kelpMat.fog = false;
         kelpMesh = new THREE.InstancedMesh(kGeo, kelpMat, oceanPlan.kelp.length);

@@ -2,22 +2,29 @@
  * AuroraDirector — gameplay in, sky out. The player plays the aurora like an instrument:
  *
  *   lock          plucks the curtain above the piece: a pair of pulses in the piece's own
- *                 colour runs outward along the arc, and a ring opens on the lake
- *   line clear    strums every arc: a bright band sweeps up the rays, the curtains stand
- *                 taller, the lake takes a wave
- *   four lines    the corona breaks out overhead, rays converging on the zenith
- *   clear streak  each consecutive clear sends a surge the length of the sky and winds the
- *                 whole display up — faster rays, deeper folds, a red crown, a pink hem
+ *                 colour runs outward along the arc, the stretch beside the board wakes (quick
+ *                 hands build it into a blazing one), and a ring opens on the lake
+ *   line clear    strums every arc: an awake front runs out along every arc from the board,
+ *                 flames climb the rays, the curtains stand taller, the lake takes a wave
+ *   four lines    breakup: the whole sky wakes from the board outward, red- and violet-
+ *                 topped, a train of flames climbs the rays, and the corona breaks out overhead
+ *   clear streak  each consecutive clear sends a surge the length of the sky, an awake
+ *                 stretch riding with it, and winds the whole display up — faster rays,
+ *                 deeper folds, a red crown, a pink hem
  *   cascade       each wave sends a surge out from the board and a band up the rays, each
  *                 deeper, wider and faster than the last
  *   back-to-back  the sky answers twice: a crimson wave after the strum, the crown flaring
  *   perfect clear the crown: amber standing light on every arc and in the corona overhead
  *
+ * Between the cues the sky has weather of its own (aurora-weather.js): stretches of each arc
+ * flare, wander and fade, so the display is never the same curtain twice.
+ *
  * A geomagnetic storm builds under all of it (the shared GameplaySurge, the heat of play):
  * warm, the rays quicken and the hem and crown can burn deeper; hot, the curtains pulse with
  * every lock and the storm hue takes the green body; fever, the substorm — the corona held
- * open overhead, the body magenta under a red crown, a meteor shower, the lake ringing. When
- * the hands rest the storm lets go: slow pulsating bands fade as the sky breathes back to green.
+ * open overhead, the body magenta under a red crown, the weather everywhere awake, a meteor
+ * shower, the lake ringing. When the hands rest the storm lets go: slow pulsating bands fade
+ * as the sky breathes back to green.
  *
  * Everything here is plain numbers: no three, no DOM, no timers. Bus handlers only stage
  * what happened; `update()` resolves one cue per board per frame and advances the state,
@@ -27,11 +34,12 @@
 import { ComboTracker } from '../../core/combo-tracker.js';
 import { GameplaySurge } from '../shared/gameplay-surge.js';
 import {
-    AURORA_ARCS, BILLOW, CORONA_ARC_INDEX, SWEEP, arcCoordinateForAzimuth, arcRateForAzimuth, arcViewSpan,
+    AURORA_ARCS, BILLOW, CORONA_ARC_INDEX, SWEEP, arcBearing, arcCoordinateForAzimuth, arcRateForAzimuth, arcViewSpan,
 } from './aurora-field.js';
 import {
     PULSE_CYCLE, STORM_TINTS, parseColor, vivid,
 } from './aurora-palette.js';
+import { AuroraWeather, bearingForAzimuth } from './aurora-weather.js';
 
 /** Enough for a fever's overlapping strums (a clear asks ~21) to run their course. */
 const MAX_PULSES = 96;
@@ -59,6 +67,8 @@ const TSPIN_VIOLET = [0.62, 0.36, 1.0];
 const STORM_EASE = 0.6;
 /** Seconds between the slow bands of a storm's recovery. */
 const RECOVERY_PERIOD = 1.25;
+/** How strongly the pulsating patches show on a quiet night (aurora-curtains.js). */
+const RESTING_PULSATION = 0.32;
 /** Resting light the display throws on snow and water (linear RGB). */
 const BASE_LIGHT = [0.03, 0.105, 0.07];
 /**
@@ -244,6 +254,8 @@ export class AuroraDirector {
         }));
         // What the shader reads, per band: [altitude above the border km, gain, 1/width, 0].
         this.sweepBands = new Float32Array(SWEEP.slots * 4);
+        /** Where along each arc the display is awake; the march reads `weather.cells`. */
+        this.weather = new AuroraWeather();
         /**
          * The heat of play (src/themes/shared/gameplay-surge.js), on this director's clock: the
          * geomagnetic storm that builds under the cues. Sampled once a frame into heatPunch,
@@ -297,6 +309,7 @@ export class AuroraDirector {
         this.heatStage = 0;
         this.showerClock = 0;
         this.recoveryClock = 0;
+        this.afterglow = 0;
         this.lastClearAt = -Infinity;
         this.pulseLight = [0, 0, 0];
         this.tint.fill(0);
@@ -312,6 +325,7 @@ export class AuroraDirector {
         }
         for (const pulse of this.pulses) pulse.active = false;
         this.excitation.clear();
+        this.weather.reset();
         this.deriveOutputs();
     }
 
@@ -518,6 +532,33 @@ export class AuroraDirector {
         this.launch(arc, board.azimuth + reach, 1, turn, life, spread, amp * (1 + lean), shift, color, delay);
     }
 
+    /**
+     * Wake the curtain on `arc` around a view azimuth: `width` (half-width) and `spread`
+     * (widening, easing off) in radians of view, `pace` (steady drift) in radians per second,
+     * `tops` toward the red crown (+) or blue-violet ray tops (−). See AuroraWeather.wake.
+     */
+    wake(arc, azimuth, width, amount, spread = 0, pace = 0, tops = 0, delay = 0) {
+        const motion = this.motion();
+        return this.weather.wake(
+            arc.index,
+            bearingForAzimuth(arc, azimuth),
+            width,
+            amount,
+            spread * motion,
+            pace * motion,
+            tops,
+            delay,
+        );
+    }
+
+    /** Wake the stretches just beside a board, the side the piece landed on more. */
+    wakeBeside(arc, board, width, amount, tops = 0) {
+        const lean = (board.column - 0.5) * 0.7;
+        const reach = board.halfWidth * BOARD_EDGE + width * 0.6;
+        this.wake(arc, board.azimuth - reach, width, amount * (1 - lean), 0.02, 0, tops);
+        this.wake(arc, board.azimuth + reach, width, amount * (1 + lean), 0.02, 0, tops);
+    }
+
     queueRipple(azimuth, range, strength, speed, color) {
         let ripple = null;
         if (this.rippleCount < MAX_RIPPLES) {
@@ -610,6 +651,9 @@ export class AuroraDirector {
         // the board and carries its colour outward, instead of racing to the horizon.
         this.pluck(AURORA_ARCS[0], board, 0.28 + drop * 0.12, 1.5, 0.13, strength, 0, color);
         if (RESTING_ARCS[1]) this.pluck(RESTING_ARCS[1], board, 0.3, 1.4, 0.13, 0.85 * strength, 0, color, 0.05);
+        // The curtain beside the board wakes; quick hands build it into a blazing stretch.
+        this.wakeBeside(AURORA_ARCS[0], board, 0.1, 0.2 * strength);
+        if (RESTING_ARCS[1]) this.wakeBeside(RESTING_ARCS[1], board, 0.1, 0.15 * strength);
         const azimuth = board.azimuth + (board.column - 0.5) * 2 * board.halfWidth;
         this.queueRipple(azimuth, 0.25 + drop * 0.2, 0.42 * strength, 24 + drop * 8, color);
         this.activity = Math.min(1, this.activity + 0.012);
@@ -648,14 +692,27 @@ export class AuroraDirector {
             );
             this.pluck(arc, board, 0.42, 2.2, 0.17, 0, (board.tspin ? 34 : 15 + lines * 4) * near, tint);
             this.launch(arc, azimuth, 0, 0, 1.15, board.halfWidth + 0.16, 0.3 * near * boost, 0, tint);
+            // An awake front runs out along the arc from the board; a bigger clear colours
+            // its tall rays, the near arc violet-topped and the others red-crowned.
+            let tops = 0;
+            if (board.tspin) tops = -1;
+            else if (lines >= 2) tops = arc.index === 0 ? -0.7 : 0.6;
+            this.wake(
+                arc,
+                azimuth,
+                board.halfWidth * 0.9,
+                Math.min(1, (0.35 + lines * 0.12) * near * boost),
+                0.3 + lines * 0.06,
+                0,
+                tops,
+            );
         }
-        // The band up the rays: each cascade wave's climbs brighter, faster and wider.
+        // Flames up the rays: each cascade wave's climb brighter, faster and wider, and a
+        // bigger clear sends a second flame after the first.
         const pace = 1 + (depth - 1) * 0.14;
-        this.launchSweep(
-            (0.35 + lines * 0.15) * (1 + (depth - 1) * 0.2),
-            SWEEP.seconds / pace,
-            SWEEP.width * (1 + (depth - 1) * 0.18),
-        );
+        const flame = (0.35 + lines * 0.15) * (1 + (depth - 1) * 0.2);
+        this.launchSweep(flame, SWEEP.seconds / pace, SWEEP.width * (1 + (depth - 1) * 0.18));
+        if (lines >= 2) this.launchSweep(flame * 0.6, SWEEP.seconds / pace, SWEEP.width, 0.22);
         this.surge = Math.min(0.8, this.surge + (0.18 + lines * 0.07) * boost);
         this.heightKick = Math.min(0.9, this.heightKick + 0.14 + lines * 0.07);
         this.fringeKick = Math.min(1.2, this.fringeKick + lines * 0.22);
@@ -680,7 +737,11 @@ export class AuroraDirector {
         );
 
         if (quad) {
-            // Breakup: the corona opens overhead and the crown ignites.
+            // Breakup: the whole sky wakes from the board outward, a train of flames climbs
+            // the rays behind the strum, the corona opens overhead and the crown ignites.
+            for (const arc of RESTING_ARCS) this.wake(arc, azimuth, 0.3, 1, 0.95, 0, arc.index === 0 ? -0.9 : 0.6, 0.1);
+            this.launchSweep(0.7, SWEEP.seconds * 1.1, SWEEP.width * 1.2, 0.3);
+            this.launchSweep(0.5, SWEEP.seconds * 1.2, SWEEP.width * 1.3, 0.6);
             this.raiseCorona(1, 1.4);
             this.crownKick = Math.min(1.2, this.crownKick + 0.6);
             this.queueMeteors(3, 1.8);
@@ -725,6 +786,8 @@ export class AuroraDirector {
                 blend,
                 0.04,
             );
+            const tops = step % 2 ? -0.7 : 0.7;
+            this.wake(arc, board.azimuth, 0.18, Math.min(1, 0.3 + step * 0.1), 0.4 + step * 0.08, 0, tops);
         }
         this.heightKick = Math.min(0.9, this.heightKick + 0.06 * step);
         this.crownKick = Math.min(1.2, this.crownKick + 0.06 * step);
@@ -751,6 +814,8 @@ export class AuroraDirector {
                 CRIMSON,
                 0.16,
             );
+            // The crimson wave wakes the sky red-crowned.
+            this.wake(arc, board.azimuth, 0.2, Math.min(1, (0.4 + count * 0.1) * near), 0.35, 0, 1, 0.16);
         }
         this.launchSweep(0.3 + count * 0.12, SWEEP.seconds, SWEEP.width, 0.18);
         this.crownKick = Math.min(1.2, this.crownKick + 0.25 + count * 0.08);
@@ -771,9 +836,22 @@ export class AuroraDirector {
             const direction = arc.index % 2 === 0 ? this.surgeDirection : -this.surgeDirection;
             const [left, right] = arcViewSpan(arc);
             const from = direction > 0 ? left : right;
-            const velocity = ((direction > 0 ? right : left) - from) / seconds;
+            const to = direction > 0 ? right : left;
+            const velocity = (to - from) / seconds;
             this.spawnPulse(arc.index, from, velocity, seconds + 0.1, 58, Math.min(1, 0.6 + combo * 0.04), 0, blend);
             this.spawnPulse(arc.index, from, velocity, seconds + 0.1, 84, 0, Math.min(34, 18 + combo * 2), blend);
+            // An awake stretch rides with the surge (at its pace, whatever the motion setting),
+            // so the light is seen to run the length of the sky.
+            const start = arcBearing(arc, from);
+            this.weather.wake(
+                arc.index,
+                start,
+                0.14,
+                Math.min(0.9, 0.45 + combo * 0.04),
+                0,
+                (arcBearing(arc, to) - start) / seconds,
+                combo % 2 === 0 ? -0.8 : 0.8,
+            );
         }
         // Where the storm hue is headed; update() eases the body there.
         this.stormTarget = Math.min(STORM_TINTS.length - 1, (combo - 2) * 0.5);
@@ -797,7 +875,10 @@ export class AuroraDirector {
         this.heightKick = Math.min(0.9, this.heightKick + 0.6);
         this.crownKick = Math.min(1.2, this.crownKick + 0.9);
         this.launchSweep(0.7, 1.1, 60);
-        for (const arc of RESTING_ARCS) this.launch(arc, board.azimuth, 0, 0, 2.4, 0.55, 0.9, 0, AMBER);
+        for (const arc of RESTING_ARCS) {
+            this.launch(arc, board.azimuth, 0, 0, 2.4, 0.55, 0.9, 0, AMBER);
+            this.wake(arc, board.azimuth, 0.5, 1.2, 0.6, 0, 0.9);
+        }
         this.launch(CORONA_ARC, board.azimuth, 0, 0, 2.8, 0.9, 1, 0, AMBER);
         this.queueMeteors(4, 2);
         this.queueRipple(board.azimuth, 0.4, 1.2, 38, AMBER);
@@ -808,6 +889,7 @@ export class AuroraDirector {
     /** A T-spin that cleared nothing: a small violet twist in the curtain above the board. */
     cueSpin(board) {
         this.pluck(AURORA_ARCS[0], board, 0.34, 1.6, 0.15, 0.55, 22, TSPIN_VIOLET);
+        this.wake(AURORA_ARCS[0], board.azimuth, 0.16, 0.4, 0.15, 0, -1);
         this.violetKick = Math.min(1.2, this.violetKick + 0.35);
         this.queueRipple(board.azimuth, 0.35, 0.45, 28, TSPIN_VIOLET);
         this.requestShake(0.0075, 110);
@@ -816,6 +898,7 @@ export class AuroraDirector {
     cueLevelUp(board) {
         this.raiseActivity(Math.max(this.activityTarget, 0.3), 1.6);
         this.launchSweep(0.6);
+        for (const arc of RESTING_ARCS) this.wake(arc, board.azimuth, 0.35, 0.45, 0.5, 0, -0.5);
         this.heightKick = Math.min(0.9, this.heightKick + 0.25);
         this.queueMeteors(1, 1.5);
         this.queueRipple(board.azimuth, 0.5, 0.5, 30, PULSE_CYCLE[1]);
@@ -909,6 +992,8 @@ export class AuroraDirector {
         this.corona = approach(this.corona, this.coronaTarget, step, 0.16, 0.9);
         if (this.corona < 0.0015 && this.coronaTarget === 0) this.corona = 0;
         if (this.activity < 0.0005 && this.activityTarget === 0) this.activity = 0;
+        // The sky's own weather turns over faster, and swells, as the storm builds.
+        this.weather.update(step, clamp01(this.activity * 0.5 + this.heatLevel * 0.3 + fever * 0.6));
 
         this.surge *= Math.exp(-2.2 * step);
         this.heightKick *= Math.exp(-0.9 * step);
@@ -957,6 +1042,11 @@ export class AuroraDirector {
         } else {
             this.recoveryClock = RECOVERY_PERIOD * 0.5;
         }
+        // The aftermath: pulsating patches come up across the quiet sky while the storm
+        // recovers, and fade with it.
+        const recovering = fever > 0.06 && this.time - this.lastClearAt > 1.2 ? Math.min(1, 0.4 + fever * 1.5) : 0;
+        this.afterglow = approach(this.afterglow, recovering, step, 1.2, 5);
+        if (this.afterglow < 1e-4 && recovering === 0) this.afterglow = 0;
         this.paint();
         this.deriveOutputs();
     }
@@ -1031,6 +1121,7 @@ export class AuroraDirector {
         this.fringe = Math.min(0.55 + burn * 0.15, 0.06 + smoothstep(0.25, 0.8, a) * 0.3 + this.fringeKick * 0.6);
         this.violet = Math.min(0.9, 0.12 + a * 0.5 + this.violetKick * 0.6);
         this.diffuse = 1 + a * 0.8;
+        this.pulsating = RESTING_PULSATION + this.afterglow * 0.9;
         for (const arc of AURORA_ARCS) {
             let gain = this.corona * 0.62;
             if (arc.index !== CORONA_ARC_INDEX) {
@@ -1115,6 +1206,7 @@ export class AuroraDirector {
                 punch: this.heatPunch, level: this.heatLevel, fever: this.heatFever, stage: this.heatStage,
             },
             events: this.eventCount,
+            weather: this.weather.getDiagnostics(),
             activePulses: this.pulses.filter((pulse) => pulse.active).length,
             pulseCapacity: MAX_PULSES,
             reducedMotion: this.reducedMotion,

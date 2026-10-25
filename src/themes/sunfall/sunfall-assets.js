@@ -67,6 +67,76 @@ function meshGeometry(object) {
     return geometry;
 }
 
+/**
+ * Close the slits between a mesh's chunks. Each chunk is quantised on a grid of its own (its
+ * bounds over 32767 steps: 12 to 15 mm for the shell), so a vertex two chunks share lands up to
+ * about 14 mm apart in them, and the sky showed through the slit as white pixels flickering
+ * down the far wall as the eye drifted. Each vertex within `tolerance` of another chunk's
+ * vertices moves to its group's mean, the same float in every chunk, so the seam is watertight.
+ * Only a vertex inside another chunk's bounds can be on a seam. Returns the vertices welded.
+ */
+export function weldChunkSeams(geometries, tolerance = 0.05) {
+    if (geometries.length < 2) return 0;
+    const boxes = geometries.map((g) => g.boundingBox.clone().expandByScalar(tolerance));
+    const at = new THREE.Vector3();
+    const pos = ([gi, i]) => geometries[gi].attributes.position.array.subarray(i, i + 3);
+    const cellOf = (p) => [0, 1, 2].map((c) => Math.floor(p[c] / tolerance));
+    const cand = []; // [chunk, offset of its x in the position array]
+    const cells = new Map();
+    geometries.forEach((g, gi) => {
+        const p = g.attributes.position.array;
+        for (let i = 0; i < p.length; i += 3) {
+            at.fromArray(p, i);
+            if (!boxes.some((box, bi) => bi !== gi && box.containsPoint(at))) continue;
+            const key = cellOf(p.subarray(i, i + 3)).join();
+            if (!cells.has(key)) cells.set(key, []);
+            cells.get(key).push(cand.length);
+            cand.push([gi, i]);
+        }
+    });
+    // Union-find over the candidates of different chunks that lie within the tolerance.
+    const parent = cand.map((_, k) => k);
+    const root = (k) => {
+        let r = k;
+        while (parent[r] !== r) r = parent[r];
+        return r;
+    };
+    cand.forEach((c, k) => {
+        const p = pos(c);
+        const [cx, cy, cz] = cellOf(p);
+        for (let dx = -1; dx <= 1; dx += 1) {
+            for (let dy = -1; dy <= 1; dy += 1) {
+                for (let dz = -1; dz <= 1; dz += 1) {
+                    for (const j of cells.get([cx + dx, cy + dy, cz + dz].join()) || []) {
+                        if (j <= k || cand[j][0] === c[0]) continue;
+                        const q = pos(cand[j]);
+                        if (Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) <= tolerance) parent[root(j)] = root(k);
+                    }
+                }
+            }
+        }
+    });
+    const groups = new Map();
+    cand.forEach((_, k) => {
+        const r = root(k);
+        if (!groups.has(r)) groups.set(r, []);
+        groups.get(r).push(k);
+    });
+    let welded = 0;
+    for (const members of groups.values()) {
+        if (members.length < 2) continue;
+        const mean = [0, 0, 0];
+        members.forEach((k) => pos(cand[k]).forEach((v, c) => { mean[c] += v / members.length; }));
+        members.forEach((k) => pos(cand[k]).set(mean));
+        welded += members.length;
+    }
+    geometries.forEach((g) => {
+        g.computeBoundingSphere();
+        g.computeBoundingBox();
+    });
+    return welded;
+}
+
 function checkSchema(gltf, kind) {
     const extras = gltf.scene.userData || {};
     if (extras.schemaVersion !== SUNFALL_ASSET_SCHEMA || extras.kind !== kind) {
@@ -96,10 +166,14 @@ export function parseSunfallAssets({ shell, ledge, crowns }) {
     if (!planObject) throw new Error('[Sunfall] The crowns asset has no canopy plan.');
     const position = worldPositions(planObject);
     const crown = floats(planObject.geometry.attributes._crown, 4);
+    const shellChunks = meshesNamed(shell, 'Shell');
+    const ledgeChunks = meshesNamed(ledge, 'Ledge');
+    weldChunkSeams(shellChunks);
+    weldChunkSeams(ledgeChunks);
     return {
         manifest,
-        shell: meshesNamed(shell, 'Shell'),
-        ledge: meshesNamed(ledge, 'Ledge'),
+        shell: shellChunks,
+        ledge: ledgeChunks,
         crowns: meshesNamed(crowns, 'Crown'),
         plan: { count: position.length / 3, position, crown },
     };

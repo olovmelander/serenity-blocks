@@ -58,6 +58,30 @@ export const AURORA_MEANDERS = Object.freeze([
 })));
 
 /**
+ * Each arc has its own character, so no two parts of the sky read alike: `lively` is how
+ * awake it is between activity cells (aurora-weather.js), and `crown`, `fringe`, `violet`
+ * scale its red tops, pink hem and blue-violet ray tops. The main arc's tall rays reach
+ * into sunlight (violet tops), the cross arc burns a pink lower border, and the far arc,
+ * low over the range, wears the red oxygen crown that distant displays show above their
+ * green. `cool` leans the resting green toward teal (positive) or yellow-green (negative).
+ * The corona is a storm's own display and keeps its look.
+ */
+const ARC_CHARACTER = Object.freeze({
+    main: {
+        lively: 0.28, crown: 0.9, fringe: 1.0, violet: 1.35, cool: 0,
+    },
+    cross: {
+        lively: 0.22, crown: 0.7, fringe: 1.5, violet: 0.75, cool: 0.22,
+    },
+    far: {
+        lively: 0.4, crown: 2.4, fringe: 0.6, violet: 0.55, cool: -0.28,
+    },
+    corona: {
+        lively: 1, crown: 1, fringe: 1, violet: 1, cool: 0,
+    },
+});
+
+/**
  * The arcs, most important first (cheaper tiers march only the leading ones). `distance`
  * is how far north the resting line sits, `angle` rotates it about the vertical (negative
  * = nearer on the left), `width` is the sheet's half-thickness, `sway` scales the folds
@@ -65,7 +89,7 @@ export const AURORA_MEANDERS = Object.freeze([
  * scales the ray pattern (a near arc shows finer rays). The main
  * arc towers on the left and falls to the right horizon; the cross arc weaves under it. The corona arc is always
  * last: it passes almost overhead, so its rays converge on the magnetic zenith, and it
- * only lights during a storm.
+ * only lights during a storm. Each arc also takes its character from ARC_CHARACTER.
  */
 export const AURORA_ARCS = Object.freeze([
     {
@@ -87,6 +111,7 @@ export const AURORA_ARCS = Object.freeze([
     const normalZ = -Math.cos(arc.angle);
     return Object.freeze({
         ...arc,
+        ...ARC_CHARACTER[arc.id],
         index,
         tangentX,
         tangentZ,
@@ -122,7 +147,7 @@ export const EXCITATION = Object.freeze({
  * instead of yanking one band back to the foot of the curtain.
  */
 export const SWEEP = Object.freeze({
-    slots: 3,
+    slots: 4,
     /** Seconds a band takes to climb, at its usual pace. */
     seconds: 0.85,
     /** Half-height of a band, km. */
@@ -142,6 +167,49 @@ export const BILLOW = Object.freeze({
     /** Scales −x·exp(−x²) to a unit crest. */
     normalise: Math.sqrt(2 * Math.E),
 });
+
+/**
+ * Activity cells (aurora-weather.js): stretches of an arc that are awake. A cell is
+ * [bearing, 1 / half-width, strength, tops], with bearing and width in radians of view
+ * along the arc (atan(s / distance): the angle from the arc's nearest point), so a cell
+ * reads the same size wherever it stands, however far the arc recedes there.
+ */
+export const WEATHER = Object.freeze({
+    /** Cells each resting arc carries. */
+    slots: 5,
+    /** The first this many wander on their own; the rest answer play. */
+    ambient: 2,
+});
+
+/** Bearing along an arc, radians of view, of an arc coordinate (km). */
+export function arcBearing(arc, along) {
+    return Math.atan(along / arc.distance);
+}
+
+/**
+ * How awake an arc is at a bearing, from the packed cells: `life` (the arc's own floor plus
+ * every cell), `red` and `blue` (how much of that life wants red tops or blue-violet ones).
+ * Mirrors the shader exactly.
+ */
+export function cellLife(cells, arc, bearing, out = {}) {
+    let life = arc.lively;
+    let red = 0;
+    let blue = 0;
+    if (arc.index !== CORONA_ARC_INDEX) {
+        for (let slot = 0; slot < WEATHER.slots; slot += 1) {
+            const o = (arc.index * WEATHER.slots + slot) * 4;
+            const reach = (bearing - cells[o]) * cells[o + 1];
+            const k = Math.exp(-reach * reach) * cells[o + 2];
+            life += k;
+            red += k * Math.max(cells[o + 3], 0);
+            blue += k * Math.max(-cells[o + 3], 0);
+        }
+    }
+    out.life = life;
+    out.red = red;
+    out.blue = blue;
+    return out;
+}
 
 /** Sideways shift, km, a billow gives the sheet at an arc coordinate. */
 export function billowShift(along, centre, amplitude, inverseWidth) {

@@ -380,3 +380,141 @@ past the boundary, stages what is in space after the Earth's beats:
   gas before the hole's light; the whole sky up after;
 - the dome's glow building on both backends.
 
+## §6. No pop at the seam, the planetrise in the open, the climb taken slowly (2026-10-25)
+
+Olov, with three screenshots: *"From one second to another this white pops up from nowhere, I want
+this seamless transition that have no popping, it should feel like one scene drifting from the sky
+out in space. And i dont like the reveal of the planet that i marked in red in the attached photo,
+we can do better there. And when scrolling with the mouse pad it gets a rapid speed when it goes up
+the mountainside, pass the clouds out in space!!"*
+
+Judged on the live game: stations parked at fixed progress and the journey's own drift, from the
+scratchpad harness of the 2026-10-25 session (`stations.cjs`, `odyssey-drift.cjs`, `swipe.cjs`).
+"Main" below is f0c6f3ff.
+
+### The white that popped up
+
+Two causes:
+
+- **The Earth was laid over the sea twice.** `orbitEarthOver` (the Earth seen on the world's own
+  surfaces) took the Earth's colour whole, while its cover (`alpha`) counted how far it had
+  arrived (its presence and its front). The backdrop mesh premultiplied both; this did not. So
+  while the Earth faded in (presence 0.05 → 1, p 0.693–0.711), the sea showed the Earth's veiled
+  colour and most of the air again on top: up to twice the light, a white sheet that swept down
+  from the horizon. The colour is now premultiplied by the arrival. Where the Earth has not
+  arrived, the surface shows itself (`surfaceAir`), not the air.
+- **Below the horizon the air faded late.** The dome below the horizon, and the air the Earth wears
+  (`airFor`), faded at the horizon's pace (`uFadeHorizon`, f^1.8). The sea faded with the world
+  (`uWorldFade`, f). So where the climb dropped the sea's drawn edge below the horizon, it opened
+  onto air far paler than the sea beside it, and the Earth arriving there wore it. Below the
+  horizon the air now fades at the sea's pace (`fadeBelowHorizon`); the horizon keeps its own
+  pace, a thin bright line. In Act II every fade is 0, so nothing there changes.
+
+Also part of the seam:
+
+- The Earth's disc wears the surface's own colour while veiled, so nothing changes where it comes
+  in over the sea.
+- The haze lifts nadir-first (`VEIL_NADIR_LEAD`) across `veil` [0.40, 0.29].
+- The clouds go into it across [0.38, 0.28].
+- It covers the world only once the haze is gone.
+
+![The climb at p 0.694, 0.697 and 0.700. Top: main, the white sheet sweeping down. Bottom: now, one steady sea under a thin horizon line](images/odyssey-into-space-2026-10-25/seam-white-before-after.jpg)
+
+![Now, p 0.704, 0.712, 0.716 and 0.720: the haze thins and the Earth's weather comes up out of it, and stays put while the sunset reaches it](images/odyssey-into-space-2026-10-25/seam-haze-lift-after.jpg)
+
+### The Earth's weather rushed
+
+The Earth's cloud field slid 0.2 cells per unit the eye travelled. Where the Earth takes over from
+the sea, that is ~2000× the pace the sea passes under the climbed eye. So its weather rushed past
+while the world's cumulus over it stood still, and under a touchpad swipe it blurred.
+`ORBIT_EARTH.trackPerUnit` (9e-5) is now the sea's own pace at the seam. The weather's slow drift
+of its own is what moves it.
+
+### The planetrise
+
+On main the giant rose straight up behind the rail, with an orb in front of it. At its worst its
+rings overlapped the rail by 0.26 and an orb by 0.17 (in ndc heights, at 16:9 or 4:3).
+
+The orb that passes level with the giant's seat (p ~0.77) is the crux: any rise that has ended by
+then meets it.
+
+The giant now:
+
+- hangs 38° below its seat (was 27);
+- comes up from the lower right (`riseSlant` −45°);
+- rises more slowly, across [b − 0.06, b + 0.30] of chapter 6 (was [b − 0.105, b + 0.15]).
+
+So it crests the limb right of the rail at p 0.755 and rises beside the aurora. It is still low
+and to the right when that orb goes by. Its rings keep ≥ 0.16 from the rail and from every orb at
+16:9 and 4:3. Its seat, and so its framing from p ~0.79 on, is unchanged.
+
+Two schedules move with it:
+
+- The aurora stays up until the giant is clear: out across [b + 0.14, b + 0.24] (was
+  [0.06, 0.16]).
+- The deep-space beats (§5) wait for the rise to end:
+
+| Beat | Fractions of chapter 6 | p |
+|---|---|---|
+| The Milky Way | 0.30–0.43 | 0.789–0.804 |
+| The gas | 0.38–0.52 | 0.799–0.815 |
+| The black hole's light | 0.44–0.68 | 0.806–0.834 |
+
+![p 0.755, 0.760 and 0.765. Top: main, rising behind the rail, an orb in front. Bottom: now, coming up over the limb beside the aurora, right of the rail; the orb passes with a clear gap](images/odyssey-into-space-2026-10-25/planetrise-before-after.jpg)
+
+### The pace of the scroll
+
+Progress is distance along the rail, and the wheel moved it at one rate everywhere. But the climb
+changes the picture much faster per unit of progress than anything around it. Measured as the
+frame's mean luma change per 0.002 of progress, with a repeated frame's noise taken off:
+
+| Where | Change per 0.002 |
+|---|---|
+| chapter 5's sky (p 0.40–0.65) | 2–4 |
+| the climb, the Earth's arrival and its sunset (p 0.70–0.73) | 7–15 |
+| one breath as the nearest cumulus passes (p 0.672) | 9 |
+
+A touchpad swipe reaches the scroll's speed cap easily. On main, a 1500 px swipe from p 0.665
+carried the camera to p 0.884, through the Earth, the planetrise and the black hole into chapter
+7. It crossed the seam (0.69–0.72) in ~0.25 s.
+
+`odyssey-scroll-pace.js` scales the wheel by a pace that falls where those schedules change the
+picture fastest:
+
+- the climb's rate (in the logarithm of the height);
+- the lean's rate;
+- the sunset over the Earth below (the sun's elevation while the Earth is there and the sun near
+  its horizon).
+
+The camera applies it in three places:
+
+- Each wheel step is walked through the pace in 0.002 steps, so a long swipe slows where it
+  enters the climb.
+- The scroll's glide is capped by the slower of the eye's and the target's pace.
+- The camera's own speed cap follows the pace.
+
+The idle drift is far below every cap and is unaffected.
+
+The pace is 0.45 as the clouds sink (p 0.69) and 0.19–0.26 while the Earth arrives and the sun
+sets over it. It is back to 1 by p 0.80. With it the climb changes at 1–4 per 0.002, a little
+under the sky's pace: it is the journey's climax, taken slowly.
+
+The same 1500 px swipe now:
+
+- from p 0.665: stops at 0.756, and takes ~0.8 s over the seam;
+- from the sky at p 0.55: stops at 0.742, where main ran on through all of chapter 6.
+
+Chapter 4's slopes change at 6–17 per 0.002 too, from the orbs passing close and the camera
+turning. That is ordinary travel near the ground, and its pace is unchanged.
+
+**Tests:**
+
+- `odyssey-scroll-pace` (new): 1 outside the passage; slowest at the Earth's arrival; never below
+  the floor; smooth. The camera's wheel step, its walk into the climb, and its speed cap honour
+  it.
+- `odyssey-orbit-earth`: the weather passes under the eye at the sea's pace where the one becomes
+  the other.
+- `odyssey-planetrise`: rises in the open, its rings clear of the rail and every orb at 16:9 and
+  4:3. This test fails on main's rise.
+- The hero-triad guard in `cosmic-expanse-environment.test.js` holds the giant to the corridor once
+  it has risen; before that it is behind the limb, which `odyssey-planetrise` keeps.
