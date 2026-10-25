@@ -1,12 +1,33 @@
 /**
  * Sunbraid — the gliders' flight (three-free, closed form in the clock).
  *
- * The valley's life: broad, thin-winged gliders that ride the warm air over the white floor in
- * slow figure-of-eight loops, banking into their turns. Each is a pure function of the clock (a
- * seek lands every glider exactly where it would be), so the shadows they throw (three, one per
- * sun) sweep across the floor in step with the bodies drawn above them.
+ * The valley's life: great sky rays that ride the warm air over the white floor in slow
+ * figure-of-eight loops, banking into their turns. They beat their wings while they climb a
+ * thermal and glide while they sink. Each is a pure function of the clock (a seek lands every
+ * glider exactly where it would be), so the shadows they throw (three, one per sun) sweep across
+ * the floor in step with the bodies drawn above them.
  */
-import { DEG, TAU, mulberry32 } from './sunbraid-core.js';
+import {
+    DEG, TAU, mulberry32, smooth,
+} from './sunbraid-core.js';
+
+/**
+ * The stroke: seconds per wingbeat at span 0 and per metre of span (a big ray beats slower); how
+ * hard it beats as it climbs (by its climb, −1 sinking … 1 climbing: none below `calm`, full from
+ * `climb`); how far its nose lifts while it climbs (radians); radians a second of the ripple that
+ * runs along its wings while it glides; how much deeper than the turn's pull it banks, and the
+ * most it banks (radians).
+ */
+export const STROKE = Object.freeze({
+    period: 2.4,
+    perSpan: 0.03,
+    calm: -0.1,
+    climb: 0.5,
+    pitch: 0.07,
+    ripple: 1.3,
+    bank: 2.6,
+    bankMax: 0.65,
+});
 
 /** Most gliders any tier flies (rows are allocated for this many). */
 export const MAX_GLIDERS = 8;
@@ -45,11 +66,12 @@ export const GLIDER_LOOPS = Object.freeze((() => {
 
 /**
  * Where glider `k` is at clock `time`: position (world, the floor height added by the caller),
- * heading (unit vector of travel, xz), bank (radians, into the turn) and how far into its wingbeat.
- * `out` = { x, y, z, hx, hz, bank, beat, span }.
+ * heading (unit vector of travel, xz), bank (radians, into the turn), pitch (radians, nose up),
+ * how far into its wingbeat (0..1), how hard it is beating (0 gliding … 1), and its ripple's phase
+ * (radians). `out` = { x, y, z, hx, hz, bank, pitch, beat, flap, ripple, span }.
  */
 export function gliderAt(k, time, out = {
-    x: 0, y: 0, z: 0, hx: 0, hz: -1, bank: 0, beat: 0, span: 20,
+    x: 0, y: 0, z: 0, hx: 0, hz: -1, bank: 0, pitch: 0, beat: 0, flap: 0, ripple: 0, span: 20,
 }) {
     const L = GLIDER_LOOPS[k];
     const w = TAU / L.period;
@@ -74,10 +96,16 @@ export function gliderAt(k, time, out = {
     const speed = Math.hypot(wx, wz) || 1;
     out.hx = wx / speed;
     out.hz = wz / speed;
-    // Bank into the turn: the sideways pull over gravity, softened.
+    // Bank into the turn: the sideways pull over gravity, carved deeper than the pull alone (a
+    // ray seen nearly edge-on shows its wings only as it banks), easing toward `bankMax`.
     const sideways = ((ax * c - az * s) * -out.hz + (ax * s + az * c) * out.hx);
-    out.bank = Math.atan(sideways / 9.81) * 0.8;
-    out.beat = (time / 2.6 + k * 0.37) % 1;
+    out.bank = STROKE.bankMax * Math.tanh((Math.atan(sideways / 9.81) * STROKE.bank) / STROKE.bankMax);
+    // Wingbeats while it climbs (its height rises with sin(3a + 0.7)), a glide while it sinks.
+    const climb = Math.cos(3 * a + 0.7);
+    out.flap = smooth(STROKE.calm, STROKE.climb, climb);
+    out.pitch = STROKE.pitch * climb;
+    out.beat = (((time / (STROKE.period + STROKE.perSpan * L.span) + k * 0.37) % 1) + 1) % 1;
+    out.ripple = (time * STROKE.ripple + k * 2.1) % (TAU * 64);
     out.span = L.span;
     return out;
 }
