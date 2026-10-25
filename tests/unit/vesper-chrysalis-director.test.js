@@ -62,7 +62,9 @@ describe('vesper chrysalis director: intake', () => {
             './vesper-chrysalis-composition.js',
             './vesper-chrysalis-tetrominos.js',
         ]);
-        expect(imports('vesper-chrysalis-composition.js')).toEqual([]);
+        // The composition measures the wings with the core's CPU wing maths; the core imports nothing.
+        expect(imports('vesper-chrysalis-composition.js')).toEqual(['./vesper-chrysalis-core.js']);
+        expect(imports('vesper-chrysalis-core.js')).toEqual([]);
         expect(imports('vesper-chrysalis-tetrominos.js')).toEqual([]);
     });
 
