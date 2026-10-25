@@ -112,6 +112,51 @@ Checked in the playground at High and Low on native WebGPU, 1920×1080, 1280×72
 interleaved against the day before the pass: about 4.0 ms against 4.1 ms (within run-to-run
 noise). `tests/unit/verdant-hills-*.test.js`: 832 tests.
 
+### Fluffy cumulus (2026-10-26)
+
+Olov: "In verdant hills i want fluffier and better clouds, now they looks like triangles or
+cones." Seen through a long lens they were shark fins, gumdrops and stacked slabs with furry
+streaks down their flanks, and from the game's view a row of pale grey cut-outs.
+
+![before and after](verdant-hills-fluffy-clouds/before-after.webp)
+
+- **Why cones.** A heap's top was the square root of the cloud field, and the field is a sum
+  of smooth mounds, `(1 − r²/s²)²` each: the square root of one is a paraboloid, which from
+  the side is a cone, and every smaller mound on it stood a spire. The billows that carved the
+  skin were flat noise stood on end and leant with height, so each was a slanted column: the
+  shark fins, and the streaks.
+- **The heap.** The field still says where a heap stands (so every shadow on the grass still
+  belongs to a cloud overhead), but its height is read from the field blurred to the size of
+  its heaps (mip 3.2), so each heap is one broad dome. `cloudHeap()` turns that into how far
+  inside the heap a point is, in metres: below its top, in from its margin, the two met in a
+  rounded shoulder; the base stays the flat condensation level.
+- **The lobes.** A tileable 64³ volume of 3D noise (`verdant-hills-cloud-volume.js`: R is
+  Perlin–Worley, round masses on masses; B a finer cellular fBm) pushes that skin out by up to
+  ~400 m over the heart of each lobe and in between them, and the finer billows ~100 m more,
+  fading beyond 14 km where they would only be grain. The volume rides in the field's frame,
+  so the lobes travel with their cloud.
+- **The light.** Distance now dissolves a cloud into the sky's own colour along the ray, not
+  the milk of the horizon (which turned every cloud the same pale grey). Sky light follows how
+  far up its own heap a point stands, and the lobe reading at the skin (high on a crown, low in
+  a crease) shades each billow, so a heap reads as a cauliflower on the face turned from the
+  sun too. Light that has scattered many times is softer at every order.
+- **The march.** It strides long through clear air (as far as the nearest heap allows) and
+  short in and near cloud; one even stride had been ~400 m toward the horizon, wider than the
+  lobes. Each pixel starts a random part of a stride in (a hash: the interleaved gradient
+  pattern printed itself into the flat bases as ribbing). The steps per tier are unchanged.
+- **Off the page's thread.** The volume takes ~0.25–0.5 s to make, so a first visit bakes it in
+  a module Worker (`verdant-hills-bakes.js`, `verdant-hills-bake.worker.js`) while the renderer
+  and the pack come up; the light rig finds it in the shared bake cache. Minimal draws the flat
+  layer as before and bakes nothing.
+- **Cost by construction** (no GPU timings: the machine was shared with other sessions). Per
+  step in clear air the march reads two field taps where it read four; in cloud, two field and
+  two volume taps (four before); the two sun samples read four and three taps (four and two).
+
+Checked in the playground at Extreme, High, Medium, Low and Minimal, Low on WebGL2, the
+"long gold" and "showers coming" weathers and four lines (the clouds open), plus a real game
+on High (the bake ran in its worker); no WebGPU errors. The playground's `?sky=` knob now
+takes `sigma,veil,shade,soft,carve,fine,reach,lobe`.
+
 ## How it is built
 
 ### Trees and built things authored in Blender
@@ -150,7 +195,8 @@ cloud generator.**
 | `verdant-hills-theme.js` | Lifecycle, renderer, asset loading, gameplay subscriptions, board tracking. |
 | `verdant-hills-assets.js`, `verdant-hills-land.js` | Loading and decoding the GLBs, the sprite sheet and the two baked maps. |
 | `verdant-hills-world.js` | Composition root: builds and updates everything below. |
-| `verdant-hills-light.js` | The sun, its static shadow map, sky colour, haze, ambient; the cloud field (`cloudDensity`, `cloudShadow`); the wind of trees and of the grass, the gust rings, the valley's front and the pool of sunlight; a shared noise texture. |
+| `verdant-hills-light.js` | The sun, its static shadow map, sky colour, haze, ambient; the cloud field (`cloudHeap`, `cloudSample`, `cloudDensity`, `cloudShadow`); the wind of trees and of the grass, the gust rings, the valley's front and the pool of sunlight; a shared noise texture. |
+| `verdant-hills-cloud-volume.js`, `verdant-hills-bakes.js`, `verdant-hills-bake.worker.js` | The cumulus's 3D noise (three-free), and its first-visit bake in a Worker. |
 | `verdant-hills-sky.js` | The cumulus march into its own half-resolution target, the dome, the cirrus. |
 | `verdant-hills-terrain.js` | The analytic height function (the home hill and its two spurs, the valley, the far ridges, terraces under what stands on the land), the ground mesh and its shader, the path, the patchwork's generator. |
 | `verdant-hills-composition.js` | Camera framings, the visibility test, and `VerdantHillsSight`: which ground the lens can see. |
@@ -170,8 +216,8 @@ cloud generator.**
 ### Techniques (three 0.186.1)
 
 - **One cloud field, used three times.** A small texture of rounded mounds on mounds is the
-  whole sky. `cloudDensity()` gives it flat bases and domed tops and lets billows carve its
-  skin; the sky marches that as a volume into a half-resolution target once a frame (the sky
+  whole sky. `cloudDensity()` gives it flat bases and a broad dome over each heap, and lets the
+  lobes of a 3D noise volume carve its skin; the sky marches that as a volume into a half-resolution target once a frame (the sky
   is the only thing behind it, so nothing is composited by depth), lighting each sample
   through the cloud toward the sun. `cloudShadow()` projects the same field down the sun's
   rays onto every surface. And the post pipeline marches that shadow function through the
