@@ -1079,11 +1079,15 @@ describe('Forest reactions: the figure', () => {
             const reactions = director();
             act(reactions);
             const { figure } = reactions.getFrame();
-            expect(Object.keys(figure).sort()).toEqual(['age', 'fed', 'full', 'held', 'kind', 'presence', 'serial']);
+            expect(Object.keys(figure).sort())
+                .toEqual(['age', 'fed', 'full', 'held', 'kind', 'place', 'presence', 'serial']);
             expect(FOREST_FIGURE_IDS).toContain(figure.kind);
             expect(figure).toMatchObject({
                 serial: 1, age: 0, held: true, presence: 0, fed: 0, full: 0,
             });
+            // Where it is to stand, as a chance the director turns into one of its places.
+            expect(figure.place).toBeGreaterThanOrEqual(0);
+            expect(figure.place).toBeLessThan(1);
         }
     });
 
@@ -1364,9 +1368,10 @@ describe('Forest reactions: which animal comes', () => {
             reactions.summon();
             order.push(reactions.getFrame().figure.kind);
         }
-        // One shuffle deals a whole round; the director's own generator was not asked.
+        // One shuffle deals a whole round and one draw each animal's place; the director's own
+        // generator was not asked.
         expect(drawn.rng).toBe(before);
-        expect(drawn.figure).toBe(ROUND - 1);
+        expect(drawn.figure).toBe(ROUND - 1 + ROUND);
         expect([...order].sort()).toEqual([...FOREST_FIGURE_IDS].sort());
         // The same dealer deals the same round whatever the other generator is.
         const dealerAgain = seededRandom(11);
@@ -1380,6 +1385,38 @@ describe('Forest reactions: which animal comes', () => {
         for (const figureRng of [undefined, null, 4, 'dice']) {
             const plain = new ForestReactions({ quality: 'High', rng: seededRandom(5), figureRng });
             expect(plain.figureRng).toBe(plain.rng);
+        }
+    });
+
+    it('deals each new animal a place to stand by the same chance, and a fed one keeps its place', () => {
+        const reactions = new ForestReactions({ quality: 'High', rng: seededRandom(5), figureRng: seededRandom(11) });
+        const places = [];
+        for (let index = 0; index < ROUND; index++) {
+            letGo(reactions);
+            reactions.summon();
+            const { place, serial } = reactions.getFrame().figure;
+            expect(place).toBeGreaterThanOrEqual(0);
+            expect(place).toBeLessThan(1);
+            // Four lines again while it stands feed it where it stands.
+            reactions.summon();
+            expect(reactions.getFrame().figure).toMatchObject({ serial, place });
+            places.push(place);
+        }
+        // Chance, not one place for them all, and the same dealer deals the same places.
+        expect(new Set(places).size).toBe(ROUND);
+        const again = new ForestReactions({ quality: 'High', rng: seededRandom(999), figureRng: seededRandom(11) });
+        expect(Array.from({ length: ROUND }, () => {
+            letGo(again);
+            again.summon();
+            return again.getFrame().figure.place;
+        })).toEqual(places);
+        // A broken generator still deals a place inside 0..1.
+        for (const rng of [() => NaN, () => 7, () => -3, () => 1]) {
+            const broken = new ForestReactions({ quality: 'High', rng });
+            broken.summon();
+            const { place } = broken.getFrame().figure;
+            expect(place).toBeGreaterThanOrEqual(0);
+            expect(place).toBeLessThan(1);
         }
     });
 
