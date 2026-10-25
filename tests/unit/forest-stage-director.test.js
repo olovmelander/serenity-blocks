@@ -10,8 +10,9 @@ import {
 import { ForestPulses } from '../../src/themes/forest/forest-pulses.js';
 import { FOREST_FIGURE_TIMING, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
 import {
-    FOREST_DEFAULT_BOARD, FOREST_STAGE_DEPTH, ForestStage, readForestBoardRect,
+    FOREST_DEFAULT_BOARD, FOREST_STAGE_DEPTH, ForestStage, readForestBoardRect, readForestPanelRects,
 } from '../../src/themes/forest/forest-stage.js';
+import { FOREST_FIGURE_STANDS } from '../../src/themes/forest/forest-understory.js';
 
 // ForestStage is where the board stands in the wood; ForestFireflyDirector turns the reactions'
 // board-space cues into sparks, force fields and waves there. Both are tested against what they
@@ -72,7 +73,7 @@ const FIGURE_ANCHOR = Object.freeze({
 
 function setup({
     fireflies = 1200, pulses = 6, groundHeight = () => 0, trunks = TRUNKS, boughs = BOUGHS, figureAnchor = FIGURE_ANCHOR,
-    seed = 3, aspect = 16 / 9, stage = null,
+    figureStands = null, seed = 3, aspect = 16 / 9, stage = null,
 } = {}) {
     const camera = createCamera({ aspect });
     const sim = new ForestFireflySim({
@@ -90,6 +91,7 @@ function setup({
         trunks,
         boughs,
         figureAnchor,
+        figureStands,
         eye: EYE,
     });
     const spawn = vi.spyOn(sim, 'spawn');
@@ -281,6 +283,70 @@ describe('Forest stage: reading the board card from the page', () => {
         })], { width: 0, height: 0 });
         const rect = readForestBoardRect(collapsed.doc, collapsed.win);
         if (rect) expect(Object.values(rect).every(Number.isFinite)).toBe(true);
+    });
+
+    it('measures each panel beside the card on its own, and finds none where there are none', () => {
+        // The single-player score panel as the game lays it out at 1600 x 900, and a speck.
+        const { doc, win, queries } = page([card({
+            left: 995, top: 170, width: 240, height: 274,
+        }), card({
+            left: 10, top: 10, width: 4, height: 4,
+        })]);
+        expect(readForestPanelRects(doc, win)).toEqual([{
+            x0: 995 / 1600, x1: 1235 / 1600, y0: 170 / 900, y1: 444 / 900,
+        }]);
+        expect(queries).toEqual(['.single-player-stats-bar']);
+        const hidden = page([card({
+            left: 995, top: 170, width: 240, height: 274, style: { display: 'none' },
+        })]);
+        expect(readForestPanelRects(hidden.doc, hidden.win)).toEqual([]);
+        expect(readForestPanelRects(null, null)).toEqual([]);
+        expect(readForestPanelRects({}, { innerWidth: 100, innerHeight: 100 })).toEqual([]);
+    });
+});
+
+describe('Forest stage: what the screen leaves in sight', () => {
+    const box = (x0, x1, y0 = 0.4, y1 = 0.7) => ({
+        x0, x1, y0, y1,
+    });
+
+    it('puts a world point where the camera draws it, and nothing behind the eye', () => {
+        for (const aspect of [16 / 9, 21 / 9, 9 / 19.5]) {
+            const camera = createCamera({ aspect });
+            const stage = new ForestStage(camera);
+            const points = [new THREE.Vector3(10, 1, -5), new THREE.Vector3(-8, 3, -10), new THREE.Vector3(0, 2, -30)];
+            for (const point of points) {
+                const seen = stage.project(point.x, point.y, point.z);
+                const truth = onScreen(point, camera);
+                expect(seen.x).toBeCloseTo(truth.x, 6);
+                expect(seen.y).toBeCloseTo(truth.y, 6);
+            }
+            expect(stage.project(0, 2, 40)).toBeNull();
+        }
+    });
+
+    it('keeps a box behind the card, behind a panel or off the edge out of sight', () => {
+        const stage = new ForestStage(createCamera());
+        expect(stage.panels).toEqual([]);
+        expect(stage.inSight(box(0.8, 0.9))).toBe(true);
+        expect(stage.inSight(box(0.1, 0.3))).toBe(true);
+        expect(stage.inSight(box(0.55, 0.7))).toBe(false);
+        expect(stage.inSight(box(0.95, 1.05))).toBe(false);
+        expect(stage.inSight(box(0.8, 0.9, -0.1, 0.4))).toBe(false);
+        // The score panel, and nonsense that is dropped.
+        stage.setPanels([{
+            x0: 0.62, x1: 0.77, y0: 0.19, y1: 0.49,
+        }, {
+            x0: NaN, x1: 0.9, y0: 0.1, y1: 0.2,
+        }, null, 'panel']);
+        expect(stage.panels).toHaveLength(1);
+        expect(stage.inSight(box(0.7, 0.85))).toBe(false);
+        expect(stage.inSight(box(0.7, 0.85, 0.55, 0.8))).toBe(true);
+        expect(stage.inSight(box(0.8, 0.9))).toBe(true);
+        stage.setPanels(null);
+        expect(stage.panels).toEqual([]);
+        expect(stage.inSight(box(0.7, 0.85))).toBe(true);
+        for (const nonsense of [null, undefined, box(NaN, 0.9), {}]) expect(stage.inSight(nonsense)).toBe(false);
     });
 });
 
@@ -997,8 +1063,9 @@ describe('Forest firefly director: the figure', () => {
     it('calls the fireflies together on a new summons and gives each a place in the figure', () => {
         const rig = setup({ groundHeight: gentleGround });
         const anchor = { ...FIGURE_ANCHOR, y: gentleGround(FIGURE_ANCHOR.x, FIGURE_ANCHOR.z) };
-        rig.director.figureAnchor = anchor;
+        rig.director.figureStands = [anchor];
         rig.director.apply({ epoch: 1, figure: held(1) }, STEP);
+        expect(rig.director.figureAnchor).toBe(anchor);
         const lights = rig.director.figureLights;
         expect(rig.director.pointsFor(STAG)).toHaveLength(lights * 4);
         expect(lights).toBeGreaterThanOrEqual(60);
@@ -1236,6 +1303,116 @@ describe('Forest firefly director: the figure', () => {
         expect(peak).toBe(rig.director.figureLights);
         expect(boundFor).toBeCloseTo(FOREST_FIGURE_TIMING.gather + FOREST_FIGURE_TIMING.hold, 1);
         expect(rig.sim.counts().bound).toBe(0);
+    });
+});
+
+describe('Forest firefly director: where the animal stands', () => {
+    /** A place as the world lays it out: on the ground, side on to the eye, facing the moon. */
+    function standAt({ x, z }, stand, y = 0) {
+        const away = new THREE.Vector3(x - EYE.x, 0, z - EYE.z).normalize();
+        return {
+            x, y, z, facing: { x: away.z, z: -away.x }, depth: { x: away.x, z: away.z }, stand,
+        };
+    }
+    const STANDS = FOREST_FIGURE_STANDS.map((stand, index) => standAt(stand, index));
+    const summons = (serial, place, extra = {}) => ({
+        epoch: 1,
+        figure: {
+            serial, age: 0.1, held: true, presence: 0.1, place, ...extra,
+        },
+    });
+
+    /** Call `count` animals one after another, each dealt `deal()`, and say where each stood. */
+    function summonMany(rig, count, deal) {
+        const stood = [];
+        for (let serial = 1; serial <= count; serial++) {
+            rig.director.apply(summons(serial, deal()), STEP);
+            stood.push(rig.director.figureAnchor);
+            rig.director.apply({ epoch: 1, figure: null }, STEP);
+        }
+        return stood;
+    }
+
+    it('stands each new animal at the place it was dealt, never where the last one stood', () => {
+        const rig = setup({ figureStands: STANDS });
+        // On a landscape screen with the card in the middle, every place can be seen.
+        expect(STANDS.every((anchor) => rig.director.standInSight(anchor))).toBe(true);
+        const stood = summonMany(rig, 60, seededRandom(21));
+        for (let index = 1; index < stood.length; index++) expect(stood[index].stand).not.toBe(stood[index - 1].stand);
+        for (const anchor of STANDS) expect(stood.filter((place) => place === anchor).length).toBeGreaterThan(4);
+        // Its lights gather where it stands.
+        const fresh = setup({ figureStands: STANDS });
+        fresh.director.apply(summons(1, 0.7), STEP);
+        const anchor = fresh.director.figureAnchor;
+        expect(anchor).toBe(STANDS[Math.floor(0.7 * STANDS.length)]);
+        expect(fresh.director.figureSparks.length).toBe(fresh.director.figureLights);
+        for (const index of fresh.director.figureSparks) {
+            expect(Math.hypot(fresh.sim.tx[index] - anchor.x, fresh.sim.tz[index] - anchor.z)).toBeLessThan(4);
+        }
+    });
+
+    it('keeps an animal from behind the card and the score panel, and anywhere when nothing is in sight', () => {
+        const rig = setup({ figureStands: STANDS });
+        // A panel over the whole right of the screen: only the places in the ride are seen.
+        rig.stage.setPanels([{
+            x0: 0.62, x1: 1, y0: 0, y1: 1,
+        }]);
+        const ride = STANDS.filter((anchor) => anchor.x < 0).map((anchor) => anchor.stand);
+        expect(ride.length).toBeGreaterThanOrEqual(2);
+        const left = summonMany(rig, 30, seededRandom(4));
+        expect(new Set(left.map((anchor) => anchor.stand))).toEqual(new Set(ride));
+        // Boards across the whole screen: any place will do, still never the same twice running.
+        rig.stage.setPanels([]);
+        rig.stage.setBoard({
+            x0: 0, x1: 1, y0: 0, y1: 1,
+        });
+        const anywhere = summonMany(rig, 40, seededRandom(5));
+        expect(new Set(anywhere.map((anchor) => anchor.stand)).size).toBe(STANDS.length);
+        for (let index = 1; index < anywhere.length; index++) {
+            expect(anywhere[index].stand).not.toBe(anywhere[index - 1].stand);
+        }
+    });
+
+    it('stands every animal at the place asked for, until it is asked for no longer', () => {
+        const rig = setup({ figureStands: STANDS });
+        expect(rig.director.callStand(3)).toBe(3);
+        // A capture asked for it: even twice running, and even behind a panel.
+        rig.stage.setPanels([{
+            x0: 0, x1: 0.4, y0: 0, y1: 1,
+        }]);
+        expect(summonMany(rig, 4, seededRandom(6)).map((anchor) => anchor.stand)).toEqual([3, 3, 3, 3]);
+        for (const nobody of [-1, 1.5, 'two', null, undefined, NaN]) expect(rig.director.callStand(nobody)).toBeNull();
+        // A place this view does not hold leaves it to chance.
+        expect(rig.director.callStand(99)).toBe(99);
+        const free = summonMany(rig, 10, seededRandom(7));
+        expect(new Set(free.map((anchor) => anchor.stand)).size).toBeGreaterThan(1);
+    });
+
+    it('keeps a fed animal where it stands, and one standing while the screen changes', () => {
+        const rig = setup({ figureStands: STANDS });
+        rig.director.apply(summons(1, 0.1, { fed: 0, full: 0 }), STEP);
+        const first = rig.director.figureAnchor;
+        // The window changes and no longer holds that place; four lines again feed the animal.
+        rig.director.figureStands = STANDS.filter((anchor) => anchor !== first);
+        rig.director.apply(summons(1, 0.9, {
+            age: 2, presence: 1, fed: 1, full: 0.45,
+        }), STEP);
+        expect(rig.director.figureAnchor).toBe(first);
+        const [x, , z] = rig.add.mock.calls.at(-1);
+        expect([x, z]).toEqual([first.x, first.z]);
+        // The next one takes a place the new view holds.
+        rig.director.apply({ epoch: 1, figure: null }, STEP);
+        rig.director.apply(summons(2, 0.1), STEP);
+        expect(rig.director.figureStands).toContain(rig.director.figureAnchor);
+    });
+
+    it('places an animal by its own generator when the summons deals no place, and on a lone anchor every time', () => {
+        const rig = setup({ figureStands: STANDS });
+        const stood = summonMany(rig, 20, () => undefined);
+        expect(new Set(stood.map((anchor) => anchor.stand)).size).toBeGreaterThan(2);
+        for (let index = 1; index < stood.length; index++) expect(stood[index].stand).not.toBe(stood[index - 1].stand);
+        const lone = setup();
+        expect(summonMany(lone, 3, () => 0.5)).toEqual([FIGURE_ANCHOR, FIGURE_ANCHOR, FIGURE_ANCHOR]);
     });
 });
 
