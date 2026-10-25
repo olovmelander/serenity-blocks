@@ -40,8 +40,17 @@ export const ODYSSEY_SUN = Object.freeze([0.35, 0.62, -0.70]);
  * `ODYSSEY_SUN` survives as the LEGACY profile sun, still read by chapters 1/7/8 and the
  * fallback Act II chapters. Converging the two (115.6 degrees apart) is the open half of Wave
  * 0.2 and needs those chapters captured first — see the plan.
+ *
+ * TURNED TO THE SIDE (2026-10-25, Act II masterpiece pass, step 1). It stood ~25 deg up, 110-175
+ * deg off the camera's bearing through chapters 3-5 (the camera looks out at -80..-120 deg the
+ * whole act), so the act was lit from behind the eye: the massif read as a flat cone, its ridges
+ * painted rather than shaded, and nothing cast across anything. Five suns were captured on the
+ * live rail; this one (bearing 155 deg, 15 deg up) lights the massif from the left, puts its
+ * right flank and its long shadow across the meadow in shade, and still leaves the antisolar
+ * point far enough round that the rainbow stands at the right of the frame. The colour script's
+ * light stays clear white at altitude (warmer light read as a 'sand cone' there, 2026-10-20).
  */
-export const ODYSSEY_WORLD_SUN = Object.freeze([-0.46, 0.36, 0.61]);
+export const ODYSSEY_WORLD_SUN = Object.freeze([-0.875, 0.259, 0.408]);
 
 /** Narrative acts (see plan §3.1). */
 export const ODYSSEY_ACTS = Object.freeze({

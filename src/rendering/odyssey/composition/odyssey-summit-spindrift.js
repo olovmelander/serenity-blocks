@@ -16,29 +16,38 @@
  * with a cool shade in its thick heart, torn at its edges by value noise. Normal alpha blending,
  * no depth write; sheets near the eye fade (no big quads at the lens).
  *
+ * STREAMERS (2026-10-25, Act II pass, step 2: "the wind on top of the mountain"). The round sheets
+ * read as more cloud beside the banner, not as a gale: each is now drawn out along the wind as it
+ * crosses the view (`stretch`, `thin`), its grain runs along it, and there are more of them, faster,
+ * born along the summit crest (the sculpted horn, odysseySummitSculpt), so the summit smokes.
+ *
  * ZERO-HITCH: built at board construction (compiled with the presentation group); afterwards only
  * the clock and the reveal uniform change. BISECT LEVER (board): `?odysseyNoSpindrift=1`.
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, fract, hash,
-    instanceIndex, length, mix, positionGeometry, smoothstep, sqrt, uniform, varying, vec2, vec3, vec4,
+    instanceIndex, length, mix, normalize, positionGeometry, smoothstep, sqrt, uniform, varying, vec2, vec3,
+    vec4,
 } from 'three/tsl';
 import { noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 
 /** The plume. `wind` is the direction the snow travels (unit-ish; west-north-west, lifting). */
 export const ODYSSEY_SPINDRIFT = Object.freeze({
-    count: 56,
+    count: 96,
     wind: Object.freeze([-0.92, 0.07, -0.37]),
     /** How far a sheet rides before it is born again (world units), and how long that takes. */
-    run: 175,
-    life: 11,
+    run: 230,
+    life: 7.5,
     /** Sheet radius at birth and at the end of its run (world units). */
-    size: Object.freeze([9, 44]),
+    size: Object.freeze([8, 40]),
+    /** How far a sheet is drawn out along the wind, and how thin across it (x its radius). */
+    stretch: 2.6,
+    thin: 0.5,
     /** The crest the snow leaves: spread round the summit point (horizontal, down). */
-    crest: Object.freeze([22, 16]),
+    crest: Object.freeze([30, 28]),
     /** Peak alpha of one sheet. */
-    alpha: 0.42,
+    alpha: 0.5,
     /** [fade in from, fully in by, fade out from, gone by] in JOURNEY progress. */
     window: Object.freeze([0.140, 0.160, 0.662, 0.692]),
 });
@@ -105,7 +114,13 @@ export function createSummitSpindrift({ summit, sunColour = null, hazeColour = n
             .toVar();
         const radius = mix(float(C.size[0]), float(C.size[1]), sqrt(age)).mul(mix(float(0.75), float(1.25), h3));
         const view = cameraViewMatrix.mul(vec4(centre, 1.0));
-        const lifted = view.add(vec4(positionGeometry.xy.mul(radius.mul(2.0)), 0.0, 0.0));
+        // A streamer: drawn out along the wind as it crosses the view, thin across it.
+        const windView = cameraViewMatrix.mul(vec4(wind.x, wind.y, wind.z, 0.0)).xy;
+        const along2 = normalize(windView.add(vec2(1e-4, 0)));
+        const across2 = vec2(along2.y.negate(), along2.x);
+        const corner = along2.mul(positionGeometry.x.mul(radius.mul(2.0 * C.stretch)))
+            .add(across2.mul(positionGeometry.y.mul(radius.mul(2.0 * C.thin))));
+        const lifted = view.add(vec4(corner, 0.0, 0.0));
         // Fade in off the crest, out at the end of its run; away from the lens.
         const toEye = length(centre.sub(cameraPosition));
         const life = smoothstep(0.0, 0.10, age).mul(float(1).sub(smoothstep(0.55, 1.0, age)));
@@ -120,9 +135,10 @@ export function createSummitSpindrift({ summit, sunColour = null, hazeColour = n
         const q = positionGeometry.xy.mul(2.0);
         const r2 = dot(q, q);
         const seed = vSheet.y.mul(37.0);
-        const n = noise2(q.mul(1.7).add(vec2(seed, vSheet.x.mul(2.3))))
-            .mul(0.65)
-            .add(noise2(q.mul(3.9).add(vec2(seed.mul(1.3), vSheet.x.mul(4.1)))).mul(0.35));
+        // (the grain runs along the streamer: finer across it than along it)
+        const n = noise2(q.mul(vec2(1.2, 2.6)).add(vec2(seed, vSheet.x.mul(2.3))))
+            .mul(0.6)
+            .add(noise2(q.mul(vec2(2.2, 7.5)).add(vec2(seed.mul(1.3), vSheet.x.mul(4.1)))).mul(0.4));
         const disc = exp(r2.mul(-2.2));
         const torn = smoothstep(0.30, 0.78, n.add(disc.mul(0.45)));
         const cover = clamp(disc.mul(torn), 0.0, 1.0);

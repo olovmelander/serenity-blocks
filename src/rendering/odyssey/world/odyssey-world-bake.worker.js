@@ -21,7 +21,7 @@
 
 import {
     bakeReliefData, bakeReliefBand, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData,
-    bakeMacroData, makeReliefSampler,
+    bakeMacroData, bakeSummitSculptData, makeReliefSampler,
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData, cloudFieldGeometryDataBuffers } from './odyssey-cloud-field.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
@@ -84,7 +84,10 @@ self.onmessage = (event) => {
             const t3 = now();
             post('detail', { detail }, [detail.data.buffer], t3 - t2);
             const macro = bakeMacroData();
-            post('macro', { macro }, [macro.data.buffer], now() - t3);
+            const t4 = now();
+            post('macro', { macro }, [macro.data.buffer], t4 - t3);
+            const summit = bakeSummitSculptData();
+            post('summit', { summit }, [summit.data.buffer], now() - t4);
         }
         if ((lane === 'cloudField' || lane === 'all') && Array.isArray(cloudSpecs)) {
             const t1 = now();

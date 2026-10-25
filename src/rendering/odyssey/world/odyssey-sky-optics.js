@@ -1,10 +1,10 @@
 /**
  * THE ANTISOLAR SKY — a rainbow, and the shower that makes it (Act II, chapters 3-4).
  *
- * Act II flies with its sun ~25 deg up BEHIND the camera (ODYSSEY_WORLD_SUN), which costs the act
- * every back-lit effect but hands it the antisolar ones for free: the antisolar point sits ~25 deg
- * below the horizon ahead-right of travel, so a primary bow (42 deg round it) stands ~17 deg over
- * the horizon there, its left foot coming down just right of the massif from the shore orbs.
+ * Act II flies with its sun ~15 deg up behind and to the left of the camera (ODYSSEY_WORLD_SUN,
+ * turned to the side 2026-10-25), which hands it the antisolar effects: the antisolar point sits
+ * ~15 deg below the horizon off to the right of travel, so a primary bow (42 deg round it) stands
+ * at the right of the frame, its foot coming down right of the massif from the shore orbs.
  * That is where it is drawn: on the world's own sky dome, centred on the TRUE antisolar direction
  * (so it is a property of the light, not a sticker placed for one camera), behind everything that
  * stands in front of the sky.
