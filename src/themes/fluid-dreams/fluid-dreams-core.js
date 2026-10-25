@@ -9,6 +9,10 @@
  * drops merge with each other and with the sea, and pinch off again, by construction.
  */
 
+import {
+    MOOD_HOLD, MOOD_SECONDS, meltPalettes, moodDrift,
+} from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -175,7 +179,8 @@ export function pieceColor(value, fallback = 0xff2d95) {
 }
 
 /**
- * Palettes, one per level (cycled), all scene-linear:
+ * Palettes, the dusks the sea dreams in turn (the clock turns them, a level is a step on top; see
+ * dreamDrift), all scene-linear:
  *   zenith / mid / horizon  the sky from overhead down to the sea line
  *   sun                     the dream sun's light
  *   inkA / inkB / inkC      the ink that drifts through the sky and inside the Great Drop
@@ -248,6 +253,33 @@ export const FLUID_PALETTES = Object.freeze([
 export const PALETTE_KEYS = Object.freeze([
     'zenith', 'mid', 'horizon', 'sun', 'inkA', 'inkB', 'inkC', 'deep', 'glow',
 ]);
+
+/**
+ * Seconds the sea dreams in each palette when only the clock is turning it (a run with no
+ * level-up, Infinity, a match, the menus), and the share of that it rests on the pure palette
+ * before it melts into the next: the whole round takes a little over eight minutes. A level is a
+ * step on top.
+ */
+export const DREAM_SECONDS = MOOD_SECONDS;
+export const DREAM_HOLD = MOOD_HOLD;
+
+/**
+ * How far the clock alone has turned the sea through its palettes by `time`: the whole part counts
+ * the palettes passed, the fraction is the melt into the next (0 through the rest).
+ */
+export const dreamDrift = (time) => moodDrift(time, DREAM_SECONDS, DREAM_HOLD);
+
+/**
+ * The palette at `phase` round the wheel, written into `out`: on a whole phase it is that palette
+ * exactly; between two, every colour melts the short way round the colour wheel.
+ */
+export const paletteAt = (phase, out = {}) => meltPalettes(FLUID_PALETTES, PALETTE_KEYS, phase, out);
+
+/** The palette a phase round the wheel stands nearest. */
+export const paletteNear = (phase) => {
+    const count = FLUID_PALETTES.length;
+    return FLUID_PALETTES[((Math.round(phase) % count) + count) % count];
+};
 
 /** The colour a four-line clear fires in. */
 export const DREAMFIRE = Object.freeze([1.0, 0.86, 0.62]);

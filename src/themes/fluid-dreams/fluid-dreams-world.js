@@ -9,7 +9,8 @@
  * (fluid-dreams-spray.js). The choreography (fluid-dreams-choreography.js) says where every body
  * of liquid is; this class stands the picture up for the screen's shape, aims the board's events
  * through the live camera (a lock's droplet leaves the card where the piece locked and lands in
- * the sea beside it), eases the level palettes, and hands the post stack its numbers.
+ * the sea beside it), turns the palettes by the clock with a level a step on top, and hands the
+ * post stack its numbers.
  *
  * The heat of play (the choreography's GameplaySurge, src/themes/shared/gameplay-surge.js) is
  * spent here on what the whole picture wears: the veins, the ink and the motes brighten with it,
@@ -21,9 +22,10 @@ import * as THREE from 'three/webgpu';
 
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
-    DEG, DREAMFIRE, FEVER_DUSK, FEVER_HORIZON, FLUID_PALETTES, HERO, PALETTE_KEYS, SMOOTH_K, approach, clamp01, lerp,
-    mulberry32, pieceColor, sceneAnchors,
+    DEG, DREAMFIRE, FEVER_DUSK, FEVER_HORIZON, FLUID_PALETTES, HERO, PALETTE_KEYS, SMOOTH_K, approach, clamp01,
+    dreamDrift, lerp, mulberry32, paletteAt, paletteNear, pieceColor, sceneAnchors,
 } from './fluid-dreams-core.js';
+import { easeStep } from '../shared/mood-clock.js';
 import { bakeNoise, createNoiseTexture } from './fluid-dreams-tsl.js';
 import { createLiquidMaterial, createLiquidMesh, createLiquidUniforms } from './fluid-dreams-liquid.js';
 import { createMotes, createSpray } from './fluid-dreams-spray.js';
@@ -167,9 +169,13 @@ export class FluidDreamsWorld {
         this.layoutLive = false;
         this.reducedMotion = false;
         this.level = 1;
-        this.paletteIndex = 0;
+        /** The world's clock (the sim's time): it turns the palettes. */
+        this.time = 0;
+        /** The level's step round the palettes as it eases in (the clock's turn is added on top). */
+        this.paletteStep = 0;
+        /** The palette the clock and the level have turned to (the level's step eased). */
         this.palette = {};
-        /** The palette as drawn: the level's, eased, with a fever's burn on the sea line and the sun. */
+        /** The palette as drawn: that one, with a fever's burn on the sea line and the sun. */
         this.shown = {};
         PALETTE_KEYS.forEach((key) => {
             this.palette[key] = FLUID_PALETTES[0][key].slice();
@@ -424,9 +430,8 @@ export class FluidDreamsWorld {
         this.choreo.reset();
         this.parts.spray?.reset();
         this._lockCount = 0;
-        // a new run starts on the first level's colours (eased, not cut)
+        // a new run drops the level's step (eased, not cut); the clock's turn stays
         this.level = 1;
-        this.paletteIndex = 0;
     }
 
     get combo() {
@@ -630,15 +635,25 @@ export class FluidDreamsWorld {
     levelUp(level, { silent = false } = {}) {
         const n = Math.max(1, Math.round(Number(level) || 1));
         this.level = n;
-        this.paletteIndex = (n - 1) % FLUID_PALETTES.length;
-        if (silent) {
-            PALETTE_KEYS.forEach((key) => {
-                const target = FLUID_PALETTES[this.paletteIndex][key];
-                for (let c = 0; c < 3; c += 1) this.palette[key][c] = target[c];
-            });
-        } else {
-            this.choreo?.levelUp();
-        }
+        if (silent) this.applyPalette(1);
+        else this.choreo?.levelUp();
+    }
+
+    /**
+     * Where the sea is heading round its palettes: one step for every level, turned on by the
+     * clock. The whole part names a palette, the fraction is how far it has melted into the next.
+     */
+    palettePhase() {
+        return (this.level - 1) + dreamDrift(this.time);
+    }
+
+    /**
+     * Set the palette. The clock's turn is exact (a function of the time alone, so a seek and a
+     * replay agree); the level's step eases in by `k` (1 snaps), the short way round the wheel.
+     */
+    applyPalette(k) {
+        this.paletteStep = easeStep(this.paletteStep, this.level - 1, k, FLUID_PALETTES.length);
+        paletteAt(this.paletteStep + dreamDrift(this.time), this.palette);
     }
 
     // ── per frame ───────────────────────────────────────────────────────────────
@@ -654,6 +669,7 @@ export class FluidDreamsWorld {
         this.site = null;
         this.siteRandom = mulberry32(0x5173);
         this.compose();
+        this.time = Math.max(0, time);
         this.levelUp(1, { silent: true });
         this.moteClock = Math.max(0, time);
     }
@@ -666,18 +682,14 @@ export class FluidDreamsWorld {
         const { u, choreo } = this;
         if (!u || !choreo) return;
         const dt = sim.delta;
+        this.time = sim.time;
 
-        // the level's palette, eased; a fever burns the sea line deeper and warms the sun (last
-        // frame's fever: it moves by a few hundredths a frame at most)
-        const target = FLUID_PALETTES[this.paletteIndex];
-        const k = approach(2.2, dt);
+        // the clock's palette with the level's step eased in; a fever burns the sea line deeper and
+        // warms the sun (last frame's fever: it moves by a few hundredths a frame at most)
+        this.applyPalette(approach(2.2, dt));
         const { fever } = choreo.heat;
         PALETTE_KEYS.forEach((key) => {
             const cur = this.palette[key];
-            const to = target[key];
-            cur[0] += (to[0] - cur[0]) * k;
-            cur[1] += (to[1] - cur[1]) * k;
-            cur[2] += (to[2] - cur[2]) * k;
             const shown = this.shown[key];
             const lean = FEVER_DUSK[key];
             const w = lean ? lean[1] * fever : 0;
@@ -767,7 +779,8 @@ export class FluidDreamsWorld {
         return {
             quality: this.quality,
             level: this.level,
-            palette: FLUID_PALETTES[this.paletteIndex].name,
+            palette: paletteNear(this.palettePhase()).name,
+            mood: this.paletteStep + dreamDrift(this.time),
             combo: c?.combo ?? 0,
             charge: c ? Number(c.charge.toFixed(3)) : 0,
             balls: c ? Array.from(c.live) : [],
