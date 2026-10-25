@@ -6444,4 +6444,30 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=spring; t=10 with hour=<place> gives a deterministic capture.',
         sources: ['src/playground/effects/spring.effect.js'],
     })),
+    {
+        name: 'visitor',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'Fly one of the visitors (the UFOs) over the sanctuary.',
+        values: 'saucer, halcyon, triangle, mothership, orbs or capsule.',
+        defaultValue: 'Off: the schedule alone (one about once a minute, the first some fifteen seconds in).',
+        example: 'visitor=triangle',
+        notes: 'Use on playground.html with effect=halcyon-apex.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
+    {
+        name: 'visitorAge',
+        category: 'Playground',
+        scope: 'playground.html — halcyon-apex',
+        description: 'With t=, how many seconds into its route the visitor is shown.',
+        values: 'Seconds (number).',
+        defaultValue: '4',
+        example: 'visitorAge=10',
+        notes: 'Use on playground.html with effect=halcyon-apex.',
+        sources: [
+            'src/playground/effects/halcyon-apex.effect.js',
+        ],
+    },
 ];

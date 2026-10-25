@@ -104,6 +104,7 @@ import {
 import {
     createBeacons, createRowBeams, createSparks, createWisps,
 } from './halcyon-apex-fx.js';
+import { createVisitors } from './halcyon-apex-visitors.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './halcyon-apex-composition.js';
@@ -166,7 +167,7 @@ const OVERDRIVE_CEILING = 2.0;
 
 const PARTS = [
     'sky', 'ranges', 'islets', 'flora', 'water', 'site', 'siteLey', 'dial', 'dialLey', 'crystals', 'halos',
-    'upfall', 'beads', 'motes', 'birds', 'sparks', 'beacons', 'wisps', 'beams',
+    'upfall', 'beads', 'motes', 'birds', 'visitors', 'visitorLights', 'sparks', 'beacons', 'wisps', 'beams',
 ];
 
 export class HalcyonApexWorld {
@@ -206,6 +207,11 @@ export class HalcyonApexWorld {
         this.beams = null;
         this.beacons = null;
         this.birds = null;
+        /** The visitors: now and then a craft not of this world passes over (halcyon-apex-visitors.js). */
+        this.visitors = null;
+        this._visitorFrame = {
+            yaw: 0, upright: 0, eye: REST_RIG.height, halcyonTop: [0, 0, 0], palette: null, reduced: false,
+        };
         this.disposed = false;
         this.reducedMotion = false;
         this.aspect = 16 / 9;
@@ -309,6 +315,7 @@ export class HalcyonApexWorld {
         this.beams?.reset();
         this.beacons?.reset();
         this.birds?.reset();
+        this.visitors?.reset();
         if (this.u) {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
@@ -377,6 +384,10 @@ export class HalcyonApexWorld {
             this.birds = createBirds(u, tier.birds);
             this.addPart('birds', this.birds);
         }
+        // Every tier: one small hull at a time, drawn only while it flies.
+        this.visitors = createVisitors(u);
+        this.addPart('visitors', this.visitors.hulls);
+        this.addPart('visitorLights', this.visitors.lights);
 
         // ── Gameplay effects (pools, always drawn) ──
         this.sparks = createSparks(u, tier.sparks);
@@ -446,6 +457,14 @@ export class HalcyonApexWorld {
         this.resetState(Math.max(0, time));
         this.applyPalette(1);
         this.placeCrystals();
+    }
+
+    /**
+     * Fly a visitor's route (halcyon-apex-visitor-plan.js: saucer, halcyon, triangle, mothership,
+     * orbs, capsule) from world time `start`, over whatever the schedule had planned. Captures use it.
+     */
+    callVisitor(name, start = this.time) {
+        return this.visitors ? this.visitors.call(name, start) : false;
     }
 
     /** A new run: the sanctuary back at rest (the sky keeps turning). */
@@ -1360,6 +1379,20 @@ export class HalcyonApexWorld {
         this.placeCrystals(dt);
         // The flock climbs and widens its circle while play runs hot.
         this.birds?.update(t, dt, (0.3 * smooth(0.5, 0.9, level) + 0.5 * fever) * (this.reducedMotion ? 0.3 : 1));
+        if (this.visitors) {
+            // Routes are drawn as seen from the rest camera, so they keep to the sky round the card
+            // at any aspect; the halcyon route comes down to wherever the Halcyon hangs.
+            const vf = this._visitorFrame;
+            const comp = compositionFor(this.aspect);
+            vf.yaw = comp.yaw;
+            vf.upright = 1 - comp.wide;
+            vf.halcyonTop[0] = this.halcyon[0];
+            vf.halcyonTop[1] = this.halcyon[1] + SITE.halcyon.half;
+            vf.halcyonTop[2] = this.halcyon[2];
+            vf.palette = this._palette;
+            vf.reduced = this.reducedMotion;
+            this.visitors.update(t, vf);
+        }
 
         // ── Uniforms ──
         let ringsLive = 0;
@@ -1507,6 +1540,10 @@ export class HalcyonApexWorld {
             heart: { ...this.heart },
             sun: [this._sunDir.x, this._sunDir.y, this._sunDir.z],
             halcyon: [...this.halcyon],
+            /** Who is in the sky (route and hull kind), how far into its route, and how much of it is here. */
+            visitor: this.visitors && this.visitors.state.route
+                ? { ...this.visitors.state }
+                : null,
         };
     }
 
@@ -1540,6 +1577,7 @@ export class HalcyonApexWorld {
         this.beams = null;
         this.beacons = null;
         this.birds = null;
+        this.visitors = null;
         this.u = null;
         this._camera = null;
     }
