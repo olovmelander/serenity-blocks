@@ -3,7 +3,8 @@
  *
  * Translates Serenity Blocks gameplay events and elapsed time into smoothed
  * optical, hydrological, and botanical uniforms for the Hang Sơn Đoòng doline:
- * - 5 stations (advancing per level + slow diurnal drift) & 4 micro-weathers
+ * - 5 stations (advancing per level + slow diurnal drift) & 4 micro-weathers, both turning by the
+ *   clock in every mode and under reduced motion (a slow change of light is not motion)
  * - Piece Lock -> Flush (anthocyanin leaf flush + mote eddy)
  * - Hard Drop -> Snap (vertical wind-snap down hanging root curtains)
  * - 1–3 Line Clear -> Rim Shower + Row Ripening + New Growth (delayed greening)
@@ -774,19 +775,20 @@ export class SunfallDirector {
             this.setB2B(0);
         }
 
-        // 1. Solar Station progression
+        // 1. Solar Station progression. The sun crosses the oculus by the clock in every mode and
+        // under reduced motion too: a station takes stationSeconds, so the light's slow turn is a
+        // change of hour, not motion (only a level's walk is snapped there, see onLevelUp).
         if (this.stationLocked !== null) {
             this.stationCurrent = this.stationLocked;
         } else {
-            if (!this.reducedMotion) {
-                this.stationTarget += safeDt / SUNFALL_TIMINGS.stationSeconds;
-            }
+            this.stationTarget += safeDt / SUNFALL_TIMINGS.stationSeconds;
             const tau = this.reducedMotion ? 0.001 : SUNFALL_TIMINGS.levelPanSeconds * 0.38;
             this.stationCurrent = approach(this.stationCurrent, this.stationTarget, tau, safeDt);
         }
 
-        // 2. Micro-weather cycle
-        if (this.weatherLocked === null && !this.reducedMotion) {
+        // 2. Micro-weather cycle, under reduced motion too: a weather is air (mist, cloud deck,
+        // drip and spray rates) crossfading over seconds, never a sweep.
+        if (this.weatherLocked === null) {
             this.weatherTimer -= safeDt;
             if (this.weatherTimer <= 0) {
                 this.weatherIndex = this.nextWeatherIndex;

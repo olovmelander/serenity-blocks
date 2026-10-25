@@ -13,7 +13,7 @@ import { SunfallWorld } from '../../themes/sunfall/sunfall-world.js';
 import { SunfallDirector } from '../../themes/sunfall/sunfall-director.js';
 import { SunfallPost, resolveSunfallPostLook } from '../../themes/sunfall/sunfall-post.js';
 import { resolveSunfallQuality } from '../../themes/sunfall/sunfall-quality.js';
-import { PIECE_CODES, stationIndexForLevel } from '../../themes/sunfall/sunfall-core.js';
+import { PIECE_CODES, SUNFALL_TIMINGS, stationIndexForLevel } from '../../themes/sunfall/sunfall-core.js';
 import { readBoardViewport } from '../../themes/sunfall/sunfall-composition.js';
 
 export const meta = {
@@ -248,11 +248,12 @@ export function create({
         // A replay is not a session start: no Morning pulse unless that is the event asked for.
         director.morningPulse = 0;
         director.level = level;
-        director.stationTarget = stationIndexForLevel(level);
-        director.stationCurrent = director.stationTarget;
-        applyOverrides();
         const lead = (eventName ? eventAge : 0) + (warmLocks + warmClears) * 0.45 + (holdCombo ? 1.2 : 0);
         director.time = Math.max(0, targetTime - lead);
+        // The sun's clock as the game would have run it to this time (every mode, reduced motion too).
+        director.stationTarget = stationIndexForLevel(level) + director.time / SUNFALL_TIMINGS.stationSeconds;
+        director.stationCurrent = director.stationTarget;
+        applyOverrides();
         if (holdB2B > 0) director.setB2B(holdB2B);
         const advance = (seconds, stepDt = 1 / 30) => {
             const steps = Math.max(1, Math.ceil(seconds / stepDt));
