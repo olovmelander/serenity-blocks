@@ -13,6 +13,7 @@ import {
     attribute, cameraPosition, color, cross, dFdx, dFdy, dot, float, fract, instancedBufferAttribute, mix, normalize,
     normalWorld, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
 } from 'three/tsl';
+import { centroidVarying } from '../shared/centroid-varying.js';
 import {
     FOREST_FEATURE_TREES, FOREST_GROVE_CEILING, createForestVisibilityTest, layoutForestGrove,
 } from './forest-composition.js';
@@ -218,7 +219,9 @@ export class ForestTrees {
         const crown = instancedBufferAttribute(buffers.crown); // sky, sway, phase, hue
         const bent = instancedBufferAttribute(buffers.bent); // bent normal xyz, tree tone
         const tree = instancedBufferAttribute(buffers.tree); // base xyz, height
-        const paint = attribute('color', 'vec4'); // tip weight, shoot id, shade, leaf (1) or wood (0)
+        // tip weight, shoot id, shade, leaf (1) or wood (0); read inside the needle, or under MSAA a
+        // far tip's weight comes out many times its corners' and the squared fringe below sparkles.
+        const paint = centroidVarying(attribute('color', 'vec4'));
         const treePhase = fract(tree.x.mul(0.37).add(tree.z.mul(0.71)));
         const t = light.uTime;
         const force = light.uWind.add(light.uGust);
