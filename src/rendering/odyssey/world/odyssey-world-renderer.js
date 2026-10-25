@@ -2763,6 +2763,9 @@ export function createOdysseyWorld({
         // so a wisp is seen end-on as an upright streak, and lit by the sun it stood over the sea
         // as a pillar of light.
         .mul(float(1).sub(smoothstep(float(0.78), float(0.96), dot(skyDir, uSunDir)).mul(0.8)))
+        // ...and gone as the departure darkens the zenith: the eye is climbing out of the air, and
+        // wisps left on the deepening dome read as speed lines (a fan of them round the climb).
+        .mul(float(1).sub(smoothstep(float(0.0), float(0.3), uFadeZenith)))
         .mul(SKY_CIRRUS.alpha);
     const cirrusCol = mix(
         vec3(...SKY_CIRRUS.white),
