@@ -6024,6 +6024,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'Off: the theme’s own lens.',
             '0,12',
         ],
+        [
+            'herdShadow',
+            'The herd casts no shadows on the barley (an A/B of the shadows).',
+            '0 to switch them off.',
+            'On.',
+            '0',
+        ],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',

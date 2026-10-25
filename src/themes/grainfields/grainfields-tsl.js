@@ -191,6 +191,8 @@ export function createUniforms() {
         pixelAngle: uniform(0.0007),
 
         sunDir: uniform(new THREE.Vector3(-0.42, 0.38, -0.82)),
+        /** The herd's shadow window over the field (grainfields-herd-shadow.js): middle x, z, span (0 none). */
+        herdShadow: uniform(new THREE.Vector3(0, 0, 0)),
         /** How much of the disc stands clear of the far hills: the direct light's last gate. */
         sunUp: uniform(1),
         /** How far the sky is in daylight (0 the twilight, 1 day). */

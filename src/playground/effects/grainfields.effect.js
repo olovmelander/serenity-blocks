@@ -40,6 +40,7 @@
  *   herdCam=i,d,az,h,fov     follow horse i from d metres, az degrees round from its nose toward its
  *                            left (90 its left side, 180 behind it), h metres over its feet
  *   herdLook=i,fov           from the eye, keep horse i in the middle of a lens this wide
+ *   herdShadow=0             the herd casts no shadows on the barley (an A/B)
  */
 import * as THREE from 'three/webgpu';
 import { GrainfieldsWorld } from '../../themes/grainfields/grainfields-world.js';
@@ -315,6 +316,11 @@ export function create({
                 return { kind: ['walk', 'trot', 'canter', 'wheel'].includes(kind) ? kind : `gallop-${kind}`, at: Number(at) };
             }));
         }
+        // A/B: the herd's shadows off.
+        if (params.get('herdShadow') === '0' && world.herdShadow) {
+            world.herdShadow.clear();
+            world.herdShadow = null;
+        }
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {
@@ -371,6 +377,11 @@ export function create({
                 calls: renderer.info?.render?.calls ?? null,
                 triangles: renderer.info?.render?.triangles ?? null,
                 ...(world ? world.getState() : {}),
+                herdShadow: world?.herdShadow ? {
+                    ...world.herdShadow.window,
+                    shaded: world.herdShadow.texture.image.data.reduce((n, v, i) => n + (i % 4 === 0 && v > 0 ? 1 : 0), 0),
+                    sunDir: world.u.sunDir.value.toArray().map((v) => Number(v.toFixed(3))),
+                } : null,
             };
         },
         dispose() {

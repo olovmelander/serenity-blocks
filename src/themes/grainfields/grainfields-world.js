@@ -46,6 +46,7 @@ import { createFort } from './grainfields-fort.js';
 import { createGeese } from './grainfields-geese.js';
 import { createHerd } from './grainfields-herd.js';
 import { createTrample } from './grainfields-trample.js';
+import { createHerdShadow } from './grainfields-herd-shadow.js';
 
 import { GrainfieldsReactions } from './grainfields-reactions.js';
 import { cardUnion, fallbackLayout } from './grainfields-composition.js';
@@ -282,7 +283,11 @@ export class GrainfieldsWorld {
         this.prepared = prepared;
         // Where the herd has parted the barley (pressed in each frame, read by the stalks).
         this.trample = createTrample();
-        this.textures = { noise: createNoiseTexture(), trample: this.trample.texture };
+        // Where the herd's shadows lie on the barley (cast each frame from the posed horses).
+        this.herdShadow = createHerdShadow();
+        this.textures = {
+            noise: createNoiseTexture(), trample: this.trample.texture, herdShadow: this.herdShadow.texture,
+        };
         this.writePath();
         const { u, textures: t, tier } = this;
         this.addPart('grain', createGrain(u, t, prepared.grain, { coverage: this.samples > 0 }));
@@ -668,6 +673,8 @@ export class GrainfieldsWorld {
         this.parts.motes?.reset();
         this.parts.herd?.reset(t);
         this.trample?.clear();
+        this.herdShadow?.clear();
+        this.u.herdShadow.value.set(0, 0, 0);
         this.u.skein.value = -1e6;
         this.time = t;
     }
@@ -807,6 +814,13 @@ export class GrainfieldsWorld {
         this.updatePost(dt);
         for (const part of this.partList) part.update?.(time, dt, this);
         if (this.parts.herd && this.parts.grain) this.trample.press(this.parts.herd.horses, dt);
+        const { herd } = this.parts;
+        if (herd && this.herdShadow) {
+            const s = u.sunDir.value;
+            this.herdShadow.cast(herd.rig, herd.motions, [s.x, s.y, s.z], groundHeight);
+            const w = this.herdShadow.window;
+            u.herdShadow.value.set(w.x, w.z, w.span);
+        }
     }
 
     /**
@@ -929,6 +943,7 @@ export class GrainfieldsWorld {
         for (const part of this.partList) part.dispose();
         this.textures?.noise?.dispose();
         this.trample?.dispose();
+        this.herdShadow?.dispose();
         disposeGrainfieldsAssets(this.prepared?.assets);
         this.root.clear();
         this.partList.length = 0;
