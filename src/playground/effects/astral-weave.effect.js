@@ -12,7 +12,8 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   stack=<n>                lay n rows of weft before the event (a stack n rows high)
  *   combo=<n>                hold a combo of n (the rosette's petals and its temperature)
- *   level=<n>                rest on level n's figure
+ *   level=<n>                rest on level n's figure, the light n - 1 moods on from where the clock
+ *                            (?t=) has turned it (astral-weave-moods.js)
  *   event=lock|drop|clear|tetris|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
  *   demo=1                   live only: play a looping gameplay script
@@ -181,6 +182,8 @@ export function create({
         const start = Math.max(0, time - lead);
         world.seek(start);
         if (level > 1) world.levelUp(level);
+        // The level's moods stand where a run at this level has them (seek keeps the last ones).
+        world.setMoodSteps(level - 1);
         for (let i = 0; i < stack; i++) world.lock({ rows: [19 - i], u: 0.15 + ((i * 0.37) % 0.7) });
         if (holdCombo > 0) world.setCombo(holdCombo);
         world.update(sim(start, 0));

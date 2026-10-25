@@ -31,6 +31,9 @@
  * eased scalars (k, heat) and clocks the world runs faster as play heats, stepped with exact,
  * frame-rate-independent updates; `seek(t)` plus a fixed-step replay reproduces any frame for
  * captures.
+ *
+ * The light the loom hangs in turns by the world clock in every mode (astral-weave-moods.js):
+ * five nebula moods, a level-up one mood on top as well as its richer figure.
  */
 
 import * as THREE from 'three/webgpu';
@@ -41,6 +44,9 @@ import {
 import { approach, createNoiseTexture, mulberry32 } from './astral-weave-tsl.js';
 import { compileComputeAsync, isAsyncComputeCapable } from '../../rendering/webgpu-compute-pipeline-async.js';
 import { createSky, lampFlare, lampPositions } from './astral-weave-sky.js';
+import {
+    ASTRAL_MOODS, AstralWeaveMoods, MOOD_COLOURS, MOOD_SCALARS,
+} from './astral-weave-moods.js';
 import { MOTE_TIERS, createMotes } from './astral-weave-motes.js';
 import { DUST_STATIC_MAX, DUST_TIERS, createDust } from './astral-weave-dust.js';
 import {
@@ -168,6 +174,8 @@ export class AstralWeaveWorld {
         this.shockGain = new Float64Array(SHOCK_SLOTS);
         this.shockSpeed = new Float64Array(SHOCK_SLOTS);
         this.gimbalTurn = new Float64Array(2);
+        /** The deep field's mood: the clock turns it, a level steps it on. */
+        this.moods = new AstralWeaveMoods();
         this.resetState();
     }
 
@@ -222,6 +230,7 @@ export class AstralWeaveWorld {
     build() {
         this.noiseTex = createNoiseTexture();
         const far = () => new THREE.Vector4(0, 0, -1000, 0);
+        const [first] = ASTRAL_MOODS;
         const s = {
             uTime: uniform(0),
             uAspect: uniform(16 / 9),
@@ -257,6 +266,11 @@ export class AstralWeaveWorld {
             uWeftA: uniformArray(Array.from({ length: WEFT_SLOTS }, () => new THREE.Vector4(-1000, 0, 1, 0)), 'vec4'),
             uWeftB: uniformArray(Array.from({ length: WEFT_SLOTS }, () => new THREE.Vector4(-2000, 0, 0, 0)), 'vec4'),
             uEmber: uniformArray(Array.from({ length: EMBER_SLOTS }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4'),
+            // The mood (astral-weave-moods.js): one uniform per colour and number, set every frame.
+            uMood: {
+                ...Object.fromEntries(MOOD_COLOURS.map((key) => [key, uniform(new THREE.Vector3(...first[key]))])),
+                ...Object.fromEntries(MOOD_SCALARS.map((key) => [key, uniform(first[key])])),
+            },
             noiseTex: this.noiseTex,
         };
         this.shared = s;
@@ -777,14 +791,36 @@ export class AstralWeaveWorld {
 
     /**
      * LEVEL_UP: each level rests on a richer figure (2, 3, 4, then 5 petals from level 4 on: a
-     * level-up never takes petals away).
+     * level-up never takes petals away), and the light moves one mood on (eased over a few
+     * seconds, on top of the clock).
      */
     levelUp(level) {
         const n = Number.isFinite(level) ? Math.max(1, Math.round(level)) : 2;
         this.kRest = K_REST + Math.min(3, n - 1);
+        this.moods.levelUp();
         this.ripple(-PI / 2, 0.9);
         this.energySwell.hit(0.5, this.time);
         this.surge.levelUp(this.time);
+    }
+
+    /** How many moods the levels have moved the light on (a restart carries it). */
+    get moodSteps() {
+        return this.moods.levelSteps;
+    }
+
+    /** Stand the levels' moods at `steps` at once: a restart carrying its run, a capture's level. */
+    setMoodSteps(steps) {
+        this.moods.setLevelSteps(steps);
+        this.pushMood();
+    }
+
+    /** Write the mood into the sky's uniforms. */
+    pushMood() {
+        const mood = this.shared?.uMood;
+        if (!mood) return;
+        const { moods } = this;
+        for (const key of MOOD_COLOURS) mood[key].value.fromArray(moods.colours[key]);
+        for (const key of MOOD_SCALARS) mood[key].value = moods[key];
     }
 
     /** Ring the hoop from one peg: a front runs both ways round it (locks, level-ups). */
@@ -918,6 +954,10 @@ export class AstralWeaveWorld {
         this.gimbalTurn[1] = this.time * -0.034 * calm;
         this.sparks.reset();
         this.pushWeave();
+        // The light as the clock has brought it, the levels' ease already landed.
+        this.moods.update(0, this.time);
+        this.moods.settle();
+        this.pushMood();
         this.dust?.reseat(this.renderer);
     }
 
@@ -1015,6 +1055,10 @@ export class AstralWeaveWorld {
             this.unweaveAt += PETAL_STEP;
         }
         if (this.petals <= this.petalTarget) this.unweaveAt = Infinity;
+
+        // ── the light: the mood the clock has reached, a level's step easing in on top ──
+        this.moods.update(dt, t);
+        this.pushMood();
 
         // ── the envelopes: everything an event lit, as of now ──
         this.energy = this.energySwell.valueAt(t);
@@ -1181,6 +1225,7 @@ export class AstralWeaveWorld {
             wefts: this.shared.uWeftA.array.slice(0, WEFT_ROWS).filter((v) => v.y > 0).length,
             embers: this.shared.uWeftA.array.slice(WEFT_ROWS).filter((v) => v.y > 0).length,
             play: { ...this.play },
+            mood: { name: this.moods.name, phase: this.moods.phase, levelSteps: this.moods.levelSteps },
             dust: this.dust ? { count: this.dust.count, simulated: this.dust.simulated, ready: this.dust.ready } : null,
         };
     }

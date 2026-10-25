@@ -253,6 +253,37 @@ describe('Astral Weave theme: one node renderer on both backends', () => {
         expect(theme.world.getState()).toMatchObject({ wefts: 0, combo: 0 });
     });
 
+    it('moves the light a mood on each level, whatever the effects, and keeps it through a rebuild', async () => {
+        stubBrowser({ quality: 'High' });
+        const theme = createTheme();
+        await theme.createScene(theme.lifecycleGeneration);
+        // The light is the world's own: with background effects off a level still moves it on.
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: false } });
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
+        theme.stepFrame(16);
+        expect(theme.world.moodSteps).toBe(1);
+        theme.time = 250;
+        theme.stepFrame(32);
+        const run = theme.captureRestartRun();
+        expect(run).toMatchObject({ moodSteps: 1 });
+        // A new tier rebuilds on the same clock and the same levels' moods.
+        const build = theme.createScene.bind(theme);
+        let built = null;
+        vi.spyOn(theme, 'createScene').mockImplementation((...args) => {
+            built = build(...args);
+            return built;
+        });
+        const before = theme.world;
+        theme.queueRebuild();
+        await Promise.resolve();
+        await built;
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        expect(theme.world).not.toBe(before);
+        expect(theme.world.moodSteps).toBe(1);
+        expect(theme.time).toBeCloseTo(run.time, 6);
+        expect(theme.restartRun).toBeNull();
+    });
+
     it('rebuilds on a quality change and not on an unrelated setting', async () => {
         stubBrowser({ quality: 'High' });
         const theme = createTheme();
