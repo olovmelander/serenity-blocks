@@ -24,10 +24,14 @@
  */
 import * as THREE from 'three/webgpu';
 import {
+    cameraFar,
+    cameraNear,
     cameraPosition,
+    cameraViewMatrix,
     clamp,
     dot,
     float,
+    length,
     log,
     max,
     min,
@@ -36,10 +40,14 @@ import {
     oneMinus,
     positionLocal,
     positionWorld,
+    select,
     smoothstep,
+    sqrt,
     uniform,
     vec2,
     vec3,
+    vec4,
+    viewZToPerspectiveDepth,
 } from 'three/tsl';
 import { fbm3, noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { odysseyDeepWaterDim, sampleColourScript } from '../odyssey-colour-script.js';
@@ -313,6 +321,70 @@ export const STEAM_QUENCH_HIGHLIGHT_HEADROOM = 3.6;
  * pre-pass captures (frame median within ~3 luma at local 0.6-0.98).
  */
 export const STEAM_QUENCH_LIGHT_SHARE = 1.08;
+
+/**
+ * THE OCEAN'S LIFE IS BEHIND THE STEAM (2026-10-25). Olov: "everything in the chapter 2 needs to
+ * be rendered a little earlier, hidden by the smoke and steam! We have a little pop when we get
+ * out from the steam right now! Everything needs to be there visible when getting out from the
+ * steam."
+ *
+ * The sea's life (fish, kelp, spires, the visiting animals) used to come in only as the steam
+ * thinned, faded up from the WATER's colour: dark shapes against the pale vapour, so the first
+ * kelp crown and the whale shark's silhouette appeared through the steam. It is now present from
+ * just past the boundary, behind the steam: the eye is inside the steam's sphere for its whole
+ * window, and the shell covers what lies beyond it with its own billows, so while the window is
+ * open the life writes its depth just past the shell along its view ray (ordered among itself by
+ * its own distance; `behindSteamDepth`). The shell then covers it exactly as it covers the water,
+ * and lets it through exactly as fast as it clears: when it has, everything is there. (Painting
+ * it in the vapour's mean colour instead left flat silhouettes over the billows.) The light
+ * shafts write no depth, so the shell already covers them. One state for every material that
+ * reads it; the board writes it each frame (setSteamVeil).
+ */
+const VEIL = {
+    on: uniform(0),
+    centre: uniform(new THREE.Vector3()),
+    radius: uniform(STEAM_QUENCH_RADIUS),
+};
+let veilWeight = 0;
+
+/**
+ * The steam's state for the life behind it: `weight` (how thick it is, 0..1; 0 outside its
+ * window), and the sphere the eye is inside while it is up.
+ * @param {number} weight 0..1
+ * @param {{x:number,y:number,z:number}} [centre]
+ * @param {number} [radius]
+ */
+export function setSteamVeil(weight, centre, radius = STEAM_QUENCH_RADIUS) {
+    veilWeight = Math.min(Math.max(Number.isFinite(weight) ? weight : 0, 0), 1);
+    VEIL.on.value = veilWeight > 0 && centre ? 1 : 0;
+    if (centre) VEIL.centre.value.set(centre.x, centre.y, centre.z);
+    VEIL.radius.value = radius;
+}
+
+/** How thick the steam is now (CPU): an animal under a thick veil can arrive unseen. */
+export function steamVeilWeight() {
+    return veilWeight;
+}
+
+/**
+ * The depth (standard perspective, 0..1) a surface at world position `wp` writes so that, while
+ * the steam is up and the eye inside it, it lies just past the steam's shell; its own otherwise.
+ * For `material.depthNode`.
+ */
+export function behindSteamDepth(wp) {
+    const to = wp.sub(cameraPosition);
+    const d = length(to);
+    const dir = to.div(max(d, float(1e-4)));
+    const oc = cameraPosition.sub(VEIL.centre);
+    const b = dot(dir, oc);
+    const c = dot(oc, oc).sub(VEIL.radius.mul(VEIL.radius));
+    // Where the ray leaves the sphere (the eye is inside it: c < 0).
+    const shell = b.negate().add(sqrt(max(b.mul(b).sub(c), float(0))));
+    const pushed = max(d, shell.add(1).add(d.mul(0.01)));
+    const dist = select(VEIL.on.greaterThan(0.5).and(c.lessThan(0)), pushed, d);
+    const viewZ = cameraViewMatrix.mul(vec4(cameraPosition.add(dir.mul(dist)), 1)).z;
+    return viewZToPerspectiveDepth(viewZ, cameraNear, cameraFar);
+}
 
 /**
  * @param {object} [opts]

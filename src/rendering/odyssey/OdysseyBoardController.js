@@ -40,6 +40,7 @@ import {
     steamQuenchDensity,
     steamQuenchFogColour,
     createSteamQuench,
+    setSteamVeil,
     steamQuenchSeamT,
 } from './composition/odyssey-steam-quench.js';
 import {
@@ -4338,6 +4339,9 @@ export class OdysseyBoardController {
             this.oneWorld?.setQuenchCarry?.(quenchT);
             this._steamFogWeight = inWindow ? steamQuenchDensity(quenchT) ** 2 : 0;
             this._steamFogT = quenchT;
+            // ...and the ocean's life lies behind the steam while it is up (odyssey-steam-quench.js
+            // setSteamVeil): there from the boundary, covered by the shell, never popping in.
+            setSteamVeil(inWindow ? steamQuenchDensity(quenchT) : 0, this.steamQuench.mesh.position);
         }
         if (this.oceanVisitors) this._tickOceanVisitors(delta, cameraProgress);
         if (this.orbitEarth) {

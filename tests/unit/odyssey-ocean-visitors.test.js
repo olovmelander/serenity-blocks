@@ -16,6 +16,7 @@ import {
     createOceanVisitors,
     parseOceanVisitors,
 } from '../../src/rendering/odyssey/composition/odyssey-ocean-visitors.js';
+import { setSteamVeil } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -95,6 +96,28 @@ describe('ocean visitors — lifecycle and swimming', () => {
         expect(visitors.group.visible).toBe(false);
         visitors.update(20, 0.016, camera, 1, false, 1);
         expect(visitors.group.visible).toBe(false);
+    });
+
+    it('is already there behind the 1->2 steam: under a thick veil it arrives at once', async () => {
+        // 2026-10-25 (Olov: "Everything needs to be there visible when getting out from the
+        // steam"): it used to fade in over 5 s once the water allowed it, as the steam cleared.
+        const visitors = await loadedVisitors();
+        visitors.markReady();
+        setSteamVeil(0.9, { x: -6, y: 128, z: 4 });
+        try {
+            visitors.update(10, 0.016, lookingUp(130), 1, true, 1);
+            const fades = [];
+            visitors.group.traverse((o) => {
+                if (o.name.startsWith('odyssey-visitor-')) fades.push(o.userData.fade);
+            });
+            expect(fades.length).toBeGreaterThan(0);
+            fades.forEach((f) => expect(f).toBeCloseTo(1, 6));
+            visitors.group.traverse((o) => {
+                if (o.isMesh) expect(o.material.depthNode, o.name).toBeTruthy();
+            });
+        } finally {
+            setSteamVeil(0);
+        }
     });
 
     it('swims its own route: wherever the camera goes or looks, the clock alone places it', async () => {

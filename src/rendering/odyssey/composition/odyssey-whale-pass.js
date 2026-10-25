@@ -29,6 +29,7 @@ import {
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter2CreatureAssetById } from '../chapter-environments/shared/chapter-02-creature-assets.js';
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
+import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
 import {
     OCEAN_ROAM, roamAt, roamHeading, roamLane, stepRoamArrival,
 } from './odyssey-ocean-roam.js';
@@ -96,6 +97,8 @@ function createWhaleMaterial(uWater, uFade) {
     const dist = length(positionWorld.sub(cameraPosition));
     const haze = smoothstep(30.0, 360.0, dist).mul(0.88);
     material.colorNode = mix(body, uWater, max(haze, oneMinus(uFade)));
+    // Behind the 1->2 steam while it is up: it arrives there, never through it.
+    material.depthNode = behindSteamDepth(positionWorld);
     material.depthWrite = true;
     material.side = THREE.DoubleSide;
     material.forceSinglePass = true;
@@ -204,6 +207,8 @@ export function createWhalePass({
             uWater.value.copy(scratchColour.copy(shallowColour).lerp(deepColour, t))
                 .multiplyScalar(odysseyDeepWaterDim(depth / 140));
 
+            // Under a thick veil of the 1->2 steam the pair is already here when it clears.
+            if (steamVeilWeight() > 0.3) arrival.arrive = 1;
             const fade = stepRoamArrival(arrival, dt);
             actors.forEach((actor) => {
                 if (actor.mixer) actor.mixer.update(dt * 0.8);
