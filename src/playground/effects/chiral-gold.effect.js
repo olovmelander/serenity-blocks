@@ -11,7 +11,8 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a chain of n (the hall's heat)
- *   level=<n>                rest in level n's alloy
+ *   level=<n>                rest in level n's alloy (a step on top of the clock's: t=<s> shows
+ *                            the alloy the clock has poured by then)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)

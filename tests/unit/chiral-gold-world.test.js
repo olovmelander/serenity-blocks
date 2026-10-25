@@ -7,6 +7,7 @@ import {
 } from '../../src/themes/chiral-gold/chiral-gold-world.js';
 import {
     ALLOYS,
+    ALLOY_SECONDS,
     AURUM,
     COMET_SLOTS,
     HELIX,
@@ -532,6 +533,105 @@ describe('Chiral Gold world: gameplay', () => {
         world.levelUp(4, { silent: true });
         expect(u.prevB.value.toArray()).toEqual(ALLOYS[3].ribbons[1]);
         expect(u.pour.value).toBe(100);
+    });
+
+    it('pours the next alloy quietly by the clock alone, with no level-up', () => {
+        const run = createWorld('High', { time: ALLOY_SECONDS - 1 });
+        const { world } = run;
+        const { u } = world;
+        const surge = vi.spyOn(world.surge, 'levelUp');
+        expect(world.getState().alloy).toBe(ALLOYS[0].name);
+        expect(u.pour.value).toBe(100);
+        const comets = slots(u.cometA);
+        const glow = u.glow.value.toArray();
+        run.step(1.5);
+        // At the whole period the next alloy climbs the towers over the last one.
+        expect(world.level).toBe(1);
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        expect(u.prevA.value.toArray()).toEqual(ALLOYS[0].ribbons[0]);
+        expect(u.pour.value).toBeGreaterThan(HELIX.bottom);
+        expect(u.pour.value).toBeLessThan(HELIX.top);
+        // The glow melts with it instead of jumping.
+        const mid = u.glow.value.toArray();
+        expect(mid).not.toEqual(glow);
+        expect(mid).not.toEqual(ALLOYS[1].glow);
+        // Quietly: no comets, no held flare, no surge (those are a level-up's).
+        expect(slots(u.cometA)).toEqual(comets);
+        expect(world.flareStore).toEqual([0, 0]);
+        expect(surge).not.toHaveBeenCalled();
+        run.step(4);
+        expect(u.pour.value).toBe(100);
+        expect(u.glow.value.toArray().map((c) => Number(c.toFixed(6)))).toEqual(ALLOYS[1].glow);
+        expect(world.getState().alloy).toBe(ALLOYS[1].name);
+        // A seek lands on the clock's alloy: every alloy in turn, and round to fine gold again.
+        for (let k = 0; k <= ALLOYS.length; k++) {
+            world.seek(k * ALLOY_SECONDS + ALLOY_SECONDS * 0.5);
+            expect(u.alloyB.value.toArray(), `alloy ${k}`).toEqual(ALLOYS[k % ALLOYS.length].ribbons[1]);
+            expect(u.prevB.value.toArray(), `alloy ${k}`).toEqual(ALLOYS[k % ALLOYS.length].ribbons[1]);
+            expect(u.pour.value).toBe(100);
+        }
+        // A seek into a clock's pour climbs on from where a run has it.
+        const replay = createWorld('High', { time: 2 * ALLOY_SECONDS - 0.5 });
+        replay.step(1.5);
+        world.seek(replay.time);
+        world.update({ time: replay.time, delta: 0 });
+        expect(u.pour.value).toBeCloseTo(replay.world.u.pour.value, 6);
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[2].ribbons[0]);
+        expect(u.prevA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        expect(u.glow.value.toArray()).toEqual(replay.world.u.glow.value.toArray());
+        // A new run keeps the clock's alloy (the clock turns on between runs).
+        world.seek(3 * ALLOY_SECONDS + 10);
+        world.resetSession();
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[3].ribbons[0]);
+        surge.mockRestore();
+    });
+
+    it('pours one alloy on top of the clock\'s on a level-up, with its comets and flare', () => {
+        const run = createWorld('High', { time: ALLOY_SECONDS + 10 });
+        const { world } = run;
+        const { u } = world;
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        const surge = vi.spyOn(world.surge, 'levelUp');
+        const comets = slots(u.cometA);
+        world.levelUp(2);
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[2].ribbons[0]);
+        expect(u.prevA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        expect(slots(u.cometA)).not.toEqual(comets);
+        expect(world.flareStore[0]).toBeGreaterThan(0);
+        expect(world.flareStore[1]).toBeGreaterThan(0);
+        expect(surge).toHaveBeenCalledOnce();
+        run.step(0.5);
+        expect(u.pour.value).toBeGreaterThan(HELIX.bottom);
+        run.step(4);
+        expect(world.getState().alloy).toBe(ALLOYS[2].name);
+        // The level's step stays on top as the clock pours on.
+        world.seek(3 * ALLOY_SECONDS + 10);
+        world.levelUp(2, { silent: true });
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[4].ribbons[0]);
+        surge.mockRestore();
+    });
+
+    it('never piles pours up: what the clock and a level ask for mid-pour pours once, after it', () => {
+        const run = createWorld('High', { time: ALLOY_SECONDS - 1 });
+        const { world } = run;
+        const { u } = world;
+        world.levelUp(2);
+        const levelPour = world.pourAt;
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        // The clock's period passes while the level's pour climbs: it waits.
+        run.step(1.5);
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        expect(world.pourAt).toBe(levelPour);
+        // Then it pours, dated from the end of the level's pour, and only once.
+        run.step(1.5);
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[2].ribbons[0]);
+        expect(u.prevA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        const clockPour = world.pourAt;
+        expect(clockPour).toBeGreaterThan(levelPour);
+        run.step(4);
+        expect(world.pourAt).toBe(clockPour);
+        expect(u.pour.value).toBe(100);
+        expect(world.getState().alloy).toBe(ALLOYS[2].name);
     });
 
     it('colours an event with the piece, pulled toward the alloy', () => {

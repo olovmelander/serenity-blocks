@@ -7,6 +7,8 @@
  * gold stands half sunk in the water. The camera looks level across the water from the +Z side.
  */
 
+import { MOOD_SECONDS } from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 
 /** The stage every part is laid out on. */
@@ -169,7 +171,8 @@ export function bandsForCombo(combo) {
 // ── Alloys ──────────────────────────────────────────────────────────────────────
 
 /**
- * Scene-linear reflectance of each alloy the hall is cast in; a level-up pours the next one.
+ * Scene-linear reflectance of each alloy the hall is cast in; the clock pours the next one at
+ * every whole period (alloyIndex) and a level-up pours one more on top.
  * [name, braid colours for the three ribbons, glow]
  */
 export const ALLOYS = Object.freeze([
@@ -201,6 +204,23 @@ export const ALLOYS = Object.freeze([
 ]);
 
 export const alloyForLevel = (level) => ALLOYS[(Math.max(1, Math.round(level || 1)) - 1) % ALLOYS.length];
+
+/**
+ * Seconds the hall stands in one alloy when only the clock changes them (every mode: Infinity and
+ * a match never level up). At each whole period the next alloy is poured up the towers, quietly;
+ * the five come round in about eight minutes.
+ */
+export const ALLOY_SECONDS = MOOD_SECONDS;
+
+/** How many alloys the clock alone has poured by `time`: one at every whole period. */
+export function alloyTurns(time) {
+    return Math.floor(Math.max(0, Number(time) || 0) / ALLOY_SECONDS);
+}
+
+/** The alloy (an index into ALLOYS) for `level` at `time`: the level's step on top of the clock's. */
+export function alloyIndex(level, time) {
+    return (Math.max(1, Math.round(level || 1)) - 1 + alloyTurns(time)) % ALLOYS.length;
+}
 
 // ── Small maths ─────────────────────────────────────────────────────────────────
 

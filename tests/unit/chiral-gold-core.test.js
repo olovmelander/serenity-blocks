@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     ALLOYS,
+    ALLOY_SECONDS,
     HELIX,
     RIPPLE_REACH,
     STAGE,
     TAU,
     alloyForLevel,
+    alloyIndex,
+    alloyTurns,
     bandsForCombo,
     heatForCombo,
     helixHeight,
@@ -135,6 +138,25 @@ describe('Chiral Gold core: the two hands of one form', () => {
                 expect(rgb[0]).toBeGreaterThanOrEqual(rgb[2]);
             }
         }
+    });
+
+    it('pours the next alloy by the clock at every whole period, a level a step on top', () => {
+        const count = ALLOYS.length;
+        expect(alloyTurns(0)).toBe(0);
+        expect(alloyTurns(ALLOY_SECONDS - 1e-6)).toBe(0);
+        expect(alloyTurns(ALLOY_SECONDS)).toBe(1);
+        expect(alloyTurns(-5)).toBe(0);
+        expect(alloyTurns(NaN)).toBe(0);
+        // Time 0, level 1 is fine gold, as the hall always opened.
+        expect(alloyIndex(1, 0)).toBe(0);
+        for (let k = 0; k <= count * 2; k++) {
+            expect(alloyIndex(1, k * ALLOY_SECONDS + ALLOY_SECONDS * 0.5)).toBe(k % count);
+            // A level is one alloy further on, whatever the clock has poured.
+            expect(alloyIndex(2, k * ALLOY_SECONDS)).toBe((k + 1) % count);
+            expect(ALLOYS[alloyIndex(k + 1, 0)]).toBe(alloyForLevel(k + 1));
+        }
+        expect(alloyIndex(undefined, 0)).toBe(0);
+        expect(alloyIndex(0, ALLOY_SECONDS)).toBe(1);
     });
 
     it('reads sRGB hex as scene-linear', () => {
