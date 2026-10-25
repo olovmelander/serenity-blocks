@@ -19,6 +19,7 @@ import { formatOdysseyMapObjective, formatOdysseyStarCondition } from './objecti
 import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
 import { getThemeMeta } from '../../themes/theme-registry.js';
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
+import { ODYSSEY_CROWN_SVG, ODYSSEY_LOCK_SVG, ODYSSEY_STAR_SVG } from './odyssey-orb-art.js';
 import {
     buildOdysseyNavigatorModel,
     preferredOdysseyChapterOrb,
@@ -29,12 +30,9 @@ import {
 } from './odyssey-navigator-model.js';
 
 const ROOT_ID = 'odyssey-level-select';
-const STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.7 5.6 6.1.8-4.4 4.3 1.1 6.1L12 16.5'
-    + 'l-5.5 2.9 1.1-6.1-4.4-4.3 6.1-.8L12 2.6Z"/></svg>';
-const CROWN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 18 3.2 8.2l4.6 3.6L12 5l4.2 6.8 4.6-3.6'
-    + 'L19.5 18Z"/></svg>';
-const LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/>'
-    + '<path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>';
+const STAR_SVG = ODYSSEY_STAR_SVG;
+const CROWN_SVG = ODYSSEY_CROWN_SVG;
+const LOCK_SVG = ODYSSEY_LOCK_SVG;
 /** A focus this soon after a press came from the pointer: the click decides, not the focus. */
 const POINTER_FOCUS_MS = 600;
 /** The narrowest route stop (odyssey-navigator.css .odyssey-route, --route-stop-min). */

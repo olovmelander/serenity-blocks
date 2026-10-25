@@ -62,6 +62,7 @@ import { scheduleWarmPortalGate } from '../../rendering/transitions/portal-gate.
 import { scheduleWarmPortalGateWorker } from '../../rendering/transitions/portal-gate-remote.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
+import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { renderOdysseyLevelPanel, resetOdysseyPanelPlay } from '../../ui/odyssey/odyssey-level-panel.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
@@ -2646,18 +2647,9 @@ export class OdysseyMode extends BaseGameMode {
             button.setAttribute('role', 'button');
             button.setAttribute('aria-label', 'Chapters');
             button.setAttribute('tabindex', '0');
-            button.innerHTML = `
-                <svg class="odyssey-navigator-icon-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 20L8 10L13 15L21 4" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round" />
-                    <polyline points="16 4 21 4 21 9" fill="none" stroke="currentColor" stroke-width="1.5"
-                        stroke-linecap="round" stroke-linejoin="round" />
-                    <circle cx="8" cy="10" r="1.5" fill="currentColor" />
-                    <circle cx="13" cy="15" r="1.5" fill="currentColor" />
-                    <circle cx="21" cy="4" r="1.5" fill="currentColor" />
-                </svg>
-                <div class="odyssey-navigator-icon-glow"></div>
-            `;
+            // Odyssey's own glyph, as on the main menu.
+            button.innerHTML = `${csIcon('mode-odyssey', 24, 'odyssey-navigator-icon-svg')}`
+                + '<div class="odyssey-navigator-icon-glow"></div>';
             document.body.appendChild(button);
         }
 

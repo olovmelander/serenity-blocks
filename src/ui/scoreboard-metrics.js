@@ -9,20 +9,10 @@
  * score when frags decide.
  */
 import { describeGoal } from './components/mp-sheet.js';
+import { csIconInner } from './components/cosmic-icons.js';
 
-const SWORDS = '<polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/>'
-    + '<line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/>'
-    + '<polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" y1="11" x2="11" y2="5"/>'
-    + '<line x1="3" y1="13" x2="5" y2="15"/><line x1="8" y1="8" x2="4" y2="12"/>';
-const TROPHY = '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>'
-    + '<path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>'
-    + '<path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>'
-    + '<path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>';
-const BARS = '<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/>'
-    + '<line x1="6" y1="20" x2="6" y2="16"/>';
-
-/** The stat bar's own icons (index.html), so a column reads like the numbers under a board. */
-const ICON_PATHS = { frags: SWORDS, score: TROPHY, lines: BARS };
+/** Each metric's glyph from the game's icon set, so a column reads like the stats under a board. */
+const ICON_PATHS = { frags: csIconInner('crossed-swords'), score: csIconInner('trophy'), lines: csIconInner('line-stack') };
 
 export const METRIC_LABELS = Object.freeze({ frags: 'Frags', score: 'Score', lines: 'Lines' });
 

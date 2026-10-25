@@ -6,9 +6,8 @@ export const COLLECTION_FILTERS = [
     ['all', 'All worlds'], ['owned', 'Collected'], ['locked', 'To discover'],
 ];
 
-export const THEME_LOCK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-    + 'stroke-width="1.7" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/>'
-    + '<path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>';
+/** The game's one lock (cosmic-icons.js), sized by each surface's CSS. */
+export const THEME_LOCK_ICON = csIcon('lock', 24).replace(/ width="24" height="24"/, '');
 
 const PERSISTENCE_MESSAGES = {
     'write-failed': 'Your collection could not be saved yet. Reopen Themes to retry.',
