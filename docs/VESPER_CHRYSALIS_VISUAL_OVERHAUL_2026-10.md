@@ -42,7 +42,7 @@ the board itself has wings, and the lake has them twice.
 | Piece lock | A moth in the piece's colour leaves the card's edge at the piece's height and flutters out over the water to a lily on that side. The lily opens, takes the colour and keeps it — a lantern, with its light pooled on the water round it — for about half a minute; a ring runs out over the lake from it, bending the mirror, and a bead of the same colour runs down the silk on that side. Lilies that hold little light are chosen first, so the lake fills with the colours of the pieces played. |
 | Hard drop | Three moths to three lilies, a ring struck into the lake under the chrysalis, every thread ringing, a camera kick and a lens-fringe jump. |
 | Line clear | The cleared rows leave the card as blades of light at their own heights and come apart into scales. A swell crosses the lake from under the chrysalis, one front per line; each lit lily it passes lets most of its light go, and that light streams home to the chrysalis, which glows in the colours it was given. |
-| Combo | The chrysalis hatches. For every step of the chain its wings are written further out from the root — veins first, light running along them; then the scalloped bands; then the bright margin — with a burning front where the writing is, and scales flying from it. The eyes on the hindwings open at four, those on the forewings at six. The cracks in the chrysalis spread, the points of gold on its shoulder light one by one, the aurora rises. When the chain breaks the wings burn away from the margin inward and fall as scales. |
+| Combo | The chrysalis hatches. For every step of the chain its wings are written further out from the root — veins first, light running along them; then the scalloped bands; then the bright margin — with a burning front where the writing is, and scales flying from it. The eyes on the hindwings open at four, those on the forewings at six. The cracks in the chrysalis spread, the points of gold on its shoulder light one by one, the aurora rises. When the chain breaks the wings fold back toward the board, fraying with ember edges and shedding scales, and a new chain catches them wherever they stand. The writing and the fold are measured from where each wing comes out from behind the card and the HUD, so every step shows ([VESPER_CHRYSALIS_WINGS_PAST_THE_CARD_2026-10-25.md](VESPER_CHRYSALIS_WINGS_PAST_THE_CARD_2026-10-25.md)). |
 | Four lines | The lake holds its breath: every light sinks for a quarter of a second. Then the wings beat once, every eye opens, a ring crosses the sky and splits it into its colours, a great ring crosses the lake, and the aurora blazes. |
 | T-spin | The wings beat, and a faint prism ring crosses the frame. |
 | Perfect clear | A four-line answer with four fronts and a hotter surge, and the swell relights every lily on the lake. |
@@ -91,7 +91,10 @@ is what ships.
 - **The wings** (`-wings.js`) are four fans in one geometry, placed in the vertex shader from a
   fan coordinate (`an` across the wing, `v` from root to margin), so veins are lines of constant
   `an` and bands lines of constant `v`. The fragment shader writes the wing outward to a front
-  set by the chain, and burns it away on a noise threshold when the chain breaks. They are drawn
+  set by the chain, and folds it back with a frayed ember edge when the chain breaks; the front
+  is measured from where each ray leaves the card and the HUD (a cover table the world fills
+  each frame, `fillWingCover()` in `-composition.js`), so the play shows on the wings although
+  their root is behind the board. They are drawn
   premultiplied, so the light adds while the veil and the eyes' pupils can darken what is behind
   them. `wingPoint()` in `-core.js` is the CPU twin the scales are thrown from.
 - **The lilies** (`-blooms.js`) are instanced petals posed in the vertex shader by how much
