@@ -163,6 +163,10 @@ On the RTX 5080 laptop: pick Vesper during a game from the Hub's Themes tab, and
 Shift+N. It should cross-fade from the old theme with no black. SwiftShader cannot show what a
 165 Hz panel does in those first frames.
 
+**2026-10-25:** black flicker was still reported as Vesper starts, from a second cause: an Inf
+crystal pixel under MSAA that the bloom spread over the frame. See
+[VESPER_CHRYSALIS_BLACK_FLICKER_2026-10-25.md](VESPER_CHRYSALIS_BLACK_FLICKER_2026-10-25.md).
+
 ## Sources
 
 - [dev.to: Don't use rAF with WebGPU](https://dev.to/snosme/dont-use-raf-with-webgpu-and-canvas-in-general-3cj4)

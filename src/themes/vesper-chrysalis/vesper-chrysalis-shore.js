@@ -23,6 +23,7 @@ import {
     exp,
     float,
     fwidth,
+    max,
     min,
     mix,
     normalWorld,
@@ -156,7 +157,10 @@ export function createSpires(u, spires) {
         const toEdge = min(vEdge.x, min(vEdge.y, vEdge.z)).toVar();
         const px = fwidth(toEdge).max(1e-5);
         const hairline = float(1.0).sub(smoothstep(px.mul(0.6), px.mul(1.8), toEdge));
-        const thinner = exp(toEdge.mul(-7.0));
+        // Never below 0: with MSAA a silhouette pixel is shaded at its centre, which can lie off a
+        // facet seen edge-on, and the distance read there runs far negative. exp() of it came out
+        // Inf in the scene pass, and the bloom spread that one pixel over the whole screen (black).
+        const thinner = exp(max(toEdge, 0.0).mul(-7.0));
         const body = u.crystal.mul(vcSkyLight(u, N)).mul(veils.mul(0.36).add(0.26).add(thinner.mul(0.22)))
             .add(u.crystal.mul(0.006));
         const edge = float(1.0).sub(ndv);

@@ -72,10 +72,25 @@ describe('online versus layout', () => {
         }
     });
 
-    it('grows your board well past the old fixed card at 1600x900', () => {
+    it('grows your board past the old fixed card at 1600x900', () => {
         const layout = onlineLayout({ width: 1600, height: 900, opponents: 3 });
-        // The old card's board was about 245 px wide (a 24.5 px block).
-        expect(layout.block).toBeGreaterThanOrEqual(30);
+        // The old card's board was about 245 px wide (a 24.5 px block); yours stands at its
+        // share of the height (BOARD_FILL), the theme round it.
+        expect(layout.block).toBeGreaterThanOrEqual(28);
+        expect(layout.block).toBeLessThan(onlineLayout({
+            width: 1600, height: 900, opponents: 3, fill: 1,
+        }).block);
+    });
+
+    it('stands the field no taller than your station', () => {
+        for (const [width, height] of SIZES.slice(0, 7)) {
+            for (let opponents = 1; opponents <= 7; opponents++) {
+                const layout = onlineLayout({ width, height, opponents });
+                if (layout.arrangement !== 'center') continue;
+                expect(fieldSize(layout).height, `${opponents} at ${width}x${height}`)
+                    .toBeLessThanOrEqual(versusStation(layout.block).height);
+            }
+        }
     });
 
     it('stacks narrow and tall windows: the field over your station, no rail', () => {

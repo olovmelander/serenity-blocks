@@ -194,6 +194,7 @@ export class AuroraWorld {
         curtain.violet.value = director.violet;
         curtain.surge.value = director.surge;
         curtain.diffuse.value = director.diffuse;
+        curtain.pulsating.value = director.pulsating;
         curtain.compress.value = director.compress;
         const bands = director.sweepBands;
         for (let i = 0; i < curtain.sweep.array.length; i += 1) {
@@ -208,6 +209,11 @@ export class AuroraWorld {
                 director.billows[i * 4 + 2],
                 0,
             );
+        }
+        const { cells, folds } = director.weather;
+        for (let i = 0; i < folds.length; i += 1) curtain.arcFold.array[i] = folds[i];
+        for (let i = 0; i < curtain.cells.array.length; i += 1) {
+            curtain.cells.array[i].set(cells[i * 4], cells[i * 4 + 1], cells[i * 4 + 2], cells[i * 4 + 3]);
         }
         this.uniforms.activity.value = director.activity;
         this.uniforms.auroraLight.value.set(director.light[0], director.light[1], director.light[2]);

@@ -9,7 +9,10 @@
  * beside the well; Infinity has its HUD on the left and the tower map on the right
  * (src/ui/infinity/InfinityHUD.js, InfinityMinimap.js).
  *
- * The board is as tall as the window allows. On portrait screens the ledger (or the
+ * The board stands at its share of the height it could fill (--sb-board-fill, the same in
+ * every mode: keystone-overlays.css), and the queue and the well stand in the middle of the
+ * window, so the theme shows above, below and beside them. On portrait screens the board
+ * takes all the height, the ledger (or the
  * HUD) becomes one strip under the board and the tower a slim rail beside it. Themes
  * still measure `.single-player-card`, its `.player-next-pieces` and
  * `.single-player-stats-bar` for their composition.
@@ -22,9 +25,11 @@
     --sp-hue-rgb: var(--sb-lavender-rgb);
     --sp-wall: color-mix(in srgb, var(--sp-hue) 82%, #fff6e9);
     --sp-wall-glow: color-mix(in srgb, var(--sp-hue) 34%, transparent);
-    /* The top row (the controls tray), the air under the board. */
-    --sp-top: calc(var(--sb-play-inset, 16px) + var(--sb-play-tray, 48px) + 10px);
+    /* The top row (the controls tray), the air under the board, what the column holds
+       under the well (portrait: the ledger's strip). */
+    --sp-head: calc(var(--sb-play-inset, 16px) + var(--sb-play-tray, 48px) + 10px);
     --sp-bottom: 22px;
+    --sp-below: 0px;
     /* The queue on the well's mouth: the next piece's tile height. */
     --sp-next-h: clamp(30px, calc(var(--sp-vh) * 0.062), 62px);
     --sp-queue-gap: 10px;
@@ -32,10 +37,20 @@
     --sp-side: clamp(196px, 15vw, 240px);
     --sp-side-gap: clamp(20px, 2.4vw, 40px);
     --sp-floor-r: 10px;
-    --sp-board-h-room: calc(var(--sp-vh) - var(--sp-top) - var(--sp-next-h) - var(--sp-queue-gap) - var(--sp-bottom));
+    /* The height the board could fill, and its share of it (the rest is the theme's). The
+       room is measured from the tray's row, never from --sp-top, which follows the board. */
+    --sp-board-h-room: calc(var(--sp-vh) - var(--sp-head) - var(--sp-next-h) - var(--sp-queue-gap)
+        - var(--sp-below) - var(--sp-bottom));
+    --sp-board-h: min(var(--sp-board-h-room),
+        max(calc(var(--sp-board-h-room) * var(--sb-board-fill, 1)), var(--sb-board-floor, 0px)));
     --sp-board-w-room: calc(100vw - 2 * (16px + var(--sp-side) + var(--sp-side-gap)));
-    --board-width: clamp(140px, min(calc(var(--sp-board-h-room) / 2), var(--sp-board-w-room)), 640px);
+    --board-width: clamp(140px, min(calc(var(--sp-board-h) / 2), var(--sp-board-w-room)), 640px);
     --board-height: calc(var(--board-width) * 2);
+    /* The column (queue, well, anything under it) in the middle of the window, between the
+       tray's row and the air at the bottom. Panels beside the well start at --sp-top too. */
+    --sp-column-h: calc(var(--sp-next-h) + var(--sp-queue-gap) + var(--board-height) + var(--sp-below));
+    --sp-top: clamp(var(--sp-head), calc((var(--sp-vh) - var(--sp-column-h)) / 2),
+        calc(var(--sp-vh) - var(--sp-bottom) - var(--sp-column-h)));
     /* The whole window (phones pad the body), a row at every width (main.css stacks a
        narrow stage into a centred column). */
     position: fixed;
@@ -97,6 +112,10 @@
     border-radius: 0;
     background: none;
     box-shadow: none;
+    /* The old card's frost (multiplayer-ui.css .player-card) blurred the theme round the
+       queue; the well's glass is its own. */
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     transform: none;
 }
 
@@ -751,8 +770,7 @@
 @media (max-aspect-ratio: 1/1) {
     .single-player-stage[data-board='well'] {
         --sp-strip: clamp(52px, calc(var(--sp-vh) * 0.07), 66px);
-        --sp-board-h-room: calc(var(--sp-vh) - var(--sp-top) - var(--sp-next-h) - var(--sp-queue-gap)
-            - var(--sp-strip) - 12px - var(--sp-bottom));
+        --sp-below: calc(var(--sp-strip) + 12px);
         --sp-board-w-room: calc(100vw - 32px);
     }
 
