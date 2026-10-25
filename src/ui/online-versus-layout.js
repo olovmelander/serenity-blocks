@@ -9,11 +9,15 @@
  * seven, each a smaller station (a plate, the next piece, the well and its meter); a
  * duel's one opponent at your size — and on the right the rail (scoreboard, battle log,
  * chat). Narrow or tall windows stack: the opponents in a row over your station, no rail.
+ * Your board stands at its share of the height (BOARD_FILL), the field no taller than your
+ * station, so the theme shows above and below them.
  *
  * keystone-online.css draws the same sizes from the variables applyOnlineLayout sets,
  * so the CSS and the board sizing never disagree.
  */
-import { VERSUS_CHROME, versusStation } from './local-versus-layout.js';
+import {
+    BOARD_FILL, VERSUS_CHROME, VERSUS_ROWS, boardShare, versusStation,
+} from './local-versus-layout.js';
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -121,6 +125,8 @@ function fieldSizeClass(block) {
  * @property {number} opponents 0–7 (0: alone in the match; a spectator's: everyone, up to 7)
  * @property {number} [inset] the window's edge inset
  * @property {number} [topRow] the top row's bottom (the tray's), from the window's top
+ * @property {number} [fill] the board's share of the height it could fill (BOARD_FILL)
+ * @property {number} [floor] px under which a board keeps its full height (BOARD_FILL)
  */
 
 /**
@@ -146,6 +152,7 @@ function fieldSizeClass(block) {
  */
 export function onlineLayout({
     width, height, opponents, inset = 16, topRow = 64,
+    fill = BOARD_FILL.fill, floor = BOARD_FILL.floor,
 }) {
     const count = clamp(Math.round(Number(opponents)) || 0, 0, 7);
     const top = topRow + VERSUS_CHROME.topGap;
@@ -153,6 +160,11 @@ export function onlineLayout({
     const gap = clamp(Math.round(width * 0.022), 14, 44);
     const innerWidth = width - 2 * inset;
     const stageHeight = height - top - inset;
+    // Your station fits `room` with its board at the board's share of what it could take.
+    const fitsHeight = (block, room) => {
+        const board = VERSUS_ROWS * block;
+        return board <= boardShare(room - (versusStation(block).height - board), fill, floor);
+    };
     const result = (arrangement, block, grid, side, rail) => {
         const station = versusStation(block);
         return {
@@ -181,10 +193,7 @@ export function onlineLayout({
         const fieldBlock = count ? largest(4, 24, (b) => fieldWidth(b) <= innerWidth
             && fieldHeight(b) <= stageHeight * 0.24) : 0;
         const spare = stageHeight - (count ? fieldHeight(fieldBlock) + gap : 0);
-        const block = largest(8, 64, (b) => {
-            const s = versusStation(b);
-            return s.width <= innerWidth && s.height <= spare;
-        });
+        const block = largest(8, 64, (b) => versusStation(b).width <= innerWidth && fitsHeight(b, spare));
         const grid = { block: fieldBlock, rows: count ? rows : 0, columns: count ? columns : 0 };
         return result('stack', block, grid, 0, 0);
     }
@@ -193,12 +202,12 @@ export function onlineLayout({
     const side = (block) => Math.floor((innerWidth - versusStation(block).width - 2 * gap) / 2);
     // The opponents keep at least `share` of your block, so seven of them still read as
     // boards, and at most `cap`, so yours stays the one you play; a duel's opponent
-    // stands at your size when its column allows.
+    // stands at your size when its column allows. The field stands no taller than your station.
     const { share, cap } = fieldShares(count);
     const fieldFor = (block) => (count
-        ? fieldGrid(count, side(block), stageHeight, Math.floor(block * cap))
+        ? fieldGrid(count, side(block), versusStation(block).height, Math.floor(block * cap))
         : { block: 0, rows: 0, columns: 0 });
-    const block = largest(8, 80, (b) => versusStation(b).height <= stageHeight
+    const block = largest(8, 80, (b) => fitsHeight(b, stageHeight)
         && side(b) >= RAIL.min
         && (!count || fieldFor(b).block >= Math.ceil(b * share)));
     const columnWidth = side(block);

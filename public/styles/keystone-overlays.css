@@ -1372,10 +1372,10 @@
         --ody-right-gap: 0px;
         --ody-opponent-w: clamp(76px, 23vw, 100px);
         --sp-bottom: calc(var(--ody-dock-h) + 24px);
-        --sp-board-h-room: calc(var(--sp-vh) - var(--sp-top) - var(--sp-next-h)
-            - var(--sp-queue-gap) - var(--sp-bottom));
+        /* The goal ledger is the dock, not a strip under the well. */
+        --sp-below: 0px;
         --sp-board-w-room: calc(100vw - 32px - var(--ody-right-w) - var(--ody-right-gap));
-        --board-width: clamp(80px, min(calc(var(--sp-board-h-room) / 2), var(--sp-board-w-room)), 640px);
+        --board-width: clamp(80px, min(calc(var(--sp-board-h) / 2), var(--sp-board-w-room)), 640px);
         padding-right: calc(16px + var(--ody-right-w) + var(--ody-right-gap));
     }
 
@@ -1481,7 +1481,7 @@
         --ody-opponent-w: 84px;
         --sp-side-gap: 20px;
         --sp-bottom: 16px;
-        --sp-board-h-room: calc(var(--sp-vh) - var(--sp-top) - var(--sp-next-h)
+        --sp-board-h-room: calc(var(--sp-vh) - var(--sp-head) - var(--sp-next-h)
             - var(--sp-queue-gap) - var(--sp-bottom));
         --sp-board-w-room: calc(100vw - 32px - 2 * (var(--ody-hud-w) + var(--sp-side-gap)));
         padding-right: 16px;
@@ -1883,6 +1883,26 @@ body:not(.serenity-mode) #serenity-notification {
 @media (prefers-reduced-motion: reduce) {
     #playback-controls.playback-controls {
         animation: none;
+    }
+}
+
+
+/* ==================================================================================
+ * The board's share of the window: every mode's well stands at this share of the height
+ * it could fill, so the theme shows round it. A short window keeps more: the board is
+ * never shorter than the floor unless the room itself is. Portrait screens have none to
+ * spare, so the board takes it all. keystone-solo.css applies it to the solo well
+ * (single player, Infinity, Stillfall, Odyssey); local-versus-layout.js reads it for
+ * both versus stages (BOARD_FILL holds the same values).
+ * ================================================================================ */
+:root {
+    --sb-board-fill: 0.85;
+    --sb-board-floor: 520px;
+}
+
+@media (max-aspect-ratio: 1/1) {
+    :root {
+        --sb-board-fill: 1;
     }
 }
 
