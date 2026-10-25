@@ -182,6 +182,8 @@ export class Fireworks {
         this.now = 0;
         /** Bursts waiting for their shell to arrive: { at, pos, color, kind, scale }. */
         this.pending = [];
+        /** Told of every burst as it goes off (the world startles the gulls with it). */
+        this.onBurst = null;
         /**
          * The sky's two glows: each an accumulating swell (a burst adds to what is still lit, it
          * never restarts it) whose centre and colour ease toward the bursts that feed it.
@@ -376,6 +378,7 @@ export class Fireworks {
             if (this._hsl.s < 0.75) glow.tint.setHSL(this._hsl.h, 0.75, this._hsl.l);
         }
         if (kind === 'willow') glow.tint.lerp(WILLOW_GOLD, 0.5);
+        this.onBurst?.(b);
     }
 
     /** The sky glows' summed light at `t` (unscaled), for the post stack's bloom. */
