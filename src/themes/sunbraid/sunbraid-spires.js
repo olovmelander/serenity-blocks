@@ -10,11 +10,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cross, dFdx, dFdy, dot, float, floor, fract, fwidth, length, max, mix, normalize, normalWorld,
-    positionWorld, select, sign, smoothstep, texture, vec2, vec3, vec4,
+    Fn, attribute, dot, float, floor, fract, fwidth, length, max, mix, normalize, normalWorld,
+    positionWorld, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { SPIRE_LAYOUT, spireFoot } from './sunbraid-plan.js';
 import { SPIRE_VARIANTS, buildSpireMesh } from './sunbraid-spire-shape.js';
+import { centroidVarying } from '../shared/centroid-varying.js';
 import {
     haze, mist, sbHash21, sunLight, sunVisibility,
 } from './sunbraid-tsl.js';
@@ -27,29 +28,43 @@ export const TOWER_BEDS = Object.freeze({
     formation: 34, contrast: 0.7, bed: 3.2, rim: 1.1, sky: 0.32,
 });
 
+/**
+ * The stone's relief: one read of the noise covers `scale` metres (blocks a couple of metres
+ * across), `height` metres of relief per unit of it, and its slope taken over at least `step`
+ * metres (else a pixel's width).
+ */
+export const TOWER_RELIEF = Object.freeze({ scale: 64, height: 1.2, step: 0.25 });
+
 function createSpireMaterial(u, t) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = Fn(() => {
         const P = positionWorld;
-        const Ng = normalize(normalWorld).toVar();
-        // Relief: blocks and grain in the stone, read on the two vertical planes and the top, as a
-        // bump (the surface gradient from screen derivatives), fading out where it would alias.
+        // (Taken inside the triangle: under MSAA a silhouette pixel's centre can lie past a sliver
+        // of the rim, and an extrapolated normal lit it in a speck of one sun's colour.)
+        const Ng = normalize(centroidVarying(normalWorld, 'vSpireNormal')).toVar();
+        // Relief: blocks in the stone, read on the two vertical planes and the top. Its slope comes
+        // from two more reads a pixel's width away on each plane (mip-filtered alike), so it holds
+        // still at any range. (It once came from screen derivatives, which GPUs take per 2 × 2
+        // pixels: the lit faces broke into blocky noise. The finer grain, smaller than a pixel at
+        // the towers' range, now stays in the colour only.)
+        const R = TOWER_RELIEF;
         const wx = Ng.x.abs();
         const wz = Ng.z.abs();
         const wy = Ng.y.abs();
-        const plane = (scale, channel) => texture(t.noise, P.zy.div(scale))[channel].mul(wx)
-            .add(texture(t.noise, P.xy.div(scale))[channel].mul(wz))
-            .add(texture(t.noise, P.xz.div(scale))[channel].mul(wy));
-        const bumpH = plane(64.0, 'b').mul(1.2).add(plane(14.0, 'a').mul(0.3)).toVar();
-        const dpdx = dFdx(P);
-        const dpdy = dFdy(P);
-        const r1 = cross(dpdy, Ng);
-        const r2 = cross(Ng, dpdx);
-        const det = dot(dpdx, r1);
-        const grad = r1.mul(dFdx(bumpH)).add(r2.mul(dFdy(bumpH))).mul(sign(det));
+        const reach = fwidth(P).length().max(R.step).toVar();
+        const reliefAt = (a, b) => texture(t.noise, vec2(a, b).div(R.scale)).b;
+        const onZY = reliefAt(P.z, P.y).toVar();
+        const onXY = reliefAt(P.x, P.y).toVar();
+        const onXZ = reliefAt(P.x, P.z).toVar();
+        // Each plane's slope in world axes: (x, y, z).
+        const fromZY = vec3(0.0, reliefAt(P.z, P.y.add(reach)).sub(onZY), reliefAt(P.z.add(reach), P.y).sub(onZY));
+        const fromXY = vec3(reliefAt(P.x.add(reach), P.y).sub(onXY), reliefAt(P.x, P.y.add(reach)).sub(onXY), 0.0);
+        const fromXZ = vec3(reliefAt(P.x.add(reach), P.z).sub(onXZ), 0.0, reliefAt(P.x, P.z.add(reach)).sub(onXZ));
+        const slope = fromZY.mul(wx).add(fromXY.mul(wz)).add(fromXZ.mul(wy))
+            .mul(float(R.height).div(reach))
+            .toVar();
         const near = smoothstep(4200.0, 900.0, length(P.sub(u.eye)));
-        const bumped = Ng.mul(abs(det)).sub(grad.mul(near)).toVar();
-        const N = select(length(bumped).greaterThan(1e-9), normalize(bumped), Ng).toVar();
+        const N = normalize(Ng.sub(slope.sub(Ng.mul(dot(slope, Ng))).mul(near))).toVar();
         const shape = attribute('aSpire', 'vec2');
         const ao = shape.y;
         const seed = attribute('aSeed', 'float');

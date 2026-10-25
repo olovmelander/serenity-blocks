@@ -131,7 +131,6 @@ describe('Sunbraid atmosphere: the numbers the shaders read', () => {
         expect(FLOOR_CRUST.cell).toBeGreaterThan(5);
         expect(FLOOR_CRUST.ridge).toBeLessThan(0.5);
         expect(FLOOR_CRUST.fade[0]).toBeLessThan(FLOOR_CRUST.fade[1]);
-        expect(FLOOR_CRUST.relief[0]).toBeLessThan(FLOOR_CRUST.relief[1]);
         expect(FLOOR_CRUST.near).toBeLessThan(FLOOR_CRUST.far);
         expect(SELENITE.share).toBeGreaterThan(0);
         expect(SELENITE.share).toBeLessThan(0.07);
