@@ -6,8 +6,9 @@ import {
     GALAXY_PARTS, GalaxyWorld, METEOR_BEAT, REST_RIG, SPIN_RATE, SURGE_COOL, fovForAspect,
 } from '../../src/themes/galaxy/galaxy-world.js';
 import {
-    CLEAR_SLOTS, DEG, GALAXY, GALAXY_PALETTES, HUSH_HOLD, LOCK_SLOTS, MAX_RINGS, SEED_SLOTS, SEED_TAIL, STARFIRE,
-    STORE_HOLD, STORE_MAX, WAVE_TRAVEL, galaxyAnchors, pieceColor, powerForCombo, wavePassTime,
+    CLEAR_SLOTS, DEG, GALAXY, GALAXY_HOLD, GALAXY_PALETTES, GALAXY_SECONDS, HUSH_HOLD, LOCK_SLOTS, MAX_RINGS,
+    SEED_SLOTS, SEED_TAIL, STARFIRE, STORE_HOLD, STORE_MAX, WAVE_TRAVEL, galaxyAnchors, galaxyDrift, paletteAt,
+    pieceColor, powerForCombo, wavePassTime,
 } from '../../src/themes/galaxy/galaxy-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/galaxy/galaxy-quality.js';
 import {
@@ -1939,6 +1940,55 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
         expect(world.getState().level).toBe(1);
         world.dispose();
     });
+
+    it('turns through its palettes by the clock alone, a level a step on top', () => {
+        const { camera, world } = makeWorld('Low');
+        const count = GALAXY_PALETTES.length;
+        const pairs = [
+            ['dust', 'dust'], ['jet', 'jet'], ['nebulaA', 'nebulaA'], ['nebulaB', 'nebulaB'], ['void', 'voidCol'],
+        ];
+        const expectPalette = (index, label) => {
+            for (const [key, uniform] of pairs) {
+                GALAXY_PALETTES[index][key].forEach((channel, k) => {
+                    expect(world.u[uniform].value.getComponent(k), `${label} ${key}`).toBeCloseTo(channel, 9);
+                });
+            }
+        };
+        // No level-up at all (Infinity, a match, the menus): each palette rests pure for its hold,
+        // then melts into the next; the round comes back to the first.
+        settle(world, camera, GALAXY_SECONDS * GALAXY_HOLD * 0.5);
+        expectPalette(0, 'rest');
+        for (let k = 1; k <= count; k++) {
+            settle(world, camera, GALAXY_SECONDS * k);
+            expectPalette(k % count, `palette ${k}`);
+            expect(world.getState()).toMatchObject({ level: 1, palette: GALAXY_PALETTES[k % count].name });
+        }
+        // Mid-melt it is neither (and no grey: the melt keeps its colour).
+        settle(world, camera, GALAXY_SECONDS * (GALAXY_HOLD + (1 - GALAXY_HOLD) / 2));
+        const jet = (index) => new THREE.Vector3(...GALAXY_PALETTES[index].jet);
+        expect(world.u.jet.value.distanceTo(jet(0))).toBeGreaterThan(0.05);
+        expect(world.u.jet.value.distanceTo(jet(1))).toBeGreaterThan(0.05);
+
+        // A level steps on a palette, on top of the clock's, eased; the galaxy still marks it.
+        settle(world, camera, GALAXY_SECONDS);
+        world.levelUp(2);
+        expect(world.storm).toBeGreaterThan(0);
+        expect(world.flash).toBeGreaterThan(0);
+        expect(world.u.shock.value.x).toBe(world.time);
+        expect(used(world.meteors, 'aStart').length).toBeGreaterThan(0);
+        expect(world.getState().palette).toBe(GALAXY_PALETTES[2].name);
+        run(world, camera, 1 / 60, 1);
+        expect(world.paletteStep).toBeGreaterThan(0);
+        expect(world.paletteStep).toBeLessThan(0.1);
+        run(world, camera, 14);
+        expect(world.time).toBeLessThan(GALAXY_SECONDS * (1 + GALAXY_HOLD));
+        expectPalette(2, 'level 2 on palette 1');
+        // A new run drops the level's share and keeps the clock's.
+        world.resetSession();
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectPalette(1, 'new run');
+        world.dispose();
+    });
 });
 
 describe('galaxy world: it builds with play', () => {
@@ -2037,7 +2087,10 @@ describe('galaxy world: it builds with play', () => {
         run(world, camera, 30, 600);
         expect(world.getState()).toMatchObject({ stage: 0, fever: 0 });
         expect(world.getState().heat).toBeLessThan(1e-3);
-        expect(world.u.nursery.value.length()).toBeCloseTo(rest.nursery, 3);
+        // (in the palette the clock has turned to by now)
+        expect(rest.nursery).toBeCloseTo(new THREE.Vector3(...GALAXY_PALETTES[0].nursery).length(), 9);
+        const calm = new THREE.Vector3(...paletteAt(galaxyDrift(world.time)).nursery).length();
+        expect(world.u.nursery.value.length()).toBeCloseTo(calm, 3);
         expect(world.u.skyPulse.value).toBeCloseTo(rest.pulse, 3);
         expect(world.u.companion.value.w).toBeLessThan(1e-4);
         expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 2);

@@ -55,6 +55,7 @@
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { easeStep } from '../shared/mood-clock.js';
 import {
     CLEAR_SLOTS,
     DEG,
@@ -75,7 +76,10 @@ import {
     createGalaxyUniforms,
     createNoiseTexture,
     galaxyAnchors,
+    galaxyDrift,
     mulberry32,
+    paletteAt,
+    paletteNear,
     pieceColor,
     powerForCombo,
     smooth,
@@ -215,6 +219,8 @@ export class GalaxyWorld {
         this._burstA = [0, 0];
         this._burstB = [0, 0];
         this._palette = {};
+        /** Where a new level is heading (its shooting stars fall in its nucleus's light). */
+        this._target = {};
         PALETTE_KEYS.forEach((key) => {
             this._palette[key] = [...GALAXY_PALETTES[0][key]];
         });
@@ -266,7 +272,8 @@ export class GalaxyWorld {
         this.surge = 0;
         this.storm = 0;
         this.level = 1;
-        this.paletteIndex = 0;
+        /** The level's step round the palettes as it eases in (the clock's turn is added on top). */
+        this.paletteStep = 0;
         this.dip = 0;
         this.breath = 1;
         this.rings = 0;
@@ -1148,30 +1155,36 @@ export class GalaxyWorld {
         this.combo = n;
     }
 
-    /** A new level: the galaxy changes its colours. */
+    /** A new level: the galaxy moves on a palette, on top of the clock's. */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.paletteIndex = (this.level - 1) % GALAXY_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
             this.flashSwell.hit(0.14, this.time);
             if (this.u) this.shockRing(this.time, 0.36);
             this.meteors?.emit({
-                n: 2, time: this.time + 0.3, rgb: GALAXY_PALETTES[this.paletteIndex].nucleus, stagger: 0.8,
+                n: 2, time: this.time + 0.3, rgb: paletteAt(this.palettePhase(), this._target).nucleus, stagger: 0.8,
             });
             this.play.levelUp(this.time);
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the galaxy is heading round its palettes: one step for every level, turned on by the
+     * clock. The whole part names a palette, the fraction is how far it has melted into the next.
+     */
+    palettePhase() {
+        return (this.level - 1) + galaxyDrift(this.time);
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek and
+     * a replay agree); the level's step eases in by `k` (1 snaps), the short way round the wheel.
+     */
     applyPalette(k) {
-        const target = GALAXY_PALETTES[this.paletteIndex];
-        const p = this._palette;
-        for (let i = 0; i < PALETTE_KEYS.length; i++) {
-            const key = PALETTE_KEYS[i];
-            for (let c = 0; c < 3; c++) p[key][c] += (target[key][c] - p[key][c]) * k;
-        }
+        this.paletteStep = easeStep(this.paletteStep, this.level - 1, k, GALAXY_PALETTES.length);
+        paletteAt(this.paletteStep + galaxyDrift(this.time), this._palette);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1401,7 +1414,8 @@ export class GalaxyWorld {
             heat: this.heat.level,
             fever: this.heat.fever,
             stage: this.heat.stage,
-            palette: GALAXY_PALETTES[this.paletteIndex].name,
+            palette: paletteNear(this.palettePhase()).name,
+            mood: this.paletteStep + galaxyDrift(this.time),
             counts: { ...this.counts },
             held: this.nurseries ? this.nurseries.totalHeld(this.time) : 0,
             stars: this.parts.stars ? this.parts.stars.count : 0,
