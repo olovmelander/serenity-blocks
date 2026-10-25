@@ -14,6 +14,8 @@ import {
 import {
     BARLEY_TOPS, createHorseMotion, solveLeg, stepHorseMotion,
 } from '../../src/themes/grainfields/grainfields-horse-motion.js';
+import { createHerdSim } from '../../src/themes/grainfields/grainfields-herd-sim.js';
+import { groundHeight } from '../../src/themes/grainfields/grainfields-plan.js';
 
 /** The horse's own skeleton and landmarks, read from the GLB's JSON chunk. */
 function horseExtras() {
@@ -378,6 +380,44 @@ describe('Grainfields horse: its quiet business', () => {
         expect(lift).toBeGreaterThan(0.2);
         expect(fore.planted).toBe(true);
         expect(Math.hypot(fore.plant[0] - before[0], fore.plant[2] - before[2])).toBeLessThan(0.15);
+    });
+
+    it('nurses with its muzzle up to its mother’s udder, alongside her the other way round, while she stands', () => {
+        const sim = createHerdSim({ count: 8 });
+        const { landmarks } = EXTRAS;
+        const motions = sim.horses.map((h, i) => createHorseMotion(RIG, { seed: h.seed, lead: i % 2, landmarks }));
+        const step = 1 / 30;
+        const since = sim.horses.map(() => -1);
+        const seen = {
+            settled: 0, worst: 0, mothersMoving: 0, alongside: 0,
+        };
+        // Reaching in for a while: the muzzle is at the teat, she is still, it faces her tail.
+        const look = (h, i, t) => {
+            if (!h.teat) {
+                since[i] = -1;
+                return;
+            }
+            if (since[i] < 0) since[i] = t;
+            if (t - since[i] < 2.5) return;
+            const muzzle = boneToWorld(RIG, motions[i].pose, RIG.index.head, landmarks.muzzle, motions[i].place.scale);
+            const up = muzzle[1] - groundHeight(h.x, h.z);
+            const miss = Math.hypot(muzzle[0] - h.teat[0], up - h.teat[1], muzzle[2] - h.teat[2]);
+            seen.worst = Math.max(seen.worst, miss);
+            const mother = sim.horses[h.mother];
+            if (mother.speed > 0.03) seen.mothersMoving += 1;
+            if (Math.cos(h.heading - mother.heading) < -0.85) seen.alongside += 1;
+            seen.settled += 1;
+        };
+        for (let k = 1; k <= 120 * 30; k++) {
+            const t = k * step;
+            sim.update(t, step);
+            sim.horses.forEach((h, i) => stepHorseMotion(motions[i], h, groundHeight, step, t, {}));
+            sim.horses.forEach((h, i) => look(h, i, t));
+        }
+        expect(seen.settled).toBeGreaterThan(300);
+        expect(seen.worst).toBeLessThan(0.12);
+        expect(seen.mothersMoving).toBe(0);
+        expect(seen.alongside).toBe(seen.settled);
     });
 
     it('bucks: the croup up and the hinds kicked out, then down again', () => {

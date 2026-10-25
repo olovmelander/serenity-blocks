@@ -273,6 +273,33 @@ describe('Grainfields herd: its quiet business', () => {
         expect(frolicking).toBeGreaterThan(30);
         expect(near / frolicking).toBeGreaterThan(0.8);
     });
+
+    it('grazes on along a gently wandering line, never pivoting round and round', () => {
+        const sim = createHerdSim({ count: 9 });
+        const turning = sim.horses.map(() => 0);
+        let creeping = 0;
+        let quick = 0;
+        let widest = 0;
+        live(sim, 600, (s) => {
+            if (s.plan) return;
+            s.horses.forEach((h, i) => {
+                if (!h.creeping) {
+                    turning[i] = 0;
+                    return;
+                }
+                creeping += 1;
+                // (A quick turn is a step aside from a neighbour pressing in; it ends within a half-turn.)
+                if (Math.abs(h.yawRate) > 0.3) {
+                    quick += 1;
+                    turning[i] += h.yawRate * DT;
+                    widest = Math.max(widest, Math.abs(turning[i]));
+                } else turning[i] = 0;
+            });
+        });
+        expect(creeping).toBeGreaterThan(20000);
+        expect(quick / creeping).toBeLessThan(0.08);
+        expect(widest).toBeLessThan(Math.PI * 1.25);
+    });
 });
 
 describe('Grainfields herd: what the motion reads', () => {

@@ -348,6 +348,15 @@ function pickBusiness(rng, foal = false) {
 
 /** How fast a grazing horse creeps on (m/s), and how a frolicking foal circles (radius m, speed m/s). */
 const CREEP = 0.09;
+/**
+ * Nursing, in the mother's frame (across toward the foal's side, along forward): her udder (her
+ * scale; up over the ground), between her hind legs just in front of her stifles; how far out the
+ * foal's neck rises (her scale), clear of her barrel; the neck's reach from there to the udder with
+ * the head down at it (the foal's scale); how far its quarters turn out (radians).
+ */
+const NURSE = Object.freeze({
+    udder: Object.freeze({ across: 0.04, along: -0.42, up: 0.62 }), root: 0.44, reach: 1.33, splay: 0.25,
+});
 const FROLIC = Object.freeze({ radius: [3.5, 6], speed: [3.4, 5.2] });
 
 const range = (rng, [lo, hi]) => lo + (hi - lo) * rng();
@@ -432,6 +441,11 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                 businessUntil: rng() * 8,
                 spotX: x,
                 spotZ: z,
+                // Grazing's slow line, and the teat a nursing foal reaches for (world x, height, z).
+                creeping: false,
+                grazeAim: heading,
+                teat: null,
+                atTeat: false,
                 lookYaw: 0,
                 verge: false,
                 // Startled (1), easing back to calm (0).
@@ -474,7 +488,12 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         };
         band.trail = [{ x: lead.x, z: lead.z, s: 0 }];
         band.trailLength = 0;
-        horses.forEach((h) => { h.business = 'travel'; });
+        horses.forEach((h) => {
+            h.business = 'travel';
+            h.creeping = false;
+            h.teat = null;
+            h.atTeat = false;
+        });
     };
 
     /** What the band does next when it has grazed long enough. */
@@ -659,23 +678,54 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                 if (h.business === 'look') h.lookYaw = (rng() - 0.5) * 1.6;
             }
             const mother = h.mother >= 0 ? horses[h.mother] : null;
+            const { creeping } = h;
+            h.creeping = false;
+            h.teat = null;
             if (mother && h.business === 'nurse') {
-                // To its mother's flank, behind her elbow, and stand there beside her, head under her belly.
-                const across = (h.x - mother.x) * Math.cos(mother.heading) - (h.z - mother.z) * Math.sin(mother.heading);
-                const side = across >= 0 ? 1 : -1;
+                // Alongside its mother the other way round, at her flank, its quarters turned a little
+                // out, its head in under her belly to the udder between her hind legs.
                 const fx = Math.sin(mother.heading);
                 const fz = Math.cos(mother.heading);
-                const sx = mother.x + fz * side * 0.62 * mother.scale - fx * 0.35 * mother.scale;
-                const sz = mother.z - fx * side * 0.62 * mother.scale - fz * 0.35 * mother.scale;
+                const across = (h.x - mother.x) * fz - (h.z - mother.z) * fx;
+                const side = across >= 0 ? 1 : -1;
+                const ms = mother.scale;
+                const at = (a, l) => [mother.x + fz * side * a + fx * l, mother.z - fx * side * a + fz * l];
+                // Its neck's root beside her barrel, the neck's reach short of her udder; its middle
+                // behind that, the way it faces (her tail, its head turned in a little).
+                const out = NURSE.root * ms;
+                const inward = out - NURSE.udder.across * ms;
+                const reach = Math.max(inward, NURSE.reach * h.scale);
+                const rootAlong = NURSE.udder.along * ms + Math.sqrt(reach * reach - inward * inward);
+                const back = 0.48 * h.scale;
+                const spotAlong = rootAlong + Math.cos(NURSE.splay) * back;
+                const [sx, sz] = at(out + Math.sin(NURSE.splay) * back, spotAlong);
                 const gap = Math.hypot(sx - h.x, sz - h.z);
-                if (gap > 0.35) steer(h, sx, sz, clamp(gap * 1.1, 0, HERD.paces.walk), dt);
-                else steer(h, h.x + fx * 5, h.z + fz * 5, 0, dt);
+                // (Right up to the spot, then it turns about there.)
+                if (gap < 0.06) h.atTeat = true;
+                else if (gap > 0.35) h.atTeat = false;
+                if (!h.atTeat) {
+                    // (From behind her or ahead of her, it comes round her side, not through her.)
+                    const along = (h.x - mother.x) * fx + (h.z - mother.z) * fz;
+                    const round = across * side < 0.75 * ms && Math.abs(along - spotAlong) > 0.6 * ms;
+                    const [tx, tz] = round ? at(1.3 * ms, spotAlong) : [sx, sz];
+                    steer(h, tx, tz, clamp(gap * 1.4, 0.12, HERD.paces.walk), dt);
+                } else {
+                    const [ax, az] = at(out - Math.sin(NURSE.splay) * 5, rootAlong - Math.cos(NURSE.splay) * 5);
+                    steer(h, ax, az, 0, dt);
+                }
                 h.nursingSide = side;
-                // She stands for it.
+                // Turned about beside her, it reaches in for the teat.
+                const facing = mother.heading + Math.PI + side * NURSE.splay;
+                if (h.atTeat && Math.abs(wrapAngle(h.heading - facing)) < 0.3) {
+                    const [ux, uz] = at(NURSE.udder.across * ms, NURSE.udder.along * ms);
+                    h.teat = [ux, NURSE.udder.up * ms, uz];
+                }
+                // She stands for it, and looks round at it.
                 if (gap < 1.5 && mother.business !== 'rest') {
                     mother.business = 'graze';
                     mother.businessUntil = Math.max(mother.businessUntil, h.businessUntil);
                     mother.nursed = time;
+                    mother.nursingSide = side;
                 }
                 return;
             }
@@ -690,13 +740,20 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
             const toX = h.spotX - h.x;
             const toZ = h.spotZ - h.z;
             const far = Math.hypot(toX, toZ);
-            const walking = h.business === 'step' || far > 3.5;
+            // (A mother with a foal at the teat stands where she is.)
+            const suckled = h.nursed > time - 0.5;
+            const walking = !suckled && (h.business === 'step' || far > 3.5);
             // A walk to the spot; the last half-metre at a creep.
             const goal = walking ? clamp(far * 0.8, 0, far > 8 ? HERD.paces.trot : HERD.paces.walk * 0.9) : 0;
             if (walking && far > 0.3) steer(h, h.spotX, h.spotZ, goal, dt);
-            else if (h.business === 'graze' && !(h.nursed > time - 0.5)) {
-                // Grazing creeps on, the head swinging from side to side for the next mouthful.
-                const wander = h.heading + 0.5 * Math.sin(time * 0.17 + h.seed * 13);
+            else if (h.business === 'graze' && !suckled) {
+                // Grazing creeps on along a line that wanders a little to one side and back.
+                // (Nudged off it by another, it grazes on the way it now faces.)
+                const sway = 0.5 * Math.sin(time * 0.17 + h.seed * 13);
+                const off = Math.abs(wrapAngle(h.heading - h.grazeAim - sway));
+                if (!creeping || off > 0.6) h.grazeAim = h.heading - sway;
+                h.creeping = true;
+                const wander = h.grazeAim + sway;
                 const creep = CREEP * (0.6 + 0.4 * Math.sin(time * 0.31 + h.seed * 7));
                 steer(h, h.x + Math.sin(wander) * 5, h.z + Math.cos(wander) * 5, creep, dt);
             } else steer(h, h.x + Math.sin(h.heading) * 5, h.z + Math.cos(h.heading) * 5, 0, dt);

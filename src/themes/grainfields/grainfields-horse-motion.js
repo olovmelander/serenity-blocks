@@ -31,7 +31,7 @@ import { clamp, mulberry32, smooth } from './grainfields-core.js';
 import {
     bodyAt, ease, gaitAt, gaitFor, swingShape, wrap,
 } from './grainfields-gait.js';
-import { createPose, poseRig } from './grainfields-horse-rig.js';
+import { boneToWorld, createPose, poseRig } from './grainfields-horse-rig.js';
 
 /** How far a leg's upper joints may open (negative) or fold (positive), radians. */
 const FLEX = Object.freeze({ fore: [-0.62, 1.15], hind: [-0.58, 1.0] });
@@ -286,6 +286,8 @@ export function createHorseMotion(rig, { seed = 0.5, lead = 1, landmarks = {} } 
         lastG: 0,
         lively: (seed * 7.31) % 1 > 0.6,
         shaking: 0,
+        // A foal's neck turned and lifted onto the teat.
+        nursing: { turn: 0, lift: 0 },
     };
 }
 
@@ -585,6 +587,40 @@ function bendFor(m, height, groundY, face) {
     return 0.5 * (lo + hi);
 }
 
+const muzzleAt = [0, 0, 0];
+/**
+ * A foal at the teat: alongside its mother the other way round, its head turned in under her belly
+ * and lifted, the muzzle up to her udder (the band's `h.teat`: world x, height over the ground, z).
+ * The neck turns and lifts until the muzzle is there (each step corrects by where it was), and the
+ * jaw works as it sucks.
+ */
+function nurse(m, h, ground, out, dt, time) {
+    const side = h.nursingSide || 1;
+    const n = m.nursing;
+    out.face = -0.6;
+    out.roll = side * 0.12;
+    out.ears = 'graze';
+    const { teat } = h;
+    if (!teat) {
+        // Still coming round to her, the head up.
+        n.turn = 0;
+        n.lift = 0;
+        out.bend = -0.1;
+        return;
+    }
+    const { at } = m.pose;
+    const root = m.bones.neck0 * 3;
+    boneToWorld(m.rig, m.pose, m.bones.head, m.muzzle, m.place.scale, muzzleAt);
+    const now = Math.atan2(muzzleAt[0] - at[root], muzzleAt[2] - at[root + 2]);
+    const goal = Math.atan2(teat[0] - at[root], teat[2] - at[root + 2]);
+    n.turn = clamp(n.turn + wrapAngle(goal - now) * 3 * dt, -1.4, 1.4);
+    n.lift = clamp(n.lift + (teat[1] - (muzzleAt[1] - ground(h.x, h.z))) * 3 * dt, -0.3, 0.3);
+    out.height = teat[1] + n.lift;
+    out.yaw = n.turn * 0.75;
+    out.headYaw = n.turn * 0.3;
+    out.jaw = 0.05 + 0.04 * Math.max(0, Math.sin(time * 9));
+}
+
 /** Grazing: reach, bite, tear, chew; the muzzle's target height and the jaw's work. */
 function graze(m, h, time, out) {
     const { eat } = m;
@@ -692,12 +728,7 @@ function stepHead(m, h, ground, gait, b, dt, time) {
             want.jaw = 0.55 * smooth(0.08, 0.4, k) * (1 - smooth(0.72, 0.95, k));
             want.ears = 'doze';
         } else if (business === 'nurse') {
-            // Head up under its mother's belly, turned in to her.
-            want.bend = -0.12;
-            want.face = -0.32;
-            want.yaw = -(h.nursingSide || 1) * 0.6;
-            want.headYaw = -(h.nursingSide || 1) * 0.25;
-            want.ears = 'graze';
+            nurse(m, h, ground, want, dt, time);
         } else if (business === 'shake') {
             want.bend = 0.05;
             want.face = 0.05;
@@ -706,6 +737,15 @@ function stepHead(m, h, ground, gait, b, dt, time) {
             want.bend = 0.2;
             want.face = 0.12;
         }
+    }
+    // A mother with a foal at the teat stands, and looks round at it now and then.
+    if (standing && h.nursed > time - 0.5 && business === 'graze') {
+        want.height = null;
+        want.bend = 0.25;
+        want.face = 0.15;
+        want.yaw = (h.nursingSide || 1) * 0.55 * smooth(-0.4, 0.4, Math.sin(time * 0.35 + m.seed * 9));
+        want.headYaw = want.yaw * 0.3;
+        want.ears = 'back';
     }
     // Startled: heads up, ears forward.
     const alert = h.alert || 0;
