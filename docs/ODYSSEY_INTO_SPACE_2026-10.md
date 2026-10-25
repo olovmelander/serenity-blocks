@@ -518,3 +518,100 @@ turning. That is ordinary travel near the ground, and its pace is unchanged.
   4:3. This test fails on main's rise.
 - The hero-triad guard in `cosmic-expanse-environment.test.js` holds the giant to the corridor once
   it has risen; before that it is behind the limb, which `odyssey-planetrise` keeps.
+
+## §7. The Earth itself: oceans, continents and better clouds (2026-10-25)
+
+Olov, with a screenshot of the Earth below at the top of the climb: *"When we start to see the
+earth above the cloud, can we make it look like the earth with ocean, landmasses and contintents?
+And can we improve the clouds?"*
+
+The Earth was an ocean under soft, blurred blobs of cloud: one value-noise field cut at a wide
+threshold, no land anywhere. It is now a planet (`ORBIT_EARTH_SURFACE` in
+`composition/odyssey-orbit-earth.js`).
+
+### Land
+
+**Continents.** A height field on the sphere (eight octaves of the baked lattice, the broad ones
+bent by a warp), cut at `seaLevel`. Open sea is kept round the point beneath the eye
+(`homeOcean`, 0.005 rad, twice the world's island), so the world's own sea becomes the Earth's
+ocean in place at the seam.
+
+**The layout.** Chosen by ray-casting the game's own views on the CPU (`orbitEarthLandHeight`, the
+shader's field read from the same lattice bytes) for thousands of seeds and scales. From 33 km up
+the middle of the frame looks only 30–100 km away, so the coast has to be near to be seen in
+daylight. By the time the eye is high enough to see whole continents the sun has set.
+
+| View | Land |
+|---|---|
+| Middle of the frame as the haze lifts | ~40% |
+| Its horizon | ~90% |
+| From high orbit | ~40% |
+
+As the Earth comes out of the haze the eye looks across the sea to a continent's coast. A test
+pins the layout on the real camera.
+
+**By latitude** from a geographic pole off toward the night:
+
+- ice cap and sea ice;
+- tundra, then boreal and temperate forest;
+- steppe and desert where it is dry;
+- rock and snow on the ridges;
+- shallows round the coasts.
+
+### Sea and night
+
+- The sun glints on open water.
+- On the night side the towns glow along the plains and coasts, under the cloud. They are a
+  product of three noises at three scales, each fading to its mean under a pixel, so the light
+  peaks into cores and sprawl and never goes flat.
+
+### Clouds
+
+- Weather systems wound round two cyclones, with gentle winding (`1 / (1 + d²)`: a Gaussian wound
+  the field into rings round the eye).
+- A broad, contrasty cloud fraction: systems with clear sky between.
+- Crisp cumulus edges, antialiased by the field's own derivative instead of a wide blur.
+- Billowed detail down to ~1 km.
+- Thin cloud lets the sea through.
+- Lit on the side toward the sun, and casting shadows that fall long at a low sun.
+- A veil of cirrus.
+
+![Top: main at p 0.715, 0.721, 0.730, 0.745. Bottom: now, the same stations: a coast and green land across the sea as the haze lifts, the land's silhouettes under the sunset cloud, the towns under the aurora](images/odyssey-into-space-2026-10-25/earth-arrival-before-after.jpg)
+
+![Now, in the playground: from 130 km up in daylight, the globe from high orbit, and the night side under the aurora](images/odyssey-into-space-2026-10-25/earth-views-after.jpg)
+
+### Pitfalls found on the way
+
+**Faint blocks over the sea.** The baked lattice is blended by the texture unit with only ~8 bits
+of weight. The warp is the broadest field of all (a cell spans more than a radian), so it moves
+in small steps. Every octave sampled through it jumped by the step times its own frequency, and
+from just above the clouds the finest drew a grid of faint blocks over the sea. Only the broad
+octaves follow the warp now (`LAND_WARPED`); the fine land and cloud detail sample the unwarped
+domain. Found by drawing the ground alone at 8× brightness.
+
+**A dark disc straight down.** Looking exactly at the nadir, the limb's closest-approach altitude
+turns as a square root, its screen derivative blows up, and the coverage fell to one half there. It
+is capped now. The game never looks that far down.
+
+### Cost
+
+Measured in the playground at 1080p with vsync off, on this machine's GPU:
+
+| View | Main | Now |
+|---|---|---|
+| Daylight Earth | 0.2–0.3 ms | 0.37–0.57 ms |
+| Night side with the aurora | 1.55 ms | 1.15 ms |
+
+What keeps it down:
+
+- Fine octaves that are faded to nothing are not sampled. A branch on a distance-coherent value,
+  so whole regions skip together.
+- The cloud shadow is skipped where the sun is down.
+- The towns are skipped where there is no night-side land.
+
+**Tests** (`odyssey-orbit-earth`):
+
+- the CPU lattice reads the texture's bytes, with the same blend and wrap;
+- open sea beneath the eye;
+- land across the sea on the game's camera as the haze lifts;
+- a world of oceans and continents from high orbit.

@@ -27,19 +27,19 @@ import { describeKey } from '../settings.js';
 /** The Hub's sections in strip order. The eyebrow follows the main menu's "Breath · …" voice. */
 const HUB_TABS = Object.freeze([
     {
-        id: 'themes', label: 'Themes', eyebrow: 'Breath · The world you play in', icon: 'galaxy',
+        id: 'themes', label: 'Themes', eyebrow: 'Breath · The world you play in', icon: 'themes',
     },
     {
         id: 'music', label: 'Music', eyebrow: 'Breath · What you hear', icon: 'note',
     },
     {
-        id: 'breathing', label: 'Breathing', eyebrow: 'Breath · Rhythms to follow', icon: 'breath',
+        id: 'breathing', label: 'Breathing', eyebrow: 'Breath · Rhythms to follow', icon: 'breathing',
     },
     {
         id: 'sessions',
         label: 'Hale sessions',
         eyebrow: 'Breath · Guided journeys',
-        icon: 'hale-base',
+        icon: 'mode-hale',
         ariaLabel: 'Hale sessions · guided breathwork',
     },
 ]);
@@ -186,18 +186,7 @@ export class SerenityHub {
             this.hubIcon.setAttribute('aria-label', 'Serenity Hub');
             this.hubIcon.setAttribute('tabindex', '0');
 
-            this.hubIcon.innerHTML = `
-        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none"
-          stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-          aria-hidden="true" focusable="false">
-          <path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/>
-          <path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/>
-          <path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/>
-          <path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/>
-          <path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/>
-        </svg>
-        <div class="hub-icon-pulse"></div>
-      `;
+            this.hubIcon.innerHTML = `${csIcon('lotus', 20, 'sb-play-rail__icon')}<div class="hub-icon-pulse"></div>`;
 
             document.body.appendChild(this.hubIcon);
         }

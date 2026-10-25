@@ -235,6 +235,19 @@ describe.each(TIERS)('sunfall shaders at %s', (quality) => {
         expect(built.flatMap(problemsOf)).toEqual([]);
     });
 
+    it('reads the rock\'s bakes inside the triangle (centroid), so MSAA never extrapolates them', () => {
+        // At pixel centres outside a far, grazing triangle the log-encoded light blazed in single
+        // white pixels flickering over the passage walls.
+        const rock = built.filter((b) => ['sunfall-cave', 'sunfall-gours'].includes(b.name));
+        expect(rock).toHaveLength(4);
+        rock.forEach(({ name, label, out }) => {
+            const centroid = label === 'WGSL'
+                ? /@interpolate\(\s*perspective\s*,\s*centroid\s*\)/g
+                : /\bcentroid\s+in\b/g;
+            expect(out.fragment.match(centroid)?.length ?? 0, `${name} ${label}`).toBeGreaterThanOrEqual(2);
+        });
+    });
+
     it('reads no WGSL var where it may not have been assigned', () => {
         const found = [];
         built.filter((b) => b.label === 'WGSL' && !b.out.thrown).forEach(({ name, out }) => {

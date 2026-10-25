@@ -54,6 +54,53 @@ function latticeHash(ix, iy, iz) {
     return (h >>> 0) / 4294967296;
 }
 
+let latticeData = null;
+
+/** The lattice's bytes (x fastest, then y, then z), built once: the texture's and the CPU twin's. */
+function getLatticeData() {
+    if (latticeData) return latticeData;
+    const n = LATTICE_NOISE_PERIOD;
+    latticeData = new Uint8Array(n * n * n);
+    let o = 0;
+    for (let z = 0; z < n; z += 1) {
+        for (let y = 0; y < n; y += 1) {
+            for (let x = 0; x < n; x += 1) {
+                latticeData[o] = Math.min(255, Math.floor(latticeHash(x, y, z) * 256));
+                o += 1;
+            }
+        }
+    }
+    return latticeData;
+}
+
+/**
+ * `latticeNoise3` on the CPU: the same bytes, the same Hermite weights, the same wrap (the
+ * texture's filter rounds its weights a little coarser; the layout is the same). For pure
+ * schedules and tests that need to know what a shader built on it shows somewhere.
+ * @param {number} x
+ * @param {number} y
+ * @param {number} z
+ * @returns {number} 0..1
+ */
+export function latticeNoise3Cpu(x, y, z) {
+    const n = LATTICE_NOISE_PERIOD;
+    const data = getLatticeData();
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const iz = Math.floor(z);
+    const h = (f) => f * f * (3 - (2 * f));
+    const u = h(x - ix);
+    const v = h(y - iy);
+    const w = h(z - iz);
+    const at = (a, b, c) => data[(((a % n) + n) % n) + ((((b % n) + n) % n) * n) + ((((c % n) + n) % n) * n * n)] / 255;
+    const lerp = (a, b, t) => a + ((b - a) * t);
+    const x00 = lerp(at(ix, iy, iz), at(ix + 1, iy, iz), u);
+    const x10 = lerp(at(ix, iy + 1, iz), at(ix + 1, iy + 1, iz), u);
+    const x01 = lerp(at(ix, iy, iz + 1), at(ix + 1, iy, iz + 1), u);
+    const x11 = lerp(at(ix, iy + 1, iz + 1), at(ix + 1, iy + 1, iz + 1), u);
+    return lerp(lerp(x00, x10, v), lerp(x01, x11, v), w);
+}
+
 /**
  * The lattice texture (built once, on first use, never disposed — 256 KB shared by every
  * chapter that samples it).
@@ -62,17 +109,7 @@ function latticeHash(ix, iy, iz) {
 export function getLatticeNoiseTexture() {
     if (latticeTexture) return latticeTexture;
     const n = LATTICE_NOISE_PERIOD;
-    const data = new Uint8Array(n * n * n);
-    let o = 0;
-    for (let z = 0; z < n; z += 1) {
-        for (let y = 0; y < n; y += 1) {
-            for (let x = 0; x < n; x += 1) {
-                data[o] = Math.min(255, Math.floor(latticeHash(x, y, z) * 256));
-                o += 1;
-            }
-        }
-    }
-    const texture = new THREE.Data3DTexture(data, n, n, n);
+    const texture = new THREE.Data3DTexture(getLatticeData(), n, n, n);
     texture.name = 'odyssey-lattice-noise';
     texture.format = THREE.RedFormat;
     texture.type = THREE.UnsignedByteType;

@@ -69,6 +69,7 @@ import {
     SUNFALL_STATIONS,
 } from './sunfall-core.js';
 import { LATTICE_SIZE, LATTICE_SLICE, OCULUS_TEX } from './sunfall-bake.js';
+import { centroidVarying } from '../shared/centroid-varying.js';
 
 const TWO_PI = Math.PI * 2;
 /** The order the oculus fingers open in, as homes on a ring of seven: two face each other. */
@@ -426,8 +427,11 @@ export function createShellMaterial(u, { kind = 'shell' } = {}) {
     const colorNode = Fn(() => {
         const P = positionWorld.toVar();
         const N0 = normalize(normalWorld).toVar();
-        const C = attribute('color', 'vec4').toVar();
-        const B = attribute('_bake', 'vec4').toVar();
+        // The bakes are read inside the triangle: under MSAA a pixel a far, grazing triangle only
+        // grazes is shaded at its centre, and the log-encoded light extrapolated there blazed in
+        // single white pixels that flickered over the passage walls as the eye drifted.
+        const C = centroidVarying(attribute('color', 'vec4')).toVar();
+        const B = centroidVarying(attribute('_bake', 'vec4')).toVar();
         const ao = clamp(C.x, 0.0, 1.0).toVar();
         const sky = sfDecode(u, C.y, u.lightCeilSky).toVar();
         const sun = sfStationSun(u, C, B).toVar();
