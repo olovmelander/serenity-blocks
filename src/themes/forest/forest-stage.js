@@ -14,19 +14,18 @@ export const FOREST_DEFAULT_BOARD = Object.freeze({
 });
 export const FOREST_STAGE_DEPTH = 8.5;
 const BOARD_SELECTOR = '.player-card[data-player]';
+/** What else stands in front of the forest beside the card: the score panel. */
+const PANEL_SELECTOR = '.single-player-stats-bar';
 const FLOOR_NEAR = 4;
 const FLOOR_FAR = 46;
 
-/**
- * The union of the visible board cards in screen fractions (y down), or null when no
- * board is on screen (menus, boot) so the stage keeps its default.
- */
-export function readForestBoardRect(doc = globalThis.document, win = globalThis.window) {
-    if (!doc || !win || typeof doc.querySelectorAll !== 'function') return null;
+/** Every visible element matching `selector`, as a rectangle in screen fractions (y down). */
+function visibleRects(selector, doc, win) {
+    if (!doc || !win || typeof doc.querySelectorAll !== 'function') return [];
     const width = Math.max(1, win.innerWidth || 1);
     const height = Math.max(1, win.innerHeight || 1);
-    let rect = null;
-    doc.querySelectorAll(BOARD_SELECTOR).forEach((element) => {
+    const rects = [];
+    doc.querySelectorAll(selector).forEach((element) => {
         if (typeof element?.getBoundingClientRect !== 'function') return;
         const box = element.getBoundingClientRect();
         if (!(box.width > 8 && box.height > 8)) return;
@@ -35,26 +34,41 @@ export function readForestBoardRect(doc = globalThis.document, win = globalThis.
         if (style && (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) < 0.05)) {
             return;
         }
-        const next = {
+        rects.push({
             x0: box.left / width, x1: box.right / width, y0: box.top / height, y1: box.bottom / height,
-        };
-        rect = rect ? {
-            x0: Math.min(rect.x0, next.x0),
-            x1: Math.max(rect.x1, next.x1),
-            y0: Math.min(rect.y0, next.y0),
-            y1: Math.max(rect.y1, next.y1),
-        } : next;
+        });
     });
-    return rect;
+    return rects;
+}
+
+/**
+ * The union of the visible board cards in screen fractions (y down), or null when no
+ * board is on screen (menus, boot) so the stage keeps its default.
+ */
+export function readForestBoardRect(doc = globalThis.document, win = globalThis.window) {
+    return visibleRects(BOARD_SELECTOR, doc, win).reduce((rect, next) => (rect ? {
+        x0: Math.min(rect.x0, next.x0),
+        x1: Math.max(rect.x1, next.x1),
+        y0: Math.min(rect.y0, next.y0),
+        y1: Math.max(rect.y1, next.y1),
+    } : next), null);
+}
+
+/** The visible panels beside the card (the score panel) in screen fractions (y down); often none. */
+export function readForestPanelRects(doc = globalThis.document, win = globalThis.window) {
+    return visibleRects(PANEL_SELECTOR, doc, win);
 }
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
+const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
 
 export class ForestStage {
     constructor(camera, groundHeight = () => 0) {
         this.camera = camera;
         this.groundHeight = groundHeight;
         this.board = { ...FOREST_DEFAULT_BOARD };
+        /** Panels beside the card (the score panel): a figure is not called to stand behind one. */
+        this.panels = [];
         this.origin = new THREE.Vector3();
         this.right = new THREE.Vector3(1, 0, 0);
         this.up = new THREE.Vector3(0, 1, 0);
@@ -73,6 +87,50 @@ export class ForestStage {
         this.board = {
             x0: clamp01(next.x0), x1: clamp01(next.x1), y0: clamp01(next.y0), y1: clamp01(next.y1),
         };
+    }
+
+    /** Accept the measured panels beside the card (screen fractions); nonsense is dropped. */
+    setPanels(rects) {
+        this.panels = (Array.isArray(rects) ? rects : [])
+            .filter((rect) => rect && [rect.x0, rect.x1, rect.y0, rect.y1].every(Number.isFinite)
+                && rect.x1 - rect.x0 > 0.005 && rect.y1 - rect.y0 > 0.005)
+            .map((rect) => ({
+                x0: clamp01(rect.x0), x1: clamp01(rect.x1), y0: clamp01(rect.y0), y1: clamp01(rect.y1),
+            }));
+    }
+
+    /**
+     * Screen position (fractions, y down) of a world point into `target`, from the camera's rest
+     * pose; null when it is not in front of the eye.
+     */
+    project(x, y, z, target = { x: 0, y: 0 }) {
+        const {
+            origin, forward, right, up,
+        } = this;
+        const dx = x - origin.x;
+        const dy = y - origin.y;
+        const dz = z - origin.z;
+        const depth = dx * forward.x + dy * forward.y + dz * forward.z;
+        if (!(depth > 0.1)) return null;
+        // eslint-disable-next-line no-param-reassign
+        target.x = 0.5 + (0.5 * (dx * right.x + dy * right.y + dz * right.z)) / (depth * this.tanH);
+        // eslint-disable-next-line no-param-reassign
+        target.y = 0.5 - (0.5 * (dx * up.x + dy * up.y + dz * up.z)) / (depth * this.tanV);
+        return target;
+    }
+
+    /**
+     * Would a box on screen (fractions, y down) be seen: all of it on screen, `margin` inside the
+     * edges, and none of it behind the card or a panel beside it.
+     */
+    inSight(box, margin = 0.01) {
+        if (!box || ![box.x0, box.x1, box.y0, box.y1].every(Number.isFinite)) return false;
+        if (box.x0 < margin || box.x1 > 1 - margin || box.y0 < margin || box.y1 > 1 - margin) return false;
+        if (overlaps(box, this.board)) return false;
+        for (let i = 0; i < this.panels.length; i += 1) {
+            if (overlaps(box, this.panels[i])) return false;
+        }
+        return true;
     }
 
     /** Re-read the camera's rest pose (call after it has been framed). */
