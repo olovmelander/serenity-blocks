@@ -37,6 +37,10 @@
  *                            trot, a canter, a gallop; behind them grazing, resting, swatting)
  *   herdRun=<move>@<s>,...   moves the band makes at set times: round, crest, path or loop (a
  *                            gallop out of the picture and back), walk, trot, canter, wheel
+ *   herdCam=i,d,az,h,fov     follow horse i from d metres, az degrees round from its nose toward its
+ *                            left (90 its left side, 180 behind it), h metres over its feet
+ *   herdLook=i,fov           from the eye, keep horse i in the middle of a lens this wide
+ *   herdShadow=0             the herd casts no shadows on the barley (an A/B)
  */
 import * as THREE from 'three/webgpu';
 import { GrainfieldsWorld } from '../../themes/grainfields/grainfields-world.js';
@@ -150,6 +154,10 @@ export function create({
     const airGain = num(params, 'airGain', 1);
     const lookAt = (params.get('look') || '').split(',').map(Number);
     const inspect = lookAt.length >= 3 && lookAt.slice(0, 3).every(Number.isFinite);
+    const herdCamParts = (params.get('herdCam') || '').split(',').filter(Boolean).map(Number);
+    const herdCam = herdCamParts.length && herdCamParts.every(Number.isFinite) ? herdCamParts : null;
+    const herdLookParts = (params.get('herdLook') || '').split(',').filter(Boolean).map(Number);
+    const herdLook = herdLookParts.length && herdLookParts.every(Number.isFinite) ? herdLookParts : null;
     const size = new THREE.Vector2(1, 1);
     let lastSeek = null;
     let simTime = 0;
@@ -176,6 +184,28 @@ export function create({
         if (inspect) {
             camera.fov = Number.isFinite(lookAt[3]) ? lookAt[3] : 20;
             camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        const watched = herdLook && world.parts.herd?.motions[herdLook[0]];
+        if (watched) {
+            // From the eye, a long lens kept on one horse.
+            camera.fov = herdLook[1] ?? 12;
+            camera.lookAt(watched.place.x, watched.place.y + 0.1, watched.place.z);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        const followed = herdCam && world.parts.herd?.motions[herdCam[0]];
+        if (followed) {
+            // Follow one horse: from its own side, at its own height, looking at its middle.
+            const { place, rig, bones } = followed;
+            const [, distance = 4, az = 90, height = 1.1, fov = 40] = herdCam;
+            const a = place.heading + az * (Math.PI / 180);
+            // (Its root stands this high over its feet: a foal's long legs stand it taller.)
+            const ground = place.y - rig.heads[bones.root * 3 + 1] * place.scale;
+            camera.position.set(place.x + Math.sin(a) * distance, ground + height, place.z + Math.cos(a) * distance);
+            camera.fov = fov;
+            camera.lookAt(place.x, ground + 0.9 * place.scale, place.z);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
@@ -287,6 +317,11 @@ export function create({
                 return { kind: ['walk', 'trot', 'canter', 'wheel'].includes(kind) ? kind : `gallop-${kind}`, at: Number(at) };
             }));
         }
+        // A/B: the herd's shadows off.
+        if (params.get('herdShadow') === '0' && world.herdShadow) {
+            world.herdShadow.clear();
+            world.herdShadow = null;
+        }
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {
@@ -343,6 +378,16 @@ export function create({
                 calls: renderer.info?.render?.calls ?? null,
                 triangles: renderer.info?.render?.triangles ?? null,
                 ...(world ? world.getState() : {}),
+                herd: world?.parts.herd ? world.parts.herd.horses.map((h, i) => ({
+                    business: h.business,
+                    speed: Number(h.speed.toFixed(2)),
+                    legs: world.parts.herd.motions[i].legs.map((leg) => (leg.planted ? 'P' : 's')).join(''),
+                })) : null,
+                herdShadow: world?.herdShadow ? {
+                    ...world.herdShadow.window,
+                    shaded: world.herdShadow.texture.image.data.reduce((n, v, i) => n + (i % 4 === 0 && v > 0 ? 1 : 0), 0),
+                    sunDir: world.u.sunDir.value.toArray().map((v) => Number(v.toFixed(3))),
+                } : null,
             };
         },
         dispose() {

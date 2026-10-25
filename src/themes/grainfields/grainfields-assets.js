@@ -5,10 +5,11 @@
  * and needle sprays and a sprite sheet of them for the far belts are generated in Blender
  * by scripts/blender/grainfields_assets.py and written as compact GLBs: quantised bark
  * meshes plus a point cloud of foliage sites (where each spray attaches, how the wind may
- * move it, how much sky it sees). The same script models the herd's horse, a Hokkaido
- * native horse (Dosanko), as one mesh painted with the parts and masks a vertex stage poses
- * it by, and the pivots its neck, legs and tail turn about. This module loads them and
- * turns them into plain geometry and typed arrays the belts and the herd can instance.
+ * move it, how much sky it sees). The same script models and rigs the herd's horse, a
+ * Hokkaido native horse (Dosanko): one mesh skinned to a skeleton of thirty-eight bones (four
+ * bones and their weights a vertex), painted with the masks its coat is shaded by. This module
+ * loads them and turns them into plain geometry and typed arrays the belts and the herd can
+ * instance.
  */
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -29,19 +30,8 @@ export const GRAINFIELDS_FOLIAGE_URL = new URL('./assets/grainfields-foliage.glb
 export const GRAINFIELDS_IMPOSTOR_URL = new URL('./assets/grainfields-impostors.png', import.meta.url).href;
 export const GRAINFIELDS_HORSE_URL = new URL('./assets/grainfields-horse.glb', import.meta.url).href;
 export const GRAINFIELDS_ASSET_SCHEMA = 1;
-/**
- * The horse's parts: its colour's red channel is part / 8, so Math.round(r * 8) is one of
- * these. Green is a dark mask (mane, forelock, tail, the legs below the knees and hocks),
- * blue a light mask (a mealy muzzle and the belly), alpha 1.
- */
-export const GRAINFIELDS_HORSE_PARTS = Object.freeze({
-    body: 0, neck: 1, frontLeft: 2, frontRight: 3, hindLeft: 4, hindRight: 5, tail: 6,
-});
-/** What the neck (with the head), each leg and the tail turn about. */
-const HORSE_PIVOTS = Object.freeze([
-    'neck', 'frontLeft', 'frontRight', 'hindLeft', 'hindRight', 'tail',
-    'knee', 'hock', 'frontFetlock', 'hindFetlock', 'poll', 'ear',
-]);
+/** The horse's vertex attributes: the mesh's own and its skin. */
+const HORSE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_mask', '_bones', '_weights']);
 
 /** Read a (possibly normalised integer) attribute as floats. */
 function floats(attribute, width = attribute.itemSize) {
@@ -71,7 +61,7 @@ function meshGeometry(object) {
     const source = object.geometry;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(worldPositions(object), 3));
-    ['normal', 'uv', 'color', '_rig'].forEach((name) => {
+    ['normal', 'uv', 'color', '_rig', '_mask', '_bones', '_weights'].forEach((name) => {
         if (source.attributes[name]) geometry.setAttribute(name, source.attributes[name]);
     });
     if (source.index) geometry.setIndex(source.index);
@@ -156,27 +146,41 @@ export function parseGrainfieldsMeshes(gltf, label) {
     return { variants: root.userData.variants || 2, meshes };
 }
 
+const isPoint = (p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+
 /**
  * The herd's horse: one geometry in metres (+z forward toward the head, y up, the hooves on
- * y = 0, centred on x = 0; its left side is +x) with position, normal, colour and the skin's
- * weights (`_rig`: how far each vertex follows its part's root joint, the joint below it, the
- * one below that, the ears), and the pivots in the same frame: the base of the neck, each
- * shoulder and hip joint, the root of the dock, the knee, the hock and the fetlocks (the left
- * leg's), the atlas under the poll and the left ear's base, each as [x, y, z].
+ * y = 0, centred on x = 0; its left side is +x) with position, normal, colour (hair, points,
+ * light, occlusion), `_mask` (hoof, dark skin, the hair's freedom, the inside of the ears) and its
+ * skin (`_bones`: four bone indices, `_weights`: theirs); the skeleton it is skinned to
+ * ([{ name, parent, head: [x, y, z] }], parents first, every bone resting aligned with the horse's
+ * axes); and where the shading draws what is finer than the mesh (`landmarks`: the muzzle, the eyes,
+ * the nostrils, the head's forward and up).
  */
 export function parseGrainfieldsHorse(gltf) {
     const root = gltf.scene;
     checkSchema(root, 'Horse');
-    const authored = root.userData.pivots || {};
-    const pivots = {};
-    HORSE_PIVOTS.forEach((name) => {
-        const pivot = authored[name];
-        if (!Array.isArray(pivot) || pivot.length !== 3 || !pivot.every(Number.isFinite)) {
-            throw new Error(`[Grainfields] Horse is missing its "${name}" pivot.`);
-        }
-        pivots[name] = [pivot[0], pivot[1], pivot[2]];
+    const mesh = child(root, 'horse');
+    HORSE_ATTRIBUTES.forEach((name) => {
+        if (!mesh.geometry.attributes[name]) throw new Error(`[Grainfields] Horse is missing its "${name}" attribute.`);
     });
-    return { geometry: meshGeometry(child(root, 'horse')), pivots };
+    const authored = root.userData.skeleton;
+    if (!Array.isArray(authored) || !authored.length) throw new Error('[Grainfields] Horse is missing its skeleton.');
+    const skeleton = authored.map((bone, i) => {
+        if (typeof bone?.name !== 'string' || !isPoint(bone.head) || !Number.isInteger(bone.parent) || bone.parent >= i) {
+            throw new Error(`[Grainfields] Horse's bone ${i} is malformed.`);
+        }
+        return { name: bone.name, parent: bone.parent, head: [...bone.head] };
+    });
+    const marks = root.userData.landmarks || {};
+    const landmarks = {
+        muzzle: isPoint(marks.muzzle) ? [...marks.muzzle] : null,
+        eyes: Array.isArray(marks.eyes) ? marks.eyes.filter(isPoint).map((p) => [...p]) : [],
+        nostrils: Array.isArray(marks.nostrils) ? marks.nostrils.filter(isPoint).map((p) => [...p]) : [],
+        headForward: isPoint(marks.headForward) ? [...marks.headForward] : [0, -0.743, 0.669],
+        headUp: isPoint(marks.headUp) ? [...marks.headUp] : [0, 0.669, 0.743],
+    };
+    return { geometry: meshGeometry(mesh), skeleton, landmarks };
 }
 
 /** The horse is a nicety: a failed download leaves the herd without it, not the fields. */

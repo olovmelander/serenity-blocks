@@ -8,35 +8,46 @@
  * come back in somewhere else. When the storm breaks with a chain they run; with a T-spin they
  * wheel round.
  *
- * The horse is authored in Blender (scripts/blender/grainfields/horse.py, loaded by
- * grainfields-assets.js as `assets.horse`): one mesh whose vertex colour names the part each
- * vertex belongs to (R: body, neck and head, the four legs, the tail; G a dark mask for the mane,
- * tail and lower legs; B a light one for the muzzle and belly), skin weights (`_rig`) and the
- * pivots the joints turn about. The vertex stage poses it: each leg turns at its shoulder or
- * hip, folds at its knee or hock and at its fetlock (grainfields-gait.js gives the angles for the
- * gait's footfalls); the neck bends along its length and turns to look, the head nods at the
- * atlas, the ears turn; the tail lifts and swishes, more toward its end; the body pitches,
- * banks into a turn and rides up and down on the legs. A band of skin where each part meets the
- * trunk follows it partly, so nothing tears.
+ * The horse is authored and rigged in Blender (scripts/blender/grainfields/horse.py, loaded by
+ * grainfields-assets.js as `assets.horse`): one mesh skinned to thirty-eight bones. Each horse's
+ * motion (grainfields-horse-motion.js: hooves planted where they strike, legs folding in the air,
+ * the back, neck, jaw, ears and tail) poses its skeleton every frame (grainfields-horse-rig.js),
+ * and the pose goes up as a table of bones, a rotation and a translation each, that the vertex
+ * stage blends four to a vertex. The mane, the forelock and the tail's ends move a little more
+ * on their own, in the wind and the air the horse runs through. What the horses kick up (the dust of
+ * their hooves, the chaff they breast out of the ears, the awns a grazing horse scatters) is
+ * grainfields-herd-dust.js's, thrown here from the motion's own strikes and tears.
  *
- * Unlit, lit by the shared light: the coat by the sun through the deck and the sky, a rim of
- * light round the silhouette when the sun is behind it, then the air.
+ * Unlit, lit by the shared light: the coat (each horse's own colour, its points, mane and tail,
+ * a dun's stripe down its back) by the sun through the deck and the sky, softened where the
+ * hair scatters it and darkened in its own hollows, a sheen on the coat, a rim of light round the
+ * silhouette when the sun is behind it, eyes and nostrils drawn finer than the mesh, then the air.
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     attribute,
     clamp,
     cos,
+    cross,
     dot,
     float,
     floor,
+    instanceIndex,
+    int,
+    length,
+    max,
     mix,
     normalize,
+    pow,
     positionGeometry,
     positionWorld,
     select,
     sin,
+    smoothstep,
+    texture,
+    uniformArray,
     varying,
     vec2,
     vec3,
@@ -46,244 +57,429 @@ import { groundHeight } from './grainfields-plan.js';
 import { aerial } from './grainfields-light.js';
 import { deckShadow } from './grainfields-tsl.js';
 import { HERD, createHerdSim } from './grainfields-herd-sim.js';
+import {
+    FOAL_SHAPE, SKIN_ROWS, boneToWorld, createRig, shapeRig, writeSkinRows,
+} from './grainfields-horse-rig.js';
+import { createHorseMotion, stepHorseMotion } from './grainfields-horse-motion.js';
+import { CHAFF, DUST, createHerdDust } from './grainfields-herd-dust.js';
+import { mulberry32, smooth } from './grainfields-core.js';
 
 export { HERD };
 
-/** The horse's parts by id (its vertex colour's red × 8). */
-export const HORSE_PART = Object.freeze({
-    body: 0, neck: 1, frontLeft: 2, frontRight: 3, hindLeft: 4, hindRight: 5, tail: 6,
-});
-/** Coats (linear): bay, chestnut, dun, grey, black-bay. */
-const COATS = Object.freeze([
-    [0.105, 0.05, 0.022], [0.17, 0.065, 0.025], [0.3, 0.21, 0.11], [0.42, 0.41, 0.39], [0.04, 0.025, 0.018],
+/**
+ * Coats (linear): the body, the mane and tail, the legs' points, how pale the belly and muzzle go,
+ * and the hooves' horn. Bay, chestnut (a flaxen mane, no black points), dun (a dark stripe down its
+ * back), grey, black-bay (a brown muzzle).
+ */
+export const COATS = Object.freeze([
+    Object.freeze({
+        name: 'bay',
+        body: [0.105, 0.05, 0.022],
+        hair: [0.012, 0.009, 0.007],
+        points: [0.014, 0.01, 0.008],
+        light: 1.28,
+        hoof: [0.03, 0.027, 0.024],
+    }),
+    Object.freeze({
+        name: 'chestnut',
+        body: [0.17, 0.065, 0.025],
+        hair: [0.25, 0.13, 0.05],
+        points: [0.13, 0.05, 0.02],
+        light: 1.2,
+        hoof: [0.09, 0.07, 0.05],
+    }),
+    Object.freeze({
+        name: 'dun',
+        body: [0.3, 0.21, 0.11],
+        hair: [0.035, 0.025, 0.017],
+        points: [0.045, 0.032, 0.022],
+        light: 1.1,
+        hoof: [0.035, 0.03, 0.026],
+    }),
+    Object.freeze({
+        name: 'grey',
+        body: [0.3, 0.292, 0.28],
+        hair: [0.33, 0.32, 0.31],
+        points: [0.12, 0.115, 0.11],
+        light: 1.1,
+        hoof: [0.05, 0.047, 0.045],
+    }),
+    Object.freeze({
+        name: 'black-bay',
+        body: [0.052, 0.033, 0.024],
+        hair: [0.01, 0.008, 0.007],
+        points: [0.011, 0.009, 0.008],
+        light: 2.2,
+        hoof: [0.028, 0.025, 0.022],
+    }),
 ]);
-/** The body pitches and banks about this point (the middle of the barrel), horse frame. */
-const BODY_CENTRE = Object.freeze([0, 1.0, -0.05]);
+/** Which coat has the dark stripe down its back, and which is dappled. */
+const DUN = 2;
+const GREY = 3;
 
-/** A point turned about the x axis through a pivot (y, z); positive turns +z down, -y back. */
-function aboutX(p, pivot, angle) {
-    const c = cos(angle);
-    const s = sin(angle);
-    const qy = p.y.sub(pivot.x);
-    const qz = p.z.sub(pivot.y);
-    return vec3(p.x, qy.mul(c).sub(qz.mul(s)).add(pivot.x), qy.mul(s).add(qz.mul(c)).add(pivot.y));
-}
-function dirAboutX(n, angle) {
-    const c = cos(angle);
-    const s = sin(angle);
-    return vec3(n.x, n.y.mul(c).sub(n.z.mul(s)), n.y.mul(s).add(n.z.mul(c)));
-}
-/** A point turned about the y axis through a pivot (x, z). */
-function aboutY(p, pivot, angle) {
-    const c = cos(angle);
-    const s = sin(angle);
-    const qx = p.x.sub(pivot.x);
-    const qz = p.z.sub(pivot.y);
-    return vec3(qx.mul(c).add(qz.mul(s)).add(pivot.x), p.y, qz.mul(c).sub(qx.mul(s)).add(pivot.y));
-}
-function dirAboutY(n, angle) {
-    const c = cos(angle);
-    const s = sin(angle);
-    return vec3(n.x.mul(c).add(n.z.mul(s)), n.y, n.z.mul(c).sub(n.x.mul(s)));
-}
-/** A point turned about the z axis through a pivot (x, y); positive leans +y toward +x. */
-function aboutZ(p, pivot, angle) {
-    const c = cos(angle);
-    const s = sin(angle);
-    const qx = p.x.sub(pivot.x);
-    const qy = p.y.sub(pivot.y);
-    return vec3(qx.mul(c).add(qy.mul(s)).add(pivot.x), qy.mul(c).sub(qx.mul(s)).add(pivot.y), p.z);
-}
-function dirAboutZ(n, angle) {
-    const c = cos(angle);
-    const s = sin(angle);
-    return vec3(n.x.mul(c).add(n.y.mul(s)), n.y.mul(c).sub(n.x.mul(s)), n.z);
+/** v turned by the unit quaternion q. */
+const turn = (q, v) => v.add(cross(q.xyz, cross(q.xyz, v).add(v.mul(q.w))).mul(2.0));
+
+/** The coat's colours for coat index k (a select chain over the table). */
+function coatColours(k) {
+    const pick = (key) => {
+        const out = vec3(...COATS[0][key]).toVar();
+        for (let i = 1; i < COATS.length; i++) out.assign(select(k.greaterThan(i - 0.5), vec3(...COATS[i][key]), out));
+        return out;
+    };
+    const light = float(COATS[0].light).toVar();
+    for (let i = 1; i < COATS.length; i++) light.assign(select(k.greaterThan(i - 0.5), float(COATS[i].light), light));
+    return {
+        body: pick('body'), hair: pick('hair'), points: pick('points'), hoof: pick('hoof'), light,
+    };
 }
 
-function herdMaterial(u, t, pivots) {
+function herdMaterial(u, t, rig, landmarks, bones, info) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'GrainfieldsHerd';
     material.fog = false;
-    const aPose = attribute('aPose', 'vec4'); // x, ground y, z, heading
-    const aBody = attribute('aBody', 'vec4'); // pitch, roll, bob, scale
-    const aHead = attribute('aHead', 'vec4'); // neck, neck yaw, head, ears
-    const aFront = attribute('aFront', 'vec4'); // front left upper, lower; front right upper, lower
-    const aHind = attribute('aHind', 'vec4'); // hind left upper, lower; hind right upper, lower
-    const aFet = attribute('aFet', 'vec4'); // the fetlocks: front left, front right, hind left, hind right
-    const aTail = attribute('aTail', 'vec4'); // tail lift, swish, coat
-    const paint = attribute('color', 'vec4'); // part / 8, dark, light, 1
-    const rig = attribute('_rig', 'vec4'); // root, joint / head / along the tail, fetlock / up the neck, ears
+    const stride = rig.count * SKIN_ROWS;
+    const paint = attribute('color', 'vec4'); // hair, points, light, occlusion
+    const marks = attribute('_mask', 'vec4'); // hoof, dark skin, the hair's freedom, the inside of the ears
+    const boneIds = attribute('_bones', 'vec4'); // four bone indices / 255
+    const boneWeights = attribute('_weights', 'vec4');
     const vN = varying(vec3(0.0, 1.0, 0.0), 'gfHerdNormal');
-    const vInfo = varying(vec4(0.0), 'gfHerdInfo'); // coat, dark, light, sunlit
-    // A pivot's (y, z) (rotations about x), or its (x, z) (about y).
-    const yz = (name) => vec2(pivots[name][1], pivots[name][2]);
+    const vPaint = varying(vec4(0.0), 'gfHerdPaint');
+    const vMarks = varying(vec4(0.0), 'gfHerdMarks');
+    const vRest = varying(vec4(0.0), 'gfHerdRest'); // rest position, sunlit
+    const vCoat = varying(vec2(0.0), 'gfHerdCoat'); // coat, seed
     material.positionNode = Fn(() => {
-        const part = floor(paint.x.mul(8.0).add(0.5)).toVar();
+        const horse = int(instanceIndex);
+        const base = horse.mul(stride).toVar();
+        const coat = info.element(horse.mul(2)); // coat, the hair's flow (x, y, z)
+        const place = info.element(horse.mul(2).add(1)); // where it stands (x, ground y, z), its seed
         const p = positionGeometry.toVar();
         const nrm = attribute('normal', 'vec3').toVar();
-
-        // ── A leg: fetlock, then knee or hock, then shoulder or hip ──
-        const isLeg = part.greaterThan(1.5).and(part.lessThan(5.5));
-        const front = part.lessThan(3.5);
-        const left = part.equal(2.0).or(part.equal(4.0));
-        const upper = select(front, select(left, aFront.x, aFront.z), select(left, aHind.x, aHind.z));
-        const lower = select(front, select(left, aFront.y, aFront.w), select(left, aHind.y, aHind.w));
-        const fet = select(front, select(left, aFet.x, aFet.y), select(left, aFet.z, aFet.w));
-        const rootPivot = select(front, yz('frontLeft'), yz('hindLeft'));
-        const jointPivot = select(front, yz('knee'), yz('hock'));
-        const fetPivot = select(front, yz('frontFetlock'), yz('hindFetlock'));
-        const a1 = fet.mul(rig.z);
-        const a2 = lower.mul(rig.y);
-        const a3 = upper.mul(rig.x);
-        const ql = aboutX(aboutX(aboutX(p, fetPivot, a1), jointPivot, a2), rootPivot, a3);
-        const ml = dirAboutX(dirAboutX(dirAboutX(nrm, a1), a2), a3);
-        p.assign(select(isLeg, ql, p));
-        nrm.assign(select(isLeg, ml, nrm));
-
-        // ── The neck and head: the ears, the head at the atlas, the neck along its length ──
-        const isNeck = part.equal(HORSE_PART.neck);
-        const along = rig.z;
-        const bend = aHead.x.mul(rig.x).mul(along.mul(0.6).add(0.4));
-        const turn = aHead.y.mul(rig.x).mul(along);
-        const nod = aHead.z.mul(rig.y);
-        const ears = aHead.w.mul(rig.w);
-        const neckBase = yz('neck');
-        const neckBaseXZ = vec2(0.0, pivots.neck[2]);
-        const qn = aboutX(aboutY(aboutX(aboutX(p, yz('ear'), ears), yz('poll'), nod), neckBaseXZ, turn), neckBase, bend);
-        const mn = dirAboutX(dirAboutY(dirAboutX(dirAboutX(nrm, ears), nod), turn), bend);
-        p.assign(select(isNeck, qn, p));
-        nrm.assign(select(isNeck, mn, nrm));
-
-        // ── The tail: swished side to side and lifted, more toward its end ──
-        const isTail = part.equal(HORSE_PART.tail);
-        const down = rig.y;
-        const swish = aTail.y.mul(rig.x).mul(down.mul(0.85).add(0.15));
-        const lift = aTail.x.mul(rig.x).mul(down.mul(0.65).add(0.35));
-        const tailXZ = vec2(0.0, pivots.tail[2]);
-        const qt = aboutX(aboutY(p, tailXZ, swish), yz('tail'), lift);
-        const mt = dirAboutX(dirAboutY(nrm, swish), lift);
-        p.assign(select(isTail, qt, p));
-        nrm.assign(select(isTail, mt, nrm));
-
-        // ── The body: pitched, banked, riding up and down on the legs ──
-        const centreYZ = vec2(BODY_CENTRE[1], BODY_CENTRE[2]);
-        const centreXY = vec2(BODY_CENTRE[0], BODY_CENTRE[1]);
-        p.assign(aboutZ(aboutX(p, centreYZ, aBody.x), centreXY, aBody.y));
-        nrm.assign(dirAboutZ(dirAboutX(nrm, aBody.x), aBody.y));
-        p.y.addAssign(aBody.z);
-
-        // ── Into the world: sized, turned to its heading, standing on the field ──
-        const c = cos(aPose.w);
-        const s = sin(aPose.w);
-        const q = p.mul(aBody.w);
-        const world = vec3(q.x.mul(c).add(q.z.mul(s)), q.y, q.z.mul(c).sub(q.x.mul(s)));
-        vN.assign(normalize(vec3(nrm.x.mul(c).add(nrm.z.mul(s)), nrm.y, nrm.z.mul(c).sub(nrm.x.mul(s)))));
-        const foot = aPose.xyz;
-        vInfo.assign(vec4(aTail.z, paint.y, paint.z, deckShadow(u, t.noise, foot.add(vec3(0.0, 1.5, 0.0))).mul(u.sunUp)));
-        return foot.add(world);
+        const pos = vec3(0.0).toVar();
+        const nor = vec3(0.0).toVar();
+        const ids = [boneIds.x, boneIds.y, boneIds.z, boneIds.w];
+        const ws = [boneWeights.x, boneWeights.y, boneWeights.z, boneWeights.w];
+        for (let k = 0; k < 4; k++) {
+            const row = base.add(int(floor(ids[k].mul(255.0).add(0.5))).mul(SKIN_ROWS)).toVar();
+            const q = bones.element(row).toVar();
+            const tr = bones.element(row.add(1)).toVar();
+            pos.addAssign(turn(q, p).mul(tr.w).add(tr.xyz).mul(ws[k]));
+            nor.addAssign(turn(q, nrm).mul(ws[k]));
+        }
+        // The hair's own motion: carried by the wind and the air the horse runs through, and
+        // rippling, the more the farther from its roots.
+        const free = marks.z.mul(marks.z);
+        const flow = coat.yzw;
+        const ph = place.w.mul(37.0);
+        const ripple = vec3(
+            sin(u.time.mul(6.3).add(p.y.mul(9.0)).add(p.z.mul(7.0)).add(ph)),
+            sin(u.time.mul(4.1).add(p.z.mul(11.0)).add(ph)).mul(0.5),
+            cos(u.time.mul(5.7).add(p.y.mul(8.0)).add(ph)),
+        ).mul(length(flow).add(0.35).mul(0.018));
+        pos.addAssign(flow.mul(0.12).add(ripple).mul(free));
+        vN.assign(normalize(nor));
+        vPaint.assign(paint);
+        vMarks.assign(marks);
+        vCoat.assign(vec2(coat.x, place.w));
+        vRest.assign(vec4(p, deckShadow(u, t.noise, place.xyz.add(vec3(0.0, 1.5, 0.0))).mul(u.sunUp)));
+        return pos;
     })();
+    const eyes = landmarks.eyes || [];
+    const nostrils = landmarks.nostrils || [];
+    const forward = vec3(...(landmarks.headForward || [0, -0.743, 0.669]));
     material.colorNode = Fn(() => {
         const P = positionWorld.toVar();
         const V = normalize(P.sub(u.eye)).toVar();
         const N = normalize(vN).toVar();
-        const k = vInfo.x;
-        const coat = vec3(...COATS[0]).toVar();
-        for (let i = 1; i < COATS.length; i++) coat.assign(select(k.greaterThan(i - 0.5), vec3(...COATS[i]), coat));
-        // The mane, tail and lower legs darker; the muzzle and belly paler.
-        const albedo = mix(coat, coat.mul(0.32).add(vec3(0.012, 0.009, 0.007)), vInfo.y)
-            .mul(mix(float(1.0), float(1.45), vInfo.z));
-        const sunlit = vInfo.w;
-        const ndl = clamp(dot(N, u.sunDir), 0.0, 1.0);
-        const sky = u.fill.mul(N.y.mul(0.4).add(0.6)).mul(1.4).add(u.bounce.mul(float(1.0).sub(N.y).mul(0.4)));
-        const col = albedo.mul(u.sun.mul(ndl).mul(sunlit).add(sky)).toVar();
+        const rest = vRest.xyz.toVar();
+        const k = floor(vCoat.x.add(0.5)).toVar();
+        const C = coatColours(k);
+        const hair = vPaint.x;
+        const points = vPaint.y;
+        const pale = vPaint.z;
+        const ao = vPaint.w;
+        // The coat: never one flat colour (broad shades of its own, read in the horse's rest frame so
+        // they ride with it), a grey's dapples, a shade darker along the top line; paler on the belly
+        // and the muzzle, its points and its hair.
+        const side = vec2(rest.z, rest.y).add(vCoat.y.mul(7.3));
+        const broad = texture(t.noise, side.mul(0.55)).level(1);
+        const body = C.body.mul(broad.r.mul(0.3).add(0.85)).mul(float(1.0).sub(smoothstep(1.02, 1.3, rest.y).mul(0.12)))
+            .toVar();
+        // A grey's dapples: soft paler rounds in a darker net over the barrel and the quarters.
+        const dapple = smoothstep(0.32, 0.72, texture(t.noise, side.mul(1.7).add(rest.x)).level(2).g)
+            .mul(smoothstep(0.55, 0.8, rest.y)).mul(float(1.0).sub(smoothstep(0.45, 0.75, rest.z)));
+        body.assign(select(k.equal(float(GREY)), body.mul(dapple.mul(0.32).add(0.84)), body));
+        const albedo = mix(body, body.mul(C.light), pale).toVar();
+        albedo.assign(mix(albedo, C.points, points));
+        albedo.assign(mix(albedo, C.hair, hair));
+        // A dun's dark stripe down the middle of its back, from the withers to the tail.
+        const stripe = float(1.0).sub(smoothstep(0.014, 0.03, abs(rest.x)))
+            .mul(smoothstep(1.17, 1.23, rest.y)).mul(smoothstep(-0.95, -0.82, rest.z))
+            .mul(float(1.0).sub(smoothstep(0.28, 0.42, rest.z)));
+        albedo.assign(mix(albedo, C.hair.mul(1.4), stripe.mul(select(k.equal(float(DUN)), float(0.85), float(0.0)))));
+        // The dark skin of the nostrils and lips, the inside of the ears, the horn of the hooves.
+        let nostril = float(0.0);
+        nostrils.forEach((n) => {
+            const d = length(rest.sub(vec3(...n)).mul(vec3(1.0, 1.3, 1.6)));
+            nostril = max(nostril, float(1.0).sub(smoothstep(0.009, 0.017, d)));
+        });
+        const skin = max(vMarks.y, nostril);
+        albedo.assign(mix(albedo, vec3(0.022, 0.018, 0.017), skin));
+        albedo.assign(albedo.mul(float(1.0).sub(vMarks.w.mul(0.65))));
+        albedo.assign(mix(albedo, C.hoof, vMarks.x));
+        // The eyes: a dark almond, longer along the face than across it.
+        let eye = float(0.0);
+        eyes.forEach((e) => {
+            const d = rest.sub(vec3(...e));
+            const along = dot(d, forward);
+            const r = length(d.sub(forward.mul(along)).add(forward.mul(along.mul(0.72))));
+            eye = max(eye, float(1.0).sub(smoothstep(0.015, 0.022, r)));
+        });
+        albedo.assign(mix(albedo, vec3(0.008, 0.006, 0.005), eye));
+
+        const sunlit = vRest.w;
+        // Hair scatters the light round the terminator: a softened Lambert.
+        const ndl = clamp(dot(N, u.sunDir).add(0.3).div(1.3), 0.0, 1.0);
+        const direct = u.sun.mul(ndl.mul(ndl)).mul(sunlit).mul(mix(float(1.0), ao, 0.5));
+        const sky = u.fill.mul(N.y.mul(0.4).add(0.6)).mul(1.4).add(u.bounce.mul(float(1.0).sub(N.y).mul(0.4)))
+            .mul(ao.mul(ao));
+        const col = albedo.mul(direct.add(sky)).toVar();
+        // A sheen on the coat (less on the hair), and the wet glint of an eye.
+        const H = normalize(u.sunDir.sub(V));
+        const nh = clamp(dot(N, H), 0.0, 1.0);
+        // (A dark coat shines the more: what little it gives back is mostly sheen.)
+        const gloss = float(0.05).add(float(0.06).mul(float(1.0).sub(smoothstep(0.05, 0.2, body.g))));
+        const sheen = pow(nh, float(18.0)).mul(gloss.mul(float(1.0).sub(hair.mul(0.6))).add(eye.mul(1.6)));
+        col.addAssign(u.sun.mul(sunlit).mul(sheen).mul(ao));
+        col.addAssign(u.fill.mul(eye).mul(pow(clamp(N.y.mul(0.5).add(0.5), 0.0, 1.0), float(4.0))).mul(0.6));
         // Backlit, a rim of light runs round the silhouette (the coat's hairs lit through).
         const ahead = clamp(dot(V, u.sunDir), 0.0, 1.0);
         const edge = float(1.0).sub(clamp(dot(N, V.negate()), 0.0, 1.0));
         const e2 = edge.mul(edge);
-        col.addAssign(u.sun.mul(sunlit).mul(e2.mul(e2)).mul(ahead.mul(ahead)).mul(albedo.add(0.05))
-            .mul(1.6));
+        // (The hair's own glow, a little warmer than the coat under it: dark coats shine too.)
+        col.addAssign(u.sun.mul(sunlit).mul(e2.mul(e2)).mul(ahead.mul(ahead)).mul(albedo.mul(0.6).add(hair.mul(0.03))
+            .add(0.06))
+            .mul(1.8));
         return vec4(aerial(u, P, col), 1.0);
     })();
     return material;
 }
 
-/**
- * The instance attributes the vertex stage reads, four floats each, interleaved in one buffer (a
- * pipeline may read at most eight vertex buffers: the mesh's four and this one).
- */
-export const HORSE_ATTRIBUTES = Object.freeze(['aPose', 'aBody', 'aHead', 'aFront', 'aHind', 'aFet', 'aTail']);
-export const HORSE_STRIDE = HORSE_ATTRIBUTES.length * 4;
+/** Ease the horses' poses on in steps no longer than this (seconds): the springs and the legs keep up. */
+const MOTION_STEP = 1 / 30;
 
-/** A rested hind leg (radians at the hip, the hock, the fetlock): cocked, on the toe of its hoof. */
-const RESTED = Object.freeze({ upper: 0.1, lower: -0.42, fetlock: 0.95 });
-
-/**
- * Write one horse's pose into the interleaved instance array at `i` (pure; exported for tests):
- * where it stands, its body, neck and head, its legs' joints and its tail.
- */
-export function writeHorse(h, i, array, ground = groundHeight) {
-    const o = i * HORSE_STRIDE;
-    const { legs } = h.gait;
-    // A horse at rest stands on three legs, one hind cocked (the side by its seed).
-    const restSide = h.seed < 0.5 ? 2 : 3;
-    const rest = h.rest || 0;
-    const leg = (k, key) => {
-        const value = legs[k][key];
-        return k === restSide ? value + (RESTED[key] - value) * rest : value;
-    };
-    array.set([h.x, ground(h.x, h.z) - 0.04, h.z, h.heading], o);
-    // Pitch: the gait's, plus a sit back when it brakes; bank into a turn; ride on the legs.
-    const pitch = h.gait.pitch - Math.max(0, -h.accel) * 0.012 + Math.max(0, h.accel) * 0.006;
-    const roll = Math.max(-0.2, Math.min(0.2, h.speed * h.yawRate * 0.045)) + (restSide === 2 ? 0.025 : -0.025) * rest;
-    array.set([pitch, roll, h.gait.bob - 0.02 * rest, h.scale], o + 4);
-    array.set([h.neck + h.gait.nod, h.neckYaw, h.head, h.ears], o + 8);
-    array.set([leg(0, 'upper'), leg(0, 'lower'), leg(1, 'upper'), leg(1, 'lower')], o + 12);
-    array.set([leg(2, 'upper'), leg(2, 'lower'), leg(3, 'upper'), leg(3, 'lower')], o + 16);
-    array.set([leg(0, 'fetlock'), leg(1, 'fetlock'), leg(2, 'fetlock'), leg(3, 'fetlock')], o + 20);
-    array.set([h.tailLift, h.tailSwish, h.coat, 0], o + 24);
-}
+/** Where the muzzle is in the rest pose when the asset does not say (horse frame, metres). */
+const MUZZLE = Object.freeze([0, 1.314, 1.364]);
 
 /**
  * The herd: `count` horses (tier.herd) from the authored horse (`horse` = assets.horse:
- * { geometry, pivots }). Returns null without a horse.
+ * { geometry, skeleton, landmarks }), `dust` records of what they kick up. Returns null without a
+ * horse.
  */
-export function createHerd(u, t, count, horse, { seed } = {}) {
-    if (!horse?.geometry || !horse.pivots) return null;
+export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } = {}) {
+    if (!horse?.geometry || !horse.skeleton) return null;
+    const rig = createRig(horse.skeleton);
+    const foalRig = shapeRig(rig, FOAL_SHAPE);
     const sim = createHerdSim({ count, seed });
     const n = sim.horses.length;
+    const landmarks = horse.landmarks || {};
+    const motions = sim.horses.map((h) => createHorseMotion(h.foal ? foalRig : rig, {
+        seed: h.seed, lead: h.seed < 0.5 ? 1 : -1, landmarks,
+    }));
     const instanced = new THREE.InstancedBufferGeometry();
-    ['position', 'normal', 'color', '_rig'].forEach((name) => {
-        if (horse.geometry.attributes[name]) instanced.setAttribute(name, horse.geometry.attributes[name]);
+    ['position', 'normal', 'color', '_mask'].forEach((name) => {
+        instanced.setAttribute(name, horse.geometry.attributes[name]);
     });
-    if (!instanced.attributes._rig) {
-        // An older horse without skin weights: its parts turn whole (every weight 1 on the part).
-        const rig = new Float32Array(horse.geometry.attributes.position.count * 4).fill(1);
-        instanced.setAttribute('_rig', new THREE.BufferAttribute(rig, 4));
-    }
+    // The bone indices are read as normalised bytes (one format on both backends) and scaled back.
+    ['_bones', '_weights'].forEach((name) => {
+        const a = horse.geometry.attributes[name];
+        instanced.setAttribute(name, new THREE.BufferAttribute(a.array, a.itemSize, true));
+    });
     instanced.setIndex(horse.geometry.index);
-    const array = new Float32Array(Math.max(1, n) * HORSE_STRIDE);
-    const buffer = new THREE.InstancedInterleavedBuffer(array, HORSE_STRIDE, 1);
-    buffer.setUsage(THREE.DynamicDrawUsage);
-    HORSE_ATTRIBUTES.forEach((name, k) => {
-        instanced.setAttribute(name, new THREE.InterleavedBufferAttribute(buffer, 4, k * 4));
-    });
     instanced.instanceCount = n;
-    const material = herdMaterial(u, t, horse.pivots);
+    const rows = Array.from({ length: Math.max(1, n) * rig.count * SKIN_ROWS }, () => ({
+        x: 0, y: 0, z: 0, w: 1,
+    }));
+    const infoRows = Array.from({ length: Math.max(1, n) * 2 }, () => ({
+        x: 0, y: 0, z: 0, w: 0,
+    }));
+    const bones = uniformArray(rows, 'vec4');
+    const info = uniformArray(infoRows, 'vec4');
+    const material = herdMaterial(u, t, rig, landmarks, bones, info);
     const mesh = new THREE.Mesh(instanced, material);
     mesh.name = 'GrainfieldsHerd';
     mesh.frustumCulled = false;
     mesh.renderOrder = 2;
+    const wind = { windX: 0, windZ: 0 };
+    let clock = 0;
+    const dust = createHerdDust(u, t, dustCount);
+    const dustSeed = ((seed ?? 0x40e5) ^ 0xd0571) >>> 0;
+    let rand = mulberry32(dustSeed);
+    const muzzle = landmarks.muzzle || MUZZLE;
+    const spot = [0, 0, 0];
+
+    /** What each horse kicked up since the last step: dust from its hooves, chaff from the ears. */
+    const stir = (dt) => {
+        sim.horses.forEach((h, i) => {
+            const m = motions[i];
+            const s = m.place.scale;
+            const speed = h.speed || 0;
+            const fx = Math.sin(h.heading);
+            const fz = Math.cos(h.heading);
+            m.events.forEach((e) => {
+                if (e.kind === 'strike' && speed > 2) {
+                    // A puff of the field's dry soil up through the barley; two at a hard gallop.
+                    const hard = smooth(2, 10, speed);
+                    const puffs = rand() < hard ? 2 : 1;
+                    for (let k = 0; k < puffs; k++) {
+                        const aside = (rand() - 0.5) * 0.8;
+                        dust.kick({
+                            x: e.x + (rand() - 0.5) * 0.3,
+                            y: e.y + 0.35 + rand() * 0.3,
+                            z: e.z + (rand() - 0.5) * 0.3,
+                            vx: -fx * speed * 0.18 + fz * aside,
+                            vy: 0.4 + rand() * (0.6 + hard),
+                            vz: -fz * speed * 0.18 - fx * aside,
+                            life: 2.2 + rand() * 1.6,
+                            size: 0.16 * s,
+                            grow: (0.5 + 0.7 * hard) * s,
+                            kind: DUST,
+                            time: e.time,
+                            seed: rand(),
+                        });
+                    }
+                } else if (e.kind === 'tear') {
+                    // Awns and husks scattered from the mouthful torn away.
+                    boneToWorld(m.rig, m.pose, rig.index.head, muzzle, s, spot);
+                    for (let k = 0; k < 3; k++) {
+                        dust.kick({
+                            x: spot[0],
+                            y: spot[1],
+                            z: spot[2],
+                            vx: (rand() - 0.5) * 0.7,
+                            vy: 0.2 + rand() * 0.5,
+                            vz: (rand() - 0.5) * 0.7,
+                            life: 1.4 + rand(),
+                            size: 0.011,
+                            kind: CHAFF,
+                            time: e.time,
+                            seed: rand(),
+                        });
+                    }
+                }
+            });
+            m.events.length = 0;
+            // Breasting the ripe ears knocks husks loose, a shower of them at a gallop.
+            let throws = (2 * smooth(0.8, 3.5, speed) + 12 * smooth(4.5, 11, speed)) * s * dt;
+            while (throws > 0) {
+                if (rand() < Math.min(1, throws)) {
+                    const aside = (rand() - 0.5) * 2;
+                    dust.kick({
+                        x: m.place.x + fx * 0.75 * s + fz * aside * 0.15,
+                        y: m.place.y - 0.05 * s + rand() * 0.15,
+                        z: m.place.z + fz * 0.75 * s - fx * aside * 0.15,
+                        vx: fx * speed * 0.45 + fz * aside,
+                        vy: 0.5 + rand() * 0.9,
+                        vz: fz * speed * 0.45 - fx * aside,
+                        life: 1.6 + rand(),
+                        size: 0.012,
+                        kind: CHAFF,
+                        time: clock,
+                        seed: rand(),
+                    });
+                }
+                throws -= 1;
+            }
+        });
+        dust.update();
+    };
+
+    /** How hard each stage of browsing the ears pulls them toward the muzzle (chewing lets them go). */
+    const PULL = Object.freeze({
+        reach: 0.35, bite: 0.75, tear: 1, chew: 0,
+    });
+    const pulls = motions.map(() => 0);
+    /** The muzzles at work in the barley, for the ears to answer (u.muzzles, the live ones first). */
+    const writeMuzzles = (dt) => {
+        let live = 0;
+        let cx = 0;
+        let cz = 0;
+        sim.horses.forEach((h, i) => {
+            const m = motions[i];
+            const browsing = (h.business === 'graze' || h.business === 'step') && (h.speed || 0) < 0.5 && !h.verge
+                && (h.alert || 0) < 0.3;
+            const want = browsing ? PULL[m.eat.stage] ?? 0 : 0;
+            const rate = want > pulls[i] ? 10 : 6;
+            pulls[i] += (want - pulls[i]) * (1 - Math.exp(-rate * dt));
+            if (pulls[i] < 0.02 || live >= u.tables.muzzles.length) return;
+            boneToWorld(m.rig, m.pose, rig.index.head, muzzle, m.place.scale, spot);
+            u.tables.muzzles[live].set(spot[0], spot[1], spot[2], pulls[i]);
+            cx += spot[0];
+            cz += spot[2];
+            live += 1;
+        });
+        u.muzzleCount.value = live;
+        for (let k = live; k < u.tables.muzzles.length; k++) u.tables.muzzles[k].set(0, 0, 0, 0);
+        if (!live) {
+            u.muzzleBounds.value.set(0, 0, 0);
+            return;
+        }
+        cx /= live;
+        cz /= live;
+        let reach = 0;
+        for (let k = 0; k < live; k++) {
+            const row = u.tables.muzzles[k];
+            reach = Math.max(reach, Math.hypot(row.x - cx, row.z - cz));
+        }
+        u.muzzleBounds.value.set(cx, cz, reach + 0.8);
+    };
 
     const write = () => {
-        sim.horses.forEach((h, i) => writeHorse(h, i, array));
-        buffer.needsUpdate = true;
+        sim.horses.forEach((h, i) => {
+            const m = motions[i];
+            writeSkinRows(m.rig, m.pose, m.place.scale, rows, i * rig.count * SKIN_ROWS);
+            const a = infoRows[i * 2];
+            a.x = h.coat;
+            a.y = m.flow[0];
+            a.z = m.flow[1];
+            a.w = m.flow[2];
+            const b = infoRows[i * 2 + 1];
+            b.x = h.x;
+            b.y = groundHeight(h.x, h.z);
+            b.z = h.z;
+            b.w = h.seed;
+        });
     };
+    /**
+     * Every horse's motion on by `dt` (in short steps); one moved farther than it could walk (a
+     * capture's lineup, a seek) starts over where it stands.
+     */
+    const move = (time, dt) => {
+        const steps = Math.max(1, Math.ceil(dt / MOTION_STEP - 1e-6));
+        const h = dt / steps;
+        for (let s = 0; s < steps; s++) {
+            const at = time - dt + h * (s + 1);
+            sim.horses.forEach((one, i) => {
+                const m = motions[i];
+                const jump = Math.hypot(one.x - m.place.x, one.z - m.place.z);
+                if (m.started && jump > 2 + one.speed * h * 2) m.started = false;
+                stepHorseMotion(m, one, groundHeight, h, at, wind);
+            });
+            clock = at;
+            stir(h);
+        }
+        clock = time;
+    };
+    move(0, 0);
     write();
 
     return {
         mesh,
-        meshes: [mesh],
+        meshes: [mesh, dust.mesh],
         sim,
+        dust,
+        rig,
+        motions,
         get horses() { return sim.horses; },
         /** A chain breaks the storm: the horses run. */
         run(time) { sim.run(time); },
@@ -295,18 +491,44 @@ export function createHerd(u, t, count, horse, { seed } = {}) {
         setView(view) { sim.setView(view); },
         /** Reduced motion: walks and trots only. */
         setCalm(on) { sim.setCalm(on); },
-        /** A seek: the band's life replayed up to `time`. */
+        /** A seek: the band's life replayed up to `time`, its last seconds in full steps. */
         reset(time = 0) {
-            sim.reset(time);
+            const warm = Math.min(time, 4);
+            sim.reset(time - warm);
+            dust.reset();
+            rand = mulberry32(dustSeed);
+            pulls.fill(0);
+            motions.forEach((m) => {
+                m.started = false;
+                m.events.length = 0;
+            });
+            move(time - warm, 0);
+            for (let at = time - warm; at < time - 1e-6;) {
+                const step = Math.min(MOTION_STEP, time - at);
+                at += step;
+                sim.update(at, step);
+                move(at, step);
+                writeMuzzles(step);
+            }
             write();
         },
-        update(time, dt) {
+        update(time, dt, world) {
+            const w = world?.u;
+            if (w) {
+                const strength = w.windStrength.value;
+                wind.windX = w.windDir.value.x * strength * 3;
+                wind.windZ = w.windDir.value.y * strength * 3;
+            }
             sim.update(time, dt);
+            const step = Math.max(0, Math.min(0.25, dt || time - clock));
+            move(time, step);
             write();
+            writeMuzzles(step);
         },
         dispose() {
             instanced.dispose();
             material.dispose();
+            dust.dispose();
         },
     };
 }

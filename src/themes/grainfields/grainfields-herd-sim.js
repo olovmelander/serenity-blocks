@@ -12,8 +12,8 @@
  * few lengths behind and a little to one side, so the band strings out as she sets off, flows
  * round her turns and closes up when she stops. Each horse steers like an animal with a mass:
  * it accelerates, brakes and turns as hard as a horse can (the faster, the wider the turn), keeps
- * its own space from the others and goes round the shelterbelts. Its legs are its gait's
- * (grainfields-gait.js), from its speed; its neck, head, ears and tail are its business's.
+ * its own space from the others and goes round the shelterbelts. How it moves its legs, back,
+ * neck, head, ears and tail for its speed and its business is grainfields-horse-motion.js's.
  *
  * Where it is visible comes from the view (bearings, degrees right of the view axis: the frame's
  * edges and the stretches the board covers), set by the world: new grazing grounds are picked in
@@ -23,7 +23,6 @@ import {
     DEG, EYE, PLACES, TAU, clamp, mulberry32, pointAt, smooth,
 } from './grainfields-core.js';
 import { BELTS, PATH_POINTS } from './grainfields-plan.js';
-import { createGaitState, stepGait } from './grainfields-gait.js';
 
 /** The band's numbers (metres, m/s, seconds). */
 export const HERD = Object.freeze({
@@ -314,25 +313,51 @@ export function planMove(kind, from, rng, view = DEFAULT_VIEW) {
 /** Coats (indices into the herd's coat table), spread so neighbours differ. */
 const COAT_ORDER = [0, 2, 1, 3, 4, 0, 1, 2, 3];
 
-/** Each horse's quiet business while the band grazes: how long it lasts (s), how often it comes up. */
+/**
+ * Each horse's quiet business while the band grazes: how long it lasts (s) and how often it comes
+ * up, for a grown horse (`weight`) and a foal (`foal`). Grazing creeps on a step at a time; a step
+ * walks to the next mouthful; a horse looks up, dozes on a cocked hind, swats at the flies with its
+ * head and tail, shakes its head and neck, stamps a fore at a fly, yawns. A foal nurses at its
+ * mother's flank and now and then frolics round her, bucking as it sets off.
+ */
 const BUSINESS = Object.freeze({
-    graze: Object.freeze({ time: [5, 16], weight: 6 }),
-    step: Object.freeze({ time: [1.5, 3.5], weight: 3 }),
-    look: Object.freeze({ time: [3, 8], weight: 2 }),
-    rest: Object.freeze({ time: [10, 24], weight: 1 }),
-    swat: Object.freeze({ time: [1.2, 2.4], weight: 1 }),
+    graze: Object.freeze({ time: [5, 16], weight: 6, foal: 3 }),
+    step: Object.freeze({ time: [1.5, 3.5], weight: 3, foal: 2 }),
+    look: Object.freeze({ time: [3, 8], weight: 2, foal: 1.5 }),
+    rest: Object.freeze({ time: [10, 24], weight: 1, foal: 0 }),
+    swat: Object.freeze({ time: [1.2, 2.4], weight: 1, foal: 0.4 }),
+    shake: Object.freeze({ time: [1.2, 1.8], weight: 0.5, foal: 0.3 }),
+    stamp: Object.freeze({ time: [0.9, 1.4], weight: 0.6, foal: 0.2 }),
+    yawn: Object.freeze({ time: [2.2, 3.2], weight: 0.25, foal: 0.1 }),
+    nurse: Object.freeze({ time: [6, 14], weight: 0, foal: 3 }),
+    frolic: Object.freeze({ time: [3.5, 7], weight: 0, foal: 1.2 }),
 });
 const BUSINESS_KEYS = Object.keys(BUSINESS);
 const BUSINESS_TOTAL = BUSINESS_KEYS.reduce((sum, key) => sum + BUSINESS[key].weight, 0);
+const FOAL_TOTAL = BUSINESS_KEYS.reduce((sum, key) => sum + BUSINESS[key].foal, 0);
 
-function pickBusiness(rng) {
-    let r = rng() * BUSINESS_TOTAL;
+function pickBusiness(rng, foal = false) {
+    const field = foal ? 'foal' : 'weight';
+    let r = rng() * (foal ? FOAL_TOTAL : BUSINESS_TOTAL);
     for (const key of BUSINESS_KEYS) {
-        r -= BUSINESS[key].weight;
-        if (r <= 0) return key;
+        r -= BUSINESS[key][field];
+        if (r <= 0 && BUSINESS[key][field] > 0) return key;
     }
     return 'graze';
 }
+
+/** How fast a grazing horse creeps on (m/s), and how a frolicking foal circles (radius m, speed m/s). */
+const CREEP = 0.09;
+/**
+ * Nursing, in the mother's frame (across toward the foal's side, along forward): her udder (her
+ * scale; up over the ground), between her hind legs just in front of her stifles; how far out the
+ * foal's neck rises (her scale), clear of her barrel; the neck's reach from there to the udder with
+ * the head down at it (the foal's scale); how far its quarters turn out (radians).
+ */
+const NURSE = Object.freeze({
+    udder: Object.freeze({ across: 0.04, along: -0.42, up: 0.62 }), root: 0.44, reach: 1.33, splay: 0.25,
+});
+const FROLIC = Object.freeze({ radius: [3.5, 6], speed: [3.4, 5.2] });
 
 const range = (rng, [lo, hi]) => lo + (hi - lo) * rng();
 /** The band's last one or two horses are foals: theirs are the third and fourth mares. */
@@ -410,22 +435,20 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                 rank: i,
                 side: i === 0 ? 0 : ((i % 2) * 2 - 1) * (0.6 + rng() * 0.8),
                 seed: rng(),
-                gait: createGaitState(rng(), rng() < 0.5 ? 1 : -1),
-                // The quiet business, its spot and its clock.
+                // The quiet business, its spot and its clock; whether it grazes the verge's grass.
                 business: 'graze',
+                businessSince: 0,
                 businessUntil: rng() * 8,
                 spotX: x,
                 spotZ: z,
+                // Grazing's slow line, and the teat a nursing foal reaches for (world x, height, z).
+                creeping: false,
+                grazeAim: heading,
+                teat: null,
+                atTeat: false,
                 lookYaw: 0,
-                // The pose that eases toward its goals.
-                neck: 0.95,
-                head: -0.25,
-                neckYaw: 0,
-                ears: 0,
-                tailLift: 0,
-                tailSwish: 0,
-                swishPhase: rng() * TAU,
-                rest: 0,
+                verge: false,
+                // Startled (1), easing back to calm (0).
                 alert: 0,
             };
         });
@@ -455,11 +478,22 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         };
         const move = planMove(kind, from, rng, stage);
         band.plan = {
-            name: move.name, route: makeRoute(move.points), pace: move.pace, settle: move.settle, s: 0, at: time,
+            name: move.name,
+            route: makeRoute(move.points),
+            pace: move.pace,
+            settle: move.settle,
+            s: 0,
+            at: time,
+            verge: Boolean(move.points[move.points.length - 1]?.verge),
         };
         band.trail = [{ x: lead.x, z: lead.z, s: 0 }];
         band.trailLength = 0;
-        horses.forEach((h) => { h.business = 'travel'; });
+        horses.forEach((h) => {
+            h.business = 'travel';
+            h.creeping = false;
+            h.teat = null;
+            h.atTeat = false;
+        });
     };
 
     /** What the band does next when it has grazed long enough. */
@@ -475,6 +509,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
     const arrive = (time) => {
         const c = centreOf();
         band.centre = c;
+        const verge = Boolean(band.plan?.verge);
         band.drift = { x: (rng() - 0.5) * 0.12, z: (rng() - 0.5) * 0.12 };
         band.plan = null;
         band.grazeUntil = time + range(rng, HERD.grazeTime);
@@ -485,6 +520,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
             const r = Math.sqrt(rng()) * HERD.grazeRadius * (h.foal ? 0.3 : 1);
             h.spotX = (h.foal ? h.x : c.x) + Math.cos(a) * r;
             h.spotZ = (h.foal ? h.z : c.z) + Math.sin(a) * r * 0.7;
+            h.verge = verge;
         });
     };
 
@@ -508,7 +544,9 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
             const oz = h.z - o.z;
             const d = Math.hypot(ox, oz);
             const kin = o.mother === h.i || h.mother === o.i;
-            const room = HERD.personal * roomFor(kin, h.foal || o.foal);
+            // (A foal at the teat comes right in under its mother.)
+            const suckling = kin && (h.business === 'nurse' || o.business === 'nurse');
+            const room = HERD.personal * (suckling ? 0.2 : roomFor(kin, h.foal || o.foal));
             if (d < room && d > 1e-4) {
                 const press = (room - d) / room;
                 dx += (ox / d) * press * 2.5;
@@ -607,9 +645,18 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         band.centre.z += band.drift.z * dt;
         horses.forEach((h) => {
             if (time >= h.businessUntil) {
-                h.business = pickBusiness(rng);
-                if (h.foal && h.business === 'rest') h.business = 'graze';
+                h.business = pickBusiness(rng, h.foal);
+                // (A foal only nurses or frolics round a mother it has.)
+                if (h.mother < 0 && (h.business === 'nurse' || h.business === 'frolic')) h.business = 'graze';
+                // (Calm: no foal careering about.)
+                if (calm && h.business === 'frolic') h.business = 'graze';
+                h.businessSince = time;
                 h.businessUntil = time + range(rng, BUSINESS[h.business].time);
+                if (h.business === 'frolic') {
+                    h.frolicRadius = range(rng, FROLIC.radius);
+                    h.frolicSpeed = range(rng, FROLIC.speed);
+                    h.frolicTurn = rng() < 0.5 ? -1 : 1;
+                }
                 if (h.business === 'step') {
                     // The next mouthful a few metres on, kept round the band's ground (a foal round its mother).
                     const anchor = h.mother >= 0 ? horses[h.mother] : band.centre;
@@ -630,76 +677,94 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                 }
                 if (h.business === 'look') h.lookYaw = (rng() - 0.5) * 1.6;
             }
+            const mother = h.mother >= 0 ? horses[h.mother] : null;
+            const { creeping } = h;
+            h.creeping = false;
+            h.teat = null;
+            if (mother && h.business === 'nurse') {
+                // Alongside its mother the other way round, at her flank, its quarters turned a little
+                // out, its head in under her belly to the udder between her hind legs.
+                const fx = Math.sin(mother.heading);
+                const fz = Math.cos(mother.heading);
+                const across = (h.x - mother.x) * fz - (h.z - mother.z) * fx;
+                const side = across >= 0 ? 1 : -1;
+                const ms = mother.scale;
+                const at = (a, l) => [mother.x + fz * side * a + fx * l, mother.z - fx * side * a + fz * l];
+                // Its neck's root beside her barrel, the neck's reach short of her udder; its middle
+                // behind that, the way it faces (her tail, its head turned in a little).
+                const out = NURSE.root * ms;
+                const inward = out - NURSE.udder.across * ms;
+                const reach = Math.max(inward, NURSE.reach * h.scale);
+                const rootAlong = NURSE.udder.along * ms + Math.sqrt(reach * reach - inward * inward);
+                const back = 0.48 * h.scale;
+                const spotAlong = rootAlong + Math.cos(NURSE.splay) * back;
+                const [sx, sz] = at(out + Math.sin(NURSE.splay) * back, spotAlong);
+                const gap = Math.hypot(sx - h.x, sz - h.z);
+                // (Right up to the spot, then it turns about there.)
+                if (gap < 0.06) h.atTeat = true;
+                else if (gap > 0.35) h.atTeat = false;
+                if (!h.atTeat) {
+                    // (From behind her or ahead of her, it comes round her side, not through her.)
+                    const along = (h.x - mother.x) * fx + (h.z - mother.z) * fz;
+                    const round = across * side < 0.75 * ms && Math.abs(along - spotAlong) > 0.6 * ms;
+                    const [tx, tz] = round ? at(1.3 * ms, spotAlong) : [sx, sz];
+                    steer(h, tx, tz, clamp(gap * 1.4, 0.12, HERD.paces.walk), dt);
+                } else {
+                    const [ax, az] = at(out - Math.sin(NURSE.splay) * 5, rootAlong - Math.cos(NURSE.splay) * 5);
+                    steer(h, ax, az, 0, dt);
+                }
+                h.nursingSide = side;
+                // Turned about beside her, it reaches in for the teat.
+                const facing = mother.heading + Math.PI + side * NURSE.splay;
+                if (h.atTeat && Math.abs(wrapAngle(h.heading - facing)) < 0.3) {
+                    const [ux, uz] = at(NURSE.udder.across * ms, NURSE.udder.along * ms);
+                    h.teat = [ux, NURSE.udder.up * ms, uz];
+                }
+                // She stands for it, and looks round at it.
+                if (gap < 1.5 && mother.business !== 'rest') {
+                    mother.business = 'graze';
+                    mother.businessUntil = Math.max(mother.businessUntil, h.businessUntil);
+                    mother.nursed = time;
+                    mother.nursingSide = side;
+                }
+                return;
+            }
+            if (mother && h.business === 'frolic') {
+                // A loop round its mother at a trot or a canter.
+                const a = Math.atan2(h.x - mother.x, h.z - mother.z) + h.frolicTurn * 0.7;
+                const rx = mother.x + Math.sin(a) * h.frolicRadius;
+                const rz = mother.z + Math.cos(a) * h.frolicRadius;
+                steer(h, rx, rz, h.frolicSpeed, dt);
+                return;
+            }
             const toX = h.spotX - h.x;
             const toZ = h.spotZ - h.z;
             const far = Math.hypot(toX, toZ);
-            const walking = h.business === 'step' || far > 3.5;
+            // (A mother with a foal at the teat stands where she is.)
+            const suckled = h.nursed > time - 0.5;
+            const walking = !suckled && (h.business === 'step' || far > 3.5);
             // A walk to the spot; the last half-metre at a creep.
             const goal = walking ? clamp(far * 0.8, 0, far > 8 ? HERD.paces.trot : HERD.paces.walk * 0.9) : 0;
             if (walking && far > 0.3) steer(h, h.spotX, h.spotZ, goal, dt);
-            else steer(h, h.x + Math.sin(h.heading) * 5, h.z + Math.cos(h.heading) * 5, 0, dt);
+            else if (h.business === 'graze' && !suckled) {
+                // Grazing creeps on along a line that wanders a little to one side and back.
+                // (Nudged off it by another, it grazes on the way it now faces.)
+                const sway = 0.5 * Math.sin(time * 0.17 + h.seed * 13);
+                const off = Math.abs(wrapAngle(h.heading - h.grazeAim - sway));
+                if (!creeping || off > 0.6) h.grazeAim = h.heading - sway;
+                h.creeping = true;
+                const wander = h.grazeAim + sway;
+                const creep = CREEP * (0.6 + 0.4 * Math.sin(time * 0.31 + h.seed * 7));
+                steer(h, h.x + Math.sin(wander) * 5, h.z + Math.cos(wander) * 5, creep, dt);
+            } else steer(h, h.x + Math.sin(h.heading) * 5, h.z + Math.cos(h.heading) * 5, 0, dt);
             if (!walking && h.business === 'step') h.businessUntil = Math.min(h.businessUntil, time + 0.5);
         });
         if (time >= band.grazeUntil) start(nextMove(), time);
     };
 
-    // ── The pose: neck, head, ears, tail, from the business and the gait ──
-    const pose = (h, time, dt) => {
-        stepGait(h.gait, h.speed, dt);
-        const { g } = h.gait;
-        const moving = smooth(0.25, 1.0, g);
-        const fast = smooth(2.5, 3.8, g);
-        let neckGoal = 0.25;
-        let headGoal = 0.1;
-        let yawGoal = clamp(h.yawRate * 0.35, -0.5, 0.5);
-        let earGoal = -0.15;
-        let restGoal = 0;
-        if (h.business !== 'travel' && h.speed < 0.5) {
-            if (h.business === 'graze' || h.business === 'step') {
-                // Head down in the barley, the muzzle working.
-                neckGoal = 1.05 + 0.06 * Math.sin(time * 0.7 + h.seed * 9);
-                headGoal = -0.3 + 0.05 * Math.sin(time * 8.5 + h.seed * 30);
-                earGoal = 0.25;
-            } else if (h.business === 'look') {
-                neckGoal = -0.28;
-                headGoal = 0.05;
-                yawGoal = h.lookYaw;
-                earGoal = -0.3;
-            } else if (h.business === 'rest') {
-                neckGoal = 0.45;
-                headGoal = 0.25;
-                earGoal = 0.35;
-                restGoal = 1;
-            } else if (h.business === 'swat') {
-                // A turn of the head back toward the flank.
-                neckGoal = 0.35;
-                headGoal = 0.15;
-                yawGoal = (h.seed < 0.5 ? 1 : -1) * 0.75;
-            }
-        } else {
-            // On the move: the neck a little lower and longer the faster, the nose out at the gallop.
-            neckGoal = 0.22 + 0.18 * fast;
-            headGoal = 0.12 - 0.4 * fast;
-            earGoal = -0.25;
-        }
-        // Startled: heads up, ears forward.
-        neckGoal += (Math.min(neckGoal, -0.35) - neckGoal) * h.alert;
-        const k = 2.2 + 3 * moving;
-        h.neck = follow(h.neck, neckGoal, k, dt);
-        h.head = follow(h.head, headGoal, k, dt);
-        h.neckYaw = follow(h.neckYaw, yawGoal, 2.4, dt);
-        h.rest = follow(h.rest, restGoal * (1 - moving), 1.5, dt);
+    /** Startled horses calm down. */
+    const calmDown = (h, dt) => {
         h.alert = follow(h.alert, 0, 0.35, dt);
-        // An ear flick now and then.
-        const flick = Math.max(0, Math.sin(time * 0.9 + h.seed * 50) - 0.93) * 6;
-        h.ears = follow(h.ears, earGoal + flick, 6, dt);
-        // The tail: carried with the gait, swished at the flies when standing (in bursts).
-        const burst = smooth(0.2, 0.7, Math.sin(time * 0.23 + h.seed * 17)) + (h.business === 'swat' ? 1.5 : 0);
-        h.swishPhase += dt * (3.2 + 2.5 * burst);
-        const swishGoal = (1 - moving) * Math.sin(h.swishPhase) * 0.45 * Math.min(1, burst)
-            + fast * 0.08 * Math.sin(time * 9 + h.seed * 7);
-        h.tailSwish = follow(h.tailSwish, swishGoal, 10, dt);
-        h.tailLift = follow(h.tailLift, h.gait.carry, 3, dt);
     };
 
     /** The gaits side by side on the spot (captures). */
@@ -714,6 +779,8 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
             h.z = EYE.z - lineup.distance - (front ? 0 : 7);
             h.heading = front || k % 2 ? Math.PI / 2 : -Math.PI / 2;
             h.lineupSpeed = front ? speeds[k] : 0;
+            // On the spot: the ground runs back under its hooves (grainfields-horse-motion.js).
+            h.treadmill = true;
             h.business = front ? frontBusiness(k) : quiet[k % quiet.length];
             h.businessUntil = Infinity;
             h.lookYaw = 0;
@@ -752,6 +819,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         lineup(on, distance = 16) {
             lineup = on ? { distance } : null;
             if (lineup) arrange();
+            else horses.forEach((h) => { h.treadmill = false; });
         },
         /** Captures: moves the band makes at set times ([{ at, kind }]), replayed by a seek too. */
         setScript(moves) {
@@ -766,9 +834,11 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         reset(time = 0) {
             place();
             const until = Math.min(900, Math.max(0, time));
-            // A coarser step than a frame's: the replay only has to land the band somewhere true.
-            const step = 1 / 10;
-            for (let t = 0; t < until; t += step) sim.update(t, step, step);
+            // In the live step (1/30 s), so a seek lands the band exactly where a run that long would
+            // have it, each horse at the same business (captures film a moment by its time).
+            const step = 1 / 30;
+            const steps = Math.round(until / step);
+            for (let k = 1; k <= steps; k++) sim.update(k * step, step);
             band.time = time;
             if (lineup) arrange();
         },
@@ -799,7 +869,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                     });
                 } else if (band.plan) travel(time, h);
                 else graze(time, h);
-                horses.forEach((horse) => pose(horse, time, h));
+                horses.forEach((horse) => calmDown(horse, h));
             }
         },
     };

@@ -68,89 +68,18 @@
     },
     {
       "file": "grainfields-horse.glb",
-      "bytes": 82048,
-      "sha256": "25b34d8cff4491390ebeb1b7e7784d3cc715a7cc929ec82002509f46acc3b305",
+      "bytes": 184592,
+      "sha256": "b5897dfe07016310d77f7f29880d541417b1f73a30bb3f6d697d42927fd2e7c3",
       "kind": "horse",
       "name": "grainfields-horse",
       "breed": "Hokkaido native horse (Dosanko)",
-      "triangles": 4972,
-      "vertices": 2488,
-      "parts": {
-        "body": 0,
-        "neck": 1,
-        "frontLeft": 2,
-        "frontRight": 3,
-        "hindLeft": 4,
-        "hindRight": 5,
-        "tail": 6
-      },
-      "partScale": 8,
-      "pivots": {
-        "neck": [
-          0.0,
-          1.195,
-          0.545
-        ],
-        "frontLeft": [
-          0.14,
-          1.0,
-          0.48
-        ],
-        "frontRight": [
-          -0.14,
-          1.0,
-          0.48
-        ],
-        "hindLeft": [
-          0.15,
-          1.0,
-          -0.5
-        ],
-        "hindRight": [
-          -0.15,
-          1.0,
-          -0.5
-        ],
-        "tail": [
-          0.0,
-          1.24,
-          -0.72
-        ],
-        "knee": [
-          0.14,
-          0.415,
-          0.445
-        ],
-        "hock": [
-          0.15,
-          0.49,
-          -0.698
-        ],
-        "frontFetlock": [
-          0.14,
-          0.118,
-          0.442
-        ],
-        "hindFetlock": [
-          0.15,
-          0.118,
-          -0.698
-        ],
-        "poll": [
-          0.0,
-          1.745,
-          0.97
-        ],
-        "ear": [
-          0.067,
-          1.822,
-          1.064
-        ]
-      },
-      "withersHeight": 1.3553,
-      "bodyLength": 1.6838,
-      "length": 2.47,
-      "height": 1.9707
+      "triangles": 8982,
+      "vertices": 4493,
+      "bones": 38,
+      "withersHeight": 1.3951,
+      "bodyLength": 1.5929,
+      "length": 2.5353,
+      "height": 1.9739
     },
     {
       "file": "grainfields-impostors.png",

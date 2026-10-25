@@ -70,7 +70,8 @@ import {
     cropColour, gustAt, plotOf, pulsesAt, trailsAt,
 } from './grainfields-land.js';
 import { EYE, PLACES } from './grainfields-core.js';
-import { trampleAt } from './grainfields-trample.js';
+import { grazingPullAt, trampleAt } from './grainfields-trample.js';
+import { herdShadeAt } from './grainfields-herd-shadow.js';
 
 const STEM = 0;
 const EAR = 1;
@@ -231,7 +232,9 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const stray = h3.sub(0.5).mul(0.8);
         const windD = normalize(vec2(u.windDir.x.add(stray), u.windDir.y.sub(stray.mul(0.6))));
         // A pulse pushes the stalks its own way (out from a hard drop, round a T-spin's whirl).
+        // A grazing horse's lips gather the ears they are working at.
         const pushed = windD.mul(bendWind).add(pulse.push.mul(1.7)).add(trail.push.mul(1.3)).add(tramp.push.mul(1.5))
+            .add(grazingPullAt(u, iA.xz).mul(1.3))
             .toVar();
         const bend = clamp(length(pushed), 0.0, 1.35).toVar();
         const D = pushed.div(max(length(pushed), 1e-4)).toVar();
@@ -275,7 +278,9 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
 
         // ── What is constant over the clump, or linear along the plant: lit here, once ──
         // The sun reaches the clump through the deck's gaps (at the root).
-        const sunlit = deckShadow(u, t.noise, vec3(iA.x, iA.y.add(0.8), iA.z)).mul(u.sunUp).toVar();
+        // (And off it, the herd's shadows laid over the ears.)
+        const sunlit = deckShadow(u, t.noise, vec3(iA.x, iA.y.add(0.8), iA.z)).mul(u.sunUp).mul(herdShadeAt(u, t, iA.xz))
+            .toVar();
         // The crop's colour, drifting in patches: deeper amber where the field ripened first,
         // paler toward straw, a breath of green in the late corners.
         const patch = texture(t.noise, iA.xz.div(230.0)).level(1);
