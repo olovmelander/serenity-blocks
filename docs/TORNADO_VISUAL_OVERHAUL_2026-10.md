@@ -88,6 +88,7 @@ scene as authored; a unit test holds `params.ts` and the world's reference value
 Every tier keeps the whole picture and every event (`tornado-quality.js`). Lower tiers drop the
 deck's winding shear and relief, the funnel's veil and fine streaks, bloom and MSAA, and draw
 fewer stalks, debris and sparks (wheat: 5,000 at Minimal, 48,000 at High, 90,000 at Extreme).
+The power line is the same in every tier (16,416 vertices in one draw; it was 4,104 at High).
 
 ## Reproduce
 
@@ -184,6 +185,32 @@ only the browser had said so). Playground on native WebGPU (RTX 5080 Laptop) and
 hours, six ribbons, four lines, a chain of seven, Minimal, Low, Extreme and portrait 390 × 844,
 clean consoles. GPU p50 at High on the same server, main against this branch: 0.66 and 0.52 ms
 (within the probe's noise; the probe reads low for this scene, so the two are only compared).
+
+## The power line runs on (2026-10-26)
+
+Olov: "in the tornado theme we need to fix the powergrid lines, they just ends abruptly!" The
+wires were only strung between the poles the tier drew (5 to 9), so they stopped dead on the
+nearest pole's cross-arm, and at Minimal and Low the line also stopped at its last pole about
+400 m out. The cross-arms were also turned the wrong way, about 58° to the line instead of
+square across it, so the outer wires hung off the arm ends.
+
+The line is now laid out in `tornado-core.js` (`POWER_LINE`, `powerLinePole`,
+`powerLineAttach`, `powerLineWire`) and is the same in every tier:
+
+- **Near end.** A pole stands behind the lens (never drawn); its span runs past the lens to the
+  nearest pole, so the wires leave the frame at the right edge, rising as they come closer. That
+  span is cut into 32 segments, not 8, and kept thin.
+- **Far end.** Thirty poles run out to about 2.8 km, where a pole is under 5 px tall at 1080p. Past
+  halfway the line dissolves into the haze and is gone by the last pole, so there is no end to see.
+- **Arms.** Each arm is square across the line and leans with its pole; the wires rest on it.
+  Leans past the ninth pole stop growing.
+
+Tests (`tornado-core.test.js`): every span meets the next on the same arm; the near wires leave
+the frame through its right edge at 4:3 to 32:9 (rest camera, fov from `fovForAspect`); the last
+pole is under 5 px; the arms are square and the wires sit on them. Checked in the playground at
+Low, High and Ultra, 2485 × 1245, 16:9 with the board mock and 2538 × 760, with clean consoles.
+
+![Before and after: the wires stop on the near pole; now they run on out of the frame](tornado-captures/power-line.jpg)
 
 ## Captured previews
 
