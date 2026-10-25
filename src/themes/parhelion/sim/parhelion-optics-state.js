@@ -67,6 +67,9 @@ import {
 } from '../../../playground/effects/parhelion-composition.js';
 import { flashScale } from '../../../utils/photosensitivity.js';
 import { GameplaySurge, Swell } from '../../shared/gameplay-surge.js';
+import {
+    MOOD_HOLD, MOOD_SECONDS, moodDrift, pingPong,
+} from '../../shared/mood-clock.js';
 import { CUE, PARHELION_PLAYER_SLOTS, PARHELION_REDUCED_MOTION_INTENSITY } from './parhelion-reaction-director.js';
 
 const HALF_PI = Math.PI / 2;
@@ -271,6 +274,36 @@ const LEVEL_DENSITY_STEP = 0.04;
 const LEVEL_DENSITY_CAP = 0.10;
 const LEVEL_GAIN_STEP = 0.03;
 const LEVEL_GAIN_CAP = 0.30;
+
+/**
+ * The Lower Sun walks by the clock in every mode (shared/mood-clock.js), there and back: the
+ * high sun and the cold light of level 1, the sun half lowered, the lowest sun (the warmth's
+ * cap), half lowered again, the high sun. Each stop rests `hold` of its `seconds` and then melts
+ * into the next, so a whole walk there and back takes 2 · stops · seconds (about seven minutes).
+ * A level is still a step along the same walk, on top of the clock.
+ */
+export const LOWER_SUN_WALK = Object.freeze({ seconds: MOOD_SECONDS, hold: MOOD_HOLD, stops: 2 });
+/** Level steps from the high sun to the lowest (rest warmth to WARMTH_MAX): one leg of the walk. */
+export const LOWER_SUN_SPAN = (WARMTH_MAX - PARHELION_OPTICS_IDLE.warmth) / WARMTH_STEP;
+
+/**
+ * The level steps the clock alone has walked the Lower Sun by `time`, unfolded (fold them with
+ * lowerSunSteps). Closed form, so a seek and a replay land on the same light.
+ * @param {number} time
+ */
+export function lowerSunDrift(time) {
+    return (moodDrift(time, LOWER_SUN_WALK.seconds, LOWER_SUN_WALK.hold) / LOWER_SUN_WALK.stops) * LOWER_SUN_SPAN;
+}
+
+/**
+ * Unfolded level steps folded onto the walk there and back: 0 (level 1) .. LOWER_SUN_SPAN (the
+ * lowest sun) and back, so the light never comes to rest at the cap.
+ * @param {number} steps
+ */
+export function lowerSunSteps(steps) {
+    return LOWER_SUN_SPAN * pingPong(steps / LOWER_SUN_SPAN);
+}
+
 /** Crowning at a tier without the crown falls back to the dog gain (§7.4). */
 const CROWN_DOG_FALLBACK = 0.2;
 
@@ -594,6 +627,11 @@ export class ParhelionOpticsState {
         this.levelFrom = 1;
         this.levelTo = 1;
         this.levelBirth = 0;
+        // The level's share of the Lower Sun's walk, in level steps (unfolded), eased alongside:
+        // each change heads for the nearest equal place on the walk, so a reset from a high
+        // level walks the light back the short way.
+        this.shareFrom = 0;
+        this.shareTo = 0;
 
         // Envelope pools: CHANNEL_COUNT × ENVELOPES × (birth, attack, hold, tau, amp).
         this.env = new Float64Array(CHANNEL_COUNT * ENV_BLOCK);
@@ -787,12 +825,20 @@ export class ParhelionOpticsState {
         this.resonance = clamp01(finiteNumber(r, 0));
     }
 
-    /** LEVEL_UP → "Lower Sun": warmth, density and halo/dog baselines ease to the level over 3 s. */
+    /**
+     * LEVEL_UP → "Lower Sun": warmth, density and halo/dog baselines ease a step per level along
+     * the Lower Sun's walk over 3 s, on top of the clock's own walk (LOWER_SUN_WALK).
+     */
     setLevel(n, now = this.now) {
         const t = finiteNumber(now, this.now);
         const level = Math.max(1, Math.trunc(finiteNumber(n, 1)));
         // A real level-up (not the reset back to 1) warms play a little too.
         if (level > this.levelTo && this.intensity > 0) this.surge.levelUp(t);
+        const share = this._shareAt(t);
+        const steps = level - 1;
+        const period = 2 * LOWER_SUN_SPAN;
+        this.shareFrom = share;
+        this.shareTo = steps + period * Math.round((share - steps) / period);
         this.levelFrom = this._levelAt(t);
         this.levelTo = level;
         this.levelBirth = t;
@@ -975,8 +1021,9 @@ export class ParhelionOpticsState {
         // Reduce flashing (ADR-0021): every frame-wide flash keeps flashScale() of its strength.
         const flash = flashScale();
 
-        // Level, warmth, breath (§7.4 Lower Sun, §8).
-        const levelSteps = this._levelAt(t) - 1;
+        // Level, warmth, breath (§7.4 Lower Sun, §8). The Lower Sun walks by the clock in every
+        // mode, the level's steps on top, folded there and back (never pinned at the cap).
+        const levelSteps = lowerSunSteps(this._shareAt(t) + lowerSunDrift(t));
         const baseMul = 1 + Math.min(LEVEL_GAIN_CAP, LEVEL_GAIN_STEP * levelSteps);
         const warmthBase = Math.min(WARMTH_MAX, PARHELION_OPTICS_IDLE.warmth + WARMTH_STEP * levelSteps);
         const amb = PARHELION_AMBIENT;
@@ -1604,6 +1651,12 @@ export class ParhelionOpticsState {
     _levelAt(t) {
         const u = smoothstep(0, PARHELION_AMBIENT.warmthEase, t - this.levelBirth);
         return this.levelFrom + (this.levelTo - this.levelFrom) * u;
+    }
+
+    /** The level's share of the Lower Sun's walk at `t` (level steps, unfolded, eased). */
+    _shareAt(t) {
+        const u = smoothstep(0, PARHELION_AMBIENT.warmthEase, t - this.levelBirth);
+        return this.shareFrom + (this.shareTo - this.shareFrom) * u;
     }
 
     // ── envelopes ────────────────────────────────────────────────────────────────

@@ -23,7 +23,9 @@
  *   ?t=<s>                  reproducible frame (seek: clocks = t·rate through the optics state)
  *   ?board=1                DOM mock of the single-player card/board/HUD at the measured rects
  *   ?quality=<tier>         Minimal | Low | Medium | High (default) | Ultra | Extreme
- *   ?parhelionLevel=<n>     Lower Sun warmth (level 1 = rest)
+ *   ?parhelionLevel=<n>     Lower Sun warmth (level 1 = rest), its steps on top of the clock's
+ *                           walk (?t=: the high sun, half lowered, the lowest sun and back, a stop
+ *                           every LOWER_SUN_WALK.seconds)
  *   ?parhelionCombo=<n>     static resonance preview (Warm Hounds / Crowning / Parhelic Line)
  *   ?parhelionPulse=<cue>&parhelionPulseAge=<s>  one deterministic reaction through the real
  *                           optics state: lock, harddrop, single, double, triple, quad, tspin,

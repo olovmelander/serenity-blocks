@@ -387,6 +387,31 @@ describe('Parhelion theme wiring', () => {
             eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
             theme.director.update(1 / 60);
             expect(runtime.setLevel).toHaveBeenCalledWith(3);
+            expect(theme.level).toBe(3);
+        });
+
+        it('steps the Lower Sun on a level with reactions off, keeps the run for a restart, and resets it', () => {
+            const { theme, runtime } = build();
+            window.settings.backgroundComboEffects = false;
+            eventBus.emit(EVENTS.LEVEL_UP, { level: 4 });
+            expect(runtime.setLevel).toHaveBeenLastCalledWith(4); // the world's light, at once
+            expect(runtime.cue).not.toHaveBeenCalled();
+            expect(theme.level).toBe(4);
+            theme.isPaused = true;
+            eventBus.emit(EVENTS.LEVEL_UP, { level: 5 });
+            expect(theme.level).toBe(4);
+            theme.isPaused = false;
+            window.settings.backgroundComboEffects = true;
+
+            // A restart (a new quality tier behind the menu) carries the clock and the level.
+            theme.elapsedTime = 321.5;
+            expect(theme.captureRestartRun()).toMatchObject({ time: 321.5, level: 4 });
+            theme.applyRestartRun({ time: 321.5, level: 4 });
+            expect(theme.takeRestartTime(0)).toBe(321.5);
+
+            win.dispatch('gameOver');
+            expect(theme.level).toBe(1);
+            expect(runtime.setLevel).toHaveBeenLastCalledWith(1);
         });
 
         it('pushes reduced-motion / combo-effect settings into the director and the runtime', () => {
