@@ -11,6 +11,11 @@
  * positive turns +z toward +x, the horse's left). This module turns a pose and the horse's place
  * in the world into each joint's world position and rotation and the skinning table the vertex
  * stage blends (grainfields-herd.js); the same math poses the previews in horse.py.
+ *
+ * A rig can be shaped (`shapeRig`): the same skeleton and skin with some bones longer or shorter
+ * (a foal's long legs, short neck and big head). Its joints (`heads`, `offsets`) are where those
+ * lengths put them; the skin still rests where it was authored (`rest`), each bone carrying its
+ * own flesh scaled by its `sizes`.
  */
 
 /** The bones the motion addresses, by name; the asset's own order is whatever it says. */
@@ -22,6 +27,39 @@ export const HORSE_BONES = Object.freeze([
     'femurR', 'tibiaR', 'hindCannonR', 'hindPasternR', 'hindHoofR',
     'tail0', 'tail1', 'tail2', 'tail3', 'tail4', 'tail5',
 ]);
+
+/**
+ * A foal over the grown horse's skin (each bone's length and flesh times the grown one's): legs
+ * nearly a grown horse's on a small, short body, a short neck, a big head and ears, a short tail.
+ * Fore and hind come out the same length, so it stands level.
+ */
+const FOAL_LEGS = {
+    humerus: 1.1,
+    forearm: 1.3,
+    foreCannon: 1.38,
+    forePastern: 1.25,
+    femur: 1.05,
+    tibia: 1.38,
+    hindCannon: 1.38,
+    hindPastern: 1.25,
+};
+export const FOAL_SHAPE = Object.freeze({
+    root: 0.92,
+    neck0: 0.85,
+    neck1: 0.85,
+    neck2: 0.85,
+    head: 1.15,
+    jaw: 1.15,
+    earL: 1.25,
+    earR: 1.25,
+    tail0: 0.75,
+    tail1: 0.65,
+    tail2: 0.6,
+    tail3: 0.55,
+    tail4: 0.5,
+    tail5: 0.5,
+    ...Object.fromEntries(Object.entries(FOAL_LEGS).flatMap(([name, k]) => [[`${name}L`, k], [`${name}R`, k]])),
+});
 
 /** Rows (vec4) a bone takes in the skinning table: its rotation, then its translation and scale. */
 export const SKIN_ROWS = 2;
@@ -55,7 +93,48 @@ export function createRig(skeleton) {
         for (let c = 0; c < 3; c++) offsets[i * 3 + c] = heads[i * 3 + c] - (p >= 0 ? heads[p * 3 + c] : 0);
     }
     return {
-        count, names, index, parents, heads, offsets,
+        count, names, index, parents, heads, offsets, rest: heads, sizes: new Float32Array(count).fill(1), stand: 1,
+    };
+}
+
+/** The hooves, whose lowest stands on the ground. */
+const HOOVES = Object.freeze(['foreHoofL', 'foreHoofR', 'hindHoofL', 'hindHoofR']);
+
+/**
+ * The rig in other proportions over the same skin: each named bone's length (to the joints it
+ * carries) and its flesh `sizes[name]` times the authored. Its joints rest where those lengths put
+ * them, raised or lowered so its hooves stand on the ground as the authored ones do; `stand` is how
+ * much taller it stands at the root.
+ */
+export function shapeRig(rig, sizes) {
+    const { count, parents } = rig;
+    const size = new Float32Array(count).fill(1);
+    Object.entries(sizes).forEach(([name, k]) => {
+        if (name in rig.index) size[rig.index[name]] = k;
+    });
+    const heads = new Float32Array(count * 3);
+    const offsets = new Float32Array(rig.offsets);
+    for (let i = 0; i < count; i++) {
+        const p = parents[i];
+        for (let c = 0; c < 3; c++) {
+            if (p >= 0) offsets[i * 3 + c] = rig.offsets[i * 3 + c] * size[p];
+            heads[i * 3 + c] = (p >= 0 ? heads[p * 3 + c] : 0) + offsets[i * 3 + c];
+        }
+    }
+    const lowest = (h) => Math.min(...HOOVES.map((name) => h[rig.index[name] * 3 + 1]));
+    const lift = lowest(rig.heads) - lowest(heads);
+    for (let i = 0; i < count; i++) {
+        heads[i * 3 + 1] += lift;
+        if (parents[i] < 0) offsets[i * 3 + 1] += lift;
+    }
+    const { root } = rig.index;
+    return {
+        ...rig,
+        heads,
+        offsets,
+        rest: rig.rest,
+        sizes: size,
+        stand: heads[root * 3 + 1] / rig.heads[root * 3 + 1],
     };
 }
 
@@ -191,13 +270,14 @@ export function matrixToQuaternion(m, o, out) {
 /**
  * A posed rig into the skinning table the vertex stage reads (`rows`: { x, y, z, w } objects, as a
  * uniform array holds them), SKIN_ROWS a bone from `offset`: the bone's world rotation as a
- * quaternion q, then (t, s) with t = J - s R h, so a rest vertex p goes to s q(p) + t.
+ * quaternion q, then (t, s) with t = J - s R h (h where the skin rests at the bone, s the horse's
+ * scale times the bone's size), so a rest vertex p goes to s q(p) + t.
  */
 export function writeSkinRows(rig, pose, scale, rows, offset = 0) {
     const { rot, at } = pose;
-    const { heads } = rig;
-    const s = scale || 1;
+    const heads = rig.rest;
     for (let i = 0; i < rig.count; i++) {
+        const s = (scale || 1) * rig.sizes[i];
         const r = i * 9;
         const q = matrixToQuaternion(rot, r, rows[offset + i * SKIN_ROWS]);
         const t = rows[offset + i * SKIN_ROWS + 1];
@@ -219,13 +299,14 @@ export function writeSkinRows(rig, pose, scale, rows, offset = 0) {
     return rows;
 }
 
-/** A rest-frame point carried by one bone into the world (out = [x, y, z]). */
+/** A point of the skin at rest, carried by one bone into the world (out = [x, y, z]). */
 export function boneToWorld(rig, pose, bone, point, scale = 1, out = [0, 0, 0]) {
     const { rot, at } = pose;
     const r = bone * 9;
-    const dx = (point[0] - rig.heads[bone * 3]) * scale;
-    const dy = (point[1] - rig.heads[bone * 3 + 1]) * scale;
-    const dz = (point[2] - rig.heads[bone * 3 + 2]) * scale;
+    const k = scale * rig.sizes[bone];
+    const dx = (point[0] - rig.rest[bone * 3]) * k;
+    const dy = (point[1] - rig.rest[bone * 3 + 1]) * k;
+    const dz = (point[2] - rig.rest[bone * 3 + 2]) * k;
     out[0] = at[bone * 3] + rot[r] * dx + rot[r + 1] * dy + rot[r + 2] * dz;
     out[1] = at[bone * 3 + 1] + rot[r + 3] * dx + rot[r + 4] * dy + rot[r + 5] * dz;
     out[2] = at[bone * 3 + 2] + rot[r + 6] * dx + rot[r + 7] * dy + rot[r + 8] * dz;

@@ -41,6 +41,8 @@ const HOOF = Object.freeze({ coffin: 0.05, toe: 0.045 });
 const STEP = Object.freeze({
     far: 0.16, square: 0.07, time: 0.42, gap: 0.08, settle: 2.5,
 });
+/** How far a gait's stride rate may quicken or slow from its own (times). */
+const CADENCE = Object.freeze([0.8, 1.3]);
 /** How far a leg's fetlock sinks standing (radians). */
 const STANDING_LOAD = 0.1;
 /** Where the muzzle is in the rest pose when the asset says nothing (horse frame, metres). */
@@ -310,7 +312,7 @@ function placeBody(m, h, ground, gait) {
     const span = 1.15 * s;
     m.place.x = h.x;
     m.place.z = h.z;
-    m.place.y = hind + (front - hind) * (0.65 / 1.15) + 1.0 * s;
+    m.place.y = hind + (front - hind) * (0.65 / 1.15) + m.rig.heads[m.bones.root * 3 + 1] * s;
     m.place.heading = h.heading;
     m.place.scale = s;
     // Pitch (positive nose down): the ground and the stride, a sit back when it brakes.
@@ -465,7 +467,7 @@ function stepLegs(m, h, ground, gait, dt, time) {
     const speed = Math.max(0, h.speed || 0);
     const cyclic = m.g >= 0.5 && gait.freq > 0.05;
     const stride = cyclic ? (speed * gait.duty) / gait.freq : 0;
-    const swingTime = cyclic ? (1 - gait.duty) / gait.freq : STEP.time * Math.sqrt(s);
+    const swingTime = cyclic ? (1 - gait.duty) / gait.freq : STEP.time * Math.sqrt(s * m.rig.stand);
     if (h.treadmill) {
         // A horse kept on the spot (a capture's lineup): the ground runs back under its hooves.
         const fx = Math.sin(m.place.heading) * speed * dt;
@@ -571,7 +573,8 @@ function muzzleHeight(m, bend, face, groundY) {
     y += step(n1, n2, angle);
     angle += NECK_SHARE[2] * bend;
     y += step(n2, hd, angle);
-    rot2(face, (m.muzzle[1] - H(hd, 1)) * s, (m.muzzle[2] - H(hd, 2)) * s, t2a);
+    const k = s * rig.sizes[hd];
+    rot2(face, (m.muzzle[1] - rig.rest[hd * 3 + 1]) * k, (m.muzzle[2] - rig.rest[hd * 3 + 2]) * k, t2a);
     return y + t2a[0] - groundY;
 }
 
@@ -902,13 +905,18 @@ function stepTail(m, h, gait, dt, time, env) {
 export function stepHorseMotion(m, h, ground, dt, time, env = {}) {
     const d = Math.max(0, Math.min(0.25, dt || 0));
     const s = h.scale || 1;
-    // A small horse's legs swing faster for the same pace (and it breaks into a trot sooner).
-    const froude = Math.sqrt(s);
+    // A small horse's legs swing faster for the same pace (and it breaks into a trot sooner); a
+    // leggy foal's a little slower (its straight legs reach less than their length says).
+    const froude = Math.sqrt(s * (1 + (m.rig.stand - 1) * 0.4));
     const target = gaitFor((h.speed || 0) / froude);
     const rate = target > m.g ? 3.2 : 2.2;
     m.g += (target - m.g) * (1 - Math.exp(-rate * d));
     const gait = gaitAt(m.g, m.lead, m.gait);
-    gait.freq /= froude;
+    // Faster or slower than its gait's own pace, a horse quickens or slows its steps as well as
+    // lengthening or shortening them, so a hoof stays down for no more ground than the leg reaches.
+    const pace = Math.max(0.3, (h.speed || 0) / froude) / Math.max(0.3, gait.speed);
+    const cadence = clamp(pace ** 0.7, CADENCE[0], CADENCE[1]);
+    gait.freq *= cadence / froude;
     m.phase = wrap(m.phase + gait.freq * d);
     m.still = (h.speed || 0) < 0.05 ? m.still + d : 0;
     // The body's velocity and acceleration (for the tail and the mane).

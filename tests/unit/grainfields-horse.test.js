@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-    HORSE_BONES, SKIN_ROWS, boneToWorld, createPose, createRig, poseRig, writeSkinRows,
+    FOAL_SHAPE, HORSE_BONES, SKIN_ROWS, boneToWorld, createPose, createRig, poseRig, shapeRig, writeSkinRows,
 } from '../../src/themes/grainfields/grainfields-horse-rig.js';
 import {
     BARLEY_TOPS, createHorseMotion, solveLeg, stepHorseMotion,
@@ -96,6 +96,45 @@ describe('Grainfields horse: its skeleton', () => {
             const expected = boneToWorld(RIG, pose, b, point, place.scale);
             via.forEach((v, k) => expect(v, `${name}[${k}]`).toBeCloseTo(expected[k], 5));
         });
+    });
+
+    it('shapes a foal over the same skin: long legs standing on the ground, the skin whole at every joint', () => {
+        const foal = shapeRig(RIG, FOAL_SHAPE);
+        const y = (rig, name) => rig.heads[rig.index[name] * 3 + 1];
+        ['foreHoofL', 'foreHoofR', 'hindHoofL', 'hindHoofR'].forEach((name) => expect(y(foal, name), name).toBeCloseTo(y(RIG, name), 3));
+        expect(foal.stand).toBeGreaterThan(1.2);
+        expect(foal.rest).toBe(RIG.rest);
+        // Its legs longer than the grown horse's for its body, its neck shorter.
+        const span = (rig, a, b) => y(rig, a) - y(rig, b);
+        expect(span(foal, 'forearmL', 'foreHoofL') / span(RIG, 'forearmL', 'foreHoofL')).toBeGreaterThan(1.25);
+        expect(span(foal, 'head', 'neck0') / span(RIG, 'head', 'neck0')).toBeLessThan(0.9);
+        // Posed, each joint's skin is carried to the same place by the bone above it and the bone
+        // below it, however differently the two are sized (the skin does not tear there).
+        const pose = createPose(foal);
+        pose.local.set([0.4, 0.1, 0], foal.index.neck1 * 3);
+        pose.local.set([-0.5, 0, 0], foal.index.head * 3);
+        pose.local.set([0.7, 0, 0], foal.index.foreCannonL * 3);
+        pose.local.set([-0.4, 0, 0.1], foal.index.tibiaR * 3);
+        const place = {
+            x: 2, y: 7, z: 1, heading: -0.6, scale: 0.63,
+        };
+        poseRig(foal, pose, place);
+        for (let i = 0; i < foal.count; i++) {
+            const p = foal.parents[i];
+            if (p < 0) continue;
+            const joint = Array.from(foal.rest.slice(i * 3, i * 3 + 3));
+            const below = boneToWorld(foal, pose, i, joint, place.scale);
+            const above = boneToWorld(foal, pose, p, joint, place.scale);
+            below.forEach((v, k) => expect(v, `${foal.names[i]}[${k}]`).toBeCloseTo(above[k], 5));
+            below.forEach((v, k) => expect(v, `${foal.names[i]} joint`).toBeCloseTo(pose.at[i * 3 + k], 5));
+        }
+        // Its skin table carries a rest point as its bones do.
+        const rows = Array.from({ length: foal.count * SKIN_ROWS }, () => ({
+            x: 0, y: 0, z: 0, w: 0,
+        }));
+        writeSkinRows(foal, pose, place.scale, rows);
+        const b = foal.index.forearmL;
+        expect(rows[b * SKIN_ROWS + 1].w).toBeCloseTo(place.scale * FOAL_SHAPE.forearmL, 6);
     });
 
     it('solves a leg to any foothold it can reach, and stretches as far as it can toward one it cannot', () => {
@@ -238,6 +277,48 @@ describe('Grainfields horse: its legs', () => {
         // Its planted hooves are carried back past its hind feet's rest, as if the ground ran on.
         expect(travel).toBeLessThan(-0.9);
         expect(lowest).toBeGreaterThan(0.035);
+    });
+
+    it('stands a foal on its long legs, level, its hooves on the ground', () => {
+        const foal = shapeRig(RIG, FOAL_SHAPE);
+        const m = createHorseMotion(foal, { seed: 0.4 });
+        const h = horse({ business: 'look', scale: 0.63, foal: true });
+        run(m, h, 3, () => {}, { ground: rolling });
+        m.legs.forEach((leg) => {
+            expect(leg.planted).toBe(true);
+            expect(leg.coffin[1] - rolling(leg.coffin[0], leg.coffin[2])).toBeCloseTo(0.05 * 0.63, 2);
+        });
+        // Its shoulders stand far taller for its size than a grown horse's: it is mostly leg.
+        const shoulder = m.pose.at[foal.index.scapulaL * 3 + 1] - rolling(h.x, h.z);
+        expect(shoulder / 0.63).toBeGreaterThan(1.19 * 1.15);
+        // It walks, trots and canters (frolicking) over its feet: a hoof down stays put, reached.
+        for (const speed of [1.3, 3.2, 5.2]) {
+            const legs = createHorseMotion(foal, { seed: 0.4 });
+            const one = horse({ speed, scale: 0.63, foal: true });
+            const before = legs.legs.map(() => null);
+            let slide = 0;
+            let planted = 0;
+            let unreached = 0;
+            run(legs, one, 8, (mm, hh, t) => {
+                if (t < 3) return;
+                mm.legs.forEach((leg, i) => {
+                    const prev = before[i];
+                    if (leg.planted) {
+                        planted += 1;
+                        if (!leg.now.reach) unreached += 1;
+                    }
+                    if (prev && prev.planted && leg.planted && leg.now.reach && prev.reach && t - leg.landed > 0.02) {
+                        const psi = (((mm.phase - mm.gait.offsets[i]) % 1) + 1) % 1;
+                        if (psi / mm.gait.duty < 0.7) slide = Math.max(slide, Math.hypot(leg.coffin[0] - prev.x, leg.coffin[2] - prev.z));
+                    }
+                    before[i] = {
+                        planted: leg.planted, reach: leg.now.reach, x: leg.coffin[0], z: leg.coffin[2],
+                    };
+                });
+            }, { ground: rolling });
+            expect(slide, `slide at ${speed}`).toBeLessThan(0.002);
+            expect(unreached / planted, `reach at ${speed}`).toBeLessThan(0.08);
+        }
     });
 
     it('rests a hind leg cocked on the toe of its hoof, on its own side', () => {

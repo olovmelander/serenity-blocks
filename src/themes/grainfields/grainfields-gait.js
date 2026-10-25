@@ -180,7 +180,7 @@ const GAIT_ROWS = [
         carry: 0.85,
     },
 ];
-const BLENDED = Object.freeze(['freq', 'duty', 'fold', 'elbow', 'knee', 'stifle', 'hock', 'curl', 'reach', 'load',
+const BLENDED = Object.freeze(['speed', 'freq', 'duty', 'fold', 'elbow', 'knee', 'stifle', 'hock', 'curl', 'reach', 'load',
     'drop', 'front', 'hind', 'flex', 'nod', 'carry']);
 /** Stride phases that blend as phases (the shortest way round). */
 const PHASED = Object.freeze(['frontAt', 'hindAt', 'flexAt', 'nodAt']);

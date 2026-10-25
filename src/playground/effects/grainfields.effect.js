@@ -198,10 +198,11 @@ export function create({
         const followed = herdCam && world.parts.herd?.motions[herdCam[0]];
         if (followed) {
             // Follow one horse: from its own side, at its own height, looking at its middle.
-            const { place } = followed;
+            const { place, rig, bones } = followed;
             const [, distance = 4, az = 90, height = 1.1, fov = 40] = herdCam;
             const a = place.heading + az * (Math.PI / 180);
-            const ground = place.y - place.scale;
+            // (Its root stands this high over its feet: a foal's long legs stand it taller.)
+            const ground = place.y - rig.heads[bones.root * 3 + 1] * place.scale;
             camera.position.set(place.x + Math.sin(a) * distance, ground + height, place.z + Math.cos(a) * distance);
             camera.fov = fov;
             camera.lookAt(place.x, ground + 0.9 * place.scale, place.z);

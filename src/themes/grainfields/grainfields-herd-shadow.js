@@ -11,6 +11,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { float, texture, vec2 } from 'three/tsl';
+import { boneToWorld } from './grainfields-horse-rig.js';
 
 /**
  * The window: texels a side, metres a side, the height over the ground the shadows are laid on
@@ -78,15 +79,7 @@ export function createHerdShadow({ size = HERD_SHADOW.size, span = HERD_SHADOW.s
             out[2] = pose.at[i * 3 + 2];
             return out;
         }
-        const r = i * 9;
-        const R = pose.rot;
-        const dx = (rest[0] - rig.heads[i * 3]) * scale;
-        const dy = (rest[1] - rig.heads[i * 3 + 1]) * scale;
-        const dz = (rest[2] - rig.heads[i * 3 + 2]) * scale;
-        out[0] = pose.at[i * 3] + R[r] * dx + R[r + 1] * dy + R[r + 2] * dz;
-        out[1] = pose.at[i * 3 + 1] + R[r + 3] * dx + R[r + 4] * dy + R[r + 5] * dz;
-        out[2] = pose.at[i * 3 + 2] + R[r + 6] * dx + R[r + 7] * dy + R[r + 8] * dz;
-        return out;
+        return boneToWorld(rig, pose, i, rest, scale, out);
     };
 
     /**
@@ -181,9 +174,11 @@ export function createHerdShadow({ size = HERD_SHADOW.size, span = HERD_SHADOW.s
             motions.forEach((m) => {
                 const s = m.place.scale;
                 const plane = ground(m.place.x, m.place.z) + HERD_SHADOW.canopy;
+                // (A foal's own rig: its proportions are not its mother's.)
+                const own = m.rig || rig;
                 CASTERS.forEach((c) => {
-                    point(rig, m.pose, c.from, c.fromAt, s, a);
-                    point(rig, m.pose, c.to, c.toAt, s, b);
+                    point(own, m.pose, c.from, c.fromAt, s, a);
+                    point(own, m.pose, c.to, c.toAt, s, b);
                     paint(sx, sz, sy, sh, plane, c.radius * s);
                 });
             });

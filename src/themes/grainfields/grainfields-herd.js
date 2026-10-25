@@ -58,7 +58,7 @@ import { aerial } from './grainfields-light.js';
 import { deckShadow } from './grainfields-tsl.js';
 import { HERD, createHerdSim } from './grainfields-herd-sim.js';
 import {
-    SKIN_ROWS, boneToWorld, createRig, writeSkinRows,
+    FOAL_SHAPE, SKIN_ROWS, boneToWorld, createRig, shapeRig, writeSkinRows,
 } from './grainfields-horse-rig.js';
 import { createHorseMotion, stepHorseMotion } from './grainfields-horse-motion.js';
 import { CHAFF, DUST, createHerdDust } from './grainfields-herd-dust.js';
@@ -279,10 +279,11 @@ const MUZZLE = Object.freeze([0, 1.314, 1.364]);
 export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } = {}) {
     if (!horse?.geometry || !horse.skeleton) return null;
     const rig = createRig(horse.skeleton);
+    const foalRig = shapeRig(rig, FOAL_SHAPE);
     const sim = createHerdSim({ count, seed });
     const n = sim.horses.length;
     const landmarks = horse.landmarks || {};
-    const motions = sim.horses.map((h) => createHorseMotion(rig, {
+    const motions = sim.horses.map((h) => createHorseMotion(h.foal ? foalRig : rig, {
         seed: h.seed, lead: h.seed < 0.5 ? 1 : -1, landmarks,
     }));
     const instanced = new THREE.InstancedBufferGeometry();
@@ -349,7 +350,7 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
                     }
                 } else if (e.kind === 'tear') {
                     // Awns and husks scattered from the mouthful torn away.
-                    boneToWorld(rig, m.pose, rig.index.head, muzzle, s, spot);
+                    boneToWorld(m.rig, m.pose, rig.index.head, muzzle, s, spot);
                     for (let k = 0; k < 3; k++) {
                         dust.kick({
                             x: spot[0],
@@ -411,7 +412,7 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
             const rate = want > pulls[i] ? 10 : 6;
             pulls[i] += (want - pulls[i]) * (1 - Math.exp(-rate * dt));
             if (pulls[i] < 0.02 || live >= u.tables.muzzles.length) return;
-            boneToWorld(rig, m.pose, rig.index.head, muzzle, m.place.scale, spot);
+            boneToWorld(m.rig, m.pose, rig.index.head, muzzle, m.place.scale, spot);
             u.tables.muzzles[live].set(spot[0], spot[1], spot[2], pulls[i]);
             cx += spot[0];
             cz += spot[2];
@@ -436,7 +437,7 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
     const write = () => {
         sim.horses.forEach((h, i) => {
             const m = motions[i];
-            writeSkinRows(rig, m.pose, m.place.scale, rows, i * rig.count * SKIN_ROWS);
+            writeSkinRows(m.rig, m.pose, m.place.scale, rows, i * rig.count * SKIN_ROWS);
             const a = infoRows[i * 2];
             a.x = h.coat;
             a.y = m.flow[0];
