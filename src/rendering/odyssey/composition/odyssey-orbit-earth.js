@@ -9,10 +9,10 @@
  * the gas giant sitting on it like a ball on a floor. This is the planet instead: one exact sphere
  * below the eye, drawn from each view direction on a backdrop sphere round the camera.
  *
- *   - THE SURFACE is a sea of cloud (weather systems, clear ocean between them), lit by the sun:
- *     white on the day side, orange and red along the terminator (the sunset seen from above),
- *     dim slate on the night side, green under the aurora. Toward the limb the view crosses more
- *     air, so the surface sinks into it.
+ *   - THE SURFACE is the planet (ORBIT_EARTH_SURFACE): oceans and continents under weather
+ *     systems, lit by the sun: day colours on the day side, orange and red along the terminator
+ *     (the sunset seen from above), dim slate and the lights of towns on the night side, green
+ *     under the aurora. Toward the limb the view crosses more air, so the surface sinks into it.
  *   - THE ATMOSPHERE is a thin rim just outside the limb: blue where the sun lights it, layered
  *     red to blue where the terminator meets the limb, deep blue on the night side with a faint
  *     airglow line above it.
@@ -61,6 +61,8 @@ import {
     atan,
     cameraPosition,
     clamp,
+    cos,
+    cross,
     dot,
     exp,
     float,
@@ -72,6 +74,7 @@ import {
     mix,
     normalize,
     positionWorld,
+    reflect,
     select,
     sin,
     smoothstep,
@@ -80,8 +83,11 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { latticeNoise3, LATTICE_NOISE_PERIOD } from '../chapter-environments/shared/odyssey-lattice-noise.js';
-import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
+import {
+    latticeNoise3,
+    latticeNoise3Cpu,
+    LATTICE_NOISE_PERIOD,
+} from '../chapter-environments/shared/odyssey-lattice-noise.js';
 import { AURORA_PALETTE } from '../chapter-environments/odyssey-planet-aurora.js';
 
 export const ORBIT_EARTH = Object.freeze({
@@ -133,6 +139,46 @@ export const ORBIT_EARTH_AURORA = Object.freeze({
     /** The light's soft shoulder: seen edge-on at the limb the curtains are many times brighter
      * than from above, and this keeps both readable. */
     shoulder: 1.4,
+});
+
+/**
+ * THE PLANET ITSELF (2026-10-25). Olov, at the top of the climb: "When we start to see the earth
+ * above the cloud, can we make it look like the earth with ocean, landmasses and contintents? And
+ * can we improve the clouds?" It was an ocean under soft blobs of cloud.
+ *
+ * - CONTINENTS: a height field on the sphere (warped octaves of the baked lattice, the finest
+ *   faded where they fall under a pixel), cut at `seaLevel`. Open sea is kept round the point
+ *   beneath the eye (`homeOcean`): the world's own sea becomes this ocean in place at the seam.
+ *   `orbitEarthLandHeight` is its CPU twin (the same bytes), so the layout is pinned by tests.
+ * - LAND by latitude from the pole (`poleArc` from beneath the eye, toward the night): ice cap,
+ *   tundra, boreal and temperate forest, steppe and desert where it is dry, rock and snow on the
+ *   ridges; shallows round the coasts; the sun's glint on open water.
+ * - CLOUDS: weather systems wound round two cyclones, crisper cumulus edges (antialiased by the
+ *   field's own derivative, not a wide blur), thin and thick cloud (the sea shows through thin),
+ *   lit on the side toward the sun and casting shadows on the ground, and a veil of cirrus.
+ * - NIGHT: the coasts and plains glow with towns, under the clouds.
+ */
+export const ORBIT_EARTH_SURFACE = Object.freeze({
+    /** The broadest continent features per radian of arc, and the warp that bends their coasts. */
+    landScale: 2.8,
+    landWarp: 1.1,
+    /** Where in the lattice the continents are cut (the layout; see orbit-earth tests). */
+    landSeed: Object.freeze([59.91, 9.01, 10.52]),
+    /** The height field's sea level (0..1; ~a third land). */
+    seaLevel: 0.53,
+    /** Open sea kept round the point beneath the eye (radians of arc), and how deep it is cut. */
+    homeOcean: 0.005,
+    homeDepth: 0.3,
+    /** How far below sea level the shallows reach (height units). */
+    shelf: 0.014,
+    /** The geographic pole: this far (radians) from beneath the eye, toward the night. The ice cap
+     * reaches `iceCap` from it. */
+    poleArc: 0.85,
+    iceCap: 0.3,
+    /** The cloud layer's height (radii): how long its shadows fall at a low sun. */
+    cloudHeight: 0.0016,
+    /** Night lights: how bright the towns glow (linear). */
+    cityGain: 0.08,
 });
 
 /**
@@ -199,9 +245,13 @@ export const ORBIT_EARTH_SCHEDULE = Object.freeze({
  * the Earth moves in front of the far heroes (see DRAW ORDER). */
 export const ORBIT_EARTH_COVERS = 0.999;
 
-const WORLD_SUN_ELEVATION = Math.asin(ODYSSEY_WORLD_SUN[1] / Math.hypot(...ODYSSEY_WORLD_SUN));
+// The sun the departure was composed under (the sunset's timing, the aurora's place on the night
+// side, the planetrise beside it), pinned: the world's own sun turned to the side for Act II
+// (2026-10-25), and the Earth's sun sits behind the eye at the seam either way.
+const EARTH_SUN = Object.freeze([-0.46, 0.36, 0.61]);
+const WORLD_SUN_ELEVATION = Math.asin(EARTH_SUN[1] / Math.hypot(...EARTH_SUN));
 /** The world sun's bearing in the xz plane (from +x toward +z), which the setting sun keeps. */
-export const ORBIT_EARTH_SUN_AZIMUTH = Math.atan2(ODYSSEY_WORLD_SUN[2], ODYSSEY_WORLD_SUN[0]);
+export const ORBIT_EARTH_SUN_AZIMUTH = Math.atan2(EARTH_SUN[2], EARTH_SUN[0]);
 
 const smooth01 = (x) => {
     const t = Math.min(1, Math.max(0, x));
@@ -310,6 +360,16 @@ const NIGHT_LIGHT = [0.010, 0.014, 0.028];
 const AIR_DAY = [0.26, 0.46, 0.95];
 const AIR_NIGHT = [0.004, 0.009, 0.026];
 const AIRGLOW = [0.20, 0.78, 0.46];
+const OCEAN_DEEP = [0.004, 0.017, 0.048];
+const OCEAN_SHALLOW = [0.020, 0.072, 0.085];
+const ICE = [0.70, 0.74, 0.80];
+const LAND_TUNDRA = [0.112, 0.104, 0.084];
+const LAND_BOREAL = [0.036, 0.066, 0.036];
+const LAND_TEMPERATE = [0.068, 0.114, 0.040];
+const LAND_STEPPE = [0.138, 0.126, 0.070];
+const LAND_DESERT = [0.300, 0.215, 0.120];
+const LAND_ROCK = [0.110, 0.096, 0.082];
+const CITY_LIGHT = [1.0, 0.70, 0.34];
 const TWO_PI = Math.PI * 2;
 /** The aurora's three parallel sheets: which component of the march's distances, and how bright
  * (a real arc is a stack of curtains, the poleward ones fainter). */
@@ -352,6 +412,105 @@ const N_LAT = LATTICE_NOISE_PERIOD;
  * lifts as it would climbing out of an atmosphere, the limb last (2026-10-25: clearing right behind
  * the Earth's arriving edge, the sunlit cloud at the limb came out first, a white band that popped). */
 const VEIL_NADIR_LEAD = 0.45;
+
+// ── THE PLANET'S LAND (ORBIT_EARTH_SURFACE) ──────────────────────────────────────────
+// The height field's octaves: weight and lattice offset (lacunarity 2.03, so they never re-align).
+const LAND_OCTAVES = Object.freeze([
+    [0.5, [0, 0, 0]],
+    [0.25, [17.1, 3.3, 9.7]],
+    [0.125, [5.2, 31.4, 13.6]],
+    [0.0625, [29.7, 13.1, 3.8]],
+    [0.035, [11.9, 22.4, 7.3]],
+    [0.02, [3.6, 9.2, 27.5]],
+    [0.012, [23.3, 5.7, 15.1]],
+    [0.007, [8.8, 27.9, 21.4]],
+]);
+const LAND_WEIGHT = LAND_OCTAVES.reduce((sum, [w]) => sum + w, 0);
+const LAND_WARP = Object.freeze([[5.3, 1.1, 9.4], [2.8, 8.6, 3.7], [7.9, 4.4, 6.2]]);
+const LACUNARITY = 2.03;
+// Only the broadest octaves follow the warp. The warp is the broadest field of all (a cell spans
+// more than a radian) and the texture unit blends with ~8 bits of weight, so it moves in small
+// steps; an octave sampled through it jumps by the step times its own frequency, and the finest
+// drew a grid of faint blocks over the sea seen from just above the clouds. The detail octaves
+// sample the unwarped domain (the same holds for the clouds' detail, below).
+const LAND_WARPED = 3;
+// Where in the lattice the weather systems are cut (clear sky over the coast as the haze lifts).
+const WEATHER_SEED = [23.0, 5.0, 13.0];
+
+/**
+ * The continents' height above sea level at a point `n` on the unit sphere (the eye's frame: the
+ * point beneath the eye is +y), on the CPU: the shader's own field at full detail. > 0 is land.
+ * @param {{x:number,y:number,z:number}} n unit vector
+ * @returns {number}
+ */
+export function orbitEarthLandHeight(n) {
+    return orbitEarthLandHeightWith(n, ORBIT_EARTH_SURFACE.landSeed, true);
+}
+
+/** orbitEarthLandHeight for another seed (and scale), with or without the open sea kept beneath the eye. */
+export function orbitEarthLandHeightWith(n, seed, home = true, scale = ORBIT_EARTH_SURFACE.landScale) {
+    const S = ORBIT_EARTH_SURFACE;
+    const q = [
+        (n.x * scale) + seed[0],
+        (n.y * scale) + seed[1],
+        (n.z * scale) + seed[2],
+    ];
+    const qw = q.map((c, i) => c + ((latticeNoise3Cpu(
+        (q[0] * 0.5) + LAND_WARP[i][0],
+        (q[1] * 0.5) + LAND_WARP[i][1],
+        (q[2] * 0.5) + LAND_WARP[i][2],
+    ) - 0.5) * S.landWarp));
+    let h = 0;
+    LAND_OCTAVES.forEach(([w, o], k) => {
+        const f = LACUNARITY ** k;
+        const d = k < LAND_WARPED ? qw : q;
+        h += latticeNoise3Cpu((d[0] * f) + o[0], (d[1] * f) + o[1], (d[2] * f) + o[2]) * w;
+    });
+    const basin = home ? S.homeDepth * Math.exp(-(1 - n.y) / ((S.homeOcean * S.homeOcean) / 2)) : 0;
+    return (h / LAND_WEIGHT) - basin - S.seaLevel;
+}
+
+/** A unit direction `arc` radians from beneath the eye (+y) on the bearing `azimuth` (from +x
+ * toward +z, as ORBIT_EARTH_SUN_AZIMUTH). */
+function onSphere(arc, azimuth) {
+    return new THREE.Vector3(
+        Math.sin(arc) * Math.cos(azimuth),
+        Math.cos(arc),
+        Math.sin(arc) * Math.sin(azimuth),
+    );
+}
+// The geographic pole, toward the night like the aurora's (a little farther off).
+const uGeoPole = uniform(onSphere(ORBIT_EARTH_SURFACE.poleArc, NIGHT_AZIMUTH));
+// The weather's two cyclones: where (arc from beneath the eye, bearing), how wide (radians) and
+// how far their eyes wind the field (radians of turn). The rail looks out on a bearing of about
+// -0.28 rad from 2026-10 layout's 5->6 seam: the near one sits ahead and to the left, in view as
+// the haze lifts; the wide one off to the right, in view from higher up.
+const CYCLONES = Object.freeze([
+    { at: onSphere(0.075, -0.62), radius: 0.035, turn: 1.3 },
+    { at: onSphere(0.34, 0.2), radius: 0.13, turn: 1.7 },
+]);
+
+// Add `weight` x the octave `sample()` faded to its mean (0.5) by `room` to the var `sum`, sampling
+// only where it shows: the fade is a function of distance, so whole regions of the screen skip the
+// fetch together (most of a far view's fine octaves).
+function addFadedOctave(sum, room, weight, sample) {
+    const r = room.toVar();
+    sum.addAssign(weight * 0.5);
+    If(r.greaterThan(0.002), () => {
+        sum.addAssign(sample().sub(0.5).mul(r).mul(weight));
+    });
+}
+
+// Turn the unit vector `v` about `axis` by an angle that is `turn` at the axis and falls off over
+// `radius` (a cyclone's spiral). Rodrigues' rotation.
+function swirl(v, { at, radius, turn }) {
+    const axis = vec3(at.x, at.y, at.z);
+    const c = dot(v, axis);
+    // (falling off as 1 / (1 + d^2): a Gaussian wound the field into rings round the eye)
+    const theta = float(turn).div(float(1).add(float(1).sub(c).div((radius * radius) / 2)));
+    const cs = cos(theta);
+    return v.mul(cs).add(cross(axis, v).mul(sin(theta))).add(axis.mul(c.mul(float(1).sub(cs))));
+}
 
 // The oval at a point `n` on the unit sphere (its direction from the centre): its angle from
 // the pole, the folded centre line of its sheets there, the sheets' activity and rays (which
@@ -408,31 +567,11 @@ function earthLook(dir, air = null, surfaceAir = air) {
     const t = k.mul(dy).negate().sub(sqrt(max(disc, 0))).toVar();
     const N = normalize(dir.mul(t).add(vec3(0, k, 0))).toVar();
     const mu = clamp(dot(N, dir.negate()), 0, 1).toVar();
-    // The cloud sea, as weather seen from orbit: broad systems swirled by a slow warp, a cloud
-    // fraction that runs from clear ocean to overcast across them, and detail octaves that
-    // fade out where their cells fall under a pixel (they would only shimmer there). The
-    // domain slides with the eye's travel and a slow drift.
-    const p0 = N.mul(E.cells).add(U.track).add(vec3(U.time.mul(0.002), 0, U.time.mul(-0.0015))).toVar();
-    const foot = length(fwidth(p0)).toVar();
-    const room = (freq) => float(1).sub(smoothstep(0.22, 0.55, foot.mul(freq)));
-    const warp = vec3(
-        latticeNoise3(p0.mul(0.35).add(vec3(3.1, 7.7, 1.9))),
-        0.5,
-        latticeNoise3(p0.mul(0.35).add(vec3(11.3, 2.2, 5.4))),
-    ).sub(0.5).mul(2.2);
-    const pw = p0.add(warp).toVar();
-    const n1 = latticeNoise3(pw);
-    const n2 = mix(float(0.5), latticeNoise3(pw.mul(2.03).add(vec3(17.1, 3.3, 9.7))), room(2.03));
-    const n3 = mix(float(0.5), latticeNoise3(pw.mul(4.11).add(vec3(5.2, 31.4, 13.6))), room(4.11));
-    const n4 = mix(float(0.5), latticeNoise3(pw.mul(8.3).add(vec3(29.7, 13.1, 3.8))), room(8.3));
-    const cloudN = n1.mul(0.5).add(n2.mul(0.25)).add(n3.mul(0.15))
-        .add(n4.mul(0.10))
-        .toVar();
-    const fraction = latticeNoise3(p0.mul(0.18).add(vec3(23.0, 9.0, 17.0)));
-    const thresh = mix(float(0.62), float(0.38), fraction).toVar();
-    const cover = smoothstep(thresh.sub(0.10), thresh.add(0.08), cloudN).toVar();
-    const thick = smoothstep(thresh, thresh.add(0.22), cloudN);
-    const albedo = mix(vec3(...OCEAN), vec3(...CLOUD).mul(thick.mul(0.28).add(0.72)), cover).toVar();
+    const S = ORBIT_EARTH_SURFACE;
+    // How much arc one pixel covers here: octaves finer than that fade to their mean (they would
+    // only shimmer).
+    const footN = length(fwidth(N)).toVar();
+    const roomAt = (perRadian) => float(1).sub(smoothstep(0.22, 0.55, footN.mul(perRadian)));
     // The sun: light reaches a little past the terminator (twilight), warm along it.
     const sd = dot(N, U.sun).toVar();
     const lit = smoothstep(-0.07, 0.10, sd);
@@ -441,9 +580,156 @@ function earthLook(dir, air = null, surfaceAir = air) {
         mix(vec3(...SUNLIGHT), vec3(...SUNSET), warm),
         vec3(...SUNSET_DEEP),
         float(1).sub(smoothstep(-0.05, 0.03, sd)),
-    );
+    ).toVar();
     const night = float(1).sub(smoothstep(-0.10, 0.05, sd)).toVar();
-    const surf = albedo.mul(sunCol).mul(lit).add(albedo.mul(vec3(...NIGHT_LIGHT))).toVar();
+
+    // ── THE LAND (orbitEarthLandHeight is its CPU twin) ──
+    const q = N.mul(S.landScale).add(vec3(...S.landSeed)).toVar();
+    const qw = q.add(vec3(
+        latticeNoise3(q.mul(0.5).add(vec3(...LAND_WARP[0]))),
+        latticeNoise3(q.mul(0.5).add(vec3(...LAND_WARP[1]))),
+        latticeNoise3(q.mul(0.5).add(vec3(...LAND_WARP[2]))),
+    ).sub(0.5).mul(S.landWarp)).toVar();
+    const heightSum = float(0).toVar();
+    LAND_OCTAVES.forEach(([w, o], octave) => {
+        const f = LACUNARITY ** octave;
+        const sample = () => latticeNoise3((octave < LAND_WARPED ? qw : q).mul(f).add(vec3(...o)));
+        if (octave < 4) heightSum.addAssign(sample().mul(w));
+        else addFadedOctave(heightSum, roomAt(S.landScale * f), w, sample);
+    });
+    const basin = exp(float(1).sub(N.y).div((S.homeOcean * S.homeOcean) / 2).negate()).mul(S.homeDepth);
+    const depth = heightSum.div(LAND_WEIGHT).sub(S.seaLevel).toVar();
+    const elev = depth.sub(basin).toVar();
+    const coastAA = max(fwidth(elev), 0.0015);
+    const land = smoothstep(coastAA.negate(), coastAA, elev).toVar();
+    // Latitude from the pole, moisture, and the ridges of the high ground.
+    const colat = acos(clamp(dot(N, uGeoPole), -1, 1)).toVar();
+    const temperature = colat.div(Math.PI / 2).sub(max(elev, 0).mul(1.6)).toVar();
+    const moisture = latticeNoise3(qw.mul(2.6).add(vec3(41.2, 7.7, 19.9)))
+        .add(float(1).sub(smoothstep(0.0, 0.07, elev)).mul(0.22)).toVar();
+    const ridge = float(1).sub(abs(latticeNoise3(qw.mul(9.5).add(vec3(3.9, 51.2, 8.1))).mul(2).sub(1)));
+    const mountain = smoothstep(0.72, 0.95, ridge).mul(smoothstep(0.015, 0.09, elev)).toVar();
+    const vegetation = mix(vec3(...LAND_BOREAL), vec3(...LAND_TEMPERATE), smoothstep(0.42, 0.62, temperature));
+    const arid = mix(vec3(...LAND_STEPPE), vec3(...LAND_DESERT), smoothstep(0.62, 0.82, temperature));
+    const landCol = mix(arid, vegetation, smoothstep(0.34, 0.52, moisture)).toVar();
+    landCol.assign(mix(landCol, vec3(...LAND_TUNDRA), float(1).sub(smoothstep(0.24, 0.36, temperature))));
+    landCol.assign(mix(landCol, vec3(...LAND_ROCK), mountain.mul(0.75)));
+    landCol.assign(mix(landCol, vec3(...ICE), mountain.mul(float(1).sub(smoothstep(0.3, 0.55, temperature)))));
+    const iceEdge = colat.add(latticeNoise3(qw.mul(6.1).add(vec3(9.1, 2.2, 33.3))).sub(0.5).mul(0.09));
+    const ice = float(1).sub(smoothstep(S.iceCap - 0.03, S.iceCap + 0.03, iceEdge)).toVar();
+    // The sea: deep, open, and the shallows round the coasts (sea ice by the pole).
+    const oceanCol = mix(vec3(...OCEAN_DEEP), vec3(...OCEAN), smoothstep(-0.16, -0.03, depth))
+        .toVar();
+    oceanCol.assign(mix(oceanCol, vec3(...OCEAN_SHALLOW), smoothstep(-S.shelf, 0.0, depth).mul(0.6)));
+    const ground = mix(mix(oceanCol, vec3(...ICE).mul(0.92), ice.mul(0.85)), mix(landCol, vec3(...ICE), ice), land)
+        .toVar();
+
+    // ── THE WEATHER ──
+    // Systems swirled by a slow warp, wound round two cyclones, a cloud fraction that runs from
+    // clear sky to overcast across them, and detail octaves that fade where their cells fall under
+    // a pixel. The domain slides with the eye's travel and a slow drift.
+    const Nc = swirl(swirl(N, CYCLONES[0]), CYCLONES[1]);
+    const p0 = Nc.mul(E.cells).add(U.track).add(vec3(U.time.mul(0.002), 0, U.time.mul(-0.0015))).toVar();
+    const room = (freq) => roomAt(E.cells * freq);
+    const warp = vec3(
+        latticeNoise3(p0.mul(0.35).add(vec3(3.1, 7.7, 1.9))),
+        0.5,
+        latticeNoise3(p0.mul(0.35).add(vec3(11.3, 2.2, 5.4))),
+    ).sub(0.5).mul(1.5);
+    const pw = p0.add(warp).toVar();
+    const broad = latticeNoise3(pw).mul(0.46)
+        .add(latticeNoise3(pw.mul(2.03).add(vec3(17.1, 3.3, 9.7))).mul(0.24))
+        .toVar();
+    // Billowed (1 - |2n - 1|): the cauliflower of cumulus, not smooth blobs.
+    const billow = (freq, offset) => float(1).sub(abs(latticeNoise3(p0.mul(freq).add(vec3(...offset))).mul(2).sub(1)));
+    const detail = float(0).toVar();
+    [
+        [4.11, 0.13, [5.2, 31.4, 13.6]],
+        [8.3, 0.08, [29.7, 13.1, 3.8]],
+        [16.9, 0.055, [1.7, 19.4, 24.6]],
+        [34.4, 0.035, [14.2, 6.6, 30.1]],
+        [69.8, 0.022, [27.1, 11.8, 2.9]],
+        [141.7, 0.014, [6.3, 35.5, 18.4]],
+    ].forEach(([freq, w, offset]) => addFadedOctave(detail, room(freq), w, () => billow(freq, offset)));
+    const cloudN = broad.add(detail).toVar();
+    const fraction = smoothstep(0.4, 0.6, latticeNoise3(p0.mul(0.075).add(vec3(...WEATHER_SEED)))
+        .mul(0.7).add(latticeNoise3(p0.mul(0.19).add(vec3(4.4, 28.0, 11.0))).mul(0.3))).toVar();
+    // More cloud round the cyclones' eyes (their spiral bands), and a ragged clear eye in the middle.
+    const stormy = CYCLONES.reduce((sum, cy) => {
+        const near = float(1).sub(dot(N, vec3(cy.at.x, cy.at.y, cy.at.z))).div((cy.radius * cy.radius) / 2);
+        return sum.add(exp(near.mul(0.35).negate()).sub(exp(near.mul(30).negate()).mul(1.2)));
+    }, float(0));
+    const thresh = mix(float(0.74), float(0.40), fraction).sub(stormy.mul(0.12)).toVar();
+    // Crisp edges, as cumulus look from above, antialiased by the field's own derivative.
+    const cloudEdge = max(fwidth(cloudN).mul(1.2), 0.018);
+    const cover = smoothstep(thresh.sub(cloudEdge), thresh.add(cloudEdge), cloudN).toVar();
+    const thick = smoothstep(thresh, thresh.add(0.13), cloudN).toVar();
+    // A veil of cirrus, drawn out along the jet.
+    const cirrusN = latticeNoise3(p0.mul(vec3(0.32, 0.32, 2.4)).add(vec3(6.6, 40.1, 12.5)));
+    const cirrus = smoothstep(0.6, 0.86, cirrusN).mul(0.3).mul(smoothstep(0.25, 0.7, fraction));
+    const cloudA = cover.mul(mix(float(0.58), float(1), thick)).toVar();
+    cloudA.assign(cloudA.add(cirrus.mul(float(1).sub(cloudA))));
+    // Toward the sun: the cloud there shades the ground beneath (its shadow falls long at a low
+    // sun) and darkens the cloud's own far side; the side facing the sun is lit.
+    // (Only where the sun reaches: every term it feeds is lit by it.)
+    const shadow = float(0).toVar();
+    const cloudShade = float(1).toVar();
+    If(sd.greaterThan(-0.07), () => {
+        const toSun = normalize(U.sun.sub(N.mul(sd)).add(vec3(1e-5, 0, 0)));
+        // (the cloud's height over the tangent of the sun's elevation there, in radians of arc)
+        const sunCot = sqrt(max(float(1).sub(sd.mul(sd)), 0)).div(max(sd, 0.04));
+        const reach = clamp(sunCot.mul(S.cloudHeight), 0, 0.03);
+        const ps = pw.add(toSun.mul(reach.mul(E.cells)));
+        const sunward = latticeNoise3(ps).mul(0.46)
+            .add(latticeNoise3(ps.mul(2.03).add(vec3(17.1, 3.3, 9.7))).mul(0.24))
+            .add(0.17)
+            .toVar();
+        shadow.assign(smoothstep(thresh.sub(0.05), thresh.add(0.05), sunward).mul(0.72));
+        cloudShade.assign(float(1).sub(clamp(sunward.sub(broad.add(0.17)).mul(2.6), -0.22, 0.38)));
+    });
+    // Brighter where it is thick and where its billows rise.
+    const cloudCol = vec3(...CLOUD).mul(thick.mul(0.22).add(0.7).add(detail.sub(0.17).mul(0.9))).toVar();
+
+    // ── TOGETHER, LIT ──
+    const albedo = mix(ground, cloudCol, cloudA).toVar();
+    // The sun's glint on open water (never through cloud or on land).
+    const glintCos = clamp(dot(reflect(dir, N), U.sun), 0, 1);
+    const glint = glintCos.pow(380).mul(1.4).add(glintCos.pow(28).mul(0.06))
+        .mul(float(1).sub(land))
+        .mul(float(1).sub(ice))
+        .mul(float(1).sub(cloudA));
+    const groundLit = ground.mul(float(1).sub(shadow.mul(float(1).sub(cover)))).add(glint);
+    const cloudLit = cloudCol.mul(cloudShade);
+    const surf = mix(groundLit, cloudLit, cloudA).mul(sunCol).mul(lit)
+        .add(albedo.mul(vec3(...NIGHT_LIGHT)))
+        .toVar();
+    // The towns at night: clustered on the plains and along the coasts, under the cloud (only where
+    // there is night-side land to hold them).
+    const townsHere = land.mul(float(1).sub(ice)).mul(float(1).sub(mountain))
+        .mul(float(1).sub(smoothstep(-0.12, 0.02, sd)))
+        .mul(float(1).sub(cloudA.mul(0.85)))
+        .toVar();
+    If(townsHere.greaterThan(0.002), () => {
+        const towns = smoothstep(0.52, 0.8, latticeNoise3(qw.mul(11.0).add(vec3(2.4, 17.8, 36.6))))
+            .mul(float(1).sub(smoothstep(0.03, 0.14, elev)).mul(0.6).add(0.4))
+            .mul(smoothstep(0.3, 0.5, temperature));
+        // Bright cores and dimmer sprawl at every scale: a product of three noises, squared, each
+        // fading to its own mean where it falls under a pixel (a flat glow there filled each cluster).
+        const glowAt = (f, offset) => {
+            const g = float(0.27).toVar();
+            const r = roomAt(S.landScale * f).toVar();
+            If(r.greaterThan(0.002), () => {
+                g.assign(mix(float(0.27), latticeNoise3(q.mul(f).add(vec3(...offset))).pow2(), r));
+            });
+            return g;
+        };
+        const townPoints = glowAt(31, [7.3, 3.1, 44.4])
+            .mul(glowAt(97, [21.5, 40.2, 3.3]))
+            .mul(glowAt(290, [4.4, 12.9, 51.7]))
+            .mul(16)
+            .pow2();
+        surf.addAssign(vec3(...CITY_LIGHT).mul(S.cityGain).mul(towns.mul(min(townPoints, 2))).mul(townsHere));
+    });
     // The aurora lights the cloud tops under it green (a broad glow round the oval's foot).
     If(U.aurora.greaterThan(0.001), () => {
         const under = ovalAt(N);
@@ -480,7 +766,8 @@ function earthLook(dir, air = null, surfaceAir = air) {
     const rimAlpha = clamp(glow.mul(mix(float(0.25), float(0.55), dayRim)), 0, 1);
 
     // ── ONE EDGE: coverage of the disc over the limb's own screen derivative ──
-    const edge = max(fwidth(aClose), 1e-7);
+    // (capped: straight down the closest approach turns as a square root and its derivative blows up)
+    const edge = clamp(fwidth(aClose), 1e-7, 0.01);
     const coverage = clamp(float(0.5).sub(aClose.div(edge)), 0, 1);
     const rgb = mix(rim, surface, coverage).toVar();
     const alpha = mix(rimAlpha, float(1), coverage).toVar();

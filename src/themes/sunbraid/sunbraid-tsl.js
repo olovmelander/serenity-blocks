@@ -21,6 +21,7 @@ import {
     fract,
     int,
     length,
+    log,
     max,
     min,
     mix,
@@ -59,31 +60,58 @@ export const sbHash22 = /* @__PURE__ */ Fn(([pIn]) => {
 }).setLayout({ name: 'sb_hash22', type: 'vec2', inputs: [{ name: 'pIn', type: 'vec2' }] });
 
 /**
- * Voronoi cells at a point (in cell units, centres jittered by `jitter`): (distance to the nearest
- * centre, to the second, the nearest cell's id in 0..1). The edge between two cells lies where the
- * two distances meet, so (second − nearest) is a distance to the nearest edge (twice it, near one).
+ * Voronoi cells and their borders at a point (in cell units, centres jittered by `jitter`):
+ * `edge`, the true distance to the nearest border (each border is the bisector of two centres);
+ * `id` and `other` (0..1), the cell the point lies in and the cell across that border; `soft`, a
+ * smooth minimum of the distances to all its borders (they merge `knot` round where they meet), and
+ * `lean`, its gradient's direction (toward the borders, shorter than 1 where they meet). The
+ * smooth minimum takes every border at once: a minimum of the nearest two jumped wherever a third
+ * came as near (two corners close together), and the junctions flickered as the eye moved. The
+ * borders are sought among the same nine centres as the nearest one: within 0.3 cells of a border
+ * that agrees with a 5 × 5 search at jitter 0.85 (all but 7 points in a million). An inline builder
+ * (it gives several values): call it inside a Fn.
  */
-export const sbCells = /* @__PURE__ */ Fn(([p, jitter]) => {
-    const ip = floor(p);
-    const fp = fract(p);
-    const d1 = float(8.0).toVar();
-    const d2 = float(8.0).toVar();
+export function sbCellEdge(p, jitter, knot) {
+    const ip = floor(p).toVar();
+    const fp = fract(p).toVar();
+    const sites = [];
+    const near = vec2(0.0).toVar();
+    const nearD = float(8.0).toVar();
     const id = float(0.0).toVar();
     for (let j = -1; j <= 1; j += 1) {
         for (let i = -1; i <= 1; i += 1) {
             const o = vec2(i, j);
-            const h = sbHash22(ip.add(o));
-            const d = length(o.add(h.sub(0.5).mul(jitter)).add(0.5).sub(fp));
-            const nearer = d.lessThan(d1);
-            d2.assign(select(nearer, d1, min(d2, d)));
+            const h = sbHash22(ip.add(o)).toVar();
+            const r = o.add(h.sub(0.5).mul(jitter)).add(0.5).sub(fp).toVar();
+            sites.push({ r, id: h.x });
+            const d = dot(r, r);
+            const nearer = d.lessThan(nearD);
+            near.assign(select(nearer, r, near));
             id.assign(select(nearer, h.x, id));
-            d1.assign(min(d1, d));
+            nearD.assign(min(nearD, d));
         }
     }
-    return vec3(d1, d2, id);
-}).setLayout({
-    name: 'sb_cells', type: 'vec3', inputs: [{ name: 'p', type: 'vec2' }, { name: 'jitter', type: 'float' }],
-});
+    const edge = float(8.0).toVar();
+    const other = float(0.0).toVar();
+    const weight = float(0.0).toVar();
+    const pull = vec2(0.0).toVar();
+    for (const site of sites) {
+        const apart = site.r.sub(near);
+        const span = length(apart);
+        const dir = apart.div(max(span, 1e-5));
+        // The nearest centre itself (span 0) has no border with the point's cell.
+        const b = select(span.greaterThan(1e-4), dot(near.add(site.r).mul(0.5), dir), float(8.0)).toVar();
+        other.assign(select(b.lessThan(edge), site.id, other));
+        edge.assign(min(edge, b));
+        const w = exp(b.div(knot).negate());
+        weight.addAssign(w);
+        pull.addAssign(dir.mul(w));
+    }
+    const held = max(weight, 1e-30);
+    return {
+        edge, id, other, soft: log(held).mul(knot).negate(), lean: pull.div(held),
+    };
+}
 
 export const sbLuma = (c) => dot(c, vec3(0.2126, 0.7152, 0.0722));
 

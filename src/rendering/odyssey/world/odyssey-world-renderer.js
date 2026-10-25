@@ -13,6 +13,7 @@ import {
     ODYSSEY_MASSIFS,
     ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
+    ODYSSEY_SUMMIT_SCULPT,
 } from './odyssey-world-height.js';
 import { MORPH_END, MORPH_START, buildOdysseyClipmap } from './odyssey-clipmap.js';
 import {
@@ -20,7 +21,7 @@ import {
 } from './odyssey-ground-bakes.js';
 import {
     RELIEF_EXTENT, bakeDetailNormalData, bakeMacroData, bakeOdysseyCloudField, bakeReliefData,
-    makeReliefSampler,
+    bakeSummitSculptData, makeReliefSampler,
 } from './odyssey-world-bake-data.js';
 import {
     ODYSSEY_GROUND_DISTANCE,
@@ -1088,6 +1089,11 @@ export function createOdysseyWorld({
     const detailTex = bakeDetailNormal(undefined, preTex.detail ?? null);
     const macroTex = bakeMacroTexture(undefined, preTex.macro ?? null);
     const heightTex = relief.tex;
+    // THE SUMMIT'S OWN PLATE (bakeSummitSculptData): ~2 u of form over the hero's top, which the
+    // 8.8 u relief cannot hold. Clamped: its border is beyond the sculpt's reach, so it reads 0
+    // everywhere else.
+    const summitBake = preTex.summit ?? bakeSummitSculptData();
+    const summitTex = halfFloatTexture(summitBake.data, summitBake.res, THREE.ClampToEdgeWrapping);
     const t1 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
     const group = new THREE.Group();
@@ -1515,18 +1521,28 @@ export function createOdysseyWorld({
     const gMacro = gMacroTex.r;
     const gWeight = gMacroTex.g;
     const groundMat = new THREE.MeshBasicNodeMaterial();
+    const summitUv = g.worldXZ.sub(vec2(ODYSSEY_SUMMIT_SCULPT.x, ODYSSEY_SUMMIT_SCULPT.z))
+        .div(float(ODYSSEY_SUMMIT_SCULPT.extent))
+        .add(0.5);
     groundMat.positionNode = vec3(
         g.worldXZ.x,
-        gMacro.add(texture(heightTex, reliefUv).level(0).r.mul(gWeight)),
+        gMacro.add(texture(heightTex, reliefUv).level(0).r.mul(gWeight))
+            .add(texture(summitTex, summitUv).level(0).r),
         g.worldXZ.y,
     );
+    const vSummitUv = varying(summitUv, 'vSuv');
     const vWeight = varying(gWeight, 'vW');
     const vSpacing = varying(g.spacing, 'vS');
     const vMDx = varying(gMacroTex.b, 'vMDx');
     const vMDz = varying(gMacroTex.a, 'vMDz');
 
     const aux = texture(heightTex, vUv);
-    const baseNormal = normalize(vec3(aux.g.mul(vWeight).add(vMDx).negate(), 1, aux.b.mul(vWeight).add(vMDz).negate()));
+    const summitAux = texture(summitTex, vSummitUv);
+    const baseNormal = normalize(vec3(
+        aux.g.mul(vWeight).add(vMDx).add(summitAux.g).negate(),
+        1,
+        aux.b.mul(vWeight).add(vMDz).add(summitAux.b).negate(),
+    ));
     const footprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
     /**
      * THE WORLD PLATE (ground plan Wave 1) — one fetch, four fields.
@@ -1587,7 +1603,8 @@ export function createOdysseyWorld({
         });
         // Curvature, on the same weight ramp as the relief it was baked from, so it fades out
         // with the detail rather than surviving as shading over a lattice too coarse to show it.
-        const curvature = clamp(aux.a.mul(vWeight).mul(9.0), -1, 1);
+        // ...and the summit's own couloirs (+) and aretes (-) join it (bakeSummitSculptData).
+        const curvature = clamp(aux.a.mul(vWeight).add(summitAux.a).mul(9.0), -1, 1);
         const gully = max(curvature, 0);
         const crest = max(curvature.negate(), 0);
         const flatness = clamp(baseNormal.y, 0, 1);
@@ -1617,7 +1634,24 @@ export function createOdysseyWorld({
          * it through that ratio — including the boundary breakup, so even the material borders
          * are drawn by the same field that draws the grain.
          */
-        const atlas = texture(groundTex, positionWorld.xz.div(float(GROUND_ATLAS_WORLD))).toVar();
+        const atlasTop = texture(groundTex, positionWorld.xz.div(float(GROUND_ATLAS_WORLD))).toVar();
+        // TRIPLANAR ON THE STEEP FACES (2026-10-25, Act II pass, step 2). Projected from above
+        // alone, the atlas streaked down every steep face: the summit's rock and snow read as
+        // smeared plaster. Where the ground is steep it is also projected from the two sides,
+        // blended by which way the face looks. A branch on the slope (coherent: whole faces), with
+        // explicit-level fetches (the atlas has no mips), so the flat island pays nothing.
+        const steepness = smoothstep(float(0.45), float(0.8), float(1).sub(baseNormal.y)).toVar();
+        const atlas = Fn(() => {
+            const a = atlasTop.toVar();
+            If(steepness.greaterThan(0.001), () => {
+                const fromX = texture(groundTex, positionWorld.zy.div(float(GROUND_ATLAS_WORLD))).level(0);
+                const fromZ = texture(groundTex, positionWorld.xy.div(float(GROUND_ATLAS_WORLD))).level(0);
+                const wx = abs(baseNormal.x);
+                const side = mix(fromZ, fromX, wx.div(max(wx.add(abs(baseNormal.z)), float(1e-4))));
+                a.assign(mix(atlasTop, side, steepness));
+            });
+            return a;
+        })().toVar();
         // DISTANCE DISCIPLINE (rule 7). "From far away, the grain melts away and the structure
         // is mostly a solid color, accented by lighting." The melt is a look requirement first;
         // that it also caps the atlas's bandwidth to the near field is the bonus.
@@ -1742,8 +1776,15 @@ export function createOdysseyWorld({
         const couloir = heroFields.x;
         // The lighting normal tilts across the flutes, along the cone's azimuthal tangent.
         const heroTangent = vec3(heroRel.y.negate(), 0, heroRel.x).div(max(heroR, float(1)));
-        const litNormal = normalize(normal.sub(heroTangent.mul(heroFields.y.mul(HERO_FLUTE_DEPTH)))).toVar();
-        const fluteRib = smoothstep(float(0.80), float(0.95), heroFields.z).toVar();
+        // Where the summit is sculpted (bakeSummitSculptData) its real ribs and couloirs take over
+        // from the painted flutes, which drew it as pleated cloth.
+        const painted = float(1).sub(float(1).sub(smoothstep(
+            float(ODYSSEY_SUMMIT_SCULPT.core),
+            float(ODYSSEY_SUMMIT_SCULPT.reach),
+            heroR,
+        )).mul(0.85));
+        const litNormal = normalize(normal.sub(heroTangent.mul(heroFields.y.mul(HERO_FLUTE_DEPTH).mul(painted)))).toVar();
+        const fluteRib = smoothstep(float(0.80), float(0.95), heroFields.z).mul(painted).toVar();
         // The hero's whole cone, wider than `heroW` (which ramps out from 0.55 of the radius).
         const heroCrestW = float(1).sub(smoothstep(
             float(heroMassif.radius * 0.80),

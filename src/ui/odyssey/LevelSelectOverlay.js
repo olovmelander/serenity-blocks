@@ -8,6 +8,7 @@
  * caller wires #odyssey-back-btn and the new-journey confirmation (odyssey-new-journey.js).
  * Styles: public/styles/odyssey-navigator.css (#odyssey-level-select).
  */
+import { ODYSSEY_LOCK_SVG } from './odyssey-orb-art.js';
 
 /** A keycap, and the controller button that does the same where there is one. */
 function key(label, pad) {
@@ -21,8 +22,7 @@ function stat(className, countId, wholeId, label) {
         + `<small> / <span id="${wholeId}">0</span></small></b> ${label}</span>`;
 }
 
-const LOCK_GLYPH = '<svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/>'
-    + '<path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>';
+const LOCK_GLYPH = ODYSSEY_LOCK_SVG;
 
 /**
  * Build + mount the level-select shell.

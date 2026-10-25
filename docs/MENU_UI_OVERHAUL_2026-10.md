@@ -133,6 +133,29 @@ and outlines. `@keyframes sb-key-drop` stays (the local results crown uses it).
 - Animate `opacity` and transforms (including `translate`) only.
 - No per-frame layout reads; covered menus pause their animations (`.menu-covered`).
 
+### 1.8 Icons: Keystone glyphs (2026-10-25)
+
+Until 2026-10-25 the icons predated Keystone: generic line glyphs defined in about twenty
+places with three stroke weights, and several stock drawings (Feather's "users" and "globe" on
+the mode list, Lucide's trophy and swords on the scoreboards, Material's headset on the menu
+footer). Now there is one set, `src/ui/components/cosmic-icons.js`, all 24-unit, 1.8 stroke.
+
+- **Identity glyphs carry the tile.** An icon that names a place in the game (the eight modes,
+  the dock and play rail, Odyssey's Chapters button, the Hub's four sections) is a line form
+  completed by one solid rounded tile (`.cs-tile`), the logo's gesture. Built from the game's
+  nouns: an open well is a board, a breath curve is a breath. Single Player is the logo's own
+  ring; Records is a podium with the tile on the top step; Settings is two sliders whose knob is
+  the tile (the old gear read as a sun). The lotus stays the Serenity Hub's mark without one.
+- **The tile takes the icon's colour,** never coral by default, so the one primary action
+  keeps coral (rule 1). When a mode becomes current its tile locks in once (`sb-tile-lock`,
+  a scale, never a fall); the old per-icon idle loops (a spinning globe, a 150 % pop) are gone.
+- **Utilities stay conventional:** close, back, search, info, play and the like. The
+  multiplayer sheets (`mpIcon`), scoreboards, toasts and the Odyssey star, crown and lock all
+  draw from the same set; Settings has one sprite (`#sb-ico-*`) of the set's drawings.
+- `tests/unit/keystone-glyphs.test.js` keeps index.html's static copies identical to the
+  module, one tile per identity glyph, every sprite reference resolved, and no stock drawings.
+- The app mark (favicon, Windows icon) is the logo's O on a night tile: `docs/desktop-icons.md`.
+
 ---
 
 ## 2. Architecture

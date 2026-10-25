@@ -169,6 +169,7 @@ function bakeWorkerReplies(job) {
         out.push({ stage: 'atlas', atlas: { data: new Uint8Array(4) }, ms: 1 });
         out.push({ stage: 'detail', detail: { data: new Uint8Array(4) }, ms: 1 });
         out.push({ stage: 'macro', macro: { data: new Uint8Array(4) }, ms: 1 });
+        out.push({ stage: 'summit', summit: { data: new Uint8Array(4) }, ms: 1 });
     }
     out.push({ stage: 'done', lane: job.lane, ms: 1 });
     return out;

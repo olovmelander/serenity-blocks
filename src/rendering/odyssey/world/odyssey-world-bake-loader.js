@@ -17,7 +17,7 @@
  */
 
 import {
-    bakeReliefData, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData, bakeMacroData,
+    bakeReliefData, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData, bakeMacroData, bakeSummitSculptData,
     makeReliefSampler, mergeReliefBands, reliefBandRanges,
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData } from './odyssey-cloud-field.js';
@@ -47,6 +47,7 @@ export function bakeWorldSync({
     const detail = bakeDetailNormalData();
     const t4 = now();
     const macro = bakeMacroData();
+    const summit = bakeSummitSculptData();
     const t5 = now();
     const field = cloudField && Array.isArray(cloudSpecs) ? buildCloudFieldGeometryData(cloudSpecs, railSamples) : null;
     const t6 = now();
@@ -55,7 +56,7 @@ export function bakeWorldSync({
     return {
         relief,
         textures: {
-            sunFields, atlas, detail, macro,
+            sunFields, atlas, detail, macro, summit,
         },
         cloudField: field,
         scatter: zoned,
@@ -139,7 +140,7 @@ export function startWorldBake(request) {
     // chain (band + sunFields), not the sum of six bakes.
     const ms = {};
     const plates = {
-        sunFields: null, atlas: null, detail: null, macro: null,
+        sunFields: null, atlas: null, detail: null, macro: null, summit: null,
     };
     const workers = new Set();
     let failed = false;
@@ -153,7 +154,9 @@ export function startWorldBake(request) {
         runSync();
     };
     const resolveTexturesWhenComplete = () => {
-        if (plates.sunFields && plates.atlas && plates.detail && plates.macro) textures.resolve({ ...plates });
+        if (plates.sunFields && plates.atlas && plates.detail && plates.macro && plates.summit) {
+            textures.resolve({ ...plates });
+        }
     };
     const spawn = (message, transfer, onStage, options = {}) => {
         if (failed) return null;
@@ -270,7 +273,7 @@ export function startWorldBake(request) {
 
     // Lane N+1 — the three plates that depend on nothing.
     spawn({ lane: 'plates' }, undefined, (msg) => {
-        if (msg.stage !== 'atlas' && msg.stage !== 'detail' && msg.stage !== 'macro') return;
+        if (msg.stage !== 'atlas' && msg.stage !== 'detail' && msg.stage !== 'macro' && msg.stage !== 'summit') return;
         ms[msg.stage] = msg.ms;
         plates[msg.stage] = msg[msg.stage];
         resolveTexturesWhenComplete();

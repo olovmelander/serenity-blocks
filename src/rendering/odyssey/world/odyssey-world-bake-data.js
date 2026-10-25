@@ -14,6 +14,8 @@
 
 import { DataUtils } from 'three';
 import {
+    ODYSSEY_SUMMIT_SCULPT,
+    odysseySummitSculpt,
     odysseyWorldDetailWeight,
     odysseyWorldMacro,
     odysseyWorldRelief,
@@ -75,7 +77,8 @@ export function bakeReliefData(reliefRes) {
         for (let i = 0; i < reliefRes; i += 1) {
             const x = origin + (i * step);
             total[(j * reliefRes) + i] = odysseyWorldMacro(x, z)
-                + (relief[(j * reliefRes) + i] * odysseyWorldDetailWeight(x, z));
+                + (relief[(j * reliefRes) + i] * odysseyWorldDetailWeight(x, z))
+                + odysseySummitSculpt(x, z);
         }
     }
     return {
@@ -134,7 +137,8 @@ export function bakeReliefBand(reliefRes, jStart, jEnd) {
             const neighbourMean = (at(i + 1, j) + at(i - 1, j) + at(i, j + 1) + at(i, j - 1)) / 4;
             data[idx + 3] = DataUtils.toHalfFloat((neighbourMean - centre) / step);
             const x = origin + (i * step);
-            total[local] = odysseyWorldMacro(x, z) + (centre * odysseyWorldDetailWeight(x, z));
+            total[local] = odysseyWorldMacro(x, z) + (centre * odysseyWorldDetailWeight(x, z))
+                + odysseySummitSculpt(x, z);
         }
     }
     return {
@@ -514,6 +518,44 @@ export function bakeDetailNormalData(res = 256) {
 // ── vegetation ───────────────────────────────────────────────────────────────────
 
 /**
+ * THE SUMMIT'S OWN PLATE (2026-10-25): `odysseySummitSculpt` at ~2 u over a square round the hero
+ * apex, in the relief bake's layout: R the height delta, G/B its slope (central differences), A
+ * its curvature. The curvature is taken over a ~6 u stencil and divided by the relief plate's own
+ * step, so the shading that reads the two can add them (a couloir 27 u across is what it shows).
+ * The square's border is outside the sculpt's reach, so a clamped sampler reads 0 beyond it.
+ * @param {number} [res]
+ * @returns {{data: Uint16Array, res: number, extent: number, x: number, z: number}}
+ */
+export function bakeSummitSculptData(res = ODYSSEY_SUMMIT_SCULPT.res) {
+    const S = ODYSSEY_SUMMIT_SCULPT;
+    const step = S.extent / (res - 1);
+    const x0 = S.x - (S.extent / 2);
+    const z0 = S.z - (S.extent / 2);
+    const h = new Float32Array(res * res);
+    for (let j = 0; j < res; j += 1) {
+        for (let i = 0; i < res; i += 1) h[(j * res) + i] = odysseySummitSculpt(x0 + (i * step), z0 + (j * step));
+    }
+    const at = (i, j) => h[(Math.max(0, Math.min(res - 1, j)) * res) + Math.max(0, Math.min(res - 1, i))];
+    const reliefStep = RELIEF_EXTENT / 1023;
+    const k = 3;
+    const data = new Uint16Array(res * res * 4);
+    for (let j = 0; j < res; j += 1) {
+        for (let i = 0; i < res; i += 1) {
+            const idx = ((j * res) + i) * 4;
+            const c = at(i, j);
+            data[idx] = DataUtils.toHalfFloat(c);
+            data[idx + 1] = DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) / (2 * step));
+            data[idx + 2] = DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) / (2 * step));
+            const mean = (at(i + k, j) + at(i - k, j) + at(i, j + k) + at(i, j - k)) / 4;
+            data[idx + 3] = DataUtils.toHalfFloat((mean - c) / reliefStep);
+        }
+    }
+    return {
+        data, res, extent: S.extent, x: S.x, z: S.z,
+    };
+}
+
+/**
  * The five boot bakes in dependency order, as transferable arrays. This is what the worker runs
  * and what `createOdysseyWorld` consumes (`bakedTextures` option); the synchronous path calls
  * the same function on the main thread, so both paths are one code path.
@@ -533,12 +575,14 @@ export function bakeWorldTextureData({ reliefRes, shadowRes }) {
     const t4 = now();
     const macro = bakeMacroData();
     const t5 = now();
+    const summit = bakeSummitSculptData();
     return {
         relief,
         sunFields,
         atlas,
         detail,
         macro,
+        summit,
         ms: {
             relief: +(t1 - t0).toFixed(1),
             sunFields: +(t2 - t1).toFixed(1),
@@ -558,5 +602,6 @@ export function worldTextureDataBuffers(baked) {
         baked.atlas.data.buffer, ...baked.atlas.fields.map((f) => f.buffer),
         baked.detail.data.buffer,
         baked.macro.data.buffer,
+        baked.summit.data.buffer,
     ];
 }
