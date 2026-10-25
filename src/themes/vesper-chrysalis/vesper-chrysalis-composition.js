@@ -6,8 +6,10 @@
  * live card, board and HUD rects (screen fractions, y down) and maps board columns and rows onto
  * the screen. The world aims its gameplay events through those points (the column and rows a
  * piece locked on, the rows a clear emptied), and the post keeps its calm zones over the card
- * and the HUD.
+ * and the HUD. The wings measure here how much of each of them the card and the HUD hide.
  */
+
+import { wingPoint } from './vesper-chrysalis-core.js';
 
 /** The playfield every board canvas shows. */
 export const BOARD_GRID = Object.freeze({ columns: 10, rows: 20, hiddenRows: 4 });
@@ -151,6 +153,112 @@ export function cardUnion(layout) {
     }
     return u;
 }
+
+// ── What the card hides of the wings ────────────────────────────────────────────
+
+/** Rays across each wing (an = i / (WING_COVER_SAMPLES − 1)) the cover table holds. */
+export const WING_COVER_SAMPLES = 13;
+/** Steps the march takes along a ray, root to margin, before it refines the edge. */
+const COVER_STEPS = 24;
+const COVER_REFINE = 6;
+/**
+ * A gap between two covers narrower than this (screen heights) still hides: the HUD stands
+ * ~0.04 of the screen's height right of the card, and a wing coming out into that slot only to
+ * vanish behind the HUD would be written there for nothing.
+ */
+export const COVER_GAP = 0.07;
+
+function coveredBy(rects, x, y) {
+    for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        if (r && x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1) return true;
+    }
+    return false;
+}
+
+/**
+ * How far out along one ray of a wing (`an` across it) the card and the HUD hide it: the `v`
+ * (0 = root, 1 = margin) where the ray comes out from behind them for good, 0 when the root is
+ * not behind a cover, 1 when the whole ray is behind one.
+ *
+ * `project(p, out)` writes a world point's screen position (fractions, y down) into `out` and
+ * returns false when it is behind the eye; `w` and `beat` are the wings' unfurling and stroke
+ * now (a young wing is gathered, and the stroke turns it), so the answer is for this frame.
+ */
+export function wingCoverAlong(project, rects, aspect, kind, side, an, w, beat, scratch = {}) {
+    const p = scratch.p || (scratch.p = [0, 0, 0]);
+    const s = scratch.s || (scratch.s = { x: 0, y: 0 });
+    const at = (v) => {
+        wingPoint(kind, side, an, v, w, beat, p);
+        return project(p, s) ? coveredBy(rects, s.x, s.y) : false;
+    };
+    if (!rects?.length || !at(0)) return 0;
+    const a = Math.max(0.1, aspect || 1);
+    let hidden = 0;
+    let gap = 0;
+    let px = s.x;
+    let py = s.y;
+    for (let i = 1; i <= COVER_STEPS; i++) {
+        const v = i / COVER_STEPS;
+        const inside = at(v);
+        if (inside) {
+            hidden = v;
+            gap = 0;
+        } else {
+            gap += Math.hypot((s.x - px) * a, s.y - py);
+            if (gap > COVER_GAP) break;
+        }
+        px = s.x;
+        py = s.y;
+    }
+    if (hidden >= 1) return 1;
+    // The edge lies between the last hidden step and the next one.
+    let lo = hidden;
+    let hi = Math.min(1, hidden + 1 / COVER_STEPS);
+    for (let k = 0; k < COVER_REFINE; k++) {
+        const mid = (lo + hi) / 2;
+        if (at(mid)) lo = mid;
+        else hi = mid;
+    }
+    return (lo + hi) / 2;
+}
+
+/**
+ * The whole cover table: for each ray i, (left forewing, right forewing, left hindwing, right
+ * hindwing), the layout the wing shader reads (out[i] is anything with set(x, y, z, w)).
+ */
+export function fillWingCover(out, project, rects, aspect, w, beat, scratch = {}) {
+    const n = Math.min(out.length, WING_COVER_SAMPLES);
+    for (let i = 0; i < n; i++) {
+        const an = i / (WING_COVER_SAMPLES - 1);
+        out[i].set(
+            wingCoverAlong(project, rects, aspect, 0, -1, an, w, beat, scratch),
+            wingCoverAlong(project, rects, aspect, 0, 1, an, w, beat, scratch),
+            wingCoverAlong(project, rects, aspect, 1, -1, an, w, beat, scratch),
+            wingCoverAlong(project, rects, aspect, 1, 1, an, w, beat, scratch),
+        );
+    }
+    return out;
+}
+
+/** One wing's cover at `an`, read from the table as the shader reads it (linear between rays). */
+export function wingCoverAt(table, kind, side, an) {
+    const f = Math.max(0, Math.min(1, an)) * (WING_COVER_SAMPLES - 1);
+    const i0 = Math.min(WING_COVER_SAMPLES - 1, Math.floor(f));
+    const i1 = Math.min(WING_COVER_SAMPLES - 1, i0 + 1);
+    const t = f - i0;
+    const pick = (e) => {
+        if (kind === 0) return side < 0 ? e.x : e.y;
+        return side < 0 ? e.z : e.w;
+    };
+    return pick(table[i0]) + (pick(table[i1]) - pick(table[i0])) * t;
+}
+
+/**
+ * Where along a wing ray (v) a front stands that is `f` of the way from the ray's cover `c` to
+ * its margin: the wing is written, and folds back, only where it can be seen.
+ */
+export const frontPast = (c, f) => c + f * (1 - c);
 
 /**
  * Where on screen a board column / row is (screen fractions, y down).
