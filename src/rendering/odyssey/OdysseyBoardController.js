@@ -56,6 +56,7 @@ import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
 import { createOdysseyAirMotes } from './composition/odyssey-air-motes.js';
+import { createOdysseyMeadowLife } from './composition/odyssey-meadow-life.js';
 import { createSummitSpindrift, findHeroSummit } from './composition/odyssey-summit-spindrift.js';
 import { sampleColourScript } from './odyssey-colour-script.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
@@ -515,6 +516,7 @@ export class OdysseyBoardController {
         this.flights = null;
         this.eagle = null;
         this.airMotes = null;
+        this.meadowLife = null;
         this.spindrift = null;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
         // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
@@ -3306,6 +3308,23 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] air motes unavailable (non-fatal):', error);
                     this.airMotes = null;
                 }
+                // THE MEADOWS' NEAR LIFE (composition/odyssey-meadow-life.js): blossom petals on the
+                // wind and butterflies crossing the lens over the meadows — one opaque draw in a box
+                // round the eye, same contract as the motes. BISECT LEVER: ?odysseyNoMeadowLife=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoMeadowLife')) {
+                        const lean = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+                        this.meadowLife = createOdysseyMeadowLife({
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            petals: lean ? 240 : 520,
+                        });
+                        this.scene.add(this.meadowLife.mesh);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] meadow life unavailable (non-fatal):', error);
+                    this.meadowLife = null;
+                }
                 // THE SUMMIT'S SPINDRIFT (composition/odyssey-summit-spindrift.js): snow torn off the
                 // hero summit streaming west into the banner cloud. Same contract as the motes.
                 // BISECT LEVER: ?odysseyNoSpindrift=1.
@@ -4382,6 +4401,7 @@ export class OdysseyBoardController {
         if (this.flights) this.flights.update(this.time, cameraProgress);
         if (this.eagle) this._tickEagle(delta, cameraProgress);
         if (this.airMotes) this.airMotes.update(this.time, cameraProgress);
+        if (this.meadowLife) this.meadowLife.update(this.time, cameraProgress);
         if (this.spindrift) this.spindrift.update(this.time, cameraProgress);
 
         // WAVE 5: release the deferred breach stinger ON the constant — the frame the eye
@@ -5404,6 +5424,10 @@ export class OdysseyBoardController {
         if (this.eagle) {
             this.eagle.dispose();
             this.eagle = null;
+        }
+        if (this.meadowLife) {
+            this.meadowLife.dispose();
+            this.meadowLife = null;
         }
         if (this.airMotes) {
             this.airMotes.dispose();
