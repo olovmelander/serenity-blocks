@@ -75,7 +75,9 @@ export function create({ scene, camera, params }) {
                 aurora,
                 eye,
                 time,
-                track: { x: time * 0.15, y: 0, z: -time * 0.05 },
+                // The eye parks here; in the game the weather slides ~1e-4 cells per unit travelled
+                // (ORBIT_EARTH.trackPerUnit), so only its own slow drift moves it.
+                track: { x: 0, y: 0, z: 0 },
             });
         },
         resize() {},

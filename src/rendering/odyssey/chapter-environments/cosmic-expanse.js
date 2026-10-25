@@ -603,7 +603,10 @@ export function resolveCh6HeroPlaces(chapterPositions) {
             _heroPlaces.planetRiseCentre,
         );
         _toRail.copy(_heroPlaces.planet).sub(_heroPlaces.planetRiseCentre);
-        _heroPlaces.planetRiseAxis.crossVectors(_toRail, SPINE_WORLD_UP).normalize();
+        _heroPlaces.planetRiseAxis.crossVectors(_toRail, SPINE_WORLD_UP).normalize()
+            // Slanted (riseSlant): it comes up from lower right, so it rises in the right third of
+            // the frame, clear of the rail and its orbs, while the camera turns.
+            .applyAxisAngle(_toRail.normalize(), THREE.MathUtils.degToRad(R.riseSlant));
         resolvePlanetRisePlace(_heroPlaces, 0, _heroPlaces.planetBelow);
         _heroPlaces.curve = curve;
         _heroPlaces.key = key;
@@ -691,7 +694,7 @@ export const COSMIC_ENTRY_CONTINUITY_SETTINGS = Object.freeze({
 /**
  * DEEP SPACE, ONE THING AT A TIME (2026-10-24, step 5 of docs/ODYSSEY_INTO_SPACE_2026-10.md).
  * Past the 5->6 boundary the Earth's aurora is up and the ringed giant rises over its edge
- * (composition/odyssey-orbit-earth.js) until ~0.15 of the chapter, and the dome's Milky Way, the
+ * (composition/odyssey-orbit-earth.js) until ~0.30 of the chapter, and the dome's Milky Way, the
  * gas and the black hole's light all used to arrive in the same 0.005 of p under them, on the
  * space gate. Each now comes up in clear sky after the one before, as the Earth falls away: the
  * Milky Way (the dome's painted cosmos, and the far star tier seated in its band), then the gas
@@ -701,9 +704,9 @@ export const COSMIC_ENTRY_CONTINUITY_SETTINGS = Object.freeze({
  * gate still decides whether space is drawn at all; these only stage what is in it.
  */
 export const DEEP_SPACE_BEATS = Object.freeze({
-    milkyWay: Object.freeze([0.15, 0.29]),
-    nebula: Object.freeze([0.24, 0.40]),
-    hole: Object.freeze([0.30, 0.58]),
+    milkyWay: Object.freeze([0.30, 0.43]),
+    nebula: Object.freeze([0.38, 0.52]),
+    hole: Object.freeze([0.44, 0.68]),
 });
 
 const DEEP_SPACE_WHOLE = Object.freeze({ milkyWay: 1, nebula: 1, hole: 1 });

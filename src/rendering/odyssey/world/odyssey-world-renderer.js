@@ -2250,9 +2250,17 @@ export function createOdysseyWorld({
         return mix(graded, uWorldFadeColour, fadeAmt);
     };
     const toOutput = (c) => toOutputFaded(c, uWorldFade);
+    // BELOW THE HORIZON THE AIR FADES AT THE SEA'S PACE (2026-10-25). The departure takes the sky
+    // overhead first and the horizon last (uFadeZenith, uFadeHorizon), and the sea with the world
+    // (uWorldFade, ahead of the horizon). Below the horizon the dome had the horizon's pace, so
+    // where the climb dropped the sea's drawn edge below the horizon it opened onto air far paler
+    // than the sea beside it, and the Earth arriving there wore that pale air: a white band that
+    // widened down the frame as the eye rose. Below the horizon the air now fades as the sea does;
+    // the horizon itself keeps its own pace, a thin bright line. (Act II: every fade is 0.)
+    const fadeBelowHorizon = (dirY) => mix(uWorldFade, uFadeHorizon, smoothstep(float(-0.06), float(0), dirY));
     // The world's air for a view direction: the colour its far sea and its sky meet in (the dome's
-    // own, faded at the horizon's pace). What the world melts into, and what the Earth wears.
-    const airFor = (dir) => toOutputFaded(skyColourFor(dir.y), uFadeHorizon);
+    // own, faded at the departure's pace there). What the world melts into, and what the Earth wears.
+    const airFor = (dir) => toOutputFaded(skyColourFor(dir.y), fadeBelowHorizon(dir.y));
     // THE WORLD ENDS IN THE SKY (2026-10-24). The sea is drawn out to the camera's far plane (a
     // straight cut) or, high in the climb, to the clipmap's square, and past it the dome shows the
     // sky below the horizon. Through the departure the two met at a visible edge: the far sea
@@ -2287,7 +2295,7 @@ export function createOdysseyWorld({
                 const behind = float(1).sub(smoothstep(lead.sub(0.04), lead.add(0.04), down))
                     .mul(smoothstep(float(0), float(0.03), down))
                     .mul(float(1).sub(uSubmerged));
-                res.assign(mix(res, orbitEarthOver(dir, airFor(dir)), behind));
+                res.assign(mix(res, orbitEarthOver(dir, airFor(dir), res), behind));
             });
         });
         return res;
@@ -2449,7 +2457,7 @@ export function createOdysseyWorld({
     // ZENITH FIRST (item 10): overhead runs ahead of the act fade, the horizon behind it, and
     // a thin limb + airglow line glow at the horizon while the sky is half gone. With
     // uWorldFade at 0 every term here is exactly the old sky.
-    const skyFade = mix(uFadeHorizon, uFadeZenith, smoothstep(float(-0.05), float(0.55), skyDir.y));
+    const skyFade = mix(fadeBelowHorizon(skyDir.y), uFadeZenith, smoothstep(float(-0.05), float(0.55), skyDir.y));
     // UNIFORM-GATED (seamless pass): the water dome only under water, the limb + airglow (two
     // exps and two pows per sky pixel) only while the departure lights them. Both were built for
     // every sky fragment of the act and multiplied away by a zero uniform — not dead code here.

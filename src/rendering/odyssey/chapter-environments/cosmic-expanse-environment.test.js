@@ -90,7 +90,11 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
 
         [0, 1].forEach((progress) => {
             updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, progress);
-            [blackHole, heroPlanet, galaxy].forEach((hero) => {
+            // At the chapter's first frame the giant still hangs behind the Earth's limb, below
+            // its seat, unseen (the planetrise; tests/unit/odyssey-planetrise.test.js keeps it
+            // there): it is held to the frame once it has risen.
+            const heroes = progress === 0 ? [blackHole, galaxy] : [blackHole, heroPlanet, galaxy];
+            heroes.forEach((hero) => {
                 expect(offAxis(hero)).toBeLessThan(40);
             });
         });

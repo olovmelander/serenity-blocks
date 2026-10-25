@@ -45,6 +45,7 @@ import {
 } from './composition/odyssey-steam-quench.js';
 import {
     createOrbitEarth,
+    ORBIT_EARTH,
     orbitEarthAirglowElevation,
     orbitEarthAt,
     orbitEarthSunDirection,
@@ -4352,7 +4353,7 @@ export class OdysseyBoardController {
             this._orbitEarthSun = orbitEarthSunDirection(earth.sunElevation, this._orbitEarthSun);
             if (eye) {
                 this._orbitEarthTrack = this._orbitEarthTrack || new THREE.Vector3();
-                this._orbitEarthTrack.set(eye.x * 0.2, 0, eye.z * 0.2);
+                this._orbitEarthTrack.set(eye.x, 0, eye.z).multiplyScalar(ORBIT_EARTH.trackPerUnit);
             }
             this.orbitEarth.update({
                 altitude: earth.altitude,

@@ -17,7 +17,10 @@ import {
     orbitEarthAt,
 } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
+import { worldClimbScale } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
+import { ODYSSEY_SEA_LEVEL } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { build, unassignedReads } from './helpers/tsl-node-build.js';
+import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 
 const DEG = 180 / Math.PI;
 
@@ -143,6 +146,26 @@ describe('orbitEarthAt — the Earth, its sun, its aurora and the planetrise by 
         expect(orbitEarthAirglowElevation(s.altitude, 1)).toBeLessThan(0);
         expect(orbitEarthAirglowElevation(s.altitude, 1)).toBeGreaterThan(-s.dip);
         expect(orbitEarthAirglowElevation(s.altitude, 0)).toBeCloseTo(Math.asin(0.075), 9);
+    });
+});
+
+describe('the Earth\'s weather passes under the eye at the world\'s own pace', () => {
+    it('slides as fast as the world\'s sea below it where the one becomes the other', () => {
+        // 2026-10-25: it slid 0.2 cells per unit the eye travelled, ~2000x the pace of the sea it
+        // takes over from, so its weather rushed past while the world's clouds over it stood
+        // still (and a touchpad swipe blurred it). Where its haze lifts, the ground below the eye
+        // turns through the same angle per unit travelled on the Earth as on the climbed world.
+        const rig = createOdysseyCameraRig();
+        const { cp } = rig;
+        const S = ORBIT_EARTH_SCHEDULE;
+        const span = cp[6] - cp[5];
+        const p = cp[5] - (span * (S.veil[0] + S.veil[1])) / 2;
+        const eye = rig.poseAt(p).position;
+        const height = (eye.y - ODYSSEY_SEA_LEVEL) / worldClimbScale(p, cp[4], cp[5]);
+        const world = 1 / height;
+        const earth = ORBIT_EARTH.trackPerUnit / ORBIT_EARTH.cells / orbitEarthAt(p, cp).altitude;
+        expect(earth / world).toBeGreaterThan(0.5);
+        expect(earth / world).toBeLessThan(2);
     });
 });
 
