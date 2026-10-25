@@ -33,7 +33,7 @@ const CASTERS = Object.freeze([
     { from: 'neck0', to: 'neck2', radius: 0.17 },
     { from: 'neck2', to: 'head', radius: 0.13 },
     {
-        from: 'head', to: 'head', toAt: [0, 1.265, 1.408], radius: 0.1,
+        from: 'head', to: 'head', toAt: [0, 1.314, 1.364], radius: 0.1,
     },
     { from: 'tail0', to: 'tail3', radius: 0.07 },
 ]);

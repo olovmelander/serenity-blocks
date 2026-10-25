@@ -269,7 +269,7 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
 const MOTION_STEP = 1 / 30;
 
 /** Where the muzzle is in the rest pose when the asset does not say (horse frame, metres). */
-const MUZZLE = Object.freeze([0, 1.265, 1.408]);
+const MUZZLE = Object.freeze([0, 1.314, 1.364]);
 
 /**
  * The herd: `count` horses (tier.herd) from the authored horse (`horse` = assets.horse:

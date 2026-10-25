@@ -72,7 +72,7 @@ POLL = _point(1.80, 1.04)
 HEAD_PITCH = math.radians(48.0)
 HEAD_FORWARD = np.array([0.0, -math.sin(HEAD_PITCH), math.cos(HEAD_PITCH)])
 HEAD_UP = np.array([0.0, math.cos(HEAD_PITCH), math.sin(HEAD_PITCH)])
-HEAD_SCALE = 1.12
+HEAD_SCALE = 1.06
 
 
 def head_point(s, t, x=0.0):
@@ -289,20 +289,22 @@ def design():
     crest = Tube(_crest_offsets(crest_line, [-r for r in crest_radii]), crest_radii, squash_axis=X_AXIS,
                  squash=0.9, k=0.03)
 
+    # A pony's big head, but no longer than it is: a broad, flat forehead, a heavy round jowl, a
+    # straight face that keeps its width down to a square, soft muzzle.
     head_shape = Union([
-        Ellipsoid(head_point(0.11, -0.05), head_radii(0.122, 0.118, 0.15), along=HEAD_FORWARD),     # cranium
-        Ellipsoid(head_point(0.16, -0.005), head_radii(0.118, 0.05, 0.12), along=HEAD_FORWARD),     # forehead
-        Ellipsoid(head_point(0.125, -0.17), head_radii(0.112, 0.13, 0.135), along=HEAD_FORWARD),    # jowls
-        RoundCone(head_point(0.20, -0.04), head_point(0.47, -0.05), *head_radii(0.105, 0.074),
-                  (X_AXIS, 0.8)),                                                                    # face
-        Ellipsoid(head_point(0.50, -0.075), head_radii(0.066, 0.072, 0.07), along=HEAD_FORWARD),    # muzzle
-        Ellipsoid(head_point(0.545, -0.098), head_radii(0.056, 0.036, 0.042), along=HEAD_FORWARD),  # upper lip
-        Ellipsoid(head_point(0.495, -0.135), head_radii(0.042, 0.03, 0.045), along=HEAD_FORWARD),   # chin
-        RoundCone(head_point(0.20, -0.215, 0.04), head_point(0.45, -0.125, 0.03), *head_radii(0.05, 0.033)),
-        RoundCone(head_point(0.20, -0.215, -0.04), head_point(0.45, -0.125, -0.03), *head_radii(0.05, 0.033)),
-        *[Ellipsoid(head_point(0.13, -0.005, 0.1 * s), head_radii(0.025, 0.029, 0.033), along=HEAD_FORWARD)
+        Ellipsoid(head_point(0.11, -0.05), head_radii(0.125, 0.12, 0.15), along=HEAD_FORWARD),      # cranium
+        Ellipsoid(head_point(0.15, 0.0), head_radii(0.12, 0.045, 0.13), along=HEAD_FORWARD),        # forehead
+        Ellipsoid(head_point(0.12, -0.18), head_radii(0.118, 0.15, 0.15), along=HEAD_FORWARD),      # jowls
+        RoundCone(head_point(0.20, -0.045), head_point(0.44, -0.055), *head_radii(0.102, 0.082),
+                  (X_AXIS, 0.82)),                                                                   # face
+        Ellipsoid(head_point(0.47, -0.08), head_radii(0.072, 0.078, 0.074), along=HEAD_FORWARD),    # muzzle
+        Ellipsoid(head_point(0.515, -0.104), head_radii(0.06, 0.038, 0.045), along=HEAD_FORWARD),   # upper lip
+        Ellipsoid(head_point(0.465, -0.14), head_radii(0.045, 0.032, 0.048), along=HEAD_FORWARD),   # chin
+        RoundCone(head_point(0.20, -0.225, 0.045), head_point(0.43, -0.13, 0.035), *head_radii(0.05, 0.034)),
+        RoundCone(head_point(0.20, -0.225, -0.045), head_point(0.43, -0.13, -0.035), *head_radii(0.05, 0.034)),
+        *[Ellipsoid(head_point(0.13, -0.005, 0.104 * s), head_radii(0.022, 0.026, 0.03), along=HEAD_FORWARD)
           for s in (1.0, -1.0)],                                                                     # eyes
-        *[Ellipsoid(head_point(0.11, 0.026, 0.092 * s), head_radii(0.026, 0.015, 0.045), along=HEAD_FORWARD)
+        *[Ellipsoid(head_point(0.11, 0.026, 0.095 * s), head_radii(0.022, 0.013, 0.04), along=HEAD_FORWARD)
           for s in (1.0, -1.0)],                                                                     # brows
     ], k=0.045)
 
@@ -379,12 +381,12 @@ def design():
         *[(leg, 0.07) for leg in legs], (tail, 0.025),
     ]), axis=1)
     landmarks = dict(
-        muzzle=head_point(0.575, -0.075),
-        nostrils=[head_point(0.535, -0.04, 0.052 * s) for s in (1.0, -1.0)],
-        mouth=head_point(0.56, -0.12),
-        eyes=[head_point(0.13, -0.005, 0.1 * s) for s in (1.0, -1.0)],
+        muzzle=head_point(0.545, -0.08),
+        nostrils=[head_point(0.505, -0.045, 0.056 * s) for s in (1.0, -1.0)],
+        mouth=head_point(0.53, -0.125),
+        eyes=[head_point(0.13, -0.005, 0.104 * s) for s in (1.0, -1.0)],
         # The middle of each eye's surface (where the bulge stands out of the head).
-        eye_poles=[head_point(0.135, -0.003, 0.1 * s + 0.027 * s) for s in (1.0, -1.0)],
+        eye_poles=[head_point(0.135, -0.003, 0.104 * s + 0.024 * s) for s in (1.0, -1.0)],
         # The mane's roots run along the crest; the forelock's between the ears.
         mane_root=np.array(root_line),
         forelock_root=head_point(-0.02, 0.085),
@@ -737,15 +739,19 @@ def skin(landmarks, positions, distances, leaves, parts, triangles, smoothing=6)
     (base_y, base_z), (top_y, top_z) = R["neckAxis"]
     axis = np.array([top_y - base_y, top_z - base_z])
     progress = ((y - base_y) * axis[0] + (z - base_z) * axis[1]) / (axis @ axis)
-    head_side = _smoothstep(-0.1, 0.1, _plane_distance(positions, *R["headPlane"]))
-    chain = _chain(progress, [-0.1, 0.38, 0.72, 1.0])
-    head_w = np.maximum(chain[:, 3], head_side)
-    neck_w = chain[:, :3] * (1.0 - head_w)[:, None]
+    # (The plane parts the head from the neck only as deep as the head goes: below the jowls, in the
+    # head's own frame, the throat is the neck's.)
     rel = positions - POLL
     s = (rel @ HEAD_FORWARD) / HEAD_SCALE
     t = (rel @ HEAD_UP) / HEAD_SCALE
+    head_side = _smoothstep(-0.1, 0.1, _plane_distance(positions, *R["headPlane"])) * _smoothstep(-0.42, -0.32, t)
+    chain = _chain(progress, [-0.1, 0.38, 0.72, 1.0])
+    head_w = np.maximum(chain[:, 3], head_side)
+    neck_w = chain[:, :3] * (1.0 - head_w)[:, None]
     jaw_line = -0.095 - (s - 0.10) * (0.015 / 0.42)
-    jaw = _smoothstep(jaw_line + 0.014, jaw_line - 0.014, t) * _smoothstep(0.0, 0.07, s) * head_w
+    # (Below the jaw line, but no lower than the jaw's own edge: the throat under it is the neck's.)
+    jaw = (_smoothstep(jaw_line + 0.014, jaw_line - 0.014, t) * _smoothstep(-0.36, -0.28, t)
+           * _smoothstep(0.0, 0.07, s) * head_w)
     leaf_parts = np.array([leaf.part for leaf in leaves])
     ear_leaf = np.array([getattr(leaf, "ear", False) for leaf in leaves])
     ear_distance = distances[:, ear_leaf].min(axis=1)
@@ -1111,6 +1117,10 @@ def previews(horse, directory):
         studio.render(directory / "horse-three-quarter.png", eye=(4.3, 1.5, 4.5), target=(0.0, 0.95, 0.25),
                       lens=48.0, size=(1200, 1000), samples=32)
         studio.render(directory / "horse-head.png", eye=(1.5, 1.95, 2.6), target=(0.0, 1.6, 1.1), lens=50.0,
+                      size=(900, 900), samples=32)
+        studio.render(directory / "horse-head-side.png", eye=(2.2, 1.6, 1.2), target=(0.0, 1.55, 1.2), lens=50.0,
+                      size=(900, 900), samples=32)
+        studio.render(directory / "horse-head-front.png", eye=(0.25, 1.75, 3.2), target=(0.0, 1.55, 1.2), lens=60.0,
                       size=(900, 900), samples=32)
         studio.render(directory / "horse-rear.png", eye=(-3.2, 1.6, -4.4), target=(0.0, 0.95, -0.2), lens=48.0,
                       size=(1000, 900), samples=32)

@@ -44,7 +44,7 @@ const STEP = Object.freeze({
 /** How far a leg's fetlock sinks standing (radians). */
 const STANDING_LOAD = 0.1;
 /** Where the muzzle is in the rest pose when the asset says nothing (horse frame, metres). */
-const MUZZLE = Object.freeze([0, 1.265, 1.408]);
+const MUZZLE = Object.freeze([0, 1.314, 1.364]);
 /** How high the barley's ears stand, where a horse browses them (metres over the ground). */
 export const BARLEY_TOPS = 0.86;
 

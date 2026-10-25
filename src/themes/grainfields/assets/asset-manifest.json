@@ -68,17 +68,17 @@
     },
     {
       "file": "grainfields-horse.glb",
-      "bytes": 184432,
-      "sha256": "f89516a34b9c7fe3da1c45d5d0bb49f771ff8594c237afcb528caed7baa36c36",
+      "bytes": 184592,
+      "sha256": "b5897dfe07016310d77f7f29880d541417b1f73a30bb3f6d697d42927fd2e7c3",
       "kind": "horse",
       "name": "grainfields-horse",
       "breed": "Hokkaido native horse (Dosanko)",
-      "triangles": 8974,
-      "vertices": 4489,
+      "triangles": 8982,
+      "vertices": 4493,
       "bones": 38,
       "withersHeight": 1.3951,
       "bodyLength": 1.5929,
-      "length": 2.5737,
+      "length": 2.5353,
       "height": 1.9739
     },
     {

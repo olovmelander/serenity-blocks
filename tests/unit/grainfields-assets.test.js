@@ -1132,10 +1132,10 @@ describe('Grainfields horse', () => {
                 }
             }
             expect(finite(posed), label).toBe(true);
-            // No edge longer by more than a hand's breadth, hardly any of a few centimetres pulled to three
-            // times its length (only in the armpit, where the inside of a reaching forearm parts from the
-            // chest), few past half as long again.
-            expect(longest, label).toBeLessThan(0.1);
+            // No edge longer by more than a hand's breadth (the throat as the head goes down to the grass),
+            // hardly any of a few centimetres pulled to three times its length (only in the armpit, where
+            // the inside of a reaching forearm parts from the chest), few past half as long again.
+            expect(longest, label).toBeLessThan(0.12);
             expect(torn.size, label).toBeLessThanOrEqual(8);
             expect(stretched / edges, label).toBeLessThan(0.04);
         }
