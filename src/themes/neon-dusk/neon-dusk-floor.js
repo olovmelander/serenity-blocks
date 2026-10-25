@@ -81,7 +81,7 @@ const ringTerm = (dist, P) => {
 const analyticReflection = (R, u) => {
     const hLen = max(length(vec2(R.x, R.z)), 1e-4);
     const sa = ndSunAlign(R.z.div(hLen));
-    const col = ndSkyGradient(max(R.y, 0.0), sa).toVar();
+    const col = ndSkyGradient(u, max(R.y, 0.0), sa).toVar();
     const lx = dot(R, u.sunRight);
     const ly = dot(R, u.sunUp);
     const ang = length(vec2(lx, ly));
@@ -92,18 +92,19 @@ const analyticReflection = (R, u) => {
     const fwR = max(fwidth(r), 1e-4);
     const inside = float(1.0).sub(smoothstep(0.92, 1.06, r));
     const halo = exp(max(r.sub(1.0), 0.0).mul(-2.6)).mul(mix(float(0.42), float(0.13), inside));
-    col.addAssign(rgb(0xff2a7a).mul(exp(ang.mul(-3.4)).mul(0.16)).add(rgb(0xff6a2e).mul(halo)));
+    col.addAssign(u.mood.glowWide.mul(exp(ang.mul(-3.4)).mul(0.16)).add(u.mood.glowHalo.mul(halo)));
     // Soft-edged, as the reflector's rough glass draws it on the tiers above.
     const soft = max(fwR, 0.07);
     const disc = float(1.0).sub(smoothstep(float(1.0).sub(soft), float(1.0).add(soft), r));
     const slit = mix(ndSunSlits(sd.y, max(fwidth(sd.y), 0.025), u.slitPhase), float(1.0), u.crown);
-    col.assign(mix(col, mix(ndSunColor(sd.y.add(u.sunHeat.mul(0.25))), SUN_CROWN, u.crown.mul(0.6)), disc.mul(slit)));
+    const face = mix(ndSunColor(u, sd.y.add(u.sunHeat.mul(0.25))), SUN_CROWN, u.crown.mul(0.6));
+    col.assign(mix(col, face, disc.mul(slit)));
     const a = abs(atan(R.x, R.z.negate()));
     const vee = max(a.mul(0.25).add(0.026), a.sub(0.02));
     const ridge = float(0.25).add(sin(a.mul(23.0)).mul(0.02)).add(sin(a.mul(57.0)).mul(0.012));
     const edge = min(vee, ridge);
     const behind = float(1.0).sub(smoothstep(edge.sub(0.004), edge.add(0.004), R.y));
-    const rangeCol = mix(rgb(0x140a26), ndHazeColor(sa).mul(0.7), exp(R.y.mul(-14.0)).mul(0.6));
+    const rangeCol = mix(u.mood.mirrorRange, ndHazeColor(u, sa).mul(0.7), exp(R.y.mul(-14.0)).mul(0.6));
     col.assign(mix(col, rangeCol, behind));
     return col;
 };
@@ -215,8 +216,8 @@ export function createFloor(u, opts = {}) {
             mirror.assign(analyticReflection(R, u));
         }
         mirror.mulAssign(barMask);
-        // Dark violet-tinted glass.
-        const glass = rgb(0x06020e);
+        // Dark glass, tinted by the mood (violet in today's).
+        const { glass } = u.mood;
         const col = mix(glass, mirror.mul(vec3(0.8, 0.72, 0.9)), fres).toVar();
 
         // ── Neon grid ──
@@ -241,7 +242,7 @@ export function createFloor(u, opts = {}) {
         const fk = dist.mul(1 / 2900);
         const fog = float(1.0).sub(exp(fk.mul(fk).negate()));
         const sa = ndSunAlign(rel.z.div(max(dist, 1e-3)));
-        col.assign(mix(col, ndHazeColor(sa), min(fog, 1.0)));
+        col.assign(mix(col, ndHazeColor(u, sa), min(fog, 1.0)));
         return col;
     })();
 

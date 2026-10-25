@@ -23,7 +23,6 @@ import {
     floor,
     fract,
     max,
-    min,
     mix,
     sign,
     smoothstep,
@@ -124,44 +123,31 @@ export const ndLineAA = /* @__PURE__ */ Fn(([d, hw, fw]) => {
 export const ndSunAlign = /* @__PURE__ */ Fn(([dz]) => exp(float(1.0).add(dz).mul(-6.0)))
     .setLayout({ name: 'nd_sunAlign', type: 'float', inputs: [{ name: 'dz', type: 'float' }] });
 
-/** Horizon haze: dusk violet away from the sun, hot coral toward it. */
-export const ndHazeColor = /* @__PURE__ */ Fn(([sa]) => mix(rgb(0x4e2b86), rgb(0xff5a6e, 1.15), sa))
-    .setLayout({ name: 'nd_hazeColor', type: 'vec3', inputs: [{ name: 'sa', type: 'float' }] });
+/*
+ * The colours below are the live mood's (u.mood, neon-dusk-moods.js), so these helpers are inline
+ * functions, not laid-out ones: a laid-out function is emitted once and reused by every later
+ * material, and the uniforms it closed over would be declared only in the first.
+ */
+
+/** Horizon haze: dusk violet away from the sun, hot coral toward it (in today's mood). */
+export const ndHazeColor = (u, sa) => mix(u.mood.hazeA, u.mood.hazeT, sa);
 
 /**
  * Dusk sky over elevation e (no sun, clouds or stars): a hot band hugging the horizon, then
- * magenta, violet and a deep indigo zenith. Runs on sqrt(e) so the warm band stays thin.
+ * magenta, violet and a deep indigo zenith (in today's mood). Runs on sqrt(e) so the warm band
+ * stays thin.
  */
-export const ndSkyGradient = /* @__PURE__ */ Fn(([e, sa]) => {
+export const ndSkyGradient = (u, e, sa) => {
+    const m = u.mood;
     const s = sqrt(max(e, 0.0));
-    const c = ndHazeColor(sa).toVar();
-    c.assign(mix(c, mix(rgb(0xb02a6c), rgb(0xff6f5a, 1.1), sa), smoothstep(0.0, 0.1, s)));
-    c.assign(mix(c, mix(rgb(0x6e1a68), rgb(0xc8306a), sa), smoothstep(0.06, 0.22, s)));
-    c.assign(mix(c, rgb(0x3a1470), smoothstep(0.17, 0.4, s)));
-    c.assign(mix(c, rgb(0x1a0d4c), smoothstep(0.34, 0.62, s)));
-    c.assign(mix(c, rgb(0x06051a), smoothstep(0.56, 0.92, s)));
+    const c = ndHazeColor(u, sa).toVar();
+    c.assign(mix(c, mix(m.lowA, m.lowT, sa), smoothstep(0.0, 0.1, s)));
+    c.assign(mix(c, mix(m.midA, m.midT, sa), smoothstep(0.06, 0.22, s)));
+    c.assign(mix(c, m.high, smoothstep(0.17, 0.4, s)));
+    c.assign(mix(c, m.upper, smoothstep(0.34, 0.62, s)));
+    c.assign(mix(c, m.zenith, smoothstep(0.56, 0.92, s)));
     return c;
-}).setLayout({
-    name: 'nd_skyGradient',
-    type: 'vec3',
-    inputs: [{ name: 'e', type: 'float' }, { name: 'sa', type: 'float' }],
-});
-
-/**
- * Distance haze into the horizon colour; `rel` = worldPos − cameraPos, `k` = 1/distance scale
- * (Gaussian, so the mid-field stays contrasty and the haze closes in toward the horizon).
- */
-export const ndApplyHaze = /* @__PURE__ */ Fn(([col, rel, k]) => {
-    const dist = sqrt(rel.x.mul(rel.x).add(rel.z.mul(rel.z)));
-    const sa = ndSunAlign(rel.z.div(max(dist, 1e-3)));
-    const fk = dist.mul(k);
-    const amount = float(1.0).sub(exp(fk.mul(fk).negate()));
-    return mix(col, ndHazeColor(sa), min(amount, 1.0));
-}).setLayout({
-    name: 'nd_applyHaze',
-    type: 'vec3',
-    inputs: [{ name: 'col', type: 'vec3' }, { name: 'rel', type: 'vec3' }, { name: 'k', type: 'float' }],
-});
+};
 
 /** Max of the three channels. */
 export const ndMax3 = (c) => max(c.x, max(c.y, c.z));

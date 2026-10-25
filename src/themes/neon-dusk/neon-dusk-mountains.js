@@ -317,10 +317,11 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
         // ── Body: silhouettes that step back in tone, near-black violet in front. The sun is
         // behind them, so the faces the eye sees are in shadow: the sky above lifts them only a
         // little, which keeps each range one flat layer instead of a lit, glossy model ──
-        const body = mix(mix(rgb(0x241248), rgb(0x150a2c), wMid), rgb(0x0a0418), wNear);
+        const m = u.mood;
+        const body = mix(mix(m.rangeFar, m.rangeMid, wMid), m.rangeNear, wNear);
         const sky = clamp(n.y, 0.0, 1.0);
         const col = body.mul(float(0.72).add(sky.mul(0.3))).toVar();
-        col.addAssign(rgb(0x3c2280).mul(sky.mul(sky).mul(0.06)));
+        col.addAssign(m.rangeSky.mul(sky.mul(sky).mul(0.06)));
 
         // ── Backlit ridges: only facets turned fully edge-on, and only near the sun's bearing,
         // catch a thin line of its light (gold beside the sun, rose farther out) ──
@@ -334,7 +335,7 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
         const toward = cosL.mul(cosL).mul(cosL).mul(cosL).toVar();
         const close = toward.mul(toward).mul(toward).mul(toward);
         const facingSun = clamp(dot(n, vec3(L.x, 0.0, L.z)).mul(0.7).add(0.3), 0.0, 1.0);
-        const rimCol = mix(rgb(0xd0257a, 0.7), rgb(0xff8a34, 1.9), close);
+        const rimCol = mix(m.rimFar, m.rimSun, close);
         const rim = e16.mul(facingSun).mul(close.mul(1.4).add(sa.mul(0.12)));
         col.addAssign(rimCol.mul(rim).mul(float(1.0).add(u.sunPulse.mul(0.6))));
 
@@ -369,7 +370,7 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
         }
 
         // ── Mist pooling at the feet, luminous toward the sun ──
-        const mistCol = mix(rgb(0x5a2a8a, 0.9), rgb(0xff6a7e, 1.2), sa);
+        const mistCol = mix(m.mistA, m.mistT, sa);
         const mist = exp(max(p.y, 0.0).div(mix(mix(float(40.0), float(16.0), wMid), float(8.0), wNear)).negate())
             .mul(mix(mix(float(0.55), float(0.5), wMid), float(0.45), wNear));
         col.assign(mix(col, mistCol, clamp(mist, 0.0, 1.0)));
@@ -380,12 +381,12 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
         const air = float(1.0).sub(exp(ak.mul(ak).negate()));
         const t8 = toward.mul(toward);
         const t16 = t8.mul(t8);
-        col.addAssign(mix(rgb(0xff2a86, 0.45), rgb(0xff6a3e, 0.75), t8).mul(air.mul(t16.mul(0.6).add(sa.mul(0.04)))));
+        col.addAssign(mix(m.airA, m.airT, t8).mul(air.mul(t16.mul(0.6).add(sa.mul(0.04)))));
 
         // ── Atmospheric perspective: each range fades toward the colour of the sky right
         // behind it, never past it, so even the far wall stays a silhouette darker than its sky ──
         const elev = max(rel.y.div(max(length(rel), 1e-3)), 0.0);
-        const behind = ndSkyGradient(elev, sa).mul(0.88);
+        const behind = ndSkyGradient(u, elev, sa).mul(0.88);
         const hazeK = mix(mix(float(1 / 2500), float(1 / 3400), wMid), float(1 / 5000), wNear);
         const fk = dist.mul(hazeK);
         const amount = min(float(1.0).sub(exp(fk.mul(fk).negate())), 0.85);
