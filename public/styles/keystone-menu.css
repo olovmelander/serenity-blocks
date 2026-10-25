@@ -730,7 +730,7 @@ body.start-modal-open #start-modal .main-menu-logo {
     width: 14px;
     height: 14px;
     color: var(--sb-text-faint);
-    fill: currentColor;
+    fill: none;
     filter: none;
 }
 
@@ -746,123 +746,24 @@ body.start-modal-open #start-modal .main-menu-logo {
     margin-left: auto;
 }
 
-/* ---- Bespoke animated icons (ported from the previous layer) ---------------------
- * Each part transforms about its own box. Idle = subtle loop; becoming current
- * plays a one-shot signature beat. */
+/* ---- Keystone glyphs (src/ui/components/cosmic-icons.js) ------------------------
+ * Each mode icon is a line form completed by one solid tile. The icons rest still; when a
+ * mode becomes current its tile locks in once (scale, no fall: the brand guardrails in
+ * docs/desktop-icons.md). Reduced motion keeps the tile still. */
 #start-modal .cs-icon * {
     transform-box: fill-box;
     transform-origin: center;
 }
 
-#start-modal .cs-solo-ring { animation: cs-solo-breathe 4.5s ease-in-out infinite; }
-#start-modal .game-mode-card.is-current .cs-solo-ring { animation-duration: 2.2s; }
-
-@keyframes cs-solo-breathe {
-    0%, 100% { transform: scale(1); opacity: 0.85; }
-    50% { transform: scale(1.05); opacity: 1; }
+#start-modal .game-mode-card.is-current .cs-tile,
+#start-modal .game-mode-card:focus-visible .cs-tile,
+#start-modal .game-mode-card.gamepad-focused .cs-tile {
+    animation: sb-tile-lock var(--sb-dur-3, 0.42s) var(--sb-ease-lock) both;
 }
 
-#start-modal .cs-local-player--primary { animation: cs-local-primary-idle 4.6s ease-in-out infinite; }
-#start-modal .cs-local-player--secondary { animation: cs-local-secondary-idle 4.6s ease-in-out infinite; }
-#start-modal .cs-local-link { opacity: 0.42; stroke-dasharray: 0.38 0.62; stroke-dashoffset: 0; }
-#start-modal .game-mode-card.is-current .cs-local-player--primary { animation: cs-local-primary-ready 0.62s var(--sb-ease-lock) both; }
-#start-modal .game-mode-card.is-current .cs-local-player--secondary { animation: cs-local-secondary-ready 0.62s var(--sb-ease-lock) both; }
-#start-modal .game-mode-card.is-current .cs-local-link { animation: cs-local-link-ready 0.62s ease-out both; }
-
-@keyframes cs-local-primary-idle { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-0.6px); } }
-@keyframes cs-local-secondary-idle { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(0.7px); } }
-@keyframes cs-local-primary-ready {
-    0% { transform: translateX(-4px) scale(0.96); opacity: 0.72; }
-    65% { transform: translateX(0.8px) scale(1.05); opacity: 1; }
-    100% { transform: none; opacity: 1; }
-}
-@keyframes cs-local-secondary-ready {
-    0% { transform: translateX(4px) scale(0.96); opacity: 0.72; }
-    65% { transform: translateX(-0.8px) scale(1.05); opacity: 1; }
-    100% { transform: none; opacity: 1; }
-}
-@keyframes cs-local-link-ready {
-    0% { opacity: 0; stroke-dashoffset: 1; }
-    55% { opacity: 1; stroke-dashoffset: 0; }
-    100% { opacity: 0.7; stroke-dashoffset: -0.2; }
-}
-
-#start-modal .cs-online-globe { animation: cs-online-globe-idle 5.4s ease-in-out infinite; }
-#start-modal .cs-online-orbit { opacity: 0.46; stroke-dasharray: 0.18 0.82; stroke-dashoffset: 0; }
-#start-modal .cs-online-packet {
-    fill: currentColor;
-    stroke: none !important;
-    opacity: 0.66;
-    transform: scale(0.86);
-    animation: cs-online-packet-idle 5s ease-in-out infinite;
-}
-#start-modal .game-mode-card.steam-disabled .cs-online-globe,
-#start-modal .game-mode-card.steam-disabled .cs-online-orbit,
-#start-modal .game-mode-card.steam-disabled .cs-online-packet { animation: none; }
-#start-modal .game-mode-card:not(.steam-disabled).is-current .cs-online-globe { animation: cs-online-globe-scan 0.68s var(--sb-ease-lock) both; }
-#start-modal .game-mode-card:not(.steam-disabled).is-current .cs-online-orbit { opacity: 0.95; animation: cs-online-orbit-run 0.9s linear 2; }
-#start-modal .game-mode-card:not(.steam-disabled).is-current .cs-online-packet { animation: cs-online-packet-ping 0.7s ease-out both; }
-
-@keyframes cs-online-globe-idle { 0%, 100% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(-3deg) scale(1.02); } }
-@keyframes cs-online-orbit-run { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -1; } }
-@keyframes cs-online-packet-idle { 0%, 100% { opacity: 0.35; transform: scale(0.72); } 50% { opacity: 0.92; transform: scale(1); } }
-@keyframes cs-online-globe-scan {
-    0% { transform: rotate(-8deg) scale(0.96); }
-    62% { transform: rotate(4deg) scale(1.06); }
-    100% { transform: none; }
-}
-@keyframes cs-online-packet-ping {
-    0% { opacity: 0; transform: translate(-3px, 2px) scale(0.45); }
-    60% { opacity: 1; transform: none; }
-    100% { opacity: 0.75; transform: scale(0.92); }
-}
-
-#start-modal .cs-serenity-breath-ring { opacity: 0.16; animation: cs-serenity-ring-idle 4.4s ease-in-out infinite; }
-#start-modal .cs-serenity-petal--left { animation: cs-serenity-left-idle 5.2s ease-in-out infinite; }
-#start-modal .cs-serenity-petal--right { animation: cs-serenity-right-idle 5.2s ease-in-out infinite; }
-#start-modal .game-mode-card.is-current .cs-serenity-breath-ring { animation: cs-serenity-ring-bloom 1.6s ease-out infinite; }
-#start-modal .game-mode-card.is-current .cs-serenity-petal--center { animation: cs-serenity-center-bloom 0.78s var(--sb-ease-lock) both; }
-
-@keyframes cs-serenity-ring-idle { 0%, 100% { opacity: 0.1; transform: scale(0.86); } 50% { opacity: 0.32; transform: scale(1.05); } }
-@keyframes cs-serenity-left-idle { 0%, 100% { transform: none; } 50% { transform: translateX(-0.5px) rotate(-2deg); } }
-@keyframes cs-serenity-right-idle { 0%, 100% { transform: none; } 50% { transform: translateX(0.5px) rotate(2deg); } }
-@keyframes cs-serenity-ring-bloom {
-    0% { opacity: 0.12; transform: scale(0.72); }
-    70% { opacity: 0.36; transform: scale(1.16); }
-    100% { opacity: 0; transform: scale(1.24); }
-}
-@keyframes cs-serenity-center-bloom {
-    0% { transform: translateY(2px) scale(0.88); opacity: 0.75; }
-    70% { transform: translateY(-1px) scale(1.06); opacity: 1; }
-    100% { transform: none; opacity: 1; }
-}
-
-/* Hale: the two breath waves drift apart and together, like a slow inhale. */
-#start-modal .cs-hale-wave { animation: cs-hale-breathe 5.5s var(--sb-ease-breathe) infinite; }
-#start-modal .cs-hale-wave--low { animation-direction: reverse; }
-#start-modal .cs-hale-ring { opacity: 0.55; }
-
-@keyframes cs-hale-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.9px); } }
-
-#start-modal .cs-infinity-path { stroke-dasharray: 1; stroke-dashoffset: 0; }
-#start-modal .game-mode-card.is-current .cs-infinity-path { animation: cs-infinity-trace 1.8s linear 1; }
-
-@keyframes cs-infinity-trace { from { stroke-dashoffset: 1; } to { stroke-dashoffset: -1; } }
-
-#start-modal .cs-ascent-path { stroke-dasharray: 1; stroke-dashoffset: 0; }
-#start-modal .cs-ascent-dot { animation: cs-ascent-twinkle 3s ease-in-out infinite; animation-delay: calc(var(--i) * 0.4s); }
-#start-modal .game-mode-card.is-current .cs-ascent-path { animation: cs-ascent-draw 0.7s cubic-bezier(0.65, 0, 0.35, 1) both; }
-#start-modal .game-mode-card.is-current .cs-ascent-dot {
-    animation: cs-ascent-pop 0.45s var(--sb-ease-lock) both;
-    animation-delay: calc(0.35s + var(--i) * 0.12s);
-}
-
-@keyframes cs-ascent-twinkle { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.35); } }
-@keyframes cs-ascent-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-@keyframes cs-ascent-pop {
-    0% { opacity: 0; transform: scale(0); }
-    70% { opacity: 1; transform: scale(1.5); }
-    100% { opacity: 1; transform: scale(1); }
+@keyframes sb-tile-lock {
+    from { transform: scale(0.7); opacity: 0.35; }
+    to { transform: none; opacity: 1; }
 }
 
 /* ---- Main-menu player card (desktop builds: the Steam account, top right) ----------
