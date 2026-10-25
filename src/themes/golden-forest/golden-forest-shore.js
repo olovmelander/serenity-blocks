@@ -11,7 +11,7 @@ import {
     attribute, cameraPosition, color, dot, float, instancedBufferAttribute, mix, normalize, normalWorld,
     positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
 } from 'three/tsl';
-import { goldenForestGroundHeight, goldenForestShoreDistance } from './golden-forest-terrain.js';
+import { goldenForestShoreDistance, goldenForestSurfaceHeight } from './golden-forest-terrain.js';
 
 const JETTY = Object.freeze({ x: 13.6, z: 1, yaw: THREE.MathUtils.degToRad(28) });
 const BOAT = Object.freeze({ x: 9.7, z: -3.3, yaw: THREE.MathUtils.degToRad(19) });
@@ -106,7 +106,7 @@ export class GoldenForestShore {
                         const px = x + (i ? (rng() - 0.5) * 0.9 : 0);
                         const pz = z + (i ? (rng() - 0.5) * 0.9 : 0);
                         places.push({
-                            x: px, z: pz, y: Math.max(-0.03, goldenForestGroundHeight(px, pz)), reed, seed: rng(),
+                            x: px, z: pz, y: Math.max(-0.03, goldenForestSurfaceHeight(px, pz)), reed, seed: rng(),
                         });
                         made += 1;
                     }
@@ -234,7 +234,7 @@ export class GoldenForestShore {
             buckets[variant].push({
                 x,
                 z,
-                y: goldenForestGroundHeight(x, z) - size * 0.12,
+                y: goldenForestSurfaceHeight(x, z) - size * 0.12,
                 size,
                 yaw: rng() * Math.PI * 2,
                 squash: 0.75 + rng() * 0.4,
@@ -319,7 +319,7 @@ export class GoldenForestShore {
             return mesh;
         };
         add('jetty', timber, JETTY.x, 0, JETTY.z, JETTY.yaw);
-        add('snag', timber, SNAG.x, goldenForestGroundHeight(SNAG.x, SNAG.z) - 0.1, SNAG.z, SNAG.yaw);
+        add('snag', timber, SNAG.x, goldenForestSurfaceHeight(SNAG.x, SNAG.z) - 0.1, SNAG.z, SNAG.yaw);
         this.boat = add('rowboat', this.createTimberMaterial(true), BOAT.x, 0, BOAT.z, BOAT.yaw);
     }
 

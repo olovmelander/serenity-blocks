@@ -28,7 +28,7 @@ import {
 } from '../../src/themes/golden-forest/golden-forest-stage.js';
 import {
     GOLDEN_FOREST_BOUNDS, GOLDEN_FOREST_MAP_BIAS, GOLDEN_FOREST_MAP_RANGE, goldenForestGroundHeight,
-    goldenForestShoreDistance, goldenForestShores,
+    goldenForestShoreDistance, goldenForestShores, goldenForestSurfaceHeight,
 } from '../../src/themes/golden-forest/golden-forest-terrain.js';
 import { GoldenForestWorld } from '../../src/themes/golden-forest/golden-forest-world.js';
 
@@ -878,8 +878,8 @@ describe('Golden Forest world scene contracts', () => {
             .toBeLessThan(lake.High.world.getDiagnostics().barkTriangles / 4);
     });
 
-    it('stands everything on the same analytic shores', () => {
-        const { world, camera } = lake.High;
+    it('stands everything on the drawn ground of the same analytic shores', () => {
+        const { world, camera, assets } = lake.High;
         const ground = world.terrain.mesh.geometry.attributes.position;
         let worst = 0;
         const span = {
@@ -896,11 +896,50 @@ describe('Golden Forest world scene contracts', () => {
         expect(worst).toBeLessThan(1e-4);
         expect(span).toEqual(GOLDEN_FOREST_BOUNDS);
         expect(world.terrain.height(3, -20)).toBe(goldenForestGroundHeight(3, -20));
-        // Every trunk is rooted a few centimetres into the ground under it.
+        // goldenForestSurfaceHeight is that mesh: a ray dropped onto it lands where it says, by the
+        // camera and across the lake's coarse cells alike ...
+        const ray = new THREE.Raycaster();
+        const down = new THREE.Vector3(0, -1, 0);
+        world.terrain.mesh.updateMatrixWorld(true);
+        for (const [x, z] of [[0, 10], [10.1, 1.5], [33.9, -60.2], [-17.2, -44.8], [-43.4, -100], [52.3, -141.7],
+            [-160, -300], [120, -20]]) {
+            ray.set(new THREE.Vector3(x, 200, z), down);
+            const [hit] = ray.intersectObject(world.terrain.mesh);
+            expect(hit, `ground under ${x}, ${z}`).toBeDefined();
+            expect(goldenForestSurfaceHeight(x, z), `ground under ${x}, ${z}`).toBeCloseTo(hit.point.y, 4);
+        }
+        // ... where it runs metres under the analytic crests (the tip of the promontory).
+        expect(goldenForestGroundHeight(33.9, -60.2) - goldenForestSurfaceHeight(33.9, -60.2)).toBeGreaterThan(1);
+        // Every trunk is rooted in the drawn ground: a few centimetres in at its heart, and deep enough
+        // that its bark reaches the ground all round its flared foot, where a bank falls away or a coarse
+        // far cell cuts under a crest (a spruce on the promontory's tip once stood a metre clear of it).
         const trunks = instances(named(world.group, /^GoldenForestBark /));
         expect(trunks).toHaveLength(world.forest.stats.trees);
         for (const trunk of trunks) {
-            expect(trunk.y).toBeCloseTo(goldenForestGroundHeight(trunk.x, trunk.z) - 0.05, 4);
+            const tree = world.forest.placements.find((entry) => (
+                Math.hypot(entry.x - trunk.x, entry.z - trunk.z) < 1e-4));
+            expect(trunk.y).toBeCloseTo(tree.y, 4);
+        }
+        for (const tree of world.forest.placements) {
+            const where = `${tree.asset} at ${tree.x}, ${tree.z}`;
+            const asset = assets.trees[tree.asset];
+            const bark = tree.y + asset.bark.boundingBox.min.y * tree.scale;
+            const foot = asset.trunkRadius * tree.scale * 1.8;
+            let lowest = goldenForestSurfaceHeight(tree.x, tree.z);
+            expect(tree.y, where).toBeLessThanOrEqual(lowest - 0.05 + 1e-9);
+            for (let step = 0; step < 32; step++) {
+                const angle = (step / 32) * Math.PI * 2;
+                for (const reach of [foot * 0.5, foot]) {
+                    const under = goldenForestSurfaceHeight(
+                        tree.x + Math.cos(angle) * reach,
+                        tree.z + Math.sin(angle) * reach,
+                    );
+                    expect(bark, where).toBeLessThan(under - 0.02);
+                    lowest = Math.min(lowest, under);
+                }
+            }
+            // ... and never sunk below the lowest ground under its foot.
+            expect(tree.y, where).toBeGreaterThanOrEqual(lowest - 0.05 - 1e-9);
         }
         // Every one of them stands on dry land: the grove and the trees placed by hand alike.
         for (const tree of world.forest.placements) {
@@ -910,7 +949,7 @@ describe('Golden Forest world scene contracts', () => {
         // Boulders are bedded into whatever is under them, shallows included.
         const stones = instances(named(world.group, /^GoldenForestBoulders /));
         for (const stone of stones) {
-            expect(stone.y).toBeCloseTo(goldenForestGroundHeight(stone.x, stone.z) - stone.scale * 0.12, 4);
+            expect(stone.y).toBeCloseTo(goldenForestSurfaceHeight(stone.x, stone.z) - stone.scale * 0.12, 4);
             expect(Math.abs(goldenForestShoreDistance(stone.x, stone.z))).toBeLessThan(4.5);
         }
         // The eight that hold the picture's corners are where they were put.
@@ -923,7 +962,7 @@ describe('Golden Forest world scene contracts', () => {
         const blades = instances(named(world.group, 'GoldenForestReedsAndGrass'));
         for (let index = 0; index < blades.length; index += 7) {
             const blade = blades[index];
-            expect(blade.y).toBeCloseTo(Math.max(-0.03, goldenForestGroundHeight(blade.x, blade.z)), 4);
+            expect(blade.y).toBeCloseTo(Math.max(-0.03, goldenForestSurfaceHeight(blade.x, blade.z)), 4);
             expect(goldenForestShoreDistance(blade.x, blade.z)).toBeGreaterThan(-3.4);
         }
         // The water in front of the board is kept open for the rings.
@@ -931,7 +970,7 @@ describe('Golden Forest world scene contracts', () => {
         // Far trees stand on land beyond the water, never in the foreground.
         for (const card of instances(named(world.group, 'GoldenForestFarShore'))) {
             expect(goldenForestShoreDistance(card.x, card.z)).toBeGreaterThan(1);
-            expect(Math.abs(card.y - (goldenForestGroundHeight(card.x, card.z) - 0.3))).toBeLessThan(1.5);
+            expect(Math.abs(card.y - (goldenForestSurfaceHeight(card.x, card.z) - 0.3))).toBeLessThan(1.5);
             expect(Math.hypot(card.x - camera.position.x, card.z - camera.position.z)).toBeGreaterThan(55);
         }
         // Fireflies keep house over this lake: within the scene, none under the ground.
@@ -1000,7 +1039,7 @@ describe('Golden Forest world scene contracts', () => {
         const shores = goldenForestShores(snag.position.x, snag.position.z);
         expect(shores.islet).toBeGreaterThan(1);
         expect(goldenForestShoreDistance(snag.position.x, snag.position.z)).toBe(shores.islet);
-        expect(snag.position.y).toBeCloseTo(goldenForestGroundHeight(snag.position.x, snag.position.z) - 0.1, 9);
+        expect(snag.position.y).toBeCloseTo(goldenForestSurfaceHeight(snag.position.x, snag.position.z) - 0.1, 9);
         expect(snag.position.y).toBeGreaterThan(0);
     });
 
