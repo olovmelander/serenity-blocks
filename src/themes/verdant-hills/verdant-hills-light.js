@@ -19,8 +19,9 @@
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
-    smoothstep, texture, uniform, uniformArray, vec2, vec3,
+    smoothstep, texture, texture3D, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
+import { bakeVerdantHillsCloudVolume } from './verdant-hills-cloud-volume.js';
 import { VERDANT_HILLS_MOODS, createVerdantHillsMood, verdantHillsMoodAt } from './verdant-hills-moods.js';
 import { VerdantHillsRings } from './verdant-hills-rings.js';
 
@@ -45,6 +46,8 @@ const CLOUD_TEXTURE_SIZE = VERDANT_HILLS_CLOUD_SIZE;
 export const VERDANT_HILLS_CLOUD_SEED = 1456;
 /** Version of the baked cloud field's encoding; the loader refuses a file written for another. */
 export const VERDANT_HILLS_CLOUD_SCHEMA = 1;
+/** How many times the finest billows repeat across one tile of the cumulus's lobes. */
+const CLOUD_FINE = 3;
 /** How far the clouds travel in a second at rest, metres. */
 const CLOUD_DRIFT = 11;
 /** How much of the haze the strongest wind of a fever clears from the valley. */
@@ -243,6 +246,24 @@ function createCloudTexture(seed) {
     return { texture: prepareVerdantHillsClouds(map), edges };
 }
 
+/** The cumulus's 3D noise (verdant-hills-cloud-volume.js) as a tileable, linearly filtered volume. */
+function createCloudVolume({ data, size }) {
+    const volume = new THREE.Data3DTexture(data, size, size, size);
+    volume.format = THREE.RGBAFormat;
+    volume.type = THREE.UnsignedByteType;
+    volume.minFilter = THREE.LinearFilter;
+    volume.magFilter = THREE.LinearFilter;
+    volume.wrapS = THREE.RepeatWrapping;
+    volume.wrapT = THREE.RepeatWrapping;
+    volume.wrapR = THREE.RepeatWrapping;
+    volume.generateMipmaps = false;
+    volume.colorSpace = THREE.NoColorSpace;
+    volume.unpackAlignment = 1;
+    volume.name = 'VerdantHillsCloudVolume';
+    volume.needsUpdate = true;
+    return volume;
+}
+
 export class VerdantHillsLight {
     /** `clouds` is the baked cloud field ({ texture, edges }); without it one is made here. */
     constructor({ tier, rng = Math.random, clouds = null }) {
@@ -289,9 +310,14 @@ export class VerdantHillsLight {
         // The clouds: how much of the sky they cover, where the field has drifted to, and
         // the gap the game can open in them (ground x, z, radius, strength).
         this.uCloudCover = uniform(CLOUD_COVER);
-        // How soft a cloud's skin is (in slab heights) and how deep the billows carve it.
-        this.uCloudSoft = uniform(0.18);
-        this.uCloudCarve = uniform(1);
+        // The cumulus's skin (cloudDensity(), all in metres): how soft it is, how far its lobes and
+        // its finest billows push it in and out, how far in from a heap's margin the field's rise
+        // counts for, and how wide one tile of the lobes' volume is.
+        this.uCloudSoft = uniform(50);
+        this.uCloudCarve = uniform(900);
+        this.uCloudFine = uniform(200);
+        this.uCloudReach = uniform(2200);
+        this.uCloudLobe = uniform(2400);
         // The field's height at that share of the sky, and the span from there to its highest heap.
         this.uCloudEdge = uniform(0.5);
         this.uCloudSpan = uniform(0.5);
@@ -322,6 +348,8 @@ export class VerdantHillsLight {
         const field = this.ownsClouds ? createCloudTexture(VERDANT_HILLS_CLOUD_SEED) : clouds;
         this.cloudTexture = field.texture;
         this.cloudEdges = field.edges;
+        // What rounds the heaps in three dimensions; only the march reads it.
+        this.cloudVolume = tier.cloudSteps > 0 ? createCloudVolume(bakeVerdantHillsCloudVolume()) : null;
         this.setCloudCover(CLOUD_COVER);
 
         this.sun = new THREE.DirectionalLight(0xffffff, 1);
@@ -403,47 +431,91 @@ export class VerdantHillsLight {
     }
 
     /**
-     * Density of the cumulus at a point (0..1): flat-based heaps whose tops stand highest
-     * where the field is thickest, their flanks carved by billows that travel with them.
+     * Density of the cumulus at a point (0..1). The field says where a heap stands and how tall
+     * it grows: flat-based, highest where the field is thickest. Its skin is the volume's: round
+     * lobes in all three directions carve the heap's margins and top, and finer billows carve the
+     * lobes, so it heaps up as a cauliflower does. (Carved by flat noise stood on end, every
+     * billow was a column and the heaps read as tents, shark fins and stacks of slabs.)
      */
-    cloudDensity(point, { detail = true, range = null } = {}) {
+    cloudDensity(point, options = {}) {
+        return this.cloudSample(point, options).density;
+    }
+
+    /**
+     * The heap a point lies in, before its skin is carved: how far inside it the point is (`heap`,
+     * metres, negative outside), the heap's `top` and the point's height over the flat base
+     * (`above`, metres), and where it stands in the field (`at`, tiles). The march asks this first
+     * to learn how far it may step before a cloud could begin.
+     */
+    cloudHeap(point) {
         const span = VERDANT_HILLS_CLOUD_TOP - VERDANT_HILLS_CLOUD_BASE;
-        const h = point.y.sub(VERDANT_HILLS_CLOUD_BASE).div(span);
+        const above = point.y.sub(VERDANT_HILLS_CLOUD_BASE);
         // Explicit mip levels throughout: the march samples inside loops and branches.
         const at = point.xz.div(VERDANT_HILLS_CLOUD_TILE).add(this.uCloudOffset);
-        const field = texture(this.cloudTexture, at).level(0).r.sub(this.sunGap(point).mul(0.5));
-        const shape = saturate(field.sub(this.uCloudEdge).div(this.uCloudSpan));
-        // The field is mounds on mounds; the square root of what stands above the
-        // threshold rounds each one into a dome with steep sides.
-        // Whole multiples of the field's own coordinate, so the billows ride with their cloud.
-        // Its top is not smooth either: it bulges over the heart of each billow and sags in the
-        // creases between them. The billow channel is low at a cell's heart and highest on the
-        // creases where cells meet, and its cells are only some 250 m across: lifting the top by
-        // up to half the slab with it stood a 500 m spire on every crease, so the heaps read as
-        // tents and pyramids. Turned over, blurred and eased, and only about as tall as a cell is
-        // wide, each one is a rounded bulge on the heap.
-        const heart = texture(this.cloudTexture, at.mul(7)).level(detail ? 2 : 2.5).g.oneMinus();
-        const turret = smoothstep(0.3, 0.8, heart);
-        const top = shape.sqrt().mul(turret.mul(0.16).add(0.86)).mul(0.94).add(0.03);
-        // How far under the cloud's own top a point is, in slab heights.
-        const under = top.sub(h);
-        let density = saturate(under.div(this.uCloudSoft)).mul(smoothstep(0.0, 0.03, h))
-            .mul(smoothstep(0.0, 0.03, shape));
+        const gap = this.sunGap(point).mul(0.5);
+        const rise = (level) => texture(this.cloudTexture, at).level(level).r.sub(gap).sub(this.uCloudEdge)
+            .div(this.uCloudSpan);
+        // How tall the heap grows, from the field blurred to the size of its heaps: one broad dome
+        // over each. (Read sharp, the square root of every mound in the field was a paraboloid, and
+        // the heaps read as cones with a spire on each mound.)
+        const top = saturate(rise(3.2)).sqrt().mul(0.78).add(0.2)
+            .mul(span);
+        // How far inside the heap a point is: below its top and in from its margin (where the
+        // field rises through the threshold), the two met in a rounded shoulder.
+        const below = top.sub(above);
+        const within = rise(0).max(-0.4).mul(this.uCloudReach);
+        const k = float(180);
+        const blend = saturate(k.sub(below.sub(within).abs()).div(k));
+        const heap = below.min(within).sub(blend.mul(blend).mul(k).mul(0.25));
+        return {
+            heap, top, above, at,
+        };
+    }
+
+    /** How far out (metres) the lobes and billows can push a heap's skin past cloudHeap()'s `heap`. */
+    cloudMargin() {
+        return this.uCloudCarve.mul(0.45).add(this.uCloudFine.mul(0.5));
+    }
+
+    /**
+     * The cumulus at a point: its `density` (cloudDensity()), how far up its own heap the point
+     * stands (`rise`, 0 at the flat base, 1 at the heap's top) and whether it lies on the crown of
+     * a lobe or in a crease (`crown`, about 0..1): both say how much of the sky's light reaches
+     * it. `heap` is the point's cloudHeap() when the caller has it already.
+     */
+    cloudSample(point, { detail = true, range = null, heap: known = null } = {}) {
+        const span = VERDANT_HILLS_CLOUD_TOP - VERDANT_HILLS_CLOUD_BASE;
+        const {
+            top, above, at, heap: inside,
+        } = known || this.cloudHeap(point);
+        // The lobes, in the field's frame so they ride with their cloud, push that skin out over
+        // the heart of each and in between them: a heap of balls on balls.
+        const lobe = this.uCloudLobe;
+        const q = vec3(
+            at.x.mul(VERDANT_HILLS_CLOUD_TILE).div(lobe),
+            point.y.div(lobe),
+            at.y.mul(VERDANT_HILLS_CLOUD_TILE).div(lobe),
+        );
+        const lobes = texture3D(this.cloudVolume, q).level(0).r;
+        let heap = inside.add(lobes.sub(0.55).mul(this.uCloudCarve));
+        // On the skin, a high reading is the crown of a lobe and a low one the crease between two.
+        let crown = lobes;
         if (detail) {
-            const lean = vec2(h.mul(0.37), h.mul(0.21));
-            const billow = texture(this.cloudTexture, at.mul(7).add(lean)).level(0).g;
-            // The finest billows are below a far sample's footprint: read them blurred there.
-            const blur = range ? saturate(range.div(14000)).mul(3) : float(0);
-            const fine = texture(this.cloudTexture, at.mul(22).add(lean.mul(2.3))).level(blur).b;
-            // Both are distances to a cell's heart, which subtracted as they are leave a cone over
-            // every heart: a pyramid of a cloud. Squared, each heart is a rounded lump and the
-            // creases between lumps stay sharp, as a cauliflower's do.
-            const carve = billow.mul(billow).mul(1.25).add(fine.mul(fine).mul(0.45));
-            // Billows eat into the skin of the cloud — its top and its flanks — and leave the heart whole.
-            const skin = saturate(under.div(0.5)).oneMinus().max(smoothstep(0.3, 0.0, shape));
-            density = saturate(density.sub(carve.mul(skin.mul(0.9).add(0.1)).mul(this.uCloudCarve)).mul(2.2));
+            const fine = texture3D(this.cloudVolume, q.mul(CLOUD_FINE).add(vec3(0.31, 0.17, 0.53))).level(0).b;
+            // Below a far sample's footprint the finest billows are only grain.
+            const near = range ? saturate(range.div(14000)).oneMinus() : float(1);
+            heap = heap.add(fine.sub(0.5).mul(this.uCloudFine).mul(near));
+            crown = crown.add(fine.sub(0.5).mul(near).mul(0.35));
         }
-        return density.mul(saturate(float(1).sub(h).mul(12)));
+        // The base is the condensation level: flat.
+        heap = heap.min(above);
+        // A far cloud's skin is softer, or the march's stride shows in it.
+        const soft = range ? this.uCloudSoft.add(range.mul(0.006)) : this.uCloudSoft.mul(2);
+        return {
+            density: saturate(heap.div(soft)).mul(saturate(float(span).sub(above).div(80))),
+            rise: saturate(above.div(top)),
+            crown,
+        };
     }
 
     // -- light --------------------------------------------------------------------------
@@ -720,6 +792,7 @@ export class VerdantHillsLight {
         this.noiseTexture.dispose();
         // A baked field belongs to the asset pack, which outlives a rebuild.
         if (this.ownsClouds) this.cloudTexture.dispose();
+        this.cloudVolume?.dispose();
         this.shadowNode.dispose?.();
         this.sun.shadow.dispose();
         this.sun.removeFromParent();
