@@ -2,7 +2,9 @@
  * Vesper Chrysalis — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
  * One scene pass (no MRT: the evening is authored in scene-linear HDR, so a max-channel knee
- * selects what blooms), one bloom chain (Medium and up) and ONE full-screen pass:
+ * selects what blooms), one bloom chain (Medium and up) and ONE full-screen pass. Both read the
+ * scene finite (an Inf or NaN texel as black), so no stray texel can black out the frame.
+ * The full-screen pass:
  *
  *   prism ring (a four-line clear sends a ring out from the chrysalis that splits the picture
  *   into its colours as it crosses) and lens fringe (a radial chromatic split that widens toward
@@ -25,6 +27,7 @@ import {
     clamp,
     exp,
     float,
+    floatBitsToUint,
     floor,
     length,
     max,
@@ -37,6 +40,7 @@ import {
     select,
     smoothstep,
     step,
+    uint,
     uniform,
     uv,
     vec2,
@@ -94,6 +98,22 @@ const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
     type: 'float',
     inputs: [{ name: 'p', type: 'vec2' }, { name: 'rect', type: 'vec4' }, { name: 'radius', type: 'float' }],
 });
+
+/** A float's exponent bits: all set for Inf and NaN. */
+const EXPONENT_BITS = 0x7f800000;
+
+/** Finite, tested on the bits: WGSL has no isNan, and a compiler may fold x != x away. */
+const vcIsFinite = (x) => floatBitsToUint(x).bitAnd(uint(EXPONENT_BITS)).notEqual(uint(EXPONENT_BITS));
+
+/**
+ * The scene's colour, a non-finite texel read as black. One Inf or NaN texel reaches every pixel
+ * the bloom's blur chain and the heart shafts gather from: most of the frame went black.
+ */
+const vcFiniteRgb = /* @__PURE__ */ Fn(([c]) => select(
+    vcIsFinite(c.r).and(vcIsFinite(c.g)).and(vcIsFinite(c.b)),
+    c,
+    vec3(0.0),
+)).setLayout({ name: 'vc_finiteRgb', type: 'vec3', inputs: [{ name: 'c', type: 'vec3' }] });
 
 /**
  * Dusk filmic: a hue-preserving shoulder on the max channel (identity below `k`), then a path to
@@ -159,7 +179,8 @@ export class VesperPost {
                 // Hue-preserving clamp on the max channel: a per-channel clamp would turn a rose
                 // flash orange and a teal one white.
                 const tap = (dx, dy) => {
-                    const c = max(vec3(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb), vec3(0.0));
+                    const at = st.add(vec2(o.x.mul(dx), o.y.mul(dy)));
+                    const c = max(vcFiniteRgb(vec3(input.sample(at).rgb)), vec3(0.0));
                     return c.mul(min(float(1.0), float(7.0).div(max(vcMax3(c), 1e-4))));
                 };
                 const c = tap(1, 1).add(tap(-1, 1)).add(tap(1, -1)).add(tap(-1, -1))
@@ -209,6 +230,7 @@ export class VesperPost {
                     ));
                 });
             }
+            S.assign(vcFiniteRgb(S));
             // The ring itself carries a little light.
             S.mulAssign(ring.mul(0.5).add(1.0));
 
