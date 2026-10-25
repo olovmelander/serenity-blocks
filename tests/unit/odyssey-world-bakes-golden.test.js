@@ -129,7 +129,8 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(sha(a.data)).toBe('3effb252e0bae73a4d16d0f536424714');
         // Moved 2026-10-18 with the outer isles (odyssey-world-height.js ODYSSEY_OUTER_ISLES): the
         // relief noise is unchanged (hash above), the total height gains the isles.
-        expect(sha(a.total)).toBe('8bbdbde967213da37c4c213d2ab73f94');
+        // ...and moved 2026-10-25 with the summit sculpt (odysseySummitSculpt joins the drawn height).
+        expect(sha(a.total)).toBe('fbe84ad1c8f8d99a78e9be2ad9a8d6cf');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -152,9 +153,10 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(baked.atlas.res).toBe(GROUND_ATLAS_RES);
         expect(baked.detail.res).toBe(256);
         expect(baked.macro.res).toBe(512);
+        expect(baked.summit.res).toBe(512);
         expect(Object.keys(baked.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'total']);
         const buffers = worldTextureDataBuffers(baked);
-        expect(buffers.length).toBe(10);
+        expect(buffers.length).toBe(11);
         buffers.forEach((b) => expect(b).toBeInstanceOf(ArrayBuffer));
         // Detail bake is the pinned cloud silhouette's host: same field, same stats.
         expect(sha(baked.detail.data)).toBe(sha(bakeDetailNormalData().data));

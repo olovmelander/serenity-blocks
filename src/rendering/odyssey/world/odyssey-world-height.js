@@ -662,6 +662,133 @@ export function odysseyWorldRelief(x, z) {
     return Math.max(-ODYSSEY_RELIEF_SCALE, Math.min(ODYSSEY_RELIEF_SCALE, relief));
 }
 
+// ── THE SUMMIT SCULPTED (2026-10-25, Act II masterpiece pass, step 2) ────────────────────────────
+
+/**
+ * THE HERO SUMMIT, SCULPTED. The hero massif is a radial cone (`massifTerm`), and the relief bake
+ * (8.8 u texels, ridged noise at ~450 u) cannot draw what makes a summit read as rock: from the
+ * chapter-5 climb the eye is 150-550 u from the top for almost half the chapter, where a 5 u
+ * ridge spans ~30 px. So the top of the hero gets its own form, at ~2 u (its own bake on the GPU,
+ * `bakeSummitSculptData`), added to the drawn surface:
+ *
+ *   - a HORN: the top ~200 u steepen into a sharper pyramid;
+ *   - ARETES: four ridges stand out of the cone, one running straight down toward the climb
+ *     (the camera looks up it from bearing ~90 deg the whole chapter, so the eye is led up it to
+ *     the top) and two forming the left and right skylines; they meander as they descend;
+ *   - FACES hollowed between them, carved by COULOIRS that converge on the top;
+ *   - LEDGES: bands of rock steps across the faces.
+ *
+ * Exactly zero beyond `reach` (the cone's middle and the meadows are untouched, and so are the
+ * rail's clearances, the orbs' seats and the forest below); a delta in world units over the
+ * height the rest of the field draws.
+ */
+export const ODYSSEY_SUMMIT_SCULPT = Object.freeze({
+    /** The hero apex (ODYSSEY_MASSIFS' hero). */
+    x: -182.7,
+    z: -1059.3,
+    /** The sculpt fades out by here (world units from the apex), and is whole inside `core`. */
+    reach: 470,
+    core: 290,
+    /** The bake's square (centred on the apex) and its texels per side (~2 u each). */
+    extent: 1000,
+    res: 512,
+    /** The horn: how much the top rises, and over what radius. */
+    hornHeight: 34,
+    hornRadius: 210,
+    /** The aretes: bearings (radians, from +x toward +z), how far they stand proud and the faces
+     * between them are hollowed (world units), and their half-width (u at the top, + per u). */
+    aretes: Object.freeze([Math.PI / 2, (Math.PI / 2) + 1.96, (Math.PI / 2) - 1.96, (Math.PI / 2) + Math.PI]),
+    areteLift: 24,
+    faceHollow: 18,
+    areteWidth: 9,
+    areteWiden: 0.075,
+    /** Couloirs down the faces: spacing across the face and depth (u). */
+    couloirSpacing: 27,
+    couloirDepth: 9,
+    /** Ledges: their spacing in height and how much of each step is kept (0 = smooth cone). */
+    ledgeSpacing: 22,
+    ledgeStrength: 0.42,
+});
+
+const SUMMIT = ODYSSEY_SUMMIT_SCULPT;
+const HERO_CONE = Object.freeze({ radius: 603, height: 720, exponent: 1.7 });
+
+function smoothstepRange(a, b, x) {
+    const u = Math.min(Math.max((x - a) / (b - a), 0), 1);
+    return u * u * (3 - (2 * u));
+}
+
+// Angle a - b wrapped to (-pi, pi].
+function angleDelta(a, b) {
+    let d = a - b;
+    while (d > Math.PI) d -= 2 * Math.PI;
+    while (d <= -Math.PI) d += 2 * Math.PI;
+    return d;
+}
+
+/**
+ * The summit's sculpted delta at (x, z), world units (0 beyond `reach`).
+ * @param {number} x
+ * @param {number} z
+ * @returns {number}
+ */
+export function odysseySummitSculpt(x, z) {
+    const rx = x - SUMMIT.x;
+    const rz = z - SUMMIT.z;
+    const d2 = (rx * rx) + (rz * rz);
+    if (d2 >= SUMMIT.reach * SUMMIT.reach) return 0;
+    const d = Math.sqrt(d2);
+    const envelope = 1 - smoothstepRange(SUMMIT.core, SUMMIT.reach, d);
+    // Features grow in from the very top (a point has no faces) and ride the envelope out.
+    const grow = smoothstepRange(6, 60, d) * envelope;
+    const theta = Math.atan2(rz, rx);
+
+    // The horn.
+    const hornT = Math.max(0, 1 - (d / SUMMIT.hornRadius));
+    const horn = SUMMIT.hornHeight * hornT * hornT;
+
+    // The aretes: lateral distance from each ridge line (which meanders with radius).
+    // Each carries towers and notches along its length (gendarmes), so the skyline is broken.
+    let crest = 0;
+    let crestLift = 0;
+    for (let i = 0; i < SUMMIT.aretes.length; i += 1) {
+        const wobble = (0.13 * Math.sin((d * 0.012) + (i * 1.7))) + (0.05 * Math.sin((d * 0.031) + (i * 2.9)));
+        const lateral = angleDelta(theta, SUMMIT.aretes[i] + wobble) * d;
+        const width = SUMMIT.areteWidth + (SUMMIT.areteWiden * d);
+        const r = Math.exp(-((lateral / width) ** 2));
+        if (r > crest) {
+            crest = r;
+            const towers = valueNoise((d / 34) + (i * 13.1), i * 7.3);
+            crestLift = 0.45 + (1.1 * towers * towers);
+        }
+    }
+    const ridge = (crest * SUMMIT.areteLift * crestLift) - ((1 - crest) * SUMMIT.faceHollow);
+
+    // Couloirs: a ridged noise across the face (arc length about the camera's bearing, so the
+    // atan seam sits on the hidden back face), stretched down the fall line.
+    const across = angleDelta(theta, SUMMIT.aretes[0] + Math.PI) * d;
+    const warp = (valueNoise(d * 0.011, across * 0.004 + 3.1) - 0.5) * 22;
+    const n = valueNoise((across + warp) / SUMMIT.couloirSpacing, (d / 95) + 7.7);
+    const groove = (1 - Math.abs((n * 2) - 1)) ** 3;
+    const couloir = -groove * SUMMIT.couloirDepth * (1 - crest);
+
+    // Ledges: rock steps across the faces, on the cone's own height (warped so they are not rings).
+    const coneT = Math.max(0, 1 - (d / HERO_CONE.radius));
+    const coneH = ((coneT ** HERO_CONE.exponent) * HERO_CONE.height)
+        + ((valueNoise(across * 0.016, d * 0.016) - 0.5) * 26);
+    const step = coneH / SUMMIT.ledgeSpacing;
+    const stepFloor = Math.floor(step);
+    const stepped = (stepFloor + smoothstepRange(0.58, 1, step - stepFloor)) * SUMMIT.ledgeSpacing;
+    // ...in patches: whole bands where the rock is stepped, smooth slabs between them.
+    const ledgePatch = smoothstepRange(0.42, 0.68, valueNoise((across / 80) + 19.4, (d / 60) - 3.3));
+    const ledge = (stepped - coneH) * SUMMIT.ledgeStrength * (1 - crest) * ledgePatch;
+
+    // Fine rock: a ridged texture at ~14 u.
+    const rough = ((1 - Math.abs((valueNoise(x / 14 + 41.3, z / 14 - 7.9) * 2) - 1)) - 0.5) * 5;
+
+    return horn * envelope + ((ridge + couloir + ledge + rough) * grow);
+}
+
 /**
  * THE drawn surface. Everything that needs to know where the ground is calls this — the vertex
  * shader (via macro + a sampled relief texture), prop seating, and camera grounding. One
@@ -669,7 +796,8 @@ export function odysseyWorldRelief(x, z) {
  */
 export function odysseyWorldHeight(x, z) {
     return odysseyWorldMacro(x, z)
-        + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
+        + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z))
+        + odysseySummitSculpt(x, z);
 }
 
 /** Depth of water at a point; negative means dry land. */

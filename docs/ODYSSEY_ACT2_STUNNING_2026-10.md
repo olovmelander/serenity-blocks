@@ -47,7 +47,8 @@ of cold pipeline compile.
 1. **Turn the sun** to the side, low and clear, and re-bake the shadows. *Done (§1).*
 2. **The summit sculpted, and its wind.** Arêtes, rock faces and couloirs in the height field.
    Snow by slope and exposure with wind-scoured ridges, rock that does not stretch on steep faces,
-   and a spindrift plume that reads. Varied framing for chapter 5's long stare.
+   and a spindrift plume that reads. Varied framing for chapter 5's long stare. *Done (§2), the
+   framing left for later.*
 3. **Trees and the treeline.** Softer, back-lit crowns, ragged conifer silhouettes, a far ring of
    forest, and a transition from forest through krummholz and alpine meadow to rock and snow. A
    cheap band of real grass by the rail, in the wind.
@@ -93,3 +94,64 @@ enough round that the rainbow still stands at the right of the frame. The sun is
   `composition/odyssey-orbit-earth.js`): its sunset timing, the aurora's place on the night side
   and the planetrise beside it. At the seam that sun is behind the eye either way.
 - Chapter 6 points its own light at the black hole at runtime.
+
+## §2. The summit sculpted, and its wind (2026-10-25)
+
+**Why it took a bake of its own.** The terrain's height comes from baked plates: 17.6 u per texel
+for the macro shape and 8.8 u for the ridged relief. The chapter 5 rail climbs a column in front of
+the summit, from ~575 u away at p 0.34 to ~145 u at 0.68, and the summit sits at the centre of
+every frame. At ~200 u, a 5 u ridge spans ~30 px at 1080p. The form that makes a summit read as
+rock is finer than the plates could hold, which is why it had been painted on (the "flutes").
+
+**The sculpt.** `odysseySummitSculpt(x, z)` in `world/odyssey-world-height.js` is a height delta
+over the hero's top, exactly zero beyond 470 u from the apex. The cone's middle, the meadows, the
+rail's clearances, the orbs' seats and the forest are untouched. It draws:
+
+- a horn: the top ~200 u steepen, and the top rises 34 u;
+- four arêtes: one runs straight down toward the climb (the camera views the summit from bearing
+  ~90° the whole chapter, so the eye is led up it), and two form the left and right skylines. They
+  meander, and carry towers and notches;
+- faces hollowed between them, carved by couloirs that converge on the top;
+- patches of rock ledges across the faces, and a fine ridged grain at ~14 u.
+
+**Where it goes:**
+
+- **GPU.** Its own plate, `bakeSummitSculptData`: 512² over a 1000 u square, ~2 u per texel.
+  It holds the delta, its slope and its curvature, the curvature over a ~6 u stencil scaled like
+  the relief's. Baked in the worker's plates lane. The ground adds it in the vertex shader, and its
+  slope and curvature in the fragment, so the couloirs hold snow and the arêtes shed it through
+  the existing snow rules.
+- **CPU.** The same function joins `odysseyWorldHeight` and the baked height mirror (`total`), so
+  the forest scatter, the shadow bake and every CPU height read see one summit.
+- The painted flutes step back to 15% where the sculpt is.
+- The forest visibility mask was re-baked: its stamp changed, the mask barely.
+
+![p 0.42, 0.50, 0.58. Top: the sun turned (§1) on the old cone. Bottom: sculpted, with rock bands and snow on the ledges, the front arête splitting light and shade, a rocky horn](images/odyssey-act2-2026-10-25/summit-before-after.jpg)
+
+**Triplanar on the steep faces.** Projected only from above, the ground's material atlas streaked
+down every steep face: the smeared plaster. Where the ground is steeper than ~27°, the atlas is
+also projected from the two sides, blended by which way the face looks. It runs in a branch on
+the slope with explicit-level fetches (the atlas has no mips), so flat ground pays nothing.
+
+**The wind.** The summit's spindrift (`composition/odyssey-summit-spindrift.js`) was 56 round
+sheets, which read as more cloud beside the banner. Each sheet is now a streamer:
+
+- drawn out along the wind as it crosses the view (×2.6 long, ×0.5 thin), its grain running
+  along it;
+- 96 of them, crossing 230 u in 7.5 s instead of 175 u in 11 s, born along a wider crest.
+
+The summit smokes into its banner cloud.
+
+![p 0.25: the sculpted massif over the meadow, its shaded right flank cut into ledges. p 0.62: the horn, and its plume tearing off downwind](images/odyssey-act2-2026-10-25/summit-plume-meadow.jpg)
+
+**Cost.** The world playground at 1080p with vsync off, four alternating rounds. With the summit in
+view (p 0.50) it costs +0.10–0.15 ms over main: the summit fetch, and triplanar on the steep faces.
+At p 0.30 it is within noise. The board was not re-measured on the iGPU lane; it cannot be
+measured on this machine.
+
+**Tests.** The golden hashes were re-pinned with a note: the height mirror now carries the sculpt,
+and `bakeWorldTextureData` returns an eleventh buffer. The loader's fake worker posts the summit
+plate. The forest visibility stamp was re-baked.
+
+**Not done here (moved on).** Varied camera framing for chapter 5's long stare: the summit now
+carries the view.
