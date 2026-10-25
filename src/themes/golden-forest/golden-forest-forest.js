@@ -16,9 +16,35 @@ import {
     GOLDEN_FOREST_FEATURE_TREES, GOLDEN_FOREST_GROVE_CEILING, createGoldenForestVisibilityTest,
     layoutGoldenForestGrove,
 } from './golden-forest-composition.js';
-import { goldenForestGroundHeight } from './golden-forest-terrain.js';
+import { goldenForestSurfaceHeight } from './golden-forest-terrain.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+/** Rings of a trunk's flared foot, in trunk radii, on which its ground is read. */
+const FOOT_RINGS = [0.9, 1.8];
+const FOOT_SAMPLES = 12;
+
+/**
+ * Height of a trunk's origin: a few centimetres into the drawn ground at its heart, and lower where
+ * that ground falls away across its flared foot (a steep bank, or a coarse far cell cutting under a
+ * crest), so the bark that runs below the origin still reaches the ground on every side.
+ */
+export function goldenForestRootHeight(tree, asset) {
+    const heart = goldenForestSurfaceHeight(tree.x, tree.z);
+    const trunk = (asset.trunkRadius || 0.5) * tree.scale;
+    let lowest = heart;
+    FOOT_RINGS.forEach((ring) => {
+        for (let i = 0; i < FOOT_SAMPLES; i += 1) {
+            const angle = (i / FOOT_SAMPLES) * Math.PI * 2;
+            lowest = Math.min(lowest, goldenForestSurfaceHeight(
+                tree.x + Math.cos(angle) * trunk * ring,
+                tree.z + Math.sin(angle) * trunk * ring,
+            ));
+        }
+    });
+    // The bark's lowest point below its origin; a quarter of it stays in hand below the foot's lowest ground.
+    const buried = Math.max(0, -(asset.bark.boundingBox?.min.y ?? 0)) * tree.scale;
+    return Math.min(heart, lowest + buried * 0.75) - 0.05;
+}
 
 /** Needle ramps per species, walked by `tone` from deep shade green to sunlit olive-gold. */
 const NEEDLE_RAMPS = Object.freeze({
@@ -73,7 +99,7 @@ export class GoldenForestForest {
         const grove = layoutGoldenForestGrove(this.rng, GOLDEN_FOREST_GROVE_CEILING).slice(0, this.tier.groveTrees);
         this.placements = [...GOLDEN_FOREST_FEATURE_TREES, ...grove]
             .filter((tree) => this.assets.trees[tree.asset])
-            .map((tree) => ({ ...tree, y: goldenForestGroundHeight(tree.x, tree.z) - 0.05 }));
+            .map((tree) => ({ ...tree, y: goldenForestRootHeight(tree, this.assets.trees[tree.asset]) }));
         this.stats.trees = this.placements.length;
         this.buildBark();
         this.buildFoliage();

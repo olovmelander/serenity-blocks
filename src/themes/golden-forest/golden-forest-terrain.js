@@ -4,8 +4,9 @@
  * The land is one analytic height function: a near bank under the camera, a wooded
  * headland across the water on the left where the sun stands, a spit, a promontory and a
  * long shore on the right, an islet, an island and the far shore climbing into hills. Water
- * lies at y = 0. The same function places every tree, reed and rock, and is baked into a
- * small map so the lake knows how deep it is.
+ * lies at y = 0. It is drawn as a grid that coarsens with distance, and every tree, reed and
+ * rock stands on that drawn ground (goldenForestSurfaceHeight); it is baked into a small map
+ * so the lake knows how deep it is.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -13,33 +14,15 @@ import {
     smoothstep, vec3, vec4,
 } from 'three/tsl';
 import {
-    GOLDEN_FOREST_BOUNDS, LAKE_MAP_HEIGHT, LAKE_MAP_WIDTH, bakeLakeMap, goldenForestGroundHeight,
+    GOLDEN_FOREST_GROUND_GRID, LAKE_MAP_HEIGHT, LAKE_MAP_WIDTH, bakeLakeMap, goldenForestGridHeights,
+    goldenForestGroundHeight,
 } from './golden-forest-shape.js';
 
 // The land is three-free (golden-forest-shape.js): a first visit bakes its lake map in a worker.
 export {
-    GOLDEN_FOREST_BOUNDS, GOLDEN_FOREST_MAP_BIAS, GOLDEN_FOREST_MAP_RANGE, goldenForestGroundHeight,
-    goldenForestShoreDistance, goldenForestShores,
+    GOLDEN_FOREST_BOUNDS, GOLDEN_FOREST_GROUND_GRID, GOLDEN_FOREST_MAP_BIAS, GOLDEN_FOREST_MAP_RANGE,
+    goldenForestGroundHeight, goldenForestShoreDistance, goldenForestShores, goldenForestSurfaceHeight,
 } from './golden-forest-shape.js';
-
-/** Grid lines that are close together around the camera and widen with distance. */
-function gridLines(min, max, denseMin, denseMax, denseStep, growth) {
-    const lines = [];
-    for (let value = denseMin; value <= denseMax + 1e-6; value += denseStep) lines.push(value);
-    let step = denseStep;
-    for (let value = denseMax; value < max;) {
-        step *= growth;
-        value = Math.min(max, value + step);
-        lines.push(value);
-    }
-    step = denseStep;
-    for (let value = denseMin; value > min;) {
-        step *= growth;
-        value = Math.max(min, value - step);
-        lines.unshift(value);
-    }
-    return lines;
-}
 
 /** R = ground height (biased), G = metres from the shore out on the water / 40. */
 function createLakeMap() {
@@ -65,18 +48,13 @@ export class GoldenForestTerrain {
     }
 
     build() {
-        const {
-            minX, maxX, minZ, maxZ,
-        } = GOLDEN_FOREST_BOUNDS;
-        const xs = gridLines(minX, maxX, -34, 34, 0.45, 1.1);
-        const zs = gridLines(minZ, maxZ, -8, 22, 0.45, 1.1);
+        const { xs, zs } = GOLDEN_FOREST_GROUND_GRID;
+        const heights = goldenForestGridHeights();
         const positions = new Float32Array(xs.length * zs.length * 3);
         for (let row = 0; row < zs.length; row += 1) {
             for (let column = 0; column < xs.length; column += 1) {
-                positions.set(
-                    [xs[column], goldenForestGroundHeight(xs[column], zs[row]), zs[row]],
-                    (row * xs.length + column) * 3,
-                );
+                const vertex = row * xs.length + column;
+                positions.set([xs[column], heights[vertex], zs[row]], vertex * 3);
             }
         }
         const indices = [];

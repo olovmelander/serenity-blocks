@@ -13,7 +13,7 @@ import {
     pow, saturate, sin, smoothstep, texture, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GOLDEN_FOREST_VIEWS, goldenForestEye } from './golden-forest-composition.js';
-import { goldenForestGroundHeight, goldenForestShores } from './golden-forest-terrain.js';
+import { goldenForestShores, goldenForestSurfaceHeight } from './golden-forest-terrain.js';
 
 const SPRUCE_RAMP = [0x07130a, 0x112a10, 0x254414, 0x566418];
 const PINE_RAMP = [0x0b1c0d, 0x1b3a15, 0x38561a, 0x748024];
@@ -85,7 +85,7 @@ export class GoldenForestBackdrop {
                     cards.push({
                         x,
                         z,
-                        y: goldenForestGroundHeight(x, z) - 0.3,
+                        y: goldenForestSurfaceHeight(x, z) - 0.3,
                         tile,
                         scale: 0.9 + rng() * 0.5,
                         flip: rng() < 0.5,
