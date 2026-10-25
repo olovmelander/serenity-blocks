@@ -12,11 +12,14 @@ import { getWolfhourPostProfile } from '../../themes/wolfhour/wolfhour-post.js';
 import { createWolfhourMeteor, setWolfhourRibbon } from '../../themes/wolfhour/wolfhour-meteor.js';
 import { updateWolfhourCamera } from '../../themes/wolfhour/wolfhour-composition.js';
 import { sceneSamples } from '../../themes/shared/scene-antialias.js';
+import { WolfhourNightClock, wolfhourHourAt } from '../../themes/wolfhour/wolfhour-hours.js';
 
 /*
  * URL params: quality, noPost=1, msaa=<n>, board=1, pointerX/pointerY (pin the parallax),
- * event=lock|combo|crash|clear|howl with eventAge=<s> (clear: the lead wolf glances; howl: the
- * pack howls, as on a four-line clear), meteor=1, impactIndex, seed,
+ * event=lock|combo|crash|clear|howl|level with eventAge=<s> (clear: the lead wolf glances; howl: the
+ * pack howls, as on a four-line clear; level: the night steps an hour on), meteor=1, impactIndex, seed,
+ * level=<n>  the night <n - 1> hours on from the clock's (every level is an hour on; the hours
+ *         turn by the clock, wolfhour-hours.js),
  * zoom=<k>&zoomX=<x>&zoomY=<y>  an inspection lens: k times closer, centred on world (x, y)
  *         (to check how the wolves stand on their ridges),
  * icon=1  the theme-icon lens: the pack howls on the left massif's summit ridge against the moon
@@ -38,16 +41,22 @@ export function create({ scene, renderer, params }) {
     const previousBackground = scene.background;
     scene.background = new THREE.Color(0x000000);
     const sky = createWolfhourSky({ scene, quality, aspect });
-    const landscape = createWolfhourLandscape({ scene, quality, seed: 73013 });
-    const mist = createWolfhourMist({ scene, quality, noiseMap: sky.noiseMap });
-    const pack = createWolfhourPack({ quality, noiseMap: sky.noiseMap });
-    const hut = createWolfhourHut({ quality, noiseMap: sky.noiseMap });
-    const spindrift = createWolfhourSpindrift({ quality, noiseMap: sky.noiseMap });
+    // Every part wears the sky's night light, so an hour of the night turns the whole valley.
+    const { noiseMap, nightLight } = sky;
+    const landscape = createWolfhourLandscape({
+        scene, quality, seed: 73013, nightLight,
+    });
+    const mist = createWolfhourMist({
+        scene, quality, noiseMap, nightLight,
+    });
+    const pack = createWolfhourPack({ quality, noiseMap, nightLight });
+    const hut = createWolfhourHut({ quality, noiseMap, nightLight });
+    const spindrift = createWolfhourSpindrift({ quality, noiseMap, nightLight });
     const iconLens = params.get('icon') === '1';
     const iconX = Number(params.get('iconX') || -800);
     const iconHalf = Number(params.get('iconHalf') || 150);
     const MASSIF_RESPONSE = 0.48;
-    const forest = createWolfhourForest({ quality });
+    const forest = createWolfhourForest({ quality, nightLight });
     const props = standWolfhourProps(landscape, {
         pack: iconLens ? null : pack, hut, spindrift, forest,
     });
@@ -115,9 +124,24 @@ export function create({ scene, renderer, params }) {
     window.addEventListener('blur', resetPointer);
     let lastTime = null;
     let howled = false;
+    // The hour of the night: a function of the time (and the level's eased step), so ?t= shows it.
+    const night = new WolfhourNightClock();
+    const startLevel = Math.max(1, Math.round(Number(params.get('level')) || 1));
+    night.setLevel(startLevel, { silent: true });
+    let leveled = false;
+    const hour = wolfhourHourAt(0);
     const update = (time) => {
         const delta = lastTime === null ? 0 : Math.max(0, Math.min(1 / 30, time - lastTime));
         lastTime = time;
+        if (event === 'level' && !leveled) {
+            // The level-up eventAge seconds ago, eased by then (the ease is exponential: one step of
+            // eventAge lands where many small ones would).
+            leveled = true;
+            night.setLevel(startLevel + 1);
+            night.update(time, eventAge);
+        }
+        sky.setHour(wolfhourHourAt(night.update(time, delta), hour));
+        post?.setHour(hour);
         const damping = 1 - Math.exp(-delta * 2.8);
         smoothX += (pointerX - smoothX) * damping;
         smoothY += (pointerY - smoothY) * damping;

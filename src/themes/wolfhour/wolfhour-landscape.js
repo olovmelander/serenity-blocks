@@ -16,6 +16,7 @@ import {
 import {
     GRANITE_SIZE, LIT_RAMP, MOON_LIGHT, RANGES, WOLFHOUR_PALETTE, bakeGranite, bakeRange, landscapeScale,
 } from './wolfhour-landscape-bake.js';
+import { createWolfhourNightLight } from './wolfhour-sky.js';
 
 const PARALLAX_RESPONSE = Object.freeze([0.18, 0.48, 0.88, 1.24]);
 /** Snow glints: the cell (world units) that may hold one, and its light (linear, above bloom). */
@@ -31,10 +32,11 @@ const MIST_HIGH = vec3(0.016, 0.024, 0.046);
 /**
  * The air at (x, y) of a range's own frame, shared by everything that fades into it: one air for
  * every range, brighter and bluer low in the valley, a little more light on the side under the
- * moon (left).
+ * moon (left). `tint` is the hour of the night's (the night light's `uAir`).
  */
-export function wolfhourAir(x, y) {
-    return mix(MIST_LOW, MIST_HIGH, smoothstep(-470, 260, y)).mul(smoothstep(500, -1100, x).mul(0.32).add(0.84));
+export function wolfhourAir(x, y, tint = null) {
+    const air = mix(MIST_LOW, MIST_HIGH, smoothstep(-470, 260, y)).mul(smoothstep(500, -1100, x).mul(0.32).add(0.84));
+    return tint ? air.mul(tint) : air;
 }
 
 function clamp01(value) {
@@ -71,7 +73,9 @@ function makeGraniteTexture(seed) {
 }
 
 /** Creates the landscape without a renderer, camera, texture fetch or animation allocation. */
-export function createWolfhourLandscape({ scene = null, quality = 'High', seed = 7319 } = {}) {
+export function createWolfhourLandscape({
+    scene = null, quality = 'High', seed = 7319, nightLight = createWolfhourNightLight(),
+} = {}) {
     const scale = landscapeScale(quality);
     const group = new THREE.Group();
     group.name = 'Wolfhour alpine landscape';
@@ -119,8 +123,11 @@ export function createWolfhourLandscape({ scene = null, quality = 'High', seed =
         const facing = max(dot(normalize(attribute('normal', 'vec3')), MOON), 0);
         const lit = smoothstep(LIT_RAMP[0], LIT_RAMP[1], facing);
         const light = attribute('aLight', 'vec2');
-        const rock = mix(PALETTE.rockShade, PALETTE.rockLit, lit).mul(light.y).mul(rockGrain);
-        const frost = mix(PALETTE.snowShade, PALETTE.snowLit, lit).mul(light.x).mul(snowGrain).toVar();
+        // The hour of the night tints the moonlit side and the shade (the sky's fill) apart.
+        const rock = mix(PALETTE.rockShade.mul(nightLight.uShade), PALETTE.rockLit.mul(nightLight.uMoon), lit)
+            .mul(light.y).mul(rockGrain);
+        const frost = mix(PALETTE.snowShade.mul(nightLight.uShade), PALETTE.snowLit.mul(nightLight.uMoon), lit)
+            .mul(light.x).mul(snowGrain).toVar();
         if (glints) {
             // Glints: in about one cell in twenty of moonlit snow a crystal catches the moon and
             // twinkles.
@@ -139,12 +146,12 @@ export function createWolfhourLandscape({ scene = null, quality = 'High', seed =
                 .mul(lit)
                 .mul(light.x)
                 .mul(uSparkle.mul(0.8).add(1));
-            frost.addAssign(GLINT_COLOUR.mul(glint));
+            frost.addAssign(GLINT_COLOUR.mul(nightLight.uMoon).mul(glint));
         }
         const ground = mix(rock, frost, snow).add(
             vec3(0.10, 0.13, 0.2).mul(attribute('aMoonResponse', 'float')).mul(uPulse),
         );
-        return vec4(mix(ground, wolfhourAir(positionGeometry.x, positionGeometry.y), surface.y), 1);
+        return vec4(mix(ground, wolfhourAir(positionGeometry.x, positionGeometry.y, nightLight.uAir), surface.y), 1);
     })();
     const geometries = [];
     const props = [];
@@ -210,6 +217,8 @@ export function createWolfhourLandscape({ scene = null, quality = 'High', seed =
     return {
         group,
         graniteTexture,
+        /** The night's light the ranges wear (the sky's, when built with it). */
+        nightLight,
         motion,
         parallaxResponse: PARALLAX_RESPONSE,
         applyParallax,

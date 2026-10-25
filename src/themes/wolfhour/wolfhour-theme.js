@@ -63,6 +63,7 @@ import * as WolfhourComputeFactories from './wolfhour-compute.js';
 import * as WolfhourPostFactories from './wolfhour-post.js';
 import { createLunarHaloFallbackMaterial } from './wolfhour-fallback-materials.js';
 import { createWolfhourSky } from './wolfhour-sky.js';
+import { WolfhourNightClock, wolfhourHourAt } from './wolfhour-hours.js';
 import { createWolfhourLandscape } from './wolfhour-landscape.js';
 import { createWolfhourMist } from './wolfhour-mist.js';
 import { createWolfhourPack } from './wolfhour-wolves.js';
@@ -442,6 +443,12 @@ function parseWolfhourFlags() {
     };
 }
 
+/** The level a LEVEL_UP payload names: its own field, a DOM detail's, or a bare number. */
+function eventDetailLevel(payload) {
+    if (typeof payload === 'number' || typeof payload === 'string') return payload;
+    return (payload?.detail ?? payload)?.level;
+}
+
 function createSeededRandom(seed) {
     if (!Number.isFinite(seed)) return Math.random;
     let state = Math.abs(Math.floor(seed)) % 2147483647;
@@ -629,6 +636,13 @@ export default class WolfhourTheme extends BaseTheme {
 
         // Animation
         this.time = 0;
+        /**
+         * The hour of the night (wolfhour-hours.js): the clock turns it in every mode, and every
+         * level is one hour on. The run's level is kept here (a rebuild carries it, and the clock).
+         */
+        this.level = 1;
+        this.nightClock = new WolfhourNightClock();
+        this.nightHour = wolfhourHourAt(0);
         this.animationFrameId = null;
         this.eventUnsubscribers = [];
 
@@ -1750,30 +1764,39 @@ export default class WolfhourTheme extends BaseTheme {
             quality: this.activeQualityLevel,
             aspect: window.innerWidth / window.innerHeight,
         });
+        // Every part wears the sky's night light, so an hour of the night turns the whole valley.
+        const { nightLight } = this.celestialSky;
         this.alpineLandscape = createWolfhourLandscape({
             scene: this.scene,
             quality: this.activeQualityLevel,
             seed: LANDSCAPE_SEED,
+            nightLight,
         });
         this.valleyMist = createWolfhourMist({
             scene: this.scene,
             quality: this.activeQualityLevel,
             noiseMap: this.celestialSky.noiseMap,
+            nightLight,
         });
         this.wolfPack = createWolfhourPack({
             quality: this.activeQualityLevel,
             noiseMap: this.celestialSky.noiseMap,
+            nightLight,
         });
         this.valleyHut = createWolfhourHut({
             quality: this.activeQualityLevel,
             noiseMap: this.celestialSky.noiseMap,
+            nightLight,
         });
         this.spindrift = createWolfhourSpindrift({
             quality: this.activeQualityLevel,
             noiseMap: this.celestialSky.noiseMap,
+            nightLight,
         });
         this.alpineLandscape.resize(window.innerWidth / window.innerHeight);
-        this.spruce = createWolfhourForest({ quality: this.activeQualityLevel });
+        this.spruce = createWolfhourForest({ quality: this.activeQualityLevel, nightLight });
+        // The night takes up the level the run is on, at once.
+        this.nightClock.setLevel(this.level || 1, { silent: true });
         this.wolfhourProps = standWolfhourProps(this.alpineLandscape, {
             pack: this.wolfPack,
             hut: this.valleyHut,
@@ -2638,6 +2661,12 @@ export default class WolfhourTheme extends BaseTheme {
                 this[handler](data);
             }
         }));
+        // A level-up also turns the night an hour on, behind no setting (its reaction keeps the gate
+        // above); the run over, the next begins at the first level's hour.
+        reactionUnsubs.push(eventBus.on(EVENTS.LEVEL_UP, (data) => this.setLevel(data)));
+        const onGameOver = () => this.setLevel(1);
+        window.addEventListener('gameOver', onGameOver);
+        reactionUnsubs.push(() => window.removeEventListener('gameOver', onGameOver));
 
         // Pointer tracking for parallax camera
         const onPointerMove = (e) => {
@@ -2959,6 +2988,30 @@ export default class WolfhourTheme extends BaseTheme {
             this.time,
             (this.effectState.mountainPulse || 0) * 0.4 + howl * 0.5 + this.night.glow,
         );
+    }
+
+    /**
+     * The hour of the night: the clock turns it by itself (a function of the time alone, so a
+     * rebuild that keeps the clock lands on the same light), a level's step eases in on top, the
+     * short way round. A slow change of colour is not motion: reduced motion does not hold it.
+     */
+    updateNightHour(deltaTime = 0) {
+        const phase = this.nightClock.update(this.time, deltaTime);
+        wolfhourHourAt(phase, this.nightHour);
+        this.celestialSky?.setHour?.(this.nightHour);
+        this.postProcessing?.setHour?.(this.nightHour);
+        return phase;
+    }
+
+    /**
+     * The level the night is on: every level is one hour on (eased). Whatever the effects
+     * setting says: a slow change of colour is the theme, not a reaction (onLevelUp keeps its gate).
+     */
+    setLevel(level) {
+        const wanted = Number(eventDetailLevel(level));
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.round(wanted)) : (this.level || 1) + 1;
+        this.nightClock.setLevel(this.level);
+        return this.level;
     }
 
     /** The true combo tracker for a player's board. */
@@ -5177,6 +5230,7 @@ export default class WolfhourTheme extends BaseTheme {
 
             this.updateNebulas(deltaTime);
             this.updateSurge();
+            this.updateNightHour(deltaTime);
             this.updateEffects(deltaTime);
             this.celestialSky?.update(this.time, this.effectState);
             this.alpineLandscape?.update(this.time, this.effectState);

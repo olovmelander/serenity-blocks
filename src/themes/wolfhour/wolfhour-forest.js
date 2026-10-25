@@ -9,9 +9,10 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, mix, positionGeometry, positionLocal, uniform, vec3,
+    attribute, dot, mix, positionGeometry, positionLocal, smoothstep, uniform, vec3,
 } from 'three/tsl';
 import { wolfhourAir } from './wolfhour-landscape.js';
+import { createWolfhourNightLight } from './wolfhour-sky.js';
 
 /**
  * The belts: which range, how closely trees stand, their heights and how far below the crest
@@ -166,7 +167,7 @@ export function plantBelt(belt, crestAt) {
 }
 
 /** Creates the spruce belts for a tier. Stand them with `stand(landscape)`; refit on resize. */
-export function createWolfhourForest({ quality = 'High' } = {}) {
+export function createWolfhourForest({ quality = 'High', nightLight = createWolfhourNightLight() } = {}) {
     const tier = TIERS[quality] ?? 1;
     const uInvStretch = uniform(1);
     const material = new THREE.MeshBasicNodeMaterial({
@@ -174,9 +175,13 @@ export function createWolfhourForest({ quality = 'High' } = {}) {
     });
     const offset = attribute('aOffsetX', 'float');
     material.positionNode = positionLocal.add(vec3(offset.mul(uInvStretch.sub(1)), 0, 0));
+    // The hour of the night tints the moonlit snow on the boughs as it does the ranges' (the bright
+    // tints), and the dark needles and shaded snow as it does their shade.
+    const tint = attribute('aTint', 'vec3');
+    const moonlit = smoothstep(0.028, 0.075, dot(tint, vec3(0.2126, 0.7152, 0.0722)));
     material.colorNode = mix(
-        attribute('aTint', 'vec3'),
-        wolfhourAir(positionGeometry.x, positionGeometry.y),
+        tint.mul(mix(nightLight.uShade, nightLight.uMoon, moonlit)),
+        wolfhourAir(positionGeometry.x, positionGeometry.y, nightLight.uAir),
         attribute('aFog', 'float'),
     );
     const meshes = [];

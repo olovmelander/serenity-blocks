@@ -72,6 +72,10 @@ export class WolfhourGrade {
         this.uContrast = uniform(params.contrast ?? 1.04);
         this.uSaturation = uniform(params.saturation ?? 1.0);
         this.uDitherStrength = uniform(params.ditherStrength ?? (1 / 255));
+        // The hour of the night (wolfhour-hours.js, setHour): where the iris rests and how hard the
+        // shadows lean blue (a warm hour leans them less). 1 and 1: the night as it always was.
+        this.uHourExposure = uniform(1);
+        this.uHourCool = uniform(1);
 
         this.postProcessing.outputNode = Fn(() => {
             const uv = viewportUV;
@@ -85,8 +89,8 @@ export class WolfhourGrade {
             const lightMask = smoothstep(0.02, 0.5, luminance).toVar();
             const nightTint = mix(vec3(0.88, 0.96, 1.14), vec3(0.985, 1.0, 1.03), lightMask);
             const muted = mix(hdr, vec3(luminance), this.uTintDesaturation.mul(float(1).sub(lightMask.mul(0.6))));
-            hdr.assign(mix(hdr, muted.mul(nightTint), this.uCoolTintStrength));
-            hdr.mulAssign(this.uExposure);
+            hdr.assign(mix(hdr, muted.mul(nightTint), this.uCoolTintStrength.mul(this.uHourCool).min(1)));
+            hdr.mulAssign(this.uExposure.mul(this.uHourExposure));
 
             // Contrast acts on luminance around a night-scene midpoint and
             // fades out at black. Never subtract a display midpoint from RGB:
@@ -161,6 +165,12 @@ export class WolfhourGrade {
         if (params.contrast !== undefined) this.uContrast.value = params.contrast;
         if (params.saturation !== undefined) this.uSaturation.value = params.saturation;
         if (params.ditherStrength !== undefined) this.uDitherStrength.value = params.ditherStrength;
+    }
+
+    /** Wear an hour of the night (wolfhour-hours.js wolfhourHourAt): its iris and its lean to blue. */
+    setHour(hour) {
+        if (Number.isFinite(hour?.exposure)) this.uHourExposure.value = hour.exposure;
+        if (Number.isFinite(hour?.cool)) this.uHourCool.value = hour.cool;
     }
 
     update(params = {}) {

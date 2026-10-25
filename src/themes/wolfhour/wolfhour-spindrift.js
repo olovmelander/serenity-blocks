@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import {
     exp, float, mix, smoothstep, texture, uniform, uv, vec2, vec3,
 } from 'three/tsl';
-import { makeWolfhourNoiseTexture } from './wolfhour-sky.js';
+import { createWolfhourNightLight, makeWolfhourNoiseTexture } from './wolfhour-sky.js';
 
 /** The plumes: which summit (local x on the massif), how long and how strong, and its gust phase. */
 export const SPINDRIFT_PLUMES = Object.freeze([
@@ -28,7 +28,7 @@ export function spindriftGust(time, phase = 0) {
     return 0.35 + 0.65 * (g * 0.5 + 0.5) ** 1.5;
 }
 
-function createPlumeMaterial(plume, noiseMap, uTime, uGust, uWind) {
+function createPlumeMaterial(plume, noiseMap, uTime, uGust, uWind, uMoonTint) {
     const material = new THREE.MeshBasicNodeMaterial({
         name: plume.name, transparent: true, depthWrite: false, side: THREE.DoubleSide,
     });
@@ -54,12 +54,15 @@ function createPlumeMaterial(plume, noiseMap, uTime, uGust, uWind) {
         // Play stirs the wind: the plumes thicken (uWind, 0 at rest).
         .mul(uWind.mul(0.7).add(1))
         .clamp(0, 1);
-    material.colorNode = mix(vec3(0.27, 0.32, 0.45), vec3(0.16, 0.2, 0.3), along);
+    // Moonlit snow in the air: the hour of the night tints it as it does the snow it is torn from.
+    material.colorNode = mix(vec3(0.27, 0.32, 0.45), vec3(0.16, 0.2, 0.3), along).mul(uMoonTint);
     return material;
 }
 
 /** Creates the plumes (no renderer). Stand each on the massif with `plume.userData.summitX`. */
-export function createWolfhourSpindrift({ quality = 'High', noiseMap = null } = {}) {
+export function createWolfhourSpindrift({
+    quality = 'High', noiseMap = null, nightLight = createWolfhourNightLight(),
+} = {}) {
     const ownsNoise = !noiseMap;
     const noise = noiseMap || makeWolfhourNoiseTexture();
     const uTime = uniform(0);
@@ -71,7 +74,8 @@ export function createWolfhourSpindrift({ quality = 'High', noiseMap = null } = 
             const geometry = new THREE.PlaneGeometry(plume.length, plume.height);
             // The summit is the quad's left edge, a third of the way up.
             geometry.translate(plume.length / 2, plume.height * 0.14, 0);
-            const mesh = new THREE.Mesh(geometry, createPlumeMaterial(plume, noise, uTime, uGust, uWind));
+            const material = createPlumeMaterial(plume, noise, uTime, uGust, uWind, nightLight.uMoon);
+            const mesh = new THREE.Mesh(geometry, material);
             mesh.name = plume.name;
             mesh.userData.summitX = plume.x;
             mesh.userData.phase = plume.phase;
