@@ -263,44 +263,6 @@
                 <feGaussianBlur in="goo" stdDeviation="1.5" result="smoothGoo" />
                 <feComposite in="SourceGraphic" in2="smoothGoo" operator="atop" />
             </filter>
-            <symbol id="cs-settings-icon-gear" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="3.1" />
-                <path d="M12 3.3v2.2M12 18.5v2.2M3.3 12h2.2M18.5 12h2.2" />
-                <path d="M5.85 5.85l1.55 1.55M16.6 16.6l1.55 1.55M18.15 5.85 16.6 7.4M7.4 16.6l-1.55 1.55" />
-                <path d="M8.35 5.6 6.7 6.7l.55 2.25M15.65 5.6l1.65 1.1-.55 2.25M8.35 18.4 6.7 17.3l.55-2.25M15.65 18.4l1.65-1.1-.55-2.25" />
-            </symbol>
-            <symbol id="cs-settings-icon-keyboard" viewBox="0 0 24 24">
-                <rect x="3.5" y="6.5" width="17" height="11" rx="2.2" />
-                <path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 13.6h.01M10.2 13.6h6.8" />
-            </symbol>
-            <symbol id="cs-settings-icon-gamepad" viewBox="0 0 24 24">
-                <path d="M7.2 9.1h9.6c2.4 0 3.9 1.7 4.3 4.2l.3 2.4c.2 1.6-.7 2.7-2 2.7-.8 0-1.5-.4-2.2-1.2l-1-1.1H7.8l-1 1.1c-.7.8-1.4 1.2-2.2 1.2-1.3 0-2.2-1.1-2-2.7l.3-2.4c.4-2.5 1.9-4.2 4.3-4.2Z" />
-                <path d="M7.2 12.1v3.1M5.7 13.7h3M15.6 13.2h.01M18.1 14.6h.01" />
-            </symbol>
-            <symbol id="cs-settings-icon-lotus" viewBox="0 0 24 24">
-                <path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3" />
-                <path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3" />
-                <path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7" />
-                <path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7" />
-                <path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5" />
-                <path d="M7.5 15.8c1.2-1.1 2.7-1.7 4.5-1.7s3.3.6 4.5 1.7" />
-            </symbol>
-            <symbol id="cs-settings-icon-sprout" viewBox="0 0 24 24">
-                <path d="M12 20V9.4" />
-                <path d="M12 13.1c-3.1-.2-5.2-1.6-6.2-4.1 2.9-.5 5 .5 6.2 2.9" />
-                <path d="M12 11.2c.7-3.1 2.6-4.9 5.8-5.4.4 3.1-1.4 5.2-5.8 6.4" />
-                <path d="M7.7 20h8.6" />
-            </symbol>
-            <symbol id="cs-settings-icon-target" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="7.5" />
-                <circle cx="12" cy="12" r="3.1" />
-                <path d="M12 2.7v3M12 18.3v3M2.7 12h3M18.3 12h3" />
-            </symbol>
-            <symbol id="cs-settings-icon-tip" viewBox="0 0 24 24">
-                <path d="M9 18h6M10 21h4" />
-                <path d="M8.2 14.1a5.2 5.2 0 1 1 7.6 0c-.8.8-1.2 1.5-1.35 2.35h-4.9c-.15-.85-.55-1.55-1.35-2.35Z" />
-                <path d="M12 6.4v3.1" />
-            </symbol>
             <!-- Clip path removed to allow dynamic sizing -->
         </defs>
     </svg>
@@ -915,13 +877,7 @@
                     <p class="sb-modes__label" id="sb-modes-stack">Stack</p>
                     <div class="game-mode-card" data-mode="single" id="single-player-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--solo" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-                                aria-hidden="true">
-                                <circle class="cs-solo-ring" cx="12" cy="12" r="9" />
-                                <circle class="cs-solo-head" cx="12" cy="8" r="2.6" />
-                                <path class="cs-solo-body" d="M6.5 19c.8-3.7 2.8-5.6 5.5-5.6s4.7 1.9 5.5 5.6" />
-                            </svg>
+                            <svg class="cs-icon cs-icon--solo" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3.5H10.5A7 7 0 0 0 3.5 10.5v3a7 7 0 0 0 7 7h3a7 7 0 0 0 7-7V11"/><rect class="cs-tile" x="15.5" y="3.5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         </div>
                         <h2 class="mode-card-title">Single Player</h2>
                         <p class="mode-card-desc">The classic climb. Levels rise and gravity quickens.</p>
@@ -929,11 +885,7 @@
 
                     <div class="game-mode-card" data-mode="infinity" id="infinity-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--infinity" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                <path class="cs-infinity-path" pathLength="1"
-                                    d="M12 12c-2-2.5-5-3.5-7-2-2 1.5-2 5 0 6.5 2 1.5 5 0.5 7-2 2 2.5 5 3.5 7 2 2-1.5 2-5 0-6.5-2-1.5-5-0.5-7 2z" />
-                            </svg>
+                            <svg class="cs-icon cs-icon--infinity" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21.5V10M19 21.5V10M5 21.5h14"/><path d="M5 6.8v-.01M5 3.8v-.01M19 6.8v-.01M19 3.8v-.01"/><path d="M8.6 12.4h6.8" opacity=".5"/><rect class="cs-tile" x="9.5" y="14.8" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         </div>
                         <h2 class="mode-card-title">Infinity</h2>
                         <p class="mode-card-desc">One thousand rows tall. Build upward and chain cascades.</p>
@@ -941,14 +893,7 @@
 
                     <div class="game-mode-card" data-mode="stillfall" id="stillfall-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--stillfall" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-                                aria-hidden="true">
-                                <path d="M4 20h16" />
-                                <path d="M4 20v-4h6v4M14 20v-4h6v4" />
-                                <rect x="10" y="3" width="4" height="4" rx="1" />
-                                <path d="M12 10v.01M12 12.5v.01" />
-                            </svg>
+                            <svg class="cs-icon cs-icon--stillfall" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 15.5h7v5h5v-5h7"/><path d="M12 10.8v.01M12 13.2v.01"/><rect class="cs-tile" x="9.5" y="2.8" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         </div>
                         <h2 class="mode-card-title">Stillfall</h2>
                         <p class="mode-card-desc">Cascade puzzles. A few pieces, one goal, gravity waits for you.</p>
@@ -956,18 +901,7 @@
 
                     <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--local-mp" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                <g class="cs-local-player cs-local-player--primary">
-                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                    <circle cx="9" cy="7" r="4"></circle>
-                                </g>
-                                <g class="cs-local-player cs-local-player--secondary">
-                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                                </g>
-                                <path class="cs-local-link" pathLength="1" d="M11.7 12.4c1.5-1 3.1-1 4.6 0"></path>
-                            </svg>
+                            <svg class="cs-icon cs-icon--local-mp" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5v14a1.8 1.8 0 0 0 1.8 1.8h4.4A1.8 1.8 0 0 0 11 18.5v-14M13 4.5v14a1.8 1.8 0 0 0 1.8 1.8h4.4a1.8 1.8 0 0 0 1.8-1.8v-14"/><rect class="cs-tile" x="4.6" y="14" width="4.8" height="4.8" rx="1.3" fill="currentColor" stroke="none"/><rect x="15.05" y="9.65" width="3.9" height="3.9" rx="1.15"/></svg>
                         </div>
                         <h2 class="mode-card-title">Local Versus</h2>
                         <p class="mode-card-desc">Up to four players on one screen, with friends or bots.</p>
@@ -975,20 +909,7 @@
 
                     <div class="game-mode-card" data-mode="online-multiplayer" id="online-multiplayer-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--online-mp" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                <g class="cs-online-globe">
-                                    <circle class="cs-online-outline" cx="12" cy="12" r="10"></circle>
-                                    <line class="cs-online-equator" x1="2" y1="12" x2="22" y2="12"></line>
-                                    <path class="cs-online-meridian"
-                                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z">
-                                    </path>
-                                </g>
-                                <ellipse class="cs-online-orbit" pathLength="1" cx="12" cy="12" rx="8.4" ry="3.1"
-                                    transform="rotate(-26 12 12)"></ellipse>
-                                <circle class="cs-online-packet" cx="19.2" cy="8.1" r="1" fill="currentColor" stroke="none">
-                                </circle>
-                            </svg>
+                            <svg class="cs-icon cs-icon--online-mp" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6v12.5a1.8 1.8 0 0 0 1.8 1.8h4.4a1.8 1.8 0 0 0 1.8-1.8V6"/><path d="M4.6 8.5a7 7 0 0 0 0 7M19.4 8.5a7 7 0 0 1 0 7M1.8 6.2a10.5 10.5 0 0 0 0 11.6M22.2 6.2a10.5 10.5 0 0 1 0 11.6"/><rect class="cs-tile" x="9.6" y="13.7" width="4.8" height="4.8" rx="1.3" fill="currentColor" stroke="none"/></svg>
                         </div>
                         <h2 class="mode-card-title">Online Versus</h2>
                         <p class="mode-card-desc">Free-for-all lobbies. Create a match or join one.</p>
@@ -999,16 +920,7 @@
                     <p class="sb-modes__label" id="sb-modes-breath">Breath</p>
                     <div class="game-mode-card" data-mode="serenity" id="serenity-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--serenity" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                <circle class="cs-serenity-breath-ring" cx="12" cy="12" r="8.7"></circle>
-                                <path class="cs-serenity-petal cs-serenity-petal--center"
-                                    d="M12 2.5c0 0-4 5.5-4 9.5 0 2.5 1.5 4.5 4 4.5 2.5 0 4-2 4-4.5 0-4-4-9.5-4-9.5z" />
-                                <path class="cs-serenity-petal cs-serenity-petal--left"
-                                    d="M12 16.5c0 0-6-2-8-6 0-2.5 1.5-4.5 3.5-4.5 2 0 4.5 3.5 4.5 3.5" />
-                                <path class="cs-serenity-petal cs-serenity-petal--right"
-                                    d="M12 16.5c0 0 6-2 8-6 0-2.5-1.5-4.5-3.5-4.5-2 0-4.5 3.5-4.5 3.5" />
-                            </svg>
+                            <svg class="cs-icon cs-icon--serenity" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.6 15c2.8-2.2 5.6-2.2 8.4 0s5.6 2.2 8.4 0"/><rect class="cs-tile" x="12.6" y="6.2" width="4.4" height="4.4" rx="1.19" fill="currentColor" stroke="none"/></svg>
                         </div>
                         <h2 class="mode-card-title">Serenity</h2>
                         <p class="mode-card-desc">Nothing to play. Living worlds, music and breath.</p>
@@ -1016,12 +928,7 @@
 
                     <div class="game-mode-card" data-mode="hale" id="hale-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--hale" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                <circle class="cs-hale-ring" cx="12" cy="12" r="8.2" />
-                                <path class="cs-hale-wave" d="M6.5 10.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0" />
-                                <path class="cs-hale-wave cs-hale-wave--low" d="M6.5 14.2c1.8-1.7 3.6-1.7 5.4 0s3.6 1.7 5.4 0" />
-                            </svg>
+                            <svg class="cs-icon cs-icon--hale" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 19c3.6 0 4.8-7.5 10-7.5S18.4 19 22 19"/><rect class="cs-tile" x="9.5" y="3.5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         </div>
                         <h2 class="mode-card-title">Hale Sessions</h2>
                         <p class="mode-card-desc">Guided breathwork. Nine sessions with a voice to follow.</p>
@@ -1032,14 +939,7 @@
                     <p class="sb-modes__label" id="sb-modes-ascend">Ascend</p>
                     <div class="game-mode-card" data-mode="odyssey" id="odyssey-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--odyssey" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                                <path class="cs-ascent-path" pathLength="1" d="M3 20L8 10L13 15L21 4" />
-                                <polyline class="cs-ascent-arrow" points="16 4 21 4 21 9" />
-                                <circle class="cs-ascent-dot" style="--i:0" cx="8" cy="10" r="1.5" fill="currentColor" />
-                                <circle class="cs-ascent-dot" style="--i:1" cx="13" cy="15" r="1.5" fill="currentColor" />
-                                <circle class="cs-ascent-dot" style="--i:2" cx="21" cy="4" r="1.5" fill="currentColor" />
-                            </svg>
+                            <svg class="cs-icon cs-icon--odyssey" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 19.5c5 0 3.5-6 7.5-6s3-5.5 5.5-6.5" stroke-dasharray="0.1 2.7"/><circle cx="4.5" cy="19.5" r="1.7" fill="currentColor"/><circle cx="12" cy="13.5" r="1.7" fill="currentColor"/><rect class="cs-tile" x="16" y="2.5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         </div>
                         <h2 class="mode-card-title">Odyssey</h2>
                         <p class="mode-card-desc">A journey from the Earth's core to the edge of a black hole.</p>
@@ -1053,30 +953,26 @@
             <footer class="sb-menu__footer">
                 <nav class="sb-dock" aria-label="More">
                     <button type="button" class="sb-dock__btn" data-proxy="serenity-hub-icon">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/><path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/><path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/><path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/><path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/></svg>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/><path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/><path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/><path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/><path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/></svg>
                         <span>Serenity Hub</span>
                     </button>
                     <button type="button" class="sb-dock__btn" data-proxy="highscores-icon-btn">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4.5h10v4.2c0 3-2.1 5.4-5 5.4s-5-2.4-5-5.4V4.5Z"/><path d="M7 7H4.8a2.2 2.2 0 0 0 0 4.4H7M17 7h2.2a2.2 2.2 0 0 1 0 4.4H17"/><path d="M12 14.1v3.2M8.7 20h6.6M10 17.3h4"/></svg>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 20.5h19M4 20.5v-5h5M15 20.5V17h5v3.5M9 20.5V10.5h6v10"/><rect class="cs-tile" x="9.5" y="3" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         <span>Records</span>
                     </button>
                     <button type="button" class="sb-dock__btn" data-proxy="open-replays-btn">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.6"/><path d="M10.4 9.4v5.2l4.3-2.6-4.3-2.6Z"/></svg>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20 4v5h-5"/><rect class="cs-tile" x="9.5" y="9.5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         <span>Replays</span>
                     </button>
                     <button type="button" class="sb-dock__btn" data-proxy="settings-btn-global">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.1"/><path d="M12 3.3v2.2M12 18.5v2.2M3.3 12h2.2M18.5 12h2.2"/><path d="M5.85 5.85l1.55 1.55M16.6 16.6l1.55 1.55M18.15 5.85 16.6 7.4M7.4 16.6l-1.55 1.55"/></svg>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5h9.5M17.5 7.5h3.5M3 16.5h3M11.5 16.5H21"/><rect x="6.95" y="14.45" width="4.1" height="4.1" rx="1.2"/><rect class="cs-tile" x="12.5" y="5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
                         <span>Settings</span>
                     </button>
                 </nav>
 
                 <!-- Headphone recommendation badge -->
                 <div class="headphone-badge">
-                    <svg class="headphone-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <path
-                            d="M12 3C7.58 3 4 6.58 4 11v7c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-4c0-1.1-.9-2-2-2H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-3c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-7c0-4.42-3.58-8-8-8z"
-                            fill="currentColor" />
-                    </svg>
+                    <svg class="headphone-icon" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4.5 15.5V13a7.5 7.5 0 0 1 15 0v2.5"/><rect x="3.5" y="14" width="4.5" height="6.5" rx="1.6"/><rect x="16" y="14" width="4.5" height="6.5" rx="1.6"/></svg>
                     <span class="headphone-text">Headphones recommended</span>
                 </div>
 
@@ -1093,79 +989,26 @@
          dock's lotus. The pulse lights while a breathing session runs (SerenityHub). -->
     <div id="serenity-hub-icon" class="serenity-hub-icon visible" role="button" aria-label="Serenity Hub"
         tabindex="0">
-        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-            <path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3" />
-            <path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3" />
-            <path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7" />
-            <path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7" />
-            <path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5" />
-        </svg>
+        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/><path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/><path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/><path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/><path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/></svg>
         <div class="hub-icon-pulse"></div>
     </div>
 
     <!-- Replays Icon - Below Serenity Hub -->
     <div id="open-replays-btn" class="replays-icon" role="button" aria-label="Open Replays Browser" tabindex="0">
-        <svg class="replays-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <!-- Minimal film/play icon -->
-            <g class="film-icon">
-                <!-- Film frame outline -->
-                <rect x="25" y="30" width="50" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="2.5"
-                    opacity="0.9"></rect>
-
-                <!-- Film sprocket holes (minimal) -->
-                <circle cx="30" cy="38" r="2" fill="currentColor" opacity="0.7"></circle>
-                <circle cx="30" cy="50" r="2" fill="currentColor" opacity="0.7"></circle>
-                <circle cx="30" cy="62" r="2" fill="currentColor" opacity="0.7"></circle>
-
-                <circle cx="70" cy="38" r="2" fill="currentColor" opacity="0.7"></circle>
-                <circle cx="70" cy="50" r="2" fill="currentColor" opacity="0.7"></circle>
-                <circle cx="70" cy="62" r="2" fill="currentColor" opacity="0.7"></circle>
-
-                <!-- Play triangle in center -->
-                <path d="M 45 42 L 45 58 L 58 50 Z" fill="currentColor" opacity="0.9"></path>
-            </g>
-        </svg>
+        <svg class="replays-icon-svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 12a8 8 0 1 1-2.35-5.65"/><path d="M20 4v5h-5"/><rect class="cs-tile" x="9.5" y="9.5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
         <div class="replays-icon-glow"></div>
     </div>
 
     <!-- High Scores Icon - Below Replays Icon -->
     <div id="highscores-icon-btn" class="highscores-icon" role="button" aria-label="Open High Scores" tabindex="0">
-        <svg class="highscores-icon-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <!-- Trophy icon -->
-            <g class="trophy-icon">
-                <!-- Trophy cup body -->
-                <path d="M 35 30 L 35 55 Q 35 70 50 72 Q 65 70 65 55 L 65 30 Z" fill="none" stroke="currentColor"
-                    stroke-width="3" opacity="0.9"></path>
-
-                <!-- Trophy handles -->
-                <path d="M 35 35 Q 20 35 20 48 Q 20 58 35 55" fill="none" stroke="currentColor" stroke-width="2.5"
-                    opacity="0.7"></path>
-                <path d="M 65 35 Q 80 35 80 48 Q 80 58 65 55" fill="none" stroke="currentColor" stroke-width="2.5"
-                    opacity="0.7"></path>
-
-                <!-- Trophy base -->
-                <path d="M 50 72 L 50 80" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.9">
-                </path>
-                <path d="M 38 80 L 62 80 L 60 85 L 40 85 Z" fill="currentColor" opacity="0.8"></path>
-
-                <!-- Star decoration -->
-                <path d="M 50 42 L 52 48 L 58 48 L 53 52 L 55 58 L 50 54 L 45 58 L 47 52 L 42 48 L 48 48 Z"
-                    fill="currentColor" opacity="0.9"></path>
-            </g>
-        </svg>
+        <svg class="highscores-icon-svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.5 20.5h19M4 20.5v-5h5M15 20.5V17h5v3.5M9 20.5V10.5h6v10"/><rect class="cs-tile" x="9.5" y="3" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
         <div class="highscores-icon-glow"></div>
     </div>
 
     <!-- Settings (the pause sheet while a game runs): lives in the play rail
          (src/ui/keystone/play-rail.js), drawn with the dock's gear. -->
     <button id="settings-btn-global" class="floating-settings-btn visible" aria-label="Settings">
-        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="12" r="3.1" />
-            <path d="M12 3.3v2.2M12 18.5v2.2M3.3 12h2.2M18.5 12h2.2" />
-            <path d="M5.85 5.85l1.55 1.55M16.6 16.6l1.55 1.55M18.15 5.85 16.6 7.4M7.4 16.6l-1.55 1.55" />
-        </svg>
+        <svg class="sb-play-rail__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 7.5h9.5M17.5 7.5h3.5M3 16.5h3M11.5 16.5H21"/><rect x="6.95" y="14.45" width="4.1" height="4.1" rx="1.2"/><rect class="cs-tile" x="12.5" y="5" width="5" height="5" rx="1.35" fill="currentColor" stroke="none"/></svg>
     </button>
 
     <div id="game-over-modal" class="modal sb-results" role="dialog" aria-modal="true" aria-labelledby="game-over-title">
@@ -1222,11 +1065,14 @@
             <svg class="sb-sprite" width="0" height="0" aria-hidden="true" focusable="false">
                 <symbol id="sb-ico-sliders" viewBox="0 0 24 24"><path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"/><rect x="13" y="5.5" width="4" height="4" rx="1.2"/><rect x="7" y="14.5" width="4" height="4" rx="1.2"/></symbol>
                 <symbol id="sb-ico-display" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="11.5" rx="2.4"/><path d="M9 20h6M12 16v4"/></symbol>
-                <symbol id="sb-ico-audio" viewBox="0 0 24 24"><path d="M11 5 6.6 8.8H3.5v6.4h3.1L11 19V5Z"/><path d="M15.4 9.4a3.7 3.7 0 0 1 0 5.2M18.3 6.8a7.4 7.4 0 0 1 0 10.4"/></symbol>
+                <symbol id="sb-ico-audio" viewBox="0 0 24 24"><path d="M11 5 6.5 9H3v6h3.5l4.5 4V5Z"/><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5"/><path d="M18.5 7a7 7 0 0 1 0 10"/></symbol>
                 <symbol id="sb-ico-visual" viewBox="0 0 24 24"><path d="M11 3.5 12.9 8l4.6 1.9-4.6 1.9L11 16.4l-1.9-4.6-4.6-1.9L9.1 8 11 3.5Z"/><path d="M17.8 14.4l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1Z"/></symbol>
                 <symbol id="sb-ico-pad" viewBox="0 0 24 24"><path d="M7.2 8.6h9.6c2.4 0 3.9 1.7 4.3 4.2l.3 2.4c.2 1.6-.7 2.7-2 2.7-.8 0-1.5-.4-2.2-1.2l-1-1.1H7.8l-1 1.1c-.7.8-1.4 1.2-2.2 1.2-1.3 0-2.2-1.1-2-2.7l.3-2.4c.4-2.5 1.9-4.2 4.3-4.2Z"/><path d="M7.2 11.6v3.1M5.7 13.2h3M15.6 12.7h.01M18.1 14.1h.01"/></symbol>
                 <symbol id="sb-ico-home" viewBox="0 0 24 24"><path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V19a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V9.5"/><path d="M9.8 20.5v-5.5h4.4v5.5"/></symbol>
                 <symbol id="sb-ico-lotus" viewBox="0 0 24 24"><path d="M12 5.3c-1.6 1.3-2.5 3.1-2.5 5.2 0 1.2.4 2.4 1 3.3"/><path d="M12 5.3c1.6 1.3 2.5 3.1 2.5 5.2 0 1.2-.4 2.4-1 3.3"/><path d="M7.4 9.6c-1.3.7-2.4 1.8-3 3.4 1.3.3 2.8.1 4.1-.7"/><path d="M16.6 9.6c1.3.7 2.4 1.8 3 3.4-1.3.3-2.8.1-4.1-.7"/><path d="M4.1 16.9c2.4 1.7 5 2.5 7.9 2.5s5.5-.8 7.9-2.5"/></symbol>
+                <symbol id="sb-ico-gear" viewBox="0 0 24 24"><path d="M9.45 5.48L10.21 2.98L13.79 2.98L14.55 5.48L14.81 5.59L17.11 4.35L19.65 6.89L18.41 9.19L18.52 9.45L21.02 10.21L21.02 13.79L18.52 14.55L18.41 14.81L19.65 17.11L17.11 19.65L14.81 18.41L14.55 18.52L13.79 21.02L10.21 21.02L9.45 18.52L9.19 18.41L6.89 19.65L4.35 17.11L5.59 14.81L5.48 14.55L2.98 13.79L2.98 10.21L5.48 9.45L5.59 9.19L4.35 6.89L6.89 4.35L9.19 5.59Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+                <symbol id="sb-ico-keyboard" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11" rx="2.2"/><path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 13.6h.01M10.2 13.6h6.8"/></symbol>
+                <symbol id="sb-ico-tip" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M8.2 14.1a5.2 5.2 0 1 1 7.6 0c-.8.8-1.2 1.5-1.35 2.35h-4.9c-.15-.85-.55-1.55-1.35-2.35Z"/><path d="M12 6.4v3.1"/></symbol>
             </svg>
 
             <section class="settings-pause" id="settings-pause" aria-label="Game paused">
@@ -1499,7 +1345,7 @@
                         </div>
                     </div>
                     <p class="settings-note">
-                        <svg class="cs-settings-icon settings-tip-icon" aria-hidden="true" focusable="false"><use href="#cs-settings-icon-tip"></use></svg>
+                        <svg class="cs-settings-icon settings-tip-icon" aria-hidden="true" focusable="false"><use href="#sb-ico-tip"></use></svg>
                         <span>Changes apply right away. Display mode can take a moment to settle.</span>
                     </p>
                 </div>
@@ -1698,7 +1544,7 @@
                                 <div class="controls-subtabs">
                                     <button type="button" class="controls-subtab active" data-subtab="general" aria-controls="controls-general" aria-current="true">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gear"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-gear"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">General</span>
                                     </button>
@@ -1709,19 +1555,19 @@
                                 <div class="controls-subtabs">
                                     <button type="button" class="controls-subtab" data-subtab="player1" aria-controls="controls-player1">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-keyboard"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-keyboard"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 1</span>
                                     </button>
                                     <button type="button" class="controls-subtab" data-subtab="player2" aria-controls="controls-player2">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-keyboard"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-keyboard"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 2</span>
                                     </button>
                                     <button type="button" class="controls-subtab" data-subtab="serenity-keyboard" aria-controls="controls-serenity-keyboard">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-lotus"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-lotus"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Serenity</span>
                                     </button>
@@ -1732,35 +1578,35 @@
                                 <div class="controls-subtabs">
                                     <button type="button" class="controls-subtab" data-subtab="gamepad1" aria-controls="controls-gamepad1">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-pad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 1</span>
                                         <span class="controls-status-dot controller-1" data-controller-status="1"></span>
                                     </button>
                                     <button type="button" class="controls-subtab" data-subtab="gamepad2" aria-controls="controls-gamepad2">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-pad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 2</span>
                                         <span class="controls-status-dot controller-2" data-controller-status="2"></span>
                                     </button>
                                     <button type="button" class="controls-subtab" data-subtab="gamepad3" aria-controls="controls-gamepad3">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-pad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 3</span>
                                         <span class="controls-status-dot controller-3" data-controller-status="3"></span>
                                     </button>
                                     <button type="button" class="controls-subtab" data-subtab="gamepad4" aria-controls="controls-gamepad4">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-gamepad"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-pad"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Player 4</span>
                                         <span class="controls-status-dot controller-4" data-controller-status="4"></span>
                                     </button>
                                     <button type="button" class="controls-subtab" data-subtab="serenity-gamepad" aria-controls="controls-serenity-gamepad">
                                         <span class="controls-subtab-icon" aria-hidden="true">
-                                            <svg class="cs-settings-icon"><use href="#cs-settings-icon-lotus"></use></svg>
+                                            <svg class="cs-settings-icon"><use href="#sb-ico-lotus"></use></svg>
                                         </span>
                                         <span class="controls-subtab-label">Serenity</span>
                                     </button>

@@ -10,13 +10,13 @@
  * (.sb-orb-art, .sb-star-row and the chapter hues, --ody-hue-rgb on [data-ody-chapter]).
  */
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
+import { csIconInner } from '../components/cosmic-icons.js';
 
-export const ODYSSEY_STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
-    + '<path d="M12 2.6l2.7 5.6 6.1.8-4.4 4.3 1.1 6.1L12 16.5l-5.5 2.9 1.1-6.1-4.4-4.3 6.1-.8L12 2.6Z"/></svg>';
-export const ODYSSEY_CROWN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
-    + '<path d="M4.5 18 3.2 8.2l4.6 3.6L12 5l4.2 6.8 4.6-3.6L19.5 18Z"/></svg>';
-export const ODYSSEY_LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">'
-    + '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>';
+// The game's own star, crown and lock (cosmic-icons.js), bare: the orb art's CSS fills or strokes them.
+const bare = (name) => `<svg viewBox="0 0 24 24" aria-hidden="true">${csIconInner(name)}</svg>`;
+export const ODYSSEY_STAR_SVG = bare('star');
+export const ODYSSEY_CROWN_SVG = bare('crown-solid');
+export const ODYSSEY_LOCK_SVG = bare('lock');
 
 /**
  * The theme whose artwork shows an orb, from its authored or presented level (the navigator's

@@ -35,7 +35,8 @@ Both copies were replaced: `src/themes/<id>/` (the one the build reads) and
 `public/assets/themes/` (kept with the same bytes by convention). The public copy of Shifting
 Sands, still the image from before its 2026-10-01 rebuild, was brought in line with its theme
 folder. `public/assets/themes/forest-theme-icon.png` was left alone on purpose:
-`scripts/build-win.mjs` uses it as the Windows application icon.
+`scripts/build-win.mjs` used it as the Windows application icon. (Superseded 2026-10-25: the
+Windows icon is now the app mark, `docs/desktop-icons.md`.)
 
 ## Recipes
 

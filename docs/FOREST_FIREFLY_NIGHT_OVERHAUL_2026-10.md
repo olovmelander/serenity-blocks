@@ -437,7 +437,8 @@ CPU throughout, so these are observations, not budgets:
 - The old icon in the theme folder. `public/assets/themes/forest-theme-icon.png` is left
   as it was on purpose: `scripts/build-win.mjs` uses that file as the default source of
   the Windows application icon, and changing the application's icon is not part of this
-  change.
+  change. (Since 2026-10-25 the Windows icon is the app mark, `docs/desktop-icons.md`, and
+  nothing reads this file for it.)
 
 ## Known limits
 
