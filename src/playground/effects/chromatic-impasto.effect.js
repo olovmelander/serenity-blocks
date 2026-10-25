@@ -11,7 +11,10 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n for comboHold seconds (default 3) before the shot
- *   level=<n>                rest on level n's period
+ *   level=<n>                rest on level n's period (a step on top of the clock's: t=<s> shows
+ *                            the period the clock has turned to by then)
+ *   lead=<s>                 seconds played before the shot (default 1.5): a lead across a whole
+ *                            period's turn shows the painter going over the picture
  *   locks=<n>                before anything else, play n locks (the canvas holding their paint)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|fresh   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
@@ -208,7 +211,8 @@ export function create({
         // The host seeks every frame while ?t= is set: the painting only needs laying once.
         if (sought === time) return;
         sought = time;
-        const lead = (eventName ? eventAge : 0) + 1.5 + warmLocks * 0.5 + (holdCombo > 0 ? comboHold : 0);
+        const lead = (eventName ? eventAge : 0) + num(params, 'lead', 1.5) + warmLocks * 0.5
+            + (holdCombo > 0 ? comboHold : 0);
         const start = Math.max(0, time - lead);
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });

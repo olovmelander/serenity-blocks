@@ -14,8 +14,9 @@
  * the edge of the cloth, and a ring of wet light crosses the canvas; a chain of clears turns the
  * whole canvas round the board, stirring the wet paint into a whorl, and draws an arc for every
  * link; four lines make the studio hold its breath, then paint is flung from behind the board in
- * every direction and gold leaf is laid round it; and every level is a new period (Lindström,
- * the Fauves, a nocturne, earth and fire, spring) painted over the last.
+ * every direction and gold leaf is laid round it. The periods (Lindström, the Fauves, a nocturne,
+ * earth and fire, spring) turn by the clock in every mode, each painted over the last; every level
+ * is one period more on top.
  *
  * Content lives in ChromaticImpastoWorld (chromatic-impasto-world.js), shared with the
  * playground effect src/playground/effects/chromatic-impasto.effect.js, so what is iterated there

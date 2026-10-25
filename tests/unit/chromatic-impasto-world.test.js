@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     AMBIENT_BEAT, CHROMATIC_IMPASTO_PARTS, ChromaticImpastoWorld, DRY_STEP, LAMP, REST_RIG, fovForAspect,
 } from '../../src/themes/chromatic-impasto/chromatic-impasto-world.js';
 import {
-    GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, KIND, RELIEF, SHEEN_SLOTS, SWIRL_FROM, TWIST_BAKE_AT, VIEW_DISTANCE,
-    pigmentFromHex,
+    CLOCK_OVERPAINT, GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, KIND, LEVEL_OVERPAINT, PERIOD_SECONDS, RELIEF,
+    SHEEN_SLOTS, SWIRL_FROM, TWIST_BAKE_AT, VIEW_DISTANCE, periodIndex, pigmentFromHex,
 } from '../../src/themes/chromatic-impasto/chromatic-impasto-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/chromatic-impasto/chromatic-impasto-quality.js';
 import { fallbackLayout } from '../../src/themes/chromatic-impasto/chromatic-impasto-composition.js';
@@ -654,6 +656,76 @@ describe('chromatic impasto world: the board paints', () => {
         expect(rest.getState().period).toBe(IMPASTO_PERIODS[2].name);
         world.dispose();
         rest.dispose();
+    });
+
+    it('turns the period by the clock alone: the painter goes over the picture, quietly', () => {
+        const { world, camera } = makeWorld('Low', { time: PERIOD_SECONDS - 1 });
+        const play = vi.spyOn(world.play, 'levelUp');
+        expect(world.getState().period).toBe(IMPASTO_PERIODS[0].name);
+        expect(world.keyNow(world.time)).toEqual(IMPASTO_PERIODS[0].key);
+        const sheens = world.u.sheenSlots.map((v) => v.toArray());
+        run(world, camera, 2);
+        // At the whole period, with no level-up, the next period's tubes come out.
+        expect(world.level).toBe(1);
+        expect(world.getState().period).toBe(IMPASTO_PERIODS[1].name);
+        const over = tagged(world, 'period');
+        expect(over.length).toBeGreaterThan(30);
+        expect(over.every((s) => s.t0 >= PERIOD_SECONDS)).toBe(true);
+        expect(Math.max(...over.map((s) => s.t0))).toBeGreaterThan(PERIOD_SECONDS + CLOCK_OVERPAINT * 0.5);
+        // Quietly: no sheen, no lift, no swing, no surge (those are a level-up's).
+        expect(tagged(world, 'level')).toHaveLength(0);
+        expect(world.u.sheenSlots.map((v) => v.toArray())).toEqual(sheens);
+        expect(world.flashSwell.valueAt(world.time)).toBe(0);
+        expect(world.swing).toBe(0);
+        expect(play).not.toHaveBeenCalled();
+        // The lamp's colour melts over the painter's pass instead of switching.
+        const melting = world.keyNow(PERIOD_SECONDS + CLOCK_OVERPAINT * 0.5);
+        expect(melting).not.toEqual(IMPASTO_PERIODS[0].key);
+        expect(melting).not.toEqual(IMPASTO_PERIODS[1].key);
+        run(world, camera, CLOCK_OVERPAINT);
+        world.keyNow(world.time).forEach((c, i) => expect(c).toBeCloseTo(IMPASTO_PERIODS[1].key[i], 9));
+        // One pass a turn: nothing piles up while the period holds.
+        expect(tagged(world, 'period')).toHaveLength(over.length);
+        // A seek lands in the period the clock gives: the picture as if it had always been so.
+        for (let k = 0; k <= IMPASTO_PERIODS.length; k++) {
+            world.seek(k * PERIOD_SECONDS + 10);
+            world.update({ time: world.time, delta: 0 }, camera);
+            expect(world.getState().period, `period ${k}`).toBe(IMPASTO_PERIODS[k % IMPASTO_PERIODS.length].name);
+            expect(tagged(world, 'period')).toHaveLength(0);
+            expect(world.keyNow(world.time)).toEqual(IMPASTO_PERIODS[k % IMPASTO_PERIODS.length].key);
+        }
+        // A new game starts at level one in the period the clock has reached.
+        world.seek(3 * PERIOD_SECONDS + 10);
+        world.update({ time: world.time, delta: 0 }, camera);
+        world.levelUp(2);
+        world.onLock({ rows: [12], u: 0.3, color: '#b30000' });
+        run(world, camera, 0.5);
+        world.freshCanvas();
+        expect(world.getState()).toMatchObject({ level: 1, period: IMPASTO_PERIODS[3].name });
+        play.mockRestore();
+        world.dispose();
+    });
+
+    it('steps a level\'s period on top of the clock\'s, with its sheen, lift and swing', () => {
+        const { world, camera } = makeWorld('Low', { time: PERIOD_SECONDS + 10 });
+        expect(world.getState().period).toBe(IMPASTO_PERIODS[1].name);
+        const play = vi.spyOn(world.play, 'levelUp');
+        world.levelUp(2);
+        expect(world.getState().period).toBe(IMPASTO_PERIODS[2].name);
+        const over = tagged(world, 'level');
+        expect(over.length).toBeGreaterThan(30);
+        expect(Math.max(...over.map((s) => s.t0))).toBeLessThan(world.time + LEVEL_OVERPAINT + 0.2);
+        expect(world.u.sheenSlots.some((v) => v.z === world.time)).toBe(true);
+        expect(world.flashSwell.valueAt(world.time + 0.05)).toBeGreaterThan(0);
+        expect(world.swing).toBeGreaterThan(0.5);
+        expect(play).toHaveBeenCalledOnce();
+        // The lamp melts to the new period's colour over the quick pass.
+        run(world, camera, LEVEL_OVERPAINT + 0.2);
+        world.keyNow(world.time).forEach((c, i) => expect(c).toBeCloseTo(IMPASTO_PERIODS[2].key[i], 9));
+        // The step holds as the clock turns on.
+        expect(periodIndex(2, 2 * PERIOD_SECONDS)).toBe(3);
+        play.mockRestore();
+        world.dispose();
     });
 
     it('keeps the painting when a game ends and scrapes it down when the next one starts', () => {

@@ -21,15 +21,21 @@
  * raking light settles into a full golden light, and the studio breathes out. Every flash, kick
  * and four-line gold is an accumulating envelope (shared/swell.js): a hit adds to what is still
  * lit, never restarts it.
+ *
+ * The periods (Lindström, the Fauves, a nocturne, earth and fire, spring) turn by the clock in
+ * every mode: at each whole PERIOD_SECONDS the painter goes over the picture in the next period's
+ * tubes, unhurried and without a word, and the lamp's colour melts with it. A level is one period
+ * on top, painted over quickly, with the sheen and the swing it always had.
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 
 import {
-    DEG, GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, RELIEF, SHEEN_SLOTS, SHEEN_TRAVEL, SWIRL_FROM, TAU,
-    TWIST_BAKE_AT, VIEW, TWIST_CREEP, VIEW_DISTANCE, approach, clamp, clamp01, createField, lerp, mixRgb, mulberry32,
-    notchForCombo, pigmentFromHex, powerForCombo, radicalInverse, smooth,
+    CLOCK_OVERPAINT, DEG, GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, LEVEL_OVERPAINT, PERIOD_SECONDS, RELIEF,
+    SHEEN_SLOTS, SHEEN_TRAVEL, SWIRL_FROM, TAU, TWIST_BAKE_AT, VIEW, TWIST_CREEP, VIEW_DISTANCE, approach, clamp,
+    clamp01, createField, lerp, mixRgb, mulberry32, notchForCombo, periodIndex, periodTurns, pigmentFromHex,
+    powerForCombo, radicalInverse, smooth,
 } from './chromatic-impasto-core.js';
 import { tierFor } from './chromatic-impasto-quality.js';
 import { createBlob } from './chromatic-impasto-strokes.js';
@@ -205,7 +211,8 @@ export class ChromaticImpastoWorld {
         this.rakePhase = 0;
         this.breath = 1;
         this.level = 1;
-        this.periodIndex = 0;
+        /** The period the clock has turned to by now (a level's step on top). */
+        this.landPeriod(this.periodFor(time));
         this.hushUntil = -1;
         /** How deep the hush goes (set when it starts), and how deep it is now (eased). */
         this.hushDepth = 1;
@@ -231,6 +238,50 @@ export class ChromaticImpastoWorld {
 
     get period() {
         return IMPASTO_PERIODS[this.periodIndex];
+    }
+
+    /** The period the clock and the level ask for at `time` (an index into IMPASTO_PERIODS). */
+    periodFor(time) {
+        return periodIndex(this.level, time);
+    }
+
+    /** Simply in period `index`, the lamp in its colour (a seek, a silent level, a new game). */
+    landPeriod(index) {
+        this.periodIndex = index;
+        this.keyFrom = [...this.period.key];
+        this.keyAt = -100;
+        this.keySpan = LEVEL_OVERPAINT;
+    }
+
+    /**
+     * Turn to period `index`: the painter goes over the picture in its tubes from `at`, for
+     * `span` seconds (strokes tagged `tag`, cut from `seed`), and the lamp's colour melts from
+     * what it shows now to the period's over the same time.
+     */
+    turnPeriod(index, at, span, seed, tag) {
+        this.keyFrom = this.keyNow(this.time);
+        this.periodIndex = index;
+        this.keyAt = at;
+        this.keySpan = span;
+        const strokes = composeUnderpainting({
+            field: this.field,
+            aspect: this.aspect,
+            period: this.period,
+            seed,
+            t0: at + 0.1,
+            span,
+            density: this.tier.density * 0.42,
+            card: this.card,
+        }).filter((s) => s.height > 0.5);
+        strokes.forEach((s) => {
+            s.tag = tag;
+        });
+        this.painter.addAll(strokes);
+    }
+
+    /** The lamp's colour at `time`: melting from the last period's to this one's. */
+    keyNow(time) {
+        return mixRgb(this.keyFrom, this.period.key, smooth(0, this.keySpan, time - this.keyAt));
     }
 
     build() {
@@ -430,13 +481,17 @@ export class ChromaticImpastoWorld {
         this.hushUntil = -1;
     }
 
-    /** A new game: the canvas is scraped down and blocked in again, in the first period. */
+    /**
+     * A new game: the canvas is scraped down and blocked in again, at level one: in the period
+     * the clock has reached (it keeps turning between games).
+     */
     freshCanvas() {
-        const untouched = this.counts.locks === 0 && this.counts.clears === 0 && this.periodIndex === 0;
         this.level = 1;
+        const period = this.periodFor(this.time);
+        const untouched = this.counts.locks === 0 && this.counts.clears === 0 && this.periodIndex === period;
         if (untouched) return;
         this.resetSession();
-        this.periodIndex = 0;
+        this.landPeriod(period);
         this.session += 1;
         this.recent.length = 0;
         this.counts.locks = 0;
@@ -502,7 +557,7 @@ export class ChromaticImpastoWorld {
         this.time = painting.time;
         this.introStart = painting.introStart;
         this.level = painting.level;
-        this.periodIndex = painting.periodIndex;
+        this.landPeriod(painting.periodIndex);
         this.session = painting.session;
         this.recent = painting.recent.map((c) => [...c]);
         this.counts = { ...painting.counts };
@@ -1122,33 +1177,27 @@ export class ChromaticImpastoWorld {
         this.combo = n;
     }
 
-    /** A new level: a new period. The painter goes over the picture in the new tubes. */
+    /**
+     * A new level: the next period on top of the clock's. The painter goes over the picture in
+     * the new tubes, quickly, with a sheen, a lift and a swing of the lamp.
+     */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        const next = (this.level - 1) % IMPASTO_PERIODS.length;
+        const next = this.periodFor(this.time);
         if (next === this.periodIndex) return;
-        this.periodIndex = next;
-        if (!this.u) return;
+        if (!this.u) {
+            this.landPeriod(next);
+            return;
+        }
         if (silent) {
             // The picture as if it had always been of this period.
+            this.landPeriod(next);
             this.introStart = Math.min(this.introStart, this.time - INTRO_SPAN - 1);
             this.compose();
             return;
         }
-        const strokes = composeUnderpainting({
-            field: this.field,
-            aspect: this.aspect,
-            period: this.period,
-            seed: this.seed + this.level * 101,
-            t0: this.time + 0.1,
-            span: 2.6,
-            density: this.tier.density * 0.42,
-            card: this.card,
-        }).filter((s) => s.height > 0.5);
-        strokes.forEach((s) => {
-            s.tag = 'level';
-        });
-        this.painter.addAll(strokes);
+        const seed = this.seed + (this.level + periodTurns(this.time)) * 101;
+        this.turnPeriod(next, this.time, LEVEL_OVERPAINT, seed, 'level');
         this.sendSheen(this.heart.x, this.heart.y, this.time, 0.8);
         this.flashSwell.hit(0.12, this.time);
         this.swing = Math.max(this.swing, 0.6);
@@ -1184,6 +1233,17 @@ export class ChromaticImpastoWorld {
         if (!this.composed) this.compose();
         const t = this.time;
         const motion = this.reducedMotion ? 0 : 1;
+
+        // ── The clock turns the period ──
+        // At each whole PERIOD_SECONDS the painter goes over the picture in the next period's
+        // tubes, unhurried and without a word: in every mode, levelling or not. Dated from the
+        // turn, so a run at any frame rate lays the same strokes at the same moments.
+        const due = this.periodFor(t);
+        if (due !== this.periodIndex) {
+            const turns = periodTurns(t);
+            const seed = this.seed + (this.level + turns) * 101 + 53;
+            this.turnPeriod(due, Math.min(t, turns * PERIOD_SECONDS), CLOCK_OVERPAINT, seed, 'period');
+        }
 
         // ── The charge ──
         const target = powerForCombo(this.combo);
@@ -1317,7 +1377,7 @@ export class ChromaticImpastoWorld {
             - rake * 0.15 + glory * 0.08;
         dirFromAngles(azimuth, elevation, u.lightDir.value);
         u.lampPos.value.copy(u.lightDir.value).multiplyScalar(LAMP.distance);
-        const { key } = this.period;
+        const key = this.keyNow(t);
         const lift = (1 + this.power * 0.2 + this.surge * 0.2 + 0.1 * warm + 0.08 * hot + 0.1 * fever) * this.breath;
         const tint = mixRgb(key, GOLD, Math.min(0.55, this.surge * 0.38 + 0.1 * fever + 0.12 * glory));
         u.keyColor.value.set(2.5 * tint[0] * lift, 2.5 * tint[1] * lift, 2.5 * tint[2] * lift);

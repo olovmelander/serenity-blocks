@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-    DROPLET_GRAVITY, GOLD, IMPASTO_PERIODS, INTRO_SPAN, KIND, RELIEF, SWIRL_FROM, VIEW, VIEW_DISTANCE, createField,
-    fieldDirection, hexToLinear, mulberry32, notchForCombo, pigmentFromHex, powerForCombo, radicalInverse, twistPoint,
-    twistProfile, valueNoise,
+    DROPLET_GRAVITY, GOLD, IMPASTO_PERIODS, INTRO_SPAN, KIND, PERIOD_SECONDS, RELIEF, SWIRL_FROM, VIEW, VIEW_DISTANCE,
+    createField, fieldDirection, hexToLinear, mulberry32, notchForCombo, periodIndex, periodTurns, pigmentFromHex,
+    powerForCombo, radicalInverse, twistPoint, twistProfile, valueNoise,
 } from '../../src/themes/chromatic-impasto/chromatic-impasto-core.js';
 import {
     BLOB_MARGIN, QUAD_FLOATS, StrokeBatch, VERTEX_STRIDE, createBlob, createStroke, emitStroke, resamplePath, strokeReach,
@@ -96,6 +96,23 @@ describe('chromatic impasto core maths', () => {
             expect(p.key).toHaveLength(3);
         });
         expect(GOLD[0]).toBeGreaterThan(GOLD[2] * 2);
+    });
+
+    it('turns the periods by the clock at every whole period, a level a step on top', () => {
+        const count = IMPASTO_PERIODS.length;
+        expect(periodTurns(0)).toBe(0);
+        expect(periodTurns(PERIOD_SECONDS - 1e-6)).toBe(0);
+        expect(periodTurns(PERIOD_SECONDS)).toBe(1);
+        expect(periodTurns(-3)).toBe(0);
+        expect(periodTurns(NaN)).toBe(0);
+        // Time 0, level 1 is Lindström, as the studio always opened.
+        expect(periodIndex(1, 0)).toBe(0);
+        for (let k = 0; k <= count * 2; k++) {
+            expect(periodIndex(1, k * PERIOD_SECONDS + 1)).toBe(k % count);
+            expect(periodIndex(k + 1, 0)).toBe(k % count);
+            expect(periodIndex(3, k * PERIOD_SECONDS)).toBe((k + 2) % count);
+        }
+        expect(periodIndex(undefined, 0)).toBe(0);
     });
 
     it('gives the field a unit direction everywhere, turning one way round the board', () => {
