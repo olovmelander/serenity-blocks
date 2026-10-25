@@ -3,6 +3,11 @@
  * The world owns every scene object, the baked textures, the event director and the camera
  * choreography; its owner supplies simulation seconds, a renderer, and gameplay events
  * through `director`.
+ *
+ * The hole's mood turns by the clock in every mode (black-hole-moods.js): gold accretion, a
+ * blue-white furnace, a nebula field, red quiescence and a starved ring, each resting a while and
+ * then melting into the next. The mood scales the look the director computes from play, so the
+ * heat of play builds on top of it; a level is one mood forward, eased in over a few seconds.
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
@@ -16,6 +21,10 @@ import {
     LATTICE_SIZE, bakeDiskTexture, bakeLattice, bakeSkyRows, bakeSkyTexture, createRandom,
 } from './black-hole-noise.js';
 import { resolveBlackHoleQuality } from './black-hole-quality.js';
+import { easeStep, moodDrift } from '../shared/mood-clock.js';
+import {
+    MOOD_COUNT, MOOD_HOLD, MOOD_PERIOD, moodAt, moodName,
+} from './black-hole-moods.js';
 
 /** The artwork is authored for this seed: the galaxy, the gas and the camera's phases. */
 export const BLACK_HOLE_SEED = 20261005;
@@ -41,6 +50,8 @@ const FALLBACK_FRAME = 0.33;
 /** Radians per second of the slow side-to-side wander, and how briskly it crosses the board. */
 const FRAME_RATE = 0.03;
 const FRAME_CROSSING = 0.012;
+/** How fast a level's step eases toward its mood (1/s): a few seconds, never a jump. */
+const MOOD_EASE = 0.8;
 
 const bakeCache = new Map();
 function cached(key, bake) {
@@ -181,6 +192,7 @@ export class BlackHoleWorld {
             right: new THREE.Vector3(),
             down: new THREE.Vector3(),
             forward: new THREE.Vector3(),
+            tint: new THREE.Vector3(),
         };
 
         const random = createRandom(seed ^ 0x9e3779b9);
@@ -214,6 +226,14 @@ export class BlackHoleWorld {
         /** Turns the inner edge has made; the gas pattern is a function of this alone. */
         this.diskTurns = 0;
         this.diskRate = 1;
+        /**
+         * The game's level (a level is one mood forward), the level's eased step on the wheel of
+         * moods and the live mood's factors (black-hole-moods.js). The level is the game's, so
+         * reset() keeps it; the step snaps to it there.
+         */
+        this.gameLevel = 1;
+        this.moodStep = 0;
+        this.mood = moodAt(0);
         /**
          * Fixed framing for stills: { azimuth, elevation, radius } in radians / world units,
          * { frame } as the hole's horizontal place in NDC, { up } in world units, and
@@ -414,18 +434,59 @@ export class BlackHoleWorld {
         stream.landAzimuth = Math.atan2(point.z, point.x) + infall.swirl;
     }
 
-    /** Copy the director's state into the uniforms the shaders read. */
+    // ── Mood: the clock turns the look, a level is a step on top ─────────────
+
+    /**
+     * The game's level. Each level is one mood forward on top of the clock's own turn; the step
+     * eases in over a few seconds (`silent` snaps it, for a rebuild or a seek).
+     */
+    setLevel(level, { silent = false } = {}) {
+        const asked = Math.round(Number(level));
+        this.gameLevel = Number.isFinite(asked) ? Math.max(1, asked) : 1;
+        if (silent) {
+            this.stepMood(1);
+            this.applyDirector();
+        }
+    }
+
+    /**
+     * Where the hole stands on its wheel of moods, heading for: one step a level, turned on by
+     * the clock. The whole part names a mood, the fraction is how far it has melted into the next.
+     */
+    moodPhase() {
+        return (this.gameLevel - 1) + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD);
+    }
+
+    /** The live mood's name (diagnostics). */
+    moodName() {
+        return moodName(this.moodStep + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD));
+    }
+
+    /**
+     * The live mood's factors. The clock's turn is exact (a function of the time alone, so a seek
+     * and a replay agree); the level's step eases in by `k` (1 snaps), the short way round.
+     */
+    stepMood(k) {
+        this.moodStep = easeStep(this.moodStep, this.gameLevel - 1, k, MOOD_COUNT);
+        moodAt(this.moodStep + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD), this.mood);
+    }
+
+    /** Copy the director's state into the uniforms the shaders read, scaled by the mood. */
     applyDirector() {
-        const { director, uniforms: u, scratch } = this;
+        const {
+            director, uniforms: u, scratch, mood,
+        } = this;
         this.energy = director.energy;
         this.diskRate = director.diskRate;
-        u.diskHeat.value = director.diskHeat;
-        u.diskGain.value = director.diskGain;
-        u.ringGain.value = director.ringGain;
-        u.diskTint.value.fromArray(director.diskTint);
-        u.ringTint.value.fromArray(director.ringTint);
-        u.skyGain.value = director.skyGain;
-        u.nebulaGain.value = director.nebulaGain;
+        u.diskHeat.value = director.diskHeat * mood.heat;
+        u.diskGain.value = director.diskGain * mood.gain;
+        u.ringGain.value = director.ringGain * mood.ring;
+        u.diskTint.value.fromArray(director.diskTint).multiply(scratch.tint.fromArray(mood.tint));
+        u.ringTint.value.fromArray(director.ringTint).multiply(scratch.tint.fromArray(mood.ringTint));
+        u.skyGain.value = director.skyGain * mood.sky;
+        u.nebulaGain.value = director.nebulaGain * mood.nebula;
+        u.starGain.value = mood.stars;
+        u.coronaGain.value = mood.corona;
         for (let slot = 0; slot < director.hotspots.length; slot += 1) {
             const hotspot = director.hotspots[slot];
             const strength = hotspot.active ? hotspot.strength : 0;
@@ -454,7 +515,9 @@ export class BlackHoleWorld {
             target.radius = ripple.radius;
             target.strength = ripple.active ? ripple.strength : 0;
         }
-        this.matter.update({ time: this.time, turns: this.diskTurns, director });
+        this.matter.update({
+            time: this.time, turns: this.diskTurns, director, heat: u.diskHeat.value,
+        });
     }
 
     update(time, dt = 0, pointer = null) {
@@ -474,6 +537,7 @@ export class BlackHoleWorld {
         this.uniforms.holePosition.value.copy(this.hole);
         this.updateDisk(dt);
         this.updateCamera(time, dt);
+        this.stepMood(1 - Math.exp(-MOOD_EASE * dt));
         this.applyDirector();
     }
 
@@ -494,6 +558,7 @@ export class BlackHoleWorld {
         this.uniforms.holePosition.value.copy(this.hole);
         this.updateDisk(0);
         this.updateCamera(0, 0, true);
+        this.stepMood(1);
         this.applyDirector();
     }
 
@@ -502,6 +567,7 @@ export class BlackHoleWorld {
             quality: this.quality.name,
             marchSteps: this.preset.marchSteps,
             diskTurns: this.diskTurns,
+            mood: this.moodName(),
             cameraDistance: this.camera ? this.camera.position.distanceTo(this.hole) / HOLE.RS_WORLD : 0,
             director: this.director.getDiagnostics(),
             matter: this.matter.getDiagnostics(),

@@ -66,6 +66,8 @@ export default class BlackHoleTheme extends BaseTheme {
         this.post = null;
         this.timer = null;
         this.time = 0;
+        /** The game's level (LEVEL_UP's payload): each is one mood of the hole forward. */
+        this.level = 1;
         this.qualityPresets = QUALITY_PRESETS;
         this.quality = 'High';
         this.currentQuality = 'High';
@@ -157,6 +159,10 @@ export default class BlackHoleTheme extends BaseTheme {
             this.resize(width, height);
             this.setupEventListeners();
             this.time = this.takeRestartTime(0);
+            // A rebuild carries the level on too (BaseTheme.applyRestartRun): the same mood.
+            const carried = Number(this.restartRun?.level);
+            this.level = Number.isFinite(carried) ? Math.max(1, Math.round(carried)) : 1;
+            this.world.setLevel?.(this.level, { silent: true });
             this.update(0);
             this.warmEventPools();
             this.timer = new THREE.Timer();
@@ -298,6 +304,18 @@ export default class BlackHoleTheme extends BaseTheme {
             && (typeof window === 'undefined' || window.settings?.backgroundComboEffects !== false);
     }
 
+    /**
+     * A level moves the hole one mood on whatever the settings (they gate reactions, not the
+     * look); the pressure front and the ring's flare that come with it are a reaction.
+     */
+    onLevelUp(payload) {
+        if (!this.isActive || !this.world) return;
+        const level = Math.round(Number(payload?.level));
+        this.level = Number.isFinite(level) ? Math.max(1, level) : this.level + 1;
+        this.world.setLevel?.(this.level);
+        if (this.effectsAllowed()) this.world.director.onLevelUp(payload);
+    }
+
     setupEventListeners() {
         this.teardownEventListeners();
         const whenAllowed = (handler) => (payload) => {
@@ -311,7 +329,7 @@ export default class BlackHoleTheme extends BaseTheme {
             eventBus.on(EVENTS.TSPIN, whenAllowed((payload) => this.world.director.onTSpin(payload))),
             eventBus.on(EVENTS.B2B, whenAllowed((payload) => this.world.director.onBackToBack(payload))),
             eventBus.on(EVENTS.PERFECT_CLEAR, whenAllowed((payload) => this.world.director.onPerfectClear(payload))),
-            eventBus.on(EVENTS.LEVEL_UP, whenAllowed((payload) => this.world.director.onLevelUp(payload))),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(eventDetail(payload))),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );

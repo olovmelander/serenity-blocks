@@ -435,14 +435,18 @@ export class BlackHoleMatter {
      * @param {number} frame.time seconds
      * @param {number} frame.turns turns of the inner edge since reset
      * @param {object} frame.director the event director
+     * @param {number} [frame.heat] the gas's temperature as the lens burns it (the director's,
+     *   scaled by the mood); the director's own when not given
      */
-    update({ time, turns, director }) {
+    update({
+        time, turns, director, heat,
+    }) {
         if (this.disposed) return;
         const u = this.uniforms;
         u.time.value = time;
         u.turns.value = turns % TURN_WRAP;
         u.surge.value = director.dust ?? director.surge;
-        u.heat.value = director.diskHeat;
+        u.heat.value = Number.isFinite(heat) ? heat : director.diskHeat;
         u.jets.value = director.jets;
         u.jetFlare.value = director.jetFlare ?? 0;
         // Idle layers leave the render list altogether.
