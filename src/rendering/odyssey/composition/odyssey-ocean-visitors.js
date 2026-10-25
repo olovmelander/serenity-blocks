@@ -72,6 +72,7 @@ import {
 } from 'three/tsl';
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
 import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
 import {
     OCEAN_ROAM, roamAt, roamHeading, stepRoamArrival,
 } from './odyssey-ocean-roam.js';
@@ -342,6 +343,8 @@ function createVisitorMaterial(uWater, uSurface) {
     })();
     material.side = THREE.FrontSide;
     material.depthWrite = true;
+    // Behind the 1->2 steam while it is up: it arrives there, never through it.
+    material.depthNode = behindSteamDepth(positionWorld);
     // Its own colour-with-distance: scene fog is the chapter-profile lerp (the repo's fog trap).
     material.fog = false;
     return material;
@@ -442,6 +445,8 @@ export function createOceanVisitors({
                 }
                 // Its place on its own route (the clock's, never the camera's), faint as it arrives.
                 roamAt(path, time, mesh.position, velocity);
+                // Under a thick veil of the 1->2 steam it is already here when the steam clears.
+                if (steamVeilWeight() > 0.3) actor.roam.arrive = 1;
                 actor.fade = stepRoamArrival(actor.roam, dt) * life;
                 mesh.userData.fade = actor.fade;
                 mesh.visible = actor.fade > 0.01;

@@ -21,6 +21,9 @@
  *   - the mother and calf loop high on its right (-x +z), seen from the deep;
  *   - the manta glides just under the surface out past the bend (-x -z), seen from the bend to the
  *     breach and from orb 10.
+ * (2026-10-25, Olov: "the big fishes can swim a little closer around the path": each route's nearest
+ * point to the column sat at its eye clearance, so the clearances were eased ~15 % and the whale
+ * shark and the whales re-placed by the same search, 8-15 % closer; docs/ODYSSEY_OVERHAUL_ACT1_2026-10.md §9.)
  * Each route is a loop round its own centre, round enough that a 46-58 u body never turns tighter
  * than ~0.4 of its length. Its pace and length breathe and its depth rises and falls, so it never
  * reads as a turntable. Each stays clear of the camera's path and of the others.
@@ -67,11 +70,11 @@ const route = (r) => Object.freeze({ ...r, period: perimeter(r.along, r.across) 
 /** The routes (scored as described above). The calf rides the mother's (odyssey-whale-pass.js). */
 export const OCEAN_ROAM = Object.freeze({
     whaleShark: route({
-        bearing: -60,
-        out: 74,
-        y: 267,
-        along: 29,
-        across: 25,
+        bearing: -54,
+        out: 67,
+        y: 259.5,
+        along: 24.6,
+        across: 26.2,
         speed: 2.6,
         pace: 0.35,
         paceS: 47,
@@ -80,15 +83,15 @@ export const OCEAN_ROAM = Object.freeze({
         rise: 4,
         bob: 6,
         bobS: 53,
-        phase: 0.6,
+        phase: 0.8,
         turn: 1,
     }),
     whales: route({
-        bearing: 145,
-        out: 86,
-        y: 270,
-        along: 32,
-        across: 29,
+        bearing: 128,
+        out: 76.7,
+        y: 269,
+        along: 32.7,
+        across: 27.6,
         speed: 2.4,
         pace: 0.35,
         paceS: 59,
@@ -97,7 +100,7 @@ export const OCEAN_ROAM = Object.freeze({
         rise: 3,
         bob: 2,
         bobS: 67,
-        phase: 2.1,
+        phase: 3.1,
         turn: -1,
     }),
     manta: route({

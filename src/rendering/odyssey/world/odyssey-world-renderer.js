@@ -53,7 +53,7 @@ import {
 } from '../odyssey-colour-script.js';
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
-import { steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
+import { behindSteamDepth, steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
 import { ORBIT_EARTH_SEAM, orbitEarthOver } from '../composition/odyssey-orbit-earth.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
@@ -445,9 +445,11 @@ export function odysseyQuenchCarry(seamT) {
     const tint = t < 0.5
         ? QUENCH_EMBER.map((c, i) => c + ((QUENCH_WHITE[i] - c) * smooth01(0.25, 0.5, t)))
         : QUENCH_WHITE.map((c, i) => c + ((QUENCH_CYAN[i] - c) * smooth01(0.5, 0.8, t)));
-    // 0 until the boundary (the cavern side), then follows the veil thinning — but only once
-    // most of it is gone, so a fish never stands crisp against white vapour.
-    const life = t <= 0.5 ? 0 : smooth01(0.15, 0.95, 1 - steamQuenchDensity(t));
+    // 0 until the boundary (the cavern side), then whole within the steam's densest stretch, so
+    // when it clears the ocean's life is already there (2026-10-25: it used to follow the veil
+    // thinning, and came in as the steam cleared). It lies behind the steam's shell meanwhile
+    // (behindSteamDepth), so a fish never stands crisp against white vapour.
+    const life = t <= 0.5 ? 0 : smooth01(0.5, 0.53, t);
     return {
         carry, bubble, tint, life,
     };
@@ -4454,6 +4456,7 @@ export function createOdysseyWorld({
         const fLit = fAlbedo.mul(fLight)
             .add(vec3(0.82, 0.96, 1.0).mul(fFlash).mul(float(1).sub(fDorsal.mul(0.6))));
         fishMat.colorNode = toOutput(applyAerial(fLit, positionWorld, AERIAL_CEIL_WATER, 1, false, float(1).sub(uLife)));
+        fishMat.depthNode = behindSteamDepth(positionWorld);
         fishMat.side = THREE.DoubleSide;
         fishMat.fog = false;
         fishMesh = new THREE.Mesh(fInst, fishMat);
@@ -4495,6 +4498,7 @@ export function createOdysseyWorld({
         const sLight = mix(float(0.42), float(1.1), sDown.pow(1.3)).mul(float(1).sub(formDepth.mul(0.5)));
         const sLit = sAlbedo.mul(sLight);
         spireMat.colorNode = toOutput(applyAerial(sLit, positionWorld, AERIAL_CEIL_WATER, 1, false, formLifeHaze));
+        spireMat.depthNode = behindSteamDepth(positionWorld);
         spireMat.fog = false;
         spireMesh = new THREE.InstancedMesh(buildSpireGeometry(), spireMat, oceanPlan.spires.length);
         const sm4 = new THREE.Matrix4();
@@ -4532,6 +4536,7 @@ export function createOdysseyWorld({
             .add(vec3(0.26, 0.34, 0.10).mul(kBack))
             .mul(float(1).sub(formDepth.mul(0.45)));
         kelpMat.colorNode = toOutput(applyAerial(kLit, positionWorld, AERIAL_CEIL_WATER, 1, false, formLifeHaze));
+        kelpMat.depthNode = behindSteamDepth(positionWorld);
         kelpMat.side = THREE.DoubleSide;
         kelpMat.fog = false;
         kelpMesh = new THREE.InstancedMesh(kGeo, kelpMat, oceanPlan.kelp.length);
