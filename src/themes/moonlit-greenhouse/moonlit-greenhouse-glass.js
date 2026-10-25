@@ -29,7 +29,7 @@ import {
     ARC, GLAZING, HOUSE,
 } from './moonlit-greenhouse-core.js';
 import {
-    mgBlind, mgLine, mgLuma, mgPaneHash, mgSky,
+    TUNE, mgBlind, mgLine, mgLuma, mgPaneHash, mgSky,
 } from './moonlit-greenhouse-tsl.js';
 
 /** The glass surface: a strip across the house (left wall, vault, right wall) and the far screen. */
@@ -191,7 +191,7 @@ export function createGlass({ tier, U, noise }) {
         const runs = smoothstep(0.62, 0.78, texture(noise, vec2(along.mul(1.7), s.mul(0.06))).w);
         const filmAmount = select(fogged, float(0.9), film.x.mul(0.5).add(0.15)).mul(float(1.0).sub(runs.mul(0.7)))
             .mul(select(vent, float(0.0), float(1.0))).toVar();
-        const veil = night.glassFog.mul(halo).mul(filmAmount).mul(0.28).mul(U.moonLight);
+        const veil = night.glassFog.mul(halo).mul(filmAmount).mul(0.28 * TUNE.glassVeil).mul(U.moonLight);
         // Fog scatters what is behind it: the film greys the view a little.
         through.assign(mix(through, vec3(mgLuma(through)).mul(0.8), filmAmount.mul(0.35)));
         let beads = vec3(0.0);

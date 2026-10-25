@@ -83,6 +83,13 @@ const HEATH_DARK = [0.06, 0.06, 0.035];
 const HEATH_PALE = [0.21, 0.2, 0.15];
 const SNOW = [0.86, 0.89, 0.93];
 
+/** The fells' snow-gully frames: a downhill bearing each (x, z), its doubled angle, its own place on the tile. */
+const GULLY_FRAMES = [0, 60, 120].map((deg, i) => Object.freeze({
+    down: [Math.cos(deg * DEG), Math.sin(deg * DEG)],
+    twice: [Math.cos(2 * deg * DEG), Math.sin(2 * deg * DEG)],
+    shift: i * 0.37,
+}));
+
 /**
  * Build the ground mesh from the bake. `tier.landCols` columns across the fan, rows spaced
  * `tier.landRow` × distance apart (never closer than `tier.landMinRow` metres).
@@ -337,10 +344,23 @@ export function createLandMaterial(u, tex) {
         const scree = smoothstep(0.3, 0.55, slope.add(f2.a.sub(0.5).mul(0.3)));
         const fellCol = mix(heath, vec3(...GRANITE).mul(f2.a.mul(0.3).add(0.55)), scree);
         groundCol.assign(mix(groundCol, fellCol, fell.mul(float(1.0).sub(inForest))));
-        // Gullies run down the fall line: the snow is read in a frame drawn out along it.
-        const down = normalize(N.xz.add(vec2(1e-4, 0.0)));
-        const along = vec2(dot(xz, vec2(down.y.negate(), down.x)).div(900.0), dot(xz, down).div(5200.0));
-        const gully = texture(tex.noise, along).g.add(f2.b.sub(0.5).mul(0.22));
+        // Gullies run down the fall line: the snow is read in fixed frames drawn out along bearings
+        // 60° apart, each weighted by how near the slope's own fall line (the smooth one, not the
+        // roughened N) runs to it. (A frame turned to each pixel's fall line swung round the origin
+        // with it: kilometres off, a slight turn moved the read across the tile, and lone pixels of
+        // snow flickered as the eye breathed.) Lines are compared at twice their angle, where a line
+        // and its reverse are one.
+        const fl = vN.xz;
+        const fall2 = vec2(fl.x.mul(fl.x).sub(fl.y.mul(fl.y)), fl.x.mul(fl.y).mul(2.0)).div(max(dot(fl, fl), 0.01));
+        const gullyRead = float(0.0).toVar();
+        const gullyWeight = float(0.0).toVar();
+        for (const g of GULLY_FRAMES) {
+            const w = dot(fall2, vec2(...g.twice)).mul(0.5).add(0.5).pow(4.0);
+            const at = vec2(dot(xz, vec2(-g.down[1], g.down[0])).div(900.0), dot(xz, vec2(...g.down)).div(5200.0));
+            gullyRead.addAssign(texture(tex.noise, at.add(g.shift)).g.mul(w));
+            gullyWeight.addAssign(w);
+        }
+        const gully = gullyRead.div(gullyWeight).add(f2.b.sub(0.5).mul(0.22));
         const snowLine = float(650.0).add(f1.r.sub(0.5).mul(280.0));
         const lifted = P.y.add(f2.g.sub(0.5).mul(90.0));
         const tops = smoothstep(snowLine, snowLine.add(110.0), lifted);
