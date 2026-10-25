@@ -517,6 +517,14 @@ export class RainbowTerracesWorld {
         /** When each stroke was last laid whole (it glitters a moment), and when each bow closed. */
         this.laidAt = new Float64Array(STROKES).fill(-1e4);
         this.laid = new Float64Array(STROKES);
+        /**
+         * Each stroke's painting on the flight clock: when the chain began it, when it ended (laid
+         * whole, or withdrawn before it was), and the progress it ended at. The glider that paints
+         * it dives in from its flock at the start and flies home from the end.
+         */
+        this.paintFrom = new Float64Array(STROKES).fill(-1e4);
+        this.paintTo = new Float64Array(STROKES).fill(-1e4);
+        this.paintEnd = new Float64Array(STROKES).fill(1);
         /** 1 where the pour's light laid the stroke: it glitters in the light's colour, not a link's. */
         this.glitterKey = new Uint8Array(STROKES);
         this.closedAt = [-1e4, -1e4];
@@ -814,7 +822,16 @@ export class RainbowTerracesWorld {
         if (this.parts.pools && this.parts.isles) this.placePools();
         this.flock?.setThermals(this.placement.thermals);
         this.bowInfo = {
-            A: f.A, basis: f.basis, R1: f.R1, R2: f.R2, strokes: [...f.strokes1, ...f.strokes2], dial: 0, links: this.links,
+            A: f.A,
+            basis: f.basis,
+            R1: f.R1,
+            R2: f.R2,
+            strokes: [...f.strokes1, ...f.strokes2],
+            dial: 0,
+            links: this.links,
+            paintFrom: this.paintFrom,
+            paintTo: this.paintTo,
+            paintEnd: this.paintEnd,
         };
     }
 
@@ -1377,13 +1394,10 @@ export class RainbowTerracesWorld {
         this.recentNext = 0;
         this.recentView = null;
         this.jewel = 1;
-        if (this.flock) {
-            this.flock.ribbon = 0;
-            this.flock.longWing = false;
-            this.flock.helixAt = -1e4;
-            this.flock.launchAt = -1e4;
-            this.flock.bankFlash = -1e4;
-        }
+        this.flock?.resetEvents();
+        this.paintFrom.fill(-1e4);
+        this.paintTo.fill(-1e4);
+        this.paintEnd.fill(1);
         this.pourDone = false;
         this.wheel.reset?.(time);
         if (hours) this.wheel.restore?.(hours);
@@ -1412,7 +1426,7 @@ export class RainbowTerracesWorld {
         this.wheel.newRun?.(this.time);
         this.onCombo(0);
         this.b2b = false;
-        if (this.flock) this.flock.longWing = false;
+        this.flock?.setLongWing(false, this.flightClock);
         // Held pools drain softly.
         this.held.forEach((h, i) => {
             if (!h.released) {
@@ -1750,7 +1764,7 @@ export class RainbowTerracesWorld {
         if (c.b2b) {
             this.b2b = true;
             this.b2bRun += 1;
-            if (this.flock) this.flock.longWing = true;
+            this.flock?.setLongWing(true, this.flightClock);
             // The back-to-back's own answer: the Mother Fall throws a tower of spray with the bow
             // standing in it, taller with every back-to-back in a row.
             this.throwSpray(SPRAY_BURST.tower, t, 1 + 0.25 * Math.min(4, this.b2bRun - 1));
@@ -1758,7 +1772,7 @@ export class RainbowTerracesWorld {
             // A clear that does not continue the back-to-back ends it: the long-wing lands.
             this.b2b = false;
             this.b2bRun = 0;
-            if (this.flock) this.flock.longWing = false;
+            this.flock?.setLongWing(false, this.flightClock);
         }
         // ── The rows leave the card horizontally, off both sides ──
         const { card, board } = this.sourceOf(c);
@@ -2032,7 +2046,7 @@ export class RainbowTerracesWorld {
             this.b2b = false;
             this.b2bRun = 0;
             // The long-wing lands with the back-to-back, once its grace is over (update).
-            if (this.flock && !(this.time < this.graceUntil)) this.flock.longWing = false;
+            if (!(this.time < this.graceUntil)) this.flock?.setLongWing(false, this.flightClock);
         }
         this.combo = combo;
         this.dialTarget = Math.min(DIAL_MAX, combo);
@@ -2236,6 +2250,17 @@ export class RainbowTerracesWorld {
         const strokeAt = (i) => (i < 7 ? f.strokes1[i] : f.strokes2[i - 7]);
         for (let i = 0; i < STROKES; i++) {
             const progress = clamp01(this.dial - i);
+            // Its glider's flight: it dives in as the chain begins the stroke, and flies home from
+            // where the stroke ends (laid whole, or withdrawn before it was).
+            {
+                const was = this.laid[i];
+                const painting = this.paintFrom[i] > this.paintTo[i];
+                if (!painting && was <= 0 && progress > 0) this.paintFrom[i] = this.flightClock;
+                if (this.paintFrom[i] > this.paintTo[i] && (progress >= 1 || progress < was)) {
+                    this.paintTo[i] = Math.max(this.flightClock, this.paintFrom[i]);
+                    this.paintEnd[i] = progress >= 1 ? 1 : was;
+                }
+            }
             // A stroke laid whole glitters a moment; the last of a bow closes it (the sweep).
             if (progress >= 1 && this.laid[i] < 1) {
                 this.laidAt[i] = this.time;
@@ -3072,7 +3097,9 @@ export class RainbowTerracesWorld {
         }
         this.spill(dt);
         // The long-wing lands once the back-to-back and its grace are over.
-        if (this.flock?.longWing && !this.b2b && !(this.time < this.graceUntil)) this.flock.longWing = false;
+        if (this.flock?.longWing && !this.b2b && !(this.time < this.graceUntil)) {
+            this.flock.setLongWing(false, this.flightClock);
+        }
         this.parts.isles?.update(dt, this.time);
         if (this.flock && this.parts.gliders) {
             this.bowInfo.dial = this.dial;
