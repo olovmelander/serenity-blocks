@@ -22,7 +22,8 @@ import {
 import { ForestPost } from '../../src/themes/forest/forest-post.js';
 import { FOREST_TIERS, forestTier } from '../../src/themes/forest/forest-quality.js';
 import { FOREST_REACTION_LIMITS, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
-import { forestFigure } from '../../src/themes/forest/forest-figures.js';
+import { FOREST_FIGURE_ROOM, forestFigure } from '../../src/themes/forest/forest-figures.js';
+import { FOREST_LIGHT_FIELD_BOUNDS } from '../../src/themes/forest/forest-light-field.js';
 import { ForestSky } from '../../src/themes/forest/forest-sky.js';
 import { FOREST_DEFAULT_BOARD } from '../../src/themes/forest/forest-stage.js';
 import {
@@ -30,7 +31,9 @@ import {
 } from '../../src/themes/forest/forest-terrain.js';
 import { createEmptyForestAssets } from '../../src/themes/forest/forest-theme.js';
 import { ForestTrees } from '../../src/themes/forest/forest-trees.js';
-import { FOREST_FIGURE_STAND } from '../../src/themes/forest/forest-understory.js';
+import {
+    FOREST_FIGURE_STAND, FOREST_FIGURE_STANDS, FOREST_LOG, FOREST_STUMP,
+} from '../../src/themes/forest/forest-understory.js';
 import { ForestWorld } from '../../src/themes/forest/forest-world.js';
 
 // The world is built in Node from the real asset pack. These tests assert how its parts relate
@@ -1141,6 +1144,61 @@ describe('Forest world scene contracts', () => {
                 expect(Math.abs(point.y), `aspect ${aspect}`).toBeLessThan(1);
                 const besideTheCard = screenX < FOREST_DEFAULT_BOARD.x0 || screenX > FOREST_DEFAULT_BOARD.x1;
                 expect(besideTheCard, `aspect ${aspect}`).toBe(true);
+            }
+        }
+    });
+
+    it.each(BUILT)('gives every place an animal may stand open ground with nothing in front of it (%s)', (quality) => {
+        const { world } = forest[quality];
+        const anchors = world.director.figureStands;
+        // On a landscape screen the director may pick any of them.
+        expect(Object.isFrozen(FOREST_FIGURE_STANDS)).toBe(true);
+        expect(FOREST_FIGURE_STANDS[0]).toBe(FOREST_FIGURE_STAND);
+        expect(anchors.map((anchor) => anchor.stand)).toEqual(FOREST_FIGURE_STANDS.map((_, index) => index));
+        // Some to either side of the card.
+        expect(anchors.filter((anchor) => forestBearing(anchor.x, anchor.z) < 0).length).toBeGreaterThanOrEqual(2);
+        expect(anchors.filter((anchor) => forestBearing(anchor.x, anchor.z) > 0).length).toBeGreaterThanOrEqual(2);
+        const trunks = world.trees.trunks();
+        const { stones } = world.understory;
+        expect(stones.length).toBe(world.getDiagnostics().stones);
+        const along = { x: Math.cos(FOREST_LOG.yaw), z: -Math.sin(FOREST_LOG.yaw) };
+        const log = [-3.8, 3.8].map((t) => ({ x: FOREST_LOG.x + along.x * t, z: FOREST_LOG.z + along.z * t }));
+        const toSegment = (point, [a, b]) => {
+            const dx = b.x - a.x;
+            const dz = b.z - a.z;
+            const t = THREE.MathUtils.clamp(((point.x - a.x) * dx + (point.z - a.z) * dz) / (dx * dx + dz * dz), 0, 1);
+            return Math.hypot(point.x - (a.x + dx * t), point.z - (a.z + dz * t));
+        };
+        const { back, front } = FOREST_FIGURE_ROOM;
+        for (const anchor of anchors) {
+            const label = `place ${anchor.stand} (${quality})`;
+            const at = (t) => ({ x: anchor.x + anchor.facing.x * t, z: anchor.z + anchor.facing.z * t });
+            expect(anchor.y, label).toBe(forestGroundHeight(anchor.x, anchor.z));
+            const range = Math.hypot(anchor.x - FOREST_EYE.x, anchor.z - FOREST_EYE.z);
+            expect(range, label).toBeGreaterThan(15);
+            expect(range, label).toBeLessThan(36);
+            // On the floor the fireflies' light is gathered into, so the animal lights the moss.
+            expect(anchor.x, label).toBeGreaterThan(FOREST_LIGHT_FIELD_BOUNDS.minX + 4);
+            expect(anchor.x, label).toBeLessThan(FOREST_LIGHT_FIELD_BOUNDS.maxX - 4);
+            expect(anchor.z, label).toBeGreaterThan(FOREST_LIGHT_FIELD_BOUNDS.minZ + 4);
+            // The ground it stands on, from tail to nose: no tree, stone, stump or fallen trunk in it
+            // (a stone may lie in front of its hooves, never inside it).
+            const footprint = [at(-back), at(front)];
+            for (const trunk of trunks) {
+                expect(toSegment(trunk, footprint) - trunk.radius, `${label}: ${trunk.asset}`).toBeGreaterThan(1);
+            }
+            for (const stone of stones) {
+                expect(toSegment(stone, footprint) - stone.width / 2, label).toBeGreaterThan(0.4);
+            }
+            expect(toSegment(FOREST_STUMP, footprint), label).toBeGreaterThan(1.2);
+            for (const end of footprint) expect(toSegment(end, log), label).toBeGreaterThan(1.2);
+            // No trunk stands between the eye and any part of it.
+            for (let step = 0; step <= 8; step += 1) {
+                const point = at(-back + ((back + front) * step) / 8);
+                for (const trunk of trunks) {
+                    expect(toSegment(trunk, [FOREST_EYE, point]) - trunk.radius, `${label}: ${trunk.asset}`)
+                        .toBeGreaterThan(0.15);
+                }
             }
         }
     });
