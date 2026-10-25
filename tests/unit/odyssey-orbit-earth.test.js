@@ -15,7 +15,13 @@ import {
     ORBIT_EARTH_SCHEDULE,
     orbitEarthAirglowElevation,
     orbitEarthAt,
+    orbitEarthLandHeight,
 } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
+import {
+    getLatticeNoiseTexture,
+    LATTICE_NOISE_PERIOD,
+    latticeNoise3Cpu,
+} from '../../src/rendering/odyssey/chapter-environments/shared/odyssey-lattice-noise.js';
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
 import { worldClimbScale } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 import { ODYSSEY_SEA_LEVEL } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
@@ -166,6 +172,85 @@ describe('the Earth\'s weather passes under the eye at the world\'s own pace', (
         const earth = ORBIT_EARTH.trackPerUnit / ORBIT_EARTH.cells / orbitEarthAt(p, cp).altitude;
         expect(earth / world).toBeGreaterThan(0.5);
         expect(earth / world).toBeLessThan(2);
+    });
+});
+
+describe('the planet: oceans and continents under its weather (2026-10-25)', () => {
+    // Olov: "When we start to see the earth above the cloud, can we make it look like the earth with
+    // ocean, landmasses and contintents?" The continents are a height field on the sphere; its CPU
+    // twin reads the same lattice bytes, so where the land lies is pinned here.
+    it('reads the lattice on the CPU as the shader does', () => {
+        const n = LATTICE_NOISE_PERIOD;
+        const { data } = getLatticeNoiseTexture().image;
+        [[0, 0, 0], [5, 9, 13], [63, 1, 62]].forEach(([x, y, z]) => {
+            expect(latticeNoise3Cpu(x, y, z)).toBeCloseTo(data[x + (y * n) + (z * n * n)] / 255, 9);
+        });
+        expect(latticeNoise3Cpu(n + 5, 9, -n + 13)).toBeCloseTo(latticeNoise3Cpu(5, 9, 13), 9);
+        const a = latticeNoise3Cpu(5, 9, 13);
+        const b = latticeNoise3Cpu(6, 9, 13);
+        expect(latticeNoise3Cpu(5.5, 9, 13)).toBeCloseTo((a + b) / 2, 9);
+    });
+
+    it('keeps open sea beneath the eye, where the world\'s own sea becomes it', () => {
+        for (const arc of [0, 0.002, 0.004]) {
+            for (let k = 0; k < 16; k += 1) {
+                const az = (k / 16) * Math.PI * 2;
+                const at = { x: Math.sin(arc) * Math.cos(az), y: Math.cos(arc), z: Math.sin(arc) * Math.sin(az) };
+                expect(orbitEarthLandHeight(at), `arc ${arc} bearing ${k}`).toBeLessThan(0);
+            }
+        }
+    });
+
+    // Where the view ray `d` (unit, world frame) meets the Earth seen from `alt` radii up: its point
+    // on the unit sphere, or null.
+    const onEarth = (d, alt) => {
+        const k = 1 + alt;
+        const disc = (k * k * d.y * d.y) - (alt * (alt + 2));
+        if (d.y >= 0 || disc <= 0) return null;
+        const t = (-k * d.y) - Math.sqrt(disc);
+        return new THREE.Vector3(d.x * t, (d.y * t) + k, d.z * t).normalize();
+    };
+
+    it('shows land across the sea as it comes up out of the haze, on the game\'s camera', () => {
+        const rig = createOdysseyCameraRig();
+        const { cp } = rig;
+        const span = cp[6] - cp[5];
+        const p = cp[5] - (span * (ORBIT_EARTH_SCHEDULE.veil[0] + ORBIT_EARTH_SCHEDULE.veil[1])) / 2;
+        const cam = rig.poseAt(p);
+        const { altitude } = orbitEarthAt(p, cp);
+        let land = 0;
+        let sea = 0;
+        for (let j = 0; j < 18; j += 1) {
+            for (let i = 0; i < 32; i += 1) {
+                const d = new THREE.Vector3(((i + 0.5) / 32) * 2 - 1, ((j + 0.5) / 18) * 2 - 1, 0.5)
+                    .unproject(cam).sub(cam.position).normalize();
+                const at = onEarth(d, altitude);
+                if (!at) continue;
+                if (orbitEarthLandHeight(at) > 0) land += 1;
+                else sea += 1;
+            }
+        }
+        const share = land / (land + sea);
+        expect(share, `land ${land} sea ${sea}`).toBeGreaterThan(0.15);
+        expect(share).toBeLessThan(0.65);
+    });
+
+    it('is a world of oceans and continents from high above', () => {
+        const alt = 0.3;
+        const reach = Math.acos(1 / (1 + alt));
+        let land = 0;
+        let all = 0;
+        for (let r = 0; r < 40; r += 1) {
+            for (let k = 0; k < 64; k += 1) {
+                const arc = reach * Math.sqrt((r + 0.5) / 40);
+                const az = (k / 64) * Math.PI * 2;
+                const at = { x: Math.sin(arc) * Math.cos(az), y: Math.cos(arc), z: Math.sin(arc) * Math.sin(az) };
+                all += 1;
+                if (orbitEarthLandHeight(at) > 0) land += 1;
+            }
+        }
+        expect(land / all).toBeGreaterThan(0.2);
+        expect(land / all).toBeLessThan(0.55);
     });
 });
 
