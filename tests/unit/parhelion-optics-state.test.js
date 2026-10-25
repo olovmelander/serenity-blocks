@@ -32,6 +32,8 @@ import {
     rowToPhi,
     stationPhi,
     writePillarPlaces,
+    LOWER_SUN_LIGHT,
+    lowSunOf,
 } from '../../src/playground/effects/parhelion-composition.js';
 
 /**
@@ -761,12 +763,12 @@ describe('Parhelion resonance, level and ambient life (§7.4, §8)', () => {
         state.setLevel(5, 10);
         expect(warmthAt(11.5)).toBeCloseTo(0.1 + 0.22 * smoothstep(0, 3, 1.5), 9);
         expect(warmthAt(13)).toBeCloseTo(0.1 + 4 * 0.055, 9);
-        // About level 10 is the lowest sun (the warmth's cap) ...
-        expect(LOWER_SUN_SPAN).toBeCloseTo((0.6 - 0.1) / 0.055, 9);
+        // A leg of the walk runs from level 1's warmth to the late golden sun's, a level a step ...
+        expect(LOWER_SUN_SPAN).toBeCloseTo((LOWER_SUN_LIGHT.far - 0.1) / 0.055, 9);
         state.setLevel(30, 13);
-        // ... and a level past it walks on back up instead of pinning there.
+        // ... and a level past its far end walks on back up instead of pinning there.
         const far = 0.1 + 0.055 * lowerSunSteps(29);
-        expect(far).toBeLessThan(0.6 - 0.05);
+        expect(far).toBeLessThan(LOWER_SUN_LIGHT.far - 0.05);
         expect(warmthAt(20)).toBeCloseTo(far, 9);
         state.resetSession();
         expect(warmthAt(20)).toBeCloseTo(far, 9);
@@ -796,15 +798,19 @@ describe('Parhelion resonance, level and ambient life (§7.4, §8)', () => {
             const steps = (LOWER_SUN_SPAN * Math.min(k, 2 * stops - k)) / stops;
             expect(at(k * seconds).warmth, `stop ${k}`).toBeCloseTo(PARHELION_OPTICS_IDLE.warmth + 0.055 * steps, 9);
         }
-        // The lowest sun with no level-up: the warmth's cap, the halo brighter, the dust thicker.
+        // The late golden sun with no level-up: past today's level-10 warmth, the low-sun grade
+        // full, the halo brighter, the hounds warmer, the dust thicker.
         const lowest = at(stops * seconds);
-        expect(lowest.warmth).toBeCloseTo(0.6, 9);
+        expect(lowest.warmth).toBeCloseTo(LOWER_SUN_LIGHT.far, 9);
+        expect(lowSunOf(lowest.warmth)).toBeCloseTo(1, 9);
+        expect(lowSunOf(opening.warmth * 1.08)).toBe(0); // level 1 keeps its light through the breath
         expect(lowest.halo).toBeGreaterThan(opening.halo);
+        expect(state.update(stops * seconds, 0).dogTint).toBeGreaterThan(0.5);
         expect(lowest.density).toBeGreaterThan(opening.density);
         expect(at(seconds).halo).toBeGreaterThan(opening.halo);
         // It melts between stops, never jumps.
         let last = at(0).warmth;
-        for (let t = 0.5; t <= 2 * stops * seconds; t += 0.5) {
+        for (let t = 0.25; t <= 2 * stops * seconds; t += 0.25) {
             const w = at(t).warmth;
             expect(Math.abs(w - last)).toBeLessThan(0.005);
             last = w;

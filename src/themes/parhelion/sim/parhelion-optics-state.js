@@ -46,6 +46,7 @@ import {
     DEFAULT_LAYOUT,
     DOG_AZ,
     FALLBACK_RECT,
+    LOWER_SUN_LIGHT,
     MOTE_PLANE_DEPTH,
     PILLAR,
     R22,
@@ -55,6 +56,7 @@ import {
     cardFromBoard,
     dirToScreen,
     laneAnchors,
+    lowSunOf,
     ringDir,
     ringPoint,
     rowToPhi,
@@ -268,23 +270,29 @@ const HUSH_DEPTH = 1 - PARHELION_CLOCK_RATES.hush;
 const HUSH_HOLD_END = PARHELION_TIMING.reveal;
 
 // Level "Lower Sun" (§7.4).
-const WARMTH_MAX = 0.6;
-const WARMTH_STEP = 0.055;
+const WARMTH_STEP = LOWER_SUN_LIGHT.step;
+/** The warmth a fever can lift the light to (the far end of the walk plus a fever's 0.15). */
+const WARMTH_CEILING = 1;
 const LEVEL_DENSITY_STEP = 0.04;
 const LEVEL_DENSITY_CAP = 0.10;
 const LEVEL_GAIN_STEP = 0.03;
 const LEVEL_GAIN_CAP = 0.30;
+/** How much brighter the halo and the hounds burn under the late golden sun (low-sun grade 1). */
+const LOW_SUN_GAIN = 0.12;
+/** How far the late golden sun warms the hounds (dogTint) on top of their resonance. */
+const LOW_SUN_TINT = 0.6;
 
 /**
  * The Lower Sun walks by the clock in every mode (shared/mood-clock.js), there and back: the
- * high sun and the cold light of level 1, the sun half lowered, the lowest sun (the warmth's
- * cap), half lowered again, the high sun. Each stop rests `hold` of its `seconds` and then melts
- * into the next, so a whole walk there and back takes 2 · stops · seconds (about seven minutes).
- * A level is still a step along the same walk, on top of the clock.
+ * high sun and the cold light of level 1, the sun half lowered, the late, low, golden sun
+ * (LOWER_SUN_LIGHT.far), half lowered again, the high sun. Each stop rests `hold` of its
+ * `seconds` and then melts into the next, so a whole walk there and back takes
+ * 2 · stops · seconds (about seven minutes). A level is still a step along the same walk (the
+ * same 0.055 of warmth), on top of the clock.
  */
 export const LOWER_SUN_WALK = Object.freeze({ seconds: MOOD_SECONDS, hold: MOOD_HOLD, stops: 2 });
-/** Level steps from the high sun to the lowest (rest warmth to WARMTH_MAX): one leg of the walk. */
-export const LOWER_SUN_SPAN = (WARMTH_MAX - PARHELION_OPTICS_IDLE.warmth) / WARMTH_STEP;
+/** Level steps from the high sun to the lowest (rest warmth to LOWER_SUN_LIGHT.far): one leg of the walk. */
+export const LOWER_SUN_SPAN = (LOWER_SUN_LIGHT.far - PARHELION_OPTICS_IDLE.warmth) / WARMTH_STEP;
 
 /**
  * The level steps the clock alone has walked the Lower Sun by `time`, unfolded (fold them with
@@ -297,7 +305,7 @@ export function lowerSunDrift(time) {
 
 /**
  * Unfolded level steps folded onto the walk there and back: 0 (level 1) .. LOWER_SUN_SPAN (the
- * lowest sun) and back, so the light never comes to rest at the cap.
+ * lowest sun) and back, so the light never comes to rest at either end.
  * @param {number} steps
  */
 export function lowerSunSteps(steps) {
@@ -1024,12 +1032,15 @@ export class ParhelionOpticsState {
         // Level, warmth, breath (§7.4 Lower Sun, §8). The Lower Sun walks by the clock in every
         // mode, the level's steps on top, folded there and back (never pinned at the cap).
         const levelSteps = lowerSunSteps(this._shareAt(t) + lowerSunDrift(t));
-        const baseMul = 1 + Math.min(LEVEL_GAIN_CAP, LEVEL_GAIN_STEP * levelSteps);
-        const warmthBase = Math.min(WARMTH_MAX, PARHELION_OPTICS_IDLE.warmth + WARMTH_STEP * levelSteps);
+        const warmthBase = PARHELION_OPTICS_IDLE.warmth + WARMTH_STEP * levelSteps;
         const amb = PARHELION_AMBIENT;
         // A fever lowers the hidden sun further (the Lower Sun of a few levels): the light runs golden.
-        const warmthHeat = Math.min(WARMTH_MAX, warmthBase + 0.15 * heatFever);
+        const warmthHeat = Math.min(WARMTH_CEILING, warmthBase + 0.15 * heatFever);
         out.warmth = warmthHeat * (1 + amb.warmthDepth * Math.sin((TWO_PI * t) / amb.warmthPeriod));
+        // The low-sun grade the shaders take from the same warmth: the late golden sun burns the
+        // halo and the hounds a little brighter and warmer (0 at level 1, whatever the breath).
+        const lowSun = lowSunOf(out.warmth);
+        const baseMul = (1 + Math.min(LEVEL_GAIN_CAP, LEVEL_GAIN_STEP * levelSteps)) * (1 + LOW_SUN_GAIN * lowSun);
         out.breath = 1 + amb.breathDepth * Math.sin((TWO_PI * t) / amb.breathPeriod);
         out.breathScale = this.reducedMotion ? amb.cameraBreathReducedMotion : 1;
         const twinkle = 1 + amb.dogTwinkle * (0.6 * Math.sin(t * 1.69) + 0.4 * Math.sin(t * 3.31 + 1.3));
@@ -1068,7 +1079,7 @@ export class ParhelionOpticsState {
         out.dogFlare[0] = clamp(flareHeat + this._channel(CH_FLARE_L, t), 0, 2);
         out.dogFlare[1] = clamp(flareHeat + this._channel(CH_FLARE_R, t), 0, 2);
         out.dogTail = clamp(idle.dogTail + 0.35 * heatHot + 0.75 * heatFever + this._channel(CH_TAIL, t), 1, 2.5);
-        out.dogTint = clamp01(warm + 0.35 * heatWarm + 0.35 * heatFever);
+        out.dogTint = clamp01(warm + 0.35 * heatWarm + 0.35 * heatFever + LOW_SUN_TINT * lowSun);
         this._writePc(t, heatFever);
 
         // Dust effects, rim, bloom. The diamond dust thickens and glitters with the heat, and

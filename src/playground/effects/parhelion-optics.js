@@ -38,9 +38,22 @@ import {
     vec4,
 } from 'three/tsl';
 import { hash21 } from '../../rendering/odyssey/chapter-environments/shared/odyssey-tsl-noise.js';
-import { DOG_AZ, E, R22 } from './parhelion-composition.js';
+import {
+    DOG_AZ, E, LOWER_SUN_LIGHT, R22,
+} from './parhelion-composition.js';
 
 const TWO_PI = 6.283185;
+/** The low-sun grade's ramp on the warmth (lowSunOf on the CPU). */
+const LOW_FROM = LOWER_SUN_LIGHT.from;
+const LOW_FAR = LOWER_SUN_LIGHT.far;
+
+/**
+ * The low-sun grade for a warmth node: 0 under the cold high sun of level 1, 1 under the late
+ * golden one. Plain arithmetic inlined in this module's laid-out helpers (a laid-out helper
+ * calling another laid-out helper compiles twice on the WebGL2 backend); materials call phLow.
+ * @param {any} warmth
+ */
+const lowOf = (warmth) => smoothstep(LOW_FROM, LOW_FAR, warmth);
 const LUMA = [0.2126, 0.7152, 0.0722];
 
 /** Shader literals: 5 decimals of angle is 0.0006° — rounding keeps the WGSL small. */
@@ -82,6 +95,10 @@ export const phProf = /* @__PURE__ */ Fn(([x, si, lam]) => {
 }).setLayout({
     name: 'ph_prof', type: 'float', inputs: [f('x'), f('si'), f('lam')],
 });
+
+/** The low-sun grade for the materials (0 the cold high sun of level 1, 1 the late golden one). */
+export const phLow = /* @__PURE__ */ Fn(([warmth]) => lowOf(warmth))
+    .setLayout({ name: 'ph_low', type: 'float', inputs: [f('warmth')] });
 
 /** Spectral ramp for beads, dust and prism flashes: #FF6A4A → #FFD27A → #FFFFFF → #9CC7F0. */
 export const phSpectral = /* @__PURE__ */ Fn(([t]) => {
@@ -152,20 +169,32 @@ export const phLaneW = /* @__PURE__ */ Fn(([uv, rect]) => {
  * snow/sky seam is invisible. `d` is kept for the §5.0 signature; the haze is azimuthal only.
  */
 export const phHaze = /* @__PURE__ */ Fn(([, sunward, warmth]) => {
-    const gold = mix(linearColor(0xFFD49C), linearColor(0xFFBE78), warmth);
-    return mix(linearColor(0xCFE3F2), gold, sunward);
+    const low = lowOf(warmth);
+    // The late golden sun: the gold deepens to amber and the cool air all round turns rose.
+    const gold = mix(mix(linearColor(0xFFD49C), linearColor(0xFFBE78), warmth), linearColor(0xFFA463), low.mul(0.6));
+    const cool = mix(linearColor(0xCFE3F2), linearColor(0xEDBFB4), low.mul(0.8));
+    return mix(cool, gold, sunward);
 }).setLayout({
     name: 'ph_haze', type: 'vec3', inputs: [v3('d'), f('sunward'), f('warmth')],
 });
 
 /** Sky OUTSIDE the 22° ring: pale ice → sunward gold low, cobalt → deep cobalt high; capped below bloom. */
 export const phSkyOut = /* @__PURE__ */ Fn(([d, sunward, up, warmth]) => {
+    const lowSun = lowOf(warmth);
+    const lift = max(d.y, 0.0);
     // Gold hugs the sunward horizon; higher up the sky stays ice-blue (a gold/ice mix is grey).
-    const goldMix = sunward.mul(warmth.mul(0.9).add(0.55)).mul(exp(max(d.y, 0.0).div(0.07).negate()));
-    const low = mix(linearColor(0xA9C4E8), linearColor(0xF6D9A8), goldMix);
-    // Deep corners: the far-from-sun top of the frame sinks to #142C66 (natural vignette).
+    // Under the late golden sun the gold climbs higher and deepens toward amber.
+    const goldMix = sunward.mul(warmth.mul(0.9).add(0.55)).mul(exp(lift.div(lowSun.mul(0.09).add(0.07)).negate()))
+        .min(1.2);
+    // The low sky turns amber-rose with the late sun, fading out up the sky.
+    const ice = mix(linearColor(0xA9C4E8), linearColor(0xE8AE9C), lowSun.mul(exp(lift.div(0.26).negate())));
+    const goldLow = mix(linearColor(0xF6D9A8), linearColor(0xF8A865), lowSun.mul(0.8));
+    const low = mix(ice, goldLow, goldMix);
+    // Deep corners: the far-from-sun top of the frame sinks to #142C66 (natural vignette); the
+    // late sun's zenith is a deeper, purer blue.
     const deep = smoothstep(0.30, 0.50, d.y).add(float(1.0).sub(sunward).mul(0.5)).min(1.0);
-    const high = mix(linearColor(0x1E3F8C), linearColor(0x142C66), deep);
+    const high = mix(linearColor(0x1E3F8C), linearColor(0x142C66), deep)
+        .mul(mix(vec3(1.0), vec3(0.66, 0.7, 0.88), lowSun));
     const band = exp(abs(d.y).div(0.03).negate()).mul(0.28);
     const sky = mix(low, high, up).add(phHaze(d, sunward, warmth).mul(band));
     return phSoftCap(sky, 0.82);
@@ -178,11 +207,14 @@ export const phSkyOut = /* @__PURE__ */ Fn(([d, sunward, up, warmth]) => {
  * darkest near the hidden sun, lifting to #3E5288 at the ring, plus the cream aureole.
  */
 export const phLens = /* @__PURE__ */ Fn(([a, warmth, breath]) => {
+    const lowSun = lowOf(warmth);
     const lift = smoothstep(round5(R22S - 0.13), round5(R22S - 0.012), a);
-    const dusk = mix(linearColor(0x243259), linearColor(0x3E5288), lift.mul(lift));
+    // The late golden sun leans the dusky lens toward violet.
+    const dusk = mix(linearColor(0x243259), linearColor(0x3E5288), lift.mul(lift))
+        .mul(mix(vec3(1.0), vec3(1.32, 0.93, 0.9), lowSun));
     // Core (hidden by the stone) + a shoulder that leaks just past the stone's silhouette (A ≈ .2).
     const aureole = exp(a.div(0.05).negate()).mul(1.2).add(exp(a.div(0.11).negate()).mul(0.16));
-    const cream = linearColor(0xFFE9C2).mul(aureole).mul(warmth.mul(0.5).add(1.0));
+    const cream = mix(linearColor(0xFFE9C2), linearColor(0xFFC88E), lowSun).mul(aureole).mul(warmth.mul(0.5).add(1.0));
     return dusk.mul(warmth.mul(0.25).add(1.0)).add(cream.mul(breath));
 }).setLayout({
     name: 'ph_lens', type: 'vec3', inputs: [f('a'), f('warmth'), f('breath')],
@@ -372,7 +404,8 @@ export const MOUNTAINS = Object.freeze({
  * the foot of both ranges sinks into the horizon haze. `haze` is ph_haze for this direction,
  * `aa` one pixel's angle.
  */
-export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, phase]) => {
+export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, phase, warmth]) => {
+    const lowSun = lowOf(warmth);
     const left = smoothstep(-0.1, -0.6, az).mul(MOUNTAINS.LEFT);
     const kF = MOUNTAINS.FAR.scale;
     const kN = MOUNTAINS.NEAR.scale;
@@ -408,14 +441,18 @@ export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, ph
     const rimN = exp(max(dN, 0.0).div(0.0008).negate()).mul(glow).mul(litN.mul(0.7).add(0.3));
     // Couloirs: faint vertical ribs down the shaded snow faces.
     const rib = phNoise1(az.mul(170.0).add(5.0)).mul(0.16).add(0.92);
-    const shadeF = mix(linearColor(0x566DA4), linearColor(0x46598F), smoothstep(0.0, 0.03, dF)).mul(rib);
-    const shadeN = mix(linearColor(0x3A4C83), linearColor(0x2C3B6C), smoothstep(0.0, 0.012, dN)).mul(rib);
-    const warmLit = mix(linearColor(0x8FA2CF), linearColor(0xD9C2AA), sunward.mul(sunward));
-    const faceF = mix(shadeF, warmLit, litF.mul(0.32).mul(smoothstep(0.016, 0.0, dF)));
-    const faceN = mix(shadeN, warmLit.mul(0.85), litN.mul(0.28).mul(smoothstep(0.007, 0.0, dN)));
-    const gold = linearColor(0xFFDDA8);
+    // The late golden sun: shaded faces lean violet, lit ones take the alpenglow's rose-gold.
+    const violet = mix(vec3(1.0), vec3(1.08, 0.9, 1.0), lowSun);
+    const shadeF = mix(linearColor(0x566DA4), linearColor(0x46598F), smoothstep(0.0, 0.03, dF)).mul(rib).mul(violet);
+    const shadeN = mix(linearColor(0x3A4C83), linearColor(0x2C3B6C), smoothstep(0.0, 0.012, dN)).mul(rib).mul(violet);
+    const dayLit = mix(linearColor(0x8FA2CF), linearColor(0xD9C2AA), sunward.mul(sunward));
+    const warmLit = mix(dayLit, linearColor(0xE8AC94), lowSun.mul(0.8));
+    const litMore = lowSun.mul(0.3).add(1.0);
+    const faceF = mix(shadeF, warmLit, litF.mul(0.32).mul(litMore).mul(smoothstep(0.016, 0.0, dF)));
+    const faceN = mix(shadeN, warmLit.mul(0.85), litN.mul(0.28).mul(litMore).mul(smoothstep(0.007, 0.0, dN)));
+    const gold = mix(linearColor(0xFFDDA8), linearColor(0xFFB577), lowSun.mul(0.7));
     // Aerial perspective toward a COOL haze (the warm sunward haze would grey the blue faces).
-    const coolHaze = mix(haze, linearColor(0xB4C8EA), 0.6);
+    const coolHaze = mix(haze, mix(linearColor(0xB4C8EA), linearColor(0xC4B4DA), lowSun), 0.6);
     const colF = mix(mix(faceF, coolHaze, 0.28), gold, min(rimF, 1.0));
     const colN = mix(mix(faceN, coolHaze, 0.1), gold, min(rimN, 1.0));
     // The foot of both ranges sinks into the horizon haze (and below it the far snow is haze).
@@ -436,13 +473,15 @@ export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, ph
 }).setLayout({
     name: 'ph_ridge',
     type: 'vec4',
-    inputs: [f('az'), f('el'), f('sunward'), f('laneW'), v3('haze'), f('aa'), f('phase')],
+    inputs: [f('az'), f('el'), f('sunward'), f('laneW'), v3('haze'), f('aa'), f('phase'), f('warmth')],
 });
 
 /** The ice fog's colour (inline TSL, shared by ph_fog and ph_fogFar so the two never drift). */
 function fogTint(sunward, warmth) {
-    const gold = mix(linearColor(0xFFE4BC), linearColor(0xFFCF98), warmth);
-    return mix(linearColor(0xC8D8F2), gold, sunward.mul(sunward)).mul(sunward.mul(0.32).add(0.98));
+    const low = lowOf(warmth);
+    const gold = mix(mix(linearColor(0xFFE4BC), linearColor(0xFFCF98), warmth), linearColor(0xFFB37A), low.mul(0.55));
+    const cool = mix(linearColor(0xC8D8F2), linearColor(0xE8C2BC), low.mul(0.75));
+    return mix(cool, gold, sunward.mul(sunward)).mul(sunward.mul(0.32).add(0.98));
 }
 
 /** Bank opacity below the horizon, where ph_fog's body is solid (the far snow, the far stones). */
@@ -475,7 +514,8 @@ export const phFog = /* @__PURE__ */ Fn(([az, el, sunward, warmth, phase]) => {
     // A thin veil above the bank; max(…, 0) keeps the exp bounded below the horizon.
     const wisp = exp(max(el.sub(top), 0.0).div(0.008).negate()).mul(0.22);
     const amount = max(body.mul(body).mul(FOG_FLOOR), wisp);
-    const gold = mix(linearColor(0xFFE4BC), linearColor(0xFFCF98), warmth);
+    const warmGold = mix(linearColor(0xFFE4BC), linearColor(0xFFCF98), warmth);
+    const gold = mix(warmGold, linearColor(0xFFA86A), lowOf(warmth).mul(0.6));
     // The bank's top catches the low sun: a gold-lit rim along its rolling edge.
     const rim = exp(abs(el.sub(top.mul(0.8))).div(0.0025).negate()).mul(sunward.mul(0.55).add(0.12));
     return vec4(fogTint(sunward, warmth).add(gold.mul(rim)), amount);

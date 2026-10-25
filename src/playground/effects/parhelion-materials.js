@@ -75,6 +75,7 @@ import {
     phHaze,
     phLaneW,
     phLens,
+    phLow,
     phLowitz,
     phParhelic,
     phRidge,
@@ -325,7 +326,9 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         const xG = a.sub(R22S).toVar();
         const sunward = pow(max(cA, 0.0), 4.0).toVar();
         // Steeper than the spec's pow(ss(0, .6, d.y), .7): the corners must reach L .03–.06.
-        const up = pow(smoothstep(0.0, 0.40, d.y), 0.75);
+        // Under the late golden sun the low sky's light reaches higher before the cobalt.
+        const lowSun = phLow(u.uWarmth).toVar();
+        const up = pow(smoothstep(0.0, lowSun.mul(0.1).add(0.40), d.y), 0.75);
 
         // ── Cirrostratus veil (noise evals: 1 / 2 / 3 by tier).
         const veilA = noise2(vec2(az.mul(3.0).add(u.uVeilPhase), el.mul(9.0)));
@@ -348,7 +351,9 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         //    scattering toward the hidden sun, continuous across the ring.
         const fib = smoothstep(0.42, 0.88, v).mul(float(1.0).sub(up.mul(0.45)));
         const veilGlow = fib.mul(exp(a.div(0.5).negate()).mul(0.28).add(0.055));
-        const veilSheen = mix(linearColor(0xE6EDF8), linearColor(0xFFF0D8), sunward).mul(veilGlow).toVar();
+        const sheenDay = mix(linearColor(0xE6EDF8), linearColor(0xFFF0D8), sunward);
+        const sheenCol = mix(sheenDay, linearColor(0xF8C6A8), lowSun.mul(0.75));
+        const veilSheen = sheenCol.mul(veilGlow).toVar();
         const outSky = phSkyOut(d, sunward, up, u.uWarmth).add(veilSheen);
         const inner = smoothstep(LENS_IN, LENS_OUT, a);
         const lens = phLens(a, u.uWarmth, u.uBreath).add(veilSheen.mul(0.6));
@@ -357,16 +362,19 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
 
         // ── Two backlit mountain ranges on the horizon, higher on the left (hash noise, no reads).
         const laneW = phLaneW(screenUV, u.uCalmUnion);
-        const rid = phRidge(az, el, sunward, laneW, haze, u.uPixAng, u.uVeilPhase);
+        const rid = phRidge(az, el, sunward, laneW, haze, u.uPixAng, u.uVeilPhase, u.uWarmth);
         // ── Ice fog lying on the far plain: veils the mountains' feet, glows toward the sun.
         const fog = phFog(az, el, sunward, u.uWarmth, u.uVeilPhase);
         // ph_ridge is premultiplied (its snow banners add light over the open sky).
         const sky = mix(skyCore.mul(float(1.0).sub(rid.a)).add(rid.rgb), fog.rgb, fog.a);
 
         // ── The halo display.
-        const parhelic = linearColor(0xF5F1EA).mul(phParhelic(az, el, u.uPc.x, u.uPc.y, u.uK0.z));
+        const parhelicCol = mix(linearColor(0xF5F1EA), linearColor(0xFFD6B0), lowSun);
+        const parhelic = parhelicCol.mul(phParhelic(az, el, u.uPc.x, u.uPc.y, u.uK0.z));
         const pillar = linearColor(0xFFD98A).mul(phSunPillar(alpha, beta, u.uK1.y.mul(u.uBreath)));
-        let optics = phHalo(a, cphi2, v, u.uK0.x)
+        // The late golden sun warms the ring toward gold (the hounds warm through uDogTint).
+        const haloWarm = mix(vec3(1.0), vec3(1.04, 0.9, 0.7), lowSun);
+        let optics = phHalo(a, cphi2, v, u.uK0.x).mul(haloWarm)
             .add(phDogs(az, el, u.uDogFlare.x, u.uDogFlare.y, u.uDogTail, u.uDogTint, u.uK0.y))
             .add(parhelic)
             .add(phUta(alpha, beta, u.uK0.w))
@@ -467,8 +475,10 @@ export function createStoneMaterial(u, tierIn) {
             // broken by the grain into irregular runs (never a row of even stripes), highest up.
             glaze = smoothstep(0.7, 0.9, streak).mul(smoothstep(0.38, 0.7, g)).mul(smoothstep(0.2, 0.6, hN));
         }
-        const warmSide = linearColor(0x4A3A2A).mul(smoothstep(0.6, 0.97, side).mul(0.6));
-        const bounce = linearColor(0x22201C).mul(smoothstep(0.05, -0.7, n.y).mul(0.6));
+        // The late golden sun: its grazing light warms the flanks and the snow's bounce more.
+        const lowSun = phLow(u.uWarmth).toVar();
+        const warmSide = linearColor(0x4A3A2A).mul(smoothstep(0.6, 0.97, side).mul(0.6)).mul(lowSun.mul(1.3).add(1.0));
+        const bounce = linearColor(0x22201C).mul(smoothstep(0.05, -0.7, n.y).mul(0.6)).mul(lowSun.mul(0.8).add(1.0));
         let col = rock.add(warmSide).add(bounce);
 
         // Bedding ledges (aLedge: unit height above each ledge line; aLedgeW: where each ledge
@@ -487,8 +497,10 @@ export function createStoneMaterial(u, tierIn) {
         const sunLit = saturate(dot(n, vec3(...S_VEC)));
         const cap = smoothstep(0.85, 0.97, hN).mul(smoothstep(0.12, 0.45, n0.y.add(g.sub(0.5).mul(0.6))));
         const snowM = saturate(shelfSnow.add(cap)).mul(open).toVar();
-        const snowShade = mix(linearColor(0x4A5C92), linearColor(0x91A4D6), smoothstep(-0.2, 0.8, n.y));
-        const snowCol = mix(snowShade, linearColor(0xFFDDA0).mul(1.2), smoothstep(0.0, 0.2, sunLit));
+        const snowShade = mix(linearColor(0x4A5C92), linearColor(0x91A4D6), smoothstep(-0.2, 0.8, n.y))
+            .mul(mix(vec3(1.0), vec3(0.95, 0.84, 1.0), lowSun));
+        const snowSun = mix(linearColor(0xFFDDA0), linearColor(0xFFB476), lowSun.mul(0.7)).mul(1.2);
+        const snowCol = mix(snowShade, snowSun, smoothstep(0.0, 0.2, sunLit));
         col = mix(col, snowCol, snowM);
 
         if (tier.rime) {
@@ -548,7 +560,8 @@ export function createStoneMaterial(u, tierIn) {
         const bank = sin(p.x.mul(0.11).add(1.3)).mul(0.9).add(sin(p.x.mul(0.29).add(0.4)).mul(0.45));
         const driftH = bank.add(4.2).sub(p.x.mul(0.035));
         const buried = smoothstep(driftH.add(2.2), driftH.sub(1.0), p.y);
-        const driftLit = mix(linearColor(0x4A5C94), linearColor(0x7F93C6), smoothstep(-3.0, 1.5, p.y.sub(driftH)));
+        const driftLit = mix(linearColor(0x4A5C94), linearColor(0x7F93C6), smoothstep(-3.0, 1.5, p.y.sub(driftH)))
+            .mul(mix(vec3(1.0), vec3(0.95, 0.84, 1.0), lowSun));
         const driftCol = mix(driftLit, linearColor(0x171D2F), calmU);
         let out = mix(col, driftCol, buried);
         if (minimal) out = phTone(out).mul(float(1.0).sub(u.uUnionDim.mul(calmU)));
@@ -617,7 +630,8 @@ export function createFarStoneMaterial(u, tierIn) {
         const cA = dot(dir, vec3(...S_VEC)).toVar();
         const prox = exp(acos(clamp(cA, -1.0, 1.0)).div(0.25).negate()).mul(2.5).add(0.2);
         const edge = float(1.0).sub(saturate(dot(n, dir.negate())));
-        col = col.add(linearColor(0xFFC978).mul(edge.mul(edge).mul(edge).mul(prox).mul(0.9)));
+        const farRim = mix(linearColor(0xFFC978), linearColor(0xFFA060), phLow(u.uWarmth));
+        col = col.add(farRim.mul(edge.mul(edge).mul(edge).mul(prox).mul(0.9)));
         // Aerial perspective into the horizon air (ph_fog over ph_haze, as the snow and the dome).
         const sw = pow(max(cA, 0.0), 4.0);
         const air = phFogFar(phHaze(dir, sw, u.uWarmth), sw, u.uWarmth);
@@ -722,8 +736,12 @@ export function createSnowMaterial(u, tierIn) {
         });
         const sunHere = sunK.mul(float(1.0).sub(inShadow)).mul(float(1.0).sub(farShadow.mul(0.92))).toVar();
 
-        // Lit snow: white, warming toward the sun's azimuth; forward-scatter glare near it.
-        const flat = mix(linearColor(0xEDF1F8), linearColor(0xFFF2DE), sunward.mul(0.8));
+        // Lit snow: white, warming toward the sun's azimuth; forward-scatter glare near it. Under
+        // the late golden sun the whole lit field turns peach-gold, deeper toward the sun.
+        const lowSun = phLow(u.uWarmth).toVar();
+        const lateLit = mix(linearColor(0xF2C2A2), linearColor(0xFFB078), sunward);
+        const dayLit = mix(linearColor(0xEDF1F8), linearColor(0xFFF2DE), sunward.mul(0.8));
+        const flat = mix(dayLit, lateLit, lowSun.mul(0.88));
         // Lower Sun: as the levels climb, the low light warms and spreads wider from the sun.
         const goldK = pow(toSun, mix(7.0, 3.5, u.uWarmth)).mul(u.uWarmth.mul(0.5).add(0.55));
         const golden = mix(flat, mix(linearColor(0xFFE0AE), linearColor(0xFFC890), u.uWarmth), goldK);
@@ -731,7 +749,9 @@ export function createSnowMaterial(u, tierIn) {
         // Shade: sky-lit blue snow (the stone's shadow is the same snow, not a painted band).
         // Shade is sky-lit: it leans toward violet as the light lowers (Lower Sun).
         const shade = mix(linearColor(0x5C77B6), linearColor(0x7C93CC), macro.mul(0.6).add(stoss.mul(0.4)))
-            .mul(mix(vec3(1.0), vec3(1.07, 0.94, 1.03), u.uWarmth));
+            .mul(mix(vec3(1.0), vec3(1.07, 0.94, 1.03), u.uWarmth))
+            // … and the late sun's long shadows deepen to cobalt-violet.
+            .mul(mix(vec3(1.0), vec3(0.84, 0.76, 0.96), lowSun));
         const snowCol = mix(shade, lit, min(sunHere, 1.0)).add(lit.mul(max(sunHere.sub(1.0), 0.0).mul(0.12)));
         const gold = linearColor(0xFFD39A).mul(crest.mul(fwd.mul(1.6).add(0.9)).mul(min(sunHere, 1.0)));
         const surf = phSoftCap(snowCol.add(gold), 0.85);
