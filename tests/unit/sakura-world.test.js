@@ -13,6 +13,7 @@ import {
     sakuraLampList, sakuraPlacements, sakuraViewFor,
 } from '../../src/themes/sakura-twilight/sakura-composition.js';
 import { SakuraForest, sakuraLanternReach } from '../../src/themes/sakura-twilight/sakura-forest.js';
+import { SAKURA_HOURS, SAKURA_HOUR_SECONDS } from '../../src/themes/sakura-twilight/sakura-hours.js';
 import { SAKURA_FOX_FUR } from '../../src/themes/sakura-twilight/sakura-foxes.js';
 import { SAKURA_RING_SLOTS, sakuraMoonDirection } from '../../src/themes/sakura-twilight/sakura-light.js';
 import {
@@ -1029,6 +1030,9 @@ describe('Sakura world scene contracts', () => {
             lanterns: world.lanterns.length,
             lamps: world.light.lampCount,
             petals: counts,
+            level: 1,
+            hour: SAKURA_HOURS[0].name,
+            hourPhase: 0,
         });
         expect(sum(Object.values(world.getDiagnostics().petals))).toBe(tier.petals);
 
@@ -1807,6 +1811,53 @@ describe('Sakura world in play', () => {
         expect(Number.isFinite(light.uGust.value)).toBe(true);
         expect(Number.isFinite(light.uLampGain.value)).toBe(true);
         expect(light.uFront.value.toArray().every(Number.isFinite)).toBe(true);
+    }, 30000);
+
+    it('turns the night through its hours by the clock alone, with no level-up', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const hours = SAKURA_HOURS.length;
+        world.update(5, STEP, {});
+        const opening = light.uVault.value.clone();
+        expect(light.uVault.value.toArray()).toEqual([...SAKURA_HOURS[0].vault]);
+        expect(world.getDiagnostics().hour).toBe(SAKURA_HOURS[0].name);
+        for (let hour = 1; hour <= hours; hour += 1) {
+            world.update(hour * SAKURA_HOUR_SECONDS + 5, STEP, {});
+            const expected = SAKURA_HOURS[hour % hours];
+            expect(world.getDiagnostics().hour).toBe(expected.name);
+            expect(light.uVault.value.toArray()).toEqual([...expected.vault]);
+            expect(light.uMoonColor.value.toArray()).toEqual([...expected.moon]);
+        }
+        world.update(SAKURA_HOUR_SECONDS + 5, STEP, {});
+        expect(light.uVault.value.equals(opening)).toBe(false);
+        // Nonsense time keeps the hour the clock last gave.
+        world.update(NaN, STEP, {});
+        expect(light.hourPhase).toBe(1);
+        expect(world.level).toBe(1);
+    }, 30000);
+
+    it('steps a level one hour on from the clock, eased, and goes back the short way round', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const hours = SAKURA_HOURS.length;
+        world.update(5, STEP, {});
+        world.setLevel(2);
+        world.update(5, STEP, {});
+        // Eased, not snapped: a level-up melts into the next hour over a few seconds.
+        expect(light.hourPhase).toBeGreaterThan(0);
+        expect(light.hourPhase).toBeLessThan(0.1);
+        for (let frame = 0; frame < 60 * 30; frame += 1) world.update(5, STEP, {});
+        expect(light.hourPhase).toBe(1);
+        expect(light.uVault.value.toArray()).toEqual([...SAKURA_HOURS[1].vault]);
+        // On top of the clock: an hour of the clock later the night is two on.
+        world.update(5 + SAKURA_HOUR_SECONDS, STEP, {});
+        expect(light.hourPhase).toBe(2);
+        // A rebuilt world (silent) is there at once; a new run goes back the short way round.
+        world.setLevel(hours, { silent: true });
+        expect(world.hourStep).toBe(-1);
+        world.setLevel(1, { silent: true });
+        expect(world.hourStep).toBe(0);
+        expect(world.setLevel('x')).toBe(1);
     }, 30000);
 
     it('does not advance the petals or the foxes on a zero or invalid timestep', async () => {
@@ -2667,10 +2718,11 @@ describe('Sakura world ownership', () => {
         expect(() => world.build()).toThrow('[Sakura] SakuraWorld needs its loaded assets before it can build.');
         expect(scene.children).toHaveLength(0);
         expect(world.built).toBe(false);
+        const openingHour = { level: 1, hour: SAKURA_HOURS[0].name, hourPhase: 0 };
         // Nothing was half-made: update and diagnostics are still safe.
         expect(() => world.update(0, STEP, { emitters: [] })).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'High', farTrees: 0, lanterns: 0, lamps: 0, petals: null,
+            quality: 'High', farTrees: 0, lanterns: 0, lamps: 0, petals: null, ...openingHour,
         });
         // Once the assets are there the same world builds, at the tier it was asked for.
         const minimal = new SakuraWorld({ scene, camera: new THREE.PerspectiveCamera(), quality: 'Minimal' });

@@ -38,6 +38,14 @@ export function create({
     let overlay;
     const randomTape = [];
     let randomIndex = 0;
+    // ?level=<n> stands the night <n - 1> hours on from the clock's (every level is an hour on);
+    // ?event=level steps it one more, eased, as a level-up in play does.
+    const startLevel = Math.max(1, Math.round(Number(params.get('level')) || 1));
+    const standLevel = () => {
+        if (!world) return;
+        world.hourStep = 0;
+        world.setLevel(startLevel, { silent: true });
+    };
     const reactions = new SakuraReactions({
         quality,
         rng: () => {
@@ -73,6 +81,7 @@ export function create({
         world = new SakuraWorld({
             scene, camera, quality, rng, assets, samples,
         }).build();
+        standLevel();
         post = new SakuraPost({
             renderer, scene, camera, quality, light: world.light, samples, prime: () => world.primeShadows(renderer),
         });
@@ -118,6 +127,10 @@ export function create({
     };
     // ?event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|level|over,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row).
+    const levelUp = () => {
+        reactions.onLevelUp();
+        world.setLevel(world.level + 1);
+    };
     const fire = (event) => {
         const column = Number(params.get('col') ?? 1);
         const row = Number(params.get('row') ?? 12) + 4;
@@ -142,7 +155,7 @@ export function create({
             }
         } else if (event === 'spin') reactions.onTSpin({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
-        else if (event === 'level') reactions.onLevelUp();
+        else if (event === 'level') levelUp();
         else if (event === 'over') reactions.onGameOver();
     };
     const seek = (time) => {
@@ -155,6 +168,7 @@ export function create({
         const target = Math.max(0, time);
         reactions.reset();
         world.resetEffects();
+        standLevel();
         randomIndex = 0;
         const age = Number(params.get('eventAge') ?? 0.35);
         const eventTime = Math.max(0, target - (Number.isFinite(age) ? Math.max(0, age) : 0.35));
