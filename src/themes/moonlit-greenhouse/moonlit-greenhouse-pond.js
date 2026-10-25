@@ -60,7 +60,8 @@ import {
     FLOOR, HOUSE, TIMING, clamp as clampJs, lerp, mulberry32,
 } from './moonlit-greenhouse-core.js';
 import {
-    mgCanopy, mgGlazing, mgHash21, mgHash33, mgHouseExit, mgLanterns, mgLine, mgMax3, mgMoonVis, mgSky, mgSurface,
+    TUNE, mgCanopy, mgGlazing, mgHash21, mgHash33, mgHouseExit, mgLanterns, mgLine, mgMax3, mgMoonVis, mgSky,
+    mgSurface,
 } from './moonlit-greenhouse-tsl.js';
 
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
@@ -995,7 +996,7 @@ export function createWater({
         const toMoon = clamp(dot(r, U.moon), 0.0, 1.0);
         const away = float(1.0).sub(toMoon);
         const halo = exp(away.mul(-1.0 / 0.06)).mul(0.9).add(exp(away.mul(-1.0 / 0.3)).mul(0.35)).add(0.04);
-        const veil = night.glassFog.mul(halo).mul(0.16).mul(U.moonLight);
+        const veil = night.glassFog.mul(halo).mul(0.16 * TUNE.glassVeil).mul(U.moonLight);
         const glassTint = vec3(0.82, 0.92, 0.88);
         const flood = night.moonlight.mul(U.flood).mul(0.18);
         const ironDark = night.zenith.mul(0.25);
