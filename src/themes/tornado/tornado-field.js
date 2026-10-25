@@ -34,7 +34,9 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { TAU, WORLD, mulberry32 } from './tornado-core.js';
+import {
+    POWER_LINE, POWER_LINE_ARM_YAW, TAU, WORLD, mulberry32, powerLinePole, powerLineReach, powerLineWire,
+} from './tornado-core.js';
 import {
     FLASHES, RINGS, funnelCentreNode, noiseAt, tnGauss,
 } from './tornado-tsl.js';
@@ -216,45 +218,44 @@ function createWheat({ u, noise, tier }) {
 }
 
 /**
- * A power line running out across the field toward the horizon right of the card: poles with a
- * cross-arm, wires sagging between them. Dark against the gap, for scale.
+ * The power line (POWER_LINE, tornado-core.js): poles with a cross-arm, three wires sagging
+ * between them, dark against the gap, for scale. The wires come in from a pole behind the lens
+ * (out of frame on the right) and the line runs on until it is lost in the haze at the horizon.
  */
-function createPoles({ u, tier }) {
+function createPoles({ u }) {
     const parts = [];
-    const poleHeight = 11;
-    const start = new THREE.Vector3(34, 0, -46);
-    const step = new THREE.Vector3(26, 0, -92);
-    const tops = [];
-    for (let i = 0; i < tier.poles; i += 1) {
-        const base = start.clone().addScaledVector(step, i);
-        const tilt = (i % 3 === 1 ? 0.04 : -0.02) * (i + 1) * 0.4;
-        const pole = new THREE.BoxGeometry(0.34, poleHeight, 0.34);
-        pole.translate(0, poleHeight / 2, 0);
-        pole.rotateZ(tilt);
-        pole.translate(base.x, 0, base.z);
-        const arm = new THREE.BoxGeometry(3.2, 0.22, 0.22);
-        arm.translate(0, poleHeight - 0.9, 0);
-        arm.rotateZ(tilt);
-        arm.rotateY(0.28);
-        arm.translate(base.x, 0, base.z);
-        parts.push(pole, arm);
-        tops.push(new THREE.Vector3(base.x - Math.sin(tilt) * (poleHeight - 0.9), poleHeight - 0.8, base.z));
+    const {
+        height, armDrop, armLength, armThick, count,
+    } = POWER_LINE;
+    const pole = { x: 0, z: 0, tilt: 0 };
+    // Pole −1 stands behind the lens and is never in view: only its wires are drawn.
+    for (let i = 0; i < count; i += 1) {
+        powerLinePole(i, pole);
+        const post = new THREE.BoxGeometry(0.34, height, 0.34);
+        post.translate(0, height / 2, 0);
+        post.rotateZ(pole.tilt);
+        post.translate(pole.x, 0, pole.z);
+        // Square across the line, then leaned with the post (powerLineAttach follows the same steps).
+        const arm = new THREE.BoxGeometry(armLength, armThick, armThick);
+        arm.rotateY(POWER_LINE_ARM_YAW);
+        arm.translate(0, height - armDrop, 0);
+        arm.rotateZ(pole.tilt);
+        arm.translate(pole.x, 0, pole.z);
+        parts.push(post, arm);
     }
-    // Wires: thin sagging strips between neighbouring tops (three per span).
-    for (let i = 0; i + 1 < tops.length; i += 1) {
+    // Wires: three thin sagging tubes per span, thickened with distance so the far ones still
+    // read. The first span passes close by the lens: cut finer and kept thin.
+    const at = [0, 0, 0];
+    for (let i = -1; i + 1 < count; i += 1) {
+        const segments = i < 0 ? 32 : 8;
+        const radius = i < 0 ? 0.028 : 0.035 + i * 0.012;
         for (let w = -1; w <= 1; w += 1) {
-            const a = tops[i].clone().add(new THREE.Vector3(w * 1.35, 0, w * 0.38));
-            const b = tops[i + 1].clone().add(new THREE.Vector3(w * 1.35, 0, w * 0.38));
-            const segments = 8;
             const pts = [];
             for (let s = 0; s <= segments; s += 1) {
-                const t = s / segments;
-                const pt = a.clone().lerp(b, t);
-                pt.y -= Math.sin(t * Math.PI) * 1.5;
-                pts.push(pt);
+                powerLineWire(i, w, s / segments, at);
+                pts.push(new THREE.Vector3(at[0], at[1], at[2]));
             }
-            const wire = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), segments, 0.035 + i * 0.012, 3, false);
-            parts.push(wire);
+            parts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), segments, radius, 3, false));
         }
     }
     // Merge by hand: positions only (the material needs nothing else).
@@ -279,9 +280,12 @@ function createPoles({ u, tier }) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(merged, 3));
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: false });
+    const reach = powerLineReach();
     material.fragmentNode = Fn(() => {
         const far = length(positionWorld.sub(cameraPosition));
-        const col = mix(vec3(0.012, 0.011, 0.012), u.haze, exp(far.div(-2600.0)).oneMinus());
+        // The haze, and past halfway out the line dissolves into it, gone by the last pole.
+        const clear = exp(far.div(-2600.0)).mul(smoothstep(reach * 0.5, reach, far).oneMinus());
+        const col = mix(vec3(0.012, 0.011, 0.012), u.haze, clear.oneMinus());
         return vec4(col, 1.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);
@@ -294,7 +298,7 @@ function createPoles({ u, tier }) {
 export function createField({ u, noise, tier }) {
     const ground = createGround({ u, noise });
     const wheat = createWheat({ u, noise, tier });
-    const poles = createPoles({ u, tier });
+    const poles = createPoles({ u });
     return {
         ground,
         wheat,
