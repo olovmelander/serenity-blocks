@@ -69,9 +69,12 @@ import {
     createChamberUniforms,
     createFieldTexture,
     createScalarTexture,
+    fireDrift,
+    fireNear,
     fissuresForCombo,
     lerp,
     mulberry32,
+    paletteAt,
     pieceColor,
     powerForCombo,
     rigForAspect,
@@ -79,6 +82,7 @@ import {
     uploadHeat,
 } from './cinder-drift-tsl.js';
 import { HeatField } from './cinder-drift-heat.js';
+import { easeStep } from '../shared/mood-clock.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     GameplaySurge, SURGE_WEIGHTS, Swell, softCeiling,
@@ -277,7 +281,8 @@ export class CinderDriftWorld {
         this.power = 0;
         this.storm = 0;
         this.level = 1;
-        this.paletteIndex = 0;
+        /** The level's step round the fires as it eases in (the clock's turn is added on top). */
+        this.fireStep = 0;
         this.tremor = 0;
         this.breath = 1;
         this.fissures = 0;
@@ -1087,10 +1092,9 @@ export class CinderDriftWorld {
         this.combo = n;
     }
 
-    /** A new level: the chamber burns a different fire. */
+    /** A new level: the chamber moves on a fire, on top of the clock's. */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.paletteIndex = (this.level - 1) % CINDER_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
@@ -1100,14 +1104,21 @@ export class CinderDriftWorld {
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the chamber is heading round its fires: one step for every level, turned on by the
+     * clock. The whole part names a fire, the fraction is how far it has melted into the next.
+     */
+    firePhase() {
+        return (this.level - 1) + fireDrift(this.time);
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek and
+     * a replay agree); the level's step eases in by `k` (1 snaps), the short way round the fires.
+     */
     applyPalette(k) {
-        const target = CINDER_PALETTES[this.paletteIndex];
-        const p = this._palette;
-        for (let i = 0; i < PALETTE_KEYS.length; i++) {
-            const key = PALETTE_KEYS[i];
-            for (let c = 0; c < 3; c++) p[key][c] = k >= 1 ? target[key][c] : p[key][c] + (target[key][c] - p[key][c]) * k;
-        }
+        this.fireStep = easeStep(this.fireStep, this.level - 1, k, CINDER_PALETTES.length);
+        paletteAt(this.fireStep + fireDrift(this.time), this._palette);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1390,7 +1401,8 @@ export class CinderDriftWorld {
             play: { ...this.play },
             drift: this.drift,
             level: this.level,
-            palette: CINDER_PALETTES[this.paletteIndex].name,
+            palette: fireNear(this.firePhase()).name,
+            fire: this.fireStep + fireDrift(this.time),
             counts: { ...this.counts },
             heat: this.heat.total(this.time),
             pending: this.pending.length,
