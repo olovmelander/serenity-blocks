@@ -5393,9 +5393,8 @@ export function createOdysseyWorld({
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [
-        groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat,
-    ].forEach((m) => { m.fog = false; });
+    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat]
+        .forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
     // the level orbs, neighbouring chapters). Exposed so one horizon drives the whole frame

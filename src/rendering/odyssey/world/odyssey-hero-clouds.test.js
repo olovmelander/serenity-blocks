@@ -101,7 +101,7 @@ describe('hero cloud gating (source-level, the ×0-uniform lesson)', () => {
         // stronger guarantee. The claim being made is "the hero material opts out of scene
         // fog"; that is what is checked now, and `odyssey-world-lints.test.js` separately
         // asserts the list names EVERY constructed material, which is the stronger invariant.
-        const fogOptOut = rendererSource.match(/\[([^\]]+)\]\.forEach\(\(m\) => \{ m\.fog = false; \}\)/);
+        const fogOptOut = rendererSource.match(/\[([^\]]+)\]\s*\.forEach\(\(m\) => \{ m\.fog = false; \}\)/);
         expect(fogOptOut, 'the fog opt-out forEach must exist').toBeTruthy();
         expect(fogOptOut[1].split(',').map((n) => n.trim())).toContain('heroMat');
     });
