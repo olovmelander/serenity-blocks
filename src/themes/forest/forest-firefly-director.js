@@ -7,10 +7,12 @@
  * light out across the floor, throws reserve sparks out from behind the card, lays down the
  * short-lived force fields that carry them, shakes dew from the boughs, winds garlands up
  * the old trunks while a combo keeps the forest awake, and calls the fireflies together
- * into one of the wood's animals on the knoll.
+ * into one of the wood's animals, at one of the places one may stand.
  */
 import * as THREE from 'three/webgpu';
-import { FOREST_FIGURES, forestFigure, forestFigureLights } from './forest-figures.js';
+import {
+    FOREST_FIGURES, FOREST_FIGURE_ROOM, forestFigure, forestFigureLights,
+} from './forest-figures.js';
 import { FOREST_FIREFLY_DEW } from './forest-firefly-sim.js';
 import { FOREST_FIGURE_TIMING } from './forest-reactions.js';
 import { FOREST_STAGE_DEPTH } from './forest-stage.js';
@@ -81,11 +83,45 @@ export const FOREST_FEVER = Object.freeze({
 /** A fed animal: the share more lights it comes with, and the most a light may grow to. */
 const FIGURE_FULLER = 0.4;
 const FIGURE_SIZE_MAX = 0.17;
+/** What tells two places apart: a place's number among the stands, else the place itself. */
+const standKey = (anchor) => anchor.stand ?? anchor;
+
+/**
+ * The box on screen (fractions, y down) an animal standing at `anchor` fills, as the stage's camera
+ * sees it, written into `box`: the corners of the room every animal is drawn to fill, tail and
+ * nose, hooves and crown. Null when any of it is behind the eye.
+ */
+export function forestFigureBox(stage, anchor, box = {
+    x0: 0, x1: 0, y0: 0, y1: 0,
+}, point = { x: 0, y: 0 }) {
+    /* eslint-disable no-param-reassign */
+    box.x0 = Infinity;
+    box.x1 = -Infinity;
+    box.y0 = Infinity;
+    box.y1 = -Infinity;
+    for (let corner = 0; corner < 4; corner += 1) {
+        const along = corner < 2 ? -FOREST_FIGURE_ROOM.back : FOREST_FIGURE_ROOM.front;
+        const up = corner % 2 === 0 ? 0 : FOREST_FIGURE_ROOM.height;
+        const seen = stage.project(
+            anchor.x + anchor.facing.x * along,
+            anchor.y + up,
+            anchor.z + anchor.facing.z * along,
+            point,
+        );
+        if (!seen) return null;
+        box.x0 = Math.min(box.x0, seen.x);
+        box.x1 = Math.max(box.x1, seen.x);
+        box.y0 = Math.min(box.y0, seen.y);
+        box.y1 = Math.max(box.y1, seen.y);
+    }
+    /* eslint-enable no-param-reassign */
+    return box;
+}
 
 export class ForestFireflyDirector {
     constructor({
         stage, sim, pulses, tier, rng = Math.random, groundHeight = () => 0, trunks = [], boughs = null,
-        figureAnchor = null, eye = { x: 0, z: 13 },
+        figureAnchor = null, figureStands = null, eye = { x: 0, z: 13 },
     }) {
         this.stage = stage;
         this.sim = sim;
@@ -134,9 +170,19 @@ export class ForestFireflyDirector {
             .sort((a, b) => a.range - b.range)
             .slice(0, Math.max(2, Math.min(6, Math.round(2 + this.scale * 3))));
         this.posts = posts.map((trunk, index) => ({ ...trunk, turn: index % 2 === 0 ? 1 : -1, feed: 0 }));
-        // The figure: where it stands, how many lights it is made of, and every animal laid
-        // out now, so a summons finds its lights waiting and builds nothing.
-        this.figureAnchor = figureAnchor;
+        // The figure: the places it may stand (each summons takes one, see `pickStand`), where it
+        // stands, how many lights it is made of, and every animal laid out now, so a summons finds
+        // its lights waiting and builds nothing.
+        this.figureStands = Array.isArray(figureStands) && figureStands.length > 0
+            ? figureStands : [figureAnchor].filter(Boolean);
+        this.figureAnchor = figureAnchor ?? this.figureStands[0] ?? null;
+        this.standCalled = null;
+        this.lastStand = null;
+        this.standsOpen = [];
+        this.standBox = {
+            x0: 0, x1: 0, y0: 0, y1: 0,
+        };
+        this.standPoint = { x: 0, y: 0 };
         this.figureLights = Math.max(60, Math.min(Math.round(sim.reserve * 0.42), Math.round(560 * this.scale)));
         // A fed animal comes fuller: a second, finer layer of lights laid between the first's.
         this.figureExtraLights = Math.max(24, Math.round(this.figureLights * FIGURE_FULLER));
@@ -150,7 +196,7 @@ export class ForestFireflyDirector {
         this.figureFed = 0;
         this.figureFuller = false;
         this.figureFull = 0;
-        if (figureAnchor) {
+        if (this.figureAnchor) {
             FOREST_FIGURES.forEach((figure) => {
                 this.pointsFor(figure);
                 this.extraPointsFor(figure);
@@ -505,13 +551,71 @@ export class ForestFireflyDirector {
     }
 
     /**
-     * Call an animal: fireflies lift from the ferns round the knoll and fly to their places. One
-     * called in a fever (`cue.full`) gathers sooner, from nearer, and comes with its finer layer
-     * of lights at once.
+     * Ask for one place by its number in FOREST_FIGURE_STANDS at every summons (a capture, a
+     * test); anything else, or a place the view cannot show, lets chance place them again.
+     */
+    callStand(index) {
+        this.standCalled = Number.isInteger(index) && index >= 0 ? index : null;
+        return this.standCalled;
+    }
+
+    /** Would an animal standing at `anchor` be seen whole: on screen, not behind the card or a panel? */
+    standInSight(anchor) {
+        const { stage } = this;
+        if (typeof stage?.project !== 'function' || typeof stage.inSight !== 'function') return true;
+        const box = forestFigureBox(stage, anchor, this.standBox, this.standPoint);
+        return box !== null && stage.inSight(box);
+    }
+
+    /**
+     * Where a new animal stands: one of the places it would be seen at now, never the place the
+     * last one took while there is another, picked by `place` (0..1, dealt with the animal; the
+     * director's own generator when there is none). With no place in sight, any of them.
+     */
+    pickStand(place) {
+        const stands = this.figureStands;
+        if (!Array.isArray(stands) || stands.length === 0) return null;
+        if (this.standCalled !== null) {
+            for (let i = 0; i < stands.length; i += 1) {
+                if (stands[i].stand === this.standCalled) {
+                    this.lastStand = standKey(stands[i]);
+                    return stands[i];
+                }
+            }
+        }
+        const open = this.standsOpen;
+        open.length = 0;
+        for (let i = 0; i < stands.length; i += 1) {
+            if (this.standInSight(stands[i])) open.push(stands[i]);
+        }
+        if (open.length === 0) {
+            for (let i = 0; i < stands.length; i += 1) open.push(stands[i]);
+        }
+        if (open.length > 1) {
+            for (let i = 0; i < open.length; i += 1) {
+                if (standKey(open[i]) === this.lastStand) {
+                    open[i] = open[open.length - 1];
+                    open.length -= 1;
+                    break;
+                }
+            }
+        }
+        const unit = Number.isFinite(place) ? Math.max(0, Math.min(0.999999, place)) : this.random();
+        const anchor = open[Math.min(open.length - 1, Math.floor(unit * open.length))];
+        this.lastStand = standKey(anchor);
+        return anchor;
+    }
+
+    /**
+     * Call an animal: fireflies lift from the ferns round the place it takes and fly to their
+     * places in it. One called in a fever (`cue.full`) gathers sooner, from nearer, and comes
+     * with its finer layer of lights at once.
      */
     gatherFigure(cue) {
-        const { sim, figureAnchor } = this;
-        if (!figureAnchor) return;
+        const { sim } = this;
+        const anchor = this.pickStand(cue.place);
+        if (!anchor) return;
+        this.figureAnchor = anchor;
         const figure = forestFigure(cue.kind);
         // A summons that finds another still bound (the reactions never send one, but a reset
         // upstream might) lets the old lights go first.
