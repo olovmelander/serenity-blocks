@@ -88,7 +88,8 @@ describe('ground sun-fields bake', () => {
     it('pins the shadowing logic over a fixed synthetic relief', () => {
         const fields = bakeGroundSunFields(heightAt, 64);
         expect(fields.tex.image.width).toBe(64);
-        expect(sha(fields.tex.image.data)).toBe('d0fef689ee6f34aa7e0aea50e9b1d4fb');
+        // (re-pinned 2026-10-25: the world sun turned to the side, re-verified on the live rail)
+        expect(sha(fields.tex.image.data)).toBe('3251100d151ad93e37635f05d5a3f02b');
     });
 
     it('produces both lit and shadowed texels — a uniform plate means the sun march broke', () => {

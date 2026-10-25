@@ -88,7 +88,6 @@ import {
     latticeNoise3Cpu,
     LATTICE_NOISE_PERIOD,
 } from '../chapter-environments/shared/odyssey-lattice-noise.js';
-import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import { AURORA_PALETTE } from '../chapter-environments/odyssey-planet-aurora.js';
 
 export const ORBIT_EARTH = Object.freeze({
@@ -246,9 +245,13 @@ export const ORBIT_EARTH_SCHEDULE = Object.freeze({
  * the Earth moves in front of the far heroes (see DRAW ORDER). */
 export const ORBIT_EARTH_COVERS = 0.999;
 
-const WORLD_SUN_ELEVATION = Math.asin(ODYSSEY_WORLD_SUN[1] / Math.hypot(...ODYSSEY_WORLD_SUN));
+// The sun the departure was composed under (the sunset's timing, the aurora's place on the night
+// side, the planetrise beside it), pinned: the world's own sun turned to the side for Act II
+// (2026-10-25), and the Earth's sun sits behind the eye at the seam either way.
+const EARTH_SUN = Object.freeze([-0.46, 0.36, 0.61]);
+const WORLD_SUN_ELEVATION = Math.asin(EARTH_SUN[1] / Math.hypot(...EARTH_SUN));
 /** The world sun's bearing in the xz plane (from +x toward +z), which the setting sun keeps. */
-export const ORBIT_EARTH_SUN_AZIMUTH = Math.atan2(ODYSSEY_WORLD_SUN[2], ODYSSEY_WORLD_SUN[0]);
+export const ORBIT_EARTH_SUN_AZIMUTH = Math.atan2(EARTH_SUN[2], EARTH_SUN[0]);
 
 const smooth01 = (x) => {
     const t = Math.min(1, Math.max(0, x));
