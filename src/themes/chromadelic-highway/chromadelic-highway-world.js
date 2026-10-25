@@ -31,12 +31,20 @@
  * theme's ComboTracker) turns the spectrum a step per clear; cascade depth escalates wave on wave;
  * a T-spin twists the tunnel, back-to-back answers with a second gold front, and a perfect clear
  * crowns the clear still playing with a prism tunnel. When the hands rest it all coasts back.
+ *
+ * The planets catch the board's light (chromadelic-highway-planet-events.js): every clear sends a
+ * front of its colour out to the bodies, which crosses each lit face from the board's side (the
+ * hero first, the ringed giant and its ring a beat later); a quad's and a perfect clear's front is
+ * the spectrum, and so is the giant's ring while it rings out and through a fever. Each line of a
+ * clear fires lightning in the hero's night-side clouds, and the storm the heat builds keeps it
+ * flickering between clears.
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import { createSkyDome, createStarfield, rotateHue } from './chromadelic-highway-sky.js';
 import { createPlanetImpostor, PLANET_PALETTE } from './chromadelic-highway-planets.js';
+import { FRONT_SPEED, PlanetEvents } from './chromadelic-highway-planet-events.js';
 import {
     LANE_COLORS_HEX, createRails, createRoad,
 } from './chromadelic-highway-road.js';
@@ -291,6 +299,13 @@ const CHAIN_STEP = 0.05;
 const GOLD = new THREE.Color(1.0, 0.84, 0.46);
 /** A T-spin's band: the theme's T (chromadelic-highway-tetrominos.js), electric lemon. */
 const T_COLOR = new THREE.Color(1.0, 0.92, 0.0);
+/** What a prism front leaves glowing behind it on the planets: the spectrum's sum, a pale lavender. */
+const PRISM_AFTERGLOW = new THREE.Color(0.78, 0.72, 1.0);
+/**
+ * Lightning cells a second between clears: per unit of a clear's storm (it rumbles on for a moment),
+ * of heat above warm, and of fever (a full fever flickers about three times a second).
+ */
+const STORM_RATE = Object.freeze({ clear: 1.5, heat: 0.8, fever: 3.2 });
 
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -362,8 +377,11 @@ export class ChromadelicWorld {
          * rest are read from the swells below.
          */
         this.fx = {
-            dip: 0, surge: 0, streakWarp: 0, flare: 0, storm: 0, railTick: 0, nebula: 0, combo: 0,
+            dip: 0, surge: 0, streakWarp: 0, flare: 0, storm: 0, railTick: 0, nebula: 0, combo: 0, ringPrism: 0,
         };
+        /** The planets' share of the events: light fronts from the board and the hero's lightning. */
+        this.planetFx = new PlanetEvents();
+        this.ringFlow = 0; // the spectrum's phase running out through the giant's ring (integrated)
         /** The event contrast dip (max-held, decays τ 0.3 s), before Reduce flashing and heat. */
         this.dipEvent = 0;
         /**
@@ -381,6 +399,9 @@ export class ChromadelicWorld {
                 attack: 0.05, release: 0.55, ceiling: 1.6, knee: 1,
             }),
             storm: new Swell({ release: 0.45, ceiling: 0.95, knee: 0.7 }), // the hero's lightning
+            ringPrism: new Swell({ // the giant's ring ringing out in the spectrum
+                attack: 0.08, release: 1.1, ceiling: 1.2, knee: 0.8,
+            }),
             railTick: new Swell({ release: 0.08, ceiling: 1.6, knee: 1 }),
             roadPulse: new Swell({ release: 0.3, ceiling: 0.9, knee: 0.5 }), // every lock, on the road
             twist: new Swell({ // a T-spin's whirl
@@ -581,7 +602,7 @@ export class ChromadelicWorld {
                 detail: t.heroDetail,
                 polarHood: t.heroDetail,
                 zonal: t.heroDetail,
-                storms: t.heroDetail,
+                lightning: t.rim,
                 moonShadow: t.heroDetail && t.moon,
             },
             renderOrder: -65,
@@ -1072,6 +1093,8 @@ export class ChromadelicWorld {
             c.amp = 0;
         });
         this.planets.forEach((p) => p.setSpinForTime(t));
+        this.planetFx.reset();
+        this.ringFlow = 0;
         this.meteors?.clear();
         this.meteorTimer = 7;
         this.waveSlots.fill(null);
@@ -1287,6 +1310,16 @@ export class ChromadelicWorld {
         this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, boost);
     }
 
+    /** Send a light front out of the board to the planets, `delay` seconds from now. */
+    planetFront(opts, delay = 0) {
+        this.schedule(delay, () => this.planetFx.front(opts, this.time));
+    }
+
+    /** `count` lightning cells in the hero's night-side clouds, one every `gap` s from `delay`. */
+    lightning(count, { amp = 0.9, delay = 0.14, gap = 0.12 } = {}) {
+        for (let i = 0; i < count; i++) this.schedule(delay + gap * i, () => this.planetFx.strike(this.time, { amp }));
+    }
+
     /** Stage a clear's parts for the surge (one resolved clear, like a director's flush). */
     stage(at) {
         const s = this.staged;
@@ -1390,6 +1423,9 @@ export class ChromadelicWorld {
                 amp: Math.min(0.25 + 0.08 * c, 0.85), speed: 2200 + 120 * deep, color: rgb, hueMix: 0.8,
             });
         }
+        // From the third wave the cascade's own colour reaches the planets too (it folds into
+        // that wave's clear front, climbing the wheel with the depth).
+        if (c >= 3) this.planetFront({ rgb, amp: Math.min(0.3 + 0.1 * c, 1.0), width: 0.08 + 0.01 * deep });
         this.fx.combo = Math.max(this.fx.combo, Math.min(1, (c - 1) / 5));
         if (c >= 3 && c % 3 === 0) {
             const count = 2 + (this.random() > 0.5 ? 1 : 0);
@@ -1456,6 +1492,14 @@ export class ChromadelicWorld {
             this.schedule(0.3, () => { this.env.warp.hit(1, this.time); });
             this.prismEcho = Math.min(this.prismEcho + 3, this.ringCount + 4);
             this.unlockHiddenRings();
+            // The planets: a prism front with the cascade, the giant's ring ringing out in the
+            // spectrum as it arrives there, and the hero's storm breaking.
+            this.planetFront({
+                rgb: PRISM_AFTERGLOW, prism: 1, amp: 2.0 + 0.4 * level, width: 0.14, tau: 0.9,
+            }, 0.15);
+            this.schedule(0.42, () => this.env.ringPrism.hit(1, this.time));
+            this.lightning(3, { amp: 1.1, delay: 0.3, gap: 0.14 });
+            this.env.storm.hit(0.6, this.time);
             this.env.lens.hit(1, this.time);
             // The contrast dip holds its breath for the quad: as deep as play is cold (a quad in
             // a fever barely pauses for it).
@@ -1476,6 +1520,10 @@ export class ChromadelicWorld {
             amp: 0.8 + 0.1 * n + 0.3 * level + 0.06 * (wave - 1),
         });
         this.starWave(0.3 + 0.1 * n + 0.3 * level);
+        // The planets catch the clear: a front in the bands' colour, and a lightning cell in the
+        // hero's clouds for every line, the storm left rumbling.
+        this.planetFront({ rgb, amp: Math.min(0.9 + 0.2 * n + 0.4 * level, 1.8), width: 0.08 + 0.01 * n });
+        this.lightning(n, { amp: 0.75 + 0.1 * n + 0.2 * level });
         this.env.storm.hit(Math.min(0.35 + 0.15 * n, 0.8), this.time);
     }
 
@@ -1494,6 +1542,7 @@ export class ChromadelicWorld {
         this.launchWave('clear', {
             amp: n > 0 ? 0.3 + 0.1 * n : 0.16, rgb: T_COLOR, white: 0.35, width: 18,
         });
+        this.planetFront({ rgb: T_COLOR, amp: n > 0 ? 0.8 + 0.15 * n : 0.5, width: 0.09 });
         if (n === 0) this.starWave(0.25);
     }
 
@@ -1510,6 +1559,9 @@ export class ChromadelicWorld {
         this.schedule(0.42, () => this.launchCascade({
             amp, speed: 2600, color: GOLD, hueMix: 0.85,
         }));
+        // The gold answer reaches the planets with the gold front, and the storm answers twice.
+        this.planetFront({ rgb: GOLD, amp: Math.min(1.2 + 0.15 * this.b2bRun, 1.9), width: 0.12 }, 0.42);
+        this.lightning(2, { amp: 1.0, delay: 0.55, gap: 0.16 });
         this.launchChase({ fronts: 3, duration: 0.55, amp: 1.2 });
         this.prismEcho = Math.min(this.prismEcho + 2, this.ringCount + 4);
         this.unlockHiddenRings();
@@ -1534,6 +1586,13 @@ export class ChromadelicWorld {
         this.env.nebula.hit(1, this.time);
         this.env.lens.hit(0.6, this.time);
         this.starWave(1.0);
+        // The planets: a wide, slow prism front, the giant's ring in the spectrum, and every
+        // lightning cell the hero has, in turn.
+        this.planetFront({
+            rgb: PRISM_AFTERGLOW, prism: 1, amp: 2.2, width: 0.18, sweep: 1.2, tau: 1.2,
+        });
+        this.schedule(0.3, () => this.env.ringPrism.hit(1.2, this.time));
+        this.lightning(4, { amp: 1.2, delay: 0.25, gap: 0.12 });
     }
 
     /**
@@ -1551,6 +1610,11 @@ export class ChromadelicWorld {
         const speed = 2000;
         this.launchCascade({
             amp: 0.8, speed, color: _color.setRGB(preview.glow.r, preview.glow.g, preview.glow.b), hueMix: 0.75,
+        });
+        // A slow, wide dawn of the new movement's colour over every planet, before the hero grows.
+        neonColor(hueOf(preview.glow), 0.55, _rgb2);
+        this.planetFront({
+            rgb: { r: _rgb2.r, g: _rgb2.g, b: _rgb2.b }, amp: 1.6, width: 0.2, sweep: 1.1, tau: 1.3,
         });
         this.repaintSeq = (this.repaintSeq || 0) + 1;
         this.repaint = {
@@ -1746,8 +1810,19 @@ export class ChromadelicWorld {
         fx.flare = env.flare.valueAt(now) + 0.45 * fever;
         fx.nebula = env.nebula.valueAt(now);
         fx.railTick = env.railTick.valueAt(now);
-        // The hero's storm: each clear's lightning, and a charge that builds with the heat of play.
+        // The hero's storm: each clear's lightning, and a charge that builds with the heat of play;
+        // the charge keeps firing cells between clears (a fever is a constant flicker).
         fx.storm = Math.min(1, env.storm.valueAt(now) + 0.3 * Math.max(0, level - 0.4) + 0.3 * fever);
+        this.planetFx.calm = prefersReducedFlashing();
+        if (this.tier.rim) {
+            const rumble = STORM_RATE.clear * env.storm.valueAt(now)
+                + STORM_RATE.heat * Math.max(0, level - 0.35) + STORM_RATE.fever * fever;
+            this.planetFx.rumble(rumble, delta, now);
+        }
+        // The giant's ring: the spectrum rings out on a quad or a crown and holds through a fever,
+        // running outward on an integrated phase (never clock × rate).
+        fx.ringPrism = Math.min(1, env.ringPrism.valueAt(now) + 1.6 * fever);
+        this.ringFlow = (this.ringFlow + delta * (0.08 + 0.3 * fx.ringPrism) * (0.25 + 0.75 * motion)) % 1;
         // The contrast dip (a quad, a level-up) keeps a trace under Reduce flashing; a hot run
         // holds a little of it, so the neon reads against deeper darks as the light builds.
         this.dipEvent *= Math.exp(-delta / 0.3);
@@ -1832,11 +1907,6 @@ export class ChromadelicWorld {
         );
         hero.setRadius(A.heroR);
         hero.uniforms.uTime.value = t;
-        // The storm's lightning flickers hard (2-10 Hz); under reduced motion or Reduce flashing it is a
-        // steady glow.
-        const strobe = Math.sin(t * 37.0) * Math.sin(t * 23.0) > 0.35 ? 1 : 0.15;
-        const calm = prefersReducedFlashing() ? 0 : (this.motion ?? 1);
-        hero.uniforms.uFlash.value = this.fx.storm * (strobe * calm + 0.35 * (1 - calm));
         // The binary is a distant star: its light arrives as a direction (L2), the same for
         // every body.
         const fill = this._binaryFar || (this._binaryFar = new THREE.Vector3());
@@ -1890,11 +1960,22 @@ export class ChromadelicWorld {
         }
 
         let heroPx = 0;
+        const pfx = this.planetFx;
         for (const planet of this.planets) {
             planet.setSpinForTime(t); // closed form in the world clock, live and seeked alike
             const rPx = planet.update(camera, KEY_LIGHT, fill, this.viewport.height);
             if (planet === hero) heroPx = rPx;
+            // The board's light reaches each body after its own distance from the key.
+            const delay = planet.mesh.position.distanceTo(KEY_LIGHT) / FRONT_SPEED;
+            pfx.writeFronts(t, delay, planet.extent, planet.frontValues);
         }
+        // Lightning: hard strokes, or under Reduce flashing one soft glow per cell. A new cell
+        // takes its place on the night side from this frame's light.
+        if (hero.hasLightning) {
+            const flicker = prefersReducedFlashing() ? 0 : 1;
+            hero.setCells(pfx.resolveCells(t, flicker, (rand) => hero.pickSite(rand)));
+        }
+        this.secondary?.setRingPrism(this.fx.ringPrism, this.ringFlow);
 
         // The hero's screen circle (drawing-buffer px) for the rings'/streaks' hero mask.
         _proj.copy(hero.mesh.position).project(camera);
