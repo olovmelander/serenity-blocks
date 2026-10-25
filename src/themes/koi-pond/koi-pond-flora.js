@@ -7,11 +7,16 @@
  * under its own middle and tilts with it, so a ring from a locked piece visibly passes under
  * the pads. The lilies open and close per flower (a clear opens them one by one); an open
  * flower glows from its heart.
+ *
+ * Where each thing floats, how it is turned, rocked, dipped and how wet it is are written every
+ * frame by the drift (koi-pond-drift.js): the rings, the koi, the chain's current and the breeze
+ * move them. Each part takes those numbers in one dynamic instance buffer (the lilies, a few per
+ * flower, in one uniform array) and keeps what never changes in another.
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cos, dot, float, floor, fract, mix, normalize, positionGeometry,
-    positionWorld, pow, sin, smoothstep, uniform, uniformArray, uv, varying, vec2, vec3, vec4,
+    positionWorld, pow, sin, smoothstep, uniformArray, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     TAU, hash2, mulberry32, shoreDistance, waterDepth,
@@ -19,6 +24,14 @@ import {
 
 /** Height of a floating thing's skin over the water plane (it must win the depth test). */
 const FLOAT_Y = 0.012;
+/**
+ * Floats per pad and per fallen leaf in the drift's dynamic buffer: x, z, turn, dip (m), then
+ * the rock (a slope added to the water's) across x and z, wetness, and a spare.
+ */
+export const PAD_LIVE_STRIDE = 8;
+export const FLOATER_LIVE_STRIDE = 8;
+/** Rows of the lilies' motion array per flower: (dx, dz, turn, dip), (rock x, rock z, wet, 0). */
+export const LILY_MOTION_ROWS = 2;
 
 const rotateY = (v, angle) => vec3(
     v.x.mul(cos(angle)).sub(v.z.mul(sin(angle))),
@@ -217,12 +230,51 @@ export function planFlora({
         const z = pad.z + Math.sin(a) * pad.radius * 0.95;
         const crowded = lilies.some((l) => Math.hypot(l.x - x, l.z - z) < 1.15);
         if (!crowded && waterDepth(x, z) > 0.14 && Math.abs(x) > 2) {
+            // (`pad`: the pad it stands on, which carries it wherever the water takes the pad.)
             lilies.push({
-                x, z, scale: 0.4 + rand() * 0.13, turn: rand() * TAU, pink: rand(),
+                x, z, scale: 0.4 + rand() * 0.13, turn: rand() * TAU, pink: rand(), pad: out.indexOf(pad),
             });
         }
     }
     return { pads: out, lilies };
+}
+
+/**
+ * Where the fallen leaves and petals lie when the water is still: more under the maple (left,
+ * toward the far bank), a scatter everywhere, none on a pad. `size` is a leaf's length from its
+ * stem; `rate` and `phase` set the slow loop each one wanders.
+ * @returns {Array<{x:number, z:number, size:number, turn:number, tone:number, petal:number, phase:number, rate:number}>}
+ */
+export function planFloaters(count, { seed = 5021, pads = [] } = {}) {
+    const rand = mulberry32(seed);
+    const out = [];
+    for (let tries = 0; tries < count * 40 && out.length < count; tries += 1) {
+        const under = rand() < 0.62;
+        const x = under ? -7.5 + rand() * 6.2 : -9 + rand() * 18;
+        const z = under ? -4 + rand() * 4.6 : -4.4 + rand() * 8.4;
+        if (waterDepth(x, z) < 0.05 || (Math.abs(x) < 1.5 && rand() < 0.7)) continue;
+        const petal = rand() < 0.3 ? 1 : 0;
+        const leaf = {
+            x,
+            z,
+            size: petal ? 0.035 + rand() * 0.02 : 0.085 + rand() * 0.07,
+            turn: rand() * TAU,
+            tone: rand(),
+            petal,
+            phase: rand() * TAU,
+            rate: 0.4 + rand() * 0.9,
+        };
+        if (pads.some((pad) => Math.hypot(pad.x - x, pad.z - z) < pad.radius + leaf.size * 0.5)) continue;
+        out.push(leaf);
+    }
+    return out;
+}
+
+/** A dynamic instance buffer of `stride` floats per instance, written each frame by the drift. */
+function liveBuffer(data, stride) {
+    const buffer = new THREE.InstancedInterleavedBuffer(data, stride);
+    buffer.setUsage(THREE.DynamicDrawUsage);
+    return buffer;
 }
 
 // ── Pads ────────────────────────────────────────────────────────────────────────────────────
@@ -235,27 +287,36 @@ export function createPads(light, plan) {
     geometry.setIndex(base.getIndex());
     ['position', 'normal', 'uv'].forEach((name) => geometry.setAttribute(name, base.getAttribute(name)));
     geometry.instanceCount = count;
-    const data = new Float32Array(count * 8);
+    // What never changes: tone, age, radius. What the drift writes each frame: where the pad
+    // floats, how it is turned and dipped; how it is rocked and how wet it is.
+    const look = new Float32Array(Math.max(1, count) * 4);
+    const live = new Float32Array(Math.max(1, count) * PAD_LIVE_STRIDE);
     plan.pads.forEach((pad, i) => {
-        data.set([pad.x, pad.z, pad.radius, pad.turn, pad.tone, pad.age, i * 0.37, 0], i * 8);
+        look.set([pad.tone, pad.age, pad.radius, 0], i * 4);
+        live.set([pad.x, pad.z, pad.turn, 0, 0, 0, 0, 0], i * PAD_LIVE_STRIDE);
     });
-    const buffer = new THREE.InstancedInterleavedBuffer(data, 8);
-    geometry.setAttribute('aPad', new THREE.InterleavedBufferAttribute(buffer, 4, 0));
-    geometry.setAttribute('aPadLook', new THREE.InterleavedBufferAttribute(buffer, 4, 4));
-    const aPad = attribute('aPad', 'vec4');
+    const lookBuffer = new THREE.InstancedInterleavedBuffer(look, 4);
+    const moving = liveBuffer(live, PAD_LIVE_STRIDE);
+    geometry.setAttribute('aPadLook', new THREE.InterleavedBufferAttribute(lookBuffer, 4, 0));
+    geometry.setAttribute('aPadLive', new THREE.InterleavedBufferAttribute(moving, 4, 0));
+    geometry.setAttribute('aPadRock', new THREE.InterleavedBufferAttribute(moving, 4, 4));
     const aLook = attribute('aPadLook', 'vec4');
+    const aLive = attribute('aPadLive', 'vec4');
+    const aRock = attribute('aPadRock', 'vec4');
 
+    /** The slope the pad lies on: the water's under its middle, and the rock the drift gives it. */
+    const padSlope = () => light.surfaceAt(aLive.xy).xy.mul(0.9).add(aRock.xy);
     const place = Fn(() => {
-        const local = rotateY(positionGeometry.mul(aPad.z), aPad.w);
+        const local = rotateY(positionGeometry.mul(aLook.z), aLive.z);
         // The pad rides the water: it tilts with the slope under its middle.
-        const slope = light.surfaceAt(aPad.xy).xy;
-        const lift = slope.x.mul(local.x).add(slope.y.mul(local.z)).mul(0.9);
-        return vec3(aPad.x.add(local.x), local.y.add(lift).add(FLOAT_Y), aPad.y.add(local.z));
+        const slope = padSlope();
+        const lift = slope.x.mul(local.x).add(slope.y.mul(local.z));
+        return vec3(aLive.x.add(local.x), local.y.add(lift).add(FLOAT_Y).add(aLive.w), aLive.y.add(local.z));
     })();
     const vNormal = varying(Fn(() => {
-        const slope = light.surfaceAt(aPad.xy).xy;
-        const n = rotateY(attribute('normal', 'vec3'), aPad.w);
-        return normalize(vec3(n.x.sub(slope.x.mul(0.9)), n.y, n.z.sub(slope.y.mul(0.9))));
+        const slope = padSlope();
+        const n = rotateY(attribute('normal', 'vec3'), aLive.z);
+        return normalize(vec3(n.x.sub(slope.x), n.y, n.z.sub(slope.y)));
     })(), 'vPadNormal');
 
     const paint = Fn(() => {
@@ -273,16 +334,21 @@ export function createPads(light, plan) {
         leaf.mulAssign(veins.mul(0.55).add(1.0));
         // The rim is a shade redder and catches the light.
         leaf.assign(mix(leaf, vec3(0.13, 0.07, 0.04), smoothstep(0.9, 1.0, r).mul(0.6)));
+        // A pad a splash or a koi has just wetted is darker, and glossy with a film of water.
+        const wet = clamp(aRock.z, 0.0, 1.0).toVar();
+        leaf.mulAssign(float(1.0).sub(wet.mul(0.22)));
         const lit = light.moonlight().toVar();
         const ndl = clamp(dot(normal, u.moonDir), 0.0, 1.0);
         const half = normalize(u.moonDir.add(view));
+        const facing = clamp(dot(normal, half), 0.0, 1.0).toVar();
         // Waxed: a broad sheen, and beads of water that hold a point of moon each.
         // (A pad that mirrors the moon must glint, not turn white: a small sharp lobe.)
-        const sheen = pow(clamp(dot(normal, half), 0.0, 1.0), 20.0).mul(0.035).add(pow(clamp(dot(normal, half), 0.0, 1.0), 400.0).mul(0.2));
+        const sheen = pow(facing, 20.0).mul(wet.mul(2.5).add(1.0).mul(0.035)).add(pow(facing, 400.0).mul(0.2))
+            .add(pow(facing, 60.0).mul(wet.mul(0.12)));
         const cell = point.xz.mul(34.0);
         const bead = smoothstep(0.955, 1.0, fract(sin(dot(floor(cell), vec2(12.9898, 78.233))).mul(43758.5453)))
             .mul(float(1.0).sub(smoothstep(0.1, 0.34, fract(cell).sub(0.5).length())));
-        const beads = bead.mul(pow(clamp(dot(normal, half), 0.0, 1.0), 6.0)).mul(1.5);
+        const beads = bead.mul(pow(facing, 6.0)).mul(wet.mul(1.5).add(1.5));
         const band = light.ringLight(point.xz).mul(0.5);
         const colour = leaf.mul(u.moonColor.mul(ndl.mul(lit)).mul(0.8).mul(u.breath.mul(0.8).add(0.2)).add(u.skyAmbient.mul(1.3))
             .add(light.lantern(point, normal).mul(1.5))
@@ -301,7 +367,15 @@ export function createPads(light, plan) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     return {
-        mesh, geometry, material, count, dispose: () => base.dispose(),
+        mesh,
+        geometry,
+        material,
+        count,
+        live,
+        commit() {
+            moving.needsUpdate = true;
+        },
+        dispose: () => base.dispose(),
     };
 }
 
@@ -354,10 +428,19 @@ export function createLilies(light, plan) {
     const heart = Array.from({ length: Math.max(1, flowers) }, () => 0);
     const openNode = uniformArray(openness, 'float');
     const heartNode = uniformArray(heart, 'float');
+    /**
+     * How the drift has moved each flower with its pad (LILY_MOTION_ROWS rows a flower): how far
+     * from where it was planted and how far turned, how deep dipped; how rocked, how wet. One
+     * array, so the material binds one buffer for all of it.
+     */
+    const motion = Array.from({ length: Math.max(1, flowers) * LILY_MOTION_ROWS }, () => new THREE.Vector4());
+    const motionNode = uniformArray(motion, 'vec4');
     const flowerIndex = floor(aKind.x.add(0.5)).toInt();
 
     const pose = (wantNormal) => Fn(() => {
         const open = openNode.element(flowerIndex);
+        const moved = motionNode.element(flowerIndex.mul(LILY_MOTION_ROWS));
+        const turn = aLily.w.add(moved.z);
         const elevation = mix(aWhorl.y, aWhorl.x, open);
         const grow = aLily.z.mul(open.mul(0.42).add(0.58)).mul(aWhorl.z);
         const src = wantNormal ? attribute('normal', 'vec3') : positionGeometry;
@@ -369,11 +452,14 @@ export function createLilies(light, plan) {
             src.x.mul(sin(curl)).add(src.y.mul(cos(curl))),
             src.z,
         );
-        if (wantNormal) return normalize(rotateY(lifted, aLily.w));
-        const slope = light.surfaceAt(aLily.xy).xy;
-        const out = rotateY(lifted.mul(grow).add(vec3(aWhorl.w.mul(aLily.z), 0.0, 0.0)), aLily.w);
-        const lift = slope.x.mul(out.x).add(slope.y.mul(out.z)).mul(0.9);
-        return vec3(aLily.x.add(out.x), out.y.add(lift).add(FLOAT_Y + 0.018), aLily.y.add(out.z));
+        if (wantNormal) return normalize(rotateY(lifted, turn));
+        const rock = motionNode.element(flowerIndex.mul(LILY_MOTION_ROWS).add(1));
+        const centre = aLily.xy.add(moved.xy);
+        // (The flower nods with its pad: the water's slope under it and the rock its pad is given.)
+        const slope = light.surfaceAt(centre).xy.mul(0.9).add(rock.xy);
+        const out = rotateY(lifted.mul(grow).add(vec3(aWhorl.w.mul(aLily.z), 0.0, 0.0)), turn);
+        const lift = slope.x.mul(out.x).add(slope.y.mul(out.z));
+        return vec3(centre.x.add(out.x), out.y.add(lift).add(moved.w).add(FLOAT_Y + 0.018), centre.y.add(out.z));
     })();
     const vNormal = varying(pose(true), 'vLilyNormal');
 
@@ -415,76 +501,72 @@ export function createLilies(light, plan) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     return {
-        mesh, geometry, material, flowers, openness, heart, dispose: () => base.dispose(),
+        mesh, geometry, material, flowers, openness, heart, motion, dispose: () => base.dispose(),
     };
 }
 
 // ── Fallen leaves and petals ────────────────────────────────────────────────────────────────
 
-export function createFloaters(light, count, seed = 5021) {
+/** The middle of a maple leaf, as a share of its length from the stem: it turns about this. */
+export const LEAF_MIDDLE = 0.45;
+
+/** The fallen leaves and petals of `leaves` (planFloaters), each where the drift writes it. */
+export function createFloaters(light, leaves) {
     const { u } = light;
-    const rand = mulberry32(seed);
+    const count = leaves.length;
     const base = buildMapleLeafGeometry();
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setIndex(base.getIndex());
     ['position', 'normal', 'uv'].forEach((name) => geometry.setAttribute(name, base.getAttribute(name)));
     geometry.instanceCount = count;
-    const data = new Float32Array(Math.max(1, count) * 8);
-    let placed = 0;
-    for (let tries = 0; tries < count * 40 && placed < count; tries += 1) {
-        // More under the maple (left, toward the far bank), a scatter everywhere.
-        const under = rand() < 0.62;
-        const x = under ? -7.5 + rand() * 6.2 : -9 + rand() * 18;
-        const z = under ? -4 + rand() * 4.6 : -4.4 + rand() * 8.4;
-        if (waterDepth(x, z) < 0.05 || (Math.abs(x) < 1.5 && rand() < 0.7)) continue;
-        const petal = rand() < 0.3 ? 1 : 0;
-        data.set([
-            x, z, petal ? 0.035 + rand() * 0.02 : 0.085 + rand() * 0.07, rand() * TAU,
-            rand(), petal, rand() * TAU, 0.4 + rand() * 0.9,
-        ], placed * 8);
-        placed += 1;
-    }
-    geometry.instanceCount = placed;
-    const buffer = new THREE.InstancedInterleavedBuffer(data, 8);
-    geometry.setAttribute('aFloat', new THREE.InterleavedBufferAttribute(buffer, 4, 0));
-    geometry.setAttribute('aFloatLook', new THREE.InterleavedBufferAttribute(buffer, 4, 4));
-    const aFloat = attribute('aFloat', 'vec4');
+    // What never changes: tone, petal or leaf, its own moment in the maple's turn, its size.
+    // What the drift writes each frame: where it floats, how it is turned, rocked and dipped.
+    const look = new Float32Array(Math.max(1, count) * 4);
+    const live = new Float32Array(Math.max(1, count) * FLOATER_LIVE_STRIDE);
+    leaves.forEach((leaf, i) => {
+        look.set([leaf.tone, leaf.petal, leaf.phase, leaf.size], i * 4);
+        live.set([leaf.x, leaf.z, leaf.turn, 0, 0, 0, 0, 0], i * FLOATER_LIVE_STRIDE);
+    });
+    const lookBuffer = new THREE.InstancedInterleavedBuffer(look, 4);
+    const moving = liveBuffer(live, FLOATER_LIVE_STRIDE);
+    geometry.setAttribute('aFloatLook', new THREE.InterleavedBufferAttribute(lookBuffer, 4, 0));
+    geometry.setAttribute('aFloatLive', new THREE.InterleavedBufferAttribute(moving, 4, 0));
+    geometry.setAttribute('aFloatRock', new THREE.InterleavedBufferAttribute(moving, 4, 4));
     const aLook = attribute('aFloatLook', 'vec4');
-    /** How hard the air stirs the water's skin: a gust sets every leaf turning. */
-    const stir = uniform(1);
+    const aLive = attribute('aFloatLive', 'vec4');
+    const aRock = attribute('aFloatRock', 'vec4');
     // A fallen leaf changes colour with the tree it fell from, in its own time.
     const vTurned = varying(light.leafTurned(fract(aLook.z.mul(3.7))), 'vFloatTurned');
 
-    // Each leaf wanders a slow loop of its own and turns as it goes.
-    const centre = Fn(() => {
-        const t = u.time.mul(0.045).mul(aLook.w).add(aLook.z);
-        return aFloat.xy.add(vec2(cos(t).add(cos(t.mul(2.3)).mul(0.3)), sin(t.mul(0.8))).mul(0.28));
-    });
     const place = Fn(() => {
-        const at = centre();
-        const turn = aFloat.w.add(u.time.mul(0.05).mul(aLook.w.sub(0.85)).mul(stir));
-        const local = rotateY(positionGeometry.mul(aFloat.z), turn);
-        const slope = light.surfaceAt(at).xy;
+        // (Turned about its middle, not its stem: a leaf set spinning spins in place.)
+        const local = rotateY(positionGeometry.sub(vec3(LEAF_MIDDLE, 0.0, 0.0)).mul(aLook.w), aLive.z);
+        const slope = light.surfaceAt(aLive.xy).xy.add(aRock.xy);
         const lift = slope.x.mul(local.x).add(slope.y.mul(local.z));
-        return vec3(at.x.add(local.x), local.y.mul(0.5).add(lift).add(FLOAT_Y * 0.7), at.y.add(local.z));
+        // `w`: how far it is pushed under (a splash on it, a koi mouthing it) or lifted.
+        const y = local.y.mul(0.5).add(lift).add(FLOAT_Y * 0.7).add(aLive.w);
+        return vec3(aLive.x.add(local.x), y, aLive.y.add(local.z));
     })();
 
     const paint = Fn(() => {
         const point = positionWorld.toVar();
         const edge = uv().x;
+        const soaked = clamp(aRock.z, 0.0, 1.0).toVar();
         // Leaves in the maple's colours (on the jade night: crimson through orange to old gold),
-        // petals in the lilies'.
+        // petals in the lilies'. A wetted one is darker and glossier.
         const maple = mix(
             light.leafColour(0, aLook.x.mul(0.55).add(0.45), vTurned),
             light.leafColour(1, float(1.0), vTurned),
             pow(aLook.x, 4.0),
         );
-        const skin = mix(maple.mul(edge.mul(0.3).add(0.75)), mix(u.petal, u.petalPale, 0.5).mul(0.76), aLook.y);
+        const skin = mix(maple.mul(edge.mul(0.3).add(0.75)), mix(u.petal, u.petalPale, 0.5).mul(0.76), aLook.y)
+            .mul(float(1.0).sub(soaked.mul(0.18)));
         const lit = light.moonlight();
-        const normal = normalize(vec3(light.surfaceAt(point.xz).xy.negate(), 1.0).xzy);
+        const normal = normalize(vec3(light.surfaceAt(point.xz).xy.add(aRock.xy).negate(), 1.0).xzy);
         const ndl = clamp(dot(normal, u.moonDir), 0.0, 1.0);
         const view = normalize(cameraPosition.sub(point));
-        const wet = pow(clamp(dot(normal, normalize(u.moonDir.add(view))), 0.0, 1.0), 30.0).mul(0.16);
+        const wet = pow(clamp(dot(normal, normalize(u.moonDir.add(view))), 0.0, 1.0), 30.0)
+            .mul(soaked.mul(2.5).add(1.0).mul(0.16));
         const key = mix(u.moonColor, vec3(1.0, 0.86, 0.8), 0.6);
         const colour = skin.mul(key.mul(ndl.mul(lit)).mul(0.9).mul(u.breath.mul(0.8).add(0.2)).add(u.skyAmbient.mul(1.5))
             .add(light.lantern(point, normal).mul(1.6))
@@ -503,6 +585,14 @@ export function createFloaters(light, count, seed = 5021) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     return {
-        mesh, geometry, material, count: placed, stir, dispose: () => base.dispose(),
+        mesh,
+        geometry,
+        material,
+        count,
+        live,
+        commit() {
+            moving.needsUpdate = true;
+        },
+        dispose: () => base.dispose(),
     };
 }
