@@ -12,7 +12,12 @@
  * clears has come (u.wing.x), so every step of a combo draws a new band of wing on both sides
  * of the board. When the chain breaks the wings moult: the front folds back toward the root,
  * fraying as it goes, its eaten edge in embers (u.wing.z: how hard it frays), and a new chain
- * catches it wherever it stands. A back-to-back gilds the veins (u.heat.z); a fever draws the
+ * catches it wherever it stands.
+ *
+ * The root is behind the board card, so the front is measured from where each ray of the wing
+ * comes out from behind the card (and the HUD beside it): the cover table the world fills every
+ * frame (vesper-chrysalis-composition.js). What the card hides is lit at once; every step of a
+ * chain writes wing that can be seen, and the fold runs back to the card's edge in view. A back-to-back gilds the veins (u.heat.z); a fever draws the
  * wing more in its lines than in its veil (u.heat.y).
  *
  * Drawn premultiplied (One, OneMinusSrcAlpha): the light adds, and the little alpha the veil
@@ -30,12 +35,15 @@ import {
     float,
     floor,
     fract,
+    int,
     length,
     max,
+    min,
     mix,
     sin,
     smoothstep,
     step,
+    uniformArray,
     varying,
     vec2,
     vec3,
@@ -50,6 +58,7 @@ import {
     wingPoint,
     wingScallop,
 } from './vesper-chrysalis-tsl.js';
+import { WING_COVER_SAMPLES } from './vesper-chrysalis-composition.js';
 
 /**
  * One geometry for all four wings. aWing = (an, v, kind, side); aOut = (the margin at an without
@@ -126,6 +135,21 @@ export function createWings(u, opts = {}) {
     const aOut = attribute('aOut', 'vec2');
     const vWing = varying(aWing, 'vWing');
 
+    // How far out each ray stays behind the card: (left fore, right fore, left hind, right hind)
+    // at WING_COVER_SAMPLES rays across the wing, linear between them.
+    const cover = Array.from({ length: WING_COVER_SAMPLES }, () => new THREE.Vector4(0, 0, 0, 0));
+    const uCover = uniformArray(cover, 'vec4');
+    const coverAt = Fn(() => {
+        const f = clamp(aWing.x, 0.0, 1.0).mul(WING_COVER_SAMPLES - 1);
+        const i0 = floor(f);
+        const e0 = uCover.element(int(i0));
+        const e1 = uCover.element(int(min(i0.add(1.0), WING_COVER_SAMPLES - 1)));
+        const e = mix(e0, e1, f.sub(i0));
+        const pair = mix(e.xy, e.zw, aWing.z);
+        return clamp(mix(pair.x, pair.y, aWing.w.mul(0.5).add(0.5)), 0.0, 1.0);
+    });
+    const vCover = varying(coverAt(), 'vCover');
+
     material.positionNode = Fn(() => {
         const an = aWing.x;
         const v = aWing.y;
@@ -162,10 +186,11 @@ export function createWings(u, opts = {}) {
         const kind = vWing.z.toVar();
         const w = u.wing.x;
 
-        // ── The front: the wing is written outward from the root ──
+        // ── The front: the wing is written outward from where the card stops hiding it ──
         const grain = u.noise(vec2(an.mul(1.6).add(kind.mul(0.37)), v.mul(1.3).add(0.61))).toVar();
         const fine = u.noise(vec2(an.mul(5.5).add(kind.mul(0.71)), v.mul(6.5))).toVar();
-        const front = w.mul(1.07).add(grain.r.sub(0.5).mul(0.05)).toVar();
+        const hidden = clamp(vCover, 0.0, 1.0);
+        const front = hidden.add(w.mul(1.07).add(grain.r.sub(0.5).mul(0.05)).mul(float(1.0).sub(hidden))).toVar();
         const lit = float(1.0).sub(smoothstep(front.sub(0.012), front, v)).mul(step(0.002, w)).toVar();
         const writing = float(1.0).sub(smoothstep(0.97, 1.03, w));
         const frontLine = vcBell(v.sub(front).add(0.01).div(0.016)).mul(writing).mul(step(0.002, w));
@@ -281,5 +306,5 @@ export function createWings(u, opts = {}) {
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
-    return vcPart('VesperChrysalisWings', geometry, material, 64, { mesh });
+    return vcPart('VesperChrysalisWings', geometry, material, 64, { mesh, cover });
 }

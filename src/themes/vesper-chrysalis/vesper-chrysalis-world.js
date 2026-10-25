@@ -101,7 +101,7 @@ import {
     DUST_HOME, createBlades, createDust, createFireflies, createMoths,
 } from './vesper-chrysalis-fx.js';
 import {
-    boardFor, boardPoint, cardUnion, fallbackLayout,
+    boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, wingCoverAt,
 } from './vesper-chrysalis-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
@@ -177,6 +177,24 @@ export class VesperWorld {
         this.aspect = 16 / 9;
         this.layout = fallbackLayout(1600, 900);
         this.layoutLive = false;
+        /**
+         * How much the card and the HUD count as covering the wings (0..1): eased in while a board
+         * is on screen, out when it leaves, so a front never jumps (see updateWingCover).
+         */
+        this.coverStrength = 0;
+        this._coverRects = [];
+        this._coverScratch = {};
+        this._coverZero = true;
+        this._viewProj = new THREE.Matrix4();
+        /** A world point → its screen position (fractions, y down) through the camera of this frame. */
+        this._project = (p, out) => {
+            const e = this._viewProj.elements;
+            const cw = e[3] * p[0] + e[7] * p[1] + e[11] * p[2] + e[15];
+            if (!(cw > 1e-4)) return false;
+            out.x = ((e[0] * p[0] + e[4] * p[1] + e[8] * p[2] + e[12]) / cw) * 0.5 + 0.5;
+            out.y = 0.5 - ((e[1] * p[0] + e[5] * p[1] + e[9] * p[2] + e[13]) / cw) * 0.5;
+            return true;
+        };
         /** The chrysalis on screen (fractions, y down): where the post's shafts come from. */
         this.heart = { x: 0.5, y: 0.42 };
         this._camera = null;
@@ -388,6 +406,8 @@ export class VesperWorld {
         if (Number.isFinite(aspect) && aspect > 0) this.aspect = aspect;
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(this.aspect * 1000, 1000);
+        // With no wings out there is no front to jump: the cover follows the board at once.
+        if (!(this.wing > 0)) this.coverStrength = this.layoutLive ? 1 : 0;
     }
 
     setReducedMotion(reduced) {
@@ -758,11 +778,15 @@ export class VesperWorld {
         const each = Math.max(1, Math.round(total / groups));
         const p = [0, 0, 0];
         const pal = this._palette;
+        const table = this.parts.wings?.cover;
         for (let g = 0; g < groups; g++) {
             const kind = rand() < 0.62 ? 0 : 1;
             const side = g % 2 === 0 ? -1 : 1;
-            const v = v0 + (v1 - v0) * rand();
-            wingPoint(kind, side, rand(), v, Math.max(this.wing, v1), this.beat, p);
+            const an = rand();
+            // v0..v1 are fronts: measured, as the shader measures them, from where the card
+            // stops hiding that ray of the wing.
+            const v = Math.min(1, frontPast(table ? wingCoverAt(table, kind, side, an) : 0, v0 + (v1 - v0) * rand()));
+            wingPoint(kind, side, an, v, Math.max(this.wing, v1), this.beat, p);
             if (p[1] < 0.4) continue;
             // The scales carry the wing's own colour at that distance from the root.
             const k = Math.min(1, v * 1.15);
@@ -1174,6 +1198,7 @@ export class VesperWorld {
         const crackTarget = clamp01(this.combo / 6);
         this.crack += (crackTarget - this.crack) * approach(crackTarget > this.crack ? 2.4 : 0.9, dt);
         this.applyPalette(approach(0.7, dt));
+        this.coverStrength += ((this.layoutLive ? 1 : 0) - this.coverStrength) * approach(3, dt);
 
         // ── The slow clock: the clouds, the water and the wings quicken as play heats ──
         this.drift += dt * motion
@@ -1222,6 +1247,7 @@ export class VesperWorld {
         u.aurora.value = restAurora + Math.max(0, this.power - 0.45) * 1.3 + this.surge * 1.1 + this.storm * 0.12
             + warm * 0.3 + fever * 0.6;
         u.wing.value.set(this.wing, this.beat, this.fray, this.wingFlash + this.surge * 0.6);
+        this.updateWingCover();
         u.eyes.value.set(this.eyeHind, this.eyeFore, clamp01((this.combo - 8) / 6), this.eyeFlash);
         u.fed.value.w = this.fed;
         u.heat.value.set(warm, fever, this.gild.valueAt(t), this.starFlare.valueAt(t) + fever * 0.6);
@@ -1259,6 +1285,36 @@ export class VesperWorld {
         const ringOn = ringAge >= 0 && ringAge < PRISM_LIVE;
         post.prism.radius = ringOn ? ringAge * 1.25 + 0.02 : 0;
         post.prism.strength = ringOn ? Math.min(1, this.shock.strength * Math.exp(-ringAge / PRISM_FADE)) : 0;
+    }
+
+    /**
+     * The wings' cover table for this frame: how far out each ray of each wing the board card
+     * (and the HUD beside it) hides it. The wings are written, and fold back, from there out, so
+     * the play shows on them even though their root is behind the board.
+     */
+    updateWingCover() {
+        const table = this.parts.wings?.cover;
+        if (!table) return;
+        const k = this.coverStrength;
+        const camera = this._camera;
+        if (k < 1e-3 || !camera || !(this.wing > 0)) {
+            if (!this._coverZero) {
+                for (let i = 0; i < table.length; i++) table[i].set(0, 0, 0, 0);
+                this._coverZero = true;
+            }
+            return;
+        }
+        const rects = this._coverRects;
+        rects.length = 0;
+        const { cards, hud } = this.layout;
+        for (let i = 0; i < (cards?.length ?? 0); i++) rects.push(cards[i]);
+        if (hud) rects.push(hud);
+        this._viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+        fillWingCover(table, this._project, rects, this.aspect, this.wing, this.beat, this._coverScratch);
+        if (k < 0.999) {
+            for (let i = 0; i < table.length; i++) table[i].multiplyScalar(k);
+        }
+        this._coverZero = false;
     }
 
     /** What the post stack reads each frame (a reused object). */
