@@ -37,6 +37,8 @@
  *                            trot, a canter, a gallop; behind them grazing, resting, swatting)
  *   herdRun=<move>@<s>,...   moves the band makes at set times: round, crest, path or loop (a
  *                            gallop out of the picture and back), walk, trot, canter, wheel
+ *   herdCam=i,d,az,h,fov     follow horse i from d metres, az degrees round from its nose toward its
+ *                            left (90 its left side, 180 behind it), h metres over its feet
  */
 import * as THREE from 'three/webgpu';
 import { GrainfieldsWorld } from '../../themes/grainfields/grainfields-world.js';
@@ -150,6 +152,8 @@ export function create({
     const airGain = num(params, 'airGain', 1);
     const lookAt = (params.get('look') || '').split(',').map(Number);
     const inspect = lookAt.length >= 3 && lookAt.slice(0, 3).every(Number.isFinite);
+    const herdCamParts = (params.get('herdCam') || '').split(',').filter(Boolean).map(Number);
+    const herdCam = herdCamParts.length && herdCamParts.every(Number.isFinite) ? herdCamParts : null;
     const size = new THREE.Vector2(1, 1);
     let lastSeek = null;
     let simTime = 0;
@@ -176,6 +180,19 @@ export function create({
         if (inspect) {
             camera.fov = Number.isFinite(lookAt[3]) ? lookAt[3] : 20;
             camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        const followed = herdCam && world.parts.herd?.motions[herdCam[0]];
+        if (followed) {
+            // Follow one horse: from its own side, at its own height, looking at its middle.
+            const { place } = followed;
+            const [, distance = 4, az = 90, height = 1.1, fov = 40] = herdCam;
+            const a = place.heading + az * (Math.PI / 180);
+            const ground = place.y - place.scale;
+            camera.position.set(place.x + Math.sin(a) * distance, ground + height, place.z + Math.cos(a) * distance);
+            camera.fov = fov;
+            camera.lookAt(place.x, ground + 0.9 * place.scale, place.z);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }

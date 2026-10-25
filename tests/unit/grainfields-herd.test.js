@@ -1,7 +1,7 @@
 /**
- * Grainfields — the herd's life (grainfields-herd-sim.js), its pose written for the vertex stage
- * (grainfields-herd.js writeHorse) and the barley it parts (grainfields-trample.js). Run without a
- * renderer, in fixed steps.
+ * Grainfields — the herd's life (grainfields-herd-sim.js) and the barley it parts
+ * (grainfields-trample.js). Run without a renderer, in fixed steps. How each horse moves is
+ * grainfields-horse.test.js's.
  */
 import {
     describe, expect, it, vi,
@@ -9,7 +9,6 @@ import {
 import {
     DEFAULT_VIEW, HERD, beltCover, createHerdSim, onStage, openBearings, planMove,
 } from '../../src/themes/grainfields/grainfields-herd-sim.js';
-import { HORSE_ATTRIBUTES, HORSE_STRIDE, writeHorse } from '../../src/themes/grainfields/grainfields-herd.js';
 import { TRAMPLE, createTrample } from '../../src/themes/grainfields/grainfields-trample.js';
 import { EYE, mulberry32 } from '../../src/themes/grainfields/grainfields-core.js';
 import { beltAt } from '../../src/themes/grainfields/grainfields-plan.js';
@@ -26,7 +25,7 @@ function live(sim, seconds, each = () => {}, from = 0) {
     }
 }
 
-const snapshot = (sim) => sim.horses.map((h) => [h.x, h.z, h.heading, h.speed, h.neck]);
+const snapshot = (sim) => sim.horses.map((h) => [h.x, h.z, h.heading, h.speed, h.business]);
 
 describe('Grainfields herd: the band\'s life', () => {
     it('is the same band every time for a seed', () => {
@@ -64,7 +63,7 @@ describe('Grainfields herd: the band\'s life', () => {
                 samples += 1;
                 if (onStage(h.x, h.z)) seen += 1;
                 fastest = Math.max(fastest, h.speed);
-                if (!Number.isFinite(h.x + h.z + h.heading + h.speed + h.neck + h.head + h.gait.bob)) broken += 1;
+                if (!Number.isFinite(h.x + h.z + h.heading + h.speed + h.yawRate + h.alert)) broken += 1;
                 if (beltCover(h.x, h.z) > 0.5) inBelt += 1;
                 for (let k = i + 1; k < s.horses.length; k++) {
                     // (A foal may press against its mother.)
@@ -137,30 +136,6 @@ describe('Grainfields herd: the band\'s life', () => {
         });
         expect([...names].every((name) => name === 'walk' || name === 'trot')).toBe(true);
         expect(fastest).toBeLessThan(HERD.paces.trot * 1.25);
-    });
-
-    it('lowers its heads to graze and lifts them on the move', () => {
-        const sim = createHerdSim({ count: 9 });
-        let grazing = 0;
-        let travelling = 0;
-        let lowWhileGrazing = 0;
-        let upWhileGalloping = 0;
-        live(sim, 600, (s) => {
-            s.horses.forEach((h) => {
-                if (!s.plan && h.business === 'graze' && h.speed < 0.2) {
-                    grazing += 1;
-                    if (h.neck > 0.6) lowWhileGrazing += 1;
-                }
-                if (s.plan && h.speed > 9) {
-                    travelling += 1;
-                    if (h.neck < 0.6) upWhileGalloping += 1;
-                }
-            });
-        });
-        expect(grazing).toBeGreaterThan(100);
-        expect(lowWhileGrazing / grazing).toBeGreaterThan(0.7);
-        expect(travelling).toBeGreaterThan(100);
-        expect(upWhileGalloping / travelling).toBeGreaterThan(0.9);
     });
 
     it('keeps its foals at their mothers\' sides', () => {
@@ -259,30 +234,32 @@ describe('Grainfields herd: the band\'s life', () => {
     });
 });
 
-describe('Grainfields herd: the pose the vertex stage reads', () => {
-    it('writes each horse into its own stride of the interleaved buffer, a hind leg cocked at rest', () => {
-        expect(HORSE_ATTRIBUTES).toHaveLength(7);
-        expect(HORSE_STRIDE).toBe(28);
-        const sim = createHerdSim({ count: 3 });
-        live(sim, 5);
-        const array = new Float32Array(3 * HORSE_STRIDE).fill(Number.NaN);
-        sim.horses.forEach((h, i) => writeHorse(h, i, array, () => 10.5));
-        expect([...array].every(Number.isFinite)).toBe(true);
-        sim.horses.forEach((h, i) => {
-            const o = i * HORSE_STRIDE;
-            expect(array[o]).toBeCloseTo(h.x, 4);
-            expect(array[o + 1]).toBeCloseTo(10.46, 4);
-            expect(array[o + 2]).toBeCloseTo(h.z, 4);
-            expect(array[o + 7]).toBeCloseTo(h.scale, 4);
-            expect(array[o + 26]).toBe(h.coat);
+describe('Grainfields herd: what the motion reads', () => {
+    it('kept on the spot for a lineup, runs its gaits on a treadmill; let go, roams again', () => {
+        const sim = createHerdSim({ count: 9 });
+        sim.lineup(true, 16);
+        live(sim, 3);
+        const front = sim.horses.slice(0, 5);
+        expect(front.map((h) => h.speed)).toEqual([0, HERD.paces.walk, HERD.paces.trot, HERD.paces.canter,
+            HERD.paces.gallop]);
+        expect(sim.horses.every((h) => h.treadmill)).toBe(true);
+        sim.lineup(false);
+        expect(sim.horses.some((h) => h.treadmill)).toBe(false);
+    });
+
+    it('tells its horses when they graze the path\'s verge', () => {
+        const sim = createHerdSim({ count: 9 });
+        let verge = 0;
+        let grazing = 0;
+        live(sim, 1200, (s) => {
+            if (s.plan) return;
+            grazing += 1;
+            if (s.horses.every((h) => h.verge)) verge += 1;
         });
-        // At rest one hind leg is cocked: its hock folded forward, the hoof tipped on its toe.
-        const h = sim.horses[0];
-        h.rest = 1;
-        h.seed = 0.2;
-        writeHorse(h, 0, array, () => 0);
-        expect(array[17]).toBeLessThan(-0.3);
-        expect(array[22]).toBeGreaterThan(0.8);
+        expect(grazing).toBeGreaterThan(1000);
+        // Some of its grounds are by the path (planMove's verge spots), most in the barley.
+        expect(verge).toBeGreaterThan(0);
+        expect(verge).toBeLessThan(grazing);
     });
 });
 

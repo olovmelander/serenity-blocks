@@ -9,11 +9,14 @@ import {
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-    GRAINFIELDS_ASSET_SCHEMA, GRAINFIELDS_FOLIAGE_URL, GRAINFIELDS_HORSE_PARTS, GRAINFIELDS_HORSE_URL,
+    GRAINFIELDS_ASSET_SCHEMA, GRAINFIELDS_FOLIAGE_URL, GRAINFIELDS_HORSE_URL,
     GRAINFIELDS_IMPOSTOR_URL, GRAINFIELDS_TREE_URLS, disposeGrainfieldsAssets, grainfieldsImpostorLayout,
     loadGrainfieldsAssets, parseGrainfieldsHorse, parseGrainfieldsMeshes, parseGrainfieldsTree,
     prepareGrainfieldsImpostors,
 } from '../../src/themes/grainfields/grainfields-assets.js';
+import {
+    HORSE_BONES, SKIN_ROWS, createPose, createRig, poseRig, writeSkinRows,
+} from '../../src/themes/grainfields/grainfields-horse-rig.js';
 
 const assetDirectory = new URL('../../src/themes/grainfields/assets/', import.meta.url);
 const KB = 1000;
@@ -36,17 +39,75 @@ const HORSE_FILE = 'grainfields-horse.glb';
 const PACK_FILES = [...TREE_NAMES.map((name) => `${name}.glb`), FOLIAGE_FILE, IMPOSTOR_FILE, HORSE_FILE];
 
 // What the pack may weigh (it wrote 1.83 MB on 2026-10-18, the heaviest tree 207 KB, the
-// sprite sheet 489 KB and the horse 72 KB), so it cannot balloon without someone raising a
-// number on purpose.
+// sprite sheet 489 KB; the rigged horse of 2026-10-25 is 179 KB), so it cannot balloon without
+// someone raising a number on purpose.
 const BUDGET = Object.freeze({
     packBytes: 2.5 * MB, treeBytes: 260 * KB, impostorBytes: 700 * KB, horseBytes: 250 * KB,
 });
-// The herd's horse is one mesh drawn a handful of times sixty metres out.
-const HORSE_TRIANGLES = Object.freeze({ min: 3000, max: 6000 });
-const HORSE_ROOT_PIVOTS = ['frontLeft', 'frontRight', 'hindLeft', 'hindRight', 'neck', 'tail'];
-const HORSE_JOINT_PIVOTS = ['ear', 'frontFetlock', 'hindFetlock', 'hock', 'knee', 'poll'];
-const HORSE_PIVOT_NAMES = [...HORSE_ROOT_PIVOTS, ...HORSE_JOINT_PIVOTS].sort();
-const LEGS = ['frontLeft', 'frontRight', 'hindLeft', 'hindRight'];
+// The herd's horse is one skinned mesh drawn a handful of times twenty to fifty metres out.
+const HORSE_TRIANGLES = Object.freeze({ min: 6000, max: 11000 });
+// Poses the skin must take without tearing (local turns, radians): a gallop's reach and gather, the
+// neck down to the grass, a hind cocked at rest.
+const TEST_POSES = Object.freeze({
+    reach: {
+        chest: [-0.06, 0, 0],
+        pelvis: [0.08, 0, 0],
+        neck0: [0.25, 0, 0],
+        head: [-0.15, 0, 0],
+        scapulaL: [-0.22, 0, 0],
+        humerusL: [-0.35, 0, 0],
+        forearmL: [-0.45, 0, 0],
+        foreCannonL: [0.35, 0, 0],
+        humerusR: [0.2, 0, 0],
+        forearmR: [-0.9, 0, 0],
+        foreCannonR: [1.9, 0, 0],
+        forePasternR: [0.9, 0, 0],
+        femurL: [0.45, 0, 0],
+        tibiaL: [0.15, 0, 0],
+        hindCannonL: [0.25, 0, 0],
+        femurR: [0.2, 0, 0],
+        tibiaR: [0.35, 0, 0],
+        hindCannonR: [-0.8, 0, 0],
+        hindPasternR: [0.9, 0, 0],
+        tail0: [0.8, 0, 0],
+        tail1: [0.3, 0, 0.3],
+        tail3: [0.2, 0, -0.4],
+    },
+    gather: {
+        chest: [0.06, 0, 0],
+        pelvis: [-0.1, 0, 0],
+        humerusL: [0.15, 0, 0],
+        forearmL: [-0.7, 0, 0],
+        foreCannonL: [1.6, 0, 0],
+        forePasternL: [0.8, 0, 0],
+        femurL: [-0.55, 0, 0],
+        tibiaL: [0.35, 0, 0],
+        hindCannonL: [-0.9, 0, 0],
+        hindPasternL: [0.7, 0, 0],
+        femurR: [-0.45, 0, 0],
+        tibiaR: [0.3, 0, 0],
+        hindCannonR: [-0.7, 0, 0],
+    },
+    graze: {
+        neck0: [1.05, 0.15, 0],
+        neck1: [0.55, 0.1, 0],
+        neck2: [0.33, 0, 0],
+        head: [-1.2, 0.1, 0.1],
+        jaw: [0.2, 0.04, 0],
+        earL: [-0.3, 0.9, 0.2],
+        earR: [0.25, 0, -0.1],
+    },
+    rest: {
+        pelvis: [0, 0, 0.05],
+        femurR: [-0.08, 0, 0],
+        tibiaR: [0.05, 0, 0],
+        hindCannonR: [-0.32, 0, 0],
+        hindPasternR: [1.0, 0, 0],
+        hindHoofR: [0.35, 0, 0],
+        earL: [0.15, 0, 0.75],
+        earR: [0.15, 0, -0.75],
+    },
+});
 // The fields draw a couple of hundred of these trees: each keeps its sprays to Summer's grove counts.
 const MAX_SITES = 300;
 
@@ -203,75 +264,13 @@ function stubTextureLoader() {
     };
 }
 
-/** The horse's manifest record. */
-function horseRecord() {
-    return readManifest().assets.find((entry) => entry.kind === 'horse');
-}
-
-/**
- * Each vertex's part id, decoded from the red channel the way a vertex stage would (`raw`), and
- * the part it mostly moves with (`parts`): the band of skin round a part whose weight on the part's
- * root joint is under a half stays mostly with the trunk, so it counts as the body's.
- */
-function horseParts(geometry, partScale = horseRecord().partScale) {
-    const { color, _rig: rig } = geometry.attributes;
-    const raw = new Uint8Array(color.count);
-    const parts = new Uint8Array(color.count);
-    let worst = 0;
-    for (let index = 0; index < color.count; index++) {
-        const scaled = color.getX(index) * partScale;
-        raw[index] = Math.round(scaled);
-        parts[index] = rig && rig.getX(index) < 0.5 ? GRAINFIELDS_HORSE_PARTS.body : raw[index];
-        worst = Math.max(worst, Math.abs(scaled - raw[index]));
-    }
-    return { parts, raw, worst };
-}
-
-/** Bounds, centroid and vertex count of each part, keyed by part id. */
-function partStats(geometry, parts) {
-    const { position } = geometry.attributes;
-    const stats = new Map();
-    for (let index = 0; index < position.count; index++) {
-        const point = [position.getX(index), position.getY(index), position.getZ(index)];
-        if (!stats.has(parts[index])) {
-            stats.set(parts[index], {
-                count: 0, min: [...point], max: [...point], sum: [0, 0, 0],
-            });
-        }
-        const entry = stats.get(parts[index]);
-        entry.count += 1;
-        for (let axis = 0; axis < 3; axis++) {
-            entry.min[axis] = Math.min(entry.min[axis], point[axis]);
-            entry.max[axis] = Math.max(entry.max[axis], point[axis]);
-            entry.sum[axis] += point[axis];
-        }
-    }
-    for (const entry of stats.values()) entry.centre = entry.sum.map((value) => value / entry.count);
-    return stats;
-}
-
-/** How many connected regions the vertices of each part form over the triangle edges. */
-function partRegions(geometry, parts) {
-    const parent = Array.from({ length: parts.length }, (_, index) => index);
-    const find = (vertex) => {
-        let root = vertex;
-        while (parent[root] !== root) root = parent[root];
-        return root;
-    };
-    const index = geometry.index.array;
-    for (let corner = 0; corner < index.length; corner += 3) {
-        for (let side = 0; side < 3; side++) {
-            const a = index[corner + side];
-            const b = index[corner + ((side + 1) % 3)];
-            if (parts[a] === parts[b]) parent[find(a)] = find(b);
-        }
-    }
-    const regions = new Map();
-    for (let vertex = 0; vertex < parts.length; vertex++) {
-        if (!regions.has(parts[vertex])) regions.set(parts[vertex], new Set());
-        regions.get(parts[vertex]).add(find(vertex));
-    }
-    return new Map([...regions].map(([part, roots]) => [part, roots.size]));
+/** A vertex's bones and their weights (0..1), from the horse's `_bones` and `_weights`. */
+function horseSkin(geometry) {
+    const { _bones: bones, _weights: weights } = geometry.attributes;
+    return (v) => ({
+        bones: [bones.getX(v), bones.getY(v), bones.getZ(v), bones.getW(v)],
+        weights: [weights.getX(v), weights.getY(v), weights.getZ(v), weights.getW(v)],
+    });
 }
 
 const parsed = { trees: {}, foliage: null, horse: null };
@@ -436,13 +435,10 @@ describe('Grainfields asset pack on disk', () => {
                 }
             }
             if (entry.kind === 'horse') {
-                const { geometry, pivots } = parsed.horse;
-                expect(entry).toMatchObject({ name: 'grainfields-horse', partScale: 8 });
+                const { geometry, skeleton } = parsed.horse;
+                expect(entry).toMatchObject({ name: 'grainfields-horse', bones: skeleton.length });
                 expect(entry.triangles).toBe(triangles(geometry));
                 expect(entry.vertices).toBe(geometry.attributes.position.count);
-                expect(entry.parts).toEqual(GRAINFIELDS_HORSE_PARTS);
-                // The record and the file carry the same pivots.
-                expect(entry.pivots).toEqual(pivots);
                 // The breed's size, as measured on the mesh.
                 expect(entry.withersHeight).toBeGreaterThan(1.3);
                 expect(entry.withersHeight).toBeLessThan(1.4);
@@ -864,11 +860,12 @@ describe('Grainfields far-belt sprite sheet', () => {
 });
 
 describe('Grainfields horse', () => {
-    it('is a compact, texture-free GLB of one quantised mesh: position, normal, colour and skin weights', () => {
+    it('is a compact, texture-free GLB of one quantised, skinned mesh and its skeleton', () => {
         const { json } = readGlb(HORSE_FILE);
         expect(json.extensionsUsed).toContain('KHR_mesh_quantization');
         expect(json.extensionsUsed || []).not.toContain('EXT_meshopt_compression');
         expect(json.extensionsUsed || []).not.toContain('KHR_draco_mesh_compression');
+        // (Its skeleton is the theme's own, in the extras: no glTF skin, no animations.)
         for (const key of ['textures', 'images', 'materials', 'animations', 'skins']) {
             expect(json[key] ?? [], key).toHaveLength(0);
         }
@@ -883,22 +880,24 @@ describe('Grainfields horse', () => {
         expect(primitives).toHaveLength(1);
         expect(primitives[0].mode ?? 4).toBe(4);
         const { attributes } = primitives[0];
-        expect(Object.keys(attributes).sort()).toEqual(['COLOR_0', 'NORMAL', 'POSITION', '_RIG']);
+        expect(Object.keys(attributes).sort()).toEqual(['COLOR_0', 'NORMAL', 'POSITION', '_BONES', '_MASK', '_WEIGHTS']);
         const accessor = (semantic) => json.accessors[attributes[semantic]];
-        // Positions int16, normals int8, colour four normalised unsigned bytes.
+        // Positions int16, normals int8, the paint and the masks four normalised unsigned bytes.
         expect(accessor('POSITION')).toMatchObject({ componentType: 5122, normalized: true, type: 'VEC3' });
         expect(accessor('NORMAL')).toMatchObject({ componentType: 5120, normalized: true, type: 'VEC3' });
         expect(accessor('COLOR_0')).toMatchObject({ componentType: 5121, normalized: true, type: 'VEC4' });
-        // The skin's weights, four normalised unsigned bytes too.
-        expect(accessor('_RIG')).toMatchObject({ componentType: 5121, normalized: true, type: 'VEC4' });
+        expect(accessor('_MASK')).toMatchObject({ componentType: 5121, normalized: true, type: 'VEC4' });
+        // The skin: four bone indices (plain bytes) and their weights (normalised bytes).
+        expect(accessor('_BONES')).toMatchObject({ componentType: 5121, type: 'VEC4' });
+        expect(accessor('_BONES').normalized).toBeUndefined();
+        expect(accessor('_WEIGHTS')).toMatchObject({ componentType: 5121, normalized: true, type: 'VEC4' });
         // Sixteen-bit indices.
         expect(json.accessors[primitives[0].indices].componentType).toBe(5123);
         const meta = json.scenes[0].extras;
-        expect(meta).toMatchObject({
-            schemaVersion: GRAINFIELDS_ASSET_SCHEMA, name: 'grainfields-horse', partScale: 8,
-        });
-        expect(meta.parts).toEqual(GRAINFIELDS_HORSE_PARTS);
-        expect(Object.keys(meta.pivots).sort()).toEqual(HORSE_PIVOT_NAMES);
+        expect(meta).toMatchObject({ schemaVersion: GRAINFIELDS_ASSET_SCHEMA, name: 'grainfields-horse', bones: 38 });
+        expect(meta.skeleton).toHaveLength(38);
+        expect(meta.skeleton.map((bone) => bone.name)).toEqual(expect.arrayContaining([...HORSE_BONES]));
+        expect(Object.keys(meta.landmarks).sort()).toEqual(['eyes', 'headForward', 'headUp', 'muzzle', 'nostrils']);
         expect(meta.triangles).toBe(json.accessors[primitives[0].indices].count / 3);
     });
 
@@ -906,10 +905,13 @@ describe('Grainfields horse', () => {
         const { geometry } = parsed.horse;
         expect(geometry.isBufferGeometry).toBe(true);
         expect(geometry.name).toBe('horse');
-        expect(Object.keys(geometry.attributes).sort()).toEqual(['_rig', 'color', 'normal', 'position']);
+        expect(Object.keys(geometry.attributes).sort()).toEqual(['_bones', '_mask', '_weights', 'color', 'normal',
+            'position']);
         const { position, normal, color } = geometry.attributes;
-        expect(geometry.attributes._rig.count).toBe(position.count);
-        expect(geometry.attributes._rig.itemSize).toBe(4);
+        for (const name of ['_bones', '_mask', '_weights']) {
+            expect(geometry.attributes[name].count, name).toBe(position.count);
+            expect(geometry.attributes[name].itemSize, name).toBe(4);
+        }
         expect(position.array).toBeInstanceOf(Float32Array);
         expect(position.normalized).toBe(false);
         expect(finite(position.array)).toBe(true);
@@ -962,277 +964,230 @@ describe('Grainfields horse', () => {
         expect(inward).toBe(0);
     });
 
-    it('tags every vertex with one of the seven parts, each where it belongs', () => {
-        const { geometry } = parsed.horse;
-        const { parts, raw, worst } = horseParts(geometry);
-        // The red channel encodes whole part ids.
-        expect(worst).toBeLessThan(0.02);
-        const ids = GRAINFIELDS_HORSE_PARTS;
-        expect([...new Set(raw)].sort()).toEqual(Object.values(ids).sort());
-        expect([...new Set(parts)].sort()).toEqual(Object.values(ids).sort());
-        const stats = partStats(geometry, parts);
-        const body = stats.get(ids.body);
-        const neck = stats.get(ids.neck);
-        const tail = stats.get(ids.tail);
-        for (const [id, entry] of stats) expect(entry.count, `part ${id}`).toBeGreaterThan(50);
-        // The withers stand about 1.35 m; the trunk is a stocky pony's, 1.4 to 2 m long.
-        expect(body.max[1]).toBeGreaterThan(1.3);
-        expect(body.max[1]).toBeLessThan(1.4);
-        expect(body.max[2] - body.min[2]).toBeGreaterThan(1.4);
-        expect(body.max[2] - body.min[2]).toBeLessThan(2.05);
-        // The deep barrel: the belly well under the half-way mark of the withers.
-        expect(body.min[1]).toBeLessThan(0.7);
-        // The neck and head reach forward and up, beyond the chest and above the back.
-        expect(neck.max[2]).toBeGreaterThan(body.max[2] + 0.4);
-        expect(neck.max[1]).toBeGreaterThan(body.max[1] + 0.4);
-        expect(neck.centre[2]).toBeGreaterThan(body.max[2]);
-        expect(neck.centre[1]).toBeGreaterThan(body.centre[1] + 0.3);
-        // The tail falls behind the quarters, below the croup.
-        expect(tail.min[2]).toBeLessThan(body.min[2]);
-        expect(tail.centre[2]).toBeLessThan(body.centre[2] - 0.6);
-        expect(tail.max[1]).toBeLessThan(body.max[1]);
-        expect(tail.min[1]).toBeLessThan(body.min[1]);
-        // The legs stand under the body, on the ground: left (+x) and right, front and hind.
-        for (const name of LEGS) {
-            const leg = stats.get(ids[name]);
-            expect(leg.min[1], name).toBeCloseTo(0, 4);
-            expect(leg.max[1], name).toBeLessThan(body.centre[1]);
-            expect(leg.centre[1], name).toBeLessThan(body.min[1]);
-            if (name.endsWith('Left')) expect(leg.min[0], name).toBeGreaterThan(0);
-            else expect(leg.max[0], name).toBeLessThan(0);
-            if (name.startsWith('front')) {
-                expect(leg.centre[2], name).toBeGreaterThan(0.2);
-                expect(leg.centre[2], name).toBeLessThan(body.max[2]);
-            } else {
-                expect(leg.centre[2], name).toBeLessThan(-0.2);
-                expect(leg.centre[2], name).toBeGreaterThan(body.min[2]);
-            }
-        }
-        // Mirrored: the right legs are the left ones reflected.
-        expect(stats.get(ids.frontRight).count).toBe(stats.get(ids.frontLeft).count);
-        expect(stats.get(ids.hindRight).count).toBe(stats.get(ids.hindLeft).count);
-        expect(stats.get(ids.frontRight).min[0]).toBeCloseTo(-stats.get(ids.frontLeft).max[0], 4);
-    });
-
-    it('keeps each part one clean, connected region', () => {
-        const { geometry } = parsed.horse;
-        const { parts } = horseParts(geometry);
-        const regions = partRegions(geometry, parts);
-        for (const [name, id] of Object.entries(GRAINFIELDS_HORSE_PARTS)) expect(regions.get(id), name).toBe(1);
-    });
-
-    it('paints a soft dark mask on the hair and the points, a light one on the muzzle and belly', () => {
-        const { geometry } = parsed.horse;
-        const { parts, raw } = horseParts(geometry);
-        const { color, position } = geometry.attributes;
-        const ids = GRAINFIELDS_HORSE_PARTS;
-        const dark = (index) => color.getY(index);
-        const light = (index) => color.getZ(index);
-        const tail = [];
-        const back = [];
-        const neckDark = [];
-        let soft = 0;
-        let hooves = 0;
-        let forward = -Infinity;
-        for (let index = 0; index < color.count; index++) {
-            // Alpha is 1 everywhere.
-            expect(color.getW(index)).toBe(1);
-            const y = position.getY(index);
-            if (parts[index] === ids.tail) tail.push(dark(index));
-            // (The back proper: behind the withers' mane, before the dock.)
-            const z = position.getZ(index);
-            if (raw[index] === ids.body && y > 0.9 && z > -0.5 && z < 0.2) back.push(dark(index));
-            if (parts[index] === ids.neck) neckDark.push(dark(index) > 0.9 ? 1 : 0);
-            if (dark(index) > 0.1 && dark(index) < 0.9) soft += 1;
-            if (y < 0.1) {
-                // The hooves and pasterns are dark.
-                expect(dark(index)).toBeGreaterThan(0.9);
-                hooves += 1;
-            }
-            // Nothing is both dark and light.
-            expect(light(index)).toBeLessThanOrEqual(1 - dark(index) + 0.01);
-            // Light only on the muzzle and the belly, never on the back.
-            if (light(index) > 0.5) {
-                const muzzle = parts[index] === ids.neck && position.getZ(index) > 1.2;
-                const belly = parts[index] === ids.body && y < 0.9;
-                expect(muzzle || belly, `light vertex ${index}`).toBe(true);
-            }
-            if (parts[index] === ids.neck) forward = Math.max(forward, position.getZ(index));
-        }
-        expect(hooves).toBeGreaterThan(20);
-        // The tail is hair; the coat over the barrel and back is not.
-        expect(mean(tail)).toBeGreaterThan(0.9);
-        expect(mean(back)).toBeLessThan(0.05);
-        // The neck carries a heavy mane and a forelock, but most of it is coat.
-        expect(mean(neckDark)).toBeGreaterThan(0.15);
-        expect(mean(neckDark)).toBeLessThan(0.6);
-        // The edges are soft.
-        expect(soft).toBeGreaterThan(50);
-        // The lips are the palest of all.
-        let lips = 0;
-        let lipCount = 0;
-        for (let index = 0; index < color.count; index++) {
-            if (parts[index] === ids.neck && position.getZ(index) > forward - 0.05) {
-                lips += light(index);
-                lipCount += 1;
-            }
-        }
-        expect(lipCount).toBeGreaterThan(3);
-        expect(lips / lipCount).toBeGreaterThan(0.6);
-        // The belly is pale underneath.
-        let belly = 0;
-        for (let index = 0; index < color.count; index++) {
-            if (parts[index] === ids.body && light(index) > 0.5) belly += 1;
-        }
-        expect(belly).toBeGreaterThan(20);
-    });
-
-    it('sets every pivot inside the body, at its own joint', () => {
-        const { geometry, pivots } = parsed.horse;
-        expect(Object.keys(pivots).sort()).toEqual(HORSE_PIVOT_NAMES);
-        const { parts } = horseParts(geometry);
-        const stats = partStats(geometry, parts);
-        const ids = GRAINFIELDS_HORSE_PARTS;
-        const body = stats.get(ids.body);
-        for (const name of HORSE_ROOT_PIVOTS) {
-            const pivot = pivots[name];
-            expect(pivot, name).toHaveLength(3);
-            expect(pivot.every(Number.isFinite), name).toBe(true);
+    it('is skinned to a mirrored skeleton whose joints stand inside the horse, down each leg in order', () => {
+        const { geometry, skeleton } = parsed.horse;
+        const rig = createRig(skeleton);
+        const head = (name) => skeleton[rig.index[name]].head;
+        const { min, max } = geometry.boundingBox;
+        skeleton.forEach((bone) => {
             for (let axis = 0; axis < 3; axis++) {
-                expect(pivot[axis], `${name}[${axis}]`).toBeGreaterThan(body.min[axis]);
-                expect(pivot[axis], `${name}[${axis}]`).toBeLessThan(body.max[axis]);
+                expect(bone.head[axis], `${bone.name}[${axis}]`).toBeGreaterThan([min.x, min.y, min.z][axis]);
+                expect(bone.head[axis], `${bone.name}[${axis}]`).toBeLessThan([max.x, max.y, max.z][axis]);
             }
-        }
-        // The neck turns at its base, in front of the shoulders and high in the chest, behind
-        // everything of the neck and head.
-        const neck = stats.get(ids.neck);
-        expect(pivots.neck[0]).toBe(0);
-        expect(pivots.neck[1]).toBeGreaterThan(1.0);
-        expect(pivots.neck[2]).toBeGreaterThan(pivots.frontLeft[2]);
-        expect(pivots.neck[2]).toBeLessThan(neck.centre[2]);
-        expect(pivots.neck[1]).toBeLessThan(neck.centre[1]);
-        // Each leg turns above itself, at the shoulder or hip on its own side.
-        for (const name of LEGS) {
-            const leg = stats.get(ids[name]);
-            const pivot = pivots[name];
-            expect(pivot[1], name).toBeGreaterThan(leg.max[1]);
-            expect(Math.sign(pivot[0]), name).toBe(name.endsWith('Left') ? 1 : -1);
-            expect(pivot[0], name).toBeGreaterThan(leg.min[0] - 0.05);
-            expect(pivot[0], name).toBeLessThan(leg.max[0] + 0.05);
-            expect(pivot[2], name).toBeGreaterThan(leg.min[2] - 0.15);
-            expect(pivot[2], name).toBeLessThan(leg.max[2] + 0.15);
-        }
-        expect(pivots.frontRight).toEqual([-pivots.frontLeft[0], pivots.frontLeft[1], pivots.frontLeft[2]]);
-        expect(pivots.hindRight).toEqual([-pivots.hindLeft[0], pivots.hindLeft[1], pivots.hindLeft[2]]);
-        // The tail turns at the root of the dock, at the top of the tail.
-        const tail = stats.get(ids.tail);
-        expect(pivots.tail[0]).toBe(0);
-        expect(pivots.tail[2]).toBeLessThan(pivots.hindLeft[2]);
-        expect(pivots.tail[2]).toBeGreaterThan(tail.min[2]);
-        expect(pivots.tail[1]).toBeGreaterThan(tail.max[1] - 0.15);
-        // The joints down the left legs, inside their legs, in order down them: the knee and the
-        // hock, then the fetlocks just over the hooves.
-        for (const name of HORSE_JOINT_PIVOTS) {
-            expect(pivots[name], name).toHaveLength(3);
-            expect(pivots[name].every(Number.isFinite), name).toBe(true);
-        }
-        const front = stats.get(ids.frontLeft);
-        const hind = stats.get(ids.hindLeft);
-        for (const [joint, leg, root] of [['knee', front, 'frontLeft'], ['frontFetlock', front, 'frontLeft'],
-            ['hock', hind, 'hindLeft'], ['hindFetlock', hind, 'hindLeft']]) {
-            const pivot = pivots[joint];
-            for (let axis = 0; axis < 3; axis++) {
-                expect(pivot[axis], `${joint}[${axis}]`).toBeGreaterThan(leg.min[axis] - 0.02);
-                expect(pivot[axis], `${joint}[${axis}]`).toBeLessThan(leg.max[axis] + 0.02);
+            // A bone on the left has its twin on the right; one on the middle line has x = 0.
+            const twin = bone.name.endsWith('L') ? `${bone.name.slice(0, -1)}R` : null;
+            if (twin) expect(head(twin), twin).toEqual([-bone.head[0], bone.head[1], bone.head[2]]);
+            else if (!bone.name.endsWith('R')) expect(bone.head[0], bone.name).toBe(0);
+        });
+        // Down each leg, each joint lower than the one above it; the hooves' coffins just over the ground.
+        const fore = ['scapulaL', 'humerusL', 'forearmL', 'foreCannonL', 'forePasternL', 'foreHoofL'];
+        const hind = ['femurL', 'tibiaL', 'hindCannonL', 'hindPasternL', 'hindHoofL'];
+        for (const chain of [fore, hind]) {
+            for (let k = 1; k < chain.length; k++) {
+                expect(head(chain[k])[1], chain[k]).toBeLessThan(head(chain[k - 1])[1]);
+                expect(skeleton[rig.index[chain[k]]].parent).toBe(rig.index[chain[k - 1]]);
             }
-            expect(pivot[1], joint).toBeLessThan(pivots[root][1]);
+            expect(head(chain[chain.length - 1])[1]).toBeLessThan(0.08);
         }
-        expect(pivots.knee[1]).toBeGreaterThan(pivots.frontFetlock[1] + 0.2);
-        expect(pivots.hock[1]).toBeGreaterThan(pivots.hindFetlock[1] + 0.2);
-        expect(pivots.frontFetlock[1]).toBeLessThan(0.2);
-        // The head nods at the atlas, high in the neck, far up and forward of the neck's base; the
-        // ears sit on top of the head.
-        expect(pivots.poll[0]).toBe(0);
-        expect(pivots.poll[1]).toBeGreaterThan(pivots.neck[1] + 0.4);
-        expect(pivots.poll[2]).toBeGreaterThan(pivots.neck[2] + 0.3);
-        expect(pivots.poll[1]).toBeLessThan(neck.max[1]);
-        expect(pivots.ear[1]).toBeGreaterThan(pivots.poll[1]);
-        expect(pivots.ear[0]).toBeGreaterThan(0);
+        expect(head('scapulaL')[2]).toBeGreaterThan(0.2);
+        expect(head('femurL')[2]).toBeLessThan(-0.3);
+        // The neck rises from the chest to the atlas; the tail falls from the croup.
+        const neck = ['neck0', 'neck1', 'neck2', 'head'];
+        for (let k = 1; k < neck.length; k++) {
+            expect(head(neck[k])[1]).toBeGreaterThan(head(neck[k - 1])[1]);
+            expect(head(neck[k])[2]).toBeGreaterThan(head(neck[k - 1])[2]);
+        }
+        for (let k = 1; k < 6; k++) expect(head(`tail${k}`)[1]).toBeLessThan(head(`tail${k - 1}`)[1]);
+        // The eyes are a mirrored pair on the head, the nostrils by the muzzle.
+        const { landmarks } = parsed.horse;
+        expect(landmarks.eyes).toHaveLength(2);
+        expect(landmarks.eyes[1]).toEqual([-landmarks.eyes[0][0], landmarks.eyes[0][1], landmarks.eyes[0][2]]);
+        expect(landmarks.eyes[0][1]).toBeGreaterThan(head('neck2')[1]);
+        landmarks.nostrils.forEach((nostril) => {
+            expect(Math.hypot(...nostril.map((v, k) => v - landmarks.muzzle[k]))).toBeLessThan(0.1);
+        });
     });
 
-    it('carries skin weights that fold each limb at its joints and never tear it from the trunk', () => {
-        const { geometry } = parsed.horse;
-        const { raw } = horseParts(geometry);
-        const ids = GRAINFIELDS_HORSE_PARTS;
-        const { _rig: rig, position } = geometry.attributes;
-        const legs = new Set(LEGS.map((name) => ids[name]));
-        let hooves = 0;
-        let muzzle = 0;
-        let ears = 0;
+    it('weighs every vertex on four bones at most, its own side\'s, rigid at the hooves and over the face', () => {
+        const { geometry, skeleton, landmarks } = parsed.horse;
+        const { position } = geometry.attributes;
+        const skin = horseSkin(geometry);
+        const names = skeleton.map((bone) => bone.name);
+        const side = (name) => (/[LR]$/.test(name) ? name.slice(-1) : null);
         const wrong = [];
-        for (let index = 0; index < rig.count; index++) {
-            const w = [rig.getX(index), rig.getY(index), rig.getZ(index), rig.getW(index)];
-            if (w.some((value) => !(value >= 0 && value <= 1))) wrong.push(`range ${index}`);
-            const y = position.getY(index);
-            // The trunk moves only as the body does.
-            if (raw[index] === ids.body && w.some((value) => value !== 0)) wrong.push(`body ${index}`);
-            if (legs.has(raw[index])) {
-                // A leg's lower joints only below them; at the hoof the whole leg folds.
-                if (w[1] > w[0] + 1e-6 || w[2] > w[1] + 1e-6) wrong.push(`leg order ${index}`);
-                if (y > 0.6 && w[1] !== 0) wrong.push(`knee high ${index}`);
-                if (y < 0.06) {
-                    if (w[0] !== 1 || w[1] !== 1 || w[2] !== 1 || w[3] !== 0) wrong.push(`hoof ${index}`);
-                    hooves += 1;
-                }
+        let hooves = 0;
+        let face = 0;
+        let tips = 0;
+        for (let v = 0; v < position.count; v++) {
+            const { bones, weights } = skin(v);
+            const total = weights.reduce((a, b) => a + b, 0);
+            if (Math.abs(total - 1) > 1e-6) wrong.push(`sum ${v}`);
+            if (bones.some((b) => b >= skeleton.length)) wrong.push(`bone ${v}`);
+            const x = position.getX(v);
+            const y = position.getY(v);
+            const z = position.getZ(v);
+            bones.forEach((b, k) => {
+                if (weights[k] <= 0) return;
+                const s = side(names[b]);
+                // Nothing on one flank follows a leg or an ear of the other.
+                if ((s === 'L' && x < -0.04) || (s === 'R' && x > 0.04)) wrong.push(`${names[b]} at x ${x.toFixed(2)}`);
+                // Low down, only the legs and the tail's end.
+                if (y < 0.3 && !/(Cannon|Pastern|Hoof)[LR]$|^tail[3-5]$/.test(names[b])) wrong.push(`${names[b]} at y ${y.toFixed(2)}`);
+            });
+            const heaviest = names[bones[weights.indexOf(Math.max(...weights))]];
+            if (y < 0.025) {
+                hooves += 1;
+                if (!/Hoof[LR]$/.test(heaviest) || Math.max(...weights) < 0.9) wrong.push(`hoof ${v}`);
             }
-            if (raw[index] === ids.neck && position.getZ(index) > 1.3) {
-                // The muzzle nods with the head, at the top of the neck.
-                if (w[1] !== 1 || w[2] !== 1) wrong.push(`muzzle ${index}`);
-                muzzle += 1;
+            if (Math.hypot(x - landmarks.muzzle[0], y - landmarks.muzzle[1], z - landmarks.muzzle[2]) < 0.07) {
+                face += 1;
+                if (bones.some((b, k) => weights[k] > 0 && !['head', 'jaw'].includes(names[b]))) wrong.push(`muzzle ${v}`);
             }
-            if (raw[index] === ids.neck && w[3] > 0.99) ears += 1;
-            if (raw[index] === ids.tail && y < 0.6 && w[0] !== 1) wrong.push(`tail ${index}`);
+            if (z < -0.85 && y < 0.5 && y > 0.25) {
+                tips += 1;
+                if (bones.some((b, k) => weights[k] > 0 && !/^tail[3-5]$/.test(names[b]))) wrong.push(`tail tip ${v}`);
+            }
         }
         expect(wrong.slice(0, 10)).toEqual([]);
         expect(hooves).toBeGreaterThan(20);
-        expect(muzzle).toBeGreaterThan(20);
-        expect(ears).toBeGreaterThan(10);
-        // Down the tail its weight grows; up the neck too.
-        const along = (part, channel, from, to) => {
-            let sum = 0;
-            let count = 0;
-            for (let index = 0; index < rig.count; index++) {
-                const y = position.getY(index);
-                if (raw[index] === part && y >= from && y < to) {
-                    sum += channel(index);
-                    count += 1;
-                }
-            }
-            return sum / Math.max(1, count);
-        };
-        expect(along(ids.tail, (i) => rig.getY(i), 0.3, 0.6)).toBeGreaterThan(along(ids.tail, (i) => rig.getY(i), 0.8, 1.1));
-        expect(along(ids.neck, (i) => rig.getZ(i), 1.5, 1.7)).toBeGreaterThan(along(ids.neck, (i) => rig.getZ(i), 1.05, 1.25));
-        // No tear: where two parts meet along an edge, whatever moves away from the trunk there
-        // barely moves (its weight on its part's root joint has faded out).
-        const index = geometry.index.array;
-        let seams = 0;
-        let worst = 0;
-        for (let corner = 0; corner < index.length; corner += 3) {
-            for (let side = 0; side < 3; side++) {
-                const a = index[corner + side];
-                const b = index[corner + ((side + 1) % 3)];
-                if (raw[a] === raw[b]) continue;
-                seams += 1;
-                if (raw[a] !== ids.body) worst = Math.max(worst, rig.getX(a));
-                if (raw[b] !== ids.body) worst = Math.max(worst, rig.getX(b));
-            }
+        expect(face).toBeGreaterThan(5);
+        expect(tips).toBeGreaterThan(10);
+        // Mirrored: a vertex and its mirror image hang on mirrored bones with the same weights.
+        const at = new Map();
+        for (let v = 0; v < position.count; v++) {
+            at.set(`${position.getX(v).toFixed(4)},${position.getY(v).toFixed(4)},${position.getZ(v).toFixed(4)}`, v);
         }
-        expect(seams).toBeGreaterThan(30);
-        // (A fifth of a joint's turn across one edge stretches the skin a centimetre or two.)
-        expect(worst).toBeLessThan(0.2);
+        const twin = (name) => (side(name) ? `${name.slice(0, -1)}${side(name) === 'L' ? 'R' : 'L'}` : name);
+        let pairs = 0;
+        for (let v = 0; v < position.count; v++) {
+            const mirror = at.get(`${(-position.getX(v)).toFixed(4)},${position.getY(v).toFixed(4)},${position.getZ(v).toFixed(4)}`);
+            if (mirror === undefined || mirror === v) continue;
+            pairs += 1;
+            const a = skin(v);
+            const b = skin(mirror);
+            // (Within a few bytes: each side's four heaviest bones were picked and rounded on its own.)
+            const mine = new Map(a.bones.map((bone, k) => [twin(names[bone]), a.weights[k]]));
+            const theirs = new Map(b.bones.map((bone, k) => [names[bone], b.weights[k]]));
+            const all = new Set([...mine.keys(), ...theirs.keys()]);
+            all.forEach((name) => {
+                expect(Math.abs((mine.get(name) || 0) - (theirs.get(name) || 0)), `vertex ${v} ${name}`)
+                    .toBeLessThanOrEqual(4.5 / 255);
+            });
+        }
+        expect(pairs).toBeGreaterThan(position.count * 0.8);
     });
 
-    it('refuses a horse written for another schema, missing its mesh or a pivot', async () => {
+    it('bends without tearing: posed through its own skin, no edge stretches far', () => {
+        const { geometry, skeleton } = parsed.horse;
+        const rig = createRig(skeleton);
+        const { position } = geometry.attributes;
+        const skin = horseSkin(geometry);
+        const index = geometry.index.array;
+        const rest = Float32Array.from(position.array.slice(0, position.count * 3));
+        for (let v = 0; v < position.count; v++) rest.set([position.getX(v), position.getY(v), position.getZ(v)], v * 3);
+        const rows = Array.from({ length: rig.count * SKIN_ROWS }, () => ({
+            x: 0, y: 0, z: 0, w: 1,
+        }));
+        const posed = new Float32Array(rest.length);
+        for (const [label, local] of Object.entries(TEST_POSES)) {
+            const pose = createPose(rig);
+            Object.entries(local).forEach(([name, angles]) => pose.local.set(angles, rig.index[name] * 3));
+            poseRig(rig, pose, {
+                x: 0, y: 1, z: 0, heading: 0, scale: 1,
+            });
+            writeSkinRows(rig, pose, 1, rows);
+            for (let v = 0; v < position.count; v++) {
+                const { bones, weights } = skin(v);
+                const p = rest.subarray(v * 3, v * 3 + 3);
+                const out = [0, 0, 0];
+                bones.forEach((b, k) => {
+                    if (weights[k] <= 0) return;
+                    const q = rows[b * SKIN_ROWS];
+                    const t = rows[b * SKIN_ROWS + 1];
+                    const cx = q.y * p[2] - q.z * p[1] + q.w * p[0];
+                    const cy = q.z * p[0] - q.x * p[2] + q.w * p[1];
+                    const cz = q.x * p[1] - q.y * p[0] + q.w * p[2];
+                    out[0] += weights[k] * ((p[0] + 2 * (q.y * cz - q.z * cy)) * t.w + t.x);
+                    out[1] += weights[k] * ((p[1] + 2 * (q.z * cx - q.x * cz)) * t.w + t.y);
+                    out[2] += weights[k] * ((p[2] + 2 * (q.x * cy - q.y * cx)) * t.w + t.z);
+                });
+                posed.set(out, v * 3);
+            }
+            const torn = new Set();
+            let stretched = 0;
+            let edges = 0;
+            let longest = 0;
+            for (let corner = 0; corner < index.length; corner += 3) {
+                for (let s = 0; s < 3; s++) {
+                    const a = index[corner + s] * 3;
+                    const b = index[corner + ((s + 1) % 3)] * 3;
+                    const before = Math.hypot(rest[a] - rest[b], rest[a + 1] - rest[b + 1], rest[a + 2] - rest[b + 2]);
+                    const after = Math.hypot(posed[a] - posed[b], posed[a + 1] - posed[b + 1], posed[a + 2] - posed[b + 2]);
+                    // (Stretch: on the inside of a folded joint the skin may crowd; it must not tear.)
+                    const ratio = after / before;
+                    longest = Math.max(longest, after - before);
+                    if (before > 0.02 && ratio > 3) torn.add(Math.min(a, b) * 65536 + Math.max(a, b));
+                    if (ratio > 1.6) stretched += 1;
+                    edges += 1;
+                }
+            }
+            expect(finite(posed), label).toBe(true);
+            // No edge longer by more than a hand's breadth, hardly any of a few centimetres pulled to three
+            // times its length (only in the armpit, where the inside of a reaching forearm parts from the
+            // chest), few past half as long again.
+            expect(longest, label).toBeLessThan(0.1);
+            expect(torn.size, label).toBeLessThanOrEqual(8);
+            expect(stretched / edges, label).toBeLessThan(0.04);
+        }
+    });
+
+    it('paints its hair, points, pale belly and muzzle, hooves, dark skin, the hair\'s freedom and its hollows', () => {
+        const { geometry, landmarks } = parsed.horse;
+        const { color, position, _mask: mask } = geometry.attributes;
+        const tail = [];
+        const back = [];
+        const belly = [];
+        const top = [];
+        const under = [];
+        const mane = { roots: [], tips: [] };
+        let hooves = 0;
+        const wrong = [];
+        for (let v = 0; v < color.count; v++) {
+            const [hair, points, light, ao] = [color.getX(v), color.getY(v), color.getZ(v), color.getW(v)];
+            const [hoof, skinMark, free] = [mask.getX(v), mask.getY(v), mask.getZ(v)];
+            const x = position.getX(v);
+            const y = position.getY(v);
+            const z = position.getZ(v);
+            if (z < -0.92 && y < 0.9 && y > 0.3) tail.push(hair);
+            if (y > 1.15 && z > -0.5 && z < 0.2) back.push(hair);
+            if (Math.abs(x) < 0.12 && y < 0.75 && y > 0.6 && z > -0.4 && z < 0.2) belly.push(light);
+            if (y > 1.15 && z > -0.5 && z < 0.2) top.push(ao);
+            if (y < 0.75 && y > 0.6 && z > -0.4 && z < 0.2 && Math.abs(x) < 0.1) under.push(ao);
+            if (y < 0.06) {
+                hooves += 1;
+                if (hoof < 0.9 || Math.max(hair, points) < 0.9) wrong.push(`hoof ${v}`);
+            }
+            // Pale only on the muzzle, round the eyes and under the barrel.
+            if (light > 0.5 && y > 0.95 && z < 0.9) wrong.push(`pale back ${v}`);
+            if (light > 0.01 && (hair > 0.9 || points > 0.9)) wrong.push(`pale hair ${v}`);
+            if (skinMark > 0.5 && Math.hypot(x - landmarks.muzzle[0], y - landmarks.muzzle[1], z - landmarks.muzzle[2]) > 0.16) {
+                wrong.push(`skin ${v}`);
+            }
+            if (free > hair + 0.01) wrong.push(`free coat ${v}`);
+            // The mane: free at its locks' ends, held at its roots along the crest.
+            if (hair > 0.9 && z > 0.3 && z < 0.9 && y > 1.2) (Math.abs(x) < 0.04 ? mane.roots : mane.tips).push(free);
+        }
+        expect(wrong.slice(0, 10)).toEqual([]);
+        expect(hooves).toBeGreaterThan(20);
+        expect(mean(tail)).toBeGreaterThan(0.9);
+        expect(mean(back)).toBeLessThan(0.05);
+        expect(mean(belly)).toBeGreaterThan(0.3);
+        // The hollows under the barrel are darker than the back in the open.
+        expect(mean(top)).toBeGreaterThan(mean(under) + 0.1);
+        expect(mean(mane.tips)).toBeGreaterThan(mean(mane.roots));
+    });
+
+    it('refuses a horse written for another schema, missing its mesh, its skin or its skeleton', async () => {
         const stale = await parseGlb(HORSE_FILE);
         const other = GRAINFIELDS_ASSET_SCHEMA + 1;
         stale.scene.userData.schemaVersion = other;
@@ -1242,17 +1197,20 @@ describe('Grainfields horse', () => {
         const bare = await parseGlb(HORSE_FILE);
         bare.scene.remove(bare.scene.children.find((entry) => entry.name === 'horse'));
         expect(() => parseGrainfieldsHorse(bare)).toThrow('[Grainfields] Asset is missing its "horse" primitive.');
-        const lame = await parseGlb(HORSE_FILE);
-        delete lame.scene.userData.pivots.hindRight;
-        expect(() => parseGrainfieldsHorse(lame)).toThrow('[Grainfields] Horse is missing its "hindRight" pivot.');
-        const bent = await parseGlb(HORSE_FILE);
-        bent.scene.userData.pivots.neck = [0, Number.NaN, 1];
-        expect(() => parseGrainfieldsHorse(bent)).toThrow('[Grainfields] Horse is missing its "neck" pivot.');
-        // Pivots are copies: changing the parsed ones leaves the file's alone.
+        const skinless = await parseGlb(HORSE_FILE);
+        skinless.scene.children[0].geometry.deleteAttribute('_weights');
+        expect(() => parseGrainfieldsHorse(skinless)).toThrow('[Grainfields] Horse is missing its "_weights" attribute.');
+        const boneless = await parseGlb(HORSE_FILE);
+        delete boneless.scene.userData.skeleton;
+        expect(() => parseGrainfieldsHorse(boneless)).toThrow('[Grainfields] Horse is missing its skeleton.');
+        const broken = await parseGlb(HORSE_FILE);
+        broken.scene.userData.skeleton[4].head = [0, Number.NaN, 1];
+        expect(() => parseGrainfieldsHorse(broken)).toThrow('[Grainfields] Horse\'s bone 4 is malformed.');
+        // The skeleton is a copy: changing the parsed one leaves the file's alone.
         const fresh = await parseGlb(HORSE_FILE);
         const horse = parseGrainfieldsHorse(fresh);
-        horse.pivots.tail[1] = 99;
-        expect(fresh.scene.userData.pivots.tail[1]).not.toBe(99);
+        horse.skeleton[1].head[1] = 99;
+        expect(fresh.scene.userData.skeleton[1].head[1]).not.toBe(99);
         horse.geometry.dispose();
     });
 });
@@ -1278,13 +1236,14 @@ describe('loading and releasing the Grainfields assets', () => {
 
         expect(Object.keys(assets).sort()).toEqual(['foliage', 'horse', 'impostors', 'trees']);
         expect(Object.keys(assets.trees)).toEqual(TREE_NAMES);
-        // The horse: a geometry in metres and its pivots, nothing else.
-        expect(Object.keys(assets.horse).sort()).toEqual(['geometry', 'pivots']);
+        // The horse: a skinned geometry in metres, its skeleton and its landmarks, nothing else.
+        expect(Object.keys(assets.horse).sort()).toEqual(['geometry', 'landmarks', 'skeleton']);
         expect(assets.horse.geometry.isBufferGeometry).toBe(true);
-        expect(Object.keys(assets.horse.geometry.attributes).sort()).toEqual(['_rig', 'color', 'normal', 'position']);
+        expect(Object.keys(assets.horse.geometry.attributes).sort()).toEqual(['_bones', '_mask', '_weights', 'color',
+            'normal', 'position']);
         expect(triangles(assets.horse.geometry)).toBe(triangles(parsed.horse.geometry));
-        expect(assets.horse.pivots).toEqual(parsed.horse.pivots);
-        expect(assets.horse.pivots).toEqual(horseRecord().pivots);
+        expect(assets.horse.skeleton).toEqual(parsed.horse.skeleton);
+        expect(assets.horse.landmarks).toEqual(parsed.horse.landmarks);
         for (const name of TREE_NAMES) {
             expect(assets.trees[name].name).toBe(name);
             expect(assets.trees[name].sites.count).toBe(parsed.trees[name].sites.count);
@@ -1391,7 +1350,7 @@ describe('loading and releasing the Grainfields assets', () => {
             expect.stringContaining('[Grainfields] The horse could not be read'),
             expect.objectContaining({ message: expect.stringContaining('Horse has asset schema') }),
         );
-        await failing((gltf) => { delete gltf.scene.userData.pivots.tail; });
+        await failing((gltf) => { delete gltf.scene.userData.skeleton; });
         await failing((gltf) => { gltf.scene.remove(gltf.scene.children[0]); });
         expect(warn).toHaveBeenCalledTimes(4);
         // A loader that throws before it returns a promise is a failed load too.

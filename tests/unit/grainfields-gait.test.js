@@ -1,34 +1,16 @@
 /**
- * Grainfields — the horse's gaits (grainfields-gait.js): the footfalls of each gait, a planted
- * hoof that stays put, the moment in the air of the canter and the gallop, and gaits that hand
- * over to each other without a jump.
+ * Grainfields — the horse's gaits (grainfields-gait.js): the footfalls of each gait, how the body
+ * rides and the neck nods through a stride, how a leg folds in the air, and gaits that hand over to
+ * each other without a jump. The legs solved to the ground are grainfields-horse.test.js's.
  */
 import { describe, expect, it } from 'vitest';
 import {
-    GAITS, GAIT_BREAKS, LEGS, LEG_LENGTH, createGaitState, gaitAt, gaitFor, legAt, stepGait,
+    GAITS, GAIT_BREAKS, LEGS, bodyAt, gaitAt, gaitFor, swingShape, wrap,
 } from '../../src/themes/grainfields/grainfields-gait.js';
 
 const LEG = Object.fromEntries(LEGS.map((name, i) => [name, i]));
 /** The shortest distance between two phases (cycles). */
 const apart = (a, b) => Math.abs(((b - a + 1.5) % 1) - 0.5);
-
-/** Run a gait at a steady speed for `seconds`, collecting each step's state (after a settling run). */
-function run(speed, seconds = 4, dt = 1 / 240, settle = 6) {
-    const state = createGaitState(0.1, 1);
-    for (let t = 0; t < settle; t += dt) stepGait(state, speed, dt);
-    const frames = [];
-    for (let t = 0; t < seconds; t += dt) {
-        stepGait(state, speed, dt);
-        frames.push({
-            t,
-            legs: state.legs.map((leg) => ({ ...leg })),
-            bob: state.bob,
-            pitch: state.pitch,
-            g: state.g,
-        });
-    }
-    return frames;
-}
 
 describe('Grainfields gaits', () => {
     it('asks for the gait its speed calls for, rising with it', () => {
@@ -77,77 +59,82 @@ describe('Grainfields gaits', () => {
         expect(left[LEG.hindRight]).toBeCloseTo(gallop[LEG.hindLeft], 9);
     });
 
-    it('keeps a planted hoof still while the body passes over it', () => {
-        for (const speed of [1.45, 3.8]) {
-            const frames = run(speed, 3, 1 / 480);
-            const leg = LEG.frontLeft;
-            // Where the hoof is on the ground: the body's travel less the leg's lean back.
-            let worst = 0;
-            let start = null;
-            frames.forEach((frame) => {
-                const l = frame.legs[leg];
-                const hoof = speed * frame.t - LEG_LENGTH * Math.sin(l.upper);
-                if (l.planted > 0.999) {
-                    if (start === null) start = hoof;
-                    worst = Math.max(worst, Math.abs(hoof - start));
-                } else start = null;
-            });
-            expect(worst, `slip at ${speed} m/s`).toBeLessThan(0.03);
+    it('rides the walk over its straight legs and the faster gaits on springs', () => {
+        const at = (g, phase) => bodyAt(gaitAt(g), phase);
+        const walk = gaitAt(1);
+        // The walk: the withers highest as a fore stands under them (mid-stance), the croup as a hind
+        // does; twice a stride each.
+        const foreMid = wrap(walk.offsets[LEG.frontLeft] + walk.duty / 2);
+        const hindMid = wrap(walk.offsets[LEG.hindLeft] + walk.duty / 2);
+        expect(at(1, foreMid).front).toBeCloseTo(walk.front, 2);
+        expect(at(1, hindMid).hind).toBeCloseTo(walk.hind, 2);
+        expect(at(1, foreMid + 0.25).front).toBeLessThan(0);
+        // The trot: lowest over the diagonal pair's mid-stance, highest in the air between.
+        const trot = gaitAt(2);
+        const pairMid = wrap(trot.offsets[LEG.hindLeft] + trot.duty / 2);
+        expect(at(2, pairMid).front).toBeLessThan(-trot.drop);
+        expect(at(2, pairMid + 0.25).front).toBeGreaterThan(-trot.drop);
+        // The canter and the gallop round and stretch the back once a stride and nod once; the walk
+        // nods twice, the trot hardly.
+        let walkNods = 0;
+        let gallopNods = 0;
+        let last = { walk: at(1, 0).nod, gallop: at(4, 0).nod };
+        for (let p = 0.005; p <= 1; p += 0.005) {
+            const w = at(1, p).nod;
+            const g = at(4, p).nod;
+            if (Math.sign(w) !== Math.sign(last.walk)) walkNods += 1;
+            if (Math.sign(g) !== Math.sign(last.gallop)) gallopNods += 1;
+            last = { walk: w, gallop: g };
         }
+        expect(walkNods).toBe(4);
+        expect(gallopNods).toBe(2);
+        expect(Math.abs(gaitAt(4).flex)).toBeGreaterThan(Math.abs(gaitAt(1).flex) * 4);
+        expect(gaitAt(2).nod).toBeLessThan(gaitAt(1).nod / 2);
+        // Standing still nothing moves.
+        Object.values(at(0, 0.3)).forEach((value) => expect(Math.abs(value)).toBe(0));
     });
 
-    it('folds the knee back and the hock forward in the air, never on the ground', () => {
-        const gait = gaitAt(4);
-        for (let psi = 0; psi < 1; psi += 0.01) {
-            const front = legAt(gait, true, psi, 0.5);
-            const hind = legAt(gait, false, psi, 0.5);
-            expect(front.lower).toBeGreaterThanOrEqual(0);
-            expect(hind.lower).toBeLessThanOrEqual(0);
-            if (psi < gait.duty) {
-                expect(front.lower).toBe(0);
-                expect(hind.lower).toBe(0);
+    it('folds a leg in the air and opens it again to land', () => {
+        const shape = (w) => swingShape(w, {});
+        for (const key of ['fold', 'knee', 'curl', 'reach']) {
+            expect(shape(0)[key], key).toBeCloseTo(0, 6);
+            expect(shape(1)[key], key).toBeCloseTo(0, 6);
+        }
+        // The knee folds most early in the swing, opens before the hoof reaches forward; the reach is
+        // late.
+        let kneePeak = 0;
+        let reachPeak = 0;
+        for (let w = 0; w <= 1; w += 0.01) {
+            if (shape(w).knee > shape(kneePeak).knee) kneePeak = w;
+            if (shape(w).reach > shape(reachPeak).reach) reachPeak = w;
+        }
+        expect(kneePeak).toBeLessThan(0.5);
+        expect(reachPeak).toBeGreaterThan(0.55);
+        expect(shape(0.9).knee).toBeLessThan(0.1);
+        // Each gait folds more than the one below it.
+        for (let g = 1; g < GAITS.length - 1; g++) {
+            for (const key of ['fold', 'knee', 'stifle', 'hock', 'curl', 'reach', 'load']) {
+                expect(GAITS[g + 1][key], `${GAITS[g + 1].name} ${key}`).toBeGreaterThan(GAITS[g][key]);
             }
         }
-        // Folded deepest a little before mid-swing.
-        const mid = legAt(gait, true, gait.duty + (1 - gait.duty) * 0.42, 0.5);
-        expect(mid.lower).toBeGreaterThan(gait.knee * 0.95);
     });
 
-    it('walks on two or more feet and gallops through a moment in the air, rising in it', () => {
-        const walk = run(1.45);
-        walk.forEach((frame) => {
-            const down = frame.legs.filter((l) => l.planted > 0.5).length;
-            expect(down).toBeGreaterThanOrEqual(2);
-        });
-        const gallop = run(11.8);
-        const airborne = gallop.filter((frame) => frame.legs.every((l) => l.planted < 0.01));
-        expect(airborne.length).toBeGreaterThan(0);
-        const bobAir = Math.max(...airborne.map((frame) => frame.bob));
-        const bobDown = Math.min(...gallop.map((frame) => frame.bob));
-        expect(bobAir).toBeGreaterThan(bobDown + 0.02);
-        // The body rocks fore and aft at the gallop, a few degrees.
-        const pitches = gallop.map((frame) => frame.pitch);
-        expect(Math.max(...pitches) - Math.min(...pitches)).toBeGreaterThan(0.02);
-        expect(Math.max(...pitches.map(Math.abs))).toBeLessThan(0.25);
-    });
-
-    it('breaks from one gait into the next over a stride, without a jump in any joint', () => {
-        const state = createGaitState(0, 1);
-        const dt = 1 / 120;
-        const frames = [];
-        for (let t = 0; t < 18; t += dt) {
-            // From a stand up to a gallop and back down, then a stand.
-            const speed = t < 8 ? (12 * t) / 8 : Math.max(0, 12 * (1 - (t - 8) / 8));
-            stepGait(state, speed, dt);
-            frames.push(state.legs.flatMap((l) => [l.upper, l.lower, l.fetlock]).concat(state.bob, state.pitch));
-        }
-        expect(frames.every((now) => now.every(Number.isFinite))).toBe(true);
+    it('breaks from one gait into the next without a jump in any number', () => {
+        let last = gaitAt(0);
+        const keys = ['freq', 'duty', 'fold', 'knee', 'stifle', 'hock', 'curl', 'load', 'drop', 'front', 'hind', 'flex',
+            'nod', 'carry'];
         let worst = 0;
-        for (let k = 1; k < frames.length; k++) {
-            for (let i = 0; i < frames[k].length; i++) worst = Math.max(worst, Math.abs(frames[k][i] - frames[k - 1][i]));
+        for (let g = 0.002; g <= 4; g += 0.002) {
+            const next = gaitAt(g);
+            for (const key of keys) worst = Math.max(worst, Math.abs(next[key] - last[key]));
+            for (let i = 0; i < 4; i++) worst = Math.max(worst, apart(next.offsets[i], last.offsets[i]));
+            last = { ...next, offsets: [...next.offsets] };
         }
-        // At 120 frames a second no joint turns more than a few degrees between frames.
-        expect(worst).toBeLessThan(0.2);
-        expect(state.g).toBeLessThan(0.5);
+        expect(worst).toBeLessThan(0.01);
+        // A pony's stride stays inside what its legs reach: the ground a hoof covers while it is down.
+        for (const gait of GAITS.slice(1)) {
+            const stance = (gait.speed * gait.duty) / gait.freq;
+            expect(stance, gait.name).toBeLessThan(1.1);
+        }
     });
 });

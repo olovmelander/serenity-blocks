@@ -12,8 +12,8 @@
  * few lengths behind and a little to one side, so the band strings out as she sets off, flows
  * round her turns and closes up when she stops. Each horse steers like an animal with a mass:
  * it accelerates, brakes and turns as hard as a horse can (the faster, the wider the turn), keeps
- * its own space from the others and goes round the shelterbelts. Its legs are its gait's
- * (grainfields-gait.js), from its speed; its neck, head, ears and tail are its business's.
+ * its own space from the others and goes round the shelterbelts. How it moves its legs, back,
+ * neck, head, ears and tail for its speed and its business is grainfields-horse-motion.js's.
  *
  * Where it is visible comes from the view (bearings, degrees right of the view axis: the frame's
  * edges and the stretches the board covers), set by the world: new grazing grounds are picked in
@@ -23,7 +23,6 @@ import {
     DEG, EYE, PLACES, TAU, clamp, mulberry32, pointAt, smooth,
 } from './grainfields-core.js';
 import { BELTS, PATH_POINTS } from './grainfields-plan.js';
-import { createGaitState, stepGait } from './grainfields-gait.js';
 
 /** The band's numbers (metres, m/s, seconds). */
 export const HERD = Object.freeze({
@@ -410,22 +409,14 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                 rank: i,
                 side: i === 0 ? 0 : ((i % 2) * 2 - 1) * (0.6 + rng() * 0.8),
                 seed: rng(),
-                gait: createGaitState(rng(), rng() < 0.5 ? 1 : -1),
-                // The quiet business, its spot and its clock.
+                // The quiet business, its spot and its clock; whether it grazes the verge's grass.
                 business: 'graze',
                 businessUntil: rng() * 8,
                 spotX: x,
                 spotZ: z,
                 lookYaw: 0,
-                // The pose that eases toward its goals.
-                neck: 0.95,
-                head: -0.25,
-                neckYaw: 0,
-                ears: 0,
-                tailLift: 0,
-                tailSwish: 0,
-                swishPhase: rng() * TAU,
-                rest: 0,
+                verge: false,
+                // Startled (1), easing back to calm (0).
                 alert: 0,
             };
         });
@@ -455,7 +446,13 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         };
         const move = planMove(kind, from, rng, stage);
         band.plan = {
-            name: move.name, route: makeRoute(move.points), pace: move.pace, settle: move.settle, s: 0, at: time,
+            name: move.name,
+            route: makeRoute(move.points),
+            pace: move.pace,
+            settle: move.settle,
+            s: 0,
+            at: time,
+            verge: Boolean(move.points[move.points.length - 1]?.verge),
         };
         band.trail = [{ x: lead.x, z: lead.z, s: 0 }];
         band.trailLength = 0;
@@ -475,6 +472,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
     const arrive = (time) => {
         const c = centreOf();
         band.centre = c;
+        const verge = Boolean(band.plan?.verge);
         band.drift = { x: (rng() - 0.5) * 0.12, z: (rng() - 0.5) * 0.12 };
         band.plan = null;
         band.grazeUntil = time + range(rng, HERD.grazeTime);
@@ -485,6 +483,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
             const r = Math.sqrt(rng()) * HERD.grazeRadius * (h.foal ? 0.3 : 1);
             h.spotX = (h.foal ? h.x : c.x) + Math.cos(a) * r;
             h.spotZ = (h.foal ? h.z : c.z) + Math.sin(a) * r * 0.7;
+            h.verge = verge;
         });
     };
 
@@ -643,63 +642,9 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         if (time >= band.grazeUntil) start(nextMove(), time);
     };
 
-    // ── The pose: neck, head, ears, tail, from the business and the gait ──
-    const pose = (h, time, dt) => {
-        stepGait(h.gait, h.speed, dt);
-        const { g } = h.gait;
-        const moving = smooth(0.25, 1.0, g);
-        const fast = smooth(2.5, 3.8, g);
-        let neckGoal = 0.25;
-        let headGoal = 0.1;
-        let yawGoal = clamp(h.yawRate * 0.35, -0.5, 0.5);
-        let earGoal = -0.15;
-        let restGoal = 0;
-        if (h.business !== 'travel' && h.speed < 0.5) {
-            if (h.business === 'graze' || h.business === 'step') {
-                // Head down in the barley, the muzzle working.
-                neckGoal = 1.05 + 0.06 * Math.sin(time * 0.7 + h.seed * 9);
-                headGoal = -0.3 + 0.05 * Math.sin(time * 8.5 + h.seed * 30);
-                earGoal = 0.25;
-            } else if (h.business === 'look') {
-                neckGoal = -0.28;
-                headGoal = 0.05;
-                yawGoal = h.lookYaw;
-                earGoal = -0.3;
-            } else if (h.business === 'rest') {
-                neckGoal = 0.45;
-                headGoal = 0.25;
-                earGoal = 0.35;
-                restGoal = 1;
-            } else if (h.business === 'swat') {
-                // A turn of the head back toward the flank.
-                neckGoal = 0.35;
-                headGoal = 0.15;
-                yawGoal = (h.seed < 0.5 ? 1 : -1) * 0.75;
-            }
-        } else {
-            // On the move: the neck a little lower and longer the faster, the nose out at the gallop.
-            neckGoal = 0.22 + 0.18 * fast;
-            headGoal = 0.12 - 0.4 * fast;
-            earGoal = -0.25;
-        }
-        // Startled: heads up, ears forward.
-        neckGoal += (Math.min(neckGoal, -0.35) - neckGoal) * h.alert;
-        const k = 2.2 + 3 * moving;
-        h.neck = follow(h.neck, neckGoal, k, dt);
-        h.head = follow(h.head, headGoal, k, dt);
-        h.neckYaw = follow(h.neckYaw, yawGoal, 2.4, dt);
-        h.rest = follow(h.rest, restGoal * (1 - moving), 1.5, dt);
+    /** Startled horses calm down. */
+    const calmDown = (h, dt) => {
         h.alert = follow(h.alert, 0, 0.35, dt);
-        // An ear flick now and then.
-        const flick = Math.max(0, Math.sin(time * 0.9 + h.seed * 50) - 0.93) * 6;
-        h.ears = follow(h.ears, earGoal + flick, 6, dt);
-        // The tail: carried with the gait, swished at the flies when standing (in bursts).
-        const burst = smooth(0.2, 0.7, Math.sin(time * 0.23 + h.seed * 17)) + (h.business === 'swat' ? 1.5 : 0);
-        h.swishPhase += dt * (3.2 + 2.5 * burst);
-        const swishGoal = (1 - moving) * Math.sin(h.swishPhase) * 0.45 * Math.min(1, burst)
-            + fast * 0.08 * Math.sin(time * 9 + h.seed * 7);
-        h.tailSwish = follow(h.tailSwish, swishGoal, 10, dt);
-        h.tailLift = follow(h.tailLift, h.gait.carry, 3, dt);
     };
 
     /** The gaits side by side on the spot (captures). */
@@ -714,6 +659,8 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
             h.z = EYE.z - lineup.distance - (front ? 0 : 7);
             h.heading = front || k % 2 ? Math.PI / 2 : -Math.PI / 2;
             h.lineupSpeed = front ? speeds[k] : 0;
+            // On the spot: the ground runs back under its hooves (grainfields-horse-motion.js).
+            h.treadmill = true;
             h.business = front ? frontBusiness(k) : quiet[k % quiet.length];
             h.businessUntil = Infinity;
             h.lookYaw = 0;
@@ -752,6 +699,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
         lineup(on, distance = 16) {
             lineup = on ? { distance } : null;
             if (lineup) arrange();
+            else horses.forEach((h) => { h.treadmill = false; });
         },
         /** Captures: moves the band makes at set times ([{ at, kind }]), replayed by a seek too. */
         setScript(moves) {
@@ -799,7 +747,7 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                     });
                 } else if (band.plan) travel(time, h);
                 else graze(time, h);
-                horses.forEach((horse) => pose(horse, time, h));
+                horses.forEach((horse) => calmDown(horse, h));
             }
         },
     };

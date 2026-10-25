@@ -6008,6 +6008,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'None: the band lives its own life.',
             'round@20',
         ],
+        [
+            'herdCam',
+            'Follow one horse of the herd with the camera: from this many metres, this many degrees round from its '
+                + 'nose toward its left side, this high over its feet, through this lens (a close look at its motion).',
+            'Comma-separated index, metres, degrees, metres, fov degrees.',
+            'Off: the theme’s own eye.',
+            '0,4,90,1.1,40',
+        ],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',
