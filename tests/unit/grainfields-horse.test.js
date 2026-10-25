@@ -340,3 +340,58 @@ describe('Grainfields horse: its head, ears and tail', () => {
         expect(stand.swing).toBeGreaterThan(0.2);
     });
 });
+
+describe('Grainfields horse: its quiet business', () => {
+    const begin = (m, h, business, at) => {
+        h.business = business;
+        run(m, h, 4, () => {}, { from: at });
+    };
+
+    it('yawns with its mouth wide, shakes its head and neck, stamps a fore at a fly and puts it back', () => {
+        const m = createHorseMotion(RIG, { seed: 0.3, landmarks: EXTRAS.landmarks });
+        const h = horse({ business: 'look' });
+        run(m, h, 3);
+        let jaw = 0;
+        run(m, h, 3, (mm) => { jaw = Math.max(jaw, mm.pose.local[RIG.index.jaw * 3]); }, { from: 3 });
+        expect(jaw).toBeLessThan(0.1);
+        h.business = 'yawn';
+        run(m, h, 3, (mm) => { jaw = Math.max(jaw, mm.pose.local[RIG.index.jaw * 3]); }, { from: 6 });
+        expect(jaw).toBeGreaterThan(0.4);
+        // A shake swings the neck from side to side, several times.
+        h.business = 'shake';
+        let turns = 0;
+        let last = 0;
+        run(m, h, 1.4, (mm) => {
+            const yaw = mm.pose.local[RIG.index.neck2 * 3 + 1];
+            if (Math.abs(yaw) > 0.05 && Math.sign(yaw) !== Math.sign(last)) turns += 1;
+            if (Math.abs(yaw) > 0.05) last = yaw;
+        }, { from: 9 });
+        expect(turns).toBeGreaterThanOrEqual(4);
+        // A stamp lifts one fore well clear of the ground, and it comes down where it stood.
+        h.business = 'graze';
+        run(m, h, 2, () => {}, { from: 10.5 });
+        const fore = m.legs[m.seed < 0.5 ? 0 : 1];
+        const before = [...fore.plant];
+        h.business = 'stamp';
+        let lift = 0;
+        run(m, h, 1.2, () => { lift = Math.max(lift, fore.coffin[1] - 10); }, { from: 12.5 });
+        expect(lift).toBeGreaterThan(0.2);
+        expect(fore.planted).toBe(true);
+        expect(Math.hypot(fore.plant[0] - before[0], fore.plant[2] - before[2])).toBeLessThan(0.15);
+    });
+
+    it('bucks: the croup up and the hinds kicked out, then down again', () => {
+        const m = createHorseMotion(RIG, { seed: 0.2 });
+        const h = horse({ business: 'graze', foal: true, scale: 0.62 });
+        run(m, h, 2);
+        const croup = () => m.pose.at[RIG.index.tail0 * 3 + 1] - m.pose.at[RIG.index.chest * 3 + 1];
+        const level = croup();
+        begin(m, h, 'frolic', 2);
+        expect(m.buckAt).toBeGreaterThan(1.9);
+        let highest = -Infinity;
+        run(m, h, 0.6, () => { highest = Math.max(highest, croup()); }, { from: m.buckAt });
+        expect(highest).toBeGreaterThan(level + 0.08);
+        run(m, h, 2, () => {}, { from: m.buckAt + 0.6 });
+        expect(croup()).toBeLessThan(level + 0.05);
+    });
+});

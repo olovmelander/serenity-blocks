@@ -234,6 +234,47 @@ describe('Grainfields herd: the band\'s life', () => {
     });
 });
 
+describe('Grainfields herd: its quiet business', () => {
+    it('creeps on as it grazes, nurses its foals at their mothers’ flanks, and lets them frolic round them', () => {
+        const sim = createHerdSim({ count: 9 });
+        const seen = new Set();
+        let creeping = 0;
+        let grazing = 0;
+        let nursing = 0;
+        let atFlank = 0;
+        let frolicking = 0;
+        let near = 0;
+        live(sim, 900, (s) => {
+            if (s.plan) return;
+            s.horses.forEach((h) => {
+                seen.add(h.business);
+                if (h.business === 'graze' && !h.foal && !(h.nursed > 0)) {
+                    grazing += 1;
+                    if (h.speed > 0.02 && h.speed < 0.3) creeping += 1;
+                }
+                const mother = h.mother >= 0 ? s.horses[h.mother] : null;
+                if (!mother) return;
+                const d = Math.hypot(h.x - mother.x, h.z - mother.z);
+                if (h.business === 'nurse') {
+                    nursing += 1;
+                    if (d < 1.0 * mother.scale) atFlank += 1;
+                }
+                if (h.business === 'frolic') {
+                    frolicking += 1;
+                    if (d < 9) near += 1;
+                }
+            });
+        });
+        ['graze', 'step', 'look', 'shake', 'stamp', 'nurse', 'frolic'].forEach((b) => expect(seen.has(b), b).toBe(true));
+        expect(creeping / grazing).toBeGreaterThan(0.4);
+        expect(nursing).toBeGreaterThan(100);
+        // (The rest of the time it is walking in to her, or nudged off by the others.)
+        expect(atFlank / nursing).toBeGreaterThan(0.45);
+        expect(frolicking).toBeGreaterThan(30);
+        expect(near / frolicking).toBeGreaterThan(0.8);
+    });
+});
+
 describe('Grainfields herd: what the motion reads', () => {
     it('kept on the spot for a lineup, runs its gaits on a treadmill; let go, roams again', () => {
         const sim = createHerdSim({ count: 9 });

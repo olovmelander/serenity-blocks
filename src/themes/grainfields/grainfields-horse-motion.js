@@ -277,6 +277,15 @@ export function createHorseMotion(rig, { seed = 0.5, lead = 1, landmarks = {} } 
         bones: I,
         // Strikes and tears since the world last listened.
         events: [],
+        // What it is about and since when; a stamp asked of its legs; when it last bucked (a lively
+        // one bucks into a canter).
+        lastBusiness: null,
+        businessAt: 0,
+        stamp: false,
+        buckAt: -1e6,
+        lastG: 0,
+        lively: (seed * 7.31) % 1 > 0.6,
+        shaking: 0,
     };
 }
 
@@ -398,6 +407,11 @@ function swingAngles(legState, gait, w, out) {
     const e = ease(w);
     ANGLES.forEach((key) => { out[key] = from[key] + (to[key] - from[key]) * e; });
     swingShape(w, shape);
+    // (A stamp lifts the fore higher and puts it down harder than a step.)
+    const boost = legState.boost || 1;
+    shape.fold *= boost;
+    shape.knee = Math.min(1.6, shape.knee * boost);
+    shape.curl *= boost;
     // The upper joints fold to the gait's own flexion mid-swing, however stretched the leg left and
     // will land (a bump on top of two stretched ends would drag the hoof through the ground).
     if (legState.spec.front) {
@@ -427,6 +441,7 @@ function liftOff(legState, duration) {
 
 function touchDown(m, legState, ground, time) {
     legState.planted = true;
+    legState.boost = 1;
     legState.stepping = false;
     legState.w = 1;
     legState.landed = time;
@@ -474,6 +489,16 @@ function stepLegs(m, h, ground, gait, dt, time) {
             }
         }
     });
+    if (!cyclic && airborne === 0 && m.stamp) {
+        // A fore stamped at a fly: lifted high, put down hard where it stood.
+        const leg = m.legs[m.seed < 0.5 ? 0 : 1];
+        liftOff(leg, 0.36);
+        leg.stepping = true;
+        leg.boost = 2.1;
+        m.stamp = false;
+        m.lastStep = time;
+        airborne = 1;
+    }
     if (!cyclic && airborne === 0 && worst >= 0 && time - m.lastStep > STEP.gap) {
         liftOff(m.legs[worst], swingTime);
         m.legs[worst].stepping = true;
@@ -653,6 +678,30 @@ function stepHead(m, h, ground, gait, b, dt, time) {
             want.headYaw = side * 0.35;
             want.roll = side * 0.15;
             want.ears = 'back';
+        } else if (business === 'stamp') {
+            // An eye on the fore it stamps.
+            want.bend = 0.35;
+            want.face = 0.3;
+            want.yaw = (m.seed < 0.5 ? 1 : -1) * 0.25;
+            want.ears = 'back';
+        } else if (business === 'yawn') {
+            // The head up and out, the mouth opened wide, slowly, and shut.
+            const k = clamp((time - m.businessAt) / 2.6, 0, 1);
+            want.bend = -0.12;
+            want.face = -0.45 * Math.sin(Math.PI * k);
+            want.jaw = 0.55 * smooth(0.08, 0.4, k) * (1 - smooth(0.72, 0.95, k));
+            want.ears = 'doze';
+        } else if (business === 'nurse') {
+            // Head up under its mother's belly, turned in to her.
+            want.bend = -0.12;
+            want.face = -0.32;
+            want.yaw = -(h.nursingSide || 1) * 0.6;
+            want.headYaw = -(h.nursingSide || 1) * 0.25;
+            want.ears = 'graze';
+        } else if (business === 'shake') {
+            want.bend = 0.05;
+            want.face = 0.05;
+            want.ears = 'travel';
         } else {
             want.bend = 0.2;
             want.face = 0.12;
@@ -697,6 +746,21 @@ function stepHead(m, h, ground, gait, b, dt, time) {
     local[I.jaw * 3] = Math.max(0, head.jaw.x);
     local[I.jaw * 3 + 1] = head.side.x;
     stepEars(m, want.ears, dt, time);
+    // A shake of the head and neck: fast, side to side down the neck, the head twisting with it.
+    if (business === 'shake' && standing) {
+        const along = clamp((time - m.businessAt) / 1.3, 0, 1);
+        const e = Math.sin(Math.PI * along) ** 0.6;
+        const w = 2 * Math.PI * 3.6 * (time - m.businessAt);
+        local[I.neck0 * 3 + 1] += 0.12 * e * Math.sin(w);
+        local[I.neck1 * 3 + 1] += 0.22 * e * Math.sin(w - 0.6);
+        local[I.neck2 * 3 + 1] += 0.26 * e * Math.sin(w - 1.2);
+        local[I.head * 3 + 2] += 0.5 * e * Math.sin(w - 1.8);
+        local[I.earL * 3 + 2] += 0.5 * e * Math.sin(w - 2.2);
+        local[I.earR * 3 + 2] -= 0.5 * e * Math.sin(w - 2.2);
+        m.shaking = e * Math.sin(w - 1.5);
+    } else {
+        m.shaking = 0;
+    }
 }
 
 /** Where the ears point for a mood: [pitch (forward +), swivel out, lop out] (left ear's signs). */
@@ -744,7 +808,8 @@ function stepTail(m, h, gait, dt, time, env) {
     const moving = smooth(0.25, 1.0, m.g);
     const { swish } = m;
     // Swishing at the flies, in bursts, when standing.
-    const burst = smooth(0.2, 0.7, Math.sin(time * 0.23 + m.seed * 17)) + (h.business === 'swat' ? 1.5 : 0);
+    const fussy = h.business === 'swat' || h.business === 'nurse' || h.business === 'stamp';
+    const burst = smooth(0.2, 0.7, Math.sin(time * 0.23 + m.seed * 17)) + (fussy ? 1.5 : 0);
     swish.phase += dt * (3.2 + 2.5 * burst);
     const swat = (1 - moving) * Math.sin(swish.phase) * 0.55 * Math.min(1, burst);
     const carry = gait.carry * smooth(0.5, 1.5, m.g) + 0.35 * (h.alert || 0) - 0.06 * m.rest;
@@ -837,6 +902,17 @@ export function stepHorseMotion(m, h, ground, dt, time, env = {}) {
         local[b3 * 3] += 0.85 * m.rest;
         local[b4 * 3] += 0.3 * m.rest;
     }
+    // What it has just set about: a stamp is asked of the legs; a frolic starts with a buck.
+    if (h.business !== m.lastBusiness) {
+        m.lastBusiness = h.business;
+        m.businessAt = time;
+        if (h.business === 'stamp') m.stamp = true;
+        if (h.business === 'frolic') m.buckAt = time;
+    }
+    // A young horse may buck as it breaks into a canter.
+    if (m.lastG < 2.5 && m.g >= 2.5 && m.lively && time - m.buckAt > 8) m.buckAt = time;
+    m.lastG = m.g;
+    buck(m, time);
     stepHead(m, h, ground, gait, b, d, time);
     stepTail(m, h, gait, d, time, env);
     poseRig(m.rig, m.pose, m.place);
@@ -851,11 +927,36 @@ export function stepHorseMotion(m, h, ground, dt, time, env = {}) {
         }
     });
     // The hair's flow: the wind through it, the air the horse runs through, its bounce.
-    m.flow[0] = (env.windX || 0) * 0.35 - vx * 0.08;
+    // (A shake throws the mane from side to side.)
+    const sideX = Math.cos(h.heading) * (m.shaking || 0) * 1.4;
+    const sideZ = -Math.sin(h.heading) * (m.shaking || 0) * 1.4;
+    m.flow[0] = (env.windX || 0) * 0.35 - vx * 0.08 + sideX;
     m.flow[1] = -m.accel[1] * 0.004;
-    m.flow[2] = (env.windZ || 0) * 0.35 - vz * 0.08;
+    m.flow[2] = (env.windZ || 0) * 0.35 - vz * 0.08 + sideZ;
     m.started = true;
     return m;
+}
+
+/** How long a buck takes (s). */
+const BUCK = 0.6;
+
+/** A buck: the croup thrown up, the hinds kicked out behind, the head down, the tail up. */
+function buck(m, time) {
+    const k = (time - m.buckAt) / BUCK;
+    if (!(k >= 0 && k <= 1)) return;
+    const e = Math.sin(Math.PI * k);
+    const { local } = m.pose;
+    const I = m.bones;
+    local[I.root * 3] += 0.12 * e;
+    local[I.pelvis * 3] += 0.3 * e;
+    for (const leg of [m.legs[2], m.legs[3]]) {
+        const [femur, , cannon, pastern] = leg.spec.bones;
+        local[femur * 3] += 0.6 * e;
+        local[cannon * 3] += 0.3 * e;
+        local[pastern * 3] += 0.35 * e;
+    }
+    local[I.neck0 * 3] += 0.25 * e;
+    local[I.tail0 * 3] += 0.6 * e;
 }
 
 /** First step: every hoof planted under the body where it stands. */

@@ -377,6 +377,11 @@ export function create({
                 calls: renderer.info?.render?.calls ?? null,
                 triangles: renderer.info?.render?.triangles ?? null,
                 ...(world ? world.getState() : {}),
+                herd: world?.parts.herd ? world.parts.herd.horses.map((h, i) => ({
+                    business: h.business,
+                    speed: Number(h.speed.toFixed(2)),
+                    legs: world.parts.herd.motions[i].legs.map((leg) => (leg.planted ? 'P' : 's')).join(''),
+                })) : null,
                 herdShadow: world?.herdShadow ? {
                     ...world.herdShadow.window,
                     shaded: world.herdShadow.texture.image.data.reduce((n, v, i) => n + (i % 4 === 0 && v > 0 ? 1 : 0), 0),
