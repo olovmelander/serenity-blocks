@@ -29,7 +29,11 @@ import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
 import { resolveCrystalCaveQuality } from './crystal-cave-quality.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
+import { easeStep, nearestStep } from '../shared/mood-clock.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import {
+    CRYSTAL_CAVE_HOURS, CRYSTAL_CAVE_HOUR_FOLLOW, crystalCaveHourAt, crystalCaveHourDrift, crystalCaveHourName,
+} from './crystal-cave-hours.js';
 
 const FAMILIES = 5;
 const GROW_SECONDS = 1.15;
@@ -37,6 +41,9 @@ const MAX_ACTIONS = 128;
 /** The rock's resting gains (crystal-cave-rock.js); play raises them from here. */
 const ROCK_GAIN = 0.85;
 const SKY_GAIN = 2.4;
+const POOL_GAIN = 0.22;
+/** The cave air's resting thickness (crystal-cave-light.js); the hour scales it. */
+const HAZE_DENSITY = 0.0105;
 /** The hum's bands climb this fast at rest (radians per second). */
 const HUM_SPEED = 3.2;
 /** Seconds a broken chain's lattice takes to let go of its links, newest first. */
@@ -74,6 +81,12 @@ export class CrystalCaveWorld {
         this.time = 0;
         this.seed = 90210;
         this.disposed = false;
+        // The hour above the cave (crystal-cave-hours.js): the clock turns it, and every level is
+        // one hour on. `hourStep` is the levels' share, eased toward `level - 1` the short way
+        // round. A reset (a new session, a seek) keeps them: the run's level is the theme's.
+        this.level = 1;
+        this.hourStep = 0;
+        this.hour = crystalCaveHourAt(0);
         this.group = new THREE.Group();
         this.group.name = 'Crystal Cave';
         scene.add(this.group);
@@ -280,13 +293,52 @@ export class CrystalCaveWorld {
 
     /**
      * What the post's light in the air needs from the world. When the post draws the
-     * skylight's shaft it claims it, and the air's mesh beam is hidden.
+     * skylight's shaft it claims it, and the air's mesh beam is hidden. `hour` is the hour above
+     * the cave (the post rests its iris where the hour says).
      */
     getAtmosphere() {
         return {
             air: this.airLight,
             claimShaft: () => this.air.hideBeam(),
+            hour: this.hour,
         };
+    }
+
+    /**
+     * A new level: the day above turns one hour on from wherever the clock has brought it. It
+     * eases there in update(); `silent` (a rebuilt world, a capture) is there at once. A new run
+     * goes back to the first level's hour the short way round.
+     */
+    setLevel(level, { silent = false } = {}) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
+        if (silent) this.hourStep = nearestStep(this.hourStep, this.level - 1, CRYSTAL_CAVE_HOURS.length);
+        return this.level;
+    }
+
+    /** How many hours into the day it is at `time`: the level's step and the clock's turn. */
+    hourPhase(time = this.time) {
+        return this.hourStep + crystalCaveHourDrift(time);
+    }
+
+    /**
+     * The hour above the cave at `time`, written into the cave's light: the skylight's tint and
+     * strength, the stones' glow, the air. A slow change of colour is not motion: reduced motion
+     * does not hold it, nor does the effects setting.
+     */
+    applyHour(time, dt) {
+        const follow = 1 - Math.exp(-Math.max(0, dt) * CRYSTAL_CAVE_HOUR_FOLLOW);
+        this.hourStep = easeStep(this.hourStep, this.level - 1, follow, CRYSTAL_CAVE_HOURS.length);
+        const hour = crystalCaveHourAt(this.hourPhase(time), this.hour);
+        this.hourPhaseNow = this.hourPhase(time);
+        const u = this.light.uniforms;
+        u.skyTint.value.setRGB(hour.sky[0], hour.sky[1], hour.sky[2]);
+        u.skyLevel.value = hour.skyGain;
+        u.stoneGlow.value = hour.stones;
+        u.hazeColor.value.setRGB(hour.haze[0], hour.haze[1], hour.haze[2]);
+        u.hazeDensity.value = HAZE_DENSITY * hour.hazeDensity;
+        this.rock.controls.poolGain.value = POOL_GAIN * hour.pool;
+        return hour;
     }
 
     prepareCamera(aspect) {
@@ -701,8 +753,16 @@ export class CrystalCaveWorld {
         this.effects?.setFlicker?.(motion);
         const u = this.light.uniforms;
         u.time.value = time;
+        const hour = this.applyHour(time, dt);
         const frame = director?.getFrame?.() ?? null;
         const { heat } = this;
+        if (!frame) {
+            // No director: the hall at rest, in this hour's light.
+            this.rock.controls.gain.value = ROCK_GAIN * hour.stones;
+            this.rock.controls.skyGain.value = SKY_GAIN * hour.skyGain;
+            this.air.controls.worms.value = hour.worms;
+            this.air.controls.shaft.value = hour.skyGain;
+        }
         if (frame) {
             heat.level = Number.isFinite(frame.level) ? frame.level : 0;
             heat.fever = Number.isFinite(frame.fever) ? frame.fever : 0;
@@ -721,11 +781,14 @@ export class CrystalCaveWorld {
             // The hall leans in as play heats: the stone takes more of the crystals' light, the
             // glow-worms wake, the skylight opens, the lamps in the damp air burn brighter.
             const { controls } = this.rock;
-            controls.gain.value = ROCK_GAIN * (1 + warm * 0.03 + fever * 0.05);
-            controls.skyGain.value = SKY_GAIN * (1 + fever * 0.12 + skylight * 0.5 * flashes);
-            this.air.controls.worms.value = frame.worms * 1.6 + warm * 0.4 + fever * 0.75 - frame.dim * 0.4;
+            // (The hour above the cave sets where each rests: the stones' share, the skylight's, the
+            // glow-worms' waking.)
+            controls.gain.value = ROCK_GAIN * hour.stones * (1 + warm * 0.03 + fever * 0.05);
+            controls.skyGain.value = SKY_GAIN * hour.skyGain * (1 + fever * 0.12 + skylight * 0.5 * flashes);
+            this.air.controls.worms.value = frame.worms * 1.6 + warm * 0.4 + fever * 0.75 - frame.dim * 0.4
+                + hour.worms;
             const opened = (frame.shaft * 1.3 + skylight * 1.1) * flashes + warm * 0.05 + fever * 0.12;
-            this.air.controls.shaft.value = (1 + opened) * (1 - frame.dim * 0.6);
+            this.air.controls.shaft.value = (hour.skyGain + opened) * (1 - frame.dim * 0.6);
             // The lamps' halos in the damp air are what would turn the hall milky: they hold back
             // as the stones' own light rises, so the air stays dark between the crystals.
             this.airLight.uniforms.gain.value = CRYSTAL_CAVE_AIR.lampGain * (1 - warm * 0.2 - fever * 0.15);
@@ -880,6 +943,10 @@ export class CrystalCaveWorld {
             pools: { ...this.effects.counts, rings: this.pool.slots },
             air: this.air.counts,
             reflection: Boolean(this.pool.reflection),
+            level: this.level,
+            // The hour above the cave the light is nearest, and how far round the day it is.
+            hour: crystalCaveHourName(this.hourPhaseNow ?? 0),
+            hourPhase: this.hourPhaseNow ?? 0,
         };
     }
 

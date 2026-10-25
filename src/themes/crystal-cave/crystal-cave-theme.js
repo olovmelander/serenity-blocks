@@ -68,6 +68,8 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.post = null;
         this.timer = null;
         this.time = 0;
+        /** The run's level: every level is one hour of the day above on (CrystalCaveWorld.setLevel). */
+        this.level = 1;
         this.boardPoll = 0;
         this.quality = 'High';
         this.currentQuality = 'High';
@@ -219,6 +221,8 @@ export default class CrystalCaveTheme extends BaseTheme {
         this.world = new CrystalCaveWorld({
             scene: this.scene, camera: this.camera, assets: this.assets, quality: this.quality,
         });
+        // The cave takes up the level the run is on (a rebuild carries it, and the clock).
+        this.world.setLevel(this.level || 1, { silent: true });
         this.post = new CrystalCavePost({
             renderer: this.renderer,
             scene: this.scene,
@@ -286,12 +290,16 @@ export default class CrystalCaveTheme extends BaseTheme {
             eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
             eventBus.on(EVENTS.B2B, () => this.onFlourish('onBackToBack')),
             eventBus.on(EVENTS.PERFECT_CLEAR, () => this.onFlourish('onPerfectClear')),
-            eventBus.on(EVENTS.LEVEL_UP, () => this.onFlourish('onLevelUp')),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(payload)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.reactions?.onGameOver());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.reactions?.onGameOver();
+            // The run is over: the next begins at the first level, and so does the day above.
+            this.setLevel(1);
+        });
         this.registerEventListener(window, 'pointermove', (event) => {
             if (!this.isActive || this.isPaused || event.pointerType === 'touch') return;
             this.pointer.x = THREE.MathUtils.clamp((event.clientX / window.innerWidth) * 2 - 1, -1, 1);
@@ -324,6 +332,26 @@ export default class CrystalCaveTheme extends BaseTheme {
         if (!this.effectsAllowed()) return;
         const count = readCrystalCaveEventCount(payload, ['comboCount', 'combo', 'count'], 0);
         if (count > 0) this.reactions?.onCombo(Math.min(32, count));
+    }
+
+    /**
+     * The level the day above is on. The theme keeps it, so a world rebuilt for another quality
+     * tier takes up the hour the last one had reached.
+     */
+    setLevel(level) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.round(wanted)) : (this.level || 1) + 1;
+        this.world?.setLevel?.(this.level);
+    }
+
+    /**
+     * A level-up turns the day above an hour on whatever the effects setting says: a slow change
+     * of colour is the theme, not an effect. The flourish that goes with it is one, and keeps its
+     * gate.
+     */
+    onLevelUp(payload) {
+        this.setLevel(eventDetail(payload)?.level);
+        this.onFlourish('onLevelUp');
     }
 
     onFlourish(method, payload) {

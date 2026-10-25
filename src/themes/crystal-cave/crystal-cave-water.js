@@ -114,7 +114,8 @@ export function createCavePool({
         } else {
             // No mirror on this tier: dark water, the vault's faint glow, and a path of light
             // laid toward the warm heart at the end of the hall.
-            const sheen = light.environment(reflect(view.negate(), normal), float(6), light.eventLight).mul(0.2);
+            const sheen = light.environment(reflect(view.negate(), normal), float(6), light.eventLight, light.skyLight)
+                .mul(0.2);
             const offPath = point.x.sub(3).add(slope.x.mul(60)).div(6.5);
             const path = exp(offPath.mul(offPath).negate()).mul(smoothstep(-12, -70, point.z));
             mirrored.assign(vec3(0.006, 0.026, 0.036).add(sheen).add(vec3(1.0, 0.7, 0.38).mul(path).mul(0.3)));

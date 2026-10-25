@@ -160,7 +160,8 @@ export function createCaveAirLight({
             .mul(exp(sc.div(span).mul(-1.1)).mul(0.7).add(0.3));
         const amount = profile.mul(width).mul(2.5066).mul(visible).mul(streak)
             .mul(along);
-        return vec3(0.6, 0.8, 1.0).mul(amount).mul(CRYSTAL_CAVE_AIR.haze * 40 * CRYSTAL_CAVE_AIR.shaft)
+        // (The hour above the cave tints it; its strength is the shaft's gain.)
+        return vec3(0.6, 0.8, 1.0).mul(u.skyTint).mul(amount).mul(CRYSTAL_CAVE_AIR.haze * 40 * CRYSTAL_CAVE_AIR.shaft)
             .mul(shaftGain);
     };
 
@@ -199,7 +200,8 @@ export function createCaveAirLight({
             const breath = float(lamp).mul(1.7).add(u.time.mul(0.37)).sin()
                 .mul(0.12)
                 .add(0.88);
-            const tint = vec3(u.familyColor.element(family)).mul(u.familyLevel.element(family)).mul(breath);
+            const tint = vec3(u.familyColor.element(family)).mul(u.familyLevel.element(family)).mul(breath)
+                .mul(u.stoneGlow);
             glow.addAssign(tint.mul(info.y).mul(gathered).mul(density).mul(lost));
         });
         if (skylight) {

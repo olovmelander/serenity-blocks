@@ -222,6 +222,33 @@ describe('Crystal Cave gameplay event normalization', () => {
         expect(reactions.onGameOver).toHaveBeenCalledOnce();
     });
 
+    it('turns the day above an hour on at every level-up, effects on or off, and keeps the flourish', () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        const { world, reactions } = buildStubScene(theme);
+        world.setLevel = vi.fn();
+        theme.setupEventListeners();
+        expect(theme.level).toBe(1);
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        expect(theme.level).toBe(3);
+        expect(world.setLevel).toHaveBeenLastCalledWith(3);
+        expect(reactions.onLevelUp).toHaveBeenCalledOnce();
+        // Reactions off: the flourish is held, the hour still turns.
+        window.settings.backgroundComboEffects = false;
+        eventBus.emit(EVENTS.LEVEL_UP, { detail: { level: 4 } });
+        expect(theme.level).toBe(4);
+        expect(world.setLevel).toHaveBeenLastCalledWith(4);
+        expect(reactions.onLevelUp).toHaveBeenCalledOnce();
+        // A level-up naming no level is the next; a rebuild carries the level.
+        eventBus.emit(EVENTS.LEVEL_UP, {});
+        expect(theme.level).toBe(5);
+        expect(theme.captureRestartRun().level).toBe(5);
+        // The run over, the next begins at the first level's hour.
+        windowListener('gameOver')();
+        expect(theme.level).toBe(1);
+        expect(world.setLevel).toHaveBeenLastCalledWith(1);
+    });
+
     it.each(['inactive', 'paused', 'disabled', 'cleaned', 'hidden', 'rendering paused'])(
         'suppresses all %s scenery effects',
         (state) => {

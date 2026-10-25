@@ -28,7 +28,7 @@ const ENV_LOBES = Object.freeze([
         dir: [0.0, 0.14, -1.0], color: [1.0, 0.8, 0.52], gain: 2.6, sharp: 46,
     }, // sanctuary
     {
-        dir: [-0.42, 0.78, -0.46], color: [0.62, 0.8, 1.0], gain: 4.5, sharp: 70,
+        dir: [-0.42, 0.78, -0.46], color: [0.62, 0.8, 1.0], gain: 4.5, sharp: 70, sky: true,
     }, // skylight
     {
         dir: [-0.92, 0.12, -0.3], color: [0.1, 0.8, 0.72], gain: 0.6, sharp: 3,
@@ -121,6 +121,11 @@ export function createCaveLight() {
         flash: uniform(0),
         hazeColor: uniform(new THREE.Color(0x0b1626)),
         hazeDensity: uniform(0.0105),
+        // The hour above the cave (crystal-cave-hours.js; the world sets them each frame): the
+        // skylight's tint and strength, and how strongly the stones glow. 1: the cave as it was.
+        skyTint: uniform(new THREE.Color(1, 1, 1)),
+        skyLevel: uniform(1),
+        stoneGlow: uniform(1),
     };
 
     const lobeDir = ENV_LOBES.map((lobe) => new THREE.Vector3(...lobe.dir).normalize());
@@ -128,22 +133,26 @@ export function createCaveLight() {
 
     /** rgb: the board's flash; a: whole-cave gain. Read once per fragment and handed on. */
     const eventLight = vec4(uniforms.flashColor.mul(uniforms.flash), uniforms.energy.mul(0.55).add(1));
+    /** The skylight's colour and strength this hour, for the far field's skylight lobe. */
+    const skyLight = vec3(uniforms.skyTint).mul(uniforms.skyLevel);
 
     /**
      * The far field as seen along a world direction: a pool-lit floor, a dark vault with
      * pin-point glow-worms, and a few broad lobes for the lit parts of the cavern.
      * `spread` widens every lobe (1 = mirror, larger = rougher). A real WGSL function
      * (it is called many times per fragment), so it may not touch a uniform or a
-     * texture: r186 emits those unbound inside laid-out functions. Pass `eventLight`.
+     * texture: r186 emits those unbound inside laid-out functions. Pass `eventLight`, and
+     * `skyLight` (the hour above the cave tints and scales the skylight's lobe).
      */
-    const environment = Fn(([direction, spread, event]) => {
+    const environment = Fn(([direction, spread, event, sky]) => {
         const up = direction.y;
         const floorGlow = vec3(0.012, 0.085, 0.092).mul(smoothstep(0.15, -0.75, up));
         const vault = vec3(0.012, 0.011, 0.03).mul(smoothstep(-0.2, 0.8, up).mul(0.7).add(0.3));
         const result = floorGlow.add(vault).toVar();
         ENV_LOBES.forEach((lobe, index) => {
             const amount = exp(dot(direction, vec3(lobeDir[index])).sub(1).mul(float(lobe.sharp).div(spread)));
-            result.addAssign(vec3(lobeColor[index]).mul(amount).div(spread));
+            const colour = lobe.sky ? vec3(lobeColor[index]).mul(sky) : vec3(lobeColor[index]);
+            result.addAssign(colour.mul(amount).div(spread));
         });
         // Glow-worms: one hashed cell in forty carries a point of light.
         const grid = direction.xz.div(direction.y.abs().add(1)).mul(46);
@@ -162,6 +171,7 @@ export function createCaveLight() {
             { name: 'direction', type: 'vec3' },
             { name: 'spread', type: 'float' },
             { name: 'event', type: 'vec4' },
+            { name: 'sky', type: 'vec3' },
         ],
     });
 
@@ -184,6 +194,7 @@ export function createCaveLight() {
         noise,
         environment,
         eventLight,
+        skyLight,
         haze,
         noise3,
         familyColors,
