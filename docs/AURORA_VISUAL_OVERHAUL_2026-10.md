@@ -51,10 +51,11 @@ state; it is plain numbers with no three, DOM or timers, and replays exactly fro
 
 | Trigger | Response |
 | --- | --- |
-| Piece lock | Pulses in the piece's own colour leave both edges of the board and run outward along the two leading arcs, taking over a stretch of curtain; the side the piece landed on takes more. A ring opens on the lake. A hard drop is stronger. |
-| Line clear | Every arc is strummed: colour pulses, a billow that moves the fabric, a bright band sweeping up the rays, taller curtains, a pink hem, a wave on the lake. A clearing lock is one cue, not two. |
-| Four lines | The corona breaks out overhead — lavender rays converging on the magnetic zenith — with a meteor volley. |
-| Clear streak | Each consecutive clearing lock sends one surge the length of the sky and winds the display up: faster rays, deeper folds, a storm tint, a red crown, meteors from 3, corona from 5. A lock that clears nothing ends it. |
+| Piece lock | Pulses in the piece's own colour leave both edges of the board and run outward along the two leading arcs, taking over a stretch of curtain; the side the piece landed on takes more. The curtain just beside the board wakes, and quick hands build it into a blazing stretch. A ring opens on the lake. A hard drop is stronger. |
+| Line clear | Every arc is strummed: colour pulses, a billow that moves the fabric, an awake front running out along every arc from the board, flames climbing the rays (two on a bigger clear), taller curtains, a pink hem, a wave on the lake. A clearing lock is one cue, not two. |
+| Four lines | Breakup: the whole sky wakes from the board outward, the near arc violet-topped and the others red-crowned, a train of flames climbs the rays, and the corona breaks out overhead — lavender rays converging on the magnetic zenith — with a meteor volley. |
+| Clear streak | Each consecutive clearing lock sends one surge the length of the sky, an awake stretch riding with it, and winds the display up: faster rays, deeper folds, a storm tint, a red crown, meteors from 3, corona from 5. A lock that clears nothing ends it. |
+| Fever, and after | The substorm wakes the weather everywhere and turns it over faster. Once the hands rest, pulsating patches come up across the quiet sky while the storm recovers, and fade with it. |
 | Cascade | The bus `COMBO` event is cascade depth inside one lock, not a streak; it deepens that clear. The streak is counted with `ComboTracker`. |
 | T-spin, perfect clear, level up | A violet billow; a gold bloom with the corona held; a gentle sweep. |
 | Game over, mode stop, effects off | The sky settles; the streak is forgotten. |
@@ -75,7 +76,8 @@ multiplayer boards each answer above their own place.
 | `aurora-theme.js` | Renderer selection and fallback, generation-safe start, events, settings, sizing, GPU recovery, disposal |
 | `aurora-world.js` | Shared artwork for theme and playground: camera framing, uniforms, director wiring |
 | `aurora-director.js` | Gameplay → sky state: cues, pools, decay, streak counting |
-| `aurora-field.js` | Arc geometry shared by CPU and GPU; the excitation map pulses are painted into |
+| `aurora-weather.js` | Where along each arc the display is awake: wandering ambient cells, event cells that build with play, each arc's fold breathing |
+| `aurora-field.js` | Arc geometry and character shared by CPU and GPU; the excitation map pulses are painted into; the activity-cell layout |
 | `aurora-curtains.js` | The march material and its direction-mapped buffer |
 | `aurora-sky.js` | Sky dome, Milky Way, star catalogue sprites, meteor pool |
 | `aurora-atmosphere.js` | The air every surface is seen through: patchy ground mist and haze, lit by the curtains above |
@@ -167,6 +169,95 @@ and the skyline from a baked ridge profile, with the same ripples as the planar 
 MSAA follows the player's antialiasing setting. These are allocation budgets, not
 measurements of frame rate.
 
+## Sky weather and event pass (2026-10-25)
+
+Olov: "improve the aurora so it feels more varied around the sky and have better event
+effects." Before this pass every stretch of every arc was the same green curtain with the
+same faint purple tops, minute after minute, and most events only recoloured it: a two-line
+clear barely differed from idle, and the band meant to climb the rays brightened only their
+already faint tops, so it could not be seen.
+
+**Variety.** A real display is awake in places: stretches flare into tall, sharp, coloured
+rays while the rest glows as a quiet, smooth band, and the activity wanders.
+`aurora-weather.js` gives each resting arc five activity cells, `[bearing, 1 / half-width,
+strength, tops]`, that the march sums at every sample (`cellLife()` in `aurora-field.js` is
+the CPU twin). Bearings and widths are radians of view along the arc (`atan(s / distance)`),
+so a cell reads the same size wherever it stands, however far the arc recedes there.
+
+- **Two ambient cells per arc** wander on their own. Each lives one cycle of its own period
+  (29–61 s of weather, never a common beat): born at a hashed bearing in view, it swells,
+  drifts up to 0.3 rad and fades, then comes back elsewhere, red-crowned or violet-topped as
+  its hash leans. They are a pure function of the weather clock, so the sky replays exactly
+  and draws on no random stream. The clock runs up to 2.2× faster, and the cells swell, as
+  the storm builds.
+- **How a stretch reads.** A quiet stretch is dimmer (down to half), smoother (ray contrast
+  toward 0.62–1 instead of 0.16–1) and lower (down to 0.72× ray height); each arc's own
+  floor (`lively`, 0.22–0.4) keeps it from going all the way. An awake one is up to 1.5× as bright,
+  1.25× as tall, and carries its arc's colours: the crown, violet and hem multipliers rise
+  with it, capped so the green body always shows under a storm's colours.
+- **Each arc has a character** (`ARC_CHARACTER`): the main arc's tall rays reach into
+  sunlight (violet tops, 1.35×), the cross arc burns a pink lower border (1.5×) in a cooler
+  green, and the far arc wears the red crown (2.4×) in a yellower green. The corona keeps its
+  old look exactly.
+- **Folds breathe.** Each arc's fold depth swings ±42% on its own slow beat (97, 131, 113 s),
+  so an arc is sometimes a nearly straight band and sometimes a deep S.
+- **Pulsating aurora.** Soft pale patches on a 105 km shell switch slowly on and off (a 7 s
+  beat, lit for about half of it with soft edges, far below any flash threshold), each patch on its
+  own phase read from a coarser tile so it lights nearly as one. Faint on a quiet night
+  (strength 0.32), they come up to 1.22 while a storm recovers and fade with it: the quiet
+  form a real display takes after a substorm.
+
+[Four moments of an idle sky](aurora-overhaul/weather-variety.jpg) (`t=20`, `140`, `310`,
+`400`): the tall S-ribbon; a rayed curtain with quiet left stretches; a broad quiet arc under
+pulsating patches; a red-crowned stretch blazing mid-sky.
+
+**Events.** Every cue now also wakes the sky through event cells, three per arc. A hit near a
+cell still lit, moving the same way, joins it (a `Swell` per cell: it adds, it never
+restarts); otherwise it takes a free cell or the faintest. A cell may spread (radians per
+second, easing off over 1.1 s) and travel (a steady pace).
+
+- A lock wakes the stretches just beside the board on the two leading arcs; twelve quick
+  locks build them from a glimmer into a blazing stretch, under a 1.3 ceiling.
+- A clear wakes every resting arc at the board and spreads it out at 0.36–0.54 rad/s, so an
+  awake front runs out along the sky; two or more lines colour its tops.
+- A quad breaks the whole sky up (spreading at 0.95 rad/s), the near arc violet-topped and the
+  others red-crowned; a streak's surge carries an awake stretch along with it at its pace;
+  cascades, back-to-backs, T-spins, perfect clears and level-ups each wake the sky in their
+  own colours.
+- **Flames.** A band climbing the rays now lights them at its own height, well above where
+  their green has faded (`flame` in the march), instead of only scaling light that was
+  already faint there, so the wave is seen running up the curtain. A clear of two or more
+  lines sends a second flame 0.22 s behind the first, and a quad a train of two more. The
+  band pool grew from three to four so the train never takes the strum's place.
+- Reduced motion keeps every cell's light and slows only how far it spreads and travels.
+
+[Events](aurora-overhaul/weather-events.jpg): twelve quick locks (the stretch right of the
+board blazes), a two-line clear (the cross arc wakes along its length), a quad 0.45 s in,
+and the pulsating patches 8 s after a storm.
+
+**Cost, by construction.** No timings: the GPUs on this machine are shared with the user's
+parallel sessions. Per march sample per resting arc, one `atan` and five `exp`; per curtain
+buffer pixel, two noise reads for the patches. Twenty `vec4` and five `float` uniforms more.
+On the CPU, nine `Swell` reads a frame. Nothing is allocated at event time: `wake()` takes
+positional arguments and the cells are fixed at build.
+
+**Checks.** `tests/unit/aurora-weather.test.js` (13 tests): ambient cells cover a wide reach of
+each arc and come and go; they replay exactly and ignore the frame rate; folds breathe out of
+step within bounds; `cellLife()` reads a cell only where it stands; hits join and plateau under
+the ceiling; a full arc gives up only its faintest cell; spread eases and travel holds its
+pace; everything settles exactly. On the director: a lock wakes the curtain beside the board
+and quick hands build it; a clear's front spreads along every arc; a quad wakes the sky
+violet over red; a streak carries a travelling cell; a storm raises the patches and settles
+exactly; reduced motion narrows only the spread. Two surge tests that took "the youngest band"
+for the quad's own now take the eldest, since the quad's flames follow it. All 102 Aurora
+tests pass; the shader build test passes on WGSL and GLSL at High and Low within the stage
+size budget; ESLint on the touched files is at main's baseline. Captured in the playground on
+WebGPU at High and on WebGL2 at Low and Minimal, and in the real game at High on WebGPU (six
+real hard drops through the event bus, then injected quad and storm), with no console errors
+beyond the environment's SteamCloud notices. `validate-all-themes --theme aurora` passed: 0
+lifecycle failures, 0 console errors. The fleet screenshot `docs/theme-screenshots/aurora.png`
+now shows the rebuilt scene.
+
 ## Reproducible preview
 
 Run `npm run dev:playground` and open:
@@ -175,11 +266,15 @@ Run `npm run dev:playground` and open:
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=lock&eventAge=0.3&color=%23ff88ee&column=7&drop=12`
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=quad&eventAge=0.8`
 - `/playground.html?effect=aurora&quality=High&t=20&board=1&event=combo&combo=6&eventAge=0.8`
+- `/playground.html?effect=aurora&quality=High&t=310` (a quiet night under pulsating patches)
+- `/playground.html?effect=aurora&quality=High&t=20&board=1&event=rush&eventAge=0.3&column=3`
+- `/playground.html?effect=aurora&quality=High&t=40&board=1&event=storm&eventAge=8`
 - `/playground.html?effect=aurora&quality=Low&t=20&forceWebGL=1`
 
-`t` fixes the animation phase; `eventAge` fixes the time since the cue. A streak is replayed
-as real consecutive clearing locks. Other parameters: `event=clear|tspin|perfect|level`,
-`lines`, `reduce=1`.
+`t` fixes the animation phase (and the sky's weather); `eventAge` fixes the time since the
+cue. A streak is replayed as real consecutive clearing locks, a storm as twelve of them 0.64 s
+apart into a fever, a rush as twelve quick locks that clear nothing. Other parameters:
+`event=clear|tspin|perfect|level`, `lines`, `reduce=1`.
 
 ### Theme icon
 
@@ -248,9 +343,12 @@ repeated. Local `node_modules` still held phaser 4.1.0; CI installs 4.2.1 from t
 - `architecture-fitness.json` was left untouched while other theme work is in flight, so
   the lower `ShaderMaterial` and resize-listener counts are not locked in yet.
 - The stylesheet rules for the four removed DOM layers remain in `public/styles/main.css`;
-  they match nothing now. `docs/theme-screenshots/aurora.png` still shows the previous
-  artwork; `scripts/capture-theme-screenshots.mjs` writes it during a fleet capture, which
-  was not run.
+  they match nothing now. (`docs/theme-screenshots/aurora.png` was refreshed by the
+  2026-10-25 pass.)
 - Minimal's 8-sample march shows slight stepping on the tightest fold. Portrait is framed
   by camera only; the arcs are authored for landscape.
 - Online multiplayer and Odyssey levels that use this theme were not played through.
+- 2026-10-25 pass: the far arc's red crown rarely shows, since the range hides most of that
+  arc; the pulsating patches are a judgement call (at rest they can read as faint lit cloud
+  over the Milky Way: `RESTING_PULSATION` in `aurora-director.js` sets how strongly); the
+  theme icon still shows the scene before this pass; not checked on portrait or an Odyssey orb.

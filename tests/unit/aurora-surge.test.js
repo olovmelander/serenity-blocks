@@ -33,6 +33,8 @@ const clear = (lineCount = 1, cascadeCount = 1) => ({
 });
 const liveBands = (director) => director.sweeps.filter((band) => band.age >= 0 && band.age < band.life);
 const youngest = (director) => liveBands(director).reduce((a, b) => (b.age < a.age ? b : a));
+/** The band a clear launched first: a quad's strum, ahead of the flames that follow it. */
+const eldest = (director) => liveBands(director).reduce((a, b) => (b.age > a.age ? b : a));
 /** Pulses the last frame launched (cues resolve at the time before the frame steps). */
 const bornNow = (director) => director.pulses.filter((pulse) => pulse.active && pulse.born > director.time - 0.02);
 
@@ -54,14 +56,17 @@ describe('Aurora builds with play instead of popping', () => {
         const { director } = create();
         clearingLock(director, 4);
         advance(director, 0.3);
-        const quadBand = youngest(director);
+        const quadBand = eldest(director);
+        // The quad's own flames follow its strum up the rays: a train, not one band.
+        expect(liveBands(director).length).toBeGreaterThanOrEqual(2);
+        const inFlight = liveBands(director).map((band) => [band, band.age]);
         const { sweepGain, corona, activity } = director;
         const altitude = director.sweepAltitude;
 
         clearingLock(director, 1);
-        // The quad's band runs on above where it was; the single climbs below it.
+        // The quad's band runs on above where it was, and no band of its train is restarted.
         expect(quadBand.age).toBeGreaterThan(0.3);
-        expect(liveBands(director)).toHaveLength(2);
+        for (const [band, age] of inFlight) expect(band.age).toBeGreaterThan(age);
         expect(Math.max(...director.sweepBands.filter((_, i) => i % 4 === 0))).toBeGreaterThan(altitude);
         expect(director.sweepGain).toBeGreaterThan(sweepGain);
         expect(director.corona).toBeGreaterThanOrEqual(corona * 0.99);
@@ -211,7 +216,7 @@ describe('Aurora builds with play instead of popping', () => {
         const { director } = create();
         clearingLock(director, 4);
         advance(director, 0.36);
-        const quadBand = youngest(director);
+        const quadBand = eldest(director);
         const punch = director.heatPunch;
         director.onPerfectClear({ depth: 4 });
         director.update(1 / 60);
