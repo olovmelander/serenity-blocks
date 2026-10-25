@@ -32,6 +32,11 @@
  * smog — until a perfect clear breaks it: the rain lets up, the glass wipes clear, the dragon
  * burns white-gold.
  *
+ * The district turns through its palettes (signal, harbour, arcade, lantern, ultraviolet) by the
+ * clock, in every mode (a match, Infinity and the menus never level up): each is seen pure for a
+ * while, then melts into the next (districtDrift). A level is one step on top, eased the short
+ * way round, and marked by sheet lightning and a flash as the signs refresh.
+ *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame. Speeds that change are
  * integrated (the rain's, the traffic's and the kerb chase's clocks), never multiplied into the
@@ -85,6 +90,9 @@ import {
 } from './neon-district-composition.js';
 import { applyCameraBreath, breathFill } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import {
+    easeStep, meltColour, moodDrift, wheelAt,
+} from '../shared/mood-clock.js';
 import { readBreathSignal } from '../../core/breath-signal.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
@@ -145,8 +153,9 @@ const FLOOD_LEAD = Math.log(FLOOD_RELEASE / FLOOD_ATTACK) / (1 / FLOOD_ATTACK - 
 const STROKE_RATE = 0.45;
 
 /**
- * District palettes, one per level (cycled): the two accents the sky and the waves use, and the
- * mist at street level / the smog above (all scene-linear).
+ * District palettes, a wheel the clock turns (districtDrift) with a level one step on top: the
+ * two accents the sky and the waves use, and the mist at street level / the smog above (all
+ * scene-linear).
  */
 export const DISTRICT_PALETTES = Object.freeze([
     {
@@ -165,6 +174,73 @@ export const DISTRICT_PALETTES = Object.freeze([
         name: 'ultraviolet', a: 0x9b5cff, b: 0x22e4ff, low: [0.06, 0.03, 0.14], high: [0.014, 0.01, 0.042],
     },
 ]);
+
+/**
+ * Seconds the district holds one palette when only the clock is turning it (a match, Infinity and
+ * the menus never level up), and the share of that time it is seen pure before it melts into
+ * the next: the whole wheel turns in a little over eight minutes.
+ */
+export const DISTRICT_PERIOD = 100;
+export const DISTRICT_HOLD = 0.35;
+
+/**
+ * How far the clock alone has turned the district's palettes by `time`: the whole part counts
+ * the palettes passed, the fraction is the melt into the next. A function of the time alone.
+ * @param {number} time
+ */
+export const districtDrift = (time) => moodDrift(time, DISTRICT_PERIOD, DISTRICT_HOLD);
+
+/** The colours of a palette the world reads. */
+export const DISTRICT_KEYS = Object.freeze(['a', 'b', 'low', 'high']);
+/** The district's palettes, scene-linear. */
+const DISTRICT_RGB = Object.freeze(DISTRICT_PALETTES.map((palette) => Object.freeze({
+    a: linRGB(palette.a), b: linRGB(palette.b), low: palette.low, high: palette.high,
+})));
+
+/** A light gone lime (yellow-green): green leading, red close behind, little blue. */
+export const isLimeLight = (rgb) => rgb[1] >= rgb[0] && rgb[0] > rgb[1] * 0.35 && rgb[1] > rgb[2] * 1.5;
+
+/**
+ * The short way round the colour wheel from arcade's mint to lantern's rose, and from lantern's
+ * gold to ultraviolet's cyan, runs through chartreuse: a sickly sky. A melt that would pass
+ * through lime goes by a violet instead. For every palette, the keys whose melt into the next
+ * one needs the detour.
+ */
+const NEON_WAY = Object.freeze([0.55, 0.3, 1.0]);
+const MELT_WAY = Object.freeze(DISTRICT_RGB.map((from, i) => {
+    const to = DISTRICT_RGB[(i + 1) % DISTRICT_RGB.length];
+    const probe = [0, 0, 0];
+    return Object.freeze(DISTRICT_KEYS.filter((key) => {
+        for (let m = 1; m < 32; m++) {
+            if (isLimeLight(meltColour(from[key], to[key], m / 32, probe))) return true;
+        }
+        return false;
+    }));
+}));
+const WHEEL = { a: 0, b: 0, melt: 0 };
+
+/**
+ * The district's palette at `phase` round its wheel, scene-linear, written into `out[key]` for
+ * every key in DISTRICT_KEYS (arrays made as needed): on a whole phase that palette exactly,
+ * between two the melt the short way round the colour wheel, never through lime. Returns `out`.
+ * @param {number} phase
+ * @param {Record<string, number[]>} [out]
+ */
+export function districtAt(phase, out = {}) {
+    wheelAt(phase, DISTRICT_RGB.length, WHEEL);
+    const from = DISTRICT_RGB[WHEEL.a];
+    const to = DISTRICT_RGB[WHEEL.b];
+    const detour = MELT_WAY[WHEEL.a];
+    const { melt } = WHEEL;
+    for (let i = 0; i < DISTRICT_KEYS.length; i++) {
+        const key = DISTRICT_KEYS[i];
+        const rgb = out[key] || (out[key] = [0, 0, 0]);
+        if (!detour.includes(key)) meltColour(from[key], to[key], melt, rgb);
+        else if (melt < 0.5) meltColour(from[key], NEON_WAY, melt * 2, rgb);
+        else meltColour(NEON_WAY, to[key], melt * 2 - 1, rgb);
+    }
+    return out;
+}
 
 const GOLD = Object.freeze([1.0, 0.72, 0.22]);
 /** What the wave a perfect clear crowns burns toward. */
@@ -307,7 +383,8 @@ export class NeonDistrictWorld {
         this.heat = 0;
         this.overdrive = 0;
         this.level = 1;
-        this.paletteIndex = 0;
+        /** The level's share of the district's turn, eased toward level - 1 (the clock adds its own). */
+        this.paletteStep = 0;
         this.flash = 0;
         this.kick = 0;
         this.glitch = 0;
@@ -509,13 +586,16 @@ export class NeonDistrictWorld {
         this.reducedMotion = reduced === true;
     }
 
-    /** Jump the clock (captures): drops every event in flight. */
+    /** Jump the clock (captures): drops every event in flight; the district shows the clock's palette. */
     seek(time) {
         this.resetState(Math.max(0, time));
         this.applyPalette(1);
     }
 
-    /** A new run: the district back at rest (the city keeps flowing). */
+    /**
+     * A new run: the district back at rest (the city keeps flowing, and keeps the clock's palette,
+     * dropping only the level's steps).
+     */
     resetSession() {
         const {
             time, scroll, rainClock, trafficClock, chasePhase,
@@ -637,7 +717,7 @@ export class NeonDistrictWorld {
         // How hot play runs as it lands: a quick hand's pieces land heavier, wider and brighter.
         const pace = this.surge.level.valueAt(t);
         const slot = this.pickLockSlot(t);
-        const rgb = pieceColor(color, DISTRICT_PALETTES[this.paletteIndex].a);
+        const rgb = pieceColor(color, DISTRICT_PALETTES[this.paletteShown()].a);
         const strength = (hardDrop ? 1.3 : 0.8) * (1 + 0.2 * pace);
         uniforms.lockA[slot].value.set(strike.x, strike.z - this.scroll, t, strength);
         this.lastAnchor = t;
@@ -942,10 +1022,9 @@ export class NeonDistrictWorld {
         this.combo = n;
     }
 
-    /** A new level: the district changes its colours. */
+    /** A new level: sheet lightning, a flash, the signs refreshed, and the district moves on one palette. */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.paletteIndex = (this.level - 1) % DISTRICT_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             const t = this.time;
@@ -956,18 +1035,27 @@ export class NeonDistrictWorld {
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the district is heading on its wheel of palettes: one step for every level, turned on
+     * by the clock. The whole part names a palette, the fraction is how far it has melted into the
+     * next.
+     */
+    palettePhase() {
+        return (this.level - 1) + districtDrift(this.time);
+    }
+
+    /** The palette the district is heading for (the nearest whole step of its phase). */
+    paletteShown() {
+        return wheelAt(Math.round(this.palettePhase()), DISTRICT_PALETTES.length, WHEEL).a;
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek and
+     * a replay agree); the level's step eases in by `k` (1 snaps), the short way round the wheel.
+     */
     applyPalette(k) {
-        const target = DISTRICT_PALETTES[this.paletteIndex];
-        const p = this._palette;
-        const a = linRGB(target.a);
-        const b = linRGB(target.b);
-        for (let c = 0; c < 3; c++) {
-            p.a[c] += (a[c] - p.a[c]) * k;
-            p.b[c] += (b[c] - p.b[c]) * k;
-            p.low[c] += (target.low[c] - p.low[c]) * k;
-            p.high[c] += (target.high[c] - p.high[c]) * k;
-        }
+        this.paletteStep = easeStep(this.paletteStep, this.level - 1, k, DISTRICT_PALETTES.length);
+        districtAt(this.paletteStep + districtDrift(this.time), this._palette);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1199,7 +1287,9 @@ export class NeonDistrictWorld {
             surge: { level: this.play.level, fever: this.play.fever, stage: this.play.stage },
             downpour: this.downpour,
             level: this.level,
-            palette: DISTRICT_PALETTES[this.paletteIndex].name,
+            // (the palette it is heading for, and where on the wheel it is showing now)
+            palette: DISTRICT_PALETTES[this.paletteShown()].name,
+            paletteTurn: this.paletteStep + districtDrift(this.time),
             counts: { ...this.counts },
             dragon: this.time < this.dragonUntil,
             drones: this.dragon ? this.dragon.count : 0,
