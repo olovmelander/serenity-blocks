@@ -278,6 +278,8 @@ describe('Grainfields herd: the barley it parts', () => {
             x: 0, z: -30, heading: Math.PI / 2, speed: 10, scale: 1,
         };
         expect(field.press([horse], 1 / 60)).toBe(true);
+        // (A stalk is a spring: it leans after the push a moment late.)
+        for (let k = 0; k < 24; k++) field.press([horse], 1 / 60);
         // Beside the horse (it faces +x) the stalks lean away from it, and are laid over.
         const left = at(field, 0.3, -31.4);
         const right = at(field, 0.3, -28.6);
@@ -287,8 +289,14 @@ describe('Grainfields herd: the barley it parts', () => {
         // Far from it, nothing.
         expect(at(field, 30, -60).lay).toBe(0);
         expect(Math.abs(at(field, 30, -60).push[0])).toBeLessThan(0.01);
-        // The horse moves on: behind it the stalks stand back up over a few seconds.
-        for (let k = 0; k < 600; k++) field.press([{ ...horse, x: 60 }], 1 / 60);
+        // The horse moves on: the stalks it pushed swing back past upright, then sway still; laid ones
+        // stand back up over a few seconds.
+        let past = 0;
+        for (let k = 0; k < 600; k++) {
+            field.press([{ ...horse, x: 60 }], 1 / 60);
+            past = Math.max(past, at(field, 0.3, -31.4).push[1]);
+        }
+        expect(past).toBeGreaterThan(0.05);
         expect(at(field, 0.3, -31.4).lay).toBeLessThan(left.lay * 0.3);
         expect(Math.abs(at(field, 0.3, -31.4).push[1])).toBeLessThan(0.05);
         // Off the field and settled, it stops uploading; a seek clears it.

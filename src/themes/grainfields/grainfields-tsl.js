@@ -144,6 +144,8 @@ export const RAYS = 4;
 /** Points of the path's centre line the shaders read. */
 export const PATH_ROWS = PATH_POINTS.length;
 
+/** Grazing muzzles the barley answers (one a horse at most). */
+export const MUZZLES = 9;
 const rows = (count) => Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, 0));
 const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
 
@@ -160,6 +162,8 @@ export function createUniforms() {
         rays: rows(RAYS),
         // per pulse: (centre x, centre z, start time, power) + (kind, speed m/s, width m, unused)
         pulses: rows(PULSES * 2),
+        // per grazing muzzle pulling the ears: (world x, y, z, pull 0..1), the live ones first
+        muzzles: rows(MUZZLES),
     };
     return {
         tables,
@@ -168,6 +172,10 @@ export function createUniforms() {
         path: uniformArray(tables.path, 'vec4'),
         rays: uniformArray(tables.rays, 'vec4'),
         pulses: uniformArray(tables.pulses, 'vec4'),
+        muzzles: uniformArray(tables.muzzles, 'vec4'),
+        muzzleCount: uniform(0, 'int'),
+        /** Where the pulling muzzles are: (middle x, z, radius); the barley outside never looks. */
+        muzzleBounds: uniform(new THREE.Vector3(0, 0, 0)),
         pulseCount: uniform(0, 'int'),
         gapCount: uniform(0, 'int'),
         trailCount: uniform(0, 'int'),

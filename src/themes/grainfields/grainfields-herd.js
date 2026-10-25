@@ -106,7 +106,7 @@ export const COATS = Object.freeze([
     }),
     Object.freeze({
         name: 'black-bay',
-        body: [0.04, 0.025, 0.018],
+        body: [0.052, 0.033, 0.024],
         hair: [0.01, 0.008, 0.007],
         points: [0.011, 0.009, 0.008],
         light: 2.2,
@@ -247,7 +247,9 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
         // A sheen on the coat (less on the hair), and the wet glint of an eye.
         const H = normalize(u.sunDir.sub(V));
         const nh = clamp(dot(N, H), 0.0, 1.0);
-        const sheen = pow(nh, float(18.0)).mul(float(0.05).mul(float(1.0).sub(hair.mul(0.6))).add(eye.mul(1.6)));
+        // (A dark coat shines the more: what little it gives back is mostly sheen.)
+        const gloss = float(0.05).add(float(0.06).mul(float(1.0).sub(smoothstep(0.05, 0.2, body.g))));
+        const sheen = pow(nh, float(18.0)).mul(gloss.mul(float(1.0).sub(hair.mul(0.6))).add(eye.mul(1.6)));
         col.addAssign(u.sun.mul(sunlit).mul(sheen).mul(ao));
         col.addAssign(u.fill.mul(eye).mul(pow(clamp(N.y.mul(0.5).add(0.5), 0.0, 1.0), float(4.0))).mul(0.6));
         // Backlit, a rim of light runs round the silhouette (the coat's hairs lit through).
@@ -310,7 +312,8 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
     const wind = { windX: 0, windZ: 0 };
     let clock = 0;
     const dust = createHerdDust(u, t, dustCount);
-    const rand = mulberry32(((seed ?? 0x40e5) ^ 0xd0571) >>> 0);
+    const dustSeed = ((seed ?? 0x40e5) ^ 0xd0571) >>> 0;
+    let rand = mulberry32(dustSeed);
     const muzzle = landmarks.muzzle || MUZZLE;
     const spot = [0, 0, 0];
 
@@ -390,6 +393,46 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
         dust.update();
     };
 
+    /** How hard each stage of browsing the ears pulls them toward the muzzle (chewing lets them go). */
+    const PULL = Object.freeze({
+        reach: 0.35, bite: 0.75, tear: 1, chew: 0,
+    });
+    const pulls = motions.map(() => 0);
+    /** The muzzles at work in the barley, for the ears to answer (u.muzzles, the live ones first). */
+    const writeMuzzles = (dt) => {
+        let live = 0;
+        let cx = 0;
+        let cz = 0;
+        sim.horses.forEach((h, i) => {
+            const m = motions[i];
+            const browsing = (h.business === 'graze' || h.business === 'step') && (h.speed || 0) < 0.5 && !h.verge
+                && (h.alert || 0) < 0.3;
+            const want = browsing ? PULL[m.eat.stage] ?? 0 : 0;
+            const rate = want > pulls[i] ? 10 : 6;
+            pulls[i] += (want - pulls[i]) * (1 - Math.exp(-rate * dt));
+            if (pulls[i] < 0.02 || live >= u.tables.muzzles.length) return;
+            boneToWorld(rig, m.pose, rig.index.head, muzzle, m.place.scale, spot);
+            u.tables.muzzles[live].set(spot[0], spot[1], spot[2], pulls[i]);
+            cx += spot[0];
+            cz += spot[2];
+            live += 1;
+        });
+        u.muzzleCount.value = live;
+        for (let k = live; k < u.tables.muzzles.length; k++) u.tables.muzzles[k].set(0, 0, 0, 0);
+        if (!live) {
+            u.muzzleBounds.value.set(0, 0, 0);
+            return;
+        }
+        cx /= live;
+        cz /= live;
+        let reach = 0;
+        for (let k = 0; k < live; k++) {
+            const row = u.tables.muzzles[k];
+            reach = Math.max(reach, Math.hypot(row.x - cx, row.z - cz));
+        }
+        u.muzzleBounds.value.set(cx, cz, reach + 0.8);
+    };
+
     const write = () => {
         sim.horses.forEach((h, i) => {
             const m = motions[i];
@@ -452,6 +495,8 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
             const warm = Math.min(time, 4);
             sim.reset(time - warm);
             dust.reset();
+            rand = mulberry32(dustSeed);
+            pulls.fill(0);
             motions.forEach((m) => {
                 m.started = false;
                 m.events.length = 0;
@@ -462,6 +507,7 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
                 at += step;
                 sim.update(at, step);
                 move(at, step);
+                writeMuzzles(step);
             }
             write();
         },
@@ -473,8 +519,10 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
                 wind.windZ = w.windDir.value.y * strength * 3;
             }
             sim.update(time, dt);
-            move(time, Math.max(0, Math.min(0.25, dt || time - clock)));
+            const step = Math.max(0, Math.min(0.25, dt || time - clock));
+            move(time, step);
             write();
+            writeMuzzles(step);
         },
         dispose() {
             instanced.dispose();
