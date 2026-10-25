@@ -7,6 +7,8 @@
  * it, crystal spires bracket the view and the range closes the far shore.
  */
 
+import { meltColour, moodDrift, wheelAt } from '../shared/mood-clock.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -138,7 +140,8 @@ export function pieceColor(value, fallback = 0xc7a4ff) {
 }
 
 /**
- * Valley palettes, one per level (cycled), all scene-linear:
+ * Valley palettes, a wheel the clock turns (paletteDrift) with a level one step on top, all
+ * scene-linear:
  *   moon / companion  the two moons' own light
  *   zenith / horizon  the sky's ends; `glow` is the scatter round the great moon
  *   auroraLow / auroraHigh  the curtain's lower border and its crown
@@ -211,6 +214,79 @@ export const LUNARA_PALETTES = Object.freeze([
 export const PALETTE_KEYS = Object.freeze([
     'moon', 'companion', 'zenith', 'horizon', 'glow', 'auroraLow', 'auroraHigh', 'bed', 'crystal',
 ]);
+
+/**
+ * Seconds the valley holds one palette when only the clock is turning it (a match, Infinity and
+ * the menus never level up), and the share of that time it is seen pure before it melts into
+ * the next: the whole wheel turns in a little over eight minutes.
+ */
+export const PALETTE_PERIOD = 100;
+export const PALETTE_HOLD = 0.35;
+
+/**
+ * How far the clock alone has turned the valley's palettes by `time`: the whole part counts the
+ * palettes passed, the fraction is the melt into the next. A function of the time alone.
+ * @param {number} time
+ */
+export const paletteDrift = (time) => moodDrift(time, PALETTE_PERIOD, PALETTE_HOLD);
+
+/** A moon's light gone green: green well above both red and blue. */
+export const isGreenLight = (rgb) => rgb[1] > rgb[0] * 1.15 && rgb[1] > rgb[2] * 1.15;
+
+/** A light gone lime (yellow-green): green leading, red close behind, little blue. */
+export const isLimeLight = (rgb) => rgb[1] >= rgb[0] && rgb[0] > rgb[1] * 0.35 && rgb[1] > rgb[2] * 1.5;
+
+/** What no melt may pass through: a lime anywhere, a green moon. */
+const strays = (key, rgb) => isLimeLight(rgb) || ((key === 'moon' || key === 'companion') && isGreenLight(rgb));
+
+/**
+ * The short way round the colour wheel from glacier to ember runs through lime (its curtains,
+ * its veins, its ice-blue moon) under a sky melting through violet, and from ember's red
+ * companion to ultraviolet's cyan through a lime moon. A melt that would stray there goes by a
+ * lilac (the great moon) or a violet (everything else) instead, with the sky. For every palette,
+ * the keys whose melt into the next one needs the detour.
+ */
+const WAY = Object.freeze([0.55, 0.3, 1.0]);
+const MOON_WAY = Object.freeze({
+    moon: Object.freeze([0.86, 0.72, 1.0]),
+    companion: Object.freeze([0.55, 0.42, 1.0]),
+});
+const wayFor = (key) => MOON_WAY[key] || WAY;
+const MELT_WAY = Object.freeze(LUNARA_PALETTES.map((from, i) => {
+    const to = LUNARA_PALETTES[(i + 1) % LUNARA_PALETTES.length];
+    const probe = [0, 0, 0];
+    return Object.freeze(PALETTE_KEYS.filter((key) => {
+        for (let m = 1; m < 32; m++) {
+            if (strays(key, meltColour(from[key], to[key], m / 32, probe))) return true;
+        }
+        return false;
+    }));
+}));
+
+const WHEEL = { a: 0, b: 0, melt: 0 };
+
+/**
+ * The valley's palette at `phase` round its wheel, written into `out[key]` for every key in
+ * PALETTE_KEYS (arrays made as needed): on a whole phase that palette exactly, between two the
+ * melt the short way round the colour wheel (never by lime, a moon never by green). Returns `out`.
+ * @param {number} phase
+ * @param {Record<string, number[]>} [out]
+ */
+export function paletteAt(phase, out = {}) {
+    wheelAt(phase, LUNARA_PALETTES.length, WHEEL);
+    const from = LUNARA_PALETTES[WHEEL.a];
+    const to = LUNARA_PALETTES[WHEEL.b];
+    const detour = MELT_WAY[WHEEL.a];
+    const { melt } = WHEEL;
+    for (let i = 0; i < PALETTE_KEYS.length; i++) {
+        const key = PALETTE_KEYS[i];
+        const rgb = out[key] || (out[key] = [0, 0, 0]);
+        if (!detour.includes(key)) meltColour(from[key], to[key], melt, rgb);
+        else if (melt < 0.5) meltColour(from[key], wayFor(key), melt * 2, rgb);
+        else meltColour(wayFor(key), to[key], melt * 2 - 1, rgb);
+    }
+    return out;
+}
 
 /** The colour a four-line clear fires in. */
 export const MOONFIRE = Object.freeze([1.0, 0.86, 0.6]);

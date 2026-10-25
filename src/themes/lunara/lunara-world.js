@@ -33,6 +33,11 @@
  * clear crowns it all — every spire gives up its light as a pillar — and the end of a chain lets
  * the shores go; then the valley breathes back to its night.
  *
+ * The valley turns through its palettes (amethyst, rose quartz, glacier, ember, ultraviolet) by
+ * the clock, in every mode (a match, Infinity and the menus never level up): each is seen pure
+ * for a while, then melts into the next (paletteDrift). A level is one step on top, eased the
+ * short way round, and marked by the aurora stirring, a ring across the sky and two meteors.
+ *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
  *
@@ -64,6 +69,8 @@ import {
     createPlaceholderTexture,
     createValleyUniforms,
     mulberry32,
+    paletteAt,
+    paletteDrift,
     pieceColor,
     powerForCombo,
     smooth,
@@ -81,6 +88,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './lunara-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { easeStep, wheelAt } from '../shared/mood-clock.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
@@ -130,6 +138,7 @@ const SUN = new THREE.Vector3(0.95, 0.3, -0.15).normalize();
 export const MOON_MAP_URL = './textures/2k_moon.jpg';
 /** Seconds the moons' faces take to fade in once the map has arrived. */
 const MAP_FADE = 1.6;
+const WHEEL = { a: 0, b: 0, melt: 0 };
 
 const PARTS = [
     'sky', 'moon', 'companion', 'meteors', 'ranges', 'banks', 'water', 'crystals', 'glints', 'pillars',
@@ -261,7 +270,8 @@ export class LunaraWorld {
         this.power = 0;
         this.storm = 0;
         this.level = 1;
-        this.paletteIndex = 0;
+        /** The level's share of the valley's turn, eased toward level - 1 (the clock adds its own). */
+        this.paletteStep = 0;
         this.dip = 0;
         this.breath = 1;
         this.rings = 0;
@@ -435,13 +445,16 @@ export class LunaraWorld {
         this.reducedMotion = reduced === true;
     }
 
-    /** Jump the clock (captures): drops every event in flight. */
+    /** Jump the clock (captures): drops every event in flight; the valley shows the clock's palette. */
     seek(time) {
         this.resetState(Math.max(0, time));
         this.applyPalette(1);
     }
 
-    /** A new run: the valley back at rest (the sky keeps turning). */
+    /**
+     * A new run: the valley back at rest (the sky keeps turning, and the valley keeps the clock's
+     * palette, dropping only the level's steps).
+     */
     resetSession() {
         const {
             time, orbit, auroraDrift, moteLift, meteorBeat,
@@ -1072,30 +1085,42 @@ export class LunaraWorld {
         this.combo = n;
     }
 
-    /** A new level: the valley changes its colours. */
+    /** A new level: the valley moves on one palette, marked by a ring across the sky and meteors. */
     levelUp(level, { silent = false } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
-        this.paletteIndex = (this.level - 1) % LUNARA_PALETTES.length;
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
             this.env.flash.hit(0.14, this.time);
             this.shockRing(0.36, this.time);
             this.meteors?.emit({
-                n: 2, time: this.time + 0.3, rgb: LUNARA_PALETTES[this.paletteIndex].moon, stagger: 0.8,
+                n: 2, time: this.time + 0.3, rgb: LUNARA_PALETTES[this.paletteShown()].moon, stagger: 0.8,
             });
             this.play.levelUp(this.time);
         }
     }
 
-    /** Ease the live palette toward the level's (k = 1 snaps). */
+    /**
+     * Where the valley is heading on its wheel of palettes: one step for every level, turned on by
+     * the clock. The whole part names a palette, the fraction is how far it has melted into the
+     * next.
+     */
+    palettePhase() {
+        return (this.level - 1) + paletteDrift(this.time);
+    }
+
+    /** The palette the valley is heading for (the nearest whole step of its phase). */
+    paletteShown() {
+        return wheelAt(Math.round(this.palettePhase()), LUNARA_PALETTES.length, WHEEL).a;
+    }
+
+    /**
+     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek and
+     * a replay agree); the level's step eases in by `k` (1 snaps), the short way round the wheel.
+     */
     applyPalette(k) {
-        const target = LUNARA_PALETTES[this.paletteIndex];
-        const p = this._palette;
-        for (let i = 0; i < PALETTE_KEYS.length; i++) {
-            const key = PALETTE_KEYS[i];
-            for (let c = 0; c < 3; c++) p[key][c] += (target[key][c] - p[key][c]) * k;
-        }
+        this.paletteStep = easeStep(this.paletteStep, this.level - 1, k, LUNARA_PALETTES.length);
+        paletteAt(this.paletteStep + paletteDrift(this.time), this._palette);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1286,7 +1311,9 @@ export class LunaraWorld {
             rings: this.rings,
             veins: Math.max(this.veins, this.veinsFlare),
             level: this.level,
-            palette: LUNARA_PALETTES[this.paletteIndex].name,
+            // (the palette it is heading for, and where on the wheel it is showing now)
+            palette: LUNARA_PALETTES[this.paletteShown()].name,
+            paletteTurn: this.paletteStep + paletteDrift(this.time),
             counts: { ...this.counts },
             held: this.crystals ? this.crystals.totalHeld(this.time) : 0,
             crystals: this.crystals ? this.crystals.count : 0,

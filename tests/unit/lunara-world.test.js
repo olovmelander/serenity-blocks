@@ -6,8 +6,9 @@ import {
     LUNARA_PARTS, LunaraWorld, METEOR_BEAT, ORBIT_RATE, ORBIT_START, REST_RIG, SURGE_COOL, fovForAspect,
 } from '../../src/themes/lunara/lunara-world.js';
 import {
-    CLEAR_SLOTS, CLEAR_TRAVEL, DEG, HUSH_HOLD, LOCK_SLOTS, LUNARA_PALETTES, MOONFIRE, PULSE_FADE, STORE_HOLD,
-    STORE_MAX, WISP_FLIGHT, WISP_SLOTS, WISP_TAIL, celestialAnchors, pieceColor, powerForCombo,
+    CLEAR_SLOTS, CLEAR_TRAVEL, DEG, HUSH_HOLD, LOCK_SLOTS, LUNARA_PALETTES, MOONFIRE, PALETTE_HOLD, PALETTE_KEYS,
+    PALETTE_PERIOD, PULSE_FADE, STORE_HOLD, STORE_MAX, WISP_FLIGHT, WISP_SLOTS, WISP_TAIL, celestialAnchors,
+    isGreenLight, isLimeLight, paletteAt, paletteDrift, pieceColor, powerForCombo,
 } from '../../src/themes/lunara/lunara-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/lunara/lunara-quality.js';
 import { MAX_CRYSTALS, MAX_FLORA } from '../../src/themes/lunara/lunara-layout.js';
@@ -1230,6 +1231,108 @@ describe('lunara world: clears, combos and the four-line clear', () => {
     });
 });
 
+describe('lunara world: the palettes turn by the clock', () => {
+    const KEYS = ['bed', 'zenith', 'crystal', 'auroraLow', 'auroraHigh'];
+    /** The valley's live colours, as the shaders read them (the ones no heat touches at rest). */
+    const coloursOf = (world) => KEYS.map((key) => world.u[key].value.toArray());
+    const paletteOf = (index) => KEYS.map((key) => [...LUNARA_PALETTES[index][key]]);
+    const expectColours = (actual, expected, digits = 6) => {
+        actual.forEach((rgb, i) => rgb.forEach((v, c) => expect(v, KEYS[i]).toBeCloseTo(expected[i][c], digits)));
+    };
+    const distance = (x, y) => Math.hypot(...x.flat().map((v, i) => v - y.flat()[i]));
+    /** Seek and draw one frame there (what a capture or a rebuild that carries the clock does). */
+    const seekTo = (world, camera, time) => {
+        world.seek(time);
+        world.update({ time, delta: 0 }, camera);
+    };
+
+    it('walks through every palette with no level-up, each seen pure for its hold', () => {
+        const { camera, world } = makeWorld('Low');
+        for (let k = 0; k < LUNARA_PALETTES.length; k++) {
+            seekTo(world, camera, k * PALETTE_PERIOD);
+            expectColours(coloursOf(world), paletteOf(k));
+            expect(world.getState().palette).toBe(LUNARA_PALETTES[k].name);
+            seekTo(world, camera, (k + PALETTE_HOLD * 0.98) * PALETTE_PERIOD);
+            expectColours(coloursOf(world), paletteOf(k));
+            seekTo(world, camera, (k + (1 + PALETTE_HOLD) / 2) * PALETTE_PERIOD);
+            const melting = coloursOf(world);
+            expect(distance(melting, paletteOf(k))).toBeGreaterThan(0.1);
+            expect(distance(melting, paletteOf((k + 1) % LUNARA_PALETTES.length))).toBeGreaterThan(0.1);
+        }
+        seekTo(world, camera, LUNARA_PALETTES.length * PALETTE_PERIOD);
+        expectColours(coloursOf(world), paletteOf(0));
+        world.dispose();
+    });
+
+    it('melts without a jump, never through lime, and never turns a moon green', () => {
+        const flat = (out) => PALETTE_KEYS.map((key) => [...out[key]]);
+        let last = flat(paletteAt(0));
+        for (let i = 1; i <= LUNARA_PALETTES.length * 200; i++) {
+            const out = paletteAt(i / 200);
+            const now = flat(out);
+            expect(distance(now, last), `phase ${i / 200}`).toBeLessThan(0.1);
+            expect(isGreenLight(out.moon), `moon at ${i / 200}`).toBe(false);
+            expect(isGreenLight(out.companion), `companion at ${i / 200}`).toBe(false);
+            PALETTE_KEYS.forEach((key) => expect(isLimeLight(out[key]), `${key} at ${i / 200}`).toBe(false));
+            last = now;
+        }
+        expect(paletteDrift(PALETTE_PERIOD * PALETTE_HOLD * 0.99)).toBe(0);
+        expect(paletteDrift(PALETTE_PERIOD * 2)).toBe(2);
+    });
+
+    it('steps one palette on top of the clock at a level-up, the short way round, with its ring and meteors', () => {
+        const { camera, world } = makeWorld('Low');
+        // The clock alone has reached rose quartz.
+        seekTo(world, camera, PALETTE_PERIOD + 1);
+        expectColours(coloursOf(world), paletteOf(1));
+        const meteors = world.meteors ? vi.spyOn(world.meteors, 'emit') : null;
+        world.levelUp(2);
+        expect(world.getState().palette).toBe('glacier');
+        expect(world.storm).toBeGreaterThan(0.5);
+        expect(world.u.shock.value.x).toBe(world.time);
+        if (meteors) expect(meteors.mock.calls[0][0].rgb).toEqual(LUNARA_PALETTES[2].moon);
+        run(world, camera, 1);
+        const easing = coloursOf(world);
+        expect(distance(easing, paletteOf(1))).toBeGreaterThan(0.05);
+        expect(distance(easing, paletteOf(2))).toBeGreaterThan(0.05);
+        run(world, camera, 12);
+        expectColours(coloursOf(world), paletteOf(2), 3);
+        // Level 5 over the clock's ultraviolet is ember (4 + 4 = 8), taken the short way.
+        seekTo(world, camera, 4 * PALETTE_PERIOD + 1);
+        world.levelUp(5, { silent: true });
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(coloursOf(world), paletteOf(3));
+        expect(world.getState().paletteTurn).toBeCloseTo(3, 6);
+        // Level 6 is level 1's step again: one step on (ember to ultraviolet), not four back.
+        world.levelUp(6);
+        run(world, camera, 0.5);
+        expect(world.getState().paletteTurn).toBeGreaterThan(3);
+        expect(world.getState().paletteTurn).toBeLessThan(4);
+        run(world, camera, 12);
+        expectColours(coloursOf(world), paletteOf(4), 3);
+        world.dispose();
+    });
+
+    it('lands on the clock\'s palette after a seek or a new run, dropping only the level\'s steps', () => {
+        const { camera, world } = makeWorld('Low');
+        seekTo(world, camera, 2 * PALETTE_PERIOD + 5);
+        world.levelUp(2, { silent: true });
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(coloursOf(world), paletteOf(3));
+        world.resetSession();
+        world.update({ time: world.time, delta: 0 }, camera);
+        expectColours(coloursOf(world), paletteOf(2));
+        // A replay frame by frame lands where a seek does.
+        const { camera: other, world: replay } = makeWorld('Low');
+        seekTo(replay, other, 2.6 * PALETTE_PERIOD - 3);
+        run(replay, other, 3, 90);
+        seekTo(world, camera, 2.6 * PALETTE_PERIOD);
+        expectColours(coloursOf(replay), coloursOf(world), 6);
+        replay.dispose();
+        world.dispose();
+    });
+});
+
 describe('lunara world: the build-up', () => {
     /** One clearing lock of a chain, the way the director delivers it. */
     const clearing = (world, combo, { lines = 1 + (combo % 3), hardDrop = true } = {}) => {
@@ -1319,7 +1422,9 @@ describe('lunara world: the build-up', () => {
         expect(world.u.aurora.value).toBeCloseTo(rest.aurora, 3);
         expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 3);
         expect(world.getPostState().shafts).toBeCloseTo(rest.shafts, 3);
-        expect(world.u.auroraHigh.value.distanceTo(rest.high)).toBeLessThan(1e-3);
+        // (The clock has turned the palette on meanwhile: the crowns are the clock's, unblushed.)
+        const high = paletteAt(paletteDrift(world.time)).auroraHigh;
+        expect(world.u.auroraHigh.value.distanceTo(new THREE.Vector3(...high))).toBeLessThan(1e-3);
         world.dispose();
     });
 
