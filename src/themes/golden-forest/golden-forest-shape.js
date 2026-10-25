@@ -1,7 +1,8 @@
 /**
  * Golden Forest — the shape of the land (CPU only, three-free).
  *
- * The land is one analytic height function (golden-forest-terrain.js describes it), and the lake
+ * The land is one analytic height function (golden-forest-terrain.js describes it), drawn as a grid
+ * that coarsens with distance (goldenForestSurfaceHeight reads that drawn ground), and the lake
  * map is that function baked into bytes: R the ground's height (biased), G metres from the shore
  * out on the water / 40. The map is a pure function of the module (0.12 s of main thread on a first
  * visit, play-feel probe 2026-10-16), kept in the shared bake cache (read-only); a first visit
@@ -84,6 +85,85 @@ function groundFromShores(x, z, s, inland) {
         + 2 * ramp(s.island, 1, 6)
         + 0.45 * ramp(s.islet, 0.2, 1.6)
         + 0.9 * ramp(s.spit, 1, 4.5);
+}
+
+/** Grid lines that are close together around the camera and widen with distance. */
+function gridLines(min, max, denseMin, denseMax, denseStep, growth) {
+    const lines = [];
+    for (let value = denseMin; value <= denseMax + 1e-6; value += denseStep) lines.push(value);
+    let step = denseStep;
+    for (let value = denseMax; value < max;) {
+        step *= growth;
+        value = Math.min(max, value + step);
+        lines.push(value);
+    }
+    step = denseStep;
+    for (let value = denseMin; value > min;) {
+        step *= growth;
+        value = Math.max(min, value - step);
+        lines.unshift(value);
+    }
+    return lines;
+}
+
+/**
+ * The lines of the ground mesh's grid (golden-forest-terrain.js draws it): 0.45 m apart around the
+ * camera, each further one a tenth wider, so across the lake a cell is metres deep.
+ */
+export const GOLDEN_FOREST_GROUND_GRID = Object.freeze({
+    xs: Object.freeze(gridLines(GOLDEN_FOREST_BOUNDS.minX, GOLDEN_FOREST_BOUNDS.maxX, -34, 34, 0.45, 1.1)),
+    zs: Object.freeze(gridLines(GOLDEN_FOREST_BOUNDS.minZ, GOLDEN_FOREST_BOUNDS.maxZ, -8, 22, 0.45, 1.1)),
+});
+
+let gridHeights = null;
+
+/** The ground's height at every vertex of the grid, row by row along z (the mesh's own floats). */
+export function goldenForestGridHeights() {
+    if (!gridHeights) {
+        const { xs, zs } = GOLDEN_FOREST_GROUND_GRID;
+        gridHeights = new Float32Array(xs.length * zs.length);
+        for (let row = 0; row < zs.length; row += 1) {
+            for (let column = 0; column < xs.length; column += 1) {
+                gridHeights[row * xs.length + column] = goldenForestGroundHeight(xs[column], zs[row]);
+            }
+        }
+    }
+    return gridHeights;
+}
+
+/** The cell [lines[i], lines[i + 1]] that holds a value, clamped to the grid. */
+function cellOf(lines, value) {
+    let low = 0;
+    let high = lines.length - 2;
+    while (low < high) {
+        const middle = (low + high + 1) >> 1;
+        if (lines[middle] <= value) low = middle;
+        else high = middle - 1;
+    }
+    return low;
+}
+
+/**
+ * Height of the ground as it is drawn: the grid's flat triangles. They cut under every crest of the
+ * analytic land, by more than a metre where a cell metres deep spans a steep bank across the lake,
+ * so whatever stands on the ground is planted on this rather than on goldenForestGroundHeight.
+ */
+export function goldenForestSurfaceHeight(x, z) {
+    const { xs, zs } = GOLDEN_FOREST_GROUND_GRID;
+    const heights = goldenForestGridHeights();
+    const column = cellOf(xs, x);
+    const row = cellOf(zs, z);
+    const u = clamp((x - xs[column]) / (xs[column + 1] - xs[column]), 0, 1);
+    const v = clamp((z - zs[row]) / (zs[row + 1] - zs[row]), 0, 1);
+    const a = row * xs.length + column;
+    const ha = heights[a];
+    const hb = heights[a + 1];
+    const hc = heights[a + xs.length];
+    const hd = heights[a + xs.length + 1];
+    // The mesh splits each cell from its (column + 1, row) corner to its (column, row + 1) corner.
+    return u + v <= 1
+        ? ha + (hb - ha) * u + (hc - ha) * v
+        : hd + (hc - hd) * (1 - u) + (hb - hd) * (1 - v);
 }
 
 export const LAKE_MAP_WIDTH = 512;

@@ -10,7 +10,7 @@ import * as THREE from 'three/webgpu';
 import { ForestBackdrop } from './forest-backdrop.js';
 import { forestEye, forestViewFor } from './forest-composition.js';
 import { ForestFireflies } from './forest-fireflies.js';
-import { ForestFireflyDirector } from './forest-firefly-director.js';
+import { ForestFireflyDirector, forestFigureBox } from './forest-firefly-director.js';
 import { forestHourDrift, forestHourName, forestNearestTurn } from './forest-hours.js';
 import { ForestLight } from './forest-light.js';
 import { FOREST_EYE } from './forest-plan.js';
@@ -19,14 +19,37 @@ import { ForestSky } from './forest-sky.js';
 import { ForestStage } from './forest-stage.js';
 import { FOREST_HEARTH, ForestTerrain, forestGroundHeight } from './forest-terrain.js';
 import { ForestTrees } from './forest-trees.js';
-import { FOREST_FIGURE_STAND, ForestUnderstory } from './forest-understory.js';
+import { FOREST_FIGURE_STAND, FOREST_FIGURE_STANDS, ForestUnderstory } from './forest-understory.js';
 import { drainSteps } from '../shared/build-steps.js';
 
 /** Half the angle a firefly figure fills at its usual range, with a margin; ranges to try. */
 const FIGURE_HALF_VIEW = THREE.MathUtils.degToRad(8);
 const FIGURE_RANGES = [21, 23.5, 26, 18.5, 28.5];
+/** How far inside the edges of the screen a figure at any other place must stand, as a fraction of it. */
+const VIEW_MARGIN = 0.02;
 /** How quickly the night takes a level's step, per second: most of the way in four seconds. */
 const HOUR_FOLLOW = 0.6;
+
+/** A figure standing on the ground at x, z, side on to the eye and facing the moon. */
+function standAnchor(x, z, stand) {
+    const away = new THREE.Vector3(x - FOREST_EYE.x, 0, z - FOREST_EYE.z).normalize();
+    const right = new THREE.Vector3().crossVectors(away, new THREE.Vector3(0, 1, 0)).normalize();
+    return {
+        x,
+        y: forestGroundHeight(x, z),
+        z,
+        facing: { x: -right.x, z: -right.z },
+        depth: { x: away.x, z: away.z },
+        stand,
+    };
+}
+
+/** Does the view hold the whole of a figure standing at `anchor`, `VIEW_MARGIN` inside its edges? */
+function fitsView(stage, anchor) {
+    const box = forestFigureBox(stage, anchor);
+    return box !== null && box.x0 >= VIEW_MARGIN && box.x1 <= 1 - VIEW_MARGIN
+        && box.y0 >= VIEW_MARGIN && box.y1 <= 1 - VIEW_MARGIN;
+}
 
 export class ForestWorld {
     constructor({
@@ -123,7 +146,7 @@ export class ForestWorld {
             groundHeight: forestGroundHeight,
             trunks,
             boughs,
-            figureAnchor: this.figureAnchor(),
+            figureStands: this.figureAnchors(),
             eye: FOREST_EYE,
         });
     }
@@ -153,12 +176,32 @@ export class ForestWorld {
     }
 
     /**
-     * Where a firefly figure stands, side on to the eye and facing the moon: its usual place in
-     * front of the knoll when the whole figure fits in the view, otherwise as far to the
-     * right as the view allows (a narrow or upright screen), on ground clear of every trunk.
+     * Every place a firefly figure may stand on this screen (see FOREST_FIGURE_STANDS), for the
+     * director to pick from at each summons: each the view holds whole, and the usual place
+     * always (moved into view on a narrow screen, see `figureAnchor`). Each carries its number
+     * among the stands as `stand`.
      */
-    figureAnchor() {
-        let { x, z } = FOREST_FIGURE_STAND;
+    figureAnchors() {
+        const anchors = [];
+        FOREST_FIGURE_STANDS.forEach((stand, index) => {
+            if (index === 0) {
+                anchors.push(this.figureAnchor(stand, index));
+                return;
+            }
+            const anchor = standAnchor(stand.x, stand.z, index);
+            if (!this.stage || fitsView(this.stage, anchor)) anchors.push(anchor);
+        });
+        return anchors;
+    }
+
+    /**
+     * Where a firefly figure stands, side on to the eye and facing the moon: at `stand` (its usual
+     * place in front of the knoll unless asked) when the whole figure fits in the view, otherwise
+     * as far to the right as the view allows (a narrow or upright screen), on ground clear of
+     * every trunk.
+     */
+    figureAnchor(stand = FOREST_FIGURE_STAND, index = 0) {
+        let { x, z } = stand;
         const { stage } = this;
         if (stage) {
             const bearing = Math.atan2(x - FOREST_EYE.x, FOREST_EYE.z - z);
@@ -176,11 +219,7 @@ export class ForestWorld {
                 ({ x, z } = spots.find(open) || spots[0]);
             }
         }
-        const away = new THREE.Vector3(x - FOREST_EYE.x, 0, z - FOREST_EYE.z).normalize();
-        const right = new THREE.Vector3().crossVectors(away, new THREE.Vector3(0, 1, 0)).normalize();
-        return {
-            x, y: forestGroundHeight(x, z), z, facing: { x: -right.x, z: -right.z }, depth: { x: away.x, z: away.z },
-        };
+        return standAnchor(x, z, index);
     }
 
     /**
@@ -211,6 +250,11 @@ export class ForestWorld {
         this.stage?.setBoard(rect);
     }
 
+    /** The measured panels beside the card (the score panel): no animal is called to stand behind one. */
+    setPanels(rects) {
+        this.stage?.setPanels(rects);
+    }
+
     /** Forget every effect in flight (new session, settings off). */
     resetEffects() {
         this.director?.reset();
@@ -230,7 +274,8 @@ export class ForestWorld {
         camera.updateProjectionMatrix();
         if (!this.stage) this.stage = new ForestStage(camera, forestGroundHeight);
         else this.stage.refresh();
-        if (this.director) this.director.figureAnchor = this.figureAnchor();
+        // A standing animal keeps its place; the next one picks from what this view holds.
+        if (this.director) this.director.figureStands = this.figureAnchors();
     }
 
     update(rawTime, rawStep, frame = {}) {

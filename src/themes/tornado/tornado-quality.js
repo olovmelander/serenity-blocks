@@ -10,7 +10,6 @@
  * wheat       stalks drawn round the lens
  * debris      boards and shingles in the air round the foot
  * motes       sparks per locked piece
- * poles       the power line's poles (nearest first)
  * ribbons     ribbons the funnel can hold at once (at most RIBBONS, tornado-tsl.js): a long chain
  *             winds this many on before the oldest climbs off into the cloud to make room
  */
@@ -24,7 +23,6 @@ export const QUALITY = Object.freeze({
         wheat: 5000,
         debris: 180,
         motes: 16,
-        poles: 5,
         ribbons: 6,
     }),
     Low: Object.freeze({
@@ -36,7 +34,6 @@ export const QUALITY = Object.freeze({
         wheat: 10000,
         debris: 320,
         motes: 24,
-        poles: 6,
         ribbons: 6,
     }),
     Medium: Object.freeze({
@@ -48,7 +45,6 @@ export const QUALITY = Object.freeze({
         wheat: 24000,
         debris: 640,
         motes: 40,
-        poles: 8,
         ribbons: 8,
     }),
     High: Object.freeze({
@@ -60,7 +56,6 @@ export const QUALITY = Object.freeze({
         wheat: 48000,
         debris: 1100,
         motes: 60,
-        poles: 9,
         ribbons: 10,
     }),
     Ultra: Object.freeze({
@@ -72,7 +67,6 @@ export const QUALITY = Object.freeze({
         wheat: 66000,
         debris: 1500,
         motes: 72,
-        poles: 9,
         ribbons: 10,
     }),
     Extreme: Object.freeze({
@@ -84,7 +78,6 @@ export const QUALITY = Object.freeze({
         wheat: 90000,
         debris: 2000,
         motes: 84,
-        poles: 9,
         ribbons: 10,
     }),
 });

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-    BOARD_GRID, BOARD_SELECTOR, HUD_SELECTOR, PLAYER_SLOTS, SOLO_CANVAS_SELECTORS, boardFor, boardPoint, cardUnion,
-    fallbackLayout, layoutsDiffer, playerCanvasSelector, readLayoutRects,
+    BOARD_GRID, BOARD_SELECTOR, COVER_GAP, HUD_SELECTOR, PLAYER_SLOTS, SOLO_CANVAS_SELECTORS, WING_COVER_SAMPLES,
+    boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, layoutsDiffer, playerCanvasSelector,
+    readLayoutRects, wingCoverAlong, wingCoverAt,
 } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-composition.js';
+import { WINGS, wingPoint } from '../../src/themes/vesper-chrysalis/vesper-chrysalis-core.js';
 
 const rect = (left, top, width, height) => ({
     left, top, right: left + width, bottom: top + height, width, height,
@@ -272,5 +274,95 @@ describe('vesper chrysalis composition: reading the page', () => {
         const twoCards = copy();
         twoCards.cards.push({ ...base.cards[0] });
         expect(layoutsDiffer(base, twoCards)).toBe(true);
+    });
+});
+
+describe('vesper chrysalis composition: what the card hides of the wings', () => {
+    // A flat stand-in for the camera: 120 m of the wings' plane across the frame, centred on the
+    // shoulders, square pixels (aspect 1).
+    const SCALE = 120;
+    const project = (p, out) => {
+        out.x = 0.5 + p[0] / SCALE;
+        out.y = 0.5 - (p[1] - WINGS.root[1]) / SCALE;
+        return true;
+    };
+    const card = {
+        x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.95,
+    };
+    const screenX = (kind, side, an, v) => 0.5 + wingPoint(kind, side, an, v, 1, 0)[0] / SCALE;
+    const vec4 = () => ({
+        set(x, y, z, w) {
+            Object.assign(this, {
+                x, y, z, w,
+            });
+            return this;
+        },
+    });
+
+    it('hides nothing without a cover, or when the shoulders are not behind one', () => {
+        expect(wingCoverAlong(project, [], 1, 0, 1, 0.5, 1, 0)).toBe(0);
+        const aside = {
+            x0: 0.7, y0: 0, x1: 0.9, y1: 1,
+        };
+        expect(wingCoverAlong(project, [aside], 1, 0, 1, 0.5, 1, 0)).toBe(0);
+    });
+
+    it('finds where a ray comes out from behind the card, on both sides', () => {
+        for (const side of [-1, 1]) {
+            for (const kind of [0, 1]) {
+                const c = wingCoverAlong(project, [card], 1, kind, side, 0.3, 1, 0);
+                expect(c).toBeGreaterThan(0.05);
+                expect(c).toBeLessThan(1);
+                // The edge it found is the card's side, to within the refinement.
+                expect(screenX(kind, side, 0.3, c)).toBeCloseTo(side > 0 ? card.x1 : card.x0, 2);
+            }
+        }
+    });
+
+    it('calls a ray that never leaves the card all hidden', () => {
+        const all = {
+            x0: 0, y0: 0, x1: 1, y1: 1,
+        };
+        expect(wingCoverAlong(project, [all], 1, 0, 1, 0.5, 1, 0)).toBe(1);
+    });
+
+    it('carries the cover across a narrow slot onto the HUD, but not across a wide gap', () => {
+        // The forewing's lowest ray runs out almost level: it passes through a HUD right of the card.
+        const an = 0;
+        const along = wingCoverAlong(project, [card], 1, 0, 1, an, 1, 0);
+        const narrow = {
+            x0: card.x1 + COVER_GAP * 0.4, y0: 0, x1: card.x1 + 0.07, y1: 1,
+        };
+        const wide = {
+            x0: card.x1 + COVER_GAP * 1.6, y0: 0, x1: card.x1 + 0.2, y1: 1,
+        };
+        const viaNarrow = wingCoverAlong(project, [card, narrow], 1, 0, 1, an, 1, 0);
+        expect(viaNarrow).toBeGreaterThan(along + 0.05);
+        expect(screenX(0, 1, an, viaNarrow)).toBeCloseTo(narrow.x1, 2);
+        expect(wingCoverAlong(project, [card, wide], 1, 0, 1, an, 1, 0)).toBeCloseTo(along, 6);
+    });
+
+    it('fills the table the shader reads: symmetric about a centred card, read back linearly', () => {
+        const table = Array.from({ length: WING_COVER_SAMPLES }, vec4);
+        fillWingCover(table, project, [card], 1, 0.6, 0);
+        for (const e of table) {
+            expect(e.x).toBeCloseTo(e.y, 6); // left and right forewing
+            expect(e.z).toBeCloseTo(e.w, 6); // left and right hindwing
+            for (const k of ['x', 'y', 'z', 'w']) {
+                expect(e[k]).toBeGreaterThanOrEqual(0);
+                expect(e[k]).toBeLessThanOrEqual(1);
+            }
+        }
+        expect(wingCoverAt(table, 0, 1, 0)).toBe(table[0].y);
+        expect(wingCoverAt(table, 1, -1, 1)).toBe(table[WING_COVER_SAMPLES - 1].z);
+        const half = 0.5 / (WING_COVER_SAMPLES - 1);
+        expect(wingCoverAt(table, 0, -1, half)).toBeCloseTo((table[0].x + table[1].x) / 2, 9);
+    });
+
+    it('measures a front from the cover: none of it at 0, the margin at 1', () => {
+        expect(frontPast(0.3, 0)).toBe(0.3);
+        expect(frontPast(0.3, 1)).toBe(1);
+        expect(frontPast(0, 0.42)).toBe(0.42);
+        expect(frontPast(0.5, 0.5)).toBe(0.75);
     });
 });
