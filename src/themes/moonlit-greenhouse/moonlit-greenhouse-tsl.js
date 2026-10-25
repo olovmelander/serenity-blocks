@@ -32,9 +32,12 @@ import {
  */
 export const TUNE = {
     // The moon: its disc's brightness, its tight aureole and its wide glow in the air.
-    moonDisc: 1.95,
+    moonDisc: 1.7,
     moonAureole: 0.9,
-    moonGlow: 0.16,
+    moonGlow: 0.1,
+    // The condensation's halo round the moon on the panes, and in everything that mirrors them
+    // (the iron, the wet floor, the lanterns' glass, the canal).
+    glassVeil: 0.7,
     // Stars: how many (a hash threshold) and how bright.
     starDensity: 0.1,
     starGain: 3.0,
@@ -69,7 +72,7 @@ export const TUNE = {
     airHaze: 0.011,
     airLow: 0.035,
     airLowFall: 1.3,
-    airBeam: 0.8,
+    airBeam: 0.45,
     airForward: 0.66,
     airMist: 0.002,
     airExtinction: 0.38,
