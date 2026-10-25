@@ -8,10 +8,13 @@ import { ForestLight } from '../../src/themes/forest/forest-light.js';
 import { FOREST_MOON_RADIUS_DEGREES } from '../../src/themes/forest/forest-plan.js';
 import { forestTier } from '../../src/themes/forest/forest-quality.js';
 import { FOREST_FIGURE_TIMING, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
-import { FOREST_FIGURES, createForestFigurePoints, forestFigure } from '../../src/themes/forest/forest-figures.js';
+import {
+    FOREST_FIGURES, FOREST_FIGURE_ROOM, createForestFigurePoints, forestFigure,
+} from '../../src/themes/forest/forest-figures.js';
+import { ForestFireflyDirector } from '../../src/themes/forest/forest-firefly-director.js';
 import { ForestStage } from '../../src/themes/forest/forest-stage.js';
 import { forestGroundHeight } from '../../src/themes/forest/forest-terrain.js';
-import { FOREST_FIGURE_STAND } from '../../src/themes/forest/forest-understory.js';
+import { FOREST_FIGURE_STAND, FOREST_FIGURE_STANDS } from '../../src/themes/forest/forest-understory.js';
 import { ForestWorld } from '../../src/themes/forest/forest-world.js';
 
 // What the review of the first build found and the fixes that answered it: the figure stood
@@ -78,6 +81,104 @@ describe('Forest: the figure stands where the screen can see it', () => {
         const first = anchorFor(camera);
         const moved = anchorFor(camera, [{ x: first.x, z: first.z, radius: 0.6 }]);
         expect(Math.hypot(moved.x - first.x, moved.z - first.z)).toBeGreaterThan(2);
+    });
+});
+
+describe('Forest: every place an animal may stand is one the screen can see', () => {
+    /** Every place a figure may stand on this screen, as the world hands them to the director. */
+    function anchorsFor(camera, trunks = []) {
+        const world = Object.assign(Object.create(ForestWorld.prototype), {
+            stage: new ForestStage(camera, forestGroundHeight), trees: { trunks: () => trunks },
+        });
+        return world.figureAnchors();
+    }
+
+    /**
+     * The game's single-player screen as measured at 1600 x 900: the card 314 px wide from 0.115
+     * to 0.885 of the height, the score panel 240 x 274 px from 195 px right of the middle and
+     * 170 px down. Both scale with the window's height.
+     */
+    function gameLayout(aspect) {
+        const x = (px) => 0.5 + px / (900 * aspect);
+        return {
+            board: {
+                x0: x(-157), x1: x(157), y0: 0.115, y1: 0.885,
+            },
+            panel: {
+                x0: x(195), x1: x(435), y0: 170 / 900, y1: 444 / 900,
+            },
+        };
+    }
+
+    /** Would the director see a whole animal there (see ForestFireflyDirector.standInSight)? */
+    function seenWhole(stage, anchor) {
+        return ForestFireflyDirector.prototype.standInSight.call({
+            stage,
+            standBox: {
+                x0: 0, x1: 0, y0: 0, y1: 0,
+            },
+            standPoint: { x: 0, y: 0 },
+        }, anchor);
+    }
+
+    it.each(ASPECTS)('fits the widest animal, hooves to crown, at every place offered at aspect %f', (aspect) => {
+        const camera = frame(aspect);
+        const anchors = anchorsFor(camera);
+        // The usual place first, always (moved into view where it must be), and each place once.
+        expect(anchors[0]).toEqual(anchorFor(camera));
+        expect(new Set(anchors.map((anchor) => anchor.stand)).size).toBe(anchors.length);
+        for (const anchor of anchors) {
+            const stand = FOREST_FIGURE_STANDS[anchor.stand];
+            expect(stand).toBeDefined();
+            if (anchor.stand > 0) expect([anchor.x, anchor.z]).toEqual([stand.x, stand.z]);
+            expect(anchor.y).toBeCloseTo(forestGroundHeight(anchor.x, anchor.z), 10);
+            for (const along of [-WIDEST_REACH, 0, WIDEST_REACH]) {
+                for (const up of [0.2, 1.8, FOREST_FIGURE_ROOM.height]) {
+                    const point = new THREE.Vector3(
+                        anchor.x + anchor.facing.x * along,
+                        anchor.y + up,
+                        anchor.z + anchor.facing.z * along,
+                    ).project(camera);
+                    expect(point.z).toBeLessThan(1);
+                    expect(Math.abs(point.x), `place ${anchor.stand}`).toBeLessThan(1);
+                    expect(Math.abs(point.y), `place ${anchor.stand}`).toBeLessThan(1);
+                }
+            }
+        }
+    });
+
+    it('offers every place on a landscape screen, and a choice on every screen but a square one', () => {
+        for (const aspect of [32 / 9, 21 / 9, 16 / 9, 16 / 10]) {
+            expect(anchorsFor(frame(aspect))).toHaveLength(FOREST_FIGURE_STANDS.length);
+        }
+        for (const aspect of ASPECTS) {
+            expect(anchorsFor(frame(aspect)).length, `aspect ${aspect}`).toBeGreaterThanOrEqual(aspect === 1 ? 1 : 2);
+        }
+    });
+
+    /** The places the director could stand an animal at in the game's own layout at `aspect`. */
+    function inSightInGame(aspect) {
+        const camera = frame(aspect);
+        const stage = new ForestStage(camera, forestGroundHeight);
+        const { board, panel } = gameLayout(aspect);
+        stage.setBoard(board);
+        stage.setPanels([panel]);
+        return anchorsFor(camera).filter((anchor) => seenWhole(stage, anchor));
+    }
+
+    it.each([16 / 9, 21 / 9])('in the game sees every place whole, beside the card and its panel, at %f', (aspect) => {
+        expect(inSightInGame(aspect).map((anchor) => anchor.stand))
+            .toEqual(FOREST_FIGURE_STANDS.map((_, index) => index));
+    });
+
+    it.each([32 / 9, 16 / 10, 3 / 2])('in the game sees places on both sides of the card at %f', (aspect) => {
+        const seen = inSightInGame(aspect);
+        expect(seen.some((anchor) => anchor.x < 0)).toBe(true);
+        expect(seen.some((anchor) => anchor.x > 0)).toBe(true);
+    });
+
+    it.each([4 / 3, 1.2])('in the game still sees a whole animal somewhere at %f', (aspect) => {
+        expect(inSightInGame(aspect).length).toBeGreaterThan(0);
     });
 });
 
