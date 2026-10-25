@@ -12,7 +12,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, cameraPosition, dot, exp, float, interleavedGradientNoise, max, min, mix, normalize,
+    Break, Fn, If, Loop, cameraPosition, dot, exp, float, floor, hash, max, min, mix, normalize,
     positionWorld, pow, saturate, screenCoordinate, screenUV, smoothstep, texture, uniform, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -67,21 +67,28 @@ export class VerdantHillsSky {
         return this;
     }
 
-    /** What the sun and the sky make of a cloud sample at height fraction `h`. */
-    cloudLight(direction, sunDepth, h) {
+    /**
+     * What the sun and the sky make of a cloud sample `rise` of the way up its heap, `open` as
+     * open to the sky as it is (1 on the flat layer), and `fold` 1 on the crown of a lobe and 0 in
+     * the crease beside it (0.57 leaves the sun as it is).
+     */
+    cloudLight(direction, sunDepth, rise, open = float(1), fold = float(0.57)) {
         const { light } = this;
         const cosine = dot(direction, light.uSunDir);
         // Forward scattering gilds the edges of a cloud that stands toward the sun.
         const forward = min(float(0.36).div(pow(float(1.64).sub(cosine.mul(1.6)), 1.5)), 4);
         const phase = forward.mul(0.34).add(0.7);
-        // Light that has scattered many times still finds its way through.
-        const through = exp(sunDepth.negate()).mul(0.88).add(exp(sunDepth.mul(-0.14)).mul(0.12));
-        const sun = light.uSunColor.mul(through).mul(phase).mul(0.27);
-        // Skylight reaches a cloud's flanks and top; its flat base sees only the dim ground, so the
-        // base is a clear grey and the cloud brightens all the way up its tower.
-        // (The weather sets both: verdant-hills-moods.js.)
-        const ambient = mix(light.uCloudBase, light.uCloudTop, smoothstep(0.0, 0.75, h))
-            .mul(this.uShade).mul(light.uWarmth.mul(0.1).add(1));
+        // Light that has scattered many times goes deeper and still finds its way through, softer
+        // at every order: a lobe turned from the sun is grey, not black, and its shading rounds it.
+        const through = exp(sunDepth.negate()).add(exp(sunDepth.mul(-0.25)).mul(0.3))
+            .add(exp(sunDepth.mul(-0.06)).mul(0.08)).div(1.38);
+        // A lobe's crown takes the sun a little more fully than the crease it rises from.
+        const sun = light.uSunColor.mul(through).mul(phase).mul(fold.mul(0.35).add(0.8)).mul(0.27);
+        // Skylight reaches a heap's flanks and top; its flat base sees only the dim ground, so the
+        // base is a clear grey and the heap brightens all the way up, and less of it gets into the
+        // creases between lobes. (The weather sets both colours: verdant-hills-moods.js.)
+        const ambient = mix(light.uCloudBase, light.uCloudTop, smoothstep(0.0, 0.85, rise))
+            .mul(this.uShade).mul(light.uWarmth.mul(0.1).add(1)).mul(open);
         return sun.add(ambient);
     }
 
@@ -99,7 +106,6 @@ export class VerdantHillsSky {
         target.texture.magFilter = THREE.LinearFilter;
         target.texture.generateMipmaps = false;
         this.target = target;
-        const span = VERDANT_HILLS_CLOUD_TOP - VERDANT_HILLS_CLOUD_BASE;
         const material = this.own(new THREE.NodeMaterial());
         material.name = 'Verdant Hills — cumulus march';
         material.depthTest = false;
@@ -115,31 +121,60 @@ export class VerdantHillsSky {
                 const origin = this.uEye;
                 const near = float(VERDANT_HILLS_CLOUD_BASE).sub(origin.y).div(direction.y);
                 const far = min(float(VERDANT_HILLS_CLOUD_TOP).sub(origin.y).div(direction.y), MARCH_RANGE);
-                const stride = far.sub(near).div(steps).toVar();
-                const reach = near.add(stride.mul(interleavedGradientNoise(screenCoordinate.xy))).toVar();
-                // Toward the horizon the deck dissolves into the air in front of it.
-                const horizon = light.sky(normalize(vec3(direction.x, 0.02, direction.z))).toVar();
+                // Short strides in and near a cloud, long ones through the clear air between, as long
+                // as the nearest heap allows. (One even stride was some 400 m toward the horizon,
+                // wider than the lobes it had to draw, and their edges came out in streaks.)
+                const even = far.sub(near).div(steps);
+                const stride = even.mul(0.4).max(12).toVar();
+                const leap = even.mul(2.5).toVar();
+                const margin = light.cloudMargin().add(light.uCloudSoft).toVar();
+                // Each pixel starts its march a random part of a stride in. (The interleaved gradient
+                // pattern used before printed its own lattice into the flat bases, as ribbing.)
+                const pixel = floor(screenCoordinate.xy);
+                const reach = near.add(stride.mul(hash(pixel.x.add(pixel.y.mul(8192))))).toVar();
+                // Distance dissolves a cloud into the air in front of it: the sky's own colour along
+                // the ray. (Melted into the milk of the horizon instead, every cloud went the same
+                // pale grey and their shading with it.)
+                const air = light.sky(normalize(vec3(direction.x, max(direction.y, 0.02), direction.z))).toVar();
                 Loop(steps, () => {
-                    If(clear.lessThan(0.02), () => {
+                    If(clear.lessThan(0.02).or(reach.greaterThan(far)), () => {
                         Break();
                     });
                     const point = origin.add(direction.mul(reach)).toVar();
-                    const density = light.cloudDensity(point, { range: reach }).toVar();
-                    If(density.greaterThan(0.003), () => {
-                        const h = point.y.sub(VERDANT_HILLS_CLOUD_BASE).div(span);
-                        // Toward the sun: a near sample that sees the billows, so each one
-                        // shades the next, and a far one for the bulk of the cloud.
-                        const first = light.cloudDensity(point.add(light.uSunDir.mul(130)), { range: reach });
-                        const second = light.cloudDensity(point.add(light.uSunDir.mul(520)), { detail: false });
-                        const sunDepth = first.mul(230).add(second.mul(420)).add(density.mul(40)).mul(SIGMA_SUN);
-                        const lit = this.cloudLight(direction, sunDepth, h);
-                        const veil = exp(reach.mul(this.uVeil).negate());
-                        const sample = mix(horizon, lit, veil);
-                        const cover = float(1).sub(exp(density.mul(stride).mul(this.uSigma).negate()));
-                        colour.addAssign(sample.mul(cover).mul(clear));
-                        clear.mulAssign(cover.oneMinus());
+                    const heap = light.cloudHeap(point);
+                    const known = {
+                        heap: heap.heap.toVar(), top: heap.top.toVar(), above: heap.above.toVar(), at: heap.at.toVar(),
+                    };
+                    // How far the nearest skin the lobes could push out still is (not a true
+                    // distance across the field, so only most of it is trusted).
+                    const clearAhead = known.heap.add(margin).negate().toVar();
+                    const step = stride.toVar();
+                    If(clearAhead.greaterThan(0), () => {
+                        step.assign(clearAhead.mul(0.7).clamp(stride, leap));
+                    }).Else(() => {
+                        const cloud = light.cloudSample(point, { range: reach, heap: known });
+                        const density = cloud.density.toVar();
+                        If(density.greaterThan(0.003), () => {
+                            // Toward the sun: a near sample that sees the lobes, so each one shades
+                            // the next, and a far one for the bulk of the heap.
+                            const first = light.cloudDensity(point.add(light.uSunDir.mul(130)), { range: reach });
+                            const second = light.cloudDensity(point.add(light.uSunDir.mul(520)), { detail: false });
+                            const sunDepth = first.mul(230).add(second.mul(420)).add(density.mul(40)).mul(SIGMA_SUN);
+                            // How much sky a point sees: less in the crease between two lobes than on
+                            // either's crown, and less under its neighbours (the near sample again).
+                            // So every billow is drawn by its own shading, on the face turned from the
+                            // sun as well, and the heap reads as a cauliflower, not a flat grey card.
+                            const fold = smoothstep(0.1, 0.8, cloud.crown);
+                            const open = fold.mul(0.6).add(0.5).mul(first.mul(-0.3).add(1));
+                            const lit = this.cloudLight(direction, sunDepth, cloud.rise, open, fold);
+                            const veil = exp(reach.mul(this.uVeil).negate());
+                            const sample = mix(air, lit, veil);
+                            const cover = float(1).sub(exp(density.mul(stride).mul(this.uSigma).negate()));
+                            colour.addAssign(sample.mul(cover).mul(clear));
+                            clear.mulAssign(cover.oneMinus());
+                        });
                     });
-                    reach.addAssign(stride);
+                    reach.addAssign(step);
                 });
                 // No hard start at the horizon line.
                 const rise = smoothstep(0.006, 0.03, direction.y);
