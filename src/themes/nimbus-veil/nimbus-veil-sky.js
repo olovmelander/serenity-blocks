@@ -19,6 +19,8 @@ import {
     dot,
     exp,
     float,
+    floor,
+    fract,
     fwidth,
     length,
     max,
@@ -35,6 +37,7 @@ import {
     nvAir,
     nvDomesH,
     nvFbm3,
+    nvHash21,
     nvNoise2,
     nvSkyGradient,
     nvSunAlign,
@@ -88,19 +91,41 @@ export function createSky(u, opts = {}) {
         const beam = smoothstep(0.25, 0.8, beamN);
         const beamFade = smoothstep(0.0, 0.06, e).mul(smoothstep(0.05, 0.25, ang))
             .mul(exp(ang.mul(min(blaze, 1.4).mul(0.35).sub(1.4))));
-        const glow = nvSunGlow(dir, pulse)
+        const glow = nvSunGlow(u, dir, pulse)
             .mul(float(1.0).add(beam.sub(0.5).mul(blaze.mul(0.9).add(0.5)).mul(beamFade)));
-        const col = nvSkyGradient(e, sa).add(glow).toVar();
+        const col = nvSkyGradient(u, e, sa).add(glow).toVar();
         // Gold in the beams near the sun, fading before they reach the deep sky.
         col.addAssign(rgb(0xffa040, 0.9).mul(beam.mul(beam).mul(beamFade).mul(exp(ang.mul(-1.2))).mul(blaze)));
 
-        // ── Sun disc: white-gold, softly limb-darkened ──
+        // ── Stars: the first ones come out as the light goes (u.starGain, the mood's: none by
+        // day). Hashed cells in sky coordinates, fading out toward the horizon and the sun's
+        // glow. A uniform branch: by day the whole sky skips it. ──
+        const fwS = max(fwidth(az), fwidth(e)).mul(110.0).toVar();
+        If(u.starGain.greaterThan(0.001), () => {
+            const sp = vec2(az.mul(110.0), e.mul(110.0));
+            const cell = floor(sp);
+            const hx = nvHash21(cell);
+            const hy = nvHash21(cell.add(vec2(19.7, 4.3)));
+            const present = step(0.86, nvHash21(cell.add(vec2(7.3, 11.1))));
+            const d = length(fract(sp).sub(vec2(hx, hy).mul(0.8).add(0.1)));
+            const size = max(fwS.mul(0.9), 0.05);
+            const core = float(1.0).sub(smoothstep(size.mul(0.35), size, d));
+            const twinkle = sin(u.time.mul(hx.mul(2.0).add(0.8)).add(hy.mul(40.0))).mul(0.25).add(0.75);
+            const bright = hy.mul(hy).mul(1.6).add(0.25);
+            const fade = smoothstep(0.05, 0.32, e).mul(float(1.0).sub(sa.mul(0.8)))
+                .mul(float(1.0).sub(smoothstep(0.0, 0.6, glow.x)));
+            col.addAssign(mix(rgb(0xcfdcff), rgb(0xfff0dc), hx).mul(core.mul(present).mul(twinkle).mul(bright)
+                .mul(fade)
+                .mul(u.starGain)));
+        });
+
+        // ── Sun disc: white-gold today, softly limb-darkened ──
         const r = ang.div(u.sunRadius);
         const aa = fwA.div(u.sunRadius);
         const disc = float(1.0).sub(smoothstep(float(1.0).sub(aa), float(1.0).add(aa), r))
             .mul(facing).mul(above);
         const limb = mix(float(1.0), float(0.82), r.mul(r));
-        col.assign(mix(col, rgb(0xfff4dc, 5.0).mul(limb).mul(float(1.0).add(pulse.mul(0.5))), disc));
+        col.assign(mix(col, u.mood.sunDisc.mul(limb).mul(float(1.0).add(pulse.mul(0.5))), disc));
 
         // ── Distant cumulus banks: a cauliflower skyline a degree or so high, in some bearings
         // only, hazed nearly into the air. Backlit toward the sun (a dark body with a burning
@@ -117,11 +142,11 @@ export function createSky(u, opts = {}) {
                 const inside = smoothstep(fwE.negate(), fwE, below).mul(step(0.0015, top));
                 // How deep into the bank: its base sinks into the haze on the sea line.
                 const body = smoothstep(0.0, 0.7, below.div(max(top, 1e-4)));
-                const lit = mix(rgb(0xf0b9c4, 0.95), rgb(0x9a86bd, 0.62), clamp(sa.mul(1.6), 0.0, 1.0));
+                const lit = mix(u.mood.bankLit, u.mood.bankShade, clamp(sa.mul(1.6), 0.0, 1.0));
                 const bankCol = mix(col, lit, mix(float(0.18), float(0.5), body));
                 // The rim: sun light through the bank's thin top edge, hottest toward the sun.
                 const rim = exp(below.div(0.0016).negate()).mul(sa.mul(1.8).add(0.25));
-                const rimCol = rgb(0xffc890, 1.6).mul(rim).mul(pulse.mul(0.4).add(1.0));
+                const rimCol = u.mood.bankRim.mul(rim).mul(pulse.mul(0.4).add(1.0));
                 col.assign(mix(col, bankCol.add(rimCol), inside));
             });
         }
@@ -136,13 +161,13 @@ export function createSky(u, opts = {}) {
                 const env = smoothstep(0.06, 0.16, e).mul(float(1.0).sub(smoothstep(0.42, 0.7, e)));
                 const wisp = smoothstep(0.52, 0.8, n).mul(env).mul(0.55);
                 const litW = clamp(wide.mul(1.4).add(core.mul(0.5)), 0.0, 1.8);
-                const tint = mix(rgb(0xf3e6f4), rgb(0xffd6a6, 1.3), clamp(litW, 0.0, 1.0))
+                const tint = mix(u.mood.cirrusA, u.mood.cirrusT, clamp(litW, 0.0, 1.0))
                     .mul(float(0.75).add(litW.mul(0.6)));
                 col.assign(mix(col, tint, wisp));
             });
         }
 
-        return mix(nvAir(dir, pulse), col, above);
+        return mix(nvAir(u, dir, pulse), col, above);
     })();
 
     const geometry = new THREE.SphereGeometry(SKY_RADIUS, 32, 16);

@@ -17,6 +17,8 @@
  *   parts=sky,sea,...        draw only these parts (sky sea cumulus fx)
  *   noPost=1                 raw scene (no bloom/grade)
  *   pointerX / pointerY      hold a pointer-parallax offset (-1..1)
+ *   level=<n>                the game's level: each is one mood forward on top of the clock's
+ *                            (t=<s> shows the clock's mood; nimbus-veil-moods.js MOOD_PERIOD)
  */
 import * as THREE from 'three/webgpu';
 import { RIG } from '../../themes/nimbus-veil/nimbus-veil-tsl.js';
@@ -81,6 +83,7 @@ export function create({
     camera.updateProjectionMatrix();
 
     const world = new NimbusWorld({ scene, quality, random: rng || Math.random }).build();
+    world.setLevel(num(params, 'level', 1), { silent: true });
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 

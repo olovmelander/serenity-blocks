@@ -19,6 +19,12 @@
  * blaze in a turning gold crown and the camera skims low and fast over the heads. A perfect
  * clear lights every tower crown at once and sends a great wave rolling OUT to the horizon: the
  * world exhales.
+ *
+ * The light itself turns by the clock, in every mode (nimbus-veil-moods.js): golden sunrise,
+ * pearl morning, white noon, rose evening and the blue hour with its first stars, each resting a
+ * while and then melting into the next. The sun keeps its place (the deck's shadows with it); its
+ * colour, the air's and the clouds' light change. A level is one mood forward on top, eased in
+ * over a few seconds while the level-up's wave and burst play.
  */
 
 import * as THREE from 'three/webgpu';
@@ -36,6 +42,10 @@ import { NimbusFx } from './nimbus-veil-fx.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { easeStep, moodDrift } from '../shared/mood-clock.js';
+import {
+    MOODS, MOOD_COUNT, MOOD_HOLD, MOOD_KEYS, MOOD_PERIOD, moodAt, moodName,
+} from './nimbus-veil-moods.js';
 
 /** Per-tier content. Every tier keeps the composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -190,6 +200,9 @@ export function boardRectsDiffer(a, b) {
 /** Frame-rate independent approach factor for a rate (1/s). */
 const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
 
+/** How fast a level's step eases toward its mood (1/s). */
+const MOOD_EASE = 0.8;
+
 export function createWorldUniforms() {
     return {
         time: uniform(0),
@@ -218,6 +231,10 @@ export function createWorldUniforms() {
         camUp: uniform(new THREE.Vector3(0, 1, 0)),
         camBack: uniform(new THREE.Vector3(0, 0, 1)),
         invTanHalfV: uniform(1 / Math.tan(THREE.MathUtils.degToRad(RIG.vfov) / 2)),
+        /** The live mood's colours (nimbus-veil-moods.js MOOD_KEYS), scene-linear. */
+        mood: Object.fromEntries(MOOD_KEYS.map((key) => [key, uniform(new THREE.Vector3(...MOODS[0][key]))])),
+        /** The live mood's starlight (0 by day). */
+        starGain: uniform(MOODS[0].stars),
     };
 }
 
@@ -299,6 +316,10 @@ export class NimbusWorld {
         this.b2bStreak = 0;
         this.b2bAt = -1e6;
         this._post = { bloomBoost: 0, rays: 1, exposure: 1 };
+        /** The game's level (a level is one mood forward) and its eased step on the wheel. */
+        this.level = 1;
+        this.moodStep = 0;
+        this._mood = {};
 
         this._camRest = new THREE.Vector3(RIG.x, RIG.height, RIG.z);
         this._fwd = new THREE.Vector3();
@@ -508,6 +529,49 @@ export class NimbusWorld {
         post.bloomBoost = Math.min(1, this.sunPulse * 0.9 + flare * fs * 0.25 + fever * 0.15);
         post.rays = 1 + u.blaze.value.x * 0.55;
         post.exposure = 1 - Math.max(0, level - 0.2) * 0.1 - fever * 0.08;
+
+        this.applyMood(approach(MOOD_EASE, dt));
+    }
+
+    // ── Mood: the clock turns the light, a level is a step on top ───────────
+
+    /**
+     * The game's level. Each level is one mood forward on top of the clock's own turn; the step
+     * eases in over a few seconds (`silent` snaps it, for a rebuild or a seek).
+     */
+    setLevel(level, { silent = false } = {}) {
+        const asked = Math.round(Number(level));
+        this.level = Number.isFinite(asked) ? Math.max(1, asked) : 1;
+        if (silent) this.applyMood(1);
+    }
+
+    /**
+     * Where the light stands on its wheel of moods, heading for: one step a level, turned on by
+     * the clock. The whole part names a mood, the fraction is how far it has melted into the next.
+     */
+    moodPhase() {
+        return (this.level - 1) + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD);
+    }
+
+    /** The live mood's name (diagnostics). */
+    moodName() {
+        return moodName(this.moodStep + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD));
+    }
+
+    /**
+     * Set the live mood's uniforms. The clock's turn is exact (a function of the time alone, so a
+     * seek and a replay agree); the level's step eases in by `k` (1 snaps), the short way round.
+     */
+    applyMood(k) {
+        this.moodStep = easeStep(this.moodStep, this.level - 1, k, MOOD_COUNT);
+        const mood = moodAt(this.moodStep + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD), this._mood);
+        const { u } = this;
+        for (let i = 0; i < MOOD_KEYS.length; i += 1) {
+            const key = MOOD_KEYS[i];
+            const c = mood[key];
+            u.mood[key].value.set(c[0], c[1], c[2]);
+        }
+        u.starGain.value = mood.stars;
     }
 
     /** The surge at `t`, sampled once per frame whichever of updateCamera/update asks first. */
@@ -545,6 +609,7 @@ export class NimbusWorld {
         this.b2bStreak = 0;
         this.b2bAt = -1e6;
         this.fx?.clear();
+        this.applyMood(1);
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
@@ -683,6 +748,10 @@ export class NimbusWorld {
         this.emitRisingSparkles(this.burstCount(0.04 + 0.01 * steps, 20 + 6 * steps));
     }
 
+    /**
+     * A level-up's wave and burst (the mood's step comes with setLevel, which the theme calls
+     * whether or not background effects are on: that setting gates reactions, not the light).
+     */
     onLevelUp() {
         const at = this.time;
         this.surge.levelUp(at);

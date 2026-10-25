@@ -53,6 +53,8 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.currentQuality = 'High';
 
         this.time = 0;
+        /** The game's level (LEVEL_UP's payload): each is one mood of the light forward. */
+        this.level = 1;
         this.lastFrameTime = null;
         this.isAnimating = false;
         this.loopGeneration = 0;
@@ -137,7 +139,11 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.flags = this.readFlags();
         this.random = Number.isFinite(this.flags.seed) ? this.seededRandom(this.flags.seed) : Math.random;
         this.currentQuality = this.getGraphicsQuality();
-        this.time = 0;
+        // A rebuild behind the menu carries the clock and the level on (BaseTheme.applyRestartRun):
+        // the sky comes back in the light it was in.
+        this.time = this.takeRestartTime(0);
+        const carried = Number(this.restartRun?.level);
+        this.level = Number.isFinite(carried) ? Math.max(1, Math.round(carried)) : 1;
         this.lastFrameTime = null;
         this.baselineFrames = [];
         const drs = this.dynamicResolution;
@@ -154,6 +160,8 @@ export default class NimbusVeilTheme extends BaseTheme {
             quality: this.currentQuality,
             random: () => this.random(),
         }).build();
+        this.world.setLevel(this.level, { silent: true });
+        this.world.seek(this.time);
         this.appliedBoard = readBoardRect();
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
         this.world.setLayout(aspect, this.appliedBoard, { immediate: true });
@@ -387,7 +395,13 @@ export default class NimbusVeilTheme extends BaseTheme {
         const perfectUnsub = eventBus.on(EVENTS.PERFECT_CLEAR, () => {
             if (reactive()) this.world?.onPerfectClear?.();
         });
-        const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, () => {
+        // A level moves the light one mood on whatever the settings (they gate reactions, not
+        // the light); the wave and burst that come with it are a reaction.
+        const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
+            if (!this.isActive) return;
+            const level = Math.round(Number(data?.level));
+            this.level = Number.isFinite(level) ? Math.max(1, level) : this.level + 1;
+            this.world?.setLevel?.(this.level);
             if (reactive()) this.world?.onLevelUp();
         });
 

@@ -36,7 +36,6 @@ import {
     RIG,
     nvFbm3,
     nvSunAlign,
-    rgb,
 } from './nimbus-veil-tsl.js';
 import { SEA_HAZE } from './nimbus-veil-cloudsea.js';
 
@@ -194,7 +193,7 @@ function createVeils(u, layers) {
         material.colorNode = Fn(() => {
             const V = normalize(positionWorld.sub(cameraPosition));
             const sa = nvSunAlign(V.z.div(max(length(vec2(V.x, V.z)), 1e-4)));
-            return mix(rgb(0xd9c4e6, 0.95), rgb(0xffe2bc, 1.25), sa).mul(float(1.0).add(u.seaGlow.mul(0.2)));
+            return mix(u.mood.veilA, u.mood.veilT, sa).mul(float(1.0).add(u.seaGlow.mul(0.2)));
         })();
         material.opacityNode = Fn(() => {
             const p = vec2(vu.x.mul(5.0).add(u.flight.mul(spec.speed)).add(i * 3.7), vu.y.mul(1.6));

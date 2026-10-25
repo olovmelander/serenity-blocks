@@ -246,11 +246,11 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         const N = right.mul(nrm.x).add(vec3(0.0, nrm.y, 0.0)).add(out.mul(nrm.z)).toVar();
         const height = clamp(p.y.div(H), 0.0, 1.0);
         const diff = clamp(dot(N, L).mul(0.9).add(0.18), 0.0, 1.0);
-        const sunCol = rgb(0xffc48c, 1.85);
+        const sunCol = u.mood.sunLight;
         // The shade is the sky's light scattered inside the cloud: violet low, lavender-blue
         // where the form turns up to the zenith and higher up the tower.
         // The violet deepens as the crowns burn (u.blaze.y), so the fire reads against it.
-        const shade = mix(rgb(0x6a62a2, 0.4), rgb(0x9496d8, 0.52), clamp(N.y.mul(0.5).add(height.mul(0.6)), 0.0, 1.0))
+        const shade = mix(u.mood.shadeLow, u.mood.shadeHigh, clamp(N.y.mul(0.5).add(height.mul(0.6)), 0.0, 1.0))
             .mul(float(1.0).sub(min(u.blaze.y, 1.2).mul(0.25)));
         // Creases and the deep base see less sky.
         const ao = mix(float(0.62), float(1.0), smoothstep(0.0, H.mul(0.05), top))
@@ -284,7 +284,7 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
             .mul(diff.mul(0.7).add(thin.mul(0.8)).add(0.1))
             .mul(u.blaze.w));
         col.mulAssign(float(1.0).add(u.seaGlow.mul(0.15)));
-        const lit = nvApplyHaze(col, rel, float(SEA_HAZE * 0.9), u.sunPulse);
+        const lit = nvApplyHaze(u, col, rel, float(SEA_HAZE * 0.9), u.sunPulse);
         return vec4(lit, alpha.mul(0.98));
     })();
 
