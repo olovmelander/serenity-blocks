@@ -17,7 +17,9 @@
  *   perfect clear the crown: amber standing light on every arc and in the corona overhead
  *
  * Between the cues the sky has weather of its own (aurora-weather.js): stretches of each arc
- * flare, wander and fade, so the display is never the same curtain twice.
+ * flare, wander and fade, so the display is never the same curtain twice. Under the weather the
+ * night itself turns by the clock (aurora-hours.js): quiet, crowned, deep midnight, moonlit, the
+ * blue hour; a level-up moves it an hour on as well as playing its cue.
  *
  * A geomagnetic storm builds under all of it (the shared GameplaySurge, the heat of play):
  * warm, the rays quicken and the hem and crown can burn deeper; hot, the curtains pulse with
@@ -39,6 +41,7 @@ import {
 import {
     PULSE_CYCLE, STORM_TINTS, parseColor, vivid,
 } from './aurora-palette.js';
+import { AuroraHours } from './aurora-hours.js';
 import { AuroraWeather, bearingForAzimuth } from './aurora-weather.js';
 
 /** Enough for a fever's overlapping strums (a clear asks ~21) to run their course. */
@@ -69,8 +72,6 @@ const STORM_EASE = 0.6;
 const RECOVERY_PERIOD = 1.25;
 /** How strongly the pulsating patches show on a quiet night (aurora-curtains.js). */
 const RESTING_PULSATION = 0.32;
-/** Resting light the display throws on snow and water (linear RGB). */
-const BASE_LIGHT = [0.03, 0.105, 0.07];
 /**
  * The green the curtain body rests in, on average (the shader varies it between greenWarm and
  * greenCool, aurora-palette.js); the storm tint is steered from here.
@@ -256,6 +257,8 @@ export class AuroraDirector {
         this.sweepBands = new Float32Array(SWEEP.slots * 4);
         /** Where along each arc the display is awake; the march reads `weather.cells`. */
         this.weather = new AuroraWeather();
+        /** The hour of the night (aurora-hours.js): the clock turns it, a level steps it on. */
+        this.hours = new AuroraHours();
         /**
          * The heat of play (src/themes/shared/gameplay-surge.js), on this director's clock: the
          * geomagnetic storm that builds under the cues. Sampled once a frame into heatPunch,
@@ -268,7 +271,7 @@ export class AuroraDirector {
         this.scratchStorm = [0, 0, 0];
         this.scratchHsv = [0, 0, 0];
         this.compress = 0.3;
-        this.light = [...BASE_LIGHT];
+        this.light = [...this.hours.colours.glow];
         this.scratch = [0, 0, 0];
         this.scratchColor = [0, 0, 0];
         this.reset();
@@ -326,6 +329,7 @@ export class AuroraDirector {
         for (const pulse of this.pulses) pulse.active = false;
         this.excitation.clear();
         this.weather.reset();
+        this.hours.reset();
         this.deriveOutputs();
     }
 
@@ -431,11 +435,27 @@ export class AuroraDirector {
         return true;
     }
 
+    /** A level: its cue is staged, and the night moves an hour on (eased in by update()). */
     onLevelUp(payload) {
         const board = this.boardFor(payload);
         board.pending = true;
         board.levelUp = true;
+        this.hours.levelUp();
         return true;
+    }
+
+    /**
+     * A level whose cue is not to play (background effects switched off): the night still moves
+     * an hour on. The light is the world's own, not a reaction.
+     */
+    stepHours() {
+        this.hours.levelUp();
+    }
+
+    /** Stand the levels' hours at `steps` at once: a restart carrying its run. */
+    setHourSteps(steps) {
+        this.hours.setLevelSteps(steps);
+        this.deriveOutputs();
     }
 
     /**
@@ -950,7 +970,12 @@ export class AuroraDirector {
 
     // ── simulation ────────────────────────────────────────────────────────────────
 
-    update(dt) {
+    /**
+     * Advance by `dt` seconds. `clock` is the world's own time (the theme's, which a restart
+     * carries): the hour of the night is read from it, so it stands where the clock says
+     * whatever happened to the director. Without one, the director's own time stands in.
+     */
+    update(dt, clock = undefined) {
         const step = Number.isFinite(dt) ? clamp(dt, 0, 0.1) : 0;
         this.rippleCount = 0;
         this.meteorCount = 0;
@@ -969,6 +994,7 @@ export class AuroraDirector {
             }
             if (board.hardDrop > 0) board.hardDrop = 0;
         }
+        this.hours.update(step, Number.isFinite(clock) ? clock : this.time + step);
         if (step <= 0) {
             this.paint();
             this.deriveOutputs();
@@ -1115,17 +1141,25 @@ export class AuroraDirector {
         // How deep the storm lets the colour burn: the hem and the crown reach further as the
         // heat builds, so a chain grows toward its peak instead of arriving there at once.
         const burn = smoothstep(0.3, 0.9, this.heatLevel) * 0.5 + fever * 0.5;
-        this.height = Math.min(2.3, 1 + a * 0.55 + this.heightKick + fever * 0.2);
+        // The hour of the night sets the resting display: how tall, how bright, how crowned.
+        const { hours } = this;
+        this.height = Math.min(2.3, hours.height + a * 0.55 + this.heightKick + fever * 0.2);
         this.sway = 1 + a * 0.25;
-        this.crown = Math.min(0.62 + burn * 0.18, 0.14 + a ** 1.4 * 0.5 + this.crownKick * 0.5);
-        this.fringe = Math.min(0.55 + burn * 0.15, 0.06 + smoothstep(0.25, 0.8, a) * 0.3 + this.fringeKick * 0.6);
-        this.violet = Math.min(0.9, 0.12 + a * 0.5 + this.violetKick * 0.6);
+        this.crown = Math.min(
+            0.62 + burn * 0.18 + hours.crown,
+            0.14 + hours.crown + a ** 1.4 * 0.5 + this.crownKick * 0.5,
+        );
+        this.fringe = Math.min(
+            0.55 + burn * 0.15 + hours.fringe,
+            0.06 + hours.fringe + smoothstep(0.25, 0.8, a) * 0.3 + this.fringeKick * 0.6,
+        );
+        this.violet = Math.min(0.9, 0.12 + hours.violet + a * 0.5 + this.violetKick * 0.6);
         this.diffuse = 1 + a * 0.8;
         this.pulsating = RESTING_PULSATION + this.afterglow * 0.9;
         for (const arc of AURORA_ARCS) {
             let gain = this.corona * 0.62;
             if (arc.index !== CORONA_ARC_INDEX) {
-                gain = arc.gain * (1 + a * (arc.index === 0 ? 0.25 : 0.6));
+                gain = arc.gain * hours.gain * (1 + a * (arc.index === 0 ? 0.25 : 0.6));
                 // In a fever the far arc comes up behind the others.
                 if (arc.index === 2) gain *= 1 + fever * 0.35;
             }
@@ -1167,8 +1201,9 @@ export class AuroraDirector {
         // as the storm builds, so the peak burns in colour rather than clipping to cream.
         this.compress = 0.3 + this.heatLevel * 0.15 + fever * 0.15;
         const lift = 1 + a * 1.4 + this.surge * 0.5;
+        const resting = hours.colours.glow;
         for (let i = 0; i < 3; i += 1) {
-            const glow = BASE_LIGHT[i] * (1 - weight) + this.stormColor[i] * 0.09 * weight;
+            const glow = resting[i] * (1 - weight) + this.stormColor[i] * 0.09 * weight;
             this.light[i] = glow * lift + Math.min(0.2, this.pulseLight[i] * 0.07);
         }
         // The bands climbing the rays, as the shader reads them.
@@ -1207,6 +1242,7 @@ export class AuroraDirector {
             },
             events: this.eventCount,
             weather: this.weather.getDiagnostics(),
+            hour: { name: this.hours.name, phase: this.hours.phase, levelSteps: this.hours.levelSteps },
             activePulses: this.pulses.filter((pulse) => pulse.active).length,
             pulseCapacity: MAX_PULSES,
             reducedMotion: this.reducedMotion,

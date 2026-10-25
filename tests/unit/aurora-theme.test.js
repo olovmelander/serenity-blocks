@@ -53,7 +53,10 @@ function createTheme() {
             activity: 0.4, surge: 0.1, heatLevel: 0.3, heatFever: 0.2,
         };
         for (const handler of ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCascade', 'onTSpin',
-            'onBackToBack', 'onPerfectClear', 'onLevelUp', 'calm']) director[handler] = vi.fn();
+            'onBackToBack', 'onPerfectClear', 'onLevelUp', 'stepHours', 'setHourSteps', 'calm']) {
+            director[handler] = vi.fn();
+        }
+        director.hours = { levelSteps: 2 };
         theme.world = {
             director,
             update: vi.fn(),
@@ -242,6 +245,25 @@ describe('Aurora theme lifecycle', () => {
         expect(director.onPerfectClear).not.toHaveBeenCalled();
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { settings: { backgroundComboEffects: false } });
         expect(director.calm).toHaveBeenCalled();
+    });
+
+    it('moves the night an hour on with every level, its cue only where effects are allowed', async () => {
+        const theme = await started();
+        const { director } = theme.world;
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
+        expect(director.onLevelUp).toHaveBeenCalledTimes(1);
+        expect(director.stepHours).not.toHaveBeenCalled();
+        // The light is the world's own: with background effects off the night still turns.
+        window.settings.backgroundComboEffects = false;
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        expect(director.onLevelUp).toHaveBeenCalledTimes(1);
+        expect(director.stepHours).toHaveBeenCalledTimes(1);
+        // Parked, it does neither.
+        theme.pause();
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 4 });
+        expect(director.stepHours).toHaveBeenCalledTimes(1);
+        // A restart carries the levels' hours with the clock.
+        expect(theme.captureRestartRun()).toMatchObject({ hours: 2 });
     });
 
     it('stops reacting while paused and after it has stopped', async () => {

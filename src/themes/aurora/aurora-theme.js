@@ -125,6 +125,8 @@ export default class AuroraTheme extends BaseTheme {
             this.resize(width, height);
             this.setupEventListeners();
             this.time = this.takeRestartTime(0);
+            const hours = this.restartRun?.hours;
+            if (Number.isFinite(hours)) this.world.director.setHourSteps(hours);
             this.update(0);
             this.timer = new THREE.Timer();
             this.timer.connect(document);
@@ -232,7 +234,7 @@ export default class AuroraTheme extends BaseTheme {
             eventBus.on(EVENTS.TSPIN, whenAllowed((payload) => this.world.director.onTSpin(payload))),
             eventBus.on(EVENTS.B2B, whenAllowed((payload) => this.world.director.onBackToBack(payload))),
             eventBus.on(EVENTS.PERFECT_CLEAR, whenAllowed((payload) => this.world.director.onPerfectClear(payload))),
-            eventBus.on(EVENTS.LEVEL_UP, whenAllowed((payload) => this.world.director.onLevelUp(payload))),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(eventDetail(payload))),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
@@ -277,6 +279,22 @@ export default class AuroraTheme extends BaseTheme {
         const reduced = this.reducedMotionQuery?.matches === true
             || (typeof window !== 'undefined' && window.settings?.reducedMotion === true);
         this.world?.setReducedMotion(reduced);
+    }
+
+    /**
+     * A level moves the night an hour on (aurora-hours.js) whatever the effect settings: that
+     * is the world's light, not a reaction. Its cue plays only where effects are allowed.
+     */
+    onLevelUp(payload) {
+        if (!this.world || !this.isActive || this.isPaused || this.cleanupComplete) return;
+        if (this.effectsAllowed()) this.world.director.onLevelUp(payload);
+        else this.world.director.stepHours();
+    }
+
+    /** The run a restart carries: the clock, and the hours the levels have moved the night on. */
+    captureRestartRun() {
+        const hours = this.world?.director?.hours?.levelSteps;
+        return { ...super.captureRestartRun(), hours: Number.isFinite(hours) ? hours : null };
     }
 
     /** `pieceLockRipple` switches off the visible pluck, never the streak bookkeeping. */
@@ -325,6 +343,8 @@ export default class AuroraTheme extends BaseTheme {
                 this.rebuildPending = true;
                 return;
             }
+            // A new tier keeps the night where it stands: the clock and the levels' hours.
+            this.pendingRestartRun = this.captureRestartRun();
             this.start(this.webglRenderer, {
                 assetManager: this.assetManager,
                 audioManager: this.audioManager,

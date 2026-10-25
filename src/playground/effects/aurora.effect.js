@@ -33,6 +33,8 @@ const ICON_LENS = {
  *   lines=1  combo=5  column=4.5  drop=0  color=%236cf5ff
  *   board=1                 draw a stand-in board and aim events above it
  *   reduce=1                reduced-motion behaviour
+ *   level=1                 the run's level: each level past the first has moved the night an hour
+ *                           on (aurora-hours.js), on top of the hour the clock (?t=) has reached
  *   icon=1                  the theme-icon framing: a tighter lens turned to the fold of the
  *                           leading arc (iconFov, iconYaw, iconHorizon override it)
  */
@@ -121,6 +123,8 @@ export function create({
         if (!Number.isFinite(time) || time === sought) return;
         sought = Math.max(0, time);
         world.reset();
+        const level = Math.max(1, Math.floor(number('level', 1)));
+        if (level > 1) world.director.setHourSteps(level - 1);
         const kind = params.get('event');
         const last = Math.max(0, sought - Math.max(0, number('eventAge', 0.45)));
         // A streak is replayed as real consecutive clears, so the combo is earned; a storm

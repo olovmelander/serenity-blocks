@@ -15,7 +15,6 @@
 import {
     abs, cameraPosition, exp, float, length, max, mix, normalize, select, smoothstep, texture, vec2, vec3,
 } from 'three/tsl';
-import { AURORA_COLORS } from './aurora-palette.js';
 
 /** Cold mist: scale height (world units above the lake) and density at the water. */
 export const MIST = Object.freeze({
@@ -63,12 +62,11 @@ export function layerDepthCpu(h0, h1, pathLength, scaleHeight, density) {
     return mean * pathLength * density;
 }
 
-const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
-
 export class AuroraAtmosphere {
     /**
      * @param {object} options
-     * @param {object} options.uniforms shared world uniforms (time, activity, auroraLight)
+     * @param {object} options.uniforms shared world uniforms (time, activity, auroraLight, and the
+     *   hour of the night: mistLight, skyHorizon)
      * @param {THREE.Texture} options.noiseTexture shared noise tile (not owned)
      * @param {import('./aurora-curtains.js').AuroraCurtains} options.curtains
      */
@@ -114,10 +112,11 @@ export class AuroraAtmosphere {
         const total = mist.add(haze).toVar();
         const light = aurora ?? this.auroraAbove(point);
         // Mist is lit by the cold sky and by the aurora standing over it; haze mostly by the sky.
-        const mistLight = vec3(0.009, 0.017, 0.034)
+        // Both take the hour of the night (aurora-hours.js).
+        const mistLight = u.mistLight
             .add(u.auroraLight.mul(0.36))
             .add(light.mul(0.12));
-        const hazeLight = triple(AURORA_COLORS.skyHorizon).mul(0.85)
+        const hazeLight = u.skyHorizon.mul(0.85)
             .add(u.auroraLight.mul(0.05))
             .add(light.mul(0.025));
         const scatter = mistLight.mul(mist).add(hazeLight.mul(haze)).div(max(total, 1e-5));

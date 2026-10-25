@@ -14,6 +14,7 @@ import { AuroraAtmosphere } from './aurora-atmosphere.js';
 import { AuroraCurtains } from './aurora-curtains.js';
 import { AuroraDirector } from './aurora-director.js';
 import { ExcitationMap } from './aurora-field.js';
+import { AURORA_HOURS } from './aurora-hours.js';
 import { AuroraLandscape } from './aurora-landscape.js';
 import { bakeAuroraNoise, createRandom } from './aurora-noise.js';
 import { resolveAuroraQuality } from './aurora-quality.js';
@@ -53,12 +54,24 @@ export class AuroraWorld {
         this.group.name = 'Aurora — world';
         scene.add(this.group);
 
+        // The hour of the night (aurora-hours.js), as every surface reads it.
+        const night = AURORA_HOURS[0];
+        const vector = (rgb) => uniform(new THREE.Vector3(rgb[0], rgb[1], rgb[2]));
         this.uniforms = {
             time: uniform(0),
             activity: uniform(0),
             viewHeight: uniform(1080),
             aspect: uniform(16 / 9),
-            auroraLight: uniform(new THREE.Vector3(0.03, 0.105, 0.07)),
+            auroraLight: vector(night.glow),
+            skyZenith: vector(night.skyZenith),
+            skyHorizon: vector(night.skyHorizon),
+            airglow: vector(night.airglow),
+            skylight: vector(night.skylight),
+            mistLight: vector(night.mistLight),
+            moonLight: vector(night.moonLight),
+            starGain: uniform(night.stars),
+            galaxyGain: uniform(night.galaxy),
+            moonGlow: uniform(night.moon),
         };
 
         this.noiseTexture = new THREE.DataTexture(
@@ -217,6 +230,14 @@ export class AuroraWorld {
         }
         this.uniforms.activity.value = director.activity;
         this.uniforms.auroraLight.value.set(director.light[0], director.light[1], director.light[2]);
+        const { hours } = director;
+        for (const key of ['skyZenith', 'skyHorizon', 'airglow', 'skylight', 'mistLight', 'moonLight']) {
+            const rgb = hours.colours[key];
+            this.uniforms[key].value.set(rgb[0], rgb[1], rgb[2]);
+        }
+        this.uniforms.starGain.value = hours.stars;
+        this.uniforms.galaxyGain.value = hours.galaxy;
+        this.uniforms.moonGlow.value = hours.moon;
     }
 
     /** Hand the director's queued one-shots to the layers that draw them. */
@@ -300,7 +321,8 @@ export class AuroraWorld {
         this.uniforms.time.value = time;
         // Reduce flashing (ADR-0021) quiets the curtains pulsing in the rhythm of a quick hand.
         this.director.flashing = flashScale();
-        this.director.update(dt);
+        // The world's clock turns the hour of the night (the director's own restarts with it).
+        this.director.update(dt, time);
         this.drainDirector();
         this.applyDirector();
         if (pointer && !this.reducedMotion) this.rig.setPointer(pointer.x, pointer.y);
