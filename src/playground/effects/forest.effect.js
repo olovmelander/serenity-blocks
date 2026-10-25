@@ -6,6 +6,7 @@ import { ForestReactions } from '../../themes/forest/forest-reactions.js';
 import { forestGroundHeight } from '../../themes/forest/forest-terrain.js';
 import { forestRidePoint } from '../../themes/forest/forest-plan.js';
 import { ForestPost } from '../../themes/forest/forest-post.js';
+import { readForestPanelRects } from '../../themes/forest/forest-stage.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 export const meta = {
@@ -67,9 +68,22 @@ export function create({
             + 'border-radius:14px;background:#0a1018d9;pointer-events:none;z-index:3';
         document.body.appendChild(overlay);
     }
+    // ?panel=1 adds the game's score panel beside the card: no animal is called to stand behind it.
+    let panel;
+    if (params.get('panel') === '1') {
+        panel = document.createElement('div');
+        panel.className = 'single-player-stats-bar';
+        panel.style.cssText = 'position:fixed;left:calc(50% + 11.5vw + 4.2vh);top:18.8vh;width:26.7vh;height:30.5vh;'
+            + 'border:1px solid #b9e9ff40;border-radius:10px;background:#160c2ad9;pointer-events:none;z-index:3';
+        document.body.appendChild(panel);
+    }
+    // ?stand=<n> has every animal stand at that place (0 the usual one, see FOREST_FIGURE_STANDS);
+    // without it each takes a place by chance, as in the game.
+    const rawStand = params.has('stand') ? Number(params.get('stand')) : NaN;
     const aim = () => {
         if (!world) return;
         world.prepareCamera(camera.aspect);
+        world.setPanels(readForestPanelRects());
         // ?icon=1 is the theme icon's lens: from a little way down the ride, low in the ferns, the
         // young spruce stand against the moon (the centre square of a 16:9 capture is the icon).
         if (params.get('icon') === '1') {
@@ -102,6 +116,7 @@ export function create({
                 scene, camera, quality, rng, assets,
             }).build();
             world.setLevel(level, { silent: true });
+            world.director.callStand(rawStand);
             aim();
             post = new ForestPost({
                 renderer, scene, camera, quality, light: world.light, samples,
@@ -205,11 +220,14 @@ export function create({
                 ...(post?.getDiagnostics() || {}),
                 activeEmitters: reactions.getFrame().emitters.length,
                 figure: reactions.getFrame().figure?.kind ?? null,
+                // Which of the places an animal may stand the last one took.
+                stand: world?.director?.figureAnchor?.stand ?? null,
             };
         },
         dispose() {
             disposed = true;
             overlay?.remove();
+            panel?.remove();
             post?.dispose();
             reactions.dispose();
             world?.dispose();
