@@ -51,7 +51,8 @@ of cold pipeline compile.
    framing left for later.*
 3. **Trees and the treeline.** Softer, back-lit crowns, ragged conifer silhouettes, a far ring of
    forest, and a transition from forest through krummholz and alpine meadow to rock and snow. A
-   cheap band of real grass by the rail, in the wind.
+   cheap band of real grass by the rail, in the wind. *Done (§3): the crowns' bands follow the
+   sun, the trees cast baked shade, a painted far forest, the krummholz; the grass band dropped.*
 4. **Clouds and air.** Dark bases, lit edges, a high cirrus layer, warm haze toward the sun, light
    shafts.
 5. **Life.** Readable birds near the camera, butterflies, petals in the air.
@@ -155,3 +156,81 @@ plate. The forest visibility stamp was re-baked.
 
 **Not done here (moved on).** Varied camera framing for chapter 5's long stare: the summit now
 carries the view.
+
+## §3. Trees, their shade, and the treeline (2026-10-25)
+
+**The crowns went flat under the new sun.** The forest's three tone bands were placed for a sun 25°
+up, where a canopy top computes a wrapped light of ~0.66. Turned to 15° (§1) a top computes ~0.56,
+which fell between the lower band's end and the upper band's start: every top in the forest took
+the mid tone. The four band edges now move with the sun (`FOREST_SUN_BAND_SHIFT` in
+`world/odyssey-world-renderer.js`), so tops sit in the upper band again and neighbouring crowns
+separate into the mosaic. The pastel species (gold birch, pink blossom) take the darker end of
+their measured band (0.83 instead of 0.88), so they read less like paper cut-outs.
+
+**The trees cast shade.** The sun bake marches the terrain only, so not one of Act II's trees cast
+a shadow: every stand stood on sunlit grass, and the gaps between crowns were as bright as the
+meadow. The trees are static, so their shade is baked once from the scatter
+(`world/odyssey-forest-shade.js`). The bake runs in the worker's scatter lane, off the critical
+path, and takes ~60-150 ms there. It produces one RGBA8 plate over the forest, 2048² at ~1.8 u,
+mipmapped:
+
+- **R, the sun shadow.** Each crown is a few spheres (a cone's taper for a fir, one ellipsoid for a
+  broadleaf). Each sphere throws an ellipse stretched along the sun's bearing, landing where its
+  ray meets the terrain. Under the 15° sun a 20 u pine's shadow runs ~60 u, so conifer slopes are
+  striped with long shade. A fir's shadow is whole and sharp. A broadleaf's is leafy: its outline
+  is pushed in and out by noise at the scale of its leaf masses, and light comes through the gaps,
+  so a lone oak on the meadow throws dappled shade rather than a dark blob. A faint trunk shadow
+  joins each tree's foot to its crown's.
+- **G, the canopy cover:** the forest floor takes it as sky occlusion.
+- **B and A, the crowns' colour,** premultiplied by the cover.
+
+The ground takes the shadow on its direct sun and the cover on its sky light.
+
+**The far forest.** Every tree sinks out of the draw across 1450-1650 u from the rail. Where the
+forest went on past that, the ground beyond was a bare green plain. Across the same band, the
+plate's cover now paints the canopy back onto the ground, read through the mips as density, in
+the crowns' own mean colour (gold and red on the autumn side). The trees hand over to their own
+painted mass.
+
+**The treeline frays.** Above ~400 u the massif's flanks are steeper than the scatter's slope cap,
+so the forest ended at a contour. The slope above it was bare ground straight to the rock. A sparse
+second grid now places krummholz (`FOREST_KRUMMHOLZ` in `world/odyssey-forest-scatter.js`): dwarf
+subalpine firs in islands, from 372 to 590 u. They are:
+
+- eased in over the forest's own top edge and thinning with height;
+- lower and broader the higher they grow;
+- bent downwind by the summit's wind;
+- snow-dusted near the top, by the fir's existing snow rule;
+- clinging to slopes up to 1.25.
+
+About 540 stand where the rail can see them. **They add no draw:** a dwarf fir joins a fir bucket
+its chunk already holds, or it is dropped.
+
+![p 0.28 and 0.30, before and after: long conifer shadows striping the slopes, stands seated on their shade, a lone tree's dappled shadow on the meadow](images/odyssey-act2-2026-10-25/trees-shade-before-after.jpg)
+
+![p 0.32: snow-dusted krummholz climbing the flanks in islands above the forest, before and after](images/odyssey-act2-2026-10-25/treeline-krummholz.jpg)
+
+**Cost.** World playground at 1080p, vsync off, alternating rounds against main: +0.02-0.04 ms
+at the forest stations (p 0.28), within noise at p 0.32 and 0.50. The shade plate is one more
+fetch in the ground shader, ~21 MB of GPU memory with its mips. The krummholz adds no draws.
+
+**Tests.**
+
+- `odyssey-forest-shade.test.js` (new) checks:
+  - an empty plate where no tree stands;
+  - a fir's shadow lying away from the sun at its height's cotangent, and none toward the sun;
+  - the cover and its premultiplied colour;
+  - a broadleaf's shadow letting more light through than a fir's.
+- The scatter suite gains a krummholz gate:
+  - a fringe, not a second forest (under 12% of the trees);
+  - firs only, inside the band, stunted;
+  - never alone in a bucket.
+- The carve tripwire now counts the forest it was calibrated on. The visibility suite measures
+  the mask on the forest without the fringe.
+
+**Not done here.**
+
+- **A band of real grass by the rail.** The camera flies 30-100 u over the ground for all of
+  Act II, where a blade is under a pixel. The ground's wind sweep already carries the meadow at
+  that range.
+- **Shade on crowns from their neighbours.** The plate is a ground plate.

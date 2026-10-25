@@ -22,6 +22,7 @@ import {
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData } from './odyssey-cloud-field.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
+import { bakeForestShadeData } from './odyssey-forest-shade.js';
 
 function deferred() {
     let resolve; let reject;
@@ -52,6 +53,7 @@ export function bakeWorldSync({
     const field = cloudField && Array.isArray(cloudSpecs) ? buildCloudFieldGeometryData(cloudSpecs, railSamples) : null;
     const t6 = now();
     const zoned = scatter ? scatterZonedForest(makeReliefSampler(relief), scatter) : null;
+    if (zoned) zoned.shade = bakeForestShadeData(zoned.placements, makeReliefSampler(relief));
     const t7 = now();
     return {
         relief,

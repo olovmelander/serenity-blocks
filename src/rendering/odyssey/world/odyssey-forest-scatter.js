@@ -60,6 +60,42 @@ function siteInNorthLake(x, z, y) {
 export const FOREST_CHUNK = 420;
 
 /**
+ * THE KRUMMHOLZ (Act II pass, step 3, 2026-10-25). The forest stopped in a line: above ~400 u the
+ * massif's flanks are steeper than the scatter's 0.62 cap, so the stands ended at a contour and
+ * the slope above them was bare ground straight to the rock. A real treeline frays: the last
+ * firs climb in stunted, wind-bent islands, lower and broader the higher they grow, until they
+ * are gone. This is that fringe, on its own sparse grid:
+ *   lo..hi       the altitude it climbs: eased in over the forest's own top (`rise`, a fraction
+ *                of the band), then thinning (`thin`, the falloff's power) to nothing by `hi`;
+ *   slopeMax     dwarf firs cling to steeper ground than a forest stands on (the cone is
+ *                ~1.0 at 450 u: they hold its ledges);
+ *   island*      the patch noise (cell, salt) and the edge that gathers them into islands;
+ *   height/width stage multipliers on the fir (height falls from [1] to [0] with altitude);
+ *   lean         radians, bent downwind (`wind`, x/z, the summit's spindrift wind) and more so
+ *                with altitude; `weather` a per-channel tint, a little browner than the forest.
+ * The subalpine fir only, so no new geometry, and its buckets mostly exist already.
+ */
+export const FOREST_KRUMMHOLZ = Object.freeze({
+    species: 'S3-subalpine-fir',
+    lo: 372,
+    hi: 590,
+    spacing: 12,
+    clear: 9,
+    density: 0.42,
+    rise: 0.18,
+    thin: 0.75,
+    slopeMax: 1.25,
+    islandCell: 120,
+    islandEdge: Object.freeze([0.38, 0.62]),
+    salt: 211,
+    height: Object.freeze([0.26, 0.55]),
+    width: Object.freeze([0.62, 0.95]),
+    lean: Object.freeze([0.08, 0.30]),
+    wind: Object.freeze([-0.92, -0.37]),
+    weather: Object.freeze([1.12, 1.0, 0.9]),
+});
+
+/**
  * Chunk edge BY LOD, in world units.
  *
  * ⚠️ THE DRAW BUDGET IS WHY THIS IS NOT ONE NUMBER. A variant is (species x LOD), so with five
@@ -810,6 +846,8 @@ export function scatterZonedForest(heightAt, {
     snowOnset = 385,
     snowFull = 460,
     zoneCell = 900,
+    /** The treeline's dwarf firs (FOREST_KRUMMHOLZ); off for calibration and the old tests. */
+    krummholz = true,
     rail = [],
     species = ODYSSEY_FOREST_SPECIES,
     framing = ODYSSEY_FOREST_FRAMING,
@@ -991,6 +1029,77 @@ export function scatterZonedForest(heightAt, {
         }
     }
 
+    // ── the krummholz ──
+    // See FOREST_KRUMMHOLZ. Its own sparse grid AFTER the forest's, so it only ever adds trees
+    // above and between the stands and never moves one; a site a forest tree already holds is
+    // skipped. The rail-visibility cull applies exactly as above.
+    const KH = FOREST_KRUMMHOLZ;
+    const khSpec = krummholz ? species.find((sp) => sp.id === KH.species) : null;
+    if (khSpec) {
+        const held = new Set(placements.map((p) => `${Math.floor(p.x / KH.clear)}|${Math.floor(p.z / KH.clear)}`));
+        const khSteps = Math.ceil((radius * 2) / KH.spacing);
+        const windLen = Math.hypot(KH.wind[0], KH.wind[1]);
+        const wx = KH.wind[0] / windLen;
+        const wz = KH.wind[1] / windLen;
+        for (let j = 0; j < khSteps; j += 1) {
+            for (let i = 0; i < khSteps; i += 1) {
+                const x = (cx - radius) + (i * KH.spacing) + ((hash2(i, j, 41) - 0.5) * KH.spacing * 0.95);
+                const z = (cz - radius) + (j * KH.spacing) + ((hash2(i, j, 42) - 0.5) * KH.spacing * 0.95);
+                if (Math.hypot(x - cx, z - cz) > radius) continue;
+                const y = heightAt(x, z);
+                if (y < KH.lo || y > KH.hi) continue;
+                // In islands, eased in over the forest's own top edge (`rise`, as a fraction of the
+                // band) and thinning to nothing by `hi`.
+                const up = (y - KH.lo) / (KH.hi - KH.lo);
+                const rise = clamp01(up / KH.rise);
+                const islands = clamp01((patchNoise(x, z, KH.islandCell, KH.salt) - KH.islandEdge[0])
+                    / (KH.islandEdge[1] - KH.islandEdge[0]));
+                const odds = KH.density * rise * rise * (3 - (2 * rise)) * ((1 - up) ** KH.thin) * islands;
+                if (hash2(i, j, 43) > odds) continue;
+                const e = 4;
+                const slope = Math.hypot(
+                    (heightAt(x + e, z) - heightAt(x - e, z)) / (2 * e),
+                    (heightAt(x, z + e) - heightAt(x, z - e)) / (2 * e),
+                );
+                if (slope > KH.slopeMax) continue;
+                if (held.has(`${Math.floor(x / KH.clear)}|${Math.floor(z / KH.clear)}`)) continue;
+                if (siteInNorthLake(x, z, y)) continue;
+                if (visibilityCull && !railSeesForestSite(x, z)) continue;
+                held.add(`${Math.floor(x / KH.clear)}|${Math.floor(z / KH.clear)}`);
+                // Stunted: lower and broader the higher it grows.
+                const h = KH.height[1] - ((KH.height[1] - KH.height[0]) * up) + ((hash2(i, j, 44) - 0.5) * 0.12);
+                const w = KH.width[0] + ((KH.width[1] - KH.width[0]) * hash2(i, j, 45));
+                const rot = hash2(i, j, 46) * Math.PI * 2;
+                // Bent DOWNWIND, more the higher it stands. The lean is applied in the tree's own
+                // frame after its turn about Y (the renderer's 'YXZ' Euler), so the wind is
+                // turned into that frame: a tilt about local Z leans the top toward local -x,
+                // one about local X toward local +z.
+                const lean = KH.lean[0] + ((KH.lean[1] - KH.lean[0]) * up);
+                const lx = (wx * Math.cos(rot)) - (wz * Math.sin(rot));
+                const lz = (wx * Math.sin(rot)) + (wz * Math.cos(rot));
+                const jitter = 1 + ((hash2(i, j, 47) - 0.5) * 0.24);
+                const crown = khSpec.crown.map((c, k) => Math.max(0, c * jitter * KH.weather[k]));
+                placements.push({
+                    x,
+                    y,
+                    z,
+                    speciesId: khSpec.id,
+                    stageId: 'krummholz',
+                    lod: null,
+                    scaleXZ: w,
+                    scaleY: Math.max(0.2, h),
+                    rot,
+                    leanX: lean * lz,
+                    leanZ: -lean * lx,
+                    crown,
+                    shade: shadeColourFor(crown, khSpec.role),
+                    snow: Math.max(0, Math.min(1, (y - snowOnset) / Math.max(1, snowFull - snowOnset))),
+                    krummholz: true,
+                });
+            }
+        }
+    }
+
     // ── the framing trees ──
     // Appended AFTER the grid so they cannot be displaced by a rejection: an authored tree
     // stands where it was authored, subject only to the water floor (terrain is authoritative
@@ -1061,12 +1170,26 @@ export function scatterZonedForest(heightAt, {
         p.lod = forceLod || (p.framing ? 'hero' : chunkLod.get(ck));
     });
 
-    // ── bucketing: one InstancedMesh per (chunk, species, LOD) ──
-    const buckets = new Map();
-    placements.forEach((p) => {
+    // ── the krummholz adds no draw ──
+    // A dwarf fir joins a fir bucket its chunk already holds at its LOD, or it is dropped: the
+    // treeline's fringe is drawn by the meshes the forest already pays for (the visible-bucket
+    // ceiling below is the Lane A draw claim, and the fringe is not worth a draw of its own).
+    const bucketKeyOf = (p) => {
         // LOD was decided on the FINE grid above; the bucket grid is coarser for the far
         // tiers. Deciding LOD on the coarse grid instead would make a 1,680 u square pick one
         // tier for trees up to 1,188 u apart.
+        const edge = FOREST_CHUNK_BY_LOD[p.lod] ?? FOREST_CHUNK;
+        return `${Math.floor(p.x / edge)}|${Math.floor(p.z / edge)}|${p.lod}|${p.speciesId}`;
+    };
+    const forestKeys = new Set();
+    placements.forEach((p) => { if (!p.krummholz) forestKeys.add(bucketKeyOf(p)); });
+    const drawn = placements.filter((p) => !p.krummholz || forestKeys.has(bucketKeyOf(p)));
+    placements.length = 0;
+    drawn.forEach((p) => placements.push(p));
+
+    // ── bucketing: one InstancedMesh per (chunk, species, LOD) ──
+    const buckets = new Map();
+    placements.forEach((p) => {
         const edge = FOREST_CHUNK_BY_LOD[p.lod] ?? FOREST_CHUNK;
         const bx = Math.floor(p.x / edge);
         const bz = Math.floor(p.z / edge);
@@ -1096,9 +1219,11 @@ export function scatterZonedForest(heightAt, {
 
     const bySpecies = {};
     const byLod = { hero: 0, mid: 0, far: 0 };
+    let krummholzTrees = 0;
     placements.forEach((p) => {
         bySpecies[p.speciesId] = (bySpecies[p.speciesId] ?? 0) + 1;
         byLod[p.lod] += 1;
+        if (p.krummholz) krummholzTrees += 1;
     });
 
     return {
@@ -1106,6 +1231,8 @@ export function scatterZonedForest(heightAt, {
         buckets,
         stats: {
             trees: placements.length,
+            /** Of `trees`, the treeline's dwarf firs (FOREST_KRUMMHOLZ). */
+            krummholz: krummholzTrees,
             draws: buckets.size,
             chunks: perChunk.size,
             maxVariantsPerChunk,

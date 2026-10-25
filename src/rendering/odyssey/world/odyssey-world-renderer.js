@@ -41,6 +41,7 @@ import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-f
 import { buildForestTreeGeometry } from './odyssey-forest-geometry.js';
 import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
+import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './odyssey-forest-shade.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import {
     billboardWorld, makeQuadInstancedGeometry,
@@ -656,10 +657,18 @@ const FOREST_WRAP = 0.70;
 // THREE STEPS. The lower pair turns shade into the mid tone across the crown's flank; the
 // upper pair is placed where canopy TOPS actually compute (wrap ~0.66 at the authored sun
 // angle), which is the only place a threshold can still do work when the camera looks down.
-const FOREST_BAND_LO = 0.34;
-const FOREST_BAND_MID = 0.52;
-const FOREST_BAND_HI_LO = 0.60;
-const FOREST_BAND_HI = 0.78;
+// ⚠️ THE BANDS RIDE THE SUN (Act II pass, 2026-10-25). They were placed for a sun 25° up, where
+// a canopy top computes wrap ~0.66; turned to the side at 15° (`ODYSSEY_WORLD_SUN`) a top
+// computes ~0.56, between the lower pair's end and the upper pair's start, so every top in the
+// forest landed on the mid tone and the canopy went flat again. The authored numbers below are
+// for the 0.66 top, and `FOREST_SUN_BAND_SHIFT` moves all four with the sun that ships.
+const FOREST_TOP_WRAP_AUTHORED = 0.66;
+const FOREST_SUN_BAND_SHIFT = (((ODYSSEY_WORLD_SUN[1] / Math.hypot(...ODYSSEY_WORLD_SUN)) + FOREST_WRAP)
+    / (1 + FOREST_WRAP)) - FOREST_TOP_WRAP_AUTHORED;
+const FOREST_BAND_LO = 0.34 + FOREST_SUN_BAND_SHIFT;
+const FOREST_BAND_MID = 0.52 + FOREST_SUN_BAND_SHIFT;
+const FOREST_BAND_HI_LO = 0.60 + FOREST_SUN_BAND_SHIFT;
+const FOREST_BAND_HI = 0.78 + FOREST_SUN_BAND_SHIFT;
 /** How far the mid tone sits from shade toward the lit albedo. */
 const FOREST_MID_TONE = 0.58;
 // ⚠️ THE MEASURED SHADOW LAW (§1b R3). Foliage shade goes DEEPER and MORE SATURATED along the
@@ -756,9 +765,22 @@ const FOREST_TRUNK = [0.105, 0.055, 0.032];
 /**
  * World scale for a roster tree. The sculptor authors at unit-ish size (a mature pine is ~4.5
  * local units tall); the incumbent's instance scale ran 3.2-6.6 on a ~4 unit tree, giving
- * 10.7-32.6 m. This lands the roster in the same band at 1 u = 1 m.
+ * 10.7-32.6 m. This lands the roster in the same band at 1 u = 1 m. Shared with the shade bake
+ * (odyssey-forest-shade.js), which sizes each tree's shadow by it.
  */
-const FOREST_V2_SCALE = 4.6;
+const FOREST_V2_SCALE = FOREST_WORLD_SCALE;
+/**
+ * THE FOREST'S SHADE ON THE GROUND (Act II pass, step 3) — see odyssey-forest-shade.js.
+ *   SHADOW_DEPTH   how much of the direct sun a baked crown shadow takes off the ground;
+ *   FLOOR_AO       how much of the sky the canopy takes off the forest floor;
+ *   FAR_*          where the far forest is painted onto the ground: across the same band the
+ *                  trees sink in (FOREST_DRAW_NEAR..FAR), so the canopy hands over to its own
+ *                  painted density instead of leaving bare grass where the forest stops drawing;
+ *                  its tone is the crowns' mean colour, darkened toward their shade side.
+ */
+const FOREST_SHADOW_DEPTH = 0.9;
+const FOREST_FLOOR_AO = 0.5;
+const FOREST_FAR_TONE = 0.78;
 
 /**
  * A forest chunk's culling-sphere radius. It was `0.75 x edge + half height + 40` about the
@@ -1094,6 +1116,23 @@ export function createOdysseyWorld({
     // everywhere else.
     const summitBake = preTex.summit ?? bakeSummitSculptData();
     const summitTex = halfFloatTexture(summitBake.data, summitBake.res, THREE.ClampToEdgeWrapping);
+    // THE FOREST'S SHADE PLATE (odyssey-forest-shade.js): baked with the scatter in the worker,
+    // or after it below when the scatter runs here; zeros (no shade) when there is no forest.
+    // MIPMAPPED, unlike the other plates: it is read at every range, a crown's shadow is two
+    // texels wide, and the far forest is read as canopy DENSITY, which is what the mips average.
+    const forestShadeTex = new THREE.DataTexture(
+        pre.scatter?.shade?.data ?? new Uint8Array(FOREST_SHADE_PLATE.res * FOREST_SHADE_PLATE.res * 4),
+        FOREST_SHADE_PLATE.res,
+        FOREST_SHADE_PLATE.res,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType,
+    );
+    forestShadeTex.minFilter = THREE.LinearMipmapLinearFilter;
+    forestShadeTex.magFilter = THREE.LinearFilter;
+    forestShadeTex.wrapS = THREE.ClampToEdgeWrapping;
+    forestShadeTex.wrapT = THREE.ClampToEdgeWrapping;
+    forestShadeTex.generateMipmaps = true;
+    forestShadeTex.needsUpdate = true;
     const t1 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
     const group = new THREE.Group();
@@ -1560,6 +1599,14 @@ export function createOdysseyWorld({
     const sunVis = plate.r;
     const wideAo = plate.g;
     const zone = plate.a;
+    // The forest's shade on this ground: R the crowns' sun shadow, G their cover, B/A their
+    // colour premultiplied by the cover (odyssey-forest-shade.js). Sampled on the root path, with
+    // the hardware's own mip choice — no branch above it.
+    const forestShade = texture(
+        forestShadeTex,
+        positionWorld.xz.sub(vec2(FOREST_SHADE_PLATE.x, FOREST_SHADE_PLATE.z)).div(FOREST_SHADE_PLATE.extent).add(0.5),
+    );
+    const treeSun = float(1).sub(forestShade.r.mul(FOREST_SHADOW_DEPTH));
 
     let groundColour;
     if (flatGround) {
@@ -1975,6 +2022,25 @@ export function createOdysseyWorld({
         // derivative and the one fetch pins its LOD (.level(0); the tile has no mips, so it is the
         // same texel), which is what WGSL requires of non-uniform control flow. Every shared node
         // they read (kSand, atlas, normal, sunVis) is built earlier on the root path.
+        /**
+         * THE FAR FOREST (Act II pass, step 3). Every tree sinks out of the draw across
+         * FOREST_DRAW_NEAR..FAR, and what it left was the grass it stood on: from the climb the
+         * forest stopped in a line and the land beyond it was a bare green plain. The shade plate's
+         * cover, read through its mips as canopy density, paints the canopy back across the same
+         * band in the crowns' own mean colour (B/A over G, blue from green as the roster's crowns
+         * hold it), so the trees hand over to their own painted mass. Lit like the ground, so the
+         * baked shadows above give it the dark texture of a canopy seen from afar.
+         */
+        const farForest = forestShade.g.mul(smoothstep(
+            float(FOREST_DRAW_NEAR - 120),
+            float(FOREST_DRAW_FAR),
+            length(positionWorld.xz.sub(uLodCenter)),
+        ));
+        const canopyMean = vec3(forestShade.b, forestShade.a, forestShade.a.mul(0.42))
+            .div(max(forestShade.g, 0.02))
+            .mul(FOREST_SHADE_PLATE.colourScale * FOREST_FAR_TONE);
+        albedo = mix(albedo, canopyMean, clamp(farForest.mul(1.6), 0, 1));
+
         const SHORE_TOP = ODYSSEY_SEA_LEVEL + 1.2;
         const albedoInland = albedo;
         albedo = Fn(() => {
@@ -2153,7 +2219,7 @@ export function createOdysseyWorld({
         const lightAmt = smoothstep(
             float(ODYSSEY_GROUND_SHADE.terminator[0]),
             float(ODYSSEY_GROUND_SHADE.terminator[1]),
-            clamp(ndl.mul(sunVis).mul(cloudLight), 0, 1),
+            clamp(ndl.mul(sunVis).mul(cloudLight).mul(treeSun), 0, 1),
         ).toVar();
         const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA)).toVar();
         const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
@@ -2180,7 +2246,8 @@ export function createOdysseyWorld({
         // (rock takes less sky than a meadow does) and deepens where the baked occlusion says
         // the sky cannot see in, which is how a hollow in shadow reaches the measured deep band
         // without a second darkening term fighting the first.
-        const openness = smoothstep(float(GROUND_AO_FLOOR), float(1), wideAo);
+        const openness = smoothstep(float(GROUND_AO_FLOOR), float(1), wideAo)
+            .mul(float(1).sub(forestShade.g.mul(FOREST_FLOOR_AO)));
         // THREE families now, weighted by the explicit material weights: snow split out of
         // `mineralW` (item 5), because snow in shade is lit by the sky it faces and stays bright.
         const ambient = mix(
@@ -4992,6 +5059,13 @@ export function createOdysseyWorld({
         const zoned = pre.scatter && pre.scatter.stats?.trees > 0
             ? pre.scatter
             : scatterZonedForest(relief.sample, scatterOptions);
+        // The shade plate the ground was built against: baked with a scatter from the worker,
+        // otherwise here, from this one (before the first frame, so nothing pops in).
+        if (!zoned.shade) zoned.shade = bakeForestShadeData(zoned.placements, relief.sample);
+        if (forestShadeTex.image.data !== zoned.shade.data) {
+            forestShadeTex.image.data = zoned.shade.data;
+            forestShadeTex.needsUpdate = true;
+        }
         // One geometry per (species, LOD) — growth stages ride the instance matrix, because a
         // stage is defined as pure height/width multipliers (see the scatter's header).
         // ⚠️ THREE SEEDED VARIANTS PER (SPECIES, LOD), NOT ONE. The first cut cached a single
@@ -5527,7 +5601,7 @@ export function createOdysseyWorld({
             if (kelpMat) kelpMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
-            [heightTex, sunVisTex, groundTex, detailTex, macroTex].forEach((t) => t.dispose());
+            [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex].forEach((t) => t.dispose());
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();
             treeGeo.dispose();

@@ -25,6 +25,7 @@ import {
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData, cloudFieldGeometryDataBuffers } from './odyssey-cloud-field.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
+import { bakeForestShadeData } from './odyssey-forest-shade.js';
 
 const now = () => performance.now();
 
@@ -50,8 +51,12 @@ self.onmessage = (event) => {
             // (odyssey-forest-scatter.js imports no three), so it runs here while the main
             // thread builds clipmaps and material graphs; the geometry and InstancedMeshes it
             // feeds still happen there.
-            const zoned = scatterZonedForest(makeReliefSampler(reliefIn), scatterOptions);
-            post('scatter', { zoned }, undefined, now() - t0);
+            const sampler = makeReliefSampler(reliefIn);
+            const zoned = scatterZonedForest(sampler, scatterOptions);
+            // ...and the forest's shade on the ground, from the same placements (Act II pass,
+            // step 3): ~60 ms, off the critical path, since the world is assembled after the nodes.
+            zoned.shade = bakeForestShadeData(zoned.placements, sampler);
+            post('scatter', { zoned }, [zoned.shade.data.buffer], now() - t0);
         }
         if (lane === 'sunFields') {
             // The sun march needs the WHOLE plate (and normalises over it), so it stays one job;
