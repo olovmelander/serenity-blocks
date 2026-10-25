@@ -5,7 +5,8 @@
  * Every player has a station: a name plate, the next queue in a row over the well's
  * open top, the well (the board between its walls) with the garbage meter just outside
  * its left wall, and one line of stats under it. The block size is the largest that fits the window below the top row (the match
- * bar and the controls tray). Stations wrap onto two rows only where that gives the
+ * bar and the controls tray), with the board at its share of the height (BOARD_FILL) so the
+ * theme shows round it. Stations wrap onto two rows only where that gives the
  * bigger board (tall windows).
  *
  * public/styles/keystone-versus.css draws the same sizes from the CSS variables
@@ -29,6 +30,25 @@ export const VERSUS_CHROME = Object.freeze({
     rowGap: 20, // between two rows of stations
     minimap: 63, // Last Standing's minimap column (55 + gap)
 });
+
+/**
+ * The board's share of the height it could fill; the rest is the theme's. A short window keeps
+ * more: the board is never shorter than `floor` px unless the room itself is. The tokens are
+ * CSS (--sb-board-fill and --sb-board-floor on :root, keystone-overlays.css; a full board on
+ * portrait screens), read by readVersusViewport; the solo well (keystone-solo.css) applies the
+ * same rule. These are their values for a caller that passes none.
+ */
+export const BOARD_FILL = Object.freeze({ fill: 0.85, floor: 520 });
+
+/**
+ * How tall a board may stand in a room that could hold `room` px of it.
+ * @param {number} room
+ * @param {number} [fill]
+ * @param {number} [floor]
+ */
+export const boardShare = (room, fill = BOARD_FILL.fill, floor = BOARD_FILL.floor) => (
+    Math.min(room, Math.max(room * fill, floor))
+);
 
 /** Plate and type scale for a block size: 1 at 34 px blocks, up to 1.6 on 1440p and 4K. */
 export const versusUnit = (block) => clamp(block / 34, 0.85, 1.6);
@@ -66,6 +86,8 @@ export function versusParts(block) {
  * @property {boolean} [infinity] Last Standing: a minimap column, queue above
  * @property {number} [inset] the window's edge inset (the tray's inset)
  * @property {number} [topRow] the top row's height from the window's top (tray bottom)
+ * @property {number} [fill] the board's share of the height it could fill (BOARD_FILL)
+ * @property {number} [floor] px under which a board keeps its full height (BOARD_FILL)
  */
 
 /**
@@ -103,6 +125,7 @@ export function versusStation(block, infinity = false) {
  */
 export function versusLayout({
     width, height, players, infinity = false, inset = 16, topRow = 64,
+    fill = BOARD_FILL.fill, floor = BOARD_FILL.floor,
 }) {
     const count = clamp(Math.round(players) || 2, 1, 4);
     const top = topRow + VERSUS_CHROME.topGap;
@@ -111,8 +134,10 @@ export function versusLayout({
         const columns = Math.ceil(count / rows);
         const station = versusStation(block, infinity);
         const totalWidth = columns * station.width + (columns - 1) * gap + 2 * inset;
-        const totalHeight = top + rows * station.height + (rows - 1) * VERSUS_CHROME.rowGap + inset;
-        return totalWidth <= width && totalHeight <= height;
+        // The height a station's board could take: its share of the row less its chrome.
+        const board = VERSUS_ROWS * block;
+        const room = (height - top - inset - (rows - 1) * VERSUS_CHROME.rowGap) / rows - (station.height - board);
+        return totalWidth <= width && board <= boardShare(room, fill, floor);
     };
     const largest = (rows) => {
         let lo = 6;
@@ -145,8 +170,9 @@ export function versusLayout({
 }
 
 /**
- * The window and the tray's row, measured (the tray's tokens are CSS: keystone-overlays.css).
- * @returns {{ width: number, height: number, inset: number, topRow: number }}
+ * The window, the tray's row and the board's share, measured (the tokens are CSS:
+ * keystone-overlays.css).
+ * @returns {{ width: number, height: number, inset: number, topRow: number, fill: number, floor: number }}
  */
 export function readVersusViewport() {
     const root = document.documentElement;
@@ -161,6 +187,8 @@ export function readVersusViewport() {
         height: window.innerHeight,
         inset,
         topRow: inset + px('--sb-play-tray', 48),
+        fill: px('--sb-board-fill', BOARD_FILL.fill),
+        floor: px('--sb-board-floor', BOARD_FILL.floor),
     };
 }
 

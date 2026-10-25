@@ -64,10 +64,12 @@
     backdrop-filter: none;
 }
 
+/* Your station stands in the middle of its row: the board keeps its share of the height
+   (online-versus-layout.js), the theme the air above and below it. */
 #online-multiplayer-container .main-board-panel {
     grid-area: station;
     justify-self: center;
-    align-self: start;
+    align-self: center;
 }
 
 /* The field stands in the middle of its column, level with your board. */
