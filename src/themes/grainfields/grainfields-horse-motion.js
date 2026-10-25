@@ -275,6 +275,8 @@ export function createHorseMotion(rig, { seed = 0.5, lead = 1, landmarks = {} } 
         muzzle: landmarks.muzzle || MUZZLE,
         neck: [I.neck0, I.neck1, I.neck2, I.head],
         bones: I,
+        // Strikes and tears since the world last listened.
+        events: [],
     };
 }
 
@@ -432,6 +434,12 @@ function touchDown(m, legState, ground, time) {
     legState.plant[0] = x;
     legState.plant[2] = z;
     legState.plant[1] = ground(x, z) + HOOF.coffin * m.place.scale;
+    // (What the world may answer: a hoof struck the ground here.)
+    if (m.events.length < 16) {
+        m.events.push({
+            kind: 'strike', x, y: legState.plant[1] - HOOF.coffin * m.place.scale, z, time,
+        });
+    }
 }
 
 /** Each leg's angles for this step: the stride's footfalls at speed, single steps when standing. */
@@ -562,6 +570,7 @@ function graze(m, h, time, out) {
             reach: 'bite', bite: 'tear', tear: verge && eat.bites < 3 ? 'reach' : 'chew', chew: 'reach',
         }[eat.stage] || 'reach';
         eat.stage = next;
+        if (next === 'tear' && m.events.length < 16) m.events.push({ kind: 'tear', time });
         if (next === 'reach') eat.side = r() < 0.5 ? -1 : 1;
         eat.bites = next === 'chew' ? 0 : eat.bites + (next === 'bite' ? 1 : 0);
         const lasts = {

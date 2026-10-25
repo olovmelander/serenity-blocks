@@ -6016,6 +6016,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'Off: the theme’s own eye.',
             '0,4,90,1.1,40',
         ],
+        [
+            'herdLook',
+            'From the theme’s own eye, keep one horse of the herd in the middle of a long lens (what a player sees '
+                + 'of it, magnified).',
+            'Comma-separated index, fov degrees.',
+            'Off: the theme’s own lens.',
+            '0,12',
+        ],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',

@@ -14,7 +14,9 @@
  * the back, neck, jaw, ears and tail) poses its skeleton every frame (grainfields-horse-rig.js),
  * and the pose goes up as a table of bones, a rotation and a translation each, that the vertex
  * stage blends four to a vertex. The mane, the forelock and the tail's ends move a little more
- * on their own, in the wind and the air the horse runs through.
+ * on their own, in the wind and the air the horse runs through. What the horses kick up (the dust of
+ * their hooves, the chaff they breast out of the ears, the awns a grazing horse scatters) is
+ * grainfields-herd-dust.js's, thrown here from the motion's own strikes and tears.
  *
  * Unlit, lit by the shared light: the coat (each horse's own colour, its points, mane and tail,
  * a dun's stripe down its back) by the sun through the deck and the sky, softened where the
@@ -44,8 +46,10 @@ import {
     select,
     sin,
     smoothstep,
+    texture,
     uniformArray,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -53,8 +57,12 @@ import { groundHeight } from './grainfields-plan.js';
 import { aerial } from './grainfields-light.js';
 import { deckShadow } from './grainfields-tsl.js';
 import { HERD, createHerdSim } from './grainfields-herd-sim.js';
-import { SKIN_ROWS, createRig, writeSkinRows } from './grainfields-horse-rig.js';
+import {
+    SKIN_ROWS, boneToWorld, createRig, writeSkinRows,
+} from './grainfields-horse-rig.js';
 import { createHorseMotion, stepHorseMotion } from './grainfields-horse-motion.js';
+import { CHAFF, DUST, createHerdDust } from './grainfields-herd-dust.js';
+import { mulberry32, smooth } from './grainfields-core.js';
 
 export { HERD };
 
@@ -90,7 +98,7 @@ export const COATS = Object.freeze([
     }),
     Object.freeze({
         name: 'grey',
-        body: [0.42, 0.41, 0.39],
+        body: [0.3, 0.292, 0.28],
         hair: [0.33, 0.32, 0.31],
         points: [0.12, 0.115, 0.11],
         light: 1.1,
@@ -105,8 +113,9 @@ export const COATS = Object.freeze([
         hoof: [0.028, 0.025, 0.022],
     }),
 ]);
-/** Which coat has the dark stripe down its back. */
+/** Which coat has the dark stripe down its back, and which is dappled. */
 const DUN = 2;
+const GREY = 3;
 
 /** v turned by the unit quaternion q. */
 const turn = (q, v) => v.add(cross(q.xyz, cross(q.xyz, v).add(v.mul(q.w))).mul(2.0));
@@ -138,7 +147,7 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
     const vPaint = varying(vec4(0.0), 'gfHerdPaint');
     const vMarks = varying(vec4(0.0), 'gfHerdMarks');
     const vRest = varying(vec4(0.0), 'gfHerdRest'); // rest position, sunlit
-    const vCoat = varying(float(0.0), 'gfHerdCoat');
+    const vCoat = varying(vec2(0.0), 'gfHerdCoat'); // coat, seed
     material.positionNode = Fn(() => {
         const horse = int(instanceIndex);
         const base = horse.mul(stride).toVar();
@@ -171,7 +180,7 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
         vN.assign(normalize(nor));
         vPaint.assign(paint);
         vMarks.assign(marks);
-        vCoat.assign(coat.x);
+        vCoat.assign(vec2(coat.x, place.w));
         vRest.assign(vec4(p, deckShadow(u, t.noise, place.xyz.add(vec3(0.0, 1.5, 0.0))).mul(u.sunUp)));
         return pos;
     })();
@@ -183,14 +192,24 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
         const V = normalize(P.sub(u.eye)).toVar();
         const N = normalize(vN).toVar();
         const rest = vRest.xyz.toVar();
-        const k = floor(vCoat.add(0.5)).toVar();
+        const k = floor(vCoat.x.add(0.5)).toVar();
         const C = coatColours(k);
         const hair = vPaint.x;
         const points = vPaint.y;
         const pale = vPaint.z;
         const ao = vPaint.w;
-        // The coat, paler on the belly and the muzzle, its points and its hair.
-        const albedo = mix(C.body, C.body.mul(C.light), pale).toVar();
+        // The coat: never one flat colour (broad shades of its own, read in the horse's rest frame so
+        // they ride with it), a grey's dapples, a shade darker along the top line; paler on the belly
+        // and the muzzle, its points and its hair.
+        const side = vec2(rest.z, rest.y).add(vCoat.y.mul(7.3));
+        const broad = texture(t.noise, side.mul(0.55)).level(1);
+        const body = C.body.mul(broad.r.mul(0.3).add(0.85)).mul(float(1.0).sub(smoothstep(1.02, 1.3, rest.y).mul(0.12)))
+            .toVar();
+        // A grey's dapples: soft paler rounds in a darker net over the barrel and the quarters.
+        const dapple = smoothstep(0.32, 0.72, texture(t.noise, side.mul(1.7).add(rest.x)).level(2).g)
+            .mul(smoothstep(0.55, 0.8, rest.y)).mul(float(1.0).sub(smoothstep(0.45, 0.75, rest.z)));
+        body.assign(select(k.equal(float(GREY)), body.mul(dapple.mul(0.32).add(0.84)), body));
+        const albedo = mix(body, body.mul(C.light), pale).toVar();
         albedo.assign(mix(albedo, C.points, points));
         albedo.assign(mix(albedo, C.hair, hair));
         // A dun's dark stripe down the middle of its back, from the withers to the tail.
@@ -221,8 +240,9 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
         const sunlit = vRest.w;
         // Hair scatters the light round the terminator: a softened Lambert.
         const ndl = clamp(dot(N, u.sunDir).add(0.3).div(1.3), 0.0, 1.0);
-        const direct = u.sun.mul(ndl.mul(ndl)).mul(sunlit).mul(mix(float(1.0), ao, 0.35));
-        const sky = u.fill.mul(N.y.mul(0.4).add(0.6)).mul(1.4).add(u.bounce.mul(float(1.0).sub(N.y).mul(0.4))).mul(ao);
+        const direct = u.sun.mul(ndl.mul(ndl)).mul(sunlit).mul(mix(float(1.0), ao, 0.5));
+        const sky = u.fill.mul(N.y.mul(0.4).add(0.6)).mul(1.4).add(u.bounce.mul(float(1.0).sub(N.y).mul(0.4)))
+            .mul(ao.mul(ao));
         const col = albedo.mul(direct.add(sky)).toVar();
         // A sheen on the coat (less on the hair), and the wet glint of an eye.
         const H = normalize(u.sunDir.sub(V));
@@ -234,8 +254,10 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
         const ahead = clamp(dot(V, u.sunDir), 0.0, 1.0);
         const edge = float(1.0).sub(clamp(dot(N, V.negate()), 0.0, 1.0));
         const e2 = edge.mul(edge);
-        col.addAssign(u.sun.mul(sunlit).mul(e2.mul(e2)).mul(ahead.mul(ahead)).mul(albedo.add(0.05))
-            .mul(hair.mul(0.8).add(1.6)));
+        // (The hair's own glow, a little warmer than the coat under it: dark coats shine too.)
+        col.addAssign(u.sun.mul(sunlit).mul(e2.mul(e2)).mul(ahead.mul(ahead)).mul(albedo.mul(0.6).add(hair.mul(0.03))
+            .add(0.06))
+            .mul(1.8));
         return vec4(aerial(u, P, col), 1.0);
     })();
     return material;
@@ -244,11 +266,15 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
 /** Ease the horses' poses on in steps no longer than this (seconds): the springs and the legs keep up. */
 const MOTION_STEP = 1 / 30;
 
+/** Where the muzzle is in the rest pose when the asset does not say (horse frame, metres). */
+const MUZZLE = Object.freeze([0, 1.265, 1.408]);
+
 /**
  * The herd: `count` horses (tier.herd) from the authored horse (`horse` = assets.horse:
- * { geometry, skeleton, landmarks }). Returns null without a horse.
+ * { geometry, skeleton, landmarks }), `dust` records of what they kick up. Returns null without a
+ * horse.
  */
-export function createHerd(u, t, count, horse, { seed } = {}) {
+export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } = {}) {
     if (!horse?.geometry || !horse.skeleton) return null;
     const rig = createRig(horse.skeleton);
     const sim = createHerdSim({ count, seed });
@@ -283,6 +309,86 @@ export function createHerd(u, t, count, horse, { seed } = {}) {
     mesh.renderOrder = 2;
     const wind = { windX: 0, windZ: 0 };
     let clock = 0;
+    const dust = createHerdDust(u, t, dustCount);
+    const rand = mulberry32(((seed ?? 0x40e5) ^ 0xd0571) >>> 0);
+    const muzzle = landmarks.muzzle || MUZZLE;
+    const spot = [0, 0, 0];
+
+    /** What each horse kicked up since the last step: dust from its hooves, chaff from the ears. */
+    const stir = (dt) => {
+        sim.horses.forEach((h, i) => {
+            const m = motions[i];
+            const s = m.place.scale;
+            const speed = h.speed || 0;
+            const fx = Math.sin(h.heading);
+            const fz = Math.cos(h.heading);
+            m.events.forEach((e) => {
+                if (e.kind === 'strike' && speed > 2) {
+                    // A puff of the field's dry soil up through the barley; two at a hard gallop.
+                    const hard = smooth(2, 10, speed);
+                    const puffs = rand() < hard ? 2 : 1;
+                    for (let k = 0; k < puffs; k++) {
+                        const aside = (rand() - 0.5) * 0.8;
+                        dust.kick({
+                            x: e.x + (rand() - 0.5) * 0.3,
+                            y: e.y + 0.35 + rand() * 0.3,
+                            z: e.z + (rand() - 0.5) * 0.3,
+                            vx: -fx * speed * 0.18 + fz * aside,
+                            vy: 0.4 + rand() * (0.6 + hard),
+                            vz: -fz * speed * 0.18 - fx * aside,
+                            life: 2.2 + rand() * 1.6,
+                            size: 0.16 * s,
+                            grow: (0.5 + 0.7 * hard) * s,
+                            kind: DUST,
+                            time: e.time,
+                            seed: rand(),
+                        });
+                    }
+                } else if (e.kind === 'tear') {
+                    // Awns and husks scattered from the mouthful torn away.
+                    boneToWorld(rig, m.pose, rig.index.head, muzzle, s, spot);
+                    for (let k = 0; k < 3; k++) {
+                        dust.kick({
+                            x: spot[0],
+                            y: spot[1],
+                            z: spot[2],
+                            vx: (rand() - 0.5) * 0.7,
+                            vy: 0.2 + rand() * 0.5,
+                            vz: (rand() - 0.5) * 0.7,
+                            life: 1.4 + rand(),
+                            size: 0.011,
+                            kind: CHAFF,
+                            time: e.time,
+                            seed: rand(),
+                        });
+                    }
+                }
+            });
+            m.events.length = 0;
+            // Breasting the ripe ears knocks husks loose, a shower of them at a gallop.
+            let throws = (2 * smooth(0.8, 3.5, speed) + 12 * smooth(4.5, 11, speed)) * s * dt;
+            while (throws > 0) {
+                if (rand() < Math.min(1, throws)) {
+                    const aside = (rand() - 0.5) * 2;
+                    dust.kick({
+                        x: m.place.x + fx * 0.75 * s + fz * aside * 0.15,
+                        y: m.place.y - 0.05 * s + rand() * 0.15,
+                        z: m.place.z + fz * 0.75 * s - fx * aside * 0.15,
+                        vx: fx * speed * 0.45 + fz * aside,
+                        vy: 0.5 + rand() * 0.9,
+                        vz: fz * speed * 0.45 - fx * aside,
+                        life: 1.6 + rand(),
+                        size: 0.012,
+                        kind: CHAFF,
+                        time: clock,
+                        seed: rand(),
+                    });
+                }
+                throws -= 1;
+            }
+        });
+        dust.update();
+    };
 
     const write = () => {
         sim.horses.forEach((h, i) => {
@@ -315,6 +421,8 @@ export function createHerd(u, t, count, horse, { seed } = {}) {
                 if (m.started && jump > 2 + one.speed * h * 2) m.started = false;
                 stepHorseMotion(m, one, groundHeight, h, at, wind);
             });
+            clock = at;
+            stir(h);
         }
         clock = time;
     };
@@ -323,8 +431,9 @@ export function createHerd(u, t, count, horse, { seed } = {}) {
 
     return {
         mesh,
-        meshes: [mesh],
+        meshes: [mesh, dust.mesh],
         sim,
+        dust,
         rig,
         motions,
         get horses() { return sim.horses; },
@@ -342,7 +451,11 @@ export function createHerd(u, t, count, horse, { seed } = {}) {
         reset(time = 0) {
             const warm = Math.min(time, 4);
             sim.reset(time - warm);
-            motions.forEach((m) => { m.started = false; });
+            dust.reset();
+            motions.forEach((m) => {
+                m.started = false;
+                m.events.length = 0;
+            });
             move(time - warm, 0);
             for (let at = time - warm; at < time - 1e-6;) {
                 const step = Math.min(MOTION_STEP, time - at);
@@ -366,6 +479,7 @@ export function createHerd(u, t, count, horse, { seed } = {}) {
         dispose() {
             instanced.dispose();
             material.dispose();
+            dust.dispose();
         },
     };
 }

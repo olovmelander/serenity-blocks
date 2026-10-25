@@ -39,6 +39,7 @@
  *                            gallop out of the picture and back), walk, trot, canter, wheel
  *   herdCam=i,d,az,h,fov     follow horse i from d metres, az degrees round from its nose toward its
  *                            left (90 its left side, 180 behind it), h metres over its feet
+ *   herdLook=i,fov           from the eye, keep horse i in the middle of a lens this wide
  */
 import * as THREE from 'three/webgpu';
 import { GrainfieldsWorld } from '../../themes/grainfields/grainfields-world.js';
@@ -154,6 +155,8 @@ export function create({
     const inspect = lookAt.length >= 3 && lookAt.slice(0, 3).every(Number.isFinite);
     const herdCamParts = (params.get('herdCam') || '').split(',').filter(Boolean).map(Number);
     const herdCam = herdCamParts.length && herdCamParts.every(Number.isFinite) ? herdCamParts : null;
+    const herdLookParts = (params.get('herdLook') || '').split(',').filter(Boolean).map(Number);
+    const herdLook = herdLookParts.length && herdLookParts.every(Number.isFinite) ? herdLookParts : null;
     const size = new THREE.Vector2(1, 1);
     let lastSeek = null;
     let simTime = 0;
@@ -180,6 +183,14 @@ export function create({
         if (inspect) {
             camera.fov = Number.isFinite(lookAt[3]) ? lookAt[3] : 20;
             camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        const watched = herdLook && world.parts.herd?.motions[herdLook[0]];
+        if (watched) {
+            // From the eye, a long lens kept on one horse.
+            camera.fov = herdLook[1] ?? 12;
+            camera.lookAt(watched.place.x, watched.place.y + 0.1, watched.place.z);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
