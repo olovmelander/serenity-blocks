@@ -13,6 +13,9 @@ import {
     VERDANT_HILLS_WIND_DIRECTION, VerdantHillsLight, createVerdantHillsCloudData, prepareVerdantHillsClouds,
 } from '../../src/themes/verdant-hills/verdant-hills-light.js';
 import { VERDANT_HILLS_TIERS } from '../../src/themes/verdant-hills/verdant-hills-quality.js';
+import {
+    VERDANT_HILLS_CLOUD_VOLUME_SIZE, bakeVerdantHillsCloudVolume,
+} from '../../src/themes/verdant-hills/verdant-hills-cloud-volume.js';
 import { VerdantHillsRings } from '../../src/themes/verdant-hills/verdant-hills-rings.js';
 import { VERDANT_HILLS_CROWN } from '../../src/themes/verdant-hills/verdant-hills-terrain.js';
 
@@ -261,6 +264,37 @@ describe('Verdant Hills light rig', () => {
             expect(light.uSunDir.value.toArray()).toEqual(VERDANT_HILLS_SUN_DIRECTION.toArray());
             expect(light.uWindDir.value).not.toBe(VERDANT_HILLS_WIND_DIRECTION);
             expect(light.uWindDir.value.toArray()).toEqual(VERDANT_HILLS_WIND_DIRECTION.toArray());
+        });
+
+        it('rounds the cumulus with a volume of its own where the tier marches them, none for the flat sky', () => {
+            const marched = createLight('High');
+            const volume = marched.cloudVolume;
+            expect(volume.isData3DTexture).toBe(true);
+            const { width, height, depth } = volume.image;
+            expect([width, height, depth]).toEqual([VERDANT_HILLS_CLOUD_VOLUME_SIZE, VERDANT_HILLS_CLOUD_VOLUME_SIZE,
+                VERDANT_HILLS_CLOUD_VOLUME_SIZE]);
+            // The session's one bake, wrapped (never copied): a rebuild takes it from the cache.
+            expect(volume.image.data).toBe(bakeVerdantHillsCloudVolume().data);
+            for (const wrap of [volume.wrapS, volume.wrapT, volume.wrapR]) expect(wrap).toBe(THREE.RepeatWrapping);
+            expect(volume.colorSpace).toBe(THREE.NoColorSpace);
+            expect(volume.generateMipmaps).toBe(false);
+            expect(createLight('Minimal').cloudVolume).toBeNull();
+            const released = [];
+            volume.addEventListener('dispose', () => released.push('volume'));
+            owned.splice(owned.indexOf(marched), 1);
+            marched.dispose();
+            expect(released).toEqual(['volume']);
+        });
+
+        it('builds the cumulus a march reads: a heap, its carved skin, and how much sky each point sees', () => {
+            const light = createLight('High');
+            const point = vec3(120, 1600, -3400);
+            const heap = light.cloudHeap(point);
+            for (const key of ['heap', 'top', 'above', 'at']) expect(heap[key]?.isNode, key).toBe(true);
+            const sample = light.cloudSample(point, { range: float(6000), heap });
+            for (const key of ['density', 'rise', 'crown']) expect(sample[key]?.isNode, key).toBe(true);
+            expect(light.cloudDensity(point, { detail: false }).isNode).toBe(true);
+            expect(light.cloudMargin().isNode).toBe(true);
         });
 
         it('starts every gameplay envelope at rest', () => {
