@@ -5,7 +5,8 @@
  * VerdantHillsWorld is the composition root: it owns the light rig and its clouds, the
  * land, the sky, the grass, the oak and what people built, the kites, the ribbons of wind
  * and what the wind carries, frames the camera, and forwards gameplay envelopes to them
- * each frame.
+ * each frame. It also keeps the day's weather: the clock turns it by itself and every level
+ * is one weather on (verdant-hills-moods.js).
  */
 import * as THREE from 'three/webgpu';
 import { verdantHillsEye, verdantHillsTarget, verdantHillsViewFor } from './verdant-hills-composition.js';
@@ -16,6 +17,7 @@ import { VerdantHillsKites } from './verdant-hills-kites.js';
 import { VerdantHillsLife } from './verdant-hills-life.js';
 import { VerdantHillsLight } from './verdant-hills-light.js';
 import { VerdantHillsMeadow } from './verdant-hills-meadow.js';
+import { VERDANT_HILLS_MOODS, verdantHillsMoodDrift, verdantHillsMoodName } from './verdant-hills-moods.js';
 import { verdantHillsTier } from './verdant-hills-quality.js';
 import { VerdantHillsRibbons } from './verdant-hills-ribbons.js';
 import { VerdantHillsSeeds } from './verdant-hills-seeds.js';
@@ -25,6 +27,10 @@ import { createVerdantHillsWorn, wearVerdantHillsFrame } from './verdant-hills-s
 import { VERDANT_HILLS_PLACES, VerdantHillsTerrain, verdantHillsGroundHeight } from './verdant-hills-terrain.js';
 import { VerdantHillsTrees } from './verdant-hills-trees.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { easeStep, nearestStep } from '../shared/mood-clock.js';
+
+/** How quickly the day takes a level's step, per second: most of the way in four seconds. */
+const MOOD_FOLLOW = 0.6;
 
 export class VerdantHillsWorld {
     constructor({
@@ -40,6 +46,12 @@ export class VerdantHillsWorld {
         this.group.name = 'Verdant Hills — a windy day on the downs';
         this.disposed = false;
         this.built = false;
+        // The day's weather: the clock turns it, and every level is one weather on. `moodStep` is
+        // the level's step as eased so far, and `moodStart` the seconds of weather the theme had
+        // already lived before this world's clock began (a rebuild picks the day up there).
+        this.level = 1;
+        this.moodStep = 0;
+        this.moodStart = 0;
         /** What the world wears each frame: the reactions frame with the surge spent on it. */
         this.worn = createVerdantHillsWorn();
         /** What the light rig is handed each frame (the fronts and the pool in world terms). */
@@ -173,6 +185,31 @@ export class VerdantHillsWorld {
         this.light?.reset();
     }
 
+    /**
+     * A new level: the day turns one weather on from wherever the clock has brought it. Aloud it
+     * eases there (see `update`); `silent` (a rebuilt world, a capture) is there at once. A new
+     * run goes back to the first level's weather the short way round.
+     * @param {number} level
+     * @param {{ silent?: boolean }} [options]
+     */
+    setLevel(level, { silent = false } = {}) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
+        if (silent) this.moodStep = nearestStep(this.moodStep, this.level - 1, VERDANT_HILLS_MOODS.length);
+        return this.level;
+    }
+
+    /** Seconds of weather lived at `time` on this world's clock, with what came before it. */
+    moodLived(time = this.light?.uTime.value ?? 0) {
+        const before = Number.isFinite(this.moodStart) ? Math.max(0, this.moodStart) : 0;
+        return before + (Number.isFinite(time) ? Math.max(0, time) : 0);
+    }
+
+    /** How many weathers into the day it is at `time`: the level's step and the clock's turn. */
+    moodPhase(time = this.light?.uTime.value ?? 0) {
+        return this.moodStep + verdantHillsMoodDrift(this.moodLived(time));
+    }
+
     /** Put the wind and the clouds back where a session starts (a replay begins from one place). */
     rewind() {
         this.resetEffects();
@@ -214,6 +251,12 @@ export class VerdantHillsWorld {
         lit.front = env.front;
         lit.fronts = env.fronts;
         lit.pool = env.pool;
+        // The weather: the clock turns it by itself (a function of the time alone, so a seek and a
+        // day lived through agree); a level's step eases in on top, the short way round. A slow
+        // change of colour is not motion and no effect: neither setting holds it back.
+        const follow = 1 - Math.exp(-dt * MOOD_FOLLOW);
+        this.moodStep = easeStep(this.moodStep, this.level - 1, follow, VERDANT_HILLS_MOODS.length);
+        light.setMood(this.moodPhase(time));
         light.update(time, lit);
         light.step(dt);
         this.ribbons.update(dt);
@@ -238,6 +281,11 @@ export class VerdantHillsWorld {
             ribbons: this.ribbons?.active() || 0,
             seeds: this.seeds?.sim?.counts() || null,
             waves: this.light?.waves.active() || 0,
+            level: this.level,
+            // The weather the day is turning to, and how far round it is.
+            mood: verdantHillsMoodName(nearestStep(this.moodStep, this.level - 1, VERDANT_HILLS_MOODS.length)
+                + verdantHillsMoodDrift(this.moodLived())),
+            moodPhase: this.light?.moodPhase ?? 0,
         };
     }
 

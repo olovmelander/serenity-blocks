@@ -79,7 +79,8 @@ export class VerdantHillsSky {
         const sun = light.uSunColor.mul(through).mul(phase).mul(0.27);
         // Skylight reaches a cloud's flanks and top; its flat base sees only the dim ground, so the
         // base is a clear grey and the cloud brightens all the way up its tower.
-        const ambient = mix(vec3(0.06, 0.08, 0.125), vec3(0.27, 0.33, 0.45), smoothstep(0.0, 0.75, h))
+        // (The weather sets both: verdant-hills-moods.js.)
+        const ambient = mix(light.uCloudBase, light.uCloudTop, smoothstep(0.0, 0.75, h))
             .mul(this.uShade).mul(light.uWarmth.mul(0.1).add(1));
         return sun.add(ambient);
     }
@@ -188,7 +189,7 @@ export class VerdantHillsSky {
         const wisp = light.noise(plane.mul(vec2(0.9, 0.31)).add(light.uCloudOffset.mul(2.1))).g;
         const cirrus = smoothstep(0.5, 0.86, streak.mul(0.72).add(wisp.mul(0.28)))
             .mul(smoothstep(0.05, 0.3, direction.y)).mul(0.3);
-        sky = mix(sky, vec3(0.86, 0.9, 0.96).mul(light.uWarmth.mul(0.08).add(1)), cirrus);
+        sky = mix(sky, light.uCirrus.mul(light.uWarmth.mul(0.08).add(1)), cirrus);
         let clouds;
         if (this.target) {
             // Four taps a half-texel apart: a tent that takes the march's grain out.

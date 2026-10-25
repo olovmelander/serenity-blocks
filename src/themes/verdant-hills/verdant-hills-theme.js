@@ -113,6 +113,11 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.assets = null;
         this.timer = null;
         this.time = 0;
+        // The level the day's weather stands on (every level is one weather on), and the seconds
+        // of weather lived: kept by the theme, so a world rebuilt for another quality tier, or
+        // this theme coming back, picks the day up where the last world left it.
+        this.level = 1;
+        this.moodLived = 0;
         this.boardPoll = 0;
         this.quality = 'High';
         this.qualityPreset = QUALITY_PRESETS.High;
@@ -311,6 +316,10 @@ export default class VerdantHillsTheme extends BaseTheme {
         // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
         if (!(await buildWorldBreathing(world, isCurrent))) return false;
         this.world = world;
+        // The day goes on where the last world left it: its level, and its weather's clock (less
+        // the clock a restart carries, which the world counts again).
+        world.setLevel?.(this.level || 1, { silent: true });
+        world.moodStart = Math.max(0, (this.moodLived || 0) - this.takeRestartTime(0));
         // VerdantHillsPost retains the same artwork on both node backends.
         this.post = new VerdantHillsPost({
             renderer: this.renderer,
@@ -367,12 +376,16 @@ export default class VerdantHillsTheme extends BaseTheme {
             eventBus.on(EVENTS.TSPIN, (payload) => this.onFlourish('onTSpin', payload)),
             eventBus.on(EVENTS.B2B, (payload) => this.onFlourish('onBackToBack', payload)),
             eventBus.on(EVENTS.PERFECT_CLEAR, (payload) => this.onFlourish('onPerfectClear', payload)),
-            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onFlourish('onLevelUp', payload)),
+            eventBus.on(EVENTS.LEVEL_UP, (payload) => this.onLevelUp(payload)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.reactions?.onGameOver());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.reactions?.onGameOver();
+            // The run is over: the next begins at the first level, and so does the day's weather.
+            this.setLevel(1);
+        });
         this.registerEventListener(window, 'pointermove', (event) => {
             if (!this.isActive || this.isPaused || this.reducedMotion) return;
             if (event.pointerType && event.pointerType !== 'mouse') return;
@@ -417,6 +430,26 @@ export default class VerdantHillsTheme extends BaseTheme {
             return;
         }
         this.reactions?.onPieceLock(eventDetail(payload));
+    }
+
+    /**
+     * The level the day's weather stands on. The theme keeps it, so a world rebuilt for another
+     * quality tier takes up the weather the last one had reached.
+     * @param {number} [level]
+     */
+    setLevel(level) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.round(wanted)) : (this.level || 1) + 1;
+        this.world?.setLevel?.(this.level);
+    }
+
+    /**
+     * A level-up turns the day one weather on whatever the effects setting says: a slow change of
+     * colour is the theme, not an effect. The flourish that goes with it is one, and keeps its gate.
+     */
+    onLevelUp(payload) {
+        if (this.isActive && !this.cleanupComplete) this.setLevel(eventDetail(payload)?.level);
+        this.onFlourish('onLevelUp', payload);
     }
 
     /** T-spins, back-to-backs, perfect clears and level-ups share one gate. */
@@ -540,6 +573,7 @@ export default class VerdantHillsTheme extends BaseTheme {
         }
         this.updateCamera(dt);
         this.world?.update(this.time, dt, frame);
+        if (typeof this.world?.moodLived === 'function') this.moodLived = this.world.moodLived(this.time);
         this.post?.update?.({ ...frame, time: this.time });
     }
 

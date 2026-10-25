@@ -766,6 +766,35 @@ describe('Verdant Hills gameplay payloads', () => {
         expect(() => gameOver()).not.toThrow();
         expect(reactions.onGameOver).toHaveBeenCalledTimes(2);
     });
+
+    it('turns the day a weather on at a level-up whatever the effects setting, the flourish still gated', async () => {
+        const theme = await startedTheme();
+        const { reactions, world } = theme;
+        world.setLevel = vi.fn();
+        expect(theme.level).toBe(1);
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        expect(theme.level).toBe(3);
+        expect(world.setLevel).toHaveBeenLastCalledWith(3);
+        // The level-up's own moment still plays.
+        expect(reactions.onLevelUp).toHaveBeenCalledExactlyOnceWith({ level: 3 });
+        // With background effects off the flourish stays quiet, but the weather still turns: a slow
+        // change of colour is the theme, not an effect.
+        theme.comboEffects = false;
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 4 });
+        expect(theme.level).toBe(4);
+        expect(world.setLevel).toHaveBeenLastCalledWith(4);
+        expect(reactions.onLevelUp).toHaveBeenCalledOnce();
+        // A level-up that names no level is the next one.
+        eventBus.emit(EVENTS.LEVEL_UP, {});
+        expect(theme.level).toBe(5);
+        // The level travels with a restart run.
+        expect(theme.captureRestartRun().level).toBe(5);
+        // The run is over: the next begins at the first level's weather.
+        windowListener('gameOver')();
+        expect(theme.level).toBe(1);
+        expect(world.setLevel).toHaveBeenLastCalledWith(1);
+        theme.stop();
+    });
 });
 
 describe('Verdant Hills renderer ownership', () => {
