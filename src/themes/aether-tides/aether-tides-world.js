@@ -21,19 +21,24 @@
  *   four lines / perfect clear   the nebula holds its breath, then the Tide Star itself flares
  *             and everything fires at once, in starfire.
  *   T-spin    the whole tide turns about the board.
- *   level up  the nebula changes colours.
+ *   level up  a soft front from the board, and the nebula turns to the next colours.
+ *
+ * The colours turn by the clock as well, in every mode (paletteDrift: a palette rests, then melts
+ * into the next over most of a minute); a level is a step on top, turned in a few seconds.
  */
 
 import { texture } from 'three/tsl';
 
 import { cameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { meltPalettes, nearestStep } from '../shared/mood-clock.js';
 import {
     AETHER_PALETTES,
     GYRE_SLOTS,
     HUSH_HOLD,
     LOCK_POUR,
     PALETTE_KEYS,
+    PALETTE_TURN,
     SIM_DT,
     SIM_MAX_STEPS,
     SPARK_FLIGHT,
@@ -51,6 +56,7 @@ import {
     createNoiseTexture,
     lerp,
     maelstromPosition,
+    paletteDrift,
     pieceColor,
     powerForCombo,
     ringPassTime,
@@ -90,6 +96,9 @@ const WELL_STAR_A = 2;
 const WELL_STAR_B = 3;
 
 const NEVER = -1e6;
+
+/** How much faster the gas heals at the height of the clock's melt from one palette to the next. */
+const CLOCK_HEAL = 0.04;
 
 /** Scratch for the shared camera breath. */
 const BREATH = { x: 0, y: 0, z: 0 };
@@ -189,16 +198,17 @@ export class AetherTidesWorld {
         this.power = 0;
         /** The surge as of the last frame (the post state reads it). */
         this.heat = this.surge.sample(NEVER);
-        /** Palette: what is shown, blending from one index to another. */
-        this.paletteFrom = 0;
-        this.paletteTo = 0;
+        /**
+         * Palette: the clock turns it (paletteDrift) and a level is a step on top, turned from the
+         * step that was showing (`stepFrom`) to the level's (`stepTo`) over PALETTE_TURN seconds
+         * from `paletteAt`. `palette` is what is shown.
+         */
+        this.stepFrom = 0;
+        this.stepTo = 0;
         this.paletteAt = NEVER;
         this.palette = {};
-        /** What was on screen when the last blend began: a blend continues from there. */
-        this.paletteFromColors = {};
         PALETTE_KEYS.forEach((key) => {
             this.palette[key] = [0, 0, 0];
-            this.paletteFromColors[key] = [0, 0, 0];
         });
 
         this._p = { x: 0, y: 0 };
@@ -256,9 +266,7 @@ export class AetherTidesWorld {
         this.parts.stardust = this.fx.dustMesh;
         this.parts.echoes = this.fx.echoMesh;
         this.scene.add(this.nebula.mesh, this.stars.mesh, this.fx.beamMesh, this.fx.dustMesh, this.fx.echoMesh);
-        this.paletteFrom = 0;
-        this.paletteTo = 0;
-        this.applyPalette(1);
+        this.applyPalette(this.fluid.clock);
         this.setViewport(1920, 1080, 16 / 9);
         // The event table must hold real numbers before the first pass reads it.
         this.prepareStep(0);
@@ -275,20 +283,23 @@ export class AetherTidesWorld {
 
     // ── palette ─────────────────────────────────────────────────────────────────
 
-    /** Write the palette at blend `k` between paletteFrom and paletteTo. */
-    applyPalette(k) {
-        const count = AETHER_PALETTES.length;
-        const to = AETHER_PALETTES[((this.paletteTo % count) + count) % count];
-        const pal = this.palette;
-        for (let i = 0; i < PALETTE_KEYS.length; i += 1) {
-            const key = PALETTE_KEYS[i];
-            const a = this.paletteFromColors[key];
-            const b = to[key];
-            const o = pal[key];
-            o[0] = lerp(a[0], b[0], k);
-            o[1] = lerp(a[1], b[1], k);
-            o[2] = lerp(a[2], b[2], k);
-        }
+    /** The level's step at `clock`: turned from the step that was showing to the level's. */
+    levelStepAt(clock) {
+        const k = smooth(0, PALETTE_TURN, clock - this.paletteAt);
+        return k >= 1 ? this.stepTo : lerp(this.stepFrom, this.stepTo, k);
+    }
+
+    /**
+     * Where the nebula stands on its wheel of palettes at `clock`: the level's step plus the
+     * clock's turn. The whole part names a palette, the fraction is how far it has melted on.
+     */
+    palettePhase(clock) {
+        return this.levelStepAt(clock) + paletteDrift(clock);
+    }
+
+    /** Write the palette at `clock` (a function of the clock and the level's step alone). */
+    applyPalette(clock) {
+        const pal = meltPalettes(AETHER_PALETTES, PALETTE_KEYS, this.palettePhase(clock), this.palette);
         const F = this.fieldUniforms;
         const P = this.picture;
         F.gasA.value.setRGB(...pal.gasA);
@@ -368,6 +379,9 @@ export class AetherTidesWorld {
         this.clearChoreography();
         this.fluid.clock = time;
         this.fluid.debt = 0;
+        // A level's turn in flight lands: the gas is laid out in the colours the clock gives.
+        this.stepFrom = this.stepTo;
+        this.paletteAt = NEVER;
         this.prepareStep(time);
         this.fluid.reset(this.renderer, time);
         this.light.forget();
@@ -480,14 +494,15 @@ export class AetherTidesWorld {
         });
 
         // ── palette ──
-        if (this.paletteFrom !== this.paletteTo) {
-            const blend = smooth(0, 2.6, clock - this.paletteAt);
-            this.applyPalette(blend);
-            if (blend >= 1) this.paletteFrom = this.paletteTo;
-        }
-        // While the colours turn the nebula heals faster, so the new palette takes hold.
+        this.applyPalette(clock);
+        // While the colours turn the nebula heals faster, so the new palette takes hold: hard for
+        // a few seconds after a level's step, gently through the clock's slow melt.
         const turning = clock - this.paletteAt;
-        U.heal.value = 0.045 + (turning >= 0 && turning < 9 ? 0.32 * (1 - turning / 9) : 0);
+        const drift = paletteDrift(clock);
+        const melt = drift - Math.floor(drift);
+        U.heal.value = 0.045
+            + (turning >= 0 && turning < 9 ? 0.32 * (1 - turning / 9) : 0)
+            + CLOCK_HEAL * 4 * melt * (1 - melt);
 
         // The playground's tuning hook: overrides land after the choreography has written its own.
         this.tuning?.();
@@ -1260,32 +1275,28 @@ export class AetherTidesWorld {
         this.strike(0.15 + 0.25 * open, 0.3 + 0.3 * open, at);
     }
 
-    /** The nebula changes colours. */
+    /** The nebula turns one palette on, on top of the clock's turn. */
     levelUp(level, options) {
         if (!this.fluid) return;
         const next = Math.max(1, Math.round(level || 1));
+        const previous = this.level;
         this.level = next;
-        const index = next - 1;
+        const count = AETHER_PALETTES.length;
+        const at = this.eventClock;
         if (options?.silent) {
-            this.paletteFrom = index;
-            this.paletteTo = index;
+            this.stepTo = nearestStep(this.stepTo, next - 1, count);
+            this.stepFrom = this.stepTo;
             this.paletteAt = NEVER;
-            this.applyPalette(1);
+            this.applyPalette(at);
             return;
         }
-        if (index === this.paletteTo) return;
-        // A blend under way continues from what is on screen now, never from its old target.
-        for (let i = 0; i < PALETTE_KEYS.length; i += 1) {
-            const key = PALETTE_KEYS[i];
-            const o = this.paletteFromColors[key];
-            const p = this.palette[key];
-            o[0] = p[0];
-            o[1] = p[1];
-            o[2] = p[2];
-        }
-        this.paletteFrom = this.paletteTo;
-        this.paletteTo = index;
-        this.paletteAt = this.eventClock;
+        if (next === previous) return;
+        // A turn under way continues from the step showing now, never from its old target, and
+        // the nebula turns the short way round to the new level's colours.
+        const shown = this.levelStepAt(at);
+        this.stepFrom = shown;
+        this.stepTo = nearestStep(shown, next - 1, count);
+        this.paletteAt = at;
         const { board } = this.stage(0);
         this.events.addRing({
             x: (board.x0 + board.x1) * 0.5,
@@ -1340,9 +1351,12 @@ export class AetherTidesWorld {
         const { now } = this;
         for (let i = 0; i < STAR_SLOTS; i += 1) if (this.events.starAlive(i, now)) stars += 1;
         const count = AETHER_PALETTES.length;
+        // The palette the nebula is turning to (or resting on), and where it stands on the wheel.
+        const heading = Math.round(this.stepTo + paletteDrift(now));
         return {
             quality: this.quality,
-            palette: AETHER_PALETTES[((this.paletteTo % count) + count) % count].name,
+            palette: AETHER_PALETTES[((heading % count) + count) % count].name,
+            paletteTurn: Number(this.palettePhase(now).toFixed(3)),
             combo: this.combo,
             well: Number(this.wellOpen.toFixed(3)),
             locks: this.lockCount,

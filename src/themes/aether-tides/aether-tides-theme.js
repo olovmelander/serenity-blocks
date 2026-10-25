@@ -16,7 +16,8 @@
  * deepens it with every step (the gas spirals in, the light behind it bends); when the chain
  * breaks it lets go: a front, two jets, and the tide runs out again. Four lines make the nebula
  * hold its breath, then the Tide Star itself flares and everything fires at once, in starfire. A
- * T-spin turns the whole tide about the board; a new level changes the nebula's colours.
+ * T-spin turns the whole tide about the board. The nebula's colours turn by the clock in every
+ * mode, a palette every hundred seconds or so; a new level turns them one palette further.
  *
  * Content lives in AetherTidesWorld (aether-tides-world.js), shared with the playground effect
  * src/playground/effects/aether-tides.effect.js, so what is iterated there ships. This class owns

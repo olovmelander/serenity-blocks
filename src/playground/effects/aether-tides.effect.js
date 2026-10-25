@@ -11,7 +11,8 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the maelstrom)
- *   level=<n>                rest on level n's palette
+ *   level=<n>                rest on level n's palette (a step on top of the clock's: t=<s>
+ *                            shows the palette the clock has turned to by then)
  *   locks=<n>                before anything else, play n locks (the sky holding their stars)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, col=<c>,
@@ -245,8 +246,9 @@ export function create({
     const seekTo = (time) => {
         const lead = num(params, 'lead', 10) + (eventName ? eventAge : 0) + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
-        world.seek(start);
+        // The level first, so the seek lays the gas out in the colours of the level and the clock.
         if (level > 1) world.levelUp(level, { silent: true });
+        world.seek(start);
         if (holdCombo > 0) world.onCombo(holdCombo);
         frame(start, 0);
         // Locks played before the event: the sky holding their stars.

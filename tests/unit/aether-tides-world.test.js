@@ -4,9 +4,9 @@ import {
 import * as THREE from 'three/webgpu';
 import { AetherTidesWorld, REST_RIG } from '../../src/themes/aether-tides/aether-tides-world.js';
 import {
-    AETHER_PALETTES, EVENT_ROWS, HUSH_HOLD, LOCK_POUR, PALETTE_KEYS, RING_LIFE, SIM_DT, SIM_MAX_STEPS, SPARK_FLIGHT,
-    SPLAT_CELL, SPLAT_ROUND, SPLAT_SLOTS, STARFIRE, STAR_LIFE, STAR_SLOTS, maelstromPosition, pieceColor, ringPassTime,
-    tideStarPosition,
+    AETHER_PALETTES, EVENT_ROWS, HUSH_HOLD, LOCK_POUR, PALETTE_HOLD, PALETTE_KEYS, PALETTE_SECONDS, PALETTE_TURN,
+    RING_LIFE, SIM_DT, SIM_MAX_STEPS, SPARK_FLIGHT, SPLAT_CELL, SPLAT_ROUND, SPLAT_SLOTS, STARFIRE, STAR_LIFE,
+    STAR_SLOTS, maelstromPosition, paletteDrift, pieceColor, ringPassTime, tideStarPosition,
 } from '../../src/themes/aether-tides/aether-tides-core.js';
 import {
     BOARD_GRID, PLAYER_SLOTS, boardFor, cardFor, fallbackLayout, rectToTide,
@@ -1495,6 +1495,104 @@ describe('aether tides world: levels, seeks and reduced motion', () => {
         expect(world.flash.rawAt(at)).toBe(0);
         run(world, 1);
         for (const key of PALETTE_KEYS) expect(world.palette[key], key).toEqual(third[key]);
+        world.dispose();
+    });
+
+    it('turns its colours by the clock alone, in every mode: a palette rests, then melts into the next', () => {
+        const { world } = makeWorld('Low');
+        const count = AETHER_PALETTES.length;
+        const rest = PALETTE_SECONDS * PALETTE_HOLD;
+        const expectPalette = (k, label) => {
+            const want = AETHER_PALETTES[k % count];
+            for (const key of PALETTE_KEYS) {
+                const tag = `${label}.${key}`;
+                world.palette[key].forEach((channel, c) => expect(channel, tag).toBeCloseTo(want[key][c], 9));
+            }
+            expect(world.getState().palette, label).toBe(want.name);
+        };
+        // Every palette in turn by the clock, seen pure through its rest, and round to the first.
+        for (let k = 0; k <= count; k += 1) {
+            world.seek(k * PALETTE_SECONDS + rest * 0.5);
+            expectPalette(k, `rest ${k}`);
+            // On a whole period it is that palette exactly, and the shaders read it.
+            world.seek(k * PALETTE_SECONDS);
+            expectPalette(k, `period ${k}`);
+        }
+        const want = AETHER_PALETTES[1];
+        world.seek(PALETTE_SECONDS);
+        expect(world.fieldUniforms.gasB.value.r).toBeCloseTo(want.gasB[0], 6);
+        expect(world.picture.deep.value.b).toBeCloseTo(want.deep[2], 6);
+        expect(world.picture.starColorB.value.g).toBeCloseTo(want.companion[1], 6);
+        world.seek(rest * 0.5);
+        const restHeal = world.tide.heal.value;
+
+        // With no level-up the clock alone moves it: from the end of a rest, a few seconds on.
+        world.seek(rest - 1);
+        expectPalette(0, 'before the melt');
+        run(world, 5);
+        expect(world.palette.gasA).not.toEqual(AETHER_PALETTES[0].gasA);
+        expect(world.getState().paletteTurn).toBeCloseTo(paletteDrift(world.now), 3);
+
+        // Halfway through the melt it is neither, and the gas heals faster so the new colours take.
+        world.seek(PALETTE_SECONDS * (PALETTE_HOLD + (1 - PALETTE_HOLD) * 0.5));
+        expect(world.palette.gasA).not.toEqual(AETHER_PALETTES[0].gasA);
+        expect(world.palette.gasA).not.toEqual(AETHER_PALETTES[1].gasA);
+        expect(world.tide.heal.value).toBeGreaterThan(restHeal);
+        // Never a grey on the way: the brightest channel holds up through the melt.
+        expect(Math.max(...world.palette.gasA)).toBeGreaterThan(0.5);
+
+        // A function of the time alone: another world sought to the same instant agrees.
+        const other = makeWorld('Low').world;
+        other.seek(world.now);
+        for (const key of PALETTE_KEYS) expect(other.palette[key], key).toEqual(world.palette[key]);
+        for (const w of [world, other]) {
+            expectFiniteTables(w);
+            w.dispose();
+        }
+    });
+
+    it('steps a level\'s palette on top of the clock\'s, and keeps the level-up\'s front', () => {
+        const { world } = makeWorld('Low');
+        const count = AETHER_PALETTES.length;
+        const rest = PALETTE_SECONDS * PALETTE_HOLD;
+        const close = (k, label) => {
+            const want = AETHER_PALETTES[((k % count) + count) % count];
+            for (const key of PALETTE_KEYS) {
+                const tag = `${label}.${key}`;
+                world.palette[key].forEach((channel, c) => expect(channel, tag).toBeCloseTo(want[key][c], 6));
+            }
+        };
+        // The clock has turned to the second palette; a level-up turns one more on.
+        world.seek(PALETTE_SECONDS + rest * 0.2);
+        close(1, 'clock');
+        const surge = vi.spyOn(world.surge, 'levelUp');
+        const at = world.eventClock;
+        world.levelUp(2);
+        // The level-up is still an event: a soft front from the board, a flash, the surge.
+        expect(ringsSince(world, at)).toHaveLength(1);
+        expect(world.flash.rawAt(at)).toBeGreaterThan(0);
+        expect(surge).toHaveBeenCalledOnce();
+        expect(world.getState().palette).toBe(AETHER_PALETTES[2].name);
+        // It turns over the same few seconds as before, and the gas heals fast meanwhile.
+        run(world, PALETTE_TURN * 0.5);
+        expect(world.palette.gasA).not.toEqual(AETHER_PALETTES[1].gasA);
+        expect(world.palette.gasA).not.toEqual(AETHER_PALETTES[2].gasA);
+        expect(world.tide.heal.value).toBeGreaterThan(0.2);
+        run(world, PALETTE_TURN * 0.5 + 0.5);
+        close(2, 'clock + level');
+        // The level's step stays on top as the clock turns on, and a seek keeps it.
+        world.seek(3 * PALETTE_SECONDS + rest * 0.5);
+        close(4, 'later');
+        world.seek(4 * PALETTE_SECONDS + rest * 0.5);
+        close(0, 'round');
+        // A level three palettes on round the wheel turns the short way: two back.
+        world.seek(rest * 0.5);
+        world.levelUp(count);
+        expect(world.stepTo - world.stepFrom).toBe(-2);
+        run(world, PALETTE_TURN + 0.5);
+        close(count - 1, 'short way');
+        surge.mockRestore();
+        expectFiniteTables(world);
         world.dispose();
     });
 
