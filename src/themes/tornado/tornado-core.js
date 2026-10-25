@@ -72,6 +72,76 @@ export function funnelRadius(h, girth = 1, flare = 1) {
         + WORLD.foot * Math.exp(-k * 16);
 }
 
+// ── The power line ───────────────────────────────────────────────────────────────
+
+/**
+ * A power line running out across the field toward the horizon right of the card. Pole 0 is the
+ * nearest one in the picture; pole -1 stands behind the lens, so the first span runs past the lens
+ * and its wires leave the frame at the right edge instead of ending on pole 0's arm. Pole i stands
+ * at `nearest + i·step`; the far poles shrink and dissolve into the haze before the last one
+ * (tornado-field.js), so the line has no end in sight either way.
+ */
+export const POWER_LINE = Object.freeze({
+    nearest: Object.freeze([34, -46]),
+    step: Object.freeze([26, -92]),
+    /** Poles in front of the lens (0 … count−1), past pole −1 behind it. */
+    count: 30,
+    height: 11,
+    /** The cross-arm: its centre this far below the top, its length and thickness. */
+    armDrop: 0.9,
+    armLength: 3.2,
+    armThick: 0.22,
+    /** The three wires: this far apart along the arm, sagging this much mid-span. */
+    wireSpread: 1.4,
+    sag: 1.5,
+});
+
+const LINE_RUN = Math.hypot(POWER_LINE.step[0], POWER_LINE.step[1]);
+/** Square across the line (x, z), and the turn about Y that lays a box's x axis along it. */
+const LINE_ACROSS = Object.freeze([-POWER_LINE.step[1] / LINE_RUN, POWER_LINE.step[0] / LINE_RUN]);
+export const POWER_LINE_ARM_YAW = Math.atan2(-LINE_ACROSS[1], LINE_ACROSS[0]);
+
+/** Pole i's foot (x, z) and its lean across the picture (radians, about Z), in `out`. */
+export function powerLinePole(i, out = { x: 0, z: 0, tilt: 0 }) {
+    out.x = POWER_LINE.nearest[0] + POWER_LINE.step[0] * i;
+    out.z = POWER_LINE.nearest[1] + POWER_LINE.step[1] * i;
+    // Every third pole leans one way, the rest a little the other, the far ones no further.
+    out.tilt = (((i % 3) + 3) % 3 === 1 ? 0.04 : -0.02) * clamp(i + 1, 0, 9) * 0.4;
+    return out;
+}
+
+/**
+ * Where wire w (−1, 0, 1) rests on pole i's cross-arm, in `out` ([x, y, z]). The arm is built the
+ * same way (tornado-field.js): turned square across the line, raised, then leaned with the pole.
+ */
+export function powerLineAttach(i, w, out = [0, 0, 0]) {
+    const pole = powerLinePole(i);
+    const along = w * POWER_LINE.wireSpread;
+    const up = POWER_LINE.height - POWER_LINE.armDrop + POWER_LINE.armThick * 0.5 + 0.02;
+    const ax = LINE_ACROSS[0] * along;
+    const c = Math.cos(pole.tilt);
+    const s = Math.sin(pole.tilt);
+    out[0] = pole.x + ax * c - up * s;
+    out[1] = ax * s + up * c;
+    out[2] = pole.z + LINE_ACROSS[1] * along;
+    return out;
+}
+
+/** A point on wire w of the span from pole i to pole i + 1 (t = 0 … 1), sag included. */
+export function powerLineWire(i, w, t, out = [0, 0, 0]) {
+    const a = powerLineAttach(i, w, [0, 0, 0]);
+    const b = powerLineAttach(i + 1, w, [0, 0, 0]);
+    for (let k = 0; k < 3; k += 1) out[k] = a[k] + (b[k] - a[k]) * t;
+    out[1] -= Math.sin(t * Math.PI) * POWER_LINE.sag;
+    return out;
+}
+
+/** How far from the lens the last pole stands: the line is gone into the haze by there. */
+export function powerLineReach() {
+    const last = powerLinePole(POWER_LINE.count - 1);
+    return Math.hypot(last.x, last.z);
+}
+
 // ── The hours ────────────────────────────────────────────────────────────────────
 
 /**
