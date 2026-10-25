@@ -311,8 +311,8 @@ describe('Grainfields land: the shelterbelts and their trees', () => {
             if (beltAt(x, z).cover <= 0) outside += 1;
         }
         expect([...kinds].sort()).toEqual([0, 1, 2]);
-        // Only the few lone trees in the fields stand outside a belt.
-        expect(outside).toBeLessThanOrEqual(5);
+        // Only the few lone trees in the fields and the three by the ruin stand outside a belt.
+        expect(outside).toBeLessThanOrEqual(8);
     });
 
     it('is deterministic for a seed, and plants fewer trees at a lower density', () => {
