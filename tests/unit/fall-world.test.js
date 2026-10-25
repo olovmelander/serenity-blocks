@@ -13,6 +13,7 @@ import {
 import { FallForest } from '../../src/themes/fall/fall-forest.js';
 import { LEAF_AIR, LEAF_IDLE, LEAF_REST } from '../../src/themes/fall/fall-leaf-sim.js';
 import { FALL_SUN_DIRECTION } from '../../src/themes/fall/fall-light.js';
+import { FALL_MOODS, FALL_MOOD_HOLD, FALL_MOOD_SECONDS } from '../../src/themes/fall/fall-moods.js';
 import { FallPost } from '../../src/themes/fall/fall-post.js';
 import { FALL_TIERS, fallTier } from '../../src/themes/fall/fall-quality.js';
 import { FALL_REACTION_LIMITS, FallReactions } from '../../src/themes/fall/fall-reactions.js';
@@ -28,6 +29,8 @@ const TIER_NAMES = Object.keys(FALL_TIERS);
 const LANDSCAPE = 16 / 9;
 const PORTRAIT = 9 / 19.5;
 const STEP = 1 / 60;
+/** What a world's diagnostics say of its light before the clock has turned it: the first level, the quiet afternoon. */
+const OPENING_LIGHT = Object.freeze({ level: 1, mood: FALL_MOODS[0].name, moodPhase: 0 });
 const owned = [];
 const bundles = [];
 const files = new Map();
@@ -471,6 +474,7 @@ describe('Fall world scene contracts', () => {
             ...stats,
             farTrees: world.backdrop.count,
             leaves: sim.counts(),
+            ...OPENING_LIGHT,
         });
         expect(sum(Object.values(world.getDiagnostics().leaves))).toBe(tier.leaves);
 
@@ -929,7 +933,9 @@ describe('Fall world ownership', () => {
             world.setBoard(FALL_DEFAULT_BOARD);
             world.resetEffects();
         }).not.toThrow();
-        expect(world.getDiagnostics()).toEqual({ quality: 'Minimal', farTrees: 0, leaves: null });
+        expect(world.getDiagnostics()).toEqual({
+            quality: 'Minimal', farTrees: 0, leaves: null, ...OPENING_LIGHT,
+        });
 
         // The bundle is released by whoever loaded it, once.
         disposeFallAssets(assets);
@@ -947,7 +953,9 @@ describe('Fall world ownership', () => {
         expect(world.built).toBe(false);
         // Nothing was half-made: update and diagnostics are still safe.
         expect(() => world.update(0, STEP, { emitters: [] })).not.toThrow();
-        expect(world.getDiagnostics()).toEqual({ quality: 'High', farTrees: 0, leaves: null });
+        expect(world.getDiagnostics()).toEqual({
+            quality: 'High', farTrees: 0, leaves: null, ...OPENING_LIGHT,
+        });
         // Once the assets are there the same world builds.
         world.assets = await loadBundle();
         expect(world.build()).toBe(world);
@@ -1299,5 +1307,84 @@ describe('Fall post tier ownership', () => {
             vi.unstubAllGlobals();
         }
         expect(read({ crown: NaN, ripen: 'hot', surge: null })).toEqual(rest);
+    });
+});
+
+describe('Fall lights in the world', () => {
+    const PERIOD = FALL_MOOD_SECONDS;
+    const HOLD = FALL_MOOD_HOLD;
+    const N = FALL_MOODS.length;
+    /** The resting light the rig shows: what play turns and clears from. */
+    const restingLight = (light) => [light.uSunColor.value.toArray(), light.uZenith.value.toArray(),
+        light.uSkyWarm.value.toArray(), light.uHazeCool.value.toArray(), light.uHaze.value];
+    const lightOf = (mood) => [[...mood.sun], [...mood.zenith], [...mood.skyWarm], [...mood.hazeCool], mood.haze];
+
+    it('turns through every light by the clock alone, with no level-up', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        expect(world.level).toBe(1);
+        for (let k = 0; k <= N; k++) {
+            const mood = FALL_MOODS[k % N];
+            world.update(k * PERIOD, STEP, { emitters: [] });
+            expect(restingLight(light), mood.name).toEqual(lightOf(mood));
+            expect(world.getDiagnostics().mood).toBe(mood.name);
+            // Still that light at the end of its rest; half-way through the melt it is neither.
+            world.update((k + HOLD * 0.99) * PERIOD, STEP, { emitters: [] });
+            expect(restingLight(light), mood.name).toEqual(lightOf(mood));
+            world.update((k + HOLD + (1 - HOLD) * 0.5) * PERIOD, STEP, { emitters: [] });
+            expect(restingLight(light)).not.toEqual(lightOf(mood));
+            expect(restingLight(light)).not.toEqual(lightOf(FALL_MOODS[(k + 1) % N]));
+        }
+        // A function of the time alone: back to the start is the quiet afternoon again.
+        world.update(1, STEP, { emitters: [] });
+        expect(restingLight(light)).toEqual(lightOf(FALL_MOODS[0]));
+    });
+
+    it('turns whichever light it is toward late amber as play heats, and gives it back after', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const sunHue = (sun) => sun.b / sun.r;
+        FALL_MOODS.forEach((mood, k) => {
+            world.update(k * PERIOD, STEP, { emitters: [] });
+            const rest = light.uSunColor.value.clone();
+            world.update(k * PERIOD, STEP, { turn: 1, surge: { fever: 1 }, emitters: [] });
+            expect(sunHue(light.uSunColor.value), mood.name).toBeLessThan(sunHue(rest) * 0.8);
+            expect(light.uHaze.value, mood.name).toBeLessThan(mood.haze);
+            world.update(k * PERIOD, STEP, { emitters: [] });
+            expect(light.uSunColor.value.equals(rest), mood.name).toBe(true);
+        });
+    });
+
+    it('takes a level-up as one light on top of the clock, eased, the short way round', async () => {
+        const { world } = await buildWorld('Minimal');
+        world.update(1, STEP, { emitters: [] });
+        world.setLevel(2);
+        world.update(1, STEP, { emitters: [] });
+        // Eased: a moment after the level-up the grove is on its way, not there.
+        expect(world.moodStep).toBeGreaterThan(0);
+        expect(world.moodStep).toBeLessThan(0.1);
+        let time = 1;
+        for (let frame = 0; frame < 60 * 30; frame++) {
+            time += STEP;
+            world.update(time, STEP, { emitters: [] });
+        }
+        expect(time).toBeLessThan(HOLD * PERIOD);
+        expect(world.moodStep).toBe(1);
+        expect(restingLight(world.light)).toEqual(lightOf(FALL_MOODS[1]));
+        // On top of the clock: a whole period later it is the light after.
+        expect(world.moodPhase(PERIOD + 1)).toBe(2);
+        // A new run goes back to the first level's light the short way round.
+        world.setLevel(N, { silent: true });
+        expect(world.moodStep).toBe(-1);
+        world.setLevel(1, { silent: true });
+        expect(world.moodStep).toBe(0);
+        // A clock that makes no sense leaves the light where it was.
+        world.update(Number.NaN, 0, { emitters: [] });
+        expect(restingLight(world.light)).toEqual(lightOf(FALL_MOODS[0]));
+        // A rebuilt world picks the day up where the last one left it.
+        const lived = world.moodLived(time);
+        const after = (await buildWorld('Minimal')).world;
+        after.moodStart = lived;
+        expect(after.moodPhase(0)).toBe(world.moodPhase(time));
     });
 });

@@ -71,7 +71,8 @@ export class FallPost {
             this.shaftsBlur = bilateralBlur(this.godraysNode.getTextureNode(), null, 3, 0.12);
             const centred = screenUV.sub(this.uSunScreen).mul(vec2(this.uAspect, 1));
             const toward = float(1).sub(saturate(length(centred).mul(0.62)));
-            const shaftColour = mix(vec3(0.3, 0.22, 0.15), vec3(1.5, 0.84, 0.33), pow(toward, 1.4));
+            // The light sets the shafts' colour away from the sun and toward it (fall-moods.js).
+            const shaftColour = mix(light.uShaftShade, light.uShaftSun, pow(toward, 1.4));
             // Toward the sky dome the march integrates hundreds of metres of lit air and veils the
             // whole sky a milky lavender. The dome already holds its own air, so beyond the last
             // ridge (about 250 m) the shafts keep only the glow round the sun.
@@ -144,7 +145,9 @@ export class FallPost {
         const ripen = unit(frame.ripen);
         const crown = (Number.isFinite(frame.crown) ? THREE.MathUtils.clamp(frame.crown, 0, 1.2) : 0) * flashScale();
         // Each event lifts the lens less the hotter play runs; the iris closes as the light ripens.
-        this.uExposure.value = 1.0 + warmth * 0.05 * (1 - 0.5 * level) + crown * POST_CROWN.exposure
+        // The light asks a little more or less of the iris (fall-moods.js), play adds to it.
+        const rest = Number.isFinite(this.light?.exposureScale) ? this.light.exposureScale : 1;
+        this.uExposure.value = rest + warmth * 0.05 * (1 - 0.5 * level) + crown * POST_CROWN.exposure
             - ripen * POST_IRIS;
         // The shafts hold while the action lasts: the ripened light is a floor under the events'.
         this.uShafts.value = 1 + Math.min(1, shafts + ripen * POST_SHAFT_FLOOR) * 1.4 + crown * POST_CROWN.shafts;

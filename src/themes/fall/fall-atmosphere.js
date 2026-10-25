@@ -74,8 +74,9 @@ export class FallAtmosphere {
             // Light on the deck: the undersides take the low sun, gold on its side, rose away
             // from it; the thick middles stay in their own shade; thin edges near the sun glow.
             const warmSide = pow(toward, 2.2).toVar();
-            const underside = mix(vec3(0.42, 0.25, 0.25), vec3(1.5, 0.8, 0.34), warmSide);
-            const body = mix(vec3(0.15, 0.13, 0.17), vec3(0.42, 0.3, 0.24), warmSide);
+            // (The light sets each of these: fall-moods.js.)
+            const underside = mix(light.uCloudShade, light.uCloudLit, warmSide);
+            const body = mix(light.uCloudBody, light.uCloudBodyWarm, warmSide);
             const thin = float(1).sub(density).toVar();
             const cloud = mix(body, underside, thin.mul(0.7).add(0.18))
                 .add(light.uSunColor.mul(pow(sunward, 7).mul(thin).mul(density.mul(1.6))));

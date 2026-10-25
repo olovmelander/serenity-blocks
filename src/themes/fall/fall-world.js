@@ -3,7 +3,9 @@
  *
  * FallWorld is the composition root: it owns the light rig, the forest floor, the trees
  * and the air, frames the camera, and forwards gameplay envelopes to them each frame (the
- * director's frame: its envelopes, fronts, and what the surge of play asks of the grove).
+ * director's frame: its envelopes, fronts, and what the surge of play asks of the grove). It
+ * also keeps the grove's light: the clock turns it by itself and every level is one light on
+ * (fall-moods.js).
  */
 import * as THREE from 'three/webgpu';
 import { FallAtmosphere } from './fall-atmosphere.js';
@@ -13,10 +15,15 @@ import { FallForest } from './fall-forest.js';
 import { FallLeafDirector } from './fall-leaf-director.js';
 import { FallLeaves } from './fall-leaves.js';
 import { FallLight } from './fall-light.js';
+import { FALL_MOODS, fallMoodDrift, fallMoodName } from './fall-moods.js';
 import { fallTier } from './fall-quality.js';
 import { FallStage } from './fall-stage.js';
 import { FallTerrain, fallTerrainHeight } from './fall-terrain.js';
 import { FallUnderstory } from './fall-understory.js';
+import { easeStep, nearestStep } from '../shared/mood-clock.js';
+
+/** How quickly the grove takes a level's step, per second: most of the way in four seconds. */
+const MOOD_FOLLOW = 0.6;
 
 export class FallWorld {
     constructor({
@@ -32,6 +39,12 @@ export class FallWorld {
         this.group.name = 'Fall — enchanted grove';
         this.disposed = false;
         this.built = false;
+        // The grove's light: the clock turns it, and every level is one light on. `moodStep` is
+        // the level's step as eased so far, and `moodStart` the seconds of day the theme had
+        // already lived before this world's clock began (a rebuild picks the light up there).
+        this.level = 1;
+        this.moodStep = 0;
+        this.moodStart = 0;
     }
 
     build() {
@@ -91,6 +104,31 @@ export class FallWorld {
         this.stage?.setBoard(rect);
     }
 
+    /**
+     * A new level: the grove turns one light on from wherever the clock has brought it. Aloud it
+     * eases there (see `update`); `silent` (a rebuilt world, a capture) is there at once. A new
+     * run goes back to the first level's light the short way round.
+     * @param {number} level
+     * @param {{ silent?: boolean }} [options]
+     */
+    setLevel(level, { silent = false } = {}) {
+        const wanted = Number(level);
+        this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
+        if (silent) this.moodStep = nearestStep(this.moodStep, this.level - 1, FALL_MOODS.length);
+        return this.level;
+    }
+
+    /** Seconds of day lived at `time` on this world's clock, with what came before it. */
+    moodLived(time = this.light?.uTime.value ?? 0) {
+        const before = Number.isFinite(this.moodStart) ? Math.max(0, this.moodStart) : 0;
+        return before + (Number.isFinite(time) ? Math.max(0, time) : 0);
+    }
+
+    /** How many lights into the day it is at `time`: the level's step and the clock's turn. */
+    moodPhase(time = this.light?.uTime.value ?? 0) {
+        return this.moodStep + fallMoodDrift(this.moodLived(time));
+    }
+
     /** Forget every leaf in flight and every pending emitter (new session, settings off). */
     resetEffects() {
         this.director?.reset();
@@ -119,6 +157,14 @@ export class FallWorld {
         const { light } = this;
         const direction = light.uWindDir.value;
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
+        // The light: the clock turns it by itself (a function of the time alone, so a seek and a
+        // day lived through agree); a level's step eases in on top, the short way round. A slow
+        // change of colour is not motion and no effect: neither setting holds it back. A clock that
+        // makes no sense stays where the light last was.
+        const step = Number.isFinite(dt) && dt > 0 ? dt : 0;
+        const follow = 1 - Math.exp(-step * MOOD_FOLLOW);
+        this.moodStep = easeStep(this.moodStep, this.level - 1, follow, FALL_MOODS.length);
+        light.setMood(this.moodPhase(Number.isFinite(time) ? time : light.uTime.value));
         light.update(time, { ...frame, front: env.front, fronts: env.fronts }, dt);
         this.leaves.update(dt, env, frame.heat);
         this.atmosphere.update(time, dt, frame);
@@ -130,6 +176,11 @@ export class FallWorld {
             ...(this.forest?.stats || {}),
             farTrees: this.backdrop?.count || 0,
             leaves: this.leaves?.sim?.counts() || null,
+            level: this.level,
+            // The light the grove is turning to, and how far round it is.
+            mood: fallMoodName(nearestStep(this.moodStep, this.level - 1, FALL_MOODS.length)
+                + fallMoodDrift(this.moodLived())),
+            moodPhase: this.light?.moodPhase ?? 0,
         };
     }
 
