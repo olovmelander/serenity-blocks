@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import * as THREE from 'three/webgpu';
+import { positionWorld } from 'three/tsl';
 import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_DARK_FRACTION,
@@ -13,11 +14,16 @@ import {
     STEAM_QUENCH_LUMA_CAP,
     STEAM_QUENCH_RADIUS,
     steamQuenchLumaCap,
+    behindSteamDepth,
     createSteamQuench,
+    setSteamVeil,
     steamQuenchDensity,
     steamQuenchFogColour,
     steamQuenchSeamT,
+    steamVeilWeight,
 } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
+import { build, unassignedReads } from './helpers/tsl-node-build.js';
+import { createOdysseyWorld } from '../../src/rendering/odyssey/world/odyssey-world-renderer.js';
 import { ODYSSEY_CHAPTER_PROFILES } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import { ONE_WORLD_ACT_MARGIN } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 
@@ -216,8 +222,51 @@ describe('steam quench board wiring', () => {
         expect(BOARD).toMatch(/_applySteamQuenchFog\(\) \{/);
     });
 
+    it('puts the life of the ocean behind the steam every frame, from its density and its shell', () => {
+        expect(BOARD).toMatch(
+            /setSteamVeil\(inWindow \? steamQuenchDensity\(quenchT\) : 0, this\.steamQuench\.mesh\.position\)/,
+        );
+    });
+
     it('cannot take the board down if it fails to build, and is disposed', () => {
         expect(BOARD).toMatch(/console\.warn\('\[OdysseyBoard\] steam quench unavailable \(non-fatal\)/);
         expect(BOARD).toMatch(/this\.steamQuench\.dispose\(\);/);
     });
+});
+
+describe('the life of the ocean lies behind the steam (2026-10-25)', () => {
+    // Olov: "Everything needs to be there visible when getting out from the steam." The sea's
+    // life is present from just past the boundary, and while the steam is up it writes its depth
+    // just past the steam's shell, so the shell covers it with its own billows and lets it through
+    // exactly as it clears (it used to come in as the steam thinned, dark against the vapour).
+    it('holds how thick the steam is for the life (clamped), and none outside its window', () => {
+        setSteamVeil(0.9, { x: 0, y: 128, z: 0 });
+        expect(steamVeilWeight()).toBeCloseTo(0.9, 9);
+        setSteamVeil(3, { x: 0, y: 128, z: 0 });
+        expect(steamVeilWeight()).toBe(1);
+        setSteamVeil(0);
+        expect(steamVeilWeight()).toBe(0);
+    });
+
+    it('builds its behind-the-shell depth on both backends', () => {
+        const material = new THREE.MeshBasicNodeMaterial();
+        material.depthNode = behindSteamDepth(positionWorld);
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material);
+        [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]].forEach(([label, Builder]) => {
+            const out = build(Builder, mesh);
+            expect(out.thrown, `${label} ${out.thrown?.stack ?? ''}`).toBeUndefined();
+            expect(out.heard, label).toEqual([]);
+            expect(out.fragment, label).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
+            if (label === 'WGSL') expect(unassignedReads(out.fragment)).toEqual([]);
+        });
+    });
+
+    it('is written by the fish, kelp and spires of the world', () => {
+        const world = createOdysseyWorld({ quality: 'low', forest: false });
+        ['odyssey-world-fish', 'odyssey-world-kelp', 'odyssey-world-spires'].forEach((name) => {
+            const mesh = world.group.getObjectByName(name);
+            if (!mesh) return;
+            expect(mesh.material.depthNode, name).toBeTruthy();
+        });
+    }, 60_000);
 });

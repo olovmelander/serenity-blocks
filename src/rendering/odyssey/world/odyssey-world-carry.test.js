@@ -11,6 +11,7 @@ import {
     odysseySprayEnvelope,
 } from './odyssey-world-renderer.js';
 import { ODYSSEY_SEA_LEVEL } from './odyssey-world-height.js';
+import { steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
 
 /**
  * THE SEAMLESS PASS'S TWO WORLD-SIDE SEAM CARRIES.
@@ -38,16 +39,21 @@ describe('odysseyQuenchCarry — the 1->2 carry schedule', () => {
         });
     });
 
-    it('brings life in only as the veil thins, monotonically, reaching full by the exit edge', () => {
+    it('keeps life out of the cavern and has it whole while the steam is still dense', () => {
+        // 2026-10-25, Olov: "Everything needs to be there visible when getting out from the
+        // steam." Life used to follow the veil thinning, so it came in as the steam cleared; it is
+        // now whole behind the densest steam, which veils it meanwhile (steamVeiled).
         let prev = 0;
-        for (let t = 0.5; t <= 1.0001; t += 0.02) {
+        let whole = 1;
+        for (let t = 0; t <= 1.0001; t += 0.005) {
             const { life } = odysseyQuenchCarry(t);
+            if (t <= 0.5) expect(life, `t ${t.toFixed(3)}`).toBe(0);
             expect(life).toBeGreaterThanOrEqual(prev - 1e-9);
+            if (life >= 1 && whole === 1) whole = t;
             prev = life;
         }
         expect(prev).toBe(1);
-        // Still mostly absent just past the boundary, where the vapour is densest.
-        expect(odysseyQuenchCarry(0.55).life).toBeLessThan(0.1);
+        expect(steamQuenchDensity(whole)).toBeGreaterThan(0.85);
     });
 
     it('walks the carried tint ember -> white -> cyan across the boundary', () => {

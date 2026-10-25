@@ -31,9 +31,14 @@ const ROUTES = {
 const SIZES = {
     whaleShark: 46, manta: 24, mother: 58, calf: 26,
 };
-/** How far from the eye each keeps (its body clear of the lens), and under the surface. */
+/**
+ * How far from the eye each keeps, and under the surface. Eased ~15 % on 2026-10-25 (Olov: "I
+ * think the big fishes can swim a little closer around the path!"): each route's nearest point
+ * to the column was AT these limits, so they were what kept the animals out; at these values the
+ * nearest part of each body still passes 14-17 u from the lens.
+ */
 const CLEAR = {
-    whaleShark: 45, manta: 30, mother: 55, calf: 36,
+    whaleShark: 38, manta: 26, mother: 46, calf: 30,
 };
 const UNDER = {
     whaleShark: 9, manta: 4, mother: 9, calf: 7,
