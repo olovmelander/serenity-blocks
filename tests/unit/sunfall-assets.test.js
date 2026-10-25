@@ -57,6 +57,40 @@ describe('sunfall assets', () => {
         expect(assets.plan.count).toBe(SUNFALL_ASSET_MANIFEST.files['sunfall-crowns.glb'].sites);
     });
 
+    it('joins the shell chunks without a slit (each chunk quantises on its own grid)', () => {
+        // Every vertex near another chunk's vertex sits exactly on it: a seam a few millimetres
+        // open let the sky through as white pixels flickering down the far wall.
+        const cell = 0.05;
+        const grid = new Map();
+        const keyOf = (x, y, z) => [x, y, z].map((v) => Math.floor(v / cell)).join();
+        assets.shell.forEach((g, gi) => {
+            const p = g.attributes.position;
+            for (let i = 0; i < p.count; i += 1) {
+                const key = keyOf(p.getX(i), p.getY(i), p.getZ(i));
+                if (!grid.has(key)) grid.set(key, []);
+                grid.get(key).push([gi, p.getX(i), p.getY(i), p.getZ(i)]);
+            }
+        });
+        let shared = 0;
+        let worst = 0;
+        for (const [key, list] of grid) {
+            const [cx, cy, cz] = key.split(',').map(Number);
+            for (const [gi, x, y, z] of list) {
+                for (let n = 0; n < 27; n += 1) {
+                    const at = [cx + (n % 3) - 1, cy + (Math.floor(n / 3) % 3) - 1, cz + Math.floor(n / 9) - 1];
+                    for (const [gj, X, Y, Z] of grid.get(at.join()) || []) {
+                        const d = Math.hypot(X - x, Y - y, Z - z);
+                        if (gj === gi || d > cell) continue;
+                        shared += 1;
+                        worst = Math.max(worst, d);
+                    }
+                }
+            }
+        }
+        expect(shared).toBeGreaterThan(500);
+        expect(worst).toBe(0);
+    });
+
     it('decodes the baked light the way the shaders do', () => {
         const { ceilings, stops } = SUNFALL_ASSET_MANIFEST.light;
         expect(decodeSunfallLight(0, ceilings.sun)).toBe(0);
