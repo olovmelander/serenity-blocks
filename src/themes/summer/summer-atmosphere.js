@@ -1,7 +1,7 @@
 /**
  * Summer — sky and air.
  *
- * The sky of Midsummer's Eve: a sun that stands low over the lake without setting, towers
+ * The sky of a summer's eve: a sun that stands low over the lake without setting, towers
  * of evening cumulus whose edges it gilds from behind, a veil of high cirrus, the thin mist
  * that rises off still water once the air cools, and pollen that only shows where the sun
  * reaches it. All of it reads the shared light rig, so the far shore dissolves into exactly

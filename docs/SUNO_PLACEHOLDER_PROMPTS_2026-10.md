@@ -40,8 +40,8 @@ Slow, dark and deep: a drone underneath and a sub-bass you feel in the whole bod
 with few bright sounds. **Astral Weave** and **Chiral Gold** came out right and are kept as they
 were. The beat-driven version before this one came out too fast and too bright.
 
-- **Beat:** none at all (Golden Forest, Kaleidosonic, Midsommar, Nebula Flow, Sakura Twilight,
-  Solar Eclipse, Vesper Chrysalis, Void Ember); a slow kick heartbeat or muffled hand drum (Fall,
+- **Beat:** none at all (Golden Forest, Kaleidosonic, Nebula Flow, Sakura Twilight, Solar Eclipse,
+  Summer, Vesper Chrysalis, Void Ember); a slow kick heartbeat or muffled hand drum (Fall,
   Halcyon Apex, Koi Pond, Painted Ages, Sunfall, Thermal Bloom, Verdant Hills); or a slow heavy
   half-time beat (Chromadelic Highway, Luminous Tides, Pyrestorm, Serenity Warp, Supernova,
   Tornado, Voltage Storm).
@@ -51,7 +51,7 @@ were. The beat-driven version before this one came out too fast and too bright.
 - **Colour:** each theme keeps its own instrument, played low: koto, shakuhachi, guzheng,
   nyckelharpa, handpan, lap steel, cello, low piano. Its field recording stays too: surf,
   thunder, ice, dripping caves, steam.
-- **Mood:** warm (Sunset, Golden Forest, Midsommar), cold (Winter, High Coast), ominous
+- **Mood:** warm (Sunset, Golden Forest, Summer), cold (Winter, High Coast), ominous
   (Pyrestorm, Tornado, Voltage Storm), sacred (Halcyon Apex, Kaleidosonic), cosmic (Nebula Flow,
   Solar Eclipse, Void Ember).
 - **Film-score weight** in the vast themes, in the spirit of a Hans Zimmer score: huge low
@@ -59,8 +59,8 @@ were. The beat-driven version before this one came out too fast and too bright.
   crescendos (Chromadelic Highway, Golden Forest, Halcyon Apex, High Coast, Luminous Tides,
   Nebula Flow, Nimbus Veil, Painted Ages, Pyrestorm, Rainbow Terraces, Serenity Warp, Solar
   Eclipse, Stellar Velocity, Sunfall, Supernova, Tornado, Void Ember, Voltage Storm, Winter).
-  The intimate themes stay small: Chromatic Impasto, Fall, Kaleidosonic, Koi Pond, Midsommar,
-  Sakura Twilight, Sunset, Synthwave Sunset, Thermal Bloom, Verdant Hills, Vesper Chrysalis.
+  The intimate themes stay small: Chromatic Impasto, Fall, Kaleidosonic, Koi Pond,
+  Sakura Twilight, Summer, Sunset, Synthwave Sunset, Thermal Bloom, Verdant Hills, Vesper Chrysalis.
 
 Every *Exclude* block shuts out vocals, fast and upbeat styles, and the bright end (sparkle,
 glockenspiel, celesta, chimes, high leads), plus whatever that theme could pull Suno toward.
@@ -216,19 +216,6 @@ deep nocturnal ambient, instrumental, a dark beach at night with glowing surf, s
 vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, tropical house, EDM
 ```
 
-## Midsommar
-`summer`: Midsummer's Eve by a Swedish lake; a flowering meadow, the maypole, a red cottage
-and a jetty in the endless evening light.
-
-**Style**
-```
-deep Nordic folk drone, instrumental, a lake in the pale light of a midsummer night, a slow low nyckelharpa drone, bowed folk fiddle in the low register, a warm deep sub-bass, distant meadow and lake textures, beatless, nostalgic, warm and still, body-filling low end, 58 BPM, G minor
-```
-**Exclude**
-```
-vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, drums, polka
-```
-
 ## Nebula Flow
 `nebula-flow`: a stellar nursery seen face on; pillars of dust lit by hidden young stars,
 glowing gas flowing out between them.
@@ -344,6 +331,19 @@ hybrid cinematic downtempo, instrumental, gliding down a dark canyon of cloud to
 **Exclude**
 ```
 vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, trance, EDM
+```
+
+## Summer
+`summer`: a summer's eve by a Swedish lake; a flowering meadow, the maypole, a red cottage
+and a jetty in the endless evening light.
+
+**Style**
+```
+deep Nordic folk drone, instrumental, a lake in the pale light of a midsummer night, a slow low nyckelharpa drone, bowed folk fiddle in the low register, a warm deep sub-bass, distant meadow and lake textures, beatless, nostalgic, warm and still, body-filling low end, 58 BPM, G minor
+```
+**Exclude**
+```
+vocals, singing, voice, choir, humming, lyrics, fast tempo, upbeat, happy, bright, sparkly, glockenspiel, celesta, chimes, high-pitched lead, drums, polka
 ```
 
 ## Sunfall

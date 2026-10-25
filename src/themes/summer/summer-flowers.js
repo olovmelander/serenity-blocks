@@ -1,7 +1,7 @@
 /**
  * Summer — the flowers of the meadow, as geometry.
  *
- * On Midsummer's Eve you pick seven kinds of flowers. Each of the seven tetrominoes has
+ * On a summer's eve you pick seven kinds of flowers. Each of the seven tetrominoes has
  * one: poppy (I), harebell (O), buttercup (T), oxeye daisy (S), lupine (Z), orange
  * hawkweed (J) and wood cranesbill (L). Red clover, cow parsley and dandelion clocks fill
  * the meadow around them. Every plant is real geometry, built here from a seed: petals are

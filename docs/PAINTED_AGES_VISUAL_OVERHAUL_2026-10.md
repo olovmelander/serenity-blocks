@@ -5,7 +5,7 @@ colours, the composition, the landscape, the stairs, the flood, the sky, the sty
 everything can be improved very much"), built on three r186 and made a visual masterpiece with
 amazing lock-piece and combo effects, starting from `main` (3ff50fe7). He named the rebuilt themes
 he likes as the bar: Ice Temple, Void Ember, Voltage Storm, Tornado, Sakura Twilight, Moonlit
-Greenhouse, Summer (Midsommar), Golden Forest, Forest, Geode, Chiral Gold and Verdant Hills.
+Greenhouse, Summer, Golden Forest, Forest, Geode, Chiral Gold and Verdant Hills.
 
 The theme keeps its id, name, Chapter 4 reward, song and the gameplay wiring that worked (the
 adapter's lifecycle, the director, the layout readers, the mineral record of cleared rows). Every

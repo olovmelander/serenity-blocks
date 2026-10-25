@@ -1,7 +1,7 @@
 # Scene antialiasing in ten themes (2026-10-16)
 
 Olov found the edges of High Coast's trees and islands "not as high resolution" as Sky Children's,
-and asked for the same fix in High Coast, Fall, Forest, Golden Forest, Midsommar (`summer`),
+and asked for the same fix in High Coast, Fall, Forest, Golden Forest, Summer (`summer`),
 Moonlit Greenhouse, Sakura Twilight, Shifting Sands, Stillwater and Verdant Hills.
 
 ## What was wrong
@@ -14,7 +14,7 @@ reaches the picture. Sky Children's pass takes 4× MSAA from High up (`samples: 
 | Theme | Before | Why it read as low resolution |
 |---|---|---|
 | High Coast | `samples: 0`, no FXAA, any tier | Every edge one sample per pixel: trunks, islands, 22 000 tree crowns, the pine's alpha-tested needles |
-| Fall, Forest, Golden Forest, Midsommar, Sakura Twilight, Verdant Hills | `samples: 0` + FXAA on every post tier | FXAA softens the whole frame and still steps on thin trunks, needles and grass. Low and Minimal draw straight to the canvas, which IS multisampled: the higher tiers had the worse edges |
+| Fall, Forest, Golden Forest, Sakura Twilight, Summer, Verdant Hills | `samples: 0` + FXAA on every post tier | FXAA softens the whole frame and still steps on thin trunks, needles and grass. Low and Minimal draw straight to the canvas, which IS multisampled: the higher tiers had the worse edges |
 | Shifting Sands | MSAA only on Ultra and Extreme, no FXAA | High and below had no antialiasing at all |
 | Stillwater | MSAA from High up, then "the brush" (a Kuwahara wash) | Each pixel takes the mean of whichever 3 × 3 quadrant round it is calmest; along a silhouette one quadrant always lies wholly on one side, so the brush redrew every edge on the pixel grid (2-3 px steps). Medium and Low had no antialiasing |
 | Moonlit Greenhouse | MSAA from High up, FXAA on Medium | The leaves, the lattice and the moths are cut-outs: a discard covers a whole pixel, so MSAA does not smooth them. Low had no antialiasing |
@@ -30,7 +30,7 @@ supersampling hides it either. The pixel-ratio caps were the same as Sky Childre
 | Theme | High and up | Medium and Low |
 |---|---|---|
 | High Coast | 4× MSAA; the pine's needles cut out by three's `alphaTest` + `alphaToCoverage` (the same threshold sharpened to a pixel) | FXAA |
-| Fall, Forest, Golden Forest, Midsommar, Sakura Twilight, Verdant Hills | 4× MSAA, no FXAA over it; the shadow-rig prime target and the lake mirrors (Golden Forest, Midsommar, Sakura) take the same sample count | FXAA as before (Medium); Low and Minimal unchanged |
+| Fall, Forest, Golden Forest, Sakura Twilight, Summer, Verdant Hills | 4× MSAA, no FXAA over it; the shadow-rig prime target and the lake mirrors (Golden Forest, Summer, Sakura) take the same sample count | FXAA as before (Medium); Low and Minimal unchanged |
 | Shifting Sands | 4× MSAA (High added) | FXAA |
 | Stillwater | MSAA as before; the brush fades out where a hard edge crosses its window (busiest minus calmest quadrant variance, `smoothstep(0.0015, 0.008, …)`), so silhouettes keep the MSAA and washes inside forms are untouched; the tarn mirror takes the pass's samples | FXAA |
 | Moonlit Greenhouse | MSAA as before plus FXAA over it, for the cut-out edges | FXAA (Low added; Medium as before) |
@@ -77,12 +77,12 @@ alternating order:
 | Stillwater | 131 / 130-131 | 129-131 / 130-131 |
 | Moonlit Greenhouse | 130-131 / 130-131 | 129-131 / 130-131 |
 | Verdant Hills | 126-129 / 125-128 | 107-128 / 109-131 |
-| Midsommar (first pass, a loaded machine) | 76-96 / 88-94 | 88-103 / 89-103 |
+| Summer (first pass, a loaded machine) | 76-96 / 88-94 | 88-103 / 89-103 |
 
 Single dips (114, 117, 118 fps) appear in both arms alike: load from other work on the machine.
-Midsommar was measured again with three rounds per arm on a quiet machine:
+Summer was measured again with three rounds per arm on a quiet machine:
 
-| Midsommar | At rest | First storm | Second storm |
+| Summer | At rest | First storm | Second storm |
 |---|---|---|---|
 | Before (`main`) | 129-131 | 129-131 | 117-123 |
 | After (this branch) | 130-131 | 128-131 | 122-126 |
@@ -98,5 +98,5 @@ consistent difference (both arms ranged 107-131). Its rerun was stopped on the o
   load in one four-minute window (both "after" runs fell into it back to back); the same build
   switched in play an hour later held 130 fps with MSAA on and off. Measure each theme in
   several alternating rounds and log the GPU's load per run before believing a regression.
-- The first pass read Midsommar at 76-103 fps on `main` and on the branch alike; the rerun on a
+- The first pass read Summer at 76-103 fps on `main` and on the branch alike; the rerun on a
   quiet machine held 129-131. One pass per arm on a busy machine can blame any theme.

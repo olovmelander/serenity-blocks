@@ -44,7 +44,7 @@ const AUTHORED_SONGS = Object.freeze({
     sunset: ['Sunset', 'sunset.mp3'],
     'high-coast': ['High Coast', 'high-coast.mp3'],
     fall: ['Fall', 'fall.mp3'],
-    summer: ['Midsommar', 'midsommar.mp3'],
+    summer: ['Summer', 'summer.mp3'],
     'sakura-twilight': ['Sakura Twilight', 'sakura-twilight.mp3'],
     'koi-pond': ['Koi Pond', 'koi-pond.mp3'],
     'serenity-warp': ['Serenity Warp', 'serenity-warp.mp3'],
@@ -108,7 +108,8 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * "Rainbow Terraces" with its theme (2026-10-18). An authored recording retitled for the theme
  * that took its orb changes key too: "Misty Lake" became "Grainfields" and "Moonlit Forest"
  * became "Spring" (both 2026-10-18), "Rainy Window" became "Sunbraid" (2026-10-20), and
- * "Moonrise Summit" became "Sunfall" (2026-10-20).
+ * "Moonrise Summit" became "Sunfall" (2026-10-20). A recording retitled with its theme's
+ * name changes key the same way: "Midsommar" became "Summer" (2026-10-25).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
@@ -120,6 +121,7 @@ const RETIRED_TRACK_KEYS = new Map([
     ['MoonlitForest', 'Spring'],
     ['RainyWindow', 'Sunbraid'],
     ['MoonriseSummit', 'Sunfall'],
+    ['Midsommar', 'Summer'],
 ]);
 
 /**
