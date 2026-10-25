@@ -20,7 +20,8 @@
  *   four lines    all of that, fireflies lifting off the whole floor, the moon flaring,
  *                 and the fireflies gathering into one of the animals of the wood between
  *                 the trees: a stag, a moose, a bear, a wolf howling at the moon... never
- *                 the same one twice running, and every one of them before any comes back
+ *                 the same one twice running, and every one of them before any comes back;
+ *                 where it stands is left to chance too
  *   combo/streak  the forest wakes: fireflies fall into step until the whole wood flashes
  *                 in waves, garlands of them wind up the old trunks, foxfire threads spread
  *                 through the moss and the fungi light; a lock without a clear lets it sleep
@@ -176,8 +177,8 @@ function clearedRow(detail) {
 
 export class ForestReactions {
     /**
-     * `rng` drives everything here; `figureRng`, when given, deals the animals instead, so
-     * the game can leave which animal comes to chance while the rest follows its seed.
+     * `rng` drives everything here; `figureRng`, when given, deals the animals (which comes, and
+     * where it stands) instead, so the game can leave them to chance while the rest follows its seed.
      */
     constructor({ quality = 'High', rng = Math.random, figureRng = null } = {}) {
         const requestedQuality = typeof quality === 'string' ? quality.toLowerCase() : '';
@@ -204,6 +205,7 @@ export class ForestReactions {
             gather: FOREST_FIGURE_TIMING.gather,
             fed: 0,
             full: 0,
+            place: 0,
         };
         /** How hot play runs, on this director's clock (sampled once per update). */
         this.surge = new GameplaySurge();
@@ -263,6 +265,7 @@ export class ForestReactions {
             gather: FOREST_FIGURE_TIMING.gather,
             fed: 0,
             full: 0,
+            place: 0,
         });
         this.surge.reset();
         Object.assign(this.play, {
@@ -461,6 +464,8 @@ export class ForestReactions {
         const { fever } = this.play;
         figure.serial += 1;
         figure.kind = this.nextFigure();
+        // Where it stands is left to the same chance: the director turns it into a place.
+        figure.place = this.chance();
         figure.active = true;
         figure.age = 0;
         figure.hold = wanted;
@@ -775,6 +780,8 @@ export class ForestReactions {
                 // How often it has been fed while it stood, and how full and bright it stands (0..1).
                 fed: figure.fed,
                 full: figure.full,
+                // Which of the places an animal may stand it takes (0..1; see the firefly director).
+                place: figure.place,
             };
         }
         const motion = Number.isFinite(this.motion) ? clamp(this.motion, 0, 1) : 1;
