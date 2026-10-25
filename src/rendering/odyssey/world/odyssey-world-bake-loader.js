@@ -17,7 +17,7 @@
  */
 
 import {
-    bakeReliefData, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData, bakeMacroData, bakeSummitSculptData,
+    bakeReliefData, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData, bakeMacroData, bakeSculptPlateData,
     makeReliefSampler, mergeReliefBands, reliefBandRanges,
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData } from './odyssey-cloud-field.js';
@@ -48,7 +48,7 @@ export function bakeWorldSync({
     const detail = bakeDetailNormalData();
     const t4 = now();
     const macro = bakeMacroData();
-    const summit = bakeSummitSculptData();
+    const summit = bakeSculptPlateData();
     const t5 = now();
     const field = cloudField && Array.isArray(cloudSpecs) ? buildCloudFieldGeometryData(cloudSpecs, railSamples) : null;
     const t6 = now();

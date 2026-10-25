@@ -54,9 +54,12 @@ of cold pipeline compile.
    cheap band of real grass by the rail, in the wind. *Done (§3): the crowns' bands follow the
    sun, the trees cast baked shade, a painted far forest, the krummholz; the grass band dropped.*
 4. **Clouds and air.** Dark bases, lit edges, a high cirrus layer, warm haze toward the sun, light
-   shafts.
-5. **Life.** Readable birds near the camera, butterflies, petals in the air.
-6. **The pond.** A sightline from the rail, and a mirror for the massif and the sky.
+   shafts. *Done (§4): the cirrus and the warm air; the cumulus already had its bases and edges;
+   shafts dropped (the sun is never in the rail's view).*
+5. **Life.** Readable birds near the camera, butterflies, petals in the air. *Done (§5): petals and
+   butterflies in the near air over the meadows.*
+6. **The pond.** A sightline from the rail, and a mirror for the massif and the sky. *Done (§6): a
+   tarn in the chapter-3 basin's meadow, in frame from L20 to L23, with a marched mirror.*
 
 ## §1. The sun turned to the side (2026-10-25)
 
@@ -234,3 +237,147 @@ fetch in the ground shader, ~21 MB of GPU memory with its mips. The krummholz ad
   Act II, where a blade is under a pixel. The ground's wind sweep already carries the meadow at
   that range.
 - **Shade on crowns from their neighbours.** The plate is a ground plate.
+
+## §4. Clouds and air (2026-10-26)
+
+**What was there.** The cumulus field already has the cloud work the plan named: a cool core on
+its bases, crease tones between the lobes, crowns that whiten, a Henyey-Greenstein silver lining
+on masses toward the sun, and soft rims that dissolve into the sky behind. Under the side sun of
+§1 its shade sides now show. What the act lacked was the air around the clouds. Between them the
+sky was one gradient by elevation, the same colour whichever way the eye turned, with nothing
+above the cumulus.
+
+**A high cirrus layer** (`SKY_CIRRUS` at the dome in `world/odyssey-world-renderer.js`):
+
+- The view ray meets a plane overhead, so the wisps run to the horizon in perspective.
+- Value noise is stretched along the summit's wind and thresholded into streaks, gathered into
+  patches and drifting slowly downwind.
+- It fades out low and overhead.
+- It is white, warming toward the sun.
+
+From the chapter 5 climb the streaks cross the sky diagonally, in the same direction as the
+summit's plume.
+
+![p 0.42 and 0.50, before and after: the high cirrus over the summit](images/odyssey-act2-2026-10-25/cirrus-before-after.jpg)
+
+**Warm air toward the sun** (`warmAirFor`, `skyAirAt`). Low air seen toward a low sun is lit from
+behind: the horizon on the sun's side now carries a broad warm lift, fading up the dome and round
+to nothing at right angles to the sun. It is part of the air, not a decoration on the dome. The
+dome, the aerial haze over land and sea, the cumulus haze, and the colour the world melts into at
+its edge all read it through `skyAirAt`. So a distant ridge toward the sun takes the same veil as
+the sky behind it, and the horizon keeps one colour at infinity.
+
+The first cut drew it narrow in azimuth and reaching 20° up. Together with the sun's own round
+halo it read as a column of light standing on the sea. Now it is a band, wide and gone by ~11°.
+
+The cirrus is thinned in the sun's glare. Looking toward the sun, the eye looks along the wind,
+so a wisp is seen end-on as an upright streak, and lit by the sun it stood there as a pillar.
+
+![Toward the sun (lookYaw 105 at p 0.30, and from the climb at p 0.46), main and after: the warm low air, the halo round again, wisps high and to the side](images/odyssey-act2-2026-10-25/sun-side-air.jpg)
+
+**Not done here.** Light shafts over land: the act flies with the sun behind-left of the eye the
+whole way, so shafts would show only in the views the rail never takes. The underwater shafts
+stay chapter 2's.
+
+## §5. Life near the eye (2026-10-26)
+
+**What was there.** The act already has its life, and all of it keeps its distance: gulls over the
+surf, swallows ahead of the orbs, a goose skein across the massif, the eagle on the wall, the
+summit kettle. All of them are specks at a few hundred units. The air motes are pin-points.
+Over the meadows nothing living came near the eye.
+
+**The meadows' near life** (`composition/odyssey-meadow-life.js`) is one opaque, alpha-tested
+draw. It uses the air motes' technique: an instanced quad with no instance data, each one's place
+following from its index and the clock in the vertex stage. They are world-anchored in a box that
+wraps round the eye, so a glide streams through them with real parallax.
+
+- **Petals.** There are 520 (240 on the lower tiers): pink and white from the blossom grove, and
+  the odd gold leaf. They ride the breeze and sink slowly. Each tumbles: its width turns with the
+  flip, and its face darkens as it turns from the light.
+- **Butterflies.** There are 18, in an erratic three-axis weave close to the eye, in orange, white,
+  blue and sulphur. Their wings beat in bouts between glides, each beat folding the wings toward
+  the body. They are drawn at about three times life, because the eye flies 47-90 u over the
+  meadow. One crossing the view is 35-90 px across.
+
+Both live over p 0.19-0.36 and are gone before the climb. Near the lens they fade in by size, so
+no big quad sits in front of the camera. **Bisect lever:** `?odysseyNoMeadowLife=1`.
+
+![p 0.28: a butterfly against the sky, petals drifting](images/odyssey-act2-2026-10-25/meadow-life.jpg)
+
+## §6. The pond (2026-10-26)
+
+**Why a new one.** The audit's pond is the north lake, the act's only water above the sea. Probed
+on the in-game camera at 26 stations, it is:
+
+- **In frame but hidden through chapters 3-4.** It sits in the view, but behind the hero massif:
+  0 of 339 lake points are visible at any of those stations.
+- **Unblocked from p ≈ 0.56 up the climb, but under the frame.** By 0.68 it is whole, ~10° off the
+  heading but ~40° below the eye, under the bottom of a frame that stares up at the summit.
+  Chapter 5's framing is guarded by `odyssey-ch5-climb-framing`: the node underfoot and the way
+  ahead stay in frame through the whole climb. A look down to the lake breaks both.
+
+The world itself had already marked a place for water: the macro field has scooped "the Ch3
+basin", an inland lake bowl, since Wave 2, and the One World never filled it.
+
+**The tarn** (`ODYSSEY_TARN` in `world/odyssey-world-height.js`) is three lobes joined into one
+bean in that basin's meadow, at the massif's foot.
+
+- **Its site was scored on the real camera.** The scoring counted pond points in frame, unblocked,
+  and with the hero in their reflection. It is in frame from L20 to L23 (p 0.246-0.30), 160-270 u
+  out and 60-80 u below the eye.
+- **The banks are set absolutely.** The bowl's floor sits just under the water and the waterline
+  lands where the bank meets it, on meadow that rises at most ~7 u across the pond. The first site
+  straddled the massif's foot; its west bank fell 25 u, and the ground shader turned that slope to
+  rock, a grey crater round the water. It moved onto the flat.
+- **It is carved on the sculpt plate.** The summit's ~2 u plate became one sculpt plate
+  (`ODYSSEY_SCULPT_PLATE`, `bakeSculptPlateData`, 640² over 1,180 u) covering both, because the
+  17.6 u macro plate cannot hold a pond's shore. The carve joins `odysseyWorldHeight` and the CPU
+  height mirror.
+- **Its meadow stays open.** No tree stands in the water or its clearing (1.55 × the tarn
+  distance), so its banks show over the forest.
+
+**The mirror.** The tarn's material marches the reflected view ray over the same plates the ground
+draws:
+
+- 24 growing steps, with one halving at the hit;
+- a soft skyline, from the ray's closest pass over the land;
+- a faint, fine ripple.
+
+Where the ray meets the land it takes that land's colour by height, using the ground palette's
+poles and the forest's cover. That colour is lit by its own slope under the baked sun, and hazed
+by the distance it ran. Where the ray runs out, it takes the sky and the warm air of §4. The water
+itself is dark green-blue and lighter over the bank.
+
+![p 0.246 and 0.28: the tarn in its meadow under the massif, mirroring the sky and the far bank](images/odyssey-act2-2026-10-25/tarn.jpg)
+
+**Tests.**
+
+- `odyssey-world-tarn.test.js` checks:
+  - the carve is zero outside the lobes;
+  - every disc edge is buried under meadow;
+  - every lobe holds water;
+  - the tarn sits inside the sculpt plate, and the plate's border is zero;
+  - no tree stands in the clearing;
+  - the rail stays more than 60 u over the water.
+- The golden mirror hash was re-pinned, and the plate is now 640².
+- The forest visibility mask is unchanged (its stamp held).
+
+**What the mirror shows.** From these stations the reflected rays rise toward the massif's lower
+flank and the hills beside it, so the tarn holds the sky and the far bank more than the summit. The
+snow-capped reflection needs an eye looking along the tarn at the massif, which is the chapter 5
+camera's direction but not its height.
+
+## Cost of steps 3-6 together
+
+Measured in the world playground at 1080p with vsync off, in alternating rounds against main,
+with the machine in quiet mode, so the noise is large. The medians:
+
+- **p 0.25 (the tarn in view): about +0.09 ms.** The tarn's march runs only on its own pixels.
+- **p 0.50 (sky-heavy): about +0.1 ms.** This comes from the cirrus's three noise lookups per sky
+  pixel, and the warm air in every aerial call.
+
+The forest shade plate adds one fetch in the ground shader and ~21 MB of GPU memory. The tarn
+adds one material, and its discs are culled out of view. The meadow life adds one draw, and is
+hidden outside p 0.19-0.36. The krummholz adds no draws.
+
+The board was not re-measured on the iGPU lane, which cannot be measured on this machine.

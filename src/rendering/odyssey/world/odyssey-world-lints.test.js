@@ -188,7 +188,8 @@ describe('every world material opts out of scene fog', () => {
 
         const optOut = source.match(/\[([^\]]+)\]\.forEach\(\(m\) => \{ m\.fog = false; \}\)/);
         expect(optOut, 'the fog opt-out forEach must exist').toBeTruthy();
-        const listed = optOut[1].split(',').map((name) => name.trim());
+        // (a multi-line list ends in a trailing comma: drop the empty name it leaves)
+        const listed = optOut[1].split(',').map((name) => name.trim()).filter(Boolean);
         expect([...listed].sort()).toEqual([...constructed].sort());
     });
 });

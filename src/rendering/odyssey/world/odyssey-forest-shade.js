@@ -95,7 +95,9 @@ function crownSpheres(spec) {
  * @param {{res?: number, sun?: ArrayLike<number>}} [opts]
  * @returns {{data: Uint8Array, res: number, extent: number, x: number, z: number}} RGBA8, row j = +z
  */
-export function bakeForestShadeData(placements, heightAt, { res = FOREST_SHADE_PLATE.res, sun = ODYSSEY_WORLD_SUN } = {}) {
+export function bakeForestShadeData(placements, heightAt, {
+    res = FOREST_SHADE_PLATE.res, sun = ODYSSEY_WORLD_SUN,
+} = {}) {
     const P = FOREST_SHADE_PLATE;
     const texel = P.extent / res;
     const x0 = P.x - (P.extent / 2);

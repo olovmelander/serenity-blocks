@@ -6,7 +6,9 @@ import {
     ODYSSEY_FOREST_SPECIES,
 } from './odyssey-forest-species.js';
 import { railSeesForestSite } from './odyssey-forest-visibility.js';
-import { ODYSSEY_NORTH_LAKE, odysseyNorthLakeRn } from './odyssey-world-height.js';
+import {
+    ODYSSEY_NORTH_LAKE, ODYSSEY_TARN, odysseyNorthLakeRn, odysseyTarnRn,
+} from './odyssey-world-height.js';
 
 /**
  * A site standing IN the north lake (north-island plan Wave 1). The sea rejection below
@@ -18,6 +20,9 @@ import { ODYSSEY_NORTH_LAKE, odysseyNorthLakeRn } from './odyssey-world-height.j
  * disagree with the carve.
  */
 function siteInNorthLake(x, z, y) {
+    // ...and the tarn in the meadow (2026-10-26): no tree stands in its water, nor in the open
+    // meadow round it (`clearing`), which is what lets the eye see its banks over the forest.
+    if (y <= ODYSSEY_TARN.waterY + 30 && odysseyTarnRn(x, z) <= ODYSSEY_TARN.clearing) return true;
     if (y > ODYSSEY_NORTH_LAKE.waterY + 1.5) return false;
     return odysseyNorthLakeRn(x, z) <= 1;
 }
