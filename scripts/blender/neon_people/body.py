@@ -725,6 +725,24 @@ def _head_gear(P, kinds):
             face_n = vec(0.0, -1.0, 0.1)
             out["top"].append((Cut(hood(0.0), [(face_point, face_n)]), 0.03))
             out["glow"].append((Cut(hood(TRIM), [(face_point, face_n), (face_point - face_n * 0.02, -face_n)]), 0.0))
+        elif kind == "helmet":
+            # A rider's full helmet in metal, open under the jaw, a lit visor slit across the face.
+            shell = Ellipsoid(at(0.0, 0.004, 0.08), cranium_r + np.array([0.032, 0.03, 0.062]), frame)
+            out["chrome"].append((Cut(shell, [(at(0.0, 0.0, -0.04), vec(0.0, 0.0, -1.0))]), 0.0))
+            slit = Ellipsoid(at(0.0, -0.02, 0.088), np.array([0.1, 0.112, 0.015]) * s, frame)
+            out["glow"].append((Cut(slit, [(at(0.0, -0.045, 0.0), vec(0.0, 1.0, 0.0))]), 0.0))
+            # A ridge down the crown.
+            out["chrome"].append((RoundCone(at(0.0, -0.06, 0.215), at(0.0, 0.1, 0.17), 0.016, 0.012), 0.02))
+        elif kind == "hat":
+            # A wide-brimmed hat tipped a little forward, a lit band round the crown.
+            tipped = P.frame("head", turn(pitch=7.0))
+            out["gear"].append((Ellipsoid(at(0.0, -0.006, 0.162), np.array([0.235, 0.245, 0.014]) * s, tipped), 0.0))
+            crown_c, crown_r = at(0.0, 0.0, 0.205), np.array([0.092, 0.104, 0.072]) * s
+            out["gear"].append((Cut(Ellipsoid(crown_c, crown_r, tipped), [(at(0.0, 0.0, 0.165), vec(0.0, 0.0, -1.0))]),
+                                0.025))
+            band = Ellipsoid(crown_c, crown_r + 0.004, tipped)
+            out["glow"].append((Cut(band, [(at(0.0, 0.0, 0.2), vec(0.0, 0.0, 1.0)),
+                                           (at(0.0, 0.0, 0.182), vec(0.0, 0.0, -1.0))]), 0.0))
         elif kind == "collar":
             def collar(extra):
                 return RoundCone(P.point("neck", rest["neck"] + np.array([0.0, 0.0, -0.02])),
