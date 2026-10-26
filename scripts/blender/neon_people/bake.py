@@ -299,7 +299,11 @@ def _purge_scene(scene):
                 bpy.data.cameras.remove(data)
             elif isinstance(data, bpy.types.Light):
                 bpy.data.lights.remove(data)
+    world = scene.world
     bpy.data.scenes.remove(scene)
+    # A world of our own left by an earlier run goes with its scene.
+    if world is not None and world.name.startswith(PREFIX) and world.users == 0:
+        bpy.data.worlds.remove(world)
 
 
 SUPERSAMPLE = 2
