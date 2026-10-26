@@ -218,7 +218,7 @@ const captureThemes = [
         'Voltage Storm',
         'sky, water, towers, towerMirror, boltMirror, glows, bolts, sparks, rain'],
 
-    ['waves', 'waves', 'Waves', 'sky, water, dolphins, mist, rain, spray'],
+    ['waves', 'waves', 'Waves', 'sky, water, dolphins, mist, rain, spray, foam'],
 
     ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit'],
 ];
