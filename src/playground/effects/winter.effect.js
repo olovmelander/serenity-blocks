@@ -32,6 +32,14 @@
  *                            foxCamFov=<deg>)
  *   foxAct=<acts>            stop the fox <foxActAge> seconds before the frame and have it do
  *                            these (comma-separated: Sit, or Listen,Pounce,Dig,Shake — `hunt` is that)
+ *   bear=0                   do not fetch the polar bear's body
+ *   bearAt=<s>               put the bear <s> seconds into its own course at the frame (its walk is
+ *                            a function of that clock: winter-bear-plan.js)
+ *   bearAct=rear|lie|rise    have the board make it stand up, lie down, or get up again,
+ *                            <bearActAge> seconds before the frame
+ *   bearCam=<metres>         a lens that keeps this far from the bear and follows it (bearCamYaw=<deg>
+ *                            round it from its front, or `viewer` for the side the game sees;
+ *                            bearCamFov=<deg>)
  *   P.<name>=<value>         override a number of the look (LOOK in winter-tsl.js)
  *   icon=1                   the theme-icon framing: a longer lens raised to where the fox of light runs
  *                            (iconFov, iconYaw, iconPitch; capture a square frame)
@@ -141,6 +149,7 @@ export function create({
         renderer,
         ghosts: params.get('plan') === '1' ? planGhosts() : null,
         fox: params.get('fox') !== '0',
+        bear: params.get('bear') !== '0',
     });
     const noPost = params.get('noPost') === '1';
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
@@ -149,6 +158,9 @@ export function create({
     const foxCam = num(params, 'foxCam', 0);
     const foxAct = (params.get('foxAct') || '').split(',').map((s) => s.trim()).filter(Boolean);
     const foxLook = new THREE.Vector3();
+    const bearCam = num(params, 'bearCam', 0);
+    const bearAct = (params.get('bearAct') || '').trim();
+    const bearAt = params.has('bearAt') ? num(params, 'bearAt') : null;
     const size = new THREE.Vector2(1, 1);
     let post = null;
     let built = false;
@@ -193,6 +205,26 @@ export function create({
                 foxLook.z + Math.cos(around) * foxCam,
             );
             camera.fov = num(params, 'foxCamFov', 30);
+            camera.up.set(0, 1, 0);
+            camera.lookAt(foxLook);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+            world.projectMoon(camera);
+        }
+        if (bearCam > 0) {
+            // A lens on the bear: round it from its front by bearCamYaw (or on the side the game's
+            // camera sees it from), a little above its back.
+            const { pose } = world.bearMind;
+            const around = params.get('bearCamYaw') === 'viewer'
+                ? Math.atan2(-pose.x, -pose.z)
+                : pose.heading + num(params, 'bearCamYaw', 60) * (Math.PI / 180);
+            foxLook.set(pose.x, pose.y + 1.1, pose.z);
+            camera.position.set(
+                foxLook.x + Math.sin(around) * bearCam,
+                foxLook.y + bearCam * 0.15 + 0.3,
+                foxLook.z + Math.cos(around) * bearCam,
+            );
+            camera.fov = num(params, 'bearCamFov', 30);
             camera.up.set(0, 1, 0);
             camera.lookAt(foxLook);
             camera.updateProjectionMatrix();
@@ -244,6 +276,8 @@ export function create({
         const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
         world.seek(start);
+        // (Its clock runs with the world's from here: at the frame it stands bearAt into its course.)
+        if (bearAt !== null) world.bearMind.offset = bearAt - time;
         if (level > 1) world.levelUp(level, { silent: true });
         if (holdCombo > 0) world.onCombo(holdCombo);
         frame(start, 0);
@@ -271,6 +305,20 @@ export function create({
             });
         }
         if (eventName) marks.push({ at: Math.max(cursor, time - eventAge), fine: 1 / 120, play: fireEvent });
+        if (bearAct) {
+            const age = num(params, 'bearActAge', 2);
+            marks.push({
+                at: Math.max(cursor, time - age - (bearAct === 'rise' ? 8 : 0)),
+                fine: 1 / 30,
+                play: (at) => {
+                    if (bearAct === 'rear') world.bearMind.rear(at);
+                    else world.bearMind.lie(at);
+                },
+            });
+            if (bearAct === 'rise') {
+                marks.push({ at: Math.max(cursor, time - age), fine: 1 / 30, play: (at) => world.bearMind.rise(at) });
+            }
+        }
         marks.sort((a, b) => a.at - b.at);
         let step = 0.1;
         marks.forEach((mark) => {
@@ -317,7 +365,10 @@ export function create({
         if (disposed) return;
         world.build();
         // A capture shows the fox every time: wait for its body (but not for long).
-        await Promise.race([world.foxReady, new Promise((resolve) => { setTimeout(resolve, 6000); })]);
+        await Promise.race([
+            Promise.all([world.foxReady, world.bearReady]),
+            new Promise((resolve) => { setTimeout(resolve, 6000); }),
+        ]);
         if (disposed) return;
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');

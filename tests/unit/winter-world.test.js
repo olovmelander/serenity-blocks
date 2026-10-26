@@ -41,7 +41,7 @@ beforeAll(() => {
 function makeWorld(quality = TIER, [width, height] = LANDSCAPE) {
     const scene = new THREE.Scene();
     const world = new WinterWorld({
-        scene, quality, capture: true, ghosts, fox: false,
+        scene, quality, capture: true, ghosts, fox: false, bear: false,
     }).build();
     const camera = new THREE.PerspectiveCamera(50, width / height, REST_RIG.near, REST_RIG.far);
     world.bindCamera(camera);
@@ -131,9 +131,9 @@ describe('WinterWorld: what it builds', () => {
         QUALITY_NAMES.forEach((quality) => {
             const { world, scene } = makeWorld(quality);
             const tier = QUALITY[quality];
-            // (The fox and its like of light join when the model arrives; none is fetched here.)
+            // (The fox, its like of light and the bear join when their models arrive; none is fetched here.)
             const expected = WINTER_PARTS
-                .filter((name) => name !== 'fox' && name !== 'spirit' && (name !== 'dust' || tier.dust > 0));
+                .filter((name) => !['fox', 'spirit', 'bear'].includes(name) && (name !== 'dust' || tier.dust > 0));
             expect(Object.keys(world.parts).sort(), quality).toEqual([...expected].sort());
             expect(scene.children).toEqual([world.root]);
             Object.keys(world.parts).forEach((name) => {
@@ -1603,6 +1603,63 @@ describe('WinterWorld: the frame\'s shape', () => {
         world.setLayout(null);
         expect(world.getState().layoutLive).toBe(false);
         expect(boardFor(world.layout, 0)).toBeTruthy();
+        world.dispose();
+    });
+});
+
+describe('WinterWorld: the polar bear on the lake', () => {
+    it('walks its course whether or not its body has come, and lays its shade and shadow where it is', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 3, 1 / 30);
+        const { pose } = world.bearMind;
+        expect(world.getState().bear).toMatchObject({ body: false, act: pose.clip });
+        expect(pose.speed).toBeGreaterThan(0);
+        const { bearShadow, bearContact } = world.u;
+        expect(bearContact.value.x).toBeCloseTo(pose.x, 9);
+        expect(bearContact.value.y).toBeCloseTo(pose.z, 9);
+        // The shadow lies away from the moon, within a few body lengths of it.
+        const moon = moonDirection(16 / 9);
+        const off = [bearShadow.value.x - pose.x, bearShadow.value.y - pose.z];
+        expect(off[0] * moon[0] + off[1] * moon[2]).toBeLessThan(0);
+        expect(Math.hypot(...off)).toBeLessThan(4);
+        world.dispose();
+    });
+
+    it('stands up to watch when four lines call the fox of light over the sky', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 4, 1 / 30);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        step(world, camera, 4, 7, 1 / 30);
+        expect(world.bearMind.pose.over).toBe('Rear');
+        expect(world.getState().bear.act).toBe('Rear');
+        world.dispose();
+    });
+
+    it('lies down when the run ends, and gets up where it lay when the next begins', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 4, 1 / 30);
+        world.onGameOver();
+        step(world, camera, 4, 30, 1 / 30);
+        const lying = { ...world.bearMind.pose };
+        expect(lying.over).toBe('Lie');
+        world.resetSession();
+        step(world, camera, 30, 31, 1 / 30);
+        expect(world.bearMind.pose.over).toBe('Rise');
+        expect(world.bearMind.pose.x).toBeCloseTo(lying.x, 6);
+        world.dispose();
+    });
+
+    it('is where the world clock has it after a seek, whatever the board made it do before', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 2, 1 / 30);
+        const early = { ...world.bearMind.pose };
+        world.onGameOver();
+        step(world, camera, 2, 40, 1 / 10);
+        world.seek(2);
+        frame(world, camera, 2, 0);
+        expect(world.bearMind.pose.over).toBeNull();
+        expect(world.bearMind.pose.x).toBeCloseTo(early.x, 6);
+        expect(world.bearMind.pose.z).toBeCloseTo(early.z, 6);
         world.dispose();
     });
 });
