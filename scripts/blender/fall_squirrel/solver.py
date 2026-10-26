@@ -99,6 +99,7 @@ class Rig:
         self.local = {name: np.eye(3) for name in self.names}
         self.offset = np.zeros(3)
         self._world = None
+        self.misses = {}
 
     # -- forward kinematics ------------------------------------------------------------
     def world(self):
@@ -149,8 +150,17 @@ class Rig:
         l2 = float(np.linalg.norm(end_rest - b_rest))
         a = self.joint(upper)
         to = np.asarray(target, dtype=np.float64) - a
-        d = float(np.linalg.norm(to))
-        d = min(max(d, abs(l1 - l2) + 1e-4), l1 + l2 - 1e-5)
+        wanted = float(np.linalg.norm(to))
+        # A soft limit: past 90 % of its length the limb straightens ever more slowly instead of
+        # stopping dead, so a paw reaching beyond it never jerks the leg (a hard clamp is a corner in
+        # the leg's motion each time the paw crosses it).
+        full = l1 + l2
+        knee = 0.9 * full
+        d = wanted if wanted <= knee else knee + (full - knee) * (1.0 - math.exp(-(wanted - knee) / (full - knee)))
+        d = min(max(d, abs(l1 - l2) + 1e-4), full - 1e-5)
+        # How far the limb could not go (a planted paw that the leg cannot reach slides): the audit
+        # (audit.py) reads it.
+        self.misses[upper] = max(self.misses.get(upper, 0.0), abs(wanted - d))
         f = _unit(to)
         bend = np.asarray(pole, dtype=np.float64) - f * float(np.dot(pole, f))
         bend = _unit(bend) if np.linalg.norm(bend) > 1e-9 else _unit(np.cross(f, [1.0, 0.0, 0.0]))

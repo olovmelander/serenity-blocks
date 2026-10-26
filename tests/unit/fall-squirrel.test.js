@@ -157,6 +157,10 @@ describe('the squirrel asset (modelled, rigged and animated in Blender)', () => 
             expect(extras.clips[name].length, name).toBeCloseTo(spec.length, 6);
         }
         expect(extras.bones).toEqual(BONES);
+        // The leap's take-off and landing, which the mind flies between.
+        for (const mark of ['takeoff', 'landing']) {
+            expect(extras.clips.leap.marks[mark]).toBeCloseTo(SQUIRREL_CLIPS.leap.marks[mark], 6);
+        }
     });
 
     it('closes every loop: a looping clip ends where it began', () => {
@@ -389,6 +393,82 @@ describe('the squirrel mind', () => {
     });
 });
 
+describe('the squirrel moves smoothly', () => {
+    /** Degrees between two quaternions. */
+    const angle = (a, b) => (2 * Math.acos(Math.min(1, Math.abs(a.dot(b)))) * 180) / Math.PI;
+
+    it('turns, starts, stops, hands over and answers the board without a jerk in body, head or tail', () => {
+        const light = new FallLight({ tier: fallTier('Minimal'), rng: () => 0.5 });
+        owned.push(light);
+        const watch = ['hips', 'chest', 'head', 'tail2'];
+        const limits = {
+            hips: 15, chest: 15, head: 15, tail2: 25, body: 15,
+        };
+        for (const seed of [271, 11]) {
+            const squirrel = createSquirrel({ light, gltf });
+            owned.push(squirrel);
+            const bones = Object.fromEntries(watch.map((name) => [name, squirrel.group.getObjectByName(name)]));
+            const last = {};
+            const speed = {};
+            const worst = Object.fromEntries([...watch, 'body'].map((name) => [name, 0]));
+            const q = new THREE.Quaternion();
+            const cues = [['drop', 12, 1], ['clear', 30, 1], ['four', 50, 1], ['combo', 70, 1], ['perfect', 90, 1],
+                ['over', 110, 1]];
+            live(new SquirrelMind({ stage, seed }), 120, STEP, cues, (pose) => {
+                if (!pose.visible) {
+                    Object.keys(last).forEach((key) => { last[key] = null; });
+                    return;
+                }
+                expect(Math.hypot(...pose.quaternion)).toBeCloseTo(1, 6);
+                squirrel.update(pose);
+                const sample = (name, rotation) => {
+                    if (last[name]) {
+                        const w = angle(last[name], rotation);
+                        if (speed[name] !== undefined) worst[name] = Math.max(worst[name], Math.abs(w - speed[name]));
+                        speed[name] = w;
+                    } else delete speed[name];
+                    last[name] = rotation.clone();
+                };
+                sample('body', squirrel.group.quaternion);
+                for (const name of watch) sample(name, bones[name].getWorldQuaternion(q));
+            });
+            // Degrees per frame per frame at 60 fps: a snap, a pop or a flip is far beyond these.
+            for (const [name, limit] of Object.entries(limits)) {
+                expect(worst[name], `seed ${seed} ${name}`).toBeLessThan(limit);
+            }
+        }
+    });
+
+    it('turns on the spot with its paws stepping round, on the floor and on the bark', () => {
+        const turns = new Set();
+        for (const seed of [271, 3, 99]) {
+            const mind = new SquirrelMind({ stage, seed, start: 'ground' });
+            live(mind, 240, 0.05, [], () => {
+                if (mind.act.kind !== 'turn') return;
+                turns.add(`${mind.act.clip} ${mind.act.from.on === 'ground' ? 'floor' : 'bark'}`);
+            });
+        }
+        expect([...turns].sort()).toEqual(['pivot bark', 'shuffle floor']);
+    });
+
+    it('crouches and lands on its paws: a leap leaves from where it stood and stops where it lands', () => {
+        const mind = new SquirrelMind({
+            stage, seed: 4, start: 'ground', script: ['climb'],
+        });
+        let leap = null;
+        live(mind, 10, 0.02, [], () => {
+            if (!leap && mind.act.kind === 'leap') leap = mind.act;
+        });
+        expect(leap).toBeTruthy();
+        const from = mind.frame(leap.from).point;
+        const to = mind.frame(leap.to).point;
+        const at = (t) => mind.bodyAt(leap, t, createSquirrelPose()).position;
+        at(leap.t0 + leap.crouch * 0.9).forEach((v, i) => expect(v).toBeCloseTo(from[i], 6));
+        at(leap.t1 - leap.landing * 0.5).forEach((v, i) => expect(v).toBeCloseTo(to[i], 6));
+        expect(at(leap.t0 + leap.crouch + leap.flight / 2)[1]).toBeGreaterThan(Math.max(from[1], to[1]) - 1);
+    });
+});
+
 describe('the squirrel drawn', () => {
     it('blends the clips the mind asks for and holds the acorn only while it nibbles', () => {
         const light = new FallLight({ tier: fallTier('Minimal'), rng: () => 0.5 });
@@ -417,6 +497,34 @@ describe('the squirrel drawn', () => {
         squirrel.update({ ...mind.pose(5), lift: 0.6 });
         const high = squirrel.shade.material;
         expect(high).toBeTruthy();
+    });
+
+    it('lays its look and its tail\'s trail on the clip pose afresh each frame (they never pile up)', () => {
+        const light = new FallLight({ tier: fallTier('Minimal'), rng: () => 0.5 });
+        owned.push(light);
+        const squirrel = createSquirrel({ light, gltf });
+        owned.push(squirrel);
+        const mind = new SquirrelMind({
+            stage, seed: 8, start: 'ground', script: ['sit'],
+        });
+        const pose = {
+            ...mind.pose(1.0), look: 1, lagTurn: 0.5, lagSurge: 0.3,
+        };
+        const names = ['neck', 'head', 'tail0', 'tail6'];
+        squirrel.update(pose);
+        const first = names.map((name) => squirrel.group.getObjectByName(name).quaternion.clone());
+        for (let i = 0; i < 5; i++) squirrel.update(pose);
+        // (Component by component: angleTo reads a quaternion a hair off unit length as turned.)
+        names.forEach((name, i) => {
+            const now = squirrel.group.getObjectByName(name).quaternion.toArray();
+            first[i].toArray().forEach((v, k) => expect(now[k], `${name}[${k}]`).toBeCloseTo(v, 9));
+        });
+        // And the look and the trail did turn the bones off the bare clip pose.
+        squirrel.update({
+            ...pose, look: 0, lagTurn: 0, lagSurge: 0,
+        });
+        expect(squirrel.group.getObjectByName('head').quaternion.angleTo(first[1])).toBeGreaterThan(0.05);
+        expect(squirrel.group.getObjectByName('tail6').quaternion.angleTo(first[3])).toBeGreaterThan(0.05);
     });
 });
 

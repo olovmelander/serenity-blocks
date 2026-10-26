@@ -192,8 +192,8 @@
     },
     {
       "file": "squirrel.glb",
-      "bytes": 450352,
-      "sha256": "47665412d46ad461b1be6b8b974b4b221ea08026112ab45c8b5edbf53757607f",
+      "bytes": 538268,
+      "sha256": "a7a4423b5c4030956b6dffdd3862a34956060cce4f0765ebefb2a1751065e42b",
       "kind": "squirrel",
       "triangles": 9806,
       "acornTriangles": 420,
@@ -212,7 +212,9 @@
         "look",
         "nibble",
         "pat",
+        "pivot",
         "scratch",
+        "shuffle",
         "sit",
         "startle"
       ]
