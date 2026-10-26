@@ -282,32 +282,78 @@ describe('the sculptor produces sane geometry', () => {
     });
 
     /**
-     * The leaf atlas: every clump a body that is solid in the middle and a broken, leafy fringe
-     * (the sky through it), and nothing past the disc's rim (the card's own edge).
+     * NEEDLE CARDS (2026-10-26): the leafy conifers. A spray conifer's hero and mid crowns are
+     * needle cards (kind `needleFlag`) on rings up its tiers plus a tuft at the tip; the column
+     * conifer (the cypress) stacks leaf clumps; both first in the buffer, six vertices a card. The
+     * far tier keeps its lathe cone, with no cards at all.
      */
-    it('bakes leaf clumps: a solid body, a broken fringe, nothing past the rim', () => {
-        const { data, res, tiles } = bakeForestLeafAtlas();
-        expect(res).toBe(FOREST_LEAF_ATLAS.res);
-        const tile = res / tiles;
-        for (let t = 0; t < tiles * tiles; t += 1) {
-            const ox = (t % tiles) * tile;
-            const oy = Math.floor(t / tiles) * tile;
-            const ring = [[0, 0.35, 0], [0.35, 0.6, 0], [0.7, 0.9, 0], [0.98, 1.5, 0]].map((r) => [...r, 0]);
+    it('builds the leafy conifers from needle sprays (or a clump column), the far tier still a cone', () => {
+        const N = FOREST_LEAF_CARD.needle;
+        ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'conifer').forEach((spec) => {
+            const column = spec.cardStyle === 'column';
+            ['hero', 'mid'].forEach((lod) => {
+                const g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
+                const label = `${spec.id} ${lod}`;
+                const count = column
+                    ? FOREST_LEAF_CARD.column[lod].levels * FOREST_LEAF_CARD.column[lod].perLevel
+                    : (Math.max(spec.tiers, Math.round(spec.tiers * N[lod].tierMul))
+                        * N[lod].rings.reduce((a, [n]) => a + n, 0)) + 1;
+                expect(g.userData.forest.cards, label).toBe(true);
+                expect(g.userData.forest.hullTriangles, label).toBe(count * 2);
+                const v = attr(g, 'aVert');
+                const kind = column ? FOREST_LEAF_CARD.flag : FOREST_LEAF_CARD.needleFlag;
+                for (let i = 0; i < v.count; i += 1) {
+                    expect(onCard(g, i), `${label} vertex ${i}`).toBe(i < count * 6);
+                    if (i < count * 6) expect(Math.floor(v.getZ(i)), label).toBe(kind);
+                }
+            });
+            const far = buildForestTreeGeometry(spec, spec.stages[1], 'far', 9);
+            expect(far.userData.forest.cards, `${spec.id} far`).toBe(false);
+        });
+    });
+
+    /**
+     * The leaf atlas. Row 0, leaf clumps: a body that is solid in the middle and a broken, leafy
+     * fringe (the sky through it). Row 1, needle sprays: an arched branch hung with needles, so
+     * its top is open sky and its middle band is full. Nothing past any tile's disc (the card's
+     * own edge).
+     */
+    it('bakes leaf clumps and needle sprays, nothing past a tile\'s rim', () => {
+        const {
+            data, width, height, tile, tilesX, tilesY,
+        } = bakeForestLeafAtlas();
+        expect(tile).toBe(FOREST_LEAF_ATLAS.tile);
+        expect(width).toBe(tile * tilesX);
+        expect(height).toBe(tile * tilesY);
+        expect(tilesY).toBe(2);
+        const coverage = (tx, ty, inBand) => {
+            let on = 0;
+            let n = 0;
             for (let j = 0; j < tile; j += 1) {
                 for (let i = 0; i < tile; i += 1) {
-                    const r = Math.hypot((((i + 0.5) / tile) * 2) - 1, (((j + 0.5) / tile) * 2) - 1);
-                    const on = data[((((oy + j) * res) + ox + i) * 4)] >= 128 ? 1 : 0;
-                    ring.forEach((band) => {
-                        if (r >= band[0] && r < band[1]) { band[2] += on; band[3] += 1; }
-                    });
+                    const px = (((i + 0.5) / tile) * 2) - 1;
+                    const py = (((j + 0.5) / tile) * 2) - 1;
+                    if (!inBand(px, py)) continue;
+                    n += 1;
+                    if (data[((((ty * tile) + j) * width) + (tx * tile) + i) * 4] >= 128) on += 1;
                 }
             }
-            const cover = ring.map((band) => band[2] / Math.max(1, band[3]));
-            expect(cover[0], `tile ${t} body`).toBeGreaterThan(0.7);
-            expect(cover[1], `tile ${t} middle`).toBeGreaterThan(0.55);
-            expect(cover[2], `tile ${t} fringe`).toBeGreaterThan(0.1);
-            expect(cover[2], `tile ${t} fringe`).toBeLessThan(0.7);
-            expect(cover[3], `tile ${t} outside`).toBe(0);
+            return n ? on / n : 0;
+        };
+        const radial = (lo, hi) => (px, py) => Math.hypot(px, py) >= lo && Math.hypot(px, py) < hi;
+        for (let tx = 0; tx < tilesX; tx += 1) {
+            const leaf = `leaf tile ${tx}`;
+            expect(coverage(tx, 0, radial(0, 0.35)), `${leaf} body`).toBeGreaterThan(0.7);
+            expect(coverage(tx, 0, radial(0.35, 0.6)), `${leaf} middle`).toBeGreaterThan(0.55);
+            expect(coverage(tx, 0, radial(0.7, 0.9)), `${leaf} fringe`).toBeGreaterThan(0.1);
+            expect(coverage(tx, 0, radial(0.7, 0.9)), `${leaf} fringe`).toBeLessThan(0.7);
+            expect(coverage(tx, 0, radial(0.98, 1.5)), `${leaf} outside`).toBe(0);
+            const spray = `spray tile ${tx}`;
+            expect(coverage(tx, 1, (px, py) => Math.abs(px) < 0.4 && py > -0.1 && py < 0.3), `${spray} band`)
+                .toBeGreaterThan(0.5);
+            expect(coverage(tx, 1, (px, py) => Math.abs(px) < 0.6 && py > 0.75), `${spray} sky above`)
+                .toBeLessThan(0.1);
+            expect(coverage(tx, 1, radial(0.98, 1.5)), `${spray} outside`).toBe(0);
         }
     });
 

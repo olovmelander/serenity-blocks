@@ -850,25 +850,63 @@ const PUFF_FLORETS = 5;
  * hid the branches the gaps should show, so there are none.) The mid tier draws one card a puff and
  * the far tier one a ring puff: the same clumps, fewer and larger, so the tiers agree.
  *
+ * Conifers are built the same way from NEEDLE cards (`needle`): rings of drooping needle sprays
+ * on the lathe's tiers, the sprays never spun (only tilted a little and mirrored), so every one
+ * hangs down. They draw the atlas's second row.
+ *
  * Vertex contract for a card (all six vertices sit at the card's centre, cards first in the
  * buffer, so a vertex's corner is its index mod 6):
  *   normal = the direction from the crown's centre (the ellipsoid's, so a flat crown lights flat)
- *   aVert  = (depth in the crown 0..1, height in crown, `flag` + size / `sizeMax`, wind mask)
+ *   aVert  = (depth in the crown 0..1, height in crown, kind flag + size / `sizeMax`, wind mask),
+ *            the kind flag `flag` for a leaf clump and `needleFlag` for a needle spray
  * `push` moves a card toward the eye by that share of its size; `flutter` is the leaves' shake, in
  * card radii; `tiles` the atlas's clumps per side.
  */
 export const FOREST_LEAF_CARD = Object.freeze({
     flag: 2,
+    needleFlag: 3,
     sizeMax: 4,
     push: 0.15,
     upBias: PUFF_UP_BIAS,
     flutter: 0.05,
-    tiles: 2,
+    tilesX: 4,
+    tilesY: 2,
     hero: Object.freeze({
         perPuff: 5, cap: 1.35, seat: 0.55, size: 0.62, floretSize: 1.0, core: 0, coreSize: 0.42,
     }),
     mid: Object.freeze({ size: 1.08 }),
     far: Object.freeze({ size: 1.15 }),
+    /**
+     * NEEDLE CARDS (the leafy conifers): `perTier` sprays round each tier's drooping skirt, seated
+     * `seat` of the tier's radius out and `size` of it across, and a tuft `top` of the top tier's
+     * radius at the tip. Far conifers keep their lathe cone (a dark spike at 520 u and beyond).
+     */
+    needle: Object.freeze({
+        // `rings` up each tier's skirt, from its rim to the trunk: [sprays, their size (of the
+        // tier's), how far out (of the tier's radius)].
+        // `tierMul` more tiers than the lathe's along the same cone (thinner ones, so the spacing
+        // shrinks with the tree and the top can taper to a point).
+        hero: Object.freeze({
+            rings: Object.freeze([[5, 1, 1], [2, 0.75, 0.45]]), size: 0.56, fill: 0.85, tierMul: 1.45,
+        }),
+        mid: Object.freeze({
+            rings: Object.freeze([[4, 1, 1]]), size: 0.72, fill: 0.95, tierMul: 1.25,
+        }),
+        top: 0.6,
+    }),
+    /**
+     * COLUMN CONIFERS (`cardStyle: 'column'`, the cypress): too narrow for sprays, so leaf clumps
+     * stacked up the axis in a flame's profile (widest a third of the way up): `levels` levels of
+     * `perLevel`, each `size` of the local radius and never under `overlap` of the level spacing.
+     */
+    column: Object.freeze({
+        hero: Object.freeze({
+            levels: 22, perLevel: 2, size: 1.25, overlap: 0.7,
+        }),
+        mid: Object.freeze({
+            levels: 14, perLevel: 1, size: 1.4, overlap: 0.75,
+        }),
+    }),
 });
 /**
  * `aTrunk.w` carries two numbers, because a card needs the tree's scale in the vertex shader and
@@ -960,6 +998,150 @@ function leafCardSeats(puffs, florets, lod, rnd) {
         });
     });
     return seats;
+}
+
+/**
+ * Append cards (see FOREST_LEAF_CARD) at `seats` ({x, y, z, size}) to the buffers. Each card's
+ * normal is the crown ellipsoid's, measured from `centre` with the reach the seats span across
+ * and up; its depth in the crown 0..1; its kind `flag` plus its size. Returns the triangles.
+ */
+function pushLeafCards({ positions, normals, vert }, seats, centre, {
+    flag, crownFloor, crownH, totalH, lod,
+}) {
+    let reachH = 1e-3; let reachV = 1e-3;
+    seats.forEach((c) => {
+        reachH = Math.max(reachH, Math.hypot(c.x - centre.x, c.z - centre.z) + c.size);
+        reachV = Math.max(reachV, Math.abs(c.y - centre.y) + (c.size * 0.8));
+    });
+    seats.forEach((c) => {
+        const ox = c.x - centre.x; const oy = c.y - centre.y; const oz = c.z - centre.z;
+        let nx = ox / (reachH * reachH);
+        let ny = oy / (reachV * reachV);
+        let nz = oz / (reachH * reachH);
+        const nl = Math.hypot(nx, ny, nz);
+        if (nl < 1e-6) { nx = 0; ny = 1; nz = 0; } else { nx /= nl; ny /= nl; nz /= nl; }
+        const depth = Math.min(1, Math.hypot(ox / reachH, oy / reachV, oz / reachH));
+        const along = Math.min(1, Math.max(0, (c.y - crownFloor) / (crownH || 1)));
+        const wHere = lod === 'far' ? 0 : Math.max(0, Math.min(1, c.y / (totalH || 1)));
+        const kind = flag + (Math.min(c.size, FOREST_LEAF_CARD.sizeMax * 0.999) / FOREST_LEAF_CARD.sizeMax);
+        for (let k = 0; k < 6; k += 1) {
+            positions.push(c.x, c.y, c.z);
+            normals.push(nx, ny, nz);
+            vert.push(depth, along, kind, wHere);
+        }
+    });
+    return seats.length * 2;
+}
+
+/**
+ * THE LEAFY CONIFER (2026-10-26): the lathe's tiers (same heights, radii and droop) built from
+ * needle cards instead of solid skirts — a ring of drooping sprays on each tier, a tuft at the
+ * tip — with the trunk carried up to the tip and, at hero, a branch out to every spray, so the
+ * gaps between tiers show the tree's own wood. Hero and mid only: the far tier keeps the cone.
+ */
+function buildConiferNeedles(spec, stage, lod, seed) {
+    const rnd = makeRng(seed);
+    const N = FOREST_LEAF_CARD.needle;
+    const T = N[lod] ?? N.mid;
+    const { tiers } = spec;
+    const fSpan = (tiers - 1) / tiers;
+    const droop = spec.droop ?? 0.24;
+    const trunkH = spec.trunkH * stage.h;
+    const trunkR = spec.trunkR * stage.w;
+    const apexFrac = ((((tiers - 1) / tiers) * 0.92) + (0.30 - (((tiers - 1) / tiers) * 0.06)));
+    const crownH = spec.crownH * 3.4 * stage.h;
+    const crownW = spec.crownW * stage.w;
+    const totalH = trunkH + (crownH * apexFrac);
+    const centreY = trunkH + (crownH * 0.34);
+
+    const positions = [];
+    const normals = [];
+    const vert = [];
+    const seats = [];
+    const branches = [];
+    const column = spec.cardStyle === 'column';
+    if (column) {
+        // A flame: widest a third of the way up, to a point at the tip.
+        const C = FOREST_LEAF_CARD.column[lod] ?? FOREST_LEAF_CARD.column.mid;
+        const span = totalH - trunkH;
+        const step = (span * 0.92) / (C.levels - 1);
+        for (let level = 0; level < C.levels; level += 1) {
+            const y = trunkH + (span * 0.03) + (level * step);
+            const h = (y - trunkH) / span;
+            const r = crownW * Math.min(1, (2.4 * h) + 0.5) * ((1 - h) ** 0.8);
+            const size = Math.min(Math.max(r * C.size, step * C.overlap), crownW * 1.3);
+            const turn = rnd() * Math.PI * 2;
+            for (let k = 0; k < C.perLevel; k += 1) {
+                const a = turn + ((k / C.perLevel) * Math.PI * 2);
+                const off = C.perLevel > 1 ? r * 0.35 : 0;
+                seats.push({
+                    x: Math.cos(a) * off, y, z: Math.sin(a) * off, size: size * (0.9 + (rnd() * 0.2)),
+                });
+            }
+        }
+    } else {
+        // The sprays: a ring round each tier's drooping skirt, sized so neighbouring tiers meet
+        // (`fill` of the tier spacing at least), seated so a spray's outer edge reaches the rim,
+        // and an `inner` ring higher up the skirt so the cone is not a hollow umbrella from above.
+        const cardTiers = Math.max(tiers, Math.round(tiers * T.tierMul));
+        const thin = (tiers - 1) / Math.max(1, cardTiers - 1);
+        const spacing = (crownH * 0.92 * fSpan) / Math.max(1, cardTiers - 1);
+        let lastTop = trunkH;
+        let lastRadius = crownW;
+        for (let t = 0; t < cardTiers; t += 1) {
+            const f = cardTiers > 1 ? (t * fSpan) / (cardTiers - 1) : 0;
+            const base = trunkH + (f * crownH * 0.92);
+            const top = base + (crownH * (0.30 - (f * 0.06)) * thin);
+            const radius = crownW * (1.0 - (f * 0.62)) * (1 + ((rnd() - 0.5) * 0.10));
+            const sag = droop * crownH * 0.09 * (1 - (f * 0.5));
+            lastTop = top;
+            lastRadius = radius;
+            const skirtAt = (r) => top - ((top - (base - sag)) * Math.min(1, r / radius));
+            // Never wider than the tier (the cone keeps its taper), and never so small that the
+            // tiers come apart.
+            const size = Math.min(Math.max(radius * T.size, spacing * T.fill), radius * 0.9);
+            T.rings.forEach(([count, sizeMul, reach], ring) => {
+                const s2 = size * sizeMul;
+                const seatR = Math.max((radius * reach) - s2, radius * 0.15);
+                const turn = rnd() * Math.PI * 2;
+                for (let k = 0; k < count; k += 1) {
+                    const a = turn + ((k / count) * Math.PI * 2) + ((rnd() - 0.5) * 0.5);
+                    const r = seatR * (0.9 + (rnd() * 0.2));
+                    const seat = {
+                        x: Math.cos(a) * r, y: skirtAt(r), z: Math.sin(a) * r, size: s2 * (0.9 + (rnd() * 0.2)),
+                    };
+                    seats.push(seat);
+                    if (ring === 0 && t % 2 === 0) {
+                        branches.push({ from: [0, top - ((top - base) * 0.25), 0], seat, f });
+                    }
+                }
+            });
+        }
+        seats.push({
+            x: 0, y: lastTop - (lastRadius * 0.15), z: 0, size: Math.max(lastRadius * N.top, spacing * 0.5),
+        });
+    }
+    const hullTriangles = pushLeafCards({ positions, normals, vert }, seats, {
+        x: 0, y: trunkH + (crownH * apexFrac * 0.45), z: 0,
+    }, {
+        flag: column ? FOREST_LEAF_CARD.flag : FOREST_LEAF_CARD.needleFlag, crownFloor: trunkH, crownH, totalH, lod,
+    });
+
+    // ── wood ── the trunk (flared at the root), carried on up to the tip; the branches at hero.
+    const hero = lod === 'hero';
+    pushTube(positions, normals, vert, [0, 0, 0], [0, trunkH, 0], trunkR * 1.45, trunkR, hero ? 6 : 4, totalH);
+    // Up through the crown at hero only: at mid the sprays are too few to hide a pole.
+    const tipY = totalH * 0.96;
+    if (hero) pushTube(positions, normals, vert, [0, trunkH, 0], [0, tipY, 0], trunkR, trunkR * 0.15, 5, totalH);
+    if (hero) {
+        branches.forEach(({ from, seat, f }) => {
+            const r0 = trunkR * 0.32 * (1 - (f * 0.5));
+            pushTube(positions, normals, vert, from, [seat.x * 0.85, seat.y, seat.z * 0.85], r0, r0 * 0.3, 3, totalH);
+        });
+    }
+    return {
+        positions, normals, vert, totalH, crownW, centreY, hullTriangles, cards: true,
+    };
 }
 
 /**
@@ -1161,37 +1343,16 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     // The leaf cards (see FOREST_LEAF_CARD).
     const seats = cards ? leafCardSeats(puffs, florets, lod, rnd) : [];
     if (cards) {
-        // The crown's centre (the puffs' mass centre) and its reach, across and up: what a card's
-        // normal and its depth in the crown are measured from.
+        // The crown's centre: the puffs' mass centre.
         let mx = 0; let my = 0; let mz = 0; let mw = 0;
         puffs.forEach((pf) => {
             const w = pf.r ** 3;
             mx += pf.x * w; my += pf.y * w; mz += pf.z * w; mw += w;
         });
-        const cx = mx / mw; const cy = my / mw; const cz = mz / mw;
-        let reachH = 1e-3; let reachV = 1e-3;
-        seats.forEach((c) => {
-            reachH = Math.max(reachH, Math.hypot(c.x - cx, c.z - cz) + c.size);
-            reachV = Math.max(reachV, Math.abs(c.y - cy) + (c.size * 0.8));
-        });
-        seats.forEach((c) => {
-            const ox = c.x - cx; const oy = c.y - cy; const oz = c.z - cz;
-            let nx = ox / (reachH * reachH);
-            let ny = oy / (reachV * reachV);
-            let nz = oz / (reachH * reachH);
-            const nl = Math.hypot(nx, ny, nz);
-            if (nl < 1e-6) { nx = 0; ny = 1; nz = 0; } else { nx /= nl; ny /= nl; nz /= nl; }
-            const depth = Math.min(1, Math.hypot(ox / reachH, oy / reachV, oz / reachH));
-            const along = Math.min(1, Math.max(0, (c.y - bowlY) / (crownH || 1)));
-            const wHere = lod === 'far' ? 0 : Math.max(0, Math.min(1, c.y / (totalH || 1)));
-            const flag = FOREST_LEAF_CARD.flag
-                + (Math.min(c.size, FOREST_LEAF_CARD.sizeMax * 0.999) / FOREST_LEAF_CARD.sizeMax);
-            for (let k = 0; k < 6; k += 1) {
-                positions.push(c.x, c.y, c.z);
-                normals.push(nx, ny, nz);
-                vert.push(depth, along, flag, wHere);
-            }
-            hullTriangles += 2;
+        hullTriangles += pushLeafCards({ positions, normals, vert }, seats, {
+            x: mx / mw, y: my / mw, z: mz / mw,
+        }, {
+            flag: FOREST_LEAF_CARD.flag, crownFloor: bowlY, crownH, totalH, lod,
         });
     }
 
@@ -1314,8 +1475,11 @@ export function setForestBroadleafStyle(style) {
  */
 export function buildForestTreeGeometry(spec, stage, lod, seed = 1) {
     let built;
-    if (spec.builder === 'conifer') built = buildConifer(spec, stage, lod, seed);
-    else if (broadleafState.style === 'traced') built = buildBroadleaf(spec, stage, lod, seed);
+    if (spec.builder === 'conifer') {
+        built = broadleafState.style === 'leafy' && lod !== 'far'
+            ? buildConiferNeedles(spec, stage, lod, seed)
+            : buildConifer(spec, stage, lod, seed);
+    } else if (broadleafState.style === 'traced') built = buildBroadleaf(spec, stage, lod, seed);
     else built = buildBroadleafPuffs(spec, stage, lod, seed);
 
     const geo = new THREE.BufferGeometry();

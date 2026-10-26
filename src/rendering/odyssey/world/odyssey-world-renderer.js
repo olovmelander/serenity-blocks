@@ -773,11 +773,13 @@ const FOREST_AO_SHIFT = 0.30;
  * THE LEAF CARDS' LOOK (see FOREST_LEAF_CARD and odyssey-forest-cards.js).
  *   crown/dome/upBias  a card's normal: the crown's (from its centre) plus the clump's own dome
  *   edgeGain           the coverage ramp's narrowest width, in the atlas's distance units
+ *   thinning           how far the coverage cut drops a mip level (against mip thinning)
  *   openFloor/pathIn   a card's openness falls to `openFloor` as the sun's path through the crown
  *                      grows across `pathIn` (crown radii): the crown's own shadow side
  *   aoShift            how far a card's closedness moves the band thresholds (the solid forest:
  *                      FOREST_AO_SHIFT)
  *   toneShift          each leaf's tone, as a band-threshold shift
+ *   innerShift         the atlas's inner shade (a clump's middle, a spray's underside), likewise
  *   shadeSky           how far the shade's light leans to the sky (the solid forest: 0.55)
  *   glowPath/glowGain  against the light, leaves with less than `glowPath` of crown between them
  *                      and the sun glow, by `glowGain` of the sun through their own colour
@@ -788,10 +790,12 @@ const LEAF_LOOK = Object.freeze({
     dome: 0.35,
     upBias: 0.18,
     edgeGain: 0.02,
+    thinning: 0.07,
     openFloor: 0.15,
     pathIn: Object.freeze([0.2, 1.3]),
     aoShift: 0.45,
     toneShift: 0.16,
+    innerShift: 0.10,
     shadeSky: 0.72,
     glowPath: 1.2,
     glowGain: 0.55,
@@ -1241,8 +1245,8 @@ export function createOdysseyWorld({
     const leafAtlas = bakeForestLeafAtlas();
     const leafAtlasTex = new THREE.DataTexture(
         leafAtlas.data,
-        leafAtlas.res,
-        leafAtlas.res,
+        leafAtlas.width,
+        leafAtlas.height,
         THREE.RGBAFormat,
         THREE.UnsignedByteType,
     );
@@ -5291,9 +5295,13 @@ export function createOdysseyWorld({
                 // The tree's scale is the integer part of `aTrunk.w` (FOREST_TRUNK_PACK); the card's
                 // size rides on its flag.
                 const scale = floor(fvTrunkSun.w).div(FOREST_TRUNK_PACK.quant);
+                // The flag's whole part is the card's kind (a leaf clump or a needle spray), its
+                // fraction the card's size.
+                const flagWhole = floor(fvVert.z);
                 const card = forestLeafCardVertex({
                     centre: positionLocal,
-                    size: fvVert.z.sub(FOREST_LEAF_CARD.flag).mul(FOREST_LEAF_CARD.sizeMax).mul(scale),
+                    size: fvVert.z.sub(flagWhole).mul(FOREST_LEAF_CARD.sizeMax).mul(scale),
+                    kind: flagWhole.sub(FOREST_LEAF_CARD.flag),
                     eye: cameraPosition,
                     time: uTime,
                     seed: floor(fvPhase.mul(37)),
@@ -5405,7 +5413,11 @@ export function createOdysseyWorld({
         // little into the light, a dark one into the shade.
         let fvSeam = fvLeaf ? fvLeaf.w.mul(fvLeafNear) : float(0);
         if (cards) {
-            fvSeam = select(fvOnCard, float(0.5).sub(fvCard.tone).mul(LEAF_LOOK.toneShift), fvSeam);
+            fvSeam = select(
+                fvOnCard,
+                float(0.5).sub(fvCard.tone).mul(LEAF_LOOK.toneShift).add(fvCard.inner.mul(LEAF_LOOK.innerShift)),
+                fvSeam,
+            );
         }
         const fvWrap = clamp(dot(fvN, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1)
             .mul(mix(float(0.45), float(1), fvSunVis))

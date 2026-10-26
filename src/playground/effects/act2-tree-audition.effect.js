@@ -1,6 +1,6 @@
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, dot, float, max, min, mix, modelWorldMatrixInverse,
+    Fn, abs, attribute, cameraPosition, clamp, dot, float, floor, max, min, mix, modelWorldMatrixInverse,
     normalLocal, normalize, normalWorld, positionLocal, positionWorld, select, smoothstep, step, texture, time as tslTime, uniform,
     varyingProperty, vec3, vec4,
 } from 'three/tsl';
@@ -68,7 +68,13 @@ export function create({
     const style = params?.get?.('broadleaf');
     setForestBroadleafStyle(['traced', 'solid'].includes(style) ? style : 'leafy');
     const atlas = bakeForestLeafAtlas();
-    const atlasTex = new THREE.DataTexture(atlas.data, atlas.res, atlas.res, THREE.RGBAFormat, THREE.UnsignedByteType);
+    const atlasTex = new THREE.DataTexture(
+        atlas.data,
+        atlas.width,
+        atlas.height,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType,
+    );
     atlasTex.minFilter = THREE.LinearMipmapLinearFilter;
     atlasTex.magFilter = THREE.LinearFilter;
     atlasTex.generateMipmaps = true;
@@ -129,9 +135,11 @@ export function create({
         // vForestCrownN: read inside a select branch, the shared var was zero for the bark).
         const vCrownN = varyingProperty('vec3', 'vAuditionCrownN');
         mat.positionNode = Fn(() => {
+            const flagWhole = floor(vcol.z);
             const card = forestLeafCardVertex({
                 centre: positionLocal,
-                size: vcol.z.sub(FOREST_LEAF_CARD.flag).mul(FOREST_LEAF_CARD.sizeMax),
+                size: vcol.z.sub(flagWhole).mul(FOREST_LEAF_CARD.sizeMax),
+                kind: flagWhole.sub(FOREST_LEAF_CARD.flag),
                 eye: modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz,
                 time: tslTime,
                 seed: float(0),
@@ -155,7 +163,7 @@ export function create({
             depth: vcol.x,
             sunDir: uSunDir,
             look: {
-                crown: 1, dome: 0.45, upBias: 0.18, edgeGain: 0.02,
+                crown: 1, dome: 0.45, upBias: 0.18, edgeGain: 0.02, thinning: 0.07,
             },
         });
         const onCard = isCard.greaterThan(0.5);
@@ -169,7 +177,7 @@ export function create({
         // grammar. Darkening by AO is how a stylised canopy turns muddy. A card's openness is the
         // sun's path through the crown, and its leaf's tone nudges the threshold.
         const open = select(onCard, float(1).sub(smoothstep(float(0.25), float(1.6), card.path).mul(0.7)), vcol.x);
-        const toneShift = select(onCard, float(0.5).sub(card.tone).mul(0.16), float(0));
+        const toneShift = select(onCard, float(0.5).sub(card.tone).mul(0.16).add(card.inner.mul(0.10)), float(0));
         const cardShift = select(onCard, float(1).sub(open).mul(0.3), float(0)).add(toneShift);
         const band = smoothstep(
             float(0.40).sub(open.mul(0.10)).add(cardShift),

@@ -1,24 +1,29 @@
 /**
- * THE LEAF ATLAS (the leafy crowns, 2026-10-26) — the texture every broadleaf leaf card draws.
+ * THE LEAF ATLAS (the leafy crowns, 2026-10-26) — the texture every leaf card draws.
  *
- * Four leaf clumps in a 2 x 2 atlas, generated here at load: no imported asset (the world's
- * charter). Each clump is a rosette of pointed leaves, broad ones round the middle and a fringe
- * whose tips reach the rim at uneven lengths, so a card's outline is leafy and the gaps between
- * fringe leaves let the sky through.
+ * Generated here at load: no imported asset (the world's charter). Two rows of four tiles:
  *
- *   r  coverage as a signed distance: 0.5 on a leaf's edge, rising inside, `sdfRange` texels to
- *      either side. A distance (not a 0/1 mask) keeps the outline crisp through every mip, which
- *      a mask would blur into a grey halo.
- *   g  the leaf's own tone (one value a leaf, a little lighter toward its tip): neighbouring
- *      leaves separate by value, like painted dabs.
- *   b  distance from the clump's centre (0 middle, 1 rim): the clump's inner shade and its edge.
+ *   row 0  LEAF CLUMPS (broadleaf): rosettes of pointed leaves scattered over a disc, a solid body
+ *          and a fringe whose tips reach the rim at uneven lengths, so a card's outline is leafy
+ *          and the gaps between fringe leaves let the sky through.
+ *   row 1  NEEDLE SPRAYS (conifers): a branch arched across the tile, ends drooping, hung with
+ *          needles (a few standing up from it), so a ring of them reads as a drooping tier.
+ *
+ * Channels:
+ *   r  coverage as a signed distance: 0.5 on an edge, rising inside, `sdfRange` texels to either
+ *      side. A distance (not a 0/1 mask) keeps the outline crisp through every mip, which a mask
+ *      would blur into a grey halo.
+ *   g  the leaf's or needle's own tone (one value each, a little lighter toward its tip), so
+ *      neighbours separate by value, like painted dabs.
+ *   b  inner shade, 0 open .. 1 deep: a clump's middle, or a spray's hanging underside.
  *   a  255
  *
  * Pure arithmetic, no three.js: the renderer wraps `data` in a texture, and a test reads it.
  */
 export const FOREST_LEAF_ATLAS = Object.freeze({
-    res: 256,
-    tiles: 2,
+    tile: 128,
+    tilesX: 4,
+    tilesY: 2,
     sdfRange: 8,
 });
 
@@ -67,10 +72,55 @@ function clumpLeaves(seed) {
     return leaves;
 }
 
+/** The arch a spray's branch follows, across the tile: high in the middle, the ends drooping. */
+const sprayArch = (x) => 0.34 - (0.46 * x * x);
+
 /**
- * A pointed leaf's signed distance (negative inside), roughly: |y| against the leaf's half width,
- * which swells from the base and comes to a point at the tip; past either end, the distance to
- * that end.
+ * One spray's needles (thin leaves) along its branch, plus the branch itself.
+ */
+function sprayNeedles(seed) {
+    const rnd = mulberry32(seed);
+    const needles = [];
+    const add = (bx, by, dirA, len, half) => {
+        needles.push({
+            bx, by, cx: Math.cos(dirA), sy: Math.sin(dirA), len, half, tone: rnd(),
+        });
+    };
+    // The branch, as a chain of short stout segments along the arch.
+    for (let k = 0; k < 8; k += 1) {
+        const x0 = -0.82 + (k * (1.64 / 8));
+        const x1 = x0 + (1.64 / 8);
+        const y0 = sprayArch(x0);
+        const y1 = sprayArch(x1);
+        add(x0, y0, Math.atan2(y1 - y0, x1 - x0), Math.hypot(x1 - x0, y1 - y0), 0.03);
+    }
+    const count = 230 + Math.floor(rnd() * 30);
+    for (let i = 0; i < count; i += 1) {
+        const s = ((rnd() * 2) - 1) * 0.84;
+        const by = sprayArch(s);
+        // Most hang down and out from the branch; a quarter stand up off it, shorter.
+        const up = rnd() < 0.25;
+        const out = Math.sign(s || 1) * 0.35;
+        const dirA = up
+            ? (Math.PI / 2) + ((rnd() - 0.5) * 1.3) - out
+            : (-Math.PI / 2) + ((rnd() - 0.5) * 1.6) + out;
+        let len = up ? 0.12 + (rnd() * 0.14) : 0.24 + (rnd() * 0.30);
+        // Shorter toward the drooping ends, so the spray tapers.
+        len *= 1 - (0.45 * Math.abs(s));
+        const tx = s + (Math.cos(dirA) * len);
+        const ty = by + (Math.sin(dirA) * len);
+        // Tips clear the rim by the needle's own width.
+        const over = Math.hypot(tx, ty) - 0.93;
+        if (over > 0) len -= over;
+        if (len > 0.05) add(s, by, dirA, len, 0.016 + (rnd() * 0.008));
+    }
+    return needles;
+}
+
+/**
+ * A pointed leaf's (or needle's) signed distance (negative inside), roughly: |y| against the
+ * half width, which swells from the base and comes to a point at the tip; past either end, the
+ * distance to that end.
  */
 function leafDistance(px, py, leaf) {
     const dx = px - leaf.bx;
@@ -87,45 +137,56 @@ function leafDistance(px, py, leaf) {
 /**
  * Bake the atlas.
  * @param {number} [seed]
- * @returns {{data: Uint8Array, res: number, tiles: number}}
+ * @returns {{data: Uint8Array, width: number, height: number, tile: number, tilesX: number,
+ *   tilesY: number}}
  */
 export function bakeForestLeafAtlas(seed = 7177) {
-    const { res, tiles, sdfRange } = FOREST_LEAF_ATLAS;
-    const tile = res / tiles;
-    const data = new Uint8Array(res * res * 4);
-    for (let ty = 0; ty < tiles; ty += 1) {
-        for (let tx = 0; tx < tiles; tx += 1) {
-            const leaves = clumpLeaves(seed + (((ty * tiles) + tx) * 7919));
+    const {
+        tile, tilesX, tilesY, sdfRange,
+    } = FOREST_LEAF_ATLAS;
+    const width = tile * tilesX;
+    const height = tile * tilesY;
+    const data = new Uint8Array(width * height * 4);
+    for (let ty = 0; ty < tilesY; ty += 1) {
+        for (let tx = 0; tx < tilesX; tx += 1) {
+            const tileSeed = seed + (((ty * tilesX) + tx) * 7919);
+            const spray = ty === 1;
+            const shapes = spray ? sprayNeedles(tileSeed) : clumpLeaves(tileSeed);
             for (let j = 0; j < tile; j += 1) {
                 for (let i = 0; i < tile; i += 1) {
                     const px = (((i + 0.5) / tile) * 2) - 1;
                     const py = (((j + 0.5) / tile) * 2) - 1;
                     let best = Infinity;
-                    let bestLeaf = null;
-                    let along = 0;
-                    for (let k = 0; k < leaves.length; k += 1) {
-                        const d = leafDistance(px, py, leaves[k]);
+                    let bestShape = null;
+                    for (let k = 0; k < shapes.length; k += 1) {
+                        const d = leafDistance(px, py, shapes[k]);
                         if (d < best) {
                             best = d;
-                            bestLeaf = leaves[k];
+                            bestShape = shapes[k];
                         }
                     }
-                    if (bestLeaf) {
-                        const x = ((px - bestLeaf.bx) * bestLeaf.cx) + ((py - bestLeaf.by) * bestLeaf.sy);
-                        along = Math.min(1, Math.max(0, x / bestLeaf.len));
+                    let along = 0;
+                    if (bestShape) {
+                        const x = ((px - bestShape.bx) * bestShape.cx) + ((py - bestShape.by) * bestShape.sy);
+                        along = Math.min(1, Math.max(0, x / bestShape.len));
                     }
                     // In texels of this tile: the disc's radius is tile / 2 texels.
                     const dTexels = best * (tile / 2);
                     const r = Math.min(1, Math.max(0, 0.5 - (dTexels / (2 * sdfRange))));
-                    const tone = bestLeaf ? Math.min(1, (bestLeaf.tone * 0.85) + (along * 0.15)) : 0;
-                    const o = ((((ty * tile) + j) * res) + (tx * tile) + i) * 4;
+                    const tone = bestShape ? Math.min(1, (bestShape.tone * 0.85) + (along * 0.15)) : 0;
+                    const inner = spray
+                        ? Math.min(1, Math.max(0, (sprayArch(px) - py + 0.05) / 0.4))
+                        : Math.min(1, Math.max(0, 1 - Math.hypot(px, py)));
+                    const o = ((((ty * tile) + j) * width) + (tx * tile) + i) * 4;
                     data[o] = Math.round(r * 255);
                     data[o + 1] = Math.round(tone * 255);
-                    data[o + 2] = Math.round(Math.min(1, Math.hypot(px, py)) * 255);
+                    data[o + 2] = Math.round(inner * 255);
                     data[o + 3] = 255;
                 }
             }
         }
     }
-    return { data, res, tiles };
+    return {
+        data, width, height, tile, tilesX, tilesY,
+    };
 }

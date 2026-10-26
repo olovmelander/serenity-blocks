@@ -274,6 +274,8 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         crown: Object.freeze([0.060, 0.100, 0.050]),
         trunk: Object.freeze([0.052, 0.036, 0.026]),
         tiers: 5,
+        // Too narrow for needle sprays: the leafy builder stacks clumps up a flame instead.
+        cardStyle: 'column',
         crownW: 0.34,
         crownH: 1.62,
         trunkR: 0.040,
