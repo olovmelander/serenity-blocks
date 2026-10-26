@@ -4,9 +4,13 @@
  *
  * Cells are 1 m wide and 2 m tall, a person standing on the cell's bottom edge, centred. A clip's
  * cells run view-major: base + view * frames + frame, row-major in a sheet `columns` wide.
- * Views are degrees round the person from the face (mirrored for the other side): a clip is
- * drawn at `start + k * step` for k < count. `timing`: distance (a loop per `metres` walked),
- * loop (a loop per `seconds`) or level (frames along a 0..1 value, the breath).
+ * Views are degrees round the person from the face, the camera on their left for positive
+ * angles; an unsigned set is mirrored for the other side, a signed one (a walker's turn, drawn
+ * facing the street) is mirrored at the room's other end. `timing`: distance (a loop per
+ * `metres` walked), loop (a loop per `seconds`), level (frames along a 0..1 value, the breath) or
+ * turn (a walker's turn: `nIn` frames over the stop and the first quarter turn, `tIn` seconds;
+ * `nHold` over the hold, one cycle per pause; `nOut` over the second quarter turn and the start,
+ * `tOut` seconds; braking and setting off take `tBrake` seconds, half a step each).
  *
  * sheet  RGBA = normal x, normal y (view space, 0.5 + 0.5 n), coverage, 0.5 + 0.5 shade
  *        (shade 0 on the ink lines, 0.55 + 0.45 occlusion elsewhere)
@@ -16,125 +20,266 @@
 export const PEOPLE_SHEET = Object.freeze({
     url: './textures/neon-district/people.webp',
     maskUrl: './textures/neon-district/people-masks.webp',
-    columns: 42,
-    rows: 22,
-    cells: 864,
+    columns: 84,
+    rows: 26,
+    cells: 2112,
     cellMetres: Object.freeze([1, 2]),
-    cellPixels: Object.freeze([48, 96]),
+    cellPixels: Object.freeze([40, 80]),
 });
 
 export const PEOPLE_VIEWS = Object.freeze({
-    front: Object.freeze({ start: 0, step: 35, count: 3 }),
-    back: Object.freeze({ start: 110, step: 35, count: 3 }),
-    side: Object.freeze({ start: 20, step: 35, count: 5 }),
+    front: Object.freeze({ angles: Object.freeze([20, 50, 80]), signed: false }),
+    back: Object.freeze({ angles: Object.freeze([100, 130, 160]), signed: false }),
+    side: Object.freeze({ angles: Object.freeze([15, 48, 132, 165]), signed: false }),
+    fan: Object.freeze({ angles: Object.freeze([-75, -42, 42, 75]), signed: true }),
 });
 
 export const PEOPLE_CLIPS = Object.freeze({
-    walkA: Object.freeze({
+    walkFixer: Object.freeze({
         base: 0,
-        frames: 24,
+        frames: 18,
         views: 'side',
         timing: 'distance',
         metres: 1.04,
-        seconds: 1.05,
+        seconds: 1.0833,
     }),
-    walkB: Object.freeze({
-        base: 120,
-        frames: 24,
+    turnFixer: Object.freeze({
+        base: 72,
+        frames: 31,
+        views: 'fan',
+        timing: 'turn',
+        metres: 1.04,
+        seconds: 1.0833,
+        turn: Object.freeze({
+            nIn: 12, nHold: 6, nOut: 13, tIn: 1.3417, tOut: 1.3417, tBrake: 0.5417,
+        }),
+    }),
+    walkRunner: Object.freeze({
+        base: 196,
+        frames: 18,
         views: 'side',
         timing: 'distance',
         metres: 0.96,
+        seconds: 1.0667,
+    }),
+    turnRunner: Object.freeze({
+        base: 268,
+        frames: 31,
+        views: 'fan',
+        timing: 'turn',
+        metres: 0.96,
+        seconds: 1.0667,
+        turn: Object.freeze({
+            nIn: 12, nHold: 6, nOut: 13, tIn: 1.3333, tOut: 1.3333, tBrake: 0.5333,
+        }),
+    }),
+    walkBrute: Object.freeze({
+        base: 392,
+        frames: 18,
+        views: 'side',
+        timing: 'distance',
+        metres: 1.1,
+        seconds: 1.1957,
+    }),
+    turnBrute: Object.freeze({
+        base: 464,
+        frames: 31,
+        views: 'fan',
+        timing: 'turn',
+        metres: 1.1,
+        seconds: 1.1957,
+        turn: Object.freeze({
+            nIn: 12, nHold: 6, nOut: 13, tIn: 1.3978, tOut: 1.3978, tBrake: 0.5978,
+        }),
+    }),
+    walkPunk: Object.freeze({
+        base: 588,
+        frames: 18,
+        views: 'side',
+        timing: 'distance',
+        metres: 0.94,
         seconds: 1,
     }),
-    standA: Object.freeze({
-        base: 240,
-        frames: 12,
-        views: 'front',
-        timing: 'loop',
-        seconds: 7,
+    turnPunk: Object.freeze({
+        base: 660,
+        frames: 31,
+        views: 'fan',
+        timing: 'turn',
+        metres: 0.94,
+        seconds: 1,
+        turn: Object.freeze({
+            nIn: 12, nHold: 6, nOut: 13, tIn: 1.3, tOut: 1.3, tBrake: 0.5,
+        }),
     }),
-    standB: Object.freeze({
-        base: 276,
-        frames: 12,
-        views: 'front',
-        timing: 'loop',
-        seconds: 6.5,
+    walkRider: Object.freeze({
+        base: 784,
+        frames: 18,
+        views: 'side',
+        timing: 'distance',
+        metres: 1.06,
+        seconds: 1.06,
     }),
-    idleA: Object.freeze({
-        base: 312,
-        frames: 16,
-        views: 'front',
-        timing: 'loop',
-        seconds: 7,
+    turnRider: Object.freeze({
+        base: 856,
+        frames: 31,
+        views: 'fan',
+        timing: 'turn',
+        metres: 1.06,
+        seconds: 1.06,
+        turn: Object.freeze({
+            nIn: 12, nHold: 6, nOut: 13, tIn: 1.33, tOut: 1.33, tBrake: 0.53,
+        }),
+    }),
+    walkNomad: Object.freeze({
+        base: 980,
+        frames: 18,
+        views: 'side',
+        timing: 'distance',
+        metres: 1.06,
+        seconds: 1.2326,
+    }),
+    turnNomad: Object.freeze({
+        base: 1052,
+        frames: 31,
+        views: 'fan',
+        timing: 'turn',
+        metres: 1.06,
+        seconds: 1.2326,
+        turn: Object.freeze({
+            nIn: 12, nHold: 6, nOut: 13, tIn: 1.4163, tOut: 1.4163, tBrake: 0.6163,
+        }),
     }),
     idleB: Object.freeze({
-        base: 360,
+        base: 1176,
         frames: 16,
         views: 'front',
         timing: 'loop',
         seconds: 6,
     }),
+    idleC: Object.freeze({
+        base: 1224,
+        frames: 16,
+        views: 'front',
+        timing: 'loop',
+        seconds: 6.5,
+    }),
+    idleA: Object.freeze({
+        base: 1272,
+        frames: 16,
+        views: 'front',
+        timing: 'loop',
+        seconds: 7,
+    }),
+    idleD: Object.freeze({
+        base: 1320,
+        frames: 16,
+        views: 'front',
+        timing: 'loop',
+        seconds: 6.4,
+    }),
     work: Object.freeze({
-        base: 408,
+        base: 1368,
         frames: 24,
         views: 'front',
         timing: 'loop',
         seconds: 5.2,
     }),
     workStep: Object.freeze({
-        base: 480,
+        base: 1440,
         frames: 12,
         views: 'front',
         timing: 'distance',
         metres: 0.62,
         seconds: 0.9,
     }),
+    tend: Object.freeze({
+        base: 1476,
+        frames: 16,
+        views: 'front',
+        timing: 'loop',
+        seconds: 6,
+    }),
+    terminal: Object.freeze({
+        base: 1524,
+        frames: 16,
+        views: 'front',
+        timing: 'loop',
+        seconds: 6,
+    }),
     run: Object.freeze({
-        base: 516,
+        base: 1572,
         frames: 16,
         views: 'front',
         timing: 'loop',
         seconds: 0.7,
     }),
     arcade: Object.freeze({
-        base: 564,
+        base: 1620,
         frames: 16,
         views: 'back',
         timing: 'loop',
         seconds: 1.6,
     }),
+    arcadeB: Object.freeze({
+        base: 1668,
+        frames: 16,
+        views: 'back',
+        timing: 'loop',
+        seconds: 1.45,
+    }),
     lotus: Object.freeze({
-        base: 612,
+        base: 1716,
         frames: 12,
         views: 'front',
         timing: 'level',
     }),
     sitEat: Object.freeze({
-        base: 648,
+        base: 1752,
         frames: 24,
         views: 'back',
         timing: 'loop',
         seconds: 5,
     }),
+    sitEatB: Object.freeze({
+        base: 1824,
+        frames: 16,
+        views: 'back',
+        timing: 'loop',
+        seconds: 5.6,
+    }),
     lean: Object.freeze({
-        base: 720,
+        base: 1872,
         frames: 16,
         views: 'back',
         timing: 'loop',
         seconds: 6,
     }),
+    leanC: Object.freeze({
+        base: 1920,
+        frames: 16,
+        views: 'back',
+        timing: 'loop',
+        seconds: 6.6,
+    }),
     lift: Object.freeze({
-        base: 768,
+        base: 1968,
         frames: 16,
         views: 'front',
         timing: 'loop',
         seconds: 3.2,
     }),
     browse: Object.freeze({
-        base: 816,
+        base: 2016,
         frames: 16,
         views: 'back',
         timing: 'loop',
         seconds: 7,
+    }),
+    browseA: Object.freeze({
+        base: 2064,
+        frames: 16,
+        views: 'back',
+        timing: 'loop',
+        seconds: 7.6,
     }),
 });

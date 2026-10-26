@@ -26,7 +26,7 @@ VOXEL = 0.0085
 # centred; the cell is 1 m wide and 2 m tall at 48 px a metre (cel shading draws its bands per
 # screen pixel from the normals, so it needs less texture than smooth light did).
 CELL_METRES = (1.0, 2.0)
-CELL_PIXELS = (48, 96)
+CELL_PIXELS = (40, 80)
 
 # Ink: lines drawn into the sprites, as a comic inks a character. Distances in metres, at the
 # supersampled render.

@@ -79,20 +79,24 @@ import { TEXT_WIDTH } from './neon-district-layout.js';
 import { ndTextDistance } from './neon-district-text.js';
 import { ndLogoFrames, ndSpellOut } from './neon-district-signs.js';
 import {
+    PEOPLE_TIMING,
     ROLE,
-    STAND_A,
-    STAND_B,
-    WALK_B,
     WORK_STEP,
     cameraBearing,
-    clipCells,
+    clipInfo,
     createPeopleTable,
+    framePick,
     personLook,
     readPerson,
+    relAngle,
     shadePerson,
-    viewAngle,
-    walkerPath,
+    viewPick,
+    walkerState,
 } from './neon-district-people.js';
+import { PEOPLE_CLIPS } from './neon-district-people-atlas.js';
+
+/** The cook's step along the counter: metres a loop (neon-district-people-atlas.js). */
+const STEP_METRES = PEOPLE_CLIPS.workStep.metres;
 
 const finish = (name, geometry, material) => {
     const mesh = new THREE.Mesh(geometry, material);
@@ -596,61 +600,86 @@ function shopInterior(u, {
             const salt = k.add(31.0).add(front.mul(8.0));
             const hk = h1(salt, mix(float(2.0), float(5.0), front)).toVar();
             const h3 = vec3(hk, h1(salt, float(7.0)), h1(salt, float(11.0))).toVar();
-            const isStaff = abs(role.sub(ROLE.staff)).lessThan(0.5);
+            const isCook = abs(role.sub(ROLE.staff)).lessThan(0.5);
             // A second cook is on in about a third of the noodle bars.
-            const odds = select(isStaff.and(slot.greaterThan(0.5)), float(0.35), mix(float(0.92), float(0.88), front));
+            const odds = select(isCook.and(slot.greaterThan(0.5)), float(0.35), mix(float(0.92), float(0.88), front));
             const present = step(0.5, role).mul(step(hk, odds)).mul(crowd);
             If(present.greaterThan(0.5), () => {
-                const roleRow = T.row(role.add(T.at.role)).toVar();
+                const roleRow = T.row(role.mul(2.0).add(T.at.role)).toVar();
+                const roleMore = T.row(role.mul(2.0).add(T.at.role + 1)).toVar();
                 const isWalker = abs(role.sub(ROLE.walker)).lessThan(0.5);
-                const second = h3.y.greaterThan(0.5);
+                const isStaff = roleMore.z.greaterThan(0.5);
+                // Which of the role's characters this is (a walker's are pairs: walk, turn).
+                const pick = min(floor(fract(h3.y.mul(3.17).add(hk.mul(1.31))).mul(roleMore.x)), roleMore.x.sub(1.0));
+                const first = roleRow.x.add(pick.mul(roleMore.y)).toVar();
+                const size = h3.z.mul(0.12).add(0.93);
                 // Each person keeps their own pace: no two loops tick together.
                 const rate = fract(hk.mul(13.7)).mul(0.24).add(0.88);
-                const walkClip = select(isWalker.and(second), float(WALK_B), roleRow.x);
-                const walkMetres = T.row(walkClip.mul(2.0).add(T.at.clip + 1)).y;
-                // Staff work a spot on the counter, then step along it to another and work that.
+                // A walker's path (scaled with them, so the feet stay planted).
+                const walkInfo = clipInfo(T, first);
+                const pause = fract(hk.mul(7.7)).mul(1.8).add(2.6);
+                const W = walkerState(
+                    u.time,
+                    roomW,
+                    h3.x.add(slot.mul(0.37)),
+                    walkInfo.metres.mul(size),
+                    walkInfo.metres.div(walkInfo.seconds).mul(size),
+                    pause,
+                    clipInfo(T, first.add(1.0)),
+                );
+                // The cook works a spot on the counter, then steps along it to another and works
+                // that, cross-fading between the two clips; the bartender and the clerk keep to theirs.
+                const cook = select(isCook, float(1.0), float(0.0));
                 const shift = fract(u.time.mul(hk.mul(0.03).add(0.05)).add(hk.mul(5.0)).add(slot.mul(0.5)));
-                const over = smoothstep(0.1, 0.3, shift).sub(smoothstep(0.6, 0.8, shift));
-                const stepping = step(0.1, shift).mul(step(shift, 0.3)).add(step(0.6, shift).mul(step(shift, 0.8)));
+                const over = smoothstep(0.1, 0.3, shift).sub(smoothstep(0.6, 0.8, shift)).mul(cook);
+                const stepWeight = smoothstep(0.08, 0.13, shift).mul(float(1.0).sub(smoothstep(0.27, 0.32, shift)))
+                    .add(smoothstep(0.58, 0.63, shift).mul(float(1.0).sub(smoothstep(0.77, 0.82, shift))))
+                    .mul(cook)
+                    .toVar();
+                const stepNow = stepWeight.greaterThan(0.5);
                 const spotA = roomW.mul(hk.mul(0.3).add(0.2));
                 const away = select(hk.greaterThan(0.5), float(-1.0), float(1.0));
                 const spotB = spotA.add(roomW.mul(0.35).add(0.4).mul(away));
                 const staffX = mix(spotA, clamp(spotB, 0.5, roomW.sub(0.5)), over);
+                // A step's frame by how far along the counter they are: forward one way, backward
+                // the other, so the feet stay put.
+                const stepped = staffX.sub(spotA).div(size.mul(STEP_METRES)).toVar();
+                // The clip on show and where in it.
+                const clip = select(
+                    isWalker,
+                    select(W.walking, first, first.add(1.0)),
+                    select(stepNow, float(WORK_STEP), first),
+                ).toVar();
+                const info = clipInfo(T, clip);
+                const isDistance = abs(info.kind.sub(PEOPLE_TIMING.distance)).lessThan(0.5);
+                const isLevel = abs(info.kind.sub(PEOPLE_TIMING.level)).lessThan(0.5);
+                const isTurn = abs(info.kind.sub(PEOPLE_TIMING.turn)).lessThan(0.5);
+                const looped = u.time.mul(rate).div(info.seconds).add(hk.mul(5.0));
+                const wrapPos = fract(select(isDistance, select(isWalker, W.walkPhase, stepped), looped)).mul(info.frames);
+                const levelPos = clamp(u.breath, 0.0, 1.0).mul(info.frames.sub(1.0));
+                const pos = select(isLevel, levelPos, select(isTurn, W.turnPos, wrapPos));
+                const frames = framePick(info.frames, pos, isLevel.or(isTurn).not());
                 const cabinet = floor(h3.z.mul(0.4).add(slot.mul(0.45)).add(0.1).mul(roomW)
                     .div(0.8)).add(0.5).mul(0.8);
                 const tread = min(slot.add(0.4).mul(2.1), roomW.sub(0.5));
                 const aisle = floor(h3.z.mul(max(roomW.div(2.4).sub(0.5), 1.0))).mul(2.4).add(0.55);
                 const spread = h3.z.mul(0.56).add(0.22).mul(roomW);
-                const speed = select(second, float(0.9), float(0.96));
-                const pause = fract(hk.mul(7.7)).mul(2.4).add(1.2);
-                const path = walkerPath(u.time, roomW, h3.x.add(slot.mul(0.37)), walkMetres, speed, pause);
-                // Walkers stand in their own clothes at the ends; staff step along the counter.
-                const restClip = select(second, float(STAND_B), float(STAND_A));
-                const isStaff2 = abs(role.sub(ROLE.staff)).lessThan(0.5);
-                const walkerClip = select(path.walking.greaterThan(0.5), walkClip, restClip);
-                const isStepping = isStaff2.and(stepping.greaterThan(0.5));
-                const otherClip = select(isStepping, float(WORK_STEP), roleRow.x);
-                const clip = select(isWalker, walkerClip, otherClip).toVar();
-                const clipA = T.row(clip.mul(2.0).add(T.at.clip)).toVar();
-                const clipB = T.row(clip.mul(2.0).add(T.at.clip + 1)).toVar();
                 const spot = roleRow.w;
                 // In SPOT order (neon-district-people.js).
-                const spots = [spread, staffX, cabinet, tread, roomW.mul(0.5), aisle, path.x];
+                const spots = [spread, staffX, cabinet, tread, roomW.mul(0.5), aisle, W.x];
                 const across = spots.slice(0, -1).reduceRight(
                     (rest, v, n) => select(spot.lessThan(n + 0.5), v, rest),
                     spots[spots.length - 1],
                 );
                 const x = clamp(across, 0.35, roomW.sub(0.35));
                 const at = roleRow.y.add(select(isWalker, slot.mul(0.07), float(0.0)));
-                // Which way they face: the street, the back wall, or along their walk.
-                const facing = select(isWalker, path.facing, roleRow.z.mul(Math.PI).add(h3.x.sub(0.5).mul(0.5)));
-                const looped = u.time.mul(rate).div(clipB.x).add(hk.mul(5.0));
-                // A step's frame by how far along the counter they are: forward one way, backward
-                // the other, so the feet stay put.
-                const stepped = staffX.sub(spotA).div(clipB.y);
-                const walkingNow = isWalker.and(path.walking.greaterThan(0.5));
-                const moving = select(walkingNow, path.phase, select(isStepping, stepped, looped));
-                const phase = select(clipB.w.greaterThan(0.5), u.breath, moving);
+                // Which way they face: the street, the back wall, along their walk; a walker's turn
+                // is drawn facing the street.
+                const facing = select(
+                    isWalker,
+                    select(W.walking, W.dir.mul(Math.PI / 2), float(0.0)),
+                    roleRow.z.mul(Math.PI).add(h3.x.sub(0.5).mul(0.5)),
+                );
                 // The card: through their place, square to the camera's line to them.
                 const c = vec2(roomX0.add(x), depth.mul(at)).toVar();
                 const toFig = normalize(c.sub(camRoom.xz)).toVar();
@@ -660,9 +689,9 @@ function shopInterior(u, {
                 const hz = rd.z.mul(tp);
                 const right = vec2(toFig.y, toFig.x.negate());
                 const aside = dot(vec2(hx, hz).sub(c), right);
-                const view = viewAngle(cameraBearing(toFig), facing);
-                const size = h3.z.mul(0.12).add(0.93);
-                const cu = select(view.mirror, aside.negate(), aside).div(size).add(0.5).toVar();
+                const rel = relAngle(cameraBearing(toFig), facing).toVar();
+                const views = viewPick(T, info.set, rel, isWalker.and(W.endMirror));
+                const cu = select(views.mirror, aside.negate(), aside).div(size).add(0.5).toVar();
                 const cv = hy.sub(floorY).div(size.mul(2.0)).toVar();
                 const inCell = step(0.0, cu).mul(step(cu, 1.0)).mul(step(0.0, cv)).mul(step(cv, 1.0))
                     .mul(step(tp, t))
@@ -671,9 +700,27 @@ function shopInterior(u, {
                 const toFeet = vec2(hit.x.sub(c.x), hit.z.sub(c.y));
                 room.mulAssign(float(1.0).sub(isFloor.mul(exp(dot(toFeet, toFeet).mul(-14.0))).mul(0.5)));
                 If(inCell.greaterThan(0.5), () => {
-                    const cells = clipCells(clipA, clipB, phase, view.angle);
-                    const r = readPerson(people, cells, cu, cv, foot.mul(tp.div(camDist).add(1.0)).div(size));
-                    const nx = select(view.mirror, r.n.x.negate(), r.n.x);
+                    // The cook's other clip, faded over at its nearest frame.
+                    const other = select(stepNow, first, float(WORK_STEP));
+                    const otherInfo = clipInfo(T, other);
+                    const otherPhase = select(stepNow, u.time.mul(rate).div(otherInfo.seconds).add(hk.mul(5.0)), stepped);
+                    const otherFrame = mod(floor(fract(otherPhase).mul(otherInfo.frames).add(0.5)), otherInfo.frames);
+                    const Y = {
+                        cell: otherInfo.base.add(views.near.mul(otherInfo.frames)).add(otherFrame),
+                        w: min(stepWeight, float(1.0).sub(stepWeight)),
+                    };
+                    const X = {
+                        base: info.base,
+                        frames: info.frames,
+                        f0: frames.f0,
+                        f1: frames.f1,
+                        wf: frames.wf,
+                        v0: views.v0,
+                        v1: views.v1,
+                        wv: views.wv,
+                    };
+                    const r = readPerson(people, X, Y, cu, cv, foot.mul(tp.div(camDist).add(1.0)).div(size));
+                    const nx = select(views.mirror, r.n.x.negate(), r.n.x);
                     const n = normalize(vec3(right.x, 0.0, right.y).mul(nx).add(vec3(0.0, r.n.y, 0.0))
                         .add(vec3(toFig.x.negate(), 0.0, toFig.y.negate()).mul(r.n.z)));
                     const look = personLook(T, h3, isStaff);
