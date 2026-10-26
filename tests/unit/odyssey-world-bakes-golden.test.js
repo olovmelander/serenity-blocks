@@ -129,8 +129,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(sha(a.data)).toBe('3effb252e0bae73a4d16d0f536424714');
         // Moved 2026-10-18 with the outer isles (odyssey-world-height.js ODYSSEY_OUTER_ISLES): the
         // relief noise is unchanged (hash above), the total height gains the isles.
-        // ...and moved 2026-10-25 with the summit sculpt (odysseySummitSculpt joins the drawn height).
-        expect(sha(a.total)).toBe('fbe84ad1c8f8d99a78e9be2ad9a8d6cf');
+        // ...and moved 2026-10-25 with the summit sculpt (odysseySummitSculpt joins the drawn height),
+        // and 2026-10-26 with the tarn in the meadow (odysseyTarnCarve, the same sculpt delta).
+        expect(sha(a.total)).toBe('2d03ac3ea7e05271fadcbc9aee3588b0');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -153,7 +154,8 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(baked.atlas.res).toBe(GROUND_ATLAS_RES);
         expect(baked.detail.res).toBe(256);
         expect(baked.macro.res).toBe(512);
-        expect(baked.summit.res).toBe(512);
+        // The sculpt plate: the summit and the tarn (ODYSSEY_SCULPT_PLATE).
+        expect(baked.summit.res).toBe(640);
         expect(Object.keys(baked.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'total']);
         const buffers = worldTextureDataBuffers(baked);
         expect(buffers.length).toBe(11);
