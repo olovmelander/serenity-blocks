@@ -525,9 +525,6 @@ export function odysseySprayEnvelope(age) {
  */
 const DEPART_ZENITH_POW = 0.55;
 const DEPART_HORIZON_POW = 1.8;
-/** How far (in the sine of the depression) the world's surfaces give way ahead of the Earth's
- * front, so the front always arrives over the world's air (THE SEAM, meltIntoSky). */
-const EARTH_MELT_LEAD = 0.05;
 /** The atmospheric limb (Rayleigh blue) and the thin airglow line just above it. */
 const DEPART_LIMB = Object.freeze([0.22, 0.48, 0.95]);
 const DEPART_AIRGLOW = Object.freeze([0.20, 0.78, 0.46]);
@@ -1489,6 +1486,19 @@ export function createOdysseyWorld({
     };
     /** The air in a view direction (unit vector): the sky's gradient plus its warm side. */
     const skyAirAt = (dir) => skyColourFor(dir.y).add(warmAirFor(dir));
+    /**
+     * THE HORIZON IS THE LIMB (2026-10-26). Climbing, the Earth's horizon sinks under the level
+     * (its limb's depression, ORBIT_EARTH_SEAM.limbSin), and the sky's bright horizon has to sink
+     * with it: measured from the level, the dome's pale band stood a few degrees over the Earth's
+     * limb with a strip of darker sky under it, two horizons. While the Earth is there the sky
+     * measures its elevation from the limb (`limbUp`: the limb is 0, the zenith still 1), and the
+     * air seen against the surface below takes the sky's colour at the same angle on the far side
+     * of the limb (`limbMirror`: pale at the limb, deep blue looking straight down). With no Earth
+     * the limb is the level and both are the old elevation.
+     */
+    const limbUp = (y) => y.add(ORBIT_EARTH_SEAM.limbSin).div(ORBIT_EARTH_SEAM.limbSin.add(1));
+    const limbMirror = (y) => max(abs(y).sub(ORBIT_EARTH_SEAM.limbSin), 0)
+        .div(float(1).sub(ORBIT_EARTH_SEAM.limbSin));
     // THE CONSTANT CALL SITES ARE PINNED to the values the old ramp gave them, so this change
     // cannot reach into Ch2's or Ch3's shipped water look while nobody is watching it. Each fed
     // a constant, so each had exactly one answer: 0.5 and 0.9 both clamped to pure zenith, 0.4
@@ -1561,10 +1571,19 @@ export function createOdysseyWorld({
             abs(ePoint.sub(eEye)).div(max(abs(hEye.sub(hPoint)), float(0.01))),
             min(ePoint, eEye),
         );
-        const airDepth = d.mul(uAerialK).mul(mix(meanAir, float(1), smoothstep(float(4500), float(8500), d)));
+        // (Past ~4.5 km the full density returns so the far sea meets the dome's plate; while the
+        // Earth is there it meets the Earth instead, hazed by this same air, so the true mean holds.)
+        const farDense = smoothstep(float(4500), float(8500), d).mul(float(1).sub(ORBIT_EARTH_SEAM.presence));
+        const airDepth = d.mul(uAerialK).mul(mix(meanAir, float(1), farDense));
+        // Looking down from the climb (while the Earth is there) the air scatters the sky's light at
+        // the same angle above the level, as the Earth below is hazed (earthAirFor): the sea under
+        // the eye stays blue and the pale haze lies at the horizon.
+        // (Mirrored about the Earth's limb, THE HORIZON IS THE LIMB.)
+        const mirroredAir = vec3(toDir.x, limbMirror(toDir.y), toDir.z);
+        const lookDown = ORBIT_EARTH_SEAM.presence.mul(smoothstep(float(0), float(0.05), dirY.negate()));
         const airBase = mix(
             lit,
-            skyAirAt(toDir),
+            mix(skyAirAt(toDir), skyAirAt(mirroredAir), lookDown),
             clamp(float(1).sub(exp(airDepth.negate())).mul(float(rate)), 0, ceil),
         );
         // VALLEY MIST (item 7) — height haze for LAND seen from the climb. Aerial perspective
@@ -2544,6 +2563,10 @@ export function createOdysseyWorld({
         return mix(graded, uWorldFadeColour, fadeAmt);
     };
     const toOutput = (c) => toOutputFaded(c, uWorldFade);
+    // The sea and the ground under a climbing eye stay lit: the departure darkens the sky over it,
+    // not the ground below. While the Earth is there they take no fade toward the void (it is on its
+    // way from before the fade has begun, so nothing brightens back).
+    const toOutputSurface = (c) => toOutputFaded(c, uWorldFade.mul(float(1).sub(ORBIT_EARTH_SEAM.presence)));
     // BELOW THE HORIZON THE AIR FADES AT THE SEA'S PACE (2026-10-25). The departure takes the sky
     // overhead first and the horizon last (uFadeZenith, uFadeHorizon), and the sea with the world
     // (uWorldFade, ahead of the horizon). Below the horizon the dome had the horizon's pace, so
@@ -2555,6 +2578,28 @@ export function createOdysseyWorld({
     // The world's air for a view direction: the colour its far sea and its sky meet in (the dome's
     // own, faded at the departure's pace there). What the world melts into, and what the Earth wears.
     const airFor = (dir) => toOutputFaded(skyAirAt(dir), fadeBelowHorizon(dir.y));
+    // THE ONE AIR (2026-10-26): what the Earth below is hazed by while the world is there. Its
+    // colour is the world's own air for the direction (not faded toward the void: the air under a
+    // climbing eye stays lit), and its column over the eye is the world's exponential atmosphere
+    // (AERIAL_SCALE_HEIGHT) at the colour script's density: a ray down at sine `mu` crosses
+    // column / mu, exactly as the world's own sea is hazed (applyAerial's mean air), so where the
+    // far sea gives way to the Earth the haze carries straight on. Thick toward the horizon from low
+    // down, thinning as the eye climbs. The Earth's own air takes over as the eye rises past the
+    // weather (`weight`).
+    const earthAirFor = (dir) => {
+        const climbed = max(cameraPosition.y.sub(ODYSSEY_SEA_LEVEL), 0);
+        // The light the air scatters toward an eye looking DOWN is the sky's at the same angle
+        // above the level (the sky seen in the mirror of the haze): pale near the horizon, deep
+        // blue looking steeply down, so the sea below stays blue and the haze lies at the horizon.
+        // (Mirrored about the Earth's limb, THE HORIZON IS THE LIMB.)
+        const mirrored = vec3(dir.x, limbMirror(dir.y), dir.z);
+        return {
+            colour: toOutputFaded(skyAirAt(mirrored), float(0)),
+            column: uAerialK.mul(AERIAL_SCALE_HEIGHT).mul(float(1).sub(exp(climbed.div(AERIAL_SCALE_HEIGHT).negate()))),
+            ceil: 0.82,
+            weight: float(1).sub(smoothstep(float(6000), float(20000), climbed)),
+        };
+    };
     // THE WORLD ENDS IN THE SKY (2026-10-24). The sea is drawn out to the camera's far plane (a
     // straight cut) or, high in the climb, to the clipmap's square, and past it the dome shows the
     // sky below the horizon. Through the departure the two met at a visible edge: the far sea
@@ -2566,30 +2611,34 @@ export function createOdysseyWorld({
     // it): Act II's horizon is untouched.
     const meltIntoSky = (out, wp) => Fn(() => {
         const res = out.toVar();
-        If(uWorldFade.greaterThan(0.001), () => {
+        If(uWorldFade.greaterThan(0.001).or(ORBIT_EARTH_SEAM.presence.greaterThan(0.001)), () => {
             const to = wp.sub(cameraPosition);
             const d = length(to);
             const dir = to.div(max(d, float(0.001)));
             const flat = normalize(dir.xz.add(vec2(1e-4, 0)));
             // The drawn edge in this direction (see uEyeH), taken into the climb's frame.
             const edge = min(uViewFar.div(max(dot(flat, uViewFwdXZ), 0.3)), uSeaReach).mul(uClimb);
-            const w = smoothstep(float(0.55), float(0.97), d.div(edge))
-                .mul(smoothstep(float(0), float(0.2), uWorldFade))
-                .mul(float(1).sub(uSubmerged));
-            res.assign(mix(res, airFor(dir), w));
-            // THE SEAM (2026-10-24, Olov: the Earth "just pops up and feel totally disconnected to
-            // the world with mountains ocean and clouds"). The round Earth comes in from the horizon
-            // down (composition/odyssey-orbit-earth.js); behind its front, and a little ahead of it,
-            // the world's surface shows what the Earth shows in that direction (its air ahead of the
-            // front, the planet behind it), so the sea becomes the planet in place, and when the
-            // world's surfaces are switched off under it nothing on screen changes.
             If(ORBIT_EARTH_SEAM.presence.greaterThan(0.001), () => {
-                const down = dir.y.negate();
-                const lead = ORBIT_EARTH_SEAM.frontSin.add(EARTH_MELT_LEAD);
-                const behind = float(1).sub(smoothstep(lead.sub(0.04), lead.add(0.04), down))
-                    .mul(smoothstep(float(0), float(0.03), down))
+                // THE SEAM, ONE SURFACE (2026-10-26, Olov: the Earth's surface "transitions in";
+                // "it should feel natural and not like we reveal the earth surface"). The Earth
+                // stands at the eye's own height (orbitEarthAt), so the world's sea and the planet's
+                // ocean are the same place seen the same way: the far sea simply IS the Earth, in
+                // the world's own air, and gives way to it over a stretch of distance that holds
+                // still on screen as the eye climbs (both scale with the height). No front sweeps
+                // and nothing is revealed: the coasts and the weather out there were always there,
+                // in the haze, and come clear as the air under the eye thins. As the world's clouds
+                // go into the Earth the rest of the surface follows (its near sea and the island,
+                // under the frame by then), so when the world is switched off nothing changes.
+                const far = smoothstep(float(0.25), float(0.8), d.div(edge));
+                const w = max(far, ORBIT_EARTH_SEAM.cloudsAway).mul(float(1).sub(uSubmerged));
+                res.assign(mix(res, orbitEarthOver(dir, airFor(dir), res, earthAirFor(dir)), w));
+            }).Else(() => {
+                // Before the Earth (the departure's first stretch): the drawn edge melts into the
+                // dome's own colour, so the cut and the square's corners vanish into the haze.
+                const w = smoothstep(float(0.55), float(0.97), d.div(edge))
+                    .mul(smoothstep(float(0), float(0.2), uWorldFade))
                     .mul(float(1).sub(uSubmerged));
-                res.assign(mix(res, orbitEarthOver(dir, airFor(dir), res), behind));
+                res.assign(mix(res, airFor(dir), w));
             });
         });
         return res;
@@ -2597,7 +2646,7 @@ export function createOdysseyWorld({
     // Land ceiling + rate, valley mist on, no haze floor, the per-fragment medium (breach band).
     const GROUND_AERIAL_ARGS = [AERIAL_CEIL_LAND, AERIAL_RATE_LAND, true, null, true];
     groundMat.colorNode = meltIntoSky(
-        toOutput(applyAerial(groundColour, positionWorld, ...GROUND_AERIAL_ARGS)),
+        toOutputSurface(applyAerial(groundColour, positionWorld, ...GROUND_AERIAL_ARGS)),
         positionWorld,
     );
 
@@ -2611,7 +2660,9 @@ export function createOdysseyWorld({
         const res = out.toVar();
         If(ORBIT_EARTH_SEAM.cloudsAway.greaterThan(0.001), () => {
             const dir = normalize(positionWorld.sub(cameraPosition));
-            res.assign(mix(res, orbitEarthOver(dir, airFor(dir)), ORBIT_EARTH_SEAM.cloudsAway));
+            // (in the same air as the surfaces and the backdrop show it: THE ONE AIR)
+            const earth = orbitEarthOver(dir, airFor(dir), airFor(dir), earthAirFor(dir));
+            res.assign(mix(res, earth, ORBIT_EARTH_SEAM.cloudsAway));
         });
         return res;
     })();
@@ -2857,6 +2908,10 @@ export function createOdysseyWorld({
     // ── sky ──
     const skyMat = new THREE.MeshBasicNodeMaterial();
     const skyDir = normalize(positionWorld.sub(cameraPosition));
+    // The dome's gradient and its departure pace measured from the Earth's limb while the Earth is
+    // there (THE HORIZON IS THE LIMB); the sun, the cirrus and the limb line keep the level.
+    const skyUpY = limbUp(skyDir.y);
+    const skyGradDir = vec3(skyDir.x, skyUpY, skyDir.z);
     // THE CIRRUS (Act II pass, step 4). Between the cumulus the act's sky was one clean gradient.
     // A high wisp layer gives it a ceiling: the view ray met with a plane overhead (so the wisps
     // run to the horizon in perspective), value noise stretched along the summit's wind and
@@ -2891,7 +2946,7 @@ export function createOdysseyWorld({
         uSunColour.mul(vec3(1.06, 0.95, 0.82)),
         smoothstep(float(0.2), float(0.95), dot(skyDir, uSunDir)).mul(0.3),
     );
-    const skyAir = mix(skyAirAt(skyDir), cirrusCol, cirrusAmt)
+    const skyAir = mix(skyAirAt(skyGradDir), cirrusCol, cirrusAmt)
         .add(vec3(1, 0.86, 0.66).mul(
             smoothstep(float(0.90), float(1), dot(skyDir, uSunDir)).pow(3).mul(0.3),
         ))
@@ -2920,7 +2975,7 @@ export function createOdysseyWorld({
     // ZENITH FIRST (item 10): overhead runs ahead of the act fade, the horizon behind it, and
     // a thin limb + airglow line glow at the horizon while the sky is half gone. With
     // uWorldFade at 0 every term here is exactly the old sky.
-    const skyFade = mix(fadeBelowHorizon(skyDir.y), uFadeZenith, smoothstep(float(-0.05), float(0.55), skyDir.y));
+    const skyFade = mix(fadeBelowHorizon(skyUpY), uFadeZenith, smoothstep(float(-0.05), float(0.55), skyUpY));
     // UNIFORM-GATED (seamless pass): the water dome only under water, the limb + airglow (two
     // exps and two pows per sky pixel) only while the departure lights them. Both were built for
     // every sky fragment of the act and multiplied away by a zero uniform — not dead code here.
@@ -3477,7 +3532,7 @@ export function createOdysseyWorld({
         });
         return col.add(vec3(0.95, 0.99, 1.0).mul(meniscus));
     })();
-    waterMat.colorNode = meltIntoSky(toOutput(applyAerial(waterShaded, positionWorld)), positionWorld);
+    waterMat.colorNode = meltIntoSky(toOutputSurface(applyAerial(waterShaded, positionWorld)), positionWorld);
     // The film thins toward the LIVE waterline (the swash), and foam is opaque where the
     // film under it is not — otherwise the lapping front would be drawn at ~20 % alpha.
     waterMat.opacityNode = clamp(max(
@@ -5878,6 +5933,8 @@ export function createOdysseyWorld({
         },
         /** The world's air for a view direction (a TSL node), which the Earth wears as it arrives. */
         hazeFor: airFor,
+        /** The world's air for the Earth below (THE ONE AIR): { colour, column, ceil, weight } nodes. */
+        earthAirFor,
         setAuroraGlow(glow) {
             uAuroraGlow.value = Math.min(Math.max(Number.isFinite(glow) ? glow : 0, 0), 1);
         },

@@ -6,16 +6,18 @@
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
-import { vec3 } from 'three/tsl';
+import { float, vec3 } from 'three/tsl';
 
 import {
     createOrbitEarth,
     ORBIT_EARTH,
     ORBIT_EARTH_COVERS,
     ORBIT_EARTH_SCHEDULE,
+    ORBIT_EARTH_SEAM,
     orbitEarthAirglowElevation,
     orbitEarthAt,
     orbitEarthLandHeight,
+    orbitEarthLimbSin,
 } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
 import {
     getLatticeNoiseTexture,
@@ -23,7 +25,7 @@ import {
     latticeNoise3Cpu,
 } from '../../src/rendering/odyssey/chapter-environments/shared/odyssey-lattice-noise.js';
 import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/path-utils.js';
-import { worldClimbScale } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
+import { worldClimbScale, worldDepartureFade } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 import { ODYSSEY_SEA_LEVEL } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { build, unassignedReads } from './helpers/tsl-node-build.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
@@ -46,13 +48,16 @@ describe('orbitEarthAt — the Earth, its sun, its aurora and the planetrise by 
         expect(none.planetRise).toBe(1);
     });
 
-    it('arrives over the climb, stays through the boundary and sinks out, with no step', () => {
-        expect(orbitEarthAt(b - span * (S.inFrom + 0.01), cp).presence).toBe(0);
-        expect(orbitEarthAt(b - span * S.inTo, cp).presence).toBeCloseTo(1, 6);
+    it('is there before the departure greys anything, stays through the boundary and sinks out, with no step', () => {
+        expect(orbitEarthAt(b - span * (S.arriveFrom + 0.01), cp).presence).toBe(0);
+        expect(orbitEarthAt(b - span * S.arriveTo, cp).presence).toBeCloseTo(1, 6);
         expect(orbitEarthAt(b, cp).presence).toBe(1);
         expect(orbitEarthAt(b + span * (S.outTo + 0.01), cp).presence).toBe(0);
+        // Whole before the world's departure has faded anything toward the void, so the sea and the
+        // ground (which take no fade while it is there) never brighten back.
+        expect(worldDepartureFade(b - span * S.arriveTo, cp[4], cp[5])).toBeLessThan(0.05);
         // No faster than its eased ramps (a smoothstep's steepest is 1.5 over its width).
-        const most = (1.5 * 0.0005) / (span * Math.min(S.inFrom - S.inTo, S.outTo - S.outFrom));
+        const most = (1.5 * 0.0005) / (span * Math.min(S.arriveFrom - S.arriveTo, S.outTo - S.outFrom));
         for (let i = 1; i < sweep.length; i += 1) {
             expect(Math.abs(sweep[i][1].presence - sweep[i - 1][1].presence)).toBeLessThan(most * 1.01);
         }
@@ -109,24 +114,51 @@ describe('orbitEarthAt — the Earth, its sun, its aurora and the planetrise by 
         expect(S.leanOut).toBeLessThan(S.outFrom);
     });
 
-    it('arrives over the world from the horizon down, wearing the world\'s air until it has', () => {
-        // THE SEAM (Olov: "the earth just pops up and feel totally disconnected to the world"):
-        // its front starts at its own limb and reaches the nadir as it arrives; it wears the
-        // world's air (the veil) until the front has crossed the frame's lower half, then clears
-        // before the boundary.
-        const start = b - span * S.inFrom;
-        const first = orbitEarthAt(start + 0.0005, cp);
-        expect(first.frontSin).toBeCloseTo(Math.sin(first.dip), 2);
-        expect(first.veil).toBe(1);
-        let prev = -1;
-        sweep.filter(([p]) => p >= start && p <= b).forEach(([p, s]) => {
-            expect(s.frontSin, `p ${p.toFixed(4)}`).toBeGreaterThanOrEqual(prev - 1e-12);
-            ({ frontSin: prev } = s);
-            if (s.frontSin < Math.sin(35 / DEG)) expect(s.veil, `p ${p.toFixed(4)}`).toBe(1);
-            if (s.presence >= ORBIT_EARTH_COVERS) expect(s.frontSin).toBeGreaterThan(0.999);
+    it('puts its limb at its own dip under the level (THE HORIZON IS THE LIMB)', () => {
+        expect(orbitEarthLimbSin(0)).toBe(0);
+        sweep.forEach(([p, e]) => {
+            expect(orbitEarthLimbSin(e.altitude), `p ${p.toFixed(4)}`).toBeCloseTo(Math.sin(e.dip), 9);
         });
-        expect(orbitEarthAt(b, cp).veil).toBe(0);
-        expect(orbitEarthAt(b + span * 0.5, cp).frontSin).toBe(1);
+    });
+
+    it('is never revealed: no front, no veil, wherever it is seen', () => {
+        // THE SEAM, ONE SURFACE (2026-10-26, Olov: it "transitions in"; "it should feel natural and
+        // not like we reveal the earth surface"): no front sweeps from the horizon and no veil
+        // lifts; it is there, in the world's own air, which thins as the eye climbs.
+        sweep.forEach(([p, s]) => {
+            expect(s.frontSin, `p ${p.toFixed(4)}`).toBeGreaterThan(1);
+            expect(s.veil).toBe(0);
+        });
+    });
+
+    it('stands at the eye\'s own height while the world shows it, and joins its schedule without a step', () => {
+        // THE ONE ALTITUDE: the world's sea and the Earth's ocean are the same place seen the same
+        // way, so the far sea can simply be the Earth. Past the boundary the schedule's height
+        // (which runs on past the world) takes over, the two within 15 % at the boundary.
+        const rig = createOdysseyCameraRig();
+        const at = (p) => {
+            const eye = rig.poseAt(p).position;
+            const height = (eye.y - ODYSSEY_SEA_LEVEL) / worldClimbScale(p, rig.cp[4], rig.cp[5]);
+            return { height, earth: orbitEarthAt(p, rig.cp, height) };
+        };
+        const own = (height) => (height * ORBIT_EARTH.metresPerUnit) / ORBIT_EARTH.earthRadiusM;
+        const r = rig.cp;
+        const sp = r[6] - r[5];
+        for (let p = r[5] - sp * S.arriveFrom; p < r[5] - sp * S.late[0]; p += 0.001) {
+            const { height, earth } = at(p);
+            expect(earth.altitude, `p ${p.toFixed(4)}`).toBeCloseTo(own(height), 12);
+        }
+        const nearB = at(r[5]);
+        expect(orbitEarthAt(r[5], r).altitude / own(nearB.height)).toBeGreaterThan(0.85);
+        expect(orbitEarthAt(r[5], r).altitude / own(nearB.height)).toBeLessThan(1.15);
+        let prev = 0;
+        for (let p = r[5] - sp * S.arriveFrom; p < r[5] + sp * S.outTo; p += 0.0005) {
+            const { earth } = at(p);
+            expect(earth.altitude, `p ${p.toFixed(4)}`).toBeGreaterThanOrEqual(prev * 0.999);
+            // No step: never more than a few per cent of the height in 0.0005 of progress.
+            if (prev > 0) expect(earth.altitude / prev, `p ${p.toFixed(4)}`).toBeLessThan(1.06);
+            prev = earth.altitude;
+        }
     });
 
     it('takes the world\'s clouds into it once they are small, and covers the world only then', () => {
@@ -165,11 +197,11 @@ describe('the Earth\'s weather passes under the eye at the world\'s own pace', (
         const { cp } = rig;
         const S = ORBIT_EARTH_SCHEDULE;
         const span = cp[6] - cp[5];
-        const p = cp[5] - (span * (S.veil[0] + S.veil[1])) / 2;
+        const p = cp[5] - (span * (S.clouds[0] + S.clouds[1])) / 2;
         const eye = rig.poseAt(p).position;
         const height = (eye.y - ODYSSEY_SEA_LEVEL) / worldClimbScale(p, cp[4], cp[5]);
         const world = 1 / height;
-        const earth = ORBIT_EARTH.trackPerUnit / ORBIT_EARTH.cells / orbitEarthAt(p, cp).altitude;
+        const earth = ORBIT_EARTH.trackPerUnit / ORBIT_EARTH.cells / orbitEarthAt(p, cp, height).altitude;
         expect(earth / world).toBeGreaterThan(0.5);
         expect(earth / world).toBeLessThan(2);
     });
@@ -215,9 +247,10 @@ describe('the planet: oceans and continents under its weather (2026-10-25)', () 
         const rig = createOdysseyCameraRig();
         const { cp } = rig;
         const span = cp[6] - cp[5];
-        const p = cp[5] - (span * (ORBIT_EARTH_SCHEDULE.veil[0] + ORBIT_EARTH_SCHEDULE.veil[1])) / 2;
+        const p = cp[5] - (span * (ORBIT_EARTH_SCHEDULE.clouds[0] + ORBIT_EARTH_SCHEDULE.clouds[1])) / 2;
         const cam = rig.poseAt(p);
-        const { altitude } = orbitEarthAt(p, cp);
+        const height = (cam.position.y - ODYSSEY_SEA_LEVEL) / worldClimbScale(p, cp[4], cp[5]);
+        const { altitude } = orbitEarthAt(p, cp, height);
         let land = 0;
         let sea = 0;
         for (let j = 0; j < 18; j += 1) {
@@ -283,6 +316,16 @@ describe('the Earth draws in front of space and behind the journey', () => {
         expect(earth.mesh.visible).toBe(false);
     });
 
+    it('hands the world its limb\'s depression, eased in with its presence (THE HORIZON IS THE LIMB)', () => {
+        // The world's sky and air measure their elevation from it: with no Earth, from the level.
+        earth.update(state(0.5));
+        expect(ORBIT_EARTH_SEAM.limbSin.value).toBeCloseTo(orbitEarthLimbSin(0.02) * 0.5, 9);
+        earth.update(state(1));
+        expect(ORBIT_EARTH_SEAM.limbSin.value).toBeCloseTo(orbitEarthLimbSin(0.02), 9);
+        earth.update(state(0));
+        expect(ORBIT_EARTH_SEAM.limbSin.value).toBe(0);
+    });
+
     it('once it covers the world, comes in front of the far heroes and marks its disc in depth', () => {
         earth.update(state(1, true));
         earth.mesh.updateMatrixWorld(true);
@@ -308,10 +351,18 @@ describe('the Earth builds on both backends', () => {
     const backends = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
     // ...and wearing an air handed in, as the world hands it its own (THE SEAM).
     const veiled = createOrbitEarth({ haze: (dir) => vec3(0.42, 0.5, 0.6).add(dir.mul(0.01)) });
+    // ...and hazed by the world's own atmosphere below the eye (THE ONE AIR).
+    const hazed = createOrbitEarth({
+        haze: (dir) => vec3(0.42, 0.5, 0.6).add(dir.mul(0.01)),
+        worldAir: (dir) => ({
+            colour: vec3(0.5, 0.6, 0.7).add(dir.mul(0.02)), column: float(0.1), ceil: 0.82, weight: float(0.7),
+        }),
+    });
     [
         ['the planet', earth.mesh, 15000],
         ['its depth twin', earth.occluder, 800],
         ['the planet in the world\'s air', veiled.mesh, 15000],
+        ['the planet under the world\'s atmosphere', hazed.mesh, 15000],
     ].forEach(([name, mesh, size]) => {
         backends.forEach(([label, Builder]) => {
             it(`${name} (${label})`, () => {

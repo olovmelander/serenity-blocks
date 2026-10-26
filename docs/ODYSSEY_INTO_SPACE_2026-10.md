@@ -615,3 +615,104 @@ What keeps it down:
 - open sea beneath the eye;
 - land across the sea on the game's camera as the haze lifts;
 - a world of oceans and continents from high orbit.
+
+## §8. One surface, one air, one horizon: the sea becomes the Earth (2026-10-26)
+
+Olov, with five phone screenshots of the climb: *"now the earth surface like transitions in, i
+want it to feel smooth and seamless … It should feel natural and not like we reveal the earth
+surface."* This replaces the front and the veil of *The seam, reworked* (§2).
+
+### What the player saw
+
+Portrait, p 0.672–0.718 (top row of the image below):
+
+- **A grey slab.** The departure faded the world's sea toward the void colour (46 % by p 0.69,
+  70 % by 0.713), so under a blue sky the sea went flat grey-blue.
+- **Two horizons.** A pale band at the level and a second one under it, where the drawn sea ended.
+- **A reveal.** The Earth then swept in from the horizon down, and at p 0.713–0.718 it came clear
+  all at once under the camera's lean.
+
+The cause under all three was that **the world and the Earth stood at different heights.** The
+Earth arrived at the schedule's 5.4° dip, about 28 km up, while the world's eye was about 6 km up
+(at the world's own scale of 4.9 m per unit). The two could not show the same sea, so one had to
+be swapped for the other.
+
+### What changed
+
+- **One altitude.** The Earth now stands at the eye's own height over the sea, as the world sees
+  it: the camera's height over the climb's scale, in metres, over the Earth's radius
+  (`orbitEarthAt(p, cp, eyeHeight)`, `metresPerUnit`). The schedule's own height takes over only
+  across p 0.725–0.745 (`late`), where the two are within ~10 % of each other, and runs on past
+  the world. From the boundary on (p 0.7545) the Earth's height is exactly main's schedule.
+  The eye is 3.4 km up when the Earth arrives, 9.6 km at p 0.70, 36 km at 0.725 and 143 km at the
+  boundary.
+- **It is simply there.** It arrives at p 0.632–0.647 (`arriveFrom`, `arriveTo`), before the
+  departure has greyed anything, beneath and beyond the world. Nothing sweeps in and nothing lifts
+  (`frontSin` and `veil` are inert).
+- **The far sea is the Earth.** The world's sea and ground give way to the Earth over 25–80 % of the
+  distance to their drawn edge (`meltIntoSky`). That stretch holds still on screen as the eye
+  climbs, because both scale with the height. The coasts and the weather out there were always
+  there in the haze, and they come clear as the air under the eye thins. The cumulus still go
+  into it only once they are small (p 0.710–0.722).
+- **The sea stays lit.** While the Earth is there the sea and the ground take no departure fade
+  (`toOutputSurface`). The fade darkens the sky over the eye, not the ground below it.
+- **One air** (`earthAirFor`). The Earth is hazed by the world's own atmosphere: the same
+  exponential column (`AERIAL_SCALE_HEIGHT`, at the colour script's density) that the world's sea
+  is hazed by, crossed at `1 / mu`. Its colour is the sky's, at the same angle mirrored about the
+  limb: pale at the limb, deep blue looking straight down. The world's own sea under the eye takes
+  the same mirrored colour, so the two hazes are one haze where the sea gives way. The world's
+  clouds, as they go into the Earth, wear it too. The Earth's own air takes over above ~6–20 km.
+- **One horizon** (*THE HORIZON IS THE LIMB*). Climbing, the Earth's limb sinks under the level.
+  The sky dome's pale horizon band stayed at the level, a few degrees above the limb, with a strip
+  of darker sky between them. While the Earth is there, the dome measures its gradient and its
+  departure pace from the limb (`limbUp`). The Earth hands its limb's depression to the world as
+  `ORBIT_EARTH_SEAM.limbSin`, eased in with its presence, so with no Earth the dome is exactly the
+  old one.
+- **The rim waits for the stratosphere.** The Earth's glowing rim comes up only from ~14–41 km
+  (`rimFrom`). From a few kilometres the air at the horizon is haze, not a glowing edge.
+- **The backdrop sits behind everything the world draws** (radius 8800, inside the far plane of
+  9000). It shows only past the world's drawn edge.
+
+### Measured
+
+The frame-to-frame difference (mean luma change, 0–255) over p 0.630–0.735, every 0.0025,
+portrait:
+
+- **No step from the Earth anywhere.** The largest changes before 0.71 are a locked orb passing
+  the camera and near clouds moving (14–22). From 0.7125 to 0.735 the sunset darkens the day side
+  (21–28 per step).
+- **Same sweep with and without the limb horizon.** Every pair is within ±2.5 of the other.
+
+Also checked: landscape 1280 × 720 and the Low tier, through deep space to p 0.79 (the aurora,
+the planetrise, the galaxy). Deep space is unchanged from main, since from the boundary on the
+Earth's height is the schedule's.
+
+![Top: main at p 0.672, 0.684, 0.692, 0.698, 0.703, 0.708, 0.713, 0.718 (portrait). Bottom: now, the same stations: the sea stays blue, the curve and the weather come up out of the haze, no grey slab and no reveal](images/odyssey-into-space-2026-10-26/sky-to-earth-before-after.jpg)
+
+![Now, landscape: p 0.650, 0.680, 0.695, 0.705, 0.7125, 0.720, 0.735, 0.760, 0.790](images/odyssey-into-space-2026-10-26/sky-to-space-landscape.jpg)
+
+### How the band was found
+
+The hide-one-layer captures at p 0.7125 settled it. Hiding the world's cloud deck left the band
+in place; hiding the sky dome took it away; hiding the Earth's backdrop left it floating over
+nothing. So the band was the dome's own horizon.
+
+### Cost
+
+The world's sea and ground evaluate the Earth's look in a uniform branch while the Earth is
+there. That now starts at p 0.632, where it used to start at 0.690. It can't be branched per
+fragment, because the look takes screen derivatives (`fwidth`), which WGSL allows only in uniform
+control flow. Not measured in the game. By §7's playground figure (0.37–0.57 ms for a full 1080p
+frame of daylight Earth), the estimate is a few tenths of a millisecond over that stretch. The
+rest of Act II pays nothing.
+
+### Tests
+
+`odyssey-orbit-earth`:
+
+- the Earth is whole before the departure greys anything;
+- it is never revealed: no front, no veil;
+- it stands at the eye's own height on the game's camera, and joins its schedule with no step
+  through the whole time it is on screen;
+- its limb sits at its own dip, and it hands the world that depression (0 with no Earth);
+- it builds on WGSL and GLSL under the world's atmosphere.
