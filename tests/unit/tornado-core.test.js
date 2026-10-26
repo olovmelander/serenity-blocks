@@ -4,12 +4,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    HOUR_REST, HOUR_SECONDS, PALETTES, PALETTE_KEYS, WORLD, approach, boltPath, funnelRadius, furyFor, hexToLinear,
-    mulberry32, paletteAt,
+    HOUR_REST, HOUR_SECONDS, PALETTES, PALETTE_KEYS, POWER_LINE, POWER_LINE_ARM_YAW, WORLD, approach, boltPath,
+    funnelRadius, furyFor, hexToLinear, mulberry32, paletteAt, powerLineAttach, powerLinePole, powerLineReach,
+    powerLineWire,
 } from '../../src/themes/tornado/tornado-core.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/tornado/tornado-quality.js';
 import { TORNADO_PARAM_DEFAULTS, TORNADO_PARAM_RANGES } from '../../src/themes/tornado/params.ts';
-import { LIVE_REFERENCE } from '../../src/themes/tornado/tornado-world.js';
+import { LIVE_REFERENCE, REST_RIG, fovForAspect } from '../../src/themes/tornado/tornado-world.js';
 import { TORNADO_TETROMINOS } from '../../src/themes/tornado/tornado-tetrominos.js';
 
 describe('tornado hours', () => {
@@ -146,7 +147,7 @@ describe('tornado tiers and live controls', () => {
         let last = null;
         QUALITY_NAMES.forEach((name) => {
             const t = QUALITY[name];
-            ['wheat', 'debris', 'motes', 'poles', 'shells'].forEach((key) => {
+            ['wheat', 'debris', 'motes', 'shells'].forEach((key) => {
                 expect(t[key], `${name}.${key}`).toBeGreaterThan(0);
                 if (last) expect(t[key]).toBeGreaterThanOrEqual(last[key]);
             });
@@ -170,5 +171,89 @@ describe('tornado tiers and live controls', () => {
         const seven = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'].map((k) => colors[k].toLowerCase());
         expect(new Set(seven).size).toBe(7);
         seven.forEach((hex) => expect(hexToLinear(hex, [0, 0, 0])).toBe(true));
+    });
+});
+
+describe('tornado power line', () => {
+    /** A world point through the resting lens (no drift): depth and screen position (−1 … 1). */
+    const project = (p, aspect) => {
+        const { pitch } = REST_RIG;
+        const tan = Math.tan((fovForAspect(aspect) * Math.PI) / 360);
+        const rx = p[0];
+        const ry = p[1] - WORLD.eye;
+        const rz = p[2];
+        const depth = ry * Math.sin(pitch) - rz * Math.cos(pitch);
+        const up = ry * Math.cos(pitch) + rz * Math.sin(pitch);
+        return { depth, x: rx / depth / (tan * aspect), y: up / depth / tan };
+    };
+    const inFrame = (s) => s.depth > REST_RIG.near && Math.abs(s.x) <= 1 && Math.abs(s.y) <= 1;
+
+    it('brings the wires in from a pole behind the lens', () => {
+        expect(powerLinePole(-1).z).toBeGreaterThan(0);
+        expect(powerLinePole(0)).toMatchObject({ x: POWER_LINE.nearest[0], z: POWER_LINE.nearest[1] });
+        // Every span meets the next one on the same arm: no wire stops short of a pole.
+        const end = [0, 0, 0];
+        const start = [0, 0, 0];
+        for (let i = -1; i + 2 < POWER_LINE.count; i += 1) {
+            [-1, 0, 1].forEach((w) => {
+                powerLineWire(i, w, 1, end);
+                powerLineWire(i + 1, w, 0, start);
+                end.forEach((v, k) => expect(v).toBeCloseTo(start[k], 9));
+            });
+        }
+    });
+
+    it('runs the near wires out of the frame at its right edge on every screen shape', () => {
+        const at = [0, 0, 0];
+        [4 / 3, 16 / 9, 2, 21 / 9, 32 / 9].forEach((aspect) => {
+            [-1, 0, 1].forEach((w) => {
+                // From the nearest pole in the picture back toward the lens.
+                const onPole = project(powerLineWire(-1, w, 1, at), aspect);
+                if (aspect >= 16 / 9) expect(inFrame(onPole), `aspect ${aspect.toFixed(2)}`).toBe(true);
+                if (!inFrame(onPole)) return;
+                let out = null;
+                for (let t = 1; t >= 0 && !out; t -= 0.002) {
+                    const s = project(powerLineWire(-1, w, t, at), aspect);
+                    if (!inFrame(s)) out = s;
+                }
+                expect(out, `aspect ${aspect.toFixed(2)} wire ${w}`).not.toBeNull();
+                expect(out.depth).toBeGreaterThan(REST_RIG.near);
+                expect(out.x).toBeGreaterThan(1);
+                expect(Math.abs(out.y)).toBeLessThanOrEqual(1);
+            });
+        });
+    });
+
+    it('runs on to the horizon: the last pole is a few pixels tall, out in the haze', () => {
+        const reach = powerLineReach();
+        expect(reach).toBeGreaterThan(2000);
+        const pxPerRadian = 1080 / (2 * Math.tan((REST_RIG.fov * Math.PI) / 360));
+        expect((POWER_LINE.height / reach) * pxPerRadian).toBeLessThan(5);
+    });
+
+    it('squares each cross-arm across the line and rests the wires on it', () => {
+        // The arm's long axis as tornado-field.js turns it (rotateY lays x on (cos, 0, −sin)).
+        const arm = [Math.cos(POWER_LINE_ARM_YAW), -Math.sin(POWER_LINE_ARM_YAW)];
+        const run = Math.hypot(POWER_LINE.step[0], POWER_LINE.step[1]);
+        expect(arm[0] * POWER_LINE.step[0] + arm[1] * POWER_LINE.step[1]).toBeCloseTo(0, 9);
+        expect(POWER_LINE.wireSpread).toBeLessThan(POWER_LINE.armLength / 2);
+        for (let i = 0; i < POWER_LINE.count; i += 1) {
+            const pole = powerLinePole(i);
+            expect(Math.abs(pole.tilt)).toBeLessThan(0.15);
+            const left = powerLineAttach(i, -1);
+            const right = powerLineAttach(i, 1);
+            // Square across the line (the lean rolls the arm a little: under a degree off from above).
+            const across = [right[0] - left[0], right[2] - left[2]];
+            const cosine = (across[0] * POWER_LINE.step[0] + across[1] * POWER_LINE.step[1])
+                / (run * Math.hypot(across[0], across[1]));
+            expect(Math.abs(cosine)).toBeLessThan(0.015);
+            // The middle wire sits on top of the arm, over the leaning post.
+            const mid = powerLineAttach(i, 0);
+            const armTop = POWER_LINE.height - POWER_LINE.armDrop + POWER_LINE.armThick / 2;
+            const fromFoot = Math.hypot(mid[0] - pole.x, mid[1]);
+            expect(fromFoot - armTop).toBeGreaterThan(0);
+            expect(fromFoot - armTop).toBeLessThan(0.05);
+            expect(mid[2]).toBeCloseTo(pole.z, 9);
+        }
     });
 });

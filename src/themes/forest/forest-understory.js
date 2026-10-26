@@ -23,8 +23,24 @@ const UP = new THREE.Vector3(0, 1, 0);
 /** Where the fallen spruce lies and the stump it broke from. */
 export const FOREST_LOG = Object.freeze({ x: FOREST_KNOLL.x - 0.3, z: FOREST_KNOLL.z - 0.4, yaw: -0.45 });
 export const FOREST_STUMP = Object.freeze({ x: FOREST_KNOLL.x + 3.3, z: FOREST_KNOLL.z + 1.5, yaw: 1.1 });
-// The firefly figures stand in front of the knoll, clear of the score panel and of the elder pine.
+// The firefly figures' usual place: in front of the knoll, clear of the score panel and of the elder pine.
 export const FOREST_FIGURE_STAND = Object.freeze({ x: 10.2, z: -5.4 });
+/**
+ * Every place an animal may stand, the usual one first; each summons picks one by chance. On a
+ * landscape screen each is in view beside the card and clear of the score panel, on open ground
+ * clear of every trunk, stone and the fallen spruce, with no tree in front of it.
+ */
+export const FOREST_FIGURE_STANDS = Object.freeze([
+    FOREST_FIGURE_STAND,
+    // Up on the knoll, behind the fallen spruce.
+    Object.freeze({ x: 14.5, z: -15 }),
+    // Out in the ride under the moon: near, in the hollow where the mist gathers, and far down it.
+    Object.freeze({ x: -7, z: -5 }),
+    Object.freeze({ x: -9.5, z: -10.5 }),
+    Object.freeze({ x: -13, z: -15.5 }),
+]);
+/** How far a scattered stone keeps from the middle of an animal's place. */
+const STAND_CLEARING = 3.2;
 // Stones placed by hand: x, z, width in metres. The rest are scattered.
 const FEATURE_STONES = [
     [-4.4, 8.9, 1.9], [-2.9, 9.8, 0.7], [5.6, 9.4, 1.1], [13.6, 0.2, 1.4], [-9.4, -8.6, 1.6],
@@ -155,6 +171,8 @@ export class ForestUnderstory {
         this.stats = {
             ferns: 0, fronds: 0, grass: 0, fungi: 0, flowers: 0, stones: 0,
         };
+        /** Every stone laid: where it lies and how wide it is, in metres. */
+        this.stones = [];
     }
 
     own(resource) {
@@ -280,6 +298,7 @@ export class ForestUnderstory {
         const place = (x, z, width) => {
             const variant = Math.floor(rng() * names.length) % names.length;
             const size = width / (native[names[variant]] || 1.7);
+            this.stones.push({ x, z, width });
             buckets[variant].push({
                 x, z, y: forestGroundHeight(x, z) - size * 0.14, size, yaw: rng() * TAU, squash: 0.75 + rng() * 0.4,
             });
@@ -289,7 +308,8 @@ export class ForestUnderstory {
         for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 20; attempt += 1) {
             const x = (rng() * 2 - 1) * 40;
             const z = 10 - rng() * 62;
-            if (this.clear(x, z, 1.2) && Math.hypot(x - FOREST_EYE.x, z - FOREST_EYE.z) > 5) {
+            const inPlace = FOREST_FIGURE_STANDS.some((stand) => Math.hypot(stand.x - x, stand.z - z) < STAND_CLEARING);
+            if (this.clear(x, z, 1.2) && Math.hypot(x - FOREST_EYE.x, z - FOREST_EYE.z) > 5 && !inPlace) {
                 place(x, z, 0.35 + rng() ** 2 * 1.3);
                 made += 1;
             }

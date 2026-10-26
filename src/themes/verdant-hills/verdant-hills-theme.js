@@ -15,6 +15,7 @@ import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { disposeVerdantHillsAssets, loadVerdantHillsAssets } from './verdant-hills-assets.js';
+import { verdantHillsBakes } from './verdant-hills-bakes.js';
 import { readVerdantHillsBoardRect } from './verdant-hills-stage.js';
 import { VERDANT_HILLS_TETROMINOS } from './verdant-hills-tetrominos.js';
 import { VerdantHillsWorld } from './verdant-hills-world.js';
@@ -186,6 +187,9 @@ export default class VerdantHillsTheme extends BaseTheme {
         this.pointer.sx = 0;
         this.pointer.sy = 0;
 
+        // The cumulus's 3D noise bakes in a worker while the renderer and the pack come up; the
+        // light rig then finds it in the bake cache (a revisit finds it there already).
+        const baking = verdantHillsBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return;
         if (!current()) {
@@ -232,6 +236,11 @@ export default class VerdantHillsTheme extends BaseTheme {
         if (loadedSettingsQuality !== seenSettingsQuality) {
             seenSettingsQuality = loadedSettingsQuality;
             this.applyQualityPreset(loadedSettingsQuality);
+        }
+        await baking; // (never rejects)
+        if (!current()) {
+            if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+            return;
         }
         try {
             // The world builds in steps with a breath between them (0.4 s of main thread in one
