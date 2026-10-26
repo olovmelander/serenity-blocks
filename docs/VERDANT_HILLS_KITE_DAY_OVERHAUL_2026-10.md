@@ -157,6 +157,155 @@ Checked in the playground at Extreme, High, Medium, Low and Minimal, Low on WebG
 on High (the bake ran in its worker); no WebGPU errors. The playground's `?sky=` knob now
 takes `sigma,veil,shade,soft,carve,fine,reach,lobe`.
 
+### The living flock (2026-10-26)
+
+Olov: "the sheeps in the back in verdant hills theme, can we have them animated so that they
+move around in a visually stunning and perfect way?" They were two still poses (head up, head
+down) instanced where the layout put them, and three of the five near groups could never be
+seen: their sight line grazed the home hill's own brow and the meadow's tall grass a few metres
+in front of the lens (`verdantHillsInSight` strides ~5 m and stepped over it). Now the flock is
+alive: ewes and their lambs, each a skinned animal on the quadruped solver the foxes and the
+polar bear share, moved by a flock mind of its own, grazing where the frame can see them.
+
+![before and after, the game's view at 2560 × 1440](verdant-hills-flock/before-after.webp)
+
+![what the flock does](verdant-hills-flock/behaviour.webp)
+
+**What they do.** A grazing group's ground drifts slowly over the pasture; each ewe crops her
+way after her own place in it, head down, the head working from side to side with a tug at each
+bite, stepping on a stride or two at a time, and lifts her head now and then to chew and look
+about. Now and then (and at a new level, a group or two) one ewe sets off for fresh grass and the
+rest string out behind her in single file along the line she walked, each joining the line where
+she meets it. In the warm of the honey afternoon a third of the groups lie down (front knees
+first, then the hindquarters, legs tucked, chewing the cud) and get up again hind end first, one
+foreleg out, often with a stretch; before the showers they bunch and stand with their backs to
+the wind; after the rain they shake the wet out of their fleeces. Lambs keep to their mothers,
+suckle (she stands for it and turns her head round to smell them, the lamb's tail going), lie
+down at her side, and play: they spring straight up off all four feet (pronking), twist in the
+air and kick, butt each other, dash off and back, and the lambs of a group race away over the
+hill together and gallop home. A group that ends up out of sight walks back into it.
+
+**What the game does to them.** Each front of wind (two lines or more) reaches each group as it
+crosses the valley, so heads come up group by group as it passes and the lambs frisk in it; the
+four-line gale bolts whole groups down the wind (they bunch and gallop, pull up, wheel round and
+stand staring back the way the fright came, a forefoot stamped, and graze again one by one); the
+kite festival sets every group's lambs racing; a pool of sunlight sets the lambs it crosses
+gambolling; the end of a run lays them all down and the next run (the mode manager's
+`modeStarted`, new `VerdantHillsReactions.onRunStart()`) gets them up; hot play livens the lambs
+and makes the ewes warier. Under Reduce motion they never bolt or race: the gale only lifts their
+heads.
+
+![the game's events reaching the flock](verdant-hills-flock/events.webp)
+
+**Where they graze.** `VERDANT_HILLS_FLOCK_HOMES` names nine grounds, nearest-seen first so every
+tier keeps the near ones: the windmill's crest west of the mill and the slope in front of it
+(right of the board, 200–260 m, a ewe 9–10 px long at 1080p), then the far pastures across the
+tarn on the left and out beyond the mill on the right. `verdantHillsSheepSeen()` is the sight test
+a sheep must pass: in a 16:9 frame, beside the board card, and a line of sight clear of the land
+and, out to 150 m, of the meadow's blades, which are drawn larger the farther they stand (0.85 m ×
+(1 + 0.02 × distance)): east of the mill they hide the hill. `createVerdantHillsPasture()` hands
+the flock the ground (height, where a sheep may stand, where the lens sees one), each asked of a
+small cache. Each ewe is followed in the list by her lambs (singles, and twins for the first ewe
+of a group with three lambs or more), so a tier's prefix never keeps a lamb without its mother.
+
+![in a real game](verdant-hills-flock/in-game.webp)
+
+**The animals** (`scripts/blender/verdant_hills_sheep.py`, `scripts/verdant-hills/model-sheep.mjs`).
+A black-faced Suffolk-cross ewe (0.72 m at the withers, 1.4 m long; 3 728 triangles, 93 KiB) and
+her six-week lamb (long-legged, big-headed, its tail still long; 2 380 triangles, 61 KiB), each a
+signed distance field built round the rig's own joints in headless Blender (the Grainfields
+horse's meshing): a deep boxy fleece lumpy at two scales so its outline reads as wool, the bare
+black Roman-nosed head with long drooping ears, slim black legs with knobbly knees and cloven
+hooves. Per vertex: (wool, soil, dark, sky seen). The Node script skins them to the twenty bones
+with bands derived from the skeleton's joints and writes `assets/verdant-ewe.glb` and
+`assets/verdant-lamb.glb` (deterministic; `node scripts/verdant-hills/model-sheep.mjs
+[--animal=ewe|lamb|both] [--preview=<dir>] [--dry]`, about 40 s). They are not part of the
+Blender pack's manifest; the still props `sheep_a`/`sheep_b` stay in the pack as the fallback
+when the two models cannot be read.
+
+![the ewe and the lamb](verdant-hills-flock/model.webp)
+
+**The bodies** (`verdant-hills-sheep-rig.js`, three-free). Both skeletons are the shared solver's
+(`../shared/fox-rig.js`): hooves placed and legs solved to reach them, a back that bends, a head
+held level, every pose a blendable spec. The sheep's own:
+
+- **Gaits on one coordinate** (`SHEEP_GAITS`: 0 walk, 1 trot, 2 gallop). The walk is a lateral
+  four-beat (left hind, left fore 0.22 on, then the right pair); its forelegs slide 0.28 later into
+  the trot's diagonals as it quickens; the gallop lands the hind pair together and the fore pair
+  near the half, the back gathering and stretching, all four feet off the grass in the float. The
+  phase is distance over stride, so a planted hoof does not slide (a test: under a centimetre a
+  stance at the walk). The cannon leans with the leg through each stance, and the body crouches
+  just as far as its forelegs need to reach both ends of the stride.
+- **The foreleg swings from the shoulder blade.** The first skeleton pivoted the foreleg at the
+  point of the shoulder, and a leg standing straight cannot reach a stride's ends: planted hooves
+  fell 4–9 cm short and dragged. The `arm` bone now starts at the withers (`armL` at 0.66 m), as a
+  sheep's scapula does.
+- **Acts** (`SHEEP_ACTS`): Graze (muzzle in the sward, about 5 cm off the ground; a lamb's short
+  neck stretches further), Chew, Stare, Stamp, Lie and Rise (one shared lying pose with two dials,
+  front and hindquarters, so lying down goes front first and rising hind first through the same
+  poses, every hoof on the grass and the belly resting on it), Stretch, Shake, Scratch, Nurse,
+  Suckle, Pronk and Twist (leaps: `sheepLeapHeight()` lifts the whole lamb on a parabola) and Butt.
+  A change of act starts from a snapshot of the pose it was caught in (`fromSpec`), so nothing
+  jumps. On a slope every hoof stands at its own height and the trunk follows the slope part way,
+  leaning down a cross-slope (a sign was wrong at first, and the downhill legs fell 5 cm short).
+
+![lying down and getting up](verdant-hills-flock/lie-rise.webp)
+
+**The mind** (`verdant-hills-flock.js`, `VerdantHillsFlock`, three-free). One seeded generator
+stepped in a fixed order (substeps of at most 1/20 s), so the playground's seeks replay the same
+flock. Each sheep has a mode (graze, look, walk, lie, rise, stretch, shake, scratch, nurse,
+suckle, play, stare, flee, follow, heel, race) that sets a goal, a pace and where it looks; the
+body turns at the rate its legs allow (quick on the spot, wide at a gallop), speeds up and pulls up
+as an animal does, keeps its room from the others (a staring sheep bears a neighbour rather than
+turn its back), and turns away from ground it may not stand on. The act it shows follows from the
+mode and the pace it means to go (not the pace it has reached, so no act flickers at a
+threshold). Groups keep 30 m apart. A group picking new ground fans its search out from where it
+would go until the lens can see the place (a frightened flock ran over the crest out of sight
+before). CPU: about 0.35 ms a frame for sixty sheep on the dev laptop, mind and pose solve
+together; the worst frame 3 ms when a group chooses new ground.
+
+**Drawn** (`verdant-hills-sheep.js`). One instanced draw per kind. Each frame the flock's
+postures go into a float texture, a row a sheep, two texels a bone (its rotation in the world, and
+its joint's place with the sheep's size), and the vertex stage skins every instance from its row
+with `textureLoad` (texelFetch on the WebGL2 fallback): four bones a vertex, blended. The fleece is
+lit by the theme's light rig: wrapped sun, the sky by the bake's sky-seen (on wool only a quarter of
+the bake's shade is kept: it was baked standing, and the wool tucked behind a shoulder came out on
+the flank as a dark patch when the leg swung), the outline glowing through the fleece against the
+sun, cream to clean white from one ewe to the next (a lamb's the cleanest, one black ewe on the
+crest), soiled under the belly; faces and legs black. The sheep take only the clouds' shadows: the
+static shadow map covers the home hill, and a look-up in it at 250 m printed false shade on the
+fleece. Two more texels a row lay each sheep's shadow on the grass: a soft ellipse cast away from
+the sun as far as the sheep is tall, darker under the body, drawn a hair toward the eye along each
+line of sight so it never fights the ground for depth.
+
+Playground (`effect=verdant-hills`): `flock=move|flee|gust|race|rest|rise|play|shake|stare` at
+`flockAt=<s>` (default four seconds before `t`) for `flockGroup=<i>` (default all);
+`sheepCam=<group>,<metres>,<azimuth>,<height>,<fov>` follows a group's middle with its own lens;
+`sheepLens=<group>,<fov>` looks at it from the game's eye through a long lens. In the page,
+`__PLAYGROUND__.flock()` and `forceFlock(kind, group)`. Without a GPU:
+
+    node scripts/fox/preview-fox.mjs --fox=ewe --act=Graze --frames=4
+    node scripts/fox/preview-fox.mjs --fox=lamb --gait=4 --frames=8
+    node scripts/verdant-hills/model-sheep.mjs --dry --preview=<dir>
+
+Checked in the playground on WebGPU at High and Minimal and on the forced WebGL2 backend (the
+game's frame, long lenses from the game's eye, close lenses on every behaviour, the double, four
+lines and the festival through the real reaction chain), and in a real Single Player game at
+High, 1920 × 1080 (both near flocks right of the board, the west one just under the score card;
+a move strung out in file); no WebGPU warning or error in any console. Tests:
+`verdant-hills-sheep-rig.test.js` (skeletons, no planted hoof sliding at any gait, reach at every
+gait, every act, every slope to 22°), `verdant-hills-flock.test.js` (determinism, grazing, the
+file, a front reaching the nearer group first, the bolt and the stare, Reduce motion, the
+festival race, rest and rise, the weathers, the real layout on the real pasture),
+`verdant-hills-sheep.test.js` (the models on their skeletons, the bone table skinning a vertex to
+where the rig puts it, every material built for WGSL and GLSL without a word), and the layout,
+asset and homestead tests rewritten for the new flock.
+
+Not done: the flock's shadows are ellipses, not the animals' shapes (at 10 px nobody can tell);
+the sheep make no sound (no SFX generation on this machine); lambs do not climb onto their lying
+mothers; there is no sheepdog (a gather on a big event would be a lovely next step); portrait
+frames do not show the near flocks (the windmill is out of frame there too).
+
 ## How it is built
 
 ### Trees and built things authored in Blender
@@ -200,10 +349,12 @@ cloud generator.**
 | `verdant-hills-sky.js` | The cumulus march into its own half-resolution target, the dome, the cirrus. |
 | `verdant-hills-terrain.js` | The analytic height function (the home hill and its two spurs, the valley, the far ridges, terraces under what stands on the land), the ground mesh and its shader, the path, the patchwork's generator. |
 | `verdant-hills-composition.js` | Camera framings, the visibility test, and `VerdantHillsSight`: which ground the lens can see. |
-| `verdant-hills-layout.js` | Where every tree, wall section, prop and sheep stands (pure, seeded). |
+| `verdant-hills-layout.js` | Where every tree, wall section and prop stands, and where the flock grazes (pure, seeded); the sheep's sight test and pasture. |
 | `verdant-hills-flora.js`, `verdant-hills-meadow.js` | Grass and flower geometry; planting, and the two shaders that draw all of it. |
 | `verdant-hills-trees.js`, `verdant-hills-backdrop.js` | Bark and foliage instancing; the sprite trees of the valley and the far hills. |
-| `verdant-hills-homestead.js` | The windmill and its sails, the wall, gate, bench, posts, outcrops, sheep and the swing. |
+| `verdant-hills-homestead.js` | The windmill and its sails, the wall, gate, bench, posts, outcrops and the swing (and the still sheep, when the flock's models are missing). |
+| `verdant-hills-sheep-rig.js`, `verdant-hills-flock.js` | The ewe's and the lamb's bodies on the shared quadruped solver (gaits, acts), and the flock's mind (three-free). |
+| `verdant-hills-sheep.js` | The flock drawn: two instanced skinned draws from a float texture of bones, and their shadows. |
 | `verdant-hills-life.js` | Butterflies and swallows. |
 | `verdant-hills-kites.js` | The seven kites, their tails and lines. |
 | `verdant-hills-ribbons.js` | The ribbons of wind. |

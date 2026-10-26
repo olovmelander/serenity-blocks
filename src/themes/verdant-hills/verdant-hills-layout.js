@@ -16,7 +16,9 @@
  * cheaper tier loses only the farthest.
  */
 import { seededRandom } from '../../utils/helpers.js';
-import { createVerdantHillsVisibilityTest, verdantHillsInSight } from './verdant-hills-composition.js';
+import {
+    VERDANT_HILLS_VIEWS, createVerdantHillsVisibilityTest, verdantHillsEye, verdantHillsInSight,
+} from './verdant-hills-composition.js';
 import { VERDANT_HILLS_KITE_STATIONS, VERDANT_HILLS_POST_HEIGHT } from './verdant-hills-kites.js';
 import {
     VERDANT_HILLS_PATH, VERDANT_HILLS_PLACES, verdantHillsFieldAt, verdantHillsGroundHeight, verdantHillsNoise,
@@ -365,71 +367,213 @@ function plantFarTrees(rng) {
     return trees.sort((a, b) => verdantHillsRange(a.x, a.z) - verdantHillsRange(b.x, b.z));
 }
 
-const SHEEP_NEAR = 230;
-const SHEEP_FAR = 900;
+/**
+ * Where the flock grazes, nearest-seen first (a tier keeps the first): `ewes` and `lambs` in each
+ * group. The home hill's own brow and the tall grass in front of the lens hide every pasture on
+ * the left nearer than the tarn, and the meadow's tall blades hide the windmill's hill east of the
+ * mill, so the near flocks graze its crest west of the mill and the slope in front of it, right of
+ * the board (a sheep there is nine or ten pixels long at 1080p); the rest graze the
+ * far pastures, across the tarn on the left and out beyond the mill on the right, for the depth of
+ * the valley. Each ground was chosen where the lens sees nearly all of it (verdantHillsSheepSeen).
+ */
+export const VERDANT_HILLS_FLOCK_HOMES = Object.freeze([
+    Object.freeze({
+        x: 84, z: -236, ewes: 6, lambs: 5,
+    }),
+    Object.freeze({
+        x: 98, z: -202, ewes: 5, lambs: 4,
+    }),
+    Object.freeze({
+        x: -330, z: -800, ewes: 5, lambs: 3,
+    }),
+    Object.freeze({
+        x: 300, z: -880, ewes: 4, lambs: 2,
+    }),
+    Object.freeze({
+        x: -480, z: -760, ewes: 4, lambs: 2,
+    }),
+    Object.freeze({
+        x: -250, z: -960, ewes: 3, lambs: 2,
+    }),
+    Object.freeze({
+        x: 520, z: -930, ewes: 3, lambs: 2,
+    }),
+    Object.freeze({
+        x: 165, z: -722, ewes: 3, lambs: 2,
+    }),
+    Object.freeze({
+        x: -560, z: -860, ewes: 3, lambs: 2,
+    }),
+]);
+
+const SIGHT_FOV = Math.tan((VERDANT_HILLS_VIEWS.landscape.fov * Math.PI) / 360);
+const SIGHT_PITCH = (VERDANT_HILLS_VIEWS.landscape.pitch * Math.PI) / 180;
+/** Half the width of the board card, as a share of a 16:9 frame. */
+const SIGHT_BOARD = 0.125;
+/**
+ * How tall the meadow stands in front of the lens: its blades (up to 0.72 m) are drawn larger the
+ * farther they stand, out to SIGHT_MEADOW metres (verdant-hills-meadow.js), so a sight line must
+ * clear SIGHT_GRASS × (1 + SIGHT_GROWS × distance) there; beyond it, SIGHT_CLEAR over the land.
+ */
+const SIGHT_GRASS = 0.85;
+const SIGHT_GROWS = 0.02;
+const SIGHT_MEADOW = 150;
+const SIGHT_CLEAR = 0.25;
+
+/**
+ * Whether a sheep grazing at (x, z) is seen from the game's lens at 16:9: in the frame, not behind
+ * the board card, and with the line of sight clear of the land (and, in front of the lens, of the
+ * meadow's tall grass) all the way. Finer than verdantHillsInSight, which strides over the brow
+ * a few metres in front of the lens.
+ */
+export function verdantHillsSheepSeen(x, z) {
+    const [ex, ey, ez] = verdantHillsEye(VERDANT_HILLS_VIEWS.landscape);
+    const y = verdantHillsGroundHeight(x, z) + 0.45;
+    const dx = x - ex;
+    const dy = y - ey;
+    const dz = z - ez;
+    const depth = dy * Math.sin(SIGHT_PITCH) - dz * Math.cos(SIGHT_PITCH);
+    if (!(depth > 1)) return false;
+    const u = 0.5 + (dx / depth / SIGHT_FOV / (16 / 9)) * 0.5;
+    const v = 0.5 - ((dy * Math.cos(SIGHT_PITCH) + dz * Math.sin(SIGHT_PITCH)) / depth / SIGHT_FOV) * 0.5;
+    if (u < 0.02 || u > 0.98 || v < 0 || v > 1 || Math.abs(u - 0.5) < SIGHT_BOARD) return false;
+    const range = Math.hypot(dx, dz);
+    for (let s = 0.5; s < range - 3; s += Math.min(0.5 + s * 0.01, 3)) {
+        const t = s / range;
+        const clear = ey + dy * t - verdantHillsGroundHeight(ex + dx * t, ez + dz * t);
+        if (clear < (s < SIGHT_MEADOW ? SIGHT_GRASS * (1 + SIGHT_GROWS * s) : SIGHT_CLEAR)) return false;
+    }
+    return true;
+}
+
+let sheepTrees = null;
+/** Every tree a sheep must keep clear of (the hand-placed ones, the field oaks, the far sprites). */
+function sheepTreeSpacing() {
+    if (sheepTrees) return sheepTrees;
+    sheepTrees = createSpacing(16);
+    VERDANT_HILLS_FEATURE_TREES.forEach((tree) => sheepTrees.add(tree.x, tree.z));
+    layoutVerdantHillsFieldTrees().forEach((tree) => sheepTrees.add(tree.x, tree.z));
+    layoutVerdantHillsFarTrees().forEach((tree) => {
+        if (verdantHillsRange(tree.x, tree.z) < 1500) sheepTrees.add(tree.x, tree.z);
+    });
+    return sheepTrees;
+}
+
+/** Grass a sheep can stand on: open pasture, dry, not too steep, clear of trees, the mill and hedges. */
+export function verdantHillsSheepPasture(x, z) {
+    if (verdantHillsWaterDistance(x, z) < 6 || Math.hypot(x - mill.x, z - mill.z) < 14) return false;
+    const field = verdantHillsFieldAt(x, z);
+    if (field.hedge > 0.01 || field.water > 0.01) return false;
+    if (sheepTreeSpacing().crowded(x, z, 4.5)) return false;
+    return verdantHillsSlope(x, z) < 22;
+}
+
+/**
+ * The ground the flock lives on (verdant-hills-flock.js FlockLand): its height, where a sheep may
+ * stand, and where the lens sees one, each asked of a small cache so a wandering flock costs a
+ * few look-ups a step.
+ */
+export function createVerdantHillsPasture() {
+    const allowedCells = new Map();
+    const seenCells = new Map();
+    const key = (ix, iz) => (ix + 32768) * 65536 + (iz + 32768);
+    return {
+        ground: verdantHillsGroundHeight,
+        allowed(x, z) {
+            const ix = Math.round(x);
+            const iz = Math.round(z);
+            const k = key(ix, iz);
+            let value = allowedCells.get(k);
+            if (value === undefined) {
+                value = verdantHillsSheepPasture(ix, iz);
+                allowedCells.set(k, value);
+            }
+            return value;
+        },
+        seen(x, z) {
+            const ix = Math.round(x / 4);
+            const iz = Math.round(z / 4);
+            const k = key(ix, iz);
+            let value = seenCells.get(k);
+            if (value === undefined) {
+                value = verdantHillsSheepSeen(ix * 4, iz * 4);
+                seenCells.set(k, value);
+            }
+            return value;
+        },
+        cells: () => allowedCells.size + seenCells.size,
+    };
+}
 
 function plantSheep(rng) {
-    const visible = createVerdantHillsVisibilityTest();
-    const trees = createSpacing(16);
-    VERDANT_HILLS_FEATURE_TREES.forEach((tree) => trees.add(tree.x, tree.z));
-    layoutVerdantHillsFieldTrees().forEach((tree) => trees.add(tree.x, tree.z));
-    layoutVerdantHillsFarTrees().forEach((tree) => {
-        if (verdantHillsRange(tree.x, tree.z) < SHEEP_FAR + 40) trees.add(tree.x, tree.z);
-    });
-    /** Grass a sheep can stand on and be seen: open pasture, dry, not too steep. */
-    const pasture = (x, z) => {
-        if (verdantHillsWaterDistance(x, z) < 8 || trees.crowded(x, z, 7)) return false;
-        const range = verdantHillsRange(x, z);
-        if (range < SHEEP_NEAR || range > SHEEP_FAR || Math.hypot(x - mill.x, z - mill.z) < 16) return false;
-        const field = verdantHillsFieldAt(x, z);
-        if (field.hedge > 0.01 || field.edge < 7 || field.water > 0.01) return false;
-        const y = verdantHillsGroundHeight(x, z);
-        return verdantHillsSlope(x, z) < 19 && visible(x, y + 0.6, z, 1.2) && verdantHillsInSight(x, y + 0.5, z);
-    };
     const flock = [];
-    const centres = [];
-    for (let group = 0; flock.length < VERDANT_HILLS_SHEEP_CEILING && group < 40; group += 1) {
-        const size = Math.min(VERDANT_HILLS_SHEEP_CEILING - flock.length, 3 + Math.floor(rng() * 6));
-        // The first groups graze where a 16:9 frame shows them beside the board: the
-        // windmill's hill on the right, the valley's near slope on the left.
-        const side = group % 2 === 0 ? 1 : -1;
-        for (let attempt = 0; attempt < 500; attempt += 1) {
-            let bearing = (rng() * 2 - 1) * WEDGE_DEGREES;
-            if (group < 8 && attempt < 320) {
-                const turn = attempt < 200 ? side : -side;
-                bearing = turn * (SIDE_THIRD[0] + (SIDE_THIRD[1] - SIDE_THIRD[0]) * rng());
+    VERDANT_HILLS_FLOCK_HOMES.forEach((home, group) => {
+        const heading = rng() * TAU;
+        const reach = 3 + 2.2 * Math.sqrt(home.ewes);
+        const placed = [];
+        const free = (x, z, room) => verdantHillsSheepPasture(x, z) && verdantHillsSheepSeen(x, z)
+            && placed.every((other) => Math.hypot(other.x - x, other.z - z) > room);
+        // The ewes, each followed by her lambs (a single or twins), so a tier's prefix never keeps a
+        // lamb without its mother. The first has twins when the group has three lambs or more.
+        const lambsOf = Array.from({ length: home.ewes }, (_, e) => {
+            const twins = home.lambs >= 3 ? 1 : 0;
+            if (e === 0) return Math.min(home.lambs, 1 + twins);
+            return e < home.lambs - twins ? 1 : 0;
+        });
+        for (let e = 0; e < home.ewes; e += 1) {
+            let ewe = null;
+            for (let tries = 0; tries < 200 && !ewe; tries += 1) {
+                const away = reach * Math.sqrt(rng());
+                const turn = rng() * TAU;
+                const x = home.x + Math.cos(turn) * away;
+                const z = home.z + Math.sin(turn) * away;
+                if (free(x, z, 2.2)) {
+                    ewe = {
+                        x,
+                        z,
+                        yaw: heading + (rng() - 0.5) * 1.1,
+                        scale: 1.1 + rng() * 0.12,
+                        grazing: rng() < 0.7,
+                        group,
+                        lamb: false,
+                        mother: -1,
+                        look: rng(),
+                        // One black ewe in the near flock on the crest: every flock has one.
+                        black: group === 0 && e === 2,
+                    };
+                }
             }
-            // Nearer groups come first: they are the ones that read as sheep.
-            const far = group < 4 ? 420 : SHEEP_FAR;
-            const [cx, cz] = polar(bearing, SHEEP_NEAR * (far / SHEEP_NEAR) ** rng());
-            if (pasture(cx, cz) && centres.every((other) => Math.hypot(other[0] - cx, other[1] - cz) > 46)) {
-                centres.push([cx, cz]);
-                const heading = rng() * TAU;
-                const reach = 3.5 + 2.4 * Math.sqrt(size);
-                const members = [];
-                for (let made = 0, tries = 0; made < size && tries < size * 30; tries += 1) {
-                    const away = reach * Math.sqrt(rng());
-                    const turn = rng() * TAU;
-                    const x = cx + Math.cos(turn) * away;
-                    const z = cz + Math.sin(turn) * away;
-                    if (pasture(x, z) && members.every((other) => Math.hypot(other.x - x, other.z - z) > 1.9)) {
-                        members.push({
-                            x,
-                            z,
-                            yaw: heading + (rng() - 0.5) * 1.1,
-                            scale: 1.14 + rng() * 0.26,
-                            // Most have their heads down; one or two in a group are looking about.
-                            grazing: rng() < 0.68,
-                            group,
-                        });
-                        made += 1;
+            if (ewe) {
+                const mother = flock.length;
+                flock.push(ewe);
+                placed.push(ewe);
+                for (let l = 0; l < lambsOf[e]; l += 1) {
+                    for (let tries = 0; tries < 60; tries += 1) {
+                        const turn = ewe.yaw + Math.PI + (rng() - 0.5) * 2.6;
+                        const away = 0.9 + rng() * 1.6;
+                        const x = ewe.x + Math.sin(turn) * away;
+                        const z = ewe.z + Math.cos(turn) * away;
+                        if (free(x, z, 0.9)) {
+                            const lamb = {
+                                x,
+                                z,
+                                yaw: ewe.yaw + (rng() - 0.5) * 1.6,
+                                scale: 1.08 + rng() * 0.14,
+                                grazing: rng() < 0.4,
+                                group,
+                                lamb: true,
+                                mother,
+                                look: rng(),
+                            };
+                            flock.push(lamb);
+                            placed.push(lamb);
+                            break;
+                        }
                     }
                 }
-                flock.push(...members);
-                break;
             }
         }
-    }
+    });
     return flock.slice(0, VERDANT_HILLS_SHEEP_CEILING);
 }
 
@@ -464,8 +608,9 @@ export function layoutVerdantHillsFarTrees(rng = null, count = VERDANT_HILLS_FAR
 }
 
 /**
- * The flock, group by group: `{ x, z, yaw, scale, grazing, group }`. A sheep faces its own
- * +Z turned by `yaw`; a group heads much the same way.
+ * The flock, group by group: `{ x, z, yaw, scale, grazing, group, lamb, mother, look }`, each ewe
+ * followed by her lambs (`mother` is her index in the list). A sheep faces its own +Z turned by
+ * `yaw`; a group heads much the same way. `look` is each animal's own seed (its fleece, its face).
  */
 export function layoutVerdantHillsSheep(rng = null, count = VERDANT_HILLS_SHEEP_CEILING) {
     return planted('sheep', 3, plantSheep, rng, count, VERDANT_HILLS_SHEEP_CEILING);

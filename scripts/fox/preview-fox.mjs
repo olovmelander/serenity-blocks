@@ -14,8 +14,9 @@
  *                           the mind itself: round (at rest), run, pounce, sleep, hunt, an act
  *
  *   node scripts/fox/preview-fox.mjs --fox=bear --gait=1.1 --frames=8       Winter's polar bear walking
+ *   node scripts/fox/preview-fox.mjs --fox=ewe --act=Graze --frames=6       Verdant Hills' ewe (or --fox=lamb)
  *
- *   --fox=winter|sakura|bear    whose (winter when not given)
+ *   --fox=winter|sakura|bear|ewe|lamb    whose (winter when not given)
  *   --yaw=<deg> --pitch=<deg>   where it is seen from (0 = from its left side, 90 = from ahead)
  *   --cols=<n> --size=<w>x<h> --span=<metres> --out=<file.png> --glb=<file>
  *   --numbers                   also print where its paws and nose are in each frame
@@ -59,6 +60,27 @@ const FOXES = {
             rig: BEAR_RIG,
             centre: [0, 0.85, 0.1],
             span: 3.6,
+        };
+    },
+    /** Not foxes either: Verdant Hills' ewe and lamb, on the same solver with their own gaits and acts. */
+    async ewe() {
+        const { EWE_RIG } = await theme('verdant-hills', 'verdant-hills-sheep-rig.js');
+        return {
+            asset: join(SRC, 'verdant-hills', 'assets', 'verdant-ewe.glb'),
+            rig: EWE_RIG,
+            centre: [0, 0.48, 0.05],
+            span: 1.9,
+            sheep: true,
+        };
+    },
+    async lamb() {
+        const { LAMB_RIG } = await theme('verdant-hills', 'verdant-hills-sheep-rig.js');
+        return {
+            asset: join(SRC, 'verdant-hills', 'assets', 'verdant-lamb.glb'),
+            rig: LAMB_RIG,
+            centre: [0, 0.3, 0.05],
+            span: 1.2,
+            sheep: true,
         };
     },
     async sakura() {
@@ -150,6 +172,13 @@ const shade = (v) => {
     const dark = colours[v * 4 + 2];
     const sees = 0.35 + 0.65 * colours[v * 4 + 3];
     if (coat) return coat(v).map((c) => c * sees);
+    if (fox.sheep) {
+        // (A sheep's paint: r the fleece — cream wool, black skin — g its soil, b its darkest places.)
+        const fleece = colours[v * 4];
+        const soil = colours[v * 4 + 1];
+        const wool = [0.9, 0.86, 0.76].map((c, k) => c * (1 - 0.4 * soil) + [0.42, 0.34, 0.22][k] * 0.4 * soil);
+        return wool.map((c) => (c * fleece + 0.09 * (1 - dark * 0.7) * (1 - fleece)) * sees);
+    }
     const s = sees * (1 - dark * 0.95);
     return [s, s, s * 1.03];
 };

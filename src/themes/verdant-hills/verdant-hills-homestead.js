@@ -53,16 +53,19 @@ export class VerdantHillsHomestead {
     /**
      * `props` is the parsed prop pack (`assets.props`); `oak` the parsed old oak
      * (`assets.trees['oak-hero']`), whose `swing` anchor the rope swing hangs from. `rng`
-     * is accepted for symmetry with the other parts: the layout plants from its own seed.
+     * is accepted for symmetry with the other parts: the layout plants from its own seed. `sheep`
+     * stands the still flock of the pack's two sheep (false when the living flock grazes instead,
+     * verdant-hills-sheep.js).
      */
     constructor({
-        light, props, tier, rng = Math.random, oak = null,
+        light, props, tier, rng = Math.random, oak = null, sheep = true,
     }) {
         this.light = light;
         this.props = props;
         this.tier = tier;
         this.rng = rng;
         this.oak = oak;
+        this.stillSheep = sheep;
         this.group = new THREE.Group();
         this.group.name = 'VerdantHillsHomestead';
         this.owned = [];
@@ -92,7 +95,7 @@ export class VerdantHillsHomestead {
         this.buildBench();
         this.buildPosts();
         this.buildBoulders();
-        this.buildSheep();
+        if (this.stillSheep) this.buildSheep();
         this.buildSwing();
         return this;
     }
@@ -364,7 +367,10 @@ export class VerdantHillsHomestead {
         });
     }
 
-    /** The flock: those with their heads up in one draw, those grazing in another. */
+    /**
+     * The still flock (when the living one has no models): those with their heads up in one draw,
+     * those grazing in another; a lamb is a ewe drawn smaller.
+     */
     buildSheep() {
         const flock = layoutVerdantHillsSheep(null, this.tier.sheep);
         [['sheep_a', false], ['sheep_b', true]].forEach(([name, grazing]) => {
@@ -372,7 +378,7 @@ export class VerdantHillsHomestead {
             const mesh = this.scatter(name, sheep, (entry, dummy) => {
                 dummy.position.set(entry.x, verdantHillsGroundHeight(entry.x, entry.z) - 0.02, entry.z);
                 dummy.rotation.set(0, entry.yaw, 0);
-                dummy.scale.setScalar(entry.scale);
+                dummy.scale.setScalar(entry.scale * (entry.lamb ? 0.62 : 1));
             }, false);
             this.stats.sheep += mesh ? mesh.count : 0;
         });

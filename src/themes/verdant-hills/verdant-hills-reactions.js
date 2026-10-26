@@ -885,6 +885,13 @@ export class VerdantHillsReactions {
      * The session ended: let the wind drop, the whirl unwind and the kites come down; the fronts
      * still crossing and the sunlight fade within a second or so (see update()).
      */
+    /** A new run has begun: the hills are no longer at rest after the last one. */
+    onRunStart() {
+        if (this.disposed) return false;
+        this.settled = false;
+        return true;
+    }
+
     onGameOver() {
         if (this.disposed) return false;
         this.whirlTarget = 0;
