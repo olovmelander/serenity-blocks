@@ -23,8 +23,10 @@
  *   ?halcyonApexParts=sky,water,site,crystals,...   draw only these parts
  *   ?halcyonApexFalseColor=1  post debug view
  *
- * Warm: none (nothing is parked hidden for an event to reveal, so the first frame compiles every
- * render pipeline). Nothing is loaded: the sanctuary is generated.
+ * Warm: the visitors (halcyon-apex-visitors.js), hidden between their fly-bys, are drawn out of
+ * sight over their first 90 frames, so their pipelines exist before the first one flies; nothing
+ * else is parked hidden for an event to reveal, so the first frame compiles every other render
+ * pipeline. Nothing is loaded: the sanctuary and its visitors are generated.
  */
 
 import * as THREE from 'three/webgpu';
