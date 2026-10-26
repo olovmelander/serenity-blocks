@@ -27,8 +27,11 @@ export const CRYSTAL_CAVE_HOUR_HOLD = 0.35;
 /** How quickly the cave takes a level's step, per second: most of the way in four seconds. */
 export const CRYSTAL_CAVE_HOUR_FOLLOW = 0.6;
 
-/** A colour written as a hex in sRGB, in the linear working space the cave's light holds. */
-function srgb(hex) {
+/**
+ * A colour written as a hex in sRGB, in the linear working space the cave's light holds.
+ * @param {number} hex
+ */
+export function srgb(hex) {
     return [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255].map((byte) => {
         const c = byte / 255;
         return c < 0.04045 ? c * 0.0773993808 : (c * 0.9478672986 + 0.0521327014) ** 2.4;

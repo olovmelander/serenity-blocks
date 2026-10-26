@@ -87,6 +87,7 @@
     "src/rendering/webgpu-compute-pipeline-async.js",
     "src/themes/black-hole/black-hole-moods.js",
     "src/themes/crystal-cave/crystal-cave-hours.js",
+    "src/themes/crystal-cave/crystal-cave-veins.js",
     "src/themes/neon-dusk/neon-dusk-moods.js",
     "src/themes/nimbus-veil/nimbus-veil-moods.js",
     "src/themes/sakura-twilight/sakura-hours.js",
