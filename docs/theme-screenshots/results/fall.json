@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-05T08:20:03.692Z",
-  "runId": "2026-10-05T08-19-36-942Z",
+  "generatedAt": "2026-10-26T11:38:06.705Z",
+  "runId": "2026-10-26T11-37-29-684Z",
   "theme": "fall",
   "themeMeta": {
     "displayName": "Fall",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4294/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-10-05T08-19-36-942Z",
+  "targetUrl": "http://127.0.0.1:5361/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-26T11-37-29-684Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -30,7 +30,6 @@
         "dx12FeatureLevel": "Not supported",
         "glImplementationParts": "(gl=none,angle=none)",
         "glResetNotificationStrategy": 0,
-        "hardwareSupportsVulkan": false,
         "inProcessGpu": true,
         "initializationTime": 0,
         "isAsan": false,
@@ -61,29 +60,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.9278",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -92,21 +91,19 @@
       ]
     },
     "featureStatus": {
-      "2d_canvas": "disabled_software",
+      "2d_canvas": "enabled",
       "direct_rendering_display_compositor": "disabled_off_ok",
-      "gpu_compositing": "disabled_software",
+      "gpu_compositing": "enabled",
       "multiple_raster_threads": "enabled_on",
-      "opengl": "disabled_off",
-      "rasterization": "disabled_software",
+      "opengl": "enabled_on",
+      "rasterization": "enabled",
       "raw_draw": "disabled_off_ok",
       "skia_graphite": "disabled_off",
       "trees_in_viz": "disabled_off",
-      "video_decode": "disabled_software",
-      "video_encode": "disabled_software",
-      "vulkan": "disabled_off",
-      "webgl": "disabled_off",
-      "webgl2": "disabled_off",
-      "webgpu": "disabled_off",
+      "video_decode": "enabled",
+      "video_encode": "enabled",
+      "webgl": "enabled",
+      "webgpu": "enabled",
       "webnn": "disabled_off"
     }
   },
@@ -135,6 +132,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +224,11 @@
         "details": {
           "themeId": "fall"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -334,7 +343,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 20,
+          "renderCalls": 19,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -1209,7 +1218,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 20,
+          "renderCalls": 18,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -1482,10 +1491,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.3999999985098839,
-      "firstTargetSelection": 5143.89999999851,
-      "cleanup-anchor": 34.19999999552965,
-      "secondTargetSelection": 739.2999999970198
+      "initial-anchor": 0.2000000011175871,
+      "firstTargetSelection": 501.7999999988824,
+      "cleanup-anchor": 447.69999999925494,
+      "secondTargetSelection": 15801.800000000745
     },
     "mode": {
       "modeId": "single",
@@ -1518,7 +1527,7 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 20,
+      "renderCalls": 19,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1538,7 +1547,7 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 20,
+      "renderCalls": 18,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1567,24 +1576,24 @@
     }
   },
   "screenshot": {
-    "path": "artifacts\\fall\\theme-validation\\fall.png",
+    "path": "docs\\theme-screenshots\\fall.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2540,
+    "height": 1506,
+    "byteLength": 15300960,
+    "samples": 20028,
     "luminance": {
-      "min": 30.067,
-      "max": 246.41320000000002,
-      "mean": 104.96686544984351,
-      "range": 216.3462,
-      "variance": 2705.863335224436
+      "min": 11.933399999999999,
+      "max": 246.9748,
+      "mean": 89.86388608947499,
+      "range": 235.04139999999998,
+      "variance": 2886.403135797108
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 133,
-    "warningCount": 2,
+    "entryCount": 139,
+    "warningCount": 4,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1592,18 +1601,32 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-10-05T08:19:46.603Z",
+        "timestamp": "2026-10-26T11:37:38.371Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 4806,
-        "sourceId": "http://127.0.0.1:4294/assets/three-ybFifxlT.js"
+        "line": 45904,
+        "sourceId": "http://127.0.0.1:5361/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/47ee691f-25a0-4fef-8d44-cd98114d928a/scratchpad/vite-cache-5361/deps/chunk-FAS3Z3UG.js?v=658bf312"
       },
       {
-        "timestamp": "2026-10-05T08:19:56.508Z",
+        "timestamp": "2026-10-26T11:37:41.305Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 4806,
-        "sourceId": "http://127.0.0.1:4294/assets/three-ybFifxlT.js"
+        "line": 45904,
+        "sourceId": "http://127.0.0.1:5361/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/47ee691f-25a0-4fef-8d44-cd98114d928a/scratchpad/vite-cache-5361/deps/chunk-FAS3Z3UG.js?v=658bf312"
+      },
+      {
+        "timestamp": "2026-10-26T11:37:43.548Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45904,
+        "sourceId": "http://127.0.0.1:5361/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/47ee691f-25a0-4fef-8d44-cd98114d928a/scratchpad/vite-cache-5361/deps/chunk-FAS3Z3UG.js?v=658bf312"
+      },
+      {
+        "timestamp": "2026-10-26T11:37:59.347Z",
+        "level": 2,
+        "message": "[ThemeManager] Swapping to \"fall\" with 3 pipeline(s) in flight and builds still deferred: true",
+        "line": 1486,
+        "sourceId": "http://127.0.0.1:5361/src/themes/theme-manager.js?t=1793014345705"
       }
     ],
     "processFailures": []

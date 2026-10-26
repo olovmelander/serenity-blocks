@@ -2,9 +2,10 @@
 
 Every file in this folder is a project-owned original, authored procedurally in
 Blender 4.5.9 LTS on 2026-10-05 for this repository by
-`scripts/blender/fall_grove_assets.py` (helpers in `scripts/blender/fall_grove/`).
-It contains no third-party geometry, texture, scan, photograph or generative-model
-output, and the generator fetches nothing from the network. Licence: the same as the
+`scripts/blender/fall_grove_assets.py` (helpers in `scripts/blender/fall_grove/`), except
+`squirrel.glb`, authored in Blender 5.2 LTS on 2026-10-26 by `scripts/blender/fall_squirrel.py`
+(below). None contains third-party geometry, texture, scan, photograph, motion capture or generative-model
+output, and neither generator fetches anything from the network. Licence: the same as the
 project (MIT, project-local).
 
 `asset-manifest.json` records each file's size and SHA-256; `tests/unit/fall-assets.test.js`
@@ -16,6 +17,41 @@ checks the files against it.
 | `maple-grove-a/b/c.glb`, `birch-grove-a/b.glb` | The grove trees of the middle distance. |
 | `fall-foliage.glb` | The shared leaf geometry: maple and oak sprays, maple clumps, weeping birch strands (two variants each) and single leaves for the litter and the leaves in the air. |
 | `fall-impostors.png` | Front elevations of the five grove trees for the distant forest. |
+| `squirrel.glb` | The red squirrel: one skinned body on a 30-bone rig, sixteen clips (idle, sit, bound, hop, climb, descend, cling, nibble, chatter, startle, look, dig, pat, scratch, groom, leap) and the acorn it nibbles, riding on its left hand. |
+
+## How the squirrel is made
+
+Made in Blender 5.2 by `scripts/blender/fall_squirrel.py` (modules in
+`scripts/blender/fall_squirrel/`), then packed by `scripts/fall/pack-squirrel.mjs`:
+
+- **Model** (`model.py`). A signed distance field of ellipsoids and round cones joined by
+  smooth unions round the rig's own joints (the meshing of the Grainfields horse and Winter's
+  bear, `scripts/blender/grainfields/horse_sdf.py`): haunches, belly, chest, a big round head
+  with full cheeks, large eyes and a button nose, cupped ears with three-strand tufts, slim
+  legs and long hind feet, and a plume built of overlapping locks of hair so its outline is
+  scalloped. The left half is polygonised with surface nets, decimated in two passes (body,
+  legs and plume first with the face held, then the face with the rest held) and mirrored.
+  Each vertex is painted: COLOR_0 = the coat's linear colour and the sky it sees (occlusion
+  traced through the field), `_fur` = hair length, light through it, eye, ear tuft.
+- **Rig** (`rig.py`). Thirty bones, every one resting in the squirrel's own frame, weighted
+  by inverse distance along each part's chain and relaxed over the surface.
+- **Motion** (`motion.py`, `solver.py`). Each clip is a function of time: where the body is
+  and how it bends, where each paw is put (two-bone IK with the knee or elbow in the plane a
+  pole gives), how the head, ears, jaw and the seven-bone tail turn. They are sampled on every
+  frame (30 fps) and keyed into one Blender action each, which the glTF exporter writes as one
+  animation each.
+- **Pack.** Rotations as normalised 16-bit, a channel that never moves in a clip as one key,
+  unused translation and scale channels dropped, colours, fur and weights as bytes, normals as
+  normalised bytes (`KHR_mesh_quantization`); the clips' lengths, loops and speeds in the
+  asset's extras (held to `fall-squirrel-clips.js` by a test).
+
+```bash
+node scripts/fall/pack-squirrel.mjs        # runs Blender headless, packs, writes the asset and its manifest line
+```
+
+The same modules drive the design loop inside an open Blender through the Blender MCP
+(`fall_squirrel/live.py`: a scene of their own, posed lineups, Workbench renders). The build
+is deterministic: the same Blender and scripts give the same bytes.
 
 ## How the trees are made
 
