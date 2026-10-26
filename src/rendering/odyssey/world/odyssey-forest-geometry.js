@@ -812,15 +812,244 @@ function buildBroadleaf(spec, stage, lod, seed) {
 }
 
 /**
+ * THE PUFF CROWN (Act II pass, round two, 2026-10-26) — the broadleaf as a cluster of rounded
+ * leaf masses, each shading as its own ball.
+ *
+ * The traced union above was built to make a crown read as ONE mass, and at the triangle counts
+ * the forest can afford it read as one CRUMPLED mass: the mid tier (most of the trees the rail
+ * sees) is a 20-triangle icosahedron traced to the lobes, so its five lobes cannot show, and every
+ * normal leans toward a single crown centre, so no lobe ever turned its own shoulder from the
+ * light. The hero's fringe of single-triangle leaf plates then broke the outline into shards.
+ * From the climb the canopy read as paper.
+ *
+ * The painted reference grammar is the cauliflower: COUNTABLE masses, each lit on its crown and
+ * dark on its belly, with dark creases where they meet. So the crown is now built from puffs —
+ * a top puff and a ring round it, set on the limbs — each a low icosphere with its own radial
+ * normals (leaned up, as the Witness leaves face), squashed underneath, nudged by noise so no puff
+ * is a perfect ball. Where two puffs meet, the seam IS the crease. The occlusion channel darkens
+ * the lower puffs and each puff's belly, which the material reads as shade.
+ *
+ * Triangles: hero 6 puffs x 80 plus limbs and trunk (the fringe's budget, spent on masses instead
+ * of shards); mid 3 puffs x 20; far one round hull at the cluster's centre, as before.
+ */
+const PUFF_UP_BIAS = 0.22;
+function buildBroadleafPuffs(spec, stage, lod, seed) {
+    const rnd = makeRng(seed);
+    const trunkH = spec.trunkH * stage.h;
+    const trunkR = spec.trunkR * stage.w;
+    const crownW = spec.crownW * 1.55 * stage.w;
+    const crownH = spec.crownH * 1.65 * stage.h;
+    const centreY = trunkH + (crownH * 0.52);
+    const totalH = trunkH + (crownH * 1.15);
+    const bowlY = centreY - (crownH * 0.46);
+
+    const positions = [];
+    const normals = [];
+    const vert = [];
+
+    // ── the puffs ──
+    // `puffSpread` (species, default 1): a wide crown carries its ring further out and lower and
+    // its top puff lower, the umbrella of a cherry or a maple.
+    const spread = spec.puffSpread ?? 1;
+    const ringCount = lod === 'hero' ? 5 : 2;
+    const puffs = [{
+        x: (rnd() - 0.5) * crownW * 0.12,
+        y: centreY + (crownH * (0.26 - ((spread - 1) * 0.30))),
+        z: (rnd() - 0.5) * crownW * 0.12,
+        r: crownW * (0.56 + (rnd() * 0.06)),
+        limb: false,
+    }];
+    const turn = rnd() * Math.PI * 2;
+    for (let i = 0; i < ringCount; i += 1) {
+        const a = turn + ((i / ringCount) * Math.PI * 2) + ((rnd() - 0.5) * 0.7);
+        const d = crownW * (0.54 + (rnd() * 0.16)) * spread;
+        puffs.push({
+            x: Math.cos(a) * d,
+            y: centreY + ((rnd() - 0.45) * crownH * 0.42) - ((spread - 1) * crownH * 0.25),
+            z: Math.sin(a) * d,
+            r: crownW * (0.40 + (rnd() * 0.14)),
+            limb: true,
+        });
+    }
+    // The far tier: one round hull over the cluster, centred where the cluster's mass is (so a
+    // crown crossing the LOD boundary does not move), reaching to its outline.
+    let farHull = null;
+    if (lod === 'far') {
+        let cx = 0; let cy = 0; let cz = 0; let wsum = 0;
+        puffs.forEach((pf) => {
+            const w = pf.r ** 3;
+            cx += pf.x * w; cy += pf.y * w; cz += pf.z * w; wsum += w;
+        });
+        farHull = {
+            x: cx / wsum, y: cy / wsum, z: cz / wsum, r: crownW * 1.0, limb: false,
+        };
+    }
+    const crownPuffs = farHull ? [farHull] : puffs;
+
+    const detail = lod === 'hero' ? 1 : 0;
+    const ico = new THREE.IcosahedronGeometry(1, detail);
+    const dir = ico.getAttribute('position');
+    const idx = ico.getIndex();
+    const triCount = idx ? idx.count / 3 : dir.count / 3;
+    const noiseAmp = { hero: 0.09, mid: 0.06, far: 0.0 }[lod] ?? 0;
+    // The far hull is wider than tall, like the cluster it stands for; a mid puff (20 faces) is
+    // kept rounder, or its facets read as stacked plates.
+    const flatten = { hero: 0.86, mid: 0.94, far: 0.62 }[lod] ?? 0.86;
+    crownPuffs.forEach((pf, pi) => {
+        const salt = (pi * 7.31) + (seed * 0.0013);
+        // Each puff turned its own way, so no two show the same facets (twenty-faced puffs that
+        // all faced one way lined their edges up across the crown).
+        const yaw = rnd() * Math.PI * 2;
+        const tilt = (rnd() - 0.5) * 0.9;
+        const cy = Math.cos(yaw); const sy = Math.sin(yaw);
+        const ct = Math.cos(tilt); const st = Math.sin(tilt);
+        for (let f = 0; f < triCount; f += 1) {
+            for (let k = 0; k < 3; k += 1) {
+                const v = idx ? idx.getX((f * 3) + k) : (f * 3) + k;
+                const rx0 = dir.getX(v);
+                const ry0 = dir.getY(v);
+                const rz0 = dir.getZ(v);
+                // tilt about x, then turn about y
+                const ry1 = (ry0 * ct) - (rz0 * st);
+                const rz1 = (ry0 * st) + (rz0 * ct);
+                let ux = (rx0 * cy) + (rz1 * sy);
+                let uy = ry1;
+                let uz = (rz1 * cy) - (rx0 * sy);
+                const ul = Math.hypot(ux, uy, uz) || 1;
+                ux /= ul; uy /= ul; uz /= ul;
+                // Noise-nudged radius, and a flatter belly (a puff sits on the crown, it does not
+                // hang below it as a ball).
+                const bump = 1 + ((valueNoise3((ux * 2.3) + salt, (uy * 2.3) - salt, (uz * 2.3) + (salt * 0.5)) - 0.5)
+                    * 2 * noiseAmp);
+                const belly = uy < 0 ? 0.72 : 1;
+                const px = pf.x + (ux * pf.r * bump);
+                const py = Math.max(pf.y + (uy * pf.r * bump * flatten * belly), bowlY);
+                const pz = pf.z + (uz * pf.r * bump);
+                positions.push(px, py, pz);
+                // The puff's own radial normal, leaned up: each mass turns its own shoulder from
+                // the light and keeps its own lit cap.
+                let nx = ux;
+                let ny = uy + PUFF_UP_BIAS;
+                let nz = uz;
+                const nl = Math.hypot(nx, ny, nz) || 1;
+                nx /= nl; ny /= nl; nz /= nl;
+                normals.push(nx, ny, nz);
+                // OCCLUSION: lower puffs sit in the crown's shade, and every puff's belly is dark;
+                // the top puff's cap is open sky.
+                const heightFrac = Math.min(1, Math.max(0, (py - bowlY) / (crownH || 1)));
+                const puffOpen = 0.55 + (0.45 * Math.min(1, Math.max(0, (pf.y - bowlY) / (crownH || 1))));
+                const capOpen = 0.45 + (0.55 * ((uy * 0.5) + 0.5));
+                const ao = Math.min(1, Math.max(0, puffOpen * capOpen));
+                const wHere = lod === 'far' ? 0 : Math.max(0, Math.min(1, py / (totalH || 1)));
+                vert.push(ao, heightFrac, 1, wHere);
+            }
+        }
+    });
+    ico.dispose();
+    const hullTriangles = triCount * crownPuffs.length;
+
+    if (lod === 'far') {
+        return {
+            positions, normals, vert, totalH, crownW, centreY, hullTriangles,
+        };
+    }
+
+    // ── limbs ── from the fork into each ring puff, so every mass is visibly carried.
+    const forkY = trunkH * (0.52 + (rnd() * 0.22));
+    const limbSides = lod === 'hero' ? 5 : 3;
+    puffs.forEach((L) => {
+        if (!L.limb) return;
+        const ex = L.x * 0.70;
+        const ey = L.y - (L.r * 0.35);
+        const ez = L.z * 0.70;
+        let dx = ex; let dy = ey - forkY; let dz = ez;
+        const dl = Math.hypot(dx, dy, dz) || 1;
+        dx /= dl; dy /= dl; dz /= dl;
+        const ax = Math.abs(dy) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+        let tx = (dy * ax[2]) - (dz * ax[1]);
+        let ty = (dz * ax[0]) - (dx * ax[2]);
+        let tz = (dx * ax[1]) - (dy * ax[0]);
+        const tl = Math.hypot(tx, ty, tz) || 1;
+        tx /= tl; ty /= tl; tz /= tl;
+        const bx = (dy * tz) - (dz * ty);
+        const by = (dz * tx) - (dx * tz);
+        const bz = (dx * ty) - (dy * tx);
+        const r0 = trunkR * (0.62 + (rnd() * 0.18));
+        const r1 = r0 * 0.42;
+        for (let i2 = 0; i2 < limbSides; i2 += 1) {
+            const a0 = (i2 / limbSides) * Math.PI * 2;
+            const a1 = ((i2 + 1) / limbSides) * Math.PI * 2;
+            const ringAt = (cx, cy, cz, rr, a) => [
+                cx + (Math.cos(a) * tx * rr) + (Math.sin(a) * bx * rr),
+                cy + (Math.cos(a) * ty * rr) + (Math.sin(a) * by * rr),
+                cz + (Math.cos(a) * tz * rr) + (Math.sin(a) * bz * rr),
+            ];
+            const p0 = ringAt(0, forkY, 0, r0, a0);
+            const p1 = ringAt(0, forkY, 0, r0, a1);
+            const q0 = ringAt(ex, ey, ez, r1, a0);
+            const q1 = ringAt(ex, ey, ez, r1, a1);
+            [[p0, q1, p1], [p0, q0, q1]].forEach((tri) => tri.forEach(([px, py, pz]) => {
+                positions.push(px, py, pz);
+                const t2 = ((px * dx) + ((py - forkY) * dy) + (pz * dz));
+                let nx2 = px - (dx * t2);
+                let ny2 = (py - forkY) - (dy * t2);
+                let nz2 = pz - (dz * t2);
+                const nl2 = Math.hypot(nx2, ny2, nz2) || 1;
+                nx2 /= nl2; ny2 /= nl2; nz2 /= nl2;
+                normals.push(nx2, ny2, nz2);
+                vert.push(0.30, 0, 0, Math.max(0, Math.min(1, py / (totalH || 1))));
+            }));
+        }
+    });
+
+    // ── trunk ── (6 sides at hero, 4 at mid; flared at the root)
+    const tSides = lod === 'hero' ? 6 : 4;
+    for (let i = 0; i < tSides; i += 1) {
+        const a0 = (i / tSides) * Math.PI * 2;
+        const a1 = ((i + 1) / tSides) * Math.PI * 2;
+        const flare = 1.5;
+        const x0 = Math.cos(a0) * trunkR;
+        const z0 = Math.sin(a0) * trunkR;
+        const x1 = Math.cos(a1) * trunkR;
+        const z1 = Math.sin(a1) * trunkR;
+        const top = trunkH + (crownH * 0.20);
+        [
+            [x0 * flare, 0, z0 * flare], [x1, top, z1], [x1 * flare, 0, z1 * flare],
+            [x0 * flare, 0, z0 * flare], [x0, top, z0], [x1, top, z1],
+        ].forEach(([px, py, pz]) => {
+            positions.push(px, py, pz);
+            const l = Math.hypot(px, pz) || 1;
+            normals.push(px / l, 0.12, pz / l);
+            vert.push(0.30, 0, 0, Math.max(0, Math.min(1, py / (totalH || 1))));
+        });
+    }
+
+    return {
+        positions, normals, vert, totalH, crownW, centreY, hullTriangles,
+    };
+}
+
+/**
+ * Which broadleaf builder the roster uses: 'puffs' (the shipped crown since 2026-10-26) or
+ * 'traced' (the smooth-min hull it replaced), one switch from restoration (ADR-0015) and the
+ * audition board's A/B lever.
+ */
+const broadleafState = { style: 'puffs' };
+export function setForestBroadleafStyle(style) {
+    broadleafState.style = style === 'traced' ? 'traced' : 'puffs';
+}
+
+/**
  * Build one species/stage/LOD into a non-indexed BufferGeometry with the baked attributes.
  *
  * Non-indexed on purpose: the world's forest clones a geometry per chunk and attaches instanced
  * attributes to the clone, and the incumbent tree geometry is non-indexed for the same reason.
  */
 export function buildForestTreeGeometry(spec, stage, lod, seed = 1) {
-    const built = spec.builder === 'conifer'
-        ? buildConifer(spec, stage, lod, seed)
-        : buildBroadleaf(spec, stage, lod, seed);
+    let built;
+    if (spec.builder === 'conifer') built = buildConifer(spec, stage, lod, seed);
+    else if (broadleafState.style === 'traced') built = buildBroadleaf(spec, stage, lod, seed);
+    else built = buildBroadleafPuffs(spec, stage, lod, seed);
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(built.positions, 3));

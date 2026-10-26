@@ -295,6 +295,9 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
     Object.freeze({
         id: 'S6-red-maple',
         builder: 'broadleaf',
+        // The puff crown's spread (2026-10-26): a wide, umbrella crown, its ring puffs further out
+        // and lower, so the tree is not a lollipop on a stalk (geometry's buildBroadleafPuffs).
+        puffSpread: 1.18,
         role: 'workhorse',
         // STAYS on the shore band, and that is deliberate after a measurement.
         //
@@ -360,6 +363,9 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
     Object.freeze({
         id: 'S7-pink-blossom',
         builder: 'broadleaf',
+        // The puff crown's spread (2026-10-26): a wide, umbrella crown, its ring puffs further out
+        // and lower, so the tree is not a lollipop on a stalk (geometry's buildBroadleafPuffs).
+        puffSpread: 1.32,
         role: 'pastel',
         band: 'lowland',
         // THE BLOSSOM GROVE (D4, decided by the owner 2026-08-14). The pastel role was built

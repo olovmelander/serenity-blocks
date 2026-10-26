@@ -8,7 +8,7 @@ import {
     FOREST_VALUE_ROLES, ODYSSEY_FOREST_SPECIES,
 } from '../../rendering/odyssey/world/odyssey-forest-species.js';
 import {
-    buildForestTreeGeometry, forestRosterBudget,
+    buildForestTreeGeometry, forestRosterBudget, setForestBroadleafStyle,
 } from '../../rendering/odyssey/world/odyssey-forest-geometry.js';
 import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 
@@ -35,6 +35,7 @@ import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/
  * URL params:
  *   ?lod=hero|mid|far   which tier the board shows (default hero)
  *   ?species=S2         audition ONE species across its stages, filling the board
+ *   ?broadleaf=traced   the smooth-min broadleaf crown the puffs replaced, for an A/B
  *   ?spin=0             stop the slow turntable (silhouette review wants motion; a still
  *                       capture wants it off, and `?t=` freezes update() dt anyway)
  */
@@ -56,6 +57,8 @@ export function create({
     const lod = ['hero', 'mid', 'far'].includes(params?.get?.('lod')) ? params.get('lod') : 'hero';
     const onlyId = params?.get?.('species');
     const spin = params?.get?.('spin') !== '0';
+    // ?broadleaf=traced: the smooth-min crown the puffs replaced (2026-10-26), for an A/B.
+    setForestBroadleafStyle(params?.get?.('broadleaf') === 'traced' ? 'traced' : 'puffs');
 
     const species = onlyId
         ? ODYSSEY_FOREST_SPECIES.filter((s) => s.id.startsWith(onlyId))

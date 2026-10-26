@@ -381,3 +381,84 @@ adds one material, and its discs are culled out of view. The meadow life adds on
 hidden outside p 0.19-0.36. The krummholz adds no draws.
 
 The board was not re-measured on the iGPU lane, which cannot be measured on this machine.
+
+# Round two (2026-10-26)
+
+Olov, after the six steps landed: *"I want to continue improving the landscape, the trees must
+look better and what more do you suggest we improve in chapter 3, 4, 5? Do an audit and how can
+we make this world impressive and a visually stunning masterpiece."* Then: *"Now start with what
+you recommend!"*
+
+## The second audit
+
+22 live stations from p 0.15 to 0.66, close crops, and the tree roster on its audition board.
+
+![The second audit: the meadows, the forest under the massif, the climb](images/odyssey-act2-2026-10-25/audit2-stations.jpg)
+
+1. **The trees.**
+   - The broadleaf crowns were faceted lime blobs with spiky leaf-plate fringes, so they read as
+     crumpled paper, in rows of the same size.
+   - The mid tier, which is most of what the rail sees, was a 20-triangle hull traced to the
+     lobes. Every normal leaned toward one crown centre, so no mass ever turned its own shoulder
+     from the light.
+   - The autumn and blossom trees were flat folded cards. The far trees were floating kites.
+2. **The summit up close.** It fills the frame for ~40% of the journey, and from 150-300 u its
+   surface reads as smeared clay: soft blotches, dithered rock, blurry snow edges.
+3. **The ground.** Greasy smudges on the slopes, a khaki band above the forest, meadows with no
+   grass or flowers, nothing for scale (no boulders or outcrops).
+4. **The clouds.** Small puffs, all one size, spread evenly ("cotton balls"). No big shapes on the
+   horizon, no sense of rising above the clouds on the climb.
+5. **Smaller things.** The tarn holds sky and hillside more than the mountain; the birds are
+   specks.
+
+The plan, in order of impact:
+
+1. New broadleaf crowns.
+2. The trees' light.
+3. A crisp summit.
+4. A painted landscape (grass strokes, flowers, boulders).
+5. Big skies (cloud variety, a cloud sea under the climb).
+6. Polish.
+
+## §7. The puff crowns (2026-10-26)
+
+**The rebuild.** The broadleaf crown is now a cluster of puffs (`buildBroadleafPuffs` in
+`world/odyssey-forest-geometry.js`):
+
+- a top puff and a ring round it, set on forked limbs;
+- each a low icosphere turned its own way, nudged by noise and flattened underneath;
+- its **own radial normals**, leaned up, so each mass is lit on its cap and dark on its belly;
+- the seam where two puffs meet is the crease.
+
+The occlusion channel darkens the lower puffs and every puff's belly. Wide species spread their
+ring further and lower (`puffSpread`: maple 1.18, blossom 1.32), so they read as umbrellas rather
+than lollipops.
+
+| Tier | Triangles | Before |
+|---|---|---|
+| Hero | 6 puffs × 80, plus limbs and trunk | the traced hull and the spiky fringe, at the same budget |
+| Mid | 3 puffs × 20 | one 20-triangle hull |
+| Far | one round hull at the cluster's centre | a squashed kite |
+
+The traced crown stays one switch away (`setForestBroadleafStyle('traced')`, and
+`?broadleaf=traced` on the audition board).
+
+**The light.**
+
+- Occlusion now moves both band thresholds (never the colour), so bellies and inner puffs fall
+  into the shade tone.
+- The leaf-clump dapple is retuned to ~2.5 u clumps inside each puff.
+- A fourth, warm tone sits on each puff's open, up-facing cap, leaned toward the sun's side: the
+  sun-kissed top of a painted canopy. It is keyed on the up-facing normal because the camera looks
+  across the sun, so faces turned squarely to it are mostly hidden.
+
+![The audition board, before and after: one broadleaf up close, and the roster](images/odyssey-act2-2026-10-25/puff-crowns-board.jpg)
+
+![On the rail at p 0.21 and 0.27, before and after](images/odyssey-act2-2026-10-25/puff-crowns-rail.jpg)
+
+**Cost.** World playground at 1080p, vsync off, alternating with main: +0.03 ms at p 0.21 (the
+forest-heavy station), within noise at p 0.27. The mid tier went from ~46 to ~72 triangles a tree,
+inside its 90 budget.
+
+**Tests.** A new test pins that every broadleaf crown is countable puffs, each lit from its own
+centre. The traced-hull test now builds the traced style it guards.

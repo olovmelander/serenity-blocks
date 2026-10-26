@@ -734,8 +734,24 @@ const FOREST_OCC_HI = 0.38;
  */
 const FOREST_BAND_JITTER = 0.17;
 /** Foliage clumps (see fvClump): world units per noise tile, threshold swing, near range. */
-const FOREST_CLUMP_WORLD = 26;
-const FOREST_CLUMP_SWING = 0.30;
+// The noise tile holds ~8 features across, so 20 u per tile is a ~2.5 u leaf clump: inside a
+// puff (6-10 u) it breaks the light into clumps with a dappled edge (26 -> 20 and a wider swing
+// with the puff crowns, 2026-10-26).
+const FOREST_CLUMP_WORLD = 20;
+const FOREST_CLUMP_SWING = 0.34;
+/**
+ * THE PUFFS' LIGHT (2026-10-26). Occlusion moves the band thresholds (never the colour, the
+ * file's rule): a puff's belly and the inner, lower puffs fall into the shade tone, and the open
+ * caps keep the lit one, so every mass reads lit-on-top, dark-beneath. And a fourth, warm tone on
+ * the open cap of each puff (`CAP_TINT` on the lit albedo, up to `CAP_GAIN`), near trees only: the
+ * sun-kissed highlight a painted canopy puts on each mass. Keyed on the cap's UP-facing normal
+ * leaned toward the sun's side, not on the sun direction itself: the camera looks across the
+ * sun, so faces turned squarely to it are mostly hidden, while the tops it sees are lit by the
+ * sky and the low sun together.
+ */
+const FOREST_AO_SHIFT = 0.30;
+const FOREST_CAP_TINT = [1.16, 1.11, 0.84];
+const FOREST_CAP_GAIN = 0.65;
 const FOREST_CLUMP_FAR = 260;
 /**
  * Where the band structure starts and finishes collapsing toward one tone, in world units.
@@ -5204,14 +5220,19 @@ export function createOdysseyWorld({
     // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
     // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
     // of the authored tones.
+    const fvAoShift = float(1).sub(fvCol.x).mul(FOREST_AO_SHIFT);
     const fvBandLo = smoothstep(
-        float(FOREST_BAND_LO).sub(fvCol.x.mul(0.10)).add(fvClump),
-        float(FOREST_BAND_MID).add(fvClump),
+        float(FOREST_BAND_LO).sub(0.10).add(fvAoShift).add(fvClump),
+        float(FOREST_BAND_MID).add(fvAoShift).add(fvClump),
         fvWrap,
     );
     const fvBandHi = smoothstep(
-        float(FOREST_BAND_HI_LO).add(fvTreeRand).add(fvWindLine).add(fvClump),
-        float(FOREST_BAND_HI).add(fvTreeRand).add(fvWindLine).add(fvClump),
+        float(FOREST_BAND_HI_LO).add(fvTreeRand).add(fvWindLine)
+            .add(fvAoShift)
+            .add(fvClump),
+        float(FOREST_BAND_HI).add(fvTreeRand).add(fvWindLine)
+            .add(fvAoShift)
+            .add(fvClump),
         fvWrap,
     );
     const fvOcc = mix(
@@ -5233,7 +5254,17 @@ export function createOdysseyWorld({
     // which is exactly the "distant creatures still flat dark polygons" class of defect.
     const fvEyeDist = length(cameraPosition.sub(positionWorld));
     const fvFlat = smoothstep(float(FOREST_FLAT_NEAR), float(FOREST_FLAT_FAR), fvEyeDist);
-    const fvThree = mix(mix(fvShadeCol, fvMidTone, fvBandLo), fvAlbedo, fvBandHi);
+    const fvCapFacing = normalWorld.y.add(dot(normalWorld.xz, normalize(uSunDir.xz)).mul(0.35));
+    const fvCap = smoothstep(float(0.55), float(0.92), fvCapFacing.add(fvClump.mul(0.6)))
+        .mul(smoothstep(float(0.70), float(0.92), fvCol.x))
+        .mul(float(1).sub(fvFlat))
+        .mul(fvIsCrown)
+        .mul(FOREST_CAP_GAIN);
+    const fvThree = mix(
+        mix(mix(fvShadeCol, fvMidTone, fvBandLo), fvAlbedo, fvBandHi),
+        fvAlbedo.mul(vec3(...FOREST_CAP_TINT)),
+        fvCap,
+    );
     // PRE-SATURATED at distance, because the desaturators downstream cannot be retuned from
     // here: `applyAerial` hazes toward the sky for the whole world and the grade applies
     // `outputSaturation 0.72` after that. Measured against §1b R9 the far forest came back at

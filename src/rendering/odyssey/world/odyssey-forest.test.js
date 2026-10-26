@@ -11,6 +11,7 @@ import {
     buildForestTreeGeometry,
     forestRosterBudget,
     icosahedronFaces,
+    setForestBroadleafStyle,
     smoothMin,
 } from './odyssey-forest-geometry.js';
 
@@ -156,10 +157,14 @@ describe('the sculptor produces sane geometry', () => {
      * the axis at every height, including alongside the blob centre).
      */
     it('never collapses a traced hull vertex toward the crown centre', () => {
-        const traced = ALL.filter((g) => {
-            const f = g.userData.forest;
-            return getForestSpecies(f.speciesId).builder === 'broadleaf';
-        });
+        // The TRACED broadleaf (one switch from restoration since the puffs, 2026-10-26).
+        setForestBroadleafStyle('traced');
+        let traced;
+        try {
+            traced = buildForestRoster(ODYSSEY_FOREST_SPECIES.filter((s2) => s2.builder === 'broadleaf'));
+        } finally {
+            setForestBroadleafStyle('puffs');
+        }
         expect(traced.length).toBeGreaterThan(0);
         traced.forEach((g) => {
             const { centreY, hullTriangles } = g.userData.forest;
@@ -181,6 +186,38 @@ describe('the sculptor produces sane geometry', () => {
             }
             expect(maxR).toBeGreaterThan(0);
             expect(minR / maxR).toBeGreaterThan(0.12);
+        });
+    });
+
+    /**
+     * THE PUFF CROWN (2026-10-26): a broadleaf crown is countable masses, each lit from its OWN
+     * centre — the whole point of the rebuild (one normal field round one crown centre turned
+     * the canopy into crumpled paper). Every puff is a closed icosphere of `hullTriangles /
+     * puffs` faces at the head of the buffer; its normals point away from its own centre.
+     */
+    it('builds every broadleaf crown from countable puffs, each lit from its own centre', () => {
+        ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
+            ['hero', 'mid'].forEach((lod) => {
+                const g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
+                const faces = lod === 'hero' ? 80 : 20;
+                const puffs = g.userData.forest.hullTriangles / faces;
+                expect(puffs, `${spec.id} ${lod}`).toBe(lod === 'hero' ? 6 : 3);
+                const p = attr(g, 'position');
+                const n = attr(g, 'normal');
+                for (let k = 0; k < puffs; k += 1) {
+                    const from = k * faces * 3;
+                    const to = from + (faces * 3);
+                    let cx = 0; let cy = 0; let cz = 0;
+                    for (let i = from; i < to; i += 1) { cx += p.getX(i); cy += p.getY(i); cz += p.getZ(i); }
+                    cx /= faces * 3; cy /= faces * 3; cz /= faces * 3;
+                    let facing = 0;
+                    for (let i = from; i < to; i += 1) {
+                        const ox = p.getX(i) - cx; const oy = p.getY(i) - cy; const oz = p.getZ(i) - cz;
+                        if ((ox * n.getX(i)) + (oy * n.getY(i)) + (oz * n.getZ(i)) > 0) facing += 1;
+                    }
+                    expect(facing / (faces * 3), `${spec.id} ${lod} puff ${k}`).toBeGreaterThan(0.9);
+                }
+            });
         });
     });
 
