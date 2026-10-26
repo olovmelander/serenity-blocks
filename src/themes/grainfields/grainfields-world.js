@@ -44,6 +44,7 @@ import { createMotes } from './grainfields-motes.js';
 import { createLensEars } from './grainfields-lens.js';
 import { createFort } from './grainfields-fort.js';
 import { createGeese } from './grainfields-geese.js';
+import { planTakeoff } from './grainfields-goose-flight.js';
 import { createHerd } from './grainfields-herd.js';
 import { createTrample } from './grainfields-trample.js';
 import { createHerdShadow } from './grainfields-herd-shadow.js';
@@ -90,7 +91,7 @@ const RAY_LANDINGS = Object.freeze([
 ]);
 /** The gusts in the grain travel along the wind at this speed (metres per second). */
 const GUST_SPEED = 7.5;
-/** A level-up's (or a fever's) skein is still in sight this long: a new one waits for it to go. */
+/** A level-up's (or a fever's) flight out goes up at most once in this long (two can be in the air at once). */
 const SKEIN_AWAY = 45;
 
 /**
@@ -274,6 +275,8 @@ export class GrainfieldsWorld {
          */
         this.deckLead = 0;
         this.gustLead = 0;
+        /** Flights out launched this run (each stirs where the next goes up). */
+        this.skeins = 0;
     }
 
     // ── Build ─────────────────────────────────────────────────────────────────────
@@ -312,7 +315,12 @@ export class GrainfieldsWorld {
             herd.setView(this.herdView());
             herd.setCalm(this.reducedMotion);
         }
-        this.addPart('geese', createGeese(u, t, tier.birds));
+        // The geese need their authored goose; without it the sky goes without them.
+        const geese = createGeese(u, t, tier.birds, prepared.assets?.goose);
+        if (geese) {
+            this.addPart('geese', geese);
+            this.warmTakeoffs();
+        }
         this.addPart('sky', createSky(u, t, tier));
         this.addPart('beams', createBeams(u, t, this.reactions));
         this.addPart('motes', createMotes(u, t, tier.motes));
@@ -377,6 +385,7 @@ export class GrainfieldsWorld {
         this.viewportHeight = Math.max(1, height);
         if (!this.layoutLive) this.layout = fallbackLayout(width, height);
         this.parts.herd?.setView(this.herdView());
+        this.warmTakeoffs();
         // Only the portrait lens looks down into the clearing round the eye.
         this.parts.grain?.setClose?.(rigFor(this.aspect) === RIG.portrait);
     }
@@ -386,6 +395,12 @@ export class GrainfieldsWorld {
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(1920, 1920 / Math.max(0.2, this.aspect));
         this.parts.herd?.setView(this.herdView());
+        this.warmTakeoffs();
+    }
+
+    /** Score the geese's take-off routes for the layout now (cached), so a level-up need not. */
+    warmTakeoffs() {
+        if (this.parts.geese) planTakeoff({ layout: this.layout, aspect: this.aspect });
     }
 
     /**
@@ -613,14 +628,19 @@ export class GrainfieldsWorld {
     }
 
     /**
-     * A skein of geese lifts off the field and flies out through the gate, unless one is still in
-     * sight (it flies on: a second one never makes the first vanish). Not under reduced motion.
+     * A skein of geese lifts off the field and flies out through the gate, unless one has only
+     * just gone (a second flight out, later, flies beside the first: neither vanishes). Where it
+     * goes up is the route that keeps it in the open for the layout on screen. Not under reduced
+     * motion.
      */
     launchSkein(time) {
         if (this.reducedMotion) return false;
         const age = time - this.u.skein.value;
         if (age >= 0 && age < SKEIN_AWAY) return false;
         this.u.skein.value = time;
+        this.skeins += 1;
+        const { geese } = this.parts;
+        if (geese) geese.launch(time, planTakeoff({ layout: this.layout, aspect: this.aspect, seed: this.skeins }));
         return true;
     }
 
@@ -678,6 +698,7 @@ export class GrainfieldsWorld {
         this.herdShadow?.clear();
         this.u.herdShadow.value.set(0, 0, 0);
         this.u.skein.value = -1e6;
+        this.parts.geese?.reset();
         this.time = t;
     }
 

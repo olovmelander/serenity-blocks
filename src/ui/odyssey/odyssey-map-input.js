@@ -189,7 +189,7 @@ export function installOdysseyMapInput(mode, { charmGuide = null } = {}) {
         }
         if (event.key !== 'Enter' && event.key !== ' ') return;
         // A focused control keeps its own Enter and Space (the Play button, the preference).
-        if (event.repeat || event.target?.closest?.('button, a, label, input, summary')) return;
+        if (event.repeat || event.target?.closest?.('button, a, label, input, summary, [role="button"]')) return;
         if (playOdysseyMapSelection(mode)) event.preventDefault();
     };
     // The chip is rebuilt with the header, so its clicks are heard on the document.

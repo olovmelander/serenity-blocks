@@ -1,155 +1,207 @@
 /**
  * Grainfields — the geese.
  *
- * Lapporten's Sami name, Čuonjávággi, is the goose valley. Skeins of geese cross the sky over the
- * fields in long V's, wings beating slowly, dark against the bright air; and when the game climbs
- * a level a skein lifts off the field near the eye and flies away out through the gate.
+ * Lapporten's Sami name, Čuonjávággi, is the goose valley. Skeins of bean geese cross the sky
+ * over the fields in long V's, beating steadily, dark against the bright air; and when the game
+ * climbs a level a flock bursts out of the barley in front of the eye and flies away out
+ * through the gate (grainfields-goose-flight.js choreographs them all).
  *
- * One instanced mesh: each bird a body and two wings (beating in the vertex stage); its place is
- * a closed function of the clock, its skein and its slot in the V (no per-frame writes). The
- * level-up skein starts from `u.skein` (start time; negative when none flies).
+ * The bird is the theme's own, modelled in Blender (scripts/blender/grainfields/goose.py): a
+ * Taiga bean goose at real size, its plumage in its vertex colours. There is no skeleton: each
+ * vertex carries how much the shoulder and the wrist move it (`_wing`), and this vertex stage
+ * folds the wings about those two hinges by the five angles the flight module writes per bird,
+ * then sets the bird on its heading, banked into its turn. One instanced draw for every goose in
+ * sight (the flight module leaves out the rest).
+ *
+ * The light is the fields': the sun through the deck's gaps, the sky above, the barley's gold
+ * bounce under the wings and belly, a little of the low sun through the thin flight feathers
+ * when a bird crosses in front of it, then the air between.
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
     attribute,
+    dot,
+    exp,
     float,
-    fract,
+    max,
+    normalGeometry,
+    normalize,
     positionGeometry,
-    positionWorld,
-    select,
-    sin,
     smoothstep,
+    step,
+    varyingProperty,
     vec3,
     vec4,
 } from 'three/tsl';
-import { EYE, PLACES, mulberry32 } from './grainfields-core.js';
-import { aerial } from './grainfields-light.js';
+import { aerial, lightSurface } from './grainfields-light.js';
+import { GOOSE_RIG, GOOSE_STRIDE, GooseSkies } from './grainfields-goose-flight.js';
 
-/**
- * The skeins that cross by themselves: where their line runs (a start and an end point, metres),
- * how high, how fast (m/s), how many birds, and how long a crossing takes before the next.
- */
-const SKEINS = Object.freeze([
-    Object.freeze({
-        from: [-1400, -620], to: [1500, -780], y: 120, speed: 17, birds: 13, period: 210, phase: 30,
-    }),
-    Object.freeze({
-        from: [1600, -1250], to: [-1700, -1100], y: 190, speed: 15, birds: 9, period: 260, phase: 160,
-    }),
-]);
-/** The level-up skein: from over the field near the eye out through the gate. */
-const OUTBOUND = Object.freeze({ birds: 11, speed: 19, climb: 0.05 });
-const SLOTS = 17;
-const BIRD_SCALE = 2.2;
+/** The model's attributes, as the vertex stage reads them. */
+export const GOOSE_LAYOUT = Object.freeze([['position', 3], ['normal', 3], ['color', 4], ['_wing', 4]]);
 
-/** One bird: a body and two wings, wingspan 1.6 m (the wings flagged by aWing: −1 left, +1 right). */
-function birdGeometry() {
-    const p = [
-        // body
-        0, 0, 0.45, 0.09, 0, -0.3, -0.09, 0, -0.3,
-        // left wing (root to tip)
-        0, 0, 0.08, -0.8, 0, -0.08, 0, 0, -0.18,
-        // right wing
-        0, 0, 0.08, 0, 0, -0.18, 0.8, 0, -0.08,
-    ];
-    const wing = [0, 0, 0, 0, -1, 0, 0, 0, 1];
-    const g = new THREE.InstancedBufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
-    g.setAttribute('aWing', new THREE.Float32BufferAttribute(wing, 1));
-    return g;
+/** The per-bird vec4s, in their order in the instance buffer. */
+const INSTANCE_NAMES = Object.freeze(['iGooseA', 'iGooseB', 'iGooseC', 'iGooseD']);
+
+/** Rotate the pair (a, b) by `ang`. */
+const turn = (a, b, ang) => {
+    const c = ang.cos();
+    const s = ang.sin();
+    return [a.mul(c).sub(b.mul(s)), a.mul(s).add(b.mul(c))];
+};
+
+/** Check a goose geometry has the layout the stage reads. */
+export function checkGooseGeometry(geometry) {
+    for (const [name, size] of GOOSE_LAYOUT) {
+        const a = geometry?.getAttribute?.(name);
+        if (!a || a.itemSize !== size) throw new Error(`[Grainfields] the goose has no "${name}" (vec${size})`);
+    }
+    return geometry;
 }
 
-export function createGeese(u, t, count = 26) {
-    const geometry = birdGeometry();
-    // Per bird: skein (0, 1 the crossings, 2 the level-up one), slot in the V, a seed.
-    const random = mulberry32(0x6e5e);
-    const rows = [];
-    SKEINS.forEach((s, k) => {
-        for (let i = 0; i < Math.min(s.birds, SLOTS); i++) rows.push(k, i, random(), 0);
-    });
-    for (let i = 0; i < OUTBOUND.birds; i++) rows.push(2, i, random(), 0);
-    const limit = Math.max(0, Math.min(rows.length / 4, Math.round(count)));
-    const data = new Float32Array(rows.slice(0, limit * 4));
-    geometry.setAttribute('aBird', new THREE.InstancedBufferAttribute(data, 4));
-    geometry.instanceCount = limit;
-
+function createGooseMaterial(u, t) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'GrainfieldsGeese';
-    material.side = THREE.DoubleSide;
     material.fog = false;
-    const bird = attribute('aBird', 'vec4');
-    const wingAttr = attribute('aWing', 'float');
+    const A = attribute('iGooseA', 'vec4');
+    const B = attribute('iGooseB', 'vec4');
+    const C = attribute('iGooseC', 'vec4');
+    const D = attribute('iGooseD', 'vec4');
+    const wing = attribute('_wing', 'vec4');
+    const plumage = attribute('color', 'vec4');
+    const vNormal = varyingProperty('vec3', 'vGooseNormal');
+    const vWorld = varyingProperty('vec3', 'vGooseWorld');
+    const vSize = varyingProperty('float', 'vGooseSize');
+    const [Sx, Sy, Sz] = GOOSE_RIG.shoulder;
+    const [Wx, Wy, Wz] = GOOSE_RIG.wrist;
+
     material.positionNode = Fn(() => {
-        const k = bird.x;
-        const slot = bird.y;
-        const seed = bird.z;
-        // The V: the leader at the point, then alternate sides, each a rank further back.
-        const rank = slot.add(1.0).mul(0.5).floor();
-        const side = select(fract(slot.mul(0.5)).greaterThan(0.25), float(1.0), float(-1.0));
-        const back = rank.mul(3.4);
-        const out = rank.mul(2.6).mul(side);
-        // The crossings: along their line, one pass per period.
-        const crossing = (s) => {
-            const fx = float(s.from[0]);
-            const fz = float(s.from[1]);
-            const dx = s.to[0] - s.from[0];
-            const dz = s.to[1] - s.from[1];
-            const len = Math.hypot(dx, dz);
-            const run = fract(u.time.add(s.phase).div(s.period)).mul(s.period).mul(s.speed).sub(200.0);
-            const dir = vec3(dx / len, 0.0, dz / len);
-            const live = smoothstep(-200.0, 0.0, run).mul(float(1.0).sub(smoothstep(len - 100, len + 100, run)));
-            return { at: vec3(fx, s.y, fz).add(dir.mul(run)), dir, live };
-        };
-        const a = crossing(SKEINS[0]);
-        const b = crossing(SKEINS[1]);
-        // The level-up skein: lifts off the field 80 m out and heads for the gate, climbing.
-        const age = u.time.sub(u.skein);
-        const toGate = vec3(PLACES.gate.x - EYE.x, 0.0, PLACES.gate.z - EYE.z + 80).normalize();
-        const start = vec3(EYE.x + 30, EYE.y - 1.0, EYE.z - 80);
-        const flown = age.mul(OUTBOUND.speed);
-        const lift = flown.mul(OUTBOUND.climb).add(age.min(4.0).mul(age.min(4.0)).mul(1.2));
-        const c = {
-            at: start.add(toGate.mul(flown)).add(vec3(0.0, lift, 0.0)),
-            dir: toGate,
-            live: smoothstep(0.0, 1.0, age).mul(float(1.0).sub(smoothstep(160.0, 200.0, age))),
-        };
-        const isA = k.lessThan(0.5);
-        const isB = k.greaterThan(0.5).and(k.lessThan(1.5));
-        const lead = select(isA, a.at, select(isB, b.at, c.at));
-        const dir = select(isA, a.dir, select(isB, b.dir, c.dir));
-        const live = select(isA, a.live, select(isB, b.live, c.live));
-        const rightOf = vec3(dir.z.negate(), 0.0, dir.x);
-        const bob = sin(u.time.mul(0.9).add(seed.mul(20.0))).mul(0.6);
-        const centre = lead.sub(dir.mul(back)).add(rightOf.mul(out)).add(vec3(0.0, bob, 0.0));
-        // Wings beat (each bird a little out of step); a resting skein's birds are gone (size 0).
-        const beat = sin(u.time.mul(5.2).add(seed.mul(6.283)));
         const p = positionGeometry;
-        const tip = abs(p.x).mul(1.25);
-        const lifted = p.y.add(beat.mul(tip).mul(0.55).mul(abs(wingAttr)));
-        // Drawn a little larger than life (a goose's 1.6 m span reads as a dot from a kilometre).
-        const size = live.mul(BIRD_SCALE);
-        const local = vec3(p.x, lifted, p.z).mul(size);
-        // Turn the bird to its heading (its local +z forward).
-        const fwd = dir;
-        const world = rightOf.mul(local.x).add(vec3(0.0, local.y, 0.0)).add(fwd.mul(local.z));
-        return centre.add(world);
+        const n = normalGeometry;
+        const fwd = B.xyz;
+        const up = C.xyz;
+        const left = up.cross(fwd).toVar();
+        // Fold the rest pose about the wrist, then the shoulder (grainfields-goose-flight.js: foldPoint).
+        const side = step(0.0, p.x).mul(2.0).sub(1.0);
+        const handTurn = D.z.mul(wing.y).negate().toVar();
+        const handLift = D.y.mul(wing.y).add(D.w.mul(wing.z)).toVar();
+        const armTurn = D.x.mul(wing.x).negate().toVar();
+        const armLift = C.w.mul(wing.x).toVar();
+        let [du, dz] = turn(abs(p.x).sub(Wx), p.z.sub(Wz), handTurn);
+        let dy;
+        [du, dy] = turn(du, p.y.sub(Wy), handLift);
+        [du, dz] = turn(du.add(Wx - Sx), dz.add(Wz - Sz), armTurn);
+        [du, dy] = turn(du, dy.add(Wy - Sy), armLift);
+        // The body heaves with the beat; the head holds still.
+        const heave = B.w.mul(float(1.0).sub(wing.w));
+        const local = vec3(side.mul(du.add(Sx)), dy.add(Sy).add(heave), dz.add(Sz));
+        let [nu, nz] = turn(side.mul(n.x), n.z, handTurn);
+        let ny;
+        [nu, ny] = turn(nu, n.y, handLift);
+        [nu, nz] = turn(nu, nz, armTurn);
+        [nu, ny] = turn(nu, ny, armLift);
+        const world = A.xyz.add(left.mul(local.x).add(up.mul(local.y)).add(fwd.mul(local.z)).mul(A.w)).toVar();
+        vNormal.assign(left.mul(side.mul(nu)).add(up.mul(ny)).add(fwd.mul(nz)));
+        vWorld.assign(world);
+        vSize.assign(A.w);
+        return world;
     })();
+
     material.colorNode = Fn(() => {
-        // Dark birds against the bright air, their undersides catching a little of the light.
-        const albedo = vec3(0.035, 0.032, 0.03);
-        const lit = albedo.mul(u.fill.mul(1.6).add(u.bounce).add(u.sun.mul(u.sunUp).mul(0.12)));
-        return vec4(aerial(u, positionWorld, lit), 1.0);
+        const N = normalize(vNormal).toVar();
+        const P = vWorld;
+        const albedo = plumage.xyz.toVar();
+        const thin = plumage.w;
+        const { colour, sunlit } = lightSurface(u, t.noise, P, N, albedo);
+        // The low sun through the thin flight feathers, only when the bird is close to its disc
+        // (wider, every wing near the sun glowed and the birds faded into its glare).
+        const V = normalize(P.sub(u.eye));
+        const toward = dot(V, u.sunDir);
+        const through = exp(toward.sub(1.0).mul(55.0)).mul(thin).mul(sunlit).mul(0.5);
+        // A warm edge on the thin feathers the sun grazes from behind.
+        const graze = smoothstep(0.0, 0.35, dot(N, u.sunDir).negate().add(0.25)).mul(smoothstep(0.55, 0.95, toward));
+        const lit = colour.add(u.sun.mul(albedo.add(0.04)).mul(through.add(graze.mul(thin).mul(sunlit).mul(0.04))));
+        // A far bird drawn larger than life looks as near as its size says: the air in front of it
+        // is that much thinner (it stays a silhouette instead of fading into the haze).
+        const seenAt = u.eye.add(P.sub(u.eye).div(max(vSize, 1.0)));
+        return vec4(aerial(u, seenAt, lit), 1.0);
     })();
+    return material;
+}
+
+/**
+ * The geese: `count` is the tier's budget of birds drawn at once; `goose` the authored model
+ * ({ geometry } from grainfields-assets.js). Without it the sky goes without geese (null).
+ */
+export function createGeese(u, t, count = 26, goose = null) {
+    if (!goose?.geometry) return null;
+    const base = checkGooseGeometry(goose.geometry);
+    const skies = new GooseSkies(count);
+    const { pool } = skies;
+    const data = new Float32Array(pool * GOOSE_STRIDE);
+    const buffer = new THREE.InstancedInterleavedBuffer(data, GOOSE_STRIDE);
+    buffer.setUsage(THREE.DynamicDrawUsage);
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.index = base.index;
+    for (const [name] of GOOSE_LAYOUT) geometry.setAttribute(name, base.getAttribute(name));
+    INSTANCE_NAMES.forEach((name, k) => geometry.setAttribute(name, new THREE.InterleavedBufferAttribute(buffer, 4, k * 4)));
+    geometry.instanceCount = 1;
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 100, -1000), 4000);
+    const material = createGooseMaterial(u, t);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'GrainfieldsGeese';
     mesh.frustumCulled = false;
     mesh.renderOrder = 4;
+
+    // Out of sight: outside the camera's frame (its basis and lens), widened by a bird's reach.
+    const eye = [0, 0, 0];
+    const view = {
+        eye,
+        pixelAngle: 0.0007,
+        cull: (x, y, z, reach) => {
+            const dx = x - eye[0];
+            const dy = y - eye[1];
+            const dz = z - eye[2];
+            const f = u.camFwd.value;
+            const depth = dx * f.x + dy * f.y + dz * f.z;
+            if (depth < -reach) return true;
+            const r = u.camRight.value;
+            const v = u.camUp.value;
+            const tanV = u.tanHalfFov.value;
+            const tanU = tanV * u.aspect.value;
+            const across = Math.abs(dx * r.x + dy * r.y + dz * r.z);
+            const high = Math.abs(dx * v.x + dy * v.y + dz * v.z);
+            const d = Math.max(depth, 0);
+            // (A generous margin up and down: the portrait lens is shifted.)
+            return across > d * tanU * 1.08 + reach || high > d * tanV * 1.9 + reach;
+        },
+    };
+
     return {
         mesh,
         meshes: [mesh],
-        update() {},
+        skies,
+        /** A flight out goes up at `time` along `route` (grainfields-goose-flight.js: planTakeoff). */
+        launch(time, route) { return skies.launch(time, route); },
+        reset() { skies.reset(); },
+        update(time) {
+            const e = u.eye.value;
+            eye[0] = e.x;
+            eye[1] = e.y;
+            eye[2] = e.z;
+            view.pixelAngle = u.pixelAngle.value;
+            const n = skies.write(time, view, data);
+            // Nothing in sight: one bird of no size keeps the draw (and its pipeline) warm.
+            if (n === 0) data.fill(0, 0, GOOSE_STRIDE);
+            geometry.instanceCount = Math.max(1, n);
+            buffer.needsUpdate = true;
+        },
+        /** Where bird `i` of skein `key` ('out', 'a', 'b') is at `time` (the playground's lenses). */
+        locate(key, i, time) {
+            const e = u.eye.value;
+            return skies.locate(key, i, time, { eye: [e.x, e.y, e.z], pixelAngle: u.pixelAngle.value });
+        },
         dispose() {
             geometry.dispose();
             material.dispose();

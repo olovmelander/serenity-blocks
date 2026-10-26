@@ -13,6 +13,7 @@
  */
 
 import { COSMIC_ICON_NAMES, csIconInner } from './cosmic-icons.js';
+import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 
 /**
  * A glyph from the game's one icon set (cosmic-icons.js) in the multiplayer screens' own
@@ -82,10 +83,43 @@ function topLayer() {
     return null;
 }
 
+function isShown(element) {
+    if (typeof element?.checkVisibility === 'function') return element.checkVisibility({ visibilityProperty: true });
+    return Boolean(element?.getClientRects?.().length);
+}
+
+function layerFocusables(element) {
+    return Array.from(element.querySelectorAll?.(FOCUSABLE_SELECTOR) || []).filter(isShown);
+}
+
+/** Tab stays inside the top surface while it is open, as in the Keystone sheets. */
+function trapTab(event, layer) {
+    const focusables = layerFocusables(layer.element);
+    if (!focusables.length) return;
+    const active = document.activeElement;
+    const inside = layer.element.contains(active);
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    let target = null;
+    if (!inside) target = event.shiftKey ? last : first;
+    else if (event.shiftKey && active === first) target = last;
+    else if (!event.shiftKey && active === last) target = first;
+    if (target) {
+        event.preventDefault();
+        target.focus();
+    }
+}
+
 function onEscape(event) {
-    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    const tab = event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey;
+    if ((event.key !== 'Escape' && !tab) || event.defaultPrevented) return;
     if (document.getElementById('settings-modal')?.classList.contains('visible')) return;
     if (document.body?.classList.contains('serenity-hub-open')) return;
+    if (tab) {
+        const layer = topLayer();
+        if (layer) trapTab(event, layer);
+        return;
+    }
     // An open dropdown closes itself first (its trigger handles Escape).
     if (event.target?.closest?.('.cosmic-select.is-open')) return;
     const layer = topLayer();
@@ -113,14 +147,48 @@ export function openLayer(element, onBack, { fieldsFirst = false } = {}) {
         escapeInstalled = true;
         window.addEventListener('keydown', onEscape, true);
     }
-    closeLayer(element);
-    layers.push({ element, onBack, fieldsFirst });
+    // Where focus was when the surface opened, to hand it back when it closes.
+    const index = layers.findIndex((layer) => layer.element === element);
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    let opener = active && active !== document.body && !element.contains(active) ? active : null;
+    if (index >= 0) {
+        ({ opener } = layers[index]);
+        layers.splice(index, 1);
+    }
+    layers.push({
+        element, onBack, fieldsFirst, opener,
+    });
     return () => closeLayer(element);
+}
+
+/**
+ * Focus left on a surface that closed goes back where it came from: to the control that
+ * opened it, or into the surface now on top. Next frame, once the next screen has shown
+ * (or the match has started and the menu is gone).
+ */
+function restoreFocus(layer) {
+    if (typeof requestAnimationFrame !== 'function' || typeof document === 'undefined') return;
+    requestAnimationFrame(() => {
+        const active = document.activeElement;
+        if (active && active !== document.body && !layer.element.contains(active)) return;
+        if (document.getElementById?.('settings-modal')?.classList?.contains('visible')) return;
+        const top = topLayer();
+        const { opener } = layer;
+        if (opener?.isConnected && isShown(opener) && (!top || top.element.contains(opener))) {
+            opener.focus({ preventScroll: true });
+        } else if (top) {
+            layerFocusables(top.element)[0]?.focus({ preventScroll: true });
+        } else if (active && layer.element.contains(active)) {
+            active.blur?.();
+        }
+    });
 }
 
 export function closeLayer(element) {
     const index = layers.findIndex((layer) => layer.element === element);
-    if (index >= 0) layers.splice(index, 1);
+    if (index < 0) return;
+    const [layer] = layers.splice(index, 1);
+    restoreFocus(layer);
 }
 
 /** The open multiplayer surface on top, if any (controller navigation scopes to it). */

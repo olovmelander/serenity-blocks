@@ -147,16 +147,17 @@ district, so `seek(t)` still reproduces any frame.
 ![Fly-posted walls with the new poster designs, a bar and a noodle bar with people in them](neon-district-captures/alive.webp)
 
 **People in the shops.** Since 2026-10-26 the people are a cast of cyberpunk characters baked in
-Blender and relit by each room (they were flat signed-distance silhouettes, `ndFigure`, until then);
-see [NEON_DISTRICT_PEOPLE_2026-10.md](NEON_DISTRICT_PEOPLE_2026-10.md). Each room has up to four:
+Blender, cel-shaded and inked, and lit by each room (they were flat signed-distance silhouettes,
+`ndFigure`, until then); see [NEON_DISTRICT_PEOPLE_2026-10.md](NEON_DISTRICT_PEOPLE_2026-10.md).
+Each room has up to four:
 
 - **Staff** behind the counter, so the counter hides their legs: a cook, a bartender, a clerk,
-  sidestepping along it.
+  stepping along it between spots.
 - **Elsewhere at the back:** runners on the gym's treadmills, players at the arcade cabinets, and a
   monk in Hale's calm room who breathes with the game's breath.
 - **In front of the counter:** a diner on a stool eating, a patron leaning on the bar, shoppers at
   the shelves, someone lifting dumbbells, people waiting on their phones, and customers crossing the
-  room and back.
+  room, stopping at its end to look round, and walking back.
 - A shop with its shutter down is empty.
 
 **Life in the rooms:**

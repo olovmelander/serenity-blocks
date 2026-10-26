@@ -127,6 +127,29 @@
     display: none;
 }
 
+/* Quit game (desktop builds, src/ui/desktop-quit.js) is the way out of the game, not back into
+   it: the actions take a row of their own and Quit keeps to its far end, quieter than the
+   rest until its first press arms it. */
+#settings-modal .settings-pause__actions:has(> .settings-pause__quit:not([hidden])) {
+    flex: 1 1 100%;
+}
+
+#settings-modal .settings-pause__quit {
+    margin-left: auto;
+    color: var(--sb-text-muted);
+}
+
+#settings-modal .settings-pause__quit:hover,
+#settings-modal .settings-pause__quit:focus-visible {
+    color: var(--sb-text);
+}
+
+#settings-modal .settings-pause__quit.is-confirming {
+    color: var(--sb-danger);
+    border-color: rgba(var(--sb-danger-rgb), 0.5);
+    background: rgba(var(--sb-danger-rgb), 0.1);
+}
+
 /* In a game, Resume is the way back (Back to the map on Odyssey's); Close would say it twice. */
 #settings-modal[data-context='pause'] #close-settings,
 #settings-modal[data-context='journey'] #close-settings {
@@ -920,6 +943,13 @@
 @keyframes sb-listen {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.62; }
+}
+
+/* Swapped: the tile that gave its key to the binding just made, for a moment. */
+#settings-modal .key-input.binding-swapped {
+    border-color: rgba(var(--sb-aqua-rgb), 0.6);
+    background: rgba(var(--sb-aqua-rgb), 0.08);
+    color: var(--sb-aqua);
 }
 
 #settings-modal .controls-subtab-actions {

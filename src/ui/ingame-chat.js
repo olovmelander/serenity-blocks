@@ -1,4 +1,5 @@
 import { sanitizeCssColor } from '../utils/dom-safety.js';
+import { menuCoversGame } from './sheet-input.js';
 
 export class InGameChat {
     constructor(gameState) {
@@ -20,7 +21,7 @@ export class InGameChat {
      * Get the right panel chat input element
      */
     getRightPanelChatInput() {
-        return document.getElementById('match-chat-input');
+        return document.getElementById('chat-input');
     }
 
     /**
@@ -36,7 +37,7 @@ export class InGameChat {
             const chatInput = this.getRightPanelChatInput();
 
             // Only handle if chat input exists and we're not already typing in an input
-            if (!chatInput) return;
+            if (!chatInput || !chatInput.getClientRects?.().length) return;
 
             const activeEl = document.activeElement;
             const isTypingInInput = activeEl && (
@@ -46,6 +47,9 @@ export class InGameChat {
             );
 
             if (e.key === 'Enter') {
+                // A focused button (results, lobby) or a menu over the match keeps its Enter.
+                if (e.defaultPrevented || menuCoversGame()
+                    || activeEl?.closest?.('button, a[href], [role="button"], select, summary')) return;
                 if (isTypingInInput && activeEl === chatInput) {
                     // Already in chat input, let the existing send handler work
                     return;

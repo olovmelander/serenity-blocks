@@ -68,6 +68,8 @@ const PATHS = {
     chain: '<path class="cs-chain-a" d="M9.8 7.3 11 6.1a4.1 4.1 0 0 1 5.8 5.8l-1.8 1.8a4.1 4.1 0 0 1-5.8 0"/><path class="cs-chain-b" d="M14.2 16.7 13 17.9a4.1 4.1 0 0 1-5.8-5.8L9 10.3a4.1 4.1 0 0 1 5.8 0"/>',
     folder: '<path d="M3.5 7.5h6l1.7 2h9.3v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-10Z"/><path d="M3.5 7.5V6a2 2 0 0 1 2-2h4.2l1.7 2h7.1a2 2 0 0 1 2 2v1.5"/>',
     home: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V19a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V9.5"/><path d="M9.8 20.5v-5.5h4.4v5.5"/>',
+    /** Quit the desktop game (src/ui/desktop-quit.js). An action, not a place: no tile. */
+    power: '<path d="M12 3.8v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/>',
     potato: '<path class="cs-potato-body" d="M8 18.4c-2.6-1.8-3.3-5.8-1.6-9.1s5.3-4.9 8.6-3.9c3.6 1.1 5.3 4.8 3.8 8.3-1.7 4.1-7 6.8-10.8 4.7Z"/><path class="cs-potato-eye" d="M9.2 10.3h.01M13.9 8.5h.01M15.2 13.6h.01M10.8 15.2h.01"/><path class="cs-potato-spark" d="M18 4.2l1.2-1.7M20 6.2l2-.2"/>',
     bomb: '<circle class="cs-bomb-body" cx="11" cy="13" r="6.2"/><path class="cs-bomb-fuse" d="M15.2 8.8 17.5 6.5M17.5 6.5c1.3-1.3 2.5-1.3 3.7 0"/><path class="cs-bomb-spark" d="M21.3 3.4v2.1M20.2 4.5h2.1"/>',
 

@@ -703,7 +703,25 @@ body.start-modal-open #start-modal .main-menu-logo {
     color: var(--sb-text);
 }
 
-/* Quit (desktop only, main-menu.js) asks for a second press before it closes the game. */
+/* Quit (desktop only, main-menu.js) is the way out, not a place: a hairline sets it apart
+   from the places the dock opens. It asks for a second press before it closes the game. */
+#start-modal .sb-dock__btn--quit {
+    position: relative;
+    margin-left: 13px;
+}
+
+#start-modal .sb-dock__btn--quit::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: -9px;
+    width: 1px;
+    height: 18px;
+    background: var(--sb-line-strong);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
 #start-modal .sb-dock__btn--quit.is-confirming {
     color: var(--sb-danger);
     border-color: rgba(var(--sb-danger-rgb), 0.45);
@@ -1358,6 +1376,15 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
         font-size: 0.55rem;
         letter-spacing: 0.12em;
         text-align: center;
+    }
+
+    /* Tiles here: a wider gap, not the hairline, sets Quit apart. */
+    #start-modal .sb-dock__btn--quit {
+        margin-left: 6px;
+    }
+
+    #start-modal .sb-dock__btn--quit::before {
+        content: none;
     }
 
     #start-modal .headphone-badge {
