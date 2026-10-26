@@ -5967,6 +5967,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '-4617,900,-12686,12',
         ],
         [
+            'cam',
+            'A free camera: from one world point, look at another (inside the stand, a plant against the sky).',
+            'x,y,z,tx,ty,tz[,fov] in metres and degrees.',
+            'The rest rig.',
+            '0.4,11.35,-3,0.2,11.55,-4.4,24',
+        ],
+        [
             'event',
             'Replay one gameplay reaction before the frame.',
             'lock, drop, clear, quad, tspin, perfect, levelUp or over.',
