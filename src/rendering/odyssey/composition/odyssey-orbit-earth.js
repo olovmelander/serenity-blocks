@@ -91,12 +91,18 @@ import {
 import { AURORA_PALETTE } from '../chapter-environments/odyssey-planet-aurora.js';
 
 export const ORBIT_EARTH = Object.freeze({
-    /** The backdrop sphere's radius round the eye (world units) while the world shows (behind it:
-     * the world shows the Earth on its own surfaces), and once the Earth covers the world: inside
-     * every far hero (the giant is >= ~600 u away while the Earth shows), outside the journey (the
-     * orbs ahead are <= ~430 u, above the limb). See DRAW ORDER. */
-    radius: 1650,
+    /** The backdrop sphere's radius round the eye (world units) while the world shows: behind
+     * everything the world draws (its sea runs out to the camera's far plane, 9000), so the world
+     * shows the Earth on its own surfaces and the backdrop only past them; and once the Earth
+     * covers the world: inside every far hero (the giant is >= ~600 u away while the Earth shows),
+     * outside the journey (the orbs ahead are <= ~430 u, above the limb). See DRAW ORDER. */
+    radius: 8800,
     nearRadius: 320,
+    /** THE ONE ALTITUDE (2026-10-26): the world's scale, metres per world unit. The Earth stands at
+     * the eye's own climbed height over the sea in these units (the mountain is ~3 km, the cumulus
+     * tops ~8.5 km, the eye ~150 km at the 5->6 boundary, where the old schedule had put it too). */
+    metresPerUnit: 4.9,
+    earthRadiusM: 6.371e6,
     /** Weather cells per radian of the Earth's arc (the broad systems; detail is finer). */
     cells: 70,
     /** How far the weather slides under the eye per world unit it travels (cells): the pace the
@@ -105,8 +111,10 @@ export const ORBIT_EARTH = Object.freeze({
      * at 0.2 it ran ~2000x faster; its weather rushed past while the sea above it stood still,
      * and a touchpad swipe turned it into a blur). */
     trackPerUnit: 9e-5,
-    /** Scale height of the rim's glow, in Earth radii. */
+    /** Scale height of the rim's glow, in Earth radii, and the eye's heights (radii) across which
+     * the glowing edge comes up (below them the horizon is the world's haze). */
     rimHeight: 0.0055,
+    rimFrom: Object.freeze([0.0022, 0.0065]),
     /** The airglow line's height (Earth radii, the aurora's foot) and half-width. */
     airglowAlt: 0.0035,
     airglowWidth: 0.0009,
@@ -190,7 +198,12 @@ export const ORBIT_EARTH_SURFACE = Object.freeze({
  * view leans down over the Earth, then lifts back to the rail as the Earth sinks out.
  */
 export const ORBIT_EARTH_SCHEDULE = Object.freeze({
-    /** Presence: in across [b - inFrom, b - inTo], out across [b + outFrom, b + outTo]. */
+    /** Presence: in across [b - arriveFrom, b - arriveTo] (2026-10-26: as the departure begins,
+     * before the world's sky deepens, the Earth is simply there beneath and beyond the world, at
+     * the eye's own height, in the world's own air; nothing sweeps in), out across
+     * [b + outFrom, b + outTo]. `inFrom` still anchors the dip, the sunset and the lean. */
+    arriveFrom: 1.05,
+    arriveTo: 0.92,
     inFrom: 0.55,
     inTo: 0.36,
     outFrom: 0.45,
@@ -230,11 +243,10 @@ export const ORBIT_EARTH_SCHEDULE = Object.freeze({
      * The orb that passes level with its seat (p ~0.77) is why it rises slowly: it is still low
      * and to the right when that orb goes by. */
     riseSlant: -45,
-    /** THE SEAM: the Earth's front sweeps from its limb to the nadir as it arrives (eased by this
-     * power, so it crosses the frame's lower half early), and its veil of the world's air clears
-     * across [b - veil[0], b - veil[1]], once the front has crossed the frame. */
-    frontPower: 1.5,
-    veil: Object.freeze([0.40, 0.29]),
+    /** THE ONE ALTITUDE: the schedule's own height (the dip below) takes over from the eye's
+     * climbed height across [b - late[0], b - late[1]] (the two within ~10 % there; from the
+     * boundary on the schedule's alone, as the world is gone and the eye rises faster than it). */
+    late: Object.freeze([0.25, 0.08]),
     /** The world's clouds go into the Earth (melt into what it shows behind them) across
      * [b - clouds[0], b - clouds[1]], once the climb has made them small; the Earth covers the
      * world when they have and it has fully arrived. */
@@ -271,7 +283,7 @@ const smooth01 = (x) => {
  *   world's air it still wears; cloudsAway 0..1, how far the world's clouds have gone into it;
  *   covers, whether it now covers the world (the world's surfaces are hidden)
  */
-export function orbitEarthAt(p, chapterPositions) {
+export function orbitEarthAt(p, chapterPositions, eyeHeight = null) {
     const S = ORBIT_EARTH_SCHEDULE;
     const b = chapterPositions?.[5];
     const c = chapterPositions?.[6];
@@ -293,11 +305,21 @@ export function orbitEarthAt(p, chapterPositions) {
     const span = c - b;
     const start = b - (span * S.inFrom);
     const settle = b + (span * S.outFrom);
-    const arrive = smooth01((p - start) / (span * (S.inFrom - S.inTo)));
+    const arrive = smooth01((p - (b - (span * S.arriveFrom))) / (span * (S.arriveFrom - S.arriveTo)));
     const presence = arrive * (1 - smooth01((p - settle) / (span * (S.outTo - S.outFrom))));
     const u = Math.min(1, Math.max(0, (p - start) / (settle - start)));
     const dipDeg = S.dipStart + (S.dipGrowth * (u ** S.dipPower));
-    const dip = dipDeg * (Math.PI / 180);
+    // THE ONE ALTITUDE (2026-10-26): the eye's own climbed height over the sea, in Earth radii,
+    // until the schedule's height (which runs on past the world) takes over near the boundary.
+    // Without the eye's height (the scroll pace, the playground) the schedule alone.
+    const scheduled = (1 / Math.cos(dipDeg * (Math.PI / 180))) - 1;
+    let altitude = scheduled;
+    if (Number.isFinite(eyeHeight) && eyeHeight > 0) {
+        const own = (eyeHeight * ORBIT_EARTH.metresPerUnit) / ORBIT_EARTH.earthRadiusM;
+        const late = smooth01((p - (b - (span * S.late[0]))) / (span * (S.late[0] - S.late[1])));
+        altitude = Math.max(own, scheduled * late);
+    }
+    const dip = Math.acos(1 / (1 + altitude));
     const toB = smooth01((p - start) / (b - start));
     const pastB = smooth01((p - b) / (settle - b));
     const sunElevation = WORLD_SUN_ELEVATION
@@ -309,17 +331,18 @@ export function orbitEarthAt(p, chapterPositions) {
     const leanOut = smooth01((p - (b + (span * S.holdTo))) / (span * (S.leanOut - S.holdTo)));
     const lean = leanIn * (1 - leanOut);
     const cloudsAway = smooth01((p - (b - (span * S.clouds[0]))) / (span * (S.clouds[0] - S.clouds[1])));
-    const veil = 1 - smooth01((p - (b - (span * S.veil[0]))) / (span * (S.veil[0] - S.veil[1])));
+    // No front and no veil any more: the Earth is there wherever it is seen, in the world's air.
+    const veil = 0;
     return {
         presence,
         dip,
-        altitude: (1 / Math.cos(dip)) - 1,
+        altitude,
         sunElevation,
         aurora: aurora * presence,
         lookDownDeg: -S.lean * lean,
         widenDeg: S.widen * lean,
         planetRise: smooth01((p - (b - (span * S.rise[0]))) / (span * (S.rise[0] + S.rise[1]))),
-        frontSin: Math.sin(dip + (((Math.PI / 2) - dip) * (arrive ** S.frontPower))),
+        frontSin: 1.5,
         veil,
         cloudsAway,
         covers: presence >= ORBIT_EARTH_COVERS && cloudsAway >= 0.999 && veil <= 0.001,
@@ -392,6 +415,8 @@ const U = {
     frontSin: uniform(-2),
     veil: uniform(0),
     cloudsAway: uniform(0),
+    // The sine of its limb's depression under the level, times its presence (0 with no Earth).
+    limbSin: uniform(0),
     aurora: uniform(0),
     track: uniform(new THREE.Vector3(0, 0, 0)),
     time: uniform(0),
@@ -550,7 +575,7 @@ function ovalAt(n) {
  * it arrives, and `alpha`, how much of the view it covers once its front and its presence are
  * counted. The aurora's curtains are the backdrop's own (createOrbitEarth).
  */
-function earthLook(dir, air = null, surfaceAir = air) {
+function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     const E = ORBIT_EARTH;
     const h = U.alt;
     const k = h.add(1).toVar();
@@ -736,12 +761,19 @@ function earthLook(dir, air = null, surfaceAir = air) {
         surf.addAssign(albedo.mul(vec3(...AURORA_PALETTE.greenWarm)).mul(under.glow.mul(under.activity))
             .mul(U.aurora.mul(night).mul(0.16)));
     });
-    // The air between the eye and the surface: more of it toward the limb.
-    const airT = float(1).sub(exp(float(E.airTau).negate().div(max(mu, 0.03)))).toVar();
+    // The air between the eye and the surface: more of it toward the limb. While the world is
+    // there it is the WORLD's own air (2026-10-26): its colour for this direction and its column
+    // over the eye (the same exponential atmosphere its sea is hazed by), so where the world's far
+    // sea gives way to the Earth the haze is the same haze, thick near the horizon from low down
+    // and thinning as the eye climbs. Otherwise the Earth's own.
     const day = smoothstep(-0.12, 0.25, sd);
-    const airCol = mix(vec3(...AIR_NIGHT), vec3(...AIR_DAY).mul(0.55), day)
+    const ownAir = mix(vec3(...AIR_NIGHT), vec3(...AIR_DAY).mul(0.55), day)
         .add(vec3(...SUNSET).mul(warm.mul(day).mul(0.35)));
-    const surface = mix(surf, airCol, airT.mul(0.92));
+    const airT = (worldAir
+        ? clamp(float(1).sub(exp(worldAir.column.negate().div(max(mu, 0.03)))), 0, worldAir.ceil)
+        : float(1).sub(exp(float(E.airTau).negate().div(max(mu, 0.03)))).mul(0.92)).toVar();
+    const airCol = worldAir ? mix(ownAir, worldAir.colour, worldAir.weight) : ownAir;
+    const surface = mix(surf, airCol, airT);
 
     // ── THE RIM: the air seen edge-on just outside the limb ──
     const tc = max(k.mul(dy).negate(), 0);
@@ -752,8 +784,11 @@ function earthLook(dir, air = null, surfaceAir = air) {
     // at the level, over the limb's own dip, so the sky above belongs to the dome (and to the
     // dark) however high the eye, with no edge where the taper ends.
     const sinDip = sqrt(h.mul(h.add(2))).div(k);
+    // ...and only from the stratosphere up (2026-10-26): from a few kilometres the air at the
+    // horizon is a haze, not a glowing edge; the edge comes up as the eye climbs past ~15 km.
     const glow = exp(above.div(E.rimHeight).negate())
-        .mul(smoothstep(0.0, sinDip, dy.negate())).toVar();
+        .mul(smoothstep(0.0, sinDip, dy.negate()))
+        .mul(smoothstep(E.rimFrom[0], E.rimFrom[1], h)).toVar();
     const dayRim = smoothstep(-0.10, 0.20, sdRim);
     const warmRim = float(1).sub(smoothstep(-0.02, 0.30, sdRim)).mul(smoothstep(-0.16, 0.0, sdRim));
     // Layered at the sunset: red low, blue above it.
@@ -802,17 +837,26 @@ function earthLook(dir, air = null, surfaceAir = air) {
  * air again on top: a white sheet that swept down from the horizon, "this white pops up from
  * nowhere").
  */
-export function orbitEarthOver(dir, air, surfaceAir = air) {
-    const look = earthLook(dir, air, surfaceAir);
+/** The sine of the limb's depression under the level from `altitude` (Earth radii). */
+export function orbitEarthLimbSin(altitude) {
+    const h = Math.max(Number.isFinite(altitude) ? altitude : 0, 0);
+    return Math.sqrt(h * (h + 2)) / (1 + h);
+}
+
+export function orbitEarthOver(dir, air, surfaceAir = air, worldAir = null) {
+    const look = earthLook(dir, air, surfaceAir, worldAir);
     return look.colour.mul(look.arrived).add(surfaceAir.mul(float(1).sub(look.alpha)));
 }
 
 /** The Earth's live seam state for the world's materials: its presence, its front (sine of the
- * depression; -2 before it begins) and how far the world's clouds have gone into it (0..1). */
+ * depression; -2 before it begins), how far the world's clouds have gone into it (0..1) and the
+ * sine of its limb's depression under the level, eased in with its presence (THE HORIZON IS THE
+ * LIMB: the world's sky and air measure their elevation from it). */
 export const ORBIT_EARTH_SEAM = Object.freeze({
     presence: U.presence,
     frontSin: U.frontSin,
     cloudsAway: U.cloudsAway,
+    limbSin: U.limbSin,
 });
 
 /**
@@ -830,7 +874,7 @@ export const ORBIT_EARTH_SEAM = Object.freeze({
  *   dispose: () => void,
  * }}
  */
-export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null } = {}) {
+export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, worldAir = null } = {}) {
     const E = ORBIT_EARTH;
     const A = ORBIT_EARTH_AURORA;
     const greenWarm = vec3(...AURORA_PALETTE.greenWarm);
@@ -838,7 +882,7 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null } = 
     const crimson = vec3(...AURORA_PALETTE.crimson);
     const shade = Fn(() => {
         const dir = normalize(positionWorld.sub(cameraPosition)).toVar();
-        const look = earthLook(dir, haze ? haze(dir) : null);
+        const look = earthLook(dir, haze ? haze(dir) : null, haze ? haze(dir) : null, worldAir ? worldAir(dir) : null);
         const {
             k, dy, disc, t,
         } = look;
@@ -1000,9 +1044,11 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null } = 
             U.frontSin.value = mesh.visible && Number.isFinite(frontSin) ? frontSin : -2;
             U.cloudsAway.value = mesh.visible ? Math.min(Math.max(Number.isFinite(cloudsAway) ? cloudsAway : 0, 0), 1) : 0;
             U.veil.value = Math.min(Math.max(Number.isFinite(veil) ? veil : 0, 0), 1);
+            U.limbSin.value = 0;
             if (!mesh.visible) return;
             U.aurora.value = Math.min(Math.max(Number.isFinite(aurora) ? aurora : 0, 0), 1);
             U.alt.value = Math.max(Number.isFinite(altitude) ? altitude : 0.01, 1e-5);
+            U.limbSin.value = orbitEarthLimbSin(U.alt.value) * pr;
             U.sun.value.set(sun.x, sun.y, sun.z).normalize();
             if (track) U.track.value.set(track.x, track.y, track.z);
             U.time.value = time;
