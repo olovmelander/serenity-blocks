@@ -413,7 +413,8 @@ export class WinterWorld {
         // So does the polar bear's: its plan walks it whether or not it has one.
         this.bearReady = !this.wantsBear ? Promise.resolve(false) : loadBear().then((gltf) => {
             if (!gltf || this.disposed || !this.u) return false;
-            this.bear = createBear(this.u, gltf);
+            // (Its coat in half as many shells as the fox's: it is seen from further off.)
+            this.bear = createBear(this.u, gltf, { shells: Math.round(this.tier.fur * 0.5) });
             this.parts.bear = this.bear;
             this.root.add(this.bear.mesh);
             if (this.shown) this.bear.mesh.visible = this.shown.has('bear');

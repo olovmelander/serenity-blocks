@@ -26,14 +26,18 @@ import {
     clamp,
     dot,
     float,
+    instanceIndex,
     length,
     max,
     mix,
     modelWorldMatrix,
+    normalLocal,
     normalWorld,
     normalize,
+    positionGeometry,
     positionLocal,
     positionWorld,
+    smoothstep,
     varying,
     vec2,
     vec3,
@@ -44,13 +48,30 @@ import {
     ICE_Y, LOOK, wAir, wClip, wFxMaterial, wIceSwept, wMoonShadow, wSolidMaterial, wSq,
 } from './winter-tsl.js';
 import {
-    BEAR_BONES, BEAR_SCALE, bearSpec, createBearPosture, createBearSpec, solveBear,
+    BEAR_BONES, BEAR_SCALE, createBearPosture, solveBear,
 } from './winter-bear-rig.js';
 
 export const BEAR_URL = new URL('./assets/polar-bear.glb', import.meta.url).href;
 
 /** How far over the ice (metres) its mirror image is laid: in front of the ice, never through it. */
 const MIRROR_LIFT = 0.03;
+/** How far a hair of length 1 stands off the skin (model metres). */
+const HAIR = 0.085;
+/** Tiles of the noise texture to a model metre of coat: its grain is the locks of hair. */
+const FUR_GRAIN = 17;
+/** How thick the whole coat is: the optical depth of all its shells at the skin. */
+const FUR_DENSITY = 9;
+
+/** The same mesh drawn `count` times over its skin in one call (the attributes shared, not copied). */
+function shelled(source, count) {
+    const geometry = new THREE.InstancedBufferGeometry();
+    Object.keys(source.attributes).forEach((name) => geometry.setAttribute(name, source.attributes[name]));
+    geometry.setIndex(source.index);
+    geometry.instanceCount = Math.max(1, Math.round(count));
+    geometry.boundingSphere = source.boundingSphere;
+    geometry.boundingBox = source.boundingBox;
+    return geometry;
+}
 
 /** Fetch the model. Resolves null when it cannot be read (the lake does without its bear). */
 export async function loadBear(url = BEAR_URL) {
@@ -71,15 +92,14 @@ function makePoser(model) {
     const bones = BEAR_BONES.map(([name]) => model.getObjectByName(name));
     const whole = bones.every((bone) => bone?.isBone);
     if (!whole) console.warn('[Winter] the bear model is not on the theme\'s skeleton (model-bear.mjs).');
-    const spec = createBearSpec();
     const posture = createBearPosture();
     return {
         whole,
         posture,
-        /** @param {object} p  the plan's pose */
+        /** @param {object} p  the plan's pose (its spec is what the body solves) */
         pose(p) {
             if (!whole) return;
-            solveBear(bearSpec(p, spec), posture);
+            solveBear(p.spec, posture);
             for (let i = 0; i < bones.length; i++) bones[i].quaternion.fromArray(posture.local[i]);
             bones[0].position.fromArray(posture.at[0]);
         },
@@ -101,8 +121,10 @@ function makePoser(model) {
  * @param {object} gltf  what loadBear() resolved
  * @param {object} [o]
  * @param {boolean} [o.mirror=true]  draw its image in the bare ice
+ * @param {number} [o.shells=0]  shells of fur drawn over its skin (0: the skin is the coat)
  */
-export function createBear(u, gltf, { mirror = true } = {}) {
+export function createBear(u, gltf, { mirror = true, shells = 0 } = {}) {
+    const layers = Math.max(0, Math.round(shells));
     const model = gltf.scene;
     const skins = [];
     model.traverse((child) => {
@@ -111,8 +133,11 @@ export function createBear(u, gltf, { mirror = true } = {}) {
     // pad, fur length, dark, sky seen
     const vCoat = varying(attribute('color', 'vec4'), 'wBearCoat');
 
-    /** The coat's colour at world point P with normal N, seen along V (toward the eye), before the air. */
-    const coat = (P, N, V) => {
+    /**
+     * The coat's colour at world point P with normal N, seen along V (toward the eye), `height` of
+     * the way from the skin (0) to the tips of the hair (1), before the air.
+     */
+    const coat = (P, N, V, height = float(0.7)) => {
         const dark = max(clamp(vCoat.z, 0.0, 1.0), clamp(vCoat.x, 0.0, 1.0).mul(0.85));
         const sees = clamp(vCoat.w, 0.0, 1.0);
         const fur = clamp(vCoat.y, 0.0, 1.0);
@@ -142,7 +167,10 @@ export function createBear(u, gltf, { mirror = true } = {}) {
         const through = u.moonCol.mul(behind.mul(0.8).add(0.1)).mul(shadow.mul(0.8).add(0.2))
             .mul(float(1.0).sub(dark));
         const rim = through.mul(wSq(edge).mul(edge)).mul(fur.mul(0.5).add(0.3)).mul(LOOK.bearRim);
-        return lit.add(rim).mul(u.breath.mul(0.8).add(0.2));
+        // Deep in the coat it is dark; the tips stand in the light, and against the moon they glow.
+        const depth = mix(float(0.8), float(1.0), smoothstep(0.0, 0.8, height));
+        const halo = through.mul(wSq(height)).mul(0.45);
+        return lit.mul(depth).add(rim).add(halo).mul(u.breath.mul(0.8).add(0.2));
     };
 
     const material = wSolidMaterial('WinterBear');
@@ -151,7 +179,8 @@ export function createBear(u, gltf, { mirror = true } = {}) {
         const P = positionWorld.toVar();
         const toEye = cameraPosition.sub(P);
         const V = toEye.div(max(length(toEye), 1e-3));
-        return wAir(u, coat(P, normalize(normalWorld), V), P);
+        // (Under shells of fur the skin is the coat's depths; without them it is the coat.)
+        return wAir(u, coat(P, normalize(normalWorld), V, float(layers > 0 ? 0.0 : 0.7)), P);
     })();
     model.traverse((child) => {
         if (!child.isMesh) return;
@@ -159,6 +188,55 @@ export function createBear(u, gltf, { mirror = true } = {}) {
         child.material = material;
         child.frustumCulled = false;
     });
+
+    // ── Its coat: the same body again, in shells that stand off the skin ──
+    // Each shell is a veil as thick as the share of the hairs that grow that long, so the coat is
+    // dense at the skin and thins to a mist at its tips; the hair is combed back and down.
+    let furMaterial = null;
+    const coats = [];
+    const furs = [];
+    if (layers > 0) {
+        furMaterial = wFxMaterial('WinterBearFur');
+        furMaterial.side = THREE.FrontSide;
+        const shell = float(instanceIndex).add(1.0).div(layers + 1);
+        furMaterial.positionNode = Fn(() => {
+            const reach = attribute('color', 'vec4').y.mul(HAIR).mul(shell);
+            const grow = normalize(normalLocal.add(vec3(0.0, -0.35, -0.5).mul(shell)));
+            const droop = vec3(0.0, -1.0, 0.0).mul(reach.mul(shell).mul(0.3));
+            return positionLocal.add(grow.mul(reach)).add(droop);
+        })();
+        const vShell = varying(shell, 'wBearShell');
+        const vBase = varying(positionGeometry, 'wBearBase');
+        furMaterial.colorNode = Fn(() => {
+            const height = clamp(vShell, 0.0, 1.0);
+            // Hairs fixed to the coat where it was modelled, lying along the body.
+            const grain = u.noise(vec2(vBase.x.add(vBase.y.mul(0.83)), vBase.z.mul(0.35).add(vBase.y.mul(0.31)))
+                .mul(FUR_GRAIN));
+            const tall = clamp(grain.r.sub(0.5).mul(1.7).add(0.55), 0.0, 1.0);
+            const strand = smoothstep(height.sub(0.3), height.add(0.12), tall.mul(1.05));
+            const thick = float(1.0).sub(height).pow(1.5).mul(strand.mul(0.75).add(0.25));
+            const a = float(1.0).sub(thick.mul(-FUR_DENSITY / layers).exp()).mul(smoothstep(0.05, 0.25, vCoat.y));
+            const P = positionWorld.toVar();
+            const toEye = cameraPosition.sub(P);
+            const V = toEye.div(max(length(toEye), 1e-3));
+            const tone = grain.a.mul(0.12).add(0.94);
+            return vec4(wAir(u, coat(P, normalize(normalWorld), V, height).mul(tone), P).mul(a), a);
+        })();
+        skins.forEach((skin) => {
+            const geometry = shelled(skin.geometry, layers);
+            coats.push(geometry);
+            const fur = new THREE.SkinnedMesh(geometry, furMaterial);
+            fur.name = 'WinterBearFur';
+            fur.position.copy(skin.position);
+            fur.quaternion.copy(skin.quaternion);
+            fur.scale.copy(skin.scale);
+            fur.bind(skin.skeleton, skin.bindMatrix);
+            fur.frustumCulled = false;
+            fur.renderOrder = 8;
+            skin.parent.add(fur);
+            furs.push(fur);
+        });
+    }
 
     // ── Its image in the bare ice ──
     let mirrorMaterial = null;
@@ -219,6 +297,8 @@ export function createBear(u, gltf, { mirror = true } = {}) {
         mesh: pivot,
         material,
         mirrorMaterial,
+        furMaterial,
+        shells: layers,
         /** Whether the model is on the theme's skeleton (it is posed) or stands as it came. */
         rigged: poser.whole,
         triangles: skins.reduce((n, skin) => n + (skin.geometry.index ? skin.geometry.index.count / 3 : 0), 0),
@@ -233,7 +313,10 @@ export function createBear(u, gltf, { mirror = true } = {}) {
         dispose() {
             material.dispose();
             mirrorMaterial?.dispose();
+            furMaterial?.dispose();
             images.forEach((image) => image.removeFromParent());
+            furs.forEach((fur) => fur.removeFromParent());
+            coats.forEach((geometry) => geometry.dispose());
             skins.forEach((skin) => skin.geometry.dispose());
         },
     };

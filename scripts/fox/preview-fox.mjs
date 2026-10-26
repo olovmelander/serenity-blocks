@@ -13,10 +13,9 @@
  *   node scripts/fox/preview-fox.mjs --fox=winter --mind=round --from=4 --to=12 --frames=16
  *                           the mind itself: round (at rest), run, pounce, sleep, hunt, an act
  *
- *   node scripts/fox/preview-fox.mjs --fox=bear --gait=1.1 --frames=8       Winter's polar bear walking
  *   node scripts/fox/preview-fox.mjs --fox=ewe --act=Graze --frames=6       Verdant Hills' ewe (or --fox=lamb)
  *
- *   --fox=winter|sakura|bear|ewe|lamb    whose (winter when not given)
+ *   --fox=winter|sakura|ewe|lamb    whose (winter when not given)  (Winter's bear: scripts/winter/preview-bear.mjs)
  *   --yaw=<deg> --pitch=<deg>   where it is seen from (0 = from its left side, 90 = from ahead)
  *   --cols=<n> --size=<w>x<h> --span=<metres> --out=<file.png> --glb=<file>
  *   --numbers                   also print where its paws and nose are in each frame
@@ -50,16 +49,6 @@ const FOXES = {
                 const { FoxMind } = await theme('winter', 'winter-fox-mind.js');
                 return new FoxMind(foxRound(16 / 9));
             },
-        };
-    },
-    /** Not a fox, but on the same solver: Winter's polar bear (its walk and its acts are its own). */
-    async bear() {
-        const { BEAR_RIG } = await theme('winter', 'winter-bear-rig.js');
-        return {
-            asset: join(SRC, 'winter', 'assets', 'polar-bear.glb'),
-            rig: BEAR_RIG,
-            centre: [0, 0.85, 0.1],
-            span: 3.6,
         };
     },
     /** Not foxes either: Verdant Hills' ewe and lamb, on the same solver with their own gaits and acts. */

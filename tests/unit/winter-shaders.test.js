@@ -39,8 +39,12 @@ const TIERS = ['High', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
 /** What the fox's second material is called here: not a part of the world, a part of the fox. */
 const FUR = 'fox\'s fur';
-/** ...and the bear's: its image in the bare ice, the same body drawn again. */
+/** ...and the bear's: its image in the bare ice, the same body drawn again... */
 const MIRROR = 'bear\'s mirror image';
+/** ...and its coat, where the tier has fur. */
+const BEAR_FUR = 'bear\'s fur';
+/** The bear's shells of fur at a tier: half the fox's (winter-world.js). */
+const bearShells = (tier) => Math.round(tier.fur * 0.5);
 /**
  * The largest stage today is the ground's fragment at 29 KB of WGSL (High). A feature unrolled
  * in JS instead of looped shows up here as a module of 100 KB.
@@ -100,10 +104,10 @@ function drawable(part) {
 }
 
 /** The fox's coat of fur: the mesh drawn again over its skin (none where the tier has no fur). */
-function furOf(part) {
+function furOf(part, name = 'WinterFoxFur') {
     let found = null;
     part.mesh.traverse((object) => {
-        if (object.isMesh && object.name === 'WinterFoxFur') found = object;
+        if (object.isMesh && object.name === name) found = object;
     });
     return found;
 }
@@ -158,8 +162,8 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
         // in the world's own order (the fox, then its like of light) and with the tier's own coat.
         world.parts.fox = createFox(world.u, gltf, { shells: QUALITY[quality].fur });
         world.parts.spirit = createSpiritFox(world.u, gltf, { shells: QUALITY[quality].veils });
-        // (And the bear, the same: it walks the lake at every tier.)
-        world.parts.bear = createBear(world.u, bearGltf);
+        // (And the bear, the same: it walks the lake at every tier, in its own coat.)
+        world.parts.bear = createBear(world.u, bearGltf, { shells: bearShells(QUALITY[quality]) });
         const warn = vi.spyOn(console, 'warn');
         const error = vi.spyOn(console, 'error');
         const build = (name, mesh) => {
@@ -182,8 +186,10 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
         // The fox is two materials: its skin (above) and, where the tier has fur, its coat.
         const fur = furOf(world.parts.fox);
         if (fur) build(FUR, fur);
-        // So is the bear: its body and its image in the ice.
+        // So is the bear: its body, its image in the ice and, where the tier has fur, its coat.
         build(MIRROR, mirrorOf(world.parts.bear));
+        const bearFur = furOf(world.parts.bear, 'WinterBearFur');
+        if (bearFur) build(BEAR_FUR, bearFur);
         warn.mockRestore();
         error.mockRestore();
     });
@@ -203,6 +209,7 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
         const expected = WINTER_PARTS.filter((name) => name !== 'dust' || tier.dust > 0);
         if (tier.fur > 0) expected.push(FUR);
         expected.push(MIRROR);
+        if (bearShells(tier) > 0) expected.push(BEAR_FUR);
         expect(Object.keys(built).sort()).toEqual([...expected].sort());
         Object.keys(world.parts).forEach((name) => {
             const mesh = drawable(world.parts[name]);
@@ -217,7 +224,8 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
         const bear = drawable(world.parts.bear);
         const bodies = [['fox', fox], ['spirit', spirit], ...(fur ? [[FUR, fur]] : [])];
         const image = mirrorOf(world.parts.bear);
-        for (const [name, body] of [...bodies, ['bear', bear], [MIRROR, image]]) {
+        const bearFur = furOf(world.parts.bear, 'WinterBearFur');
+        for (const [name, body] of [...bodies, ['bear', bear], [MIRROR, image], ...(bearFur ? [[BEAR_FUR, bearFur]] : [])]) {
             expect(body.isSkinnedMesh, name).toBe(true);
             const attributes = Object.keys(body.geometry.attributes);
             const needed = ['position', 'normal', 'color', 'skinIndex', 'skinWeight'];
@@ -255,13 +263,24 @@ describe.each(TIERS)('winter shaders at %s', (quality) => {
             expect(fur.skeleton).toBe(fox.skeleton);
             expect(fur.parent).toBe(fox.parent);
         }
+        // The bear's coat the same way: its shells over its own skin's buffers, on its skeleton.
+        expect(world.parts.bear.shells).toBe(bearShells(tier));
+        expect(Boolean(bearFur)).toBe(bearShells(tier) > 0);
+        if (bearFur) {
+            expect(bearFur.material).toBe(world.parts.bear.furMaterial);
+            expect(bearFur.geometry.instanceCount).toBe(bearShells(tier));
+            Object.keys(bear.geometry.attributes).forEach((key) => {
+                expect(bearFur.geometry.attributes[key], `bear's fur ${key}`).toBe(bear.geometry.attributes[key]);
+            });
+            expect(bearFur.skeleton).toBe(bear.skeleton);
+        }
     });
 
-    it.each([...WINTER_PARTS, FUR, MIRROR])('builds the %s for WebGPU and for the WebGL2 fallback without a word', (name) => {
+    it.each([...WINTER_PARTS, FUR, MIRROR, BEAR_FUR])('builds the %s for WebGPU and for the WebGL2 fallback without a word', (name) => {
         if (!built[name]) {
-            // Only the diamond dust and the fox's fur are ever left out, and only where the tier has none.
-            expect(['dust', FUR]).toContain(name);
-            expect(QUALITY[quality][name === FUR ? 'fur' : 'dust']).toBe(0);
+            // Only the diamond dust and the fur are ever left out, and only where the tier has none.
+            expect(['dust', FUR, BEAR_FUR]).toContain(name);
+            expect(QUALITY[quality][name === 'dust' ? 'dust' : 'fur']).toBe(0);
             return;
         }
         BACKENDS.forEach(([label]) => {

@@ -481,20 +481,22 @@ sixty metres out, it was the fox's size on screen and did not read as a great an
 
 | File | Role |
 | --- | --- |
-| `scripts/blender/winter_polar_bear.py` | The model, in headless Blender: a signed distance field of ellipsoids and round cones (the Grainfields horse's meshing, `scripts/blender/grainfields/horse_sdf.py`) built round the rig's own joints — chest, withers, a barrel under hanging belly fur, haunches and a rump higher than the shoulders, a long neck, a small long head with a Roman nose, small round ears set far back, columns of legs through their joints, broad forepaws turned in, long hind feet, a stub tail, a few millimetres of tufted coat. Its left half is meshed by surface nets on a 1 cm grid, decimated to 3 200 triangles, cleaned of folds and mirrored (6 400 triangles, 3 202 vertices). Per vertex it bakes the part of the body (body, head, each leg, tail) and the paint: COLOR_0 = (black pads, fur length, black nose/eyes/lips, sky seen, traced through the field). |
-| `scripts/winter/model-bear.mjs` | Hands Blender the skeleton as JSON, runs it, skins the mesh to the rig's 20 bones (a leg follows its three bones with soft joints and hands over to the chest or the hips over its shoulder or haunch, the skin over the shoulder blade and the thigh partly follows the leg, the trunk bends along hips, spine and chest, the neck hands over to the skull, then the weights are relaxed over the surface) and writes `assets/polar-bear.glb` (155 KiB) in the fox's GLB layout. The same Blender and scripts give the same bytes. |
-| `winter-bear-rig.js` | Three-free: the skeleton (`BEAR_BONES`, `BEAR_MARKS`) on the quadruped solver the foxes share (`../shared/fox-rig.js`: paws placed and legs solved to reach them, a back that bends, a head held level, poses as blendable numbers), with what is the bear's own: its walk and its acts. |
-| `winter-bear-plan.js` | Three-free: its course (`BEAR_ROUTE`: knots in fractions of the half width and metres, a closed Catmull-Rom curve over the ice) and the timeline of legs and stops along it, so where it is and what it does are a function of its clock alone; `BearMind` adds what the board makes it do. |
-| `winter-bear.js` | Its body (one skinned mesh, shaded by the theme's own uniforms) and its image in the ice. |
+| `scripts/blender/winter_polar_bear.py` | The model, in headless Blender: a signed distance field of ellipsoids and round cones (the Grainfields horse's meshing, `scripts/blender/grainfields/horse_sdf.py`) built round the rig's own joints. Since the remake (below): the shoulder blades' masses, triceps, loins and haunches; a broad skull with furred cheeks, brow, a muzzle under a Roman bridge, the nose pad and the lower jaw; cupped ears; the point of the elbow, wrist and heel; broad paws with five toe pads and a dark claw from each; locks of hair hanging from the belly, behind the forelegs and down the hind legs; and a coat of clumps combed back over the body and down the legs. Its left half is meshed by surface nets on a 7 mm grid, decimated, cleaned of folds and mirrored (17 862 triangles, 8 931 vertices). Per vertex it bakes the part of the body (body, head, each leg, tail) and the paint: COLOR_0 = (black pads, fur length, black nose/eyes/lips/claws and the shade inside the ears, sky seen, traced through the field). |
+| `scripts/winter/model-bear.mjs` | Hands Blender the skeleton as JSON, runs it, skins the mesh to the rig's 29 bones (a leg follows its bones down to the toes with soft joints and hands over to the shoulder blade or the hips over its top, the skin over the shoulder blade, the upper arm and the thigh partly follows the leg, the trunk bends along its four bones, the neck's two bones hand over to the skull, the ears their own, then the weights are relaxed over the surface) and writes `assets/polar-bear.glb` (425 KiB) in the fox's GLB layout. The same Blender and scripts give the same bytes. |
+| `winter-bear-rig.js` | Three-free: the skeleton (`BEAR_BONES`, `BEAR_MARKS`) and its own solver (the shared quaternion helpers from `../shared/fox-rig.js`): a pose is a spec of numbers for the trunk, the head and each foot (where the ball of the foot is, its heel, its curl, its turn, the slope under it, whether it bears weight); the solver works out the rest. Also what it does at a stop (`bearAct`). |
+| `winter-bear-plan.js` | Three-free: its course (`BEAR_ROUTE`: knots in fractions of the half width and metres, a closed Catmull-Rom curve over the ice) and the timeline of legs and stops along it, and its footsteps (`pawAt`): each paw put down in the world and left there. Where it is, what it does and where its feet are are a function of its clock alone; `BearMind` adds what the board makes it do. |
+| `winter-bear.js` | Its body (one skinned mesh, shaded by the theme's own uniforms), its coat (the same body again in shells of fur, half as many as the fox's at each tier) and its image in the ice. |
+| `scripts/winter/preview-bear.mjs` | Draws the theme's own mind and body on the CPU, skinned, where it walks in the world, with each paw marked (on the ice or swinging). |
 
 Techniques worth knowing before changing it:
 
 - **A bear walks.** Not the foxes' trot: a four-beat lateral walk (left hind, left fore a fifth
   of a stride later, then the right pair), each paw on the ice two thirds of the stride, the
   forepaw flicked back sole-up as it swings through, the hind foot peeled off heel first, the
-  stride a whole number of times round the lap so its gait comes round with the course. The head
-  is carried low and swings to the side of the planted forepaw; the shoulders roll and the long
-  back flexes. Phase is distance walked over stride, so a planted paw does not slide (a test).
+  strides a whole number to the lap so its gait comes round with the course. The head is carried
+  low and swings to the side of the planted forepaw; the shoulders roll and the long back flexes.
+  Since the remake its feet are footsteps in the world, not a cycle laid under the body (see
+  below).
 - **What it does at a stop** is a spec written as numbers like the foxes' acts: `Sniff` (nose up
   into the wind, in bursts), `Scent` (nose down to the ice, working along it), `Look`, `Stand`,
   `Rear` (up on its hind legs, forepaws hanging before its chest, head lifted to the sky), `Lie`
@@ -526,9 +528,10 @@ Techniques worth knowing before changing it:
 
 ![One stride at 1.2 m/s, on the CPU (scripts/fox/preview-fox.mjs --fox=bear)](winter-fox-fires/bear-walk.webp)
 
-Cost: two skinned draws of 6 400 triangles (the bear and its image) at every tier, and about
-twenty operations more per pixel of the ground for its two shades; the plan, the spec and the
-solve take about 3 µs a frame on the dev laptop's CPU. Frame time was not measured on the GPU.
+Cost (first version): two skinned draws of 6 400 triangles (the bear and its image) at every
+tier, and about twenty operations more per pixel of the ground for its two shades; the plan, the
+spec and the solve took about 3 µs a frame on the dev laptop's CPU. Frame time was not measured on
+the GPU. The remake's cost is below.
 
 ### Verification
 
@@ -545,18 +548,106 @@ lay, a seek puts it where the clock has it); `winter-shaders.test.js` builds the
 for WGSL and GLSL without a word.
 
 To look at it: `/playground.html?effect=winter&t=40&board=1&statsHud=0&hud=0` with
-`bearAt=<s>` (where on its course: `8` walking near, `15` Scent, `98` Look on bare ice, `385`
-Sniff), `bearAct=rear|lie|rise` with `bearActAge=<s>`, `bearCam=<metres>` (with `bearCamYaw=<deg>`
-or `viewer`, `bearCamFov=<deg>`) for a close lens, `bear=0` to leave it without its body, and
-the look's numbers `P.bearCoatR/G/B`, `P.bearRim`, `P.bearShadow`, `P.bearContact`,
-`P.bearMirror`. In the game, `serenityBlocks.themeManager.activeTheme.world.bearMind` holds its
-clock (`offset`). Without a GPU:
+`bearAt=<s>` (where on its course: `8` walking near, `16` Scent, `30` walking on bare ice, `98`
+Look, `121` standing, `387` Sniff), `bearAct=rear|lie|rise` with `bearActAge=<s>`,
+`bearCam=<metres>` (with `bearCamYaw=<deg>` or `viewer`, `bearCamFov=<deg>`) for a close lens,
+`bear=0` to leave it without its body, and the look's numbers `P.bearCoatR/G/B`, `P.bearRim`,
+`P.bearShadow`, `P.bearContact`, `P.bearMirror`. In the game,
+`serenityBlocks.themeManager.activeTheme.world.bearMind` holds its clock (`offset`). Without a
+GPU (clock seconds, from the start of its course):
 
-    node scripts/fox/preview-fox.mjs --fox=bear --gait=1.2 --frames=8
-    node scripts/fox/preview-fox.mjs --fox=bear --act=Rear --frames=6
-    node scripts/winter/model-bear.mjs --dry --preview=<dir>
+    node scripts/winter/preview-bear.mjs --from=8 --to=10 --frames=8 --follow
+    node scripts/winter/preview-bear.mjs --from=117.6 --to=124.6 --frames=12      stopping and setting off
+    node scripts/winter/preview-bear.mjs --from=21 --to=27 --rear=21 --frames=8 --follow
+    node scripts/winter/model-bear.mjs --preview=<dir>
 
 Not done: the left-hand window is closed to it by the small snow ghosts in front of the ice
 (moving or lowering them would open it, but changes the composition). Where a leg crosses the
 body in its mirror image the two are blended twice (the image is drawn without a depth prepass),
 which shows only in close-ups. No breath in the cold air.
+
+### Remade: its look and its walk (2026-10-26)
+
+The ask: "We need to improve the look, design and animations of the polarbear to make it move more
+natural, smoother, and that it is more beautifully modelled in Blender." The first bear was a
+6 400-triangle body on the foxes' solver, its legs a cycle laid under the body; up close it was a
+smooth white shape, and its feet slid a little in turns and when it slowed. It is remade end to
+end: a new model, a new skeleton and solver, footsteps instead of a cycle, and a coat of fur.
+
+![The new model in Blender](winter-fox-fires/bear-v2-model.webp)
+
+![Close up on WebGPU at High: walking, Sniff, Scent, Rear, Lie](winter-fox-fires/bear-v2-close.webp)
+
+![In a real Single Player game at High, 1920 × 1080 (crops at 2×)](winter-fox-fires/bear-v2-ingame.webp)
+
+![Stopping and setting off, and rearing (scripts/winter/preview-bear.mjs)](winter-fox-fires/bear-v2-motion.webp)
+
+**The model** (`winter_polar_bear.py`, drawn from photographs of polar bears walking on the ice)
+has the anatomy the first lacked: the long deep body with the rump a little over the shoulders;
+the long thick neck carrying the head low; a broad skull with furred cheeks and a Roman nose
+ending in a big black pad; small cupped ears on the sides of the skull; forelegs that are columns
+of fur with long hair hanging behind them, ending in great paws turned in with five toe pads and
+a dark claw from each; hind legs in "trousers" of long hair over long flat feet; a fringe under
+the belly; a coat that lies in soft clumps combed back over the body and down the legs. It is
+sampled finer (7 mm, was 1 cm) and kept at 17 862 triangles.
+
+**The skeleton** has 29 bones (was 20): four in the trunk, so the back bends along the path it
+walks, rounds and hollows, and the shoulders roll against the hips; two in the neck, so the head
+hangs low in a curve, not a kink; shoulder blades that slide forward with a reaching foreleg and
+back as it pushes, so the hump of the shoulder rolls; and below each wrist and heel the toes, so a
+paw is placed by the ball of the foot, the heel peels up about it while the toes stay flat, and a
+swinging forepaw curls and shows its sole.
+
+**Its feet are footsteps** (`pawAt` in `winter-bear-plan.js`). Each paw is put down in the world
+and stays exactly where it was put while the body goes over it, through a turn, slowing down,
+stopping. It lands where it will stand under the body half-way through its time on the ice, which
+the course knows in advance, so as the bear slows its last steps land under it; a paw left far
+from where it stands takes one more step to square up once it has stopped. A swing is a smooth
+path that leaves and meets the ice at rest, carried high enough that the curled toes clear it.
+The rhythm takes short quick steps setting off and coming to a stop (never slow ones) and shorter
+steps up or down a slope (by `1 / (1 + 2.4 × gradient)`). All of it is closed form in its clock.
+
+**The body rides the feet.** The shoulders roll and the hips sway over whichever feet are down,
+the head swings to the side of the planted forepaw, the hips walk where the chest has been. On a
+slope each paw lies along the ground (toes up the rise, not into it), and the body rides the
+ground under its feet where that is lower than under its trunk. Two things in the solver keep the
+legs smooth: a leg straightens ever more slowly over the last few centimetres of its reach instead
+of snapping straight (which flung the elbow 18 cm in a frame), and where a paw that bears weight
+still lies beyond easy reach, the chest or the hips sink toward it; a paw comes off its weight as
+its heel peels and takes it again as it comes down, so the trunk never lurches when one lifts.
+
+**What it does at a stop** is the same list, but `Rear` now stands like a bear: the forelegs hang
+before the belly, elbows down at the sides, the paws dangling from bent wrists (they were folded
+back into the chest).
+
+**Its coat.** The same skinned body again in shells of fur, one instanced draw (as the fox's coat
+is): half the fox's shells at each tier (High 7, none at Minimal), each a veil as thick as the
+share of the hairs that grow that long, combed back and down, a fine grain of strands fixed to
+the coat where it was modelled, darker deep in the coat and glowing at the tips against the moon.
+
+**Regressions found and fixed on the way** (each pinned by a test): the squaring-up steps at a
+stop kept their times on the first lap's clock, so from the second lap on a foot jumped 20 cm
+across the ice in one frame; a leg at the end of its reach popped its elbow; walking up the
+spit's 26 % slope a trailing paw hung 12 cm over the snow before it lifted; a hind paw was left a
+metre behind on setting off after a long stop; a soft-minimum for the body's height sat 4 cm below
+level ice and put the standing acts' paws into it.
+
+Measured over a whole lap (391 s at 60 frames a second) and through the board's stops: every paw
+that bears weight within 3 mm of the ground, a planted paw moving less than 1.5 mm from one frame to the next, no toe tip
+below the snow, no joint faster than a paw's swing through (12 cm a frame).
+
+Cost now: the body and its image (17 862 triangles each) and, at High, one instanced draw of seven
+shells of fur (125 000 triangles); the solve runs one to three passes (the trunk sinking) and the
+plan a few dozen evaluations of the ground a frame, still well under a millisecond of CPU. GPU frame
+time was not measured.
+
+Verification: playground captures on WebGPU (the integrated Radeon 610M) at High and Minimal and on
+the forced WebGL2 backend (walk side and toward the eye, Sniff, Scent, Rear from two sides and as it
+goes up, Lie, standing), captures of a real Single Player game at High at 1920 × 1080 (walking,
+Sniff, Rear at a four); no WebGPU warning or error in any console. `tests/unit/winter-bear.test.js`
+(26 tests: the skeleton and its rest pose, the asset on it with its claws painted, a whole lap of
+footsteps reaching the ground, nothing into it, no planted paw sliding and no joint jumping at 60
+frames a second through a stop, a set-off and the spit, shorter steps on a slope, every act, the
+forelegs hanging in `Rear`, the course and its footsteps closed over a lap, determinism, the
+board's stops); `winter-shaders.test.js` builds the bear's coat for WGSL and GLSL at High and
+checks it shares the body's buffers and skeleton.
