@@ -23,6 +23,7 @@ import { QUALITY_NAMES, tierFor } from '../../src/themes/pyrestorm/pyrestorm-qua
 import { BOMB } from '../../src/themes/pyrestorm/pyrestorm-fire.js';
 import { fallbackLayout, outsideKeepOut } from '../../src/themes/pyrestorm/pyrestorm-composition.js';
 import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
+import { SHAKE } from '../../src/themes/pyrestorm/pyrestorm-shake.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
@@ -1134,6 +1135,135 @@ describe('PyrestormWorld builds with play', () => {
         expect(full.sheet).toBeGreaterThan(0);
         expect(held.shock).toBeCloseTo(full.shock * REDUCED_FLASH_SCALE, 6);
         expect(held.sheet).toBeCloseTo(full.sheet * REDUCED_FLASH_SCALE, 6);
+    });
+});
+
+describe('PyrestormWorld: the ridge shakes', () => {
+    /** How far apart two cameras look, as a fraction of the viewport's height. */
+    const apart = (a, b) => a.quaternion.angleTo(b.quaternion) / ((a.fov * Math.PI) / 180);
+    /** Run two worlds side by side to `to`; how far apart their views were at each frame. */
+    function stepBoth(a, b, to, dt = 1 / 60) {
+        const from = a.world.time;
+        const steps = Math.max(1, Math.round((to - from) / dt));
+        const out = [];
+        for (let i = 1; i <= steps; i += 1) {
+            const t = from + i * ((to - from) / steps);
+            for (const w of [a, b]) {
+                w.world.updateCamera(w.camera, sim(t, dt));
+                w.world.update(sim(t, dt), w.camera);
+            }
+            out.push({ t, d: apart(a.camera, b.camera) });
+        }
+        return out;
+    }
+    const peakPx = (trace, from = -Infinity) => Math.max(0, ...trace.filter((p) => p.t >= from).map((p) => p.d * 1080));
+    const lock = (extra = {}) => ({
+        u: 0.4, rows: [19], color: PIECE_COLORS[1], cells: T_CELLS, ...extra,
+    });
+
+    it('holds the view still with nothing happening: the pose and the breath alone', () => {
+        const a = makeWorld();
+        const b = makeWorld();
+        b.world.ridge.setEnabled(false);
+        expect(peakPx(stepBoth(a, b, START + 12))).toBeLessThan(1e-4);
+    });
+
+    it('a soft lock leaves the ridge still; a hard drop thuds and settles back exactly', () => {
+        const a = makeWorld();
+        const b = makeWorld();
+        a.world.onLock(lock());
+        expect(peakPx(stepBoth(a, b, START + 1))).toBeLessThan(1e-4);
+        const t0 = a.world.time;
+        a.world.onLock(lock({ hardDrop: true, distance: 18 }));
+        const trace = stepBoth(a, b, t0 + 3);
+        expect(peakPx(trace)).toBeGreaterThan(0.8);
+        expect(peakPx(trace)).toBeLessThan(3);
+        expect(peakPx(trace, t0 + 2.5)).toBeLessThan(1e-4);
+    });
+
+    it('thunder follows the stroke: never before its flash, a beat after it', () => {
+        const a = makeWorld();
+        const b = makeWorld();
+        const t0 = a.world.time;
+        a.world.onClear({ lines: 1, rows: [19], combo: 1 });
+        const trace = stepBoth(a, b, t0 + 3);
+        const first = trace.find((p) => p.d * 1080 > 1e-4);
+        // The stroke reaches the ground after its leader; its sound then crosses the plain.
+        expect(first.t - t0).toBeGreaterThan(TIMING.leader + 6000 / SHAKE.SOUND);
+        expect(first.t - t0).toBeLessThan(TIMING.leader + SHAKE.FAR / SHAKE.SOUND + 0.05);
+        expect(peakPx(trace)).toBeGreaterThan(0.3);
+        expect(peakPx(trace)).toBeLessThan(4);
+    });
+
+    it('a stroke on the near plain (a clear on the floor rows) thunders closer than one high on the cone', () => {
+        const { world, camera } = makeWorld();
+        const thunder = vi.spyOn(world.ridge, 'thunder');
+        const distances = (row) => {
+            thunder.mockClear();
+            for (let k = 0; k < 12; k += 1) {
+                world.onClear({ lines: 1, rows: [row], combo: 1 });
+                world.onCombo(0);
+                stepTo(world, camera, world.time + 0.5);
+            }
+            return thunder.mock.calls.map(([d]) => d);
+        };
+        const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+        const floor = distances(19);
+        const high = distances(0);
+        expect(floor.length).toBeGreaterThanOrEqual(12);
+        expect(high.length).toBeGreaterThanOrEqual(12);
+        expect(mean(floor)).toBeLessThan(mean(high) - 2000);
+    });
+
+    it('the blast knocks the view hardest of all, and still only a few pixels', () => {
+        const quad = [makeWorld(), makeWorld()];
+        quad[0].world.onClear({ lines: 4, rows: [19, 18, 17, 16], combo: 1 });
+        const blast = peakPx(stepBoth(quad[0], quad[1], START + 5));
+        const drop = [makeWorld(), makeWorld()];
+        drop[0].world.onLock(lock({ hardDrop: true, distance: 18 }));
+        const thud = peakPx(stepBoth(drop[0], drop[1], START + 5));
+        expect(blast).toBeGreaterThan(thud);
+        expect(blast).toBeGreaterThan(1.5);
+        expect(blast).toBeLessThan(SHAKE.CAP * 1.08 * Math.SQRT2);
+    });
+
+    it('fresh lava makes the mountain groan on a level-up (not when the level is only restored)', () => {
+        const a = makeWorld();
+        const b = makeWorld();
+        const t0 = a.world.time;
+        a.world.levelUp(2);
+        b.world.levelUp(2, { silent: true });
+        expect(peakPx(stepBoth(a, b, t0 + 4))).toBeGreaterThan(0.4);
+        expect(b.world.ridge.groan.valueAt(b.world.time)).toBe(0);
+    });
+
+    it('reduced motion: no event shakes the view', () => {
+        const a = makeWorld();
+        const b = makeWorld();
+        a.world.setReducedMotion(true);
+        b.world.setReducedMotion(true);
+        a.world.onLock(lock({ hardDrop: true, distance: 18, tspin: true }));
+        a.world.onClear({ lines: 4, rows: [19, 18, 17, 16], combo: 1 });
+        a.world.onClear({ lines: 4, perfect: true });
+        a.world.levelUp(3);
+        expect(peakPx(stepBoth(a, b, START + 5))).toBeLessThan(1e-4);
+    });
+
+    it('a seek replays the same shake, and the state reports it', () => {
+        const { world, camera } = makeWorld();
+        const run = () => {
+            world.seek(START);
+            world.updateCamera(camera, sim(START, 0));
+            world.update(sim(START, 0), camera);
+            world.onLock(lock({ hardDrop: true, distance: 12 }));
+            world.onClear({ lines: 4, rows: [19, 18, 17, 16], combo: 1 });
+            stepTo(world, camera, START + 0.45, 1 / 60);
+            return camera.quaternion.clone();
+        };
+        const first = run();
+        const { shake } = world.getState();
+        expect(Math.hypot(shake.x, shake.y)).toBeGreaterThan(0);
+        expect(first.angleTo(run())).toBeLessThan(1e-9);
     });
 });
 

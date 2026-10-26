@@ -6,8 +6,10 @@
  * The vertex stage builds the plant from the instance (root, scale, seed) and the scene's state:
  * each stalk stands at its own offset in the clump, bends with the wind's gusts and a clear's trail
  * (the same fields the land's carpet reads, so the near plants and the far sheen move together),
- * and its ripe ear nods over on a curved neck. Stems and ears are ribbons turned to face the eye,
- * never thinner than about a pixel (so the far ones fill in rather than shimmer).
+ * and its ripe ear nods over on a curved neck: the stem's last stretch bends from its own line onto
+ * the ear's, the ear's base is as wide as the straw it sits on, and the neck under it takes the
+ * ear's tone, so straw and ear read as one plant. Stems and ears are ribbons turned to face the
+ * eye, never thinner than about a pixel (so the far ones fill in rather than shimmer).
  *
  * The ear is a spindle of grains with its brush of awns: the ribbon is as wide as the brush, the
  * fragment draws the spindle solid and the awns as fine strands that fade to their mean coverage
@@ -87,6 +89,18 @@ export const EAR_SHAPE = Object.freeze({
     length: [0.075, 0.105], core: 0.0052, brush: 0.0135, reach: 0.9,
 });
 const CORE_SHARE = 1 / (1 + EAR_SHAPE.reach);
+
+/**
+ * Where the ear sits on its straw (shares of their length): the stem's last `bend` curves from
+ * its own line onto the ear's (the neck bowing under the head, so the ear leaves it without a kink);
+ * the last `tone` of it takes on the ear's tone and its light (`mix` of it at the top); and the
+ * ear's first `base` widens from the straw's own width into the grains.
+ */
+export const NECK = Object.freeze({
+    bend: 0.25, tone: 0.16, mix: 0.85, base: 0.07,
+});
+/** A stem's true half-width (metres) along it, s 0 at the foot to 1 under the ear. */
+const STEM_HALF = Object.freeze({ foot: 0.0024, top: 0.0016 });
 
 /**
  * The stand's draws, nearest first: which planted field (grainSites' `near` or `far`), how many
@@ -177,6 +191,11 @@ const spindle = (a) => {
     const k = clamp(a.div(CORE_SHARE), 0.0, 1.0);
     return pow(sin(k.mul(3.1416)).max(0.001), 0.5).mul(select(a.lessThan(CORE_SHARE), float(1.0), float(0.0)));
 };
+/** The spindle's radius (m) at `s`: its own outline, floored over the base at the neck's half-width. */
+const coreRadius = (s, scale, neck) => max(
+    spindle(s).mul(EAR_SHAPE.core).mul(scale),
+    neck.mul(float(1.0).sub(smoothstep(0.0, NECK.base, s))),
+);
 /** The brush's outline along the ribbon (0..1 of its half-width): from the grains out to the tips. */
 const brushReach = (a) => smoothstep(0.04, 0.5, a).mul(float(1.0).sub(smoothstep(0.82, 1.0, a).mul(0.7)));
 
@@ -197,7 +216,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
     const vTone = varying(vec4(0.0), 'gfGrainTone'); // the crop's tone rgb, the gust's lift of it
     const vLit = varying(vec4(0.0), 'gfGrainLit'); // the events' light rgb, sunlit
     const vAir = varying(vec4(0.0), 'gfGrainAir'); // the air in front: inscatter rgb, transmittance
-    const vFlare = varying(float(0.0), 'gfGrainFlare'); // the four-line front's gold
+    const vFlare = varying(vec2(0.0), 'gfGrainFlare'); // the four-line front's gold, the neck's half-width (m)
     material.positionNode = Fn(() => {
         const s = positionGeometry.x;
         // A cut stem's ribbon spans only what the coverage kept of the full one.
@@ -246,10 +265,20 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const nodDir = normalize(vec3(D.x.add(sin(angle).mul(0.7)), 0.0, D.y.add(sin(angle.add(1.5708)).mul(0.7))));
         const nod = mix(float(0.12), float(0.62), h1.mul(h1)).add(bend.mul(0.35));
         const earAxis = normalize(tangent.mul(cos(nod)).add(nodDir.mul(sin(nod)))).toVar();
+        // The neck: over the stem's last stretch its direction turns from its own line onto the
+        // ear's (the turn's share grows linearly, so the offset is its integral: quadratic), and
+        // the ear sets off from the bent top along its own axis.
+        const turn = earAxis.sub(tangent).toVar();
+        const neckRun = max(s.sub(1 - NECK.bend), 0.0);
+        const neckTop = top.add(turn.mul(H.mul(NECK.bend * 0.5))).toVar();
         const earScale = iA.w.mul(mix(float(0.9), float(1.1), h3));
         const earLen = mix(float(EAR_SHAPE.length[0]), float(EAR_SHAPE.length[1]), h3).mul(iA.w).mul(1 + EAR_SHAPE.reach);
-        const along = select(isEar, top.add(earAxis.mul(earLen.mul(s))), stemAt(s)).toVar();
-        const axis = select(isEar, earAxis, normalize(vec3(D.x.mul(bend).mul(s), float(1.0), D.y.mul(bend).mul(s)))).toVar();
+        const stemPoint = stemAt(s).add(turn.mul(H.mul(neckRun.mul(neckRun).div(2 * NECK.bend))));
+        const along = select(isEar, neckTop.add(earAxis.mul(earLen.mul(s))), stemPoint).toVar();
+        // The stem's own tangent (the bend's derivative), turned onto the ear's axis by the neck.
+        const stemDir = normalize(vec3(D.x.mul(bend).mul(s), float(1.0).sub(bend.mul(bend).mul(s).mul(0.36)), D.y.mul(bend).mul(s)));
+        const stemAxis = normalize(stemDir.add(turn.mul(neckRun.div(NECK.bend))));
+        const axis = select(isEar, earAxis, stemAxis).toVar();
         // Facing the eye, never under about a pixel wide.
         const toEye = normalize(u.eye.sub(along)).toVar();
         const across = normalize(cross(axis, toEye).add(vec3(1e-5, 0.0, 0.0))).toVar();
@@ -259,11 +288,15 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         // the canopy full.
         const grow = farness.mul(0.5).add(1.0);
         const earTrue = max(spindle(s).mul(EAR_SHAPE.core), brushReach(s).mul(EAR_SHAPE.brush)).mul(earScale).mul(grow).add(0.0015);
-        const stemTrue = float(0.0024).sub(s.mul(0.0008));
+        const stemTrue = float(STEM_HALF.foot).sub(s.mul(STEM_HALF.foot - STEM_HALF.top));
         const trueHalf = select(isEar, earTrue, stemTrue);
         const half = max(trueHalf, pixel.mul(select(isEar, float(0.9), float(0.38))));
         // A cut stem stands as thin as the coverage's soft edge left it.
         const drawnHalf = stems ? max(half.sub(pixel.mul(STEM_CUT.trim)), half.mul(0.3)) : half;
+        // How wide the straw shows under the ear (its top's ribbon, as the stems' draw cuts it, out to
+        // where its coverage holds): the ear's base starts that wide.
+        const strawTop = max(float(STEM_HALF.top), pixel.mul(0.38));
+        const neckHalf = (coverage ? max(strawTop.sub(pixel.mul(STEM_CUT.trim)), strawTop.mul(0.3)) : strawTop).mul(STEM_CUT.keep);
         // A cut stem's edge carries the normal the full ribbon interpolated to there (unnormalised:
         // the fragment normalises it, as it did the blend of the full ribbon's unit edge normals).
         vNormal.assign(stems
@@ -271,7 +304,8 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
             : normalize(across.mul(w.mul(0.8)).add(toEye.mul(sqrt(float(1.0).sub(w.mul(w).mul(0.64)))))));
         // How deep in the stand the point lies: the foot of a stem is in the dark, the ears of
         // shorter stalks stand inside the canopy of their taller neighbours.
-        const inStand = select(isEar, mix(float(0.55), float(1.0), h2), smoothstep(0.0, 1.0, s).mul(0.75));
+        const earStand = mix(float(0.55), float(1.0), h2);
+        const inStand = select(isEar, earStand, mix(smoothstep(0.0, 1.0, s).mul(0.75), earStand, smoothstep(1 - NECK.tone, 1.0, s)));
         vInfo.assign(vec4(part, s, w, inStand));
         vShape.assign(vec4(half, smoothstep(1.05, 2.0, half.div(trueHalf)), earScale.mul(grow), h4));
         const P = along.add(across.mul(w.mul(drawnHalf))).toVar();
@@ -303,7 +337,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         vLit.assign(vec4(events, sunlit));
         // Four lines: the front of light from the gate passing the clump (0..1).
         const fd = length(iA.xz.sub(vec2(PLACES.gate.x, PLACES.gate.z))).sub(u.flareFront).div(700.0);
-        vFlare.assign(exp(fd.mul(fd).negate()).mul(u.flare).mul(0.7).mul(shade));
+        vFlare.assign(vec2(exp(fd.mul(fd).negate()).mul(u.flare).mul(0.7).mul(shade), neckHalf));
         // The air between the eye and the plant (a plant is a metre tall: per vertex is exact enough).
         const air = aerialParts(u, P);
         vAir.assign(vec4(air.inscatter, air.transmit));
@@ -318,7 +352,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const scale = vShape.z;
         const m = abs(vInfo.z).mul(half);
         const px = max(fwidth(m), 1e-5);
-        const coreR = spindle(s).mul(EAR_SHAPE.core).mul(scale).mul(sin(s.mul(41.0).add(vShape.w.mul(9.0))).mul(0.1).add(0.92));
+        const coreR = coreRadius(s, scale, vFlare.y).mul(sin(s.mul(41.0).add(vShape.w.mul(9.0))).mul(0.1).add(0.92));
         const core = clamp(coreR.sub(m).div(px).add(0.5), 0.0, 1.0);
         const brushR = brushReach(s).mul(EAR_SHAPE.brush).mul(scale);
         const inBrush = float(1.0).sub(smoothstep(brushR.mul(0.55), brushR, m)).mul(smoothstep(0.04, 0.2, s));
@@ -352,17 +386,20 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         // The spindle the gold of the crop, the awns paler and finer, the stem straw going green
         // toward its foot.
         const m = abs(vInfo.z).mul(vShape.x);
-        const coreR = spindle(s).mul(EAR_SHAPE.core).mul(vShape.z);
+        const coreR = coreRadius(s, vShape.z, vFlare.y);
         const awn = smoothstep(coreR.mul(0.8), coreR.add(0.002), m).max(select(s.greaterThan(CORE_SHARE), float(1.0), float(0.0)));
         const earCol = mix(tone.mul(sin(s.mul(41.0)).mul(0.07).add(1.04)), tone.mul(vec3(1.12, 1.1, 1.05)).add(vec3(0.03, 0.025, 0.01)), awn);
-        const stemCol = tone.mul(mix(vec3(0.42, 0.55, 0.28), vec3(0.85, 0.82, 0.68), smoothstep(0.15, 0.6, s)));
+        // The neck under the ear (0 down the straw … 1 at the ear) takes on the ear's tone and light.
+        const neck = select(isEar, float(0.0), smoothstep(1 - NECK.tone, 1.0, s)).toVar();
+        const straw = tone.mul(mix(vec3(0.42, 0.55, 0.28), vec3(0.85, 0.82, 0.68), smoothstep(0.15, 0.6, s)));
+        const stemCol = mix(straw, tone.mul(1.04), neck.mul(NECK.mix));
         const albedo = select(isEar, earCol, stemCol).mul(vTone.w).toVar();
         const shade = mix(float(0.16), float(1.0), vInfo.w).toVar();
         const sunlit = vLit.w;
         const L = u.sunDir;
         // The spindle is round (a wrapped diffuse); a thin awn or stem is lit from either side.
         // Lit from behind, a plant passes some of the light (the spindle less than an awn).
-        const thin = select(isEar, awn, float(1.0));
+        const thin = select(isEar, awn, float(1.0).sub(neck.mul(NECK.mix)));
         const nl = dot(N, L);
         const round = clamp(nl.mul(0.6).add(0.4), 0.0, 1.0);
         const leaf = abs(nl).mul(0.55).add(0.3);
@@ -381,7 +418,8 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const a16 = a4.mul(a4).mul(a4).mul(a4);
         const through = a4.mul(0.5).add(a16.mul(1.35)).add(a2.mul(0.12));
         const rim = smoothstep(0.35, 1.0, abs(vInfo.z));
-        const passes = select(isEar, mix(rim.mul(0.5).add(0.2), float(1.0), awn), float(0.22)).mul(mix(float(1.0), float(0.55), vShape.y));
+        const passes = select(isEar, mix(rim.mul(0.5).add(0.2), float(1.0), awn), mix(float(0.22), rim.mul(0.5).add(0.2), neck))
+            .mul(mix(float(1.0), float(0.55), vShape.y));
         const warm = albedo.mul(vec3(1.45, 1.15, 0.6));
         col.addAssign(warm.mul(u.sun).mul(through).mul(passes).mul(sunlit)
             .mul(shade.mul(shade)));
@@ -393,7 +431,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         col.addAssign(albedo.mul(u.sun).mul(pow(behind, 6.0).mul(0.35)).mul(sunlit).mul(shade));
         // The events (worked out per vertex) and the four-line front running through as gold.
         col.addAssign(vLit.xyz);
-        col.addAssign(warm.mul(u.sun).mul(vFlare));
+        col.addAssign(warm.mul(u.sun).mul(vFlare.x));
         // The blaze stays gold: a hue-preserving soft cap below the tone map's path to white, so a
         // backlit awn never turns into a white speck. Soft, not a clamp: in the sun most of the
         // stand stood over a hard cap, and every ear at the same value was one flat gold.
