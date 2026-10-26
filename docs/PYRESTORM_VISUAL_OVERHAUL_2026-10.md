@@ -75,10 +75,12 @@ incandescent orange `#FF6A1F`, S ember crimson `#C21E3A`, Z storm blue `#2673E6`
 | Game over | The eruption sinks to a glow; it wakes with the next run |
 
 Fleet clichés avoided (catalogue Part 0): no ring from the board's foot, no blades of light from
-the card, no hush-then-flare, no spiral round the card, no camera jolt. Kept on purpose: the hour
+the card, no hush-then-flare, no spiral round the card, no generic camera jolt. Kept on purpose: the hour
 wheel (Olov's standing requirement that a theme's light drifts with the clock) and Pyrestorm's
 own motifs (a volcano, eruptions, lightning in a red storm, ash), which the catalogue already
-reserves for this theme.
+reserves for this theme. (Since 2026-10-26 the ridge does shake, at Olov's request, but each shake
+has its cause in the scene: the ground's thud, the thunder, the blast's air wave. See the third
+pass below.)
 
 Photosensitivity (WCAG 2.3.1, self-imposed): lightning is one stroke with an exponential decay,
 never a strobe; the only frame-wide flashes are on four lines and the perfect clear, small and
@@ -307,3 +309,75 @@ blotches, and the air over the country held nothing but haze.
   (5.5 ms) in every run.
 - **Not measured:** a physical phone, a weaker GPU, the perf lane (ADR-0016), real gameplay beyond
   the lifecycle validator.
+
+## Third pass (2026-10-26): the ridge shakes
+
+Olov: "in the pyrestorm theme we can have small subtle camera shaking as game playing event
+effects. implement that in the best possible way!"
+
+The eye stands on a ridge fifteen kilometres from the eruption, so a shake there is something the
+ground or the air brings to it, never a generic punch of the lens. Each beat that shakes the view
+has its cause in the scene, and the sizes stay at the edge of noticing: a hard drop or a
+thunderclap moves the frame a pixel or two at 1080p, the blast a few.
+
+| Event | What the ridge feels | Size (median peak, px at 1080p) |
+|---|---|---|
+| Lock | Nothing: a Strombolian burst fifteen kilometres off is not felt | 0 |
+| Hard drop | A thud through the ground: the view sinks with the slam and springs back once (40 ms to its peak, one smaller bounce), with a short tremble; the further the piece fell, the harder | 0.75 (2 rows) … 1.65 (full height) |
+| Clear | Each ground stroke's thunder, once its sound has crossed the plain (time-lapsed like the bombs' gravity: 45 km/s, so 0.15–0.33 s after the flash): a short tremble and a little roll. A stroke on the near plain (a clear on the floor rows) is closer and louder than one high on the cone | 0.8 (far) … 1.3 (near) |
+| Chain break | The discharge's thunder, the loudest stroke | 1.6 |
+| Four lines | The ground jolts at once; the blast's air wave reaches the ridge 0.32 s later, knocks the view up and rolls on; then its bolts' thunder | 2.7 (the blast); the whole sequence at most 4.3 |
+| T-spin | The vortex ring's soft whump: a small roll | 0.6 |
+| Perfect clear | A slow swell and roll of the ground under the crown's cracks | 2.2, plus the crown's thunder |
+| Level up | The mountain groans as fresh lava surges down every channel: a slow sway (1.7 Hz) that swells in over 0.7 s | 1.9 |
+| Fever | Its own strokes and pours of lava shake the ridge at half strength; every new hit is up to 25 % stronger | — |
+| Reduced motion | Nothing at all | 0 |
+
+**How.** `pyrestorm-shake.js` (three-free) holds it all. Three bands of motion, each an
+accumulating `Swell` (shared/swell.js) times a smooth gradient noise on the world's clock: the
+tremble (~9 Hz: a crack, a thud), the roll (~3.4 Hz: thunder rolling, the blast's after-shake) and
+the groan (~1.7 Hz, slow to swell: the lava). Every hit adds to what is still shaking and never
+restarts it; the noise runs on the clock rather than from each hit, so overlapping hits never
+jump. Kicks are the directed part, one analytic damped bounce each (the slam, the air wave), the
+same shape every time. The whole is a pure function of the clock and the hits: a seek or a
+fixed-time capture lands on the same pose at any frame rate. Units are fractions of the viewport's
+height, as in shared/camera-breath.js, so the size is the same at every aspect and lens; a soft cap
+holds any axis under 6 units (6.5 px at 1080p) however hard it is hammered. The world applies it in
+`updateCamera`, after the breath, as small turns and a roll of the view (`applyShake`): at fifteen
+kilometres a shaken eye that moved would move nothing. `pose()` sets the rotation afresh each
+frame, so nothing winds up. Events then aim through the shaken camera; at under a quarter of a
+degree that changes nothing that matters. Every amount is in one table, `RIDGE`.
+
+**Why not the shared camera rig's shake** (shared/camera-rig.js): it is max-hold (a weaker shake
+is dropped, never added: the open follow-up from the surge pass), its sines restart with every
+hit, it translates and re-aims (which at this range does nothing), and its ladder runs 5–33 px,
+not subtle.
+
+**Playground:** `shake=0` holds the view still with everything else as usual (A/B captures);
+`eventAt=<s>` pins an event on the clock, so seeking frame by frame films it.
+
+### Verification
+
+- **Unit tests:** `tests/unit/pyrestorm-shake.test.js` (16: each cause's size and timing, the
+  thud's one bounce, thunder never before its sound arrives and louder near, the blast's ground jolt
+  then air wave, no frame-to-frame pop over 2.6 px, accumulation, the fever's lift, the cap under
+  hammering, frame-rate independence, reduced motion records nothing); eight in
+  `pyrestorm-world.test.js` (twin worlds, one given the event: no shake at rest or from a soft lock,
+  a hard drop settles back exactly, thunder after the stroke, floor-row strokes nearer than high
+  ones, the blast the hardest and under the cap, a level-up groans and a restored level does not,
+  reduced motion holds every event still, a seek replays the same shake); two in
+  `pyrestorm-playground.test.js` (`eventAt`, `shake=0`). All Pyrestorm tests pass (325).
+- **Playground, WebGPU** (RTX 5080 Laptop, Electron 44, 1920 × 1080): each cause at its peak
+  against `shake=0`, the picture's shift measured by block matching against the shake the world
+  reported. They agree within 0.2 px, e.g. four lines at +0.8 s measured (−1.81, 1.06) px against
+  (−1.59, 1.06); a hard drop at +45 ms (−0.33, 1.62) against (−0.26, 1.52); a clear's thunder
+  absent at +0.28 and +0.33 s and (0.12, −1.10) against (0.16, −1.16) at +0.40 s. No console
+  errors. Four events filmed frame-exact at 60 fps with the mock board (`eventAt`); the films'
+  frame-to-frame steps follow the reported shake.
+- **Real game** (Electron, private dev server, Single Player, WebGPU High, 1600 × 900): six
+  keyboard hard drops peaked at 1.95 px (the window is 900 px high); with Reduce motion on, four
+  more hard drops moved nothing (0 px over 1,038 frames); no console errors.
+- **Cost:** no GPU work: three small rotations of the camera a frame, a few exponentials and nine
+  noise reads on the CPU.
+- **Not measured:** a physical phone, local multiplayer (four boards' hard drops ride up under the
+  soft ceilings), and how it feels over an hour of play (the `RIDGE` table holds every amount).
