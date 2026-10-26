@@ -2,19 +2,23 @@
  * Fall — the red squirrel's clips, as its asset carries them (assets/squirrel.glb).
  *
  * The clips are authored in Blender (scripts/blender/fall_squirrel/motion.py) and keyed there into
- * one action each; the asset's extras repeat this table and a test holds the two together. `speed` is
- * how fast a gait's planted paws slide back under the body at life size (metres a second): played
- * over the ground at that speed times the drawn scale, they stand still on it.
+ * one action each (60 fps; the slow standing loops kept at 30); the asset's extras repeat this table
+ * and a test holds the two together. `speed` is how fast a gait's planted paws slide back under the
+ * body at life size (metres a second): played over the ground at that speed times the drawn scale,
+ * they stand still on it. `marks` are moments in a clip the runtime keys to (the leap's take-off and
+ * landing, as fractions of it).
  */
 
 export const SQUIRREL_CLIPS = Object.freeze({
     idle: Object.freeze({ length: 4, loop: true, speed: 0 }),
     sit: Object.freeze({ length: 4, loop: true, speed: 0 }),
-    bound: Object.freeze({ length: 0.3, loop: true, speed: 1.6 }),
+    bound: Object.freeze({ length: 17 / 60, loop: true, speed: 1.1 }),
     hop: Object.freeze({ length: 14 / 30, loop: true, speed: 0.32 }),
-    climb: Object.freeze({ length: 10 / 30, loop: true, speed: 0.7 }),
-    descend: Object.freeze({ length: 0.5, loop: true, speed: 0.32 }),
+    climb: Object.freeze({ length: 10 / 30, loop: true, speed: 0.5 }),
+    descend: Object.freeze({ length: 0.5, loop: true, speed: 0.2 }),
+    shuffle: Object.freeze({ length: 0.5, loop: true, speed: 0 }),
     cling: Object.freeze({ length: 3.6, loop: true, speed: 0 }),
+    pivot: Object.freeze({ length: 0.6, loop: true, speed: 0 }),
     nibble: Object.freeze({ length: 1.2, loop: true, speed: 0 }),
     chatter: Object.freeze({ length: 0.9, loop: true, speed: 0 }),
     startle: Object.freeze({ length: 1.2, loop: false, speed: 0 }),
@@ -23,7 +27,12 @@ export const SQUIRREL_CLIPS = Object.freeze({
     pat: Object.freeze({ length: 0.7, loop: true, speed: 0 }),
     scratch: Object.freeze({ length: 0.6, loop: true, speed: 0 }),
     groom: Object.freeze({ length: 0.8, loop: true, speed: 0 }),
-    leap: Object.freeze({ length: 16 / 30, loop: false, speed: 0 }),
+    leap: Object.freeze({
+        length: 16 / 30,
+        loop: false,
+        speed: 0,
+        marks: Object.freeze({ takeoff: 0.14 / (16 / 30), landing: 0.4 / (16 / 30) }),
+    }),
 });
 
 /**

@@ -26,6 +26,13 @@ import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from './fall-squirrel-clips.js';
 /** How far the head turns to the board at most (radians), and how the turn is shared. */
 const LOOK_REACH = 1.15;
 const LOOK_NECK = 0.4;
+/**
+ * The tail's follow-through: each bone, root to brush, bends back against the body's turn (radians of
+ * bend for a radian the body turned in the mind's LAG) and its surge (radians for a life-size metre a
+ * second gained), more toward the brush.
+ */
+const TRAIL_TURN = [0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16];
+const TRAIL_SURGE = [0.1, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15];
 
 /** The fur: albedo and sky from COLOR_0, the coat's numbers from _fur. */
 function createFurMaterial(light) {
@@ -159,6 +166,15 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
     }
     const neck = model.getObjectByName('neck');
     const head = model.getObjectByName('head');
+    const tail = TRAIL_TURN.map((_, i) => model.getObjectByName(`tail${i}`));
+    const trailEuler = new THREE.Euler();
+    const trailTurn = new THREE.Quaternion();
+    // The bones the layers on top of the clips turn (the look, the tail's follow-through), and their
+    // clip pose as the mixer last left it. The mixer writes a bone only when its clip value changes,
+    // so a layer laid on a bone whose clip held still would pile up frame on frame: each frame the
+    // clip pose is put back before the mixer runs, and the layers are laid on it afresh.
+    const layered = [neck, head, ...tail].filter(Boolean);
+    const clipPose = layered.map((bone) => bone.quaternion.clone());
     const scratch = {
         parent: new THREE.Quaternion(),
         turn: new THREE.Quaternion(),
@@ -181,28 +197,44 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
         bone.updateMatrixWorld(true);
     };
 
-    /** The head (and the neck, less) turned toward the board, by `weight`. */
+    /**
+     * The head (and the neck, less) turned toward the board, by `weight`: a turn about the body's up
+     * and a nod about the head's own side, each kept within reach. A board behind it is let go of
+     * (looking round over its back is not what a squirrel does), so the turn never flips side.
+     */
     const lookAt = (target, weight) => {
         if (!(weight > 0.001) || !head || !neck) return;
+        pivot.updateMatrixWorld(true);
         head.getWorldPosition(scratch.p);
-        scratch.to.set(target[0], target[1], target[2]).sub(scratch.p).normalize();
-        head.getWorldQuaternion(scratch.q);
-        scratch.fwd.copy(FORWARD).applyQuaternion(scratch.q);
-        scratch.turn.setFromUnitVectors(scratch.fwd, scratch.to);
-        const angle = 2 * Math.acos(Math.min(1, Math.abs(scratch.turn.w)));
-        // How much of the way it turns: all of it within reach, as far as it reaches beyond.
-        const share = Math.min(1, LOOK_REACH / Math.max(angle, 1e-4)) * weight;
-        scratch.part.slerpQuaternions(scratch.identity, scratch.turn, share * LOOK_NECK);
-        turnBone(neck, scratch.part);
-        // The rest is the head's, measured again from where the neck has put it.
-        head.getWorldQuaternion(scratch.q);
-        scratch.fwd.copy(FORWARD).applyQuaternion(scratch.q);
-        head.getWorldPosition(scratch.p);
-        scratch.to.set(target[0], target[1], target[2]).sub(scratch.p).normalize();
-        scratch.turn.setFromUnitVectors(scratch.fwd, scratch.to);
-        const rest = (share * (1 - LOOK_NECK)) / Math.max(1e-3, 1 - share * LOOK_NECK);
-        scratch.part.slerpQuaternions(scratch.identity, scratch.turn, Math.min(1, rest));
-        turnBone(head, scratch.part);
+        scratch.to.set(target[0], target[1], target[2]).sub(scratch.p);
+        // In the body's own frame: x its left, y its up, z its forward.
+        scratch.q.copy(pivot.quaternion).invert();
+        scratch.to.applyQuaternion(scratch.q).normalize();
+        head.getWorldQuaternion(scratch.parent);
+        scratch.fwd.copy(FORWARD).applyQuaternion(scratch.parent).applyQuaternion(scratch.q);
+        const yawTo = Math.atan2(scratch.to.x, scratch.to.z);
+        const yawNow = Math.atan2(scratch.fwd.x, scratch.fwd.z);
+        const away = Math.abs(yawTo);
+        const keep = weight * (1 - THREE.MathUtils.smoothstep(away, 1.9, 2.6));
+        if (keep < 0.001) return;
+        // (A target nearly straight along its up, out from the bark it clings to, has no side to turn
+        // to: the turn fades out there and the nod does the looking.)
+        const sideways = THREE.MathUtils.smoothstep(Math.hypot(scratch.to.x, scratch.to.z), 0.25, 0.6);
+        const yaw = (THREE.MathUtils.clamp(yawTo, -LOOK_REACH, LOOK_REACH) - yawNow) * sideways;
+        const pitchTo = Math.asin(THREE.MathUtils.clamp(scratch.to.y, -1, 1));
+        const pitchNow = Math.asin(THREE.MathUtils.clamp(scratch.fwd.y, -1, 1));
+        const pitch = THREE.MathUtils.clamp(pitchTo, -0.5, 0.5) - pitchNow;
+        // The turn about the body's up (world), shared between neck and head.
+        scratch.n.set(0, 1, 0).applyQuaternion(pivot.quaternion);
+        scratch.turn.setFromAxisAngle(scratch.n, yaw * keep * LOOK_NECK);
+        turnBone(neck, scratch.turn);
+        scratch.turn.setFromAxisAngle(scratch.n, yaw * keep * (1 - LOOK_NECK));
+        turnBone(head, scratch.turn);
+        // The nod about the head's own left (a positive nod lifts the nose).
+        head.getWorldQuaternion(scratch.parent);
+        scratch.n.set(1, 0, 0).applyQuaternion(scratch.parent);
+        scratch.turn.setFromAxisAngle(scratch.n, -pitch * keep * 0.7);
+        turnBone(head, scratch.turn);
     };
 
     return {
@@ -242,7 +274,19 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
                 action.setEffectiveWeight(entry.weight / Math.max(total, 1e-6));
                 live.add(entry.name);
             }
+            layered.forEach((bone, i) => bone.quaternion.copy(clipPose[i]));
             mixer.update(0);
+            layered.forEach((bone, i) => clipPose[i].copy(bone.quaternion));
+            // Follow-through: the plume trails the body's turns and its starts and stops.
+            const turn = Math.max(-0.9, Math.min(0.9, pose.lagTurn || 0));
+            const surge = Math.max(-0.6, Math.min(0.6, pose.lagSurge || 0));
+            if (turn !== 0 || surge !== 0) {
+                tail.forEach((bone, i) => {
+                    if (!bone) return;
+                    trailEuler.set(-surge * TRAIL_SURGE[i], -turn * TRAIL_TURN[i], 0);
+                    bone.quaternion.multiply(trailTurn.setFromEuler(trailEuler));
+                });
+            }
             pivot.updateMatrixWorld(true);
             lookAt(pose.attention, pose.look);
             if (acorn) acorn.visible = Boolean(pose.acorn);

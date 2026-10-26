@@ -27,11 +27,21 @@ import { cross, normalize } from './fall-squirrel-stage.js';
 
 const TAU = Math.PI * 2;
 /** Seconds over which one clip hands over to the next. */
-const BLEND = 0.18;
-/** Seconds over which the body turns to an act's own heading. */
-const TURN = 0.14;
-/** Seconds a move takes to get going and to stop (a squirrel stops dead). */
-const RAMP = 0.1;
+const BLEND = 0.26;
+/** Seconds over which the body settles into an act's own heading (small changes; big ones are turned). */
+const TURN = 0.24;
+/** Seconds a move takes to get up to speed, and to stop (its speed eases in and out, S-shaped). */
+const RAMP = 0.22;
+/** A change of heading bigger than this (radians) is turned on the spot, the paws stepping round. */
+const TURN_MIN = 0.5;
+/** How far back the follow-through looks (seconds): the tail trails the body's turns and surges by it. */
+const LAG = 0.15;
+/** Where in its stride each gait starts (a fraction of the clip): with the hind feet down, pushing off. */
+const GAIT_START = Object.freeze({
+    bound: 0.7, hop: 0.72, climb: 0.74, descend: 0.0,
+});
+/** The leap's take-off and landing in its clip (the crouch and the landing are on the ground). */
+const LEAP_MARKS = SQUIRREL_CLIPS.leap.marks;
 /** The cushion between the bark or the litter and the paws (metres, drawn). */
 const CLEARANCE = 0.012;
 
@@ -62,6 +72,13 @@ const smooth = (e0, e1, x) => {
     const t = clamp((x - e0) / (e1 - e0), 0, 1);
     return t * t * (3 - 2 * t);
 };
+/** Quintic smoothstep: no jump in speed or in acceleration at either end. */
+const smoother = (e0, e1, x) => {
+    const t = clamp((x - e0) / (e1 - e0), 0, 1);
+    return t * t * t * (t * (t * 6 - 15) + 10);
+};
+/** The integral of the quintic smoothstep over 0..u (0.5 at 1): the distance covered while easing in. */
+const easedDistance = (u) => u * u * u * u * (u * (u - 3) + 2.5);
 const wrapPi = (a) => {
     let x = (a + Math.PI) % TAU;
     if (x < 0) x += TAU;
@@ -141,6 +158,12 @@ export function quatSlerp(a, b, t, out = [0, 0, 0, 1]) {
     return out;
 }
 
+/** The body's forward (its +z) under quaternion q. */
+function rotateForward(q) {
+    const [x, y, z, w] = q;
+    return [2 * (x * z + w * y), 2 * (y * z - w * x), 1 - 2 * (x * x + y * y)];
+}
+
 /** Turn quaternion q by `angle` about the unit axis (world), on the left. */
 function quatTurn(q, axis, angle, out = [0, 0, 0, 1]) {
     const s = Math.sin(angle / 2);
@@ -148,10 +171,12 @@ function quatTurn(q, axis, angle, out = [0, 0, 0, 1]) {
     const ry = axis[1] * s;
     const rz = axis[2] * s;
     const rw = Math.cos(angle / 2);
-    out[0] = rw * q[0] + rx * q[3] + ry * q[2] - rz * q[1];
-    out[1] = rw * q[1] - rx * q[2] + ry * q[3] + rz * q[0];
-    out[2] = rw * q[2] + rx * q[1] - ry * q[0] + rz * q[3];
-    out[3] = rw * q[3] - rx * q[0] - ry * q[1] - rz * q[2];
+    // (Read q whole before writing: `out` may be q itself.)
+    const [qx, qy, qz, qw] = q;
+    out[0] = rw * qx + rx * qw + ry * qz - rz * qy;
+    out[1] = rw * qy - rx * qz + ry * qw + rz * qx;
+    out[2] = rw * qz + rx * qy - ry * qx + rz * qw;
+    out[3] = rw * qw - rx * qx - ry * qy - rz * qz;
     return out;
 }
 
@@ -196,6 +221,8 @@ export class SquirrelMind {
         this.rngState = this.seed || 1;
         this.act = null;
         this.prev = null;
+        /** The acts before the current one, newest first (blends reach back through them). */
+        this.recent = [];
         this.queue = [];
         this.tail = null;
         this.alarm = 0;
@@ -203,6 +230,7 @@ export class SquirrelMind {
         this.lastSnack = -1e9;
         this.lastCross = time;
         this.history = [];
+        this.lastPushed = null;
         this.time = time;
         this.scripted = this.script.slice();
         if (this.start === 'crown') {
@@ -349,6 +377,13 @@ export class SquirrelMind {
     // -- building the plan -------------------------------------------------------------------
     /** Append an act after the plan's tail. */
     push(spec) {
+        // A big change of heading is turned on the spot first (the paws step round), not swung.
+        if (spec.kind === 'move' && !spec.noTurn) this.turnToward(this.measure(this.tail.place, spec.to).heading);
+        if (spec.kind === 'leap' && this.tail.place.on === 'ground' && spec.to.on !== 'ground') {
+            const a = this.frame(this.tail.place);
+            const b = this.frame(spec.to);
+            this.turnToward(Math.atan2(b.point[2] - a.point[2], b.point[0] - a.point[0]), 1.0);
+        }
         const from = this.tail.place;
         const act = {
             ...spec, from, t0: this.tail.time, rate: spec.rate ?? 1, phase: spec.phase ?? 0,
@@ -366,17 +401,49 @@ export class SquirrelMind {
             const a = this.frame(from);
             const b = this.frame(act.to);
             const d = Math.hypot(b.point[0] - a.point[0], b.point[1] - a.point[1], b.point[2] - a.point[2]);
+            const { length } = SQUIRREL_CLIPS.leap;
             act.distance = d;
-            act.duration = act.duration ?? (0.36 + 0.09 * d);
+            // Crouch and push on the ground, the flight, the landing taken in the legs.
+            act.crouch = LEAP_MARKS.takeoff * length;
+            act.flight = act.flight ?? (0.24 + 0.08 * d);
+            act.landing = (1 - LEAP_MARKS.landing) * length;
+            act.duration = act.crouch + act.flight + act.landing;
             act.height = act.height ?? (0.2 + 0.12 * d);
+        } else if (act.kind === 'turn') {
+            act.to = { ...from, heading: act.heading };
+        }
+        // A stay that plays on the clip the act before it played goes on from where that one was in
+        // it (one clip cannot be in two places at once, and a jump in it is a jerk).
+        const last = this.lastPushed;
+        if (act.kind === 'stay' && last && (last.kind === 'stay' || last.kind === 'turn') && last.clip === act.clip
+            && Math.abs(last.t1 - act.t0) < 1e-9) {
+            act.rate = last.rate;
+            act.phase = last.phase + (last.t1 - last.t0) * last.rate;
         }
         act.t1 = act.t0 + act.duration;
+        // The act's own timing (a cut shortens its window, never the way it moves within it).
+        act.run = act.duration;
         if (act.kind === 'stay' || act.kind === 'hidden') {
             act.to = act.to ?? { ...from, heading: act.heading ?? from.heading };
         }
         this.queue.push(act);
         this.tail = { time: act.t1, place: act.to };
+        this.lastPushed = act;
         return act;
+    }
+
+    /** Turn on the spot to `heading` (the paws stepping round: shuffle on the floor, pivot on the bark). */
+    turnToward(heading, least = TURN_MIN) {
+        const from = this.tail.place;
+        const delta = wrapPi(heading - from.heading);
+        if (Math.abs(delta) <= least) return null;
+        return this.push({
+            kind: 'turn',
+            clip: from.on === 'ground' ? 'shuffle' : 'pivot',
+            duration: 0.24 + (0.36 * Math.abs(delta)) / Math.PI,
+            fromHeading: from.heading,
+            heading: from.heading + delta,
+        });
     }
 
     stay(clip, duration, extra = {}) {
@@ -650,6 +717,8 @@ export class SquirrelMind {
         let guard = 0;
         while (this.act && time >= this.act.t1 && guard++ < 4096) {
             this.prev = this.act;
+            this.recent.unshift(this.act);
+            if (this.recent.length > 3) this.recent.length = 3;
             if (!this.queue.length) this.plan();
             this.act = this.queue.shift();
         }
@@ -663,16 +732,24 @@ export class SquirrelMind {
             return this.between(act.from, act.to, act.length > 0 ? s / act.length : 1, act.heading);
         }
         if (act.kind === 'leap') return time >= act.t1 ? act.to : act.from;
+        if (act.kind === 'turn') {
+            const u = act.run > 0 ? clamp((time - act.t0) / act.run, 0, 1) : 1;
+            return { ...act.from, heading: act.fromHeading + (act.heading - act.fromHeading) * smoother(0, 1, u) };
+        }
         return act.to;
     }
 
-    /** Metres along a move at `time`, easing in and out. */
+    /**
+     * Metres along a move at `time`. Its speed eases up over RAMP seconds and down over the last RAMP
+     * (a quintic smoothstep, so no jerk), which costs it RAMP seconds over the whole run at full speed.
+     */
     travel(act, time) {
         const tau = clamp(time - act.t0, 0, act.duration);
         const v = act.speed;
         const a = RAMP;
-        if (tau < a) return Math.min(act.length, (v * tau * tau) / (2 * a));
-        if (tau > act.duration - a) return Math.max(0, act.length - (v * (act.duration - tau) ** 2) / (2 * a));
+        const run = act.run ?? act.duration;
+        if (tau < a) return Math.min(act.length, v * a * easedDistance(tau / a));
+        if (tau > run - a) return Math.max(0, act.length - v * a * easedDistance((run - tau) / a));
         return v * (tau - a / 2);
     }
 
@@ -684,15 +761,14 @@ export class SquirrelMind {
         this.advance(time);
         const { act } = this;
         if (!act || act.kind === 'leap' || act.kind === 'hidden') return false;
+        // Cut where it is: the act keeps its own path and timing (so its clip and its place up to
+        // here are what they were) and only its window ends now.
         const place = this.placeAt(act, time);
         act.t1 = time;
         act.duration = time - act.t0;
-        if (act.kind === 'move') {
-            act.to = place;
-            act.length = this.travel(act, time);
-        }
         this.queue.length = 0;
         this.tail = { time, place };
+        this.lastPushed = act;
         return true;
     }
 
@@ -782,14 +858,24 @@ export class SquirrelMind {
     clipAt(act, time) {
         if (act.kind === 'hidden') return { name: 'cling', time: 0 };
         if (act.kind === 'leap') {
-            const u = clamp((time - act.t0) / act.duration, 0, 1);
-            return { name: 'leap', time: u * SQUIRREL_CLIPS.leap.length };
+            // The crouch and the landing at the clip's own pace, the flight stretched to the jump.
+            const { length } = SQUIRREL_CLIPS.leap;
+            const tau = clamp(time - act.t0, 0, act.duration);
+            let clipTime;
+            if (tau < act.crouch) clipTime = tau;
+            else if (tau < act.crouch + act.flight) {
+                const flown = (tau - act.crouch) / act.flight;
+                clipTime = (LEAP_MARKS.takeoff + flown * (LEAP_MARKS.landing - LEAP_MARKS.takeoff)) * length;
+            } else clipTime = LEAP_MARKS.landing * length + (tau - act.crouch - act.flight);
+            return { name: 'leap', time: clipTime };
         }
         const clip = SQUIRREL_CLIPS[act.clip];
         if (act.kind === 'move') {
             const s = this.travel(act, Math.min(time, act.t1));
             const over = Math.max(0, time - act.t1) * act.speed;
-            return { name: act.clip, time: (s + over) / Math.max(1e-3, clip.speed * this.scale) };
+            // (A gait starts in its stride where the hind feet are down pushing, as from standing.)
+            const start = (GAIT_START[act.clip] ?? 0) * clip.length;
+            return { name: act.clip, time: start + (s + over) / Math.max(1e-3, clip.speed * this.scale) };
         }
         const t = (time - act.t0) * act.rate + act.phase;
         return { name: act.clip, time: clip.loop ? t : Math.min(t, clip.length - 1e-3) };
@@ -798,12 +884,13 @@ export class SquirrelMind {
     /** Body frame of an act at `time`: position, orientation, the surface under it, how high over it. */
     bodyAt(act, time, out) {
         if (act.kind === 'leap') {
-            const u = clamp((time - act.t0) / act.duration, 0, 1);
+            // On the ground for the crouch, in the air for the flight, down again for the landing.
+            const u = clamp((time - act.t0 - act.crouch) / act.flight, 0, 1);
             const a = this.frame(act.from);
             const b = this.frame(act.to);
             const qa = quatFromBasis(a.left, a.normal, a.forward);
             const qb = quatFromBasis(b.left, b.normal, b.forward);
-            const k = smooth(0.1, 0.8, u);
+            const k = smoother(0.05, 0.9, u);
             const arc = 4 * u * (1 - u) * act.height;
             for (let i = 0; i < 3; i++) {
                 out.position[i] = a.point[i] + (b.point[i] - a.point[i]) * u + (i === 1 ? arc : 0)
@@ -824,11 +911,6 @@ export class SquirrelMind {
         }
         quatFromBasis(f.left, f.normal, f.forward, out.quaternion);
         out.lift = 0;
-        if (act.twirl && act.clip === 'startle') {
-            // A twirl in the air: one whole turn about its own up while it is off the ground.
-            const spin = TAU * smooth(0.12, 0.5, time - act.t0);
-            quatTurn(out.quaternion, f.normal, spin, out.quaternion);
-        }
         return out;
     }
 
@@ -847,17 +929,18 @@ export class SquirrelMind {
         const prev = this.prev && this.prev.t1 <= act.t0 + 1e-9 ? this.prev : null;
         const current = this.clipAt(act, time);
         out.clips.length = 0;
-        if (prev && into < BLEND && prev.kind !== 'hidden') {
-            const w = smooth(0, BLEND, into);
-            const before = this.clipAt(prev, time);
-            out.clips.push({ name: before.name, time: before.time, weight: 1 - w });
-            out.clips.push({ name: current.name, time: current.time, weight: w });
-        } else {
-            out.clips.push({ name: current.name, time: current.time, weight: 1 });
-        }
+        this.blendClips(time, out.clips);
         if (prev && into < TURN && prev.kind !== 'hidden' && act.kind !== 'leap') {
             const before = this.bodyAt(prev, prev.t1, this.prevScratch || (this.prevScratch = createSquirrelPose()));
-            quatSlerp(before.quaternion, out.quaternion, smooth(0, TURN, into), out.quaternion);
+            quatSlerp(before.quaternion, out.quaternion, smoother(0, TURN, into), out.quaternion);
+        }
+        // (The trail is read off the body's path before the twirl: a whole turn in a third of a second
+        // is more than half a turn within the trail's look back, which has no side to trail to.)
+        this.followThrough(time, out);
+        if (act.twirl && act.clip === 'startle') {
+            // A twirl in the air: one whole turn about its own up while it is off the ground (laid on
+            // after the hand-over above, which would take the short way round a turn half done).
+            quatTurn(out.quaternion, out.normal, TAU * smoother(0.12, 0.5, time - act.t0), out.quaternion);
         }
         out.acorn = Boolean(act.acorn) && act.kind === 'stay';
         const lookIn = act.look ? smooth(0, 0.3, into) * smooth(0, 0.3, act.t1 - time) : 0;
@@ -865,6 +948,85 @@ export class SquirrelMind {
         out.attention = SQUIRREL_ATTENTION;
         out.act = act.kind;
         out.clip = current.name;
+        return out;
+    }
+
+    /**
+     * The clips showing at `time`: the act's own, handed over from what was showing when it began. That
+     * may itself still have been a hand-over (a fright that cuts a dig a moment after it took over from
+     * a hop hands over from the hop, not from the dig), so the blend reaches back through the last
+     * few acts. A clip that shows twice is one entry.
+     */
+    blendClips(time, clips) {
+        clips.length = 0;
+        const chain = [this.act];
+        for (const act of this.recent) {
+            if (chain.length >= 4 || act.kind === 'hidden' || act.t1 > chain[chain.length - 1].t0 + 1e-9) break;
+            chain.push(act);
+        }
+        let weight = 1;
+        for (let i = 0; i < chain.length && weight > 1e-4; i++) {
+            const act = chain[i];
+            const into = time - act.t0;
+            const handing = i + 1 < chain.length && into < BLEND;
+            const own = handing ? weight * smoother(0, BLEND, into) : weight;
+            const { name, time: clipTime } = this.clipAt(act, time);
+            const same = clips.find((entry) => entry.name === name);
+            if (same) {
+                if (own > same.weight) same.time = clipTime;
+                same.weight += own;
+            } else if (own > 0) clips.push({ name, time: clipTime, weight: own });
+            weight -= own;
+            if (!handing) break;
+        }
+        if (!clips.length) clips.push({ ...this.clipAt(this.act, time), weight: 1 });
+        return clips;
+    }
+
+    /** The body as it was at `time` (on the act then, or the one before it), or null in the crown. */
+    bodyBefore(time, out) {
+        let { act } = this;
+        if (time < act.t0) act = this.prev && time >= this.prev.t0 ? this.prev : (this.prev || act);
+        if (!act || act.kind === 'hidden') return null;
+        return this.bodyAt(act, clamp(time, act.t0, act.t1), out);
+    }
+
+    /**
+     * What the tail and ears trail by (follow-through, from the body's own path, so still a function
+     * of the clock): how far the body has turned about its up in the last LAG seconds (radians) and
+     * how much its speed has changed (life-size metres a second).
+     */
+    followThrough(time, out) {
+        out.lagTurn = 0;
+        out.lagSurge = 0;
+        if (!out.visible) return out;
+        const then = this.bodyBefore(time - LAG, this.lagA || (this.lagA = createSquirrelPose()));
+        const before = this.bodyBefore(time - 2 * LAG, this.lagB || (this.lagB = createSquirrelPose()));
+        if (!then || !before) return out;
+        // The turn about the body's up since then: the old forward, laid in today's tangent plane,
+        // against today's forward. Where the old forward stood up out of that plane (a leap from the
+        // bark to the floor) the measure fades out rather than flip.
+        const n = out.normal;
+        const now = rotateForward(out.quaternion);
+        const old = rotateForward(then.quaternion);
+        const lift = old[0] * n[0] + old[1] * n[1] + old[2] * n[2];
+        const flat = [old[0] - n[0] * lift, old[1] - n[1] * lift, old[2] - n[2] * lift];
+        const size = Math.hypot(flat[0], flat[1], flat[2]);
+        const c = cross(flat, now);
+        const turn = Math.atan2(
+            c[0] * n[0] + c[1] * n[1] + c[2] * n[2],
+            flat[0] * now[0] + flat[1] * now[1] + flat[2] * now[2],
+        );
+        // A leap turns the body over end to end (bark to floor): there the trail is let go during the
+        // crouch and taken up again after the landing, rather than read off a tumbling frame.
+        const { act, prev } = this;
+        let hold = 1;
+        if (act.kind === 'leap') hold = 1 - smoother(0, act.crouch, time - act.t0);
+        else if (prev && prev.kind === 'leap') hold = smoother(0, 2 * LAG, time - prev.t1);
+        out.lagTurn = turn * smooth(0.45, 0.85, size) * hold;
+        const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+        const gained = dist(out.position, then.position) - dist(then.position, before.position);
+        out.lagSurge = (gained / LAG / this.scale) * hold;
         return out;
     }
 
@@ -890,5 +1052,7 @@ export function createSquirrelPose() {
         attention: SQUIRREL_ATTENTION,
         act: '',
         clip: '',
+        lagTurn: 0,
+        lagSurge: 0,
     };
 }

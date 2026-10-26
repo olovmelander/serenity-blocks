@@ -1,6 +1,6 @@
 # Fall — the enchanted grove (visual overhaul, 2026-10-05)
 
-**Status: implemented (branch `feature/fall-enchanted-forest`; the red squirrel 2026-10-26). A record of what was built
+**Status: implemented (branch `feature/fall-enchanted-forest`; the red squirrel 2026-10-26, its motion pass the same day). A record of what was built
 and how it was checked — not a backlog.** Supersedes the "amber glade" rebuild of the same
 week (`reports/fall-overhaul/README.md`), whose flat-shaded procedural grove this replaces.
 
@@ -265,9 +265,9 @@ in the session touched).
 | **Model** (`model.py`) | A distance field of ellipsoids and round cones joined by smooth unions round the rig's joints (the Grainfields horse's and Winter bear's meshing, `grainfields/horse_sdf.py`). The plume is built of locks laid like a feather (broad soft locks on each side sweeping back, shorter ones along its top and underside, a brush at the end), so its outline is scalloped: a smooth tube read as a sausage and noise on it as a pine cone. Surface nets on a 1.4 mm grid, then two decimation passes (body, legs and plume with the face held; the face with the rest held: Blender's collapse leaves a vertex of weight 0 alone, but partial weights spared nothing usefully), cleaned of folds, mirrored. 9,806 triangles, of which the face keeps about a third. |
 | **Paint** | COLOR_0 = linear coat colour and the sky each vertex sees (occlusion traced through the field); `_fur` = hair length, light through it, eye, ear tuft. |
 | **Rig** (`rig.py`) | Thirty bones (hips, spine, chest, neck, head, jaw, two ears, seven tail bones, and three or four a leg), each resting in the squirrel's own frame so a clip's rotations are about its own axes; skin weights by inverse distance along each part's chain, relaxed over the surface. |
-| **Motion** (`motion.py`, `solver.py`) | Sixteen clips, each a function of time: where the body is and how it bends, where every paw is put (two-bone IK with the knee or elbow in the plane a pole gives; paws can ride a bone: the chest, the head), how the head, ears, jaw and tail turn (a travelling wave, a flick, the scold's whip). Gaits slide their planted paws back at their own speed so the runtime can play them in place. Sampled at 30 fps and keyed into one Blender action each. |
+| **Motion** (`motion.py`, `solver.py`) | Eighteen clips (sixteen, then the motion pass's two turns on the spot), each a function of time: where the body is and how it bends, where every paw is put (two-bone IK with the knee or elbow in the plane a pole gives; paws can ride a bone: the chest, the head), how the head, ears, jaw and tail turn (a travelling wave, a flick, the scold's whip). Gaits slide their planted paws back at their own speed so the runtime can play them in place. Sampled at 60 fps (30 for the slow standing loops since the motion pass) and keyed into one Blender action each. |
 | **Acorn** | A glossy nut in a scaly cup, parented to the left hand bone, placed from the nibble pose so it sits between both paws in front of the mouth; drawn 1.4× (like the head). |
-| **Pack** (`pack-squirrel.mjs`) | 1.44 MB from Blender → 440 KiB: 16-bit rotations, a still channel as one key, unused translation and scale channels dropped, byte colours, fur and weights, byte normals (`KHR_mesh_quantization`); the clips' lengths, loops and speeds in the asset's extras. Deterministic (three runs, one SHA-256). |
+| **Pack** (`pack-squirrel.mjs`) | 1.44 MB from Blender → 440 KiB (526 KiB after the motion pass): 16-bit rotations, a still channel as one key, unused translation and scale channels dropped, byte colours, fur and weights, byte normals (`KHR_mesh_quantization`); the clips' lengths, loops and speeds in the asset's extras. Deterministic (three runs, one SHA-256). |
 
 | The model in some of its clips (Blender Workbench lineups from the design loop) |
 | --- |
@@ -307,13 +307,70 @@ the world is built. On every tier. GPU timings were not taken (other sessions sh
 - **The real game**: Single Player at High, 1920 × 1080, via an Electron capture on a private dev
   server: it came down the maple, nibbled left of the board, three hard drops made it jump, then it
   ran across to the oak; console clean.
-- **Tests**: `tests/unit/fall-squirrel.test.js` (17: the asset's skin, bones, clips against the table,
+- **Tests**: `tests/unit/fall-squirrel.test.js` (21 after the motion pass: the asset's skin, bones, clips against the table,
   closed loops and budget; the measured trunks; the mind's determinism at any frame rate, staying on
   screen and clear of the card, no teleports, every routine, the acorn, the scold, habituating frights,
   the twirl and the game-over hiding, reduced motion; the body; the world's wiring through the
   director, and a grove without the asset); the Fall asset tests now know `squirrel.glb`.
 - **Gates**: typecheck, lint and TS ratchets at baseline, architecture fitness, boundaries, theme
   lifecycle audit, IP-string gate.
+
+### The motion pass (2026-10-26, later the same day)
+
+Asked for: "We need to make the squirrel have better and more natural and smooth animations."
+
+**Measured first.** A probe ran the real mind and body for five minutes at 60 fps over four seeds with
+every board event, logging how fast each bone turned from frame to frame, and a clip audit
+(`scripts/blender/fall_squirrel/audit.py`) read every clip for paws asked to reach past their leg,
+planted paws that slid and pops at loop seams. What they found:
+
+- Planted paws slid 1–2 cm in the bound and the climb: the clips asked for more leg than the squirrel
+  has (its foreleg stood nearly straight), so the solver straightened the limb and the paw dragged.
+- Loops jumped at their seam: the fidgets' noise did not repeat over the clip's length.
+- The body swung up to 180° inside one blend when a new act faced another way.
+- Hand-overs popped when the act before had barely begun, and a gait following itself restarted its
+  stride (one action cannot be at two times).
+- The head flipped side when the board passed behind it, and the head turn piled up frame on frame:
+  `AnimationMixer` writes a bone only when its value changes, so a layer added on top of a still clip
+  was added to itself again.
+- The twirl read a quaternion while writing it, which skewed the spin.
+
+**In Blender** (`motion.py`, `solver.py`):
+
+| | |
+| --- | --- |
+| **Gaits** | Rebuilt round the leg's real reach: hind feet planted on their toes with the heel rolling, the chest dipping as the forefeet take the weight, each swing a Hermite curve matched to the ground speed, the lift a plateau eased up and down. A soft IK limit at 90 % of the leg, so a paw never snaps straight. The bound is 17 frames of 60 at 1.1 m/s life size; the hop, the climb and the head-first descent re-timed. |
+| **Loops** | Every wave, sway and fidget repeats over its clip's length: no loop has a seam. |
+| **Turning on the spot** | Two new clips: `shuffle` (the feet stepping round on the floor) and `pivot` (the paws walking round on the bark). |
+| **Leap** | A crouch on planted toes, and take-off and landing marks in the clip (at 26 % and 75 %), so the runtime stretches only the flight. |
+| **Rate** | Keyed at 60 fps; the slow standing loops (idle, sit, cling, look) packed at 30. Eighteen clips, 22,296 keys, 526 KiB. |
+
+**At runtime** (`fall-squirrel-mind.js`, `fall-squirrel.js`, `fall-squirrel-stage.js`):
+
+| | |
+| --- | --- |
+| **Turns** | A change of heading over about 30° is turned on the spot first (shuffle or pivot, 0.24–0.6 s by the angle); smaller ones settle in over 0.24 s on a quintic ease. A run from the floor onto the bark turns to face the trunk before it leaps. |
+| **Starts and stops** | Speed eases up and down over 0.22 s, S-shaped (no jerk); a gait starts in its stride where the hind feet push off. |
+| **Hand-overs** | 0.26 s blends, chained through the last few acts, so an act cut short hands over from what was really showing; the same clip following itself keeps its stride; an answer to the board cuts an act without re-timing what came before the cut. |
+| **Follow-through** | The mind measures how far the body turned and how much its speed changed over the last 0.15 s (still a function of the clock, so a seek lands on it); the tail's seven bones bend back against both, more toward the brush. Held through leaps. |
+| **Head** | Turns toward the board as a turn about the body's up and a nod, each within reach; a board behind it is let go of, never flipped to. The look and the tail's trail are laid on the clip pose afresh each frame. |
+| **Bark** | The trunk's surface sampled bicubically (Catmull-Rom) and its frame taken over the squirrel's own length, so bumps in the bark no longer rock it. |
+
+**Result.** The worst jolt (the change in a bone's turning speed from one frame to the next, at 60 fps)
+over the same five minutes, four seeds and events: body, hips, chest and head 60–90° before, 4–12°
+after; the tail's tip at most 20°. The legs keep the footfall snap of the bound (about 40°), as a
+bounding squirrel does.
+
+| From the follow camera: the bound; a shuffle turn on the floor; the crouch and the leap onto the bark; a pivot on the bark |
+| --- |
+| ![six frames each of the bound, a turn on the spot, a leap onto the trunk and a turn on the bark](fall-enchanted-grove/squirrel-motion.webp) |
+
+**Checked** in the playground on native WebGPU at High and Minimal and on the forced WebGL2 backend
+(consoles clean but for Electron's dev-server CSP notice); `validate-all-themes --theme fall` PASS. Not
+re-checked in a full game this pass. Four new tests: every body, head and tail bone within those jolt
+limits over two minutes for two seeds with every event; turns on the spot on the floor and on the bark;
+a leap leaving from where it crouched and stopping where it lands; the look and the trail never piling
+up. The asset test holds the leap's marks to the clip table.
 
 ### Known limits and follow-ups
 

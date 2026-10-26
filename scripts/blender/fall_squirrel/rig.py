@@ -17,7 +17,7 @@ from .model import PARTS, skeleton
 SCENE_NAME = "Serenity Fall - Squirrel Atelier"
 ACORN_SIZE = 1.4
 PREFIX = "SFSQ_"
-FPS = 30
+FPS = 60
 
 
 def to_blender(points):
@@ -308,7 +308,7 @@ def bake(arm, clips=None, fps=FPS):
             curve.keyframe_points.foreach_set("interpolation", [2] * len(times))
         action.frame_range = (0.0, float(frames))
         report[name] = dict(length=entry["length"], frames=frames, loop=bool(entry["loop"]), speed=entry["speed"],
-                            action=action.name, slot=slot.identifier)
+                            marks=entry.get("marks") or {}, action=action.name, slot=slot.identifier)
     return report
 
 

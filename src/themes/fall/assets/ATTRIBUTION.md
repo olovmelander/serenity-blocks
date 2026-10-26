@@ -17,7 +17,7 @@ checks the files against it.
 | `maple-grove-a/b/c.glb`, `birch-grove-a/b.glb` | The grove trees of the middle distance. |
 | `fall-foliage.glb` | The shared leaf geometry: maple and oak sprays, maple clumps, weeping birch strands (two variants each) and single leaves for the litter and the leaves in the air. |
 | `fall-impostors.png` | Front elevations of the five grove trees for the distant forest. |
-| `squirrel.glb` | The red squirrel: one skinned body on a 30-bone rig, sixteen clips (idle, sit, bound, hop, climb, descend, cling, nibble, chatter, startle, look, dig, pat, scratch, groom, leap) and the acorn it nibbles, riding on its left hand. |
+| `squirrel.glb` | The red squirrel: one skinned body on a 30-bone rig, eighteen clips (idle, sit, bound, hop, climb, descend, shuffle, cling, pivot, nibble, chatter, startle, look, dig, pat, scratch, groom, leap) and the acorn it nibbles, riding on its left hand. |
 
 ## How the squirrel is made
 
@@ -38,12 +38,13 @@ Made in Blender 5.2 by `scripts/blender/fall_squirrel.py` (modules in
 - **Motion** (`motion.py`, `solver.py`). Each clip is a function of time: where the body is
   and how it bends, where each paw is put (two-bone IK with the knee or elbow in the plane a
   pole gives), how the head, ears, jaw and the seven-bone tail turn. They are sampled on every
-  frame (30 fps) and keyed into one Blender action each, which the glTF exporter writes as one
-  animation each.
-- **Pack.** Rotations as normalised 16-bit, a channel that never moves in a clip as one key,
+  frame (60 fps) and keyed into one Blender action each, which the glTF exporter writes as one
+  animation each. `audit.py` reads every clip for paws asked past their leg's reach, planted
+  paws that slide and pops at loop seams.
+- **Pack.** The slow standing loops (idle, sit, cling, look) halved to 30 fps; rotations as normalised 16-bit, a channel that never moves in a clip as one key,
   unused translation and scale channels dropped, colours, fur and weights as bytes, normals as
-  normalised bytes (`KHR_mesh_quantization`); the clips' lengths, loops and speeds in the
-  asset's extras (held to `fall-squirrel-clips.js` by a test).
+  normalised bytes (`KHR_mesh_quantization`); the clips' lengths, loops, speeds and
+  marks (the leap's take-off and landing) in the asset's extras (held to `fall-squirrel-clips.js` by a test).
 
 ```bash
 node scripts/fall/pack-squirrel.mjs        # runs Blender headless, packs, writes the asset and its manifest line
