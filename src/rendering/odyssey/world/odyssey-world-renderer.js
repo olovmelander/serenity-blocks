@@ -3,7 +3,7 @@ import {
     Break, Fn, If, Loop, int,
     abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
     hash, length, max, min, mix, reflect, select, sign, sqrt,
-    normalize, normalGeometry, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin,
+    normalize, normalLocal, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin,
     smoothstep, screenUV, step as tslStep, texture, uniform, uv, varying, varyingProperty, vec2, vec3, vec4,
     cameraPosition as cameraPositionNode,
     cameraViewMatrix,
@@ -41,8 +41,11 @@ import { buildKelpGeometry, buildSpireGeometry, planOceanForms } from './odyssey
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import { antisolarSchedule, applyAntisolarSky } from './odyssey-sky-optics.js';
 import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
-import { FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW } from './odyssey-forest-geometry.js';
-import { forestCardFragment, forestCardVertex } from './odyssey-forest-cards.js';
+import {
+    FOREST_LEAF_CARD, FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW,
+} from './odyssey-forest-geometry.js';
+import { forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex } from './odyssey-forest-cards.js';
+import { bakeForestLeafAtlas } from './odyssey-forest-leaf-atlas.js';
 import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './odyssey-forest-shade.js';
@@ -767,6 +770,34 @@ const FOREST_CLUMP_SWING = 0.34;
  */
 const FOREST_AO_SHIFT = 0.30;
 /**
+ * THE LEAF CARDS' LOOK (see FOREST_LEAF_CARD and odyssey-forest-cards.js).
+ *   crown/dome/upBias  a card's normal: the crown's (from its centre) plus the clump's own dome
+ *   edgeGain           the coverage ramp's narrowest width, in the atlas's distance units
+ *   openFloor/pathIn   a card's openness falls to `openFloor` as the sun's path through the crown
+ *                      grows across `pathIn` (crown radii): the crown's own shadow side
+ *   aoShift            how far a card's closedness moves the band thresholds (the solid forest:
+ *                      FOREST_AO_SHIFT)
+ *   toneShift          each leaf's tone, as a band-threshold shift
+ *   shadeSky           how far the shade's light leans to the sky (the solid forest: 0.55)
+ *   glowPath/glowGain  against the light, leaves with less than `glowPath` of crown between them
+ *                      and the sun glow, by `glowGain` of the sun through their own colour
+ *   flutterFar         the leaves' shake fades out across this range (u)
+ */
+const LEAF_LOOK = Object.freeze({
+    crown: 1.0,
+    dome: 0.35,
+    upBias: 0.18,
+    edgeGain: 0.02,
+    openFloor: 0.15,
+    pathIn: Object.freeze([0.2, 1.3]),
+    aoShift: 0.45,
+    toneShift: 0.16,
+    shadeSky: 0.72,
+    glowPath: 1.2,
+    glowGain: 0.55,
+    flutterFar: Object.freeze([120, 320]),
+});
+/**
  * LEAF CLUMPS on the crowns (see `fvLeaf`): `scale` cells per unit of the puff's stereographic
  * chart (~28 clumps on an upper hemisphere at 3), how far a clump's normal tilts from its centre
  * (`bulge`), the seam's width in cell units and how far a seam shifts into shade, each clump's
@@ -1205,6 +1236,22 @@ export function createOdysseyWorld({
     forestShadeTex.wrapT = THREE.ClampToEdgeWrapping;
     forestShadeTex.generateMipmaps = true;
     forestShadeTex.needsUpdate = true;
+    // THE LEAF ATLAS (odyssey-forest-leaf-atlas.js): the clumps every leaf card draws, generated
+    // here. Mipmapped: its coverage is a distance, which keeps its edge through every mip.
+    const leafAtlas = bakeForestLeafAtlas();
+    const leafAtlasTex = new THREE.DataTexture(
+        leafAtlas.data,
+        leafAtlas.res,
+        leafAtlas.res,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType,
+    );
+    leafAtlasTex.minFilter = THREE.LinearMipmapLinearFilter;
+    leafAtlasTex.magFilter = THREE.LinearFilter;
+    leafAtlasTex.wrapS = THREE.ClampToEdgeWrapping;
+    leafAtlasTex.wrapT = THREE.ClampToEdgeWrapping;
+    leafAtlasTex.generateMipmaps = true;
+    leafAtlasTex.needsUpdate = true;
     const t1 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
     const group = new THREE.Group();
@@ -5169,15 +5216,15 @@ export function createOdysseyWorld({
     //   aTrunk      (vec4, per instance) rgb trunk colour · a the terrain's sun visibility at
     //               the tree's foot (sampled ONCE on the CPU — see `sunVisAt`)
     // Six buffers plus the instance matrix — comfortably inside the limit.
-    // Built twice: the shipped material, and the CARD material (the same graph, plus puff cards
-    // for the mid and far broadleaf crowns — FOREST_PUFF_CARD). One more pipeline, not one per tier.
+    // Built twice: the shipped material, and the CARD material (the same graph, plus the leaf cards
+    // every broadleaf crown is made of — FOREST_LEAF_CARD). One more pipeline, not one per tier.
     const buildForestV2Material = (cards) => {
         const fvVert = attribute('aVert', 'vec4');
         const fvCrownSnow = attribute('aCrownSnow', 'vec4');
         const fvShadePhase = attribute('aShadePhase', 'vec4');
         const fvTrunkSun = attribute('aTrunk', 'vec4');
         const fvTrunk = fvTrunkSun.xyz;
-        // The card material's crowns carry the card flag (FOREST_PUFF_CARD.flag, 2); all else 0 or 1.
+        // A leaf card carries the card flag plus its size (FOREST_LEAF_CARD); all else is 0 or 1.
         const fvIsCard = cards ? tslStep(float(1.5), fvVert.z) : null;
         const fvIsCrown = cards ? min(fvVert.z, 1) : fvVert.z;
         const fvH01 = fvVert.w;
@@ -5185,24 +5232,45 @@ export function createOdysseyWorld({
         const fvShade = fvShadePhase.xyz;
         const fvSnow = fvCrownSnow.w;
         const fvPhase = fvShadePhase.w;
-        // PUFF CARDS (the mid and far broadleaf crowns, odyssey-forest-cards.js). The vertex stage
-        // turns each card to the eye and hands its axes to the fragment stage, which draws the puff:
-        // its sphere normal stands in for the geometry's, its openness takes the cap's share from
-        // that normal (the hero's `capOpen`), and its scalloped outline is the coverage.
+        // LEAF CARDS (odyssey-forest-cards.js). The vertex stage turns each card to the eye and
+        // shakes its leaves; the fragment stage draws a clump from the leaf atlas: its coverage, a
+        // normal from the crown's centre with the clump's own dome, the sun's path through the
+        // crown (its shadow side, and its glow against the light) and each leaf's own tone.
         const vCardRight = varyingProperty('vec3', 'vForestCardRight');
         const vCardUp = varyingProperty('vec3', 'vForestCardUp');
-        const fvCard = cards ? forestCardFragment({
-            raw: normalGeometry,
+        const vCardCorner = varyingProperty('vec2', 'vForestCardCorner');
+        const vCardSpin = varyingProperty('vec4', 'vForestCardSpin');
+        // ⚠️ THE CROWN'S DIRECTION RIDES ITS OWN VARYING, NOT `normalWorld`. `normalWorld` is a
+        // shared var whose assignment TSL emits where it is first BUILT, and a `select` with built
+        // branches becomes an if/else: read in the leaf branch below, it was assigned there only,
+        // and every bark fragment read the zeroed var, normalised it to NaN and drew black.
+        const vCrownN = varyingProperty('vec3', 'vForestCrownN');
+        // The card material reads the drifting cloud shadow once a VERTEX (a card's six share its
+        // centre), not twice a fragment: a leafy crown is several cards deep on screen.
+        const vCloud = varyingProperty('float', 'vForestCloud');
+        const fvCardUv = cards ? forestLeafCardUv({ corner: vCardCorner, spin: vCardSpin }) : null;
+        const fvCard = cards ? forestLeafCardFragment({
+            corner: vCardCorner,
             right: vCardRight,
             up: vCardUp,
-            phase: fract(normalGeometry.z.mul(7.31).add(fvPhase.mul(0.37))).mul(Math.PI * 2),
+            leaf: texture(leafAtlasTex, fvCardUv.uv),
+            inside: fvCardUv.inside,
+            crownN: normalize(vCrownN),
+            depth: fvVert.x,
+            sunDir: uSunDir,
+            look: LEAF_LOOK,
         }) : null;
         const fvOnCard = cards ? fvIsCard.greaterThan(0.5) : null;
         const fvBaseN = cards ? select(fvOnCard, fvCard.normal, normalWorld) : normalWorld;
+        // A card's openness is the light that reaches it through the crown.
         const fvAo = cards
-            ? select(fvOnCard, fvVert.x.mul(fvCard.radialY.mul(0.5).add(0.5).mul(0.55).add(0.45)), fvVert.x)
+            ? select(fvOnCard, mix(float(1), float(LEAF_LOOK.openFloor), smoothstep(
+                float(LEAF_LOOK.pathIn[0]),
+                float(LEAF_LOOK.pathIn[1]),
+                fvCard.path,
+            )), fvVert.x)
             : fvVert.x;
-        const fvHc = cards ? select(fvOnCard, clamp(fvVert.y.add(fvCard.radialY.mul(0.3)), 0, 1), fvVert.y) : fvVert.y;
+        const fvHc = fvVert.y;
 
         const forestV2Mat = new THREE.MeshBasicNodeMaterial();
         // WIND. Height above GROUND squared, so trunks stay planted and crowns lean; phase is
@@ -5220,15 +5288,30 @@ export function createOdysseyWorld({
         const fvSway = vec3(fvGust, forestReachSink(), fvGust.mul(0.55));
         forestV2Mat.positionNode = cards
             ? Fn(() => {
-                // The tree's scale is the integer part of `aTrunk.w` (FOREST_TRUNK_PACK).
-                const card = forestCardVertex({
+                // The tree's scale is the integer part of `aTrunk.w` (FOREST_TRUNK_PACK); the card's
+                // size rides on its flag.
+                const scale = floor(fvTrunkSun.w).div(FOREST_TRUNK_PACK.quant);
+                const card = forestLeafCardVertex({
                     centre: positionLocal,
-                    raw: normalGeometry,
-                    scale: floor(fvTrunkSun.w).div(FOREST_TRUNK_PACK.quant),
+                    size: fvVert.z.sub(FOREST_LEAF_CARD.flag).mul(FOREST_LEAF_CARD.sizeMax).mul(scale),
                     eye: cameraPosition,
+                    time: uTime,
+                    seed: floor(fvPhase.mul(37)),
+                    flutter: float(1).sub(smoothstep(
+                        float(LEAF_LOOK.flutterFar[0]),
+                        float(LEAF_LOOK.flutterFar[1]),
+                        length(cameraPosition.sub(positionLocal)),
+                    )),
                 });
                 vCardRight.assign(card.right);
                 vCardUp.assign(card.up);
+                vCardCorner.assign(card.corner);
+                vCardSpin.assign(card.spin);
+                // The instanced normal (the instance's turn applied): the group's frame only scales.
+                vCrownN.assign(normalLocal);
+                // positionLocal is in the group's own frame, which is the climb's frame the
+                // fragment-stage positionWorld reads.
+                if (q.cloudShadows) vCloud.assign(cloudShadowLight(positionLocal.xz));
                 return positionLocal.add(fvSway).add(card.offset.mul(fvIsCard));
             })()
             : positionLocal.add(fvSway);
@@ -5255,7 +5338,8 @@ export function createOdysseyWorld({
         const fvSunVis = clamp(fract(fvTrunkSun.w).sub(FOREST_TRUNK_PACK.lo).div(FOREST_TRUNK_PACK.span), 0, 1);
         // ...and the drifting CLOUD shadows the ground under it takes (one fetch pair per fragment,
         // high tier only): without them a shadow crossing the island stopped at every forest edge.
-        const fvCloud = q.cloudShadows ? cloudShadowLight(positionWorld.xz) : float(1);
+        let fvCloud = float(1);
+        if (q.cloudShadows) fvCloud = cards ? vCloud : cloudShadowLight(positionWorld.xz);
         /**
          * LEAF CLUMPS (round two, the trees again, 2026-10-26). A puff lit as one smooth ball reads as a
          * toy; a painted canopy's masses are made of scalloped leaf clumps, each catching light on its
@@ -5277,7 +5361,8 @@ export function createOdysseyWorld({
         // regular lattice. The cells are shifted positive and hashed as exact integers. One hash a
         // cell: its low bits give the second coordinate and the clump's own tone. Fragments past the
         // range skip the search altogether.
-        const fvLeaf = q.leafClumps ? Fn(() => {
+        // (Not on leaf cards: the atlas draws their clumps.)
+        const fvLeaf = (q.leafClumps && !cards) ? Fn(() => {
             const n = normalize(fvBaseN).toVar();
             const result = vec4(n, 0).toVar();
             If(fvLeafNear.greaterThan(0), () => {
@@ -5316,7 +5401,12 @@ export function createOdysseyWorld({
             return result;
         })() : null;
         const fvN = (fvLeaf ? normalize(mix(fvBaseN, fvLeaf.xyz, fvLeafNear)) : normalize(fvBaseN)).toVar();
-        const fvSeam = fvLeaf ? fvLeaf.w.mul(fvLeafNear) : float(0);
+        // A leaf card's tone moves the band threshold the way a clump's seam does: a light leaf a
+        // little into the light, a dark one into the shade.
+        let fvSeam = fvLeaf ? fvLeaf.w.mul(fvLeafNear) : float(0);
+        if (cards) {
+            fvSeam = select(fvOnCard, float(0.5).sub(fvCard.tone).mul(LEAF_LOOK.toneShift), fvSeam);
+        }
         const fvWrap = clamp(dot(fvN, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1)
             .mul(mix(float(0.45), float(1), fvSunVis))
             .mul(fvCloud);
@@ -5364,12 +5454,16 @@ export function createOdysseyWorld({
             float(FOREST_CLUMP_FAR),
             length(cameraPosition.sub(positionWorld)),
         ));
-        const fvClump = texture(detailTex, fvClumpUv).b.sub(0.5).mul(FOREST_CLUMP_SWING)
+        // (Not on leaf cards: the atlas's own leaves are their clumps, and a fetch saved there is
+        // saved several layers deep.)
+        const fvClump = cards ? float(0) : texture(detailTex, fvClumpUv).b.sub(0.5).mul(FOREST_CLUMP_SWING)
             .mul(fvClumpNear).mul(fvIsCrown);
         // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
         // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
         // of the authored tones.
-        const fvAoShift = float(1).sub(fvAo).mul(FOREST_AO_SHIFT).add(fvSeam);
+        const fvAoShift = float(1).sub(fvAo)
+            .mul(cards ? select(fvOnCard, float(LEAF_LOOK.aoShift), float(FOREST_AO_SHIFT)) : float(FOREST_AO_SHIFT))
+            .add(fvSeam);
         const fvBandLo = smoothstep(
             float(FOREST_BAND_LO).sub(0.10).add(fvAoShift).add(fvClump),
             float(FOREST_BAND_MID).add(fvAoShift).add(fvClump),
@@ -5436,7 +5530,8 @@ export function createOdysseyWorld({
         // The light term flattens with the same ramp: a far crown is lit by ONE colour, not by a
         // per-fragment band choice.
         const fvLight = mix(
-            mix(mix(uSunColour, uSkyHorizon, float(0.55)), uSunColour, fvBandLo),
+            // Leaf cards' shade leans further to the sky: a shadow lit by the sky is cool.
+            mix(mix(uSunColour, uSkyHorizon, float(cards ? LEAF_LOOK.shadeSky : 0.55)), uSunColour, fvBandLo),
             // 0.12, down from a first-cut 0.28: measured against §1b R9 the far forest came back
             // at 4.5x desaturation against the references' 2-3x — the flatten and the aerial haze
             // both pull toward sky, so the flatten's own pull must be gentle or they compound.
@@ -5448,14 +5543,26 @@ export function createOdysseyWorld({
         // fragment->eye, so looking INTO the sun drives the dot toward -1.
         const fvBack = clamp(dot(fvView, uSunDir).mul(-1), 0, 1).pow(2.5);
         const fvRim = float(1).sub(abs(dot(fvN, fvView)));
-        const forestV2Col = fvBody.mul(fvLight)
+        let forestV2Col = fvBody.mul(fvLight)
             .add(uSunColour.mul(fvBack.mul(fvRim).mul(fvHc).mul(FOREST_BACKLIT_GAIN)));
+        if (cards) {
+            // AGAINST THE LIGHT: leaves with little crown between them and the sun let it through,
+            // warm through their own colour. A softer facing term than the rim's, so it starts
+            // well before the eye looks into the sun.
+            const back = clamp(dot(fvView, uSunDir).mul(-1), 0, 1);
+            const thin = float(1).sub(smoothstep(float(0), float(LEAF_LOOK.glowPath), fvCard.path));
+            const glow = select(fvOnCard, back.mul(back).mul(thin).mul(float(1).sub(fvFlat)), float(0));
+            forestV2Col = forestV2Col.add(fvAlbedo.mul(uSunColour).mul(glow.mul(LEAF_LOOK.glowGain)));
+        }
+
         // The trees stand IN the valley mist with the ground under them (item 7), or every crown
         // would pop out of the veil its own roots sit in.
         forestV2Mat.colorNode = toOutput(applyAerial(forestV2Col, positionWorld, AERIAL_CEIL_WATER, 1, true));
         if (cards) {
+            // The leaves' own coverage (see forestLeafCardFragment), turned into MSAA samples; a
+            // fragment off every leaf is dropped.
             forestV2Mat.opacityNode = select(fvOnCard, fvCard.alpha, float(1));
-            forestV2Mat.alphaTest = 0.5;
+            forestV2Mat.maskNode = fvOnCard.not().or(fvCard.alpha.greaterThan(0.02));
             forestV2Mat.alphaToCoverage = true;
         }
         return forestV2Mat;
@@ -6031,7 +6138,8 @@ export function createOdysseyWorld({
             if (kelpMat) kelpMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
-            [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex].forEach((t) => t.dispose());
+            [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex, leafAtlasTex]
+                .forEach((t) => t.dispose());
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();
             treeGeo.dispose();

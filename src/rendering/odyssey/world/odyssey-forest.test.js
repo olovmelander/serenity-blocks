@@ -7,7 +7,7 @@ import {
     getForestSpecies,
 } from './odyssey-forest-species.js';
 import {
-    FOREST_PUFF_CARD,
+    FOREST_LEAF_CARD,
     FOREST_TRUNK_PACK,
     buildForestRoster,
     buildForestTreeGeometry,
@@ -17,6 +17,7 @@ import {
     setForestBroadleafStyle,
     smoothMin,
 } from './odyssey-forest-geometry.js';
+import { FOREST_LEAF_ATLAS, bakeForestLeafAtlas } from './odyssey-forest-leaf-atlas.js';
 
 /**
  * FOREST PLAN, WAVE 1 — the species sculptor.
@@ -30,8 +31,8 @@ import {
 
 const ALL = buildForestRoster(ODYSSEY_FOREST_SPECIES);
 const attr = (g, name) => g.getAttribute(name);
-/** A puff card's vertex (see FOREST_PUFF_CARD): its `normal` carries the corner and radius. */
-const onCard = (g, i) => attr(g, 'aVert').getZ(i) === FOREST_PUFF_CARD.flag;
+/** A leaf card's vertex (see FOREST_LEAF_CARD): its crown flag carries the card flag + its size. */
+const onCard = (g, i) => attr(g, 'aVert').getZ(i) >= FOREST_LEAF_CARD.flag;
 
 describe('the roster is well-formed data', () => {
     it('has seven archetypes, each with three growth stages', () => {
@@ -130,7 +131,6 @@ describe('the sculptor produces sane geometry', () => {
         ALL.forEach((g) => {
             const n = attr(g, 'normal');
             for (let i = 0; i < n.count; i += 1) {
-                if (onCard(g, i)) continue; // see the card test
                 const len = Math.hypot(n.getX(i), n.getY(i), n.getZ(i));
                 expect(Number.isFinite(len)).toBe(true);
                 expect(len).toBeGreaterThan(0.5);
@@ -169,7 +169,7 @@ describe('the sculptor produces sane geometry', () => {
         try {
             traced = buildForestRoster(ODYSSEY_FOREST_SPECIES.filter((s2) => s2.builder === 'broadleaf'));
         } finally {
-            setForestBroadleafStyle('puffs');
+            setForestBroadleafStyle('leafy');
         }
         expect(traced.length).toBeGreaterThan(0);
         traced.forEach((g) => {
@@ -203,14 +203,14 @@ describe('the sculptor produces sane geometry', () => {
      */
     it('builds every broadleaf crown from countable puffs, each lit from its own centre', () => {
         ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
-            // The solid puffs: the hero always, the mid tier when cards are off.
-            [['hero', 'puffs'], ['mid', 'solid']].forEach(([lod, style]) => {
-                setForestBroadleafStyle(style);
+            // The solid puffs (one switch from the leaf cards).
+            ['hero', 'mid'].forEach((lod) => {
+                setForestBroadleafStyle('solid');
                 let g;
                 try {
                     g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
                 } finally {
-                    setForestBroadleafStyle('puffs');
+                    setForestBroadleafStyle('leafy');
                 }
                 // Hero: 5 puffs of 80 faces, then 5 florets of 20; mid: 3 puffs of 20.
                 const sizes = lod === 'hero' ? [80, 80, 80, 80, 80, 20, 20, 20, 20, 20] : [20, 20, 20];
@@ -238,48 +238,77 @@ describe('the sculptor produces sane geometry', () => {
     });
 
     /**
-     * PUFF CARDS (2026-10-26): beyond the hero band a broadleaf crown is the hero's layout drawn
-     * as cards, two triangles a puff that the shader turns to the eye. Each card's six vertices
-     * sit at its puff's centre, with the corner and the radius in `normal` and the card flag in
-     * `aVert.z`; the corners must wind counter-clockwise as the shader lays them out (u right, v
-     * up, seen from the eye), or the default back-face cull eats every card.
+     * LEAF CARDS (2026-10-26): every broadleaf crown is leaf cards, two triangles each that the
+     * shader turns to the eye. The shader reads a vertex's corner from its index (mod 6), so the
+     * cards must come FIRST in the buffer, six vertices each; each card's six vertices sit at its
+     * centre with one unit normal (from the crown's centre), a depth in the crown in 0..1 and a
+     * positive size riding on its flag.
      */
-    it('draws the mid and far broadleaf crowns as puff cards, the hero\'s layout at two triangles a puff', () => {
+    it('builds every broadleaf crown from leaf cards, first in the buffer, six vertices a card', () => {
+        const H = FOREST_LEAF_CARD.hero;
         ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
-            [['mid', 10], ['far', 5]].forEach(([lod, puffs]) => {
+            [
+                ['hero', (5 * H.perPuff) + 5 + H.core],
+                ['mid', 10],
+                ['far', 5],
+            ].forEach(([lod, count]) => {
                 const g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
                 const label = `${spec.id} ${lod}`;
                 expect(g.userData.forest.cards, label).toBe(true);
-                expect(g.userData.forest.hullTriangles, label).toBe(puffs * 2);
+                expect(g.userData.forest.hullTriangles, label).toBe(count * 2);
                 const p = attr(g, 'position');
                 const n = attr(g, 'normal');
-                let cards = 0;
-                for (let i = 0; i < p.count; i += 6) {
-                    if (!onCard(g, i)) continue;
-                    cards += 1;
-                    let area = 0;
-                    for (let k = 0; k < 6; k += 1) {
-                        expect(onCard(g, i + k), label).toBe(true);
+                const v = attr(g, 'aVert');
+                for (let i = 0; i < p.count; i += 1) {
+                    expect(onCard(g, i), `${label} vertex ${i}`).toBe(i < count * 6);
+                }
+                for (let i = 0; i < count * 6; i += 6) {
+                    for (let k = 1; k < 6; k += 1) {
                         expect(p.getX(i + k)).toBe(p.getX(i));
                         expect(p.getY(i + k)).toBe(p.getY(i));
                         expect(p.getZ(i + k)).toBe(p.getZ(i));
-                        expect(Math.abs(n.getX(i + k))).toBe(1);
-                        expect(Math.abs(n.getY(i + k))).toBe(1);
-                        expect(n.getZ(i + k)).toBe(n.getZ(i));
+                        expect(n.getX(i + k)).toBe(n.getX(i));
+                        expect(v.getZ(i + k)).toBe(v.getZ(i));
                     }
-                    expect(n.getZ(i), label).toBeGreaterThan(0);
-                    // Twice the signed area of both triangles in (u, v): positive = CCW.
-                    for (let t = 0; t < 6; t += 3) {
-                        const ax = n.getX(i + t); const ay = n.getY(i + t);
-                        const bx = n.getX(i + t + 1); const by = n.getY(i + t + 1);
-                        const cx = n.getX(i + t + 2); const cy = n.getY(i + t + 2);
-                        area += ((bx - ax) * (cy - ay)) - ((by - ay) * (cx - ax));
-                    }
-                    expect(area, label).toBe(8);
+                    expect(Math.hypot(n.getX(i), n.getY(i), n.getZ(i))).toBeCloseTo(1, 5);
+                    const size = (v.getZ(i) - FOREST_LEAF_CARD.flag) * FOREST_LEAF_CARD.sizeMax;
+                    expect(size, label).toBeGreaterThan(0.05);
+                    expect(v.getZ(i)).toBeLessThan(FOREST_LEAF_CARD.flag + 1);
+                    expect(v.getX(i)).toBeGreaterThanOrEqual(0);
+                    expect(v.getX(i)).toBeLessThanOrEqual(1);
                 }
-                expect(cards, label).toBe(puffs);
             });
         });
+    });
+
+    /**
+     * The leaf atlas: every clump a body that is solid in the middle and a broken, leafy fringe
+     * (the sky through it), and nothing past the disc's rim (the card's own edge).
+     */
+    it('bakes leaf clumps: a solid body, a broken fringe, nothing past the rim', () => {
+        const { data, res, tiles } = bakeForestLeafAtlas();
+        expect(res).toBe(FOREST_LEAF_ATLAS.res);
+        const tile = res / tiles;
+        for (let t = 0; t < tiles * tiles; t += 1) {
+            const ox = (t % tiles) * tile;
+            const oy = Math.floor(t / tiles) * tile;
+            const ring = [[0, 0.35, 0], [0.35, 0.6, 0], [0.7, 0.9, 0], [0.98, 1.5, 0]].map((r) => [...r, 0]);
+            for (let j = 0; j < tile; j += 1) {
+                for (let i = 0; i < tile; i += 1) {
+                    const r = Math.hypot((((i + 0.5) / tile) * 2) - 1, (((j + 0.5) / tile) * 2) - 1);
+                    const on = data[((((oy + j) * res) + ox + i) * 4)] >= 128 ? 1 : 0;
+                    ring.forEach((band) => {
+                        if (r >= band[0] && r < band[1]) { band[2] += on; band[3] += 1; }
+                    });
+                }
+            }
+            const cover = ring.map((band) => band[2] / Math.max(1, band[3]));
+            expect(cover[0], `tile ${t} body`).toBeGreaterThan(0.7);
+            expect(cover[1], `tile ${t} middle`).toBeGreaterThan(0.55);
+            expect(cover[2], `tile ${t} fringe`).toBeGreaterThan(0.1);
+            expect(cover[2], `tile ${t} fringe`).toBeLessThan(0.7);
+            expect(cover[3], `tile ${t} outside`).toBe(0);
+        }
     });
 
     it('packs the tree\'s scale and its sun visibility into one float, off the integer edges', () => {
@@ -308,9 +337,9 @@ describe('the sculptor produces sane geometry', () => {
                 expect(v.getY(i)).toBeGreaterThanOrEqual(0);
                 expect(v.getY(i)).toBeLessThanOrEqual(1);
                 // The crown mask is a FLAG, not a ramp: anything between reads as a partial
-                // trunk and would smear the hue opposition R6 measured. (A puff card's crown
-                // carries the card flag instead.)
-                expect([0, 1, FOREST_PUFF_CARD.flag]).toContain(v.getZ(i));
+                // trunk and would smear the hue opposition R6 measured. (A leaf card's crown
+                // carries the card flag plus its size instead: see the card test.)
+                if (!onCard(g, i)) expect([0, 1]).toContain(v.getZ(i));
                 expect(v.getW(i)).toBeGreaterThanOrEqual(0);
                 expect(v.getW(i)).toBeLessThanOrEqual(1);
             }
@@ -512,8 +541,36 @@ describe('the sculptor produces sane geometry', () => {
             }
             return v;
         };
-        // A far crown drawn as cards is nothing but cards: no hull for a volume to measure.
-        ALL.filter((g) => !(g.userData.forest.cards && g.userData.forest.lod === 'far')).forEach((g) => {
+        // A leafy crown's bark is open tubes (limbs, twigs, trunk), where a signed volume means
+        // nothing: there each triangle's own facing must agree with its vertices' outward normals.
+        const faceAgrees = (g) => {
+            const p = attr(g, 'position');
+            const n = attr(g, 'normal');
+            let agree = 0;
+            let total = 0;
+            for (let i = 0; i < p.count; i += 3) {
+                if (onCard(g, i)) continue;
+                const ux = p.getX(i + 1) - p.getX(i); const uy = p.getY(i + 1) - p.getY(i);
+                const uz = p.getZ(i + 1) - p.getZ(i);
+                const vx = p.getX(i + 2) - p.getX(i); const vy = p.getY(i + 2) - p.getY(i);
+                const vz = p.getZ(i + 2) - p.getZ(i);
+                const fx = (uy * vz) - (uz * vy);
+                const fy = (uz * vx) - (ux * vz);
+                const fz = (ux * vy) - (uy * vx);
+                const nx = n.getX(i) + n.getX(i + 1) + n.getX(i + 2);
+                const ny = n.getY(i) + n.getY(i + 1) + n.getY(i + 2);
+                const nz = n.getZ(i) + n.getZ(i + 1) + n.getZ(i + 2);
+                total += 1;
+                if ((fx * nx) + (fy * ny) + (fz * nz) > 0) agree += 1;
+            }
+            return total ? agree / total : 1;
+        };
+        ALL.filter((g) => g.userData.forest.cards).forEach((g) => {
+            const f = g.userData.forest;
+            expect(faceAgrees(g), `${f.speciesId}/${f.stageId}/${f.lod} bark is wound inside-out`)
+                .toBeGreaterThan(0.98);
+        });
+        ALL.filter((g) => !g.userData.forest.cards).forEach((g) => {
             const f = g.userData.forest;
             expect(
                 signedVolume(g),
