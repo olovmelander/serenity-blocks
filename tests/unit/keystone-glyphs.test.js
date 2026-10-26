@@ -38,6 +38,7 @@ const SPRITE = {
     gear: 'gear',
     keyboard: 'keyboard',
     tip: 'tip',
+    power: 'power',
 };
 
 /** The drawing inside the first <svg> after `marker`. */
