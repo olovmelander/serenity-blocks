@@ -1,6 +1,6 @@
 /* eslint-disable import/no-unresolved */
 /**
- * Low-poly, vertex-coloured FLORA geometry for the Summer "Midsommar" theme.
+ * Low-poly, vertex-coloured FLORA geometry for the Summer theme.
  *
  * Each factory returns a plain `THREE.BufferGeometry` with a baked `color` vertex
  * attribute, authored in a ~1-unit-tall LOCAL space with the root at y=0 — ready to be

@@ -1,13 +1,13 @@
-# Summer Midsummer Combo + Lock Effects — Research and Implementation Plan
+# Summer Combo + Lock Effects — Research and Implementation Plan
 
-> **Superseded (2026-10-08).** The implementation this plan describes was replaced by the Midsummer's Eve rebuild; see [SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md](SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md). Kept as a record of the earlier design; the files and URL flags it names no longer exist.
+> **Superseded (2026-10-08).** The implementation this plan describes was replaced by the from-scratch rebuild; see [SUMMER_OVERHAUL_2026-10.md](SUMMER_OVERHAUL_2026-10.md). Kept as a record of the earlier design; the files and URL flags it names no longer exist.
 
 - **Status:** Research and design decision complete; implementation not started
 - **Scope:** `src/themes/summer/` combo and piece-lock reactions only
 - **Governance:** `ARCHITECTURAL_REMEDIATION_PLAN.md`, ADR-0007, ADR-0009, ADR-0011, and `WEBGPU_THREEJS_WORKFLOW.md` govern execution
-- **Visual thesis:** **Midsummer Promise — Dewprint → Ring Dance → Seven-Flower Crown → Midnight-Sun Exhale**
+- **Visual thesis:** **Summer Promise — Dewprint → Ring Dance → Seven-Flower Crown → Midnight-Sun Exhale**
 
-This is the implementation companion to `SUMMER_MIDSUMMER_MASTERPIECE_PLAN.md`. It does not reopen the theme composition or rendering architecture. The Summer scene is already the artwork; these effects should make gameplay feel as if it briefly awakens that artwork.
+This is the implementation companion to `SUMMER_MASTERPIECE_PLAN.md`. It does not reopen the theme composition or rendering architecture. The Summer scene is already the artwork; these effects should make gameplay feel as if it briefly awakens that artwork.
 
 ---
 
@@ -27,7 +27,7 @@ The hierarchy must remain clear:
 - Combo is structurally richer and lasts roughly 0.8–1.2 seconds.
 - The highest tier is wider and more complete, not a full-screen flash or an uncontrolled increase in brightness.
 
-The suite is called **Midsummer Promise** in this plan. Production names can remain technical.
+The suite is called **Summer Promise** in this plan. Production names can remain technical.
 
 ### Non-negotiable art constraints
 
@@ -176,7 +176,7 @@ The production layout must be captured with the actual playfield overlay before 
 
 ### 5.2 Combo — Seven-Flower Ring Dance
 
-**Purpose:** make every cascade wave visibly build on the last lock while retaining a calm Midsummer character.
+**Purpose:** make every cascade wave visibly build on the last lock while retaining a calm summer character.
 
 The last lock's droplets and wisps gather onto two opposed curves around the board. Each successive combo wave weaves another flower/sprig into a partial wreath. Two streams chase in opposite directions like a ring dance, meet at the new lobe, and exhale a few fresh birch leaves.
 

@@ -110,7 +110,7 @@ mountain setting. Halcyon is a fantasy ruin, but its terrestrial scenery support
 | 15 | Tornado (`tornado`) | Ground-connected weather sets the surface landscape in motion. |
 | 16 | Fall (`fall`) | An autumn grove and living leaves provide seasonal contrast. |
 | 17 | Halcyon Apex (`halcyon-apex`) | A lake, islands, temple causeway, and mountain silhouettes lead toward the ascent. |
-| 18 | Midsommar (`summer`) | A summer meadow expresses seasonal growth and abundance. |
+| 18 | Summer (`summer`) | A summer meadow expresses seasonal growth and abundance. |
 
 ### Chapter 4 — Mountains & Thin-Air Ascension, orbs 19–26
 

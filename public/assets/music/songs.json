@@ -225,14 +225,6 @@
     "placeholder": false
   },
   {
-    "themeId": "summer",
-    "trackKey": "Midsommar",
-    "name": "Midsommar",
-    "file": "midsommar.mp3",
-    "path": "./assets/music/midsommar.mp3",
-    "placeholder": false
-  },
-  {
     "name": "Moonlit Greenhouse",
     "file": "moonlit-greenhouse.mp3",
     "path": "./assets/music/moonlit-greenhouse.mp3",
@@ -397,6 +389,14 @@
     "path": "./assets/music/stillwater.mp3",
     "themeId": "stillwater",
     "trackKey": "Stillwater",
+    "placeholder": false
+  },
+  {
+    "themeId": "summer",
+    "trackKey": "Summer",
+    "name": "Summer",
+    "file": "summer.mp3",
+    "path": "./assets/music/summer.mp3",
     "placeholder": false
   },
   {
