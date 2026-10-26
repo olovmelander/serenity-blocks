@@ -1,4 +1,4 @@
-Solar System Scope texture assets used by Stellar Drift secondary planets:
+Solar System Scope texture assets in this folder:
 - 2k_saturn.jpg
 - 2k_moon.jpg
 - 2k_mars.jpg

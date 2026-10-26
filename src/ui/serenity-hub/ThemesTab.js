@@ -324,7 +324,7 @@ export class ThemesTab {
             'Meditation Temple': 'temple',
             'Moonlit Greenhouse': 'sprout',
             Murmuration: 'spiral',
-            'Nebula Flow': 'spiral',
+            'Star Cradle': 'spiral',
             Lunara: 'moon',
             Pyrestorm: 'flame',
             'Neon Dusk': 'city',

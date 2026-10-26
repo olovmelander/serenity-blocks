@@ -246,7 +246,7 @@ const RAW_THEME_REGISTRY = [
     },
     {
         id: 'nebula-flow',
-        displayName: 'Nebula Flow',
+        displayName: 'Star Cradle',
         module: './nebula-flow/nebula-flow-theme.js',
         group: 'cosmic',
         icon: './nebula-flow/nebula-flow-theme-icon.png',
@@ -358,7 +358,7 @@ const RAW_THEME_REGISTRY = [
     },
     {
         id: 'neon-district',
-        displayName: 'Neon District',
+        displayName: 'Neon Quarter',
         module: './neon-district/neon-district-theme.js',
         group: 'urban',
         icon: './neon-district/neon-district-theme-icon.png',

@@ -32,7 +32,7 @@ const AUTHORED_SONGS = Object.freeze({
     'cosmic-noir': ['Cosmic Noir', 'cosmic-noir.mp3'],
     'cinder-drift': ['Cinder Drift', 'cinder-drift.mp3'],
     'neon-dusk': ['Neon Dusk', 'neon-dusk.mp3'],
-    'neon-district': ['Neon District', 'neon-district.mp3'],
+    'neon-district': ['Neon Quarter', 'neon-district.mp3'],
     stillwater: ['Stillwater', 'stillwater.mp3'],
     'blood-moon': ['Blood Moon', 'blood-moon.mp3'],
     'stellar-drift': ['Stellar Drift', 'stellar-drift.mp3'],
@@ -51,7 +51,7 @@ const AUTHORED_SONGS = Object.freeze({
     kaleidosonic: ['Kaleidosonic', 'kaleidosonic.mp3'],
     'golden-forest': ['Golden Forest', 'golden-forest.mp3'],
     'luminous-tides': ['Luminous Tides', 'luminous-tides.mp3'],
-    'nebula-flow': ['Nebula Flow', 'nebula-flow.mp3'],
+    'nebula-flow': ['Star Cradle', 'nebula-flow.mp3'],
     'solar-eclipse': ['Solar Eclipse', 'solar-eclipse.mp3'],
     sunfall: ['Sunfall', 'sunfall.mp3'],
     supernova: ['Supernova', 'supernova.mp3'],
@@ -109,7 +109,8 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * that took its orb changes key too: "Misty Lake" became "Grainfields" and "Moonlit Forest"
  * became "Spring" (both 2026-10-18), "Rainy Window" became "Sunbraid" (2026-10-20), and
  * "Moonrise Summit" became "Sunfall" (2026-10-20). A recording retitled with its theme's
- * name changes key the same way: "Midsommar" became "Summer" (2026-10-25).
+ * name changes key the same way: "Midsommar" became "Summer" (2026-10-25), "Neon District"
+ * became "Neon Quarter" and "Nebula Flow" became "Star Cradle" (2026-10-26).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
@@ -122,6 +123,8 @@ const RETIRED_TRACK_KEYS = new Map([
     ['RainyWindow', 'Sunbraid'],
     ['MoonriseSummit', 'Sunfall'],
     ['Midsommar', 'Summer'],
+    ['NeonDistrict', 'NeonQuarter'],
+    ['NebulaFlow', 'StarCradle'],
 ]);
 
 /**

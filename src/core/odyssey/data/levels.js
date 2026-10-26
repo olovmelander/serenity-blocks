@@ -3340,7 +3340,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 50,
-        name: 'Nebula Flow',
+        name: 'Star Cradle',
         chapter: 7,
         chapterLevel: 2,
         isChapterStart: false,
@@ -3980,7 +3980,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Deep in the neon district, holographic billboards pulse with light. Speed and precision are everything.',
+            description: 'Deep in the neon quarter, holographic billboards pulse with light. Speed and precision are everything.',
             difficulty: 8,
             tip: 'The time limit is strict. Focus on efficient four-line clears to meet your target.',
         },

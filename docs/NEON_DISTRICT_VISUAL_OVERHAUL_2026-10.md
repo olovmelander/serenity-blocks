@@ -1,5 +1,8 @@
 # Neon District — the rain canyon
 
+> Shown to players as **Neon Quarter** since 2026-10-26 (theme picker, music, Odyssey, the
+> district's own posters). The id `neon-district`, its folders, files and URL parameters are unchanged.
+
 Implemented 2026-10-05 on `feature/neon-district-masterpiece`, with Three.js 0.186.1. A
 from-scratch rebuild: it replaces the earlier theme in full (the 9,600-line theme class, the
 SynthCity materials and LOD chain, the pooled event effects, the post stack, the validation
