@@ -80,7 +80,7 @@ const RUNTIME_ANCHORS = Object.freeze({
     cottage: ['chimneyTop'],
     jetty: ['end'],
 });
-// Seven kinds of flowers are picked on Midsummer's Eve; a flower's tone says which it is.
+// Seven kinds of flowers are picked on a summer's eve; a flower's tone says which it is.
 const FLOWER_KINDS = 7;
 
 function fileNameOf(url) {

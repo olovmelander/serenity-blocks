@@ -78,7 +78,7 @@ const RAW_THEME_REGISTRY = [
     },
     {
         id: 'summer',
-        displayName: 'Midsommar',
+        displayName: 'Summer',
         module: './summer/summer-theme.js',
         group: 'biomes',
         icon: './summer/summer-theme-icon.png',

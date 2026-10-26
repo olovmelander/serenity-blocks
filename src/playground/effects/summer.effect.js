@@ -9,7 +9,7 @@ import { seededRandom } from '../../utils/helpers.js';
 
 export const meta = {
     id: 'summer',
-    title: 'Summer — Midsummer\'s Eve by the lake',
+    title: 'Summer — an evening by the lake',
     description: 'A flowering meadow, a maypole, a red cottage across a mirror lake and a sun that will not set.',
 };
 

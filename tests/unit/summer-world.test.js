@@ -407,7 +407,7 @@ describe('Summer world scene contracts', () => {
         expect(toSun.distanceTo(SUMMER_SUN_DIRECTION)).toBeLessThan(1e-9);
         expect(world.light.uSunDir.value.distanceTo(SUMMER_SUN_DIRECTION)).toBeLessThan(1e-9);
         expect(SUMMER_SUN_DIRECTION.length()).toBeCloseTo(1, 12);
-        // Midsummer's Eve: the sun low over the lake in front of the camera, and left of the
+        // A summer's eve: the sun low over the lake in front of the camera, and left of the
         // board (the score card stands on the right).
         expect(SUMMER_SUN_DIRECTION.y).toBeGreaterThan(0);
         expect(SUMMER_SUN_DIRECTION.y).toBeLessThan(0.4);

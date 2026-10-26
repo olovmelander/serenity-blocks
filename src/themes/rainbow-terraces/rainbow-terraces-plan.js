@@ -240,15 +240,17 @@ export function placePlan(frame, out = {}) {
     // ── Thermals the gliders circle on at rest (screen anchors, metres away) ──
     // In landscape two flocks, never confetti over every free patch of sky: one over the Spring
     // Isle's crown, against the open blue under the cirrus, and one in the sky over the Far Gate.
+    // Each thermal's fourth number is its flock: a glider soars between the thermals of its own.
     if (!out.thermals) out.thermals = [];
     const thermals = smile
-        ? [[0.12, 0.3, 300], [0.88, 0.25, 320], [0.5, 0.94, 380], [0.2, 0.97, 420]]
-        : [[0.13, 0.25, 300], [0.19, 0.19, 360], [0.08, 0.31, 420], [0.85, 0.2, 290], [0.91, 0.26, 350]];
-    thermals.forEach(([x, y, d], i) => {
-        const e = out.thermals[i] || (out.thermals[i] = { pos: [0, 0, 0], radius: 24 });
+        ? [[0.12, 0.3, 300, 0], [0.88, 0.25, 320, 1], [0.5, 0.94, 380, 2], [0.2, 0.97, 420, 2]]
+        : [[0.13, 0.25, 300, 0], [0.19, 0.19, 360, 0], [0.08, 0.31, 420, 0], [0.85, 0.2, 290, 1], [0.91, 0.26, 350, 1]];
+    thermals.forEach(([x, y, d, group], i) => {
+        const e = out.thermals[i] || (out.thermals[i] = { pos: [0, 0, 0], radius: 24, group: 0 });
         unproject(x, y, cam, dir);
         toWorld(dir, d, e.pos);
         e.radius = 18 + (i % 3) * 6;
+        e.group = group;
     });
     out.thermals.length = thermals.length;
     return out;

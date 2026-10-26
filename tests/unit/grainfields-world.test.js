@@ -174,13 +174,14 @@ describe('GrainfieldsWorld build', () => {
         expect(world.u.tables.path[world.u.tables.path.length - 1].z).toBeCloseTo(1, 9);
     });
 
-    it('builds every part but the trees and the herd without their assets (the belts stand as the land\'s canopy)', () => {
+    it('builds every part but the trees, the herd and the ruin without their assets (the belts stand as the land\'s canopy)', () => {
         const bare = makeWorld({ withAssets: false });
         try {
-            const authored = new Set(['trees', 'herd']);
+            const authored = new Set(['trees', 'herd', 'fort']);
             expect(Object.keys(bare.world.parts).sort()).toEqual(GRAINFIELDS_PARTS.filter((name) => !authored.has(name)).sort());
             expect(bare.world.parts.trees).toBeUndefined();
             expect(bare.world.parts.herd).toBeUndefined();
+            expect(bare.world.parts.fort).toBeUndefined();
             begin(bare);
             stepTo(bare, START + 0.5);
             expect(bare.world.getState().parts).not.toContain('trees');
