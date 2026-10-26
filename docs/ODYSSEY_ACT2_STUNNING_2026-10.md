@@ -567,3 +567,61 @@ p 0.21 (best of six).
 
 **Tests.** The puff test now counts five 80-face puffs and five 20-face florets on the hero tier,
 each lit from its own centre.
+
+## §11. The mid and far trees as puff cards (2026-10-26)
+
+**Why.** Olov: the low-detail trees "feel too much like really low polygon trees". Most of the
+broadleaves the rail sees are on the mid tier (200-520 u from the rail) or the far tier beyond it.
+A mid crown was three 20-face icosahedra and a far one a single 20-face hull, so they showed
+hexagonal outlines and flat bellies. More triangles were not the answer: the forest sits near its
+triangle cap, and the 18 the mid budget had left would have added ~43k triangles (~0.35 ms on the
+integrated-GPU lane) for crowns still visibly faceted.
+
+**Cards** (`FOREST_PUFF_CARD` in `world/odyssey-forest-geometry.js`, the shader half in
+`world/odyssey-forest-cards.js`). Beyond the hero band each puff is a card:
+
+- Two triangles with every corner at the puff's centre. The vertex shader turns the card to face
+  the eye, sizes it from the puff's radius and the tree's scale, and moves it 0.7 of a radius
+  toward the eye, so the limbs inside the puff stay hidden.
+- The fragment shader draws the puff: a scalloped round outline (alpha to coverage, so the High
+  tiers' MSAA smooths it) and the normal of the sphere behind each pixel, leaned up like a hero
+  puff's. Everything else is the hero's shading: the bands, the warm cap, the leaf clumps within
+  420 u.
+- The scallops fade out as a card shrinks on screen (from a ~25 px radius to ~10 px), where a lobe
+  would be under a pixel and could only shimmer.
+
+A card costs 2 triangles where a puff cost 20, so the mid crown now carries the hero's whole
+layout (five puffs and five florets) and the far crown five puffs:
+
+| Tier | Before | Now |
+|---|---|---|
+| Mid | 3 icosahedra, 80 triangles a tree | 10 cards, 52 triangles |
+| Far | one icosahedron, 20 triangles | 5 cards, 10 triangles |
+
+Over the culled forest (~2,400 mid and ~1,700 far broadleaves) that is about 85k fewer
+triangles, a fifth of the forest.
+
+**Plumbing.**
+
+- A card's corner and radius ride in its `normal` attribute, and its crown flag (2) in `aVert.z`.
+- The vertex shader needs the tree's scale, and the forest is one vertex buffer short of WebGPU's
+  eight, so the scale is packed into `aTrunk.w` beside the sun visibility (`FOREST_TRUNK_PACK`:
+  the integer part is the scale, the fraction the visibility, kept off 0 and 1).
+- The forest material is built twice from the same graph (`buildForestV2Material`): the shipped
+  one, and the card one for the buckets whose geometry has cards. One more pipeline.
+- The audition board draws the cards too, and `?broadleaf=solid` shows the solid puffs at every
+  tier for an A/B.
+
+![The mid tier at p 0.28 in the game, the solid puffs and the cards](images/odyssey-act2-2026-10-25/lod-cards-rail.jpg)
+
+![The audition board: the mid tier (top) and the far tier (bottom), solid on the left and cards on the right](images/odyssey-act2-2026-10-25/lod-cards-board.jpg)
+
+**Cost.** The world playground at 1080p, cards on and off on the same server, five alternating
+rounds on a quiet machine, best of each: +0.01 ms at p 0.21, nothing at p 0.27, -0.02 ms at
+p 0.30. Not measured on the integrated GPU, where the forest is vertex-bound and the saved
+triangles should count for more.
+
+**Tests.** A card test pins the layout (10 cards mid, 5 far), the shared centre, the corner
+winding and the flag; a pack test pins the scale and visibility round trip. The solid-puff test
+builds the mid tier with the cards off. The sanity tests (unit normals, the crown flag, the signed
+volume) skip card vertices, which have their own contract.
