@@ -22,6 +22,7 @@
  */
 
 import { escapeHtml } from '../../utils/dom-safety.js';
+import { menuCoversGame } from '../sheet-input.js';
 
 const RAIL_ID = 'sb-play-rail';
 const SETTINGS_ID = 'settings-btn-global';
@@ -236,8 +237,9 @@ function onKeyDown(event) {
         hub.hide();
         return;
     }
-    // Settings (and anything else modal) owns the keyboard while it is open.
-    if (document.querySelector('.modal.visible')) return;
+    // Settings (and anything else modal, a multiplayer screen too) owns the keyboard while
+    // it is open.
+    if (document.querySelector('.modal.visible') || menuCoversGame()) return;
     const tile = document.getElementById(HUB_ID);
     if (!tile || !rail?.contains(tile)) return;
     event.preventDefault();

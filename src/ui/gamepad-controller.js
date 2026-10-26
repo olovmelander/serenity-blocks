@@ -21,6 +21,11 @@ import { isGameOverArmed } from './game-over-arm.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
+/** One menu press from two controllers this close together is one press (claimMenuAction). */
+const MENU_PRESS_MERGE_MS = 60;
+/** The stick's deadzone stays in this range whatever was saved: 0 let a resting stick drift. */
+const MIN_DEADZONE = 0.1;
+const MAX_DEADZONE = 0.9;
 
 /**
  * Button mappings for standard gamepad (Xbox layout)
@@ -216,8 +221,12 @@ export class GamepadController {
 
         // Menu navigation state
         this.menuNavigationEnabled = false;
-        this.menuNavigationRepeatDelay = 300; // ms before repeat starts
-        this.menuNavigationRepeatInterval = 150; // ms between repeats
+        // A direction held in a menu repeats: once on the press, then after this delay at
+        // this rate (menuDirectionFires), as on the Odyssey map and the Stillfall atlas.
+        // Without it a long list took one press per row.
+        this.menuNavigationRepeatDelay = 420; // ms before repeat starts
+        this.menuNavigationRepeatInterval = 180; // ms between repeats
+        this.menuRepeat = [{}, {}, {}, {}];
 
         // Game mode selection state
         this.gameModeSelectionEnabled = false;
@@ -671,6 +680,31 @@ export class GamepadController {
 
         const gamepads = navigator.getGamepads();
 
+        // Chromium keeps reporting pads while the window is in the background: presses
+        // made in another app moved pieces and closed the pause sheet. While unfocused
+        // nothing acts and held input lets go; back in focus, what is still held waits
+        // for its release.
+        const focused = typeof document === 'undefined' || typeof document.hasFocus !== 'function'
+            || document.hasFocus();
+        if (!focused) {
+            if (!this.windowUnfocused) {
+                this.windowUnfocused = true;
+                for (let slot = 0; slot < this.gamepads.length; slot++) {
+                    this.clearFixedTickInput({ dropPhysicalLatches: true, slot });
+                    this.clearDasTimers(slot);
+                }
+            }
+            return;
+        }
+        if (this.windowUnfocused) {
+            this.windowUnfocused = false;
+            for (let slot = 0; slot < this.gamepads.length; slot++) {
+                const fresh = this.connected[slot] && this.gamepads[slot] ? gamepads[this.gamepads[slot].index] : null;
+                if (fresh) this.latchAllHeld(fresh, slot);
+            }
+            return;
+        }
+
         for (let slot = 0; slot < this.gamepads.length; slot++) {
             if (!this.connected[slot]) continue;
 
@@ -716,6 +750,12 @@ export class GamepadController {
                 );
                 previousState.gameOverBack = freshGamepad.buttons[BUTTON_MAP.B]?.pressed;
                 previousState.gameModeSelect = freshGamepad.buttons[BUTTON_MAP.A]?.pressed;
+                previousState.gameModeBack = freshGamepad.buttons[BUTTON_MAP.B]?.pressed;
+                // ...and for the menu and the game: B that closes the Hub over a menu must
+                // not also close that menu, nor hard-drop when it closes over a run; A
+                // that confirms must not also rotate.
+                this.latchMenuButtons(freshGamepad, slot);
+                this.odysseyHeldInputs[slot] = this.getGameplayPressedState(freshGamepad, slot);
                 continue;
             }
 
@@ -836,8 +876,63 @@ export class GamepadController {
         this.processMenuNavigation(gamepad, slot, { blockGlobalShortcuts: true });
     }
 
+    /**
+     * Whether a menu direction acts this poll: on the press, then while it is held after
+     * menuNavigationRepeatDelay, every menuNavigationRepeatInterval. A direction already
+     * held when the menu took the pad (latched) waits for its release and never repeats.
+     * @param {number} slot
+     * @param {string} key previousStates flag (menuUp, gameModeDown...)
+     * @param {boolean} pressed
+     * @param {boolean} wasPressed
+     */
+    menuDirectionFires(slot, key, pressed, wasPressed) {
+        const holds = this.menuRepeat[slot] || (this.menuRepeat[slot] = {});
+        if (!pressed) {
+            delete holds[key];
+            return false;
+        }
+        const now = performance.now();
+        if (!wasPressed) {
+            holds[key] = { next: now + this.menuNavigationRepeatDelay };
+            return true;
+        }
+        const hold = holds[key];
+        if (!hold) {
+            holds[key] = { latched: true };
+            return false;
+        }
+        if (hold.latched || now < hold.next) return false;
+        hold.next = now + this.menuNavigationRepeatInterval;
+        return true;
+    }
+
+    /**
+     * Everything held now waits for its release: the menu buttons, the game's, Start and
+     * the main menu's. For a press that changes what owns the pad (a restart, the window
+     * coming back to the front), whichever owner comes next.
+     */
+    latchAllHeld(gamepad, slot) {
+        this.latchMenuButtons(gamepad, slot);
+        this.odysseyHeldInputs[slot] = this.getGameplayPressedState(gamepad, slot);
+        const previous = this.previousStates[slot];
+        const down = (index) => Boolean(gamepad.buttons[index]?.pressed);
+        Object.assign(previous, {
+            gameOverButton: [BUTTON_MAP.A, BUTTON_MAP.B, BUTTON_MAP.X, BUTTON_MAP.Y, BUTTON_MAP.START].some(down),
+            gameOverBack: down(BUTTON_MAP.B),
+            gameModeSelect: down(BUTTON_MAP.A),
+            gameModeBack: down(BUTTON_MAP.B),
+            gameModeStart: down(BUTTON_MAP.START),
+            gameModeUp: previous.menuUp,
+            gameModeDown: previous.menuDown,
+            gameModeLeft: previous.menuLeft,
+            gameModeRight: previous.menuRight,
+        });
+        if (down(BUTTON_MAP.START)) this.waitingForStartRelease[slot] = true;
+    }
+
     /** Mark every menu button held now as already down, so it acts only after a release. */
     latchMenuButtons(gamepad, slot) {
+        this.menuRepeat[slot] = {};
         const previous = this.previousStates[slot];
         const buttons = {
             menuUp: BUTTON_MAP.D_UP,
@@ -944,6 +1039,7 @@ export class GamepadController {
         if (bPressed && !prevState.gameOverBack && !wasAnyButtonPressed) {
             prevState.gameOverBack = true;
             prevState.gameOverButton = anyButtonPressed;
+            this.latchAllHeld(gamepad, slot);
             document.getElementById('game-over-main-menu')?.click();
             return;
         }
@@ -952,6 +1048,9 @@ export class GamepadController {
         // Trigger restart on button press (rising edge)
         if (anyButtonPressed && !bPressed && !wasAnyButtonPressed) {
             console.log('[Gamepad] Button pressed on game over screen - restarting');
+            // The press that restarts is not the new run's first move: Start reopened
+            // Settings over it, and A, X or Y rotated the first piece.
+            this.latchAllHeld(gamepad, slot);
 
             // Call the global startGame function if available
             if (window.startGame) {
@@ -984,6 +1083,7 @@ export class GamepadController {
         // Clear all previous button states
         for (let i = 0; i < this.previousStates.length; i++) {
             this.previousStates[i] = {};
+            this.menuRepeat[i] = {};
         }
 
         // Focus the first card or the previously selected one
@@ -1011,6 +1111,7 @@ export class GamepadController {
         // Clear all previous button states
         for (let i = 0; i < this.previousStates.length; i++) {
             this.previousStates[i] = {};
+            this.menuRepeat[i] = {};
         }
     }
 
@@ -1070,27 +1171,37 @@ export class GamepadController {
     processGameModeSelection(gamepad, slot) {
         const prevState = this.previousStates[slot];
 
-        // Only allow first gamepad to navigate
-        if (slot !== 0) return;
+        // Every controller walks the menu; one press acts once (claimMenuAction).
 
         // Get current focused element
         let current = document.activeElement;
 
         // Check for direction inputs
         const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+            || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
         const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+            || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
         const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+            || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
         const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+            || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
 
         // Check for Select button (A)
         const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
+        const bPressed = Boolean(gamepad.buttons[BUTTON_MAP.B]?.pressed);
 
-        // Ensure we are focused on a card
-        if (!current || !current.classList.contains('game-mode-card')) {
+        // The menu: the mode list, its stage (Play) and the dock (Hub, Records, Replays,
+        // Settings, Quit). The pad walks all of it as the arrow keys do (main-menu.js).
+        const menuRoot = document.getElementById('start-modal') || document.body;
+        const stage = menuRoot.querySelector?.('.sb-stage') || null;
+        const isCard = (element) => Boolean(element?.classList?.contains('game-mode-card'));
+        const inMenu = (element) => Boolean(element && element !== document.body && menuRoot.contains(element));
+        const currentCard = () => this.gameModeCards[this.selectedGameModeIndex]
+            || this.gameModeCards.find((card) => card.classList.contains('is-current'))
+            || null;
+
+        // Ensure we are focused inside the menu
+        if (!inMenu(current)) {
             // If any direction or Select is pressed, focus the selected/default card
             if ((leftPressed || rightPressed || upPressed || downPressed || aPressed) && this.gameModeCards.length > 0) {
                 const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
@@ -1107,39 +1218,73 @@ export class GamepadController {
         }
 
         // Helper to handle navigation
-        const handleDirection = (direction, pressed, prevPressed) => {
-            if (pressed && !prevPressed) {
-                // Only process navigation if we have a valid card focused
-                if (current && current.classList.contains('game-mode-card')) {
-                    const container = document.querySelector('.game-mode-cards-container') || document.body;
-                    const next = this.findNextEnabledCard(current, direction, container);
-                    if (next) {
-                        next.focus();
-                        this.selectedGameModeIndex = this.gameModeCards.indexOf(next);
-                    }
+        const handleDirection = (direction, pressed, prevKey) => {
+            if (!this.menuDirectionFires(slot, prevKey, pressed, Boolean(prevState[prevKey]))
+                || !this.claimMenuAction(slot, direction)) return pressed;
+            if (isCard(current)) {
+                // Right goes to the stage's Play, as the → key does.
+                const play = direction === 'right' ? stage?.querySelector('[data-action="play"]') : null;
+                if (play && play.offsetParent !== null) {
+                    play.focus();
+                    current = play;
+                    return pressed;
                 }
+                const container = document.querySelector('.game-mode-cards-container') || document.body;
+                const next = this.findNextEnabledCard(current, direction, container);
+                if (next) {
+                    next.focus();
+                    this.selectedGameModeIndex = this.gameModeCards.indexOf(next);
+                    current = next;
+                }
+                return pressed;
+            }
+            if (!inMenu(current)) return pressed;
+            // Left from the stage goes back to the mode it shows, as the ← key does.
+            if (direction === 'left' && stage?.contains(current)) {
+                const card = currentCard();
+                if (card) {
+                    card.focus();
+                    current = card;
+                    return pressed;
+                }
+            }
+            const next = SpatialNavigation.findNextElement(current, direction, menuRoot);
+            if (next && !(isCard(next) && this.isGameModeCardDisabled(next))) {
+                next.focus();
+                next.scrollIntoView?.({ block: 'nearest' });
+                if (isCard(next)) this.selectedGameModeIndex = this.gameModeCards.indexOf(next);
+                current = next;
             }
             return pressed;
         };
 
         // D-pad / Left stick navigation
-        prevState.gameModeLeft = handleDirection('left', leftPressed, prevState.gameModeLeft);
-        prevState.gameModeRight = handleDirection('right', rightPressed, prevState.gameModeRight);
-        prevState.gameModeUp = handleDirection('up', upPressed, prevState.gameModeUp);
-        prevState.gameModeDown = handleDirection('down', downPressed, prevState.gameModeDown);
+        prevState.gameModeLeft = handleDirection('left', leftPressed, 'gameModeLeft');
+        prevState.gameModeRight = handleDirection('right', rightPressed, 'gameModeRight');
+        prevState.gameModeUp = handleDirection('up', upPressed, 'gameModeUp');
+        prevState.gameModeDown = handleDirection('down', downPressed, 'gameModeDown');
 
-        // A button - Select game mode
-        if (aPressed && !prevState.gameModeSelect) {
-            if (current && current.classList.contains('game-mode-card')) {
+        // A button - Select game mode, or press the focused Play / dock button
+        if (aPressed && !prevState.gameModeSelect && this.claimMenuAction(slot, 'select')) {
+            if (isCard(current)) {
                 if (this.isGameModeCardDisabled(current)) {
                     prevState.gameModeSelect = aPressed;
                     return;
                 }
                 console.log('[Gamepad] Selecting game mode card:', current.id);
                 current.click();
+            } else if (inMenu(current) && current.getAttribute?.('aria-disabled') !== 'true') {
+                current.click();
             }
         }
         prevState.gameModeSelect = aPressed;
+
+        // B button - from the stage or the dock, back to the mode list
+        if (bPressed && !prevState.gameModeBack && inMenu(current) && !isCard(current)
+            && this.claimMenuAction(slot, 'back')) {
+            currentCard()?.focus();
+        }
+        prevState.gameModeBack = bPressed;
 
         // START button - Open settings
         const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
@@ -1147,7 +1292,7 @@ export class GamepadController {
             if (!startPressed) {
                 this.waitingForStartRelease[slot] = false;
             }
-        } else if (startPressed && !prevState.gameModeStart) {
+        } else if (startPressed && !prevState.gameModeStart && this.claimMenuAction(slot, 'start')) {
             console.log('[Gamepad] START pressed in game mode selection - opening settings');
             this.toggleSettings(slot);
         }
@@ -1240,8 +1385,12 @@ export class GamepadController {
         const prevState = this.previousStates[slot];
         const inputSheet = blockGlobalShortcuts ? this.getMenuSheet()?.element : null;
 
-        // Only allow first gamepad to navigate menus
-        if (slot !== 0) return;
+        // A binding tile is listening: the press is its answer (settings.js), not a move,
+        // a tab change or the Hub. Held buttons stay latched until released.
+        if (document.querySelector?.('#settings-modal .key-input.listening')) {
+            this.latchMenuButtons(gamepad, slot);
+            return;
+        }
 
         // Exit select editing if focus changed away
         if (this.selectEditState.active
@@ -1249,10 +1398,46 @@ export class GamepadController {
             this.exitSelectEditMode({ cancel: true });
         }
 
+        // Every controller drives the menus: a second player can resume the match their
+        // Start paused, and a pad that is not the first still reaches the menu. One press
+        // acts once, whichever pad it came from (claimMenuAction).
+        const pressed = (index) => Boolean(gamepad.buttons[index]?.pressed);
+        const fires = (key, isPressed, action) => this.menuDirectionFires(slot, key, isPressed, prevState[key])
+            && this.claimMenuAction(slot, action);
+        const edge = (key, isPressed, action) => isPressed && !prevState[key] && this.claimMenuAction(slot, action);
+
+        const upPressed = pressed(BUTTON_MAP.D_UP) || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
+        const downPressed = pressed(BUTTON_MAP.D_DOWN) || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
+        const leftPressed = pressed(BUTTON_MAP.D_LEFT) || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
+        const rightPressed = pressed(BUTTON_MAP.D_RIGHT) || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
+
+        // An open dropdown (a combobox on the local setup and match screens) takes the pad:
+        // up and down walk its options, A chooses, B closes it. The D-pad used to move focus
+        // off it, so bot skill, handicap and team could not be chosen.
+        const combo = this.getOpenCombobox();
+        if (combo) {
+            if (fires('menuUp', upPressed, 'up')) this.stepCombobox(combo, 'ArrowUp');
+            if (fires('menuDown', downPressed, 'down')) this.stepCombobox(combo, 'ArrowDown');
+            const aPressed = pressed(BUTTON_MAP.A);
+            const bPressed = pressed(BUTTON_MAP.B);
+            if (edge('menuSelect', aPressed, 'select')) this.chooseComboboxOption(combo);
+            if (edge('menuBack', bPressed, 'back')) combo.click();
+            Object.assign(prevState, {
+                menuUp: upPressed,
+                menuDown: downPressed,
+                menuLeft: leftPressed,
+                menuRight: rightPressed,
+                menuSelect: aPressed,
+                menuBack: bPressed,
+                menuLB: pressed(BUTTON_MAP.LB),
+                menuRB: pressed(BUTTON_MAP.RB),
+                menuStart: pressed(BUTTON_MAP.START),
+            });
+            return;
+        }
+
         // D-pad Up / Left stick up - Navigate up
-        const upPressed = gamepad.buttons[BUTTON_MAP.D_UP]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
-        if (upPressed && !prevState.menuUp) {
+        if (fires('menuUp', upPressed, 'up')) {
             if (!(this.selectEditState.active
                 && this.handleControlAdjustment('up'))) {
                 this.navigateMenu('up');
@@ -1261,9 +1446,7 @@ export class GamepadController {
         prevState.menuUp = upPressed;
 
         // D-pad Down / Left stick down - Navigate down
-        const downPressed = gamepad.buttons[BUTTON_MAP.D_DOWN]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
-        if (downPressed && !prevState.menuDown) {
+        if (fires('menuDown', downPressed, 'down')) {
             if (!(this.selectEditState.active
                 && this.handleControlAdjustment('down'))) {
                 this.navigateMenu('down');
@@ -1272,9 +1455,7 @@ export class GamepadController {
         prevState.menuDown = downPressed;
 
         // D-pad Left / Left stick left - Navigate left (tabs)
-        const leftPressed = gamepad.buttons[BUTTON_MAP.D_LEFT]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
-        if (leftPressed && !prevState.menuLeft) {
+        if (fires('menuLeft', leftPressed, 'left')) {
             if (!this.handleControlAdjustment('left')) {
                 this.navigateMenu('left');
             }
@@ -1282,9 +1463,7 @@ export class GamepadController {
         prevState.menuLeft = leftPressed;
 
         // D-pad Right / Left stick right - Navigate right (tabs/subtabs)
-        const rightPressed = gamepad.buttons[BUTTON_MAP.D_RIGHT]?.pressed
-            || gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
-        if (rightPressed && !prevState.menuRight) {
+        if (fires('menuRight', rightPressed, 'right')) {
             if (!this.handleControlAdjustment('right')) {
                 this.navigateMenu('right');
             }
@@ -1292,30 +1471,30 @@ export class GamepadController {
         prevState.menuRight = rightPressed;
 
         // LB - Previous Main Tab
-        const lbPressed = gamepad.buttons[BUTTON_MAP.LB]?.pressed;
-        if (lbPressed && !prevState.menuLB) {
+        const lbPressed = pressed(BUTTON_MAP.LB);
+        if (edge('menuLB', lbPressed, 'lb')) {
             this.switchMainTab(-1);
         }
         prevState.menuLB = lbPressed;
 
         // RB - Next Main Tab
-        const rbPressed = gamepad.buttons[BUTTON_MAP.RB]?.pressed;
-        if (rbPressed && !prevState.menuRB) {
+        const rbPressed = pressed(BUTTON_MAP.RB);
+        if (edge('menuRB', rbPressed, 'rb')) {
             this.switchMainTab(1);
         }
         prevState.menuRB = rbPressed;
 
         // A button - Select/Activate
-        const aPressed = gamepad.buttons[BUTTON_MAP.A]?.pressed;
-        if (aPressed && !prevState.menuSelect) {
+        const aPressed = pressed(BUTTON_MAP.A);
+        if (edge('menuSelect', aPressed, 'select')) {
             this.activateMenuItem();
         }
         prevState.menuSelect = aPressed;
         if (blockGlobalShortcuts && this.getMenuSheet()?.element !== inputSheet) return;
 
         // B button - Back/Close
-        const bPressed = gamepad.buttons[BUTTON_MAP.B]?.pressed;
-        if (bPressed && !prevState.menuBack) {
+        const bPressed = pressed(BUTTON_MAP.B);
+        if (edge('menuBack', bPressed, 'back')) {
             if (this.selectEditState.active) {
                 this.exitSelectEditMode({ cancel: true });
             } else {
@@ -1329,12 +1508,12 @@ export class GamepadController {
         if (blockGlobalShortcuts) return;
 
         // Start button - Open/Close settings
-        const startPressed = gamepad.buttons[BUTTON_MAP.START]?.pressed;
+        const startPressed = pressed(BUTTON_MAP.START);
         if (this.waitingForStartRelease[slot]) {
             if (!startPressed) {
                 this.waitingForStartRelease[slot] = false;
             }
-        } else if (startPressed && !prevState.menuStart) {
+        } else if (edge('menuStart', startPressed, 'start')) {
             this.toggleSettings(slot);
         }
         prevState.menuStart = startPressed;
@@ -1357,6 +1536,41 @@ export class GamepadController {
             }
             prevState.menuSelect_hub = selectPressed;
         }
+    }
+
+    /**
+     * Whether a menu press acts: the same action from another controller a moment ago was
+     * the same press (Steam Input can expose one pad twice), so it acts once.
+     * @param {number} slot
+     * @param {string} action
+     */
+    claimMenuAction(slot, action) {
+        const now = performance.now();
+        const claims = this.menuActionClaims || (this.menuActionClaims = {});
+        const last = claims[action];
+        if (last && last.slot !== slot && now - last.at < MENU_PRESS_MERGE_MS) return false;
+        claims[action] = { slot, at: now };
+        return true;
+    }
+
+    /** The open dropdown that has focus (an enhanced select's combobox), or null. */
+    getOpenCombobox() {
+        const active = typeof document !== 'undefined' ? document.activeElement : null;
+        return active?.matches?.('[role="combobox"][aria-expanded="true"]') ? active : null;
+    }
+
+    /** Walk an open dropdown's options with its own keys. */
+    stepCombobox(combo, key) {
+        if (typeof KeyboardEvent !== 'function') return;
+        combo.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    }
+
+    /** Choose the option an open dropdown has highlighted (A), as a click on it does. */
+    chooseComboboxOption(combo) {
+        const listbox = document.getElementById(combo.getAttribute('aria-controls') || '');
+        const option = listbox?.querySelector('.cosmic-select__option.is-active');
+        if (option) option.click();
+        else combo.click();
     }
 
     /**
@@ -1409,7 +1623,14 @@ export class GamepadController {
                 if (nextIndex >= tabs.length) nextIndex = 0;
 
                 tabs[nextIndex].click();
-                // We don't necessarily focus the tab, as the user might be focused on content
+                // Focus follows from a tab to the new tab, and out of content the old
+                // tab hid (it was lost to the page: no ring, and the D-pad started again
+                // from the top). Elsewhere, in the header, it stays where it is.
+                const active = document.activeElement;
+                if (!active || active === document.body || !settingsModal.contains(active)
+                    || active.offsetParent === null || tabs.includes(active)) {
+                    tabs[nextIndex].focus({ preventScroll: true });
+                }
             }
         }
 
@@ -1427,7 +1648,14 @@ export class GamepadController {
         if (recordsModal && recordsModal.classList.contains('visible')) {
             const tabs = Array.from(recordsModal.querySelectorAll('.hs-tab'));
             const current = tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true');
-            if (tabs.length > 0) tabs[(current + direction + tabs.length) % tabs.length].click();
+            if (tabs.length > 0) {
+                const next = tabs[(current + direction + tabs.length) % tabs.length];
+                next.click();
+                const active = document.activeElement;
+                if (!active || active === document.body || active.offsetParent === null || tabs.includes(active)) {
+                    next.focus({ preventScroll: true });
+                }
+            }
         }
     }
 
@@ -2203,18 +2431,34 @@ export class GamepadController {
      * Check if an axis is in the negative direction beyond deadzone
      */
     isAxisNegative(gamepad, axisIndex) {
-        if (axisIndex === undefined) return false;
-        const value = gamepad.axes[axisIndex];
-        return value < -this.deadzone;
+        return this.stickAxisValue(gamepad, axisIndex) < 0;
     }
 
     /**
      * Check if an axis is in the positive direction beyond deadzone
      */
     isAxisPositive(gamepad, axisIndex) {
-        if (axisIndex === undefined) return false;
-        const value = gamepad.axes[axisIndex];
-        return value > this.deadzone;
+        return this.stickAxisValue(gamepad, axisIndex) > 0;
+    }
+
+    /**
+     * One axis of a stick as play and the menus read it: 0 inside the deadzone, which is a
+     * circle (the stick's distance from centre, not each axis alone), and 0 unless this is
+     * the stick's stronger axis. A stick pushed left and a little down moved and soft-dropped
+     * at once, and a diagonal in a menu moved focus twice (audit INPUT-14).
+     * @param {Gamepad} gamepad
+     * @param {number} axisIndex 0-1 left stick, 2-3 right stick (x, y)
+     */
+    stickAxisValue(gamepad, axisIndex) {
+        if (!Number.isInteger(axisIndex) || axisIndex < 0) return 0;
+        const axes = gamepad?.axes || [];
+        const value = Number(axes[axisIndex]) || 0;
+        const horizontal = axisIndex % 2 === 0;
+        const other = Number(axes[horizontal ? axisIndex + 1 : axisIndex - 1]) || 0;
+        if (Math.hypot(value, other) <= this.deadzone) return 0;
+        // An exact diagonal reads as horizontal.
+        const dominant = horizontal ? Math.abs(value) >= Math.abs(other) : Math.abs(value) > Math.abs(other);
+        return dominant ? value : 0;
     }
 
     /**
@@ -2333,18 +2577,22 @@ export class GamepadController {
             controller1: {
                 connected: this.connected[0],
                 name: this.gamepads[0]?.id || null,
+                standard: this.gamepads[0] ? this.gamepads[0].mapping === 'standard' : null,
             },
             controller2: {
                 connected: this.connected[1],
                 name: this.gamepads[1]?.id || null,
+                standard: this.gamepads[1] ? this.gamepads[1].mapping === 'standard' : null,
             },
             controller3: {
                 connected: this.connected[2],
                 name: this.gamepads[2]?.id || null,
+                standard: this.gamepads[2] ? this.gamepads[2].mapping === 'standard' : null,
             },
             controller4: {
                 connected: this.connected[3],
                 name: this.gamepads[3]?.id || null,
+                standard: this.gamepads[3] ? this.gamepads[3].mapping === 'standard' : null,
             },
         };
     }
@@ -2405,6 +2653,17 @@ export class GamepadController {
      * Update deadzone setting
      * @param {number} deadzone - New deadzone value (0-1)
      */
+    get deadzone() {
+        return this._deadzone;
+    }
+
+    set deadzone(value) {
+        const number = Number(value);
+        this._deadzone = Number.isFinite(number)
+            ? Math.min(MAX_DEADZONE, Math.max(MIN_DEADZONE, number))
+            : 0.25;
+    }
+
     updateDeadzone(deadzone) {
         this.deadzone = deadzone;
         console.log('[Gamepad] Updated deadzone to', deadzone);
@@ -2521,8 +2780,10 @@ export class GamepadController {
         // Only allow first gamepad to control Serenity Mode
         if (slot !== 0 || !this.serenityModeCallbacks) return;
 
-        // Don't process Serenity input if menu navigation is active (e.g., settings open)
-        if (this.menuNavigationEnabled) {
+        // Don't process Serenity input if menu navigation is active (e.g., settings open),
+        // unless the Hub is open above that menu: it owns the pad then, and the early return
+        // left every button dead until a mouse closed it.
+        if (this.menuNavigationEnabled && this.serenityModeCallbacks.isHubOpen?.() !== true) {
             // Log this to debug - this might be why SELECT doesn't work
             const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
             if (selectPressed) {
@@ -2649,25 +2910,25 @@ export class GamepadController {
             });
 
             // D-Pad for navigation
-            const stickLeft = gamepad.axes[AXIS_MAP.LEFT_STICK_X] < -this.deadzone;
+            const stickLeft = this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
             if (stickLeft && !prevState.serenityStickLeft) {
                 callbacks.navigate?.('left');
             }
             prevState.serenityStickLeft = stickLeft;
 
-            const stickRight = gamepad.axes[AXIS_MAP.LEFT_STICK_X] > this.deadzone;
+            const stickRight = this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
             if (stickRight && !prevState.serenityStickRight) {
                 callbacks.navigate?.('right');
             }
             prevState.serenityStickRight = stickRight;
 
-            const stickUp = gamepad.axes[AXIS_MAP.LEFT_STICK_Y] < -this.deadzone;
+            const stickUp = this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
             if (stickUp && !prevState.serenityStickUp) {
                 callbacks.navigate?.('up');
             }
             prevState.serenityStickUp = stickUp;
 
-            const stickDown = gamepad.axes[AXIS_MAP.LEFT_STICK_Y] > this.deadzone;
+            const stickDown = this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
             if (stickDown && !prevState.serenityStickDown) {
                 callbacks.navigate?.('down');
             }

@@ -15,6 +15,7 @@
 import { DEFAULT_SETTINGS } from '../core/constants.js';
 import { SerenityWorldStepper, themeName } from './serenity-mode/serenity-world-stepper.js';
 import { showSerenityNotice } from './serenity-mode/serenity-notice.js';
+import { menuCoversGame } from './sheet-input.js';
 
 export const THEME_KEY = 'n';
 
@@ -30,6 +31,8 @@ export function themeStepTarget(app, doc) {
         return null;
     }
     if (doc.querySelector('.modal.visible')) return null;
+    // A multiplayer screen, another sheet or a Hale session's full-screen flow is not play.
+    if (doc.querySelector('.hale-flow:not([hidden])') || menuCoversGame(doc)) return null;
     const manager = app.gameModeManager;
     const mode = manager?.getCurrentMode?.();
     if (!mode?.isRunning) return null;
@@ -79,6 +82,9 @@ export function installThemeKeys(app, { doc = document } = {}) {
      * @returns {boolean} whether the press was taken
      */
     const step = (direction, { fromPad = false } = {}) => {
+        // Stillfall's shoulders are its undo and restart (stillfall-hud.js): LB took back a
+        // piece and changed the theme at once. N still steps it there.
+        if (fromPad && app.gameModeManager?.getCurrentModeId?.() === 'stillfall') return false;
         const target = themeStepTarget(app, doc);
         if (target === 'theme') {
             stepperFor().step(direction);

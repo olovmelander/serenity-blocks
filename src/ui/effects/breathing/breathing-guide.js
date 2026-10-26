@@ -685,8 +685,10 @@ export class BreathingGuide {
         if (!this.isActive || event.defaultPrevented) return;
         if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
         if (event.ctrlKey || event.metaKey || event.altKey) return;
-        // The Hub and other dialogs sit above the guide and own their own keys.
+        // The Hub and other dialogs sit above the guide and own their own keys (Escape in
+        // Settings closes Settings, it does not also end the practice).
         if (document.body.classList.contains('serenity-hub-open')) return;
+        if (document.getElementById?.('settings-modal')?.classList?.contains('visible')) return;
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopImmediatePropagation();
