@@ -13,7 +13,7 @@ import { ThemesTab } from './ThemesTab.js';
 import { SessionsTab } from './SessionsTab.js';
 import { BreathworkSessionManager } from '../effects/breathwork-session-manager.js';
 import { throttle } from '../../utils/performance-utils.js';
-import { SpatialNavigation } from '../spatial-navigation.js';
+import { FOCUSABLE_SELECTOR, SpatialNavigation } from '../spatial-navigation.js';
 import {
     resolveHubScrollContainer,
     scrollHubElementIntoView,
@@ -523,6 +523,10 @@ export class SerenityHub {
 
         // Document keydown handler (ESC to close)
         this.documentKeydownHandler = (e) => {
+            if (e.key === 'Tab' && this.isOpen && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                this.trapTab(e);
+                return;
+            }
             if (e.key === 'Escape' && this.isOpen) {
                 e.preventDefault();
                 // Other document-level mode handlers also bind Escape (for
@@ -869,6 +873,9 @@ export class SerenityHub {
 
         this.clearScrollPerformanceMode();
         this.isOpen = true;
+        // Where focus was, to hand it back when the Hub closes (it used to drop to the page).
+        const opener = typeof document !== 'undefined' ? document.activeElement : null;
+        this.returnFocus = opener && opener !== document.body && !this.panel?.contains(opener) ? opener : null;
         if (this.haleSessionsEntry) {
             this.haleSessionsEntry.hidden = true;
             this.haleSessionsEntry.setAttribute('aria-expanded', 'true');
@@ -952,6 +959,7 @@ export class SerenityHub {
         this.backdrop.classList.remove('visible');
         this.panel.classList.remove('open');
         document.body.classList.remove('serenity-hub-open');
+        this.restoreFocus();
 
         // Update icon state
         this.hubIcon.classList.remove('active');
@@ -981,6 +989,41 @@ export class SerenityHub {
         }));
 
         console.log('Serenity Hub closed');
+    }
+
+    /** Tab and Shift+Tab stay inside the open Hub (it is a modal dialog). */
+    trapTab(event) {
+        // A Hale session's full-screen flow keeps its own keys.
+        if (typeof document === 'undefined' || document.querySelector('.hale-flow:not([hidden])')) return;
+        const shown = (el) => (typeof el.checkVisibility === 'function'
+            ? el.checkVisibility({ visibilityProperty: true }) : el.getClientRects().length > 0);
+        const focusables = Array.from(this.panel?.querySelectorAll?.(FOCUSABLE_SELECTOR) || []).filter(shown);
+        if (!focusables.length) return;
+        const active = document.activeElement;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const atStart = active === first || active === this.panel || active?.id === 'hub-title';
+        let target = null;
+        if (!this.panel.contains(active)) target = event.shiftKey ? last : first;
+        else if (event.shiftKey && atStart) target = last;
+        else if (!event.shiftKey && active === last) target = first;
+        if (target) {
+            event.preventDefault();
+            target.focus();
+        }
+    }
+
+    /** Focus left in the closing Hub goes back to what had it before (a menu card, the icon). */
+    restoreFocus() {
+        if (typeof document === 'undefined') return;
+        const active = document.activeElement;
+        const opener = this.returnFocus;
+        this.returnFocus = null;
+        if (active && active !== document.body && !this.panel?.contains(active)) return;
+        const shown = opener?.isConnected && (typeof opener.checkVisibility === 'function'
+            ? opener.checkVisibility({ visibilityProperty: true }) : opener.getClientRects?.().length > 0);
+        if (shown) opener.focus({ preventScroll: true });
+        else if (active && this.panel?.contains(active)) active.blur?.();
     }
 
     /**
@@ -1240,8 +1283,21 @@ export class SerenityHub {
                 <ul class="hint-grid">${rows(inHub)}</ul>
             </section>
             <p class="hint-footer">Press <kbd class="sb-kbd">${hideKey}</kbd> again, or anywhere, to hide</p>`;
-        // It covers the world like a title card: a press anywhere puts it away.
+        // It covers the world like a title card: a press anywhere puts it away, and so does
+        // Escape (only that: it does not also leave Serenity Mode).
         overlay.addEventListener('click', () => this.toggleButtonHints());
+        const onEscape = (event) => {
+            if (!overlay.isConnected) {
+                document.removeEventListener('keydown', onEscape, true);
+                return;
+            }
+            if (event.key !== 'Escape' || !overlay.classList.contains('visible')) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            document.removeEventListener('keydown', onEscape, true);
+            this.toggleButtonHints();
+        };
+        document.addEventListener('keydown', onEscape, true);
         document.body.appendChild(overlay);
 
         // Steps away by itself after ten seconds.
