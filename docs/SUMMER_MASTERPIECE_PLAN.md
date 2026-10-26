@@ -1,6 +1,6 @@
-# Summer Theme — "Midsommar Solstice" Masterpiece Plan
+# Summer Theme — "Summer Solstice" Masterpiece Plan
 
-> **Superseded (2026-10-08).** The implementation this plan describes was replaced by the Midsummer's Eve rebuild; see [SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md](SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md). Kept as a record of the earlier design; the files and URL flags it names no longer exist.
+> **Superseded (2026-10-08).** The implementation this plan describes was replaced by the from-scratch rebuild; see [SUMMER_OVERHAUL_2026-10.md](SUMMER_OVERHAUL_2026-10.md). Kept as a record of the earlier design; the files and URL flags it names no longer exist.
 
 **Status:** v1 BUILT & screenshot-verified (2026-06-17). The from-scratch WebGPU/TSL rebuild is live:
 golden-hour sky + low sun, instanced wind-animated wildflower meadow (vertex-shader wind, the perf
@@ -47,7 +47,7 @@ effect — the heavy part — is verified; the wrapper mirrors the proven halcyo
 **Date:** 2026-06-17
 **Author:** Claude (Opus 4.8), from an 8-agent research/investigation sweep.
 **Goal:** Delete the current heavyweight WebGL summer theme and rebuild it from scratch as a
-beautiful, performant, WebGPU/TSL **Swedish midsummer** theme — golden-hour meadow + lake +
+beautiful, performant, WebGPU/TSL **Swedish summer** theme — golden-hour meadow + lake +
 Falu-red cottage + maypole, framed by birch and pine — matching the user's moodboard + reference photo.
 
 > Reference photo lives at `public/playground-refs/summer-midsummer-reference.jpg` (drop the
@@ -78,7 +78,7 @@ Falu-red cottage + maypole, framed by birch and pine — matching the user's moo
 
 ---
 
-## 1. Vision & concept — "Midsommar Solstice"
+## 1. Vision & concept — "Summer Solstice"
 
 A **warm, endless-summer-evening calm.** The longest day of the year in southern Sweden: the sun
 grazes the horizon for hours and never truly sets, bathing a lakeside meadow in golden rim-light.
@@ -91,7 +91,7 @@ This replaces the current theme's flat midday "dense green field under a blue sk
 
 ### Emotional north star
 The player should feel they've stepped onto a wooden dock at a Swedish *sommarstuga* at 22:30 on
-Midsummer's Eve — flowers swaying, water still and gold, a red cottage glowing, a flower-decked
+a summer's eve — flowers swaying, water still and gold, a red cottage glowing, a flower-decked
 maypole on the far shore. Calm enough to play Tetris in front of for an hour.
 
 ---
@@ -111,7 +111,7 @@ individually-tunable systems:
 | **Lake** | Calm blue water, warm sun-glitter streak, reflections of sky/cottage/trees; dock + rowboat | `rendering/summer-water.js` (reflector, guarded) |
 | **Shoreline** | Cattails/reeds, dock posts, contact shadows | instanced reeds + dock geometry |
 | **Meadow (hero foreground)** | Dense wildflower meadow: oxeye daisies, cornflowers, lupines, buttercups, red poppies in lush swaying grass | `rendering/summer-meadow.js` (instanced blades + flower cards, vertex-shader wind) — **the crux** |
-| **Maypole** | *Midsommarstång*: cross + two hanging wreath rings, birch-leaf sleeved, flower-studded, backlit | hero geometry, mid-distance on the far bank/meadow |
+| **Maypole** | Cross + two hanging wreath rings, birch-leaf sleeved, flower-studded, backlit | hero geometry, mid-distance on the far bank/meadow |
 | **Atmosphere** | Golden ground-fog over meadow + lake mist; drifting pollen/petals; a floating flower crown | `sim/` curl-noise particle field + fog |
 
 The play area (the 2D Tetris board) sits in front of this; the composition must keep the **center
@@ -161,9 +161,9 @@ src/themes/summer/
   summer-theme.js          # THIN BaseTheme wrapper: WebGPU renderer (+WebGL2 fallback),
                            #   mount the effect, own RAF loop + resize + resilience,
                            #   eventBus→pulse() bridge, getTetrominoConfig(). NO inline shaders.
-  summer-tetrominos.js     # pure data (kept, re-tinted to the midsummer palette)
+  summer-tetrominos.js     # pure data (kept, re-tinted to the summer palette)
   summer-materials.js      # TSL {material, uniforms} factories only
-  summer-theme-icon.png    # picker icon (regenerate to a midsummer thumbnail)
+  summer-theme-icon.png    # picker icon (regenerate to a summer thumbnail)
   composition/
     season-director.js     # pure, dependency-free intensity scalar + event pokes (clone StormDirector)
   post/
@@ -207,7 +207,7 @@ return {
 
 ---
 
-## 5. Palette — "Midsommar Solstice" (authoritative hex)
+## 5. Palette — "Summer Solstice" (authoritative hex)
 
 ```
 SKY        zenith #5B8FB0 · upper #7FB0C4 · mid #A9C9D6 · peach #F4C9A1/#F6B98A
@@ -321,7 +321,7 @@ color scaled by the angle between view and sun dirs (the golden-hour glow — Gh
   background birch instanced. **[refine: billboard impostors for distance.]**
 
 ### 7.5 Hero props (geometry, low-poly, flat-shaded)
-- **Maypole (*midsommarstång*):** the identity object, **mid-distance on the meadow/far bank** (locked,
+- **Maypole:** the identity object, **mid-distance on the meadow/far bank** (locked,
   §14.3). Get the **cross + two hanging wreath rings** silhouette exactly right; birch-leaf-sleeved
   pole, flower-studded wreaths; **backlit/rim-lit** by the low sun; subtle emissive flower glints.
   **Reacts on big clears:** a subtle **"raise & glow" beat on Tetris / Perfect Clear** (§9) — the pole
@@ -380,7 +380,7 @@ heavy governor is unnecessary when the preset + emissive-bloom-scale are sane).
 - **Wrapper bridge** (clone `halcyon-apex-theme.js:86`): subscribe to `EVENTS.{PIECE_LOCK, COMBO,
   LINE_CLEAR, TSPIN, B2B, PERFECT_CLEAR, HARD_DROP, LEVEL_UP}` → `runtime.pulse(kind, payload)`,
   gated by `window.settings?.backgroundComboEffects` and reduced-motion via `setIntensity`.
-- **Proposed mappings (midsummer-flavoured, additive billboards only — never custom beam geometry):**
+- **Proposed mappings (summer-flavoured, additive billboards only — never custom beam geometry):**
   | Event | Effect |
   |---|---|
   | `PIECE_LOCK` | a few petals puff up from the meadow at the piece's column |
@@ -395,7 +395,7 @@ heavy governor is unnecessary when the preset + emissive-bloom-scale are sane).
 ## 10. Tetromino palette (`summer-tetrominos.js`)
 
 Keep the existing schema (`renderMode:'glow'`, glow/outline/pulse/shimmer/trails), **re-tinted to the
-Midsommar Solstice palette**: e.g. I = cornflower `#6495ED`, O = buttercup `#FBC02D`, T = lupine
+Summer Solstice palette**: e.g. I = cornflower `#6495ED`, O = buttercup `#FBC02D`, T = lupine
 `#8E7CC3`, S = sunlit-grass `#8FB861`, Z = poppy `#E04030`, J = lake `#3E7390`, L = sunset `#F39C6B`,
 GARBAGE = weathered birch/grey; warm glow color `#FFE3A3`. Cheap, unrelated to the grass cost.
 
@@ -470,7 +470,7 @@ Each wave = one screenshot-verified playground session before porting into the t
    reference photo. No day→dusk drift in v1 — one controlled, beautiful, always-on lighting state.
 3. **Maypole: mid-distance hero that reacts on big clears.** Placed on the meadow / far bank, backlit
    by the low sun, with a subtle **"raise & glow" beat on Tetris / Perfect Clear** (see §9).
-4. **Theme id stays `summer`** (preserves settings/rotation); displayName becomes "Midsommar".
+4. **Theme id stays `summer`** (preserves settings/rotation).
 
 ---
 
@@ -512,5 +512,5 @@ Each wave = one screenshot-verified playground session before porting into the t
 **Anti-shimmer:** [bgolus — Anti-Aliased Alpha Test / A2C](https://bgolus.medium.com/anti-aliased-alpha-test-the-esoteric-alpha-to-coverage-8b177335ae4f); [Alpha to coverage — Wikipedia](https://en.wikipedia.org/wiki/Alpha_to_coverage).
 **Water:** [ReflectorNode docs](https://threejs.org/docs/pages/ReflectorNode.html) · [WaterMesh docs](https://threejs.org/docs/pages/Water.html) · [three.js webgpu_water example](https://github.com/mrdoob/three.js/blob/dev/examples/webgpu_water.html); [Maxime Heckel "Field Guide to TSL and WebGPU"](https://blog.maximeheckel.com/posts/field-guide-to-tsl-and-webgpu/); [AG stylized water (TSL)](https://aleksandargjoreski.dev/blog/stylized-water-shader/); [danielzeller Lowpoly-Water (Monument Valley)](https://github.com/danielzeller/Lowpoly-Water-Unity); [Harry Alisavakis stylized water](https://halisavakis.com/my-take-on-shaders-stylized-water-shader/); [Sun glitter shader (Unity)](https://unitywatershader.wordpress.com/2018/05/17/sun-glitter/) · [Sun glitter — Wikipedia](https://en.wikipedia.org/wiki/Sun_glitter).
 **Low-poly landscape:** [Josh Marinacci — Low Poly Clouds](https://medium.com/@joshmarinacci/procedural-geometry-low-poly-clouds-b86a0e66bcad) + [Trees](https://medium.com/@joshmarinacci/procedural-geometry-trees-896cc06f54ce); [three.js forum — Procedural Instanced Forest](https://discourse.threejs.org/t/procedural-instanced-forest-high-performance-real-trees/88610); [PolyworldJs](https://github.com/eliemichel/PolyworldJs); [Material.flatShading docs](https://threejs.org/docs/#api/en/materials/Material.flatShading); [Aerial perspective — Wikipedia](https://en.wikipedia.org/wiki/Aerial_perspective) · [Draw Paint Academy — Atmospheric Perspective](https://drawpaintacademy.com/atmospheric-perspective/); [three.js sky example](https://threejs.org/examples/webgl_shaders_sky.html); [ACES filmic tonemapping — Narkowicz](https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/).
-**Midsummer aesthetic sources:** see the body of §1/§5 (Nordiska museet maypole, the seven flowers, Falu red `#801818`, Nordic midnight-sun light) — full list in the research notes.
+**Aesthetic sources:** see the body of §1/§5 (Nordiska museet maypole, the seven flowers, Falu red `#801818`, Nordic midnight-sun light) — full list in the research notes.
 

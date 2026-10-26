@@ -1,5 +1,5 @@
 /**
- * Summer — how Midsummer's Eve answers the game.
+ * Summer — how the summer's eve answers the game.
  *
  * A pure, seconds-based director: gameplay events become a small set of decaying light and
  * wind envelopes, bounded "emitters" described in board space (which side of the board, how
@@ -7,7 +7,7 @@
  * meadow. SummerWorld turns them into petals, seeds and light; nothing here touches the
  * scene, so the same director runs in tests, the playground and the game.
  *
- * Every tetromino is one of the seven flowers you pick on Midsummer's Eve:
+ * Every tetromino is one of the seven flowers you pick on a summer's eve:
  *   I poppy · O harebell · T buttercup · S oxeye daisy · Z lupine · J orange hawkweed ·
  *   L wood cranesbill
  * (No piece keeps the colour that shape usually has in other block games: the project's

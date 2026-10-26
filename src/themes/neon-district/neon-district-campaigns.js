@@ -161,7 +161,7 @@ export const TRANSIT_NAMES = Object.freeze({
     'sakura-twilight': 'SAKURA TWILIGHT',
     'crystal-cave': 'CRYSTAL CAVE',
     'golden-forest': 'GOLDEN FOREST',
-    summer: 'MIDSOMMAR',
+    summer: 'SUMMER',
     ocean: 'OCEAN',
     winter: 'WINTER',
     stillwater: 'STILLWATER',

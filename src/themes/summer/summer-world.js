@@ -1,5 +1,5 @@
 /**
- * Summer — Midsummer's Eve by the lake, shared by the isolated playground and both player
+ * Summer — an evening by the lake, shared by the isolated playground and both player
  * backends.
  *
  * SummerWorld is the composition root: it owns the light rig, the land, the woods, the
@@ -11,7 +11,7 @@
  *          meadow, the sun's road on the lake starts to glitter, the light warms
  *   hot    the meadow is alive with the player: the swallows hunt faster and lower, the
  *          shafts thicken, petals drift off the meadow on the wind, the lanterns brighten
- *   fever  Midsummer's Eve at its height: the meadow rolls in waves of wind (the reactions'
+ *   fever  the summer's eve at its height: the meadow rolls in waves of wind (the reactions'
  *          gale), breathes its petals and seed down into the golden air, every flower in it
  *          glows, the swallows tower and wheel over the cove, the sun's road blazes and the
  *          maypole's lanterns run round the wreaths like the ring dance round the pole
@@ -50,7 +50,7 @@ export class SummerWorld {
         this.rng = rng;
         this.assets = assets;
         this.group = new THREE.Group();
-        this.group.name = 'Summer — Midsummer\'s Eve by the lake';
+        this.group.name = 'Summer — an evening by the lake';
         this.disposed = false;
         this.built = false;
         this.boardCentre = new THREE.Vector3();
