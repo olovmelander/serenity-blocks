@@ -33,7 +33,7 @@ import numpy as np  # noqa: E402
 
 from neon_people import bake, clips, rig  # noqa: E402
 
-COLUMNS = 32
+COLUMNS = 42
 SHEET_FILE = "people.webp"
 MASK_FILE = "people-masks.webp"
 GENERATOR = "Serenity Blocks - Neon District people (Blender authoring)"
@@ -107,7 +107,8 @@ def write_js(path, names, table, rows, cells):
         " * drawn at `start + k * step` for k < count. `timing`: distance (a loop per `metres` walked),",
         " * loop (a loop per `seconds`) or level (frames along a 0..1 value, the breath).",
         " *",
-        " * sheet  RGBA = normal x, normal y (view space, 0.5 + 0.5 n), coverage, 0.5 + 0.5 occlusion",
+        " * sheet  RGBA = normal x, normal y (view space, 0.5 + 0.5 n), coverage, 0.5 + 0.5 shade",
+        " *        (shade 0 on the ink lines, 0.55 + 0.45 occlusion elsewhere)",
         " * masks  half size, two halves side by side: left RGBA = skin, hair, top, 1 - 0.5 bottom;",
         " *        right RGBA = chrome, glow, 0, 1. Gear (shoes, masks, bags) is what the weights leave.",
         " */",
