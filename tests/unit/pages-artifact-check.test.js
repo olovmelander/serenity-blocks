@@ -53,6 +53,10 @@ function createArtifact() {
         path.join(artifactRoot, 'CREDITS.md'),
     );
     copyFileSync(
+        path.join(repoRoot, 'THIRD_PARTY_NOTICES.md'),
+        path.join(artifactRoot, 'THIRD_PARTY_NOTICES.md'),
+    );
+    copyFileSync(
         path.join(repoRoot, 'README.md'),
         path.join(artifactRoot, 'README.md'),
     );

@@ -9,6 +9,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { createThemeThumbnailAssetPlugin } from './scripts/theme-thumbnail-assets.js';
+import { createStripPhaserRvfcPolyfillPlugin } from './scripts/vite-plugins/strip-phaser-rvfc-polyfill.mjs';
 
 // Resolve the project root to its real on-disk casing (canonical uppercase drive
 // letter on Windows). Without this, launching the dev server from a lowercase
@@ -52,7 +53,7 @@ function createCopyLegalNoticesPlugin() {
       outputDir = resolveBuildOutputDir(config);
     },
     closeBundle() {
-      for (const file of ['CREDITS.md', 'README.md']) {
+      for (const file of ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'README.md']) {
         const src = path.resolve(projectRoot, file);
         const dest = path.resolve(outputDir, file);
         if (!existsSync(src)) {
@@ -110,6 +111,10 @@ export default defineConfig(({ command }) => ({
     // dist/**/*). Required so third-party attributions (CC-BY and the like)
     // actually reach end users.
     createCopyLegalNoticesPlugin(),
+    // Phaser inlines a requestVideoFrameCallback polyfill copied from a GPL-3.0 project; the
+    // game never needs it (Chromium has the API, and no Phaser video objects are used), so the
+    // release build drops it. pages-artifact-check fails a build that still contains it.
+    createStripPhaserRvfcPolyfillPlugin(),
   ],
 
   // Server configuration

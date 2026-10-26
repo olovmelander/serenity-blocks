@@ -6,7 +6,7 @@ Blender 4.5.9 LTS on 2026-10-05 for this repository by
 built on the Fall grove's branching library in `scripts/blender/fall_grove/`).
 It contains no third-party geometry, texture, scan, photograph or generative-model
 output, and the generator fetches nothing from the network. Licence: the same as the
-project (MIT, project-local).
+project (proprietary, all rights reserved).
 
 `asset-manifest.json` records each file's size and SHA-256;
 `tests/unit/golden-forest-assets.test.js` checks the files against it.
