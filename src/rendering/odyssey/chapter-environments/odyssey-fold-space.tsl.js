@@ -148,7 +148,8 @@ function hexCell(p) {
     return { gv, id: p.sub(gv) };
 }
 
-/** Distance to the edges of a box of half-size `b` with edge radius `e` (Inigo Quilez's box frame). */
+/** Distance to the edges of a box of half-size `b` with edge radius `e`. Inigo Quilez's box frame
+ * (https://iquilezles.org/articles/distfunctions), MIT; see THIRD_PARTY_NOTICES.md. */
 function boxFrame(p, b, e) {
     const q = abs(p).sub(b);
     const w = abs(q.add(e)).sub(e);
@@ -172,7 +173,8 @@ function segment(p, a, b) {
     return length(pa.sub(ba.mul(h)));
 }
 
-/** A smooth union (polynomial smooth minimum, blend width k). */
+/** A smooth union (Inigo Quilez's polynomial smooth minimum, blend width k;
+ * https://iquilezles.org/articles/smin), MIT; see THIRD_PARTY_NOTICES.md. */
 function smin(a, b, k) {
     const h = max(float(k).sub(abs(a.sub(b))), 0).div(k);
     return min(a, b).sub(h.mul(h).mul(k * 0.25));
