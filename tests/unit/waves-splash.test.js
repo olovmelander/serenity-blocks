@@ -10,7 +10,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
-import { REST_RIG } from '../../src/themes/waves/waves-composition.js';
+import { REST_RIG, fallbackLayout } from '../../src/themes/waves/waves-composition.js';
 import { HOURS, HOUR_COLOURS } from '../../src/themes/waves/waves-hours.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/waves/waves-quality.js';
 import { createLight, createWaterNoise, sunDirection } from '../../src/themes/waves/waves-tsl.js';
@@ -22,7 +22,6 @@ import {
     FoamPool, dolphinBreach, dolphinEntry, splashDensity, splashReach,
 } from '../../src/themes/waves/waves-splash.js';
 import { WavesWorld, fovForAspect } from '../../src/themes/waves/waves-world.js';
-import { fallbackLayout } from '../../src/themes/waves/waves-composition.js';
 
 vi.setConfig({ testTimeout: 30_000 });
 
@@ -163,7 +162,9 @@ describe('waves splash: when the dolphin meets the water', () => {
         let drawnAtTail = 0;
         for (let n = 0; n * DT <= arc.flight + 4; n++) {
             const time = n * DT;
-            pod.update(time, (x, y, z, strength, which) => calls.push({ time, entered: which.entered, landed: which.landed }));
+            pod.update(time, (x, y, z, strength, which) => {
+                calls.push({ time, entered: which.entered, landed: which.landed });
+            });
             if (time >= arc.tailAt - DT && time < arc.tailAt) drawnAtTail = pod.geometry.getAttribute('aPlace').getW(0);
         }
         expect(calls).toHaveLength(2);
