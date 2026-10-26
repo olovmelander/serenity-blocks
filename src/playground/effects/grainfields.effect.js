@@ -25,6 +25,8 @@
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
+ *   cam=x,y,z,tx,ty,tz,fov   a free camera: from one world point, look at another (inside the stand,
+ *                            a plant against the sky)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>)
@@ -157,6 +159,8 @@ export function create({
     let demoPiece = 0;
     const airGain = num(params, 'airGain', 1);
     const lookAt = (params.get('look') || '').split(',').map(Number);
+    const freeCam = (params.get('cam') || '').split(',').map(Number);
+    const free = freeCam.length >= 6 && freeCam.slice(0, 6).every(Number.isFinite);
     const inspect = lookAt.length >= 3 && lookAt.slice(0, 3).every(Number.isFinite);
     const herdCamParts = (params.get('herdCam') || '').split(',').filter(Boolean).map(Number);
     const herdCam = herdCamParts.length && herdCamParts.every(Number.isFinite) ? herdCamParts : null;
@@ -196,6 +200,13 @@ export function create({
     const frame = (time, delta) => {
         if (!world) return;
         world.updateCamera(camera, sim(time, delta));
+        if (free) {
+            camera.position.set(freeCam[0], freeCam[1], freeCam[2]);
+            camera.fov = Number.isFinite(freeCam[6]) ? freeCam[6] : 30;
+            camera.lookAt(freeCam[3], freeCam[4], freeCam[5]);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
         if (inspect) {
             camera.fov = Number.isFinite(lookAt[3]) ? lookAt[3] : 20;
             camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);

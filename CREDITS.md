@@ -135,8 +135,8 @@ third-party or CC assets:
   in Blender by `scripts/blender/forest_assets.py` with no generative model and no
   third-party source; see `src/themes/forest/assets/ATTRIBUTION.md`.
 - Neon District: `public/textures/neon-district/people.webp` and `people-masks.webp` (the sprite
-  sheets of the people in the shops: twelve characters, their bodies, clothes, hair, gear and
-  every frame of their walks and loops). Authored procedurally in Blender by
+  sheets of the people in the shops: twenty-four characters, their bodies, clothes, hair, gear and
+  every frame of their walks, turns and loops). Authored procedurally in Blender by
   `scripts/blender/neon_district_people.py` (bodies as signed distances on a small rig, posed by
   code, rendered as data) with no generative model, no motion capture and no third-party source.
 - Crystal Cave: `src/themes/crystal-cave/assets/cavern.glb` (the hall of rock with its
