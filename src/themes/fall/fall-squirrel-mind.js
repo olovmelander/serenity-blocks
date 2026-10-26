@@ -34,8 +34,17 @@ const TURN = 0.24;
 const RAMP = 0.22;
 /** A change of heading bigger than this (radians) is turned on the spot, the paws stepping round. */
 const TURN_MIN = 0.5;
-/** How far back the follow-through looks (seconds): the tail trails the body's turns and surges by it. */
-const LAG = 0.15;
+/**
+ * The tail's follow-through: each of its seven bones, root to brush, points the way the body pointed
+ * this much longer ago (seconds) than the one before it, so a turn or a stop runs down the tail and the
+ * brush comes round last.
+ */
+const TAIL_DELAY = 0.035;
+const TAIL_JOINTS = 7;
+/** The routines a squirrel flicks its tail in now and then (more, and in bursts, when on edge). */
+const FLICK_CLIPS = new Set(['idle', 'sit', 'look', 'cling', 'nibble']);
+/** How long a flick runs (seconds): a snap up and a smaller rebound, travelling to the brush. */
+export const FLICK_LENGTH = 0.75;
 /** Where in its stride each gait starts (a fraction of the clip): with the hind feet down, pushing off. */
 const GAIT_START = Object.freeze({
     bound: 0.7, hop: 0.72, climb: 0.74, descend: 0.0,
@@ -63,7 +72,14 @@ export const SQUIRREL_SPOTS = Object.freeze({
 export const SQUIRREL_BARK_BIAS = Object.freeze({ maple: -0.35, oak: 0.25 });
 /** The routines it can do on the floor and on the bark. */
 export const GROUND_BITS = Object.freeze(['forage', 'snack', 'bury', 'sit', 'itch', 'dash', 'climb', 'cross']);
-export const TRUNK_BITS = Object.freeze(['shift', 'look', 'peek', 'chatter', 'crown', 'down']);
+export const TRUNK_BITS = Object.freeze(['shift', 'look', 'peek', 'chatter', 'crown', 'treetops', 'down', 'over']);
+/**
+ * It keeps to both trees: from SETTLED seconds by one it grows restless for the other, wholly by
+ * RESTLESS seconds more, and past WANDER it goes (over the floor, or up and through the treetops).
+ */
+const SETTLED = 15;
+const RESTLESS = 25;
+const WANDER = 75;
 /** Where its attention goes when the board does something (about the board's middle, in the world). */
 export const SQUIRREL_ATTENTION = Object.freeze([0, 3.2, 6.5]);
 
@@ -79,6 +95,13 @@ const smoother = (e0, e1, x) => {
 };
 /** The integral of the quintic smoothstep over 0..u (0.5 at 1): the distance covered while easing in. */
 const easedDistance = (u) => u * u * u * u * (u * (u - 3) + 2.5);
+/** A number in [0, 1) from two integers (a flick's timing, drawn from its act without the generator). */
+const hash01 = (a, b) => {
+    let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35);
+    h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+    h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
 const wrapPi = (a) => {
     let x = (a + Math.PI) % TAU;
     if (x < 0) x += TAU;
@@ -229,6 +252,9 @@ export class SquirrelMind {
         this.alarmTime = time;
         this.lastSnack = -1e9;
         this.lastCross = time;
+        /** The tree it keeps to now, and since when (it grows restless for the other one). */
+        this.home = null;
+        this.homeSince = time;
         this.history = [];
         this.lastPushed = null;
         this.time = time;
@@ -423,6 +449,8 @@ export class SquirrelMind {
         act.t1 = act.t0 + act.duration;
         // The act's own timing (a cut shortens its window, never the way it moves within it).
         act.run = act.duration;
+        // How on edge it was when it began (an alarmed squirrel flags its tail).
+        act.alarm = this.alarm;
         if (act.kind === 'stay' || act.kind === 'hidden') {
             act.to = act.to ?? { ...from, heading: act.heading ?? from.heading };
         }
@@ -557,7 +585,7 @@ export class SquirrelMind {
             itch: 0.8,
             dash: 1.3,
             climb: 2.6,
-            cross: now - this.lastCross > 40 ? 0.9 : 0.15,
+            cross: 0.1 + 4 * this.restless(now),
         });
         this.history.push(bit);
         if (bit === 'forage') {
@@ -589,21 +617,66 @@ export class SquirrelMind {
         } else if (bit === 'climb') {
             this.toTrunk(tree);
         } else if (bit === 'cross') {
-            this.lastCross = now;
-            const other = tree === 'maple' ? 'oak' : 'maple';
-            const spots = SQUIRREL_SPOTS[other];
-            const [x, z] = spots[Math.floor(this.random() * spots.length) % spots.length];
-            this.move({
-                on: 'ground', a: x, b: z, heading: 0,
-            }, 'bound', { rate: this.range(1.05, 1.2) });
-            this.stay('look', this.range(1.0, 1.8), { phase: this.range(0, 3) });
+            this.crossOver(tree);
         }
     }
 
-    /** Run to the foot of the tree, leap onto the bark and climb. */
-    toTrunk(tree, { high = false, flee = false } = {}) {
+    /** How restless it is for the other tree (0..1), having kept to this one since `homeSince`. */
+    restless(now) {
+        return clamp((now - this.homeSince - SETTLED) / RESTLESS, 0, 1);
+    }
+
+    /**
+     * Over the floor to the other tree, as squirrels cross open ground: in dashes, stopping dead to look
+     * at the edge of its own ground and again at the edge of the other's (the liked places nearest
+     * across: beside the board, never behind it), then on, half the time straight up the other tree.
+     */
+    crossOver(tree) {
+        const other = tree === 'maple' ? 'oak' : 'maple';
+        this.lastCross = this.tail.time;
+        const upIt = this.random() < 0.5;
+        let goal;
+        if (upIt) {
+            goal = this.trunkFoot(other, this.front(other) + this.range(-0.5, 0.5));
+        } else {
+            const spots = SQUIRREL_SPOTS[other];
+            const [x, z] = spots[Math.floor(this.random() * spots.length) % spots.length];
+            goal = {
+                on: 'ground', a: x + this.range(-0.3, 0.3), b: z + this.range(-0.3, 0.3), heading: 0,
+            };
+        }
+        const rate = this.range(1.05, 1.2);
+        const start = this.tail.place;
+        const stops = [this.edgeSpot(tree, goal)];
+        // (Not always both: one run in three goes on past the far edge without a pause.)
+        if (this.random() > 0.33) stops.push(this.edgeSpot(other, start));
+        for (const stop of stops) {
+            const here = this.tail.place;
+            // A stop it is already past, or all but standing on, is not a stop.
+            const ahead = (stop.a - here.a) * (goal.a - here.a) + (stop.b - here.b) * (goal.b - here.b);
+            if (Math.hypot(stop.a - here.a, stop.b - here.b) < 0.8 || ahead <= 0) continue;
+            this.move(stop, 'bound', { rate });
+            this.stay(this.random() < 0.6 ? 'look' : 'idle', this.range(0.45, 1.0), { phase: this.range(0, 3) });
+        }
+        this.move(goal, 'bound', { rate });
+        if (upIt) this.toTrunk(other, { from: goal.heading - Math.PI });
+        else this.stay('look', this.range(1.0, 1.8), { phase: this.range(0, 3) });
+    }
+
+    /** Of `tree`'s liked places on the floor, one of the two nearest `toward` (a place), a little aside. */
+    edgeSpot(tree, toward) {
+        const near = SQUIRREL_SPOTS[tree].map(([x, z]) => [x, z, Math.hypot(x - toward.a, z - toward.b)])
+            .sort((p, q) => p[2] - q[2]);
+        const [x, z] = near[this.random() < 0.5 ? 0 : Math.min(1, near.length - 1)];
+        return {
+            on: 'ground', a: x + this.range(-0.25, 0.25), b: z + this.range(-0.25, 0.25), heading: 0,
+        };
+    }
+
+    /** Run to the foot of the tree, leap onto the bark and climb (`from`: the angle round it it comes at). */
+    toTrunk(tree, { high = false, flee = false, from = null } = {}) {
         const trunk = this.stage.trunks[tree];
-        const angle = this.front(tree) + this.range(-0.55, 0.55);
+        const angle = from ?? this.front(tree) + this.range(-0.55, 0.55);
         const foot = this.trunkFoot(tree, angle);
         const here = this.tail.place;
         if (Math.hypot(foot.a - here.a, foot.b - here.b) > 0.15) {
@@ -625,8 +698,18 @@ export class SquirrelMind {
         const tree = here.on;
         const trunk = this.stage.trunks[tree];
         const face = this.stage.facing[tree];
+        const restless = this.restless(this.tail.time);
+        // (Long enough by this tree, it goes: over the floor or through the treetops.)
+        const away = this.tail.time - this.homeSince > WANDER;
         const bit = this.scriptedBit(TRUNK_BITS) || this.pick({
-            shift: 2.2, look: 1.8, peek: 1.5, chatter: 0.6, crown: 0.6, down: 2.6,
+            shift: away ? 0 : 2.2,
+            look: away ? 0 : 1.8,
+            peek: away ? 0 : 1.5,
+            chatter: away ? 0 : 0.6,
+            crown: away ? 0 : 0.6,
+            treetops: 0.15 + 1.4 * restless,
+            down: away ? 0 : 2.6,
+            over: 2.2 * restless,
         });
         this.history.push(bit);
         if (bit === 'shift') {
@@ -665,6 +748,21 @@ export class SquirrelMind {
             });
             this.push({ kind: 'hidden', duration: this.range(3.5, 9) });
             this.planFromCrown();
+        } else if (bit === 'treetops') {
+            // Up into the crown and away through the treetops: it comes down the other tree.
+            const other = tree === 'maple' ? 'oak' : 'maple';
+            this.goBark({
+                on: tree, a: trunk.high + 1.0, b: here.b, heading: 0,
+            });
+            this.push({
+                kind: 'hidden',
+                duration: this.range(6, 10),
+                to: this.crownPlace(other, this.front(other)),
+            });
+            this.planFromCrown();
+        } else if (bit === 'over') {
+            this.toGround(tree);
+            this.crossOver(tree);
         } else {
             this.toGround(tree);
         }
@@ -699,6 +797,12 @@ export class SquirrelMind {
 
     plan() {
         const here = this.tail.place;
+        // Which tree it keeps to now (a crossing or the treetops brought it to the other).
+        const home = this.nearestTree(here);
+        if (home !== this.home) {
+            this.home = home;
+            this.homeSince = this.tail.time;
+        }
         if (here.on === 'ground') this.planGround();
         else if (here.a > this.stage.trunks[here.on].high + 0.5) {
             this.push({ kind: 'hidden', duration: this.range(3, 7) });
@@ -718,7 +822,7 @@ export class SquirrelMind {
         while (this.act && time >= this.act.t1 && guard++ < 4096) {
             this.prev = this.act;
             this.recent.unshift(this.act);
-            if (this.recent.length > 3) this.recent.length = 3;
+            if (this.recent.length > 6) this.recent.length = 6;
             if (!this.queue.length) this.plan();
             this.act = this.queue.shift();
         }
@@ -937,6 +1041,7 @@ export class SquirrelMind {
         // (The trail is read off the body's path before the twirl: a whole turn in a third of a second
         // is more than half a turn within the trail's look back, which has no side to trail to.)
         this.followThrough(time, out);
+        this.flickAt(time, out);
         if (act.twirl && act.clip === 'startle') {
             // A twirl in the air: one whole turn about its own up while it is off the ground (laid on
             // after the hand-over above, which would take the short way round a turn half done).
@@ -983,50 +1088,125 @@ export class SquirrelMind {
         return clips;
     }
 
-    /** The body as it was at `time` (on the act then, or the one before it), or null in the crown. */
+    /** The body as it was at `time` (on the act then, among the last few), or null in the crown. */
     bodyBefore(time, out) {
-        let { act } = this;
-        if (time < act.t0) act = this.prev && time >= this.prev.t0 ? this.prev : (this.prev || act);
-        if (!act || act.kind === 'hidden') return null;
-        return this.bodyAt(act, clamp(time, act.t0, act.t1), out);
+        let found = null;
+        for (const act of [this.act, ...this.recent]) {
+            if (!act) continue;
+            found = act;
+            if (time >= act.t0) break;
+        }
+        if (!found || found.kind === 'hidden') return null;
+        return this.bodyAt(found, clamp(time, found.t0, found.t1), out);
     }
 
     /**
-     * What the tail and ears trail by (follow-through, from the body's own path, so still a function
-     * of the clock): how far the body has turned about its up in the last LAG seconds (radians) and
-     * how much its speed has changed (life-size metres a second).
+     * What the tail trails by (follow-through, read off the body's own path, so still a function of
+     * the clock). For each tail bone, root to brush, `tailTurn` is how far the body has turned about
+     * its up since TAIL_DELAY x (bone + 1) seconds ago (radians), and `tailSurge` how much faster it
+     * goes now than then (life-size metres a second): the drawing bends each bone back by them, so
+     * the tail keeps pointing where the body was and comes round after it.
      */
     followThrough(time, out) {
-        out.lagTurn = 0;
-        out.lagSurge = 0;
+        const turns = out.tailTurn;
+        const surges = out.tailSurge;
+        turns.fill(0);
+        surges.fill(0);
         if (!out.visible) return out;
-        const then = this.bodyBefore(time - LAG, this.lagA || (this.lagA = createSquirrelPose()));
-        const before = this.bodyBefore(time - 2 * LAG, this.lagB || (this.lagB = createSquirrelPose()));
-        if (!then || !before) return out;
-        // The turn about the body's up since then: the old forward, laid in today's tangent plane,
-        // against today's forward. Where the old forward stood up out of that plane (a leap from the
-        // bark to the floor) the measure fades out rather than flip.
-        const n = out.normal;
-        const now = rotateForward(out.quaternion);
-        const old = rotateForward(then.quaternion);
-        const lift = old[0] * n[0] + old[1] * n[1] + old[2] * n[2];
-        const flat = [old[0] - n[0] * lift, old[1] - n[1] * lift, old[2] - n[2] * lift];
-        const size = Math.hypot(flat[0], flat[1], flat[2]);
-        const c = cross(flat, now);
-        const turn = Math.atan2(
-            c[0] * n[0] + c[1] * n[1] + c[2] * n[2],
-            flat[0] * now[0] + flat[1] * now[1] + flat[2] * now[2],
-        );
         // A leap turns the body over end to end (bark to floor): there the trail is let go during the
         // crouch and taken up again after the landing, rather than read off a tumbling frame.
         const { act, prev } = this;
         let hold = 1;
         if (act.kind === 'leap') hold = 1 - smoother(0, act.crouch, time - act.t0);
-        else if (prev && prev.kind === 'leap') hold = smoother(0, 2 * LAG, time - prev.t1);
-        out.lagTurn = turn * smooth(0.45, 0.85, size) * hold;
-        const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-        const gained = dist(out.position, then.position) - dist(then.position, before.position);
-        out.lagSurge = (gained / LAG / this.scale) * hold;
+        else if (prev && prev.kind === 'leap') hold = smoother(0, TAIL_DELAY * (TAIL_JOINTS + 2), time - prev.t1);
+        if (hold <= 0) return out;
+        const past = this.pastBodies || (this.pastBodies = Array.from({ length: TAIL_JOINTS + 2 }, createSquirrelPose));
+        const n = out.normal;
+        const now = rotateForward(out.quaternion);
+        const speeds = [];
+        let last = out.position;
+        let reached = 0;
+        for (let k = 1; k <= TAIL_JOINTS + 1; k++) {
+            const then = this.bodyBefore(time - k * TAIL_DELAY, past[k]);
+            if (!then) break;
+            speeds.push(Math.hypot(last[0] - then.position[0], last[1] - then.position[1], last[2] - then.position[2])
+                / TAIL_DELAY);
+            last = then.position;
+            reached = k;
+            if (k > TAIL_JOINTS) break;
+            // The turn about the body's up since then: the old forward, laid in today's tangent plane,
+            // against today's forward. Where the old forward stood up out of that plane the measure
+            // fades out rather than flip.
+            const old = rotateForward(then.quaternion);
+            const lift = old[0] * n[0] + old[1] * n[1] + old[2] * n[2];
+            const flat = [old[0] - n[0] * lift, old[1] - n[1] * lift, old[2] - n[2] * lift];
+            const size = Math.hypot(flat[0], flat[1], flat[2]);
+            const c = cross(flat, now);
+            const turn = Math.atan2(
+                c[0] * n[0] + c[1] * n[1] + c[2] * n[2],
+                flat[0] * now[0] + flat[1] * now[1] + flat[2] * now[2],
+            );
+            turns[k - 1] = turn * smooth(0.45, 0.85, size) * hold;
+        }
+        for (let i = 0; i < TAIL_JOINTS && i + 1 < speeds.length; i++) {
+            surges[i] = ((speeds[0] - speeds[i + 1]) / this.scale) * hold;
+        }
+        // (Short of the look back, in or out of a crown: the bones beyond keep the last reading.)
+        for (let i = Math.max(1, reached); i < TAIL_JOINTS; i++) {
+            turns[i] = turns[i - 1];
+            surges[i] = i > 0 ? surges[i - 1] : 0;
+        }
+        return out;
+    }
+
+    /**
+     * When the act flicks its tail (seconds), drawn once from the act itself: now and then in a calm
+     * sit or cling, a burst of two or three first when it began on edge. (A hash of the act's start and
+     * the seed, not the generator: the plans do not change for them, and a cut act keeps its flicks.)
+     */
+    flicksOf(act) {
+        if (act.flicks) return act.flicks;
+        act.flicks = [];
+        if (act.kind !== 'stay' || !FLICK_CLIPS.has(act.clip)) return act.flicks;
+        const key = Math.round(act.t0 * 1000) | 0;
+        const draw = (k) => hash01(this.seed ^ key, k);
+        const end = act.t0 + act.run;
+        let k = 0;
+        let at = act.t0 + 0.4 + 1.6 * draw(k++);
+        if ((act.alarm || 0) > 0.25) {
+            at = act.t0 + 0.2 + 0.2 * draw(k++);
+            const burst = 2 + Math.floor(2 * draw(k++));
+            for (let i = 0; i < burst && at < end; i++) {
+                act.flicks.push({ at, strength: 1 });
+                at += 0.4 + 0.18 * draw(k++);
+            }
+            at += 1.5 + 3 * draw(k++);
+        }
+        while (at < end - 0.2) {
+            act.flicks.push({ at, strength: 0.55 + 0.35 * draw(k++) });
+            at += 3.2 + 6.5 * draw(k++);
+        }
+        return act.flicks;
+    }
+
+    /** The latest flick under way at `time` (it runs on into the next act): its age and strength. */
+    flickAt(time, out) {
+        out.flick = -1;
+        out.flickStrength = 0;
+        if (!out.visible) return out;
+        for (const act of [this.act, ...this.recent]) {
+            if (!act || act.t0 > time) continue;
+            if (time - act.t1 > FLICK_LENGTH) break;
+            let best = null;
+            for (const flick of this.flicksOf(act)) {
+                if (flick.at <= time && flick.at < act.t1 && (!best || flick.at > best.at)) best = flick;
+            }
+            if (best && time - best.at < FLICK_LENGTH) {
+                out.flick = time - best.at;
+                out.flickStrength = best.strength * (this.motion < 1 ? 0.5 : 1);
+                break;
+            }
+        }
         return out;
     }
 
@@ -1052,7 +1232,11 @@ export function createSquirrelPose() {
         attention: SQUIRREL_ATTENTION,
         act: '',
         clip: '',
-        lagTurn: 0,
-        lagSurge: 0,
+        /** The tail's follow-through, per bone root to brush (see SquirrelMind.followThrough). */
+        tailTurn: [0, 0, 0, 0, 0, 0, 0],
+        tailSurge: [0, 0, 0, 0, 0, 0, 0],
+        /** Seconds into a tail flick (-1: none), and how big it is. */
+        flick: -1,
+        flickStrength: 0,
     };
 }

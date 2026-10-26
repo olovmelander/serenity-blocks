@@ -192,10 +192,10 @@
     },
     {
       "file": "squirrel.glb",
-      "bytes": 538268,
-      "sha256": "a7a4423b5c4030956b6dffdd3862a34956060cce4f0765ebefb2a1751065e42b",
+      "bytes": 531580,
+      "sha256": "b9c9e7c5f4ea012252a9434c9718f817e4532edca281722da3780950deef3c78",
       "kind": "squirrel",
-      "triangles": 9806,
+      "triangles": 9502,
       "acornTriangles": 420,
       "bones": 30,
       "clips": [

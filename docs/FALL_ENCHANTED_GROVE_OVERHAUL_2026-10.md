@@ -1,6 +1,6 @@
 # Fall — the enchanted grove (visual overhaul, 2026-10-05)
 
-**Status: implemented (branch `feature/fall-enchanted-forest`; the red squirrel 2026-10-26, its motion pass the same day). A record of what was built
+**Status: implemented (branch `feature/fall-enchanted-forest`; the red squirrel 2026-10-26, its motion pass and its trees-and-tail pass the same day). A record of what was built
 and how it was checked — not a backlog.** Supersedes the "amber glade" rebuild of the same
 week (`reports/fall-overhaul/README.md`), whose flat-shaded procedural grove this replaces.
 
@@ -281,6 +281,7 @@ in the session touched).
 | `fall-squirrel-stage.js` | The two trunks measured from their own bark meshes (48 horizontal rays at every 15 cm of height, binned by height, the outermost hit kept, smoothed; ~10 ms a trunk) as surfaces with a frame at any height and angle; the floor's frame from the terrain. |
 | `fall-squirrel-mind.js` | The planner (three-free): places on the bark and the floor, acts and routines, the answers to the board, and the pose at any time. A seeded mulberry32 draws the choices in the order they are needed; an answer cuts the act it interrupts at that moment. The pose is a function of the clock and the events alone, so the playground's seek lands on it at any frame rate (a test holds 1/30 s and 1/144 s steps to the same pose). |
 | `fall-squirrel.js` | The body: the clips blended through `AnimationMixer` with every clip's time and weight set from the mind (the mixer is never stepped), a head turn toward the board on top, the acorn shown while it nibbles, a soft contact shade (it is not in the grove's static shadow map), and the fur material. |
+| `fall-squirrel-plume.js` | The plume's hair (the trees-and-tail pass): cards measured from the body's own tail and skinned to its bones, strands drawn in the shader. |
 
 The fur is lit as the grove is, by its one low sun behind the trees: wrapped light, the hemisphere
 ambient times the baked sky term, a rim through the hair all round its outline (strongest with the sun
@@ -372,10 +373,66 @@ limits over two minutes for two seeds with every event; turns on the spot on the
 a leap leaving from where it crouched and stopping where it lands; the look and the trail never piling
 up. The asset test holds the leap's marks to the clip table.
 
+### Both trees, and the tail (2026-10-26, a third pass)
+
+Asked for: "We need to ensure the squirrel can run up and between both the left and the right trees.
+And we need to ensure the tail looks and is animated perfectly."
+
+**Measured first.** Over ten minutes a seed it did climb both trees, but went between them only 1 to
+7 times, always as one straight bound, and one seed crossed once and then kept to the oak for nine
+minutes. Close up the tail was the weak part: from the side a blade, from behind a slab, its outline a
+frill of little round-ended lumps, blotched dark where the occlusion pooled between the locks, its
+end cut square; on the bark it stood 30 degrees off the trunk instead of trailing down it; and it
+moved only with its clip's small waves and a one-step follow-through.
+
+**Between the trees** (`fall-squirrel-mind.js`):
+
+| | |
+| --- | --- |
+| **It keeps to both** | The tree it keeps to (`home`) is noted at every plan. From 15 s by one tree it grows restless for the other (fully by 40 s), and past 75 s it goes: the floor crossing's weight and two new routines on the bark rise with it. Over ten minutes a seed it now goes between them 6 to 10 times (the game's own first trip at 55 s, then about every 40 to 65 s), climbs each tree 5 to 12 times, and spends no more than about two minutes by either. |
+| **Over the floor** (`cross`, `over`) | As squirrels cross open ground: a dash to the edge of its own ground (the liked place nearest the other tree), a stop dead to look, a long dash past the board, a stop at the edge of the other tree's ground (one run in three goes through it), then on; half the time straight up the far tree. The stops are liked places, so never behind the board card (a test projects every floor stop through the game's eye); about 1 to 3 % of its time is spent passing behind the card. `over` comes down the trunk head first and crosses at once. |
+| **Through the treetops** (`treetops`) | Up the trunk into the crown, out of sight 6 to 10 s, and out of the other tree's crown, head first down its trunk: as if it had gone across through the canopy. |
+
+**The tail's look:**
+
+| | |
+| --- | --- |
+| **The plume's body** (`model.py`) | A flattened tube through the tail joints (wide across, 0.6 to 0.9 of that deep, fullest two thirds of the way out, a round end past the last joint), 74 % of the plume's width, its surface combed by a fine displacement. Painted rust, darker down a parting in the middle and golden toward its edges; the occlusion in the plume is kept soft (no blotches). Tail vertices carry `_fur.w = 0.5`. Two earlier tries are worth knowing: tapering hair clumps over a fat body made a sausage with thorns, and broad curved clumps in one plane fused into lengthwise ridges (a churro). Solid geometry does not make a fur edge at this size. |
+| **The hair** (`fall-squirrel-plume.js`, new) | Cards: four planes through the tail's axis, 45 degrees apart, each a strip on both sides from just inside the plume to about 60 % of its width past it, swept back toward the brush, closing round the end in a rounded brush. Measured from the skinned body when it is built (the tail bones' bind pose gives the axis, the tail's own vertices its outline in eight directions and their skin weights at each station) and skinned to the same bones with those weights, so the hair bends as the plume it grows from. The strands are drawn in the shader: three coats (a dense underfur, middle hairs, fewer long guard hairs), each strand its own length and tone, thinning to its tip, waving a little, solid at the root and parting into strands on the way out; a card seen edge on fades out. Alpha to coverage with the scene's 4x MSAA (High and up) makes a fine translucent fringe; below High it is a clean alpha cut. Strands finer than about a pixel fade to the soft band they add up to, so they do not sparkle at the size the game shows it. Lit as the coat is, from the radial direction they were built with (`normalWorldGeometry`, not turned over on a card's back face), and glowing gold when the low sun is behind them. 1,696 triangles in one more draw. |
+| **The comb** (`fall-squirrel.js`) | The plume's face is combed in the fur shader: fine streaks of hair out from the parting and back toward the brush, read in the rest pose (so they ride on it), fading to their mean as they grow finer than a pixel. |
+
+**The tail's motion:**
+
+| | |
+| --- | --- |
+| **On the bark** (`solver.lay_tail`, `motion.py`) | Climbing, clinging, turning on the bark and coming down head first, the tail is laid along the bark: each tail bone is pitched so the joint at its end stands at a set height off it (solved in closed form, root first), and the clip's sway and wave are laid on top. It trails 3 to 6 cm (life size) off the bark up and down, held a little further off and rising when it comes down; the plume and its hair clear the bark. |
+| **Follow-through** (`followThrough`) | A delay line: each tail bone, root to brush, points the way the body pointed 0.035 s longer ago than the one before it (to 0.245 s at the brush), so a turn bends the tail into a curve that comes round after the body and a stop throws it forward over the back, the brush last. Read off the body's own path through the last few acts (still a function of the clock: a seek lands on it), held through leaps. The worst frame-to-frame jolt in the tail is 18 deg/frame squared (it was about 20). |
+| **Flicks** (`flicksOf`, `flickAt`) | The squirrel's tail-flag: a snap up and a smaller rebound running out to the brush (each bone 28 ms after the one before), now and then while it sits, nibbles, looks or clings, and two or three in quick succession first when it began on edge. Their timing is a hash of the act and the seed (the plans do not change for them, and a cut act keeps them); a flick runs on into the next act. Half size under reduced motion. |
+
+| The tail: sitting, from behind, backlit, bounding, climbing, on the bark, coming down, and at game size |
+| --- |
+| ![the plume close up in eight views and at the size the game shows it](fall-enchanted-grove/squirrel-tail.webp) |
+
+| Between the trees in the game's view: a crossing (dash, stop at the maple's edge, past the board, stop at the oak's edge, up the oak) and a trip through the treetops (up the maple into its crown, out of the oak's and down it) |
+| --- |
+| ![sixteen crops along the two routes](fall-enchanted-grove/squirrel-trees.webp) |
+
+**Checked** in the playground on native WebGPU at High and Minimal and on the forced WebGL2 backend,
+close up from the game's side, the side and behind (new playground controls `squirrelOrbit=` and
+`squirrelTilt=` swing the follow camera round it), and at game size; and in a real Single Player game
+at High, 1920 x 1080: consoles clean but for Electron's dev-server notices. `validate-all-themes
+--theme fall` PASS. Seven new tests: it goes between the trees over ten minutes for four seeds (trips,
+longest stay, climbs of each tree, the share of time by each, the treetops); its floor stops are
+never behind the card; `over` and `treetops` take it to the other tree; the hair is skinned to the
+tail, reaches past the plume and closes round the brush; the tail lies along the bark in the bark
+clips; the follow-through grows toward the brush in a turn; flicks are deterministic, come in a burst
+when it is on edge and never in a dig. The asset is 531 KiB (9,502 triangles).
+
 ### Known limits and follow-ups
 
-- No fur shells: the coat is a lit surface with a lumpy outline. Shells drawn with alpha-to-coverage
-  would give its edge real fuzz at close range; at game size the rim light carries the fur.
+- The plume has hair cards; the body has none (its coat is a lit surface, the rim light carries it at
+  game size). Fur shells or cards over the back and haunches would give its outline the same fuzz.
 - It casts no sun shadow (the grove's map is static); a contact shade grounds it instead.
-- It does not drop its acorn when startled, and it goes between the trees only over the floor.
+- It does not drop its acorn when startled. Through the treetops it goes out of sight (the crowns do
+  not meet on screen), rather than leaping from branch to branch.
 - Portrait: the same squirrel in the margins; not tuned there.
