@@ -88,7 +88,10 @@ import {
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
 import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
 import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
-import { plungeTravelExtraMs } from './transitions/odyssey-black-hole-fall.js';
+import { plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
+import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hypercubes.js';
+import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
+import { foldHypercubeCages } from './transitions/odyssey-fold-rooms.js';
 import { resolveChapterArrivalProgress, resolveOrbParkProgress } from './odyssey-chapter-arrival.js';
 import {
     normalizeOdysseyWarmupMode,
@@ -2755,6 +2758,33 @@ export class OdysseyBoardController {
     }
 
     /**
+     * THE HYPERCUBES (chapter 7's other dimension, step 4; docs/ODYSSEY_CH7_FOLD_2026-10.md):
+     * inside the hole, round every orb that parks there, a four-dimensional cube turning through
+     * the fourth dimension, in its room's light (odyssey-fold-hypercubes.js). Only while the fold
+     * is there; still under reduced motion.
+     * @private
+     */
+    _updateFoldHypercubes(cameraProgress, delta) {
+        const cp = this.presentationLayout?.chapterPositions;
+        const fall = cp ? resolveBlackHoleFall(cameraProgress, cp) : null;
+        const fold = fall?.fold ?? 0;
+        if (!(fold > 0.001) && !this._foldHypercubes) return;
+        if (!this._foldHypercubes && this.scene) {
+            this._foldHypercubes = createFoldHypercubes({ count: 8 });
+            this.scene.add(this._foldHypercubes.mesh);
+            this._foldHypercubeTime = 0;
+        }
+        const cubes = this._foldHypercubes;
+        if (!cubes) return;
+        if (!prefersReducedMotion()) this._foldHypercubeTime += Math.min(0.1, Math.max(0, delta || 0));
+        const eye = this.camera?.position;
+        const cages = fold > 0.001 && eye && this.nodeManager
+            ? foldHypercubeCages(fold, eye, (id) => this.nodeManager.getNodePosition?.(id) ?? null, fall?.local)
+            : [];
+        cubes.update(this.camera, this._foldHypercubeTime, cages);
+    }
+
+    /**
      * B4 / Batch5: feed the Black Hole (ch7) screen-space lensing centre to the post
      * pipeline — but ONLY when the BH chapter is relevant. The lens centre projection
      * (getWorldDirection-derived world pos → NDC) is ch7-specific work; chapters 1-6/8
@@ -4555,6 +4585,8 @@ export class OdysseyBoardController {
             // ...and from the rail's end the path flows on into the hole the environments have
             // just posed (odyssey-path-inflow.js).
             this._updatePathInflow(cameraProgress);
+            // ...and inside it, a hypercube round every orb (chapter 7's other dimension).
+            this._updateFoldHypercubes(cameraProgress, delta);
 
             // ONE WORLD owns the air. The manager above is still cross-fading scene fog and the
             // clear colour from the profiles of chapters 2-5 — chapters that no longer draw
@@ -5355,6 +5387,11 @@ export class OdysseyBoardController {
     dispose() {
         releaseOdysseyBoardMusic(this);
         this._disposed = true;
+        if (this._foldHypercubes) {
+            this._foldHypercubes.mesh.removeFromParent();
+            this._foldHypercubes.dispose();
+            this._foldHypercubes = null;
+        }
         this._liveAsyncPipelines?.end();
         this._liveAsyncPipelines = null;
         this.cancelTravel();

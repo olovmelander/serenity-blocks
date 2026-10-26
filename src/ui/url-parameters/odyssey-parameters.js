@@ -663,6 +663,18 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
             notes: 'For captures and comparisons: a still frame cannot show travel speed.',
         },
     ),
+    parameter(
+        'odysseyCh7Fold',
+        'Holds the black hole’s interior on the warp tunnel (0) or the other dimension (1) once the fall opens it.',
+        '0 or 1',
+        'Follows the fall',
+        '0',
+        {
+            scope: 'Odyssey chapter 7: Black Hole',
+            sources: ['src/rendering/odyssey/chapter-environments/black-hole-transcendence.js'],
+            notes: 'For captures and timing: the tunnel and the fold at the same place.',
+        },
+    ),
     toggle('odysseyCh6CorridorSheets', 'Restores the retired additive haze sheets along the space corridor.', {
         scope: 'Odyssey chapter 6: Space',
         sources: ['src/rendering/odyssey/composition/odyssey-corridor-field.js'],

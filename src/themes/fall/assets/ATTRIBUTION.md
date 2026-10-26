@@ -6,7 +6,7 @@ Blender 4.5.9 LTS on 2026-10-05 for this repository by
 `squirrel.glb`, authored in Blender 5.2 LTS on 2026-10-26 by `scripts/blender/fall_squirrel.py`
 (below). None contains third-party geometry, texture, scan, photograph, motion capture or generative-model
 output, and neither generator fetches anything from the network. Licence: the same as the
-project (MIT, project-local).
+project (proprietary, all rights reserved).
 
 `asset-manifest.json` records each file's size and SHA-256; `tests/unit/fall-assets.test.js`
 checks the files against it.

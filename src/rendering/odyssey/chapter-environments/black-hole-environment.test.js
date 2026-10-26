@@ -119,7 +119,15 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
                 .applyMatrix4(dust.matrixWorld).sub(camera.position);
             expect(mote.dot(forward)).toBeGreaterThanOrEqual(55 - 1e-3);
         }
-        expect(dust.userData.flowUniforms.uWarp.value).toBe(1);
+        // THE FOLD (2026-10-26): in the other dimension the dust drifts as motes at rest...
+        expect(dust.userData.flowUniforms.uWarp.value).toBe(0);
+        // ...and streaks while the eye glides between orbs (the warp drive's punch).
+        let glide = inside;
+        for (let i = 0; i < 30; i += 1) {
+            glide += 0.012 * 1.4 * 0.016;
+            updateBlackHoleTranscendenceEnvironment(group, 0.016, 8 + (i * 0.016), camera, glide);
+        }
+        expect(dust.userData.flowUniforms.uWarp.value).toBeGreaterThan(0.5);
         // Backwards navigation must restore slow dust, without retaining an infall state.
         updateBlackHoleTranscendenceEnvironment(group, 0.016, 2, camera, positions[6] + 0.001);
         expect(dust.userData.flowUniforms.uWarp.value).toBe(0);

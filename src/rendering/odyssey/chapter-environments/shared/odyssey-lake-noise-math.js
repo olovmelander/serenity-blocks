@@ -48,6 +48,13 @@ export function lakeNoisePeriod(k = LAKE_BAKE_K) {
 }
 
 // ── Ashima simplex, scalar JS port of `od_simplex3` (shared/odyssey-tsl-noise.js) ────────────
+//
+// mod289 / permute / taylorInvSqrt / cornerContribution / simplex3Raw port `snoise` from webgl-noise
+// (https://github.com/ashima/webgl-noise, src/noise3D.glsl, by Ian McEwan, Ashima Arts), modified:
+// evaluated per corner, with an added periodic lattice wrap (wrapLattice).
+//   Copyright (C) 2011 by Ashima Arts (Simplex noise)
+//   Copyright (C) 2011-2016 by Stefan Gustavson (Classic noise and others)
+// MIT License — full text in THIRD_PARTY_NOTICES.md.
 
 const F3 = 1.0 / 3.0;
 const G3 = 1.0 / 6.0;

@@ -281,7 +281,7 @@ describe('the squirrel mind', () => {
             // A dash at full tilt, a frame at a time: never a jump across the grove.
             expect(jump, `seed ${seed}`).toBeLessThan(0.16);
         }
-    });
+    }, 30_000); // three seeds of a long walk: about 2 s locally, over 5 s on CI runners
 
     it('keeps its liked places on the floor the eye sees, beside the board', () => {
         const camera = landscapeCamera();
