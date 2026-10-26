@@ -17,11 +17,12 @@
  */
 
 import {
-    bakeReliefData, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData, bakeMacroData, bakeSummitSculptData,
+    bakeReliefData, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData, bakeMacroData, bakeSculptPlateData,
     makeReliefSampler, mergeReliefBands, reliefBandRanges,
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData } from './odyssey-cloud-field.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
+import { bakeForestShadeData } from './odyssey-forest-shade.js';
 
 function deferred() {
     let resolve; let reject;
@@ -47,11 +48,12 @@ export function bakeWorldSync({
     const detail = bakeDetailNormalData();
     const t4 = now();
     const macro = bakeMacroData();
-    const summit = bakeSummitSculptData();
+    const summit = bakeSculptPlateData();
     const t5 = now();
     const field = cloudField && Array.isArray(cloudSpecs) ? buildCloudFieldGeometryData(cloudSpecs, railSamples) : null;
     const t6 = now();
     const zoned = scatter ? scatterZonedForest(makeReliefSampler(relief), scatter) : null;
+    if (zoned) zoned.shade = bakeForestShadeData(zoned.placements, makeReliefSampler(relief));
     const t7 = now();
     return {
         relief,

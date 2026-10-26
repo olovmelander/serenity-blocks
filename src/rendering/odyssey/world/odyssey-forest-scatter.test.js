@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    buildShoreDistance, scatterZonedForest, shadeColourFor,
+    FOREST_KRUMMHOLZ, buildShoreDistance, scatterZonedForest, shadeColourFor,
 } from './odyssey-forest-scatter.js';
 import {
     FOREST_BANDS,
@@ -303,8 +303,29 @@ describe('density stays an art lever, not a perf regression channel', () => {
         // carve-protected rail corridor (d <= 520 of a longer rail covers more island), so
         // the recalibrated carve keeps more trees — COMP measured 8,191 after the threshold
         // re-emission (scripts/act2-forest-arch-calibrate.mjs).
-        expect(COMPOSITION.stats.trees).toBeLessThan(8450);
+        // The tripwire reads the FOREST the carve was calibrated on: the treeline's krummholz
+        // (2026-10-25) is a separate population on its own grid, gated on its own below.
+        expect(COMPOSITION.stats.trees - COMPOSITION.stats.krummholz).toBeLessThan(8450);
         expect(run({ spacing: 24, visibilityCull: false }).stats.trees).toBeGreaterThan(6028 * 0.30);
+    });
+
+    it('frays the treeline with a fringe of krummholz, not a second forest', () => {
+        // Measured 2026-10-25: ~600 dwarf firs unculled, ~a third of them seen from the rail.
+        expect(COMPOSITION.stats.krummholz).toBeGreaterThan(150);
+        expect(COMPOSITION.stats.krummholz).toBeLessThan(COMPOSITION.stats.trees * 0.12);
+        const fringe = COMPOSITION.placements.filter((p) => p.krummholz);
+        fringe.forEach((p) => {
+            expect(p.speciesId).toBe('S3-subalpine-fir');
+            expect(p.y).toBeGreaterThanOrEqual(FOREST_KRUMMHOLZ.lo);
+            expect(p.y).toBeLessThanOrEqual(FOREST_KRUMMHOLZ.hi);
+            // Stunted: never taller than a young forest fir.
+            expect(p.scaleY).toBeLessThan(0.62);
+        });
+        // ...and it never costs a draw: every dwarf fir sits in a bucket the forest already has.
+        HIGH.buckets.forEach((b) => {
+            expect(b.items.some((p) => !p.krummholz), b.key).toBe(true);
+        });
+        expect(run({ krummholz: false }).stats.krummholz).toBe(0);
     });
 
     /**

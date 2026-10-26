@@ -186,9 +186,11 @@ describe('every world material opts out of scene fog', () => {
             .map((m) => m[1]);
         expect(constructed.length).toBeGreaterThanOrEqual(5);
 
-        const optOut = source.match(/\[([^\]]+)\]\.forEach\(\(m\) => \{ m\.fog = false; \}\)/);
+        // `\s*` before `.forEach`: wrapping the chain for max-len is formatting, not a missing list
+        // (the forest lever's test documents the same rule).
+        const optOut = source.match(/\[([^\]]+)\]\s*\.forEach\(\(m\) => \{ m\.fog = false; \}\)/);
         expect(optOut, 'the fog opt-out forEach must exist').toBeTruthy();
-        const listed = optOut[1].split(',').map((name) => name.trim());
+        const listed = optOut[1].split(',').map((name) => name.trim()).filter(Boolean);
         expect([...listed].sort()).toEqual([...constructed].sort());
     });
 });
