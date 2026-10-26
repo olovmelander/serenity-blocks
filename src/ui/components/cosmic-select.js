@@ -205,7 +205,10 @@ export function enhanceSelect(select, { label = null } = {}) {
         if (select.disabled) return;
         const { key } = event;
         if (!state.open) {
-            if (key === 'Enter' || key === ' ' || key === 'ArrowDown' || key === 'ArrowUp') {
+            // Enter, Space or Alt+Down open it. Plain arrows walk on through the menu
+            // (keyboard-menu-navigation.js), as the D-pad does, instead of opening every
+            // list on the way down a form.
+            if (key === 'Enter' || key === ' ' || (event.altKey && (key === 'ArrowDown' || key === 'ArrowUp'))) {
                 event.preventDefault();
                 open();
             }
@@ -340,10 +343,13 @@ export function enhanceSegmented(select, { label = null } = {}) {
         renderChecked();
     };
 
+    // The segments sit in a row: left and right choose, up and down walk on through the
+    // menu (they used to change the value, so walking a form changed Players 2 to 3).
+    group.setAttribute('aria-orientation', 'horizontal');
     group.addEventListener('keydown', (event) => {
-        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
         event.preventDefault();
-        const dir = (event.key === 'ArrowRight' || event.key === 'ArrowDown') ? 1 : -1;
+        const dir = event.key === 'ArrowRight' ? 1 : -1;
         const current = segments.findIndex((seg) => seg.dataset.value === select.value);
         const next = (current + dir + segments.length) % segments.length;
         commit(segments[next].dataset.value);

@@ -307,12 +307,24 @@ export class LobbyBrowser {
         if (signature === this.lastLobbyRenderSignature) return;
         this.lastLobbyRenderSignature = signature;
 
+        // The list is rebuilt: a row's button that had focus (keyboard or pad) gets it back,
+        // or the list's first control, instead of focus dropping to the page.
+        const active = typeof document !== 'undefined' ? document.activeElement : null;
+        const focused = active && listEl.contains(active)
+            ? { id: active.dataset?.lobbyId, watch: active.classList?.contains('btn-watch') }
+            : null;
+
         if (this.lobbies.length === 0) {
             listEl.innerHTML = this.emptyStateHtml();
-            return;
+        } else {
+            listEl.innerHTML = this.lobbies.map((lobby) => this.lobbyRowHtml(lobby)).join('');
         }
-
-        listEl.innerHTML = this.lobbies.map((lobby) => this.lobbyRowHtml(lobby)).join('');
+        if (focused) {
+            const rows = Array.from(listEl.querySelectorAll('button:not([disabled])'));
+            const again = rows.find((button) => button.dataset.lobbyId === focused.id
+                && button.classList.contains('btn-watch') === focused.watch);
+            (again || rows[0] || this.container.querySelector('#refresh-lobbies-btn'))?.focus({ preventScroll: true });
+        }
     }
 
     lobbyRowHtml(lobby) {

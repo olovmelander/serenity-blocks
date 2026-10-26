@@ -24,7 +24,6 @@ import {
     atan,
     clamp,
     dot,
-    exp,
     float,
     floor,
     fract,
@@ -33,7 +32,6 @@ import {
     min,
     mix,
     mod,
-    pow,
     select,
     smoothstep,
     sqrt,
@@ -152,6 +150,12 @@ const PALETTES = Object.freeze({
         [0.1, 0.1, 0.105], [0.02, 0.02, 0.024]],
     glow: [[0.1, 0.9, 1.0], [1.0, 0.1, 0.62], [1.0, 0.72, 0.1], [0.2, 1.0, 0.35], [1.0, 0.12, 0.08],
         [0.55, 0.2, 1.0], [0.7, 0.85, 1.0]],
+    // Pauldrons, mechanical arms, goggle rims: steel, gunmetal, brass, gold, copper, black chrome.
+    metal: [[0.72, 0.74, 0.78], [0.3, 0.32, 0.36], [0.82, 0.58, 0.24], [0.95, 0.74, 0.3], [0.78, 0.4, 0.26],
+        [0.16, 0.16, 0.18]],
+    // Boots, belts, straps, bags: dark leather, black leather, oxblood, olive canvas, tan.
+    gear: [[0.07, 0.04, 0.022], [0.016, 0.015, 0.016], [0.12, 0.025, 0.02], [0.06, 0.06, 0.03],
+        [0.2, 0.11, 0.05]],
 });
 
 /**
@@ -190,6 +194,9 @@ function buildTable() {
 
 export const PEOPLE_TABLE = buildTable();
 export const WALK_B = clipIndex('walkB');
+export const STAND_A = clipIndex('standA');
+export const STAND_B = clipIndex('standB');
+export const WORK_STEP = clipIndex('workStep');
 
 /** The table as a uniform array for one material: `row(i)` reads row i (a float or int node). */
 export function createPeopleTable() {
@@ -216,7 +223,8 @@ export function personLook(table, h3, isStaff) {
         hair: colour('hair', fract(h3.y.mul(5.71).add(h3.z.mul(0.3)))),
         top: select(isStaff, staffTop, colour('top', fract(h3.z.mul(3.37).add(h3.x.mul(0.61))))),
         bottom: colour('bottom', fract(h3.x.mul(2.91).add(h3.z.mul(1.7)))),
-        gear: mix(vec3(0.014, 0.014, 0.016), vec3(0.05, 0.045, 0.04), fract(h3.y.mul(9.1))),
+        gear: colour('gear', fract(h3.y.mul(9.1).add(h3.z.mul(0.2)))),
+        metal: colour('metal', fract(h3.x.mul(4.37).add(h3.y.mul(0.9)))),
         glow: colour('glow', fract(h3.z.mul(11.3).add(h3.y.mul(0.4)))),
     };
 }
@@ -258,10 +266,13 @@ export function readPerson(sheets, cells, cu, cv, foot) {
     const sum = left.r.add(left.g).add(left.b).add(bottom)
         .add(right.r)
         .add(right.g);
+    // Shade: 0 on the ink lines, 0.55 + 0.45 * occlusion elsewhere (the bake's `ink`).
+    const shade = s.a.sub(0.5).mul(2.0);
     return {
         cov: s.b,
         n: vec3(nxy, nz),
-        ao: s.a.sub(0.5).mul(2.0),
+        ink: smoothstep(0.42, 0.18, shade),
+        ao: clamp(shade.sub(0.55).div(0.45), 0.0, 1.0),
         skin: left.r,
         hair: left.g,
         top: left.b,
@@ -273,38 +284,45 @@ export function readPerson(sheets, cells, cu, cv, foot) {
 }
 
 /**
- * Light a person read by `readPerson`. `n` is the normal in the room's frame (x along the wall,
- * y up, z into the room), `view` the direction the camera looks at them along (room frame).
- * `light`: L the room's light, accent the shop's colour (lighting a person from behind), street the
- * neon outside the glass, glowLevel how bright the glowing trims burn.
+ * Light a person read by `readPerson`, cel-shaded as a comic inks and flats a character. `n` is the
+ * normal in the room's frame (x along the wall, y up, z into the room), `view` the direction the
+ * camera looks at them along (room frame). `light`: L the room's light, accent the shop's colour
+ * (lighting a person from behind), street the neon outside the glass, glowLevel how bright the
+ * glowing trims burn.
+ *
+ * Two flat tones a surface: lit by the lamps overhead and in front, or in a cool shadow (also
+ * where the bake's occlusion says a crease is closed); a hard rim where a surface turns to the
+ * back wall; a small highlight on hair and skin; metal posterised into a dark, a mid and a bright
+ * band of the room mirrored in it; glow flat; the ink over everything.
  */
 export function shadePerson(r, n, view, look, light) {
     const {
         L, accent, street, glowLevel,
     } = light;
-    // The lamps hang overhead along the room; the back wall glows behind; the street spills in.
-    const top = clamp(dot(n, vec3(0.0000, 0.9578, -0.2873)).mul(0.6).add(0.4), 0.0, 1.0);
-    const back = clamp(dot(n, vec3(0.0000, 0.2425, 0.9701)), 0.0, 1.0);
-    const front = clamp(dot(n, vec3(0.0000, 0.0995, -0.9950)), 0.0, 1.0);
-    const ao = r.ao.mul(0.7).add(0.3);
-    const lit = L.mul(top.mul(0.62).add(0.12)).mul(ao)
-        .add(L.mul(back.mul(back)).mul(0.55))
-        .add(street.mul(front).mul(0.18).mul(ao));
-    // Skin takes a little of the light through it (a warm wrap); cloth takes it as it falls.
-    const skinLit = lit.add(L.mul(vec3(0.16, 0.06, 0.03)).mul(top));
+    const key = dot(n, vec3(0.0, 0.7894, -0.6139));
+    const lit = smoothstep(0.06, 0.14, key).mul(smoothstep(0.28, 0.42, r.ao)).toVar();
+    const rim = smoothstep(0.4, 0.5, dot(n, vec3(0.0, 0.2425, 0.9701)));
+    const lightTone = L.mul(0.9).add(street.mul(0.1));
+    const shadowTone = L.mul(vec3(0.21, 0.24, 0.34)).add(street.mul(0.08));
+    const tone = mix(shadowTone, lightTone, lit);
     const albedo = look.top.mul(r.top).add(look.bottom.mul(r.bottom)).add(look.hair.mul(r.hair))
-        .add(look.gear.mul(r.gear));
-    let col = albedo.mul(lit).add(look.skin.mul(r.skin).mul(skinLit));
-    // Chrome: the room mirrored, the lamps a bright band above, the street at the horizon.
+        .add(look.gear.mul(r.gear))
+        .add(look.skin.mul(r.skin));
+    let col = albedo.mul(tone);
+    // A highlight band on hair (and a little on skin) where the lamps catch it.
+    const half = smoothstep(0.9, 0.93, dot(n, vec3(0.0, 0.5547, -0.8321))).mul(lit);
+    col = col.add(L.mul(half).mul(r.hair.mul(0.3).add(r.skin.mul(0.1))));
+    // The back wall's light round the edges turned away from us.
+    col = col.add(L.mul(0.35).add(accent.mul(0.5)).mul(rim).mul(float(1.0).sub(r.glow)));
+    // Metal: the room mirrored in three bands, in the person's own metal.
     const refl = view.sub(n.mul(dot(view, n).mul(2.0)));
-    const fres = pow(float(1.0).sub(clamp(dot(view.negate(), n), 0.0, 1.0)), 3.0).mul(0.6).add(0.4);
-    const env = mix(L.mul(0.08), L.mul(1.6), smoothstep(0.1, 0.7, refl.y))
-        .add(accent.mul(exp(abs(refl.y).mul(-9.0))).mul(0.9))
-        .add(street.mul(smoothstep(0.2, -0.6, refl.z)).mul(0.4));
-    col = col.add(env.mul(vec3(0.78, 0.8, 0.84)).mul(fres).mul(r.chrome));
-    // Glow: light of its own, a little of it falling back on the surface round it.
+    const band = select(refl.y.lessThan(-0.15), float(0.12), select(refl.y.lessThan(0.45), float(0.5), float(1.5)));
+    const metal = look.metal.mul(L.mul(band).add(street.mul(0.15))).add(accent.mul(rim).mul(0.6));
+    col = col.add(metal.mul(r.chrome));
+    // Glow: light of its own.
     col = col.add(look.glow.mul(r.glow).mul(glowLevel));
-    return col;
+    // The ink: near black, a breath of the room's light in it.
+    return mix(col, L.mul(0.012).add(0.003), r.ink.mul(float(1.0).sub(r.glow)));
 }
 
 // ── Timing and placement ─────────────────────────────────────────────────────────────────────
@@ -334,44 +352,39 @@ export function clipCells(clipA, clipB, phase, angle) {
 }
 
 /**
- * A walker crossing the room and back: walks to one end, turns on the spot toward the street,
- * walks back. Returns x (metres from the room's left), facing (radians, 0 = the street, +pi/2 =
- * walking toward +x) and the clip phase (by distance walked, so the feet stay planted).
+ * A walker crossing the room and back: sets off, walks, slows to a stop at the end, stands there
+ * for `rest` seconds turning to face the street and on round, and walks back. Returns x (metres
+ * from the room's left), facing (radians, 0 = the street, +pi/2 = walking toward +x), the clip
+ * phase while walking (by distance walked from the leg's start, so the feet stay planted) and
+ * whether they are walking.
  */
-export function walkerPath(time, roomW, seed, metres, speed) {
+export function walkerPath(time, roomW, seed, metres, speed, rest) {
     const x0 = float(0.45);
-    const len = max(roomW.sub(0.9), 0.6);
-    const leg = len.div(speed);
-    const turnT = float(0.9);
-    // Steps taken on the spot while turning, so a whole loop is a whole number of strides.
-    const loopLen = len.mul(2.0).add(speed.mul(turnT));
-    const strides = max(floor(loopLen.div(metres).add(0.5)), 1.0);
-    const turnDist = strides.mul(metres).sub(len.mul(2.0)).mul(0.5);
-    const period = leg.add(turnT).mul(2.0);
-    const tau = mod(time.add(seed.mul(97.0)), period);
-    const s1 = leg;
-    const s2 = leg.add(turnT);
-    const s3 = leg.mul(2.0).add(turnT);
-    const inA = step(tau, s1);
-    const inTurn1 = step(s1, tau).mul(step(tau, s2));
-    const inB = step(s2, tau).mul(step(tau, s3));
-    const inTurn2 = step(s3, tau);
-    const uT1 = clamp(tau.sub(s1).div(turnT), 0.0, 1.0);
-    const uT2 = clamp(tau.sub(s3).div(turnT), 0.0, 1.0);
-    const x = x0.add(speed.mul(tau).mul(inA))
-        .add(len.mul(inTurn1))
-        .add(len.sub(speed.mul(tau.sub(s2))).mul(inB));
-    const ease = (u) => u.mul(u).mul(float(3.0).sub(u.mul(2.0)));
-    const half = Math.PI / 2;
-    const facing = float(half).mul(inA)
-        .add(float(half).sub(ease(uT1).mul(Math.PI)).mul(inTurn1))
-        .add(float(-half).mul(inB))
-        .add(float(-half).add(ease(uT2).mul(Math.PI)).mul(inTurn2));
-    const walked = speed.mul(tau).mul(inA)
-        .add(len.add(turnDist.mul(uT1)).mul(inTurn1))
-        .add(len.add(turnDist).add(speed.mul(tau.sub(s2))).mul(inB))
-        .add(len.mul(2.0).add(turnDist).add(turnDist.mul(uT2)).mul(inTurn2));
-    return { x, facing, phase: walked.div(metres) };
+    const len = max(roomW.sub(0.9), 0.6).toVar();
+    const ease = float(0.55);
+    const leg = len.div(speed).add(ease).toVar();
+    const half = leg.add(rest).toVar();
+    const tau = mod(time.add(seed.mul(97.0)), half.mul(2.0));
+    const back = step(half, tau).toVar();
+    const t = tau.sub(back.mul(half)).toVar();
+    const walking = step(t, leg);
+    const tl = min(t, leg);
+    const tr = leg.sub(tl);
+    // Speeding up over `ease` seconds, slowing down over the last `ease`.
+    const dStart = speed.mul(tl).mul(tl).div(ease.mul(2.0));
+    const dEnd = len.sub(speed.mul(tr).mul(tr).div(ease.mul(2.0)));
+    const dCruise = speed.mul(ease).mul(0.5).add(speed.mul(tl.sub(ease)));
+    const d = select(tl.lessThan(ease), dStart, select(tr.lessThan(ease), dEnd, dCruise)).toVar();
+    const dir = float(1.0).sub(back.mul(2.0));
+    const x = select(back.greaterThan(0.5), x0.add(len).sub(d), x0.add(d));
+    const into = max(t.sub(leg), 0.0);
+    const turnIn = smoothstep(0.0, 0.6, into);
+    const turnOut = smoothstep(rest.sub(0.6), rest, into);
+    const side = dir.mul(Math.PI / 2);
+    const facing = select(walking.greaterThan(0.5), side, side.mul(float(1.0).sub(turnIn)).sub(side.mul(turnOut)));
+    return {
+        x, facing, phase: d.div(metres), walking,
+    };
 }
 
 /** The bearing (radians) of the camera seen from a person, 0 = straight out of the window. */

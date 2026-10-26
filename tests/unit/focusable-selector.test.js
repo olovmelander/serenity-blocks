@@ -15,6 +15,15 @@ describe('focusable selector', () => {
         expect(parts).not.toContain('[href]');
     });
 
+    it('reaches a <details> toggle but not the controls its closed body hides', () => {
+        expect(FOCUSABLE_SELECTOR.split(',').map((part) => part.trim())).toContain('summary');
+        vi.stubGlobal('window', { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) });
+        const open = { offsetParent: {}, classList: { contains: () => false }, checkVisibility: () => true };
+        const hidden = { offsetParent: {}, classList: { contains: () => false }, checkVisibility: () => false };
+        const container = { querySelectorAll: () => [open, hidden] };
+        expect(SpatialNavigation.getFocusableElements(container)).toEqual([open]);
+    });
+
     it('is the one list the D-pad and the sheets\' Tab trap search', () => {
         vi.stubGlobal('window', { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) });
         const seen = [];
