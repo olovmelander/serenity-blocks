@@ -44,12 +44,14 @@ export function create({
     let pendingSeek = null;
     let sought = null;
     let randomState = 1;
-    // ?level=<n> stands the day above <n - 1> hours on from the clock's (every level is an hour on);
-    // ?event=level steps it one more, eased, as a level-up in play does.
+    // ?level=<n> stands the day above <n - 1> hours on from the clock's and the stones <n - 1>
+    // veins on (every level is an hour and a vein on); ?event=level steps both one more, eased,
+    // as a level-up in play does.
     const startLevel = Math.max(1, Math.round(Number(params.get('level')) || 1));
     const standLevel = () => {
         if (!world) return;
         world.hourStep = 0;
+        world.veinStep = 0;
         world.setLevel(startLevel, { silent: true });
     };
     const reactions = new CrystalCaveReactions({

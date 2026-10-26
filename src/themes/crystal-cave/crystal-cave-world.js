@@ -34,6 +34,9 @@ import { flashScale } from '../../utils/photosensitivity.js';
 import {
     CRYSTAL_CAVE_HOURS, CRYSTAL_CAVE_HOUR_FOLLOW, crystalCaveHourAt, crystalCaveHourDrift, crystalCaveHourName,
 } from './crystal-cave-hours.js';
+import {
+    CRYSTAL_CAVE_VEINS, crystalCaveVeinAt, crystalCaveVeinDrift, crystalCaveVeinName,
+} from './crystal-cave-veins.js';
 
 const FAMILIES = 5;
 const GROW_SECONDS = 1.15;
@@ -83,10 +86,13 @@ export class CrystalCaveWorld {
         this.disposed = false;
         // The hour above the cave (crystal-cave-hours.js): the clock turns it, and every level is
         // one hour on. `hourStep` is the levels' share, eased toward `level - 1` the short way
-        // round. A reset (a new session, a seek) keeps them: the run's level is the theme's.
+        // round. A reset (a new session, a seek) keeps them: the run's level is the theme's. The
+        // stones' vein (crystal-cave-veins.js) turns on its own clock the same way.
         this.level = 1;
         this.hourStep = 0;
         this.hour = crystalCaveHourAt(0);
+        this.veinStep = 0;
+        this.vein = crystalCaveVeinAt(0);
         this.group = new THREE.Group();
         this.group.name = 'Crystal Cave';
         scene.add(this.group);
@@ -305,20 +311,45 @@ export class CrystalCaveWorld {
     }
 
     /**
-     * A new level: the day above turns one hour on from wherever the clock has brought it. It
-     * eases there in update(); `silent` (a rebuilt world, a capture) is there at once. A new run
-     * goes back to the first level's hour the short way round.
+     * A new level: the day above turns one hour on and the stones one vein on, from wherever the
+     * clocks have brought them. They ease there in update(); `silent` (a rebuilt world, a capture)
+     * is there at once. A new run goes back to the first level's the short way round.
      */
     setLevel(level, { silent = false } = {}) {
         const wanted = Number(level);
         this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
-        if (silent) this.hourStep = nearestStep(this.hourStep, this.level - 1, CRYSTAL_CAVE_HOURS.length);
+        if (silent) {
+            this.hourStep = nearestStep(this.hourStep, this.level - 1, CRYSTAL_CAVE_HOURS.length);
+            this.veinStep = nearestStep(this.veinStep, this.level - 1, CRYSTAL_CAVE_VEINS.length);
+        }
         return this.level;
     }
 
     /** How many hours into the day it is at `time`: the level's step and the clock's turn. */
     hourPhase(time = this.time) {
         return this.hourStep + crystalCaveHourDrift(time);
+    }
+
+    /** How many veins round the stones are at `time`: the level's step and the veins' own clock. */
+    veinPhase(time = this.time) {
+        return this.veinStep + crystalCaveVeinDrift(time);
+    }
+
+    /**
+     * The vein the stones show at `time`, written into the families' colours: every crystal, the
+     * light it throws on the rock and in the air, and every spark and beam read them. Like the
+     * hour, a slow change of colour that neither reduced motion nor the effects setting holds.
+     */
+    applyVein(time, dt) {
+        const follow = 1 - Math.exp(-Math.max(0, dt) * CRYSTAL_CAVE_HOUR_FOLLOW);
+        this.veinStep = easeStep(this.veinStep, this.level - 1, follow, CRYSTAL_CAVE_VEINS.length);
+        this.veinPhaseNow = this.veinPhase(time);
+        const gems = crystalCaveVeinAt(this.veinPhaseNow, this.vein);
+        const colours = this.light.familyColors;
+        for (let family = 0; family < colours.length; family++) {
+            colours[family].setRGB(gems[family][0], gems[family][1], gems[family][2]);
+        }
+        return gems;
     }
 
     /**
@@ -754,6 +785,7 @@ export class CrystalCaveWorld {
         const u = this.light.uniforms;
         u.time.value = time;
         const hour = this.applyHour(time, dt);
+        this.applyVein(time, dt);
         const frame = director?.getFrame?.() ?? null;
         const { heat } = this;
         if (!frame) {
@@ -947,6 +979,9 @@ export class CrystalCaveWorld {
             // The hour above the cave the light is nearest, and how far round the day it is.
             hour: crystalCaveHourName(this.hourPhaseNow ?? 0),
             hourPhase: this.hourPhaseNow ?? 0,
+            // The vein the stones are nearest, and how far round the veins they are.
+            vein: crystalCaveVeinName(this.veinPhaseNow ?? 0),
+            veinPhase: this.veinPhaseNow ?? 0,
         };
     }
 
