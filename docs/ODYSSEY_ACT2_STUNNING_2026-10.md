@@ -716,3 +716,55 @@ should count for more than the extra fill.
 buffer six vertices each, a shared centre, a unit normal and a positive size; the atlas test pins a
 solid body, a broken fringe and nothing past the rim; the winding test checks open bark by its
 normals.
+
+## §13. The conifers, leafy too (2026-10-26)
+
+Olov: "give the pines the same leafy treatment".
+
+**Needle sprays.** The leaf atlas gains a second row (`world/odyssey-forest-leaf-atlas.js`): four
+needle sprays, each a branch arched across the tile with its ends drooping, hung with ~250 needles
+(a quarter standing up off it). Its inner-shade channel is the spray's hanging underside. Needle
+cards are never spun, only tilted a little and mirrored, so every spray hangs down.
+
+**The pine and the fir** (`buildConiferNeedles` in `world/odyssey-forest-geometry.js`): the
+lathe's cone (same heights, radii and droop), built from rings of needle cards on thinner tiers
+than the lathe's (1.45x as many at hero, 1.25x at mid), so the spacing shrinks with the tree and the
+top tapers to a point. A spray is never wider than its tier, and never so small that the tiers come
+apart. At hero a second ring sits higher up each skirt, a tuft crowns the tip, the trunk runs up to
+it and a branch reaches out to every other tier's sprays. The far tier keeps the lathe cone (a dark
+spike at 520 u and beyond).
+
+**The cypress** is too narrow for sprays (0.34 wide, 5.5 tall): a column of 22 levels of leaf
+clumps (14 at mid) in a flame's profile, widest a third of the way up (`cardStyle: 'column'`).
+
+**Mip thinning,** found on the mid firs: minified, a needle's distance averages with the sky around
+it and drops under the 0.5 cut, so the distant sprays went to wisps on bare poles. The coverage cut
+now drops 0.07 a mip level (from the card's own screen derivatives), so foliage keeps its mass at
+range. It applies to the leaf clumps too (they fill out a little at distance). No measurable cost.
+
+![The audition board: a hero pine, the cypress, and the roster at hero and mid](images/odyssey-act2-2026-10-25/needles-board.jpg)
+
+![The conifer slope at p 0.33: the lathe cones and the needle conifers](images/odyssey-act2-2026-10-25/needles-slope.jpg)
+
+**Tried and changed on the way:**
+
+- **One ring of sprays on the lathe's own tiers** read as a pagoda: stacked flat discs with
+  daylight between them. Three rings per tier still did; thinner, more numerous tiers fixed it.
+- **The cypress as sprays** was a bare pole with tufts.
+- **Mid conifers with three sprays a ring and the trunk up to the tip** looked skeletal (and the
+  thinning made it worse). Four a ring, no upper trunk at mid.
+- **Hero conifers at seven-plus-three a tier and 1.7x the tiers** (100-odd cards) cost ~0.1 ms more
+  at p 0.33 than five-plus-two at 1.45x, with no visible gain.
+
+**Triangles:** a hero pine or fir is ~300-315 (the lathe: ~160), a mid one 74-82 (~35), a hero
+cypress 110 (148). About 26k more than the lathe over the forest, against the 240k the leafy
+broadleaves saved.
+
+**Cost.** World playground at 1080p, leafy and solid crowns alternating on the same server, best
+of three: +0.17 ms at p 0.27 and +0.13 ms at p 0.33 (the conifer slopes), on a busy machine. With
+§12, the whole leafy forest is +0.2-0.4 ms at the forest station on this GPU. Not measured on the
+integrated GPU.
+
+**Tests.** The conifer card test pins the layout (needle cards at hero and mid, first in the
+buffer, of the needle kind; the cypress's clump column; no cards at far); the atlas test now
+checks both rows (a spray's middle band full, the sky above it open, nothing past the rim).
