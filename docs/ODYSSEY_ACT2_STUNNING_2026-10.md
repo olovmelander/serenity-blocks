@@ -625,3 +625,94 @@ triangles should count for more.
 winding and the flag; a pack test pins the scale and visibility round trip. The solid-puff test
 builds the mid tier with the cards off. The sanity tests (unit normals, the crown flag, the signed
 volume) skip card vertices, which have their own contract.
+
+## §12. The trees from scratch: leafy crowns (2026-10-26)
+
+Olov asked how I would build the trees from scratch, without leaning on the earlier references and
+notes, and then to "audit, and improve the trees in this way".
+
+**The audit.** Measured against what makes painted and real trees read as alive:
+
+- **Outline:** every crown was closed (solid puffs near, scalloped discs beyond): no gaps, no sky
+  through the leaves.
+- **Light:** each puff was lit as its own ball; nothing darkened the far side of the whole crown.
+- **Against the light:** only a faint rim term.
+- **Shade colour:** by an earlier rule, never cooler than the lit colour.
+- **Branches:** limbs existed only to carry the puffs, and the puffs hid them.
+- **Motion:** the whole tree swayed; no leaf ever moved.
+- **Cost:** a hero tree was 552 triangles, and the forest is vertex-bound.
+
+**The rebuild: every broadleaf crown is leaf cards** (`FOREST_LEAF_CARD` in
+`world/odyssey-forest-geometry.js`, the shader half in `world/odyssey-forest-cards.js`):
+
+- **A leaf atlas** (`world/odyssey-forest-leaf-atlas.js`), generated at load: four clumps of ~75
+  pointed leaves, scattered over a disc with a solid body and a broken fringe. Its coverage is a
+  distance, so the leaves' edge holds through every mip; each leaf has its own tone.
+- **Cards at every tier,** seated on the puff layout so the crown keeps its masses: a hero crown is
+  30 cards (five round each big puff's outer side, one a floret), a mid crown 10, a far crown 5:
+  the same clumps, fewer and larger with distance, so the tiers agree.
+- **One normal for the whole crown:** a card's normal comes from the crown's centre (its ellipsoid),
+  with each clump's own dome on top, so the crown lights as one soft volume.
+- **Twigs** (hero): from each limb's end to the cards of its puff, and a leader up the middle, so
+  a branch shows through every gap.
+
+A card's six vertices sit at its centre; the shader takes its corner from the vertex index (cards
+first in the buffer), its size from its crown flag and the tree's scale from `aTrunk.w`, so no
+vertex buffer is added.
+
+**The light** (`LEAF_LOOK` in `world/odyssey-world-renderer.js`):
+
+- **The sun's path through the crown:** from where a card sits, how much crown lies between it and
+  the sun. A long path closes the card down to `openFloor`, a band-threshold shift of up to 0.45,
+  so the crown has a real shadow side and a dark underside.
+- **Each leaf's tone** moves the threshold a little, so neighbouring leaves separate by value.
+- **Shade leans to the sky** (0.72, the solid forest's 0.55): a shadow lit by the sky is cool.
+- **Against the light**, leaves with little crown between them and the sun glow through their own
+  colour.
+- **The leaves shake** a little on their own phase (5% of a card), fading out by 320 u.
+
+![On the rail at p 0.21: the puff crowns of §10-§11 and the leafy crowns](images/odyssey-act2-2026-10-25/leafy-close.jpg)
+
+![p 0.255, before and after](images/odyssey-act2-2026-10-25/leafy-wide.jpg)
+
+![The audition board: one hero S1, and the roster at hero, mid and far](images/odyssey-act2-2026-10-25/leafy-board.jpg)
+
+**Two bugs found on the way:**
+
+- **Black bark.** The card material's bark drew black. Three's `normalWorld` is a shared variable
+  whose assignment TSL writes where it is first built, and it was first read inside the leaf branch
+  of a `select`, which TSL writes as an if/else. Bark read the zeroed variable, normalised it to
+  NaN, and the rim and wrap terms went NaN. The crown's direction now rides its own varying. The
+  §11 mid tier's bark had the same fault. Recorded in the TSL skill's gotcha table.
+- **Limbs wound inside out**, since the puff builder (and the traced one it copied): the cull ate
+  their outer faces and the inner ones drew. The old winding test measured a signed volume, which
+  the closed puffs dominated; leafy bark is open tubes, so the test now checks that each bark
+  triangle faces the way its normals do (100% for every style and species).
+
+**Tried and left out:**
+
+- **A rosette atlas** (leaves radiating from a hole in the middle): it read as flowers. The leaves
+  are now scattered, the inner ones at any angle.
+- **Three's own alpha test** for the coverage: it smooths with `smoothstep(0.5, 0.5 + fwidth(a),
+  a)`, whose edges meet wherever the alpha is flat. The cards compute their own one-pixel edge and
+  drop empty fragments through `maskNode`.
+- **Three large core cards** in each hero crown, to darken its middle: they hid the branches the
+  gaps should show, and cost 0.07 ms at the forest station.
+
+**Triangles:** a hero broadleaf is 270 (was 552), a mid one 52 (was 80), a far one 10 (was 20).
+Over the culled forest (~550 hero, ~2,400 mid and ~1,700 far broadleaves) that is about 240k fewer
+triangles than the solid puffs, 155k of them on the hero tier.
+
+**Cost.** The world playground at 1080p, leafy and solid crowns alternating on the same server,
+best of four rounds, measured twice (the second on a busier machine): +0.22-0.24 ms at p 0.21
+(the forest station, where the hero crowns fill the lower frame) and +0.02-0.03 ms at p 0.27 and
+0.30. On this GPU that is overdraw: a leafy crown is a few cards deep, and cut-out cards lose most
+of the early depth rejection. Two cuts are already in: the cards read the cloud shadow once a
+vertex instead of twice a fragment, and skip the detail-texture dapple (the atlas is their clump).
+Not measured on the integrated GPU, where the forest is vertex-bound and the 240k triangles saved
+should count for more than the extra fill.
+
+**Tests.** The card test pins the layout (30 hero cards, 10 mid, 5 far), the cards first in the
+buffer six vertices each, a shared centre, a unit normal and a positive size; the atlas test pins a
+solid body, a broken fringe and nothing past the rim; the winding test checks open bark by its
+normals.
