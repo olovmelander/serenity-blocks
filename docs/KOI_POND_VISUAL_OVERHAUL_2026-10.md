@@ -125,6 +125,48 @@ In the playground `&level=<n>` rests on a level's night, and the clock turns the
 The six palettes and the pace (90 s a night, three seconds for a level's step) are the
 author's choices; the project owner has not reviewed them.
 
+## What floats answers the pond (added 2026-10-26)
+
+The project owner asked for the lily pads ("flytblad"), the lilies and the leaves on the water
+to react better to what happens and to the fish. Until then they only tilted with the water's
+slope: every pad and lily stood where it was planted, and every fallen leaf traced a fixed
+loop on the clock, whatever the game or the koi did. Now they are bodies on the water
+(`koi-pond-drift.js`, CPU only, fixed steps on its own clock like the school):
+
+| What happens | What floats does |
+| --- | --- |
+| Any plunge (a lock, a pebble, a koi's breach and splash, a clear, a quad's walls of water) | Its front crosses the pond at the waves' own speed and shoves what it passes outward, setting leaves turning; nothing moves before the front reaches it. What lies where it struck is pushed under for a moment, rocked and left wet (darker, with a film of water that holds the moon). |
+| A koi near the surface | Parts what floats over its back and carries it a little way along; brushed off-centre, a leaf turns. One passing just under a pad lifts it, the side over its back highest. |
+| A koi coming up to kiss the surface | Goes for a leaf or a pad near it (the school steers toward it and slows as it comes) and mouths it when its mouth gets there: a leaf is tugged under and spun and bobs up again; a pad's rim dips and the pad is yanked toward the mouth, twisting on its stalk; a few beads fly. One that has not got there by the time it turns down kisses the water where it is. |
+| A chain, a fever | The koi circling the board draw the water round with them: leaves near the ring are carried round it the way the koi swim, pads lean into it on their stalks. When it stops, each leaf creeps back toward where it fell over about forty seconds. |
+| A gust (a level, a hard drop, a clear), warm play | The breeze, which wanders slowly round the pond, blows the leaves downwind and spins them faster; the pads barely move. The hush before a four-line clear stills it. |
+
+A pad is held by its stalk: it swings at most its stalk's reach (12 cm plus 60 % of its radius)
+and comes back over a few seconds. A leaf drifts free, but its resting place wanders the same
+slow loop as before and creeps back to where it fell, so a long game keeps the picture's shape.
+A lily rides its pad (moved and turned with it, nodding with its rock), and its pool of light
+goes with it. Nothing is ever carried out of the water: a step into the shallows slides along
+the bank, and a seek settles any leaf whose loop starts it under a pad before the first frame.
+Reduced motion halves the jolts.
+
+![what floats](koi-pond-overhaul/floating.jpg)
+
+The GPU side: each part's per-instance numbers are split into a static buffer and one
+`DynamicDrawUsage` interleaved buffer the drift writes each frame (x, z, turn, dip, rock x, rock
+z, wetness), so each pipeline binds five vertex buffers; the lilies take theirs as two `vec4`
+rows a flower in one uniform array. A fallen leaf now turns about its middle, not its stem.
+
+Cost on this machine (Node, the whole drift step): 0.07 ms a frame at Minimal, about 0.2 ms at
+High and 0.3 ms at Extreme in hot play (a chain, a quad and a hard drop at once). The depth of
+the water under a thing is only asked again once it may have run short (the bed's steepest
+slope bounds how fast it can).
+
+Checked in the playground at High (native WebGPU, RTX 5080), the WebGL2 backend and Minimal,
+with no console errors: a koi mouthing a leaf and one mouthing a pad, a hard drop beside the
+left raft, a 9-chain and a four-line clear at Extreme. `&from=<s>` (new) replays every frame
+from one moment, so a run of `&t=` frames is one take: `?effect=koi-pond&icon=1&iconX=-3.2&from=28&t=41.9`
+is the moment the leaf above goes under. Tests: `tests/unit/koi-pond-drift.test.js`.
+
 ## How it is built
 
 Nothing is loaded. The pond, the garden and the fish are generated in code when the theme
@@ -150,8 +192,9 @@ simulation. The live Blender session on this machine was not touched.
 | `koi-pond-water.js` | The water: refraction through the simulated surface, absorption, the moon's image, glitter, foam, light left in the water. |
 | `koi-pond-bed.js` | The pebbled bed (baked on the CPU) and the mossy bank. |
 | `koi-pond-koi.js` | The fish: mesh, swimming in the vertex shader, the varieties painted in the fragment shader. |
-| `koi-pond-school.js` | How the koi behave (pure CPU): loops, steering, frights, leaps, the chain's ring. |
-| `koi-pond-flora.js` | Lily pads, water lilies, fallen leaves. |
+| `koi-pond-school.js` | How the koi behave (pure CPU): loops, steering, frights, leaps, the chain's ring, going for what floats. |
+| `koi-pond-flora.js` | Lily pads, water lilies, fallen leaves: where they lie, and how they are drawn where the drift puts them. |
+| `koi-pond-drift.js` | What floats as bodies on the water (pure CPU): the fronts of plunges, the koi, the chain's current and the breeze move them. |
 | `koi-pond-garden.js` | Stones, the lantern, the two maples, iris. |
 | `koi-pond-air.js` | Fireflies and their images, mist, pools of light on the water. |
 | `koi-pond-fx.js`, `koi-pond-dragon.js` | Spray; the dragon. |
