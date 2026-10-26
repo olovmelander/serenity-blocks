@@ -661,7 +661,7 @@ def cottage():
     with kit.joinery():
         for opening in front_openings[1:]:
             flower_box(kit, front, opening.u0 - 0.04, opening.u1 + 0.04, opening.y0 - 0.16)
-        # A midsummer wreath on the door.
+        # A summer wreath on the door.
         greenery.wreath(kit, front.point(0.0, deck + 1.22, 0.0), Z, 0.17, core=0.028, spacing=0.085,
                         leaf_size=0.085, flowers=6, back_flowers=0, flower_size=0.036, leaves=2)
     kit.weather(_weather(7101))

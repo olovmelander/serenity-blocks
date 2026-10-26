@@ -74,6 +74,8 @@ board is holding.
 | `halcyon-apex-terrain.js` | The far ranges, the islets, their trees and boulders. |
 | `halcyon-apex-atmosphere.js` | The upfall under the Halcyon, the beads a chain lifts, motes, the flock. |
 | `halcyon-apex-fx.js` | Wisps, sparks and spray, row beams, beacons. |
+| `halcyon-apex-visitor-plan.js` | Three-free: the visitors' hulls as triangle lists, their lamps, their routes, the schedule and their poses (see [Visitors](#visitors-2026-10-26)). |
+| `halcyon-apex-visitors.js` | The visitors' one hull mesh and material, and the sprite pool for their lamps and the beam. |
 | `halcyon-apex-world.js` | Owns the uniforms, the parts, the camera rig, the sun and its shadow rig, and the choreography. Shared with the playground effect, so what is iterated there ships. |
 | `halcyon-apex-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
 | `halcyon-apex-composition.js` | Three-free: reads the live card, board and HUD rects and maps board columns and rows onto the screen. |
@@ -281,6 +283,67 @@ consoles on WebGPU (High at rest and in game, the blue hour at rest and in game,
 an upright 430 × 850 frame, Minimal) and on the WebGL2 backend (Low in the blue hour). Cost: a
 back-to-back A/B against `main` at 1600 × 900, High, WebGPU (NVIDIA Blackwell), 200 frames awaited on
 the GPU queue: main 1.9–2.2 ms, this pass 1.6–2.6 ms, within the session's noise.
+
+## Visitors (2026-10-26)
+
+Asked for: "different kind of UFO spaceships flying by occasionally". Now and then something not
+of this world passes over the sanctuary, drawn by its light. One at a time, about once a minute
+(the first some fifteen seconds into a session):
+
+| Route | Hull | What it does |
+| --- | --- | --- |
+| `saucer` | chrome saucer, 15 m | Over the pyramid's shoulder, down across its face to skim the lagoon by the causeway, behind the card, up to hang over the right of the lagoon, rocking, then gone straight up in a blink. |
+| `halcyon` | chrome saucer | Comes down out of the sky to hang over the Halcyon and lays a pale beam on the diamond, then rises and zips away. |
+| `triangle` | dark delta, 36 m a side | In from the right, high over the HUD, slows to a stop, turns one notch of its three in place, lifts away up and out. White lamps at its corners, an amber one at its heart that breathes. |
+| `mothership` | slate hull, about 200 m | Crosses the whole sky slowly, high and a kilometre out, a row of lit windows on its flank, beacons blinking at nose and tail, its engine glowing in the hour's crystal colour; it slides behind the Apex's tip. |
+| `orbs` | three balls of light | Swoop down to the water in front of the causeway on a line, fall into a ring that turns, scatter three ways. |
+| `capsule` | white capsule, 13 m | Hangs humming in front of the pyramid, hops between places in a fifth of a second (turning as it hops, never facing where it goes), leaves straight up. |
+
+![The visitors, close up](halcyon-apex-overhaul/visitors-closeups.jpg)
+
+![In the game: the first scheduled saucer, then each of the others](halcyon-apex-overhaul/visitors-in-game.jpg)
+
+How it is built:
+
+- **Generated, like the rest of the sanctuary.** Blender was offered and not needed: the hulls are
+  surfaces of revolution (saucer, mothership, capsule, orbs) and a faceted plate (the triangle),
+  and at the size they fly on screen (60 to 220 px) what makes them read is their shading, their
+  lamps and how they move. They stay seeded, tested (winding, sizes) and free of binaries.
+- **One mesh for all five.** Every hull is a contiguous range of one triangle buffer; only the kind
+  that flies is drawn (`setDrawRange`), with one material that branches on what each vertex is made
+  of (chrome, paint, matte, glass, lamp, orb). Chrome mirrors the dawn along its own reflection (the
+  lagoon below the horizon), paint takes the sun and the sky's light, distance hazes it, and a
+  visitor that comes or goes out of thin air dissolves into the sky behind it. Both parts stand in
+  the lagoon's mirror.
+- **Lamps are sprites** from a pool of 16 quads fed from a uniform table each frame (a lamp never
+  shrinks under a few pixels), plus one slot that draws the beam as a strip turned to the eye. They
+  are bright enough (HDR 5 to 16) to read against the dawn sky; the saucer's rim lamps and the
+  mothership's engine take the hour's crystal colour, so they turn violet in the blue hour.
+- **Routes are keys seen from the rest camera** (bearing and height off the view, distance; or
+  metres in the camera's frame; or metres over the Halcyon), joined by a cubic with standstills,
+  so they keep to the sky round the card at any aspect. On an upright screen they close in and
+  rise into the band of sky over the card. Every route stays out of the band round the sun, where
+  the post's shafts veil anything dark, and passes in front of the masonry rather than behind it.
+- **The schedule is a function of the clock**: slots of 50 s, four in five hold a visit, every route
+  once per cycle in a shuffled order. Seek and replay agree. Under reduced motion only the slow two
+  (the triangle and the mothership) fly. `world.callVisitor(route, start)` flies one on demand.
+- **Cost.** Between visits nothing is drawn. In flight: one draw of at most 4,320 vertices and one of
+  17 sprite quads, twice with the mirror; four more pipelines, built out of sight over the first 90
+  frames so the first visitor costs no compile. Every tier has them. No GPU timings were taken
+  (the machine's GPUs were shared with other sessions); the per-pixel work is a few small objects.
+
+Verified: 23 new tests (`tests/unit/halcyon-apex-visitors.test.js`: hull winding and sizes; the
+schedule's rate, determinism and reduced motion; each route's seconds in view clear of the card and
+HUD at 16:9 and upright; smooth flight; the world's warm-up, draw range, seek and calls; both
+materials through the WGSL and GLSL node builders), the theme's 204 tests and the URL catalog.
+Playground captures with clean consoles on WebGPU at High (every route), Medium upright, Minimal,
+the blue hour, and Low on the WebGL2 backend. In the real game (Electron, single player, WebGPU,
+High): the first scheduled saucer flew on its own 14 s in with only its hull drawn, each other route
+flew when called, no console errors.
+
+Reproduce: `/playground.html?effect=halcyon-apex&t=40&board=1&visitor=<route>&visitorAge=<s>`
+(`saucer`, `halcyon`, `triangle`, `mothership`, `orbs`, `capsule`); without `t`, `visitor=` flies
+it again and again.
 
 ## Captured previews
 

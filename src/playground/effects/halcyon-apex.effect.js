@@ -18,6 +18,9 @@
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
+ *   visitor=<route>          fly a visitor (saucer, halcyon, triangle, mothership, orbs, capsule):
+ *                            with t=, show it visitorAge=<s> into its route; live, fly it again
+ *                            and again
  *   parts=sky,crystals,...   draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -32,6 +35,7 @@ import * as THREE from 'three/webgpu';
 import { HalcyonApexWorld } from '../../themes/halcyon-apex/halcyon-apex-world.js';
 import { HalcyonApexPost, POST_LOOK } from '../../themes/halcyon-apex/halcyon-apex-post.js';
 import { readLayoutRects } from '../../themes/halcyon-apex/halcyon-apex-composition.js';
+import { VISITOR_ROUTE } from '../../themes/halcyon-apex/halcyon-apex-visitor-plan.js';
 
 export const meta = {
     id: 'halcyon-apex',
@@ -201,10 +205,16 @@ export function create({
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 
+    const visitorName = params.get('visitor');
+    const visitorRoute = visitorName ? VISITOR_ROUTE[visitorName] : null;
+    const visitorAge = num(params, 'visitorAge', 4);
+    let visitorNext = 1;
+
     const seekTo = (time) => {
         const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
         world.seek(start);
+        if (visitorRoute) world.callVisitor(visitorName, time - visitorAge);
         if (level > 1) world.levelUp(level, { silent: true });
         if (holdCombo > 0) world.onCombo(holdCombo);
         frame(start, 0);
@@ -267,6 +277,10 @@ export function create({
         },
         update(time, dt) {
             if (demo) runDemo(time);
+            if (visitorRoute && time >= visitorNext) {
+                world.callVisitor(visitorName, time);
+                visitorNext = time + visitorRoute.duration + 2.5;
+            }
             frame(time, dt);
             pushPost(time);
         },

@@ -110,9 +110,13 @@ export function create({
         const { light } = world;
         if (knob('haze') !== null) light.pinned.haze = knob('haze');
         if (knob('cover') !== null) light.pinned.cover = knob('cover');
-        // ?sky=sigma,veil,shade,soft,carve tunes the cumulus (blank entries keep their values).
+        // ?sky=sigma,veil,shade,soft,carve,fine,reach,lobe tunes the cumulus (blank entries keep their
+        // values; the last five in metres, see VerdantHillsLight.cloudDensity()).
         const sky = (params.get('sky') || '').split(',');
-        const dials = [world.sky.uSigma, world.sky.uVeil, world.sky.uShade, light.uCloudSoft, light.uCloudCarve];
+        const dials = [
+            world.sky.uSigma, world.sky.uVeil, world.sky.uShade, light.uCloudSoft, light.uCloudCarve, light.uCloudFine,
+            light.uCloudReach, light.uCloudLobe,
+        ];
         dials.forEach((node, i) => {
             if (sky[i] !== undefined && sky[i] !== '' && Number.isFinite(Number(sky[i]))) node.value = Number(sky[i]);
         });

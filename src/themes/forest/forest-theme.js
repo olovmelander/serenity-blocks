@@ -19,7 +19,7 @@ import { getViewport } from '../../utils/viewport.js';
 import { applyCameraBreath, prefersReducedMotion } from '../shared/camera-breath.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { disposeForestAssets, loadForestAssets } from './forest-assets.js';
-import { readForestBoardRect } from './forest-stage.js';
+import { readForestBoardRect, readForestPanelRects } from './forest-stage.js';
 import { FOREST_TETROMINOS } from './forest-tetrominos.js';
 import { ForestWorld } from './forest-world.js';
 import { ForestReactions } from './forest-reactions.js';
@@ -585,9 +585,11 @@ export default class ForestTheme extends BaseTheme {
         const frame = this.reactions?.getFrame();
         this.boardPoll -= dt;
         if (this.boardPoll <= 0) {
-            // The board card can move (mode, resize, multiplayer); follow it cheaply.
+            // The board card can move (mode, resize, multiplayer); follow it cheaply, and the
+            // score panel beside it, which no animal is called to stand behind.
             this.boardPoll = BOARD_POLL_S;
             this.world?.setBoard?.(readForestBoardRect());
+            this.world?.setPanels?.(readForestPanelRects());
         }
         this.updateCamera(dt);
         this.world?.update(this.time, dt, frame);

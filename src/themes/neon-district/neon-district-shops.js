@@ -19,13 +19,16 @@
  *    down — corrugated, tagged, with the light leaking out under it.
  *
  * Nothing here is lit by a light: the glow map, the haze and the gameplay pulses light the
- * outside, each shop's own colour lights its inside.
+ * outside, each shop's own colour lights its inside. The people in the rooms are sprites of a cast
+ * of cyberpunk characters baked in Blender, turned to the camera and lit by the room
+ * (neon-district-people.js).
  */
 
 import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    Loop,
     abs,
     atan,
     attribute,
@@ -55,6 +58,7 @@ import {
     uv,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import {
     STREET,
@@ -74,6 +78,18 @@ import { SHOPFRONT_CELLS } from './neon-district-atlas.js';
 import { TEXT_WIDTH } from './neon-district-layout.js';
 import { ndTextDistance } from './neon-district-text.js';
 import { ndLogoFrames, ndSpellOut } from './neon-district-signs.js';
+import {
+    ROLE,
+    WALK_B,
+    cameraBearing,
+    clipCells,
+    createPeopleTable,
+    personLook,
+    readPerson,
+    shadePerson,
+    viewAngle,
+    walkerPath,
+} from './neon-district-people.js';
 
 const finish = (name, geometry, material) => {
     const mesh = new THREE.Mesh(geometry, material);
@@ -289,64 +305,13 @@ export function createPaintedShops(u, shops, atlas, fade) {
 
 // ── Generated shops ─────────────────────────────────────────────────────────────
 
-/** Signed distance to a capsule from a to b, radius r (2D). */
-const ndSdCapsule = /* @__PURE__ */ Fn(([q, a, b, r]) => {
-    const pa = q.sub(a);
-    const ba = b.sub(a);
-    const h = clamp(dot(pa, ba).div(dot(ba, ba)), 0.0, 1.0);
-    return length(pa.sub(ba.mul(h))).sub(r);
-}).setLayout({
-    name: 'nd_sdCapsule',
-    type: 'float',
-    inputs: [{ name: 'q', type: 'vec2' }, { name: 'a', type: 'vec2' }, { name: 'b', type: 'vec2' }, { name: 'r', type: 'float' }],
-});
-
-/** Signed distance to a box of half-size b with corners rounded by r (2D). */
-const ndSdRoundBox = /* @__PURE__ */ Fn(([q, b, r]) => {
-    const d = abs(q).sub(b).add(r);
-    return length(max(d, 0.0)).add(min(max(d.x, d.y), 0.0)).sub(r);
-}).setLayout({
-    name: 'nd_sdRoundBox',
-    type: 'float',
-    inputs: [{ name: 'q', type: 'vec2' }, { name: 'b', type: 'vec2' }, { name: 'r', type: 'float' }],
-});
-
-/**
- * A person's silhouette, in a frame where the person is 1.75 m tall and stands on y = 0: head,
- * body, arms and legs that swing with `swing` (−1..1), or sitting cross-legged (`seated` 1).
- */
-const ndFigure = /* @__PURE__ */ Fn(([q, swing, seated]) => {
-    const head = length(q.sub(vec2(0.0, 1.6))).sub(0.125);
-    const torso = ndSdRoundBox(q.sub(vec2(0.0, 1.17)), vec2(0.23, 0.31), 0.11);
-    const armL = ndSdCapsule(q, vec2(-0.23, 1.38), vec2(swing.mul(-0.08).sub(0.27), 0.9), 0.06);
-    const armR = ndSdCapsule(q, vec2(0.23, 1.38), vec2(swing.mul(0.08).add(0.27), 0.9), 0.06);
-    const legL = ndSdCapsule(q, vec2(-0.1, 0.9), vec2(swing.mul(0.18).sub(0.1), 0.04), 0.085);
-    const legR = ndSdCapsule(q, vec2(0.1, 0.9), vec2(swing.mul(-0.18).add(0.1), 0.04), 0.085);
-    const stand = min(min(head, torso), min(min(armL, armR), min(legL, legR)));
-    const sHead = length(q.sub(vec2(0.0, 0.98))).sub(0.115);
-    const sTorso = ndSdRoundBox(q.sub(vec2(0.0, 0.62)), vec2(0.18, 0.26), 0.09);
-    const sLegs = ndSdRoundBox(q.sub(vec2(0.0, 0.14)), vec2(0.36, 0.1), 0.09);
-    const seat = min(sHead, min(sTorso, sLegs));
-    return mix(stand, seat, seated);
-}).setLayout({
-    name: 'nd_figure',
-    type: 'float',
-    inputs: [{ name: 'q', type: 'vec2' }, { name: 'swing', type: 'float' }, { name: 'seated', type: 'float' }],
-});
-
-/** A per-archetype value (SHOP_ARCHETYPES order) as a select chain on `arch`. */
-const byArch = (arch, values) => values.slice(0, -1).reduceRight(
-    (rest, v, i) => select(arch.lessThan(i + 0.5), float(v), rest),
-    float(values[values.length - 1]),
-);
-
 /**
  * The room behind a generated shop's glass, by archetype (SHOP_ARCHETYPES order). `p` is where
  * the ray crossed the glazing (metres in the shop frame), `rd` the ray, `o0`/`o1` the opening.
  * Returns the room's colour (HDR), lit by `light` and accented by `accent`.
  */
 function shopInterior(u, {
-    p, rd, o0, o1, depth, arch, light, accent, seed, lit,
+    p, rd, o0, o1, depth, arch, light, accent, seed, lit, people, camRoom, camDist, street, foot,
 }) {
     // Everything the archetype branches read is made a variable HERE, before the If chain: a node
     // first emitted inside a branch is assigned only on that branch's path.
@@ -600,72 +565,104 @@ function shopInterior(u, {
     const fall = exp(t.mul(-0.2));
     const room = shell.mul(fall).toVar();
 
-    // ── People: staff behind the counter, customers crossing the window ──
-    // A figure stands on a plane at a fraction of the room's depth; the ray meets it there, and it
-    // hides what is behind when it is nearer than the surface the ray hit. Backlit by the room, so
-    // a dark silhouette with a rim of the room's light.
-    const crowd = step(0.3, lit);
-    const backN = byArch(arch, [1, 0, 0, 2, 0, 1, 2, 1, 1]).mul(crowd);
-    const frontN = byArch(arch, [1, 1, 2, 1, 1, 1, 0, 1, 0]).mul(crowd);
-    const backAt = byArch(arch, [0.62, 0.6, 0.6, 0.86, 0.6, 0.62, 0.44, 0.62, 0.7]);
-    const backMode = byArch(arch, [0, 0, 0, 3, 0, 0, 1, 0, 2]);
-    const person = (at, x, height, swing, bob, seated, dress) => {
-        const tp = depth.mul(at).div(rdz);
-        const px = p.x.add(rd.x.mul(tp)).sub(roomX0).sub(x);
-        const py = p.y.add(rd.y.mul(tp)).sub(floorY).sub(bob);
-        const s = height.div(1.75);
-        const d = ndFigure(vec2(px, py).div(s), swing, seated).mul(s);
-        const mask = smoothstep(0.012, -0.004, d).mul(step(tp, t));
-        // Dark clothes in the room's light, a thin edge of light round them.
-        const rim = smoothstep(-0.016, 0.0, d);
-        const clothes = mix(vec3(0.07, 0.07, 0.09), mix(vec3(0.5, 0.18, 0.2), vec3(0.15, 0.3, 0.5), dress), 0.45);
-        return { mask, col: clothes.mul(L).mul(0.18).add(L.mul(rim).mul(0.25)) };
-    };
-    for (let k = 0; k < 2; k++) {
-        const hk = h1(float(31 + k), float(2.0));
-        const on = step(k + 0.5, backN).mul(step(hk, 0.92));
-        // Staff work a spot on the counter, then walk briskly to another and work that; gym-goers
-        // run in place; arcade players sway and bounce at their cabinet; Hale's visitor sits still
-        // and breathes.
-        const runner = step(abs(backMode.sub(1.0)), 0.5);
-        const seated = step(abs(backMode.sub(2.0)), 0.5);
-        const player = step(abs(backMode.sub(3.0)), 0.5);
-        const staff = float(1.0).sub(runner).sub(seated).sub(player);
-        const shift = fract(u.time.mul(hk.mul(0.03).add(0.05)).add(hk.mul(5.0)).add(k * 0.5));
-        const over = smoothstep(0.1, 0.3, shift).sub(smoothstep(0.6, 0.8, shift));
-        const walking = step(0.1, shift).mul(step(shift, 0.3)).add(step(0.6, shift).mul(step(shift, 0.8)));
-        const spotA = roomW.mul(hk.mul(0.3).add(0.2));
-        const spotB = spotA.add(roomW.mul(0.35).add(0.4).mul(select(hk.greaterThan(0.5), float(-1.0), float(1.0))));
-        const staffX = mix(spotA, clamp(spotB, 0.5, roomW.sub(0.5)), over).add(sin(u.time.mul(0.7).add(hk.mul(9.0))).mul(0.03));
-        const home = mix(staffX, float(k).add(0.35).mul(2.1), runner);
-        const cabinet = floor(hk.mul(roomW).div(0.8)).add(0.5).mul(0.8)
-            .add(sin(u.time.mul(1.3).add(k * 2.0)).mul(0.05));
-        const x = mix(mix(home, cabinet, player), roomW.mul(0.5), seated);
-        const run = sin(u.time.mul(9.0).add(k * 2.1)).mul(runner);
-        const step7 = sin(staffX.mul(7.5)).mul(walking).mul(staff);
-        const sway = sin(u.time.mul(1.3).add(k * 2.0)).mul(0.2).mul(player);
-        const bob = abs(run).mul(0.05).add(abs(step7).mul(0.025))
-            .add(abs(sin(u.time.mul(2.6).add(k))).mul(0.015).mul(player))
-            .add(u.breath.mul(0.015).mul(seated));
-        If(on.greaterThan(0.5), () => {
-            const fig = person(backAt, x, hk.mul(0.2).add(1.65), run.add(step7).add(sway), bob, seated, fract(hk.mul(7.3)));
-            room.assign(mix(room, fig.col, fig.mask));
+    // ── People: the district's cast, by trade (neon-district-people.js) ──
+    // Each stands on a card at their place in the room, turned to face the camera; the card hides
+    // what is behind it where the person is nearer than the surface the ray hit. Four slots, one
+    // loop: the two at the back go in before the counter (its top hides their legs), the counter
+    // goes in at the third, then the two in front of it.
+    if (people) {
+        const T = people.table;
+        const crowd = step(0.3, lit);
+        const arcadeRoom = step(abs(arch.sub(3.0)), 0.5);
+        const shade = {
+            L: L.mul(mix(float(0.5), float(1.0), dim)),
+            accent: accent.mul(arcadeRoom.mul(0.8).add(0.2)),
+            street,
+            glowLevel: float(3.2).mul(lit.mul(0.3).add(0.7)),
+        };
+        const archRow = T.row(arch.add(T.at.arch)).toVar();
+        Loop(4, ({ i }) => {
+            const k = float(i).toVar();
+            If(i.equal(2), () => {
+                room.assign(mix(room, mid, midMask.mul(midFront)));
+            });
+            const front = step(1.5, k);
+            const slot = k.sub(front.mul(2.0)).toVar();
+            const pickSlot = vec4(step(k, 0.5), step(abs(k.sub(1.0)), 0.5), step(abs(k.sub(2.0)), 0.5), step(2.5, k));
+            const role = dot(archRow, pickSlot).toVar();
+            const salt = k.add(31.0).add(front.mul(8.0));
+            const hk = h1(salt, mix(float(2.0), float(5.0), front)).toVar();
+            const h3 = vec3(hk, h1(salt, float(7.0)), h1(salt, float(11.0))).toVar();
+            const isStaff = abs(role.sub(ROLE.staff)).lessThan(0.5);
+            // A second cook is on in about a third of the noodle bars.
+            const odds = select(isStaff.and(slot.greaterThan(0.5)), float(0.35), mix(float(0.92), float(0.88), front));
+            const present = step(0.5, role).mul(step(hk, odds)).mul(crowd);
+            If(present.greaterThan(0.5), () => {
+                const roleRow = T.row(role.add(T.at.role)).toVar();
+                const isWalker = abs(role.sub(ROLE.walker)).lessThan(0.5);
+                const clip = select(isWalker.and(h3.y.greaterThan(0.5)), float(WALK_B), roleRow.x).toVar();
+                const clipA = T.row(clip.mul(2.0).add(T.at.clip)).toVar();
+                const clipB = T.row(clip.mul(2.0).add(T.at.clip + 1)).toVar();
+                // Where they stand across the room, by role.
+                const shift = fract(u.time.mul(hk.mul(0.03).add(0.05)).add(hk.mul(5.0)).add(slot.mul(0.5)));
+                const over = smoothstep(0.1, 0.3, shift).sub(smoothstep(0.6, 0.8, shift));
+                const spotA = roomW.mul(hk.mul(0.3).add(0.2));
+                const away = select(hk.greaterThan(0.5), float(-1.0), float(1.0));
+                const spotB = spotA.add(roomW.mul(0.35).add(0.4).mul(away));
+                const staffX = mix(spotA, clamp(spotB, 0.5, roomW.sub(0.5)), over);
+                const cabinet = floor(h3.z.mul(0.4).add(slot.mul(0.45)).add(0.1).mul(roomW)
+                    .div(0.8)).add(0.5).mul(0.8);
+                const tread = min(slot.add(0.4).mul(2.1), roomW.sub(0.5));
+                const aisle = floor(h3.z.mul(max(roomW.div(2.4).sub(0.5), 1.0))).mul(2.4).add(0.55);
+                const spread = h3.z.mul(0.56).add(0.22).mul(roomW);
+                const speed = select(h3.y.greaterThan(0.5), float(0.9), float(0.96));
+                const path = walkerPath(u.time, roomW, h3.x.add(slot.mul(0.37)), clipB.y, speed);
+                const spot = roleRow.w;
+                // In SPOT order (neon-district-people.js).
+                const spots = [spread, staffX, cabinet, tread, roomW.mul(0.5), aisle, path.x];
+                const across = spots.slice(0, -1).reduceRight(
+                    (rest, v, n) => select(spot.lessThan(n + 0.5), v, rest),
+                    spots[spots.length - 1],
+                );
+                const x = clamp(across, 0.35, roomW.sub(0.35));
+                const at = roleRow.y.add(select(isWalker, slot.mul(0.07), float(0.0)));
+                // Which way they face: the street, the back wall, or along their walk.
+                const facing = select(isWalker, path.facing, roleRow.z.mul(Math.PI).add(h3.x.sub(0.5).mul(0.5)));
+                const looped = u.time.div(clipB.x).add(hk.mul(5.0));
+                const phase = select(clipB.w.greaterThan(0.5), u.breath, select(isWalker, path.phase, looped));
+                // The card: through their place, square to the camera's line to them.
+                const c = vec2(roomX0.add(x), depth.mul(at)).toVar();
+                const toFig = normalize(c.sub(camRoom.xz)).toVar();
+                const tp = dot(c.sub(vec2(p.x, 0.0)), toFig).div(max(dot(vec2(rd.x, rd.z), toFig), 0.05)).toVar();
+                const hx = p.x.add(rd.x.mul(tp));
+                const hy = p.y.add(rd.y.mul(tp));
+                const hz = rd.z.mul(tp);
+                const right = vec2(toFig.y, toFig.x.negate());
+                const aside = dot(vec2(hx, hz).sub(c), right);
+                const view = viewAngle(cameraBearing(toFig), facing);
+                const size = h3.z.mul(0.12).add(0.93);
+                const cu = select(view.mirror, aside.negate(), aside).div(size).add(0.5).toVar();
+                const cv = hy.sub(floorY).div(size.mul(2.0)).toVar();
+                const inCell = step(0.0, cu).mul(step(cu, 1.0)).mul(step(0.0, cv)).mul(step(cv, 1.0))
+                    .mul(step(tp, t))
+                    .mul(step(0.0, tp));
+                // A soft shadow on the floor round their feet.
+                const toFeet = vec2(hit.x.sub(c.x), hit.z.sub(c.y));
+                room.mulAssign(float(1.0).sub(isFloor.mul(exp(dot(toFeet, toFeet).mul(-14.0))).mul(0.5)));
+                If(inCell.greaterThan(0.5), () => {
+                    const cells = clipCells(clipA, clipB, phase, view.angle);
+                    const r = readPerson(people, cells, cu, cv, foot.mul(tp.div(camDist).add(1.0)).div(size));
+                    const nx = select(view.mirror, r.n.x.negate(), r.n.x);
+                    const n = normalize(vec3(right.x, 0.0, right.y).mul(nx).add(vec3(0.0, r.n.y, 0.0))
+                        .add(vec3(toFig.x.negate(), 0.0, toFig.y.negate()).mul(r.n.z)));
+                    const look = personLook(T, h3, isStaff);
+                    const col = shadePerson(r, n, rd, look, shade).mul(exp(tp.mul(-0.2)));
+                    room.assign(mix(room, col, smoothstep(0.06, 0.55, r.cov)));
+                });
+            });
         });
-    }
-    room.assign(mix(room, mid, midMask.mul(midFront)));
-    for (let k = 0; k < 2; k++) {
-        const hk = h1(float(41 + k), float(5.0));
-        const on = step(k + 0.5, frontN).mul(step(hk, 0.88));
-        // A walk across the room and back, with a pause at each end.
-        const phase = fract(u.time.mul(hk.mul(0.035).add(0.045)).add(hk.mul(13.0)).add(k * 0.37));
-        const there = smoothstep(0.05, 0.45, phase).sub(smoothstep(0.55, 0.95, phase));
-        const moving = step(0.05, phase).mul(step(phase, 0.45)).add(step(0.55, phase).mul(step(phase, 0.95)));
-        const x = mix(float(0.35), roomW.sub(0.35), there);
-        const stride = sin(x.mul(7.0)).mul(moving);
-        If(on.greaterThan(0.5), () => {
-            const fig = person(float(0.18 + k * 0.08), x, hk.mul(0.25).add(1.6), stride, abs(stride).mul(0.025), float(0.0), fract(hk.mul(5.1)));
-            room.assign(mix(room, fig.col, fig.mask));
-        });
+    } else {
+        room.assign(mix(room, mid, midMask.mul(midFront)));
     }
     return room.add(haze);
 }
@@ -679,9 +676,12 @@ function shopInterior(u, {
  * @param {number} opts.textRows         lines in the text texture
  * @param {boolean} [opts.rooms=true]    interior-mapped shops (else a flat lit room)
  * @param {object} [opts.logos]          { texture, grid, range, anim: number[], period: number[] }
+ * @param {object} [opts.people]         { sheet, masks }: TextureNodes over the people's sprite sheets
+ *                                       (neon-district-people.js); no people without them
  */
 export function createGeneratedShops(u, shops, opts) {
     const rooms = opts.rooms !== false;
+    const people = rooms && opts.people ? { ...opts.people, table: createPeopleTable() } : null;
     const logos = opts.logos || null;
     const count = Math.max(1, shops.length);
     const aPos = new Float32Array(count * 4);
@@ -909,6 +909,11 @@ export function createGeneratedShops(u, shops, opts) {
             const seen = inOpen.greaterThan(0.001).and(rec.glass.greaterThan(0.5)).and(inShutter.lessThan(0.999))
                 .and(ctx.detail.greaterThan(0.01));
             const traced = vec3(0.0).toVar();
+            // The camera in the room's frame (along the wall, up, into the room from the glass):
+            // back along the view ray from this point of the quad, through the recess.
+            const faceDist = length(ctx.pW.sub(cameraPosition));
+            const camDist = faceDist.add(col2.w.div(max(ctx.rd.z, 0.02))).toVar();
+            const camRoom = vec3(uM, vM, col2.w.negate()).sub(ctx.rd.mul(faceDist)).toVar();
             If(seen, () => {
                 traced.assign(shopInterior(u, {
                     p: g.add(glass.offset),
@@ -921,6 +926,11 @@ export function createGeneratedShops(u, shops, opts) {
                     accent: tint,
                     seed,
                     lit,
+                    people,
+                    camRoom,
+                    camDist,
+                    street: ctx.glow.add(ctx.sky),
+                    foot: ctx.fwV,
                 }));
             });
             // Far away the room is smaller than a pixel: its average.

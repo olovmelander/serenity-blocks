@@ -39,7 +39,7 @@ The three.js project's development focus has shifted to WebGPURenderer; WebGLRen
 - MRT post-processing: `setMRT()` must be called before `getTexture()` or it silently fails (Heckel). Relevant because several themes run non-MRT bloom deliberately.
 - TSL `Switch/Case` has implicit break (no fallthrough); dynamic array indexing needs `.element(i)`, not `a[i]` (TSL wiki).
 - Some node semantics differ by pipeline stage (`instanceIndex` in vertex vs compute) (Heckel).
-- Known project-level TSL instancing gotcha: `positionNode` runs before `instanceMatrix` application (summer-midsummer finding) — document it in the shared TSL library.
+- Known project-level TSL instancing gotcha: `positionNode` runs before `instanceMatrix` application (Summer theme finding) — document it in the shared TSL library.
 - Explicit disposal is still required for geometry/materials/textures under WebGPU (utsubo).
 
 **Sources**

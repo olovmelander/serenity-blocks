@@ -1,5 +1,5 @@
 /**
- * Summer — the hours of the midsummer night.
+ * Summer — the hours of the white night.
  *
  * On the longest day the sun does not set: it sinks to the hills, rests there and climbs
  * again. Five hours follow one another and come round, and each has its colours and its

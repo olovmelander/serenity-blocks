@@ -35,7 +35,7 @@ so every reaction reads at once.
 | Piece lock | A wave of light runs out across the moss from where the piece landed. It climbs the trunks it passes, the ferns and grass bow away from it, every firefly it crosses flashes, and a puff of fireflies leaves the card's edge beside the piece. |
 | Hard drop | A stronger wave, and from a long drop the boughs shake: dew comes down through the moonlight. |
 | Line clear (1–3) | Twin jets of fireflies from both sides of the card at the cleared rows and a taller, faster wave. From two lines a second wave follows and a front of wind crosses the trees; from three a star falls. |
-| Four lines | All of that, fireflies lifting out of the ferns across the whole floor, the moon and its beams flaring — and the fireflies gather on the knoll into one of the animals of the wood ([the animals](#the-animals-2026-10-09)), which stands for a few seconds lighting the moss under it, then lets go. |
+| Four lines | All of that, fireflies lifting out of the ferns across the whole floor, the moon and its beams flaring — and the fireflies gather into one of the animals of the wood ([the animals](#the-animals-2026-10-09)) at one of five places beside the card ([where they stand](#where-the-animals-stand-2026-10-26)), which stands for a few seconds lighting the moss under it, then lets go. |
 | Combo / streak | The forest wakes. Fireflies fall into step one by one until the wood flashes in waves that roll out from the board; garlands of them wind up the old trunks; threads of foxfire spread through the moss; the fungi on the fallen spruce and among the roots light one by one; the fireflies pale toward white gold and their trails lengthen. A lock without a clear lets it all sink back. |
 | T-spin | A spiral flourish beside the board and a wave. |
 | Back-to-back | Holds the wakefulness and lifts the moon. |
@@ -217,6 +217,64 @@ Checked in the playground at High and Low on native WebGPU, 1920×1080, 1280×72
 GPU per frame at 1080p, interleaved against the forest before the pass: about 1.25 ms
 against 1.15 ms. `tests/unit/forest-*.test.js`: 620 tests.
 
+### Where the animals stand (2026-10-26)
+
+Every animal stood on the same spot in front of the knoll, so the twelve of them read as one
+place lit twelve ways (Olov: "is it possible to have the different spawned animals at
+different places in the theme a bit random? now they always shows at the same place all the
+time!"). There are now five places (`FOREST_FIGURE_STANDS`), and each new animal takes one by
+chance.
+
+![six summons in the game](forest-firefly-night/where-they-stand.webp)
+
+*Six four-line summons in the real game at 16:9 (High): a boar far down the ride, a hare in
+its hollow, a squirrel near; a moose at the usual place, a lynx and a hedgehog up on the knoll.*
+
+| Place | Where | Range |
+| --- | --- | --- |
+| 0 | In front of the knoll: the usual place, as before | 21 m |
+| 1 | Up on the knoll behind the fallen spruce, whose trunk hides its hooves | 31 m |
+| 2 | Out in the ride under the moon, near | 19 m |
+| 3 | In the ride's hollow, where the mist gathers | 25 m |
+| 4 | Far down the ride | 31 m |
+
+- **Chance, in the game.** `ForestReactions.summon()` deals each new animal a `place` (0..1)
+  from the generator that deals the animals: `Math.random` in the game unless `forestSeed` is
+  in the URL, seeded in the playground and the tests. Four lines again feed the standing
+  animal where it stands.
+- **Only where it can be seen.** `ForestFireflyDirector.pickStand()` turns the chance into a
+  place: one where the whole animal would be seen now (`forestFigureBox` projects the corners
+  of the room every figure fills; `ForestStage.inSight` refuses a box that leaves the screen
+  or overlaps the card or a panel beside it), never the place the last one took while another
+  is in sight. With none in sight it may take any of them. No allocation at the summons.
+- **The score panel.** The stage now also reads `.single-player-stats-bar`
+  (`readForestPanelRects`, polled with the card). Between the card and the panel there is no
+  room for an animal, so the two places on the right stand far right and differ by distance;
+  the open ride on the left has three. The knoll place was moved 1 m left of the first
+  candidate so it also fits a 3:2 screen.
+- **Every screen.** `ForestWorld.figureAnchors()` offers each place whose whole figure is in
+  the view, and the usual place always (moved into view on narrow screens, as before).
+  16:10 and wider offer all five, in the game 16:9 and 21:9 see all five, 16:10, 3:2 and 32:9
+  see places on both sides of the card, 4:3 and 1.2 at least one; a square screen offers the
+  usual place only. On 16:10 the usual place, moved left to fit, lay partly behind the score
+  panel (it did before this change too): the director now passes it over there.
+- **Open ground.** Every place is a metre clear of every trunk, clear of the stump and the
+  fallen spruce, with no trunk between it and the eye; scattered stones keep 3.2 m off every
+  place, and the hand-placed ones lie at most in front of an animal's hooves.
+- **Captures.** The playground's `?stand=<n>` stands every animal at place n (`callStand`),
+  `?panel=1` draws a stand-in score panel beside `?board=1`'s card, and the diagnostics' `stand`
+  says where the last one stood.
+
+Checked on 2026-10-26 in Electron captures (RTX 5080): in the playground at 1600×900 the stag
+at all five places, the owl far down the ride, the bear near, the wolf in the hollow and the
+moose on the knoll, the stag at 21:9 and on a 440×960 upright screen (which picked the far
+ride place); in the real game (single player, 16:9, High) six summons fired through the
+theme's reactions stood at places 4, 1, 0, 3, 1, 2, all clear of the card and the score panel
+the stage had measured. Clean consoles. `tests/unit/forest-*.test.js`: 661 tests in eight
+suites, among them that every place fits the widest animal at ten aspects, is open ground on
+every built tier, and is seen whole in the game's own layout, and that the director never
+stands an animal behind the card or the panel nor twice running in one place.
+
 ## How it is built
 
 ### Trees, fronds and props authored in Blender
@@ -278,7 +336,7 @@ MCP session was not used, so nothing in an open Blender was touched.
   a uniform array — no feedback texture, so they are identical on both backends and
   reproducible in a capture), and a small top-down map into which every lit firefly near
   the floor is splatted each frame on the CPU, so a firefly really does light the fern it
-  passes and a firefly figure lights its knoll.
+  passes and a firefly figure lights the moss it stands on.
 - **Light trails without a history buffer.** An ambient firefly's path and its flash are
   closed-form in time, so the trail's vertex shader evaluates them again a little earlier
   for each point of a ribbon: a wanderer leaves a dotted arc, lit only where it was
@@ -447,8 +505,9 @@ CPU throughout, so these are observations, not budgets:
   floor is.
 - Bark, floor and stone detail are procedural in the shader; there are no texture maps
   beyond the sprite sheet and the moon.
-- A firefly figure is a drawing in lights in one plane, turned side-on to the eye. On narrow and
-  upright screens it stands nearer the view's axis, where the board card covers part of it.
+- A firefly figure is a drawing in lights in one plane, turned side-on to the eye. On a square
+  screen only its usual place fits, moved toward the view's axis, where the board card covers
+  part of it; when no place can be seen whole, an animal stands at one of them anyway.
 - Low and Minimal have no beams, no bloom and no firefly light on the floor.
 - The far sprites face one eye; they are not meant to be seen from elsewhere.
 - If neither WebGPU nor WebGL2 can start, the theme fails and its container is hidden

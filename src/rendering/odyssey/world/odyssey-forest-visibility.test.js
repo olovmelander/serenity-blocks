@@ -34,8 +34,10 @@ import { getOdysseyPathPointAt } from '../path-utils.js';
 const heightAt = (x, z) => odysseyWorldMacro(x, z)
     + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
 const RAIL = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
-const CULLED = scatterZonedForest(heightAt, { rail: RAIL });
-const FULL = scatterZonedForest(heightAt, { rail: RAIL, visibilityCull: false });
+// The forest the mask was measured on: the treeline's krummholz (2026-10-25) stands mostly on
+// flanks the rail never sees, so it would move every ratio below without the mask changing.
+const CULLED = scatterZonedForest(heightAt, { rail: RAIL, krummholz: false });
+const FULL = scatterZonedForest(heightAt, { rail: RAIL, visibilityCull: false, krummholz: false });
 
 describe('the baked mask still matches the world it was baked from', () => {
     /**

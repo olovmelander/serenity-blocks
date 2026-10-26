@@ -61,7 +61,7 @@ import { createPier } from './synthwave-sunset-pier.js';
 import { createCoaster } from './synthwave-sunset-coaster.js';
 import { createPromenade } from './synthwave-sunset-promenade.js';
 import { createPalms } from './synthwave-sunset-palms.js';
-import { createGulls } from './synthwave-sunset-gulls.js';
+import { SynthwaveGulls, loadGullGeometry } from './synthwave-sunset-gulls.js';
 import { FIREWORK_COLORS, Fireworks, WILLOW_GOLD } from './synthwave-sunset-fireworks.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
@@ -455,8 +455,11 @@ export class SynthwaveWorld {
         this.parts.coaster = createCoaster(u, { mirrorLayer: MIRROR_LAYER });
         this.parts.promenade = createPromenade(u, { rand, mirrorLayer: MIRROR_LAYER });
         this.parts.palms = createPalms(u, { rand, count: q.palms });
-        this.parts.gulls = createGulls(u, { count: q.gulls });
+        this.gulls = new SynthwaveGulls(u, { count: q.gulls, mirrorLayer: MIRROR_LAYER });
+        this.parts.gulls = this.gulls.group;
         this.fireworks = new Fireworks(u, { capacity: q.fireworks, rand, mirrorLayer: MIRROR_LAYER });
+        // A bang startles the gulls (on their clock, which lags the world's under Reduce motion).
+        this.fireworks.onBurst = (b) => this.gulls?.hit(b.scale ?? 1, b.at - (this.gullLag ?? 0), this.motion ?? 1);
         this.parts.fireworks = this.fireworks.mesh;
         this.track = this.parts.coaster.userData;
         this.coaster.t = this.track.marks.station;
@@ -467,6 +470,16 @@ export class SynthwaveWorld {
             if (part) this.root.add(part);
         }
         this.scene.add(this.root);
+        // The gulls' model comes when it comes: nothing waits for it (a capture may: `gullsReady`).
+        this.gullsReady = loadGullGeometry().then((geometry) => {
+            if (!geometry) return false;
+            if (this.disposed || !this.gulls) {
+                geometry.dispose();
+                return false;
+            }
+            this.gulls.attach(geometry);
+            return true;
+        });
         return this;
     }
 
@@ -667,6 +680,8 @@ export class SynthwaveWorld {
         if (Math.abs(this.duskTarget - this.duskSteps) < 1e-5) this.duskSteps = this.duskTarget;
         this.dusk = this.duskHeld ? this.duskBase : this.eveningAt(t);
         this.applyDusk();
+        // The gulls go to roost as the evening runs out (and come back when it turns back).
+        this.gulls?.update(u.gullTime.value, this.dusk, (time) => (this.duskHeld ? this.duskBase : this.eveningAt(time + this.gullLag)));
 
         this.updateCoaster(dt, motion);
 
@@ -856,6 +871,7 @@ export class SynthwaveWorld {
         this.time = time;
         this.u.time.value = time;
         this.u.gullTime.value = time - (this.gullLag ?? 0);
+        this.gulls?.seek();
         this.surge.reset();
         this.crown.reset();
         this.spin.reset();
@@ -1224,6 +1240,7 @@ export class SynthwaveWorld {
     }
 
     dispose() {
+        this.disposed = true;
         this.root.removeFromParent();
         this.reflection?.dispose?.();
         this._camera?.layers?.disable?.(MIRROR_LAYER);
@@ -1235,6 +1252,7 @@ export class SynthwaveWorld {
             });
         }
         this.fireworks = null;
+        this.gulls = null;
         this.parts = {};
     }
 }

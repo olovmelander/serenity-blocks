@@ -678,8 +678,8 @@ export const BILLBOARD_CELLS = Object.freeze([
         src: null,
         rect: [0.74854, 0.1423, 0.82861, 0.27958],
         aspect: 0.6667,
-        glow: [0.745, 1, 0.172],
-        luma: 0.5142,
+        glow: [0.745, 1, 0.171],
+        luma: 0.5151,
     },
     {
         id: 'transit-ocean',

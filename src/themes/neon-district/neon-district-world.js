@@ -75,6 +75,7 @@ import {
 } from './neon-district-signs.js';
 import { createPrints } from './neon-district-prints.js';
 import { createGeneratedShops, createPaintedShops } from './neon-district-shops.js';
+import { PEOPLE_SHEET } from './neon-district-people-atlas.js';
 import { createTextTexture } from './neon-district-text.js';
 import { BILLBOARD_ATLAS, SHOPFRONT_ATLAS } from './neon-district-atlas.js';
 import { createRain, createSteam } from './neon-district-weather.js';
@@ -303,6 +304,9 @@ export class NeonDistrictWorld {
         this.atlases = null;
         this.atlasFade = [0, 0];
         this.atlasReady = [false, false];
+        /** The people's sprite sheets: TextureNodes on the room-tracing tiers, else null. */
+        this.people = null;
+        this.peopleReady = false;
         this.sparks = null;
         this.beams = null;
         this.counter = null;
@@ -465,9 +469,30 @@ export class NeonDistrictWorld {
         this.atlases = {
             shop: texture(blank), shopFade: uniform(0), ads: texture(blank), adsFade: uniform(0),
         };
+        // The people's sprite sheets hold numbers, not colour: a linear placeholder (no coverage,
+        // so no one is drawn) until they arrive. Only the tiers that trace rooms have people.
+        // Each sheet needs a placeholder of its own (three merges bindings by texture), and a
+        // filterable one: the people are read with explicit gradients, which need a sampler.
+        if (tier.rooms) {
+            const none = () => {
+                const tex = new THREE.DataTexture(new Uint8Array(16), 2, 2, THREE.RGBAFormat, THREE.UnsignedByteType);
+                tex.colorSpace = THREE.NoColorSpace;
+                tex.minFilter = THREE.LinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.needsUpdate = true;
+                this.textures.push(tex);
+                return tex;
+            };
+            this.people = { sheet: texture(none()), masks: texture(none()) };
+        }
         this.addPart('shopfronts', createPaintedShops(u, plan.shops.filter((s) => s.kind === 0), this.atlases.shop, this.atlases.shopFade));
         this.addPart('shops', createGeneratedShops(u, plan.shops.filter((s) => s.kind === 1), {
-            glyphTex: glyphs, textTex: lines, textRows: plan.texts.length, rooms: tier.rooms, logos,
+            glyphTex: glyphs,
+            textTex: lines,
+            textRows: plan.texts.length,
+            rooms: tier.rooms,
+            logos,
+            people: this.people,
         }));
         this.addPart('signs', createSigns(u, plan.signs, glyphs));
         this.addPart('marks', createMarks(u, plan.marks, {
@@ -552,10 +577,52 @@ export class NeonDistrictWorld {
                 resolve(false); // no image decoding here (a headless host): the atlas stays dark
             }
         });
+        if (this.people) this.loadPeople(loader);
         return Promise.all([
             load(half ? SHOPFRONT_ATLAS.halfUrl : SHOPFRONT_ATLAS.url, 0, this.atlases.shop),
             load(half ? BILLBOARD_ATLAS.halfUrl : BILLBOARD_ATLAS.url, 1, this.atlases.ads),
         ]).then((done) => done.every(Boolean));
+    }
+
+    /**
+     * Fetch the people's sprite sheets (neon-district-people.js). Data, read linearly; the shops
+     * stay empty until both are in.
+     * @returns {Promise<boolean>}
+     */
+    loadPeople(loader = new THREE.TextureLoader()) {
+        const load = (url, name) => new Promise((resolve) => {
+            try {
+                loader.load(url, (tex) => {
+                    if (this.disposed) {
+                        tex.dispose();
+                        resolve(null);
+                        return;
+                    }
+                    tex.colorSpace = THREE.NoColorSpace;
+                    tex.generateMipmaps = true;
+                    tex.minFilter = THREE.LinearMipmapLinearFilter;
+                    tex.magFilter = THREE.LinearFilter;
+                    tex.anisotropy = 4;
+                    tex.name = `neon-district-${name}`;
+                    resolve(tex);
+                }, undefined, () => resolve(null));
+            } catch {
+                resolve(null); // no image decoding here (a headless host): the shops stay empty
+            }
+        });
+        return Promise.all([load(PEOPLE_SHEET.url, 'people'), load(PEOPLE_SHEET.maskUrl, 'people-masks')])
+            .then(([sheet, masks]) => {
+                if (!sheet || !masks || this.disposed || !this.people) {
+                    sheet?.dispose();
+                    masks?.dispose();
+                    return false;
+                }
+                this.textures.push(sheet, masks);
+                this.people.sheet.value = sheet;
+                this.people.masks.value = masks;
+                this.peopleReady = true;
+                return true;
+            });
     }
 
     /** Draw only the named parts (captures, bisecting a look). */
@@ -1323,6 +1390,8 @@ export class NeonDistrictWorld {
         this.parts = {};
         this.reflection = null;
         this.atlases = null;
+        this.people = null;
+        this.peopleReady = false;
         this.sparks = null;
         this.beams = null;
         this.counter = null;

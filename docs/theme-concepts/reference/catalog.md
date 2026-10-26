@@ -25,7 +25,7 @@
 | 9 | `high-coast` | High Coast | `biomes` | heavy | [§9](#high-coast) |
 | 10 | `winter` | Winter | `biomes` | heavy | [§10](#winter) |
 | 11 | `fall` | Fall | `biomes` | heavy | [§11](#fall) |
-| 12 | `summer` | Midsommar | `biomes` | heavy | [§12](#summer) |
+| 12 | `summer` | Summer | `biomes` | heavy | [§12](#summer) |
 | 13 | `tornado` | Tornado | `atmospheric` | light | [§13](#tornado) |
 | 14 | `sakura-twilight` | Sakura Twilight | `biomes` | heavy | [§14](#sakura-twilight) |
 | 15 | `aurora` | Aurora | `sky` | heavy | [§15](#aurora) |
@@ -336,13 +336,13 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
 
 <a id="summer"></a>
 
-### 12. summer — displayName "Midsommar" (`docs/SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md`)
+### 12. summer — displayName "Summer" (`docs/SUMMER_OVERHAUL_2026-10.md`)
 
 - **Icon:** a leafy maypole with two flower wreaths and blue and yellow ribbons; the low sun sits inside the right wreath; a mirror lake with a skerry and birch; pine hills in haze; a peach sky.
-- **Setting:** a Swedish lake on Midsummer's Eve. A flowering meadow, the maypole, a Falu-red cottage with white corners, a jetty and rowboat, a weeping birch, an old spruce, four blue hill ridges. Butterflies, swallows, seed down.
+- **Setting:** a Swedish lake on a summer's eve. A flowering meadow, the maypole, a Falu-red cottage with white corners, a jetty and rowboat, a weeping birch, an old spruce, four blue hill ridges. Butterflies, swallows, seed down.
 - **Palette:** green meadow, gold sun, Falu red, flower colours, blue lake.
 - **Hours** (`summer-hours.js:64+`): evening, rose hour, white night, dawn, morning. One hour every 240 s.
-- **Pieces** are seven Midsummer flowers (`:15-22`): I `#e4412c` poppy, O `#7fa6f5` harebell, T `#ffd21f` buttercup, S `#fffdf2` oxeye daisy, Z `#5d5fd6` lupine, J `#ff8a2e` hawkweed, L `#b267e0` cranesbill, GARBAGE `#2a4b38`. Palette gate 0/7.
+- **Pieces** are seven summer flowers (`:15-22`): I `#e4412c` poppy, O `#7fa6f5` harebell, T `#ffd21f` buttercup, S `#fffdf2` oxeye daisy, Z `#5d5fd6` lupine, J `#ff8a2e` hawkweed, L `#b267e0` cranesbill, GARBAGE `#2a4b38`. Palette gate 0/7.
 - **Gameplay FX:**
   - Lock: petals of the piece's own flower, a meadow gust, and that flower kind glows wherever it grows; a lake ring.
   - Bouquet: locking all 7 kinds lights 7 lanterns on the maypole.

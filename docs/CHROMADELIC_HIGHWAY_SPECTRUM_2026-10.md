@@ -103,7 +103,7 @@ centred on each boundary, resting 15 % at each end).
 |---|---|
 | Piece lock | A band in the newest ring's colour + rail tick (rate-limited to one per 0.35 s) |
 | Combo c | A band climbing the wheel from the newest ring's hue (+25° per step); the packets race (rate +1.4 rad/s at c ≥ 6, eased back over 2.5 s); meteors at c = 3, 6, 9…; one comet per chain at c ≥ 5 |
-| Line clear (n ≤ 3) | n bands in the newest ring's colour (its complement for a triple); chase lights fill every arch from its feet to its crown, one front per line; star twinkle; hero storm flashes |
+| Line clear (n ≤ 3) | n bands in the newest ring's colour (its complement for a triple); chase lights fill every arch from its feet to its crown, one front per line; star twinkle; the planets catch it (2026-10-26: [CHROMADELIC_HIGHWAY_PLANET_EVENTS_2026-10.md](CHROMADELIC_HIGHWAY_PLANET_EVENTS_2026-10.md)) |
 | Tetris | Bands out of the card (0–150 ms); a prism cascade (150 ms on) turning every arch into the spectrum as it passes; streak warp (300 ms on); FOV surge; the next three rings out are prism arcs |
 | Level up | The spectrum steps to the next movement at once; a cascade in its first colour repaints every ring it passes, board to lens (~0.7 s); violet band, binary flare, nebula breath, twinkle wave; the hero grows a little (+0.5 s) |
 

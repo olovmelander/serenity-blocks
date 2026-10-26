@@ -48,15 +48,35 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { DEG, EYE, PLACES } from './grainfields-core.js';
 import {
-    PLOT, beltAt, forestCover, groundHeight,
+    DEG, EYE, PLACES, smooth,
+} from './grainfields-core.js';
+import {
+    PLOT, beltAt, forestCover, groundHeight, knollHeight,
 } from './grainfields-plan.js';
 import { gfHash21, PATH_ROWS } from './grainfields-tsl.js';
 import { aerial, lightSurface, sunGlow } from './grainfields-light.js';
 
 /** The fan: half-width (degrees) of the bearings it covers, and its nearest and farthest rows. */
 export const FAN = Object.freeze({ halfAngle: 54, near: 0.4, far: 60000 });
+
+/**
+ * The knoll the ruin stands on, drawn on its own (the fan's rows lie 60 to 170 m apart out there,
+ * which cut its crown down by metres and left the ruin standing in the air): `rings` rings round
+ * the fort out to `reach` metres, crowded where the crown breaks into its sides, of `segments`
+ * posts each. Under it the fan leaves the knoll out and lies `sink` metres under the vale's floor,
+ * coming back across `fade`, so the fine mesh is the one drawn.
+ */
+export const KNOLL = Object.freeze({
+    reach: 290, rings: 46, segments: 84, sink: 3, fade: [200, 270],
+});
+
+/** How far the fan's posts sink at a ground point (under the knoll's own mesh). */
+export function knollSink(x, z) {
+    const r = Math.hypot(x - PLACES.fort.x, z - PLACES.fort.z);
+    const under = 1 - smooth(KNOLL.fade[0], KNOLL.fade[1], r);
+    return under > 0 ? under * (knollHeight(x, z) + KNOLL.sink) : 0;
+}
 
 /** Linear albedos. */
 export const SOIL = Object.freeze({
@@ -104,7 +124,7 @@ export function* fanSteps(cols, rows) {
             const o = (r * cols + c) * 3;
             positions[o] = x;
             // The forest stands as a canopy over its ground: the ridges' skylines are crowns.
-            positions[o + 1] = h + forest * canopyHeight(x, z);
+            positions[o + 1] = h + forest * canopyHeight(x, z) - knollSink(x, z);
             positions[o + 2] = z;
             const belt = dist < 9000 ? beltAt(x, z) : { cover: 0, kind: 0 };
             const q = (r * cols + c) * 4;
@@ -143,6 +163,55 @@ export function createFanGeometry({ positions, cover }, cols, rows) {
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     geometry.boundingSphere.radius = FAN.far * 1.2;
+    return geometry;
+}
+
+/**
+ * The knoll's own mesh: rings round the fort on the land's true height, with the same cover the
+ * fan's posts carry, so the land's material draws it seamlessly.
+ */
+export function createKnollGeometry() {
+    const { reach, rings, segments } = KNOLL;
+    const F = PLACES.fort;
+    const count = 1 + rings * segments;
+    const positions = new Float32Array(count * 3);
+    const cover = new Float32Array(count * 4);
+    const put = (i, x, z) => {
+        const h = groundHeight(x, z);
+        const forest = forestCover(x, z, h);
+        const belt = beltAt(x, z);
+        positions.set([x, h + forest * canopyHeight(x, z), z], i * 3);
+        cover.set([forest, belt.cover, belt.kind, 0], i * 4);
+    };
+    put(0, F.x, F.z);
+    for (let k = 1; k <= rings; k++) {
+        // Rings crowd toward the crown's edge (half a reach out they are ~6 m apart).
+        const r = reach * (k / rings) ** 1.4;
+        for (let j = 0; j < segments; j++) {
+            const a = (2 * Math.PI * (j + 0.5 * (k % 2))) / segments;
+            put(1 + (k - 1) * segments + j, F.x + Math.cos(a) * r, F.z + Math.sin(a) * r);
+        }
+    }
+    const index = [];
+    // Counter-clockwise seen from above (x right, z toward the eye; angles turn from +x to +z).
+    for (let j = 0; j < segments; j++) index.push(0, 1 + ((j + 1) % segments), 1 + j);
+    for (let k = 1; k < rings; k++) {
+        const a0 = 1 + (k - 1) * segments;
+        const b0 = 1 + k * segments;
+        for (let j = 0; j < segments; j++) {
+            const a = a0 + j;
+            const a1 = a0 + ((j + 1) % segments);
+            const b = b0 + j;
+            const b1 = b0 + ((j + 1) % segments);
+            index.push(a, a1, b1, a, b1, b);
+        }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('aCover', new THREE.BufferAttribute(cover, 4));
+    geometry.setIndex(index);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingSphere();
     return geometry;
 }
 
@@ -353,13 +422,22 @@ export function createLandMaterial(u, t) {
         canopy.mulAssign(smoothstep(0.2, 0.75, crowns).mul(0.6).add(0.55));
         albedo.assign(mix(albedo, canopy, forest));
 
-        // ── The fort's knoll: grey stone on its steep sides ──
+        // ── The fort's knoll: heath, grey stone breaking through it in crags where it is steep ──
         const F = PLACES.fort;
         const toFort = length(xz.sub(vec2(F.x, F.z)));
         const steep = float(1.0).sub(Nm.y).mul(4.0).clamp(0.0, 1.0);
-        const knoll = float(1.0).sub(smoothstep(F.radius * 0.9, F.radius * 1.25, toFort));
-        albedo.assign(mix(albedo, c3(SOIL.rock).mul(fine.mul(0.4).add(0.8)), knoll.mul(steep.mul(0.85).add(0.15))));
-        albedo.assign(mix(albedo, c3(SOIL.heath).mul(fine.mul(0.35).add(0.8)), knoll.mul(float(1.0).sub(steep)).mul(0.8)));
+        const knoll = float(1.0).sub(smoothstep(F.radius * 1.0, F.radius * 1.4, toFort));
+        const crags = smoothstep(0.4, 0.62, texture(t.noise, xz.div(42.0)).b);
+        // (The path climbs it to the gate: its trodden track stays.)
+        const onKnoll = knoll.mul(float(1.0).sub(onTrack.mul(0.85))).toVar();
+        const bare = onKnoll.mul(steep.mul(crags.mul(0.75).add(0.1)).add(0.06)).toVar();
+        albedo.assign(mix(albedo, c3(SOIL.rock).mul(fine.mul(0.4).add(0.8)), bare));
+        // Its turf is its own (a fifth of the barley's gold in the heath): the plots and the tracks
+        // between them stop at its foot instead of showing through it as dark lines.
+        const turf = mix(c3(SOIL.heath), c3(SOIL.barley), 0.2).mul(fine.mul(0.35).add(0.8));
+        albedo.assign(mix(albedo, turf, onKnoll.mul(float(1.0).sub(bare))));
+        // The light through the stand (and the gusts' sheen) is one even sheen of grass on it.
+        isGrain.assign(mix(isGrain, float(0.45), knoll));
 
         // ── Light ──
         const lit = lightSurface(u, t.noise, P, Nm, albedo);
@@ -390,12 +468,19 @@ export function createLand(u, t, tier, prepared) {
     mesh.name = 'GrainfieldsLand';
     mesh.frustumCulled = false;
     mesh.renderOrder = 6;
+    // The ruin's knoll, finer than the fan can draw it out there, in the same material.
+    const knollGeometry = createKnollGeometry();
+    const knoll = new THREE.Mesh(knollGeometry, material);
+    knoll.name = 'GrainfieldsKnoll';
+    knoll.frustumCulled = false;
+    knoll.renderOrder = 6;
     return {
         mesh,
-        meshes: [mesh],
+        meshes: [mesh, knoll],
         update() {},
         dispose() {
             geometry.dispose();
+            knollGeometry.dispose();
             material.dispose();
         },
     };

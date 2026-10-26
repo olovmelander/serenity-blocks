@@ -101,7 +101,7 @@ const captureThemes = [
         'halcyonApex',
         'Halcyon Apex',
         'sky, ranges, islets, flora, water, site, siteLey, dial, dialLey, crystals, halos, '
-        + 'upfall, beads, motes, birds, sparks, beacons, wisps, beams'],
+        + 'upfall, beads, motes, birds, visitors, visitorLights, sparks, beacons, wisps, beams'],
 
     ['high-coast',
         'highCoast',

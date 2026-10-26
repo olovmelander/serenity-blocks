@@ -10,9 +10,9 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
     GRAINFIELDS_ASSET_SCHEMA, GRAINFIELDS_FOLIAGE_URL, GRAINFIELDS_HORSE_URL,
-    GRAINFIELDS_IMPOSTOR_URL, GRAINFIELDS_TREE_URLS, disposeGrainfieldsAssets, grainfieldsImpostorLayout,
-    loadGrainfieldsAssets, parseGrainfieldsHorse, parseGrainfieldsMeshes, parseGrainfieldsTree,
-    prepareGrainfieldsImpostors,
+    GRAINFIELDS_IMPOSTOR_URL, GRAINFIELDS_RUIN_URL, GRAINFIELDS_TREE_URLS, disposeGrainfieldsAssets,
+    grainfieldsImpostorLayout, loadGrainfieldsAssets, parseGrainfieldsHorse, parseGrainfieldsMeshes,
+    parseGrainfieldsRuin, parseGrainfieldsTree, prepareGrainfieldsImpostors,
 } from '../../src/themes/grainfields/grainfields-assets.js';
 import {
     HORSE_BONES, SKIN_ROWS, createPose, createRig, poseRig, writeSkinRows,
@@ -35,15 +35,20 @@ const SPRAY_UNITS = Object.freeze({ birch_sprig: 'leaves', spruce_frond: 'shoots
 const FOLIAGE_FILE = 'grainfields-foliage.glb';
 const IMPOSTOR_FILE = 'grainfields-impostors.png';
 const HORSE_FILE = 'grainfields-horse.glb';
-// The twelve files of the pack.
-const PACK_FILES = [...TREE_NAMES.map((name) => `${name}.glb`), FOLIAGE_FILE, IMPOSTOR_FILE, HORSE_FILE];
+const RUIN_FILE = 'grainfields-ruin.glb';
+// The thirteen files of the pack.
+const PACK_FILES = [...TREE_NAMES.map((name) => `${name}.glb`), FOLIAGE_FILE, IMPOSTOR_FILE, HORSE_FILE, RUIN_FILE];
 
 // What the pack may weigh (it wrote 1.83 MB on 2026-10-18, the heaviest tree 207 KB, the
-// sprite sheet 489 KB; the rigged horse of 2026-10-25 is 179 KB), so it cannot balloon without
-// someone raising a number on purpose.
+// sprite sheet 489 KB; the rigged horse of 2026-10-25 is 179 KB; the ruin of 2026-10-26 163 KB), so
+// it cannot balloon without someone raising a number on purpose.
 const BUDGET = Object.freeze({
-    packBytes: 2.5 * MB, treeBytes: 260 * KB, impostorBytes: 700 * KB, horseBytes: 250 * KB,
+    packBytes: 2.5 * MB, treeBytes: 260 * KB, impostorBytes: 700 * KB, horseBytes: 250 * KB, ruinBytes: 220 * KB,
 });
+// The ruin is one mesh 1.4 km out: a skyline, not a close-up.
+const RUIN_TRIANGLES = Object.freeze({ min: 2500, max: 6000 });
+// The knoll's crown is level out to ~46 m from its centre; the ruin stands inside that.
+const CROWN_REACH = 46;
 // The herd's horse is one skinned mesh drawn a handful of times twenty to fifty metres out.
 const HORSE_TRIANGLES = Object.freeze({ min: 6000, max: 11000 });
 // Poses the skin must take without tearing (local turns, radians): a gallop's reach and gather, the
@@ -273,13 +278,16 @@ function horseSkin(geometry) {
     });
 }
 
-const parsed = { trees: {}, foliage: null, horse: null };
+const parsed = {
+    trees: {}, foliage: null, horse: null, ruin: null,
+};
 
 beforeAll(async () => {
     const gltfs = await Promise.all(TREE_NAMES.map((name) => parseGlb(`${name}.glb`)));
     TREE_NAMES.forEach((name, index) => { parsed.trees[name] = parseGrainfieldsTree(gltfs[index], name); });
     parsed.foliage = parseGrainfieldsMeshes(await parseGlb(FOLIAGE_FILE), 'Foliage');
     parsed.horse = parseGrainfieldsHorse(await parseGlb(HORSE_FILE));
+    parsed.ruin = parseGrainfieldsRuin(await parseGlb(RUIN_FILE));
 }, 60000);
 
 afterEach(() => {
@@ -294,7 +302,7 @@ describe('Grainfields asset sources', () => {
         const sources = [
             new URL('../../src/themes/grainfields/grainfields-assets.js', import.meta.url),
             new URL('../../scripts/blender/grainfields_assets.py', import.meta.url),
-            ...['species.py', 'leaves.py', 'preview.py', 'horse.py'].map(
+            ...['species.py', 'leaves.py', 'preview.py', 'horse.py', 'ruin.py'].map(
                 (file) => new URL(`../../scripts/blender/grainfields/${file}`, import.meta.url),
             ),
             new URL('ATTRIBUTION.md', assetDirectory),
@@ -336,12 +344,13 @@ describe('Grainfields asset pack on disk', () => {
         expect(fileNameOf(GRAINFIELDS_FOLIAGE_URL)).toBe(FOLIAGE_FILE);
         expect(fileNameOf(GRAINFIELDS_IMPOSTOR_URL)).toBe(IMPOSTOR_FILE);
         expect(fileNameOf(GRAINFIELDS_HORSE_URL)).toBe(HORSE_FILE);
-        referenced.push(FOLIAGE_FILE, IMPOSTOR_FILE, HORSE_FILE);
+        expect(fileNameOf(GRAINFIELDS_RUIN_URL)).toBe(RUIN_FILE);
+        referenced.push(FOLIAGE_FILE, IMPOSTOR_FILE, HORSE_FILE, RUIN_FILE);
         expect([...referenced].sort()).toEqual([...PACK_FILES].sort());
-        expect(PACK_FILES).toHaveLength(12);
+        expect(PACK_FILES).toHaveLength(13);
         const directory = fileURLToPath(assetDirectory);
         for (const url of [...Object.values(GRAINFIELDS_TREE_URLS), GRAINFIELDS_FOLIAGE_URL,
-            GRAINFIELDS_IMPOSTOR_URL, GRAINFIELDS_HORSE_URL]) {
+            GRAINFIELDS_IMPOSTOR_URL, GRAINFIELDS_HORSE_URL, GRAINFIELDS_RUIN_URL]) {
             const file = fileNameOf(url);
             expect(existsSync(new URL(file, assetDirectory)), file).toBe(true);
             expect(sizeOf(file)).toBeGreaterThan(0);
@@ -362,17 +371,18 @@ describe('Grainfields asset pack on disk', () => {
         expect(readAsset(IMPOSTOR_FILE).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     });
 
-    it('keeps the pack under 2.5 MB, a tree under 260 KB, the sprites under 700 KB, the horse under 250 KB', () => {
+    it('keeps the pack under 2.5 MB, a tree under 260 KB, the sprites under 700 KB, the horse under 250 KB, the ruin under 220 KB', () => {
         const files = readdirSync(assetDirectory);
         const total = files.reduce((sum, file) => sum + sizeOf(file), 0);
         expect(total).toBeLessThanOrEqual(BUDGET.packBytes);
         // The download itself: every binary the theme fetches.
         const fetched = files.filter((file) => /\.(glb|png)$/.test(file));
-        expect(fetched).toHaveLength(12);
+        expect(fetched).toHaveLength(13);
         expect(fetched.reduce((sum, file) => sum + sizeOf(file), 0)).toBeLessThanOrEqual(BUDGET.packBytes);
         for (const name of TREE_NAMES) expect(sizeOf(`${name}.glb`), name).toBeLessThanOrEqual(BUDGET.treeBytes);
         expect(sizeOf(IMPOSTOR_FILE)).toBeLessThanOrEqual(BUDGET.impostorBytes);
         expect(sizeOf(HORSE_FILE)).toBeLessThanOrEqual(BUDGET.horseBytes);
+        expect(sizeOf(RUIN_FILE)).toBeLessThanOrEqual(BUDGET.ruinBytes);
         // The manifest's own arithmetic agrees.
         const manifest = readManifest();
         expect(manifest.assets.reduce((sum, entry) => sum + entry.bytes, 0)).toBeLessThanOrEqual(BUDGET.packBytes);
@@ -386,7 +396,7 @@ describe('Grainfields asset pack on disk', () => {
         expect(GRAINFIELDS_ASSET_SCHEMA).toBe(1);
         expect(manifest.glTFUpAxis).toBe('Y');
         expect(Array.isArray(manifest.assets)).toBe(true);
-        expect(manifest.assets).toHaveLength(12);
+        expect(manifest.assets).toHaveLength(13);
         // Portable: no absolute paths from the machine that ran Blender.
         expect(JSON.stringify(manifest)).not.toMatch(/[A-Z]:\\|\/Users\/|\/home\//i);
         const seen = new Set();
@@ -400,11 +410,11 @@ describe('Grainfields asset pack on disk', () => {
             expect(bytes.length, entry.file).toBe(entry.bytes);
             expect(entry.sha256, entry.file).toMatch(/^[0-9a-f]{64}$/);
             expect(createHash('sha256').update(bytes).digest('hex'), entry.file).toBe(entry.sha256);
-            expect(['tree', 'foliage', 'impostors', 'horse']).toContain(entry.kind);
+            expect(['tree', 'foliage', 'impostors', 'horse', 'ruin']).toContain(entry.kind);
         }
         // Every binary the theme fetches is vouched for, and nothing else is listed.
         const fetched = [...Object.values(GRAINFIELDS_TREE_URLS), GRAINFIELDS_FOLIAGE_URL, GRAINFIELDS_IMPOSTOR_URL,
-            GRAINFIELDS_HORSE_URL].map(fileNameOf);
+            GRAINFIELDS_HORSE_URL, GRAINFIELDS_RUIN_URL].map(fileNameOf);
         expect([...seen].sort()).toEqual(fetched.sort());
         expect([...seen].sort()).toEqual([...PACK_FILES].sort());
         const count = (kind) => manifest.assets.filter((entry) => entry.kind === kind);
@@ -413,6 +423,7 @@ describe('Grainfields asset pack on disk', () => {
         // The sprite-sheet layout is read from here at runtime.
         expect(count('impostors').map((entry) => entry.file)).toEqual([IMPOSTOR_FILE]);
         expect(count('horse').map((entry) => entry.file)).toEqual([HORSE_FILE]);
+        expect(count('ruin').map((entry) => entry.file)).toEqual([RUIN_FILE]);
     });
 
     it('describes each tree and the spray pack the way the files really are', () => {
@@ -444,7 +455,84 @@ describe('Grainfields asset pack on disk', () => {
                 expect(entry.withersHeight).toBeLessThan(1.4);
                 expect(entry.height).toBeCloseTo(geometry.boundingBox.max.y, 3);
             }
+            if (entry.kind === 'ruin') {
+                const { geometry, height } = parsed.ruin;
+                expect(entry.triangles).toBe(triangles(geometry));
+                expect(entry.vertices).toBe(geometry.attributes.position.count);
+                expect(entry.height).toBe(height);
+                expect(entry.height).toBeCloseTo(geometry.boundingBox.max.y, 1);
+            }
         }
+    });
+});
+
+describe('Grainfields ruin asset', () => {
+    it('is one compact, texture-free mesh carrying the sky each face sees and the way it is open', () => {
+        const { json } = readGlb(RUIN_FILE);
+        expect(json.extensionsUsed).toContain('KHR_mesh_quantization');
+        expect(json.textures ?? []).toHaveLength(0);
+        expect(json.materials ?? []).toHaveLength(0);
+        expect(json.animations ?? []).toHaveLength(0);
+        expect(json.nodes.map((node) => node.name)).toEqual(['ruin']);
+        const { geometry } = parsed.ruin;
+        expect(Object.keys(geometry.attributes).sort()).toEqual(['_bent', 'color', 'normal', 'position']);
+        expect(triangles(geometry)).toBeGreaterThanOrEqual(RUIN_TRIANGLES.min);
+        expect(triangles(geometry)).toBeLessThanOrEqual(RUIN_TRIANGLES.max);
+        expect(finite(geometry.attributes.position.array)).toBe(true);
+        for (const name of ['normal', '_bent']) {
+            const [shortest, longest] = attributeLengths(geometry.attributes[name]);
+            expect(shortest, name).toBeGreaterThan(0.95);
+            expect(longest, name).toBeLessThan(1.05);
+        }
+        // Colour: the sky seen, the stone's tone, turf, dressed (1) or rubble (0); all fractions.
+        const colour = geometry.attributes.color;
+        expect(colour.itemSize).toBe(4);
+        const [darkest, lightest] = attributeRange(colour);
+        expect(darkest).toBeGreaterThanOrEqual(0);
+        expect(lightest).toBeLessThanOrEqual(1);
+        const sky = Array.from({ length: colour.count }, (_, i) => colour.getX(i));
+        // Open outer walls see nearly all their sky; the keep's inside and the window reveals far less.
+        expect(Math.max(...sky)).toBeGreaterThan(0.95);
+        expect(Math.min(...sky)).toBeLessThan(0.35);
+        const roles = new Set(Array.from({ length: colour.count }, (_, i) => Math.round(colour.getW(i))));
+        expect([...roles].sort()).toEqual([0, 1]);
+    });
+
+    it('stands inside the level crown of the knoll on deep foundations, twice the height of the old fort', () => {
+        const {
+            geometry, height, width, depth,
+        } = parsed.ruin;
+        const { position, color: colour } = geometry.attributes;
+        let reach = 0;
+        let rubbleReach = 0;
+        let lowest = Infinity;
+        let tallest = -Infinity;
+        let tallestX = 0;
+        for (let i = 0; i < position.count; i++) {
+            const x = position.getX(i);
+            const y = position.getY(i);
+            const z = position.getZ(i);
+            // Dressed walls and towers stand on the level crown; the rubble heaps spill a little past it.
+            if (y >= 0 && colour.getW(i) > 0.5) reach = Math.max(reach, Math.hypot(x, z));
+            if (y >= 0) rubbleReach = Math.max(rubbleReach, Math.hypot(x, z));
+            lowest = Math.min(lowest, y);
+            if (y > tallest) {
+                tallest = y;
+                tallestX = x;
+            }
+        }
+        expect(reach).toBeLessThanOrEqual(CROWN_REACH);
+        expect(rubbleReach).toBeLessThanOrEqual(CROWN_REACH + 2);
+        // The walls run 4 m under the crown, so a knoll drawn a little low never shows their foot.
+        expect(lowest).toBeLessThanOrEqual(-3.9);
+        // The old fort's keep stood 15 m; the keep's stair turret is the skyline's high point now.
+        expect(tallest).toBeGreaterThan(30);
+        expect(tallest).toBeLessThan(40);
+        expect(height).toBeCloseTo(tallest, 1);
+        // ...and stands left of the middle as the fields see it (the keep steps down to the right).
+        expect(tallestX).toBeLessThan(0);
+        expect(width).toBeGreaterThan(60);
+        expect(depth).toBeGreaterThan(60);
     });
 });
 
@@ -1217,7 +1305,8 @@ describe('Grainfields horse', () => {
 
 describe('loading and releasing the Grainfields assets', () => {
     const packGeometries = (assets) => [...Object.values(assets.foliage.meshes),
-        ...Object.values(assets.trees).map((tree) => tree.bark), ...(assets.horse ? [assets.horse.geometry] : [])];
+        ...Object.values(assets.trees).map((tree) => tree.bark), ...(assets.horse ? [assets.horse.geometry] : []),
+        ...(assets.ruin ? [assets.ruin.geometry] : [])];
 
     it('loads every file once and returns the parsed bundle', async () => {
         const loader = diskLoader();
@@ -1227,14 +1316,15 @@ describe('loading and releasing the Grainfields assets', () => {
         const assets = await loadGrainfieldsAssets({ loader, textureLoader, isCurrent });
         const requested = loader.loadAsync.mock.calls.map(([url]) => url);
         expect([...requested].sort())
-            .toEqual([GRAINFIELDS_FOLIAGE_URL, GRAINFIELDS_HORSE_URL, ...Object.values(GRAINFIELDS_TREE_URLS)].sort());
+            .toEqual([GRAINFIELDS_FOLIAGE_URL, GRAINFIELDS_HORSE_URL, GRAINFIELDS_RUIN_URL,
+                ...Object.values(GRAINFIELDS_TREE_URLS)].sort());
         expect(textureLoader.loadAsync).toHaveBeenCalledExactlyOnceWith(GRAINFIELDS_IMPOSTOR_URL);
         // Ownership is checked once, after everything has arrived.
         expect(isCurrent).toHaveBeenCalledOnce();
         expect(isCurrent.mock.invocationCallOrder[0])
             .toBeGreaterThan(Math.max(...loader.loadAsync.mock.invocationCallOrder));
 
-        expect(Object.keys(assets).sort()).toEqual(['foliage', 'horse', 'impostors', 'trees']);
+        expect(Object.keys(assets).sort()).toEqual(['foliage', 'horse', 'impostors', 'ruin', 'trees']);
         expect(Object.keys(assets.trees)).toEqual(TREE_NAMES);
         // The horse: a skinned geometry in metres, its skeleton and its landmarks, nothing else.
         expect(Object.keys(assets.horse).sort()).toEqual(['geometry', 'landmarks', 'skeleton']);
@@ -1244,6 +1334,9 @@ describe('loading and releasing the Grainfields assets', () => {
         expect(triangles(assets.horse.geometry)).toBe(triangles(parsed.horse.geometry));
         expect(assets.horse.skeleton).toEqual(parsed.horse.skeleton);
         expect(assets.horse.landmarks).toEqual(parsed.horse.landmarks);
+        // The ruin: its geometry in metres and its size.
+        expect(Object.keys(assets.ruin).sort()).toEqual(['depth', 'geometry', 'height', 'width']);
+        expect(triangles(assets.ruin.geometry)).toBe(triangles(parsed.ruin.geometry));
         for (const name of TREE_NAMES) {
             expect(assets.trees[name].name).toBe(name);
             expect(assets.trees[name].sites.count).toBe(parsed.trees[name].sites.count);
@@ -1276,15 +1369,15 @@ describe('loading and releasing the Grainfields assets', () => {
             }),
         };
         const assets = await loadGrainfieldsAssets({ loader, textureLoader: null });
-        // One for the sprays, a mesh and a points material for each tree, one for the horse.
-        expect(materials.size).toBe(1 + TREE_NAMES.length * 2 + 1);
+        // One for the sprays, a mesh and a points material for each tree, one each for the horse and the ruin.
+        expect(materials.size).toBe(1 + TREE_NAMES.length * 2 + 2);
         for (const disposal of materials.values()) expect(disposal).toHaveBeenCalled();
         // The geometry the world adopts is not the loader's to throw away.
         const adopted = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         expect(packGeometries(assets).every((geometry) => geometry.attributes.position.count > 0)).toBe(true);
         expect(adopted).not.toHaveBeenCalled();
         disposeGrainfieldsAssets(assets);
-        expect(adopted).toHaveBeenCalledTimes(REQUIRED_FOLIAGE.length + TREE_NAMES.length + 1);
+        expect(adopted).toHaveBeenCalledTimes(REQUIRED_FOLIAGE.length + TREE_NAMES.length + 2);
     });
 
     it('disposes everything and returns null when the start that asked is no longer current', async () => {
@@ -1293,18 +1386,22 @@ describe('loading and releasing the Grainfields assets', () => {
         const disposal = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         const assets = await loadGrainfieldsAssets({ loader, textureLoader, isCurrent: () => false });
         expect(assets).toBeNull();
-        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 2);
+        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 3);
         const released = disposal.mock.contexts.map((geometry) => geometry.name).sort();
-        expect(released).toEqual([...REQUIRED_FOLIAGE, ...TREE_NAMES.map(() => 'bark'), 'horse'].sort());
+        expect(released).toEqual([...REQUIRED_FOLIAGE, ...TREE_NAMES.map(() => 'bark'), 'horse', 'ruin'].sort());
         expect(new Set(disposal.mock.contexts).size).toBe(released.length);
         expect(textureLoader.textures).toHaveLength(1);
         expect(textureLoader.disposed).toEqual(textureLoader.textures);
     });
 
-    it('loads a chosen subset of trees, each once, and can skip the sprite sheet and the horse', async () => {
+    it('loads a chosen subset of trees, each once, and can skip the sprite sheet, the horse and the ruin', async () => {
         const loader = diskLoader();
         const assets = await loadGrainfieldsAssets({
-            trees: ['larch-grove-a', 'birch-grove-b', 'larch-grove-a'], horse: false, loader, textureLoader: null,
+            trees: ['larch-grove-a', 'birch-grove-b', 'larch-grove-a'],
+            horse: false,
+            ruin: false,
+            loader,
+            textureLoader: null,
         });
         expect(Object.keys(assets.trees)).toEqual(['larch-grove-a', 'birch-grove-b']);
         expect(loader.loadAsync).toHaveBeenCalledTimes(3);
@@ -1312,13 +1409,14 @@ describe('loading and releasing the Grainfields assets', () => {
             .toEqual(['birch-grove-b.glb', FOLIAGE_FILE, 'larch-grove-a.glb']);
         expect(assets.impostors).toBeNull();
         expect(assets.horse).toBeNull();
+        expect(assets.ruin).toBeNull();
         expect(Object.keys(assets.foliage.meshes).sort()).toEqual([...REQUIRED_FOLIAGE].sort());
         disposeGrainfieldsAssets(assets);
-        // No trees at all still brings the horse.
+        // No trees at all still brings the horse and the ruin.
         const herdOnly = diskLoader();
         const horseOnly = await loadGrainfieldsAssets({ trees: [], loader: herdOnly, textureLoader: null });
         expect(herdOnly.loadAsync.mock.calls.map(([url]) => fileNameOf(url)).sort())
-            .toEqual([FOLIAGE_FILE, HORSE_FILE]);
+            .toEqual([FOLIAGE_FILE, HORSE_FILE, RUIN_FILE]);
         expect(Object.keys(horseOnly.trees)).toEqual([]);
         expect(triangles(horseOnly.horse.geometry)).toBe(triangles(parsed.horse.geometry));
         disposeGrainfieldsAssets(horseOnly);
@@ -1363,6 +1461,44 @@ describe('loading and releasing the Grainfields assets', () => {
         expect(assets.horse).toBeNull();
         expect(Object.keys(assets.trees)).toEqual(TREE_NAMES);
         disposeGrainfieldsAssets(assets);
+    });
+
+    it('gets by without the ruin when it fails to load or to parse, and keeps everything else', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const failing = async (mutate) => {
+            const loader = diskLoader();
+            loader.loadAsync.mockImplementation(async (url) => {
+                const gltf = await parseGlb(fileNameOf(url));
+                if (fileNameOf(url) === RUIN_FILE) mutate(gltf);
+                return gltf;
+            });
+            const assets = await loadGrainfieldsAssets({ loader, textureLoader: null });
+            expect(assets.ruin).toBeNull();
+            expect(assets.horse).not.toBeNull();
+            expect(Object.keys(assets.trees)).toEqual(TREE_NAMES);
+            disposeGrainfieldsAssets(assets);
+        };
+        await failing(() => { throw new Error('404 grainfields-ruin.glb'); });
+        expect(warn).toHaveBeenLastCalledWith(
+            expect.stringContaining('[Grainfields] The ruin could not be loaded'),
+            expect.objectContaining({ message: '404 grainfields-ruin.glb' }),
+        );
+        await failing((gltf) => { gltf.scene.userData.schemaVersion = GRAINFIELDS_ASSET_SCHEMA + 1; });
+        expect(warn).toHaveBeenLastCalledWith(
+            expect.stringContaining('[Grainfields] The ruin could not be read'),
+            expect.objectContaining({ message: expect.stringContaining('Ruin has asset schema') }),
+        );
+        await failing((gltf) => { gltf.scene.children[0].geometry.deleteAttribute('_bent'); });
+        expect(warn).toHaveBeenLastCalledWith(
+            expect.stringContaining('[Grainfields] The ruin could not be read'),
+            expect.objectContaining({ message: '[Grainfields] Ruin is missing its "_bent" attribute.' }),
+        );
+        await failing((gltf) => { delete gltf.scene.userData.height; });
+        expect(warn).toHaveBeenLastCalledWith(
+            expect.stringContaining('[Grainfields] The ruin could not be read'),
+            expect.objectContaining({ message: '[Grainfields] Ruin is missing its size.' }),
+        );
+        expect(warn).toHaveBeenCalledTimes(4);
     });
 
     it('rejects an unknown tree name and a failed download', async () => {
@@ -1414,7 +1550,7 @@ describe('loading and releasing the Grainfields assets', () => {
         const textureLoader = stubTextureLoader();
         const assets = await loadGrainfieldsAssets({ loader: diskLoader(), textureLoader });
         const geometries = packGeometries(assets);
-        expect(new Set(geometries).size).toBe(REQUIRED_FOLIAGE.length + TREE_NAMES.length + 1);
+        expect(new Set(geometries).size).toBe(REQUIRED_FOLIAGE.length + TREE_NAMES.length + 2);
         const disposals = [...geometries, assets.impostors.texture].map((resource) => vi.spyOn(resource, 'dispose'));
         disposeGrainfieldsAssets(assets);
         disposals.forEach((disposal) => expect(disposal).toHaveBeenCalledOnce());
@@ -1425,17 +1561,19 @@ describe('loading and releasing the Grainfields assets', () => {
         const spray = { dispose: vi.fn() };
         const texture = { dispose: vi.fn() };
         const horse = { dispose: vi.fn() };
+        const ruin = { dispose: vi.fn() };
         for (const assets of [null, undefined, false, 0, {}, {
-            foliage: null, trees: null, impostors: null, horse: null,
+            foliage: null, trees: null, impostors: null, horse: null, ruin: null,
         }, { foliage: {} }, { foliage: { meshes: {} } }, { trees: {} }, { trees: { sapling: {} } },
         { trees: { sapling: { bark: null } } }, { impostors: {} }, { impostors: { texture: null } }, { horse: {} },
-        { horse: { geometry: null, pivots: {} } }]) {
+        { horse: { geometry: null, pivots: {} } }, { ruin: {} }, { ruin: { geometry: null } }]) {
             expect(() => disposeGrainfieldsAssets(assets)).not.toThrow();
         }
         disposeGrainfieldsAssets({ trees: { sapling: { bark } } });
         disposeGrainfieldsAssets({ foliage: { meshes: { spray } } });
         disposeGrainfieldsAssets({ impostors: { texture } });
         disposeGrainfieldsAssets({ horse: { geometry: horse, pivots: {} } });
-        for (const resource of [bark, spray, texture, horse]) expect(resource.dispose).toHaveBeenCalledOnce();
+        disposeGrainfieldsAssets({ ruin: { geometry: ruin } });
+        for (const resource of [bark, spray, texture, horse, ruin]) expect(resource.dispose).toHaveBeenCalledOnce();
     });
 });

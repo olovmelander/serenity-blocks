@@ -12,7 +12,7 @@
  *                            the composition solver and the post's board veil read its rects
  *   hud=0                    with board=1: board only, no HUD mock
  *   pulse / ring / particle / ambient = 0..1   hold a reactive state
- *   event=lock|combo|clear|tetris|levelUp  fire a gameplay event...
+ *   event=lock|combo|clear|tetris|levelUp|tspin|b2b|perfect  fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, level=<n>)
  *   parts=sky,stars,...      draw only these parts (sky stars planets road rails rings streaks
  *                            motes meteors) for isolated iteration

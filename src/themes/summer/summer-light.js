@@ -1,5 +1,5 @@
 /**
- * Summer — the light, air and wind of Midsummer's Eve.
+ * Summer — the light, air and wind of a summer's eve.
  *
  * The sun of the longest day stands low over the lake and never quite sets. Materials stay
  * unlit node materials and call into this rig, so both renderer backends shade

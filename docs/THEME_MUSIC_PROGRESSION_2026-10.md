@@ -131,7 +131,7 @@ and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 | 15 | Tornado | `tornado-placeholder-song.mp3` | Blood Moon placeholder |
 | 16 | Fall | `fall-placeholder-song.mp3` | Blood Moon placeholder |
 | 17 | Halcyon Apex | `halcyon-apex-placeholder-song.mp3` | Blood Moon placeholder |
-| 18 | Midsommar | `summer-placeholder-song.mp3` | Blood Moon placeholder |
+| 18 | Summer | `summer-placeholder-song.mp3` | Blood Moon placeholder |
 | 19 | Sakura Twilight | `sakura-twilight-placeholder-song.mp3` | Blood Moon placeholder |
 | 20 | Verdant Hills | `verdant-hills-placeholder-song.mp3` | Blood Moon placeholder |
 | 21 | Ice Temple | `ice-temple.mp3` | Existing |

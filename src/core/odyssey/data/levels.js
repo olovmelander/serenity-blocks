@@ -1100,7 +1100,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 17,
-        name: 'Midsummer Glow',
+        name: 'Summer Glow',
         chapter: 3,
         chapterLevel: 6,
         isChapterStart: false,

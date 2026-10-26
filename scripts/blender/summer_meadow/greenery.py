@@ -1,4 +1,4 @@
-"""Midsummer greenery for the Summer props: birch sprigs, meadow flowers, garlands, wreaths.
+"""Greenery for the Summer props: birch sprigs, meadow flowers, garlands, wreaths.
 
 A garland is a rope of birch twigs: a thin dark core (the leaves you cannot see between)
 shingled with sprigs of three leaves that lie along it and lift at their tips. Each leaf is
@@ -173,7 +173,7 @@ def ring_path(centre, normal, radius, segments=20):
 
 def wreath(kit, centre, normal, radius, core=0.055, spacing=0.07, leaf_size=0.15, flowers=16, back_flowers=3,
            flower_size=0.062, leaves=3, first_kind=0):
-    """A midsummer wreath: a hoop of birch leaves studded with meadow flowers on its face.
+    """A summer wreath: a hoop of birch leaves studded with meadow flowers on its face.
 
     The flowers go round the seven kinds in turn (three places on at each step, so no two
     neighbours match), starting from `first_kind`.

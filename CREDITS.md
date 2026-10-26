@@ -127,6 +127,11 @@ third-party or CC assets:
   boulders and dead snag, and the far-stand sprite sheet). These are authored procedurally
   in Blender by `scripts/blender/forest_assets.py` with no generative model and no
   third-party source; see `src/themes/forest/assets/ATTRIBUTION.md`.
+- Neon District: `public/textures/neon-district/people.webp` and `people-masks.webp` (the sprite
+  sheets of the people in the shops: twelve characters, their bodies, clothes, hair, gear and
+  every frame of their walks and loops). Authored procedurally in Blender by
+  `scripts/blender/neon_district_people.py` (bodies as signed distances on a small rig, posed by
+  code, rendered as data) with no generative model, no motion capture and no third-party source.
 - Crystal Cave: `src/themes/crystal-cave/assets/cavern.glb` (the hall of rock with its
   baked light, the crystal layout, the glow-worm and drip points). Authored procedurally
   in Blender by `scripts/blender/crystal_cave_assets.py` with no generative model and no
@@ -188,9 +193,9 @@ their `suno.com` output IDs in their metadata; the prompts are in
 `docs/SUNO_PLACEHOLDER_PROMPTS_2026-10.md`):
 
 Astral Weave · Chiral Gold · Chromadelic Highway · Fall · Golden Forest · Halcyon Apex ·
-High Coast · Kaleidosonic · Koi Pond · Luminous Tides · Midsommar · Nebula Flow ·
-Nimbus Veil · Painted Ages · Pyrestorm · Rainbow Terraces · Sakura Twilight ·
-Serenity Warp · Solar Eclipse · Stellar Velocity · Sunfall · Sunset · Supernova ·
+High Coast · Kaleidosonic · Koi Pond · Luminous Tides · Nebula Flow · Nimbus Veil ·
+Painted Ages · Pyrestorm · Rainbow Terraces · Sakura Twilight · Serenity Warp ·
+Solar Eclipse · Stellar Velocity · Summer · Sunfall · Sunset · Supernova ·
 Synthwave Sunset · Thermal Bloom.
 
 Sound effects are generated procedurally in code (`src/audio/sound-effects.js`); no

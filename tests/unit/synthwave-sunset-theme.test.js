@@ -31,7 +31,9 @@ import {
 } from '../../src/themes/synthwave-sunset/synthwave-sunset-geo.js';
 import { HOTEL_WORDS, buildHotels, glyphCode } from '../../src/themes/synthwave-sunset/synthwave-sunset-hotels.js';
 import { MIST, POST_LOOK, mistOpticalDepth } from '../../src/themes/synthwave-sunset/synthwave-sunset-post.js';
-import { GULL_LOOPS, gullPosition } from '../../src/themes/synthwave-sunset/synthwave-sunset-gulls.js';
+import {
+    GULL_FLIGHTS, GULL_RIG, GULL_STARTLE, GullRoost, GullStartle, gullPosition, loopPosition, wingPose,
+} from '../../src/themes/synthwave-sunset/synthwave-sunset-gull-flight.js';
 import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
@@ -816,29 +818,169 @@ describe('synthwave-sunset world', () => {
         world.dispose();
     });
 
-    it('keeps its gulls wheeling in the free sky beside the board, low over the sea, one draw a tier', () => {
+    it('keeps its gulls wheeling in the open sky round the wheel, over the sea, one draw a tier', () => {
         const eye = new THREE.Vector3(RIG.x, RIG.height, RIG.z);
-        const at = new THREE.Vector3();
-        GULL_LOOPS.forEach((_, i) => {
-            for (let t = 0; t <= 600; t += 7.3) {
+        const at = [0, 0, 0, 1];
+        GULL_FLIGHTS.forEach((flight, i) => {
+            let free = 0;
+            let n = 0;
+            for (let t = 0; t <= 600; t += 1.7) {
                 gullPosition(i, t, at);
-                const rel = at.clone().sub(eye);
+                const rel = new THREE.Vector3(at[0], at[1], at[2]).sub(eye);
                 const flat = Math.hypot(rel.x, rel.z);
                 const bearing = THREE.MathUtils.radToDeg(Math.atan2(rel.x, -rel.z));
                 const elevation = THREE.MathUtils.radToDeg(Math.atan2(rel.y, flat));
-                // Between the left edge of a game's view and the board's left edge.
-                expect(bearing).toBeGreaterThan(-24);
-                expect(bearing).toBeLessThan(32);
-                expect(elevation).toBeGreaterThan(1.5);
-                expect(elevation).toBeLessThan(18);
-                expect(flat).toBeGreaterThan(20);
-                expect(at.z).toBeLessThan(shoreLineZ(at.x));
+                // Inside a wide game view, below its top edge, never over the beach.
+                expect(bearing).toBeGreaterThan(-36);
+                expect(bearing).toBeLessThan(42);
+                expect(elevation).toBeGreaterThan(0.2);
+                expect(elevation).toBeLessThan(37);
+                expect(flat).toBeGreaterThan(25);
+                expect(at[1]).toBeGreaterThan(2.5);
+                expect(at[2]).toBeLessThan(shoreLineZ(at[0]));
+                // The free sky left of a game's board (16:9): from the screen's edge to the board's.
+                if (bearing > -14 && bearing < 20) free += 1;
+                n += 1;
             }
+            // All but the far bird's long glide stay mostly in it.
+            if (flight.radius < 40) expect(free / n, `gull ${i}`).toBeGreaterThan(0.55);
         });
         for (const quality of ['Minimal', 'High', 'Extreme']) {
             const world = new SynthwaveWorld({ scene: new THREE.Scene(), quality, random: seeded() }).build();
-            expect(world.parts.gulls.geometry.instanceCount).toBe(WORLD_QUALITY[quality].gulls);
+            const { geometry } = world.gulls.mesh;
+            expect(geometry.instanceCount).toBe(WORLD_QUALITY[quality].gulls);
+            // WebGPU allows eight vertex buffers a draw: the flights share one.
+            const buffers = new Set(Object.values(geometry.attributes).map((a) => a.data ?? a));
+            expect(buffers.size).toBeLessThanOrEqual(8);
             world.dispose();
+        }
+    });
+
+    it('flies each gull at a gull\'s pace, the mates beside their leaders', () => {
+        const a = [0, 0, 0, 1];
+        const b = [0, 0, 0, 1];
+        GULL_FLIGHTS.forEach((_, i) => {
+            for (let t = 3; t < 300; t += 11.3) {
+                gullPosition(i, t - 0.05, a);
+                gullPosition(i, t + 0.05, b);
+                const speed = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / 0.1;
+                expect(speed, `gull ${i} at ${t}`).toBeGreaterThan(2.5);
+                expect(speed, `gull ${i} at ${t}`).toBeLessThan(17);
+            }
+        });
+        // 4 flies 1's loop and 7 flies 3's, near them all the time.
+        for (const [mate, lead] of [[4, 1], [7, 3]]) {
+            for (let t = 0; t < 300; t += 9.1) {
+                gullPosition(mate, t, a);
+                gullPosition(lead, t, b);
+                expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])).toBeLessThan(14);
+            }
+        }
+    });
+
+    it('startles the gulls with the fireworks: the bangs add up, the birds lift and scatter, then settle', () => {
+        const one = new GullStartle();
+        one.hit(0.5, 10);
+        const two = new GullStartle();
+        two.hit(0.5, 10);
+        two.hit(0.5, 10.4);
+        expect(two.value(11)).toBeGreaterThan(one.value(11));
+        // A frenzy never runs far past the ceiling, and it is gone a while after.
+        const many = new GullStartle();
+        for (let k = 0; k < 30; k += 1) many.hit(0.6, 10 + k * 0.2);
+        for (let t = 10; t < 20; t += 0.05) expect(many.value(t)).toBeLessThanOrEqual(GULL_STARTLE.ceiling * 1.25);
+        expect(many.value(40)).toBeLessThan(0.02);
+        // A startled bird is higher than the same bird at peace.
+        const calm = [0, 0, 0, 1];
+        const scared = [0, 0, 0, 1];
+        gullPosition(0, 11, calm);
+        gullPosition(0, 11, scared, { startle: one, now: 11 });
+        expect(scared[1] - calm[1]).toBeGreaterThan(1.5);
+
+        // In the world: a four-line clear's shells go up, burst, and the gulls take fright.
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.3, 9000);
+        const world = new SynthwaveWorld({ scene, quality: 'High', random: seeded() }).build();
+        world.setLayout(16 / 9, null, { immediate: true });
+        run(world, camera, 0, 0.5);
+        expect(world.gulls.uStartle.value.x).toBe(0);
+        world.onLineClear(4);
+        run(world, camera, 0.5, 4);
+        expect(world.gulls.startle.value(world.u.gullTime.value)).toBeGreaterThan(0.2);
+        expect(world.gulls.uStartle.value.x).toBeGreaterThan(0);
+        // A seek drops it.
+        world.seek(30);
+        world.update({ time: 30, delta: 0 });
+        expect(world.gulls.startle.value(30)).toBe(0);
+        world.dispose();
+    });
+
+    it('sends the gulls to roost as the evening runs out, in turn and the mates together, and brings them back', () => {
+        const n = GULL_FLIGHTS.length;
+        const roost = new GullRoost(n);
+        const duskAt = (t) => eveningAt(0, t);
+        roost.seek(600, duskAt);
+        const left = new Map();
+        const at = [0, 0, 0, 1];
+        let goneAll = false;
+        for (let t = 600; t <= 900; t += 0.5) {
+            roost.update(t, duskAt(t));
+            for (let i = 0; i < n; i += 1) {
+                if (roost.leaveAt[i] > roost.backAt[i] && !left.has(i)) left.set(i, roost.leaveAt[i]);
+            }
+            if (Math.abs(t - 750) < 0.25) {
+                // In the afterglow every bird has gone (drawn at nothing).
+                goneAll = GULL_FLIGHTS.every((_, i) => {
+                    gullPosition(i, t, at, { leaveAt: roost.leaveAt[i], backAt: roost.backAt[i] });
+                    return at[3] === 0;
+                });
+            }
+        }
+        expect(left.size).toBe(n);
+        expect(goneAll).toBe(true);
+        // In the order of their hours; the mates with their leaders.
+        const order = [...left.entries()].sort((x, y) => x[1] - y[1]).map(([i]) => GULL_FLIGHTS[i].leaves);
+        expect(order).toEqual([...order].sort((x, y) => x - y));
+        expect(left.get(4)).toBe(left.get(1));
+        expect(left.get(7)).toBe(left.get(3));
+        // Back home (on their loops, full size) once the evening has walked back.
+        GULL_FLIGHTS.forEach((_, i) => {
+            expect(roost.backAt[i]).toBeGreaterThan(roost.leaveAt[i]);
+            gullPosition(i, 900, at, { leaveAt: roost.leaveAt[i], backAt: roost.backAt[i] });
+            const home = loopPosition(GULL_FLIGHTS[i], 900);
+            expect(Math.hypot(at[0] - home[0], at[1] - home[1], at[2] - home[2])).toBeLessThan(1e-6);
+            expect(at[3]).toBeGreaterThan(1);
+        });
+        // A seek rebuilds what the walk did: who is away, and since when.
+        for (const t of [670, 690, 760, 815, 840]) {
+            const walked = new GullRoost(n);
+            walked.seek(300, duskAt);
+            for (let s = 300.5; s <= t + 1e-6; s += 0.5) walked.update(s, duskAt(s));
+            const seeked = new GullRoost(n);
+            seeked.seek(t, duskAt);
+            for (let i = 0; i < n; i += 1) {
+                const away = (r) => r.leaveAt[i] > r.backAt[i];
+                expect(away(seeked), `gull ${i} at ${t}`).toBe(away(walked));
+                const since = (r) => (away(r) ? r.leaveAt[i] : r.backAt[i]);
+                if (since(walked) > t - 100) expect(since(seeked), `gull ${i} at ${t}`).toBe(since(walked));
+            }
+        }
+    });
+
+    it('beats the gull\'s wings through the poses its model was built with', () => {
+        const { poses } = GULL_RIG;
+        const close = (pose, key) => Object.keys(pose).forEach((k) => expect(pose[k], `${key}.${k}`).toBeCloseTo(poses[key][k], 6));
+        close(wingPose(0, 1), 'top');
+        close(wingPose(Math.PI / 2, 1), 'down');
+        close(wingPose(Math.PI, 1), 'bottom');
+        close(wingPose(Math.PI * 1.5, 1), 'up');
+        close(wingPose(1.234, 0), 'glide');
+        // Round the cycle the wing never jumps.
+        let last = wingPose(0, 1);
+        for (let phi = 0.02; phi <= Math.PI * 2 + 1e-9; phi += 0.02) {
+            const pose = wingPose(phi, 1);
+            for (const k of Object.keys(pose)) expect(Math.abs(pose[k] - last[k])).toBeLessThan(0.05);
+            last = pose;
         }
     });
 
