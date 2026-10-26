@@ -6,7 +6,7 @@ Run headless (preferred; nothing in an open Blender session is touched):
         --out src/themes/summer/assets [--only trees,foliage,impostors,props] \
         [--preview <dir>] [--recipes birch-hero,spruce-hero] [--no-bake] [--scratch <dir>]
 
-A Swedish Midsummer's Eve by a lake: silver birches and Norway spruces grown with the Fall
+A Swedish summer's eve by a lake: silver birches and Norway spruces grown with the Fall
 grove's branching library (scripts/blender/fall_grove) and the Golden Forest's conifer
 helpers (scripts/blender/golden_forest), written in the same compact GLB layout: a bark
 mesh plus a point cloud of foliage sites per tree, shared leaf and needle sprays, and a

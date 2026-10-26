@@ -1,5 +1,5 @@
 /**
- * Summer — Midsummer's Eve by the lake, shared with the isolated playground.
+ * Summer — an evening by the lake, shared with the isolated playground.
  * The theme owns lifecycle, renderer, asset loading and gameplay subscriptions;
  * SummerWorld owns the artwork (the flowering meadow, Blender-grown birch and spruce, the
  * cottage, the maypole, the mirror lake, light and air) and SummerReactions owns bounded,

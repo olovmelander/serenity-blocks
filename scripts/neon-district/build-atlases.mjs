@@ -132,10 +132,10 @@ const TRANSIT_WORLDS = [
     },
     {
         id: 'summer',
-        name: 'MIDSOMMAR',
+        name: 'SUMMER',
         line: 'THE SUN THAT WILL NOT SET',
         layout: 'swiss',
-        image: 'docs/summer-midsommar/idle.webp',
+        image: 'docs/summer-overhaul/idle.webp',
         focus: [480, 280],
     },
     {
