@@ -280,6 +280,8 @@ export function createCampaignFinale({
         && (event.code === CAMPAIGN_FINALE_KEYS[choice].code
             || String(event.key || '').toUpperCase() === CAMPAIGN_FINALE_KEYS[choice].key));
     const onKeyDown = (event) => {
+        // Settings opened over the finale owns the keys: its Escape closes Settings only.
+        if (isSettingsOverSheet()) return;
         const activation = ['Enter', ' ', 'Escape'].includes(event.key);
         if (activation && (event.repeat || document.hidden || document.hasFocus?.() === false)) {
             event.preventDefault();

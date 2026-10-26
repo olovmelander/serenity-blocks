@@ -11,6 +11,7 @@ import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
 import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
 import { developerSurfacesEnabled } from './developer-surfaces.js';
+import { findBoundAction, isBindableKey, normalizeBindingKey } from './binding-keys.js';
 import { armTwoPressQuit, canQuitDesktop } from './desktop-quit.js';
 
 /** Saved game modes the game has since renamed: Fault Lines became Stillfall (2026-10-18). */
@@ -205,17 +206,27 @@ const SERENITY_GAMEPAD_BINDING_ACTIONS = [
     'navigateRight',
 ];
 
+/**
+ * One key per action and one action per key. Letters are held in lower case (Caps Lock
+ * at capture time stored `Z`). A key that two actions claim — merged cloud and local
+ * bindings can do that — stays with the first, and the other action goes back to its
+ * default while that is free: the first match took every press, so it never played.
+ */
 function sanitizeBindings(bindings, fallbackBindings, actions = KEYBOARD_BINDING_ACTIONS) {
     const source = (bindings && typeof bindings === 'object') ? bindings : {};
     const sanitized = {};
+    const used = new Set();
 
     actions.forEach((action) => {
-        const value = source[action];
-        if (typeof value === 'string' && value.length > 0) {
-            sanitized[action] = value;
-        } else {
-            sanitized[action] = fallbackBindings[action];
+        const value = normalizeBindingKey(source[action]);
+        sanitized[action] = isBindableKey(value) ? value : normalizeBindingKey(fallbackBindings[action]);
+    });
+    actions.forEach((action) => {
+        const fallback = normalizeBindingKey(fallbackBindings[action]);
+        if (used.has(sanitized[action]) && !Object.values(sanitized).includes(fallback)) {
+            sanitized[action] = fallback;
         }
+        used.add(sanitized[action]);
     });
 
     return sanitized;
@@ -229,17 +240,30 @@ const sanitizeSerenityKeyBindings = (bindings) => sanitizeBindings(
     SERENITY_KEYBOARD_BINDING_ACTIONS,
 );
 
+/** Standard-mapping buttons run 0-16; a few pads report a few more. */
+const MAX_PAD_BUTTON = 31;
+
+/**
+ * One button per action, as for keys (sanitizeBindings): a negative, fractional or
+ * out-of-range index made its action dead, and a button two actions shared played both.
+ */
 function sanitizeButtonBindings(bindings, fallbackBindings, actions) {
     const source = (bindings && typeof bindings === 'object') ? bindings : {};
     const sanitized = {};
+    const used = new Set();
 
     actions.forEach((action) => {
         const value = source[action];
-        if (Number.isInteger(value) && value >= 0) {
-            sanitized[action] = value;
-        } else {
-            sanitized[action] = fallbackBindings[action];
+        sanitized[action] = Number.isInteger(value) && value >= 0 && value <= MAX_PAD_BUTTON
+            ? value
+            : fallbackBindings[action];
+    });
+    actions.forEach((action) => {
+        const fallback = fallbackBindings[action];
+        if (used.has(sanitized[action]) && !Object.values(sanitized).includes(fallback)) {
+            sanitized[action] = fallback;
         }
+        used.add(sanitized[action]);
     });
 
     return sanitized;
@@ -272,11 +296,17 @@ function applyCursorSettingDefaults(settings) {
     };
 }
 
+const GAMEPAD_GAMEPLAY_ACTIONS = [...KEYBOARD_BINDING_ACTIONS, 'pause'];
+
 const BINDING_SANITIZERS = {
     keyBindings: sanitizePlayer1KeyBindings,
     player2KeyBindings: sanitizePlayer2KeyBindings,
     serenityKeyBindings: sanitizeSerenityKeyBindings,
     serenityGamepadBindings: sanitizeSerenityGamepadBindings,
+    ...Object.fromEntries(GAMEPAD_BINDING_KEYS.map((key, index) => [
+        key,
+        (bindings) => sanitizeButtonBindings(bindings, DEFAULT_GAMEPAD_BINDINGS[index], GAMEPAD_GAMEPLAY_ACTIONS),
+    ])),
 };
 
 const CURSOR_SETTING_KEYS = [
@@ -561,6 +591,14 @@ export class SettingsManager {
                     serenityKeyBindings: sanitizedSerenityKeyBindings,
                     serenityGamepadBindings: sanitizedSerenityGamepadBindings,
                 };
+                // Each controller's buttons too (they were taken as saved).
+                let gamepadBindingsChanged = false;
+                GAMEPAD_BINDING_KEYS.forEach((key, index) => {
+                    const savedPad = loaded[key] || {};
+                    const sanitized = BINDING_SANITIZERS[key]({ ...DEFAULT_GAMEPAD_BINDINGS[index], ...savedPad });
+                    gamepadBindingsChanged ||= JSON.stringify(savedPad) !== JSON.stringify(sanitized);
+                    this.settings[key] = sanitized;
+                });
                 this.settings = applyCursorSettingDefaults(this.settings);
                 this.didLoadFromStorage = true;
                 this.normalizedBindings = Object.fromEntries(
@@ -592,6 +630,7 @@ export class SettingsManager {
                 const gameModeChanged = loaded.gameMode !== undefined && loaded.gameMode !== sanitizedGameMode;
                 if (
                     keyBindingsChanged
+                    || gamepadBindingsChanged
                     || player2BindingsChanged
                     || serenityKeyBindingsChanged
                     || serenityGamepadBindingsChanged
@@ -716,35 +755,50 @@ function getKeyboardBindingContext(elementId) {
     };
 }
 
+/** Light the tile whose binding a capture just swapped, so the change is seen. */
+function markSwappedTile(element, action, otherAction) {
+    const id = String(element?.id || '');
+    if (!id.endsWith(action)) return;
+    const other = typeof document !== 'undefined'
+        ? document.getElementById?.(`${id.slice(0, id.length - action.length)}${otherAction}`)
+        : null;
+    if (!other?.classList) return;
+    other.classList.add('binding-swapped');
+    setTimeout(() => other.classList.remove('binding-swapped'), 1600);
+}
+
 export function handleKeybinding(event, element, settingsManager, updateCallback) {
     event.preventDefault();
 
     const elementId = element.id;
-    const key = event.key === ' ' ? 'Space' : event.key;
+    const key = normalizeBindingKey(event.key);
     const settings = settingsManager.get();
     const { action, bindingsKey, defaultBindings } = getKeyboardBindingContext(elementId);
     const currentBindings = settings[bindingsKey] || defaultBindings;
+    element.classList.remove('listening');
 
-    // Check if key is already used for another action in the same player's bindings
-    if (Object.values(currentBindings).includes(key) && currentBindings[action] !== key) {
-        // Revert to original key
+    // Tab, Caps Lock, a dead key: nothing a control can rely on. The binding stays.
+    if (!isBindableKey(key)) {
         renderKeyBinding(element, currentBindings[action]);
-        element.classList.remove('listening');
         return;
     }
 
-    // Set new key binding
+    // A key another action of this set already plays: the two swap keys, so neither is
+    // left without one (the capture used to refuse it without a word).
+    const holder = findBoundAction(currentBindings, key);
+    const swapped = holder && holder !== action ? holder : null;
     const newBindings = {
         ...currentBindings,
         [action]: key,
+        ...(swapped ? { [swapped]: currentBindings[action] } : {}),
     };
 
     settingsManager.update({ [bindingsKey]: newBindings });
     renderKeyBinding(element, key);
-    element.classList.remove('listening');
 
     settingsManager.save();
     if (updateCallback) updateCallback();
+    if (swapped) markSwappedTile(element, action, swapped);
 }
 
 /**
@@ -769,6 +823,9 @@ const GAMEPAD_BUTTON_NAMES = {
     15: 'D-Right',
     16: 'Home',
 };
+
+/** View (Select), Menu (Start) and Home: the buttons that open and leave menus. */
+const MENU_PAD_BUTTONS = new Set([8, 9, 16]);
 
 function renderPadBinding(element, buttonIndex) {
     const name = GAMEPAD_BUTTON_NAMES[buttonIndex] || `Button ${buttonIndex}`;
@@ -819,21 +876,40 @@ function getGamepadBindingContext(elementId) {
  */
 export function handleGamepadBinding(element, settingsManager, updateCallback) {
     cancelSettingsCapture(settingsManager);
-    const { action, bindingsKey, defaultBindings } = getGamepadBindingContext(element.id);
-    const currentBindings = settingsManager.get()[bindingsKey] || defaultBindings;
+    const {
+        playerIndex, action, bindingsKey, defaultBindings,
+    } = getGamepadBindingContext(element.id);
+    // View, Menu and Home stay the menu's buttons for the game controls: bound to a move
+    // they did both (Start opened Settings and dropped the piece). Pause takes only one of
+    // them, or a swap would hand its menu button to a move.
+    const accepts = (index) => {
+        if (playerIndex === null) return true;
+        return action === 'pause' ? MENU_PAD_BUTTONS.has(index) : !MENU_PAD_BUTTONS.has(index);
+    };
     // A press that is still held from opening the capture (A on the tile) is not an answer.
     const heldAtStart = readHeldButtons();
     let pollInterval = null;
     let timeout = null;
+    let onKeydown = null;
     const cancel = () => {
         clearInterval(pollInterval);
         clearTimeout(timeout);
+        if (typeof document !== 'undefined') document.removeEventListener?.('keydown', onKeydown, { capture: true });
         element.classList.remove('listening');
         renderPadBinding(element, (settingsManager.get()[bindingsKey] || defaultBindings)[action]);
         noteCaptureEnded(element);
         if (captureSessions.get(settingsManager) === cancel) captureSessions.delete(settingsManager);
     };
+    // Escape cancels the capture (started with Enter on the tile, it otherwise closed the
+    // whole sheet and, paused, resumed the game).
+    onKeydown = (event) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopImmediatePropagation?.();
+        cancel();
+    };
     captureSessions.set(settingsManager, cancel);
+    if (typeof document !== 'undefined') document.addEventListener?.('keydown', onKeydown, { capture: true });
     element.classList.add('listening');
     element.textContent = 'Press a button\u2026';
     pollInterval = setInterval(() => {
@@ -848,16 +924,25 @@ export function handleGamepadBinding(element, settingsManager, updateCallback) {
                     continue;
                 }
                 if (heldAtStart.has(heldKey)) continue;
-                if (!Object.values(currentBindings).includes(index) || currentBindings[action] === index) {
-                    settingsManager.update({
-                        [bindingsKey]: {
-                            ...(settingsManager.get()[bindingsKey] || defaultBindings), [action]: index,
-                        },
-                    });
-                    settingsManager.save();
-                    if (updateCallback) updateCallback();
+                if (!accepts(index)) {
+                    element.textContent = action === 'pause' ? 'View, Menu or Home' : 'A menu button · try another';
+                    continue;
                 }
+                // A button another action already plays: the two swap, as on the keyboard.
+                const latest = settingsManager.get()[bindingsKey] || defaultBindings;
+                const holder = Object.keys(latest).find((name) => latest[name] === index);
+                const swapped = holder && holder !== action ? holder : null;
+                settingsManager.update({
+                    [bindingsKey]: {
+                        ...latest,
+                        [action]: index,
+                        ...(swapped ? { [swapped]: latest[action] } : {}),
+                    },
+                });
+                settingsManager.save();
+                if (updateCallback) updateCallback();
                 cancel();
+                if (swapped) markSwappedTile(element, action, swapped);
                 return;
             }
         }
@@ -883,6 +968,11 @@ export function startKeyboardBindingCapture(element, settingsManager, updateCall
         // The capture owns this press: Escape cancels the capture only (it no longer
         // also closes Settings), and no other key handler sees the new binding.
         event.stopImmediatePropagation?.();
+        // The Enter that opened the capture, held a moment too long, repeats: not an answer.
+        if (event.repeat) {
+            event.preventDefault();
+            return;
+        }
         if (event.key === 'Escape') event.preventDefault();
         else handleKeybinding(event, element, settingsManager, updateCallback);
         cancel();
