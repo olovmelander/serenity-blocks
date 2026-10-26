@@ -113,7 +113,9 @@ before.
 | `-promenade.js` | Seawall, railing, lamps, the headland ridge; mounts the hotels and adds their beacons to the lamp bulbs. |
 | `-hotels.js` | The beachfront: streamline, resort and deco hotels, shops in the gaps and a row behind (one draw), their facade shader and the signs' 3 × 5 letters. |
 | `-palms.js` | Framing palms and the promenade row (one draw). |
-| `-gulls.js` | Gulls wheeling over the pier (one instanced draw; second pass). |
+| `-gulls.js` | The gulls: the Blender-built model's one instanced draw, its wings folded and the bird flown, lit and mirrored in the vertex and fragment stages; the startle and the roost that move it (third pass). |
+| `-gull-flight.js` | How the gulls fly (no shader code; the vertex stage's twin): the flights, the startle envelope, the roost's state machine, the wingbeat from the authored poses, the fold. |
+| `assets/` | `gull.glb` (scripts/blender/synthwave_gull.py), its manifest (size, SHA-256, the rig) and attribution. |
 | `-fireworks.js` | Shells, tails and bursts (one instanced draw, analytic motion) and the two sky glows. |
 | `-bulbs.js` | The shared static bulb field (pier, coaster, promenade). |
 | `-geo.js` | Tube, strut, box (any right-handed basis), lathe, rounded-rectangle outlines and convex prisms on them (winding set from each triangle's geometric normal); `outwardness` for winding tests. |
@@ -372,6 +374,95 @@ and single rounds swung by 2×, so these are an order of magnitude, not a measur
 shaft build read the multisampled scene and depth at every tap and cost twice as much; the emitter
 pass is what made it cheap. Not measured on the integrated Radeon.
 
+## Third pass (2026-10-26): the gulls
+
+Asked for: "is there any ways we can improve the birds flying around? we have access to Blender
+MCP if needed for design and animation", then "Now do whats recommended!". What the captures of
+the second pass's gulls showed: the closest birds, which should read best, came out as pale
+orange-brown smears (the warm rim toward the sun tinted the whole bird, not its edge); most loops
+crossed the Ferris wheel, where the birds took the spokes' colour; each bird was a flat cut-out
+of an M that always faced the camera, never seen side-on or turning; they ignored the fireworks
+going off beside them and turned see-through in mid-air at nightfall.
+
+### What changed
+
+- **A real gull, built in Blender.** `scripts/blender/synthwave_gull.py` (headless Blender 5.2,
+  like the Himalayan eagle's) builds a herring gull at real size (1.40 m span): a white spindle
+  body with a round head, a heavy yellow bill with its red spot, a short square tail, long narrow
+  wings bent at the wrist, pale grey above with black tips and a white mirror, white below. About
+  1,650 triangles, 53 kB (`assets/gull.glb`, its manifest and attribution beside it). `--preview`
+  renders every pose from six views, lit and as 60 px silhouettes, which is how the shape was
+  judged (a game shows the birds 12 to 60 px across).
+- **Wings folded in the vertex stage, no skeleton.** Each vertex carries how much the shoulder,
+  the wrist and the tip move it (`_wing`, eased across a band either side of each joint); the
+  stage folds about the two hinges whose pivots the manifest records. The glide is the gull's
+  crank (arms up, hands angled down from the wrist), trimmed a little all the time; the wingbeat
+  (2.6 Hz) is built from four authored poses, the top, the downstroke, the bottom and the
+  upstroke with the wrist flexed, as `A + B cos φ + C sin φ + D sin² φ`, smooth all the way
+  round. Birds glide, flap in bouts, beat steadily when climbing, commuting or startled.
+- **Flown like a bird** (`-gull-flight.js`, which the vertex stage repeats line for line). Each
+  loop is an ellipse or an eight laid square to the line of sight, its centre drifting and its
+  size breathing; the bird climbs heading out to sea into the breeze and sinks coming back. Its
+  heading is the path's direction a step either side of now, and it leans into the turn by the
+  lift a coordinated turn needs (65 % of it, so the tight ends stay a calm glide). So a bird is
+  seen side-on, from behind, foreshortened, banking, as it circles.
+- **In the open sky round the wheel.** The flights, by tier: low over the sea across the sun's
+  disc (and so in the sea's mirror), high over the wheel's crown, the strip of sky left of the
+  wheel, a lazy eight above the coaster, a mate for the high bird and one for the eight (same
+  loop, a wing's length out and a beat behind, at the leader's pace), a far bird on a long glide
+  across the whole sky, one skimming the surf near the beach, a far circler in front of the sun.
+  All but the long glide spend over 55 % of the time in the free sky left of a game's board.
+- **Lit as a silhouette with a warm edge.** The sky's own gradient from above, the sunset sea's
+  glow from below, the low sun on the faces turned to it, the fireworks' colours, the town's neon
+  faintly from below after dark. The body is then held to at most a fifth of the luminance of the
+  sky behind it (a backlit gull is a silhouette; lit, it vanished into the bright sunset), and
+  over that a warm rim on the edges turned to the sun and the sun through the thin feathers when
+  a bird crosses its disc. Near the sun the post's in-scattered light still tints them, as it
+  tints the wheel's dark spokes.
+- **Startled by the fireworks.** Every burst hits an accumulating envelope (the shared Swell's two
+  exponentials rebased to the last hit, passed to the shader as one `vec4`, so any time can be
+  read): the loops widen, the birds climb and draw away from the barge and beat hard, then settle
+  over a few seconds. A volley builds the scatter; it never restarts it. Under Reduce motion the
+  startle is 40 %.
+- **Going to roost.** As the evening passes each bird's hour (pairs together, 0.62 to 0.84) it
+  breaks off its loop onto a straight line away, out to sea into the afterglow or off along the
+  coast, beating steadily, and is gone (drawn at nothing) 48 s on; when the evening turns back
+  below its hour it flies in the same way over 40 s and turns into its loop. The hours stand
+  clear of the evening's stops (0.57, 1) by more than the 0.03 hysteresis, or a bird would wait
+  out a whole stop away. A small state machine on the clock decides when; a seek rebuilds it from
+  the last five minutes of the evening's walk.
+- **One draw, in the mirror.** Still one instanced draw (the model's four buffers and one
+  interleaved instance buffer; WebGPU binds eight a draw, and six separate instance attributes
+  were ten), now on the sea's mirror layer too. The model arrives after the world is built; the
+  draw holds a hidden placeholder of the same layout until then (`world.gullsReady`; the
+  playground's first frame waits for it).
+- **Playground.** `follow=<i>` is a long lens from the rest eye that keeps gull i in the middle
+  of the frame (`fov=`, default 4): its shape, wingbeat and light up close.
+
+### Verification
+
+Playground captures (Electron, a private dev server, RTX 5080 Laptop) of the game view and the
+menu at several times, every bird cropped at full resolution, `follow=` sequences of the
+wingbeat, a bank and a startled bird, a four-line clear at 0.1, 2.5, 4 and 7 s, the evening's
+roost from all home (t = 650) through the afterglow (none left) to all back (t = 870), Medium
+(no MSAA: the edges step, as the rest of that tier) and the WebGL2 backend (`forceWebGL=1`). No
+WebGPU validation errors once the instance attributes were interleaved. In the real game
+(single player, High): the model arrives (1,648 triangles, seven birds), no console errors, and
+four seconds after a four-line clear the gulls have lifted and scattered, beating hard.
+
+Tests: `synthwave-sunset-gull-asset.test.js` (the file is the one the manifest records, a gull's
+size and shape, the hinge weights, the glide's crank and a still body under the fold, the model
+swapped into the one draw); `synthwave-sunset-theme.test.js` (the flights stay in the open sky,
+above the sea and off the beach for ten minutes, at a gull's pace, the mates beside their leaders;
+one draw a tier within eight vertex buffers; the startle adds up, stays near its ceiling, settles,
+and a quad sets it off in the world; the roost goes in the order of the hours, the mates together,
+empties the afterglow and brings everyone home, and a seek rebuilds what the walk did; the
+wingbeat hits the authored poses and never jumps); the shader gate builds the gulls for WGSL and
+GLSL and finds the path helper emitted once and called four times.
+
+Cost: nine birds of 1,648 triangles, drawn twice (the mirror), each vertex evaluating its loop four
+times; small next to the scene, not measured on its own.
+
 ## Known limits
 
 - **Portrait.** The composition solver is unchanged: on an upright phone the sun goes to the left
@@ -379,8 +470,10 @@ pass is what made it cheap. Not measured on the integrated Radeon.
   follow-up.
 - **The song** is the old theme's recording under the same title.
 - **The reflection pass** adds one pipeline per mirrored material (its target has no MSAA).
-- **The gulls are not mirrored** (camera-facing quads in a mirror pass would need their own
-  orientation rules), and the shafts are screen-space: they vanish with the sun off screen, as
-  in a portrait framing.
+- **The shafts are screen-space:** they vanish with the sun off screen, as in a portrait
+  framing.
+- **The gulls** never land: perching on the pier's railings and lamps (and taking off from them)
+  is a follow-up. Near the sun the post's in-scattered light still lifts their silhouettes, as it
+  lifts the wheel's spokes.
 - **Neighbours.** The beach, palms and a sun on the sea remain shared ground with Luminous Tides
   and Sunset; the differences above (dusk, unlit surf, a built hero) are what keep them apart.
