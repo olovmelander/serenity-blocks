@@ -256,6 +256,11 @@ describe.each(TIERS)('synthwave-sunset shaders at %s', (quality) => {
         expect(built.flatMap(problemsOf)).toEqual([]);
         const sea = built.find((b) => b.object === world.parts.sea && b.label === 'WGSL');
         expect(sea.out.fragment.length).toBeGreaterThan(8_000);
+        // The gulls' vertex stage walks each bird's loop through one laid-out helper.
+        const gulls = built.find((b) => b.object === world.gulls.mesh && b.label === 'WGSL');
+        expect(gulls.out.vertex.match(/^fn sw_gullLoop\b/gm)).toHaveLength(1);
+        // Called now and a step either side (the heading and the bank), and at the roost's fixed point.
+        expect(gulls.out.vertex.match(/sw_gullLoop\(/g)).toHaveLength(4);
     });
 
     it('reads no WGSL var where it may not have been assigned', () => {
