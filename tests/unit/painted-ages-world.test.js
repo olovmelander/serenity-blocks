@@ -835,6 +835,58 @@ describe('PaintedAgesWorld GPU work and teardown', () => {
         expect(() => world.prerender({})).not.toThrow();
     });
 
+    it('draws the poplars\' shadow map when the sun has moved, and trusts it only once drawn', () => {
+        const { world, camera } = makeWorld();
+        const { shade } = world.parts.poplars;
+        expect(shade).toBeTruthy();
+        // A renderer whose draws count (three skips a draw whose pipeline is still building).
+        let building = true;
+        const shadeDraws = [];
+        const renderer = {
+            info: { render: { drawCalls: 0 } },
+            setRenderTarget: vi.fn(),
+            getRenderTarget: vi.fn(() => null),
+            setClearColor: vi.fn(),
+            getClearColor: vi.fn((c) => c),
+            getClearAlpha: vi.fn(() => 1),
+            clear: vi.fn(),
+            render: vi.fn((scene) => {
+                if (scene.isScene) shadeDraws.push(scene);
+                if (!(scene.isScene && building)) renderer.info.render.drawCalls++;
+            }),
+        };
+        world.prerender(renderer);
+        expect(shadeDraws).toHaveLength(1);
+        expect(shade.proj.value.w).toBe(0); // nothing drawn yet: the land stays lit
+        world.prerender(renderer);
+        expect(shadeDraws).toHaveLength(2); // so it is asked for again
+        building = false;
+        world.prerender(renderer);
+        expect(shadeDraws).toHaveLength(3);
+        expect(shade.proj.value.w).toBeGreaterThan(0.99);
+        expect(renderer.autoClear).not.toBe(false); // the frame's own clearing is put back
+        expect(renderer.setRenderTarget).toHaveBeenLastCalledWith(null);
+        world.prerender(renderer);
+        expect(shadeDraws).toHaveLength(3); // the sun has not moved
+        stepTo(world, camera, world.time + 20, 0.5);
+        world.prerender(renderer);
+        expect(shadeDraws).toHaveLength(4);
+        // Hidden with the trees (a capture of other parts alone): no shadows of trees not there.
+        world.showOnlyParts(['land', 'sky']);
+        world.prerender(renderer);
+        expect(shade.proj.value.w).toBe(0);
+        expect(shadeDraws).toHaveLength(4);
+        world.showOnlyParts(['land', 'sky', 'poplars']);
+        world.prerender(renderer);
+        expect(shadeDraws).toHaveLength(5);
+        // Under the horizon there is nothing to draw.
+        world.setCaptureOverrides({ hour: 5 });
+        stepTo(world, camera, world.time + 1, 0.5);
+        world.prerender(renderer);
+        expect(shade.proj.value.w).toBe(0);
+        expect(shadeDraws).toHaveLength(5);
+    });
+
     it('disposes once, however often it is asked, and ignores what comes after', () => {
         const { world, scene, camera } = makeWorld();
         world.onLock({ u: 0.3, rows: [12], color: PIECE_COLORS[1] });
