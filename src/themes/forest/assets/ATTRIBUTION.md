@@ -7,7 +7,7 @@ the Fall grove's branching library in `scripts/blender/fall_grove/` and the Gold
 Forest's conifers in `scripts/blender/golden_forest/`).
 It contains no third-party geometry, texture, scan, photograph or generative-model
 output, and the generator fetches nothing from the network. Licence: the same as the
-project (MIT, project-local).
+project (proprietary, all rights reserved).
 
 `asset-manifest.json` records each file's size and SHA-256;
 `tests/unit/forest-assets.test.js` checks the files against it.

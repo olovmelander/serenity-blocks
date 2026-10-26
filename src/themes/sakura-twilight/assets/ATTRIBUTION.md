@@ -6,7 +6,7 @@ procedurally in Blender 4.5.9 LTS on 2026-10-05 for this repository by
 growth, wood and GLB writing shared with `scripts/blender/fall_grove/`). Those files
 contain no third-party geometry, texture, scan, photograph or generative-model output,
 and the generator fetches nothing from the network. Licence: the same as the project
-(MIT, project-local).
+(proprietary, all rights reserved).
 
 `Fox.glb` is the Khronos glTF sample fox
 (https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox): model by PixelMannen

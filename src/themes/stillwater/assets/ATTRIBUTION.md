@@ -65,7 +65,7 @@ gown panels that the runtime lets hang and trail); baked ambient occlusion. COLO
 
 ## Theme icon
 
-`stillwater-theme-icon.png` (beside the theme, with a copy under `public/assets/themes/`) is a
+`stillwater-theme-icon.png` (beside the theme) is a
 project-owned Serenity Blocks theme raster captured from the scene. It contains no third-party
 asset.
 

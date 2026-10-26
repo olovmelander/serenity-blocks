@@ -207,7 +207,7 @@ def build_assets(output_dir, only=None, preview_dir=None, bake=True, recipes=Non
     finally:
         studio.dispose()
     return dict(schemaVersion=SCHEMA_VERSION, author="Serenity Blocks original procedural Blender authoring",
-                license="MIT-project-local", glTFUpAxis="Y", assets=records)
+                license="Proprietary (project-owned)", glTFUpAxis="Y", assets=records)
 
 
 def _main():

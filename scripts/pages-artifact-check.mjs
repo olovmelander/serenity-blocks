@@ -37,7 +37,7 @@ const manifestPath = path.join(distDir, 'manifest.json');
 const hiddenManifestPath = path.join(distDir, '.vite', 'manifest.json');
 const assetsDir = path.join(distDir, 'assets');
 const playgroundReferencesDir = path.join(distDir, 'playground-refs');
-const requiredLegalNotices = ['CREDITS.md', 'README.md'];
+const requiredLegalNotices = ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'README.md'];
 // Written by Vite's build.license from the bundled packages; the bundle itself carries no notices.
 const bundledLicensesPath = path.join(distDir, 'THIRD_PARTY_LICENSES.md');
 const requiredBundledLicenses = ['phaser', 'three'];
@@ -108,6 +108,12 @@ if (!existsSync(assetsDir)) {
 
     if (/(^|[^.])\/src\/entry-desktop\.js/.test(jsBundleText)) {
         fail('built loader still contains a domain-root /src/entry-desktop.js fallback.');
+    }
+
+    // Phaser's requestVideoFrameCallback polyfill is GPL-3.0 code; the build strips it
+    // (scripts/vite-plugins/strip-phaser-rvfc-polyfill.mjs) and it must never ship.
+    if (jsBundleText.includes('_rvfcpolyfillmap')) {
+        fail('built bundle still contains the GPL-3.0 rvfc polyfill from Phaser.');
     }
 }
 
