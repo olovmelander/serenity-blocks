@@ -41,8 +41,8 @@ signed distance field of ellipsoids and round cones (the meshing is the Grainfie
 `scripts/blender/grainfields/horse_sdf.py`) round the joints of the theme's own rig
 (`src/themes/winter/winter-bear-rig.js`), meshes it with surface nets, decimates and mirrors it,
 and bakes per vertex the part of the body it belongs to and its paint (the black pads, nose,
-eyes and lips; how long the hair is; ambient occlusion traced through the field). Then
-`scripts/winter/model-bear.mjs` skins that mesh to the rig's 20 axis-aligned bones and writes the
+eyes, lips and claws; how long the hair is; ambient occlusion traced through the field). Then
+`scripts/winter/model-bear.mjs` skins that mesh to the rig's 29 axis-aligned bones and writes the
 file. It holds no animation: the theme solves every pose itself. Regenerate with
 
     node scripts/winter/model-bear.mjs [--preview=<dir>]

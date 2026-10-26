@@ -12,7 +12,8 @@
  * sparks      the fox fires' pool: sparks and powder share it
  * prints      paw prints the snow keeps
  * glints      the snow's sparkle
- * fur         shells of fur the fox's coat is drawn in over its skin (0 = a painted coat)
+ * fur         shells of fur the fox's coat is drawn in over its skin (0 = a painted coat); the
+ *             polar bear, seen from further off, wears half as many
  * veils       veils of light the fox of light wears
  * spirit      the fox of light a four-line clear sends across the sky
  */

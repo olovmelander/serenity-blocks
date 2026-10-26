@@ -48,7 +48,7 @@ const ASSET = join(ROOT, 'src', 'themes', 'winter', 'assets', 'polar-bear.glb');
 const MODEL_SCRIPT = join(ROOT, 'scripts', 'blender', 'winter_polar_bear.py');
 const BLENDER = 'C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe';
 /** Stamped into the asset. */
-const RIG_VERSION = 1;
+const RIG_VERSION = 2;
 
 /** The parts Blender sorts the mesh into (winter_polar_bear.py PARTS). */
 const PART = Object.freeze({
@@ -69,38 +69,46 @@ const JOINT = Object.fromEntries(BEAR_BONES.map((bone) => [bone[0], [bone[2], bo
  * Where a point is along a chain of joints: 0 at the first joint, 1 at the second…, running on
  * before the start and past the tip; and how far from the chain it is.
  */
-function along(chain, p) {
+function along(joints, p) {
     let best = { u: 0, far: Infinity };
-    for (let k = 0; k < chain.length - 1; k++) {
-        const a = chain[k];
-        const b = chain[k + 1];
+    for (let k = 0; k < joints.length - 1; k++) {
+        const a = joints[k];
+        const b = joints[k + 1];
         const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         const l2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
         let t = ((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1] + (p[2] - a[2]) * d[2]) / l2;
         if (k > 0) t = Math.max(0, t);
-        if (k < chain.length - 2) t = Math.min(1, t);
+        if (k < joints.length - 2) t = Math.min(1, t);
         const far = Math.hypot(p[0] - a[0] - d[0] * t, p[1] - a[1] - d[1] * t, p[2] - a[2] - d[2] * t);
         if (far < best.far) best = { u: k + t, far };
     }
     return best;
 }
 
-const NECK_CHAIN = [JOINT.neck, JOINT.head, BEAR_MARKS.nose];
-const TAIL_CHAIN = [JOINT.tail1, JOINT.tail2, JOINT.tail3, BEAR_MARKS.tailTip];
-const legChain = (front, side) => (front
-    ? [JOINT[`arm${side}`], JOINT[`fore${side}`], JOINT[`hand${side}`], BEAR_MARKS[`pawF${side}`]]
-    : [JOINT[`thigh${side}`], JOINT[`shin${side}`], JOINT[`hock${side}`], BEAR_MARKS[`pawB${side}`]]);
+const NECK_CHAIN = [JOINT.neck1, JOINT.neck2, JOINT.head, BEAR_MARKS.nose];
+const TAIL_CHAIN = [JOINT.tail1, JOINT.tail2, BEAR_MARKS.tailTip];
+/** Each leg above the paw: its upper and lower bones, from the shoulder or the hip to the wrist or heel. */
 const LEGS = {
-    FL: legChain(true, 'L'), FR: legChain(true, 'R'), BL: legChain(false, 'L'), BR: legChain(false, 'R'),
+    FL: [JOINT.armL, JOINT.foreL, JOINT.handL],
+    FR: [JOINT.armR, JOINT.foreR, JOINT.handR],
+    BL: [JOINT.thighL, JOINT.shinL, JOINT.footL],
+    BR: [JOINT.thighR, JOINT.shinR, JOINT.footR],
 };
-
-/** The back's three bones by how far along the body a point is. */
+/** A smooth partition of unity along `u` over ordered knots: one share per knot. */
+function chain(u, knots) {
+    const out = knots.map(() => 0);
+    for (let i = 0; i < knots.length; i++) {
+        const rise = i > 0 ? smooth(knots[i - 1], knots[i], u) : 1;
+        const fall = i < knots.length - 1 ? 1 - smooth(knots[i], knots[i + 1], u) : 1;
+        out[i] = u <= knots[i] ? rise : fall;
+    }
+    return out;
+}
+/** The trunk's four bones by how far along the body a point is. */
+const BACK_BONES = ['pelvis', 'spine1', 'spine2', 'chest'];
+const BACK_KNOTS = BACK_BONES.map((name) => JOINT[name][2]);
 function back(z, give, share) {
-    const chest = smooth(0.02, 0.3, z);
-    const hips = 1 - smooth(-0.52, -0.2, z);
-    give('chest', share * chest);
-    give('hips', share * hips * (1 - chest));
-    give('spine', share * Math.max(0, 1 - chest - hips));
+    chain(z, BACK_KNOTS).forEach((w, i) => give(BACK_BONES[i], share * w));
 }
 
 /**
@@ -117,60 +125,72 @@ function weigh(p, part) {
     const front = part === PART.frontLeft || part === PART.frontRight;
     const hind = part === PART.hindLeft || part === PART.hindRight;
     if (front || hind) {
-        // A leg: its own three bones with soft joints; over its shoulder or haunch it hands over
-        // to what carries it.
-        const chain = LEGS[`${front ? 'F' : 'B'}${side}`];
-        const { u } = along(chain, p);
-        const [upper, lower, last, carrier] = front
-            ? [`arm${side}`, `fore${side}`, `hand${side}`, 'chest']
-            : [`thigh${side}`, `shin${side}`, `hock${side}`, 'hips'];
-        const top = 1 - smooth(-0.05, 0.32, u);
-        const lastShare = smooth(1.8, 2.04, u) * (1 - top);
-        const lowerShare = smooth(0.82, 1.12, u) * (1 - top) - lastShare;
-        give(last, lastShare);
-        give(lower, Math.max(0, lowerShare));
-        give(upper, Math.max(0, 1 - top - lastShare - Math.max(0, lowerShare)));
-        give(carrier, top);
+        // A leg: its upper and lower bones with a soft joint; over its shoulder or haunch it hands
+        // over to what carries it (the shoulder blade, the pelvis); under the wrist or heel the paw
+        // is the hand's or foot's, and ahead of the ball of the foot the toes'.
+        const legBones = front
+            ? [`arm${side}`, `fore${side}`, `hand${side}`, `fing${side}`, `scap${side}`]
+            : [`thigh${side}`, `shin${side}`, `foot${side}`, `toes${side}`, 'pelvis'];
+        const [upper, lower, last, toes, carrier] = legBones;
+        const { u } = along(LEGS[`${front ? 'F' : 'B'}${side}`], p);
+        const ball = BEAR_MARKS[`paw${front ? 'F' : 'B'}${side}`];
+        const paw = 1 - smooth(0.14, 0.24, y);
+        const toeShare = smooth(ball[2] - 0.03, ball[2] + 0.05, z) * paw;
+        give(toes, toeShare);
+        give(last, paw - toeShare);
+        const above = 1 - paw;
+        const top = 1 - smooth(-0.05, 0.3, u);
+        const lowerShare = smooth(0.82, 1.12, u) * (1 - top);
+        give(carrier, above * top);
+        give(lower, above * lowerShare);
+        give(upper, above * Math.max(0, 1 - top - lowerShare));
         return w;
     }
     if (part === PART.tail) {
         const tail = along(TAIL_CHAIN, p);
-        const u = Math.max(0, Math.min(2.999, tail.u));
-        const k = Math.floor(u);
-        const f = u - k;
-        const names = ['tail1', 'tail2', 'tail3'];
-        const on = k < 2 ? smooth(0.5, 1, f) * 0.5 : 0;
-        const root = 1 - smooth(-0.3, 0.3, tail.u);
-        give(names[k], (1 - on) * (1 - root));
-        if (on > 0) give(names[k + 1], on * (1 - root));
-        give('hips', root);
+        const root = 1 - smooth(-0.3, 0.25, tail.u);
+        const [one, two] = chain(Math.max(0, tail.u), [0, 1]);
+        give('tail1', one * (1 - root));
+        give('tail2', two * (1 - root));
+        give('pelvis', root);
         return w;
     }
     if (part === PART.head) {
-        // The skull is the head's alone; the neck hands over to the chest at its base.
+        // Along the neck's two bones to the skull, which is the head's; the ears their own; at its
+        // base the neck hands over to the chest.
         const neck = along(NECK_CHAIN, p);
-        const head = smooth(0.78, 1.06, neck.u);
-        const base = 1 - smooth(-0.2, 0.35, neck.u);
-        give('head', head);
-        give('neck', Math.max(0, 1 - head - base));
-        back(z, give, base);
+        const ear = Math.hypot(Math.abs(x) - JOINT.earL[0], y - JOINT.earL[1], z - JOINT.earL[2]);
+        const onEar = (1 - smooth(0.035, 0.07, ear)) * smooth(JOINT.earL[1] - 0.04, JOINT.earL[1] + 0.01, y);
+        give(`ear${side}`, onEar);
+        const rest = 1 - onEar;
+        const base = 1 - smooth(-0.25, 0.3, neck.u);
+        const [n1, n2, head] = chain(Math.max(0, Math.min(2, neck.u)), [0, 1, 2]);
+        give('neck1', rest * n1 * (1 - base));
+        give('neck2', rest * n2 * (1 - base));
+        give('head', rest * head * (1 - base));
+        back(z, give, rest * base);
         return w;
     }
-    // The trunk: the back's bones, the neck over the front of the chest, and over the shoulder
-    // blade and the thigh a share of the leg below.
+    // The trunk: the back's four bones, the neck over the front of the chest, and over the shoulder
+    // blade, the upper arm and the thigh a share of what lies under the skin there.
     let rest = 1;
     const neck = along(NECK_CHAIN, p);
-    const toNeck = 0.6 * smooth(-0.35, 0.05, neck.u) * smooth(0.45, 0.62, z);
-    give('neck', toNeck);
+    const toNeck = 0.55 * smooth(-0.4, 0.05, neck.u) * smooth(0.5, 0.66, z);
+    give('neck1', toNeck);
     rest -= toNeck;
     const ax = Math.abs(x);
-    const fore = along(LEGS[`F${side}`].slice(0, 2), p);
-    const arm = 0.5 * (1 - smooth(0.1, 0.3, fore.far)) * smooth(0.1, 0.2, ax) * (1 - smooth(1.05, 1.22, y));
-    give(`arm${side}`, rest * arm);
-    const hindLeg = along(LEGS[`B${side}`].slice(0, 2), p);
-    const thigh = 0.5 * (1 - smooth(0.12, 0.34, hindLeg.far)) * smooth(0.1, 0.2, ax) * (1 - smooth(1.08, 1.25, y));
-    give(`thigh${side}`, rest * (1 - arm) * thigh);
-    rest *= (1 - arm) * (1 - thigh);
+    const blade = along([JOINT[`scap${side}`], JOINT[`arm${side}`]], p);
+    const scap = 0.65 * (1 - smooth(0.12, 0.3, blade.far)) * smooth(0.06, 0.16, ax) * smooth(0.7, 0.85, y);
+    give(`scap${side}`, rest * scap);
+    rest *= 1 - scap;
+    const arm = along(LEGS[`F${side}`].slice(0, 2), p);
+    const upperArm = 0.45 * (1 - smooth(0.1, 0.26, arm.far)) * smooth(0.1, 0.2, ax) * (1 - smooth(0.9, 1.05, y));
+    give(`arm${side}`, rest * upperArm);
+    rest *= 1 - upperArm;
+    const thigh = along(LEGS[`B${side}`].slice(0, 2), p);
+    const thighShare = 0.5 * (1 - smooth(0.12, 0.34, thigh.far)) * smooth(0.1, 0.2, ax) * (1 - smooth(1.08, 1.25, y));
+    give(`thigh${side}`, rest * thighShare);
+    rest *= 1 - thighShare;
     back(z, give, rest);
     return w;
 }

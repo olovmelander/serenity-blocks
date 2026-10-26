@@ -1,16 +1,25 @@
 /**
- * Winter — where the polar bear goes, and when. Three-free and renderer-free: its body
- * (winter-bear-rig.js) solves the pose this resolves and the model (winter-bear.js) draws it.
+ * Winter — where the polar bear goes, how it puts its feet down, and what it does when it stops.
+ * Three-free and renderer-free: its body (winter-bear-rig.js) solves the pose this resolves and the
+ * model (winter-bear.js) draws it.
  *
- * A polar bear walks the frozen lake beyond the snowfield, fifty to a hundred and twenty metres
- * out: it comes in from behind the trees on the left, ambles along past the open ice either side
- * of the board, stops to lift its nose into the wind, looks about, turns in a slow arc and walks
- * back further out, wanders off to the right behind the far spit and, long after, comes back from
- * the left. Its course is a closed curve over the ice laid out in fractions of the frame's half
- * width (as the fox's round is), so a narrow or upright screen sees the same walk drawn closer
- * together; its walk along it is a timeline of legs and stops, so where it is and what it is doing
- * are a function of its clock and nothing else: a seek, a replay or a capture shows the same frame
- * at any frame rate.
+ * A polar bear walks the frozen lake beyond the snowfield, forty to a hundred and forty metres out.
+ * Its course is a closed curve over the ice laid out in fractions of the frame's half width (as the
+ * fox's round is), and its walk along it is a timeline of legs and stops: where its body is and
+ * what it is doing are a function of its clock and nothing else.
+ *
+ * Its feet are too. Each paw is put down in the world and stays where it was put while the body
+ * goes over it: through a turn, slowing down, stopping. A paw lands where it will stand under the
+ * body halfway through its time on the ice, which the course knows in advance, so as the bear slows
+ * to a stop its last steps land under it, and a foot that was left behind takes a step to square
+ * up once it has stopped. The rhythm is a four-beat walk (left hind, left fore, right hind, right
+ * fore), its strides shorter and its swings no slower as it slows, so it never walks in slow
+ * motion; a paw swings on a smooth path that leaves and meets the ice at rest, the forepaw curled
+ * as it goes, the heel peeling off the ice before it lifts. The body rides the feet: the shoulders
+ * roll and the hips sway over whichever feet are down, the head swings to the side of the planted
+ * forepaw, and the back follows the curve of the path, the hips walking where the chest has been.
+ * All of it is closed form in the clock, so a seek, a replay or a capture shows the same frame at
+ * any frame rate.
  *
  * The board can make it stop. Four lines and the fox of light: it stands up on its hind legs to
  * watch it go. The run ends: it lies down on the ice, head on its paws, until the next run begins,
@@ -21,7 +30,10 @@
 import {
     TAU, bearingFor, clamp01, groundHeight, smooth,
 } from './winter-core.js';
-import { BEAR_ACTS, LIE_HOLD, bearStride } from './winter-bear-rig.js';
+import {
+    BEAR_ACTS, BEAR_BONES, BEAR_FEET, BEAR_MARKS, BEAR_SCALE, BEAR_SPEC as SPEC, FOOT, LIE_HOLD, OWNS_FEET, bearAct,
+    createBearSpec,
+} from './winter-bear-rig.js';
 
 const SNIFF = Object.freeze(['Sniff', 7.2]);
 const SCENT = Object.freeze(['Scent', 5.4]);
@@ -78,14 +90,65 @@ export const BEAR_ROUTE = Object.freeze([
 /** Metres a second it ambles at (it is drawn larger than life: its strides are too). */
 export const BEAR_PACE = 1.2;
 /** Seconds it takes to get going, or to come to a stop. */
-export const BEAR_RAMP = 1.8;
+export const BEAR_RAMP = 2.2;
 /** Seconds a stop takes to cross-fade in (or a walk out of one). */
-export const BEAR_BLEND = 0.9;
+export const BEAR_BLEND = 1.1;
 /** Seconds the board's stops take to bring it to a halt, and to let it go again. */
 export const BEAR_EASE = 1.2;
 /** Where on its clock it starts (seconds): just short of coming out from behind the trees. */
 const START_KNOT = 1;
 const START_LEAD = 6;
+
+/**
+ * Its gait, in world metres and seconds.
+ *  stride      metres a stride: base + rate × speed (shorter steps as it slows, never slow ones)
+ *  falls       when in a stride each paw lands (BEAR_FEET order: FL, FR, BL, BR): left hind, left
+ *              fore a fifth of a stride on, then the right pair half a stride after
+ *  swingShare  the share of a stride a paw is off the ice at its pace; swingTime bounds it (s)
+ *  lead        the most a landing looks ahead for where the body will be (s)
+ *  lift        how high each paw is carried; peel, how far its heel comes up before it leaves the
+ *              ice; flick, how far the paw curls as it swings (radians)
+ *  turnIn      how far each paw is turned in (radians): a polar bear is pigeon-toed in front
+ *  settle      a paw further than this from where it stands takes a step once the bear stops
+ *  cadence     the fewest strides a second it takes once under way; setOff, how many more it
+ *              takes setting off and coming to a stop (short quick steps, so no paw is left behind)
+ *  climb       how much a slope shortens its strides: by 1 / (1 + climb × gradient), up or down
+ */
+export const BEAR_GAIT = Object.freeze({
+    stride: Object.freeze([0.72, 0.88]),
+    falls: Object.freeze([0.2, 0.7, 0, 0.5]),
+    swingShare: 0.32,
+    swingTime: Object.freeze([0.36, 0.56]),
+    lead: 1.3,
+    lift: Object.freeze([0.15, 0.15, 0.09, 0.09]),
+    peel: Object.freeze([0.65, 0.65, 0.55, 0.55]),
+    flick: Object.freeze([1.45, 1.45, 0.4, 0.4]),
+    turnIn: Object.freeze([0.16, 0.16, 0.07, 0.07]),
+    settle: 0.13,
+    settleTime: 0.45,
+    cadence: 0.62,
+    setOff: 0.36,
+    climb: 2.4,
+});
+
+/** Metres one stride carries it at a speed (m/s, world). */
+export const bearStride = (speed) => BEAR_GAIT.stride[0] + BEAR_GAIT.stride[1] * Math.max(0, speed);
+/** Seconds a paw is off the ice for a step taken at a speed. */
+export const bearSwingTime = (speed) => Math.max(BEAR_GAIT.swingTime[0], Math.min(
+    BEAR_GAIT.swingTime[1],
+    (BEAR_GAIT.swingShare * bearStride(speed)) / Math.max(speed, 1e-3),
+));
+/**
+ * Strides a second at a speed: as many as its stride gives at pace, and never fewer than
+ * BEAR_GAIT.cadence once it is under way, so getting going and coming to a stop it takes short
+ * steps, not slow ones (and none at all standing still).
+ */
+const cadence = (speed, grade = 0) => Math.max(
+    (speed * (1 + BEAR_GAIT.climb * Math.abs(grade))) / bearStride(speed),
+    (BEAR_GAIT.cadence + BEAR_GAIT.setOff * (1 - smooth(0.3, 0.8, speed / BEAR_PACE))) * smooth(0.04, 0.2, speed / BEAR_PACE),
+);
+/** Where in its stride each paw leaves the ice (a swing's share before it lands). */
+const LIFTS = BEAR_GAIT.falls.map((fall) => fall - BEAR_GAIT.swingShare);
 
 /** ∫₀ˣ smoothstep: how far a ramp from rest to full pace has carried it, in units of pace × ramp. */
 const rampArea = (x) => {
@@ -93,12 +156,34 @@ const rampArea = (x) => {
     if (x >= 1) return x - 0.5;
     return x * x * x - (x * x * x * x) / 2;
 };
+const wrapAngle = (a) => a - TAU * Math.round(a / TAU);
+
+const JOINT = Object.fromEntries(BEAR_BONES.map((bone) => [bone[0], bone]));
+/** How far ahead of the middle its chest walks, and behind it its hips (world metres along the path). */
+const CHEST_AHEAD = JOINT.chest[4] * BEAR_SCALE;
+const HIPS_BEHIND = -JOINT.pelvis[4] * BEAR_SCALE;
+/** Each paw's place under what carries it (its chest or its hips), world metres: [across, along]. */
+const PAW_REST = BEAR_FEET.map((foot) => {
+    const ball = BEAR_MARKS[foot.paw];
+    const carrier = foot.front ? JOINT.chest[4] : JOINT.pelvis[4];
+    return [ball[0] * BEAR_SCALE, (ball[2] - carrier) * BEAR_SCALE];
+});
+
+// ── The course ──────────────────────────────────────────────────────────────────
+
+const MOTION = {};
+/** Metres walked (over every lap) at a moment of its clock (motionOf, below). */
+const walkedAt = (course, clock) => motionOf(course, clock, MOTION).walked;
+/** Its pace at a moment of its clock. */
+const speedAt = (course, clock) => motionOf(course, clock, MOTION).speed;
+
+/** Seconds between samples of the gait's clock. */
+const PHASE_STEP = 1 / 40;
 
 /**
- * Its course for an aspect: the route as a closed Catmull-Rom curve over the ice, sampled evenly
- * by distance, and its timeline of legs and stops.
- * @returns {{ points: Float32Array, count: number, length: number, stride: number, period: number,
- *             segments: object[], knots: number[], start: number }}
+ * Its course for an aspect: the route as a closed Catmull-Rom curve over the ice sampled evenly by
+ * distance, the timeline of legs and stops, the gait's clock over a lap, and where each foot squares
+ * up at each stop.
  */
 export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE } = {}) {
     const knots = route.map(([fraction, dist]) => {
@@ -140,14 +225,38 @@ export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE } = {}) {
         points[i * 3] = raw[j * 2] + (raw[j * 2 + 2] - raw[j * 2]) * t;
         points[i * 3 + 1] = raw[j * 2 + 1] + (raw[j * 2 + 3] - raw[j * 2 + 1]) * t;
     }
+    // Headings, smoothed over a few metres of path: the body turns, it does not swivel at a knot.
+    const raw0 = new Float64Array(count);
     for (let i = 0; i < count; i++) {
         const a = ((i + count - 1) % count) * 3;
         const b = ((i + 1) % count) * 3;
-        points[i * 3 + 2] = Math.atan2(points[b] - points[a], points[b + 1] - points[a + 1]);
+        raw0[i] = Math.atan2(points[b] - points[a], points[b + 1] - points[a + 1]);
+    }
+    const reachSamples = Math.max(1, Math.round((1.5 / length) * count));
+    for (let i = 0; i < count; i++) {
+        let sx = 0;
+        let sz = 0;
+        for (let k = -reachSamples; k <= reachSamples; k++) {
+            const h = raw0[(i + k + count) % count];
+            const w = 1 - Math.abs(k) / (reachSamples + 1);
+            sx += Math.sin(h) * w;
+            sz += Math.cos(h) * w;
+        }
+        points[i * 3 + 2] = Math.atan2(sx, sz);
     }
     const knotAt = route.map((_, k) => cumulative[k * fine]);
-    // One stride for the whole loop, a whole number of them to a lap: its gait comes round with it.
-    const stride = length / Math.max(1, Math.round(length / bearStride(BEAR_PACE)));
+    // How steep the ground is along the way (rise over run, across the length of its body): on a
+    // slope it takes shorter steps.
+    const grade = new Float32Array(count);
+    const span = 1.4;
+    for (let i = 0; i < count; i++) {
+        const h = points[i * 3 + 2];
+        const sx = Math.sin(h) * span * 0.5;
+        const sz = Math.cos(h) * span * 0.5;
+        const x = points[i * 3];
+        const z = points[i * 3 + 1];
+        grade[i] = (groundHeight(x + sx, z + sz) - groundHeight(x - sx, z - sz)) / span;
+    }
 
     // The timeline: a leg from each stop to the next, then that stop.
     const stops = route.map((entry, k) => ({ k, at: knotAt[k], act: entry[2] })).filter((s) => s.act);
@@ -162,31 +271,84 @@ export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE } = {}) {
         const ramp = Math.min(BEAR_RAMP, leg / BEAR_PACE);
         const duration = leg / BEAR_PACE + ramp;
         segments.push({
-            kind: 'walk', start: time, duration, from: from.at, length: leg, ramp, walked, after: from.act,
+            kind: 'walk', start: time, duration, length: leg, ramp, walked, after: from.act,
         });
         time += duration;
         walked += leg;
         segments.push({
-            kind: 'stop', start: time, duration: to.act[1], at: to.at, act: to.act[0], walked,
+            kind: 'stop', start: time, duration: to.act[1], act: to.act[0], walked,
         });
         time += to.act[1];
     }
-    // The segment list starts at the first stop's leg out; its clock starts just short of where it
-    // comes out from behind the trees.
+    const course = {
+        points, count, length, grade, period: time, segments, knots: knotAt, origin: stops[0].at, start: 0,
+    };
+    // Its clock starts just short of where it comes out from behind the trees.
     const startAt = knotAt[START_KNOT];
-    let start = 0;
     for (let i = 0; i < segments.length; i++) {
         const s = segments[i];
         if (s.kind !== 'walk') continue;
-        const into = (((startAt - s.from) % length) + length) % length;
+        const into = (((startAt - (course.origin + s.walked)) % length) + length) % length;
         if (into <= s.length) {
-            start = s.start + s.ramp + (into - (BEAR_PACE * s.ramp) / 2) / BEAR_PACE - START_LEAD;
+            course.start = s.start + s.ramp + (into - (BEAR_PACE * s.ramp) / 2) / BEAR_PACE - START_LEAD;
             break;
         }
     }
-    return {
-        points, count, length, stride, period: time, segments, knots: knotAt, start,
-    };
+
+    // The gait's clock: strides walked, sampled over a lap and made a whole number to the lap, so its
+    // footfalls come round with the course.
+    const samples = Math.ceil(time / PHASE_STEP);
+    const phase = new Float64Array(samples + 1);
+    const motion = {};
+    let rate = 0;
+    for (let i = 1; i <= samples; i++) {
+        const c = Math.min(time, i * PHASE_STEP);
+        motionOf(course, c, motion);
+        const next = cadence(motion.speed, gradeAt(course, course.origin + motion.walked));
+        phase[i] = phase[i - 1] + 0.5 * (rate + next) * (c - Math.min(time, (i - 1) * PHASE_STEP));
+        rate = next;
+    }
+    const laps = Math.max(1, Math.round(phase[samples]));
+    const fit = laps / phase[samples];
+    for (let i = 0; i <= samples; i++) phase[i] *= fit;
+    course.phase = phase;
+    course.strides = laps;
+    course.phaseStep = time / samples;
+
+    // Where each foot squares up at each stop: a paw left far from where it stands takes a step.
+    course.settles = BEAR_FEET.map(() => new Map());
+    const at = [0, 0, 0];
+    const neutral = [0, 0, 0];
+    for (let i = 0; i < segments.length; i++) {
+        const s = segments[i];
+        if (s.kind !== 'stop') continue;
+        const phi = phaseAt(course, s.start);
+        const waiting = [];
+        for (let f = 0; f < BEAR_FEET.length; f++) {
+            const k = Math.floor(phi - LIFTS[f]);
+            const lifted = clockAtPhase(course, k + LIFTS[f]);
+            const landed = lifted + bearSwingTime(speedAt(course, lifted));
+            landing(course, f, landed, at);
+            pawNeutral(course, f, s.walked, neutral);
+            const off = Math.hypot(at[0] - neutral[0], at[1] - neutral[1]);
+            if (off > BEAR_GAIT.settle) {
+                waiting.push({
+                    f, k, off, landed, from: [...at], to: [...neutral],
+                });
+            }
+        }
+        waiting.sort((a, b) => b.off - a.off);
+        waiting.forEach((w, rank) => {
+            const begin = Math.max(s.start + 0.25 + 0.38 * rank, w.landed + 0.12);
+            const key = (((w.k % laps) + laps) % laps);
+            // (Its times are on the first lap's clock, for step `k`: a later lap's step k + n·laps
+            // takes them n periods on.)
+            course.settles[w.f].set(key, {
+                k: w.k, start: begin, end: begin + BEAR_GAIT.settleTime, from: w.from, to: w.to,
+            });
+        });
+    }
+    return course;
 }
 
 /** A place `distance` metres along the course: (x, z, heading). */
@@ -198,40 +360,42 @@ export function bearPlace(course, distance, out = [0, 0, 0]) {
     const t = f - Math.floor(f);
     out[0] = points[i * 3] + (points[k * 3] - points[i * 3]) * t;
     out[1] = points[i * 3 + 1] + (points[k * 3 + 1] - points[i * 3 + 1]) * t;
-    let dh = points[k * 3 + 2] - points[i * 3 + 2];
-    if (dh > Math.PI) dh -= TAU;
-    if (dh < -Math.PI) dh += TAU;
-    out[2] = points[i * 3 + 2] + dh * t;
+    out[2] = points[i * 3 + 2] + wrapAngle(points[k * 3 + 2] - points[i * 3 + 2]) * t;
     return out;
 }
 
-const PLACE = [0, 0, 0];
+/** How steep the ground is `distance` metres along the course (rise over run, + uphill). */
+function gradeAt(course, distance) {
+    const { grade, length, count } = course;
+    const f = ((((distance % length) + length) % length) / length) * count;
+    const i = Math.floor(f) % count;
+    const t = f - Math.floor(f);
+    return grade[i] + (grade[(i + 1) % count] - grade[i]) * t;
+}
+
+/** The segment of the timeline a moment of a lap falls in, and how far into it. */
+function segmentAt(course, c) {
+    const { segments } = course;
+    for (let i = 0; i < segments.length; i++) {
+        if (c < segments[i].start + segments[i].duration) return segments[i];
+    }
+    return segments[segments.length - 1];
+}
 
 /**
- * Where its course has it at a moment of its own clock: place, heading, pace, how far it has
- * walked (its gait's phase) and what it is doing.
- * @param {object} course  bearCourse()
- * @param {number} clock   seconds
- * @param {object} out     filled in: x, z, heading, speed, phase, act, actTime, from, fromTime, blend
+ * How far it has walked (metres, over every lap so far), how fast, and what it is doing, at a
+ * moment of its clock.
  */
-export function bearOnCourse(course, clock, out) {
-    const { segments, period } = course;
-    const c = (((clock % period) + period) % period);
-    let s = segments[segments.length - 1];
-    for (let i = 0; i < segments.length; i++) {
-        if (c < segments[i].start + segments[i].duration) {
-            s = segments[i];
-            break;
-        }
-    }
+function motionOf(course, clock, out) {
+    const { period } = course;
+    const lap = Math.floor(clock / period);
+    const c = clock - lap * period;
+    const s = segmentAt(course, c);
     const tau = c - s.start;
-    let walked;
-    let distance;
+    let along = 0;
+    let speed = 0;
     if (s.kind === 'walk') {
         const { ramp, duration } = s;
-        // Getting going, at pace, coming to a stop: closed form.
-        let along;
-        let speed;
         if (tau < ramp) {
             along = BEAR_PACE * ramp * rampArea(tau / ramp);
             speed = BEAR_PACE * smooth(0, 1, tau / ramp);
@@ -242,39 +406,214 @@ export function bearOnCourse(course, clock, out) {
             along = (BEAR_PACE * ramp) / 2 + BEAR_PACE * (tau - ramp);
             speed = BEAR_PACE;
         }
-        walked = s.walked + along;
-        distance = s.from + along;
-        out.speed = speed;
         out.act = 'Walk';
-        out.actTime = tau;
-        // (Out of a stop, the walk takes over from it.)
         out.from = s.after?.[0] ?? 'Walk';
         out.fromTime = s.after?.[1] ?? 0;
-        out.blend = smooth(0, BEAR_BLEND, tau);
     } else {
-        ({ walked } = s);
-        distance = s.at;
-        out.speed = 0;
         out.act = s.act;
-        out.actTime = tau;
         out.from = 'Walk';
         out.fromTime = 0;
-        out.blend = smooth(0, BEAR_BLEND, tau);
     }
-    bearPlace(course, distance, PLACE);
-    out.x = PLACE[0];
-    out.z = PLACE[1];
-    out.heading = PLACE[2];
-    out.distance = distance;
-    out.phase = walked / course.stride;
+    out.walked = lap * course.length + s.walked + along;
+    out.speed = speed;
+    out.actTime = tau;
+    out.blend = smooth(0, BEAR_BLEND, tau);
     return out;
 }
 
-/** How long a stop the board makes it take holds it (seconds): the length of `Rear`. */
-const REAR_FOR = BEAR_ACTS.Rear;
+/** Strides walked (over every lap) at a moment of its clock. */
+export function phaseAt(course, clock) {
+    const {
+        period, phase, phaseStep, strides,
+    } = course;
+    const lap = Math.floor(clock / period);
+    const c = (clock - lap * period) / phaseStep;
+    const i = Math.min(phase.length - 2, Math.floor(c));
+    return lap * strides + phase[i] + (phase[i + 1] - phase[i]) * (c - i);
+}
+
+/** The first moment of its clock at which it has walked `strides` strides. */
+export function clockAtPhase(course, strides) {
+    const {
+        period, phase, phaseStep, strides: laps,
+    } = course;
+    const lap = Math.floor(strides / laps);
+    const r = strides - lap * laps;
+    let lo = 0;
+    let hi = phase.length - 1;
+    while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (phase[mid] < r) lo = mid;
+        else hi = mid;
+    }
+    const span = phase[hi] - phase[lo];
+    const t = span > 1e-12 ? (r - phase[lo]) / span : 1;
+    return lap * period + (lo + Math.max(0, Math.min(1, t))) * phaseStep;
+}
+
+const PLACE = [0, 0, 0];
+/** Where a paw stands (world x, z and the way it points) under a body that has walked `walked`. */
+function pawNeutral(course, f, walked, out) {
+    const foot = BEAR_FEET[f];
+    const carrier = course.origin + walked + (foot.front ? CHEST_AHEAD : -HIPS_BEHIND);
+    bearPlace(course, carrier, PLACE);
+    const [across, along] = PAW_REST[f];
+    const c = Math.cos(PLACE[2]);
+    const s = Math.sin(PLACE[2]);
+    out[0] = PLACE[0] + across * c + along * s;
+    out[1] = PLACE[1] - across * s + along * c;
+    // (Turned in: a left paw's toes to its right.)
+    out[2] = PLACE[2] - BEAR_GAIT.turnIn[f] * foot.side;
+    return out;
+}
 
 /**
- * The bear's mind: its clock, what the board has made it do, and the pose that results.
+ * Where a paw lands for a step that touches down at `landed`: where it will stand under the body
+ * half-way through its time on the ice (or as far ahead as the course can see).
+ */
+function landing(course, f, landed, out) {
+    motionOf(course, landed, MOTION);
+    const v = MOTION.speed;
+    const grade = gradeAt(course, course.origin + MOTION.walked);
+    const stance = Math.max(0, 1 / Math.max(cadence(v, grade), 1e-3) - bearSwingTime(v));
+    // (A foreleg reaches a little less far ahead than it pushes back: its stance sits under the
+    // shoulder a shade behind the middle.)
+    const ahead = Math.min(BEAR_GAIT.lead, stance * (BEAR_FEET[f].front ? 0.36 : 0.5));
+    return pawNeutral(course, f, walkedAt(course, landed + ahead), out);
+}
+
+/** Where a paw stands after step `k` (and after any squaring-up step at a stop that follows it). */
+function standing(course, f, k, out) {
+    const settle = course.settles[f].get(((k % course.strides) + course.strides) % course.strides);
+    if (settle) {
+        out[0] = settle.to[0];
+        out[1] = settle.to[1];
+        out[2] = settle.to[2];
+        return out;
+    }
+    const lifted = clockAtPhase(course, k + LIFTS[f]);
+    return landing(course, f, lifted + bearSwingTime(speedAt(course, lifted)), out);
+}
+
+/** 6s⁵ − 15s⁴ + 10s³: from rest to rest with no jolt at either end. */
+const glide = (s) => s * s * s * (s * (s * 6 - 15) + 10);
+/** A bump that leaves and meets the ice at rest, its top a little before half-way. */
+const arc = (s) => {
+    const t = s ** 0.85;
+    return 16 * t * t * (1 - t) * (1 - t);
+};
+
+const FROM = [0, 0, 0];
+const TO = [0, 0, 0];
+/** How far each paw's toes reach ahead of the ball of the foot (world metres). */
+const TOE_REACH = BEAR_FEET.map((foot) => {
+    const ball = BEAR_MARKS[foot.paw];
+    const tip = BEAR_MARKS[`tip${foot.name}`];
+    return Math.hypot(tip[0] - ball[0], tip[1] - ball[1], tip[2] - ball[2]) * BEAR_SCALE;
+});
+
+/**
+ * Where paw `f` is at a moment of its clock: world (x, z, the way it points), how high, its heel and
+ * curl, and how far into a swing it is (0 on the ice).
+ */
+export function pawAt(course, f, clock, out = {}) {
+    const phi = phaseAt(course, clock);
+    const k = Math.floor(phi - LIFTS[f]);
+    const lifted = clockAtPhase(course, k + LIFTS[f]);
+    const swing = bearSwingTime(speedAt(course, lifted));
+    const landed = lifted + swing;
+    const G = BEAR_GAIT;
+    if (clock < landed) {
+        // In the air: from where it stood to where it lands, on a smooth path.
+        const s = Math.max(0, (clock - lifted) / swing);
+        standing(course, f, k - 1, FROM);
+        landing(course, f, landed, TO);
+        const g = glide(s);
+        out.x = FROM[0] + (TO[0] - FROM[0]) * g;
+        out.z = FROM[1] + (TO[1] - FROM[1]) * g;
+        out.yaw = FROM[2] + wrapAngle(TO[2] - FROM[2]) * g;
+        const reach = Math.hypot(TO[0] - FROM[0], TO[1] - FROM[1]);
+        out.pitch = G.peel[f] * (1 - smooth(0, 0.35, s));
+        out.curl = G.flick[f] * Math.sin(Math.PI * Math.min(1, s * 1.3)) * (1 - smooth(0.68, 1, s));
+        // Carried high enough that its curled toes clear the ice.
+        const toes = TOE_REACH[f] * Math.sin(Math.min(Math.PI / 2, out.curl * 1.25));
+        out.lift = Math.max(G.lift[f] * Math.min(1, 0.35 + reach / 0.8) * arc(s), toes + 0.02 * arc(s));
+        out.swing = arc(s);
+        // (It takes its weight again as it comes down.)
+        out.air = 1 - smooth(0.6, 1, s);
+        return out;
+    }
+    // On the ice: where it landed, unless it has squared up since.
+    landing(course, f, landed, TO);
+    let since = landed;
+    const settle = course.settles[f].get(((k % course.strides) + course.strides) % course.strides);
+    const later = settle ? ((k - settle.k) / course.strides) * course.period : 0;
+    out.x = TO[0];
+    out.z = TO[1];
+    out.yaw = TO[2];
+    out.lift = 0;
+    out.curl = 0;
+    out.swing = 0;
+    let settling = 0;
+    if (settle && clock >= settle.start + later) {
+        const s = Math.min(1, (clock - settle.start - later) / (settle.end - settle.start));
+        const g = glide(s);
+        out.x = settle.from[0] + (settle.to[0] - settle.from[0]) * g;
+        out.z = settle.from[1] + (settle.to[1] - settle.from[1]) * g;
+        out.yaw = settle.from[2] + wrapAngle(settle.to[2] - settle.from[2]) * g;
+        out.lift = G.lift[f] * 0.45 * arc(s);
+        out.curl = G.flick[f] * 0.35 * Math.sin(Math.PI * s);
+        out.swing = arc(s) * 0.5;
+        settling = smooth(0, 0.3, s) * (1 - smooth(0.7, 1, s));
+        since = settle.end + later;
+    }
+    // Its heel peels up off the ice as the next step comes.
+    const next = clockAtPhase(course, k + 1 + LIFTS[f]);
+    const stance = Math.max(1e-3, next - since);
+    out.pitch = G.peel[f] * smooth(0.62, 1, (clock - since) / stance) * (out.swing > 0 ? 0 : 1);
+    // It comes off its weight as its heel peels, so the body is not left leaning on a leg that
+    // is about to go.
+    out.air = Math.max(settling, smooth(0.5, 1, (clock - since) / stance));
+    return out;
+}
+
+/**
+ * Where its course has it at a moment of its own clock: place, heading, pace, how far it has
+ * walked and what it is doing. (Its feet: pawAt.)
+ */
+export function bearOnCourse(course, clock, out) {
+    motionOf(course, clock, out);
+    bearPlace(course, course.origin + out.walked, PLACE);
+    out.x = PLACE[0];
+    out.z = PLACE[1];
+    out.heading = PLACE[2];
+    out.distance = course.origin + out.walked;
+    return out;
+}
+
+// ── The mind ────────────────────────────────────────────────────────────────────
+
+/** How long a stop the board makes it take holds it (seconds): the length of `Rear`. */
+const REAR_FOR = BEAR_ACTS.Rear;
+const SPEC_B = createBearSpec();
+const PAW = {};
+const CHEST = [0, 0, 0];
+const HIPS = [0, 0, 0];
+const NEUTRAL = [0, 0, 0];
+/**
+ * The ground under the body (`a`), or under its feet (`b`, `c`) where that is lower: exactly `a`
+ * on level ground, and easing into the feet's ground (no corner) as it falls away.
+ */
+const softLow = (a, b, c) => {
+    const k = 0.06;
+    const x = a - Math.min(b, c);
+    if (x <= 0) return a;
+    return a - (x < k ? (x * x) / (2 * k) : x - k / 2);
+};
+
+/**
+ * The bear's mind: its clock, what the board has made it do, and the pose that results — a spec
+ * its body (winter-bear-rig.js) solves.
  */
 export class BearMind {
     /**
@@ -292,7 +631,6 @@ export class BearMind {
             z: -60,
             heading: 0,
             speed: 0,
-            phase: 0,
             act: 'Stand',
             actTime: 0,
             from: 'Stand',
@@ -301,11 +639,16 @@ export class BearMind {
             over: null,
             overTime: 0,
             overBlend: 0,
-            lookYaw: 0,
-            lookPitch: 0,
-            breath: 0,
             distance: 0,
+            walked: 0,
             clip: 'Stand',
+            breath: 0,
+            /** The spec its body solves. */
+            spec: createBearSpec(),
+            /** Each paw in the world: x, y, z (BEAR_FEET order), and how far into a swing. */
+            paws: BEAR_FEET.map(() => ({
+                x: 0, y: 0, z: 0, swing: 0,
+            })),
         };
         this.reset(0);
     }
@@ -393,7 +736,7 @@ export class BearMind {
         return true;
     }
 
-    /** Where it is and what it is doing at a world time. */
+    /** Where it is and what it is doing at a world time, and the spec its body solves. */
     step(time) {
         this.time = time;
         const { cut } = this;
@@ -401,33 +744,116 @@ export class BearMind {
             this.held += cut.end - cut.start;
             this.cut = null;
         }
+        const { course } = this;
         const p = this.pose;
-        bearOnCourse(this.course, this.clockAt(time), p);
+        const clock = this.clockAt(time);
+        bearOnCourse(course, clock, p);
         const still = this.holdAt(time);
         p.speed *= 1 - still;
+        // The chest and the hips ride the ground under them (over a spit's back, the body tilts),
+        // or under their feet where that is lower: across a slope, the downhill feet must reach.
+        bearPlace(course, p.distance + CHEST_AHEAD, CHEST);
+        bearPlace(course, p.distance - HIPS_BEHIND, HIPS);
+        const under = (f) => groundHeight(...pawNeutral(course, f, p.walked, NEUTRAL));
+        const chestY = softLow(groundHeight(CHEST[0], CHEST[1]), under(0), under(1));
+        const hipsY = softLow(groundHeight(HIPS[0], HIPS[1]), under(2), under(3));
+        p.y = (chestY + hipsY) * 0.5;
+
+        // What it is doing (cross-faded from what it was doing).
+        const { spec } = p;
+        const mix = p.blend * p.blend * (3 - 2 * p.blend);
+        bearAct(spec, p.act, p.actTime);
+        if (mix < 1) {
+            bearAct(SPEC_B, p.from, p.fromTime);
+            for (let i = 0; i < spec.length; i++) spec[i] = SPEC_B[i] + (spec[i] - SPEC_B[i]) * mix;
+        }
+        // The back follows the curve of the path: the chest walks ahead on it, the hips behind.
+        spec[SPEC.fore] += (p.y - chestY) / BEAR_SCALE;
+        spec[SPEC.drop] += (p.y - hipsY) / BEAR_SCALE;
+        const chestYaw = wrapAngle(CHEST[2] - p.heading);
+        const hipsYaw = wrapAngle(HIPS[2] - p.heading);
+        spec[SPEC.bend] += chestYaw - hipsYaw;
+        spec[SPEC.yaw] += (chestYaw + hipsYaw) * 0.5;
+
+        // Its feet, from the world into the model's frame; and the body riding them.
+        const c = Math.cos(p.heading);
+        const s = Math.sin(p.heading);
+        const swings = [0, 0, 0, 0];
+        for (let f = 0; f < BEAR_FEET.length; f++) {
+            pawAt(course, f, clock, PAW);
+            const ball = BEAR_MARKS[BEAR_FEET[f].paw];
+            const wx = PAW.x - p.x;
+            const wz = PAW.z - p.z;
+            const o = SPEC.feet + f * FOOT.size;
+            spec[o + FOOT.dx] += (wx * c - wz * s) / BEAR_SCALE - ball[0];
+            spec[o + FOOT.dz] += (wx * s + wz * c) / BEAR_SCALE - ball[2];
+            spec[o + FOOT.dy] += (PAW.lift + groundHeight(PAW.x, PAW.z) - p.y) / BEAR_SCALE;
+            spec[o + FOOT.pitch] += PAW.pitch;
+            spec[o + FOOT.curl] += PAW.curl;
+            spec[o + FOOT.air] += PAW.air;
+            spec[o + FOOT.yaw] += wrapAngle(PAW.yaw - p.heading);
+            // Set down on a slope, the paw lies along it (toes up the rise, not into it).
+            const ahead = TOE_REACH[f];
+            const rise = groundHeight(PAW.x + Math.sin(PAW.yaw) * ahead, PAW.z + Math.cos(PAW.yaw) * ahead)
+                - groundHeight(PAW.x - Math.sin(PAW.yaw) * ahead, PAW.z - Math.cos(PAW.yaw) * ahead);
+            spec[o + FOOT.ground] += -Math.atan2(rise, 2 * ahead);
+            swings[f] = PAW.swing;
+            const out = p.paws[f];
+            out.x = PAW.x;
+            out.y = groundHeight(PAW.x, PAW.z) + PAW.lift;
+            out.z = PAW.z;
+            out.swing = PAW.swing;
+        }
+        const [fl, fr, bl, br] = swings;
+        const going = smooth(0, 0.5, p.speed / BEAR_PACE);
+        // The shoulders roll and the hips sway over the feet that are down; the body settles a
+        // little on each foot that swings, and rides lower walking than standing.
+        const chestRoll = 0.045 * (fr - fl);
+        const hipsRoll = 0.04 * (br - bl);
+        spec[SPEC.roll] += (chestRoll + hipsRoll) * 0.5;
+        spec[SPEC.twist] += chestRoll - hipsRoll;
+        spec[SPEC.sway] += 0.018 * (fr - fl + br - bl) * 0.5;
+        spec[SPEC.fore] += 0.016 * (fl + fr) + 0.045 * going;
+        spec[SPEC.drop] += 0.013 * (bl + br) + 0.04 * going;
+        spec[SPEC.shift] += 0.012 * (fl + fr - bl - br) * going;
+        // The head swings to the side of the planted forepaw, low, and nods with each step.
+        spec[SPEC.headYaw] += 0.12 * (fr - fl);
+        spec[SPEC.headRoll] += 0.05 * (fl - fr);
+        spec[SPEC.headPitch] += 0.03 * (fl + fr) - 0.02 * going;
+        spec[SPEC.tailYaw] += 0.15 * (bl - br);
+
+        // What the board made it do, laid over the rest.
         p.over = null;
         p.overBlend = 0;
         if (this.cut) {
-            const c = this.cut;
-            if (c.kind === 'rear') {
+            const k = this.cut;
+            if (k.kind === 'rear') {
                 p.over = 'Rear';
-                p.overTime = time - c.from;
-                p.overBlend = smooth(c.from, c.from + 0.6, time) * (1 - smooth(c.end - 0.5, c.end + 0.5, time));
-            } else if (Number.isFinite(c.end) && c.rise !== undefined) {
+                p.overTime = time - k.from;
+                p.overBlend = smooth(k.from, k.from + 0.6, time) * (1 - smooth(k.end - 0.5, k.end + 0.5, time));
+            } else if (Number.isFinite(k.end) && k.rise !== undefined) {
                 p.over = 'Rise';
-                p.overTime = time - c.rise;
-                p.overBlend = 1 - smooth(c.end - 0.4, c.end + 0.6, time);
+                p.overTime = time - k.rise;
+                p.overBlend = 1 - smooth(k.end - 0.4, k.end + 0.6, time);
             } else {
                 p.over = 'Lie';
-                p.overTime = Math.min(time - c.from, LIE_HOLD);
-                p.overBlend = smooth(c.from, c.from + 0.8, time);
+                p.overTime = Math.min(time - k.from, LIE_HOLD);
+                p.overBlend = smooth(k.from, k.from + 0.8, time);
             }
         }
+        if (p.over && p.overBlend > 0) {
+            bearAct(SPEC_B, p.over, p.overTime);
+            const w = p.overBlend * p.overBlend * (3 - 2 * p.overBlend);
+            // (Only an act that places its own feet takes them from the gait.)
+            const feet = OWNS_FEET[p.over] ? SPEC_B.length : SPEC.feet;
+            for (let i = 0; i < feet; i++) spec[i] += (SPEC_B[i] - spec[i]) * w;
+        }
         p.clip = p.over && p.overBlend > 0.5 ? p.over : p.act;
-        p.y = groundHeight(p.x, p.z);
         // It breathes: slow and deep, and deeper still once it has walked a while and stopped.
         const resting = p.act === 'Walk' ? 1 - p.blend : 1;
         p.breath = Math.sin(time * TAU * 0.28) * (0.4 + 0.6 * clamp01(resting + p.overBlend));
+        spec[SPEC.arch] += 0.01 * p.breath;
+        spec[SPEC.fore] -= 0.006 * p.breath;
         return p;
     }
 }
