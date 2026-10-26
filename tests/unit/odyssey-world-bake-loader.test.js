@@ -112,7 +112,7 @@ describe('createOdysseyWorld({ prebaked })', () => {
         expect(fromBake.heightAt(120, -80)).toBe(direct.heightAt(120, -80));
         direct.dispose();
         fromBake.dispose();
-    });
+    }, 30_000); // two whole world bakes: 2.7-5.2 s on CI's runners, past the 5 s default (it checks bytes, not speed)
 
     it('ignores prebaked data baked for another resolution or spec slice', () => {
         const baked = bakeWorldSync({
