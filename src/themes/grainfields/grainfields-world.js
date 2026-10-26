@@ -295,7 +295,9 @@ export class GrainfieldsWorld {
         this.addPart('land', createLand(u, t, tier, prepared));
         yield 'land';
         this.addPart('lapporten', createLapporten(u, t, tier));
-        this.addPart('fort', createFort(u, t));
+        // The ruin is authored too; without it the knoll stands bare.
+        const fort = createFort(u, t, prepared.assets?.ruin);
+        if (fort) this.addPart('fort', fort);
         yield 'lapporten';
         // The trees need their authored assets; without them the belts stand as the land's canopy.
         if (prepared.assets) {
