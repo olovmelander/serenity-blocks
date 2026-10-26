@@ -49,6 +49,7 @@ import {
     columnU, fieldUV, fieldWeight, landAt, paHash22, paLuma, paStrataG,
 } from './painted-ages-tsl.js';
 import { shadowAt } from './painted-ages-shadow.js';
+import { poplarShadeAt } from './painted-ages-life.js';
 import { aerial, cloudShadow, mistPatches } from './painted-ages-light.js';
 import {
     rainbow, ribbonLight, riverWater, sparkle, waveLight,
@@ -290,7 +291,8 @@ export function createLandMaterial(u, t, tier) {
         // ── Light ──
         const L = u.sunDir;
         const ndl = clamp(dot(n, L).add(0.06).div(1.06), 0.0, 1.0);
-        const shadow = shadowAt(t.shadow, xz);
+        // The land's own shadow, and the poplars' (long across the valley floor at the golden hours).
+        const shadow = shadowAt(t.shadow, xz).mul(poplarShadeAt(t.poplarShade, P)).toVar();
         const clouds = cloudShadow(u, t.noise, P);
         const sunLight = u.sun.mul(ndl).mul(shadow).mul(clouds).mul(u.sunUp);
         // Alpenglow: the snow takes the hour's own colour.
