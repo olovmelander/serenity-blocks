@@ -296,6 +296,17 @@ export const LOOK = {
     treeNeedleBreak: 0.4,
     treeBoughSky: 0.3,
     treeRime: 0.45,
+    // The polar bear's coat: a cream a shade warmer than the snow (its albedo), and how strongly
+    // its outline is lit through the hair against the moon.
+    bearCoatR: 0.94,
+    bearCoatG: 0.9,
+    bearCoatB: 0.8,
+    bearRim: 1.0,
+    // Its shadow on the ice: how dark at its heart; and the shade under its body.
+    bearShadow: 0.5,
+    bearContact: 0.5,
+    // Its mirror image in the bare ice: how much of the ice's mirror it takes.
+    bearMirror: 0.85,
 };
 
 /** Apply overrides ({ name: number }) to LOOK; unknown names and non-numbers are ignored. */
@@ -396,6 +407,15 @@ export function createWinterUniforms(textures) {
         foxGlow: uniform(0),
         /** How far its eyes are shut (0 open .. 1 shut: a blink, or asleep). */
         foxEyes: uniform(0),
+        /**
+         * The polar bear's shadow on the ice: (x, z of its middle, half its length along the
+         * moon's bearing, half its width across it).
+         */
+        bearShadow: uniform(new THREE.Vector4(0, -900, 1, 1)),
+        /** ...and the shade its body leaves on the ice under it: (x, z of its middle, its heading's sin, cos). */
+        bearContact: uniform(new THREE.Vector4(0, -900, 0, 1)),
+        /** How much of the lake's ice is under it (0 on a spit's snow .. 1): its mirror image needs ice. */
+        bearIce: uniform(1),
         /** The fox of light in the sky: (bearing as tan, elevation as tan, strength, spare). */
         spirit: uniform(new THREE.Vector4(0, 0.3, 0, 0)),
         /** The moon shadows' map covers (x0, z0, 1/width, 1/depth). */
@@ -553,6 +573,18 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
     // The brightest folds saturate toward their own colour, never to white.
     const lit = sum.mul(lift);
     return lit.div(wMax3(lit).div(3.4).add(1.0)).mul(u.breath);
+};
+
+/**
+ * How far the wind has swept the lake's ice bare at world point `p` (0 under snow .. 1 bare ice),
+ * most of all along the moon's bearing, so its path lies on ice. `driftR` is the snow's drift
+ * noise there (the ground's `u.noise(vec2(p.x·0.043, p.z·0.17)).r`): the ground and the bear's
+ * mirror image read the same ice.
+ */
+export const wIceSwept = (u, p, driftR) => {
+    const swept = u.noise(vec2(p.x.mul(0.0052), p.z.mul(0.015)).add(vec2(0.3, 0.7))).r;
+    const moonPath = exp(wSq(p.x.sub(p.z.negate().mul(u.moonDir.x.div(u.moonDir.z.negate()))).div(46.0)).negate());
+    return smoothstep(0.36, 0.5, swept.add(driftR.sub(0.5).mul(0.22)).add(moonPath.mul(0.16)));
 };
 
 /** The trees' moon shadow at a point on the snow: 0 in shadow, 1 in the moon's light. */

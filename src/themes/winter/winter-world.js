@@ -86,6 +86,7 @@ import {
     hourAt,
     hourDrift,
     hourName,
+    lakeMask,
     moonDirection,
     nearestTurn,
     pieceColor,
@@ -106,13 +107,16 @@ import { FoxMind } from './winter-fox-mind.js';
 import {
     createFox, createSpiritFox, loadFox, spiritPath,
 } from './winter-fox.js';
+import { BearMind } from './winter-bear-plan.js';
+import { BEAR_SCALE } from './winter-bear-rig.js';
+import { createBear, loadBear } from './winter-bear.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './winter-composition.js';
 
 export { REST_RIG, fovForAspect };
 
-const PARTS = ['sky', 'ground', 'trees', 'prints', 'snow', 'dust', 'sparks', 'beams', 'fox', 'spirit'];
+const PARTS = ['sky', 'ground', 'trees', 'prints', 'snow', 'dust', 'sparks', 'beams', 'fox', 'spirit', 'bear'];
 
 /** Metres from the eye at which the sparks leave the card's edge. */
 export const SPARK_DEPTH = 5.4;
@@ -149,14 +153,20 @@ export class WinterWorld {
      * @param {number} [params.seed]
      * @param {object} [params.ghosts]  tree meshes to use instead of the baked asset (tests)
      * @param {boolean} [params.fox=true]  fetch the fox's body (it joins the scene when it arrives)
+     * @param {boolean} [params.bear=true]  fetch the polar bear's body (likewise)
      */
     constructor({
-        scene, quality = 'High', renderer = null, capture = false, seed, ghosts = null, fox = true,
+        scene, quality = 'High', renderer = null, capture = false, seed, ghosts = null, fox = true, bear = true,
     } = {}) {
         this.wantsFox = fox !== false;
         this.fox = null;
         this.spirit = null;
         this.foxReady = Promise.resolve(false);
+        this.wantsBear = bear !== false;
+        this.bear = null;
+        this.bearReady = Promise.resolve(false);
+        /** Where the polar bear walks on the lake, and what the board has made it do. */
+        this.bearMind = new BearMind(16 / 9);
         /** The parts a capture asked to see alone (null = all). */
         this.shown = null;
         this.scene = scene;
@@ -306,7 +316,10 @@ export class WinterWorld {
         this.windRun = [time * WIND.x * 0.75 * still, time * WIND.z * 0.75 * still];
         this.auroraRun = time * 0.55;
         this._curtains = [...CURTAIN_REST];
-        if (fox) this.mind.reset(time);
+        if (fox) {
+            this.mind.reset(time);
+            this.bearMind.reset(time);
+        }
         this.sparks?.reset();
         this.beams?.reset();
         this.prints?.reset();
@@ -395,6 +408,16 @@ export class WinterWorld {
                 if (this.spirit) this.spirit.shownAlone = this.shown.has('spirit');
             }
             this.fox.update(this.mind.pose, 0);
+            return true;
+        });
+        // So does the polar bear's: its plan walks it whether or not it has one.
+        this.bearReady = !this.wantsBear ? Promise.resolve(false) : loadBear().then((gltf) => {
+            if (!gltf || this.disposed || !this.u) return false;
+            this.bear = createBear(this.u, gltf);
+            this.parts.bear = this.bear;
+            this.root.add(this.bear.mesh);
+            if (this.shown) this.bear.mesh.visible = this.shown.has('bear');
+            this.bear.update(this.bearMind.step(this.time));
             return true;
         });
         return this;
@@ -494,6 +517,8 @@ export class WinterWorld {
         mind.flick = 0;
         mind.dash = 0;
         mind.wake(time);
+        // The bear gets up off the ice (if the last run's end laid it down) and walks on.
+        this.bearMind.rise(time);
     }
 
     /** Hold the fires at a charge (0..1), or null to give them back to the chain. */
@@ -536,6 +561,7 @@ export class WinterWorld {
         const moon = moonDirection(this.aspect);
         const glow = glowDirection(this.aspect);
         this.mind.setRound(foxRound(this.aspect));
+        this.bearMind.setAspect(this.aspect, this.time);
         if (!this.u) return;
         this.u.moonDir.value.set(moon[0], moon[1], moon[2]);
         this.u.glowDir.value.set(glow[0], glow[1]);
@@ -1057,6 +1083,8 @@ export class WinterWorld {
         const k = (this.time - this.spiritAt) / SPIRIT_RUN;
         if (this.spiritAt > -50 && k < 0.85) this.spiritBoost.hit(boost, at);
         else this.spiritAt = at;
+        // Out on the lake the bear stands up on its hind legs to watch it go over.
+        this.bearMind.rear(at + 0.25);
     }
 
     /** A wheel of `spokes` spokes of sparks round the card, `n` to a spoke. */
@@ -1171,6 +1199,7 @@ export class WinterWorld {
         this.combo = 0;
         this.dip = Math.max(this.dip, 0.4);
         this.mind.sleep(this.time);
+        this.bearMind.lie(this.time);
     }
 
     /**
@@ -1270,6 +1299,7 @@ export class WinterWorld {
 
         // ── The fox ──
         this.stepFox(dt, t);
+        this.stepBear(t);
 
         // ── The fox of light (a second four, or the crown, makes it burn the brighter) ──
         const spiritAge = t - this.spiritAt;
@@ -1553,6 +1583,35 @@ export class WinterWorld {
         this.fox?.update(pose);
     }
 
+    /** Walk the polar bear on along its course, pose its body and lay its shadow on the ice. */
+    stepBear(t) {
+        const pose = this.bearMind.step(t);
+        this.bear?.update(pose);
+        const { u } = this;
+        if (!u) return;
+        // The moon is 22.5° up: a bear's shadow runs away from it about two and a half times as far
+        // as it is tall, as long as its body is turned along that way, as wide as it is across.
+        const m = u.moonDir.value;
+        const flat = Math.hypot(m.x, m.z) || 1;
+        const mx = m.x / flat;
+        const mz = m.z / flat;
+        const fx = Math.sin(pose.heading);
+        const fz = Math.cos(pose.heading);
+        const lengthwise = Math.abs(fx * mx + fz * mz);
+        const crosswise = Math.abs(fz * mx - fx * mz);
+        const down = pose.over === 'Lie' || pose.over === 'Rise' ? pose.overBlend : 0;
+        const up = pose.over === 'Rear' ? pose.overBlend : 0;
+        const tall = (1 - 0.6 * down) * (1 + 0.7 * up) * BEAR_SCALE;
+        u.bearShadow.value.set(
+            pose.x - mx * 1.6 * tall,
+            pose.z - mz * 1.6 * tall,
+            1.7 * tall + 1.25 * BEAR_SCALE * lengthwise,
+            (0.42 + 1.1 * crosswise) * BEAR_SCALE,
+        );
+        u.bearContact.value.set(pose.x, pose.z, fx, fz);
+        u.bearIce.value = lakeMask(pose.x, pose.z);
+    }
+
     /** What the post stack reads each frame (a reused object). */
     getPostState() {
         return this._post;
@@ -1587,6 +1646,13 @@ export class WinterWorld {
                 body: Boolean(this.fox), mode: this.mind.mode, clip: pose.clip, x: pose.x, z: pose.z, glow: pose.glow, speed: pose.speed,
             },
             spirit: this.spiritGlow,
+            bear: {
+                body: Boolean(this.bear),
+                act: this.bearMind.pose.clip,
+                x: this.bearMind.pose.x,
+                z: this.bearMind.pose.z,
+                speed: this.bearMind.pose.speed,
+            },
             layoutLive: this.layoutLive,
             heart: { ...this.heart },
         };
@@ -1602,8 +1668,10 @@ export class WinterWorld {
         });
         this.fox?.dispose();
         this.spirit?.dispose();
+        this.bear?.dispose();
         this.fox = null;
         this.spirit = null;
+        this.bear = null;
         this.textures.forEach((tex) => tex.dispose());
         this.disposables = [];
         this.textures = [];

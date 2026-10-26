@@ -220,7 +220,7 @@ const captureThemes = [
 
     ['waves', 'waves', 'Waves', 'sky, water, dolphins, mist, rain, spray, foam'],
 
-    ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit'],
+    ['winter', 'winter', 'Winter', 'sky, ground, trees, prints, snow, dust, sparks, beams, fox, spirit, bear'],
 ];
 // A row may end with a note on its parts (an alias the world accepts beside the listed names).
 const captureEntries = captureThemes.flatMap(([id, prefix, label, parts, partsNote = '']) => [
