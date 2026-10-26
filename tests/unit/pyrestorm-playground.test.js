@@ -185,6 +185,31 @@ describe('Pyrestorm playground effect', () => {
         expect(effect.getDiagnostics().counts).toMatchObject(counts);
     });
 
+    it('pins an event on the clock (eventAt): before it nothing has fired, after it each seek shows its age', async () => {
+        const { effect, camera } = await mountReady('event=quad&eventAt=40', 39.5);
+        expect(effect.getDiagnostics().counts).toMatchObject({ quads: 0, clears: 0 });
+        const views = [];
+        for (const t of [40.4, 40.5, 40.4]) {
+            effect.seek(t);
+            expect(effect.getDiagnostics().counts).toMatchObject({ quads: 1, clears: 1 });
+            views.push(camera.quaternion.clone());
+        }
+        // Frame-exact: the same time lands on the same view, and the blast shakes it between frames.
+        // (angleTo cannot read below ~3e-8: 2·acos of a dot one bit under 1.)
+        expect(views[0].angleTo(views[2])).toBeLessThan(1e-7);
+        expect(views[0].angleTo(views[1])).toBeGreaterThan(1e-6);
+    });
+
+    it('holds the ridge still when asked (shake=0), the event otherwise the same', async () => {
+        const shaken = await mountReady('event=quad&eventAge=0.45');
+        const still = await mountReady('event=quad&eventAge=0.45&shake=0');
+        const a = shaken.effect.getDiagnostics();
+        const b = still.effect.getDiagnostics();
+        expect(Math.hypot(a.shake.x, a.shake.y)).toBeGreaterThan(0);
+        expect(b.shake).toEqual({ x: 0, y: 0, roll: 0 });
+        expect(b.counts).toEqual(a.counts);
+    });
+
     it('holds a chain, a back-to-back run and a watch of the night when asked', async () => {
         const { effect } = await mountReady('combo=6&b2b=3&watch=3');
         const state = effect.getDiagnostics();

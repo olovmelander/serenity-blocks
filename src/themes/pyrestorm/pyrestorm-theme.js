@@ -9,7 +9,9 @@
  * cloud-to-ground bolts, a chain charges the storm (spider lightning along the anvil) and its
  * break discharges it, four lines are a Vulcanian blast with a shock front through the cloud, a
  * T-spin blows a vortex ring, a perfect clear lights the whole anvil; the night's palette drifts
- * with the clock and a level-up moves it a watch on (and sends fresh lava down every channel).
+ * with the clock and a level-up moves it a watch on (and sends fresh lava down every channel). The
+ * ridge feels the heavy beats as small shakes of the view (a hard drop's thud, the thunder, the
+ * blast's air wave, the lava's groan; pyrestorm-shake.js), stilled by reduced motion.
  *
  * Content lives in PyrestormWorld, shared with the playground. This adapter preserves the house
  * lifecycle: renderer ownership, one WebGL2 recovery, settings and event subscriptions, live

@@ -5735,7 +5735,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ['bloom', 'Override the tier’s bloom (and the heat shimmer that reads it).', '0 off; 1 on.', 'The tier’s.', '0'],
         ['px', 'Hold a horizontal pointer-parallax offset.', '-1 to 1.', '0.', '0.5'],
         ['py', 'Hold a vertical pointer-parallax offset.', '-1 to 1.', '0.', '-0.3'],
-        ['reduce', 'Use reduced motion (no lens breath or parallax).', '1 enables.', 'Off.', '1'],
+        ['reduce', 'Use reduced motion (no lens breath, parallax or shake).', '1 enables.', 'Off.', '1'],
+        [
+            'shake',
+            'Let the ridge shake under events (hard drops, thunder, the blast, the lava’s groan).',
+            '0 holds the view still (everything else as usual), for A/B captures.',
+            'On.',
+            '0',
+        ],
         ['look', 'Inspection lens: from the eye, look at a world point.', 'x,y,z[,fov] in metres and degrees.', 'Off.', '-5840,3180,-13260,8'],
         [
             'event',
@@ -5745,6 +5752,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'quad',
         ],
         ['eventAge', 'Show the event this many seconds after it fired.', 'Seconds ≥ 0.', '0.6.', '1.4'],
+        [
+            'eventAt',
+            'Pin the event on the clock instead: a seek to t shows it t − eventAt seconds on (seeking frame by '
+                + 'frame films it; before eventAt it has not fired).',
+            'Seconds ≥ 0.',
+            'Not pinned: eventAge applies.',
+            '10',
+        ],
         ['u', 'The lock’s column as a fraction of the board (the burst leans that way).', '0 to 1.', '0.3.', '0.8'],
         ['row', 'The event’s board row (a clear’s higher rows strike higher up the cone).', '0 (top) to 19 (floor).', '16.', '4'],
         ['lines', 'Lines in an event=clear.', '1 to 4.', '2.', '3'],

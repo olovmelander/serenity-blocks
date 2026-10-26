@@ -22,10 +22,13 @@
  *   bloom=0|1                override the tier's bloom
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   shake=0                  the ridge never shakes (everything else as usual: A/B captures)
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>, peak=<n> for release)
+ *   eventAt=<s>              ...or pin it on the clock: a seek to t shows it t - eventAt seconds
+ *                            on (before it, not yet fired), so seeking frame by frame films it
  *   combo=<n>                hold a chain of n (the storm charges as it grows)
  *   b2b=<0..4>               hold a back-to-back level (St Elmo's corona)
  *   locks=<n>                before the event, play n locks
@@ -142,6 +145,7 @@ export function create({
     const watchHold = params.has('watch') ? num(params, 'watch', 0) : null;
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
+    const eventAt = params.has('eventAt') ? num(params, 'eventAt', 0) : null;
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
     const holdB2B = Math.max(0, Math.min(4, Math.round(num(params, 'b2b', 0))));
     const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
@@ -228,7 +232,10 @@ export function create({
         simTime = asked;
         if (!world) return;
         // Events fire inside a short replay before the asked frame (the storm needs time to charge).
-        const lead = (eventName ? eventAge : 0) + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
+        // Pinned on the clock (eventAt), a frame before the event shows it not yet fired.
+        const age = eventAt !== null ? asked - eventAt : eventAge;
+        const firing = Boolean(eventName) && age >= 0;
+        const lead = (firing ? age : 0) + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
         const time = Math.max(asked, lead);
         const start = time - lead;
         world.seek(start);
@@ -252,9 +259,9 @@ export function create({
                 rows: [19 - (i % 9)], u: ((i * 0.37) % 1) * 0.9 + 0.05, color: PIECE_COLORS[i % PIECE_COLORS.length], hardDrop: i % 4 === 3, distance: 12,
             });
         }
-        const eventTime = eventName ? time - eventAge : time;
+        const eventTime = firing ? time - age : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.05);
-        if (eventName) {
+        if (firing) {
             fireEvent();
             stepTo(eventTime, time, 1 / 60);
         }
@@ -291,6 +298,7 @@ export function create({
         }).build();
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
+        if (params.get('shake') === '0') world.ridge.setEnabled(false);
         if (watchHold !== null) world.setCaptureOverrides({ watch: watchHold });
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
