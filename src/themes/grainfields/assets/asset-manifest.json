@@ -67,6 +67,129 @@
       }
     },
     {
+      "file": "grainfields-goose.glb",
+      "bytes": 52772,
+      "sha256": "528d306e235cb3fc44af032e7a43fa9065ebdd05c2ee0afcf9ee7555f4e11826",
+      "kind": "goose",
+      "name": "grainfields-goose",
+      "species": "Taiga bean goose (Anser fabalis fabalis)",
+      "triangles": 2752,
+      "vertices": 1388,
+      "span": 1.604,
+      "length": 0.836,
+      "rig": {
+        "frame": "x left, y up, z forward (metres, real size)",
+        "span": 1.6,
+        "length": 0.8,
+        "shoulder": [
+          0.072,
+          0.036,
+          0.05
+        ],
+        "wrist": [
+          0.372,
+          0.036,
+          0.118
+        ],
+        "armBand": [
+          0.064,
+          0.2
+        ],
+        "armBandTrailing": [
+          0.064,
+          0.25
+        ],
+        "handBand": [
+          0.345,
+          0.398
+        ],
+        "handBandTrailing": [
+          0.285,
+          0.445
+        ],
+        "tipBand": [
+          0.6,
+          0.79
+        ],
+        "headBand": [
+          0.17,
+          0.33
+        ],
+        "poses": {
+          "rest": {
+            "lift": 0.0,
+            "sweep": 0.0,
+            "bend": 0.0,
+            "fold": 0.0,
+            "curl": 0.0
+          },
+          "glide": {
+            "lift": 0.1,
+            "sweep": -0.02,
+            "bend": -0.07,
+            "fold": 0.06,
+            "curl": 0.03
+          },
+          "top": {
+            "lift": 0.6,
+            "sweep": 0.02,
+            "bend": 0.16,
+            "fold": 0.24,
+            "curl": -0.04
+          },
+          "down": {
+            "lift": 0.04,
+            "sweep": -0.1,
+            "bend": -0.06,
+            "fold": 0.05,
+            "curl": 0.15
+          },
+          "bottom": {
+            "lift": -0.52,
+            "sweep": -0.06,
+            "bend": -0.24,
+            "fold": 0.12,
+            "curl": 0.03
+          },
+          "up": {
+            "lift": 0.04,
+            "sweep": 0.08,
+            "bend": -0.2,
+            "fold": 0.4,
+            "curl": -0.05
+          },
+          "takeoffTop": {
+            "lift": 1.1,
+            "sweep": 0.12,
+            "bend": 0.4,
+            "fold": 0.3,
+            "curl": -0.08
+          },
+          "takeoffDown": {
+            "lift": 0.08,
+            "sweep": -0.26,
+            "bend": -0.04,
+            "fold": -0.06,
+            "curl": 0.22
+          },
+          "takeoffBottom": {
+            "lift": -0.98,
+            "sweep": -0.16,
+            "bend": -0.3,
+            "fold": 0.16,
+            "curl": 0.05
+          },
+          "takeoffUp": {
+            "lift": 0.12,
+            "sweep": 0.16,
+            "bend": -0.34,
+            "fold": 0.72,
+            "curl": -0.06
+          }
+        }
+      }
+    },
+    {
       "file": "grainfields-horse.glb",
       "bytes": 184592,
       "sha256": "b5897dfe07016310d77f7f29880d541417b1f73a30bb3f6d697d42927fd2e7c3",

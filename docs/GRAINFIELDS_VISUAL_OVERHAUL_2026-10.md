@@ -72,7 +72,8 @@ authored at that size and drawn larger than life (`SIZE`: 1.3 across, 1.5 up) at
   procedural attempt (ellipsoid blobs) read as toy sheep and was dropped.
 - **The ruin, the geese, the motes**: a broken castle on the knoll (remade in Blender on
   2026-10-26: [GRAINFIELDS_RUIN_2026-10.md](GRAINFIELDS_RUIN_2026-10.md)); skeins of geese crossing (the
-  goose valley); chaff and pollen glinting over the field.
+  goose valley; Blender-modelled bean geese since 2026-10-26: [GRAINFIELDS_GEESE_2026-10.md](GRAINFIELDS_GEESE_2026-10.md));
+  chaff and pollen glinting over the field.
 
 ## The light: a day on the clock
 

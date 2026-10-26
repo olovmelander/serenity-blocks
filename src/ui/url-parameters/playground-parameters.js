@@ -6046,6 +6046,22 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'On.',
             '0',
         ],
+        [
+            'gooseLook',
+            'From the theme’s own eye, keep one goose in the middle of a long lens: goose i of the flight out a '
+                + 'level-up sends (out, with event=levelUp) or of a crossing skein (a, b).',
+            'Skein:index, then fov degrees.',
+            'Off: the theme’s own lens.',
+            'out:0,8',
+        ],
+        [
+            'gooseCam',
+            'Fly beside one goose (skein out, a or b): this many metres off, this many degrees round from its '
+                + 'heading toward its left side, this high over it, through this lens (a close look at its wings).',
+            'Skein:index, then metres, degrees, metres, fov degrees.',
+            'Off: the theme’s own eye.',
+            'out:0,3,90,0.3,40',
+        ],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',
