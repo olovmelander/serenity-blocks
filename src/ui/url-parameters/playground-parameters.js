@@ -1134,7 +1134,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'void-ember, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil',
         description: 'Replay a gameplay reaction in the selected preview.',
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp (Koi '
-            + 'Pond, Nebula Flow, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
+            + 'Pond, Star Cradle, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
             + 'drop, clear, quad, tspin, perfect, levelUp; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'tspin, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, tspin, perfect, levelUp, break); cue names are case-sensitive in most effects. '
@@ -2003,12 +2003,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'thermal-bloom, '
             + 'tornado, vesper-chrysalis, void-ember, voltage-storm, winter',
         description: 'Override the icon camera field of view.',
-        values: 'Degrees (Nebula Flow: half the square frame\'s height, in nursery units); requires icon=1.',
+        values: 'Degrees (Star Cradle: half the square frame\'s height, in nursery units); requires icon=1.',
         defaultValue: 'Black Hole 27; Aurora 48; Shifting Sands 26; Lunara 46; Halcyon Apex 40; Fluid Dreams '
             + '44; Himalayan Peak 30; Geode 62; Galaxy 36; Murmuration 34; Winter 30; Voltage Storm 30; '
             + 'Supernova 20; Void Ember 40; Vesper Chrysalis 30; Tornado 30; Stillwater 30; Stellar '
             + 'Drift 26; Starlight 46; Stellar Velocity 46; Sunset 30; Solar Eclipse 13; Serenity Warp '
-            + '34; Rainbow Terraces 30; Moonlit Greenhouse 36; Nebula Flow 0.9 nursery units; Rainbark 30; '
+            + '34; Rainbow Terraces 30; Moonlit Greenhouse 36; Star Cradle 0.9 nursery units; Rainbark 30; '
             + 'Luminous Tides 32; Kaleidosonic 34; Synthwave Sunset 36.',
         example: 'iconFov=35',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -2101,7 +2101,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Kaleidosonic, Shifting Sands and Rainbark: degrees; Lunara, Halcyon Apex, Fluid Dreams, '
             + 'Himalayan Peak, Geode, Galaxy, Voltage Storm, Supernova, Void Ember, Vesper Chrysalis, '
             + 'Tornado, Stillwater, Stellar Drift, Starlight, Stellar Velocity, Sunset, Serenity Warp, '
-            + 'Rainbow Terraces, Moonlit Greenhouse and Luminous Tides: radians; Nebula Flow: nursery '
+            + 'Rainbow Terraces, Moonlit Greenhouse and Luminous Tides: radians; Star Cradle: nursery '
             + 'units, moving the frame in y. Synthwave Sunset: the elevation of the aim, in degrees. '
             + 'Requires icon=1.',
         defaultValue: 'Shifting Sands 1.5 degrees; Lunara 0.1 radians; Halcyon Apex 0.36 radians; Fluid Dreams '
@@ -2109,7 +2109,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + '0.27 radians; Voltage Storm 0 radians; Supernova 0 radians; Void Ember 0 radians; Vesper '
             + 'Chrysalis 0.05 radians; Tornado 0 radians; Stillwater 0 radians; Stellar Drift 0 '
             + 'radians; Starlight 0 radians; Stellar Velocity 0 radians; Sunset -0.05 radians; Serenity '
-            + 'Warp 0 radians; Rainbow Terraces -0.05 radians; Moonlit Greenhouse 0.12 radians; Nebula Flow '
+            + 'Warp 0 radians; Rainbow Terraces -0.05 radians; Moonlit Greenhouse 0.12 radians; Star Cradle '
             + '0; Rainbark 8 degrees; Luminous Tides -0.12 radians; Kaleidosonic 0 degrees; Synthwave '
             + 'Sunset 4.5 degrees of elevation.',
         example: 'iconPitch=0.1',
@@ -2256,7 +2256,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + '0 radians; Vesper Chrysalis 0 radians; Tornado 0 radians; Stillwater 0 radians; Stellar '
             + 'Drift 0 radians; Starlight 0 radians; Stellar Velocity 0 radians; Sunset 0.36 radians; '
             + 'Serenity Warp 0 radians; Rainbow Terraces 0.5 radians; Moonlit Greenhouse 0.32 radians; '
-            + 'Nebula Flow 0; Rainbark 24 degrees; Luminous Tides 0.42 radians; Kaleidosonic 0 degrees; '
+            + 'Star Cradle 0; Rainbark 24 degrees; Luminous Tides 0.42 radians; Kaleidosonic 0 degrees; '
             + 'Synthwave Sunset 2.4 degrees of azimuth.',
         example: 'iconYaw=0.2',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -2570,7 +2570,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'Starlight each lock kindles a star of the constellation being drawn. In Sunset each lock '
             + "sets a lantern of its piece's colour on the sea beside the card. In Rainbow Terraces each "
             + "lock (0.45 s apart, every fourth a hard drop) pours its piece's colour into a terraced "
-            + 'pool, which holds it. In Nebula Flow each lock kindles a star in the pillars. In Moonlit '
+            + 'pool, which holds it. In Star Cradle each lock kindles a star in the pillars. In Moonlit '
             + 'Greenhouse they open that many blooms in the garden before anything else. In Rainbark '
             + 'the locks alternate between the two lane trunks, one piece of each shape in turn. In '
             + "Kaleidosonic each lock (0.6 s apart, every fourth a hard drop) strikes its piece's note "

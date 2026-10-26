@@ -123,7 +123,7 @@ describe('Neon District theme: one node renderer on both backends', () => {
     it('is registered under its id with its own icon', () => {
         const entry = THEME_REGISTRY.find(({ id }) => id === 'neon-district');
         expect(entry).toMatchObject({
-            displayName: 'Neon District',
+            displayName: 'Neon Quarter',
             module: './neon-district/neon-district-theme.js',
             icon: './neon-district/neon-district-theme-icon.png',
         });

@@ -43,7 +43,7 @@ import { STREET, wrapZ } from '../../themes/neon-district/neon-district-core.js'
 
 export const meta = {
     id: 'neon-district',
-    title: 'Neon District (full world)',
+    title: 'Neon Quarter (full world)',
     description: 'A rain-soaked neon canyon that flows past the board: rooms behind every window, the city mirrored in the street.',
 };
 

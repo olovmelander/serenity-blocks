@@ -477,7 +477,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.NEON_SIGN },
         anchor: 'citySpire',
-        audioTrack: 'NeonDistrict',
+        audioTrack: 'NeonQuarter',
         transitionOut: null,
         transition: {
             id: null,

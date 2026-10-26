@@ -705,7 +705,7 @@ export const BILLBOARD_CELLS = Object.freeze([
         rect: [0.91455, 0.1423, 0.99463, 0.27958],
         aspect: 0.6667,
         glow: [1, 0.935, 0.795],
-        luma: 0.4339,
+        luma: 0.4341,
     },
     {
         id: 'transit-stillwater',
@@ -743,8 +743,8 @@ export const BILLBOARD_CELLS = Object.freeze([
         src: null,
         rect: [0.16748, 0.28292, 0.24756, 0.4202],
         aspect: 0.6667,
-        glow: [1, 0.95, 0.8],
-        luma: 0.0788,
+        glow: [1, 0.956, 0.797],
+        luma: 0.0814,
     },
     {
         id: 'transit-cinder-drift',
@@ -783,7 +783,7 @@ export const BILLBOARD_CELLS = Object.freeze([
         rect: [0.4165, 0.28292, 0.49658, 0.4202],
         aspect: 0.6667,
         glow: [1, 0.907, 0.751],
-        luma: 0.3601,
+        luma: 0.3603,
     },
     {
         id: 'transit-lunara',
@@ -887,7 +887,7 @@ export const BILLBOARD_CELLS = Object.freeze([
         rect: [0.08447, 0.42355, 0.16455, 0.56083],
         aspect: 0.6667,
         glow: [1, 0.893, 0.752],
-        luma: 0.3649,
+        luma: 0.365,
     },
     {
         id: 'transit-murmuration',
@@ -978,7 +978,7 @@ export const BILLBOARD_CELLS = Object.freeze([
         rect: [0.66553, 0.42355, 0.74561, 0.56083],
         aspect: 0.6667,
         glow: [1, 0.94, 0.792],
-        luma: 0.3896,
+        luma: 0.3898,
     },
     {
         id: 'transit-supernova',
@@ -1056,7 +1056,7 @@ export const BILLBOARD_CELLS = Object.freeze([
         rect: [0.16748, 0.56417, 0.24756, 0.70145],
         aspect: 0.6667,
         glow: [1, 0.375, 0.05],
-        luma: 0.2284,
+        luma: 0.2283,
     },
     {
         id: 'transit-mode-infinity',
