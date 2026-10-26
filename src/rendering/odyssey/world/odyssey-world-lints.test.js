@@ -182,8 +182,11 @@ describe('every world material opts out of scene fog', () => {
 
     it('the fog opt-out list names every material the renderer constructs', () => {
         const source = readFileSync(path.join(WORLD_DIR, 'odyssey-world-renderer.js'), 'utf8');
-        const constructed = [...source.matchAll(/const\s+(\w+)\s*=\s*new\s+THREE\.\w*NodeMaterial\(/g)]
-            .map((m) => m[1]);
+        // Constructed directly, or by a builder (the forest builds its two materials with one).
+        const constructed = [...new Set([
+            ...source.matchAll(/const\s+(\w+)\s*=\s*new\s+THREE\.\w*NodeMaterial\(/g),
+            ...source.matchAll(/const\s+(\w+)\s*=\s*build\w*Material\(/g),
+        ].map((m) => m[1]))];
         expect(constructed.length).toBeGreaterThanOrEqual(5);
 
         // `\s*` before `.forEach`: wrapping the chain for max-len is formatting, not a missing list

@@ -113,7 +113,11 @@ third-party or CC assets:
 - Fall: every file under `src/themes/fall/assets/` (the maple, oak and birch trees,
   the shared leaf geometry and the distant-forest sprite sheet). These are authored
   procedurally in Blender by `scripts/blender/fall_grove_assets.py` with no generative
-  model and no third-party source; see `src/themes/fall/assets/ATTRIBUTION.md`.
+  model and no third-party source; and `squirrel.glb` (the red squirrel, its rig, its
+  clips and its acorn), modelled, rigged and animated procedurally in Blender by
+  `scripts/blender/fall_squirrel.py` and packed by `scripts/fall/pack-squirrel.mjs`, with no
+  generative model, no motion capture and no third-party source; see
+  `src/themes/fall/assets/ATTRIBUTION.md`.
 - Golden Forest: every file under `src/themes/golden-forest/assets/` (the spruce and pine
   trees, the shared needle geometry, the rowboat, jetty, boulders and dead pine, and the
   far-shore sprite sheet). These are authored procedurally in Blender by
@@ -131,8 +135,8 @@ third-party or CC assets:
   in Blender by `scripts/blender/forest_assets.py` with no generative model and no
   third-party source; see `src/themes/forest/assets/ATTRIBUTION.md`.
 - Neon District: `public/textures/neon-district/people.webp` and `people-masks.webp` (the sprite
-  sheets of the people in the shops: twelve characters, their bodies, clothes, hair, gear and
-  every frame of their walks and loops). Authored procedurally in Blender by
+  sheets of the people in the shops: twenty-four characters, their bodies, clothes, hair, gear and
+  every frame of their walks, turns and loops). Authored procedurally in Blender by
   `scripts/blender/neon_district_people.py` (bodies as signed distances on a small rig, posed by
   code, rendered as data) with no generative model, no motion capture and no third-party source.
 - Crystal Cave: `src/themes/crystal-cave/assets/cavern.glb` (the hall of rock with its

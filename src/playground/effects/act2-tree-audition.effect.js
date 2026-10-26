@@ -1,15 +1,20 @@
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, dot, float, max, mix, normalize, normalWorld,
-    positionWorld, smoothstep, uniform, vec3,
+    Fn, abs, attribute, cameraPosition, clamp, dot, float, floor, max, min, mix, modelWorldMatrixInverse,
+    normalLocal, normalize, normalWorld, positionLocal, positionWorld, select, smoothstep, step, texture, time as tslTime, uniform,
+    varyingProperty, vec3, vec4,
 } from 'three/tsl';
 
 import {
     FOREST_VALUE_ROLES, ODYSSEY_FOREST_SPECIES,
 } from '../../rendering/odyssey/world/odyssey-forest-species.js';
 import {
-    buildForestTreeGeometry, forestRosterBudget,
+    FOREST_LEAF_CARD, buildForestTreeGeometry, forestRosterBudget, setForestBroadleafStyle,
 } from '../../rendering/odyssey/world/odyssey-forest-geometry.js';
+import {
+    forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex,
+} from '../../rendering/odyssey/world/odyssey-forest-cards.js';
+import { bakeForestLeafAtlas } from '../../rendering/odyssey/world/odyssey-forest-leaf-atlas.js';
 import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 
 /**
@@ -35,6 +40,8 @@ import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/
  * URL params:
  *   ?lod=hero|mid|far   which tier the board shows (default hero)
  *   ?species=S2         audition ONE species across its stages, filling the board
+ *   ?broadleaf=traced   the smooth-min broadleaf crown the puffs replaced, for an A/B
+ *   ?broadleaf=solid    the solid puffs the leaf cards replaced, for an A/B
  *   ?spin=0             stop the slow turntable (silhouette review wants motion; a still
  *                       capture wants it off, and `?t=` freezes update() dt anyway)
  */
@@ -56,6 +63,22 @@ export function create({
     const lod = ['hero', 'mid', 'far'].includes(params?.get?.('lod')) ? params.get('lod') : 'hero';
     const onlyId = params?.get?.('species');
     const spin = params?.get?.('spin') !== '0';
+    // ?broadleaf=traced: the smooth-min crown the puffs replaced; ?broadleaf=solid: the solid
+    // puffs the leaf cards replaced (2026-10-26). Both for an A/B.
+    const style = params?.get?.('broadleaf');
+    setForestBroadleafStyle(['traced', 'solid'].includes(style) ? style : 'leafy');
+    const atlas = bakeForestLeafAtlas();
+    const atlasTex = new THREE.DataTexture(
+        atlas.data,
+        atlas.width,
+        atlas.height,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType,
+    );
+    atlasTex.minFilter = THREE.LinearMipmapLinearFilter;
+    atlasTex.magFilter = THREE.LinearFilter;
+    atlasTex.generateMipmaps = true;
+    atlasTex.needsUpdate = true;
 
     const species = onlyId
         ? ODYSSEY_FOREST_SPECIES.filter((s) => s.id.startsWith(onlyId))
@@ -99,12 +122,68 @@ export function create({
         // ground. See the attribute's note in odyssey-forest-geometry.js for why `y > 0` is
         // NOT a usable trunk test and why the channels had to be packed at all.
         const vcol = attribute('aVert', 'vec4');
-        const isCrown = vcol.z;
+        // Leaf cards (every leafy broadleaf crown) carry the card flag plus their size in z and
+        // are drawn by the world's own card code, turned to the eye in the mesh's frame (no
+        // rotation, one uniform scale, so a card's size stays in the tree's units).
+        const isCard = step(float(1.5), vcol.z);
+        const isCrown = min(vcol.z, 1);
+        const vRight = varyingProperty('vec3', 'vAuditionCardRight');
+        const vUp = varyingProperty('vec3', 'vAuditionCardUp');
+        const vCorner = varyingProperty('vec2', 'vAuditionCardCorner');
+        const vSpin = varyingProperty('vec4', 'vAuditionCardSpin');
+        // The crown's direction in its own varying, not `normalWorld` (see the world renderer's
+        // vForestCrownN: read inside a select branch, the shared var was zero for the bark).
+        const vCrownN = varyingProperty('vec3', 'vAuditionCrownN');
+        mat.positionNode = Fn(() => {
+            const flagWhole = floor(vcol.z);
+            const card = forestLeafCardVertex({
+                centre: positionLocal,
+                size: vcol.z.sub(flagWhole).mul(FOREST_LEAF_CARD.sizeMax),
+                kind: flagWhole.sub(FOREST_LEAF_CARD.flag),
+                eye: modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz,
+                time: tslTime,
+                seed: float(0),
+                flutter: float(spin ? 1 : 0),
+            });
+            vRight.assign(card.right);
+            vUp.assign(card.up);
+            vCorner.assign(card.corner);
+            vSpin.assign(card.spin);
+            vCrownN.assign(normalLocal);
+            return positionLocal.add(card.offset.mul(isCard));
+        })();
+        const cardUv = forestLeafCardUv({ corner: vCorner, spin: vSpin });
+        const card = forestLeafCardFragment({
+            corner: vCorner,
+            right: vRight,
+            up: vUp,
+            leaf: texture(atlasTex, cardUv.uv),
+            inside: cardUv.inside,
+            crownN: normalize(vCrownN),
+            depth: vcol.x,
+            sunDir: uSunDir,
+            look: {
+                crown: 1, dome: 0.45, upBias: 0.18, edgeGain: 0.02, thinning: 0.07,
+            },
+        });
+        const onCard = isCard.greaterThan(0.5);
+        const normal = select(onCard, card.normal, normalWorld);
+        mat.opacityNode = select(onCard, card.alpha, float(1));
+        mat.maskNode = onCard.not().or(card.alpha.greaterThan(0.02));
+        mat.alphaToCoverage = true;
         const albedo = mix(aTrunk, aCrown, isCrown);
-        const wrap = clamp(dot(normalWorld, uSunDir).add(0.70).div(1.70), 0, 1);
+        const wrap = clamp(dot(normal, uSunDir).add(0.70).div(1.70), 0, 1);
         // AO shifts the band THRESHOLD rather than multiplying the colour — the cloud field's
-        // grammar. Darkening by AO is how a stylised canopy turns muddy.
-        const band = smoothstep(float(0.40).sub(vcol.x.mul(0.10)), float(0.58), wrap);
+        // grammar. Darkening by AO is how a stylised canopy turns muddy. A card's openness is the
+        // sun's path through the crown, and its leaf's tone nudges the threshold.
+        const open = select(onCard, float(1).sub(smoothstep(float(0.25), float(1.6), card.path).mul(0.7)), vcol.x);
+        const toneShift = select(onCard, float(0.5).sub(card.tone).mul(0.16).add(card.inner.mul(0.10)), float(0));
+        const cardShift = select(onCard, float(1).sub(open).mul(0.3), float(0)).add(toneShift);
+        const band = smoothstep(
+            float(0.40).sub(open.mul(0.10)).add(cardShift),
+            float(0.58).add(cardShift),
+            wrap,
+        );
         const luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
         const shade = max(
             mix(vec3(luma, luma, luma), albedo, float(recipe.sat)),
@@ -116,7 +195,7 @@ export function create({
         const light = mix(uSunColour.mul(recipe.value).add(uAmbient.mul(0.18)), uSunColour.mul(0.88), band);
         const view = normalize(cameraPosition.sub(positionWorld));
         const backlit = clamp(dot(view, uSunDir).mul(-1), 0, 1).pow(2.5);
-        const rim = float(1).sub(abs(dot(normalWorld, view)));
+        const rim = float(1).sub(abs(dot(normal, view)));
         mat.colorNode = Fn(() => body.mul(light)
             .add(uSunColour.mul(backlit.mul(rim).mul(vcol.y).mul(0.30))))();
         mat.fog = false;
@@ -195,6 +274,7 @@ export function create({
         dispose() {
             meshes.forEach((m) => m.geometry.dispose());
             materials.forEach((m) => m.dispose());
+            atlasTex.dispose();
             ground.geometry.dispose();
             groundMat.dispose();
             scene.background = prevBackground;

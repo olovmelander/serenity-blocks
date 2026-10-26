@@ -137,10 +137,12 @@ describe.each(['High', 'Low'])('neon-district shop shaders at %s', (quality) => 
         const grads = (wgsl.match(/textureSampleGrad\(/g) || []).length;
         if (quality === 'High') {
             expect(world.people).not.toBeNull();
-            // Two frames of the sheet and both halves of the masks, read ONCE in a loop over the
-            // four figure slots, plus the glyph and logo reads that were there before.
-            expect(grads).toBe(9);
+            // The sheet and both halves of the masks, read ONCE in a loop over the cells a person is
+            // blended from (two frames by two views, and a clip faded over them) inside the loop
+            // over the four figure slots, plus the glyph and logo reads that were there before.
+            expect(grads).toBe(8);
             expect(wgsl).toMatch(/for \( var i : i32 = 0; i < 4;/);
+            expect(wgsl).toMatch(/for \( var i\w* : i32 = 0; i\w* < 5;/);
         } else {
             expect(world.people).toBeNull();
             expect(grads).toBe(5);
