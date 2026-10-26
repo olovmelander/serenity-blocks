@@ -789,15 +789,133 @@ export function odysseySummitSculpt(x, z) {
     return horn * envelope + ((ridge + couloir + ledge + rough) * grow);
 }
 
+// ── THE TARN (2026-10-26, Act II masterpiece pass, step 6) ──────────────────────────────────
+
+/**
+ * THE TARN — the pond the chapter-3 basin was scooped for. The macro field has carried an inland
+ * lake bowl since Wave 2 ("the Ch3 basin", BASIN_*), and the One World never put water in it; the
+ * north lake, the act's only other water above the sea, stands behind the hero massif from every
+ * chapter 3-4 station and below the frame through the climb. So a small tarn is set in the basin's
+ * meadow at the massif's foot, on the line the chapter-4 eyes look along: in frame and unblocked
+ * from L20 to L23 (p 0.246-0.30, scored on the in-game camera), 160-270 u out and 60-80 u below
+ * the eye, where its reflected rays rise into the hero massif's face, so the tarn mirrors the
+ * mountain (the renderer's tarn material marches them over the height field).
+ *
+ * Two lobes joined into one bean, a meandering shore, a bowl whose floor is set ABSOLUTELY
+ * (`floorY`, under `waterY`) rather than dug a fixed depth: the meadow round it rises from 294 u to
+ * ~301 u across it, so a fixed-depth carve would flood the low side or leave the high side dry.
+ * With the floor absolute, the waterline lands where the bank meets `waterY`. SITED ON THE FLAT:
+ * the first site straddled the massif's foot, its west bank fell 25 u, and the ground shader
+ * turned that slope to rock, a grey crater round the water; here the banks stay meadow, and the
+ * wall ramp is wide (`TARN_WALL_START`) so they stay gentle. Exactly zero outside the lobes (the
+ * forest scatter, the rail's clearances and the orbs see no change there).
+ */
+export const ODYSSEY_TARN = Object.freeze({
+    waterY: 293.0,
+    floorY: 289.8,
+    lobes: Object.freeze([
+        Object.freeze({
+            x: -205, z: -428, rx: 60, rz: 42,
+        }),
+        Object.freeze({
+            x: -262, z: -432, rx: 62, rz: 44,
+        }),
+        Object.freeze({
+            x: -320, z: -440, rx: 50, rz: 36,
+        }),
+    ]),
+    /** The meadow kept open round it (tarn distance): no tree stands nearer, so its banks show. */
+    clearing: 1.55,
+});
+const TARN_SHORE_MIN_INSET = 0.05;
+const TARN_SHORE_MEANDER = 0.22;
+const TARN_WALL_START = 0.42;
+const TARN_WALL_POW = 0.6;
+
+function tarnShoreInset(x, z) {
+    const broad = valueNoise((x / 62) + 13.1, (z / 62) - 41.7);
+    const fine = valueNoise((x / 23) - 27.4, (z / 23) + 8.3);
+    return TARN_SHORE_MIN_INSET + (((broad * 0.7) + (fine * 0.3)) * TARN_SHORE_MEANDER);
+}
+
+/** Normalized tarn distance, shore meander included: < 1 inside the carve (the north lake's rule). */
+export function odysseyTarnRn(x, z) {
+    let best = Infinity;
+    for (let i = 0; i < ODYSSEY_TARN.lobes.length; i += 1) {
+        const lb = ODYSSEY_TARN.lobes[i];
+        const lx = (x - lb.x) / lb.rx;
+        const lz = (z - lb.z) / lb.rz;
+        best = Math.min(best, Math.sqrt((lx * lx) + (lz * lz)));
+    }
+    return best + tarnShoreInset(x, z);
+}
+
+/**
+ * The tarn's carve at (x, z) over a `ground` height there, world units (<= 0; 0 outside it). The
+ * bowl's wall is the north lake's power ramp (it CUTS the water plane, so the waterline follows
+ * the meander rather than the mesh), pulling the ground down toward the absolute floor.
+ * @param {number} x
+ * @param {number} z
+ * @param {number} ground the height the rest of the field draws here
+ * @returns {number}
+ */
+export function odysseyTarnCarve(x, z, ground) {
+    let nearest = Infinity;
+    for (let i = 0; i < ODYSSEY_TARN.lobes.length; i += 1) {
+        const lb = ODYSSEY_TARN.lobes[i];
+        const lx = (x - lb.x) / lb.rx;
+        const lz = (z - lb.z) / lb.rz;
+        nearest = Math.min(nearest, (lx * lx) + (lz * lz));
+    }
+    // Exact reject: the inset is strictly positive, so raw rn >= 1 is outside the carve.
+    if (nearest >= 1) return 0;
+    const inset = tarnShoreInset(x, z);
+    let wall = 0;
+    for (let i = 0; i < ODYSSEY_TARN.lobes.length; i += 1) {
+        const lb = ODYSSEY_TARN.lobes[i];
+        const lx = (x - lb.x) / lb.rx;
+        const lz = (z - lb.z) / lb.rz;
+        const rn = Math.sqrt((lx * lx) + (lz * lz)) + inset;
+        const t = Math.max(0, Math.min(1, (1 - rn) / (1 - TARN_WALL_START)));
+        wall = smoothMax(wall, t ** TARN_WALL_POW, 0.12);
+    }
+    wall = Math.min(1, wall);
+    return (Math.min(ODYSSEY_TARN.floorY, ground) - ground) * wall;
+}
+
+/**
+ * THE SCULPT PLATE: one ~1.8 u plate (`bakeSculptPlateData`) for the two places the 8.8 u relief
+ * cannot hold the form the eye needs — the hero summit (odysseySummitSculpt) and the tarn
+ * (odysseyTarnCarve). A square round both; its border is outside either's reach, so a clamped
+ * sampler reads 0 everywhere else.
+ */
+export const ODYSSEY_SCULPT_PLATE = Object.freeze({
+    x: -182.7,
+    z: -963.0,
+    extent: 1180,
+    res: 640,
+});
+
+/**
+ * What the sculpt plate holds at (x, z): the summit's sculpt plus the tarn's carve, over the
+ * `ground` the macro and relief draw there.
+ * @param {number} x
+ * @param {number} z
+ * @param {number} ground
+ * @returns {number}
+ */
+export function odysseySculptDelta(x, z, ground) {
+    return odysseySummitSculpt(x, z) + odysseyTarnCarve(x, z, ground);
+}
+
 /**
  * THE drawn surface. Everything that needs to know where the ground is calls this — the vertex
  * shader (via macro + a sampled relief texture), prop seating, and camera grounding. One
  * function, so a tree can never float and a shadow can never disagree with a silhouette.
  */
 export function odysseyWorldHeight(x, z) {
-    return odysseyWorldMacro(x, z)
-        + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z))
-        + odysseySummitSculpt(x, z);
+    const ground = odysseyWorldMacro(x, z) + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
+    return ground + odysseySculptDelta(x, z, ground);
 }
 
 /** Depth of water at a point; negative means dry land. */
