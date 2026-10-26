@@ -172,6 +172,8 @@ const GROUND_SNOW_CREST_STRIP = 0.75;
  * of blended; `breakup` is how far the atlas grain pushes the boundary, `edge` the threshold's
  * half-width bounds (a pixel's fwidth sits between them).
  */
+/** Crisp rock ramps in over this altitude band (u): above the shore lowlands, below the scree. */
+const ROCK_CRISP_FROM = Object.freeze([320, 380]);
 const SNOW_CRISP = Object.freeze({
     from: Object.freeze([560, 680]),
     breakup: 0.20,
@@ -2031,8 +2033,16 @@ export function createOdysseyWorld({
             snowCrisp,
             smoothstep(float(SNOW_CRISP.from[0]), float(SNOW_CRISP.from[1]), height),
         ).toVar();
-        const kRock = wRock.mul(float(1).sub(kSnow)).toVar();
-        const kSand = wSand.mul(float(1).sub(wRock)).mul(float(1).sub(kSnow)).toVar();
+        // CRISP ROCK (round two): the same cure for the flanks. Where the slope ramp left a
+        // fragment part meadow, part stone (the grey-green smear on the massif's lower flanks),
+        // rock is now thresholded too, above the shore lowlands: a meadow or a scree patch, with
+        // the atlas grain interlocking the boundary.
+        const rockCover = wRock.add(edgeBreak.mul(SNOW_CRISP.breakup * 1.2).mul(detailMelt)).toVar();
+        const rockEdge = clamp(fwidth(rockCover).mul(1.2), SNOW_CRISP.edge[0], SNOW_CRISP.edge[1]);
+        const rockCrisp = smoothstep(float(0.5).sub(rockEdge), float(0.5).add(rockEdge), rockCover);
+        const wRockCrisp = mix(wRock, rockCrisp, smoothstep(float(ROCK_CRISP_FROM[0]), float(ROCK_CRISP_FROM[1]), height));
+        const kRock = wRockCrisp.mul(float(1).sub(kSnow)).toVar();
+        const kSand = wSand.mul(float(1).sub(wRockCrisp)).mul(float(1).sub(kSnow)).toVar();
         const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
 
         /**
