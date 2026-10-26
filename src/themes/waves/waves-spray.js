@@ -2,7 +2,7 @@
 /**
  * Waves — water in the air: the lip's standing rain, the spray a clear or a lock throws, and
  * the spindrift (mist where the lip comes down, the plume the offshore wind tears off the
- * shoulder's crest).
+ * shoulder's crest). The white water a dolphin tears up is in waves-splash.js.
  *
  * Everything here is slow motion, like the wave: a drop leaves the lip at the speed the water
  * was drawn over it and falls under a fraction of gravity, so it hangs, turns the low sun into
@@ -25,7 +25,7 @@ import {
 /** Gravity in the wave's slow motion (metres a second squared). */
 export const GRAVITY = 0.46;
 
-const additive = (name) => {
+export const additive = (name) => {
     const material = new THREE.MeshBasicNodeMaterial({
         fog: false,
         transparent: true,
@@ -39,8 +39,8 @@ const additive = (name) => {
     return material;
 };
 
-const cameraRight = () => vec3(cameraViewMatrix[0].x, cameraViewMatrix[1].x, cameraViewMatrix[2].x);
-const cameraUp = () => vec3(cameraViewMatrix[0].y, cameraViewMatrix[1].y, cameraViewMatrix[2].y);
+export const cameraRight = () => vec3(cameraViewMatrix[0].x, cameraViewMatrix[1].x, cameraViewMatrix[2].x);
+export const cameraUp = () => vec3(cameraViewMatrix[0].y, cameraViewMatrix[1].y, cameraViewMatrix[2].y);
 
 /** A quad turned to the eye and drawn out along a velocity, as the eye sees it. */
 const streak = (centre, velocity, size, stretchPerSpeed) => {
@@ -74,7 +74,7 @@ const bead = () => {
     return exp(d.mul(d).mul(-5.0)).mul(float(1.0).sub(smoothstep(0.78, 1.0, d)));
 };
 
-const quads = (count) => {
+export const quads = (count) => {
     const base = new THREE.PlaneGeometry(1, 1);
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.index = base.index;
@@ -261,6 +261,15 @@ export class SprayPool {
         }
         this.cursor = (this.cursor + probe) % this.count;
         return best;
+    }
+
+    /**
+     * One drop written by hand at `now`, leaving (x, y, z) at `birth` (past or future): a
+     * dolphin's splash (waves-splash.js) is choreographed drop by drop.
+     */
+    drop(now, birth, x, y, z, vx, vy, vz, size, rgb, life) {
+        this.now = now;
+        this.put(birth, x, y, z, vx, vy, vz, size, rgb, life);
     }
 
     /** One drop, leaving (x, y, z) at `time` with a velocity. */
