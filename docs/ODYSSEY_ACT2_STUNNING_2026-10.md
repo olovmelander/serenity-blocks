@@ -436,7 +436,7 @@ than lollipops.
 
 | Tier | Triangles | Before |
 |---|---|---|
-| Hero | 6 puffs × 80, plus limbs and trunk | the traced hull and the spiky fringe, at the same budget |
+| Hero | 6 puffs × 80, plus limbs and trunk (§10: 5 puffs and 5 florets) | the traced hull and the spiky fringe, at the same budget |
 | Mid | 3 puffs × 20 | one 20-triangle hull |
 | Far | one round hull at the cluster's centre | a squashed kite |
 
@@ -509,3 +509,61 @@ an edge about a pixel wide. A flank reads as meadow or as scree patches.
 **Cost of round two so far** (§7-§9 together). World playground at 1080p, vsync off, four
 alternating rounds against main, on a quiet machine: +0.05 ms at p 0.30 (the forest and the
 flanks) and +0.01-0.03 ms at p 0.55 (the summit).
+
+## §10. Leaf clumps and florets (2026-10-26)
+
+**Why.** After §7 each puff was lit as one smooth ball. The form was right, but from the rail the
+near crowns read as green balloons: nothing in them said "leaves".
+
+**Leaf clumps** (`fvLeaf` and `LEAF_CLUMPS` in `world/odyssey-world-renderer.js`). Each crown
+fragment finds the leaf clump it belongs to, in the shader, with no texture:
+
+- The clumps are Voronoi cells on the puff's own sphere, charted from the fragment's normal
+  (stereographically, from the bottom pole) and offset per tree. That is nine cells a fragment.
+- The normal tilts away from its clump's centre, so every clump shades as a small dome of its
+  own and catches the light on its upper edge.
+- The seam between two clumps moves the band threshold toward shade (the occlusion grammar: never
+  the colour), and each clump takes a small tone of its own, so neighbours separate by value
+  rather than by an outline.
+- Crowns only, and near ones: it fades out between 250 and 420 u, and fragments past that skip
+  the search. Trunks keep their own normal.
+- High tier only (`ODYSSEY_WORLD_QUALITY.leafClumps`, gated in JS). The low tier keeps the smooth
+  puffs of §7.
+
+The first cut (3 cells a unit, a strong tilt, a deep seam) quilted the crowns like a turtle's
+shell. Softened to 3.6 cells, tilt 1.05, seam 0.17 shifted 0.13, and a threshold shift of up to
+±0.06 per clump.
+
+⚠️ **A trap in TSL's `hash`.** It turns its seed into a `u32`, and WGSL clamps a negative float to
+0 there. The first seeds were built from signed cell coordinates, so every cell in half of each
+puff's chart got the same point: a regular lattice of clumps. The cells are now shifted positive
+and hashed as exact integers, one hash a cell (its low bits give the second coordinate and the
+clump's tone).
+
+**Florets** (the hero tier, `PUFF_FLORETS` in `world/odyssey-forest-geometry.js`). The hero crown
+is now a top puff and four ring puffs of 80 faces, plus five small florets of 20 faces (about 0.4
+of their host) seated high on the hosts' shoulders. A 42-vertex puff can only carry angular bumps
+on its outline. A floret is a real bump with its own lit cap, so the crown's top scallops like
+foliage. The hero tree stays inside its 560-triangle budget; the mid and far tiers are unchanged.
+
+![On the rail at p 0.21, after §7 and now: leaf clumps on every near crown, florets on the hero crowns](images/odyssey-act2-2026-10-25/leaf-clumps-close.jpg)
+
+![The audition board, after §7 and now (geometry only: the board has its own simple material)](images/odyssey-act2-2026-10-25/florets-board.jpg)
+
+**Tried and left out:**
+
+- **Stronger puff noise** (amplitude 0.15 with a second, finer octave). The bumps came out
+  faceted, like rough rock. The noise stays gentle (0.11).
+- **Florets on the puffs' sides.** At eye level on the audition board they stuck out like ears.
+  They now sit at 45-60° up the host.
+- **A crease in the occlusion**, darkening the vertices near a neighbouring puff's surface. At 42
+  vertices a puff it smudged the masses together instead of folding them.
+
+**Cost.** Other captures were running on the machine, so these are best-of rounds and noisier
+than §7's. The leaf clumps, switched on and off on the same server for five alternating rounds:
++0.04 ms at p 0.21 (the forest station), nothing measurable at p 0.27. The florets add 20
+triangles to a hero tree (500 against 480). Round two as a whole against main: about +0.1 ms at
+p 0.21 (best of six).
+
+**Tests.** The puff test now counts five 80-face puffs and five 20-face florets on the hero tier,
+each lit from its own centre.
