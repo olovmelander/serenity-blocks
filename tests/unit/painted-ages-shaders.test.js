@@ -152,6 +152,7 @@ describe.each(TIERS)('Painted Ages shaders at %s', (quality) => {
             (part.meshes || [part.mesh]).forEach((mesh, i) => mesh && targets.push([i ? `${name}#${i}` : name, mesh]));
         }
         for (const name of FIELD_ORDER) targets.push([`shadow-${name}`, world.shadowPass.passes[name].quad]);
+        targets.push(['poplar-shade', world.parts.poplars.shade.caster]);
 
         const warn = vi.spyOn(console, 'warn');
         const error = vi.spyOn(console, 'error');
@@ -189,10 +190,11 @@ describe.each(TIERS)('Painted Ages shaders at %s', (quality) => {
         world?.dispose();
     });
 
-    it('has a node material for every part, its halos and the three shadow passes', () => {
+    it('has a node material for every part, its halos and the land\'s and the poplars\' shadow passes', () => {
         const names = Object.keys(built);
         for (const part of PAINTED_AGES_PARTS) expect(names, part).toContain(part);
         for (const field of FIELD_ORDER) expect(names).toContain(`shadow-${field}`);
+        expect(names).toContain('poplar-shade');
         expect(names).toContain('props#1'); // the lanterns' and lamps' halos
         Object.values(world.parts).forEach((part) => {
             (part.meshes || [part.mesh]).forEach((mesh) => expect(mesh.material.isNodeMaterial, mesh.name).toBe(true));

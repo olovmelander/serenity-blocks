@@ -306,6 +306,9 @@ export class PaintedAgesWorld {
         };
         this.shadowPass = createShadowPass(this.u, fieldTex, tier);
         this.textures.shadow = this.shadowPass.textures;
+        // The poplars come first: the land reads their shadow map.
+        const poplars = createPoplars(this.u, this.textures, tier, this.fields);
+        this.textures.poplarShade = poplars.shade;
 
         // The land.
         const geometry = createFanGeometry(prepared.positions, tier.fanCols, tier.fanRows);
@@ -322,7 +325,7 @@ export class PaintedAgesWorld {
             },
         });
         this.addPart('props', createProps(this.u, this.textures, tier, this.fields));
-        this.addPart('poplars', createPoplars(this.u, this.textures, tier, this.fields));
+        this.addPart('poplars', poplars);
         this.addPart('sky', createSky(this.u, this.textures, tier));
         this.addPart('cumulus', createCumulus(this.u, this.textures, tier, tier.banks));
         this.motes = new Motes(this.u, tier.motes);
@@ -893,6 +896,7 @@ export class PaintedAgesWorld {
         this.resetState(Math.max(0, Number(time) || 0));
         this.record.seek(this.time);
         this.shadowPass?.invalidate();
+        this.parts.poplars?.shade?.invalidate();
     }
 
     // ── Frame ─────────────────────────────────────────────────────────────────────
@@ -1097,10 +1101,11 @@ export class PaintedAgesWorld {
         }
     }
 
-    /** GPU work that must precede the frame: the land's shadow, when the sun has moved. */
+    /** GPU work that must precede the frame: the land's and the trees' shadows, when the sun has moved. */
     prerender(renderer) {
         if (this.disposed || !this.shadowPass) return;
         this.shadowPass.render(renderer, this.u.sunDir.value);
+        this.parts.poplars?.prerender?.(renderer, this.u.sunDir.value);
     }
 
     getPostState() { return this._post; }
