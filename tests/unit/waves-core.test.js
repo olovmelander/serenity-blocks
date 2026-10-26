@@ -857,7 +857,7 @@ describe('waves tiers', () => {
             const tier = QUALITY[name];
             expect(Object.keys(tier).sort(), name).toEqual(keys);
             // Enough mesh to fold a tube, and something of everything an event needs.
-            for (const key of ['arcRows', 'floorRows', 'noise', 'rings', 'ribbons', 'droplets', 'spray', 'mist']) {
+            for (const key of ['arcRows', 'floorRows', 'noise', 'rings', 'ribbons', 'droplets', 'spray', 'mist', 'foam']) {
                 expect(Number.isInteger(tier[key]), `${name}.${key}`).toBe(true);
                 expect(tier[key], `${name}.${key}`).toBeGreaterThan(0);
             }
@@ -872,7 +872,7 @@ describe('waves tiers', () => {
     it('never asks a dearer tier for less', () => {
         const rising = [
             'arcRows', 'floorRows', 'noise', 'trace', 'clouds', 'rings', 'ribbons', 'droplets', 'spray', 'mist',
-            'dolphins',
+            'foam', 'dolphins',
         ];
         for (let i = 1; i < QUALITY_NAMES.length; i++) {
             const cheaper = QUALITY[QUALITY_NAMES[i - 1]];

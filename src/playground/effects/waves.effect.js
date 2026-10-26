@@ -22,7 +22,7 @@
  *   leap=<n>&leapAge=<s>     send n dolphins over the water and show them <s> seconds later
  *                            (hero=1: the first is thrown across the sun)
  *   demo=1                   live only: play a looping gameplay script
- *   parts=sky,water,...      draw only these parts (sky, water, dolphins, mist, rain, spray)
+ *   parts=sky,water,...      draw only these parts (sky, water, dolphins, mist, rain, spray, foam)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom

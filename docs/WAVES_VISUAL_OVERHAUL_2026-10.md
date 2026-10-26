@@ -37,7 +37,7 @@ under it.
 | Lines clear | The lip throws a sheet of spray off its whole falling edge, and one ring of light per line comes down the tube toward the viewer, gold where the water is thin and green where it is deep, caught on every rib of the wall. The water lights from inside for a moment. |
 | T-spin | The rings come down the tube as a screw, and a wheel of spray turns off the walls and is flung ahead. |
 | Four lines | The wave holds. Its clock runs at a tenth of its speed for two seconds with the biggest throw of all hanging in the eye of the barrel: hundreds of drops, the large ones like beads of glass, each splitting the light a little toward a colour of its own. Then everything runs on. Nothing is simulated to make this happen; see "The clock" below. |
-| A chain of clears | The water stays lit from inside, the lip keeps throwing, the evening leans toward gold and the barrel breathes a little wider. Dolphins leave the face of the wave ahead and cross the eye of the barrel: one at three clears, two at five, three at seven, four at nine. From seven the first of them is thrown so that the top of its leap crosses the sun. Each breaks the surface with a crown and a ring, going out and coming back. |
+| A chain of clears | The water stays lit from inside, the lip keeps throwing, the evening leans toward gold and the barrel breathes a little wider. Dolphins leave the face of the wave ahead and cross the eye of the barrel: one at three clears, two at five, three at seven, four at nine. From seven the first of them is thrown so that the top of its leap crosses the sun. Each bursts out of the face in a boil of white water, water runs off its flukes and rains back under the leap, and it goes back in nose first: a crown closes over it, its flukes kick a plume up and back, and foam lies on the water where it went (see "Dolphin splashes"). |
 | Perfect clear | The whole pod, and the sky goes to gold. |
 | Level up | A set wave runs the length of the tube and the hour turns with it: see "The hours". |
 | Game over, a new run | The barrel is back at rest and nothing is in the air; the hour turns back to the one the clock alone gives. |
@@ -121,7 +121,8 @@ touched.
 | `waves-water.js` | The one sheet of water (sea, trough, face, roof, lip): ripples, rings, the mirror, light through the water, ribbons, bands of light, foam, the torn edge. |
 | `waves-sky.js` | The dome: sun, cloud deck, bars of cloud over the horizon, the far sea and its sparks. |
 | `waves-spray.js` | The lip's standing rain, the pool of thrown drops, spindrift. |
-| `waves-life.js` | The dolphin and the pod's leaps. |
+| `waves-life.js` | The dolphin and the pod's leaps (and when it meets the water: flukes out, nose in, flukes under). |
+| `waves-splash.js` | A dolphin's splashes, choreographed from its leap, and the pool of white water. |
 | `waves-post.js` | Bloom, the sun's shafts, a hue-preserving filmic curve, grade, calm zones behind the card, FXAA. |
 | `waves-quality.js` | One table for everything a tier scales. |
 
@@ -186,14 +187,14 @@ touched.
 
 ### Quality tiers
 
-| Tier | Mesh (arc rows, near step) | Noise | Mirror | Light bars | Rings / ribbons | Rain / thrown drops | Dolphins | Bloom, shafts, FXAA |
+| Tier | Mesh (arc rows, near step) | Noise | Mirror | Light bars | Rings / ribbons | Rain / thrown drops / white water | Dolphins | Bloom, shafts, FXAA |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Minimal | 56, 0.42 m | 128 | sky lookup | no | 4 / 5 | 420 / 420 | 3 | none |
-| Low | 72, 0.34 m | 256 | sky lookup | no | 5 / 6 | 700 / 700 | 4 | none |
-| Medium | 96, 0.26 m | 256 | traced | yes | 6 / 8 | 1,300 / 1,300 | 5 | bloom, 14-step shafts at a third, FXAA |
-| High | 128, 0.20 m | 512 | traced | yes | 8 / 10 | 2,200 / 2,400 | 6 | bloom, 20-step shafts at half, FXAA |
-| Ultra | 160, 0.16 m | 512 | traced | yes | 8 / 12 | 3,200 / 3,000 | 7 | bloom, 24-step shafts, FXAA |
-| Extreme | 192, 0.13 m | 512 | traced | yes | 8 / 12 | 4,200 / 3,600 | 7 | bloom, 28-step shafts, FXAA |
+| Minimal | 56, 0.42 m | 128 | sky lookup | no | 4 / 5 | 420 / 420 / 16 | 3 | none |
+| Low | 72, 0.34 m | 256 | sky lookup | no | 5 / 6 | 700 / 700 / 24 | 4 | none |
+| Medium | 96, 0.26 m | 256 | traced | yes | 6 / 8 | 1,300 / 1,300 / 32 | 5 | bloom, 14-step shafts at a third, FXAA |
+| High | 128, 0.20 m | 512 | traced | yes | 8 / 10 | 2,200 / 2,400 / 48 | 6 | bloom, 20-step shafts at half, FXAA |
+| Ultra | 160, 0.16 m | 512 | traced | yes | 8 / 12 | 3,200 / 3,000 / 56 | 7 | bloom, 24-step shafts, FXAA |
+| Extreme | 192, 0.13 m | 512 | traced | yes | 8 / 12 | 4,200 / 3,600 / 64 | 7 | bloom, 28-step shafts, FXAA |
 
 Every tier keeps the whole picture and every event. The pixel-ratio caps are the other rebuilt
 themes' (0.75 at Minimal to 1.6 at Extreme).
@@ -421,6 +422,73 @@ sessions were using (earlier quieter runs read up to 0.45 ms more for this pass 
 done:** an integrated GPU or a phone; the real game with a real board beyond the lifecycle
 check; anyone watching the torn edge move.
 
+## Dolphin splashes (2026-10-26)
+
+Olov: "can we have a little better water splashes from the dolphins in the waves theme?"
+
+**What was wrong.** Each dolphin threw the same crown as a locked piece: 26 white drops of 2–6 cm,
+once where it left the face and once where it went back in. The dolphins leap 9–18 m from the eye,
+where a pixel is 1.5–2.5 cm across at 1600 × 900, so a drop drew one to three pixels and the
+splash was all but invisible against the evening (the "Before" column below). And the splash going
+in fired when the *middle* of the body reached the water, 0.45–0.85 s after the nose had gone in
+without a ripple.
+
+![Before and after: a dolphin breaking out of the face and going back in](waves-overhaul/dolphin-splash.jpg)
+
+**What it does now** (`waves-splash.js`, written in one go from the leap).
+- *Breaking out of the face:* a burst of water shoved out ahead of the body in a cone about its
+  heading; a rim of spray thrown off the face round the hole, the face's flow dragging it up;
+  a sheet of water drawn up through the hole after the body until the flukes are out, and their
+  flick as they leave it; then drops running off the flukes and fins over the first half of the
+  leap, slower than the body, so they peel off behind and below it and rain back. Backlit, the
+  trail is a chain of sparks; the hero leap draws it across the sun. Five soft puffs of white
+  water boil round the body and in front of it (never only behind it, where its own body hid
+  them in the first try) and hide the moment it breaks the surface.
+- *Going back in:* the nose cuts in and throws two low sheets aside along the slit; the water
+  closes over the body in a crown thrown higher on the side it went toward; the flukes go under
+  last and kick a plume of spray and big drops up and back, never higher than the top of the
+  leap. White water boils up in the crown and the kick, and two patches of foam lie on the water
+  for about four seconds.
+- *When:* the pod now knows when the flukes clear the face, when the nose touches the water on the
+  way down and when the flukes go under (`surfaceTimes` in `waves-life.js`, solved once per
+  leap). The splash going in fires as the nose touches, and a dolphin is always drawn until its
+  flukes are under (the fixed 0.9 s it was kept after the middle went in happened to cover the
+  slowest, 0.86 s; now that is a rule, not a margin).
+- *Seen from far off:* a splash throws its drops as clumps, drawn bigger with the distance from the
+  eye (`splashReach`: 1× within 7 m, up to 2.6× at 18 m), and its white water by the square root
+  of that, so it reads at the distance the pod leaps; up close nothing changes.
+- *Closed form, like everything in the air here:* every drop and puff carries its own birth on the
+  world's clock (the trail's up to three seconds ahead), so a splash is the same at any frame rate,
+  holds with the four-line hold, and a seek replays it exactly.
+
+**The white water** is a new pool (`FoamPool`, part `foam`): camera-facing puffs torn by the
+water's noise like the spindrift, a little whiter, thrown out under drag, spreading and thinning;
+one lying on the water is wide and low and lingers. A puff takes a spent slot, else the one
+nearest its end, never one still to be born.
+
+**Cost, by construction** (no GPU timing: other sessions were using both GPUs). One more draw call
+of 16–64 instanced quads (by tier; 48 on High), two noise reads per covered pixel over sprites
+30–60 px across at 1600 × 900, while a splash shows. The drops go to the existing spray pool: 310 a
+leap at High (`splashDensity` scales them down to 62 on Minimal's smaller pool and never above
+High's on the larger ones), written on the CPU once per surface break. Even the whole pod's
+splashes written at once leave more than a fifth of every tier's pool (High: 1,860 of 2,400 for
+six dolphins; in play they come 0.6 s apart and their two splashes five seconds apart), and a full
+pool thins what hangs in the air as it always did. The shader gate (`waves-shaders.test.js`)
+builds the new material on both backends.
+
+**Verified.** Playground on WebGPU (RTX 5080 Laptop, a scratch Electron batch on a private dev
+server, the before frames from the same server with the change stashed): one dolphin through its
+whole leap at golden hour (full frames and 1:1 crops at 2400 × 1350), the hero across the sun, a
+pod of four, moonrise and the trade-wind day; every console clean. New tests
+(`tests/unit/waves-splash.test.js`): the nose, flukes and hole timings against the drawn pose; the
+splash going in fires as the nose touches; where and when each part of both splashes leaves the
+water, that the trail lags the body and the kick stays under the leap; the white water stands
+round and in front of the body, foam lies on the water and outlives the boil; the pool's slots;
+density per tier; the world hands each leap to its splash (the first captures still showed the
+old 26-drop crown because a callback dropped the leap; this test fails on that) and replays it the
+same way. **Not done:**
+the real game, an integrated GPU, and anyone watching a pod leap in motion.
+
 ## Known limits
 
 - Nobody has watched it move. Every check above is a still, a console or a number; the flow,
@@ -455,5 +523,8 @@ check; anyone watching the torn edge move.
   no shafts and no bars of light on the face.
 - The dolphin is a lofted body with five fins, built for the distance it is seen from: no
   eye, no mouth line, no blowhole.
+- A dolphin's splash far from the eye is drawn as clumps of spray bigger than real drops, so it
+  reads at the distance the pod leaps; its water does not wet the face or ripple the sea beyond
+  the one ring each break of the surface has always laid.
 - The lint and fitness ratchets report counts below their baselines; the baselines were not
   updated here.

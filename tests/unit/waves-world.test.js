@@ -30,7 +30,7 @@ vi.setConfig({ testTimeout: 30_000 }); // every test builds a wave or two, on a 
 
 const DT = 1 / 60;
 const EYE = REST_RIG.eye;
-const PARTS = ['dolphins', 'mist', 'rain', 'sky', 'spray', 'water'];
+const PARTS = ['dolphins', 'foam', 'mist', 'rain', 'sky', 'spray', 'water'];
 const HIT_KINDS = ['floor', 'lip', 'wall'];
 const worlds = [];
 
@@ -111,6 +111,7 @@ function picture(world) {
             counts: U.counts.value.toArray(),
         },
         spray: Array.from(world.spray.data),
+        foam: Array.from(world.foam.data),
         pod: Array.from(world.pod.data),
     };
 }
@@ -168,6 +169,7 @@ describe('waves world: build', () => {
         // What the tier pays for.
         expect(world.pod.count).toBe(tier.dolphins);
         expect(world.spray.count).toBe(tier.spray);
+        expect(world.foam.count).toBe(tier.foam);
         expect(world.parts.rain.mesh.geometry.instanceCount).toBe(tier.droplets);
         expect(world.ringRows).toHaveLength(tier.rings);
         expect(world.ribbonRows).toHaveLength(tier.ribbons * 2);
