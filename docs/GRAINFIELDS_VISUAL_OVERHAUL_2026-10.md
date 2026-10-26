@@ -46,7 +46,14 @@ authored at that size and drawn larger than life (`SIZE`: 1.3 across, 1.5 up) at
   fade to their mean coverage under a pixel; alpha-to-coverage on a multisampled pass). Ripeness
   drifts in patches; gusts and events bend the stand; backlit, the awns blaze gold (a
   hue-preserving cap keeps a blaze from turning into a white speck); light passes through the
-  stand, so the field glows even in the deck's shade.
+  stand, so the field glows even in the deck's shade. Each ear sits on its straw (`NECK`, since
+  2026-10-26: Olov saw "a small space and gap" between them). The ear had set off from the stem's
+  tip at up to ~55° as a hairline point, and in backlight its dense core is dark while the straw
+  glows, so the joint read as a break. Now the stem's last quarter curves from its own line onto
+  the ear's (the ribbons meet facing the same way), the ear's base is as wide as the straw shows
+  under it, and the last sixth of the straw takes on the ear's tone, light and depth in the stand.
+  Check it with the playground's free camera `cam=x,y,z,tx,ty,tz,fov` inside the stand, or with a
+  long lens from the eye (`look=`).
 - **Lapporten** (`grainfields-lapporten.js`): a height field in the gate's own frame; birch on the
   skirts, heath, scree and rock, the last snow in cirques and gullies; the high faces keep the
   afterglow (alpenglow) after sunset.
