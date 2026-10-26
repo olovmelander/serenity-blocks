@@ -70,7 +70,8 @@ authored at that size and drawn larger than life (`SIZE`: 1.3 across, 1.5 up) at
   whose vertex colour names each vertex's part (body, neck and head, the four legs, the tail) with
   masks for the dark mane and tail and the pale muzzle, and skin weights for its joints. A first
   procedural attempt (ellipsoid blobs) read as toy sheep and was dropped.
-- **The ruin, the geese, the motes**: a broken keep on the knoll; skeins of geese crossing (the
+- **The ruin, the geese, the motes**: a broken castle on the knoll (remade in Blender on
+  2026-10-26: [GRAINFIELDS_RUIN_2026-10.md](GRAINFIELDS_RUIN_2026-10.md)); skeins of geese crossing (the
   goose valley); chaff and pollen glinting over the field.
 
 ## The light: a day on the clock
