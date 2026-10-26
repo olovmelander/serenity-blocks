@@ -801,6 +801,7 @@ export class VerdantHillsFlock {
 
     tick(dt, env) {
         this.time += dt;
+        this.dt = dt;
         const motion = Number.isFinite(env.motion) ? clamp01(env.motion) : 1;
         const level = clamp01(env.level ?? 0);
         const fever = clamp01(env.fever ?? 0);
@@ -846,7 +847,8 @@ export class VerdantHillsFlock {
             this.groups.forEach((g) => {
                 if (Math.hypot(g.cx - pool.x, g.cz - pool.z) > pool.radius) return;
                 g.lambs.forEach((s) => {
-                    if (s.mode === 'heel' && this.rand() < 0.02 * pool.strength) {
+                    // (A lamb in the light starts playing every four seconds or so, on the step's own clock.)
+                    if (s.mode === 'heel' && this.rand() < 0.25 * this.dt * pool.strength) {
                         this.startPlay(s, false, false, motion);
                     }
                 });
