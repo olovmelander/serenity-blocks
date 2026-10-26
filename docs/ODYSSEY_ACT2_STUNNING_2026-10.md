@@ -483,3 +483,25 @@ The cost is one `fwidth` and a few ALU.
 ![The world playground at p 0.58, before and after](images/odyssey-act2-2026-10-25/crisp-snow-close.jpg)
 
 ![On the climb at p 0.46 and 0.54, before and after](images/odyssey-act2-2026-10-25/crisp-snow-climb.jpg)
+
+## §9. The flanks' rock, and two things tried and left out (2026-10-26)
+
+**Crisp rock.** The same disease as the summit's snow, lower down. The slope ramp left the
+massif's lower flanks part meadow, part stone: a grey-green smear. Above the shore lowlands
+(`ROCK_CRISP_FROM`, 320-380 u), rock is now thresholded the same way: the atlas grain interlocks
+an edge about a pixel wide. A flank reads as meadow or as scree patches.
+
+![p 0.27, before and after: the smear on the massif's flank becomes a scree patch in meadow](images/odyssey-act2-2026-10-25/crisp-rock-flank.jpg)
+
+**Tried and left out:**
+
+- **Towering cumulus on the horizon.** I added a `tower` role to the cloud sculptor (stacked
+  primaries under a cauliflower crown), with two masses 3.3-4.3 km out either side of the massif.
+  On the rail they read only as slightly taller puffs. Making them large enough to matter would
+  lift their tops into the guarded hand-off to space, and the pair already broke the field's
+  34,000-triangle budget. Reverted. The field's wide, low shapes are measured against the owner's
+  references, so a change to the sky's character wants the owner's eye first.
+- **Wildflowers painted into the meadow grass.** I tried hashed blooms in drifts, kept off the
+  canopy and steep ground. The eye flies 50-90 u over the meadow and sees it at a grazing angle,
+  so at 150-300 u the ground is compressed ~4:1 in depth. A dab small enough to be a flower falls
+  under a pixel there, and the patch where it would show is below the frame. Reverted.
