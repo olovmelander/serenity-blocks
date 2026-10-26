@@ -129,8 +129,14 @@ TAIL_S = [(38, 0, 0), (26, 0, 0), (16, 0, 0), (6, 0, 0), (-12, 0, 0), (-24, 0, 0
 TAIL_STREAM = [(-18, 0, 0), (-4, 0, 0), (2, 0, 0), (4, 0, 0), (4, 0, 0), (2, 0, 0), (0, 0, 0)]
 # Sitting up, the tail runs back along the ground from the rump and curls up the back.
 TAIL_SIT = [(30, 0, 0), (38, 0, 0), (34, 0, 0), (22, 0, 0), (2, 0, 0), (-20, 0, 0), (-30, 0, 0)]
-# On the bark the tail hangs down behind and a little off it.
-TAIL_CLIMB = [(-6, 0, 0), (-8, 0, 0), (-4, 0, 0), (0, 0, 0), (4, 0, 0), (6, 0, 0), (6, 0, 0)]
+# On the bark the tail is laid along it behind (solver.lay_tail): the height off the bark of the end of
+# each tail bone (metres, life size), close enough that it trails down the trunk rather than standing
+# off it, far enough that the plume and its hair clear it, the brush lifting a little.
+TAIL_BARK = [0.054, 0.044, 0.039, 0.038, 0.040, 0.044, 0.050]
+# Head first down the trunk the tail is held up the bark behind, a little further off it, rising.
+TAIL_BARK_DOWN = [0.058, 0.054, 0.054, 0.057, 0.063, 0.071, 0.080]
+# No angles of its own: a wave or a sway rides on the laid tail.
+TAIL_FLAT = [(0, 0, 0)] * 7
 
 
 def tail_pose(base, wave=0.0, sway=0.0, t=0.0, rate=1.0, lag=0.5, flick=0.0, length=None):
@@ -290,7 +296,10 @@ def gait(t, g):
     ears = g.get("ears", -10.0)
     spec["earL"] = (ears, 0.0, 0.0)
     spec["earR"] = (ears, 0.0, 0.0)
-    spec["tail"] = tail_pose(g["tail"], wave=g.get("tail_wave", 8.0), t=t, rate=1.0 / T, lag=0.75)
+    spec["tail"] = tail_pose(g["tail"], wave=g.get("tail_wave", 8.0), sway=g.get("tail_sway", 0.0), t=t,
+                             rate=1.0 / T, lag=0.75, length=T)
+    if g.get("tail_lie"):
+        spec["tail_lie"] = g["tail_lie"]
     return spec
 
 
@@ -329,7 +338,7 @@ GAITS = {
         bob=[(0.08, 0.005), (0.30, 0.002), (0.45, -0.004), (0.60, 0.0), (0.75, -0.002), (0.92, 0.002)],
         pitch=[(0.10, -3.0), (0.45, 7.0), (0.60, 3.0), (0.80, -2.0), (0.92, -4.0)],
         flex=[(0.12, -7.0), (0.45, 1.0), (0.62, 12.0), (0.78, 7.0), (0.92, -4.0)],
-        gaze=-12.0, ears=-6.0, tail=TAIL_CLIMB, tail_wave=6.0,
+        gaze=-12.0, ears=-6.0, tail=TAIL_FLAT, tail_lie=TAIL_BARK, tail_wave=2.5, tail_sway=7.0,
     ),
 }
 
@@ -457,7 +466,8 @@ def descend(t):
     spec["head"] = (-8.0, 2.0 * sway, 0.0)
     spec["earL"] = (-6.0, 0.0, 0.0)
     spec["earR"] = (-6.0, 0.0, 0.0)
-    spec["tail"] = tail_pose(TAIL_CLIMB, wave=3.0, sway=4.0, t=t, rate=1.0 / T, length=T)
+    spec["tail"] = tail_pose(TAIL_FLAT, wave=2.0, sway=6.0, t=t, rate=1.0 / T, length=T)
+    spec["tail_lie"] = TAIL_BARK_DOWN
     return spec
 
 
@@ -501,7 +511,8 @@ def cling(t):
     nod = hold(p, [(0.1, -10.0), (0.58, 4.0), (0.84, -2.0)])
     spec = clinging(t, 3.6, look=(nod + 4.0 * wander(t, 3.6, 2.0), turn + 5.0 * wander(t, 3.6, 7.0)))
     flick = bump(p, 0.74, 0.07)
-    spec["tail"] = tail_pose(TAIL_CLIMB, wave=4.0, t=t, rate=0.6, flick=flick, length=3.6)
+    spec["tail"] = tail_pose(TAIL_FLAT, wave=2.5, sway=3.0, t=t, rate=0.6, flick=flick, length=3.6)
+    spec["tail_lie"] = TAIL_BARK
     spec["earL"] = (0.0, 0.0, -10.0 * bump(p, 0.3, 0.05))
     spec["earR"] = (0.0, 0.0, 10.0 * bump(p, 0.33, 0.05))
     return spec
@@ -518,7 +529,8 @@ def pivot(t):
         lift = 0.0 if u is None else 0.010 * math.sin(math.pi * u) ** 2
         spec["front" + fore] = front(fore, CLING_FRONT_Z, x=0.022, y=0.0004 + lift)
         spec["hind" + hind_sfx] = hind(hind_sfx, CLING_HIND_Z, x=0.032, y=lift)
-    spec["tail"] = tail_pose(TAIL_CLIMB, wave=4.0, t=t, rate=1.0 / 0.6, length=0.6)
+    spec["tail"] = tail_pose(TAIL_FLAT, wave=2.5, sway=4.0, t=t, rate=1.0 / 0.6, length=0.6)
+    spec["tail_lie"] = TAIL_BARK
     return spec
 
 

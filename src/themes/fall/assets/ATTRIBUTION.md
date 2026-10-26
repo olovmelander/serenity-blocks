@@ -28,16 +28,19 @@ Made in Blender 5.2 by `scripts/blender/fall_squirrel.py` (modules in
   smooth unions round the rig's own joints (the meshing of the Grainfields horse and Winter's
   bear, `scripts/blender/grainfields/horse_sdf.py`): haunches, belly, chest, a big round head
   with full cheeks, large eyes and a button nose, cupped ears with three-strand tufts, slim
-  legs and long hind feet, and a plume built of overlapping locks of hair so its outline is
-  scalloped. The left half is polygonised with surface nets, decimated in two passes (body,
+  legs and long hind feet, and the body of a plume (a flattened tube through the tail joints,
+  combed by a fine displacement; its hair is drawn over it at runtime as cards on the same
+  bones, `src/themes/fall/fall-squirrel-plume.js`). The left half is polygonised with surface nets, decimated in two passes (body,
   legs and plume first with the face held, then the face with the rest held) and mirrored.
   Each vertex is painted: COLOR_0 = the coat's linear colour and the sky it sees (occlusion
-  traced through the field), `_fur` = hair length, light through it, eye, ear tuft.
+  traced through the field), `_fur` = hair length, light through it, eye, and 1 on the ear
+  tufts, a half on the plume.
 - **Rig** (`rig.py`). Thirty bones, every one resting in the squirrel's own frame, weighted
   by inverse distance along each part's chain and relaxed over the surface.
 - **Motion** (`motion.py`, `solver.py`). Each clip is a function of time: where the body is
   and how it bends, where each paw is put (two-bone IK with the knee or elbow in the plane a
-  pole gives), how the head, ears, jaw and the seven-bone tail turn. They are sampled on every
+  pole gives), how the head, ears, jaw and the seven-bone tail turn (on the bark the tail is
+  laid along it at set heights, `solver.lay_tail`). They are sampled on every
   frame (60 fps) and keyed into one Blender action each, which the glTF exporter writes as one
   animation each. `audit.py` reads every clip for paws asked past their leg's reach, planted
   paws that slide and pops at loop seams.
