@@ -36,9 +36,10 @@ describe('odysseyScrollPace — the wheel slows through the climb into space', (
     });
 
     it('slows most where the Earth comes up out of the haze and the sun sets over it', () => {
+        // (where the world becomes the Earth: its clouds go into it)
         const arrival = sweep.filter(([p]) => {
             const e = orbitEarthAt(p, cp);
-            return e.presence > 0.3 && e.veil > 0.05;
+            return e.presence > 0.3 && e.cloudsAway > 0.02 && e.cloudsAway < 0.98;
         });
         expect(arrival.length).toBeGreaterThan(5);
         arrival.forEach(([p, pace]) => expect(pace, `p ${p.toFixed(4)}`).toBeLessThan(0.45));

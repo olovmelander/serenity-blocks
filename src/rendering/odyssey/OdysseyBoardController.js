@@ -3237,7 +3237,10 @@ export class OdysseyBoardController {
                 try {
                     if (!readBooleanUrlFlag('odysseyNoEarth')) {
                         // It arrives wearing the world's own air (THE SEAM in its module).
-                        this.orbitEarth = createOrbitEarth({ haze: this.oneWorld?.hazeFor ?? null });
+                        this.orbitEarth = createOrbitEarth({
+                            haze: this.oneWorld?.hazeFor ?? null,
+                            worldAir: this.oneWorld?.earthAirFor ?? null,
+                        });
                         this.scene.add(this.orbitEarth.mesh);
                     }
                 } catch (error) {
@@ -4367,8 +4370,14 @@ export class OdysseyBoardController {
         if (this.orbitEarth) {
             // THE EARTH BELOW: where it is (presence, the eye's height, the setting sun) is one
             // function of progress, shared with the camera's lean over it.
-            const earth = orbitEarthAt(cameraProgress, this.presentationLayout?.chapterPositions);
             const eye = this.camera?.position;
+            // THE ONE ALTITUDE: the eye's own height over the sea as the world sees it (its height
+            // in the scene over the climb's scale toward the point beneath it, the same function
+            // of progress the world shrinks by this frame).
+            const cp = this.presentationLayout?.chapterPositions;
+            const climb = cp ? worldClimbScale(cameraProgress, cp[4], cp[5]) : 1;
+            const eyeHeight = eye ? Math.max(0, eye.y - ODYSSEY_SEA_LEVEL) / climb : null;
+            const earth = orbitEarthAt(cameraProgress, cp, eyeHeight);
             this._orbitEarthSun = orbitEarthSunDirection(earth.sunElevation, this._orbitEarthSun);
             if (eye) {
                 this._orbitEarthTrack = this._orbitEarthTrack || new THREE.Vector3();
