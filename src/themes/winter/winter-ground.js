@@ -38,9 +38,11 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    EYE, LOOK, wAir, wAurora, wGust, wHash23, wMoonShadow, wPart, wPow4, wRingLight, wSky, wSolidMaterial, wSq,
+    EYE, LOOK, wAir, wAurora, wGust, wHash23, wIceSwept, wMoonShadow, wPart, wPow4, wRingLight, wSky, wSolidMaterial,
+    wSq,
 } from './winter-tsl.js';
 import { buildGroundFan } from './winter-field.js';
+import { BEAR_SCALE } from './winter-bear-rig.js';
 
 /**
  * The sparkle's cell for a world point: vec3(cell id x, cell id y, distance from the glint's
@@ -144,10 +146,7 @@ export function createGround(u, {
         snow.assign(mix(mix(snow, rock, outcrop.mul(0.75)), woodCol, stand.mul(0.72)));
 
         // ── The lake's ice, where the wind has swept it ──
-        const swept = u.noise(vec2(P.x.mul(0.0052), P.z.mul(0.015)).add(vec2(0.3, 0.7))).r;
-        // (Most of all along the moon's bearing, so its path lies on ice.)
-        const moonPath = exp(wSq(P.x.sub(P.z.negate().mul(u.moonDir.x.div(u.moonDir.z.negate()))).div(46.0)).negate());
-        const ice = lake.mul(smoothstep(0.36, 0.5, swept.add(drift.r.sub(0.5).mul(0.22)).add(moonPath.mul(0.16)))).toVar();
+        const ice = lake.mul(wIceSwept(u, P, drift.r)).toVar();
         const iceN = normalize(vec3(grain.g.mul(0.035), 1.0, grain.b.mul(0.035)));
         const Ri = reflect(V.negate(), iceN);
         // The ice smears what it mirrors upward: a low sun of fires stands in it as a column.
@@ -187,6 +186,18 @@ export function createGround(u, {
         col.mulAssign(float(1.0).sub(exp(wSq(length(underFox).div(0.62)).negate()).mul(0.42)));
         const foxFar = length(P.sub(u.foxPos));
         col.addAssign(mix(u.fire, vec3(1.0), 0.15).mul(u.foxGlow).mul(exp(wSq(foxFar.div(1.5)).negate())).mul(0.5));
+        // The bear on the ice: the moon lays its shadow away from it, long and soft (an ellipse
+        // along the moon's bearing, as long and as wide as the world reckons the bear's is).
+        const moonFlat = normalize(u.moonDir.xz);
+        const toBear = P.xz.sub(u.bearShadow.xy);
+        const alongMoon = dot(toBear, moonFlat).div(u.bearShadow.z);
+        const acrossMoon = dot(toBear, vec2(moonFlat.y.negate(), moonFlat.x)).div(u.bearShadow.w);
+        col.mulAssign(float(1.0).sub(exp(wSq(alongMoon).add(wSq(acrossMoon)).mul(-1.6)).mul(LOOK.bearShadow)));
+        // ...and under its body the ice sees less of the sky: a soft shade the length of it.
+        const underBear = P.xz.sub(u.bearContact.xy);
+        const alongBear = dot(underBear, u.bearContact.zw).div(BEAR_SCALE * 1.15);
+        const acrossBear = dot(underBear, vec2(u.bearContact.w, u.bearContact.z.negate())).div(BEAR_SCALE * 0.5);
+        col.mulAssign(float(1.0).sub(exp(wSq(alongBear).add(wSq(acrossBear)).mul(-1.4)).mul(LOOK.bearContact)));
 
         // ── Sparkle ──
         if (glints) {

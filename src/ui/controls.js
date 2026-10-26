@@ -23,6 +23,8 @@ import {
 } from '../core/player-input-state.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { isGameOverArmed } from './game-over-arm.js';
+import { findBoundAction, normalizeBindingKey } from './binding-keys.js';
+import { menuCoversGame } from './sheet-input.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -40,6 +42,31 @@ const FIXED_TICK_ACTIONS = Object.freeze({
 const TEXT_INPUT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number']);
 // Controls that handle their own Enter/Space activation (see the start/game-over branch).
 const INTERACTIVE_SELECTOR = 'button, [role="button"], a[href], input, select, textarea, summary';
+// The same, with the ARIA widgets a menu builds from other elements (tabs, toggles, options).
+const MENU_CONTROL_SELECTOR = `${INTERACTIVE_SELECTOR}, [role="checkbox"], [role="switch"], [role="tab"], `
+    + '[role="option"], [role="radio"], [role="combobox"], [role="menuitem"]';
+
+/**
+ * A menu over the game that owns the keyboard: an open sheet (Records, Replays, an
+ * Odyssey sheet) or a multiplayer screen. Settings, the Hub and game over are handled
+ * on their own; an inert Odyssey cue owns only Escape (see the Escape branch).
+ * @param {{ includeInert?: boolean }} [options]
+ */
+function menuOwnsKeys({ includeInert = false } = {}) {
+    if (typeof document === 'undefined') return false;
+    return menuCoversGame(document, { exclude: ['gameOver', 'settings'], includeInert });
+}
+
+/** Whether a game is being played now (a probe from main.js; without one, always). */
+function gameplayIsLive(gameActions) {
+    const probe = gameActions?.isGameplayLive;
+    if (typeof probe !== 'function') return true;
+    try {
+        return probe() !== false;
+    } catch {
+        return true;
+    }
+}
 
 /**
  * True when a key press belongs to a text field rather than the game: a text-like
@@ -110,6 +137,11 @@ export class InputController {
         this.fixedTickInputAdapter = null;
         this.fixedTickHeldKeys = new Map();
         this.fixedTickTouchedStates = new Set();
+        // The key each physical key (KeyboardEvent.code) gave when it went down. Its keyup
+        // releases that key even when it reads differently: Shift pressed meanwhile turns
+        // `a` into `A`, `/` into `?`, and a release that matched nothing left the piece
+        // shifting on its own.
+        this.heldKeyCodes = new Map();
 
         // Sound initialization flag
         this.soundInitialized = false;
@@ -440,6 +472,7 @@ export class InputController {
         this.clearTimers();
         this.clearFixedTickInput({ dropPhysicalLatches: true });
         this.fixedTickInputAdapter = null;
+        this.heldKeyCodes.clear();
         this.keyMap = {};
         this.gameActions = null;
         this.settings = null;
@@ -453,6 +486,22 @@ export class InputController {
      */
     static isValidAction(gameActions, actionName) {
         return gameActions && typeof gameActions[actionName] === 'function';
+    }
+}
+
+/**
+ * Whether a person plays seat 2 on the keyboard now: true, false, or null when the
+ * caller has no such probe (both players' keys then play, as before).
+ * @param {Object} gameActions
+ * @returns {boolean|null}
+ */
+function player2KeyboardSeat(gameActions) {
+    const probe = gameActions?.isPlayer2KeyboardActive;
+    if (typeof probe !== 'function') return null;
+    try {
+        return probe() === true;
+    } catch {
+        return false;
     }
 }
 
@@ -565,6 +614,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             // fresh action (or reopen Settings) on the next board.
             if (e.repeat) return;
 
+            const key = normalizeBindingKey(e.key);
+            if (e.code) inputController.heldKeyCodes.set(e.code, key);
+
             // Performance monitoring: Record input timestamp
             performanceMonitor.recordInput();
 
@@ -577,6 +629,10 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
 
             // Escape key behavior depends on context
             if (e.key === 'Escape') {
+                // A handler before this one already took it (a sheet's back, an option
+                // list closing, a capture): opening Settings as well closed one layer
+                // and opened another.
+                if (e.defaultPrevented) return;
                 if (settingsModalVisible) {
                     // Settings modal is open - do nothing here, let modal handler close it
                     console.log('[Controls] Settings modal open, Escape will close modal');
@@ -589,6 +645,12 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 if (document.body?.classList?.contains('serenity-hub-open')) {
                     return;
                 }
+                // A sheet or multiplayer screen goes back on Escape itself, and the Odyssey
+                // cue between orbs ("Returning to the map") decides what Escape does there.
+                if (menuOwnsKeys({ includeInert: true })) return;
+                // Serenity Mode leaves on Escape (its exitToMenu key, SerenityMode.js); this
+                // handler runs first and opened Settings instead.
+                if (gameActions.modeOwnsEscape?.() === true) return;
                 // Open settings menu (pauses game and shows settings)
                 console.log('[Controls] Opening settings menu with Escape');
                 if (gameActions.openSettingsMenu) gameActions.openSettingsMenu();
@@ -622,17 +684,31 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 return;
             }
 
-            // Get action from key binding (check this before auto-starting game)
-            const key = e.key === ' ' ? 'Space' : e.key;
-            const action = Object.keys(currentSettings.keyBindings)
-                .find((k) => currentSettings.keyBindings[k] === key);
+            // A menu over the game owns its keys: Space and Enter press its focused control.
+            // Space used to be taken as a hard drop there (preventDefault), so no button or
+            // checkbox on those screens answered it, and Space on Records over the main menu
+            // started a game.
+            if (menuOwnsKeys()) return;
 
-            // Also check player 2 bindings (for local multiplayer)
-            let actionP2 = null;
-            if (currentSettings.player2KeyBindings) {
-                actionP2 = Object.keys(currentSettings.player2KeyBindings)
-                    .find((k) => currentSettings.player2KeyBindings[k] === key);
+            // Outside play (the Odyssey map, a replay, a paused or finished game) Space and
+            // Enter on a focused control are that control's, not a hard drop.
+            if ((key === 'Space' || key === 'Enter')
+                && document.activeElement?.closest?.(MENU_CONTROL_SELECTOR)
+                && !gameplayIsLive(gameActions)) {
+                return;
             }
+
+            // Player 2's keys play only while a person is on seat 2 (Local Versus); against
+            // a bot or in any other mode they are Player 1's to use. A key both players
+            // have bound plays for Player 2 there: Player 1's flip (A by default) is
+            // Player 2's move left, and one press must not move both pieces.
+            const seatTwo = player2KeyboardSeat(gameActions);
+            const actionP2 = seatTwo !== false
+                ? findBoundAction(currentSettings.player2KeyBindings, key)
+                : null;
+            const action = seatTwo === true && actionP2
+                ? null
+                : findBoundAction(currentSettings.keyBindings, key);
 
             // Start game if on start/game-over modal
             const startModal = document.getElementById('start-modal');
@@ -766,7 +842,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     // Keyup handler
     const handleKeyUp = (e) => {
         try {
-            const key = e.key === ' ' ? 'Space' : e.key;
+            const pressedAs = e.code ? inputController.heldKeyCodes.get(e.code) : undefined;
+            if (e.code) inputController.heldKeyCodes.delete(e.code);
+            const key = pressedAs ?? normalizeBindingKey(e.key);
             inputController.releaseFixedTickKey(key, e);
 
             // Releases are processed even while Settings is open: they only clear
@@ -776,15 +854,9 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             // Get current settings dynamically to pick up keybinding changes
             const currentSettings = getCurrentSettings();
 
-            const action = Object.keys(currentSettings.keyBindings)
-                .find((k) => currentSettings.keyBindings[k] === key);
-
-            // Also check player 2 bindings (for local multiplayer)
-            let actionP2 = null;
-            if (currentSettings.player2KeyBindings) {
-                actionP2 = Object.keys(currentSettings.player2KeyBindings)
-                    .find((k) => currentSettings.player2KeyBindings[k] === key);
-            }
+            // A release clears the key for both players, whoever it played for.
+            const action = findBoundAction(currentSettings.keyBindings, key);
+            const actionP2 = findBoundAction(currentSettings.player2KeyBindings, key);
 
             if (action) {
                 inputController.keyMap[action] = false;
@@ -828,6 +900,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     const handleVisibilityChange = () => {
         if (document.hidden) {
             inputController.clearTimers();
+            inputController.heldKeyCodes.clear();
             inputController.keyMap = {};
         }
     };
@@ -843,6 +916,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
     const handleWindowBlur = () => {
         inputController.clearTimers();
         inputController.clearFixedTickInput({ dropPhysicalLatches: true });
+        inputController.heldKeyCodes.clear();
         inputController.keyMap = {};
     };
     inputController.handleWindowBlur = handleWindowBlur;

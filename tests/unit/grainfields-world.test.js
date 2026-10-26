@@ -174,14 +174,15 @@ describe('GrainfieldsWorld build', () => {
         expect(world.u.tables.path[world.u.tables.path.length - 1].z).toBeCloseTo(1, 9);
     });
 
-    it('builds every part but the trees, the herd and the ruin without their assets (the belts stand as the land\'s canopy)', () => {
+    it('builds every part but the trees, the herd, the ruin and the geese without their assets (the belts stand as the land\'s canopy)', () => {
         const bare = makeWorld({ withAssets: false });
         try {
-            const authored = new Set(['trees', 'herd', 'fort']);
+            const authored = new Set(['trees', 'herd', 'fort', 'geese']);
             expect(Object.keys(bare.world.parts).sort()).toEqual(GRAINFIELDS_PARTS.filter((name) => !authored.has(name)).sort());
             expect(bare.world.parts.trees).toBeUndefined();
             expect(bare.world.parts.herd).toBeUndefined();
             expect(bare.world.parts.fort).toBeUndefined();
+            expect(bare.world.parts.geese).toBeUndefined();
             begin(bare);
             stepTo(bare, START + 0.5);
             expect(bare.world.getState().parts).not.toContain('trees');
@@ -620,7 +621,28 @@ describe('GrainfieldsWorld: play builds the storm\'s break', () => {
         stepTo(shared, START + 60, 0.5);
         world.levelUp(4);
         expect(world.u.skein.value).toBe(world.time);
+        // The geese fly both: the first still on its way to the gate, the second just up.
+        const { skies } = world.parts.geese;
+        expect(skies.flights.filter((flight) => flight.live(world.time))).toHaveLength(2);
         begin(shared);
+    });
+
+    it('sends a flight out up from the open field on a level-up, and draws it', () => {
+        const { world } = shared;
+        begin(shared);
+        const { geese } = world.parts;
+        expect(geese.skies.flightOut(world.time)).toBeNull();
+        world.levelUp(2);
+        const flight = geese.skies.flightOut(world.time);
+        expect(flight).not.toBeNull();
+        // It goes up from the near field, inside the crest, and heads round for the gate.
+        expect(flight.route.distance).toBeGreaterThan(40);
+        expect(flight.route.distance).toBeLessThan(90);
+        stepTo(shared, START + 3);
+        expect(geese.mesh.geometry.instanceCount).toBeGreaterThanOrEqual(flight.birds.length);
+        // A seek lands with nothing in the air.
+        begin(shared);
+        expect(geese.skies.flightOut(world.time)).toBeNull();
     });
 });
 

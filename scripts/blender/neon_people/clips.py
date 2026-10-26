@@ -111,33 +111,41 @@ def gait_foot(build, side, phase, offset, cycle, stance, strike_pitch=-16.0, pus
     return point, pitch
 
 
-def walk(phase, build, step=0.52, stance=0.62, bob=0.016, sway=0.022, drop=4.0, twist=5.0, arm=15.0,
-         lean=3.0, look=(0.0, 4.0, 0.0)):
-    """A calm walk across a shop: right heel strikes at phase 0, left at 0.5."""
+def relaxed_arm(sign, swing=0.0, elbow=12.0, abduct=7.0, drop=6.0):
+    """An arm hanging loose: a little out from the body, turned so the palm faces the thigh, the
+    elbow soft and the hand trailing (`drop` flexes the wrist back)."""
+    return dict(shoulder=(swing, abduct, -10.0), elbow=elbow, wrist=(-drop, 4.0 * sign))
+
+
+def walk(phase, build, step=0.52, stance=0.62, bob=0.016, sway=0.022, drop=4.0, twist=6.0, arm=17.0,
+         lean=4.0):
+    """A calm walk across a shop: right heel strikes at phase 0, left at 0.5. The arms hang and
+    swing from the shoulder with the opposite leg, a little behind it, the forearm and hand trailing
+    the upper arm; the shoulders turn against the hips; the head stays level and forward."""
     cycle = 2.0 * step
     spec = {}
-    lag = phase - 0.04
     yaw = twist * math.cos(math.tau * phase)
     roll = drop * math.sin(math.tau * (phase - 0.06))
     spec["root"] = (-sway * math.sin(math.tau * (phase - 0.06)), 0.0,
                     -0.03 + bob * math.cos(2.0 * math.tau * (phase - 0.31)))
     spec["pelvis"] = (yaw, lean + 1.2 * math.cos(2.0 * math.tau * (phase - 0.1)), roll)
-    spec["spine"] = (-0.9 * yaw, 1.0, -0.65 * roll)
-    spec["chest"] = (-0.7 * yaw, 1.5, -0.3 * roll)
-    net = yaw * (1.0 - 0.9 - 0.7)
-    spec["neck"] = (-0.5 * net, look[1] * 0.4 - lean * 0.6, 0.0)
-    spec["head"] = (-0.5 * net + look[0], look[1] * 0.6 - lean * 0.4, look[2] + 0.4 * roll)
+    spec["spine"] = (-0.9 * yaw, 1.5, -0.65 * roll)
+    spec["chest"] = (-0.8 * yaw, 2.0 + 0.8 * math.cos(2.0 * math.tau * (phase - 0.22)), -0.35 * roll)
+    net = yaw * (1.0 - 0.9 - 0.8)
+    spec["neck"] = (-0.5 * net, 3.0, 0.2 * roll)
+    spec["head"] = (-0.5 * net, -lean - 1.5 - 0.8 * math.cos(2.0 * math.tau * (phase - 0.31)), 0.25 * roll)
     for side, sign, offset in (("R", -1.0, 0.0), ("L", 1.0, 0.5)):
         ankle, pitch = gait_foot(build, side, phase, offset, cycle, stance)
         spec["leg_" + side] = dict(ankle=ankle, pole=FWD + np.array([0.12 * sign, 0.0, 0.0]),
                                    foot=(pitch, 5.0 * sign))
-        # The arm swings with the opposite leg, a little behind it.
-        c = math.cos(math.tau * (lag - offset - 0.5))
-        swing = 2.0 + arm * c
-        spec["arm_" + side] = dict(shoulder=(swing, 5.0, 0.0), elbow=12.0 + 12.0 * max(0.0, c) + 2.0 * (1.0 - c),
-                                   wrist=(6.0, 4.0))
-        spec["clav_" + side] = (-sign * 3.0 * c, 0.0, 0.0)
+        # The arm swings with the opposite leg; the elbow folds a moment after the shoulder.
+        c = math.cos(math.tau * (phase - 0.06 - offset - 0.5))
+        c_late = math.cos(math.tau * (phase - 0.13 - offset - 0.5))
+        spec["arm_" + side] = relaxed_arm(sign, swing=1.0 + arm * c, elbow=8.0 + 11.0 * max(0.0, c_late) ** 1.4,
+                                          abduct=7.0 + 2.0 * (1.0 - c) * 0.5, drop=3.0 + 10.0 * max(0.0, c))
+        spec["clav_" + side] = (-sign * (2.0 + 3.0 * c), 0.0, -sign * 1.2 * math.sin(math.tau * (phase - offset)))
     spec["hair_swing"] = (5.0 * math.sin(2.0 * math.tau * (phase - 0.15)), 0.0, 4.0 * math.sin(math.tau * phase))
+    spec["coat_swing"] = (0.025 * math.sin(math.tau * (phase - 0.18)), 0.05 + 0.015 * math.cos(2.0 * math.tau * phase))
     return spec
 
 
@@ -177,23 +185,122 @@ def _stand(build, spec, weight, sway, left_foot=(0.12, -0.05, 6.0), right_foot=(
     return spec
 
 
-def idle_look(phase, build):
-    """Waiting about: the weight on one leg, breathing, looking slowly round the shop."""
+def stand_rest(phase, build, hands="coat"):
+    """A walker stopped at the end of the room: the weight settles on one leg, the hands in the
+    pockets, a slow look round, breathing."""
+    rest = REST[build]
     breath = math.sin(math.tau * phase * 2.0)
     spec = {}
-    weight = 0.8 + 0.2 * wave(phase)
-    _stand(build, spec, weight, (0.004 * wave(phase, 1.0, 0.2), 0.0, 0.002 * breath))
-    spec["pelvis"] = (3.0 * wave(phase, 1.0, 0.1), 2.0, 4.0 * weight)
-    spec["spine"] = (-2.0 * wave(phase, 1.0, 0.1), 1.0, -2.6 * weight)
-    spec["chest"] = (0.0, 1.0 - 0.7 * breath, -1.0 * weight)
+    weight = 0.7 + 0.25 * wave(phase, 1.0, 0.15)
+    _stand(build, spec, weight, (0.004 * wave(phase, 1.0, 0.3), 0.0, 0.002 * breath),
+           left_foot=(0.13, -0.04, 10.0), right_foot=(-0.11, 0.02, -8.0))
+    spec["pelvis"] = (3.0 * wave(phase, 1.0, 0.15), 2.5, 4.0 * weight)
+    spec["spine"] = (-2.0 * wave(phase, 1.0, 0.15), 1.5, -2.6 * weight)
+    spec["chest"] = (0.0, 2.5 - 0.7 * breath, -1.2 * weight)
+    look = cyc(phase, [(0.0, (-6.0, 4.0)), (0.25, (-30.0, 2.0)), (0.45, (-26.0, 6.0)), (0.62, (12.0, 3.0)),
+                       (0.82, (26.0, 0.0))])
+    spec["neck"] = (look[0] * 0.35, 3.0 + look[1] * 0.3, 2.0 * weight)
+    spec["head"] = (look[0] * 0.65, look[1] * 0.7, 0.0)
+    pelvis = rest["pelvis"]
+    for side, sign in (("L", 1.0), ("R", -1.0)):
+        if hands == "coat":
+            pocket = pelvis + np.array([0.19 * sign, -0.07, -0.1])
+            pole = (sign * 1.0, 0.6, -0.2)
+        else:  # both hands in a hoodie's front pocket
+            pocket = pelvis + np.array([0.06 * sign, -0.14, 0.02])
+            pole = (sign * 0.8, 0.8, -0.4)
+        spec["arm_" + side] = dict(hand=pocket, pole=pole, wrist=(-15.0, sign * 10.0))
+        spec["clav_" + side] = (-sign * 2.0, 0.0, -sign * 1.0 * breath)
+    spec["coat_swing"] = (0.0, 0.0)
+    return spec
+
+
+def idle_look(phase, build):
+    """Waiting about: hands in the jeans' front pockets, the weight on one leg and the hip out,
+    breathing, looking slowly round the shop."""
+    rest = REST[build]
+    breath = math.sin(math.tau * phase * 2.0)
+    spec = {}
+    weight = 0.75 + 0.25 * wave(phase)
+    _stand(build, spec, weight, (0.005 * wave(phase, 1.0, 0.2), 0.0, 0.002 * breath),
+           left_foot=(0.14, -0.06, 12.0), right_foot=(-0.1, 0.0, -6.0))
+    spec["pelvis"] = (3.0 * wave(phase, 1.0, 0.1), 1.5, 5.0 * weight)
+    spec["spine"] = (-2.0 * wave(phase, 1.0, 0.1), 0.5, -3.0 * weight)
+    spec["chest"] = (0.0, 1.0 - 0.7 * breath, -1.5 * weight)
     look = cyc(phase, [(0.0, (0.0, 3.0)), (0.2, (-24.0, 1.0)), (0.38, (-26.0, 5.0)), (0.55, (4.0, 2.0)),
                        (0.72, (28.0, -2.0)), (0.86, (22.0, 4.0))])
     spec["neck"] = (look[0] * 0.35, look[1] * 0.4, 2.0 * weight)
     spec["head"] = (look[0] * 0.65, look[1] * 0.6, 0.0)
+    pelvis = rest["pelvis"]
     for side, sign in (("L", 1.0), ("R", -1.0)):
-        spec["clav_" + side] = (0.0, 0.0, -sign * 1.0 * breath)
-        spec["arm_" + side] = dict(shoulder=(3.0 + 1.5 * wave(phase, 1.0, 0.3 if sign > 0 else 0.8), 6.0, 0.0),
-                                   elbow=12.0, wrist=(8.0, 6.0))
+        pocket = pelvis + np.array([0.13 * sign, -0.09, -0.07])
+        spec["arm_" + side] = dict(hand=pocket, pole=(sign * 1.0, 0.7, -0.1), wrist=(-25.0, sign * 15.0))
+        spec["clav_" + side] = (-sign * 1.0, 0.0, -sign * 1.0 * breath)
+    return spec
+
+
+def work_counter(phase, build):
+    """A cook at the stove, bent over it: stirs a pot, tosses the pan in the other hand, turns to the
+    shelf behind for a pinch of something and sprinkles it in."""
+    rest = REST[build]
+    breath = math.sin(math.tau * phase * 3.0)
+    spec = {}
+    stirring = cyc(phase, [(0.0, 1.0), (0.36, 1.0), (0.42, 0.0), (0.92, 0.0)])
+    toss = cyc(phase, [(0.0, 0.0), (0.4, 0.0), (0.45, 1.0), (0.49, -0.5), (0.53, 0.25), (0.57, 0.0)])
+    reach = cyc(phase, [(0.0, 0.0), (0.56, 0.0), (0.66, 1.0), (0.72, 1.0), (0.81, 0.0)])
+    sprinkle = cyc(phase, [(0.0, 0.0), (0.78, 0.0), (0.83, 1.0), (0.94, 1.0), (0.99, 0.0)])
+    _stand(build, spec, 0.35 * wave(phase, 1.0, 0.1), (0.008 * wave(phase, 1.0, 0.1), 0.04, -0.02),
+           left_foot=(0.15, -0.02, 10.0), right_foot=(-0.13, 0.02, -10.0))
+    spec["pelvis"] = (-16.0 * reach, 9.0 - 4.0 * reach, 1.5 * wave(phase, 1.0, 0.1))
+    spec["spine"] = (-11.0 * reach, 7.0 - 5.0 * reach, 0.0)
+    spec["chest"] = (-9.0 * reach + 2.0 * wave(phase, 0.25), 8.0 - 6.0 * reach - 0.6 * breath, 0.0)
+    look_yaw = -48.0 * reach + 6.0 * toss
+    look_pitch = 18.0 - 22.0 * reach + 4.0 * toss - 2.0 * sprinkle
+    spec["neck"] = (look_yaw * 0.4, look_pitch * 0.45, 0.0)
+    spec["head"] = (look_yaw * 0.6, look_pitch * 0.55, 0.0)
+    hz = rest["pelvis"][2] + 0.07
+    angle = math.tau * phase * 2.4 / 0.4
+    pot = np.array([-0.11, -0.31, hz])
+    stir = pot + np.array([0.05 * math.cos(angle), 0.035 * math.sin(angle), 0.012 + 0.01 * math.sin(angle)])
+    rim = pot + np.array([0.02, 0.03, 0.03])
+    # The shelf is behind them, to their right: they turn away from the street to reach it.
+    shelf = np.array([-0.3, 0.3, 1.18])
+    shake = 0.012 * math.sin(math.tau * phase * 24.0) * sprinkle
+    over = pot + np.array([0.0, 0.02, 0.17 + shake])
+    hand_r = stir * stirring + rim * (1.0 - stirring)
+    hand_r = hand_r + (shelf - hand_r) * reach
+    hand_r = hand_r + (over - hand_r) * sprinkle
+    pan = np.array([0.17, -0.27 - 0.05 * toss, hz + 0.065 * toss])
+    spec["arm_R"] = dict(hand=hand_r, pole=(-0.9, 0.5 - 0.6 * reach, -0.5 - 0.4 * reach),
+                         wrist=(10.0 - 25.0 * sprinkle, -20.0))
+    spec["arm_L"] = dict(hand=pan, pole=(0.9, 0.5, -0.5), wrist=(-10.0, 30.0 + 20.0 * toss))
+    for side, sign in (("L", 1.0), ("R", -1.0)):
+        spec["clav_" + side] = (-sign * 3.0, 0.0, -sign * 0.8 * breath)
+    return spec
+
+
+def work_step(phase, build, stride=0.31):
+    """The cook moving along the counter: sidesteps toward their left (the shader mirrors it for
+    the other way), a bowl carried in both hands, the body bobbing with each step."""
+    rest = REST[build]
+    spec = {}
+    bob = math.cos(2.0 * math.tau * phase)
+    spec["root"] = (0.012 * math.sin(math.tau * phase), 0.03, -0.035 + 0.012 * bob)
+    spec["pelvis"] = (-6.0, 5.0, 3.0 * math.sin(math.tau * phase))
+    spec["spine"] = (3.0, 3.0, -2.0 * math.sin(math.tau * phase))
+    spec["chest"] = (2.0, 4.0, 0.0)
+    spec["neck"] = (8.0, 4.0, 0.0)
+    spec["head"] = (12.0, 6.0, 0.0)
+    for side, sign, offset in (("L", 1.0, 0.0), ("R", -1.0, 0.5)):
+        u = (phase - offset) % 1.0
+        # The leading (left) foot steps out, the other closes in; each lifts as it moves.
+        lift = 0.05 * max(0.0, math.sin(math.tau * u)) ** 1.5
+        shift = stride * 0.5 * math.cos(math.tau * u)
+        ankle = rest["ankle_" + side] + np.array([shift, 0.0, lift])
+        spec["leg_" + side] = dict(ankle=ankle, pole=FWD + np.array([0.2 * sign, 0.0, 0.0]), foot=(0.0, 8.0 * sign))
+    bowl = rest["chest"] + np.array([0.0, -0.28, -0.13 + 0.006 * bob])
+    spec["arm_L"] = dict(hand=bowl + np.array([0.08, 0.0, 0.0]), pole=(0.9, 0.6, -0.5), wrist=(-15.0, 50.0))
+    spec["arm_R"] = dict(hand=bowl + np.array([-0.08, 0.0, 0.0]), pole=(-0.9, 0.6, -0.5), wrist=(-15.0, -50.0))
     return spec
 
 
@@ -218,31 +325,6 @@ def idle_phone(phase, build):
     spec["arm_L"] = dict(hand=chest + np.array([0.0, -0.22, -0.135]), pole=(0.7, 1.0, -0.3), wrist=(-20.0, 40.0))
     spec["clav_L"] = (0.0, 0.0, -0.8 * breath)
     spec["clav_R"] = (0.0, 0.0, 0.8 * breath)
-    return spec
-
-
-def work_counter(phase, build):
-    """A cook at the counter: stirring a pot twice round, giving the pan in the other hand a toss."""
-    rest = REST[build]
-    breath = math.sin(math.tau * phase * 1.5)
-    spec = {}
-    sway = 0.008 * wave(phase, 1.0, 0.1)
-    _stand(build, spec, 0.3 * wave(phase, 1.0, 0.1), (sway, 0.02, -0.01), left_foot=(0.13, -0.02, 8.0),
-           right_foot=(-0.12, 0.02, -8.0))
-    spec["pelvis"] = (-4.0, 7.0, 1.5 * wave(phase, 1.0, 0.1))
-    spec["spine"] = (2.0, 5.0, 0.0)
-    spec["chest"] = (2.0 + 2.0 * wave(phase, 0.5), 5.0 - 0.5 * breath, 0.0)
-    look = cyc(phase, [(0.0, (0.0, 16.0)), (0.4, (4.0, 18.0)), (0.62, (-14.0, 2.0)), (0.75, (-10.0, 4.0)),
-                       (0.88, (0.0, 15.0))])
-    spec["neck"] = (look[0] * 0.4, look[1] * 0.45, 0.0)
-    spec["head"] = (look[0] * 0.6, look[1] * 0.55, 0.0)
-    hz = rest["pelvis"][2] + 0.055
-    angle = math.tau * phase * 2.0
-    stir = np.array([-0.13 + 0.06 * math.cos(angle), -0.4 + 0.045 * math.sin(angle), hz + 0.012 * math.sin(angle)])
-    toss = cyc(phase, [(0.0, 0.0), (0.55, 0.0), (0.62, 1.0), (0.68, -0.4), (0.74, 0.0)])
-    pan = np.array([0.17, -0.36 - 0.03 * toss, hz + 0.03 * toss])
-    spec["arm_R"] = dict(hand=stir, pole=(-0.5, 1.0, -0.4), wrist=(10.0, -20.0))
-    spec["arm_L"] = dict(hand=pan, pole=(0.6, 1.0, -0.4), wrist=(-10.0, 30.0 + 15.0 * toss))
     return spec
 
 
@@ -294,28 +376,33 @@ STOOL = (0.0, 0.03, 0.71)
 
 
 def sit_eat(phase, build):
-    """On a stool at the counter, back to the street: the bowl held in one hand, chopsticks in the
-    other, a mouthful lifted, chewed, and a pause."""
+    """On a stool at the counter, back to the street, hunched over the bowl: the bowl held close in
+    one hand, chopsticks in the other; a mouthful lifted, chewed with a little nod, and a glance up
+    at the television."""
     rest = REST[build]
     spec = {}
     spec["root"] = (0.0, 0.03, STOOL[2] + 0.125 - rest["pelvis"][2])
     lean = cyc(phase, [(0.0, 0.0), (0.3, 0.2), (0.45, 1.0), (0.58, 1.0), (0.72, 0.1), (0.9, 0.0)])
-    spec["pelvis"] = (0.0, 4.0 + 4.0 * lean, 0.0)
-    spec["spine"] = (0.0, 6.0 + 3.0 * lean, 0.0)
-    spec["chest"] = (0.0, 6.0 + 4.0 * lean, 0.0)
-    spec["neck"] = (0.0, 6.0 + 5.0 * lean, 0.0)
-    spec["head"] = (3.0 * wave(phase, 1.0, 0.7), 10.0 + 6.0 * lean, 0.0)
+    chew = cyc(phase, [(0.0, 0.0), (0.55, 0.0), (0.6, 1.0), (0.76, 1.0), (0.8, 0.0)])
+    glance = cyc(phase, [(0.0, 0.0), (0.8, 0.0), (0.85, 1.0), (0.95, 1.0), (0.99, 0.0)])
+    nod = 2.5 * math.sin(math.tau * phase * 18.0) * chew
+    spec["pelvis"] = (0.0, 9.0 + 4.0 * lean, 0.0)
+    spec["spine"] = (0.0, 8.0 + 3.0 * lean, 0.0)
+    spec["chest"] = (0.0, 9.0 + 4.0 * lean - 3.0 * glance, 0.0)
+    spec["neck"] = (6.0 * glance, 7.0 + 5.0 * lean - 8.0 * glance, 0.0)
+    spec["head"] = (3.0 * wave(phase, 1.0, 0.7) + 12.0 * glance, 12.0 + 6.0 * lean + nod - 16.0 * glance, 0.0)
     counter_z = 1.06
     for side, sign in (("L", 1.0), ("R", -1.0)):
         ankle = np.array([sign * 0.11, rest["ankle_" + side][1] - 0.3, 0.3 + (0.02 if sign > 0 else 0.0)])
         spec["leg_" + side] = dict(ankle=ankle, pole=FWD + np.array([0.25 * sign, 0.0, 0.3]),
                                    foot=(15.0, sign * 8.0))
-    bowl = np.array([0.08, -0.36, counter_z + 0.05])
-    spec["arm_L"] = dict(hand=bowl + np.array([0.0, 0.0, 0.02 * lean]), pole=(0.9, 1.0, -0.6), wrist=(-30.0, 30.0))
+        spec["clav_" + side] = (-sign * 4.0, 0.0, 0.0)
+    bowl = np.array([0.07, -0.3, counter_z + 0.07])
+    spec["arm_L"] = dict(hand=bowl + np.array([0.0, 0.0, 0.03 * lean]), pole=(0.9, 0.8, -0.6), wrist=(-30.0, 30.0))
     mouth = posed_head(build, spec, (-0.03, -0.17, -0.05))
     lift = cyc(phase, [(0.0, 0.0), (0.22, 0.0), (0.42, 1.0), (0.55, 1.0), (0.7, 0.1), (0.85, 0.0)])
     stir = 0.02 * math.sin(math.tau * phase * 3.0) * (1.0 - lift)
-    at_bowl = np.array([-0.04 + stir, -0.37, counter_z + 0.09])
+    at_bowl = np.array([-0.04 + stir, -0.31, counter_z + 0.11])
     spec["arm_R"] = dict(hand=at_bowl + (mouth - at_bowl) * lift,
                          pole=(-0.8, 1.0, -0.5), wrist=(-40.0 * lift, -10.0))
     return spec
@@ -393,53 +480,65 @@ VIEW_SETS = {"front": (0.0, 35.0, 70.0), "back": (110.0, 145.0, 180.0), "side": 
 # timing: "distance" (frames by metres walked, `metres` a loop), "loop" (`seconds` a loop) or
 # "level" (frames along a 0..1 value the shader reads: the breath).
 CLIPS = {
-    # A fixer in a long coat, collar up, a visor across the eyes.
-    "walkA": dict(build="A", outfit=dict(top="coat", bottom="trousers", hair="undercut", gear=["collar", "visor"],
-                                         trims=["cuffs"]),
-                  frames=16, views="side", pose=lambda ph: walk(ph, "A"), timing="distance", metres=1.04,
+    # A fixer: a calf-length coat with the collar up, a lit visor, a pauldron, a belt of pouches.
+    "walkA": dict(build="A", outfit=dict(top="longcoat", bottom="trousers", hair="undercut", shoes="boots", gear=["collar", "visor", "pauldron_L", "belt", "pouches"], trims=["cuffs"]),
+                  frames=24, views="side", pose=lambda ph: walk(ph, "A"), timing="distance", metres=1.04,
                   seconds=1.05),
-    # A netrunner: hood up with a lit edge, a respirator, cargo trousers, lit soles.
-    "walkB": dict(build="B", outfit=dict(top="hoodie", bottom="cargo", hair=None, gear=["hood", "mask"],
-                                         trims=["zip", "soles"]),
-                  frames=16, views="side", pose=lambda ph: walk(ph, "B", step=0.48, sway=0.026, drop=5.0, arm=13.0),
+    # A netrunner: hood up, goggles and a respirator, a strap across the chest, bracers, lit soles.
+    "walkB": dict(build="B", outfit=dict(top="hoodie", bottom="cargo", hair=None, shoes="boots", gear=["hood", "mask", "goggles_eyes", "strap_L", "belt", "bracers"], trims=["zip", "soles"]),
+                  frames=24, views="side", pose=lambda ph: walk(ph, "B", step=0.48, sway=0.026, drop=5.0, arm=14.0),
                   timing="distance", metres=0.96, seconds=1.0),
-    # A punk: mohawk, bomber with a lit zip, a chrome right arm.
-    "idleA": dict(build="A", outfit=dict(top="bomber", bottom="jeans", hair="mohawk", gear=["earpiece"],
-                                         trims=["zip"], cyber=["R"]),
-                  frames=8, views="front", pose=lambda ph: idle_look(ph, "A"), timing="loop", seconds=6.0),
-    # A corp worker on her phone: a sharp bob, a cyber eye, lit cuffs.
-    "idleB": dict(build="B", outfit=dict(top="jacket", bottom="trousers", hair="bob", gear=["eye"], trims=["cuffs"],
-                                         props=[dict(kind="phone")]),
-                  frames=8, views="front", pose=lambda ph: idle_phone(ph, "B"), timing="loop", seconds=5.0),
-    # A street cook: headband, a cyber eye, a chrome left arm on the pan.
-    "work": dict(build="A", outfit=dict(top="chef", bottom="trousers", hair="buzz", gear=["headband", "eye"],
-                                        cyber=["L"]),
-                 frames=16, views="front", pose=lambda ph: work_counter(ph, "A"), timing="loop", seconds=3.2),
-    # A runner: lit stripes down the leggings, lit soles, an earpiece.
-    "run": dict(build="B", outfit=dict(top="tank", bottom="leggings", hair="ponytail", gear=["earpiece"],
-                                       trims=["legs", "soles"]),
-                frames=12, views="front", pose=lambda ph: run(ph, "B"), timing="loop", seconds=0.7),
-    # A gamer in headphones, two lit stripes down the back of the hoodie.
-    "arcade": dict(build="A", outfit=dict(top="hoodie", bottom="cargo", hair="short", gear=["headphones"],
-                                          trims=["back"]),
-                   frames=8, views="back", pose=lambda ph: arcade(ph, "A"), timing="loop", seconds=1.6),
+    # The two of them at rest at the end of a walk.
+    "standA": dict(build="A", outfit=dict(top="longcoat", bottom="trousers", hair="undercut", shoes="boots", gear=["collar", "visor", "pauldron_L", "belt", "pouches"], trims=["cuffs"]),
+                   frames=12, views="front", pose=lambda ph: stand_rest(ph, "A", "coat"), timing="loop", seconds=7.0),
+    "standB": dict(build="B", outfit=dict(top="hoodie", bottom="cargo", hair=None, shoes="boots", gear=["hood", "mask", "goggles_eyes", "strap_L", "belt", "bracers"], trims=["zip", "soles"]),
+                   frames=12, views="front", pose=lambda ph: stand_rest(ph, "B", "hoodie"), timing="loop",
+                   seconds=6.5),
+    # A punk: mohawk, goggles on the brow, a bomber with a lit zip, a chrome arm under a pauldron.
+    "idleA": dict(build="A", outfit=dict(top="bomber", bottom="cargo", hair="mohawk", shoes="boots",
+                                         gear=["earpiece", "goggles", "pauldron_R", "belt", "pouches"], trims=["zip"],
+                                         cyber=["R"]),
+                  frames=16, views="front", pose=lambda ph: idle_look(ph, "A"), timing="loop", seconds=7.0),
+    # A corp fixer on her phone: a long coat with a high collar, a sharp bob, a cyber eye.
+    "idleB": dict(build="B", outfit=dict(top="longcoat", bottom="trousers", hair="bob", shoes="boots",
+                                         gear=["collar", "eye", "belt"], trims=["cuffs"], props=[dict(kind="phone")]),
+                  frames=16, views="front", pose=lambda ph: idle_phone(ph, "B"), timing="loop", seconds=6.0),
+    # A big street cook: headband, a cyber eye, a mechanical fist on the pan.
+    "work": dict(build="C", outfit=dict(top="chef", bottom="trousers", hair="buzz", shoes="boots", gear=["headband", "eye", "gauntlet_L", "belt"]),
+                 frames=24, views="front", pose=lambda ph: work_counter(ph, "C"), timing="loop", seconds=5.2),
+    # The cook stepping along the counter (toward their left; mirrored for the other way).
+    "workStep": dict(build="C", outfit=dict(top="chef", bottom="trousers", hair="buzz", shoes="boots", gear=["headband", "eye", "gauntlet_L", "belt"]),
+                     frames=12, views="front", pose=lambda ph: work_step(ph, "C"), timing="distance", metres=0.62,
+                     seconds=0.9),
+    # A runner: lit stripes down the leggings, lit soles, bracers and knee pads.
+    "run": dict(build="B", outfit=dict(top="tank", bottom="leggings", hair="ponytail",
+                                       gear=["earpiece", "bracers", "kneepads"], trims=["legs", "soles"]),
+                frames=16, views="front", pose=lambda ph: run(ph, "B"), timing="loop", seconds=0.7),
+    # A gamer: spiky hair, headphones, lit stripes down the back of the hoodie.
+    "arcade": dict(build="A", outfit=dict(top="hoodie", bottom="cargo", hair="spiky", shoes="boots",
+                                          gear=["headphones", "belt", "pouches"], trims=["back"]),
+                   frames=16, views="back", pose=lambda ph: arcade(ph, "A"), timing="loop", seconds=1.6),
     # A shaven monk with glowing implants, breathing.
-    "lotus": dict(build="B", outfit=dict(top="tee", bottom="leggings", hair="buzz", gear=["implants"]), frames=8,
-                  views="front", pose=lambda lv: lotus(lv, "B"), timing="level"),
-    # A courier on a stool: undercut, a bomber with lit stripes down the back.
-    "sitEat": dict(build="A", outfit=dict(top="bomber", bottom="cargo", hair="undercut", gear=["earpiece"],
-                                          trims=["back"], props=[dict(kind="stool", seat=STOOL)]),
-                   frames=16, views="back", pose=lambda ph: sit_eat(ph, "A"), timing="loop", seconds=4.0),
-    # At the bar: a long coat, collar up, a dyed bob.
-    "lean": dict(build="B", outfit=dict(top="coat", bottom="trousers", hair="bob", gear=["collar"], trims=["cuffs"]),
-                 frames=12, views="back", pose=lambda ph: lean_bar(ph, "B"), timing="loop", seconds=5.0),
-    # A cyborg lifting: a chrome arm, a cyber eye, chrome dumbbells.
-    "lift": dict(build="A", outfit=dict(top="tank", bottom="shorts", hair="buzz", gear=["eye"], cyber=["R"],
+    "lotus": dict(build="B", outfit=dict(top="tee", bottom="leggings", hair="buzz", gear=["implants", "bracers"]),
+                  frames=12, views="front", pose=lambda lv: lotus(lv, "B"), timing="level"),
+    # A courier on a stool: goggles on the brow, crossed straps over a bomber with lit back stripes.
+    "sitEat": dict(build="A", outfit=dict(top="bomber", bottom="cargo", hair="undercut", shoes="boots",
+                                          gear=["earpiece", "goggles", "strap_L", "strap_R"], trims=["back"],
+                                          props=[dict(kind="stool", seat=STOOL)]),
+                   frames=24, views="back", pose=lambda ph: sit_eat(ph, "A"), timing="loop", seconds=5.0),
+    # At the bar: a long coat, collar up, a pauldron, a dyed bob.
+    "lean": dict(build="B", outfit=dict(top="longcoat", bottom="trousers", hair="bob", shoes="boots",
+                                        gear=["collar", "pauldron_L", "belt"], trims=["cuffs"]),
+                 frames=16, views="back", pose=lambda ph: lean_bar(ph, "B"), timing="loop", seconds=6.0),
+    # A heavy cyborg lifting: a mechanical fist under a pauldron, a strap, a cyber eye.
+    "lift": dict(build="C", outfit=dict(top="tank", bottom="cargo", hair="buzz", shoes="boots",
+                                        gear=["eye", "gauntlet_R", "pauldron_R", "strap_L", "belt"],
                                         props=[dict(kind="dumbbell")]),
-                 frames=12, views="front", pose=lambda ph: curls(ph, "A"), timing="loop", seconds=3.0),
-    # A scavenger at the shelves: a pack with a lit strip, a hoodie, a ponytail.
-    "browse": dict(build="B", outfit=dict(top="hoodie", bottom="cargo", hair="ponytail", gear=["backpack"]),
-                   frames=12, views="back", pose=lambda ph: browse(ph, "B"), timing="loop", seconds=6.0),
+                 frames=16, views="front", pose=lambda ph: curls(ph, "C"), timing="loop", seconds=3.2),
+    # A scavenger at the shelves: a pack of glowing canisters, goggles, bracers, a ponytail.
+    "browse": dict(build="B", outfit=dict(top="hoodie", bottom="cargo", hair="ponytail", shoes="boots",
+                                          gear=["backpack", "canisters", "goggles", "bracers", "belt"]),
+                   frames=16, views="back", pose=lambda ph: browse(ph, "B"), timing="loop", seconds=7.0),
 }
 
 

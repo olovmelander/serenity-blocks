@@ -23,6 +23,7 @@ import {
     createOutCard, createStatusCard, showOutCard, showStatusCard,
 } from '../../ui/keystone/out-card.js';
 import { OnlineChat } from '../../ui/online-chat.js';
+import { menuCoversGame } from '../../ui/sheet-input.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { OnlineVersusHud, VICTORY_BEAT_MS } from '../../ui/online-versus-hud.js';
@@ -2338,8 +2339,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         this.scoreboardToggleHandler = (event) => {
             if (event.key !== 'Tab') return;
-            if (this._isTextInputFocused()) return;
-
+            if (event.repeat || !this.isInMatch || this._isTextInputFocused() || menuCoversGame()) return;
             event.preventDefault();
             this.scoreboardOverlay?.toggle();
         };

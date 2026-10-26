@@ -228,9 +228,10 @@ unlabelled icon tiles on the right edge; a floating "Hale sessions" pill.
 - **Dock** with labelled buttons (Serenity Hub, Records, Replays, Settings) that proxy to
   the existing global controls, so every existing handler keeps working; in game those
   controls live in the play rail (§5.5). Desktop builds end the
-  dock with **Quit** (`desktop:quit` over the preload bridge); it asks for a second press
-  ("Press again to quit", resets after 4 s or when focus leaves), so a stray controller
-  press never closes the game.
+  dock with **Quit** (`desktop:quit` over the preload bridge), set apart from the places
+  by a hairline (a wider gap between the tiles of the narrow layout); it asks for a second
+  press ("Press again to quit", resets after 4 s or when focus leaves), so a stray
+  controller press never closes the game. The pause sheet has the same Quit (§9).
 - **Hints** footer (↑↓ Choose · Enter Play · Esc Settings; controller glyphs when a pad is
   in use). Arrow keys walk the list, → reaches the stage button, Home/End jump, and Enter
   with nothing focused plays the mode the stage is showing.
@@ -414,7 +415,8 @@ on close.
   Reset in the overview.
 - **Pause:** pausing opens Settings as a "Paused" sheet — a strip with the mode
   ("Single Player waits where you left it"), Resume as the primary (focused first),
-  Serenity Hub and Main menu. From the main menu the strip is hidden.
+  Serenity Hub and Main menu, and in desktop builds **Quit game** at the far end of the
+  row (§9). From the main menu the strip is hidden.
 - **Records:** "Your best", one tab per mode that keeps records (Single Player · Infinity ·
   Odyssey; `src/ui/records/records-view.js`). Each tab leads with four fact tiles for what
   its mode is about, then its list: Single Player's top scores (level · lines, Watch when a
@@ -1213,3 +1215,50 @@ Seen and left as they are, on purpose:
   Swedish system); one surface in English formatting would stand out.
 - Stillfall's coral in the list and on its stage is its in-game hue (the well and the
   panel's edge).
+
+## 9. Quitting the game (2026-10-26)
+
+Asked for: "we need to add a button for exiting the game somewhere! Now do an audit where
+that button should be and look like and implement it!"
+
+**Audit** (desktop build, real game in Electron with its own preload, 1707 x 1067 at 150 %,
+the owner's screen):
+
+| Where a player looks | Before | Verdict |
+|---|---|---|
+| Main menu | Quit existed (since `83273b8e`) as the last of the dock's five dim text buttons, bottom left, with the same weight as Records or Settings: it read as one more place to go | Right place (last in the menu's secondary row, as Quit/Exit is in most PC games' menus), too easy to miss |
+| Pause (Esc in a game) | Resume, Serenity Hub, Main menu: no way out of the game. Quitting mid-run meant Main menu, then finding the dock | The missing one. Esc, then Quit is where PC players look first, and in fullscreen there is no window chrome to fall back on |
+| Esc on the main menu | Opens Settings | Left as it is (the hints say so; a quit prompt there would take Settings' key) |
+| Game over, results, Odyssey's map | Main menu | Left as they are: those screens lead back to the menu, which has Quit |
+| Web build | Nothing | Correct: a browser tab cannot close itself |
+
+**Implemented:**
+
+- `src/ui/desktop-quit.js`: one two-press Quit for both surfaces (`canQuitDesktop`,
+  `requestDesktopQuit`, `armTwoPressQuit`). The first press arms it ("Press again to quit",
+  warning colour), the second quits; it disarms after 4 s, when focus leaves, when the
+  sheet closes, and when its wiring is torn down (the settings sheet is wired again on
+  re-init, and two sets of listeners on one button would arm and quit on one press). The
+  quit itself is the existing `desktop:quit`, so the shell still runs the game's cleanup
+  (mode end, Odyssey save, the run's autosave, settings, Steam Cloud) before closing.
+- **Pause sheet:** `#settings-quit-btn`, "Quit game" with a power glyph, hidden in the
+  markup and shown only where the desktop bridge exists. It closes the strip's row at the
+  far end, apart from the ways back into the game, in muted text until hovered, focused or
+  armed. The actions take a row of their own under "Paused" (the strip had no room for a
+  fourth button beside the state); mid-orb in Odyssey the row wraps and Quit stays at the
+  end; under 700 px it becomes a full-width bar under the others.
+- **Main menu:** the dock's Quit is set apart from the places by a hairline (in the narrow
+  layout's tiles, a wider gap). The footer stays one line at every width from 902 to
+  1600 px (58 px tall, measured).
+- The power glyph joined the icon module (`power` in `cosmic-icons.js`, `sb-ico-power` in
+  the settings sprite) and is drawn at the family's 1.8 stroke; it was a one-off 1.6-stroke
+  SVG in `main-menu.js`. No keystone tile: it is an action, not a place.
+
+**Checked** in the real game (Electron 44, the app's preload, WebGPU on): the pause strip
+idle and armed, with Odyssey's two orb buttons shown as mid-orb (set by script, not a
+played orb), at 1280 x 720 and 660 px wide; the main menu wide and narrow; mouse (two
+clicks → one `desktop:quit`), keyboard (focus, Enter, Enter → one `desktop:quit`),
+close-and-reopen disarms; with no preload (the web build) neither Quit appears. Not driven
+with a real controller (they are plain focusable buttons on the sheet's spatial navigation,
+as Main menu is). Tests: `tests/unit/desktop-quit.test.js`, the sprite check in
+`keystone-glyphs.test.js`.

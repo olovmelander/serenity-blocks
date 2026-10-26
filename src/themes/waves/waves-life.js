@@ -110,6 +110,65 @@ export function buildDolphin(rings = 26, sides = 12) {
 
 const STRIDE = 12;
 
+/** How far from the middle of the body the nose and the flukes reach (half body lengths). */
+export const NOSE_REACH = 1.0;
+export const FLUKE_REACH = 1.1;
+
+/**
+ * Where a dolphin is `t` seconds into its leap, which way it heads and how fast (the arc
+ * WavesPod.update flies, on the CPU): x, y, z; the unit heading fx, fy, fz; vx, vy, vz; speed.
+ */
+export function dolphinPose(arc, t, out = {}) {
+    const vy = arc.vy - GRAVITY * t;
+    const speed = Math.hypot(arc.vx, vy, arc.vz) || 1;
+    out.x = arc.x + arc.vx * t;
+    out.y = arc.y + arc.vy * t - 0.5 * GRAVITY * t * t;
+    out.z = arc.z + arc.vz * t;
+    out.vx = arc.vx;
+    out.vy = vy;
+    out.vz = arc.vz;
+    out.speed = speed;
+    out.fx = arc.vx / speed;
+    out.fy = vy / speed;
+    out.fz = arc.vz / speed;
+    return out;
+}
+
+/** Where `f(t)` (falling through zero between lo and hi) crosses it. */
+function crossing(f, lo, hi) {
+    let a = lo;
+    let b = hi;
+    for (let i = 0; i < 40; i += 1) {
+        const m = (a + b) / 2;
+        if (f(m) > 0) a = m;
+        else b = m;
+    }
+    return (a + b) / 2;
+}
+
+/**
+ * Seconds into a leap when the flukes clear the face it left (`clearAt`), when the nose touches
+ * the water on the way down (`noseAt`) and when the flukes go under after it (`tailAt`). The
+ * middle of the body crosses the surface at `flight`.
+ */
+export function surfaceTimes(arc, out = {}) {
+    const pose = {};
+    const tip = (t, reach) => {
+        dolphinPose(arc, t, pose);
+        return pose.y + pose.fy * arc.size * reach;
+    };
+    // The flukes are out of the hole once the middle is a body's reach along its path from it.
+    const reach = FLUKE_REACH * arc.size;
+    out.clearAt = crossing((t) => {
+        dolphinPose(arc, t, pose);
+        return reach - Math.hypot(pose.x - arc.x, pose.y - arc.y, pose.z - arc.z);
+    }, 0, arc.flight / 2);
+    const top = Math.min(arc.flight, Math.max(0, arc.vy / GRAVITY));
+    out.noseAt = crossing((t) => tip(t, NOSE_REACH), top, arc.flight);
+    out.tailAt = crossing((t) => tip(t, -FLUKE_REACH), arc.flight, arc.flight + 3);
+    return out;
+}
+
 /** How many dolphins a chain of `combo` clears sends over the water at once. */
 export function leapersFor(combo) {
     if (combo >= 9) return 4;
@@ -150,6 +209,12 @@ export class WavesPod {
             flight: 1,
             size: 1,
             phase: 0,
+            row: 0,
+            open: 0,
+            entered: false,
+            clearAt: 0,
+            noseAt: 1,
+            tailAt: 1,
         }));
         this.cursor = 0;
         this.data = new Float32Array(this.count * STRIDE);
@@ -254,7 +319,8 @@ export class WavesPod {
         this.cursor = (index + 1) % this.count;
         const ahead = d ?? 9 + rand() * 9;
         // It leaves the lower face, heading out of the wave and a little down the line.
-        const from = wavePoint(0.16 + rand() * 0.08, ahead, open);
+        const row = 0.16 + rand() * 0.08;
+        const from = wavePoint(row, ahead, open);
         const rise = height ?? 1.5 + rand() * 1.3;
         let vy = Math.sqrt(2 * GRAVITY * rise);
         let flight = (2 * vy) / GRAVITY;
@@ -278,6 +344,7 @@ export class WavesPod {
         Object.assign(arc, {
             active: true,
             started: false,
+            entered: false,
             landed: false,
             t0: time,
             x: from.x,
@@ -289,7 +356,10 @@ export class WavesPod {
             flight,
             size: (DOLPHIN_LENGTH / 2) * (0.86 + rand() * 0.28),
             phase: rand() * 6.28,
+            row,
+            open,
         });
+        surfaceTimes(arc, arc);
         return arc;
     }
 
@@ -323,8 +393,10 @@ export class WavesPod {
     }
 
     /**
-     * Fly the arcs. `onSplash(x, y, z, strength)` is called once where a dolphin breaks the
-     * surface and once where it goes back in.
+     * Fly the arcs. `onSplash(x, y, z, strength, arc)` is called once where a dolphin breaks the
+     * surface and once where it goes back in, as its nose touches the water (`arc.entered` tells
+     * which); the arc is the whole leap, so the splash can be choreographed from it
+     * (waves-splash.js).
      */
     update(time, onSplash) {
         const { data } = this;
@@ -341,17 +413,19 @@ export class WavesPod {
                 data[at + 3] = 0;
                 continue;
             }
-            // A body length of run-up under the surface before it breaks, and after it is in.
-            const lead = 0.9;
+            // A body length of run-up under the surface before it breaks, and after it is in (at
+            // least until its flukes are under: a long, slow dolphin is never cut off in the air).
+            const lead = Math.max(0.9, arc.tailAt - arc.flight + 0.25);
             // The splashes first: a long frame may carry an arc past its end in one step.
             if (!arc.started && t >= 0) {
                 arc.started = true;
-                onSplash?.(arc.x, arc.y, arc.z, 0.8);
+                onSplash?.(arc.x, arc.y, arc.z, 0.8, arc);
             }
-            if (!arc.landed && t >= arc.flight) {
-                arc.landed = true;
-                onSplash?.(arc.x + arc.vx * arc.flight, 0, arc.z + arc.vz * arc.flight, 1);
+            if (!arc.entered && t >= arc.noseAt) {
+                arc.entered = true;
+                onSplash?.(arc.x + arc.vx * arc.flight, 0, arc.z + arc.vz * arc.flight, 1, arc);
             }
+            if (!arc.landed && t >= arc.flight) arc.landed = true;
             if (t > arc.flight + lead) {
                 arc.active = false;
                 data[at + 3] = 0;

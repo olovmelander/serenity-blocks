@@ -18,7 +18,9 @@ import {
     formatMilliseconds,
     formatNumber,
 } from '../components/steam-leaderboard-panel.js';
-import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
+import {
+    appendKeyHint, createKeystoneSheet, el, isSettingsOverSheet,
+} from './keystone-sheet.js';
 import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
@@ -221,6 +223,8 @@ export function createResultsModal({
             modal.dispose();
             return;
         }
+        // Settings opened over the results owns the keys: its Escape closes Settings only.
+        if (isSettingsOverSheet()) return;
         if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
             // A held finishing key cannot dismiss results or activate their newly focused control.
             if (e.repeat) {

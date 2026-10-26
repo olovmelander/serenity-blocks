@@ -23,16 +23,25 @@ PREFIX = "SNDP_"
 VOXEL = 0.0085
 
 # Sprite cells: metres per cell and pixels per cell. A person stands on the cell's bottom edge,
-# centred; the cell is 1 m wide and 2 m tall at 64 px a metre.
+# centred; the cell is 1 m wide and 2 m tall at 48 px a metre (cel shading draws its bands per
+# screen pixel from the normals, so it needs less texture than smooth light did).
 CELL_METRES = (1.0, 2.0)
-CELL_PIXELS = (64, 128)
+CELL_PIXELS = (48, 96)
+
+# Ink: lines drawn into the sprites, as a comic inks a character. Distances in metres, at the
+# supersampled render.
+INK_DEPTH_STEP = 0.035    # a neighbour this much farther: the near side is a contour
+INK_CREASE_COS = 0.57     # normals turning more than ~55 degrees between neighbours: a crease
+INK_RING = 3              # silhouette outline, supersampled pixels outside the figure
 
 # The colours a preview paints each class (never shipped: the shader colours each person).
 PREVIEW = {
     "A": dict(skin=(0.62, 0.42, 0.31), hair=(0.03, 0.022, 0.018), top=(0.05, 0.06, 0.09), bottom=(0.1, 0.1, 0.12),
               gear=(0.03, 0.03, 0.035), chrome=(0.8, 0.82, 0.86), glow=(0.1, 0.9, 1.0)),
     "B": dict(skin=(0.8, 0.58, 0.46), hair=(0.9, 0.2, 0.5), top=(0.35, 0.05, 0.12), bottom=(0.04, 0.04, 0.05),
-              gear=(0.05, 0.05, 0.06), chrome=(0.8, 0.82, 0.86), glow=(1.0, 0.2, 0.75)),
+              gear=(0.12, 0.06, 0.03), chrome=(0.85, 0.6, 0.25), glow=(1.0, 0.2, 0.75)),
+    "C": dict(skin=(0.45, 0.28, 0.19), hair=(0.02, 0.016, 0.014), top=(0.6, 0.6, 0.58), bottom=(0.1, 0.11, 0.07),
+              gear=(0.1, 0.055, 0.03), chrome=(0.55, 0.57, 0.6), glow=(0.2, 1.0, 0.4)),
 }
 
 
@@ -225,6 +234,23 @@ class Stage:
         links.new(emit.outputs["Emission"], out.inputs["Surface"])
         combine = nodes.new("ShaderNodeCombineXYZ")
         links.new(combine.outputs["Vector"], emit.inputs["Color"])
+        if kind == "dep":
+            # Depth from the camera (30 m away), as 0..1 over the metre the person stands in.
+            geo = nodes.new("ShaderNodeNewGeometry")
+            xf = nodes.new("ShaderNodeVectorTransform")
+            xf.vector_type = "POINT"
+            xf.convert_from = "WORLD"
+            xf.convert_to = "CAMERA"
+            links.new(geo.outputs["Position"], xf.inputs["Vector"])
+            sep = nodes.new("ShaderNodeSeparateXYZ")
+            links.new(xf.outputs["Vector"], sep.inputs["Vector"])
+            m = nodes.new("ShaderNodeMath")
+            m.operation = "MULTIPLY_ADD"
+            m.inputs[1].default_value = -1.0
+            m.inputs[2].default_value = -29.5
+            links.new(sep.outputs["Z"], m.inputs[0])
+            links.new(m.outputs["Value"], combine.inputs["X"])
+            return mat
         if kind == "nao":
             geo = nodes.new("ShaderNodeNewGeometry")
             xf = nodes.new("ShaderNodeVectorTransform")
@@ -342,7 +368,7 @@ def render_clip(stage, meshes, views, scratch, name, samples=12):
     camera = stage.camera((0.0, -30.0, height / 2.0), (0.0, 0.0, height / 2.0), ortho=max(width, height))
     size = (cols * pw * SUPERSAMPLE, rows * ph * SUPERSAMPLE)
     passes = {}
-    for kind in ("nao", "cls1", "cls2"):
+    for kind in ("nao", "cls1", "cls2", "dep"):
         mat = stage.data_material(kind)
         for data in datas:
             data.materials.clear()
@@ -358,7 +384,60 @@ def render_clip(stage, meshes, views, scratch, name, samples=12):
     alpha = passes["nao"][:, :, 3]
     stack = np.concatenate([passes["nao"][:, :, :3], alpha[:, :, None], passes["cls1"][:, :, :3],
                             passes["cls2"][:, :, :3]], axis=2)
+    stack = ink(stack, passes["dep"][:, :, 0])
     return downsample(stack, SUPERSAMPLE)
+
+
+def _shift(a, dy, dx, fill):
+    out = np.full_like(a, fill)
+    h, w = a.shape[:2]
+    ys, yd = (slice(0, h - dy), slice(dy, h)) if dy >= 0 else (slice(-dy, h), slice(0, h + dy))
+    xs, xd = (slice(0, w - dx), slice(dx, w)) if dx >= 0 else (slice(-dx, w), slice(0, w + dx))
+    out[yd, xd] = a[ys, xs]
+    return out
+
+
+def ink(stack, depth):
+    """Draw the ink into a supersampled stack: an outline ring just outside each silhouette, and
+    inside it the contours where a nearer part passes in front of a farther one, sharp creases,
+    and the borders between garments. Inked texels carry 0 in the occlusion channel (open texels
+    0.55..1, see `encode`); the ring widens the coverage."""
+    cov = stack[:, :, 3]
+    covered = cov > 0.5
+    n = stack[:, :, 0:2] * 2.0 - 1.0
+    nz = np.sqrt(np.clip(1.0 - (n * n).sum(axis=2), 0.0, 1.0))
+    normal = np.concatenate([n, nz[:, :, None]], axis=2)
+    weights = stack[:, :, 4:10]
+    gear = np.clip(1.0 - weights.sum(axis=2), 0.0, 1.0)
+    classes = np.argmax(np.concatenate([weights, gear[:, :, None]], axis=2), axis=2)
+    glow = classes == 5
+    line = np.zeros(covered.shape, dtype=bool)
+    for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        q_cov = _shift(covered, dy, dx, False)
+        both = covered & q_cov
+        q_depth = _shift(depth, dy, dx, 0.0)
+        line |= both & (q_depth - depth > INK_DEPTH_STEP)
+        q_n = _shift(normal, dy, dx, 0.0)
+        crease = (normal * q_n).sum(axis=2) < INK_CREASE_COS
+        line |= both & crease & ~glow
+        q_cls = _shift(classes, dy, dx, -1)
+        line |= both & (q_cls != classes) & ~glow & (q_cls != 5)
+    # Thicken the inner lines to a pixel of the final sheet.
+    line = line | (_shift(line, 0, 1, False) & covered) | (_shift(line, 1, 0, False) & covered)
+    grown = covered.copy()
+    for _ in range(INK_RING):
+        grown = grown | _shift(grown, 0, 1, False) | _shift(grown, 0, -1, False) | _shift(grown, 1, 0, False) \
+            | _shift(grown, -1, 0, False)
+    ring = grown & ~covered
+    data = dilate(stack[:, :, [0, 1, 2, 4, 5, 6, 7, 8, 9]], cov, iterations=INK_RING + 2)
+    out = stack.copy()
+    out[:, :, [0, 1, 2, 4, 5, 6, 7, 8, 9]] = np.where(ring[:, :, None], data, stack[:, :, [0, 1, 2, 4, 5, 6, 7, 8, 9]])
+    out[:, :, 8] = np.where(ring, 0.0, out[:, :, 8])   # an outline is never chrome
+    out[:, :, 9] = np.where(ring, 0.0, out[:, :, 9])   # nor lit
+    out[:, :, 3] = np.where(ring, 1.0, cov)
+    inked = line | ring
+    out[:, :, 2] = np.where(inked, 0.0, 0.55 + 0.45 * np.clip(stack[:, :, 2], 0.0, 1.0))
+    return out
 
 
 def downsample(stack, factor):
@@ -402,7 +481,8 @@ def quantise(values, bits):
 
 def encode(cells_stack, mask_factor=2):
     """The two sheets from the packed stack (H, W, 10):
-    sheet  RGBA = normal x, normal y, coverage, 0.5 + 0.5 * occlusion
+    sheet  RGBA = normal x, normal y, coverage, 0.5 + 0.5 * shade, where shade is 0 on ink and
+           0.55 + 0.45 * occlusion elsewhere
     masks  at 1/mask_factor resolution, twice as wide: the left half RGBA = skin, hair, top,
            1 - 0.5 * bottom; the right half RGBA = chrome, glow, 0, 1
     Alpha never drops below 0.5, so no texel is ever transparent: encoders and browsers keep
@@ -410,12 +490,12 @@ def encode(cells_stack, mask_factor=2):
     cov = cells_stack[:, :, 3]
     nrm = dilate(cells_stack[:, :, [0, 1, 2]], cov)
     sheet = np.zeros(cells_stack.shape[:2] + (4,), dtype=np.float32)
-    # Normals to 6 bits and occlusion to 5: relit at sprite size nothing shows, and the lossless
-    # sheet is a third smaller.
-    sheet[:, :, 0] = quantise(nrm[:, :, 0], 6)
-    sheet[:, :, 1] = quantise(nrm[:, :, 1], 6)
+    # Normals to 5 bits: the cel bands only need to know which side of a terminator a texel is on,
+    # and the lossless sheet is a sixth smaller. The shade (ink and occlusion) keeps 6.
+    sheet[:, :, 0] = quantise(nrm[:, :, 0], 5)
+    sheet[:, :, 1] = quantise(nrm[:, :, 1], 5)
     sheet[:, :, 2] = cov
-    sheet[:, :, 3] = 0.5 + 0.5 * quantise(np.clip(nrm[:, :, 2], 0.0, 1.0), 5)
+    sheet[:, :, 3] = 0.5 + 0.5 * quantise(np.clip(nrm[:, :, 2], 0.0, 1.0), 6)
     weights = cells_stack[:, :, 4:10]
     half = downsample(np.concatenate([weights[:, :, :3], cov[:, :, None], weights[:, :, 3:]], axis=2), mask_factor)
     h, w = half.shape[:2]

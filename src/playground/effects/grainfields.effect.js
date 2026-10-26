@@ -25,6 +25,8 @@
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
+ *   cam=x,y,z,tx,ty,tz,fov   a free camera: from one world point, look at another (inside the stand,
+ *                            a plant against the sky)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|over   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>)
@@ -41,6 +43,10 @@
  *                            left (90 its left side, 180 behind it), h metres over its feet
  *   herdLook=i,fov           from the eye, keep horse i in the middle of a lens this wide
  *   herdShadow=0             the herd casts no shadows on the barley (an A/B)
+ *   gooseLook=k:i,fov        from the eye, keep goose i of skein k (out: the flight out a
+ *                            level-up sends; a, b: the crossings) in the middle of a lens this wide
+ *   gooseCam=k:i,d,az,h,fov  fly beside goose i of skein k: d metres off, az degrees round from
+ *                            its heading toward its left (90 its left side, 180 behind), h over it
  */
 import * as THREE from 'three/webgpu';
 import { GrainfieldsWorld } from '../../themes/grainfields/grainfields-world.js';
@@ -153,11 +159,24 @@ export function create({
     let demoPiece = 0;
     const airGain = num(params, 'airGain', 1);
     const lookAt = (params.get('look') || '').split(',').map(Number);
+    const freeCam = (params.get('cam') || '').split(',').map(Number);
+    const free = freeCam.length >= 6 && freeCam.slice(0, 6).every(Number.isFinite);
     const inspect = lookAt.length >= 3 && lookAt.slice(0, 3).every(Number.isFinite);
     const herdCamParts = (params.get('herdCam') || '').split(',').filter(Boolean).map(Number);
     const herdCam = herdCamParts.length && herdCamParts.every(Number.isFinite) ? herdCamParts : null;
     const herdLookParts = (params.get('herdLook') || '').split(',').filter(Boolean).map(Number);
     const herdLook = herdLookParts.length && herdLookParts.every(Number.isFinite) ? herdLookParts : null;
+    /** A goose lens's target: 'k:i,a,b,...' as { key, index, args }. */
+    const gooseParam = (raw) => {
+        if (!raw) return null;
+        const [who, ...rest] = raw.split(',');
+        const [key, index] = who.split(':');
+        const args = rest.map(Number);
+        if (!['out', 'a', 'b'].includes(key) || !args.every(Number.isFinite)) return null;
+        return { key, index: Math.max(0, Math.round(Number(index) || 0)), args };
+    };
+    const gooseLook = gooseParam(params.get('gooseLook'));
+    const gooseCam = gooseParam(params.get('gooseCam'));
     const size = new THREE.Vector2(1, 1);
     let lastSeek = null;
     let simTime = 0;
@@ -181,6 +200,13 @@ export function create({
     const frame = (time, delta) => {
         if (!world) return;
         world.updateCamera(camera, sim(time, delta));
+        if (free) {
+            camera.position.set(freeCam[0], freeCam[1], freeCam[2]);
+            camera.fov = Number.isFinite(freeCam[6]) ? freeCam[6] : 30;
+            camera.lookAt(freeCam[3], freeCam[4], freeCam[5]);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
         if (inspect) {
             camera.fov = Number.isFinite(lookAt[3]) ? lookAt[3] : 20;
             camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
@@ -206,6 +232,27 @@ export function create({
             camera.position.set(place.x + Math.sin(a) * distance, ground + height, place.z + Math.cos(a) * distance);
             camera.fov = fov;
             camera.lookAt(place.x, ground + 0.9 * place.scale, place.z);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        const goose = gooseLook || gooseCam;
+        const found = goose && world.parts.geese?.locate(goose.key, goose.index, time);
+        if (found && gooseLook) {
+            // From the eye, a long lens kept on one goose.
+            const [x, y, z] = found.position;
+            camera.fov = gooseLook.args[0] ?? 6;
+            camera.lookAt(x, y, z);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        } else if (found) {
+            // Beside one goose, looking at it.
+            const [x, y, z] = found.position;
+            const [distance = 3, az = 90, height = 0.4, fov = 40] = gooseCam.args;
+            const heading = Math.atan2(found.forward[0], -found.forward[2]);
+            const a = heading - az * (Math.PI / 180);
+            camera.position.set(x + Math.sin(a) * distance, y + height, z - Math.cos(a) * distance);
+            camera.fov = fov;
+            camera.lookAt(x, y, z);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
