@@ -38,6 +38,11 @@
  * and again, and the storm breaks (strokes onto the plain on their own). A chain's end and a
  * perfect clear spend the charge in a discharge (the storm goes quiet), then the mountain settles.
  *
+ * The ridge feels it (pyrestorm-shake.js): a hard drop thuds through the ground, every stroke's
+ * thunder cracks a beat after its flash (louder the nearer it struck), the blast's air wave knocks
+ * the view, a T-spin's ring and a perfect clear's sheet roll it, and fresh lava makes the mountain
+ * groan. Small turns of the view, added up like the light, and none under reduced motion.
+ *
  * Lifecycle: `await PyrestormWorld.prepare(quality, { signal })` bakes the land and the lava in
  * slices; `new PyrestormWorld({ ..., prepared }).build()` makes the scene objects; each frame
  * `updateCamera` → `update` → the post renders.
@@ -74,6 +79,7 @@ import { cardUnion, fallbackLayout } from './pyrestorm-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { RidgeShake } from './pyrestorm-shake.js';
 
 export const PYRESTORM_PARTS = Object.freeze(['land', 'sky', 'anvil', 'ash', 'bolts', 'jets', 'bombs', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
@@ -91,6 +97,11 @@ const PULSE_SPEED = 2.6;
 const PULSE_FEED = 5;
 /** Timed beats in flight (splashes, staggered bolts); hard-drop spam stays well inside it. */
 const QUEUE = 256;
+/** From the eye to the crater (m): how far the blast's air wave travels to the ridge. */
+const CRATER_DISTANCE = Math.hypot(CRATER.x - EYE.x, CRATER.y - EYE.y, CRATER.z - EYE.z);
+/** The fever's own strokes and pours shake the ridge this much of what play's would. */
+const FEVER_THUNDER = 0.5;
+const FEVER_GROAN = 0.5;
 
 /** Bakes that do not depend on the tier: made once per page, shared by every rebuild. */
 let sharedBakes = null;
@@ -275,6 +286,12 @@ export class PyrestormWorld {
         this.rings = new Swell({ release: 6, ceiling: 3, knee: 2 });
         /** The mountain's unrest: how hot play runs, sampled once a frame on the world's clock. */
         this.unrest = new GameplaySurge();
+        /**
+         * The ridge shakes (pyrestorm-shake.js): a hard drop's thud, the thunder of every stroke,
+         * the blast's air wave, the lava's groan, felt as small turns of the view.
+         */
+        this.ridge = new RidgeShake();
+        this._shake = { x: 0, y: 0, roll: 0 };
         this.play = {
             punch: 0, level: 0, fever: 0, stage: 0,
         };
@@ -304,6 +321,7 @@ export class PyrestormWorld {
         this.flare.reset();
         this.rings.reset();
         this.unrest.reset();
+        this.ridge.reset();
         this.play.punch = 0;
         this.play.level = 0;
         this.play.fever = 0;
@@ -402,7 +420,11 @@ export class PyrestormWorld {
 
     bindCamera(camera) { this._camera = camera; }
 
-    setReducedMotion(value) { this.reducedMotion = value === true; }
+    setReducedMotion(value) {
+        this.reducedMotion = value === true;
+        // Reduced motion: the ridge holds still (nothing is recorded, so nothing resumes after).
+        this.ridge.setEnabled(!this.reducedMotion);
+    }
 
     setCaptureOverrides(overrides) { Object.assign(this.overrides, overrides); }
 
@@ -450,8 +472,23 @@ export class PyrestormWorld {
         // only (a look out from the ridge at the volcano): off under reduced motion. Events aim
         // through the camera before update() runs, so its matrix is refreshed here.
         applyCameraBreath(camera, this.time, { scale: this.reducedMotion ? 0 : 1 });
+        this.applyShake(camera);
         camera.updateMatrixWorld();
         this._camera = camera;
+    }
+
+    /**
+     * The ridge's shake on top of the pose and the breath: the view turns (and rolls a little) by
+     * screen fractions, so it is the same size at every aspect and lens. pose() set the rotation
+     * afresh this frame, so it never winds up.
+     */
+    applyShake(camera) {
+        const s = this.ridge.sample(this.time, this._shake);
+        if (s.x === 0 && s.y === 0 && s.roll === 0) return;
+        const span = 2 * Math.tan((Number.isFinite(camera.fov) && camera.fov > 0 ? camera.fov : 44) * DEG * 0.5);
+        camera.rotateY(-Math.atan(s.x * span));
+        camera.rotateX(Math.atan(s.y * span));
+        camera.rotateZ(s.roll);
     }
 
     // ── Where things happen ──────────────────────────────────────────────────────────
@@ -557,6 +594,8 @@ export class PyrestormWorld {
         if (hard) {
             this.quake.hit(0.65 + drop * 0.35, this.time);
             this.kick.hit(0.13, this.time);
+            // The slam thuds through the ground under the eye.
+            this.ridge.hardDrop(drop, this.time);
         }
         // A T-spin that cleared nothing still blows a small ring.
         if (context.tspin) this.onTSpin({ lines: 0 });
@@ -771,7 +810,7 @@ export class PyrestormWorld {
      * A bolt out of the column (or the anvil's head) to the ground: `row` 0 strikes high on the
      * cone, 19 out on the plain; a strike is placed where it shows (outside the card and HUD).
      */
-    strikeFrom(time, kind, row = 12, power = 1, aim = 0) {
+    strikeFrom(time, kind, row = 12, power = 1, aim = 0, thunder = 1) {
         const r = this.random;
         const A = [0, 0, 0];
         const B = [0, 0, 0];
@@ -802,6 +841,12 @@ export class PyrestormWorld {
         this.counts.bolts++;
         if (kind !== BOLT.spider) {
             this.addHit(B, time + TIMING.leader, [0.9, 0.75, 0.9], 1, 3);
+            // Its thunder reaches the ridge once the sound has crossed the plain: louder the
+            // nearer it struck (`thunder` scales it: the fever's own strokes are softer).
+            const distance = Math.hypot(B[0] - EYE.x, B[1] - EYE.y, B[2] - EYE.z);
+            this.ridge.thunder(distance, power, time + TIMING.leader, {
+                discharge: kind === BOLT.discharge, share: thunder,
+            });
             // Sparks where it strikes.
             for (let i = 0; i < 10; i++) {
                 const a = r() * TAU;
@@ -915,6 +960,8 @@ export class PyrestormWorld {
         this.blastPower = power;
         this.craterFlashAt = time;
         this.flash.hit(power, time);
+        // The ground jolts at once; the blast's air wave knocks the ridge when it arrives.
+        this.ridge.blast(power, CRATER_DISTANCE, time);
     }
 
     /** The blast's surge: glowing ash rolling down the breach. */
@@ -997,6 +1044,7 @@ export class PyrestormWorld {
             }
         }
         this.kick.hit(small ? 0.15 : 0.35, t);
+        this.ridge.ring(small, t);
     }
 
     /** The sheet's strength at `time` (before Reduce flashing). */
@@ -1026,6 +1074,8 @@ export class PyrestormWorld {
         }
         this.glare.hit(0.8, t);
         this.kick.hit(1.3, t);
+        // The sheet's long thunder: the ground swells into a slow roll under the crown's cracks.
+        this.ridge.sheet(t);
         // A crown of bolts round the summit from the anvil's head.
         const crown = [-0.95, 0.85, -0.35, 0.3];
         for (let k = 0; k < crown.length; k++) this.schedule(t + 0.25 + k * 0.2, 'bolt', BOLT.ground, 3 + k, 1.1, crown[k]);
@@ -1077,6 +1127,8 @@ export class PyrestormWorld {
             this.feedPulse(time, 1);
             this.kick.hit(0.85, time);
             this.unrest.levelUp(time);
+            // The mountain groans as the fresh lava surges down its channels.
+            this.ridge.surge(time);
         }
     }
 
@@ -1158,6 +1210,8 @@ export class PyrestormWorld {
         this.play.fever = play.fever;
         this.play.stage = play.stage;
         const { level, fever } = play;
+        // The hotter play runs, the harder the ridge feels each new hit (nothing shakes on its own).
+        this.ridge.setFever(fever * this.activity);
         const warm = smooth(0.18, 0.55, level);
         const hot = smooth(0.45, 0.85, level);
         // The lava runs hotter with it: brighter rivers, a thinner crust.
@@ -1217,9 +1271,13 @@ export class PyrestormWorld {
             this.feverClock += dt * (fever - 0.3) * 1.3 * fs;
             while (this.feverClock >= 1) {
                 this.feverClock -= 1;
-                this.strikeFrom(time, BOLT.ground, 8 + Math.floor(this.random() * 12), 0.75 + fever * 0.3);
+                const row = 8 + Math.floor(this.random() * 12);
+                this.strikeFrom(time, BOLT.ground, row, 0.75 + fever * 0.3, 0, FEVER_THUNDER);
             }
-            if (fever > 0.6 && time - this.pulseAt > PULSE_FEED) this.feedPulse(time, 0.75);
+            if (fever > 0.6 && time - this.pulseAt > PULSE_FEED) {
+                this.feedPulse(time, 0.75);
+                this.ridge.surge(time, FEVER_GROAN);
+            }
         }
 
         // Four lines: the shock front; perfect: the sheet; level-up: the surge.
@@ -1414,6 +1472,8 @@ export class PyrestormWorld {
             fountain: this.fountainLevel,
             activity: this.activity,
             tremor: this.tremor,
+            /** The ridge's shake on the last camera update: view turns (viewport heights), roll (rad). */
+            shake: { ...this._shake },
             liveBolts,
             lights: this.u.lightCount.value,
             hits: this.u.hitCount.value,
