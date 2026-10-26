@@ -83,12 +83,16 @@ export function flowerWidth(along) {
 
 // ── The height of the land ────────────────────────────────────────────────────────
 
-/** The fort's knoll: a flat crown terrace, steep stony sides, a skirt into the shore. */
-function knoll(x, z) {
+/**
+ * The fort's knoll: a flat crown terrace (level out to ~46 m, where the ruin stands), rounded
+ * shoulders and sides no steeper than ~36°, a skirt into the shore. What it lifts the land by
+ * (the land's own mesh leaves it out where the knoll's fine mesh draws it).
+ */
+export function knollHeight(x, z) {
     const F = PLACES.fort;
     const r = Math.hypot(x - F.x, z - F.z);
-    const crown = 1 - smooth(F.radius * 0.42, F.radius * 0.62, r);
-    const side = 1 - smooth(F.radius * 0.42, F.radius * 1.15, r);
+    const crown = 1 - smooth(F.radius * 0.39, F.radius * 0.95, r);
+    const side = 1 - smooth(F.radius * 0.38, F.radius * 1.35, r);
     const skirt = Math.exp(-((r / (F.radius * 1.9)) ** 2));
     return F.height * (0.62 * side + 0.38 * crown) * (0.85 + 0.15 * skirt) + 3 * skirt;
 }
@@ -154,7 +158,7 @@ function farHeight(x, z) {
     const floor = 1.6;
     h = 0.5 * (h + floor + Math.sqrt((h - floor) ** 2 + 4));
     // The fort's knoll stands on the near shore.
-    h += knoll(x, z);
+    h += knollHeight(x, z);
     return h;
 }
 
@@ -288,7 +292,22 @@ function pickKind(beltKind, pick) {
 }
 
 /**
- * The trees of the shelterbelts (and a few singles in the fields): instance data
+ * The trees by the ruin, in its own frame (x right as the fields see it, z toward them; metres
+ * from the knoll's centre), with their kind and height: a birch self-sown in the bailey between
+ * the round tower and the keep, a spruce on the knoll's left shoulder, a birch on its right.
+ */
+export const RUIN_TREES = Object.freeze([[-15, -4, 1, 15], [-50, 6, 2, 16], [47, -6, 1, 11.5]]);
+
+/** A point in the ruin's frame (x, z) on the ground plan, as world (x, z). */
+export function ruinToWorld(lx, lz) {
+    const F = PLACES.fort;
+    const c = Math.cos(F.yaw);
+    const s = Math.sin(F.yaw);
+    return [F.x + lx * c + lz * s, F.z - lx * s + lz * c];
+}
+
+/**
+ * The trees of the shelterbelts (and a few singles in the fields and by the ruin): instance data
  * (x, ground y, z, height) + (kind, seed, crown width, lean). Spacing by kind; a seeded walk.
  */
 export function treeSites(seed = 0x7ee5, density = 1) {
@@ -324,6 +343,10 @@ export function treeSites(seed = 0x7ee5, density = 1) {
     singles.forEach(([x, z, kind]) => {
         const height = kind === 1 ? 17 : 24;
         out.push(x, groundHeight(x, z), z, height, kind, random(), height * (kind === 1 ? 0.46 : 0.38), 0.02);
+    });
+    RUIN_TREES.forEach(([lx, lz, kind, height]) => {
+        const [x, z] = ruinToWorld(lx, lz);
+        out.push(x, groundHeight(x, z), z, height, kind, random(), height * KIND_WIDTH[kind] * 1.1, 0.02);
     });
     return new Float32Array(out);
 }
