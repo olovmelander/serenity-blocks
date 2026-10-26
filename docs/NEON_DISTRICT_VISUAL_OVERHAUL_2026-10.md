@@ -110,7 +110,7 @@ families, and every surface that advertises carries them:
   one. Hale's tube logo breathes the same way.
 - **Serenity Transit**: travel posters for the game's other worlds and modes, each framed around
   a render of the world it sells:
-  - worlds: Koi Pond, Sakura Twilight, Crystal Cave, Golden Forest, Midsommar, Ocean, Winter and
+  - worlds: Koi Pond, Sakura Twilight, Crystal Cave, Golden Forest, Summer, Ocean, Winter and
     Stillwater
   - modes: Infinity, Stillfall and Odyssey (Stillfall took the Waystones poster's place
     when that mode was removed, 2026-10-18)

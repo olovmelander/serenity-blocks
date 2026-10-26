@@ -71,7 +71,7 @@ import {
 } from './shared/mountain-language.js';
 import { createWaterSurfaceTSL as createDeepOceanWaterSurfaceTSL } from './deep-ocean.tsl.js';
 // Real 3D per-species wildflower geometry (procedural, baked vertex colour, no GLB assets) —
-// the Midsommar theme's flora builders, ported to replace Ch3's flat cross-card blooms.
+// the Summer theme's flora builders, ported to replace Ch3's flat cross-card blooms.
 import {
     buildDaisy, buildButtercup, buildLupine, buildCornflower, buildPoppy,
 } from '../../../themes/summer/rendering/summer-flora.js';
@@ -110,7 +110,7 @@ function surfaceCorridorCenter(z) {
 }
 // Deliberate meadow placement gate for (x,z): reject inside the corridor keep-out, then accept
 // with a probability that is LUSH in the banks flanking the path and thins to a sparse wing-
-// meadow with an aerial far-taper — the moving-camera equivalent of Midsommar's near-camera
+// meadow with an aerial far-taper — the moving-camera equivalent of Summer's near-camera
 // density wedge (since here "near camera" = near the path the spline follows). `keepOut` widens
 // for taller assets (trees) so they never stand in the water/lane.
 function surfaceMeadowPlace(x, z, keepOut = 26) {
@@ -557,7 +557,7 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     const horizonBand = smoothstep(0.0, 0.16, h); // warm hugs the horizon line
     const zenithBand = pow(h, float(0.5)); // pull saturated blue up into the dome
     let sky = mix(horizonCol, midCol, horizonBand);
-    // Saturated PEACH mid-stop (Midsommar): a distinct golden-hour band just above the horizon,
+    // Saturated PEACH mid-stop (Summer): a distinct golden-hour band just above the horizon,
     // between the warm horizon and the azure mid — the split-complementary warmth that makes the
     // reference sky glow. Faded out toward winter (the cool arc reclaims the low sky).
     const peachBand = smoothstep(0.02, 0.14, h).mul(oneMinus(smoothstep(0.14, 0.34, h)));
@@ -1500,7 +1500,7 @@ function vegetationSwayNode(uTime, strength = 1.0) {
     return vec3(posL.x.add(swayX), posL.y, posL.z.add(swayZ));
 }
 
-// Golden backlit SSS rim (Midsommar-inspired): a warm translucent glow when the camera looks
+// Golden backlit SSS rim (Summer-inspired): a warm translucent glow when the camera looks
 // toward the low sun THROUGH the foliage — the golden-hour "glow" that makes grass/flowers read
 // as lit volume, not flat cards. Additive IN-SHADER so it survives the shared ACES post grade.
 // `heightFrac` (0 base → 1 tip) concentrates the glow at the sunlit tips. Returns a vec3 to ADD
@@ -1515,7 +1515,7 @@ function backlitSSSNode(heightFrac, strength = 0.5) {
 // Shared meadow wind direction (XZ) for the 3D wildflowers.
 const SURFACE_WIND_DIR = new THREE.Vector2(0.94, 0.34);
 
-// Height-masked wind sway for the instanced 3D wildflowers (Midsommar's makeFloraMat grammar):
+// Height-masked wind sway for the instanced 3D wildflowers (Summer's makeFloraMat grammar):
 // the bloom top bends along the wind while the stem stays rooted, phased PER-INSTANCE by a
 // world-XZ attribute (aWorldXZ, baked on the CPU at placement). Mask from positionGeometry:
 // identical on r181 (positionLocal is raw geometry inside positionNode) and correct on r185
@@ -1575,7 +1575,7 @@ export function createGrassTuftsTSL(uTime = uniform(0), count = 760) {
     geometry.setAttribute('aTint', new THREE.InstancedBufferAttribute(buildTintArray(count, 0.22), 3));
 
     // VISUAL POLISH (de-wash): richer saturated tuft greens + per-instance tint variation,
-    // plus the golden backlit SSS rim so the carpet glows toward the low sun (Midsommar look).
+    // plus the golden backlit SSS rim so the carpet glows toward the low sun (Summer look).
     const grassHeightFrac = smoothstep(0.0, 2.0, positionLocal.y);
     const colorNode = mix(
         vec3(0.055, 0.27, 0.065), // shaded base green
@@ -1727,11 +1727,11 @@ export function createMeadowFlowersTSL(uTime = uniform(0), count = 3600) {
 // Real 3D per-species WILDFLOWERS (replaces the flat cross-card meadow blooms): oxeye daisies,
 // buttercups, poppies + tall lupine & cornflower spikes — procedural geometry with baked vertex
 // colour (summer-flora.js, no GLB assets), instanced per species, wind-swayed (floraSwayNode) and
-// terrain-anchored. Daisy-dominant like the Midsommar reference. Returns { group, mesh, parts }.
+// terrain-anchored. Daisy-dominant like the Summer reference. Returns { group, mesh, parts }.
 // Scales are LARGE for the big Ch3 world (trees ~14u, grass ~2u): realistic flora proportions
 // read as invisible specks here, so the blooms are bumped to bold, stylised heroes (~3–4u tall,
 // heads ~0.6–0.8u) that rise above the grass and read as a lush colour field from the moving
-// journey camera — the same builders Midsommar uses at its smaller world scale.
+// journey camera — the same builders Summer uses at its smaller world scale.
 const WILDFLOWER_SPECIES = [
     {
         build: buildDaisy, frac: 0.40, sMin: 4.0, sMax: 5.8, amp: 0.16, stiff: 1.2, flutter: 0.04,
@@ -1873,7 +1873,7 @@ export function createTreesTSL(uTime = uniform(0), count = 40, options = {}) {
     const uSnowBlend = options.uSnowBlend ?? uniform(0);
     const snowCap = crownGrade.mul(uSnowBlend).mul(oneMinus(isTrunk));
     const colorNode = mix(mix(foliage, bark, isTrunk), vec3(0.93, 0.96, 1.0), snowCap.mul(0.6));
-    // TRUE sun-direction BACKLIT canopy glow (Midsommar-inspired): a warm golden rim that reads
+    // TRUE sun-direction BACKLIT canopy glow (Summer-inspired): a warm golden rim that reads
     // only when the camera looks toward the low sun THROUGH the canopy — NOT the old view-only
     // fresnel that gilded every silhouette edge regardless of the sun. Emissive so it glows
     // independent of the diffuse (and feeds bloom in-game); concentrated on the upper crown.
@@ -1882,7 +1882,7 @@ export function createTreesTSL(uTime = uniform(0), count = 40, options = {}) {
     // LIT material (was unlit MeshBasic): the merged cone/trunk geometry is real 3D, but an
     // unlit material left it reading as flat cardboard. Lambert lets the directional sun reveal
     // the conical form; flatShading gives each facet a distinct catch (the crisp low-poly read
-    // Midsommar gets from its faceN normal); the backlit glow stays as an emissive accent.
+    // Summer gets from its faceN normal); the backlit glow stays as an emissive accent.
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.4); // gentle whole-tree sway
     material.colorNode = colorNode;
@@ -1963,7 +1963,7 @@ export function createSpruceTreesTSL(uTime = uniform(0), count = 22, options = {
     material.positionNode = vegetationSwayNode(uTime, 0.25);
     material.colorNode = colorNode;
     material.emissiveNode = vec3(0.78, 0.58, 0.28).mul(rim).mul(0.05).mul(oneMinus(isTrunk));
-    material.flatShading = true; // crisp low-poly facets (Midsommar faceted read)
+    material.flatShading = true; // crisp low-poly facets (Summer faceted read)
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
@@ -2111,7 +2111,7 @@ export function createGreatTreeTSL(uTime = uniform(0)) {
     material.positionNode = vegetationSwayNode(uTime, 0.22); // slow, heavy whole-tree sway
     material.colorNode = colorNode;
     material.emissiveNode = vec3(0.84, 0.60, 0.26).mul(rim).mul(0.07).mul(oneMinus(isTrunk));
-    material.flatShading = true; // crisp low-poly facets (Midsommar faceted read)
+    material.flatShading = true; // crisp low-poly facets (Summer faceted read)
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -2247,7 +2247,7 @@ export function createTreeLineTSL(uTime = uniform(0), count = 64) {
     const material = new THREE.MeshLambertNodeMaterial();
     material.positionNode = vegetationSwayNode(uTime, 0.3);
     material.colorNode = colorNode;
-    material.flatShading = true; // crisp low-poly facets (Midsommar faceted read)
+    material.flatShading = true; // crisp low-poly facets (Summer faceted read)
     material.side = THREE.FrontSide;
 
     const mesh = new THREE.InstancedMesh(geometry, material, count);
@@ -2415,7 +2415,7 @@ export function createPollenTSL(uTime = uniform(0), count = 260, options = {}) {
     // and hands off to the autumn leaves.
     const summerGate = smoothstep(0.16, 0.3, uSeason).mul(oneMinus(smoothstep(0.5, 0.66, uSeason)));
 
-    // TWO species share the field (Midsommar-inspired): warm cream POLLEN dust that shimmers
+    // TWO species share the field (Summer-inspired): warm cream POLLEN dust that shimmers
     // slowly, and brighter yellow-green FIREFLIES that BLINK independently and GLOW (bloom via
     // emissiveNode + emitsBloom). isFly is split by the per-instance random; the twinkle rate +
     // sharpness differ so flies blink fast/hard while pollen shimmers slow/soft.

@@ -133,8 +133,8 @@
  },
  {
   "id": "summer",
-  "name": "Midsommar (id summer) — Midsummer's Eve by the lake",
-  "setting": "Swedish lake on Midsummer's Eve: flowering meadow, leafy maypole with two wreaths and blue/yellow ribbons (the sun sits in the right wreath), Falu-red cottage, jetty and rowboat, weeping birch, old spruce, skerry, four blue hill ridges; butterflies, swallows, seed down. Icon: maypole with the sun in the wreath, mirror lake, peach sky. Doc: docs/SUMMER_MIDSOMMAR_OVERHAUL_2026-10.md",
+  "name": "Summer (id summer) — an evening by the lake",
+  "setting": "Swedish lake on a summer's eve: flowering meadow, leafy maypole with two wreaths and blue/yellow ribbons (the sun sits in the right wreath), Falu-red cottage, jetty and rowboat, weeping birch, old spruce, skerry, four blue hill ridges; butterflies, swallows, seed down. Icon: maypole with the sun in the wreath, mirror lake, peach sky. Doc: docs/SUMMER_OVERHAUL_2026-10.md",
   "timeOfDay": "Endless evening; 5 hours (evening, rose hour, white night, dawn, morning) in summer-hours.js:64+, 240 s each",
   "dominantPalette": "Meadow green, gold sun, Falu red, flower colours, blue lake. Pieces are seven flowers (:15-22): I #e4412c poppy, O #7fa6f5 harebell, T #ffd21f buttercup, S #fffdf2 daisy, Z #5d5fd6 lupine, J #ff8a2e hawkweed, L #b267e0 cranesbill, GARBAGE #2a4b38 (palette gate 0/7)",
   "keyMotifs": "Maypole, flower meadow, red cottage, mirror lake, ribbons, wreaths, butterflies, swallows",

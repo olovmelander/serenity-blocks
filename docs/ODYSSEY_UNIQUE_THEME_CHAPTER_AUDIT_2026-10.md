@@ -80,7 +80,7 @@ inspection showed prominent planets immediately, making its setting too cosmic f
 | 14 | Golden Forest (`golden-forest`) | Spruce, pine, and a Nordic lake in golden light continue the woodland setting. |
 | 15 | Moonlit Greenhouse (`moonlit-greenhouse`) | Plants, dewdrops, moths, and blooming reactions add cultivated life. |
 | 16 | Tornado (`tornado`) | A ground-connected weather event shows the surface landscape in motion. |
-| 17 | Midsommar (`summer`) | A summer meadow expresses seasonal abundance and growth. |
+| 17 | Summer (`summer`) | A summer meadow expresses seasonal abundance and growth. |
 | 18 | Fall (`fall`) | An autumn grove and living leaves complete the seasonal contrast. |
 | 19 | Halcyon Apex (`halcyon-apex`) | A lake, small islands, temple causeway, and mountain silhouettes lead toward the ascent. |
 

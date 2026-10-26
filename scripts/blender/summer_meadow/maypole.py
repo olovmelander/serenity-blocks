@@ -1,6 +1,6 @@
-"""The midsommarstang: a pole and cross-arm dressed in birch leaves and meadow flowers.
+"""The maypole: a pole and cross-arm dressed in birch leaves and meadow flowers.
 
-It is raised on Midsummer's Eve already clothed: birch twigs bound up the whole pole and
+It is raised already clothed: birch twigs bound up the whole pole and
 along the arm, a leafy rope from the top of the pole to each end of the arm, a wreath
 hanging under each end, and a tuft of birch at the very top. The ribbons are the
 runtime's; nothing here moves.

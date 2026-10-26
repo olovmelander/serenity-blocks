@@ -28,7 +28,7 @@ that runs on a diagonal down its front to the right shoulder, where the **Mother
 the lowest lip, frays into horsetails and mist, and drops the whole height of the frame into the
 Deep. Right of the HUD, lower and further, the **Twin Isle** with the broken span of its aqueduct
 and its threads of falls. Far off on the right horizon a colossal arch, the **Far Gate**, only a few
-shades off the air. Paper gliders (the gliders) circle on thermals.
+shades off the air. Paper birds (the gliders) soar on thermals (since 2026-10-26: [RAINBOW_TERRACES_PAPER_BIRDS_2026-10.md](RAINBOW_TERRACES_PAPER_BIRDS_2026-10.md)).
 
 Every optic the droplets make is there, seen away from the sun: the rainbow, its secondary,
 Alexander's dark band between them, supernumerary fringes, the white fogbow on the mist, the
@@ -110,7 +110,7 @@ the composition holds in every layout. The post stack keeps calm zones over the 
 | `rainbow-terraces-water.js` | The pools: one instanced draw; a Fresnel mirror of the sky, a milky body, the held colour glowing from within. |
 | `rainbow-terraces-falls.js` | Every fall in one draw: ballistic ribbons, rope streaks in travel time, fraying into horsetails and mist, coloured packets. |
 | `rainbow-terraces-fx.js`, `rainbow-terraces-events.js` | The glow layer (glow, disc, cell, glint, streak, ring, soft shapes) and the spray; the event records evaluated in closed form each frame. |
-| `rainbow-terraces-flock.js`, `rainbow-terraces-gliders.js` | The children: a closed-form flock and paper darts drawn instanced. |
+| `rainbow-terraces-flock.js`, `rainbow-terraces-gliders.js` | The gliders: a closed-form flock (soaring between thermals, events joined and left smoothly) and paper birds with beating wings, drawn instanced. |
 | `rainbow-terraces-world.js` | The choreography, shared by the theme and the playground effect. |
 | `rainbow-terraces-post.js` | Bloom with calm zones over the card and HUD, a hue-preserving filmic, split-tone grade, grain, dither, FXAA. |
 | `rainbow-terraces-director.js`, `rainbow-terraces-composition.js`, `rainbow-terraces-quality.js`, `rainbow-terraces-theme.js` | The gameplay director (per-player chains), the layout reader, the tiers, the lifecycle adapter. |

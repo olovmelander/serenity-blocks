@@ -188,9 +188,9 @@ their `suno.com` output IDs in their metadata; the prompts are in
 `docs/SUNO_PLACEHOLDER_PROMPTS_2026-10.md`):
 
 Astral Weave · Chiral Gold · Chromadelic Highway · Fall · Golden Forest · Halcyon Apex ·
-High Coast · Kaleidosonic · Koi Pond · Luminous Tides · Midsommar · Nebula Flow ·
-Nimbus Veil · Painted Ages · Pyrestorm · Rainbow Terraces · Sakura Twilight ·
-Serenity Warp · Solar Eclipse · Stellar Velocity · Sunfall · Sunset · Supernova ·
+High Coast · Kaleidosonic · Koi Pond · Luminous Tides · Nebula Flow · Nimbus Veil ·
+Painted Ages · Pyrestorm · Rainbow Terraces · Sakura Twilight · Serenity Warp ·
+Solar Eclipse · Stellar Velocity · Summer · Sunfall · Sunset · Supernova ·
 Synthwave Sunset · Thermal Bloom.
 
 Sound effects are generated procedurally in code (`src/audio/sound-effects.js`); no

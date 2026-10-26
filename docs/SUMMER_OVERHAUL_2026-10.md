@@ -1,4 +1,7 @@
-# Summer — Midsummer's Eve by the lake (visual overhaul, 2026-10-08)
+# Summer — an evening by the lake (visual overhaul, 2026-10-08)
+
+> The theme was shown as "Midsommar" until 2026-10-25; it is called Summer everywhere now,
+> and so is its song (a saved `Midsommar` track key still resolves to it).
 
 **Status: implemented (branch `feature/summer-masterpiece`). A record of what was built and
 how it was checked — not a backlog.** Replaces the flat-shaded meadow scene that lived in a
@@ -8,11 +11,11 @@ follows the level and the clock) were added the next day, 2026-10-09, on
 
 | Before | After (High, native WebGPU) |
 | --- | --- |
-| ![before](summer-midsommar/before.webp) | ![after](summer-midsommar/idle.webp) |
+| ![before](summer-overhaul/before.webp) | ![after](summer-overhaul/idle.webp) |
 
 ## What the player sees
 
-The same place as before — a Swedish lake on Midsummer's Eve, a flowering meadow, a maypole,
+The same place as before — a Swedish lake on a summer's eve, a flowering meadow, a maypole,
 a red cottage, birch and spruce — now built as a world and lit by a sun that stands low over
 the water and will not set. The camera stands in the meadow behind a crest of tall flowers.
 On the left an old spruce leans into the frame beside the maypole on its mown ring, wound
@@ -37,14 +40,14 @@ toward the maypole and the sun.
 
 ## Seven kinds of flowers
 
-On Midsummer's Eve you pick seven kinds of flowers. Each tetromino is one of them, and the
+On a summer's eve you pick seven kinds of flowers. Each tetromino is one of them, and the
 piece colours are the petal colours:
 
 | Piece | Flower | | Piece | Flower |
 | --- | --- | --- | --- | --- |
 | I | poppy (vallmo) | | Z | lupine (lupin) |
 | O | harebell (blåklocka) | | J | orange hawkweed (rödfibbla) |
-| T | buttercup (smörblomma) | | L | wood cranesbill (midsommarblomster) |
+| T | buttercup (smörblomma) | | L | wood cranesbill (skogsnäva) |
 | S | oxeye daisy (prästkrage) | | | |
 
 Which flower goes with which piece is not arbitrary: the project's palette gate
@@ -109,11 +112,11 @@ Rules that follow from the hour being the scene's light and not an effect:
 
 | Evening | Rose hour | White night |
 | --- | --- | --- |
-| ![evening](summer-midsommar/hour-evening.webp) | ![rose hour](summer-midsommar/hour-rose.webp) | ![white night](summer-midsommar/hour-white-night.webp) |
+| ![evening](summer-overhaul/hour-evening.webp) | ![rose hour](summer-overhaul/hour-rose.webp) | ![white night](summer-overhaul/hour-white-night.webp) |
 
 | Dawn | Morning | A lock in the white night |
 | --- | --- | --- |
-| ![dawn](summer-midsommar/hour-dawn.webp) | ![morning](summer-midsommar/hour-morning.webp) | ![a lock at night](summer-midsommar/hour-night-lock.webp) |
+| ![dawn](summer-overhaul/hour-dawn.webp) | ![morning](summer-overhaul/hour-morning.webp) | ![a lock at night](summer-overhaul/hour-night-lock.webp) |
 
 ## How the evening answers the game
 
@@ -142,11 +145,11 @@ rings and gusts from fixed pools.
 
 | Lock (poppy) | Two lines | Four lines |
 | --- | --- | --- |
-| ![lock](summer-midsommar/lock.webp) | ![double](summer-midsommar/double.webp) | ![four lines](summer-midsommar/four-lines.webp) |
+| ![lock](summer-overhaul/lock.webp) | ![double](summer-overhaul/double.webp) | ![four lines](summer-overhaul/four-lines.webp) |
 
 | The bouquet | Combo, held | In the game |
 | --- | --- | --- |
-| ![bouquet](summer-midsommar/bouquet.webp) | ![combo](summer-midsommar/combo.webp) | ![in game](summer-midsommar/in-game.webp) |
+| ![bouquet](summer-overhaul/bouquet.webp) | ![combo](summer-overhaul/combo.webp) | ![in game](summer-overhaul/in-game.webp) |
 
 ### The visual pass (2026-10-20)
 
@@ -280,7 +283,7 @@ same scene directly with ACES tone mapping and skip limb geometry.
 
 | Minimal, forced WebGL2 | Portrait, High |
 | --- | --- |
-| ![minimal on WebGL2](summer-midsommar/minimal-webgl2.webp) | ![portrait](summer-midsommar/portrait.webp) |
+| ![minimal on WebGL2](summer-overhaul/minimal-webgl2.webp) | ![portrait](summer-overhaul/portrait.webp) |
 
 ## Verification
 
@@ -430,7 +433,7 @@ have not been reviewed.
   and the far shores lie outside it.
 - Portrait is the landscape world seen from the same spot: the cottage is out of frame.
 - The sun's path is composed for the picture, not for a compass: it loops within one patch
-  of sky left of the board, where a real midsummer sun would travel along the horizon. It
+  of sky left of the board, where a real sun of the white nights would travel along the horizon. It
   never goes below five degrees, so the white night is a dusk under an ember sun, not a dark
   sky.
 - The shadow map covers the meadow and the cove only: when the sun rests on the far hills,

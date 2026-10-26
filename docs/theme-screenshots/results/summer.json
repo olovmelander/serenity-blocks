@@ -4,7 +4,7 @@
   "runId": "2026-08-21T06-12-57-693Z",
   "theme": "summer",
   "themeMeta": {
-    "displayName": "Midsommar",
+    "displayName": "Summer",
     "module": "./summer/summer-theme.js",
     "resourceProfile": "heavy-gpu",
     "performanceClass": "heavy"

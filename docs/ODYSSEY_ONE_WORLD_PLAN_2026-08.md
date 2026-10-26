@@ -1228,7 +1228,7 @@ shading tweak — it relocates every visible sun artefact. Ch3's sun-disc billbo
 `sunDir * 900` and would move to world (−414, 324, 549): *behind* a camera looking down −Z. The
 sky-dome sun core, the Mountains sun disc and Ch5's sun-glow group all follow it out of frame.
 The backlit foliage SSS inverts (it is `pow(clamp(dot(sunDirN, viewDir)))`, which collapses
-toward 0 with the sun behind the camera), taking the authored golden Midsommar rim with it. The
+toward 0 with the sun behind the camera), taking the authored golden Summer rim with it. The
 alpine key itself drops from 48.5° to 25.2° elevation, so snow darkens and alpenglow weakens.
 
 That is a real trade the spike made consciously — relief that casts beats a visible disc — but
