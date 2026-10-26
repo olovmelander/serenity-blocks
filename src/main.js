@@ -74,6 +74,7 @@ import {
 } from './ui/modals.js';
 import { SettingsManager, initializeSettingsUI, updateGamepadControlsDisplay } from './ui/settings.js';
 import { InputController, setupKeyboardControls } from './ui/controls.js';
+import { createKeyboardGameProbes } from './ui/keyboard-game-probes.js';
 import { GamepadController } from './ui/gamepad-controller.js';
 import { showStartupErrorBox } from './ui/startup-error-box.js';
 import { HighScoreManager } from './ui/high-scores.js';
@@ -3741,6 +3742,7 @@ class SerenityBlocks {
             randomTheme: (...args) => window.randomTheme?.(...args),
             toggleFullscreen: (...args) => window.toggleFullscreen?.(...args),
             showHighScores: (...args) => window.showHighScores?.(...args),
+            ...createKeyboardGameProbes(this),
             // Player 2 actions
             moveP2: (...args) => window.moveP2?.(...args),
             rotateP2: (...args) => window.rotateP2?.(...args),
@@ -3809,9 +3811,6 @@ class SerenityBlocks {
 
         // Initial gamepad status update
         this.updateGamepadStatusDisplay();
-
-        // Setup Player 2 keyboard controls
-        this.setupPlayer2Controls();
     }
 
     /**
@@ -3824,61 +3823,6 @@ class SerenityBlocks {
             return currentMode.multiplayerState;
         }
         return this.multiplayerState; // Fallback
-    }
-
-    /**
-     * Setup Player 2 keyboard controls
-     */
-    setupPlayer2Controls() {
-        if (this.inputController) {
-            console.log('[Main] Skipping legacy Player 2 keyboard controls (handled by InputController)');
-            return;
-        }
-
-        document.addEventListener('keydown', (e) => {
-            // Only process in local multiplayer mode
-            const currentGameMode = this.gameModeUI.getMode();
-            if (currentGameMode !== GAME_MODES.LOCAL_MULTIPLAYER) return;
-
-            // Get multiplayer state from active mode
-            const multiplayerState = this.getMultiplayerState();
-            if (
-                !multiplayerState
-                || multiplayerState.isGameOver
-                || multiplayerState.isPaused
-            ) return;
-
-            // Get current player 2 keybindings dynamically
-            const settings = this.settingsManager.get();
-            const p2Keys = settings.player2KeyBindings;
-            if (!p2Keys) return;
-
-            const key = e.key === ' ' ? 'Space' : e.key;
-
-            // Player 2 controls
-            if (key === p2Keys.moveLeft) {
-                e.preventDefault();
-                window.moveP2(-1);
-            } else if (key === p2Keys.moveRight) {
-                e.preventDefault();
-                window.moveP2(1);
-            } else if (key === p2Keys.rotateRight) {
-                e.preventDefault();
-                window.rotateP2('right');
-            } else if (key === p2Keys.rotateLeft) {
-                e.preventDefault();
-                window.rotateP2('left');
-            } else if (key === p2Keys.flip) {
-                e.preventDefault();
-                window.rotateP2('flip');
-            } else if (key === p2Keys.softDrop) {
-                e.preventDefault();
-                window.softDropP2();
-            } else if (key === p2Keys.hardDrop) {
-                e.preventDefault();
-                window.hardDropP2();
-            }
-        });
     }
 
     /**
@@ -3912,8 +3856,11 @@ class SerenityBlocks {
             if (!element || !summary) return;
 
             const connected = Boolean(summary.connected);
+            // A pad without the standard layout reports its own button numbers: the
+            // bindings and the on-screen button names may not match it.
+            const layout = connected && summary.standard === false ? ' · layout not recognised' : '';
             element.textContent = connected
-                ? `Controller ${index + 1}: ${summary.name ?? 'Connected'}`
+                ? `Controller ${index + 1}: ${summary.name ?? 'Connected'}${layout}`
                 : `Controller ${index + 1}: Not connected`;
             element.style.color = connected ? accentColors[index] : 'rgba(224, 231, 255, 0.5)';
 

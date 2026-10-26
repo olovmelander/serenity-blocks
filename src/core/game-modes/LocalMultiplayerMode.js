@@ -1574,25 +1574,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (this._inputWrappersSetup) return;
         this._inputWrappersSetup = true;
 
-        this._originalInputs = {
-            move: window.move,
-            rotate: window.rotate,
-            hardDrop: window.hardDrop,
-            hold: window.hold,
-            moveP2: window.moveP2,
-            rotateP2: window.rotateP2,
-            hardDropP2: window.hardDropP2,
-            holdP2: window.holdP2,
-            moveP3: window.moveP3,
-            rotateP3: window.rotateP3,
-            hardDropP3: window.hardDropP3,
-            holdP3: window.holdP3,
-            moveP4: window.moveP4,
-            rotateP4: window.rotateP4,
-            hardDropP4: window.hardDropP4,
-            holdP4: window.holdP4,
-        };
-
         const wrapMove = (playerNum, origMove) => (dir) => {
             if (this._isBotPlayer(playerNum - 1)) return false;
             if (this.multiplayerState?.players?.[playerNum - 1]?.hitStopRemaining > 0) return false;
@@ -1618,6 +1599,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
             return result;
         };
 
+        // A bot's seat takes no one's soft drop either: Player 2's S (or a second
+        // controller's down) used to push the bot's piece down in "you vs a bot".
+        const wrapSoftDrop = (playerNum, origSoftDrop) => () => {
+            if (this._isBotPlayer(playerNum - 1)) return false;
+            return origSoftDrop ? origSoftDrop() : false;
+        };
+
         const wrapHardDrop = (playerNum, origHardDrop) => () => {
             if (this._isBotPlayer(playerNum - 1)) return false;
             if (this.multiplayerState?.players?.[playerNum - 1]?.hitStopRemaining > 0) return false;
@@ -1641,25 +1629,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
             return result;
         };
 
-        window.move = wrapMove(1, this._originalInputs.move);
-        window.rotate = wrapRotate(1, this._originalInputs.rotate);
-        window.hardDrop = wrapHardDrop(1, this._originalInputs.hardDrop);
-        window.hold = wrapHold(1, this._originalInputs.hold);
-
-        if (this._originalInputs.moveP2) window.moveP2 = wrapMove(2, this._originalInputs.moveP2);
-        if (this._originalInputs.rotateP2) window.rotateP2 = wrapRotate(2, this._originalInputs.rotateP2);
-        if (this._originalInputs.hardDropP2) window.hardDropP2 = wrapHardDrop(2, this._originalInputs.hardDropP2);
-        if (this._originalInputs.holdP2) window.holdP2 = wrapHold(2, this._originalInputs.holdP2);
-
-        if (this._originalInputs.moveP3) window.moveP3 = wrapMove(3, this._originalInputs.moveP3);
-        if (this._originalInputs.rotateP3) window.rotateP3 = wrapRotate(3, this._originalInputs.rotateP3);
-        if (this._originalInputs.hardDropP3) window.hardDropP3 = wrapHardDrop(3, this._originalInputs.hardDropP3);
-        if (this._originalInputs.holdP3) window.holdP3 = wrapHold(3, this._originalInputs.holdP3);
-
-        if (this._originalInputs.moveP4) window.moveP4 = wrapMove(4, this._originalInputs.moveP4);
-        if (this._originalInputs.rotateP4) window.rotateP4 = wrapRotate(4, this._originalInputs.rotateP4);
-        if (this._originalInputs.hardDropP4) window.hardDropP4 = wrapHardDrop(4, this._originalInputs.hardDropP4);
-        if (this._originalInputs.holdP4) window.holdP4 = wrapHold(4, this._originalInputs.holdP4);
+        // Each player's inputs, Player 1's unsuffixed (window.move) and the others' as
+        // moveP2 ... holdP4. Player 1's are always wrapped; the rest when they exist.
+        const wrappers = {
+            move: wrapMove, rotate: wrapRotate, softDrop: wrapSoftDrop, hardDrop: wrapHardDrop, hold: wrapHold,
+        };
+        this._originalInputs = {};
+        for (let playerNum = 1; playerNum <= 4; playerNum += 1) {
+            Object.entries(wrappers).forEach(([kind, wrap]) => {
+                const name = playerNum === 1 ? kind : `${kind}P${playerNum}`;
+                const original = window[name];
+                this._originalInputs[name] = original;
+                if (original || (playerNum === 1 && kind !== 'softDrop')) window[name] = wrap(playerNum, original);
+            });
+        }
     }
 
     /**
@@ -1669,25 +1652,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
     _removeInputWrappers() {
         if (!this._originalInputs) return;
 
-        window.move = this._originalInputs.move;
-        window.rotate = this._originalInputs.rotate;
-        window.hardDrop = this._originalInputs.hardDrop;
-        window.hold = this._originalInputs.hold;
-
-        if (this._originalInputs.moveP2 !== undefined) window.moveP2 = this._originalInputs.moveP2;
-        if (this._originalInputs.rotateP2 !== undefined) window.rotateP2 = this._originalInputs.rotateP2;
-        if (this._originalInputs.hardDropP2 !== undefined) window.hardDropP2 = this._originalInputs.hardDropP2;
-        if (this._originalInputs.holdP2 !== undefined) window.holdP2 = this._originalInputs.holdP2;
-
-        if (this._originalInputs.moveP3 !== undefined) window.moveP3 = this._originalInputs.moveP3;
-        if (this._originalInputs.rotateP3 !== undefined) window.rotateP3 = this._originalInputs.rotateP3;
-        if (this._originalInputs.hardDropP3 !== undefined) window.hardDropP3 = this._originalInputs.hardDropP3;
-        if (this._originalInputs.holdP3 !== undefined) window.holdP3 = this._originalInputs.holdP3;
-
-        if (this._originalInputs.moveP4 !== undefined) window.moveP4 = this._originalInputs.moveP4;
-        if (this._originalInputs.rotateP4 !== undefined) window.rotateP4 = this._originalInputs.rotateP4;
-        if (this._originalInputs.hardDropP4 !== undefined) window.hardDropP4 = this._originalInputs.hardDropP4;
-        if (this._originalInputs.holdP4 !== undefined) window.holdP4 = this._originalInputs.holdP4;
+        Object.entries(this._originalInputs).forEach(([name, original]) => {
+            const alwaysWrapped = ['move', 'rotate', 'hardDrop', 'hold'].includes(name);
+            if (alwaysWrapped || original !== undefined) window[name] = original;
+        });
 
         this._originalInputs = null;
         this._inputWrappersSetup = false;

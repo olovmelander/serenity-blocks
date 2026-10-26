@@ -596,10 +596,14 @@ class StillfallHud {
             return;
         }
         const covered = this.covered();
+        // A shoulder or trigger the player bound to a game control plays that control only.
+        const bound = new Set(Object.values(window.settingsManager?.get?.()?.gamepadBindings || {}));
         for (const gamepad of pads || []) {
             if (!gamepad) continue;
             const now = {};
-            Object.entries(PAD).forEach(([action, index]) => { now[action] = Boolean(gamepad.buttons[index]?.pressed); });
+            Object.entries(PAD).forEach(([action, index]) => {
+                now[action] = Boolean(gamepad.buttons[index]?.pressed) && (action === 'next' || !bound.has(index));
+            });
             const prev = this.padPrev.get(gamepad.index) || {};
             this.padPrev.set(gamepad.index, now);
             // The open atlas owns the pad (stillfall-pad-list.js): its A plays a puzzle.

@@ -37,6 +37,8 @@ export function wireOdysseyNewJourney(root, onConfirm) {
     const confirm = root?.querySelector?.('#odyssey-new-journey-confirm-btn');
     const cancel = root?.querySelector?.('#odyssey-new-journey-cancel-btn');
     if (!open || !panel || !confirm || !cancel) return null;
+    // Escape and B cancel the confirmation, not the whole navigator (sheet-input.js).
+    panel.setAttribute?.('data-escape-back', '#odyssey-new-journey-cancel-btn');
 
     const setOpen = (isOpen, { focus = true } = {}) => {
         panel.hidden = !isOpen;

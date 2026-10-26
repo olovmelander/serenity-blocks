@@ -922,6 +922,13 @@
     50% { opacity: 0.62; }
 }
 
+/* Swapped: the tile that gave its key to the binding just made, for a moment. */
+#settings-modal .key-input.binding-swapped {
+    border-color: rgba(var(--sb-aqua-rgb), 0.6);
+    background: rgba(var(--sb-aqua-rgb), 0.08);
+    color: var(--sb-aqua);
+}
+
 #settings-modal .controls-subtab-actions {
     display: flex;
     justify-content: flex-end;

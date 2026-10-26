@@ -6,15 +6,19 @@
 /**
  * What a controller or keyboard can land on. Links count only as `a[href]` and
  * `area[href]`: a bare `[href]` also matches the SVG `<use href>` icons inside buttons,
- * which take no focus and left the D-pad stuck on the pause sheet's Resume.
+ * which take no focus and left the D-pad stuck on the pause sheet's Resume. A native
+ * select that an enhanced dropdown or segmented control stands in for is not one: the
+ * D-pad landed on that hidden control.
  */
 export const FOCUSABLE_SELECTOR = [
     'button:not([disabled])',
     'a[href]',
     'area[href]',
     'input:not([disabled]):not([type="hidden"])',
-    'select:not([disabled])',
+    'select:not([disabled]):not(.cosmic-select__native)',
     'textarea:not([disabled])',
+    // A <details> toggle ("More rules" on the local setup): the D-pad could not open it.
+    'summary',
     '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
@@ -63,10 +67,12 @@ export class SpatialNavigation {
 
         return elements.filter((el) => {
             const style = window.getComputedStyle(el);
-            return style.display !== 'none'
-                && style.visibility !== 'hidden'
-                && el.offsetParent !== null
-                && !el.classList.contains('readonly'); // Skip readonly displays
+            if (style.display === 'none' || style.visibility === 'hidden' || el.offsetParent === null) return false;
+            if (el.classList.contains('readonly')) return false; // Skip readonly displays
+            // Inside a closed <details> a control keeps its box but cannot take focus
+            // (content-visibility: hidden): chosen as the nearest, it held the D-pad and the
+            // arrow keys where they were.
+            return typeof el.checkVisibility !== 'function' || el.checkVisibility();
         });
     }
 

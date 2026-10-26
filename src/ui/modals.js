@@ -15,6 +15,7 @@ import {
 import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 import { installSheetInput } from './sheet-input.js';
+import { installKeyboardMenuNavigation } from './keyboard-menu-navigation.js';
 import { isGameOverArmed, markGameOverShown } from './game-over-arm.js';
 import { statisticsForMode } from '../core/progression/score-statistics.js';
 import {
@@ -1002,6 +1003,8 @@ export function setupModalUI(modalManager, callbacks) {
     setupSettingsScrollPerformanceMode(modalManager);
     // Escape as the way back, focus on open, Tab kept inside the open sheet.
     installSheetInput();
+    // The arrow keys walk the open menu as the D-pad does.
+    installKeyboardMenuNavigation();
 
     // Settings button (single player)
     // Global Settings button
@@ -1028,8 +1031,10 @@ export function setupModalUI(modalManager, callbacks) {
 
     // Close settings modal with Escape key
     document.addEventListener('keydown', (event) => {
-        // defaultPrevented: an open option list took this Escape (sheet-input.js).
-        if (event.key === 'Escape' && modalManager.isVisible('settings') && !event.defaultPrevented) {
+        // defaultPrevented: an open option list took this Escape (sheet-input.js). A held
+        // Escape repeats: the press that opened the pause sheet must not close it again.
+        if (event.key === 'Escape' && modalManager.isVisible('settings') && !event.defaultPrevented
+            && !event.repeat) {
             event.preventDefault();
             event.stopImmediatePropagation(); // Stop other handlers on same element
             console.log('[Modals] Escape pressed, closing settings modal');

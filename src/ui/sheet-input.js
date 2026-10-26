@@ -14,6 +14,7 @@
  */
 
 import { FOCUSABLE_SELECTOR } from './spatial-navigation.js';
+import { getTopLayerElement } from './components/mp-sheet.js';
 
 /** Sheets from the top layer down (Settings sits above the others). */
 export const SHEETS = Object.freeze([
@@ -121,8 +122,15 @@ function isOpen(element, sheet) {
     return Boolean(element?.classList?.contains?.('visible'));
 }
 
-/** The sheet's own back action, including dynamically mounted Odyssey controls. */
+/**
+ * The sheet's own back action, including dynamically mounted Odyssey controls. A
+ * confirmation open inside the sheet (`data-escape-back` names its cancel control, as on
+ * Odyssey's "Start a new journey") goes back first, so Escape or B closes one level.
+ */
 export function getSheetBackControl({ sheet, element }, doc = globalThis.document) {
+    const inner = element?.querySelector?.('[data-escape-back]:not([hidden])');
+    const innerBack = inner?.querySelector?.(inner.getAttribute('data-escape-back'));
+    if (innerBack) return innerBack;
     return sheet.backSelector
         ? element.querySelector?.(sheet.backSelector)
         : doc?.getElementById?.(sheet.back);
@@ -141,6 +149,19 @@ export function getOpenSheet(doc = globalThis.document, { exclude = [] } = {}) {
         if (isOpen(element, sheet)) return { name: sheet.name, element, sheet };
     }
     return null;
+}
+
+/**
+ * Whether a menu covers the game now: an open sheet (an inert Odyssey cue only when
+ * `includeInert`) or a multiplayer screen. Game keys and shortcuts stand aside then.
+ * @param {Document} [doc]
+ * @param {{exclude?: string[], includeInert?: boolean}} [options]
+ */
+export function menuCoversGame(doc = globalThis.document, { exclude = [], includeInert = false } = {}) {
+    const open = getOpenSheet(doc, { exclude });
+    if (open && (includeInert || !open.element.inert)) return true;
+    const layer = getTopLayerElement();
+    return Boolean(layer?.getClientRects?.().length);
 }
 
 /** Visible, focusable controls inside a sheet, in document order. */

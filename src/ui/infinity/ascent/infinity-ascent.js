@@ -35,6 +35,7 @@ import { loadThemeTints } from './ascent-tints.js';
 import { setExplorationSignal } from '../../../core/exploration-signal.js';
 import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../../utils/wheel-routing.js';
 import { eventBus, EVENTS } from '../../../events/event-bus.js';
+import { findBoundAction } from '../../binding-keys.js';
 
 /** Wheel pixels per board row. */
 const PIXELS_PER_ROW = 30;
@@ -239,9 +240,7 @@ export class InfinityAscent {
     /** @param {KeyboardEvent} event */
     _handleKey(event) {
         if (this.flight.phase === 'idle') return;
-        const key = event.key === ' ' ? 'Space' : event.key;
-        const bindings = window.settings?.keyBindings || {};
-        const action = Object.keys(bindings).find((name) => bindings[name] === key);
+        const action = findBoundAction(window.settings?.keyBindings, event.key);
         if (action && GAME_ACTIONS.includes(action)) this.handleGameInput();
     }
 

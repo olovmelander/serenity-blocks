@@ -146,12 +146,13 @@ describe('single settings capture session', () => {
         handleGamepadBinding(second, manager);
         expect(first.classList.contains('listening')).toBe(false);
         expect(vi.getTimerCount()).toBe(2);
+        // L3: free in the defaults (Home, 16, stays a menu button and is not taken).
         navigator.getGamepads.mockReturnValue([{ buttons: Array.from({ length: 17 }, (_, index) => ({
-            pressed: index === 16, value: index === 16 ? 1 : 0,
+            pressed: index === 10, value: index === 10 ? 1 : 0,
         })) }]);
         vi.advanceTimersByTime(50);
-        expect(manager.get().gamepadBindings.moveRight).toBe(16);
-        expect(manager.get().gamepadBindings.moveLeft).not.toBe(16);
+        expect(manager.get().gamepadBindings.moveRight).toBe(10);
+        expect(manager.get().gamepadBindings.moveLeft).not.toBe(10);
         expect(vi.getTimerCount()).toBe(0);
     });
 
