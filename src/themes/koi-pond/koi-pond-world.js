@@ -43,8 +43,15 @@
  * The clock turns the same wheel by itself, one night every minute and a half, so the pond
  * changes its colours through a long calm game and in the modes that have no levels.
  *
- * Time is a fixed-step simulation (sixty steps a second for the koi, the spray and the waves),
- * so seek(t) plus a replay reproduces any frame.
+ * What floats answers all of it (koi-pond-drift.js): every splash's front shoves the pads and
+ * the fallen leaves outward and sets the leaves turning, and what lies where it struck is
+ * pushed under, rocked and left wet; the koi part what floats over their backs, lift the pads
+ * they pass under, and a koi coming up goes for a leaf or a pad's rim and mouths it; the chain's
+ * ring and a fever draw the water round the board and the leaves with it; a gust blows them
+ * downwind and the hush stills them. The lilies ride their pads.
+ *
+ * Time is a fixed-step simulation (sixty steps a second for the koi, what floats, the spray and
+ * the waves), so seek(t) plus a replay reproduces any frame.
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
@@ -52,7 +59,7 @@ import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     DEG, POND, approach, clamp, clamp01, hash2, pieceLight, smooth, waterDepth,
 } from './koi-pond-core.js';
-import { CHAIN_GOLD, PondLight } from './koi-pond-light.js';
+import { CHAIN_GOLD, PondLight, WAVE_SPEED } from './koi-pond-light.js';
 import {
     KOI_POND_MOODS, MOOD_DRIFT, MOOD_TURN, moodAt, turnToward,
 } from './koi-pond-moods.js';
@@ -62,10 +69,11 @@ import {
 import { createBed } from './koi-pond-bed.js';
 import { createWater } from './koi-pond-water.js';
 import { createKoi, writeKoiLook } from './koi-pond-koi.js';
-import { KoiSchool } from './koi-pond-school.js';
+import { CHAIN_RING, KoiSchool } from './koi-pond-school.js';
 import {
-    createFloaters, createLilies, createPads, planFlora,
+    FLOATER_LIVE_STRIDE, PAD_LIVE_STRIDE, createFloaters, createLilies, createPads, planFloaters, planFlora,
 } from './koi-pond-flora.js';
+import { FloatDrift } from './koi-pond-drift.js';
 import {
     createIris, createLanternGlow, createMaples, createStones, growMaples, planGarden,
 } from './koi-pond-garden.js';
@@ -176,6 +184,7 @@ export class KoiPondWorld {
         this.surface = null;
         this.school = null;
         this.koi = null;
+        this.pads = null;
         this.lilies = null;
         this.pools = null;
         this.spray = null;
@@ -186,6 +195,9 @@ export class KoiPondWorld {
         this.floaters = null;
         this.iris = null;
         this.lantern = null;
+        /** What floats, moved by the rings, the koi, the chain's current and the breeze. */
+        this.drift = null;
+        this._lilyAt = { x: 0, z: 0, turn: 0 };
         /** Rocks standing in the water: the waves and the koi go round them. */
         this.rocks = [];
         this.queue = [];
@@ -258,9 +270,10 @@ export class KoiPondWorld {
         this.moodPlace = 0;
         this.queue.length = 0;
         this.counts = {
-            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, leaps: 0, steps: 0, splashes: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, leaps: 0, steps: 0, splashes: 0, nibbles: 0,
         };
         this.school?.reset(time);
+        this.drift?.reset(time);
         this.light?.resetRings();
         this.surface?.reset(this.renderer, time);
         this.spray?.reset();
@@ -319,11 +332,17 @@ export class KoiPondWorld {
         // ── What floats ──
         const flora = planFlora({ pads: tier.pads, lotus: tier.lotus, rocks: garden.standing });
         this.flora = flora;
-        this.addPart('pads', createPads(light, flora));
+        this.pads = createPads(light, flora);
+        this.addPart('pads', this.pads);
         this.lilies = createLilies(light, flora);
         this.addPart('lilies', this.lilies);
-        this.floaters = createFloaters(light, tier.floaters);
+        const leaves = planFloaters(tier.floaters, { pads: flora.pads });
+        this.floaters = createFloaters(light, leaves);
         this.addPart('floaters', this.floaters);
+        this.drift = new FloatDrift({
+            pads: flora.pads, lilies: flora.lilies, leaves, rocks: garden.standing, waveSpeed: WAVE_SPEED,
+        });
+        this.drift.setMotion(this.reducedMotion ? 0 : 1);
         const lilyCount = flora.lilies.length;
         this.lily = {
             count: lilyCount,
@@ -338,6 +357,9 @@ export class KoiPondWorld {
         this.school = new KoiSchool({
             count: tier.koi, seed: this.seed, rocks: this.rocks, reach: reachForAspect(this.aspect),
         });
+        // A koi coming up goes for what floats.
+        this.school.setFood(this.drift);
+        this.drift.env.school = this.school;
         this.koi = createKoi(light, tier.koi);
         for (let i = 0; i < tier.koi; i += 1) writeKoiLook(this.koi.look, i, this.school.fish[i]);
         this.koi.commitLook();
@@ -388,6 +410,7 @@ export class KoiPondWorld {
         this.school.writeLive(this.koi.live);
         this.koi.commit();
         this.writeLilies(0, true);
+        this.writeFloating();
         this.scene.add(this.root);
     }
 
@@ -430,6 +453,7 @@ export class KoiPondWorld {
 
     setReducedMotion(reduced) {
         this.reducedMotion = reduced === true;
+        this.drift?.setMotion(this.reducedMotion ? 0 : 1);
     }
 
     /** Jump the clock (captures): drops every event in flight and stills the water. */
@@ -573,13 +597,22 @@ export class KoiPondWorld {
     }
 
     /**
+     * Something meets the water at (x, z) (PondSurface.plunge's numbers): the waves take its
+     * rings, and what floats feels its front pass and, where it struck, the blow itself.
+     */
+    plunge(x, z, options) {
+        this.surface?.plunge(x, z, options);
+        this.drift?.pulse(x, z, options);
+    }
+
+    /**
      * A piece locked. `u` = its column as a fraction of the board width, `rows` = the visible
      * rows it covers, `color` = the piece's colour; `screen` (fractions) replaces the board point.
      */
     onLock({
         u = 0.5, rows = null, hardDrop = false, color = null, player = 0, screen = null,
     } = {}) {
-        const { light, surface, school } = this;
+        const { light, school } = this;
         if (!light) return;
         const rgb = pieceLight(color, this._rgb);
         let px = 0.5;
@@ -615,7 +648,7 @@ export class KoiPondWorld {
         const under = this.screenToWater(px, py, this._hit);
         this.lastLockX = under.x;
         this.lastLockZ = under.z;
-        surface?.plunge(under.x, under.z, {
+        this.plunge(under.x, under.z, {
             amp: hardDrop ? 0.085 : 0.045, radius: hardDrop ? 0.34 : 0.26, rate: hardDrop ? 8 : 9.5, foam: hardDrop ? 0.9 : 0.3,
         });
         const lit = [rgb[0] * 1.7, rgb[1] * 1.7, rgb[2] * 1.7];
@@ -693,7 +726,7 @@ export class KoiPondWorld {
             }
             const strength = hardDrop ? 0.62 : 0.72;
             this.at(this.time + flight, () => {
-                surface?.plunge(landX, landZ, {
+                this.plunge(landX, landZ, {
                     amp: hardDrop ? 0.07 : 0.05, radius: hardDrop ? 0.22 : 0.19, rate: 10.5, foam: hardDrop ? 0.5 : 0.3,
                 });
                 light.ring(landX, landZ, this.time, strength, lit, hardDrop ? 14 : 10);
@@ -755,7 +788,7 @@ export class KoiPondWorld {
         rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, crown = false,
         player = 0, screen = null,
     } = {}) {
-        const { light, surface, school } = this;
+        const { light, school } = this;
         if (!light) return;
         if (crown === true) {
             this.crownClear(rows, player, screen);
@@ -793,7 +826,7 @@ export class KoiPondWorld {
             lines: n, cascade: deeper + 1, combo, tspin, perfect, b2b,
         }, birth);
         this.at(birth, () => {
-            surface?.plunge(hx0, hz0, {
+            this.plunge(hx0, hz0, {
                 amp: 0.06 + 0.02 * n + 0.008 * deeper, radius: 0.5 + 0.06 * n + 0.05 * deeper, rate: 7, foam: 0.4,
             });
             light.ring(hx0, hz0, this.time, strength, gold, 18 + 3 * deeper);
@@ -838,7 +871,7 @@ export class KoiPondWorld {
                             size: 0.09,
                             rgb: [1.0, 0.86, 0.55],
                         });
-                        surface?.plunge(at.x, at.z, {
+                        this.plunge(at.x, at.z, {
                             amp: 0.05, radius: 0.3, rate: 9, foam: 0.8,
                         });
                     }
@@ -880,11 +913,11 @@ export class KoiPondWorld {
      * rears again, higher.
      */
     crownClear(rows, player, screen) {
-        const { light, surface, school } = this;
+        const { light, school } = this;
         const { x, z } = this.clearHeart(rows, player, screen);
         const now = this.time;
         this.surge.crown(now);
-        surface?.plunge(x, z, {
+        this.plunge(x, z, {
             amp: 0.11, radius: 0.8, rate: 6, foam: 0.5,
         });
         // (Rose, not more gold: the quad's gold rings are still crossing the pond, and on top
@@ -910,11 +943,11 @@ export class KoiPondWorld {
 
     /** A T-spin that cleared nothing: one koi turns over at the surface, a rose swirl. */
     spinClear() {
-        const { light, surface } = this;
+        const { light } = this;
         const x = this.lastLockX;
         const z = this.lastLockZ;
         this.surge.spin(this.time);
-        surface?.plunge(x, z, {
+        this.plunge(x, z, {
             amp: 0.05, radius: 0.3, rate: 11, foam: 0.3,
         });
         light.ring(x, z, this.time, 0.85, [ROSE[0] * 1.5, ROSE[1] * 1.3, ROSE[2] * 1.9], 9);
@@ -1017,6 +1050,7 @@ export class KoiPondWorld {
             for (let i = 0; i < school.events.length; i += 1) this.onSchoolEvent(school.events[i]);
             wakes = school.writeWakes(this._wakes, SIM_STEP, WAKE_STRIDE);
         }
+        if (this.drift) this.stepDrift();
         if (dragon) {
             // A long chain or a quad wakes it; a fever brings it up under the ring too, and as the
             // fever cools it sinks back slowly instead of on the lock that broke the chain.
@@ -1032,6 +1066,55 @@ export class KoiPondWorld {
             surface.stepOnce(this.renderer);
         }
         this.counts.steps += 1;
+    }
+
+    /**
+     * What floats feels this step's air and water and moves: after the koi (it reads where they
+     * swim) and the plunges of this step, before the waves.
+     */
+    stepDrift() {
+        const { drift, school } = this;
+        const { env } = drift;
+        // (Everything here is read on the drift's own step clock, never the frame's, so the same
+        // steps move what floats the same way however the frames fall.)
+        const now = drift.time + SIM_STEP;
+        const gust = this.swells.gust.valueAt(now);
+        const warm = clamp01(this.surge.level.valueAt(now));
+        // The breeze wanders slowly round the pond's long axis; a gust and warm play strengthen it.
+        const bearing = 0.5 + Math.sin(now * 0.011) * 0.6 + Math.sin(now * 0.027 + 1.1) * 0.3;
+        const breeze = 0.012 + gust * 0.09 + warm * 0.02;
+        env.windX = Math.cos(bearing) * breeze;
+        env.windZ = Math.sin(bearing) * breeze;
+        env.stir = 1 + gust * 3 + warm * 1.2;
+        // The hush before a four-line clear: the air dies.
+        env.still = now < this.hushUntil ? this.hushDepth : 0;
+        if (school) {
+            // The chain's ring (and a fever's whirl) draws the water round the board.
+            const radii = school.ringRadii(this._ringRadii || (this._ringRadii = { x: 0, z: 0 }));
+            env.ringX = CHAIN_RING.x;
+            env.ringZ = CHAIN_RING.z;
+            env.ringRX = radii.x;
+            env.ringRZ = radii.z;
+            env.swirl = clamp01(Math.max(school.charge, school.rally));
+        }
+        drift.step(SIM_STEP);
+    }
+
+    /** Where the drift has carried what floats: into the pads', the leaves' and the lilies' buffers. */
+    writeFloating() {
+        const {
+            drift, pads, floaters, lilies,
+        } = this;
+        if (!drift) return;
+        if (pads) {
+            drift.writePads(pads.live, PAD_LIVE_STRIDE);
+            pads.commit();
+        }
+        if (floaters) {
+            drift.writeLeaves(floaters.live, FLOATER_LIVE_STRIDE);
+            floaters.commit();
+        }
+        if (lilies) drift.writeLilies(lilies.motion);
     }
 
     /** The dragon presses on the water where its back comes up, and leaves light all along. */
@@ -1061,17 +1144,38 @@ export class KoiPondWorld {
         return n;
     }
 
-    /** A koi broke the surface, fell back into it, or came up to kiss it. */
+    /**
+     * A koi broke the surface, fell back into it, or came up to kiss it. A kiss on something
+     * floating mouths it: the leaf is tugged under and spun, the pad's rim dips, a few beads fly.
+     */
     onSchoolEvent(event) {
-        const { surface } = this;
         if (event.type === 'kiss') {
-            surface?.plunge(event.x, event.z, {
-                amp: 0.0035, radius: 0.07, rate: 15,
+            const heading = this.school.heading[event.index] || 0;
+            const took = this.drift ? this.drift.nibble(event.x, event.z, event.power, heading) : -1;
+            // (Straight to the waves: a kiss is too small to shove what floats.)
+            this.surface?.plunge(event.x, event.z, {
+                amp: took >= 0 ? 0.0055 : 0.0035, radius: 0.07, rate: 15,
             });
+            if (took >= 0) {
+                this.counts.nibbles += 1;
+                const share = this.spray ? this.spray.count / 640 : 0;
+                this.spray?.emit({
+                    x: event.x,
+                    z: event.z,
+                    n: Math.max(1, Math.round(5 * share)),
+                    out: [0.05, 0.35],
+                    up: [0.5, 1.2],
+                    dirX: Math.cos(heading),
+                    dirZ: Math.sin(heading),
+                    lean: 0.3,
+                    size: 0.035,
+                    radius: 0.04,
+                });
+            }
             return;
         }
         const big = event.type === 'splash';
-        surface?.plunge(event.x, event.z, {
+        this.plunge(event.x, event.z, {
             amp: (big ? 0.075 : 0.04) * event.power, radius: 0.24 + 0.14 * event.power, rate: big ? 7.5 : 10, foam: big ? 0.6 : 0.4,
         });
         this.light.ring(event.x, event.z, this.time, big ? 0.7 : 0.4, [
@@ -1114,7 +1218,8 @@ export class KoiPondWorld {
             lily.heart[i] = Math.max(floor, lily.heart[i] * Math.exp(-dt / 2.4));
             lilies.openness[i] = lily.open[i];
             lilies.heart[i] = lily.heart[i];
-            const at = flora.lilies[i];
+            // (Its pool of light goes where its pad has carried it.)
+            const at = this.drift ? this.drift.lilyAt(i, this._lilyAt) : flora.lilies[i];
             pools?.set(i, at.x, at.z, 0.8 + lily.heart[i] * 0.2, lily.open[i] * 0.03 + lily.heart[i] * 0.26, ROSE);
         }
     }
@@ -1178,7 +1283,8 @@ export class KoiPondWorld {
         // The garden answers the pace: the maple and the iris sway harder, leaves drift faster.
         if (this.maples) this.maples.gust.value = (1 + this.gust * 2.4 + this.power * 0.6 + level * 0.4) * motion;
         if (this.iris) this.iris.gust.value = (1 + this.gust * 2.2 + level * 0.3) * motion;
-        if (this.floaters) this.floaters.stir.value = 1 + this.gust * 3 + level * 1.2;
+        // (What floats is moved by the drift, a step at a time: here it is handed to the GPU.)
+        this.writeFloating();
         // The fireflies lift off the banks as play warms, and swarm alight in a fever.
         if (this.fireflies) {
             const lift = this.stir + this.power * 0.3 + level * 0.3 + fever * 0.45 + H.punch * 0.15;
@@ -1275,6 +1381,8 @@ export class KoiPondWorld {
             joined,
             liliesOpen: open,
             lilies: lily ? lily.count : 0,
+            // What floats: fronts felt, things a koi mouthed, how far a pad swings and a leaf strays.
+            floating: this.drift ? this.drift.state() : null,
             dragon: this.dragon ? this.dragon.presence : 0,
             drops: this.spray ? this.spray.alive : 0,
             waveSteps: this.surface ? this.surface.steps : 0,
@@ -1300,6 +1408,7 @@ export class KoiPondWorld {
         this.light = null;
         this.school = null;
         this.koi = null;
+        this.pads = null;
         this.lilies = null;
         this.pools = null;
         this.spray = null;
@@ -1308,6 +1417,7 @@ export class KoiPondWorld {
         this.mist = null;
         this.maples = null;
         this.floaters = null;
+        this.drift = null;
         this.iris = null;
         this.lantern = null;
         this._camera = null;
