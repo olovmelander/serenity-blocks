@@ -21,7 +21,7 @@ export const ODYSSEY_CHAPTER_TRACKS = Object.freeze({
     5: 'Starlight',
     6: 'Galaxy',
     7: 'BlackHole',
-    8: 'NeonDistrict',
+    8: 'NeonQuarter',
 });
 
 export const ODYSSEY_THRESHOLD_STINGERS = Object.freeze({

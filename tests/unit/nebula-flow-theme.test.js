@@ -451,7 +451,7 @@ describe('Nebula Flow theme: one node renderer on both backends', () => {
     it('is registered under its id, with an icon that exists, as a heavy GPU theme', () => {
         const entry = THEME_REGISTRY.find(({ id }) => id === 'nebula-flow');
         expect(entry).toMatchObject({
-            displayName: 'Nebula Flow',
+            displayName: 'Star Cradle',
             module: './nebula-flow/nebula-flow-theme.js',
             icon: './nebula-flow/nebula-flow-theme-icon.png',
             // The manager copies this onto every instance it builds; the class does not set it.
@@ -518,7 +518,7 @@ describe('Nebula Flow theme: one node renderer on both backends', () => {
     });
 
     it('lists its capture flags in the URL parameter reference, and only those', () => {
-        const mine = THEME_URL_PARAMETERS.filter((entry) => entry.scope === 'Nebula Flow');
+        const mine = THEME_URL_PARAMETERS.filter((entry) => entry.scope === 'Star Cradle');
         expect(mine.map((entry) => entry.name).sort()).toEqual(
             ['nebulaFlowFalseColor', 'nebulaFlowFixedDt', 'nebulaFlowForceWebGL', 'nebulaFlowParts', 'nebulaFlowTime'],
         );
@@ -536,7 +536,7 @@ describe('Nebula Flow theme: one node renderer on both backends', () => {
         // And the generic fallbacks no longer name a theme that does not read them.
         for (const name of ['seed', 'fixedDt']) {
             for (const entry of THEME_URL_PARAMETERS.filter((e) => e.name === name)) {
-                expect(entry.scope, name).not.toMatch(/Nebula Flow/);
+                expect(entry.scope, name).not.toMatch(/Star Cradle/);
                 expect(entry.sources, name).not.toContain('src/themes/nebula-flow/nebula-flow-theme.js');
             }
         }

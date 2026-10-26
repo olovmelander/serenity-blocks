@@ -143,11 +143,11 @@ const captureThemes = [
         'glass, iron, floor, lanterns, palms, ferns, leaves, vines, water, pads, reeds, '
         + 'fireflies, moths, motes, dew, blooms, queen, glows'],
 
-    ['nebula-flow', 'nebulaFlow', 'Nebula Flow', 'nebula, stars, births, jets, flights, blades'],
+    ['nebula-flow', 'nebulaFlow', 'Star Cradle', 'nebula, stars, births, jets, flights, blades'],
 
     ['neon-district',
         'neonDistrict',
-        'Neon District',
+        'Neon Quarter',
         'sky, mega, facades, street, shopfronts, signs, screens, lamps, cables, '
         + 'lanterns, halos, cones, beacons, traffic, sparks, counter, dragon, steam, '
         + 'rain, beams, kit-awning, kit-vending, kit-escape, kit-pipes, kit-bridge, '
@@ -417,7 +417,7 @@ const validationIds = ['aurora',
 export const THEME_URL_PARAMETERS = [
     entry(
         'neonDistrictGlass',
-        'Neon District',
+        'Neon Quarter',
         'Take the rain off the glass (the drops, runners and mist over the street), for A/B comparisons and captures.',
         '0 turns it off; any other value, or none, leaves it as the quality tier sets it',
         'On from Medium quality up',

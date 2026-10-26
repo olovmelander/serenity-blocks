@@ -326,7 +326,7 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'NeonDistrict',
+            track: 'NeonQuarter',
             crossfadeDuration: 4000,
         },
 

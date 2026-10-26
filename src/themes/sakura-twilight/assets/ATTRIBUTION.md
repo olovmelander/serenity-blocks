@@ -8,9 +8,11 @@ contain no third-party geometry, texture, scan, photograph or generative-model o
 and the generator fetches nothing from the network. Licence: the same as the project
 (MIT, project-local).
 
-`Fox.glb` is the Khronos glTF sample fox — model by PixelMannen, rig by @tomkranis, glTF
-conversion by @AsoboStudio and @scurest, CC-BY 4.0 — and is credited in the repository's
-`CREDITS.md`. It is kept exactly as published and is no longer loaded by the theme: it is
+`Fox.glb` is the Khronos glTF sample fox
+(https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox): model by PixelMannen
+(CC0 1.0, https://opengameart.org/content/fox-and-shiba), rigging and animation by tomkranis and
+glTF conversion by @AsoboStudio and @scurest (both CC BY 4.0,
+https://creativecommons.org/licenses/by/4.0/). It is credited in the repository's `CREDITS.md`. It is kept exactly as published and is no longer loaded by the theme: it is
 the source of `sakura-fox.glb`.
 
 `sakura-fox.glb` is that fox, **modified** (2026-10-09) by `node scripts/sakura/rig-fox.mjs`,
@@ -21,7 +23,8 @@ smooth normals; its skeleton replaced by axis-aligned bones standing at the orig
 itself, `../shared/fox-rig.js`); its skin weights carried over and renamed; its three baked
 clips left out; four numbers a vertex added as its colour (how far along the tail it is, how
 long its fur is there, how much of the sky it sees — an occlusion bake). Its texture is the
-original's, unchanged. The same licence and credit apply (CC-BY 4.0, as above). The script
+original's, unchanged. The same licences and credits apply (CC0 for the model, CC BY 4.0 for the rig and conversion, as
+above), and `CREDITS.md` lists these changes. The script
 is deterministic: `--check` compares a fresh rig with the file and `--preview=<dir>` draws
 mesh, skin and coat on the CPU.
 

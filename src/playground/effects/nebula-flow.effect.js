@@ -38,7 +38,7 @@ import { NEBULA_FLOW_TETROMINOS } from '../../themes/nebula-flow/nebula-flow-tet
 
 export const meta = {
     id: 'nebula-flow',
-    title: 'Nebula Flow (full world)',
+    title: 'Star Cradle (full world)',
     description: 'A stellar nursery: every lock kindles a star in the pillars, every clear sets them free.',
 };
 
