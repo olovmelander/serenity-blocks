@@ -462,3 +462,24 @@ inside its 90 budget.
 
 **Tests.** A new test pins that every broadleaf crown is countable puffs, each lit from its own
 centre. The traced-hull test now builds the traced style it guards.
+
+## §8. A crisp summit (2026-10-26)
+
+**Why it looked like clay.** The snow weight is a product of soft ramps: altitude with its
+jitter, slope, the crest strip, the flutes. Across the summit it therefore sat between 0.3 and
+0.7, so every fragment was part snow and part rock. From the climb at 150-300 u the peak read
+as smeared clay and glossy melting ice.
+
+**Snow is now a decision high up** (`SNOW_CRISP` in `world/odyssey-world-renderer.js`):
+
+- The same cover is broken by the atlas grain, so the boundary interlocks.
+- It is thresholded at 0.5 over an edge about a pixel wide (`fwidth`, clamped to 0.055-0.3).
+- This ramps in from 560 to 680 u. Below that, the snowline's own soft wobble across the
+  lowland peaks is unchanged.
+
+The result is white snowfields and dark rock breaking through, with painted, jagged boundaries.
+The cost is one `fwidth` and a few ALU.
+
+![The world playground at p 0.58, before and after](images/odyssey-act2-2026-10-25/crisp-snow-close.jpg)
+
+![On the climb at p 0.46 and 0.54, before and after](images/odyssey-act2-2026-10-25/crisp-snow-climb.jpg)

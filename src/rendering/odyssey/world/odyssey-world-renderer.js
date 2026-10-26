@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Break, Fn, If, Loop, int,
-    abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, dot, exp, exp2, float, floor, fract, frontFacing,
+    abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
     length, max, min, mix, reflect, select, sign, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin, smoothstep,
     screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition as cameraPositionNode,
@@ -167,6 +167,16 @@ const GROUND_SNOW_SHADE = Object.freeze([0.80, 0.99, 1.32]);
  * smooth white cone when the silhouette cannot help.
  */
 const GROUND_SNOW_CREST_STRIP = 0.75;
+/**
+ * CRISP SNOW (round two): above `from` (altitude ramp, u) the snow weight is thresholded instead
+ * of blended; `breakup` is how far the atlas grain pushes the boundary, `edge` the threshold's
+ * half-width bounds (a pixel's fwidth sits between them).
+ */
+const SNOW_CRISP = Object.freeze({
+    from: Object.freeze([560, 680]),
+    breakup: 0.20,
+    edge: Object.freeze([0.055, 0.3]),
+});
 /**
  * CLOUD SHADOWS ON THE MASSIF (2026-10-03). The world's sun stands BEHIND the chapter-5 camera,
  * so the face it climbs is front-lit and carried no shadow shapes at all. Soft shadows of the
@@ -2006,7 +2016,21 @@ export function createOdysseyWorld({
          * models all read the same numbers instead of each re-deriving its own opinion about
          * what material a fragment is.
          */
-        const kSnow = wSnow.toVar();
+        // CRISP SNOW (round two, 2026-10-26). `wSnow` is a product of soft ramps (altitude, slope,
+        // crest, flutes), so across the summit it sat between 0.3 and 0.7: every fragment part
+        // snow, part rock, and from the climb the peak read as smeared clay and glossy melting ice.
+        // High up, snow is now a DECISION: the cover, broken by the atlas grain so the boundary
+        // interlocks, thresholded at 0.5 over an edge about a pixel wide (fwidth, clamped), so the
+        // summit is snowfields and rock with painted, jagged boundaries. Low down (the snowline's
+        // own soft wobble across the meadows' peaks) it stays as it was.
+        const snowCover = wSnow.add(edgeBreak.mul(SNOW_CRISP.breakup).mul(detailMelt)).toVar();
+        const snowEdge = clamp(fwidth(snowCover).mul(1.2), SNOW_CRISP.edge[0], SNOW_CRISP.edge[1]);
+        const snowCrisp = smoothstep(float(0.5).sub(snowEdge), float(0.5).add(snowEdge), snowCover);
+        const kSnow = mix(
+            wSnow,
+            snowCrisp,
+            smoothstep(float(SNOW_CRISP.from[0]), float(SNOW_CRISP.from[1]), height),
+        ).toVar();
         const kRock = wRock.mul(float(1).sub(kSnow)).toVar();
         const kSand = wSand.mul(float(1).sub(wRock)).mul(float(1).sub(kSnow)).toVar();
         const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
