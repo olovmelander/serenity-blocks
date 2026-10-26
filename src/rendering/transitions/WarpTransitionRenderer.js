@@ -301,6 +301,11 @@ export class WarpTransitionRenderer {
                 varying vec2 vUv;
                 varying vec3 vWorldPos;
 
+                // Simplex noise (mod289 .. snoise) from webgl-noise, src/noise3D.glsl,
+                // by Ian McEwan, Ashima Arts: https://github.com/ashima/webgl-noise
+                // Copyright (C) 2011 by Ashima Arts (Simplex noise)
+                // Copyright (C) 2011-2016 by Stefan Gustavson (Classic noise and others)
+                // MIT License - full text in THIRD_PARTY_NOTICES.md
                 // 3D Noise function (Simplex/Perlin derivative)
                 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
                 vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -550,6 +555,11 @@ export class WarpTransitionRenderer {
                 uniform float uProgress;
                 uniform vec3 uColorPrimary;
 
+                // Simplex noise (mod289 .. snoise) from webgl-noise, src/noise3D.glsl,
+                // by Ian McEwan, Ashima Arts: https://github.com/ashima/webgl-noise
+                // Copyright (C) 2011 by Ashima Arts (Simplex noise)
+                // Copyright (C) 2011-2016 by Stefan Gustavson (Classic noise and others)
+                // MIT License - full text in THIRD_PARTY_NOTICES.md
                 // Simple 3D noise for the flare
                 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
                 vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }

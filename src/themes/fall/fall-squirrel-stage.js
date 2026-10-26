@@ -27,6 +27,10 @@ export const SQUIRREL_TRUNK_SPAN = Object.freeze({
 export const TRUNK_RAYS = 48;
 const TAU = Math.PI * 2;
 
+/** Catmull-Rom through p1..p2 (p0 and p3 the neighbours): smooth, so the bark's frame never jumps. */
+const catmull = (p0, p1, p2, p3, t) => 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t
+    + (3 * p1 - p0 - 3 * p2 + p3) * t * t * t);
+
 const wrapAngle = (a) => {
     let x = a % TAU;
     if (x < 0) x += TAU;
@@ -222,7 +226,7 @@ export class TrunkSurface {
         };
     }
 
-    /** Centre of the trunk (x, z) and bark radius at (h, angle), interpolated. */
+    /** Centre of the trunk (x, z) and bark radius at (h, angle), interpolated (bicubic, Catmull-Rom). */
     sample(h, angle) {
         const {
             heights, centres, radii, rays,
@@ -232,14 +236,31 @@ export class TrunkSurface {
         const k = Math.min(n - 2, Math.floor(f));
         const t = f - k;
         const a = (wrapAngle(angle) / TAU) * rays;
-        const r0 = Math.floor(a) % rays;
-        const r1 = (r0 + 1) % rays;
+        const r1 = Math.floor(a) % rays;
         const s = a - Math.floor(a);
-        const ring = (kk) => radii[kk * rays + r0] * (1 - s) + radii[kk * rays + r1] * s;
+        const row = (kk) => Math.max(0, Math.min(n - 1, kk));
+        const ray = (r) => (r + rays) % rays;
+        const ring = (kk) => {
+            const base = row(kk) * rays;
+            return catmull(
+                radii[base + ray(r1 - 1)],
+                radii[base + r1],
+                radii[base + ray(r1 + 1)],
+                radii[base + ray(r1 + 2)],
+                s,
+            );
+        };
+        const centre = (axis) => catmull(
+            centres[row(k - 1) * 2 + axis],
+            centres[k * 2 + axis],
+            centres[(k + 1) * 2 + axis],
+            centres[row(k + 2) * 2 + axis],
+            t,
+        );
         return {
-            cx: centres[k * 2] * (1 - t) + centres[(k + 1) * 2] * t,
-            cz: centres[k * 2 + 1] * (1 - t) + centres[(k + 1) * 2 + 1] * t,
-            r: ring(k) * (1 - t) + ring(k + 1) * t,
+            cx: centre(0),
+            cz: centre(1),
+            r: catmull(ring(k - 1), ring(k), ring(k + 1), ring(k + 2), t),
         };
     }
 
@@ -255,8 +276,9 @@ export class TrunkSurface {
     frame(h, angle, out = this.scratch) {
         const clamped = Math.max(this.low, Math.min(this.high, h));
         this.point(clamped, angle, out.point);
-        const dh = 0.08;
-        const da = 0.06;
+        // The frame is taken over about the squirrel's own length, so the bark's small bumps do not rock it.
+        const dh = 0.12;
+        const da = 0.08;
         const up0 = this.point(clamped - dh, angle, [0, 0, 0]);
         const up1 = this.point(clamped + dh, angle, [0, 0, 0]);
         const s0 = this.point(clamped, angle - da, [0, 0, 0]);

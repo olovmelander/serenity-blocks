@@ -406,7 +406,7 @@ def write_manifest(path, glb, tris, verts):
     manifest = {
         "schemaVersion": 1,
         "author": "Serenity Blocks original procedural Blender authoring",
-        "license": "MIT-project-local",
+        "license": "Proprietary (project-owned)",
         "generator": "scripts/blender/synthwave_gull.py",
         "glTFUpAxis": "Y",
         "assets": [{

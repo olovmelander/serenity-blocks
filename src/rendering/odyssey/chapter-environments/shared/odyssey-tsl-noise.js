@@ -40,6 +40,9 @@ import {
 } from 'three/tsl';
 
 // ── Hashes (mirror od_hash21 / od_hash31 / od_hash33) ───────────────────────────
+//
+// Ports of David Hoskins' "Hash without Sine" (https://www.shadertoy.com/view/4djSRW),
+// Copyright (c)2014 David Hoskins, MIT License — full text in THIRD_PARTY_NOTICES.md.
 
 /** vec2 → [0,1) scalar hash (od_hash21). */
 export const hash21 = /* @__PURE__ */ Fn(([pIn]) => {
@@ -153,6 +156,12 @@ export function curl3(pInput) {
 }
 
 // ── Simplex noise (Ashima / Stefan Gustavson `snoise`, TSL port) ────────────────
+//
+// mod289v3 / mod289v4 / permute4 / taylorInvSqrt4 / simplex3 are a TSL port of `snoise` from
+// webgl-noise (https://github.com/ashima/webgl-noise, src/noise3D.glsl, by Ian McEwan, Ashima Arts):
+//   Copyright (C) 2011 by Ashima Arts (Simplex noise)
+//   Copyright (C) 2011-2016 by Stefan Gustavson (Classic noise and others)
+// MIT License — full text in THIRD_PARTY_NOTICES.md.
 //
 // WHY NOT three's `mx_noise_float` (the previous stand-in): MaterialX Perlin hashes the
 // lattice with an INTEGER Bob-Jenkins mix (8 corner hashes × 7 bit-rotates per sample).

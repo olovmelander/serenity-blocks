@@ -4,7 +4,7 @@ Every file in this folder is a project-owned original, authored procedurally in
 Blender 5.2.2 LTS on 2026-10-26 for this repository by `scripts/blender/synthwave_gull.py`.
 It contains no third-party geometry, texture, scan, photograph or generative-model output,
 and the generator fetches nothing from the network. Licence: the same as the project
-(MIT, project-local).
+(proprietary, all rights reserved).
 
 `asset-manifest.json` (written by the same script) records the file's size and SHA-256 and
 the rig the theme folds the wings with; `tests/unit/synthwave-sunset-gull-asset.test.js`

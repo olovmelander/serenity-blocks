@@ -51,9 +51,16 @@ TAIL_BASE = P(0.0, 0.072, -0.086)
 TAIL_DIR = _unit((0.0, 0.6, -0.8))
 TAIL_STEP = 0.033
 TAIL_BONES = 7
-# The plume's radius at each tail joint (and the tip), and its core's.
-PLUME = [0.012, 0.022, 0.031, 0.037, 0.0395, 0.038, 0.032, 0.018]
-CORE = [0.0085, 0.012, 0.0155, 0.0175, 0.018, 0.017, 0.014, 0.008]
+# The plume's half-width at each tail joint (and the last), and its core's. A red squirrel's tail is
+# a broad soft plume, its hairs fanned out to both sides of a slim core (so it is flatter than it is
+# wide: PLUME_DEPTH of its width), bushy from close to the rump, fullest two thirds of the way out,
+# and ending in a rounded brush (BRUSH metres past the last joint).
+PLUME = [0.015, 0.026, 0.033, 0.0385, 0.041, 0.041, 0.038, 0.031]
+CORE = [0.0085, 0.0115, 0.0135, 0.014, 0.0135, 0.0125, 0.011, 0.008]
+PLUME_DEPTH = [0.9, 0.74, 0.66, 0.62, 0.6, 0.6, 0.62, 0.7]
+BRUSH = 0.024
+# The share of the plume's width that is its body (the rest is the hair drawn over it).
+PLUME_BODY = 0.74
 
 
 def _tail_joint(i):
@@ -114,22 +121,23 @@ def _tail_frame():
     return across, back
 
 
-def _tail_station(s):
-    """Where on the tail's axis, and its plume and core radius, `s` metres from the root."""
-    f = float(np.clip(s / TAIL_STEP, 0.0, TAIL_BONES))
-    i = int(min(TAIL_BONES - 1, math.floor(f)))
-    t = f - i
-    plume = PLUME[i] * (1.0 - t) + PLUME[i + 1] * t
-    core = CORE[i] * (1.0 - t) + CORE[i + 1] * t
-    return TAIL_BASE + TAIL_DIR * s, plume, core
-
-
-def _plume_radius(s):
+def _profile(table, s):
+    """A per-joint table read `s` metres from the root (smoothly between joints, held past the last)."""
     f = np.clip(np.asarray(s, dtype=np.float64) / TAIL_STEP, 0.0, TAIL_BONES - 1e-6)
     i = np.floor(f).astype(np.int64)
     t = f - i
-    radii = np.array(PLUME)
-    return radii[i] * (1.0 - t) + radii[i + 1] * t
+    t = t * t * (3.0 - 2.0 * t)
+    values = np.asarray(table, dtype=np.float64)
+    return values[i] * (1.0 - t) + values[i + 1] * t
+
+
+def _tail_station(s):
+    """Where on the tail's axis, and its plume and core radius, `s` metres from the root."""
+    return TAIL_BASE + TAIL_DIR * s, float(_profile(PLUME, s)), float(_profile(CORE, s))
+
+
+def _plume_radius(s):
+    return _profile(PLUME, s)
 
 
 def _hash(*values):
@@ -137,52 +145,16 @@ def _hash(*values):
     return x - math.floor(x)
 
 
-def tail_locks():
-    """The plume as locks of hair, laid like a feather: broad soft locks leave the core on each side and
-    sweep back toward the tip, a smaller run along its top and underside, and a brush at the end. Their
-    rounded ends make a scalloped outline (a storybook squirrel's tail) rather than a smooth sausage."""
+def plume_envelope(scale=PLUME_BODY):
+    """The plume's body: a flattened tube through the joints (wide across, shallower top to bottom),
+    closed past the last joint by a round end, that the hair lies over."""
     across, back = _tail_frame()
-    locks = []
     length = TAIL_STEP * TAIL_BONES
-    # The side locks, the two sides out of step.
-    for side in (1.0, -1.0):
-        s = 0.010 + (0.0075 if side < 0 else 0.0)
-        n = 0
-        while s < length - 0.03:
-            centre, plume, core = _tail_station(s)
-            lift = 0.55 * (_hash(n, side, 1.0) - 0.5)
-            radial = _unit(across * side + back * lift)
-            direction = _unit(radial + TAIL_DIR * (1.05 + 0.3 * _hash(n, side, 2.0)))
-            base = centre + radial * core * 0.2
-            reach = plume * (1.25 + 0.25 * _hash(n, side, 3.0))
-            width = 0.0062 + 0.0055 * min(1.0, plume / 0.037)
-            locks.append(RoundCone(base, base + direction * reach, width, width * 0.5, squash=(back, 0.62)))
-            s += 0.0115 + 0.003 * _hash(n, side, 4.0)
-            n += 1
-    # Along the top and the underside: shorter locks that give the plume its depth.
-    for side in (1.0, -1.0):
-        s = 0.02 + (0.006 if side < 0 else 0.0)
-        n = 0
-        while s < length - 0.035:
-            centre, plume, core = _tail_station(s)
-            sway = 0.5 * (_hash(n, side, 5.0) - 0.5)
-            radial = _unit(back * side + across * sway)
-            direction = _unit(radial + TAIL_DIR * 1.4)
-            base = centre + radial * core * 0.2
-            reach = plume * 0.95
-            width = 0.0055 + 0.004 * min(1.0, plume / 0.037)
-            locks.append(RoundCone(base, base + direction * reach, width, width * 0.55, squash=(across, 0.75)))
-            s += 0.016
-            n += 1
-    # The tip: a soft brush of locks gathered to a rounded point.
-    end, _plume_r, _core_r = _tail_station(length - 0.03)
-    for k in range(7):
-        a = k * 2.0 * math.pi / 7.0 + 0.3
-        radial = across * math.cos(a) + back * (0.7 * math.sin(a))
-        base = end + radial * 0.006
-        locks.append(RoundCone(base, base + _unit(TAIL_DIR + radial * 0.5) * 0.034, 0.0105, 0.004,
-                               squash=(back, 0.75)))
-    return locks
+    stations = [0.0, 0.012] + [TAIL_STEP * i for i in range(1, TAIL_BONES + 1)] + [length + BRUSH * 0.45]
+    points = [TAIL_BASE + TAIL_DIR * s for s in stations]
+    radii = [float(_profile(PLUME, s)) * (scale if s > 0.0 else 0.8) for s in stations[:-1]] + [PLUME[-1] * scale * 0.7]
+    depth = [float(_profile(PLUME_DEPTH, s)) for s in stations[:-1]] + [0.8]
+    return Tube(points, radii, squash_axis=back, squash=depth, k=0.01)
 
 
 def _plume(x, y, z):
@@ -286,12 +258,9 @@ def design():
                          along=_unit(toes - heel))
         hind.append(Union([thigh, (shin, 0.008), (foot, 0.006)], k=0.006).tag(part))
 
-    # The tail: a slim core and the locks of the plume round it.
-    stations = [_tail_joint(i) for i in range(TAIL_BONES + 1)]
-    stations[-1] = stations[-1] - TAIL_DIR * 0.01
-    core = Tube(stations, CORE, k=0.01)
-    plume = Union([core] + [(lock, 0.009) for lock in tail_locks()], k=0.009)
-    tail = Displace(plume, 0.0004, _plume).tag(PARTS["tail"])
+    # The tail: the plume's soft body, combed. Its hair, the fringe that makes its outline, is drawn
+    # over it at runtime as cards on the same bones (src/themes/fall/fall-squirrel-plume.js).
+    tail = Displace(plume_envelope(PLUME_BODY), 0.0005, _plume).tag(PARTS["tail"])
 
     whole = Union([
         body, (head, 0.012), (eyes, 0.002), *[(ear, 0.004) for ear in ears], *[(leg, 0.012) for leg in front],
@@ -470,16 +439,26 @@ def paint(shape, landmarks, positions, normals, parts):
     lay(C["inner"], 0.6 * ear * (1.0 - tuft) * _smoothstep(0.1, 0.6, nz))
     lay(C["tuft"] * 0.55, tuft * _smoothstep(0.148, 0.159, y))
     lay(C["tuft"], tuft * (1.0 - _smoothstep(0.148, 0.159, y)))
-    # Tail: rust, the locks golden toward their tips (the outside of the plume).
+    # Tail: rust, a little darker down the middle of the plume (where the hair parts), and golden out
+    # toward its edges, where the hair is the ends of the strands (the fringe drawn over it is golder).
     tail = (parts == PARTS["tail"]).astype(np.float64)
+    across, back = _tail_frame()
     rel = positions - TAIL_BASE
     s = rel @ TAIL_DIR
-    out = np.linalg.norm(rel - s[:, None] * TAIL_DIR[None, :], axis=1) / np.maximum(_plume_radius(s), 1e-3)
-    lock = _smoothstep(0.55, 1.1, out) * tail
-    lay(C["tail"] * (0.85 + 0.15 * _smoothstep(0.02, 0.12, s))[:, None], tail * (1.0 - 0.6 * lock))
-    lay(C["tailTip"], tail * 0.6 * lock)
+    width = np.maximum(_plume_radius(s) * PLUME_BODY, 1e-3)
+    u = (rel @ across) / width
+    v = (rel @ back) / (width * _profile(PLUME_DEPTH, s))
+    out = np.sqrt(u * u + v * v)
+    lock = _smoothstep(0.5, 0.97, np.abs(u)) * _smoothstep(0.6, 0.95, out) * tail
+    middle = (1.0 - _smoothstep(0.06, 0.45, np.abs(u))) * tail
+    lay(C["tail"] * (0.9 + 0.1 * _smoothstep(0.02, 0.12, s))[:, None], tail)
+    lay(C["back"] * 0.9, 0.5 * middle)
+    lay(C["tailTip"], 0.45 * lock)
 
     sky = occlusion(shape, positions, normals)
+    # In the plume the hair between the clumps is not shut away from the sky as a crevice in a solid
+    # would be (light gets in through it): its occlusion is kept soft, so it never prints as blotches.
+    sky = np.where(tail > 0.5, 0.55 + 0.45 * sky, sky)
     # Fur: none on the eyes and nose, short on the face and paws, long on the tail and tufts.
     face = (parts == PARTS["head"]) * _smoothstep(0.088, 0.112, z)
     fur = 0.55 * np.ones(len(positions))
@@ -492,7 +471,9 @@ def paint(shape, landmarks, positions, normals, parts):
     through = np.where(tail > 0.5, 0.45 + 0.55 * lock, through)
     through = through * (1.0 - eye) * (1.0 - nose)
     colors = np.concatenate([np.clip(albedo, 0.0, 1.0), sky[:, None]], axis=1)
-    fur_attr = np.stack([np.clip(fur, 0.0, 1.0), np.clip(through, 0.0, 1.0), eye, tuft.astype(np.float64)], axis=1)
+    # (The last: 1 on the ear tufts, a half on the plume, which the coat's shader combs.)
+    mark = np.where(tail > 0.5, 0.5, tuft.astype(np.float64))
+    fur_attr = np.stack([np.clip(fur, 0.0, 1.0), np.clip(through, 0.0, 1.0), eye, mark], axis=1)
     return colors, fur_attr
 
 

@@ -6,7 +6,7 @@ Blender 4.5.9 LTS on 2026-10-05 for this repository by
 `squirrel.glb`, authored in Blender 5.2 LTS on 2026-10-26 by `scripts/blender/fall_squirrel.py`
 (below). None contains third-party geometry, texture, scan, photograph, motion capture or generative-model
 output, and neither generator fetches anything from the network. Licence: the same as the
-project (MIT, project-local).
+project (proprietary, all rights reserved).
 
 `asset-manifest.json` records each file's size and SHA-256; `tests/unit/fall-assets.test.js`
 checks the files against it.
@@ -17,7 +17,7 @@ checks the files against it.
 | `maple-grove-a/b/c.glb`, `birch-grove-a/b.glb` | The grove trees of the middle distance. |
 | `fall-foliage.glb` | The shared leaf geometry: maple and oak sprays, maple clumps, weeping birch strands (two variants each) and single leaves for the litter and the leaves in the air. |
 | `fall-impostors.png` | Front elevations of the five grove trees for the distant forest. |
-| `squirrel.glb` | The red squirrel: one skinned body on a 30-bone rig, sixteen clips (idle, sit, bound, hop, climb, descend, cling, nibble, chatter, startle, look, dig, pat, scratch, groom, leap) and the acorn it nibbles, riding on its left hand. |
+| `squirrel.glb` | The red squirrel: one skinned body on a 30-bone rig, eighteen clips (idle, sit, bound, hop, climb, descend, shuffle, cling, pivot, nibble, chatter, startle, look, dig, pat, scratch, groom, leap) and the acorn it nibbles, riding on its left hand. |
 
 ## How the squirrel is made
 
@@ -28,22 +28,26 @@ Made in Blender 5.2 by `scripts/blender/fall_squirrel.py` (modules in
   smooth unions round the rig's own joints (the meshing of the Grainfields horse and Winter's
   bear, `scripts/blender/grainfields/horse_sdf.py`): haunches, belly, chest, a big round head
   with full cheeks, large eyes and a button nose, cupped ears with three-strand tufts, slim
-  legs and long hind feet, and a plume built of overlapping locks of hair so its outline is
-  scalloped. The left half is polygonised with surface nets, decimated in two passes (body,
+  legs and long hind feet, and the body of a plume (a flattened tube through the tail joints,
+  combed by a fine displacement; its hair is drawn over it at runtime as cards on the same
+  bones, `src/themes/fall/fall-squirrel-plume.js`). The left half is polygonised with surface nets, decimated in two passes (body,
   legs and plume first with the face held, then the face with the rest held) and mirrored.
   Each vertex is painted: COLOR_0 = the coat's linear colour and the sky it sees (occlusion
-  traced through the field), `_fur` = hair length, light through it, eye, ear tuft.
+  traced through the field), `_fur` = hair length, light through it, eye, and 1 on the ear
+  tufts, a half on the plume.
 - **Rig** (`rig.py`). Thirty bones, every one resting in the squirrel's own frame, weighted
   by inverse distance along each part's chain and relaxed over the surface.
 - **Motion** (`motion.py`, `solver.py`). Each clip is a function of time: where the body is
   and how it bends, where each paw is put (two-bone IK with the knee or elbow in the plane a
-  pole gives), how the head, ears, jaw and the seven-bone tail turn. They are sampled on every
-  frame (30 fps) and keyed into one Blender action each, which the glTF exporter writes as one
-  animation each.
-- **Pack.** Rotations as normalised 16-bit, a channel that never moves in a clip as one key,
+  pole gives), how the head, ears, jaw and the seven-bone tail turn (on the bark the tail is
+  laid along it at set heights, `solver.lay_tail`). They are sampled on every
+  frame (60 fps) and keyed into one Blender action each, which the glTF exporter writes as one
+  animation each. `audit.py` reads every clip for paws asked past their leg's reach, planted
+  paws that slide and pops at loop seams.
+- **Pack.** The slow standing loops (idle, sit, cling, look) halved to 30 fps; rotations as normalised 16-bit, a channel that never moves in a clip as one key,
   unused translation and scale channels dropped, colours, fur and weights as bytes, normals as
-  normalised bytes (`KHR_mesh_quantization`); the clips' lengths, loops and speeds in the
-  asset's extras (held to `fall-squirrel-clips.js` by a test).
+  normalised bytes (`KHR_mesh_quantization`); the clips' lengths, loops, speeds and
+  marks (the leap's take-off and landing) in the asset's extras (held to `fall-squirrel-clips.js` by a test).
 
 ```bash
 node scripts/fall/pack-squirrel.mjs        # runs Blender headless, packs, writes the asset and its manifest line

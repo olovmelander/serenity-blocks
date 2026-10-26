@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "author": "Serenity Blocks original procedural Blender authoring",
-  "license": "MIT-project-local",
+  "license": "Proprietary (project-owned)",
   "glTFUpAxis": "Y",
   "assets": [
     {
@@ -192,10 +192,10 @@
     },
     {
       "file": "squirrel.glb",
-      "bytes": 450352,
-      "sha256": "47665412d46ad461b1be6b8b974b4b221ea08026112ab45c8b5edbf53757607f",
+      "bytes": 531580,
+      "sha256": "b9c9e7c5f4ea012252a9434c9718f817e4532edca281722da3780950deef3c78",
       "kind": "squirrel",
-      "triangles": 9806,
+      "triangles": 9502,
       "acornTriangles": 420,
       "bones": 30,
       "clips": [
@@ -212,7 +212,9 @@
         "look",
         "nibble",
         "pat",
+        "pivot",
         "scratch",
+        "shuffle",
         "sit",
         "startle"
       ]

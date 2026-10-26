@@ -43,6 +43,22 @@ const GENERATOR = 'Serenity Blocks - Fall red squirrel '
     + '(scripts/blender/fall_squirrel.py + scripts/fall/pack-squirrel.mjs)';
 /** A channel whose every key is within this of its first is one key. */
 const STILL = 2e-5;
+/**
+ * The clips keyed at 60 fps that move slowly enough to keep every other key (30 fps): the long
+ * standing, sitting and clinging loops are most of the keys and move only in slow turns and breaths.
+ */
+const HALF_RATE = new Set(['idle', 'sit', 'cling', 'look']);
+
+/** Every other key (and the last, so a loop still closes). */
+function halve(values, size) {
+    const count = values.length / size;
+    const keep = [];
+    for (let i = 0; i < count; i += 2) keep.push(i);
+    if (keep[keep.length - 1] !== count - 1) keep.push(count - 1);
+    const out = [];
+    for (const i of keep) for (let k = 0; k < size; k++) out.push(values[i * size + k]);
+    return out;
+}
 
 function args() {
     const out = {};
@@ -172,7 +188,11 @@ export function pack(rawFile, manifest) {
             generator: GENERATOR,
             extras: {
                 clips: Object.fromEntries(Object.entries(manifest.clips).map(([name, clip]) => [name, {
-                    length: clip.length, loop: clip.loop, speed: clip.speed, frames: clip.frames,
+                    length: clip.length,
+                    loop: clip.loop,
+                    speed: clip.speed,
+                    frames: clip.frames,
+                    ...(clip.marks && Object.keys(clip.marks).length ? { marks: clip.marks } : {}),
                 }])),
                 bones: manifest.bones,
                 triangles: manifest.triangles,
@@ -282,8 +302,9 @@ export function pack(rawFile, manifest) {
                 const { node, path } = channel.target;
                 if (path !== 'rotation' && !moving.has(`${node}/${path}`)) continue;
                 const sampler = animation.samplers[channel.sampler];
-                input = input || read(sampler.input);
-                const output = read(sampler.output);
+                const half = HALF_RATE.has(animation.name);
+                input = input || (half ? halve(read(sampler.input), 1) : read(sampler.input));
+                const output = half ? halve(read(sampler.output), size0(path)) : read(sampler.output);
                 const size = path === 'rotation' ? 4 : 3;
                 const still = output.every((v, i) => Math.abs(v - output[i % size]) <= STILL);
                 const values = still ? output.slice(0, size) : output;
@@ -345,6 +366,10 @@ function recordInManifest(bytes, sha, manifest) {
     else listing.assets.push(entry);
     writeFileSync(MANIFEST, `${JSON.stringify(listing, null, 2)}${text.endsWith('\n') ? '\n' : ''}`);
     console.log(`[pack-squirrel] recorded in ${MANIFEST}`);
+}
+
+function size0(path) {
+    return path === 'rotation' ? 4 : 3;
 }
 
 function main() {

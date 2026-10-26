@@ -1,6 +1,7 @@
 {
   "name": "serenity-blocks",
   "version": "1.0.0",
+  "private": true,
   "description": "A modern falling-block puzzle game built with Phaser 4",
   "main": "electron/main.js",
   "type": "module",
@@ -70,6 +71,10 @@
         "to": "CREDITS.md"
       },
       {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
         "from": "node_modules/steamworks.js",
         "to": "native_modules/steamworks.js",
         "filter": [
@@ -117,8 +122,8 @@
     "phaser",
     "phaser4"
   ],
-  "author": "",
-  "license": "MIT",
+  "author": "Olov Melander",
+  "license": "UNLICENSED",
   "dependencies": {
     "phaser": "^4.2.1",
     "steamworks.js": "0.4.0",
