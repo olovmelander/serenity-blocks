@@ -28,11 +28,18 @@
  *   icon=1                   the theme-icon framing: a long lens straight down the canyon, a
  *                            touch brighter (compose for a small circle: capture a square frame)
  *   cam=x,y,z,lx,ly,lz[,fov] an inspection camera: stand at (x, y, z), look at (lx, ly, lz)
+ *   shop=<trade>             follow a generated shop of that trade (diner, laundry, mart, arcade,
+ *                            boutique, bar, studio, office, calm) as the street scrolls, from across
+ *                            the street: shopN=<k> the k-th open one, shopAngle=<deg> how far up the
+ *                            street the camera stands (0 = straight on; the game sees 45-85),
+ *                            shopDist=<m> its distance from the wall, shopFov=<deg>
  */
 import * as THREE from 'three/webgpu';
 import { NeonDistrictWorld } from '../../themes/neon-district/neon-district-world.js';
 import { NeonDistrictPost, POST_LOOK } from '../../themes/neon-district/neon-district-post.js';
 import { readLayoutRects } from '../../themes/neon-district/neon-district-composition.js';
+import { SHOP_ARCHETYPES } from '../../themes/neon-district/neon-district-campaigns.js';
+import { STREET, wrapZ } from '../../themes/neon-district/neon-district-core.js';
 
 export const meta = {
     id: 'neon-district',
@@ -141,6 +148,14 @@ export function create({
     const iconPose = params.get('icon') === '1';
     const camPose = (params.get('cam') || '').split(',').map(Number.parseFloat);
     const inspect = camPose.length >= 6 && camPose.slice(0, 6).every(Number.isFinite);
+    // A shop to follow: the open generated shops of one trade, the k-th of them.
+    const shopParam = params.get('shop');
+    const shopTrade = shopParam ? SHOP_ARCHETYPES.indexOf(shopParam) : -1;
+    const followed = shopTrade >= 0
+        ? world.plan.shops.filter((s) => s.kind === 1 && s.archetype === shopTrade && s.shutter < 0.5)
+        : [];
+    const followShop = followed.length
+        ? followed[Math.max(0, Math.round(num(params, 'shopN', 0))) % followed.length] : null;
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -170,6 +185,18 @@ export function create({
             camera.fov = 54;
             camera.rotateX(-0.15);
             camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        if (followShop) {
+            const z = wrapZ(followShop.z + world.scroll);
+            const angle = (num(params, 'shopAngle', 0) * Math.PI) / 180;
+            const dist = num(params, 'shopDist', 6.5);
+            const wall = followShop.side * (STREET.halfStreet - 0.03);
+            camera.position.set(wall - followShop.side * dist * Math.cos(angle), 1.55, z + dist * Math.sin(angle));
+            camera.fov = num(params, 'shopFov', 40);
+            camera.updateProjectionMatrix();
+            camera.up.set(0, 1, 0);
+            camera.lookAt(wall, 1.35, z);
             camera.updateMatrixWorld();
         }
         if (inspect) {
@@ -288,6 +315,7 @@ export function create({
         getDiagnostics() {
             return {
                 atlases: world.atlasReady.slice(),
+                people: world.peopleReady,
                 backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
                 calls: renderer.info?.render?.calls ?? null,
                 triangles: renderer.info?.render?.triangles ?? null,
