@@ -11,6 +11,7 @@ import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
 import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
 import { developerSurfacesEnabled } from './developer-surfaces.js';
+import { armTwoPressQuit, canQuitDesktop } from './desktop-quit.js';
 
 /** Saved game modes the game has since renamed: Fault Lines became Stillfall (2026-10-18). */
 const RENAMED_GAME_MODES = Object.freeze({ 'fault-lines': GAME_MODES.STILLFALL });
@@ -1150,7 +1151,7 @@ export function applySettingsContext(settingsModal) {
 }
 
 /** Sheet behaviour: section keys, the pause strip, slider fills. */
-function setupSettingsSheet(listen) {
+function setupSettingsSheet(listen, signal) {
     const settingsModal = document.getElementById('settings-modal');
     if (!settingsModal) return;
 
@@ -1213,6 +1214,17 @@ function setupSettingsSheet(listen) {
         });
     });
 
+    // Quit game (desktop builds): the last way out, set apart at the end of the strip. Two
+    // presses, as the main menu's Quit; the desktop shell still runs the game's cleanup (the
+    // Odyssey save, the run's autosave) before the window closes.
+    const quit = document.getElementById('settings-quit-btn');
+    let quitControl = null;
+    if (quit && canQuitDesktop()) {
+        quit.hidden = false;
+        const label = quit.querySelector('span');
+        if (label) quitControl = armTwoPressQuit(quit, { label, signal });
+    }
+
     listen(settingsModal, 'input', (event) => {
         if (event.target?.type === 'range') syncRangeFill(event.target);
     });
@@ -1222,6 +1234,10 @@ function setupSettingsSheet(listen) {
             if (event.detail?.modalName !== 'settings') return;
             applySettingsContext(settingsModal);
             settingsModal.querySelectorAll?.('input[type="range"]').forEach(syncRangeFill);
+        });
+        // A sheet closed while Quit waited for its second press opens again unarmed.
+        listen(window, 'modalHidden', (event) => {
+            if (event.detail?.modalName === 'settings') quitControl?.disarm();
         });
     }
 }
@@ -2187,7 +2203,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         });
     });
 
-    setupSettingsSheet(listen);
+    setupSettingsSheet(listen, controller.signal);
 
     document.querySelectorAll('#settings-modal input[type="range"]').forEach((slider) => {
         listen(slider, 'change', () => settingsManager.flushPendingSave?.());
