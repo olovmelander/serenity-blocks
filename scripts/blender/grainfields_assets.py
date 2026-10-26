@@ -3,7 +3,7 @@
 Run headless (preferred; nothing in an open Blender session is touched):
 
     blender --background --factory-startup --python scripts/blender/grainfields_assets.py -- \
-        --out src/themes/grainfields/assets [--only trees,foliage,impostors,horse,ruin] \
+        --out src/themes/grainfields/assets [--only trees,foliage,impostors,horse,ruin,goose] \
         [--preview <dir>] [--recipes larch-grove-a,birch-grove-b] [--no-bake] [--scratch <dir>]
 
 The horse alone (about ten seconds; `--preview` adds half a minute of stills):
@@ -13,7 +13,13 @@ The horse alone (about ten seconds; `--preview` adds half a minute of stills):
 
 The ruin on the knoll alone (about half a minute; `--preview` adds its stills):
 
-    blender --background --factory-startup --python scripts/blender/grainfields_assets.py --         --out src/themes/grainfields/assets --only ruin [--preview <dir>]
+    blender --background --factory-startup --python scripts/blender/grainfields_assets.py -- \
+        --out src/themes/grainfields/assets --only ruin [--preview <dir>]
+
+The geese's bean goose alone (a second; `--preview` adds its stills):
+
+    blender --background --factory-startup --python scripts/blender/grainfields_assets.py -- \
+        --out src/themes/grainfields/assets --only goose [--preview <dir>]
 
 Hokkaido grain country at harvest: Japanese larch in the shelterbelts, Japanese white
 birch along the lanes and Ezo spruce among them, grown with the Fall grove's branching
@@ -26,7 +32,9 @@ sprite sheet of the trees for the far belts. Every tree is a grove tree (seen fr
 (Dosanko), is a distance field of ellipsoids and round cones polygonised and decimated to
 one mesh of about five thousand triangles, painted with the part ids, masks and pivots the
 theme poses it by (scripts/blender/grainfields/horse.py). The castle ruin on the knoll is
-closed solids cut with booleans and baked per face (scripts/blender/grainfields/ruin.py). No
+closed solids cut with booleans and baked per face (scripts/blender/grainfields/ruin.py). The
+geese are a Taiga bean goose lofted from rings, its wings weighted to the two hinges the theme
+folds them about (scripts/blender/grainfields/goose.py). No
 external assets are fetched:
 every mesh and bake is generated here. Coordinates in the written GLBs are glTF Y-up metres
 with each tree's base at the origin; the horse faces +z with its hooves on y = 0.
@@ -47,7 +55,7 @@ import numpy as np  # noqa: E402
 
 import fall_grove_assets as grove  # noqa: E402
 from fall_grove import glb, skeleton  # noqa: E402
-from grainfields import horse, leaves, preview, ruin, species  # noqa: E402
+from grainfields import goose, horse, leaves, preview, ruin, species  # noqa: E402
 
 SCHEMA_VERSION = 1
 SCALE_RANGE = 2.5      # spray scale is stored as scale / SCALE_RANGE in an unsigned byte
@@ -58,6 +66,7 @@ FOLIAGE_FILE = "grainfields-foliage.glb"
 IMPOSTOR_FILE = "grainfields-impostors.png"
 HORSE_FILE = "grainfields-horse.glb"
 RUIN_FILE = "grainfields-ruin.glb"
+GOOSE_FILE = goose.FILE
 
 # The shared bake and preview helpers look sprays and preview colours up by kind.
 grove.SPRAY_REACH.update(leaves.SPRAY_REACH)
@@ -143,7 +152,7 @@ def build_assets(output_dir, only=None, preview_dir=None, bake=True, recipes=Non
     studio_module.PREFIX = "SGRAIN_"
     output_dir = Path(output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    wanted = set(only or ("trees", "foliage", "impostors", "horse", "ruin"))
+    wanted = set(only or ("trees", "foliage", "impostors", "horse", "ruin", "goose"))
     if preview_dir:
         preview_dir = Path(preview_dir).expanduser().resolve()
         preview_dir.mkdir(parents=True, exist_ok=True)
@@ -218,6 +227,14 @@ def build_assets(output_dir, only=None, preview_dir=None, bake=True, recipes=Non
             records.append(grove.file_record(path, kind="ruin", **model.record()))
             if preview_dir:
                 ruin.previews(model, preview_dir, studio)
+        if "goose" in wanted:
+            model = goose.model()
+            path = output_dir / GOOSE_FILE
+            goose.write(path, model, generator=GENERATOR, schema_version=SCHEMA_VERSION)
+            records.append(grove.file_record(path, kind="goose", **model.record(), rig=goose.rig()))
+            print(TAG, "goose", json.dumps(model.record()), flush=True)
+            if preview_dir:
+                goose.previews(model, preview_dir)
     finally:
         studio.dispose()
     return dict(schemaVersion=SCHEMA_VERSION, author="Serenity Blocks original procedural Blender authoring",
