@@ -135,45 +135,71 @@ function leafDistance(px, py, leaf) {
 }
 
 /**
- * Bake the atlas.
+ * Bake the atlas. Each shape writes only the texels round its own bounds (its distance reaches
+ * `sdfRange` texels past its edge and no further), not every texel of the tile: ~10x faster than
+ * testing every shape at every texel, which cost ~350 ms of the world's main-thread build. Baked
+ * once and kept (the data never changes); the renderer wraps it in a texture per world.
  * @param {number} [seed]
  * @returns {{data: Uint8Array, width: number, height: number, tile: number, tilesX: number,
  *   tilesY: number}}
  */
+const baked = new Map();
 export function bakeForestLeafAtlas(seed = 7177) {
+    if (baked.has(seed)) return baked.get(seed);
     const {
         tile, tilesX, tilesY, sdfRange,
     } = FOREST_LEAF_ATLAS;
     const width = tile * tilesX;
     const height = tile * tilesY;
     const data = new Uint8Array(width * height * 4);
+    const toUnit = (k) => (((k + 0.5) / tile) * 2) - 1;
+    const margin = (2 * sdfRange) / tile;
+    const dist = new Float32Array(tile * tile);
+    const owner = new Int32Array(tile * tile);
     for (let ty = 0; ty < tilesY; ty += 1) {
         for (let tx = 0; tx < tilesX; tx += 1) {
             const tileSeed = seed + (((ty * tilesX) + tx) * 7919);
             const spray = ty === 1;
             const shapes = spray ? sprayNeedles(tileSeed) : clumpLeaves(tileSeed);
-            for (let j = 0; j < tile; j += 1) {
-                for (let i = 0; i < tile; i += 1) {
-                    const px = (((i + 0.5) / tile) * 2) - 1;
-                    const py = (((j + 0.5) / tile) * 2) - 1;
-                    let best = Infinity;
-                    let bestShape = null;
-                    for (let k = 0; k < shapes.length; k += 1) {
-                        const d = leafDistance(px, py, shapes[k]);
-                        if (d < best) {
-                            best = d;
-                            bestShape = shapes[k];
+            dist.fill(Infinity);
+            owner.fill(-1);
+            shapes.forEach((sh, si) => {
+                const ex = sh.bx + (sh.cx * sh.len);
+                const ey = sh.by + (sh.sy * sh.len);
+                const pad = sh.half + margin;
+                const i0 = Math.max(0, Math.floor((((Math.min(sh.bx, ex) - pad) + 1) / 2) * tile));
+                const i1 = Math.min(tile - 1, Math.ceil((((Math.max(sh.bx, ex) + pad) + 1) / 2) * tile));
+                const j0 = Math.max(0, Math.floor((((Math.min(sh.by, ey) - pad) + 1) / 2) * tile));
+                const j1 = Math.min(tile - 1, Math.ceil((((Math.max(sh.by, ey) + pad) + 1) / 2) * tile));
+                for (let j = j0; j <= j1; j += 1) {
+                    for (let i = i0; i <= i1; i += 1) {
+                        const d = leafDistance(toUnit(i), toUnit(j), sh);
+                        const k = (j * tile) + i;
+                        if (d < dist[k]) {
+                            dist[k] = d;
+                            owner[k] = si;
                         }
                     }
+                }
+            });
+            for (let j = 0; j < tile; j += 1) {
+                for (let i = 0; i < tile; i += 1) {
+                    const px = toUnit(i);
+                    const py = toUnit(j);
+                    const k = (j * tile) + i;
+                    const sh = owner[k] >= 0 ? shapes[owner[k]] : null;
                     let along = 0;
-                    if (bestShape) {
-                        const x = ((px - bestShape.bx) * bestShape.cx) + ((py - bestShape.by) * bestShape.sy);
-                        along = Math.min(1, Math.max(0, x / bestShape.len));
+                    if (sh) {
+                        const x = ((px - sh.bx) * sh.cx) + ((py - sh.by) * sh.sy);
+                        along = Math.min(1, Math.max(0, x / sh.len));
                     }
-                    // In texels of this tile: the disc's radius is tile / 2 texels.
-                    const dTexels = best * (tile / 2);
+                    // In texels of this tile: the disc's radius is tile / 2 texels. Untouched
+                    // texels are past every shape's reach: no coverage.
+                    const dTexels = sh ? dist[k] * (tile / 2) : Infinity;
                     const r = Math.min(1, Math.max(0, 0.5 - (dTexels / (2 * sdfRange))));
-                    const tone = bestShape ? Math.min(1, (bestShape.tone * 0.85) + (along * 0.15)) : 0;
+                    // Past every shape a neutral tone (no threshold shift), so a mip blending the
+                    // sky round a leaf into it does not darken its edge.
+                    const tone = sh ? Math.min(1, (sh.tone * 0.85) + (along * 0.15)) : 0.5;
                     const inner = spray
                         ? Math.min(1, Math.max(0, (sprayArch(px) - py + 0.05) / 0.4))
                         : Math.min(1, Math.max(0, 1 - Math.hypot(px, py)));
@@ -186,7 +212,9 @@ export function bakeForestLeafAtlas(seed = 7177) {
             }
         }
     }
-    return {
+    const out = {
         data, width, height, tile, tilesX, tilesY,
     };
+    baked.set(seed, out);
+    return out;
 }

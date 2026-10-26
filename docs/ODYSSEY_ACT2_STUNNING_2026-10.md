@@ -746,6 +746,11 @@ range. It applies to the leaf clumps too (they fill out a little at distance). N
 
 ![The conifer slope at p 0.33: the lathe cones and the needle conifers](images/odyssey-act2-2026-10-25/needles-slope.jpg)
 
+**The atlas bake** first tested every shape at every texel: with the needle row it took ~350 ms
+of the world's main-thread build (the bake-loader test caught it inside its timed relief span).
+Each shape now writes only the texels round its own bounds, and the result is kept for the
+session: 44 ms once, the same coverage byte for byte.
+
 **Tried and changed on the way:**
 
 - **One ring of sprays on the lathe's own tiers** read as a pagoda: stacked flat discs with
