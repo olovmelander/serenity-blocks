@@ -437,3 +437,126 @@ among them); ESLint adds no finding in the changed files.
 Not measured: frame time. The pass adds a few noise reads to the sky, the snow and the trees, and
 a crater grid to the moon's disc; the perf lane (ADR-0016) has not been run on it. The theme icon
 (the fox of light) still shows the contour-map veils.
+
+## The polar bear (2026-10-26)
+
+The ask: "In the winter theme, would it be possible to add a polar bear modelled and animated in
+the background walking in the distant on the ice?" A big male polar bear now walks the frozen lake
+forty to a hundred and forty metres out: it comes in from behind the spruces under the moon a few
+seconds after the theme starts, ambles over the open ice right of the board, lifts its nose into
+the wind, puts it down to the ice, looks round, goes off behind the board and comes back at
+another depth, and every few minutes wanders far out over the lake, small in the distance, and
+returns. Where the wind has swept the ice bare it walks over its own reflection.
+
+![In a real Single Player game at High, 1920 × 1080: the bear in the open ice right of the board, the fox nearer](winter-fox-fires/bear-ingame.webp)
+
+![What it does, seen as the game sees it (crops at 1.5×)](winter-fox-fires/bear-acts.webp)
+
+The board reaches it twice. Four lines (and a perfect clear's crown) call the fox of light over
+the sky: the bear stands up on its hind legs to watch it go. The run ends: it lies down on the ice,
+chin over its paws, and stays down until the next run begins, then gets up and walks on from where
+it lay. Each is laid over whatever it was doing; its clock slows to a halt under it and picks up
+again after, so nothing jumps and the walk resumes where it left off.
+
+![Four lines: the fox of light overhead, the bear up on its hind legs](winter-fox-fires/bear-four.webp)
+
+### Where it walks, and why there
+
+The card covers the middle of the lake, and the composition decides the rest. Left of the card
+the three small snow ghosts (the two gnomes and the twins, 23–29 m out, 1.5–2.4 m tall) stand
+right in front of the ice band: one of them reaches the horizon, so nothing on the ice behind it
+shows at any distance, and the other two hide all but the far ice. Right of the card the HUD
+stands high in the sky (in the real game; the playground's mock HUD sits lower), and the ice is
+open from the card's edge to the spruces under the moon: about 0.22 to 0.45 of the frame's half
+width, 9° to 20°. That window is the bear's stage. Every stop of its course is in it (a test pins
+that), its turns are laid inside it, and its course crosses land only on the spit tip behind the
+spruces on the right, where it cannot be seen. At 16:9 it is in the window about half the time;
+the rest it is behind the board or the trees, or far out. The framing trees were not moved.
+
+It is drawn 1.3 × life size (`BEAR_SCALE`), as the fox is drawn 1.5 × (`FOX_SCALE`): at life size,
+sixty metres out, it was the fox's size on screen and did not read as a great animal far away. At
+1080p it now stands 35–50 px tall in the window.
+
+### How it is built
+
+| File | Role |
+| --- | --- |
+| `scripts/blender/winter_polar_bear.py` | The model, in headless Blender: a signed distance field of ellipsoids and round cones (the Grainfields horse's meshing, `scripts/blender/grainfields/horse_sdf.py`) built round the rig's own joints — chest, withers, a barrel under hanging belly fur, haunches and a rump higher than the shoulders, a long neck, a small long head with a Roman nose, small round ears set far back, columns of legs through their joints, broad forepaws turned in, long hind feet, a stub tail, a few millimetres of tufted coat. Its left half is meshed by surface nets on a 1 cm grid, decimated to 3 200 triangles, cleaned of folds and mirrored (6 400 triangles, 3 202 vertices). Per vertex it bakes the part of the body (body, head, each leg, tail) and the paint: COLOR_0 = (black pads, fur length, black nose/eyes/lips, sky seen, traced through the field). |
+| `scripts/winter/model-bear.mjs` | Hands Blender the skeleton as JSON, runs it, skins the mesh to the rig's 20 bones (a leg follows its three bones with soft joints and hands over to the chest or the hips over its shoulder or haunch, the skin over the shoulder blade and the thigh partly follows the leg, the trunk bends along hips, spine and chest, the neck hands over to the skull, then the weights are relaxed over the surface) and writes `assets/polar-bear.glb` (155 KiB) in the fox's GLB layout. The same Blender and scripts give the same bytes. |
+| `winter-bear-rig.js` | Three-free: the skeleton (`BEAR_BONES`, `BEAR_MARKS`) on the quadruped solver the foxes share (`../shared/fox-rig.js`: paws placed and legs solved to reach them, a back that bends, a head held level, poses as blendable numbers), with what is the bear's own: its walk and its acts. |
+| `winter-bear-plan.js` | Three-free: its course (`BEAR_ROUTE`: knots in fractions of the half width and metres, a closed Catmull-Rom curve over the ice) and the timeline of legs and stops along it, so where it is and what it does are a function of its clock alone; `BearMind` adds what the board makes it do. |
+| `winter-bear.js` | Its body (one skinned mesh, shaded by the theme's own uniforms) and its image in the ice. |
+
+Techniques worth knowing before changing it:
+
+- **A bear walks.** Not the foxes' trot: a four-beat lateral walk (left hind, left fore a fifth
+  of a stride later, then the right pair), each paw on the ice two thirds of the stride, the
+  forepaw flicked back sole-up as it swings through, the hind foot peeled off heel first, the
+  stride a whole number of times round the lap so its gait comes round with the course. The head
+  is carried low and swings to the side of the planted forepaw; the shoulders roll and the long
+  back flexes. Phase is distance walked over stride, so a planted paw does not slide (a test).
+- **What it does at a stop** is a spec written as numbers like the foxes' acts: `Sniff` (nose up
+  into the wind, in bursts), `Scent` (nose down to the ice, working along it), `Look`, `Stand`,
+  `Rear` (up on its hind legs, forepaws hanging before its chest, head lifted to the sky), `Lie`
+  (held at `LIE_HOLD`) and `Rise` (Lie run backwards). The board's two are laid over the rest with
+  `over`/`overBlend`.
+- **Closed form.** The course's timeline is legs (each with a smoothstep ramp up and down,
+  integrated exactly) and stops. The board's stops hold its clock with a smoothstep ease whose
+  integral is also exact, so a stop in hand is two numbers, and a seek or a replay at any frame
+  rate shows the same frame; after a seek it is where a world that ran from the start would have
+  it.
+- **Its colour.** A cream a shade warmer than the snow, lit as the snow is (the moon wrapped a
+  little round the fur, the sky's blue in the sides turned from the moon, the last light, the
+  fires overhead, less of everything in its hollows), with its outline lit through the hair
+  against the moon, and the air laid over it like everything else.
+- **Its image in the ice** is the same skinned body drawn again (one more draw, sharing the
+  buffers and the skeleton), mirrored in the plane of the ice and laid flat on it along each line
+  of sight in the vertex stage (`vertexNode`): on screen it is where the mirror image is, in depth
+  it is three centimetres over the ice, so the shore and the trees hide it as they hide the ice
+  and the bear's legs stand in front of it. It takes as much of the ice's mirror as the ground
+  gives there: the swept-ice mask (now shared as `wIceSwept` in `winter-tsl.js`, the ground reads
+  the same function), the ground's Fresnel, and none on a spit's snow (`u.bearIce`).
+- **Its shade on the ice**: a soft shadow cast away from the moon, as long and as wide as the
+  world reckons the bear's is for its heading and stance (`u.bearShadow`), and a soft shade under
+  its body (`u.bearContact`), both a few operations in the ground's material.
+
+![Close up: walking, from the side and from the game's side; Sniff and Scent; Rear over its reflection; Lie](winter-fox-fires/bear-close.webp)
+
+![The model in Blender](winter-fox-fires/bear-model.webp)
+
+![One stride at 1.2 m/s, on the CPU (scripts/fox/preview-fox.mjs --fox=bear)](winter-fox-fires/bear-walk.webp)
+
+Cost: two skinned draws of 6 400 triangles (the bear and its image) at every tier, and about
+twenty operations more per pixel of the ground for its two shades; the plan, the spec and the
+solve take about 3 µs a frame on the dev laptop's CPU. Frame time was not measured on the GPU.
+
+### Verification
+
+Playground captures on WebGPU (the integrated Radeon 610M) at High, Minimal and on the forced
+WebGL2 backend, the bear at rest in the game's frame and through a close lens, four lines, the
+end of a run, every act; captures of a real Single Player game at High at 1600 × 900 and
+1920 × 1080 with the bear placed along its course; no WebGPU warning or error in any console.
+`tests/unit/winter-bear.test.js` (22 tests: the skeleton, the asset on it, the walk reaching and
+not sliding, every act reaching with its nose out of the ice, the course closed and on ice where
+seen, its stops in the window, its arrival in the first seconds, determinism, the board's stops
+holding it still and giving it back without a jump); `winter-world.test.js` (the bear walks
+without its body, a four makes it rear, game over lays it down, a new run gets it up where it
+lay, a seek puts it where the clock has it); `winter-shaders.test.js` builds the bear and its image
+for WGSL and GLSL without a word.
+
+To look at it: `/playground.html?effect=winter&t=40&board=1&statsHud=0&hud=0` with
+`bearAt=<s>` (where on its course: `8` walking near, `15` Scent, `98` Look on bare ice, `385`
+Sniff), `bearAct=rear|lie|rise` with `bearActAge=<s>`, `bearCam=<metres>` (with `bearCamYaw=<deg>`
+or `viewer`, `bearCamFov=<deg>`) for a close lens, `bear=0` to leave it without its body, and
+the look's numbers `P.bearCoatR/G/B`, `P.bearRim`, `P.bearShadow`, `P.bearContact`,
+`P.bearMirror`. In the game, `serenityBlocks.themeManager.activeTheme.world.bearMind` holds its
+clock (`offset`). Without a GPU:
+
+    node scripts/fox/preview-fox.mjs --fox=bear --gait=1.2 --frames=8
+    node scripts/fox/preview-fox.mjs --fox=bear --act=Rear --frames=6
+    node scripts/winter/model-bear.mjs --dry --preview=<dir>
+
+Not done: the left-hand window is closed to it by the small snow ghosts in front of the ice
+(moving or lowering them would open it, but changes the composition). Where a leg crosses the
+body in its mirror image the two are blended twice (the image is drawn without a depth prepass),
+which shows only in close-ups. No breath in the cold air.
