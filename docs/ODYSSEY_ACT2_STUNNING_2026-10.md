@@ -505,3 +505,7 @@ an edge about a pixel wide. A flank reads as meadow or as scree patches.
   canopy and steep ground. The eye flies 50-90 u over the meadow and sees it at a grazing angle,
   so at 150-300 u the ground is compressed ~4:1 in depth. A dab small enough to be a flower falls
   under a pixel there, and the patch where it would show is below the frame. Reverted.
+
+**Cost of round two so far** (§7-§9 together). World playground at 1080p, vsync off, four
+alternating rounds against main, on a quiet machine: +0.05 ms at p 0.30 (the forest and the
+flanks) and +0.01-0.03 ms at p 0.55 (the summit).
