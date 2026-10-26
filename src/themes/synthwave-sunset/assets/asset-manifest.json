@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "generator": "scripts/blender/synthwave_gull.py",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "gull.glb",
+      "bytes": 53516,
+      "sha256": "70236abafe43a28ee1598a2b07d536730b077e48ed38d5e26e0e3464732af23d",
+      "kind": "bird",
+      "species": "herring gull",
+      "triangles": 1648,
+      "sourceVertices": 837
+    }
+  ],
+  "rig": {
+    "frame": "x left, y up, z forward (metres, real size)",
+    "span": 1.4,
+    "length": 0.6,
+    "shoulder": [
+      0.05,
+      0.036,
+      0.02
+    ],
+    "wrist": [
+      0.345,
+      0.036,
+      0.075
+    ],
+    "armBand": [
+      0.055,
+      0.115
+    ],
+    "handBand": [
+      0.318,
+      0.372
+    ],
+    "tipBand": [
+      0.56,
+      0.7
+    ],
+    "poses": {
+      "rest": {
+        "lift": 0.0,
+        "sweep": 0.0,
+        "bend": 0.0,
+        "fold": 0.0,
+        "curl": 0.0
+      },
+      "glide": {
+        "lift": 0.26,
+        "sweep": -0.04,
+        "bend": -0.46,
+        "fold": 0.22,
+        "curl": -0.06
+      },
+      "top": {
+        "lift": 0.72,
+        "sweep": -0.06,
+        "bend": 0.08,
+        "fold": 0.18,
+        "curl": -0.04
+      },
+      "down": {
+        "lift": 0.12,
+        "sweep": -0.1,
+        "bend": -0.14,
+        "fold": 0.18,
+        "curl": 0.14
+      },
+      "bottom": {
+        "lift": -0.48,
+        "sweep": -0.06,
+        "bend": -0.36,
+        "fold": 0.18,
+        "curl": -0.04
+      },
+      "up": {
+        "lift": 0.14,
+        "sweep": 0.04,
+        "bend": -0.3,
+        "fold": 0.58,
+        "curl": -0.02
+      }
+    }
+  }
+}
