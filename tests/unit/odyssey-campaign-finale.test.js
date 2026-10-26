@@ -187,7 +187,7 @@ describe('Odyssey campaign conclusion', () => {
         const second = currentModal();
         const returnedReward = nodes(second).find((node) => node.className === CEREMONY);
         expect(returnedReward.dataset.celebrating).toBe('false');
-        expect(nodes(second).map((node) => node.textContent).join(' ')).toContain('Neon District');
+        expect(nodes(second).map((node) => node.textContent).join(' ')).toContain('Neon Quarter');
         action(second, 'world').dispatch('click');
         await expect(result).resolves.toBe('map');
         expect(document.listenerCount()).toBe(0);

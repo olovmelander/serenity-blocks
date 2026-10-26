@@ -2831,7 +2831,7 @@ function installArtInPage() {
             ctx.fillStyle = css(text);
             ctx.fillRect(m, h - 42, w - m * 2, 1.5);
             line(ctx, 'now boarding', m, h - 22, small);
-            line(ctx, 'from neon district', w - m, h - 22, { ...small, align: 'right' });
+            line(ctx, 'from neon quarter', w - m, h - 22, { ...small, align: 'right' });
         },
         /** Art deco: an arched window over sunburst rays, double gilt rules, centred tracked type. */
         deco(ctx, w, h, T, p, im, C) {
@@ -3050,7 +3050,7 @@ function installArtInPage() {
             let y = y0 + ph + 20;
             label('FROM', x0 + 12, y);
             label('LINE', x0 + cw - 12, y, 'right');
-            value('NEON DISTRICT', x0 + 12, y + 15);
+            value('NEON QUARTER', x0 + 12, y + 15);
             value(lineNo(p), x0 + cw - 12, y + 15, 'right');
             y += 36;
             label('TO', x0 + 12, y);
@@ -3087,7 +3087,7 @@ function installArtInPage() {
             }
             y = Math.max(y + 16, perfY - 44);
             route(k, x0 + 14, x0 + cw - 14, y, 3, markCol, paper, 2);
-            label('NEON DISTRICT', x0 + 14, y + 22);
+            label('NEON QUARTER', x0 + 14, y + 22);
             label(p.line, x0 + cw - 14, y + 22, 'right');
             k.globalCompositeOperation = 'destination-out';
             k.beginPath();

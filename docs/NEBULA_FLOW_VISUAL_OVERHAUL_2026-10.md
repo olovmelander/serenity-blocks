@@ -1,5 +1,8 @@
 # Nebula Flow — the cradle of stars
 
+> Shown to players as **Star Cradle** since 2026-10-26 (theme picker, music, the Odyssey level).
+> The id `nebula-flow`, its folders, files and URL parameters are unchanged.
+
 Implemented 2026-10-11, with Three.js 0.186.1. A from-scratch rebuild: it replaces the earlier
 theme in full (a raw-WebGL port of a Navier–Stokes dye simulator, `src/utils/webgl/fluid-simulator.js`,
 drawing prismatic ink on black, with its own GLSL, a canvas of its own and effects fired at the

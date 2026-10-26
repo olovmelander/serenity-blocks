@@ -248,27 +248,19 @@
     "placeholder": false
   },
   {
-    "themeId": "nebula-flow",
-    "trackKey": "NebulaFlow",
-    "name": "Nebula Flow",
-    "file": "nebula-flow.mp3",
-    "path": "./assets/music/nebula-flow.mp3",
-    "placeholder": false
-  },
-  {
-    "name": "Neon District",
-    "file": "neon-district.mp3",
-    "path": "./assets/music/neon-district.mp3",
-    "themeId": "neon-district",
-    "trackKey": "NeonDistrict",
-    "placeholder": false
-  },
-  {
     "name": "Neon Dusk",
     "file": "neon-dusk.mp3",
     "path": "./assets/music/neon-dusk.mp3",
     "themeId": "neon-dusk",
     "trackKey": "NeonDusk",
+    "placeholder": false
+  },
+  {
+    "name": "Neon Quarter",
+    "file": "neon-district.mp3",
+    "path": "./assets/music/neon-district.mp3",
+    "themeId": "neon-district",
+    "trackKey": "NeonQuarter",
     "placeholder": false
   },
   {
@@ -357,6 +349,14 @@
     "name": "Spring",
     "file": "spring.mp3",
     "path": "./assets/music/spring.mp3",
+    "placeholder": false
+  },
+  {
+    "themeId": "nebula-flow",
+    "trackKey": "StarCradle",
+    "name": "Star Cradle",
+    "file": "nebula-flow.mp3",
+    "path": "./assets/music/nebula-flow.mp3",
     "placeholder": false
   },
   {
