@@ -184,12 +184,47 @@ class Rig:
 SPINE = ("hips", "spine", "chest", "neck", "head", "jaw")
 
 
+def lay_tail(rig, heights, offsets=()):
+    """Pitch each tail bone so the joint at its end stands `heights[i]` metres off the clip's ground
+    (the bark, on the trunk), root first; then the clip's own tail angles (a wave, a sway, a flick)
+    are laid on top, each bone's carrying the ones beyond it, so a flick runs down the whole tail.
+
+    A bone's end height under a pitch theta about its own x axis (applied first: euler() is x, y, z)
+    is a + b cos(theta) + d sin(theta), so each is solved in closed form (the solution nearest no
+    pitch; out of reach it turns as far as it can toward the height)."""
+    count = min(TAIL_BONES, len(heights))
+    pitches = []
+    for i in range(count):
+        name = "tail%d" % i
+        parent_rot = rig.rotation(rig.parent[name])
+        joint = rig.joint(name)
+        v = rig.tip[name] - rig.head[name]
+        a = parent_rot[1, 0] * v[0]
+        b = parent_rot[1, 1] * v[1] + parent_rot[1, 2] * v[2]
+        d = -parent_rot[1, 1] * v[2] + parent_rot[1, 2] * v[1]
+        r = math.hypot(b, d)
+        theta = 0.0
+        if r > 1e-9:
+            k = (heights[i] - joint[1] - a) / r
+            phi = math.atan2(d, b)
+            spread = math.acos(max(-1.0, min(1.0, k)))
+            wrap = lambda x: (x + math.pi) % (2.0 * math.pi) - math.pi  # noqa: E731
+            theta = min((wrap(phi + spread), wrap(phi - spread)), key=abs)
+        pitches.append(theta / DEG)
+        rig.set(name, euler(pitches[i]))
+    for i in range(count):
+        ox, oy, oz = (tuple(offsets[i]) + (0.0, 0.0, 0.0))[:3] if i < len(offsets) else (0.0, 0.0, 0.0)
+        rig.set("tail%d" % i, euler(pitches[i] + ox, oy, oz))
+
+
 def solve(spec, rig=None):
     """`spec` -> {bone: (w, x, y, z)}, root offset. Keys (all optional):
 
     root (x, y, z) metres; body (x, y, z) degrees: the whole squirrel's turn about the root joint;
     hips, spine, chest, neck, head, jaw, earL, earR, shoulderL/R: (x, y, z) degrees, local;
     tail: list of (x, y, z) degrees, one per tail bone;
+    tail_lie: heights (metres) off the ground for the end of each tail bone: the tail is laid along
+        the ground (the bark) at them, and `tail` rides on top as offsets;
     hindL/hindR: dict(heel=, toe=, pole=, side=) in the clip frame (IK), or dict(fk={bone: angles});
     frontL/frontR: dict(wrist=, toe=, pole=, side=) likewise.
     """
@@ -203,6 +238,8 @@ def solve(spec, rig=None):
     tail = spec.get("tail") or []
     for i in range(min(TAIL_BONES, len(tail))):
         rig.set("tail%d" % i, euler(*tail[i]))
+    if spec.get("tail_lie"):
+        lay_tail(rig, spec["tail_lie"], tail)
     lateral = rig.rotation("hips") @ np.array([1.0, 0.0, 0.0])
     for sfx, sign in (("L", 1.0), ("R", -1.0)):
         hind = spec.get("hind" + sfx)

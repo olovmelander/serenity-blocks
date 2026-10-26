@@ -4,6 +4,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import {
     FALL_SQUIRREL_URL, FALL_TREE_URLS, fallImpostorLayout, parseFallFoliage, parseFallTree,
 } from '../../src/themes/fall/fall-assets.js';
@@ -12,7 +13,7 @@ import { FallReactions } from '../../src/themes/fall/fall-reactions.js';
 import { createSquirrel } from '../../src/themes/fall/fall-squirrel.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from '../../src/themes/fall/fall-squirrel-clips.js';
 import {
-    GROUND_BITS, SQUIRREL_SPOTS, SquirrelMind, TRUNK_BITS, createSquirrelPose,
+    FLICK_LENGTH, GROUND_BITS, SQUIRREL_SPOTS, SquirrelMind, TRUNK_BITS, createSquirrelPose,
 } from '../../src/themes/fall/fall-squirrel-mind.js';
 import {
     SQUIRREL_TRUNK_SPAN, TrunkSurface, createSquirrelStage, measureTrunk,
@@ -469,6 +470,211 @@ describe('the squirrel moves smoothly', () => {
     });
 });
 
+describe('the squirrel keeps to both trees', () => {
+    /** Run a mind, and note which tree it keeps to and how it got from one to the other. */
+    const day = (seed, seconds = 600) => {
+        const mind = new SquirrelMind({ stage, seed });
+        const camera = landscapeCamera();
+        const v = new THREE.Vector3();
+        const seen = new Set();
+        const record = {
+            climbs: { maple: 0, oak: 0 }, treetops: 0, homes: [], stops: [], time: { maple: 0, oak: 0 },
+        };
+        let home = null;
+        let since = 0;
+        live(mind, seconds, 1 / 30, [], (pose, t) => {
+            const { act } = mind;
+            const key = `${act.t0.toFixed(4)}${act.kind}${act.clip || ''}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                if (act.kind === 'leap' && act.from.on === 'ground' && act.to.on !== 'ground') {
+                    record.climbs[act.to.on] += 1;
+                }
+                if (act.kind === 'hidden' && act.to && act.from.on !== 'ground' && act.to.on !== act.from.on) {
+                    record.treetops += 1;
+                }
+                if (act.kind === 'stay' && act.from.on === 'ground') {
+                    const f = mind.frame(act.from);
+                    v.set(...f.point).project(camera);
+                    record.stops.push(v.x);
+                }
+            }
+            if (mind.home && mind.home !== home) {
+                if (home) record.homes.push(t - since);
+                ({ home } = mind);
+                since = t;
+            }
+            if (pose.visible && home) record.time[home] += 1 / 30;
+        });
+        record.homes.push(seconds - since);
+        return record;
+    };
+
+    it('goes between the maple and the oak every minute or so, and runs up both', () => {
+        let treetops = 0;
+        for (const seed of [271, 3, 99, 11]) {
+            const record = day(seed);
+            // Ten minutes: it has gone over and back several times, never kept to one tree for long.
+            expect(record.homes.length, `seed ${seed}`).toBeGreaterThanOrEqual(6);
+            expect(Math.max(...record.homes), `seed ${seed}`).toBeLessThan(170);
+            expect(record.climbs.maple, `seed ${seed}`).toBeGreaterThanOrEqual(3);
+            expect(record.climbs.oak, `seed ${seed}`).toBeGreaterThanOrEqual(3);
+            const total = record.time.maple + record.time.oak;
+            expect(record.time.maple / total, `seed ${seed}`).toBeGreaterThan(0.3);
+            expect(record.time.oak / total, `seed ${seed}`).toBeGreaterThan(0.3);
+            treetops += record.treetops;
+        }
+        // Some of the trips are made up one tree and through the treetops to the other.
+        expect(treetops).toBeGreaterThanOrEqual(2);
+    });
+
+    it('stops on a run across the floor before the board and past it, never behind it', () => {
+        for (const seed of [271, 5]) {
+            const { stops } = day(seed, 400);
+            expect(stops.length).toBeGreaterThan(20);
+            stops.forEach((x) => expect(Math.abs(x), `seed ${seed}`).toBeGreaterThan(0.27));
+        }
+    });
+
+    it('goes over the floor and up the far tree, or through the treetops, when it is asked to', () => {
+        const over = new SquirrelMind({
+            stage, seed: 6, start: 'ground', script: ['climb', 'over'],
+        });
+        const ground = new Set();
+        live(over, 60, 0.05, [], () => {
+            if (over.home) ground.add(over.home);
+        });
+        expect([...ground].sort()).toEqual(['maple', 'oak']);
+        const through = new SquirrelMind({
+            stage, seed: 6, start: 'ground', script: ['climb', 'treetops'],
+        });
+        const barks = [];
+        live(through, 60, 0.05, [], (pose) => {
+            if (pose.visible && through.act.from.on !== 'ground' && barks[barks.length - 1] !== through.act.from.on) {
+                barks.push(through.act.from.on);
+            }
+        });
+        // Up the maple, out of sight in its crown, and down the oak.
+        expect(barks.slice(0, 2)).toEqual(['maple', 'oak']);
+    });
+});
+
+describe('the squirrel\'s tail', () => {
+    it('grows hair: cards on the tail bones that reach past the plume and close round the brush', () => {
+        const light = new FallLight({ tier: fallTier('Minimal'), rng: () => 0.5 });
+        owned.push(light);
+        const squirrel = createSquirrel({ light, gltf });
+        owned.push(squirrel);
+        const hair = squirrel.plumeHair;
+        expect(hair).toBeTruthy();
+        expect(hair.mesh.isSkinnedMesh).toBe(true);
+        expect(hair.triangles).toBeGreaterThan(400);
+        expect(hair.triangles).toBeLessThan(4000);
+        const { plume } = hair;
+        // Measured from the body: the plume is wider than deep, fullest past half way.
+        const widest = plume.stations.reduce((best, st) => (st.reach[0] > best.reach[0] ? st : best));
+        expect(widest.s / plume.end).toBeGreaterThan(0.45);
+        expect(widest.reach[0]).toBeGreaterThan(widest.reach[2] * 1.3);
+        // Every card vertex is skinned to the tail (or the hips at its root), and its weights sum to one.
+        const { skeleton } = hair.mesh;
+        const index = hair.mesh.geometry.attributes.skinIndex;
+        const weight = hair.mesh.geometry.attributes.skinWeight;
+        for (let v = 0; v < index.count; v += 7) {
+            let sum = 0;
+            for (let j = 0; j < 4; j++) {
+                const w = weight.getComponent(v, j);
+                sum += w;
+                if (w > 0.05) expect(skeleton.bones[index.getComponent(v, j)].name).toMatch(/^(tail\d|hips|spine)$/);
+            }
+            expect(sum).toBeCloseTo(1, 4);
+        }
+        // The hair runs out past the solid plume, and on past its end into a brush.
+        const hairData = hair.mesh.geometry.attributes.hair;
+        let furthest = 0;
+        let last = 0;
+        for (let v = 0; v < hairData.count; v++) {
+            furthest = Math.max(furthest, hairData.getX(v));
+            last = Math.max(last, hairData.getY(v));
+        }
+        expect(furthest).toBeGreaterThan(0.01);
+        expect(last).toBeGreaterThan(plume.end + 0.01);
+    });
+
+    it('lies along the bark behind it when it climbs, clings, turns or comes down', () => {
+        const model = cloneSkinned(gltf.scene);
+        const mixer = new THREE.AnimationMixer(model);
+        const p = new THREE.Vector3();
+        for (const [name, top] of [['climb', 0.1], ['pivot', 0.1], ['descend', 0.1], ['cling', 0.13]]) {
+            const clip = gltf.animations.find((c) => c.name === name);
+            mixer.stopAllAction();
+            const action = mixer.clipAction(clip);
+            action.reset().play();
+            for (let k = 0; k < 16; k++) {
+                action.time = (k / 16) * clip.duration;
+                mixer.update(0);
+                model.updateMatrixWorld(true);
+                for (let i = 1; i <= 6; i++) {
+                    model.getObjectByName(`tail${i}`).getWorldPosition(p);
+                    // (Life size, the bark at y = 0: near it, never into it.)
+                    expect(p.y, `${name} tail${i}`).toBeGreaterThan(0.025);
+                    expect(p.y, `${name} tail${i}`).toBeLessThan(top);
+                }
+            }
+        }
+    });
+
+    it('trails the body\'s turns down its length: the root follows first, the brush comes round last', () => {
+        const mind = new SquirrelMind({ stage, seed: 271, start: 'ground' });
+        let checked = 0;
+        let turnAct = null;
+        live(mind, 120, STEP, [], (pose, t) => {
+            const { act } = mind;
+            if (!turnAct && act.kind === 'turn' && act.duration > 0.45) turnAct = act;
+            if (!turnAct || act !== turnAct) return;
+            const u = (t - act.t0) / act.duration;
+            if (u > 0.4 && u < 0.6) {
+                const turns = pose.tailTurn.map(Math.abs);
+                // Mid turn: each bone looks further back, so trails the turn more.
+                for (let i = 1; i < turns.length; i++) expect(turns[i]).toBeGreaterThanOrEqual(turns[i - 1] - 1e-9);
+                expect(turns[6]).toBeGreaterThan(turns[0] * 2);
+                checked += 1;
+            }
+        });
+        expect(checked).toBeGreaterThan(3);
+    });
+
+    it('flicks now and then as it sits or clings, in a burst when it is on edge, the same every time', () => {
+        const flicksFor = (alarm, clip = 'sit') => {
+            const mind = new SquirrelMind({
+                stage, seed: 271, start: 'ground', script: ['sit'],
+            });
+            mind.alarm = alarm;
+            const act = mind.stay(clip, 12);
+            return mind.flicksOf(act).map((flick) => +(flick.at - act.t0).toFixed(4));
+        };
+        const calm = flicksFor(0);
+        expect(calm.length).toBeGreaterThanOrEqual(1);
+        expect(calm[0]).toBeGreaterThan(0.35);
+        for (let i = 1; i < calm.length; i++) expect(calm[i] - calm[i - 1]).toBeGreaterThan(3);
+        expect(flicksFor(0)).toEqual(calm);
+        // On edge: two or three in quick succession first.
+        const edgy = flicksFor(0.8);
+        expect(edgy.filter((t) => t < 1.6).length).toBeGreaterThanOrEqual(2);
+        // Not while it runs or digs.
+        expect(flicksFor(0, 'dig')).toEqual([]);
+        // Drawn, a flick runs on past its act and is gone before the next could start.
+        const mind = new SquirrelMind({ stage, seed: 271, start: 'ground' });
+        let flicking = 0;
+        live(mind, 90, STEP, [], (pose) => {
+            if (pose.flick < 0) return;
+            flicking += 1;
+            expect(pose.flick).toBeLessThan(FLICK_LENGTH);
+            expect(pose.flickStrength).toBeGreaterThan(0);
+        });
+        expect(flicking).toBeGreaterThan(60);
+    });
+});
+
 describe('the squirrel drawn', () => {
     it('blends the clips the mind asks for and holds the acorn only while it nibbles', () => {
         const light = new FallLight({ tier: fallTier('Minimal'), rng: () => 0.5 });
@@ -508,7 +714,12 @@ describe('the squirrel drawn', () => {
             stage, seed: 8, start: 'ground', script: ['sit'],
         });
         const pose = {
-            ...mind.pose(1.0), look: 1, lagTurn: 0.5, lagSurge: 0.3,
+            ...mind.pose(1.0),
+            look: 1,
+            tailTurn: [0.1, 0.2, 0.3, 0.4, 0.5, 0.55, 0.6],
+            tailSurge: [0.1, 0.15, 0.2, 0.25, 0.3, 0.3, 0.3],
+            flick: 0.1,
+            flickStrength: 1,
         };
         const names = ['neck', 'head', 'tail0', 'tail6'];
         squirrel.update(pose);
@@ -521,10 +732,10 @@ describe('the squirrel drawn', () => {
         });
         // And the look and the trail did turn the bones off the bare clip pose.
         squirrel.update({
-            ...pose, look: 0, lagTurn: 0, lagSurge: 0,
+            ...pose, look: 0, tailTurn: [0, 0, 0, 0, 0, 0, 0], tailSurge: [0, 0, 0, 0, 0, 0, 0], flick: -1,
         });
         expect(squirrel.group.getObjectByName('head').quaternion.angleTo(first[1])).toBeGreaterThan(0.05);
-        expect(squirrel.group.getObjectByName('tail6').quaternion.angleTo(first[3])).toBeGreaterThan(0.05);
+        expect(squirrel.group.getObjectByName('tail0').quaternion.angleTo(first[2])).toBeGreaterThan(0.05);
     });
 });
 

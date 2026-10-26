@@ -17,31 +17,76 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, dot, float, length, mix, normalize, normalWorld, positionWorld, pow, reflect,
-    saturate, smoothstep, uniform, uv, vec2, vec3, vec4,
+    abs, attribute, cameraPosition, dot, float, floor, fract, fwidth, hash, length, mix, normalize, normalWorld,
+    positionWorld, pow, reflect, saturate, sin, smoothstep, uniform, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from './fall-squirrel-clips.js';
+import { FLICK_LENGTH } from './fall-squirrel-mind.js';
+import { createPlumeHair } from './fall-squirrel-plume.js';
 
 /** How far the head turns to the board at most (radians), and how the turn is shared. */
 const LOOK_REACH = 1.15;
 const LOOK_NECK = 0.4;
 /**
- * The tail's follow-through: each bone, root to brush, bends back against the body's turn (radians of
- * bend for a radian the body turned in the mind's LAG) and its surge (radians for a life-size metre a
- * second gained), more toward the brush.
+ * The tail's follow-through (the mind's tailTurn and tailSurge, per bone): how much of the body's turn
+ * since each bone's look back the tail keeps pointing away from (it trails the turn), and how far it
+ * swings up for a life-size metre a second the body slowed by since then (down for one it gained:
+ * a start leaves it behind, a stop throws it forward over the back), each held within a reach.
  */
-const TRAIL_TURN = [0.1, 0.11, 0.12, 0.13, 0.14, 0.15, 0.16];
-const TRAIL_SURGE = [0.1, 0.1, 0.11, 0.12, 0.13, 0.14, 0.15];
+const TRAIL_TURN = 0.8;
+const TRAIL_TURN_MOST = 1.0;
+const TRAIL_SURGE = 0.45;
+const TRAIL_SURGE_RANGE = [-0.32, 0.55];
+/**
+ * A tail flick, per bone root to brush (degrees at full strength): a snap up and a smaller rebound,
+ * each bone a beat after the one before, so the flick travels out to the brush.
+ */
+const FLICK_DEGREES = [18, 12, 8, 5, 4, 4, 4];
+const FLICK_BEAT = 0.028;
+/** Each tail bone's sideways axis in its own frame: square to the tail's length and to its left. */
+const TAIL_SWING = new THREE.Vector3(0, 0.8, 0.6).normalize();
+const TAIL_LIFT = new THREE.Vector3(1, 0, 0);
 
-/** The fur: albedo and sky from COLOR_0, the coat's numbers from _fur. */
+/** The flick's shape over its life (seconds): a quick up, a softer rebound, settled by FLICK_LENGTH. */
+function flickShape(u) {
+    if (u <= 0 || u >= FLICK_LENGTH) return 0;
+    const v = Math.sin((2 * Math.PI * u) / 0.3) * Math.exp(-u / 0.18);
+    return v < 0 ? v * 0.5 : v;
+}
+
+/** Hair streaks a metre across the plume (life size), combed out and back from a parting down it. */
+const COMB = 360;
+const COMB_SWEEP = 0.9;
+
+/**
+ * The fur: albedo and sky from COLOR_0, the coat's numbers from _fur. The plume (_fur.w a half) is
+ * combed: fine streaks of hair run out from a parting down its middle and back toward the brush,
+ * read in the body's rest pose (so they ride on it), and fade to their mean as they grow finer than a
+ * pixel (they never shimmer at the size the game shows it). `tailBase` and `tailAxis` place the comb.
+ */
 function createFurMaterial(light) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.name = 'FallSquirrelFur';
     const paint = attribute('color', 'vec4');
     const coat = attribute('_fur', 'vec4');
+    const tailBase = uniform(new THREE.Vector3(0, 0.072, -0.086));
+    const tailAxis = uniform(new THREE.Vector3(0, 0.6, -0.8));
+    const plume = smoothstep(0.3, 0.42, coat.w).mul(smoothstep(0.7, 0.58, coat.w));
+    const rest = attribute('position', 'vec3').sub(tailBase);
+    const along = dot(rest, tailAxis);
+    const out = abs(rest.x);
+    const lane = along.sub(out.mul(COMB_SWEEP)).mul(COMB).add(sin(along.mul(140)).mul(0.35)).add(4096);
+    const streak = fract(lane);
+    const strand = floor(lane);
+    const hairs = smoothstep(0.0, 0.3, streak).mul(smoothstep(1.0, 0.7, streak));
+    const tone = mix(float(0.84), float(1.0), hairs).mul(hash(strand).mul(0.16).add(0.91));
+    const fine = saturate(fwidth(lane).mul(1.6));
+    const parting = smoothstep(0.0, 0.0035, out).mul(0.22).add(0.78);
+    const combed = mix(tone, float(0.92), fine).mul(parting);
     // (A touch less saturated than painted: under the warm sun the rust ran to orange.)
-    const albedo = mix(vec3(dot(paint.rgb, vec3(0.2126, 0.7152, 0.0722))), paint.rgb, 0.8).mul(0.92);
+    const albedo = mix(vec3(dot(paint.rgb, vec3(0.2126, 0.7152, 0.0722))), paint.rgb, 0.8).mul(0.92)
+        .mul(mix(float(1), combed, plume));
     const sky = saturate(paint.a);
     const fur = saturate(coat.x);
     const through = saturate(coat.y);
@@ -75,6 +120,7 @@ function createFurMaterial(light) {
         // The grove's warm light on it, in a fever.
         .add(glow.mul(light.uSunColor).mul(light.uWarmth.mul(0.03)));
     material.fragmentNode = vec4(light.haze(lit, { world }), 1);
+    material.userData.comb = { tailBase, tailAxis };
     return material;
 }
 
@@ -149,6 +195,15 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
         triangles += child.geometry.index ? child.geometry.index.count / 3 : 0;
     });
     model.scale.setScalar(scale);
+    // The plume's hair: cards on the tail's own bones (fall-squirrel-plume.js).
+    const plumeHair = body ? createPlumeHair({ body, light }) : null;
+    if (plumeHair) {
+        triangles += plumeHair.triangles;
+        // The comb laid along the plume as measured.
+        const [first] = plumeHair.plume.stations;
+        material.userData.comb.tailBase.value.copy(first.centre);
+        material.userData.comb.tailAxis.value.copy(first.axis);
+    }
     const pivot = new THREE.Group();
     pivot.name = 'FallSquirrel';
     pivot.add(model);
@@ -166,9 +221,9 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
     }
     const neck = model.getObjectByName('neck');
     const head = model.getObjectByName('head');
-    const tail = TRAIL_TURN.map((_, i) => model.getObjectByName(`tail${i}`));
-    const trailEuler = new THREE.Euler();
-    const trailTurn = new THREE.Quaternion();
+    const tail = FLICK_DEGREES.map((_, i) => model.getObjectByName(`tail${i}`));
+    const trailLift = new THREE.Quaternion();
+    const trailSwing = new THREE.Quaternion();
     // The bones the layers on top of the clips turn (the look, the tail's follow-through), and their
     // clip pose as the mixer last left it. The mixer writes a bone only when its clip value changes,
     // so a layer laid on a bone whose clip held still would pile up frame on frame: each frame the
@@ -242,6 +297,7 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
         shade: shade.mesh,
         material,
         acornMaterial,
+        plumeHair,
         triangles,
         clips: Object.keys(actions),
         /** Draw the pose the mind resolved (fall-squirrel-mind.js pose()). */
@@ -277,16 +333,37 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
             layered.forEach((bone, i) => bone.quaternion.copy(clipPose[i]));
             mixer.update(0);
             layered.forEach((bone, i) => clipPose[i].copy(bone.quaternion));
-            // Follow-through: the plume trails the body's turns and its starts and stops.
-            const turn = Math.max(-0.9, Math.min(0.9, pose.lagTurn || 0));
-            const surge = Math.max(-0.6, Math.min(0.6, pose.lagSurge || 0));
-            if (turn !== 0 || surge !== 0) {
-                tail.forEach((bone, i) => {
-                    if (!bone) return;
-                    trailEuler.set(-surge * TRAIL_SURGE[i], -turn * TRAIL_TURN[i], 0);
-                    bone.quaternion.multiply(trailTurn.setFromEuler(trailEuler));
-                });
-            }
+            // Follow-through: the plume trails the body's turns and its starts and stops, each bone
+            // bent by what its look back adds to the one before (so the bend runs down the tail), and
+            // a flick now and then travelling out to the brush.
+            let swungBefore = 0;
+            let liftedBefore = 0;
+            const flick = pose.flick ?? -1;
+            const flickStrength = pose.flickStrength || 0;
+            tail.forEach((bone, i) => {
+                if (!bone) return;
+                const swung = THREE.MathUtils.clamp(
+                    -(pose.tailTurn?.[i] || 0) * TRAIL_TURN,
+                    -TRAIL_TURN_MOST,
+                    TRAIL_TURN_MOST,
+                );
+                const lifted = THREE.MathUtils.clamp(
+                    -(pose.tailSurge?.[i] || 0) * TRAIL_SURGE,
+                    TRAIL_SURGE_RANGE[0],
+                    TRAIL_SURGE_RANGE[1],
+                );
+                const flicked = flick >= 0
+                    ? THREE.MathUtils.degToRad(FLICK_DEGREES[i]) * flickStrength * flickShape(flick - i * FLICK_BEAT)
+                    : 0;
+                const lift = lifted - liftedBefore + flicked;
+                const swing = swung - swungBefore;
+                swungBefore = swung;
+                liftedBefore = lifted;
+                if (lift === 0 && swing === 0) return;
+                trailLift.setFromAxisAngle(TAIL_LIFT, lift);
+                trailSwing.setFromAxisAngle(TAIL_SWING, swing);
+                bone.quaternion.multiply(trailSwing).multiply(trailLift);
+            });
             pivot.updateMatrixWorld(true);
             lookAt(pose.attention, pose.look);
             if (acorn) acorn.visible = Boolean(pose.acorn);
@@ -306,6 +383,7 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
             mixer.uncacheRoot(model);
             material.dispose();
             acornMaterial.dispose();
+            plumeHair?.dispose();
             shade.mesh.geometry.dispose();
             shade.mesh.material.dispose();
             shade.mesh.removeFromParent();

@@ -33,7 +33,10 @@ export function create({
         ? Math.max(0, Math.round(Number(params.get('msaa')) || 0)) : sceneSamples(quality);
     // The red squirrel: ?squirrel=0 leaves it out; ?squirrelSeed=<n> gives it another day;
     // ?squirrelStart=ground starts it on the floor (else it comes down out of the maple's crown);
-    // ?squirrelCam=<metres> follows it with the camera that far off, seen from the game's side.
+    // ?squirrelCam=<metres> follows it with the camera that far off, seen from the game's side;
+    // ?squirrelOrbit=<degrees> swings that camera round it (about the world's up; 90 is its right
+    // as the game sees it, 180 behind it) and ?squirrelTilt=<degrees> sets how far above it the camera
+    // looks down from (else the game eye's own height).
     const squirrel = params.get('squirrel') !== '0';
     const squirrelSeed = Number(params.get('squirrelSeed') ?? 271);
     const squirrelStart = params.get('squirrelStart') === 'ground' ? 'ground' : 'crown';
@@ -41,6 +44,9 @@ export function create({
     const squirrelScript = (params.get('squirrelPlan') || '').split(',').map((bit) => bit.trim()).filter(Boolean);
     const followAt = Number(params.get('squirrelCam') ?? 0);
     const follow = Number.isFinite(followAt) && followAt > 0 ? followAt : 0;
+    const followOrbit = THREE.MathUtils.degToRad(Number(params.get('squirrelOrbit') ?? 0) || 0);
+    const followTiltAt = params.has('squirrelTilt') ? Number(params.get('squirrelTilt')) : NaN;
+    const followTilt = Number.isFinite(followTiltAt) ? THREE.MathUtils.degToRad(followTiltAt) : null;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = true;
@@ -99,8 +105,11 @@ export function create({
         if (!follow || !pose) return;
         followTarget.fromArray(pose.position).addScaledVector(new THREE.Vector3().fromArray(pose.normal), 0.25);
         world.prepareCamera(camera.aspect);
-        followEye.copy(camera.position).sub(followTarget).normalize().multiplyScalar(follow)
-            .add(followTarget);
+        followEye.copy(camera.position).sub(followTarget).normalize();
+        const azimuth = Math.atan2(followEye.z, followEye.x) + followOrbit;
+        const tilt = followTilt ?? Math.asin(THREE.MathUtils.clamp(followEye.y, -1, 1));
+        followEye.set(Math.cos(azimuth) * Math.cos(tilt), Math.sin(tilt), Math.sin(azimuth) * Math.cos(tilt))
+            .multiplyScalar(follow).add(followTarget);
         camera.position.copy(followEye);
         camera.lookAt(followTarget);
         camera.fov = 30;
