@@ -31,6 +31,16 @@ export function create({
     // ?msaa=<n> overrides the scene pass's samples (the theme's own: 4 from High up, else 0 + FXAA).
     const samples = params.has('msaa')
         ? Math.max(0, Math.round(Number(params.get('msaa')) || 0)) : sceneSamples(quality);
+    // The red squirrel: ?squirrel=0 leaves it out; ?squirrelSeed=<n> gives it another day;
+    // ?squirrelStart=ground starts it on the floor (else it comes down out of the maple's crown);
+    // ?squirrelCam=<metres> follows it with the camera that far off, seen from the game's side.
+    const squirrel = params.get('squirrel') !== '0';
+    const squirrelSeed = Number(params.get('squirrelSeed') ?? 271);
+    const squirrelStart = params.get('squirrelStart') === 'ground' ? 'ground' : 'crown';
+    // ?squirrelPlan=snack,climb,peek: its routines, in that order, before it chooses for itself.
+    const squirrelScript = (params.get('squirrelPlan') || '').split(',').map((bit) => bit.trim()).filter(Boolean);
+    const followAt = Number(params.get('squirrelCam') ?? 0);
+    const follow = Number.isFinite(followAt) && followAt > 0 ? followAt : 0;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = true;
@@ -65,7 +75,15 @@ export function create({
         }
         assets = loaded;
         world = new FallWorld({
-            scene, camera, quality, rng, assets,
+            scene,
+            camera,
+            quality,
+            rng,
+            assets,
+            squirrel,
+            squirrelSeed: Number.isFinite(squirrelSeed) ? squirrelSeed : 271,
+            squirrelStart,
+            squirrelScript,
         }).build();
         world.setLevel(level, { silent: true });
         post = new FallPost({
@@ -73,11 +91,27 @@ export function create({
         });
         post.setSize(window.innerWidth, window.innerHeight);
     });
+    const followEye = new THREE.Vector3();
+    const followTarget = new THREE.Vector3();
+    /** The close-up: the camera `follow` metres from the squirrel on the game eye's side of it. */
+    const aimFollow = () => {
+        const pose = world?.squirrelPose;
+        if (!follow || !pose) return;
+        followTarget.fromArray(pose.position).addScaledVector(new THREE.Vector3().fromArray(pose.normal), 0.25);
+        world.prepareCamera(camera.aspect);
+        followEye.copy(camera.position).sub(followTarget).normalize().multiplyScalar(follow)
+            .add(followTarget);
+        camera.position.copy(followEye);
+        camera.lookAt(followTarget);
+        camera.fov = 30;
+        camera.updateProjectionMatrix();
+    };
     const update = (time, dt) => {
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);
         post?.update(frame);
+        aimFollow();
     };
     // ?event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|b2b|level, placed
     // with ?col=0..9 and ?row=0..19 (0 is the top visible row).
@@ -106,7 +140,10 @@ export function create({
         } else if (event === 'spin') reactions.onTSpin({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'b2b') reactions.onBackToBack();
-        else if (event === 'level') {
+        else if (event === 'over') {
+            reactions.onGameOver();
+            world?.onGameOver();
+        } else if (event === 'level') {
             // As the theme does: the flourish, and the grove one light on.
             reactions.onLevelUp();
             world?.setLevel(world.level + 1);
@@ -126,7 +163,10 @@ export function create({
         world.setLevel(level, { silent: true });
         randomIndex = 0;
         const age = Number(params.get('eventAge') ?? 0.35);
-        const eventTime = Math.max(0, target - (Number.isFinite(age) ? Math.max(0, age) : 0.35));
+        // ?eventAt=<s> pins the event on the clock instead (so a run of seeks films one event).
+        const at = Number(params.get('eventAt'));
+        const eventTime = params.has('eventAt') && Number.isFinite(at) ? Math.max(0, at)
+            : Math.max(0, target - (Number.isFinite(age) ? Math.max(0, age) : 0.35));
         const steps = Math.max(1, Math.ceil(target * 60));
         const dt = target / steps;
         let fired = false;
@@ -160,6 +200,7 @@ export function create({
         resize(width, height) {
             world?.prepareCamera(camera.aspect);
             post?.setSize(width, height);
+            aimFollow();
         },
         getDiagnostics() {
             return {

@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import { FallAtmosphere } from './fall-atmosphere.js';
 import { FallBackdrop } from './fall-backdrop.js';
-import { fallViewFor } from './fall-composition.js';
+import { FALL_FEATURE_TREES, FALL_VIEWS, fallViewFor } from './fall-composition.js';
 import { FallForest } from './fall-forest.js';
 import { FallLeafDirector } from './fall-leaf-director.js';
 import { FallLeaves } from './fall-leaves.js';
@@ -18,16 +18,30 @@ import { FallLight } from './fall-light.js';
 import { FALL_MOODS, fallMoodDrift, fallMoodName } from './fall-moods.js';
 import { fallTier } from './fall-quality.js';
 import { FallStage } from './fall-stage.js';
+import { createSquirrel } from './fall-squirrel.js';
+import { SquirrelMind } from './fall-squirrel-mind.js';
+import {
+    SQUIRREL_TRUNK_SPAN, TrunkSurface, createSquirrelStage, measureTrunk,
+} from './fall-squirrel-stage.js';
 import { FallTerrain, fallTerrainHeight } from './fall-terrain.js';
 import { FallUnderstory } from './fall-understory.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
 
 /** How quickly the grove takes a level's step, per second: most of the way in four seconds. */
 const MOOD_FOLLOW = 0.6;
+/** The squirrel's trees: the hero maple left of the board and the hero oak right of it. */
+const SQUIRREL_TREES = Object.freeze({ maple: FALL_FEATURE_TREES[0], oak: FALL_FEATURE_TREES[1] });
+/** Which of the director's emitters startle the squirrel, and how (a lock only after a long drop). */
+const SQUIRREL_CUES = Object.freeze({
+    clear: 'clear', shower: 'four', combo: 'combo', spin: 'spin', crown: 'perfect', twin: 'combo',
+});
+/** A lock's emitter strength is 0.24 + 0.5 x the drop: from about half the board's height it startles. */
+const DROP_CUE = 0.45;
 
 export class FallWorld {
     constructor({
-        scene, camera, quality = 'High', rng = Math.random, assets,
+        scene, camera, quality = 'High', rng = Math.random, assets, squirrel = true, squirrelSeed = 271,
+        squirrelStart = 'crown', squirrelScript = [],
     }) {
         this.scene = scene;
         this.camera = camera;
@@ -45,6 +59,13 @@ export class FallWorld {
         this.level = 1;
         this.moodStep = 0;
         this.moodStart = 0;
+        // The red squirrel (fall-squirrel*.js): off with ?squirrel=0 or when its asset did not arrive.
+        this.squirrelWanted = squirrel;
+        this.squirrelSeed = squirrelSeed;
+        this.squirrelStart = squirrelStart;
+        this.squirrelScript = squirrelScript;
+        this.squirrelSerial = -1;
+        this.time = 0;
     }
 
     build() {
@@ -87,6 +108,7 @@ export class FallWorld {
         });
         this.group.add(this.leaves.group);
         this.leaves.build();
+        this.buildSquirrel();
         this.prepareCamera(this.camera.aspect);
         this.director = new FallLeafDirector({
             stage: this.stage,
@@ -97,6 +119,67 @@ export class FallWorld {
             groundHeight: fallTerrainHeight,
         });
         return this;
+    }
+
+    /**
+     * The squirrel: its two trunks measured from their bark, its mind, its body. Nothing when the
+     * asset is missing (the grove is whole without it).
+     */
+    buildSquirrel() {
+        const gltf = this.assets.squirrel;
+        if (!this.squirrelWanted || !gltf) return;
+        const trunks = {};
+        for (const [name, tree] of Object.entries(SQUIRREL_TREES)) {
+            const asset = this.assets.trees[tree.asset];
+            if (!asset?.bark?.index) return;
+            const { bark } = asset;
+            const colour = bark.attributes.color;
+            const sway = colour ? Float32Array.from({ length: colour.count }, (_, i) => colour.getX(i)) : null;
+            trunks[name] = new TrunkSurface(measureTrunk({
+                positions: bark.attributes.position.array,
+                index: bark.index.array,
+                sway,
+                place: {
+                    x: tree.x, y: fallTerrainHeight(tree.x, tree.z), z: tree.z, yaw: tree.yaw, scale: tree.scale,
+                },
+                span: SQUIRREL_TRUNK_SPAN[name],
+            }), name);
+        }
+        const eye = FALL_VIEWS.landscape.position;
+        this.squirrelStage = createSquirrelStage({
+            trunks, groundHeight: fallTerrainHeight, eye: [eye[0], eye[1], eye[2]],
+        });
+        this.squirrelMind = new SquirrelMind({
+            stage: this.squirrelStage, seed: this.squirrelSeed, start: this.squirrelStart, script: this.squirrelScript,
+        });
+        this.squirrel = createSquirrel({ light: this.light, gltf });
+        this.group.add(this.squirrel.group, this.squirrel.shade);
+        this.squirrelPose = null;
+    }
+
+    /** Tell the squirrel what the board did: the director's new emitters, once each. */
+    cueSquirrel(time, frame) {
+        const mind = this.squirrelMind;
+        if (!mind || !Array.isArray(frame?.emitters)) return;
+        let newest = this.squirrelSerial;
+        for (const emitter of frame.emitters) {
+            if (emitter.serial > this.squirrelSerial) {
+                newest = Math.max(newest, emitter.serial);
+                const at = Math.max(0, time - (Number.isFinite(emitter.age) ? emitter.age : 0));
+                if (emitter.kind === 'lock') {
+                    if (emitter.strength >= DROP_CUE) mind.cue('drop', at, (emitter.strength - 0.24) / 0.5);
+                } else if (SQUIRREL_CUES[emitter.kind] && !(emitter.kind === 'clear' && emitter.side > 0)) {
+                    // (Both sides of a clear are one clear.)
+                    mind.cue(SQUIRREL_CUES[emitter.kind], at, emitter.strength);
+                }
+            }
+        }
+        this.squirrelSerial = newest;
+    }
+
+    /** The run ended: the squirrel takes cover behind its tree and peeks out. */
+    onGameOver() {
+        this.squirrelMind?.cue('over', this.time);
     }
 
     /** The measured board card in screen fractions (y down), or null for the default. */
@@ -133,6 +216,8 @@ export class FallWorld {
     resetEffects() {
         this.director?.reset();
         this.leaves?.reset();
+        // The director's serials start again from nothing.
+        this.squirrelSerial = -1;
     }
 
     prepareCamera(aspect) {
@@ -168,6 +253,13 @@ export class FallWorld {
         light.update(time, { ...frame, front: env.front, fronts: env.fronts }, dt);
         this.leaves.update(dt, env, frame.heat);
         this.atmosphere.update(time, dt, frame);
+        if (this.squirrelMind && Number.isFinite(time)) {
+            this.time = time;
+            this.squirrelMind.motion = Number.isFinite(frame.motion) ? frame.motion : 1;
+            this.cueSquirrel(time, frame);
+            this.squirrelPose = this.squirrelMind.pose(time, this.squirrelPose || undefined);
+            this.squirrel.update(this.squirrelPose);
+        }
     }
 
     getDiagnostics() {
@@ -181,12 +273,25 @@ export class FallWorld {
             mood: fallMoodName(nearestStep(this.moodStep, this.level - 1, FALL_MOODS.length)
                 + fallMoodDrift(this.moodLived())),
             moodPhase: this.light?.moodPhase ?? 0,
+            // The squirrel, when the grove has one: what it is doing and where.
+            ...(this.squirrel ? {
+                squirrel: {
+                    visible: Boolean(this.squirrelPose?.visible),
+                    act: this.squirrelPose?.act ?? null,
+                    clip: this.squirrelPose?.clip ?? null,
+                    on: this.squirrelMind?.act?.from?.on ?? null,
+                    position: (this.squirrelPose?.position || [0, 0, 0]).map((v) => Math.round(v * 100) / 100),
+                },
+            } : {}),
         };
     }
 
     dispose() {
         if (this.disposed) return;
         this.disposed = true;
+        this.squirrel?.dispose();
+        this.squirrel = null;
+        this.squirrelMind = null;
         this.leaves?.dispose();
         this.atmosphere?.dispose();
         this.backdrop?.dispose();

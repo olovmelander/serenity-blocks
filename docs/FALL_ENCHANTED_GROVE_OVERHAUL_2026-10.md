@@ -1,6 +1,6 @@
 # Fall — the enchanted grove (visual overhaul, 2026-10-05)
 
-**Status: implemented (branch `feature/fall-enchanted-forest`). A record of what was built
+**Status: implemented (branch `feature/fall-enchanted-forest`; the red squirrel 2026-10-26). A record of what was built
 and how it was checked — not a backlog.** Supersedes the "amber glade" rebuild of the same
 week (`reports/fall-overhaul/README.md`), whose flat-shaded procedural grove this replaces.
 
@@ -202,3 +202,123 @@ portrait) and on the forced WebGL2 backend, each with a clean console; a real Si
 at High on this machine's integrated Radeon 610M (clean console); `validate-all-themes.mjs --theme
 fall` PASS (0 lifecycle failures, 0 console errors); the six `tests/unit/fall-*.test.js` suites
 (284 tests); ESLint at the same 10 pre-existing warnings in `src/themes/fall` and the effect.
+
+## The red squirrel (2026-10-26)
+
+Asked for: "a squirrel into the Fall theme climbing and moving around randomly … designed and animated
+… using the Blender MCP, so that we get a visually stunning and funny squirrel in this theme."
+
+A Eurasian red squirrel in its autumn coat lives on the two great trees and the floor between them: a
+rusty back, a cream belly with a clean line along the flanks, a big round head with large dark eyes in
+a pale ring, dark ear tufts, and a plume of a tail as long as its body. It is drawn 3.3 times life size
+(about 50 px on the maple's bark and 90 px on the floor at 1920 × 1080: life size it was a few pixels),
+which still leaves it small on a trunk two metres across.
+
+| In the game (Single Player, High, 1920 × 1080) | WebGL2 backend, High · Minimal tier |
+| --- | --- |
+| ![nibbling an acorn left of the board](fall-enchanted-grove/squirrel-ingame.webp) | ![the same on the forced WebGL2 backend and at Minimal](fall-enchanted-grove/squirrel-backends.webp) |
+
+### What it does
+
+Its day is a string of acts (a dash, a hop, a leap onto the bark, a climb, a cling, a sit) and of
+little routines made of them, chosen at random where it is:
+
+| On the floor | On the bark |
+| --- | --- |
+| **forage** in short hops, nose in the litter · **snack**: digs up an acorn, sits up and nibbles it (the jaw going like a sewing machine, the nut turned in its paws), then washes its face · **bury**: digs, pats the earth down, and looks round to see who saw · **sit** or stand up tall to look (the periscope) · **itch**: a hind foot going like the clappers behind an ear · **dash** in bursts with a dead stop halfway · **climb**: runs to a trunk, leaps on and climbs · **cross** to the other tree behind the board (rarely) | **shift** up, down and round the trunk · **look** about in quick head snaps · **peek**: round to the far side, a wait out of sight, then a peek round the edge · **chatter**: the scold, every call a jerk of the body and a whip of the tail out to its brush · **crown**: up into the leaves and gone a while, then down again head first · **down** head first to the foot and a jump off |
+
+It starts in the maple's crown and comes down head first a couple of seconds after the theme opens.
+
+| Some of its routines, from the follow camera (`squirrelCam=2.4`) |
+| --- |
+| ![digging, nibbling, washing, scratching, a bound, patting, the periscope, leaping onto the bark, climbing, peeking, scolding, coming down head first](fall-enchanted-grove/squirrel-routines.webp) |
+
+### How it answers the game
+
+Through the director's emitters (`FallWorld.cueSquirrel`, each new emitter once), so it obeys the same
+settings as the rest of the grove's reactions:
+
+| Event | The squirrel |
+| --- | --- |
+| Hard drop from about half the board's height | Jumps out of its skin: a flinch, straight up level as a plank with every leg flung out and the tail bristling, down with a bump, frozen; then scolds or flees up its tree. Less each time (it gets used to the thumps: a fright raises its alarm, which wears off over ~14 s). |
+| Line clear (1–3), T-spin | Turns its head to the board, or stands up tall to look (a nibbler keeps nibbling, looking). |
+| Four lines | Jumps, then runs up its tree to scold from high on the bark. |
+| Combo, back-to-back | Scolds the board. |
+| Perfect clear | Jumps for joy and twirls a whole turn in the air. |
+| Game over | Takes cover round the far side of its tree, then peeks out. |
+| Reduced motion | A fright is a look, never a jump. |
+
+| A hard drop (`event=drop&eventAt=1`, seeking 1.0 → 1.6 s) |
+| --- |
+| ![sitting, the flinch, the jump with legs flung out and the tail bristling, down, frozen](fall-enchanted-grove/squirrel-startle.webp) |
+
+### How it is made: modelled, rigged and animated in Blender
+
+`scripts/blender/fall_squirrel.py` with its modules in `scripts/blender/fall_squirrel/`, run headless by
+`node scripts/fall/pack-squirrel.mjs`, which packs the GLB and writes its manifest line. The same
+modules ran inside the user's open Blender through the Blender MCP for the design loop
+(`fall_squirrel/live.py`: the squirrel's own scene, posed lineups rendered with Workbench, nothing else
+in the session touched).
+
+| | |
+| --- | --- |
+| **Model** (`model.py`) | A distance field of ellipsoids and round cones joined by smooth unions round the rig's joints (the Grainfields horse's and Winter bear's meshing, `grainfields/horse_sdf.py`). The plume is built of locks laid like a feather (broad soft locks on each side sweeping back, shorter ones along its top and underside, a brush at the end), so its outline is scalloped: a smooth tube read as a sausage and noise on it as a pine cone. Surface nets on a 1.4 mm grid, then two decimation passes (body, legs and plume with the face held; the face with the rest held: Blender's collapse leaves a vertex of weight 0 alone, but partial weights spared nothing usefully), cleaned of folds, mirrored. 9,806 triangles, of which the face keeps about a third. |
+| **Paint** | COLOR_0 = linear coat colour and the sky each vertex sees (occlusion traced through the field); `_fur` = hair length, light through it, eye, ear tuft. |
+| **Rig** (`rig.py`) | Thirty bones (hips, spine, chest, neck, head, jaw, two ears, seven tail bones, and three or four a leg), each resting in the squirrel's own frame so a clip's rotations are about its own axes; skin weights by inverse distance along each part's chain, relaxed over the surface. |
+| **Motion** (`motion.py`, `solver.py`) | Sixteen clips, each a function of time: where the body is and how it bends, where every paw is put (two-bone IK with the knee or elbow in the plane a pole gives; paws can ride a bone: the chest, the head), how the head, ears, jaw and tail turn (a travelling wave, a flick, the scold's whip). Gaits slide their planted paws back at their own speed so the runtime can play them in place. Sampled at 30 fps and keyed into one Blender action each. |
+| **Acorn** | A glossy nut in a scaly cup, parented to the left hand bone, placed from the nibble pose so it sits between both paws in front of the mouth; drawn 1.4× (like the head). |
+| **Pack** (`pack-squirrel.mjs`) | 1.44 MB from Blender → 440 KiB: 16-bit rotations, a still channel as one key, unused translation and scale channels dropped, byte colours, fur and weights, byte normals (`KHR_mesh_quantization`); the clips' lengths, loops and speeds in the asset's extras. Deterministic (three runs, one SHA-256). |
+
+| The model in some of its clips (Blender Workbench lineups from the design loop) |
+| --- |
+| ![idle, sit, nibble, the fright, the scold, the scratch; three frames of the bound, the periscope, digging, washing](fall-enchanted-grove/squirrel-model.webp) |
+
+### Runtime modules (`src/themes/fall/`)
+
+| Module | Owns |
+| --- | --- |
+| `fall-squirrel-clips.js` | The clip table (length, loop, gait speed) and the drawn scale (3.3). |
+| `fall-squirrel-stage.js` | The two trunks measured from their own bark meshes (48 horizontal rays at every 15 cm of height, binned by height, the outermost hit kept, smoothed; ~10 ms a trunk) as surfaces with a frame at any height and angle; the floor's frame from the terrain. |
+| `fall-squirrel-mind.js` | The planner (three-free): places on the bark and the floor, acts and routines, the answers to the board, and the pose at any time. A seeded mulberry32 draws the choices in the order they are needed; an answer cuts the act it interrupts at that moment. The pose is a function of the clock and the events alone, so the playground's seek lands on it at any frame rate (a test holds 1/30 s and 1/144 s steps to the same pose). |
+| `fall-squirrel.js` | The body: the clips blended through `AnimationMixer` with every clip's time and weight set from the mind (the mixer is never stepped), a head turn toward the board on top, the acorn shown while it nibbles, a soft contact shade (it is not in the grove's static shadow map), and the fur material. |
+
+The fur is lit as the grove is, by its one low sun behind the trees: wrapped light, the hemisphere
+ambient times the baked sky term, a rim through the hair all round its outline (strongest with the sun
+behind it), its ears and the plume's locks shining when the sun is behind them, the trees' shadows
+falling on it from the shared shadow node, a sun glint and a sky catchlight in its eyes, and the
+grove's haze.
+
+**Composition.** Its liked places on the floor were projected through the game's landscape eye: by the
+maple between 12 and 30 % of the screen width from the left, by the oak beyond 76 % (clear of the HUD
+that stands right of the board card). On the bark it keeps to the side of each trunk toward the board
+(the maple stands at the screen's left edge). Over ten simulated minutes for three seeds it is visible
+95 % of the time (the rest in the crown, by design), on screen for over 97 % of that and clear of the
+card for over 97 %.
+
+**Cost.** Three draws more (the skinned body, the acorn, the shade): 9,806 + 420 triangles. On the CPU,
+at most two active clips through the mixer and one head turn a frame; the trunks are measured once when
+the world is built. On every tier. GPU timings were not taken (other sessions share both GPUs).
+
+### Verification
+
+- **Playground** (`?effect=fall&orbit=0&hud=0`, with `squirrelPlan=`, `squirrelCam=`, `squirrelStart=`,
+  `squirrelSeed=` and `event=…&eventAt=` to film a reaction): captures on native WebGPU at High and
+  Minimal and on the forced WebGL2 backend; consoles clean (only Electron's dev-server CSP notice).
+- **The real game**: Single Player at High, 1920 × 1080, via an Electron capture on a private dev
+  server: it came down the maple, nibbled left of the board, three hard drops made it jump, then it
+  ran across to the oak; console clean.
+- **Tests**: `tests/unit/fall-squirrel.test.js` (17: the asset's skin, bones, clips against the table,
+  closed loops and budget; the measured trunks; the mind's determinism at any frame rate, staying on
+  screen and clear of the card, no teleports, every routine, the acorn, the scold, habituating frights,
+  the twirl and the game-over hiding, reduced motion; the body; the world's wiring through the
+  director, and a grove without the asset); the Fall asset tests now know `squirrel.glb`.
+- **Gates**: typecheck, lint and TS ratchets at baseline, architecture fitness, boundaries, theme
+  lifecycle audit, IP-string gate.
+
+### Known limits and follow-ups
+
+- No fur shells: the coat is a lit surface with a lumpy outline. Shells drawn with alpha-to-coverage
+  would give its edge real fuzz at close range; at game size the rim light carries the fur.
+- It casts no sun shadow (the grove's map is static); a contact shade grounds it instead.
+- It does not drop its acorn when startled, and it goes between the trees only over the floor.
+- Portrait: the same squirrel in the margins; not tuned there.

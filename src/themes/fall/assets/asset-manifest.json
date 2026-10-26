@@ -189,6 +189,33 @@
       "role": "hero",
       "sites": 1205,
       "barkTriangles": 36960
+    },
+    {
+      "file": "squirrel.glb",
+      "bytes": 450352,
+      "sha256": "47665412d46ad461b1be6b8b974b4b221ea08026112ab45c8b5edbf53757607f",
+      "kind": "squirrel",
+      "triangles": 9806,
+      "acornTriangles": 420,
+      "bones": 30,
+      "clips": [
+        "bound",
+        "chatter",
+        "climb",
+        "cling",
+        "descend",
+        "dig",
+        "groom",
+        "hop",
+        "idle",
+        "leap",
+        "look",
+        "nibble",
+        "pat",
+        "scratch",
+        "sit",
+        "startle"
+      ]
     }
   ]
 }

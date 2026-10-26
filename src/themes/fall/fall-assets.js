@@ -20,6 +20,8 @@ export const FALL_TREE_URLS = Object.freeze({
     'birch-grove-b': new URL('./assets/birch-grove-b.glb', import.meta.url).href,
 });
 export const FALL_FOLIAGE_URL = new URL('./assets/fall-foliage.glb', import.meta.url).href;
+/** The red squirrel: modelled, rigged and animated in Blender (fall-squirrel.js draws it). */
+export const FALL_SQUIRREL_URL = new URL('./assets/squirrel.glb', import.meta.url).href;
 export const FALL_IMPOSTOR_URL = new URL('./assets/fall-impostors.png', import.meta.url).href;
 export const FALL_ASSET_SCHEMA = 1;
 
@@ -145,6 +147,7 @@ export function disposeFallAssets(assets) {
     Object.values(assets.foliage?.meshes || {}).forEach((geometry) => geometry.dispose());
     Object.values(assets.trees || {}).forEach((tree) => tree.bark?.dispose());
     assets.impostors?.texture?.dispose();
+    assets.squirrel?.scene?.traverse((object) => object.geometry?.dispose());
 }
 
 /** Tile layout of the far-tree sprite sheet, as written by the Blender bake. */
@@ -175,24 +178,32 @@ export function prepareImpostorTexture(texture) {
  */
 export async function loadFallAssets({
     trees = Object.keys(FALL_TREE_URLS), loader = new GLTFLoader(), textureLoader = new THREE.TextureLoader(),
-    isCurrent = () => true,
+    isCurrent = () => true, squirrel = true,
 } = {}) {
     const names = [...new Set(trees)];
     const layout = fallImpostorLayout();
-    const [foliageGltf, impostorTexture, ...treeGltfs] = await Promise.all([
+    const [foliageGltf, impostorTexture, squirrelGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(FALL_FOLIAGE_URL),
         layout && textureLoader ? textureLoader.loadAsync(FALL_IMPOSTOR_URL) : null,
+        // The grove does without its squirrel rather than fail to open.
+        squirrel ? loader.loadAsync(FALL_SQUIRREL_URL).catch((error) => {
+            console.warn('[Fall] the squirrel did not arrive:', error?.message || error);
+            return null;
+        }) : null,
         ...names.map((name) => {
             if (!FALL_TREE_URLS[name]) throw new Error(`[Fall] Unknown tree asset "${name}".`);
             return loader.loadAsync(FALL_TREE_URLS[name]);
         }),
     ]);
-    const assets = { foliage: parseFallFoliage(foliageGltf), trees: {}, impostors: null };
+    const assets = {
+        foliage: parseFallFoliage(foliageGltf), trees: {}, impostors: null, squirrel: squirrelGltf || null,
+    };
     names.forEach((name, index) => {
         assets.trees[name] = parseFallTree(treeGltfs[index], name);
     });
     if (impostorTexture) assets.impostors = { ...layout, texture: prepareImpostorTexture(impostorTexture) };
-    [foliageGltf, ...treeGltfs].forEach(releaseGltf);
+    // (The squirrel's GLTF is kept whole: its scene, skeleton and clips are the world's to clone.)
+    [foliageGltf, squirrelGltf, ...treeGltfs].filter(Boolean).forEach(releaseGltf);
     if (!isCurrent()) {
         disposeFallAssets(assets);
         return null;

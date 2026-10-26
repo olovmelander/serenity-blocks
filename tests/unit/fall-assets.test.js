@@ -9,7 +9,8 @@ import {
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-    FALL_ASSET_SCHEMA, FALL_FOLIAGE_URL, FALL_IMPOSTOR_URL, FALL_TREE_URLS, disposeFallAssets, fallImpostorLayout,
+    FALL_ASSET_SCHEMA, FALL_FOLIAGE_URL, FALL_IMPOSTOR_URL, FALL_SQUIRREL_URL, FALL_TREE_URLS, disposeFallAssets,
+    fallImpostorLayout,
     loadFallAssets, parseFallFoliage, parseFallTree, prepareImpostorTexture,
 } from '../../src/themes/fall/fall-assets.js';
 import { FALL_FEATURE_TREES, layoutFallGrove } from '../../src/themes/fall/fall-composition.js';
@@ -158,9 +159,11 @@ describe('Fall asset pack on disk', () => {
         }
         expect(fileNameOf(FALL_FOLIAGE_URL)).toBe('fall-foliage.glb');
         expect(fileNameOf(FALL_IMPOSTOR_URL)).toBe('fall-impostors.png');
-        referenced.push(fileNameOf(FALL_FOLIAGE_URL), fileNameOf(FALL_IMPOSTOR_URL));
+        expect(fileNameOf(FALL_SQUIRREL_URL)).toBe('squirrel.glb');
+        referenced.push(fileNameOf(FALL_FOLIAGE_URL), fileNameOf(FALL_IMPOSTOR_URL), fileNameOf(FALL_SQUIRREL_URL));
         const directory = fileURLToPath(assetDirectory);
-        for (const [file, url] of [...Object.values(FALL_TREE_URLS), FALL_FOLIAGE_URL, FALL_IMPOSTOR_URL]
+        for (const [file, url] of [...Object.values(FALL_TREE_URLS), FALL_FOLIAGE_URL, FALL_IMPOSTOR_URL,
+            FALL_SQUIRREL_URL]
             .map((entry) => [fileNameOf(entry), entry])) {
             expect(existsSync(new URL(file, assetDirectory)), file).toBe(true);
             expect(statSync(new URL(file, assetDirectory)).size).toBeGreaterThan(0);
@@ -570,14 +573,18 @@ describe('loading and releasing the Fall assets', () => {
         const disposal = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         const assets = await loadFallAssets({ loader, textureLoader, isCurrent });
         const requested = loader.loadAsync.mock.calls.map(([url]) => url);
-        expect([...requested].sort()).toEqual([FALL_FOLIAGE_URL, ...Object.values(FALL_TREE_URLS)].sort());
+        expect([...requested].sort())
+            .toEqual([FALL_FOLIAGE_URL, FALL_SQUIRREL_URL, ...Object.values(FALL_TREE_URLS)].sort());
         expect(textureLoader.loadAsync).toHaveBeenCalledExactlyOnceWith(FALL_IMPOSTOR_URL);
         // Ownership is checked once, after everything has arrived.
         expect(isCurrent).toHaveBeenCalledOnce();
         expect(isCurrent.mock.invocationCallOrder[0])
             .toBeGreaterThan(Math.max(...loader.loadAsync.mock.invocationCallOrder));
 
-        expect(Object.keys(assets).sort()).toEqual(['foliage', 'impostors', 'trees']);
+        expect(Object.keys(assets).sort()).toEqual(['foliage', 'impostors', 'squirrel', 'trees']);
+        // The squirrel comes whole: its skinned body, its acorn and its clips.
+        expect(assets.squirrel.animations.length).toBeGreaterThan(0);
+        expect(assets.squirrel.scene.getObjectByName('Acorn')).toBeTruthy();
         expect(Object.keys(assets.trees)).toEqual(TREE_NAMES);
         for (const name of TREE_NAMES) {
             expect(assets.trees[name].name).toBe(name);
@@ -602,9 +609,12 @@ describe('loading and releasing the Fall assets', () => {
         const disposal = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         const assets = await loadFallAssets({ loader, textureLoader, isCurrent: () => false });
         expect(assets).toBeNull();
-        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 1);
+        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 2);
+        // Every geometry of the grove, and the squirrel's body and acorn.
         const released = disposal.mock.contexts.map((geometry) => geometry.name).sort();
-        expect(released).toEqual([...REQUIRED_FOLIAGE, ...TREE_NAMES.map(() => 'bark')].sort());
+        expect(released.length).toBe(REQUIRED_FOLIAGE.length + TREE_NAMES.length + 2);
+        expect(released.filter((name) => REQUIRED_FOLIAGE.includes(name) || name === 'bark'))
+            .toEqual([...REQUIRED_FOLIAGE, ...TREE_NAMES.map(() => 'bark')].sort());
         expect(new Set(disposal.mock.contexts).size).toBe(released.length);
         expect(textureLoader.textures).toHaveLength(1);
         expect(textureLoader.disposed).toEqual(textureLoader.textures);
@@ -616,9 +626,9 @@ describe('loading and releasing the Fall assets', () => {
             trees: ['maple-grove-a', 'birch-grove-b', 'maple-grove-a'], loader, textureLoader: null,
         });
         expect(Object.keys(assets.trees)).toEqual(['maple-grove-a', 'birch-grove-b']);
-        expect(loader.loadAsync).toHaveBeenCalledTimes(3);
+        expect(loader.loadAsync).toHaveBeenCalledTimes(4);
         expect(loader.loadAsync.mock.calls.map(([url]) => fileNameOf(url)).sort())
-            .toEqual(['birch-grove-b.glb', 'fall-foliage.glb', 'maple-grove-a.glb']);
+            .toEqual(['birch-grove-b.glb', 'fall-foliage.glb', 'maple-grove-a.glb', 'squirrel.glb']);
         expect(assets.impostors).toBeNull();
         expect(Object.keys(assets.foliage.meshes).sort()).toEqual([...REQUIRED_FOLIAGE].sort());
         disposeFallAssets(assets);

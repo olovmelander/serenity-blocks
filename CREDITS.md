@@ -113,7 +113,11 @@ third-party or CC assets:
 - Fall: every file under `src/themes/fall/assets/` (the maple, oak and birch trees,
   the shared leaf geometry and the distant-forest sprite sheet). These are authored
   procedurally in Blender by `scripts/blender/fall_grove_assets.py` with no generative
-  model and no third-party source; see `src/themes/fall/assets/ATTRIBUTION.md`.
+  model and no third-party source; and `squirrel.glb` (the red squirrel, its rig, its
+  clips and its acorn), modelled, rigged and animated procedurally in Blender by
+  `scripts/blender/fall_squirrel.py` and packed by `scripts/fall/pack-squirrel.mjs`, with no
+  generative model, no motion capture and no third-party source; see
+  `src/themes/fall/assets/ATTRIBUTION.md`.
 - Golden Forest: every file under `src/themes/golden-forest/assets/` (the spruce and pine
   trees, the shared needle geometry, the rowboat, jetty, boulders and dead pine, and the
   far-shore sprite sheet). These are authored procedurally in Blender by

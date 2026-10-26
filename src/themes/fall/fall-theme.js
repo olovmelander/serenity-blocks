@@ -369,6 +369,7 @@ export default class FallTheme extends BaseTheme {
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
         this.registerEventListener(window, 'gameOver', () => {
             this.reactions?.onGameOver();
+            this.world?.onGameOver?.();
             // The run is over: the next begins at the first level, and so does the grove's light.
             this.setLevel(1);
         });

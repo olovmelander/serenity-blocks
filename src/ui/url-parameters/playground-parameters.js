@@ -6501,4 +6501,50 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/halcyon-apex.effect.js',
         ],
     },
+    // Fall's red squirrel (fall-squirrel*.js): its capture controls together.
+    ...[
+        ['squirrel', 'Draw the red squirrel.', '0 leaves it out.', 'On.', '0'],
+        ['squirrelSeed', 'Give the squirrel another day (its routines come from this seed).', 'Integer.', '271.', '11'],
+        [
+            'squirrelStart',
+            'Where the squirrel is when the clock starts.',
+            'ground (on the floor by the maple) or crown (coming down out of the maple’s crown).',
+            'crown.',
+            'ground',
+        ],
+        [
+            'squirrelPlan',
+            'Its routines, in this order, before it chooses for itself (one that cannot be done where it is is '
+                + 'passed over).',
+            'Comma list of forage, snack, bury, sit, itch, dash, climb, cross (on the floor) and shift, look, '
+                + 'peek, chatter, crown, down (on the bark).',
+            'None: it chooses.',
+            'snack,climb,peek',
+        ],
+        [
+            'squirrelCam',
+            'Follow the squirrel with the camera this many metres off, on the game eye’s side of it (30° lens).',
+            'Metres > 0.',
+            'Off: the game’s framing.',
+            '2.5',
+        ],
+        [
+            'eventAt',
+            'Pin the event on the clock (a seek to t shows it t − eventAt seconds on; seeking frame by frame films '
+                + 'it, the squirrel’s fright included).',
+            'Seconds ≥ 0.',
+            'Not pinned: eventAge applies.',
+            '1',
+        ],
+    ].map(([name, description, values, defaultValue, value]) => ({
+        name,
+        category: 'Playground',
+        scope: 'playground.html — fall',
+        description,
+        values,
+        defaultValue,
+        example: `${name}=${value}`,
+        notes: 'Use on playground.html with effect=fall; t=<s> seeks the squirrel’s day deterministically.',
+        sources: ['src/playground/effects/fall.effect.js'],
+    })),
 ];
