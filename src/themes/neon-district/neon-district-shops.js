@@ -80,7 +80,10 @@ import { ndTextDistance } from './neon-district-text.js';
 import { ndLogoFrames, ndSpellOut } from './neon-district-signs.js';
 import {
     ROLE,
+    STAND_A,
+    STAND_B,
     WALK_B,
+    WORK_STEP,
     cameraBearing,
     clipCells,
     createPeopleTable,
@@ -600,12 +603,15 @@ function shopInterior(u, {
             If(present.greaterThan(0.5), () => {
                 const roleRow = T.row(role.add(T.at.role)).toVar();
                 const isWalker = abs(role.sub(ROLE.walker)).lessThan(0.5);
-                const clip = select(isWalker.and(h3.y.greaterThan(0.5)), float(WALK_B), roleRow.x).toVar();
-                const clipA = T.row(clip.mul(2.0).add(T.at.clip)).toVar();
-                const clipB = T.row(clip.mul(2.0).add(T.at.clip + 1)).toVar();
-                // Where they stand across the room, by role.
+                const second = h3.y.greaterThan(0.5);
+                // Each person keeps their own pace: no two loops tick together.
+                const rate = fract(hk.mul(13.7)).mul(0.24).add(0.88);
+                const walkClip = select(isWalker.and(second), float(WALK_B), roleRow.x);
+                const walkMetres = T.row(walkClip.mul(2.0).add(T.at.clip + 1)).y;
+                // Staff work a spot on the counter, then step along it to another and work that.
                 const shift = fract(u.time.mul(hk.mul(0.03).add(0.05)).add(hk.mul(5.0)).add(slot.mul(0.5)));
                 const over = smoothstep(0.1, 0.3, shift).sub(smoothstep(0.6, 0.8, shift));
+                const stepping = step(0.1, shift).mul(step(shift, 0.3)).add(step(0.6, shift).mul(step(shift, 0.8)));
                 const spotA = roomW.mul(hk.mul(0.3).add(0.2));
                 const away = select(hk.greaterThan(0.5), float(-1.0), float(1.0));
                 const spotB = spotA.add(roomW.mul(0.35).add(0.4).mul(away));
@@ -615,8 +621,18 @@ function shopInterior(u, {
                 const tread = min(slot.add(0.4).mul(2.1), roomW.sub(0.5));
                 const aisle = floor(h3.z.mul(max(roomW.div(2.4).sub(0.5), 1.0))).mul(2.4).add(0.55);
                 const spread = h3.z.mul(0.56).add(0.22).mul(roomW);
-                const speed = select(h3.y.greaterThan(0.5), float(0.9), float(0.96));
-                const path = walkerPath(u.time, roomW, h3.x.add(slot.mul(0.37)), clipB.y, speed);
+                const speed = select(second, float(0.9), float(0.96));
+                const pause = fract(hk.mul(7.7)).mul(2.4).add(1.2);
+                const path = walkerPath(u.time, roomW, h3.x.add(slot.mul(0.37)), walkMetres, speed, pause);
+                // Walkers stand in their own clothes at the ends; staff step along the counter.
+                const restClip = select(second, float(STAND_B), float(STAND_A));
+                const isStaff2 = abs(role.sub(ROLE.staff)).lessThan(0.5);
+                const walkerClip = select(path.walking.greaterThan(0.5), walkClip, restClip);
+                const isStepping = isStaff2.and(stepping.greaterThan(0.5));
+                const otherClip = select(isStepping, float(WORK_STEP), roleRow.x);
+                const clip = select(isWalker, walkerClip, otherClip).toVar();
+                const clipA = T.row(clip.mul(2.0).add(T.at.clip)).toVar();
+                const clipB = T.row(clip.mul(2.0).add(T.at.clip + 1)).toVar();
                 const spot = roleRow.w;
                 // In SPOT order (neon-district-people.js).
                 const spots = [spread, staffX, cabinet, tread, roomW.mul(0.5), aisle, path.x];
@@ -628,8 +644,13 @@ function shopInterior(u, {
                 const at = roleRow.y.add(select(isWalker, slot.mul(0.07), float(0.0)));
                 // Which way they face: the street, the back wall, or along their walk.
                 const facing = select(isWalker, path.facing, roleRow.z.mul(Math.PI).add(h3.x.sub(0.5).mul(0.5)));
-                const looped = u.time.div(clipB.x).add(hk.mul(5.0));
-                const phase = select(clipB.w.greaterThan(0.5), u.breath, select(isWalker, path.phase, looped));
+                const looped = u.time.mul(rate).div(clipB.x).add(hk.mul(5.0));
+                // A step's frame by how far along the counter they are: forward one way, backward
+                // the other, so the feet stay put.
+                const stepped = staffX.sub(spotA).div(clipB.y);
+                const walkingNow = isWalker.and(path.walking.greaterThan(0.5));
+                const moving = select(walkingNow, path.phase, select(isStepping, stepped, looped));
+                const phase = select(clipB.w.greaterThan(0.5), u.breath, moving);
                 // The card: through their place, square to the camera's line to them.
                 const c = vec2(roomX0.add(x), depth.mul(at)).toVar();
                 const toFig = normalize(c.sub(camRoom.xz)).toVar();

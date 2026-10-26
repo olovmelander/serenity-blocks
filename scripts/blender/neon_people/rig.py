@@ -101,7 +101,7 @@ def _sided(table):
 
 
 # Rest joints. A: a man of about 1.77 m. B: a woman of about 1.66 m, narrower at the shoulder,
-# wider at the hip, her arms carried a little out from the elbow.
+# wider at the hip, her arms carried a little out from the elbow. C (below, from A): a heavy man.
 REST = {
     "A": _sided({
         "pelvis": (0.0, 0.0, 0.955),
@@ -138,6 +138,26 @@ REST = {
         "ball_": (0.095, -0.108, 0.017),
     }),
 }
+
+
+def _heavy(a):
+    """Build C: a heavy man of about 1.86 m, broad in the shoulder, his arms carried wide."""
+    out = {}
+    widen = {"clav_": 0.006, "shoulder_": 0.034, "elbow_": 0.05, "wrist_": 0.055, "fingers_": 0.057,
+             "hip_": 0.012, "knee_": 0.016, "ankle_": 0.018, "ball_": 0.018}
+    for key, v in a.items():
+        v = np.array(v, dtype=np.float64)
+        v[2] *= 1.05
+        stem = key[:-1] if key[-2:] in ("_L", "_R") else None
+        if stem in widen:
+            v[0] += np.sign(v[0]) * widen[stem]
+        if key in ("chest", "neck", "head", "crown"):
+            v[1] += 0.008
+        out[key] = v
+    return out
+
+
+REST["C"] = _heavy(REST["A"])
 
 
 def lengths(rest, side):
@@ -221,7 +241,7 @@ def pose(build, spec):
     """
     rest = REST[build]
     P = Posed(build, rest)
-    P.extras = {key: spec[key] for key in ("hair_swing",) if key in spec}
+    P.extras = {key: spec[key] for key in ("hair_swing", "coat_swing") if key in spec}
     root = np.asarray(spec.get("root", (0.0, 0.0, 0.0)), dtype=np.float64)
     P.J["pelvis"] = rest["pelvis"] + root
     P.R["pelvis"] = turn(*spec.get("pelvis", (0.0, 0.0, 0.0)))
