@@ -132,14 +132,15 @@ export function pointAt(bearing, distance, out = [0, 0]) {
  * Landmarks (metres).
  *  - gate: Lapporten, the U-shaped gate through the fells: the middle of its floor at the gate's
  *    line (x, z); the fells' shape is grainfields-lapporten.js;
- *  - fort: the stone fort on its knoll in the vale (knoll height, radius);
+ *  - fort: the ruined castle on its knoll in the vale (knoll height, radius; `yaw` turns the ruin
+ *    about the vertical so its gate, the model's +z, faces down the path to the fields);
  *  - herd: where the band first grazes, right of the board inside the near field (from there it
  *    roams: grainfields-herd-sim.js);
  */
 export const PLACES = Object.freeze({
     gate: Object.freeze({ x: -4300, z: -11203 }),
     fort: Object.freeze({
-        x: -410, z: -1350, height: 46, radius: 120,
+        x: -410, z: -1350, height: 46, radius: 120, yaw: 0.35,
     }),
     herd: Object.freeze({ x: 16, z: -30, radius: 10 }),
 });
