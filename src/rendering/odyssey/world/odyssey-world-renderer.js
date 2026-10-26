@@ -2,9 +2,9 @@ import * as THREE from 'three/webgpu';
 import {
     Break, Fn, If, Loop, int,
     abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
-    length, max, min, mix, reflect, select, sign, sqrt,
+    hash, length, max, min, mix, reflect, select, sign, sqrt,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin, smoothstep,
-    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, cameraPosition as cameraPositionNode,
+    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, vec4, cameraPosition as cameraPositionNode,
     cameraViewMatrix,
     pow2,
 } from 'three/tsl';
@@ -105,6 +105,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         cavity: 0.30,
         ridgeRock: 0.16,
         cloudShadows: true,
+        leafClumps: true,
     },
     low: {
         gridN: 96,
@@ -118,6 +119,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         cavity: 0.24,
         ridgeRock: 0.12,
         cloudShadows: false,
+        leafClumps: false,
     },
 });
 
@@ -762,6 +764,20 @@ const FOREST_CLUMP_SWING = 0.34;
  * sky and the low sun together.
  */
 const FOREST_AO_SHIFT = 0.30;
+/**
+ * LEAF CLUMPS on the crowns (see `fvLeaf`): `scale` cells per unit of the puff's stereographic
+ * chart (~28 clumps on an upper hemisphere at 3), how far a clump's normal tilts from its centre
+ * (`bulge`), the seam's width in cell units and how far a seam shifts into shade, each clump's
+ * own tone (`jitter`, a threshold shift), and the range.
+ */
+const LEAF_CLUMPS = Object.freeze({
+    scale: 3.6,
+    bulge: 1.05,
+    seam: 0.17,
+    seamShift: 0.13,
+    jitter: 0.12,
+    far: 420,
+});
 const FOREST_CAP_TINT = [1.16, 1.11, 0.84];
 const FOREST_CAP_GAIN = 0.65;
 const FOREST_CLUMP_FAR = 260;
@@ -5202,7 +5218,68 @@ export function createOdysseyWorld({
     // ...and the drifting CLOUD shadows the ground under it takes (one fetch pair per fragment,
     // high tier only): without them a shadow crossing the island stopped at every forest edge.
     const fvCloud = q.cloudShadows ? cloudShadowLight(positionWorld.xz) : float(1);
-    const fvWrap = clamp(dot(normalWorld, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1)
+    /**
+     * LEAF CLUMPS (round two, the trees again, 2026-10-26). A puff lit as one smooth ball reads as a
+     * toy; a painted canopy's masses are made of scalloped leaf clumps, each catching light on its
+     * own upper edge with a dark seam beneath. So each crown fragment finds its clump: a Voronoi
+     * cell on the puff's sphere (charted from its normal, stereographically from the bottom pole,
+     * offset per tree), and its normal tilts away from that clump's centre (`bulge`), so every
+     * clump shades as its own little dome; the seam between two clumps (F2 - F1 small) falls into
+     * the shade tone through the occlusion shift. Near crowns only (gone by `far`); trunks keep
+     * their own normal. Nine cells a fragment, no texture; the high tier only
+     * (ODYSSEY_WORLD_QUALITY.leafClumps), gated here rather than multiplied away.
+     */
+    const fvLeafNear = float(1).sub(smoothstep(
+        float(LEAF_CLUMPS.far * 0.6),
+        float(LEAF_CLUMPS.far),
+        length(cameraPosition.sub(positionWorld)),
+    )).mul(fvIsCrown);
+    // ⚠️ `hash` turns its seed into a u32, and WGSL clamps a negative float to 0 there: a seed
+    // built from signed cell coordinates gave every cell in half the chart the same point, a
+    // regular lattice. The cells are shifted positive and hashed as exact integers. One hash a
+    // cell: its low bits give the second coordinate and the clump's own tone. Fragments past the
+    // range skip the search altogether.
+    const fvLeaf = q.leafClumps ? Fn(() => {
+        const n = normalize(normalWorld).toVar();
+        const result = vec4(n, 0).toVar();
+        If(fvLeafNear.greaterThan(0), () => {
+            const offset = vec2(fvPhase.mul(0.37), fvPhase.mul(0.71)).toVar();
+            const chart = n.xz.div(max(n.y.add(1), 0.08)).mul(LEAF_CLUMPS.scale).add(offset).toVar();
+            const cell = floor(chart).add(256).toVar();
+            const local = chart.add(256).toVar();
+            const f1 = float(9).toVar();
+            const f2 = float(9).toVar();
+            const best = vec2(0).toVar();
+            const bestH = float(0).toVar();
+            for (let j = -1; j <= 1; j += 1) {
+                for (let i = -1; i <= 1; i += 1) {
+                    const c = cell.add(vec2(i, j)).toVar();
+                    const h = hash(c.x.add(c.y.mul(1031))).toVar();
+                    const pt = c.add(vec2(h, fract(h.mul(64))).mul(0.8).add(0.1)).toVar();
+                    const d = length(local.sub(pt)).toVar();
+                    const nearer = d.lessThan(f1);
+                    f2.assign(select(nearer, f1, min(f2, d)));
+                    best.assign(select(nearer, pt, best));
+                    bestH.assign(select(nearer, h, bestH));
+                    f1.assign(min(f1, d));
+                }
+            }
+            // The clump's centre back on the sphere (inverse stereographic), and the dome's tilt.
+            const qc = best.sub(256).sub(offset).div(LEAF_CLUMPS.scale).toVar();
+            const r2 = dot(qc, qc);
+            const centre = vec3(qc.x.mul(2), float(1).sub(r2), qc.y.mul(2)).div(r2.add(1));
+            const bulged = normalize(n.add(n.sub(centre).mul(LEAF_CLUMPS.bulge)));
+            const seam = float(1).sub(smoothstep(float(0), float(LEAF_CLUMPS.seam), f2.sub(f1)));
+            // The threshold shift this clump takes: its seam into shade, and a small tone of its
+            // own, so neighbouring clumps separate by value rather than by an outline.
+            const tone = fract(bestH.mul(4096)).sub(0.5).mul(LEAF_CLUMPS.jitter);
+            result.assign(vec4(bulged, seam.mul(LEAF_CLUMPS.seamShift).add(tone)));
+        });
+        return result;
+    })() : null;
+    const fvN = (fvLeaf ? normalize(mix(normalWorld, fvLeaf.xyz, fvLeafNear)) : normalize(normalWorld)).toVar();
+    const fvSeam = fvLeaf ? fvLeaf.w.mul(fvLeafNear) : float(0);
+    const fvWrap = clamp(dot(fvN, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1)
         .mul(mix(float(0.45), float(1), fvSunVis))
         .mul(fvCloud);
     // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
@@ -5254,7 +5331,7 @@ export function createOdysseyWorld({
     // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
     // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
     // of the authored tones.
-    const fvAoShift = float(1).sub(fvCol.x).mul(FOREST_AO_SHIFT);
+    const fvAoShift = float(1).sub(fvCol.x).mul(FOREST_AO_SHIFT).add(fvSeam);
     const fvBandLo = smoothstep(
         float(FOREST_BAND_LO).sub(0.10).add(fvAoShift).add(fvClump),
         float(FOREST_BAND_MID).add(fvAoShift).add(fvClump),
@@ -5288,7 +5365,7 @@ export function createOdysseyWorld({
     // which is exactly the "distant creatures still flat dark polygons" class of defect.
     const fvEyeDist = length(cameraPosition.sub(positionWorld));
     const fvFlat = smoothstep(float(FOREST_FLAT_NEAR), float(FOREST_FLAT_FAR), fvEyeDist);
-    const fvCapFacing = normalWorld.y.add(dot(normalWorld.xz, normalize(uSunDir.xz)).mul(0.35));
+    const fvCapFacing = fvN.y.add(dot(fvN.xz, normalize(uSunDir.xz)).mul(0.35));
     const fvCap = smoothstep(float(0.55), float(0.92), fvCapFacing.add(fvClump.mul(0.6)))
         .mul(smoothstep(float(0.70), float(0.92), fvCol.x))
         .mul(float(1).sub(fvFlat))
@@ -5332,7 +5409,7 @@ export function createOdysseyWorld({
     // Sign as documented for the cloud field: uSunDir points TOWARD the sun and fvView points
     // fragment->eye, so looking INTO the sun drives the dot toward -1.
     const fvBack = clamp(dot(fvView, uSunDir).mul(-1), 0, 1).pow(2.5);
-    const fvRim = float(1).sub(abs(dot(normalWorld, fvView)));
+    const fvRim = float(1).sub(abs(dot(fvN, fvView)));
     const forestV2Col = fvBody.mul(fvLight)
         .add(uSunColour.mul(fvBack.mul(fvRim).mul(fvCol.y).mul(FOREST_BACKLIT_GAIN)));
     // The trees stand IN the valley mist with the ground under them (item 7), or every crown

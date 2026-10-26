@@ -827,12 +827,16 @@ function buildBroadleaf(spec, stage, lod, seed) {
  * a top puff and a ring round it, set on the limbs — each a low icosphere with its own radial
  * normals (leaned up, as the Witness leaves face), squashed underneath, nudged by noise so no puff
  * is a perfect ball. Where two puffs meet, the seam IS the crease. The occlusion channel darkens
- * the lower puffs and each puff's belly, which the material reads as shade.
+ * the lower puffs and each puff's belly, which the material reads as shade. (A per-vertex crease
+ * term, darkening points near a neighbour's surface, was tried and left out: at 42 vertices a
+ * puff it smudged the masses together instead of folding them.)
  *
- * Triangles: hero 6 puffs x 80 plus limbs and trunk (the fringe's budget, spent on masses instead
- * of shards); mid 3 puffs x 20; far one round hull at the cluster's centre, as before.
+ * Triangles: hero 5 puffs x 80 and 5 florets x 20 plus limbs and trunk (the fringe's budget, spent
+ * on masses instead of shards); mid 3 puffs x 20; far one round hull at the cluster's centre.
  */
 const PUFF_UP_BIAS = 0.22;
+/** Florets per hero crown (see buildBroadleafPuffs). */
+const PUFF_FLORETS = 5;
 function buildBroadleafPuffs(spec, stage, lod, seed) {
     const rnd = makeRng(seed);
     const trunkH = spec.trunkH * stage.h;
@@ -851,7 +855,7 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     // `puffSpread` (species, default 1): a wide crown carries its ring further out and lower and
     // its top puff lower, the umbrella of a cherry or a maple.
     const spread = spec.puffSpread ?? 1;
-    const ringCount = lod === 'hero' ? 5 : 2;
+    const ringCount = lod === 'hero' ? 4 : 2;
     const puffs = [{
         x: (rnd() - 0.5) * crownW * 0.12,
         y: centreY + (crownH * (0.26 - ((spread - 1) * 0.30))),
@@ -871,6 +875,33 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
             limb: true,
         });
     }
+    // FLORETS (hero only): small puffs seated on the outer, upper surface of the big ones, the
+    // cauliflower's florets. A 42-vertex puff can only carry angular bumps on its outline; a
+    // floret is a real bump with its own lit cap, so the silhouette scallops like foliage.
+    const florets = [];
+    if (lod === 'hero') {
+        for (let i = 0; i < PUFF_FLORETS; i += 1) {
+            const host = puffs[i % puffs.length];
+            // Outward from the crown's axis (the top puff picks its own way), and well up: on the
+            // shoulder, where the sun finds it, never jutting from the side like an ear.
+            const away = Math.hypot(host.x, host.z) > 1e-3
+                ? Math.atan2(host.z, host.x) + ((rnd() - 0.5) * 1.2)
+                : rnd() * Math.PI * 2;
+            let fx = Math.cos(away);
+            let fy = 0.95 + (rnd() * 0.65);
+            let fz = Math.sin(away);
+            const fl = Math.hypot(fx, fy, fz) || 1;
+            fx /= fl; fy /= fl; fz /= fl;
+            florets.push({
+                x: host.x + (fx * host.r * 0.80),
+                y: host.y + (fy * host.r * 0.80 * 0.86),
+                z: host.z + (fz * host.r * 0.80),
+                r: host.r * (0.36 + (rnd() * 0.12)),
+                limb: false,
+                floret: true,
+            });
+        }
+    }
     // The far tier: one round hull over the cluster, centred where the cluster's mass is (so a
     // crown crossing the LOD boundary does not move), reaching to its outline.
     let farHull = null;
@@ -884,18 +915,28 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
             x: cx / wsum, y: cy / wsum, z: cz / wsum, r: crownW * 1.0, limb: false,
         };
     }
-    const crownPuffs = farHull ? [farHull] : puffs;
+    const crownPuffs = farHull ? [farHull] : puffs.concat(florets);
 
-    const detail = lod === 'hero' ? 1 : 0;
-    const ico = new THREE.IcosahedronGeometry(1, detail);
-    const dir = ico.getAttribute('position');
-    const idx = ico.getIndex();
-    const triCount = idx ? idx.count / 3 : dir.count / 3;
-    const noiseAmp = { hero: 0.09, mid: 0.06, far: 0.0 }[lod] ?? 0;
+    // Big hero puffs are 80-face icospheres; mid puffs, florets and the far hull 20-face ones.
+    const icoFine = new THREE.IcosahedronGeometry(1, 1);
+    const icoCoarse = new THREE.IcosahedronGeometry(1, 0);
+    const shapeOf = (pf) => {
+        const ico = (lod === 'hero' && !pf.floret) ? icoFine : icoCoarse;
+        const idx = ico.getIndex();
+        const dir = ico.getAttribute('position');
+        return { idx, dir, triCount: idx ? idx.count / 3 : dir.count / 3 };
+    };
+    let hullTriangles = 0;
+    // Two octaves at hero (a puff's 42 vertices carry ~6 bumps round its outline: the leafy
+    // scallop a smooth ball lacks); one, gentler, at mid.
+    const noiseAmp = { hero: 0.11, mid: 0.08, far: 0.0 }[lod] ?? 0;
+    const noiseFine = lod === 'hero' ? 0.35 : 0;
     // The far hull is wider than tall, like the cluster it stands for; a mid puff (20 faces) is
     // kept rounder, or its facets read as stacked plates.
     const flatten = { hero: 0.86, mid: 0.94, far: 0.62 }[lod] ?? 0.86;
     crownPuffs.forEach((pf, pi) => {
+        const { idx, dir, triCount } = shapeOf(pf);
+        hullTriangles += triCount;
         const salt = (pi * 7.31) + (seed * 0.0013);
         // Each puff turned its own way, so no two show the same facets (twenty-faced puffs that
         // all faced one way lined their edges up across the crown).
@@ -919,8 +960,9 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
                 ux /= ul; uy /= ul; uz /= ul;
                 // Noise-nudged radius, and a flatter belly (a puff sits on the crown, it does not
                 // hang below it as a ball).
-                const bump = 1 + ((valueNoise3((ux * 2.3) + salt, (uy * 2.3) - salt, (uz * 2.3) + (salt * 0.5)) - 0.5)
-                    * 2 * noiseAmp);
+                const coarse = valueNoise3((ux * 2.3) + salt, (uy * 2.3) - salt, (uz * 2.3) + (salt * 0.5)) - 0.5;
+                const fine = valueNoise3((ux * 4.7) - salt, (uy * 4.7) + (salt * 0.7), (uz * 4.7) + salt) - 0.5;
+                const bump = 1 + (((coarse * (1 - noiseFine)) + (fine * noiseFine)) * 2 * noiseAmp);
                 const belly = uy < 0 ? 0.72 : 1;
                 const px = pf.x + (ux * pf.r * bump);
                 const py = Math.max(pf.y + (uy * pf.r * bump * flatten * belly), bowlY);
@@ -945,8 +987,8 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
             }
         }
     });
-    ico.dispose();
-    const hullTriangles = triCount * crownPuffs.length;
+    icoFine.dispose();
+    icoCoarse.dispose();
 
     if (lod === 'far') {
         return {

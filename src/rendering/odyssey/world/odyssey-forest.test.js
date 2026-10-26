@@ -199,13 +199,15 @@ describe('the sculptor produces sane geometry', () => {
         ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
             ['hero', 'mid'].forEach((lod) => {
                 const g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
-                const faces = lod === 'hero' ? 80 : 20;
-                const puffs = g.userData.forest.hullTriangles / faces;
-                expect(puffs, `${spec.id} ${lod}`).toBe(lod === 'hero' ? 6 : 3);
+                // Hero: 5 puffs of 80 faces, then 5 florets of 20; mid: 3 puffs of 20.
+                const sizes = lod === 'hero' ? [80, 80, 80, 80, 80, 20, 20, 20, 20, 20] : [20, 20, 20];
+                expect(g.userData.forest.hullTriangles, `${spec.id} ${lod}`)
+                    .toBe(sizes.reduce((a, f) => a + f, 0));
                 const p = attr(g, 'position');
                 const n = attr(g, 'normal');
-                for (let k = 0; k < puffs; k += 1) {
-                    const from = k * faces * 3;
+                let from = 0;
+                for (let k = 0; k < sizes.length; k += 1) {
+                    const faces = sizes[k];
                     const to = from + (faces * 3);
                     let cx = 0; let cy = 0; let cz = 0;
                     for (let i = from; i < to; i += 1) { cx += p.getX(i); cy += p.getY(i); cz += p.getZ(i); }
@@ -216,6 +218,7 @@ describe('the sculptor produces sane geometry', () => {
                         if ((ox * n.getX(i)) + (oy * n.getY(i)) + (oz * n.getZ(i)) > 0) facing += 1;
                     }
                     expect(facing / (faces * 3), `${spec.id} ${lod} puff ${k}`).toBeGreaterThan(0.9);
+                    from = to;
                 }
             });
         });
