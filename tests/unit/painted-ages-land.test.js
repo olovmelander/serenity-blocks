@@ -7,8 +7,9 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three/webgpu';
 import {
-    EYE, FIELDS, FIELD_ORDER, mulberry32,
+    EYE, FIELDS, FIELD_ORDER, RIG, mulberry32,
 } from '../../src/themes/painted-ages/painted-ages-core.js';
 import {
     bicubic, bilinear, decodeField, encodeField, fieldCoords, fieldInset, groundByte, groundHeight, inField, postX,
@@ -20,7 +21,9 @@ import {
 import {
     PAVILION, RIVER, RIVER_ALONG, RIVER_LENGTH, SPUR, planHeight, riverDistance, riverFloor, softMax,
 } from '../../src/themes/painted-ages/painted-ages-plan.js';
-import { poplarSites } from '../../src/themes/painted-ages/painted-ages-life.js';
+import {
+    POPLAR_COUNT, POPLAR_PLAN, SHADE, frameNdc, poplarRows, poplarSites, seenAtRest, shadeFootprint, shadeLayout,
+} from '../../src/themes/painted-ages/painted-ages-life.js';
 import { findCrest } from '../../src/themes/painted-ages/painted-ages-props.js';
 import { decodePng } from '../../scripts/painted-ages/png.mjs';
 
@@ -300,6 +303,97 @@ describe('Painted Ages: what stands on the land', () => {
         for (let a = 0; a < sites.length; a++) {
             for (let b = a + 1; b < sites.length; b++) {
                 expect(Math.hypot(sites[a].x - sites[b].x, sites[a].z - sites[b].z)).toBeGreaterThan(5);
+            }
+        }
+    });
+
+    it('places a point in a rig\'s frame exactly as the posed camera projects it', () => {
+        const random = mulberry32(5);
+        const camera = new THREE.PerspectiveCamera(40, 16 / 9, 1.5, 60000);
+        const v = new THREE.Vector3();
+        for (const [rig, aspect] of [[RIG.landscape, 16 / 9], [RIG.portrait, 9 / 19.5], [RIG.wide, 2.4]]) {
+            camera.fov = rig.fov;
+            camera.aspect = aspect;
+            camera.position.set(EYE.x, EYE.y, EYE.z);
+            camera.rotation.set(rig.pitch * (Math.PI / 180), -rig.yaw * (Math.PI / 180), 0, 'YXZ');
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+            for (let k = 0; k < 40; k++) {
+                const x = (random() - 0.5) * 1600;
+                const y = random() * 60;
+                const z = -200 - random() * 2000;
+                const ndc = frameNdc(x, y, z, rig, aspect);
+                v.set(x, y, z).project(camera);
+                expect(ndc.ahead).toBe(true);
+                expect(ndc.x).toBeCloseTo(v.x, 6);
+                expect(ndc.y).toBeCloseTo(v.y, 6);
+            }
+        }
+    });
+
+    it('plants straight rows all along the valley, every tree where a 16:9 screen sees it', () => {
+        const rows = poplarRows(fields);
+        expect(poplarRows(fields)).toEqual(rows);
+        expect(rows.length).toBeGreaterThan(15);
+        const lined = rows.filter((row) => row.kind !== 'clump');
+        const inLines = lined.reduce((n, row) => n + row.trees.length, 0);
+        const all = rows.reduce((n, row) => n + row.trees.length, 0);
+        expect(all).toBeGreaterThanOrEqual(POPLAR_COUNT[2]);
+        expect(inLines / all).toBeGreaterThan(0.8);
+        for (const [r, row] of lined.entries()) {
+            for (const line of [0, 1]) {
+                const trees = row.trees.filter((t) => t.line === line);
+                if (trees.length < 3) continue;
+                // Every tree of a line stands within a jitter of the line through its two ends.
+                const a = trees[0];
+                const b = trees[trees.length - 1];
+                const len = Math.hypot(b.x - a.x, b.z - a.z);
+                for (const t of trees) {
+                    const off = Math.abs((t.x - a.x) * (b.z - a.z) - (t.z - a.z) * (b.x - a.x)) / len;
+                    expect(off, `row ${r} line ${line}`).toBeLessThan(0.6);
+                }
+                // One planting is of one age.
+                const heights = trees.map((t) => t.height);
+                expect(Math.max(...heights) / Math.min(...heights), `row ${r}`).toBeLessThan(1.15);
+            }
+        }
+        for (const row of rows) {
+            for (const t of row.trees) expect(seenAtRest(t.x, t.y, t.z, t.height)).toBe(true);
+        }
+    });
+
+    it('gives every tier whole rows spread along the river, at its full count', () => {
+        const every = poplarSites(fields, POPLAR_PLAN.total);
+        for (const count of Object.values(POPLAR_COUNT)) {
+            const sites = poplarSites(fields, count);
+            expect(sites).toHaveLength(count);
+            expect(sites).toEqual(every.slice(0, count));
+            const zs = sites.map((s) => s.z);
+            expect(Math.max(...zs) - Math.min(...zs), `${count} trees`).toBeGreaterThan(1000);
+        }
+    });
+
+    it('sizes the shadow map for the longest shadows and keeps every tree\'s shadow in its box', () => {
+        const sites = poplarSites(fields, POPLAR_COUNT[2]);
+        for (const texel of [1.2, 1.8, 2.4]) {
+            const layout = shadeLayout(sites, texel);
+            expect(layout.texel).toBeGreaterThanOrEqual(texel);
+            expect(Math.max(layout.width, layout.height)).toBeLessThanOrEqual(SHADE.maxEdge);
+            for (let a = 0; a < 360; a += 15) {
+                for (const el of [SHADE.elMin, 9, 25, 60]) {
+                    const r = (Math.PI / 180);
+                    const dir = [Math.sin(a * r) * Math.cos(el * r), Math.sin(el * r), -Math.cos(a * r) * Math.cos(el * r)];
+                    const box = shadeFootprint(sites, dir);
+                    expect(box.x1 - box.x0, `az ${a} el ${el}`).toBeLessThanOrEqual(layout.width * layout.texel);
+                    expect(box.z1 - box.z0, `az ${a} el ${el}`).toBeLessThanOrEqual(layout.height * layout.texel);
+                    // A tree's top, moved down its sun ray to the plane, lies in the box.
+                    for (const s of sites) {
+                        const top = s.y - 0.4 + s.height;
+                        const X = s.x - box.sx * (top - SHADE.plane);
+                        const Z = s.z - box.sz * (top - SHADE.plane);
+                        expect(X >= box.x0 && X <= box.x1 && Z >= box.z0 && Z <= box.z1).toBe(true);
+                    }
+                }
             }
         }
     });
