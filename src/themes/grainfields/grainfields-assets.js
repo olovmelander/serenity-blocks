@@ -9,8 +9,9 @@
  * Hokkaido native horse (Dosanko): one mesh skinned to a skeleton of thirty-eight bones (four
  * bones and their weights a vertex), painted with the masks its coat is shaded by. The ruin on
  * the knoll (scripts/blender/grainfields/ruin.py) is one mesh of cut solids with what each face
- * sees of the sky baked in. This module loads them and turns them into plain geometry and typed
- * arrays the belts, the herd and the knoll can draw.
+ * sees of the sky baked in. The geese are one bean goose (scripts/blender/grainfields/goose.py), its
+ * wings weighted to the two hinges the theme folds them about. This module loads them and turns
+ * them into plain geometry and typed arrays the belts, the herd, the knoll and the skies can draw.
  */
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -31,11 +32,14 @@ export const GRAINFIELDS_FOLIAGE_URL = new URL('./assets/grainfields-foliage.glb
 export const GRAINFIELDS_IMPOSTOR_URL = new URL('./assets/grainfields-impostors.png', import.meta.url).href;
 export const GRAINFIELDS_HORSE_URL = new URL('./assets/grainfields-horse.glb', import.meta.url).href;
 export const GRAINFIELDS_RUIN_URL = new URL('./assets/grainfields-ruin.glb', import.meta.url).href;
+export const GRAINFIELDS_GOOSE_URL = new URL('./assets/grainfields-goose.glb', import.meta.url).href;
 export const GRAINFIELDS_ASSET_SCHEMA = 1;
 /** The horse's vertex attributes: the mesh's own and its skin. */
 const HORSE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_mask', '_bones', '_weights']);
 /** The ruin's: the mesh's own and the direction each face is open to. */
 const RUIN_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_bent']);
+/** The goose's: the mesh's own and its hinge weights. */
+const GOOSE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_wing']);
 
 /** Read a (possibly normalised integer) attribute as floats. */
 function floats(attribute, width = attribute.itemSize) {
@@ -65,7 +69,7 @@ function meshGeometry(object) {
     const source = object.geometry;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(worldPositions(object), 3));
-    ['normal', 'uv', 'color', '_rig', '_mask', '_bones', '_weights', '_bent'].forEach((name) => {
+    ['normal', 'uv', 'color', '_rig', '_mask', '_bones', '_weights', '_bent', '_wing'].forEach((name) => {
         if (source.attributes[name]) geometry.setAttribute(name, source.attributes[name]);
     });
     if (source.index) geometry.setIndex(source.index);
@@ -209,6 +213,24 @@ export function parseGrainfieldsRuin(gltf) {
     };
 }
 
+/**
+ * The geese's bean goose: one geometry in metres at real size in the bird's frame (x its left, y
+ * up, z forward) with position, normal, colour (scene-linear plumage; alpha the thin feathers) and
+ * `_wing` (how far the shoulder, the wrist and the wingtip move each vertex, and the head's share),
+ * and the rig it was built on (the hinge pivots and the authored poses).
+ */
+export function parseGrainfieldsGoose(gltf) {
+    const root = gltf.scene;
+    checkSchema(root, 'Goose');
+    const mesh = child(root, 'goose');
+    GOOSE_ATTRIBUTES.forEach((name) => {
+        if (!mesh.geometry.attributes[name]) throw new Error(`[Grainfields] Goose is missing its "${name}" attribute.`);
+    });
+    const { rig } = root.userData;
+    if (!isPoint(rig?.shoulder) || !isPoint(rig?.wrist) || !rig?.poses) throw new Error('[Grainfields] Goose is missing its rig.');
+    return { geometry: meshGeometry(mesh), rig };
+}
+
 /** The horse is a nicety: a failed download leaves the herd without it, not the fields. */
 async function loadHorse(loader) {
     try {
@@ -247,6 +269,25 @@ function adoptRuin(gltf) {
     }
 }
 
+/** And the goose: without it the sky goes without geese. */
+async function loadGoose(loader) {
+    try {
+        return await loader.loadAsync(GRAINFIELDS_GOOSE_URL);
+    } catch (error) {
+        console.warn('[Grainfields] The goose could not be loaded; the sky goes without geese.', error);
+        return null;
+    }
+}
+
+function adoptGoose(gltf) {
+    try {
+        return parseGrainfieldsGoose(gltf);
+    } catch (error) {
+        console.warn('[Grainfields] The goose could not be read; the sky goes without geese.', error);
+        return null;
+    }
+}
+
 /** GLTFLoader keeps its own parsed geometry; release what the belts did not adopt. */
 function releaseGltf(gltf) {
     gltf.scene.traverse((object) => {
@@ -262,6 +303,7 @@ export function disposeGrainfieldsAssets(assets) {
     assets.impostors?.texture?.dispose();
     assets.horse?.geometry?.dispose();
     assets.ruin?.geometry?.dispose();
+    assets.goose?.geometry?.dispose();
 }
 
 /** Tile layout of the far-belt sprite sheet, as written by the Blender bake. */
@@ -289,20 +331,21 @@ export function prepareGrainfieldsImpostors(texture) {
 /**
  * Load every authored asset. `isCurrent` lets a superseded theme start abandon the
  * work: nothing is retained by the module, so a stale load simply disposes its results.
- * The horse (`horse: false` skips it) and the ruin (`ruin: false`) resolve to null when they
- * cannot be loaded or read; every other file is required.
+ * The horse (`horse: false` skips it), the ruin (`ruin: false`) and the goose (`goose: false`)
+ * resolve to null when they cannot be loaded or read; every other file is required.
  */
 export async function loadGrainfieldsAssets({
-    trees = Object.keys(GRAINFIELDS_TREE_URLS), horse = true, ruin = true, loader = new GLTFLoader(),
+    trees = Object.keys(GRAINFIELDS_TREE_URLS), horse = true, ruin = true, goose = true, loader = new GLTFLoader(),
     textureLoader = new THREE.TextureLoader(), isCurrent = () => true,
 } = {}) {
     const names = [...new Set(trees)];
     const layout = grainfieldsImpostorLayout();
-    const [foliageGltf, impostorTexture, horseGltf, ruinGltf, ...treeGltfs] = await Promise.all([
+    const [foliageGltf, impostorTexture, horseGltf, ruinGltf, gooseGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(GRAINFIELDS_FOLIAGE_URL),
         layout && textureLoader ? textureLoader.loadAsync(GRAINFIELDS_IMPOSTOR_URL) : null,
         horse ? loadHorse(loader) : null,
         ruin ? loadRuin(loader) : null,
+        goose ? loadGoose(loader) : null,
         ...names.map((name) => {
             if (!GRAINFIELDS_TREE_URLS[name]) throw new Error(`[Grainfields] Unknown tree asset "${name}".`);
             return loader.loadAsync(GRAINFIELDS_TREE_URLS[name]);
@@ -314,6 +357,7 @@ export async function loadGrainfieldsAssets({
         impostors: null,
         horse: null,
         ruin: null,
+        goose: null,
     };
     names.forEach((name, index) => {
         assets.trees[name] = parseGrainfieldsTree(treeGltfs[index], name);
@@ -321,7 +365,8 @@ export async function loadGrainfieldsAssets({
     if (impostorTexture) assets.impostors = { ...layout, texture: prepareGrainfieldsImpostors(impostorTexture) };
     if (horseGltf) assets.horse = adoptHorse(horseGltf);
     if (ruinGltf) assets.ruin = adoptRuin(ruinGltf);
-    [foliageGltf, horseGltf, ruinGltf, ...treeGltfs].filter(Boolean).forEach(releaseGltf);
+    if (gooseGltf) assets.goose = adoptGoose(gooseGltf);
+    [foliageGltf, horseGltf, ruinGltf, gooseGltf, ...treeGltfs].filter(Boolean).forEach(releaseGltf);
     if (!isCurrent()) {
         disposeGrainfieldsAssets(assets);
         return null;
