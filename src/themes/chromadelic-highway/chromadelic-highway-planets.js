@@ -11,8 +11,12 @@
  *   - the atmosphere halo lives in the same quad (no stacked glow planes),
  *   - optional analytic ring system (ray/plane intersection): lit/unlit-face scattering, the
  *     planet's shadow on the ring, the ring's shadow on the planet, front/back compositing,
- *   - hero extras: detail boost, polar hoods, zonal jets, the moon's transit shadow and cyan
- *     storm flashes; the moon turns ember-dark inside the hero's shadow.
+ *   - hero extras: detail boost, polar hoods, zonal jets, the moon's transit shadow and lightning
+ *     cells in the night side's cloud bands; the moon turns ember-dark inside the hero's shadow,
+ *   - the board's light FRONTS (chromadelic-highway-planet-events.js): an arc of an event's colour
+ *     (or the spectrum) crossing the lit face from the point under the key to the terminator, the
+ *     limb and the halo catching it, the day side glowing behind it; on a ringed body it crosses
+ *     the ring as well, and a fever runs the spectrum out through the ring.
  *
  * Compositing: premultiplied output with (One, OneMinusSrcAlpha) CustomBlending and the
  * material's own premultiply OFF: one draw is an opaque disc (alpha 1 hides the stars behind
@@ -31,6 +35,7 @@ import {
     dot,
     exp,
     float,
+    fract,
     fwidth,
     length,
     max,
@@ -50,7 +55,10 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { chdLuma, chdSpectrum } from './chromadelic-highway-tsl.js';
+import {
+    chdLuma, chdNeonColor, chdNeonHue, chdSpectrum,
+} from './chromadelic-highway-tsl.js';
+import { LIGHTNING_SLOTS, PLANET_FRONT_SLOTS } from './chromadelic-highway-planet-events.js';
 
 const INV_TAU = 1 / (Math.PI * 2);
 const INV_PI = 1 / Math.PI;
@@ -58,6 +66,7 @@ const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const _m4 = new THREE.Matrix4();
+const _m3 = new THREE.Matrix3();
 const _q = new THREE.Quaternion();
 const _qSpin = new THREE.Quaternion();
 const _T = new THREE.Vector3();
@@ -83,7 +92,10 @@ export const PLANET_PALETTE = Object.freeze({
     voidHorizon: linear('#160a2c'),
     polarHood: linear('#2a1850'),
     storm: linear('#bffbff'),
+    stormGlow: linear('#8c9cff'), // the flash diffused through the cloud bands
 });
+
+const vec3Of = (c) => vec3(c.r, c.g, c.b);
 
 /**
  * @param {object} opts
@@ -105,8 +117,8 @@ export const PLANET_PALETTE = Object.freeze({
  * @param {number} [opts.axialTilt=0.3]     radians toward the camera
  * @param {number} [opts.axialRoll=0]       radians in the view plane
  * @param {number} [opts.spinSpeed=0.012]   radians per second (closed form in t)
- * @param {object} [opts.features]          { fill, detail, polarHood, zonal, storms, moonShadow,
- *                                            eclipse, ringShadows, transmission }
+ * @param {object} [opts.features]          { fill, detail, polarHood, zonal, lightning, moonShadow,
+ *                                            eclipse, ringShadows, transmission, fronts (default on) }
  * @param {object} [opts.ring]              { map, inner, outer, tilt, roll }
  */
 export function createPlanetImpostor(opts) {
@@ -138,7 +150,8 @@ export function createPlanetImpostor(opts) {
         detail: false,
         polarHood: false,
         zonal: false,
-        storms: false,
+        lightning: false,
+        fronts: true,
         moonShadow: false,
         eclipse: false,
         ringShadows: false,
@@ -166,7 +179,23 @@ export function createPlanetImpostor(opts) {
     const uVeilColor = uniform(new THREE.Color().copy(veilColor));
     const uVeil = uniform(veil);
     const uHaloGain = uniform(haloGain);
-    const uFlash = uniform(0);
+    // The board's light fronts: a = (front place in key-cosine units, 1 / width, band light,
+    // prism), c = (colour, afterglow). Written per frame by the world (PlanetEvents.writeFronts).
+    const uFronts = Array.from({ length: PLANET_FRONT_SLOTS }, () => ({
+        a: uniform(new THREE.Vector4(9, 1, 0, 0)),
+        c: uniform(new THREE.Vector4(0, 0, 0, 0)),
+    }));
+    // The axis the fronts travel along: the key's direction with its pull toward the camera
+    // removed, so a front always sweeps ACROSS the face from the board's side as an arc, never
+    // grows from a spot in the middle into a circle round the limb (a body beyond the key, the
+    // ice giant, sees the key nearly head-on).
+    const uFrontAxis = uniform(new THREE.Vector3(1, 0, 0));
+    // Lightning cells: (unit direction in the body's own frame, angular size) and their light.
+    const uCells = Array.from({ length: LIGHTNING_SLOTS }, () => uniform(new THREE.Vector4(0, 1, 0, 0.05)));
+    const uCellLight = uniform(new THREE.Vector4(0, 0, 0, 0));
+    // A fever's (and a quad's) spectrum running out through the ring, on its own integrated phase.
+    const uRingPrism = uniform(0);
+    const uRingFlow = uniform(0);
     const uMoon = uniform(new THREE.Vector4(0, 0, 50, 0.1)); // offset / R (far away) , m
     const uEclipse = uniform(new THREE.Vector4(0, 0, 50, 5)); // hero centre in moon radii, R_h/R_m
     const uEclipseTint = uniform(new THREE.Color(0.2, 0.03, 0.14));
@@ -209,6 +238,26 @@ export function createPlanetImpostor(opts) {
         return { t, a: texture(ring.map, vec2(clamp(t, 0.0, 1.0), 0.5)).level(uRingLod).a.mul(inside) };
     };
 
+    /**
+     * The fronts' light at a point whose cosine to the key is `d` (a surface normal's, a limb
+     * direction's, or a ring point's in body radii): each front is a narrow Gaussian band about its
+     * place with a white-hot core, in its colour or the spectrum across its width (red ahead,
+     * violet behind, every hue equally bright so no green wash), and an afterglow over everything
+     * it has passed. Idle slots carry zero light.
+     */
+    const frontLight = (d) => {
+        let sum = vec3(0.0);
+        for (const { a, c } of uFronts) {
+            const x = d.sub(a.x).mul(a.y);
+            const x2 = x.mul(x);
+            const band = exp(x2.negate()).mul(a.z);
+            const spectrum = chdNeonColor(clamp(x.mul(0.36).add(0.42), 0.0, 0.83), 0.6);
+            const col = mix(mix(c.xyz, spectrum, a.w), vec3(1.0), exp(x2.mul(-5.0)).mul(0.4));
+            sum = sum.add(col.mul(band)).add(c.xyz.mul(smoothstep(-1.0, 1.0, x).mul(c.w)));
+        }
+        return sum;
+    };
+
     material.colorNode = Fn(() => {
         // Derivatives first (uniform control flow).
         const q = positionLocal.xy.mul(uQuad).toVar();
@@ -217,7 +266,7 @@ export function createPlanetImpostor(opts) {
         const disc = smoothstep(float(1.0).add(aa), float(1.0).sub(aa), r);
         const mu = sqrt(max(float(1.0).sub(r.mul(r)), 0.0));
         const N = normalize(uBasis.mul(vec3(q.x, q.y, mu))).toVar();
-        const Nl = uWorldToLocal.mul(N);
+        const Nl = uWorldToLocal.mul(N).toVar();
 
         // Surface albedo (explicit LOD: the atan seam has no derivatives).
         const lat = asin(clamp(Nl.y, -1.0, 1.0));
@@ -271,13 +320,16 @@ export function createPlanetImpostor(opts) {
         let keyLight = uKeyColor.mul(lit1);
         if (f.fill) keyLight = keyLight.add(uFillColor.mul(uFillStrength).mul(smoothstep(-0.05, 0.4, dot(N, uL2))));
         let day = A.mul(uAlbedo).mul(keyLight).mul(sqrt(mu).mul(0.45).add(0.55)).mul(shade);
+        let eclipsed = float(0.0);
         if (f.eclipse) {
             // Moon: from each surface point toward the key, against the hero sphere.
             const toC = uEclipse.xyz.sub(N);
             const along = dot(toC, uL1);
             const perp = length(toC.sub(uL1.mul(along)));
-            const ecl = float(1.0).sub(smoothstep(uEclipse.w.mul(0.92), uEclipse.w.mul(1.08), perp)).mul(step(0.0, along));
+            const ecl = float(1.0).sub(smoothstep(uEclipse.w.mul(0.92), uEclipse.w.mul(1.08), perp))
+                .mul(step(0.0, along)).toVar();
             day = mix(day, A.mul(uEclipseTint).mul(0.6), ecl);
+            eclipsed = ecl;
         }
         const night = A.mul(vec3(0.05, 0.055, 0.13)).add(vec3(0.008, 0.008, 0.022)).mul(nightLevel);
         const surf = night.mul(float(1.0).sub(lit1)).add(day).toVar();
@@ -294,10 +346,32 @@ export function createPlanetImpostor(opts) {
             surf.addAssign(rimCol.mul(pow(limb, 5.0)).mul(lit1).mul(uRimPeak));
             surf.addAssign(uEnvRim.mul(pow(limb, 6.0)).mul(float(1.0).sub(lit1)));
         }
-        if (f.storms) {
-            const detail = smoothstep(0.05, 0.12, chdLuma(max(A0.sub(Alow), vec3(0.0))));
-            surf.addAssign(vec3(PLANET_PALETTE.storm.r, PLANET_PALETTE.storm.g, PLANET_PALETTE.storm.b)
-                .mul(uFlash.mul(detail).mul(float(1.0).sub(lit1)).mul(1.6)));
+        if (f.fronts) {
+            // The board's light reaches the day side (and a little past the terminator, through
+            // the air), not what the moon or the ring shadows; the surface reflects it with its
+            // bands showing, and the haze over the clouds glows with it a little even over the
+            // dark bands. (No extra light at the limb: there it drew bright beads, or on a body
+            // facing the key a ring round the disc.)
+            const fl = frontLight(dot(N, uFrontAxis)).toVar();
+            const reach = smoothstep(-0.16, 0.1, d1).mul(shade).mul(float(1.0).sub(eclipsed)).toVar();
+            surf.addAssign(fl.mul(reach).mul(A.mul(uAlbedo).mul(sqrt(mu).mul(0.4).add(0.6)).add(0.16)));
+        }
+        if (f.lightning) {
+            // Each cell: a hot core and a wide glow diffused through the cloud bands (they light
+            // up round it), seen on the night side; daylight drowns most of it.
+            let core = float(0.0);
+            let glow = float(0.0);
+            const light = [uCellLight.x, uCellLight.y, uCellLight.z, uCellLight.w];
+            uCells.forEach((cell, k) => {
+                const dd = max(float(1.0).sub(dot(Nl, cell.xyz)), 0.0).mul(2.0); // ≈ angle²
+                const inv = float(1.0).div(cell.w.mul(cell.w));
+                core = core.add(exp(dd.mul(inv).negate()).mul(light[k]));
+                glow = glow.add(exp(dd.mul(inv).mul(-0.12)).mul(light[k]));
+            });
+            const cloud = chdLuma(A).mul(1.4).add(0.2);
+            const bolt = vec3Of(PLANET_PALETTE.storm).mul(core.mul(1.3))
+                .add(vec3Of(PLANET_PALETTE.stormGlow).mul(glow.mul(cloud).mul(1.1)));
+            surf.addAssign(bolt.mul(mix(float(0.2), float(1.0), float(1.0).sub(lit1))));
         }
         const body = mix(surf, uVeilColor, uVeil);
 
@@ -311,6 +385,15 @@ export function createPlanetImpostor(opts) {
                 .mul(smoothstep(uQuad, uQuad.mul(0.85), r));
             haloRGB = mix(uEnvRim, vec3(PLANET_PALETTE.rimDay.r, PLANET_PALETTE.rimDay.g, PLANET_PALETTE.rimDay.b), sunSide)
                 .mul(halo);
+            if (f.fronts) {
+                // The air beyond the limb catches a front where it passes: a soft glow on that
+                // stretch of the limb only, falling off outward with no edge.
+                const nLimb = uBasis.mul(vec3(q.div(max(r, 1e-4)), 0.0));
+                const caught = frontLight(dot(nLimb, uFrontAxis)).mul(smoothstep(-0.16, 0.1, dot(nLimb, uL1)));
+                haloRGB = haloRGB.add(caught.mul(exp(h.mul(-7.0)).mul(0.2))
+                    .mul(float(1.0).sub(disc))
+                    .mul(smoothstep(uQuad, uQuad.mul(0.85), r)));
+            }
         }
 
         const rgb = min(body, vec3(8.0)).mul(disc).add(haloRGB).toVar();
@@ -336,13 +419,24 @@ export function createPlanetImpostor(opts) {
             const thin = rd.a.mul(float(1.0).sub(rd.a)).mul(4.0);
             const forward = f.transmission ? pow(clamp(dot(uL2, Tv).negate(), 0.0, 1.0), 3.0).mul(0.65).add(0.35) : float(0.35);
             const unlitTerm = uFillColor.mul(thin.mul(forward).mul(0.32));
-            // One pale lavender with ±15° of iridescence across the system.
-            const ringHue = mix(chdSpectrum(sin(rd.t.mul(9.42)).mul(0.042).add(0.27)), vec3(1.0), 0.62);
-            let ringCol = ringHue.mul(mix(unlitTerm, litTerm, litFace));
-            if (f.ringShadows) {
-                const alongP = dot(p, uL1);
-                const perpP = length(p.sub(uL1.mul(alongP)));
-                ringCol = ringCol.mul(float(1.0).sub(step(alongP, 0.0).mul(smoothstep(1.02, 0.97, perpP)).mul(0.9)));
+            // One pale lavender with ±15° of iridescence across the system; a fever (and a quad)
+            // turns it to the spectrum, running outward on its own phase.
+            const prismHue = mix(chdNeonHue(fract(rd.t.mul(1.3).sub(uRingFlow))), vec3(1.0), 0.3);
+            const ringHue = mix(
+                mix(chdSpectrum(sin(rd.t.mul(9.42)).mul(0.042).add(0.27)), vec3(1.0), 0.62),
+                prismHue,
+                uRingPrism,
+            );
+            let ringCol = ringHue.mul(mix(unlitTerm, litTerm, litFace))
+                .add(prismHue.mul(rd.a.mul(uRingPrism).mul(0.55)));
+            // The planet's shadow on the ring (points behind it from the key, within its radius).
+            const alongP = dot(p, uL1).toVar();
+            const inShadow = step(alongP, 0.0).mul(smoothstep(1.02, 0.97, length(p.sub(uL1.mul(alongP))))).toVar();
+            if (f.ringShadows) ringCol = ringCol.mul(float(1.0).sub(inShadow.mul(0.9)));
+            if (f.fronts) {
+                // A front crosses the ring from its side nearest the board, as an arc.
+                ringCol = ringCol.add(frontLight(dot(p, uFrontAxis)).mul(float(1.0).sub(inShadow.mul(0.95)))
+                    .mul(rd.a.mul(0.5).add(thin.mul(0.5))).mul(1.3));
             }
             const ringA = rd.a.mul(0.92);
             const ringPremul = ringCol.mul(ringA);
@@ -396,16 +490,60 @@ export function createPlanetImpostor(opts) {
             uFillStrength,
             uRimPeak,
             uHaloGain,
-            uFlash,
             uMoon,
             uEclipse,
             uOpacity,
             uVeil,
             uGradeAmount,
             uRingN,
+            uCellLight,
+            uRingPrism,
+            uRingFlow,
         },
+        /** The front slots' Vector4 pairs (PlanetEvents.writeFronts writes them). */
+        frontValues: uFronts.map(({ a, c }) => ({ a: a.value, c: c.value })),
+        /** How far the body reaches from its centre, in its radii (a ring's outer edge). */
+        extent: ring ? ring.outer : 1,
+        hasLightning: f.lightning,
+        hasRing: Boolean(ring),
         get radius() {
             return uRadius.value;
+        },
+        /**
+         * A place for a lightning cell on the night side the camera sees (near the terminator,
+         * clear of the limb), as a unit vector in the body's own frame so it turns with the
+         * bands; from this frame's light and view. `rand` gives 0..1. Null when none was found.
+         */
+        pickSite(rand, out = new THREE.Vector3()) {
+            for (let i = 0; i < 16; i++) {
+                const rr = 0.86 * Math.sqrt(rand());
+                const th = rand() * Math.PI * 2;
+                const x = rr * Math.cos(th);
+                const y = rr * Math.sin(th);
+                out.set(x, y, Math.sqrt(1 - rr * rr)).applyMatrix3(uBasis.value);
+                const d = out.dot(uL1.value);
+                if (d > -0.7 && d < -0.08) return out.applyMatrix3(uWorldToLocal.value).normalize();
+            }
+            return null;
+        },
+        /** A direction in the body's own frame back in world space (this frame's spin). */
+        siteToWorld(dir, out = new THREE.Vector3()) {
+            _m3.copy(uWorldToLocal.value).transpose();
+            return out.copy(dir).applyMatrix3(_m3);
+        },
+        /** This frame's lightning cells: [{ dir, size, light }] (null = idle). */
+        setCells(cells) {
+            const L = uCellLight.value;
+            for (let k = 0; k < uCells.length; k++) {
+                const c = cells[k];
+                const on = c && c.dir && c.light > 0;
+                if (on) uCells[k].value.set(c.dir.x, c.dir.y, c.dir.z, Math.max(0.02, c.size));
+                L.setComponent(k, on ? c.light : 0);
+            }
+        },
+        setRingPrism(amount, flow) {
+            uRingPrism.value = amount;
+            uRingFlow.value = flow;
         },
         setRadius(r) {
             uRadius.value = r;
@@ -441,6 +579,8 @@ export function createPlanetImpostor(opts) {
 
             uL1.value.subVectors(keyWorld, c).normalize();
             if (fillWorld) uL2.value.subVectors(fillWorld, c).normalize();
+            const towardEye = Math.max(0, uL1.value.dot(_T));
+            uFrontAxis.value.copy(uL1.value).addScaledVector(_T, -1.15 * towardEye).normalize();
             _viewL.copy(uL1.value).transformDirection(camera.matrixWorldInverse);
             _v.set(_viewL.x, _viewL.y, 0);
             if (_v.lengthSq() > 1e-8) _v.normalize();
