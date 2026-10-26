@@ -65,7 +65,10 @@
 export const FOREST_VALUE_ROLES = Object.freeze({
     anchor: Object.freeze({ sat: 1.22, value: 0.30 }),
     workhorse: Object.freeze({ sat: 1.30, value: 0.58 }),
-    pastel: Object.freeze({ sat: 1.45, value: 0.88 }),
+    // At the measured band's darker end (0.83-0.94) since the Act II pass (2026-10-25): under
+    // the side sun the camera sees mostly the lit side of a crown, and at 0.88 the gold and pink
+    // crowns read as flat paper cut-outs. Still a pastel: it barely darkens.
+    pastel: Object.freeze({ sat: 1.45, value: 0.83 }),
 });
 
 /**
