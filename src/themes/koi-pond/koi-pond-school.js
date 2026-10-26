@@ -14,6 +14,9 @@
  *   setSurge        how hot play runs (src/themes/shared/gameplay-surge.js): the pond quickens,
  *                   the koi warm from inside, and as play runs hot the big fish rally to the
  *                   ring round the board without a chain; in a fever the whole school whirls.
+ *   setFood         what floats (koi-pond-drift.js): a koi coming up to the surface goes for a
+ *                   leaf or a pad near it, slows as it comes, and kisses it when its mouth gets
+ *                   there (the kiss names what it took: `meal`).
  *
  * Whatever is asked of it, a fish never leaves water it can swim in: a step that would carry it
  * onto the bank, into a rock or out of the pond is not taken, and a leap is only launched from
@@ -38,6 +41,12 @@ export const TOP_SPEED = 2.6;
 export const CHAIN_RING = Object.freeze({
     x: 0, z: -0.1, radiusX: 2.75, radiusZ: 2.05,
 });
+/** How far (m, from its mouth to the thing's rim) a koi coming up looks for something floating. */
+export const MEAL_REACH = 1.3;
+/** From this point of its slow rise and fall (a sine) a koi is coming up, and hungry. */
+const HUNGRY = 0.6;
+/** ...and from this one it is at the surface (the kiss). */
+const SURFACING = 0.92;
 
 /**
  * Where the koi live, and what of the pond the camera shows — for a 16:9 screen. The world
@@ -108,6 +117,10 @@ export class KoiSchool {
         this.joined = new Float32Array(n);
         this.laneAngle = new Float32Array(n);
         this.kissed = new Uint8Array(n);
+        /** What floating thing each koi is going for (an index into the food), or -1. */
+        this.meal = new Int16Array(n).fill(-1);
+        /** What floats, to be gone for (setFood): live arrays read in place, never copied. */
+        this.food = null;
         /** Static per fish. */
         this.fish = [];
         this.events = [];
@@ -124,6 +137,7 @@ export class KoiSchool {
         this.time = 0;
         this.leapCursor = 0;
         this._point = { x: 0, z: 0 };
+        this._meal = { x: 0, z: 0, gap: 0 };
         this.roster();
         this.planLanes();
         this.reset();
@@ -275,6 +289,7 @@ export class KoiSchool {
             this.spin[i] = 0;
             this.joined[i] = 0;
             this.kissed[i] = 0;
+            this.meal[i] = -1;
         }
         this.events.length = 0;
         this.chain = 0;
@@ -323,6 +338,56 @@ export class KoiSchool {
         out.x = ax + (out.x - ax) * joined;
         out.z = az + (out.z - az) * joined;
         return out;
+    }
+
+    /**
+     * What floats on the water (koi-pond-drift.js FloatDrift, or anything with the same arrays):
+     * `x`, `z`, `radius` and a `count`. They are read in place every step; null forgets them.
+     */
+    setFood(food) {
+        this.food = food && food.count > 0 ? food : null;
+        this.meal.fill(-1);
+    }
+
+    /** The gap from koi `i`'s mouth to the rim of food `j` (m), and the direction to it. */
+    mealGap(i, j, out) {
+        const { food } = this;
+        const f = this.fish[i];
+        const mouthX = this.x[i] + Math.cos(this.heading[i]) * f.length * 0.45;
+        const mouthZ = this.z[i] + Math.sin(this.heading[i]) * f.length * 0.45;
+        const dx = food.x[j] - mouthX;
+        const dz = food.z[j] - mouthZ;
+        const d = Math.hypot(dx, dz) || 1e-6;
+        out.x = dx / d;
+        out.z = dz / d;
+        out.gap = d - food.radius[j];
+        return out;
+    }
+
+    /**
+     * The floating thing koi `i` goes for: the one it already had while it is still near, or the
+     * nearest in front of its mouth within MEAL_REACH. -1 when there is nothing.
+     */
+    findMeal(i) {
+        const { food } = this;
+        const to = this._meal || (this._meal = { x: 0, z: 0, gap: 0 });
+        const hx = Math.cos(this.heading[i]);
+        const hz = Math.sin(this.heading[i]);
+        const had = this.meal[i];
+        if (had >= 0 && had < food.count && this.mealGap(i, had, to).gap < MEAL_REACH * 1.2) return had;
+        let best = -1;
+        let bestGap = MEAL_REACH;
+        for (let j = 0; j < food.count; j += 1) {
+            const far = MEAL_REACH + 1;
+            if (Math.abs(food.x[j] - this.x[i]) > far || Math.abs(food.z[j] - this.z[i]) > far) continue;
+            this.mealGap(i, j, to);
+            // (Ahead of it, or off to a side: a koi does not turn round for a leaf behind it.)
+            if (to.gap < bestGap && to.x * hx + to.z * hz > -0.2) {
+                bestGap = to.gap;
+                best = j;
+            }
+        }
+        return best;
     }
 
     /** A chain of `n` clears is running (0 = it broke). */
@@ -508,6 +573,22 @@ export class KoiSchool {
                     wantZ += (dz / d) * push;
                 }
             }
+            // ── Coming up, it goes for something floating near it, slowing as it gets there ──
+            const rising = Math.sin(t * 0.21 + f.bob * 5);
+            // (Hungry on the way up and at the surface until it has kissed: never on the way down.)
+            const climbing = Math.cos(t * 0.21 + f.bob * 5) > 0;
+            const hungry = rising > HUNGRY && !this.kissed[i] && (rising > SURFACING || climbing);
+            let slow = 1;
+            if (this.food && hungry && this.mode[i] === MODE_CRUISE && joined < 0.3 && this.fear[i] < 0.2) {
+                const meal = this.findMeal(i);
+                this.meal[i] = meal;
+                if (meal >= 0) {
+                    const to = this.mealGap(i, meal, this._meal);
+                    wantX += to.x * 1.8;
+                    wantZ += to.z * 1.8;
+                    slow = 0.55 + 0.45 * clamp01(to.gap / 0.7);
+                }
+            } else this.meal[i] = -1;
             // ── Fright: away from what fell, hard, for a moment ──
             const fear = this.fear[i];
             if (fear > 0.01) {
@@ -583,7 +664,7 @@ export class KoiSchool {
             this.heading[i] += this.turn[i] * dt;
             // Burst and glide: a koi beats its tail a few times, then coasts.
             const glide = 0.72 + 0.28 * Math.sin(t * (0.55 + f.laneRate * 0.2) + f.bob * 3);
-            const speedWanted = Math.min(TOP_SPEED, pace * glide * (1 + burst)) * (1 - held * 0.9);
+            const speedWanted = Math.min(TOP_SPEED, pace * glide * (1 + burst)) * (1 - held * 0.9) * slow;
             this.speed[i] += (speedWanted - this.speed[i]) * approach(speedWanted > this.speed[i] ? 4.5 : 1.3, dt);
             this.speed[i] = Math.min(this.speed[i], TOP_SPEED);
             const v = this.speed[i];
@@ -606,7 +687,7 @@ export class KoiSchool {
             // ── Depth: its own level, a slow rise and fall, never into the bed ──
             const bed = waterDepth(this.x[i], this.z[i]);
             // Now and then it comes up to the surface, mouth first.
-            const surfacing = this.mode[i] === MODE_CRUISE && Math.sin(t * 0.21 + f.bob * 5) > 0.92;
+            const surfacing = this.mode[i] === MODE_CRUISE && rising > SURFACING;
             let level = f.depth + 0.07 * Math.sin(t * 0.31 + f.bob) - joined * 0.05;
             if (surfacing) level = 0.045;
             if (this.mode[i] === MODE_DIVE) level = 0.55;
@@ -627,17 +708,24 @@ export class KoiSchool {
             const brake = clamp01((speedWanted < v * 0.8 ? 1 : 0) + Math.abs(this.turn[i]) * 0.3);
             this.flare[i] += (brake - this.flare[i]) * approach(3.5, dt);
 
-            // The kiss: once each time it comes up.
+            // The kiss: once each time it comes up. A koi going for something floating waits until
+            // its mouth is there (or, if it never gets there, kisses the water as it turns down).
             if (!surfacing) this.kissed[i] = 0;
             else if (!this.kissed[i] && this.y[i] > -0.075) {
-                this.kissed[i] = 1;
-                this.events.push({
-                    type: 'kiss',
-                    x: this.x[i] + Math.cos(this.heading[i]) * f.length * 0.45,
-                    z: this.z[i] + Math.sin(this.heading[i]) * f.length * 0.45,
-                    power: f.length,
-                    index: i,
-                });
+                const meal = this.meal[i];
+                const there = meal < 0 || this.mealGap(i, meal, this._meal).gap < 0.12 + f.length * 0.06
+                    || Math.cos(t * 0.21 + f.bob * 5) < 0;
+                if (there) {
+                    this.kissed[i] = 1;
+                    this.events.push({
+                        type: 'kiss',
+                        x: this.x[i] + Math.cos(this.heading[i]) * f.length * 0.45,
+                        z: this.z[i] + Math.sin(this.heading[i]) * f.length * 0.45,
+                        power: f.length,
+                        index: i,
+                        meal,
+                    });
+                }
             }
         }
     }
