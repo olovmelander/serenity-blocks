@@ -139,8 +139,9 @@ SOFTWARE.
     Copyright © 2017 Inigo Quilez;
   - the derivative-damped fBm ("terrain" function) of the same article, in the crags of the
     Aurora breathing world (https://iquilezles.org/articles/morenoise);
-  - small distance and blending functions from the same articles (rounded box, uneven capsule,
-    smooth minimum), in several themes and Odyssey scenes.
+  - small distance and blending functions from the same articles (rounded box, box frame, uneven
+    capsule, smooth minimum), in several themes and Odyssey scenes (among them the corridor of
+    chapter 7's other dimension).
 - **Licence:** MIT
 
 ```text

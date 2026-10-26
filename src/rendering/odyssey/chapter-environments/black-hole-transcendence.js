@@ -45,6 +45,7 @@ import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
 import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
+import { resolveFoldRoom, resolveFoldRoomAnchors } from '../transitions/odyssey-fold-rooms.js';
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import {
@@ -140,10 +141,18 @@ export const CH7_FOLD_ARC_SETTINGS = Object.freeze({
  * field: `stars` is the starfield count, `dust` / `embers` scale the particleCount-derived
  * densities. High is unchanged (the authored chapter).
  */
+// `foldSteps`: the march through the other dimension (odyssey-fold-space.tsl.js) per pixel; its
+// cost at 1080p on an RTX 3070 is ~0.5 ms at 16 steps and ~0.76 ms at 32 over the old tunnel.
 export const CH7_QUALITY_TIERS = Object.freeze({
-    high: Object.freeze({ stars: CH7_STARFIELD.count, dust: 1, embers: 1 }),
-    medium: Object.freeze({ stars: 1300, dust: 0.6, embers: 0.7 }),
-    low: Object.freeze({ stars: 800, dust: 0.4, embers: 0.5 }),
+    high: Object.freeze({
+        stars: CH7_STARFIELD.count, dust: 1, embers: 1, foldSteps: 32,
+    }),
+    medium: Object.freeze({
+        stars: 1300, dust: 0.6, embers: 0.7, foldSteps: 22,
+    }),
+    low: Object.freeze({
+        stars: 800, dust: 0.4, embers: 0.5, foldSteps: 14,
+    }),
 });
 
 // The tunnel mouth's final angular radius (rad): past the corners of a 70 deg-FOV frame.
@@ -172,7 +181,7 @@ const _axis = new THREE.Vector3();
  * spline climbs nearly vertically at times, where a world-up basis degenerates), so the
  * shadow is always square to the eye and the disk band always reads across the frame.
  */
-function createGargantua(uniforms) {
+function createGargantua(uniforms, tier = CH7_QUALITY_TIERS.high) {
     const S = CH7_GARGANTUA.shadowRadius;
     const group = new THREE.Group();
     group.name = 'distant-background-singularity';
@@ -184,7 +193,7 @@ function createGargantua(uniforms) {
 
     // The shadow IS the window onto the interior (black until the fall opens it): one opaque,
     // depth-writing material either way, so nothing about its pipeline changes mid-chapter.
-    const singularity = createSingularityWindowTSL(uniforms.uTime);
+    const singularity = createSingularityWindowTSL(uniforms.uTime, { foldSteps: tier.foldSteps });
     const horizon = new THREE.Mesh(new THREE.SphereGeometry(S, 64, 48), singularity.material);
     horizon.name = 'gargantua-shadow';
     // FADE-EXEMPT (seamless pass; agreed interface with the environment manager): the shadow
@@ -351,7 +360,7 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.lensingStarfield = lensingStarfield;
 
     // 1. Gargantua — the one hero, camera-locked in update().
-    const distantHole = createGargantua(uniforms);
+    const distantHole = createGargantua(uniforms, tier);
     group.add(distantHole);
     group.userData.distantHole = distantHole;
     group.userData.eventHorizon = distantHole.userData.face;
@@ -559,6 +568,13 @@ export function advanceWarpDrive(state, delta, progress, warp, opts = {}) {
     return state;
 }
 
+/** `?odysseyCh7Fold=0|1`: hold the fold off or on inside the hole (A/B captures and timing). */
+function readCh7FoldOverride() {
+    if (typeof window === 'undefined' || !window.location?.search) return null;
+    const value = Number.parseFloat(new URLSearchParams(window.location.search).get('odysseyCh7Fold'));
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null;
+}
+
 function readCh7ThrottleOverride() {
     if (typeof window === 'undefined' || !window.location?.search) return null;
     const value = Number.parseFloat(new URLSearchParams(window.location.search).get('odysseyCh7Throttle'));
@@ -650,7 +666,38 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         // The mouth grows to 80 deg: past the corners of a 70 deg-FOV frame.
         windowUniforms.uOpen.value = open * CH7_EXIT_MOUTH_MAX;
         if (windowUniforms.uPhase) windowUniforms.uPhase.value = drive.phase;
+        // THE CROSSING: the tunnel's streaks follow the drive until the fold begins, then hold
+        // still (frozen strands) while the fold travels on; back out of the fold, they move again.
+        if (windowUniforms.uTunnelPhase) {
+            if (!((fall.fold ?? 0) > 0.001) || !Number.isFinite(drive.frozenPhase)) drive.frozenPhase = drive.phase;
+            windowUniforms.uTunnelPhase.value = drive.frozenPhase;
+        }
         if (windowUniforms.uThrottle) windowUniforms.uThrottle.value = drive.throttle;
+        // THE FOLD: the other dimension past the horizon; still under reduced motion.
+        if (group.userData.foldOverride === undefined) group.userData.foldOverride = readCh7FoldOverride();
+        const { foldOverride } = group.userData;
+        if (windowUniforms.uFold) {
+            windowUniforms.uFold.value = Number.isFinite(foldOverride)
+                ? foldOverride * (fall.portal > 0 ? 1 : 0) : (fall.fold ?? 0);
+        }
+        if (windowUniforms.uMotion) windowUniforms.uMotion.value = prefersReducedMotion() ? 0 : 1;
+        // THE ROOMS: the room of the fold at the eye's progress (its orb's mood), morphing
+        // into the next one's between their orbs.
+        if (windowUniforms.room && (fall.fold ?? 0) > 0) {
+            const r = resolveFoldRoom(cameraProgress, resolveFoldRoomAnchors(chapterPositions));
+            const u = windowUniforms.room;
+            u.shapeA.value = r.shapeA;
+            u.shapeB.value = r.shapeB;
+            u.morph.value = r.morph;
+            u.hue.value = r.hue;
+            u.spread.value = r.spread;
+            u.tint.value.set(r.tint[0], r.tint[1], r.tint[2]);
+            u.tintMix.value = r.tintMix;
+            u.nebula.value = r.nebula;
+            u.nebulaHue.value = r.nebulaHue;
+            u.crackle.value = r.crackle;
+            u.grid.value = r.grid;
+        }
     }
     // The post's radial rush (zoom blur) rides the same throttle, only inside the window and gone
     // before the mouth opens onto the city.
@@ -765,7 +812,11 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     }
     const dustWarp = corridorDust?.userData?.flowUniforms?.uWarp;
     if (dustWarp) {
-        dustWarp.value = fall.warp;
+        // THE FOLD: in the other dimension the dust drifts as motes of light, and streaks only
+        // while the eye glides between orbs (the warp drive's punch), not at rest.
+        const fold = windowUniforms?.uFold?.value ?? 0;
+        const glide = THREE.MathUtils.smoothstep(group.userData.warpDrive?.throttle ?? 0, 0.5, 1.4);
+        dustWarp.value = fall.warp * ((1 - fold) + (fold * glide));
     }
 
     // Vertical shard drift runs in the TSL material; feed it the camera Y.

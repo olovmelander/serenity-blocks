@@ -79,6 +79,11 @@ export const CH7_FALL = Object.freeze({
      * stop drawing once the window covers every pixel). */
     insideLead: 0.04 * PLUNGE,
     insideSpan: 0.06 * PLUNGE,
+    /** THE FOLD (2026-10-26): past the horizon the warp's streaks give way to the other dimension
+     * (chapter-environments/odyssey-fold-space.tsl.js) across [foldFrom, foldTo] (local), before
+     * orbs 49 and 50 park inside (local ~0.26). */
+    foldFrom: 0.11,
+    foldTo: 0.24,
     /** Camera: a brief compression gives the attraction weight before the horizon rush. */
     fovCompressionDeg: 2.2,
     /** Frame dragging and speed stay bounded; the camera never changes logical rail progress. */
@@ -98,6 +103,7 @@ const REST = Object.freeze({
     band: 1,
     warp: 0,
     inside: 0,
+    fold: 0,
     rollDeg: 0,
     fovOffset: 0,
     camForward: 0,
@@ -157,8 +163,8 @@ export function resolveBlackHoleFallCamera(local, exit = 0.82) {
  * @param {number} progress absolute path progress
  * @param {number[]} chapterPositions live chapter boundaries
  * @returns {{active:boolean, local:number, u:number, alpha:number, centring:number, portal:number,
- *   diskTilt:number, band:number, warp:number, inside:number, rollDeg:number, fovOffset:number,
- *   camForward:number}}
+ *   diskTilt:number, band:number, warp:number, inside:number, fold:number, rollDeg:number,
+ *   fovOffset:number, camForward:number}}
  */
 export function resolveBlackHoleFall(progress, chapterPositions) {
     const ch7Start = chapterPositions?.[6];
@@ -186,6 +192,7 @@ export function resolveBlackHoleFall(progress, chapterPositions) {
         band: 1 - smooth01((local - F.bandFadeFrom) / (F.bandFadeTo - F.bandFadeFrom)),
         warp: smooth01((local - F.warpFrom) / (F.warpTo - F.warpFrom)),
         inside: smooth01((local - (F.horizon - F.insideLead)) / F.insideSpan),
+        fold: smooth01((local - F.foldFrom) / (F.foldTo - F.foldFrom)),
         rollDeg: camera.rollDeg,
         fovOffset: camera.fovOffset,
         camForward: camera.camForward,
