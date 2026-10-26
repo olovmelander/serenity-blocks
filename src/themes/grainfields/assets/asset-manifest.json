@@ -182,6 +182,17 @@
       ]
     },
     {
+      "file": "grainfields-ruin.glb",
+      "bytes": 162920,
+      "sha256": "d2483c2465759e4d0d3d9412101e80b401a4f7ca89c36250c109dedce14bb308",
+      "kind": "ruin",
+      "triangles": 3726,
+      "vertices": 6934,
+      "height": 35.0,
+      "width": 79.86,
+      "depth": 79.08
+    },
+    {
       "file": "larch-grove-a.glb",
       "bytes": 206864,
       "sha256": "28f3aa1e02e85d2f5060f5e8295e0cb0b4ad3c9b3ebbd9a5f507d31b489a8705",
