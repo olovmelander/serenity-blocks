@@ -15,6 +15,9 @@
  *                            clock turns the same wheel, one night every 90 s: t=99 is the second night
  *                            at rest, t=135 half-way from the second to the third
  *   locks=<n>                before anything else, play n locks
+ *   from=<s>                 replay every frame from <s> (instead of a fixed lead before t), so a
+ *                            run of t= frames is one continuous take (the event, if any, still
+ *                            fires at t - eventAge)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
@@ -290,13 +293,15 @@ export function create({
 
     /** How long the pond is played before a capture: the school spreads out, the water wakes. */
     const LEAD = 12;
+    const fromTime = params.has('from') ? Math.max(0, num(params, 'from', 0)) : null;
     let sought = null;
     const seekTo = (time) => {
         // The playground seeks every frame while ?t= is pinned: replay once, then hold.
         if (sought === time) return;
         sought = time;
         const lead = (eventName ? eventAge : 0) + LEAD + warmLocks * 0.5 + (holdCombo ? 6 : 0);
-        const start = Math.max(0, time - lead);
+        // (`from`: every frame replays from that moment, so a run of t= frames is one take.)
+        const start = fromTime !== null && fromTime < time ? fromTime : Math.max(0, time - lead);
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });
         frame(start, 0);
