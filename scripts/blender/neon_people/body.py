@@ -90,6 +90,35 @@ class Inflate(Shape):
         return self.child.eval_block(xs, ys, zs) - self.amount
 
 
+class Opening(Shape):
+    """A coat hanging open: the child with a wedge taken out of its front below `top` (in `frame`,
+    columns x, y, z; the person faces -y), narrow at the top and widening toward the hem."""
+
+    def __init__(self, child, top, frame, width=0.035, flare=0.2):
+        self.child, self.top = child, np.asarray(top, dtype=np.float64)
+        self.frame = np.asarray(frame, dtype=np.float64)
+        self.width, self.flare = float(width), float(flare)
+
+    def leaves(self):
+        return self.child.leaves()
+
+    def bounds(self):
+        return self.child.bounds()
+
+    def _slot(self, p):
+        q = (p - self.top) @ self.frame
+        below = np.maximum(-q[:, 2], 0.0)
+        half = self.width + self.flare * below
+        return np.maximum(np.maximum(np.abs(q[:, 0]) - half, q[:, 1] + 0.02), q[:, 2])
+
+    def eval(self, p):
+        return np.maximum(self.child.eval(p), -self._slot(p))
+
+    def eval_block(self, xs, ys, zs):
+        grid = np.stack(np.meshgrid(xs, ys, zs, indexing="ij"), axis=-1).reshape(-1, 3)
+        return self.eval(grid).reshape(len(xs), len(ys), len(zs))
+
+
 class Field(Shape):
     """The person: a hard union of the class fields. `classes(p)` gives each class's distance."""
 
@@ -210,53 +239,76 @@ def _parts_a():
     return parts
 
 
-# Build B from A: each part moved with its bone (offsets scaled to B's bone) and its girth set
-# per region; the bust and a fuller hip are her own.
-GIRTH_B = dict(pelvis=1.03, waist=0.86, chest=0.88, neck=0.84, head=0.95, uparm=0.8, forearm=0.8, hand=0.86,
-               thigh=0.98, shin=0.9, foot=0.86)
-TORSO_SCALE_B = dict(pelvis=(1.04, 0.95), spine=(0.88, 0.92), chest=(0.88, 0.92))
+# Builds B and C from A: each part moved with its bone (offsets scaled to the build's bone) and its
+# girth set per region. B: a woman, her bust and a fuller hip her own. C: a heavy man, a barrel of a
+# chest, a belly, a thick neck and big arms.
+DERIVED = {
+    "B": dict(girth=dict(pelvis=1.03, waist=0.86, chest=0.88, neck=0.84, head=0.95, uparm=0.8, forearm=0.8,
+                         hand=0.86, thigh=0.98, shin=0.9, foot=0.86),
+              torso=dict(pelvis=(1.04, 0.95), spine=(0.88, 0.92), chest=(0.88, 0.92)), head=0.95,
+              glutes=np.array([1.0, 1.08, 1.04]), thigh=1.02),
+    "C": dict(girth=dict(pelvis=1.12, waist=1.22, chest=1.16, neck=1.3, head=1.02, uparm=1.32, forearm=1.28,
+                         hand=1.18, thigh=1.16, shin=1.12, foot=1.12),
+              torso=dict(pelvis=(1.12, 1.12), spine=(1.2, 1.22), chest=(1.22, 1.14)), head=1.02,
+              glutes=np.array([1.04, 1.06, 1.0]), thigh=1.04),
+}
 
 
-def _parts_b():
-    A, B = REST["A"], REST["B"]
+def _derived(build):
+    A, X = REST["A"], REST[build]
+    spec = DERIVED[build]
     out = []
     for part in _parts_a():
         bone = part.bone
         head = BONE[bone][1]
         tail = BONE[bone][2]
         la = np.linalg.norm(A[tail] - A[head])
-        lb = np.linalg.norm(B[tail] - B[head])
-        if bone in TORSO_SCALE_B:
-            sx, sy = TORSO_SCALE_B[bone]
-            scale = np.array([sx, sy, lb / la])
+        lx = np.linalg.norm(X[tail] - X[head])
+        if bone in spec["torso"]:
+            sx, sy = spec["torso"][bone]
+            scale = np.array([sx, sy, lx / la])
         elif bone == "head":
-            scale = np.full(3, 0.95)
+            scale = np.full(3, spec["head"])
         else:
-            scale = np.full(3, lb / la)
+            scale = np.full(3, lx / la)
 
-        def move(p):
-            return B[head] + (np.asarray(p, dtype=np.float64) - A[head]) * scale
+        def move(p, head=head, scale=scale):
+            return X[head] + (np.asarray(p, dtype=np.float64) - A[head]) * scale
 
-        g = GIRTH_B[part.region]
+        g = spec["girth"][part.region]
         params = dict(part.params)
         if part.kind == "ell":
             params["c"] = move(params["c"])
             params["r"] = params["r"] * g
             if part.region == "pelvis" and abs(params["c"][0]) > 0.01:  # glutes
-                params["r"] = params["r"] * np.array([1.0, 1.08, 1.04])
+                params["r"] = params["r"] * spec["glutes"]
         else:
             params["a"], params["b"] = move(params["a"]), move(params["b"])
             params["ra"], params["rb"] = params["ra"] * g, params["rb"] * g
             if part.region == "thigh":
-                params["ra"] *= 1.02
+                params["ra"] *= spec["thigh"]
         out.append(Part(part.region, bone, part.kind, part.k, **params))
-    chest = B["chest"]
+    return out
+
+
+def _parts_b():
+    out = _derived("B")
+    chest = REST["B"]["chest"]
     for side, sign in SIDES:
         out.append(_ell("chest", "chest", (0.052 * sign, chest[1] - 0.088, chest[2] + 0.07), (0.056, 0.048, 0.052), 0.035))
     return out
 
 
-BODIES = {"A": _parts_a, "B": _parts_b}
+def _parts_c():
+    out = _derived("C")
+    spine = REST["C"]["spine"]
+    # A belly that carries forward and sits a little low.
+    out.append(_ell("waist", "spine", (0.0, spine[1] - 0.07, spine[2] - 0.02), (0.13, 0.09, 0.12), 0.06))
+    return out
+
+
+BODIES = {"A": _parts_a, "B": _parts_b, "C": _parts_c}
+HEAD_SCALE = {"A": 1.0, "B": 0.95, "C": 1.02}
 
 
 # -- outfits --------------------------------------------------------------------------------
@@ -267,6 +319,7 @@ BODIES = {"A": _parts_a, "B": _parts_b}
 TOPS = {
     "jacket": dict(fit=0.02, chest=0.006, hem=-0.12, sleeve="long"),
     "coat": dict(fit=0.022, chest=0.006, hem=-0.12, sleeve="long", coat=True),
+    "longcoat": dict(fit=0.024, chest=0.008, hem=-0.12, sleeve="long", coat=True, drop=0.18, flare=0.12),
     "bomber": dict(fit=0.027, chest=0.008, hem=-0.03, sleeve="long"),
     "hoodie": dict(fit=0.022, chest=0.008, hem=-0.1, sleeve="long", hood=True),
     "longsleeve": dict(fit=0.009, chest=0.0, hem=-0.06, sleeve="long"),
@@ -282,6 +335,8 @@ BOTTOMS = {
     "shorts": dict(fit=0.014, cuff=None, knee=0.06),
 }
 TRIM = 0.004
+# Gear cut from a garment's surface stands further proud than a lit trim.
+GEAR_TRIMS = {"belt": 0.011, "strap_L": 0.009, "strap_R": 0.009}
 
 
 def _side_of(bone):
@@ -350,7 +405,7 @@ def _top(P, parts, name, cyber=(), hood_up=False):
     pieces = _part_pieces(P, parts, tuple(regions), spec["fit"], cuts, spec["chest"], skip_sides=cyber)
     # The garment hangs straight from the hips to its hem instead of following into the crotch.
     pelvis = rest["pelvis"]
-    girth = (0.168 if P.build == "A" else 0.166) + spec["fit"]
+    girth = {"A": 0.168, "B": 0.166, "C": 0.205}[P.build] + spec["fit"]
     top_c = pelvis + np.array([0.0, 0.004, 0.09])
     hem_c = pelvis + np.array([0.0, 0.01, spec["hem"] + 0.012])
 
@@ -364,16 +419,24 @@ def _top(P, parts, name, cyber=(), hood_up=False):
         # to a flat hem just below the knee; a panel down each thigh lets the leading knee push
         # the coat forward.
         knee_z = 0.5 * (rest["knee_L"][2] + rest["knee_R"][2])
-        hem_z = P.J["pelvis"][2] - (pelvis[2] - knee_z) - 0.08
+        hem_z = P.J["pelvis"][2] - (pelvis[2] - knee_z) - spec.get("drop", 0.08)
         waist = P.point("pelvis", top_c)
-        foot = np.array([waist[0], waist[1] + 0.02, hem_z - 0.02])
+        # A walk drags the hem back and swings it with the hips (rig extras "coat_swing": x, y).
+        swing_x, swing_y = P.extras.get("coat_swing", (0.0, 0.0))
+        foot = np.array([waist[0] + swing_x, waist[1] + 0.02 + swing_y, hem_z - 0.02])
         coat_hem = (np.array([0.0, 0.0, hem_z]), np.array([0.0, 0.0, -1.0]))
 
         def skirt(extra):
-            return Cut(RoundCone(waist, foot, girth * 0.96 + extra, girth + 0.08 + extra,
+            return Cut(RoundCone(waist, foot, girth * 0.96 + extra, girth + spec.get("flare", 0.08) + extra,
                                  squash=(np.array([0.0, 1.0, 0.0]), 0.68)), [coat_hem])
 
-        pieces.append(_piece(skirt, "pelvis", "skirt", 0.05))
+        opening_top = P.point("pelvis", pelvis + np.array([0.0, 0.0, -0.02]))
+
+        def opened(shape):
+            return Opening(shape, opening_top, P.frame("pelvis"))
+
+        pieces[-1] = _piece(lambda extra, hang=pieces[-1]["make"]: opened(hang(extra)), "pelvis", "pelvis", 0.05)
+        pieces.append(_piece(lambda extra: opened(skirt(extra)), "pelvis", "skirt", 0.05))
         for side, sign in SIDES:
             hip, knee = rest["hip_" + side], rest["knee_" + side]
 
@@ -381,8 +444,8 @@ def _top(P, parts, name, cyber=(), hood_up=False):
                 a = P.point("thigh_" + side, hip + np.array([0.03 * sign, 0.0, -0.08]))
                 b = P.point("thigh_" + side, knee + np.array([0.02 * sign, 0.0, 0.0]))
                 b = np.array([b[0], b[1] + 0.02, max(b[2] - 0.06, hem_z)])
-                return Cut(RoundCone(a, b, 0.1 + extra, 0.085 + extra, squash=(np.array([0.0, 1.0, 0.0]), 0.75)),
-                           [coat_hem])
+                return opened(Cut(RoundCone(a, b, 0.1 + extra, 0.085 + extra,
+                                            squash=(np.array([0.0, 1.0, 0.0]), 0.75)), [coat_hem]))
 
             pieces.append(_piece(panel, "thigh_" + side, "skirt", 0.06))
     if sleeve == "none":
@@ -460,6 +523,19 @@ def _trims(P, pieces, kinds, info=None):
                 if cuff is not None and cuff[3] == region:
                     cbone, point, direction, _region = cuff
                     planes = [_plane(P, cbone, point - unit(direction) * 0.022, -np.asarray(direction))]
+            elif kind == "belt" and region in ("pelvis", "waist", "skirt"):
+                pelvis = rest["pelvis"]
+                planes = [_plane(P, "pelvis", pelvis + np.array([0.0, 0.0, 0.07]), (0.0, 0.0, 1.0)),
+                          _plane(P, "pelvis", pelvis + np.array([0.0, 0.0, 0.018]), (0.0, 0.0, -1.0))]
+            elif kind in ("strap_L", "strap_R") and region in ("pelvis", "waist", "chest", "skirt"):
+                # A strap from one shoulder across the chest (and the back) to the other hip.
+                sign = 1.0 if kind == "strap_L" else -1.0
+                chest = rest["chest"]
+                p0 = chest + np.array([0.13 * sign, 0.0, 0.2])
+                n = unit(np.array([0.5 * sign, 0.0, -0.28]))
+                planes = [_plane(P, "chest", p0 + n * 0.021, n), _plane(P, "chest", p0 - n * 0.021, -n),
+                          _plane(P, "chest", chest + np.array([0.0, 0.0, 0.25]), (0.0, 0.0, 1.0)),
+                          _plane(P, "pelvis", rest["pelvis"] + np.array([0.0, 0.0, -0.06]), (0.0, 0.0, -1.0))]
             elif kind == "legs" and region in ("thigh", "shin"):
                 side = _side_of(bone)
                 sign = 1.0 if side == "L" else -1.0
@@ -476,24 +552,36 @@ def _trims(P, pieces, kinds, info=None):
             if planes is None:
                 continue
 
-            def stripe(piece=piece, planes=planes):
-                return Cut(piece["make"](TRIM), planes)
+            def stripe(piece=piece, planes=planes, extra=GEAR_TRIMS.get(kind, TRIM)):
+                return Cut(piece["make"](extra), planes)
 
             out.append((stripe(), 0.0))
     return out
 
 
-def _shoes(P, parts, glow_soles=False):
+def _shoes(P, parts, glow_soles=False, boots=False):
+    """Trainers, or combat boots: chunkier, a thick sole and a shaft to mid-shin over the trousers."""
     rest = P.rest
     gear, glow = [], []
+    grow = 0.018 if boots else 0.013
     for side, sign in SIDES:
         ankle = rest["ankle_" + side]
         cut = [(P.point("foot_" + side, ankle + np.array([0.0, 0.0, 0.025])), P.vector("foot_" + side, UP))]
         for part in parts:
             if part.region == "foot" and part.bone.endswith(side):
-                gear.append((Cut(part.posed(P, 0.013), cut), 0.02))
-        sole = Ellipsoid(P.point("foot_" + side, np.array([ankle[0], ankle[1] - 0.06, 0.014])), (0.05, 0.145, 0.016),
-                         P.frame("foot_" + side))
+                gear.append((Cut(part.posed(P, grow), cut), 0.02))
+        if boots:
+            knee = rest["knee_" + side]
+            top = ankle + unit(knee - ankle) * 0.17
+            shaft = [_plane(P, "shin_" + side, top, knee - ankle)]
+            for part in parts:
+                if part.region == "shin" and part.bone.endswith(side):
+                    gear.append((Cut(part.posed(P, 0.024), shaft), 0.03))
+            # A turned-down cuff at the shaft's top.
+            gear.append((RoundCone(P.point("shin_" + side, top - unit(knee - ankle) * 0.012),
+                                   P.point("shin_" + side, top + unit(knee - ankle) * 0.004), 0.058, 0.058), 0.01))
+        sole = Ellipsoid(P.point("foot_" + side, np.array([ankle[0], ankle[1] - 0.06, 0.016 if boots else 0.014])),
+                         (0.055, 0.15, 0.024 if boots else 0.016), P.frame("foot_" + side))
         (glow if glow_soles else gear).append((sole, 0.012))
     return gear, glow
 
@@ -503,7 +591,7 @@ def _hair(P, style):
         return []
     rest = P.rest
     h = rest["head"]
-    s = 1.0 if P.build == "A" else 0.95
+    s = HEAD_SCALE[P.build]
 
     def at(x, y, z):
         return P.point("head", h + np.array([x, y, z]) * s)
@@ -514,7 +602,21 @@ def _hair(P, style):
     face = [(at(0.0, -0.064, 0.13), P.vector("head", unit((0.0, -0.78, -0.62)))),
             (at(0.0, 0.0, 0.06), P.vector("head", unit((0.0, -0.42, -1.0))))]
     shapes = []
-    if style in ("buzz", "mohawk", "undercut"):
+    if style == "spiky":
+        cap = Ellipsoid(at(0.0, 0.0, 0.112), cranium_r + np.array([0.016, 0.018, 0.02]), frame)
+        shapes.append((Cut(cap, face), 0.0))
+        # Spikes swept up and back from the crown, a fringe of them over the brow.
+        for azimuth, rise, length, base in ((0, 70, 0.1, 0.03), (40, 55, 0.11, 0.028), (-40, 55, 0.11, 0.028),
+                                            (85, 35, 0.09, 0.026), (-85, 35, 0.09, 0.026), (130, 40, 0.1, 0.028),
+                                            (-130, 40, 0.1, 0.028), (180, 45, 0.11, 0.03), (20, 15, 0.075, 0.024),
+                                            (-25, 18, 0.07, 0.024), (0, 5, 0.06, 0.022)):
+            az, el = math.radians(azimuth), math.radians(rise)
+            # Azimuth 0 is the brow (-y), 180 the back of the head.
+            d = np.array([math.sin(az) * math.cos(el), -math.cos(az) * math.cos(el), math.sin(el)])
+            root = np.array([0.0, 0.0, 0.112]) + d * np.array([0.075, 0.09, 0.08])
+            tip = root + unit(d + np.array([0.0, 0.25, 0.35])) * length
+            shapes.append((RoundCone(at(*root), at(*tip), base * s, 0.004), 0.02))
+    elif style in ("buzz", "mohawk", "undercut"):
         shapes.append((Cut(Ellipsoid(at(*cranium_c), cranium_r + 0.004, frame), face), 0.0))
         if style == "mohawk":
             crest = Ellipsoid(at(0.0, 0.004, 0.2), np.array([0.017, 0.1, 0.06]) * s, frame)
@@ -556,8 +658,8 @@ def _head_gear(P, kinds):
     """Things worn on the head: returns {class: [(shape, k)]}."""
     rest = P.rest
     h = rest["head"]
-    s = 1.0 if P.build == "A" else 0.95
-    out = {"top": [], "gear": [], "glow": []}
+    s = HEAD_SCALE[P.build]
+    out = {"top": [], "gear": [], "glow": [], "chrome": []}
 
     def at(x, y, z):
         return P.point("head", h + np.array([x, y, z]) * s)
@@ -576,6 +678,19 @@ def _head_gear(P, kinds):
             for sign in (1.0, -1.0):
                 out["gear"].append((RoundCone(at(0.032 * sign, -0.1, 0.004), at(0.05 * sign, -0.108, -0.012),
                                               0.016 * s, 0.017 * s), 0.01))
+        elif kind in ("goggles", "goggles_eyes"):
+            z = 0.135 if kind == "goggles" else 0.082
+            y = -0.079 if kind == "goggles" else -0.086
+            for sign in (1.0, -1.0):
+                c = np.array([0.034 * sign, y, z])
+                out["chrome"].append((RoundCone(at(*(c + np.array([0.0, 0.014, 0.0]))),
+                                                at(*(c + np.array([0.0, -0.012, 0.0]))), 0.025 * s, 0.024 * s), 0.004))
+                out["glow"].append((Ellipsoid(at(*(c + np.array([0.0, -0.034, 0.0]))) , np.array([0.019, 0.005, 0.019]) * s,
+                                              frame), 0.0))
+            if "hood" not in kinds:
+                band = Ellipsoid(at(0.0, -0.002, 0.107), cranium_r + 0.012, frame)
+                out["gear"].append((Cut(band, [(at(0.0, 0.0, z + 0.012), vec(0.0, 0.0, 1.0)),
+                                               (at(0.0, 0.0, z - 0.012), vec(0.0, 0.0, -1.0))]), 0.0))
         elif kind == "eye":
             out["glow"].append((Ellipsoid(at(-0.03, -0.083, 0.083), np.array([0.013, 0.008, 0.009]) * s, frame), 0.0))
         elif kind == "implants":
@@ -642,19 +757,89 @@ def _cyber_arm(P, parts, side):
 
 def _back_gear(P, kinds):
     rest = P.rest
-    out = {"gear": [], "glow": []}
+    out = {"gear": [], "glow": [], "chrome": []}
     for kind in kinds:
         if kind == "backpack":
             c = rest["chest"] + np.array([0.0, 0.17, 0.0])
             out["gear"].append((Ellipsoid(P.point("chest", c), (0.14, 0.075, 0.19)), 0.02))
-            out["glow"].append((RoundCone(P.point("chest", c + np.array([0.0, 0.072, -0.12])),
-                                          P.point("chest", c + np.array([0.0, 0.072, 0.12])), 0.012, 0.012), 0.0))
+            if "canisters" in kinds:
+                # Two tubes of glowing liquid strapped to the pack, capped in metal.
+                for sign in (1.0, -1.0):
+                    a = c + np.array([0.06 * sign, 0.088, -0.12])
+                    b = c + np.array([0.06 * sign, 0.088, 0.13])
+                    out["glow"].append((RoundCone(P.point("chest", a), P.point("chest", b), 0.03, 0.03), 0.0))
+                    for end in (a, b):
+                        out["chrome"].append((Ellipsoid(P.point("chest", end), (0.036, 0.036, 0.018), P.frame("chest")),
+                                              0.004))
+            else:
+                out["glow"].append((RoundCone(P.point("chest", c + np.array([0.0, 0.072, -0.12])),
+                                              P.point("chest", c + np.array([0.0, 0.072, 0.12])), 0.012, 0.012), 0.0))
             for sign in (1.0, -1.0):
                 a = rest["chest"] + np.array([0.085 * sign, -0.09, 0.15])
                 b = rest["chest"] + np.array([0.09 * sign, 0.1, 0.19])
                 c2 = rest["chest"] + np.array([0.11 * sign, -0.1, -0.12])
                 out["gear"].append((RoundCone(P.point("chest", a), P.point("chest", b), 0.014, 0.014), 0.01))
                 out["gear"].append((RoundCone(P.point("chest", a), P.point("chest", c2), 0.013, 0.013), 0.01))
+    return out
+
+
+def _body_gear(P, parts, kinds, top_fit=0.0):
+    """Armour and kit on the body: {class: [(shape, k)]}."""
+    rest = P.rest
+    out = {"gear": [], "chrome": [], "glow": []}
+    for kind in kinds:
+        if kind in ("pauldron_L", "pauldron_R"):
+            side = kind[-1]
+            sign = 1.0 if side == "L" else -1.0
+            shoulder = rest["shoulder_" + side]
+            bone = "clav_" + side
+            for offset, radii, tilt in (((0.01, 0.0, 0.035), (0.082, 0.094, 0.055), 22.0),
+                                        ((0.045, 0.0, -0.005), (0.066, 0.085, 0.042), 38.0),
+                                        ((0.066, 0.0, -0.04), (0.052, 0.076, 0.032), 52.0)):
+                tilted = turn(roll=-sign * tilt)
+                c = shoulder + np.array([offset[0] * sign, offset[1], offset[2]])
+                plate = Ellipsoid(P.point(bone, c), np.array(radii) + top_fit * 0.5, P.frame(bone, tilted))
+                cut = (P.point(bone, c + tilted @ np.array([0.0, 0.0, -0.008])), P.vector(bone, tilted @ DOWN))
+                out["chrome"].append((Cut(plate, [cut]), 0.0))
+        elif kind == "kneepads":
+            for side, sign in SIDES:
+                knee = rest["knee_" + side]
+                out["chrome"].append((Ellipsoid(P.point("shin_" + side, knee + np.array([0.0, -0.058, -0.01])),
+                                                (0.046, 0.03, 0.058), P.frame("shin_" + side)), 0.0))
+        elif kind == "bracers":
+            for side, sign in SIDES:
+                elbow, wrist = rest["elbow_" + side], rest["wrist_" + side]
+                d = unit(wrist - elbow)
+                near, far = elbow + (wrist - elbow) * 0.3, elbow + (wrist - elbow) * 0.86
+                planes = [_plane(P, "forearm_" + side, far, d), _plane(P, "forearm_" + side, near, -d)]
+                glow_planes = [_plane(P, "forearm_" + side, far, d),
+                               _plane(P, "forearm_" + side, far - d * 0.018, -d)]
+                for part in parts:
+                    if part.region == "forearm" and part.bone.endswith(side):
+                        out["gear"].append((Cut(part.posed(P, 0.026 + top_fit), planes), 0.02))
+                        out["glow"].append((Cut(part.posed(P, 0.03 + top_fit), glow_planes), 0.0))
+        elif kind in ("gauntlet_L", "gauntlet_R"):
+            side = kind[-1]
+            sign = 1.0 if side == "L" else -1.0
+            elbow, wrist, fingers = rest["elbow_" + side], rest["wrist_" + side], rest["fingers_" + side]
+            fore = "forearm_" + side
+            out["chrome"].append((RoundCone(P.point(fore, elbow + (wrist - elbow) * 0.05),
+                                            P.point(fore, wrist), 0.07, 0.064), 0.02))
+            out["chrome"].append((Ellipsoid(P.point(fore, elbow), (0.058, 0.058, 0.058)), 0.02))
+            fist = wrist + (fingers - wrist) * 0.45
+            out["chrome"].append((Ellipsoid(P.point("hand_" + side, fist), (0.058, 0.07, 0.078),
+                                            P.frame("hand_" + side)), 0.025))
+            for lift in (0.022, -0.022):
+                a = elbow + (wrist - elbow) * 0.18 + np.array([0.066 * sign, lift, 0.0])
+                b = elbow + (wrist - elbow) * 0.9 + np.array([0.06 * sign, lift, 0.0])
+                out["glow"].append((RoundCone(P.point(fore, a), P.point(fore, b), 0.009, 0.009), 0.0))
+        elif kind == "pouches":
+            pelvis = rest["pelvis"]
+            for x, y, radii in ((0.165, 0.0, (0.024, 0.036, 0.036)), (-0.165, 0.01, (0.024, 0.04, 0.034)),
+                                (0.09, 0.14, (0.04, 0.022, 0.032))):
+                c = pelvis + np.array([x, y, 0.035])
+                out["gear"].append((Ellipsoid(P.point("pelvis", c), np.array(radii) * (1.0 + top_fit * 4.0),
+                                              P.frame("pelvis")), 0.012))
     return out
 
 
@@ -708,6 +893,8 @@ def field(P, outfit):
     parts = BODIES[P.build]()
     cyber = tuple(outfit.get("cyber", ()))
     trims = tuple(outfit.get("trims", ()))
+    gear_kinds = tuple(outfit.get("gear", ()))
+    worn = [t for t in ("belt", "strap_L", "strap_R") if t in gear_kinds]
     lists = {c: [] for c in CLASSES}
     lists["skin"] = [(part.posed(P), part.k) for part in parts]
     lists["hair"] = _hair(P, outfit.get("hair"))
@@ -717,19 +904,23 @@ def field(P, outfit):
         top_trims = [t for t in trims if t in ("zip", "back", "hem", "cuffs")]
         kinds = [k for t in top_trims for k in (("back_L", "back_R") if t == "back" else (t,))]
         lists["glow"] += _trims(P, pieces, kinds, info)
+        lists["gear"] += _trims(P, pieces, worn, info)
     if outfit.get("bottom"):
         pieces = _bottom(P, parts, outfit["bottom"])
         lists["bottom"] += [(p["make"](0.0), p["k"]) for p in pieces]
         if "legs" in trims:
             lists["glow"] += _trims(P, pieces, ("legs",))
-    gear, glow = _shoes(P, parts, "soles" in trims)
+        if "belt" in worn:
+            lists["gear"] += _trims(P, pieces, ("belt",))
+    gear, glow = _shoes(P, parts, "soles" in trims, outfit.get("shoes") == "boots")
     lists["gear"] += gear
     lists["glow"] += glow
     for side in cyber:
         chrome, glow = _cyber_arm(P, parts, side)
         lists["chrome"] += chrome
         lists["glow"] += glow
-    for source in (_head_gear(P, outfit.get("gear", ())), _back_gear(P, outfit.get("gear", ())),
+    top_fit = TOPS[outfit["top"]]["fit"] if outfit.get("top") else 0.0
+    for source in (_head_gear(P, gear_kinds), _back_gear(P, gear_kinds), _body_gear(P, parts, gear_kinds, top_fit),
                    _props(P, outfit.get("props", ()))):
         for cls, shapes in source.items():
             lists[cls] += shapes
