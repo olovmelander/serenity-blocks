@@ -3,8 +3,9 @@ import {
     Break, Fn, If, Loop, int,
     abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
     hash, length, max, min, mix, reflect, select, sign, sqrt,
-    normalize, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin, smoothstep,
-    screenUV, step as tslStep, texture, uniform, uv, varying, vec2, vec3, vec4, cameraPosition as cameraPositionNode,
+    normalize, normalGeometry, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin,
+    smoothstep, screenUV, step as tslStep, texture, uniform, uv, varying, varyingProperty, vec2, vec3, vec4,
+    cameraPosition as cameraPositionNode,
     cameraViewMatrix,
     pow2,
 } from 'three/tsl';
@@ -40,7 +41,8 @@ import { buildKelpGeometry, buildSpireGeometry, planOceanForms } from './odyssey
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import { antisolarSchedule, applyAntisolarSky } from './odyssey-sky-optics.js';
 import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
-import { buildForestTreeGeometry } from './odyssey-forest-geometry.js';
+import { FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW } from './odyssey-forest-geometry.js';
+import { forestCardFragment, forestCardVertex } from './odyssey-forest-cards.js';
 import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './odyssey-forest-shade.js';
@@ -5167,254 +5169,299 @@ export function createOdysseyWorld({
     //   aTrunk      (vec4, per instance) rgb trunk colour · a the terrain's sun visibility at
     //               the tree's foot (sampled ONCE on the CPU — see `sunVisAt`)
     // Six buffers plus the instance matrix — comfortably inside the limit.
-    const fvVert = attribute('aVert', 'vec4');
-    const fvCrownSnow = attribute('aCrownSnow', 'vec4');
-    const fvShadePhase = attribute('aShadePhase', 'vec4');
-    const fvTrunkSun = attribute('aTrunk', 'vec4');
-    const fvTrunk = fvTrunkSun.xyz;
-    const fvCol = fvVert;
-    const fvIsCrown = fvVert.z;
-    const fvH01 = fvVert.w;
-    const fvCrown = fvCrownSnow.xyz;
-    const fvShade = fvShadePhase.xyz;
-    const fvSnow = fvCrownSnow.w;
-    const fvPhase = fvShadePhase.w;
+    // Built twice: the shipped material, and the CARD material (the same graph, plus puff cards
+    // for the mid and far broadleaf crowns — FOREST_PUFF_CARD). One more pipeline, not one per tier.
+    const buildForestV2Material = (cards) => {
+        const fvVert = attribute('aVert', 'vec4');
+        const fvCrownSnow = attribute('aCrownSnow', 'vec4');
+        const fvShadePhase = attribute('aShadePhase', 'vec4');
+        const fvTrunkSun = attribute('aTrunk', 'vec4');
+        const fvTrunk = fvTrunkSun.xyz;
+        // The card material's crowns carry the card flag (FOREST_PUFF_CARD.flag, 2); all else 0 or 1.
+        const fvIsCard = cards ? tslStep(float(1.5), fvVert.z) : null;
+        const fvIsCrown = cards ? min(fvVert.z, 1) : fvVert.z;
+        const fvH01 = fvVert.w;
+        const fvCrown = fvCrownSnow.xyz;
+        const fvShade = fvShadePhase.xyz;
+        const fvSnow = fvCrownSnow.w;
+        const fvPhase = fvShadePhase.w;
+        // PUFF CARDS (the mid and far broadleaf crowns, odyssey-forest-cards.js). The vertex stage
+        // turns each card to the eye and hands its axes to the fragment stage, which draws the puff:
+        // its sphere normal stands in for the geometry's, its openness takes the cap's share from
+        // that normal (the hero's `capOpen`), and its scalloped outline is the coverage.
+        const vCardRight = varyingProperty('vec3', 'vForestCardRight');
+        const vCardUp = varyingProperty('vec3', 'vForestCardUp');
+        const fvCard = cards ? forestCardFragment({
+            raw: normalGeometry,
+            right: vCardRight,
+            up: vCardUp,
+            phase: fract(normalGeometry.z.mul(7.31).add(fvPhase.mul(0.37))).mul(Math.PI * 2),
+        }) : null;
+        const fvOnCard = cards ? fvIsCard.greaterThan(0.5) : null;
+        const fvBaseN = cards ? select(fvOnCard, fvCard.normal, normalWorld) : normalWorld;
+        const fvAo = cards
+            ? select(fvOnCard, fvVert.x.mul(fvCard.radialY.mul(0.5).add(0.5).mul(0.55).add(0.45)), fvVert.x)
+            : fvVert.x;
+        const fvHc = cards ? select(fvOnCard, clamp(fvVert.y.add(fvCard.radialY.mul(0.3)), 0, 1), fvVert.y) : fvVert.y;
 
-    const forestV2Mat = new THREE.MeshBasicNodeMaterial();
-    // WIND. Height above GROUND squared, so trunks stay planted and crowns lean; phase is
-    // constant per tree (from its own instanced attribute, never per-vertex) or a near tree
-    // shears — the framing-spruces rule. The two world terms make gust FRONTS cross the
-    // forest rather than the whole island pulsing in lockstep ("rhythm, not a pulse").
-    const fvMask = clamp(fvH01, 0, 1);
-    // The shared gust front (item 11) plus a per-tree flutter on the tree's own constant phase.
-    const fvGust = gustFront(positionWorld.xz).mul(0.62)
-        .add(sin(uTime.mul(1.7).add(fvPhase)).mul(0.38))
-        .mul(0.085)
-        .mul(fvMask.mul(fvMask));
-    // positionLocal, not positionGeometry: setupPosition() applies the instance matrix into
-    // positionLocal and positionNode REPLACES it (the file's own header law).
-    forestV2Mat.positionNode = positionLocal.add(vec3(fvGust, forestReachSink(), fvGust.mul(0.55)));
+        const forestV2Mat = new THREE.MeshBasicNodeMaterial();
+        // WIND. Height above GROUND squared, so trunks stay planted and crowns lean; phase is
+        // constant per tree (from its own instanced attribute, never per-vertex) or a near tree
+        // shears — the framing-spruces rule. The two world terms make gust FRONTS cross the
+        // forest rather than the whole island pulsing in lockstep ("rhythm, not a pulse").
+        const fvMask = clamp(fvH01, 0, 1);
+        // The shared gust front (item 11) plus a per-tree flutter on the tree's own constant phase.
+        const fvGust = gustFront(positionWorld.xz).mul(0.62)
+            .add(sin(uTime.mul(1.7).add(fvPhase)).mul(0.38))
+            .mul(0.085)
+            .mul(fvMask.mul(fvMask));
+        // positionLocal, not positionGeometry: setupPosition() applies the instance matrix into
+        // positionLocal and positionNode REPLACES it (the file's own header law).
+        const fvSway = vec3(fvGust, forestReachSink(), fvGust.mul(0.55));
+        forestV2Mat.positionNode = cards
+            ? Fn(() => {
+                // The tree's scale is the integer part of `aTrunk.w` (FOREST_TRUNK_PACK).
+                const card = forestCardVertex({
+                    centre: positionLocal,
+                    raw: normalGeometry,
+                    scale: floor(fvTrunkSun.w).div(FOREST_TRUNK_PACK.quant),
+                    eye: cameraPosition,
+                });
+                vCardRight.assign(card.right);
+                vCardUp.assign(card.up);
+                return positionLocal.add(fvSway).add(card.offset.mul(fvIsCard));
+            })()
+            : positionLocal.add(fvSway);
 
-    // Snow rides the crown's upper surface on the SAME shell — no second mesh, so nothing can
-    // swim or z-fight against its own tree under wind.
-    const fvSnowMix = clamp(fvSnow.mul(smoothstep(float(0.30), float(0.85), fvCol.y)), 0, 1);
-    const fvCrownLit = mix(fvCrown, vec3(0.78, 0.83, 0.90), fvSnowMix);
-    const fvCrownShade = mix(fvShade, vec3(0.42, 0.48, 0.58), fvSnowMix);
-    const fvAlbedo = mix(fvTrunk, fvCrownLit, fvIsCrown);
-    // The trunk's own shade follows the same law rather than a second authored colour.
-    const fvShadeCol = mix(fvTrunk.mul(0.52), fvCrownShade, fvIsCrown);
+        // Snow rides the crown's upper surface on the SAME shell — no second mesh, so nothing can
+        // swim or z-fight against its own tree under wind.
+        const fvSnowMix = clamp(fvSnow.mul(smoothstep(float(0.30), float(0.85), fvHc)), 0, 1);
+        const fvCrownLit = mix(fvCrown, vec3(0.78, 0.83, 0.90), fvSnowMix);
+        const fvCrownShade = mix(fvShade, vec3(0.42, 0.48, 0.58), fvSnowMix);
+        const fvAlbedo = mix(fvTrunk, fvCrownLit, fvIsCrown);
+        // The trunk's own shade follows the same law rather than a second authored colour.
+        const fvShadeCol = mix(fvTrunk.mul(0.52), fvCrownShade, fvIsCrown);
 
-    // THE TERRAIN'S SHADOW REACHES THE TREES (item 11). The ground has read the baked sun
-    // plate since the overhaul, and the trees standing on it never did — so a stand inside the
-    // massif's shadow wore full sunlit bands on a shaded slope. The plate's visibility scales
-    // the wrapped light so a shadowed crown drops into the mid/shade tones with the ground
-    // around it — still only ever the authored tones.
-    // ⚠️ PER INSTANCE, NOT PER VERTEX (seamless pass — Lane A ch4 0.92 -> 1.05 ms at the same
-    // draws). It shipped as a texture fetch in the VERTEX stage of every tree vertex, and the
-    // forest's whole cost model is vertex (the header law). The plate is ~17.6 u per texel, so
-    // a crown never spanned more than a texel or two: one CPU sample at the tree's foot, carried
-    // in the trunk attribute's spare lane, is the same answer with no fetch at all.
-    const fvSunVis = fvTrunkSun.w;
-    // ...and the drifting CLOUD shadows the ground under it takes (one fetch pair per fragment,
-    // high tier only): without them a shadow crossing the island stopped at every forest edge.
-    const fvCloud = q.cloudShadows ? cloudShadowLight(positionWorld.xz) : float(1);
-    /**
-     * LEAF CLUMPS (round two, the trees again, 2026-10-26). A puff lit as one smooth ball reads as a
-     * toy; a painted canopy's masses are made of scalloped leaf clumps, each catching light on its
-     * own upper edge with a dark seam beneath. So each crown fragment finds its clump: a Voronoi
-     * cell on the puff's sphere (charted from its normal, stereographically from the bottom pole,
-     * offset per tree), and its normal tilts away from that clump's centre (`bulge`), so every
-     * clump shades as its own little dome; the seam between two clumps (F2 - F1 small) falls into
-     * the shade tone through the occlusion shift. Near crowns only (gone by `far`); trunks keep
-     * their own normal. Nine cells a fragment, no texture; the high tier only
-     * (ODYSSEY_WORLD_QUALITY.leafClumps), gated here rather than multiplied away.
-     */
-    const fvLeafNear = float(1).sub(smoothstep(
-        float(LEAF_CLUMPS.far * 0.6),
-        float(LEAF_CLUMPS.far),
-        length(cameraPosition.sub(positionWorld)),
-    )).mul(fvIsCrown);
-    // ⚠️ `hash` turns its seed into a u32, and WGSL clamps a negative float to 0 there: a seed
-    // built from signed cell coordinates gave every cell in half the chart the same point, a
-    // regular lattice. The cells are shifted positive and hashed as exact integers. One hash a
-    // cell: its low bits give the second coordinate and the clump's own tone. Fragments past the
-    // range skip the search altogether.
-    const fvLeaf = q.leafClumps ? Fn(() => {
-        const n = normalize(normalWorld).toVar();
-        const result = vec4(n, 0).toVar();
-        If(fvLeafNear.greaterThan(0), () => {
-            const offset = vec2(fvPhase.mul(0.37), fvPhase.mul(0.71)).toVar();
-            const chart = n.xz.div(max(n.y.add(1), 0.08)).mul(LEAF_CLUMPS.scale).add(offset).toVar();
-            const cell = floor(chart).add(256).toVar();
-            const local = chart.add(256).toVar();
-            const f1 = float(9).toVar();
-            const f2 = float(9).toVar();
-            const best = vec2(0).toVar();
-            const bestH = float(0).toVar();
-            for (let j = -1; j <= 1; j += 1) {
-                for (let i = -1; i <= 1; i += 1) {
-                    const c = cell.add(vec2(i, j)).toVar();
-                    const h = hash(c.x.add(c.y.mul(1031))).toVar();
-                    const pt = c.add(vec2(h, fract(h.mul(64))).mul(0.8).add(0.1)).toVar();
-                    const d = length(local.sub(pt)).toVar();
-                    const nearer = d.lessThan(f1);
-                    f2.assign(select(nearer, f1, min(f2, d)));
-                    best.assign(select(nearer, pt, best));
-                    bestH.assign(select(nearer, h, bestH));
-                    f1.assign(min(f1, d));
+        // THE TERRAIN'S SHADOW REACHES THE TREES (item 11). The ground has read the baked sun
+        // plate since the overhaul, and the trees standing on it never did — so a stand inside the
+        // massif's shadow wore full sunlit bands on a shaded slope. The plate's visibility scales
+        // the wrapped light so a shadowed crown drops into the mid/shade tones with the ground
+        // around it — still only ever the authored tones.
+        // ⚠️ PER INSTANCE, NOT PER VERTEX (seamless pass — Lane A ch4 0.92 -> 1.05 ms at the same
+        // draws). It shipped as a texture fetch in the VERTEX stage of every tree vertex, and the
+        // forest's whole cost model is vertex (the header law). The plate is ~17.6 u per texel, so
+        // a crown never spanned more than a texel or two: one CPU sample at the tree's foot, carried
+        // in the trunk attribute's spare lane, is the same answer with no fetch at all.
+        const fvSunVis = clamp(fract(fvTrunkSun.w).sub(FOREST_TRUNK_PACK.lo).div(FOREST_TRUNK_PACK.span), 0, 1);
+        // ...and the drifting CLOUD shadows the ground under it takes (one fetch pair per fragment,
+        // high tier only): without them a shadow crossing the island stopped at every forest edge.
+        const fvCloud = q.cloudShadows ? cloudShadowLight(positionWorld.xz) : float(1);
+        /**
+         * LEAF CLUMPS (round two, the trees again, 2026-10-26). A puff lit as one smooth ball reads as a
+         * toy; a painted canopy's masses are made of scalloped leaf clumps, each catching light on its
+         * own upper edge with a dark seam beneath. So each crown fragment finds its clump: a Voronoi
+         * cell on the puff's sphere (charted from its normal, stereographically from the bottom pole,
+         * offset per tree), and its normal tilts away from that clump's centre (`bulge`), so every
+         * clump shades as its own little dome; the seam between two clumps (F2 - F1 small) falls into
+         * the shade tone through the occlusion shift. Near crowns only (gone by `far`); trunks keep
+         * their own normal. Nine cells a fragment, no texture; the high tier only
+         * (ODYSSEY_WORLD_QUALITY.leafClumps), gated here rather than multiplied away.
+         */
+        const fvLeafNear = float(1).sub(smoothstep(
+            float(LEAF_CLUMPS.far * 0.6),
+            float(LEAF_CLUMPS.far),
+            length(cameraPosition.sub(positionWorld)),
+        )).mul(fvIsCrown);
+        // ⚠️ `hash` turns its seed into a u32, and WGSL clamps a negative float to 0 there: a seed
+        // built from signed cell coordinates gave every cell in half the chart the same point, a
+        // regular lattice. The cells are shifted positive and hashed as exact integers. One hash a
+        // cell: its low bits give the second coordinate and the clump's own tone. Fragments past the
+        // range skip the search altogether.
+        const fvLeaf = q.leafClumps ? Fn(() => {
+            const n = normalize(fvBaseN).toVar();
+            const result = vec4(n, 0).toVar();
+            If(fvLeafNear.greaterThan(0), () => {
+                const offset = vec2(fvPhase.mul(0.37), fvPhase.mul(0.71)).toVar();
+                const chart = n.xz.div(max(n.y.add(1), 0.08)).mul(LEAF_CLUMPS.scale).add(offset).toVar();
+                const cell = floor(chart).add(256).toVar();
+                const local = chart.add(256).toVar();
+                const f1 = float(9).toVar();
+                const f2 = float(9).toVar();
+                const best = vec2(0).toVar();
+                const bestH = float(0).toVar();
+                for (let j = -1; j <= 1; j += 1) {
+                    for (let i = -1; i <= 1; i += 1) {
+                        const c = cell.add(vec2(i, j)).toVar();
+                        const h = hash(c.x.add(c.y.mul(1031))).toVar();
+                        const pt = c.add(vec2(h, fract(h.mul(64))).mul(0.8).add(0.1)).toVar();
+                        const d = length(local.sub(pt)).toVar();
+                        const nearer = d.lessThan(f1);
+                        f2.assign(select(nearer, f1, min(f2, d)));
+                        best.assign(select(nearer, pt, best));
+                        bestH.assign(select(nearer, h, bestH));
+                        f1.assign(min(f1, d));
+                    }
                 }
-            }
-            // The clump's centre back on the sphere (inverse stereographic), and the dome's tilt.
-            const qc = best.sub(256).sub(offset).div(LEAF_CLUMPS.scale).toVar();
-            const r2 = dot(qc, qc);
-            const centre = vec3(qc.x.mul(2), float(1).sub(r2), qc.y.mul(2)).div(r2.add(1));
-            const bulged = normalize(n.add(n.sub(centre).mul(LEAF_CLUMPS.bulge)));
-            const seam = float(1).sub(smoothstep(float(0), float(LEAF_CLUMPS.seam), f2.sub(f1)));
-            // The threshold shift this clump takes: its seam into shade, and a small tone of its
-            // own, so neighbouring clumps separate by value rather than by an outline.
-            const tone = fract(bestH.mul(4096)).sub(0.5).mul(LEAF_CLUMPS.jitter);
-            result.assign(vec4(bulged, seam.mul(LEAF_CLUMPS.seamShift).add(tone)));
-        });
-        return result;
-    })() : null;
-    const fvN = (fvLeaf ? normalize(mix(normalWorld, fvLeaf.xyz, fvLeafNear)) : normalize(normalWorld)).toVar();
-    const fvSeam = fvLeaf ? fvLeaf.w.mul(fvLeafNear) : float(0);
-    const fvWrap = clamp(dot(fvN, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1)
-        .mul(mix(float(0.45), float(1), fvSunVis))
-        .mul(fvCloud);
-    // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
-    // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
-    // of the two authored tones.
-    // ⚠️ THREE TONES, NOT TWO — AND THE TWO-TONE VERSION IS WHY THE FOREST READ AS A SHEET.
-    //
-    // The game's camera looks DOWN at the forest, so the canopy TOP is the dominant surface,
-    // and on a blob normal field every top faces up. With the sun at its authored angle a
-    // canopy top computes wrap ~0.66 while the band ENDED at 0.58 — every top was already past
-    // the ramp, pinned to the lit tone, and 15,412 crowns rendered as one flat green sheet.
-    //
-    // A first attempt jittered each tree's threshold to break that up. It measured NOTHING
-    // (crown-scale mosaic 28.75 -> 29.03, inside noise) for the reason the numbers make
-    // obvious in hindsight: **moving a threshold the pixels have already passed changes
-    // nothing.** The band was saturated, not misplaced.
-    //
-    // So the ramp gains a third step and the upper transition is placed where canopy tops
-    // ACTUALLY sit. §1b R1 asks for 2-3 quantised steps and this is the third: sides read
-    // shade, the turn of the crown reads mid, and only the sun-facing top reaches full light.
-    // The per-tree jitter now rides the UPPER threshold, where it decides how much of each
-    // crown tips into the lit tone — so neighbouring trees separate into distinct tones and
-    // the sheet becomes the mosaic the reference island's aerial frame shows.
-    const fvTreeRand = fract(fvPhase.mul(0.1591549)).sub(0.5).mul(FOREST_BAND_JITTER);
-    // WIND-LINES (Wave 6): the gust front expressed in the LIGHTING as well as the vertex
-    // sway — a slow ripple of the upper band threshold travelling the same direction as the
-    // displacement gusts, so light sweeps across the canopy the way the 80.lv Ghibli-island
-    // breakdown animates its vegetation highlights. Three ALU; the amplitude is a fraction of
-    // the band jitter so it can never flip a crown across a whole tone.
-    const fvWindLine = gustFront(positionWorld.xz).mul(0.045);
-    // FOLIAGE CLUMPS (2026-10-20 overhaul): near crowns read as smooth blobs ("broccoli") because
-    // each tone band is one clean shape across the whole crown. A read of the detail texture's
-    // value noise on the crown's surface (x/z leaned by height so a crown's side is not striped)
-    // slides the band thresholds per clump, so the light breaks into leafy masses with a dappled
-    // edge — still only ever the authored tones. Near trees only (gone by FOREST_CLUMP_FAR, inside
-    // the band collapse) and crowns only; one fetch per near crown fragment.
-    const fvClumpUv = vec2(
-        positionWorld.x.add(positionWorld.y.mul(0.6)),
-        positionWorld.z.sub(positionWorld.y.mul(0.4)),
-    )
-        .div(FOREST_CLUMP_WORLD);
-    const fvClumpNear = float(1).sub(smoothstep(
-        float(FOREST_CLUMP_FAR * 0.55),
-        float(FOREST_CLUMP_FAR),
-        length(cameraPosition.sub(positionWorld)),
-    ));
-    const fvClump = texture(detailTex, fvClumpUv).b.sub(0.5).mul(FOREST_CLUMP_SWING)
-        .mul(fvClumpNear).mul(fvIsCrown);
-    // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
-    // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
-    // of the authored tones.
-    const fvAoShift = float(1).sub(fvCol.x).mul(FOREST_AO_SHIFT).add(fvSeam);
-    const fvBandLo = smoothstep(
-        float(FOREST_BAND_LO).sub(0.10).add(fvAoShift).add(fvClump),
-        float(FOREST_BAND_MID).add(fvAoShift).add(fvClump),
-        fvWrap,
-    );
-    const fvBandHi = smoothstep(
-        float(FOREST_BAND_HI_LO).add(fvTreeRand).add(fvWindLine)
-            .add(fvAoShift)
-            .add(fvClump),
-        float(FOREST_BAND_HI).add(fvTreeRand).add(fvWindLine)
-            .add(fvAoShift)
-            .add(fvClump),
-        fvWrap,
-    );
-    const fvOcc = mix(
-        float(FOREST_OCCLUSION_FLOOR),
-        float(1),
-        smoothstep(float(FOREST_OCC_LO), float(FOREST_OCC_HI), fvCol.y),
-    );
-    // The mid tone is DERIVED from the species' own two colours rather than authored a third
-    // time — the same discipline as the shade recipe, so a palette edit cannot desynchronise
-    // three colours from each other.
-    const fvMidTone = mix(fvShadeCol, fvAlbedo, float(FOREST_MID_TONE));
-    // THE DISTANCE COLLAPSE (§1b R9 + Hoa's law), and it is the paint's half of what the LOD
-    // chain does for geometry: distant trees drop BANDS, not just polygons. The references
-    // measured it — far foliage desaturates 2-3x, lifts, and converges toward the sky — and
-    // Firewatch says the flattening is the POINT ("it flattens the shapes too... which is
-    // actually what we want"). Near a crown carries three tones; by FLAT_FAR it carries one
-    // (the mid tone), and `applyAerial` then does the atmospheric lift on top. Without this,
-    // every distant crown still sparkles with per-tree band structure the eye reads as noise,
-    // which is exactly the "distant creatures still flat dark polygons" class of defect.
-    const fvEyeDist = length(cameraPosition.sub(positionWorld));
-    const fvFlat = smoothstep(float(FOREST_FLAT_NEAR), float(FOREST_FLAT_FAR), fvEyeDist);
-    const fvCapFacing = fvN.y.add(dot(fvN.xz, normalize(uSunDir.xz)).mul(0.35));
-    const fvCap = smoothstep(float(0.55), float(0.92), fvCapFacing.add(fvClump.mul(0.6)))
-        .mul(smoothstep(float(0.70), float(0.92), fvCol.x))
-        .mul(float(1).sub(fvFlat))
-        .mul(fvIsCrown)
-        .mul(FOREST_CAP_GAIN);
-    const fvThree = mix(
-        mix(mix(fvShadeCol, fvMidTone, fvBandLo), fvAlbedo, fvBandHi),
-        fvAlbedo.mul(vec3(...FOREST_CAP_TINT)),
-        fvCap,
-    );
-    // PRE-SATURATED at distance, because the desaturators downstream cannot be retuned from
-    // here: `applyAerial` hazes toward the sky for the whole world and the grade applies
-    // `outputSaturation 0.72` after that. Measured against §1b R9 the far forest came back at
-    // 4.5-4.6x desaturation versus the references' 2-3x, and softening the flatten's own sky
-    // pull moved it by NOISE (4.51 -> 4.61) — the pull was never the culprit. So the far tone
-    // leans AWAY from its luma before the haze leans it back; the two roughly cancel into the
-    // measured band. The same overshoot-for-the-grade law as every palette in this file, in
-    // saturation rather than value.
-    const fvFarLuma = dot(fvMidTone, vec3(0.2126, 0.7152, 0.0722));
-    const fvFarTone = max(
-        mix(vec3(fvFarLuma, fvFarLuma, fvFarLuma), fvMidTone, float(FOREST_FAR_PRESAT)),
-        vec3(0, 0, 0),
-    );
-    const fvBody = mix(fvThree, fvFarTone, fvFlat).mul(mix(fvOcc, float(1), fvFlat));
-    // ⚠️ THE LIGHT MUST NOT DIM IN SHADE. The measured shade/lit VALUE RATIO already lives in
-    // `aShade`, computed on the CPU by the tested `shadeColourFor`. Dimming the ambient here
-    // as well would spend that ratio twice — precisely the Wave 0b defect that measured a
-    // near-black p10 = 0.0. The ambient is therefore sun-magnitude and only HUE-shifted toward
-    // the sky, which is what a shadow lit by the sky actually is.
-    // The light term flattens with the same ramp: a far crown is lit by ONE colour, not by a
-    // per-fragment band choice.
-    const fvLight = mix(
-        mix(mix(uSunColour, uSkyHorizon, float(0.55)), uSunColour, fvBandLo),
-        // 0.12, down from a first-cut 0.28: measured against §1b R9 the far forest came back
-        // at 4.5x desaturation against the references' 2-3x — the flatten and the aerial haze
-        // both pull toward sky, so the flatten's own pull must be gentle or they compound.
-        mix(uSunColour, uSkyHorizon, float(0.12)),
-        fvFlat,
-    );
-    const fvView = normalize(cameraPosition.sub(positionWorld));
-    // Sign as documented for the cloud field: uSunDir points TOWARD the sun and fvView points
-    // fragment->eye, so looking INTO the sun drives the dot toward -1.
-    const fvBack = clamp(dot(fvView, uSunDir).mul(-1), 0, 1).pow(2.5);
-    const fvRim = float(1).sub(abs(dot(fvN, fvView)));
-    const forestV2Col = fvBody.mul(fvLight)
-        .add(uSunColour.mul(fvBack.mul(fvRim).mul(fvCol.y).mul(FOREST_BACKLIT_GAIN)));
-    // The trees stand IN the valley mist with the ground under them (item 7), or every crown
-    // would pop out of the veil its own roots sit in.
-    forestV2Mat.colorNode = toOutput(applyAerial(forestV2Col, positionWorld, AERIAL_CEIL_WATER, 1, true));
+                // The clump's centre back on the sphere (inverse stereographic), and the dome's tilt.
+                const qc = best.sub(256).sub(offset).div(LEAF_CLUMPS.scale).toVar();
+                const r2 = dot(qc, qc);
+                const centre = vec3(qc.x.mul(2), float(1).sub(r2), qc.y.mul(2)).div(r2.add(1));
+                const bulged = normalize(n.add(n.sub(centre).mul(LEAF_CLUMPS.bulge)));
+                const seam = float(1).sub(smoothstep(float(0), float(LEAF_CLUMPS.seam), f2.sub(f1)));
+                // The threshold shift this clump takes: its seam into shade, and a small tone of its
+                // own, so neighbouring clumps separate by value rather than by an outline.
+                const tone = fract(bestH.mul(4096)).sub(0.5).mul(LEAF_CLUMPS.jitter);
+                result.assign(vec4(bulged, seam.mul(LEAF_CLUMPS.seamShift).add(tone)));
+            });
+            return result;
+        })() : null;
+        const fvN = (fvLeaf ? normalize(mix(fvBaseN, fvLeaf.xyz, fvLeafNear)) : normalize(fvBaseN)).toVar();
+        const fvSeam = fvLeaf ? fvLeaf.w.mul(fvLeafNear) : float(0);
+        const fvWrap = clamp(dot(fvN, uSunDir).add(FOREST_WRAP).div(1 + FOREST_WRAP), 0, 1)
+            .mul(mix(float(0.45), float(1), fvSunVis))
+            .mul(fvCloud);
+        // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
+        // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
+        // of the two authored tones.
+        // ⚠️ THREE TONES, NOT TWO — AND THE TWO-TONE VERSION IS WHY THE FOREST READ AS A SHEET.
+        //
+        // The game's camera looks DOWN at the forest, so the canopy TOP is the dominant surface,
+        // and on a blob normal field every top faces up. With the sun at its authored angle a
+        // canopy top computes wrap ~0.66 while the band ENDED at 0.58 — every top was already past
+        // the ramp, pinned to the lit tone, and 15,412 crowns rendered as one flat green sheet.
+        //
+        // A first attempt jittered each tree's threshold to break that up. It measured NOTHING
+        // (crown-scale mosaic 28.75 -> 29.03, inside noise) for the reason the numbers make
+        // obvious in hindsight: **moving a threshold the pixels have already passed changes
+        // nothing.** The band was saturated, not misplaced.
+        //
+        // So the ramp gains a third step and the upper transition is placed where canopy tops
+        // ACTUALLY sit. §1b R1 asks for 2-3 quantised steps and this is the third: sides read
+        // shade, the turn of the crown reads mid, and only the sun-facing top reaches full light.
+        // The per-tree jitter now rides the UPPER threshold, where it decides how much of each
+        // crown tips into the lit tone — so neighbouring trees separate into distinct tones and
+        // the sheet becomes the mosaic the reference island's aerial frame shows.
+        const fvTreeRand = fract(fvPhase.mul(0.1591549)).sub(0.5).mul(FOREST_BAND_JITTER);
+        // WIND-LINES (Wave 6): the gust front expressed in the LIGHTING as well as the vertex
+        // sway — a slow ripple of the upper band threshold travelling the same direction as the
+        // displacement gusts, so light sweeps across the canopy the way the 80.lv Ghibli-island
+        // breakdown animates its vegetation highlights. Three ALU; the amplitude is a fraction of
+        // the band jitter so it can never flip a crown across a whole tone.
+        const fvWindLine = gustFront(positionWorld.xz).mul(0.045);
+        // FOLIAGE CLUMPS (2026-10-20 overhaul): near crowns read as smooth blobs ("broccoli") because
+        // each tone band is one clean shape across the whole crown. A read of the detail texture's
+        // value noise on the crown's surface (x/z leaned by height so a crown's side is not striped)
+        // slides the band thresholds per clump, so the light breaks into leafy masses with a dappled
+        // edge — still only ever the authored tones. Near trees only (gone by FOREST_CLUMP_FAR, inside
+        // the band collapse) and crowns only; one fetch per near crown fragment.
+        const fvClumpUv = vec2(
+            positionWorld.x.add(positionWorld.y.mul(0.6)),
+            positionWorld.z.sub(positionWorld.y.mul(0.4)),
+        )
+            .div(FOREST_CLUMP_WORLD);
+        const fvClumpNear = float(1).sub(smoothstep(
+            float(FOREST_CLUMP_FAR * 0.55),
+            float(FOREST_CLUMP_FAR),
+            length(cameraPosition.sub(positionWorld)),
+        ));
+        const fvClump = texture(detailTex, fvClumpUv).b.sub(0.5).mul(FOREST_CLUMP_SWING)
+            .mul(fvClumpNear).mul(fvIsCrown);
+        // AO shifts the band THRESHOLD, never the colour — the cloud field's grammar. Darkening by
+        // AO is how a stylised canopy turns muddy; moving the threshold keeps every pixel on one
+        // of the authored tones.
+        const fvAoShift = float(1).sub(fvAo).mul(FOREST_AO_SHIFT).add(fvSeam);
+        const fvBandLo = smoothstep(
+            float(FOREST_BAND_LO).sub(0.10).add(fvAoShift).add(fvClump),
+            float(FOREST_BAND_MID).add(fvAoShift).add(fvClump),
+            fvWrap,
+        );
+        const fvBandHi = smoothstep(
+            float(FOREST_BAND_HI_LO).add(fvTreeRand).add(fvWindLine)
+                .add(fvAoShift)
+                .add(fvClump),
+            float(FOREST_BAND_HI).add(fvTreeRand).add(fvWindLine)
+                .add(fvAoShift)
+                .add(fvClump),
+            fvWrap,
+        );
+        const fvOcc = mix(
+            float(FOREST_OCCLUSION_FLOOR),
+            float(1),
+            smoothstep(float(FOREST_OCC_LO), float(FOREST_OCC_HI), fvHc),
+        );
+        // The mid tone is DERIVED from the species' own two colours rather than authored a third
+        // time — the same discipline as the shade recipe, so a palette edit cannot desynchronise
+        // three colours from each other.
+        const fvMidTone = mix(fvShadeCol, fvAlbedo, float(FOREST_MID_TONE));
+        // THE DISTANCE COLLAPSE (§1b R9 + Hoa's law), and it is the paint's half of what the LOD
+        // chain does for geometry: distant trees drop BANDS, not just polygons. The references
+        // measured it — far foliage desaturates 2-3x, lifts, and converges toward the sky — and
+        // Firewatch says the flattening is the POINT ("it flattens the shapes too... which is
+        // actually what we want"). Near a crown carries three tones; by FLAT_FAR it carries one
+        // (the mid tone), and `applyAerial` then does the atmospheric lift on top. Without this,
+        // every distant crown still sparkles with per-tree band structure the eye reads as noise,
+        // which is exactly the "distant creatures still flat dark polygons" class of defect.
+        const fvEyeDist = length(cameraPosition.sub(positionWorld));
+        const fvFlat = smoothstep(float(FOREST_FLAT_NEAR), float(FOREST_FLAT_FAR), fvEyeDist);
+        const fvCapFacing = fvN.y.add(dot(fvN.xz, normalize(uSunDir.xz)).mul(0.35));
+        const fvCap = smoothstep(float(0.55), float(0.92), fvCapFacing.add(fvClump.mul(0.6)))
+            .mul(smoothstep(float(0.70), float(0.92), fvAo))
+            .mul(float(1).sub(fvFlat))
+            .mul(fvIsCrown)
+            .mul(FOREST_CAP_GAIN);
+        const fvThree = mix(
+            mix(mix(fvShadeCol, fvMidTone, fvBandLo), fvAlbedo, fvBandHi),
+            fvAlbedo.mul(vec3(...FOREST_CAP_TINT)),
+            fvCap,
+        );
+        // PRE-SATURATED at distance, because the desaturators downstream cannot be retuned from
+        // here: `applyAerial` hazes toward the sky for the whole world and the grade applies
+        // `outputSaturation 0.72` after that. Measured against §1b R9 the far forest came back at
+        // 4.5-4.6x desaturation versus the references' 2-3x, and softening the flatten's own sky
+        // pull moved it by NOISE (4.51 -> 4.61) — the pull was never the culprit. So the far tone
+        // leans AWAY from its luma before the haze leans it back; the two roughly cancel into the
+        // measured band. The same overshoot-for-the-grade law as every palette in this file, in
+        // saturation rather than value.
+        const fvFarLuma = dot(fvMidTone, vec3(0.2126, 0.7152, 0.0722));
+        const fvFarTone = max(
+            mix(vec3(fvFarLuma, fvFarLuma, fvFarLuma), fvMidTone, float(FOREST_FAR_PRESAT)),
+            vec3(0, 0, 0),
+        );
+        const fvBody = mix(fvThree, fvFarTone, fvFlat).mul(mix(fvOcc, float(1), fvFlat));
+        // ⚠️ THE LIGHT MUST NOT DIM IN SHADE. The measured shade/lit VALUE RATIO already lives in
+        // `aShade`, computed on the CPU by the tested `shadeColourFor`. Dimming the ambient here
+        // as well would spend that ratio twice — precisely the Wave 0b defect that measured a
+        // near-black p10 = 0.0. The ambient is therefore sun-magnitude and only HUE-shifted toward
+        // the sky, which is what a shadow lit by the sky actually is.
+        // The light term flattens with the same ramp: a far crown is lit by ONE colour, not by a
+        // per-fragment band choice.
+        const fvLight = mix(
+            mix(mix(uSunColour, uSkyHorizon, float(0.55)), uSunColour, fvBandLo),
+            // 0.12, down from a first-cut 0.28: measured against §1b R9 the far forest came back
+            // at 4.5x desaturation against the references' 2-3x — the flatten and the aerial haze
+            // both pull toward sky, so the flatten's own pull must be gentle or they compound.
+            mix(uSunColour, uSkyHorizon, float(0.12)),
+            fvFlat,
+        );
+        const fvView = normalize(cameraPosition.sub(positionWorld));
+        // Sign as documented for the cloud field: uSunDir points TOWARD the sun and fvView points
+        // fragment->eye, so looking INTO the sun drives the dot toward -1.
+        const fvBack = clamp(dot(fvView, uSunDir).mul(-1), 0, 1).pow(2.5);
+        const fvRim = float(1).sub(abs(dot(fvN, fvView)));
+        const forestV2Col = fvBody.mul(fvLight)
+            .add(uSunColour.mul(fvBack.mul(fvRim).mul(fvHc).mul(FOREST_BACKLIT_GAIN)));
+        // The trees stand IN the valley mist with the ground under them (item 7), or every crown
+        // would pop out of the veil its own roots sit in.
+        forestV2Mat.colorNode = toOutput(applyAerial(forestV2Col, positionWorld, AERIAL_CEIL_WATER, 1, true));
+        if (cards) {
+            forestV2Mat.opacityNode = select(fvOnCard, fvCard.alpha, float(1));
+            forestV2Mat.alphaTest = 0.5;
+            forestV2Mat.alphaToCoverage = true;
+        }
+        return forestV2Mat;
+    };
+    const forestV2Mat = buildForestV2Material(false);
+    const forestCardMat = buildForestV2Material(true);
 
     // `forest &&`, not `forestV2` alone: the measurement lever must switch off the WHOLE
     // forest whichever one is mounted, or `?odysseyWorldNoForest=1` prices a half-empty world
@@ -5481,7 +5528,7 @@ export function createOdysseyWorld({
             const aCrownSnow = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
             const aShadePhase = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
             const aTrunk = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-            const mesh = new THREE.InstancedMesh(geo, forestV2Mat, n);
+            const mesh = new THREE.InstancedMesh(geo, src.userData.forest.cards ? forestCardMat : forestV2Mat, n);
             const trunkCol = getForestSpecies(bucket.speciesId).trunk;
             let cx = 0;
             let cz = 0;
@@ -5499,7 +5546,13 @@ export function createOdysseyWorld({
                 mesh.setMatrixAt(i, fm4.compose(fp, fq, fs));
                 aCrownSnow.setXYZW(i, t.crown[0], t.crown[1], t.crown[2], t.snow);
                 aShadePhase.setXYZW(i, t.shade[0], t.shade[1], t.shade[2], t.rot * 3.7);
-                aTrunk.setXYZW(i, trunkCol[0], trunkCol[1], trunkCol[2], sunVisAt(t.x, t.z));
+                aTrunk.setXYZW(
+                    i,
+                    trunkCol[0],
+                    trunkCol[1],
+                    trunkCol[2],
+                    packForestTrunkW(sunVisAt(t.x, t.z), t.scaleXZ * FOREST_V2_SCALE),
+                );
                 cx += t.x;
                 cz += t.z;
                 maxY = Math.max(maxY, t.y + (src.userData.forest.totalH * t.scaleY * FOREST_V2_SCALE));
@@ -5535,7 +5588,7 @@ export function createOdysseyWorld({
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat]
+    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat]
         .forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
@@ -5967,8 +6020,8 @@ export function createOdysseyWorld({
             // heroes shipped, leaking the compiled hero material on every world dispose; with
             // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
-            [groundMat, waterMat, skyMat, treeMat, forestV2Mat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat]
-                .forEach((m) => m.dispose());
+            [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat,
+                tarnMat].forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             // fishMat was missing here (the same SB-15 teardown class heroMat was): every world

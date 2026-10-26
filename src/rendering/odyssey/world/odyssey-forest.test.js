@@ -7,10 +7,13 @@ import {
     getForestSpecies,
 } from './odyssey-forest-species.js';
 import {
+    FOREST_PUFF_CARD,
+    FOREST_TRUNK_PACK,
     buildForestRoster,
     buildForestTreeGeometry,
     forestRosterBudget,
     icosahedronFaces,
+    packForestTrunkW,
     setForestBroadleafStyle,
     smoothMin,
 } from './odyssey-forest-geometry.js';
@@ -27,6 +30,8 @@ import {
 
 const ALL = buildForestRoster(ODYSSEY_FOREST_SPECIES);
 const attr = (g, name) => g.getAttribute(name);
+/** A puff card's vertex (see FOREST_PUFF_CARD): its `normal` carries the corner and radius. */
+const onCard = (g, i) => attr(g, 'aVert').getZ(i) === FOREST_PUFF_CARD.flag;
 
 describe('the roster is well-formed data', () => {
     it('has seven archetypes, each with three growth stages', () => {
@@ -125,6 +130,7 @@ describe('the sculptor produces sane geometry', () => {
         ALL.forEach((g) => {
             const n = attr(g, 'normal');
             for (let i = 0; i < n.count; i += 1) {
+                if (onCard(g, i)) continue; // see the card test
                 const len = Math.hypot(n.getX(i), n.getY(i), n.getZ(i));
                 expect(Number.isFinite(len)).toBe(true);
                 expect(len).toBeGreaterThan(0.5);
@@ -197,8 +203,15 @@ describe('the sculptor produces sane geometry', () => {
      */
     it('builds every broadleaf crown from countable puffs, each lit from its own centre', () => {
         ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
-            ['hero', 'mid'].forEach((lod) => {
-                const g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
+            // The solid puffs: the hero always, the mid tier when cards are off.
+            [['hero', 'puffs'], ['mid', 'solid']].forEach(([lod, style]) => {
+                setForestBroadleafStyle(style);
+                let g;
+                try {
+                    g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
+                } finally {
+                    setForestBroadleafStyle('puffs');
+                }
                 // Hero: 5 puffs of 80 faces, then 5 florets of 20; mid: 3 puffs of 20.
                 const sizes = lod === 'hero' ? [80, 80, 80, 80, 80, 20, 20, 20, 20, 20] : [20, 20, 20];
                 expect(g.userData.forest.hullTriangles, `${spec.id} ${lod}`)
@@ -225,6 +238,63 @@ describe('the sculptor produces sane geometry', () => {
     });
 
     /**
+     * PUFF CARDS (2026-10-26): beyond the hero band a broadleaf crown is the hero's layout drawn
+     * as cards, two triangles a puff that the shader turns to the eye. Each card's six vertices
+     * sit at its puff's centre, with the corner and the radius in `normal` and the card flag in
+     * `aVert.z`; the corners must wind counter-clockwise as the shader lays them out (u right, v
+     * up, seen from the eye), or the default back-face cull eats every card.
+     */
+    it('draws the mid and far broadleaf crowns as puff cards, the hero\'s layout at two triangles a puff', () => {
+        ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
+            [['mid', 10], ['far', 5]].forEach(([lod, puffs]) => {
+                const g = buildForestTreeGeometry(spec, spec.stages[1], lod, 9);
+                const label = `${spec.id} ${lod}`;
+                expect(g.userData.forest.cards, label).toBe(true);
+                expect(g.userData.forest.hullTriangles, label).toBe(puffs * 2);
+                const p = attr(g, 'position');
+                const n = attr(g, 'normal');
+                let cards = 0;
+                for (let i = 0; i < p.count; i += 6) {
+                    if (!onCard(g, i)) continue;
+                    cards += 1;
+                    let area = 0;
+                    for (let k = 0; k < 6; k += 1) {
+                        expect(onCard(g, i + k), label).toBe(true);
+                        expect(p.getX(i + k)).toBe(p.getX(i));
+                        expect(p.getY(i + k)).toBe(p.getY(i));
+                        expect(p.getZ(i + k)).toBe(p.getZ(i));
+                        expect(Math.abs(n.getX(i + k))).toBe(1);
+                        expect(Math.abs(n.getY(i + k))).toBe(1);
+                        expect(n.getZ(i + k)).toBe(n.getZ(i));
+                    }
+                    expect(n.getZ(i), label).toBeGreaterThan(0);
+                    // Twice the signed area of both triangles in (u, v): positive = CCW.
+                    for (let t = 0; t < 6; t += 3) {
+                        const ax = n.getX(i + t); const ay = n.getY(i + t);
+                        const bx = n.getX(i + t + 1); const by = n.getY(i + t + 1);
+                        const cx = n.getX(i + t + 2); const cy = n.getY(i + t + 2);
+                        area += ((bx - ax) * (cy - ay)) - ((by - ay) * (cx - ax));
+                    }
+                    expect(area, label).toBe(8);
+                }
+                expect(cards, label).toBe(puffs);
+            });
+        });
+    });
+
+    it('packs the tree\'s scale and its sun visibility into one float, off the integer edges', () => {
+        [[0, 3.1], [1, 5.8], [0.37, 4.6], [Number.NaN, 4]].forEach(([vis, scale]) => {
+            const w = packForestTrunkW(vis, scale);
+            expect(Math.floor(w) / FOREST_TRUNK_PACK.quant).toBeCloseTo(scale, 2);
+            const frac = w - Math.floor(w);
+            expect(frac).toBeGreaterThanOrEqual(FOREST_TRUNK_PACK.lo - 1e-9);
+            expect(frac).toBeLessThanOrEqual(FOREST_TRUNK_PACK.lo + FOREST_TRUNK_PACK.span + 1e-9);
+            const back = (frac - FOREST_TRUNK_PACK.lo) / FOREST_TRUNK_PACK.span;
+            expect(back).toBeCloseTo(Number.isFinite(vis) ? vis : 1, 4);
+        });
+    });
+
+    /**
      * ⚠️ ONE PACKED vec4 — WebGPU allows only 8 vertex buffers, and separate channels plus the
      * per-instance set needed TEN. See the attribute's own note in the geometry module.
      */
@@ -238,8 +308,9 @@ describe('the sculptor produces sane geometry', () => {
                 expect(v.getY(i)).toBeGreaterThanOrEqual(0);
                 expect(v.getY(i)).toBeLessThanOrEqual(1);
                 // The crown mask is a FLAG, not a ramp: anything between reads as a partial
-                // trunk and would smear the hue opposition R6 measured.
-                expect([0, 1]).toContain(v.getZ(i));
+                // trunk and would smear the hue opposition R6 measured. (A puff card's crown
+                // carries the card flag instead.)
+                expect([0, 1, FOREST_PUFF_CARD.flag]).toContain(v.getZ(i));
                 expect(v.getW(i)).toBeGreaterThanOrEqual(0);
                 expect(v.getW(i)).toBeLessThanOrEqual(1);
             }
@@ -431,6 +502,7 @@ describe('the sculptor produces sane geometry', () => {
             const p = attr(g, 'position');
             let v = 0;
             for (let i = 0; i < p.count; i += 3) {
+                if (onCard(g, i)) continue; // a card is turned to the eye in the shader
                 const ax = p.getX(i); const ay = p.getY(i); const az = p.getZ(i);
                 const bx = p.getX(i + 1); const by = p.getY(i + 1); const bz = p.getZ(i + 1);
                 const cx = p.getX(i + 2); const cy = p.getY(i + 2); const cz = p.getZ(i + 2);
@@ -440,7 +512,8 @@ describe('the sculptor produces sane geometry', () => {
             }
             return v;
         };
-        ALL.forEach((g) => {
+        // A far crown drawn as cards is nothing but cards: no hull for a volume to measure.
+        ALL.filter((g) => !(g.userData.forest.cards && g.userData.forest.lod === 'far')).forEach((g) => {
             const f = g.userData.forest;
             expect(
                 signedVolume(g),

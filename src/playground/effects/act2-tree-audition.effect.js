@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, dot, float, max, mix, normalize, normalWorld,
-    positionWorld, smoothstep, uniform, vec3,
+    Fn, abs, attribute, cameraPosition, clamp, dot, float, fract, max, min, mix, modelWorldMatrixInverse,
+    normalGeometry, normalize, normalWorld, positionLocal, positionWorld, select, smoothstep, step, uniform,
+    varyingProperty, vec3, vec4,
 } from 'three/tsl';
 
 import {
@@ -10,6 +11,7 @@ import {
 import {
     buildForestTreeGeometry, forestRosterBudget, setForestBroadleafStyle,
 } from '../../rendering/odyssey/world/odyssey-forest-geometry.js';
+import { forestCardFragment, forestCardVertex } from '../../rendering/odyssey/world/odyssey-forest-cards.js';
 import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 
 /**
@@ -36,6 +38,7 @@ import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/
  *   ?lod=hero|mid|far   which tier the board shows (default hero)
  *   ?species=S2         audition ONE species across its stages, filling the board
  *   ?broadleaf=traced   the smooth-min broadleaf crown the puffs replaced, for an A/B
+ *   ?broadleaf=solid    solid puffs at every tier (no puff cards beyond the hero), for an A/B
  *   ?spin=0             stop the slow turntable (silhouette review wants motion; a still
  *                       capture wants it off, and `?t=` freezes update() dt anyway)
  */
@@ -57,8 +60,10 @@ export function create({
     const lod = ['hero', 'mid', 'far'].includes(params?.get?.('lod')) ? params.get('lod') : 'hero';
     const onlyId = params?.get?.('species');
     const spin = params?.get?.('spin') !== '0';
-    // ?broadleaf=traced: the smooth-min crown the puffs replaced (2026-10-26), for an A/B.
-    setForestBroadleafStyle(params?.get?.('broadleaf') === 'traced' ? 'traced' : 'puffs');
+    // ?broadleaf=traced: the smooth-min crown the puffs replaced (2026-10-26), for an A/B;
+    // ?broadleaf=solid: the solid puffs at every tier, before the mid and far tiers became cards.
+    const style = params?.get?.('broadleaf');
+    setForestBroadleafStyle(['traced', 'solid'].includes(style) ? style : 'puffs');
 
     const species = onlyId
         ? ODYSSEY_FOREST_SPECIES.filter((s) => s.id.startsWith(onlyId))
@@ -102,9 +107,37 @@ export function create({
         // ground. See the attribute's note in odyssey-forest-geometry.js for why `y > 0` is
         // NOT a usable trunk test and why the channels had to be packed at all.
         const vcol = attribute('aVert', 'vec4');
-        const isCrown = vcol.z;
+        // Puff cards (the mid and far broadleaf crowns) carry the card flag in z and are drawn by
+        // the world's own card code, turned to the eye in the mesh's frame (no rotation, one
+        // uniform scale, so the card's radius stays in the tree's units).
+        const isCard = step(float(1.5), vcol.z);
+        const isCrown = min(vcol.z, 1);
+        const vRight = varyingProperty('vec3', 'vAuditionCardRight');
+        const vUp = varyingProperty('vec3', 'vAuditionCardUp');
+        mat.positionNode = Fn(() => {
+            const card = forestCardVertex({
+                centre: positionLocal,
+                raw: normalGeometry,
+                scale: float(1),
+                eye: modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz,
+            });
+            vRight.assign(card.right);
+            vUp.assign(card.up);
+            return positionLocal.add(card.offset.mul(isCard));
+        })();
+        const card = forestCardFragment({
+            raw: normalGeometry,
+            right: vRight,
+            up: vUp,
+            phase: fract(normalGeometry.z.mul(7.31)).mul(Math.PI * 2),
+        });
+        const onCard = isCard.greaterThan(0.5);
+        const normal = select(onCard, card.normal, normalWorld);
+        mat.opacityNode = select(onCard, card.alpha, float(1));
+        mat.alphaTest = 0.5;
+        mat.alphaToCoverage = true;
         const albedo = mix(aTrunk, aCrown, isCrown);
-        const wrap = clamp(dot(normalWorld, uSunDir).add(0.70).div(1.70), 0, 1);
+        const wrap = clamp(dot(normal, uSunDir).add(0.70).div(1.70), 0, 1);
         // AO shifts the band THRESHOLD rather than multiplying the colour — the cloud field's
         // grammar. Darkening by AO is how a stylised canopy turns muddy.
         const band = smoothstep(float(0.40).sub(vcol.x.mul(0.10)), float(0.58), wrap);
@@ -119,7 +152,7 @@ export function create({
         const light = mix(uSunColour.mul(recipe.value).add(uAmbient.mul(0.18)), uSunColour.mul(0.88), band);
         const view = normalize(cameraPosition.sub(positionWorld));
         const backlit = clamp(dot(view, uSunDir).mul(-1), 0, 1).pow(2.5);
-        const rim = float(1).sub(abs(dot(normalWorld, view)));
+        const rim = float(1).sub(abs(dot(normal, view)));
         mat.colorNode = Fn(() => body.mul(light)
             .add(uSunColour.mul(backlit.mul(rim).mul(vcol.y).mul(0.30))))();
         mat.fog = false;

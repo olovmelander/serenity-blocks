@@ -835,10 +835,59 @@ function buildBroadleaf(spec, stage, lod, seed) {
  * on masses instead of shards); mid 3 puffs x 20; far one round hull at the cluster's centre.
  */
 const PUFF_UP_BIAS = 0.22;
+/** The broadleaf builder in use (see setForestBroadleafStyle). */
+const broadleafState = { style: 'puffs', cards: true };
 /** Florets per hero crown (see buildBroadleafPuffs). */
 const PUFF_FLORETS = 5;
+/**
+ * PUFF CARDS (the mid and far tiers, 2026-10-26). A 20-face icosahedron is the cheapest round
+ * hull, and it is not round: at 200-520 u every mid crown showed hexagons with flat bellies, a
+ * low-polygon tree. So beyond the hero band each puff is a CARD, two triangles that the vertex
+ * shader turns to face the eye, and the fragment shader draws the puff on it: a scalloped round
+ * outline (alpha to coverage, so MSAA smooths it) and the normal of the sphere behind each pixel,
+ * shaded exactly like a hero puff. A card costs 2 triangles where a puff cost 20, so the mid
+ * crown carries the hero's whole layout (5 puffs and 5 florets) for less than its 3 icosahedra.
+ *
+ * Vertex contract for a card (all six vertices sit at the puff's centre):
+ *   normal = (u, v, radius)  u, v the corner (+-1), radius in the tree's own units
+ *   aVert  = (openness, height in crown, `flag`, wind mask), at the centre
+ * `flatten` and `belly` are the hero puff's (its outline above and below the centre, in radii);
+ * `push` moves the card toward the eye so the limbs inside a puff stay hidden; `lobes`/`scallop`
+ * shape the leafy outline, faded out over `scallopFade` (fwidth of the card's radius coordinate)
+ * as the card shrinks; `edgeGain` is the alpha ramp the coverage turns into an edge.
+ */
+export const FOREST_PUFF_CARD = Object.freeze({
+    flag: 2,
+    flatten: 0.86,
+    belly: 0.72,
+    push: 0.7,
+    upBias: PUFF_UP_BIAS,
+    lobes: 6,
+    scallop: 0.10,
+    lobes2: 11,
+    scallop2: 0.05,
+    scallopFade: Object.freeze([0.056, 0.14]),
+    edgeGain: 6,
+});
+/**
+ * The card's corners as two triangles, (u, v), counter-clockwise seen from the eye.
+ */
+const PUFF_CARD_CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
+/**
+ * `aTrunk.w` carries two numbers, because a card needs the tree's scale in the vertex shader and
+ * the forest is one buffer short of WebGPU's eight: the integer part is the instance's horizontal
+ * scale in 1/`quant` steps, the fraction the terrain's sun visibility squeezed into `lo`..`lo+span`
+ * (kept off 0 and 1, so a varying's last-bit noise can never wrap it across the integer).
+ */
+export const FOREST_TRUNK_PACK = Object.freeze({ quant: 256, lo: 0.05, span: 0.9 });
+export function packForestTrunkW(sunVis, scale) {
+    const vis = Math.min(1, Math.max(0, Number.isFinite(sunVis) ? sunVis : 1));
+    return Math.round(Math.max(0, scale) * FOREST_TRUNK_PACK.quant)
+        + FOREST_TRUNK_PACK.lo + (vis * FOREST_TRUNK_PACK.span);
+}
 function buildBroadleafPuffs(spec, stage, lod, seed) {
     const rnd = makeRng(seed);
+    const cards = lod !== 'hero' && broadleafState.cards;
     const trunkH = spec.trunkH * stage.h;
     const trunkR = spec.trunkR * stage.w;
     const crownW = spec.crownW * 1.55 * stage.w;
@@ -855,7 +904,7 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     // `puffSpread` (species, default 1): a wide crown carries its ring further out and lower and
     // its top puff lower, the umbrella of a cherry or a maple.
     const spread = spec.puffSpread ?? 1;
-    const ringCount = lod === 'hero' ? 4 : 2;
+    const ringCount = (lod === 'hero' || cards) ? 4 : 2;
     const puffs = [{
         x: (rnd() - 0.5) * crownW * 0.12,
         y: centreY + (crownH * (0.26 - ((spread - 1) * 0.30))),
@@ -879,7 +928,7 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     // cauliflower's florets. A 42-vertex puff can only carry angular bumps on its outline; a
     // floret is a real bump with its own lit cap, so the silhouette scallops like foliage.
     const florets = [];
-    if (lod === 'hero') {
+    if (lod === 'hero' || (cards && lod === 'mid')) {
         for (let i = 0; i < PUFF_FLORETS; i += 1) {
             const host = puffs[i % puffs.length];
             // Outward from the crown's axis (the top puff picks its own way), and well up: on the
@@ -905,7 +954,7 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     // The far tier: one round hull over the cluster, centred where the cluster's mass is (so a
     // crown crossing the LOD boundary does not move), reaching to its outline.
     let farHull = null;
-    if (lod === 'far') {
+    if (lod === 'far' && !cards) {
         let cx = 0; let cy = 0; let cz = 0; let wsum = 0;
         puffs.forEach((pf) => {
             const w = pf.r ** 3;
@@ -934,7 +983,7 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     // The far hull is wider than tall, like the cluster it stands for; a mid puff (20 faces) is
     // kept rounder, or its facets read as stacked plates.
     const flatten = { hero: 0.86, mid: 0.94, far: 0.62 }[lod] ?? 0.86;
-    crownPuffs.forEach((pf, pi) => {
+    (cards ? [] : crownPuffs).forEach((pf, pi) => {
         const { idx, dir, triCount } = shapeOf(pf);
         hullTriangles += triCount;
         const salt = (pi * 7.31) + (seed * 0.0013);
@@ -989,10 +1038,25 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     });
     icoFine.dispose();
     icoCoarse.dispose();
+    // The cards (see FOREST_PUFF_CARD): the puff's openness is the hero's `puffOpen`, and the
+    // fragment shader adds the cap's own from the sphere normal it draws.
+    if (cards) {
+        crownPuffs.forEach((pf) => {
+            const along = Math.min(1, Math.max(0, (pf.y - bowlY) / (crownH || 1)));
+            const puffOpen = 0.55 + (0.45 * along);
+            const wHere = lod === 'far' ? 0 : Math.max(0, Math.min(1, pf.y / (totalH || 1)));
+            PUFF_CARD_CORNERS.forEach(([u, v]) => {
+                positions.push(pf.x, pf.y, pf.z);
+                normals.push(u, v, pf.r);
+                vert.push(puffOpen, along, FOREST_PUFF_CARD.flag, wHere);
+            });
+            hullTriangles += 2;
+        });
+    }
 
     if (lod === 'far') {
         return {
-            positions, normals, vert, totalH, crownW, centreY, hullTriangles,
+            positions, normals, vert, totalH, crownW, centreY, hullTriangles, cards,
         };
     }
 
@@ -1067,7 +1131,7 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
     }
 
     return {
-        positions, normals, vert, totalH, crownW, centreY, hullTriangles,
+        positions, normals, vert, totalH, crownW, centreY, hullTriangles, cards,
     };
 }
 
@@ -1076,9 +1140,13 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
  * 'traced' (the smooth-min hull it replaced), one switch from restoration (ADR-0015) and the
  * audition board's A/B lever.
  */
-const broadleafState = { style: 'puffs' };
+/**
+ * 'puffs' (the default: solid hero puffs, cards beyond the hero band), 'solid' (solid puffs at
+ * every tier, the §10 crowns) or 'traced'.
+ */
 export function setForestBroadleafStyle(style) {
     broadleafState.style = style === 'traced' ? 'traced' : 'puffs';
+    broadleafState.cards = style !== 'solid' && style !== 'traced';
 }
 
 /**
@@ -1131,6 +1199,8 @@ export function buildForestTreeGeometry(spec, stage, lod, seed = 1) {
         hullTriangles: built.hullTriangles ?? built.positions.length / 9,
         totalH: built.totalH,
         crownW: built.crownW,
+        // The crown is drawn as puff cards (FOREST_PUFF_CARD), which need the card material.
+        cards: built.cards === true,
         // Exposed so a test can check for the cloud sculptor's collapse-to-centre defect,
         // which is a collapse toward THIS point and not toward the world origin.
         centreY: built.centreY,
