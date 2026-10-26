@@ -28,15 +28,13 @@ import { MenuLight } from './menu-light.js';
 import { STILLFALL_PUZZLES, openPuzzleIds } from '../../core/stillfall/puzzle-bank.js';
 import { installStillfallHud, readSolvedStillfall } from '../stillfall/stillfall-hud.js';
 import { odysseyMeterHtml } from '../keystone/odyssey-meter.js';
+import { csIcon } from '../components/cosmic-icons.js';
+import { armTwoPressQuit, canQuitDesktop } from '../desktop-quit.js';
 
 const LAST_MODE_KEY = 'serenity.menu.lastMode';
 const ODYSSEY_PROGRESS_KEY = 'serenityBlocks_odysseyProgress';
 const WORDMARK_DIR = './assets/branding/modes/';
 const HOVER_SETTLE_MS = 50;
-const QUIT_CONFIRM_MS = 4000;
-const QUIT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" '
-    + 'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-    + '<path d="M12 3.8v7.4"/><path d="M7.1 6.6a7.2 7.2 0 1 0 9.8 0"/></svg>';
 
 /**
  * Copy and presentation for each entry in the list. Numbers come from live data. `art`
@@ -318,36 +316,18 @@ class MainMenu {
     }
 
     /**
-     * Desktop builds end the dock with Quit. It takes two presses (the label asks for
-     * the second), so a stray controller press never closes the game.
+     * Desktop builds end the dock with Quit, set apart from the places the dock opens. It
+     * takes two presses (src/ui/desktop-quit.js), so a stray controller press never closes
+     * the game.
      */
     mountQuit() {
         const dock = this.root.querySelector('.sb-dock');
-        if (typeof window.electronAPI?.invoke !== 'function' || !dock || dock.querySelector('.sb-dock__btn--quit')) {
-            return;
-        }
+        if (!canQuitDesktop() || !dock || dock.querySelector('.sb-dock__btn--quit')) return;
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'sb-dock__btn sb-dock__btn--quit';
-        button.innerHTML = `${QUIT_ICON}<span>Quit</span>`;
-        const label = button.querySelector('span');
-        let timer = null;
-        const reset = () => {
-            clearTimeout(timer);
-            button.classList.remove('is-confirming');
-            label.textContent = 'Quit';
-        };
-        button.addEventListener('click', () => {
-            if (!button.classList.contains('is-confirming')) {
-                button.classList.add('is-confirming');
-                label.textContent = 'Press again to quit';
-                timer = setTimeout(reset, QUIT_CONFIRM_MS);
-                return;
-            }
-            reset();
-            Promise.resolve(window.electronAPI.invoke('desktop:quit')).catch(() => {});
-        });
-        button.addEventListener('blur', reset);
+        button.innerHTML = `${csIcon('power', 20)}<span>Quit</span>`;
+        armTwoPressQuit(button, { label: button.querySelector('span') });
         dock.appendChild(button);
     }
 
