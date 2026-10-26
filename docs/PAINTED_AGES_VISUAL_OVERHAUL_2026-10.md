@@ -225,10 +225,63 @@ runs: the same within noise on the RTX (about 0.7 ms at high day and 2 ms at fir
 captured and look right. (Close-ups through the `look=` lens can show the land fan's edge: the
 lens turns past the bearings the land is built for.)
 
+## Poplars: windbreak rows and their shadows (2026-10-26)
+
+The owner asked how the trees could be improved. Captures showed three things: the poplars cast
+no shadow (they read as floating, most of all at the golden hours, when everything else lays a
+long shadow), they stood scattered at random rather than in the windbreak rows the module
+described, and 31 of the 170 (the nearest and largest) stood where no screen could see them,
+even at 21:9. This pass takes the first two of the four suggested steps; the shape (a
+Blender-grown columnar poplar) and the autumn colour are the next ones.
+
+- **Rows** (`painted-ages-life.js` `poplarRows`). The valley is planted as a farmed valley plants
+  it: straight windbreaks along the banks, parallel to the river's course (a fifth of them doubled,
+  the second line staggered), rows down the edges of fields running out from the water, and a few
+  wild clumps by it. A planting is one age (heights within 12 %) and turns together, so a green row
+  can stand beside a gold one. The river's stretch is cut into fourteen reaches taken in a seeded
+  turn, so rows stand all along the valley at every tier; a smaller tier keeps whole rows (the
+  first 90, 150 or 220 trees of one list) rather than thinning each. Every tree stands on level
+  ground just above the river's floor and where a 16:9 screen sees its middle at rest
+  (`seenAtRest`, a CPU twin of `pose()` checked against three's own projection). The tiers went
+  from 70 / 110 / 170 trees to 90 / 150 / 220, all of them in view.
+- **Shadows** (`createPoplarShade`, `poplarShadeAt`). The land's own shadow targets are 2–3 m a
+  texel, too coarse for a crown 4 m wide, so the trees have their own map: an R8 target laid out
+  on a level plane at 6 m, where every point is moved along its sun ray to the plane, holding the
+  height of the highest tree on that ray (the caster shares the poplars' geometry and instance
+  matrices, writes its height and keeps the highest by `MaxEquation` blending, under a hand-set
+  oblique projection). A receiver is in a tree's shadow where that height is above its own, read
+  in four bilinear taps for a soft edge, so a shadow that reaches a slope climbs it at the right
+  length and nothing above the trees is ever shaded by them. The land multiplies it into the
+  sun's light; the trees read it too, lifted by the rise of a ray over 7.5 m so a crown never
+  shades its own far side (the wrap light gives it its form) but another row does. The map's size
+  is set once for the longest shadows (the sun at 4°, any bearing; 785 × 1759 at High, 1.2 m a
+  texel, capped at 2048 a side), its box follows the sun with its corner snapped to whole texels
+  (no crawl), and it is re-drawn only when the sun has moved 0.1°. A draw three skipped (its
+  pipeline still building, as in the real game's first frames) is not counted: the land stays lit
+  and the map is asked for again. Shadows fade out between 4.5° and 1.5° of sun and are off under
+  the horizon and when the poplars are hidden.
+- **Cost, by construction** (not timed: parallel sessions were on both GPUs). One instanced draw of
+  the trees (≈ 53 k triangles at High) into a 1.4 MB target, every few frames while the sun moves;
+  four more bilinear taps on the land wherever its sun ray falls in the box (the valley), one on
+  Minimal (2.4 m texels); fifty more trees at High. No new pass in the frame itself.
+
+Verification: the eight theme suites (255 tests: rows straight within 0.6 m and of one age, every
+tree in the 16:9 frame, every tier at its full count and spread over a kilometre of river, the
+box holding every tree's shadow at any sun, the map drawn once, re-asked for after a skipped draw,
+skipped when hidden or under the horizon, and the caster built for WGSL and GLSL); the map read
+back from the GPU (its footprint where the plane shift puts it); playground captures at five
+hours against origin/main, close-ups, Minimal, Low, WebGL2, phone portrait and 21:9; and the real
+game (single player on Painted Ages at High: the map drawn, 220 trees, no console errors).
+
 ## Captures
 
 | What | Image |
 |---|---|
+| Poplars: the valley's right third before and after, morning, noon, afternoon | [poplars-before-after.jpg](painted-ages-captures/poplars-before-after.jpg) |
+| Poplars: the whole frame before and after, morning, afternoon, sunset | [poplars-hours.jpg](painted-ages-captures/poplars-hours.jpg) |
+| Poplars: a close-up of the rows and their afternoon shadows (the hill's shadow over three trees) | [poplars-closeup.jpg](painted-ages-captures/poplars-closeup.jpg) |
+| Poplars: Minimal, Low, WebGL2 | [poplars-tiers.jpg](painted-ages-captures/poplars-tiers.jpg) |
+| Poplars: the real game, afternoon | [poplars-ingame.jpg](painted-ages-captures/poplars-ingame.jpg) |
 | Atmosphere pass: before and after at five hours | [atmosphere-before-after.jpg](painted-ages-captures/atmosphere-before-after.jpg) |
 | Atmosphere pass: the six hours | [atmosphere-hours.jpg](painted-ages-captures/atmosphere-hours.jpg) |
 | Atmosphere pass: cumulus at high day and backlit, the sun at first light, the river, perfect clear (before / after) | [atmosphere-details.jpg](painted-ages-captures/atmosphere-details.jpg) |
