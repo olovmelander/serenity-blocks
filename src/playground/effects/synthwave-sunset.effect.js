@@ -27,6 +27,8 @@
  *   eye=x,y,z&aim=x,y,z      an inspection lens from eye toward aim, world metres (fov=<deg>,
  *                            default 40), in place of the game camera: e.g. the coaster's
  *                            circuit from above the sea, eye=95,38,-45&aim=37,12,-88&fov=42
+ *   follow=<i>               a long lens from the rest eye that keeps gull i in the middle of the
+ *                            frame (fov=<deg>, default 4): its shape, wingbeat and light up close
  *   noPost=1                 raw scene (no bloom/grade)
  *   noMist=1 / noShafts=1    the post without its sea mist / without the sun's shafts (A/B)
  *   pointerX / pointerY      hold a pointer-parallax offset (-1..1)
@@ -35,6 +37,7 @@ import * as THREE from 'three/webgpu';
 import { RIG } from '../../themes/synthwave-sunset/synthwave-sunset-tsl.js';
 import { SynthwaveWorld, readBoardRect } from '../../themes/synthwave-sunset/synthwave-sunset-world.js';
 import { SynthwaveSunsetPost, POST_LOOK } from '../../themes/synthwave-sunset/synthwave-sunset-post.js';
+import { gullPosition } from '../../themes/synthwave-sunset/synthwave-sunset-gull-flight.js';
 
 export const meta = {
     id: 'synthwave-sunset',
@@ -155,7 +158,28 @@ export function create({
     const inspect = params.has('eye') && params.has('aim') && lens.length === 6 && lens.every(Number.isFinite)
         ? { eye: lens.slice(0, 3), aim: lens.slice(3), fov: num(params, 'fov', 40) } : null;
     /** The icon framing (or an inspection lens): applied after the world's camera rig. */
+    const follow = params.has('follow') ? Math.max(0, Math.round(num(params, 'follow', 0))) : -1;
+    const followAt = [0, 0, 0, 1];
+    /** Aim at gull `follow` where the vertex stage puts it (the CPU twin, with its roost and startle). */
+    const aimFollow = (cam) => {
+        const { gulls } = world;
+        if (!gulls || follow >= gulls.count) return;
+        const t = world.u.gullTime.value;
+        const st = gulls.startle;
+        gullPosition(follow, t, followAt, {
+            leaveAt: gulls.roost.leaveAt[follow], backAt: gulls.roost.backAt[follow], startle: st, now: st.clock,
+        });
+        cam.fov = num(params, 'fov', 4);
+        cam.updateProjectionMatrix();
+        cam.up.set(0, 1, 0);
+        cam.lookAt(followAt[0], followAt[1], followAt[2]);
+        cam.updateMatrixWorld();
+    };
     const aimIcon = (cam) => {
+        if (follow >= 0) {
+            aimFollow(cam);
+            return;
+        }
         if (inspect) {
             cam.fov = inspect.fov;
             cam.updateProjectionMatrix();
@@ -225,6 +249,14 @@ export function create({
         },
         seek(time) {
             seekTo(time);
+        },
+        /** The first frame waits (not for long) for the gulls' model, so a capture shows the birds. */
+        async renderAsync() {
+            await Promise.race([world.gullsReady, new Promise((resolve) => { setTimeout(resolve, 6000); })]);
+            for (let i = 0; i < 2; i += 1) {
+                if (post) post.render();
+                else renderer.render(scene, camera);
+            }
         },
         render() {
             if (post) post.render();
