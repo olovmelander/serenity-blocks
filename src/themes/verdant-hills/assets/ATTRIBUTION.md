@@ -191,3 +191,17 @@ Like the pack they are project-original and procedural: no third-party data, pho
 or scan goes into them and the script fetches nothing from the network. Without the files
 the theme makes a coarse land map and the same clouds on the spot. Regenerate them with
 `node scripts/verdant-hills/bake-land.mjs`.
+
+## The flock's two models
+
+Two more files are not part of the Blender pack and are not listed in `asset-manifest.json`:
+`verdant-ewe.glb` and `verdant-lamb.glb`, the living flock's black-faced ewe and her lamb, each one
+skinned mesh on the twenty bones of `src/themes/verdant-hills/verdant-hills-sheep-rig.js`. Both are
+project-original and procedural: authored on 2026-10-26 for this repository by
+`scripts/blender/verdant_hills_sheep.py` (headless Blender 5.2: a signed distance field built round
+the rig's own joints, meshed by surface nets with the Grainfields horse's helpers in
+`scripts/blender/grainfields/horse_sdf.py`, decimated, mirrored, with its paint and occlusion baked)
+and skinned and written by `scripts/verdant-hills/model-sheep.mjs`. No scan, photograph, download or
+generated model goes into them, and the scripts fetch nothing from the network. The same Blender and
+scripts give the same bytes: `node scripts/verdant-hills/model-sheep.mjs`. Without them the hills keep
+the pack's still sheep (`sheep_a`, `sheep_b`). Licence: the same as the project (MIT, project-local).

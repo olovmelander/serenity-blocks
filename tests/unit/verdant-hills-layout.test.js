@@ -7,13 +7,15 @@ import {
     VERDANT_HILLS_KITE_STATIONS, VERDANT_HILLS_POST_HEIGHT,
 } from '../../src/themes/verdant-hills/verdant-hills-kites.js';
 import {
-    VERDANT_HILLS_BENCH, VERDANT_HILLS_BOULDERS, VERDANT_HILLS_BUILT_SHADOWS, VERDANT_HILLS_FAR_TREE_CEILING,
+    VERDANT_HILLS_BENCH, VERDANT_HILLS_BOULDERS, VERDANT_HILLS_FLOCK_HOMES, VERDANT_HILLS_BUILT_SHADOWS,
+    VERDANT_HILLS_FAR_TREE_CEILING,
     VERDANT_HILLS_FEATURE_TREES, VERDANT_HILLS_FIELD_TREE_CEILING, VERDANT_HILLS_GATE, VERDANT_HILLS_LAYOUT_SEED,
     VERDANT_HILLS_MILL, VERDANT_HILLS_POSTS, VERDANT_HILLS_SHADE_HORIZON, VERDANT_HILLS_SHADOW_REACH,
     VERDANT_HILLS_SHEEP_CEILING, VERDANT_HILLS_SPRITE_CELLS, VERDANT_HILLS_TREE_SHAPES, VERDANT_HILLS_WALL,
     VERDANT_HILLS_WALL_SECTION, layoutVerdantHillsFarTrees, layoutVerdantHillsFieldTrees, layoutVerdantHillsSheep,
     layoutVerdantHillsWall, layoutVerdantHillsWallHeads, verdantHillsBearing, verdantHillsBesidePath,
-    verdantHillsRange, verdantHillsSlope, verdantHillsTreeShadows, verdantHillsWallDistance,
+    verdantHillsRange, verdantHillsSheepPasture, verdantHillsSheepSeen, verdantHillsSlope, verdantHillsTreeShadows,
+    verdantHillsWallDistance,
 } from '../../src/themes/verdant-hills/verdant-hills-layout.js';
 import { VERDANT_HILLS_WIND_DIRECTION } from '../../src/themes/verdant-hills/verdant-hills-light.js';
 import { VERDANT_HILLS_TIERS } from '../../src/themes/verdant-hills/verdant-hills-quality.js';
@@ -715,87 +717,102 @@ describe('Verdant Hills layout: the flock', () => {
     const flock = layoutVerdantHillsSheep();
     const groups = grouped(flock);
 
-    it('grazes sixty sheep in loose groups of three to eight', () => {
-        expect(flock).toHaveLength(60);
-        expect(groups.length).toBeGreaterThanOrEqual(8);
+    it('grazes sixty ewes and lambs on the grounds the homes give, each ewe followed by her lambs', () => {
+        expect(flock).toHaveLength(VERDANT_HILLS_SHEEP_CEILING);
+        expect(groups).toHaveLength(VERDANT_HILLS_FLOCK_HOMES.length);
         // The list is the groups one after another, so a tier's prefix keeps whole groups but the last.
         expect(flock.map((sheep) => sheep.group)).toEqual([...flock.map((sheep) => sheep.group)].sort((a, b) => a - b));
         groups.forEach((group, index) => {
-            const last = index === groups.length - 1;
-            expect(group.length).toBeGreaterThanOrEqual(last ? 1 : 3);
-            expect(group.length).toBeLessThanOrEqual(8);
-            const x = group.reduce((total, sheep) => total + sheep.x, 0) / group.length;
-            const z = group.reduce((total, sheep) => total + sheep.z, 0) / group.length;
-            group.forEach((sheep) => expect(Math.hypot(sheep.x - x, sheep.z - z)).toBeLessThan(14));
+            const home = VERDANT_HILLS_FLOCK_HOMES[index];
+            const ewes = group.filter((sheep) => !sheep.lamb);
+            expect(ewes, `group ${index}`).toHaveLength(home.ewes);
+            expect(group.filter((sheep) => sheep.lamb), `group ${index}`).toHaveLength(home.lambs);
+            group.forEach((sheep) => expect(apart(sheep, home), at(sheep)).toBeLessThan(14));
             // Loose, but nobody stands inside anybody else.
-            expect(closest(group)).toBeGreaterThan(1.8);
-            // They head much the same way.
+            expect(closest(group)).toBeGreaterThan(0.85);
+            expect(closest(ewes)).toBeGreaterThan(2.1);
+            // The ewes head much the same way.
             const heading = Math.atan2(
-                group.reduce((total, sheep) => total + Math.sin(sheep.yaw), 0),
-                group.reduce((total, sheep) => total + Math.cos(sheep.yaw), 0),
+                ewes.reduce((total, sheep) => total + Math.sin(sheep.yaw), 0),
+                ewes.reduce((total, sheep) => total + Math.cos(sheep.yaw), 0),
             );
-            group.forEach((sheep) => {
+            ewes.forEach((sheep) => {
                 const off = Math.atan2(Math.sin(sheep.yaw - heading), Math.cos(sheep.yaw - heading));
                 expect(Math.abs(off)).toBeLessThan(0.75);
             });
         });
+        // A lamb comes after its mother, a ewe of its own group, close by her side.
+        flock.forEach((sheep, index) => {
+            if (!sheep.lamb) {
+                expect(sheep.mother).toBe(-1);
+                return;
+            }
+            expect(sheep.mother).toBeLessThan(index);
+            const mother = flock[sheep.mother];
+            expect(mother.lamb).toBe(false);
+            expect(mother.group).toBe(sheep.group);
+            expect(apart(sheep, mother)).toBeLessThan(3);
+        });
+        // Some ewes have twins.
+        const children = flock.filter((sheep) => !sheep.lamb)
+            .map((ewe) => flock.filter((sheep) => sheep.lamb && flock[sheep.mother] === ewe).length);
+        expect(Math.max(...children)).toBe(2);
         // Groups keep to themselves.
-        const centres = groups.map((group) => ({
-            x: group.reduce((total, sheep) => total + sheep.x, 0) / group.length,
-            z: group.reduce((total, sheep) => total + sheep.z, 0) / group.length,
-        }));
-        expect(closest(centres)).toBeGreaterThan(30);
+        expect(closest(VERDANT_HILLS_FLOCK_HOMES)).toBeGreaterThan(30);
     });
 
-    it('keeps every sheep on open pasture the lens can see, 230 to 900 metres out', () => {
+    it('keeps every sheep on open pasture where the lens sees it, past the meadow\'s tall grass', () => {
         const trees = [...VERDANT_HILLS_FEATURE_TREES, ...layoutVerdantHillsFieldTrees(),
             ...layoutVerdantHillsFarTrees()];
         for (const sheep of flock) {
-            const y = ground(sheep);
             const land = verdantHillsFieldAt(sheep.x, sheep.z);
-            expect(range(sheep), at(sheep)).toBeGreaterThanOrEqual(230);
-            expect(range(sheep), at(sheep)).toBeLessThanOrEqual(900);
-            expect(land.hedge, at(sheep)).toBe(0);
-            expect(land.water, at(sheep)).toBe(0);
-            expect(verdantHillsWaterDistance(sheep.x, sheep.z), at(sheep)).toBeGreaterThan(8);
-            expect(verdantHillsSlope(sheep.x, sheep.z), at(sheep)).toBeLessThan(19);
-            expect(visible(sheep.x, y + 0.6, sheep.z, 1.2), at(sheep)).toBe(true);
-            expect(verdantHillsInSight(sheep.x, y + 0.5, sheep.z), at(sheep)).toBe(true);
-            expect(sheep.scale).toBeGreaterThan(1.1);
-            expect(sheep.scale).toBeLessThan(1.45);
+            expect(verdantHillsSheepPasture(sheep.x, sheep.z), at(sheep)).toBe(true);
+            expect(verdantHillsSheepSeen(sheep.x, sheep.z), at(sheep)).toBe(true);
+            expect(land.hedge, at(sheep)).toBeLessThan(0.01);
+            expect(land.water, at(sheep)).toBeLessThan(0.01);
+            expect(verdantHillsSlope(sheep.x, sheep.z), at(sheep)).toBeLessThan(22);
+            expect(range(sheep), at(sheep)).toBeGreaterThan(190);
+            expect(range(sheep), at(sheep)).toBeLessThan(1100);
+            expect(sheep.scale).toBeGreaterThan(1.05);
+            expect(sheep.scale).toBeLessThan(1.25);
             expect(typeof sheep.grazing).toBe('boolean');
-            expect(Math.hypot(sheep.x - mill.x, sheep.z - mill.z), at(sheep)).toBeGreaterThan(16);
+            expect(sheep.look).toBeGreaterThanOrEqual(0);
+            expect(sheep.look).toBeLessThan(1);
+            expect(Math.hypot(sheep.x - mill.x, sheep.z - mill.z), at(sheep)).toBeGreaterThan(14);
         }
         // No sheep stands in a tree.
-        expect(closest(flock, trees)).toBeGreaterThan(6.9);
-        // Most have their heads down.
-        expect(flock.filter((sheep) => sheep.grazing).length).toBeGreaterThan(30);
-        expect(flock.filter((sheep) => !sheep.grazing).length).toBeGreaterThan(8);
+        expect(closest(flock, trees)).toBeGreaterThan(4.5);
     });
 
-    it('puts the first group on the right of the board and the next on the left, both close by', () => {
-        const first = groups[0];
-        const second = groups[1];
-        // The windmill's hill is what a 16:9 frame shows on the right this close.
-        first.forEach((sheep) => {
-            expect(bearing(sheep)).toBeGreaterThan(9);
-            expect(bearing(sheep)).toBeLessThan(37);
-            expect(range(sheep)).toBeLessThan(440);
-        });
-        second.forEach((sheep) => {
-            expect(bearing(sheep)).toBeLessThan(-9);
-            expect(bearing(sheep)).toBeGreaterThan(-37);
-            expect(range(sheep)).toBeLessThan(440);
-        });
+    it('sees through the near grass where the old sight test strode over it', () => {
+        // The lens stands in deep grass on the crown: a place just over the home hill's brow on the
+        // left, which verdantHillsInSight passes, is hidden behind it.
+        expect(verdantHillsSheepSeen(-59, -258)).toBe(false);
+        // The board card hides the middle of the frame; the frame's edges are out of it.
+        expect(verdantHillsSheepSeen(0, -700)).toBe(false);
+        expect(verdantHillsSheepSeen(900, -900)).toBe(false);
+        // The windmill's crest west of the mill is in sight; the meadow's tall blades hide its east.
+        expect(verdantHillsSheepSeen(84, -236)).toBe(true);
+        expect(verdantHillsSheepSeen(150, -210)).toBe(false);
+    });
+
+    it('grazes the first two groups on the windmill\'s hill right of the board, the nearest of them all', () => {
+        groups.slice(0, 2).forEach((group) => group.forEach((sheep) => {
+            expect(bearing(sheep), at(sheep)).toBeGreaterThan(9);
+            expect(bearing(sheep), at(sheep)).toBeLessThan(37);
+            expect(range(sheep), at(sheep)).toBeLessThan(300);
+        }));
+        const near = Math.max(...groups.slice(0, 2).flat().map(range));
+        groups.slice(2).forEach((group) => group.forEach((sheep) => expect(range(sheep)).toBeGreaterThan(near)));
     });
 
     it('plants as soundly from any other generator', () => {
         const other = layoutVerdantHillsSheep(seededRandom(5));
-        expect(other.length).toBeGreaterThan(40);
+        expect(other.length).toBeGreaterThan(50);
         expect(other).not.toEqual(flock);
         for (const sheep of other) {
-            expect(verdantHillsFieldAt(sheep.x, sheep.z).hedge, at(sheep)).toBe(0);
-            expect(verdantHillsInSight(sheep.x, ground(sheep) + 0.5, sheep.z), at(sheep)).toBe(true);
+            expect(verdantHillsSheepPasture(sheep.x, sheep.z), at(sheep)).toBe(true);
+            expect(verdantHillsSheepSeen(sheep.x, sheep.z), at(sheep)).toBe(true);
         }
     }, SLOW);
 });

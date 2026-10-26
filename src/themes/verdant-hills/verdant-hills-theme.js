@@ -422,6 +422,20 @@ export default class VerdantHillsTheme extends BaseTheme {
     teardownEventListeners() {
         this.clearEventUnsubscribers();
         this.clearTrackedResources();
+        this.modeManager = null;
+    }
+
+    /**
+     * The mode manager may appear after the first build (boot prewarm); subscribe once it does. A mode
+     * that starts is a new run: the hills are no longer at rest after the last one (the flock gets up
+     * at once, not at the new run's first lock).
+     */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const unsubscribe = manager.on('modeStarted', () => this.reactions?.onRunStart?.());
+        if (typeof unsubscribe === 'function') this.eventUnsubscribers.push(unsubscribe);
     }
 
     onHardDrop(payload) {
@@ -579,6 +593,7 @@ export default class VerdantHillsTheme extends BaseTheme {
             // The board card can move (mode, resize, multiplayer); follow it cheaply.
             this.boardPoll = BOARD_POLL_S;
             this.world?.setBoard?.(readVerdantHillsBoardRect());
+            this.ensureModeManagerListeners();
         }
         this.updateCamera(dt);
         this.world?.update(this.time, dt, frame);

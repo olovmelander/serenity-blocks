@@ -11,24 +11,29 @@
 import * as THREE from 'three/webgpu';
 import { verdantHillsEye, verdantHillsTarget, verdantHillsViewFor } from './verdant-hills-composition.js';
 import { VerdantHillsBackdrop } from './verdant-hills-backdrop.js';
+import { VerdantHillsFlock } from './verdant-hills-flock.js';
 import { VerdantHillsFxDirector } from './verdant-hills-fx-director.js';
 import { VerdantHillsHomestead } from './verdant-hills-homestead.js';
 import { VerdantHillsKites } from './verdant-hills-kites.js';
 import { VerdantHillsLife } from './verdant-hills-life.js';
-import { VerdantHillsLight } from './verdant-hills-light.js';
+import { VERDANT_HILLS_WIND_DIRECTION, VerdantHillsLight } from './verdant-hills-light.js';
 import { VerdantHillsMeadow } from './verdant-hills-meadow.js';
 import { VERDANT_HILLS_MOODS, verdantHillsMoodDrift, verdantHillsMoodName } from './verdant-hills-moods.js';
 import { verdantHillsTier } from './verdant-hills-quality.js';
 import { VerdantHillsRibbons } from './verdant-hills-ribbons.js';
 import { VerdantHillsSeeds } from './verdant-hills-seeds.js';
+import { VerdantHillsSheep } from './verdant-hills-sheep.js';
 import { VerdantHillsSky } from './verdant-hills-sky.js';
 import { VerdantHillsStage } from './verdant-hills-stage.js';
 import { createVerdantHillsWorn, wearVerdantHillsFrame } from './verdant-hills-surge.js';
 import { VERDANT_HILLS_PLACES, VerdantHillsTerrain, verdantHillsGroundHeight } from './verdant-hills-terrain.js';
+import { createVerdantHillsPasture, layoutVerdantHillsSheep } from './verdant-hills-layout.js';
 import { VerdantHillsTrees } from './verdant-hills-trees.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
 
+/** The flock's own seed: every session's flock starts its day the same way, as the layout does. */
+export const VERDANT_HILLS_FLOCK_SEED = 0x5ee9;
 /** How quickly the day takes a level's step, per second: most of the way in four seconds. */
 const MOOD_FOLLOW = 0.6;
 
@@ -68,6 +73,10 @@ export class VerdantHillsWorld {
             front: null,
             fronts: null,
             pool: null,
+        };
+        /** What the flock is handed each frame. */
+        this.flockEnv = {
+            fronts: [null, null, null], pool: null, festival: 0, settled: false, motion: 1, level: 0, fever: 0, mood: 0,
         };
     }
 
@@ -118,12 +127,32 @@ export class VerdantHillsWorld {
             this.group.add(this.backdrop.group);
             this.backdrop.build();
             yield 'backdrop';
+            // With its two rigged models the flock lives (verdant-hills-flock.js); without them the
+            // homestead stands its old still sheep where the layout puts them.
+            const living = Boolean(this.assets.sheep) && tier.sheep > 0;
             this.homestead = new VerdantHillsHomestead({
-                light, props: this.assets.props, tier, rng, oak: this.assets.trees?.['oak-hero'] || null,
+                light,
+                props: this.assets.props,
+                tier,
+                rng,
+                oak: this.assets.trees?.['oak-hero'] || null,
+                sheep: !living,
             });
             this.group.add(this.homestead.group);
             this.homestead.build();
             yield 'homestead';
+            if (living) {
+                this.flock = new VerdantHillsFlock({
+                    entries: layoutVerdantHillsSheep(null, tier.sheep),
+                    land: createVerdantHillsPasture(),
+                    seed: VERDANT_HILLS_FLOCK_SEED,
+                    wind: { x: VERDANT_HILLS_WIND_DIRECTION.x, z: VERDANT_HILLS_WIND_DIRECTION.z },
+                });
+                this.sheep = new VerdantHillsSheep({ light, models: this.assets.sheep, flock: this.flock });
+                this.group.add(this.sheep.group);
+                this.sheep.build();
+                yield 'sheep';
+            }
         }
         this.meadow = new VerdantHillsMeadow({ light, tier, rng });
         this.group.add(this.meadow.group);
@@ -194,7 +223,10 @@ export class VerdantHillsWorld {
      */
     setLevel(level, { silent = false } = {}) {
         const wanted = Number(level);
+        const was = this.level;
         this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
+        // A new level sends a group or two of the flock on to fresh grass.
+        if (!silent && this.level > was) this.flock?.onLevel();
         if (silent) this.moodStep = nearestStep(this.moodStep, this.level - 1, VERDANT_HILLS_MOODS.length);
         return this.level;
     }
@@ -214,6 +246,8 @@ export class VerdantHillsWorld {
     rewind() {
         this.resetEffects();
         this.light?.rewind();
+        this.flock?.reset();
+        this.sheep?.update();
     }
 
     prepareCamera(aspect) {
@@ -264,6 +298,23 @@ export class VerdantHillsWorld {
         this.homestead?.update(time, dt, worn);
         this.kites.update(time, dt, worn);
         this.seeds.update(dt, env);
+        if (this.flock) {
+            // The flock: the fronts that cross the valley, the pool of sunlight, the festival, the end
+            // of a run, how hot play runs, Reduce motion and the day's weather.
+            const { flockEnv } = this;
+            flockEnv.fronts[0] = env.front;
+            flockEnv.fronts[1] = env.fronts?.[0]?.strength > 0 ? env.fronts[0] : null;
+            flockEnv.fronts[2] = env.fronts?.[1]?.strength > 0 ? env.fronts[1] : null;
+            flockEnv.pool = env.pool;
+            flockEnv.festival = worn.festival;
+            flockEnv.settled = worn.settled;
+            flockEnv.motion = worn.motion;
+            flockEnv.level = worn.level;
+            flockEnv.fever = worn.fever;
+            flockEnv.mood = this.moodPhase(time);
+            this.flock.step(dt, flockEnv);
+            this.sheep.update();
+        }
     }
 
     getDiagnostics() {
@@ -273,6 +324,9 @@ export class VerdantHillsWorld {
             ...(this.trees?.stats || {}),
             ...(this.backdrop?.stats || {}),
             ...(this.homestead?.stats || {}),
+            ...(this.flock ? {
+                sheep: this.flock.sheep.length, sheepTriangles: this.sheep?.triangles || 0, flock: this.flock.census(),
+            } : {}),
             ...(this.sky?.getDiagnostics() || {}),
             groundTriangles: this.terrain?.triangles || 0,
             butterflies: this.life?.butterflies || 0,
@@ -297,6 +351,7 @@ export class VerdantHillsWorld {
         this.kites?.dispose();
         this.life?.dispose();
         this.meadow?.dispose();
+        this.sheep?.dispose();
         this.homestead?.dispose();
         this.backdrop?.dispose();
         this.trees?.dispose();
@@ -309,6 +364,8 @@ export class VerdantHillsWorld {
         this.director = null;
         this.life = null;
         this.meadow = null;
+        this.sheep = null;
+        this.flock = null;
         this.homestead = null;
         this.backdrop = null;
         this.trees = null;

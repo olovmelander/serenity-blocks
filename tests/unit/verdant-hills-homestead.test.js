@@ -431,7 +431,7 @@ describe('Verdant Hills homestead: what people built on the downs', () => {
         expect(stones).toBe(VERDANT_HILLS_BOULDERS.length);
     });
 
-    it('grazes the flock in two draws on the far pastures, fewer on a cheaper tier', () => {
+    it('stands the still flock in two draws on the far pastures when the living one has no models', () => {
         for (const quality of ['High', 'Minimal']) {
             const { homestead, tier } = built[quality];
             const flock = layoutVerdantHillsSheep(null, tier.sheep);
@@ -451,7 +451,8 @@ describe('Verdant Hills homestead: what people built on the downs', () => {
                     const sunk = verdantHillsGroundHeight(sheep.x, sheep.z) - position.y;
                     expect(sunk).toBeGreaterThan(0);
                     expect(sunk).toBeLessThan(0.05);
-                    expect(scale.x).toBeCloseTo(sheep.scale, 3);
+                    // (A lamb is a ewe drawn smaller.)
+                    expect(scale.x).toBeCloseTo(sheep.scale * (sheep.lamb ? 0.62 : 1), 3);
                     // It faces its own +Z turned by its heading.
                     const nose = new THREE.Vector3(0, 0, 1).applyQuaternion(rotation);
                     expect(nose.x).toBeCloseTo(Math.sin(sheep.yaw), 3);
@@ -460,6 +461,14 @@ describe('Verdant Hills homestead: what people built on the downs', () => {
             });
         }
         expect(built.High.homestead.stats.sheep).toBeGreaterThan(built.Minimal.homestead.stats.sheep);
+        // With the living flock grazing instead, the homestead stands none.
+        const { assets, tier } = built.High;
+        const living = new VerdantHillsHomestead({
+            light: built.High.homestead.light, props: assets.props, tier, sheep: false,
+        }).build();
+        expect(living.stats.sheep).toBe(0);
+        expect(drawables(living.group).some((mesh) => mesh.name.includes('sheep'))).toBe(false);
+        living.dispose();
         TIERS.forEach((name, index) => {
             const dearer = VERDANT_HILLS_TIERS[TIERS[Math.max(0, index - 1)]];
             expect(VERDANT_HILLS_TIERS[name].sheep).toBeLessThanOrEqual(dearer.sheep);

@@ -14,6 +14,8 @@ import {
     loadVerdantHillsAssets, parseVerdantHillsMeshes, parseVerdantHillsTree, prepareVerdantHillsImpostors,
     verdantHillsImpostorLayout, verdantHillsPropRecord, verdantHillsTreeRecord,
 } from '../../src/themes/verdant-hills/verdant-hills-assets.js';
+import { VERDANT_HILLS_EWE_URL, VERDANT_HILLS_LAMB_URL } from '../../src/themes/verdant-hills/verdant-hills-sheep.js';
+import { EWE_BONES, LAMB_BONES } from '../../src/themes/verdant-hills/verdant-hills-sheep-rig.js';
 
 const assetDirectory = new URL('../../src/themes/verdant-hills/assets/', import.meta.url);
 const KB = 1000;
@@ -40,6 +42,9 @@ const PACK_FILES = [...TREE_NAMES.map((name) => `${name}.glb`), FOLIAGE_FILE, PR
 // cloud field, each with its record (scripts/verdant-hills/bake-land.mjs writes all four).
 const BAKED_PICTURES = Object.freeze(['verdant-land.png', 'verdant-clouds.png']);
 const BAKED_FILES = Object.freeze([...BAKED_PICTURES, 'verdant-land.json', 'verdant-clouds.json']);
+// Not the pack's either: the flock's two rigged models (scripts/verdant-hills/model-sheep.mjs).
+const FLOCK_FILES = Object.freeze(['verdant-ewe.glb', 'verdant-lamb.glb']);
+const FLOCK_URLS = Object.freeze([VERDANT_HILLS_EWE_URL, VERDANT_HILLS_LAMB_URL]);
 
 // What the pack may weigh, so it cannot balloon without someone raising a number on purpose.
 const BUDGET = Object.freeze({ packBytes: 4 * MB, heroBytes: 820 * KB, propsBytes: 450 * KB });
@@ -325,18 +330,21 @@ describe('Verdant Hills asset pack on disk', () => {
         expect(new Set(referenced).size).toBe(referenced.length);
         const present = readdirSync(assetDirectory);
         for (const file of referenced) expect(present).toContain(file);
-        // All in the folder that is not the Blender pack's are the four baked files: the valley's
-        // land map, the sky's cloud field and the record of each.
+        // All in the folder that is not the Blender pack's are the four baked files (the valley's
+        // land map, the sky's cloud field and the record of each) and the flock's two models.
         expect(BAKED_FILES).toHaveLength(4);
+        expect(FLOCK_URLS.map(fileNameOf)).toEqual(FLOCK_FILES);
+        for (const file of FLOCK_FILES) expect(present).toContain(file);
         const shipped = present
             .filter((file) => /\.(glb|gltf|png|jpe?g|webp|ktx2|hdr|exr|bin)$/i.test(file))
-            .filter((file) => !BAKED_FILES.includes(file)).sort();
+            .filter((file) => !BAKED_FILES.includes(file) && !FLOCK_FILES.includes(file)).sort();
         expect(shipped).toEqual([...referenced].sort());
         // Beside them only the manifest and the attribution.
-        expect(present.filter((file) => !shipped.includes(file) && !BAKED_FILES.includes(file)).sort())
+        expect(present.filter((file) => !shipped.includes(file) && !BAKED_FILES.includes(file)
+            && !FLOCK_FILES.includes(file)).sort())
             .toEqual(['ATTRIBUTION.md', 'asset-manifest.json']);
         // No baked file is one of the pack's, so none is counted, hashed or budgeted as one.
-        for (const file of BAKED_FILES) expect(PACK_FILES).not.toContain(file);
+        for (const file of [...BAKED_FILES, ...FLOCK_FILES]) expect(PACK_FILES).not.toContain(file);
         // The pack's manifest vouches for the pack and for nothing else.
         expect(readManifest().assets.map((entry) => entry.file).sort()).toEqual([...referenced].sort());
         expect(readAsset(IMPOSTOR_FILE).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
@@ -1656,6 +1664,48 @@ describe('Verdant Hills far-tree sprite sheet', () => {
     });
 });
 
+describe('the flock\'s two rigged models', () => {
+    const MODELS = [['verdant-ewe.glb', EWE_BONES, 1], ['verdant-lamb.glb', LAMB_BONES, 0.62]];
+
+    it('skins each to its rig\'s twenty bones in order, every vertex weighed in full, on its hooves', async () => {
+        const models = await Promise.all(MODELS.map(([file]) => parseGlb(file)));
+        MODELS.forEach(([file, bones, size], m) => {
+            expect(sizeOf(file), file).toBeLessThan(120 * KB);
+            const gltf = models[m];
+            let skin = null;
+            gltf.scene.traverse((object) => {
+                if (object.isSkinnedMesh) skin = object;
+            });
+            expect(skin, file).not.toBeNull();
+            expect(skin.skeleton.bones.map((bone) => bone.name), file).toEqual(bones.map((bone) => bone[0]));
+            const { position, skinWeight, color } = skin.geometry.attributes;
+            let low = Infinity;
+            let high = -Infinity;
+            let sumX = 0;
+            for (let i = 0; i < position.count; i++) {
+                low = Math.min(low, position.getY(i));
+                high = Math.max(high, position.getY(i));
+                sumX += position.getX(i);
+                const w = skinWeight.getX(i) + skinWeight.getY(i) + skinWeight.getZ(i) + skinWeight.getW(i);
+                expect(Math.abs(w - 1), file).toBeLessThan(0.01);
+            }
+            // On its hooves, as tall as a sheep of its age, the same either side.
+            expect(low, file).toBeGreaterThanOrEqual(0);
+            expect(low, file).toBeLessThan(0.005);
+            expect(high, file).toBeGreaterThan(0.75 * size);
+            expect(Math.abs(sumX / position.count), file).toBeLessThan(1e-3);
+            // Wool and bare skin both.
+            let wool = 0;
+            for (let i = 0; i < color.count; i++) if (color.getX(i) > 0.5) wool += 1;
+            expect(wool / color.count, file).toBeGreaterThan(0.4);
+            expect(wool / color.count, file).toBeLessThan(0.95);
+            const count = skin.geometry.index.count / 3;
+            expect(count, file).toBeLessThan(4000);
+            expect(count, file).toBeGreaterThan(1500);
+        });
+    });
+});
+
 describe('loading and releasing the Verdant Hills assets', () => {
     const packGeometries = (assets) => [...Object.values(assets.foliage.meshes), ...Object.values(assets.props.meshes),
         ...Object.values(assets.trees).map((tree) => tree.bark)];
@@ -1675,7 +1725,7 @@ describe('loading and releasing the Verdant Hills assets', () => {
         const disposal = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         const assets = await loadVerdantHillsAssets({ loader, textureLoader, isCurrent });
         const requested = loader.loadAsync.mock.calls.map(([url]) => url);
-        expect([...requested].sort()).toEqual([VERDANT_HILLS_FOLIAGE_URL, VERDANT_HILLS_PROPS_URL,
+        expect([...requested].sort()).toEqual([VERDANT_HILLS_FOLIAGE_URL, VERDANT_HILLS_PROPS_URL, ...FLOCK_URLS,
             ...Object.values(VERDANT_HILLS_TREE_URLS)].sort());
         // Three pictures, each asked for once: the sprite sheet, the land map and the cloud field.
         const pictures = textureLoader.loadAsync.mock.calls.map(([url]) => fileNameOf(url));
@@ -1688,7 +1738,12 @@ describe('loading and releasing the Verdant Hills assets', () => {
             .toBeGreaterThan(Math.max(...loader.loadAsync.mock.invocationCallOrder));
 
         // The same shape as the Summer bundle, with the land map and the cloud field beside it.
-        expect(Object.keys(assets).sort()).toEqual(['clouds', 'foliage', 'impostors', 'land', 'props', 'trees']);
+        expect(Object.keys(assets).sort()).toEqual(['clouds', 'foliage', 'impostors', 'land', 'props', 'sheep',
+            'trees']);
+        // The flock's two models, on their skeletons.
+        expect(Object.keys(assets.sheep).sort()).toEqual(['ewe', 'lamb']);
+        expect(assets.sheep.ewe.geometry.attributes._bones.normalized).toBe(true);
+        expect(assets.sheep.lamb.triangles).toBeGreaterThan(1000);
         // A two-by-two stand-in is neither baked picture: the bundle carries none, and the
         // loader said so once for each.
         expect(assets.land).toBeNull();
@@ -1746,15 +1801,16 @@ describe('loading and releasing the Verdant Hills assets', () => {
             }),
         };
         const assets = await loadVerdantHillsAssets({ loader, textureLoader: null });
-        // One for the sprays, one for the props, and a mesh and a points material for each tree.
-        expect(materials.size).toBe(1 + 1 + TREE_NAMES.length * 2);
+        // One for the sprays, one for the props, a mesh and a points material for each tree, and
+        // one for each of the flock's two models.
+        expect(materials.size).toBe(1 + 1 + TREE_NAMES.length * 2 + 2);
         for (const disposal of materials.values()) expect(disposal).toHaveBeenCalled();
         // The geometry the world adopts is not the loader's to throw away.
         const adopted = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         expect(packGeometries(assets).every((geometry) => geometry.attributes.position.count > 0)).toBe(true);
         expect(adopted).not.toHaveBeenCalled();
         disposeVerdantHillsAssets(assets);
-        expect(adopted).toHaveBeenCalledTimes(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length);
+        expect(adopted).toHaveBeenCalledTimes(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length + 2);
     });
 
     it('disposes everything and returns null when the start that asked is no longer current', async () => {
@@ -1763,9 +1819,10 @@ describe('loading and releasing the Verdant Hills assets', () => {
         const disposal = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         const assets = await loadVerdantHillsAssets({ loader, textureLoader, isCurrent: () => false });
         expect(assets).toBeNull();
-        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 2);
+        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 4);
         const released = disposal.mock.contexts.map((geometry) => geometry.name).sort();
-        expect(released).toEqual([...REQUIRED_FOLIAGE, ...REQUIRED_PROPS, ...TREE_NAMES.map(() => 'bark')].sort());
+        expect(released).toEqual([...REQUIRED_FOLIAGE, ...REQUIRED_PROPS, ...TREE_NAMES.map(() => 'bark'),
+            'VerdantHills ewe', 'VerdantHills lamb'].sort());
         expect(new Set(disposal.mock.contexts).size).toBe(released.length);
         // The sprite sheet is let go too, and so is every other picture the loader was handed.
         expect(textureLoader.sprites).toHaveLength(1);
@@ -1780,9 +1837,9 @@ describe('loading and releasing the Verdant Hills assets', () => {
             trees: ['oak-field-c', 'oak-field-a', 'oak-field-c'], loader, textureLoader: null,
         });
         expect(Object.keys(assets.trees)).toEqual(['oak-field-c', 'oak-field-a']);
-        expect(loader.loadAsync).toHaveBeenCalledTimes(4);
+        expect(loader.loadAsync).toHaveBeenCalledTimes(6);
         expect(loader.loadAsync.mock.calls.map(([url]) => fileNameOf(url)).sort())
-            .toEqual(['oak-field-a.glb', 'oak-field-c.glb', FOLIAGE_FILE, PROPS_FILE].sort());
+            .toEqual(['oak-field-a.glb', 'oak-field-c.glb', FOLIAGE_FILE, PROPS_FILE, ...FLOCK_FILES].sort());
         expect(assets.impostors).toBeNull();
         expect(Object.keys(assets.foliage.meshes).sort()).toEqual([...REQUIRED_FOLIAGE].sort());
         expect(Object.keys(assets.props.meshes).sort()).toEqual([...REQUIRED_PROPS].sort());
@@ -1806,6 +1863,16 @@ describe('loading and releasing the Verdant Hills assets', () => {
             return parseGlb(fileNameOf(url));
         });
         await expect(loadVerdantHillsAssets({ loader: noProps, textureLoader: null })).rejects.toThrow('404 props');
+        // Without its flock the pack still loads: the hills keep their still sheep (and say why).
+        const noFlock = diskLoader();
+        noFlock.loadAsync.mockImplementation(async (url) => {
+            if (fileNameOf(url) === 'verdant-lamb.glb') throw new Error('404 lamb');
+            return parseGlb(fileNameOf(url));
+        });
+        const flockless = await loadVerdantHillsAssets({ loader: noFlock, textureLoader: null });
+        expect(flockless.sheep).toBeNull();
+        expect(flockless.props.meshes.sheep_a).toBeDefined();
+        disposeVerdantHillsAssets(flockless);
         const noSheet = stubTextureLoader();
         noSheet.loadAsync.mockRejectedValue(new Error('404 sprites'));
         await expect(loadVerdantHillsAssets({ loader: diskLoader(), textureLoader: noSheet }))
@@ -1837,8 +1904,8 @@ describe('loading and releasing the Verdant Hills assets', () => {
     it('releases each geometry and the sprite sheet exactly once', async () => {
         const textureLoader = stubTextureLoader();
         const assets = await loadVerdantHillsAssets({ loader: diskLoader(), textureLoader });
-        const geometries = packGeometries(assets);
-        expect(new Set(geometries).size).toBe(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length);
+        const geometries = [...packGeometries(assets), assets.sheep.ewe.geometry, assets.sheep.lamb.geometry];
+        expect(new Set(geometries).size).toBe(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length + 2);
         const disposals = [...geometries, assets.impostors.texture].map((resource) => vi.spyOn(resource, 'dispose'));
         disposeVerdantHillsAssets(assets);
         disposals.forEach((disposal) => expect(disposal).toHaveBeenCalledOnce());

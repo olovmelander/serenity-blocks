@@ -13,6 +13,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 import { loadVerdantHillsClouds, loadVerdantHillsLand } from './verdant-hills-land.js';
+import { disposeVerdantHillsSheep, loadVerdantHillsSheep } from './verdant-hills-sheep.js';
 
 export const VERDANT_HILLS_TREE_URLS = Object.freeze({
     'oak-hero': new URL('./assets/oak-hero.glb', import.meta.url).href,
@@ -187,6 +188,7 @@ export function disposeVerdantHillsAssets(assets) {
     assets.impostors?.texture?.dispose();
     assets.land?.dispose();
     assets.clouds?.texture?.dispose();
+    disposeVerdantHillsSheep(assets.sheep);
 }
 
 /** Anchor points and size the Blender generator recorded for a prop (its local metres), or null. */
@@ -232,11 +234,13 @@ export async function loadVerdantHillsAssets({
 } = {}) {
     const names = [...new Set(trees)];
     const layout = verdantHillsImpostorLayout();
-    const [land, clouds, foliageGltf, propsGltf, impostorTexture, ...treeGltfs] = await Promise.all([
+    const [land, clouds, sheep, foliageGltf, propsGltf, impostorTexture, ...treeGltfs] = await Promise.all([
         // The valley's baked patchwork and the baked cloud field; null (never a rejection)
         // leaves the terrain and the light rig to make their own.
         textureLoader ? loadVerdantHillsLand({ textureLoader }) : null,
         textureLoader ? loadVerdantHillsClouds({ textureLoader }) : null,
+        // The flock's two rigged models; null (never a rejection) leaves the hills their still sheep.
+        loadVerdantHillsSheep({ loader }),
         loader.loadAsync(VERDANT_HILLS_FOLIAGE_URL),
         loader.loadAsync(VERDANT_HILLS_PROPS_URL),
         layout && textureLoader ? textureLoader.loadAsync(VERDANT_HILLS_IMPOSTOR_URL) : null,
@@ -252,6 +256,7 @@ export async function loadVerdantHillsAssets({
         impostors: null,
         land,
         clouds,
+        sheep,
     };
     names.forEach((name, index) => {
         assets.trees[name] = parseVerdantHillsTree(treeGltfs[index], name);

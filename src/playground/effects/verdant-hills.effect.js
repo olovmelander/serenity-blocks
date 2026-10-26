@@ -147,11 +147,59 @@ export function create({
         post.setSize(window.innerWidth, window.innerHeight);
         aim();
     });
+    // The flock: ?flock=move|flee|gust|race|rest|rise|play|shake|stare at ?flockAt=<s> (default four
+    // seconds before the capture), for ?flockGroup=<i> (default every group). ?sheepCam=<group>,
+    // <metres>,<azimuth deg>,<height>,<fov> follows a group's middle with a lens of its own (azimuth
+    // 0 looks from the lens's side, 90 from its right); ?sheepLens=<group>,<fov> looks at a group from
+    // the game's own eye through a long lens.
+    const flockKind = params.get('flock');
+    const flockGroup = Number(params.get('flockGroup') ?? -1);
+    let flockFired = false;
+    const listOf = (key) => (params.has(key) ? params.get(key).split(',').map(Number) : []);
+    const sheepCam = listOf('sheepCam');
+    const sheepLens = listOf('sheepLens');
+    const middle = (g) => {
+        const { members } = g;
+        const x = members.reduce((sum, s) => sum + s.x, 0) / members.length;
+        const z = members.reduce((sum, s) => sum + s.z, 0) / members.length;
+        const y = members.reduce((sum, s) => sum + s.y, 0) / members.length;
+        return { x, y, z };
+    };
+    const followFlock = () => {
+        const flock = world?.flock;
+        if (!flock) return;
+        if (sheepCam.length >= 2 && sheepCam.every(Number.isFinite) && flock.groups[sheepCam[0]]) {
+            const c = middle(flock.groups[sheepCam[0]]);
+            const away = sheepCam[1];
+            const turn = ((sheepCam[2] || 0) * Math.PI) / 180;
+            // From the lens's side of the group, turned about it by the azimuth.
+            const base = Math.atan2(-c.x, -c.z);
+            const lift = sheepCam[3] ?? 2;
+            camera.position.set(c.x + Math.sin(base + turn) * away, c.y + lift, c.z + Math.cos(base + turn) * away);
+            camera.lookAt(c.x, c.y + 0.5, c.z);
+            if (sheepCam[4] > 1) camera.fov = sheepCam[4];
+            camera.updateProjectionMatrix();
+        } else if (sheepLens.length >= 1 && Number.isFinite(sheepLens[0]) && flock.groups[sheepLens[0]]) {
+            const c = middle(flock.groups[sheepLens[0]]);
+            camera.lookAt(c.x, c.y + 0.5, c.z);
+            camera.fov = sheepLens[1] > 0.5 ? sheepLens[1] : 4;
+            camera.updateProjectionMatrix();
+        }
+    };
     const update = (time, dt) => {
+        if (flockKind && !flockFired && world?.flock) {
+            const at = params.has('flockAt')
+                ? Number(params.get('flockAt')) : Math.max(0, Number(params.get('t') ?? 0) - 4);
+            if (time >= at) {
+                flockFired = true;
+                world.flock.force(flockKind, flockGroup);
+            }
+        }
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);
         post?.update(frame);
+        followFlock();
     };
     // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over|festival,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row); ?piece=I|O|T|S|Z|J|L.
@@ -209,6 +257,7 @@ export function create({
         if (clouds.length === 2 && clouds.every(Number.isFinite)) world.light.uCloudOffset.value.set(...clouds);
         randomIndex = 0;
         locks = 0;
+        flockFired = false;
         // ?kites=n puts n kites in the air before the capture's own event.
         const kites = Math.max(0, Math.min(7, Number(params.get('kites') || 0)));
         const age = Number(params.get('eventAge') ?? 0.35);
@@ -270,6 +319,9 @@ export function create({
         },
         // Live poke for interactive sessions: window.__PLAYGROUND__ users can fire events.
         fire,
+        /** The living flock (or null), and a way to make it do something now. */
+        flock: () => world?.flock || null,
+        forceFlock: (kind, group = -1) => world?.flock?.force(kind, group),
         getDiagnostics() {
             return {
                 ready: Boolean(world),
