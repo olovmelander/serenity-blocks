@@ -11,6 +11,7 @@
  * rings        refracting rings alive at once       ribbons   colour comets alive at once
  * droplets     the lip's standing rain              spray     pool for throws and splashes
  * mist         sheets of spindrift and spray        dolphins  the largest pod a chain can call
+ * foam         puffs of white water a dolphin tears up where it breaks the surface
  */
 const tier = (values) => Object.freeze(values);
 
@@ -28,6 +29,7 @@ export const QUALITY = Object.freeze({
         droplets: 420,
         spray: 420,
         mist: 10,
+        foam: 16,
         dolphins: 3,
     }),
     Low: tier({
@@ -43,6 +45,7 @@ export const QUALITY = Object.freeze({
         droplets: 700,
         spray: 700,
         mist: 14,
+        foam: 24,
         dolphins: 4,
     }),
     Medium: tier({
@@ -58,6 +61,7 @@ export const QUALITY = Object.freeze({
         droplets: 1300,
         spray: 1300,
         mist: 20,
+        foam: 32,
         dolphins: 5,
     }),
     High: tier({
@@ -73,6 +77,7 @@ export const QUALITY = Object.freeze({
         droplets: 2200,
         spray: 2400,
         mist: 28,
+        foam: 48,
         dolphins: 6,
     }),
     Ultra: tier({
@@ -88,6 +93,7 @@ export const QUALITY = Object.freeze({
         droplets: 3200,
         spray: 3000,
         mist: 34,
+        foam: 56,
         dolphins: 7,
     }),
     Extreme: tier({
@@ -103,6 +109,7 @@ export const QUALITY = Object.freeze({
         droplets: 4200,
         spray: 3600,
         mist: 40,
+        foam: 64,
         dolphins: 7,
     }),
 });

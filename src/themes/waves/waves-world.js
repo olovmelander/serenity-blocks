@@ -7,7 +7,7 @@
  * built here and shared with the playground effect (src/playground/effects/waves.effect.js), so
  * what is iterated there ships.
  *
- * Parts (showOnlyParts names): sky, water, dolphins, mist, rain, spray.
+ * Parts (showOnlyParts names): sky, water, dolphins, mist, rain, spray, foam.
  *
  * The world is a function of its clock plus a little eased state (how far the barrel has
  * opened, how warm the light is, where the lens points) and the event tables the water reads:
@@ -33,6 +33,9 @@
  *               beside the rider: one dolphin in the air at three clears, two at five, three at
  *               seven (the first of them thrown across the sun), four at nine, more in a fever.
  *               A call is never dropped: when every dolphin is in the air it waits for one.
+ *               Each bursts out of the face in a boil of white water and rains water off its
+ *               flukes over the leap; going back in, it throws a crown and kicks a plume with
+ *               its flukes, and leaves foam on the water (waves-splash.js).
  *   cascade     each wave of it comes deeper than the last: a wider, brighter band of light, a
  *               bigger throw.
  *   back-to-back  a set wave rolls through the tube behind the clear, and the lip throws again.
@@ -79,6 +82,9 @@ import {
 } from './waves-water.js';
 import { SprayPool, createLipRain, createMist } from './waves-spray.js';
 import { WavesPod, leapersFor } from './waves-life.js';
+import {
+    FoamPool, dolphinBreach, dolphinEntry, splashDensity,
+} from './waves-splash.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -326,7 +332,7 @@ export class WavesWorld {
         this._point = { x: 0.5, y: 0.5 };
         this._stain = { x: 0.5, y: 0.5 };
         this._plunge = { x: 0.5, y: 0.5 };
-        this.splash = (x, y, z, strength) => this.onSplash(x, y, z, strength);
+        this.splash = (x, y, z, strength, arc) => this.onSplash(x, y, z, strength, arc);
         this.applyHour();
     }
 
@@ -350,6 +356,8 @@ export class WavesWorld {
         });
         this.spray = new SprayPool({ tier, U, seed: this.seed });
         this.parts.spray = this.spray;
+        this.foam = new FoamPool({ tier, U, noise: this.noise });
+        this.parts.foam = this.foam;
         Object.values(this.parts).forEach((part) => this.group.add(part.mesh));
         this.scene.add(this.group);
         return this;
@@ -461,6 +469,7 @@ export class WavesWorld {
         this.dripCount = 0;
         this.bandRows.forEach((row) => row.set(-100, 0, 4, 0));
         this.spray?.reset();
+        this.foam?.reset();
         this.pod?.reset();
     }
 
@@ -588,11 +597,28 @@ export class WavesWorld {
         this.bandRows[free >= 0 ? free : oldest].set(birth, soft, width, twist);
     }
 
-    /** Something broke the surface at a point in the world: a crown and a ring. */
-    onSplash(x, y, z, strength = 1) {
-        this.spray.crown(this.clock, x, Math.max(0, y), z, {
-            n: Math.round(26 * strength), out: [0.2, 0.75], up: [0.4, 1.15], size: 0.04, rgb: WHITE, radius: 0.35,
-        });
+    /**
+     * Something broke the surface at a point in the world: a splash and a ring. A dolphin's leap
+     * (`arc`, WavesPod) is choreographed from the whole of it (waves-splash.js): bursting out of
+     * the face, or going back in as its nose touches the water (`arc.entered`).
+     */
+    onSplash(x, y, z, strength = 1, arc = null) {
+        if (arc) {
+            const splash = {
+                spray: this.spray,
+                foam: this.foam,
+                arc,
+                now: this.clock,
+                density: splashDensity(this.spray.count),
+                eye: REST_RIG.eye,
+            };
+            if (arc.entered) dolphinEntry(splash);
+            else dolphinBreach(splash);
+        } else {
+            this.spray.crown(this.clock, x, Math.max(0, y), z, {
+                n: Math.round(26 * strength), out: [0.2, 0.75], up: [0.4, 1.15], size: 0.04, rgb: WHITE, radius: 0.35,
+            });
+        }
         this.addRing(surfaceAt(x, y, z), z, 1.1 * strength);
     }
 
@@ -1209,6 +1235,7 @@ export class WavesWorld {
         this.parts = {};
         this.pod = null;
         this.spray = null;
+        this.foam = null;
         this.group.removeFromParent();
         this.noise?.dispose();
         this.noise = null;
