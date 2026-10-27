@@ -59,6 +59,23 @@ const CLEAR_NORMAL = new THREE.Color(0.5, 0.5, 1.0);
  */
 export const BAKE_ATTEMPTS = 600;
 
+/**
+ * Make a bake target's smaller levels again from what its pass drew, where the backend made them
+ * too early; true when it did. three r186's WebGL2 backend makes a target's mipmaps before it
+ * resolves the multisampled draw into it (WebGLBackend.finishRender: generateMipmaps, then
+ * _resolveRenderTarget), so the atlas's full-size level held the trees and every smaller level
+ * what was there before the bake: nothing. A card far enough off to read a smaller level found no
+ * tree and the alpha test cut it away, so on WebGL2 (a phone without WebGPU) the woods along the
+ * river were gone but for the nearest few. WebGPU resolves inside the pass, before its mipmaps.
+ */
+export function remipResolvedBake(renderer, target) {
+    const backend = renderer?.backend;
+    if (!(target?.samples > 0) || target.texture?.generateMipmaps !== true) return false;
+    if (backend?.isWebGLBackend !== true || typeof backend.generateMipmaps !== 'function') return false;
+    backend.generateMipmaps(target.texture);
+    return true;
+}
+
 /** How wide and tall a model stands (m): its height, its crown's widest reach from the trunk. */
 function modelExtent(asset) {
     const { sites } = asset;
@@ -252,6 +269,7 @@ export class ImpostorAtlas {
         renderer.clear();
         this.pass.value = pass;
         renderer.render(this.scene, this.camera);
+        remipResolvedBake(renderer, target);
         return before === null ? null : counter.drawCalls - before;
     }
 

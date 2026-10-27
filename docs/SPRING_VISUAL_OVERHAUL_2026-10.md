@@ -185,6 +185,9 @@ tree), boulders, the air's motes (320 … 2,400) and the ring gameplay throws in
   and both backends bake the same way (WebGL2 has no async pipelines). `getDiagnostics().world.woods`
   reports the atlas (baked, failed, attempts); `tests/unit/spring-woods-bake.test.js` pins it.
   The atlas as each bakes it under a session: `spring-captures/woods-atlas-session-ab.webp`.
+- **Woods missing on WebGL2, so on phones (fixed 2026-10-27).** The atlas's smaller levels were
+  empty on the WebGL2 backend, so every card but the nearest few was cut away; see "The woods on a
+  phone (2026-10-27)" at the end.
 
 ## Verification
 
@@ -524,3 +527,45 @@ puffs became short-lived splash plumes (the cloud's feet went from 50 % to 40 % 
 count per tier is the same); the pool's colour reads one more texel everywhere (the froth) and three
 more inside the boil only. The face reads six texels (it read four) for its moss and trickles.
 Frame rate was not measured: the GPU was shared with the owner's other work.
+
+## The woods on a phone (2026-10-27)
+
+The owner, from a phone: "When it started the spring theme on my phone, all the trees along the
+river is not seen. There should be trees alongside the river." The screenshot had the knoll's
+modelled trees and the ones on the rim of the step, and bare banks all the way down the valley.
+
+**Cause.** A phone without WebGPU draws through three's WebGL2 backend. The woods' cards read the
+impostor atlas, a multisampled (4×) target with mipmaps, and three r186's WebGL2 backend makes a
+target's mipmaps before it resolves the multisampled draw into it (`WebGLBackend.finishRender`:
+`generateMipmaps`, then `_resolveRenderTarget`, which blits the samples into the texture). The
+atlas's full-size level held the trees; every smaller level held what was there before the bake:
+nothing. A card far enough off to read a smaller level (all but the nearest few) found no tree
+there and the alpha test cut it away. WebGPU resolves inside the pass, before its mipmaps, so the
+laptop never showed it. Nothing reported it either: every tree was drawn, so the atlas called
+itself whole (`getDiagnostics().world.woods`), and the playground's `atlas=albedo` view reads the
+full-size level, which was right.
+
+**Fix.** `remipResolvedBake` (`spring-impostors.js`): after each bake pass on the WebGL2 backend
+the target's mipmaps are made again from what the pass drew (the backend's own `generateMipmaps`,
+two calls a session). WebGPU is left as it was. `spring-woods-bake.test.js` pins the order (each
+pass drawn and resolved, then its mipmaps made, again on every retried bake), that WebGPU is left
+alone, and the three it works round: if an upgrade has three resolve first, the pin fails and the
+workaround can go; if the backend's flag or method is renamed, it fails before the woods go
+missing again.
+
+**Verification.** The production theme started as the game starts it (`theme.init()` and
+`theme.start()` on the shared renderer) in a phone-shaped page: 844 × 390 landscape and 390 × 844
+portrait at DPR 2 with touch, Chromium 153 on software rendering (SwiftShader WebGPU, llvmpipe
+WebGL2), the landscape frames compared with the clock pinned (`springTime=10`); on the WebGL2
+backend (`navigator.gpu` absent, `forceWebGL=1`) at High and Low (portrait at High), and on WebGPU
+at High and Low; and the playground on the forced WebGL2 backend at Low. Before the fix WebGL2 drew
+the phone's picture; after it, it matches WebGPU.
+Over the woods down the valley (right of the knoll, above the water) the dark tree pixels went from
+5.7 % to 29.9 % at High (WebGPU 27.3 %) and from 3.8 % to 26.5 % at Low (WebGPU 23.8 %), and the
+mean difference from the WebGPU frame there fell from 13.5 to 2.8 (of 255). No warning or error in
+any console. WebGPU in compatibility mode (the device a phone may get: four colour targets, 15
+varyings, 4096 texels; emulated by leaving out `core-features-and-limits`) had its woods too (the
+playground at Minimal, before the fix, which leaves WebGPU alone). Not done: a physical phone; the
+next start of the theme on the owner's phone is the check.
+
+![before on WebGL2, after on WebGL2, WebGPU](spring-captures/woods-webgl2-mips-ab.webp)

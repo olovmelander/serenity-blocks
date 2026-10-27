@@ -21,7 +21,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { isOneShotRenderTarget } from '../../src/rendering/async-render-pipelines.js';
 import { SPRING_TREE_URLS, parseSpringMeshes, parseSpringTree } from '../../src/themes/spring/spring-assets.js';
-import { BAKE_ATTEMPTS, ImpostorAtlas } from '../../src/themes/spring/spring-impostors.js';
+import { BAKE_ATTEMPTS, ImpostorAtlas, remipResolvedBake } from '../../src/themes/spring/spring-impostors.js';
 import { createLatticeTexture, createNoiseTexture, createUniforms } from '../../src/themes/spring/spring-tsl.js';
 import {
     REST_RIG, SpringWorld, fovForAspect, useValleyGround, valleyGround,
@@ -177,6 +177,105 @@ describe('spring woods: the impostor atlas bake', () => {
         const atlas = makeAtlas();
         expect(atlas.draw(fakeRenderer({ counts: false, skips: [3, 3] }))).toBe(true);
         atlas.dispose();
+    });
+});
+
+/**
+ * The woods were missing on phones: on the WebGL2 backend (a phone without WebGPU) three r186
+ * makes a render target's mipmaps before it resolves the multisampled draw into it, so the
+ * atlas's smaller levels were empty and every card far enough off to read one was cut away. The
+ * bake makes them again from what each pass drew.
+ */
+describe('spring woods: the atlas\'s smaller levels on WebGL2', () => {
+    /** A fake renderer on a backend: its renders and mipmap builds in the order they came. */
+    function onBackend(backend, options) {
+        const renderer = fakeRenderer(options);
+        const events = [];
+        const render = renderer.render.bind(renderer);
+        renderer.render = (scene) => {
+            render(scene);
+            events.push(['render', renderer.getRenderTarget()]);
+        };
+        renderer.backend = { ...backend, generateMipmaps: (texture) => events.push(['mips', texture]) };
+        return { renderer, events };
+    }
+
+    it('is a multisampled bake that wants mipmaps (what the far cards read)', () => {
+        const atlas = makeAtlas();
+        for (const target of [atlas.albedoTarget, atlas.normalTarget]) {
+            expect(target.samples).toBeGreaterThan(0);
+            expect(target.texture.generateMipmaps).toBe(true);
+        }
+        atlas.dispose();
+    });
+
+    it('makes each pass\'s mipmaps again after WebGL2 has resolved the pass into its target', () => {
+        const atlas = makeAtlas();
+        const { renderer, events } = onBackend({ isWebGLBackend: true });
+        expect(atlas.draw(renderer)).toBe(true);
+        expect(events).toEqual([
+            ['render', atlas.albedoTarget], ['mips', atlas.albedo],
+            ['render', atlas.normalTarget], ['mips', atlas.normal],
+        ]);
+        atlas.dispose();
+    });
+
+    it('makes them again on every bake drawn while it is not whole', () => {
+        const atlas = makeAtlas();
+        // The first frame's albedo pass leaves a tree out: the bake is drawn again.
+        const { renderer, events } = onBackend({ isWebGLBackend: true }, { skips: [1] });
+        expect(atlas.draw(renderer)).toBe(false);
+        expect(atlas.draw(renderer)).toBe(true);
+        expect(events.filter(([kind]) => kind === 'mips').map(([, texture]) => texture))
+            .toEqual([atlas.albedo, atlas.normal, atlas.albedo, atlas.normal]);
+        atlas.dispose();
+    });
+
+    it('leaves WebGPU\'s mipmaps as its pass made them (it resolves before it makes them)', () => {
+        const atlas = makeAtlas();
+        const { renderer, events } = onBackend({ isWebGPUBackend: true });
+        expect(atlas.draw(renderer)).toBe(true);
+        expect(events.map(([kind]) => kind)).toEqual(['render', 'render']);
+        atlas.dispose();
+    });
+
+    it('leaves a target alone that is not multisampled or wants no mipmaps, or a backend that cannot', () => {
+        const generateMipmaps = vi.fn();
+        const webgl = { backend: { isWebGLBackend: true, generateMipmaps } };
+        const target = (samples, mips) => new THREE.RenderTarget(4, 4, { samples, generateMipmaps: mips });
+        expect(remipResolvedBake(webgl, target(0, true))).toBe(false);
+        expect(remipResolvedBake(webgl, target(4, false))).toBe(false);
+        expect(remipResolvedBake({ backend: { isWebGLBackend: true } }, target(4, true))).toBe(false);
+        expect(remipResolvedBake({}, target(4, true))).toBe(false);
+        expect(remipResolvedBake(null, target(4, true))).toBe(false);
+        expect(generateMipmaps).not.toHaveBeenCalled();
+        const kept = target(4, true);
+        expect(remipResolvedBake(webgl, kept)).toBe(true);
+        expect(generateMipmaps).toHaveBeenCalledWith(kept.texture);
+    });
+
+    // The three the app ships (three/webgpu is build/three.webgpu.js; the src tree too): the
+    // WebGL2 backend names itself and makes a texture's mipmaps on request, and its finishRender
+    // makes them before the resolve. If the last fails after an upgrade, three resolves first now
+    // and remipResolvedBake is no longer needed; if either of the others does, it no longer runs.
+    it('pins the three behaviour it works round', () => {
+        const three = new URL('../../node_modules/three/', import.meta.url);
+        const read = (rel) => fs.readFileSync(new URL(rel, three), 'utf8').replace(/\r\n/g, '\n');
+        for (const text of [read('build/three.webgpu.js'), read('src/renderers/webgl-fallback/WebGLBackend.js')]) {
+            const at = text.indexOf('class WebGLBackend extends Backend {');
+            expect(at).toBeGreaterThanOrEqual(0);
+            const end = text.indexOf('\n}\n', at);
+            const backend = text.slice(at, end);
+            expect(backend).toContain('this.isWebGLBackend = true;');
+            const remip = /\n\tgenerateMipmaps\( texture \) \{\s*this\.textureUtils\.generateMipmaps\( texture \);/;
+            expect(backend).toMatch(remip);
+            const finish = backend.slice(backend.indexOf('\n\tfinishRender( renderContext ) {'));
+            const body = finish.slice(0, finish.indexOf('\n\t}\n'));
+            const mips = body.indexOf('this.generateMipmaps( texture );');
+            const resolve = body.indexOf('this._resolveRenderTarget( renderContext );');
+            expect(mips).toBeGreaterThan(0);
+            expect(resolve).toBeGreaterThan(mips);
+        }
     });
 });
 
