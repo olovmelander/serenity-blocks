@@ -19,7 +19,8 @@ import { FALL_TETROMINOS } from './fall-tetrominos.js';
 import { FallWorld } from './fall-world.js';
 import { FALL_REDUCED_MOTION, FallReactions } from './fall-reactions.js';
 import { FallPost } from './fall-post.js';
-import { sceneSamples } from '../shared/scene-antialias.js';
+import { fallTier } from './fall-quality.js';
+import { canvasAntialias, sceneSamples } from '../shared/scene-antialias.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -255,8 +256,10 @@ export default class FallTheme extends BaseTheme {
     async createRenderer(ownerGeneration) {
         const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'fallForceWebGL');
         const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas is multisampled only where the scene is drawn to it (post off); under the post
+        // stack it receives one full-screen quad (shared/scene-antialias.js canvasAntialias).
         const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
+            antialias: canvasAntialias(this.getAntialiasEnabled(), !fallTier(this.quality).post),
             alpha: false,
             forceWebGL: force,
             powerPreference: 'high-performance',

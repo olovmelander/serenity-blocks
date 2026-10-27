@@ -20,9 +20,9 @@ import { SUMMER_TETROMINOS } from './summer-tetrominos.js';
 import { SummerWorld } from './summer-world.js';
 import { SummerReactions } from './summer-reactions.js';
 import { SummerPost } from './summer-post.js';
-import { SUMMER_TIERS } from './summer-quality.js';
+import { SUMMER_TIERS, summerTier } from './summer-quality.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
-import { sceneSamples } from '../shared/scene-antialias.js';
+import { canvasAntialias, sceneSamples } from '../shared/scene-antialias.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -254,8 +254,10 @@ export default class SummerTheme extends BaseTheme {
     async createRenderer(ownerGeneration) {
         const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'summerForceWebGL');
         const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas is multisampled only where the scene is drawn to it (post off); under the post
+        // stack it receives one full-screen quad (shared/scene-antialias.js canvasAntialias).
         const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
+            antialias: canvasAntialias(this.getAntialiasEnabled(), !summerTier(this.quality).post),
             alpha: false,
             forceWebGL: force,
             powerPreference: 'high-performance',

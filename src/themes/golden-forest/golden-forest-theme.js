@@ -19,9 +19,9 @@ import { GOLDEN_FOREST_TETROMINOS } from './golden-forest-tetrominos.js';
 import { GoldenForestWorld } from './golden-forest-world.js';
 import { GoldenForestReactions } from './golden-forest-reactions.js';
 import { GoldenForestPost } from './golden-forest-post.js';
-import { GOLDEN_FOREST_TIERS } from './golden-forest-quality.js';
+import { GOLDEN_FOREST_TIERS, goldenForestTier } from './golden-forest-quality.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
-import { sceneSamples } from '../shared/scene-antialias.js';
+import { canvasAntialias, sceneSamples } from '../shared/scene-antialias.js';
 import { goldenForestBakes } from './golden-forest-bakes.js';
 
 const INIT_TIMEOUT_MS = 5500;
@@ -256,8 +256,10 @@ export default class GoldenForestTheme extends BaseTheme {
     async createRenderer(ownerGeneration) {
         const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'goldenForestForceWebGL');
         const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas is multisampled only where the scene is drawn to it (post off); under the post
+        // stack it receives one full-screen quad (shared/scene-antialias.js canvasAntialias).
         const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
+            antialias: canvasAntialias(this.getAntialiasEnabled(), !goldenForestTier(this.quality).post),
             alpha: false,
             forceWebGL: force,
             powerPreference: 'high-performance',
