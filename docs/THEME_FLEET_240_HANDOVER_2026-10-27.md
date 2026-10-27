@@ -1,0 +1,157 @@
+# Theme fleet at 240 fps: handover (2026-10-27 → 2026-10-28)
+
+Handover of the first day of the fleet performance pass. The record with all numbers and findings
+is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
+to resume, and what to do next, in order.
+
+> **Pick up here (written 2026-10-27 evening, for 2026-10-28).**
+> - **Branch:** `perf/theme-fleet-240` in the worktree `C:\Users\olovm\repos\serenity-blocks-perf240`
+>   (node_modules junctioned to the main checkout).
+>   - Committed, **not merged and not pushed**. Base: main `d3a1bc82`.
+>   - Gates were green on 2026-10-27: tsc, ts and lint ratchets, fitness, boundaries, lifecycle
+>     audit, IP strings, perf budgets, release gates, `npm run build`. Full vitest passed except the
+>     four known local-only failures (records-view, game-over-modal-result-compatibility,
+>     odyssey-level-briefing: the sv-SE locale; tts-recorder-e2e: the symlink EPERM in a worktree).
+>   - Sync with main before merging. Main moves several times a day.
+> - **First thing tomorrow:**
+>   1. Switch the laptop to Lenovo **Performance** mode (Fn+Q until the power button is red) on AC,
+>      and close other GPU work.
+>   2. Re-run the High baseline (§3 commands).
+>   3. Decide from that which GPU-bound themes still need shader work.
+
+## 1. What was done
+
+| Commit | What |
+|---|---|
+| `c6f80772` | The fleet bench: `scripts/theme-fleet-bench.mjs` (`npm run perf:themes:bench`), its worker and page code, probes in `scripts/lib/theme-bench-snippets/`, tests; the dev-only gameplay-event handle in the console harness |
+| `09597f0a` | The canvas is multisampled only where the scene is drawn to it (seven themes; ~90 MB VRAM each, no pixel or fps change) |
+| `2f4b1706` | Themes start on a spare GPU device requested ahead of time (`src/rendering/theme-device-spare.js`; renderer creation 30-45 ms → under 1 ms per theme start; no leak; rollback `?themeDeviceSpare=0`) |
+| `74f1519b` | The record and the two High baselines (`reports/theme-fleet-bench/2026-10-27-base-high*`) |
+| (this commit) | The tier runs (`reports/theme-fleet-bench/2026-10-27-tier-*`), the tier matrix (record §8b), `scripts/lib/theme-bench-tools/`, this handover |
+
+## 2. What we know (short)
+
+- **This laptop cannot show more than ~178 fps in any Chromium app,** the game included: Windows
+  composes 237.6 Hz, Chromium draws on 3 refreshes of 4 (record §6). Nothing in the app fixes it.
+  Machine-side candidates (need the owner and a reboot):
+  1. Legion Space → GPU mode → **dGPU only** (MUX), reboot, then re-run the bare-page check (§3).
+  2. Windows Settings → Display → Advanced → refresh rate: a fixed 240 Hz, not "Dynamic".
+  3. AMD Adrenalin → Display → FreeSync / Variable Refresh Rate, off and on.
+- **At High in Balanced mode** (GPU capped at 80-95 W), 59 of 63 themes clear 240 fps uncapped. The
+  four that do not are GPU-bound: Verdant Hills, Grainfields, Spring, Thermal Bloom. Summer and
+  Kaleidosonic sit on the line.
+- **At the panel's cadence** 60 of 63 themes are smooth; Thermal Bloom, Spring and Verdant Hills drop
+  ~1 % of frames in storms.
+- **Loads:** the median theme shows in 0.79 s cold, 0.57 s warm. Seven themes freeze a frame for
+  110-360 ms while switching: Neon District, Fall, Spring, Void Ember, Aurora, Sunfall, Starlight
+  (record §7 table, with causes).
+- **Tiers** (record §8 and §8b): the median step vs High is Minimal 0.22×, Low 0.31×, Medium 0.65×,
+  Ultra 1.38×, Extreme 1.65×. The outliers to fix are in §8b.
+- **Run-to-run drift is large on this machine.** The same High build read 35-50 % slower in the
+  morning than in the afternoon for some themes (Neon Dusk, Halcyon Apex). Compare only runs made
+  close together, interleaved, two rounds or more.
+
+## 3. How to resume
+
+Paths are from the worktree root. Use a scratch dir per session for builds and results
+(`$SCRATCH` below).
+
+```bash
+# 1. Build the game with the bench's harness hook and serve it on a free private port
+#    (check the port first: Get-NetTCPConnection -State Listen).
+VITE_DEV_HARNESS=1 VITE_CACHE_DIR=$SCRATCH/vite-cache npx vite build --outDir $SCRATCH/dist-base --emptyOutDir
+VITE_CACHE_DIR=$SCRATCH/vite-cache npx vite preview --outDir $SCRATCH/dist-base --port 4317 --strictPort --host 127.0.0.1 &
+
+# 2. The fleet at High, uncapped (frame-rate headroom), ~35 min with these windows.
+#    The Bash tool needs its sandbox off for Electron.
+node scripts/theme-fleet-bench.mjs --base-url=http://127.0.0.1:4317 --themes=all --quality=High \
+  --tag=perfmode-high --out=$SCRATCH/bench-out --rest-ms=4000 --storm-ms=4000 --no-second-visit=1 --shots=0
+
+# 3. The fleet at the panel's cadence (what the player sees, and the only valid load numbers), ~50 min.
+node scripts/theme-fleet-bench.mjs --base-url=http://127.0.0.1:4317 --themes=all --quality=High \
+  --tag=perfmode-high-vsync --out=$SCRATCH/bench-out --vsync=1 --target-fps=240 --shots=0
+
+# 4. Tables.
+BENCH_OUT=$SCRATCH/bench-out node scripts/lib/theme-bench-tools/cadence-table.mjs $SCRATCH/bench-out/perfmode-high-vsync/summary.json
+BENCH_OUT=$SCRATCH/bench-out node scripts/lib/theme-bench-tools/tier-compare.mjs \
+  reports/theme-fleet-bench/2026-10-27-tier-High/summary.json $SCRATCH/bench-out/perfmode-high/summary.json "Performance mode"
+```
+
+Other tools (READMEs beside them):
+- **A/B a change:** build each arm into its own dir and serve each on its own port, then
+  `BENCH_OUT=… bash scripts/lib/theme-bench-tools/ab.sh <tag> <themes> 2 <urlA> <urlB>` for frame
+  rate, or `ab-load.sh` for loads. Tables: `ab-table.mjs` / `ab-load-table.mjs`.
+- **Where a slow theme spends its frame:** `--eval-file=scripts/lib/theme-bench-snippets/pass-profile.js
+  --exit-after-eval=1` (GPU per pass) or `cost-census.js` (per scene part; add
+  `--eval-timeout-ms=240000 --hard-timeout-ms=400000`).
+- **What a load does tick by tick:** an unminified build (`vite build --minify false`) and
+  `--profile-load=1`, then `node scripts/lib/theme-bench-snippets/profile-timeline.mjs <cell>.load1.cpuprofile 250`.
+- **The display ceiling check:** `--vsync=1 --target-fps=240` on one light theme (nimbus-veil). It
+  should read ~237 fps at rest once the ceiling is gone; it reads ~178 now.
+
+## 4. The queue, in order
+
+1. **Performance-mode baseline** (owner at the machine): steps 2-3 above.
+   - Expect the GPU-bound themes to gain the most.
+   - Then decide which still need work: Thermal Bloom (storms), Verdant Hills, Grainfields, Spring,
+     Summer, Kaleidosonic.
+2. **The display ceiling** (owner): try the three machine-side settings in §2, re-checking after
+   each.
+3. **The packaged app's dynamic resolution** (record §8). With the FPS counter shown and target 240,
+   `startDynamicResolutionMonitoring` should step `renderScale` down, since frames are pinned at
+   ~5.6 ms by the 178 Hz cadence.
+   - Read in code, not yet observed. Confirm in the dev Electron app
+     (`node scripts/run-electron.mjs --dev electron/main.js` against a dev server).
+   - If confirmed, judge the budget against the achieved display cadence (for example the 5th
+     percentile frame time), not against the target alone.
+4. **Load freezes** (record §7). Each needs an A/B with `ab-load.sh`, and a look at the theme after:
+   - Fall and Sunfall re-parse their GLTFs on every visit (83-132 ms). Cache the parsed result for
+     the session. Fall re-applies its draw ranges per build; check the squirrel's clone first.
+   - Neon District (two 150-190 ms tasks), Aurora (~95 ms), Starlight (~97 ms): profile which
+     material builds in one task (`--profile-load=1`). Then make its node graph smaller
+     (`Fn().setLayout`) or split the build.
+   - Spring (a 240-310 ms task on both visits) and Void Ember (188 ms, first visit).
+5. **Tier alignment** (record §8, §8b). Re-check every flagged theme interleaved (High vs the tier,
+   two rounds) before changing code: half of today's first-pass outliers were drift. Then:
+   - **Real outliers:** see §8b of the record.
+   - **Consistency fixes that do not touch High's look:**
+     - MSAA that follows the antialiasing toggle (about twenty themes ignore it);
+     - antialiasing that does not get worse from Low to Medium (Golden Forest, Crystal Cave, Aurora);
+     - the dead dynamic resolution in Nimbus Veil, Neon Dusk and Synthwave Sunset;
+     - `normalizeQuality` in the three themes that skip it.
+6. **Starvation under a saturated outgoing theme** (record §7). Measure first: a GPU-bound anchor
+   (`--anchor=verdant-hills`, `--vsync=1`) switching to Spring. If loads stretch, cap the outgoing
+   theme's frame rate while the build behind it is starved.
+7. **Look-safe GPU work** in the GPU-bound themes (record §5), each with before/after screenshots:
+   - High Coast's full-resolution shaft march (0.95 ms);
+   - Moonlit Greenhouse's air march (1.06 ms);
+   - Sunfall's full-resolution post target (0.54 ms);
+   - Thermal Bloom's storm effects.
+8. **Merge** `perf/theme-fleet-240` when the owner says so. Follow the routine in memory
+   (merge-when-pipelines-done): sync, gates, wait for main's deploy, detached merge, `ls-remote`
+   guard.
+
+## 5. Traps found today
+
+- **Uncapped runs starve loads.** `--vsync=0` loads are invalid: the anchor's uncapped frames starve
+  the incoming theme's compiles, so Spring and Wolfhour took 9-10 s.
+- **GPU timestamps undercount uncapped.** They are off in the fps windows; use the pass profile
+  (60 fps cap) for GPU per pass.
+- **three reuses render-context ids across passes.** The pass profile keys by target label.
+- **No heavy CPU during a run.** vitest during the cadence run skewed Spring's load cells.
+- **About 1 % of runs stall.** The page hangs in the first window after a good load (Black Hole,
+  Aether Tides, Summer, Neon Dusk once each; all fine on rerun). Rerun singles with the same `--tag`;
+  `summary.json` is rebuilt from all cells.
+- **The power limit:** `nvidia-smi -q -d POWER` → "Current Power Limit". Balanced reads 80-95 W;
+  Performance should read up to 175 W. nvidia-smi's clock reads 180-450 MHz under the cap, which is
+  misleading.
+- **Electron and the Bash sandbox.** Electron needs the Bash sandbox off. A VS Code shell sets
+  `ELECTRON_RUN_AS_NODE`; the bench clears it.
+
+## 6. Starter prompt for tomorrow
+
+> Continue the theme fleet performance pass from docs/THEME_FLEET_240_HANDOVER_2026-10-27.md (branch
+> perf/theme-fleet-240, worktree C:\Users\olovm\repos\serenity-blocks-perf240). The laptop is now in
+> Lenovo Performance mode [or: still Balanced]. Re-run the High baseline per §3, compare with the
+> 2026-10-27 tier-High summary, then work the queue in §4 in order, measuring every change with
+> interleaved A/B runs and checking the look with screenshots.

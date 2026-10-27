@@ -318,6 +318,56 @@ policy caps are Minimal 0.9 / Low 1.0 / Medium 1.15 / High 1.25 / Ultra 1.35 / E
 - Read in code, not yet observed: a packaged game set to 240 here would keep lowering the
   resolution. Check that in the packaged app before recommending a 240 target on this laptop.
 
+## 8b. Tiers measured (2026-10-27 afternoon)
+
+All 63 themes were run at Minimal, Low, Medium, Ultra and Extreme: uncapped, Balanced mode, 4 s at
+rest and two 4 s storms, no second visit. Summaries are in
+`reports/theme-fleet-bench/2026-10-27-tier-*`. The tables come from
+`scripts/lib/theme-bench-tools/tier-matrix.mjs`.
+
+**Median cost of a tier against each theme's own High** (worst window, frame time):
+
+| Minimal | Low | Medium | High | Ultra | Extreme |
+|---:|---:|---:|---:|---:|---:|
+| 0.22× | 0.31× | 0.65× | 1.00× | 1.38× | 1.65× |
+
+Every theme stays above 240 fps everywhere at Minimal, Low and Medium. 15 themes dip below 240 fps
+somewhere at Ultra, and 20 at Extreme.
+
+**Drift.** The first matrix compared the tiers with the morning's High baseline, and half of its
+outliers were drift, not tiers. An interleaved re-check (two rounds each, same afternoon) gave:
+
+| Theme | Morning High | Afternoon High | Afternoon Ultra |
+|---|---:|---:|---:|
+| Neon Dusk | 639 | ~985 | ~900 |
+| Halcyon Apex | 543 | ~835 | ~590 |
+
+Cinder Drift's Ultra storms read 216 fps in the tier run and ~460 in the re-check. The afternoon High
+re-run with tier-run windows was stopped after 22 themes (`2026-10-27-tier-High`, partial). Against
+it, those 22 themes show one real outlier: Wolfhour's Medium saves 5 %.
+
+**Still to re-check interleaved, flagged against the morning baseline:**
+
+| Theme | Flag |
+|---|---|
+| Golden Forest | Medium 1.12× High |
+| Chromadelic Highway | Medium 0.98× High |
+| Black Hole | Low 0.70× High |
+| Parhelion | Low 0.60× High |
+| Blood Moon | Low 0.55× High |
+
+These are likely real, matching the code survey:
+
+| Theme | Ultra / Extreme vs High | Why |
+|---|---|---|
+| Cosmic Noir | 2.3× / 4.0× | the volume's march steps and target scale |
+| Stellar Velocity | 1.75× / 2.8× | the same |
+| Thermal Bloom | 1.9× / 2.8-3.2× | adds 4× MSAA at Ultra |
+| Voltage Storm | 1.65× / 2.7× | – |
+| Aurora | 1.4× / 2.6× | – |
+
+Medium-to-Low and Low-to-Minimal steps under ~0.1 ms are noise at 2000-4000 fps.
+
 ## 9. What changed in this pass
 
 Branch `perf/theme-fleet-240`.
@@ -372,8 +422,7 @@ only, for the bench's storms.
    - the scene passes of Spring, Verdant Hills and Grainfields (2.8-3.1 ms, foliage under 4× MSAA);
    - Thermal Bloom's storm effects.
 6. **Tier alignment.**
-   - Measured per-tier ratios against each theme's own High: runs at Ultra, Medium, Low, Extreme and
-     Minimal are in progress.
+   - The tiers are measured (§8b). Re-check the flagged themes interleaved before changing code.
    - Then align the tiers:
      - one rule for High's pixel ratio;
      - MSAA that follows the antialiasing setting;
