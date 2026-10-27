@@ -43,6 +43,7 @@
     "perf:odyssey:compare": "node scripts/odyssey-perf-compare.mjs",
     "perf:odyssey:nightly": "node scripts/odyssey-perf-nightly.mjs",
     "perf:budgets:gate": "node scripts/perf-budgets-gate.mjs",
+    "perf:themes:bench": "node scripts/theme-fleet-bench.mjs",
     "validate:odyssey:webgpu": "node scripts/run-electron.mjs scripts/odyssey-webgpu-validation.mjs",
     "tts:cues": "node scripts/sync-tts-cues.mjs",
     "tts:index": "node scripts/index-breathwork-voices.mjs",
