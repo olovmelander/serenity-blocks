@@ -14,6 +14,7 @@ import {
 import { readFlag } from '../core/flags.js';
 import { readExplorationSignal } from '../core/exploration-signal.js';
 import { adoptRendererForTheme } from '../rendering/async-render-pipelines.js';
+import { injectSpareThemeDevice } from '../rendering/theme-device-spare.js';
 
 // Global render scale (set by settings system)
 let globalRenderScale = 1.0;
@@ -796,7 +797,10 @@ export class BaseTheme {
             disposeCandidate();
             throw new Error(`${label} was cancelled before initialization`);
         }
+        // A spare GPUDevice requested ahead of time skips the adapter + device wait (150-500 ms)
+        // of this start; the renderer still owns it and its dispose() destroys it.
         const initPromise = Promise.resolve()
+            .then(() => injectSpareThemeDevice(renderer).catch(() => false))
             .then(() => renderer.init())
             .then(
                 (value) => {

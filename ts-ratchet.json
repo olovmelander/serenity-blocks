@@ -84,6 +84,7 @@
     "src/rendering/odyssey/odyssey-path-horizon.js",
     "src/rendering/odyssey/odyssey-path-inflow.js",
     "src/rendering/odyssey/odyssey-scroll-pace.js",
+    "src/rendering/theme-device-spare.js",
     "src/rendering/webgpu-compute-pipeline-async.js",
     "src/themes/black-hole/black-hole-moods.js",
     "src/themes/crystal-cave/crystal-cave-hours.js",
