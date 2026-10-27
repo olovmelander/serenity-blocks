@@ -1,0 +1,19 @@
+{
+  "tag": "base-high-vsync",
+  "baseUrl": "http://127.0.0.1:4317",
+  "quality": "High",
+  "targetFps": 240,
+  "vsync": true,
+  "size": [
+    1707,
+    1067
+  ],
+  "scale": 1.5,
+  "anchor": "nimbus-veil",
+  "query": {},
+  "lowPowerGpu": false,
+  "switches": "",
+  "startedAt": "2026-10-27T10:18:23.732Z",
+  "host": "LAPTOP-F5V3G28E",
+  "cpu": "AMD Ryzen 9 9955HX3D 16-Core Processor         "
+}
