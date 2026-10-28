@@ -41,6 +41,7 @@ import {
     cameraPosition,
     clamp,
     cos,
+    densityFogFactor,
     dot,
     exp,
     float,
@@ -100,6 +101,14 @@ export const ORB_STAR_SLOTS = Object.freeze([
     Object.freeze({ right: 0.68, up: 1.01, toward: 0.65 }),
 ]);
 export const ORB_STAR_SIZE = 0.42;
+/**
+ * A star's quad, in star widths: room round the star for its glow to fade to nothing. On a
+ * quad the star's own size the glow was still ~0.1-0.14 alpha at the top and side edges and
+ * was cut off there, so every earned star sat in a soft lit square (2026-10-28). Build the
+ * star mesh on PlaneGeometry(ORB_STAR_QUAD, ORB_STAR_QUAD); the instance scale stays
+ * ORB_STAR_SIZE x the glass radius and the star keeps its size.
+ */
+export const ORB_STAR_QUAD = 1.6;
 
 const WARM_FILL = vec3(1.0, 0.78, 0.44);
 
@@ -197,6 +206,9 @@ export function createOrbHaloTSL(uTime = uniform(0), uBeatPulse = uniform(0)) {
     const aHalo = attribute('aHalo', 'vec4');
     const vColor = varying(attribute('aColor', 'vec3'));
     const vState = varying(attribute('aState', 'vec4'));
+    // The scene's FogExp2 density, read at draw time: the board rewrites scene.fog every frame
+    // and a chapter change can swap the object, so a reference bound at build time could go stale.
+    const uFogDensity = uniform(0).onObjectUpdate(({ scene }) => (scene?.fog?.isFogExp2 ? scene.fog.density : 0));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.positionNode = billboardWorld(aHalo.xyz, aHalo.w.mul(ORB_HALO_SPAN * 2));
@@ -219,11 +231,17 @@ export function createOrbHaloTSL(uTime = uniform(0), uBeatPulse = uniform(0)) {
             current,
         ).add(hovered.mul(0.12)).add(selected.mul(0.1)).mul(oneMinus(locked));
         const tint = min(mix(vColor, WARM_FILL, completed.mul(0.8)), vec3(1.0));
-        return tint.mul(corona).mul(strength);
+        // Fog dims the light the halo adds: the same factor three's fog would mix with.
+        return tint.mul(corona).mul(strength).mul(oneMinus(densityFogFactor(uFogDensity)));
     })();
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
+    // NO SCENE FOG (2026-10-28). three's fog is mix(colour, fogColour, f) with alpha kept, so on
+    // an additive quad it ADDED fogColour x f over the whole 2 x ORB_HALO_SPAN square, where the
+    // corona is black: a lit square round every orb, plainest on the map looking down through
+    // thick fog. The halo dims by the fog factor above instead, so the corona looks as before.
+    material.fog = false;
     // A camera-facing quad: one side, one pass (see the stars' note).
     material.forceSinglePass = true;
     return { material, uniforms: { uTime, uBeatPulse } };
@@ -382,12 +400,15 @@ function sdStar5(p, r, rf) {
 /**
  * The stars over a completed orb (an InstancedMesh of camera-facing planes). Per instance
  * aStar: 1 a star earned — gold, rimmed in warm white, with a soft glow — 0 a slot still to
- * earn: a pale outline round dark glass. Vector-drawn, so it stays crisp at any size.
+ * earn: a pale outline round dark glass. Vector-drawn, so it stays crisp at any size. Draw it
+ * on PlaneGeometry(ORB_STAR_QUAD, ORB_STAR_QUAD): the star fills the middle and the glow fades
+ * out in a circle inside the quad, so no edge of the quad ever shows.
  */
 export function createOrbStarsTSL() {
     const earned = varying(attribute('aStar', 'float'));
     const starTerms = () => {
-        const p = uv().mul(2.0).sub(1.0);
+        // Star units: the star's tips at ~0.9, the quad's edges at ±ORB_STAR_QUAD.
+        const p = uv().mul(2.0).sub(1.0).mul(ORB_STAR_QUAD);
         const d = sdStar5(p, 0.84, 0.46).sub(0.06);
         const aa = clamp(fwidth(d).mul(0.75), 0.004, 0.2);
         const cover = smoothstep(aa, aa.negate(), d);
@@ -396,7 +417,9 @@ export function createOrbStarsTSL() {
         const gold = mix(vec3(0.88, 0.4, 0.04), vec3(1.0, 0.8, 0.3), smoothstep(-0.7, 0.75, p.y));
         const rim = smoothstep(-0.2, -0.08, d);
         const won = mix(gold, vec3(1.0, 0.96, 0.84), rim.mul(0.7));
-        const glow = exp(max(d, 0.0).mul(-9.0)).mul(oneMinus(cover)).mul(0.35);
+        // Round and gone before the quad's edge (r 1.2 -> ORB_STAR_QUAD): no square.
+        const glow = exp(max(d, 0.0).mul(-9.0)).mul(oneMinus(cover)).mul(0.35)
+            .mul(smoothstep(ORB_STAR_QUAD, ORB_STAR_QUAD * 0.75, length(p)));
         // To earn: an outline of pale light round a dark glass slot.
         const outline = cover.mul(smoothstep(-0.2, -0.1, d));
         const slot = mix(vec3(0.08, 0.09, 0.13), vec3(0.78, 0.83, 0.96), outline);
