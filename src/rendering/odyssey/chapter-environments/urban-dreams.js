@@ -71,6 +71,7 @@ import {
     createSkylineSilhouetteTSL,
     createHorizonHazeTSL,
 } from './urban-dreams.tsl.js';
+import { runChapterSteps } from './shared/chapter-build-steps.js';
 
 export const URBAN_DREAMS_CONFIG = {
     id: 8,
@@ -234,14 +235,16 @@ function createNeonCitySpire(uniforms) {
  * fascias over the shopfronts, light boxes on the low roofs, each with a soft halo in the wet
  * air. Two draws for every sign in the city. Low keeps every other sign.
  */
-function createNeonSignStack(neon, plan, tier = CH8_QUALITY_TIERS.high) {
+function* createNeonSignStackSteps(neon, plan, tier = CH8_QUALITY_TIERS.high) {
     const stride = Math.max(1, tier.signStride ?? 1);
     const drawn = stride > 1 ? plan.signs.filter((_, i) => i % stride === 0) : plan.signs;
     const group = new THREE.Group();
     group.name = 'neon-sign-stack';
     const glyphTexture = createNeonGlyphTexture();
     group.userData.glyphTexture = glyphTexture;
+    yield; // the glyph atlas and its mips are baked here (once a session)
     group.add(createNeonSigns(neon, drawn, glyphTexture));
+    yield;
     group.add(createNeonSignHalos(neon, drawn));
     return group;
 }
@@ -302,6 +305,18 @@ function computeCorridorOrientation() {
 }
 
 export function createUrbanDreamsEnvironment(options = {}) {
+    return runChapterSteps(buildUrbanDreamsEnvironmentSteps(options));
+}
+
+/**
+ * The chapter's build in steps (shared/chapter-build-steps.js): the create above runs it straight
+ * through; a build made while the map is on screen pauses it between the city's pieces (the sign
+ * plan and its glow map, the skylines, the towers, the signs). The group is returned, not added
+ * anywhere.
+ * @param {object} [options] quality settings (particleCount, qualityTier)
+ * @returns {Generator<void, THREE.Group, unknown>}
+ */
+export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     const group = new THREE.Group();
     group.name = 'urban-dreams-environment';
     group.userData.chapterId = 8;
@@ -339,6 +354,7 @@ export function createUrbanDreamsEnvironment(options = {}) {
     neon.storm = uniform(0);
     group.userData.neon = neon;
     group.userData.neonPlan = neonPlan;
+    yield;
 
     const chapterRange = getChapterPathRange(8);
     const chapterCenterY = chapterRange?.center.y
@@ -369,6 +385,7 @@ export function createUrbanDreamsEnvironment(options = {}) {
     // ring wrapped the view axis. Rotated with the city, the horizon glow sits behind the
     // skyline where it silhouettes the towers.
     corridor.add(sky);
+    yield;
 
     // (The 420-u curtain-wall backdrop is retired from the live chapter: with the 2026-10
     // city re-stage six tower banks fill the frame to the horizon and the walls would read as
@@ -385,6 +402,7 @@ export function createUrbanDreamsEnvironment(options = {}) {
     sun.position.set(...CH8_RETROSUN_STAGE.sun);
     corridor.add(sun);
     group.userData.sun = sun;
+    yield;
 
     // SKYLINE SILHOUETTE CARDS + HORIZON HAZE (creative plan ch8 item 2): two layered
     // near-black roofline ranks between the Retrosun and the last towers, so the disc
@@ -416,11 +434,13 @@ export function createUrbanDreamsEnvironment(options = {}) {
         return card.mesh;
     });
     group.userData.skyline = [skylineNear.mesh, skylineFar.mesh, ...skylineBack];
+    yield;
     const horizonHaze = createHorizonHazeTSL(uniforms.uTime);
     horizonHaze.mesh.position.set(...CH8_RETROSUN_STAGE.horizonHaze);
     horizonHaze.mesh.renderOrder = -98; // after the dome, BEFORE the sun (-95)
     corridor.add(horizonHaze.mesh);
     group.userData.horizonHaze = horizonHaze.mesh;
+    yield;
 
     // SKYBRIDGES (2026-10-20, after Neon District's lit bridges over its street): three glazed
     // walkways span the boulevard between the inner towers, below the rail and at different
@@ -434,11 +454,13 @@ export function createUrbanDreamsEnvironment(options = {}) {
     gateBridge.add(bridges);
     corridor.add(gateBridge);
     group.userData.gateBridge = gateBridge;
+    yield;
 
     const cityBlocks = createCityBlocks(uniforms, tier, neon);
     corridor.add(cityBlocks);
     group.userData.cityBlocks = cityBlocks;
     group.userData.cityTowers = cityBlocks.getObjectByName('city-tower-instances-tsl') ?? null;
+    yield;
 
     // Lantern strings across the boulevard below the rail (2026-10-20): rows of warm points
     // converging on the spire, the canyon floor's depth cue. They replace the nine torus ring
@@ -447,6 +469,7 @@ export function createUrbanDreamsEnvironment(options = {}) {
     const lanterns = createNeonLanterns(neon);
     corridor.add(lanterns);
     group.userData.lanterns = lanterns;
+    yield;
 
     // Rain lives IN the corridor (2026-10) and falls along the CITY's down: in world space
     // the climb is nearly vertical, so the old world -Y fall streamed along the view axis
@@ -454,6 +477,7 @@ export function createUrbanDreamsEnvironment(options = {}) {
     const rain = createNeonRain(neon, tier.rain);
     corridor.add(rain);
     group.userData.rain = rain;
+    yield;
 
     const spire = createNeonCitySpire(uniforms);
     corridor.add(spire);
@@ -469,18 +493,21 @@ export function createUrbanDreamsEnvironment(options = {}) {
     group.userData.uReveal = spire.userData.uReveal ?? null;
     group.userData.reveal = 0; // eased 0..1 ignition value (mirror of uReveal.value)
     group.userData.progress = 0; // raw 0..1 chapter/path progress (camera crane driver)
+    yield;
 
-    const signs = createNeonSignStack(neon, neonPlan, tier);
+    const signs = yield* createNeonSignStackSteps(neon, neonPlan, tier);
     corridor.add(signs);
     group.userData.signs = signs;
     // The glow map and the glyph atlas are bound only inside TSL node graphs, where teardown's
     // traverse cannot see them: register them (OD-11), or an evicted or disposed chapter 8 held
     // their GPU copies until a garbage collection (audit 2026-10-23).
     group.userData.ownedTextures = [neon.glowTex, signs.userData.glyphTexture].filter((tex) => tex?.isTexture);
+    yield;
 
     const reflectionPlane = createWetReflectionPlane(uniforms, neon, neon.sunVisible);
     corridor.add(reflectionPlane);
     group.userData.reflectionPlane = reflectionPlane;
+    yield;
 
     // Sky traffic (2026-10-20, after Neon District): white headlights coming up the canyon, red
     // tail lights going, streaks crossing town far down it — one draw (it was eighteen tubes).

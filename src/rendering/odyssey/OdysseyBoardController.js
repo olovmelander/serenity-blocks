@@ -993,6 +993,7 @@ export class OdysseyBoardController {
             lodFastThreshold: Number.parseFloat(readUrlValue('odysseyLodFastSpeed')) || undefined,
             suppressedChapters: this.oneWorldEnabled ? ONE_WORLD_CHAPTERS : [],
         });
+        this.environmentManager.configureChapterBuilds(this._chapterBuildGate());
 
         // TRACE BLIND SPOT FIX (masterplan F5): the ~1.2s One World build used to sit in the
         // untraced gap between 'renderer' and 'creates', so the startup summary's parts never
@@ -1715,6 +1716,35 @@ export class OdysseyBoardController {
     }
 
     /**
+     * How chapter builds made on the live map share its frames (ChapterEnvironmentManager's
+     * sliced builds, chapter-build-lane.js). A turn runs right after a frame is drawn, for a share
+     * of the frame interval the board targets: a third of it while the player is idle, a sixth
+     * while they scroll or glide, three fifths for a build the player is waiting on (a travel's),
+     * and most of it while a sheet covers the map (nothing of the map is drawn then). A parked
+     * board builds nothing (an orb is being played), and background builds wait out a glide, as
+     * every other background task does (_canRunBackgroundTask).
+     * @private
+     * @returns {{canRun: (build: {urgent: boolean}) => boolean, budgetMs: (build: {urgent: boolean}) => number}}
+     */
+    _chapterBuildGate() {
+        return {
+            canRun: ({ urgent }) => {
+                if (this._disposed || !this.isActive || this.isRenderingPaused) return false;
+                return urgent || this.cameraController?.isAnimating !== true;
+            },
+            budgetMs: ({ urgent }) => {
+                const fps = this.targetFrameRate > 0 ? this.targetFrameRate : 60;
+                const frameMs = 1000 / fps;
+                let share = 1 / 3;
+                if (this._isCovered()) share = 0.8;
+                else if (urgent) share = 0.6;
+                else if (!(this._isInteractionIdle() && this._isScrollIdle())) share = 1 / 6;
+                return Math.max(1, frameMs * share);
+            },
+        };
+    }
+
+    /**
      * THE GALAXY GUARANTEE — push the travel frontier to the camera so the player can never
      * scroll into a chapter that is not prepared (see odyssey-travel-frontier.js for why this,
      * rather than a longer loading screen, is the right reading of "do it the Galaxy way").
@@ -2001,6 +2031,8 @@ export class OdysseyBoardController {
                 this._queueChapterPrewarm(chapterId);
             },
             focusChapter: () => this._liveFocusChapter(),
+            // The map is on screen: a few milliseconds a frame (_chapterBuildGate).
+            sliced: true,
         });
     }
 
@@ -2790,7 +2822,9 @@ export class OdysseyBoardController {
         if (!group || this._disposed || this.oneWorld?.group !== group) return null;
         this._abandonOneWorld(error);
         const here = this.environmentManager?.getBlendState?.(this.cameraController?.getCurrentPosition?.() ?? 0);
-        return Number.isFinite(here?.activeChapter) ? this._requestChapterEnvironment(here.activeChapter) : null;
+        return Number.isFinite(here?.activeChapter)
+            ? this._requestChapterEnvironment(here.activeChapter, { urgent: true })
+            : null;
     }
 
     /**
@@ -4493,7 +4527,7 @@ export class OdysseyBoardController {
         const traveled = currentChapter !== targetChapter;
 
         if (traveled || options.chapterArrival === true || options.pathTravel === true) {
-            await this._requestChapterEnvironment(targetChapter);
+            await this._requestGlideChapters(currentChapter, targetChapter);
             if (!isCurrent()) return false;
             // A request can fail, still be pending, or resolve without creating scenery.
             // One World supplies suppressed chapters without a separate environment.
@@ -4547,6 +4581,30 @@ export class OdysseyBoardController {
         return true;
     }
 
+    /**
+     * Build what a glide from one chapter to another passes through before it leaves: the
+     * destination first, then the chapters between. Built during the glide, a chapter's build
+     * landed on the flight's frames (sliced, it could not finish in the second the glide takes to
+     * cross a preload window, and finishing it at once was the old freeze). Urgent: the player is
+     * waiting, so these go ahead of the background builds.
+     * @param {number} fromChapter
+     * @param {number} toChapter
+     * @returns {Promise<boolean>} the destination's request
+     * @private
+     */
+    _requestGlideChapters(fromChapter, toChapter) {
+        const destination = this._requestChapterEnvironment(toChapter, { urgent: true });
+        const passed = [];
+        if (Number.isInteger(fromChapter) && Number.isInteger(toChapter) && fromChapter !== toChapter) {
+            const step = Math.sign(toChapter - fromChapter);
+            for (let ch = fromChapter + step; ch !== toChapter; ch += step) {
+                passed.push(this._requestChapterEnvironment(ch, { urgent: true }).catch(() => false));
+            }
+        }
+        if (passed.length === 0) return destination;
+        return Promise.all([destination, ...passed]).then(([reached]) => reached);
+    }
+
     /** Settle the current navigation promise before a flow, map or renderer owner changes. */
     cancelTravel() {
         this._revealSeatLevelId = null;
@@ -4570,7 +4628,7 @@ export class OdysseyBoardController {
      */
     async panToChapter(chapterId, duration = 1500) {
         const chapterPosition = this.presentationLayout.chapterPositions?.[chapterId - 1] || 0;
-        await this._requestChapterEnvironment(chapterId);
+        await this._requestChapterEnvironment(chapterId, { urgent: true });
         return this.cameraController?.panToPosition(chapterPosition, duration);
     }
 
@@ -5777,7 +5835,14 @@ export class OdysseyBoardController {
         }
     }
 
-    _requestChapterEnvironment(chapterId) {
+    /**
+     * Build a chapter's environment (and queue its compile).
+     * @param {number} chapterId
+     * @param {{urgent?: boolean}} [options] urgent: the player is waiting on it (a travel), so it
+     *   goes ahead of the background builds with a larger share of each frame
+     * @returns {Promise<boolean>} whether the chapter has its scenery
+     */
+    _requestChapterEnvironment(chapterId, { urgent = false } = {}) {
         if (!Number.isFinite(chapterId) || !this.environmentManager) return Promise.resolve(false);
         if (this.restrictStartupChapterLoading && !this.captureChapterIds.includes(chapterId)) {
             return Promise.resolve(false);
@@ -5796,14 +5861,24 @@ export class OdysseyBoardController {
         // A build already on its way is waited for, not refused: travelToLevel gave up on a
         // chapter the boundary preload had started (a navigator Play then did nothing at all).
         const inFlight = this._chapterLoadPromises?.get(chapterId);
-        if (inFlight) return inFlight;
+        if (inFlight) {
+            // Waited on now: a background build on its way takes the urgent share.
+            if (urgent) this.environmentManager.promoteChapterBuild?.(chapterId);
+            return inFlight;
+        }
         // Marked pending with nothing to wait on: never a second build of it.
         if (this.pendingChapterLoads.has(chapterId)) return Promise.resolve(false);
 
         this.pendingChapterLoads.add(chapterId);
         const load = (async () => {
             try {
-                await this.environmentManager.createChapterEnvironment(chapterId);
+                // Once the map is live (after the reveal) a build is sliced across its frames;
+                // before it, under the loading cover, one go is fastest and nothing is drawn.
+                await this.environmentManager.createChapterEnvironment(chapterId, {
+                    sliced: this.isActive === true,
+                    urgent,
+                });
+                if (this._disposed) return false; // torn down while it built
                 this.environmentManager.updateVisibility(this.cameraController?.getCurrentPosition?.() ?? 0, {
                     mode: 'progress',
                 });

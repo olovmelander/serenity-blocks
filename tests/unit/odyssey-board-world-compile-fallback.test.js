@@ -56,7 +56,8 @@ describe('Odyssey board world compile fallback', () => {
         expect(controller.scene.remove).toHaveBeenCalledWith(group);
         expect(world.dispose).toHaveBeenCalledOnce();
         expect([...controller.environmentManager.suppressedChapters]).toEqual([]);
-        expect(controller._requestChapterEnvironment).toHaveBeenCalledWith(3);
+        // The camera's chapter is needed now: urgent.
+        expect(controller._requestChapterEnvironment).toHaveBeenCalledWith(3, { urgent: true });
     });
 
     it('keeps a world that compiled', async () => {

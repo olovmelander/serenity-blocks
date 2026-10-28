@@ -71,6 +71,7 @@ import {
     GARGANTUA_LOCK,
     resolveGargantuaFallPosition,
 } from './black-hole-transcendence.tsl.js';
+import { runChapterSteps } from './shared/chapter-build-steps.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
     id: 7,
@@ -316,6 +317,17 @@ function createLensingStarfield(uniforms, count = CH7_STARFIELD.count) {
 }
 
 export function createBlackHoleTranscendenceEnvironment(options = {}) {
+    return runChapterSteps(buildBlackHoleTranscendenceEnvironmentSteps(options));
+}
+
+/**
+ * The chapter's build in steps (shared/chapter-build-steps.js): the create above runs it straight
+ * through; a build made while the map is on screen pauses it between the sky, the hole and its
+ * fields. The group is returned, not added anywhere.
+ * @param {object} [options] quality settings (particleCount, qualityTier)
+ * @returns {Generator<void, THREE.Group, unknown>}
+ */
+export function* buildBlackHoleTranscendenceEnvironmentSteps(options = {}) {
     const group = new THREE.Group();
     group.name = 'black-hole-transcendence-environment';
     group.userData.chapterId = 7;
@@ -353,11 +365,13 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     voidDome.material.uniforms = { uOpacity: voidOpacity }; // ecotone crossfade bridge
     group.add(voidDome);
     group.userData.voidDome = voidDome;
+    yield;
 
     // 0b. Far starfield shell (behind the hero; the post lens bends it).
     const lensingStarfield = createLensingStarfield(uniforms, tier.stars);
     group.add(lensingStarfield);
     group.userData.lensingStarfield = lensingStarfield;
+    yield;
 
     // 1. Gargantua — the one hero, camera-locked in update().
     const distantHole = createGargantua(uniforms, tier);
@@ -370,6 +384,7 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     // rides on the same Vector3 so the lens can size itself to the PROJECTED shadow.
     group.userData.lensWorldPos = new THREE.Vector3(0, 120, -900);
     group.userData.lensWorldPos.lensRadius = CH7_GARGANTUA.shadowRadius;
+    yield;
 
     // Drifting dust hugging the corridor (re-centred on the camera in update()).
     const dustCount = Math.floor((options.particleCount
@@ -380,10 +395,12 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.add(corridorDust);
     group.userData.corridorDust = corridorDust;
     corridorDust.userData.flowUniforms = dustUniforms;
+    yield;
 
     const shards = createTranscendenceShards(uniforms);
     group.add(shards);
     group.userData.shards = shards;
+    yield;
 
     // The 7->8 carry's sun copy and the real Retrosun's stage (computed once: the layout is
     // fixed by the time chapters are created).
@@ -392,6 +409,7 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.sunCopy = sunCopy;
     group.userData.retrosunStage = resolveRetrosunStage();
     if (group.userData.retrosunStage) sunCopy.quaternion.copy(group.userData.retrosunStage.quaternion);
+    yield;
 
     // Infall embers — matter in the disk plane, parented to the disk pivot so they orbit
     // IN the band (their authored orbit plane is local XZ; +90° about X lays it onto the

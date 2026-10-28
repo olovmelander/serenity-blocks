@@ -59,3 +59,12 @@ export function exportNamesForScene(sceneId) {
         update: `update${pascal}Environment`,
     };
 }
+
+/**
+ * The OPTIONAL export of a chapter that can be built in steps (shared/chapter-build-steps.js):
+ * 'earth-core' → 'buildEarthCoreEnvironmentSteps'. A chapter without one is built in one go.
+ * @param {string} sceneId
+ */
+export function stepsExportNameForScene(sceneId) {
+    return `${exportNamesForScene(sceneId).create.replace(/^create/, 'build')}Steps`;
+}
