@@ -320,43 +320,55 @@ policy caps are Minimal 0.9 / Low 1.0 / Medium 1.15 / High 1.25 / Ultra 1.35 / E
 
 ## 8b. Tiers measured (2026-10-27 afternoon)
 
-All 63 themes were run at Minimal, Low, Medium, Ultra and Extreme: uncapped, Balanced mode, 4 s at
-rest and two 4 s storms, no second visit. Summaries are in
-`reports/theme-fleet-bench/2026-10-27-tier-*`. The tables come from
-`scripts/lib/theme-bench-tools/tier-matrix.mjs`.
+All 63 themes were run at Minimal, Low, Medium, Ultra and Extreme on 2026-10-27 afternoon, and at
+High again on 2026-10-28 morning on the same build:
+- Conditions: uncapped, Balanced mode, 4 s at rest and two 4 s storms, no second visit.
+- Summaries: `reports/theme-fleet-bench/2026-10-27-tier-*` and `2026-10-28-tier-High`.
+- The matrix, built by `scripts/lib/theme-bench-tools/tier-matrix.mjs High=tier-High-final`:
+  `reports/theme-fleet-bench/2026-10-28-tier-matrix.md`.
 
 **Median cost of a tier against each theme's own High** (worst window, frame time):
 
 | Minimal | Low | Medium | High | Ultra | Extreme |
 |---:|---:|---:|---:|---:|---:|
-| 0.22× | 0.31× | 0.65× | 1.00× | 1.38× | 1.65× |
+| 0.22× | 0.32× | 0.67× | 1.00× | 1.41× | 1.69× |
 
-Every theme stays above 240 fps everywhere at Minimal, Low and Medium. 15 themes dip below 240 fps
-somewhere at Ultra, and 20 at Extreme.
+How the tiers hold 240 fps:
+- **Minimal, Low and Medium:** every theme stays above 240 fps everywhere.
+- **High:** three themes go below 240 fps somewhere: Thermal Bloom 181, Verdant Hills 203,
+  Grainfields 205. Summer sits at 240. The median theme does 635 fps at rest.
+- **Ultra:** 15 themes dip below 240 fps somewhere.
+- **Extreme:** 20 themes dip below 240 fps somewhere.
 
-**Drift.** The first matrix compared the tiers with the morning's High baseline, and half of its
-outliers were drift, not tiers. An interleaved re-check (two rounds each, same afternoon) gave:
+**Drift.** The first matrix compared the tiers with the 2026-10-27 morning High baseline, and half of
+its outliers were drift, not tiers. An interleaved re-check (two rounds each, same afternoon) gave:
 
 | Theme | Morning High | Afternoon High | Afternoon Ultra |
 |---|---:|---:|---:|
 | Neon Dusk | 639 | ~985 | ~900 |
 | Halcyon Apex | 543 | ~835 | ~590 |
 
-Cinder Drift's Ultra storms read 216 fps in the tier run and ~460 in the re-check. The afternoon High
-re-run with tier-run windows was stopped after 22 themes (`2026-10-27-tier-High`, partial). Against
-it, those 22 themes show one real outlier: Wolfhour's Medium saves 5 %.
+Both are in step against the 2026-10-28 High.
 
-**Still to re-check interleaved, flagged against the morning baseline:**
+**Out of step against the 2026-10-28 High** (13 themes flagged):
+- **Most flags are noise.** Minimal ≈ Low, or Low a hair cheaper than Minimal, in Aether Tides,
+  Chiral Gold, Ocean, Summer, Vesper Chrysalis and Voltage Storm. Frames there run at 2000-4000 fps,
+  and steps under ~0.1 ms are noise.
+- **Cinder Drift** reads Ultra 2.97× against Extreme 1.70×, from one slow storm window in the Ultra
+  run. Its interleaved re-check gave Ultra storms ~460 fps against High ~660: about 1.4×.
 
-| Theme | Flag |
-|---|---|
-| Golden Forest | Medium 1.12× High |
-| Chromadelic Highway | Medium 0.98× High |
-| Black Hole | Low 0.70× High |
-| Parhelion | Low 0.60× High |
-| Blood Moon | Low 0.55× High |
+The real outliers:
 
-These are likely real, matching the code survey:
+| Theme | Flag | Next step |
+|---|---|---|
+| Golden Forest | Medium 1.15× High (in both High baselines) | read its Medium row: FXAA, god rays at 16 steps ½ res, the MSAA-less pass; something there costs more than High's set |
+| Chromadelic Highway | Medium 0.99× High | Medium changes little besides 0.9 resolution and bloom 0.25 |
+| Wolfhour | Medium 0.94× High | forest and mist tiers are the same from Medium to Extreme |
+| Black Hole | Low 0.68× High | Low's pixel ratio equals Minimal's; the march steps carry the cost |
+| Parhelion | Low 0.61× High | Low still blooms (0.25, 3 mips); 4× MSAA on every tier |
+| Cosmic Noir | Ultra 2.38×, Extreme 4.13× High | the volume (below) |
+
+The Ultra/Extreme jumps below are real and match the code survey:
 
 | Theme | Ultra / Extreme vs High | Why |
 |---|---|---|

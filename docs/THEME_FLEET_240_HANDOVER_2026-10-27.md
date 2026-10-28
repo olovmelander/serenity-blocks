@@ -4,20 +4,30 @@ Handover of the first day of the fleet performance pass. The record with all num
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (written 2026-10-27 evening, for 2026-10-28).**
+> **Pick up here (updated 2026-10-28 morning).**
 > - **Branch:** `perf/theme-fleet-240` in the worktree `C:\Users\olovm\repos\serenity-blocks-perf240`
 >   (node_modules junctioned to the main checkout).
->   - Committed, **not merged and not pushed**. Base: main `d3a1bc82`.
->   - Gates were green on 2026-10-27: tsc, ts and lint ratchets, fitness, boundaries, lifecycle
->     audit, IP strings, perf budgets, release gates, `npm run build`. Full vitest passed except the
->     four known local-only failures (records-view, game-over-modal-result-compatibility,
->     odyssey-level-briefing: the sv-SE locale; tts-recorder-e2e: the symlink EPERM in a worktree).
->   - Sync with main before merging. Main moves several times a day.
-> - **First thing tomorrow:**
->   1. Switch the laptop to Lenovo **Performance** mode (Fn+Q until the power button is red) on AC,
->      and close other GPU work.
->   2. Re-run the High baseline (§3 commands).
->   3. Decide from that which GPU-bound themes still need shader work.
+>   - Committed, **not merged and not pushed**.
+>   - Synced with main at `390fc497` on 2026-10-28 (a clean merge).
+>   - Gates were green on the synced branch on 2026-10-28: tsc, ts and lint ratchets, fitness,
+>     boundaries, lifecycle audit, IP strings, perf budgets, release gates, and `npm run build`.
+>   - Full vitest passed (23 228 tests) except the four known local-only failures:
+>     records-view, game-over-modal-result-compatibility and odyssey-level-briefing (the sv-SE
+>     locale), and tts-recorder-e2e (the symlink EPERM in a worktree).
+>   - Sync with main again before merging; main moves several times a day.
+> - **Done on 2026-10-28:** the final High run on the tier-run build and settings
+>   (`reports/theme-fleet-bench/2026-10-28-tier-High`), still in **Balanced** mode.
+>   - The six-tier matrix against it is in record §8b.
+>   - Six real tier outliers, consistent across both High baselines (record §8b table): Golden Forest,
+>     Chromadelic Highway and Wolfhour at Medium; Black Hole and Parhelion at Low; Cosmic Noir at
+>     Ultra and Extreme.
+> - **Next:**
+>   1. When the laptop can be in Lenovo **Performance** mode (Fn+Q until the power button is red),
+>      on AC and with other GPU work closed, re-run High (§3) and compare with
+>      `2026-10-28-tier-High`. Until then all numbers are Balanced-mode (GPU 80-95 W).
+>   2. Otherwise work the queue in §4 from item 3.
+>      - Item 2 (the display ceiling) needs the owner at the machine.
+>      - Item 5 can start on the six confirmed tier outliers directly.
 
 ## 1. What was done
 
@@ -27,7 +37,9 @@ to resume, and what to do next, in order.
 | `09597f0a` | The canvas is multisampled only where the scene is drawn to it (seven themes; ~90 MB VRAM each, no pixel or fps change) |
 | `2f4b1706` | Themes start on a spare GPU device requested ahead of time (`src/rendering/theme-device-spare.js`; renderer creation 30-45 ms → under 1 ms per theme start; no leak; rollback `?themeDeviceSpare=0`) |
 | `74f1519b` | The record and the two High baselines (`reports/theme-fleet-bench/2026-10-27-base-high*`) |
-| (this commit) | The tier runs (`reports/theme-fleet-bench/2026-10-27-tier-*`), the tier matrix (record §8b), `scripts/lib/theme-bench-tools/`, this handover |
+| `15a9dc91` | The tier runs (`reports/theme-fleet-bench/2026-10-27-tier-*`), the first tier matrix, `scripts/lib/theme-bench-tools/`, this handover |
+| `f4d05b5f` | Sync with main (`390fc497`: Spring's woods on phones) |
+| (2026-10-28 commit) | The final High run (`2026-10-28-tier-High`), the final tier matrix (`2026-10-28-tier-matrix.md`, record §8b), this update |
 
 ## 2. What we know (short)
 
@@ -111,9 +123,10 @@ Other tools (READMEs beside them):
      material builds in one task (`--profile-load=1`). Then make its node graph smaller
      (`Fn().setLayout`) or split the build.
    - Spring (a 240-310 ms task on both visits) and Void Ember (188 ms, first visit).
-5. **Tier alignment** (record §8, §8b). Re-check every flagged theme interleaved (High vs the tier,
-   two rounds) before changing code: half of today's first-pass outliers were drift. Then:
-   - **Real outliers:** see §8b of the record.
+5. **Tier alignment** (record §8, §8b).
+   - **Real outliers:** the six in the record's §8b table hold against both High baselines.
+   - Start with Golden Forest's Medium (costs more than High). Measure each fix interleaved (High vs
+     the tier, two rounds) and screenshot the tier before and after.
    - **Consistency fixes that do not touch High's look:**
      - MSAA that follows the antialiasing toggle (about twenty themes ignore it);
      - antialiasing that does not get worse from Low to Medium (Golden Forest, Crystal Cave, Aurora);
