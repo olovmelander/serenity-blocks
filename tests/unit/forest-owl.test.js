@@ -19,7 +19,7 @@ import {
     OWL_FLIGHT, planFlight, sampleFlight, strokeClock, wingbeat,
 } from '../../src/themes/forest/forest-owl-flight.js';
 import {
-    OWL_GROUND, OWL_MOON_LOOP, OWL_TIMING, ForestOwlMind,
+    OWL_GATES, OWL_GROUND, OWL_MOON_LOOP, OWL_TIMING, ForestOwlMind,
 } from '../../src/themes/forest/forest-owl-mind.js';
 import {
     FOREST_OWL_HOME, FOREST_OWL_LIMBS, FOREST_OWL_PERCHES, forestOwlLimb, forestOwlNeighbours, limbAt,
@@ -86,6 +86,30 @@ function readTree(name) {
         indices: Uint32Array.from(read(bark.indices, 1)),
     };
 }
+
+/** Every tree that stands in the glade by design, as forest-trees.js `trunks()` hands them over (crowns too). */
+const FEATURE_TREES = FOREST_FEATURE_TREES.map((tree) => {
+    const { extras } = readTree(tree.asset);
+    const y = forestGroundHeight(tree.x, tree.z) - 0.05;
+    const c = Math.cos(tree.yaw || 0);
+    const s = Math.sin(tree.yaw || 0);
+    const k = tree.scale;
+    return {
+        asset: tree.asset,
+        x: tree.x,
+        z: tree.z,
+        y,
+        radius: extras.trunkRadius * k,
+        height: extras.height * k,
+        crown: {
+            x: tree.x + (extras.crownCentre[0] * c + extras.crownCentre[2] * s) * k,
+            y: y + extras.crownCentre[1] * k,
+            z: tree.z + (-extras.crownCentre[0] * s + extras.crownCentre[2] * c) * k,
+            rx: Math.max(extras.crownRadii[0], extras.crownRadii[2]) * k,
+            ry: extras.crownRadii[1] * k,
+        },
+    };
+});
 
 /** The elders' trunks as the theme hands them to the owl (forest-trees.js `trunks()`). */
 const ELDER_TRUNKS = ['spruce-elder', 'pine-elder'].map((name) => {
@@ -196,6 +220,27 @@ function gameSight() {
         };
         if (box.x0 < 0.015 || box.x1 > 0.985 || box.y0 < 0.015 || box.y1 > 0.985) return false;
         return !over(box, card) && !over(box, panel);
+    };
+}
+
+/** The game's landscape frame (16:9): whether any of a thing `size` metres across is in it at all. */
+function gameView() {
+    const view = FOREST_VIEWS.landscape;
+    const camera = new THREE.PerspectiveCamera(view.fov, 16 / 9, 0.3, 3400);
+    camera.position.set(...forestEye(view));
+    camera.lookAt(...view.target);
+    camera.updateMatrixWorld();
+    camera.updateProjectionMatrix();
+    const v = new THREE.Vector3();
+    return (x, y, z, size) => {
+        v.set(x, y, z).project(camera);
+        if (v.z >= 1) return false;
+        const sx = (v.x + 1) / 2;
+        const sy = (1 - v.y) / 2;
+        const d = camera.position.distanceTo(new THREE.Vector3(x, y, z));
+        const h = size / (2 * d * Math.tan(25 * DEG));
+        const w = (h * 9) / 16;
+        return sx + w / 2 > -0.02 && sx - w / 2 < 1.02 && sy + h / 2 > -0.02 && sy - h / 2 < 1.02;
     };
 }
 
@@ -498,10 +543,13 @@ describe('Forest owl: where it sits', () => {
 describe('Forest owl: its mind', () => {
     const groundHeight = forestGroundHeight;
 
-    function live(seconds, { seed = 7919, events = [], motion = 1, sight = gameSight(), each } = {}) {
+    function live(seconds, {
+        seed = 7919, events = [], motion = 1, sight = gameSight(), view = null, trees = ELDER_TRUNKS, each,
+    } = {}) {
         const mind = new ForestOwlMind({ rng: seededRandom(seed), groundHeight });
         mind.setSight(sight);
-        mind.setTrunks(ELDER_TRUNKS);
+        mind.setTrunks(trees);
+        if (view) mind.setView(view);
         mind.setBoard({ x: -0.3, y: 2.3, z: 7 });
         const tape = cueTape(events);
         const steps = Math.round(seconds / STEP);
@@ -550,7 +598,7 @@ describe('Forest owl: its mind', () => {
         const acts = new Set();
         const legs = new Set();
         const misses = new Set();
-        for (const seed of [7919, 101, 5]) {
+        for (const seed of [7919, 101, 5, 11, 23]) {
             live(600, {
                 seed,
                 events: [[100, 'level'], [300, 'level']],
@@ -568,6 +616,96 @@ describe('Forest owl: its mind', () => {
         expect([...acts].some((a) => a.startsWith('stretch'))).toBe(true);
         ['plain', 'hop', 'strike', 'climb'].forEach((style) => expect(legs.has(style), style).toBe(true));
         expect(misses).toEqual(new Set(['catch', 'miss']));
+    });
+
+    it('leaves the glade only out of frame, a while at a time, and comes back by other ways', () => {
+        const view = gameView();
+        let away = 0;
+        let changes = 0;
+        let seenChanging = 0;
+        const exits = new Set();
+        const entries = new Set();
+        let last = 'perched';
+        for (const seed of [7919, 101, 5]) {
+            live(900, {
+                seed,
+                view,
+                trees: FEATURE_TREES,
+                events: [[200, 'level'], [500, 'quad']],
+                each: (m) => {
+                    if (m.mode === 'away') away += STEP;
+                    if ((m.mode === 'away') !== (last === 'away')) {
+                        changes += 1;
+                        if (view(m.place.x, m.place.y + 0.24, m.place.z, 1.6)) seenChanging += 1;
+                        if (m.mode === 'away') exits.add(m.perch.gate.id);
+                    }
+                    if (m.leg?.style === 'enter') entries.add(m.perch.gate.id);
+                    last = m.mode;
+                },
+            });
+        }
+        expect(changes).toBeGreaterThanOrEqual(4);
+        expect(seenChanging).toBe(0);
+        // Away now and then, never most of the night.
+        expect(away / 2700).toBeGreaterThan(0.04);
+        expect(away / 2700).toBeLessThan(0.35);
+        expect(exits.size + entries.size).toBeGreaterThanOrEqual(4);
+        // Every gate is out of the 16:9 frame, and every way in is open air.
+        OWL_GATES.forEach((g) => expect(view(g.at[0], g.at[1], g.at[2], 3), g.id).toBe(false));
+    });
+
+    it('flies its many ways clear of the trunks, the crowns, the floor and the eye', () => {
+        const view = gameView();
+        const kinds = new Set();
+        let worstCrown = Infinity;
+        let worstTrunk = Infinity;
+        let worstEye = Infinity;
+        for (const seed of [7919, 11, 23, 4242]) {
+            live(900, {
+                seed,
+                view,
+                trees: FEATURE_TREES,
+                events: [[100, 'level'], [300, 'level']],
+                each: (m) => {
+                    if (m.leg?.kind) kinds.add(m.leg.kind);
+                    if (m.mode !== 'flight') return;
+                    const { x, z } = m.place;
+                    const y = m.place.y + 0.24;
+                    expect(y).toBeGreaterThan(groundHeight(x, z) + 0.1);
+                    worstEye = Math.min(worstEye, Math.hypot(x, y - 2.2, z - 13));
+                    if (!view(x, y, z, 1.6)) return;
+                    FEATURE_TREES.forEach((t) => {
+                        if (y < t.y + t.height) worstTrunk = Math.min(worstTrunk, Math.hypot(x - t.x, z - t.z) - t.radius);
+                        const c = t.crown;
+                        worstCrown = Math.min(worstCrown, ((x - c.x) ** 2 + (z - c.z) ** 2) / c.rx ** 2 + ((y - c.y) / c.ry) ** 2);
+                    });
+                },
+            });
+        }
+        ['direct', 'meander', 'patrol', 'overshoot', 'circle'].forEach((kind) => expect(kinds.has(kind), kind).toBe(true));
+        // In frame: never inside the heart of a crown, a body's width from the bark; never close to the eye.
+        expect(worstCrown).toBeGreaterThan(0.7);
+        expect(worstTrunk).toBeGreaterThan(0.2);
+        expect(worstEye).toBeGreaterThan(4);
+    });
+
+    it('has spells of restlessness and of stillness, and the game stirs it', () => {
+        let low = 1;
+        let high = 0;
+        const mind = live(1800, {
+            seed: 23,
+            each: (m) => {
+                low = Math.min(low, m.restless);
+                high = Math.max(high, m.restless);
+            },
+        });
+        expect(low).toBeLessThan(0.3);
+        expect(high).toBeGreaterThan(0.7);
+        const before = mind.restless;
+        mind.react({ kind: 'quad', serial: 1, lines: 4 });
+        expect(mind.restless).toBeGreaterThan(before);
+        mind.react({ kind: 'over', serial: 2 });
+        expect(mind.restless).toBeLessThanOrEqual(0.15);
     });
 
     it('misses now and then: it stands in the ferns, looks about and flies up to a perch', () => {
@@ -696,7 +834,8 @@ describe('Forest owl: its mind', () => {
                         expect(Math.hypot(place.x - tree.x, place.z - tree.z) - tree.radius).toBeGreaterThan(0.2);
                     }
                 }
-                if (last) {
+                // (Coming back from out of the glade it starts again at another gate, unseen.)
+                if (last && last.mode !== 'away' && m.mode !== 'away') {
                     worst.place = Math.max(worst.place, Math.hypot(place.x - last.x, place.y - last.y, place.z - last.z));
                     worst.heading = Math.max(worst.heading, Math.abs(wrap(attitude.heading - last.heading)) / DEG);
                     worst.pitch = Math.max(worst.pitch, Math.abs(attitude.pitch - last.pitch));

@@ -370,14 +370,27 @@ export class ForestTrees {
     trunks() {
         return this.placements.map((tree) => {
             const asset = this.assets.trees[tree.asset];
+            const k = tree.scale;
+            // The crown as an ellipsoid in the world (its centre turned with the tree), where it has one.
+            const centre = asset.crownCentre || [0, asset.height * 0.6, 0];
+            const radii = asset.crownRadii || [asset.height * 0.2, asset.height * 0.35, asset.height * 0.2];
+            const c = Math.cos(tree.yaw || 0);
+            const s = Math.sin(tree.yaw || 0);
             return {
                 asset: tree.asset,
                 x: tree.x,
                 y: tree.y,
                 z: tree.z,
-                radius: (asset.trunkRadius || 0.3) * tree.scale,
-                height: asset.height * tree.scale,
-                crownBase: (asset.crownBase || asset.height * 0.3) * tree.scale,
+                radius: (asset.trunkRadius || 0.3) * k,
+                height: asset.height * k,
+                crownBase: (asset.crownBase || asset.height * 0.3) * k,
+                crown: {
+                    x: tree.x + (centre[0] * c + centre[2] * s) * k,
+                    y: tree.y + centre[1] * k,
+                    z: tree.z + (-centre[0] * s + centre[2] * c) * k,
+                    rx: Math.max(radii[0], radii[2]) * k,
+                    ry: radii[1] * k,
+                },
             };
         });
     }
