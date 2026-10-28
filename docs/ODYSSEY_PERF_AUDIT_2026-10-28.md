@@ -1,7 +1,7 @@
 # Odyssey performance audit, 2026-10-28: what changed and how to check it on a GPU
 
-Branch `claude/odyssey-performance-audit-hc6m94`. A static audit with no GPU: nothing below has been
-seen on a real device. Where a commit gives CPU timings they come from Node on a cloud runner and
+Branch `claude/odyssey-performance-audit-hc6m94`. A static audit with no GPU. It has since been
+checked on an RTX 5080 laptop: see "Checked on a GPU" at the end. Where a commit gives CPU timings they come from Node on a cloud runner and
 are relative only (ADR-0016). Scope was Odyssey only: the map, its chapters, the orbs and the
 transitions. No theme file changed.
 
@@ -81,3 +81,79 @@ idle, within 1.5 s). That includes each Odyssey orb entry. So about a second int
 manager imports and constructs a theme the orb does not use, and it takes the cache's one free
 slot. Odyssey has no use for the rotation. A theme-side way to opt out while Odyssey's theme scope
 is active would remove that load.
+
+**Done (branch `fix/odyssey-orb-no-rotation-preload`).** `queueAdjacentThemePreload` does nothing
+while an orb holds the theme (`isOdysseyThemeScopeActive()`), and a preload queued before the orb
+began is dropped when it fires. Checked on the GPU (below): entering orb 18 (Summer) loaded Tornado
+0.8 s in. Only orbs 18 and 56 were affected, because every other orb's next rotation theme is on
+the heavy list, which the preload already skips. Tests: `tests/unit/odyssey-orb-no-rotation-preload.test.js`.
+
+## Checked on a GPU, 2026-10-28
+
+**Setup.** RTX 5080 Laptop in Lenovo Performance mode (175 W GPU limit, not Balanced's 80-95 W
+cap). The branch merge `968d16b` against its base `390fc49`, both production builds with
+`VITE_DEV_HARNESS=1` served by `vite preview`. Electron 44.9.3 in an off-screen 1707x1067 window
+(DPR 1.5, the player's 2560x1600 at 150 %), High tier, WebGPU on the NVIDIA adapter. Each
+launch used a fresh profile; a second launch reused it. The display presents at ~178 fps, so a
+frame over 33 ms is a visible hitch. Other sessions shared the GPU: single timings move by
+~100-200 ms, so read the patterns, not the last digit. About 50 launches in all, and no WebGPU
+validation error or page error in any console.
+
+**Startup** (`odyssey:mode:board-init`, ms; the cover then fades for ~870 ms more):
+
+| Save's next orb | Base opens at | Base 1st / 2nd launch | Audit opens at | Audit 1st / 2nd launch |
+|---|---|---|---|---|
+| 13 (chapter 3) | orb 1 | 1,430-1,600 / 820-850 | orb 13 | 1,950-2,210 / 1,520-1,560 |
+| 3 (chapter 1) | orb 1 | 1,690 / 1,390 | orb 3 | 1,540 / 1,140 |
+| 39 (chapter 6) | orb 1 | 1,710 / 1,380 | orb 39 | 1,790 / 1,310 |
+
+- Item 1 holds: the audit opens on the save's next orb with its chapter built, and the camera
+  stays there (the base opened at orb 1 and drifted). Opening in chapter 3 costs ~0.6 s more than
+  the base's chapter 1 opening because the One World's materials are built before the reveal; the
+  base built them after its reveal, while it showed chapter 1.
+- Item 3 holds: a second launch reads the kept bake (`world-bake landed (kept)`, world 75-90 ms
+  against ~330 ms). With `?odysseyNoBakeCache=1` the same launch takes ~250 ms longer.
+- Item 14: the lake noise had landed before every chapter 1 reveal (span `lake` 0 ms).
+- Not a cache miss: three r186 names an unnamed buffer uniform `NodeBuffer_<global node id>`, so a
+  small instanced mesh's WGSL differs from launch to launch (24 modules in the base, 51 when the
+  audit opens in chapter 3). A patch with stable names made every module identical between
+  launches but left the second launch's compile time unchanged (906-928 ms against 890-916), so it
+  was not kept.
+
+**Map smoothness.** After the background prewarm (~5 s after the reveal), glides 1->58 and
+58->13 and a wheel scroll from orb 30 into chapter 7 had no frame over 33 ms in either build.
+Glides started 0.3 s after the reveal (the save's orb -> 58 -> 1 -> 39, two launches each): the
+base had 2 frames over 50 ms on the first leg (~91 ms), the audit 1 (94-103 ms), the audit with
+`?odysseyOneGoBuilds=1` 1-2 (90-97 ms). One task of ~85-90 ms inside three.js, about 0.9 s into
+that first glide, is what remains; the later legs were smooth in every build.
+
+**Navigator (item 5).** Map renders in 2 s: closed ~1,270-1,310 in both builds; open, base the
+same, audit 0. A capture 60 ms after closing shows a live frame, nothing stale.
+
+**Entry and return (item 2).** Orb 13 entry took 3.3-3.5 s in both, the audit with no frame over
+100 ms (the base had one, 119 ms, on a first launch). Return: `odyssey-return-board-ready`
+640-660 ms in both, no frame over 33 ms.
+
+**GPU memory (item 4)**, dedicated MB of the GPU process, two runs each:
+
+| | Menu | Map | In orb 13 | Map after return | 13 s after leaving |
+|---|---|---|---|---|---|
+| Base | 590 | 945 | 1,114-1,119 | 1,009-1,019 | 1,111-1,123 |
+| Audit | 588-590 | 986-995 | 1,114-1,132 | 1,010-1,023 | 1,089-1,106 |
+
+After leaving, the audit holds 17-22 MB less. Neither returns to the menu's level: the menu
+theme is loaded again and the orb's theme (Golden Forest) stays in the theme cache's second
+slot.
+
+**Settings (item 8).** Render Scale reaches the map live in the audit (0.6: canvas 2158x1342 ->
+1295x805, back at 1); the base ignores it. Antialiasing and the tier take effect at the next
+return (`needsQualityRebuild()` reads `antialiasing` / `tier`), as the code intends. A tier
+change to Medium during an orb rebuilt the map at Medium on the return (no MSAA; the base kept
+High): the return took 3.8 s, its hitches all before the map was revealed. Open: a 2.6 s long
+animation frame began right after that tier change, while the orb still played (likely the orb's
+theme reacting to the new tier); not looked into.
+
+**Screenshots (items 6, 12, 13).** Matched stations, base and audit side by side: chapter 1 at
+10/45/80 % (rock, creature, lava, haze), chapter 7 at 10-99 % (warp, rooms, hypercubes, portal,
+neon-grid exit) and chapter 8's start look the same; the openings show the lake and the charm
+header in place.
