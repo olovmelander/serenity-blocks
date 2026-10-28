@@ -1705,6 +1705,20 @@ export class OdysseyBoardController {
         return this.frameMsEma <= this.frameHealthBudgetMs;
     }
 
+    /**
+     * Whether the map is quiet enough for work the player may never need, such as warming the
+     * theme of an orb they hover (ui/odyssey/odyssey-theme-prefetch.js): drawn, not parked, no
+     * glide, no scroll or tap in the last moments, frames in budget. The background gate's test
+     * without its starvation escape, and read-only: polling it leaves the escape's clock
+     * (_canRunBackgroundTask) to the chapter loader.
+     * @returns {boolean}
+     */
+    isQuietForSpeculativeWork() {
+        if (this._disposed || !this.isActive || this.isRenderingPaused) return false;
+        if (this.cameraController?.isAnimating) return false;
+        return this._isInteractionIdle() && this._isScrollIdle() && this._isFrameHealthy();
+    }
+
     _canRunBackgroundTask() {
         if (this._disposed) return false;
         // A parked board waits (audit 2026-10-18): while an orb is entered or played the board

@@ -64,6 +64,9 @@ import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { renderOdysseyLevelPanel, resetOdysseyPanelPlay } from '../../ui/odyssey/odyssey-level-panel.js';
+import {
+    clearOdysseyThemePrefetch, prefetchOdysseyLevelThemes, warmOdysseyHoveredLevelTheme,
+} from '../../ui/odyssey/odyssey-theme-prefetch.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
@@ -1501,58 +1504,12 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _clearLevelThemePrefetchTimer() {
-        if (this.levelThemePrefetchTimer) {
-            clearTimeout(this.levelThemePrefetchTimer);
-            this.levelThemePrefetchTimer = null;
-        }
+        clearOdysseyThemePrefetch(this);
     }
 
+    /** The picked orb's theme, and a guess at its neighbours (ui/odyssey/odyssey-theme-prefetch.js). */
     _prefetchLikelyLevelThemes(levelOrId, options = {}) {
-        const level = typeof levelOrId === 'object'
-            ? levelOrId
-            : this.levelRegistry.resolveLevelPresentation(levelOrId);
-        const priority = options.priority === 'high' ? 'high' : 'low';
-        const includeAdjacent = options.includeAdjacent === true;
-        const trackAsCurrent = options.trackAsCurrent !== false;
-
-        if (!level || !this.transitionManager?.prefetchLevelTheme) {
-            return Promise.resolve(false);
-        }
-
-        this._clearLevelThemePrefetchTimer();
-
-        const prefetchPromise = this.transitionManager.prefetchLevelTheme(level, { priority });
-        if (trackAsCurrent) {
-            this.currentThemePrefetchLevelId = level.id ?? null;
-            this.currentThemePrefetchPromise = prefetchPromise;
-        }
-
-        if (includeAdjacent) {
-            this.levelThemePrefetchTimer = setTimeout(() => {
-                if (this.selectedLevelId !== level.id || this.isEnteringLevel) {
-                    return;
-                }
-
-                const chapterLevels = this.levelRegistry.getLevelsInChapter(level.chapter)
-                    .map((entry) => this.levelRegistry.resolveLevelPresentation(entry))
-                    .filter(Boolean);
-                const index = chapterLevels.findIndex((entry) => entry.id === level.id);
-                if (index < 0) {
-                    return;
-                }
-
-                [chapterLevels[index - 1], chapterLevels[index + 1]]
-                    .filter(Boolean)
-                    .forEach((adjacentLevel) => {
-                        this.transitionManager.prefetchLevelTheme(adjacentLevel, { priority: 'low' })
-                            .catch((error) => {
-                                console.warn('[Odyssey] Adjacent theme prewarm failed:', adjacentLevel?.theme?.primary, error);
-                            });
-                    });
-            }, 420);
-        }
-
-        return prefetchPromise;
+        return prefetchOdysseyLevelThemes(this, levelOrId, options);
     }
 
     async _activateLevelThemeVisuals(levelConfig, options = {}) {
@@ -3154,13 +3111,7 @@ export class OdysseyMode extends BaseGameMode {
                 return;
             }
 
-            this._prefetchLikelyLevelThemes(levelId, {
-                priority: 'low',
-                includeAdjacent: false,
-                trackAsCurrent: false,
-            }).catch((error) => {
-                console.warn('[Odyssey] Hover theme prefetch failed:', error);
-            });
+            warmOdysseyHoveredLevelTheme(this, levelId);
         };
 
         // Empty click hides the info panel
