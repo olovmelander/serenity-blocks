@@ -61,6 +61,7 @@ import {
 } from './spring-fall-plan.js';
 import { forestCover, groundHeight, waterEdge } from './spring-terrain.js';
 import { FACE, SHEET } from './spring-fall.js';
+import { sessionGeometry } from '../shared/session-geometry.js';
 
 /** The ribbon starts this far up the river from the lip (out of sight up the valley). */
 export const UPSTREAM = 320;
@@ -777,9 +778,11 @@ export function createRiverMaterial(u, tex) {
 }
 
 export function createRiver(u, tex, tier, baked = null) {
-    const { geometry, triangles } = createRiverGeometry({
-        cols: tier.riverCols ?? 40, detail: tier.riverDetail ?? 1, baked,
-    });
+    const cols = tier.riverCols ?? 40;
+    const detail = tier.riverDetail ?? 1;
+    // Built once a session for the same tier and ground (shared/session-geometry.js).
+    const key = `river|${cols}|${detail}`;
+    const { geometry, triangles } = sessionGeometry(baked, key, () => createRiverGeometry({ cols, detail, baked }));
     const material = createRiverMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'SpringRiver';
