@@ -2808,7 +2808,9 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _dismissCinematicLoadingOverlay({ minVisibleMs = 800 } = {}) { // OD-07: options form avoids the 2000ms floor
-        return dismissCinematicLoadingOverlay({ fadeOutMs: 800, minVisibleMs });
+        // The map takes input as it fades in: the cover swallowed the first wheel and click for
+        // its whole 800 ms fade-out (perf audit 2026-10-28). Its interaction is installed before this.
+        return dismissCinematicLoadingOverlay({ fadeOutMs: 800, minVisibleMs, releaseInput: true });
     }
 
     /**

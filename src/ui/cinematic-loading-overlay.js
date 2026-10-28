@@ -111,6 +111,9 @@ export async function waitForCinematicLoadingOverlayPresented() {
         loadingSurfaces.get(overlay)?.ready,
     ]);
     if (!overlay.isConnected) return;
+    // Already committed by an earlier wait (main covers the menu before Odyssey's chunk loads,
+    // and Odyssey then waits on the cover it adopted): its frames are not owed twice.
+    if (overlay.dataset.presented === 'true') return;
     await new Promise((resolve) => {
         let settled = false;
         let timer;
@@ -135,7 +138,10 @@ export async function waitForCinematicLoadingOverlayPresented() {
         });
     });
     // The cover is up and painted: the first milestone on its progress line.
-    if (overlay.isConnected) _writeProgress(overlay, MODE_LOADING_STEPS.presented);
+    if (overlay.isConnected) {
+        overlay.dataset.presented = 'true';
+        _writeProgress(overlay, MODE_LOADING_STEPS.presented);
+    }
 }
 
 function _waitForLoadingArtwork(overlay) {
@@ -332,6 +338,9 @@ export function dismissCinematicLoadingOverlay(options = 800) {
     const fadeOutMs = typeof options === 'number'
         ? options
         : (options?.fadeOutMs ?? 800);
+    // `releaseInput`: what the cover fades off takes input from the start of the fade, instead of
+    // the cover swallowing it until it is gone (the Odyssey map's first wheel or click).
+    const releaseInput = typeof options === 'object' && options?.releaseInput === true;
     const minVisibleMs = typeof options === 'number'
         ? GLOBAL_MIN_VISIBLE_MS
         : (options?.minVisibleMs ?? GLOBAL_MIN_VISIBLE_MS);
@@ -354,6 +363,7 @@ export function dismissCinematicLoadingOverlay(options = 800) {
 
             _releaseLoadingSurface(overlay);
             _writeProgress(overlay, MODE_LOADING_STEPS.done);
+            if (releaseInput) overlay.style.pointerEvents = 'none';
             _playRevealTransition(overlay, fadeOutMs);
 
             setTimeout(() => {
