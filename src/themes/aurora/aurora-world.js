@@ -37,6 +37,18 @@ const VOLLEY_GAP = 0.13;
 /** A meteor waits at most this long for a free slot, then takes the one furthest on. */
 const METEOR_PATIENCE = 1.5;
 
+/**
+ * The shared noise tile depends only on its seed and nothing writes to it once baked (the
+ * texture reads it), so it is baked once a session: most of the world's 89 ms constructor on
+ * every Aurora start, a stall of the outgoing theme and the board in an in-play switch
+ * (docs/THEME_FLEET_240_2026-10.md).
+ */
+const noiseBakes = new Map();
+function sessionNoise(seed) {
+    if (!noiseBakes.has(seed)) noiseBakes.set(seed, bakeAuroraNoise(NOISE_SIZE, seed));
+    return noiseBakes.get(seed);
+}
+
 export class AuroraWorld {
     constructor({
         scene, camera, quality = 'High', seed = AURORA_SEED,
@@ -75,7 +87,7 @@ export class AuroraWorld {
         };
 
         this.noiseTexture = new THREE.DataTexture(
-            bakeAuroraNoise(NOISE_SIZE, seed % 65521),
+            sessionNoise(seed % 65521),
             NOISE_SIZE,
             NOISE_SIZE,
             THREE.RGBAFormat,

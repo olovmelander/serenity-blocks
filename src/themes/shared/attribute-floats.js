@@ -15,20 +15,20 @@
  * kinds, and widths below and above the item size.
  */
 
-/** Unsigned normalized types: value / max (MathUtils.denormalize). */
-const UNSIGNED_SCALE = new Map([
+/** Unsigned normalized types: value / max (MathUtils.denormalize). @type {Map<Function, number>} */
+const UNSIGNED_SCALE = new Map(/** @type {[Function, number][]} */ ([
     [Uint32Array, 4294967295.0],
     [Uint16Array, 65535.0],
     [Uint8Array, 255.0],
     [Uint8ClampedArray, 255.0],
-]);
+]));
 
-/** Signed normalized types: max(value / max, -1) (MathUtils.denormalize). */
-const SIGNED_SCALE = new Map([
+/** Signed normalized types: max(value / max, -1) (MathUtils.denormalize). @type {Map<Function, number>} */
+const SIGNED_SCALE = new Map(/** @type {[Function, number][]} */ ([
     [Int32Array, 2147483647.0],
     [Int16Array, 32767.0],
     [Int8Array, 127.0],
-]);
+]));
 
 /**
  * @param {any} attribute a three BufferAttribute or InterleavedBufferAttribute

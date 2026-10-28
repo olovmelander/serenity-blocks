@@ -166,7 +166,10 @@ export class ForestWorld {
             boughs,
             figureStands: this.figureAnchors(),
             eye: FOREST_EYE,
+            layOutNow: false,
         });
+        yield 'director';
+        yield* this.director.layOutSteps();
     }
 
     /** Points on the lower boughs of the near trees: dew falls from them, fireflies hang by them. */
