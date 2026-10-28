@@ -151,6 +151,7 @@ export class ForestWorld {
         this.owl.build();
         this.owlMind = new ForestOwlMind({ rng: this.owlRng, groundHeight: forestGroundHeight });
         this.owlMind.setSight((x, y, z, size) => this.owlSees(x, y, z, size));
+        this.owlMind.setTrunks(trunks);
         yield 'owl';
         this.prepareCamera(this.camera.aspect);
         this.director = new ForestFireflyDirector({

@@ -14,7 +14,7 @@ project (proprietary, all rights reserved).
 
 | File | What it is |
 | --- | --- |
-| `spruce-elder.glb`, `pine-elder.glb` | The two framing trees (role `hero`), grown to be met from eye height: a 36 m Norway spruce with a root plate and a few long boughs hanging at 3 to 7 m, and a 27 m Scots pine, bare to a high crown. |
+| `spruce-elder.glb`, `pine-elder.glb` | The two framing trees (role `hero`), grown to be met from eye height: a 36 m Norway spruce with a root plate and a few long boughs hanging at 3 to 7 m, and a 27 m Scots pine, bare to a high crown. Both carry the eagle owl's dead limbs ([below](#the-owls-limbs)). |
 | `spruce-old-a/b/c.glb` | Old spruces for the far side of the glade (role `grove`): tall and narrow with a high crown, mid-crowned, and skirted. |
 | `spruce-young-a/b.glb` | Understory spruces, 9 m and 5 m, clothed to the ground. |
 | `pine-old-a.glb` | A 25 m Scots pine. |
@@ -185,3 +185,21 @@ node scripts/forest/pack-owl.mjs            # Blender, pack, write owl.glb and i
 
 Two runs write the same bytes. The design loop through the Blender MCP builds the same modules in a
 scene of its own inside an open Blender (`forest_owl/live.py`) and never exports from it.
+
+## The owl's limbs
+
+The dead limbs the owl sits on are part of the two elders, grown by the trees' own generator:
+`scripts/blender/forest_night/owl_limbs.py` adds them to the grown spruce-elder and pine-elder (five
+limbs, their branchlets' stumps, broken ends) and dresses the generator's own dead stubs on those two
+trunks to match; the bark mesher keeps them with the trunk, so every tier draws them. Each tree's
+`extras.owlLimbs` records its limbs in the tree's frame (the centreline, the height of the bark's top
+along it, where it leaves the trunk, the owl's seats). `scripts/forest/pack-owl-limbs.mjs` runs the
+build for the two elders (through `forest_assets.py`) and writes where the limbs are in the world into
+`src/themes/forest/forest-owl-limbs.js`:
+
+```bash
+node scripts/forest/pack-owl-limbs.mjs              # Blender (the two elders), then forest-owl-limbs.js
+node scripts/forest/pack-owl-limbs.mjs --place-only # forest-owl-limbs.js from the GLBs already here
+```
+
+The geometry is the same on every run; the occlusion bake is sampled, so a rebuild moves a few colour bytes.

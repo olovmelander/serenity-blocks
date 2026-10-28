@@ -23,6 +23,8 @@ from fall_grove.wood import buttress_profile
 from golden_forest import conifers
 from golden_forest.conifers import _spruce_boughs
 
+from forest_night import owl_limbs
+
 BURIED = 0.45      # how far a conifer's trunk starts below the ground
 
 
@@ -255,10 +257,13 @@ def birch(seed, name, height=17.0, lean=(0.08, 0.03)):
 ELDER_ROOTS = dict(count=6, reach=(3.0, 5.0), fork=0.65, ride=0.5, thickness=0.5, tall=1.9)
 
 RECIPES = {
-    "spruce-elder": lambda: spruce(3301, "spruce-elder", height=36.0, role="hero", crown_base=0.225, girth=1.12,
-                                   roots=ELDER_ROOTS, low_zone=0.13, stubs=6, lean=(-0.008, 0.006), power=0.78),
-    "pine-elder": lambda: elder_pine(3413, "pine-elder", height=27.0, crown=0.62, lean=(0.045, -0.02),
-                                     roots=dict(count=5, reach=(2.8, 4.6), fork=0.6, ride=0.42, thickness=0.52)),
+    # The elders carry the eagle owl's limbs (forest_night/owl_limbs.py).
+    "spruce-elder": lambda: owl_limbs.grow_into(spruce(
+        3301, "spruce-elder", height=36.0, role="hero", crown_base=0.225, girth=1.12, roots=ELDER_ROOTS,
+        low_zone=0.13, stubs=6, lean=(-0.008, 0.006), power=0.78), "spruce-elder"),
+    "pine-elder": lambda: owl_limbs.grow_into(elder_pine(
+        3413, "pine-elder", height=27.0, crown=0.62, lean=(0.045, -0.02),
+        roots=dict(count=5, reach=(2.8, 4.6), fork=0.6, ride=0.42, thickness=0.52)), "pine-elder"),
     "spruce-old-a": lambda: spruce(3527, "spruce-old-a", height=31.0, crown_base=0.30, spread=0.88, stubs=7,
                                    weather=0.22),
     "spruce-old-b": lambda: spruce(3631, "spruce-old-b", height=27.0, crown_base=0.20, stubs=4, weather=0.32,
