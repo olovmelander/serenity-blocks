@@ -8,7 +8,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-    FOREST_ASSET_SCHEMA, FOREST_FOLIAGE_URL, FOREST_IMPOSTOR_URL, FOREST_PROPS_URL, FOREST_TREE_URLS,
+    FOREST_ASSET_SCHEMA, FOREST_FOLIAGE_URL, FOREST_IMPOSTOR_URL, FOREST_OWL_URL, FOREST_PROPS_URL, FOREST_TREE_URLS,
     forestImpostorLayout, parseForestMeshes as parseMeshes, parseForestTree as parseTree,
 } from '../../src/themes/forest/forest-assets.js';
 
@@ -22,6 +22,9 @@ const SCHEMA = 1;
 const FOLIAGE_FILE = 'forest-foliage.glb';
 const PROPS_FILE = 'forest-props.glb';
 const IMPOSTOR_FILE = 'forest-impostors.png';
+// The eagle owl: its own generator (scripts/blender/forest_owl.py, packed by scripts/forest/pack-owl.mjs);
+// its rig and model are vouched for in forest-owl.test.js.
+const OWL_FILE = 'owl.glb';
 
 // What scripts/blender/forest_night/trees.py grows: the contract with the theme's loader.
 const TREES = Object.freeze({
@@ -65,12 +68,12 @@ const FERN_FRONDS = ['fern_frond_0', 'fern_frond_1'];
 const TREE_SPRAYS = TREE_SPRAY_KINDS.flatMap((kind) => [`${kind}_0`, `${kind}_1`]);
 const REQUIRED_FOLIAGE = [...TREE_SPRAYS, ...FERN_FRONDS];
 const REQUIRED_PROPS = ['log', 'stump', 'boulder_a', 'boulder_b', 'boulder_c', 'snag'];
-const BINARIES = [...TREE_NAMES.map((name) => `${name}.glb`), FOLIAGE_FILE, PROPS_FILE, IMPOSTOR_FILE];
+const BINARIES = [...TREE_NAMES.map((name) => `${name}.glb`), FOLIAGE_FILE, PROPS_FILE, IMPOSTOR_FILE, OWL_FILE];
 
 // Ceilings a little above what the Blender generator wrote on 2026-10-08 (noted beside each),
 // so the pack cannot balloon without someone raising a number on purpose.
 const BUDGET = Object.freeze({
-    packBytes: 3.4 * MB, // 2.96 MB for the whole directory
+    packBytes: 3.7 * MB, // 2.96 MB for the trees, props and sprites, 0.55 MB the owl (2026-10-28)
     glbBytes: 0.7 * MB, // spruce-elder.glb, 0.53 MB
     impostorBytes: 1.0 * MB, // 0.83 MB
     barkTriangles: { hero: 30000, grove: 7200 }, // 22,676 and 5,384
@@ -276,6 +279,7 @@ describe('Forest asset pack on disk', () => {
         expect(fileNameOf(FOREST_FOLIAGE_URL)).toBe(FOLIAGE_FILE);
         expect(fileNameOf(FOREST_PROPS_URL)).toBe(PROPS_FILE);
         expect(fileNameOf(FOREST_IMPOSTOR_URL)).toBe(IMPOSTOR_FILE);
+        expect(fileNameOf(FOREST_OWL_URL)).toBe(OWL_FILE);
         // The sprite-sheet layout the loader hands out is the manifest's own record.
         const record = readManifest().assets.find((entry) => entry.kind === 'impostors');
         expect(forestImpostorLayout())
@@ -302,7 +306,7 @@ describe('Forest asset pack on disk', () => {
         const total = files.reduce((sum, file) => sum + statSync(new URL(file, assetDirectory)).size, 0);
         expect(total).toBeLessThan(BUDGET.packBytes);
         const fetched = files.filter((file) => /\.(glb|png)$/.test(file));
-        expect(fetched).toHaveLength(13);
+        expect(fetched).toHaveLength(14);
         for (const file of files.filter((entry) => entry.endsWith('.glb'))) {
             expect(statSync(new URL(file, assetDirectory)).size, file).toBeLessThanOrEqual(BUDGET.glbBytes);
         }
@@ -329,7 +333,7 @@ describe('Forest asset pack on disk', () => {
             expect(bytes.length, entry.file).toBe(entry.bytes);
             expect(entry.sha256, entry.file).toMatch(/^[0-9a-f]{64}$/);
             expect(createHash('sha256').update(bytes).digest('hex'), entry.file).toBe(entry.sha256);
-            expect(['tree', 'foliage', 'props', 'impostors']).toContain(entry.kind);
+            expect(['tree', 'foliage', 'props', 'impostors', 'owl']).toContain(entry.kind);
         }
         // Every binary is vouched for, and nothing else is listed.
         expect([...seen].sort()).toEqual([...BINARIES].sort());
@@ -338,6 +342,7 @@ describe('Forest asset pack on disk', () => {
         expect(manifest.assets.find((entry) => entry.kind === 'foliage').file).toBe(FOLIAGE_FILE);
         expect(manifest.assets.find((entry) => entry.kind === 'props').file).toBe(PROPS_FILE);
         expect(manifest.assets.filter((entry) => entry.kind === 'tree')).toHaveLength(TREE_NAMES.length);
+        expect(manifest.assets.find((entry) => entry.kind === 'owl').file).toBe(OWL_FILE);
     });
 
     it('describes each tree and both mesh packs the way the files really are', () => {

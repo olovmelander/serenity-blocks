@@ -476,6 +476,15 @@
       "height": 5.0,
       "sites": 128,
       "barkTriangles": 1608
+    },
+    {
+      "file": "owl.glb",
+      "bytes": 548840,
+      "sha256": "9c5084481f6198df97e2e2ee9f2547512d9f4a46ac9d64fcf78b888605c9defe",
+      "kind": "owl",
+      "triangles": 19596,
+      "bones": 110,
+      "feathers": 336
     }
   ]
 }

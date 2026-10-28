@@ -26,6 +26,8 @@ export const FOREST_TREE_URLS = Object.freeze({
 export const FOREST_FOLIAGE_URL = new URL('./assets/forest-foliage.glb', import.meta.url).href;
 export const FOREST_PROPS_URL = new URL('./assets/forest-props.glb', import.meta.url).href;
 export const FOREST_IMPOSTOR_URL = new URL('./assets/forest-impostors.png', import.meta.url).href;
+/** The eagle owl (scripts/blender/forest_owl.py, packed by scripts/forest/pack-owl.mjs). */
+export const FOREST_OWL_URL = new URL('./assets/owl.glb', import.meta.url).href;
 export const FOREST_ASSET_SCHEMA = 1;
 
 /** Read a (possibly normalised integer) attribute as floats. */
@@ -153,6 +155,9 @@ export function disposeForestAssets(assets) {
     Object.values(assets.props?.meshes || {}).forEach((geometry) => geometry.dispose());
     Object.values(assets.trees || {}).forEach((tree) => tree.bark?.dispose());
     assets.impostors?.texture?.dispose();
+    assets.owl?.scene?.traverse((object) => {
+        if (object.isMesh) object.geometry?.dispose();
+    });
     assets.moon?.dispose();
 }
 
@@ -201,15 +206,20 @@ export function prepareForestMoon(texture) {
  */
 export async function loadForestAssets({
     trees = Object.keys(FOREST_TREE_URLS), loader = new GLTFLoader(),
-    textureLoader = new THREE.TextureLoader(), isCurrent = () => true,
+    textureLoader = new THREE.TextureLoader(), isCurrent = () => true, owl = true,
 } = {}) {
     const names = [...new Set(trees)];
     const layout = forestImpostorLayout();
-    const [foliageGltf, propsGltf, impostorTexture, moonTexture, ...treeGltfs] = await Promise.all([
+    const [foliageGltf, propsGltf, impostorTexture, moonTexture, owlGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(FOREST_FOLIAGE_URL),
         loader.loadAsync(FOREST_PROPS_URL),
         layout && textureLoader ? textureLoader.loadAsync(FOREST_IMPOSTOR_URL) : null,
         textureLoader ? textureLoader.loadAsync(FOREST_MOON_MAP_URL).catch(() => null) : null,
+        // The owl is the one creature the forest can do without: a failed load leaves it out.
+        owl ? loader.loadAsync(FOREST_OWL_URL).catch((error) => {
+            console.warn('[Forest] the owl did not arrive:', error?.message || error);
+            return null;
+        }) : null,
         ...names.map((name) => {
             if (!FOREST_TREE_URLS[name]) throw new Error(`[Forest] Unknown tree asset "${name}".`);
             return loader.loadAsync(FOREST_TREE_URLS[name]);
@@ -221,6 +231,8 @@ export async function loadForestAssets({
         trees: {},
         impostors: null,
         moon: moonTexture ? prepareForestMoon(moonTexture) : null,
+        // Kept whole (a skinned scene graph); the world clones it.
+        owl: owlGltf || null,
     };
     names.forEach((name, index) => {
         assets.trees[name] = parseForestTree(treeGltfs[index], name);

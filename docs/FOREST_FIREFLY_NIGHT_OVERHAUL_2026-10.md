@@ -19,7 +19,8 @@ mossy knoll where a spruce once fell. The moon (far larger than life, as it alwa
 here) carries its real seas and craters, an aureole in the damp air and a faint ice halo.
 Moonbeams are real volumes cut by the trees. The floor is moss, fern, grass and wood
 stars, and over it drift fireflies that leave the trails a long exposure would catch:
-dotted arcs, lit only where each one was flashing.
+dotted arcs, lit only where each one was flashing. On a dead limb of the old spruce, beside
+the moon, sits an eagle owl ([the eagle owl](#the-eagle-owl-2026-10-28)).
 
 The board card hides the middle quarter of a landscape screen, so the picture is composed
 for the two side thirds. Portrait keeps the same world, turned toward the moon.
@@ -275,6 +276,146 @@ suites, among them that every place fits the widest animal at ten aspects, is op
 every built tier, and is seen whole in the game's own layout, and that the director never
 stands an animal behind the card or the panel nor twice running in one place.
 
+### The eagle owl (2026-10-28)
+
+The wood has an owl of its own now (Olov: "In the Forest theme i want to model and owl using
+blender mcp... well modelled and able to be animated in a visually stunning way when it flies
+around and sit in the trees... it must feel natural, smooth and have very good animations"). A
+Eurasian eagle owl, the great owl of the northern wood, lives on a dead limb of the elder spruce
+that reaches out toward the moon: from the eye it sits beside the moon's lower limb, dark against
+the lit mist, edged in silver.
+
+![four lines in the game: the owl drops off its limb, flies out along the ride, turns, comes back across the moon and lands](forest-firefly-night/owl-moon-loop.webp)
+
+*In the real game (single player, 1920×1080, High): on its limb; off it; out along the ride;
+turning far out; back across the moon; landing, wings thrown open against it.*
+
+**What it does.**
+
+- **On a perch it is still**, and its stillness is what makes it an owl. Its eyes are fixed in its
+  skull, so it looks by turning its head, quickly (a quarter to half a second, eased like any sure
+  movement, slower for a sweep from one shoulder to the other), and then holds it there; now and
+  then it peers at something, bobbing and tilting its head; it blinks slowly, now and then one eye;
+  its upper lids ride a little low (the eagle owl's hooded stare); its ear tufts rise when it is
+  alert and sink as it dozes; it breathes; every minute or two it rouses (its whole plumage swells
+  and shakes, its wings loosen), settles its wings, or hoots, bowing, its tail lifted and its white
+  throat swelling twice.
+- **Now and then it goes out** (every 40 to 80 s): a stoop into the ferns after something it heard
+  (it stares down and peers first; a long falling glide, the stoop with its talons thrown forward
+  under raised wings; mantled over its catch, its wings spread wide over it like a cape; then a
+  labouring climb back to its limb), or across to another perch for half a minute (a dead stub on the
+  elder pine at the right of the frame, the fallen spruce on the knoll, the stump beside it), and home.
+- **Four lines or a perfect clear**: it lifts its head and stares at the board, then flies out along
+  the ride, turns far out over the mist and comes back toward the eye straight across the moon's disc
+  (23 m out, its wings half the disc wide), and lands on its limb again. A level-up sends it to another
+  perch (or home). A hard drop startles it (tufts up, a snap of the head to the board); a line clear
+  draws its look. When a run ends it dozes.
+- **Only where it can be seen.** It goes only to a perch or a patch of floor the player sees whole,
+  clear of the card and the score panel (`ForestWorld.owlSees`, the stage's own sight test), so a
+  narrow or upright screen keeps it home. Under reduced motion it stays on its limb, living its
+  stillness only. With background effects off the game's events no longer reach it (only the end of a run
+  does, as it reaches the forest), and it lives its own life.
+
+**How it moves.**
+
+- **Flights** are planned whole when it sets off (`forest-owl-flight.js`): a curve through a few
+  waypoints (centripetal Catmull-Rom, so it never loops between close points), flown at an owl's
+  slow cruise (6.4 m/s) that it gathers off the perch and sheds before the next, faster down a
+  slope and slower up one. Everything along it is found once and kept against time: where it is,
+  its bank (from the turn's own curvature, tan(bank) = v²κ/g, eased, at most 52°), how much it climbs,
+  and how hard it must work. Sampling that table gives the same bird at any frame rate.
+- **The wingbeat** is an eagle owl's: slow and deep (2.3 beats a second, quicker off the perch), a
+  downstroke longer than the upstroke with the wing fully spread and pressed forward, the hand flexed
+  and turned to slice back up, the wingtip lagging the arm so a wave runs out along the wing, the
+  outer primaries bending up under the load. Climbing and speeding up want wingbeats; level and falling
+  stretches are glided. The body rides up with each downstroke while the **head stays level and still**,
+  looking ahead, and at the perch as it comes in (looking past it, not down at its feet, at the end).
+- **Off and on a perch.** A crouch and a lean forward (turning on the branch first when it goes the
+  other way), the tufts laid flat, the wings opening as it drops off. Landing: the body raised upright,
+  the wings thrown forward and beating against the air, the tail fanned and pressed down, the talons
+  reaching and spread; then the wings lifted a little and folded away as it takes its weight with a bob.
+  Every number of the pose crosses over from one mode to the next in a third of a second; nothing jumps.
+- **The wings fold as a bird's do.** Every flight feather is on a bone of its own. Folded, the arm
+  closes in a Z along the flank (shoulder back, elbow forward, wrist back) and every feather turns
+  about its own root until it lies down the body, the primaries under the secondaries, the tertials
+  on top, the folded wing curling round the body; any pose between is a slerp of each joint toward
+  that, so a half-open wing is always a wing (`forest-owl-rig.js`).
+
+![close up: its face, the streaked breast, a launch seen head on](forest-firefly-night/owl-close.webp)
+
+*Close up in the playground (`owlCam=`): the face (orange irises round big night pupils, the hooked
+bill, the tufts), the breast streaked and barred, and a launch seen head on.*
+
+![a stoop into the ferns, and back](forest-firefly-night/owl-hunt.webp)
+
+*A stoop (`owlTrip=hunt`): off the limb, the falling glide, the stoop, mantled, the climb home.*
+
+**How it is made.**
+
+- **Modelled and rigged in Blender** by its own generator, `scripts/blender/forest_owl.py`, headless,
+  packed by `scripts/forest/pack-owl.mjs` (`assets/owl.glb`, 0.55 MB, 19,600 triangles, 110 bones;
+  details in [`ATTRIBUTION.md`](../src/themes/forest/assets/ATTRIBUTION.md)). The soft body is a
+  distance field round the rig's joints (the horse's, the bear's and the squirrel's toolkit); every
+  feather is a curved vane of its own. It was designed through the Blender MCP in a scene of its own
+  (`forest_owl/live.py`), with the theme's own poses written out by `scripts/forest/owl-poses.mjs`, so
+  the renders show what the game draws.
+- **Drawn in the forest's light** (`forest-owl.js`): unlit, lit by hand as the bark and the needles are.
+  The moon stands behind it, so the side the eye sees is its shaded side: the sky and the moonlit ride
+  fill it, its outline catches the moon in silver whatever its colour, a thin vane between the eye and
+  the moon glows faintly, its bars dark in it, and the forest's own light (a wave, a firefly) shows its
+  true colour and kindles its irises. The plumage is drawn in the shader from a code every vertex
+  carries: the breast's bold drops and the belly's fine wavy bars, the mottled upperparts (every
+  feather dark down its middle, its edges tawny), barred flight feathers paler underneath, the facial
+  disc's fine lines, the eyes. Bars fade to their mean as they grow finer than a pixel.
+- **Its two dead limbs** (on the elder spruce, toward the moon; on the elder pine's bare trunk, out over
+  the knoll) are laid on Catmull-Rom curves (`forest-owl-perches.js`) from the trunks as measured in the
+  tree GLBs. The log's ridge and the stump's cut are measured from `forest-props.glb`.
+- **Its life is closed-form.** Each act has a start and a length; each kind of act draws from a random
+  stream of its own, so a seek and a night lived through agree at any frame rate (the same night lived
+  at 30, 60 and 144 fps lands within centimetres), and the playground's seeded captures are repeatable.
+- **Playground**: `owlTrip=moon|hunt|visit|home` at `owlAt=<s>` (`owlTo=pine|log|stump|limb`),
+  `owlLook=eye` or `<yaw>,<pitch>` to hold its gaze, `owlCam=<metres>` for a lens that follows it
+  (`owlOrbit=`, `owlTilt=`, `owlFocus=<metres above its feet>`). The diagnostics' `owl` says what it
+  is doing.
+
+![the moon crossing on the WebGL2 backend at Low, and perched at Low](forest-firefly-night/owl-tiers.webp)
+
+*On the WebGL2 backend at Low, crossing the moon; perched at Low (1920×1080 crop).*
+
+**How it was checked.**
+
+- **Measured, not eyeballed**: ten-minute nights of its mind at 60 fps in Node with four-line clears,
+  level-ups, a hard drop and a game over thrown in (five seeds): per frame at most 0.14 m of travel
+  (an 8 m/s stoop), 10° of heading, 3.5° of pitch, 5° of bank; no flight within 0.69 m of a trunk or
+  through a crown; the whole moon loop on screen at 16:9 (never behind the elder's trunk). The faults
+  this found, each fixed and now pinned by a test: a landing that forced a U-turn so it would face
+  the eye (a 152° heading flip in a frame: it now lands the way it flies and turns on the perch as it
+  settles); a swoop-up point lifted above a low perch by the floor's clearance (a pitch kink); a stoop
+  to a spot too near its perch that doubled back past the elder's trunk; a far turn behind the elder's
+  trunk and then a hairpin (re-laid as an arc over the ride); head and wing jumps where flight hands
+  over to a perch (every number now crosses over); a head that tried to look behind it in the air.
+- **Captured** in Electron (RTX 5080): the playground at High on WebGPU (perched, the moon loop frame by
+  frame, the wingbeat and landing close up, the hunt, visits to the pine and the log), on the WebGL2
+  backend at High and Low, at Minimal; and in the real game (single player, 1920×1080, High), four
+  lines fired through the theme's reactions sending it out across the moon and back. Consoles clean
+  but for Electron's own CSP notice and Chrome's `powerPreference` notice.
+- **Tests**: `tests/unit/forest-owl.test.js` (27): the model on disk (one skinned mesh, every bone named
+  and resting unturned, the same on both sides, a plumage code on every vertex, the plan the rig mirrors
+  stamped in its extras); the rig (unit turns, the right wing the mirror of the left, folding without a
+  jump, the folded primaries down the body, the body level for flight and upright on a perch); the
+  wingbeat and the moon loop flown smoothly; every perch seen whole at 16:9 clear of the card and the
+  panel; its mind (the moon loop for four lines, a visit for a level-up, never where it cannot be seen,
+  home under reduced motion, a night without a jump, a NaN or a dive through a trunk, the same night at
+  any frame rate); the reactions' cues; its shaders built for WGSL and GLSL without a warning.
+- **Cost**: one skinned mesh of 19,600 triangles on 110 bones (one draw, the bone matrices uploaded once a
+  frame), two limbs, one material at every tier. The asset pack grows from 2.96 to 3.51 MB (the pack's
+  ceiling raised to 3.7 MB). Not timed on the GPU: the machine was shared with other sessions.
+
+**Known limits.** The owl is not in the moon's static shadow map (it casts no shadow; it reads the map
+like everything else, so it flies into and out of the trees' shadows). On the far perches (the log and
+the stump, 27 m off) it is a small silhouette. A narrow or upright screen that cannot see its limb keeps
+it home and unseen. Up close its facial disc reads a little lumpy.
+
 ## How it is built
 
 ### Trees, fronds and props authored in Blender
@@ -288,7 +429,8 @@ ambient occlusion in Cycles, renders the far-stand sprite sheet, and builds a fe
 boulders and a dead snag. Formats and the regeneration command are in
 [`src/themes/forest/assets/ATTRIBUTION.md`](../src/themes/forest/assets/ATTRIBUTION.md).
 The pack is 2.9 MB in thirteen files with no third-party source; the generator's author
-reports byte-identical output over three runs. The moon's face is the shared
+reports byte-identical output over three runs. The eagle owl (`owl.glb`, 0.55 MB) has a generator
+of its own ([the eagle owl](#the-eagle-owl-2026-10-28)). The moon's face is the shared
 `public/textures/2k_moon.jpg` (see `CREDITS.md`).
 
 The generator runs **headless** (`blender --background --factory-startup`); the Blender
@@ -313,8 +455,9 @@ MCP session was not used, so nothing in an open Blender was touched.
 | `forest-firefly-sim.js`, `forest-fireflies.js` | The fireflies: simulation, and drawing (lights and trails). |
 | `forest-figures.js` | The twelve animals as geometry, and the points their lights take. |
 | `forest-hours.js` | The five hours of the night as plain numbers: the clock's turn, the colours at any moment, the short way round. |
-| `forest-reactions.js` | The event director (pure). |
+| `forest-reactions.js` | The event director (pure); it also numbers the cues the owl hears. |
 | `forest-stage.js`, `forest-firefly-director.js` | Board card → world, and cues → waves, sparks, force fields, garlands, the animals. |
+| `forest-owl-rig.js`, `forest-owl-flight.js`, `forest-owl-perches.js`, `forest-owl-mind.js`, `forest-owl.js` | The eagle owl ([below](#the-eagle-owl-2026-10-28)): its bones and every pose, its flights and wingbeat, where it sits, what it does, and its drawing (plumage, light, its dead limbs). |
 | `forest-post.js` | Volumetric moonbeams, bloom, grade, FXAA. |
 | `forest-quality.js` | One table for everything a tier scales. |
 
