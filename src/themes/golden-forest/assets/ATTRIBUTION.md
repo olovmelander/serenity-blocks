@@ -18,6 +18,7 @@ project (proprietary, all rights reserved).
 | `golden-forest-foliage.glb` | The shared needle geometry: spruce bough sections (long- and short-curtained) and pine clumps, each at a near and a far level of detail. |
 | `golden-forest-props.glb` | A clinker rowboat, a plank jetty, three boulders and a dead pine. |
 | `golden-forest-impostors.png` | Front elevations of the six grove trees for the far shores. |
+| `golden-forest-crane.glb` | The birds: a common crane in a near and a far level of detail, its wings weighted to the two hinges the theme folds them about (authored 2026-10-28 in Blender 5.2.2 by `golden_forest/crane.py`). |
 
 ## How the trees are made
 
@@ -45,6 +46,12 @@ project (proprietary, all rights reserved).
   grove tree with an emission material that stores data instead of colour: R = shade,
   G = needle mask, B = hue seed, A = coverage.
 
+- **The crane** (`golden_forest/crane.py`). Lofted from rings in the bird's frame at real
+  size (2.18 m span): body, neck and head, bill, tail, trailing legs, airfoil wings and six
+  parted primaries a wing. Vertex colour is scene-linear plumage with the thin-feather share
+  in alpha; `_WING` holds the shoulder, wrist and finger weights and the head's share. The
+  hinge pivots and the authored wing poses are in the GLB's extras and the manifest.
+
 ## Format
 
 GLBs are written by the generator itself (`fall_grove/glb.py`), not by Blender's exporter:
@@ -56,7 +63,7 @@ or animations in the files.
 
 ```bash
 blender --background --factory-startup --python scripts/blender/golden_forest_assets.py -- \
-    --out src/themes/golden-forest/assets [--only trees,foliage,impostors,props] [--preview <dir>]
+    --out src/themes/golden-forest/assets [--only trees,foliage,impostors,props,crane] [--preview <dir>]
 ```
 
 `--factory-startup` keeps the run independent of any Blender session that is open.
