@@ -20,6 +20,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { freshGeometry } from '../shared/fresh-geometry.js';
 
 export const SUNFALL_ASSET_SCHEMA = 1;
 export const SUNFALL_ASSET_MANIFEST = manifest;
@@ -199,7 +200,7 @@ export async function loadSunfallAssets({ loader, isCurrent = () => true } = {})
     const cacheable = loader === undefined;
     if (cacheable && sessionAssets) {
         const assets = await sessionAssets;
-        return isCurrent() ? assets : null;
+        return isCurrent() ? startView(assets) : null;
     }
     const work = loadSunfallAssetsFresh(loader ?? new GLTFLoader());
     if (cacheable) {
@@ -211,7 +212,21 @@ export async function loadSunfallAssets({ loader, isCurrent = () => true } = {})
         if (!cacheable) disposeSunfallAssets(assets);
         return null;
     }
-    return assets;
+    return cacheable ? startView(assets) : assets;
+}
+
+/**
+ * What one start draws from the session's assets: geometry objects of its own over the kept arrays
+ * (shared/fresh-geometry.js), so its dispose() never reaches the next start's buffers. The kept
+ * originals are never drawn; the canopy plan is plain data, shared.
+ */
+function startView(assets) {
+    return {
+        ...assets,
+        shell: assets.shell.map(freshGeometry),
+        ledge: assets.ledge.map(freshGeometry),
+        crowns: assets.crowns.map(freshGeometry),
+    };
 }
 
 async function loadSunfallAssetsFresh(loader) {

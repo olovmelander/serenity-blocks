@@ -1,7 +1,9 @@
 // @ts-check
 // Fall and Sunfall keep their parsed asset bundles for the session (the parse was an 83-132 ms
 // main-thread task on every start). The default load parses once; a stale load does not dispose
-// the cache; disposing a theme's assets releases GPU copies only, so the next start reuses them.
+// the cache; each start gets geometry objects of its own over the kept arrays (shared/fresh-geometry.js),
+// so one start's dispose() never reaches the next one's buffers (three r186 cannot re-upload a disposed
+// interleaved attribute).
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three/webgpu';
@@ -21,6 +23,30 @@ function diskGlb(dir) {
 
 afterEach(() => { vi.restoreAllMocks(); vi.resetModules(); });
 
+/** b is a geometry of its own (attributes and interleaved buffers too) over a's arrays. */
+function expectFreshOverSameArrays(a, b) {
+    expect(b).not.toBe(a);
+    const names = Object.keys(a.attributes);
+    expect(Object.keys(b.attributes)).toEqual(names);
+    for (const name of names) {
+        const [x, y] = [a.attributes[name], b.attributes[name]];
+        expect(y).not.toBe(x);
+        expect(y.array).toBe(x.array);
+        expect([y.itemSize, y.normalized, y.count]).toEqual([x.itemSize, x.normalized, x.count]);
+        if (x.isInterleavedBufferAttribute) {
+            expect(y.isInterleavedBufferAttribute).toBe(true);
+            expect(y.data).not.toBe(x.data);
+            expect([y.offset, y.data.stride]).toEqual([x.offset, x.data.stride]);
+        }
+    }
+    if (a.index) {
+        expect(b.index).not.toBe(a.index);
+        expect(b.index.array).toBe(a.index.array);
+    }
+    expect(b.groups).toEqual(a.groups);
+    expect(b.drawRange).toEqual(a.drawRange);
+}
+
 describe('Fall session asset cache', () => {
     it('parses once per session and survives a stale load and a dispose', async () => {
         const gltf = diskGlb(FALL_DIR);
@@ -33,10 +59,18 @@ describe('Fall session asset cache', () => {
         expect(stale).toBeNull();
         disposeFallAssets(first);
         const again = await loadFallAssets();
-        expect(again).toBe(first);
         expect(gltf.mock.calls.length).toBe(fetched);
-        const bark = Object.values(again.trees)[0].bark;
-        expect(bark.attributes.position.array.length).toBeGreaterThan(0);
+        expect(again).not.toBe(first);
+        const [a, b] = [first, again].map((x) => Object.values(x.trees)[0].bark);
+        expectFreshOverSameArrays(a, b);
+        const meshes = Object.keys(first.foliage.meshes);
+        expect(meshes.length).toBeGreaterThan(0);
+        for (const k of meshes) expectFreshOverSameArrays(first.foliage.meshes[k], again.foliage.meshes[k]);
+        const geometries = (x) => { const out = []; x.squirrel.scene.traverse((o) => { if (o.geometry) out.push(o.geometry); }); return out; };
+        const [sa, sb] = [first, again].map(geometries);
+        expect(sb.length).toBe(sa.length);
+        sa.forEach((g, i) => expectFreshOverSameArrays(g, sb[i]));
+        expect(again.impostors.texture).toBe(first.impostors.texture);
     });
 
     it('never caches a load with injected loaders (tests, tools)', async () => {
@@ -60,9 +94,12 @@ describe('Sunfall session asset cache', () => {
         expect(await loadSunfallAssets({ isCurrent: () => false })).toBeNull();
         disposeSunfallAssets(first);
         const again = await loadSunfallAssets();
-        expect(again).toBe(first);
         expect(gltf.mock.calls.length).toBe(3);
-        expect(again.shell[0].attributes.position.array.length).toBeGreaterThan(0);
+        for (const part of ['shell', 'ledge', 'crowns']) {
+            expect(again[part].length).toBe(first[part].length);
+            first[part].forEach((g, i) => expectFreshOverSameArrays(g, again[part][i]));
+        }
+        expect(again.plan).toBe(first.plan);
     });
 
     it('drops a failed load so the next start tries again', async () => {

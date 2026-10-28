@@ -102,6 +102,7 @@
     "src/themes/shared/camera-rig.js",
     "src/themes/shared/composer-dispose.js",
     "src/themes/shared/decoded-texture.js",
+    "src/themes/shared/fresh-geometry.js",
     "src/themes/shared/gameplay-surge.js",
     "src/themes/shared/mood-clock.js",
     "src/themes/shared/mrt-blend.js",

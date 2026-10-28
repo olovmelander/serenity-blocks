@@ -8,9 +8,11 @@
  */
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { freshGeometry } from '../shared/fresh-geometry.js';
 
 export const FALL_TREE_URLS = Object.freeze({
     'maple-hero': new URL('./assets/maple-hero.glb', import.meta.url).href,
@@ -187,7 +189,7 @@ export async function loadFallAssets({
     const key = `${[...new Set(trees)].join(',')}|${squirrel}`;
     if (cacheable && sessionAssets?.key === key) {
         const assets = await sessionAssets.promise;
-        return isCurrent() ? assets : null;
+        return isCurrent() ? startView(assets) : null;
     }
     const work = loadFallAssetsFresh({
         trees,
@@ -205,7 +207,31 @@ export async function loadFallAssets({
         if (!cacheable) disposeFallAssets(assets);
         return null;
     }
-    return assets;
+    return cacheable ? startView(assets) : assets;
+}
+
+/**
+ * What one start draws from the session's assets: geometry objects of its own over the kept arrays
+ * (shared/fresh-geometry.js), so its dispose() never reaches the next start's buffers. The kept
+ * originals are never drawn. Textures and plain data are shared as they are.
+ */
+function startView(assets) {
+    const each = (object, make) => Object.fromEntries(Object.entries(object || {}).map(([k, v]) => [k, make(v)]));
+    let { squirrel } = assets;
+    if (squirrel?.scene) {
+        const scene = cloneSkinned(squirrel.scene);
+        scene.traverse((object) => {
+            const node = object;
+            if (node.geometry) node.geometry = freshGeometry(node.geometry);
+        });
+        squirrel = { ...squirrel, scene };
+    }
+    return {
+        ...assets,
+        foliage: assets.foliage ? { ...assets.foliage, meshes: each(assets.foliage.meshes, freshGeometry) } : assets.foliage,
+        trees: each(assets.trees, (tree) => (tree.bark ? { ...tree, bark: freshGeometry(tree.bark) } : tree)),
+        squirrel,
+    };
 }
 
 async function loadFallAssetsFresh({
