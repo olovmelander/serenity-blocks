@@ -267,6 +267,9 @@ export class OdysseyCharmIconStage {
             // The observed box (a first report arrives within a frame of mounting), else a read.
             const rect = this.resizeObserver ? slot.box : canvas.getBoundingClientRect?.();
             if (!rect || !rect.width || !rect.height) return;
+            // Laid out but not showing (the map's header is visibility:hidden under the navigator):
+            // nothing to draw for. The slot draws again on the first frame it shows.
+            if (canvas.checkVisibility?.({ visibilityProperty: true, opacityProperty: true }) === false) return;
             const width = Math.max(1, Math.round(rect.width * ratio));
             const height = Math.max(1, Math.round(rect.height * ratio));
             tiles.push({

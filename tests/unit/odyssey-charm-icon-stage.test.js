@@ -184,6 +184,31 @@ describe('The charm icon stage', () => {
         expect(cancelAnimationFrame).toHaveBeenCalled();
     });
 
+    it('draws nothing for a slot that is laid out but not showing (the header under the navigator)', async () => {
+        // The map's header keeps its layout under the navigator (visibility:hidden, opacity 0),
+        // so its slots kept their boxes and were drawn, 30 times a second, for nobody.
+        const renderer = fakeRenderer();
+        const stage = new OdysseyCharmIconStage({ createRenderer: async () => renderer });
+        const header = fakeCanvas(24, 24);
+        let showing = false;
+        header.canvas.checkVisibility = vi.fn(() => showing);
+        const card = fakeCanvas(40, 40);
+        card.canvas.checkVisibility = () => true;
+        stage.mount(header.canvas, 'tide');
+        stage.mount(card.canvas, 'hearth');
+        expect(await stage.init()).toBe(true);
+        stage.frame(1000);
+        expect(renderer.render).toHaveBeenCalledTimes(1); // the card, not the hidden header
+        expect(header.ctx.drawImage).not.toHaveBeenCalled();
+        expect(header.canvas.checkVisibility).toHaveBeenCalledWith({ visibilityProperty: true, opacityProperty: true });
+        showing = true; // the navigator closes
+        renderer.render.mockClear();
+        stage.frame(1040);
+        expect(renderer.render).toHaveBeenCalledTimes(2);
+        expect(header.ctx.drawImage).toHaveBeenCalled();
+        stage.dispose();
+    });
+
     it('sizes slots from their observed boxes instead of reading layout every frame', async () => {
         // Audit 2026-10-23: a getBoundingClientRect per slot on every drawn frame (30 a second).
         let observe = null;
