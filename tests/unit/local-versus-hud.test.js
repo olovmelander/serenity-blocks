@@ -297,6 +297,33 @@ describe('local versus HUD', () => {
         vi.useRealTimers();
     });
 
+    it('shows each human\'s controls under their board, in the stats line\'s place, never on the board', () => {
+        vi.useFakeTimers();
+        const { nodes, doc } = fakeDom(2);
+        const hud = new LocalVersusHud({
+            config: { playerSlots: [{ kind: 'human' }, { kind: 'bot', difficulty: 8 }] },
+            numPlayers: 2,
+            colorFor: () => ({ primary: '#3B82F6' }),
+            settings: SETTINGS,
+            doc,
+        });
+        hud.showCoach();
+        const card = nodes['player-1-card'];
+        const coach = card.children.find((c) => c.className === 'lv-coach');
+        expect(coach.innerHTML).toContain('<kbd>Space</kbd>');
+        expect(card.classList.contains('lv-coaching')).toBe(true);
+        expect(nodes['p1-section'].children).toHaveLength(0);
+        // The bot's board gets none.
+        expect(nodes['player-2-card'].children).toHaveLength(0);
+        expect(nodes['player-2-card'].classList.contains('lv-coaching')).toBe(false);
+
+        // The stats come back as it leaves.
+        vi.advanceTimersByTime(6000);
+        expect(card.classList.contains('lv-coaching')).toBe(false);
+        hud.destroy();
+        vi.useRealTimers();
+    });
+
     it('tells the round and lands an attack in the target\'s channel', () => {
         vi.useFakeTimers();
         const { nodes, doc } = fakeDom(2);

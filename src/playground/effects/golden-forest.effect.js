@@ -99,7 +99,49 @@ export function create({
         post.setSize(window.innerWidth, window.innerHeight);
         aim();
     });
+    // ?crane=k:12 (kettle bird 12) or s:0 (the skein's leader): a long lens from the eye kept on
+    // that crane (?craneFov=<deg>, default 3). ?craneCam=k:12,<metres>,<deg round from its heading
+    // toward its left>,<deg up>,<fov>: fly beside it. The birds are sized from the camera, so both
+    // show real-size cranes.
+    const craneParams = () => {
+        const look = params.get('crane');
+        const cam = params.get('craneCam');
+        const spec = (cam || look || '').split(',');
+        const [kind, index] = (spec[0] || '').split(':');
+        if (!kind) return null;
+        return {
+            kettle: kind !== 's',
+            index: Math.max(0, Math.round(Number(index) || 0)),
+            cam: Boolean(cam),
+            dist: Number(spec[1] ?? 9),
+            round: THREE.MathUtils.degToRad(Number(spec[2] ?? 90)),
+            up: THREE.MathUtils.degToRad(Number(spec[3] ?? -10)),
+            fov: Number(cam ? spec[4] ?? 40 : params.get('craneFov') ?? 3),
+        };
+    };
+    const craneLens = craneParams();
+    const lens = (time) => {
+        const sky = world?.birds?.sky;
+        if (!craneLens || !sky) return;
+        const startle = world.birds.uStartle.value;
+        const at = (t) => sky.at(craneLens.kettle, craneLens.index, t, startle, [0, 0, 0]);
+        const p = at(time);
+        const q = at(time + 0.1);
+        if (!p || !q) return;
+        if (craneLens.cam) {
+            const heading = Math.atan2(q[0] - p[0], q[2] - p[2]) + craneLens.round;
+            const flat = Math.cos(craneLens.up) * craneLens.dist;
+            const rise = Math.sin(craneLens.up) * craneLens.dist;
+            camera.position.set(p[0] + Math.sin(heading) * flat, p[1] + rise, p[2] + Math.cos(heading) * flat);
+        } else {
+            world.prepareCamera(camera.aspect);
+        }
+        camera.fov = craneLens.fov;
+        camera.lookAt(p[0], p[1], p[2]);
+        camera.updateProjectionMatrix();
+    };
     const update = (time, dt) => {
+        lens(time);
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);

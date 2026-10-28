@@ -77,8 +77,10 @@ describe('sunset world: building', () => {
         expect(lantern.getAttribute('aPart')).toBeDefined();
         lantern.computeBoundingBox();
         expect(lantern.boundingBox.min.y).toBeGreaterThanOrEqual(-1e-6); // it floats on its foot
+        // The gull (sunset-gull.test.js holds it to Blender's rig): skinned, painted, lit by normals.
         const bird = buildBirdGeometry();
-        expect(bird.getAttribute('aSpan').array.every((v) => v >= 0 && v <= 1)).toBe(true);
+        ['position', 'normal', 'color', 'skin'].forEach((name) => expect(bird.getAttribute(name)).toBeDefined());
+        expect(bird.index.count % 3).toBe(0);
     });
 });
 
@@ -440,7 +442,8 @@ describe('sunset world: it builds with play, and never restarts', () => {
 
     it('lets a chain grow the flock in the air, and never restarts one still crossing', () => {
         const { world, step } = makeWorld({ hour: 17.5, quality: 'High' });
-        const birds = world.parts.birds.mesh.geometry.getAttribute('aBird');
+        const { birds } = world.parts;
+        const leader = () => new THREE.Vector3(...birds.placeOf(0).slice(0, 3));
         world.onCombo(3);
         step(2);
         const small = world.getState().birds;
@@ -453,11 +456,11 @@ describe('sunset world: it builds with play, and never restarts', () => {
         // Long after, a new step of the chain: a second flight sets out beside the first, which
         // flies on where it was.
         step(11);
-        const lead = new THREE.Vector3(birds.getX(0), birds.getY(0), birds.getZ(0));
+        const lead = leader();
         const flying = world.getState().birds;
         world.onCombo(6);
         step(1 / 30);
-        const now = new THREE.Vector3(birds.getX(0), birds.getY(0), birds.getZ(0));
+        const now = leader();
         expect(now.distanceTo(lead)).toBeLessThan(1);
         expect(world.getState().birds).toBeGreaterThan(flying);
     });

@@ -10,7 +10,9 @@
  * and every aspect keeps it in its corner, and the lens's shift (portrait) is allowed for. One
  * instanced ear: a stem up from below the frame, the spindle and its brush of awns, a ribbon turned
  * to the eye and widened by its circle of confusion; its outline is blurred by that circle, so the
- * spindle is a soft gold shape in a haze of awns, a little see-through. Lit as the stand is: the sun
+ * spindle is a soft gold shape in a haze of awns, a little see-through. The ear sits on its stem as
+ * the stand's do (grainfields-grain.js NECK): the stem's last stretch curves onto the ear's line,
+ * the ear's base is as wide and as solid as the stem's top, and the neck takes on the ear's tone. Lit as the stand is: the sun
  * through the deck at the eye, the sky's fill, the field's bounce, and with the sun ahead the light
  * through the awns (a blurred blaze is a glow, which the bloom carries).
  *
@@ -26,6 +28,7 @@ import {
     cross,
     dot,
     float,
+    length,
     max,
     min,
     mix,
@@ -42,7 +45,7 @@ import {
 } from 'three/tsl';
 import { deckShadow } from './grainfields-tsl.js';
 import { SOIL } from './grainfields-land.js';
-import { BLAZE_CAP, EAR_SHAPE } from './grainfields-grain.js';
+import { BLAZE_CAP, EAR_SHAPE, NECK } from './grainfields-grain.js';
 
 /**
  * The ears: where each one's head stands on the screen (x, y in −1..1 from the bottom-left), how
@@ -82,6 +85,8 @@ export const LENS_BLUR = Object.freeze({ coc: 0.0042, opacity: 0.94, light: 0.32
 /** How long the stem runs down from the head (metres): out under the frame's bottom edge. */
 const STEM = 0.62;
 const STEM_ROWS = 8;
+/** The stem's true half-width (metres) at its foot and under the ear. */
+const STEM_HALF = Object.freeze({ foot: 0.0021, top: 0.0017 });
 const EAR_ROWS = 14;
 
 /** The template: per ear a stem strip (z 0) and an ear strip (z 1); x along (0..1), y across (−1..1). */
@@ -111,6 +116,8 @@ const spindle = (a) => {
     const k = clamp(a.div(CORE_SHARE), 0.0, 1.0);
     return pow(sin(k.mul(3.1416)).max(0.001), 0.5).mul(smoothstep(CORE_SHARE + 0.02, CORE_SHARE - 0.02, a));
 };
+/** Over the ear's base its width does not fall under the stem's own (0 past the base). */
+const neckFloor = (a) => float(STEM_HALF.top).mul(float(1.0).sub(smoothstep(0.0, NECK.base, a)));
 
 export function createLensEars(u, t, { count = LENS_EARS.length } = {}) {
     const ears = LENS_EARS.slice(0, Math.max(0, Math.min(LENS_EARS.length, count)));
@@ -169,15 +176,27 @@ export function createLensEars(u, t, { count = LENS_EARS.length } = {}) {
         const tilt = iPlace.w.mul(0.9).add(nodSway).add(seed.sub(0.5).mul(0.3));
         const earAxis = normalize(u.camUp.mul(cos(tilt)).add(u.camRight.mul(sin(tilt))).add(u.camFwd.mul(0.12))).toVar();
         const earLen = mix(float(EAR_SHAPE.length[0]), float(EAR_SHAPE.length[1]), seed).mul(size).mul(1 + EAR_SHAPE.reach);
-        const along = select(isEar, head.add(earAxis.mul(earLen.mul(s))), stemAt(s)).toVar();
-        const axis = select(isEar, earAxis, normalize(head.sub(foot))).toVar();
+        // The neck: over the stem's last stretch its direction turns from its own line (the bow's
+        // tangent) onto the ear's (the offset is the turn's integral), and the ear sets off from the
+        // bent top along its own axis, so the two meet facing the same way.
+        const rise = head.sub(foot).toVar();
+        const bow = u.camRight.mul(iPlace.w.mul(0.06));
+        const stemTop = normalize(rise.sub(bow));
+        const turn = earAxis.sub(stemTop).toVar();
+        const reach = length(rise);
+        const neckRun = max(s.sub(1 - NECK.bend), 0.0);
+        const neckTop = head.add(turn.mul(reach.mul(NECK.bend * 0.5)));
+        const stemPoint = stemAt(s).add(turn.mul(reach.mul(neckRun.mul(neckRun).div(2 * NECK.bend))));
+        const along = select(isEar, neckTop.add(earAxis.mul(earLen.mul(s))), stemPoint).toVar();
+        const stemDir = normalize(rise.add(bow.mul(float(1.0).sub(s.mul(2.0)))));
+        const axis = select(isEar, earAxis, normalize(stemDir.add(turn.mul(neckRun.div(NECK.bend))))).toVar();
         // Turned to the eye; widened by the blur so the soft edge fits inside the ribbon.
         const toEye = normalize(u.eye.sub(along));
         const across = normalize(cross(axis, toEye).add(vec3(1e-5, 0.0, 0.0)));
         const brush = EAR_SHAPE.brush * 1.15;
         const earHalf = max(spindle(s).mul(EAR_SHAPE.core * 1.1), smoothstep(0.04, 0.5, s).mul(float(1.0).sub(smoothstep(0.82, 1.0, s).mul(0.75))).mul(brush))
-            .mul(size);
-        const stemHalf = float(0.0021).sub(s.mul(0.0004));
+            .mul(size).max(neckFloor(s));
+        const stemHalf = float(STEM_HALF.foot).sub(s.mul(STEM_HALF.foot - STEM_HALF.top));
         const trueHalf = select(isEar, earHalf, stemHalf);
         const blur = float(LENS_BLUR.coc);
         const drawn = trueHalf.add(blur.mul(1.6));
@@ -197,9 +216,9 @@ export function createLensEars(u, t, { count = LENS_EARS.length } = {}) {
         // The blurred outline: a disc of confusion swept over the edge.
         const solid = smoothstep(R.add(blur), R.sub(blur), m);
         // The awns are a haze, fainter than the spindle's body; the stem fades out low in the frame.
-        const core = spindle(s).mul(EAR_SHAPE.core * 1.1).mul(vEdge.w);
+        const core = spindle(s).mul(EAR_SHAPE.core * 1.1).mul(vEdge.w).max(neckFloor(s));
         const body = smoothstep(core.add(blur), core.sub(blur), m);
-        const earA = max(body, solid.mul(0.42)).mul(smoothstep(0.0, 0.06, s));
+        const earA = max(body, solid.mul(0.42));
         const stemA = solid.mul(smoothstep(0.0, 0.35, s));
         const alpha = select(isEar, earA, stemA).mul(LENS_BLUR.opacity);
         // The crop's gold (paler awns, a straw stem going green toward its foot), in the stand's shade
@@ -207,9 +226,12 @@ export function createLensEars(u, t, { count = LENS_EARS.length } = {}) {
         const crop = vec3(...SOIL.barley).mul(vEdge.z.mul(0.25).add(0.9));
         const awny = float(1.0).sub(body);
         const earCol = mix(crop.mul(1.05), crop.mul(vec3(1.12, 1.1, 1.05)).add(vec3(0.03, 0.025, 0.01)), awny.mul(0.7));
-        const stemCol = crop.mul(mix(vec3(0.42, 0.55, 0.28), vec3(0.85, 0.82, 0.68), smoothstep(0.2, 0.8, s)));
+        // The neck under the ear (0 down the stem … 1 at the ear) takes on the ear's tone and light.
+        const neck = select(isEar, float(0.0), smoothstep(1 - NECK.tone, 1.0, s));
+        const straw = crop.mul(mix(vec3(0.42, 0.55, 0.28), vec3(0.85, 0.82, 0.68), smoothstep(0.2, 0.8, s)));
+        const stemCol = mix(straw, crop.mul(1.05), neck.mul(NECK.mix));
         const albedo = select(isEar, earCol, stemCol).toVar();
-        const shade = select(isEar, float(1.0), mix(float(0.3), float(0.9), s));
+        const shade = select(isEar, float(1.0), mix(mix(float(0.3), float(0.9), s), float(1.0), neck));
         const sunlit = vLight.x;
         const ahead = vLight.y;
         const a2 = ahead.mul(ahead);
@@ -221,7 +243,7 @@ export function createLensEars(u, t, { count = LENS_EARS.length } = {}) {
             .add(u.bounce.mul(0.6))).mul(LENS_BLUR.light).toVar();
         const through = a4.mul(0.55).add(a4.mul(a4).mul(1.2)).add(a2.mul(0.1));
         col.addAssign(albedo.mul(vec3(1.45, 1.15, 0.6)).mul(u.sun).mul(through).mul(sunlit)
-            .mul(select(isEar, awny.mul(0.6).add(0.5), float(0.25)))
+            .mul(select(isEar, awny.mul(0.6).add(0.5), mix(float(0.25), float(0.5), neck)))
             .mul(LENS_BLUR.light));
         // After sunset the ears keep a little of the afterglow.
         col.addAssign(albedo.mul(u.glow).mul(u.day.oneMinus()).mul(0.06));

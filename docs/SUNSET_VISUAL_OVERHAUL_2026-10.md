@@ -141,9 +141,10 @@ second fBm, fine fBm; the sea's: the slope of a five-octave height field and two
   ribs on a dark float, lit from inside in the piece's colour) and one additive layer of
   camera-facing glows (halos, the lights in flight with their trails, splash drops) that keep a
   few pixels across however far away they are.
-- **`sunset-birds.js`** — the gulls: one small mesh with wings that bend at the elbow and beat
-  in the vertex stage, each bird at its own pace with glides; the instances carry their own place
-  and heading (a `positionNode` output is final, so an instance matrix would be lost).
+- **`sunset-birds.js`** — the gulls: a common gull modelled, rigged and animated in Blender
+  (`scripts/blender/sunset_gull.py` writes `sunset-gull-model.js`; see "The gulls, modelled and
+  animated in Blender" below). Per bird per frame the CPU blends its beat and glide joint by joint
+  into nine bones in a float table; the vertex stage skins each vertex to two of them.
 - **`sunset-world.js`** — the uniforms, the day (the clock, the levels' offset, the sun's and the
   moon's places from `arcAt`), the tables (rings, lamps the sea mirrors),
   the event language, the camera (afloat: the swell lifts the eye a little), what the post needs.
@@ -318,3 +319,101 @@ Not done: no perf-lane (ADR-0016) reading, no integrated-GPU or real-phone readi
 multiplayer, Infinity, meditation and Odyssey layouts not captured, and nobody has watched it
 move except through stills and strips. Blender was not used: the scene is a sky, a sea and small
 generated meshes. The 22° halo, the hour palettes, the 96 s hour and the icon are my choices.
+
+## The gulls, modelled and animated in Blender (2026-10-28)
+
+On `feature/sunset-birds`. Olov: "I want to improve the look of the flying birds in the sunset
+theme, we can use blender MCP to model the birds and animate them!"
+
+**What was wrong.** Each gull was a flat diamond 1 cm deep with two flat wings that bent at one
+joint: no head, no tail, no volume. The flock crosses the light side-on, so what showed was a body
+seen as a line and wings seen as fins, all painted one near-black whatever the hour (white gulls
+are black against the noon sky too).
+
+![Before and after: the long lens (top), game size enlarged 3× (middle), the real game (bottom); left the old birds, right the new](sunset-overhaul/gulls-blender-ab.webp)
+
+**The bird.** A common gull (fiskmås) built in Blender by `scripts/blender/sunset_gull.py`
+(1,496 triangles, real size: 1.33 m across, 0.41 m bill to tail): a round head carried close with
+a dark eye and a slim yellow bill, a slim body, a short square tail, and long narrow wings bent at
+the wrist, cambered airfoil sections thinning to a feathered trailing edge. Plumage per vertex:
+white head, body and tail, the soft grey back and upper wing, black wingtips with two white
+mirrors, grey flight feathers underneath. The wing is authored along its span stations and drawn
+out by `reach(s)` (the long wings name a gull at 30 px; a 1.2 m first draft read as a dove).
+
+**The rig and the animation.** Nine bones (body, head, tail; the arm, forearm and hand of each
+wing, named the Blender way: `.L` on +x). Every vertex follows at most two of them, in bands that
+widen toward the trailing edge, which swings furthest when the wing folds; the hand's band runs
+out behind the wrist like the line between the primaries and the secondaries. Two keyframed
+actions on the armature: **Flap**, one wingbeat (the downstroke 55 % of it, the wing open and
+pronated; the upstroke with the elbow and wrist flexed, the hand swept back and trailing, then
+flicked up at the top; the body rising on the downstroke while the head is held steady) with
+cyclic Bezier curves, and **Glide**, the gull's crank (the arm raised, the hand lowered). The key
+poses are joint angles in the script; Blender's interpolation makes the cycle.
+
+**Into the game.** The script samples Blender's evaluated rig at 24 points of the beat plus the
+glide and writes `src/themes/sunset/sunset-gull-model.js` (38 KB: base64 positions, triangles,
+skin, plumage and the bone poses; nothing is fetched, the theme still loads no assets). It checks
+the game's skinning against Blender's own deformed mesh before writing (within 0.0002 mm) and puts
+a few of Blender's vertices in the module for the tests. `sunset-birds.js` turns the rows into each
+bone's turn about its own joint and, per bird per frame on the CPU, blends two rows of the bird's
+beat and its glide joint by joint and chains them from the body out (blending whole deforms pulled
+the wrist apart 1.9× halfway into a glide), then banks and heads the bird and writes its nine
+bones into a small float table; the vertex stage reads two bones per vertex from the bird's row
+(`instanceIndex`) and skins position and normal. One draw, four vertex buffers.
+
+**The light.** Lit by the hour, not painted black: the sky the feathers face (the theme's own
+`skyBase` along the normal), the sea's mirror of the low sky the same way from below, the sunlit
+water from beneath by day, and the key on the faces turned to it as bright as the hour lights a
+white cloud (`cloudLit`). Seen against a low light the shaded side drops to a silhouette (`glare`:
+looking within ~55° of a sun under ~38°; not tied to the disc's share over the sea, since the sky
+round a sun just set is still the glare), so the skein is black against the fire at sunset and the
+golden hour, white gulls with black tips at noon. Thin feathers are lit through only within ~11°
+of the disc (birds crossing the sun glow gold); the outline takes a thin rim within ~18° of it (a
+wider rim tinted every small bird brown). `TONE` in `sunset-birds.js` holds the shares.
+
+**Flight.** The skein, its joins and its paths are as before; the beat is now in turns of the
+Blender cycle (each bird its own pace, about 0.4–0.55 beats a second, which with the skein's slow
+crossing is about two wingspans a beat, a real gull's proportion slowed down), the glides blend
+into the Glide pose, and the bird turns to its heading by a rotation (the old vertex stage
+mirrored the model, harmless only because it was symmetric). `GULL_SCALE` 1.8 → 2.1.
+
+**Reproduce.**
+
+```bash
+"C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" --background --factory-startup \
+  --python scripts/blender/sunset_gull.py -- --out src/themes/sunset/sunset-gull-model.js [--preview <dir>]
+```
+
+From a live Blender (the MCP): `runpy.run_path("scripts/blender/sunset_gull.py",
+run_name="sunset_gull")["show"]()` builds the bird, the rig and both actions in a scene of its own
+(`SunsetGull`, 24 frames a beat) and touches no other scene; it writes the same file byte for byte
+as the headless run. Don't call viewport operators (frame selected, play) from inside an MCP call:
+that crashed Blender once here. Playground close-up of the skein crossing the sun:
+`?effect=sunset&t=40&quality=High&hour=18&flock=11&flockAge=9&icon=1&iconFov=7&iconYaw=0.50&iconPitch=-0.095`
+(`iconFov=13&iconYaw=0.47&iconPitch=-0.07` takes in the whole skein and the sun).
+
+**Verification (2026-10-28, on main 390fc497).**
+
+- **Playground** (Chrome, WebGPU on the RTX 5080 Laptop, High, through the chrome-devtools MCP: the
+  dev Electron is blocked by Windows Smart App Control on this machine since it was re-downloaded
+  unsigned): sunset, golden hour, afterglow, morning and noon, the long lens, game size at
+  1600 × 900 (DPR 1.5) and a strip of nine frames a quarter second apart; no console warning or
+  error.
+- **Real game**: Single Player on Sunset at High, the whole flock (23 at High) called through the
+  live world; the frames were stepped by hand because the automated browser ran theme loops at
+  about 1 Hz (Ocean too, so not this change). No warning or error.
+- **Unit tests**: `tests/unit/sunset-gull.test.js` (new): the mesh and its skin; the vertex
+  stage's twin against Blender's own deformed vertices (< 0.5 mm); a whole stroke with no jump at
+  the loop's join, the wrist flexed on the upstroke, the glide open; no skin edge stretched past
+  1.75× or closed under 0.18× in any pose or blend; every joint held to its parent in any blend;
+  each bird where the skein puts it, bill first, life-sized times `GULL_SCALE`. The shader gate
+  builds the new material for WGSL and GLSL with the rest of the world.
+- **Cost by construction** (no GPU timing: other sessions share both GPUs): one draw of 1,496
+  triangles per bird (9 to 35 birds by tier, 52 k triangles at most), four texel reads and two
+  quaternion turns per vertex, two `skyBase` calls per pixel of bird; on the CPU nine bones per
+  flying bird per frame and a 18 × birds float texture upload.
+
+Not done: no phone or integrated-GPU reading, no perf-lane reading; the Blender viewport shot of
+the rig came back black through the MCP (the scene is there to open). Ideas left: a skein that
+sometimes flies obliquely toward or away from the eye (it is always seen side-on now, so the
+wings' plan and the M of the glide show only in the bank), and gulls answering the lanterns.
