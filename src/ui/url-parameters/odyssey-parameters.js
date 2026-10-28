@@ -187,6 +187,11 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         },
     ),
     toggle('odysseyLiveCompileOff', 'Disables live background compilation for comparison with render-only warming.'),
+    toggle(
+        'odysseyOneGoBuilds',
+        'Builds each chapter in one go on the live map instead of a few milliseconds a frame, to compare the two.',
+        { scope: 'Odyssey map' },
+    ),
     parameter(
         'odysseyCompileWidth',
         'Sets how many startup shader compilation requests may run concurrently.',
@@ -408,6 +413,19 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyWorldBakeSync', 'Runs world scenery preparation on the main thread instead of workers.', {
         scope: WORLD_SCOPE,
     }),
+    parameter(
+        'odysseyGlideCompileMs',
+        'How long a map glide waits for its destination chapter to compile before it sets out.',
+        'Milliseconds, 0 to 2000; 0 sets out at once (the compile still runs under the glide)',
+        '250',
+        '0',
+        { scope: 'Odyssey map' },
+    ),
+    toggle(
+        'odysseyNoBakeCache',
+        'Prepares world scenery afresh and keeps nothing: no reuse in the session, no copy saved for the next launch.',
+        { scope: WORLD_SCOPE, sources: [BOARD, 'src/rendering/odyssey/world/odyssey-world-bake-loader.js'] },
+    ),
     parameter(
         'odysseyBakeBands',
         'Splits world ground preparation across this many worker bands.',

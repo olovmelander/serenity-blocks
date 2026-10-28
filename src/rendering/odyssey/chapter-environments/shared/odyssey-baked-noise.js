@@ -17,6 +17,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { runChapterSteps } from './chapter-build-steps.js';
 
 // Perlin's classic 12 edge-midpoint gradients — well-distributed / isotropic.
 const GRADS = [
@@ -41,6 +42,19 @@ const lerp = (a, b, t) => a + (b - a) * t;
  * @returns {Float32Array} res^3 values, x fastest
  */
 export function bakeTileableNoise3DData(res = 96, grid = 20, seed = 1337) {
+    return runChapterSteps(bakeTileableNoise3DDataSteps(res, grid, seed));
+}
+
+/** Z-slices of the field baked per build step (~1-2 ms at res 96 in the Node measurement). */
+const BAKE_SLICES_PER_STEP = 4;
+
+/**
+ * bakeTileableNoise3DData in steps: it pauses every few z-slices (chapter-build-steps.js), so a
+ * chapter built while the map is on screen bakes it across frames. Same loop, same values.
+ * @param {number} res texels per axis @param {number} grid lattice cells per axis @param {number} seed
+ * @returns {Generator<void, Float32Array, unknown>}
+ */
+export function* bakeTileableNoise3DDataSteps(res = 96, grid = 20, seed = 1337) {
     const hash = (x, y, z, s) => {
         const xi = ((x % grid) + grid) % grid;
         const yi = ((y % grid) + grid) % grid;
@@ -97,6 +111,7 @@ export function bakeTileableNoise3DData(res = 96, grid = 20, seed = 1337) {
                 off += 1;
             }
         }
+        if ((z + 1) % BAKE_SLICES_PER_STEP === 0 && z + 1 < res) yield;
     }
     return data;
 }
@@ -110,7 +125,17 @@ export function bakeTileableNoise3DData(res = 96, grid = 20, seed = 1337) {
  * @returns {THREE.Data3DTexture} (userData.gridPeriodUnits = period)
  */
 export function buildTileableNoise3D(res = 96, grid = 20, period = 10, seed = 1337) {
-    const data = bakeTileableNoise3DData(res, grid, seed);
+    return tileableNoise3DTexture(bakeTileableNoise3DData(res, grid, seed), res, period);
+}
+
+/**
+ * The texture buildTileableNoise3D wraps baked data in (for data baked in steps).
+ * @param {Float32Array} data from bakeTileableNoise3DData(Steps)
+ * @param {number} res texels per axis
+ * @param {number} period world units per full texture period
+ * @returns {THREE.Data3DTexture}
+ */
+export function tileableNoise3DTexture(data, res, period) {
     const tex = new THREE.Data3DTexture(data, res, res, res);
     tex.format = THREE.RedFormat;
     tex.type = THREE.FloatType;

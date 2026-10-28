@@ -59,10 +59,13 @@ import {
     createContactShadowDecalTSL,
     createFirstHeartTSL,
     earthCoreVeilTransmission,
+    prepareEarthCoreNoiseSteps,
     EARTH_CORE_THROUGH_STEAM_ORDER,
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
-import { createShaftFalls, createShaftWall, planEarthCoreShaft } from './earth-core-shaft.js';
+import { createShaftFalls, createShaftWallSteps, planEarthCoreShaft } from './earth-core-shaft.js';
+import { runChapterSteps } from './shared/chapter-build-steps.js';
+import { lakeNoiseBakeEnabled } from './shared/odyssey-lake-noise-bake.js';
 import { steamQuenchDensity, steamQuenchFogColour, steamQuenchSeamT } from '../composition/odyssey-steam-quench.js';
 
 // The cavern's lights draw after the quench's steam (see earthCoreVeilTransmission).
@@ -879,6 +882,21 @@ function createMagmaCloudDeck(uniforms, count, corridorHigh) {
 }
 
 export function createEarthCoreEnvironment(options = {}) {
+    return runChapterSteps(buildEarthCoreEnvironmentSteps(options));
+}
+
+/**
+ * The chapter's build in steps (shared/chapter-build-steps.js): createEarthCoreEnvironment runs
+ * it straight through; a build made while the map is on screen pauses it between steps of a few
+ * milliseconds, so the build (100-250 ms in a Node measurement, the shaft wall's noise grid most
+ * of it; relative figures) never lands on one frame. It pauses only between whole pieces, and the
+ * group is returned, not added anywhere.
+ * @param {object} [options] quality settings (particleCount, qualityTier)
+ * @returns {Generator<void, THREE.Group, unknown>}
+ */
+export function* buildEarthCoreEnvironmentSteps(options = {}) {
+    // The chapter's shared noise texture, in steps (the first material sampling it baked it whole).
+    yield* prepareEarthCoreNoiseSteps();
     const group = new THREE.Group();
     group.name = 'earth-core-environment';
     group.userData.chapterId = 1;
@@ -1015,6 +1033,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // shader on the plane, versus simply cutting sprites. This lever withholds ONLY the sprites.
     const noLakeGlows = readBisect('earthCoreNoLakeGlows');
     const noHaze = readBisect('earthCoreNoHaze');
+    yield;
 
     // 1. Create background sphere (enhanced with lava glow)
     const background = createVolcanoBackground(uniforms);
@@ -1024,6 +1043,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // screen of transparent fill and one material on the fill-bound lane with the same pixels.
     // userData keeps pointing at the surface that carries the canopy so nothing dangles.
     group.userData.magmaCloudCanopy = background;
+    yield;
 
     // 2. Create animated lava floor - THE MAIN FEATURE. The molten BASINS (plan:
     // legacy-floor revival) are sampled from the path so the "lava surf" beats sit
@@ -1055,6 +1075,7 @@ export function createEarthCoreEnvironment(options = {}) {
     });
     if (!noLake) group.add(lavaFloor);
     group.userData.lavaFloor = lavaFloor;
+    yield;
 
     // 3. (REMOVED 2026-10-01) The crater-rim cloud: 300 puffs at opacity 0.055 that the heavy-
     //    chapter remake plan had already measured as invisible. Its material slot is worth more
@@ -1064,7 +1085,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // tether-streams replaces the old two-sphere repetition. Cap raised 2→6 under the
     // quality-preset budget; every seat is pushed clear of the spline (frame-07 fix).
     const clusterCount = Math.min(options.particleCount ? Math.floor(options.particleCount / 110) : 5, 6);
-    createVolcanicRockClusters(group, uniforms, elements, clusterCount, groupCenter, staging, {
+    yield* createVolcanicRockClustersSteps(group, uniforms, elements, clusterCount, groupCenter, staging, {
         sharedDecalMaterial,
         sharedLavaFall,
         sharedClusterGlowMaterial,
@@ -1076,17 +1097,20 @@ export function createEarthCoreEnvironment(options = {}) {
     const stars = createEmberStars(uniforms, starCount);
     group.add(stars);
     group.userData.stars = stars;
+    yield;
 
     // 6. Rising ember particles re-aimed into a few rising COLUMNS (ember-storm) rather
     //    than an even ring, clustered at the lava-fall splash + node shelves.
     const risingEmbers = createRisingEmbers(uniforms, 640, staging, { yTop: corridorHigh });
     group.add(risingEmbers);
     group.userData.risingEmbers = risingEmbers;
+    yield;
 
     // 7. Create volcanic smoke/ash particles (trimmed 300→200 for the value cuts).
     const smoke = createVolcanicSmoke(uniforms, 200, staging);
     group.add(smoke);
     group.userData.smoke = smoke;
+    yield;
 
     // 8. Magma horizon — §3.1: the 3 bands now read as the lake's FAR SHORE, aligned so
     //    their bright rim line sits at the lake surface (LAVA_LAKE_Y) instead of floating
@@ -1101,6 +1125,7 @@ export function createEarthCoreEnvironment(options = {}) {
     const magmaCloudDeck = createMagmaCloudDeck(uniforms, cloudDeckCount, corridorHigh);
     group.add(magmaCloudDeck);
     group.userData.magmaCloudDeck = magmaCloudDeck;
+    yield;
     // (REMOVED 2026-10-01) The magma "far horizon": a 560 x 200 ADDITIVE plane with depthTest
     // OFF, seated ~6 u in front of the opening camera rather than at any far shore — it painted
     // an orange wash over the lake and the vault from the first frame (the Earth Core audit's
@@ -1127,13 +1152,14 @@ export function createEarthCoreEnvironment(options = {}) {
     const haze = createMoltenHaze(uniforms, hazeCount, corridorLow, corridorHigh);
     if (!noHaze) group.add(haze);
     group.userData.haze = haze;
+    yield;
 
     // 10. Molten "pockets" — a small obsidian shelf at each level node within this
     //     chapter so nodes frame mid-frame on a platform instead of floating in void.
     // ONE isColumn=false molten material for every user in the chapter — the six node
     // pockets AND the selenite chapel's backlight, which used to build a seventh,
     // byte-identical copy of its own (903 TSL nodes, one mesh). Hoisted here rather than
-    // inside createMoltenPockets because the chapel is built later and needs the same object;
+    // inside createMoltenPocketsSteps because the chapel is built later and needs the same object;
     // this mirrors sharedColumnMaterial below. A material is ~76 ms of the pre-reveal compile
     // barrier — measured 2026-08-22: chapter 1 is ~1,990 ms over 26 materials, of which only
     // ~4-6 ms each is node building, the rest being per-material fixed cost (bind groups,
@@ -1151,7 +1177,8 @@ export function createEarthCoreEnvironment(options = {}) {
             isColumn: false, uOpacity: uniforms.uOpacity, uSeam: uniforms.uSeam, uLakeY: uLakeWorldY,
         },
     ).material;
-    const moltenPockets = createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial);
+    yield;
+    const moltenPockets = yield* createMoltenPocketsSteps(group, uniforms, groupCenter, sharedPocketMaterial);
     elements.moltenPockets.push(...moltenPockets);
     elements.seamBoulders.push(...moltenPockets);
 
@@ -1172,7 +1199,8 @@ export function createEarthCoreEnvironment(options = {}) {
         vista: shaftVista,
         right: shaftRight,
     });
-    const shaftWall = createShaftWall(uniforms, shaftPlan);
+    yield;
+    const shaftWall = yield* createShaftWallSteps(uniforms, shaftPlan);
     group.add(shaftWall);
     group.userData.shaftWall = shaftWall;
     group.userData.shaftPlan = shaftPlan;
@@ -1185,6 +1213,7 @@ export function createEarthCoreEnvironment(options = {}) {
     group.userData.shaftFalls = shaftFalls;
     // `fallFrame` (the old seat's frame) only steers the lake's flow direction above.
     group.userData.lavaFallSeat = { frame: fallFrame, base: fallBase };
+    yield;
 
     // 12. God-ray shafts — 3–4 large low-opacity vertical cones above the lake, biased
     //     toward the lava-fall splash so the ember-storm reads as rising through light.
@@ -1238,6 +1267,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // The shaft's falls are always there; only the shaft-of-light cone beside the old fall seat
     // still waits for the climb's middle.
     group.userData.lavaFallRevealables = [godRays[0]];
+    yield;
 
     // 12b. THE FIRST HEART — the chapter's hero / destination landmark (plan item 1):
     // the white-hot vent at the top of the shaft where the Earth's fire first touches the
@@ -1268,6 +1298,7 @@ export function createEarthCoreEnvironment(options = {}) {
     group.add(heart.mesh);
     group.userData.firstHeart = heart.mesh;
     group.userData.firstHeartBaseScale = heartBaseScale;
+    yield;
 
     // Ch1 BOOT-WARP saver: ONE shared isColumn=true molten material for the colonnade walls, the
     // selenite chamber shell, the obsidian columns AND the ceiling slabs — all byte-identical (only
@@ -1285,6 +1316,7 @@ export function createEarthCoreEnvironment(options = {}) {
         { isColumn: true, uLakeY: uLakeWorldY },
     ).material;
     group.userData.uLakeWorldY = uLakeWorldY;
+    yield;
 
     // 12c. (REPLACED 2026-10-20) The basalt colonnade walls: the shaft wall (step 11) is the
     // cavern's wall now.
@@ -1293,6 +1325,7 @@ export function createEarthCoreEnvironment(options = {}) {
     // 08–11 dead zone: translucent crystal beams off the right of the rail, backlit by
     // a molten pocket beneath, framed by a dark basalt shell.
     createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial, sharedPocketMaterial);
+    yield;
 
     // 13. Silhouetted obsidian COLUMNS — §3.2/§3.3 staged repoussoir framing. The
     //     columns are now placed to BRACKET each frame edge ACROSS the descent: the
@@ -1360,7 +1393,9 @@ export function createEarthCoreEnvironment(options = {}) {
     // Columns + ceiling slabs reuse the hoisted sharedColumnMaterial (built above so the colonnade
     // + selenite shell share it too) — the isColumn=true graph compiles once for the whole chapter.
 
-    const columns = columnSpecs.map((spec, ci) => {
+    const columns = [];
+    for (let ci = 0; ci < columnSpecs.length; ci += 1) {
+        const spec = columnSpecs[ci];
         const col = createObsidianColumnTSL(
             uniforms.uTime,
             uniforms.uPulseIntensity,
@@ -1382,8 +1417,9 @@ export function createEarthCoreEnvironment(options = {}) {
         decalMesh.position.set(spec.x, LAVA_LAKE_Y + 0.4, spec.z);
         decalMesh.frustumCulled = false;
         group.add(decalMesh);
-        return col.mesh;
-    });
+        columns.push(col.mesh);
+        yield;
+    }
     group.userData.columns = columns;
 
     // 13b. (REMOVED 2026-08-13, user report.) The two "oppressive ceiling slabs" — squat
@@ -1403,6 +1439,7 @@ export function createEarthCoreEnvironment(options = {}) {
     const sharpEmbers = createNearCameraEmbers(uniforms, sharpEmberCount, corridorLow, corridorHigh);
     group.add(sharpEmbers);
     group.userData.sharpEmbers = sharpEmbers;
+    yield;
 
     // 14. Setup enhanced volcanic lighting (incl. warm bounce on background spheres).
     setupVolcanicLighting(group);
@@ -1506,13 +1543,11 @@ function _readLakeNoiseOptions() {
         noise: 'analytic', debug: 0, flowDir: false, rimCrust: false,
     };
     if (typeof window === 'undefined') return out;
-    out.noise = 'baked';
+    // The bake flag is read in one place, which the board also asks (it starts the bake early).
+    out.noise = lakeNoiseBakeEnabled() ? 'baked' : 'analytic';
     out.flowDir = true;
     try {
         const params = new URLSearchParams(window.location.search);
-        const url = params.get('earthCoreLakeBake');
-        const ls = window.localStorage && window.localStorage.getItem('serenity.earthCoreLakeBake');
-        if (url === '0' || (url !== '1' && ls === '0')) out.noise = 'analytic';
         if (params.get('earthCoreLakeDebug') === '2') out.debug = 2;
         // S2-a (flow from the fall): `?earthCoreLakeFlowDir=1|0`, default ON since 2026-08-21 —
         // block-matched motion between t = 9 and t = 11 confirmed the rivers pour from the fall
@@ -1665,7 +1700,7 @@ function createVolcanoBackground(uniforms) {
  * line (§5.1). Lit geodes take the lake bounce + distance falloff so they ground with
  * depth. Count stays small (value hierarchy: ~70% dark rock).
  */
-function createVolcanicRockClusters(group, uniforms, elements, count, groupCenter, staging, shared = {}) {
+function* createVolcanicRockClustersSteps(group, uniforms, elements, count, groupCenter, staging, shared = {}) {
     const { sharedDecalMaterial, sharedLavaFall, sharedClusterGlowMaterial } = shared;
     // SMALL/MEDIUM/LARGE-graded seats along the corridor (plan: radii ~2/4/6) so no two
     // consecutive encounters repeat the old small-left/large-right two-sphere
@@ -1733,6 +1768,7 @@ function createVolcanicRockClusters(group, uniforms, elements, count, groupCente
         decalMesh.position.set(seat.x, LAVA_LAKE_Y + 0.3, seat.z);
         decalMesh.frustumCulled = false;
         group.add(decalMesh);
+        yield; // one geode a step (a shaped, welded boulder is ~2-6 ms)
     }
 }
 
@@ -1972,7 +2008,7 @@ function createLavaGlowTexture() {
  * @param {THREE.Material} sharedPocketMaterial the ONE isColumn=false molten material,
  *   built by the caller so the selenite chapel shares it too
  */
-function createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial) {
+function* createMoltenPocketsSteps(group, uniforms, groupCenter, sharedPocketMaterial) {
     // Level nodes for chapter 1 fall roughly within t ∈ [0, 0.10] along the spline
     // (see odyssey-layout DEFAULT_LEVEL_POSITIONS_BY_ID). Sample those and keep the
     // ones whose local Y sits inside the chapter's framed corridor.
@@ -1983,8 +2019,8 @@ function createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial)
     // Pockets keep individual geometry + meshes (seam-sink test reads per-object position.y);
     // only the material object is shared. uOpacity is threaded so the ecotone opacity bridge
     // still reaches it (earth-core-environment.test.js).
-    nodeTs.forEach((t, i) => {
-        const pt = getOdysseyPathPointAt(t);
+    for (let i = 0; i < nodeTs.length; i += 1) {
+        const pt = getOdysseyPathPointAt(nodeTs[i]);
         const local = new THREE.Vector3(
             pt.x - groupCenter.x,
             pt.y - groupCenter.y,
@@ -2030,7 +2066,8 @@ function createMoltenPockets(group, uniforms, groupCenter, sharedPocketMaterial)
         // (The §5.1 contact-shadow decal that sat under the shelf is GONE with the ledge
         // read — a grounded shadow beneath a floating blob is a contradiction, and its
         // removal returns one draw per node.)
-    });
+        yield; // one pocket a step (each shapes and welds its own boulder)
+    }
     group.userData.pockets = pockets;
     return pockets;
 }

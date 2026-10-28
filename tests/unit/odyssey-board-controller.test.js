@@ -209,7 +209,8 @@ describe('OdysseyBoardController chapter framing', () => {
     it('retains panoramic follow framing on chapter travel without skipping selection or arrival', async () => {
         const { controller } = createNavigationController();
         await expect(controller.travelToLevel(6, { focus: false, travelDuration: 2200 })).resolves.toBe(true);
-        expect(controller._requestChapterEnvironment).toHaveBeenCalledWith(2);
+        // The player is waiting on the destination: its build goes ahead of the background ones.
+        expect(controller._requestChapterEnvironment).toHaveBeenCalledWith(2, { urgent: true });
         expect(controller.cameraController.travelToPosition).toHaveBeenCalledWith(0.2, 2200);
         expect(controller.cameraController.setCurrentPosition).toHaveBeenCalledWith(0.2);
         expect(controller.cameraController.focusOnNode).not.toHaveBeenCalled();
@@ -687,7 +688,7 @@ describe('OdysseyBoardController presentation layout', () => {
 
         await controller.panToChapter(3, 900);
 
-        expect(controller._requestChapterEnvironment).toHaveBeenCalledWith(3);
+        expect(controller._requestChapterEnvironment).toHaveBeenCalledWith(3, { urgent: true });
         expect(controller.cameraController.panToPosition).toHaveBeenCalledWith(0.33, 900);
     });
 

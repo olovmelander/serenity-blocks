@@ -76,7 +76,9 @@ import {
 } from './shared/odyssey-tsl-noise.js';
 import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
 import { getLakeNoiseTexture, makeLakeNoiseSampler } from './shared/odyssey-lake-noise-bake.js';
-import { buildTileableNoise3D } from './shared/odyssey-baked-noise.js';
+import {
+    bakeTileableNoise3DDataSteps, buildTileableNoise3D, tileableNoise3DTexture,
+} from './shared/odyssey-baked-noise.js';
 import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
 
 // Lake surface Y (mirrors LAVA_LAKE_Y in earth-core.js). Used for the emissive
@@ -153,6 +155,19 @@ function _readEarthCoreBakeFlag() {
 const EARTH_CORE_BAKE_NOISE = _readEarthCoreBakeFlag();
 const BAKED_NOISE_PERIOD = 10; // world units per texture tile (features/unit = grid/period = 2)
 let _bakedNoiseTex = null;
+
+/**
+ * Bake the chapter's shared noise texture ahead of the materials that sample it, in steps: the
+ * first chapter-1 build of a session bakes it (30-110 ms in one go in a Node measurement, inside
+ * whichever material asked first), and a build made while the map is on screen spreads it across
+ * frames (chapter-build-steps.js). The same texture the samplers below bake on demand.
+ * @returns {Generator<void, void, unknown>}
+ */
+export function* prepareEarthCoreNoiseSteps() {
+    if (!EARTH_CORE_BAKE_NOISE || _bakedNoiseTex) return;
+    const data = yield* bakeTileableNoise3DDataSteps(96, 20, 1337);
+    if (!_bakedNoiseTex) _bakedNoiseTex = keepOdysseyTexture(tileableNoise3DTexture(data, 96, BAKED_NOISE_PERIOD));
+}
 function _getBakedNoiseSampler() {
     if (!_bakedNoiseTex) _bakedNoiseTex = keepOdysseyTexture(buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337));
     const invP = 1 / BAKED_NOISE_PERIOD;

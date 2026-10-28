@@ -64,6 +64,7 @@ import {
 } from './odyssey-ringed-giant.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
+import { runChapterSteps } from './shared/chapter-build-steps.js';
 
 /** Seconds one flow read takes to run its half-cycle (two reads cross-fade, so shear never winds up). */
 const FLOW_CYCLE = 140;
@@ -344,14 +345,29 @@ function createAtmosphere(u, radius) {
  * @param {{ radius?: number, segments?: number, uLight?: *, uLightColor?: * }} [options]
  */
 export function createRingedGiantTSL(uTime, options = {}) {
+    return runChapterSteps(createRingedGiantTSLSteps(uTime, options));
+}
+
+/**
+ * createRingedGiantTSL in steps (shared/chapter-build-steps.js): the baked tables, the cloud
+ * tops, the rings and the air, a pause between each.
+ * @param {*} uTime
+ * @param {object} [options] as createRingedGiantTSL
+ */
+export function* createRingedGiantTSLSteps(uTime, options = {}) {
     const radius = options.radius ?? 28;
     const u = {
         uTime: uTime ?? uniform(0),
         uLight: options.uLight ?? uniform(new THREE.Vector3(-0.3, 0.6, 0.7).normalize()),
         uLightColor: options.uLightColor ?? uniform(new THREE.Vector3(1.0, 0.88, 0.7)),
     };
+    // The surface's first call (once a session: the band and ring tables are baked here).
+    getRingedGiantTextures();
+    yield;
     const surface = createSurface(u, radius, options.segments ?? 160);
+    yield;
     const rings = createRings(u, radius);
+    yield;
     const air = createAtmosphere(u, radius);
     return {
         surface, rings, air, uniforms: u,

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     CH8_RETROSUN_STAGE,
@@ -192,5 +193,26 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
         expect(peak).toBeGreaterThan(0.5);
         expect(lit / (260 / 0.05)).toBeLessThan(0.05);
         expect(resolveUrbanStorm(Number.NaN)).toBe(0);
+    });
+
+    it('under Reduce flashing fires one steady stroke at the strength a frame-wide flash keeps', () => {
+        // ADR-0021: lightning fires one stroke and never flickers; a flash written outside a post
+        // stack is multiplied by flashScale() where it is written.
+        let rises = 0;
+        let previous = 0;
+        for (let t = 0; t < 260; t += 0.01) {
+            const steady = resolveUrbanStorm(t, { steady: true });
+            if (steady > previous + 1e-9 && previous === 0) rises += 1;
+            // No flicker: once lit, it only falls until it is dark again.
+            if (previous > 0 && steady > 0) expect(steady).toBeLessThanOrEqual(previous + 1e-12);
+            previous = steady;
+        }
+        expect(rises).toBe(10); // one stroke per 26 s window, as before
+        expect(resolveUrbanStorm(5, { steady: false })).toBe(resolveUrbanStorm(5));
+
+        const source = readFileSync(new URL('./urban-dreams.js', import.meta.url), 'utf8');
+        expect(source).toMatch(/const keep = flashScale\(\);\s+const storm = /);
+        expect(source).toContain('resolveUrbanStorm(time, { steady: keep < 1 }) * keep;');
+        expect(source).toContain("from '../../../utils/photosensitivity.js'");
     });
 });

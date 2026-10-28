@@ -64,7 +64,8 @@ import {
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 import { auroraSurfaceTerm, createPlanetAuroraCrown } from './odyssey-planet-aurora.js';
-import { createRingedGiantTSL } from './odyssey-ringed-giant.tsl.js';
+import { createRingedGiantTSLSteps } from './odyssey-ringed-giant.tsl.js';
+import { runChapterSteps } from './shared/chapter-build-steps.js';
 
 // ── Nebula void dome — FBM galactic backdrop (-100 backstop; must NOT bloom) ──────
 
@@ -299,6 +300,16 @@ export function createLensShellTSL(uTime) {
 export const OMEN_SHADOW_RADIUS = 24;
 
 export function createBlackHoleTSL(uTime, uEnergy) {
+    return runChapterSteps(createBlackHoleTSLSteps(uTime, uEnergy));
+}
+
+/**
+ * createBlackHoleTSL in steps (shared/chapter-build-steps.js): a pause after the shadow and
+ * photon ring, and after the lensed folds.
+ * @param {*} uTime
+ * @param {*} uEnergy
+ */
+export function* createBlackHoleTSLSteps(uTime, uEnergy) {
     const S = OMEN_SHADOW_RADIUS;
     const time = uTime ?? uniform(0);
     const energy = uEnergy ?? uniform(0.3);
@@ -332,6 +343,7 @@ export function createBlackHoleTSL(uTime, uEnergy) {
     });
     photon.mesh.name = 'omen-photon-ring';
     face.add(photon.mesh);
+    yield;
     const foldMaterial = createLensedFoldMaterialTSL(time, { shadowRadius: S, opacity: 0.85, uFade: uReveal });
     const sweep = Math.PI * 0.96;
     // Coverage for the far disk's lensed image, 1.0-2.2 S (chapter 7's CH7_FOLD_ARC_SETTINGS).
@@ -344,6 +356,7 @@ export function createBlackHoleTSL(uTime, uEnergy) {
     bottomFold.rotation.z = -Math.PI / 2 - sweep / 2;
     bottomFold.name = 'omen-fold-bottom';
     face.add(bottomFold);
+    yield;
 
     // DISK pivot — tilted ~6° out of edge-on, a slight roll (ch7's pose).
     const diskPivot = new THREE.Group();
@@ -766,7 +779,16 @@ export function createNebulaPillarTSL(uTime, uApproach) {
 
 // ── Hero planet anchor — converted gas-giant surface + plain atmosphere/ring decor ─
 
-export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
+export function createHeroPlanetTSL(uTime, options = {}) {
+    return runChapterSteps(createHeroPlanetTSLSteps(uTime, options));
+}
+
+/**
+ * createHeroPlanetTSL in steps (the giant's: createRingedGiantTSLSteps).
+ * @param {*} uTime
+ * @param {{aurora?: boolean}} [options]
+ */
+export function* createHeroPlanetTSLSteps(uTime, { aurora = true } = {}) {
     const group = new THREE.Group();
     group.name = 'hero-planet-nebula-anchor';
     group.position.set(-62, 46, -640);
@@ -782,7 +804,7 @@ export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
     // place in the world and the disk's light gives it a terminator, not a flat full face.
     const uLight = uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
     const uLightColor = uniform(new THREE.Vector3(1.0, 0.86, 0.66));
-    const giant = createRingedGiantTSL(uTime, {
+    const giant = yield* createRingedGiantTSLSteps(uTime, {
         radius: HERO_PLANET_RADIUS, uLight, uLightColor,
     });
     const planet = giant.surface;

@@ -462,3 +462,31 @@ describe('Odyssey camera comfort policy', () => {
         expect(authored._fallCameraFraming.rollDeg).toBeGreaterThan(10);
     });
 });
+
+describe('OdysseyCameraController.settleAt (the map opening on an orb)', () => {
+    it('stands at the position with the director lens settled now, not over the next second', () => {
+        const controller = createController();
+        controller.settleAt(0.18, { camera: { fovBase: 52, followDistance: 30 } });
+
+        expect(controller.getCurrentPosition()).toBeCloseTo(0.18, 6);
+        expect(controller.targetPosition).toBeCloseTo(0.18, 6);
+        // A plain setDirectorState only sets the target; the lerp toward it takes ~1 s of frames.
+        expect(controller.directorCamera.fovBase).toBe(52);
+        expect(controller.directorCamera.followDistance).toBe(30);
+        expect(controller._teleportPending).toBe(false);
+    });
+
+    it('settles even when the position does not change (no teleport would fire on its own)', () => {
+        const controller = createController();
+        controller.settleAt(0.02, { camera: { fovBase: 66 } });
+        expect(controller.directorCamera.fovBase).toBe(66);
+    });
+
+    it('keeps the current lens when there is no director state', () => {
+        const controller = createController();
+        const before = controller.directorCamera.fovBase;
+        controller.settleAt(0.1, null);
+        expect(controller.getCurrentPosition()).toBeCloseTo(0.1, 6);
+        expect(controller.directorCamera.fovBase).toBe(before);
+    });
+});

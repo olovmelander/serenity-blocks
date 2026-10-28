@@ -19,9 +19,11 @@ import {
     getChapterProfile,
     getChapterTransitionForChapter,
 } from './chapter-environments/shared/chapter-profile.js';
-import { CHAPTER_SCENES, getChapterScene, exportNamesForScene } from './chapter-environments/registry.js';
 import {
-    seedChapterLightPool, releaseChapterLights, syncChapterLightSlots,
+    CHAPTER_SCENES, getChapterScene, exportNamesForScene, stepsExportNameForScene,
+} from './chapter-environments/registry.js';
+import {
+    seedChapterLightPool, releaseChapterLights, syncChapterLightSlots, growChapterLightPool,
 } from './chapter-environments/shared/chapter-light-pool.js';
 import {
     SEAM_56_COLOUR_HALF_WIDTH,
@@ -32,6 +34,7 @@ import {
     staggeredIncoming,
     staggeredOutgoing,
 } from './transitions/odyssey-seam-schedule.js';
+import { ChapterBuildLane } from './chapter-build-lane.js';
 
 // Chapter↔module wiring lives in the ONE registry (plan §4.5):
 // chapter-environments/registry.js. Loaders are explicit dynamic-import thunks
@@ -52,7 +55,7 @@ const _loadedModules = new Map();
 /**
  * Dynamically load a chapter module (cached).
  * @param {number} chapterId
- * @returns {Promise<{config: Object, create: Function, update: Function}>}
+ * @returns {Promise<{config: Object, create: Function, update: Function, createSteps?: Function}>}
  */
 async function loadChapterModule(chapterId) {
     if (_loadedModules.has(chapterId)) {
@@ -69,6 +72,10 @@ async function loadChapterModule(chapterId) {
         config: mod[names.config],
         create: mod[names.create],
         update: mod[names.update],
+        // The same build in steps, where the chapter has one (chapter-build-lane.js).
+        createSteps: typeof mod[stepsExportNameForScene(entry.sceneId)] === 'function'
+            ? mod[stepsExportNameForScene(entry.sceneId)]
+            : null,
     };
 
     _loadedModules.set(chapterId, result);
@@ -157,6 +164,24 @@ const SEAM_56_EARTH_IGNITE_END = 0.13; // ...and where it reaches full weight (p
 // only 0.539 — and every chapter-6 material (the earth, the void sky, the stars) dropped from 1
 // to 0.54 in ONE frame and then climbed back (the audit's -13 luma step at 0.7703). The hold now
 // ends exactly where the ecotone does, derived from the live seam width.
+
+/**
+ * The chapter id in `ids` nearest `focus`, the one ahead on a tie (the journey runs forward).
+ * The first id when there is no focus.
+ * @param {number[]} ids non-empty
+ * @param {?number} focus
+ * @returns {number}
+ */
+export function pickNearestChapter(ids, focus) {
+    if (!Number.isFinite(focus)) return ids[0];
+    let best = ids[0];
+    for (const id of ids) {
+        const distance = Math.abs(id - focus);
+        const bestDistance = Math.abs(best - focus);
+        if (distance < bestDistance || (distance === bestDistance && id > best)) best = id;
+    }
+    return best;
+}
 
 function smootherstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
@@ -436,8 +461,10 @@ export class ChapterEnvironmentManager {
         // chapters 3–8 are created in the background after the reveal (each creation used to
         // re-create every visible pipeline synchronously). Chapters' own lights are VIRTUAL
         // (acquireChapterLight(): never rendered) and are copied into the slots each frame by
-        // syncChapterLightSlots() below; see chapter-light-pool.js.
-        seedChapterLightPool(this.persistentLightRig);
+        // syncChapterLightSlots() below; see chapter-light-pool.js. Sized for the chapters built
+        // HERE: the ones the One World draws never light the rig (4 slots with it on, not 9; see
+        // deriveRigSlots), and handing them back grows it (the suppressedChapters setter).
+        seedChapterLightPool(this.persistentLightRig, undefined, { without: this.suppressedChapters });
         // Scratch matrix/vector reused when baking a reparented light's world placement.
         this._lightReparentMatrix = new THREE.Matrix4();
         this._lightReparentPos = new THREE.Vector3();
@@ -715,11 +742,33 @@ export class ChapterEnvironmentManager {
         }
     }
 
+    /** Chapters drawn by something else (the One World): never created, shown or faded here. */
+    get suppressedChapters() {
+        return this._suppressedChapters;
+    }
+
+    /**
+     * Chapters handed back (the One World abandoned, ADR-0015) light the rig again: the pool grows
+     * to them at once, so the lit pipelines rebuild before their dioramas are even built.
+     * @param {Iterable<number>|null} chapters
+     */
+    set suppressedChapters(chapters) {
+        this._suppressedChapters = chapters instanceof Set ? chapters : new Set(chapters || []);
+        if (this.persistentLightRig) {
+            growChapterLightPool({ without: this._suppressedChapters, rig: this.persistentLightRig });
+        }
+    }
+
     /**
      * Create a single chapter's environment (loads module dynamically)
      * @param {number} chapterId
+     * @param {object} [options]
+     * @param {boolean} [options.sliced] build it a few milliseconds a frame (chapter-build-lane.js),
+     *   for builds made while the map is on screen; a chapter without steps is built in one go
+     * @param {boolean} [options.urgent] the player is waiting on it: ahead of the background
+     *   builds, with a larger share of each frame (also promotes a build already on its way)
      */
-    async createChapterEnvironment(chapterId) {
+    async createChapterEnvironment(chapterId, { sliced = false, urgent = false } = {}) {
         // A disposed manager builds nothing: a chapter created after teardown would
         // never be freed and would claim lights from the shared chapter light pool.
         if (this._disposed) return null;
@@ -739,9 +788,15 @@ export class ChapterEnvironmentManager {
         // under environmentGroup for good and its rig lights doubled the ambient (audit 2026-10-23).
         if (!this._chapterBuilds) this._chapterBuilds = new Map();
         const inFlight = this._chapterBuilds.get(chapterId);
-        if (inFlight) return inFlight;
-        const build = this._buildChapterEnvironment(chapterId)
-            .finally(() => this._chapterBuilds?.delete(chapterId));
+        if (inFlight) {
+            if (urgent) this.promoteChapterBuild(chapterId);
+            return inFlight;
+        }
+        const build = this._buildChapterEnvironment(chapterId, { sliced, urgent })
+            .finally(() => {
+                this._chapterBuilds?.delete(chapterId);
+                this._urgentChapterBuilds?.delete(chapterId);
+            });
         this._chapterBuilds.set(chapterId, build);
         return build;
     }
@@ -750,8 +805,9 @@ export class ChapterEnvironmentManager {
      * The build behind createChapterEnvironment (which de-duplicates concurrent calls).
      * @private
      * @param {number} chapterId
+     * @param {{sliced?: boolean, urgent?: boolean}} [options] see createChapterEnvironment
      */
-    async _buildChapterEnvironment(chapterId) {
+    async _buildChapterEnvironment(chapterId, { sliced = false, urgent = false } = {}) {
         const def = await loadChapterModule(chapterId);
         if (this._disposed) return null; // torn down while the module was loading
         if (this.environments.has(chapterId)) return this.environments.get(chapterId).group;
@@ -760,9 +816,91 @@ export class ChapterEnvironmentManager {
             console.warn(`[ChapterEnvironmentManager] No module for chapter ${chapterId}`);
             return null;
         }
+        // A chapter the rig was sized without (the set edited in place): it gets its slots.
+        growChapterLightPool({ without: this.suppressedChapters, rig: this.persistentLightRig });
 
-        // Create the environment group
-        const group = def.create(this.qualitySettings);
+        if (sliced && typeof def.createSteps === 'function') {
+            // Registered in the turn (or the hurry) that runs its last step; a teardown before
+            // then drops it, and the lights the build had taken from the pool go back.
+            return this._getChapterBuildLane().run(chapterId, def.createSteps(this.qualitySettings), {
+                urgent: urgent || this._urgentChapterBuilds?.has(chapterId) === true,
+                finish: (group) => this._registerChapterEnvironment(chapterId, def, group),
+                onCancel: () => releaseChapterLights(chapterId),
+            });
+        }
+        return this._registerChapterEnvironment(chapterId, def, def.create(this.qualitySettings));
+    }
+
+    /**
+     * The lane sliced builds take (created on first use, gated by configureChapterBuilds).
+     * @private
+     * @returns {ChapterBuildLane}
+     */
+    _getChapterBuildLane() {
+        if (!this._chapterBuildLane) {
+            this._chapterBuildLane = new ChapterBuildLane({
+                canRun: (build) => !this._disposed && (this._chapterBuildGate?.canRun?.(build) ?? true),
+                budgetMs: (build) => this._chapterBuildGate?.budgetMs?.(build) ?? 4,
+            });
+        }
+        return this._chapterBuildLane;
+    }
+
+    /**
+     * How sliced builds share the frame (the board's call: it knows when the player is busy,
+     * when it is parked under an orb and what frame rate it targets).
+     * @param {{canRun?: (build: {key: number|string, urgent: boolean}) => boolean,
+     *   budgetMs?: (build: {key: number|string, urgent: boolean}) => number}} gate
+     */
+    configureChapterBuilds(gate) {
+        this._chapterBuildGate = gate || null;
+    }
+
+    /**
+     * @param {number} chapterId
+     * @returns {boolean} whether the chapter is being built in slices right now
+     */
+    isChapterBuilding(chapterId) {
+        return this._chapterBuildLane?.has(chapterId) === true;
+    }
+
+    /**
+     * A sliced build the player now waits on: ahead of the background builds, with their share.
+     * @param {number} chapterId
+     * @returns {boolean} whether such a build was on its way
+     */
+    promoteChapterBuild(chapterId) {
+        if (this._chapterBuildLane?.promote(chapterId)) return true;
+        // Still loading its module: it starts urgent.
+        if (!this._chapterBuilds?.has(chapterId)) return false;
+        if (!this._urgentChapterBuilds) this._urgentChapterBuilds = new Set();
+        this._urgentChapterBuilds.add(chapterId);
+        return true;
+    }
+
+    /**
+     * Finish a sliced build now, in one go (the camera is about to show the chapter).
+     * @param {number} chapterId
+     * @returns {boolean} whether a build was finished (the chapter is registered when this returns)
+     */
+    hurryChapterBuild(chapterId) {
+        return this._chapterBuildLane?.hurry(chapterId) === true;
+    }
+
+    /**
+     * Hand a built group over: hidden, parented, its opacity targets and lights taken in.
+     * @private
+     * @param {number} chapterId
+     * @param {{update: Function, config: Object}} def the chapter's module
+     * @param {THREE.Group} group what its create built
+     * @returns {?THREE.Group}
+     */
+    _registerChapterEnvironment(chapterId, def, group) {
+        if (!group) return null;
+        if (this._disposed) {
+            releaseChapterLights(chapterId);
+            return null;
+        }
         group.visible = false; // Start hidden
 
         this.environmentGroup.add(group);
@@ -959,7 +1097,8 @@ export class ChapterEnvironmentManager {
             if (d < createDist) { createDist = d; createId = id; }
         });
         if (createId > 0) {
-            this.createChapterEnvironment(createId).then(() => {
+            // Residency runs on the live map: the re-create is sliced (chapter-build-lane.js).
+            this.createChapterEnvironment(createId, { sliced: true }).then(() => {
                 this.updateVisibility(this.cameraProgress, { mode: 'progress' });
                 if (this.onChapterRecreated) this.onChapterRecreated(createId);
             }).catch((err) => {
@@ -969,13 +1108,17 @@ export class ChapterEnvironmentManager {
     }
 
     /**
-     * Load remaining chapters in background without blocking the main thread.
-     * Uses requestIdleCallback (with setTimeout fallback) to spread the work
-     * across idle frames.
+     * Load remaining chapters in background without blocking the main thread: one chapter per
+     * slot, the one nearest the player first.
      * @param {number[]} alreadyLoaded - Chapter IDs that are already loaded
      * @param {Object} options
      * @param {Function} [options.canRunTask] - Returns true if it is safe to run heavy work
      * @param {Function} [options.onEnvironmentCreated] - Hook run after each environment loads
+     * @param {number|Function} [options.focusChapter] - The chapter to build outward from, read
+     *   at every slot so the loader follows the camera. Without one, ascending id order. (In id
+     *   order a player opening on chapter 7 had chapter 1, the heaviest build, made first.)
+     * @param {boolean} [options.sliced] - Build each a few milliseconds a frame (the map is on
+     *   screen; chapter-build-lane.js)
      */
     loadChaptersInBackground(alreadyLoaded = [], options = {}) {
         const allChapterIds = CHAPTER_SCENES.map((entry) => entry.id);
@@ -986,6 +1129,10 @@ export class ChapterEnvironmentManager {
         const onEnvironmentCreated = typeof options.onEnvironmentCreated === 'function'
             ? options.onEnvironmentCreated
             : null;
+        const readFocus = typeof options.focusChapter === 'function'
+            ? options.focusChapter
+            : () => options.focusChapter;
+        const sliced = options.sliced === true;
 
         if (remaining.length === 0) return;
 
@@ -999,10 +1146,14 @@ export class ChapterEnvironmentManager {
         // a no-op, but it stays robust if the window is reduced via ?odysseyEagerWindow=0.)
         const scheduleNext = (fn) => setTimeout(fn, 60);
 
-        let index = 0;
+        const tried = new Set();
         const loadNext = () => {
             if (this._disposed) return; // dispose() ends the chain; nothing reschedules
-            if (index >= remaining.length) {
+            // The continuous world draws the chapters it suppresses, so they cost no build slot.
+            // Read at every slot: when the world is abandoned (ADR-0015) the set empties and the
+            // loader still builds their dioramas.
+            const pending = remaining.filter((id) => !tried.has(id) && !this.suppressedChapters?.has?.(id));
+            if (pending.length === 0) {
                 console.log('[ChapterEnvironmentManager] All chapters loaded in background');
                 return;
             }
@@ -1012,8 +1163,9 @@ export class ChapterEnvironmentManager {
                 return;
             }
 
-            const chapterId = remaining[index++];
-            this.createChapterEnvironment(chapterId).then(async () => {
+            const chapterId = pickNearestChapter(pending, readFocus());
+            tried.add(chapterId);
+            this.createChapterEnvironment(chapterId, { sliced }).then(async () => {
                 if (this._disposed) return;
                 // Update visibility after loading so the new environment shows if camera is there
                 this.updateVisibility(this.cameraProgress, { mode: 'progress' });
@@ -1152,6 +1304,7 @@ export class ChapterEnvironmentManager {
         const ecotoneWeights = this._resolvedBlendState.ecotoneWeights || null;
 
         const ecotone = this._resolvedBlendState.ecotone || null;
+        if (this._chapterBuildLane?.size) this._hurryShownBuilds(mode);
         this.environments.forEach((env, chapterId) => {
             let progressOpacity = this._resolvedBlendState.weights?.[chapterId] || 0;
             // COVERAGE (seamless pass, 2026-10-02). The symmetric crossfade above drives the
@@ -1689,10 +1842,30 @@ export class ChapterEnvironmentManager {
     }
 
     /**
+     * A chapter still building in slices when the camera brings it on screen is finished at once:
+     * it is never drawn half-built, and never missing. The weights are the ones the pass below
+     * draws with (the narrow seam's, the wider ecotone's, the 5-6 early ignite).
+     * @private
+     * @param {string} mode updateVisibility's mode
+     */
+    _hurryShownBuilds(mode) {
+        const state = this._resolvedBlendState;
+        for (let chapterId = 1; chapterId <= CHAPTER_CONFIGS.length; chapterId += 1) {
+            if (!this._chapterBuildLane.has(chapterId)) continue;
+            const shown = (state?.weights?.[chapterId] || 0) > 0
+                || (state?.ecotoneWeights?.[chapterId] || 0) > 0
+                || (mode === 'progress' && this._seamInBoostFor(chapterId, this.cameraProgress) > 0);
+            if (shown) this._chapterBuildLane.hurry(chapterId);
+        }
+    }
+
+    /**
      * Dispose of all environments
      */
     dispose() {
         this._disposed = true; // stops loadChaptersInBackground and in-flight creations
+        // Sliced builds still on their way are dropped (their pool lights go back).
+        this._chapterBuildLane?.cancelAll();
         // Full teardown reuses the eviction path's complete walk (§2 #7): frees textures +
         // uniform-textures + render targets the old body leaked, and skips fromSharedGltfCache
         // meshes so mode teardown no longer corrupts the module-level GLB cache (manta/whale/

@@ -3274,6 +3274,21 @@ export class OdysseyCameraController {
         this.currentPosition = clampedPosition;
         this.targetPosition = clampedPosition;
     }
+
+    /**
+     * Stand at `position` with every smoothed state settled there now (framing, director
+     * distance and FOV, follow pose), as a teleport settles them on its next frame. The board
+     * opens the map this way on the orb it reveals, before anything has drawn, so the close-up
+     * it then frames uses that chapter's lens and not the constructor's.
+     * @param {number} position 0..1
+     * @param {?object} [directorState] the director's state at `position`
+     */
+    settleAt(position, directorState = null) {
+        this.setDirectorState(directorState);
+        this.setCurrentPosition(position);
+        this._teleportPending = true;
+        this.update(0);
+    }
 }
 
 export default OdysseyCameraController;

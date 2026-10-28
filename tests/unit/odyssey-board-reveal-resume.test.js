@@ -14,6 +14,7 @@ function revealingMode({ parked }) {
         _perfMark: vi.fn(),
         _perfMeasure: vi.fn(),
         _logBoardMemory: vi.fn(),
+        _unparkInfoOverlay: vi.fn(),
         _createBoardInfoOverlay: vi.fn(),
         _lockOdysseyBoardForLaunch: vi.fn(),
         _setBoardOverlaySuppressed: vi.fn(),
@@ -48,5 +49,9 @@ describe('revealing the Odyssey map', () => {
         expect(mode.boardController.resumeRendering).toHaveBeenCalledTimes(1);
         expect(mode._boardParked).toBe(false);
         expect(mode._logBoardMemory).toHaveBeenCalledWith('board-resumed');
+        // The overlay the park kept is shown again before one would be built.
+        expect(mode._unparkInfoOverlay).toHaveBeenCalledTimes(1);
+        expect(mode._unparkInfoOverlay.mock.invocationCallOrder[0])
+            .toBeLessThan(mode._createBoardInfoOverlay.mock.invocationCallOrder[0]);
     });
 });

@@ -12,7 +12,7 @@ import {
     afterEach, beforeEach, describe, expect, it,
 } from 'vitest';
 import {
-    awaitWorldBake, bakeWorldSync, startWorldBake,
+    awaitWorldBake, bakeWorldSync, forgetWorldBake, startWorldBake,
 } from '../../src/rendering/odyssey/world/odyssey-world-bake-loader.js';
 import {
     bakeReliefData, bakeMacroData, makeReliefSampler,
@@ -28,6 +28,10 @@ const sha = (typed) => createHash('sha256')
     .slice(0, 32);
 
 const RAIL = Array.from({ length: 48 }, (_, i) => ({ x: -2200 + (i * 90), y: 40 + (i % 7), z: 600 - (i * 30) }));
+
+// The loader keeps the session's bake (odyssey-world-bake-cache.test.js pins that); every test
+// here asks for a bake of its own.
+beforeEach(() => { forgetWorldBake(); });
 
 describe('world bake loader — synchronous twin', () => {
     it('is byte-identical to the direct bakes and carries per-stage timings', () => {

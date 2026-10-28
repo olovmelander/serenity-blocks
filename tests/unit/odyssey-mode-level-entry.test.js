@@ -1476,6 +1476,52 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode._resolveJourneyReturnArrivalAnchor).toHaveBeenCalledWith(12);
     });
 
+    it('returnToBoard builds a new board under the gate when the settings changed during the orb', async () => {
+        // A new tier or antialiasing (needsQualityRebuild) shows only on a new build: the parked
+        // board is disposed before the map is shown, and the new one is built framed on the orb.
+        const { mode } = createMode();
+        const order = [];
+        mode.currentLevelId = 12;
+        mode.currentLevelConfig = createLevelConfig(20, { id: 12 });
+        mode._buildJourneyEntryPalette = vi.fn(() => ({
+            primary: '#112233', accent: '#223344', highlight: '#ddeeff', shadow: '#05070d',
+        }));
+        mode._buildJourneyReturnTimings = vi.fn(() => ({ maxBlackoutHoldMs: 1600 }));
+        mode._resolveJourneyReturnDepartureAnchor = vi.fn(() => ({
+            x: 0.4, y: 0.6, radius: 0.16, onScreen: true,
+        }));
+        mode._resolveJourneyReturnArrivalAnchor = vi.fn(() => ({
+            x: 0.61, y: 0.31, radius: 0.12, onScreen: true,
+        }));
+        mode.onStop = vi.fn().mockResolvedValue();
+        mode._applyBoardAudioPolicy = vi.fn().mockResolvedValue();
+        mode.boardController = { needsQualityRebuild: () => 'tier' };
+        mode._disposeOdysseyBoard = vi.fn(() => { order.push('dispose'); mode.boardController = null; });
+        mode._showBoardView = vi.fn(async () => { order.push('show'); return true; });
+        mode._unlockOdysseyBoardAfterLaunchAttempt = vi.fn();
+        mode.setOdysseyNavigatorButtonVisible = vi.fn();
+        mode._restoreInputs = vi.fn();
+        mode.journeyReturnTransition = {
+            play: vi.fn().mockImplementation(async ({ callbacks }) => {
+                await callbacks.onBlackoutReached();
+                await callbacks.onRevealStart();
+                await callbacks.onComplete();
+                return { success: true, aborted: false };
+            }),
+        };
+
+        await expect(mode.returnToBoard()).resolves.toBe(true);
+
+        expect(order).toEqual(['dispose', 'show']);
+        expect(mode._showBoardView).toHaveBeenCalledWith({
+            showLoadingOverlay: false,
+            minOverlayDisplayMs: 0,
+            focusLevelId: 12,
+            keepBoardLocked: true,
+            seatOnFocus: true,
+        });
+    });
+
     it('returnToBoard abort fallback never re-shows the raw gameplay shell', async () => {
         const { mode } = createMode();
         const {
