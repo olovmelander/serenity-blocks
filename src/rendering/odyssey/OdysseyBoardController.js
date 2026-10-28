@@ -259,6 +259,14 @@ function readUrlValue(name) {
     return getUrlSearchParams()?.get(name);
 }
 
+/** How long a directed glide waits for its destination's compile before it sets out (ms). */
+const GLIDE_COMPILE_HEAD_START_MS = 250;
+
+function readGlideCompileHeadStartMs() {
+    const value = Number.parseFloat(readUrlValue('odysseyGlideCompileMs'));
+    return Number.isFinite(value) && value >= 0 ? Math.min(value, 2000) : GLIDE_COMPILE_HEAD_START_MS;
+}
+
 /** Whether a board builds the One World (`?odysseyOneWorld=0` forces the legacy dioramas). */
 function isOneWorldRequested(options = {}) {
     const oneWorldParam = getUrlSearchParams()?.get('odysseyOneWorld');
@@ -1765,11 +1773,66 @@ export class OdysseyBoardController {
         if (this.queuedPrewarmChapters.has(chapterId)) return;
 
         const env = this.environmentManager?.environments?.get(chapterId);
-        if (env?.prewarmed) return;
+        // Nothing to compile (no environment: a chapter the One World draws, or one not built
+        // yet, which is queued again when it is): an empty entry took the drain's one turn a
+        // tick, nearest first, so over half the path chapters 6-8 never compiled ahead of the
+        // player (perf audit 2026-10-28).
+        if (!env || env.prewarmed) return;
 
         this.queuedPrewarmChapters.add(chapterId);
         this.prewarmQueue.push(chapterId);
         this._schedulePrewarmDrain(80);
+    }
+
+    /**
+     * Compile a built chapter's pipelines through the live-loop-safe path, once: the drain and a
+     * glide asking together share the one compile. Resolves whether the chapter is compiled.
+     * @param {number} chapterId
+     * @returns {Promise<boolean>}
+     */
+    _compileChapter(chapterId) {
+        const env = this.environmentManager?.environments?.get(chapterId);
+        if (!env) return Promise.resolve(false);
+        if (env.prewarmed) return Promise.resolve(true);
+        if (!env._compiling) {
+            env._compiling = this._prewarmChapterEnvironment(chapterId)
+                .catch(() => {})
+                .then(() => {
+                    env._compiling = null;
+                    return env.prewarmed === true;
+                });
+        }
+        return env._compiling;
+    }
+
+    /**
+     * A directed glide's chapters compile as it sets out: the drain holds still while the camera
+     * flies (_canRunBackgroundTask), so a chapter not compiled yet compiled on the frames that
+     * first drew it, popping in on WebGPU and stalling on WebGL2. The destination gets a short
+     * head start (GLIDE_COMPILE_HEAD_START_MS, ?odysseyGlideCompileMs=0 for none), the chapters
+     * between are started after it without waiting, and every compile runs on under the glide.
+     * Only built chapters: nothing is built here.
+     * @param {number} fromChapter
+     * @param {number} toChapter
+     * @returns {Promise<void>}
+     */
+    async _compileGlideChapters(fromChapter, toChapter) {
+        if (!this.liveCompileEnabled || !this.environmentManager) return;
+        const { environments } = this.environmentManager;
+        const lo = Math.min(fromChapter, toChapter);
+        const hi = Math.max(fromChapter, toChapter);
+        const step = toChapter >= fromChapter ? 1 : -1;
+        const between = [];
+        for (let ch = fromChapter + step; ch !== toChapter && ch >= lo && ch <= hi; ch += step) between.push(ch);
+        const needs = (ch) => environments.get(ch) && !environments.get(ch).prewarmed;
+        const destination = needs(toChapter) ? this._compileChapter(toChapter) : Promise.resolve(true);
+        between.filter(needs).reduce((chain, ch) => chain.then(() => this._compileChapter(ch)), destination)
+            .catch(() => {});
+        const waitMs = readGlideCompileHeadStartMs();
+        if (!needs(toChapter) || waitMs <= 0) return;
+        let timer = null;
+        await Promise.race([destination, new Promise((resolve) => { timer = setTimeout(resolve, waitMs); })]);
+        clearTimeout(timer);
     }
 
     _schedulePrewarmDrain(delayMs = 120) {
@@ -1812,8 +1875,14 @@ export class OdysseyBoardController {
         // by _canRunBackgroundTask above; ?odysseyLiveCompile=0 restores the 08-20 behaviour.
         const focus = this._liveFocusChapter();
         this.prewarmQueue.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
-        const batch = this.prewarmQueue.splice(0, 1);
-        batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
+        // One chapter a tick, and never a tick spent on an entry with nothing left to compile
+        // (its environment went, or never came).
+        const batch = [];
+        while (this.prewarmQueue.length > 0 && batch.length === 0) {
+            const ch = this.prewarmQueue.shift();
+            this.queuedPrewarmChapters.delete(ch);
+            if (this.environmentManager?.environments?.get(ch)) batch.push(ch);
+        }
         this.isPrewarming = true;
 
         try {
@@ -1823,7 +1892,7 @@ export class OdysseyBoardController {
                 if (!env.prewarmed && this.liveCompileEnabled) {
                     const compileStart = performance.now();
                     // eslint-disable-next-line no-await-in-loop
-                    await this._prewarmChapterEnvironment(ch);
+                    await this._compileChapter(ch);
                     this._liveCompileTimings = this._liveCompileTimings || {};
                     this._liveCompileTimings[ch] = Math.round(performance.now() - compileStart);
                     // The chapter may have been evicted / the board torn down while compiling.
@@ -2956,10 +3025,15 @@ export class OdysseyBoardController {
         const cp = this.presentationLayout?.chapterPositions;
         const fall = cp ? resolveBlackHoleFall(cameraProgress, cp) : null;
         const fold = fall?.fold ?? 0;
-        if (!(fold > 0.001) && !this._foldHypercubes) return;
-        if (!this._foldHypercubes && this.scene) {
-            this._foldHypercubes = createFoldHypercubes({ count: 8 });
-            this.scene.add(this._foldHypercubes.mesh);
+        // Until the first fold frame the cubes (made hidden at startup, so they compiled with the
+        // board) wait; their clock starts on that frame, as it did when they were made on it.
+        if (!this._foldHypercubesLive) {
+            if (!(fold > 0.001)) return;
+            if (!this._foldHypercubes && this.scene) {
+                this._foldHypercubes = createFoldHypercubes({ count: 8 });
+                this.scene.add(this._foldHypercubes.mesh);
+            }
+            this._foldHypercubesLive = true;
             this._foldHypercubeTime = 0;
         }
         const cubes = this._foldHypercubes;
@@ -3393,6 +3467,20 @@ export class OdysseyBoardController {
                 } catch (error) {
                     console.warn('[OdysseyBoard] steam quench unavailable (non-fatal):', error);
                     this.steamQuench = null;
+                }
+                // THE FOLD'S HYPERCUBES (chapter 7) — made here, hidden, so the board-presentation
+                // compile builds their pipeline before the reveal: made on the first fold frame
+                // they compiled there, on a live frame (a stall on WebGL2, a pop-in on WebGPU).
+                // They wait, clock and all, for that frame (_updateFoldHypercubes).
+                try {
+                    if (!this._foldHypercubes) {
+                        this._foldHypercubes = createFoldHypercubes({ count: 8 });
+                        this._foldHypercubes.mesh.visible = false;
+                        this.scene.add(this._foldHypercubes.mesh);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] fold hypercubes made early unavailable (non-fatal):', error);
+                    this._foldHypercubes = null;
                 }
                 // THE WHALE PASS — a mother and calf circling over the ocean ascent (see
                 // composition/odyssey-whale-pass.js). Created HIDDEN and GPU-free; it is fetched,
@@ -4413,6 +4501,8 @@ export class OdysseyBoardController {
             const hasWorldScenery = this.oneWorld
                 && this.environmentManager?.suppressedChapters?.has(targetChapter);
             if (!hasEnvironment && !hasWorldScenery) return false;
+            await this._compileGlideChapters(currentChapter, targetChapter);
+            if (!isCurrent()) return false;
             // Reduced motion cuts instead of gliding 0.9-3.5 s (audit 2026-10-18). A caller's
             // `minTravelDuration` is a floor under the computed trip, never a cap: the black
             // hole's plunge needs its extra time (audit 2026-10-23).
@@ -5687,36 +5777,50 @@ export class OdysseyBoardController {
         }
     }
 
-    async _requestChapterEnvironment(chapterId) {
-        if (!Number.isFinite(chapterId) || !this.environmentManager) return false;
+    _requestChapterEnvironment(chapterId) {
+        if (!Number.isFinite(chapterId) || !this.environmentManager) return Promise.resolve(false);
         if (this.restrictStartupChapterLoading && !this.captureChapterIds.includes(chapterId)) {
-            return false;
+            return Promise.resolve(false);
         }
+        // Drawn by the One World: there is nothing to build, and nothing to compile. (Every
+        // moving frame in a preload window used to run the create, re-settle visibility and
+        // queue an empty compile for it.)
+        if (this.environmentManager.suppressedChapters?.has?.(chapterId)) return Promise.resolve(true);
 
         const existing = this.environmentManager.environments.get(chapterId);
         if (existing) {
             this._queueChapterPrewarm(chapterId);
-            return true;
+            return Promise.resolve(true);
         }
 
-        if (this.pendingChapterLoads.has(chapterId)) {
-            return false;
-        }
+        // A build already on its way is waited for, not refused: travelToLevel gave up on a
+        // chapter the boundary preload had started (a navigator Play then did nothing at all).
+        const inFlight = this._chapterLoadPromises?.get(chapterId);
+        if (inFlight) return inFlight;
+        // Marked pending with nothing to wait on: never a second build of it.
+        if (this.pendingChapterLoads.has(chapterId)) return Promise.resolve(false);
 
         this.pendingChapterLoads.add(chapterId);
-        try {
-            await this.environmentManager.createChapterEnvironment(chapterId);
-            this.environmentManager.updateVisibility(this.cameraController?.getCurrentPosition?.() ?? 0, {
-                mode: 'progress',
-            });
-            this._queueChapterPrewarm(chapterId);
-            return true;
-        } catch (error) {
-            console.warn(`[OdysseyBoard] Failed to prepare chapter ${chapterId}:`, error);
-            return false;
-        } finally {
-            this.pendingChapterLoads.delete(chapterId);
-        }
+        const load = (async () => {
+            try {
+                await this.environmentManager.createChapterEnvironment(chapterId);
+                this.environmentManager.updateVisibility(this.cameraController?.getCurrentPosition?.() ?? 0, {
+                    mode: 'progress',
+                });
+                this._queueChapterPrewarm(chapterId);
+                return true;
+            } catch (error) {
+                console.warn(`[OdysseyBoard] Failed to prepare chapter ${chapterId}:`, error);
+                return false;
+            } finally {
+                this.pendingChapterLoads.delete(chapterId);
+                this._chapterLoadPromises?.delete(chapterId);
+            }
+        })();
+        if (!this._chapterLoadPromises) this._chapterLoadPromises = new Map();
+        // Only while it is still pending (a build that settled synchronously already cleaned up).
+        if (this.pendingChapterLoads.has(chapterId)) this._chapterLoadPromises.set(chapterId, load);
+        return load;
     }
 
     /**
@@ -5780,6 +5884,7 @@ export class OdysseyBoardController {
         this.queuedPrewarmChapters.clear();
         this.isPrewarming = false;
         this.pendingChapterLoads.clear();
+        this._chapterLoadPromises?.clear();
         this.activeSeamBoundaryId = null;
         this.seamMusicBoundaryId = null;
 

@@ -408,6 +408,14 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyWorldBakeSync', 'Runs world scenery preparation on the main thread instead of workers.', {
         scope: WORLD_SCOPE,
     }),
+    parameter(
+        'odysseyGlideCompileMs',
+        'How long a map glide waits for its destination chapter to compile before it sets out.',
+        'Milliseconds, 0 to 2000; 0 sets out at once (the compile still runs under the glide)',
+        '250',
+        '0',
+        { scope: 'Odyssey map' },
+    ),
     toggle(
         'odysseyNoBakeCache',
         'Prepares world scenery afresh and keeps nothing: no reuse in the session, no copy saved for the next launch.',
