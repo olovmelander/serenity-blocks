@@ -408,6 +408,11 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyWorldBakeSync', 'Runs world scenery preparation on the main thread instead of workers.', {
         scope: WORLD_SCOPE,
     }),
+    toggle(
+        'odysseyNoBakeCache',
+        'Prepares world scenery afresh and keeps nothing: no reuse in the session, no copy saved for the next launch.',
+        { scope: WORLD_SCOPE, sources: [BOARD, 'src/rendering/odyssey/world/odyssey-world-bake-loader.js'] },
+    ),
     parameter(
         'odysseyBakeBands',
         'Splits world ground preparation across this many worker bands.',

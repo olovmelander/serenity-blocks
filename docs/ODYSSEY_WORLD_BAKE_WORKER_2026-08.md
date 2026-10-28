@@ -140,3 +140,34 @@ the pre-2.1 order entirely; `createOdysseyWorld` without `prebaked` is the old f
   `world-bake relief landed` event makes it visible per run.
 - `stats.bakeMs.relief` now measures the wrap (≈2 ms) — the bake times live in
   `stats.prebaked.workerMs`.
+
+---
+
+## §7 Kept bakes (perf audit, 2026-10-28)
+The bake depends only on its request and on the code that runs it, yet every Odyssey visit baked it
+again (on the audit's cloud runner: ~3 s of CPU over four or five workers at High, ~2.4 s at Low;
+37–43 MB out). It is now kept:
+
+- **For the session** (`odyssey-world-bake-loader.js`). `startWorldBake` hands a request with the
+  same inputs (`worldBakeKey`: resolutions, cloud specs and rail when the field is baked, scatter
+  options; not the band count or the synchronous lever) the session's bake, in flight or landed,
+  as a handle with `reused: true`. One bake at a time; a failed bake is forgotten. Safe because no
+  consumer writes to or transfers the landed arrays (audited: the world wraps them as DataTextures
+  and BufferAttributes; the shade plate is swapped in by reference). It outlives the board as CPU
+  memory only; the GPU copies go with the board.
+- **Across launches**, production builds only (`odyssey-world-bake-store.js`, IndexedDB database
+  `serenity-blocks-odyssey-world`, one `meta` + one `data` record written in one transaction). The
+  key is this chunk's URL plus `worldBakeKey`: the chunk name carries its content hash, and the
+  chunk embeds the worker bundle's hashed name, so any change to the code the bake runs misses.
+  The `meta` record is read first; the workers start as soon as it says "not this key", or after
+  250 ms if the store is slow to answer, and whichever lands first wins (same bytes). A fresh bake
+  is written when the page is next idle. Skipped where `navigator.deviceMemory` < 4, and when
+  IndexedDB is missing or refuses; every failure reads as a miss.
+- **Started at activation.** `OdysseyMode.onActivate` calls
+  `OdysseyBoardController.prestartWorldBake(levelRegistry)`, which builds the request with the
+  board's own builder (`readWorldBuildOptions` → `worldBakeRequest`), so `initialize()` is handed
+  that bake. Its main-thread cost measured 2–12 ms on the cloud runner (relative indicator only).
+
+Trace: `world-bake started (already started this session)` for a shared bake; `world-bake landed
+(<source>)` names `worker`, `sync` or `kept`. Rollback: `?odysseyNoBakeCache=1` bakes afresh and
+keeps nothing. Tests: `tests/unit/odyssey-world-bake-cache.test.js`.

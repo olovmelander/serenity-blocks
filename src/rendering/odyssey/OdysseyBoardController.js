@@ -252,6 +252,67 @@ function readUrlValue(name) {
     return getUrlSearchParams()?.get(name);
 }
 
+/** Whether a board builds the One World (`?odysseyOneWorld=0` forces the legacy dioramas). */
+function isOneWorldRequested(options = {}) {
+    const oneWorldParam = getUrlSearchParams()?.get('odysseyOneWorld');
+    return options.oneWorld === true
+        || (options.oneWorld !== false && oneWorldParam !== '0' && oneWorldParam !== 'false');
+}
+
+/**
+ * Everything the One World's boot bakes and its build read, for a board at `qualityName`: the
+ * world lane, the cloud field and the forest scatter, from the URL levers and the active path
+ * layout (the rail samples).
+ */
+function readWorldBuildOptions(qualityName) {
+    const weakLane = qualityName === 'Minimal' || qualityName === 'Low';
+    const q = ODYSSEY_WORLD_QUALITY[weakLane ? 'low' : 'high'] || ODYSSEY_WORLD_QUALITY.high;
+    const cloudField = !readBooleanUrlFlag('odysseyWorldNoCloudField');
+    const cloudFieldCount = Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0;
+    const cloudSpecs = cloudFieldCount > 0
+        ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
+        : ODYSSEY_CLOUD_FIELD_SPECS;
+    const railSamples = Array.from({ length: 48 }, (_, i) => {
+        const pt = getOdysseyPathPointAt(i / 47);
+        return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
+    });
+    // The forest scatter runs in the bake worker (it needs only the height mirror and the
+    // rail); createOdysseyWorld builds the same options object and uses the landed result.
+    const forestLodValue = readUrlValue('odysseyForestLod');
+    const scatter = readBooleanUrlFlag('odysseyWorldNoForest') || readBooleanUrlFlag('odysseyWorldForestV1')
+        ? null
+        : {
+            spacing: q.treeSpacing,
+            seaLevel: ODYSSEY_SEA_LEVEL,
+            rail: railSamples,
+            visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+            forceLod: ['hero', 'mid', 'far'].includes(forestLodValue) ? forestLodValue : null,
+            lodDistance: forestLodDistanceForTier(qualityName),
+        };
+    return {
+        weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples, scatter,
+    };
+}
+
+/**
+ * The boot-bake request for those options (world/odyssey-world-bake-loader.js), the one place it
+ * is built: the board and OdysseyBoardController.prestartWorldBake must ask for the same bake.
+ * `?odysseyNoBakeCache=1` bakes afresh, keeping nothing (the pre-2026-10-28 behaviour).
+ */
+function worldBakeRequest(options) {
+    return {
+        reliefRes: options.q.reliefRes,
+        shadowRes: options.q.shadowRes,
+        cloudSpecs: options.cloudSpecs,
+        railSamples: options.railSamples,
+        cloudField: options.cloudField,
+        bandCount: Number.parseInt(readUrlValue('odysseyBakeBands'), 10) || undefined,
+        scatter: options.scatter,
+        forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
+        cache: !readBooleanUrlFlag('odysseyNoBakeCache'),
+    };
+}
+
 function readDetectedRefreshRate() {
     const runtime = typeof window !== 'undefined' ? window : null;
     return runtime?.serenityBlocks?.frameRateController?.monitorRefreshRate
@@ -507,9 +568,7 @@ export class OdysseyBoardController {
         // forces the legacy dioramas back — a one-URL revert, kept because this replaces the
         // ground under two thirds of the journey and a single query parameter is a cheaper
         // escape hatch than a rebuild.
-        const oneWorldParam = getUrlSearchParams()?.get('odysseyOneWorld');
-        this.oneWorldEnabled = options.oneWorld === true
-            || (options.oneWorld !== false && oneWorldParam !== '0' && oneWorldParam !== 'false');
+        this.oneWorldEnabled = isOneWorldRequested(options);
         this.oneWorld = null;
         this._oneWorldActT = 0;
         // undefined until the first update; `!== false` above keeps pre-gate behaviour then.
@@ -813,6 +872,29 @@ export class OdysseyBoardController {
     // =============================
 
     /**
+     * Start the One World's boot bake for the board a mode entry is about to build, ahead of the
+     * entry's prologue (the loading cover's paint, the board track, the board's construction).
+     * The board's own request in initialize() is then handed the same bake: the loader keeps the
+     * session's bake, and this builds the request exactly as initialize() does, from the same
+     * level presentations, path layout and quality. Never throws; the board starts its own bake
+     * if this could not.
+     * @param {{getAllLevelPresentations?: Function, getPresentationLayout?: Function}} levelRegistry
+     * @returns {?object} the bake handle, or null when no world will be built
+     */
+    static prestartWorldBake(levelRegistry) {
+        try {
+            if (!isOneWorldRequested()) return null;
+            const levelData = levelRegistry?.getAllLevelPresentations?.() ?? [];
+            setOdysseyPathLayout(derivePresentationLayout(levelData, levelRegistry?.getPresentationLayout?.() ?? null));
+            const quality = window.settings?.effectQuality || 'High';
+            return startWorldBake(worldBakeRequest(readWorldBuildOptions(quality)));
+        } catch (error) {
+            console.warn('[OdysseyBoard] could not start the world bake early:', error?.message || error);
+            return null;
+        }
+    }
+
+    /**
      * Initialize the odyssey board
      * Structured to yield to the main thread between heavy steps
      * so the loading overlay CSS animations stay smooth.
@@ -847,21 +929,14 @@ export class OdysseyBoardController {
         // requestDevice wait, chapter 1's creation, the path and the nodes — in a Worker (or the
         // synchronous twin on its first await). Every input is already known here; the world is
         // assembled after the nodes from the landed arrays (world/odyssey-world-bake-loader.js).
+        // The loader keeps the session's bake (and, in a production build, a copy across
+        // launches), so a re-entry, or the mode's start of it at activation
+        // (OdysseyBoardController.prestartWorldBake), is handed the same bake here.
         this._worldBakeOptions = this.oneWorldEnabled ? this._readWorldBuildOptions() : null;
-        this._worldBake = this.oneWorldEnabled
-            ? startWorldBake({
-                reliefRes: this._worldBakeOptions.q.reliefRes,
-                shadowRes: this._worldBakeOptions.q.shadowRes,
-                cloudSpecs: this._worldBakeOptions.cloudSpecs,
-                railSamples: this._worldBakeOptions.railSamples,
-                cloudField: this._worldBakeOptions.cloudField,
-                bandCount: Number.parseInt(readUrlValue('odysseyBakeBands'), 10) || undefined,
-                scatter: this._worldBakeOptions.scatter,
-                forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
-            })
-            : null;
+        this._worldBake = this.oneWorldEnabled ? startWorldBake(worldBakeRequest(this._worldBakeOptions)) : null;
         if (this._worldBake) {
-            trace.event(`world-bake started (${this._worldBake.viaWorker ? 'worker' : 'sync twin'})`);
+            const lane = this._worldBake.viaWorker ? 'worker' : 'sync twin';
+            trace.event(`world-bake started (${this._worldBake.reused ? 'already started this session' : lane})`);
         }
 
         // ─── Step 1: Lightweight Three.js shell (very fast) ───
@@ -1100,7 +1175,9 @@ export class OdysseyBoardController {
                 if (this._worldBake) {
                     try {
                         prebaked = await awaitWorldBake(this._worldBake);
-                        trace.event(`world-bake landed +${Math.round(performance.now() - this._worldBake.startedAt)}ms ${JSON.stringify(prebaked.ms)}`);
+                        const waited = Math.round(performance.now() - this._worldBake.startedAt);
+                        const timings = JSON.stringify(prebaked.ms);
+                        trace.event(`world-bake landed (${prebaked.source}) +${waited}ms ${timings}`);
                     } catch (error) {
                         console.warn('[OdysseyBoard] world bake failed; baking on the main thread:', error?.message || error);
                     }
@@ -2565,33 +2642,7 @@ export class OdysseyBoardController {
      * @private
      */
     _readWorldBuildOptions() {
-        const weakLane = this.qualityName === 'Minimal' || this.qualityName === 'Low';
-        const q = ODYSSEY_WORLD_QUALITY[weakLane ? 'low' : 'high'] || ODYSSEY_WORLD_QUALITY.high;
-        const cloudField = !readBooleanUrlFlag('odysseyWorldNoCloudField');
-        const cloudFieldCount = Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0;
-        const cloudSpecs = cloudFieldCount > 0
-            ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
-            : ODYSSEY_CLOUD_FIELD_SPECS;
-        const railSamples = Array.from({ length: 48 }, (_, i) => {
-            const pt = getOdysseyPathPointAt(i / 47);
-            return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
-        });
-        // The forest scatter runs in the bake worker (it needs only the height mirror and the
-        // rail); createOdysseyWorld builds the same options object and uses the landed result.
-        const forestLodValue = readUrlValue('odysseyForestLod');
-        const scatter = readBooleanUrlFlag('odysseyWorldNoForest') || readBooleanUrlFlag('odysseyWorldForestV1')
-            ? null
-            : {
-                spacing: q.treeSpacing,
-                seaLevel: ODYSSEY_SEA_LEVEL,
-                rail: railSamples,
-                visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
-                forceLod: ['hero', 'mid', 'far'].includes(forestLodValue) ? forestLodValue : null,
-                lodDistance: forestLodDistanceForTier(this.qualityName),
-            };
-        return {
-            weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples, scatter,
-        };
+        return readWorldBuildOptions(this.qualityName);
     }
 
     _boardPresentationGroup() {

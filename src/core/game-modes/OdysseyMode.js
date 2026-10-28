@@ -320,6 +320,8 @@ export class OdysseyMode extends BaseGameMode {
      */
     async onActivate() {
         await super.onActivate();
+        // The world's bake needs nothing the entry's prologue does: started here, the board shares it.
+        OdysseyBoardController.prestartWorldBake(this.levelRegistry);
         this._odysseyAudioActive = true;
         captureOdysseyThemePreference(this);
 
