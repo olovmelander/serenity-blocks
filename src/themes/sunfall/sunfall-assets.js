@@ -18,6 +18,8 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
+// Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
+import { attributeFloats as floats } from '../shared/attribute-floats.js';
 
 export const SUNFALL_ASSET_SCHEMA = 1;
 export const SUNFALL_ASSET_MANIFEST = manifest;
@@ -31,15 +33,6 @@ export const SUNFALL_ASSET_URLS = Object.freeze({
 export function decodeSunfallLight(q, ceiling, stops = manifest.light.stops) {
     if (!(q > 0.5 / 255)) return 0;
     return ceiling * 2 ** (q * stops - stops);
-}
-
-function floats(attribute, width = attribute.itemSize) {
-    const out = new Float32Array(attribute.count * width);
-    const getters = ['getX', 'getY', 'getZ', 'getW'];
-    for (let i = 0; i < attribute.count; i += 1) {
-        for (let c = 0; c < width; c += 1) out[i * width + c] = attribute[getters[c]](i);
-    }
-    return out;
 }
 
 function worldPositions(object) {
@@ -188,10 +181,40 @@ function releaseGltf(gltf) {
 }
 
 /**
- * Load every authored asset. `isCurrent` lets a superseded theme start abandon the work:
- * a stale load disposes what it made and resolves to null.
+ * The game's own load (the default loader), kept for the session: parsing and welding the
+ * doline's GLBs cost 97-132 ms of main thread on every Sunfall start, a frame-long hitch in the
+ * outgoing theme and the board during an in-play switch (docs/THEME_FLEET_240_2026-10.md §7).
+ * The world only references the geometry (meshes and instances), and `disposeSunfallAssets`
+ * only releases its GPU copies, which a later renderer uploads again. Loads with an injected
+ * loader (tests) are never cached.
+ * @type {?Promise<object>}
  */
-export async function loadSunfallAssets({ loader = new GLTFLoader(), isCurrent = () => true } = {}) {
+let sessionAssets = null;
+
+/**
+ * Load every authored asset. `isCurrent` lets a superseded theme start abandon the work: a stale
+ * load resolves to null (an uncached one disposes what it made).
+ */
+export async function loadSunfallAssets({ loader, isCurrent = () => true } = {}) {
+    const cacheable = loader === undefined;
+    if (cacheable && sessionAssets) {
+        const assets = await sessionAssets;
+        return isCurrent() ? assets : null;
+    }
+    const work = loadSunfallAssetsFresh(loader ?? new GLTFLoader());
+    if (cacheable) {
+        sessionAssets = work;
+        work.catch(() => { if (sessionAssets === work) sessionAssets = null; });
+    }
+    const assets = await work;
+    if (!isCurrent()) {
+        if (!cacheable) disposeSunfallAssets(assets);
+        return null;
+    }
+    return assets;
+}
+
+async function loadSunfallAssetsFresh(loader) {
     const [shell, ledge, crowns] = await Promise.all([
         loader.loadAsync(SUNFALL_ASSET_URLS.shell),
         loader.loadAsync(SUNFALL_ASSET_URLS.ledge),
@@ -199,10 +222,6 @@ export async function loadSunfallAssets({ loader = new GLTFLoader(), isCurrent =
     ]);
     const assets = parseSunfallAssets({ shell, ledge, crowns });
     [shell, ledge, crowns].forEach(releaseGltf);
-    if (!isCurrent()) {
-        disposeSunfallAssets(assets);
-        return null;
-    }
     return assets;
 }
 

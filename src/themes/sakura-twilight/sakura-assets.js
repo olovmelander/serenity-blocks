@@ -10,6 +10,8 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
+// Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
+import { attributeFloats as floats } from '../shared/attribute-floats.js';
 
 export const SAKURA_TREE_URLS = Object.freeze({
     'sakura-hero-weeping': new URL('./assets/sakura-hero-weeping.glb', import.meta.url).href,
@@ -25,16 +27,6 @@ export const SAKURA_FUJI_URL = new URL('./assets/sakura-fuji.glb', import.meta.u
 export const SAKURA_IMPOSTOR_URL = new URL('./assets/sakura-impostors.png', import.meta.url).href;
 export const SAKURA_FOX_URL = new URL('./assets/sakura-fox.glb', import.meta.url).href;
 export const SAKURA_ASSET_SCHEMA = 1;
-
-/** Read a (possibly normalised integer) attribute as floats. */
-function floats(attribute, width = attribute.itemSize) {
-    const out = new Float32Array(attribute.count * width);
-    const getters = ['getX', 'getY', 'getZ', 'getW'];
-    for (let i = 0; i < attribute.count; i += 1) {
-        for (let c = 0; c < width; c += 1) out[i * width + c] = attribute[getters[c]](i);
-    }
-    return out;
-}
 
 /** Quantised positions decode through the node's scale and translation. */
 function worldPositions(object) {
