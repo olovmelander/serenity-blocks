@@ -238,6 +238,72 @@ describe('The charm icon stage', () => {
         stage.dispose();
     });
 
+    it('creates its pipelines before its first frame, off the frame (perf audit 2026-10-28)', async () => {
+        // Its first frame lands on the map's reveal for a save holding a charm: pipelines made
+        // there were made synchronously, on the GPU process the reveal is drawn on (ADR-0020).
+        let finishCompile;
+        const renderer = fakeRenderer();
+        renderer.compileAsync = vi.fn(() => new Promise((resolve) => { finishCompile = resolve; }));
+        const stage = new OdysseyCharmIconStage({ createRenderer: async () => renderer });
+        const slot = fakeCanvas(24, 24);
+        stage.mount(slot.canvas, 'tide');
+        const ready = stage.init();
+        await vi.waitFor(() => expect(renderer.compileAsync).toHaveBeenCalledOnce());
+        expect(renderer.compileAsync).toHaveBeenCalledWith(stage.scene, stage.camera);
+        expect(renderer.calls).toContainEqual(['size', 1, 1]); // nothing is made at a size of zero
+        stage.frame(100);
+        expect(renderer.render).not.toHaveBeenCalled(); // the glyph shows meanwhile
+        expect(slot.host.dataset.charmIcon).toBeUndefined();
+        finishCompile();
+        expect(await ready).toBe(true);
+        stage.frame(200);
+        expect(renderer.render).toHaveBeenCalledTimes(1);
+        expect(slot.host.dataset.charmIcon).toBe('live');
+        stage.dispose();
+    });
+
+    it('a compile that hangs or fails only leaves the first frame to compile, as before', async () => {
+        vi.useFakeTimers();
+        try {
+            const hung = fakeRenderer();
+            hung.compileAsync = vi.fn(() => new Promise(() => {}));
+            const stage = new OdysseyCharmIconStage({ createRenderer: async () => hung });
+            stage.mount(fakeCanvas(24, 24).canvas, 'tide');
+            const ready = stage.init();
+            await vi.advanceTimersByTimeAsync(4000);
+            expect(await ready).toBe(true);
+            stage.dispose();
+
+            const broken = fakeRenderer();
+            broken.compileAsync = vi.fn(async () => { throw new Error('no async path'); });
+            const other = new OdysseyCharmIconStage({ createRenderer: async () => broken });
+            other.mount(fakeCanvas(24, 24).canvas, 'tide');
+            expect(await other.init()).toBe(true);
+            other.dispose();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('a lost device leaves the glyphs, and the renderer is cut loose from the shared device', async () => {
+        const renderer = fakeRenderer();
+        const stage = new OdysseyCharmIconStage({ createRenderer: async () => renderer });
+        const slot = fakeCanvas(24, 24);
+        stage.mount(slot.canvas, 'tide');
+        await stage.init();
+        stage.frame(100);
+        expect(slot.host.dataset.charmIcon).toBe('live');
+        const { domElement } = renderer;
+        renderer.onDeviceLost({ api: 'WebGPU', reason: 'unknown' });
+        expect(stage.ready).toBe(false);
+        expect(slot.host.dataset.charmIcon).toBeUndefined();
+        expect(renderer.dispose).toHaveBeenCalledOnce();
+        // releaseDisposedRenderer: the device's lost promise keeps only a husk.
+        await vi.waitFor(() => expect(renderer.domElement).toBeNull());
+        expect(domElement).not.toBeNull();
+        stage.dispose();
+    });
+
     it('keeps the glyphs without a renderer, and after a lost device', async () => {
         const stage = new OdysseyCharmIconStage({ createRenderer: async () => null });
         const slot = fakeCanvas(24, 24);

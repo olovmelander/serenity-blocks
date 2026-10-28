@@ -15,6 +15,14 @@
  * slot keeps its glyph: nothing waits on this. (It replaced a HUD-only live canvas plus PNG
  * stills exported once for the sheets, which showed the glyph for the first charm of every
  * journey, since the export only ran once the bag held something.)
+ *
+ * PERF (audit 2026-10-28). The stage runs on the session's warmed GPU device (the one the map
+ * board uses, rendering/webgpu-device-warm.js) instead of requesting a second device of its own,
+ * and its pipelines are created before its first frame, off the frame (compileAsync's async
+ * pipeline path): its first frame lands on the map's reveal for every save that holds a charm,
+ * and created there, synchronously, those pipelines stalled the GPU process the reveal was drawn
+ * on (ADR-0020). A renderer on the shared device is let go with releaseDisposedRenderer, which
+ * the device's never-settling `lost` promise would otherwise keep alive.
  */
 /* eslint-disable max-classes-per-file -- the stage and the HUD tray's view of it belong together. */
 import * as THREE from 'three/webgpu';
@@ -22,8 +30,11 @@ import {
     ODYSSEY_CHARM_ICON_HALF_EXTENT, ODYSSEY_CHARM_ICON_IDS, createOdysseyCharmIcon, createOdysseyCharmIconCamera,
     createOdysseyCharmIconLights, createOdysseyCharmStudio,
 } from '../../rendering/odyssey/odyssey-charm-icons.js';
+import { releaseDisposedRenderer, warmWebGpuDevice } from '../../rendering/webgpu-device-warm.js';
 
 const INIT_TIMEOUT_MS = 6000;
+/** How long the stage waits for its async compile before drawing anyway (the glyphs show meanwhile). */
+const COMPILE_TIMEOUT_MS = 4000;
 const FRAME_MS = 1000 / 30;
 /** Under reduced motion the stage only looks for slots that still need their one frame. */
 const STILL_POLL_MS = 250;
@@ -47,19 +58,37 @@ function systemReducedMotion() {
     }
 }
 
-/** @param {boolean} forceWebGL */
-async function initRenderer(forceWebGL) {
-    const renderer = new THREE.WebGPURenderer({ antialias: true, alpha: true, forceWebGL });
+/**
+ * Let a stage renderer go: disposed, then cut loose from the device (whose `lost` promise holds
+ * every renderer made on it), as the board lets its own go.
+ * @param {object | null | undefined} renderer
+ */
+function releaseRenderer(renderer) {
+    if (!renderer) return Promise.resolve();
+    // r186: the device must not be released before disposal settles.
+    return Promise.resolve(renderer.dispose()).finally(() => releaseDisposedRenderer(renderer));
+}
+
+/**
+ * @param {boolean} forceWebGL
+ * @param {{ warmDevice?: () => Promise<object|null> }} [options]
+ */
+async function initRenderer(forceWebGL, { warmDevice = warmWebGpuDevice } = {}) {
     let timer;
+    let renderer = null;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('charm icon renderer init timed out')), INIT_TIMEOUT_MS);
+    });
     try {
-        await Promise.race([
-            renderer.init(),
-            new Promise((_, reject) => {
-                timer = setTimeout(() => reject(new Error('charm icon renderer init timed out')), INIT_TIMEOUT_MS);
-            }),
-        ]);
+        // The session's warmed device (null without WebGPU, or when it cannot be had): three then
+        // requests its own, as it always did.
+        const device = forceWebGL ? null : await Promise.race([warmDevice(), timeout]);
+        renderer = new THREE.WebGPURenderer({
+            ...(device ? { device } : {}), antialias: true, alpha: true, forceWebGL,
+        });
+        await Promise.race([renderer.init(), timeout]);
     } catch (error) {
-        Promise.resolve(renderer.dispose()).catch(() => {});
+        releaseRenderer(renderer).catch(() => {});
         throw error;
     } finally {
         clearTimeout(timer);
@@ -169,6 +198,8 @@ export class OdysseyCharmIconStage {
         }
         this.renderer = renderer;
         this.backend = renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2';
+        // A lost device: the glyphs from now on (three's default only logs it).
+        renderer.onDeviceLost = () => this._lose();
         renderer.setClearColor(0x000000, 0);
         renderer.autoClear = false;
         // Device pixels are the stage's own business: every tile is drawn at its slot's size.
@@ -186,10 +217,37 @@ export class OdysseyCharmIconStage {
         this.lights = createOdysseyCharmIconLights();
         this.lights.lights.forEach((light) => this.scene.add(light));
         this.camera = createOdysseyCharmIconCamera(1);
+        await this._compile(renderer);
+        if (this.disposed || this.renderer !== renderer) return false;
         this.ready = true;
         this.needsFrame = true;
         this.start();
         return true;
+    }
+
+    /**
+     * Create every icon's pipelines before the first frame, off the frame (compileAsync is three's
+     * async pipeline path). Bounded: past the timeout, or on a failure, the first frame compiles
+     * what is left, as it always did.
+     * @private
+     * @param {object} renderer
+     */
+    async _compile(renderer) {
+        if (typeof renderer.compileAsync !== 'function') return;
+        let timer;
+        try {
+            // A 1x1 canvas until the first frame sizes it: nothing is made at a size of zero.
+            renderer.setSize(1, 1, false);
+            await Promise.race([
+                renderer.compileAsync(this.scene, this.camera),
+                new Promise((resolve) => { timer = setTimeout(resolve, COMPILE_TIMEOUT_MS); }),
+            ]);
+        } catch (error) {
+            const reason = error?.message || error;
+            console.warn('[OdysseyCharmIcons] async compile failed; the first frame compiles:', reason);
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     /** @param {boolean} reduced */
@@ -392,7 +450,7 @@ export class OdysseyCharmIconStage {
             markLive(slot, false);
             slot.drawn = false;
         });
-        if (renderer) Promise.resolve(renderer.dispose()).catch(() => {});
+        if (renderer) releaseRenderer(renderer).catch(() => {});
     }
 
     getDiagnostics() {
@@ -418,8 +476,7 @@ export class OdysseyCharmIconStage {
         const { renderer } = this;
         this.renderer = null;
         if (renderer) {
-            // r186: the device must not be released before disposal settles.
-            Promise.resolve(renderer.dispose()).catch((error) => {
+            releaseRenderer(renderer).catch((error) => {
                 console.warn('[OdysseyCharmIcons] renderer dispose failed:', error?.message || error);
             });
         }
