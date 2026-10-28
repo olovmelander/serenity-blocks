@@ -17,6 +17,7 @@ import {
 } from '../../src/rendering/odyssey/world/odyssey-world-bake-loader.js';
 import {
     isUsableStoredWorldBake, readStoredWorldBake, storeWorldBake, worldBakeStoreAvailable,
+    readStoredLakeBake, storeLakeBake,
 } from '../../src/rendering/odyssey/world/odyssey-world-bake-store.js';
 import { OdysseyBoardController } from '../../src/rendering/odyssey/OdysseyBoardController.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
@@ -467,5 +468,82 @@ describe('the mode starts the bake the board will ask for', () => {
         expect(activate).toBeGreaterThan(-1);
         expect(prestart).toBeGreaterThan(activate);
         expect(prestart).toBeLessThan(firstWait);
+    });
+});
+
+describe('the lake noise kept beside the world (perf audit 2026-10-28)', () => {
+    const request = { ...SMALL, scatter: null };
+    const options = (indexedDB) => ({ indexedDB, connection: { db: null, _opening: null } });
+    const lake = (res = 4) => ({
+        data: new Uint16Array(res ** 3).map((_, i) => i), res, k: 2, periodP: 6, crc32: 123,
+    });
+
+    it('reads back what it kept, for the same key and size only, beside the world\'s copy', async () => {
+        const idb = fakeIndexedDB();
+        const opts = options(idb);
+        await storeWorldBake('W', keptCopy(), opts);
+        await expect(storeLakeBake('L1', lake(), opts)).resolves.toBe(true);
+        const back = await readStoredLakeBake('L1', { res: 4 }, opts);
+        expect(back.data).toBeInstanceOf(Uint16Array);
+        expect(back.data[7]).toBe(7);
+        expect(back).toMatchObject({ res: 4, k: 2, periodP: 6, crc32: 123 });
+        expect(await readStoredLakeBake('L2', { res: 4 }, opts)).toBeNull();
+        expect(await readStoredLakeBake('L1', { res: 8 }, opts)).toBeNull();
+        // The world's copy is untouched by the lake's.
+        expect(await readStoredWorldBake('W', request, opts)).not.toBeNull();
+        expect([...idb.stores.get('bake').keys()].sort()).toEqual(['data', 'lake-data', 'lake-meta', 'meta']);
+    });
+
+    it('never throws: a refused open reads as no copy and writes nothing', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const refused = options(fakeIndexedDB({ failOpen: true }));
+        await expect(readStoredLakeBake('L1', { res: 4 }, refused)).resolves.toBeNull();
+        await expect(storeLakeBake('L1', lake(), refused)).resolves.toBe(false);
+    });
+
+    it('a launch with no copy bakes and keeps it; the next launch reads it instead of baking', async () => {
+        const { startLakeNoiseBake, resetLakeNoiseTextureForTests } = await import(
+            '../../src/rendering/odyssey/chapter-environments/shared/odyssey-lake-noise-bake.js'
+        );
+        const db = options(fakeIndexedDB());
+        const idle = [];
+        const bake = vi.fn(async ({ res, k }) => ({ ...lake(res), k, viaWorker: true }));
+        const env = (storeKey) => ({
+            storeKey, bake, idle: (run) => idle.push(run), ...db,
+        });
+        try {
+            resetLakeNoiseTextureForTests();
+            const first = await startLakeNoiseBake({ res: 4, k: 2 }, env('L'));
+            expect(first.kept).toBeUndefined();
+            expect(bake).toHaveBeenCalledOnce();
+            idle.forEach((run) => run()); // the write-back waits for an idle page
+            await settle();
+            resetLakeNoiseTextureForTests(); // the next launch
+            const second = await startLakeNoiseBake({ res: 4, k: 2 }, env('L'));
+            expect(second.kept).toBe(true);
+            expect(bake).toHaveBeenCalledOnce();
+            expect([...second.data]).toEqual([...first.data]);
+            resetLakeNoiseTextureForTests(); // a development build keeps nothing
+            await startLakeNoiseBake({ res: 4, k: 2 }, env(null));
+            expect(bake).toHaveBeenCalledTimes(2);
+        } finally {
+            resetLakeNoiseTextureForTests();
+        }
+    });
+});
+
+describe('the board starts chapter 1\'s lake noise with the world', () => {
+    it('only when chapter 1 is among the chapters built before the reveal', () => {
+        const board = Object.create(OdysseyBoardController.prototype);
+        Object.assign(board, {
+            restrictStartupChapterLoading: false, startupChapterWindow: [6, 7, 8], backgroundChapterLoadingEnabled: true,
+        });
+        expect(board._startupBuildsChapter(1)).toBe(false);
+        expect(board._startupBuildsChapter(7)).toBe(true);
+        board.backgroundChapterLoadingEnabled = false; // no background loader: the whole journey first
+        expect(board._startupBuildsChapter(1)).toBe(true);
+        Object.assign(board, { restrictStartupChapterLoading: true, captureChapterIds: [1] });
+        expect(board._startupBuildsChapter(1)).toBe(true);
+        expect(board._startupBuildsChapter(6)).toBe(false);
     });
 });

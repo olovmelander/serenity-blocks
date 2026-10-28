@@ -168,6 +168,15 @@ again (on the audit's cloud runner: ~3 s of CPU over four or five workers at Hig
   board's own builder (`readWorldBuildOptions` → `worldBakeRequest`), so `initialize()` is handed
   that bake. Its main-thread cost measured 2–12 ms on the cloud runner (relative indicator only).
 
+- **Chapter 1's lake noise, kept beside it.** The 128³ lake noise (`chapter-environments/shared/
+  odyssey-lake-noise-bake.js`, a worker bake about as heavy as the whole world's on the cloud runner)
+  ran on every launch, started only when chapter 1's lake was made, and nothing waited for it, so a
+  reveal fast enough (the world's copy kept, say) could show the lake flat until it landed. It is
+  kept in the same database (`lake-meta` + `lake-data`, keyed by its chunk's URL and its size), the
+  board starts it with the world's bake when chapter 1 is built before the reveal, and the reveal
+  waits up to 1 s for it (trace span `lake`; `lake bake still running after 1000ms; revealing` if
+  it had to give up).
+
 Trace: `world-bake started (already started this session)` for a shared bake; `world-bake landed
 (<source>)` names `worker`, `sync` or `kept`. Rollback: `?odysseyNoBakeCache=1` bakes afresh and
-keeps nothing. Tests: `tests/unit/odyssey-world-bake-cache.test.js`.
+keeps nothing (the world's and the lake's). Tests: `tests/unit/odyssey-world-bake-cache.test.js`.

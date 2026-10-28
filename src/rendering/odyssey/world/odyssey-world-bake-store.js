@@ -183,3 +183,64 @@ export async function storeWorldBake(key, bake, options = {}) {
         return false;
     }
 }
+
+// ── The lake's noise, kept beside the world (perf audit 2026-10-28) ─────────────────────────────
+//
+// Chapter 1's lava lake samples a 128^3 noise field baked in a worker (chapter-environments/shared/
+// odyssey-lake-noise-bake.js) on every launch: about as much CPU as the whole world bake on the
+// audit's cloud runner, beside it at startup, and nothing waits for it, so a launch fast enough
+// (the world's copy kept, say) could show the lake flat until it landed. Same database, same
+// rules: a meta record read first, the data only on a match, both written in one transaction.
+
+/**
+ * The lake bake kept for `key`, or null (none, another key's, the wrong size, or any failure).
+ * @param {string} key
+ * @param {{res: number}} expected
+ * @param {BakeStoreOptions} [options]
+ * @returns {Promise<{data: Uint16Array, res: number, k: number, periodP: number, crc32: number}|null>}
+ */
+export async function readStoredLakeBake(key, { res }, options = {}) {
+    try {
+        const db = await openBakeDatabase(options);
+        const meta = await getRecord(db, 'lake-meta');
+        if (meta?.key !== key) return null;
+        const stored = await getRecord(db, 'lake-data');
+        if (!(stored?.data instanceof Uint16Array) || stored.data.length !== res * res * res || stored.res !== res
+            || !Number.isFinite(stored.k) || !Number.isFinite(stored.periodP) || !Number.isFinite(stored.crc32)) {
+            return null;
+        }
+        return {
+            data: stored.data, res: stored.res, k: stored.k, periodP: stored.periodP, crc32: stored.crc32,
+        };
+    } catch (error) {
+        console.warn('[lake-bake] could not read the kept copy:', /** @type {Error} */ (error)?.message || error);
+        return null;
+    }
+}
+
+/**
+ * Keep the lake bake for `key`. Resolves once it is on disk.
+ * @param {string} key
+ * @param {{data: Uint16Array, res: number, k: number, periodP: number, crc32: number}} bake
+ * @param {BakeStoreOptions} [options]
+ * @returns {Promise<boolean>} whether it was kept
+ */
+export async function storeLakeBake(key, bake, options = {}) {
+    try {
+        const db = await openBakeDatabase(options);
+        return await new Promise((resolve) => {
+            const transaction = db.transaction(STORE, 'readwrite');
+            transaction.oncomplete = () => resolve(true);
+            transaction.onabort = () => resolve(false);
+            transaction.onerror = () => resolve(false);
+            const store = transaction.objectStore(STORE);
+            store.put({
+                data: bake.data, res: bake.res, k: bake.k, periodP: bake.periodP, crc32: bake.crc32,
+            }, 'lake-data');
+            store.put({ key, savedAt: Date.now() }, 'lake-meta');
+        });
+    } catch (error) {
+        console.warn('[lake-bake] could not keep the bake:', /** @type {Error} */ (error)?.message || error);
+        return false;
+    }
+}

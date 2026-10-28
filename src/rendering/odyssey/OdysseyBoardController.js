@@ -30,6 +30,7 @@ import {
     qualityRebuildReason, readOdysseyQualityProfile, readOdysseyRenderScale,
 } from './odyssey-quality-profile.js';
 import { releaseDisposedRenderer, warmWebGpuDevice } from '../webgpu-device-warm.js';
+import { lakeNoiseBakeEnabled, startLakeNoiseBake } from './chapter-environments/shared/odyssey-lake-noise-bake.js';
 import {
     ONE_WORLD_DEPARTURE_VOID,
     isWorldVisibleAtProgress,
@@ -158,6 +159,8 @@ const ODYSSEY_FOCUS_ALONG_RAIL = new Map([
 const ODYSSEY_MAX_PIXEL_RATIO = 1.5;
 /** What the post stack's targets shrink to while the board is parked (releaseParkedTargets). */
 const PARKED_TARGET_SIZE = 16;
+/** The longest the reveal waits for chapter 1's lake noise to land (see initialize()). */
+const LAKE_BAKE_REVEAL_WAIT_MS = 1000;
 // The board's own render-scale floor. BELOW this the browser upscale turns the Ch3 meadow to
 // mush, so _applyRenderScale clamps here regardless of what the policy proposes. It is exported
 // because the adaptive controller must be TOLD this floor: a controller that thinks it can reach
@@ -954,6 +957,14 @@ export class OdysseyBoardController {
             const lane = this._worldBake.viaWorker ? 'worker' : 'sync twin';
             trace.event(`world-bake started (${this._worldBake.reused ? 'already started this session' : lane})`);
         }
+        // Chapter 1's lava lake samples a noise bake of its own (its kept copy, or a worker's
+        // bake), which started only when the lake was made, and nothing waited for it: a reveal
+        // fast enough showed the lake flat until it landed (perf audit 2026-10-28). Started here,
+        // with the world's, when chapter 1 is built before the reveal; the reveal waits for it below.
+        // (A page without workers would bake it here, on the main thread: it is left to the lake.)
+        this._lakeBake = typeof Worker !== 'undefined' && this._startupBuildsChapter(1) && lakeNoiseBakeEnabled()
+            ? startLakeNoiseBake()
+            : null;
 
         // ─── Step 1: Lightweight Three.js shell (very fast) ───
         trace.begin('renderer');
@@ -1420,6 +1431,20 @@ export class OdysseyBoardController {
         trace.end('warmup');
         if (revealSeat && !seatBeforeWarm && !this._disposed) this._seatRevealOrb(revealSeat);
 
+        // The lake's noise, if it has not landed yet: a moment more under the cover rather than a
+        // flat lake on the reveal (bounded; a later one still lands, as it always did).
+        if (this._lakeBake && !this._disposed) {
+            trace.begin('lake');
+            let timer;
+            const landed = await Promise.race([
+                this._lakeBake.then(() => true, () => true),
+                new Promise((resolve) => { timer = setTimeout(() => resolve(false), LAKE_BAKE_REVEAL_WAIT_MS); }),
+            ]);
+            clearTimeout(timer);
+            trace.end('lake');
+            if (!landed) trace.event(`lake bake still running after ${LAKE_BAKE_REVEAL_WAIT_MS}ms; revealing`);
+        }
+
         // dispose() during the build (mode exit, GPU-loss route-out, a Steam invite)
         // must win: activating here revived a torn-down board as a render loop over a
         // disposed renderer, plus the background loaders below.
@@ -1713,6 +1738,22 @@ export class OdysseyBoardController {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Whether the startup set (the chapters built before the reveal) holds `chapterId`: the same
+     * rule initialize() applies (the capture set, else the eager window with background loading
+     * on, else the whole journey).
+     * @param {number} chapterId
+     * @returns {boolean}
+     * @private
+     */
+    _startupBuildsChapter(chapterId) {
+        if (this.restrictStartupChapterLoading) return this.captureChapterIds.includes(chapterId);
+        if (this.startupChapterWindow && this.backgroundChapterLoadingEnabled) {
+            return this.startupChapterWindow.includes(chapterId);
+        }
+        return true;
     }
 
     /**

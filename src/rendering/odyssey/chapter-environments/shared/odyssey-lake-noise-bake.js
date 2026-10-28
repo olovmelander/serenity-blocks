@@ -11,6 +11,9 @@ import { keepOdysseyTexture } from './odyssey-resident-textures.js';
 import {
     LAKE_BAKE_K, LAKE_BAKE_RES, bakeLakeNoise, lakeNoisePeriod,
 } from './odyssey-lake-noise-math.js';
+import {
+    readStoredLakeBake, storeLakeBake, worldBakeStoreAvailable,
+} from '../../world/odyssey-world-bake-store.js';
 
 export * from './odyssey-lake-noise-math.js';
 
@@ -64,21 +67,62 @@ export function makeLakeNoiseSampler(tex, options = {}) {
     };
 }
 
-// ── Loader: Worker first, main thread as the fallback, one texture per process ──────────────
+/**
+ * Whether the lake samples this bake (default ON since 2026-08-21): `?earthCoreLakeBake=0` (dev
+ * URL) or `localStorage['serenity.earthCoreLakeBake'] = '0'` (packaged Electron) keep it analytic,
+ * `?earthCoreLakeBake=1` wins over the stored value. Off without a window (node builds).
+ * @returns {boolean}
+ */
+export function lakeNoiseBakeEnabled() {
+    if (typeof window === 'undefined') return false;
+    try {
+        const url = new URLSearchParams(window.location.search).get('earthCoreLakeBake');
+        const ls = window.localStorage && window.localStorage.getItem('serenity.earthCoreLakeBake');
+        return !(url === '0' || (url !== '1' && ls === '0'));
+    } catch {
+        return true; // URL/localStorage unavailable: the default
+    }
+}
+
+// ── Loader: the kept copy, else a Worker, else the main thread; one texture per process ───────
 
 let _bakePromise = null;
 let _lakeTexture = null;
 
 /**
- * Start (or join) the bake. Runs in a module Worker when the platform has one; otherwise — vitest,
- * or a Worker that fails to start — bakes synchronously on the caller's thread.
- * @param {{res?: number, k?: number}} [options]
- * @returns {Promise<{data: Uint16Array, res: number, k: number, periodP: number, crc32: number, stats: object, viaWorker: boolean}>}
+ * What a kept copy is valid for: this build's code (a production chunk's URL names its content
+ * hash, as the world bake's key does) and the bake's size. Development builds keep nothing: their
+ * module URLs do not change with the code.
  */
-export function startLakeNoiseBake(options = {}) {
-    if (_bakePromise) return _bakePromise;
-    const opts = { res: options.res ?? LAKE_BAKE_RES, k: options.k ?? LAKE_BAKE_K };
-    _bakePromise = new Promise((resolve) => {
+let STORE_FINGERPRINT = null;
+try {
+    STORE_FINGERPRINT = import.meta.env?.PROD === true ? String(import.meta.url) : null;
+} catch { /* no import.meta.env: not a Vite build */ }
+
+/** `?odysseyNoBakeCache=1` bakes afresh and keeps nothing, as it does for the world's bake. */
+function bakeCacheDisabled() {
+    try {
+        const value = new URLSearchParams(globalThis.location?.search || '').get('odysseyNoBakeCache');
+        return value === '1' || value === 'true';
+    } catch {
+        return false;
+    }
+}
+
+/** @param {{res: number, k: number}} opts @returns {?string} */
+function lakeStoreKey(opts) {
+    if (!STORE_FINGERPRINT || !worldBakeStoreAvailable() || bakeCacheDisabled()) return null;
+    return JSON.stringify(['lake', opts.res, opts.k, STORE_FINGERPRINT]);
+}
+
+/** A write-back the page does when it is idle (never on the bake's way to the lake). */
+function whenPageIdle(run) {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 4000 });
+    else setTimeout(run, 0);
+}
+
+function bakeInWorker(opts) {
+    return new Promise((resolve) => {
         if (typeof Worker === 'undefined') { resolve(null); return; }
         let worker = null;
         try {
@@ -91,7 +135,34 @@ export function startLakeNoiseBake(options = {}) {
         };
         worker.onerror = () => { worker.terminate(); resolve(null); };
         worker.postMessage(opts);
-    }).then((result) => result ?? { ...bakeLakeNoise(opts), viaWorker: false });
+    });
+}
+
+/**
+ * Start (or join) the bake. A production build first reads the copy a previous launch kept (perf
+ * audit 2026-10-28: the bake is as heavy as the whole world's, and ran on every launch); otherwise
+ * it runs in a module Worker when the platform has one, or — vitest, or a Worker that fails to
+ * start — synchronously on the caller's thread, and is kept for the next launch.
+ * @param {{res?: number, k?: number}} [options]
+ * @param {{storeKey?: ?string, bake?: Function, idle?: Function, indexedDB?: IDBFactory,
+ *   connection?: object}} [env] tests: the store's key (null keeps nothing), the bake, the idle
+ *   scheduler and the database
+ * @returns {Promise<{data: Uint16Array, res: number, k: number, periodP: number, crc32: number, stats?: object, viaWorker: boolean, kept?: boolean}>}
+ */
+export function startLakeNoiseBake(options = {}, env = {}) {
+    if (_bakePromise) return _bakePromise;
+    const opts = { res: options.res ?? LAKE_BAKE_RES, k: options.k ?? LAKE_BAKE_K };
+    const key = env.storeKey !== undefined ? env.storeKey : lakeStoreKey(opts);
+    const bake = env.bake ?? (async (o) => (await bakeInWorker(o)) ?? { ...bakeLakeNoise(o), viaWorker: false });
+    const idle = env.idle ?? whenPageIdle;
+    const db = { indexedDB: env.indexedDB, connection: env.connection };
+    _bakePromise = (async () => {
+        const kept = key ? await readStoredLakeBake(key, opts, db) : null;
+        if (kept) return { ...kept, viaWorker: false, kept: true };
+        const result = await bake(opts);
+        if (key) idle(() => { storeLakeBake(key, result, db); });
+        return result;
+    })();
     return _bakePromise;
 }
 

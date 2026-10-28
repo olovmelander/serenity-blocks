@@ -65,6 +65,7 @@ import {
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { createShaftFalls, createShaftWallSteps, planEarthCoreShaft } from './earth-core-shaft.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
+import { lakeNoiseBakeEnabled } from './shared/odyssey-lake-noise-bake.js';
 import { steamQuenchDensity, steamQuenchFogColour, steamQuenchSeamT } from '../composition/odyssey-steam-quench.js';
 
 // The cavern's lights draw after the quench's steam (see earthCoreVeilTransmission).
@@ -1542,13 +1543,11 @@ function _readLakeNoiseOptions() {
         noise: 'analytic', debug: 0, flowDir: false, rimCrust: false,
     };
     if (typeof window === 'undefined') return out;
-    out.noise = 'baked';
+    // The bake flag is read in one place, which the board also asks (it starts the bake early).
+    out.noise = lakeNoiseBakeEnabled() ? 'baked' : 'analytic';
     out.flowDir = true;
     try {
         const params = new URLSearchParams(window.location.search);
-        const url = params.get('earthCoreLakeBake');
-        const ls = window.localStorage && window.localStorage.getItem('serenity.earthCoreLakeBake');
-        if (url === '0' || (url !== '1' && ls === '0')) out.noise = 'analytic';
         if (params.get('earthCoreLakeDebug') === '2') out.debug = 2;
         // S2-a (flow from the fall): `?earthCoreLakeFlowDir=1|0`, default ON since 2026-08-21 —
         // block-matched motion between t = 9 and t = 11 confirmed the rivers pour from the fall
