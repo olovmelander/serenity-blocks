@@ -9,7 +9,9 @@ Run headless (preferred; nothing in an open Blender session is touched):
 The conifers are grown with the Fall grove's branching library (scripts/blender/fall_grove)
 and written in the same compact GLB layout: a bark mesh plus a point cloud of foliage
 sites per tree, shared needle sprays, and a sprite sheet of the grove trees for the far
-shore. No external assets are fetched: every mesh and bake is generated here.
+shore. The birds are a common crane lofted from rings, its wings weighted to the two hinges the
+theme folds them about (scripts/blender/golden_forest/crane.py), in a near and a far level of
+detail. No external assets are fetched: every mesh and bake is generated here.
 Coordinates in the written GLBs are glTF Y-up metres with each object's base at the origin.
 """
 
@@ -26,7 +28,7 @@ import numpy as np  # noqa: E402
 
 import fall_grove_assets as grove  # noqa: E402
 from fall_grove import glb, skeleton  # noqa: E402
-from golden_forest import conifers, needles, props  # noqa: E402
+from golden_forest import conifers, crane, needles, props  # noqa: E402
 
 SCHEMA_VERSION = 1
 SCALE_RANGE = 2.5      # spray scale is stored as scale / SCALE_RANGE in an unsigned byte
@@ -159,8 +161,21 @@ def build_assets(output_dir, only=None, preview_dir=None, bake=True, recipes=Non
     studio_module.PREFIX = "SGOLD_"
     output_dir = Path(output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    wanted = set(only or ("trees", "foliage", "impostors", "props"))
+    wanted = set(only or ("trees", "foliage", "impostors", "props", "crane"))
     records = []
+    if "crane" in wanted:
+        # The crane needs neither the studio nor the sprays.
+        models = [crane.model("near"), crane.model("far")]
+        path = output_dir / crane.FILE
+        _size, summary = crane.write(path, models, generator=GENERATOR, schema_version=SCHEMA_VERSION)
+        records.append(grove.file_record(path, kind="crane", **models[0].record(), meshes=summary, rig=crane.rig()))
+        print(TAG, "crane", json.dumps(summary), flush=True)
+        if preview_dir:
+            crane.previews(models[0], preview_dir)
+        wanted.discard("crane")
+        if not wanted:
+            return dict(schemaVersion=SCHEMA_VERSION, author="Serenity Blocks original procedural Blender authoring",
+                        license="Proprietary (project-owned)", glTFUpAxis="Y", assets=records)
     studio = studio_module.Studio()
     try:
         built = {}

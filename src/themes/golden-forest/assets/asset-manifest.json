@@ -5,6 +5,148 @@
   "glTFUpAxis": "Y",
   "assets": [
     {
+      "file": "golden-forest-crane.glb",
+      "bytes": 72400,
+      "sha256": "c6d45ed90a37c6a1aaf6bbe505118699bfc77e35d1a0c2993b306af279cd0e5e",
+      "kind": "crane",
+      "name": "golden-forest-crane",
+      "species": "Common crane (Grus grus)",
+      "detail": "near",
+      "triangles": 2508,
+      "vertices": 1294,
+      "span": 2.175,
+      "length": 1.543,
+      "meshes": {
+        "crane": {
+          "triangles": 2508,
+          "vertices": 1294
+        },
+        "crane_far": {
+          "triangles": 1172,
+          "vertices": 626
+        }
+      },
+      "rig": {
+        "frame": "x left, y up, z forward (metres, real size)",
+        "span": 2.2,
+        "length": 1.21,
+        "shoulder": [
+          0.08,
+          0.04,
+          0.08
+        ],
+        "wrist": [
+          0.54,
+          0.04,
+          0.15
+        ],
+        "armBand": [
+          0.07,
+          0.23
+        ],
+        "armBandTrailing": [
+          0.07,
+          0.3
+        ],
+        "handBand": [
+          0.505,
+          0.58
+        ],
+        "handBandTrailing": [
+          0.3,
+          0.8
+        ],
+        "tipBand": [
+          0.76,
+          1.1
+        ],
+        "headBand": [
+          0.15,
+          0.42
+        ],
+        "downstroke": 0.6,
+        "poses": {
+          "rest": {
+            "lift": 0.0,
+            "sweep": 0.0,
+            "bend": 0.0,
+            "fold": 0.0,
+            "curl": 0.0
+          },
+          "soar": {
+            "lift": 0.07,
+            "sweep": -0.03,
+            "bend": -0.06,
+            "fold": 0.0,
+            "curl": 0.11
+          },
+          "glide": {
+            "lift": 0.02,
+            "sweep": 0.06,
+            "bend": -0.09,
+            "fold": 0.14,
+            "curl": 0.1
+          },
+          "top": {
+            "lift": 0.58,
+            "sweep": 0.04,
+            "bend": 0.26,
+            "fold": 0.14,
+            "curl": -0.08
+          },
+          "down": {
+            "lift": 0.05,
+            "sweep": -0.08,
+            "bend": -0.03,
+            "fold": 0.02,
+            "curl": 0.2
+          },
+          "bottom": {
+            "lift": -0.48,
+            "sweep": -0.05,
+            "bend": -0.24,
+            "fold": 0.1,
+            "curl": 0.08
+          },
+          "up": {
+            "lift": -0.04,
+            "sweep": 0.1,
+            "bend": -0.3,
+            "fold": 0.3,
+            "curl": -0.06
+          },
+          "hardTop": {
+            "lift": 0.92,
+            "sweep": 0.12,
+            "bend": 0.36,
+            "fold": 0.18,
+            "curl": -0.1
+          },
+          "hardDown": {
+            "lift": 0.06,
+            "sweep": -0.2,
+            "bend": -0.02,
+            "fold": -0.04,
+            "curl": 0.26
+          },
+          "hardBottom": {
+            "lift": -0.8,
+            "sweep": -0.12,
+            "bend": -0.3,
+            "fold": 0.14,
+            "curl": 0.08
+          },
+          "hardUp": {
+            "lift": 0.06,
+            "sweep": 0.16,
+            "bend": -0.4,
+            "fold": 0.4,
+            "curl": -0.08
+          }
+        }
+      }
+    },
+    {
       "file": "golden-forest-foliage.glb",
       "bytes": 46024,
       "sha256": "21ca5a101a1c369423d38548eee2822fa24f9eab64090b9f75a09d8573413b70",

@@ -4,8 +4,10 @@
  * Conifers, needle sprays and shore props are generated in Blender by
  * scripts/blender/golden_forest_assets.py and written as compact GLBs: quantised bark
  * meshes plus a point cloud of foliage sites (where each spray attaches, how the wind may
- * move it, how much sky it sees). This module loads them and turns them into plain
- * geometry and typed arrays the forest can instance.
+ * move it, how much sky it sees). The birds are one common crane
+ * (scripts/blender/golden_forest/crane.py) in a near and a far level of detail, its wings
+ * weighted to the two hinges the theme folds them about. This module loads them and turns them
+ * into plain geometry and typed arrays the forest can instance.
  */
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -24,6 +26,7 @@ export const GOLDEN_FOREST_TREE_URLS = Object.freeze({
 export const GOLDEN_FOREST_FOLIAGE_URL = new URL('./assets/golden-forest-foliage.glb', import.meta.url).href;
 export const GOLDEN_FOREST_PROPS_URL = new URL('./assets/golden-forest-props.glb', import.meta.url).href;
 export const GOLDEN_FOREST_IMPOSTOR_URL = new URL('./assets/golden-forest-impostors.png', import.meta.url).href;
+export const GOLDEN_FOREST_CRANE_URL = new URL('./assets/golden-forest-crane.glb', import.meta.url).href;
 export const GOLDEN_FOREST_ASSET_SCHEMA = 1;
 
 /** Read a (possibly normalised integer) attribute as floats. */
@@ -135,6 +138,61 @@ export function parseGoldenForestMeshes(gltf, label) {
     return { variants: root.userData.variants || 2, meshes };
 }
 
+const isPoint = (value) => Array.isArray(value) && value.length === 3 && value.every(Number.isFinite);
+
+/** The crane's attributes: the mesh's own and its hinge weights. */
+const CRANE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_wing']);
+
+function craneGeometry(object) {
+    CRANE_ATTRIBUTES.forEach((name) => {
+        if (!object.geometry.attributes[name]) {
+            throw new Error(`[GoldenForest] Crane "${object.name}" is missing its "${name}" attribute.`);
+        }
+    });
+    const geometry = meshGeometry(object);
+    geometry.setAttribute('_wing', object.geometry.attributes._wing);
+    return geometry;
+}
+
+/**
+ * The birds' common crane: two geometries (`near`, `far`) in metres at real size in the bird's
+ * frame (x its left, y up, z forward) with position, normal, colour (scene-linear plumage; alpha
+ * the thin feathers) and `_wing` (how far the shoulder, the wrist and the fingers move each
+ * vertex, and the head and neck's share), and the rig it was built on (the hinge pivots and the
+ * authored poses).
+ */
+export function parseGoldenForestCrane(gltf) {
+    const root = gltf.scene;
+    checkSchema(root, 'Crane');
+    const { rig } = root.userData;
+    if (!isPoint(rig?.shoulder) || !isPoint(rig?.wrist) || !rig?.poses) {
+        throw new Error('[GoldenForest] Crane is missing its rig.');
+    }
+    const near = craneGeometry(child(root, 'crane'));
+    const farObject = root.children.find((entry) => entry.name === 'crane_far' && entry.geometry);
+    const far = farObject ? craneGeometry(farObject) : null;
+    return { near, far, rig };
+}
+
+/** The crane is a nicety: a failed download leaves the sky without birds, not the lake. */
+async function loadCrane(loader) {
+    try {
+        return await loader.loadAsync(GOLDEN_FOREST_CRANE_URL);
+    } catch (error) {
+        console.warn('[GoldenForest] The crane could not be loaded; the sky goes without birds.', error);
+        return null;
+    }
+}
+
+function adoptCrane(gltf) {
+    try {
+        return parseGoldenForestCrane(gltf);
+    } catch (error) {
+        console.warn('[GoldenForest] The crane could not be read; the sky goes without birds.', error);
+        return null;
+    }
+}
+
 /** GLTFLoader keeps its own parsed geometry; release what the forest did not adopt. */
 function releaseGltf(gltf) {
     gltf.scene.traverse((object) => {
@@ -148,6 +206,8 @@ export function disposeGoldenForestAssets(assets) {
     Object.values(assets.foliage?.meshes || {}).forEach((geometry) => geometry.dispose());
     Object.values(assets.props?.meshes || {}).forEach((geometry) => geometry.dispose());
     Object.values(assets.trees || {}).forEach((tree) => tree.bark?.dispose());
+    assets.crane?.near?.dispose();
+    assets.crane?.far?.dispose();
     assets.impostors?.texture?.dispose();
 }
 
@@ -176,17 +236,19 @@ export function prepareGoldenForestImpostors(texture) {
 /**
  * Load every authored asset. `isCurrent` lets a superseded theme start abandon the
  * work: nothing is retained by the module, so a stale load simply disposes its results.
+ * The crane (`crane: false` skips it) is optional: without it the sky goes without birds.
  */
 export async function loadGoldenForestAssets({
-    trees = Object.keys(GOLDEN_FOREST_TREE_URLS), loader = new GLTFLoader(),
+    trees = Object.keys(GOLDEN_FOREST_TREE_URLS), crane = true, loader = new GLTFLoader(),
     textureLoader = new THREE.TextureLoader(), isCurrent = () => true,
 } = {}) {
     const names = [...new Set(trees)];
     const layout = goldenForestImpostorLayout();
-    const [foliageGltf, propsGltf, impostorTexture, ...treeGltfs] = await Promise.all([
+    const [foliageGltf, propsGltf, impostorTexture, craneGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(GOLDEN_FOREST_FOLIAGE_URL),
         loader.loadAsync(GOLDEN_FOREST_PROPS_URL),
         layout && textureLoader ? textureLoader.loadAsync(GOLDEN_FOREST_IMPOSTOR_URL) : null,
+        crane ? loadCrane(loader) : null,
         ...names.map((name) => {
             if (!GOLDEN_FOREST_TREE_URLS[name]) throw new Error(`[GoldenForest] Unknown tree asset "${name}".`);
             return loader.loadAsync(GOLDEN_FOREST_TREE_URLS[name]);
@@ -197,12 +259,13 @@ export async function loadGoldenForestAssets({
         props: parseGoldenForestMeshes(propsGltf, 'Props'),
         trees: {},
         impostors: null,
+        crane: craneGltf ? adoptCrane(craneGltf) : null,
     };
     names.forEach((name, index) => {
         assets.trees[name] = parseGoldenForestTree(treeGltfs[index], name);
     });
     if (impostorTexture) assets.impostors = { ...layout, texture: prepareGoldenForestImpostors(impostorTexture) };
-    [foliageGltf, propsGltf, ...treeGltfs].forEach(releaseGltf);
+    [foliageGltf, propsGltf, craneGltf, ...treeGltfs].filter(Boolean).forEach(releaseGltf);
     if (!isCurrent()) {
         disposeGoldenForestAssets(assets);
         return null;
