@@ -81,7 +81,9 @@ import {
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
 import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.js';
 import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-input.js';
-import { createBoardInfoOverlay, scheduleOdysseyMapHeader } from '../../ui/odyssey/BoardInfoOverlay.js';
+import {
+    createBoardInfoOverlay, scheduleOdysseyMapHeader, showKeptBoardInfoOverlay,
+} from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
 import { presentOdysseyFirstArrival, shouldOfferOdysseyFirstArrival } from '../../ui/odyssey/odyssey-first-arrival.js';
 import { installOdysseyCharmInput } from '../../ui/odyssey/odyssey-charm-input.js';
@@ -127,6 +129,16 @@ import {
 import { clearOdysseyGoalFlourish, playOdysseyGoalFlourish } from '../../ui/odyssey/odyssey-goal-flourish.js';
 import { noticeOdysseyUnreadableSave } from '../../ui/odyssey/odyssey-save-notice.js';
 import { openParallelShaderWindow } from '../../rendering/phaser/phaser-parallel-shaders.js';
+import {
+    paintGameplaySurfacesUnderCover,
+    releaseGameplaySurfacesFromCover,
+    waitForAnimationFrames,
+} from '../../ui/odyssey/odyssey-cover-paint.js';
+import {
+    beginOdysseyGameplayReveal,
+    finishOdysseyGameplayUiReveal,
+    showOdysseyGameplayPlayableReveal,
+} from '../../ui/odyssey/odyssey-gameplay-reveal.js';
 
 // Readiness waits end this long before the tunnel's hold runs out (see _waitForEntryRevealReadiness).
 const ENTRY_HOLD_MARGIN_MS = 250;
@@ -869,7 +881,20 @@ export class OdysseyMode extends BaseGameMode {
                                 return false;
                             }
 
-                            return this._waitForEntryRevealReadiness(levelConfig, entryToken, hold?.remainingMs);
+                            const ready = await this._waitForEntryRevealReadiness(
+                                levelConfig,
+                                entryToken,
+                                hold?.remainingMs,
+                            );
+                            // Paint what the reveal fades up while the gate still covers it (it
+                            // waited the whole hold unpainted), when the hold has the frames.
+                            const holdLeftMs = hold?.remainingMs?.() ?? Infinity;
+                            if (ready === true && isCurrentEntry() && holdLeftMs > ENTRY_HOLD_MARGIN_MS + 150) {
+                                paintGameplaySurfacesUnderCover();
+                                await waitForAnimationFrames(2);
+                                if (!isCurrentEntry()) return false;
+                            }
+                            return ready;
                         })();
                         return preparationPromise;
                     },
@@ -1312,6 +1337,7 @@ export class OdysseyMode extends BaseGameMode {
 
     _hideGameplaySurfaceForBoardReturn() {
         this._clearNeutralThemeFallbackBackdrop({ immediate: true });
+        releaseGameplaySurfacesFromCover();
 
         const gameContainer = document.getElementById('single-player-container');
         if (gameContainer) {
@@ -1780,6 +1806,7 @@ export class OdysseyMode extends BaseGameMode {
 
     _restoreUIAfterTransitionAbort(levelId = null) {
         this._clearNeutralThemeFallbackBackdrop({ immediate: true });
+        releaseGameplaySurfacesFromCover();
 
         const gameContainer = document.getElementById('single-player-container');
         if (gameContainer) {
@@ -3263,6 +3290,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Create the info overlay (header + level panel)
         this._perfMark(overlayMark);
+        this._unparkInfoOverlay();
         this._createBoardInfoOverlay();
         if (isOdysseyWorldInterlude(this)) {
             this._lockOdysseyBoardForLaunch();
@@ -3329,7 +3357,7 @@ export class OdysseyMode extends BaseGameMode {
             boardContainer.style.display = 'none';
         }
 
-        this._disposeInfoOverlay();
+        this._parkInfoOverlay();
         this._boardParked = true;
         this._logBoardMemory('board-parked');
     }
@@ -3528,9 +3556,39 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Dispose the info overlay
+     * Put the map's overlay away while an orb plays: out of layout (so the header's charm icons
+     * stop drawing; their slots report no box) but kept, so the return shows it again instead of
+     * rebuilding it (innerHTML, the wordmark, the meter) on the frames the world opens on.
      * @private
      */
+    _parkInfoOverlay() {
+        if (this.chapterArrivalCueTimer) {
+            clearTimeout(this.chapterArrivalCueTimer);
+            this.chapterArrivalCueTimer = null;
+        }
+        const overlay = document.getElementById('odyssey-board-overlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    /**
+     * Show an overlay kept by _parkInfoOverlay again, with today's figures (the orb just played
+     * may have added stars, an orb cleared and charms) and the flow preference as it now stands.
+     * @returns {boolean} whether a kept overlay was shown
+     * @private
+     */
+    _unparkInfoOverlay() {
+        const overlay = document.getElementById('odyssey-board-overlay');
+        if (!overlay || overlay.style.display !== 'none') return false;
+        showKeptBoardInfoOverlay(overlay);
+        const autoContinue = overlay.querySelector('#odyssey-auto-continue');
+        if (autoContinue) {
+            autoContinue.checked = this.deps.settingsManager?.get?.()?.odysseyAutoContinue !== false;
+        }
+        this._updateHeaderProgress();
+        return true;
+    }
+
+    /** Dispose the info overlay (leaving Odyssey). @private */
     _disposeInfoOverlay() {
         if (this.chapterArrivalCueTimer) {
             clearTimeout(this.chapterArrivalCueTimer);
@@ -3542,159 +3600,17 @@ export class OdysseyMode extends BaseGameMode {
         if (styles) styles.remove();
     }
 
-    /**
-     * Show gameplay view with smooth reveal animation
-     * @private
-     */
+    /** Show the gameplay view with its reveal (ui/odyssey/odyssey-gameplay-reveal.js). @private */
     _beginGameplayReveal(options = {}) {
-        const fastReveal = !!(options.fastReveal ?? options.underPortalFlash);
-        const reducedMotion = prefersOdysseyReducedMotion(this, this.deps.settingsManager?.get?.() || {});
-        let revealDurationMs = fastReveal ? 420 : 1200;
-        const revealDelayMs = fastReveal ? 0 : 50;
-        let revealScaleStart = fastReveal ? 1.02 : 1.05;
-        if (reducedMotion) { revealDurationMs = 180; revealScaleStart = 1; }
-        const statsDelayMs = fastReveal ? 120 : 300;
-        const statsTransitionMs = Math.max(220, revealDurationMs - 80);
-        const gameplayStartOpacity = 0;
-        const phaserStartOpacity = 0;
-        const backgroundStartOpacity = 0;
-        const statsStartOpacity = 0;
-
-        console.log('[Odyssey] Showing gameplay view with reveal animation');
-        this.closeOdysseyNavigator({ restoreBoardPreview: false });
-        this.setOdysseyNavigatorButtonVisible(false);
-
-        const gameContainer = document.getElementById('single-player-container');
-        const statsBar = document.querySelector('.single-player-stats-bar');
-        const bgContainer = document.querySelector('.background-container');
-
-        // Prepare for reveal (elements were hidden during background loading)
-        if (gameContainer) {
-            gameContainer.style.visibility = 'visible';
-            gameContainer.style.opacity = String(gameplayStartOpacity);
-            gameContainer.style.transform = `scale(${revealScaleStart})`;
-            gameContainer.style.transition = `opacity ${revealDurationMs}ms ease-out, transform ${revealDurationMs}ms ease-out`;
-        }
-
-        // Also reveal Phaser container
-        const phaserContainer = document.getElementById('phaser-game-container');
-        if (phaserContainer) {
-            phaserContainer.style.visibility = 'visible';
-            phaserContainer.style.opacity = String(phaserStartOpacity);
-            phaserContainer.style.transition = `opacity ${revealDurationMs}ms ease-out`;
-        }
-
-        if (statsBar) {
-            statsBar.style.visibility = 'visible';
-            statsBar.style.opacity = String(statsStartOpacity);
-            statsBar.style.setProperty('display', 'flex', 'important');
-            statsBar.style.transition = `opacity ${statsTransitionMs}ms ease-out ${statsDelayMs}ms`;
-        }
-
-        if (bgContainer) {
-            bgContainer.style.opacity = String(backgroundStartOpacity);
-            bgContainer.style.transition = `opacity ${revealDurationMs}ms ease-out`;
-        }
-
-        const revealState = {
-            bgContainer,
-            fastReveal,
-            gameContainer,
-            phaserContainer,
-            revealDelayMs,
-            revealDurationMs,
-            revealScaleStart,
-            statsBar,
-            statsDelayMs,
-            statsTransitionMs,
-        };
-
-        revealState.playablePromise = this._showGameplayPlayableReveal(revealState);
-        revealState.uiPromise = this._finishGameplayUiReveal(revealState);
-        this.gameplayRevealState = revealState;
-
-        return revealState;
+        return beginOdysseyGameplayReveal(this, options);
     }
 
     async _showGameplayPlayableReveal(revealState) {
-        if (!revealState) {
-            return false;
-        }
-
-        await new Promise((resolve) => { setTimeout(resolve, revealState.revealDelayMs); });
-        if (this.gameplayRevealState !== revealState) {
-            return false;
-        }
-
-        const {
-            bgContainer,
-            gameContainer,
-            phaserContainer,
-            statsBar,
-        } = revealState;
-
-        if (bgContainer) {
-            bgContainer.style.opacity = '1';
-        }
-
-        if (phaserContainer) {
-            phaserContainer.style.opacity = '1';
-        }
-
-        if (gameContainer) {
-            gameContainer.style.opacity = '1';
-            gameContainer.style.transform = 'scale(1)';
-        }
-
-        if (statsBar) {
-            statsBar.style.opacity = '1';
-        }
-
-        await new Promise((resolve) => { setTimeout(resolve, revealState.revealDurationMs); });
-        if (this.gameplayRevealState !== revealState) {
-            return false;
-        }
-
-        if (gameContainer) {
-            gameContainer.style.transition = '';
-            gameContainer.style.transform = '';
-        }
-        if (phaserContainer) {
-            phaserContainer.style.transition = '';
-        }
-        if (bgContainer) {
-            bgContainer.style.transition = '';
-        }
-
-        return true;
+        return showOdysseyGameplayPlayableReveal(this, revealState);
     }
 
     async _finishGameplayUiReveal(revealState) {
-        if (!revealState) {
-            return false;
-        }
-
-        const playableShown = await revealState.playablePromise;
-        if (!playableShown || this.gameplayRevealState !== revealState) {
-            return false;
-        }
-
-        const statsTailMs = Math.max(
-            0,
-            (revealState.statsDelayMs + revealState.statsTransitionMs) - revealState.revealDurationMs,
-        );
-        if (statsTailMs > 0) {
-            await new Promise((resolve) => { setTimeout(resolve, statsTailMs); });
-            if (this.gameplayRevealState !== revealState) {
-                return false;
-            }
-        }
-
-        if (revealState.statsBar) {
-            revealState.statsBar.style.transition = '';
-        }
-
-        return true;
+        return finishOdysseyGameplayUiReveal(this, revealState);
     }
 
     async _showGameplayView(options = {}) {

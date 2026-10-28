@@ -118,6 +118,7 @@
     "src/ui/keyboard-game-probes.js",
     "src/ui/keyboard-menu-navigation.js",
     "src/ui/local-versus-layout.js",
+    "src/ui/odyssey/odyssey-cover-paint.js",
     "src/ui/online-versus-hud.js",
     "src/ui/online-versus-layout.js",
     "src/ui/photosensitivity-warning.js",
