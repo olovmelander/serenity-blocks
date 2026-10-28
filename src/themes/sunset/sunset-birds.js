@@ -2,14 +2,25 @@
 /**
  * Sunset — the flock a chain of clears calls across the light.
  *
- * Gulls in a loose skein come in from one edge of the frame, cross in front of the sun (the moon
- * by night) a little above it and fly on out of the other side, black against the fire with the
- * light catching the ends of their wings. Each is one instance of a small mesh (a body and two
- * wings that bend at the elbow); the wings beat in the vertex stage, each bird at its own pace
- * and sometimes gliding. Their paths are closed-form in the world's clock.
+ * Common gulls in a loose skein come in from one edge of the frame, cross in front of the sun
+ * (the moon by night) a little above it and fly on out of the other side. The bird is the
+ * theme's own, modelled, rigged and animated in Blender (scripts/blender/sunset_gull.py writes
+ * sunset-gull-model.js): a round head and a slim bill, a short square tail, long narrow wings bent
+ * at the wrist, nine bones. Its wingbeat is Blender's keyframed "Flap" action sampled into
+ * FLAP_ROWS poses, and its glide the "Glide" pose. Per bird per frame, on the CPU, each joint's
+ * turn is blended between two rows of the bird's own beat and toward the glide, chained from the
+ * body out, then banked, turned to the bird's heading and carried to its place: nine finished
+ * bones in the bird's row of a small float table. The vertex stage skins each vertex to two of
+ * them. Nothing is loaded: the model is in the bundle.
  *
- * The instances carry their own place and heading (aBird, aWing) and the vertex stage builds
- * the whole transform: a positionNode's output is final, so an instance matrix would be lost.
+ * The light is the hour's: the sky the feathers face (the theme's own sky colour along the
+ * normal) and the sea's dim light from under them, the sun (or the moon) on the faces turned to
+ * it with the colour the hour gives a sunlit cloud, the thin feathers lit through only when a
+ * bird crosses the disc itself, and a thin rim round the outline against the light. So the
+ * skein is black against the fire at sunset and white gulls by day.
+ *
+ * The table carries each bird's whole transform and the vertex stage applies it: a positionNode's
+ * output is final, so an instance matrix would be lost.
  *
  * A chain keeps calling: a flock called while one is still on its way in JOINS it (the newcomers
  * close up from behind, so the skein grows with the chain), and one called later sets out as a
@@ -17,9 +28,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, attribute, cos, max, min, mix, positionGeometry, sin, smoothstep, vec3, vec4,
+    Fn, abs, attribute, cameraPosition, cross, dot, faceDirection, float, floor, instanceIndex, int, ivec2, max,
+    mix, normalize, positionGeometry, positionWorld, pow, smoothstep, textureLoad, varying, vec3, vec4,
 } from 'three/tsl';
 import { mulberry32, smooth } from './sunset-core.js';
+import { SUNSET_GULL } from './sunset-gull-model.js';
+import { skyBase } from './sunset-tsl.js';
 
 /** How long a flock takes to cross, and how far from the eye it flies (metres). */
 export const FLOCK_SECONDS = 22;
@@ -32,84 +46,350 @@ const CATCH_BACK = 14;
 const CATCH_SECONDS = 3;
 /** A founding bird's join time: long before any clock. */
 const FOUNDER = -1e9;
-/** The wing's elbow, as a share of the half span. */
-const ELBOW = 0.48;
-const HALF_SPAN = 0.62;
+/** How much larger than life the skein flies (the model is a real 1.33 m gull). */
+export const GULL_SCALE = 2.1;
 
-/** A gull from above: the body along +z (forward), wings along ±x; aSpan = |x| / half span. */
+/** How the light falls on the birds (shares of the hour's colours). */
+export const TONE = Object.freeze({
+    sky: 1.0,
+    sea: 0.55,
+    seaSun: 0.2,
+    /** The shaded side's share left when the bird is seen against a low light. */
+    against: 0.12,
+    key: 0.85,
+    /** The sunlit side's share left then (a raised wing catching the low sun). */
+    keyAgainst: 0.5,
+    through: 0.5,
+    rim: 0.06,
+});
+
+/** The wingbeat's rows in the pose table; the glide is the row after them. */
+export const FLAP_ROWS = SUNSET_GULL.flapRows;
+const BONES = SUNSET_GULL.bones.length;
+const PARENTS = SUNSET_GULL.parents;
+const PIVOTS = SUNSET_GULL.pivots;
+
+// ── The model ─────────────────────────────────────────────────────────────────────────────
+
+function decode(text, Type) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new Type(bytes.buffer);
+}
+
+// Quaternions as [x, y, z, w].
+function qMul(a, b, out) {
+    const x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    const y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    const z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    const w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = w;
+    return out;
+}
+
+/** v turned by q: v + 2 q.xyz × (q.xyz × v + w v). */
+function rotate(q, v, out = [0, 0, 0]) {
+    const [x, y, z, w] = q;
+    const cx = y * v[2] - z * v[1] + w * v[0];
+    const cy = z * v[0] - x * v[2] + w * v[1];
+    const cz = x * v[1] - y * v[0] + w * v[2];
+    const rx = v[0] + 2 * (y * cz - z * cy);
+    const ry = v[1] + 2 * (z * cx - x * cz);
+    const rz = v[2] + 2 * (x * cy - y * cx);
+    out[0] = rx;
+    out[1] = ry;
+    out[2] = rz;
+    return out;
+}
+
+/**
+ * Blender's rows (each bone's deform, rest to pose) as each bone's turn about its own joint
+ * relative to its parent, and how far the joint moved besides (the head is held steady while the
+ * body rises and falls); the body's rows stay whole. Blending these, joint by joint, keeps every
+ * joint where its parent holds it in any blend of the beat and the glide (blending the deforms
+ * themselves pulled the wrist apart, 1.9 times its skin, halfway into a glide).
+ */
+function jointRows(poses) {
+    const out = new Float32Array(poses.length);
+    const q = [0, 0, 0, 1];
+    const qp = [0, 0, 0, 1];
+    const ql = [0, 0, 0, 1];
+    const v = [0, 0, 0];
+    for (let r = 0; r <= FLAP_ROWS; r += 1) {
+        for (let b = 0; b < BONES; b += 1) {
+            const o = (r * BONES + b) * 8;
+            const p = PARENTS[b];
+            if (p < 0) {
+                out.set(poses.subarray(o, o + 8), o);
+            } else {
+                for (let k = 0; k < 4; k += 1) q[k] = poses[o + k];
+                const op = (r * BONES + p) * 8;
+                qp[0] = -poses[op];
+                qp[1] = -poses[op + 1];
+                qp[2] = -poses[op + 2];
+                qp[3] = poses[op + 3];
+                qMul(qp, q, ql);
+                const sign = ql[3] < 0 ? -1 : 1;
+                // e = (the parent's deform)⁻¹(the child's deform(h)) − h
+                const h = PIVOTS[b];
+                rotate(q, h, v);
+                for (let k = 0; k < 3; k += 1) v[k] += poses[o + 4 + k] - poses[op + 4 + k];
+                rotate(qp, v, v);
+                out.set([
+                    ql[0] * sign, ql[1] * sign, ql[2] * sign, ql[3] * sign, v[0] - h[0], v[1] - h[1], v[2] - h[2], 0,
+                ], o);
+            }
+        }
+    }
+    return out;
+}
+
+let decoded = null;
+
+/**
+ * The gull, decoded once: rest positions (metres, game frame: x its left, y up, z forward),
+ * triangles, its two bones and the first one's weight per vertex, its plumage, Blender's pose
+ * rows (per row, per bone: qx, qy, qz, qw, tx, ty, tz, 1) and the same rows joint by joint.
+ */
+export function gullModel() {
+    if (decoded) return decoded;
+    const { quant } = SUNSET_GULL;
+    const poses = decode(SUNSET_GULL.poses, Float32Array);
+    decoded = Object.freeze({
+        positions: Float32Array.from(decode(SUNSET_GULL.positions, Int16Array), (v) => v * quant),
+        index: decode(SUNSET_GULL.index, Uint16Array),
+        skin: decode(SUNSET_GULL.skin, Uint8Array),
+        colours: decode(SUNSET_GULL.colours, Uint8Array),
+        poses,
+        joints: jointRows(poses),
+        vertexCount: SUNSET_GULL.vertexCount,
+        triangleCount: SUNSET_GULL.triangleCount,
+        bones: BONES,
+        rows: FLAP_ROWS + 1,
+        span: SUNSET_GULL.span,
+        checks: SUNSET_GULL.checks,
+    });
+    return decoded;
+}
+
+/** The gull's mesh for the flock: rest positions, normals, plumage and skin; no instances yet. */
 export function buildBirdGeometry() {
-    const half = HALF_SPAN;
-    const tri = [];
-    const quad = (a, b, c, d) => tri.push(a, b, c, a, c, d);
-    // Body: a long diamond.
-    tri.push([0, 0, 0.3], [0.05, 0.01, 0.0], [0, 0, -0.32]);
-    tri.push([0, 0, 0.3], [0, 0, -0.32], [-0.05, 0.01, 0.0]);
-    [1, -1].forEach((side) => {
-        const elbow = half * ELBOW;
-        // Inner wing: broad, its trailing edge swept back.
-        quad([0.04 * side, 0, 0.07], [elbow * side, 0, 0.03], [elbow * side, 0, -0.07], [0.04 * side, 0, -0.1]);
-        // Outer wing: narrowing to a swept tip.
-        tri.push([elbow * side, 0, 0.03], [half * side, 0, -0.16], [elbow * side, 0, -0.07]);
-    });
-    const positions = new Float32Array(tri.length * 3);
-    const span = new Float32Array(tri.length);
-    tri.forEach((p, i) => {
-        positions[i * 3] = p[0];
-        positions[i * 3 + 1] = p[1];
-        positions[i * 3 + 2] = p[2];
-        span[i] = Math.abs(p[0]) / half;
-    });
+    const m = gullModel();
     const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aSpan', new THREE.BufferAttribute(span, 1));
+    geometry.setAttribute('position', new THREE.BufferAttribute(m.positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(m.index, 1));
+    geometry.computeVertexNormals();
+    geometry.setAttribute('color', new THREE.BufferAttribute(m.colours, 4, true));
+    geometry.setAttribute('skin', new THREE.BufferAttribute(m.skin, 4, true));
     geometry.instanceCount = 0;
     return geometry;
 }
 
+// ── The pose ──────────────────────────────────────────────────────────────────────────────
+
+const ROW_FLOATS = BONES * 8;
+const scratch = {
+    q: [0, 0, 0, 1], e: [0, 0, 0], tl: [0, 0, 0], qp: [0, 0, 0, 1], qd: [0, 0, 0, 1], v: [0, 0, 0],
+};
+
+/**
+ * The bird's nine bones at wingbeat `cycle` (turns; 0 is the top of the stroke) with `glide`
+ * (0 flapping .. 1 gliding): each joint's turn blended between two neighbouring rows and then
+ * toward the glide, chained from the body out. Writes each bone's deform (qx, qy, qz, qw, tx, ty,
+ * tz, 0) into `out`.
+ */
+export function gullPose(cycle, glide, out = new Float32Array(ROW_FLOATS)) {
+    const { joints } = gullModel();
+    const f = (cycle - Math.floor(cycle)) * FLAP_ROWS;
+    const r0 = Math.min(FLAP_ROWS - 1, Math.floor(f));
+    const a = f - r0;
+    const r1 = (r0 + 1) % FLAP_ROWS;
+    const {
+        q, e, tl, qp, qd, v,
+    } = scratch;
+    for (let b = 0; b < BONES; b += 1) {
+        const o0 = r0 * ROW_FLOATS + b * 8;
+        const o1 = r1 * ROW_FLOATS + b * 8;
+        const og = FLAP_ROWS * ROW_FLOATS + b * 8;
+        let len = 0;
+        for (let k = 0; k < 4; k += 1) {
+            const flap = joints[o0 + k] + (joints[o1 + k] - joints[o0 + k]) * a;
+            q[k] = flap + (joints[og + k] - flap) * glide;
+            len += q[k] * q[k];
+        }
+        len = Math.sqrt(len) || 1;
+        for (let k = 0; k < 4; k += 1) q[k] /= len;
+        for (let k = 0; k < 3; k += 1) {
+            const flap = joints[o0 + 4 + k] + (joints[o1 + 4 + k] - joints[o0 + 4 + k]) * a;
+            e[k] = flap + (joints[og + 4 + k] - flap) * glide;
+        }
+        const ob = b * 8;
+        const p = PARENTS[b];
+        if (p < 0) {
+            for (let k = 0; k < 4; k += 1) out[ob + k] = q[k];
+            for (let k = 0; k < 3; k += 1) out[ob + 4 + k] = e[k];
+            out[ob + 7] = 0;
+        } else {
+            // The joint's own turn about its pivot h, then its parent's deform:
+            // L(x) = R(x − h) + h + e, D = Dparent ∘ L.
+            const h = PIVOTS[b];
+            rotate(q, h, v);
+            for (let k = 0; k < 3; k += 1) tl[k] = h[k] + e[k] - v[k];
+            const op = p * 8;
+            for (let k = 0; k < 4; k += 1) qp[k] = out[op + k];
+            qMul(qp, q, qd);
+            rotate(qp, tl, v);
+            for (let k = 0; k < 4; k += 1) out[ob + k] = qd[k];
+            for (let k = 0; k < 3; k += 1) out[ob + 4 + k] = v[k] + out[op + 4 + k];
+            out[ob + 7] = 0;
+        }
+    }
+    return out;
+}
+
+/** Vertex `i` of the gull at wingbeat `cycle` with `glide`, in the bird's own frame (metres). */
+export function gullVertex(i, cycle, glide, pose = gullPose(cycle, glide)) {
+    const m = gullModel();
+    const p = [m.positions[i * 3], m.positions[i * 3 + 1], m.positions[i * 3 + 2]];
+    const out = [0, 0, 0];
+    const r = [0, 0, 0];
+    for (let k = 0; k < 2; k += 1) {
+        const o = m.skin[i * 4 + k] * 8;
+        const w = k === 0 ? m.skin[i * 4 + 2] / 255 : 1 - m.skin[i * 4 + 2] / 255;
+        rotate([pose[o], pose[o + 1], pose[o + 2], pose[o + 3]], p, r);
+        for (let c = 0; c < 3; c += 1) out[c] += (r[c] + pose[o + 4 + c]) * w;
+    }
+    return out;
+}
+
+/**
+ * The turn that carries the bird's own frame (x its left, y up, z forward) into the world:
+ * banked by `bank` about its body, then turned to `heading` (radians, as the world's bearings:
+ * forward becomes (sin h, 0, −cos h)).
+ */
+export function flightTurn(heading, bank, out = [0, 0, 0, 1]) {
+    const sy = Math.sin((Math.PI - heading) * 0.5);
+    const cy = Math.cos((Math.PI - heading) * 0.5);
+    const sr = Math.sin(bank * 0.5);
+    const cr = Math.cos(bank * 0.5);
+    // (0, sy, 0, cy) · (0, 0, sr, cr)
+    out[0] = sy * sr;
+    out[1] = sy * cr;
+    out[2] = cy * sr;
+    out[3] = cy * cr;
+    return out;
+}
+
+/** Carry a bird's bones (`pose`) into the world by `turnQ`, about `place` at `size`, into `out`. */
+function placeBones(pose, turnQ, place, size, out, at) {
+    const tq = scratch.qd;
+    const tv = scratch.v;
+    for (let j = 0; j < BONES; j += 1) {
+        const o = j * 8;
+        for (let k = 0; k < 4; k += 1) scratch.qp[k] = pose[o + k];
+        qMul(turnQ, scratch.qp, tq);
+        tv[0] = pose[o + 4];
+        tv[1] = pose[o + 5];
+        tv[2] = pose[o + 6];
+        rotate(turnQ, tv, tv);
+        const ob = at + o;
+        for (let k = 0; k < 4; k += 1) out[ob + k] = tq[k];
+        for (let k = 0; k < 3; k += 1) out[ob + 4 + k] = place[k] + tv[k] * size;
+        out[ob + 7] = size;
+    }
+}
+
+// ── The flock ─────────────────────────────────────────────────────────────────────────────
+
+const DEG = Math.PI / 180;
+
 export function createFlock({ count, U, seed = 29 }) {
     const geometry = buildBirdGeometry();
-    const place = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
-    const wing = new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4);
-    place.setUsage(THREE.DynamicDrawUsage);
-    wing.setUsage(THREE.DynamicDrawUsage);
-    geometry.setAttribute('aBird', place);
-    geometry.setAttribute('aWing', wing);
+    // Every bird's nine bones, finished (its pose, its turn, its place and size): a row a bird,
+    // two texels a bone (the rotation; the place and the size).
+    const rows = Math.max(1, count);
+    const bones = new Float32Array(rows * BONES * 8);
+    const table = new THREE.DataTexture(bones, BONES * 2, rows, THREE.RGBAFormat, THREE.FloatType);
+    table.minFilter = THREE.NearestFilter;
+    table.magFilter = THREE.NearestFilter;
+    table.generateMipmaps = false;
+    table.colorSpace = THREE.NoColorSpace;
+    table.name = 'sunset-gull-bones';
+    table.needsUpdate = true;
+    /** Where each bird is (x, y, z) and its size: read by the tests. */
+    const places = new Float32Array(rows * 4);
+    const pose = new Float32Array(BONES * 8);
+    const turnQ = [0, 0, 0, 1];
+    const where = [0, 0, 0];
+
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, fog: false });
     material.name = 'sunset-birds';
-    const aSpan = attribute('aSpan', 'float');
-    const aBird = attribute('aBird', 'vec4');
-    const aWing = attribute('aWing', 'vec4');
+    const aSkin = attribute('skin', 'vec4');
+    const aNormal = attribute('normal', 'vec3');
+    const aPlumage = attribute('color', 'vec4');
+    const vNormal = varying(vec3(0, 1, 0), 'sunsetGullNormal');
+    const vPlumage = varying(vec4(1), 'sunsetGullPlumage');
+
+    const turn = (q, v) => v.add(cross(q.xyz, cross(q.xyz, v).add(v.mul(q.w))).mul(2.0));
     material.positionNode = Fn(() => {
-        const p = positionGeometry.toVar();
-        // aBird: where the bird is (xyz) and its size. aWing: x the beat's phase, y its depth
-        // (0 gliding), z the heading (radians, as the world's bearings), w how far it banks.
-        const beat = sin(aWing.x);
-        const lag = sin(aWing.x.sub(0.9));
-        const a1 = beat.mul(0.62).mul(aWing.y).add(0.08);
-        const a2 = lag.mul(0.75).mul(aWing.y).sub(0.05);
-        const s = aSpan.mul(HALF_SPAN);
-        const inner = min(s, HALF_SPAN * ELBOW);
-        const outer = max(s.sub(HALF_SPAN * ELBOW), 0.0);
-        const lift = inner.mul(sin(a1)).add(outer.mul(sin(a1.add(a2))));
-        // Bank about the body, then turn to the heading (+z of the model flies that way).
-        const cb = cos(aWing.w);
-        const sb = sin(aWing.w);
-        const y0 = p.y.add(lift);
-        const bx = p.x.mul(cb).sub(y0.mul(sb));
-        const by = p.x.mul(sb).add(y0.mul(cb));
-        const ch = cos(aWing.z);
-        const sh = sin(aWing.z);
-        // Forward (+z) becomes (sin h, 0, −cos h); right (+x) becomes (cos h, 0, sin h).
-        const wx = bx.mul(ch).add(p.z.mul(sh));
-        const wz = bx.mul(sh).sub(p.z.mul(ch));
-        return vec3(wx, by, wz).mul(aBird.w).add(aBird.xyz);
+        // The bird's row of the table: per bone its rotation, then its place and the bird's size.
+        const row = int(instanceIndex);
+        const rest = positionGeometry;
+        const pos = vec3(0).toVar();
+        const nor = vec3(0).toVar();
+        [[aSkin.x, aSkin.z], [aSkin.y, aSkin.z.oneMinus()]].forEach(([id, w]) => {
+            const x = int(floor(id.mul(255.0).add(0.5))).mul(2);
+            const q = textureLoad(table, ivec2(x, row)).toVar();
+            const t = textureLoad(table, ivec2(x.add(1), row)).toVar();
+            pos.addAssign(turn(q, rest).mul(t.w).add(t.xyz).mul(w));
+            nor.addAssign(turn(q, aNormal).mul(w));
+        });
+        vNormal.assign(nor);
+        vPlumage.assign(aPlumage);
+        return pos;
     })();
+
     material.colorNode = Fn(() => {
-        // A silhouette: the sky's light on it faintly, the key light catching the wing's end.
         const { light } = U;
-        const edge = smoothstep(0.55, 1.0, aSpan);
-        const keyLight = mix(light.cloudRim, light.moonGlint, U.moonKey).mul(0.05);
-        return vec4(light.ambient.mul(0.027).add(keyLight.mul(edge)), 1.0);
+        const N = normalize(vNormal).mul(faceDirection).toVar();
+        const look = normalize(positionWorld.sub(cameraPosition)).toVar();
+        const albedo = vPlumage.rgb;
+        const thin = vPlumage.a;
+        // The light: the sun by day, the moon by night, as much of it as stands over the sea.
+        const key = normalize(mix(U.sun, U.moon, U.moonKey)).toVar();
+        const keyUp = mix(U.sunUp, U.moonUp, U.moonKey);
+        // The sky the feathers face (the sky's own colour along the normal, from just above the
+        // horizon up), and the sea's dim light from below.
+        const seeSky = N.y.mul(0.5).add(0.5).toVar();
+        const skyLight = skyBase(normalize(vec3(N.x, max(N.y, 0.0).add(0.25), N.z)), U);
+        // Seen against a low light the eye is set by the glare behind them: the shaded side, all
+        // the eye sees of a bird crossing the sun, goes to a silhouette (held under a fifth or so
+        // of the sky behind it). With the sun high the same birds are white gulls in the light.
+        const toward = dot(look, key);
+        const sunHigh = smoothstep(Math.sin(18 * DEG), Math.sin(38 * DEG), key.y);
+        // (Not the disc's share over the sea: the sky round a sun just set is still the glare.)
+        const glare = smoothstep(Math.cos(55 * DEG), Math.cos(12 * DEG), toward).mul(sunHigh.oneMinus());
+        // (From below, the sea mirrors the low sky the way the feathers face: dim purple under a
+        // bird crossing the sun, not the glow behind it; by day the sunlit water lights a white
+        // belly from beneath.)
+        const seaLight = skyBase(normalize(vec3(N.x, 0.12, N.z)), U).mul(TONE.sea)
+            .add(light.cloudLit.mul(keyUp).mul(TONE.seaSun));
+        const ambient = mix(seaLight, skyLight.mul(TONE.sky), seeSky)
+            .mul(mix(float(1.0), float(TONE.against), glare));
+        // The key on the faces turned to it, as bright as the hour lights a white cloud.
+        const direct = light.cloudLit.mul(max(dot(N, key), 0.0).mul(keyUp).mul(TONE.key))
+            .mul(mix(float(1.0), float(TONE.keyAgainst), glare));
+        // Seen against the light: the thin feathers glow only over the disc itself; the outline
+        // takes a thin rim close to it (a wider one tinted every small bird brown).
+        const through = smoothstep(Math.cos(11 * DEG), Math.cos(1.5 * DEG), toward).mul(thin).mul(keyUp);
+        const edge = pow(float(1.0).sub(abs(dot(N, look))), 5.0);
+        const rim = edge.mul(smoothstep(Math.cos(18 * DEG), Math.cos(3 * DEG), toward)).mul(keyUp);
+        const back = light.cloudRim.mul(through.mul(TONE.through).add(rim.mul(TONE.rim)));
+        return vec4(albedo.mul(ambient.add(direct)).add(back), 1.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -158,6 +438,8 @@ export function createFlock({ count, U, seed = 29 }) {
     return {
         mesh,
         count,
+        /** Every flying bird's bones as the vertex stage reads them (a row a bird). */
+        table,
         /**
          * Call `n` birds across the light whose direction is `toward` (unit vector). A flight still
          * on its way in takes them (it grows to `n`); otherwise a free flight sets out; if every
@@ -238,30 +520,33 @@ export function createFlock({ count, U, seed = 29 }) {
                     const wob = Math.sin(clock * 0.6 + b.wander + own) * 0.5;
                     const y = 3.2 + Math.tan(flight.el) * FLOCK_RANGE + b.up
                         + Math.sin(clock * 0.45 + b.wander + own) * 0.4;
-                    place.setXYZW(
-                        at,
-                        cx - fx * back + sx * (b.aside + wob),
-                        y,
-                        cz - fz * back + sz * (b.aside + wob),
-                        1.8 * Math.max(0.001, grow * smooth(0, 1, late)),
-                    );
+                    where[0] = cx - fx * back + sx * (b.aside + wob);
+                    where[1] = y;
+                    where[2] = cz - fz * back + sz * (b.aside + wob);
+                    const size = GULL_SCALE * Math.max(0.001, grow * smooth(0, 1, late));
+                    for (let c = 0; c < 3; c += 1) places[at * 4 + c] = where[c];
+                    places[at * 4 + 3] = size;
                     // Bursts of beats and long glides.
                     const gliding = smooth(0.55, 0.85, Math.sin(clock * 0.31 + b.glide + own) * 0.5 + 0.5);
                     const bank = Math.sin(clock * 0.5 + b.wander + own) * 0.12;
-                    wing.setXYZW(at, clock * b.pace + b.phase + own, 1 - gliding * 0.85, heading, bank);
+                    const beat = (clock * b.pace + b.phase + own) / (Math.PI * 2);
+                    gullPose(beat, gliding, pose);
+                    placeBones(pose, flightTurn(heading, bank, turnQ), where, size, bones, at * BONES * 8);
                     at += 1;
                 }
             }
             geometry.instanceCount = at;
-            if (at > 0) {
-                place.needsUpdate = true;
-                wing.needsUpdate = true;
-            }
+            if (at > 0) table.needsUpdate = true;
+        },
+        /** Bird `i`'s place (x, y, z) and size this frame. */
+        placeOf(i) {
+            return Array.from(places.subarray(i * 4, i * 4 + 4));
         },
         dispose() {
             mesh.removeFromParent();
             geometry.dispose();
             material.dispose();
+            table.dispose();
         },
     };
 }

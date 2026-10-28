@@ -40,7 +40,8 @@
  * drawn from what it wrote), and once when the scene is built.
  *
  * Warm: none (the world parks nothing for the manager to compile, and the scene pass has one
- * output). Nothing is loaded: the sea, the sky, the lanterns and the birds are generated.
+ * output). Nothing is loaded: the sea, the sky and the lanterns are generated, and the gull
+ * (modelled in Blender) is in the bundle.
  */
 
 import * as THREE from 'three/webgpu';
