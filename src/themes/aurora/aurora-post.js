@@ -9,6 +9,7 @@ import {
     screenCoordinate, screenUV, sin, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 
@@ -55,7 +56,7 @@ export class AuroraPost {
         this.bloomNode.setResolutionScale(preset.bloomScale);
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = Fn(() => {
+        const graded = Fn(() => {
             const combined = sceneColor.rgb.add(this.bloomNode.rgb).max(0);
             const toned = neutralToneMapping(combined, this.uExposure).toVar();
             // A faint indigo floor keeps the darkest sky from collapsing to pure black,
@@ -72,6 +73,11 @@ export class AuroraPost {
             display.addAssign(grain.sub(0.5).div(255));
             return vec4(clamp(display, 0, 1), 1);
         })();
+        // Medium's scene pass is single-sampled, and with the canvas no longer multisampled under
+        // the post (shared/scene-antialias.js canvasAntialias) its edges had no antialiasing at all,
+        // worse than Low's. FXAA gives it what the forest family's Medium has.
+        this.fxaa = antialias && this.samples === 0;
+        this.pipeline.outputNode = this.fxaa ? fxaa(graded) : graded;
     }
 
     /**
@@ -123,6 +129,7 @@ export class AuroraPost {
             disabled: this.disabled,
             useMRT: this.useMRT,
             samples: this.samples ?? 0,
+            fxaa: this.fxaa === true,
             bloomScale: this.disabled ? 0 : this.preset.bloomScale,
             bloomStrength: this.bloomNode?.strength.value ?? 0,
             exposure: this.uExposure.value,
