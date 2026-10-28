@@ -65,7 +65,7 @@ servers have no build hash.
 ## Left for later, and why
 
 - **Splitting the chapters into their own chunks.** All chapters and the Infinity ascent stage
-  share one ~355 KB chunk. Splitting it risks import-order and cycle breakage, and its cost should
+  share one ~350 KB chunk. Splitting it risks import-order and cycle breakage, and its cost should
   be measured first (Startup, above).
 - **Medium and Low tiers.** "As good as possible" needs frame times per tier on real GPUs to tune
   against.
