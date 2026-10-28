@@ -23,7 +23,7 @@ import {
     CHAPTER_SCENES, getChapterScene, exportNamesForScene, stepsExportNameForScene,
 } from './chapter-environments/registry.js';
 import {
-    seedChapterLightPool, releaseChapterLights, syncChapterLightSlots,
+    seedChapterLightPool, releaseChapterLights, syncChapterLightSlots, growChapterLightPool,
 } from './chapter-environments/shared/chapter-light-pool.js';
 import {
     SEAM_56_COLOUR_HALF_WIDTH,
@@ -461,8 +461,10 @@ export class ChapterEnvironmentManager {
         // chapters 3–8 are created in the background after the reveal (each creation used to
         // re-create every visible pipeline synchronously). Chapters' own lights are VIRTUAL
         // (acquireChapterLight(): never rendered) and are copied into the slots each frame by
-        // syncChapterLightSlots() below; see chapter-light-pool.js.
-        seedChapterLightPool(this.persistentLightRig);
+        // syncChapterLightSlots() below; see chapter-light-pool.js. Sized for the chapters built
+        // HERE: the ones the One World draws never light the rig (4 slots with it on, not 9; see
+        // deriveRigSlots), and handing them back grows it (the suppressedChapters setter).
+        seedChapterLightPool(this.persistentLightRig, undefined, { without: this.suppressedChapters });
         // Scratch matrix/vector reused when baking a reparented light's world placement.
         this._lightReparentMatrix = new THREE.Matrix4();
         this._lightReparentPos = new THREE.Vector3();
@@ -740,6 +742,23 @@ export class ChapterEnvironmentManager {
         }
     }
 
+    /** Chapters drawn by something else (the One World): never created, shown or faded here. */
+    get suppressedChapters() {
+        return this._suppressedChapters;
+    }
+
+    /**
+     * Chapters handed back (the One World abandoned, ADR-0015) light the rig again: the pool grows
+     * to them at once, so the lit pipelines rebuild before their dioramas are even built.
+     * @param {Iterable<number>|null} chapters
+     */
+    set suppressedChapters(chapters) {
+        this._suppressedChapters = chapters instanceof Set ? chapters : new Set(chapters || []);
+        if (this.persistentLightRig) {
+            growChapterLightPool({ without: this._suppressedChapters, rig: this.persistentLightRig });
+        }
+    }
+
     /**
      * Create a single chapter's environment (loads module dynamically)
      * @param {number} chapterId
@@ -797,6 +816,8 @@ export class ChapterEnvironmentManager {
             console.warn(`[ChapterEnvironmentManager] No module for chapter ${chapterId}`);
             return null;
         }
+        // A chapter the rig was sized without (the set edited in place): it gets its slots.
+        growChapterLightPool({ without: this.suppressedChapters, rig: this.persistentLightRig });
 
         if (sliced && typeof def.createSteps === 'function') {
             // Registered in the turn (or the hurry) that runs its last step; a teardown before
