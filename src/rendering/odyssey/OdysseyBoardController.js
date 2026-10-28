@@ -574,6 +574,9 @@ export class OdysseyBoardController {
         // BEFORE their render-warm, so the warm creates no pipelines.
         this.liveCompileEnabled = !readBooleanUrlFlag('odysseyLiveCompileOff')
             && readUrlValue('odysseyLiveCompile') !== '0';
+        // Chapter builds on the live map are spread over its frames (chapter-build-lane.js);
+        // ?odysseyOneGoBuilds=1 builds them in one go, as before 2026-10-28, to compare the two.
+        this.slicedChapterBuilds = !readBooleanUrlFlag('odysseyOneGoBuilds');
         this.chapterEvictionEnabled = (options.chapterEviction === true
             || readBooleanUrlFlag('odysseyChapterEvict'))
             && !this.restrictStartupChapterLoading;
@@ -2087,7 +2090,7 @@ export class OdysseyBoardController {
             },
             focusChapter: () => this._liveFocusChapter(),
             // The map is on screen: a few milliseconds a frame (_chapterBuildGate).
-            sliced: true,
+            sliced: this.slicedChapterBuilds !== false,
         });
     }
 
@@ -5930,7 +5933,7 @@ export class OdysseyBoardController {
                 // Once the map is live (after the reveal) a build is sliced across its frames;
                 // before it, under the loading cover, one go is fastest and nothing is drawn.
                 await this.environmentManager.createChapterEnvironment(chapterId, {
-                    sliced: this.isActive === true,
+                    sliced: this.isActive === true && this.slicedChapterBuilds !== false,
                     urgent,
                 });
                 if (this._disposed) return false; // torn down while it built

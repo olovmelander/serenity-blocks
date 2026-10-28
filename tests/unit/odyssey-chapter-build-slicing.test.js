@@ -224,6 +224,19 @@ describe('the board slices what it builds on the live map', () => {
         expect(createChapterEnvironment).toHaveBeenLastCalledWith(6, { sliced: true, urgent: true });
     });
 
+    it('builds in one go on the live map too under ?odysseyOneGoBuilds=1 (the A/B for the pacing)', async () => {
+        vi.stubGlobal('window', { location: { search: '?odysseyOneGoBuilds=1' } });
+        try {
+            const b = await board();
+            const { createChapterEnvironment } = b.environmentManager;
+            b.isActive = true;
+            await b._requestChapterEnvironment(6, { urgent: true });
+            expect(createChapterEnvironment).toHaveBeenLastCalledWith(6, { sliced: false, urgent: true });
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('promotes a build already on its way when the player starts waiting on it', async () => {
         const b = await board();
         b.isActive = true;

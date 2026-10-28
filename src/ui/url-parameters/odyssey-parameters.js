@@ -187,6 +187,11 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         },
     ),
     toggle('odysseyLiveCompileOff', 'Disables live background compilation for comparison with render-only warming.'),
+    toggle(
+        'odysseyOneGoBuilds',
+        'Builds each chapter in one go on the live map instead of a few milliseconds a frame, to compare the two.',
+        { scope: 'Odyssey map' },
+    ),
     parameter(
         'odysseyCompileWidth',
         'Sets how many startup shader compilation requests may run concurrently.',
