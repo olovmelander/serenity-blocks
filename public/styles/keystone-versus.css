@@ -912,21 +912,27 @@
 }
 
 /* ---- Controls card (each human board, first seconds of a match) ---------------------- */
+/* One line in the stats line's place under the board (its numbers are all zero then),
+   never on the board: the first pieces land at its foot. A small board shrinks it to
+   the board's width (--lv-coach-fit, local-versus-hud.js). */
 #multiplayer-container .lv-coach {
-    position: absolute;
-    bottom: calc(14px * var(--lv-u));
-    left: 50%;
+    grid-area: meta;
+    justify-self: center;
+    align-self: start;
     z-index: 5;
-    display: grid;
-    gap: calc(6px * var(--lv-u));
-    padding: calc(10px * var(--lv-u)) calc(12px * var(--lv-u));
+    display: flex;
+    align-items: center;
+    gap: calc(12px * var(--lv-u));
+    margin-top: 6px;
+    padding: calc(3px * var(--lv-u)) calc(10px * var(--lv-u));
     border: 1px solid var(--sb-line-strong);
-    border-radius: calc(12px * var(--lv-u));
+    border-radius: 999px;
     background: rgba(12, 10, 30, 0.88);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
-    transform: translateX(-50%);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
     white-space: nowrap;
     pointer-events: none;
+    scale: var(--lv-coach-fit, 1);
+    transform-origin: 50% 0;
     animation: lv-coach-in var(--sb-dur-3) var(--sb-ease-lock) both;
     transition: opacity 360ms ease;
 }
@@ -935,23 +941,31 @@
     opacity: 0;
 }
 
+/* The stats give the line to the controls, and come back as they leave. */
+#multiplayer-container .lv-meta {
+    transition: opacity 360ms ease;
+}
+
+#multiplayer-container .player-card.lv-coaching .lv-meta {
+    opacity: 0;
+}
+
 @keyframes lv-coach-in {
     from {
         opacity: 0;
-        transform: translate(-50%, 8px);
+        transform: translateY(-6px);
     }
 
     to {
         opacity: 1;
-        transform: translate(-50%, 0);
+        transform: none;
     }
 }
 
 #multiplayer-container .lv-coach__row {
-    display: grid;
-    grid-template-columns: calc(38px * var(--lv-u)) auto;
+    display: inline-flex;
     align-items: center;
-    gap: calc(8px * var(--lv-u));
+    gap: calc(6px * var(--lv-u));
 }
 
 #multiplayer-container .lv-coach__action {
@@ -969,15 +983,15 @@
 #multiplayer-container .lv-coach kbd {
     display: inline-grid;
     place-items: center;
-    min-width: calc(22px * var(--lv-u));
-    height: calc(22px * var(--lv-u));
-    padding: 0 calc(6px * var(--lv-u));
+    min-width: calc(20px * var(--lv-u));
+    height: calc(18px * var(--lv-u));
+    padding: 0 calc(5px * var(--lv-u));
     border: 1px solid var(--sb-line-strong);
     border-bottom-width: 2px;
-    border-radius: calc(6px * var(--lv-u));
+    border-radius: calc(5px * var(--lv-u));
     background: rgba(var(--sb-cream-rgb), 0.06);
     color: var(--sb-text);
-    font: 700 calc(11px * var(--lv-u)) / 1 var(--sb-font-text);
+    font: 700 max(9px, calc(10px * var(--lv-u))) / 1 var(--sb-font-text);
 }
 
 /* ---- Hot potato: the holder's plate glows, a chip on its top edge counts down -------- */
