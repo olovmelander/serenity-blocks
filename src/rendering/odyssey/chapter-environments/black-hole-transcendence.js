@@ -342,7 +342,7 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     // 0. Deep space: THE SAME SKY AS CHAPTER 6 (all-angles pass, 2026-10-18). The chapter's own
     // dome was a near-black noise field, so every view turned away from the hole was an empty
     // void, and the Milky Way the traveller had just crossed under vanished at the 6->7 seam.
-    // Chapter 6's baked sky (its bake is cached, so this costs a copy, not a bake) carries the
+    // Chapter 6's baked sky (cached, and once baked the very texture chapter 6 shows) carries the
     // band on in the same world direction — seated on the eye each frame, so it hangs at
     // infinity — and the post lens bends it round the hole. One texture fetch per pixel, where
     // the old dome ran five octaves of noise across the whole frame.

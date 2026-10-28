@@ -3353,6 +3353,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Idempotent — rendering was already paused at the entry blackout (onBlackoutReached).
         this.boardController.pauseRendering?.();
+        this.boardController.releaseParkedTargets?.(); // the theme gets the GPU memory; resume restores it
 
         const boardContainer = document.getElementById('odyssey-board-3d');
         if (boardContainer) {

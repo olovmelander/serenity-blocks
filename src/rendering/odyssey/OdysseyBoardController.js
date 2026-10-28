@@ -153,6 +153,8 @@ const ODYSSEY_FOCUS_ALONG_RAIL = new Map([
 // governs, and the adaptive controller rides renderScale beneath it (user low-res report
 // 2026-07-05). A DPR>1.5 panel is still clamped so 4K/retina can't runaway the fill cost.
 const ODYSSEY_MAX_PIXEL_RATIO = 1.5;
+/** What the post stack's targets shrink to while the board is parked (releaseParkedTargets). */
+const PARKED_TARGET_SIZE = 16;
 // The board's own render-scale floor. BELOW this the browser upscale turns the Ch3 meadow to
 // mush, so _applyRenderScale clamps here regardless of what the policy proposes. It is exported
 // because the adaptive controller must be TOLD this floor: a controller that thinks it can reach
@@ -5184,8 +5186,12 @@ export class OdysseyBoardController {
         this.isRenderingPaused = false;
         this.isActive = true;
         // The container shows again before resume: take a resize it was too hidden to take, or
-        // one that came while it was hidden at its old size.
-        if (this._resizePending || this._canvasSizeDrifted()) this.onResize();
+        // one that came while it was hidden at its old size, and give the post stack back the
+        // size its targets had before the park released them (releaseParkedTargets).
+        if (this._resizePending || this._parkedTargetsReleased || this._canvasSizeDrifted()) {
+            this.onResize();
+            if (!this._resizePending) this._parkedTargetsReleased = false;
+        }
         this._applyChapterMusic(this._odysseyMusicChapter || 1, { reason: 'odyssey-board-resume' });
         this.clock.getDelta(); // Reset delta to avoid a huge first frame step.
         // And the pacing: the cadence and refresh gaps from before the pause say nothing about now.
@@ -5193,6 +5199,22 @@ export class OdysseyBoardController {
         this._lastTickAt = 0;
         this._slowestTickMs = 0;
         this.animate();
+    }
+
+    /**
+     * Parked under an orb (paused and hidden), give back the post stack's targets. The scene
+     * pass's attachments are the board's largest GPU allocation: at High, 4x MSAA over two
+     * half-float targets plus depth, about 100 bytes a pixel by those formats (200-450 MB at
+     * 1080p, by the pixel ratio), held while the orb's theme plays and needs the memory more.
+     * Resizing a render target destroys its GPU textures at once, and the first frame after
+     * resumeRendering() sizes them from the canvas again (pipelines do not depend on a target's
+     * size: nothing recompiles), under the return gate.
+     */
+    releaseParkedTargets() {
+        if (this._disposed || !this.isRenderingPaused || !this.postProcessingStack?.resize) return;
+        // Not 1x1: a pass or the bloom chain scales the size down, and must not reach 0.
+        this.postProcessingStack.resize(PARKED_TARGET_SIZE, PARKED_TARGET_SIZE);
+        this._parkedTargetsReleased = true;
     }
 
     /** @private whether the canvas no longer matches its (visible) container. */
@@ -5693,6 +5715,21 @@ export class OdysseyBoardController {
 
         // Dispose post-processing stack
         this.postProcessingStack?.dispose();
+
+        // The world's own teardown, while this renderer can still destroy the GPU copies: its
+        // plates (~35 MB of DataTextures at High) are bound in node graphs the traverse below
+        // cannot reach, and left to it they waited for garbage collection on a device the next
+        // mode keeps using. Their arrays are not touched (the loader keeps them for a re-entry).
+        if (this.oneWorld) {
+            const world = this.oneWorld;
+            this.oneWorld = null;
+            this.scene?.remove?.(world.group);
+            try {
+                world.dispose?.();
+            } catch (error) {
+                console.warn('[OdysseyBoardController] One World disposal failed:', error?.message || error);
+            }
+        }
 
         // Dispose scene objects
         this.scene?.traverse((obj) => {
