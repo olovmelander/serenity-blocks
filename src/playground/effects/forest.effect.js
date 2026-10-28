@@ -105,6 +105,14 @@ export function create({
             }
         }
     };
+    // ?owlPerch=<perch id> sets the owl on that perch (limbIn, limb, limbOut, lowIn, low, pine, pineLow,
+    // pineHigh, log, logEnd, stump) and ?owlHold=1 keeps it there (its acts and the game's cues still play).
+    const placeOwl = () => {
+        const mind = world?.owlMind;
+        if (!mind) return;
+        if (params.get('owlPerch')) mind.placeAt(params.get('owlPerch'));
+        mind.hold(params.get('owlHold') === '1');
+    };
     const ready = loadForestAssets()
         .then((loaded) => {
             if (disposed) {
@@ -117,6 +125,7 @@ export function create({
             }).build();
             world.setLevel(level, { silent: true });
             world.director.callStand(rawStand);
+            placeOwl();
             aim();
             post = new ForestPost({
                 renderer, scene, camera, quality, light: world.light, samples,
@@ -142,8 +151,10 @@ export function create({
         camera.lookAt(centre);
         camera.updateProjectionMatrix();
     };
-    // ?owlTrip=moon|hunt|visit|home sends the owl out at ?owlAt=<seconds> (default 1); ?owlTo=<perch id>
-    // picks the perch a visit goes to (limb, pine, log, stump).
+    // ?owlTrip= sends the owl out at ?owlAt=<seconds> (default 1): moon, hunt (or catch / miss), visit (to
+    // ?owlTo=<perch id>, or one by chance), home, sidle (along its limb, to ?owlTo or the nearest place),
+    // turn, or an act on its perch: stretch (?owlTo=wingsUp for the other kind), preen (?owlTo=breast|left|
+    // right), doze, tall.
     const owlTrip = params.get('owlTrip');
     const owlAt = Number(params.get('owlAt') ?? 1);
     let owlSent = false;
@@ -208,6 +219,7 @@ export function create({
         const target = Math.max(0, time);
         reactions.reset();
         world.resetEffects({ owl: true });
+        placeOwl();
         owlSent = false;
         world.setLevel(level, { silent: true });
         randomIndex = 0;

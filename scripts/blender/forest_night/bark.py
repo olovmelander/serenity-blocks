@@ -22,6 +22,9 @@ from fall_grove.skeleton import Branch
 from fall_grove.wood import MeshData, catmull_refine, fbm, grid_normals, tube
 from golden_forest import conifers
 
+# Limbs meshed with the trunk and roots (drawn on every tier): the owl's (forest_night/owl_limbs.py).
+CORE_KINDS = ("root", "perch", "perch-twig")
+
 HERO_TRUNK_SIDES = 24
 BIRCH_TRUNK_SIDES = 12
 
@@ -150,7 +153,12 @@ def _ring_radii(rings, columns, radii):
 
 
 def build_wood(tree, hero=False, seed=3, lichen=1.0):
-    """Mesh every branch into one bark mesh (limbs last, so a tier can stop at the trunk and roots)."""
+    """Mesh every branch into one bark mesh (limbs last, so a tier can stop at the trunk and roots).
+
+    The owl's limbs count with the trunk and roots. A branch with a `finish(positions, normals, uvs,
+    colors, indices, columns, mask)` hands its tube to it and is meshed as what it returns (the owl's
+    limbs shape their wood and close their broken ends there).
+    """
     mesh = MeshData()
     species = tree.meta["species"]
     height = tree.meta["height"]
@@ -161,7 +169,7 @@ def build_wood(tree, hero=False, seed=3, lichen=1.0):
         mask = None
     else:
         mask = conifers.bark_mask(species, height, seed)
-    ordered = sorted(tree.branches, key=lambda branch: branch.level >= 1 and branch.kind != "root")
+    ordered = sorted(tree.branches, key=lambda branch: branch.level >= 1 and branch.kind not in CORE_KINDS)
     mesh.core_indices = 0
     for branch in ordered:
         profile = getattr(tree, "trunk_profile", None) if branch.level == 0 else None
@@ -194,7 +202,10 @@ def build_wood(tree, hero=False, seed=3, lichen=1.0):
         if birch is not None:
             _points, radii = catmull_refine(source.points, source.radii, refine)
             colors[:, 3] = birch(branch, positions, _ring_radii(rings, columns, radii))
+        finish = getattr(branch, "finish", None)
+        if finish is not None:
+            positions, normals, uvs, colors, indices = finish(positions, normals, uvs, colors, indices, columns, mask)
         mesh.append(positions, normals, uvs, colors, indices)
-        if branch.level == 0 or branch.kind == "root":
+        if branch.level == 0 or branch.kind in CORE_KINDS:
             mesh.core_indices = mesh.triangles * 3
     return mesh

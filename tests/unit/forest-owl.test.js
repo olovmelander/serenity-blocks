@@ -1,8 +1,9 @@
 /**
  * Forest — the eagle owl: the model on disk (src/themes/forest/assets/owl.glb), its rig, its flights,
- * its mind, the reactions' cues it hears, and its shaders, built through three's own node builders
- * against a stub renderer (the WGSL of the WebGPU backend and the GLSL of the WebGL2 fallback).
- * No GPU. The harness is tests/unit/verdant-hills-sheep.test.js's.
+ * the limbs it sits on (grown into the elders, spruce-elder.glb and pine-elder.glb), its mind, the
+ * reactions' cues it hears, and its shaders, built through three's own node builders against a stub
+ * renderer (the WGSL of the WebGPU backend and the GLSL of the WebGL2 fallback). No GPU. The harness
+ * is tests/unit/verdant-hills-sheep.test.js's.
  */
 import { readFileSync } from 'node:fs';
 import {
@@ -13,7 +14,7 @@ import { context, float } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FOREST_FEATURE_TREES, FOREST_VIEWS, forestEye } from '../../src/themes/forest/forest-composition.js';
 import { ForestLight } from '../../src/themes/forest/forest-light.js';
-import { FOREST_OWL_EYE, ForestOwl, createLimbGeometry } from '../../src/themes/forest/forest-owl.js';
+import { FOREST_OWL_EYE, ForestOwl } from '../../src/themes/forest/forest-owl.js';
 import {
     OWL_FLIGHT, planFlight, sampleFlight, strokeClock, wingbeat,
 } from '../../src/themes/forest/forest-owl-flight.js';
@@ -21,7 +22,7 @@ import {
     OWL_GROUND, OWL_MOON_LOOP, OWL_TIMING, ForestOwlMind,
 } from '../../src/themes/forest/forest-owl-mind.js';
 import {
-    FOREST_OWL_HOME, FOREST_OWL_LIMBS, FOREST_OWL_PERCHES, catmullRom, limbRadius,
+    FOREST_OWL_HOME, FOREST_OWL_LIMBS, FOREST_OWL_PERCHES, forestOwlLimb, forestOwlNeighbours, limbAt,
 } from '../../src/themes/forest/forest-owl-perches.js';
 import {
     OWL_BONES, OWL_BONE_INDEX, OWL_DRAWN_SCALE, OWL_PLAN, OWL_POSTURE, OWL_ROOT_HEIGHT, createOwlPose,
@@ -44,6 +45,61 @@ function readExtras() {
     const length = bytes.readUInt32LE(12);
     return JSON.parse(bytes.subarray(20, 20 + length).toString('utf8'));
 }
+
+/** An elder from the pack: its extras, its bark's positions (its own frame) and indices. */
+function readTree(name) {
+    const bytes = readFileSync(new URL(`../../src/themes/forest/assets/${name}.glb`, import.meta.url));
+    const length = bytes.readUInt32LE(12);
+    const json = JSON.parse(bytes.subarray(20, 20 + length).toString('utf8'));
+    const bin = bytes.subarray(20 + length + 8);
+    const SIZE = { 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 };
+    // KHR_mesh_quantization: positions are normalised shorts, scaled and moved by their node.
+    const read = (index, size) => {
+        const acc = json.accessors[index];
+        const bv = json.bufferViews[acc.bufferView];
+        const offset = (bv.byteOffset || 0) + (acc.byteOffset || 0);
+        const bytesEach = SIZE[acc.componentType];
+        const stride = bv.byteStride || size * bytesEach;
+        const out = new Float64Array(acc.count * size);
+        for (let i = 0; i < acc.count; i += 1) {
+            for (let k = 0; k < size; k += 1) {
+                const at = offset + i * stride + k * bytesEach;
+                let v;
+                if (acc.componentType === 5126) v = bin.readFloatLE(at);
+                else if (acc.componentType === 5122) v = bin.readInt16LE(at) / (acc.normalized ? 32767 : 1);
+                else if (acc.componentType === 5125) v = bin.readUInt32LE(at);
+                else v = bin.readUInt16LE(at);
+                out[i * size + k] = acc.normalized ? Math.max(-1, v) : v;
+            }
+        }
+        return out;
+    };
+    const node = json.nodes.find((n) => n.name === 'bark');
+    const bark = json.meshes[node.mesh].primitives[0];
+    const positions = read(bark.attributes.POSITION, 3);
+    const scale = node.scale || [1, 1, 1];
+    const move = node.translation || [0, 0, 0];
+    for (let i = 0; i < positions.length; i += 1) positions[i] = move[i % 3] + scale[i % 3] * positions[i];
+    return {
+        extras: json.scenes[json.scene || 0].extras,
+        positions,
+        indices: Uint32Array.from(read(bark.indices, 1)),
+    };
+}
+
+/** The elders' trunks as the theme hands them to the owl (forest-trees.js `trunks()`). */
+const ELDER_TRUNKS = ['spruce-elder', 'pine-elder'].map((name) => {
+    const tree = FOREST_FEATURE_TREES.find((t) => t.asset === name);
+    const { extras } = readTree(name);
+    return {
+        asset: name,
+        x: tree.x,
+        z: tree.z,
+        y: forestGroundHeight(tree.x, tree.z) - 0.05,
+        radius: extras.trunkRadius * tree.scale,
+        height: extras.height * tree.scale,
+    };
+});
 
 async function loadOwl() {
     const bytes = readFileSync(asset);
@@ -365,33 +421,76 @@ describe('Forest owl: flight', () => {
 });
 
 describe('Forest owl: where it sits', () => {
-    it('perches on the top of its limbs, facing the eye', () => {
+    it('perches on the top of its limbs, across them, facing the eye as well as each lets it', () => {
         for (const perch of FOREST_OWL_PERCHES) {
             expect([perch.x, perch.y, perch.z, perch.heading, perch.radius].every(Number.isFinite), perch.id).toBe(true);
-            const toEye = Math.atan2(0 - perch.x, 13 - perch.z);
-            expect(Math.abs(wrap(perch.heading - toEye)) / DEG, perch.id).toBeLessThan(75);
             expect(perch.y, perch.id).toBeGreaterThan(forestGroundHeight(perch.x, perch.z) + 0.5);
+            if (!perch.limb) continue;
+            const at = limbAt(forestOwlLimb(perch.limb), perch.u);
+            expect(perch.y, perch.id).toBeCloseTo(at.top, 6);
+            expect(Math.abs(Math.abs(wrap(perch.heading - perch.run)) - Math.PI / 2), perch.id).toBeLessThan(1e-6);
+            const toEye = Math.atan2(0 - perch.x, 13 - perch.z);
+            const other = wrap(perch.heading + Math.PI);
+            expect(Math.abs(wrap(perch.heading - toEye)), perch.id)
+                .toBeLessThanOrEqual(Math.abs(wrap(other - toEye)) + 1e-9);
+            // Out from the bark, with room for its body beside the trunk.
+            expect(perch.clear, perch.id).toBeGreaterThan(0.4);
         }
-        // The home perch is the top of the elder's limb.
-        const [limb] = FOREST_OWL_LIMBS;
-        const c = catmullRom(limb.points, 0.62);
-        expect(FOREST_OWL_HOME.y - c[1]).toBeCloseTo(limbRadius(0.62), 6);
+        expect(FOREST_OWL_HOME.id).toBe('limb');
+        // Places along its home limb to sidle between, and more than a handful of perches in all.
+        expect(forestOwlNeighbours(FOREST_OWL_HOME).map((p) => p.id).sort()).toEqual(['limbIn', 'limbOut']);
+        expect(FOREST_OWL_PERCHES.length).toBeGreaterThanOrEqual(11);
+        expect(new Set(FOREST_OWL_PERCHES.map((p) => p.id)).size).toBe(FOREST_OWL_PERCHES.length);
     });
 
-    it('is seen whole in the game at 16:9 on every perch, clear of the card and the score panel', () => {
+    it('is seen whole in the game at 16:9 on its home limb and nearly every other perch', () => {
         const sight = gameSight();
-        for (const perch of FOREST_OWL_PERCHES) {
-            expect(sight(perch.x, perch.y + 0.24 * OWL_DRAWN_SCALE, perch.z, 0.9), perch.id).toBe(true);
-        }
+        const seen = FOREST_OWL_PERCHES.filter((perch) => sight(perch.x, perch.y + 0.24 * OWL_DRAWN_SCALE, perch.z, 0.9));
+        ['limbIn', 'limb', 'limbOut', 'lowIn', 'low', 'log', 'stump'].forEach((id) => {
+            expect(seen.map((p) => p.id), id).toContain(id);
+        });
+        expect(seen.length).toBeGreaterThanOrEqual(FOREST_OWL_PERCHES.length - 2);
     });
 
-    it('lays its limbs as finite meshes that reach into their trunks', () => {
-        for (const limb of FOREST_OWL_LIMBS) {
-            const geometry = createLimbGeometry(limb);
-            expect(geometry.attributes.position.count).toBeGreaterThan(200);
-            expect(Array.from(geometry.attributes.position.array).every(Number.isFinite)).toBe(true);
-            expect(Array.from(geometry.attributes.normal.array).every(Number.isFinite)).toBe(true);
-            geometry.dispose();
+    it("sits on limbs grown into the elders: the trees' own bark, drawn on every tier", () => {
+        for (const name of ['spruce-elder', 'pine-elder']) {
+            const { extras, positions, indices } = readTree(name);
+            const tree = FOREST_FEATURE_TREES.find((t) => t.asset === name);
+            const y0 = forestGroundHeight(tree.x, tree.z) - 0.05;
+            const c = Math.cos(tree.yaw);
+            const s = Math.sin(tree.yaw);
+            const world = (x, y, z) => [tree.x + (x * c + z * s) * tree.scale, y0 + y * tree.scale,
+                tree.z + (-x * s + z * c) * tree.scale];
+            // The module the perches read is the trees' own record, placed where the tree stands.
+            const records = extras.owlLimbs;
+            expect(records.length).toBeGreaterThan(1);
+            records.forEach((record) => {
+                const limb = forestOwlLimb(record.id);
+                expect(limb.tree).toBe(name);
+                expect(limb.stations.length).toBe(record.centres.length);
+                [0, Math.floor(record.centres.length / 2), record.centres.length - 1].forEach((i) => {
+                    const [x, y, z] = world(...record.centres[i]);
+                    const st = limb.stations[i];
+                    expect(Math.hypot(st[0] - x, st[1] - y, st[2] - z)).toBeLessThan(0.002);
+                    expect(Math.abs(st[3] - (y0 + record.tops[i] * tree.scale))).toBeLessThan(0.002);
+                });
+            });
+            // Every seat stands on bark (the highest bark under it is its top), and that bark is in the part of
+            // the mesh every tier draws (the trunk, the roots and the owl's limbs come first).
+            const core = new Set(indices.subarray(0, extras.barkCoreIndices));
+            FOREST_OWL_PERCHES.filter((p) => p.tree === name).forEach((perch) => {
+                let top = -Infinity;
+                let drawn = true;
+                for (let v = 0; v < positions.length / 3; v += 1) {
+                    const [x, y, z] = world(positions[v * 3], positions[v * 3 + 1], positions[v * 3 + 2]);
+                    if (Math.hypot(x - perch.x, z - perch.z) < 0.04 && Math.abs(y - perch.y) < 0.15) {
+                        top = Math.max(top, y);
+                        drawn = drawn && core.has(v);
+                    }
+                }
+                expect(Math.abs(top - perch.y), perch.id).toBeLessThan(0.02);
+                expect(drawn, perch.id).toBe(true);
+            });
         }
     });
 });
@@ -402,6 +501,7 @@ describe('Forest owl: its mind', () => {
     function live(seconds, { seed = 7919, events = [], motion = 1, sight = gameSight(), each } = {}) {
         const mind = new ForestOwlMind({ rng: seededRandom(seed), groundHeight });
         mind.setSight(sight);
+        mind.setTrunks(ELDER_TRUNKS);
         mind.setBoard({ x: -0.3, y: 2.3, z: 7 });
         const tape = cueTape(events);
         const steps = Math.round(seconds / STEP);
@@ -423,24 +523,125 @@ describe('Forest owl: its mind', () => {
 
     it('flies out across the moon after four lines, and comes home', () => {
         const legs = [];
-        const mind = live(40, {
+        let after = null;
+        live(30, {
             events: [[5, 'quad']],
-            each: (m) => { if (m.leg && legs[legs.length - 1] !== m.leg.style) legs.push(m.leg.style); },
+            each: (m) => {
+                if (m.leg && legs[legs.length - 1] !== m.leg.style) legs.push(m.leg.style);
+                if (legs.length === 1 && !m.leg && after === null) after = m.perch;
+            },
         });
-        expect(legs).toEqual(['moon']);
-        expect(mind.mode).toBe('perched');
-        expect(mind.perch).toBe(FOREST_OWL_HOME);
+        expect(legs[0]).toBe('moon');
+        expect(after).toBe(FOREST_OWL_HOME);
     });
 
-    it('goes to another perch it can be seen on for a level-up, and back', () => {
+    it('moves on to another perch it can be seen on for a level-up', () => {
         const visits = new Set();
-        live(160, {
+        live(20, {
             seed: 11,
             events: [[3, 'level']],
             each: (m) => { if (m.mode === 'perched') visits.add(m.perch.id); },
         });
         expect(visits.size).toBeGreaterThan(1);
-        expect(visits.has('limb')).toBe(true);
+    });
+
+    it('wanders the glade as it likes: many perches, sidles, turns, hops, hunts, and its acts', () => {
+        const perches = new Set();
+        const acts = new Set();
+        const legs = new Set();
+        const misses = new Set();
+        for (const seed of [7919, 101, 5]) {
+            live(600, {
+                seed,
+                events: [[100, 'level'], [300, 'level']],
+                each: (m) => {
+                    if (m.mode === 'perched') perches.add(m.perch.id);
+                    if (m.act) acts.add(m.act.kind === 'stretch' ? `stretch:${m.act.variant}` : m.act.kind);
+                    if (m.leg) legs.add(m.leg.style);
+                    if (m.perch.kind === 'ground') misses.add(m.groundCatch ? 'catch' : 'miss');
+                },
+            });
+        }
+        expect(perches.size).toBeGreaterThanOrEqual(9);
+        expect(perches.has('ground')).toBe(true);
+        ['sidle', 'turn', 'preen', 'doze', 'tall'].forEach((kind) => expect(acts.has(kind), kind).toBe(true));
+        expect([...acts].some((a) => a.startsWith('stretch'))).toBe(true);
+        ['plain', 'hop', 'strike', 'climb'].forEach((style) => expect(legs.has(style), style).toBe(true));
+        expect(misses).toEqual(new Set(['catch', 'miss']));
+    });
+
+    it('misses now and then: it stands in the ferns, looks about and flies up to a perch', () => {
+        const mind = new ForestOwlMind({ rng: seededRandom(3), groundHeight });
+        mind.setSight(gameSight());
+        mind.setTrunks(ELDER_TRUNKS);
+        mind.hold(true);
+        mind.update(STEP, {});
+        expect(mind.send('miss')).toBe(true);
+        let landed = null;
+        let stood = false;
+        let up = null;
+        let caught = null;
+        for (let t = 0; t < 30 && !up; t += STEP) {
+            mind.update(STEP, {});
+            if (mind.mode === 'perched' && mind.perch.kind === 'ground') {
+                if (landed === null) landed = mind.time;
+                caught = mind.groundCatch;
+                // Mantled for a moment as it strikes, then the wings folded away as it stands.
+                if (mind.time - landed > 1.3) stood = stood || mind.pose.wings.every((w) => w.fold > 0.9);
+            }
+            if (landed !== null && mind.mode === 'perched' && mind.perch.kind !== 'ground') up = mind.perch;
+        }
+        expect(landed).not.toBeNull();
+        expect(caught).toBe(false);
+        expect(stood).toBe(true);
+        expect(up).not.toBeNull();
+    });
+
+    it('hops round to face the other way, and sidles along its limb to another place on it', () => {
+        const mind = new ForestOwlMind({ rng: seededRandom(4), groundHeight });
+        mind.hold(true);
+        mind.update(STEP, {});
+        expect(mind.send('turn')).toBe(true);
+        for (let i = 0; i < 90; i += 1) mind.update(STEP, {});
+        expect(mind.turned).toBe(true);
+        expect(Math.abs(wrap(mind.attitude.heading - FOREST_OWL_HOME.heading - Math.PI))).toBeLessThan(0.05);
+        expect(mind.send('sidle', 'limbOut')).toBe(true);
+        for (let i = 0; i < 6 * 60 && mind.act; i += 1) mind.update(STEP, {});
+        mind.update(STEP, {});
+        expect(mind.perch.id).toBe('limbOut');
+        expect(mind.place.x).toBeCloseTo(mind.perch.x, 6);
+        expect(mind.place.y).toBeCloseTo(mind.perch.y, 6);
+        // Still facing away along the way it was turned.
+        expect(Math.abs(wrap(mind.attitude.heading - mind.perch.heading - Math.PI))).toBeLessThan(0.05);
+    });
+
+    it.each([['stretch', 'wingLeg'], ['stretch', 'wingsUp'], ['preen', 'left'], ['preen', 'breast'], ['doze', null],
+        ['tall', null], ['turn', null]])('%s (%s) comes and goes on its perch without a jump', (kind, variant) => {
+        const mind = new ForestOwlMind({ rng: seededRandom(6), groundHeight });
+        mind.hold(true);
+        mind.update(STEP, {});
+        expect(mind.send(kind, variant)).toBe(true);
+        const frame = poseOwl(mind.pose);
+        let previous = frame.rotations.map((q) => q.slice());
+        let worst = 0;
+        let worstBone = '';
+        for (let i = 0; i < 30 * 60 && (mind.act || i < 10); i += 1) {
+            mind.update(STEP, {});
+            poseOwl(mind.pose, frame);
+            frame.rotations.forEach((q, j) => {
+                expect(q.every(Number.isFinite)).toBe(true);
+                const turn = angleBetween(q, previous[j]);
+                // Eyelids blink shut in a few frames; every other joint moves a little at a time.
+                if (turn > worst && !OWL_BONES[j].startsWith('lid')) {
+                    worst = turn;
+                    worstBone = OWL_BONES[j];
+                }
+            });
+            previous = frame.rotations.map((q) => q.slice());
+        }
+        expect(mind.act).toBeNull();
+        expect(worst, worstBone).toBeLessThan(12);
+        mind.pose.wings.forEach((w) => expect(w.fold).toBeGreaterThan(0.9));
     });
 
     it('never goes where the player cannot see it land', () => {
@@ -479,7 +680,6 @@ describe('Forest owl: its mind', () => {
             place: 0, heading: 0, pitch: 0, bank: 0, head: 0,
         };
         let flights = 0;
-        const trunks = FOREST_FEATURE_TREES.slice(0, 2);
         live(900, {
             seed: 4242,
             events: [[30, 'quad'], [100, 'level'], [160, 'quad'], [230, 'level'], [300, 'drop'], [420, 'perfect'],
@@ -490,8 +690,11 @@ describe('Forest owl: its mind', () => {
                     ...pose.body, ...pose.blink, pose.tufts];
                 expect(values.every(Number.isFinite)).toBe(true);
                 expect(place.y).toBeGreaterThan(groundHeight(place.x, place.z) - 0.2);
+                // A body's width (and more) from the elders' bark whenever it flies.
                 if (m.mode === 'flight') {
-                    for (const tree of trunks) expect(Math.hypot(place.x - tree.x, place.z - tree.z)).toBeGreaterThan(0.95);
+                    for (const tree of ELDER_TRUNKS) {
+                        expect(Math.hypot(place.x - tree.x, place.z - tree.z) - tree.radius).toBeGreaterThan(0.2);
+                    }
                 }
                 if (last) {
                     worst.place = Math.max(worst.place, Math.hypot(place.x - last.x, place.y - last.y, place.z - last.z));
@@ -508,9 +711,9 @@ describe('Forest owl: its mind', () => {
             },
         });
         expect(flights).toBeGreaterThan(8);
-        // Per frame at 60 fps: an owl's quickest movements, never a snap.
+        // Per frame at 60 fps: an owl's quickest movements (the hop round on a perch turns it 12), never a snap.
         expect(worst.place).toBeLessThan(0.16);
-        expect(worst.heading).toBeLessThan(11);
+        expect(worst.heading).toBeLessThan(13);
         expect(worst.pitch).toBeLessThan(5);
         expect(worst.bank).toBeLessThan(5);
         expect(worst.head).toBeLessThan(30);
@@ -548,6 +751,8 @@ describe('Forest owl: its mind', () => {
         const sight = gameSight();
         OWL_GROUND.forEach((g) => {
             expect(sight(g.x, forestGroundHeight(g.x, g.z) + 0.3, g.z, 0.7), `${g.x},${g.z}`).toBe(true);
+            // Clear of the trunks that stand in the glade.
+            FOREST_FEATURE_TREES.forEach((t) => expect(Math.hypot(g.x - t.x, g.z - t.z), `${g.x},${g.z}`).toBeGreaterThan(1.5));
         });
         expect(OWL_TIMING.launch).toBeGreaterThan(0.3);
     });
@@ -594,8 +799,8 @@ describe('Forest owl: drawn', () => {
         owl.bones.forEach((bone) => expect([bone.quaternion.x, bone.quaternion.w].every(Number.isFinite)).toBe(true));
     });
 
-    it.each(BACKENDS)('builds its plumage and its limb for %s without a word', (_name, Builder) => {
-        for (const [object, material] of [[owl.body, owl.material], [owl.limbs[0], owl.limbMaterial]]) {
+    it.each(BACKENDS)('builds its plumage for %s without a word', (_name, Builder) => {
+        for (const [object, material] of [[owl.body, owl.material]]) {
             const [out, heard] = listening(() => build(Builder, object, material));
             expect(heard).toEqual([]);
             expect(out.fragment.length).toBeGreaterThan(2000);

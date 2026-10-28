@@ -367,16 +367,18 @@ bill, the tufts), the breast streaked and barred, and a launch seen head on.*
   carries: the breast's bold drops and the belly's fine wavy bars, the mottled upperparts (every
   feather dark down its middle, its edges tawny), barred flight feathers paler underneath, the facial
   disc's fine lines, the eyes. Bars fade to their mean as they grow finer than a pixel.
-- **Its two dead limbs** (on the elder spruce, toward the moon; on the elder pine's bare trunk, out over
-  the knoll) are laid on Catmull-Rom curves (`forest-owl-perches.js`) from the trunks as measured in the
-  tree GLBs. The log's ridge and the stump's cut are measured from `forest-props.glb`.
+- **Its dead limbs** were at first two grey tubes of its own; they are now grown into the elders
+  ([the second pass](#the-owl-wanders-and-its-limbs-are-the-trees-own-2026-10-28)). The log's ridge and
+  the stump's cut are measured from `forest-props.glb`.
 - **Its life is closed-form.** Each act has a start and a length; each kind of act draws from a random
   stream of its own, so a seek and a night lived through agree at any frame rate (the same night lived
   at 30, 60 and 144 fps lands within centimetres), and the playground's seeded captures are repeatable.
-- **Playground**: `owlTrip=moon|hunt|visit|home` at `owlAt=<s>` (`owlTo=pine|log|stump|limb`),
-  `owlLook=eye` or `<yaw>,<pitch>` to hold its gaze, `owlCam=<metres>` for a lens that follows it
+- **Playground**: `owlTrip=moon|hunt|catch|miss|visit|home|sidle|turn|stretch|preen|doze|tall` at
+  `owlAt=<s>` (`owlTo=` a perch for a visit or a sidle, `wingsUp` for the other stretch,
+  `breast|left|right` for a preen), `owlPerch=<perch>` to set it on any perch and `owlHold=1` to keep it
+  there, `owlLook=eye` or `<yaw>,<pitch>` to hold its gaze, `owlCam=<metres>` for a lens that follows it
   (`owlOrbit=`, `owlTilt=`, `owlFocus=<metres above its feet>`). The diagnostics' `owl` says what it
-  is doing.
+  is doing (its perch, its act, whether it faces away).
 
 ![the moon crossing on the WebGL2 backend at Low, and perched at Low](forest-firefly-night/owl-tiers.webp)
 
@@ -416,6 +418,108 @@ like everything else, so it flies into and out of the trees' shadows). On the fa
 the stump, 27 m off) it is a small silhouette. A narrow or upright screen that cannot see its limb keeps
 it home and unseen. Up close its facial disc reads a little lumpy.
 
+### The owl wanders, and its limbs are the trees' own (2026-10-28)
+
+A second pass the same evening (Olov: "We need to continue improving the owl and animations, it should
+act more randomly and have more branches to fly to and sit on." and "the limps and braches needs to be
+well modelled and really fit into the trees and scene."). Merged with the first pass on main
+(`8e0a59fe`), it takes the owl off its routine (an outing every 40-80 s, out and home again) and gives it
+a glade to live in.
+
+![its limbs close up: the home limb toward the moon, the low limb on the elder spruce, the pine's stub and its high stub](forest-firefly-night/owl-limbs.webp)
+
+*The limbs close up in the playground (`owlPerch=`, `owlCam=`): the home limb toward the moon, the low limb
+below it, the elder pine's stub and its high stub. Dead wood with its branchlets' stumps, a collar where it
+leaves the trunk, broken ends; the trees' own bark, moss, occlusion and light.*
+
+- **Its limbs are grown into the elders**, by the trees' own generator: `forest_night/owl_limbs.py` adds
+  them to the grown spruce-elder and pine-elder before the bark mesher runs, so they are meshed, masked
+  (the spruce's lichen, the pine's plates), occlusion-baked and drawn exactly as the trees' own limbs
+  are, by the trees' bark shader, in the trees' draw, swaying with their trunks (at the limbs' height a
+  trunk moves under a centimetre, so the owl does not need to follow it). A dead limb is a zigzag of
+  short straight runs (the axis turns a few degrees at every node, away from the branchlet it grew
+  there), wanders a little across its line, swells into a collar where it leaves the trunk (most
+  underneath), is checked along the grain, and carries the stumps of its branchlets in two rows along
+  its flanks: most broken short, a few still long and forked toward its end. It ends in a thin whip or
+  broken off in splinters (a jagged cap, flat-shaded). Where the owl sits its toes find no stumps, and
+  along the stretch it sidles there are only short ones low on the flanks (a long one there would reach
+  into its breast). The generator's own dead stubs on both trunks are dressed the same way (six sides,
+  checked wood, broken off) so the owl's limbs and the stubs beside them read as one tree's.
+- **Five limbs, eleven perches.** On the elder spruce: the home limb toward the moon (three seats, the
+  middle one where it always sat) and a stout broken limb below it over the ferns (two seats). On the
+  elder pine: its stub over the knoll, a shorter one below and one high in its bare stretch (taking the
+  place of one of the generator's stubs). Off the trees, both ends of the fallen spruce's ridge and the
+  stump. `scripts/forest/pack-owl-limbs.mjs` runs the build and writes where each limb is in the world
+  (`forest-owl-limbs.js`: its centreline, the top of its bark, its seats) for the perches to read
+  without three.js; a test checks the module against the trees' own record and that every seat stands
+  on bark in the part of the mesh every tier draws (the owl's limbs come with the trunk, ahead of the
+  tier cut). The seats sit 0.45-1.25 m out from the bark.
+- **It decides as it goes.** When it has sat a while (5 s to over a minute, drawn skewed toward short,
+  longer at home) it weighs what it can do from where it is: sidle along its limb to another seat on it,
+  hop round to face the other way (and back again later), fly to another perch (the nearer the likelier,
+  the three it was on last less so, home more so the longer it is away, its own tree a little more), drop
+  on something in the ferns, now and then the moon loop from home, or sit on. Hunts end either way: it
+  catches (mantled over it) or misses (it folds its wings, stands up in the ferns and looks about) and
+  then flies up to whichever perch it likes, most often the one it came from. A level-up moves it on;
+  four lines bring it home (or out across the moon from home). Over a simulated ten minutes it flies
+  13-20 times to 9-11 perches.
+- **Its flights differ.** A dip low over the ferns and a swoop up into the perch, a near-level glide, or
+  an arc over; a little quicker or slower, its wingbeat too, now and then flapped all the way. Between
+  two limbs of one tree it hops: it turns on the perch toward the other place as it crouches, springs,
+  gives a beat or two with its wings half open and held high, and comes onto the other limb level. By a
+  trunk (a seat under a metre from the bark) it leaves out along the limb and comes in along it from the
+  limb's end, so a wing spread in the flare never meets the bark. Every route keeps a body's width from
+  every trunk below its top (the world hands the mind the trees' trunks): waypoints too near are pushed
+  out, and every stretch between them is sampled at its quarters, since the curve cuts the corners.
+- **It does more on a perch**, each act on its own clock and its own random stream, never two at once:
+  a stretch (one wing down and back, fanned, the leg on that side reaching out behind, the tail swung
+  the same way; or both wings raised over its back), a preen (its face buried in its breast or under a
+  shoulder, nibbling and tugging, fluffed, its eyes half shut), a doze (eyes closed, tufts down, fluffed,
+  the head sunk, an eye opened now and then; after a game over, or when nothing has happened for a
+  while), the tall stance (sleeked thin, tufts up, staring: now and then after a hard drop), a hop round
+  (the head swivels round first, then a crouch, a spring with the wings flicked open, and down facing the
+  other way), and a sidle (a step at a time, a foot lifted and set down further along, the body rocking
+  over the foot that holds, the head held still). A cue cuts a preen, a stretch or a doze short with a
+  crossfade.
+
+![its acts on a perch: a wing-and-leg stretch, both wings raised, a preen, a doze, the tall stance, facing away](forest-firefly-night/owl-acts.webp)
+
+*Its acts (`owlTrip=stretch|preen|doze|tall|turn`): a wing-and-leg stretch, both wings over its back, a
+preen under its left shoulder, a doze, the tall stance, sat facing away after a hop round.*
+
+![in the game: on its limb by the moon, hopping down to the low limb, stretching there](forest-firefly-night/owl-wander.webp)
+
+*In the real game (1920×1080, High): on its limb by the moon, hopping down to the low limb, stretching
+there.*
+
+**What the measuring found and fixed.** Ten-minute nights in Node (six seeds) turned up: a heading that
+spun 180° in a frame on a near-vertical hop (the flight now keeps a heading table that holds its direction
+where the path runs straight up or down and turns at most 6 rad/s); a hop that swung out from the trunk
+and back (a 180° turn in a quarter second; hops now go straight to the other seat); a leg joint that
+jumped 118° in a frame on short flights (the tuck out of the launch and the reach for the landing are now
+the lesser of the two, never a switch); a climb that grazed the pine's trunk (the corner-cutting above);
+the head flicking when a mark passed overhead (the look is now eased as a direction, then turned into head
+angles); events that ran "as of" a time long past when an act had held them up (a 2 m jump into a flight,
+a sidle that finished at once: an event is now dated no earlier than the frame step it happens in); and
+eyelids that snapped open when a cue cut a doze short (the crossfade now carries the lids). Final: per
+frame at 60 fps at most 12.2° of heading (the hop round), 4.3° of pitch, 3.5° of bank, 14° of head, no
+flight nearer the bark than its seats are (0.42 m); the same night at 30, 60 and 144 fps to the
+centimetre through 400 s.
+
+**Checked** in Electron (RTX 5080): every limb close up and from the side, every act frozen mid-move, a
+hop and a sidle, on WebGPU at High, the WebGL2 backend at High and Low, and Minimal (the limbs drawn on
+every tier); and in the real game (Single Player, 1920×1080, High), the owl sent down to the low limb, a
+stretch there, across to the pine and home on four lines. Consoles clean but for Electron's own CSP
+notice. **Tests**: `forest-owl.test.js` 27 -> 37 (the limbs grown into the elders, the wander, a miss, the
+hop round and the sidle, each act without a jump). **Cost**: the two elders gain 4,000 and 2,400 bark
+triangles in their existing draws; spruce-elder.glb 0.53 -> 0.64 MB, pine-elder.glb 0.43 -> 0.51 MB; the
+pack's ceiling 3.7 -> 3.75 MB. The owl's own grey limb tubes, their material and their two draws are gone.
+
+**Known limits.** On the pine (18-20 m off at the right edge) it is small and dark against the pine's
+trunk, as it was; at 16:10 and 4:3 those perches fall off screen and the sight test keeps it away. The
+high pine stub points almost at the eye, so it sits there side-on. Its flights home cross behind the
+board card for a moment.
+
 ## How it is built
 
 ### Trees, fronds and props authored in Blender
@@ -430,7 +534,9 @@ boulders and a dead snag. Formats and the regeneration command are in
 [`src/themes/forest/assets/ATTRIBUTION.md`](../src/themes/forest/assets/ATTRIBUTION.md).
 The pack is 2.9 MB in thirteen files with no third-party source; the generator's author
 reports byte-identical output over three runs. The eagle owl (`owl.glb`, 0.55 MB) has a generator
-of its own ([the eagle owl](#the-eagle-owl-2026-10-28)). The moon's face is the shared
+of its own ([the eagle owl](#the-eagle-owl-2026-10-28)); its dead limbs are grown into the two
+elders by `forest_night/owl_limbs.py` and placed in the world by `scripts/forest/pack-owl-limbs.mjs`.
+The moon's face is the shared
 `public/textures/2k_moon.jpg` (see `CREDITS.md`).
 
 The generator runs **headless** (`blender --background --factory-startup`); the Blender
@@ -457,7 +563,7 @@ MCP session was not used, so nothing in an open Blender was touched.
 | `forest-hours.js` | The five hours of the night as plain numbers: the clock's turn, the colours at any moment, the short way round. |
 | `forest-reactions.js` | The event director (pure); it also numbers the cues the owl hears. |
 | `forest-stage.js`, `forest-firefly-director.js` | Board card → world, and cues → waves, sparks, force fields, garlands, the animals. |
-| `forest-owl-rig.js`, `forest-owl-flight.js`, `forest-owl-perches.js`, `forest-owl-mind.js`, `forest-owl.js` | The eagle owl ([below](#the-eagle-owl-2026-10-28)): its bones and every pose, its flights and wingbeat, where it sits, what it does, and its drawing (plumage, light, its dead limbs). |
+| `forest-owl-rig.js`, `forest-owl-flight.js`, `forest-owl-perches.js`, `forest-owl-limbs.js` (generated), `forest-owl-mind.js`, `forest-owl.js` | The eagle owl ([below](#the-eagle-owl-2026-10-28)): its bones and every pose, its flights and wingbeat, where it sits (its limbs are the elders' own), what it does, and its drawing (plumage, light). |
 | `forest-post.js` | Volumetric moonbeams, bloom, grade, FXAA. |
 | `forest-quality.js` | One table for everything a tier scales. |
 

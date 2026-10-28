@@ -36,8 +36,9 @@ export const OWL_FLIGHT = Object.freeze({
     /** Wingbeats a second (an eagle owl's are slow), and a little quicker taking off. */
     beat: 2.3,
     beatLaunch: 2.9,
-    /** The steepest bank, degrees. */
+    /** The steepest bank, degrees, and the fastest its heading turns, radians a second. */
     bank: 52,
+    turnRate: 6,
     /** Stations per route the tables hold. */
     stations: 480,
 });
@@ -123,16 +124,37 @@ export function planFlight(points, { cruise = OWL_FLIGHT.cruise, work = 0, beat 
     const time = new Float64Array(n);
     for (let i = 1; i < n; i += 1) time[i] = time[i - 1] + (s[i] - s[i - 1]) / (0.5 * (speed[i] + speed[i - 1]));
     const duration = time[n - 1];
+    // Heading: the way it travels over the ground. Where the path runs nearly straight up or down that is
+    // not defined, so the heading holds what it was (or what it will be) and only follows the path as the
+    // path leans over; unwrapped, so a turn through south never jumps by a whole turn.
+    const flatness = (d) => clamp01((Math.hypot(d[0], d[2]) - 0.08) / 0.3);
+    let anchor = tangent.findIndex((d) => flatness(d) > 0.5);
+    if (anchor < 0) anchor = 0;
+    let held = Math.atan2(tangent[anchor][0], tangent[anchor][2]);
+    const headingRaw = new Float64Array(n);
+    for (let i = 0; i < n; i += 1) {
+        const d = tangent[i];
+        const toward = Math.atan2(d[0], d[2]);
+        held += Math.atan2(Math.sin(toward - held), Math.cos(toward - held)) * flatness(d);
+        headingRaw[i] = held;
+    }
+    // A bird turns its body only so fast (near a stop on a short hop the path's last wiggles would spin it):
+    // the heading follows at most OWL_FLIGHT.turnRate, run both ways so it neither lags nor leads.
+    const limited = Float64Array.from(headingRaw);
+    for (let pass = 0; pass < 2; pass += 1) {
+        const order = pass === 0 ? 1 : -1;
+        for (let k = 1; k < n; k += 1) {
+            const i = order > 0 ? k : n - 1 - k;
+            const j = i - order;
+            const step = OWL_FLIGHT.turnRate * Math.abs(time[i] - time[j]);
+            limited[i] = limited[j] + Math.max(-step, Math.min(step, limited[i] - limited[j]));
+        }
+    }
+    const heading = smoothTable(limited, time, 0.12);
     // Bank: the horizontal turn's lateral acceleration, a² = v² κ, signed (+ = turning left).
     const bank = new Float64Array(n);
     for (let i = 1; i < n - 1; i += 1) {
-        const a = tangent[i - 1];
-        const b = tangent[i + 1];
-        const ha = Math.atan2(a[0], a[2]);
-        const hb = Math.atan2(b[0], b[2]);
-        let turn = hb - ha;
-        while (turn > Math.PI) turn -= 2 * Math.PI;
-        while (turn < -Math.PI) turn += 2 * Math.PI;
+        const turn = heading[i + 1] - heading[i - 1];
         const ds = s[i + 1] - s[i - 1] || 1e-3;
         const horizontal = Math.hypot(tangent[i][0], tangent[i][2]);
         const lateral = speed[i] * speed[i] * (turn / ds) * horizontal;
@@ -162,7 +184,7 @@ export function planFlight(points, { cruise = OWL_FLIGHT.cruise, work = 0, beat 
     // The body's nose follows the path's climb, eased over a quarter second (a kink never jerks it).
     const climb = smoothTable(tangent.map((d) => Math.atan2(d[1], Math.hypot(d[0], d[2])) / DEG), time, 0.25);
     return {
-        points: raw, s, time, speed, tangent, bank: eased, climb, amp, phase, length, duration,
+        points: raw, s, time, speed, tangent, heading, bank: eased, climb, amp, phase, length, duration,
     };
 }
 
@@ -220,7 +242,7 @@ export function sampleFlight(flight, t, out = {}) {
     out.vy = ty * v;
     out.vz = tz * v;
     out.speed = v;
-    out.heading = Math.atan2(tx, tz);
+    out.heading = lerp(flight.heading[lo], flight.heading[hi]);
     out.climb = lerp(flight.climb[lo], flight.climb[hi]);
     out.bank = lerp(flight.bank[lo], flight.bank[hi]);
     out.amp = lerp(flight.amp[lo], flight.amp[hi]);

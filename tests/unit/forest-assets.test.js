@@ -73,8 +73,9 @@ const BINARIES = [...TREE_NAMES.map((name) => `${name}.glb`), FOLIAGE_FILE, PROP
 // Ceilings a little above what the Blender generator wrote on 2026-10-08 (noted beside each),
 // so the pack cannot balloon without someone raising a number on purpose.
 const BUDGET = Object.freeze({
-    packBytes: 3.7 * MB, // 2.96 MB for the trees, props and sprites, 0.55 MB the owl (2026-10-28)
-    glbBytes: 0.7 * MB, // spruce-elder.glb, 0.53 MB
+    // 2.96 MB for the trees, props and sprites, 0.55 MB the owl, 0.19 MB the dead limbs it sits on (2026-10-28).
+    packBytes: 3.75 * MB,
+    glbBytes: 0.7 * MB, // spruce-elder.glb, 0.64 MB with the owl's limbs
     impostorBytes: 1.0 * MB, // 0.83 MB
     barkTriangles: { hero: 30000, grove: 7200 }, // 22,676 and 5,384
     sites: { hero: 1500, grove: 450 }, // 1,146 and 328
@@ -301,7 +302,7 @@ describe('Forest asset pack on disk', () => {
         expect(readAsset(IMPOSTOR_FILE).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
     });
 
-    it('keeps the whole pack under 3.4 megabytes', () => {
+    it('keeps the whole pack under its ceiling (3.75 megabytes)', () => {
         const files = readdirSync(assetDirectory);
         const total = files.reduce((sum, file) => sum + statSync(new URL(file, assetDirectory)).size, 0);
         expect(total).toBeLessThan(BUDGET.packBytes);

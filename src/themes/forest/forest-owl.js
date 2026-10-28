@@ -14,12 +14,13 @@
  * plumage is drawn in the shader from codes each vertex carries (`_plumage`): the kind of feather or
  * part, where on a vane it is, and a seed.
  *
- * Its home is a dead limb of its own on the elder spruce, reaching out toward the moon.
+ * It sits on dead limbs grown into the elders (forest-owl-perches.js): the trees draw them, with their
+ * own bark.
  */
 
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, attribute, cameraPosition, color, dot, float, floor, fract, frontFacing, fwidth, hash, length,
+    Fn, abs, atan, attribute, cameraPosition, dot, float, floor, fract, frontFacing, fwidth, hash, length,
     mix, normalWorld, normalize, positionGeometry, positionWorld, reflect, saturate,
     select, sin, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
@@ -27,7 +28,6 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import {
     OWL_BONES, OWL_DRAWN_SCALE, OWL_ROOT_HEIGHT, createOwlFrame, poseOwl,
 } from './forest-owl-rig.js';
-import { FOREST_OWL_LIMB, FOREST_OWL_LIMBS } from './forest-owl-perches.js';
 
 /** How much larger than life the owl is drawn (forest-owl-rig.js). */
 export const FOREST_OWL_SCALE = OWL_DRAWN_SCALE;
@@ -261,97 +261,8 @@ function step01(x) {
     return saturate(x.mul(1e4));
 }
 
-/** The owl's dead limb on the elder spruce: grey, lichened, a broken twig or two. */
-function createLimbMaterial(light) {
-    const material = new THREE.MeshBasicNodeMaterial({ fog: false });
-    material.name = 'ForestOwlLimb';
-    material.fragmentNode = Fn(() => {
-        const N = normalize(normalWorld).toVar();
-        const world = positionWorld.toVar();
-        const V = normalize(cameraPosition.sub(world)).toVar();
-        const rest = positionGeometry.toVar();
-        const grain = light.noise(vec2(rest.x.mul(1.3).add(rest.z.mul(1.3)), rest.y.mul(1.3))).toVar();
-        const fine = light.noise(vec2(rest.x.mul(7).add(rest.z.mul(6)), rest.y.mul(9))).toVar();
-        const wood = mix(color(0x2b241e), color(0x6a6158), grain.r.mul(0.6).add(fine.g.mul(0.4))).toVar();
-        const lichen = smoothstep(0.55, 0.75, fine.b.mul(0.6).add(grain.a.mul(0.4))).mul(N.y.mul(0.5).add(0.5)).toVar();
-        const albedo = mix(wood, mix(color(0x4c5444), color(0x8a917a), fine.r), lichen.mul(0.8)).toVar();
-        const moon = light.moonlight();
-        const facing = saturate(dot(N, light.uMoonDir));
-        const edge = float(1).sub(saturate(dot(N, V)));
-        const rimLight = edge.mul(edge).mul(edge).mul(saturate(dot(V, light.uMoonDir).negate().mul(0.6).add(0.55)));
-        const cool = light.night(albedo);
-        const glow = light.glow(world);
-        const lit = cool.mul(light.moonColour()).mul(facing.mul(1.4).add(rimLight.mul(1.5))).mul(moon)
-            .add(cool.mul(light.ambient(N)).mul(1.4))
-            .add(albedo.mul(1.5).add(0.006).mul(glow));
-        return vec4(light.haze(lit, { world, glow }), 1);
-    })();
-    return material;
-}
-
-/** The limb's mesh: a bent, tapering tube from inside the trunk out toward the moon, two twig stubs. */
-export function createLimbGeometry(limb = FOREST_OWL_LIMB) {
-    const curve = new THREE.CatmullRomCurve3(limb.points.map((p) => new THREE.Vector3(...p)), false, 'catmullrom', 0.5);
-    const parts = [];
-    const tube = new THREE.TubeGeometry(curve, 28, 1, 9, false);
-    // Taper the unit tube by its ring: TubeGeometry lays rings along the curve in order.
-    const pos = tube.attributes.position;
-    const rings = 29;
-    const perRing = 10;
-    const centre = new THREE.Vector3();
-    const point = new THREE.Vector3();
-    for (let r = 0; r < rings; r += 1) {
-        const t = r / (rings - 1);
-        curve.getPointAt(t, centre);
-        const radius = limb.radius[0] + (limb.radius[1] - limb.radius[0]) * t;
-        const knot = 1 + 0.12 * Math.sin(t * 23.0) * Math.exp(-t * 2);
-        for (let k = 0; k < perRing; k += 1) {
-            const i = r * perRing + k;
-            point.fromBufferAttribute(pos, i).sub(centre).multiplyScalar(radius * knot).add(centre);
-            pos.setXYZ(i, point.x, point.y, point.z);
-        }
-    }
-    tube.computeVertexNormals();
-    parts.push(tube);
-    limb.twigs.forEach(({
-        at, dir, length: twigLength, radius,
-    }) => {
-        const start = curve.getPointAt(at);
-        const d = new THREE.Vector3(...dir).normalize();
-        const twig = new THREE.CylinderGeometry(radius * 0.35, radius, twigLength, 6, 1, false);
-        twig.translate(0, twigLength / 2, 0);
-        twig.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d));
-        twig.translate(start.x, start.y, start.z);
-        parts.push(twig.toNonIndexed());
-    });
-    // One geometry: positions and normals only.
-    const geometries = parts.map((g) => {
-        const plain = g.index ? g.toNonIndexed() : g;
-        const out = new THREE.BufferGeometry();
-        out.setAttribute('position', plain.attributes.position.clone());
-        out.setAttribute('normal', plain.attributes.normal.clone());
-        return out;
-    });
-    let count = 0;
-    geometries.forEach((g) => { count += g.attributes.position.count; });
-    const positions = new Float32Array(count * 3);
-    const normals = new Float32Array(count * 3);
-    let at = 0;
-    geometries.forEach((g) => {
-        positions.set(g.attributes.position.array, at * 3);
-        normals.set(g.attributes.normal.array, at * 3);
-        at += g.attributes.position.count;
-    });
-    const merged = new THREE.BufferGeometry();
-    merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    merged.computeBoundingSphere();
-    [tube, ...parts, ...geometries].forEach((g) => g.dispose());
-    return merged;
-}
-
 /**
- * The owl in the scene: its model, its limb, and the pose written each frame.
+ * The owl in the scene: its model, and the pose written each frame.
  */
 export class ForestOwl {
     constructor({ light, gltf, scale = FOREST_OWL_SCALE }) {
@@ -370,13 +281,6 @@ export class ForestOwl {
         if (this.built) return this;
         this.built = true;
         const { gltf, light } = this;
-        this.limbMaterial = createLimbMaterial(light);
-        this.limbs = FOREST_OWL_LIMBS.map((limb, i) => {
-            const mesh = new THREE.Mesh(createLimbGeometry(limb), this.limbMaterial);
-            mesh.name = `ForestOwlLimb ${i}`;
-            this.group.add(mesh);
-            return mesh;
-        });
         if (!gltf) return this;
         this.material = createOwlMaterial(light, this.uniforms);
         // Each world its own copy of the skeleton (a forest rebuilt for another tier gets a fresh one);
@@ -435,8 +339,6 @@ export class ForestOwl {
     }
 
     dispose() {
-        this.limbs?.forEach((mesh) => mesh.geometry.dispose());
-        this.limbMaterial?.dispose();
         this.material?.dispose();
         this.model?.traverse((child) => {
             if (child.isSkinnedMesh) child.skeleton?.dispose?.();

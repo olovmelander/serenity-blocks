@@ -305,16 +305,17 @@ export function createOwlPose() {
         blink: [0, 0],
         tufts: 0.8, // 0 laid flat, 1 erect
         puff: 0, // the white throat swelling for a hoot
-        ruffle: 0, // the whole plumage fluffed out
+        ruffle: 0, // the whole plumage fluffed out (below 0 sleeked down: the alarmed owl's tall, thin look)
         tail: {
             pitch: 0, yaw: 0, fan: 1,
         },
         // Legs: `tuck` folded up for flight, `reach` thrown forward to land, `grip` toes closed round a
-        // perch of `perch` metres radius, `spread` toes thrown open.
+        // perch of `perch` metres radius, `spread` toes thrown open, `back` stretched out behind (with the
+        // wing on its side, the way a perched owl stretches), `lift` the crouch before a spring.
         legs: [{
-            tuck: 0, reach: 0, grip: 1, spread: 0, lift: 0,
+            tuck: 0, reach: 0, grip: 1, spread: 0, lift: 0, back: 0,
         }, {
-            tuck: 0, reach: 0, grip: 1, spread: 0, lift: 0,
+            tuck: 0, reach: 0, grip: 1, spread: 0, lift: 0, back: 0,
         }],
         perch: 0.045,
     };
@@ -423,12 +424,13 @@ function legs(frame, pose, side) {
     };
     const tuck = clamp01(leg.tuck);
     const reach = clamp01(leg.reach);
+    const back = clamp01(leg.back || 0);
     // Thrown forward to land: the thigh swings the leg out ahead of the breast; tucked for flight the
-    // legs fold up under the belly's plumage.
-    set('thigh', qAxis(1, 0, 0, (-reach * 62 + tuck * 30 - (leg.lift || 0) * 20) * DEG, T.a));
-    set('shin', qAxis(1, 0, 0, (reach * 18 - tuck * 75 + (leg.lift || 0) * 28) * DEG, T.a));
-    set('tarsus', qAxis(1, 0, 0, (reach * 22 + tuck * 118 - (leg.lift || 0) * 12) * DEG, T.a));
-    set('foot', qAxis(1, 0, 0, (-reach * 25 + tuck * 40) * DEG, T.a));
+    // legs fold up under the belly's plumage; stretched, the leg reaches out straight behind.
+    set('thigh', qAxis(1, 0, 0, (-reach * 62 + tuck * 30 - (leg.lift || 0) * 20 + back * 48) * DEG, T.a));
+    set('shin', qAxis(1, 0, 0, (reach * 18 - tuck * 75 + (leg.lift || 0) * 28 - back * 22) * DEG, T.a));
+    set('tarsus', qAxis(1, 0, 0, (reach * 22 + tuck * 118 - (leg.lift || 0) * 12 - back * 34) * DEG, T.a));
+    set('foot', qAxis(1, 0, 0, (-reach * 25 + tuck * 40 + back * 38) * DEG, T.a));
     // Toes: closed round the perch (each joint by the arc its segment wraps), or thrown open.
     const radius = Math.max(0.015, pose.perch || 0.045);
     const grip = clamp01(leg.grip) * (1 - clamp01(leg.spread));
@@ -494,7 +496,7 @@ export function poseOwl(pose, frame = createOwlFrame()) {
     legs(frame, pose, 0);
     legs(frame, pose, 1);
     const puff = clamp01(pose.puff);
-    const ruffle = Math.max(0, pose.ruffle || 0);
+    const ruffle = Math.max(-0.6, pose.ruffle || 0);
     frame.scales.throat[0] = 1 + puff * 0.45;
     frame.scales.throat[1] = 1 + puff * 0.25;
     frame.scales.throat[2] = 1 + puff * 0.7;
