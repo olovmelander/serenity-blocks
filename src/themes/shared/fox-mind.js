@@ -17,7 +17,9 @@
  * its blink. Stepped by its world's clock: the same steps give the same fox, so a seek replays it.
  */
 
-import { POUNCE_AIR, SLEEP_HOLD } from './fox-rig.js';
+import {
+    FOOT, FOX_LEGS, POUNCE_AIR, SLEEP_HOLD, SPEC,
+} from './fox-rig.js';
 
 const TAU = Math.PI * 2;
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -36,7 +38,7 @@ const wrap = (a) => {
     return v;
 };
 /** mulberry32: a tiny seeded [0, 1) generator. */
-function mulberry32(seed) {
+export function mulberry32(seed) {
     let a = (seed >>> 0) || 1;
     return function next() {
         a = (a + 0x6d2b79f5) | 0;
@@ -76,7 +78,14 @@ const DIG_UNTIL = 1.5;
 /** The furthest it turns from its path to face what it stops for (radians). */
 const FACE_MOST = 1.05;
 /** Cycles of its gait it steps for every radian it turns on the spot. */
-const STEPS_A_TURN = 0.6;
+const STEPS_A_TURN = 1.2;
+/** The fastest it turns round (rad/s): a half turn takes it a second and more, step by step. */
+const FACE_RATE = 2.6;
+/**
+ * How far (model metres, at the arctic fox's size) a paw on the ground may be held from where its
+ * gait would have it: further than that through a hard turn, it is drawn after the body.
+ */
+const PLANT_MOST = 0.12;
 /** It blinks once in every stretch of this many seconds. */
 const BLINK_EVERY = 3.4;
 /** The tail's spring: stiffness and damping (it lags a turn and overshoots a little). */
@@ -101,6 +110,9 @@ export function foxCourse({
         stations,
         height,
         viewer,
+        /** Its line as laid out: `count` samples of (x, z, heading), evenly along it. */
+        points,
+        count,
         /** Its place `distance` metres along: (x, z, heading). */
         at(distance, out = [0, 0, 0]) {
             const f = ((((distance % length) + length) % length) / length) * count;
@@ -212,7 +224,17 @@ export class FoxMind {
             tailLift: 0,
             breath: 0,
             eyes: 0,
+            /** Where its paws are held on the ground, from where its gait has them (rig.spec). */
+            plant: new Float64Array(8),
         };
+        // Its paws on the ground: where each was put down (world x, z), whether it is down, how far
+        // it was held from its gait as it lifted (model metres), and what was drawn last.
+        this._footing = new Float64Array(8);
+        this._planted = new Uint8Array(4);
+        this._anchor = new Float64Array(8);
+        this._held = new Float64Array(8);
+        this._plantSpec = this.rig.createSpec();
+        this._paws = FOX_LEGS.map(([, , , , paw]) => this.rig.marks[paw]);
         /** Things that happened this step, for the world: prints, landings, a shake, a scrape of its paws. */
         this.events = [];
         this._at = [0, 0, 0];
@@ -266,6 +288,9 @@ export class FoxMind {
         this.attending = null;
         this._pathHeading = this.course.at(this.s, this._at)[2];
         this._speedBefore = this.speed;
+        this._planted.fill(0);
+        this._held.fill(0);
+        this.pose.plant.fill(0);
         this.resolve(time);
     }
 
@@ -275,6 +300,8 @@ export class FoxMind {
         this.course = course;
         this.s = k * course.length;
         this._pathHeading = this.course.at(this.s, this._at)[2];
+        // (Its paws are put down again where they are drawn on the new course.)
+        this._planted.fill(0);
     }
 
     /** The bearing from a place (x, z, …) toward the viewer. */
@@ -409,6 +436,30 @@ export class FoxMind {
         else this.switchClip(this.act[0], time);
     }
 
+    // A theme's fox may vary what follows; as they stand, they are every fox's.
+    /** Its trotting pace now (m/s). */
+    trotAt() {
+        return this.paces.trot;
+    }
+
+    /** Seconds before it stops again, once it has done what it stopped for. */
+    restFor() {
+        return 9 + this.rand() * 9;
+    }
+
+    /** What it stops for this time: one of its stops, by chance. */
+    chooseStop() {
+        return this.stops[Math.floor(this.rand() * this.stops.length) % this.stops.length];
+    }
+
+    /** It has just pulled up, knowing what for (before it turns to face anyone). */
+    stopped() {}
+
+    /** The longest it spends turning to face the viewer before it does what it stopped for (s). */
+    faceTime() {
+        return 1.8;
+    }
+
     /** Metres along its course to its next stopping place. */
     toStation() {
         const { length, stations } = this.course;
@@ -454,7 +505,7 @@ export class FoxMind {
 
         if (this.mode === 'gait') {
             const wantsRun = power > 0.1 || this.dash > 0.25;
-            let target = (wantsRun ? paces.run(power, surge) : paces.trot) + this.dash * paces.dash;
+            let target = (wantsRun ? paces.run(power, surge) : this.trotAt(time)) + this.dash * paces.dash;
             // It keeps off the heels of whoever is ahead of it, at any pace.
             const room = this.ahead - paces.room;
             if (room < paces.brakeFrom) {
@@ -479,12 +530,13 @@ export class FoxMind {
                 this.mode = 'idle';
                 this.modeAt = time;
                 this.act = null;
-                this.next = this.stops[Math.floor(this.rand() * this.stops.length) % this.stops.length];
+                this.next = this.chooseStop();
                 // (Its hunt ends in a leap along its course: not with another where it would land.)
                 if (this.next.includes('Pounce') && room < paces.mouse * (POUNCE_AIR[1] - POUNCE_AIR[0]) + 0.4) {
                     this.next = this.stops.find((stop) => !stop.includes('Pounce')) || this.next;
                 }
                 this.actIndex = 0;
+                this.stopped(time);
             }
         } else if (this.mode === 'idle') {
             this.speed *= Math.exp(-dt / 0.18);
@@ -492,7 +544,7 @@ export class FoxMind {
             if (!this.act) {
                 this.clipTime = (((this.phase % 1) + 1) % 1) * lengths.Run;
                 // (Faced, and stood still: a hunt needs no turn, but it does not begin on the move.)
-                if ((Math.abs(this.toFace()) < 0.09 && this.speed < 0.3) || time - this.modeAt > 1.8) {
+                if ((Math.abs(this.toFace()) < 0.09 && this.speed < 0.3) || time - this.modeAt > this.faceTime(time)) {
                     this.act = this.next || this.stops[0];
                     this.next = null;
                     this.actIndex = 0;
@@ -522,7 +574,7 @@ export class FoxMind {
                         else this.switchClip(next, time);
                     } else {
                         this.leaveIdle();
-                        this.nextStop = time + 9 + this.rand() * 9;
+                        this.nextStop = time + this.restFor(time);
                     }
                 }
             }
@@ -560,7 +612,79 @@ export class FoxMind {
         this.lift = Math.max(this.leap(time), this.lift - paces.fall * Math.max(0, dt));
         this.animate(dt, time);
         this.resolve(time);
+        this.plantFeet(dt);
         this._stepping = false;
+    }
+
+    /**
+     * Its paws hold the ground. Its gait lays each paw out under the body, so through a turn, a
+     * change of pace or a halt one on the ground would slide over it; instead each stays where it
+     * was put down until it lifts, and its swing eases back to where its gait sets it down next.
+     * (Through a cross-fade to an act its paws go where the act has them.)
+     */
+    plantFeet(dt) {
+        const p = this.pose;
+        const { rig } = this;
+        const drawn = p.plant;
+        const share = rig.footing(p, this._footing);
+        p.plant = null;
+        const spec = rig.spec(p, this._plantSpec);
+        p.plant = drawn;
+        const c = Math.cos(p.heading);
+        const s = Math.sin(p.heading);
+        const k = rig.scale;
+        // (Only once its gait is most of what it shows: getting up out of an act its legs are still
+        // folded, where a few millimetres turn a joint a long way.)
+        const hold = share > 0.5 && this.lift < 0.01;
+        const most = PLANT_MOST * rig.size;
+        for (let i = 0; i < 4; i++) {
+            const f = SPEC.feet + i * FOOT.size;
+            const gx = this._paws[i][0] + spec[f + FOOT.dx];
+            const gz = this._paws[i][2] + spec[f + FOOT.dz];
+            if (!hold) {
+                this._planted[i] = 0;
+                const keep = 1 - approach(10, dt);
+                drawn[2 * i] *= keep;
+                drawn[2 * i + 1] *= keep;
+                this._held[2 * i] = drawn[2 * i];
+                this._held[2 * i + 1] = drawn[2 * i + 1];
+                continue;
+            }
+            let ox;
+            let oz;
+            if (this._footing[2 * i] === 1) {
+                if (!this._planted[i]) {
+                    // It is put down where it is drawn now.
+                    const mx = gx + drawn[2 * i];
+                    const mz = gz + drawn[2 * i + 1];
+                    this._anchor[2 * i] = p.x + k * (mx * c + mz * s);
+                    this._anchor[2 * i + 1] = p.z + k * (mz * c - mx * s);
+                    this._planted[i] = 1;
+                }
+                const dx = this._anchor[2 * i] - p.x;
+                const dz = this._anchor[2 * i + 1] - p.z;
+                ox = (dx * c - dz * s) / k - gx;
+                oz = (dx * s + dz * c) / k - gz;
+                const far = Math.hypot(ox, oz);
+                if (far > most) {
+                    ox *= most / far;
+                    oz *= most / far;
+                    const mx = gx + ox;
+                    const mz = gz + oz;
+                    this._anchor[2 * i] = p.x + k * (mx * c + mz * s);
+                    this._anchor[2 * i + 1] = p.z + k * (mz * c - mx * s);
+                }
+                this._held[2 * i] = ox;
+                this._held[2 * i + 1] = oz;
+            } else {
+                this._planted[i] = 0;
+                const left = 1 - this._footing[2 * i + 1];
+                ox = this._held[2 * i] * left;
+                oz = this._held[2 * i + 1] * left;
+            }
+            drawn[2 * i] = ox * share;
+            drawn[2 * i + 1] = oz * share;
+        }
     }
 
     /** Move along its course, turn the gait over and leave prints. */
@@ -618,7 +742,8 @@ export class FoxMind {
             const faced = this.face;
             const wantFace = this.mode === 'idle' ? this.face + this.toFace() : 0;
             // (Once it has begun what it stopped for it stays as it stands: toFace() is 0 then.)
-            this.face += (wantFace - this.face) * approach(moving ? 3.2 : 2.6, dt);
+            const most = FACE_RATE * dt;
+            this.face += clamp((wantFace - this.face) * approach(moving ? 3.2 : 2.6, dt), -most, most);
             const turned = Math.abs(this.face - faced);
             if (!moving) this.phase += turned * STEPS_A_TURN;
             const wantStep = moving ? 0 : clamp01(turned / dt / 0.3);

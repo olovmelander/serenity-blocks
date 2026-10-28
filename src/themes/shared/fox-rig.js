@@ -609,17 +609,58 @@ export function createFoxRig({
         return spec;
     };
 
+    /** How much of what a pose shows is its gait (0 an act .. 1 its gait), as its cross-fades have it. */
+    const gaitShare = (p) => {
+        const blend = clamp01(p.blend ?? 1);
+        const mix = blend * blend * (3 - 2 * blend);
+        const held = p.was === undefined || p.was === null ? 1 : clamp01(p.hold ?? 1);
+        let running = p.clip === 'Run' ? mix : 0;
+        if (mix < 1) {
+            if (p.from === 'Run') running += (1 - mix) * held;
+            if (held < 1 && p.was === 'Run') running += (1 - mix) * (1 - held);
+        }
+        return running;
+    };
+
+    /**
+     * Which of a pose's paws its gait has on the ground, and how far through its swing each other
+     * one is: `out[2i]` 1 on the ground (or standing, its gait still), 0 swinging; `out[2i + 1]`
+     * how far the swing has eased toward where it will land (0 lifting off .. 1 landing). Returns
+     * how much of the pose is its gait.
+     */
+    const footing = (p, out = new Float64Array(8)) => {
+        const running = gaitShare(p);
+        const speed = p.speed ?? 0;
+        const lifts = Math.max(running * (p.amp ?? 1), p.step ?? 0);
+        const share = duty(speed);
+        footfalls(speed, FALLS, p.gallop ?? undefined);
+        for (let i = 0; i < 4; i++) {
+            const at = ((((p.phase ?? 0) + 1 - FALLS[i]) % 1) + 1) % 1;
+            if (lifts <= 0 || at < share) {
+                out[2 * i] = 1;
+                out[2 * i + 1] = 0;
+            } else {
+                const along = (at - share) / (1 - share);
+                out[2 * i] = 0;
+                out[2 * i + 1] = along * along * (3 - 2 * along);
+            }
+        }
+        return running;
+    };
+
     /**
      * The spec of a pose a mind resolved: what it is doing and what it was doing, cross-faded;
      * its gait under that; and over it all what the mind adds whatever it does — its lean, its
-     * nod, where its head is turned, its tail's swing and carriage, its breath.
+     * nod, where its head is turned, its tail's swing and carriage, its breath — and where its
+     * mind holds its paws on the ground (`plant`: model metres along and across for each, FOX_LEGS
+     * order, added to where its gait would have them).
      *
      * A mind that changes what it does half-way through a change names a third act: `was`, what
      * it had been leaving, held at the share `hold` of the way from it that it had reached — so
      * the pose it was in at that instant is the pose the new change starts from.
      * @param {object} p  { clip, clipTime, from, fromTime, blend, was, wasTime, hold, side, phase,
      *                      speed, amp, step, gallop, lean, nod, lookYaw, lookPitch, tailYaw,
-     *                      tailLift, breath }
+     *                      tailLift, breath, plant }
      * @param {Float64Array} [spec]
      */
     const specOf = (p, spec = createFoxSpec()) => {
@@ -629,20 +670,25 @@ export function createFoxRig({
         const held = p.was === undefined || p.was === null ? 1 : clamp01(p.hold ?? 1);
         sided(SPEC_A, p.clip, p.clipTime ?? 0, side);
         // How much of what it shows is its gait.
-        let running = p.clip === 'Run' ? mix : 0;
+        const running = gaitShare(p);
         if (mix < 1) {
             sided(SPEC_B, p.from, p.fromTime ?? 0, side);
-            if (p.from === 'Run') running += (1 - mix) * held;
             if (held < 1) {
                 sided(SPEC_C, p.was, p.wasTime ?? 0, side);
                 for (let i = 0; i < SPEC_SIZE; i++) SPEC_B[i] = SPEC_C[i] + (SPEC_B[i] - SPEC_C[i]) * held;
-                if (p.was === 'Run') running += (1 - mix) * (1 - held);
             }
             for (let i = 0; i < SPEC_SIZE; i++) spec[i] = SPEC_B[i] + (SPEC_A[i] - SPEC_B[i]) * mix;
         } else {
             spec.set(SPEC_A);
         }
         layGait(spec, p.phase ?? 0, p.speed ?? 0, running * (p.amp ?? 1), p.step ?? 0, p.gallop ?? undefined);
+        const { plant } = p;
+        if (plant) {
+            for (let i = 0; i < 4; i++) {
+                spec[SPEC.feet + i * STEP + DX] += plant[2 * i];
+                spec[SPEC.feet + i * STEP + DZ] += plant[2 * i + 1];
+            }
+        }
         spec[SPEC.roll] -= p.lean ?? 0;
         // (It sinks a little as it pitches — braking, or springing off — so its paws stay down.)
         const nod = p.nod ?? 0;
@@ -883,6 +929,8 @@ export function createFoxRig({
         duty,
         footfalls,
         gait: layGait,
+        gaitShare,
+        footing,
         spec: specOf,
         solve,
         point,

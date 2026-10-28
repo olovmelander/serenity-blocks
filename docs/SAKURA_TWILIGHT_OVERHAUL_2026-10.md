@@ -246,6 +246,79 @@ a second fox put back on the one course would need the room-keeping (`ahead`) ba
 
 ![A look, sitting by the lantern, the leap of the hunt, digging, asleep, and four lines](sakura-twilight-overhaul/foxes.webp)
 
+### It wanders, and its paws hold the ground (2026-10-28)
+
+The ask, after Winter's fox and bear had been made to wander: "Should we now look into the
+Sakura's fox and look into the movement of that fox". Two things were found. It kept one
+routine: out along the water's side and back along the near side, stopping every 23 to 36 s at
+the same four places by the two lanterns, most often to sit. And its paws slid: its gait lays
+each paw out under the body, so a paw on the ground turned with the body and slid over the
+grass. At its trot that was 9 % of the ground it covered on average, 28 % round the turns at
+the ends of its lanes (0.6 m across), and its paws skidded together under it at every halt.
+
+**Its paws hold the ground** (`plantFeet` in `../shared/fox-mind.js`, and so Winter's fox too).
+Where a paw is put down it stays, through a turn, a change of pace, a halt, until it lifts;
+its swing then eases back to where its gait sets it down next. The rig reads this off the pose
+(`plant`: how far each paw is held from where its gait would have it) only when a pose says so,
+so Verdant Hills' sheep, on the same rig, are as they were. A paw is held at most 0.12 m (at the
+arctic fox's size) from its gait; past that, in a hard pivot, it is drawn after the body. It is
+held only once the gait is more than half of what the fox shows: getting up out of its curled
+sleep its legs are still folded, where a few millimetres turned the shin 32° in a frame. Its
+turning on the spot changed to suit: it turns round no faster than 2.6 rad/s and takes 1.2 steps
+to the radian (was 0.6), so a planted paw is never held through more than a fraction of a turn.
+Measured over five minutes in Node: the slip of a planted paw at a trot from 1.47 to 0.02 mm a
+frame (Winter's fox from 1.28 to 0.03), round the ends of its lanes from 28 % of the ground it
+covered to none, the worst turn of its heading in a frame from 2.9° to 2.7° (Winter's wandering
+fox from 5.2° to 2.9°).
+
+![The tightest turn at the left end of its lanes, 0.2 s apart: the paws on the ground stay put](sakura-twilight-overhaul/fox-planted-turn.webp)
+
+**It wanders** (the game's fox: `wander` in `sakura-fox-mind.js`, on in `sakura-foxes.js`; the
+plain round is kept for the tests and the playground's own controls). The wandering is Winter's,
+moved to `../shared/fox-wander.js` so both foxes share it; what is the garden's own is where it
+may go and stop (`sakuraFoxWalkPlan`):
+
+- It strays up to 0.35 m either side of its lane, differently every lap, never nearer a lantern
+  than its lane goes (1.1 m) and never down the bank toward the water.
+- Its trot drifts between 0.85 and 1.25 of its pace, quicker when it is restless.
+- It stops on the path either side of the board (0.4 to 0.88 of the half width as the garden is
+  seen), out on the path about half the time and by a lantern the rest; by a lantern it is three
+  times likelier to sit in its light (`SAKURA_FOX_WANDER_STOPS`: twelve things to do, each with
+  its odds out on the path and beside a lantern; what it has just done is less likely).
+- It trots on 3 to 22 s between stops (mostly short) before it looks for a place.
+- Now and then as it pulls up (about one stop in three, never twice within 22 s) it turns right
+  round and goes back the other way, round its lanes the other way.
+- How restless it is drifts slowly (75 s), so it has spells of trotting on and spells of
+  stopping often.
+
+![Stops of its own: on the near path in the grass, at the water's edge, and beside the right-hand lantern](sakura-twilight-overhaul/fox-wander-stops.webp)
+
+![A turn back: trotting on, pulling up, round to the viewer, what it stopped for, and off the other way (0.4 to 16 s)](sakura-twilight-overhaul/fox-wander-turn.webp)
+
+Measured over three simulated quarter hours (seeds 0x5a17, 7, 12345): 26 to 35 stops, 25 to 32 s
+apart at the median, every one on the path either side of the board, 7 to 15 of them by a lantern;
+6 to 11 turn-backs; 10 to 11 kinds of stop; never on ground lower than 0.54 m (its lanes keep to
+0.5 m) nor nearer a lantern than 1.09 m (its lanes pass at 1.07 m); its heading at most 3.4° a
+frame.
+
+**Found and fixed on the way**, in Winter's wandering: its stray could carry the fox inside the
+tightest bend of its round (0.56 m across) by more than the bend's radius, where its way doubled
+back on itself and it slid backward 45 mm a frame while facing forward. Inside a bend it now
+strays no further than half its radius.
+
+Verification: playground captures on WebGPU at High (each kind of stop in the whole frame, a
+turn back frame by frame from 0.4 to 16 s, the tightest turn 0.2 s apart; Winter's turn back
+again on the shared code), consoles clean; not captured in a real game. Tests: the shared fox
+mind 20 → 23 (planted paws: none slides round a 2.5 m ring through a run, and without the
+planting one does; none held further than a leg holds one, and an act places its own paws; a
+pose that says nothing of its paws is posed as it was); `shared-fox-wander.test.js`, new (7:
+the room it strays in and the bend, keeping clear, the way back after a turn, a fox given no walk
+is the shared fox step for step, stops only where it is let, replay and a change of course);
+`sakura-fox-mind.test.js` 14 → 20 (stops either side and by a lantern or not, sitting by a
+lantern more, turn-backs head first, off the bank and clear of the lanterns, the same night from a
+seed, the game lets it wander). Playground: `foxTurn=<s>` has it pull up and turn back that long
+before the frame; the diagnostics name what it is doing, its turns and its restlessness.
+
 ## Verification
 
 - **Playground** (`npm run dev:playground`, `?effect=sakura-twilight&orbit=0&seed=271&hud=0`):

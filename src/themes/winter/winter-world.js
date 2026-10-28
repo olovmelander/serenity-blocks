@@ -200,7 +200,8 @@ export class WinterWorld {
         this.layoutLive = false;
         /** The moon on screen (fractions, y down): where the post's glare hangs. */
         this.heart = { x: 0.9, y: 0.14 };
-        this.mind = new FoxMind(foxRound(this.aspect), seed);
+        // It wanders: off its round a little, at its own pace, stopping where it likes, turning back.
+        this.mind = new FoxMind(foxRound(this.aspect), seed, { wander: true, aspect: this.aspect });
         this._camera = null;
         this._look = new THREE.Vector3();
         this._ray = new THREE.Vector3();
@@ -561,7 +562,7 @@ export class WinterWorld {
     compose() {
         const moon = moonDirection(this.aspect);
         const glow = glowDirection(this.aspect);
-        this.mind.setRound(foxRound(this.aspect));
+        this.mind.setRound(foxRound(this.aspect), this.aspect);
         this.bearMind.setAspect(this.aspect, this.time);
         if (!this.u) return;
         this.u.moonDir.value.set(moon[0], moon[1], moon[2]);
@@ -1644,11 +1645,21 @@ export class WinterWorld {
             sparks: this.sparks?.count ?? 0,
             snow: this.parts.snow?.count ?? 0,
             fox: {
-                body: Boolean(this.fox), mode: this.mind.mode, clip: pose.clip, x: pose.x, z: pose.z, glow: pose.glow, speed: pose.speed,
+                body: Boolean(this.fox),
+                mode: this.mind.mode,
+                clip: pose.clip,
+                x: pose.x,
+                z: pose.z,
+                glow: pose.glow,
+                speed: pose.speed,
+                act: this.mind.act ? this.mind.act.join('+') : null,
+                turns: this.mind.walk?.turns.length ?? 0,
+                restless: this.mind.restless ?? null,
             },
             spirit: this.spiritGlow,
             bear: {
                 body: Boolean(this.bear),
+                way: this.bearMind.wayAt(this.time),
                 act: this.bearMind.pose.clip,
                 x: this.bearMind.pose.x,
                 z: this.bearMind.pose.z,

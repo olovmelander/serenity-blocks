@@ -651,3 +651,90 @@ frames a second through a stop, a set-off and the spit, shorter steps on a slope
 forelegs hanging in `Rear`, the course and its footsteps closed over a lap, determinism, the
 board's stops); `winter-shaders.test.js` builds the bear's coat for WGSL and GLSL at High and
 checks it shares the body's buffers and skeleton.
+
+## The bear and the fox wander (2026-10-28)
+
+The ask: "Can we now have the polar bear and arctic fox in the winter theme act a little bit more
+random aswell?" The bear walked one route, lap after lap, stopping at the same places; the fox
+trotted one round and stopped at its two places, doing one of a few things. Both now wander, and
+both stay replayable: every choice comes from their own seeds, so a seek shows the same night.
+
+![The bear's ways: close, through, far, wide, linger, and out of sight between two of them](winter-fox-fires/wander-bear-ways.webp)
+
+![The fox turns back: trotting away, pulling up, round to the viewer, a greeting, and back the other way (0.4 to 12 s)](winter-fox-fires/wander-fox-turn.webp)
+
+**The bear knows six ways over the ice** (`BEAR_ROUTES` in `winter-bear-plan.js`): its old round,
+a close way (its first stop at 47 m), a far one (95 m), one through the middle, a wide one out to
+108 m and a slow one that lingers, each with its own stops and pace (150 to 414 s a lap). Every way
+sets out from, and comes back to, one place 9° past the frame's right edge at any width, where it
+stands a moment, so one way hands over to the next out of sight. There it waits 0 to 70 s (mostly
+short) before the next. Which way comes next is drawn by weight from its seed, never the same
+twice running. The lap schedule is built lazily from its clock, so its pose is still a function
+of that clock alone: a seek far into the night lands where stepping there would, and a change of
+width keeps the lap it is on and its place in it.
+
+**The fox wanders its round** (`wander` in `winter-fox-mind.js`, on in the game; the plain round
+is what is left for the tests and the playground's own controls):
+
+- It strays either side of its round, up to 0.9 m and differently every lap. On an upright
+  screen, where its round is drawn near the eye, it strays less (by the round's own pull,
+  `foxRoundPull` in `winter-core.js`). Its stray is fitted, at every place on its round, into the
+  room it has each side there: never nearer a framing tree than its round goes (or 2.4 m), never
+  further out across the frame than the open snow. Beside a tree it keeps to the far side of its
+  round and swings less, eased over a few metres so its path stays smooth.
+- Its trot drifts between 0.8 and 1.22 of its pace, quicker when it is restless.
+- It stops anywhere on the open snow either side of the board (0.4 to 0.86 of the half width),
+  or at one of its two places; it trots on 4 to 26 s between stops (mostly short), less when it
+  is restless.
+- It has 13 things to do when it stops, by their odds, and what it has just done is less likely.
+- Now and then as it pulls up (about one stop in three, never twice within 20 s) it turns right
+  round and goes back the way it came: its way turns under it, it steps the half turn round
+  toward the viewer first, does what it stopped for and sets off head first the other way.
+- How restless it is drifts slowly (Ornstein-Uhlenbeck, 70 s), so it has spells of trotting on
+  and spells of stopping often.
+
+The shared fox mind (`shared/fox-mind.js`) gained five hooks for this (`trotAt`, `restFor`,
+`chooseStop`, `stopped`, `faceTime`), each defaulting to what it did before with the same random
+draws, so Sakura's fox is unchanged.
+
+**Found and fixed on the way:** the stray took the fox 0.95 m from the trunk of the right-hand
+leaner, partly behind it (its round passes it at 1.53 m); and on a 430 × 932 screen it carried
+the fox out to 1.08 of the half width, out of frame. Both led to the room each side described
+above. A first version of that room clamped the stray, which bent its path sharply where the room
+on one side was nearly nothing (0.6 rad a metre over its round's own turn); laying the swing
+over the room instead keeps it under 0.25. And the playground's seek began only 9 s before the
+frame, so `foxTurn` could not show a turn more than 9 s old: it now begins early enough.
+
+Measured over three simulated quarter hours (seeds 0xf0c5, 7, 12345): 30 to 32 stops, every one on
+the open snow, on both sides; 9 to 11 turn-backs, 20 to 213 s apart; 11 to 13 kinds of stop; its
+trot 1.0 to 1.8 m/s; its heading at most 7.9° a frame; once under way never facing more than 0.6 rad
+off its path; never out of frame. The bear over three hours: every way taken, never one twice
+running, out of sight between 5 and 40 % of the time, handing over within 5 cm and 0.03 rad of the
+next way's start, all out of frame.
+
+Verification: playground captures on WebGPU at High at 1600 × 900 (each of the bear's ways, with a
+close up of the close one, the hand-over with no bear in sight, one turn-back frame by frame and
+the fox trotting back) and at 430 × 932; no WebGPU warning or error in any console. Not captured in
+a real game. `tests/unit/winter-bear.test.js` (26 → 29: the ways meeting out of sight at any
+width, another way each lap and never the same twice, still a function of its clock many ways on;
+the lake and stop tests now walk every way) and `tests/unit/winter-fox-mind.test.js` (53 → 64:
+stops on the open snow on both sides and off its places, the variety of what it does, its spells,
+turn-backs with its head first, the way back over the ground it came by, its paces, its stray
+against the trees and the frame at four widths, the frame, the same night from the same seed,
+a change of width, and the plain fox left as it was). The Winter, Sakura and shared fox suites:
+520 tests green.
+
+Later the same day, looking at Sakura's fox, its wandering moved to `../shared/fox-wander.js` so
+both foxes share it (what is Winter's own stays here: the framing trees, the frame, the open
+snow), and two things changed for both foxes, recorded in SAKURA_TWILIGHT_OVERHAUL_2026-10.md
+("It wanders, and its paws hold the ground"): their paws hold the ground where they are put down
+(a paw on the ground slid by 1.28 mm a frame at a trot on average, now 0.03), and they turn round
+no faster than 2.6 rad/s, a step every 0.8 rad. It also found a fault here: the stray could carry
+the fox inside the round's tightest bend by more than the bend's radius, where its way doubled
+back and it slid backward while facing forward; inside a bend it now strays no further than half
+its radius. The fox's figures above, measured again on the shared code: 30 to 32 stops, 9 to 11
+turn-backs, its heading at most 3.0° a frame (was 7.9°), never out of frame.
+
+Playground: `foxTurn=<s>` is new (the fox pulls up and turns back that long before the frame);
+`bearAt=<s>` (the bear that far into its own clock) now reaches any of its ways and laps; the
+diagnostics name the bear's way (`way: "far#3"`) and the fox's turns and restlessness.
