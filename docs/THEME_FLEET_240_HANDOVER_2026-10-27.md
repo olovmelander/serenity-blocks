@@ -8,10 +8,12 @@ to resume, and what to do next, in order.
 > - **Branch:** `perf/theme-fleet-240` in the worktree `C:\Users\olovm\repos\serenity-blocks-perf240`
 >   (node_modules junctioned to the main checkout).
 >   - Committed, **not merged and not pushed**.
->   - Synced with main at `390fc497` on 2026-10-28 (a clean merge).
+>   - Synced with main at `647c3851` on 2026-10-28 (49 commits; only `ts-ratchet.json` conflicted,
+>     both new entries kept).
 >   - Gates were green on the synced branch on 2026-10-28: tsc, ts and lint ratchets, fitness,
 >     boundaries, lifecycle audit, IP strings, perf budgets, release gates, and `npm run build`.
->   - Full vitest passed (23 228 tests) except the four known local-only failures:
+>     Fitness reports three improvements that came in with main; they are not locked in here.
+>   - Full vitest passed (23 452 tests) except the four known local-only failures:
 >     records-view, game-over-modal-result-compatibility and odyssey-level-briefing (the sv-SE
 >     locale), and tts-recorder-e2e (the symlink EPERM in a worktree).
 >   - Sync with main again before merging; main moves several times a day.
