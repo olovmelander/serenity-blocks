@@ -5,8 +5,8 @@ import {
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-    GOLDEN_FOREST_TREE_URLS, disposeGoldenForestAssets, goldenForestImpostorLayout, parseGoldenForestMeshes,
-    parseGoldenForestTree,
+    GOLDEN_FOREST_TREE_URLS, disposeGoldenForestAssets, goldenForestImpostorLayout, parseGoldenForestCrane,
+    parseGoldenForestMeshes, parseGoldenForestTree,
 } from '../../src/themes/golden-forest/golden-forest-assets.js';
 import {
     GOLDEN_FOREST_FEATURE_TREES, GOLDEN_FOREST_GROVE_CEILING, GOLDEN_FOREST_SUN_AZIMUTH_DEGREES, GOLDEN_FOREST_VIEWS,
@@ -72,15 +72,17 @@ async function parseGlb(file) {
 
 /** The real asset pack, parsed from disk; the sprite sheet is a stand-in data texture. */
 async function loadBundle({
-    trees = TREE_NAMES, impostors = true, props = true, track = true,
+    trees = TREE_NAMES, impostors = true, props = true, crane = true, track = true,
 } = {}) {
-    const [foliage, propsGltf, ...gltfs] = await Promise.all([parseGlb('golden-forest-foliage.glb'),
-        parseGlb('golden-forest-props.glb'), ...trees.map((name) => parseGlb(`${name}.glb`))]);
+    const [foliage, propsGltf, craneGltf, ...gltfs] = await Promise.all([parseGlb('golden-forest-foliage.glb'),
+        parseGlb('golden-forest-props.glb'), crane ? parseGlb('golden-forest-crane.glb') : null,
+        ...trees.map((name) => parseGlb(`${name}.glb`))]);
     const assets = {
         foliage: parseGoldenForestMeshes(foliage, 'Foliage'),
         props: parseGoldenForestMeshes(propsGltf, 'Props'),
         trees: {},
         impostors: null,
+        crane: craneGltf ? parseGoldenForestCrane(craneGltf) : null,
     };
     trees.forEach((name, index) => { assets.trees[name] = parseGoldenForestTree(gltfs[index], name); });
     if (impostors) {
@@ -752,8 +754,16 @@ describe('Golden Forest world scene contracts', () => {
         expect(named(world.group, /^GoldenForestMistBank /)).toHaveLength(tier.mist);
         expect(named(world.group, 'GoldenForestSunMotes')[0].count).toBe(tier.motes);
         expect(world.birds.count).toBe(tier.birds);
-        expect(named(world.group, 'GoldenForestBirds').map((mesh) => mesh.count))
-            .toEqual(tier.birds ? [tier.birds] : []);
+        // The cranes: two instanced draws of one material (the near and the far level of detail),
+        // between them every bird in the sky.
+        const cranes = [...named(world.group, 'GoldenForestBirds'), ...named(world.group, 'GoldenForestBirdsFar')];
+        expect(cranes).toHaveLength(tier.birds ? 2 : 0);
+        if (tier.birds) {
+            expect(new Set(cranes.map((mesh) => mesh.material)).size).toBe(1);
+            const drawn = world.birds.drawnCounts();
+            expect(drawn.near + drawn.far).toBeGreaterThan(0);
+            expect(drawn.near + drawn.far).toBeLessThanOrEqual(tier.birds);
+        }
         // Ribbons are built, and hidden until a combo calls them.
         const ribbons = named(world.group, /^GoldenForestRibbon /);
         expect(ribbons).toHaveLength(tier.ribbons);

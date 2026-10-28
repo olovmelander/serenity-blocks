@@ -158,13 +158,15 @@ async function loadRealAssets() {
         return new GLTFLoader().parseAsync(buffer, '');
     };
     const names = Object.keys(goldenForestAssets.GOLDEN_FOREST_TREE_URLS);
-    const files = ['golden-forest-foliage.glb', 'golden-forest-props.glb', ...names.map((name) => `${name}.glb`)];
-    const [foliage, props, ...trees] = await Promise.all(files.map(parse));
+    const files = ['golden-forest-foliage.glb', 'golden-forest-props.glb', 'golden-forest-crane.glb',
+        ...names.map((name) => `${name}.glb`)];
+    const [foliage, props, crane, ...trees] = await Promise.all(files.map(parse));
     const assets = {
         foliage: goldenForestAssets.parseGoldenForestMeshes(foliage, 'Foliage'),
         props: goldenForestAssets.parseGoldenForestMeshes(props, 'Props'),
         trees: {},
         impostors: null,
+        crane: goldenForestAssets.parseGoldenForestCrane(crane),
     };
     names.forEach((name, index) => {
         assets.trees[name] = goldenForestAssets.parseGoldenForestTree(trees[index], name);
