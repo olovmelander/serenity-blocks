@@ -133,6 +133,25 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
 }
 
 /**
+ * Show an overlay kept while an orb played (OdysseyMode parks it instead of removing it) in the
+ * state {@link createBoardInfoOverlay} builds one in, for everything a launch changed: the
+ * overlay's fade and lock, the panel's fade and the pressed Play button. The panel is hidden, as a
+ * new one is, until the next preview renders it and shows it.
+ * @param {HTMLElement} overlay
+ */
+export function showKeptBoardInfoOverlay(overlay) {
+    Object.assign(overlay.style, {
+        display: '', transition: '', opacity: '', visibility: '', pointerEvents: '',
+    });
+    const panel = /** @type {HTMLElement|null} */ (overlay.querySelector('#odyssey-level-panel'));
+    if (panel) {
+        Object.assign(panel.style, { transition: '', opacity: '', transform: '' });
+        panel.classList.add('hidden');
+    }
+    overlay.querySelector('#level-panel-play-btn')?.classList.remove('clicked');
+}
+
+/**
  * The header's journey as plain data, from the navigator's model: the figures, and every orb
  * as a cell, chapter by chapter.
  * @param {{ progress: object, nextLevelId: number, chapters: object[], orbs: Map<number, object> }} model

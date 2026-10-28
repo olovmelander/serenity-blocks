@@ -378,36 +378,43 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // Each look only while it shows (uniform branches: the fold takes screen derivatives, so it
     // may not sit behind a per-pixel condition).
     const color = Fn(() => {
-        // ROOT-PINNED before either branch: nodes shared by the tunnel and what follows it are
+        // ROOT-PINNED before every branch: nodes shared by the tunnel and what follows it are
         // assigned where first built, so built first inside a branch they read wrong outside it.
+        // (The light also pins what the alpha test reads, outside this Fn: the mouth's angle.)
         const light = lightAtEnd.toVar('ch7WindowLight');
         const body = vec3(0).toVar('ch7WindowBody');
-        If(uFold.lessThan(0.999), () => {
-            body.assign(tunnel);
-        });
-        If(uFold.greaterThan(0.001), () => {
-            const fold = foldSpaceColour({
-                ray, time: uTime, phase: uPhase, motion: uMotion, steps: options.foldSteps, room,
+        // NOTHING SHOWS before the portal opens: the colour is multiplied by uPortal below, so
+        // until then the window is the hole's plain black shadow, and the tunnel and the fold were
+        // evaluated on every pixel of the shadow to be multiplied by 0 (perf audit 2026-10-28). A
+        // uniform branch, as theirs are, so the derivatives inside stay legal.
+        If(uPortal.greaterThan(0.0), () => {
+            If(uFold.lessThan(0.999), () => {
+                body.assign(tunnel);
             });
-            // THE CROSSING: the fold opens from the centre in a widening wave. Its front is the
-            // rim of a lens: a thin edge of light split into its colours across its width (violet
-            // inside, red out), in a faint halo where the tunnel just outside shows as its own
-            // negative, once, as the wave sweeps out past the frame's edges.
-            const C = CH7_CROSSING;
-            const wave = crossing.mul(C.reach + C.width).sub(C.width);
-            const inFold = oneMinus(smoothstep(wave.sub(C.width), wave.add(C.width), theta));
-            const live = smoothstep(0.0, 0.08, crossing).mul(oneMinus(smoothstep(0.85, 1.0, crossing)));
-            const off = theta.sub(wave).div(C.edge);
-            const edge = exp(off.mul(off).negate());
-            const spectrum = vec3(0.5).add(vec3(0.5).mul(cos(off.mul(0.9).add(vec3(0.0, 2.1, 4.2)))));
-            const haloOff = theta.sub(wave).div(C.width * 2.2);
-            // (outside the edge only: inside, the fold is already clear)
-            const halo = exp(haloOff.mul(haloOff).negate()).mul(smoothstep(-0.2, 0.4, haloOff));
-            const negative = vec3(1.0).sub(clamp(body.mul(C.negative), 0.0, 1.0));
-            const frontCol = spectrum.mul(edge).mul(C.front)
-                .add(mix(vec3(...C.frontColour), negative, 0.6).mul(halo).mul(C.halo))
-                .mul(live);
-            body.assign(mix(body, fold, inFold).add(frontCol));
+            If(uFold.greaterThan(0.001), () => {
+                const fold = foldSpaceColour({
+                    ray, time: uTime, phase: uPhase, motion: uMotion, steps: options.foldSteps, room,
+                });
+                // THE CROSSING: the fold opens from the centre in a widening wave. Its front is the
+                // rim of a lens: a thin edge of light split into its colours across its width (violet
+                // inside, red out), in a faint halo where the tunnel just outside shows as its own
+                // negative, once, as the wave sweeps out past the frame's edges.
+                const C = CH7_CROSSING;
+                const wave = crossing.mul(C.reach + C.width).sub(C.width);
+                const inFold = oneMinus(smoothstep(wave.sub(C.width), wave.add(C.width), theta));
+                const live = smoothstep(0.0, 0.08, crossing).mul(oneMinus(smoothstep(0.85, 1.0, crossing)));
+                const off = theta.sub(wave).div(C.edge);
+                const edge = exp(off.mul(off).negate());
+                const spectrum = vec3(0.5).add(vec3(0.5).mul(cos(off.mul(0.9).add(vec3(0.0, 2.1, 4.2)))));
+                const haloOff = theta.sub(wave).div(C.width * 2.2);
+                // (outside the edge only: inside, the fold is already clear)
+                const halo = exp(haloOff.mul(haloOff).negate()).mul(smoothstep(-0.2, 0.4, haloOff));
+                const negative = vec3(1.0).sub(clamp(body.mul(C.negative), 0.0, 1.0));
+                const frontCol = spectrum.mul(edge).mul(C.front)
+                    .add(mix(vec3(...C.frontColour), negative, 0.6).mul(halo).mul(C.halo))
+                    .mul(live);
+                body.assign(mix(body, fold, inFold).add(frontCol));
+            });
         });
         return body.add(light);
     })();

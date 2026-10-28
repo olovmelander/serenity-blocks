@@ -1,5 +1,6 @@
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
+import { waitForAnimationFrames } from './odyssey-cover-paint.js';
 
 /** The retained world is scenery only while its exact campaign operation owns it. */
 export function isOdysseyScenicJourney(mode) {
@@ -90,11 +91,17 @@ export async function returnToOdysseyWorld(mode, options = {}) {
 
                 if (!scenicOwner) await mode._applyBoardAudioPolicy({ restoreTrack: true });
                 if (!isCurrent()) return false;
+                // A new tier or antialiasing chosen while the orb played shows only on a new build
+                // (OdysseyBoardController.needsQualityRebuild): make it here, under the shut gate,
+                // framed on the orb just played, as ?odysseyKeepBoard=0 rebuilds on every return.
+                const rebuild = Boolean(mode.boardController?.needsQualityRebuild?.());
+                if (rebuild) mode._disposeOdysseyBoard();
                 const shown = await mode._showBoardView({
                     showLoadingOverlay: false,
                     minOverlayDisplayMs: 0,
                     focusLevelId: options.settlePath ? null : completedLevelId,
                     keepBoardLocked: true,
+                    ...(rebuild && !options.settlePath ? { seatOnFocus: true } : {}),
                 });
                 if (shown === false || !isCurrent()) return false;
                 if (options.settlePath && Number.isFinite(completedLevelId)) {
@@ -108,6 +115,11 @@ export async function returnToOdysseyWorld(mode, options = {}) {
                     mode.selectedLevelId = completedLevelId;
                 }
                 if (await options.onWorldReady?.() === false || !isCurrent()) return false;
+                // The world opens the frame after this resolves. Let the resumed map draw and the
+                // map's overlay paint while the gate is still shut (it draws in a worker and keeps
+                // moving), so neither lands on the frames the world opens on.
+                await waitForAnimationFrames(2);
+                if (!isCurrent()) return false;
                 // Phase 0 metric: how long the board took to become ready on return.
                 // Parked (kept-alive) = a few hundred ms; full rebuild = ~3.5-4.2s.
                 mode._perfMeasure('odyssey-return-board-ready', 'odyssey-return-start');

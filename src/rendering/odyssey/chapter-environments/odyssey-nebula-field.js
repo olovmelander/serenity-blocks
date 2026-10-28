@@ -52,6 +52,7 @@ import { cloudFieldSdf } from '../world/odyssey-cloud-field.js';
 import { fbm3, noise3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { resolveQualityTier } from './shared/odyssey-quality-tier.js';
+import { runChapterSteps } from './shared/chapter-build-steps.js';
 import {
     NEBULA_FIELD_CLEARANCE,
     ODYSSEY_NEBULA_FIELD_SPECS,
@@ -461,7 +462,16 @@ function buildGasMaterial(uReveal, uTime, palette, tier = 'high', drive = {}) {
     return material;
 }
 
-export function createNebulaFieldTSL({ uTime = null, qualityTier = 'high' } = {}) {
+export function createNebulaFieldTSL(options = {}) {
+    return runChapterSteps(createNebulaFieldTSLSteps(options));
+}
+
+/**
+ * createNebulaFieldTSL in steps (shared/chapter-build-steps.js): the gas geometry, then its
+ * material.
+ * @param {{uTime?: *, qualityTier?: string}} [options]
+ */
+export function* createNebulaFieldTSLSteps({ uTime = null, qualityTier = 'high' } = {}) {
     const uReveal = uniform(0);
     const time = uTime ?? uniform(0);
     const group = new THREE.Group();
@@ -476,6 +486,7 @@ export function createNebulaFieldTSL({ uTime = null, qualityTier = 'high' } = {}
     // additive, composite in any order — so every volume of every mass is one geometry on
     // one material. `paint` still picks each mass's palette fallback.
     const built = buildGasGeometry(specs, specIndexById);
+    yield;
     const uBeat = uniform(1);
     const uKey = uniform(new THREE.Vector3(-300, 300, -1200));
     const uPull = uniform(0);

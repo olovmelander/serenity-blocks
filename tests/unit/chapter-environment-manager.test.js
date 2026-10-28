@@ -240,4 +240,18 @@ describe('ChapterEnvironmentManager late-game coverage', () => {
         expect(state.inSeam).toBe(true);
         expect(state.boundaryId).toBe('3-4');
     });
+
+    it('lights the rig for the chapters it builds, and for 2-5 again once the One World hands them back', () => {
+        // Perf audit 2026-10-28: 4 slots with the One World on, not the dioramas' 9 (every lit
+        // material evaluated all of them); the escape hatch still lights its dioramas (ADR-0015).
+        const lights = (m) => m.persistentLightRig.children.filter((c) => c.isLight).length;
+        const world = new ChapterEnvironmentManager(new THREE.Scene(), null, { suppressedChapters: [2, 3, 4, 5] });
+        expect(lights(world)).toBe(4);
+        world.suppressedChapters = new Set(); // _abandonOneWorld
+        expect(lights(world)).toBe(9);
+        world.dispose();
+        const dioramas = new ChapterEnvironmentManager(new THREE.Scene(), null);
+        expect(lights(dioramas)).toBe(9);
+        dioramas.dispose();
+    });
 });

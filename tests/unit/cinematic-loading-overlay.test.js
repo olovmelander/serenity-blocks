@@ -371,6 +371,43 @@ describe('cinematic loading overlay countdown', () => {
         expect(release).toHaveBeenCalledOnce();
     });
 
+    it('does not make a mode that adopted a painted cover wait its frames again (perf audit 2026-10-28)', async () => {
+        showCinematicLoadingOverlay('ODYSSEY');
+        const first = waitForCinematicLoadingOverlayPresented();
+        await vi.advanceTimersByTimeAsync(0);
+        animationFrames.flush();
+        await vi.advanceTimersByTimeAsync(1);
+        await first;
+        // Odyssey adopts the cover main painted and waits on it: no frames owed this time.
+        showCinematicLoadingOverlay('ODYSSEY');
+        const ready = vi.fn();
+        const again = waitForCinematicLoadingOverlayPresented().then(ready);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(ready).toHaveBeenCalledOnce();
+        await again;
+        // A fresh cover is owed its frames.
+        showCinematicLoadingOverlay('INFINITY');
+        const freshReady = vi.fn();
+        waitForCinematicLoadingOverlayPresented().then(freshReady);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(freshReady).not.toHaveBeenCalled();
+    });
+
+    it('lets what it fades off take input from the start of the fade, when asked', async () => {
+        showCinematicLoadingOverlay('ODYSSEY');
+        const cover = document.getElementById('cinematic-loading-overlay');
+        const dismissed = dismissCinematicLoadingOverlay({ minVisibleMs: 0, fadeOutMs: 100, releaseInput: true });
+        expect(cover.style.pointerEvents).toBe('none');
+        await vi.advanceTimersByTimeAsync(200);
+        await dismissed;
+        showCinematicLoadingOverlay('SINGLE PLAYER');
+        const other = document.getElementById('cinematic-loading-overlay');
+        const kept = dismissCinematicLoadingOverlay({ minVisibleMs: 0, fadeOutMs: 100 });
+        expect(other.style.pointerEvents).not.toBe('none'); // other modes keep the cover's input
+        await vi.advanceTimersByTimeAsync(200);
+        await kept;
+    });
+
     it('never adopts a cover that is already on its way out', async () => {
         showCinematicLoadingOverlay('SINGLE PLAYER');
         const leaving = document.getElementById('cinematic-loading-overlay');

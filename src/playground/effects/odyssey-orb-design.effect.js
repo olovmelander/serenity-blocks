@@ -14,12 +14,16 @@
 //   icons=a,b,c,d                     theme ids for the four orbs
 //   tint=#rrggbb                      the chapter light (default per backdrop)
 //   sel=<0..3>                        select one orb (its ring)
+//   fog=<density>                     a scene FogExp2 as the game sets one (e.g. 0.06 at dist 11);
+//                                     the backdrop stays unfogged so the orbs read against it
+//   fogc=#rrggbb                      its colour (default a pale sea teal)
 import * as THREE from 'three/webgpu';
 import {
     Fn, floor, mix, normalize, positionWorld, smoothstep, step, uniform, vec3,
 } from 'three/tsl';
 import { hash21 } from '../../rendering/odyssey/chapter-environments/shared/odyssey-tsl-noise.js';
 import {
+    ORB_STAR_QUAD,
     ORB_STAR_SIZE,
     ORB_STAR_SLOTS,
     createGlassShellTSL,
@@ -82,6 +86,7 @@ function createBackdrop(kind) {
     })();
     material.side = THREE.BackSide;
     material.depthWrite = false;
+    material.fog = false;
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(400, 48, 32), material);
     mesh.renderOrder = -10;
     return mesh;
@@ -94,6 +99,9 @@ export function create({ scene, camera, params }) {
     const icons = (params.get('icons') || 'aurora,bioluminescence,black-hole,crystal-cave').split(',');
     const dist = Number.parseFloat(params.get('dist')) || 11;
     const sel = params.has('sel') ? Number.parseInt(params.get('sel'), 10) : -1;
+    const fogDensity = Number.parseFloat(params.get('fog')) || 0;
+    const previousFog = scene.fog;
+    if (fogDensity > 0) scene.fog = new THREE.FogExp2(new THREE.Color(params.get('fogc') || 0x5a8f96), fogDensity);
 
     const group = new THREE.Group();
     group.name = 'orb-design';
@@ -178,7 +186,7 @@ export function create({ scene, camera, params }) {
     group.add(haloMesh);
 
     // The completed orb's stars, placed in the camera basis as the manager places them.
-    const starGeo = new THREE.PlaneGeometry(1, 1);
+    const starGeo = new THREE.PlaneGeometry(ORB_STAR_QUAD, ORB_STAR_QUAD);
     starGeo.deleteAttribute('normal');
     const done = STATES.findIndex((s) => s.completed);
     const starArr = new Float32Array(3).map((_, s) => (s < STATES[done].stars ? 1 : 0));
@@ -224,6 +232,7 @@ export function create({ scene, camera, params }) {
         },
         dispose() {
             scene.remove(group);
+            scene.fog = previousFog;
             [windowGeo, haloGeo, glass.geometry, starGeo, backdrop.geometry].forEach((g) => g.dispose());
             [windowMesh, glassMesh, haloMesh, starMesh, backdrop].forEach((o) => o.material.dispose());
             atlas.dispose();

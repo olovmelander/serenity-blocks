@@ -17,6 +17,7 @@ import * as THREE from 'three/webgpu';
 import {
     CHAPTER_LIGHT_MANIFEST, deriveRigSlots, seedChapterLightPool, acquireChapterLight,
     releaseChapterLights, syncChapterLightSlots, getChapterLightPool, resetChapterLightPoolForTests,
+    growChapterLightPool,
 } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-light-pool.js';
 import { CHAPTER_SCENES } from '../../src/rendering/odyssey/chapter-environments/registry.js';
 
@@ -182,6 +183,45 @@ describe('chapter light pool', () => {
         expect(pool.overflow).toBe(2);
         expect(warn).toHaveBeenCalledTimes(1);
         warn.mockRestore();
+    });
+
+    it('sizes the rig to the chapters built here: 4 slots while the One World draws 2-5 (perf audit 2026-10-28)', () => {
+        // The dioramas' lights sized the rig at 9 and every lit material evaluated all 9, five of
+        // them only ever at intensity 0 on the default path.
+        const live = deriveRigSlots(CHAPTER_LIGHT_MANIFEST, { without: [2, 3, 4, 5] });
+        expect(live).toEqual({
+            AmbientLight: 1, HemisphereLight: 0, DirectionalLight: 1, PointLight: 2, SpotLight: 0,
+        });
+        const rig = new THREE.Group();
+        const pool = seedChapterLightPool(rig, CHAPTER_LIGHT_MANIFEST, { without: new Set([2, 3, 4, 5]) });
+        expect(rig.children).toHaveLength(4);
+        // Every pair of neighbours the board can blend, at full weight: nothing is ever dropped.
+        [1, 6, 7, 8].forEach((id) => {
+            (CHAPTER_LIGHT_MANIFEST[id] || []).forEach((type) => acquireChapterLight(id, type, { intensity: 1 }));
+        });
+        [[1], [1, 2], [5, 6], [6, 7], [7, 8], [8]].forEach((pair) => {
+            syncChapterLightSlots(pair.map((chapterId) => ({ chapterId, weight: 1 })));
+        });
+        expect(pool.overflow).toBe(0);
+        // The set the board keyed every lit material on is the set it keeps.
+        const ids = rigIds(rig);
+        expect(growChapterLightPool({ without: [2, 3, 4, 5], rig })).toBe(0);
+        expect(rigIds(rig)).toBe(ids);
+    });
+
+    it('grows the rig back when the One World hands its chapters back (ADR-0015), and never shrinks it', () => {
+        const rig = new THREE.Group();
+        const pool = seedChapterLightPool(rig, CHAPTER_LIGHT_MANIFEST, { without: [2, 3, 4, 5] });
+        const before = rig.children.slice();
+        expect(growChapterLightPool({ without: [], rig: new THREE.Group() })).toBe(0); // not this pool's rig
+        expect(growChapterLightPool({ without: [] })).toBe(5);
+        expect(rig.children).toHaveLength(9);
+        expect(rig.children.slice(0, 4)).toEqual(before); // the old slots stay, in their order
+        expect(rig.children.every((l) => l.isLight && l.intensity === 0)).toBe(true);
+        expect(Object.fromEntries(Object.entries(pool.slots).map(([type, list]) => [type, list.length])))
+            .toEqual(deriveRigSlots());
+        expect(growChapterLightPool({ without: [2, 3, 4, 5] })).toBe(0);
+        expect(rig.children).toHaveLength(9);
     });
 
     it('EVERY chapter acquires exactly its manifest and leaves no visible light behind (the contract)', async () => {
