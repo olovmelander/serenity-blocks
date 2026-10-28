@@ -57,6 +57,7 @@ import { POST_LOOK, VoidEmberPost, createPassThroughPipeline } from './void-embe
 import { PLAYER_SLOTS, readLayoutRects } from './void-ember-composition.js';
 import { VOID_EMBER_EVENT_HANDLERS, VoidEmberDirector } from './void-ember-director.js';
 import { approach } from './void-ember-core.js';
+import { voidEmberBakes } from './void-ember-bakes.js';
 
 const THEME_ID = 'void-ember';
 const LOG_PREFIX = '[Void Ember]';
@@ -204,8 +205,11 @@ export default class VoidEmberTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The crust's plates (174 ms on a first visit) bake in a worker while the renderer comes up.
+        const baking = voidEmberBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;
