@@ -152,12 +152,17 @@ describe('world build failure report', () => {
             ),
             'utf8',
         );
-        // Both fallbacks (a failed build, and a failed post-reveal compile — audit
-        // 2026-10-18) go through one method, so the order is pinned there.
+        // Every fallback (a failed build, and a failed compile before or after the reveal —
+        // audit 2026-10-18) goes through one method, so the order is pinned there.
         const catchIdx = src.indexOf("console.error('[OdysseyBoard] One World failed to build");
         expect(catchIdx).toBeGreaterThan(-1);
         expect(src.slice(catchIdx, catchIdx + 600)).toContain('this._abandonOneWorld(error)');
-        expect(src).toMatch(/label === 'one-world'[^\n]*\n\s*this\._abandonOneWorld\(error\)/);
+        // A failed compile, after the reveal or (a map opening on an Act II orb) before it.
+        expect(src).toMatch(/label === 'one-world'[^\n]*this\._abandonWorldAfterFailedCompile\(error, target\)/);
+        expect(src).toMatch(/'one world', \{ rethrow: true \}\)\s*\.catch\(\(error\) => this\._abandonWorldAfterFailedCompile\(error, worldGroup\)\)/);
+        const helperIdx = src.indexOf('_abandonWorldAfterFailedCompile(error, group) {');
+        expect(helperIdx).toBeGreaterThan(-1);
+        expect(src.slice(helperIdx, helperIdx + 400)).toContain('this._abandonOneWorld(error)');
         const methodIdx = src.indexOf('_abandonOneWorld(error) {');
         expect(methodIdx).toBeGreaterThan(-1);
         const body = src.slice(methodIdx, methodIdx + 1200);

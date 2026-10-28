@@ -37,6 +37,7 @@ import {
 import {
     COSMIC_BACKDROP_DEFAULTS, GALACTIC_BAND_AXIS, bakeCosmicBackdropRows,
 } from './odyssey-cosmic-backdrop-bake.js';
+import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
 
 // The bake math lives in odyssey-cosmic-backdrop-bake.js (three-free, so a Worker can run it).
 export { COSMIC_BACKDROP_DEFAULTS, GALACTIC_BAND_AXIS };
@@ -76,6 +77,18 @@ function makeBackdropTexture(data, width, height) {
 
 /** Finished bakes, by their options: the board is rebuilt across a session, the sky never changes. */
 const BAKED_SKIES = new Map();
+/**
+ * The texture of a finished sky, by its options: ONE GPU copy for every dome that shows it
+ * (chapters 6 and 7 share their sky, and each made its own 2 MiB copy of it), kept for the process
+ * like Odyssey's other bakes, so the board frees its GPU copy as it disposes
+ * (shared/odyssey-resident-textures.js; nothing freed the per-dome copies, which waited for GC).
+ */
+const SKY_TEXTURES = new Map();
+
+/** The first finished texture for a sky becomes the one every later dome uses. */
+function keepFinishedSky(key, texture) {
+    if (!SKY_TEXTURES.has(key)) SKY_TEXTURES.set(key, keepOdysseyTexture(texture));
+}
 const bakeKey = (o) => JSON.stringify([o.width, o.height, o.seed, o.floorBottom, o.floorTop, o.bandAxis]);
 const nextTask = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 /** Worker bakes in flight, by key: two domes asking for one sky share one bake. */
@@ -142,12 +155,19 @@ function bakeInBackdropWorker(o, key) {
  */
 export function bakeCosmicBackdropTextureSliced(options = {}, { sliceMs = 4 } = {}) {
     const o = { ...COSMIC_BACKDROP_DEFAULTS, ...options };
+    const key = bakeKey(o);
+    const kept = SKY_TEXTURES.get(key);
+    if (kept) {
+        return {
+            texture: kept, data: kept.image.data, ready: Promise.resolve(kept), cached: true,
+        };
+    }
     const data = new Uint8Array(o.width * o.height * 4);
     const texture = makeBackdropTexture(data, o.width, o.height);
-    const key = bakeKey(o);
     const done = BAKED_SKIES.get(key);
     if (done) {
         data.set(done);
+        keepFinishedSky(key, texture);
         return {
             texture, data, ready: Promise.resolve(texture), cached: true,
         };
@@ -170,6 +190,7 @@ export function bakeCosmicBackdropTextureSliced(options = {}, { sliceMs = 4 } = 
             if (cancelled) return null;
             data.set(fromWorker);
             texture.needsUpdate = true;
+            keepFinishedSky(key, texture);
             return texture;
         }
         if (cancelled) return null;
@@ -189,6 +210,7 @@ export function bakeCosmicBackdropTextureSliced(options = {}, { sliceMs = 4 } = 
         if (cancelled) return null;
         data.set(work);
         texture.needsUpdate = true;
+        keepFinishedSky(key, texture);
         return texture;
     })();
     return {

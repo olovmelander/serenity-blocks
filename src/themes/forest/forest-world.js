@@ -13,6 +13,8 @@ import { ForestFireflies } from './forest-fireflies.js';
 import { ForestFireflyDirector, forestFigureBox } from './forest-firefly-director.js';
 import { forestHourDrift, forestHourName, forestNearestTurn } from './forest-hours.js';
 import { ForestLight } from './forest-light.js';
+import { ForestOwl } from './forest-owl.js';
+import { ForestOwlMind } from './forest-owl-mind.js';
 import { FOREST_EYE } from './forest-plan.js';
 import { forestTier } from './forest-quality.js';
 import { ForestSky } from './forest-sky.js';
@@ -21,6 +23,7 @@ import { FOREST_HEARTH, ForestTerrain, forestGroundHeight } from './forest-terra
 import { ForestTrees } from './forest-trees.js';
 import { FOREST_FIGURE_STAND, FOREST_FIGURE_STANDS, ForestUnderstory } from './forest-understory.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { seededRandom } from '../../utils/helpers.js';
 
 /** Half the angle a firefly figure fills at its usual range, with a margin; ranges to try. */
 const FIGURE_HALF_VIEW = THREE.MathUtils.degToRad(8);
@@ -29,6 +32,10 @@ const FIGURE_RANGES = [21, 23.5, 26, 18.5, 28.5];
 const VIEW_MARGIN = 0.02;
 /** How quickly the night takes a level's step, per second: most of the way in four seconds. */
 const HOUR_FOLLOW = 0.6;
+/** The owl's own generator, unless one is given: its life never shifts the forest's draws. */
+const OWL_SEED = 7919;
+/** How far in front of the eye the owl looks when it looks at the board (metres along the card's ray). */
+const OWL_BOARD_DEPTH = 6;
 
 /** A figure standing on the ground at x, z, side on to the eye and facing the moon. */
 function standAnchor(x, z, stand) {
@@ -53,14 +60,16 @@ function fitsView(stage, anchor) {
 
 export class ForestWorld {
     constructor({
-        scene, camera, quality = 'High', rng = Math.random, assets,
+        scene, camera, quality = 'High', rng = Math.random, assets, owlRng = seededRandom(OWL_SEED),
     }) {
         this.scene = scene;
         this.camera = camera;
         this.quality = quality;
         this.tier = forestTier(quality);
         this.rng = rng;
+        this.owlRng = owlRng;
         this.assets = assets;
+        this.boardPoint = new THREE.Vector3();
         this.group = new THREE.Group();
         this.group.name = 'Forest — the firefly night';
         this.disposed = false;
@@ -136,6 +145,15 @@ export class ForestWorld {
         this.group.add(this.fireflies.group);
         this.fireflies.build();
         yield 'fireflies';
+        // The eagle owl on its limb (forest-owl.js); without its model the limb stands empty.
+        this.owl = new ForestOwl({ light, gltf: this.assets.owl || null });
+        this.group.add(this.owl.group);
+        this.owl.build();
+        this.owlMind = new ForestOwlMind({ rng: this.owlRng, groundHeight: forestGroundHeight });
+        this.owlMind.setSight((x, y, z, size) => this.owlSees(x, y, z, size));
+        this.owlMind.setTrunks(trunks);
+        this.owlMind.setView((x, y, z, size) => this.owlOnScreen(x, y, z, size));
+        yield 'owl';
         this.prepareCamera(this.camera.aspect);
         this.director = new ForestFireflyDirector({
             stage: this.stage,
@@ -223,6 +241,42 @@ export class ForestWorld {
     }
 
     /**
+     * Would the player see a thing `size` metres across at a world point: all of it on screen and none
+     * of it behind the card or a panel (the owl only goes where it can be seen to land).
+     */
+    /**
+     * Whether any of a thing `size` metres across at a world point is in the frame at all (card or not):
+     * the owl leaves the glade and comes back only through places where it is not.
+     */
+    owlOnScreen(x, y, z, size = 1.5) {
+        const { stage } = this;
+        if (!stage) return true;
+        if (!this.owlScreen) this.owlScreen = { x: 0, y: 0 };
+        const at = stage.project(x, y, z, this.owlScreen);
+        if (!at) return false;
+        const depth = (x - stage.origin.x) * stage.forward.x + (y - stage.origin.y) * stage.forward.y
+            + (z - stage.origin.z) * stage.forward.z;
+        const hx = (0.5 * size) / (depth * stage.tanH);
+        const hy = (0.5 * size) / (depth * stage.tanV);
+        return at.x + hx > -0.02 && at.x - hx < 1.02 && at.y + hy > -0.02 && at.y - hy < 1.02;
+    }
+
+    owlSees(x, y, z, size = 0.8) {
+        const { stage } = this;
+        if (!stage) return true;
+        if (!this.owlScreen) this.owlScreen = { x: 0, y: 0 };
+        const at = stage.project(x, y, z, this.owlScreen);
+        if (!at) return false;
+        const depth = (x - stage.origin.x) * stage.forward.x + (y - stage.origin.y) * stage.forward.y
+            + (z - stage.origin.z) * stage.forward.z;
+        const hx = (0.5 * size) / (depth * stage.tanH);
+        const hy = (0.5 * size) / (depth * stage.tanV);
+        return stage.inSight({
+            x0: at.x - hx / 2, x1: at.x + hx / 2, y0: at.y - hy / 2, y1: at.y + hy / 2,
+        }, 0.015);
+    }
+
+    /**
      * A new level: the night turns one hour on from wherever the clock has brought it. Aloud
      * it eases there (see `update`); `silent` (a rebuilt world, a capture) is there at once.
      * A new run goes back to the first level's hour the short way round the night.
@@ -255,8 +309,12 @@ export class ForestWorld {
         this.stage?.setPanels(rects);
     }
 
-    /** Forget every effect in flight (new session, settings off). */
-    resetEffects() {
+    /**
+     * Forget every effect in flight (new session, settings off). `owl` also starts the owl's life
+     * again on its limb (a capture's seek); otherwise it goes on as it was.
+     */
+    resetEffects({ owl = false } = {}) {
+        if (owl) this.owlMind?.reset();
         this.director?.reset();
         this.fireflies?.reset();
         this.light?.reset();
@@ -293,6 +351,14 @@ export class ForestWorld {
         light.setHour(this.hourPhase(time));
         light.update(time, dt, { ...frame, front: env.front });
         this.fireflies.update(dt, env);
+        if (this.owl && this.owlMind) {
+            this.owlMind.setBoard(this.stage.centre(OWL_BOARD_DEPTH, this.boardPoint));
+            this.owlMind.update(dt, frame, { motion: Number.isFinite(frame.motion) ? frame.motion : 1 });
+            this.owl.uniforms.pupil.value = this.owlMind.pupil;
+            this.owl.apply(this.owlMind.place, this.owlMind.pose);
+            // Away from the glade it is not drawn at all (it left, and comes back, out of frame).
+            this.owl.group.visible = this.owlMind.mode !== 'away';
+        }
         this.terrain.update(frame);
         this.sky.update(dt, frame);
         light.commitField();
@@ -311,6 +377,9 @@ export class ForestWorld {
             hour: forestHourName(forestNearestTurn(this.hourStep, this.level - 1)
                 + forestHourDrift(this.nightLived())),
             hourPhase: this.light?.hourPhase ?? 0,
+            // The owl, once it is built: what is drawn of it, and what it is doing.
+            ...(this.owl?.stats || {}),
+            ...(this.owlMind ? { owl: this.owlMind.status() } : {}),
         };
     }
 
@@ -318,6 +387,9 @@ export class ForestWorld {
         if (this.disposed) return;
         this.disposed = true;
         this.fireflies?.dispose();
+        this.owl?.dispose();
+        this.owl = null;
+        this.owlMind = null;
         this.sky?.dispose();
         this.backdrop?.dispose();
         this.understory?.dispose();

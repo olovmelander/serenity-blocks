@@ -910,6 +910,12 @@ export class ThemeManager {
         if (this.isPackagedWindowsSafeMode()) {
             return;
         }
+        // An Odyssey orb plays its own theme, never the rotation, so the next rotation theme is
+        // not loaded while an orb holds the theme. It was loaded about a second into every orb
+        // and took the cache's free slot (Odyssey perf audit, 2026-10-28).
+        if (this.isOdysseyThemeScopeActive()) {
+            return;
+        }
         if (this.deferAdjacentThemePreload) {
             this.pendingAdjacentThemePreload = true;
             return;
@@ -919,6 +925,8 @@ export class ThemeManager {
             this.adjacentThemePreloadTimer = null;
             this.adjacentThemePreloadIdleId = null;
             this.pendingAdjacentThemePreload = false;
+            // An orb that began while this waited for idle time owns the theme now.
+            if (this.isOdysseyThemeScopeActive()) return;
             this.preloadNextTheme().catch((error) => {
                 console.warn('[ThemeManager] Failed to preload next theme:', error);
             });

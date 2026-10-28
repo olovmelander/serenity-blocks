@@ -888,6 +888,10 @@ describe('Forest world scene contracts', () => {
             level: 1,
             hour: 'deep night',
             hourPhase: 0,
+            // The bundle here has no owl model: its limbs stand empty, its mind runs on the home perch.
+            owlTriangles: 0,
+            owlBones: 0,
+            owl: expect.objectContaining({ mode: 'perched', perch: 'limb', trip: [] }),
         });
 
         expect(camera.fov).toBe(FOREST_VIEWS.landscape.fov);

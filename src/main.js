@@ -2384,13 +2384,11 @@ class SerenityBlocks {
         });
 
         const savedMode = this.settingsManager?.get()?.gameMode || GAME_MODES.SINGLE_PLAYER;
-        if (savedMode === GAME_MODES.ODYSSEY) {
-            performanceMonitor.recordEvent('startup_mode_warmup_skipped', {
-                safeMode: false,
-                mode: savedMode,
-                reason: 'odyssey-loads-on-start',
-            });
-        } else if (!isPackagedWindowsSafeMode()) {
+        // Odyssey warms like the other modes (perf audit 2026-10-28). It was skipped as
+        // 'odyssey-loads-on-start', but nothing starts it on launch: the menu opens on its card,
+        // and its code (the mode and the board's ~0.8 MB chunk) then loaded on Play, inside the
+        // loading cover. Its constructor only reads the save.
+        if (!isPackagedWindowsSafeMode()) {
             this.scheduleDeferredStartupTask('warm-selected-mode', async () => {
                 await this.gameModeManager.preloadMode(savedMode);
             }, {

@@ -7,8 +7,8 @@
  *   skill), their rank and the number that decides the match, with a bar toward the
  *   goal.
  * - One line of stats under each board: the numbers that do not decide the match.
- * - The knock-out card on a board, and a controls card on each human board at the
- *   start of a match.
+ * - The knock-out card on a board, and a controls card under each human board (in the
+ *   stats line's place) at the start of a match.
  * - The match told as it happens: a streak from attacker to target with the lines it
  *   carries, a "+1" on a frag, the round's result in a banner, a well that turns
  *   coral when its stack nears the top.
@@ -449,15 +449,18 @@ export class LocalVersusHud {
             .forEach((plate) => plate.classList.remove('is-victor'));
     }
 
-    /** Each human board shows its controls for a few seconds at the start. */
+    /**
+     * Each human board shows its controls for a few seconds at the start: one line in
+     * the stats line's place under the board (its numbers are all zero then), never on
+     * the board, where the first pieces land.
+     */
     showCoach() {
         this.hideCoach();
         const slots = this.config.playerSlots || [];
         for (let i = 0; i < this.numPlayers; i++) {
             if (slots[i]?.kind === 'bot') continue;
-            // On the board's foot, under the falling pieces.
-            const host = this._el(`p${i + 1}-phaser-container`)?.closest('.player-board-section');
-            if (!host) continue;
+            const card = this._el(`player-${i + 1}-card`);
+            if (!card) continue;
             const coach = this.doc.createElement('div');
             coach.className = 'lv-coach';
             coach.setAttribute('role', 'note');
@@ -466,7 +469,12 @@ export class LocalVersusHud {
                 return `<span class="lv-coach__row"><span class="lv-coach__action">${action}</span>`
                     + `<span class="lv-coach__keys">${caps}</span></span>`;
             }).join('');
-            host.appendChild(coach);
+            card.appendChild(coach);
+            card.classList.add('lv-coaching');
+            // Small boards (four players in a small window): shrink to the board's width.
+            const room = this._el(`p${i + 1}-meta`)?.offsetWidth || 0;
+            const width = coach.offsetWidth || 0;
+            if (room > 0 && width > room) coach.style.setProperty('--lv-coach-fit', (room / width).toFixed(3));
         }
         this._coachTimer = setTimeout(() => this.hideCoach(), COACH_MS);
     }
@@ -474,6 +482,7 @@ export class LocalVersusHud {
     hideCoach() {
         clearTimeout(this._coachTimer);
         this._coachTimer = null;
+        for (let n = 1; n <= 4; n++) this._el(`player-${n}-card`)?.classList.remove('lv-coaching');
         this.doc.querySelectorAll('#multiplayer-container .lv-coach').forEach((card) => {
             card.classList.add('is-leaving');
             setTimeout(() => card.remove(), 400);

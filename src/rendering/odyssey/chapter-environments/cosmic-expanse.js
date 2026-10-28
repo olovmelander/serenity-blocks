@@ -64,10 +64,10 @@ import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { getActiveOdysseyChapterPositions, getChapterPathRange, getOdysseyPathCurve } from '../path-utils.js';
 import {
     createVoidSkyTSL,
-    createBlackHoleTSL,
+    createBlackHoleTSLSteps,
     OMEN_SHADOW_RADIUS,
     orientBlackHoleOmen,
-    createHeroPlanetTSL,
+    createHeroPlanetTSLSteps,
     createDistantGalaxyTSL,
     GALAXY_INCLINATION,
     HERO_PLANET_RADIUS,
@@ -76,12 +76,13 @@ import {
 } from './cosmic-expanse.tsl.js';
 import { createBakedVoidSkyTSL, GALACTIC_BAND_AXIS } from './odyssey-cosmic-backdrop.js';
 import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
-import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
+import { createNebulaFieldTSLSteps } from './odyssey-nebula-field.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 import { pickStellarClass } from './odyssey-stellar-ramp.js';
 import { ORBIT_EARTH_SCHEDULE, orbitEarthAt } from '../composition/odyssey-orbit-earth.js';
+import { runChapterSteps } from './shared/chapter-build-steps.js';
 
 /**
  * Cosmic Expanse environment configuration
@@ -936,6 +937,18 @@ function resolveCh6BisectLevers() {
 }
 
 export function createCosmicExpanseEnvironment(options = {}) {
+    return runChapterSteps(buildCosmicExpanseEnvironmentSteps(options));
+}
+
+/**
+ * The chapter's build in steps (shared/chapter-build-steps.js): createCosmicExpanseEnvironment
+ * runs it straight through; a build made while the map is on screen pauses it between pieces
+ * (the giant planet, the black hole, the dome, the fields), so the build (25-140 ms in a Node
+ * measurement, relative) never lands on one frame. The group is returned, not added anywhere.
+ * @param {object} [options] quality settings (particleCount, qualityTier)
+ * @returns {Generator<void, THREE.Group, unknown>}
+ */
+export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     const group = new THREE.Group();
     group.name = 'cosmic-expanse-environment';
     group.userData.chapterId = 6;
@@ -986,6 +999,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const particleCount = options.particleCount || 1000;
     const bisect = resolveCh6BisectLevers();
     group.userData.ch6Bisect = bisect;
+    yield;
 
     // 0. Nebula void dome. The BAKED dome ships (Wave 2 swap); the retired FBM dome
     // stays restorable behind `?odysseyCh6ProceduralDome=1` (ADR-0015 escape hatch,
@@ -1001,26 +1015,29 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.add(voidSky);
         group.userData.voidSky = voidSky;
     }
+    yield;
 
     // 1. The black hole — the act's DESTINATION OMEN. Starts far/small in the upper
     // third and LOOMS larger as the camera approaches the 6→7 seam (driven by uApproach
     // in update(): scale 1.25→3.0, z -900→-640, y 20→70 so it rides the upper third and
     // never sits as a tiny dot on the bottom edge — the #1 Space hero fix). Initial pose
     // matches APPROACH.*A so the first frame / smoke test agrees with the march.
-    const blackHole = bisect.heroes ? createBlackHole(uniforms) : null;
+    const blackHole = bisect.heroes ? yield* createBlackHoleSteps(uniforms) : null;
     if (blackHole) {
         blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
         blackHole.scale.setScalar(APPROACH.bhScaleA);
         group.add(blackHole);
         group.userData.blackHole = blackHole;
     }
+    yield;
 
     // 1b. Hero gas giant
-    const heroPlanet = bisect.heroes ? createHeroPlanet(uniforms, bisect) : null;
+    const heroPlanet = bisect.heroes ? yield* createHeroPlanetSteps(uniforms, bisect) : null;
     if (heroPlanet) {
         group.add(heroPlanet);
         group.userData.heroPlanet = heroPlanet;
     }
+    yield;
 
     // 1c. Distant galaxy / quasar — a sharp, persistent deep-space focal anchor
     // up and to the right of the hero, so Space always has a bright far point.
@@ -1044,6 +1061,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.add(debris);
         group.userData.debris = debris;
     }
+    yield;
 
     // 6. Crisp pinpoint starfield — TWO depth tiers on deep shells BEHIND everything (see
     // CH6_STARFIELD): a dense far field with a galactic band, static, and a sparser, brighter,
@@ -1062,6 +1080,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.add(starsFar);
         group.userData.starsFar = starsFar;
     }
+    yield;
 
     const starsNear = !bisect.stars ? null : createVoidStars(uniforms, Math.max(
         CH6_STARFIELD.near.min,
@@ -1081,6 +1100,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
         group.add(starsNear);
         group.userData.starsNear = starsNear;
     }
+    yield;
 
     // 2b. Nebula volume — WISPY, color-varied, parallax-tiered (B3b). The flat-pink
     // smoke that dominated 75% of the chapter is broken into fewer/smaller/dimmer near
@@ -1093,7 +1113,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     // off, sprites on) via `?odysseyCh6NebulaSprites=1` — gpu-split configuration
     // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
-    const nebulaField = (bisect.nebula && !nebulaSprites) ? createNebulaFieldTSL({
+    const nebulaField = (bisect.nebula && !nebulaSprites) ? yield* createNebulaFieldTSLSteps({
         uTime: uniforms.uTime,
         // The board's quality preset (seamless pass): Medium/Low trim the gas's finest octaves.
         qualityTier: options.qualityTier,
@@ -1102,6 +1122,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
         corridor.add(nebulaField.mesh);
         group.userData.nebulaField = nebulaField.mesh;
     }
+    yield;
 
     const nebulaVolume = !(bisect.nebula && nebulaSprites) ? null : createNebulaVolume(
         uniforms,
@@ -1195,6 +1216,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
         corridor.add(dustFar);
         group.userData.dustFar = dustFar;
     }
+    yield;
 
     // 2d. Hero nebula PILLAR — a one-time Pillars-of-Creation reveal off the mid-act
     // path, faded in via uApproach (mid-chapter beat). Capped to ONE.
@@ -1212,6 +1234,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const asteroids = createAsteroidGarland();
     corridor.add(asteroids);
     group.userData.asteroids = asteroids;
+    yield;
 
     // 2g. AURORA→FILAMENT BRIDGE (creative plan asset 8, Transition In beat 3): the
     // final aurora curtains carried INTO the chapter — stretched filaments that recolor
@@ -1229,6 +1252,7 @@ export function createCosmicExpanseEnvironment(options = {}) {
     const comet = createComet();
     corridor.add(comet);
     group.userData.comet = comet;
+    yield;
 
     // (The aurora bridge, a curtain band round the eye, lived here until 2026-10-24: the aurora is
     // now the Earth below's, on its night side — composition/odyssey-orbit-earth.js.)
@@ -1317,21 +1341,21 @@ function createVoidSky(uniforms) {
     return mesh;
 }
 
-function createBlackHole(uniforms) {
+function* createBlackHoleSteps(uniforms) {
     // TSL builder: assembles the converted accretion disk + lensing shell with the
     // plain horizon / photon ring / glow rings. Returns { group, disk, lens }.
-    const { group } = createBlackHoleTSL(uniforms.uTime, uniforms.uEnergy);
+    const { group } = yield* createBlackHoleTSLSteps(uniforms.uTime, uniforms.uEnergy);
     group.userData.uniforms = uniforms;
     return group;
 }
 
-function createHeroPlanet(uniforms, bisect = {}) {
+function* createHeroPlanetSteps(uniforms, bisect = {}) {
     // TSL builder: the ringed giant (odyssey-ringed-giant*.js). Returns { group, planet };
     // update() places it at its one world point. NO AURORAL CROWN since the 2026-10-20 overhaul:
     // on the ringed giant, lit amber by the hole and seen with its pole tipped toward the eye,
     // the green curtains stood off the north limb as flames (capture) and fought the chapter's
     // amber/violet. `?odysseyCh6GiantAurora=1` still builds it for comparison.
-    const { group, planet } = createHeroPlanetTSL(uniforms.uTime, {
+    const { group, planet } = yield* createHeroPlanetTSLSteps(uniforms.uTime, {
         aurora: bisect.aurora !== false && readCh6UrlFlag('odysseyCh6GiantAurora'),
     });
     group.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);

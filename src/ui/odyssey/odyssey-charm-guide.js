@@ -20,6 +20,7 @@ import {
 import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
 import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 import { canNavigateOdysseyMap, installOdysseyMapInput } from './odyssey-map-input.js';
+import { coverOdysseyMapWith } from './odyssey-map-cover.js';
 
 export const ODYSSEY_CHARM_GUIDE_ID = 'odyssey-charm-guide';
 /** The name sheet-input.js knows the guide by (focus on open, focus back on close). */
@@ -458,11 +459,15 @@ function announce(type) {
  */
 export function createOdysseyCharmGuide(mode, { doc = globalThis.document } = {}) {
     let modal = null;
+    let uncover = null;
     const isOpen = () => Boolean(modal && modal.isConnected !== false);
     const close = () => {
         if (!modal) return false;
         const closing = modal;
         modal = null;
+        // The map draws its current frame again before the page over it goes.
+        uncover?.();
+        uncover = null;
         // Announced while the sheet is still mounted: sheet-input.js hands focus back to the chip
         // only when it can see that focus was inside the sheet.
         announce('modalHidden');
@@ -480,6 +485,8 @@ export function createOdysseyCharmGuide(mode, { doc = globalThis.document } = {}
             onClose: close,
         });
         doc.body.appendChild(modal);
+        // An opaque page over the whole map: once it has faded in, the map stops drawing.
+        uncover = coverOdysseyMapWith(mode, modal);
         announce('modalShown');
         return true;
     };

@@ -1,149 +1,290 @@
 /**
- * Golden Forest — the birds.
+ * Golden Forest — the birds: common cranes gathering at the lake to roost.
  *
- * A flock wheeling over the far side of the lake and a skein crossing the sky in a V, as
- * silhouettes against the sun. Every bird's path is a closed-form function of time, so the
- * whole flight runs in one vertex shader on both backends with no per-frame CPU work, and
- * a capture at a given time always shows the same sky. A big clear startles the flock: it
- * bursts wide and beats harder until it settles.
+ * A kettle of cranes circles over the far shore, wings spread flat and still, banked into the
+ * turn, now and then a bird beating a few slow strokes; and a skein crosses the sky in a V on a
+ * lane through the low sun (golden-forest-crane-flight.js choreographs them). A big clear
+ * startles the kettle: the circles burst wide, the column lifts and every bird beats hard until
+ * it settles.
+ *
+ * The bird is the theme's own, modelled in Blender (scripts/blender/golden_forest/crane.py): a
+ * common crane at real size, its plumage in its vertex colours, in a near and a far level of
+ * detail. There is no skeleton: each vertex carries how much the shoulder and the wrist move it
+ * (`_wing`), and this vertex stage folds the wings about those two hinges by the five angles the
+ * flight module writes per bird, then sets the bird on its heading, banked into its turn. Two
+ * instanced draws (near and far) for every crane in the sky; they stand in the lake's mirror too.
+ *
+ * The light is the lake's: the sky from above and the warm bounce from below, the low sun on the
+ * faces turned to it with a warm rim on their edges, and through the thin flight feathers when a
+ * bird crosses its disc. Against the bright evening a crane reads as a silhouette, so its body is
+ * held darker than the sky behind it; then the golden air between.
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cos, cross, float, instancedBufferAttribute, mix, mod, normalize, positionGeometry, sin, smoothstep,
-    uniform, vec3,
+    Fn,
+    abs,
+    attribute,
+    cameraPosition,
+    dot,
+    exp,
+    float,
+    max,
+    min,
+    normalGeometry,
+    normalize,
+    positionGeometry,
+    step,
+    uniform,
+    varyingProperty,
+    vec3,
 } from 'three/tsl';
+import { CRANE_RIG, CRANE_STRIDE, CraneSky } from './golden-forest-crane-flight.js';
 
-const TAU = Math.PI * 2;
-const SKEIN_SHARE = 0.3;
+/** The model's attributes, as the vertex stage reads them. */
+export const CRANE_LAYOUT = Object.freeze([['position', 3], ['normal', 3], ['color', 4], ['_wing', 4]]);
 
-/** A bird gliding toward -Z: a slim body and two jointed wings; `wing` runs 0 (body) to 1 (tip). */
-function createBirdGeometry() {
-    const triangles = [
-        // body
-        [[0, 0, -0.3, 0], [-0.05, 0, 0, 0], [0.05, 0, 0, 0]],
-        [[-0.05, 0, 0, 0], [0, 0, 0.32, 0], [0.05, 0, 0, 0]],
-    ];
-    [-1, 1].forEach((side) => {
-        triangles.push(
-            [[side * 0.04, 0, -0.12, 0], [side * 0.44, 0, -0.06, 0.5], [side * 0.04, 0, 0.1, 0]],
-            [[side * 0.04, 0, 0.1, 0], [side * 0.44, 0, -0.06, 0.5], [side * 0.42, 0, 0.12, 0.5]],
-            [[side * 0.44, 0, -0.06, 0.5], [side * 0.9, 0, 0.1, 1], [side * 0.42, 0, 0.12, 0.5]],
-        );
-    });
-    const positions = [];
-    const wings = [];
-    triangles.forEach((triangle) => triangle.forEach(([x, y, z, wing]) => {
-        positions.push(x, y, z);
-        wings.push(wing);
-    }));
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setAttribute('wing', new THREE.Float32BufferAttribute(wings, 1));
+/** The per-bird vec4s, in their order in the instance buffer. */
+const INSTANCE_NAMES = Object.freeze(['iCraneA', 'iCraneB', 'iCraneC', 'iCraneD']);
+
+/** A lit crane is held under this share of the luminance of the sky behind it. */
+const SILHOUETTE = 0.18;
+/**
+ * How much of the ground-level air lies over a crane: the birds fly in the thinner air above the
+ * water's haze, and a backlit silhouette must stay legible against the bright evening.
+ */
+const AIR = 0.48;
+/** Where the eye stands when no camera is given (the landscape framing's). */
+const DEFAULT_EYE = Object.freeze([0, 3.8, 14.5]);
+
+const LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+/** Rotate the pair (a, b) by `ang`. */
+const turn = (a, b, ang) => {
+    const c = ang.cos();
+    const s = ang.sin();
+    return [a.mul(c).sub(b.mul(s)), a.mul(s).add(b.mul(c))];
+};
+
+/** Check a crane geometry has the layout the stage reads. */
+export function checkCraneGeometry(geometry) {
+    for (const [name, size] of CRANE_LAYOUT) {
+        const a = geometry?.getAttribute?.(name);
+        if (!a || a.itemSize !== size) throw new Error(`[GoldenForest] the crane has no "${name}" (vec${size})`);
+    }
     return geometry;
 }
 
+function createCraneMaterial(light) {
+    const material = new THREE.MeshBasicNodeMaterial({ fog: false });
+    material.name = 'GoldenForestBirds';
+    const A = attribute('iCraneA', 'vec4');
+    const B = attribute('iCraneB', 'vec4');
+    const C = attribute('iCraneC', 'vec4');
+    const D = attribute('iCraneD', 'vec4');
+    const wing = attribute('_wing', 'vec4');
+    const plumage = attribute('color', 'vec4');
+    const vNormal = varyingProperty('vec3', 'vCraneNormal');
+    const vWorld = varyingProperty('vec3', 'vCraneWorld');
+    const vSize = varyingProperty('float', 'vCraneSize');
+    const [Sx, Sy, Sz] = CRANE_RIG.shoulder;
+    const [Wx, Wy, Wz] = CRANE_RIG.wrist;
+
+    material.positionNode = Fn(() => {
+        const p = positionGeometry;
+        const n = normalGeometry;
+        const fwd = B.xyz;
+        const up = C.xyz;
+        const left = up.cross(fwd).toVar();
+        // Fold the rest pose about the wrist, then the shoulder (golden-forest-crane-flight.js: foldPoint).
+        const side = step(0.0, p.x).mul(2.0).sub(1.0);
+        const handTurn = D.z.mul(wing.y).negate().toVar();
+        const handLift = D.y.mul(wing.y).add(D.w.mul(wing.z)).toVar();
+        const armTurn = D.x.mul(wing.x).negate().toVar();
+        const armLift = C.w.mul(wing.x).toVar();
+        let [du, dz] = turn(abs(p.x).sub(Wx), p.z.sub(Wz), handTurn);
+        let dy;
+        [du, dy] = turn(du, p.y.sub(Wy), handLift);
+        [du, dz] = turn(du.add(Wx - Sx), dz.add(Wz - Sz), armTurn);
+        [du, dy] = turn(du, dy.add(Wy - Sy), armLift);
+        // The body heaves with the beat; the neck and head hold their line.
+        const heave = B.w.mul(float(1.0).sub(wing.w));
+        const local = vec3(side.mul(du.add(Sx)), dy.add(Sy).add(heave), dz.add(Sz));
+        let [nu, nz] = turn(side.mul(n.x), n.z, handTurn);
+        let ny;
+        [nu, ny] = turn(nu, n.y, handLift);
+        [nu, nz] = turn(nu, nz, armTurn);
+        [nu, ny] = turn(nu, ny, armLift);
+        const world = A.xyz.add(left.mul(local.x).add(up.mul(local.y)).add(fwd.mul(local.z)).mul(A.w)).toVar();
+        vNormal.assign(left.mul(side.mul(nu)).add(up.mul(ny)).add(fwd.mul(nz)));
+        vWorld.assign(world);
+        vSize.assign(A.w);
+        return world;
+    })();
+
+    material.colorNode = Fn(() => {
+        const N = normalize(vNormal).toVar();
+        const P = vWorld;
+        const V = normalize(P.sub(cameraPosition)).toVar();
+        const L = light.uSunDir;
+        const albedo = plumage.xyz.toVar();
+        const thin = plumage.w;
+        const NdL = max(dot(N, L), 0.0);
+        // The sky from above and the bounce from below; the low sun on the faces turned to it.
+        const body = albedo.mul(light.ambient(N).add(light.uSunColor.mul(NdL).mul(0.8))).toVar();
+        // A backlit crane is a silhouette: held under the sky behind it (lit against the bright
+        // evening it would vanish into it).
+        const behind = dot(light.sky(V), LUMA);
+        const held = body.mul(min(float(1.0), behind.mul(SILHOUETTE).div(max(dot(body, LUMA), 1e-4))));
+        // A warm rim on the edges turned to the sun (not the whole thin wing seen from below,
+        // which is grazing almost everywhere).
+        const edge = float(1.0).sub(abs(dot(N, V)));
+        const edge2 = edge.mul(edge);
+        const rim = edge2.mul(edge2).mul(NdL.mul(0.9).add(0.03)).mul(0.5);
+        // The sun through the thin flight feathers, only right by its disc (wider, every wing
+        // near the sun glowed and the birds faded into its glare).
+        const sunward = max(dot(V, L), 0.0).toVar();
+        const through = exp(sunward.sub(1.0).mul(150.0)).mul(thin).mul(0.18);
+        const lit = held.add(albedo.add(0.03).mul(light.uSunColor).mul(rim.add(through)));
+        // A far bird drawn larger than life looks as near as its size says: the air in front of
+        // it is that much thinner (it stays a silhouette instead of fading into the haze).
+        const seenAt = cameraPosition.add(P.sub(cameraPosition).div(max(vSize, 1.0)));
+        // Toward the sun the air is at its brightest: a crane crossing it keeps its edge.
+        const sunAir = float(1.0).sub(sunward.pow(6.0).mul(0.55));
+        return light.haze(lit, { world: seenAt, strength: sunAir.mul(AIR) });
+    })();
+    return material;
+}
+
+function createDraw(base, pool, material, name) {
+    const data = new Float32Array(pool * CRANE_STRIDE);
+    const buffer = new THREE.InstancedInterleavedBuffer(data, CRANE_STRIDE);
+    buffer.setUsage(THREE.DynamicDrawUsage);
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.index = base.index;
+    for (const [attr] of CRANE_LAYOUT) geometry.setAttribute(attr, base.getAttribute(attr));
+    INSTANCE_NAMES.forEach((attr, k) => {
+        geometry.setAttribute(attr, new THREE.InterleavedBufferAttribute(buffer, 4, k * 4));
+    });
+    geometry.instanceCount = 1;
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 40, -150), 2000);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    mesh.frustumCulled = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = false;
+    return {
+        mesh, geometry, buffer, data, drawn: 0,
+    };
+}
+
 export class GoldenForestBirds {
-    constructor({ light, tier, rng = Math.random }) {
+    /**
+     * `crane` is the authored model ({ near, far } geometries from golden-forest-assets.js);
+     * without it the sky goes without birds. `camera` gives the eye the birds are sized from.
+     */
+    constructor({
+        light, tier, rng = Math.random, crane = null, camera = null,
+    }) {
         this.light = light;
         this.tier = tier;
         this.rng = rng;
+        this.crane = crane;
+        this.camera = camera;
         this.group = new THREE.Group();
         this.group.name = 'GoldenForestBirds';
+        /** The startle as last worn (0..1). */
         this.uStartle = uniform(0);
-        /** What a startle has added to the wingbeat's phase (radians, integrated in update()). */
-        this.uFlap = uniform(0);
         this.owned = [];
+        this.draws = [];
         this.count = 0;
+        this.sky = null;
+        this.eye = [...DEFAULT_EYE];
     }
 
     build() {
-        const count = Math.max(0, Math.floor(this.tier.birds));
-        this.count = count;
-        if (!count) return this;
-        const { light, rng } = this;
-        const skein = Math.round(count * SKEIN_SHARE);
-        const data = new Float32Array(count * 4); // seed, in the skein (1) or the flock (0), place in the V, size
-        for (let i = 0; i < count; i += 1) {
-            const inSkein = i < skein;
-            data.set([rng(), inSkein ? 1 : 0, inSkein ? i - (skein - 1) / 2 : 0, 0.9 + rng() * 0.5], i * 4);
-        }
-        const bird = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data, 4));
-        const material = new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide });
-        material.name = 'GoldenForestBirds';
-        const t = light.uTime;
-        const phase = bird.x.mul(TAU);
-        // The flock: its centre wheels slowly over the far water, each bird milling about
-        // it on an ellipse of its own. Positions and headings are both in closed form.
-        const turn = t.mul(0.1);
-        const centre = vec3(cos(turn).mul(90).sub(46), sin(turn.mul(1.7)).mul(9).add(48), sin(turn).mul(50).sub(160));
-        const centreVelocity = vec3(sin(turn).mul(-9), cos(turn.mul(1.7)).mul(1.53), cos(turn).mul(5));
-        const rate = bird.x.mul(0.2).add(0.26);
-        const spread = this.uStartle.mul(2.4).add(1).mul(24);
-        const mill = vec3(
-            sin(t.mul(rate).add(phase)).mul(spread),
-            sin(t.mul(rate).mul(1.3).add(phase.mul(2.1))).mul(spread).mul(0.3),
-            cos(t.mul(rate).mul(0.9).add(phase.mul(1.7))).mul(spread).mul(0.8),
-        );
-        const millVelocity = vec3(
-            cos(t.mul(rate).add(phase)).mul(spread).mul(rate),
-            cos(t.mul(rate).mul(1.3).add(phase.mul(2.1))).mul(spread).mul(0.39).mul(rate),
-            sin(t.mul(rate).mul(0.9).add(phase.mul(1.7))).mul(spread).mul(-0.72).mul(rate),
-        );
-        // The skein: a V flying a long straight lane across the sun, coming round again.
-        const lane = normalize(vec3(1, 0, 0.1));
-        const laneSide = normalize(cross(lane, vec3(0, 1, 0)));
-        const travelled = mod(t.mul(11.5).add(260), 1100).sub(550);
-        const place = bird.z;
-        const skeinPosition = vec3(-20, 62, -290)
-            .add(lane.mul(travelled.sub(place.abs().mul(2.5))))
-            .add(laneSide.mul(place.mul(2.1)))
-            .add(vec3(0, sin(t.mul(0.4).add(place)).mul(0.7), 0));
-        const position = mix(centre.add(mill), skeinPosition, bird.y);
-        const heading = normalize(mix(centreVelocity.add(millVelocity), lane, bird.y));
-        const right = normalize(cross(heading, vec3(0, 1, 0)));
-        const up = cross(right, heading);
-        // Beat, then glide: each bird keeps its own rhythm, and a startled one only beats.
-        const wing = attribute('wing', 'float');
-        const beating = smoothstep(-0.3, 0.3, sin(t.mul(0.33).add(bird.x.mul(40)))).max(this.uStartle);
-        // The wingbeat's phase runs on the CPU (update()), so a startle quickens it without a jump.
-        const flap = sin(t.mul(9.5).add(this.uFlap).add(bird.x.mul(31))).mul(beating)
-            .add(float(0.18).mul(beating.oneMinus()));
-        const local = positionGeometry.add(vec3(0, wing.mul(flap).mul(0.36), 0)).mul(bird.w);
-        material.positionNode = position.add(right.mul(local.x)).add(up.mul(local.y)).sub(heading.mul(local.z));
-        // Silhouettes: almost black, taken back into the air like everything else.
-        material.colorNode = light.haze(vec3(0.03, 0.017, 0.014), { world: position });
-        const mesh = new THREE.InstancedMesh(createBirdGeometry(), material, count);
-        mesh.name = 'GoldenForestBirds';
-        mesh.frustumCulled = false;
-        mesh.matrixAutoUpdate = false;
-        mesh.castShadow = false;
-        this.mesh = mesh;
-        this.group.add(mesh);
-        this.owned.push(material, mesh.geometry);
+        const budget = Math.max(0, Math.floor(this.tier.birds));
+        if (!budget) return this;
+        // The sky's own seed from the theme's generator, so a seeded world draws the same birds.
+        // Two draws a bird, as the birds before the cranes took: everything built after them
+        // (the fireflies, the lake) keeps the same random sequence, crane or no crane.
+        const seed = Math.floor(this.rng() * 0x7fffffff) >>> 0;
+        for (let i = 1; i < budget * 2; i += 1) this.rng();
+        if (!this.crane?.near) return this;
+        const near = checkCraneGeometry(this.crane.near);
+        const far = this.crane.far ? checkCraneGeometry(this.crane.far) : near;
+        this.sky = new CraneSky(budget, seed);
+        this.count = this.sky.count;
+        const material = createCraneMaterial(this.light);
+        this.material = material;
+        this.draws = [
+            createDraw(near, budget, material, 'GoldenForestBirds'),
+            createDraw(far, budget, material, 'GoldenForestBirdsFar'),
+        ];
+        this.draws.forEach((draw) => {
+            this.group.add(draw.mesh);
+            this.owned.push(draw.geometry);
+        });
+        this.owned.push(material);
+        this.write(0);
         return this;
+    }
+
+    /** The two draws (near, far), as meshes. */
+    get meshes() {
+        return this.draws.map((draw) => draw.mesh);
+    }
+
+    write(time) {
+        if (!this.sky) return;
+        const position = this.camera?.position;
+        if (position) {
+            this.eye[0] = position.x;
+            this.eye[1] = position.y;
+            this.eye[2] = position.z;
+        }
+        const [near, far] = this.draws;
+        const drawn = this.sky.write(time, this.uStartle.value, this.eye, near.data, far.data);
+        [[near, drawn.near], [far, drawn.far]].forEach(([draw, n]) => {
+            // Nothing in this draw: one bird of no size keeps it (and its pipeline) warm.
+            if (n === 0) draw.data.fill(0, 0, CRANE_STRIDE);
+            draw.geometry.instanceCount = Math.max(1, n);
+            draw.drawn = n;
+            draw.buffer.needsUpdate = true;
+        });
     }
 
     /**
      * `worn.flock` is the startle as the world eases it (a quad lifts the flock over a moment
      * instead of in one frame; a fever keeps it up), calmed by Reduce motion's share.
      */
-    update(frame = {}, dt = 0, worn = null) {
+    update(frame = {}, dt = 0, worn = null, time = this.light?.uTime?.value ?? 0) {
         const source = worn && Number.isFinite(worn.flock) ? worn.flock : frame.flock;
         const motion = worn && Number.isFinite(worn.motion) ? THREE.MathUtils.clamp(worn.motion, 0, 1) : 1;
         const startle = Number.isFinite(source) ? THREE.MathUtils.clamp(source, 0, 1) * motion : 0;
         this.uStartle.value = startle;
+        if (!this.sky) return;
         // A startled bird beats up to half again as fast: its phase gains that much more per second.
-        if (Number.isFinite(dt) && dt > 0) {
-            this.uFlap.value = (this.uFlap.value + Math.min(dt, 0.25) * startle * 5) % TAU;
-        }
+        this.sky.advance(dt, startle);
+        this.write(Number.isFinite(time) ? time : 0);
+    }
+
+    /** Back to the opening sky (a seek replays from here). */
+    reset() {
+        this.uStartle.value = 0;
+        this.sky?.reset();
+    }
+
+    /** How many cranes each draw holds this frame (near, far). */
+    drawnCounts() {
+        return { near: this.draws[0]?.drawn ?? 0, far: this.draws[1]?.drawn ?? 0 };
     }
 
     dispose() {
-        this.mesh?.dispose();
         this.owned.forEach((resource) => resource.dispose());
         this.owned.length = 0;
+        this.draws = [];
         this.group.removeFromParent();
         this.group.clear();
-        this.mesh = null;
+        this.sky = null;
     }
 }

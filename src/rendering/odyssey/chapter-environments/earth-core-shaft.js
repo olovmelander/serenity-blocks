@@ -62,6 +62,7 @@ import {
 } from 'three/tsl';
 import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 import { noise2, ridged3 } from './shared/odyssey-tsl-noise.js';
+import { computeVertexNormalsSteps, runChapterSteps } from './shared/chapter-build-steps.js';
 import {
     EARTH_CORE_THROUGH_STEAM_ORDER, basaltRandom, earthCoreNoise01, earthCoreVeilTransmission, magmaSurgeTSL,
 } from './earth-core.tsl.js';
@@ -246,6 +247,13 @@ function stratumAt(strata, hw) {
 const _rock = new ImprovedNoise();
 
 /**
+ * Grid rows displaced per build step, and index rows per step. The grid is the chapter's largest
+ * single piece of build work (~0.3-0.5 ms a row in a Node measurement); see chapter-build-steps.js.
+ */
+const GRID_ROWS_PER_STEP = 4;
+const INDEX_ROWS_PER_STEP = 32;
+
+/**
  * The wall's mesh: an indexed (azimuth x height) grid displaced into rock. Attributes:
  *   position, normal (facing the axis), aStrata = (stratum hash, fraction up the stratum,
  *   ledge amount 0..1, band 0/0.5/1).
@@ -254,6 +262,15 @@ const _rock = new ImprovedNoise();
  * @returns {THREE.BufferGeometry}
  */
 export function buildShaftWallGeometry(plan) {
+    return runChapterSteps(buildShaftWallGeometrySteps(plan));
+}
+
+/**
+ * buildShaftWallGeometry in steps (it pauses every few grid rows and between the passes).
+ * @param {object} plan from planEarthCoreShaft
+ * @returns {Generator<void, THREE.BufferGeometry, unknown>}
+ */
+export function* buildShaftWallGeometrySteps(plan) {
     const {
         axis, lakeY, strata, falls,
     } = plan;
@@ -322,6 +339,7 @@ export function buildShaftWallGeometry(plan) {
                 if (Math.abs(azimuth) < mouth + jag) open[v] = 1;
             }
         }
+        if ((j + 1) % GRID_ROWS_PER_STEP === 0) yield;
     }
 
     const indices = [];
@@ -334,12 +352,15 @@ export function buildShaftWallGeometry(plan) {
             if (open[a] || open[b] || open[c] || open[e]) continue;
             indices.push(a, c, b, b, c, e);
         }
+        if ((j + 1) % INDEX_ROWS_PER_STEP === 0) yield;
     }
+    yield;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('aStrata', new THREE.BufferAttribute(strataAttr, 4));
     geometry.setIndex(count > 65535 ? new THREE.Uint32BufferAttribute(indices, 1) : new THREE.Uint16BufferAttribute(indices, 1));
-    geometry.computeVertexNormals();
+    yield;
+    yield* computeVertexNormalsSteps(geometry);
     // The wall is seen from INSIDE: its normals must face the axis. Check the winding against the
     // geometry itself rather than trusting the basis' handedness, and flip it if it came out wrong.
     const nrm = geometry.getAttribute('normal');
@@ -357,9 +378,11 @@ export function buildShaftWallGeometry(plan) {
             idx[t + 2] = tmp;
         }
         geometry.index.needsUpdate = true;
-        geometry.computeVertexNormals();
+        yield;
+        yield* computeVertexNormalsSteps(geometry);
     }
     geometry.computeBoundingSphere();
+    yield;
     geometry.computeBoundingBox();
     geometry.userData.shaftFacing = facing;
     return geometry;
@@ -480,7 +503,18 @@ export function createShaftWallMaterial(u, plan) {
  * @param {object} plan from planEarthCoreShaft
  */
 export function createShaftWall(u, plan) {
-    const geometry = buildShaftWallGeometry(plan);
+    return runChapterSteps(createShaftWallSteps(u, plan));
+}
+
+/**
+ * createShaftWall in steps (the geometry's; see buildShaftWallGeometrySteps).
+ * @param {object} u chapter uniforms
+ * @param {object} plan from planEarthCoreShaft
+ * @returns {Generator<void, THREE.Mesh, unknown>}
+ */
+export function* createShaftWallSteps(u, plan) {
+    const geometry = yield* buildShaftWallGeometrySteps(plan);
+    yield;
     const material = createShaftWallMaterial(u, plan);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'earth-core-shaft-wall';

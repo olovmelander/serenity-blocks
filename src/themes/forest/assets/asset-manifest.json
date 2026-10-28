@@ -382,16 +382,25 @@
       }
     },
     {
+      "file": "owl.glb",
+      "bytes": 548840,
+      "sha256": "9c5084481f6198df97e2e2ee9f2547512d9f4a46ac9d64fcf78b888605c9defe",
+      "kind": "owl",
+      "triangles": 19596,
+      "bones": 110,
+      "feathers": 336
+    },
+    {
       "file": "pine-elder.glb",
-      "bytes": 431996,
-      "sha256": "014e16aab81cb35eaf07fabaeee67f49259dd81f2a605c93039c0175950b2478",
+      "bytes": 506024,
+      "sha256": "13d5331d5c60dcb03c3f4e442c0e05267f95c60d6ff12c08b2a668dc4b942d10",
       "kind": "tree",
       "species": "pine",
       "role": "hero",
       "foliage": "pine_tuft",
       "height": 27.0,
       "sites": 382,
-      "barkTriangles": 17976
+      "barkTriangles": 20354
     },
     {
       "file": "pine-old-a.glb",
@@ -407,15 +416,15 @@
     },
     {
       "file": "spruce-elder.glb",
-      "bytes": 526592,
-      "sha256": "02335949091a8bb713305a29d7b5b00400c4ce7899636182cf1a7de3bf8a5da5",
+      "bytes": 644704,
+      "sha256": "9c513b16a3372e055b6ea2039ad7e4b2d2f47353e4ac6793938410927a257d02",
       "kind": "tree",
       "species": "spruce",
       "role": "hero",
       "foliage": "spruce_frond",
       "height": 36.0,
       "sites": 1146,
-      "barkTriangles": 22676
+      "barkTriangles": 26549
     },
     {
       "file": "spruce-old-a.glb",

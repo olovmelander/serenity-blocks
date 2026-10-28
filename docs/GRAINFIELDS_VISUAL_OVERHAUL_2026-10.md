@@ -53,7 +53,10 @@ authored at that size and drawn larger than life (`SIZE`: 1.3 across, 1.5 up) at
   the ear's (the ribbons meet facing the same way), the ear's base is as wide as the straw shows
   under it, and the last sixth of the straw takes on the ear's tone, light and depth in the stand.
   Check it with the playground's free camera `cam=x,y,z,tx,ty,tz,fov` inside the stand, or with a
-  long lens from the eye (`look=`).
+  long lens from the eye (`look=`). The soft ears by the lens (`grainfields-lens.js`) had the same gap, wider: their ear faded in
+  from nothing over its first 6 % with a pointed base, a pale band at that blur (2026-10-28). They
+  now sit on their stems the same way (`NECK`: the curved neck, the base as wide and as solid as
+  the stem's top, the neck in the ear's tone); `parts=lens,sky` shows them alone against the sky.
 - **Lapporten** (`grainfields-lapporten.js`): a height field in the gate's own frame; birch on the
   skirts, heath, scree and rock, the last snow in cirques and gullies; the high faces keep the
   afterglow (alpenglow) after sunset.

@@ -9,9 +9,9 @@ import {
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-    GOLDEN_FOREST_ASSET_SCHEMA, GOLDEN_FOREST_FOLIAGE_URL, GOLDEN_FOREST_IMPOSTOR_URL, GOLDEN_FOREST_PROPS_URL,
-    GOLDEN_FOREST_TREE_URLS, disposeGoldenForestAssets, goldenForestImpostorLayout, loadGoldenForestAssets,
-    parseGoldenForestMeshes, parseGoldenForestTree, prepareGoldenForestImpostors,
+    GOLDEN_FOREST_ASSET_SCHEMA, GOLDEN_FOREST_CRANE_URL, GOLDEN_FOREST_FOLIAGE_URL, GOLDEN_FOREST_IMPOSTOR_URL,
+    GOLDEN_FOREST_PROPS_URL, GOLDEN_FOREST_TREE_URLS, disposeGoldenForestAssets, goldenForestImpostorLayout,
+    loadGoldenForestAssets, parseGoldenForestMeshes, parseGoldenForestTree, prepareGoldenForestImpostors,
 } from '../../src/themes/golden-forest/golden-forest-assets.js';
 import {
     GOLDEN_FOREST_FEATURE_TREES, layoutGoldenForestGrove,
@@ -29,6 +29,9 @@ const REQUIRED_PROPS = ['rowboat', 'jetty', 'boulder_a', 'boulder_b', 'boulder_c
 const FOLIAGE_FILE = 'golden-forest-foliage.glb';
 const PROPS_FILE = 'golden-forest-props.glb';
 const IMPOSTOR_FILE = 'golden-forest-impostors.png';
+const CRANE_FILE = 'golden-forest-crane.glb';
+// The crane's two levels of detail, by mesh name.
+const CRANE_MESHES = ['crane', 'crane_far'];
 
 // Ceilings roughly 40% above what the Blender generator wrote on 2026-10-05 (noted beside
 // each), so the pack cannot balloon without someone raising a number on purpose.
@@ -250,10 +253,11 @@ describe('Golden Forest asset pack on disk', () => {
         expect(fileNameOf(GOLDEN_FOREST_FOLIAGE_URL)).toBe(FOLIAGE_FILE);
         expect(fileNameOf(GOLDEN_FOREST_PROPS_URL)).toBe(PROPS_FILE);
         expect(fileNameOf(GOLDEN_FOREST_IMPOSTOR_URL)).toBe(IMPOSTOR_FILE);
-        referenced.push(FOLIAGE_FILE, PROPS_FILE, IMPOSTOR_FILE);
+        expect(fileNameOf(GOLDEN_FOREST_CRANE_URL)).toBe(CRANE_FILE);
+        referenced.push(FOLIAGE_FILE, PROPS_FILE, IMPOSTOR_FILE, CRANE_FILE);
         const directory = fileURLToPath(assetDirectory);
         for (const url of [...Object.values(GOLDEN_FOREST_TREE_URLS), GOLDEN_FOREST_FOLIAGE_URL,
-            GOLDEN_FOREST_PROPS_URL, GOLDEN_FOREST_IMPOSTOR_URL]) {
+            GOLDEN_FOREST_PROPS_URL, GOLDEN_FOREST_IMPOSTOR_URL, GOLDEN_FOREST_CRANE_URL]) {
             const file = fileNameOf(url);
             expect(existsSync(new URL(file, assetDirectory)), file).toBe(true);
             expect(statSync(new URL(file, assetDirectory)).size).toBeGreaterThan(0);
@@ -291,7 +295,7 @@ describe('Golden Forest asset pack on disk', () => {
         expect(total).toBeLessThan(BUDGET.packBytes);
         // The download itself: every binary the theme fetches.
         const fetched = files.filter((file) => /\.(glb|png)$/.test(file));
-        expect(fetched).toHaveLength(11);
+        expect(fetched).toHaveLength(12);
         expect(fetched.reduce((sum, file) => sum + statSync(new URL(file, assetDirectory)).size, 0))
             .toBeLessThan(BUDGET.packBytes);
         for (const file of files.filter((entry) => entry.endsWith('.glb'))) {
@@ -321,16 +325,17 @@ describe('Golden Forest asset pack on disk', () => {
             expect(bytes.length, entry.file).toBe(entry.bytes);
             expect(entry.sha256, entry.file).toMatch(/^[0-9a-f]{64}$/);
             expect(createHash('sha256').update(bytes).digest('hex'), entry.file).toBe(entry.sha256);
-            expect(['tree', 'foliage', 'props', 'impostors']).toContain(entry.kind);
+            expect(['tree', 'foliage', 'props', 'impostors', 'crane']).toContain(entry.kind);
         }
         // Every binary the theme fetches is vouched for, and nothing else is listed.
         const fetched = [...Object.values(GOLDEN_FOREST_TREE_URLS), GOLDEN_FOREST_FOLIAGE_URL, GOLDEN_FOREST_PROPS_URL,
-            GOLDEN_FOREST_IMPOSTOR_URL].map(fileNameOf);
+            GOLDEN_FOREST_IMPOSTOR_URL, GOLDEN_FOREST_CRANE_URL].map(fileNameOf);
         expect([...seen].sort()).toEqual(fetched.sort());
         // The sprite-sheet layout is read from here at runtime.
         expect(manifest.assets.filter((entry) => entry.kind === 'impostors')).toHaveLength(1);
         expect(manifest.assets.find((entry) => entry.kind === 'impostors').file).toBe(IMPOSTOR_FILE);
         expect(manifest.assets.filter((entry) => entry.kind === 'tree')).toHaveLength(TREE_NAMES.length);
+        expect(manifest.assets.filter((entry) => entry.kind === 'crane').map((entry) => entry.file)).toEqual([CRANE_FILE]);
     });
 
     it('describes each tree and both mesh packs the way the files really are', () => {
@@ -746,7 +751,7 @@ describe('Golden Forest far-shore sprite sheet', () => {
 
 describe('loading and releasing the Golden Forest assets', () => {
     const packGeometries = (assets) => [...Object.values(assets.foliage.meshes), ...Object.values(assets.props.meshes),
-        ...Object.values(assets.trees).map((tree) => tree.bark)];
+        ...Object.values(assets.trees).map((tree) => tree.bark), assets.crane.near, assets.crane.far];
 
     it('loads every file once and returns the parsed bundle', async () => {
         const loader = diskLoader();
@@ -756,14 +761,17 @@ describe('loading and releasing the Golden Forest assets', () => {
         const assets = await loadGoldenForestAssets({ loader, textureLoader, isCurrent });
         const requested = loader.loadAsync.mock.calls.map(([url]) => url);
         expect([...requested].sort()).toEqual([GOLDEN_FOREST_FOLIAGE_URL, GOLDEN_FOREST_PROPS_URL,
-            ...Object.values(GOLDEN_FOREST_TREE_URLS)].sort());
+            GOLDEN_FOREST_CRANE_URL, ...Object.values(GOLDEN_FOREST_TREE_URLS)].sort());
         expect(textureLoader.loadAsync).toHaveBeenCalledExactlyOnceWith(GOLDEN_FOREST_IMPOSTOR_URL);
         // Ownership is checked once, after everything has arrived.
         expect(isCurrent).toHaveBeenCalledOnce();
         expect(isCurrent.mock.invocationCallOrder[0])
             .toBeGreaterThan(Math.max(...loader.loadAsync.mock.invocationCallOrder));
 
-        expect(Object.keys(assets).sort()).toEqual(['foliage', 'impostors', 'props', 'trees']);
+        expect(Object.keys(assets).sort()).toEqual(['crane', 'foliage', 'impostors', 'props', 'trees']);
+        expect(assets.crane.near.name).toBe('crane');
+        expect(assets.crane.far.name).toBe('crane_far');
+        expect(assets.crane.rig).toEqual(readManifest().assets.find((entry) => entry.kind === 'crane').rig);
         expect(Object.keys(assets.trees)).toEqual(TREE_NAMES);
         for (const name of TREE_NAMES) {
             expect(assets.trees[name].name).toBe(name);
@@ -798,15 +806,17 @@ describe('loading and releasing the Golden Forest assets', () => {
             }),
         };
         const assets = await loadGoldenForestAssets({ loader, textureLoader: null });
-        // One for the sprays, one for the props, and a mesh and a points material for each tree.
-        expect(materials.size).toBe(1 + 1 + TREE_NAMES.length * 2);
+        // One for the sprays, one for the props, one for the crane's two meshes, and a mesh and a
+        // points material for each tree.
+        expect(materials.size).toBe(1 + 1 + 1 + TREE_NAMES.length * 2);
         for (const disposal of materials.values()) expect(disposal).toHaveBeenCalled();
         // The geometry the forest adopted is not the loader's to throw away.
         const adopted = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         expect(packGeometries(assets).every((geometry) => geometry.attributes.position.count > 0)).toBe(true);
         expect(adopted).not.toHaveBeenCalled();
         disposeGoldenForestAssets(assets);
-        expect(adopted).toHaveBeenCalledTimes(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length);
+        expect(adopted).toHaveBeenCalledTimes(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length
+            + CRANE_MESHES.length);
     });
 
     it('disposes everything and returns null when the start that asked is no longer current', async () => {
@@ -815,19 +825,21 @@ describe('loading and releasing the Golden Forest assets', () => {
         const disposal = vi.spyOn(THREE.BufferGeometry.prototype, 'dispose');
         const assets = await loadGoldenForestAssets({ loader, textureLoader, isCurrent: () => false });
         expect(assets).toBeNull();
-        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 2);
+        expect(loader.loadAsync).toHaveBeenCalledTimes(TREE_NAMES.length + 3);
         const released = disposal.mock.contexts.map((geometry) => geometry.name).sort();
-        expect(released).toEqual([...REQUIRED_FOLIAGE, ...REQUIRED_PROPS, ...TREE_NAMES.map(() => 'bark')].sort());
+        expect(released).toEqual([...REQUIRED_FOLIAGE, ...REQUIRED_PROPS, ...TREE_NAMES.map(() => 'bark'),
+            ...CRANE_MESHES].sort());
         expect(new Set(disposal.mock.contexts).size).toBe(released.length);
         expect(textureLoader.textures).toHaveLength(1);
         expect(textureLoader.disposed).toEqual(textureLoader.textures);
     });
 
-    it('loads a chosen subset of trees, each once, and can skip the sprite sheet', async () => {
+    it('loads a chosen subset of trees, each once, and can skip the sprite sheet and the crane', async () => {
         const loader = diskLoader();
         const assets = await loadGoldenForestAssets({
-            trees: ['spruce-grove-a', 'pine-grove-b', 'spruce-grove-a'], loader, textureLoader: null,
+            trees: ['spruce-grove-a', 'pine-grove-b', 'spruce-grove-a'], crane: false, loader, textureLoader: null,
         });
+        expect(assets.crane).toBeNull();
         expect(Object.keys(assets.trees)).toEqual(['spruce-grove-a', 'pine-grove-b']);
         expect(loader.loadAsync).toHaveBeenCalledTimes(4);
         expect(loader.loadAsync.mock.calls.map(([url]) => fileNameOf(url)).sort())
@@ -855,6 +867,19 @@ describe('loading and releasing the Golden Forest assets', () => {
             return parseGlb(fileNameOf(url));
         });
         await expect(loadGoldenForestAssets({ loader: noProps, textureLoader: null })).rejects.toThrow('404 props');
+        // The crane is a nicety: without it the sky goes without birds, and the lake still loads.
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const noCrane = diskLoader();
+        noCrane.loadAsync.mockImplementation(async (url) => {
+            if (fileNameOf(url) === CRANE_FILE) throw new Error('404 crane');
+            return parseGlb(fileNameOf(url));
+        });
+        const withoutCrane = await loadGoldenForestAssets({ loader: noCrane, textureLoader: null });
+        expect(withoutCrane.crane).toBeNull();
+        expect(Object.keys(withoutCrane.trees)).toEqual(TREE_NAMES);
+        expect(warn).toHaveBeenCalledOnce();
+        disposeGoldenForestAssets(withoutCrane);
+        warn.mockRestore();
         const noSheet = stubTextureLoader();
         noSheet.loadAsync.mockRejectedValue(new Error('404 sprites'));
         await expect(loadGoldenForestAssets({ loader: diskLoader(), textureLoader: noSheet }))
@@ -865,7 +890,8 @@ describe('loading and releasing the Golden Forest assets', () => {
         const textureLoader = stubTextureLoader();
         const assets = await loadGoldenForestAssets({ loader: diskLoader(), textureLoader });
         const geometries = packGeometries(assets);
-        expect(new Set(geometries).size).toBe(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length);
+        expect(new Set(geometries).size).toBe(REQUIRED_FOLIAGE.length + REQUIRED_PROPS.length + TREE_NAMES.length
+            + CRANE_MESHES.length);
         const disposals = [...geometries, assets.impostors.texture].map((resource) => vi.spyOn(resource, 'dispose'));
         disposeGoldenForestAssets(assets);
         disposals.forEach((disposal) => expect(disposal).toHaveBeenCalledOnce());

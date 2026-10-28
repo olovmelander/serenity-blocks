@@ -21,6 +21,7 @@ import { getChapterProfile } from './chapter-environments/shared/chapter-profile
 import { makeQuadInstancedGeometry } from './chapter-environments/shared/odyssey-tsl-billboard.js';
 import { getActiveOdysseyChapterPositions } from './path-utils.js';
 import {
+    ORB_STAR_QUAD,
     ORB_STAR_SIZE,
     ORB_STAR_SLOTS,
     createFluidInnerTSL,
@@ -603,7 +604,8 @@ export class LevelNodeManager {
         // or a slot still to earn). Placed in front of the orb (so its window can't hide them)
         // with a high renderOrder, depthTest kept on (so a far level's stars can't bleed over a
         // nearer orb — that bleed was making stars look like they sat on unfinished levels).
-        const starGeo = new THREE.PlaneGeometry(1, 1);
+        // ORB_STAR_QUAD wide (star widths): room for the glow to fade out inside the quad.
+        const starGeo = new THREE.PlaneGeometry(ORB_STAR_QUAD, ORB_STAR_QUAD);
         // position + uv + instanceMatrix (4) + aStar: well inside the 8-vertex-buffer limit.
         starGeo.deleteAttribute('normal');
         starGeo.setAttribute('aStar', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 1));

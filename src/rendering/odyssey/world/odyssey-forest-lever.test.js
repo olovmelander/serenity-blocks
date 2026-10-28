@@ -115,7 +115,7 @@ describe('the lever actually removes the forest (measured, not asserted from sou
     beforeAll(() => {
         on = createOdysseyWorld({ quality: 'low' });
         off = createOdysseyWorld({ quality: 'low', forest: false });
-    });
+    }, 30_000); // two whole worlds, synchronously: 9.6-10.9 s on a 4-core cloud runner, over the 10 s default
 
     const forestMeshes = (world) => {
         const found = [];

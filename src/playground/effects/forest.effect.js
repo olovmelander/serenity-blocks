@@ -105,6 +105,14 @@ export function create({
             }
         }
     };
+    // ?owlPerch=<perch id> sets the owl on that perch (limbIn, limb, limbOut, lowIn, low, pine, pineLow,
+    // pineHigh, log, logEnd, stump) and ?owlHold=1 keeps it there (its acts and the game's cues still play).
+    const placeOwl = () => {
+        const mind = world?.owlMind;
+        if (!mind) return;
+        if (params.get('owlPerch')) mind.placeAt(params.get('owlPerch'));
+        mind.hold(params.get('owlHold') === '1');
+    };
     const ready = loadForestAssets()
         .then((loaded) => {
             if (disposed) {
@@ -117,6 +125,7 @@ export function create({
             }).build();
             world.setLevel(level, { silent: true });
             world.director.callStand(rawStand);
+            placeOwl();
             aim();
             post = new ForestPost({
                 renderer, scene, camera, quality, light: world.light, samples,
@@ -124,10 +133,56 @@ export function create({
             post.setSize(window.innerWidth, window.innerHeight);
             aim();
         });
+    // ?owlCam=<metres> follows the owl with a long lens from that far off, ?owlOrbit=<degrees> round it
+    // from the eye's side, ?owlTilt=<degrees> above it (a close look at its plumage and motion).
+    const owlCam = params.has('owlCam') ? Math.max(0.4, Number(params.get('owlCam')) || 2) : 0;
+    const followOwl = () => {
+        if (!owlCam || !world?.owl?.pivot || !world.stage) return;
+        const pivot = world.owl.pivot.position;
+        // ?owlFocus=<metres> above its feet the lens aims at (0.3 its body, 0.55 its face).
+        const centre = new THREE.Vector3(pivot.x, pivot.y + Number(params.get('owlFocus') ?? 0.3), pivot.z);
+        const eye = new THREE.Vector3(0, forestGroundHeight(0, 13) + 1.85, 13);
+        const away = eye.sub(centre).setY(0).normalize();
+        away.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(Number(params.get('owlOrbit') ?? 0)));
+        const tilt = THREE.MathUtils.degToRad(Number(params.get('owlTilt') ?? 8));
+        away.multiplyScalar(Math.cos(tilt)).setY(Math.sin(tilt));
+        camera.position.copy(centre).addScaledVector(away, owlCam);
+        camera.fov = 28;
+        camera.lookAt(centre);
+        camera.updateProjectionMatrix();
+    };
+    // ?owlTrip= sends the owl out at ?owlAt=<seconds> (default 1): moon, hunt (or catch / miss), visit (to
+    // ?owlTo=<perch id>, or one by chance), home, sidle (along its limb, to ?owlTo or the nearest place),
+    // turn, or an act on its perch: stretch (?owlTo=wingsUp for the other kind), preen (?owlTo=breast|left|
+    // right), doze, tall; away (out of the glade by ?owlTo=left|leftBack|over|rightBack|right, or a gate by
+    // chance); or a way of flying to ?owlTo: direct, meander, patrol, overshoot, circle.
+    const owlTrip = params.get('owlTrip');
+    const owlAt = Number(params.get('owlAt') ?? 1);
+    let owlSent = false;
+    // ?owlBack=<seconds> brings it back from away at that time (?owlBackBy=<gate> the way it comes in).
+    const owlBack = params.has('owlBack') ? Number(params.get('owlBack')) : null;
+    let owlBackSent = false;
     const update = (time, dt) => {
         reactions.update(dt);
         const frame = reactions.getFrame();
+        if (owlTrip && !owlSent && world?.owlMind && time >= owlAt) {
+            owlSent = world.owlMind.send(owlTrip, params.get('owlTo'));
+        }
+        if (owlBack !== null && !owlBackSent && world?.owlMind && time >= owlBack) {
+            owlBackSent = world.owlMind.send('back', params.get('owlBackBy'));
+        }
+        // ?owlLook=eye (at the player) or ?owlLook=<yaw>,<pitch> holds the perched owl's gaze.
+        const look = params.get('owlLook');
+        if (look && world?.owlMind?.mode === 'perched' && world.owlMind.gaze.next < 1e8) {
+            const mind = world.owlMind;
+            const [yaw, pitch] = look === 'eye'
+                ? mind.lookToward({ x: 0, y: forestGroundHeight(0, 13) + 1.85, z: 13 })
+                : look.split(',').map(Number);
+            mind.turnHead(yaw, pitch, 0);
+            mind.gaze.next = 1e9;
+        }
         world?.update(time, dt, frame);
+        followOwl();
         post?.update(frame);
     };
     // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over, placed
@@ -170,7 +225,10 @@ export function create({
         if (time === sought) return;
         const target = Math.max(0, time);
         reactions.reset();
-        world.resetEffects();
+        world.resetEffects({ owl: true });
+        placeOwl();
+        owlSent = false;
+        owlBackSent = false;
         world.setLevel(level, { silent: true });
         randomIndex = 0;
         const age = Number(params.get('eventAge') ?? 0.35);

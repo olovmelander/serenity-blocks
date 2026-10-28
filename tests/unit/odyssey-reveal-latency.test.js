@@ -36,7 +36,8 @@ describe('OD-07: overlay dismiss does not double-impose the 2000ms floor', () =>
         expect(dismissCinematicLoadingOverlay).toHaveBeenCalledTimes(1);
         const arg = dismissCinematicLoadingOverlay.mock.calls[0][0];
         expect(typeof arg).toBe('object');
-        expect(arg).toEqual({ fadeOutMs: 800, minVisibleMs: 0 });
+        // releaseInput: the map takes input as it fades in (perf audit 2026-10-28).
+        expect(arg).toEqual({ fadeOutMs: 800, minVisibleMs: 0, releaseInput: true });
     });
 
     it('parked re-entry (minVisibleMs 0) is threaded straight through', () => {
@@ -46,7 +47,9 @@ describe('OD-07: overlay dismiss does not double-impose the 2000ms floor', () =>
 
     it('defaults minVisibleMs to 800 when called with no args (the error/exit path at :398)', () => {
         OdysseyMode.prototype._dismissCinematicLoadingOverlay.call({});
-        expect(dismissCinematicLoadingOverlay).toHaveBeenCalledWith({ fadeOutMs: 800, minVisibleMs: 800 });
+        expect(dismissCinematicLoadingOverlay).toHaveBeenCalledWith({
+            fadeOutMs: 800, minVisibleMs: 800, releaseInput: true,
+        });
     });
 });
 

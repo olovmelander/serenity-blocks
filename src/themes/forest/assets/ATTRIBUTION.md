@@ -14,7 +14,7 @@ project (proprietary, all rights reserved).
 
 | File | What it is |
 | --- | --- |
-| `spruce-elder.glb`, `pine-elder.glb` | The two framing trees (role `hero`), grown to be met from eye height: a 36 m Norway spruce with a root plate and a few long boughs hanging at 3 to 7 m, and a 27 m Scots pine, bare to a high crown. |
+| `spruce-elder.glb`, `pine-elder.glb` | The two framing trees (role `hero`), grown to be met from eye height: a 36 m Norway spruce with a root plate and a few long boughs hanging at 3 to 7 m, and a 27 m Scots pine, bare to a high crown. Both carry the eagle owl's dead limbs ([below](#the-owls-limbs)). |
 | `spruce-old-a/b/c.glb` | Old spruces for the far side of the glade (role `grove`): tall and narrow with a high crown, mid-crowned, and skirted. |
 | `spruce-young-a/b.glb` | Understory spruces, 9 m and 5 m, clothed to the ground. |
 | `pine-old-a.glb` | A 25 m Scots pine. |
@@ -22,6 +22,7 @@ project (proprietary, all rights reserved).
 | `forest-foliage.glb` | The shared foliage geometry: spruce bough sections and pine clumps (a near and a far level of detail each), a birch leaf strand, and a fern frond (near and far). Two variants of every kind. |
 | `forest-props.glb` | A fallen spruce trunk, its stump, three boulders and a standing dead spruce. |
 | `forest-impostors.png` | Front elevations of the eight grove trees for the far stand. |
+| `owl.glb` | The eagle owl: a skinned model on a rig of 110 bones, made by its own generator ([below](#the-eagle-owl-owlglb)). |
 
 ## Trees
 
@@ -149,3 +150,56 @@ Growth is seeded and the bakes run on the CPU with fixed sample counts: two runs
 authoring machine wrote byte-identical files. Re-run the tests after regenerating. The
 whole pack takes about half a minute; `--preview` adds daylight renders of every tree,
 spray and prop (never written into this folder) and about a minute and a half.
+
+## The eagle owl (`owl.glb`)
+
+Made by its own generator, `scripts/blender/forest_owl.py` (modules in `scripts/blender/forest_owl/`),
+run headless in Blender 5.2 with `--background --factory-startup`, and packed by
+`scripts/forest/pack-owl.mjs`, which runs it and rewrites its output compactly; it is not part of
+`forest_assets.py`. A project-owned original like the rest of the pack: no scan, photograph, stock
+model or clip.
+
+- **Model.** The soft body (body, head, facial disc, eyes, bill, feathered legs and toes, talons) is a
+  signed-distance field round the rig's joints, polygonised with surface nets, decimated in Blender
+  and mirrored (`grainfields/horse_sdf.py`, the toolkit the horse, the bear and the squirrel are made
+  with). Every flight feather (10 primaries, 14 secondaries and 3 tertials a wing, 12 tail feathers),
+  the coverts over them, the alula, the scapulars and the ear tufts are curved vanes of their own; the
+  leading edge of each wing is a lofted tube; the eyelids are caps over the eyes.
+- **Rig.** 110 bones, every flight feather on a bone of its own. Every bone rests unturned, so a
+  rotation the theme sets reads in the owl's frame (+X its left, +Y up, +Z toward the bill). The rest
+  pose stands perched, its body 62 degrees above level and its wings spread in the plane of the back.
+  No animations: the theme poses every bone (`src/themes/forest/forest-owl-rig.js`).
+- **Attributes.** `COLOR_0` = linear albedo and the sky the vertex sees. `_PLUMAGE` = (kind / 16, along,
+  across, seed): the kind of part (0 body, 1 face, 2 eye, 3 bill, 4 talon, 5 primary, 6 secondary,
+  7 covert, 8 under covert, 9 tail feather, 10 ear tuft, 11 eyelid, 12 foot, 13 the wing's leading
+  edge, 14 scapular); on a vane, how far along and across it a point lies; on the body, how much it
+  wears the breast's streaks and the belly's bars.
+- **Format.** `KHR_mesh_quantization`: float positions; normals, colours, plumage codes and skin
+  weights as bytes; joints as bytes; indices as shorts. The asset's `extras` carry the bone list, the
+  triangle count and the plan the theme's rig mirrors (`tests/unit/forest-owl.test.js` holds them
+  together).
+
+```bash
+node scripts/forest/pack-owl.mjs            # Blender, pack, write owl.glb and its manifest line
+```
+
+Two runs write the same bytes. The design loop through the Blender MCP builds the same modules in a
+scene of its own inside an open Blender (`forest_owl/live.py`) and never exports from it.
+
+## The owl's limbs
+
+The dead limbs the owl sits on are part of the two elders, grown by the trees' own generator:
+`scripts/blender/forest_night/owl_limbs.py` adds them to the grown spruce-elder and pine-elder (five
+limbs, their branchlets' stumps, broken ends) and dresses the generator's own dead stubs on those two
+trunks to match; the bark mesher keeps them with the trunk, so every tier draws them. Each tree's
+`extras.owlLimbs` records its limbs in the tree's frame (the centreline, the height of the bark's top
+along it, where it leaves the trunk, the owl's seats). `scripts/forest/pack-owl-limbs.mjs` runs the
+build for the two elders (through `forest_assets.py`) and writes where the limbs are in the world into
+`src/themes/forest/forest-owl-limbs.js`:
+
+```bash
+node scripts/forest/pack-owl-limbs.mjs              # Blender (the two elders), then forest-owl-limbs.js
+node scripts/forest/pack-owl-limbs.mjs --place-only # forest-owl-limbs.js from the GLBs already here
+```
+
+The geometry is the same on every run; the occlusion bake is sampled, so a rebuild moves a few colour bytes.

@@ -6080,6 +6080,42 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=grainfields; t=10 with hour=<place> gives a deterministic capture.',
         sources: ['src/playground/effects/grainfields.effect.js'],
     })),
+    // Golden Forest's cranes: a long lens on one bird, or a camera flying beside it.
+    ...[
+        [
+            'crane',
+            'From the theme’s own eye, keep one crane in the middle of a long lens: bird i of the kettle (k) or of '
+                + 'the skein (s; 0 is its leader). The birds are sized from the camera, so it shows them at real size.',
+            'Flock:index (k or s).',
+            'Off: the theme’s own lens.',
+            'k:12',
+        ],
+        [
+            'craneFov',
+            'The long lens of crane= (vertical field of view).',
+            'Degrees.',
+            '3.',
+            '6',
+        ],
+        [
+            'craneCam',
+            'Fly beside one crane (kettle k or skein s): this many metres off, this many degrees round from its '
+                + 'heading, this many degrees up from it, through this lens (a close look at its wings and its beat).',
+            'Flock:index, then metres, degrees, degrees, fov degrees.',
+            'Off: the theme’s own eye.',
+            'k:5,7,100,-20,40',
+        ],
+    ].map(([name, description, values, defaultValue, value]) => ({
+        name,
+        category: 'Playground',
+        scope: 'playground.html — golden-forest',
+        description,
+        values,
+        defaultValue,
+        example: `${name}=${value}`,
+        notes: 'Use on playground.html with effect=golden-forest; t=24 shows the skein crossing the sun.',
+        sources: ['src/playground/effects/golden-forest.effect.js'],
+    })),
     // Sunbraid keeps its capture controls together: each row names its real source.
     ...[
         [

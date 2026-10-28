@@ -116,7 +116,9 @@ export class GoldenForestWorld {
         this.group.add(this.shore.group);
         this.shore.build();
         yield 'shore';
-        this.birds = new GoldenForestBirds({ light, tier, rng });
+        this.birds = new GoldenForestBirds({
+            light, tier, rng, crane: this.assets.crane, camera: this.camera,
+        });
         this.group.add(this.birds.group);
         this.birds.build();
         yield 'birds';
@@ -181,6 +183,7 @@ export class GoldenForestWorld {
         this.director?.reset();
         this.sparks?.reset();
         this.lake?.reset();
+        this.birds?.reset();
         Object.assign(this.worn, {
             gust: 0, gustSpeed: 0, flock: 0, flockSpeed: 0, warmth: 0,
         });
@@ -292,7 +295,7 @@ export class GoldenForestWorld {
         light.setMood(this.moodPhase(time));
         light.update(time, frame, worn, env.fronts);
         this.sparks.update(dt, env);
-        this.birds.update(frame, dt, worn);
+        this.birds.update(frame, dt, worn, time);
         this.ribbons.update(frame, worn);
         const rocked = this.shore.update(time, dt);
         if (rocked) this.lake.ripples.add(rocked.x, rocked.z, 0.2);
