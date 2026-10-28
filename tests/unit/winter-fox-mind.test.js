@@ -3,14 +3,15 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    FOX_BLEND, FOX_CLIPS, FOX_TROT, FoxMind, MOUSING, POUNCE_AIR, SLEEP_HOLD, foxGaitAmp, foxRunSpeed, foxStride,
+    FOX_BLEND, FOX_CLIPS, FOX_TROT, FOX_WANDER, FOX_WANDER_STOPS, FoxMind, MOUSING, POUNCE_AIR, SLEEP_HOLD, foxGaitAmp,
+    foxRunSpeed, foxStride,
 } from '../../src/themes/winter/winter-fox-mind.js';
 import {
     FOOT, FOX_ACTS, FOX_BONES, FOX_BONE_INDEX, FOX_LEGS, FOX_MARKS, FOX_RIG, SPEC, createFoxPosture, createFoxSpec,
     foxAct, foxGallop, foxPoint, foxSpec, solveFox,
 } from '../../src/themes/winter/winter-fox-rig.js';
 import {
-    EYE, FOX_SCALE, foxAt, foxRound, groundHeight,
+    EYE, FOX_SCALE, FRAME_TREES, bearingFor, foxAt, foxRound, groundHeight,
 } from '../../src/themes/winter/winter-core.js';
 import * as sharedMind from '../../src/themes/shared/fox-mind.js';
 
@@ -177,10 +178,10 @@ const landingsOf = (mind) => mind.events.filter((event) => event.type === 'land'
 describe('winter fox mind: the module', () => {
     it('is three-free: it knows the plan of the place and its own body, and nothing of how either is drawn', () => {
         const imports = [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
-        expect(imports).toEqual(['./winter-core.js', './winter-fox-rig.js', '../shared/fox-mind.js']);
+        expect(imports).toEqual(['./winter-core.js', './winter-fox-rig.js', '../shared/fox-mind.js', '../shared/fox-wander.js']);
         expect(source).not.toMatch(/\bTHREE\b|\bdocument\b|\bwindow\b|performance\.now|Date\.now|Math\.random/);
-        // (Its body is as free of them, and so is the mind the themes share: winter-fox-rig.test.js,
-        // shared-fox-mind.test.js.)
+        // (Its body is as free of them, and so is the mind the themes share and how it wanders:
+        // winter-fox-rig.test.js, shared-fox-mind.test.js, shared-fox-wander.test.js.)
     });
 
     it('is the fox mind the themes share, on its round over the snowfield and at its own paces', () => {
@@ -1470,10 +1471,15 @@ describe('winter fox mind: how its body carries it', () => {
         const ACTS_OF_IT = ['clip', 'from', 'was'];
         /** An act by name; `was`, the third it may be leaving, is none most of the time. */
         const named = (key) => FOX_CLIPS[pose[key]] > 0 || (key === 'was' && pose.was === null);
+        /** Where its paws are held from its gait: two numbers a paw, never further than a leg holds one. */
+        const held = () => pose.plant.length === 8 && Array.from(pose.plant).every((v) => Math.abs(v) <= 0.12 + 1e-9);
         const check = (m, now) => {
             const sound = m.pose === pose
                 && Object.keys(pose).length === keys.length
-                && keys.every((key) => (ACTS_OF_IT.includes(key) ? named(key) : Number.isFinite(pose[key])))
+                && keys.every((key) => {
+                    if (ACTS_OF_IT.includes(key)) return named(key);
+                    return key === 'plant' ? held() : Number.isFinite(pose[key]);
+                })
                 && ['blend', 'hold', 'amp', 'step', 'gallop', 'eyes'].every((key) => within(key, 0, 1))
                 && pose.wasTime >= 0
                 && Math.abs(pose.side) === 1
@@ -1887,5 +1893,204 @@ describe('winter fox mind: the frame changes shape', () => {
             mind.setRound(tall);
             expect(mind.s / tall.length, `s ${s}`).toBeCloseTo(s / WIDE.length, 12);
         }
+    });
+});
+
+describe('winter fox mind: as it wanders (the game\'s fox)', () => {
+    const ASPECTS = [16 / 9, 4 / 3, 1, 430 / 932];
+    /** Where a place stands across the frame: a fraction of the half width (+ right). */
+    const fractionOf = (x, z, aspect = 16 / 9) => (x / -z) / Math.tan(bearingFor(1, aspect));
+
+    /** A quarter hour of a wandering fox at rest: where it stopped, what for, its turns and its trot. */
+    function wander(seed, aspect = 16 / 9, seconds = 900) {
+        const mind = new FoxMind(foxRound(aspect), seed, { wander: true, aspect });
+        const stops = [];
+        const turns = [];
+        let { mode } = mind;
+        let worstFace = 0;
+        let worstFraction = 0;
+        run(mind, 0, seconds, REST, (m, time) => {
+            if (m.walk.turns.length > turns.length) turns.push(time);
+            if (m.mode === 'idle' && mode !== 'idle') {
+                stops.push({
+                    time, fraction: fractionOf(m.pose.x, m.pose.z, aspect), what: m.next.join('+'), gap: stationGap(m),
+                });
+            }
+            if (m.mode === 'gait' && m.speed > 0.6) worstFace = Math.max(worstFace, Math.abs(m.face));
+            worstFraction = Math.max(worstFraction, Math.abs(fractionOf(m.pose.x, m.pose.z, aspect)));
+            ({ mode } = m);
+        });
+        return {
+            mind, stops, turns, worstFace, worstFraction,
+        };
+    }
+
+    it('stops anywhere on the open snow either side of the board, not only at its two places', () => {
+        for (const seed of [0xf0c5, 7, 12345]) {
+            const { stops } = wander(seed);
+            expect(stops.length, `seed ${seed}`).toBeGreaterThan(20);
+            stops.forEach(({ fraction }) => {
+                // (Its stray takes it a little either side of where its round is open.)
+                expect(Math.abs(fraction)).toBeGreaterThan(FOX_WANDER.open[0] - 0.08);
+                expect(Math.abs(fraction)).toBeLessThan(FOX_WANDER.open[1] + 0.08);
+            });
+            expect(stops.filter((stop) => stop.fraction < 0).length, `seed ${seed} left`).toBeGreaterThan(5);
+            expect(stops.filter((stop) => stop.fraction > 0).length, `seed ${seed} right`).toBeGreaterThan(5);
+            // Most of them away from its two places.
+            expect(stops.filter((stop) => stop.gap > 1.5).length / stops.length).toBeGreaterThan(0.4);
+        }
+    });
+
+    it('does many different things when it stops, and seldom the same thing twice running', () => {
+        let repeats = 0;
+        let count = 0;
+        for (const seed of [0xf0c5, 7, 12345, 99]) {
+            const { stops } = wander(seed);
+            expect(new Set(stops.map((stop) => stop.what)).size, `seed ${seed}`).toBeGreaterThanOrEqual(8);
+            stops.forEach((stop) => {
+                expect(FOX_WANDER_STOPS.some(([acts]) => acts.join('+') === stop.what), stop.what).toBe(true);
+            });
+            repeats += stops.filter((stop, i) => i > 0 && stop.what === stops[i - 1].what).length;
+            count += stops.length;
+        }
+        expect(repeats / count).toBeLessThan(0.12);
+    });
+
+    it('trots on between stops for a few seconds or for a long while, so its stops come in spells', () => {
+        const gaps = [];
+        for (const seed of [0xf0c5, 7, 12345]) {
+            const { stops } = wander(seed);
+            for (let i = 1; i < stops.length; i++) gaps.push(stops[i].time - stops[i - 1].time);
+        }
+        gaps.sort((a, b) => a - b);
+        expect(gaps[Math.floor(gaps.length * 0.15)]).toBeLessThan(20);
+        expect(gaps[Math.floor(gaps.length * 0.9)]).toBeGreaterThan(35);
+    });
+
+    it('turns back the way it came now and then, never twice close together, and trots head first', () => {
+        for (const seed of [0xf0c5, 7, 12345]) {
+            const { turns, worstFace } = wander(seed);
+            expect(turns.length, `seed ${seed}`).toBeGreaterThanOrEqual(4);
+            for (let i = 1; i < turns.length; i++) expect(turns[i] - turns[i - 1]).toBeGreaterThan(FOX_WANDER.turnGap);
+            // Once under way again it faces where it goes (its half turn is stepped round before it sets off).
+            expect(worstFace, `seed ${seed}`).toBeLessThan(0.7);
+        }
+    });
+
+    it('goes the other way round after a turn: back over the ground it came by', () => {
+        const mind = new FoxMind(WIDE, 7, { wander: true });
+        let time = run(mind, 0, 5);
+        expect(mind.turnHere(time)).toBe(true);
+        const before = mind.s;
+        time = runUntil(mind, time, (m) => m.walk.turns.length === 1, 10);
+        const [q0] = mind.walk.along(mind.s);
+        time = runUntil(mind, time, (m) => m.mode === 'gait' && m.speed > 1, 60);
+        run(mind, time, 4);
+        const [q1, dir] = mind.walk.along(mind.s);
+        expect(dir).toBe(-1);
+        expect(q1).toBeLessThan(q0 - 3);
+        // (The ground it covers still counts up: only its way round has turned.)
+        expect(mind.s).toBeGreaterThan(before);
+    });
+
+    it('trots quicker and slower, within its paces', () => {
+        const mind = new FoxMind(WIDE, 7, { wander: true });
+        const paces = [];
+        for (let t = 0; t < 600; t += 0.5) paces.push(mind.trotAt(t) / FOX_TROT);
+        expect(Math.min(...paces)).toBeGreaterThanOrEqual(FOX_WANDER.pace[0] - 1e-9);
+        expect(Math.max(...paces)).toBeLessThanOrEqual(FOX_WANDER.pace[1] + 1e-9);
+        const [slowest, quickest] = FOX_WANDER.pace;
+        expect(Math.max(...paces) - Math.min(...paces)).toBeGreaterThan(0.5 * (quickest - slowest));
+    });
+
+    it('strays either side of its round, smoothly, and never nearer a framing tree than its round goes', () => {
+        for (const aspect of ASPECTS) {
+            const round = foxRound(aspect);
+            const { walk } = new FoxMind(round, 7, { wander: true, aspect });
+            const trees = FRAME_TREES.map(([fraction, dist]) => {
+                const az = bearingFor(fraction, aspect);
+                return [Math.sin(az) * dist, -Math.cos(az) * dist];
+            });
+            const clearance = (x, z) => Math.min(...trees.map(([tx, tz]) => Math.hypot(tx - x, tz - z)));
+            const strayed = [0, 0, 0];
+            const plain = [0, 0, 0];
+            const ahead = [0, 0, 0];
+            const plainAhead = [0, 0, 0];
+            let left = 0;
+            let right = 0;
+            // (Its stray is different every lap: eight of them.)
+            for (let q = 0; q < round.length * 8; q += 0.1) {
+                walk.at(q, strayed);
+                foxAt(round, q, plain);
+                const dx = strayed[0] - plain[0];
+                const dz = strayed[1] - plain[1];
+                expect(Math.hypot(dx, dz)).toBeLessThanOrEqual(FOX_WANDER.stray + 1e-6);
+                const edge = Math.max(FOX_WANDER.open[1], Math.abs(fractionOf(plain[0], plain[1], aspect)));
+                expect(Math.abs(fractionOf(strayed[0], strayed[1], aspect)), `${aspect.toFixed(2)} at ${q.toFixed(1)}`)
+                    .toBeLessThan(edge + 0.01);
+                const side = Math.cos(plain[2]) * dx - Math.sin(plain[2]) * dz;
+                left = Math.min(left, side);
+                right = Math.max(right, side);
+                const want = Math.min(FOX_WANDER.treeRoom, clearance(plain[0], plain[1]));
+                expect(clearance(strayed[0], strayed[1]), `${aspect.toFixed(2)} at ${q.toFixed(1)}`)
+                    .toBeGreaterThan(want - 0.05);
+                // Its heading follows its stray, and turns hardly more sharply than its round does (0.35 rad/m).
+                walk.at(q + 0.1, ahead);
+                foxAt(round, q + 0.1, plainAhead);
+                const turn = Math.abs(wrap(ahead[2] - strayed[2]));
+                expect(turn, `${aspect.toFixed(2)} at ${q.toFixed(1)}`)
+                    .toBeLessThan(Math.abs(wrap(plainAhead[2] - plain[2])) + 0.035);
+            }
+            if (aspect >= 1) {
+                expect(right, aspect.toFixed(2)).toBeGreaterThan(0.35);
+                expect(left, aspect.toFixed(2)).toBeLessThan(-0.35);
+            } else {
+                // (An upright screen's round is drawn near the eye, by the board's foot: less room to stray.)
+                expect(Math.max(right, -left), aspect.toFixed(2)).toBeGreaterThan(0.3);
+            }
+        }
+    });
+
+    it('stays in the frame, at any width', () => {
+        for (const aspect of ASPECTS) {
+            const { worstFraction } = wander(7, aspect, 600);
+            expect(worstFraction, aspect.toFixed(2)).toBeLessThan(0.95);
+        }
+    });
+
+    it('wanders the same way again from the same seed, and another way from another', () => {
+        const a = wander(7, 16 / 9, 300);
+        const b = wander(7, 16 / 9, 300);
+        const c = wander(8, 16 / 9, 300);
+        expect(b.stops).toEqual(a.stops);
+        expect(b.mind.pose.x).toBe(a.mind.pose.x);
+        expect(b.mind.pose.z).toBe(a.mind.pose.z);
+        expect(c.stops.map((stop) => stop.what)).not.toEqual(a.stops.map((stop) => stop.what));
+    });
+
+    it('keeps its place and its way round when the frame changes shape', () => {
+        const mind = new FoxMind(WIDE, 7, { wander: true });
+        let time = run(mind, 0, 5);
+        mind.turnHere(time);
+        time = runUntil(mind, time, (m) => m.mode === 'gait' && m.walk.turns.length === 1 && m.speed > 1, 60);
+        const [q, dir] = mind.walk.along(mind.s);
+        const tall = foxRound(9 / 16);
+        mind.setRound(tall, 9 / 16);
+        const [qTall, dirTall] = mind.walk.along(mind.s);
+        expect(dirTall).toBe(dir);
+        expect(qTall / tall.length).toBeCloseTo(q / WIDE.length, 9);
+        // It goes on from there without a jump.
+        mind.resolve(time);
+        const before = { x: mind.pose.x, z: mind.pose.z };
+        mind.step(DT, time + DT, REST);
+        expect(Math.hypot(mind.pose.x - before.x, mind.pose.z - before.z)).toBeLessThan(0.1);
+    });
+
+    it('leaves the plain fox (and every other theme\'s) as it was', () => {
+        const plain = new FoxMind(WIDE, 7);
+        expect(plain.walk).toBe(null);
+        expect(plain.trotAt(10)).toBe(FOX_TROT);
+        expect(plain.faceTime(10)).toBe(1.8);
+        expect(plain.turnHere(1)).toBe(false);
     });
 });

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { SAKURA_STONE_LANTERNS, SAKURA_VIEWS } from '../../src/themes/sakura-twilight/sakura-composition.js';
 import {
-    SAKURA_FOX_LANTERNS, SAKURA_FOX_PLANS, SAKURA_FOX_REACH, SakuraFoxMind, sakuraFoxCourse,
+    SAKURA_FOX_LANTERNS, SAKURA_FOX_PLANS, SAKURA_FOX_REACH, SAKURA_FOX_WANDER, SakuraFoxMind, sakuraFoxCourse,
 } from '../../src/themes/sakura-twilight/sakura-fox-mind.js';
 import {
     SAKURA_WATER_LEVEL, sakuraLand, sakuraPathZ, sakuraTerrainHeight,
@@ -80,9 +80,9 @@ function evening(mind, from = 0) {
 }
 
 describe('sakura fox mind: the module', () => {
-    it('is three-free: the shared fox mind and these foxes\' own rig are all it imports', () => {
+    it('is three-free: the shared fox mind, how it wanders and these foxes\' own rig are all it imports', () => {
         const imports = [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
-        expect(imports).toEqual(['../shared/fox-mind.js', './sakura-fox-rig.js']);
+        expect(imports).toEqual(['../shared/fox-mind.js', '../shared/fox-wander.js', './sakura-fox-rig.js']);
         expect(source).not.toMatch(/\bTHREE\b|\bdocument\b|\bwindow\b|performance\.now|Date\.now|Math\.random/);
     });
 
@@ -491,5 +491,126 @@ describe('sakura fox mind: the fox', () => {
         mind.foxes.forEach((fox, i) => {
             expect(fox.s - SAKURA_FOX_PLANS[i].start * mind.course.length).toBeGreaterThan(mind.course.length);
         });
+    });
+});
+
+describe('sakura fox mind: as it wanders (the game\'s fox)', () => {
+    /** Every stone lantern of the garden, as sakura-foxes.js hands them over. */
+    const ALL_LANTERNS = SAKURA_STONE_LANTERNS.map((lantern) => [lantern.x, lantern.z]);
+    const wanderer = (seed) => {
+        const mind = new SakuraFoxMind({ ...GARDEN, lanterns: ALL_LANTERNS, wander: true });
+        if (seed !== undefined) {
+            mind.foxes[0].seed = seed;
+            mind.reset(0);
+        }
+        return mind;
+    };
+    /** Where a place stands across the frame as the garden is seen: a fraction of the half width (+ right). */
+    const { landscape } = SAKURA_VIEWS;
+    const across = Math.tan(((landscape.fov / 2) * Math.PI) / 180) * (16 / 9);
+    const fractionOf = (x, z) => (x / (landscape.position[2] - z)) / across;
+    const nearestLantern = (x, z) => Math.min(...ALL_LANTERNS.map(([lx, lz]) => Math.hypot(lx - x, lz - z)));
+
+    /** A quarter hour of it: where it stopped and what for, its turns, and the worst of where it went. */
+    function quarter(seed) {
+        const mind = wanderer(seed);
+        const [fox] = mind.foxes;
+        const stops = [];
+        const turns = [];
+        let { mode } = fox;
+        let lowest = Infinity;
+        let closest = Infinity;
+        let worstFace = 0;
+        run(mind, 0, 900, REST, (m, time) => {
+            const p = fox.pose;
+            if (fox.walk.turns.length > turns.length) turns.push(time);
+            if (fox.mode === 'idle' && mode !== 'idle') {
+                stops.push({
+                    fraction: fractionOf(p.x, p.z), station: fox.stopAtStation, what: fox.next.join('+'), time,
+                });
+            }
+            ({ mode } = fox);
+            lowest = Math.min(lowest, sakuraTerrainHeight(p.x, p.z));
+            closest = Math.min(closest, nearestLantern(p.x, p.z));
+            if (fox.mode === 'gait' && fox.speed > 0.6) worstFace = Math.max(worstFace, Math.abs(fox.face));
+        });
+        return {
+            mind, stops, turns, lowest, closest, worstFace,
+        };
+    }
+    const SEEDS = [undefined, 7, 12345];
+    const nights = SEEDS.map(quarter);
+
+    it('stops anywhere on the path either side of the board, by a lantern or out on the path', () => {
+        nights.forEach(({ stops }, n) => {
+            expect(stops.length, `night ${n}`).toBeGreaterThan(15);
+            stops.forEach(({ fraction }) => {
+                expect(Math.abs(fraction)).toBeGreaterThan(SAKURA_FOX_WANDER.open[0] - 0.05);
+                expect(Math.abs(fraction)).toBeLessThan(SAKURA_FOX_WANDER.open[1] + 0.05);
+            });
+            expect(stops.filter((stop) => stop.fraction < 0).length, `night ${n} left`).toBeGreaterThan(4);
+            expect(stops.filter((stop) => stop.fraction > 0).length, `night ${n} right`).toBeGreaterThan(4);
+            expect(stops.filter((stop) => stop.station).length, `night ${n} by a lantern`).toBeGreaterThan(3);
+            expect(stops.filter((stop) => !stop.station).length, `night ${n} on the path`).toBeGreaterThan(3);
+            expect(new Set(stops.map((stop) => stop.what)).size, `night ${n}`).toBeGreaterThanOrEqual(7);
+        });
+    });
+
+    it('sits in a lantern\'s light more often than out on the path', () => {
+        const all = nights.flatMap(({ stops }) => stops);
+        const sitting = (stops) => stops.filter((stop) => stop.what.includes('Sit')).length / stops.length;
+        const byLantern = sitting(all.filter((stop) => stop.station));
+        expect(byLantern).toBeGreaterThan(sitting(all.filter((stop) => !stop.station)));
+    });
+
+    it('turns back the way it came now and then, never twice close together, and trots head first', () => {
+        nights.forEach(({ turns, worstFace }, n) => {
+            expect(turns.length, `night ${n}`).toBeGreaterThanOrEqual(3);
+            turns.slice(1).forEach((t, i) => expect(t - turns[i]).toBeGreaterThan(SAKURA_FOX_WANDER.turnGap));
+            expect(worstFace, `night ${n}`).toBeLessThan(0.7);
+        });
+    });
+
+    it('keeps off the bank and clear of the lanterns, as its lanes do', () => {
+        const at = [0, 0, 0];
+        let lanes = Infinity;
+        let lanesLowest = Infinity;
+        const course = sakuraFoxCourse({ ...GARDEN, lanterns: ALL_LANTERNS });
+        for (let s = 0; s < course.length; s += 0.05) {
+            course.at(s, at);
+            lanes = Math.min(lanes, nearestLantern(at[0], at[1]));
+            lanesLowest = Math.min(lanesLowest, sakuraTerrainHeight(at[0], at[1]));
+        }
+        nights.forEach(({ lowest, closest }, n) => {
+            expect(lowest, `night ${n}`).toBeGreaterThan(Math.min(0.5, lanesLowest) - 0.02);
+            expect(closest, `night ${n}`).toBeGreaterThan(Math.min(1.1, lanes) - 0.03);
+        });
+    });
+
+    it('wanders the same night again from its seed, and another from another', () => {
+        const again = quarter(7);
+        expect(again.stops).toEqual(nights[1].stops);
+        expect(again.mind.poses[0].x).toBe(nights[1].mind.poses[0].x);
+        expect(again.stops.map((stop) => stop.what)).not.toEqual(nights[2].stops.map((stop) => stop.what));
+    });
+
+    it('is the game\'s: the garden lets it wander, and a mind not told to keeps to its lanterns', () => {
+        const foxesSource = readFileSync(path.resolve(
+            path.dirname(fileURLToPath(import.meta.url)),
+            '..',
+            '..',
+            'src',
+            'themes',
+            'sakura-twilight',
+            'sakura-foxes.js',
+        ), 'utf8');
+        expect(foxesSource).toMatch(/new SakuraFoxMind\(\{[^}]*wander: true/s);
+        const plain = new SakuraFoxMind(GARDEN);
+        expect(plain.foxes[0].walk).toBe(null);
+        expect(plain.foxes[0].course).toBe(plain.course);
+        // Told to, it turns back as it pulls up (captures, the playground).
+        const mind = wanderer();
+        expect(mind.turnHere(1)).toBe(true);
+        expect(plain.turnHere(1)).toBe(false);
     });
 });

@@ -12,9 +12,16 @@
  * The garden moves it too: the stream of petals a chain winds up sets it running, a hard gust
  * or a big clear startles it into a dash, four lines sends it leaping high over the grass, and
  * when the wind dies and the lanterns burn low it curls up and sleeps.
+ *
+ * In the game it wanders (`wander`; ../shared/fox-wander.js): it strays a little either side of
+ * its lane, its trot drifts, it stops where it likes on the path either side of the board (by a
+ * lantern it is likelier to sit in its light), does a different thing each time, and now and then
+ * turns right round and goes back the way it came. What is its own here is where in the garden it
+ * may stray and stop: clear of the lanterns, off the bank, where the board does not hide it.
  */
 
-import { FoxMind, MOUSING, foxCourse } from '../shared/fox-mind.js';
+import { MOUSING, foxCourse } from '../shared/fox-mind.js';
+import { WanderingFoxMind, foxWalk, wanderingCourse } from '../shared/fox-wander.js';
 import { createSakuraFoxRig } from './sakura-fox-rig.js';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -243,6 +250,71 @@ const STOPS = Object.freeze([
     ['Listen', 'LookAround'],
 ]);
 
+/** How it wanders when it is let (fox-wander.js reads these). */
+export const SAKURA_FOX_WANDER = Object.freeze({
+    /** Metres it strays either side of its lane. */
+    stray: 0.35,
+    /** Its trot, as a share of its trot, slowest and quickest. */
+    pace: Object.freeze([0.85, 1.25]),
+    /** Seconds before it next stops (drawn skewed toward short). */
+    rest: Object.freeze([3, 22]),
+    /** Odds it stops where it is rather than going on to a lantern. */
+    anywhere: 0.5,
+    /** Odds it turns back the way it came as it pulls up (never twice within this many seconds). */
+    turnBack: 0.3,
+    turnGap: 22,
+    /** Where it may stop: fractions of the half width either side of the board, as the garden is seen. */
+    open: Object.freeze([0.4, 0.88]),
+    /** Metres ahead it looks for a place to stop. */
+    reach: 20,
+    /** How slowly its restlessness drifts (seconds), and how far. */
+    restlessTime: 75,
+    restlessSpread: 0.3,
+});
+
+/**
+ * What it may do when it stops, as it wanders: [acts, how likely, how likely beside a lantern]. By a
+ * lantern it sits in its light more than anything; out on the path it looks about and hunts.
+ */
+export const SAKURA_FOX_WANDER_STOPS = Object.freeze([
+    [['Sit'], 0.8, 2.6],
+    [MOUSING, 1.1, 0.5],
+    [['LookAround'], 1, 0.7],
+    [['Sit', 'LookAround'], 0.5, 1.3],
+    [['LookAround', 'Sit'], 0.5, 1.1],
+    [['Listen', 'LookAround'], 0.8, 0.5],
+    [['Stretch', 'LookAround'], 0.6, 0.5],
+    [['Greet'], 0.5, 0.4],
+    [['Listen'], 0.5, 0.3],
+    [['Stretch'], 0.4, 0.3],
+    [['Dig', 'Shake'], 0.4, 0.1],
+    [['LookAround', 'Listen', 'LookAround'], 0.3, 0.3],
+].map(([acts, odds, beside]) => Object.freeze([Object.freeze([...acts]), odds, beside])));
+
+/** Across the garden as it is seen (the landscape framing): x over the distance, at the half width's 1. */
+const SEEN_FROM = 16;
+const SEEN_ACROSS = Math.tan((25 * Math.PI) / 180) * (16 / 9);
+
+/**
+ * Where in the garden it may stray and stop: never nearer a lantern than its lane goes (or than
+ * it passes one), never down the bank toward the water; it stops on the path either side of the
+ * board (where the board does not hide it).
+ */
+export function sakuraFoxWalkPlan({ height, lanterns = SAKURA_FOX_LANTERNS }) {
+    const clearance = (x, z) => Array.from(lanterns)
+        .reduce((m, [lx, lz]) => Math.min(m, Math.hypot(lx - x, lz - z)), Infinity);
+    const [near, far] = SAKURA_FOX_WANDER.open;
+    return {
+        reach: SAKURA_FOX_WANDER.stray,
+        allowed: (i, x, z, sx, sz) => height(sx, sz) >= Math.min(BANK, height(x, z))
+            && clearance(sx, sz) >= Math.min(CLEAR, clearance(x, z)),
+        open: (i, x, z) => {
+            const fraction = Math.abs(x / (SEEN_FROM - z)) / SEEN_ACROSS;
+            return fraction >= near && fraction <= far;
+        },
+    };
+}
+
 export class SakuraFoxMind {
     /**
      * @param {object} [o]
@@ -250,18 +322,25 @@ export class SakuraFoxMind {
      * @param {(x: number, z: number) => number} [o.height]
      * @param {number[]} [o.viewer]  where the viewer stands (x, z)
      * @param {ArrayLike<ArrayLike<number>>} [o.lanterns]  where the stone lanterns stand (x, z)
+     * @param {boolean} [o.wander]  let it wander (the game does; its plain course is what is left)
      */
     constructor({
-        pathZ = () => 0, height = () => 0, viewer = [0, 16], lanterns = SAKURA_FOX_LANTERNS,
+        pathZ = () => 0, height = () => 0, viewer = [0, 16], lanterns = SAKURA_FOX_LANTERNS, wander = false,
     } = {}) {
         this.course = sakuraFoxCourse({
             pathZ, height, viewer, lanterns,
         });
         this.foxes = SAKURA_FOX_PLANS.map((plan) => {
             const rig = createSakuraFoxRig(plan.scale);
-            return new FoxMind({
+            const walk = wander ? foxWalk(this.course, sakuraFoxWalkPlan({ height, lanterns })) : null;
+            // (Its course is the walk over this one; the viewer it turns to face is this one's.)
+            const course = walk
+                ? wanderingCourse(this.course, walk, { height, viewer: this.course.viewer })
+                : this.course;
+            const ways = walk ? { ...SAKURA_FOX_WANDER, walk, stops: SAKURA_FOX_WANDER_STOPS } : null;
+            return new WanderingFoxMind({
                 rig,
-                course: this.course,
+                course,
                 seed: plan.seed,
                 start: plan.start * this.course.length,
                 firstStop: 2 + plan.start * 6,
@@ -278,7 +357,7 @@ export class SakuraFoxMind {
                     printStep: 0,
                     eye: 0.66 * plan.scale,
                 },
-            });
+            }, ways);
         });
         /** Each fox's pose, for whoever draws them. */
         this.poses = this.foxes.map((fox) => fox.pose);
@@ -321,6 +400,11 @@ export class SakuraFoxMind {
     /** Stop the fox (or the one named) and have it do these acts (captures, tuning). */
     rehearse(clips, time, which = 0) {
         this.foxes[which]?.rehearse(clips, time);
+    }
+
+    /** Have the fox (or the one named) pull up and turn back the way it came (captures, tuning). */
+    turnHere(time, which = 0) {
+        return this.foxes[which]?.turnHere(time) ?? false;
     }
 
     /** Something worth a look. */

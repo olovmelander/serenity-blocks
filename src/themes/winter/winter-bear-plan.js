@@ -4,9 +4,14 @@
  * model (winter-bear.js) draws it.
  *
  * A polar bear walks the frozen lake beyond the snowfield, forty to a hundred and forty metres out.
- * Its course is a closed curve over the ice laid out in fractions of the frame's half width (as the
- * fox's round is), and its walk along it is a timeline of legs and stops: where its body is and
- * what it is doing are a function of its clock and nothing else.
+ * It knows several ways over the ice (BEAR_ROUTES): the long round it has always walked, a close look
+ * in the open ice right of the board, a far crossing, a brisk walk through, a slow wander with
+ * many stops, a wide sweep far out. Each is a closed curve laid out in fractions of the frame's half
+ * width (as the fox's round is) that leaves from and comes back to the same place just beyond the
+ * frame's right edge, out of sight; there it may stand a while before it comes again, by whichever
+ * way it chooses (never the same twice running). Its walk along each is a timeline of legs and
+ * stops, and which way it takes each time, and how long it stays away, are dealt from its own seed,
+ * so where its body is and what it is doing are still a function of its clock and nothing else.
  *
  * Its feet are too. Each paw is put down in the world and stays where it was put while the body
  * goes over it: through a turn, slowing down, stopping. A paw lands where it will stand under the
@@ -28,7 +33,7 @@
  */
 
 import {
-    TAU, bearingFor, clamp01, groundHeight, smooth,
+    TAU, bearingFor, clamp01, groundHeight, halfWidthFor, mulberry32, smooth,
 } from './winter-core.js';
 import {
     BEAR_ACTS, BEAR_BONES, BEAR_FEET, BEAR_MARKS, BEAR_SCALE, BEAR_SPEC as SPEC, FOOT, LIE_HOLD, OWNS_FEET, bearAct,
@@ -39,10 +44,26 @@ const SNIFF = Object.freeze(['Sniff', 7.2]);
 const SCENT = Object.freeze(['Scent', 5.4]);
 const LOOK = Object.freeze(['Look', 5.6]);
 const PAUSE = Object.freeze(['Stand', 2.4]);
+/** Where its ways meet, out of sight: it stands there a moment between one and the next. */
+const AWAY = Object.freeze(['Stand', 2.8]);
 const knot = (fraction, dist, stop = null) => Object.freeze([fraction, dist, stop]);
 
 /**
- * Its course: [fraction of the half width, metres from the eye, what it does when it gets there
+ * A knot's fraction at or past this is not a fraction: it stands just beyond the frame's own right
+ * edge (however wide the screen), out of sight.
+ */
+export const BEAR_EDGE = 9;
+/** How far past the frame's edge that is (radians). */
+const EDGE_PAST = (9 * Math.PI) / 180;
+
+/** Every way starts here, out of sight past the right edge, and comes in behind the trees. */
+const SETTING_OUT = Object.freeze([knot(BEAR_EDGE, 76, AWAY), knot(1.06, 72), knot(0.85, 70)]);
+/** ...and leaves by the trees on the right, back to where it started. */
+const COMING_BACK = Object.freeze([knot(0.95, 80), knot(1.1, 79)]);
+const wayVia = (...middle) => Object.freeze([...SETTING_OUT, ...middle, ...COMING_BACK]);
+
+/**
+ * Its first way: [fraction of the half width, metres from the eye, what it does when it gets there
  * ([act, seconds], or null to walk on)]. A closed loop, walked in this order.
  *
  * Where the game lets the lake be seen decides it. The card stands over the middle of the ice; on
@@ -53,9 +74,8 @@ const knot = (fraction, dist, stop = null) => Object.freeze([fraction, dist, sto
  * round, and goes off behind the board; it comes back at another depth, near or far, and once in a
  * while wanders far out over the lake and returns.
  */
-export const BEAR_ROUTE = Object.freeze([
+export const BEAR_ROUTE = wayVia(
     // In from behind the trees on the right: it noses about in the window, nearer and nearer...
-    knot(0.85, 70),
     knot(0.55, 63),
     knot(0.37, 58, SNIFF),
     knot(0.28, 52),
@@ -84,8 +104,105 @@ export const BEAR_ROUTE = Object.freeze([
     knot(0.05, 92),
     knot(0.32, 86, SCENT),
     knot(0.62, 84),
-    knot(0.95, 80),
+);
+
+/**
+ * Every way it knows, with the pace it walks it at (m/s) and how likely it is to choose it. The
+ * first is the way above; it always begins with that.
+ */
+export const BEAR_ROUTES = Object.freeze([
+    Object.freeze({
+        name: 'round', route: BEAR_ROUTE, pace: 1.2, weight: 1.2,
+    }),
+    // A close look: in near the board's edge, a long sniff, a look round, a pause, and away.
+    Object.freeze({
+        name: 'close',
+        route: wayVia(
+            knot(0.6, 61),
+            knot(0.42, 54),
+            knot(0.32, 47, Object.freeze(['Sniff', 6.4])),
+            knot(0.38, 43),
+            knot(0.43, 49, LOOK),
+            knot(0.34, 57),
+            knot(0.27, 63),
+            knot(0.36, 70, Object.freeze(['Stand', 3.4])),
+            knot(0.62, 84),
+        ),
+        pace: 1.05,
+        weight: 1,
+    }),
+    // A far crossing: out over the lake behind the board and back, scenting the wind on the way.
+    Object.freeze({
+        name: 'far',
+        route: wayVia(
+            knot(0.62, 86),
+            knot(0.4, 95, SCENT),
+            knot(0.1, 99),
+            knot(-0.3, 103),
+            knot(-0.52, 112),
+            knot(-0.3, 124),
+            knot(0.1, 124),
+            knot(0.32, 116, LOOK),
+            knot(0.5, 104),
+            knot(0.68, 92),
+        ),
+        pace: 1.3,
+        weight: 0.8,
+    }),
+    // Passing through: a short pause in the window, then off behind the board and round.
+    Object.freeze({
+        name: 'through',
+        route: wayVia(
+            knot(0.55, 63),
+            knot(0.32, 62, PAUSE),
+            knot(0.08, 58),
+            knot(-0.25, 60),
+            knot(-0.5, 68),
+            knot(-0.42, 82),
+            knot(-0.05, 88),
+            knot(0.3, 86),
+            knot(0.6, 84),
+        ),
+        pace: 1.3,
+        weight: 1,
+    }),
+    // Lingering: slow, stopping again and again in the window, deeper each time.
+    Object.freeze({
+        name: 'linger',
+        route: wayVia(
+            knot(0.6, 62),
+            knot(0.41, 56, SNIFF),
+            knot(0.3, 50),
+            knot(0.24, 54, SCENT),
+            knot(0.29, 62),
+            knot(0.4, 68, LOOK),
+            knot(0.3, 76, Object.freeze(['Stand', 3])),
+            knot(0.38, 86, Object.freeze(['Sniff', 5.4])),
+            knot(0.62, 88),
+        ),
+        pace: 1.0,
+        weight: 0.9,
+    }),
+    // A wide sweep far out, small in the distance.
+    Object.freeze({
+        name: 'wide',
+        route: wayVia(
+            knot(0.7, 90),
+            knot(0.4, 108, SNIFF),
+            knot(0.12, 124),
+            knot(-0.25, 130),
+            knot(-0.48, 120),
+            knot(-0.15, 110),
+            knot(0.28, 100, LOOK),
+            knot(0.6, 92),
+        ),
+        pace: 1.2,
+        weight: 0.7,
+    }),
 ]);
+
+/** Seconds it may stay out of sight between one way and the next (drawn skewed toward short). */
+export const BEAR_AWAY = Object.freeze([0, 70]);
 
 /** Metres a second it ambles at (it is drawn larger than life: its strides are too). */
 export const BEAR_PACE = 1.2;
@@ -96,7 +213,7 @@ export const BEAR_BLEND = 1.1;
 /** Seconds the board's stops take to bring it to a halt, and to let it go again. */
 export const BEAR_EASE = 1.2;
 /** Where on its clock it starts (seconds): just short of coming out from behind the trees. */
-const START_KNOT = 1;
+const START_KNOT = SETTING_OUT.length;
 const START_LEAD = 6;
 
 /**
@@ -185,9 +302,9 @@ const PHASE_STEP = 1 / 40;
  * distance, the timeline of legs and stops, the gait's clock over a lap, and where each foot squares
  * up at each stop.
  */
-export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE } = {}) {
+export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE, pace = BEAR_PACE } = {}) {
     const knots = route.map(([fraction, dist]) => {
-        const az = bearingFor(fraction, aspect);
+        const az = fraction >= BEAR_EDGE ? halfWidthFor(aspect) + EDGE_PAST : bearingFor(fraction, aspect);
         return [Math.sin(az) * dist, -Math.cos(az) * dist];
     });
     const n = knots.length;
@@ -268,8 +385,8 @@ export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE } = {}) {
         const from = stops[i];
         const to = stops[(i + 1) % stops.length];
         const leg = (((to.at - from.at) % length) + length) % length || length;
-        const ramp = Math.min(BEAR_RAMP, leg / BEAR_PACE);
-        const duration = leg / BEAR_PACE + ramp;
+        const ramp = Math.min(BEAR_RAMP, leg / pace);
+        const duration = leg / pace + ramp;
         segments.push({
             kind: 'walk', start: time, duration, length: leg, ramp, walked, after: from.act,
         });
@@ -281,7 +398,7 @@ export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE } = {}) {
         time += to.act[1];
     }
     const course = {
-        points, count, length, grade, period: time, segments, knots: knotAt, origin: stops[0].at, start: 0,
+        points, count, length, grade, period: time, segments, knots: knotAt, origin: stops[0].at, start: 0, pace,
     };
     // Its clock starts just short of where it comes out from behind the trees.
     const startAt = knotAt[START_KNOT];
@@ -290,7 +407,7 @@ export function bearCourse(aspect, { count = 1024, route = BEAR_ROUTE } = {}) {
         if (s.kind !== 'walk') continue;
         const into = (((startAt - (course.origin + s.walked)) % length) + length) % length;
         if (into <= s.length) {
-            course.start = s.start + s.ramp + (into - (BEAR_PACE * s.ramp) / 2) / BEAR_PACE - START_LEAD;
+            course.start = s.start + s.ramp + (into - (pace * s.ramp) / 2) / pace - START_LEAD;
             break;
         }
     }
@@ -396,15 +513,16 @@ function motionOf(course, clock, out) {
     let speed = 0;
     if (s.kind === 'walk') {
         const { ramp, duration } = s;
+        const pace = course.pace || BEAR_PACE;
         if (tau < ramp) {
-            along = BEAR_PACE * ramp * rampArea(tau / ramp);
-            speed = BEAR_PACE * smooth(0, 1, tau / ramp);
+            along = pace * ramp * rampArea(tau / ramp);
+            speed = pace * smooth(0, 1, tau / ramp);
         } else if (tau > duration - ramp) {
-            along = s.length - BEAR_PACE * ramp * rampArea((duration - tau) / ramp);
-            speed = BEAR_PACE * smooth(0, 1, (duration - tau) / ramp);
+            along = s.length - pace * ramp * rampArea((duration - tau) / ramp);
+            speed = pace * smooth(0, 1, (duration - tau) / ramp);
         } else {
-            along = (BEAR_PACE * ramp) / 2 + BEAR_PACE * (tau - ramp);
-            speed = BEAR_PACE;
+            along = (pace * ramp) / 2 + pace * (tau - ramp);
+            speed = pace;
         }
         out.act = 'Walk';
         out.from = s.after?.[0] ?? 'Walk';
@@ -611,6 +729,17 @@ const softLow = (a, b, c) => {
     return a - (x < k ? (x * x) / (2 * k) : x - k / 2);
 };
 
+/** Its next way, by weight, never the one it has just walked. */
+function chooseWay(rand, previous) {
+    const weights = BEAR_ROUTES.map((w, i) => (i === previous ? 0 : w.weight));
+    let r = rand() * weights.reduce((sum, w) => sum + w, 0);
+    for (let i = 0; i < weights.length; i++) {
+        r -= weights[i];
+        if (weights[i] > 0 && r <= 0) return i;
+    }
+    return (previous + 1) % BEAR_ROUTES.length;
+}
+
 /**
  * The bear's mind: its clock, what the board has made it do, and the pose that results — a spec
  * its body (winter-bear-rig.js) solves.
@@ -621,10 +750,16 @@ export class BearMind {
      * @param {object} [o]
      * @param {number} [o.start]  where on its clock it starts (seconds; the course's own when not given)
      */
-    constructor(aspect = 16 / 9, { start } = {}) {
-        this.course = bearCourse(aspect);
+    constructor(aspect = 16 / 9, { start, seed = 0xbea7 } = {}) {
         this.aspect = aspect;
+        this.seed = seed;
+        this.courses = new Map();
+        this.course = this.courseFor(0);
         this.startAt = start;
+        // Its laps: which way it takes each time and how long it stays out of sight before it. The first
+        // is its first way at once; the rest are dealt from its seed as its clock reaches them.
+        this.laps = [{ way: 0, wait: 0, start: 0 }];
+        this.lapRand = mulberry32(seed);
         this.pose = {
             x: 0,
             y: 0,
@@ -653,14 +788,73 @@ export class BearMind {
         this.reset(0);
     }
 
-    /** Fit the course to another aspect, keeping how far round it the bear is. */
+    /** One of its ways laid out for the frame (built once, the first time it takes it). */
+    courseFor(way) {
+        if (!this.courses.has(way)) {
+            const { route, pace } = BEAR_ROUTES[way];
+            this.courses.set(way, bearCourse(this.aspect, { route, pace }));
+        }
+        return this.courses.get(way);
+    }
+
+    /** The lap its clock is in (its number); the laps are dealt up to there if they are not yet. */
+    lapIndex(clock) {
+        const { laps } = this;
+        let last = laps[laps.length - 1];
+        while (clock >= last.start + last.wait + this.courseFor(last.way).period) {
+            const next = chooseWay(this.lapRand, last.way);
+            const wait = BEAR_AWAY[0] + (BEAR_AWAY[1] - BEAR_AWAY[0]) * this.lapRand() ** 2;
+            last = { way: next, wait, start: last.start + last.wait + this.courseFor(last.way).period };
+            laps.push(last);
+        }
+        let lo = 0;
+        let hi = laps.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (laps[mid].start <= clock) lo = mid;
+            else hi = mid - 1;
+        }
+        return lo;
+    }
+
+    /**
+     * The way its clock has it on and its clock along that way: out of sight past the frame's edge it
+     * stands where its ways meet until its wait is over.
+     */
+    lapClock(clock) {
+        const lap = this.laps[this.lapIndex(clock)];
+        const course = this.courseFor(lap.way);
+        const into = clock - lap.start;
+        // (Before its first lap, or between laps, its clock stands at the start of the way.)
+        const local = lap.start === 0 && into < 0 ? into : Math.max(0, into - lap.wait);
+        return { course, local, lap };
+    }
+
+    /** Which of its ways it is on at a world time (its name), and which lap that is. */
+    wayAt(time = this.time) {
+        const n = this.lapIndex(this.clockAt(time));
+        return `${BEAR_ROUTES[this.laps[n].way].name}#${n}`;
+    }
+
+    /** Fit its ways to another aspect, keeping which lap it is on and how far along it. */
     setAspect(aspect, time = this.time) {
         if (aspect === this.aspect) return;
-        const round = (clock, period) => ((clock % period) + period) % period;
-        const where = round(this.clockAt(time), this.course.period) / this.course.period;
-        this.course = bearCourse(aspect);
+        const clock = this.clockAt(time);
+        const lap = this.laps[this.lapIndex(clock)];
+        const into = clock - lap.start;
+        const share = into < lap.wait ? null : (into - lap.wait) / this.courseFor(lap.way).period;
         this.aspect = aspect;
-        this.offset += where * this.course.period - round(this.clockAt(time), this.course.period);
+        this.courses.clear();
+        // The same ways and waits, timed again for the frame's own courses.
+        let start = 0;
+        this.laps.forEach((l) => {
+            // eslint-disable-next-line no-param-reassign
+            l.start = start;
+            start += l.wait + this.courseFor(l.way).period;
+        });
+        this.course = this.courseFor(lap.way);
+        const target = lap.start + (share === null ? into : lap.wait + share * this.course.period);
+        this.offset += target - clock;
     }
 
     /**
@@ -669,7 +863,7 @@ export class BearMind {
      */
     reset(time = 0) {
         this.time = time;
-        this.offset = this.startAt ?? this.course.start;
+        this.offset = this.startAt ?? this.courseFor(0).start;
         this.held = 0;
         this.cut = null;
     }
@@ -744,9 +938,10 @@ export class BearMind {
             this.held += cut.end - cut.start;
             this.cut = null;
         }
-        const { course } = this;
         const p = this.pose;
-        const clock = this.clockAt(time);
+        // Which of its ways it is on, and how far along it.
+        const { course, local: clock } = this.lapClock(this.clockAt(time));
+        this.course = course;
         bearOnCourse(course, clock, p);
         const still = this.holdAt(time);
         p.speed *= 1 - still;

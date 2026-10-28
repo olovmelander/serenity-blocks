@@ -17,7 +17,7 @@ import {
     FOX_BLEND, FOX_STOPS, FoxMind, MOUSING, foxCourse, foxGaitAmp,
 } from '../../src/themes/shared/fox-mind.js';
 import {
-    FOX_ACTS, POUNCE_AIR, SLEEP_HOLD, SPEC, createFoxRig,
+    FOX_ACTS, FOX_LEGS, POUNCE_AIR, SLEEP_HOLD, SPEC, createFoxRig,
 } from '../../src/themes/shared/fox-rig.js';
 
 const source = readFileSync(path.resolve(
@@ -743,5 +743,97 @@ describe('shared fox mind: replay', () => {
         const again = night(mind, 4);
         expect(snapshot(mind)).toEqual(ended);
         expect(again.log).toEqual(first.log);
+    });
+});
+
+describe('shared fox mind: its paws hold the ground', () => {
+    /**
+     * Where each paw of its pose is on the ground (world x, z), FOX_LEGS order, and whether its leg
+     * reached it (stretched out in a gallop a leg may fall short of where it is put).
+     */
+    const pawsOf = (mind) => {
+        const { rig } = mind;
+        const p = mind.pose;
+        const posture = rig.solve(rig.spec(p, rig.createSpec()), rig.createPosture());
+        const c = Math.cos(p.heading);
+        const s = Math.sin(p.heading);
+        return FOX_LEGS.map(([, , , last, paw], i) => {
+            const m = rig.point(posture, last, rig.marks[paw]);
+            const reached = posture.short[i] < 1e-9;
+            return [p.x + rig.scale * (m[0] * c + m[2] * s), p.z + rig.scale * (m[2] * c - m[0] * s), reached];
+        });
+    };
+
+    /** The most a paw on the ground moved in a frame (m), going round a tight ring at changing paces. */
+    const slipOf = (mind) => {
+        let worst = 0;
+        let before = null;
+        const footing = new Float64Array(8);
+        const see = (m) => {
+            const share = m.rig.footing(m.pose, footing);
+            const paws = pawsOf(m);
+            const now = { paws, down: [0, 1, 2, 3].map((i) => footing[2 * i] === 1 && share === 1 && paws[i][2]) };
+            if (before && m.mode === 'gait') {
+                now.paws.forEach(([x, z], i) => {
+                    if (now.down[i] && before.down[i]) {
+                        worst = Math.max(worst, Math.hypot(x - before.paws[i][0], z - before.paws[i][1]));
+                    }
+                });
+            }
+            before = now;
+        };
+        let time = run(mind, 0, 6, REST, see);
+        time = run(mind, time, 3, { power: 0.35, surge: 0 }, see);
+        run(mind, time, 6, REST, see);
+        return worst;
+    };
+
+    it('keeps a paw where it was put down until it lifts, round a tight turn and through a change of pace', () => {
+        const tight = { course: ring({ radius: 2.5 }), firstStop: 1e9 };
+        const held = slipOf(makeMind(tight));
+        expect(held).toBeLessThan(5e-4);
+        // (Laid out under the body by its gait alone, a paw on the ground slid round the turn.)
+        const loose = makeMind(tight);
+        loose.plantFeet = () => {};
+        expect(slipOf(loose)).toBeGreaterThan(5e-3);
+    });
+
+    it('holds a paw no further from its gait than a leg holds one, and an act places its own paws', () => {
+        const mind = makeMind();
+        const most = 0.12 * RIG.size + 1e-9;
+        let furthest = 0;
+        let actSettled = 0;
+        const { time } = night(mind);
+        run(mind, 0, 0, REST);
+        const see = (m, now) => {
+            furthest = Math.max(furthest, ...Array.from(m.pose.plant).map(Math.abs));
+            if (m.pose.clip !== 'Run' && m.pose.blend === 1 && now - m.blendAt > 1) {
+                actSettled = Math.max(actSettled, ...Array.from(m.pose.plant).map(Math.abs));
+            }
+        };
+        run(mind, time, 60, REST, see);
+        night(mind, time + 60);
+        expect(furthest).toBeGreaterThan(0);
+        expect(furthest).toBeLessThanOrEqual(most);
+        expect(actSettled).toBeLessThan(1e-3);
+        // A reset puts them down where its gait has them.
+        mind.reset(0);
+        expect(Array.from(mind.pose.plant)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    });
+
+    it('is read only off a pose that says where its paws are held: one that does not is posed as it was', () => {
+        const mind = makeMind();
+        run(mind, 0, 4);
+        const held = { ...mind.pose, plant: new Float64Array(8) };
+        const none = { ...mind.pose };
+        delete none.plant;
+        expect(Array.from(RIG.spec(none, RIG.createSpec()))).toEqual(Array.from(RIG.spec(held, RIG.createSpec())));
+        // And what it holds is added to where its gait has each paw, along and across.
+        held.plant[0] = 0.01;
+        held.plant[7] = -0.02;
+        const a = RIG.spec(none, RIG.createSpec());
+        const b = RIG.spec(held, RIG.createSpec());
+        expect(b[SPEC.feet] - a[SPEC.feet]).toBeCloseTo(0.01, 12);
+        expect(b[SPEC.feet + 15 + 2] - a[SPEC.feet + 15 + 2]).toBeCloseTo(-0.02, 12);
     });
 });

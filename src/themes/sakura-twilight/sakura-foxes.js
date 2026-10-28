@@ -81,6 +81,8 @@ export class SakuraFoxes {
             height: sakuraTerrainHeight,
             // (They go round the lanterns that stand by the path, and stop beside them.)
             lanterns: SAKURA_STONE_LANTERNS.map((lantern) => [lantern.x, lantern.z]),
+            // (And it wanders: where it stops, what it does and which way it goes are its own.)
+            wander: true,
         });
         this.time = 0;
         this.startled = 0;
