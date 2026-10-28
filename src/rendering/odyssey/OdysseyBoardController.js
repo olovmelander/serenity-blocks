@@ -4448,11 +4448,58 @@ export class OdysseyBoardController {
         const frameMs = Math.min(this._slowestTickMs, 50);
         this._lastFrameGapMs = this._slowestTickMs; // uncapped, for the hitch log
         this._slowestTickMs = 0;
-        this.renderFrame(delta, frameMs > 0 ? frameMs : delta * 1000);
+        this.renderFrame(delta, frameMs > 0 ? frameMs : delta * 1000, { draw: !this._isCovered() });
+    }
+
+    /**
+     * An opaque sheet covers the whole map (the navigator, the charm guide), or no longer does.
+     * While any covers it, frames go on updating (camera, director, chapter loading) and draw
+     * nothing: GPU work nobody would see. The last cover to go draws the current frame at once,
+     * so the first frame seen after it is not a stale one. `stillCovered` is asked on covered
+     * frames, so a sheet removed by some other path never leaves the map undrawn.
+     * @param {object} sheet the covering element (a key)
+     * @param {boolean} covered
+     * @param {?() => boolean} [stillCovered]
+     */
+    setCovered(sheet, covered, stillCovered = null) {
+        if (!sheet) return;
+        if (!this._covers) this._covers = new Map();
+        if (covered) {
+            this._covers.set(sheet, typeof stillCovered === 'function' ? stillCovered : null);
+            return;
+        }
+        if (!this._covers.delete(sheet) || this._covers.size > 0) return;
+        if (this.isActive && !this.isRenderingPaused && !this._disposed) this._drawPosedFrame();
+    }
+
+    /** @private whether a cover still hides the whole map (lifting any whose sheet has gone). */
+    _isCovered() {
+        if (!this._covers?.size) return false;
+        this._covers.forEach((stillCovered, sheet) => {
+            if (stillCovered && stillCovered() === false) this._covers.delete(sheet);
+        });
+        return this._covers.size > 0;
+    }
+
+    /** @private draw what the last update posed: through the post stack, the composer, or bare. */
+    _drawPosedFrame() {
+        if (this.postProcessingStack) this.postProcessingStack.render();
+        else if (this.composer) this.composer.render();
+        else this.renderer?.render(this.scene, this.camera);
     }
 
     /** @private whether this display refresh draws the map (see animate()). */
     _shouldDrawFrame(now) {
+        // A hidden window, as the player's background behaviour asks (main.js
+        // handleVisibilityChange): 'pause' stops the map, 'reduce' draws it at ~10 fps, as the
+        // themes do (base-theme.js shouldRenderFrame). Both flags are clear while it is shown.
+        const page = typeof window !== 'undefined' ? window : null;
+        if (page?.isRenderingPaused === true) return false;
+        if (page?.isRenderingReduced === true) {
+            if (now - (this._reducedFrameAt || 0) < (page.reducedFrameInterval || 100)) return false;
+            this._reducedFrameAt = now;
+            return true;
+        }
         if (this._fpsCapEnabled === undefined) this._fpsCapEnabled = !readFlag('noThemeFpsCap', false);
         if (!this._fpsCapEnabled) return true;
         if (!this._framePacer) this._framePacer = createFramePacer();
@@ -4462,8 +4509,9 @@ export class OdysseyBoardController {
     /**
      * @param {number} [delta] seconds to advance
      * @param {number} [frameMs] the frame time the adaptive quality records; by default `delta`
+     * @param {{draw?: boolean}} [options] `draw: false` updates without drawing (setCovered)
      */
-    renderFrame(delta = 0, frameMs = delta * 1000) {
+    renderFrame(delta = 0, frameMs = delta * 1000, { draw = true } = {}) {
         this.time += delta;
         const previousDirectorState = this.director?.getState?.() || null;
 
@@ -4824,14 +4872,10 @@ export class OdysseyBoardController {
         // Update and render via PostProcessingStack.
         // When the cinematic pipeline is active it consumes director state (exposure/grade/
         // bloom); the default PostProcessingStack ignores the extra argument.
-        if (this.postProcessingStack) {
-            this.postProcessingStack.update(delta, this.cinematicJourneyActive ? directorState : undefined);
-            this.postProcessingStack.render();
-        } else if (this.composer) {
-            this.composer.render();
-        } else {
-            this.renderer.render(this.scene, this.camera);
-        }
+        this.postProcessingStack?.update(delta, this.cinematicJourneyActive ? directorState : undefined);
+        // Covered: no draw, so nothing this frame to count, time or judge quality by.
+        if (!draw) return;
+        this._drawPosedFrame();
         this._recordPerfCounters();
 
         // Batch0: resolve GPU timestamps so the debug overlay can read render.info.timestamp.
@@ -5604,6 +5648,7 @@ export class OdysseyBoardController {
     dispose() {
         releaseOdysseyBoardMusic(this);
         this._disposed = true;
+        this._covers?.clear();
         if (this._foldHypercubes) {
             this._foldHypercubes.mesh.removeFromParent();
             this._foldHypercubes.dispose();

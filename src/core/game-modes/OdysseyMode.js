@@ -134,6 +134,7 @@ import {
     releaseGameplaySurfacesFromCover,
     waitForAnimationFrames,
 } from '../../ui/odyssey/odyssey-cover-paint.js';
+import { coverOdysseyMapWith } from '../../ui/odyssey/odyssey-map-cover.js';
 import {
     beginOdysseyGameplayReveal,
     finishOdysseyGameplayUiReveal,
@@ -3633,11 +3634,17 @@ export class OdysseyMode extends BaseGameMode {
 
     /** Show the navigator, filled and focused (ui/odyssey/odyssey-navigator-list.js). @private */
     _showLevelSelectUI() {
-        showOdysseyNavigator(document.getElementById('odyssey-level-select') || this._createLevelSelectUI(), this);
+        const root = document.getElementById('odyssey-level-select') || this._createLevelSelectUI();
+        showOdysseyNavigator(root, this);
+        // Opaque once faded in: the map under it stops drawing (ui/odyssey/odyssey-map-cover.js).
+        this._uncoverNavigator?.();
+        this._uncoverNavigator = coverOdysseyMapWith(this, root);
     }
 
     /** Hide the navigator; focus goes back to the page for the map's keys. @private */
     _hideLevelSelectUI() {
+        this._uncoverNavigator?.(); // the map draws again before the sheet goes
+        this._uncoverNavigator = null;
         hideOdysseyNavigator(document.getElementById('odyssey-level-select'));
     }
 
