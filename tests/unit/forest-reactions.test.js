@@ -12,7 +12,7 @@ const STEP = 1 / 60;
 const HANDLERS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack', 'onPerfectClear',
     'onLevelUp', 'onGameOver'];
 const FRAME_KEYS = ['beatRate', 'blink', 'breeze', 'emitters', 'epoch', 'figure', 'front', 'glow', 'gust', 'halo',
-    'heat', 'moon', 'settled', 'shafts', 'stars', 'streak', 'surge', 'sync', 'wake', 'waves'];
+    'heat', 'moon', 'motion', 'owl', 'settled', 'shafts', 'stars', 'streak', 'surge', 'sync', 'wake', 'waves'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed', 'serial',
     'side', 'strength'];
 const WAVE_KEYS = ['column', 'heat', 'kind', 'row', 'serial', 'strength'];

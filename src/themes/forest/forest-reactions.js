@@ -94,6 +94,8 @@ const HEAT_COLD = 0.35;
 /** Emitters do their work early in their lives (the director spawns within these windows). */
 const WORK_SECONDS = Object.freeze({ rise: 1.5 });
 const WAVE_QUEUE = 8;
+/** How many of the latest events the owl can hear in one frame. */
+const OWL_CUES = 8;
 const BOARD_COLUMNS = 10;
 const BOARD_VISIBLE_ROWS = 20;
 const BOARD_HIDDEN_ROWS = 4;
@@ -192,6 +194,11 @@ export class ForestReactions {
         this.waves = Array.from({ length: WAVE_QUEUE }, () => ({
             serial: -1, kind: 'lock', column: 0.5, row: 0, strength: 0, heat: 0,
         }));
+        // What the owl hears (forest-owl-mind.js): the last few events, newest by serial.
+        this.owlCues = Array.from({ length: OWL_CUES }, () => ({
+            serial: 0, kind: '', lines: 0, column: 0.5, row: 0, strength: 0,
+        }));
+        this.owlSerial = 0;
         this.swells = Object.fromEntries(ENVELOPE_KEYS.map((key) => [key, envelopeSwell(DECAY_RATES[key])]));
         this.front = {
             active: false, age: 0, direction: 1, strength: 0, target: 0, queued: 0,
@@ -252,6 +259,10 @@ export class ForestReactions {
         this.sweeps = 0;
         this.stars = 0;
         this.settled = false;
+        this.owlSerial = 0;
+        this.owlCues?.forEach((cue) => Object.assign(cue, {
+            serial: 0, kind: '', lines: 0, column: 0.5, row: 0, strength: 0,
+        }));
         for (const key of ENVELOPE_KEYS) this.swells[key].reset();
         Object.assign(this.front, {
             active: false, age: 0, direction: 1, strength: 0, target: 0, queued: 0,
@@ -474,6 +485,20 @@ export class ForestReactions {
         figure.full = FIGURE_FEVER.full * fever;
     }
 
+    /** Tell the owl: `kind` and what it knows of the event, into the oldest slot (no allocation). */
+    owlCue(kind, {
+        lines = 0, column = 0.5, row = 0, strength = 0,
+    } = {}) {
+        this.owlSerial += 1;
+        const cue = this.owlCues[this.owlSerial % this.owlCues.length];
+        cue.serial = this.owlSerial;
+        cue.kind = kind;
+        cue.lines = lines;
+        cue.column = column;
+        cue.row = row;
+        cue.strength = strength;
+    }
+
     onHardDrop(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
@@ -508,6 +533,7 @@ export class ForestReactions {
             side, column, row, strength: 0.26 + drop * 0.5, duration: 1.1,
         });
         this.wave(drop > 0.3 ? 'drop' : 'lock', column, row, 0.6 + drop * 0.9);
+        this.owlCue(drop > 0.3 ? 'drop' : 'lock', { column, row, strength: drop });
         if (drop > 0.3) {
             this.emit('dew', {
                 side, column, row, strength: drop, duration: 0.7,
@@ -572,6 +598,7 @@ export class ForestReactions {
             this.summon();
         }
         if (this.streak >= 2) this.raiseWake(1 - Math.exp(-(this.streak - 1) * 0.3));
+        if (deep === 0) this.owlCue(four ? 'quad' : 'clear', { lines, row, strength });
         return true;
     }
 
@@ -594,6 +621,7 @@ export class ForestReactions {
             row: 0.1, strength: 0.4 + growth * 0.6, lines: event.count, duration: 1.4,
         });
         this.wave('combo', this.random(), 0.05, 0.7 + growth * 0.9, growth);
+        this.owlCue('combo', { lines: event.count, strength: growth });
         return true;
     }
 
@@ -612,6 +640,7 @@ export class ForestReactions {
             side: place && place.column >= 0.5 ? 1 : -1, row: place?.row ?? 0.3, strength: 0.8, duration: 1.7,
         });
         this.wave('spin', place?.column ?? 0.5, place?.row ?? 0.3, 1.2, 0.3);
+        this.owlCue('spin', { column: place?.column ?? 0.5, row: place?.row ?? 0.3, strength: 0.8 });
         return true;
     }
 
@@ -635,6 +664,7 @@ export class ForestReactions {
         this.wave('b2b', 0.5, 0.05, 1.5, 1);
         this.wave('echo', 0.5, 0.05, 1.2, 0.85);
         this.raiseWake(Math.max(this.wakeTarget, 0.55));
+        this.owlCue('b2b', { strength: 1 });
         return true;
     }
 
@@ -667,6 +697,7 @@ export class ForestReactions {
         this.raiseWake(0.85);
         this.stars += 2;
         this.summon(FOREST_FIGURE_TIMING.hold + 1.6, { crown: standing });
+        this.owlCue('perfect', { strength: 1 });
         return true;
     }
 
@@ -679,6 +710,7 @@ export class ForestReactions {
         this.wave('level', 0.5, 0.1, 1.7, 0.5);
         this.sweep(0.75);
         this.stars += 1;
+        this.owlCue('level', { strength: 0.75 });
         return true;
     }
 
@@ -694,6 +726,9 @@ export class ForestReactions {
             this.figure.age = Math.max(this.figure.age, this.figure.gather + this.figure.hold);
         }
         this.settled = true;
+        // The owl hears it once (being told twice changes nothing).
+        const last = this.owlCues[this.owlSerial % this.owlCues.length];
+        if (this.owlSerial === 0 || last.kind !== 'over') this.owlCue('over');
         return true;
     }
 
@@ -806,6 +841,9 @@ export class ForestReactions {
             settled: this.settled,
             stars: this.stars,
             figure: figureFrame,
+            owl: { serial: this.owlSerial, cues: this.owlCues },
+            // How much movement the player wants (reduced motion: the owl stays on its limb).
+            motion,
             front: front.active ? {
                 // -1.4 .. 1.4 across the view, in the direction of travel.
                 position: (travel * 2.8 - 1.4) * front.direction,
