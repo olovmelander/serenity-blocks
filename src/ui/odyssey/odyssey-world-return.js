@@ -91,11 +91,17 @@ export async function returnToOdysseyWorld(mode, options = {}) {
 
                 if (!scenicOwner) await mode._applyBoardAudioPolicy({ restoreTrack: true });
                 if (!isCurrent()) return false;
+                // A new tier or antialiasing chosen while the orb played shows only on a new build
+                // (OdysseyBoardController.needsQualityRebuild): make it here, under the shut gate,
+                // framed on the orb just played, as ?odysseyKeepBoard=0 rebuilds on every return.
+                const rebuild = Boolean(mode.boardController?.needsQualityRebuild?.());
+                if (rebuild) mode._disposeOdysseyBoard();
                 const shown = await mode._showBoardView({
                     showLoadingOverlay: false,
                     minOverlayDisplayMs: 0,
                     focusLevelId: options.settlePath ? null : completedLevelId,
                     keepBoardLocked: true,
+                    ...(rebuild && !options.settlePath ? { seatOnFocus: true } : {}),
                 });
                 if (shown === false || !isCurrent()) return false;
                 if (options.settlePath && Number.isFinite(completedLevelId)) {

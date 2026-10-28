@@ -26,6 +26,9 @@ import {
     ODYSSEY_BREACH_P, ODYSSEY_MASSIFS, ODYSSEY_SEA_LEVEL, odysseyWorldHeight,
 } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
+import {
+    qualityRebuildReason, readOdysseyQualityProfile, readOdysseyRenderScale,
+} from './odyssey-quality-profile.js';
 import { releaseDisposedRenderer, warmWebGpuDevice } from '../webgpu-device-warm.js';
 import {
     ONE_WORLD_DEPARTURE_VOID,
@@ -162,6 +165,8 @@ const PARKED_TARGET_SIZE = 16;
 // 0.65 — before a single pixel comes back. SHARPEN_SCALE_FLOOR in odyssey-tsl-pipeline.js is the
 // same number for the same reason; keep them in step.
 export const ODYSSEY_RENDER_SCALE_FLOOR = 0.65;
+/** Where computeScenePixelRatio's render-scale clamp stops (desktop-performance-policy.js). */
+const MIN_SCENE_RENDER_SCALE = 0.5;
 // Rolling frames for the p75/p95/p99 estimate: ~1.4 s at the dev laptop's 131.6 Hz. Sixty was
 // under half a second there, so three compile frames were 5% of a window (2026-10-19).
 const DRS_FRAME_WINDOW = 180;
@@ -888,8 +893,7 @@ export class OdysseyBoardController {
             if (!isOneWorldRequested()) return null;
             const levelData = levelRegistry?.getAllLevelPresentations?.() ?? [];
             setOdysseyPathLayout(derivePresentationLayout(levelData, levelRegistry?.getPresentationLayout?.() ?? null));
-            const quality = window.settings?.effectQuality || 'High';
-            return startWorldBake(worldBakeRequest(readWorldBuildOptions(quality)));
+            return startWorldBake(worldBakeRequest(readWorldBuildOptions(readOdysseyQualityProfile().tier)));
         } catch (error) {
             console.warn('[OdysseyBoard] could not start the world bake early:', error?.message || error);
             return null;
@@ -913,14 +917,16 @@ export class OdysseyBoardController {
         this.progressData = progressData;
         setOdysseyPathLayout(this.presentationLayout);
 
-        // Get quality settings
-        const quality = window.settings?.effectQuality || 'High';
+        // Get quality settings: as the themes read theirs (odyssey-quality-profile.js). What a
+        // board is built with is kept, so a later change of tier or antialiasing is seen
+        // (needsQualityRebuild); the render scale follows live (_refreshQualitySettings).
+        this._builtQuality = readOdysseyQualityProfile();
+        const quality = this._builtQuality.tier;
         this.qualityPreset = QUALITY_PRESETS[quality] || QUALITY_PRESETS.High;
         this.qualityName = quality;
-        this.targetFrameRate = readOdysseyTargetFrameRate(this.targetFrameRateOption);
-        this.adaptiveTargetFrameRate = readOdysseyAdaptiveFrameRate(this.targetFrameRate);
-        this.adaptiveQuality.targetFrameRate = this.adaptiveTargetFrameRate;
-        this._adaptiveCtx.targetFrameRate = this.adaptiveTargetFrameRate;
+        this._readFrameRateTargets();
+        this._syncResolutionFloor();
+        this._listenForQualitySettings();
 
         // STARTUP OPTIMIZATION fallback: ?odysseySerialInit=1 restores the old fully-serial
         // create→compile chain (insurance against a driver that misbehaves when pipeline
@@ -3122,17 +3128,7 @@ export class OdysseyBoardController {
     }
 
     async initRenderer() {
-        const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
-            renderScale: this._drs.renderScale,
-            devicePixelRatio: window.devicePixelRatio || 1,
-            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
-            sceneType: 'odyssey',
-            // Pass the selected quality tier so the user's setting actually governs Odyssey
-            // resolution. Without it computeScenePixelRatio defaults to 'High', hard-locking
-            // the browser (no desktop policy) to the High cap — Ultra/Extreme were unreachable
-            // and the scene stayed soft on capable GPUs (user low-res report 2026-07-05).
-            qualityTier: this.qualityName,
-        });
+        const pixelRatio = this._scenePixelRatio();
         // WebGPU with automatic WebGL2 fallback (one TSL codebase runs on both backends).
         // ?forceWebGL=1 forces the WebGL2 backend for QA/parity testing.
         const forceWebGL = new URLSearchParams(window.location.search).get('forceWebGL') === '1';
@@ -3279,7 +3275,9 @@ export class OdysseyBoardController {
                 // Scene-pass MSAA (meadow petal aliasing fix), High tier and above only —
                 // the sub-pixel wildflower geometry needs real sample coverage; lower tiers
                 // keep QW1's zero-sample pass (the iGPU budget that motivated it).
-                sceneSamples: ['High', 'Ultra', 'Extreme'].includes(this.qualityName) ? 4 : 0,
+                // 4 from High up, unless the game's antialiasing is off (themes/shared/scene-antialias.js).
+                sceneSamples: this._builtQuality?.sceneSamples
+                    ?? (['High', 'Ultra', 'Extreme'].includes(this.qualityName) ? 4 : 0),
                 sharpen: sharpenEnabled,
                 sharpenMaxAmount: Number.isFinite(sharpenMaxOverride) ? sharpenMaxOverride : undefined,
             });
@@ -3869,13 +3867,8 @@ export class OdysseyBoardController {
             return;
         }
         this._resizePending = false;
-        const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
-            renderScale: this._drs.renderScale, // respect the live DRS scale (QW2/QW3).
-            devicePixelRatio: window.devicePixelRatio || 1,
-            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
-            sceneType: 'odyssey',
-            qualityTier: this.qualityName,
-        });
+        this._syncResolutionFloor();
+        const pixelRatio = this._scenePixelRatio(); // the player's render scale and the live DRS
 
         this.camera.aspect = width / height;
         this.camera.updateProjectionMatrix();
@@ -3905,17 +3898,11 @@ export class OdysseyBoardController {
         // policy floor (0.5), but below ~0.65 the browser upscale turns the Ch3 meadow's
         // fine detail into visible pixel blocks. Clamp Odyssey only; when pinned here the
         // adaptive tier ladder escalates to its bloom-shed / post-soften rungs instead.
-        const clampedRenderScale = Math.max(renderScale, ODYSSEY_RENDER_SCALE_FLOOR);
+        const clampedRenderScale = Math.max(renderScale, this._resolutionFloor());
         this._drs.renderScale = clampedRenderScale;
         const width = this.container?.clientWidth || 1;
         const height = this.container?.clientHeight || 1;
-        const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
-            renderScale: clampedRenderScale,
-            devicePixelRatio: window.devicePixelRatio || 1,
-            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
-            sceneType: 'odyssey',
-            qualityTier: this.qualityName,
-        });
+        const pixelRatio = this._scenePixelRatio(clampedRenderScale);
         this.renderer.setPixelRatio(pixelRatio);
         if (this.postProcessingStack?.resize) {
             this.postProcessingStack.resize(width, height);
@@ -3938,14 +3925,111 @@ export class OdysseyBoardController {
     _syncOutputSharpen() {
         const pipeline = this.postProcessingStack;
         if (!pipeline?.setRenderScale || typeof this.renderer?.getPixelRatio !== 'function') return;
+        // Full resolution is the player's own render scale: only the DRS's drops upscale (and
+        // sharpen), never a scale the player chose, as no theme sharpens one either.
         const fullPixelRatio = computeScenePixelRatio({
-            renderScale: 1,
+            renderScale: readOdysseyRenderScale(),
             devicePixelRatio: window.devicePixelRatio || 1,
             maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
             sceneType: 'odyssey',
             qualityTier: this.qualityName,
         });
         pipeline.setRenderScale(fullPixelRatio > 0 ? this.renderer.getPixelRatio() / fullPixelRatio : 1);
+    }
+
+    /**
+     * The scene's pixel ratio: the display's, under this tier's cap, times the player's render
+     * scale (Settings > Render Scale, as the desktop policy resolves it: the themes' own scale)
+     * and the board's live DRS scale.
+     * @param {number} [drsScale]
+     * @private
+     */
+    _scenePixelRatio(drsScale = this._drs.renderScale) {
+        return this.pixelRatioOverride ?? computeScenePixelRatio({
+            renderScale: drsScale * readOdysseyRenderScale(),
+            devicePixelRatio: window.devicePixelRatio || 1,
+            maxPixelRatio: ODYSSEY_MAX_PIXEL_RATIO,
+            sceneType: 'odyssey',
+            // The selected tier governs Odyssey's cap: without it computeScenePixelRatio defaults
+            // to 'High', and Ultra/Extreme were unreachable (user low-res report 2026-07-05).
+            qualityTier: this.qualityName,
+        });
+    }
+
+    /**
+     * How low the DRS may take the scale: Odyssey's legibility floor, or higher where the
+     * player's own scale already sits low, since the product stops at the scale clamp (0.5) and a
+     * DRS step under it would change nothing on screen.
+     * @private
+     */
+    _resolutionFloor() {
+        const own = readOdysseyRenderScale();
+        return Math.min(1, Math.max(ODYSSEY_RENDER_SCALE_FLOOR, own > 0 ? MIN_SCENE_RENDER_SCALE / own : 1));
+    }
+
+    /** @private keep the adaptive controller's floor at _resolutionFloor() */
+    _syncResolutionFloor() {
+        if (this.adaptiveQuality) this.adaptiveQuality.resolutionFloor = this._resolutionFloor();
+    }
+
+    /** @private the Target Frame Rate and the adaptive budget it sets, read from the settings */
+    _readFrameRateTargets() {
+        this.targetFrameRate = readOdysseyTargetFrameRate(this.targetFrameRateOption);
+        this.adaptiveTargetFrameRate = readOdysseyAdaptiveFrameRate(this.targetFrameRate);
+        if (this.adaptiveQuality) this.adaptiveQuality.targetFrameRate = this.adaptiveTargetFrameRate;
+        if (this._adaptiveCtx) this._adaptiveCtx.targetFrameRate = this.adaptiveTargetFrameRate;
+    }
+
+    /**
+     * Follow the settings for as long as the board lives: the same events the themes follow,
+     * read a microtask later, once main.js has applied the change to the render scale it keeps.
+     * @private
+     */
+    _listenForQualitySettings() {
+        if (this._qualityListeners || typeof window === 'undefined') return;
+        let queued = false;
+        const refresh = () => {
+            if (queued) return;
+            queued = true;
+            queueMicrotask(() => {
+                queued = false;
+                if (!this._disposed) this._refreshQualitySettings();
+            });
+        };
+        window.addEventListener?.('settingsChanged', refresh);
+        window.addEventListener?.('desktopPerformancePolicyChanged', refresh);
+        const offBus = eventBus.on(EVENTS.SETTINGS_CHANGED, refresh);
+        this._qualityListeners = () => {
+            window.removeEventListener?.('settingsChanged', refresh);
+            window.removeEventListener?.('desktopPerformancePolicyChanged', refresh);
+            if (typeof offBus === 'function') offBus();
+        };
+    }
+
+    /**
+     * Apply what can change on a built board: the render scale (resized now, or as soon as a
+     * parked board shows again) and the frame-rate budget. A tier or antialiasing change waits
+     * for the next build (needsQualityRebuild).
+     * @private
+     */
+    _refreshQualitySettings() {
+        this._readFrameRateTargets();
+        this._syncResolutionFloor();
+        const pixelRatio = this._scenePixelRatio();
+        if (this.renderer && typeof this.renderer.getPixelRatio === 'function'
+            && this.renderer.getPixelRatio() !== pixelRatio) {
+            this.onResize();
+        }
+    }
+
+    /**
+     * Whether the settings now ask for a board other than this one was built as (a new tier, or
+     * antialiasing switched where the tier draws with it): the reason, or null.
+     * @returns {'tier'|'antialiasing'|null}
+     */
+    needsQualityRebuild() {
+        if (this._disposed || !this._builtQuality) return null;
+        return qualityRebuildReason(this._builtQuality, readOdysseyQualityProfile());
     }
 
     /**
@@ -5649,6 +5733,8 @@ export class OdysseyBoardController {
         releaseOdysseyBoardMusic(this);
         this._disposed = true;
         this._covers?.clear();
+        this._qualityListeners?.();
+        this._qualityListeners = null;
         if (this._foldHypercubes) {
             this._foldHypercubes.mesh.removeFromParent();
             this._foldHypercubes.dispose();
