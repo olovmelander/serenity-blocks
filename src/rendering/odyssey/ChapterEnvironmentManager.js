@@ -158,6 +158,24 @@ const SEAM_56_EARTH_IGNITE_END = 0.13; // ...and where it reaches full weight (p
 // to 0.54 in ONE frame and then climbed back (the audit's -13 luma step at 0.7703). The hold now
 // ends exactly where the ecotone does, derived from the live seam width.
 
+/**
+ * The chapter id in `ids` nearest `focus`, the one ahead on a tie (the journey runs forward).
+ * The first id when there is no focus.
+ * @param {number[]} ids non-empty
+ * @param {?number} focus
+ * @returns {number}
+ */
+export function pickNearestChapter(ids, focus) {
+    if (!Number.isFinite(focus)) return ids[0];
+    let best = ids[0];
+    for (const id of ids) {
+        const distance = Math.abs(id - focus);
+        const bestDistance = Math.abs(best - focus);
+        if (distance < bestDistance || (distance === bestDistance && id > best)) best = id;
+    }
+    return best;
+}
+
 function smootherstep01(value) {
     const t = THREE.MathUtils.clamp(value, 0, 1);
     return t * t * t * (t * (t * 6 - 15) + 10);
@@ -969,13 +987,15 @@ export class ChapterEnvironmentManager {
     }
 
     /**
-     * Load remaining chapters in background without blocking the main thread.
-     * Uses requestIdleCallback (with setTimeout fallback) to spread the work
-     * across idle frames.
+     * Load remaining chapters in background without blocking the main thread: one chapter per
+     * slot, the one nearest the player first.
      * @param {number[]} alreadyLoaded - Chapter IDs that are already loaded
      * @param {Object} options
      * @param {Function} [options.canRunTask] - Returns true if it is safe to run heavy work
      * @param {Function} [options.onEnvironmentCreated] - Hook run after each environment loads
+     * @param {number|Function} [options.focusChapter] - The chapter to build outward from, read
+     *   at every slot so the loader follows the camera. Without one, ascending id order. (In id
+     *   order a player opening on chapter 7 had chapter 1, the heaviest build, made first.)
      */
     loadChaptersInBackground(alreadyLoaded = [], options = {}) {
         const allChapterIds = CHAPTER_SCENES.map((entry) => entry.id);
@@ -986,6 +1006,9 @@ export class ChapterEnvironmentManager {
         const onEnvironmentCreated = typeof options.onEnvironmentCreated === 'function'
             ? options.onEnvironmentCreated
             : null;
+        const readFocus = typeof options.focusChapter === 'function'
+            ? options.focusChapter
+            : () => options.focusChapter;
 
         if (remaining.length === 0) return;
 
@@ -999,10 +1022,14 @@ export class ChapterEnvironmentManager {
         // a no-op, but it stays robust if the window is reduced via ?odysseyEagerWindow=0.)
         const scheduleNext = (fn) => setTimeout(fn, 60);
 
-        let index = 0;
+        const tried = new Set();
         const loadNext = () => {
             if (this._disposed) return; // dispose() ends the chain; nothing reschedules
-            if (index >= remaining.length) {
+            // The continuous world draws the chapters it suppresses, so they cost no build slot.
+            // Read at every slot: when the world is abandoned (ADR-0015) the set empties and the
+            // loader still builds their dioramas.
+            const pending = remaining.filter((id) => !tried.has(id) && !this.suppressedChapters?.has?.(id));
+            if (pending.length === 0) {
                 console.log('[ChapterEnvironmentManager] All chapters loaded in background');
                 return;
             }
@@ -1012,7 +1039,8 @@ export class ChapterEnvironmentManager {
                 return;
             }
 
-            const chapterId = remaining[index++];
+            const chapterId = pickNearestChapter(pending, readFocus());
+            tried.add(chapterId);
             this.createChapterEnvironment(chapterId).then(async () => {
                 if (this._disposed) return;
                 // Update visibility after loading so the new environment shows if camera is there

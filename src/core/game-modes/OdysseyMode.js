@@ -83,7 +83,7 @@ import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.
 import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-input.js';
 import { createBoardInfoOverlay, scheduleOdysseyMapHeader } from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
-import { presentOdysseyFirstArrival } from '../../ui/odyssey/odyssey-first-arrival.js';
+import { presentOdysseyFirstArrival, shouldOfferOdysseyFirstArrival } from '../../ui/odyssey/odyssey-first-arrival.js';
 import { installOdysseyCharmInput } from '../../ui/odyssey/odyssey-charm-input.js';
 import { renderOdysseyCharmHeader } from '../../ui/odyssey/odyssey-charm-copy.js';
 import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/odyssey-new-journey.js';
@@ -359,7 +359,14 @@ export class OdysseyMode extends BaseGameMode {
             // cold WebGPU board build steals the main thread (else the build runs in the
             // same task and the overlay never paints — user sees a frozen menu).
             await waitForCinematicLoadingOverlayPresented();
-            this.boardViewReadyPromise = this._showBoardView();
+            // The map opens on the next orb to play, built around it (see _resolveRevealLevelId).
+            // Selected from the start: an orb left selected on an earlier visit no longer gets its
+            // panel (and its theme prefetched) on the way.
+            const revealLevelId = this._resolveRevealLevelId();
+            if (Number.isFinite(revealLevelId)) this.selectedLevelId = revealLevelId;
+            this.boardViewReadyPromise = this._showBoardView(Number.isFinite(revealLevelId)
+                ? { focusLevelId: revealLevelId, seatOnFocus: true }
+                : {});
             await this.boardViewReadyPromise;
         } catch (error) {
             console.error('[Odyssey] Failed to prepare board view:', error);
@@ -2010,6 +2017,24 @@ export class OdysseyMode extends BaseGameMode {
         return arrived;
     }
 
+    /**
+     * Bring the map's focus orb forward as the board is shown. A board built framed on it
+     * (`seatOnFocus`, mode entry) only needs its panel; otherwise the camera goes there (OD-08:
+     * not awaited, so the reveal does not wait on the trip).
+     * @param {number} levelId
+     * @param {{seatOnFocus?: boolean}} [options]
+     * @returns {Promise<boolean>}
+     * @private
+     */
+    async _presentFocusLevel(levelId, { seatOnFocus = false } = {}) {
+        if (seatOnFocus && this.boardController?.isSeatedOn?.(levelId)) {
+            this.selectedLevelId = levelId;
+            this._updateLevelPreview(levelId);
+            return true;
+        }
+        return this._focusBoardLevelForLaunch(levelId, { updatePreview: true, settle: false });
+    }
+
     async _launchLevelFromNavigator(levelId) {
         const requestedLevelId = Number(levelId);
         if (!Number.isFinite(requestedLevelId) || this.isEnteringLevel) {
@@ -2825,6 +2850,8 @@ export class OdysseyMode extends BaseGameMode {
             // ~800ms is enough for that once the dismiss animation is counted (masterplan A9).
             minOverlayDisplayMs = 800,
             showLoadingOverlay = true,
+            // Build a board that is not built yet already framed on focusLevelId (mode entry).
+            seatOnFocus = false,
         } = options;
 
         const generation = this._boardPresentationGeneration || 0;
@@ -2843,7 +2870,9 @@ export class OdysseyMode extends BaseGameMode {
 
         // Initialize Three.js Odyssey Board if not exists
         this._perfMark(boardInitMark);
-        const initialized = await this._initializeOdysseyBoard();
+        const initialized = await this._initializeOdysseyBoard({
+            revealLevelId: seatOnFocus && Number.isFinite(focusLevelId) ? focusLevelId : null,
+        });
         if (initialized === false || !isCurrent()) return false;
         this._perfMeasure('odyssey:mode:board-init', boardInitMark);
         if (showLoadingOverlay) setCinematicLoadingProgress('started');
@@ -2865,10 +2894,7 @@ export class OdysseyMode extends BaseGameMode {
             if (settled === false || !isCurrent()) return false;
             this.selectedLevelId = focusLevelId;
         } else if (Number.isFinite(focusLevelId)) {
-            await this._focusBoardLevelForLaunch(focusLevelId, {
-                updatePreview: true,
-                settle: false, // OD-08: reveal now, camera travels visibly after (was awaited under overlay)
-            });
+            await this._presentFocusLevel(focusLevelId, { seatOnFocus });
         } else if (Number.isFinite(this.selectedLevelId)) {
             this._updateLevelPreview(this.selectedLevelId);
         }
@@ -2919,14 +2945,51 @@ export class OdysseyMode extends BaseGameMode {
      * Initialize the Three.js Odyssey Board (build if needed, then reveal).
      * @private
      */
-    async _initializeOdysseyBoard() {
+    async _initializeOdysseyBoard(options = {}) {
         const generation = this._boardPresentationGeneration || 0;
         const operation = this._boardReturnOperation;
-        await this._buildOdysseyBoard();
+        await this._buildOdysseyBoard(options);
         if (generation !== (this._boardPresentationGeneration || 0)
             || (operation && operation !== this._boardReturnOperation)) return false;
         this._revealOdysseyBoard();
         return true;
+    }
+
+    /**
+     * The orb the map opens on when the mode starts: the next one to play, so the journey
+     * continues where it stands (OdysseyStateManager.currentLevel: the first open orb not yet
+     * cleared, else the furthest open one). The board is built around it: the camera opens
+     * framed on it, the chapters built and warmed before the reveal are its chapter's, and so is
+     * the opening music. The map used to open at orb 1 with the frontier's chapters built
+     * instead, so a save past chapter 2 revealed a cavern nobody had built.
+     * A fresh journey the first arrival will welcome keeps that welcome's own opening: null.
+     * @returns {?number}
+     * @private
+     */
+    _resolveRevealLevelId() {
+        try {
+            if (shouldOfferOdysseyFirstArrival(this)) return null;
+            const state = this.odysseyState;
+            const frontier = Number(state?.currentLevel);
+            if (Number.isFinite(frontier) && this.levelRegistry?.getLevel?.(frontier)
+                && state?.isLevelUnlocked?.(frontier) !== false) {
+                return frontier;
+            }
+            return this.levelRegistry?.getLevel?.(1) ? 1 : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * @param {?number} levelId
+     * @returns {?number} the level's chapter, or null for no (or an unknown) level
+     * @private
+     */
+    _chapterOfLevel(levelId) {
+        if (!Number.isFinite(levelId)) return null;
+        const chapter = Number(this.levelRegistry?.getLevel?.(levelId)?.chapter);
+        return Number.isInteger(chapter) ? chapter : null;
     }
 
     /**
@@ -2936,7 +2999,7 @@ export class OdysseyMode extends BaseGameMode {
      * (load everything) when progress can't be resolved, so the fallback is the old behaviour.
      * @private
      */
-    _computeEagerStartupChapters() {
+    _computeEagerStartupChapters(revealLevelId = null) {
         try {
             // Eager-CREATE only the reveal neighbourhood: the FOCUS chapter the board reveals
             // into (odysseyState.currentChapter — the same one fast-start warms, see the
@@ -2948,7 +3011,10 @@ export class OdysseyMode extends BaseGameMode {
             // progression (masterplan A1). A focus-centred window keeps the pre-reveal cost constant
             // regardless of how far the player has progressed. Creating all 8 up front was already
             // tried + reverted (it ballooned warm-up to ~22s / board-visible ~38s).
-            const focusChapter = this.odysseyState?.currentChapter || 1;
+            //
+            // The focus is the chapter of the orb the map opens on (when the board is built framed
+            // on one), so what is built before the reveal is what the reveal shows.
+            const focusChapter = this._chapterOfLevel(revealLevelId) ?? (this.odysseyState?.currentChapter || 1);
             const chapterCount = (this.levelRegistry?.getPresentationLayout?.()?.chapterPositions?.length || 9) - 1;
             const lo = Math.max(1, focusChapter - 1);
             const hi = Math.min(Math.max(2, chapterCount), focusChapter + 1);
@@ -2967,7 +3033,7 @@ export class OdysseyMode extends BaseGameMode {
      * same in-flight promise.
      * @private
      */
-    async _buildOdysseyBoard() {
+    async _buildOdysseyBoard(options = {}) {
         if (this.boardController) {
             return; // Already built
         }
@@ -2975,7 +3041,7 @@ export class OdysseyMode extends BaseGameMode {
             await this._boardBuildPromise;
             return;
         }
-        const build = this._runOdysseyBoardBuild();
+        const build = this._runOdysseyBoardBuild(options);
         this._boardBuildPromise = build;
         try {
             await build;
@@ -2990,7 +3056,7 @@ export class OdysseyMode extends BaseGameMode {
      * after the Odyssey loading overlay is already visible.
      * @private
      */
-    async _runOdysseyBoardBuild() {
+    async _runOdysseyBoardBuild({ revealLevelId = null } = {}) {
         // Create container for the 3D board
         let boardContainer = document.getElementById('odyssey-board-3d');
         if (!boardContainer) {
@@ -3015,11 +3081,13 @@ export class OdysseyMode extends BaseGameMode {
             isMusicContextActive: () => this._odysseyAudioActive && this.isActive
                 && this.isInBoardView && this.boardController === controller,
             getReducedMotion: () => this.deps.settingsManager?.get?.()?.reducedMotion === true,
-            // Cold-start: eagerly load only the player's reachable chapter neighbourhood
-            // (chapter 1 .. furthest-unlocked + 1); the locked rest load in the background.
-            startupChapters: this._computeEagerStartupChapters(),
+            // Cold-start: eagerly load only the reveal chapter and its neighbours; the rest load
+            // in the background.
+            startupChapters: this._computeEagerStartupChapters(revealLevelId),
             // The chapter the board reveals into — fast-start warms only this one.
-            focusChapter: this.odysseyState?.currentChapter || 1,
+            focusChapter: this._chapterOfLevel(revealLevelId) ?? (this.odysseyState?.currentChapter || 1),
+            // The orb the camera opens framed on (null: the old opening at orb 1).
+            revealLevelId: Number.isFinite(revealLevelId) ? revealLevelId : null,
         });
         this.boardController = controller;
 

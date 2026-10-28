@@ -475,6 +475,12 @@ export class OdysseyBoardController {
         this._motionWarm = this._fastStart && readBooleanUrlFlag('odysseyMotionWarm');
         this._skipPreRevealWarmup = this.warmupMode === 'off';
         this.focusChapter = Number.isFinite(options.focusChapter) ? options.focusChapter : null;
+        // The orb the map opens on (OdysseyMode passes the next orb to play). The camera starts
+        // framed on it, so the chapters built and warmed before the reveal are the ones on
+        // screen. Null keeps the old opening at orb 1 (a fresh journey's first arrival).
+        this.revealLevelId = Number.isFinite(options.revealLevelId) ? options.revealLevelId : null;
+        // Set once the camera is framed on that orb; cleared as soon as anything moves it.
+        this._revealSeatLevelId = null;
         // LEVER 2 — chapter LRU eviction (default OFF; opt-in ?odysseyChapterEvict=1, window N=2).
         // Suppressed during capture-restricted runs. When ON it OWNS residency, so the
         // background chapter loader + full background render-warm are disabled (below) to avoid
@@ -1221,13 +1227,17 @@ export class OdysseyBoardController {
         await this._yieldTask();
 
         // ─── Step 6: Camera, post-processing, lighting, interaction ───
+        // The map opens where the reveal orb parks (the next orb to play), not at orb 1: the
+        // eager chapters, the warm-up and the opening music are all that orb's chapter's.
+        const revealSeat = this._resolveRevealSeat();
+        if (revealSeat) this.lastActiveChapter = revealSeat.chapter;
         this.cameraController = new OdysseyCameraController(
             this.camera,
             this.pathRenderer.pathCurve,
             {
                 levelPositions: this.presentationLayout.levelPositions,
                 chapterPositions: this.presentationLayout.chapterPositions,
-                startPosition: this.presentationLayout.levelPositions[0] ?? 0,
+                startPosition: revealSeat?.parkProgress ?? this.presentationLayout.levelPositions[0] ?? 0,
                 getReducedMotion: this.getReducedMotion,
                 // Tune scroll FEEL in-game. scrollSpeed = sensitivity (the primary mousepad "too
                 // fast" lever): ?odysseyScrollSpeed=0.05 (slower) .. 0.15 (old). Default 0.09.
@@ -1276,6 +1286,13 @@ export class OdysseyBoardController {
         await this.setupDirector();
         trace.end('post+director');
 
+        // Frame the reveal orb now that the director exists (its lens is part of the framing).
+        // The default fast start frames it before the warm-up, so the warm-up draws the frame
+        // the player will see; the opt-in sweeps move the camera along the rail, which a close-up
+        // ignores, so they frame it after.
+        const seatBeforeWarm = !!revealSeat && this._fastStart && !this._motionWarm;
+        if (seatBeforeWarm) this._seatRevealOrb(revealSeat);
+
         await this._yieldTask();
 
         if (this.editorMode) {
@@ -1307,6 +1324,7 @@ export class OdysseyBoardController {
         trace.begin('warmup');
         await this._warmUpJourney();
         trace.end('warmup');
+        if (revealSeat && !seatBeforeWarm && !this._disposed) this._seatRevealOrb(revealSeat);
 
         // dispose() during the build (mode exit, GPU-loss route-out, a Steam invite)
         // must win: activating here revived a torn-down board as a render loop over a
@@ -1707,7 +1725,7 @@ export class OdysseyBoardController {
         // then runs the same render-warm, which creates no pipelines any more (~4 ms: GPU
         // uploads + first update()). One chapter per tick, nearest-to-player first, idle-gated
         // by _canRunBackgroundTask above; ?odysseyLiveCompile=0 restores the 08-20 behaviour.
-        const focus = Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
+        const focus = this._liveFocusChapter();
         this.prewarmQueue.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
         const batch = this.prewarmQueue.splice(0, 1);
         batch.forEach((ch) => this.queuedPrewarmChapters.delete(ch));
@@ -1828,6 +1846,7 @@ export class OdysseyBoardController {
             onEnvironmentCreated: (chapterId) => {
                 this._queueChapterPrewarm(chapterId);
             },
+            focusChapter: () => this._liveFocusChapter(),
         });
     }
 
@@ -1928,7 +1947,7 @@ export class OdysseyBoardController {
             // sweep chases the scroll direction instead of following a stale start-time order. The
             // chapter the user is scrolling TOWARD is warmed before arrival, which is the point of
             // killing the first-visit hitch (revisits were already smooth once warmed).
-            const liveFocus = Number.isFinite(this.focusChapter) ? this.focusChapter : focus;
+            const liveFocus = this._liveFocusChapter();
             let bestJ = idx;
             for (let j = idx + 1; j < order.length; j += 1) {
                 if (Math.abs(order[j] - liveFocus) < Math.abs(order[bestJ] - liveFocus)) bestJ = j;
@@ -2620,21 +2639,131 @@ export class OdysseyBoardController {
                 await this._prewarmGroup(target, `${label} (post-reveal)`, { rethrow: true });
             } catch (error) {
                 console.warn(`[OdysseyBoard] deferred compile failed for ${label}:`, error?.message || error);
-                // A world whose node graph cannot build draws broken or not at all, for two
-                // thirds of the journey, with nothing on screen saying why (audit 2026-10-18).
-                // Fall back as a failed build does, and load the chapter the camera is in now.
                 // (A WGSL validation error is asynchronous and never reaches this catch; the
                 // device-loss path handles a device that dies of one.)
-                if (label === 'one-world' && this.oneWorld?.group === target && this.isActive) {
-                    this._abandonOneWorld(error);
-                    const here = this.environmentManager?.getBlendState?.(this.cameraController?.getCurrentPosition?.() ?? 0);
-                    if (Number.isFinite(here?.activeChapter)) this._requestChapterEnvironment(here.activeChapter);
-                }
+                if (label === 'one-world' && this.isActive) this._abandonWorldAfterFailedCompile(error, target);
             }
             this._compileTimings[`${label}-post`] = Math.round(performance.now() - startedAt);
             if (!this.isActive) return; // torn down mid-queue
         }
         console.log('[OdysseyBoard] post-reveal compiles done', JSON.stringify(this._compileTimings));
+    }
+
+    /**
+     * A world whose node graph cannot build draws broken or not at all, for two thirds of the
+     * journey, with nothing on screen saying why (audit 2026-10-18). Fall back as a failed build
+     * does, and load the chapter the camera is in now.
+     * @param {*} error
+     * @param {?THREE.Object3D} group the world group that failed to compile
+     * @returns {?Promise<boolean>} the request for the camera's chapter, if one was made
+     * @private
+     */
+    _abandonWorldAfterFailedCompile(error, group) {
+        if (!group || this._disposed || this.oneWorld?.group !== group) return null;
+        this._abandonOneWorld(error);
+        const here = this.environmentManager?.getBlendState?.(this.cameraController?.getCurrentPosition?.() ?? 0);
+        return Number.isFinite(here?.activeChapter) ? this._requestChapterEnvironment(here.activeChapter) : null;
+    }
+
+    /**
+     * Where the map opens: the reveal orb's park (resolveOrbParkProgress, where an ordinary
+     * selection of it parks) and its chapter.
+     * @returns {?{levelId: number, chapter: number, levelProgress: number, parkProgress: number}}
+     *   null without a reveal orb, or for one the layout cannot place
+     * @private
+     */
+    _resolveRevealSeat() {
+        const levelId = this.revealLevelId;
+        if (!Number.isFinite(levelId)) return null;
+        const level = (this.levelData || []).find((entry) => entry?.id === levelId);
+        const levelProgress = Number(level?.pathPosition);
+        const chapter = Number(level?.chapter);
+        if (!Number.isFinite(levelProgress) || !Number.isInteger(chapter)) return null;
+        const parkProgress = resolveOrbParkProgress(chapter, levelProgress, this.presentationLayout?.chapterPositions);
+        return {
+            levelId,
+            chapter,
+            levelProgress,
+            parkProgress: Number.isFinite(parkProgress) ? parkProgress : levelProgress,
+        };
+    }
+
+    /**
+     * Frame the reveal orb in one step: selected, in the close-up an orb selection settles into,
+     * with the lens of its own chapter. No glide from orb 1 through chapters nobody built.
+     * @param {ReturnType<OdysseyBoardController['_resolveRevealSeat']>} seat
+     * @returns {boolean} whether the camera is framed on it
+     * @private
+     */
+    _seatRevealOrb(seat) {
+        const cc = this.cameraController;
+        if (!seat || !cc || !this.nodeManager) return false;
+        const nodePosition = this.nodeManager.getNodePosition?.(seat.levelId);
+        if (!nodePosition) return false;
+        // The director's camera state is a pure function of position, so one zero-time update
+        // gives the lens at the park, and the camera takes it as a teleport would.
+        const blendState = this.environmentManager?.getBlendState?.(seat.parkProgress) || null;
+        const directorState = this.director?.update?.(0, {
+            ascentProgress: seat.parkProgress,
+            audio: null,
+            blendState,
+        }) || null;
+        cc.settleAt(seat.parkProgress, directorState);
+        if (this.selectedLevelId !== null && this.selectedLevelId !== seat.levelId) {
+            this.nodeManager.setNodeSelected?.(this.selectedLevelId, false);
+        }
+        this.selectedLevelId = seat.levelId;
+        this.nodeManager.setNodeSelected?.(seat.levelId, true);
+        cc.focusOnNode(nodePosition, 0, this._focusFramingFor(seat.chapter, seat.levelProgress));
+        this._revealSeatLevelId = seat.levelId;
+        return true;
+    }
+
+    /**
+     * Whether the board opened framed on this orb and nothing has moved the camera since, so
+     * the mode can show the orb's panel without sending the camera there again.
+     * @param {number} levelId
+     * @returns {boolean}
+     */
+    isSeatedOn(levelId) {
+        const cc = this.cameraController;
+        return Number.isFinite(levelId) && this._revealSeatLevelId === levelId
+            && this.selectedLevelId === levelId && cc?.mode === 'focus' && cc.isAnimating !== true;
+    }
+
+    /**
+     * Whether the opening frame shows the continuous world (a map that opens on an Act II orb).
+     * @returns {boolean}
+     * @private
+     */
+    _revealShowsWorld() {
+        if (!this.oneWorld?.group) return false;
+        const progress = this.cameraController?.getCurrentPosition?.();
+        if (!Number.isFinite(progress)) return false;
+        const cp = this.presentationLayout?.chapterPositions || [];
+        return isWorldVisibleAtProgress(progress, cp[1], cp[5]);
+    }
+
+    /**
+     * The chapter background work is ordered around: the camera's, once the map has drawn
+     * (renderFrame keeps it current), the reveal chapter before that.
+     * @returns {number}
+     * @private
+     */
+    _liveFocusChapter() {
+        if (Number.isFinite(this.lastActiveChapter)) return this.lastActiveChapter;
+        return Number.isFinite(this.focusChapter) ? this.focusChapter : 1;
+    }
+
+    /**
+     * Add every chapter the last frame drew to `drawn`.
+     * @param {Set<number>} drawn
+     * @private
+     */
+    _collectDrawnChapters(drawn) {
+        this.environmentManager?.environments?.forEach((env, chapterId) => {
+            if (env?.group?.visible === true) drawn.add(chapterId);
+        });
     }
 
     /**
@@ -3391,11 +3520,17 @@ export class OdysseyBoardController {
                 const breachWarm = this._prewarmGroup(this.thresholdDirector?.group, 'threshold breach');
                 // Deferred (item 2.15): the post-reveal queue compiles One World through the
                 // live-loop path, so it is not started here at all.
-                const deferred = this.deferSeamCompiles && !!this._compilePool;
+                // Deferred past the reveal only when the opening frame does not show the world: a
+                // map that opens on an Act II orb draws it first in the warm-up, which would create
+                // its pipelines synchronously behind the loading cover.
+                const deferred = this.deferSeamCompiles && !!this._compilePool && !this._revealShowsWorld();
                 // The world is not a chapter env group either, so it misses the same prewarm
                 // and would compile four materials on the first Act II frame — the whole point
                 // of collapsing 66 materials into 4 is lost if they land as a cold stall.
-                const worldWarm = deferred ? null : this._prewarmGroup(this.oneWorld?.group, 'one world');
+                // Compiled here, a world that cannot build falls back as it does after the reveal.
+                const worldGroup = this.oneWorld?.group;
+                const worldWarm = deferred ? null : this._prewarmGroup(worldGroup, 'one world', { rethrow: true })
+                    .catch((error) => this._abandonWorldAfterFailedCompile(error, worldGroup));
                 // The board's OWN presentation — path tube/core/glow + chapter rings, the 55
                 // level nodes and their instanced glass/glow/lock/star meshes, the starfield —
                 // is added straight to the scene, outside every group above, so nothing
@@ -3424,7 +3559,7 @@ export class OdysseyBoardController {
                         this._timedCompile('corridor', corridorWarm),
                         this._timedCompile('breach', breachWarm),
                     );
-                    if (this.deferSeamCompiles) {
+                    if (deferred) {
                         this._deferredCompileGroups = [
                             { label: 'one-world', group: () => this.oneWorld?.group },
                         ];
@@ -4100,6 +4235,7 @@ export class OdysseyBoardController {
         if (this._disposed || !this.nodeManager || !this.cameraController || options.isCurrent?.() === false) {
             return false;
         }
+        this._revealSeatLevelId = null;
 
         if (this.selectedLevelId !== null) {
             this.nodeManager.setNodeSelected(this.selectedLevelId, false);
@@ -4186,6 +4322,7 @@ export class OdysseyBoardController {
 
     /** Settle the current navigation promise before a flow, map or renderer owner changes. */
     cancelTravel() {
+        this._revealSeatLevelId = null;
         this.selectionSequence += 1;
         this.cameraController?.setFollowMode?.();
         const travelModel = this.cameraController?.travelModel;
@@ -4762,6 +4899,8 @@ export class OdysseyBoardController {
             // samples are cheap. So the startup chapter WINDOW (see startupChapterIds) is the
             // real cold-start lever, not truncating samples here.
             warmupStats.sampleCount = steps.length;
+            // The chapters these frames actually drew: only those are warm.
+            const drawnChapters = new Set();
             for (let i = 0; i < steps.length; i += 1) {
                 cc.currentPosition = steps[i];
                 cc.targetPosition = steps[i];
@@ -4773,6 +4912,7 @@ export class OdysseyBoardController {
                 const sampleStart = performance.now();
                 const renderStart = performance.now();
                 this.renderFrame(1 / 60);
+                this._collectDrawnChapters(drawnChapters);
                 const renderFrameMs = performance.now() - renderStart;
                 let gpuSyncMs = 0;
                 if (syncGpu) {
@@ -4835,6 +4975,7 @@ export class OdysseyBoardController {
                 while (cc.currentPosition < 0.205 && driveFrames < 300) {
                     const frameStart = performance.now();
                     this.renderFrame(1 / 60);
+                    this._collectDrawnChapters(drawnChapters);
                     const frameMs = performance.now() - frameStart;
                     // Which drive frames are expensive, and WHERE: the discriminator for whether
                     // the drive actually triggers the live pass's path-locked costs.
@@ -4857,6 +4998,7 @@ export class OdysseyBoardController {
                 let tailFrames = 0;
                 while (performance.now() - tailStart < 1400 && tailFrames < 120) {
                     this.renderFrame(1 / 60);
+                    this._collectDrawnChapters(drawnChapters);
                     tailFrames += 1;
                     if (tailFrames % 6 === 0) {
                         // eslint-disable-next-line no-await-in-loop
@@ -4869,11 +5011,13 @@ export class OdysseyBoardController {
                 console.log(`[OdysseyWarmup] continuous drive: ${driveFrames} frames `
                     + `to p=${cc.currentPosition.toFixed(3)} in ${warmupStats.driveMs}ms`);
             }
-            // Mark the chapters this pre-reveal warm covered, so the post-reveal background
-            // render-warm skips them (no redundant re-render).
+            // Mark the chapters this pre-reveal warm drew, so the post-reveal background
+            // render-warm skips them (no redundant re-render). A chapter it only built, off
+            // screen at every sample, stays unmarked: marked, the background warm skipped it and
+            // its first draw's uploads landed on a live frame.
             for (const ch of (warmChapterIds || [])) {
                 const warmedEnv = this.environmentManager?.environments?.get(ch);
-                if (warmedEnv) warmedEnv._renderWarmed = true;
+                if (warmedEnv && drawnChapters.has(ch)) warmedEnv._renderWarmed = true;
             }
             // Warm every post output-quad variant (lean/ch7-lens × bloom/no-bloom) BEFORE
             // reveal so they never compile on a live frame. (Deferring this for the NORMAL
