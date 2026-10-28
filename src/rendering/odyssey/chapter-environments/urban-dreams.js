@@ -33,6 +33,7 @@ import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { getChapterProfile } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import { resolveSunCarry } from './urban-dreams-sun-carry.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
 import {
     RETROSUN_CITY_POS,
     bakeNeonGlow,
@@ -182,11 +183,13 @@ function createSkyGradient(uniforms, neon) {
 /**
  * Sheet lightning in the smog: one flash (a double flicker that dies in ~0.6 s) at a hashed
  * moment of every 26 s window of the chapter clock. Closed form in the clock (a fixed rate),
- * so a seek or a capture lands on the same sky every time.
+ * so a seek or a capture lands on the same sky every time. `steady` (Reduce flashing,
+ * ADR-0021: lightning fires one stroke and never flickers) leaves out the flicker.
  * @param {number} time chapter clock (s)
+ * @param {{steady?: boolean}} [options]
  * @returns {number} 0..1
  */
-export function resolveUrbanStorm(time) {
+export function resolveUrbanStorm(time, { steady = false } = {}) {
     if (!Number.isFinite(time)) return 0;
     const PERIOD = 26;
     const k = Math.floor(time / PERIOD);
@@ -194,8 +197,8 @@ export function resolveUrbanStorm(time) {
     const age = time - (k * PERIOD + 4 + h * 18);
     if (age < 0 || age > 1.2) return 0;
     let flicker = 0.85;
-    if (age < 0.09) flicker = 1;
-    else if (age < 0.16) flicker = 0.25;
+    if (!steady && age < 0.09) flicker = 1;
+    else if (!steady && age < 0.16) flicker = 0.25;
     return flicker * Math.exp(-age * 5.5);
 }
 
@@ -628,7 +631,12 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             if (Number.isFinite(projY) && projY > 0) neon.projY.value = projY;
         }
         neon.reveal.value = easedReveal;
-        if (neon.storm) neon.storm.value = resolveUrbanStorm(time) * (local === null ? 1 : 1 - resolve);
+        if (neon.storm) {
+            // Reduce flashing (ADR-0021): one stroke, at the strength a frame-wide flash keeps.
+            const keep = flashScale();
+            const storm = resolveUrbanStorm(time, { steady: keep < 1 }) * keep;
+            neon.storm.value = storm * (local === null ? 1 : 1 - resolve);
+        }
         const seamCarry = resolveSunCarry(cameraProgress, positions);
         neon.seamReveal.value = seamCarry ? THREE.MathUtils.smoothstep(seamCarry.open, 0.15, 0.85) : 1;
         if (neon.sunVisible) {
