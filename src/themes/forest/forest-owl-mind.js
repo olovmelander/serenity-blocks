@@ -15,11 +15,16 @@
  * It does not keep to a routine. When it has sat a while (a few seconds or a minute and more, drawn
  * fresh each time) it weighs what it can do from where it is: sidle along its limb to another place
  * on it, hop round to face the other way, fly to another perch (the nearer the likelier, the ones it
- * has just left less so, home more so the longer it is away), or drop on something it heard in the
+ * has just left less so, home more so the longer it is away), drop on something it heard in the
  * ferns, which it catches (mantled over it a moment) or misses (it stands in the ferns, looks about,
- * and flies up to whichever perch it likes). Its flights differ: a dip low over the ferns and a swoop
- * up, a level glide, an arc over; quicker or slower, flapped or glided, a short hop between two limbs
- * of one tree. Out along the ride and back across the moon is for its home limb.
+ * and flies up to whichever perch it likes), or leave the glade altogether: out past the edge of the
+ * frame, behind the eye or over its head, gone a while, and back in by another way to any perch. How
+ * restless it is drifts slowly (minutes of comings and goings, minutes of stillness), and it is
+ * unlikely to do the same thing twice running. Its flights differ: a dip low over the ferns and a
+ * swoop up, a level glide, an arc over, a meander, a loop round the glade, flying past the perch and
+ * coming back to it, a circle before it comes in; quicker or slower, flapped or glided, a short hop
+ * between two limbs of one tree. Every way it takes keeps clear of the trunks, the crowns, the floor
+ * and the eye. Out along the ride and back across the moon is for its home limb.
  *
  * A trip is a list of legs; each leg is a crouch and a lean off the perch, a flight planned whole
  * (forest-owl-flight.js) and a landing: the body raised upright, the wings thrown forward and beating
@@ -110,6 +115,11 @@ export const OWL_TIMING = Object.freeze({
     /** Sidling along a limb: seconds a step, metres a step. */
     step: 0.34,
     stride: 0.075,
+    /** Gone from the glade, before it comes back. */
+    away: [15, 95],
+    /** How slowly its restlessness drifts (seconds), and how far. */
+    restlessTime: 110,
+    restlessSpread: 0.3,
 });
 
 /** Places on the floor it may stoop to (x, z): open ground the player sees, clear of the card. */
@@ -123,6 +133,30 @@ export const OWL_GROUND = Object.freeze([
     Object.freeze({ x: 7.4, z: -7.2 }),
     Object.freeze({ x: 13.2, z: -8.4 }),
 ]);
+
+/**
+ * Where it leaves the glade and comes back (body centre, world metres): past the frame's left and right
+ * edges, behind the eye on either side, and over its head. `via` is where its way through the glade
+ * meets the way out. A gate is used only while it is out of frame (`setView`), so a screen wide enough
+ * to see one keeps it shut; where a tree of the glade stands in a gate's way in, the nearest open air to it
+ * is used instead (the glade's grove grows differently in every forest), or the gate stays shut.
+ */
+export const OWL_GATES = Object.freeze([
+    Object.freeze({ id: 'left', at: [-27, 6.5, -1], via: [-14, 5.5, 2] }),
+    Object.freeze({ id: 'leftBack', at: [-14, 5.5, 24], via: [-8.5, 5, 12] }),
+    Object.freeze({ id: 'over', at: [2, 13.5, 28], via: [1.5, 9.5, 5] }),
+    Object.freeze({ id: 'rightBack', at: [16, 6.5, 24], via: [8.5, 5.5, 11] }),
+    Object.freeze({ id: 'right', at: [32, 7, -6], via: [19, 6.5, -4] }),
+]);
+
+/** The glade's open air it wanders through: x and z bounds, and heights over the ground. */
+export const OWL_AIR = Object.freeze({
+    x: Object.freeze([-13, 17]), z: Object.freeze([-26, 9]), low: 1.8, high: 10,
+});
+
+/** The eye (forest-plan.js FOREST_EYE at eye height): no way it takes passes nearer than this. */
+const EYE = Object.freeze([0, 2.2, 13]);
+const EYE_ROOM = 6;
 
 /**
  * The flight out along the ride and back across the moon (world metres, body centre): out past the
@@ -147,6 +181,8 @@ export const OWL_MOON_LOOP = Object.freeze([
 const between = (rng, [a, b]) => a + (b - a) * rng();
 /** A stay: most are short, a few are long (the draw is skewed toward the low end). */
 const stayFor = (rng, [a, b]) => a + (b - a) * rng() ** 2.2;
+/** A normal deviate (Box-Muller, two draws). */
+const gauss = (rng) => Math.sqrt(-2 * Math.log(Math.max(1e-9, rng()))) * Math.cos(2 * Math.PI * rng());
 /** One of `options` ([value, weight] pairs) by weight. */
 function weighted(rng, options) {
     const total = options.reduce((sum, [, w]) => sum + Math.max(0, w), 0);
@@ -164,6 +200,8 @@ const STREAMS = Object.freeze(['gaze', 'blink', 'peer', 'tilt', 'rouse', 'shuffl
     'stretch', 'preen', 'doze', 'tall', 'wander']);
 /** The bigger acts that come on their own clocks. */
 const BIG_ACTS = Object.freeze(['stretch', 'preen', 'doze', 'tall']);
+/** The ways it flies from one perch to another. */
+const FLIGHT_KINDS = Object.freeze(['direct', 'meander', 'patrol', 'overshoot', 'circle']);
 
 /** A small seeded generator (mulberry32): one stream per kind of act. */
 function stream(seed) {
@@ -231,7 +269,9 @@ export class ForestOwlMind {
         };
         this.board = null;
         this.sight = null;
+        this.view = null;
         this.trunks = [];
+        this.crowns = [];
         this.sample = {};
         this.beat = { lift: 0, pitch: 0, tail: 0 };
         this.pupil = 1.6;
@@ -268,6 +308,11 @@ export class ForestOwlMind {
         this.decideAt = stayFor(wander, OWL_TIMING.homeStay) + 6;
         this.leftHomeAt = Infinity;
         this.visits = [];
+        this.recent = [];
+        this.recentGates = [];
+        this.restless = 0.45;
+        this.restlessAt = 0;
+        this.awayUntil = -Infinity;
         this.still = false;
         this.groundCatch = true;
         this.gaze = {
@@ -312,13 +357,55 @@ export class ForestOwlMind {
     }
 
     /**
-     * The trunks it must fly round: [{ x, z, radius, y, height }] (forest-trees.js `trunks()`). Its routes
-     * keep a clear body's width from every one.
+     * The trees it must fly round: [{ x, z, radius, y, height, crown }] (forest-trees.js `trunks()`, the
+     * crown an ellipsoid { x, y, z, rx, ry }). Its routes keep a clear body's width from every trunk and
+     * out of every crown.
      */
     setTrunks(trunks) {
-        this.trunks = (trunks || []).map((t) => ({
+        const list = trunks || [];
+        this.trunks = list.map((t) => ({
             x: t.x, z: t.z, r: t.radius || 0.3, top: (t.y || 0) + (t.height || 30),
         }));
+        this.crowns = list.filter((t) => t.crown).map((t) => ({ ...t.crown }));
+        // Each gate's way in, moved into open air if a tree stands in it (looked for once, nearest first).
+        this.gateVias = new Map(OWL_GATES.map((g) => [g.id, this.openAirNear(g.via)]));
+    }
+
+    /** The nearest open air to a point (within 4.5 m, a little higher or lower), or null. */
+    openAirNear(q) {
+        for (const r of [0, 1.5, 3, 4.5]) {
+            for (const dy of [0, 1.5, -1]) {
+                for (let k = 0; k < (r ? 8 : 1); k += 1) {
+                    const a = (k / 8) * 2 * Math.PI;
+                    const c = [q[0] + Math.cos(a) * r, q[1] + dy, q[2] + Math.sin(a) * r];
+                    if (this.airClear(c, 1.2)) return c;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** A gate's way in (moved into open air where a tree stands in it), or null if it has none. */
+    gateVia(gate) {
+        return this.gateVias ? this.gateVias.get(gate.id) ?? null : gate.via;
+    }
+
+    /**
+     * Whether any of a thing `size` metres across at a world point is in the frame at all (the card makes
+     * no difference): `onScreen(x, y, z, size)`. It leaves and comes back only where it is not. Without it
+     * the gates count as out of frame.
+     */
+    setView(onScreen) {
+        this.view = typeof onScreen === 'function' ? onScreen : null;
+    }
+
+    inFrame(x, y, z, size = 2.5) {
+        return this.view ? this.view(x, y, z, size) : false;
+    }
+
+    /** The gates it can use now: out of frame, with a way in through open air. */
+    openGates() {
+        return OWL_GATES.filter((g) => !this.inFrame(g.at[0], g.at[1], g.at[2], 3) && this.gateVia(g));
     }
 
     seen(x, y, z, size = 0.8) {
@@ -425,6 +512,19 @@ export class ForestOwlMind {
         this.quiet = 0;
         this.drowsy = Math.max(0, this.drowsy - 0.5);
         const perched = this.mode === 'perched';
+        // The game stirs it (the stir drifts away again with its restlessness); a run's end calms it.
+        const stir = {
+            drop: 0.05, quad: 0.25, perfect: 0.25, b2b: 0.12, level: 0.15,
+        }[cue.kind] || 0;
+        if (stir) this.restless = Math.min(0.98, this.restless + stir);
+        if (cue.kind === 'over') this.restless = Math.min(this.restless, 0.15);
+        // Away from the glade, a great clear or a level-up brings it back soon.
+        if (this.mode === 'away') {
+            if (['quad', 'perfect', 'level'].includes(cue.kind)) {
+                this.departAt = Math.min(this.departAt, this.time + 1.5 + rng() * 3);
+            }
+            return;
+        }
         // Anything the game does wakes a dozing owl.
         if (this.act?.kind === 'doze' && cue.kind !== 'over') this.endAct(0.5);
         const lookAtBoard = (spread = 8) => {
@@ -529,12 +629,15 @@ export class ForestOwlMind {
             });
     }
 
-    /** Fly to another perch (by weight) in `delay` seconds; false if there is none it can see. */
-    planMove(delay, to = null) {
+    /**
+     * Fly to another perch (by weight) in `delay` seconds; false if there is none it can see. `kind` asks for
+     * a way of flying there (else one is chosen as it sets off).
+     */
+    planMove(delay, to = null, kind = null) {
         const options = this.destinations();
         const pick = to || weighted(this.streams.wander, options);
         if (!pick) return false;
-        this.plan([{ style: this.hopStyle(this.perch, pick), to: pick }], delay);
+        this.plan([{ style: this.hopStyle(this.perch, pick), to: pick, kind }], delay);
         return true;
     }
 
@@ -590,17 +693,48 @@ export class ForestOwlMind {
         return weighted(this.streams.wander, options) || back || this.home;
     }
 
-    /** It has sat long enough: what now? Weighed by what it can do from where it is. */
+    /**
+     * How restless it is now (0 still .. 1 restless): a slow random drift (an Ornstein-Uhlenbeck walk,
+     * stepped whenever it is asked), so it has spells of comings and goings and spells of stillness
+     * rather than the same odds every time. The game's cues push it up (`react`).
+     */
+    restlessNow() {
+        const span = Math.max(0, this.time - this.restlessAt);
+        this.restlessAt = this.time;
+        const keep = Math.exp(-span / OWL_TIMING.restlessTime);
+        const drift = OWL_TIMING.restlessSpread * Math.sqrt(1 - keep * keep) * gauss(this.streams.wander);
+        this.restless = Math.max(0.02, Math.min(0.98, 0.45 + (this.restless - 0.45) * keep + drift));
+        return this.restless;
+    }
+
+    /** What it did last (a few moves back), so it is unlikely to do the same thing twice running. */
+    remember(kind) {
+        this.recent = [kind, ...this.recent].slice(0, 3);
+    }
+
+    fresh(kind) {
+        const i = this.recent.indexOf(kind);
+        return i < 0 ? 1 : 0.35 + 0.2 * i;
+    }
+
+    /** It has sat long enough: what now? Weighed by what it can do from where it is, and its mood. */
     decide() {
         const rng = this.streams.wander;
         const here = this.perch;
+        const r = this.restlessNow();
         const neighbours = forestOwlNeighbours(here).filter((p) => this.perchSeen(p));
-        const options = [['stay', 0.07]];
-        if (neighbours.length) options.push(['sidle', 0.3]);
-        if (here.kind !== 'ground') options.push(['turn', this.turned ? 0.34 : 0.1]);
-        if (this.destinations().length) options.push(['fly', 0.42]);
-        if (this.huntSpots().length) options.push(['hunt', 0.2]);
-        if (here === this.home && this.perchSeen(this.home)) options.push(['moon', 0.035]);
+        const options = [['stay', 0.08 * (1.6 - r)]];
+        if (neighbours.length) options.push(['sidle', 0.3 * this.fresh('sidle')]);
+        const turnOdds = (this.turned ? 0.34 : 0.1) * (1.3 - 0.6 * r);
+        if (here.kind !== 'ground') options.push(['turn', turnOdds * this.fresh('turn')]);
+        if (this.destinations().length) options.push(['fly', 0.42 * (0.55 + 0.9 * r)]);
+        if (this.huntSpots().length) options.push(['hunt', 0.2 * (0.7 + 0.6 * r) * this.fresh('hunt')]);
+        if (this.motion >= 0.5 && this.openGates().length) {
+            options.push(['away', 0.19 * (0.3 + 1.4 * r) * this.fresh('away')]);
+        }
+        if (here === this.home && this.perchSeen(this.home)) {
+            options.push(['moon', 0.035 * (0.5 + r) * this.fresh('moon')]);
+        }
         const pick = weighted(rng, options);
         let started = false;
         if (pick === 'sidle') {
@@ -609,15 +743,49 @@ export class ForestOwlMind {
         } else if (pick === 'turn') started = this.startAct('turn');
         else if (pick === 'fly') started = this.planMove(0.4 + rng() * 0.8);
         else if (pick === 'hunt') started = this.planHunt(1.8 + rng() * 1.4);
+        else if (pick === 'away') started = this.planAway(0.5 + rng() * 0.8);
         else if (pick === 'moon') {
             this.plan([{ style: 'moon', to: this.home }], 0.8);
             started = true;
         }
-        // Whatever it did (or if it chose to sit on), it thinks again after another stay.
+        if (started && pick !== 'fly') this.remember(pick);
+        // Whatever it did (or if it chose to sit on), it thinks again after another stay: shorter when it is
+        // restless, longer when it is still.
         const range = here === this.home ? OWL_TIMING.homeStay : OWL_TIMING.stay;
-        this.decideAt = this.time + (started ? 0 : 3) + stayFor(rng, range) * (pick === 'stay' ? 0.6 : 1);
+        const mood = mix(1.5, 0.6, r);
+        this.decideAt = this.time + (started ? 0 : 3) + stayFor(rng, range) * mood * (pick === 'stay' ? 0.6 : 1);
         if (this.act) this.decideAt = Math.max(this.decideAt, this.act.start + this.act.length + 2);
         return pick;
+    }
+
+    /** A gate's place as a perch-like stop (its body centre where the gate is). */
+    gateStop(gate) {
+        return {
+            id: `gate:${gate.id}`,
+            gate,
+            kind: 'air',
+            x: gate.at[0],
+            y: gate.at[1] - ROOT,
+            z: gate.at[2],
+            heading: 0,
+            radius: 0.05,
+        };
+    }
+
+    /** Out of the glade by a gate out of frame (`gateId`, or one by chance: near ones likelier), a while away. */
+    planAway(delay, gateId = null) {
+        const rng = this.streams.trips;
+        const gates = this.openGates();
+        if (!gates.length || this.perch.kind === 'ground') return false;
+        const from = this.perch;
+        const gate = gates.find((g) => g.id === gateId) || weighted(rng, gates.map((g) => {
+            const via = this.gateVia(g);
+            const d = Math.hypot(via[0] - from.x, via[2] - from.z);
+            return [g, Math.exp(-d / 22) * (this.recentGates.includes(g.id) ? 0.4 : 1)];
+        }));
+        this.recentGates = [gate.id, ...this.recentGates].slice(0, 2);
+        this.plan([{ style: 'exit', to: this.gateStop(gate), gate }], delay);
+        return true;
     }
 
     /**
@@ -625,12 +793,26 @@ export class ForestOwlMind {
      * (a stoop into the ferns and back; 'catch' or 'miss' to say how it goes), 'visit' (to `perchId`, or
      * one by chance), 'home', 'sidle' (along its limb, to `perchId` or the nearest place on it), 'turn',
      * or one of its acts on a perch: 'stretch' ('wingsUp' as `perchId` for the other stretch), 'preen',
-     * 'doze', 'tall'. Returns whether it went.
+     * 'doze', 'tall'; 'away' (out of the glade, by the gate `perchId` names or one by chance), or a way of
+     * flying to `perchId` (or a perch by chance): 'direct', 'meander', 'patrol', 'overshoot', 'circle'; or,
+     * while it is away, 'back' (now, by the gate `perchId` names if it is open). Returns whether it went.
      */
     send(kind, perchId = null) {
+        if (kind === 'back') {
+            if (this.mode !== 'away') return false;
+            this.departAt = this.time;
+            this.backBy = perchId;
+            return true;
+        }
         if (this.mode !== 'perched') return false;
         let went = false;
-        if (kind === 'moon' && this.perch === this.home) {
+        if (FLIGHT_KINDS.includes(kind)) {
+            const to = forestOwlPerch(perchId);
+            const fit = to && to !== this.perch && !(to.limb && to.limb === this.perch.limb);
+            went = this.planMove(0.3, fit ? to : null, kind);
+        } else if (kind === 'away') {
+            went = this.planAway(0.3, perchId);
+        } else if (kind === 'moon' && this.perch === this.home) {
             this.plan([{ style: 'moon', to: this.home }], 0.3);
             went = true;
         } else if (kind === 'hunt' || kind === 'catch' || kind === 'miss') {
@@ -738,38 +920,46 @@ export class ForestOwlMind {
     }
 
     // -- going out --------------------------------------------------------------------------
-    /** The body-centre waypoints of a leg from `from` to `leg.to`. */
+    /** The body-centre waypoints of a leg from `from` to `leg.to` (`leg.kind` says how it flies there). */
     route(from, leg) {
         const rng = this.streams.trips;
         const { to } = leg;
         const bodyAt = (p, lift = ROOT) => [p.x, p.y + lift, p.z];
-        const S = from.kind === 'ground' ? bodyAt(from, 0.16) : bodyAt(from);
-        const E = to.kind === 'ground' ? bodyAt(to, 0.16) : bodyAt(to);
         const flat = (v) => {
             const l = Math.hypot(v[0], v[2]) || 1;
             return [v[0] / l, 0, v[2] / l];
         };
         const facing = (p) => [Math.sin(p.heading), 0, Math.cos(p.heading)];
         const add = (p, d, k, dy = 0) => [p[0] + d[0] * k, p[1] + d[1] * k + dy, p[2] + d[2] * k];
+        const floored = (points, stoop = 0) => points.map((q, i) => {
+            if (i === points.length - 1 || i === 0) return q;
+            const floor = this.groundHeight(q[0], q[2]) + (i >= points.length - 1 - stoop ? 0.35 : 1.1);
+            return [q[0], Math.max(q[1], floor), q[2]];
+        });
+        const S0 = from.kind === 'ground' ? bodyAt(from, 0.16) : bodyAt(from);
+        if (leg.style === 'moon') {
+            const loop = OWL_MOON_LOOP.map((q) => [q[0] + (rng() - 0.5) * 0.8, q[1] + (rng() - 0.5) * 0.5,
+                q[2] + (rng() - 0.5) * 0.8]);
+            const L = add(S0, flat([-0.25, 0, -1]), 1.0, -0.55);
+            return [S0, L, ...loop, add(bodyAt(to), facing(to), -1.0, -0.2), bodyAt(to)];
+        }
+        // Coming back into the glade it starts at its gate and comes in by the gate's way in.
+        const entering = leg.style === 'enter';
+        const S = entering ? this.gateVia(from.gate) || from.gate.via : S0;
+        const E = to.kind === 'ground' ? bodyAt(to, 0.16) : bodyAt(to);
         const toward = flat([E[0] - S[0], 0, E[2] - S[2]]);
         const dist = Math.hypot(E[0] - S[0], E[2] - S[2]);
-        if (leg.style === 'moon') {
-            const loop = OWL_MOON_LOOP.map((p) => [p[0] + (rng() - 0.5) * 0.8, p[1] + (rng() - 0.5) * 0.5,
-                p[2] + (rng() - 0.5) * 0.8]);
-            const L = add(S, flat([-0.25, 0, -1]), 1.0, -0.55);
-            const appr = facing(to);
-            return [S, L, ...loop, add(E, appr, -1.0, -0.2), E];
-        }
+        const side = flat([-toward[2], 0, toward[0]]);
         // Off the perch the way it faces when that is roughly the way it goes; otherwise it turns on the
         // perch first (the crouch turns it) and drops straight toward where it goes.
-        const dotFacing = (p, d) => facing(p)[0] * d[0] + facing(p)[2] * d[2];
+        const dotFacing = (q, d) => facing(q)[0] * d[0] + facing(q)[2] * d[2];
         const seat = { heading: this.seatHeading };
         let launchDir = flat(from.kind === 'ground' || dotFacing(seat, toward) < 0.5 ? toward : [
             mix(facing(seat)[0], toward[0], 0.75), 0, mix(facing(seat)[2], toward[2], 0.75)]);
         // Close by a trunk, a wing spread across the limb would strike the bark: it leaves out along the
         // limb, and comes in along it from the limb's end, travelling in toward the trunk.
-        const nearTrunk = (p) => (p.limb && Number.isFinite(p.clear) ? smooth(1.05, 0.5, p.clear) : 0);
-        const outward = (p) => [Math.sin(p.run), 0, Math.cos(p.run)];
+        const nearTrunk = (q) => (q.limb && Number.isFinite(q.clear) ? smooth(1.05, 0.5, q.clear) : 0);
+        const outward = (q) => [Math.sin(q.run), 0, Math.cos(q.run)];
         if (nearTrunk(from) > 0 && leg.style !== 'hop') {
             const k = nearTrunk(from) * 0.85;
             const o = outward(from);
@@ -789,10 +979,24 @@ export class ForestOwlMind {
             const A = add(E, ahead, -Math.min(0.3, span * 0.3), rise < -0.5 ? 0.12 : -0.04);
             return this.clearTrunks([S, L, M, A, E]);
         }
+        const L = from.kind === 'ground' ? add(S, launchDir, 0.7, 0.35) : add(S, launchDir, 0.95, -0.5);
+        if (leg.style === 'exit') {
+            // Out of the glade: off the perch, perhaps a turn through the glade, out by the gate's way.
+            const { gate } = leg;
+            const via = this.gateVia(gate) || gate.via;
+            const mids = rng() < 0.55 ? this.meanderPoints(rng, L, via, 1) : [];
+            return this.clearTrunks(floored([S, L, ...mids, via, gate.at]));
+        }
         let A2;
         let A3;
         // Its way in: low and up into the perch most often, sometimes nearly level, sometimes an arc over.
-        const shape = leg.style === 'plain' ? weighted(rng, [['swoop', 0.5], ['level', 0.3], ['over', 0.2]]) : 'swoop';
+        const shape = leg.style === 'strike' || leg.style === 'climb' ? 'swoop'
+            : weighted(rng, [['swoop', 0.5], ['level', 0.3], ['over', 0.2]]);
+        const near = nearTrunk(to);
+        const kind = leg.kind || this.flightKind(rng, leg, dist, near);
+        leg.kind = kind;
+        let mids = null;
+        let appr;
         if (leg.style === 'strike') {
             // A long falling glide, then the stoop: in steeply at the end, talons first.
             A3 = add(E, toward, -2.7 - rng() * 0.6, 1.05);
@@ -801,10 +1005,23 @@ export class ForestOwlMind {
             // In toward the perch travelling the way it will face when it comes from that side, otherwise
             // the way it comes (it turns on the perch as it settles). Never a U-turn at the end.
             const lean = 0.4 + rng() * 0.35;
-            let appr = dotFacing(to, toward) > 0.2
+            appr = dotFacing(to, toward) > 0.2
                 ? flat([mix(toward[0], facing(to)[0], lean), 0, mix(toward[2], facing(to)[2], lean)]) : toward;
-            if (nearTrunk(to) > 0) {
-                const k = nearTrunk(to) * 0.85;
+            if (kind === 'overshoot') {
+                // Past the perch, a little above it, round in a wide turn and back to it from beyond.
+                const turnSide = rng() < 0.5 ? -1 : 1;
+                const at = (along, across, up) => [E[0] + toward[0] * along + side[0] * across * turnSide,
+                    E[1] + up, E[2] + toward[2] * along + side[2] * across * turnSide];
+                const loop = [at(-3, 0.3, 1.1), at(4.5, 1.2, 0.9), at(6.5, 4, 1.1), at(4.5, 6.8, 0.7)];
+                if (loop.every((q) => this.airClear(q, 0.9))) {
+                    mids = loop;
+                    appr = flat([E[0] - loop[3][0], 0, E[2] - loop[3][2]]);
+                } else {
+                    leg.kind = 'meander';
+                }
+            }
+            if (near > 0) {
+                const k = near * 0.85;
                 const o = outward(to);
                 appr = flat([mix(appr[0], -o[0], k), 0, mix(appr[2], -o[2], k)]);
             }
@@ -814,30 +1031,129 @@ export class ForestOwlMind {
             A3 = add(E, appr, -3.3, -Math.min(drop, room));
             A2 = add(E, appr, -1.05, -Math.min(shape === 'level' ? 0.08 : 0.22, room * 0.3));
         }
-        const L = from.kind === 'ground' ? add(S, launchDir, 0.7, 0.35) : add(S, launchDir, 0.95, -0.5);
-        const mids = [];
-        const count = dist > 22 ? 2 : 1;
-        const side = flat([-toward[2], 0, toward[0]]);
-        for (let k = 1; k <= count; k += 1) {
-            const f = k / (count + 1);
-            let dip = Math.min(2.4, dist * 0.09) * Math.sin(Math.PI * f);
-            if (leg.style === 'climb') dip = -0.4;
-            else if (shape === 'level') dip *= 0.3;
-            else if (shape === 'over') dip = -Math.min(2.2, dist * 0.08) * Math.sin(Math.PI * f);
-            const sway = (rng() - 0.5) * Math.min(4, dist * 0.18);
-            const m = [
-                mix(L[0], A3[0], f) + side[0] * sway, mix(L[1], A3[1], f) - dip, mix(L[2], A3[2], f) + side[2] * sway,
-            ];
-            mids.push(m);
+        const begin = entering ? S : L;
+        if (!mids && leg.kind === 'patrol') mids = this.patrolPoints(rng, begin, A3);
+        if (!mids && leg.kind === 'circle') mids = this.circlePoints(rng, begin, A3);
+        if (!mids && leg.kind !== 'direct' && leg.style !== 'strike') {
+            mids = this.meanderPoints(rng, begin, A3, Math.max(1, Math.min(4, Math.round(dist / 6))));
+            if (leg.kind !== 'meander') leg.kind = 'meander';
         }
-        const points = [S, L, ...mids, A3, A2, E];
+        if (!mids) {
+            mids = [];
+            const count = dist > 22 ? 2 : 1;
+            for (let k = 1; k <= count; k += 1) {
+                const f = k / (count + 1);
+                let dip = Math.min(2.4, dist * 0.09) * Math.sin(Math.PI * f);
+                if (leg.style === 'climb') dip = -0.4;
+                else if (shape === 'level') dip *= 0.3;
+                else if (shape === 'over') dip = -Math.min(2.2, dist * 0.08) * Math.sin(Math.PI * f);
+                const sway = (rng() - 0.5) * Math.min(4, dist * 0.18);
+                mids.push([mix(begin[0], A3[0], f) + side[0] * sway, mix(begin[1], A3[1], f) - dip,
+                    mix(begin[2], A3[2], f) + side[2] * sway]);
+            }
+        }
+        const points = entering ? [from.gate.at, S, ...mids, A3, A2, E] : [S, L, ...mids, A3, A2, E];
         // Never through the floor: everything but the stoop's end keeps a metre over the moss.
-        return this.clearTrunks(points.map((p, i) => {
-            if (i === points.length - 1 || i === 0) return p;
-            const stooping = leg.style === 'strike' && i >= points.length - 3;
-            const floor = this.groundHeight(p[0], p[2]) + (stooping ? 0.35 : 1.1);
-            return [p[0], Math.max(p[1], floor), p[2]];
-        }));
+        return this.clearTrunks(floored(points, leg.style === 'strike' ? 2 : 0));
+    }
+
+    /** How it flies from one perch to another this time: by weight, its mood, and what it did last. */
+    flightKind(rng, leg, dist, near) {
+        if (!['plain', 'enter', 'climb'].includes(leg.style)) return 'direct';
+        const r = this.restless;
+        const options = [['direct', 0.3], ['meander', 0.34]];
+        if (dist > 5) options.push(['patrol', 0.14 * (0.4 + 1.2 * r)]);
+        if (dist > 4 && near < 0.15 && leg.style === 'plain') options.push(['overshoot', 0.11]);
+        if (dist > 6) options.push(['circle', 0.1 * (0.4 + 1.2 * r)]);
+        const kind = weighted(rng, options.map(([k, w]) => [k, w * this.fresh(k)]));
+        this.remember(kind);
+        return kind;
+    }
+
+    /** Whether a point is open air it can fly through: over the floor, clear of trunks, crowns and the eye. */
+    airClear(q, room = 1.0) {
+        if (q[1] < this.groundHeight(q[0], q[2]) + 1.4) return false;
+        if (Math.hypot(q[0] - EYE[0], q[1] - EYE[1], q[2] - EYE[2]) < EYE_ROOM + 0.5) return false;
+        for (const t of this.trunks) {
+            if (q[1] < t.top && Math.hypot(q[0] - t.x, q[2] - t.z) < t.r + room) return false;
+        }
+        for (const c of this.crowns) {
+            const e = ((q[0] - c.x) ** 2 + (q[2] - c.z) ** 2) / (c.rx * c.rx) + ((q[1] - c.y) / c.ry) ** 2;
+            if (e < 1.15) return false;
+        }
+        return true;
+    }
+
+    /** `count` turns off the straight way from `a` to `b`, to one side and the other, up and down. */
+    meanderPoints(rng, a, b, count) {
+        const dist = Math.hypot(b[0] - a[0], b[2] - a[2]);
+        const l = dist || 1;
+        const side = [-(b[2] - a[2]) / l, 0, (b[0] - a[0]) / l];
+        const spread = Math.min(4.5, 1 + dist * 0.17);
+        const out = [];
+        let sign = rng() < 0.5 ? -1 : 1;
+        for (let i = 0; i < count; i += 1) {
+            const f = (i + 0.5 + (rng() - 0.5) * 0.4) / count;
+            const sag = Math.min(2.2, dist * 0.08) * Math.sin(Math.PI * f) * (0.2 + rng() * 0.8);
+            let swing = sign * spread * (0.5 + rng() * 0.7);
+            const lift = (rng() - 0.5) * (0.6 + dist * 0.04);
+            for (let tries = 0; tries < 3; tries += 1, swing *= 0.5) {
+                const q = [mix(a[0], b[0], f) + side[0] * swing, mix(a[1], b[1], f) - sag + lift,
+                    mix(a[2], b[2], f) + side[2] * swing];
+                if (this.airClear(q)) {
+                    out.push(q);
+                    break;
+                }
+            }
+            if (rng() < 0.7) sign = -sign;
+        }
+        return out;
+    }
+
+    /** A loop round the glade on its way: two to four turns through open air, then on to `b`. */
+    patrolPoints(rng, a, b) {
+        const out = [];
+        let at = a;
+        let heading = Math.atan2(b[0] - a[0], b[2] - a[2]) + (rng() - 0.5) * 2.4;
+        const legs = 2 + Math.floor(rng() * 3);
+        for (let i = 0; i < legs; i += 1) {
+            let found = null;
+            for (let tries = 0; tries < 8 && !found; tries += 1) {
+                const turn = (rng() - 0.5) * 2 * 1.75;
+                const h = heading + turn;
+                const reach = 6 + rng() * 6;
+                const x = Math.max(OWL_AIR.x[0], Math.min(OWL_AIR.x[1], at[0] + Math.sin(h) * reach));
+                const z = Math.max(OWL_AIR.z[0], Math.min(OWL_AIR.z[1], at[2] + Math.cos(h) * reach));
+                const y = this.groundHeight(x, z) + mix(2.4, 7.5, rng() ** 1.3);
+                const q = [x, y, z];
+                if (this.airClear(q, 1.2) && Math.hypot(x - at[0], z - at[2]) > 3) {
+                    found = q;
+                    heading = Math.atan2(x - at[0], z - at[2]);
+                }
+            }
+            if (!found) break;
+            out.push(found);
+            at = found;
+        }
+        return out.length ? out : null;
+    }
+
+    /** A circle once round open air on its way (radius 3-4.5 m), then on to `b`. */
+    circlePoints(rng, a, b) {
+        const f = 0.45 + rng() * 0.25;
+        const radius = 3 + rng() * 1.5;
+        const centre = [mix(a[0], b[0], f), mix(a[1], b[1], f) + 0.5 + rng(), mix(a[2], b[2], f)];
+        const turn = rng() < 0.5 ? -1 : 1;
+        const from = Math.atan2(a[0] - centre[0], a[2] - centre[2]);
+        const out = [];
+        for (let k = 0; k <= 6; k += 1) {
+            const angle = from + turn * (k / 6) * 2 * Math.PI;
+            const q = [centre[0] + Math.sin(angle) * radius, centre[1] + Math.sin(k * 1.1) * 0.3,
+                centre[2] + Math.cos(angle) * radius];
+            if (!this.airClear(q, 1.0)) return null;
+            out.push(q);
+        }
+        return out;
     }
 
     /**
@@ -846,7 +1162,6 @@ export class ForestOwlMind {
      * gets a point of its own, pushed out.
      */
     clearTrunks(points) {
-        if (!this.trunks.length) return points;
         const room = 0.8;
         const push = (q, along) => {
             let moved = q;
@@ -862,11 +1177,33 @@ export class ForestOwlMind {
                 const uz = d > 1e-3 ? dz / d : along[0];
                 moved = [t.x + ux * need, moved[1], t.z + uz * need];
             });
+            // Out of a crown sideways, to its edge at that height.
+            this.crowns.forEach((c) => {
+                const v = (moved[1] - c.y) / c.ry;
+                if (v * v >= 1.1) return;
+                const need = c.rx * Math.sqrt(1.1 - v * v) + 0.2;
+                const dx = moved[0] - c.x;
+                const dz = moved[2] - c.z;
+                const d = Math.hypot(dx, dz);
+                if (d >= need) return;
+                const ux = d > 1e-3 ? dx / d : -along[2];
+                const uz = d > 1e-3 ? dz / d : along[0];
+                moved = [c.x + ux * need, moved[1], c.z + uz * need];
+            });
+            // And never close by the eye: out from it, upward where it can.
+            const ex = moved[0] - EYE[0];
+            const ey = moved[1] - EYE[1];
+            const ez = moved[2] - EYE[2];
+            const de = Math.hypot(ex, ey, ez);
+            if (de < EYE_ROOM) {
+                const k = EYE_ROOM / Math.max(de, 1e-3);
+                moved = [EYE[0] + ex * k, EYE[1] + Math.max(ey * k, 1.5), EYE[2] + ez * k];
+            }
             return moved;
         };
         let out = points;
-        // A curve through the points cuts the corners between them, so every stretch is looked at a quarter,
-        // a half and three quarters along, and pushed out wherever it passes too near (three times over).
+        // A curve through the points cuts the corners between them, so every stretch is looked at every metre
+        // and a half along it, and pushed out wherever it passes too near (three times over).
         for (let pass = 0; pass < 3; pass += 1) {
             const next = [out[0]];
             for (let i = 1; i < out.length; i += 1) {
@@ -877,11 +1214,14 @@ export class ForestOwlMind {
                 along[0] /= l;
                 along[2] /= l;
                 if (i > 1 && i < out.length - 1) {
-                    [0.25, 0.5, 0.75].forEach((f) => {
+                    const span = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+                    const samples = Math.max(3, Math.ceil(span / 1.5));
+                    for (let k = 1; k < samples; k += 1) {
+                        const f = k / samples;
                         const q = [mix(a[0], b[0], f), mix(a[1], b[1], f), mix(a[2], b[2], f)];
                         const pushed = push(q, along);
                         if (pushed !== q) next.push(pushed);
-                    });
+                    }
                 }
                 next.push(i === out.length - 1 ? b : push(b, along));
             }
@@ -906,6 +1246,7 @@ export class ForestOwlMind {
             work: { climb: 0.8, moon: 0.25, hop: 0.7 }[leg.style] ?? flapped,
             cruise: (leg.style === 'moon' ? 5.6 : OWL_FLIGHT.cruise) * pace,
             beat,
+            exit: leg.style === 'exit',
         });
         this.launchFrom = { ...this.attitude };
         const off = this.flight.tangent[2];
@@ -919,6 +1260,37 @@ export class ForestOwlMind {
         this.launchAt = this.time;
     }
 
+    /** Back into the glade: out of the gate it chooses (not the one it left by, if it can), already flying. */
+    beginEnter() {
+        const leg = this.trip.shift();
+        if (!leg) return;
+        const rng = this.streams.trips;
+        const gates = this.openGates();
+        const left = this.perch.gate;
+        const asked = gates.find((g) => g.id === this.backBy);
+        this.backBy = null;
+        const gate = asked || (gates.length ? weighted(rng, gates.map((g) => [g, g === left ? 0.3 : 1])) : left);
+        const from = this.gateStop(gate);
+        this.perch = from;
+        // Home likelier than anywhere else (and always home under reduced motion).
+        if (!leg.to) leg.to = this.motion < 0.5 ? this.home : this.choosePerch(from, this.home);
+        this.leg = leg;
+        const points = this.route(from, leg);
+        const pace = 0.86 + rng() * 0.26;
+        const beat = OWL_FLIGHT.beat * (0.92 + rng() * 0.16);
+        this.flight = planFlight(points, {
+            cruise: OWL_FLIGHT.cruise * pace, beat, work: rng() < 0.3 ? 0.35 : 0, enter: true,
+        });
+        const off = this.flight.tangent[0];
+        this.launchHeading = Math.atan2(off[0], off[2]);
+        this.attitude.heading = this.launchHeading;
+        this.fade = null;
+        this.mode = 'flight';
+        this.flightAt = this.time;
+        this.flightHead = [0, 58, 0];
+        this.lookDir = null;
+    }
+
     beginFlight() {
         this.crossfade(0.32);
         this.mode = 'flight';
@@ -929,6 +1301,18 @@ export class ForestOwlMind {
 
     arrive() {
         const { leg } = this;
+        if (leg.style === 'exit') {
+            // Out of the glade: gone a while (longer when it is still, shorter when restless), then back.
+            this.mode = 'away';
+            this.perch = leg.to;
+            this.leg = null;
+            this.flight = null;
+            const away = stayFor(this.streams.trips, OWL_TIMING.away) * mix(1.3, 0.7, this.restless);
+            this.trip = [{ style: 'enter', to: null }];
+            this.departAt = this.time + away;
+            this.awayUntil = this.departAt;
+            return;
+        }
         this.crossfade(0.3);
         this.perch = leg.to;
         this.mode = 'perched';
@@ -1001,6 +1385,13 @@ export class ForestOwlMind {
                 this.at(Math.max(this.decideAt, this.landedAt + OWL_TIMING.settle, since), () => this.decide());
             }
         }
+        if (this.mode === 'away') {
+            // Under reduced motion it comes straight home.
+            if (calm) this.departAt = Math.min(this.departAt, t + 1);
+            if (this.trip.length && t >= this.departAt) {
+                this.at(Math.max(this.departAt, t - dt), () => this.beginEnter());
+            }
+        }
         if (this.mode === 'launch' && t >= this.launchAt + this.launchLength) {
             this.at(this.launchAt + this.launchLength, () => this.beginFlight());
         }
@@ -1067,6 +1458,8 @@ export class ForestOwlMind {
     // -- the pose -----------------------------------------------------------------------------
     compose(motion) {
         const { pose } = this;
+        // Away from the glade nothing is drawn; the pose waits as it left.
+        if (this.mode === 'away') return;
         // Defaults every frame: folded, gripping, level.
         pose.lift[0] = 0;
         pose.lift[1] = 0;
@@ -1416,8 +1809,9 @@ export class ForestOwlMind {
         const { leg } = this;
         const strike = leg.style === 'strike';
         // Its attitude: nose along the path (a little less steep than the path itself), banked into turns.
-        const flare = 1 - smooth(0, OWL_TIMING.flare, s.left);
-        const start = smooth(0, 0.45, t);
+        // Leaving the glade it never lands; coming back in it is already flying.
+        const flare = leg.style === 'exit' ? 0 : 1 - smooth(0, OWL_TIMING.flare, s.left);
+        const start = leg.style === 'enter' ? 1 : smooth(0, 0.45, t);
         const amp = Math.max(s.amp, flare * (strike ? 0.35 : 0.95));
         const beat = wingbeat(s.phase, amp, pose.wings[0], { out: this.beat });
         Object.assign(pose.wings[1], pose.wings[0]);
@@ -1561,7 +1955,10 @@ export class ForestOwlMind {
             perch: this.perch?.id ?? null,
             act: this.act ? this.act.kind : null,
             turned: this.turned,
-            leg: this.leg ? `${this.leg.style}:${this.leg.to.id}` : null,
+            leg: this.leg ? `${this.leg.style}:${this.leg.to.id}${this.leg.kind ? `:${this.leg.kind}` : ''}` : null,
+            restless: Math.round(this.restless * 100) / 100,
+            back: this.mode === 'away' ? Math.round(this.departAt * 10) / 10 : null,
+            gates: this.openGates().map((g) => g.id),
             trip: this.trip.map((leg) => `${leg.style}:${leg.to?.id ?? 'any'}`),
             alert: Math.round(this.alert * 100) / 100,
             drowsy: Math.round(this.drowsy * 100) / 100,

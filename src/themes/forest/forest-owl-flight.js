@@ -90,9 +90,12 @@ function trace(points, count) {
 /**
  * Plan a flight through `points` (body-centre positions, metres; the first is where it leaves, the last
  * where it lands). `work` (0..1) is how hard it flies anyway (a hunter's climb, a showpiece), `cruise`
- * its speed. Returns a table to sample with `sampleFlight`.
+ * its speed. A flight that `enter`s comes in from beyond the frame already at speed (no take-off); one
+ * that `exit`s leaves the frame still at speed (no landing). Returns a table to sample with `sampleFlight`.
  */
-export function planFlight(points, { cruise = OWL_FLIGHT.cruise, work = 0, beat = OWL_FLIGHT.beat } = {}) {
+export function planFlight(points, {
+    cruise = OWL_FLIGHT.cruise, work = 0, beat = OWL_FLIGHT.beat, enter = false, exit = false,
+} = {}) {
     const raw = trace(points, OWL_FLIGHT.stations);
     // Arc length.
     const n = raw.length;
@@ -116,8 +119,10 @@ export function planFlight(points, { cruise = OWL_FLIGHT.cruise, work = 0, beat 
     for (let i = 0; i < n; i += 1) {
         const slope = tangent[i][1];
         const base = cruise * (1 - 0.32 * Math.max(-1, Math.min(1, slope * 1.6)));
-        const gather = OWL_FLIGHT.launch + (base - OWL_FLIGHT.launch) * smooth(0, OWL_FLIGHT.gather, s[i]);
-        const shed = OWL_FLIGHT.touch + (base - OWL_FLIGHT.touch) * smooth(0, OWL_FLIGHT.shed, length - s[i]);
+        const gathered = smooth(0, OWL_FLIGHT.gather, s[i]);
+        const shedding = smooth(0, OWL_FLIGHT.shed, length - s[i]);
+        const gather = enter ? base : OWL_FLIGHT.launch + (base - OWL_FLIGHT.launch) * gathered;
+        const shed = exit ? base : OWL_FLIGHT.touch + (base - OWL_FLIGHT.touch) * shedding;
         speed[i] = Math.max(0.6, Math.min(gather, shed));
     }
     // Time along it.
@@ -162,7 +167,7 @@ export function planFlight(points, { cruise = OWL_FLIGHT.cruise, work = 0, beat 
     }
     // Ease the bank (half a second each way), and hold it level at both ends.
     const eased = smoothTable(bank, time, 0.45).map((b, i) => {
-        const ends = smooth(0, 1.2, s[i]) * smooth(0, 2.2, length - s[i]);
+        const ends = (enter ? 1 : smooth(0, 1.2, s[i])) * (exit ? 1 : smooth(0, 2.2, length - s[i]));
         return Math.max(-OWL_FLIGHT.bank, Math.min(OWL_FLIGHT.bank, b)) * ends;
     });
     // Work: climbing and speeding up want wingbeats; the first stretch off the perch is all wingbeat.
@@ -171,14 +176,14 @@ export function planFlight(points, { cruise = OWL_FLIGHT.cruise, work = 0, beat 
         const i2 = Math.min(n - 1, i + 1);
         const accel = (speed[i2] - speed[i]) / Math.max(1e-3, time[i2] - time[i]);
         const climb = tangent[i][1] * speed[i];
-        const launch = 1 - smooth(1.5, 6, s[i]);
+        const launch = enter ? 0 : 1 - smooth(1.5, 6, s[i]);
         effort[i] = clamp01(Math.max(work, launch, climb * 0.55 + 0.12 + accel * 0.12 + Math.abs(eased[i]) / 140));
     }
     const amp = smoothTable(effort, time, 0.6).map((e) => smooth(0.18, 0.62, e));
     // The wingbeat's phase, its rate a little quicker while it labours.
     const phase = new Float64Array(n);
     for (let i = 1; i < n; i += 1) {
-        const rate = beat + (OWL_FLIGHT.beatLaunch - beat) * amp[i] * (1 - smooth(2, 8, s[i]));
+        const rate = beat + (OWL_FLIGHT.beatLaunch - beat) * amp[i] * (enter ? 0 : 1 - smooth(2, 8, s[i]));
         phase[i] = phase[i - 1] + rate * (time[i] - time[i - 1]);
     }
     // The body's nose follows the path's climb, eased over a quarter second (a kink never jerks it).

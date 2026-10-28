@@ -373,10 +373,11 @@ bill, the tufts), the breast streaked and barred, and a launch seen head on.*
 - **Its life is closed-form.** Each act has a start and a length; each kind of act draws from a random
   stream of its own, so a seek and a night lived through agree at any frame rate (the same night lived
   at 30, 60 and 144 fps lands within centimetres), and the playground's seeded captures are repeatable.
-- **Playground**: `owlTrip=moon|hunt|catch|miss|visit|home|sidle|turn|stretch|preen|doze|tall` at
-  `owlAt=<s>` (`owlTo=` a perch for a visit or a sidle, `wingsUp` for the other stretch,
-  `breast|left|right` for a preen), `owlPerch=<perch>` to set it on any perch and `owlHold=1` to keep it
-  there, `owlLook=eye` or `<yaw>,<pitch>` to hold its gaze, `owlCam=<metres>` for a lens that follows it
+- **Playground**: `owlTrip=moon|hunt|catch|miss|visit|home|sidle|turn|stretch|preen|doze|tall|away|direct|
+  meander|patrol|overshoot|circle` at `owlAt=<s>` (`owlTo=` a perch for a visit, a sidle or a way of
+  flying, a gate for `away`, `wingsUp` for the other stretch, `breast|left|right` for a preen),
+  `owlBack=<s>` and `owlBackBy=<gate>` to bring it back from away, `owlPerch=<perch>` to set it on any
+  perch and `owlHold=1` to keep it there, `owlLook=eye` or `<yaw>,<pitch>` to hold its gaze, `owlCam=<metres>` for a lens that follows it
   (`owlOrbit=`, `owlTilt=`, `owlFocus=<metres above its feet>`). The diagnostics' `owl` says what it
   is doing (its perch, its act, whether it faces away).
 
@@ -519,6 +520,61 @@ pack's ceiling 3.7 -> 3.75 MB. The owl's own grey limb tubes, their material and
 trunk, as it was; at 16:10 and 4:3 those perches fall off screen and the sight test keeps it away. The
 high pine stub points almost at the eye, so it sits there side-on. Its flights home cross behind the
 board card for a moment.
+
+### The owl leaves the glade and flies as it likes (2026-10-28)
+
+A third pass that evening (Olov: "We can keep improving the owl, it can fly more random paths, it does
+not have to be visible all the time, and it must really feel "random" in a good way."). On main after
+the second pass (`4a6cb033`).
+
+![four of its ways through the glade, each a long exposure of one flight: out past the elder to the left, a circle over the glade, a loop out to the right and back, past the log's end and round](forest-firefly-night/owl-trails.webp)
+
+*Long exposures of single flights (the frames darkest-blended): out of the glade past the elder; a
+circle over the glade on its way to the pine; a patrol that loops out past the frame's right edge and
+comes back; flying past the log's end and round to it.*
+
+- **It leaves the glade.** Five gates lie out of frame: past the left and right edges, behind the eye
+  on either side, and over its head (`OWL_GATES`). Now and then it flies out by one (a turn through the
+  glade on the way, perhaps), is gone 15-95 s (longer when it is still, shorter when restless), and
+  comes back by another, already flying, to any perch it can be seen on (home likeliest). While it is
+  away it is not drawn. A gate is used only while it is wholly out of frame (`setView`, the world's own
+  `owlOnScreen`: a wider screen that sees one keeps it shut), and where a tree of the grove stands in a
+  gate's way in (the grove grows differently in every forest) the nearest open air is used instead, or
+  the gate stays shut. A great clear or a level-up while it is away brings it back within seconds;
+  reduced motion brings it straight home. Over simulated quarter-hours it is away 10-18% of the time,
+  and it is never in frame at the moment it leaves or comes back.
+- **It flies more ways.** Besides the direct flight (a swoop, a near-level glide, an arc over): a
+  meander (one to four turns off the straight way, to either side, up and down), a patrol (two to four
+  legs through the glade's open air, 6-12 m each, before it goes where it is going, sometimes out of
+  frame and back), an overshoot (past the perch a little above it, round in a wide turn, and back to it
+  from beyond: only where it is clear of a trunk), and a circle (once round open air on the way). Every
+  waypoint is sampled in open air: over the floor, a body's width and more from every trunk, out of
+  every crown (the trees' crowns now come with their trunks, `ForestTrees.trunks()`), and never near the
+  eye (6 m); the whole route is then looked at every 1.5 m and pushed out wherever it strays.
+- **Random in a good way.** How restless it is drifts slowly (an Ornstein-Uhlenbeck walk with a
+  two-minute memory), so it has spells: minutes of comings and goings, sidles and hunts, then minutes of
+  stillness, preening and dozing. Its stays shorten when it is restless and lengthen when it is still;
+  the game stirs it (a four-line clear, a level-up) and the end of a run calms it. It is unlikely to do
+  the same thing twice running (its last few kinds of move and its last two gates count against
+  themselves), so no two minutes look alike.
+
+![in the game: on its limb, leaving, gone, back over the viewer, coming in, landed on the low limb](forest-firefly-night/owl-away.webp)
+
+*In the real game (1920×1080, High): on its limb, leaving by the left, the glade without it, back in over
+the viewer's head and out across the glade, landed on the low limb.*
+
+**Checked.** Six simulated quarter-hours (seeds 7919, 11, 23, 5, 101, 4242): 18-24 flights each, every
+gate and every way of flying used; per frame at most 12.2° of heading (the hop round), 4.8° of pitch,
+5.3° of bank, 0.157 m of travel; in frame never inside a crown nor nearer the bark than its seats are;
+never nearer the eye than 5.7 m; its restlessness ranges 0.02-0.98. Every change happens at its exact
+time, so a night is the same at 30, 60 and 144 fps (a few centimetres apart only where it waits out of
+frame). Filmed in the playground (each way of flying frame by frame, the trails above) and in the real
+game (sent away by the left and brought back over the viewer); the console clean but for Electron's own
+notices. What the filming found: two gates' ways in lay inside crowns of this forest's trees (the elder
+spruce's low boughs over the eye's head, a birch on the right), so the owl left by the wrong gate; the
+gates now find open air near their ways in. **Tests**: `forest-owl.test.js` 37 -> 40 (it leaves only out
+of frame and comes back by other ways; its many ways stay clear of trunks, crowns, the floor and the eye;
+it has spells of restlessness and stillness, and the game stirs it).
 
 ## How it is built
 

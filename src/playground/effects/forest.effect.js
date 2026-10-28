@@ -154,15 +154,22 @@ export function create({
     // ?owlTrip= sends the owl out at ?owlAt=<seconds> (default 1): moon, hunt (or catch / miss), visit (to
     // ?owlTo=<perch id>, or one by chance), home, sidle (along its limb, to ?owlTo or the nearest place),
     // turn, or an act on its perch: stretch (?owlTo=wingsUp for the other kind), preen (?owlTo=breast|left|
-    // right), doze, tall.
+    // right), doze, tall; away (out of the glade by ?owlTo=left|leftBack|over|rightBack|right, or a gate by
+    // chance); or a way of flying to ?owlTo: direct, meander, patrol, overshoot, circle.
     const owlTrip = params.get('owlTrip');
     const owlAt = Number(params.get('owlAt') ?? 1);
     let owlSent = false;
+    // ?owlBack=<seconds> brings it back from away at that time (?owlBackBy=<gate> the way it comes in).
+    const owlBack = params.has('owlBack') ? Number(params.get('owlBack')) : null;
+    let owlBackSent = false;
     const update = (time, dt) => {
         reactions.update(dt);
         const frame = reactions.getFrame();
         if (owlTrip && !owlSent && world?.owlMind && time >= owlAt) {
             owlSent = world.owlMind.send(owlTrip, params.get('owlTo'));
+        }
+        if (owlBack !== null && !owlBackSent && world?.owlMind && time >= owlBack) {
+            owlBackSent = world.owlMind.send('back', params.get('owlBackBy'));
         }
         // ?owlLook=eye (at the player) or ?owlLook=<yaw>,<pitch> holds the perched owl's gaze.
         const look = params.get('owlLook');
@@ -221,6 +228,7 @@ export function create({
         world.resetEffects({ owl: true });
         placeOwl();
         owlSent = false;
+        owlBackSent = false;
         world.setLevel(level, { silent: true });
         randomIndex = 0;
         const age = Number(params.get('eventAge') ?? 0.35);

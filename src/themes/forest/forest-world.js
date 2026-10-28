@@ -152,6 +152,7 @@ export class ForestWorld {
         this.owlMind = new ForestOwlMind({ rng: this.owlRng, groundHeight: forestGroundHeight });
         this.owlMind.setSight((x, y, z, size) => this.owlSees(x, y, z, size));
         this.owlMind.setTrunks(trunks);
+        this.owlMind.setView((x, y, z, size) => this.owlOnScreen(x, y, z, size));
         yield 'owl';
         this.prepareCamera(this.camera.aspect);
         this.director = new ForestFireflyDirector({
@@ -243,6 +244,23 @@ export class ForestWorld {
      * Would the player see a thing `size` metres across at a world point: all of it on screen and none
      * of it behind the card or a panel (the owl only goes where it can be seen to land).
      */
+    /**
+     * Whether any of a thing `size` metres across at a world point is in the frame at all (card or not):
+     * the owl leaves the glade and comes back only through places where it is not.
+     */
+    owlOnScreen(x, y, z, size = 1.5) {
+        const { stage } = this;
+        if (!stage) return true;
+        if (!this.owlScreen) this.owlScreen = { x: 0, y: 0 };
+        const at = stage.project(x, y, z, this.owlScreen);
+        if (!at) return false;
+        const depth = (x - stage.origin.x) * stage.forward.x + (y - stage.origin.y) * stage.forward.y
+            + (z - stage.origin.z) * stage.forward.z;
+        const hx = (0.5 * size) / (depth * stage.tanH);
+        const hy = (0.5 * size) / (depth * stage.tanV);
+        return at.x + hx > -0.02 && at.x - hx < 1.02 && at.y + hy > -0.02 && at.y - hy < 1.02;
+    }
+
     owlSees(x, y, z, size = 0.8) {
         const { stage } = this;
         if (!stage) return true;
@@ -338,6 +356,8 @@ export class ForestWorld {
             this.owlMind.update(dt, frame, { motion: Number.isFinite(frame.motion) ? frame.motion : 1 });
             this.owl.uniforms.pupil.value = this.owlMind.pupil;
             this.owl.apply(this.owlMind.place, this.owlMind.pose);
+            // Away from the glade it is not drawn at all (it left, and comes back, out of frame).
+            this.owl.group.visible = this.owlMind.mode !== 'away';
         }
         this.terrain.update(frame);
         this.sky.update(dt, frame);
