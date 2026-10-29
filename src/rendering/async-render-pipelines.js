@@ -191,7 +191,13 @@ function createForSession(backend, original, renderObject, promises) {
         diagnostics.unownedSyncDuringSession += 1;
         return original.call(backend, renderObject, null);
     }
-    if (isOneShotRenderTarget(renderObject?.context?.renderTarget) || isFinalComposite(renderObject)) {
+    // The final composite is created synchronously so a visible frame always composites; a theme
+    // still built hidden (an in-play switch's incoming theme) has no frame anyone sees, and its
+    // composite inlines its whole post chain: Neon District's took 356 ms on the GPU process's main
+    // thread, which draws the display too (a 380 ms freeze of the outgoing theme and the board).
+    const compositeAsync = s.asyncCompositeWhileHidden && s.theme?._prewarmHidden === true;
+    const oneShot = isOneShotRenderTarget(renderObject?.context?.renderTarget);
+    if (oneShot || (isFinalComposite(renderObject) && !compositeAsync)) {
         s.stats.syncExempt += 1;
         return original.call(backend, renderObject, null);
     }
@@ -329,6 +335,9 @@ function uninstallIfIdle() {
  *   exemptCanvasDraws: never defer a draw into the canvas itself (the final composite of a VISIBLE
  *   renderer: a deferred one is a frame with nothing on it). Budgeting stays on everything drawn
  *   into a render target — a post chain's scene pass. For a live surface (Odyssey's map).
+ *   asyncCompositeWhileHidden: create the final composite's pipeline async too while the theme is
+ *   still hidden (`theme._prewarmHidden`): for a build revealed only once it is quiet (the in-play
+ *   switch). Once revealed, the composite is synchronous again.
  */
 export function beginAsyncRenderPipelines(theme, {
     label = theme?.name ?? 'theme',
@@ -336,6 +345,7 @@ export function beginAsyncRenderPipelines(theme, {
     buildBudgetMs = 0,
     rendererProto = rendererProtoResolved,
     exemptCanvasDraws = false,
+    asyncCompositeWhileHidden = false,
 } = {}) {
     if (!theme || !backendProto || !install(backendProto)) return null;
     const stats = {
@@ -363,6 +373,7 @@ export function beginAsyncRenderPipelines(theme, {
         lastDeferFrame: -1,
         buildBudgetMs: 0,
         exemptCanvasDraws: exemptCanvasDraws === true,
+        asyncCompositeWhileHidden: asyncCompositeWhileHidden === true,
         /** While above 0, this session's renderer builds everything it meets (see withoutBudget). */
         budgetSuspended: 0,
         /**
@@ -511,6 +522,20 @@ export function beginAsyncRenderPipelines(theme, {
  * @param {any} theme
  * @param {any} renderer
  */
+/**
+ * Run `fn` with the build budget off for `renderer`'s open session, if it has one: a warm frame
+ * whose purpose is to build (warm-hidden-drawables.js) must not leave its objects for later. Without
+ * a session (a start that is not an in-play switch) it just runs `fn`.
+ * @template T
+ * @param {any} renderer
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withoutBuildBudget(renderer, fn) {
+    const session = renderer && budgetSessions.size > 0 ? budgetSessionFor(renderer) : null;
+    return session ? session.withoutBudget(fn) : fn();
+}
+
 export function adoptRendererForTheme(theme, renderer) {
     for (const s of sessions) if (s.active && s.theme === theme) s.adopt(renderer);
 }

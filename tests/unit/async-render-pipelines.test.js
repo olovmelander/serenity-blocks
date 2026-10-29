@@ -470,6 +470,32 @@ describe('async-render-pipelines', () => {
             expect(session.stats).toMatchObject({ syncExempt: 1, async: 2 });
         });
 
+        it('a theme still built hidden composites async when its session asks; sync again once revealed', () => {
+            const theme = { ...makeTheme('neon-district'), _prewarmHidden: true };
+            const backend = new fake.FakeWebGPUBackend(theme.renderer);
+            const session = beginAsyncRenderPipelines(theme, { asyncCompositeWhileHidden: true });
+            const quad = { isQuadMesh: true, name: 'Render Pipeline' };
+
+            backend.createRenderPipeline({ ...renderObjectFor(null), object: quad }, null);
+            expect(Array.isArray(lastCall(fake).promises)).toBe(true);
+            expect(session.stats).toMatchObject({ syncExempt: 0, async: 1 });
+
+            // Revealed (the switch clears the flag): a composite made now must draw this frame.
+            theme._prewarmHidden = false;
+            backend.createRenderPipeline({ ...renderObjectFor(null), object: quad }, null);
+            expect(lastCall(fake).promises).toBeNull();
+            expect(session.stats).toMatchObject({ syncExempt: 1, async: 1 });
+        });
+
+        it('without the option a hidden theme keeps its composite synchronous', () => {
+            const theme = { ...makeTheme('forest'), _prewarmHidden: true };
+            const backend = new fake.FakeWebGPUBackend(theme.renderer);
+            const session = beginAsyncRenderPipelines(theme);
+            backend.createRenderPipeline({ ...renderObjectFor(null), object: { isQuadMesh: true } }, null);
+            expect(lastCall(fake).promises).toBeNull();
+            expect(session.stats.syncExempt).toBe(1);
+        });
+
         it('isFinalComposite matches only a QuadMesh with no render target', () => {
             expect(isFinalComposite(null)).toBe(false);
             expect(isFinalComposite(undefined)).toBe(false);
