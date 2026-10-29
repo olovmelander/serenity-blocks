@@ -73,73 +73,23 @@ import {
     gdPulseLight,
     gdSpectrum,
     gdStrikeLight,
-    wallNormal,
 } from './geode-tsl.js';
+import { sessionShellArrays } from './geode-bakes.js';
 
-const RINGS = 132;
-const SPOKES = 176;
 /** Cells of the fracture network round the axis and per radian along the wall. */
 const CRACK_ROUND = 22;
 const CRACK_ALONG = 5.4;
 
+/** The shell's mesh over its arrays (geode-bake-data.js's shellArrays, kept for the session). */
 function buildGeometry(plan) {
-    const cols = SPOKES + 1;
-    const count = (RINGS + 1) * cols;
-    const positions = new Float32Array(count * 3);
-    const normals = new Float32Array(count * 3);
-    const coords = new Float32Array(count * 2);
-    const a = [0, 0, 0];
-    const b = [0, 0, 0];
-    const c = [0, 0, 0];
-    const d = [0, 0, 0];
-    const n = [0, 0, 0];
-    const eps = 0.012;
-    for (let i = 0; i <= RINGS; i++) {
-        const w = Math.max(1e-3, (i / RINGS) * CAVITY.wMax);
-        for (let j = 0; j <= SPOKES; j++) {
-            const phi = (j / SPOKES) * TAU;
-            const o = i * cols + j;
-            plan.surface(w, phi, a);
-            positions.set(a, o * 3);
-            coords.set([w, phi], o * 2);
-            // The lumpy surface's own normal, from its two tangents, turned into the cavity.
-            plan.surface(w + eps, phi, a);
-            plan.surface(Math.max(1e-3, w - eps), phi, b);
-            plan.surface(w, phi + eps, c);
-            plan.surface(w, phi - eps, d);
-            const tw = [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-            const tp = [c[0] - d[0], c[1] - d[1], c[2] - d[2]];
-            let nx = tw[1] * tp[2] - tw[2] * tp[1];
-            let ny = tw[2] * tp[0] - tw[0] * tp[2];
-            let nz = tw[0] * tp[1] - tw[1] * tp[0];
-            wallNormal(w, phi, n);
-            const len = Math.hypot(nx, ny, nz);
-            if (len < 1e-7) {
-                [nx, ny, nz] = n;
-            } else {
-                const s = (nx * n[0] + ny * n[1] + nz * n[2] < 0 ? -1 : 1) / len;
-                nx *= s;
-                ny *= s;
-                nz *= s;
-            }
-            normals.set([nx, ny, nz], o * 3);
-        }
-    }
-    const index = [];
-    for (let i = 0; i < RINGS; i++) {
-        for (let j = 0; j < SPOKES; j++) {
-            const p0 = i * cols + j;
-            const p1 = p0 + 1;
-            const p2 = p0 + cols;
-            const p3 = p2 + 1;
-            index.push(p0, p2, p1, p1, p2, p3);
-        }
-    }
+    const {
+        positions, normals, coords, index,
+    } = sessionShellArrays(plan);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
     geometry.setAttribute('aWall', new THREE.BufferAttribute(coords, 2));
-    geometry.setIndex(index);
+    geometry.setIndex(new THREE.BufferAttribute(index, 1));
     return geometry;
 }
 

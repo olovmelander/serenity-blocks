@@ -73,7 +73,6 @@ import {
     STRIKE_SLOTS,
     WISP_FLIGHT,
     approach,
-    bakeNoise,
     clamp01,
     clearEnergy,
     clearPassTime,
@@ -85,10 +84,9 @@ import {
     paletteAt,
     pieceColor,
     powerForCombo,
-    sampleNoise,
     smooth,
 } from './geode-tsl.js';
-import { buildPlan } from './geode-layout.js';
+import { planOptionsFor, sessionNoiseField, sessionPlan } from './geode-bakes.js';
 import { tierFor } from './geode-quality.js';
 import { createShell } from './geode-shell.js';
 import { createCrystals, createDruzy } from './geode-crystals.js';
@@ -164,14 +162,9 @@ export class GeodeWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.noiseField = bakeNoise();
-        const field = this.noiseField;
-        this.plan = buildPlan((x, y, c) => sampleNoise(field, NOISE_SIZE, x, y, c), {
-            seed,
-            crownPerRing: this.tier.crownPerRing,
-            druzy: this.tier.druzy,
-            stars: this.tier.stars,
-        });
+        // The noise, the plan over it and the shell are kept for the session (geode-bakes.js).
+        this.noiseField = sessionNoiseField();
+        this.plan = sessionPlan(this.noiseField, planOptionsFor(this.tier, seed));
         this.list = this.plan.crystalsFor(this.tier.heroes);
         /** Which drawn crystals stand in each hero cluster (a struck crystal sets its cluster chiming). */
         this.clusterMembers = this.plan.clusters.map(() => []);
