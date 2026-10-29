@@ -205,6 +205,8 @@ describe('Black Hole theme lifecycle', () => {
             });
         });
         await theme.start({ loadTheme: vi.fn() });
+        // The warm runs in a task of its own just after the build (warmParkedSoon).
+        await theme.warming;
         expect(visibleAtWarm).toBe(true);
         expect(theme.world.matter.parked.visible).toBe(false);
         expect(theme.getWarmupRoots()).toEqual([theme.world.matter.group]);

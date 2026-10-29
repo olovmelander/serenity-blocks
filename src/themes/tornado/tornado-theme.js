@@ -52,7 +52,7 @@
 import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
-import { warmParkedDrawables } from '../shared/warm-hidden-drawables.js';
+import { warmParkedSoon } from '../shared/warm-hidden-drawables.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -293,7 +293,9 @@ export default class TornadoTheme extends BaseTheme {
         this.world.update(this.buildSim(0), this.camera);
         // Draw the parked satellite vortices and dust front once now, under the cover, so the
         // first long chain or big clear does not build their pipelines mid-play.
-        warmParkedDrawables(this.getWarmupRoots(), { camera: this.camera, render: () => this.renderPicture() });
+        // In a task of its own, with only the parked effects past an in-play switch's build budget: under
+        // the budget they were deferred and compiled on their first gameplay frame (bench --trace-gpu).
+        this.warming = warmParkedSoon(this, () => this.getWarmupRoots(), () => this.renderPicture());
 
         if (!this.isPaused) this.animate();
         const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';

@@ -1324,6 +1324,8 @@ export class ThemeManager {
             behindSession = beginAsyncRenderPipelines(themeInstance, {
                 label: `switch:${themeName}`,
                 buildBudgetMs: SWITCH_BUILD_BUDGET_MS,
+                // Hidden until quiet: its post chain's final composite may compile async too.
+                asyncCompositeWhileHidden: true,
             });
             this._behindBuild = { theme: themeInstance, themeName };
         }

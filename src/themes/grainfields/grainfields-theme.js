@@ -32,6 +32,7 @@ import { GRAINFIELDS_EVENT_HANDLERS, GrainfieldsDirector } from './grainfields-d
 import { approach } from './grainfields-core.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
+import { warmParkedSoon } from '../shared/warm-hidden-drawables.js';
 
 const THEME_ID = 'grainfields';
 const LOG_PREFIX = '[Grainfields]';
@@ -297,6 +298,7 @@ export default class GrainfieldsTheme extends BaseTheme {
         this.applyReactionSettings(null);
         this.world.updateCamera(this.camera, this.buildSim(0));
         this.world.update(this.buildSim(0), this.camera);
+        this.warmParked();
 
         if (!this.isPaused) this.animate();
         const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
@@ -713,8 +715,26 @@ export default class GrainfieldsTheme extends BaseTheme {
     }
 
     /** Nothing is parked for the manager to compile: what the world draws is in its scene. */
+    /** The parts held out of sight until play shows them: the locks' sunbeams (no instances at rest). */
     getWarmupRoots() {
-        return [];
+        const beams = this.world?.parts?.beams?.mesh;
+        return beams ? [beams] : [];
+    }
+
+    /**
+     * Draw the parked parts once, while the theme is still masked, alone, in a task of its own, with
+     * only them past an in-play switch's build budget (warmParkedSoon): the beams' pipeline was otherwise compiled synchronously in the GPU
+     * process on the first lock after the switch (27 ms; bench --trace-gpu, 2026-10-29).
+     */
+    warmParked() {
+        const { renderer, camera } = this;
+        if (!renderer || !this.scene || !camera) return Promise.resolve(0);
+        this.warming = warmParkedSoon(this, () => this.getWarmupRoots(), () => {
+            if (this.post) this.post.render();
+            else if (this.passThrough) this.passThrough.render();
+            else renderer.render(this.scene, camera);
+        });
+        return this.warming;
     }
 
     /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */

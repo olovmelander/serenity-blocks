@@ -191,7 +191,13 @@ function createForSession(backend, original, renderObject, promises) {
         diagnostics.unownedSyncDuringSession += 1;
         return original.call(backend, renderObject, null);
     }
-    if (isOneShotRenderTarget(renderObject?.context?.renderTarget) || isFinalComposite(renderObject)) {
+    // The final composite is created synchronously so a visible frame always composites; a theme
+    // still built hidden (an in-play switch's incoming theme) has no frame anyone sees, and its
+    // composite inlines its whole post chain: Neon District's took 356 ms on the GPU process's main
+    // thread, which draws the display too (a 380 ms freeze of the outgoing theme and the board).
+    const compositeAsync = s.asyncCompositeWhileHidden && s.theme?._prewarmHidden === true;
+    const oneShot = isOneShotRenderTarget(renderObject?.context?.renderTarget);
+    if (oneShot || (isFinalComposite(renderObject) && !compositeAsync)) {
         s.stats.syncExempt += 1;
         return original.call(backend, renderObject, null);
     }
@@ -220,6 +226,47 @@ function budgetSessionFor(renderer) {
     return found;
 }
 
+/**
+ * Opt-in build trace for the theme bench (`window.__serenityBuildTrace = []` before the game loads):
+ * one entry per first-time render-object build while a budget session is open, with how the budget
+ * treated it (charged, deferred, or exempt: a canvas draw, a one-shot target, a warm render with
+ * the budget suspended), its own duration, how deep it sat inside another build, and what it was.
+ * Off (no array) it costs one global read per budgeted call.
+ */
+function traceBuild(renderer, args, kind, ms, depth) {
+    const trace = globalThis.__serenityBuildTrace;
+    if (!Array.isArray(trace) || trace.length >= 20000) return;
+    const [object, material] = args;
+    const rt = renderer._renderTarget;
+    trace.push({
+        t: Math.round(performance.now()),
+        kind,
+        ms: Math.round(ms * 10) / 10,
+        depth,
+        object: object?.name || object?.type || '?',
+        material: material?.name || material?.type || '?',
+        target: rt ? (rt.texture?.name || `rt ${rt.width}x${rt.height}${rt.samples ? ` s${rt.samples}` : ''}`) : 'canvas',
+    });
+}
+
+/** A first-time build the budget does not charge, timed for the trace. */
+/** Whether this draw would build a render object the renderer has not built yet. */
+function isNewRenderObject(renderer, args) {
+    const [object, material, , , lightsNode, , , passId] = args;
+    const chainMap = renderer._objects?.getChainMap?.(passId);
+    return Boolean(chainMap) && chainMap.get([object, material, renderer._currentRenderContext, lightsNode]) === undefined;
+}
+
+function tracedExempt(renderer, original, args, kind) {
+    if (!isNewRenderObject(renderer, args)) return original.apply(renderer, args);
+    const t0 = performance.now();
+    try {
+        return original.apply(renderer, args);
+    } finally {
+        traceBuild(renderer, args, kind, performance.now() - t0, chargeDepth);
+    }
+}
+
 function installBuildBudget(proto) {
     if (budgetPatched) return budgetPatched.proto === proto;
     const original = proto?._renderObjectDirect;
@@ -228,7 +275,15 @@ function installBuildBudget(proto) {
     const wrapped = function serenityBudgetedRenderObjectDirect(...args) {
         const s = budgetSessions.size === 0 ? null : budgetSessionFor(this);
         if (s === null || isOneShotRenderTarget(this._renderTarget) || s.budgetSuspended > 0
-            || (s.exemptCanvasDraws && !this._renderTarget)) return original.apply(this, args);
+            || (s.exemptCanvasDraws && !this._renderTarget) || s.exemptObjects?.has(args[0]) === true) {
+            // A warm frame's parked drawables: count the ones built (withBuildBudgetExemptFor).
+            if (s !== null && s.exemptObjects?.has(args[0]) === true && isNewRenderObject(this, args)) s.exemptBuilds += 1;
+            if (s === null || !Array.isArray(globalThis.__serenityBuildTrace)) return original.apply(this, args);
+            let kind = 'exempt:canvas';
+            if (s.budgetSuspended > 0 || s.exemptObjects?.has(args[0]) === true) kind = 'exempt:warm';
+            else if (isOneShotRenderTarget(this._renderTarget)) kind = 'exempt:one-shot';
+            return tracedExempt(this, original, args, kind);
+        }
         // A render object this renderer already built costs a cache lookup: never budgeted.
         const [object, material, , , lightsNode, , , passId] = args;
         const chainMap = this._objects?.getChainMap?.(passId);
@@ -238,6 +293,7 @@ function installBuildBudget(proto) {
         const t0 = performance.now();
         if (!s.chargeable(chargeDepth > 0 ? t0 - chargeStart : 0)) {
             s.deferBuild();
+            traceBuild(this, args, 'deferred', 0, chargeDepth);
             return undefined;
         }
         if (chargeDepth === 0) chargeStart = t0;
@@ -247,6 +303,7 @@ function installBuildBudget(proto) {
         } finally {
             // Only the outermost build is charged: its time holds the builds nested in it.
             chargeDepth -= 1;
+            traceBuild(this, args, 'charged', performance.now() - t0, chargeDepth);
             if (chargeDepth === 0) s.chargeBuild(performance.now() - chargeStart);
         }
     };
@@ -277,12 +334,15 @@ function uninstallIfIdle() {
  * unless preloadAsyncRenderPipelines() has resolved, so callers keep their await structure.
  * @param {any} theme
  * @param {{label?: string, backendProto?: any, buildBudgetMs?: number, rendererProto?: any,
- *   exemptCanvasDraws?: boolean}} [options]
+ *   exemptCanvasDraws?: boolean, asyncCompositeWhileHidden?: boolean}} [options]
  *   buildBudgetMs: per-frame budget for first-time render-object builds (see BUILD BUDGET above);
  *   0 (the default) builds everything as it is met
  *   exemptCanvasDraws: never defer a draw into the canvas itself (the final composite of a VISIBLE
  *   renderer: a deferred one is a frame with nothing on it). Budgeting stays on everything drawn
  *   into a render target — a post chain's scene pass. For a live surface (Odyssey's map).
+ *   asyncCompositeWhileHidden: create the final composite's pipeline async too while the theme is
+ *   still hidden (`theme._prewarmHidden`): for a build revealed only once it is quiet (the in-play
+ *   switch). Once revealed, the composite is synchronous again.
  */
 export function beginAsyncRenderPipelines(theme, {
     label = theme?.name ?? 'theme',
@@ -290,6 +350,7 @@ export function beginAsyncRenderPipelines(theme, {
     buildBudgetMs = 0,
     rendererProto = rendererProtoResolved,
     exemptCanvasDraws = false,
+    asyncCompositeWhileHidden = false,
 } = {}) {
     if (!theme || !backendProto || !install(backendProto)) return null;
     const stats = {
@@ -317,6 +378,11 @@ export function beginAsyncRenderPipelines(theme, {
         lastDeferFrame: -1,
         buildBudgetMs: 0,
         exemptCanvasDraws: exemptCanvasDraws === true,
+        asyncCompositeWhileHidden: asyncCompositeWhileHidden === true,
+        /** Objects built whatever the budget says (see withBuildBudgetExemptFor), or null. */
+        exemptObjects: null,
+        /** How many of them were built (a warm frame reads it to know it reached them). */
+        exemptBuilds: 0,
         /** While above 0, this session's renderer builds everything it meets (see withoutBudget). */
         budgetSuspended: 0,
         /**
@@ -465,6 +531,53 @@ export function beginAsyncRenderPipelines(theme, {
  * @param {any} theme
  * @param {any} renderer
  */
+/**
+ * Run `fn` with the build budget off for `renderer`'s open session, if it has one: a warm frame
+ * whose purpose is to build (warm-hidden-drawables.js) must not leave its objects for later. Without
+ * a session (a start that is not an in-play switch) it just runs `fn`.
+ * @template T
+ * @param {any} renderer
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withoutBuildBudget(renderer, fn) {
+    const session = renderer && budgetSessions.size > 0 ? budgetSessionFor(renderer) : null;
+    return session ? session.withoutBudget(fn) : fn();
+}
+
+/**
+ * Run `fn` with `objects` let past the build budget of `renderer`'s open session: a warm frame for
+ * parked drawables builds them at once, while everything else it meets (a post chain's passes not
+ * built yet) keeps to the budget and spreads over frames as before. Without a session it just runs.
+ * @template T
+ * @param {any} renderer
+ * @param {Set<any>} objects
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withBuildBudgetExemptFor(renderer, objects, fn) {
+    const session = renderer && budgetSessions.size > 0 ? budgetSessionFor(renderer) : null;
+    if (!session) return fn();
+    const before = session.exemptObjects;
+    session.exemptObjects = objects;
+    try {
+        return fn();
+    } finally {
+        session.exemptObjects = before;
+    }
+}
+
+/**
+ * Builds of objects let past the budget so far (withBuildBudgetExemptFor) in `renderer`'s open
+ * session, or null without one (nothing is budgeted: a warm frame builds what it draws).
+ * @param {any} renderer
+ * @returns {?number}
+ */
+export function exemptBuildCount(renderer) {
+    const session = renderer && budgetSessions.size > 0 ? budgetSessionFor(renderer) : null;
+    return session ? session.exemptBuilds : null;
+}
+
 export function adoptRendererForTheme(theme, renderer) {
     for (const s of sessions) if (s.active && s.theme === theme) s.adopt(renderer);
 }

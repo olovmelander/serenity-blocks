@@ -9,7 +9,7 @@
  * its frames run at full rate without covering the desktop. With `vsync: false` Chromium's vsync
  * and frame-rate limit are off, so the frame rate is what the machine can do, not the panel's.
  */
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, contentTracing } from 'electron';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -18,6 +18,15 @@ import { THEME_PERF_BOOTSTRAP } from './lib/theme-perf-instrument.mjs';
 import {
     BENCH_BOOTSTRAP, buildLoadSource, buildStartSource, buildWindowSource,
 } from './lib/theme-fleet-bench-page.mjs';
+
+/** What --trace-load records: frames, the GPU process and its WebGPU work, the page's tasks. */
+const TRACE_CATEGORIES = [
+    'toplevel', 'benchmark', 'gpu', 'gpu.dawn', 'disabled-by-default-gpu.dawn', 'disabled-by-default-gpu.service',
+    'disabled-by-default-gpu.device', 'viz', 'cc', 'blink', 'devtools.timeline', 'disabled-by-default-devtools.timeline',
+    'disabled-by-default-devtools.timeline.frame', 'v8.execute', 'mojom', 'ipc', 'skia', 'gpu.capture',
+];
+/** What --trace-gpu records: the GPU process's command handling and Dawn's pipeline work, nothing else. */
+const TRACE_GPU_CATEGORIES = ['gpu', 'disabled-by-default-gpu.dawn'];
 
 const specArg = process.argv.find((a) => a.startsWith('--spec='));
 if (!specArg) {
@@ -141,7 +150,8 @@ async function main() {
     dbg.attach('1.3');
     await dbg.sendCommand('Page.enable');
     await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-        source: `${THEME_PERF_BOOTSTRAP};\n${BENCH_BOOTSTRAP}`,
+        // --build-trace=1: the loads' first-time render-object builds (async-render-pipelines.js traceBuild).
+        source: `${THEME_PERF_BOOTSTRAP};\n${BENCH_BOOTSTRAP}${spec.buildTrace ? ';\nwindow.__serenityBuildTrace = [];' : ''}`,
     });
 
     const exec = async (src, timeoutMs = 120_000) => {
@@ -198,7 +208,17 @@ async function main() {
             await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 250 });
             await dbg.sendCommand('Profiler.start');
         }
+        if (spec.buildTrace) await exec('window.__serenityBuildTrace = []; true');
+        // --trace-load=1: a Chrome trace of every process (the GPU process included) over the first switch.
+        // --trace-gpu=1: only the GPU process's WebGPU work (small), from the switch to the end of the storms.
+        if (spec.traceLoad) await contentTracing.startRecording({ included_categories: TRACE_CATEGORIES, excluded_categories: ['*'] });
+        else if (spec.traceGpu) await contentTracing.startRecording({ included_categories: TRACE_GPU_CATEGORIES, excluded_categories: ['*'] });
         cell.phases.load1 = await exec(buildLoadSource({ themeId: spec.themeId }), 90_000);
+        if (spec.buildTrace) {
+            const trace = await exec('JSON.stringify(window.__serenityBuildTrace || [])');
+            fs.writeFileSync(spec.outPath.replace(/.json$/, '.load1.buildtrace.json'), trace);
+        }
+        if (spec.traceLoad) await contentTracing.stopRecording(spec.outPath.replace(/.json$/, '.load1.trace.json'));
         if (spec.profileLoad) {
             const { profile } = await dbg.sendCommand('Profiler.stop');
             fs.writeFileSync(spec.outPath.replace(/.json$/, '.load1.cpuprofile'), JSON.stringify(profile));
@@ -219,6 +239,7 @@ async function main() {
         if (spec.gpuWindow) await windowPhase('gpu', 'gpu', spec.gpuMs ?? 4000);
         await windowPhase('storm1', 'storm', spec.stormMs ?? 8000);
         await windowPhase('storm2', 'storm', spec.stormMs ?? 8000);
+        if (spec.traceGpu && !spec.traceLoad) await contentTracing.stopRecording(spec.outPath.replace(/.json$/, '.gpu.trace.json'));
         await shot('storm');
 
         if (spec.secondVisit !== false) {
@@ -226,7 +247,12 @@ async function main() {
             await exec(buildLoadSource({ themeId: spec.anchorTheme }), 90_000);
             await sleep(2000);
             phaseNow = 'load2';
+            if (spec.buildTrace) await exec('window.__serenityBuildTrace = []; true');
             cell.phases.load2 = await exec(buildLoadSource({ themeId: spec.themeId }), 90_000);
+            if (spec.buildTrace) {
+                const trace = await exec('JSON.stringify(window.__serenityBuildTrace || [])');
+                fs.writeFileSync(spec.outPath.replace(/.json$/, '.load2.buildtrace.json'), trace);
+            }
             log('load2', JSON.stringify(cell.phases.load2.marks));
         }
     } catch (e) {

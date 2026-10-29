@@ -20,6 +20,7 @@
 import { EVENTS, eventBus } from '../../events/event-bus.js';
 import { readLockViewportOrigin } from '../../events/lock-origin.js';
 import { PIECE_SWATCH_RGB, clamp01 } from './sunfall-core.js';
+import { warmParkedSoon } from '../shared/warm-hidden-drawables.js';
 
 /** The board (src/core/constants.js: its module pulls in the theme registry, so not imported). */
 const COLS = 10;
@@ -152,4 +153,31 @@ export function subscribeSunfallRuns(theme) {
         theme.level = 1;
         theme.director?.startRun();
     }));
+}
+
+/** The parts held out of sight until an event shows them: the Exhale cloud (sunfall-air-life.js). */
+export function sunfallWarmupRoots(scene) {
+    const mist = scene?.getObjectByName?.('sunfall-exhale');
+    return mist ? [mist] : [];
+}
+
+/**
+ * Draw the event-shown parts once while the theme is still masked: the Exhale cloud's pipeline was
+ * otherwise compiled synchronously in the GPU process on the first exhale of play (37 ms; bench
+ * --trace-gpu, 2026-10-29). Drawn alone, in a task of its own, with only them past an in-play switch's
+ * build budget (shared/warm-hidden-drawables.js warmParkedSoon); through the theme's own path (its
+ * post, its pass-through or the bare scene).
+ * @returns {Promise<number>} drawables revealed for the warm frame
+ */
+export function warmSunfallParked(theme) {
+    const {
+        renderer, scene, camera, post, passThrough,
+    } = theme;
+    if (!renderer || !scene || !camera) return Promise.resolve(0);
+    const render = () => {
+        if (post) post.render();
+        else if (passThrough) passThrough.render();
+        else renderer.render(scene, camera);
+    };
+    return warmParkedSoon(theme, () => sunfallWarmupRoots(scene), render);
 }

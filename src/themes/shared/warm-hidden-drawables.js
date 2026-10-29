@@ -19,8 +19,8 @@
  * delta — exactly the signature measured in
  * docs/GAMEPLAY_SMOOTHNESS_INVESTIGATION_2026-08.md §10.
  *
- * This module only ever writes `visible`, `frustumCulled` and
- * `InstancedMesh.count`. None of the three is part of a render object's
+ * This module only ever writes `visible`, `frustumCulled`,
+ * `InstancedMesh.count` and `InstancedBufferGeometry.instanceCount`. None of the three is part of a render object's
  * identity — `RenderObject.getMaterialCacheKey()` skips `visible`
  * (RenderObject.js:738) — so revealing cannot change which pipeline the live
  * frame later asks for.
@@ -34,6 +34,8 @@
  * documented poisoned-cache black screen. Reveal only across the theme's own
  * shipped post render.
  */
+
+import { exemptBuildCount, withBuildBudgetExemptFor } from '../../rendering/async-render-pipelines.js';
 
 /**
  * @param {any} object
@@ -56,7 +58,7 @@ function isDrawable(object) {
 export function revealHiddenDrawables(roots, options = {}) {
     const { camera = null, limit = 128, onUnreachable = null } = options;
     const list = Array.isArray(roots) ? roots : [roots];
-    /** @type {Array<{o: any, visible: boolean, frustumCulled: boolean, count: number|null}>} */
+    /** @type {Array<{o: any, visible: boolean, frustumCulled: boolean, count: number|null, instanceCount: number|null}>} */
     const saved = [];
     const touched = new Set();
     let revealed = 0;
@@ -70,6 +72,7 @@ export function revealHiddenDrawables(roots, options = {}) {
             visible: object.visible,
             frustumCulled: object.frustumCulled,
             count: object.isInstancedMesh ? object.count : null,
+            instanceCount: object.geometry?.isInstancedBufferGeometry ? object.geometry.instanceCount : null,
         });
     };
 
@@ -104,6 +107,10 @@ export function revealHiddenDrawables(roots, options = {}) {
             // A count-0 InstancedMesh yields `drawParams === null` and draws
             // nothing, so it would still not compile.
             if (object.isInstancedMesh && object.count === 0) object.count = 1;
+            // Likewise a mesh on an InstancedBufferGeometry with no instances yet (Grainfields' beams).
+            if (object.geometry?.isInstancedBufferGeometry && object.geometry.instanceCount === 0) {
+                object.geometry.instanceCount = 1;
+            }
 
             revealed += 1;
         });
@@ -123,6 +130,7 @@ export function revealHiddenDrawables(roots, options = {}) {
             entry.o.visible = entry.visible;
             entry.o.frustumCulled = entry.frustumCulled;
             if (entry.count !== null) entry.o.count = entry.count;
+            if (entry.instanceCount !== null) entry.o.geometry.instanceCount = entry.instanceCount;
         }
     };
 
@@ -161,6 +169,109 @@ export function warmParkedDrawables(roots, options = {}) {
     }
     if (settle) render();
     return reveal.revealed;
+}
+
+/**
+ * warmParkedDrawables for a theme whose own build is still spreading its first builds over frames
+ * (an in-play switch's hidden build: shared build budget, async-render-pipelines.js): every other
+ * drawable in `scene` sits out the warm frame, so a warm with the budget off builds the parked
+ * drawables and nothing else (warming Fall's squirrel inside its first frame built the whole
+ * forest with it: a 250 ms task). Lights stay, so the parked materials build for the real lights.
+ *
+ * @param {any} scene the theme's scene
+ * @param {any} roots one Object3D, or an array of them
+ * @param {{camera?: any, render?: () => void, settle?: boolean}} [options]
+ * @returns {number} drawables revealed for the warm frame
+ */
+export function warmParkedDrawablesAlone(scene, roots, options = {}) {
+    const list = (Array.isArray(roots) ? roots : [roots]).filter(Boolean);
+    if (!list.length) return 0;
+    const own = new Set();
+    for (const root of list) root.traverse?.((object) => own.add(object));
+    const sidelined = [];
+    scene?.traverse?.((object) => {
+        if (own.has(object) || !isDrawable(object) || object.visible !== true) return;
+        object.visible = false;
+        sidelined.push(object);
+    });
+    try {
+        return warmParkedDrawables(list, options);
+    } finally {
+        for (const object of sidelined) object.visible = true;
+    }
+}
+
+/**
+ * Warm a theme's parked drawables in a task of their own, just after its build: one frame through
+ * the theme's shipped path with them drawn and every other drawable sitting it out
+ * (warmParkedDrawablesAlone). In an in-play switch only the parked drawables are let past the build
+ * budget (withBuildBudgetExemptFor), so the rest the frame meets (the post chain's passes) keeps to
+ * the budget; in a task of its own, the warm never adds to the build's task. Effects parked out of
+ * sight until play shows them otherwise compiled synchronously in the GPU process on their first
+ * gameplay frame (37-109 ms in six themes; bench --trace-gpu, 2026-10-29).
+ *
+ * The parked drawables are only drawn once the frame's path reaches them: a post chain whose
+ * composite the budget still defers never draws its scene pass. So in a switch the warm is tried
+ * again, a frame apart, until one has built them (exemptBuildCount went up) and the next built
+ * nothing more, or `tries` ran out. Without a budget session one frame builds everything.
+ * Each warm render starts a node frame of its own (as three's compileAsync does): a post chain's
+ * scene pass runs once per node frame, and a theme that drew its first frame inside its build had
+ * spent that frame's pass, so its warm drew nothing and its effects still compiled mid-play.
+ * Skipped if the theme rebuilt or let go of its renderer meanwhile.
+ *
+ * @param {{ renderer: any, scene: any, camera: any }} theme
+ * @param {() => any[]} getRoots the parked roots, read when the warm runs
+ * @param {() => void} render one frame through the theme's own path
+ * @param {{settle?: boolean, tries?: number, gapMs?: number}} [options] settle: draw once more after
+ *   each warm frame (warmParkedDrawables); tries and gapMs: how often and how far apart to try
+ * @returns {Promise<number>} drawables revealed (0 when skipped)
+ */
+export function warmParkedSoon(theme, getRoots, render, { settle = true, tries = 30, gapMs = 16 } = {}) {
+    const { renderer, scene, camera } = theme;
+    return new Promise((resolve) => {
+        let attempt = 0;
+        let reached = false;
+        let revealed = 0;
+        const step = () => {
+            if (!renderer || theme.renderer !== renderer || theme.scene !== scene || theme.camera !== camera) {
+                resolve(revealed);
+                return;
+            }
+            const roots = (getRoots() || []).filter(Boolean);
+            const parked = new Set();
+            for (const root of roots) root.traverse?.((object) => parked.add(object));
+            const before = exemptBuildCount(renderer);
+            const ownFrame = () => {
+                renderer._nodes?.nodeFrame?.update?.(); // eslint-disable-line no-underscore-dangle
+                render();
+            };
+            try {
+                revealed = withBuildBudgetExemptFor(renderer, parked, () => warmParkedDrawablesAlone(scene, roots, {
+                    camera,
+                    render: ownFrame,
+                    settle,
+                }));
+            } catch (error) {
+                console.warn('[warm-hidden-drawables] warm frame failed:', error?.message || error);
+                resolve(revealed);
+                return;
+            }
+            const after = exemptBuildCount(renderer);
+            attempt += 1;
+            // No budget session: this one frame built what it drew. Nothing parked: nothing to wait for.
+            if (before === null || after === null || revealed === 0) {
+                resolve(revealed);
+                return;
+            }
+            if (after > before) reached = true;
+            else if (reached || attempt >= tries) {
+                resolve(revealed);
+                return;
+            }
+            setTimeout(step, gapMs);
+        };
+        setTimeout(step, 0);
+    });
 }
 
 /**

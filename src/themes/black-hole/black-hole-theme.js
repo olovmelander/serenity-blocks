@@ -13,7 +13,7 @@ import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { getViewport } from '../../utils/viewport.js';
-import { revealHiddenDrawables } from '../shared/warm-hidden-drawables.js';
+import { warmParkedSoon } from '../shared/warm-hidden-drawables.js';
 import { readBoardRects } from './black-hole-board-rects.js';
 import { BlackHolePost } from './black-hole-post.js';
 import { QUALITY_PRESETS, normalizeBlackHoleQuality } from './black-hole-quality.js';
@@ -500,16 +500,11 @@ export default class BlackHoleTheme extends BaseTheme {
      * clear and jet find their pipelines already built.
      */
     warmEventPools() {
-        if (!this.renderer || !this.scene || !this.camera || !this.world) return 0;
-        const roots = this.getWarmupRoots();
-        const reveal = revealHiddenDrawables(roots, { camera: this.camera });
-        try {
-            for (const root of roots) root.updateMatrixWorld(true);
-            this.renderFrame();
-            return reveal.revealed;
-        } finally {
-            reveal.restore();
-        }
+        if (!this.renderer || !this.scene || !this.camera || !this.world) return Promise.resolve(0);
+        // In a task of its own, with only the parked effects past an in-play switch's build budget: under
+        // the budget they were deferred and compiled on their first gameplay frame (bench --trace-gpu).
+        this.warming = warmParkedSoon(this, () => this.getWarmupRoots(), () => this.renderFrame(), { settle: false });
+        return this.warming;
     }
 
     startAnimation() {

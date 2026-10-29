@@ -4,8 +4,10 @@ import {
 } from 'vitest';
 import {
     beginAsyncRenderPipelines,
+    exemptBuildCount,
     preloadAsyncRenderPipelines,
     resetAsyncRenderPipelinesForTests,
+    withBuildBudgetExemptFor,
 } from '../../src/rendering/async-render-pipelines.js';
 
 /**
@@ -259,5 +261,33 @@ describe('the build budget on a live surface', () => {
         expect(session.deferredBuilds).toBeGreaterThan(0);
         expect(() => session.withoutBudget(() => { throw new Error('boom'); })).toThrow('boom');
         expect(session.budgetSuspended).toBe(0);
+    });
+});
+
+describe('a warm frame lets its parked drawables past the budget', () => {
+    it('builds the listed objects whatever the budget says, counts them, and budgets the rest', async () => {
+        const renderer = new FakeRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'tornado', renderer }, { buildBudgetMs: 4 });
+        const scene = objects(6);
+        const parked = new Set([scene[4], scene[5]]);
+        expect(exemptBuildCount(renderer)).toBe(0);
+        withBuildBudgetExemptFor(renderer, parked, () => renderer.renderFrame(scene));
+        // The 4 ms budget takes two 3 ms builds (it is checked before each is charged), then defers
+        // the rest, but never the parked two.
+        expect(renderer.built).toEqual([0, 1, 4, 5]);
+        expect(exemptBuildCount(renderer)).toBe(2);
+        expect(session.deferredBuilds).toBeGreaterThan(0);
+        expect(session.exemptObjects).toBeNull();
+
+        // Drawn again: nothing new to build, nothing more counted.
+        await nextTask();
+        withBuildBudgetExemptFor(renderer, parked, () => renderer.renderFrame([scene[4], scene[5]]));
+        expect(exemptBuildCount(renderer)).toBe(2);
+    });
+
+    it('without a session it only runs the frame, and has no count', () => {
+        const renderer = new FakeRenderer();
+        expect(withBuildBudgetExemptFor(renderer, new Set(), () => 'ran')).toBe('ran');
+        expect(exemptBuildCount(renderer)).toBeNull();
     });
 });

@@ -13,7 +13,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { BaseTheme } from '../base-theme.js';
-import { warmParkedDrawables } from '../shared/warm-hidden-drawables.js';
+import { warmParkedSoon } from '../shared/warm-hidden-drawables.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { ComboTracker } from '../../core/combo-tracker.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -3728,7 +3728,9 @@ export default class WolfhourTheme extends BaseTheme {
         // Draw the pooled effects once through the shipped render path while the theme is still
         // masked. Showing them and hiding them again in the same tick drew nothing, so their
         // pipelines used to be built on the first lock, clear and cascade.
-        warmParkedDrawables(this.getWarmupRoots(), { camera: this.camera, render: () => this.renderPicture() });
+        // In a task of its own, with only the parked effects past an in-play switch's build budget: under
+        // the budget they were deferred and compiled on their first gameplay frame (bench --trace-gpu).
+        this.warming = warmParkedSoon(this, () => this.getWarmupRoots(), () => this.renderPicture());
         this.precompileSceneWithTimeout(3000).catch((error) => {
             console.warn('[Wolfhour] Scene precompile failed; continuing without prewarm compile.', error);
         });

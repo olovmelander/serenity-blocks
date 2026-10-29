@@ -463,9 +463,11 @@ describe('Tornado theme: one node renderer on both backends', () => {
         });
 
         const { theme } = await startTheme({ gpu: true, quality: 'High' });
+        // The warm runs in a task of its own just after the build (warmParkedSoon).
+        await theme.warming;
 
         expect(theme.getWarmupRoots()).toEqual([...children, front]);
-        // One warm frame with everything shown, then one with it put back before the loop starts.
+        // One warm frame with everything shown, then one with it put back.
         expect(shown).toEqual([[true, true, true], [false, false, false]]);
         expect([...children, front].every((mesh) => mesh.visible === false)).toBe(true);
     });

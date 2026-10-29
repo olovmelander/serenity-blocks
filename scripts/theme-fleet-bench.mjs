@@ -17,6 +17,9 @@
  *
  * Options: --themes=a,b|all  --skip=a,b  --quality=High  --target-fps=0  --vsync=0  --anchor=nimbus-veil
  *   --width=1707 --height=1067 --scale=1.5  --rest-ms --storm-ms --gpu-ms --intro-ms
+ *   --build-trace=1 (each load's first-time render-object builds, <cell>.loadN.buildtrace.json)
+ *   --trace-load=1 (a Chrome trace of every process over the first switch, <cell>.load1.trace.json)
+ *   --trace-gpu=1 (the GPU process's WebGPU work from the switch to the end of the storms, <cell>.gpu.trace.json)
  *   --profile=1 (CPU profile of storm 1)  --low-power=1 (the integrated GPU)  --query=k=v,k2=v2
  *   --switches=name,name:value (extra Chromium switches)  --skip-existing=1  --no-second-visit=1  --shots=0  --out=reports/theme-fleet-bench
  */
@@ -142,6 +145,9 @@ async function main() {
             shotDir: shotsDir,
             profile: a.profile === '1',
             profileLoad: a['profile-load'] === '1',
+            buildTrace: a['build-trace'] === '1',
+            traceLoad: a['trace-load'] === '1',
+            traceGpu: a['trace-gpu'] === '1',
             query,
             introWaitMs: num(a['intro-ms'], 12_000),
             restMs: num(a['rest-ms'], 6000),

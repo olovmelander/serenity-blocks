@@ -19,7 +19,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, Loop, abs, atan, clamp, cos, dot, exp, float, fract, inverseSqrt, log2, max, min, mix,
+    Fn, If, Loop, abs, atan, clamp, cos, dot, exp, float, fract, int, inverseSqrt, log2, max, min, mix,
     normalize, pow, screenCoordinate, select, sin, smoothstep, sqrt, texture, uniform,
     uniformArray, uv, vec2, vec3, vec4,
 } from 'three/tsl';
@@ -53,6 +53,35 @@ const PULSE_SECONDS = 7;
 const PULSATING_GAIN = 0.6;
 
 const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
+
+/** vec4 rows per marched arc in the arc table (arcTableRows). */
+const ARC_ROWS = 8 + AURORA_MEANDERS.length;
+
+/**
+ * One arc's constants, as the march once printed them into its shader for each arc. The march now
+ * runs once, in a loop over the arcs, and reads them from a uniform table: one copy of its node
+ * graph instead of four, which three builds on the main thread at every Aurora start (133 ms for
+ * the four copies; docs/THEME_FLEET_240_2026-10.md §12). Each entry is the same JavaScript number
+ * the unrolled march wrote as a literal, so every value reaches the shader as the same float.
+ * @returns {THREE.Vector4[]} ARC_ROWS rows
+ */
+function arcTableRows(arc, rows) {
+    const G = AURORA_GEOMETRY;
+    const rayTiles = RAY_TILES_PER_KM * arc.rays;
+    return [
+        [arc.tangentX, arc.tangentZ, arc.normalX, arc.normalZ],
+        [arc.leanAlong, arc.leanAcross, arc.distance, arc.width],
+        [arc.lively, arc.crown, arc.violet, arc.fringe],
+        [arc.cool, arc.height, (arc.index + 0.5) / rows, arc.index],
+        [arc.leanAcross * G.baseAltitude - arc.distance, BILLOW.maxAmplitude * BILLOW.slots + arc.width * 8,
+            MEANDER_REACH * arc.sway, arc.index === CORONA_ARC_INDEX ? 1 : 0],
+        // A near arc is close enough to show the threads inside each ray (w).
+        [rayTiles, 0.25 * rayTiles * NOISE_SIZE, rayTiles * NOISE_SIZE, arc.distance < 260 ? 1 : 0],
+        [arc.drift, arc.seed, arc.drift * 0.085, arc.seed * 1.7],
+        [arc.seed * 0.37 + 0.11, arc.seed * 0.53, 0, 0],
+        ...AURORA_MEANDERS.map((term) => [envelopePhase(term, arc), meanderPhase(term, arc), term.amp * arc.sway, 0]),
+    ].map(([x, y, z, w]) => new THREE.Vector4(x, y, z, w));
+}
 /** Antiderivative of the sheet kernel (1 + x²)^-3/2. */
 const kernelIntegral = (x) => x.mul(inverseSqrt(x.mul(x).add(1)));
 
@@ -159,6 +188,8 @@ export class AuroraCurtains {
         this.renderTarget.texture.magFilter = THREE.LinearFilter;
         this.renderTarget.texture.generateMipmaps = false;
 
+        this.arcTable = uniformArray(this.arcs.flatMap((arc) => arcTableRows(arc, this.excitation.rows)), 'vec4');
+
         this.material = new THREE.NodeMaterial();
         this.material.name = 'Aurora — curtain march';
         this.material.depthTest = false;
@@ -202,11 +233,12 @@ export class AuroraCurtains {
                     .div(rd.y.add(sqrt(rd.y.mul(rd.y).add(curve.mul(4 * altitude)))));
                 const tNear = reach(G.baseAltitude - G.floorMargin).toVar();
                 const tFar = reach(G.topAltitude).toVar();
-                for (const arc of this.arcs) {
-                    this.marchArc(arc, {
+                // One march, looped over the arcs (each reads its constants from the arc table).
+                Loop(this.arcs.length, ({ i }) => {
+                    this.marchArc(i, {
                         rd, curve, tNear, tFar, light,
                     });
-                }
+                });
 
                 // Diffuse aurora: a broad, slowly drifting veil between the arcs, and the
                 // glow of displays beyond the horizon.
@@ -248,16 +280,43 @@ export class AuroraCurtains {
         })();
     }
 
-    marchArc(arc, {
+    marchArc(arcSlot, {
         rd, curve, tNear, tFar, light,
     }) {
         const u = this.uniforms;
         const G = AURORA_GEOMETRY;
         const steps = this.preset.marchSteps;
         const { noiseTexture, excitationTexture } = this;
-        const row = (arc.index + 0.5) / this.excitation.rows;
-        const rayTiles = RAY_TILES_PER_KM * arc.rays;
-        const gain = u.arcGain.element(arc.index);
+        // This arc's constants (arcTableRows), named as the arc's own fields.
+        const rowOf = (k) => this.arcTable.element(arcSlot.mul(ARC_ROWS).add(k)).toVar();
+        const [r0, r1, r2, r3, r4, r5, r6, r7] = [0, 1, 2, 3, 4, 5, 6, 7].map(rowOf);
+        const termRows = AURORA_MEANDERS.map((term, k) => rowOf(8 + k));
+        const arc = {
+            tangentX: r0.x,
+            tangentZ: r0.y,
+            normalX: r0.z,
+            normalZ: r0.w,
+            leanAlong: r1.x,
+            leanAcross: r1.y,
+            distance: r1.z,
+            width: r1.w,
+            lively: r2.x,
+            crown: r2.y,
+            violet: r2.z,
+            fringe: r2.w,
+            cool: r3.x,
+            height: r3.y,
+            drift: r6.x,
+            seed: r6.y,
+        };
+        const index = int(r3.w).toVar();
+        const row = r3.z;
+        const offset = r4.x;
+        const isCorona = r4.w.greaterThan(0.5).toVar();
+        const weathered = isCorona.not().toVar();
+        const isNear = r5.w.greaterThan(0.5).toVar();
+        const rayTiles = r5.x;
+        const gain = u.arcGain.element(index);
 
         // Footprint of the ray point at distance t, altitude h, slid back down the leaning
         // field line to the lower border: along = t·a − (h − h0)·leanAlong, likewise across.
@@ -269,9 +328,8 @@ export class AuroraCurtains {
         // arc outright — most of the sky, for any one arc.
         const rate = across.sub(rd.y.mul(arc.leanAcross));
         const safeRate = select(abs(rate).lessThan(1e-4), float(1e-4), rate);
-        const offset = arc.leanAcross * G.baseAltitude - arc.distance;
-        const sway = u.sway.mul(u.arcFold.element(arc.index)).toVar();
-        const band = sway.mul(MEANDER_REACH * arc.sway).add(BILLOW.maxAmplitude * BILLOW.slots + arc.width * 8);
+        const sway = u.sway.mul(u.arcFold.element(index)).toVar();
+        const band = sway.mul(r4.z).add(r4.y);
         const enter = band.negate().sub(offset).div(safeRate);
         const leave = band.sub(offset).div(safeRate);
         const lo = max(tNear, min(enter, leave)).toVar();
@@ -299,20 +357,21 @@ export class AuroraCurtains {
                 const level = q.toVar();
                 const gradAcross = float(1).toVar();
                 const gradAlong = float(0).toVar();
-                for (const term of AURORA_MEANDERS) {
-                    const envelope = sin(s.mul(term.envelopeKappa).add(envelopePhase(term, arc))).mul(0.28).add(0.72);
-                    const amplitude = sway.mul(term.amp * arc.sway).mul(envelope);
+                AURORA_MEANDERS.forEach((term, k) => {
+                    const phases = termRows[k];
+                    const envelope = sin(s.mul(term.envelopeKappa).add(phases.x)).mul(0.28).add(0.72);
+                    const amplitude = sway.mul(phases.z).mul(envelope);
                     const argument = s.mul(term.kappa).add(q.mul(term.shear))
-                        .add(u.tau.mul(term.speed)).add(meanderPhase(term, arc));
+                        .add(u.tau.mul(term.speed)).add(phases.y);
                     const cosine = cos(argument);
                     level.addAssign(amplitude.mul(sin(argument)));
                     if (term.shear !== 0) gradAcross.addAssign(amplitude.mul(term.shear).mul(cosine));
                     gradAlong.addAssign(amplitude.mul(term.kappa).mul(cosine));
-                }
+                });
                 // Billows: travelling waves in the fabric itself. Analytic like the folds,
                 // gradient included, so the spline below follows them exactly.
                 for (let slot = 0; slot < BILLOW.slots; slot += 1) {
-                    const wave = u.billow.element(arc.index * BILLOW.slots + slot);
+                    const wave = u.billow.element(index.mul(BILLOW.slots).add(slot));
                     const reach = s.sub(wave.x).mul(wave.z).toVar();
                     const bell = exp(reach.mul(reach).negate()).mul(wave.y).mul(BILLOW.normalise).toVar();
                     level.subAssign(reach.mul(bell));
@@ -323,15 +382,15 @@ export class AuroraCurtains {
                 // activity cell, by bearing along the arc; y and z are the share that wants
                 // red tops and blue-violet ones. Mirrors cellLife() in aurora-field.js.
                 const weather = vec3(arc.lively, 0, 0).toVar();
-                if (arc.index !== CORONA_ARC_INDEX) {
+                If(weathered, () => {
                     const bearing = atan(s.div(arc.distance)).toVar();
                     for (let slot = 0; slot < WEATHER.slots; slot += 1) {
-                        const cell = u.cells.element(arc.index * WEATHER.slots + slot);
+                        const cell = u.cells.element(index.mul(WEATHER.slots).add(slot));
                         const reach = bearing.sub(cell.x).mul(cell.y);
                         const k = exp(reach.mul(reach).negate()).mul(cell.z).toVar();
                         weather.addAssign(vec3(k, k.mul(max(cell.w, 0)), k.mul(max(cell.w.negate(), 0))));
                     }
-                }
+                });
 
                 // Signed distance to the sheet in units of its thickness (x), the kernel's
                 // antiderivative there (f), and the distance's slope along the ray (m),
@@ -353,7 +412,7 @@ export class AuroraCurtains {
                     // profile and the rays along its whole path.
                     const spanX = prevX.toVar();
                     const spanF = prevF.toVar();
-                    const stride = s.sub(prevS).abs().mul(0.25 * rayTiles * NOISE_SIZE).toVar();
+                    const stride = s.sub(prevS).abs().mul(r5.y).toVar();
                     Loop(4, ({ i: span }) => {
                         const v = float(span).add(1).mul(0.25).toVar();
                         const v2 = v.mul(v).toVar();
@@ -384,16 +443,16 @@ export class AuroraCurtains {
                             // mip level follows whichever is coarser — a buffer pixel's
                             // footprint or this span's stride along the arc — so distant
                             // and edge-on rays blend into an even glow instead of aliasing.
-                            const texelsPerPixel = ts.mul(u.pixelAngle).mul(rayTiles * NOISE_SIZE);
+                            const texelsPerPixel = ts.mul(u.pixelAngle).mul(r5.z);
                             const rayUV = vec2(
                                 ss.mul(rayTiles).add(u.rayPhase.mul(arc.drift)).add(arc.seed),
-                                ss.mul(0.00037).add(u.tau.mul(0.0021)).add(arc.seed * 0.37 + 0.11),
+                                ss.mul(0.00037).add(u.tau.mul(0.0021)).add(r7.x),
                             );
                             const fine = texture(noiseTexture, rayUV)
                                 .level(log2(max(max(texelsPerPixel, stride), 1))).toVar();
                             const broadUV = vec2(
-                                ss.mul(PATCH_TILES_PER_KM).add(u.rayPhase.mul(arc.drift * 0.085)).add(arc.seed * 1.7),
-                                u.tau.mul(0.0037).add(arc.seed * 0.53),
+                                ss.mul(PATCH_TILES_PER_KM).add(u.rayPhase.mul(r6.z)).add(r6.w),
+                                u.tau.mul(0.0037).add(r7.y),
                             );
                             const broad = texture(noiseTexture, broadUV).level(0).toVar();
 
@@ -402,28 +461,35 @@ export class AuroraCurtains {
                             // smooth, low band; an awake one breaks into tall, sharp rays and
                             // wears its arc's colours most, red-crowned or violet-topped as its
                             // cell leans. The corona is a storm's own display and keeps its look.
-                            const weathered = arc.index !== CORONA_ARC_INDEX;
                             const awake = mix(prevWeather, weather, where).toVar();
                             const life = clamp(awake.x, 0, 1.6).toVar();
-                            const calm = weathered ? smoothstep(0.08, 0.8, life).oneMinus().toVar() : float(0);
-                            const vigour = weathered
-                                ? mix(QUIET_GAIN, 1, smoothstep(0, 0.75, life)).add(max(life.sub(0.75), 0).mul(0.6))
-                                : float(1);
-                            const tallness = weathered ? min(life, 1.4).mul(0.38).add(0.72) : float(1);
+                            const calm = select(weathered, smoothstep(0.08, 0.8, life).oneMinus(), float(0)).toVar();
+                            const vigour = select(
+                                weathered,
+                                mix(QUIET_GAIN, 1, smoothstep(0, 0.75, life)).add(max(life.sub(0.75), 0).mul(0.6)),
+                                float(1),
+                            );
+                            const tallness = select(weathered, min(life, 1.4).mul(0.38).add(0.72), float(1));
                             // Waking colours the tops and the hem, but caps them, so the green
                             // body always shows under a storm's colours.
-                            const redTops = weathered
-                                ? min(awake.y.mul(0.8).add(life.mul(0.25)).add(0.35), 1.5).mul(arc.crown)
-                                : float(1);
-                            const blueTops = weathered
-                                ? min(awake.z.add(life.mul(0.3)).add(0.35), 1.7).mul(arc.violet)
-                                : float(1);
-                            const hemGain = weathered ? min(life.mul(0.5).add(0.55), 1.25).mul(arc.fringe) : float(1);
-                            // A near arc is close enough to show the threads inside each ray.
-                            const threads = arc.distance < 260
-                                ? texture(noiseTexture, rayUV.mul(THREAD_SCALE).add(0.37))
-                                    .level(log2(max(max(texelsPerPixel, stride).mul(THREAD_SCALE), 1))).r
-                                : fine.g;
+                            const redTops = select(
+                                weathered,
+                                min(awake.y.mul(0.8).add(life.mul(0.25)).add(0.35), 1.5).mul(arc.crown),
+                                float(1),
+                            );
+                            const blueTops = select(
+                                weathered,
+                                min(awake.z.add(life.mul(0.3)).add(0.35), 1.7).mul(arc.violet),
+                                float(1),
+                            );
+                            const hemGain = select(weathered, min(life.mul(0.5).add(0.55), 1.25).mul(arc.fringe), float(1));
+                            // A near arc is close enough to show the threads inside each ray (the
+                            // read is skipped for the others: the branch is the same for every pixel).
+                            const threads = fine.g.toVar();
+                            If(isNear, () => {
+                                threads.assign(texture(noiseTexture, rayUV.mul(THREAD_SCALE).add(0.37))
+                                    .level(log2(max(max(texelsPerPixel, stride).mul(THREAD_SCALE), 1))).r);
+                            });
                             const striation = mix(mix(0.16, 1, rays), mix(0.62, 1, rays), calm)
                                 .mul(mix(0.6, 1, smoothstep(0.25, 0.75, threads)));
                             const patch = mix(0.3, 1.35, smoothstep(0.18, 0.82, broad.a));
@@ -466,13 +532,15 @@ export class AuroraCurtains {
                             // curtain its own colour and lifts it a little. Colour and shape
                             // carry every event, so the display never flashes white.
                             // The corona is its own colour: lavender rays over the green arcs.
-                            const resting = arc.index === CORONA_ARC_INDEX
-                                ? mix(triple(AURORA_COLORS.greenCool), triple(AURORA_COLORS.corona), 0.6)
-                                : mix(
+                            const resting = select(
+                                isCorona,
+                                mix(triple(AURORA_COLORS.greenCool), triple(AURORA_COLORS.corona), 0.6),
+                                mix(
                                     triple(AURORA_COLORS.greenWarm),
                                     triple(AURORA_COLORS.greenCool),
                                     clamp(broad.a.add(arc.cool), 0, 1),
-                                );
+                                ),
+                            );
                             const body = mix(
                                 mix(resting, u.tint.rgb, u.tint.a),
                                 hue,

@@ -17,6 +17,8 @@ import {
     revealHiddenDrawables,
     waitForSubmittedGpuWork,
     warmParkedDrawables,
+    warmParkedDrawablesAlone,
+    warmParkedSoon,
 } from '../../src/themes/shared/warm-hidden-drawables.js';
 
 function mesh(name, visible = false) {
@@ -236,5 +238,92 @@ describe('waitForSubmittedGpuWork', () => {
             backend: { device: { queue: { onSubmittedWorkDone: () => Promise.reject(new Error('device lost')) } } },
         };
         await expect(waitForSubmittedGpuWork(renderer)).resolves.toBe(false);
+    });
+});
+
+describe('warmParkedDrawablesAlone', () => {
+    it('draws the parked roots with every other drawable sitting the frame out, then restores all', () => {
+        const scene = new THREE.Scene();
+        const pool = new THREE.Group();
+        const burst = mesh('burst', false);
+        pool.add(burst);
+        const tree = mesh('tree', true);
+        const rock = mesh('rock', false);
+        const light = new THREE.DirectionalLight();
+        scene.add(pool, tree, rock, light);
+        const frames = [];
+        const render = vi.fn(() => frames.push([burst.visible, tree.visible, rock.visible, light.visible]));
+        const revealed = warmParkedDrawablesAlone(scene, [pool], { render, settle: false });
+        expect(revealed).toBe(1);
+        // The burst shows; the tree is sidelined; the hidden rock stays hidden; lights stay.
+        expect(frames).toEqual([[true, false, false, true]]);
+        expect([burst.visible, tree.visible, rock.visible, light.visible]).toEqual([false, true, false, true]);
+    });
+
+    it('settles after everything is back, and does nothing without roots or a scene to sideline', () => {
+        const scene = new THREE.Scene();
+        const burst = mesh('burst', false);
+        const tree = mesh('tree', true);
+        scene.add(burst, tree);
+        const frames = [];
+        warmParkedDrawablesAlone(scene, burst, { render: () => frames.push([burst.visible, tree.visible]) });
+        // The settle frame (inside warmParkedDrawables) still has the tree sidelined; it is back after.
+        expect(frames).toEqual([[true, false], [false, false]]);
+        expect(tree.visible).toBe(true);
+        expect(warmParkedDrawablesAlone(scene, [], { render: vi.fn() })).toBe(0);
+        const render = vi.fn();
+        expect(warmParkedDrawablesAlone(null, burst, { render, settle: false })).toBe(1);
+        expect(render).toHaveBeenCalledOnce();
+    });
+});
+
+describe('a mesh on an InstancedBufferGeometry with no instances', () => {
+    it('is drawn with one instance for the warm frame, and put back to none', () => {
+        const geometry = new THREE.InstancedBufferGeometry().copy(new THREE.PlaneGeometry(1, 1));
+        geometry.instanceCount = 0;
+        const beams = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial());
+        beams.visible = false;
+        const seen = [];
+        warmParkedDrawables(beams, { render: () => seen.push([beams.visible, geometry.instanceCount]) });
+        expect(seen).toEqual([[true, 1], [false, 0]]);
+        expect(geometry.instanceCount).toBe(0);
+    });
+});
+
+describe('warmParkedSoon', () => {
+    it('warms in a task of its own after the build, reading the roots then', async () => {
+        const scene = new THREE.Scene();
+        const theme = { renderer: {}, scene, camera: new THREE.PerspectiveCamera() };
+        const burst = mesh('burst', false);
+        scene.add(burst);
+        const seen = [];
+        const warming = warmParkedSoon(theme, () => [burst], () => seen.push(burst.visible));
+        // Nothing yet: the build's own task is not lengthened.
+        expect(seen).toEqual([]);
+        await expect(warming).resolves.toBe(1);
+        expect(seen).toEqual([true, false]);
+        expect(burst.visible).toBe(false);
+    });
+
+    it('skips a theme that rebuilt or let go of its renderer meanwhile', async () => {
+        const theme = { renderer: {}, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera() };
+        const render = vi.fn();
+        const warming = warmParkedSoon(theme, () => [mesh('burst', false)], render);
+        theme.scene = new THREE.Scene();
+        await expect(warming).resolves.toBe(0);
+        expect(render).not.toHaveBeenCalled();
+    });
+});
+
+describe('warmParkedSoon gives each warm render a node frame of its own', () => {
+    it('advances the renderer node frame before the warm and the settle render', async () => {
+        const order = [];
+        const renderer = { _nodes: { nodeFrame: { update: () => order.push('frame') } } };
+        const scene = new THREE.Scene();
+        const burst = mesh('burst', false);
+        scene.add(burst);
+        const theme = { renderer, scene, camera: new THREE.PerspectiveCamera() };
+        await warmParkedSoon(theme, () => [burst], () => order.push(burst.visible ? 'warm' : 'settle'));
+        expect(order).toEqual(['frame', 'warm', 'frame', 'settle']);
     });
 });

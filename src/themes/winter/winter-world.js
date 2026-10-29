@@ -116,6 +116,8 @@ import {
 
 export { REST_RIG, fovForAspect };
 
+/** Frames the fox of light is drawn dark after it arrives, so its pipeline is built before play calls it. */
+const SPIRIT_WARM_FRAMES = 120;
 const PARTS = ['sky', 'ground', 'trees', 'prints', 'snow', 'dust', 'sparks', 'beams', 'fox', 'spirit', 'bear'];
 
 /** Metres from the eye at which the sparks leave the card's edge. */
@@ -401,8 +403,10 @@ export class WinterWorld {
                 this.parts.spirit = this.spirit;
                 this.root.add(this.spirit.mesh);
                 // Drawn (dark) for its first frames, so its pipeline is not built on the frame
-                // four lines call it up.
-                this.spiritWarm = 4;
+                // four lines call it up. Enough of them for an in-play switch's build budget to reach
+                // it: with 4, the budget's queue still held it and four lines compiled it
+                // synchronously mid-play, 72 ms in the GPU process (bench --trace-gpu, 2026-10-29).
+                this.spiritWarm = SPIRIT_WARM_FRAMES;
             }
             if (this.shown) {
                 this.fox.mesh.visible = this.shown.has('fox');
