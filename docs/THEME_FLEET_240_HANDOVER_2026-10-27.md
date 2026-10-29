@@ -140,13 +140,9 @@ Other tools (READMEs beside them):
      Summer, Kaleidosonic.
 2. **The display ceiling** (owner): try the three machine-side settings in §2, re-checking after
    each.
-3. **The packaged app's dynamic resolution** (record §8). With the FPS counter shown and target 240,
-   `startDynamicResolutionMonitoring` should step `renderScale` down, since frames are pinned at
-   ~5.6 ms by the 178 Hz cadence.
-   - Read in code, not yet observed. Confirm in the dev Electron app
-     (`node scripts/run-electron.mjs --dev electron/main.js` against a dev server).
-   - If confirmed, judge the budget against the achieved display cadence (for example the 5th
-     percentile frame time), not against the target alone.
+3. **The packaged app's dynamic resolution** (record §8): confirmed in the dev desktop app and
+   fixed on 2026-10-29 (record §13). With the FPS counter shown and target 240 it held 1.0 for two
+   minutes of play, where main fell to the 0.5 floor in 45 s.
 4. **Load freezes** (record §7). Each needs an A/B with `ab-load.sh`, and a look at the theme after:
    - Fall and Sunfall re-parse their GLTFs on every visit (83-132 ms). Cache the parsed result for
      the session. Fall re-applies its draw ranges per build; check the squirrel's clone first.

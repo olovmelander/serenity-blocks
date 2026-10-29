@@ -1138,6 +1138,30 @@ export class PerformanceMonitor {
         return [...this.frameTimeLog];
     }
 
+    /**
+     * Frame-time percentiles over the frames of the last `windowMs`, for a judge that ticks every
+     * few seconds. The 60-frame window is the last third of a second at 180 fps, and its p99 is its
+     * one slowest frame. p10 is the quick end: the display's achieved cadence when it sets the pace.
+     * @param {number} [windowMs]
+     * @returns {{count:number, p10:number, p50:number, p95:number, p99:number}}
+     */
+    getRecentFrameTimePercentiles(windowMs = 5000) {
+        const log = this.frameTimeLog;
+        let start = log.length;
+        let spanMs = 0;
+        while (start > 0 && spanMs < windowMs) {
+            start -= 1;
+            spanMs += log[start];
+        }
+        const sorted = log.slice(start).sort((a, b) => a - b);
+        const at = (percentile) => (sorted.length
+            ? sorted[Math.min(sorted.length - 1, Math.floor((percentile / 100) * sorted.length))]
+            : 0);
+        return {
+            count: sorted.length, p10: at(10), p50: at(50), p95: at(95), p99: at(99),
+        };
+    }
+
     getFrameTimeSummary(targetFrameRate = 60) {
         const target = Number.isFinite(Number(targetFrameRate)) && Number(targetFrameRate) > 0
             ? Math.min(1000, Math.max(30, Number(targetFrameRate)))

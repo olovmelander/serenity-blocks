@@ -324,6 +324,10 @@ policy caps are Minimal 0.9 / Low 1.0 / Medium 1.15 / High 1.25 / Ultra 1.35 / E
   target would step down to the floor and stay there. A fix would judge headroom at the display's
   achieved cadence, as Odyssey's caller does (`upscaleThresholdMs`). It is app-level, so it was
   left for a session that can verify it in the packaged app.
+- **Confirmed and fixed (2026-10-29), §13.** In the dev desktop app, FPS counter on, target 240,
+  Single Player: 1.0 → 0.5 in 45 s and never back. Fixed, the scale holds 1.0 through two minutes
+  of play, the game's start and its game over; a load the display does not explain still steps it
+  down.
 
 ## 8b. Tiers measured (2026-10-27 afternoon)
 
@@ -425,7 +429,7 @@ only, for the bench's storms.
    themes still need work.
 2. **The ~178 fps ceiling (§6):**
    - Try dGPU-only display mode and the refresh-rate settings.
-   - Check the packaged app's dynamic resolution against a 240 target (§8).
+   - ~~Check the packaged app's dynamic resolution against a 240 target (§8).~~ Fixed (§13).
 3. **Load freezes (§7):** done in the night pass (§11). What is left is node-graph builds inside
    frames: Neon District's shop material is built twice (81 ms each).
 4. **Starvation under a saturated outgoing theme.** While a build-behind is starved (no pipeline
@@ -669,3 +673,36 @@ Also changed:
   warm frame (Grainfields' beams).
 
 Result: no synchronous pipeline over 20 ms in any of the seven, from the switch through two storms.
+
+## 13. Round three (2026-10-29)
+
+### The desktop app's dynamic resolution
+
+**Before.** Dev desktop app (`electron/main.js` against a dev server), FPS counter on, target 240,
+Single Player, Balanced mode: the scale went 1.0 → 0.5 in 45 s and stayed there. Two causes:
+- **The judgement.** Frame times are presentation gaps, and Chromium presents this 240 Hz panel at
+  ~178 fps. Every frame read 4.9–6.8 ms against a 4.17 ms budget: pressure on every tick. Recovery
+  needed p95 under 3.75 ms, which this display never delivers.
+- **The window.** Each 5 s tick read the monitor's last 60 frames, a third of a second at 178 fps.
+  Its p99 is that window's one slowest frame, so one 8 ms frame was enough.
+
+**The fix** (`desktop-performance-policy.js`, `performance-monitor.js`, the tick in `main.js`):
+- Each tick reads every frame of the last 5 s (`getRecentFrameTimePercentiles`, ~900 frames).
+- `displayBoundCadence`: the display sets the pace when even the quick frames (p10) are slower
+  than the budget and the typical frame (p50) is within 1.45 refresh intervals. Chromium delivers
+  1.25–1.35 here and on the 165 Hz laptop. Then pressure is p95 over 1.5× that pace or p99 over
+  2.2×, and headroom (a lowered scale climbs back) is p95 under 1.3×.
+  - A GPU that misses vblanks lands on whole intervals and still reads as pressure: quick frames
+    on the refresh with a slow tail, or every frame at 2×. So does a p50 slower than the display
+    ever delivers.
+  - With no refresh rate known, or from Odyssey's caller, nothing changes.
+- Pressure steps down only when two ticks in a row read it. The first 5 s of a game hold the
+  board's start frames (p99 20 ms), and those stepped the scale down on the first tick.
+
+**After**, same run:
+
+| Run | Scale over two minutes | 5 s windows, p10 / p50 / p95 / p99 (ms) |
+|---|---|---|
+| main | 1.0 → 0.5 by 45 s, never back | |
+| fixed | 1.0 throughout, through the start and the game over | 4.9 / 5.5 / 6.6–6.9 / 7.6–10.8 |
+| fixed, 8 ms busy wait per frame | 1.0 → 0.6 in 40 s, one step per 10 s | 11.9 / 12.3 / 13.5 / 16 |
