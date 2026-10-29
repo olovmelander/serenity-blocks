@@ -22,6 +22,7 @@ import { FallPost } from './fall-post.js';
 import { fallTier } from './fall-quality.js';
 import { canvasAntialias, sceneSamples } from '../shared/scene-antialias.js';
 import { warmParkedSoon } from '../shared/warm-hidden-drawables.js';
+import { breathe, buildWorldBreathing } from '../shared/build-steps.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -237,12 +238,19 @@ export default class FallTheme extends BaseTheme {
             this.applyQualityPreset(loadedSettingsQuality);
         }
         try {
-            this.buildScene();
+            // The grove in steps (a stop meanwhile disposes it there and leaves nothing to build on).
+            if (await this.buildScene(current) === false) return;
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
             this.time = this.takeRestartTime(0);
             this.update(0);
+            // The squirrel's warm frame in a task of its own, after the post's.
+            await breathe();
+            if (!current()) {
+                if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+                return;
+            }
             this.warmSquirrel();
             this.timer = new THREE.Timer();
             this.timer.connect(document);
@@ -292,7 +300,13 @@ export default class FallTheme extends BaseTheme {
         return loadFallAssets({ isCurrent });
     }
 
-    buildScene() {
+    /**
+     * Build the grove and its post. Called by a start with its `current` check, the grove builds
+     * in steps with a breath between them and the post in a task after them, resolving false when
+     * the start stopped meanwhile (the world disposed, nothing kept); called without one, all at
+     * once.
+     */
+    buildScene(current = null) {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 240);
         this.camera.position.set(0, 4, 18);
@@ -303,11 +317,30 @@ export default class FallTheme extends BaseTheme {
         this.reactions = new FallReactions({ quality: this.quality, rng });
         // The scene pass's samples (4× MSAA from High up with the game's antialiasing on).
         const samples = sceneSamples(this.quality, this.getAntialiasEnabled());
-        this.world = new FallWorld({
+        const world = new FallWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
-        // Keep ownership even if an art module throws halfway through its build.
-        this.world.build();
+        if (!current) {
+            // Keep ownership even if an art module throws halfway through its build.
+            this.world = world;
+            world.build();
+            this.finishScene(samples);
+            return undefined;
+        }
+        // Never a half-built this.world between the breaths; buildWorldBreathing disposes the
+        // world itself when the start stops meanwhile or a part throws.
+        return buildWorldBreathing(world, current).then(async (whole) => {
+            if (!whole) return false;
+            this.world = world;
+            await breathe();
+            if (!current()) return false;
+            this.finishScene(samples);
+            return true;
+        });
+    }
+
+    /** What follows a whole grove: its day and the post over it. */
+    finishScene(samples) {
         // The day goes on where the last world left it: its level, and its light's clock (less the
         // clock a restart carries, which the world counts again).
         this.world.setLevel?.(this.level || 1, { silent: true });

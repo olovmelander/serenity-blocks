@@ -804,6 +804,43 @@ describe('the squirrel in the grove', () => {
         expect(world.squirrel).toBeNull();
     });
 
+    it('builds the grove in steps (one task otherwise): the same grove, the same draws', async () => {
+        const make = async () => {
+            let seed = 271;
+            const rng = () => {
+                seed = (seed * 16807) % 2147483647;
+                return seed / 2147483647;
+            };
+            return new FallWorld({
+                scene: new THREE.Scene(),
+                camera: new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 300),
+                quality: 'Minimal',
+                rng,
+                assets: await bundle(true),
+            });
+        };
+        const whole = (await make()).build();
+        const stepped = await make();
+        owned.push(whole, stepped);
+        const steps = stepped.buildSteps();
+        let count = 0;
+        while (!steps.next().done) count += 1;
+        expect(count).toBeGreaterThanOrEqual(6);
+        const parts = (world) => {
+            const out = [];
+            world.group.traverse((object) => {
+                if (!object.isMesh) return;
+                const position = object.geometry.getAttribute('position');
+                out.push([object.name, position?.count ?? 0, object.count ?? 1,
+                    object.isInstancedMesh ? Array.from(object.instanceMatrix.array.slice(0, 48)) : []]);
+            });
+            return out;
+        };
+        expect(parts(stepped)).toEqual(parts(whole));
+        // Built once: a second build (or a drained build after the steps) adds nothing.
+        expect(stepped.buildSteps().next().done).toBe(true);
+    }, 30_000);
+
     it('is simply not there without its asset, or when it is not wanted', async () => {
         const assets = await bundle(false);
         const scene = new THREE.Scene();

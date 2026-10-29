@@ -31,6 +31,7 @@ import {
     mix,
     pass,
     renderOutput,
+    rtt,
     screenCoordinate,
     screenUV,
     select,
@@ -82,6 +83,12 @@ export const BLOOM_KNEE = 0.45;
 export const BLOOM_RADIUS = 0.55;
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
+/**
+ * The shafts' light (open sky × its capped brightness) is read from a map at this fraction of the
+ * scene's size. The march's jittered taps land far apart from pixel to pixel, and read from the
+ * full scene (colour and depth) they spent ~1.5 ms a golden-evening frame missing the texture cache.
+ */
+export const SHAFT_LIGHT_SCALE = 0.5;
 
 /** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
 const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
@@ -178,6 +185,27 @@ export class SpringPost {
 
         const falseColor = params.falseColor === true;
 
+        // ── The shafts' light: each texel the mean of the open sky's capped brightness under it ──
+        this.shaftLight = null;
+        if (sceneDepth) {
+            const { uSrcTexel } = this;
+            const light = Fn(() => {
+                const st = uv();
+                const o = uSrcTexel.mul(0.5 / SHAFT_LIGHT_SCALE - 0.5);
+                const tap = (dx, dy) => {
+                    const at = st.add(vec2(o.x.mul(dx), o.y.mul(dy)));
+                    const open = step(0.99999, sceneDepth.sample(at).r);
+                    return open.mul(min(spMax3(vec3(sceneColor.sample(at).rgb)), 6.0));
+                };
+                const sum = tap(-1, -1).add(tap(1, -1)).add(tap(-1, 1)).add(tap(1, 1))
+                    .mul(0.25);
+                return vec4(sum, sum, sum, 1.0);
+            })();
+            // Drawn only while the sun shows (render()).
+            this.shaftLight = rtt(light, null, null, { resolutionScale: SHAFT_LIGHT_SCALE, autoUpdate: false });
+        }
+        const { shaftLight } = this;
+
         const outputFn = Fn(() => {
             const px = screenUV.mul(this.uViewport);
 
@@ -196,7 +224,7 @@ export class SpringPost {
 
             // ── Sun shafts: two short marches toward the sun over the open sky ──
             const shafts = vec3(0.0).toVar();
-            if (sceneDepth) {
+            if (shaftLight) {
                 If(this.uSun.w.greaterThan(0.01), () => {
                     const toSun = this.uSun.xy.sub(screenUV);
                     const reach = length(toSun.mul(vec2(this.uAspect, 1.0)));
@@ -205,12 +233,10 @@ export class SpringPost {
                     Loop(N, ({ i }) => {
                         const f = float(i).add(spHash21(screenCoordinate.xy).mul(0.9)).div(N).mul(0.72);
                         const at = screenUV.add(toSun.mul(f));
-                        const d = sceneDepth.sample(at).r;
-                        const open = step(0.99999, d);
-                        const bright = spMax3(vec3(sceneColor.sample(at).rgb));
+                        const light = shaftLight.sample(at).r;
                         // Only the sun's neighbourhood emits.
                         const near = exp(length(this.uSun.xy.sub(at).mul(vec2(this.uAspect, 1.0))).mul(-5.5));
-                        sum.addAssign(open.mul(min(bright, 6.0)).mul(near)
+                        sum.addAssign(light.mul(near)
                             .mul(float(1.0).sub(float(i).div(N).mul(0.6))));
                     });
                     const fall = exp(reach.mul(-1.6));
@@ -326,16 +352,19 @@ export class SpringPost {
     }
 
     render() {
+        if (this.shaftLight && this.uSun.value.w > 0.01) this.shaftLight.textureNeedsUpdate = true;
         this.pipeline.render();
     }
 
     dispose() {
         this.scenePass?.dispose();
+        this.shaftLight?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
         // FXAA reads the graded picture through a render target of its own.
         this.fxaaNode?.textureNode?.dispose?.();
         this.pipeline?.dispose();
         this.scenePass = null;
+        this.shaftLight = null;
         this.bloomNode = null;
         this.fxaaNode = null;
         this.pipeline = null;

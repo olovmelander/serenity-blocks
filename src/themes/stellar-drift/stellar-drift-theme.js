@@ -58,6 +58,7 @@ import { POST_LOOK, StellarDriftPost, createPassThroughPipeline } from './stella
 import { PLAYER_SLOTS, readLayoutRects } from './stellar-drift-composition.js';
 import { STELLAR_DRIFT_EVENT_HANDLERS, StellarDriftDirector } from './stellar-drift-director.js';
 import { approach } from './stellar-drift-core.js';
+import { stellarDriftBakes } from './stellar-drift-bakes.js';
 
 const THEME_ID = 'stellar-drift';
 const LOG_PREFIX = '[Stellar Drift]';
@@ -205,8 +206,12 @@ export default class StellarDriftTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The lattice, clouds, rings and bands (~60 ms on a first visit at High) bake in a worker
+        // while the renderer comes up; the build below finds them in the bake cache.
+        const baking = stellarDriftBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

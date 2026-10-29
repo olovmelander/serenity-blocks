@@ -33,6 +33,11 @@ night pass of 2026-10-28 → 29.
   At the median a theme now shows in 0.75 s on a first visit and 0.52 s on a revisit. The longest
   frame in a switch is 63 / 44 ms at the median (was 80 / 54). No revisit freezes over 110 ms (was
   seven themes). Thermal Bloom's storms are the one window under 175 fps.
+- **Round four (§14):** seven more first-visit freezes cut by 35-95 ms (Sunfall 152 → 59 ms the
+  largest). In dGPU-only mode the game ran at 240 fps until the lid was closed.
+- **Round five (§15):** the GPU-bound three. At rest uncapped: Verdant Hills 200 → 243 fps,
+  Grainfields 220 → 229, Thermal Bloom 246 → 275; Thermal Bloom's storms (180) are the one window
+  far under 240.
 
 ## 2. Machine
 
@@ -794,3 +799,241 @@ first-visit bakes.
 **Frames:** Thermal Bloom's storms are the one window under 175 fps (170, 1.96 % late). This is the
 GPU-bound look (§11), the owner's call. Spring's storms, 174 with 0.90 % late on 2026-10-27, read
 179 and 0.10 %.
+
+## 14. Round four: first-visit freezes (2026-10-29 evening)
+
+Branch `perf/first-visit-freezes`. Balanced mode; the laptop's lid was closed for most of it, so
+everything here was measured at the ~178 fps cadence. Load A/Bs compare main and branch interleaved
+under the same conditions, so they hold.
+
+### The 240 Hz ceiling, found and lost
+
+- After a reboot into **dGPU-only mode** (Legion Space → GPU-arbetsläge → dGPU-läge, so Windows
+  lists only the RTX 5080; NVIDIA G-SYNC on for windowed and fullscreen):
+  - a bare page presented at 240 fps (4.2 ms frames);
+  - the game ran at 240: Nimbus Veil 240 at rest and 239 in storms; Spring 240 at rest, 237 and
+    201 in its storms (the GPU at Balanced's power limit);
+  - the first four themes of a whole-fleet run read 240.
+- About 8 minutes later everything read ~178 again, the bare page too, still in dGPU mode, on mains
+  power. The owner had closed the lid. With the built-in panel off, nothing paces frames at 240 Hz.
+- **Next:** the whole fleet at 240 Hz in dGPU mode with the lid open. Check the bare page first
+  (`vsync-probe.cjs`: 240 means the ceiling is gone).
+
+### What the profiles found
+
+`--profile-load=1` on an unminified build, split into tasks. The six themes still over 110 ms on a
+first visit after §13, then the next five by freeze:
+
+| Theme | First-visit freeze (§13 run) | What it was |
+|---|---:|---|
+| Sunfall | 149 ms | lattice, fBm and oculus baked on every visit (~60-90 ms) |
+| Rainbark | 131 ms | three single heavy materials: sky 124, near trunks 120, far trunks 80 ms of node build |
+| Stellar Drift | 123 ms | lattice, clouds, rings and bands (~60 ms at High); then its space material (66 ms) |
+| Solar Eclipse | 119 ms | noise and ranges (~35 ms) baked on every visit; then its sky (100 ms of node build) |
+| Starlight | 113 ms | noise and star catalogue (85-100 ms), first visit |
+| Ice Temple | 112 ms | architecture geometry (30-50 ms) every visit, noise mips first visit; then node builds |
+| Fall | 96 ms | the grove built in one ~80 ms call, then the post and the squirrel's warm frame |
+| Summer | 78 ms | its lake map (512 × 384 samples), one 70-90 ms step every visit |
+| Geode, Chiral Gold, Aurora | 93-106 ms | no single main-thread task that long: the worst frame is CPU work and rendering back to back, or a GPU stall |
+
+**The big single materials are mostly unique code.** In Solar Eclipse's sky, one range instead of six
+saves ~7 KB of WGSL and a few ms of the ~70 ms build; one cloud row instead of three ~8 KB. Drawing
+no sun takes it to 26 ms: the corona, prominences, beads and glare are one-off code. Stellar Drift's
+space material is the same. So the Aurora-style loop rewrite (§12) gains little here; what is left is
+on three's side (one material's node build cannot be split across frames).
+
+### Changed
+
+| Theme | Change |
+|---|---|
+| Starlight | noise and star catalogue bake in a module Worker while the renderer comes up (`starlight-bakes.js`) |
+| Solar Eclipse | noise and ranges kept for the session; a first visit's bake in a worker (`solar-eclipse-bakes.js`) |
+| Stellar Drift | lattice, clouds, rings and bands in a worker, priming the bake cache under the world's own keys (`stellar-drift-bakes.js`) |
+| Sunfall | lattice, fBm and oculus kept for the session (bake cache) and baked in a worker while the GLBs load; the pure bakes moved to the three-free `sunfall-bake-data.js` |
+| Ice Temple | architecture geometry kept for the session (`sessionGeometry`, keyed by the plan's seed) |
+| Fall | `FallWorld.buildSteps`: a part or two to a step; a start builds it breathing, then the post, then the squirrel's warm frame, each in a task of its own |
+| Summer | the lake map kept for the session; a first visit bakes it in row steps of ~24 ms |
+
+- Each worker's output is checked byte for byte against the page's bake (tests).
+- The stepped grove equals the one-call grove, part for part and draw for draw (test).
+- Same-frame playground shots at High and Low, plus a remount: identical to main within run-to-run
+  noise. Sunfall's vines are placed afresh on each mount, so main differs from itself as much as
+  from the branch.
+
+### Measured
+
+Interleaved load A/B, 3 rounds, panel cadence, main → branch, ms:
+
+| Theme | Freeze, first visit | Freeze, revisit | Shown, first visit |
+|---|---:|---:|---:|
+| Sunfall | 152 → **59** | 90 → **45** | 760 → 721 |
+| Starlight | 123 → **40** | 25 → 25 | 594 → 616 |
+| Stellar Drift | 129 → **71** | 51 → 47 | 719 → 726 |
+| Solar Eclipse | 126 → **88** | 102 → **78** | 816 → 789 |
+| Ice Temple | 89 → 90 | 45 → **22** | 801 → 786 |
+| Fall | 100 → **60** | 72 → **30** | 813 → 853 |
+| Summer | 78 → **49** | 77 → **38** | 1484 → 1452 |
+
+- Starlight shows ~20 ms later: the build waits for the worker, which starts a little behind the
+  renderer.
+- Fall shows ~40 ms later: each breath costs the theme still playing a frame.
+
+### Left
+
+- **Single heavy materials:** Rainbark (131 ms), Solar Eclipse's sky and Stellar Drift's space (the
+  rest of their 88 and 71 ms), Aurora's curtain. Smaller graphs would need the shaders restructured
+  (a third at most for Rainbark, §12) or three building one material across frames.
+- **Ice Temple's first visit** (90 ms): the architecture and the noise mips could bake in a worker.
+- **Geode, Chiral Gold, Aurora** (93-106 ms): find out which frame it is (a GPU trace).
+
+## 15. Round five: the GPU-bound three (2026-10-29 night)
+
+Branch `perf/gpu-heavy-three` (on `perf/first-visit-freezes`). Balanced mode, High. The owner chose
+**look-alike changes on High**: changes that read the same in same-frame shots, each shown as
+before/after crops and approved before it was kept, besides pixel-identical ones.
+
+### How it was measured
+
+- **The playground's GPU time** (`?profile=1&trackTimestamp=1`, the game's window size, a held
+  `?t=`): stable to ±0.1 ms when the scene is held still, so a part's cost could be read by
+  leaving it out (`parts=`) or by a one-line edit. Scratch probes: `gpu-probe.mjs` (GPU ms a frame),
+  `shader-probe.mjs` (one material's node build and WGSL size), `pg-eval.mjs`.
+- **The game:** `ab.sh`, uncapped, 2-3 rounds interleaved, for every change kept.
+
+### Verdant Hills (the grass)
+
+The grass was ~2.2 ms of a ~3.7 ms GPU frame: its pixel shading ~1.2 ms (a flat colour took the
+frame to 2.5 ms), its geometry and MSAA the rest. Thin blades under 4× MSAA shade many more
+fragments than they have vertices.
+
+| Tried | GPU |
+|---|---|
+| The two noise reads, the haze, the draw order, near blades in 3 segments | no change |
+| The soft shadow's 5 taps (skipped where a reduced map shows no caster: `ShadowTileSkip`, parked in scratch) | no change: the taps were not the cost |
+| The shadow's view normal (three carries it for a normal bias of 0) | ~0.2 ms: it is the vertex output, not the taps |
+| **Kept:** a constant normal for the grass (`setupNormal`), cloud shadow per vertex, far blades in one segment, the blade's colour and sun light per vertex (shadow map and haze per fragment) | 3.7 → 2.9 ms |
+
+**Game:** rest 200 → 243 fps, worst storm 209 → 236 (frame 5.01 → 4.12 ms). Shots: under 8/255 on
+all but ~2 % of pixels (the far blades' line). `146e45d9`.
+
+### Grainfields
+
+The barley already shades per vertex what it can. Leaving parts out: the groves cost 0.4-0.6 ms,
+but per vertex their deck shadow and air changed nothing in the game (their cost is geometry and
+alpha-to-coverage). Without the barley the frame is slower (the ground behind it costs more).
+
+**Kept:** the light in the air in 14 steps on High (as Medium), not 20: rest 220 → 229 fps, worst
+storm 201 → 210. Shots: over 8/255 on 0.1-0.4 % of pixels. `1f03c004`. Halving the rain veil's
+steps gained nothing in storms; skipping the march's rain when it is dry changed nothing.
+
+### Thermal Bloom
+
+At rest the basin was ~1.4 ms and the steam ~1.5 ms of ~4.2 ms; in a held storm (`heat=1`,
+`breath=1`, `combo=8`, a four-line clear) 1.7 and 1.2 of 5.2 ms.
+
+**Kept (pixel-identical):** the steam's sheets are 1.4× as wide as their plume, and every fragment
+read some twenty noise texels (billows, self-shadow) even where its opacity is exactly 0. Outside the
+envelope a fragment now returns (0, 0, 0, 0) at once. Shots (rest, storm, gust, Ultra): 0
+difference. Game: rest 246 → 275 fps, worst storm 169 → 180. `8c968c5b`.
+
+Tried and left: the jewel pools (~0.15 ms) and snag shadows (~0.05 ms); the ground mist's lighting
+skipped between wisps (no change). A chain's cost (+0.6 ms at eight links) is in the basin, whose
+blooms already skip pixels out of their reach.
+
+### Where they stand (game, Balanced, uncapped)
+
+| Theme | Rest | Worst storm |
+|---|---:|---:|
+| Verdant Hills | 243 | 236 |
+| Grainfields | 229 | 210 |
+| Thermal Bloom | 275 | 180 |
+
+Left: Thermal Bloom's storms (its basin ~1.65 ms, steam ~0.85, post ~0.55 in a held storm) and
+Grainfields' (its scene pass and air light). Both are the look, short of Performance mode.
+
+## 16. Round six: Spring's evening, Thermal Bloom's clears, Rainbark and Grainfields looked into (2026-10-29 late)
+
+Same branch (`perf/gpu-heavy-three`), Balanced, High. The owner could not run the fleet at 240 Hz in
+dGPU mode, so the plan became: re-check Ice Temple and Spring uncapped, then Thermal Bloom's storms,
+Rainbark's loading, and Grainfields' storms if there was time.
+
+### Ice Temple and Spring, uncapped
+
+Ice Temple holds up. Spring dipped to ~205 fps in a storm, but only when the storm fell at golden
+evening or dawn mist: its hour turns with the clock and the level, so a storm lands on one hour or
+another. Playground GPU per hour (`hour=`): 2.6-2.7 ms, but 4.6-4.7 at golden evening and 4.8 at dawn
+mist. Without the post they all cost the same (~2.4 ms); the difference is the sun shafts, which run
+only while the sun shows (1.65 ms at golden evening).
+
+The march's 14 taps were jittered per pixel, so neighbouring pixels read colour and depth up to
+~100 px apart and missed the texture cache: without the jitter the shafts cost 0.2 ms, without the
+depth reads 0.65 ms.
+
+**Kept, look-alike, approved by the owner from the crops:** the shafts' light (open sky × its capped
+brightness) is drawn into a map at half the scene's size, each texel the mean of the four under it,
+only while the sun shows; the march reads that. Same jitter, steps and weights.
+
+- Playground: golden evening 4.33 → 2.95 ms, dawn mist 4.8 → 3.0; sun-less hours unchanged.
+- Game, uncapped, held at golden evening (`--query=springTime=200`, 100 s a station): rest 216 →
+  260 fps, storms 217 → 266.
+- Shots: over 8/255 on 0.01 % of pixels at golden evening (max 21/255): the shafts over the dark rock
+  a touch less grainy at 2×; dawn identical. `281e13f0`.
+
+### Thermal Bloom's storms
+
+A held storm (`heat=1&breath=1&combo=8&event=quad&eventAge=0.6&lines=4`): 4.82 ms; the basin 1.7 of
+it. The basin alone: 1.9 ms at rest, 2.5 with a quad, of which the quad's seal fills were all.
+
+**Kept (pixel-identical):** each fill row ran its whole timeline (lip, pool, sheet, glint) on every
+pixel of the floor, though each mark lies on its row's terrace line or the one behind it. `tbFills`
+takes an optional `near` gate and runs a row only where it is near and live; the basin's lip breakup
+(a texture read) and lip shape (a derivative) are taken before, in a uniform branch while any fill
+lives.
+
+- Basin with a quad: 2.5 → 2.14 ms; rest unchanged.
+- Shots (rest, a quad at 0.3, 1.0 and 2.5 s, a cascade, Ultra): identical.
+- Game: storms 210 → 220 and 179 → 190 fps, rest unchanged. `608949a7`.
+
+Tried and left: a T-spin's rosette (one costs nothing measurable; they live 240 s, six at most on
+High). The terraces' own fills are too small to measure.
+
+**A gotcha:** three r186 turns off WGSL's derivative-uniformity check except on Firefox, so a
+per-pixel `If` around a texture read or a derivative compiles. The values on quads that straddle the
+branch are undefined. Take such reads before the branch, or in a uniform one.
+
+### Rainbark's loading (looked into, not changed)
+
+Node build in the playground (`shader-probe.mjs`): sky 77 ms (174 KB of WGSL), near trunks 131-137 ms
+(173 KB), far trunks 51-79 ms (149 KB).
+
+- **The sky's three impostor ranks** are unrolled in JS: one rank is ~6.5 ms and 12.5 KB, so a TSL
+  `Loop` (as Aurora's, §12) would save ~13 ms on the sky. The sky is not the worst frame, so this was
+  left.
+- **The trunks carry a whole canopy** (`rbCanopy`, plus `rbStoreys`), so a trunk's top melts into
+  the very leaves the backdrop paints. Without it: near trunks 131 → 59 ms, far 51 → 15.5 ms. It is
+  more than half of each trunk build.
+- **The option:** draw that blend as a second, premultiplied pass over the trunks (canopy over the
+  trunk by `into`, then the storeys by their cover: plain mixes, so one blended layer). Each
+  material then builds in a frame of its own (~59 + ~70 ms instead of 131). Costs: a second trunk
+  draw on the GPU, a depth-equal test across two shader modules, and the trunk colour rounded to
+  half float before the blend. Look-alike at best. **The owner chose to leave it:** a one-time
+  hitch on a first visit is not worth an extra GPU pass every frame.
+
+### Grainfields' storms (looked into, not changed)
+
+- The playground cannot hold a Grainfields storm: `event=` runs a ~92 ms CPU frame, and any `combo=`
+  reads ~14.5 ms of GPU however short the chain. Neither is what the game draws.
+- In the game, the storm census (`census-storm.js`, `--eval-timeout-ms=200000`): 4.67 ms a storm
+  frame. The post and the passes around the scene: 1.93 ms (the light in the air at half size and 14
+  steps, the rain's veil, bloom). The world: 3.2 ms (the near barley's ears 0.67, the far ears 0.52,
+  the larch groves ~1.1, the herd's dust ~0.38, the near stems 0.27).
+- The dust is 384 soft additive quads; its cost is blending under 4× MSAA where a running band piles
+  them up. No pixel of it is exactly zero, so there is no identical saving. Everything left is a trim.
+
+### Where they stand (game, Balanced, uncapped)
+
+| Theme | Rest | Worst storm |
+|---|---:|---:|
+| Spring (golden evening) | 216 → 260 | 217 → 266 |
+| Thermal Bloom | 275 | 179 → 190 |
+| Grainfields | 229 | 210 |

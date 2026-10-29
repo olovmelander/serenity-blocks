@@ -33,6 +33,7 @@ import { applyCameraBreath } from '../shared/camera-breath.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
 import { bakeAllSunfallTextures, bakeUnderstoryGrid } from './sunfall-bake.js';
 import { disposeSunfallAssets, loadSunfallAssets } from './sunfall-assets.js';
+import { sunfallBakes } from './sunfall-bakes.js';
 import { cameraRigFor } from './sunfall-composition.js';
 import {
     createCrownMaterial,
@@ -67,11 +68,15 @@ export class SunfallWorld {
     }
 
     static async prepareSafely(options = {}) {
+        // The textures' bakes (a first visit's ~60-90 ms) run in a worker while the assets load.
+        const baking = sunfallBakes();
         try {
             return await loadSunfallAssets(options);
         } catch (error) {
             console.warn('[Sunfall] Authored assets failed to load; the doline is drawn without them.', error);
             return null;
+        } finally {
+            await baking;
         }
     }
 

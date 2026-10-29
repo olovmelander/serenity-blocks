@@ -50,6 +50,7 @@ import { POST_LOOK, SolarEclipsePost, createPassThroughPipeline } from './solar-
 import { PLAYER_SLOTS, readLayoutRects } from './solar-eclipse-composition.js';
 import { SOLAR_ECLIPSE_EVENT_HANDLERS, SolarEclipseDirector } from './solar-eclipse-director.js';
 import { approach } from './solar-eclipse-core.js';
+import { solarEclipseBakes } from './solar-eclipse-bakes.js';
 
 const THEME_ID = 'solar-eclipse';
 const LOG_PREFIX = '[SolarEclipse]';
@@ -198,8 +199,12 @@ export default class SolarEclipseTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise and the ranges (~35 ms on a first visit) bake in a worker while the renderer
+        // comes up; the build below finds them kept.
+        const baking = solarEclipseBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

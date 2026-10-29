@@ -14,7 +14,7 @@ import {
     cameraPosition, color, dot, float, length, mix, normalWorld, normalize, positionWorld, pow, reflect, saturate,
     smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
-import { drainSteps } from '../shared/build-steps.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export const SUMMER_BOUNDS = Object.freeze({
     minX: -380, maxX: 380, minZ: -470, maxZ: 46,
@@ -177,8 +177,16 @@ const MAP_HEIGHT = 384;
 const MEADOW_MAP_WIDTH = 512;
 const MEADOW_MAP_HEIGHT = 256;
 
-/** R = ground height (biased), G = metres from the shore out on the water / 40. */
-function createLakeMap() {
+/**
+ * The lake map's texels, kept for the session: the same function every visit, and nothing writes
+ * to them (the texture reads them). One 70-90 ms step of every Summer start before
+ * (docs/THEME_FLEET_240_2026-10.md §13); a session's first bakes them in steps of ~24 ms.
+ */
+let lakeMapData = null;
+
+/** R = ground height (biased), G = metres from the shore out on the water / 40. As steps. */
+export function* lakeMapDataSteps() {
+    const clock = stepClock();
     const data = new Uint8Array(MAP_WIDTH * MAP_HEIGHT * 4);
     const {
         minX, maxX, minZ, maxZ,
@@ -194,7 +202,22 @@ function createLakeMap() {
             data[offset + 1] = Math.round(clamp(offshore / 40, 0, 1) * 255);
             data[offset + 3] = 255;
         }
+        if (clock.due()) {
+            yield 'lake map rows';
+            clock.restart();
+        }
     }
+    return data;
+}
+
+/** The lake map's texels: kept, or baked here (in steps when a build runs these). */
+function* sessionLakeMapData() {
+    lakeMapData ??= yield* lakeMapDataSteps();
+    return lakeMapData;
+}
+
+/** The lake map over its texels. */
+function lakeMapTexture(data) {
     const map = new THREE.DataTexture(data, MAP_WIDTH, MAP_HEIGHT, THREE.RGBAFormat);
     map.magFilter = THREE.LinearFilter;
     map.minFilter = THREE.LinearFilter;
@@ -298,7 +321,7 @@ export class SummerTerrain {
         geometry.computeVertexNormals();
         geometry.computeBoundingSphere();
         yield 'ground';
-        this.lakeMap = createLakeMap();
+        this.lakeMap = lakeMapTexture(yield* sessionLakeMapData());
         yield 'lake map';
         this.meadowMap = createMeadowMap();
         const material = this.createMaterial();

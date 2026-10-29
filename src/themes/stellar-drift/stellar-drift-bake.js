@@ -15,6 +15,15 @@ import {
 import { bakeOnce } from '../shared/bake-cache.js';
 
 export const LATTICE_SIZE = 256;
+
+/** The world's seed (each bake draws from it plus its own offset; stellar-drift-bakes.js too). */
+export const WORLD_SEED = 0x51d7;
+
+/** The bake cache keys: every argument each bake depends on. */
+export const latticeKey = (seed, size) => `stellar-drift:lattice:${seed}:${size}`;
+export const fbmKey = (seed, size, octaves) => `stellar-drift:fbm:${seed}:${size}:${octaves}`;
+export const ringKey = (size, seed) => `stellar-drift:ring:${size}:${seed}`;
+export const bandsKey = (size, seed) => `stellar-drift:bands:${size}:${seed}`;
 /** The offset between two z-slices of the lattice (the classic 37, 17). */
 export const LATTICE_SLICE = Object.freeze([37, 17]);
 
@@ -24,7 +33,7 @@ export const LATTICE_SLICE = Object.freeze([37, 17]);
  * of two independent fields. Must be sampled at level 0 with bilinear filtering.
  */
 export function bakeLattice(seed = 7411, size = LATTICE_SIZE) {
-    return bakeOnce(`stellar-drift:lattice:${seed}:${size}`, () => computeLattice(seed, size));
+    return bakeOnce(latticeKey(seed, size), () => computeLattice(seed, size));
 }
 
 function computeLattice(seed, size) {
@@ -54,7 +63,7 @@ function computeLattice(seed, size) {
  * @returns {Float32Array} size × size × 4
  */
 export function bakeFbm(seed = 2718, size = 256, octaves = 5) {
-    return bakeOnce(`stellar-drift:fbm:${seed}:${size}:${octaves}`, () => computeFbm(seed, size, octaves));
+    return bakeOnce(fbmKey(seed, size, octaves), () => computeFbm(seed, size, octaves));
 }
 
 function computeFbm(seed, size, octaves) {
@@ -241,7 +250,7 @@ export function ringAt(r, noise) {
  * @returns {{ size: number, levels: Array<{ data: Uint8Array, width: number }>, tau: Float32Array }}
  */
 export function bakeRingProfile(size = 2048, seed = 5381) {
-    return bakeOnce(`stellar-drift:ring:${size}:${seed}`, () => computeRingProfile(size, seed));
+    return bakeOnce(ringKey(size, seed), () => computeRingProfile(size, seed));
 }
 
 function computeRingProfile(size, seed) {
@@ -333,7 +342,7 @@ export function bandAt(latDeg, noise) {
  * R belt, G wind · 0.5 + 0.5, B shear, A tone.
  */
 export function bakeBandMeta(size = 512, seed = 9173) {
-    return bakeOnce(`stellar-drift:bands:${size}:${seed}`, () => computeBandMeta(size, seed));
+    return bakeOnce(bandsKey(size, seed), () => computeBandMeta(size, seed));
 }
 
 function computeBandMeta(size, seed) {

@@ -67,7 +67,7 @@ export function createVerdantHillsGrassGeometry({ far = false, seed = 1 } = {}) 
         const id = rng();
         const across = [Math.cos(angle + 1.57), Math.sin(angle + 1.57)];
         const base = positions.length / 3;
-        const steps = far ? 2 : 4;
+        const steps = far ? 1 : 4;
         const rungs = head ? SPINDLE : Array.from({ length: steps + 1 }, (_, step) => {
             const t = step / steps;
             return [t, width * (1 - t ** 1.6 * 0.95), 0];

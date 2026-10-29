@@ -26,6 +26,7 @@ import {
 import { FallTerrain, fallTerrainHeight } from './fall-terrain.js';
 import { FallUnderstory } from './fall-understory.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** How quickly the grove takes a level's step, per second: most of the way in four seconds. */
 const MOOD_FOLLOW = 0.6;
@@ -69,8 +70,18 @@ export class FallWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part or two to a step (shared/build-steps.js breathes between them):
+     * the whole grove in one call was a ~80 ms task on every Fall start, the switch's longest
+     * frame (docs/THEME_FLEET_240_2026-10.md §13). Same parts, same order, same random draws.
+     */
+    * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed FallWorld.');
-        if (this.built) return this;
+        if (this.built) return;
         if (!this.assets) throw new Error('[Fall] FallWorld needs its loaded assets before it can build.');
         this.built = true;
         this.scene.add(this.group);
@@ -84,16 +95,19 @@ export class FallWorld {
         this.terrain = new FallTerrain({ light, rng });
         this.group.add(this.terrain.group);
         this.terrain.build();
+        yield 'terrain';
         this.forest = new FallForest({
             light, assets: this.assets, tier, rng,
         });
         this.group.add(this.forest.group);
         this.forest.build();
+        yield 'forest';
         this.understory = new FallUnderstory({
             light, foliage, tier, rng,
         });
         this.group.add(this.understory.group);
         this.understory.build();
+        yield 'understory';
         this.backdrop = new FallBackdrop({
             light, impostors, tier, rng,
         });
@@ -102,13 +116,16 @@ export class FallWorld {
         this.atmosphere = new FallAtmosphere({ light, tier, rng });
         this.group.add(this.atmosphere.group);
         this.atmosphere.build();
+        yield 'backdrop and air';
         const crownPoints = this.forest.sampleCrownPoints(Math.min(900, tier.leaves));
         this.leaves = new FallLeaves({
             light, foliage, tier, rng, crownPoints,
         });
         this.group.add(this.leaves.group);
         this.leaves.build();
+        yield 'leaves';
         this.buildSquirrel();
+        yield 'squirrel';
         this.prepareCamera(this.camera.aspect);
         this.director = new FallLeafDirector({
             stage: this.stage,
@@ -118,7 +135,6 @@ export class FallWorld {
             crownPoints,
             groundHeight: fallTerrainHeight,
         });
-        return this;
     }
 
     /**

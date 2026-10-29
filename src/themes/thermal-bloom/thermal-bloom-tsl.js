@@ -817,8 +817,14 @@ export const RECORD_RING0 = 10;
  * that timeline `e` into this fragment's masks for one row (the side's own geometry) and returns
  * { lip, pool, sheet, unfixed, glint, shade } (each 0..1; `shade` the crisp shadow line under a
  * new lip); tbFills keeps the strongest of each.
+ *
+ * `near(index, A)` (optional) is 1 wherever row `index` can mark this fragment and 0 where every
+ * mask `at` returns is 0; a row then runs `at` only where it is near and live (the same picture:
+ * a quad's four rows each did their whole timeline on every pixel of the floor). `at` then runs
+ * in non-uniform control flow, so whatever it reads that takes a derivative or an implicit-LOD
+ * texture lookup must be a var built before the call.
  */
-export function tbFills(u, side, at) {
+export function tbFills(u, side, at, near = null) {
     const lip = float(0.0).toVar();
     const pool = float(0.0).toVar();
     const sheet = float(0.0).toVar();
@@ -835,28 +841,32 @@ export function tbFills(u, side, at) {
         const age = u.time.sub(A.z);
         const live = step(0.0, age).mul(step(age, 6.0)).mul(onSide);
         const settle = float(1.0).sub(smoothstep(1.6, 4.2, age));
-        const e = {
-            age,
-            /** How far the lip has drawn (0..1 of its reach), and the sparkle at its growing ends. */
-            draw: smoothstep(0.0, 0.4, age),
-            tip: float(1.0).sub(smoothstep(0.35, 0.9, age)),
-            /** The new lip: crisp white while it sets, settling into the rim's own white. */
-            lipOn: settle.mul(float(1.0).sub(smoothstep(0.6, 2.2, age)).mul(0.5).add(0.5)),
-            /** The pool behind it: rising and lit from within, then easing back. */
-            fill: smoothstep(0.4, 1.2, age).mul(float(1.0).sub(smoothstep(2.8, 6.0, age))),
-            /** The sheet over the lip: how far down the face it has slid (0..1), and how much shows. */
-            slide: smoothstep(0.9, 2.0, age),
-            sheetOn: smoothstep(0.85, 1.0, age).mul(float(1.0).sub(smoothstep(2.2, 3.6, age))),
-            /** The stripe below: 0 → 1 as it fixes into the stone. */
-            fixed: smoothstep(0.4, 1.2, age),
+        const mark = () => {
+            const e = {
+                age,
+                /** How far the lip has drawn (0..1 of its reach), and the sparkle at its growing ends. */
+                draw: smoothstep(0.0, 0.4, age),
+                tip: float(1.0).sub(smoothstep(0.35, 0.9, age)),
+                /** The new lip: crisp white while it sets, settling into the rim's own white. */
+                lipOn: settle.mul(float(1.0).sub(smoothstep(0.6, 2.2, age)).mul(0.5).add(0.5)),
+                /** The pool behind it: rising and lit from within, then easing back. */
+                fill: smoothstep(0.4, 1.2, age).mul(float(1.0).sub(smoothstep(2.8, 6.0, age))),
+                /** The sheet over the lip: how far down the face it has slid (0..1), and how much shows. */
+                slide: smoothstep(0.9, 2.0, age),
+                sheetOn: smoothstep(0.85, 1.0, age).mul(float(1.0).sub(smoothstep(2.2, 3.6, age))),
+                /** The stripe below: 0 → 1 as it fixes into the stone. */
+                fixed: smoothstep(0.4, 1.2, age),
+            };
+            const r = at(index, A, e);
+            lip.assign(max(lip, r.lip.mul(live)));
+            if (r.pool) pool.assign(max(pool, r.pool.mul(live)));
+            if (r.sheet) sheet.assign(max(sheet, r.sheet.mul(live)));
+            if (r.unfixed) unfixed.assign(max(unfixed, r.unfixed.mul(live)));
+            if (r.glint) glint.assign(max(glint, r.glint.mul(live)));
+            if (r.shade) shade.assign(max(shade, r.shade.mul(live)));
         };
-        const r = at(index, A, e);
-        lip.assign(max(lip, r.lip.mul(live)));
-        if (r.pool) pool.assign(max(pool, r.pool.mul(live)));
-        if (r.sheet) sheet.assign(max(sheet, r.sheet.mul(live)));
-        if (r.unfixed) unfixed.assign(max(unfixed, r.unfixed.mul(live)));
-        if (r.glint) glint.assign(max(glint, r.glint.mul(live)));
-        if (r.shade) shade.assign(max(shade, r.shade.mul(live)));
+        if (near) If(live.mul(near(index, A)).greaterThan(0.5), mark);
+        else mark();
     });
     return {
         lip, pool, sheet, unfixed, glint, shade,

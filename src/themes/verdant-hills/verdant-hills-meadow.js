@@ -150,11 +150,17 @@ export class VerdantHillsMeadow {
         const { light } = this;
         const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide }));
         material.name = 'VerdantHillsGrass';
+        // The shadow's normal offset is 0 (the sun's normalBias): a constant normal gives the same
+        // shadow and spares every blade vertex the view normal three would carry for it.
+        material.setupNormal = () => vec3(0, 0, 1);
         const plant = this.stand(1.5);
         material.positionNode = plant.position;
         const st = uv();
         const { root, paint } = plant;
-        const air = varying(vec3(plant.air.band, plant.air.bloom, plant.air.front), 'verdantGrassAir');
+        // The blade's colour and its sun-facing light are read once a vertex: a blade is a few pixels
+        // wide and changes smoothly along its four rungs, and the grass's fragments (thin blades
+        // under MSAA) far outnumber its vertices. The shadow map and the haze stay per fragment.
+        const { air } = plant;
         const world = positionWorld;
         const view = normalize(cameraPosition.sub(world));
         const field = light.noise(root.xz.mul(0.017));
@@ -180,7 +186,6 @@ export class VerdantHillsMeadow {
         // uniform lime.
         const normal = normalize(plant.normal);
         const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
-        const sun = light.sunlight();
         const toSun = dot(seen, light.uSunDir);
         const facing = saturate(toSun).mul(1.0).add(0.16);
         // Looking up the light, every blade is a sliver of stained glass: brightest where the sun
@@ -195,15 +200,23 @@ export class VerdantHillsMeadow {
         // A blade the wind has laid over shows the sky on its back.
         // Only where a band of the breeze is passing, however hard it blows: the wind shows as
         // moving light, never as a haze over the whole hill.
-        const laid = saturate(air.x.mul(air.x).mul(light.uWind.mul(0.7).add(light.uShimmer.mul(0.5)).add(0.3))
-            .add(air.z.mul(0.38)));
-        const sheen = mix(vec3(0.55, 0.66, 0.36), light.uSkyLight, 0.5).mul(laid.mul(st.y).mul(0.26));
-        const lit = blade.mul(facing).add(glow).mul(light.uSunColor).mul(sun)
-            .mul(0.3)
-            .add(blade.mul(light.ambient(vec3(0, 1, 0))).mul(st.y.mul(0.75).add(0.25)))
-            .add(sheen.mul(sun.mul(0.7).add(0.3)))
-            // A ring from the board lifts light off the grass as it goes by.
-            .add(blade.mul(vec3(1.5, 1.4, 0.75)).mul(air.y.mul(st.y).mul(0.5)));
+        const laid = saturate(air.band.mul(air.band).mul(light.uWind.mul(0.7).add(light.uShimmer.mul(0.5)).add(0.3))
+            .add(air.front.mul(0.38)));
+        const sheen = varying(
+            mix(vec3(0.55, 0.66, 0.36), light.uSkyLight, 0.5).mul(laid.mul(st.y).mul(0.26)),
+            'verdantGrassSheen',
+        );
+        const sunward = varying(blade.mul(facing).add(glow).mul(light.uSunColor).mul(0.3), 'verdantGrassSunward');
+        const shaded = varying(
+            blade.mul(light.ambient(vec3(0, 1, 0))).mul(st.y.mul(0.75).add(0.25))
+                // A ring from the board lifts light off the grass as it goes by.
+                .add(blade.mul(vec3(1.5, 1.4, 0.75)).mul(air.bloom.mul(st.y).mul(0.5))),
+            'verdantGrassShaded',
+        );
+        // The clouds' shadow, kilometres across and blurred, also once a vertex; the shadow map per
+        // fragment.
+        const sun = light.shadowNode.mul(varying(light.cloudShadow(world), 'verdantGrassCloud'));
+        const lit = sunward.mul(sun).add(shaded).add(sheen.mul(sun.mul(0.7).add(0.3)));
         material.colorNode = light.haze(lit, { world });
         return material;
     }

@@ -27,6 +27,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     Loop,
     abs,
     atan,
@@ -709,16 +710,23 @@ export function createBasin(u, tier, tex) {
         const cross2 = (a, b) => a.x.mul(b.y).sub(a.y.mul(b.x));
         // About three board cells either side of the aim, in metres here.
         const lipHalf = u.viewport.y.mul(0.075).mul(dist).mul(u.pixelAngle).toVar();
-        const brk = smoothstep(0.3, 0.44, noise(P.xz.div(4.5).add(7.3)).y);
-        const lipShape = smoothstep(0.0, fw2.mul(1.5).add(0.02), fl)
-            .mul(float(1.0).sub(smoothstep(0.2, float(0.2).add(fw2.mul(1.5)), fl)));
+        // (a row's marks are drawn only near its line, out of uniform control flow, so the texture
+        // read and the derivative are taken here, and only while a fill lives: a uniform branch)
+        const brk = float(0.0).toVar();
+        const lipShape = float(0.0).toVar();
+        If(u.fillCount.greaterThan(0), () => {
+            brk.assign(smoothstep(0.3, 0.44, noise(P.xz.div(4.5).add(7.3)).y));
+            lipShape.assign(smoothstep(0.0, fw2.mul(1.5).add(0.02), fl)
+                .mul(float(1.0).sub(smoothstep(0.2, float(0.2).add(fw2.mul(1.5)), fl))));
+        });
         const frostCell = floor(P.xz.div(0.7)).add(floor(u.time.mul(6.0)).mul(vec2(5.1, 2.3)));
         const frost = smoothstep(0.86, 0.97, tbHash21(frostCell));
+        // The terrace line under the row (a cascade's waves reach two lines further out each).
+        const fillLine = (index, A) => floor(length(A.xy.sub(u.irisCentre)).div(2.6)).add(index.mul(2.0));
         const sealFills = tbFills(u, 0, (index, A, e) => {
             const aimRel = A.xy.sub(u.irisCentre);
             const aimD = length(aimRel);
-            // The terrace line under the row (a cascade's waves reach two lines further out each).
-            const target = floor(aimD.div(2.6)).add(index.mul(2.0));
+            const target = fillLine(index, A);
             const onLine = step(abs(lineIdx.sub(target)), 0.5);
             const behind = step(abs(lineIdx.sub(target).add(1.0)), 0.5);
             const sArc = abs(atan(cross2(aimRel, relC), dot(aimRel, relC)).mul(aimD));
@@ -747,6 +755,10 @@ export function createBasin(u, tier, tex) {
                     .mul(lipShape)
                     .mul(onMats),
             };
+        }, (index, A) => {
+            // Every mark is on the row's line or (its pool) the one behind it.
+            const d = lineIdx.sub(fillLine(index, A));
+            return step(-1.5, d).mul(step(d, 0.5));
         });
         // The record beside the Iris: six zones of microterraces down the side of the card (one a
         // sixth of the board's rows). Each stripe lies on its own terrace's riser, along the rim
