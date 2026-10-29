@@ -170,6 +170,13 @@ const PARTS = [
     'upfall', 'beads', 'motes', 'birds', 'visitors', 'visitorLights', 'sparks', 'beacons', 'wisps', 'beams',
 ];
 
+/** The noise field depends only on its seed and is read only: baked once a session. */
+let noiseField = null;
+const sessionNoiseField = () => {
+    noiseField ??= bakeNoise();
+    return noiseField;
+};
+
 export class HalcyonApexWorld {
     /**
      * @param {object} params
@@ -187,7 +194,7 @@ export class HalcyonApexWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.noiseField = bakeNoise();
+        this.noiseField = sessionNoiseField();
         this.plan = buildPlan(seed);
         this.root = new THREE.Group();
         this.root.name = 'HalcyonApex';

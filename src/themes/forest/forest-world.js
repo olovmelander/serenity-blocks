@@ -168,7 +168,6 @@ export class ForestWorld {
             eye: FOREST_EYE,
             layOutNow: false,
         });
-        yield 'director';
         yield* this.director.layOutSteps();
     }
 

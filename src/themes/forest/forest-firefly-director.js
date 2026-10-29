@@ -201,15 +201,21 @@ export class ForestFireflyDirector {
     }
 
     /**
-     * Lay every animal out, one a step (63 ms all at once on a session's first Forest, see
-     * forestFigureLights; a world that builds in steps runs these as its own).
+     * Lay every animal out, a step whenever `budgetMs` is spent (63 ms all at once on a session's
+     * first Forest; laid out once a session, so a revisit spends nothing and never yields). A world
+     * that builds in steps runs these as its own: each step costs the outgoing theme a frame, so
+     * the steps are few and full rather than one an animal.
      */
-    * layOutSteps() {
+    * layOutSteps(budgetMs = 24) {
         if (!this.figureAnchor) return;
+        let since = performance.now();
         for (const figure of FOREST_FIGURES) {
             this.pointsFor(figure);
             this.extraPointsFor(figure);
-            yield figure.id;
+            if (performance.now() - since > budgetMs) {
+                yield figure.id;
+                since = performance.now();
+            }
         }
     }
 
