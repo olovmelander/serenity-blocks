@@ -247,9 +247,15 @@ const dataTexture = (name, data, size, format, type, mips = false) => {
     return tex;
 };
 
+/** Half floats of a derived map, kept per map: the session's field converts once (read only). */
+const halfMaps = new WeakMap();
 const halves = (floats) => {
-    const out = new Uint16Array(floats.length);
-    for (let i = 0; i < floats.length; i++) out[i] = THREE.DataUtils.toHalfFloat(floats[i]);
+    let out = halfMaps.get(floats);
+    if (!out) {
+        out = new Uint16Array(floats.length);
+        for (let i = 0; i < floats.length; i++) out[i] = THREE.DataUtils.toHalfFloat(floats[i]);
+        halfMaps.set(floats, out);
+    }
     return out;
 };
 

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three/webgpu';
 import HimalayanPeakTheme from '../../src/themes/himalayan-peak/himalayan-peak-theme.js';
+import { forgetSessionMassif } from '../../src/themes/himalayan-peak/himalayan-peak-world.js';
 import { HIMALAYAN_PEAK_TETROMINOS } from '../../src/themes/himalayan-peak/himalayan-peak-tetrominos.js';
 import {
     HIMALAYAN_PEAK_PARTS, HimalayanPeakWorld, REST_RIG, fovForAspect,
@@ -218,6 +219,8 @@ beforeEach(() => {
     mocks.surfaces.length = 0;
     mocks.failPipelines = 0;
     mocks.loadMassif = vi.fn(async () => mocks.massif('asset'));
+    // The world keeps the massif for the session; each test here decides when and what it loads.
+    forgetSessionMassif();
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
@@ -573,7 +576,9 @@ describe('Himalayan Peak theme: the massif is read before the world is built', (
         const theme = createTheme();
         const first = theme.createScene(theme.lifecycleGeneration);
         await vi.waitFor(() => expect(mocks.loadMassif).toHaveBeenCalledOnce());
-        // A second build (a quality change, a recovery) starts and finishes meanwhile.
+        // A second build (a quality change, a recovery) starts and finishes meanwhile. It would
+        // share the first one's read (kept for the session); forget it so this one reads its own.
+        forgetSessionMassif();
         await theme.createScene(theme.lifecycleGeneration);
         const winner = theme.world;
         expect(theme.renderer).toBe(mocks.instances[1]);
@@ -909,7 +914,8 @@ describe('Himalayan Peak theme: settings, size and the layout watch', () => {
         expect(first.disposed).toBe(true);
         expect(theme.pendingQuality).toBeNull();
         expect(mocks.instances).toHaveLength(2);
-        expect(mocks.loadMassif).toHaveBeenCalledTimes(2);
+        // The massif is read once a session; the new tier derives its own mesh from it.
+        expect(mocks.loadMassif).toHaveBeenCalledOnce();
         expect(theme.disposeRenderer).toHaveBeenCalledWith(mocks.instances[0], { nullInstance: false });
         // One set of listeners, not two: a lock lands once.
         const lock = vi.spyOn(theme.world, 'onLock');
@@ -1236,7 +1242,8 @@ describe('Himalayan Peak theme: recovery and teardown', () => {
         expect(theme.renderer.options.forceWebGL).toBe(true);
         expect(theme.isWebGPU).toBe(false);
         expect(theme.world).toBeTruthy();
-        expect(mocks.loadMassif).toHaveBeenCalledTimes(2);
+        // The massif is read once a session: the retry reuses it.
+        expect(mocks.loadMassif).toHaveBeenCalledOnce();
         expect(registration.unregister).toHaveBeenCalledOnce();
         // On WebGL2 there is no device to watch and no second surface to register.
         expect(theme.setupRendererResilience).toHaveBeenLastCalledWith(theme.renderer, { webgpuDevice: null });
