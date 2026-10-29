@@ -29,7 +29,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, cameraPosition, clamp, cos, cross, dot, exp, float, floor, fract, fwidth, int, length, max, min, mix,
+    Fn, If, Loop, abs, cameraPosition, clamp, cos, cross, dot, exp, float, floor, fract, fwidth, int, length, max, min, mix,
     normalize, positionLocal, reflect, select, sin, smoothstep, step, texture, uniformArray, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FALL_SWAY, G, WATER_WRAP } from './rainbow-terraces-core.js';
@@ -411,32 +411,37 @@ export function createFalls({ tier, U, tex }) {
         const lift = float(0.0).toVar();
         // Each rope carries the colour a moment early or late, the middle ahead of the edges: a
         // ragged chevron front, never a ruled line (and never so much that two stripes merge).
-        const shift = n3.sub(0.5).mul(0.12).add(u.mul(u).mul(0.08));
+        // (a var: the packets' loop reads it in a branch, so the noise read stays out here)
+        const shift = n3.sub(0.5).mul(0.12).add(u.mul(u).mul(0.08)).toVar();
         Loop({
             start: int(0), end: int(U.counts.x), type: 'int', condition: '<',
         }, ({ i }) => {
             const a = U.packets.element(i.mul(2));
-            const b = U.packets.element(i.mul(2).add(1));
-            const mine = float(1.0).sub(smoothstep(0.0, 0.5, abs(a.x.sub(vFall))));
-            // Where the packet's middle is now, in travel time from the lip.
-            const at = U.waterClock.sub(a.y);
-            const w0 = max(a.z, 0.05);
-            // Its width is kept in drop, not in seconds: near the lip the water is slow and falls
-            // little in a moment, so a band there spans more of its travel (each stripe about as
-            // tall wherever it is, never squeezed into a cap over the lip).
-            const wd = w0.mul(max(float(1.0), float(1.5).div(max(at, 0.5))));
-            const xx = tau.add(shift).sub(at).div(wd);
-            // A sharp head downstream and a long tail behind it, as dye poured into running water.
-            const band = exp(xx.mul(xx).mul(select(xx.greaterThan(0.0), float(-1.0), float(-0.16)))).mul(mine).mul(a.w)
-                .mul(smoothstep(0.0, w0, at));
-            const isSurge = b.w;
-            const colourBand = band.mul(float(1.0).sub(isSurge));
-            // Neighbours blend only at their seams: each stretch still shows one colour.
-            const wgt = colourBand.mul(colourBand).mul(colourBand.mul(colourBand));
-            tintSum.addAssign(b.xyz.mul(wgt));
-            tintW.addAssign(wgt);
-            dye.assign(max(dye, colourBand));
-            lift.addAssign(band.mul(isSurge));
+            const offFall = abs(a.x.sub(vFall)).toVar();
+            // A packet on another fall is exactly 0 here (`mine`): only this fall's are worked out.
+            If(offFall.lessThan(0.5), () => {
+                const b = U.packets.element(i.mul(2).add(1));
+                const mine = float(1.0).sub(smoothstep(0.0, 0.5, offFall));
+                // Where the packet's middle is now, in travel time from the lip.
+                const at = U.waterClock.sub(a.y);
+                const w0 = max(a.z, 0.05);
+                // Its width is kept in drop, not in seconds: near the lip the water is slow and falls
+                // little in a moment, so a band there spans more of its travel (each stripe about as
+                // tall wherever it is, never squeezed into a cap over the lip).
+                const wd = w0.mul(max(float(1.0), float(1.5).div(max(at, 0.5))));
+                const xx = tau.add(shift).sub(at).div(wd);
+                // A sharp head downstream and a long tail behind it, as dye poured into running water.
+                const band = exp(xx.mul(xx).mul(select(xx.greaterThan(0.0), float(-1.0), float(-0.16)))).mul(mine).mul(a.w)
+                    .mul(smoothstep(0.0, w0, at));
+                const isSurge = b.w;
+                const colourBand = band.mul(float(1.0).sub(isSurge));
+                // Neighbours blend only at their seams: each stretch still shows one colour.
+                const wgt = colourBand.mul(colourBand).mul(colourBand.mul(colourBand));
+                tintSum.addAssign(b.xyz.mul(wgt));
+                tintW.addAssign(wgt);
+                dye.assign(max(dye, colourBand));
+                lift.addAssign(band.mul(isSurge));
+            });
         });
         const ribbon = clamp(dye, 0.0, 1.0);
         const tint = tintSum.div(max(tintW, 1e-6));
