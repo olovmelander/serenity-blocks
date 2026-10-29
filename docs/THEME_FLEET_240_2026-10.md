@@ -35,6 +35,9 @@ night pass of 2026-10-28 → 29.
   seven themes). Thermal Bloom's storms are the one window under 175 fps.
 - **Round four (§14):** seven more first-visit freezes cut by 35-95 ms (Sunfall 152 → 59 ms the
   largest). In dGPU-only mode the game ran at 240 fps until the lid was closed.
+- **Round five (§15):** the GPU-bound three. At rest uncapped: Verdant Hills 200 → 243 fps,
+  Grainfields 220 → 229, Thermal Bloom 246 → 275; Thermal Bloom's storms (180) are the one window
+  far under 240.
 
 ## 2. Machine
 
@@ -882,3 +885,68 @@ Interleaved load A/B, 3 rounds, panel cadence, main → branch, ms:
   (a third at most for Rainbark, §12) or three building one material across frames.
 - **Ice Temple's first visit** (90 ms): the architecture and the noise mips could bake in a worker.
 - **Geode, Chiral Gold, Aurora** (93-106 ms): find out which frame it is (a GPU trace).
+
+## 15. Round five: the GPU-bound three (2026-10-29 night)
+
+Branch `perf/gpu-heavy-three` (on `perf/first-visit-freezes`). Balanced mode, High. The owner chose
+**look-alike changes on High**: changes that read the same in same-frame shots, each shown as
+before/after crops and approved before it was kept, besides pixel-identical ones.
+
+### How it was measured
+
+- **The playground's GPU time** (`?profile=1&trackTimestamp=1`, the game's window size, a held
+  `?t=`): stable to ±0.1 ms when the scene is held still, so a part's cost could be read by
+  leaving it out (`parts=`) or by a one-line edit. Scratch probes: `gpu-probe.mjs` (GPU ms a frame),
+  `shader-probe.mjs` (one material's node build and WGSL size), `pg-eval.mjs`.
+- **The game:** `ab.sh`, uncapped, 2-3 rounds interleaved, for every change kept.
+
+### Verdant Hills (the grass)
+
+The grass was ~2.2 ms of a ~3.7 ms GPU frame: its pixel shading ~1.2 ms (a flat colour took the
+frame to 2.5 ms), its geometry and MSAA the rest. Thin blades under 4× MSAA shade many more
+fragments than they have vertices.
+
+| Tried | GPU |
+|---|---|
+| The two noise reads, the haze, the draw order, near blades in 3 segments | no change |
+| The soft shadow's 5 taps (skipped where a reduced map shows no caster: `ShadowTileSkip`, parked in scratch) | no change: the taps were not the cost |
+| The shadow's view normal (three carries it for a normal bias of 0) | ~0.2 ms: it is the vertex output, not the taps |
+| **Kept:** a constant normal for the grass (`setupNormal`), cloud shadow per vertex, far blades in one segment, the blade's colour and sun light per vertex (shadow map and haze per fragment) | 3.7 → 2.9 ms |
+
+**Game:** rest 200 → 243 fps, worst storm 209 → 236 (frame 5.01 → 4.12 ms). Shots: under 8/255 on
+all but ~2 % of pixels (the far blades' line). `146e45d9`.
+
+### Grainfields
+
+The barley already shades per vertex what it can. Leaving parts out: the groves cost 0.4-0.6 ms,
+but per vertex their deck shadow and air changed nothing in the game (their cost is geometry and
+alpha-to-coverage). Without the barley the frame is slower (the ground behind it costs more).
+
+**Kept:** the light in the air in 14 steps on High (as Medium), not 20: rest 220 → 229 fps, worst
+storm 201 → 210. Shots: over 8/255 on 0.1-0.4 % of pixels. `1f03c004`. Halving the rain veil's
+steps gained nothing in storms; skipping the march's rain when it is dry changed nothing.
+
+### Thermal Bloom
+
+At rest the basin was ~1.4 ms and the steam ~1.5 ms of ~4.2 ms; in a held storm (`heat=1`,
+`breath=1`, `combo=8`, a four-line clear) 1.7 and 1.2 of 5.2 ms.
+
+**Kept (pixel-identical):** the steam's sheets are 1.4× as wide as their plume, and every fragment
+read some twenty noise texels (billows, self-shadow) even where its opacity is exactly 0. Outside the
+envelope a fragment now returns (0, 0, 0, 0) at once. Shots (rest, storm, gust, Ultra): 0
+difference. Game: rest 246 → 275 fps, worst storm 169 → 180. `8c968c5b`.
+
+Tried and left: the jewel pools (~0.15 ms) and snag shadows (~0.05 ms); the ground mist's lighting
+skipped between wisps (no change). A chain's cost (+0.6 ms at eight links) is in the basin, whose
+blooms already skip pixels out of their reach.
+
+### Where they stand (game, Balanced, uncapped)
+
+| Theme | Rest | Worst storm |
+|---|---:|---:|
+| Verdant Hills | 243 | 236 |
+| Grainfields | 229 | 210 |
+| Thermal Bloom | 275 | 180 |
+
+Left: Thermal Bloom's storms (its basin ~1.65 ms, steam ~0.85, post ~0.55 in a held storm) and
+Grainfields' (its scene pass and air light). Both are the look, short of Performance mode.

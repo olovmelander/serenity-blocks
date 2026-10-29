@@ -4,7 +4,14 @@ Handover of the first day of the fleet performance pass. The record with all num
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (updated 2026-10-29 evening, round four).**
+> **Pick up here (updated 2026-10-29 night, round five).**
+> - **Round five:** branch `perf/gpu-heavy-three` (on `perf/first-visit-freezes`), committed, not
+>   merged (record §15). The owner allowed look-alike changes on High, each approved from shots.
+>   Game, uncapped, Balanced: Verdant Hills 200 → 243 fps at rest (storms 209 → 236), Grainfields
+>   220 → 229 (201 → 210), Thermal Bloom 246 → 275 (169 → 180, pixel-identical).
+> - **Left:** Thermal Bloom's storms (basin, steam, post) and Grainfields' storms.
+>
+> Round four:
 > - **Round four:** branch `perf/first-visit-freezes` in this worktree, committed, not merged (record
 >   §14). Seven themes' switch freezes cut: Sunfall 152 → 59, Starlight 123 → 40, Stellar Drift 129 →
 >   71, Solar Eclipse 126 → 88, Fall 100 → 60, Summer 78 → 49 ms (first visit); Ice Temple's revisit
