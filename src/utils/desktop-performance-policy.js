@@ -240,6 +240,31 @@ export function createDesktopPerformancePolicy({
     };
 }
 
+/**
+ * The display's achieved pace when it, not the GPU, sets the frame rate; 0 otherwise.
+ *
+ * Frame times are presentation gaps: they never read below what the display delivers. Chromium
+ * presents some panels well below their reported rate (the owner's laptop: 240 Hz reported, ~178
+ * delivered, frames 4.9-6.8 ms against a 240 target's 4.17 ms budget; another dev laptop: 165
+ * reported, 131.6 delivered). Judged against the budget alone that was pressure every 6 s, down to
+ * the floor (0.5) with no way back, whenever the FPS counter was on
+ * (docs/THEME_FLEET_240_2026-10.md §8). The display is pacing when even the quick frames (p10) are
+ * slower than the budget and the typical frame (p50) is within the 1.25-1.35 refresh intervals such
+ * a display delivers. A GPU that misses its vblanks lands on whole intervals instead: quick frames
+ * on the refresh with a slow tail, or 2x at a steady half rate, so those still read as pressure.
+ * Without a known refresh rate the two cannot be told apart: 0.
+ * @param {{p10?: number, p50?: number}} frameTime the window's frame-time percentiles (ms)
+ * @param {number} targetFrameMs the target's frame budget
+ * @param {number} refreshRate the refresh rate the display reports (Hz)
+ * @returns {number} the pace (the window's p50) in ms, or 0
+ */
+export function displayBoundCadence(frameTime, targetFrameMs, refreshRate) {
+    const p10 = Number(frameTime?.p10) || 0;
+    const p50 = Number(frameTime?.p50) || 0;
+    if (!(p10 > 0) || !(p50 > 0) || !(refreshRate > 0) || !(targetFrameMs > 0)) return 0;
+    return p10 > targetFrameMs * 1.05 && p50 < (1000 / refreshRate) * 1.45 ? p50 : 0;
+}
+
 export function evaluateDynamicResolutionAdjustment({
     currentRenderScale,
     baselineRenderScale,
@@ -251,24 +276,47 @@ export function evaluateDynamicResolutionAdjustment({
     // A caller that judges headroom itself (Odyssey's, at the display's cadence) passes its own
     // gate: Infinity = has headroom, 0 = none. Default: p95 under 0.9x the frame budget.
     upscaleThresholdMs = null,
+    // The refresh rate the display reports (Hz), for telling a display that cannot present the
+    // target's rate from a GPU that cannot render it (displayBoundCadence). Unknown: 0.
+    refreshRate = 0,
+    // A caller that ticks passes whether its last tick read pressure (the result's `pressure`):
+    // pressure then steps down only on a repeat, so one hitch (a mode start, a theme switch, a
+    // game over) in a window is not a resolution problem. null: act on the first.
+    lastTickPressure = null,
 } = {}) {
     const currentScale = clampRenderScale(currentRenderScale ?? baselineRenderScale ?? 1);
     const baseScale = clampRenderScale(baselineRenderScale ?? currentScale);
     const p95FrameMs = Number(releaseGates?.frameTime?.p95) || 0;
     const p99FrameMs = Number(releaseGates?.frameTime?.p99) || 0;
     const targetFrameMs = targetFrameRate > 0 ? 1000 / targetFrameRate : 1000 / 60;
-    const downscaleThreshold = targetFrameMs * 1.14;
-    const upscaleThreshold = typeof upscaleThresholdMs === 'number' && !Number.isNaN(upscaleThresholdMs)
-        ? upscaleThresholdMs
-        : targetFrameMs * 0.9;
+    const pace = displayBoundCadence(releaseGates?.frameTime, targetFrameMs, refreshRate);
+    // Display-bound: pressure is frames regularly slipping past the display's own pace (p95), or a
+    // tail of frames missing two of its slots (p99); holding that pace is headroom, so a lowered
+    // scale climbs back.
+    const downscaleThreshold = pace > 0 ? Math.max(targetFrameMs * 1.14, pace * 1.5) : targetFrameMs * 1.14;
+    const tailThreshold = pace > 0 ? Math.max(targetFrameMs * 1.14 * 1.08, pace * 2.2) : downscaleThreshold * 1.08;
+    let upscaleThreshold = pace > 0 ? pace * 1.3 : targetFrameMs * 0.9;
+    if (typeof upscaleThresholdMs === 'number' && !Number.isNaN(upscaleThresholdMs)) upscaleThreshold = upscaleThresholdMs;
     const elapsedSinceChange = now - (lastScaleChangeAt || 0);
+    const pressure = p95FrameMs > downscaleThreshold || p99FrameMs > tailThreshold;
 
-    if (elapsedSinceChange >= 6000 && (p95FrameMs > downscaleThreshold || p99FrameMs > downscaleThreshold * 1.08)) {
+    if (elapsedSinceChange >= 6000 && pressure && lastTickPressure === false) {
+        return {
+            nextRenderScale: currentScale,
+            changed: false,
+            reason: 'pressure_pending',
+            persistEligible: false,
+            pressure,
+        };
+    }
+
+    if (elapsedSinceChange >= 6000 && pressure) {
         return {
             nextRenderScale: clampRenderScale(currentScale - DYNAMIC_SCALE_STEP_DOWN),
             changed: true,
             reason: 'frame_time_pressure',
             persistEligible: false,
+            pressure,
         };
     }
 
@@ -282,6 +330,7 @@ export function evaluateDynamicResolutionAdjustment({
             changed: nextRenderScale !== currentScale,
             reason: 'frame_time_recovered',
             persistEligible: nextRenderScale === currentScale && stableSince > 0 && (now - stableSince) >= SCALE_PERSIST_STABILITY_MS,
+            pressure,
         };
     }
 
@@ -292,6 +341,7 @@ export function evaluateDynamicResolutionAdjustment({
         persistEligible: currentScale !== baseScale
             && stableSince > 0
             && (now - stableSince) >= SCALE_PERSIST_STABILITY_MS,
+        pressure,
     };
 }
 

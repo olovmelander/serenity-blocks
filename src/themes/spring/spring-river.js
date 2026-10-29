@@ -61,7 +61,8 @@ import {
 } from './spring-fall-plan.js';
 import { forestCover, groundHeight, waterEdge } from './spring-terrain.js';
 import { FACE, SHEET } from './spring-fall.js';
-import { sessionGeometry } from '../shared/session-geometry.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { prepareSessionGeometry, sessionGeometry } from '../shared/session-geometry.js';
 
 /** The ribbon starts this far up the river from the lip (out of sight up the valley). */
 export const UPSTREAM = 320;
@@ -300,7 +301,8 @@ export function riverStations(detail = 1) {
  * Build the ribbon. `cols` vertices across, `detail` the density along; `baked` the valley's
  * ground, from which the banks' horizon the water mirrors is measured (without it, a flat bank).
  */
-export function createRiverGeometry({ cols = 40, detail = 1, baked = null } = {}) {
+export function* riverGeometrySteps({ cols = 40, detail = 1, baked = null } = {}) {
+    const clock = stepClock();
     const { upper, lower } = riverStations(detail);
     const across = cols + 1;
     const count = (upper.length + lower.length) * across;
@@ -314,7 +316,7 @@ export function createRiverGeometry({ cols = 40, detail = 1, baked = null } = {}
     const lip = {};
     const index = [];
     let row0 = 0;
-    const strip = (stations, isUpper) => {
+    const strip = function* stripSteps(stations, isUpper) {
         // The foam each column carries down the river from its sources (advected row by row).
         const trail = new Float32Array(across);
         // The banks' horizon, measured again only every MIRROR.every metres along (it hardly moves
@@ -401,6 +403,10 @@ export function createRiverGeometry({ cols = 40, detail = 1, baked = null } = {}
                 dir[o * 2] = tx;
                 dir[o * 2 + 1] = tz;
             }
+            if (clock.due()) {
+                yield 'river rows';
+                clock.restart();
+            }
         }
         for (let r = 0; r < stations.length - 1; r++) {
             for (let k = 0; k < cols; k++) {
@@ -413,8 +419,8 @@ export function createRiverGeometry({ cols = 40, detail = 1, baked = null } = {}
         }
         row0 += stations.length;
     };
-    strip(upper, true);
-    strip(lower, false);
+    yield* strip(upper, true);
+    yield* strip(lower, false);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
     geometry.setAttribute('aRiver', new THREE.BufferAttribute(river, 4));
@@ -777,11 +783,26 @@ export function createRiverMaterial(u, tex) {
     return material;
 }
 
-export function createRiver(u, tex, tier, baked = null) {
+export function createRiverGeometry(options) {
+    return drainSteps(riverGeometrySteps(options));
+}
+
+/** The river's resolution for a tier, and its session geometry key. */
+function riverGrid(tier) {
     const cols = tier.riverCols ?? 40;
     const detail = tier.riverDetail ?? 1;
+    return { cols, detail, key: `river|${cols}|${detail}` };
+}
+
+/** The river's geometry built ahead, in steps (true when it built: the session's first). */
+export function prepareRiverSteps(tier, baked = null) {
+    const { cols, detail, key } = riverGrid(tier);
+    return prepareSessionGeometry(baked, key, () => riverGeometrySteps({ cols, detail, baked }));
+}
+
+export function createRiver(u, tex, tier, baked = null) {
+    const { cols, detail, key } = riverGrid(tier);
     // Built once a session for the same tier and ground (shared/session-geometry.js).
-    const key = `river|${cols}|${detail}`;
     const { geometry, triangles } = sessionGeometry(baked, key, () => createRiverGeometry({ cols, detail, baked }));
     const material = createRiverMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);

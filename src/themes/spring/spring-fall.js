@@ -50,7 +50,8 @@ import {
 } from './spring-fall-plan.js';
 import { groundHeight } from './spring-terrain.js';
 import { spHash21 } from './spring-tsl.js';
-import { sessionGeometry } from '../shared/session-geometry.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { prepareSessionGeometry, sessionGeometry } from '../shared/session-geometry.js';
 
 /** The tongue a column across the lip belongs to (the one whose water there is deepest). */
 function tongueAt(across) {
@@ -81,7 +82,8 @@ const R3 = [FALL_FRAME.rx, 0, FALL_FRAME.rz];
  * The sheet: `cols` columns across, `rows` rows down the water's travel (denser at the brink,
  * where it moves slowly and bends over the lip).
  */
-export function createPourGeometry({ cols = 190, rows = 150 } = {}) {
+export function* pourGeometrySteps({ cols = 190, rows = 150 } = {}) {
+    const clock = stepClock();
     const across = cols + 1;
     const count = across * (rows + 1);
     const position = new Float32Array(count * 3);
@@ -89,7 +91,13 @@ export function createPourGeometry({ cols = 190, rows = 150 } = {}) {
     const pour = new Float32Array(count * 4);
     const pour2 = new Float32Array(count * 4);
     const paths = [];
-    for (let k = 0; k <= cols; k++) paths.push(pourPath(SHEET.from + ((SHEET.to - SHEET.from) * k) / cols));
+    for (let k = 0; k <= cols; k++) {
+        paths.push(pourPath(SHEET.from + ((SHEET.to - SHEET.from) * k) / cols));
+        if (clock.due()) {
+            yield 'pour paths';
+            clock.restart();
+        }
+    }
     // A dry column borrows its nearest wet neighbour's path (its triangles are never drawn).
     const nearestWet = (k) => {
         for (let d = 1; d <= cols; d++) {
@@ -130,6 +138,10 @@ export function createPourGeometry({ cols = 190, rows = 150 } = {}) {
             pour2[o * 4 + 1] = own ? sample.mode : 0;
             pour2[o * 4 + 2] = own ? sample.speed : 0;
             pour2[o * 4 + 3] = own && !sample.ended ? 1 : 0;
+        }
+        if (clock.due()) {
+            yield 'pour columns';
+            clock.restart();
         }
     }
     // Normals: across the lip × down the water's path, turned out of the face (toward the eye).
@@ -355,11 +367,27 @@ export function createPourMaterial(u, tex) {
     return material;
 }
 
-export function createPour(u, tex, tier) {
+export function createPourGeometry(options) {
+    return drainSteps(pourGeometrySteps(options));
+}
+
+/** The pour's resolution for a tier, and its session geometry key. */
+function pourGrid(tier) {
     const cols = tier.pourCols ?? 190;
     const rows = tier.pourRows ?? 150;
+    return { cols, rows, key: `pour|${cols}|${rows}` };
+}
+
+/** The pour's geometry built ahead, in steps (true when it built: the session's first). */
+export function preparePourSteps(tier) {
+    const { cols, rows, key } = pourGrid(tier);
+    return prepareSessionGeometry(null, key, () => pourGeometrySteps({ cols, rows }));
+}
+
+export function createPour(u, tex, tier) {
+    const { cols, rows, key } = pourGrid(tier);
     // Built once a session for the same tier (shared/session-geometry.js).
-    const { geometry, triangles } = sessionGeometry(null, `pour|${cols}|${rows}`, () => createPourGeometry({ cols, rows }));
+    const { geometry, triangles } = sessionGeometry(null, key, () => createPourGeometry({ cols, rows }));
     const material = createPourMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'SpringPour';
@@ -384,7 +412,8 @@ export function createPour(u, tex, tier) {
  * under the water, the shoulders' ground beside it) down under the pool, then `capRows` rows of
  * cap turning back over the step's top so no edge shows.
  */
-export function createFaceGeometry(baked, { cols = 300, rows = 170, capRows = 6 } = {}) {
+export function* faceGeometrySteps(baked, { cols = 300, rows = 170, capRows = 6 } = {}) {
+    const clock = stepClock();
     const across = cols + 1;
     const total = rows + 1 + capRows;
     const count = across * total;
@@ -436,6 +465,10 @@ export function createFaceGeometry(baked, { cols = 300, rows = 170, capRows = 6 
             tone[o] = (((blk.band * 7919) % 1000) / 1000) * 0.8 + (((blk.column * 104729) % 1000) / 1000) * 0.2;
             joint[o] = blk.joint;
         }
+        if (clock.due()) {
+            yield 'face columns';
+            clock.restart();
+        }
     }
     // Occlusion per vertex: overhangs above it, the hollow it sits in, and the joints.
     for (let k = 0; k <= cols; k++) {
@@ -469,6 +502,10 @@ export function createFaceGeometry(baked, { cols = 300, rows = 170, capRows = 6 
             face[o * 4 + 1] = 0.85;
             face[o * 4 + 2] = depth > 0.02 ? 1 : 0;
             face[o * 4 + 3] = tone[o];
+        }
+        if (clock.due()) {
+            yield 'face shade';
+            clock.restart();
         }
     }
     const index = new Uint32Array((total - 1) * cols * 6);
@@ -608,11 +645,26 @@ export function createFaceMaterial(u, tex) {
     return material;
 }
 
-export function createStepFace(u, tex, tier, baked) {
+export function createFaceGeometry(baked, options) {
+    return drainSteps(faceGeometrySteps(baked, options));
+}
+
+/** The face's resolution for a tier, and its session geometry key. */
+function faceGrid(tier) {
     const cols = tier.faceCols ?? 300;
     const rows = tier.faceRows ?? 170;
+    return { cols, rows, key: `face|${cols}|${rows}` };
+}
+
+/** The face's geometry built ahead, in steps (true when it built: the session's first). */
+export function prepareFaceSteps(baked, tier) {
+    const { cols, rows, key } = faceGrid(tier);
+    return prepareSessionGeometry(baked, key, () => faceGeometrySteps(baked, { cols, rows }));
+}
+
+export function createStepFace(u, tex, tier, baked) {
+    const { cols, rows, key } = faceGrid(tier);
     // Built once a session for the same tier and ground (shared/session-geometry.js).
-    const key = `face|${cols}|${rows}`;
     const { geometry, triangles } = sessionGeometry(baked, key, () => createFaceGeometry(baked, { cols, rows }));
     const material = createFaceMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);

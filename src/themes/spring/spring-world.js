@@ -65,9 +65,13 @@ import {
 } from './spring-tsl.js';
 import { SPRING_FLOWERS, springFlowerSlotForPiece } from './spring-flowers.js';
 import { PATCH, SpringMeadow } from './spring-meadow.js';
-import { createLand } from './spring-land.js';
-import { WHIRL, WHIRL_CENTRE_AT, createRiver } from './spring-river.js';
-import { createPour, createStepFace } from './spring-fall.js';
+import { createLand, prepareLandSteps } from './spring-land.js';
+import {
+    WHIRL, WHIRL_CENTRE_AT, createRiver, prepareRiverSteps,
+} from './spring-river.js';
+import {
+    createPour, createStepFace, prepareFaceSteps, preparePourSteps,
+} from './spring-fall.js';
 import { createRocks } from './spring-rocks.js';
 import { SpringForest } from './spring-forest.js';
 import { createWoods } from './spring-woods.js';
@@ -419,7 +423,10 @@ export class SpringWorld {
             noise: createNoiseTexture(),
             lattice: createLatticeTexture(),
         };
-        // The ground, and the granite step the river falls over (its own sheer face).
+        // The ground, and the granite step the river falls over (its own sheer face). A session's
+        // first visit builds their geometry here in steps (later visits keep it).
+        if (yield* prepareLandSteps(this.ground, tier)) yield 'land rows';
+        if (yield* prepareFaceSteps(this.ground, tier)) yield 'face columns';
         const land = createLand(this.u, this.textures, tier, this.ground);
         const face = createStepFace(this.u, this.textures, tier, this.ground);
         this.addPart('land', {
@@ -432,6 +439,8 @@ export class SpringWorld {
         });
         yield 'land';
         // The river's surface, and the fall's water pouring over the step.
+        if (yield* prepareRiverSteps(tier, this.ground)) yield 'river rows';
+        if (yield* preparePourSteps(tier)) yield 'pour columns';
         const river = createRiver(this.u, this.textures, tier, this.ground);
         const pour = createPour(this.u, this.textures, tier);
         this.addPart('river', {

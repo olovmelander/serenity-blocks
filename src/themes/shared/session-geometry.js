@@ -49,6 +49,35 @@ function rebuild(snap) {
     return geometry;
 }
 
+/** The kept builds for a scope (created on first use). */
+function keptFor(scope) {
+    const owner = scope && typeof scope === 'object' ? scope : NONE;
+    let byKey = memo.get(owner);
+    if (!byKey) {
+        byKey = new Map();
+        memo.set(owner, byKey);
+    }
+    return byKey;
+}
+
+/**
+ * The same memo, filled ahead by a builder written as steps (a generator returning what the
+ * builder would). A world's build runs it with `yield*` just before the call that makes the mesh,
+ * so a session's first build breathes between its steps and that call finds it kept. Spring's
+ * land and river took 185 and 166 ms in one step each on a first visit.
+ * @param {?object} scope as for sessionGeometry
+ * @param {string} key as for sessionGeometry
+ * @param {() => Generator<unknown, { geometry: THREE.BufferGeometry }>} steps the builder, as steps
+ * @returns {Generator<unknown, boolean>} true when it built (false: already kept)
+ */
+export function* prepareSessionGeometry(scope, key, steps) {
+    if (keptFor(scope).has(key)) return false;
+    const out = yield* steps();
+    const byKey = keptFor(scope);
+    if (!byKey.has(key)) byKey.set(key, { out, snap: snapshot(out.geometry) });
+    return true;
+}
+
 /**
  * @template {{ geometry: THREE.BufferGeometry }} T
  * @param {?object} scope an object the build depends on (the memo forgets it with it), or null
@@ -57,12 +86,7 @@ function rebuild(snap) {
  * @returns {T} the builder's result, with a geometry of its own over the shared arrays
  */
 export function sessionGeometry(scope, key, build) {
-    const owner = scope && typeof scope === 'object' ? scope : NONE;
-    let byKey = memo.get(owner);
-    if (!byKey) {
-        byKey = new Map();
-        memo.set(owner, byKey);
-    }
+    const byKey = keptFor(scope);
     let entry = byKey.get(key);
     if (!entry) {
         const out = build();

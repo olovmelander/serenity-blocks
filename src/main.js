@@ -1016,20 +1016,21 @@ class SerenityBlocks {
 
         const tick = () => {
             const policy = this.desktopPerformancePolicy;
-            if (!policy || !performanceMonitor.enabled || !this.isDynamicResolutionEligible()) {
-                return;
-            }
+            if (!policy || !performanceMonitor.enabled || !this.isDynamicResolutionEligible()) return;
 
             const now = Date.now();
             const adjustment = evaluateDynamicResolutionAdjustment({
                 currentRenderScale: this.desktopPerformanceAdjustmentState.currentRenderScale ?? policy.renderScale,
                 baselineRenderScale: this.desktopPerformanceAdjustmentState.baselineRenderScale ?? policy.baseRenderScale,
-                releaseGates: performanceMonitor.getReleaseGateSnapshot(),
+                releaseGates: { frameTime: performanceMonitor.getRecentFrameTimePercentiles(5000) }, // since last tick
                 targetFrameRate: policy.targetFrameRate,
                 lastScaleChangeAt: this.desktopPerformanceAdjustmentState.lastScaleChangeAt,
                 stableSince: this.desktopPerformanceAdjustmentState.stableSince,
                 now,
+                refreshRate: this.frameRateController?.monitorRefreshRate || 0, // see displayBoundCadence
+                lastTickPressure: this.desktopPerformanceAdjustmentState.lastTickPressure === true,
             });
+            this.desktopPerformanceAdjustmentState.lastTickPressure = adjustment.pressure === true;
 
             if (adjustment.changed && adjustment.nextRenderScale !== this.desktopPerformanceAdjustmentState.currentRenderScale) {
                 this.desktopPerformanceAdjustmentState.currentRenderScale = adjustment.nextRenderScale;

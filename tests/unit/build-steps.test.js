@@ -2,7 +2,9 @@ import {
     describe, expect, it, vi,
 } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { buildWorldBreathing, drainSteps, runStepsBreathing } from '../../src/themes/shared/build-steps.js';
+import {
+    buildWorldBreathing, drainSteps, runStepsBreathing, stepClock,
+} from '../../src/themes/shared/build-steps.js';
 
 /**
  * A world's build as steps (src/themes/shared/build-steps.js): the forest family's worlds (and
@@ -24,6 +26,27 @@ describe('drainSteps', () => {
         const log = [];
         expect(drainSteps(parts(log))).toBe('built');
         expect(log).toEqual(['a', 'b', 'c']);
+    });
+});
+
+describe('stepClock', () => {
+    it('is due once its budget of work has run, until restarted', () => {
+        let now = 1000;
+        const spy = vi.spyOn(performance, 'now').mockImplementation(() => now);
+        const clock = stepClock(24);
+        now += 20;
+        expect(clock.due()).toBe(false);
+        now += 5;
+        expect(clock.due()).toBe(true);
+        expect(clock.due()).toBe(true);
+        now += 100; // the breath: not counted once restarted
+        clock.restart();
+        expect(clock.due()).toBe(false);
+        now += 24;
+        expect(clock.due()).toBe(false);
+        now += 1;
+        expect(clock.due()).toBe(true);
+        spy.mockRestore();
     });
 });
 
