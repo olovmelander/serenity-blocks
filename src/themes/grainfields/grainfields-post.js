@@ -76,8 +76,10 @@ const LOOKS = {
     Ultra: {
         bloom: true, bloomStrength: 0.3, bloomResolution: 0.5, air: 24, airScale: 0.5, fxaa: false,
     },
+    // High marches the light in the air in 14 steps (as Medium), not 20: +4 % in the game, the
+    // shafts the same in same-frame shots (docs/THEME_FLEET_240_2026-10.md §15).
     High: {
-        bloom: true, bloomStrength: 0.28, bloomResolution: 0.45, air: 20, airScale: 0.5, fxaa: false,
+        bloom: true, bloomStrength: 0.28, bloomResolution: 0.45, air: 14, airScale: 0.5, fxaa: false,
     },
     Medium: {
         bloom: true, bloomStrength: 0.26, bloomResolution: 0.33, air: 14, airScale: 0.34, fxaa: true,
