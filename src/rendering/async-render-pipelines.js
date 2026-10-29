@@ -329,7 +329,7 @@ function uninstallIfIdle() {
  * unless preloadAsyncRenderPipelines() has resolved, so callers keep their await structure.
  * @param {any} theme
  * @param {{label?: string, backendProto?: any, buildBudgetMs?: number, rendererProto?: any,
- *   exemptCanvasDraws?: boolean}} [options]
+ *   exemptCanvasDraws?: boolean, asyncCompositeWhileHidden?: boolean}} [options]
  *   buildBudgetMs: per-frame budget for first-time render-object builds (see BUILD BUDGET above);
  *   0 (the default) builds everything as it is met
  *   exemptCanvasDraws: never defer a draw into the canvas itself (the final composite of a VISIBLE
