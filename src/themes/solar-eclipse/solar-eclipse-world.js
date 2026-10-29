@@ -66,8 +66,6 @@ import {
     WORLD,
     approach,
     axisAt,
-    bakeNoise,
-    bakeRanges,
     clamp,
     clamp01,
     exposureFor,
@@ -84,6 +82,7 @@ import {
     umbraAzAt,
     wrapAngle,
 } from './solar-eclipse-core.js';
+import { sessionEclipseBakes } from './solar-eclipse-bakes.js';
 import { tierFor } from './solar-eclipse-quality.js';
 import {
     STREAKS, createNoiseTexture, createRangeTexture, createUniforms,
@@ -356,8 +355,9 @@ export class SolarEclipseWorld {
 
     build() {
         const { u, tier } = this;
-        this.noise = createNoiseTexture(bakeNoise(2017));
-        this.ranges = bakeRanges();
+        const baked = sessionEclipseBakes();
+        this.noise = createNoiseTexture(baked.noise);
+        this.ranges = baked.ranges;
         this.rangeTexture = createRangeTexture(this.ranges);
         this.sky = createSky({
             u, noise: this.noise, ranges: this.rangeTexture, tier,

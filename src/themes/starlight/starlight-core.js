@@ -435,6 +435,20 @@ export function dustAt(noise, l, b, detail = true) {
 export const MAG_FAINT = 7.2;
 export const MAG_BRIGHT = -0.6;
 
+/** The noise's seed (the world's, and the worker's). */
+export const NOISE_SEED = 1610;
+
+/**
+ * What a sky bakes once a session for a tier's star count: the noise, and the catalogue drawn
+ * over its dust. Pure (no three): the bake worker runs it (starlight-bakes.js).
+ * @param {number} stars the tier's star count
+ * @returns {{ noise: Uint8Array, catalog: { count: number, polar: Float32Array, look: Float32Array } }}
+ */
+export function bakeSkyData(stars) {
+    const noise = bakeNoise(NOISE_SEED);
+    return { noise, catalog: generateCatalog(stars, noise) };
+}
+
 /**
  * The sky's stars, brightest first. Each star is four numbers in `polar` (cos ρ, sin ρ, θ,
  * magnitude) and four in `look` (colour temperature 0 = ember … 1 = blue, twinkle phase,

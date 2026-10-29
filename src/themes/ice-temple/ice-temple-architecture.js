@@ -40,6 +40,7 @@ import {
     vec2,
     vec3,
 } from 'three/tsl';
+import { sessionGeometry } from '../shared/session-geometry.js';
 import {
     MOON,
     REST_RIG,
@@ -331,16 +332,23 @@ function addIcicle(builder, icicle) {
  * @param {object} plan    buildPlan()
  * @param {object} [opts]
  * @param {number} [opts.veils=3]  parallax layers of fracture veils inside the ice (1..3)
+ * @param {string} [opts.sessionKey]  names the plan (its seed): the ice it builds is kept for the
+ *   session under it (shared/session-geometry.js), 30-50 ms of main thread on every start before
  */
 export function createArchitecture(u, plan, opts = {}) {
     const veils = Math.max(1, Math.min(3, opts.veils ?? 3));
-    const builder = new IceBuilder();
-    const rand = mulberry32(0x1ce7e);
-    plan.columns.forEach((column) => addColumn(builder, column, rand));
-    plan.ribs.forEach((rib) => addRib(builder, rib));
-    plan.crystals.forEach((crystal) => addCrystal(builder, crystal, rand));
-    plan.icicles.forEach((icicle) => addIcicle(builder, icicle));
-    const geometry = builder.build();
+    const build = () => {
+        const builder = new IceBuilder();
+        const rand = mulberry32(0x1ce7e);
+        plan.columns.forEach((column) => addColumn(builder, column, rand));
+        plan.ribs.forEach((rib) => addRib(builder, rib));
+        plan.crystals.forEach((crystal) => addCrystal(builder, crystal, rand));
+        plan.icicles.forEach((icicle) => addIcicle(builder, icicle));
+        return { geometry: builder.build(), triangles: builder.triangles };
+    };
+    const { geometry, triangles } = opts.sessionKey === undefined
+        ? build()
+        : sessionGeometry(null, `ice-temple:architecture:${opts.sessionKey}`, build);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'IceTempleArchitecture';
@@ -508,6 +516,6 @@ export function createArchitecture(u, plan, opts = {}) {
     })();
 
     const part = itPart('IceTempleArchitecture', geometry, material, 0, true);
-    part.triangles = builder.triangles;
+    part.triangles = triangles;
     return part;
 }

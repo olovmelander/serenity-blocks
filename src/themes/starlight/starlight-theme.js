@@ -50,6 +50,7 @@ import { POST_LOOK, StarlightPost, createPassThroughPipeline } from './starlight
 import { PLAYER_SLOTS, readLayoutRects } from './starlight-composition.js';
 import { STARLIGHT_EVENT_HANDLERS, StarlightDirector } from './starlight-director.js';
 import { approach } from './starlight-core.js';
+import { starlightBakes } from './starlight-bakes.js';
 
 const THEME_ID = 'starlight';
 const LOG_PREFIX = '[Starlight]';
@@ -198,8 +199,12 @@ export default class StarlightTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise and the star catalogue (85-100 ms on a first visit) bake in a worker while the
+        // renderer comes up; the build below finds them kept.
+        const baking = starlightBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

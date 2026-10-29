@@ -180,6 +180,8 @@ export class IceTempleWorld {
         this.renderer = renderer;
         this.capture = capture;
         this.plan = buildPlan(seed);
+        /** What the plan was built from (buildPlan's default when none): it names the kept ice. */
+        this.planSeed = seed ?? 'default';
         this.root = new THREE.Group();
         this.root.name = 'IceTemple';
         this.parts = {};
@@ -332,7 +334,9 @@ export class IceTempleWorld {
         this.addPart('sky', createSky(u));
         this.addPart('mountains', createMountains(u));
         this.addPart('aurora', createAurora(u, tier.curtains));
-        this.addPart('architecture', createArchitecture(u, plan, { veils: tier.veils }));
+        this.addPart('architecture', createArchitecture(u, plan, {
+            veils: tier.veils, sessionKey: String(this.planSeed),
+        }));
 
         const floor = createFloor(u, {
             reflectionScale: tier.reflection,

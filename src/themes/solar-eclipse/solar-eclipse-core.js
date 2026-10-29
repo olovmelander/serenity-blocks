@@ -476,6 +476,18 @@ export function bakeRanges(samples = RIDGE_SAMPLES) {
     return { crests, slopes, samples };
 }
 
+/** The noise's seed (the world's, and the worker's). */
+export const NOISE_SEED = 2017;
+
+/**
+ * What the sky bakes from: the noise and the ranges' crests. Both depend on their seeds alone.
+ * Pure (no three): the bake worker runs it (solar-eclipse-bakes.js).
+ * @returns {{ noise: Uint8Array, ranges: { crests: Float32Array[], slopes: Float32Array[], samples: number } }}
+ */
+export function bakeEclipseData() {
+    return { noise: bakeNoise(NOISE_SEED), ranges: bakeRanges() };
+}
+
 /** A range's crest altitude at azimuth `az` (radians), read the way the shader reads it. */
 export function crestAt(ranges, layer, az) {
     const table = ranges.crests[layer];

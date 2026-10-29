@@ -101,6 +101,7 @@ import {
     smooth,
     sunDirection,
 } from './stellar-drift-tsl.js';
+import { WORLD_SEED } from './stellar-drift-bake.js';
 import { tierFor } from './stellar-drift-quality.js';
 import { EventPool } from './stellar-drift-pool.js';
 import { createSpace } from './stellar-drift-space.js';
@@ -188,7 +189,7 @@ export class StellarDriftWorld {
      * @param {number} [params.seed]
      */
     constructor({
-        scene, quality = 'High', renderer = null, capture = false, seed = 0x51d7,
+        scene, quality = 'High', renderer = null, capture = false, seed = WORLD_SEED,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
