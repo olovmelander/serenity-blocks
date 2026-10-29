@@ -10,6 +10,7 @@
  * console that starts lobbies with dummy players or auto-joins from a URL.
  */
 import { GAME_MODES } from '../core/constants.js';
+import * as gameplayEvents from '../events/gameplay-events.js';
 import { introAnimation } from '../ui/intro-animation.js';
 
 /** @param {any} app the SerenityBlocks app */
@@ -400,6 +401,10 @@ export function installConsoleHarness(app) {
             return null;
         }
     };
+    // Debug handle: the app's own gameplay-event emitters, for harnesses that fire theme effects
+    // (scripts/theme-fleet-bench.mjs storms). A bundled build has no `/src/...` URL to import, and
+    // a second copy of the bus would reach no theme, so the live module is handed out here.
+    window.__serenityGameplayEvents = gameplayEvents;
     const __localMpRole = new URLSearchParams(window.location.search).get('localMp');
     if (__localMpRole === 'host') {
         window.localMpHost().catch((e) => console.error('🧪 [LOCAL MP] host auto-start failed:', e));

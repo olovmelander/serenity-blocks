@@ -50,6 +50,7 @@ import {
 } from './spring-fall-plan.js';
 import { groundHeight } from './spring-terrain.js';
 import { spHash21 } from './spring-tsl.js';
+import { sessionGeometry } from '../shared/session-geometry.js';
 
 /** The tongue a column across the lip belongs to (the one whose water there is deepest). */
 function tongueAt(across) {
@@ -355,7 +356,10 @@ export function createPourMaterial(u, tex) {
 }
 
 export function createPour(u, tex, tier) {
-    const { geometry, triangles } = createPourGeometry({ cols: tier.pourCols ?? 190, rows: tier.pourRows ?? 150 });
+    const cols = tier.pourCols ?? 190;
+    const rows = tier.pourRows ?? 150;
+    // Built once a session for the same tier (shared/session-geometry.js).
+    const { geometry, triangles } = sessionGeometry(null, `pour|${cols}|${rows}`, () => createPourGeometry({ cols, rows }));
     const material = createPourMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'SpringPour';
@@ -605,9 +609,11 @@ export function createFaceMaterial(u, tex) {
 }
 
 export function createStepFace(u, tex, tier, baked) {
-    const { geometry, triangles } = createFaceGeometry(baked, {
-        cols: tier.faceCols ?? 300, rows: tier.faceRows ?? 170,
-    });
+    const cols = tier.faceCols ?? 300;
+    const rows = tier.faceRows ?? 170;
+    // Built once a session for the same tier and ground (shared/session-geometry.js).
+    const key = `face|${cols}|${rows}`;
+    const { geometry, triangles } = sessionGeometry(baked, key, () => createFaceGeometry(baked, { cols, rows }));
     const material = createFaceMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'SpringStepFace';

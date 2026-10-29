@@ -51,6 +51,7 @@ import {
 import {
     KNOLL, birchShare, forestCover, groundHeight, groundNormal, waterEdge,
 } from './spring-terrain.js';
+import { sessionGeometry } from '../shared/session-geometry.js';
 
 /** Where the curtain meets the pool (its spray soaks the rock round it). */
 const FALL_FOOT = courseAt(S_POOL, {});
@@ -389,7 +390,9 @@ export function createLandMaterial(u, tex) {
 }
 
 export function createLand(u, tex, tier, baked) {
-    const { geometry, triangles } = createLandGeometry(baked, tier);
+    // The same land for the same tier and ground: built once a session (shared/session-geometry.js).
+    const key = `land|${tier.landCols}|${tier.landRow}|${tier.landMinRow}`;
+    const { geometry, triangles } = sessionGeometry(baked, key, () => createLandGeometry(baked, tier));
     const material = createLandMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'SpringLand';

@@ -13,6 +13,7 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { getViewport } from '../../utils/viewport.js';
 import { readBoardSpans } from './aurora-board-rects.js';
 import { AuroraPost } from './aurora-post.js';
+import { canvasAntialias } from '../shared/scene-antialias.js';
 import { QUALITY_PRESETS, normalizeAuroraQuality } from './aurora-quality.js';
 import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
 import { AuroraWorld } from './aurora-world.js';
@@ -142,8 +143,10 @@ export default class AuroraTheme extends BaseTheme {
     async createRenderer(ownerGeneration) {
         const forceWebGL = this.forceWebGL || enabledParam(searchParams(), 'forceWebGL', 'auroraForceWebGL');
         const current = () => ownerGeneration === this.lifecycleGeneration && this.isActive && !this.cleanupComplete;
+        // The canvas is multisampled only where the scene is drawn to it (post off); under the post
+        // stack it receives one full-screen quad (shared/scene-antialias.js canvasAntialias).
         const attempt = (force) => this.initializeRendererCandidate(new THREE.WebGPURenderer({
-            antialias: this.getAntialiasEnabled(),
+            antialias: canvasAntialias(this.getAntialiasEnabled(), this.qualityPreset?.enablePost !== true),
             alpha: false,
             forceWebGL: force,
             powerPreference: 'high-performance',

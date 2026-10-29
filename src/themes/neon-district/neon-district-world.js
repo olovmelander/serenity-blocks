@@ -96,6 +96,7 @@ import {
 } from '../shared/mood-clock.js';
 import { readBreathSignal } from '../../core/breath-signal.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { loadBitmapTexture } from '../shared/decoded-texture.js';
 
 const DEG = Math.PI / 180;
 
@@ -571,11 +572,15 @@ export class NeonDistrictWorld {
                 this.atlasReady[slot] = true;
                 resolve(true);
             };
-            try {
-                loader.load(url, arrived, undefined, () => resolve(false));
-            } catch {
-                resolve(false); // no image decoding here (a headless host): the atlas stays dark
-            }
+            const viaLoader = () => {
+                try {
+                    loader.load(url, arrived, undefined, () => resolve(false));
+                } catch {
+                    resolve(false); // no image decoding here (a headless host): the atlas stays dark
+                }
+            };
+            // Decoded off the main thread (shared/decoded-texture.js); TextureLoader where that cannot run.
+            loadBitmapTexture(url).then((tex) => (tex ? arrived(tex) : viaLoader()), () => resolve(false));
         });
         if (this.people) this.loadPeople(loader);
         return Promise.all([
@@ -591,24 +596,28 @@ export class NeonDistrictWorld {
      */
     loadPeople(loader = new THREE.TextureLoader()) {
         const load = (url, name) => new Promise((resolve) => {
-            try {
-                loader.load(url, (tex) => {
-                    if (this.disposed) {
-                        tex.dispose();
-                        resolve(null);
-                        return;
-                    }
-                    tex.colorSpace = THREE.NoColorSpace;
-                    tex.generateMipmaps = true;
-                    tex.minFilter = THREE.LinearMipmapLinearFilter;
-                    tex.magFilter = THREE.LinearFilter;
-                    tex.anisotropy = 4;
-                    tex.name = `neon-district-${name}`;
-                    resolve(tex);
-                }, undefined, () => resolve(null));
-            } catch {
-                resolve(null); // no image decoding here (a headless host): the shops stay empty
-            }
+            const arrived = (tex) => {
+                if (this.disposed) {
+                    tex.dispose();
+                    resolve(null);
+                    return;
+                }
+                tex.colorSpace = THREE.NoColorSpace;
+                tex.generateMipmaps = true;
+                tex.minFilter = THREE.LinearMipmapLinearFilter;
+                tex.magFilter = THREE.LinearFilter;
+                tex.anisotropy = 4;
+                tex.name = `neon-district-${name}`;
+                resolve(tex);
+            };
+            const viaLoader = () => {
+                try {
+                    loader.load(url, arrived, undefined, () => resolve(null));
+                } catch {
+                    resolve(null); // no image decoding here (a headless host): the shops stay empty
+                }
+            };
+            loadBitmapTexture(url).then((tex) => (tex ? arrived(tex) : viaLoader()), () => resolve(null));
         });
         return Promise.all([load(PEOPLE_SHEET.url, 'people'), load(PEOPLE_SHEET.maskUrl, 'people-masks')])
             .then(([sheet, masks]) => {

@@ -180,11 +180,36 @@ export function sampleNoise(field, size, x, y, channel = 0) {
 }
 
 /**
+ * A field's half-float mip chain, kept per field: the world bakes one field a session, so a revisit
+ * converts nothing (about 30 ms with the bake, docs/THEME_FLEET_240_2026-10.md). Read only.
+ */
+const mipChains = new WeakMap();
+
+/**
  * The noise field as a tileable half-float texture with a CPU-built mip chain (the lagoon reads
  * it at grazing angles; generating half-float mips on the GPU is not portable to every WebGL2
  * device).
  */
 export function createNoiseTexture(field, size = NOISE_SIZE) {
+    let mipmaps = mipChains.get(field);
+    if (!mipmaps) {
+        mipmaps = halfMipChain(field, size);
+        mipChains.set(field, mipmaps);
+    }
+    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mipmaps = mipmaps.map((level) => ({ ...level }));
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'halcyon-apex-noise';
+    tex.needsUpdate = true;
+    return tex;
+}
+
+function halfMipChain(field, size) {
     const mipmaps = [];
     let level = field;
     let w = size;
@@ -210,17 +235,7 @@ export function createNoiseTexture(field, size = NOISE_SIZE) {
         level = next;
         w = nw;
     }
-    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.mipmaps = mipmaps;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.generateMipmaps = false;
-    tex.colorSpace = THREE.NoColorSpace;
-    tex.name = 'halcyon-apex-noise';
-    tex.needsUpdate = true;
-    return tex;
+    return mipmaps;
 }
 
 // ── Shared uniforms ─────────────────────────────────────────────────────────────

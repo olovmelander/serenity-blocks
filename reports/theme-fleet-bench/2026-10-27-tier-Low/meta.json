@@ -1,0 +1,19 @@
+{
+  "tag": "tier-Low",
+  "baseUrl": "http://127.0.0.1:4317",
+  "quality": "Low",
+  "targetFps": 0,
+  "vsync": false,
+  "size": [
+    1707,
+    1067
+  ],
+  "scale": 1.5,
+  "anchor": "nimbus-veil",
+  "query": {},
+  "lowPowerGpu": false,
+  "switches": "",
+  "startedAt": "2026-10-27T13:02:00.841Z",
+  "host": "LAPTOP-F5V3G28E",
+  "cpu": "AMD Ryzen 9 9955HX3D 16-Core Processor         "
+}

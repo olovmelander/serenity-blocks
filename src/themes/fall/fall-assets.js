@@ -8,7 +8,11 @@
  */
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import manifest from './assets/asset-manifest.json';
+// Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
+import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { freshGeometry } from '../shared/fresh-geometry.js';
 
 export const FALL_TREE_URLS = Object.freeze({
     'maple-hero': new URL('./assets/maple-hero.glb', import.meta.url).href,
@@ -24,16 +28,6 @@ export const FALL_FOLIAGE_URL = new URL('./assets/fall-foliage.glb', import.meta
 export const FALL_SQUIRREL_URL = new URL('./assets/squirrel.glb', import.meta.url).href;
 export const FALL_IMPOSTOR_URL = new URL('./assets/fall-impostors.png', import.meta.url).href;
 export const FALL_ASSET_SCHEMA = 1;
-
-/** Read a (possibly normalised integer) attribute as floats. */
-function floats(attribute, width = attribute.itemSize) {
-    const out = new Float32Array(attribute.count * width);
-    const getters = ['getX', 'getY', 'getZ', 'getW'];
-    for (let i = 0; i < attribute.count; i += 1) {
-        for (let c = 0; c < width; c += 1) out[i * width + c] = attribute[getters[c]](i);
-    }
-    return out;
-}
 
 /** Quantised positions decode through the node's scale and translation. */
 function worldPositions(object) {
@@ -173,13 +167,76 @@ export function prepareImpostorTexture(texture) {
 }
 
 /**
- * Load every authored asset. `isCurrent` lets a superseded theme start abandon the
- * work: nothing is retained by the module, so a stale load simply disposes its results.
+ * The game's own load (default loaders), kept for the session: parsing the grove's GLBs cost
+ * 83-91 ms of main thread on every Fall start, a frame-long hitch in the outgoing theme and the
+ * board during an in-play switch (docs/THEME_FLEET_240_2026-10.md §7). Nothing in the bundle is
+ * changed by its users: the forest instances its geometry, the squirrel is cloned
+ * (SkeletonUtils), and `disposeFallAssets` only releases GPU copies (geometry and texture
+ * `dispose()`), which a later renderer uploads again. Loads with injected loaders (tests) are
+ * never cached.
+ * @type {?{ key: string, promise: Promise<object> }}
+ */
+let sessionAssets = null;
+
+/**
+ * Load every authored asset. `isCurrent` lets a superseded theme start abandon the work: a stale
+ * load resolves to null (an uncached one disposes its results).
  */
 export async function loadFallAssets({
-    trees = Object.keys(FALL_TREE_URLS), loader = new GLTFLoader(), textureLoader = new THREE.TextureLoader(),
-    isCurrent = () => true, squirrel = true,
+    trees = Object.keys(FALL_TREE_URLS), loader, textureLoader, isCurrent = () => true, squirrel = true,
 } = {}) {
+    const cacheable = loader === undefined && textureLoader === undefined;
+    const key = `${[...new Set(trees)].join(',')}|${squirrel}`;
+    if (cacheable && sessionAssets?.key === key) {
+        const assets = await sessionAssets.promise;
+        return isCurrent() ? startView(assets) : null;
+    }
+    const work = loadFallAssetsFresh({
+        trees,
+        loader: loader ?? new GLTFLoader(),
+        textureLoader: textureLoader === undefined ? new THREE.TextureLoader() : textureLoader,
+        squirrel,
+    });
+    if (cacheable) {
+        const entry = { key, promise: work };
+        sessionAssets = entry;
+        work.catch(() => { if (sessionAssets === entry) sessionAssets = null; });
+    }
+    const assets = await work;
+    if (!isCurrent()) {
+        if (!cacheable) disposeFallAssets(assets);
+        return null;
+    }
+    return cacheable ? startView(assets) : assets;
+}
+
+/**
+ * What one start draws from the session's assets: geometry objects of its own over the kept arrays
+ * (shared/fresh-geometry.js), so its dispose() never reaches the next start's buffers. The kept
+ * originals are never drawn. Textures and plain data are shared as they are.
+ */
+function startView(assets) {
+    const each = (object, make) => Object.fromEntries(Object.entries(object || {}).map(([k, v]) => [k, make(v)]));
+    let { squirrel } = assets;
+    if (squirrel?.scene) {
+        const scene = cloneSkinned(squirrel.scene);
+        scene.traverse((object) => {
+            const node = object;
+            if (node.geometry) node.geometry = freshGeometry(node.geometry);
+        });
+        squirrel = { ...squirrel, scene };
+    }
+    return {
+        ...assets,
+        foliage: assets.foliage ? { ...assets.foliage, meshes: each(assets.foliage.meshes, freshGeometry) } : assets.foliage,
+        trees: each(assets.trees, (tree) => (tree.bark ? { ...tree, bark: freshGeometry(tree.bark) } : tree)),
+        squirrel,
+    };
+}
+
+async function loadFallAssetsFresh({
+    trees, loader, textureLoader, squirrel,
+}) {
     const names = [...new Set(trees)];
     const layout = fallImpostorLayout();
     const [foliageGltf, impostorTexture, squirrelGltf, ...treeGltfs] = await Promise.all([
@@ -204,9 +261,5 @@ export async function loadFallAssets({
     if (impostorTexture) assets.impostors = { ...layout, texture: prepareImpostorTexture(impostorTexture) };
     // (The squirrel's GLTF is kept whole: its scene, skeleton and clips are the world's to clone.)
     [foliageGltf, squirrelGltf, ...treeGltfs].filter(Boolean).forEach(releaseGltf);
-    if (!isCurrent()) {
-        disposeFallAssets(assets);
-        return null;
-    }
     return assets;
 }

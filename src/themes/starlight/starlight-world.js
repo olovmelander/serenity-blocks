@@ -142,6 +142,19 @@ const TWIN_GAP = 0.014;
 /** Each cascade wave past the first whirls the sky this much further than the last. */
 const CASCADE_SWING = 3 * DEG;
 
+/**
+ * The noise and the star catalogue depend only on their seeds and the tier's star count, and
+ * nothing writes to them once baked (the stars' attributes and the noise texture read them), so
+ * they are baked once a session: 85-100 ms of main thread on every Starlight start, a stall of
+ * the outgoing theme and the board in an in-play switch (docs/THEME_FLEET_240_2026-10.md).
+ */
+const bakes = { noise: null, catalogs: new Map() };
+function sessionBakes(stars) {
+    bakes.noise ??= bakeNoise(1610);
+    if (!bakes.catalogs.has(stars)) bakes.catalogs.set(stars, generateCatalog(stars, bakes.noise));
+    return { noise: bakes.noise, catalog: bakes.catalogs.get(stars) };
+}
+
 export class StarlightWorld {
     /**
      * @param {object} options
@@ -315,9 +328,8 @@ export class StarlightWorld {
 
     build() {
         const { u, tier } = this;
-        this.noiseData = bakeNoise(1610);
+        ({ noise: this.noiseData, catalog: this.catalog } = sessionBakes(tier.stars));
         this.noise = createNoiseTexture(this.noiseData);
-        this.catalog = generateCatalog(tier.stars, this.noiseData);
         this.sky = createSky({ u, noise: this.noise, tier });
         this.stars = createStars({
             u, noise: this.noise, tier, catalog: this.catalog,

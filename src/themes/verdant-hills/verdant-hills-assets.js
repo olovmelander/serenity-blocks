@@ -14,6 +14,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 import { loadVerdantHillsClouds, loadVerdantHillsLand } from './verdant-hills-land.js';
 import { disposeVerdantHillsSheep, loadVerdantHillsSheep } from './verdant-hills-sheep.js';
+// Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
+import { attributeFloats as floats } from '../shared/attribute-floats.js';
 
 export const VERDANT_HILLS_TREE_URLS = Object.freeze({
     'oak-hero': new URL('./assets/oak-hero.glb', import.meta.url).href,
@@ -44,16 +46,6 @@ export const VERDANT_HILLS_MATERIALS = Object.freeze({
     skin: 9,
     iron: 10,
 });
-
-/** Read a (possibly normalised integer) attribute as floats. */
-function floats(attribute, width = attribute.itemSize) {
-    const out = new Float32Array(attribute.count * width);
-    const getters = ['getX', 'getY', 'getZ', 'getW'];
-    for (let i = 0; i < attribute.count; i += 1) {
-        for (let c = 0; c < width; c += 1) out[i * width + c] = attribute[getters[c]](i);
-    }
-    return out;
-}
 
 /** Quantised positions decode through the node's scale and translation. */
 function worldPositions(object) {

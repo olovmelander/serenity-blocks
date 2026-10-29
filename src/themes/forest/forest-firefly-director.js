@@ -17,6 +17,7 @@ import { FOREST_FIREFLY_DEW } from './forest-firefly-sim.js';
 import { FOREST_FIGURE_TIMING } from './forest-reactions.js';
 import { FOREST_STAGE_DEPTH } from './forest-stage.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 const REFERENCE_FIREFLIES = 2400;
 const CLEAR_WINDOW = 0.5;
@@ -121,7 +122,7 @@ export function forestFigureBox(stage, anchor, box = {
 export class ForestFireflyDirector {
     constructor({
         stage, sim, pulses, tier, rng = Math.random, groundHeight = () => 0, trunks = [], boughs = null,
-        figureAnchor = null, figureStands = null, eye = { x: 0, z: 13 },
+        figureAnchor = null, figureStands = null, eye = { x: 0, z: 13 }, layOutNow = true,
     }) {
         this.stage = stage;
         this.sim = sim;
@@ -196,11 +197,25 @@ export class ForestFireflyDirector {
         this.figureFed = 0;
         this.figureFuller = false;
         this.figureFull = 0;
-        if (this.figureAnchor) {
-            FOREST_FIGURES.forEach((figure) => {
-                this.pointsFor(figure);
-                this.extraPointsFor(figure);
-            });
+        if (layOutNow) drainSteps(this.layOutSteps());
+    }
+
+    /**
+     * Lay every animal out, a step whenever `budgetMs` is spent (63 ms all at once on a session's
+     * first Forest; laid out once a session, so a revisit spends nothing and never yields). A world
+     * that builds in steps runs these as its own: each step costs the outgoing theme a frame, so
+     * the steps are few and full rather than one an animal.
+     */
+    * layOutSteps(budgetMs = 24) {
+        if (!this.figureAnchor) return;
+        let since = performance.now();
+        for (const figure of FOREST_FIGURES) {
+            this.pointsFor(figure);
+            this.extraPointsFor(figure);
+            if (performance.now() - since > budgetMs) {
+                yield figure.id;
+                since = performance.now();
+            }
         }
     }
 

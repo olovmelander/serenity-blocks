@@ -24,3 +24,19 @@ export function sceneSamples(quality, antialias = true) {
     if (!antialias) return 0;
     return Object.prototype.hasOwnProperty.call(MSAA_TIERS, quality) ? MSAA_TIERS[quality] : 0;
 }
+
+/**
+ * Whether a theme's CANVAS should be multisampled (`new WebGPURenderer({ antialias })`).
+ *
+ * When a post stack draws the scene into its own pass, the canvas receives only the output quad,
+ * which covers every pixel: its four samples are always equal, so MSAA there changes no pixel but
+ * still costs a 4x colour (and depth) target plus its resolve on every frame (2026-10-27 fleet
+ * bench: the forest family, aurora and wolfhour paid it at High on top of their 4x scene pass).
+ * Only a tier that draws the scene straight to the canvas (post off) needs the canvas's MSAA.
+ * @param {boolean} antialias the game's antialiasing setting
+ * @param {boolean} sceneDrawsToCanvas true when the tier renders the scene to the canvas itself
+ * @returns {boolean}
+ */
+export function canvasAntialias(antialias, sceneDrawsToCanvas) {
+    return Boolean(antialias && sceneDrawsToCanvas);
+}

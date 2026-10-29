@@ -218,6 +218,13 @@ export const GENERAL_URL_PARAMETERS = [
         'src/themes/theme-manager.js',
     ),
     sharedFlag(
+        'themeDeviceSpare',
+        'Startup',
+        'Start a theme on a GPU device requested ahead of time instead of waiting for a new one.',
+        'Every WebGPU theme start (menu, mode entry, in-play switches)',
+        'src/rendering/theme-device-spare.js',
+    ),
+    sharedFlag(
         'fixedTick',
         'Simulation',
         'Enable the experimental fixed 60 Hz game simulation.',

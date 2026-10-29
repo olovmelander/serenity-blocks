@@ -16,6 +16,8 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
+// Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
+import { attributeFloats as floats } from '../shared/attribute-floats.js';
 
 export const GRAINFIELDS_TREE_URLS = Object.freeze({
     'birch-grove-a': new URL('./assets/birch-grove-a.glb', import.meta.url).href,
@@ -40,16 +42,6 @@ const HORSE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_mask', 
 const RUIN_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_bent']);
 /** The goose's: the mesh's own and its hinge weights. */
 const GOOSE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_wing']);
-
-/** Read a (possibly normalised integer) attribute as floats. */
-function floats(attribute, width = attribute.itemSize) {
-    const out = new Float32Array(attribute.count * width);
-    const getters = ['getX', 'getY', 'getZ', 'getW'];
-    for (let i = 0; i < attribute.count; i += 1) {
-        for (let c = 0; c < width; c += 1) out[i * width + c] = attribute[getters[c]](i);
-    }
-    return out;
-}
 
 /** Quantised positions decode through the node's scale and translation. */
 function worldPositions(object) {

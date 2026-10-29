@@ -171,6 +171,16 @@ export const FLAG_REGISTRY = [
         graduationBar: 'delete after the level-switch probe stays under 0.5 s per switch for one release',
         reader: 'flags',
     },
+    {
+        name: 'themeDeviceSpare',
+        default: true,
+        purpose: 'a theme start takes a GPUDevice requested ahead of time (src/rendering/theme-device-spare.js) '
+            + 'instead of waiting 150-500 ms for requestAdapter + requestDevice; the renderer still owns and '
+            + 'destroys it; rollback =0',
+        kind: 'refactor',
+        graduationBar: 'delete after one release with no device-loss or leak reports (VRAM census flat over theme visits)',
+        reader: 'flags',
+    },
 
     // ── Odyssey (local readers in OdysseyMode.js / odyssey-url-flags.js / OdysseyBoardController.js /
     //    LevelNodeManager.js) ──

@@ -144,6 +144,37 @@ const LONG_CHAIN = 3;
  */
 const gather = (a, b, cap, share = 0.3) => Math.min(cap, Math.max(a, b) + share * Math.min(a, b));
 
+/**
+ * The baked massif and what is derived from it depend only on the asset and the tier's stride,
+ * and nothing writes to them (the textures, the mesh and the samplers read them): read and derived
+ * once a session. They were about 0.4 s of main thread on every visit, in steps of up to 110 ms that
+ * froze the outgoing theme and the board (docs/THEME_FLEET_240_2026-10.md). The plan stand-in
+ * (no asset) is not kept, so a later visit tries the asset again.
+ */
+let sessionMassif = null;
+const sessionFields = new Map();
+function sessionField(stride) {
+    sessionMassif ??= loadMassif();
+    let kept = sessionFields.get(stride);
+    if (!kept) {
+        const massifLoad = sessionMassif;
+        kept = massifLoad.then(async (massif) => ({ massif, field: await deriveFieldInSteps(massif, stride) }));
+        sessionFields.set(stride, kept);
+        kept.then(({ massif }) => {
+            if (massif.source === 'asset') return;
+            if (sessionMassif === massifLoad) sessionMassif = null;
+            sessionFields.delete(stride);
+        }, () => sessionFields.delete(stride));
+    }
+    return kept;
+}
+
+/** Forget the session's massif (tests that decide when and what it loads). */
+export function forgetSessionMassif() {
+    sessionMassif = null;
+    sessionFields.clear();
+}
+
 export class HimalayanPeakWorld {
     /**
      * @param {object} params
@@ -295,7 +326,12 @@ export class HimalayanPeakWorld {
      * @returns {Promise<{ source: 'asset' | 'plan' }>}
      */
     async load() {
-        if (!this.massif) this.massif = await loadMassif();
+        if (!this.massif) {
+            const kept = await sessionField(this.tier.stride);
+            this.massif = kept.massif;
+            if (!this.disposed) this.field = kept.field;
+            return { source: kept.massif.source };
+        }
         const { massif } = this;
         if (this.disposed) return { source: massif.source };
         const field = await deriveFieldInSteps(massif, this.tier.stride);

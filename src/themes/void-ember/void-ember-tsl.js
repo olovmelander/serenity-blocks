@@ -91,6 +91,14 @@ export const veHash33 = /* @__PURE__ */ Fn(([pIn]) => {
 /** The plates' bake, made once per page: every world (a rebuild, a quality change) shares it. */
 let platesBake = null;
 
+/** Whether the plates are baked (void-ember-bakes.js asks before baking them in its worker). */
+export const hasPlatesBake = () => platesBake !== null;
+
+/** Keep the plates a worker baked (bakePlates' own result, with its defaults). */
+export function keepPlatesBake(bake) {
+    if (!platesBake && bake?.data && bake.width > 0 && bake.height > 0) platesBake = bake;
+}
+
 /** The crust's plates as a texture (bakePlates). Bilinear and no mips: R and B are distances. */
 export function createPlatesTexture() {
     if (!platesBake) platesBake = bakePlates();

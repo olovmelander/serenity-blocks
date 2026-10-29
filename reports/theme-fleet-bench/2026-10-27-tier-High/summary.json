@@ -1,0 +1,4771 @@
+{
+ "meta": {
+  "tag": "tier-High",
+  "baseUrl": "http://127.0.0.1:4317",
+  "quality": "High",
+  "targetFps": 0,
+  "vsync": false,
+  "size": [
+   1707,
+   1067
+  ],
+  "scale": 1.5,
+  "anchor": "nimbus-veil",
+  "query": {},
+  "lowPowerGpu": false,
+  "switches": "",
+  "startedAt": "2026-10-27T15:09:00.921Z",
+  "host": "LAPTOP-F5V3G28E",
+  "cpu": "AMD Ryzen 9 9955HX3D 16-Core Processor         ",
+  "partial": "22 of 63 (stopped early)"
+ },
+ "rows": [
+  {
+   "theme": "aether-tides",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 3880,
+    "fps": 969.4,
+    "p50": 0.9,
+    "p95": 1.6,
+    "p99": 2.9,
+    "max": 14.1,
+    "overBudget": 31,
+    "overBudgetPct": 0.8,
+    "janks": 32,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 0.85,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.27,
+     "utility": 0,
+     "renderer": 1.25
+    },
+    "presentFps": 969.7,
+    "busyP50": 0.5,
+    "busyP95": 1,
+    "cpuInRender": {
+     "n": 3881,
+     "p50": 0.8,
+     "p95": 1.7
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3881,
+     "p50": 20,
+     "p95": 33
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "aether-tides",
+    "gpuUtil": {
+     "n": 20,
+     "util": 82.5,
+     "clockMHz": 232,
+     "powerW": 67.7,
+     "tempC": 60.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 7.1,
+     "utility": 0,
+     "renderer": 3.9
+    }
+   },
+   "storm1": {
+    "frames": 3475,
+    "fps": 868.5,
+    "p50": 1.1,
+    "p95": 2,
+    "p99": 2.8,
+    "max": 10.9,
+    "overBudget": 14,
+    "overBudgetPct": 0.4,
+    "janks": 15,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 0.98,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.21,
+     "utility": 0,
+     "renderer": 1.15
+    },
+    "presentFps": 868.2,
+    "busyP50": 0.6,
+    "busyP95": 1.4,
+    "cpuInRender": {
+     "n": 3476,
+     "p50": 1,
+     "p95": 2.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3476,
+     "p50": 20,
+     "p95": 33
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "aether-tides",
+    "gpuUtil": {
+     "n": 20,
+     "util": 85.5,
+     "clockMHz": 232,
+     "powerW": 72.3,
+     "tempC": 60.8
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.9,
+     "utility": 0,
+     "renderer": 3.6
+    }
+   },
+   "storm2": {
+    "frames": 3343,
+    "fps": 837,
+    "p50": 1.1,
+    "p95": 2,
+    "p99": 2.46,
+    "max": 8.1,
+    "overBudget": 10,
+    "overBudgetPct": 0.3,
+    "janks": 11,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.05,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.21,
+     "utility": 0,
+     "renderer": 1.12
+    },
+    "presentFps": 835.5,
+    "busyP50": 0.7,
+    "busyP95": 1.5,
+    "cpuInRender": {
+     "n": 3344,
+     "p50": 1.1,
+     "p95": 2.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3344,
+     "p50": 20,
+     "p95": 33
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "aether-tides",
+    "gpuUtil": {
+     "n": 20,
+     "util": 88,
+     "clockMHz": 232,
+     "powerW": 72.1,
+     "tempC": 61.8
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.9,
+     "utility": 0,
+     "renderer": 3.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 573.7,
+    "running": 1264.9,
+    "settled": 1264.9,
+    "shown": 1517.8,
+    "full": 3637.5,
+    "timedOut": false,
+    "pipelines": 23,
+    "syncPipelines": 1,
+    "pipeLast": 682,
+    "longestFrameMs": 52.9,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 53,
+    "longTaskMaxMs": 0,
+    "longTaskSumMs": 0,
+    "longTasks": 0,
+    "topLoafs": [
+     {
+      "start": 14641.7,
+      "dur": 51.7,
+      "block": 0,
+      "render": 44.9,
+      "scripts": [
+       {
+        "d": 44,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "aurora",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 3397,
+    "fps": 849.4,
+    "p50": 1.1,
+    "p95": 2.1,
+    "p99": 2.9,
+    "max": 9.7,
+    "overBudget": 18,
+    "overBudgetPct": 0.5,
+    "janks": 21,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.02,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.18,
+     "utility": 0,
+     "renderer": 1.09
+    },
+    "presentFps": 849,
+    "busyP50": 0.8,
+    "busyP95": 1.8,
+    "cpuInRender": {
+     "n": 3398,
+     "p50": 1.5,
+     "p95": 4.5
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3398,
+     "p50": 30,
+     "p95": 31
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "aurora",
+    "gpuUtil": {
+     "n": 20,
+     "util": 86.8,
+     "clockMHz": 232,
+     "powerW": 69.1,
+     "tempC": 60.1
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.8,
+     "utility": 0,
+     "renderer": 3.4
+    }
+   },
+   "storm1": {
+    "frames": 3358,
+    "fps": 839.2,
+    "p50": 1.1,
+    "p95": 2.1,
+    "p99": 3,
+    "max": 9.5,
+    "overBudget": 22,
+    "overBudgetPct": 0.7,
+    "janks": 22,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.04,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.18,
+     "utility": 0,
+     "renderer": 1.12
+    },
+    "presentFps": 839.2,
+    "busyP50": 0.8,
+    "busyP95": 1.8,
+    "cpuInRender": {
+     "n": 3359,
+     "p50": 1.4,
+     "p95": 3.91
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3359,
+     "p50": 30,
+     "p95": 31
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "aurora",
+    "gpuUtil": {
+     "n": 20,
+     "util": 87,
+     "clockMHz": 232,
+     "powerW": 71.4,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.8,
+     "utility": 0,
+     "renderer": 3.5
+    }
+   },
+   "storm2": {
+    "frames": 3324,
+    "fps": 831.1,
+    "p50": 1.1,
+    "p95": 2.1,
+    "p99": 2.9,
+    "max": 8.8,
+    "overBudget": 14,
+    "overBudgetPct": 0.4,
+    "janks": 16,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.04,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.18,
+     "utility": 0,
+     "renderer": 1.12
+    },
+    "presentFps": 830.9,
+    "busyP50": 0.8,
+    "busyP95": 1.8,
+    "cpuInRender": {
+     "n": 3325,
+     "p50": 1.4,
+     "p95": 4.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3325,
+     "p50": 30,
+     "p95": 31
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "aurora",
+    "gpuUtil": {
+     "n": 20,
+     "util": 86.5,
+     "clockMHz": 232,
+     "powerW": 70.7,
+     "tempC": 60.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.8,
+     "utility": 0,
+     "renderer": 3.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 698.6,
+    "running": 1195.5,
+    "settled": 1195.5,
+    "shown": 1446.5,
+    "full": 3569.4,
+    "timedOut": false,
+    "pipelines": 27,
+    "syncPipelines": 2,
+    "pipeLast": 769.4,
+    "longestFrameMs": 178,
+    "framesOver50": 1,
+    "framesOver100": 1,
+    "frozenMs": 178,
+    "longTaskMaxMs": 113,
+    "longTaskSumMs": 178,
+    "longTasks": 2,
+    "topLoafs": [
+     {
+      "start": 14255.1,
+      "dur": 179.2,
+      "block": 62.9,
+      "render": 112.9,
+      "scripts": [
+       {
+        "d": 111.6,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "fall",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 1850,
+    "fps": 462.1,
+    "p50": 2.1,
+    "p95": 3.4,
+    "p99": 4.95,
+    "max": 10,
+    "overBudget": 27,
+    "overBudgetPct": 1.5,
+    "janks": 34,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.06,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.93
+    },
+    "presentFps": 462.4,
+    "busyP50": 1.8,
+    "busyP95": 2.7,
+    "cpuInRender": {
+     "n": 1851,
+     "p50": 3,
+     "p95": 4.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1851,
+     "p50": 55,
+     "p95": 55
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "fall",
+    "gpuUtil": {
+     "n": 20,
+     "util": 95.3,
+     "clockMHz": 232,
+     "powerW": 72.8,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 2.9
+    }
+   },
+   "storm1": {
+    "frames": 1869,
+    "fps": 467.1,
+    "p50": 2,
+    "p95": 3.5,
+    "p99": 4.2,
+    "max": 8.1,
+    "overBudget": 13,
+    "overBudgetPct": 0.7,
+    "janks": 20,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.07,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 1.15
+    },
+    "presentFps": 467.2,
+    "busyP50": 1.7,
+    "busyP95": 2.6,
+    "cpuInRender": {
+     "n": 1870,
+     "p50": 1.7,
+     "p95": 3.9
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1870,
+     "p50": 55,
+     "p95": 55
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "fall",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96.5,
+     "clockMHz": 232,
+     "powerW": 73,
+     "tempC": 59.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 3.6
+    }
+   },
+   "storm2": {
+    "frames": 1814,
+    "fps": 453.3,
+    "p50": 2.1,
+    "p95": 3.7,
+    "p99": 4.2,
+    "max": 10.7,
+    "overBudget": 17,
+    "overBudgetPct": 0.9,
+    "janks": 22,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.12,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 1.12
+    },
+    "presentFps": 453.4,
+    "busyP50": 1.8,
+    "busyP95": 2.9,
+    "cpuInRender": {
+     "n": 1815,
+     "p50": 1.8,
+     "p95": 3.9
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1815,
+     "p50": 55,
+     "p95": 55
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "fall",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96,
+     "clockMHz": 232,
+     "powerW": 73.1,
+     "tempC": 59.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 3.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 650.6,
+    "running": 1299.7,
+    "settled": 1299.7,
+    "shown": 1549.7,
+    "full": 3675.1,
+    "timedOut": false,
+    "pipelines": 66,
+    "syncPipelines": 2,
+    "pipeLast": 2415.2,
+    "longestFrameMs": 93.3,
+    "framesOver50": 2,
+    "framesOver100": 0,
+    "frozenMs": 148,
+    "longTaskMaxMs": 92,
+    "longTaskSumMs": 152,
+    "longTasks": 2,
+    "topLoafs": [
+     {
+      "start": 14408.4,
+      "dur": 95.6,
+      "block": 44.4,
+      "render": 2.4,
+      "scripts": [
+       {
+        "d": 92,
+        "fn": "",
+        "url": "three-BQHMpuAo.js",
+        "inv": "Response.arrayBuffer.then"
+       }
+      ]
+     },
+     {
+      "start": 14753,
+      "dur": 60,
+      "block": 9.9,
+      "render": 59.9,
+      "scripts": [
+       {
+        "d": 58.6,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "forest",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 1546,
+    "fps": 386.6,
+    "p50": 2.6,
+    "p95": 3.77,
+    "p99": 4.65,
+    "max": 6.2,
+    "overBudget": 28,
+    "overBudgetPct": 1.8,
+    "janks": 34,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.5,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.83
+    },
+    "presentFps": 386.6,
+    "busyP50": 2.3,
+    "busyP95": 3.2,
+    "cpuInRender": {
+     "n": 1547,
+     "p50": 3.8,
+     "p95": 5.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1547,
+     "p50": 61,
+     "p95": 61
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "forest",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96.8,
+     "clockMHz": 232,
+     "powerW": 74.3,
+     "tempC": 57.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 2.6
+    }
+   },
+   "storm1": {
+    "frames": 1479,
+    "fps": 369.8,
+    "p50": 2.7,
+    "p95": 4.1,
+    "p99": 4.7,
+    "max": 5.3,
+    "overBudget": 42,
+    "overBudgetPct": 2.8,
+    "janks": 62,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.62,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.89,
+     "utility": 0,
+     "renderer": 1.02
+    },
+    "presentFps": 369.9,
+    "busyP50": 2.3,
+    "busyP95": 3.4,
+    "cpuInRender": {
+     "n": 1480,
+     "p50": 2.8,
+     "p95": 5
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1480,
+     "p50": 61,
+     "p95": 61
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "forest",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96.8,
+     "clockMHz": 232,
+     "powerW": 74.5,
+     "tempC": 57.6
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.9,
+     "utility": 0,
+     "renderer": 3.2
+    }
+   },
+   "storm2": {
+    "frames": 1455,
+    "fps": 363.8,
+    "p50": 2.6,
+    "p95": 4.3,
+    "p99": 7.25,
+    "max": 9.9,
+    "overBudget": 64,
+    "overBudgetPct": 4.4,
+    "janks": 94,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.65,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 1.06
+    },
+    "presentFps": 363.7,
+    "busyP50": 2.2,
+    "busyP95": 3.52,
+    "cpuInRender": {
+     "n": 1456,
+     "p50": 2,
+     "p95": 4.9
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1456,
+     "p50": 61,
+     "p95": 61
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "forest",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96.5,
+     "clockMHz": 232,
+     "powerW": 73.3,
+     "tempC": 58
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 3.3
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 723,
+    "running": 1511.6,
+    "settled": 1511.6,
+    "shown": 1762.6,
+    "full": 3885.9,
+    "timedOut": false,
+    "pipelines": 81,
+    "syncPipelines": 3,
+    "pipeLast": 1090.2,
+    "longestFrameMs": 55.1,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 55,
+    "longTaskMaxMs": 68,
+    "longTaskSumMs": 68,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14690.3,
+      "dur": 71.4,
+      "block": 21.3,
+      "render": 2.5,
+      "scripts": [
+       {
+        "d": 68.5,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "galaxy",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2607,
+    "fps": 651.6,
+    "p50": 1.5,
+    "p95": 1.8,
+    "p99": 2.3,
+    "max": 4.8,
+    "overBudget": 1,
+    "overBudgetPct": 0,
+    "janks": 1,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.43,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.89,
+     "utility": 0,
+     "renderer": 0.83
+    },
+    "presentFps": 651.6,
+    "busyP50": 0.5,
+    "busyP95": 1.1,
+    "cpuInRender": {
+     "n": 2608,
+     "p50": 0.8,
+     "p95": 2.1
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2608,
+     "p50": 25,
+     "p95": 25
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "galaxy",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93.3,
+     "clockMHz": 232,
+     "powerW": 76.6,
+     "tempC": 62
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.9,
+     "utility": 0,
+     "renderer": 2.6
+    }
+   },
+   "storm1": {
+    "frames": 2311,
+    "fps": 577.8,
+    "p50": 1.7,
+    "p95": 2.2,
+    "p99": 5.88,
+    "max": 12.9,
+    "overBudget": 28,
+    "overBudgetPct": 1.2,
+    "janks": 28,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.63,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.82,
+     "utility": 0,
+     "renderer": 0.83
+    },
+    "presentFps": 577.5,
+    "busyP50": 0.5,
+    "busyP95": 1.4,
+    "cpuInRender": {
+     "n": 2312,
+     "p50": 0.8,
+     "p95": 2.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2312,
+     "p50": 25,
+     "p95": 25
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "galaxy",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93.9,
+     "clockMHz": 232,
+     "powerW": 74.1,
+     "tempC": 62.2
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.7,
+     "utility": 0,
+     "renderer": 2.6
+    }
+   },
+   "storm2": {
+    "frames": 2175,
+    "fps": 543.7,
+    "p50": 1.8,
+    "p95": 2.2,
+    "p99": 2.5,
+    "max": 6.7,
+    "overBudget": 7,
+    "overBudgetPct": 0.3,
+    "janks": 7,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.73,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.76,
+     "utility": 0,
+     "renderer": 0.8
+    },
+    "presentFps": 543.3,
+    "busyP50": 0.5,
+    "busyP95": 1.5,
+    "cpuInRender": {
+     "n": 2176,
+     "p50": 0.8,
+     "p95": 2.7
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2176,
+     "p50": 25,
+     "p95": 25
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "galaxy",
+    "gpuUtil": {
+     "n": 20,
+     "util": 94.2,
+     "clockMHz": 232,
+     "powerW": 77.3,
+     "tempC": 62.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.5,
+     "utility": 0,
+     "renderer": 2.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 568.8,
+    "running": 1161.6,
+    "settled": 1161.6,
+    "shown": 1416.6,
+    "full": 3536.5,
+    "timedOut": false,
+    "pipelines": 19,
+    "syncPipelines": 1,
+    "pipeLast": 633.3,
+    "longestFrameMs": 69.2,
+    "framesOver50": 2,
+    "framesOver100": 0,
+    "frozenMs": 123,
+    "longTaskMaxMs": 56,
+    "longTaskSumMs": 56,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14601.4,
+      "dur": 62.3,
+      "block": 6.5,
+      "render": 56.5,
+      "scripts": [
+       {
+        "d": 46.5,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       },
+       {
+        "d": 9.6,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     },
+     {
+      "start": 14351.6,
+      "dur": 58.4,
+      "block": 0,
+      "render": 13.7,
+      "scripts": [
+       {
+        "d": 11.5,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "halcyon-apex",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 3355,
+    "fps": 838.7,
+    "p50": 1.2,
+    "p95": 1.6,
+    "p99": 2.3,
+    "max": 4.3,
+    "overBudget": 0,
+    "overBudgetPct": 0,
+    "janks": 1,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.09,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.24,
+     "utility": 0,
+     "renderer": 1.25
+    },
+    "presentFps": 838.5,
+    "busyP50": 0.8,
+    "busyP95": 1.1,
+    "cpuInRender": {
+     "n": 3356,
+     "p50": 1.6,
+     "p95": 2.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3356,
+     "p50": 49.5,
+     "p95": 52
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "halcyon-apex",
+    "gpuUtil": {
+     "n": 20,
+     "util": 91.2,
+     "clockMHz": 232,
+     "powerW": 69.7,
+     "tempC": 58.6
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 7,
+     "utility": 0,
+     "renderer": 3.9
+    }
+   },
+   "storm1": {
+    "frames": 3124,
+    "fps": 780.9,
+    "p50": 1.2,
+    "p95": 1.7,
+    "p99": 5.08,
+    "max": 10.3,
+    "overBudget": 34,
+    "overBudgetPct": 1.1,
+    "janks": 34,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.19,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.24,
+     "utility": 0,
+     "renderer": 1.25
+    },
+    "presentFps": 780.9,
+    "busyP50": 0.8,
+    "busyP95": 1.2,
+    "cpuInRender": {
+     "n": 3125,
+     "p50": 1.6,
+     "p95": 2.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3125,
+     "p50": 52,
+     "p95": 52
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "halcyon-apex",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93,
+     "clockMHz": 232,
+     "powerW": 70,
+     "tempC": 59.3
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 7,
+     "utility": 0,
+     "renderer": 3.9
+    }
+   },
+   "storm2": {
+    "frames": 3078,
+    "fps": 769.2,
+    "p50": 1.3,
+    "p95": 1.7,
+    "p99": 2.8,
+    "max": 10.6,
+    "overBudget": 14,
+    "overBudgetPct": 0.5,
+    "janks": 14,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.18,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.24,
+     "utility": 0,
+     "renderer": 1.25
+    },
+    "presentFps": 769.3,
+    "busyP50": 0.9,
+    "busyP95": 1.2,
+    "cpuInRender": {
+     "n": 3079,
+     "p50": 1.7,
+     "p95": 2.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3079,
+     "p50": 56,
+     "p95": 56
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "halcyon-apex",
+    "gpuUtil": {
+     "n": 20,
+     "util": 90.7,
+     "clockMHz": 232,
+     "powerW": 71.3,
+     "tempC": 59.7
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 7,
+     "utility": 0,
+     "renderer": 3.9
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 618.5,
+    "running": 1226.8,
+    "settled": 1226.8,
+    "shown": 1477.8,
+    "full": 3600.6,
+    "timedOut": false,
+    "pipelines": 44,
+    "syncPipelines": 2,
+    "pipeLast": 791.7,
+    "longestFrameMs": 91.3,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 91,
+    "longTaskMaxMs": 59,
+    "longTaskSumMs": 59,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14295.6,
+      "dur": 91.3,
+      "block": 0,
+      "render": 31.5,
+      "scripts": [
+       {
+        "d": 29.2,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "high-coast",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 1108,
+    "fps": 276.9,
+    "p50": 3.6,
+    "p95": 4.4,
+    "p99": 5.78,
+    "max": 13.8,
+    "overBudget": 58,
+    "overBudgetPct": 5.2,
+    "janks": 13,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.52,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.57,
+     "utility": 0,
+     "renderer": 0.48
+    },
+    "presentFps": 277,
+    "busyP50": 3.3,
+    "busyP95": 4,
+    "cpuInRender": {
+     "n": 1109,
+     "p50": 6.4,
+     "p95": 7.8
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1109,
+     "p50": 43,
+     "p95": 43
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "high-coast",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.5,
+     "clockMHz": 232,
+     "powerW": 81.1,
+     "tempC": 61.1
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.9,
+     "utility": 0,
+     "renderer": 1.5
+    }
+   },
+   "storm1": {
+    "frames": 1134,
+    "fps": 283.4,
+    "p50": 3.5,
+    "p95": 4.24,
+    "p99": 5.17,
+    "max": 10.9,
+    "overBudget": 43,
+    "overBudgetPct": 3.8,
+    "janks": 11,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.44,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.57,
+     "utility": 0,
+     "renderer": 0.48
+    },
+    "presentFps": 283.4,
+    "busyP50": 3.2,
+    "busyP95": 3.9,
+    "cpuInRender": {
+     "n": 1135,
+     "p50": 6.2,
+     "p95": 7.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1135,
+     "p50": 43,
+     "p95": 43
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "high-coast",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.5,
+     "clockMHz": 232,
+     "powerW": 81.1,
+     "tempC": 61.8
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.9,
+     "utility": 0,
+     "renderer": 1.5
+    }
+   },
+   "storm2": {
+    "frames": 1219,
+    "fps": 304.8,
+    "p50": 3.2,
+    "p95": 4.6,
+    "p99": 5.95,
+    "max": 12.3,
+    "overBudget": 71,
+    "overBudgetPct": 5.8,
+    "janks": 53,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.19,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.6,
+     "utility": 0,
+     "renderer": 0.58
+    },
+    "presentFps": 304.7,
+    "busyP50": 3,
+    "busyP95": 4,
+    "cpuInRender": {
+     "n": 1220,
+     "p50": 5.6,
+     "p95": 7.51
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1220,
+     "p50": 43,
+     "p95": 44
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "high-coast",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.3,
+     "clockMHz": 232,
+     "powerW": 84.6,
+     "tempC": 62
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5,
+     "utility": 0,
+     "renderer": 1.8
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 1060.2,
+    "running": 1839.3,
+    "settled": 1839.3,
+    "shown": 2097.8,
+    "full": 4217,
+    "timedOut": false,
+    "pipelines": 40,
+    "syncPipelines": 2,
+    "pipeLast": 1921.5,
+    "longestFrameMs": 74,
+    "framesOver50": 3,
+    "framesOver100": 0,
+    "frozenMs": 199,
+    "longTaskMaxMs": 75,
+    "longTaskSumMs": 205,
+    "longTasks": 3,
+    "topLoafs": [
+     {
+      "start": 14691.4,
+      "dur": 76.9,
+      "block": 26.7,
+      "render": 1,
+      "scripts": [
+       {
+        "d": 75.6,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     },
+     {
+      "start": 14511.5,
+      "dur": 76.5,
+      "block": 26,
+      "render": 0.9,
+      "scripts": [
+       {
+        "d": 75.3,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     },
+     {
+      "start": 14449,
+      "dur": 56.9,
+      "block": 6.4,
+      "render": 0.8,
+      "scripts": [
+       {
+        "d": 55.6,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "himalayan-peak",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2395,
+    "fps": 598.6,
+    "p50": 1.6,
+    "p95": 2,
+    "p99": 3.21,
+    "max": 12.2,
+    "overBudget": 20,
+    "overBudgetPct": 0.8,
+    "janks": 20,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.6,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.95,
+     "utility": 0,
+     "renderer": 0.86
+    },
+    "presentFps": 598.7,
+    "busyP50": 0.6,
+    "busyP95": 1.1,
+    "cpuInRender": {
+     "n": 2396,
+     "p50": 1,
+     "p95": 2
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2396,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "himalayan-peak",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96,
+     "clockMHz": 232,
+     "powerW": 75,
+     "tempC": 59.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.1,
+     "utility": 0,
+     "renderer": 2.7
+    }
+   },
+   "storm1": {
+    "frames": 2368,
+    "fps": 592.3,
+    "p50": 1.7,
+    "p95": 2.1,
+    "p99": 2.5,
+    "max": 4.9,
+    "overBudget": 1,
+    "overBudgetPct": 0,
+    "janks": 1,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.51,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.83
+    },
+    "presentFps": 592.1,
+    "busyP50": 0.6,
+    "busyP95": 1.1,
+    "cpuInRender": {
+     "n": 2369,
+     "p50": 1,
+     "p95": 1.9
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2369,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "himalayan-peak",
+    "gpuUtil": {
+     "n": 20,
+     "util": 89.2,
+     "clockMHz": 232,
+     "powerW": 73.5,
+     "tempC": 59.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 2.6
+    }
+   },
+   "storm2": {
+    "frames": 2364,
+    "fps": 590.9,
+    "p50": 1.7,
+    "p95": 2,
+    "p99": 3.34,
+    "max": 10.1,
+    "overBudget": 19,
+    "overBudgetPct": 0.8,
+    "janks": 19,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.6,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.86
+    },
+    "presentFps": 590.9,
+    "busyP50": 0.6,
+    "busyP95": 1.3,
+    "cpuInRender": {
+     "n": 2365,
+     "p50": 1,
+     "p95": 2.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2365,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "himalayan-peak",
+    "gpuUtil": {
+     "n": 20,
+     "util": 94.8,
+     "clockMHz": 232,
+     "powerW": 77.8,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 2.7
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 899.3,
+    "running": 1315.5,
+    "settled": 1315.5,
+    "shown": 1568.4,
+    "full": 3691.8,
+    "timedOut": false,
+    "pipelines": 22,
+    "syncPipelines": 2,
+    "pipeLast": 961.8,
+    "longestFrameMs": 107.2,
+    "framesOver50": 3,
+    "framesOver100": 1,
+    "frozenMs": 248,
+    "longTaskMaxMs": 110,
+    "longTaskSumMs": 214,
+    "longTasks": 3,
+    "topLoafs": [
+     {
+      "start": 14377.6,
+      "dur": 111.7,
+      "block": 61.5,
+      "render": 1.3,
+      "scripts": [
+       {
+        "d": 110.2,
+        "fn": "",
+        "url": "theme-himalayan-peak-C1peiqc1.js",
+        "inv": "Response.arrayBuffer.then"
+       }
+      ]
+     },
+     {
+      "start": 14636.9,
+      "dur": 72.1,
+      "block": 20.1,
+      "render": 16,
+      "scripts": [
+       {
+        "d": 54.1,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       },
+       {
+        "d": 14.6,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     },
+     {
+      "start": 13407,
+      "dur": 59.8,
+      "block": 9.3,
+      "render": 59.3,
+      "scripts": [
+       {
+        "d": 58.8,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "ice-temple",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2859,
+    "fps": 714.3,
+    "p50": 1.4,
+    "p95": 1.8,
+    "p99": 2.6,
+    "max": 4,
+    "overBudget": 0,
+    "overBudgetPct": 0,
+    "janks": 0,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.35,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.08,
+     "utility": 0,
+     "renderer": 1.02
+    },
+    "presentFps": 714.5,
+    "busyP50": 1,
+    "busyP95": 1.3,
+    "cpuInRender": {
+     "n": 2860,
+     "p50": 1.8,
+     "p95": 2.5
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2860,
+     "p50": 31,
+     "p95": 31
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "ice-temple",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96.2,
+     "clockMHz": 232,
+     "powerW": 73.9,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.5,
+     "utility": 0,
+     "renderer": 3.2
+    }
+   },
+   "storm1": {
+    "frames": 2572,
+    "fps": 642.9,
+    "p50": 1.5,
+    "p95": 2,
+    "p99": 2.6,
+    "max": 4.9,
+    "overBudget": 1,
+    "overBudgetPct": 0,
+    "janks": 1,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.47,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.98,
+     "utility": 0,
+     "renderer": 0.96
+    },
+    "presentFps": 642.9,
+    "busyP50": 1.1,
+    "busyP95": 1.6,
+    "cpuInRender": {
+     "n": 2573,
+     "p50": 2,
+     "p95": 3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2573,
+     "p50": 31,
+     "p95": 31
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "ice-temple",
+    "gpuUtil": {
+     "n": 20,
+     "util": 94.8,
+     "clockMHz": 232,
+     "powerW": 75.2,
+     "tempC": 60.8
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.2,
+     "utility": 0,
+     "renderer": 3
+    }
+   },
+   "storm2": {
+    "frames": 2183,
+    "fps": 545.7,
+    "p50": 1.7,
+    "p95": 2.5,
+    "p99": 6.72,
+    "max": 12.9,
+    "overBudget": 51,
+    "overBudgetPct": 2.3,
+    "janks": 53,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.75,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.89,
+     "utility": 0,
+     "renderer": 0.9
+    },
+    "presentFps": 545.7,
+    "busyP50": 1.3,
+    "busyP95": 1.9,
+    "cpuInRender": {
+     "n": 2184,
+     "p50": 2.4,
+     "p95": 3.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2184,
+     "p50": 31,
+     "p95": 31
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "ice-temple",
+    "gpuUtil": {
+     "n": 20,
+     "util": 95.3,
+     "clockMHz": 232,
+     "powerW": 73,
+     "tempC": 61.1
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.9,
+     "utility": 0,
+     "renderer": 2.8
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 607.5,
+    "running": 1489.4,
+    "settled": 1489.4,
+    "shown": 1742.3,
+    "full": 3863.5,
+    "timedOut": false,
+    "pipelines": 27,
+    "syncPipelines": 2,
+    "pipeLast": 717.2,
+    "longestFrameMs": 106.7,
+    "framesOver50": 2,
+    "framesOver100": 1,
+    "frozenMs": 180,
+    "longTaskMaxMs": 107,
+    "longTaskSumMs": 176,
+    "longTasks": 2,
+    "topLoafs": [
+     {
+      "start": 14606.2,
+      "dur": 107.8,
+      "block": 57.7,
+      "render": 107.8,
+      "scripts": [
+       {
+        "d": 88.7,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       },
+       {
+        "d": 18.9,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     },
+     {
+      "start": 14337.2,
+      "dur": 85.9,
+      "block": 0,
+      "render": 15.8,
+      "scripts": [
+       {
+        "d": 13.3,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "koi-pond",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2147,
+    "fps": 536.7,
+    "p50": 1.8,
+    "p95": 2.9,
+    "p99": 5.12,
+    "max": 13.3,
+    "overBudget": 28,
+    "overBudgetPct": 1.3,
+    "janks": 28,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.73,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.96
+    },
+    "presentFps": 536.7,
+    "busyP50": 1.4,
+    "busyP95": 1.9,
+    "cpuInRender": {
+     "n": 2148,
+     "p50": 3.8,
+     "p95": 5.365
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2148,
+     "p50": 46,
+     "p95": 47
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.2,
+    "canvasSize": [
+     2049,
+     1280
+    ],
+    "active": "koi-pond",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93,
+     "clockMHz": 232,
+     "powerW": 74.1,
+     "tempC": 60.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 3
+    }
+   },
+   "storm1": {
+    "frames": 2170,
+    "fps": 542.4,
+    "p50": 1.8,
+    "p95": 3,
+    "p99": 3.4,
+    "max": 11.9,
+    "overBudget": 8,
+    "overBudgetPct": 0.4,
+    "janks": 11,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.66,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.99
+    },
+    "presentFps": 542.5,
+    "busyP50": 1.4,
+    "busyP95": 2,
+    "cpuInRender": {
+     "n": 2171,
+     "p50": 3.7,
+     "p95": 5.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2171,
+     "p50": 46,
+     "p95": 47
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.2,
+    "canvasSize": [
+     2049,
+     1280
+    ],
+    "active": "koi-pond",
+    "gpuUtil": {
+     "n": 20,
+     "util": 90.3,
+     "clockMHz": 232,
+     "powerW": 76,
+     "tempC": 60.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 3.1
+    }
+   },
+   "storm2": {
+    "frames": 2092,
+    "fps": 523,
+    "p50": 1.9,
+    "p95": 3.1,
+    "p99": 4.32,
+    "max": 10.6,
+    "overBudget": 21,
+    "overBudgetPct": 1,
+    "janks": 23,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.78,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.98,
+     "utility": 0,
+     "renderer": 1.02
+    },
+    "presentFps": 522.9,
+    "busyP50": 1.4,
+    "busyP95": 2,
+    "cpuInRender": {
+     "n": 2093,
+     "p50": 3.7,
+     "p95": 5.5
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2093,
+     "p50": 46,
+     "p95": 47
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.2,
+    "canvasSize": [
+     2049,
+     1280
+    ],
+    "active": "koi-pond",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93.3,
+     "clockMHz": 232,
+     "powerW": 69.6,
+     "tempC": 60.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.2,
+     "utility": 0,
+     "renderer": 3.2
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 617.2,
+    "running": 1348.4,
+    "settled": 1348.4,
+    "shown": 1600.6,
+    "full": 3723.8,
+    "timedOut": false,
+    "pipelines": 43,
+    "syncPipelines": 2,
+    "pipeLast": 743.7,
+    "longestFrameMs": 54.4,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 54,
+    "longTaskMaxMs": 58,
+    "longTaskSumMs": 58,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14596.8,
+      "dur": 58.9,
+      "block": 8.6,
+      "render": 58.6,
+      "scripts": [
+       {
+        "d": 57.5,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "ocean",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2978,
+    "fps": 744.6,
+    "p50": 1.3,
+    "p95": 2.2,
+    "p99": 2.62,
+    "max": 3.6,
+    "overBudget": 0,
+    "overBudgetPct": 0,
+    "janks": 0,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.25,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.21,
+     "utility": 0,
+     "renderer": 1.06
+    },
+    "presentFps": 744.5,
+    "busyP50": 1,
+    "busyP95": 1.8,
+    "cpuInRender": {
+     "n": 2979,
+     "p50": 1.9,
+     "p95": 3.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2979,
+     "p50": 43,
+     "p95": 43
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "ocean",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93.2,
+     "clockMHz": 232,
+     "powerW": 72.2,
+     "tempC": 60.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.9,
+     "utility": 0,
+     "renderer": 3.3
+    }
+   },
+   "storm1": {
+    "frames": 2506,
+    "fps": 626.5,
+    "p50": 1.5,
+    "p95": 2.4,
+    "p99": 6.2,
+    "max": 11.5,
+    "overBudget": 33,
+    "overBudgetPct": 1.3,
+    "janks": 35,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.38,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.21,
+     "utility": 0,
+     "renderer": 0.99
+    },
+    "presentFps": 626.4,
+    "busyP50": 1.2,
+    "busyP95": 2,
+    "cpuInRender": {
+     "n": 2507,
+     "p50": 2.2,
+     "p95": 3.7
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2507,
+     "p50": 43,
+     "p95": 43
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "ocean",
+    "gpuUtil": {
+     "n": 20,
+     "util": 86.3,
+     "clockMHz": 232,
+     "powerW": 75,
+     "tempC": 61
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.9,
+     "utility": 0,
+     "renderer": 3.1
+    }
+   },
+   "storm2": {
+    "frames": 2216,
+    "fps": 554,
+    "p50": 1.8,
+    "p95": 2.5,
+    "p99": 3.9,
+    "max": 10.6,
+    "overBudget": 19,
+    "overBudgetPct": 0.9,
+    "janks": 19,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.73,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.18,
+     "utility": 0,
+     "renderer": 0.93
+    },
+    "presentFps": 554,
+    "busyP50": 1.4,
+    "busyP95": 2,
+    "cpuInRender": {
+     "n": 2217,
+     "p50": 2.7,
+     "p95": 3.82
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2217,
+     "p50": 43,
+     "p95": 43
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "ocean",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96.1,
+     "clockMHz": 232,
+     "powerW": 74.6,
+     "tempC": 61.6
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.8,
+     "utility": 0,
+     "renderer": 2.9
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 597.8,
+    "running": 1268.1,
+    "settled": 1268.1,
+    "shown": 1521.1,
+    "full": 3638.4,
+    "timedOut": false,
+    "pipelines": 31,
+    "syncPipelines": 2,
+    "pipeLast": 701.1,
+    "longestFrameMs": 88,
+    "framesOver50": 2,
+    "framesOver100": 0,
+    "frozenMs": 142,
+    "longTaskMaxMs": 91,
+    "longTaskSumMs": 91,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14562.2,
+      "dur": 91.1,
+      "block": 41.1,
+      "render": 91,
+      "scripts": [
+       {
+        "d": 50.6,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       },
+       {
+        "d": 40.2,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     },
+     {
+      "start": 14339.5,
+      "dur": 68.6,
+      "block": 0,
+      "render": 20.2,
+      "scripts": [
+       {
+        "d": 17.8,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "rainbark",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2039,
+    "fps": 509.6,
+    "p50": 2,
+    "p95": 2.3,
+    "p99": 2.7,
+    "max": 10.2,
+    "overBudget": 3,
+    "overBudgetPct": 0.1,
+    "janks": 3,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.91,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.79,
+     "utility": 0,
+     "renderer": 0.8
+    },
+    "presentFps": 509.2,
+    "busyP50": 1.6,
+    "busyP95": 1.9,
+    "cpuInRender": {
+     "n": 2040,
+     "p50": 3,
+     "p95": 3.7
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2040,
+     "p50": 24,
+     "p95": 24
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "rainbark",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.5,
+     "clockMHz": 232,
+     "powerW": 77.3,
+     "tempC": 61.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.6,
+     "utility": 0,
+     "renderer": 2.5
+    }
+   },
+   "storm1": {
+    "frames": 1951,
+    "fps": 487.3,
+    "p50": 2,
+    "p95": 2.5,
+    "p99": 3,
+    "max": 10,
+    "overBudget": 11,
+    "overBudgetPct": 0.6,
+    "janks": 11,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.94,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.76,
+     "utility": 0,
+     "renderer": 0.77
+    },
+    "presentFps": 487.7,
+    "busyP50": 1.7,
+    "busyP95": 2,
+    "cpuInRender": {
+     "n": 1952,
+     "p50": 3.2,
+     "p95": 3.9
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1952,
+     "p50": 24,
+     "p95": 24
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "rainbark",
+    "gpuUtil": {
+     "n": 20,
+     "util": 94.3,
+     "clockMHz": 232,
+     "powerW": 79.2,
+     "tempC": 62
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.5,
+     "utility": 0,
+     "renderer": 2.4
+    }
+   },
+   "storm2": {
+    "frames": 1870,
+    "fps": 467.5,
+    "p50": 2.1,
+    "p95": 2.55,
+    "p99": 3.55,
+    "max": 10.3,
+    "overBudget": 18,
+    "overBudgetPct": 1,
+    "janks": 18,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.09,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.76,
+     "utility": 0,
+     "renderer": 0.77
+    },
+    "presentFps": 467.5,
+    "busyP50": 1.7,
+    "busyP95": 2.1,
+    "cpuInRender": {
+     "n": 1871,
+     "p50": 3.3,
+     "p95": 4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1871,
+     "p50": 24,
+     "p95": 24
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "rainbark",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.6,
+     "clockMHz": 232,
+     "powerW": 79.6,
+     "tempC": 62
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.5,
+     "utility": 0,
+     "renderer": 2.4
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 656.8,
+    "running": 2095.1,
+    "settled": 2095.1,
+    "shown": 2349,
+    "full": 4467.4,
+    "timedOut": false,
+    "pipelines": 19,
+    "syncPipelines": 1,
+    "pipeLast": 912.4,
+    "longestFrameMs": 133.3,
+    "framesOver50": 3,
+    "framesOver100": 1,
+    "frozenMs": 295,
+    "longTaskMaxMs": 91,
+    "longTaskSumMs": 240,
+    "longTasks": 3,
+    "topLoafs": [
+     {
+      "start": 14397.6,
+      "dur": 133.1,
+      "block": 40.7,
+      "render": 90.7,
+      "scripts": [
+       {
+        "d": 87.5,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     },
+     {
+      "start": 14593.6,
+      "dur": 95.9,
+      "block": 40.6,
+      "render": 90.6,
+      "scripts": [
+       {
+        "d": 89.4,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     },
+     {
+      "start": 14531,
+      "dur": 62.4,
+      "block": 9.1,
+      "render": 59,
+      "scripts": [
+       {
+        "d": 57.1,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "sakura-twilight",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 1563,
+    "fps": 390.7,
+    "p50": 2.5,
+    "p95": 3.9,
+    "p99": 4.54,
+    "max": 7.2,
+    "overBudget": 27,
+    "overBudgetPct": 1.7,
+    "janks": 49,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.44,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.02,
+     "utility": 0,
+     "renderer": 1.06
+    },
+    "presentFps": 390.7,
+    "busyP50": 2.3,
+    "busyP95": 3.2,
+    "cpuInRender": {
+     "n": 1564,
+     "p50": 4.5,
+     "p95": 6.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1564,
+     "p50": 96,
+     "p95": 96
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "sakura-twilight",
+    "gpuUtil": {
+     "n": 20,
+     "util": 95.3,
+     "clockMHz": 232,
+     "powerW": 72.5,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.3,
+     "utility": 0,
+     "renderer": 3.3
+    }
+   },
+   "storm1": {
+    "frames": 1423,
+    "fps": 355.5,
+    "p50": 2.7,
+    "p95": 4.29,
+    "p99": 6.88,
+    "max": 16.9,
+    "overBudget": 62,
+    "overBudgetPct": 4.4,
+    "janks": 77,
+    "over16": 1,
+    "over33": 0,
+    "gpuMsEst": 2.66,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.98,
+     "utility": 0,
+     "renderer": 1.31
+    },
+    "presentFps": 355.6,
+    "busyP50": 2.4,
+    "busyP95": 3.7,
+    "cpuInRender": {
+     "n": 1424,
+     "p50": 4.9,
+     "p95": 7.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1424,
+     "p50": 96,
+     "p95": 96
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "sakura-twilight",
+    "gpuUtil": {
+     "n": 20,
+     "util": 94.7,
+     "clockMHz": 232,
+     "powerW": 69.6,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.2,
+     "utility": 0,
+     "renderer": 4.1
+    }
+   },
+   "storm2": {
+    "frames": 1435,
+    "fps": 358.8,
+    "p50": 2.7,
+    "p95": 4.1,
+    "p99": 5,
+    "max": 10.9,
+    "overBudget": 46,
+    "overBudgetPct": 3.2,
+    "janks": 66,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.66,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.08,
+     "utility": 0,
+     "renderer": 1.44
+    },
+    "presentFps": 358.9,
+    "busyP50": 2.4,
+    "busyP95": 3.6,
+    "cpuInRender": {
+     "n": 1436,
+     "p50": 5.1,
+     "p95": 7.5
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1436,
+     "p50": 96,
+     "p95": 96
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "sakura-twilight",
+    "gpuUtil": {
+     "n": 20,
+     "util": 95.6,
+     "clockMHz": 232,
+     "powerW": 67.5,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.5,
+     "utility": 0,
+     "renderer": 4.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 754.5,
+    "running": 1684.3,
+    "settled": 1684.3,
+    "shown": 1938.7,
+    "full": 4059,
+    "timedOut": false,
+    "pipelines": 98,
+    "syncPipelines": 3,
+    "pipeLast": 1173.5,
+    "longestFrameMs": 38.4,
+    "framesOver50": 0,
+    "framesOver100": 0,
+    "frozenMs": 0,
+    "longTaskMaxMs": 0,
+    "longTaskSumMs": 0,
+    "longTasks": 0,
+    "topLoafs": []
+   },
+   "load2": null
+  },
+  {
+   "theme": "serenity-warp",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 3916,
+    "fps": 978.8,
+    "p50": 1,
+    "p95": 1.5,
+    "p99": 2.8,
+    "max": 14.9,
+    "overBudget": 29,
+    "overBudgetPct": 0.7,
+    "janks": 29,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 0.94,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.24,
+     "utility": 0,
+     "renderer": 1.22
+    },
+    "presentFps": 978.8,
+    "busyP50": 0.6,
+    "busyP95": 1,
+    "cpuInRender": {
+     "n": 3917,
+     "p50": 1.1,
+     "p95": 1.72
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3917,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "serenity-warp",
+    "gpuUtil": {
+     "n": 20,
+     "util": 91.7,
+     "clockMHz": 232,
+     "powerW": 70,
+     "tempC": 60.3
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 7,
+     "utility": 0,
+     "renderer": 3.8
+    }
+   },
+   "storm1": {
+    "frames": 3460,
+    "fps": 865,
+    "p50": 1.1,
+    "p95": 1.7,
+    "p99": 2.6,
+    "max": 11.8,
+    "overBudget": 15,
+    "overBudgetPct": 0.4,
+    "janks": 15,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.04,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.18,
+     "utility": 0,
+     "renderer": 1.12
+    },
+    "presentFps": 864.9,
+    "busyP50": 0.8,
+    "busyP95": 1.2,
+    "cpuInRender": {
+     "n": 3461,
+     "p50": 1.3,
+     "p95": 2.2
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3461,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "serenity-warp",
+    "gpuUtil": {
+     "n": 20,
+     "util": 90.3,
+     "clockMHz": 232,
+     "powerW": 72.1,
+     "tempC": 60.7
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.8,
+     "utility": 0,
+     "renderer": 3.5
+    }
+   },
+   "storm2": {
+    "frames": 3201,
+    "fps": 800.1,
+    "p50": 1.2,
+    "p95": 1.7,
+    "p99": 2.6,
+    "max": 9.5,
+    "overBudget": 16,
+    "overBudgetPct": 0.5,
+    "janks": 16,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.16,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.11,
+     "utility": 0,
+     "renderer": 1.06
+    },
+    "presentFps": 800,
+    "busyP50": 0.9,
+    "busyP95": 1.3,
+    "cpuInRender": {
+     "n": 3202,
+     "p50": 1.6,
+     "p95": 2.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3202,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "serenity-warp",
+    "gpuUtil": {
+     "n": 20,
+     "util": 92.7,
+     "clockMHz": 232,
+     "powerW": 72.2,
+     "tempC": 61
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.6,
+     "utility": 0,
+     "renderer": 3.3
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 570.5,
+    "running": 1177,
+    "settled": 1177,
+    "shown": 1433,
+    "full": 3552.7,
+    "timedOut": false,
+    "pipelines": 15,
+    "syncPipelines": 1,
+    "pipeLast": 628.1,
+    "longestFrameMs": 83.9,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 84,
+    "longTaskMaxMs": 73,
+    "longTaskSumMs": 73,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14610.6,
+      "dur": 73.6,
+      "block": 23.3,
+      "render": 73.3,
+      "scripts": [
+       {
+        "d": 61.8,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       },
+       {
+        "d": 11.2,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "spring",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 1078,
+    "fps": 269.5,
+    "p50": 3.7,
+    "p95": 4.5,
+    "p99": 5.2,
+    "max": 6,
+    "overBudget": 102,
+    "overBudgetPct": 9.5,
+    "janks": 3,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.6,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.66,
+     "utility": 0,
+     "renderer": 0.54
+    },
+    "presentFps": 269.5,
+    "busyP50": 3.5,
+    "busyP95": 4.3,
+    "cpuInRender": {
+     "n": 1079,
+     "p50": 6.8,
+     "p95": 8.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1079,
+     "p50": 74,
+     "p95": 74
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "spring",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97,
+     "clockMHz": 232,
+     "powerW": 81.2,
+     "tempC": 61.4
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.2,
+     "utility": 0,
+     "renderer": 1.7
+    }
+   },
+   "storm1": {
+    "frames": 1079,
+    "fps": 269.8,
+    "p50": 3.7,
+    "p95": 4.6,
+    "p99": 6.64,
+    "max": 10.6,
+    "overBudget": 99,
+    "overBudgetPct": 9.2,
+    "janks": 19,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.61,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.7,
+     "utility": 0,
+     "renderer": 0.58
+    },
+    "presentFps": 269.8,
+    "busyP50": 3.4,
+    "busyP95": 4.2,
+    "cpuInRender": {
+     "n": 1080,
+     "p50": 6.7,
+     "p95": 8.2
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1080,
+     "p50": 74,
+     "p95": 74
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "spring",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.3,
+     "clockMHz": 232,
+     "powerW": 89.5,
+     "tempC": 62
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.3,
+     "utility": 0,
+     "renderer": 1.8
+    }
+   },
+   "storm2": {
+    "frames": 1041,
+    "fps": 260.4,
+    "p50": 3.8,
+    "p95": 4.6,
+    "p99": 5.5,
+    "max": 10.8,
+    "overBudget": 141,
+    "overBudgetPct": 13.5,
+    "janks": 10,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.76,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.66,
+     "utility": 0,
+     "renderer": 0.61
+    },
+    "presentFps": 260.5,
+    "busyP50": 3.6,
+    "busyP95": 4.4,
+    "cpuInRender": {
+     "n": 1042,
+     "p50": 7,
+     "p95": 8.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1042,
+     "p50": 74,
+     "p95": 74
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "spring",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.8,
+     "clockMHz": 232,
+     "powerW": 92.2,
+     "tempC": 62.3
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.2,
+     "utility": 0,
+     "renderer": 1.9
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 8457.5,
+    "running": 9441.8,
+    "settled": 9441.8,
+    "shown": 9693.6,
+    "full": 11813.2,
+    "timedOut": false,
+    "pipelines": 79,
+    "syncPipelines": 2,
+    "pipeLast": 8757.6,
+    "longestFrameMs": 245.4,
+    "framesOver50": 3,
+    "framesOver100": 3,
+    "frozenMs": 558,
+    "longTaskMaxMs": 251,
+    "longTaskSumMs": 555,
+    "longTasks": 3,
+    "topLoafs": [
+     {
+      "start": 14627.5,
+      "dur": 257.4,
+      "block": 202.5,
+      "render": 1.3,
+      "scripts": [
+       {
+        "d": 251.1,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     },
+     {
+      "start": 14432.3,
+      "dur": 195.1,
+      "block": 144.6,
+      "render": 0.8,
+      "scripts": [
+       {
+        "d": 193.7,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     },
+     {
+      "start": 13860.4,
+      "dur": 113.8,
+      "block": 63.6,
+      "render": 1.9,
+      "scripts": [
+       {
+        "d": 110.2,
+        "fn": "",
+        "url": "theme-spring-Cs_6_PG3.js",
+        "inv": "http://127.0.0.1:4317/assets/theme-spring-Cs_6_PG3.js"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "summer",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 1019,
+    "fps": 254.8,
+    "p50": 3.8,
+    "p95": 5.91,
+    "p99": 7.1,
+    "max": 20.6,
+    "overBudget": 316,
+    "overBudgetPct": 31,
+    "janks": 71,
+    "over16": 2,
+    "over33": 0,
+    "gpuMsEst": 3.77,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.05,
+     "utility": 0,
+     "renderer": 0.9
+    },
+    "presentFps": 255,
+    "busyP50": 3.6,
+    "busyP95": 5.3,
+    "cpuInRender": {
+     "n": 1020,
+     "p50": 7,
+     "p95": 10.505
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1020,
+     "p50": 129,
+     "p95": 129
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "summer",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96,
+     "clockMHz": 232,
+     "powerW": 79.8,
+     "tempC": 59.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.4,
+     "utility": 0,
+     "renderer": 2.8
+    }
+   },
+   "storm1": {
+    "frames": 1003,
+    "fps": 251.1,
+    "p50": 3.9,
+    "p95": 6.2,
+    "p99": 7.3,
+    "max": 12.2,
+    "overBudget": 335,
+    "overBudgetPct": 33.4,
+    "janks": 79,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.8,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.05,
+     "utility": 0,
+     "renderer": 1.02
+    },
+    "presentFps": 250.9,
+    "busyP50": 3.5,
+    "busyP95": 5.5,
+    "cpuInRender": {
+     "n": 1004,
+     "p50": 6,
+     "p95": 10.2
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1004,
+     "p50": 134,
+     "p95": 134
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "summer",
+    "gpuUtil": {
+     "n": 20,
+     "util": 95.5,
+     "clockMHz": 232,
+     "powerW": 80,
+     "tempC": 60.1
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.4,
+     "utility": 0,
+     "renderer": 3.2
+    }
+   },
+   "storm2": {
+    "frames": 976,
+    "fps": 244.3,
+    "p50": 3.9,
+    "p95": 6,
+    "p99": 7.2,
+    "max": 13,
+    "overBudget": 354,
+    "overBudgetPct": 36.3,
+    "janks": 68,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.94,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.05,
+     "utility": 0,
+     "renderer": 1.02
+    },
+    "presentFps": 244.1,
+    "busyP50": 3.5,
+    "busyP95": 5.6,
+    "cpuInRender": {
+     "n": 977,
+     "p50": 5.7,
+     "p95": 10.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 977,
+     "p50": 134,
+     "p95": 163
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "summer",
+    "gpuUtil": {
+     "n": 20,
+     "util": 96.3,
+     "clockMHz": 232,
+     "powerW": 80.6,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.4,
+     "utility": 0,
+     "renderer": 3.2
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 923.1,
+    "running": 2179,
+    "settled": 2179,
+    "shown": 2432.5,
+    "full": 4552.3,
+    "timedOut": false,
+    "pipelines": 138,
+    "syncPipelines": 2,
+    "pipeLast": 2043.2,
+    "longestFrameMs": 111.5,
+    "framesOver50": 1,
+    "framesOver100": 1,
+    "frozenMs": 112,
+    "longTaskMaxMs": 107,
+    "longTaskSumMs": 107,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14326.2,
+      "dur": 111.1,
+      "block": 59.5,
+      "render": 2.3,
+      "scripts": [
+       {
+        "d": 107.2,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "sunbraid",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 1250,
+    "fps": 312.7,
+    "p50": 3.2,
+    "p95": 3.7,
+    "p99": 4.55,
+    "max": 13.3,
+    "overBudget": 15,
+    "overBudgetPct": 1.2,
+    "janks": 9,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.1,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.57,
+     "utility": 0,
+     "renderer": 0.48
+    },
+    "presentFps": 312.7,
+    "busyP50": 2.8,
+    "busyP95": 3.3,
+    "cpuInRender": {
+     "n": 1251,
+     "p50": 5.4,
+     "p95": 6.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1251,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "sunbraid",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97,
+     "clockMHz": 232,
+     "powerW": 77,
+     "tempC": 62
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.9,
+     "utility": 0,
+     "renderer": 1.5
+    }
+   },
+   "storm1": {
+    "frames": 1255,
+    "fps": 313.9,
+    "p50": 3.2,
+    "p95": 3.6,
+    "p99": 4.3,
+    "max": 13.6,
+    "overBudget": 11,
+    "overBudgetPct": 0.9,
+    "janks": 4,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.09,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.57,
+     "utility": 0,
+     "renderer": 0.48
+    },
+    "presentFps": 313.9,
+    "busyP50": 2.8,
+    "busyP95": 3.3,
+    "cpuInRender": {
+     "n": 1256,
+     "p50": 5.4,
+     "p95": 6.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1256,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "sunbraid",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97,
+     "clockMHz": 232,
+     "powerW": 78.2,
+     "tempC": 62.4
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.9,
+     "utility": 0,
+     "renderer": 1.5
+    }
+   },
+   "storm2": {
+    "frames": 1253,
+    "fps": 313.3,
+    "p50": 3.1,
+    "p95": 3.74,
+    "p99": 6.84,
+    "max": 15,
+    "overBudget": 36,
+    "overBudgetPct": 2.9,
+    "janks": 30,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 3.1,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.57,
+     "utility": 0,
+     "renderer": 0.51
+    },
+    "presentFps": 313.3,
+    "busyP50": 2.8,
+    "busyP95": 3.3,
+    "cpuInRender": {
+     "n": 1254,
+     "p50": 5.3,
+     "p95": 6.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1254,
+     "p50": 26,
+     "p95": 26
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "sunbraid",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97,
+     "clockMHz": 232,
+     "powerW": 79.4,
+     "tempC": 62.6
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.9,
+     "utility": 0,
+     "renderer": 1.6
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 676.7,
+    "running": 1312.2,
+    "settled": 1312.2,
+    "shown": 1569.9,
+    "full": 3691.3,
+    "timedOut": false,
+    "pipelines": 22,
+    "syncPipelines": 2,
+    "pipeLast": 776.7,
+    "longestFrameMs": 53.6,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 54,
+    "longTaskMaxMs": 50,
+    "longTaskSumMs": 50,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14275,
+      "dur": 54.5,
+      "block": 2.4,
+      "render": 2,
+      "scripts": [
+       {
+        "d": 50.5,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "sunset",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2848,
+    "fps": 712,
+    "p50": 1.4,
+    "p95": 1.9,
+    "p99": 2.85,
+    "max": 12.4,
+    "overBudget": 12,
+    "overBudgetPct": 0.4,
+    "janks": 13,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.24,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.14,
+     "utility": 0,
+     "renderer": 0.99
+    },
+    "presentFps": 712,
+    "busyP50": 0.9,
+    "busyP95": 1.3,
+    "cpuInRender": {
+     "n": 2849,
+     "p50": 2.4,
+     "p95": 3.8
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2849,
+     "p50": 20,
+     "p95": 20
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "sunset",
+    "gpuUtil": {
+     "n": 20,
+     "util": 88,
+     "clockMHz": 232,
+     "powerW": 70.7,
+     "tempC": 60.7
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.7,
+     "utility": 0,
+     "renderer": 3.1
+    }
+   },
+   "storm1": {
+    "frames": 2811,
+    "fps": 702.7,
+    "p50": 1.4,
+    "p95": 1.9,
+    "p99": 3.1,
+    "max": 10.7,
+    "overBudget": 15,
+    "overBudgetPct": 0.5,
+    "janks": 15,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.25,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.14,
+     "utility": 0,
+     "renderer": 1.02
+    },
+    "presentFps": 702.5,
+    "busyP50": 0.9,
+    "busyP95": 1.3,
+    "cpuInRender": {
+     "n": 2812,
+     "p50": 2.4,
+     "p95": 3.9
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2812,
+     "p50": 21,
+     "p95": 21
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "sunset",
+    "gpuUtil": {
+     "n": 20,
+     "util": 87.8,
+     "clockMHz": 232,
+     "powerW": 74.1,
+     "tempC": 61
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.7,
+     "utility": 0,
+     "renderer": 3.2
+    }
+   },
+   "storm2": {
+    "frames": 2623,
+    "fps": 655.8,
+    "p50": 1.5,
+    "p95": 2,
+    "p99": 3.6,
+    "max": 10.6,
+    "overBudget": 22,
+    "overBudgetPct": 0.8,
+    "janks": 22,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.43,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.11,
+     "utility": 0,
+     "renderer": 0.96
+    },
+    "presentFps": 655.6,
+    "busyP50": 1,
+    "busyP95": 1.4,
+    "cpuInRender": {
+     "n": 2624,
+     "p50": 2.7,
+     "p95": 4.2
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2624,
+     "p50": 21,
+     "p95": 21
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "sunset",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93.5,
+     "clockMHz": 232,
+     "powerW": 72.8,
+     "tempC": 60.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.6,
+     "utility": 0,
+     "renderer": 3
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 544.7,
+    "running": 1145.9,
+    "settled": 1145.9,
+    "shown": 1399.8,
+    "full": 3518.9,
+    "timedOut": false,
+    "pipelines": 17,
+    "syncPipelines": 2,
+    "pipeLast": 590.9,
+    "longestFrameMs": 64,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 64,
+    "longTaskMaxMs": 68,
+    "longTaskSumMs": 68,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14595.2,
+      "dur": 68.6,
+      "block": 18,
+      "render": 68,
+      "scripts": [
+       {
+        "d": 43.7,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       },
+       {
+        "d": 23.9,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "tornado",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 3689,
+    "fps": 922,
+    "p50": 1,
+    "p95": 1.9,
+    "p99": 2.5,
+    "max": 9.3,
+    "overBudget": 10,
+    "overBudgetPct": 0.3,
+    "janks": 10,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 0.98,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.21,
+     "utility": 0,
+     "renderer": 1.12
+    },
+    "presentFps": 921.9,
+    "busyP50": 0.7,
+    "busyP95": 1.1,
+    "cpuInRender": {
+     "n": 3690,
+     "p50": 1.2,
+     "p95": 2.1
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3690,
+     "p50": 30,
+     "p95": 30
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "tornado",
+    "gpuUtil": {
+     "n": 20,
+     "util": 90,
+     "clockMHz": 232,
+     "powerW": 72.4,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.9,
+     "utility": 0,
+     "renderer": 3.5
+    }
+   },
+   "storm1": {
+    "frames": 3244,
+    "fps": 811,
+    "p50": 1.1,
+    "p95": 2.1,
+    "p99": 3.06,
+    "max": 72.7,
+    "overBudget": 20,
+    "overBudgetPct": 0.6,
+    "janks": 20,
+    "over16": 2,
+    "over33": 1,
+    "gpuMsEst": 1.16,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.14,
+     "utility": 0,
+     "renderer": 1.09
+    },
+    "presentFps": 810.8,
+    "busyP50": 0.8,
+    "busyP95": 1.3,
+    "cpuInRender": {
+     "n": 3245,
+     "p50": 1.4,
+     "p95": 2.4
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3245,
+     "p50": 33,
+     "p95": 35
+    },
+    "longTasks": 1,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "tornado",
+    "gpuUtil": {
+     "n": 20,
+     "util": 93.8,
+     "clockMHz": 232,
+     "powerW": 73.1,
+     "tempC": 59.5
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.7,
+     "utility": 0,
+     "renderer": 3.4
+    }
+   },
+   "storm2": {
+    "frames": 3129,
+    "fps": 782.4,
+    "p50": 1.2,
+    "p95": 2.16,
+    "p99": 2.9,
+    "max": 8.9,
+    "overBudget": 10,
+    "overBudgetPct": 0.3,
+    "janks": 10,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.21,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.11,
+     "utility": 0,
+     "renderer": 1.09
+    },
+    "presentFps": 782.3,
+    "busyP50": 0.9,
+    "busyP95": 1.4,
+    "cpuInRender": {
+     "n": 3130,
+     "p50": 1.6,
+     "p95": 2.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 3130,
+     "p50": 35,
+     "p95": 35
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "tornado",
+    "gpuUtil": {
+     "n": 20,
+     "util": 94.5,
+     "clockMHz": 232,
+     "powerW": 74.2,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.6,
+     "utility": 0,
+     "renderer": 3.4
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 565.9,
+    "running": 1125.7,
+    "settled": 1125.7,
+    "shown": 1376.3,
+    "full": 3497,
+    "timedOut": false,
+    "pipelines": 26,
+    "syncPipelines": 2,
+    "pipeLast": 623.5,
+    "longestFrameMs": 52.5,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 53,
+    "longTaskMaxMs": 54,
+    "longTaskSumMs": 54,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14350.7,
+      "dur": 58,
+      "block": 0,
+      "render": 3.3,
+      "scripts": []
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "verdant-hills",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 785,
+    "fps": 196.4,
+    "p50": 5.1,
+    "p95": 5.98,
+    "p99": 6.7,
+    "max": 7.1,
+    "overBudget": 745,
+    "overBudgetPct": 94.9,
+    "janks": 0,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 5.01,
+    "limit": "gpu",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.44,
+     "utility": 0,
+     "renderer": 0.45
+    },
+    "presentFps": 196.4,
+    "busyP50": 4.8,
+    "busyP95": 5.7,
+    "cpuInRender": {
+     "n": 786,
+     "p50": 8.8,
+     "p95": 10.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 786,
+     "p50": 58,
+     "p95": 58
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "verdant-hills",
+    "gpuUtil": {
+     "n": 20,
+     "util": 98.3,
+     "clockMHz": 232,
+     "powerW": 83.2,
+     "tempC": 60.3
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.5,
+     "utility": 0,
+     "renderer": 1.4
+    }
+   },
+   "storm1": {
+    "frames": 810,
+    "fps": 202.6,
+    "p50": 4.9,
+    "p95": 5.7,
+    "p99": 6.5,
+    "max": 9.4,
+    "overBudget": 743,
+    "overBudgetPct": 91.7,
+    "janks": 3,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 4.85,
+    "limit": "gpu",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.47,
+     "utility": 0,
+     "renderer": 0.67
+    },
+    "presentFps": 202.5,
+    "busyP50": 4.7,
+    "busyP95": 5.4,
+    "cpuInRender": {
+     "n": 811,
+     "p50": 6.8,
+     "p95": 9.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 811,
+     "p50": 58,
+     "p95": 58
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "verdant-hills",
+    "gpuUtil": {
+     "n": 20,
+     "util": 98.2,
+     "clockMHz": 232,
+     "powerW": 87.6,
+     "tempC": 61
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.6,
+     "utility": 0,
+     "renderer": 2.1
+    }
+   },
+   "storm2": {
+    "frames": 843,
+    "fps": 210.8,
+    "p50": 4.7,
+    "p95": 5.6,
+    "p99": 6.4,
+    "max": 7,
+    "overBudget": 680,
+    "overBudgetPct": 80.7,
+    "janks": 0,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 4.64,
+    "limit": "gpu",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.5,
+     "utility": 0,
+     "renderer": 0.8
+    },
+    "presentFps": 210.8,
+    "busyP50": 4.5,
+    "busyP95": 5.2,
+    "cpuInRender": {
+     "n": 844,
+     "p50": 5.2,
+     "p95": 7.085
+    },
+    "gpu": null,
+    "draws": {
+     "n": 844,
+     "p50": 58,
+     "p95": 58
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "verdant-hills",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.8,
+     "clockMHz": 232,
+     "powerW": 90.6,
+     "tempC": 61.8
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 4.7,
+     "utility": 0,
+     "renderer": 2.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 866.9,
+    "running": 1594.7,
+    "settled": 1594.7,
+    "shown": 1844.8,
+    "full": 3965.3,
+    "timedOut": false,
+    "pipelines": 61,
+    "syncPipelines": 2,
+    "pipeLast": 1195,
+    "longestFrameMs": 71.6,
+    "framesOver50": 1,
+    "framesOver100": 0,
+    "frozenMs": 72,
+    "longTaskMaxMs": 72,
+    "longTaskSumMs": 72,
+    "longTasks": 1,
+    "topLoafs": [
+     {
+      "start": 14601.7,
+      "dur": 73.4,
+      "block": 23.1,
+      "render": 1,
+      "scripts": [
+       {
+        "d": 72.1,
+        "fn": "",
+        "url": "",
+        "inv": "TimerHandler:setTimeout"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  },
+  {
+   "theme": "winter",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 2319,
+    "fps": 579.9,
+    "p50": 1.7,
+    "p95": 2.1,
+    "p99": 2.5,
+    "max": 5.4,
+    "overBudget": 1,
+    "overBudgetPct": 0,
+    "janks": 1,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 1.69,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.9
+    },
+    "presentFps": 579.8,
+    "busyP50": 0.8,
+    "busyP95": 1.3,
+    "cpuInRender": {
+     "n": 2320,
+     "p50": 1.2,
+     "p95": 2.2
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2320,
+     "p50": 40,
+     "p95": 40
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "winter",
+    "gpuUtil": {
+     "n": 20,
+     "util": 98,
+     "clockMHz": 232,
+     "powerW": 76.1,
+     "tempC": 60.9
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 2.8
+    }
+   },
+   "storm1": {
+    "frames": 2135,
+    "fps": 533.8,
+    "p50": 1.8,
+    "p95": 2.4,
+    "p99": 5.27,
+    "max": 72.9,
+    "overBudget": 26,
+    "overBudgetPct": 1.2,
+    "janks": 26,
+    "over16": 1,
+    "over33": 1,
+    "gpuMsEst": 1.83,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.92,
+     "utility": 0,
+     "renderer": 0.9
+    },
+    "presentFps": 533.7,
+    "busyP50": 0.9,
+    "busyP95": 1.5,
+    "cpuInRender": {
+     "n": 2136,
+     "p50": 1.4,
+     "p95": 2.7
+    },
+    "gpu": null,
+    "draws": {
+     "n": 2136,
+     "p50": 40,
+     "p95": 41
+    },
+    "longTasks": 1,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "winter",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.8,
+     "clockMHz": 232,
+     "powerW": 76.5,
+     "tempC": 60.8
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6,
+     "utility": 0,
+     "renderer": 2.8
+    }
+   },
+   "storm2": {
+    "frames": 1847,
+    "fps": 461.8,
+    "p50": 2.1,
+    "p95": 2.5,
+    "p99": 3.35,
+    "max": 11.9,
+    "overBudget": 13,
+    "overBudgetPct": 0.7,
+    "janks": 14,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 2.11,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 1.79,
+     "utility": 0,
+     "renderer": 0.8
+    },
+    "presentFps": 461.7,
+    "busyP50": 1,
+    "busyP95": 1.8,
+    "cpuInRender": {
+     "n": 1848,
+     "p50": 1.5,
+     "p95": 3.2
+    },
+    "gpu": null,
+    "draws": {
+     "n": 1848,
+     "p50": 41,
+     "p95": 41
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.15,
+    "canvasSize": [
+     1964,
+     1227
+    ],
+    "active": "winter",
+    "gpuUtil": {
+     "n": 20,
+     "util": 97.3,
+     "clockMHz": 232,
+     "powerW": 76.9,
+     "tempC": 61
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 5.6,
+     "utility": 0,
+     "renderer": 2.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 676.1,
+    "running": 1316.2,
+    "settled": 1316.2,
+    "shown": 1566.5,
+    "full": 3687.6,
+    "timedOut": false,
+    "pipelines": 36,
+    "syncPipelines": 2,
+    "pipeLast": 829.4,
+    "longestFrameMs": 40.2,
+    "framesOver50": 0,
+    "framesOver100": 0,
+    "frozenMs": 0,
+    "longTaskMaxMs": 0,
+    "longTaskSumMs": 0,
+    "longTasks": 0,
+    "topLoafs": []
+   },
+   "load2": null
+  },
+  {
+   "theme": "wolfhour",
+   "quality": "High",
+   "ok": true,
+   "error": null,
+   "rest": {
+    "frames": 4537,
+    "fps": 1134.2,
+    "p50": 0.8,
+    "p95": 1.3,
+    "p99": 2,
+    "max": 7.1,
+    "overBudget": 4,
+    "overBudgetPct": 0.1,
+    "janks": 4,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 0.57,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.24,
+     "utility": 0,
+     "renderer": 1.44
+    },
+    "presentFps": 1132.4,
+    "busyP50": 0.5,
+    "busyP95": 0.8,
+    "cpuInRender": {
+     "n": 4538,
+     "p50": 0.6,
+     "p95": 1.3
+    },
+    "gpu": null,
+    "draws": {
+     "n": 4538,
+     "p50": 48,
+     "p95": 51
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "wolfhour",
+    "gpuUtil": {
+     "n": 20,
+     "util": 65.2,
+     "clockMHz": 232,
+     "powerW": 68.4,
+     "tempC": 60
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 7,
+     "utility": 0,
+     "renderer": 4.5
+    }
+   },
+   "storm1": {
+    "frames": 4010,
+    "fps": 1000.8,
+    "p50": 0.9,
+    "p95": 1.5,
+    "p99": 3,
+    "max": 71.8,
+    "overBudget": 30,
+    "overBudgetPct": 0.7,
+    "janks": 31,
+    "over16": 2,
+    "over33": 2,
+    "gpuMsEst": 0.71,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.21,
+     "utility": 0,
+     "renderer": 1.38
+    },
+    "presentFps": 1002.3,
+    "busyP50": 0.5,
+    "busyP95": 1,
+    "cpuInRender": {
+     "n": 4011,
+     "p50": 0.8,
+     "p95": 1.5
+    },
+    "gpu": null,
+    "draws": {
+     "n": 4011,
+     "p50": 81,
+     "p95": 90
+    },
+    "longTasks": 2,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "wolfhour",
+    "gpuUtil": {
+     "n": 20,
+     "util": 71,
+     "clockMHz": 232,
+     "powerW": 65.8,
+     "tempC": 59.4
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.9,
+     "utility": 0,
+     "renderer": 4.3
+    }
+   },
+   "storm2": {
+    "frames": 4122,
+    "fps": 1030.5,
+    "p50": 0.9,
+    "p95": 1.4,
+    "p99": 2.3,
+    "max": 13.5,
+    "overBudget": 17,
+    "overBudgetPct": 0.4,
+    "janks": 18,
+    "over16": 0,
+    "over33": 0,
+    "gpuMsEst": 0.76,
+    "limit": "ok",
+    "procCores": {
+     "browser": 0,
+     "gpu": 2.21,
+     "utility": 0,
+     "renderer": 1.44
+    },
+    "presentFps": 1030.2,
+    "busyP50": 0.6,
+    "busyP95": 0.9,
+    "cpuInRender": {
+     "n": 4123,
+     "p50": 0.8,
+     "p95": 1.6
+    },
+    "gpu": null,
+    "draws": {
+     "n": 4123,
+     "p50": 81,
+     "p95": 92
+    },
+    "longTasks": 0,
+    "pixelRatio": 1.25,
+    "canvasSize": [
+     2135,
+     1333
+    ],
+    "active": "wolfhour",
+    "gpuUtil": {
+     "n": 20,
+     "util": 78.8,
+     "clockMHz": 232,
+     "powerW": 69.3,
+     "tempC": 59.6
+    },
+    "procCpu": {
+     "browser": 0,
+     "gpu": 6.9,
+     "utility": 0,
+     "renderer": 4.5
+    }
+   },
+   "gpu": null,
+   "load1": {
+    "firstPresent": 583.7,
+    "running": 9552.3,
+    "settled": 9552.3,
+    "shown": 9802.9,
+    "full": 11924.5,
+    "timedOut": false,
+    "pipelines": 66,
+    "syncPipelines": 3,
+    "pipeLast": 9170.1,
+    "longestFrameMs": 85.5,
+    "framesOver50": 2,
+    "framesOver100": 0,
+    "frozenMs": 159,
+    "longTaskMaxMs": 73,
+    "longTaskSumMs": 142,
+    "longTasks": 2,
+    "topLoafs": [
+     {
+      "start": 14577.8,
+      "dur": 73.5,
+      "block": 22.9,
+      "render": 72.9,
+      "scripts": [
+       {
+        "d": 48.2,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       },
+       {
+        "d": 24.4,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     },
+     {
+      "start": 14490.5,
+      "dur": 69.7,
+      "block": 19.4,
+      "render": 69.4,
+      "scripts": [
+       {
+        "d": 34.5,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       },
+       {
+        "d": 34.5,
+        "fn": "",
+        "url": "",
+        "inv": "FrameRequestCallback"
+       }
+      ]
+     }
+    ]
+   },
+   "load2": null
+  }
+ ]
+}

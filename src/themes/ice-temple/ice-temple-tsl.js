@@ -159,7 +159,7 @@ export const NOISE_SIZE = 256;
  * grazing angles; generating half-float mips on the GPU is not portable to every WebGL2 device).
  * Baked once (≈ 45 ms); every veil in the ice, drift of snow and curtain ray is a fetch of it.
  */
-export function createNoiseTexture(seed = 7411, size = NOISE_SIZE) {
+function noiseMips(seed, size) {
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -240,8 +240,21 @@ export function createNoiseTexture(seed = 7411, size = NOISE_SIZE) {
         level = next;
         w = nw;
     }
-    const tex = new THREE.DataTexture(mipmaps[0].data, n, n, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.mipmaps = mipmaps;
+    return mipmaps;
+}
+
+/**
+ * The bake depends only on its seed and size and is read only, so it is kept for the session: a
+ * revisit makes a texture over it at once (24 ms every visit before, docs/THEME_FLEET_240_2026-10.md).
+ */
+const noiseMipCache = new Map();
+
+export function createNoiseTexture(seed = 7411, size = NOISE_SIZE) {
+    const key = `${seed}:${size}`;
+    if (!noiseMipCache.has(key)) noiseMipCache.set(key, noiseMips(seed, size));
+    const mipmaps = noiseMipCache.get(key);
+    const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.mipmaps = mipmaps.map((level) => ({ ...level }));
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.magFilter = THREE.LinearFilter;
