@@ -13,6 +13,20 @@
  * second a frame, and a build that waited for frames would outlast its start timeout.
  */
 
+/**
+ * A long loop's clock inside a build written as steps: `due()` once `budgetMs` of work has run
+ * since the loop started or last breathed, and the loop yields there and `restart()`s it. Each
+ * breath costs the theme still playing a frame, so the steps are few and full.
+ * @param {number} [budgetMs]
+ */
+export function stepClock(budgetMs = 24) {
+    let since = performance.now();
+    return {
+        due: () => performance.now() - since > budgetMs,
+        restart() { since = performance.now(); },
+    };
+}
+
 /** One macrotask: whatever the page has queued (a frame of the theme still playing) runs first. */
 export const breathe = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 

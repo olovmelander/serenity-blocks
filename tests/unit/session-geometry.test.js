@@ -3,7 +3,7 @@ import {
     describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
-import { sessionGeometry } from '../../src/themes/shared/session-geometry.js';
+import { prepareSessionGeometry, sessionGeometry } from '../../src/themes/shared/session-geometry.js';
 
 function grid() {
     const geometry = new THREE.PlaneGeometry(4, 3, 6, 5);
@@ -80,4 +80,28 @@ describe('Spring builds its land, river, pour and step face once a session', () 
         expect(second.parts.land.mesh.geometry.attributes.position.count).toBeGreaterThan(0);
         second.dispose();
     }, 60_000);
+});
+
+describe('prepareSessionGeometry', () => {
+    it('fills the memo ahead in steps, once: the next sessionGeometry call builds nothing', () => {
+        const scope = {};
+        const made = vi.fn(grid);
+        function* steps() {
+            yield 'half';
+            return made();
+        }
+        const run = prepareSessionGeometry(scope, 'p', steps);
+        expect(run.next()).toEqual({ value: 'half', done: false });
+        const out = run.next();
+        expect(out).toEqual({ value: true, done: true });
+        const build = vi.fn(grid);
+        const a = sessionGeometry(scope, 'p', build);
+        expect(build).not.toHaveBeenCalled();
+        const built = made.mock.results[0].value.geometry;
+        expect(a.geometry).not.toBe(built);
+        expect(a.geometry.attributes.position.array).toBe(built.attributes.position.array);
+        // Already kept: done at once, without a step.
+        expect(prepareSessionGeometry(scope, 'p', steps).next()).toEqual({ value: false, done: true });
+        expect(made).toHaveBeenCalledTimes(1);
+    });
 });

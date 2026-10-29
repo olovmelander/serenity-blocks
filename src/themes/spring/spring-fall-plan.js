@@ -77,16 +77,28 @@ export const RIBS = Object.freeze([
 /** The deepest water over the lip (the main tongue's): flow and speed are measured against it. */
 export const DEEPEST = 1.3;
 
+/**
+ * The last `across` lipDepth answered, and its answer. The geometry asks one column at a time: a
+ * column's pour path thousands of times (every step of its fall, through the face's shape), the
+ * face's column for each of its rows.
+ */
+let lipDepthAcross = NaN;
+let lipDepthLast = 0;
+
 /** How deep the water runs over the lip at `across` (m; 0 where the rock stands dry). */
 export function lipDepth(across) {
+    if (across === lipDepthAcross) return lipDepthLast;
     let depth = 0;
-    TONGUES.forEach((tongue, k) => {
+    for (let k = 0; k < TONGUES.length; k++) {
+        const tongue = TONGUES[k];
         // Ragged edges: each tongue's sides wander a little.
         const ragged = 0.07 * Math.sin(across * 2.3 + k * 1.9) + 0.05 * Math.sin(across * 5.3 + k);
         const x = Math.abs(across - tongue.at) / tongue.half + ragged;
         const core = 0.9 + 0.1 * Math.sin(across * 1.7 + k * 0.6);
         depth = Math.max(depth, tongue.depth * core * (1 - smooth(0.7, 1.0, x)));
-    });
+    }
+    lipDepthAcross = across;
+    lipDepthLast = depth;
     return depth;
 }
 
@@ -177,8 +189,8 @@ export function faceBlock(across, y, out = {}) {
     const column = edgeBelow(COLUMNS, u);
     // The layers dip across the step and wave: folded a metre or two over tens of metres, so no
     // band runs level along the face like a course of masonry.
-    const v = y + DIP * across + 0.35 * (noise1(across / 13, 19) - 0.5) + 2.6 * (noise1(across / 23, 21) - 0.5)
-        + 0.7 * (noise1(across / 6.5, 23) - 0.5);
+    const fold = foldAt(across);
+    const v = y + DIP * across + fold.a + fold.b + fold.c;
     const sheet = edgeBelow(SHEETS, v);
     // Each layer stands in or out along its length, broken where a crack crosses it: most nearly
     // flush, now and then one standing well out as a ledge or worn back under one.
@@ -191,6 +203,20 @@ export function faceBlock(across, y, out = {}) {
     out.band = sheet;
     out.column = column;
     return out;
+}
+
+/** The layers' fold at `across` (faceBlock's three terms, in its order), kept for the last one asked. */
+const FOLD = {
+    across: NaN, a: 0, b: 0, c: 0,
+};
+function foldAt(across) {
+    if (FOLD.across !== across) {
+        FOLD.a = 0.35 * (noise1(across / 13, 19) - 0.5);
+        FOLD.b = 2.6 * (noise1(across / 23, 21) - 0.5);
+        FOLD.c = 0.7 * (noise1(across / 6.5, 23) - 0.5);
+        FOLD.across = across;
+    }
+    return FOLD;
 }
 
 /** The face's zones across the step: their weights at `across` (sum 1). */
@@ -244,17 +270,39 @@ function ledgeProfile(dz) {
     return out;
 }
 
-const zones = {};
 const block = {};
+
+/**
+ * What faceAlong reads of `across` alone, kept for the last one asked (see lipDepth): the zones'
+ * weights, the lip's line, the face's lean, bulge and buttress noise, each rib's share and how
+ * worn the blocks are. The same expressions as before, so the same numbers.
+ */
+const COLUMN = {
+    across: NaN, zones: {}, lip: 0, bulge: 0, buttress: 0, lean: 0, ribs: RIBS.map(() => 0), wet: 0,
+};
+function columnAt(across) {
+    if (COLUMN.across === across) return COLUMN;
+    zoneWeights(across, COLUMN.zones);
+    COLUMN.lip = lipAlong(across);
+    COLUMN.bulge = noise1(across / 9, 3) - 0.5;
+    COLUMN.buttress = noise1(across / 6.5, 41) - 0.5;
+    COLUMN.lean = 0.14 + 0.16 * noise1(across / 15, 43);
+    RIBS.forEach((rib, i) => {
+        COLUMN.ribs[i] = 1 - smooth(0.55, 1, Math.abs(across - rib.at) / rib.half);
+    });
+    COLUMN.wet = lipDepth(across) > 0.02 ? 0.12 : 0.9;
+    COLUMN.across = across;
+    return COLUMN;
+}
 
 /**
  * Where the rock face stands at (across, y): metres along (downstream) of the lip's line. Above
  * the crest there is no face (the plateau and the shoulders are the valley's ground).
  */
 export function faceAlong(across, y) {
-    zoneWeights(across, zones);
+    const column = columnAt(across);
+    const { zones, lip } = column;
     const dz = LIP_Y - y;
-    const lip = lipAlong(across);
     // The main tongue's recess: the brink's rock rounds back, then the face leans in under the lip.
     const main = lip - 0.5 * smooth(0, 2.5, dz) - UNDERCUT * Math.max(0, dz - 1);
     const left = lip + stairProfile(dz);
@@ -262,21 +310,19 @@ export function faceAlong(across, y) {
     // Beside the river: a broken face standing forward of the lip at its foot, leaning back as it
     // climbs (more in some places than others), bulging and hollowed on the scale of a house, in
     // buttresses and the gullies between them.
-    const bulge = noise1(across / 9, 3) - 0.5 + 0.6 * (noise1(across / 4.2 + y / 11, 5) - 0.5);
-    const buttress = noise1(across / 6.5, 41) - 0.5;
-    const lean = 0.14 + 0.16 * noise1(across / 15, 43);
+    const bulge = column.bulge + 0.6 * (noise1(across / 4.2 + y / 11, 5) - 0.5);
+    const { buttress, lean } = column;
     const dry = lip + 2.2 + 2.2 * bulge + 3.2 * buttress * smooth(1, 6, dz) + lean * dz;
     let at = zones.main * main + zones.left * left + zones.right * right + zones.dry * dry;
     // The ribs between the tongues stand proud of the water either side, down to the boil.
-    for (const rib of RIBS) {
-        const k = 1 - smooth(0.55, 1, Math.abs(across - rib.at) / rib.half);
+    RIBS.forEach((rib, i) => {
+        const k = column.ribs[i];
         at += k * rib.out * smooth(0.4, 3, dz) * (1 - smooth(9, 16, dz)) * (0.8 + 0.4 * noise1(y / 3.3, 29));
-    }
+    });
     // The jointed blocks stand in and out; under the water they are worn nearly smooth.
     faceBlock(across, y, block);
     const bevel = smooth(0, 0.2, block.joint);
-    const wet = lipDepth(across) > 0.02 ? 0.12 : 0.9;
-    at += block.offset * wet * (0.35 + 0.65 * bevel);
+    at += block.offset * column.wet * (0.35 + 0.65 * bevel);
     return at;
 }
 

@@ -51,7 +51,8 @@ import {
 import {
     KNOLL, birchShare, forestCover, groundHeight, groundNormal, waterEdge,
 } from './spring-terrain.js';
-import { sessionGeometry } from '../shared/session-geometry.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { prepareSessionGeometry, sessionGeometry } from '../shared/session-geometry.js';
 
 /** Where the curtain meets the pool (its spray soaks the rock round it). */
 const FALL_FOOT = courseAt(S_POOL, {});
@@ -95,7 +96,8 @@ const GULLY_FRAMES = [0, 60, 120].map((deg, i) => Object.freeze({
  * Build the ground mesh from the bake. `tier.landCols` columns across the fan, rows spaced
  * `tier.landRow` × distance apart (never closer than `tier.landMinRow` metres).
  */
-export function createLandGeometry(baked, tier) {
+export function* landGeometrySteps(baked, tier) {
+    const clock = stepClock();
     const cols = Math.max(32, tier.landCols | 0);
     const rel = tier.landRow ?? 0.012;
     const minRow = tier.landMinRow ?? 0.3;
@@ -138,6 +140,10 @@ export function createLandGeometry(baked, tier) {
             land[k * 4 + 2] = w.edge;
             land[k * 4 + 3] = w.level;
         }
+        if (clock.due()) {
+            yield 'land rows';
+            clock.restart();
+        }
     }
     const index = new Uint32Array((rows - 1) * cols * 6);
     let o = 0;
@@ -163,6 +169,18 @@ export function createLandGeometry(baked, tier) {
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
     geometry.computeBoundingSphere();
     return { geometry, vertices: count, triangles: index.length / 3 };
+}
+
+export function createLandGeometry(baked, tier) {
+    return drainSteps(landGeometrySteps(baked, tier));
+}
+
+/** The land's session geometry key: everything its build reads of the tier. */
+const landKey = (tier) => `land|${tier.landCols}|${tier.landRow}|${tier.landMinRow}`;
+
+/** The land's geometry built ahead, in steps (true when it built: the session's first). */
+export function prepareLandSteps(baked, tier) {
+    return prepareSessionGeometry(baked, landKey(tier), () => landGeometrySteps(baked, tier));
 }
 
 /** Flower dots on a meadow: cells `size` m wide, a dot in each `density` share of them. */
@@ -391,8 +409,7 @@ export function createLandMaterial(u, tex) {
 
 export function createLand(u, tex, tier, baked) {
     // The same land for the same tier and ground: built once a session (shared/session-geometry.js).
-    const key = `land|${tier.landCols}|${tier.landRow}|${tier.landMinRow}`;
-    const { geometry, triangles } = sessionGeometry(baked, key, () => createLandGeometry(baked, tier));
+    const { geometry, triangles } = sessionGeometry(baked, landKey(tier), () => createLandGeometry(baked, tier));
     const material = createLandMaterial(u, tex);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'SpringLand';
