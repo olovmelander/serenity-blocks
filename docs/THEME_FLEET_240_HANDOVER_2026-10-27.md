@@ -4,7 +4,25 @@ Handover of the first day of the fleet performance pass. The record with all num
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (updated 2026-10-29, after the night pass).**
+> **Pick up here (updated 2026-10-29, round three).**
+> - **Merged to main:** `perf/theme-fleet-240` (`051eb4d2`, with the night pass) and
+>   `perf/shader-build-freezes` (`38ce04bb`, record §12).
+> - **Round three:** branch `perf/dynres-spring` in this worktree, committed, not yet merged
+>   (record §13):
+>   - the desktop app's dynamic resolution no longer walks a 240 target to the 0.5 floor
+>     (`092cc979`);
+>   - Spring's first visit builds its land, river, fall and face in short steps: freeze 259 → 50 ms
+>     (`f391211b`);
+>   - the fleet re-measured at the panel's cadence: `reports/theme-fleet-bench/2026-10-29-round3-high-vsync/`,
+>     the new baseline to compare against.
+> - **Next:**
+>   1. The six first-visit freezes still over 110 ms (record §13): Sunfall, Rainbark, Stellar Drift,
+>      Solar Eclipse, Starlight, Ice Temple.
+>   2. A Performance-mode run, then the GPU-bound themes (Thermal Bloom's storms first). Their
+>      remaining cost is the look itself: the owner's call.
+>   3. The queue in §4 from item 2.
+>
+> Status after the night pass (2026-10-29 morning), kept for reference:
 > - **Branch:** `perf/theme-fleet-240` in the worktree `C:\Users\olovm\repos\serenity-blocks-perf240`
 >   (node_modules junctioned to the main checkout).
 >   - Committed, **not merged and not pushed**. Last synced with main at `647c3851` (2026-10-28);
@@ -149,7 +167,8 @@ Other tools (READMEs beside them):
    - Neon District (two 150-190 ms tasks), Aurora (~95 ms), Starlight (~97 ms): profile which
      material builds in one task (`--profile-load=1`). Then make its node graph smaller
      (`Fn().setLayout`) or split the build.
-   - Spring (a 240-310 ms task on both visits) and Void Ember (188 ms, first visit).
+   - Spring (a 240-310 ms task on both visits) and Void Ember (188 ms, first visit). Done: the
+     revisit in the night pass (§11), the first visit in round three (record §13, 259 → 50 ms).
 5. **Tier alignment** (record §8, §8b).
    - **Real outliers:** the six in the record's §8b table hold against both High baselines.
    - Start with Golden Forest's Medium (costs more than High). Measure each fix interleaved (High vs
@@ -167,7 +186,8 @@ Other tools (READMEs beside them):
    - Moonlit Greenhouse's air march (1.06 ms);
    - Sunfall's full-resolution post target (0.54 ms);
    - Thermal Bloom's storm effects.
-8. **Merge** `perf/theme-fleet-240` when the owner says so. Follow the routine in memory
+8. **Merge** the current branch when the owner says so (`perf/theme-fleet-240` and
+   `perf/shader-build-freezes` are merged; round three is `perf/dynres-spring`). Follow the routine in memory
    (merge-when-pipelines-done): sync, gates, wait for main's deploy, detached merge, `ls-remote`
    guard.
 
@@ -190,8 +210,8 @@ Other tools (READMEs beside them):
 
 ## 6. Starter prompt for tomorrow
 
-> Continue the theme fleet performance pass from docs/THEME_FLEET_240_HANDOVER_2026-10-27.md (branch
-> perf/theme-fleet-240, worktree C:\Users\olovm\repos\serenity-blocks-perf240). The laptop is now in
+> Continue the theme fleet performance pass from docs/THEME_FLEET_240_HANDOVER_2026-10-27.md (a new
+> branch from main, worktree C:\Users\olovm\repos\serenity-blocks-perf240). The laptop is now in
 > Lenovo Performance mode [or: still Balanced]. Re-run the High baseline per §3, compare with the
 > 2026-10-27 tier-High summary, then work the queue in §4 in order, measuring every change with
 > interleaved A/B runs and checking the look with screenshots.

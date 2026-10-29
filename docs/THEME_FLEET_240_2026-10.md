@@ -29,6 +29,10 @@ night pass of 2026-10-28 → 29.
   80-95 W power limit (it can take 175 W).
   - The GPU sat at that cap in nearly every theme, so GPU-bound numbers here are conservative.
   - Re-measure in Performance mode before judging the GPU-bound six.
+- **Re-measured 2026-10-29 (§13), after the night pass, the shader-build round and round three.**
+  At the median a theme now shows in 0.75 s on a first visit and 0.52 s on a revisit. The longest
+  frame in a switch is 63 / 44 ms at the median (was 80 / 54). No revisit freezes over 110 ms (was
+  seven themes). Thermal Bloom's storms are the one window under 175 fps.
 
 ## 2. Machine
 
@@ -620,7 +624,7 @@ Branch `perf/shader-build-freezes`, still in Balanced mode. Two new bench instru
     of DXC on the GPU process's main thread.
   - Fall's late 240 ms frame was its squirrel's pipelines (plume hair 140 ms, fur 84 ms). They
     compiled synchronously on the frame it first showed, after the switch's async window had closed.
-- **Spring's first-visit build steps** (186 and 243 ms).
+- **Spring's first-visit build steps** (186 and 243 ms). Split in round three (§13): 50 ms.
 
 **Changed:**
 
@@ -706,3 +710,87 @@ Single Player, Balanced mode: the scale went 1.0 → 0.5 in 45 s and stayed ther
 | main | 1.0 → 0.5 by 45 s, never back | |
 | fixed | 1.0 throughout, through the start and the game over | 4.9 / 5.5 / 6.6–6.9 / 7.6–10.8 |
 | fixed, 8 ms busy wait per frame | 1.0 → 0.6 in 40 s, one step per 10 s | 11.9 / 12.3 / 13.5 / 16 |
+
+### Spring's first visit
+
+**Before.** A session's first Spring froze the switch for ~250 ms. Two build steps were one long
+task each (`--profile-load=1` on an unminified build, then the same in Node):
+- **Land + step face:** 185 ms (land 110, face 74).
+- **River + waterfall pour:** 166 ms (river 94, pour 140).
+
+All four are session geometry (§11): a revisit already skipped them.
+
+**Why the pour and the face were slow.** `pourPath` traces one column of water down the fall in
+4 ms steps, up to 1,150 of them. Every step asks `faceAlong` (and `faceSlope`, two more calls)
+where the rock is. Each call recomputed what depends only on the column: `lipDepth` (21 sines over
+the seven tongues), the lip's line, the zones, the face's lean, the ribs and the layers' fold.
+
+**Changed** (`f391211b`):
+- **The fall plan keeps the last column's terms** (`spring-fall-plan.js`: `lipDepth`'s last answer,
+  `columnAt`, `foldAt`). Each is the same expression in the same order, so the same float.
+  - Pour 140 → 62 ms, face 74 → 55 ms.
+  - The plan's import (its landing and burst tables trace 123 paths) 96 → 46 ms.
+- **The four geometries are built ahead in steps of ~24 ms.** `prepareSessionGeometry` fills the
+  session memo from a generator, and `stepClock` (`shared/build-steps.js`) yields from the row
+  loops. `createLand`, `createStepFace`, `createRiver` and `createPour` are unchanged and find their
+  geometry kept. A revisit has it kept already and takes no extra step.
+
+**Checked:**
+- **Geometry:** every attribute and index hashes the same as main on Low, High and Ultra.
+- **Shots:** six same-frame playground shots (rest, level 3 and a four-line clear on High; rest on
+  Low and Ultra; a remount). Branch against main differs exactly as main differs from itself: at
+  most 1/255 on 0.01 % of pixels with MSAA, nothing on Low.
+- **Steps (Node, High):** the longest first-visit step is 40 ms (the first, with the noise
+  textures), the rest 24–27 ms.
+
+Interleaved load A/B, 3 rounds, panel cadence (`ab-load.sh`), ms:
+
+| | First visit: freeze | First visit: shown | Revisit: freeze | Revisit: shown |
+|---|---:|---:|---:|---:|
+| main | 248 / 257 / 272 | 2237 (mean) | 27 / 34 / 33 | 1214 (mean) |
+| branch | 51 / 51 / 49 | 1919 (mean) | 50 / 34 / 32 | 1141 (mean) |
+
+- The first visit shows ~320 ms sooner despite more breaths: less work in all.
+- The revisit's one 50 ms round did not repeat.
+
+### The fleet re-measured after rounds two and three
+
+The whole fleet at the panel's cadence on `f391211b` (main `38ce04bb` + this round): High,
+`--vsync=1 --target-fps=240`, the same windows as §4. Balanced mode (power limit 95 W), nothing
+else running. Raw: `reports/theme-fleet-bench/2026-10-29-round3-high-vsync/`, with
+`vs-2026-10-27.md` (every theme against §4's run) and `table-cadence.md`.
+
+The two runs are two days apart, so main's own theme work since 2026-10-27 is in the comparison
+too (Golden Forest's cranes, Forest's owl, Winter's bear, Fall's squirrel, Verdant Hills' flock,
+Sunset's gulls). Single cells drift; read the fleet, not one theme.
+
+| All 63 themes | 2026-10-27 | 2026-10-29 |
+|---|---:|---:|
+| Shown, first visit (median / mean, s) | 0.79 / 0.89 | **0.75 / 0.84** |
+| Shown, revisit (median / mean, s) | 0.57 / 0.68 | **0.52 / 0.60** |
+| Longest frame in the switch, first visit (median / mean, ms) | 80 / 96 | **63 / 66** |
+| Longest frame in the switch, revisit (median / mean, ms) | 54 / 69 | **44 / 47** |
+| Late frames (median / mean) | 0.18 / 0.21 % | 0.15 / 0.18 % |
+| Themes with a window under 175 fps | Spring, Thermal Bloom, Rainbark | Thermal Bloom |
+| First-visit freezes over 110 ms | 12 themes | 6 |
+| Revisit freezes over 110 ms | 7 themes | **none** |
+
+The largest switch freezes, ms (first visit / revisit):
+
+| Theme | 2026-10-27 | 2026-10-29 |
+|---|---:|---:|
+| Neon District | 357 / 163 | 78 / 62 |
+| Spring | 259 / 542 | 51 / 41 |
+| Fall | 254 / 183 | 96 / 72 |
+| Void Ember | 208 / 54 | 57 / 39 |
+| Aurora | 165 / 155 | 106 / 80 |
+| Himalayan Peak | 101 / 122 | 107 / 52 |
+| Starlight | 118 / 112 | 113 / 22 |
+
+**Left over 110 ms** (first visit only): Sunfall 149, Rainbark 131, Stellar Drift 123, Solar
+Eclipse 119, Starlight 113, Ice Temple 112. §12 named most of them: a single heavy material, or
+first-visit bakes.
+
+**Frames:** Thermal Bloom's storms are the one window under 175 fps (170, 1.96 % late). This is the
+GPU-bound look (§11), the owner's call. Spring's storms, 174 with 0.90 % late on 2026-10-27, read
+179 and 0.10 %.
