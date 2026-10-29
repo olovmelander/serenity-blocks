@@ -597,3 +597,75 @@ Cosmic Noir's Ultra and Extreme now cost about 1.4× and 1.66× its High (462 fp
 - **The playground's `?t=`** captures are reproducible across builds: unchanged themes matched within
   one level. Sunfall is the exception: its vine leaves are placed afresh on each mount. So the pairs
   above are a usable regression check.
+
+## 12. Switch freezes: shader builds and the GPU process (2026-10-29)
+
+Branch `perf/shader-build-freezes`, still in Balanced mode. Two new bench instruments:
+- `--build-trace=1` records each first-time render-object build of a switch: its cost, and whether
+  the build budget charged, deferred or exempted it.
+- `--trace-load=1` / `--trace-gpu=1` record Chrome traces through Electron's `contentTracing`, so the
+  GPU process is visible too.
+
+**What the switch freezes left after §11 were.**
+- **Single heavy materials.** The budget can't split one material.
+  - Aurora's curtain march: 122 ms.
+  - Rainbark's sky, near trunks, far trunks and post: 58–84 ms each.
+  - Neon District's shop material: 77 + 62 ms (scene and reflection).
+- **GPU-process stalls with the main thread idle:**
+  - Neon District's 380 ms frame was the post chain's final composite compiled synchronously, 356 ms
+    of DXC on the GPU process's main thread.
+  - Fall's late 240 ms frame was its squirrel's pipelines (plume hair 140 ms, fur 84 ms). They
+    compiled synchronously on the frame it first showed, after the switch's async window had closed.
+- **Spring's first-visit build steps** (186 and 243 ms).
+
+**Changed:**
+
+| Change | Measured (interleaved, main → branch, panel cadence) |
+|---|---|
+| Aurora marches its arcs in a TSL `Loop` over a uniform table of each arc's constants: one copy of the march, not four. Every constant reaches the shader as the same float. | Node build 133 → 45 ms, WGSL 75 → 27 KB. Switch freeze 167 → 106 ms (first visit), 138 → 75 ms (revisit). fps unchanged. Shots identical on WebGPU (max difference 0, 7 scenes incl. a storm). |
+| A theme still built hidden (an in-play switch) creates its final composite async too (`asyncCompositeWhileHidden`). Once revealed, a composite is synchronous again. | Neon District 385 → 83 ms, shown 1686 → 1360 ms. Cosmic Noir 54 → 20 ms, Winter 76 → 45 ms. Five other themes unchanged. Hidden frames only. |
+| Fall warms its parked squirrel at the end of `createScene`, alone (`warmParkedDrawablesAlone`: every other drawable sits the warm frame out, so the budget-free frame builds only the squirrel). | Fall 240 → 142 ms (first visit), 183 → 107 ms (revisit), shown 41–59 ms later. No synchronous pipeline over 20 ms from the switch through two storms. |
+
+**Tried and left:**
+- **three's own async node build** (`buildAsync`, `getForRenderDeferred`) yields between build
+  stages. But the first chunk (graph construction and setup) is ~75 % of a heavy build, so the worst
+  chunk only drops ~25 %.
+- **Rainbark:** its shaders are big by design. Only 24–41 % of their code repeats, and its own rule
+  keeps helpers that read uniforms inline (r186 cannot lay out a function that captures uniforms or
+  textures). A restructure would save about a third.
+
+**Effects that compiled mid-play.** A light GPU trace (`--trace-gpu`, switch plus two storms, all
+63 themes) found seven themes whose effects stay out of sight until play calls them up. Their
+pipelines then compiled synchronously on the GPU process's main thread on the first gameplay frame
+that showed them:
+
+| Theme | Before |
+|---|---|
+| Black Hole | infall 63, ejecta 59, jets 37 ms |
+| Wolfhour | 24-31 ms × 4 |
+| Tornado | 46 + 31 + 21 ms |
+| Winter | the fox of light 72 ms |
+| Sunfall | the Exhale cloud 37 ms |
+| Grainfields | the locks' sunbeams 27 ms |
+| Chiral Gold | a reflection-map bake at load, 62 ms (synchronous by design, left) |
+
+Fall's squirrel (above) was the same case. Tornado, Wolfhour and Black Hole already had a warm
+frame, but it did nothing. Two traps, both fixed in `shared/warm-hidden-drawables.js`
+`warmParkedSoon`:
+- **The build budget deferred the warm frame's builds.** The warm now lets only the parked drawables
+  past the budget (`withBuildBudgetExemptFor`, which counts them). It runs in a task of its own just
+  after the build, with every other drawable sitting it out. It retries a frame apart until one frame
+  has built them.
+  - Turning the budget fully off instead built the whole post chain in one task: Sunfall's switch
+    freeze grew 147 → 199 ms.
+- **A post chain's scene pass runs once per node frame.** A theme that draws its first frame inside
+  its build had spent that frame's pass, so a later warm render drew nothing. Each warm render now
+  advances the node frame first, as three's `compileAsync` does.
+
+Also changed:
+- Winter draws the fox of light dark for 120 frames after it arrives, not 4: with 4, the budget's
+  queue still held it.
+- The warm helper also gives an `InstancedBufferGeometry` with no instances one instance for the
+  warm frame (Grainfields' beams).
+
+Result: no synchronous pipeline over 20 ms in any of the seven, from the switch through two storms.
