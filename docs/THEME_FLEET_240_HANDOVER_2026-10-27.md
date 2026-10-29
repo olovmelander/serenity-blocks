@@ -7,10 +7,9 @@ to resume, and what to do next, in order.
 > **Pick up here (updated 2026-10-29 22:30, paused at the owner's request).**
 > - **Merged to main:** rounds four to six (`perf/first-visit-freezes` + `perf/gpu-heavy-three`) as
 >   `2e16df31`.
-> - **Round seven, in progress:** branch `perf/first-visit-rest` (from `2e16df31`), not pushed.
->   - `7f37df98`: Ice Temple's noise and ice bake in a worker on a first visit (byte-identical to
->     before, tests pass). **Not measured yet:** run a load A/B against main (`ab-load.sh`, 3
->     rounds, panel cadence) and the CI gates, then add it to the record as §17.
+> - **Round seven:** branch `perf/first-visit-rest` (from `2e16df31`).
+>   - `7f37df98`: Ice Temple's noise and ice bake in a worker on a first visit: freeze 90 → 44 ms
+>     (record §17). Merged with this branch.
 >   - Next: Geode, Chiral Gold and Aurora (93-106 ms first-visit freezes): find the worst frame with
 >     `--trace-load=1 --build-trace=1` first.
 >   - A whole-fleet High run, uncapped, on main was stopped after 20 themes to let the machine cool:
