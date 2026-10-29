@@ -12,7 +12,7 @@ import {
 } from './sunfall-quality.js';
 import { SUNFALL_TETROMINOS } from './sunfall-tetrominos.js';
 import { SunfallDirector } from './sunfall-director.js';
-import { subscribeSunfallRuns, wireSunfallEvents } from './sunfall-events.js';
+import { subscribeSunfallRuns, warmSunfallParked, wireSunfallEvents } from './sunfall-events.js';
 import { SunfallWorld } from './sunfall-world.js';
 import { SunfallPost, createPassThroughPipeline, resolveSunfallPostLook } from './sunfall-post.js';
 import { readBoardViewport } from './sunfall-composition.js';
@@ -97,7 +97,7 @@ export default class SunfallTheme extends BaseTheme {
         // A restart for a tier chosen behind the menu keeps the run's clock (BaseTheme.resume()).
         const startTime = this.flags.time ?? this.takeRestartTime(null);
         if (startTime !== null) { this.time = startTime; this.director.time = startTime; }
-        this.world.applySnapshot(this.director.step(0));
+        this.world.applySnapshot(this.director.step(0)); warmSunfallParked(this); // event FX, drawn once while masked
         if (!this.isPaused) this.animate();
     }
 
