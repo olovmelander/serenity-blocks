@@ -23,7 +23,8 @@ import {
     bearAct, bearPaw, bearPoint, createBearPosture, createBearSpec, solveBear,
 } from '../../src/themes/winter/winter-bear-rig.js';
 import {
-    BEAR_EASE, BEAR_GAIT, BEAR_PACE, BEAR_ROUTE, BearMind, bearCourse, bearOnCourse, pawAt, phaseAt,
+    BEAR_AWAY, BEAR_EASE, BEAR_EDGE, BEAR_GAIT, BEAR_PACE, BEAR_ROUTE, BEAR_ROUTES, BearMind, bearCourse, bearOnCourse,
+    pawAt, phaseAt,
 } from '../../src/themes/winter/winter-bear-plan.js';
 import { fovForAspect, groundHeight, lakeMask } from '../../src/themes/winter/winter-core.js';
 import { readGlb } from '../../scripts/fox/glb-read.mjs';
@@ -405,6 +406,15 @@ describe('winter bear: where it goes, and when', () => {
 
     it('walks on the lake\'s ice wherever the frame shows it, and only crosses land behind the trees', () => {
         for (const aspect of [LANDSCAPE, 21 / 9, 4 / 3, 430 / 932]) {
+            for (const { route, pace } of BEAR_ROUTES) {
+                const course = bearCourse(aspect, { route, pace });
+                for (let i = 0; i < course.count; i++) {
+                    const x = course.points[i * 3];
+                    const z = course.points[i * 3 + 1];
+                    if (lakeMask(x, z) >= 0.5) continue;
+                    expect(Math.abs(fractionOf(x, z, aspect)), `${aspect.toFixed(2)} sample ${i}`).toBeGreaterThan(0.6);
+                }
+            }
             const course = bearCourse(aspect);
             for (let i = 0; i < course.count; i++) {
                 const x = course.points[i * 3];
@@ -415,13 +425,78 @@ describe('winter bear: where it goes, and when', () => {
         }
     });
 
-    it('stops only where it can be seen, in the open ice right of the board', () => {
-        BEAR_ROUTE.filter((knot) => knot[2]).forEach(([fraction, dist, [act]]) => {
-            expect(fraction, `${act} at ${fraction}`).toBeGreaterThanOrEqual(WINDOW[0]);
-            expect(fraction, `${act} at ${fraction}`).toBeLessThanOrEqual(WINDOW[1]);
-            expect(dist).toBeLessThan(150);
-            expect(BEAR_ACTS[act], act).toBeTruthy();
+    it('stops only in sight, on the open ice right of the board (or out of sight where its ways meet)', () => {
+        BEAR_ROUTES.forEach(({ name, route }) => {
+            // Every way sets out from where they meet, past the frame's right edge, standing a moment there.
+            expect(route[0][0], name).toBe(BEAR_EDGE);
+            expect(route[0][2][0], name).toBe('Stand');
+            route.slice(1).filter((knot) => knot[2]).forEach(([fraction, dist, [act]]) => {
+                expect(fraction, `${name}: ${act} at ${fraction}`).toBeGreaterThanOrEqual(WINDOW[0]);
+                expect(fraction, `${name}: ${act} at ${fraction}`).toBeLessThanOrEqual(WINDOW[1]);
+                expect(dist).toBeLessThan(150);
+                expect(BEAR_ACTS[act], act).toBeTruthy();
+            });
         });
+    });
+
+    it('knows several ways, all meeting in one place out of sight: past the right edge, at any width', () => {
+        expect(BEAR_ROUTES.length).toBeGreaterThanOrEqual(5);
+        expect(BEAR_ROUTES[0].route).toBe(BEAR_ROUTE);
+        for (const aspect of [LANDSCAPE, 21 / 9, 32 / 9, 4 / 3, 430 / 932]) {
+            const meets = BEAR_ROUTES.map(({ route, pace }) => {
+                const course = bearCourse(aspect, { route, pace });
+                return bearOnCourse(course, course.period - 0.01, {});
+            });
+            meets.forEach((at, i) => {
+                const label = `${BEAR_ROUTES[i].name} at ${aspect.toFixed(2)}`;
+                expect(fractionOf(at.x, at.z, aspect), label).toBeGreaterThan(1.05);
+                // (The same place and nearly the same heading for every way, each sampled along its own
+                // length: one way hands over to the next unseen.)
+                expect(Math.hypot(at.x - meets[0].x, at.z - meets[0].z)).toBeLessThan(0.05);
+                expect(Math.abs(at.heading - meets[0].heading)).toBeLessThan(0.03);
+            });
+        }
+    });
+
+    it('takes another way each time, never the same twice running, and is out of sight between them', () => {
+        const mind = new BearMind(LANDSCAPE);
+        const ways = [];
+        let lap = -1;
+        let away = 0;
+        for (let t = 0; t < 3 * 3600; t += 1) {
+            const clock = mind.clockAt(t);
+            const n = mind.lapIndex(clock);
+            const p = mind.step(t);
+            if (n !== lap) {
+                ways.push(mind.laps[n].way);
+                lap = n;
+                // A new lap begins where the ways meet, out of sight.
+                if (n > 0) expect(fractionOf(p.x, p.z), `lap ${n}`).toBeGreaterThan(1.05);
+            }
+            if (fractionOf(p.x, p.z) > 1.05) away += 1;
+        }
+        expect(ways.length).toBeGreaterThan(25);
+        expect(ways[0]).toBe(0);
+        for (let i = 1; i < ways.length; i++) expect(ways[i]).not.toBe(ways[i - 1]);
+        expect(new Set(ways).size).toBe(BEAR_ROUTES.length);
+        mind.laps.forEach((l) => {
+            expect(l.wait).toBeGreaterThanOrEqual(BEAR_AWAY[0]);
+            expect(l.wait).toBeLessThanOrEqual(BEAR_AWAY[1]);
+        });
+        // Out of sight a while between its ways, but in sight most of the time.
+        expect(away / (3 * 3600)).toBeGreaterThan(0.05);
+        expect(away / (3 * 3600)).toBeLessThan(0.4);
+    });
+
+    it('is still a function of its clock alone many ways on', () => {
+        const stepped = new BearMind(LANDSCAPE);
+        for (let t = 1500; t <= 1530; t += 1 / 30) stepped.step(t);
+        const a = stepped.step(1530.01);
+        const spec = [...a.spec];
+        const b = new BearMind(LANDSCAPE).step(1530.01);
+        expect(a.x).toBeCloseTo(b.x, 9);
+        expect(a.z).toBeCloseTo(b.z, 9);
+        spec.forEach((v, i) => expect(v, `spec[${i}]`).toBeCloseTo(b.spec[i], 9));
     });
 
     it('comes out from behind the trees within seconds of the start, and spends much of its time in sight', () => {

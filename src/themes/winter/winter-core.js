@@ -410,15 +410,22 @@ export const FOX_ROUND = Object.freeze([
 export const FOX_STATIONS = Object.freeze([1, 5]);
 
 /**
+ * How near the eye the fox's round is drawn at an aspect (1 = as planned). An upright screen's
+ * board hides the middle of the snowfield: the round is drawn in under the board's foot there,
+ * where the snow shows.
+ */
+export function foxRoundPull(aspect) {
+    return 0.62 + 0.38 * smooth(0.75, 1.2, Number.isFinite(aspect) ? aspect : 16 / 9);
+}
+
+/**
  * The round as a closed Catmull-Rom curve on the ground for an aspect, sampled evenly by
  * distance.
  * @returns {{ points: Float32Array, length: number, count: number, stations: number[] }}
  *   points = count × (x, z, heading); stations = distance along the round of each stop
  */
 export function foxRound(aspect, count = 256) {
-    // An upright screen's board hides the middle of the snowfield: the round is drawn in under
-    // the board's foot there, where the snow shows.
-    const pull = 0.62 + 0.38 * smooth(0.75, 1.2, Number.isFinite(aspect) ? aspect : 16 / 9);
+    const pull = foxRoundPull(aspect);
     const knots = FOX_ROUND.map(([fraction, dist]) => {
         const az = bearingFor(fraction, aspect);
         return [Math.sin(az) * dist * pull, -Math.cos(az) * dist * pull];

@@ -91,7 +91,8 @@ export function create({
     // ?foxCam=<metres> is a lens that keeps that far from the fox and follows it:
     // round it from its front by ?foxCamYaw=<deg> (or `viewer`: the side the game sees it from),
     // with ?foxCamFov=<deg>. ?foxAct=<acts|hunt> stops that fox ?foxActAge seconds before the
-    // frame and has it do them (Sit, LookAround, Stretch, Greet, CurlSleep…).
+    // frame and has it do them (Sit, LookAround, Stretch, Greet, CurlSleep…). ?foxTurn=<s> has it
+    // pull up that long before the frame and turn back the way it came (as it does now and then).
     const number = (name, fallback) => {
         const value = Number(params.get(name));
         return params.has(name) && Number.isFinite(value) ? value : fallback;
@@ -175,8 +176,10 @@ export function create({
         const steps = Math.max(1, Math.ceil(target * 60));
         const dt = target / steps;
         const actTime = foxAct.length ? Math.max(0, target - Math.max(0, number('foxActAge', 1))) : Infinity;
+        const turnTime = params.has('foxTurn') ? Math.max(0, target - Math.max(0, number('foxTurn', 2))) : Infinity;
         let fired = false;
         let acted = false;
+        let turned = false;
         for (let i = 1; i <= steps; i += 1) {
             if (!fired && i * dt >= eventTime) {
                 fired = true;
@@ -187,6 +190,8 @@ export function create({
                 const { foxes } = world;
                 foxes.mind.rehearse(foxAct[0] === 'hunt' ? ['Listen', 'Pounce', 'Dig', 'Shake'] : foxAct, foxes.time);
             }
+            // (Only once it is under way: stopped, it tries again the next step.)
+            if (!turned && i * dt >= turnTime) turned = world.foxes.mind.turnHere(world.foxes.time);
             update(i * dt, dt);
         }
         sought = time;
@@ -223,7 +228,14 @@ export function create({
                 ...(post?.getDiagnostics() || {}),
                 activeEmitters: reactions.getFrame().emitters.length,
                 foxes: (world?.foxes?.foxes || []).map((fox) => ({
-                    rigged: fox.rigged, mode: fox.mind.mode, clip: fox.mind.pose.clip, x: fox.mind.pose.x, z: fox.mind.pose.z,
+                    rigged: fox.rigged,
+                    mode: fox.mind.mode,
+                    clip: fox.mind.pose.clip,
+                    act: fox.mind.act?.join('+') ?? null,
+                    x: fox.mind.pose.x,
+                    z: fox.mind.pose.z,
+                    turns: fox.mind.walk?.turns.length ?? 0,
+                    restless: fox.mind.restless ?? null,
                 })),
             };
         },

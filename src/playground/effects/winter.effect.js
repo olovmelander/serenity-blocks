@@ -32,6 +32,8 @@
  *                            foxCamFov=<deg>)
  *   foxAct=<acts>            stop the fox <foxActAge> seconds before the frame and have it do
  *                            these (comma-separated: Sit, or Listen,Pounce,Dig,Shake — `hunt` is that)
+ *   foxTurn=<s>              have the fox pull up and turn back the way it came <s> seconds before
+ *                            the frame (as it does now and then on its own)
  *   bear=0                   do not fetch the polar bear's body
  *   bearAt=<s>               put the bear <s> seconds into its own course at the frame (its walk is
  *                            a function of that clock: winter-bear-plan.js)
@@ -273,7 +275,9 @@ export function create({
     };
 
     const seekTo = (time) => {
-        const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
+        // (Long enough before the frame for anything asked to happen before it.)
+        const asked = Math.max(eventName ? eventAge : 0, params.has('foxTurn') ? num(params, 'foxTurn', 2) : 0);
+        const lead = asked + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
         world.seek(start);
         // (Its clock runs with the world's from here: at the frame it stands bearAt into its course.)
@@ -302,6 +306,13 @@ export function create({
                 at: Math.max(cursor, time - num(params, 'foxActAge', 1)),
                 fine: 1 / 60,
                 play: (at) => world.mind.rehearse(foxAct[0] === 'hunt' ? ['Listen', 'Pounce', 'Dig', 'Shake'] : foxAct, at),
+            });
+        }
+        if (params.has('foxTurn')) {
+            marks.push({
+                at: Math.max(cursor, time - num(params, 'foxTurn', 2)),
+                fine: 1 / 60,
+                play: (at) => world.mind.turnHere?.(at),
             });
         }
         if (eventName) marks.push({ at: Math.max(cursor, time - eventAge), fine: 1 / 120, play: fireEvent });
