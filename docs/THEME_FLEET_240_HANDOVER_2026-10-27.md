@@ -7,11 +7,11 @@ to resume, and what to do next, in order.
 > **Pick up here (updated 2026-10-29 late, round six).**
 > - **Round six:** same branch, committed, not merged (record §16).
 >   - Spring's sun shafts read a half-size light map: golden evening 216 → 260 fps (`281e13f0`).
->     Look-alike, **pending the owner's approval**: revert that commit if declined.
+>     Look-alike, approved by the owner from the crops.
 >   - Thermal Bloom's seal fills mark only their two terrace lines: storms 179 → 190 fps
 >     (`608949a7`, pixel-identical).
->   - Rainbark's loading and Grainfields' storms were looked into, not changed. Rainbark's option (the
->     trunks' canopy blend as a second pass) is the owner's call.
+>   - Rainbark's loading and Grainfields' storms were looked into, not changed. The owner chose to
+>     leave Rainbark's option (the trunks' canopy blend as a second pass).
 >
 > Round five:
 > - **Round five:** branch `perf/gpu-heavy-three` (on `perf/first-visit-freezes`), committed, not

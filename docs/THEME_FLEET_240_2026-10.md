@@ -969,7 +969,7 @@ The march's 14 taps were jittered per pixel, so neighbouring pixels read colour 
 ~100 px apart and missed the texture cache: without the jitter the shafts cost 0.2 ms, without the
 depth reads 0.65 ms.
 
-**Kept, look-alike, pending the owner's approval:** the shafts' light (open sky × its capped
+**Kept, look-alike, approved by the owner from the crops:** the shafts' light (open sky × its capped
 brightness) is drawn into a map at half the scene's size, each texel the mean of the four under it,
 only while the sun shows; the march reads that. Same jitter, steps and weights.
 
@@ -1016,7 +1016,8 @@ Node build in the playground (`shader-probe.mjs`): sky 77 ms (174 KB of WGSL), n
   trunk by `into`, then the storeys by their cover: plain mixes, so one blended layer). Each
   material then builds in a frame of its own (~59 + ~70 ms instead of 131). Costs: a second trunk
   draw on the GPU, a depth-equal test across two shader modules, and the trunk colour rounded to
-  half float before the blend. Look-alike at best: the owner's call.
+  half float before the blend. Look-alike at best. **The owner chose to leave it:** a one-time
+  hitch on a first visit is not worth an extra GPU pass every frame.
 
 ### Grainfields' storms (looked into, not changed)
 
