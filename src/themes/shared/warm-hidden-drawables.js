@@ -164,6 +164,36 @@ export function warmParkedDrawables(roots, options = {}) {
 }
 
 /**
+ * warmParkedDrawables for a theme whose own build is still spreading its first builds over frames
+ * (an in-play switch's hidden build: shared build budget, async-render-pipelines.js): every other
+ * drawable in `scene` sits out the warm frame, so a warm with the budget off builds the parked
+ * drawables and nothing else (warming Fall's squirrel inside its first frame built the whole
+ * forest with it: a 250 ms task). Lights stay, so the parked materials build for the real lights.
+ *
+ * @param {any} scene the theme's scene
+ * @param {any} roots one Object3D, or an array of them
+ * @param {{camera?: any, render?: () => void, settle?: boolean}} [options]
+ * @returns {number} drawables revealed for the warm frame
+ */
+export function warmParkedDrawablesAlone(scene, roots, options = {}) {
+    const list = (Array.isArray(roots) ? roots : [roots]).filter(Boolean);
+    if (!scene || !list.length) return 0;
+    const own = new Set();
+    for (const root of list) root.traverse?.((object) => own.add(object));
+    const sidelined = [];
+    scene.traverse((object) => {
+        if (own.has(object) || !isDrawable(object) || object.visible !== true) return;
+        object.visible = false;
+        sidelined.push(object);
+    });
+    try {
+        return warmParkedDrawables(list, options);
+    } finally {
+        for (const object of sidelined) object.visible = true;
+    }
+}
+
+/**
  * Wait for submitted GPU work to complete.
  *
  * `device.createRenderPipeline()` returns to JS long before Dawn finishes

@@ -21,6 +21,8 @@ import { FALL_REDUCED_MOTION, FallReactions } from './fall-reactions.js';
 import { FallPost } from './fall-post.js';
 import { fallTier } from './fall-quality.js';
 import { canvasAntialias, sceneSamples } from '../shared/scene-antialias.js';
+import { warmParkedDrawablesAlone } from '../shared/warm-hidden-drawables.js';
+import { withoutBuildBudget } from '../../rendering/async-render-pipelines.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -242,6 +244,7 @@ export default class FallTheme extends BaseTheme {
             this.setupEventListeners();
             this.time = this.takeRestartTime(0);
             this.update(0);
+            this.warmSquirrel();
             this.timer = new THREE.Timer();
             this.timer.connect(document);
             this.timer.reset();
@@ -576,6 +579,22 @@ export default class FallTheme extends BaseTheme {
         applyCameraBreath(this.camera, this.time, {
             scale: this.reducedMotion || prefersReducedMotion() ? 0 : 1,
         });
+    }
+
+    /**
+     * The squirrel stays out of sight until it first comes down a trunk, so nothing compiled its
+     * pipelines while the theme was built: they compiled synchronously in the GPU process on the
+     * frame it first showed (its plume hair 140-240 ms, with the game running;
+     * docs/THEME_FLEET_240_2026-10.md §12). Draw it once now, alone (the rest of the forest builds over
+     * the next frames, within the switch's budget), with the budget off so nothing of it is left for later.
+     */
+    warmSquirrel() {
+        const squirrel = this.world?.squirrel;
+        if (!squirrel?.group || !this.camera) return;
+        withoutBuildBudget(this.renderer, () => warmParkedDrawablesAlone(this.scene, [squirrel.group, squirrel.shade], {
+            camera: this.camera,
+            render: () => this.renderFrame(),
+        }));
     }
 
     renderFrame() {

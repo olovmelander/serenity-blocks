@@ -1408,3 +1408,46 @@ describe('Fall with its real artwork', () => {
         expect(renderer.toneMapping).toBe(THREE.ACESFilmicToneMapping);
     });
 });
+
+describe('Fall warms its hidden squirrel while the theme is masked', () => {
+    it('draws the parked squirrel once, alone (its hair included), then puts everything back', async () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        stubSceneBuild(theme);
+        await theme.createScene();
+        // A squirrel out of sight, as it starts: its pivot hidden, its hair and shade parked.
+        const pivot = new THREE.Group();
+        pivot.visible = false;
+        const hair = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicNodeMaterial());
+        hair.name = 'FallSquirrelPlumeHair';
+        pivot.add(hair);
+        const shade = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicNodeMaterial());
+        shade.visible = false;
+        theme.world.squirrel = { group: pivot, shade };
+        theme.scene.add(pivot, shade);
+        // The rest of the forest, still building over the switch's frames: it sits the warm out.
+        const tree = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicNodeMaterial());
+        theme.scene.add(tree);
+        const seen = [];
+        vi.spyOn(theme, 'renderFrame').mockImplementation(() => {
+            seen.push({ pivot: pivot.visible, shade: shade.visible, culled: hair.frustumCulled, tree: tree.visible });
+        });
+        theme.warmSquirrel();
+        // The warm frame shows it unculled; the settle frame after it is back to how it was.
+        expect(seen).toEqual([
+            { pivot: true, shade: true, culled: false, tree: false },
+            { pivot: false, shade: false, culled: true, tree: false },
+        ]);
+        expect([pivot.visible, shade.visible, hair.frustumCulled, tree.visible]).toEqual([false, false, true, true]);
+    });
+
+    it('does nothing without a squirrel', async () => {
+        const theme = createTheme();
+        theme.isActive = true;
+        stubSceneBuild(theme);
+        await theme.createScene();
+        const render = vi.spyOn(theme, 'renderFrame');
+        theme.warmSquirrel();
+        expect(render).not.toHaveBeenCalled();
+    });
+});
