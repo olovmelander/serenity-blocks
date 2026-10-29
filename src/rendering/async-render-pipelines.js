@@ -250,12 +250,15 @@ function traceBuild(renderer, args, kind, ms, depth) {
 }
 
 /** A first-time build the budget does not charge, timed for the trace. */
-function tracedExempt(renderer, original, args, kind) {
+/** Whether this draw would build a render object the renderer has not built yet. */
+function isNewRenderObject(renderer, args) {
     const [object, material, , , lightsNode, , , passId] = args;
     const chainMap = renderer._objects?.getChainMap?.(passId);
-    if (!chainMap || chainMap.get([object, material, renderer._currentRenderContext, lightsNode]) !== undefined) {
-        return original.apply(renderer, args);
-    }
+    return Boolean(chainMap) && chainMap.get([object, material, renderer._currentRenderContext, lightsNode]) === undefined;
+}
+
+function tracedExempt(renderer, original, args, kind) {
+    if (!isNewRenderObject(renderer, args)) return original.apply(renderer, args);
     const t0 = performance.now();
     try {
         return original.apply(renderer, args);
@@ -272,10 +275,12 @@ function installBuildBudget(proto) {
     const wrapped = function serenityBudgetedRenderObjectDirect(...args) {
         const s = budgetSessions.size === 0 ? null : budgetSessionFor(this);
         if (s === null || isOneShotRenderTarget(this._renderTarget) || s.budgetSuspended > 0
-            || (s.exemptCanvasDraws && !this._renderTarget)) {
+            || (s.exemptCanvasDraws && !this._renderTarget) || s.exemptObjects?.has(args[0]) === true) {
+            // A warm frame's parked drawables: count the ones built (withBuildBudgetExemptFor).
+            if (s !== null && s.exemptObjects?.has(args[0]) === true && isNewRenderObject(this, args)) s.exemptBuilds += 1;
             if (s === null || !Array.isArray(globalThis.__serenityBuildTrace)) return original.apply(this, args);
             let kind = 'exempt:canvas';
-            if (s.budgetSuspended > 0) kind = 'exempt:warm';
+            if (s.budgetSuspended > 0 || s.exemptObjects?.has(args[0]) === true) kind = 'exempt:warm';
             else if (isOneShotRenderTarget(this._renderTarget)) kind = 'exempt:one-shot';
             return tracedExempt(this, original, args, kind);
         }
@@ -374,6 +379,10 @@ export function beginAsyncRenderPipelines(theme, {
         buildBudgetMs: 0,
         exemptCanvasDraws: exemptCanvasDraws === true,
         asyncCompositeWhileHidden: asyncCompositeWhileHidden === true,
+        /** Objects built whatever the budget says (see withBuildBudgetExemptFor), or null. */
+        exemptObjects: null,
+        /** How many of them were built (a warm frame reads it to know it reached them). */
+        exemptBuilds: 0,
         /** While above 0, this session's renderer builds everything it meets (see withoutBudget). */
         budgetSuspended: 0,
         /**
@@ -534,6 +543,39 @@ export function beginAsyncRenderPipelines(theme, {
 export function withoutBuildBudget(renderer, fn) {
     const session = renderer && budgetSessions.size > 0 ? budgetSessionFor(renderer) : null;
     return session ? session.withoutBudget(fn) : fn();
+}
+
+/**
+ * Run `fn` with `objects` let past the build budget of `renderer`'s open session: a warm frame for
+ * parked drawables builds them at once, while everything else it meets (a post chain's passes not
+ * built yet) keeps to the budget and spreads over frames as before. Without a session it just runs.
+ * @template T
+ * @param {any} renderer
+ * @param {Set<any>} objects
+ * @param {() => T} fn
+ * @returns {T}
+ */
+export function withBuildBudgetExemptFor(renderer, objects, fn) {
+    const session = renderer && budgetSessions.size > 0 ? budgetSessionFor(renderer) : null;
+    if (!session) return fn();
+    const before = session.exemptObjects;
+    session.exemptObjects = objects;
+    try {
+        return fn();
+    } finally {
+        session.exemptObjects = before;
+    }
+}
+
+/**
+ * Builds of objects let past the budget so far (withBuildBudgetExemptFor) in `renderer`'s open
+ * session, or null without one (nothing is budgeted: a warm frame builds what it draws).
+ * @param {any} renderer
+ * @returns {?number}
+ */
+export function exemptBuildCount(renderer) {
+    const session = renderer && budgetSessions.size > 0 ? budgetSessionFor(renderer) : null;
+    return session ? session.exemptBuilds : null;
 }
 
 export function adoptRendererForTheme(theme, renderer) {

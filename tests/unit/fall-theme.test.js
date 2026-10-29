@@ -1432,7 +1432,7 @@ describe('Fall warms its hidden squirrel while the theme is masked', () => {
         vi.spyOn(theme, 'renderFrame').mockImplementation(() => {
             seen.push({ pivot: pivot.visible, shade: shade.visible, culled: hair.frustumCulled, tree: tree.visible });
         });
-        theme.warmSquirrel();
+        await theme.warmSquirrel();
         // The warm frame shows it unculled; the settle frame after it is back to how it was.
         expect(seen).toEqual([
             { pivot: true, shade: true, culled: false, tree: false },
@@ -1447,7 +1447,7 @@ describe('Fall warms its hidden squirrel while the theme is masked', () => {
         stubSceneBuild(theme);
         await theme.createScene();
         const render = vi.spyOn(theme, 'renderFrame');
-        theme.warmSquirrel();
+        await theme.warmSquirrel();
         expect(render).not.toHaveBeenCalled();
     });
 });
