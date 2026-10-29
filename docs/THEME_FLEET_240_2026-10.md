@@ -3,7 +3,8 @@
 The owner's ask: audit every theme's load time and frame rate across the graphics settings, aim for
 **240 fps on High on this laptop**, align the other tiers to that benchmark, and keep the themes'
 look and effects. This is the record of the first pass: the instrument, the fleet at High, what
-limits the slow themes, a ceiling that sits below the game, what changed, and the queue.
+limits the slow themes, a ceiling that sits below the game, what changed, and the queue. §11 is the
+night pass of 2026-10-28 → 29.
 
 ## 1. Outcome
 
@@ -22,8 +23,8 @@ limits the slow themes, a ceiling that sits below the game, what changed, and th
   every window with at most 0.43 % late frames. Thermal Bloom (1.4 %), Spring (0.9 %) and Verdant
   Hills (0.8 %) drop frames in storms.
 - **Loading:** an in-play switch shows the new theme after 0.79 s cold and 0.57 s warm at the
-  median, then crossfades. Seven themes still freeze one frame for 110-360 ms during the switch
-  (§7).
+  median, then crossfades. Seven themes froze one frame for 110-360 ms during the switch (§7);
+  the night pass (§11) took out the main-thread work behind those freezes.
 - **Conditions:** the laptop ran in Lenovo's Balanced mode, which holds the RTX 5080 at an
   80-95 W power limit (it can take 175 W).
   - The GPU sat at that cap in nearly every theme, so GPU-bound numbers here are conservative.
@@ -317,6 +318,12 @@ policy caps are Minimal 0.9 / Low 1.0 / Medium 1.15 / High 1.25 / Ultra 1.35 / E
 - With a 240 target and the ~178 Hz display cadence, every frame is 5.6 ms against a 4.17 ms budget.
 - Read in code, not yet observed: a packaged game set to 240 here would keep lowering the
   resolution. Check that in the packaged app before recommending a 240 target on this laptop.
+- Re-read on the night pass: the monitor ticks only while `performanceMonitor` is enabled, which is
+  when the FPS counter is shown (`showFPSCounter`). It recovers only when p95 is under 0.9× the
+  budget (3.75 ms at 240), which a 178 Hz cadence never allows. So with the counter on, a 240
+  target would step down to the floor and stay there. A fix would judge headroom at the display's
+  achieved cadence, as Odyssey's caller does (`upscaleThresholdMs`). It is app-level, so it was
+  left for a session that can verify it in the packaged app.
 
 ## 8b. Tiers measured (2026-10-27 afternoon)
 
@@ -419,12 +426,8 @@ only, for the bench's storms.
 2. **The ~178 fps ceiling (§6):**
    - Try dGPU-only display mode and the refresh-rate settings.
    - Check the packaged app's dynamic resolution against a 240 target (§8).
-3. **Load freezes (§7):**
-   - Fall and Sunfall: cache the parsed GLTF data for the session. Check first that their worlds
-     never change it.
-   - Neon District, Aurora, Starlight: profile which materials build in one task, then make the node
-     graphs smaller (`Fn().setLayout`) or split the build.
-   - Spring's long task.
+3. **Load freezes (§7):** done in the night pass (§11). What is left is node-graph builds inside
+   frames: Neon District's shop material is built twice (81 ms each).
 4. **Starvation under a saturated outgoing theme.** While a build-behind is starved (no pipeline
    progress for 250 ms), cap the outgoing theme's frame rate. Measure with a GPU-bound anchor first.
 5. **GPU-bound themes, look-safe shader work.** Each needs a before/after screenshot:
@@ -434,9 +437,163 @@ only, for the bench's storms.
    - the scene passes of Spring, Verdant Hills and Grainfields (2.8-3.1 ms, foliage under 4× MSAA);
    - Thermal Bloom's storm effects.
 6. **Tier alignment.**
-   - The tiers are measured (§8b). Re-check the flagged themes interleaved before changing code.
+   - The tiers are measured (§8b). The flagged outliers were re-checked by GPU ms per pass (§11):
+     only Cosmic Noir's Ultra/Extreme were real, and they are trimmed.
    - Then align the tiers:
      - one rule for High's pixel ratio;
      - MSAA that follows the antialiasing setting;
      - monotonic antialiasing;
      - Ultra and Extreme steps of a consistent size.
+
+## 11. Night pass (2026-10-28 → 29)
+
+The owner's rules for the night:
+- every tier keeps the best look it can;
+- **High stays identical**;
+- lower tiers may lose detail, and Ultra/Extreme may be trimmed where they cost far more than High;
+- fixes that change no pixel come first, then visually equivalent ones, and trims last.
+
+Every change was checked with same-frame playground shots (`?t=18`, High, 2562×1601) against the
+base `ce047c73`. The load caches were also checked with a second mount in the same page, which is
+what a revisit draws. Still in Balanced mode (GPU 80-95 W).
+
+### Loads: main-thread stalls removed (no pixel changes)
+
+| Theme | What stalled the switch | Change |
+|---|---|---|
+| Neon District | Chromium decoded two atlases again, synchronously, inside the first WebGPU upload (`copyExternalImageToTexture`): 224 + 204 ms. `img.decode()` beforehand does not help. | `shared/decoded-texture.js` `loadBitmapTexture`: `createImageBitmap` on the fetched file decodes on a worker thread, unpremultiplied and flipped at decode. Upload now 20 ms per image. |
+| Fall, Sunfall | GLB parsing, 83-132 ms on every visit | The parsed assets are kept for the session. `shared/attribute-floats.js` reads attributes straight from their arrays, bit-identical to the getters. |
+| Spring | land, river, waterfall pour and step face rebuilt on every visit, 75-360 ms each | `shared/session-geometry.js`: on a second build, land 360 → 15 ms, river 308 → 0.1 ms |
+| Starlight | noise and star catalogue, 85-100 ms on every visit | baked once a session |
+| Aurora | the shared noise tile, ~85 ms on every visit | baked once a session |
+| Forest | 63 ms laying out the firefly animals (first visit) | build steps of up to 24 ms; none on a revisit |
+| Void Ember | the crust's plates bake, 174 ms (first visit) | baked in a module worker (the shared bake-worker client) while the renderer comes up |
+| Himalayan Peak | reading the baked massif and deriving its shade, horizon and shadow maps and mesh: ~0.4 s in steps of up to 110 ms, every visit | read and derived once a session (per stride); half-float copies kept per map |
+| Halcyon Apex | noise field and its half-float mip chain, ~30 ms every visit | kept for the session |
+| Ice Temple | noise texture bake, 24 ms every visit | kept for the session |
+
+The commits, in order:
+- `8ca09778`: attribute reader; Fall and Sunfall asset caches.
+- `8976700a`: Spring's session geometry.
+- `dc1d131c`: Neon District bitmaps.
+- `c3f2042a`: Starlight and Aurora bakes; Forest steps.
+- `3aac9254`: Cosmic Noir and Aurora tiers.
+- `f420d750`: fresh geometry per start.
+- `b32a218b`: Void Ember worker.
+- `8e4e6560`: Halcyon; the Forest step budget.
+- `001e74aa`: Himalayan Peak.
+- `d97b74ff`: Ice Temple.
+
+**A trap the second mount caught.** three r186 cannot upload an interleaved attribute again after
+its geometry is disposed. `destroyAttribute` destroys the InterleavedBuffer's GPU buffer but forgets
+only the attribute's record.
+- The first version of the Fall/Sunfall cache handed the next start the same attribute objects.
+- A second start in one renderer then drew black ("used in submit while destroyed").
+- Every start now gets geometry objects of its own over the kept arrays (`shared/fresh-geometry.js`,
+  `f420d750`). Spring's session geometry always did.
+- Any future session cache of GLB geometry should go through `freshGeometry`.
+
+**Measured.** Interleaved A/B, two rounds per arm, at the panel's cadence (`ab-load.sh`, vsync on,
+target 240, second visit on).
+- A is the base build (`ce047c73`); B is tonight's build (`b32a218b`, before Halcyon and the
+  Forest budget).
+- "Freeze" is the longest frame while the switch runs, during which the outgoing theme and the board
+  stop. Mean of two rounds, ms:
+
+| Theme | Freeze cold | Freeze warm | Shown cold | Shown warm |
+|---|---:|---:|---:|---:|
+| Spring | 255 → 254 | **241 → 42** | 2105 → 2155 | **1620 → 1162** |
+| Starlight | 122 → 121 | **108 → 22** | 632 → 628 | **523 → 445** |
+| Neon District | 370 → 386 | **169 → 73** | 1723 → 1687 | **973 → 874** |
+| Void Ember | **203 → 92** | 42 → 44 | 720 → 735 | 456 → 462 |
+| Sunfall | 185 → 159 | 119 → 88 | 894 → 802 | 614 → 561 |
+| Aurora | 173 → 164 | 152 → 138 | 742 → 751 | 581 → 562 |
+| Fall | 250 → 248 | 184 → 183 | 823 → 850 | 640 → 589 |
+| Forest | 71 → 50 | 62 → 40 | 1080 → 1155 | 921 → 908 |
+
+How to read it:
+- The revisits gain most, which is where the session caches act: Spring, Starlight, Neon District.
+- Void Ember's first visit loses its plates bake.
+- Cold shown times are within ±50 ms, which is noise at this cadence.
+- What still freezes a switch is mostly not the theme's own CPU work.
+  - Neon District's ~380 ms cold frame and Aurora's ~150 ms are node-graph builds (TSL → WGSL)
+    inside render callbacks.
+  - Fall's 250/183 ms frame did not move with its parse cached. It is a node-graph build too
+    (see below).
+- **Forest** first laid its animals out one per build step. Each step costs the outgoing theme a
+  frame, so the show came 75 ms later for a 21 ms smaller freeze.
+  - It now yields only when 24 ms of layout is spent: two or three steps on a first visit, none on
+    a revisit.
+
+A second A/B on the later build (`001e74aa`; same method, two rounds):
+
+| Theme | Freeze cold | Freeze warm | Shown cold | Shown warm |
+|---|---:|---:|---:|---:|
+| Himalayan Peak | 113 → 119 | **124 → 48** | 954 → 926 | **774 → 481** |
+| Halcyon Apex | 83 → 84 | **68 → 47** | 729 → 730 | 537 → 516 |
+| Forest (24 ms budget) | 62 → 51 | 46 → 45 | 1080 → 1082 | 845 → 844 |
+
+Ice Temple's noise cache (`d97b74ff`) came last. It has playground shots but no A/B; the profile
+put it at 24 ms per visit.
+
+### Tiers
+
+- **Cosmic Noir Ultra/Extreme:** the smoke's `scale` went 0.65 → 0.52 (Ultra) and 0.75 → 0.48
+  (Extreme).
+  - Why: the drawing buffer already grows with the tier's pixel ratio, and the smoke's own scale
+    compounded on top of it (2.4× / 4.1-4.8× High).
+  - The extra march steps stay, and the smoke's resolution still rises a step per tier.
+  - Shots: PSNR 50 dB; 0.15-0.18 % of pixels change by more than 8 levels; High is identical.
+- **Aurora Medium:** FXAA on the graded output.
+  - Why: its scene pass is single-sampled, and its canvas is no longer multisampled under the post,
+    so Medium had no antialiasing at all, worse than Low.
+  - Shots: the tree edges are smoothed; High is identical.
+
+**Measured.** Interleaved A/B, two rounds per arm, uncapped (`ab.sh`). Base `ce047c73`, then
+tonight's build:
+
+| Theme, tier | Rest fps | Worst storm fps | Rest frame ms |
+|---|---:|---:|---:|
+| Cosmic Noir, Ultra | 228 → **331** | 147 → **218** | 4.39 → 3.02 |
+| Cosmic Noir, Extreme | 131 → **279** | 80 → **179** | 7.65 → 3.59 |
+| Aurora, Medium | 1036 → 991 | 1011 → 988 | 0.97 → 1.01 (FXAA ≈ 0.04 ms) |
+
+Cosmic Noir's Ultra and Extreme now cost about 1.4× and 1.66× its High (462 fps in
+`2026-10-28-tier-High`). That is the fleet's median step (1.41× / 1.69×).
+
+**The flagged tier outliers, re-checked by GPU ms per pass** (`pass-profile.js`, 60 fps cap):
+
+| Theme | High | Medium | Low | Verdict |
+|---|---:|---:|---:|---|
+| Golden Forest | 1.04 | 0.52 | – | Medium is half of High. The 1.15× frame-time ratio was drift on a ~480 fps theme. |
+| Chromadelic Highway | 0.29 | 0.22 | 0.07 | in order |
+| Black Hole | 0.63 | 0.51 | 0.35 | in order |
+| Parhelion | 0.46 | 0.39 | 0.27 | in order |
+| Wolfhour | 0.30 | 0.41 | 0.12 | Medium's one full-screen pass costs more than High's. Both are under 0.5 ms (at ~1000 fps) and within clock noise at this load, so left. |
+
+### Not changed: High stays identical
+
+- **Verdant Hills** (196 fps in the census): near grass 1.97 ms and far grass 0.79 ms of a 5.1 ms
+  frame. That is ~2 million thin blade triangles under 4× MSAA. The census put each of a dozen small
+  parts at ~0.5 ms, which is its noise floor at this frame rate.
+- **Grainfields** (215 fps): the near barley's ears and stems ~2 ms; its empty scene (post chain)
+  2.07 ms.
+- What is left for these is visual: fewer near clumps, or blade LOD. That is the owner's call, after a
+  Performance-mode re-measure.
+
+### Findings left for later
+
+- **Neon District** compiles its shop material (81 ms, 106 KB) twice: the 4× scene pass and the
+  single-sampled street reflector need two pipelines. Matching them would change the reflection.
+- **Fall's 250 ms switch frame** is a node-graph build. Before it comes a 96 ms world build
+  (`buildScene`: the squirrel 26 ms, trunk measuring), which could be split into build steps.
+- **Node-graph builds** are now the largest switch freezes. Rainbark has a 189 ms frame, Neon
+  District ~380 ms cold and Aurora ~150 ms. They need smaller graphs (`Fn().setLayout`) or
+  materials compiled across frames: work on three's side of the line.
+- **A small per-visit bake still left:** Murmuration's particle state (34 ms).
+- **Once, under load:** with the full test suite running, one Spring playground capture came out
+  upside down (the water mirror's view on screen) and logged "used in submit while destroyed". Two
+  later captures were clean, and the base build has the same reflector. Watch for it.
+- **The playground's `?t=`** captures are reproducible across builds: unchanged themes matched within
+  one level. Sunfall is the exception: its vine leaves are placed afresh on each mount. So the pairs
+  above are a usable regression check.

@@ -7,10 +7,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three/webgpu';
 import HimalayanPeakTheme from '../../src/themes/himalayan-peak/himalayan-peak-theme.js';
-import { forgetSessionMassif } from '../../src/themes/himalayan-peak/himalayan-peak-world.js';
 import { HIMALAYAN_PEAK_TETROMINOS } from '../../src/themes/himalayan-peak/himalayan-peak-tetrominos.js';
 import {
-    HIMALAYAN_PEAK_PARTS, HimalayanPeakWorld, REST_RIG, fovForAspect,
+    HIMALAYAN_PEAK_PARTS, HimalayanPeakWorld, REST_RIG, forgetSessionMassif, fovForAspect,
 } from '../../src/themes/himalayan-peak/himalayan-peak-world.js';
 import { POST_LOOK } from '../../src/themes/himalayan-peak/himalayan-peak-post.js';
 import { EYE, HOURS } from '../../src/themes/himalayan-peak/himalayan-peak-core.js';

@@ -1,10 +1,38 @@
-# Theme fleet at 240 fps: handover (2026-10-27 → 2026-10-28)
+# Theme fleet at 240 fps: handover (2026-10-27 → 2026-10-29)
 
 Handover of the first day of the fleet performance pass. The record with all numbers and findings
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (updated 2026-10-28 morning).**
+> **Pick up here (updated 2026-10-29, after the night pass).**
+> - **Branch:** `perf/theme-fleet-240` in the worktree `C:\Users\olovm\repos\serenity-blocks-perf240`
+>   (node_modules junctioned to the main checkout).
+>   - Committed, **not merged and not pushed**. Last synced with main at `647c3851` (2026-10-28);
+>     sync again before merging.
+> - **The night pass** (2026-10-28 → 29, record §11) is committed. The rules were:
+>   - every tier keeps its best look, and High stays identical;
+>   - fixes that change no pixel first;
+>   - trims only below High, or at Ultra/Extreme where they cost far more.
+> - **What it did:**
+>   - removed the switch-time main-thread stalls in Neon District, Fall, Sunfall, Spring, Starlight,
+>     Aurora, Forest, Void Ember, Himalayan Peak, Halcyon Apex and Ice Temple. Revisits gain most:
+>     Spring shows 460 ms sooner and Himalayan Peak 290 ms sooner;
+>   - trimmed Cosmic Noir's Ultra/Extreme smoke;
+>   - gave Aurora Medium antialiasing;
+>   - re-checked the tier outliers by GPU ms (Golden Forest Medium is fine).
+> - **Checks:** each change has same-frame playground shots against the base, first and second
+>   mount. Every changed theme but Ice Temple has an interleaved A/B (record §11).
+>   - Gates green: tsc, TS and lint ratchets, fitness, boundaries, lifecycle audit, IP strings, perf
+>     budgets, release gates.
+>   - Full vitest green except the four known local-only failures.
+> - **Next:**
+>   1. A Performance-mode High baseline (§3), then decide on the GPU-bound four: Verdant Hills,
+>      Grainfields, Thermal Bloom in storms, Summer. Their remaining cost is the look itself (record
+>      §11): any further cut is the owner's call.
+>   2. The queue in §4 from item 2. Items 4 and 5 are mostly done (record §11).
+>   3. Merge when the owner says so.
+>
+> Earlier status (2026-10-28 morning), kept for reference:
 > - **Branch:** `perf/theme-fleet-240` in the worktree `C:\Users\olovm\repos\serenity-blocks-perf240`
 >   (node_modules junctioned to the main checkout).
 >   - Committed, **not merged and not pushed**.
@@ -42,6 +70,7 @@ to resume, and what to do next, in order.
 | `15a9dc91` | The tier runs (`reports/theme-fleet-bench/2026-10-27-tier-*`), the first tier matrix, `scripts/lib/theme-bench-tools/`, this handover |
 | `f4d05b5f` | Sync with main (`390fc497`: Spring's woods on phones) |
 | (2026-10-28 commit) | The final High run (`2026-10-28-tier-High`), the final tier matrix (`2026-10-28-tier-matrix.md`, record §8b), this update |
+| `8ca09778` … `d97b74ff` | The night pass of 2026-10-28 → 29 (record §11): switch-time stalls removed in eleven themes, Cosmic Noir Ultra/Extreme and Aurora Medium tiers, shared helpers `attribute-floats`, `session-geometry`, `fresh-geometry`, `decoded-texture` |
 
 ## 2. What we know (short)
 

@@ -1,5 +1,7 @@
 // @ts-check
-import { describe, expect, it, vi } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import { sessionGeometry } from '../../src/themes/shared/session-geometry.js';
 

@@ -5,7 +5,9 @@
 // so one start's dispose() never reaches the next one's buffers (three r186 cannot re-upload a disposed
 // interleaved attribute).
 import { readFileSync } from 'node:fs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
@@ -47,7 +49,8 @@ function expectFreshOverSameArrays(a, b) {
     expect(b.drawRange).toEqual(a.drawRange);
 }
 
-describe('Fall session asset cache', () => {
+// Real GLBs are parsed here: slow when the whole suite runs at once.
+describe('Fall session asset cache', { timeout: 60_000 }, () => {
     it('parses once per session and survives a stale load and a dispose', async () => {
         const gltf = diskGlb(FALL_DIR);
         vi.spyOn(THREE.TextureLoader.prototype, 'loadAsync').mockImplementation(async () => new THREE.DataTexture(new Uint8Array(16), 2, 2));
@@ -85,7 +88,7 @@ describe('Fall session asset cache', () => {
     });
 });
 
-describe('Sunfall session asset cache', () => {
+describe('Sunfall session asset cache', { timeout: 60_000 }, () => {
     it('parses once per session and survives a stale load and a dispose', async () => {
         const gltf = diskGlb(SUNFALL_DIR);
         const { loadSunfallAssets, disposeSunfallAssets } = await import('../../src/themes/sunfall/sunfall-assets.js');
