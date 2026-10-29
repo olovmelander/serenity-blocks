@@ -33,6 +33,8 @@ night pass of 2026-10-28 → 29.
   At the median a theme now shows in 0.75 s on a first visit and 0.52 s on a revisit. The longest
   frame in a switch is 63 / 44 ms at the median (was 80 / 54). No revisit freezes over 110 ms (was
   seven themes). Thermal Bloom's storms are the one window under 175 fps.
+- **Round four (§14):** seven more first-visit freezes cut by 35-95 ms (Sunfall 152 → 59 ms the
+  largest). In dGPU-only mode the game ran at 240 fps until the lid was closed.
 
 ## 2. Machine
 
@@ -794,3 +796,89 @@ first-visit bakes.
 **Frames:** Thermal Bloom's storms are the one window under 175 fps (170, 1.96 % late). This is the
 GPU-bound look (§11), the owner's call. Spring's storms, 174 with 0.90 % late on 2026-10-27, read
 179 and 0.10 %.
+
+## 14. Round four: first-visit freezes (2026-10-29 evening)
+
+Branch `perf/first-visit-freezes`. Balanced mode; the laptop's lid was closed for most of it, so
+everything here was measured at the ~178 fps cadence. Load A/Bs compare main and branch interleaved
+under the same conditions, so they hold.
+
+### The 240 Hz ceiling, found and lost
+
+- After a reboot into **dGPU-only mode** (Legion Space → GPU-arbetsläge → dGPU-läge, so Windows
+  lists only the RTX 5080; NVIDIA G-SYNC on for windowed and fullscreen):
+  - a bare page presented at 240 fps (4.2 ms frames);
+  - the game ran at 240: Nimbus Veil 240 at rest and 239 in storms; Spring 240 at rest, 237 and
+    201 in its storms (the GPU at Balanced's power limit);
+  - the first four themes of a whole-fleet run read 240.
+- About 8 minutes later everything read ~178 again, the bare page too, still in dGPU mode, on mains
+  power. The owner had closed the lid. With the built-in panel off, nothing paces frames at 240 Hz.
+- **Next:** the whole fleet at 240 Hz in dGPU mode with the lid open. Check the bare page first
+  (`vsync-probe.cjs`: 240 means the ceiling is gone).
+
+### What the profiles found
+
+`--profile-load=1` on an unminified build, split into tasks. The six themes still over 110 ms on a
+first visit after §13, then the next five by freeze:
+
+| Theme | First-visit freeze (§13 run) | What it was |
+|---|---:|---|
+| Sunfall | 149 ms | lattice, fBm and oculus baked on every visit (~60-90 ms) |
+| Rainbark | 131 ms | three single heavy materials: sky 124, near trunks 120, far trunks 80 ms of node build |
+| Stellar Drift | 123 ms | lattice, clouds, rings and bands (~60 ms at High); then its space material (66 ms) |
+| Solar Eclipse | 119 ms | noise and ranges (~35 ms) baked on every visit; then its sky (100 ms of node build) |
+| Starlight | 113 ms | noise and star catalogue (85-100 ms), first visit |
+| Ice Temple | 112 ms | architecture geometry (30-50 ms) every visit, noise mips first visit; then node builds |
+| Fall | 96 ms | the grove built in one ~80 ms call, then the post and the squirrel's warm frame |
+| Summer | 78 ms | its lake map (512 × 384 samples), one 70-90 ms step every visit |
+| Geode, Chiral Gold, Aurora | 93-106 ms | no single main-thread task that long: the worst frame is CPU work and rendering back to back, or a GPU stall |
+
+**The big single materials are mostly unique code.** In Solar Eclipse's sky, one range instead of six
+saves ~7 KB of WGSL and a few ms of the ~70 ms build; one cloud row instead of three ~8 KB. Drawing
+no sun takes it to 26 ms: the corona, prominences, beads and glare are one-off code. Stellar Drift's
+space material is the same. So the Aurora-style loop rewrite (§12) gains little here; what is left is
+on three's side (one material's node build cannot be split across frames).
+
+### Changed
+
+| Theme | Change |
+|---|---|
+| Starlight | noise and star catalogue bake in a module Worker while the renderer comes up (`starlight-bakes.js`) |
+| Solar Eclipse | noise and ranges kept for the session; a first visit's bake in a worker (`solar-eclipse-bakes.js`) |
+| Stellar Drift | lattice, clouds, rings and bands in a worker, priming the bake cache under the world's own keys (`stellar-drift-bakes.js`) |
+| Sunfall | lattice, fBm and oculus kept for the session (bake cache) and baked in a worker while the GLBs load; the pure bakes moved to the three-free `sunfall-bake-data.js` |
+| Ice Temple | architecture geometry kept for the session (`sessionGeometry`, keyed by the plan's seed) |
+| Fall | `FallWorld.buildSteps`: a part or two to a step; a start builds it breathing, then the post, then the squirrel's warm frame, each in a task of its own |
+| Summer | the lake map kept for the session; a first visit bakes it in row steps of ~24 ms |
+
+- Each worker's output is checked byte for byte against the page's bake (tests).
+- The stepped grove equals the one-call grove, part for part and draw for draw (test).
+- Same-frame playground shots at High and Low, plus a remount: identical to main within run-to-run
+  noise. Sunfall's vines are placed afresh on each mount, so main differs from itself as much as
+  from the branch.
+
+### Measured
+
+Interleaved load A/B, 3 rounds, panel cadence, main → branch, ms:
+
+| Theme | Freeze, first visit | Freeze, revisit | Shown, first visit |
+|---|---:|---:|---:|
+| Sunfall | 152 → **59** | 90 → **45** | 760 → 721 |
+| Starlight | 123 → **40** | 25 → 25 | 594 → 616 |
+| Stellar Drift | 129 → **71** | 51 → 47 | 719 → 726 |
+| Solar Eclipse | 126 → **88** | 102 → **78** | 816 → 789 |
+| Ice Temple | 89 → 90 | 45 → **22** | 801 → 786 |
+| Fall | 100 → **60** | 72 → **30** | 813 → 853 |
+| Summer | 78 → **49** | 77 → **38** | 1484 → 1452 |
+
+- Starlight shows ~20 ms later: the build waits for the worker, which starts a little behind the
+  renderer.
+- Fall shows ~40 ms later: each breath costs the theme still playing a frame.
+
+### Left
+
+- **Single heavy materials:** Rainbark (131 ms), Solar Eclipse's sky and Stellar Drift's space (the
+  rest of their 88 and 71 ms), Aurora's curtain. Smaller graphs would need the shaders restructured
+  (a third at most for Rainbark, §12) or three building one material across frames.
+- **Ice Temple's first visit** (90 ms): the architecture and the noise mips could bake in a worker.
+- **Geode, Chiral Gold, Aurora** (93-106 ms): find out which frame it is (a GPU trace).

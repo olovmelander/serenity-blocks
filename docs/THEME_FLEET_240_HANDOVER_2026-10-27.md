@@ -4,7 +4,17 @@ Handover of the first day of the fleet performance pass. The record with all num
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (updated 2026-10-29, round three).**
+> **Pick up here (updated 2026-10-29 evening, round four).**
+> - **Round four:** branch `perf/first-visit-freezes` in this worktree, committed, not merged (record
+>   §14). Seven themes' switch freezes cut: Sunfall 152 → 59, Starlight 123 → 40, Stellar Drift 129 →
+>   71, Solar Eclipse 126 → 88, Fall 100 → 60, Summer 78 → 49 ms (first visit); Ice Temple's revisit
+>   45 → 22 ms.
+> - **The 240 Hz ceiling:** dGPU-only mode (Legion Space) gave 240 fps in the game until the lid was
+>   closed (record §14). Next: the whole fleet at 240 Hz with the lid open, bare-page probe first.
+> - **Left:** single heavy materials (Rainbark, Solar Eclipse's sky, Stellar Drift's space, Aurora's
+>   curtain), Ice Temple's first visit, and Geode / Chiral Gold / Aurora (find the frame first).
+>
+> Round three (kept for reference):
 > - **Merged to main:** `perf/theme-fleet-240` (`051eb4d2`, with the night pass) and
 >   `perf/shader-build-freezes` (`38ce04bb`, record §12).
 > - **Round three:** branch `perf/dynres-spring` in this worktree, committed, not yet merged
