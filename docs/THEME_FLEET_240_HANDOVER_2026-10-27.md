@@ -4,7 +4,16 @@ Handover of the first day of the fleet performance pass. The record with all num
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (updated 2026-10-29 night, round five).**
+> **Pick up here (updated 2026-10-29 late, round six).**
+> - **Round six:** same branch, committed, not merged (record §16).
+>   - Spring's sun shafts read a half-size light map: golden evening 216 → 260 fps (`281e13f0`).
+>     Look-alike, **pending the owner's approval**: revert that commit if declined.
+>   - Thermal Bloom's seal fills mark only their two terrace lines: storms 179 → 190 fps
+>     (`608949a7`, pixel-identical).
+>   - Rainbark's loading and Grainfields' storms were looked into, not changed. Rainbark's option (the
+>     trunks' canopy blend as a second pass) is the owner's call.
+>
+> Round five:
 > - **Round five:** branch `perf/gpu-heavy-three` (on `perf/first-visit-freezes`), committed, not
 >   merged (record §15). The owner allowed look-alike changes on High, each approved from shots.
 >   Game, uncapped, Balanced: Verdant Hills 200 → 243 fps at rest (storms 209 → 236), Grainfields
