@@ -46,6 +46,7 @@ import { PLAYER_SLOTS, readLayoutRects } from './chiral-gold-composition.js';
 import { CHIRAL_GOLD_EVENT_HANDLERS, ChiralGoldDirector } from './chiral-gold-director.js';
 import { approach } from './chiral-gold-core.js';
 import { chiralGoldBakes } from './chiral-gold-bakes.js';
+import { warmPmremPipelines } from '../shared/pmrem-warm.js';
 
 const THEME_ID = 'chiral-gold';
 const LOG_PREFIX = '[ChiralGold]';
@@ -236,6 +237,10 @@ export default class ChiralGoldTheme extends BaseTheme {
             if (generation === this.runtimeGeneration) this.disposeRuntime();
             throw error; // current-attempt failure -> start() rejects -> manager falls back
         }
+        if (!isCurrent()) return;
+        // The studio's reflection map compiled its two pipelines synchronously on the first frame
+        // (~60 ms on the GPU process): compile them asynchronously first.
+        this.releasePmremWarm = await warmPmremPipelines(renderer, this.world.textures.studio);
         if (!isCurrent()) return;
 
         this.combos.clear();
@@ -698,6 +703,9 @@ export default class ChiralGoldTheme extends BaseTheme {
         this.gpuSurfaceUnregister?.();
         this.gpuSurfaceUnregister = null;
         this.director = null;
+        // The warm reflection-map materials (shared/pmrem-warm.js), before the renderer goes.
+        this.releasePmremWarm?.();
+        this.releasePmremWarm = null;
 
         try {
             this.post?.dispose();
