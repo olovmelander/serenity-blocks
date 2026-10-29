@@ -43,6 +43,7 @@ import { POST_LOOK, IceTemplePost, createPassThroughPipeline } from './ice-templ
 import { PLAYER_SLOTS, readLayoutRects } from './ice-temple-composition.js';
 import { ICE_TEMPLE_EVENT_HANDLERS, IceTempleDirector } from './ice-temple-director.js';
 import { approach } from './ice-temple-core.js';
+import { iceTempleBakes } from './ice-temple-bakes.js';
 
 const THEME_ID = 'ice-temple';
 const LOG_PREFIX = '[IceTemple]';
@@ -188,8 +189,12 @@ export default class IceTempleTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise and the architecture (~45 + 30-50 ms on a first visit) bake in a worker while
+        // the renderer comes up; the build below finds them kept.
+        const baking = iceTempleBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

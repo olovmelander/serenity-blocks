@@ -4,8 +4,18 @@ Handover of the first day of the fleet performance pass. The record with all num
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (updated 2026-10-29 late, round six).**
-> - **Round six:** same branch, committed, not merged (record §16).
+> **Pick up here (updated 2026-10-29 22:30, paused at the owner's request).**
+> - **Merged to main:** rounds four to six (`perf/first-visit-freezes` + `perf/gpu-heavy-three`) as
+>   `2e16df31`.
+> - **Round seven:** branch `perf/first-visit-rest` (from `2e16df31`).
+>   - `7f37df98`: Ice Temple's noise and ice bake in a worker on a first visit: freeze 90 → 44 ms
+>     (record §17). Merged with this branch.
+>   - Next: Geode, Chiral Gold and Aurora (93-106 ms first-visit freezes): find the worst frame with
+>     `--trace-load=1 --build-trace=1` first.
+>   - A whole-fleet High run, uncapped, on main was stopped after 20 themes to let the machine cool:
+>     run it again from the start (~35-45 min) to find the new slowest themes.
+>
+> - **Round six:** merged (record §16).
 >   - Spring's sun shafts read a half-size light map: golden evening 216 → 260 fps (`281e13f0`).
 >     Look-alike, approved by the owner from the crops.
 >   - Thermal Bloom's seal fills mark only their two terrace lines: storms 179 → 190 fps

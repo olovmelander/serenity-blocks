@@ -1037,3 +1037,18 @@ Node build in the playground (`shader-probe.mjs`): sky 77 ms (174 KB of WGSL), n
 | Spring (golden evening) | 216 → 260 | 217 → 266 |
 | Thermal Bloom | 275 | 179 → 190 |
 | Grainfields | 229 | 210 |
+
+## 17. Round seven: Ice Temple's first visit (2026-10-29 night)
+
+Branch `perf/first-visit-rest` (from main `2e16df31`). Ice Temple's first visit baked its noise
+texture's mip chain (~45 ms) and its architecture's vertices (30-50 ms) in one long task in the
+world's build. Both are pure functions of their seeds and the plan. They moved unchanged to the
+three-free `ice-temple-bake-data.js`, are kept for the session in `ice-temple-bakes.js`, and a first
+visit bakes them in a module Worker while the renderer comes up (as Starlight's, §14). Chiral Gold's
+half-float encoder (bit for bit three's `DataUtils.toHalfFloat`) moved to `shared/half-float.js` for
+both.
+
+- Checked byte for byte against the old code: the noise's 9 mip levels and the architecture's five
+  attributes (the default plan and seed 7).
+- Load A/B, interleaved, 2 rounds, panel cadence, main → branch: first-visit freeze **90 → 44 ms**,
+  revisit 23 → 20 ms, shown 797 → 792 ms (first) and 449 → 436 ms (revisit).
