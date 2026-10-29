@@ -141,7 +141,8 @@ async function main() {
     dbg.attach('1.3');
     await dbg.sendCommand('Page.enable');
     await dbg.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-        source: `${THEME_PERF_BOOTSTRAP};\n${BENCH_BOOTSTRAP}`,
+        // --build-trace=1: the loads' first-time render-object builds (async-render-pipelines.js traceBuild).
+        source: `${THEME_PERF_BOOTSTRAP};\n${BENCH_BOOTSTRAP}${spec.buildTrace ? ';\nwindow.__serenityBuildTrace = [];' : ''}`,
     });
 
     const exec = async (src, timeoutMs = 120_000) => {
@@ -198,7 +199,12 @@ async function main() {
             await dbg.sendCommand('Profiler.setSamplingInterval', { interval: 250 });
             await dbg.sendCommand('Profiler.start');
         }
+        if (spec.buildTrace) await exec('window.__serenityBuildTrace = []; true');
         cell.phases.load1 = await exec(buildLoadSource({ themeId: spec.themeId }), 90_000);
+        if (spec.buildTrace) {
+            const trace = await exec('JSON.stringify(window.__serenityBuildTrace || [])');
+            fs.writeFileSync(spec.outPath.replace(/.json$/, '.load1.buildtrace.json'), trace);
+        }
         if (spec.profileLoad) {
             const { profile } = await dbg.sendCommand('Profiler.stop');
             fs.writeFileSync(spec.outPath.replace(/.json$/, '.load1.cpuprofile'), JSON.stringify(profile));
@@ -226,7 +232,12 @@ async function main() {
             await exec(buildLoadSource({ themeId: spec.anchorTheme }), 90_000);
             await sleep(2000);
             phaseNow = 'load2';
+            if (spec.buildTrace) await exec('window.__serenityBuildTrace = []; true');
             cell.phases.load2 = await exec(buildLoadSource({ themeId: spec.themeId }), 90_000);
+            if (spec.buildTrace) {
+                const trace = await exec('JSON.stringify(window.__serenityBuildTrace || [])');
+                fs.writeFileSync(spec.outPath.replace(/.json$/, '.load2.buildtrace.json'), trace);
+            }
             log('load2', JSON.stringify(cell.phases.load2.marks));
         }
     } catch (e) {

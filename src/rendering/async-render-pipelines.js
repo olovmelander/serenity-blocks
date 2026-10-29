@@ -220,6 +220,44 @@ function budgetSessionFor(renderer) {
     return found;
 }
 
+/**
+ * Opt-in build trace for the theme bench (`window.__serenityBuildTrace = []` before the game loads):
+ * one entry per first-time render-object build while a budget session is open, with how the budget
+ * treated it (charged, deferred, or exempt: a canvas draw, a one-shot target, a warm render with
+ * the budget suspended), its own duration, how deep it sat inside another build, and what it was.
+ * Off (no array) it costs one global read per budgeted call.
+ */
+function traceBuild(renderer, args, kind, ms, depth) {
+    const trace = globalThis.__serenityBuildTrace;
+    if (!Array.isArray(trace) || trace.length >= 20000) return;
+    const [object, material] = args;
+    const rt = renderer._renderTarget;
+    trace.push({
+        t: Math.round(performance.now()),
+        kind,
+        ms: Math.round(ms * 10) / 10,
+        depth,
+        object: object?.name || object?.type || '?',
+        material: material?.name || material?.type || '?',
+        target: rt ? (rt.texture?.name || `rt ${rt.width}x${rt.height}${rt.samples ? ` s${rt.samples}` : ''}`) : 'canvas',
+    });
+}
+
+/** A first-time build the budget does not charge, timed for the trace. */
+function tracedExempt(renderer, original, args, kind) {
+    const [object, material, , , lightsNode, , , passId] = args;
+    const chainMap = renderer._objects?.getChainMap?.(passId);
+    if (!chainMap || chainMap.get([object, material, renderer._currentRenderContext, lightsNode]) !== undefined) {
+        return original.apply(renderer, args);
+    }
+    const t0 = performance.now();
+    try {
+        return original.apply(renderer, args);
+    } finally {
+        traceBuild(renderer, args, kind, performance.now() - t0, chargeDepth);
+    }
+}
+
 function installBuildBudget(proto) {
     if (budgetPatched) return budgetPatched.proto === proto;
     const original = proto?._renderObjectDirect;
@@ -228,7 +266,13 @@ function installBuildBudget(proto) {
     const wrapped = function serenityBudgetedRenderObjectDirect(...args) {
         const s = budgetSessions.size === 0 ? null : budgetSessionFor(this);
         if (s === null || isOneShotRenderTarget(this._renderTarget) || s.budgetSuspended > 0
-            || (s.exemptCanvasDraws && !this._renderTarget)) return original.apply(this, args);
+            || (s.exemptCanvasDraws && !this._renderTarget)) {
+            if (s === null || !Array.isArray(globalThis.__serenityBuildTrace)) return original.apply(this, args);
+            let kind = 'exempt:canvas';
+            if (s.budgetSuspended > 0) kind = 'exempt:warm';
+            else if (isOneShotRenderTarget(this._renderTarget)) kind = 'exempt:one-shot';
+            return tracedExempt(this, original, args, kind);
+        }
         // A render object this renderer already built costs a cache lookup: never budgeted.
         const [object, material, , , lightsNode, , , passId] = args;
         const chainMap = this._objects?.getChainMap?.(passId);
@@ -238,6 +282,7 @@ function installBuildBudget(proto) {
         const t0 = performance.now();
         if (!s.chargeable(chargeDepth > 0 ? t0 - chargeStart : 0)) {
             s.deferBuild();
+            traceBuild(this, args, 'deferred', 0, chargeDepth);
             return undefined;
         }
         if (chargeDepth === 0) chargeStart = t0;
@@ -247,6 +292,7 @@ function installBuildBudget(proto) {
         } finally {
             // Only the outermost build is charged: its time holds the builds nested in it.
             chargeDepth -= 1;
+            traceBuild(this, args, 'charged', performance.now() - t0, chargeDepth);
             if (chargeDepth === 0) s.chargeBuild(performance.now() - chargeStart);
         }
     };
