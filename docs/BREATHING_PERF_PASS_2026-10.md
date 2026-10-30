@@ -100,9 +100,17 @@ meteor is crossing (found by emulating the event timetable in f32, a meteor conf
 A read-only audit of every world (five parallel passes) found that most of each backdrop's
 remaining cost is work whose result is multiplied by exactly zero over large parts of the screen:
 the floor computed in the sky, the sea on dry sand, 48 painted quartz points evaluated at every
-pixel, trunks shaded where no trunk stands. Those exact skips land per world in the commits after
-this one, each held to the same bar (every captured frame unchanged), and are recorded here as they
-do.
+pixel, trunks shaded where no trunk stands. Each skip below tests the very factor that would have
+been 0 (or a bound proved from the noise's range, |gnoise − 0.5| ≤ 0.72, so every fbm lies in
+[−0.22, 1.22], with margins), keeps a zero in the skipped term's slot so sums keep their order, and
+pins with `.toVar()` before the branch every node that is used again after it (a node first built
+inside a branch reads as unset after it). Savings are op-count estimates from the audit, not
+measurements.
+
+| World | What no longer runs where it is exactly 0 | Est. saving |
+| --- | --- | --- |
+| Cosmic Nebula | the galaxy's arms, lanes and knots beyond r0 1.07 (41–71 % of the disc quad); the five spiked stars' spikes and cores off their own strips; the far sky's dark lanes where their mask is 0; the cluster's star cores beyond 18.5 px; the hanging pillars on every screen too wide to show them (a uniform test) | ~300/px on the overlay, ~540 per skipped disc fragment, ~90/px for the lanes, ~140/px on wide screens |
+| Moonlit Waters | each land layer outside its own stretch of horizon (ridge, island, headland, cape: 11 gnoise per land pixel down to ~3, in the sky and its reflection); the cloud bank above its proven crown and near the moon; Sea Fog's lighthouse lamp built once instead of twice | ~470 per land-band pixel, ~36/px for the bank |
 
 ## Verification
 

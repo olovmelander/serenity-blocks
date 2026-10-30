@@ -238,33 +238,41 @@ function createDisc(u, pal) {
         const swell = swellOf(u).toVar();
         const r0 = length(xz).div(swell).toVar();
         const spin = u.time.mul(SPIN).toVar();
-        // Texture rides on the turning, swelling disc.
-        const tq = turn(xz.div(swell), spin.negate()).toVar();
-        const feather = fbm(tq.mul(2.3).add(7.1), 3).sub(0.5).toVar();
-        // Arm phase: cos(ARMS * phase) is periodic in the angle, so atan's seam never shows. The
-        // nudge keeps atan away from (0, 0), where GLSL leaves it undefined (one NaN pixel would
-        // spread through the bloom).
-        const phase = atan(xz.y, xz.x.add(1e-5)).sub(woundAt(r0, u)).sub(spin).add(feather.mul(0.35))
-            .toVar();
-        const wave = cos(phase.mul(ARMS)).toVar();
-        // A broad arm of light with a narrow crest of young stars down its middle.
-        const broad = wave.mul(0.5).add(0.5).max(0).toVar();
-        const arm = crestProfile(wave).toVar();
-        const span = smoothstep(0.05, 0.2, r0).mul(fadeOut(0.72, 1.06, r0)).toVar();
-        const clumps = gnoise(tq.mul(9.0).add(2.7)).toVar();
-        const strands = smoothstep(0.36, 0.7, fbm(tq.mul(7.0).add(3.3), 3));
-        const laneShape = crestProfile(cos(phase.sub(LANE).mul(ARMS)));
-        const lane = laneShape.mul(laneShape).mul(strands).mul(span).toVar();
-        // HII knots: small pink spots strung along the crests only.
-        const knots = smoothstep(0.7, 0.84, gnoise(tq.mul(26.0).add(9.1))).mul(arm.mul(arm))
-            .mul(smoothstep(0.2, 0.36, r0))
-            .mul(fadeOut(0.8, 1.0, r0));
-        const glow = u.breathSoft.mul(0.5).add(0.7);
-        const light = pal.old.mul(exp(r0.mul(-3.6)).mul(0.22))
-            .add(pal.young.mul(broad.mul(broad).mul(0.35).add(arm).mul(span)
+        // The arms, their dust lanes and the knots are exactly 0 from r0 1.06 out (`span` and the
+        // knots' fade end there): the rest of the quad skips their noise and keeps 0 in their slots.
+        const youngArms = float(0).toVar();
+        const knots = float(0).toVar();
+        const lane = float(0).toVar();
+        If(r0.lessThan(1.07), () => {
+            // Texture rides on the turning, swelling disc.
+            const tq = turn(xz.div(swell), spin.negate()).toVar();
+            const feather = fbm(tq.mul(2.3).add(7.1), 3).sub(0.5).toVar();
+            // Arm phase: cos(ARMS * phase) is periodic in the angle, so atan's seam never shows. The
+            // nudge keeps atan away from (0, 0), where GLSL leaves it undefined (one NaN pixel would
+            // spread through the bloom).
+            const phase = atan(xz.y, xz.x.add(1e-5)).sub(woundAt(r0, u)).sub(spin).add(feather.mul(0.35))
+                .toVar();
+            const wave = cos(phase.mul(ARMS)).toVar();
+            // A broad arm of light with a narrow crest of young stars down its middle.
+            const broad = wave.mul(0.5).add(0.5).max(0).toVar();
+            const arm = crestProfile(wave).toVar();
+            const span = smoothstep(0.05, 0.2, r0).mul(fadeOut(0.72, 1.06, r0)).toVar();
+            const clumps = gnoise(tq.mul(9.0).add(2.7)).toVar();
+            const strands = smoothstep(0.36, 0.7, fbm(tq.mul(7.0).add(3.3), 3));
+            const laneShape = crestProfile(cos(phase.sub(LANE).mul(ARMS)));
+            lane.assign(laneShape.mul(laneShape).mul(strands).mul(span));
+            // HII knots: small pink spots strung along the crests only.
+            knots.assign(smoothstep(0.7, 0.84, gnoise(tq.mul(26.0).add(9.1))).mul(arm.mul(arm))
+                .mul(smoothstep(0.2, 0.36, r0))
+                .mul(fadeOut(0.8, 1.0, r0)));
+            youngArms.assign(broad.mul(broad).mul(0.35).add(arm).mul(span)
                 .mul(exp(r0.mul(-1.2)))
                 .mul(clumps.mul(0.9).add(0.35))
-                .mul(0.5)))
+                .mul(0.5));
+        });
+        const glow = u.breathSoft.mul(0.5).add(0.7);
+        const light = pal.old.mul(exp(r0.mul(-3.6)).mul(0.22))
+            .add(pal.young.mul(youngArms))
             .add(pal.hii.mul(knots.mul(0.35)))
             .add(pal.young.mul(fadeOut(0.45, 1.4, r0).mul(0.05)))
             .mul(glow);
@@ -298,12 +306,16 @@ const wallRamp = (q, lines, slopes) => {
 /** The galaxy's light on the nebula: a broad falloff from the hero. */
 const keyLight = (q) => float(1).div(dot(q, q).mul(0.9).add(1));
 
-/** A star with a pixel-stable core and a soft halo; returns the glow and the light it sheds on gas. */
+/**
+ * A star with a pixel-stable core and a soft halo; returns the glow, its halo alone (all of the glow
+ * where the core is exactly 0) and the light it sheds on gas.
+ */
 function embedded(q, at, u, { core = 2.2, halo = 300, reach = 30 } = {}) {
     const d = q.sub(at);
     const d2 = dot(d, d).toVar();
-    const glow = exp(d2.div(u.px.mul(u.px).mul(core)).negate()).mul(5).add(float(1).div(d2.mul(halo).add(1)).mul(0.2));
-    return { glow, light: float(1).div(d2.mul(reach).add(1)) };
+    const haloGlow = float(1).div(d2.mul(halo).add(1)).mul(0.2);
+    const glow = exp(d2.div(u.px.mul(u.px).mul(core)).negate()).mul(5).add(haloGlow);
+    return { glow, halo: haloGlow, light: float(1).div(d2.mul(reach).add(1)) };
 }
 
 /** A young cluster: a few blue-white stars around `at`, as offsets in hero units and brightnesses. */
@@ -313,9 +325,18 @@ const CLUSTER = [
 ];
 function cluster(q, at, u) {
     const sum = vec3(0).toVar();
-    CLUSTER.forEach(([x, y, b]) => {
+    const addStars = (cores) => CLUSTER.forEach(([x, y, b]) => {
         const star = embedded(q, at.add(vec2(x, y)), u, { core: 1.4 + b * 1.6, halo: 1400 / b });
-        sum.addAssign(vec3(0.72, 0.84, 1.0).mul(star.glow.mul(b)));
+        sum.addAssign(vec3(0.72, 0.84, 1.0).mul((cores ? star.glow : star.halo).mul(b)));
+    });
+    // A core (width up to 3 px²) is exactly 0 beyond 18.5 px from its star (its exp is below e^-114),
+    // and every star sits within 0.068 of `at`: farther out than both, only the halos are left.
+    const rel = q.sub(at).toVar();
+    const coreReach = u.px.mul(18.5).add(0.068).toVar();
+    If(dot(rel, rel).lessThan(coreReach.mul(coreReach)), () => {
+        addStars(true);
+    }).Else(() => {
+        addStars(false);
     });
     return sum;
 }
@@ -412,7 +433,7 @@ function spikedStar(p, u, [fx, fy, k, size, tint]) {
     const at = vec2(u.ext.x.mul(fx), u.ext.y.mul(fy).sub(u.focus));
     const d = turn(q.sub(at), 0.26).toVar();
     const r2 = dot(d, d).toVar();
-    const reach = u.breathSoft.mul(0.5).add(0.75).mul(size * 0.18);
+    const reach = u.breathSoft.mul(0.5).add(0.75).mul(size * 0.18).toVar();
     // Along each spike the light falls off smoothly; across it a pixel or so wide, wider near the star.
     const spike = (along, across) => {
         const fall = along.abs().div(reach).toVar();
@@ -421,11 +442,25 @@ function spikedStar(p, u, [fx, fy, k, size, tint]) {
             .mul(float(0.03).div(fall.add(0.03)))
             .mul(exp(fall.mul(fall).negate()));
     };
-    const spikeX = spike(d.x, d.y);
-    const spikeY = spike(d.y, d.x);
-    const core = exp(r2.div(u.px.mul(u.px).mul(3.0 * size)).negate()).mul(6);
+    // A spike is never wider than px (0.9 + 2.2 size): 10.5 times that off its axis its exp is below
+    // e^-110 and the light is exactly 0, and off both axes so is the core's. Most of the screen
+    // skips them; where only one spike reaches, 0 + spike keeps the sum exactly as it was.
+    const near = u.px.mul(10.5 * (0.9 + 2.2 * size)).toVar();
+    const ax = d.x.abs().toVar();
+    const ay = d.y.abs().toVar();
+    const spikes = float(0).toVar();
+    If(ay.lessThan(near), () => {
+        spikes.addAssign(spike(d.x, d.y));
+    });
+    If(ax.lessThan(near), () => {
+        spikes.addAssign(spike(d.y, d.x));
+    });
+    const core = float(0).toVar();
+    If(ax.max(ay).lessThan(near), () => {
+        core.assign(exp(r2.div(u.px.mul(u.px).mul(3.0 * size)).negate()).mul(6));
+    });
     const halo = float(1).div(r2.mul(900 / size).add(1)).mul(0.18);
-    return vec3(...tint).mul(core.add(halo).add(spikeX.add(spikeY).mul(1.6))).mul(size);
+    return vec3(...tint).mul(core.add(halo).add(spikes.mul(1.6))).mul(size);
 }
 
 /** Paint a layer only where `needed` holds; elsewhere it is empty (no light, no dust). */
@@ -476,15 +511,20 @@ function farSky(p, u, {
     // Dark lanes: sinuous filaments along one contour of a warped field; forward scattering lights
     // their edges in the colour of the glow behind them.
     const qL = layer(p, u, 0.26).add(u.seed.sub(0.5).mul(vec2(2.9, 1.7))).toVar();
-    // A finer fibrous field frays their edges and thins their cores, so they read as smoke and
-    // filaments rather than smooth tubes.
-    const laneN = fbm(qL.mul(vec2(1.5, 2.1)).add(warpA.mul(0.9)).add(60.0), 4).toVar();
-    const shred = gnoise(qL.mul(vec2(7.0, 3.2)).add(warpA.mul(3.0)).add(90.0)).toVar();
-    const laneD = laneN.add(shred.sub(0.5).mul(0.035)).sub(0.58).abs().toVar();
+    // Where their mask is 0 the lanes leave the sky exactly as it is (col × 1 + col × 0): only the
+    // rest builds them.
     const laneMask = smoothstep(0.42, 0.62, gnoise(qL.mul(0.8).add(70.0))).toVar();
-    const laneCore = fadeOut(0.018, 0.05, laneD).mul(laneMask).mul(smoothstep(0.2, 0.6, shred).mul(0.5).add(0.5));
-    const laneRim = ridgeAt(laneD, 0.055, 0.016).mul(laneMask).mul(shred.mul(0.9).add(0.15));
-    return col.mul(float(1).sub(laneCore.mul(0.9))).add(col.mul(laneRim).mul(1.15));
+    If(laneMask.greaterThan(0), () => {
+        // A finer fibrous field frays their edges and thins their cores, so they read as smoke and
+        // filaments rather than smooth tubes.
+        const laneN = fbm(qL.mul(vec2(1.5, 2.1)).add(warpA.mul(0.9)).add(60.0), 4).toVar();
+        const shred = gnoise(qL.mul(vec2(7.0, 3.2)).add(warpA.mul(3.0)).add(90.0)).toVar();
+        const laneD = laneN.add(shred.sub(0.5).mul(0.035)).sub(0.58).abs().toVar();
+        const laneCore = fadeOut(0.018, 0.05, laneD).mul(laneMask).mul(smoothstep(0.2, 0.6, shred).mul(0.5).add(0.5));
+        const laneRim = ridgeAt(laneD, 0.055, 0.016).mul(laneMask).mul(shred.mul(0.9).add(0.15));
+        col.assign(col.mul(float(1).sub(laneCore.mul(0.9))).add(col.mul(laneRim).mul(1.15)));
+    });
+    return col;
 }
 
 /** The versions of this world a visit can show (stage/breath-moods.js); the first is the poster's. */
@@ -670,13 +710,18 @@ export function createNebulaWorld({
                 pillar(q, vec2(tipR.x.mul(1.2), bottom.sub(0.4)), tipR, 0.34, 0.08),
                 0.06,
             ), pillar(q, vec2(tipM.x.mul(1.1), bottom.sub(0.4)), tipM, 0.18, 0.045), 0.06);
-            const hanging = smax(
-                pillar(q, vec2(tipH.x.mul(1.25), top.add(0.4)), tipH, 0.26, 0.06, -0.05),
-                pillar(q, vec2(tipH2.x.mul(1.4), top.add(0.4)), tipH2, 0.2, 0.05),
-                0.06,
-            );
-            // A wide screen has no room above the galaxy: there the hanging pair is gone entirely.
-            const columns = smax(rising, hanging.mul(tall).sub(float(1).sub(tall)), 0.06);
+            // A wide screen has no room above the galaxy: there the hanging pair is gone entirely. With
+            // `tall` at 0 its term is exactly -1 (the pair times 0, minus 1), so only tall screens build it.
+            const hangs = float(-1).toVar();
+            If(tall.greaterThan(0), () => {
+                const hanging = smax(
+                    pillar(q, vec2(tipH.x.mul(1.25), top.add(0.4)), tipH, 0.26, 0.06, -0.05),
+                    pillar(q, vec2(tipH2.x.mul(1.4), top.add(0.4)), tipH2, 0.2, 0.05),
+                    0.06,
+                );
+                hangs.assign(hanging.mul(tall).sub(float(1).sub(tall)));
+            });
+            const columns = smax(rising, hangs, 0.06);
             // The bank they rise from rolls (the lump noise again) and stays below the frame: its lit
             // rim along the bottom edge closed the columns into a box on tall screens.
             const floor = bottom.sub(0.1).add(lumpsC.mul(2.5)).sub(q.y).mul(1.5);
