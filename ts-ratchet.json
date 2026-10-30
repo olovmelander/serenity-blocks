@@ -125,6 +125,7 @@
     "src/ui/infinity/ascent/tower-flight.js",
     "src/ui/infinity/ascent/tower-memory.js",
     "src/ui/infinity/infinity-play-camera.js",
+    "src/ui/infinity/local-versus-cameras.js",
     "src/ui/keyboard-game-probes.js",
     "src/ui/keyboard-menu-navigation.js",
     "src/ui/local-versus-layout.js",

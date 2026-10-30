@@ -283,4 +283,19 @@ describe('Infinity tower map', () => {
         map.destroy();
         expect(map.container.parentElement).toBe(null);
     });
+
+    it('stays read-only for local versus: no drag, no look-around, no hint', () => {
+        const host = element('div');
+        const map = new InfinityMinimap({ container: host, explorable: false });
+        map.show();
+        update(map, state(100), 180);
+        expect(map.canvas.listeners.has('pointerdown')).toBe(false);
+        expect(map.instructionLabel).toBe(null);
+        expect(map.container.children.map((child) => child.className)).toEqual(['minimap-title', 'minimap-canvas']);
+        expect(map.container.classList.contains('is-read-only')).toBe(true);
+        map.onPause();
+        expect(map.container.classList.contains('is-explorable')).toBe(false);
+        expect(map.ctx.calls.some((call) => call.method === 'strokeRect')).toBe(true);
+        map.destroy();
+    });
 });

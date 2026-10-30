@@ -2,6 +2,7 @@ import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
+import { LocalVersusCameras } from '../../ui/infinity/local-versus-cameras.js';
 import { GAME_MODES, BLOCK_SIZE } from '../constants.js';
 import {
     spawnPiece,
@@ -69,7 +70,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.boardScenes = [];
         this.cleanupHandlers = [];
         this.playerMinimaps = [];
-        this.minimapCleanupHandlers = [];
         this.boardGap = 80; // Space between player boards
 
         // Separate Phaser game instances for each player
@@ -450,6 +450,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             throw new Error('Board scenes not initialized. Call onActivate first.');
         }
 
+        this._versusCameras().reset();
         this._syncBoardScenes();
         this._destroyMinimaps();
 
@@ -463,20 +464,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 const playerCard = document.getElementById(`player-${playerNum}-card`);
 
                 if (playerCard) {
+                    // Read-only: looking around would pause this board alone mid-race.
                     const minimap = new InfinityMinimap({
                         container: playerCard,
                         id: `infinity-minimap-p${playerNum}`,
                         width: 55,
                         height: 420,
                         maxRows: this.matchConfig?.infinityMaxRows || 100,
+                        explorable: false,
                     });
 
                     minimap.show();
                     this.playerMinimaps[i] = minimap;
-
-                    // Setup exploration handlers
-                    this._setupMinimapExploration(minimap, i);
-
                     console.log(`[LocalMultiplayer] Created minimap for Player ${playerNum}`);
                 } else {
                     console.warn(`[LocalMultiplayer] Player card not found for Player ${playerNum}`);
@@ -941,62 +940,32 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 });
             }
 
-            // Update camera for infinity mode
-            if (playerState.isInfinityMode && scene && scene.cameraSettings) {
-                this._updatePlayerCamera(scene, playerState, index);
+            // Infinity's play camera (local-versus-cameras.js); clock-stepped, so the extra
+            // syncs from physics draws in the same moment do not move it again.
+            if (playerState.isInfinityMode && scene?.cameraSettings) {
+                this._versusCameras().step(index, scene, playerState);
             }
         });
     }
 
-    _updatePlayerCamera(scene, playerState, playerIndex) {
-        // Skip if manually controlled (exploration mode)
-        if (scene.cameraSettings.manualControl) {
-            return;
+    /** One Infinity play camera per board (Last Standing). @private */
+    _versusCameras() {
+        if (!this._infinityCameras) {
+            this._infinityCameras = new LocalVersusCameras({
+                reducedMotion: () => Boolean(this.deps?.settingsManager?.get?.()?.reducedMotion
+                    || globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches),
+            });
         }
+        return this._infinityCameras;
+    }
 
-        // Skip if player is paused for exploration
-        if (this.multiplayerState.playerPaused && this.multiplayerState.playerPaused[playerIndex]) {
-            return;
-        }
-
-        const visibleRows = scene.cameraSettings.visibleRows || 20;
-        const board = playerState.boardGrid || playerState.board;
-        if (!board) {
-            return;
-        }
-        const { currentPiece } = playerState;
-
-        if (currentPiece) {
-            // Follow piece if it goes below 50% of viewport
-            const pieceBottomRow = currentPiece.y + (currentPiece.shape ? currentPiece.shape.length : 0);
-            const currentCameraRow = scene.cameraSettings.currentTopRow;
-            const followThreshold = currentCameraRow + Math.floor(visibleRows * 0.5);
-
-            if (pieceBottomRow > followThreshold) {
-                // Follow piece downward
-                const targetCameraRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
-                const maxCameraRow = Math.max(0, board.length - visibleRows);
-                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-
-                scene.updateCameraPosition(clampedCameraRow);
-                return;
-            }
-        }
-
-        // Follow building upward when blocks reach top 30% of viewport
-        const highestBlockRow = this._findHighestBlockRow(board);
-        if (highestBlockRow < board.length) {
-            const currentCameraRow = scene.cameraSettings.currentTopRow;
-            const scrollThreshold = currentCameraRow + Math.floor(visibleRows * 0.3);
-
-            if (highestBlockRow < scrollThreshold) {
-                const targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.3);
-                const maxCameraRow = Math.max(0, board.length - visibleRows);
-                const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-
-                scene.updateCameraPosition(clampedCameraRow);
-            }
-        }
+    /**
+     * A board event for its play camera, from main.js's physics callbacks: 'lock' (the piece),
+     * 'clear' (the rows), 'settled' (the cascade) or 'input' (a hard drop).
+     */
+    _infinityCameraEvent(index, kind, detail) {
+        if (!this.matchConfig?.isInfinityLMS || !this.multiplayerState?.players?.[index]) return;
+        this._versusCameras().handle(kind, index, this.boardScenes?.[index], this.multiplayerState.players[index], detail);
     }
 
     _findHighestBlockRow(board) {
@@ -1062,6 +1031,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         scene.cameraSettings.currentTopRow = newCameraRow;
         scene.cameraSettings.activeTopRow = newCameraRow;
         scene.cameraSettings.targetTopRow = newTargetRow;
+        // A beat the view is holding moves down with the rows.
+        this._versusCameras().shift(this.multiplayerState?.players?.indexOf(playerState) ?? -1, rowsAdded);
 
         const visibleRows = scene.cameraSettings.visibleRows || 20;
         scene.cameraSettings.centerRow = newCameraRow + visibleRows / 2;
@@ -1072,111 +1043,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     _destroyMinimaps() {
-        this._cleanupEventListeners(this.minimapCleanupHandlers);
-        this.minimapCleanupHandlers = [];
-
-        if (this.playerMinimaps.length > 0) {
-            this.playerMinimaps.forEach((minimap) => {
-                if (minimap) {
-                    minimap.destroy();
-                }
-            });
-            this.playerMinimaps = [];
-        }
-    }
-
-    _setupMinimapExploration(minimap, playerIndex) {
-        const playerNum = playerIndex + 1;
-
-        // Exploration start
-        const startHandler = () => {
-            console.log(`[LocalMP] Player ${playerNum} exploration started`);
-
-            // Allow this player to pause for exploration
-            // Initialize playerPaused array if not exists
-            if (!this.multiplayerState.playerPaused) {
-                this.multiplayerState.playerPaused = new Array(this.multiplayerState.numPlayers).fill(false);
-            }
-            this.multiplayerState.playerPaused[playerIndex] = true;
-
-            if (this.boardScenes[playerIndex]) {
-                this.boardScenes[playerIndex].enableManualCameraControl();
-            }
-
-            minimap.onPause();
-        };
-
-        // Exploration end
-        const endHandler = () => {
-            console.log(`[LocalMP] Player ${playerNum} exploration ended`);
-
-            if (this.multiplayerState.playerPaused) {
-                this.multiplayerState.playerPaused[playerIndex] = false;
-            }
-
-            if (this.boardScenes[playerIndex]) {
-                const scene = this.boardScenes[playerIndex];
-                scene.disableManualCameraControl();
-
-                // Snap back to gameplay position (show active piece)
-                const playerState = this.multiplayerState.players[playerIndex];
-                const cameraRow = this._calculateGameplayCameraPosition(playerState);
-                scene.updateCameraPosition(cameraRow);
-            }
-
-            minimap.onUnpause();
-        };
-
-        // Camera jump during exploration
-        const jumpHandler = (event) => {
-            if (this.boardScenes[playerIndex]) {
-                const { targetRow } = event.detail;
-                const scene = this.boardScenes[playerIndex];
-                const visibleRows = scene.cameraSettings?.visibleRows || 20;
-
-                // Calculate top row (center target in viewport)
-                const targetTopRow = targetRow - Math.floor(visibleRows / 2);
-                const maxCameraRow = Math.max(0, this.multiplayerState.players[playerIndex].board.length - visibleRows);
-                const clampedRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
-
-                scene.updateCameraPosition(clampedRow, true); // Immediate update
-            }
-        };
-
-        // Add event listeners
-        minimap.container.addEventListener('minimap-exploration-start', startHandler);
-        minimap.container.addEventListener('minimap-exploration-end', endHandler);
-        minimap.container.addEventListener('minimap-jump', jumpHandler);
-
-        // Store for cleanup
-        this.minimapCleanupHandlers.push(() => {
-            minimap.container.removeEventListener('minimap-exploration-start', startHandler);
-            minimap.container.removeEventListener('minimap-exploration-end', endHandler);
-            minimap.container.removeEventListener('minimap-jump', jumpHandler);
-        });
-    }
-
-    _calculateGameplayCameraPosition(playerState) {
-        const visibleRows = 20;
-        const board = playerState.boardGrid || playerState.board;
-        const totalRows = board ? board.length : visibleRows;
-        const maxCameraRow = Math.max(0, totalRows - visibleRows);
-
-        // Center on active piece
-        if (playerState.currentPiece) {
-            const pieceBottomRow = playerState.currentPiece.y + (playerState.currentPiece.shape?.length || 0);
-            const targetRow = pieceBottomRow - Math.floor(visibleRows * 0.5);
-            return Math.max(0, Math.min(maxCameraRow, targetRow));
-        }
-
-        // Fallback: show highest blocks
-        const highestRow = board ? this._findHighestBlockRow(board) : totalRows;
-        if (highestRow < totalRows) {
-            const targetRow = highestRow - Math.floor(visibleRows * 0.3);
-            return Math.max(0, Math.min(maxCameraRow, targetRow));
-        }
-
-        return maxCameraRow;
+        this.playerMinimaps.forEach((minimap) => minimap?.destroy());
+        this.playerMinimaps = [];
     }
 
     /** Resolve all top-outs reported by one completed fixed-tick player barrier. */
@@ -2178,6 +2046,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.reset();
         this.multiplayerState.setPlayerHandicaps(this.matchConfig?.playerHandicaps);
         this.multiplayerState.isPaused = true;
+        this._versusCameras().reset();
 
         this._initializeSharedPieceRng(seed);
 

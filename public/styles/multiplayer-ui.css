@@ -517,8 +517,8 @@
   justify-self: start;
   align-self: start;
   opacity: 0.8;
-  transition: opacity 0.2s, transform 0.2s;
-  cursor: pointer;
+  /* Read-only in local versus: a look around would pause this board alone. */
+  pointer-events: none;
 }
 
 .player-card.infinity-lms .infinity-minimap canvas {
@@ -546,14 +546,6 @@
   margin: 6px 0 0 !important;
   word-break: break-word;
 }
-
-.player-card.infinity-lms .infinity-minimap:hover {
-  opacity: 1;
-  transform: scale(1.1);
-  /* Larger hover for better visibility with slim design */
-}
-
-/* Optional: Click-to-expand overlay for detailed exploration */
 
 /* Board takes main area */
 .player-card.infinity-lms .player-board-wrapper {
