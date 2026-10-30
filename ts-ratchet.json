@@ -89,6 +89,7 @@
     "src/rendering/odyssey/odyssey-scroll-pace.js",
     "src/rendering/odyssey/world/odyssey-world-bake-store.js",
     "src/rendering/theme-device-spare.js",
+    "src/rendering/three-precompile-live-restore.js",
     "src/rendering/webgpu-compute-pipeline-async.js",
     "src/themes/black-hole/black-hole-moods.js",
     "src/themes/crystal-cave/crystal-cave-hours.js",
