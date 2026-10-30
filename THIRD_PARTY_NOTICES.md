@@ -18,7 +18,7 @@ Part 1: code copied or ported into the game's own source
 3. Code snippets by Inigo Quilez: MIT
 4. WebGPU Inspector: MIT
 
-Part 2: code inside the bundled three.js (r186) and its add-ons
+Part 2: code inside the bundled three.js (r187) and its add-ons
 
 5. MaterialX noise functions: Apache-2.0, with a BSD-3-Clause notice from Open Shading Language
 6. meshoptimizer decoder: MIT

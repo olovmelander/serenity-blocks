@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * Loading-surface async render pipelines (three 0.186.1).
+ * Loading-surface async render pipelines (three 0.187.0).
  *
  * WHY: a synchronous `device.createRenderPipeline` compiles on the GPU-process main thread, which
  * also draws the display compositor, so every animation on screen — CSS loading screens included
@@ -20,15 +20,16 @@
  * device-level mipmap/transfer passes, compute pipelines (a theme's live renderer.compute();
  * boot surfaces use webgpu-compute-pipeline-async.js) and shader modules.
  *
- * r186 anchors, pinned by tests/unit/async-render-pipelines-contract.test.js:
- *   Pipelines.js:161, :332-336   the live path passes promises = null
- *   Pipelines.js:382-402         pipeline cached + renderObject.pipeline set, THEN
+ * r187 anchors, pinned by tests/unit/async-render-pipelines-contract.test.js:
+ *   Pipelines.js:166, :341-343   the live path passes promises = null
+ *   Pipelines.js:393-413         pipeline cached + renderObject.pipeline set, THEN
  *                                backend.createRenderPipeline (its sole caller)
- *   WebGPUPipelineUtils.js:260   null → sync create; :291/:338 async create + push into promises
- *   WebGPUPipelineUtils.js:315   the validation scope is popped only after the compile
- *   Pipelines.js:256-267 + Renderer.js:3895  pending pipeline → draw skipped
- *   WebGPUBackend.js:2220        pipelineData.error → never drawn (see the repair in track())
- *   PMREMGenerator.js:838-855    PMREM targets: isPMREMTexture / 'PMREM.cubeUv' / CubeUV mapping
+ *   WebGPUPipelineUtils.js:260   null → sync create; :291/:342 async create + push into promises
+ *   WebGPUPipelineUtils.js:303   the validation scope is popped before the compile is awaited
+ *                                (r186 held it open across the compile: the repair in track())
+ *   Pipelines.js:265-276 + Renderer.js:4098  pending pipeline → draw skipped
+ *   WebGPUBackend.js:2249        pipelineData.error → never drawn (see the repair in track())
+ *   PMREMGenerator.js:562        PMREM targets are CubeRenderTargets (the CubeUV atlas is gone)
  *
  * Rollback: ?themeWarmAsync=0 (or localStorage serenity.themeWarmAsync=0).
  *
@@ -40,10 +41,12 @@
  * budget is spent; the rest are skipped and built on later frames, as a pending pipeline is. Only a
  * HIDDEN build may use it (the in-play switch builds the incoming theme behind the playing one).
  * Anchors, pinned by the same contract test:
- *   Renderer.js:1737   _renderScene sets _handleObjectFunction = this._renderObjectDirect per render
- *   Renderer.js:3853   _renderObjectDirect starts with this._objects.get(object, material, scene,
+ *   Renderer.js:2077   _renderScene sets _handleObjectFunction = this._renderObjectDirect per render
+ *   Renderer.js:4056   _renderObjectDirect starts with this._objects.get(object, material, scene,
  *                      camera, lightsNode, this._currentRenderContext, clippingContext, passId)
- *   RenderObjects.js:99-118  chain keys [object, material, renderContext, lightsNode] per passId
+ *   RenderObjects.js:102-116  chain keys [object, material, renderContext, lightsNode] per passId,
+ *                      and the source material fifth while an override pass draws
+ *                      (Renderer._currentSourceMaterial): see chainKeysOf()
  * A build can draw other objects inside it: a post chain's quad runs its pass nodes' updateBefore
  * (Renderer.js:3858, Nodes.updateBefore), which render the scene through the same handler. Those
  * inner builds see the time the open outer build has spent, so a theme's first frame cannot build
@@ -53,7 +56,6 @@
  * refilled from its own length: each build over 14 ms reopened it for the next, so a frame of heavy
  * materials never deferred one (koi-pond: 375 ms, rainbow-terraces: 213 ms in one frame, 2026-10-16).
  */
-const CUBE_UV_REFLECTION_MAPPING = 306; // three/src/constants.js
 const sessions = new Set();
 const inFlightByTheme = new WeakMap();
 let patched = null; // { proto, original, wrapped }
@@ -119,7 +121,7 @@ export function isOneShotRenderTarget(rt) {
     if (rt.isCubeRenderTarget === true || rt.isOneShotBake === true) return true;
     const tex = rt.texture;
     if (!tex) return false;
-    if (tex.isPMREMTexture === true || tex.mapping === CUBE_UV_REFLECTION_MAPPING) return true;
+    if (tex.isPMREMTexture === true) return true;
     return typeof tex.name === 'string' && tex.name.startsWith('PMREM');
 }
 

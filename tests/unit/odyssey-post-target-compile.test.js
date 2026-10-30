@@ -171,8 +171,9 @@ describe('the r185 hold-across-await contract', () => {
         // Signature + the JSDoc that defines the third parameter as the target SCENE.
         expect(src).toMatch(/async compileAsync\(\s*scene,\s*camera,\s*targetScene\s*=\s*null,\s*onProgress\s*=\s*null\s*\)/);
         expect(src).toMatch(/@param \{\?Scene\} targetScene - If the first argument is a 3D object/);
-        // The first argument is what gets projected; lights come from targetScene.
-        expect(src).toMatch(/this\._projectObject\(\s*scene,\s*camera,\s*0,\s*renderList/);
+        // The first argument is what gets projected (r187: through the drawing pipeline); lights
+        // come from targetScene.
+        expect(src).toMatch(/this\.drawingPipeline\.project\(\s*scene,\s*camera,\s*0,\s*renderList/);
         expect(src).toMatch(/targetScene\.traverseVisible\(/);
     });
 
@@ -545,18 +546,27 @@ describe("beginNestedContextDepth (compile at the scene pass's call depth)", () 
         expect(calls.length).toBe(5);
     });
 
-    it("pins three's contract: RenderContexts keys by attachment + mrt + callDepth; _callDepth starts at -1", () => {
+    it("pins three's contract: RenderContexts keys by attachment + mrt + camera type + callDepth; _callDepth starts at -1", () => {
         const contexts = readFileSync(path.resolve('node_modules/three/src/renderers/common/RenderContexts.js'), 'utf8');
-        expect(contexts).toMatch(/get\( renderTarget = null, mrt = null, callDepth = 0 \)/);
-        expect(contexts).toMatch(/attachmentState \+ '-' \+ mrtState \+ '-' \+ callDepth/);
+        // r187 adds the camera (#35123): the patch must pass it through.
+        expect(contexts).toMatch(/get\( renderTarget = null, mrt = null, callDepth = 0, camera = null \)/);
+        expect(contexts).toMatch(/const stateKey = attachmentState \+ '-' \+ mrtState \+ '-' \+ cameraState;/);
+        expect(contexts).toMatch(/const renderStateKey = stateKey \+ '-' \+ callDepth;/);
         const rendererSrc = readFileSync(path.resolve('node_modules/three/src/renderers/common/Renderer.js'), 'utf8');
         expect(rendererSrc).toMatch(/this\._callDepth = - 1;/);
-        expect(rendererSrc).toMatch(/this\._renderContexts\.get\( renderTarget, this\._mrt, this\._callDepth \)/);
-        // compileAsync resolves its context at the DEFAULT depth — the reason the patch exists.
-        expect(rendererSrc).toMatch(/const renderContext = this\._renderContexts\.get\( renderTarget, this\._mrt \);/);
-        // The deferred drain the side capture works around.
-        expect(rendererSrc).toMatch(/this\._compilationPromises\.push\( \{/);
+        expect(rendererSrc).toMatch(/this\._renderContexts\.get\( renderTarget, this\._mrt, this\._callDepth, camera \)/);
+        // compileAsync resolves its context after _beginPreCompile has raised the depth from -1 to 0,
+        // where the live scene pass renders at 1: the reason the patch still maps 0 to 1.
+        expect(rendererSrc).toMatch(/this\._beginPreCompile\( precompilationState \);\s*const renderContext = this\._renderContexts\.get\( renderTarget, this\._mrt, this\._callDepth, camera \);/);
+        expect(rendererSrc).toMatch(/_beginPreCompile\( precompilationState \) \{[\s\S]*?this\._callDepth \+\+;/);
+        // r187 keys node builds by the depth-free state key (#35014): a build at the wrong depth is
+        // shared, only the render objects and bindings are per depth.
+        const renderObject = readFileSync(path.resolve('node_modules/three/src/renderers/common/RenderObject.js'), 'utf8');
+        expect(renderObject).toContain('cacheKey += this.context.stateKey + \',\';');
+        // The deferred drain, and the side it now carries itself (#35016: the side capture stands aside).
+        expect(rendererSrc).toMatch(/this\._compilationPromises\.push\( \{\s*object,\s*material,\s*side: material\.side,/);
         expect(rendererSrc).toMatch(/for \( const item of compilationPromises \)/);
+        expect(rendererSrc).toMatch(/item\.material\.side = item\.side;/);
     });
 });
 

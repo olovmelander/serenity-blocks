@@ -65,7 +65,7 @@ source of truth:
 | `afterImage` | `AfterImageNode.js` | trails |
 | `bleach` | `BleachBypass.js` | bleach bypass grade |
 | `sobel` | `SobelOperatorNode.js` | edge detect |
-| `pixelationPass` | `PixelationPassNode.js` | pixelate (replaces `pass()`) |
+| `pixelationPass` | `PixelationPassNode.js` | pixelate (replaces `pass()`; r187: `pixelSize` is a Number) |
 
 **New since the r181 pin** (now available in r185): `GodraysNode.js`, `RetroPassNode.js`,
 `BilateralBlurNode.js` — plus `CRT.js`, `SharpenNode.js`, `radialBlur.js`, `FSR1Node.js`,

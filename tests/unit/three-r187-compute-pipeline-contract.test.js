@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 // Check the shipped bundle AND source. On an upgrade, re-audit rather than loosening the pin.
 const read = (rel) => readFileSync(new URL('../../node_modules/three/' + rel, import.meta.url), 'utf8')
     .replace(/\r\n/g, '\n');
-const build = read('build/three.webgpu.js');
+// r187: three.webgpu.js imports the node system from three.tsl.js; both ship.
+const build = `${read('build/three.webgpu.js')}\n${read('build/three.tsl.js')}`;
 const renderer = read('src/renderers/common/Renderer.js');
 const pipelines = read('src/renderers/common/Pipelines.js');
 const backend = read('src/renderers/webgpu/WebGPUBackend.js');
@@ -21,11 +22,11 @@ function method(source, signature) {
 
 const bothMethods = (source, signature) => [method(source, signature), method(build, signature)];
 
-describe('three r186 native compute-pipeline contract', () => {
-    it('pins both the manifest and installed library to 0.186.1', () => {
-        expect(JSON.parse(read('package.json')).version).toBe('0.186.1');
+describe('three r187 native compute-pipeline contract', () => {
+    it('pins both the manifest and installed library to 0.187.0', () => {
+        expect(JSON.parse(read('package.json')).version).toBe('0.187.0');
         const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
-        expect(manifest.dependencies.three).toBe('0.186.1');
+        expect(manifest.dependencies.three).toBe('0.187.0');
     });
 
     it('native compilation owns onInit, disposal listeners and the async node build before pipeline creation', () => {
@@ -34,7 +35,9 @@ describe('three r186 native compute-pipeline contract', () => {
             expect(body).toContain('pipelines.delete( computeNode );');
             expect(body).toContain('bindings.deleteForCompute( computeNode );');
             expect(body).toContain('nodes.delete( computeNode );');
-            expect(body).toMatch(/await nodes\.getForComputeAsync\( computeNode \);[\s\S]*const compilationPromises = \[\];[\s\S]*pipelines\.getForCompute\( computeNode, computeBindings, compilationPromises \);[\s\S]*await Promise\.all\( compilationPromises \);/);
+            // r187 (#34816): the node build may yield (yieldCompile), and up to 16 pipelines compile
+            // at once; compileComputeAsync still resolves only once every one has settled.
+            expect(body).toMatch(/await nodes\.getForComputeAsync\( computeNode, yieldCompile \);[\s\S]*const compilationPromises = \[\];[\s\S]*pipelines\.getForCompute\( computeNode, computeBindings, compilationPromises \);[\s\S]*const promise = Promise\.all\( compilationPromises \)\.then\([\s\S]*await Promise\.all\( compilingPipelines \);/);
             expect(body).not.toContain('backend.compute(');
         }
     });
