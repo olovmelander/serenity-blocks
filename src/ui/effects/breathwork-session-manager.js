@@ -1159,6 +1159,9 @@ export class BreathworkSessionManager {
         if (this.indicator) {
             this.indicator.setPrompt?.(phase.prompt, phase.subPrompt);
             this.indicator.setTechnique(this._worldFor(phase), false);
+            // The next stage's world is built and compiled while this one breathes.
+            const following = this.activeSession.phases[this.currentPhaseIndex + 1];
+            this.indicator.prepareNext?.(following ? this._worldFor(following) : null);
             this.indicator.overridePattern(this._getVisualPattern(phase));
             this.indicator.setSessionPhase?.(phase.type, 0);
             this.indicator.setGuidance?.(this._guidanceFor(phase));

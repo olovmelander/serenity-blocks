@@ -9,6 +9,8 @@
  *
  * A world swap is a blink: the canvas dips to dark, the next world's pipelines compile off the
  * compositor thread while nothing is visible, and the canvas returns. Nothing compiles on screen.
+ * In a Hale session the next stage's world is built and compiled ahead, while the current one
+ * breathes (prepareNext), so its blink is just the dip.
  */
 import * as THREE from 'three/webgpu';
 import { BreathWorldHost, BREATH_QUALITY } from './breath-world-host.js';
@@ -20,6 +22,8 @@ const INIT_TIMEOUT_MS = 6000;
 const DIP_MS = 420;
 /** Longest wait for a world's pipelines before it is shown anyway (see _settlePipelines). */
 const SETTLE_MS = 20000;
+/** How long a world has on screen, settled, before the next one is built ahead (prepareNext). */
+const PREPARE_AFTER_MS = 2000;
 
 const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
@@ -72,6 +76,9 @@ export class BreathStage {
         this.worldId = null;
         this.wantedWorld = null;
         this.swapping = null;
+        /** The world a session moves to next, built ahead while this one shows (prepareNext). */
+        this.nextWorld = null;
+        this.preparing = null;
         this.focus = 0.14;
         this.sessionPhase = null;
         this.breath = { breath: 0, phase: 0, progress: 0 };
@@ -176,6 +183,50 @@ export class BreathStage {
         // A start() since then owns the swap.
         if (this.disposed || this.running || this.backend !== 'webgpu') return;
         if (this.wantedWorld !== this.worldId) await this._swap();
+    }
+
+    /**
+     * Build the world a session moves to next while the current one stays on screen, and compile
+     * it on the driver's workers (BreathWorldHost.prepareWorld, compilePrepared): the stage change
+     * then adopts it instead of building and compiling behind the dip, and the world comes back
+     * as soon as the dip ends. It starts once the world on screen has settled, and a moment more.
+     * WebGPU only: the WebGL2 backend compiles synchronously, which would stall what is on screen.
+     * null drops what was built ahead.
+     * @param {string|null} id
+     */
+    prepareNext(id) {
+        this.nextWorld = id || null;
+        if (!this.nextWorld) {
+            this.host?.discardPrepared();
+            return Promise.resolve();
+        }
+        if (!this.preparing) this.preparing = this._prepareNext().finally(() => { this.preparing = null; });
+        return this.preparing;
+    }
+
+    async _prepareNext() {
+        await this.init();
+        // Each turn serves the latest request; one made meanwhile takes another turn.
+        for (;;) {
+            if (this.disposed || !this.host || this.backend !== 'webgpu' || !this.nextWorld) return;
+            // A swap settles only when no pipeline is pending: let the world on screen come first.
+            if (this.swapping) {
+                // eslint-disable-next-line no-await-in-loop
+                await this.swapping;
+                continue;
+            }
+            const id = this.nextWorld;
+            // eslint-disable-next-line no-await-in-loop
+            await wait(PREPARE_AFTER_MS);
+            if (this.disposed || !this.host) return;
+            if (this.swapping || id !== this.nextWorld) continue;
+            // A tier that cannot compile ahead (no scene pass) builds nothing ahead either.
+            if (!this.host.compilesAhead) return;
+            this.host.prepareWorld(id);
+            // eslint-disable-next-line no-await-in-loop
+            await this.host.compilePrepared();
+            if (id === this.nextWorld) return;
+        }
     }
 
     stop() {
