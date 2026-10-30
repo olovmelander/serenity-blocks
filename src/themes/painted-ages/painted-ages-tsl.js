@@ -248,24 +248,40 @@ export function createRecordTexture(record) {
  * as a grid of dots; and, for the near and mid fields, drainage as an 8-bit red texture.
  */
 export function fieldTextureData(heights, sky, field) {
+    const steps = fieldTextureSteps(heights, sky, field, field.size);
+    for (;;) {
+        const next = steps.next();
+        if (next.done) return next.value;
+    }
+}
+
+/**
+ * fieldTextureData a band of `band` rows a step (every texel is its own: the bands write exactly
+ * what one pass does). A first visit's near field took ~53 ms in one step.
+ */
+export function* fieldTextureSteps(heights, sky, field, band = 64) {
     const { size } = field;
     const cell = field.span / (size - 1);
     const range = field.hi - field.lo;
     const toHalf = THREE.DataUtils.toHalfFloat;
     const data = new Uint16Array(size * size * 4);
     const at = (i, j) => heights[Math.max(0, Math.min(size - 1, j)) * size + Math.max(0, Math.min(size - 1, i))];
-    for (let j = 0; j < size; j++) {
-        for (let i = 0; i < size; i++) {
-            const gx = (at(i + 1, j - 1) + 2 * at(i + 1, j) + at(i + 1, j + 1)
-                - at(i - 1, j - 1) - 2 * at(i - 1, j) - at(i - 1, j + 1)) / (8 * cell);
-            const gz = (at(i - 1, j + 1) + 2 * at(i, j + 1) + at(i + 1, j + 1)
-                - at(i - 1, j - 1) - 2 * at(i, j - 1) - at(i + 1, j - 1)) / (8 * cell);
-            const o = (j * size + i) * 4;
-            data[o] = toHalf((heights[j * size + i] - field.lo) / range);
-            data[o + 1] = toHalf(gx);
-            data[o + 2] = toHalf(gz);
-            data[o + 3] = toHalf(sky[j * size + i] / 255);
+    for (let j0 = 0; j0 < size; j0 += band) {
+        const j1 = Math.min(size, j0 + band);
+        for (let j = j0; j < j1; j++) {
+            for (let i = 0; i < size; i++) {
+                const gx = (at(i + 1, j - 1) + 2 * at(i + 1, j) + at(i + 1, j + 1)
+                    - at(i - 1, j - 1) - 2 * at(i - 1, j) - at(i - 1, j + 1)) / (8 * cell);
+                const gz = (at(i - 1, j + 1) + 2 * at(i, j + 1) + at(i + 1, j + 1)
+                    - at(i - 1, j - 1) - 2 * at(i, j - 1) - at(i + 1, j - 1)) / (8 * cell);
+                const o = (j * size + i) * 4;
+                data[o] = toHalf((heights[j * size + i] - field.lo) / range);
+                data[o + 1] = toHalf(gx);
+                data[o + 2] = toHalf(gz);
+                data[o + 3] = toHalf(sky[j * size + i] / 255);
+            }
         }
+        if (j1 < size) yield j1;
     }
     return data;
 }

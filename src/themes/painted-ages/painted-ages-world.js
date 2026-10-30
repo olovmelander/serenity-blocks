@@ -51,7 +51,7 @@ import { tierFor } from './painted-ages-quality.js';
 import { breathe, loadBadlands, planBadlands } from './painted-ages-assets.js';
 import {
     createColumnTexture, createFieldTexture, createFlowTexture, createLatticeTexture, createNoiseTexture,
-    createRecordTexture, createUniforms, fieldTextureData,
+    createRecordTexture, createUniforms, fieldTextureSteps,
 } from './painted-ages-tsl.js';
 import {
     bilinear, fieldCoords, fieldInset, groundHeight,
@@ -132,7 +132,9 @@ function* prepareSteps(quality, fields) {
     const positions = yield* fanPositionSteps(fields, tier.fanCols, tier.fanRows);
     const textures = {};
     for (const name of FIELD_ORDER) {
-        textures[name] = fieldTextureData(fields[name].heights, fields[name].sky, FIELDS[name]);
+        // (a band of rows a step: the near field was ~53 ms in one)
+        const rows = Math.max(1, Math.ceil(FIELDS[name].size / 8));
+        textures[name] = yield* fieldTextureSteps(fields[name].heights, fields[name].sky, FIELDS[name], rows);
         yield name;
     }
     return {
@@ -140,13 +142,25 @@ function* prepareSteps(quality, fields) {
     };
 }
 
+/**
+ * The prepared land read from the baked assets, kept for the session per quality: its fields,
+ * mesh positions and texture data are only read once built, and reading, decoding and preparing
+ * them again cost a revisit ~85 ms. (A land drawn from the plan, when an asset could not be read,
+ * is not kept: the next visit tries the assets again.)
+ */
+const keptPrepared = new Map();
+
 /** Read the baked land and prepare it, yielding to the page between slices (abortable). */
 async function prepareData(quality, { signal } = {}) {
+    if (keptPrepared.has(quality)) return keptPrepared.get(quality);
     const fields = await loadBadlands({ signal });
     const steps = prepareSteps(quality, fields);
     for (;;) {
         const next = steps.next();
-        if (next.done) return next.value;
+        if (next.done) {
+            if (next.value.source === 'asset') keptPrepared.set(quality, next.value);
+            return next.value;
+        }
         // eslint-disable-next-line no-await-in-loop
         await breathe();
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
