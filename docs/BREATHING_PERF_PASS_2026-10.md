@@ -58,6 +58,55 @@ its pipelines all after the countdown, behind the CSS orb (seconds, on a first c
   Breathing tab is shown and when a session's preparation screen opens. A failed fetch is no
   longer cached forever: the next start tries again.
 
+### …and change worlds without compiling (follow-up)
+
+A session moves through several worlds (Base: the forest, then round after round the storm, the
+cosmos and coherence; First and Elixir change at every stage). Each stage change used to build the
+next world and compile its shaders behind the dip, on the CSS orb, for as long as the driver took.
+Now the next stage's world is ready before the stage changes:
+
+- **Built and compiled ahead.** Each stage asks for the next one's world:
+  `BreathworkSessionManager._runPhase()` → `BreathingGuide.prepareNext(world)` →
+  `BreathStage.prepareNext()`. Two seconds after the world on screen has settled,
+  `BreathWorldHost.prepareWorld()` builds the next world off screen (its mood and visit seed picked
+  as a visit would pick them, nothing on screen touched) and `compilePrepared()` compiles it while
+  frames keep drawing. The stage change's `setWorld()` adopts those very objects: nothing is built
+  again, and the world is back as the dip ends. What was built ahead is dropped when the practice
+  ends or the plan changes, and disposed only once a compile in flight is done with it.
+- **Compiled for the scene pass's own context.** three r186 keys a material's shader build by its
+  render context (the scene pass draws one call deep, inside the lens's pipeline) and builds it
+  after `compileAsync`'s first await, reading whatever target is bound by then. A plain
+  `compileAsync` built every shader for another context, and the stage change built and compiled
+  them all again (the pipeline instrument showed the same material's fragment shader made twice,
+  its functions in another order). The host compiles through the Odyssey warm-up's
+  `compileGroupUnderLiveLoop` (`rendering/odyssey/warmup/post-target-compile.js`, pinned by its
+  contract tests), which compiles in exactly that context while live frames see their own.
+- **The lens no longer rebuilds for light shafts.** A world with shafts (Ancient Forest, Electric
+  Storm) used to swap the lens's output graph, which made the shaft passes, the output quad
+  (synchronously) and the bloom passes again at every change into or out of it: 14 pipelines. The
+  shaft passes are now in the one graph from the start and simply stop rendering while a world has
+  none (`RTTNode.autoUpdate`); their last image is added at strength 0, exactly nothing, for one
+  texture read. They render once on the first frame, so their two pipelines are made behind the
+  first dip with the rest of the lens's. A world change is uniforms only.
+- **Where it does not apply.** The WebGL2 backend compiles synchronously (building ahead would
+  stall the world on screen), and the lightest tier draws through three's frame-buffer target,
+  which those helpers do not cover: both change worlds as before.
+
+From the stage change's request to the world back on screen, in the headless check (the shipped
+guide and stage on SwiftShader WebGPU, High; timings are functional evidence only, ADR-0016):
+
+| Stage change | Cold | Built ahead |
+| --- | ---: | ---: |
+| Ocean Tide → Moonlit Waters | 1,239 ms, 3 pipelines made at the change | 591 ms, none |
+| Ocean Tide → Ancient Forest (shafts on) | 1,467 ms, 9 (23 before the lens stopped rebuilding) | 500 ms, none |
+
+What is left is the dip itself (420 ms) and three settle frames. Building ahead took ~3.3 s of the
+stage before; the world on screen kept drawing meanwhile (worst frame gap 133 ms, against 83 ms at
+rest, on the software renderer). Every world built ahead and adopted renders exactly as one built
+cold: every mood on High and every world on Low and Minimal, 72 frames, max abs diff 0. With the
+lens's one graph the full 120-frame set and the ten meteor frames still match the commit before
+this pass.
+
 ### The frame loop makes no garbage
 
 Per frame, the guide, the host and the worlds used to build fresh objects, arrays and closures
@@ -174,8 +223,10 @@ artifact and the perf budgets.
 
 - **Frame time on hardware.** The paint count and the allocations removed are facts about the
   code; what they buy in milliseconds on the integrated GPU or a phone is unmeasured (ADR-0016).
-- **The next world of a session** still compiles at its stage change (behind the dip). It could
-  compile during the stage before it, into the scene pass's own target; not done here.
+- **Building ahead on hardware.** The next world compiles on the driver's workers while the world
+  on screen draws; whether that costs the world on screen a frame on the integrated GPU or a phone
+  is unmeasured. On the WebGL2 backend and the lightest tier a session still compiles its next
+  world at the stage change, behind the dip.
 - **Display-rate tiers on high-refresh screens** (High and above draw at 120–165 Hz there).
   A 60 Hz cap would roughly halve their GPU work for slow breathing motion, but it changes the
   smoothness the owner asked to keep: the owner's call.
