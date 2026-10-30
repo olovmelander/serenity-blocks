@@ -53,6 +53,21 @@ export const BREATH_QUALITY = Object.freeze({
         pixelRatio: 1, maxPixels: 0.5e6, octaves: 3, motes: 0.25, bloom: 0, shafts: 0, shaftScale: 0.25, chroma: false, detail: 0.4, frameInterval: 1000 / 30,
     },
 });
+
+/**
+ * The drawing buffer's pixel ratio for a tier on a `width` × `height` (CSS pixels) screen: the
+ * device's own ratio, held to the tier's ratio and to its pixel budget. The stage sizes its canvas
+ * by it; the playground's breathing effect (`stage=1`) renders at the same size, so a measurement
+ * there draws as many pixels as the game.
+ * @param {{pixelRatio: number, maxPixels: number}} quality
+ * @param {number} width
+ * @param {number} height
+ * @param {number} [devicePixelRatio]
+ */
+export function breathPixelRatio(quality, width, height, devicePixelRatio = 1) {
+    return Math.min(devicePixelRatio || 1, quality.pixelRatio, Math.sqrt(quality.maxPixels / (width * height)));
+}
+
 const SESSION_CALM = {
     grounding: 0.25, active: 0, retention: 1, carry: 0.45, recovery: 0.35, integration: 0.8,
 };

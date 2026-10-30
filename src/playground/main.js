@@ -16,6 +16,9 @@
 //   ?refOpacity=<0..1>
 //   ?inspector=1        attach three.js's built-in Inspector (r181+) — GPU-timestamp
 //                        Performance/Memory/Console panel, opt-in (adds its own DOM overlay)
+//   ?antialias=0        no MSAA on the renderer (a pass() scene then draws single-sampled, as
+//                        a surface built with antialias: false does; the default is 4x)
+//   ?maxFps=<n>         draw at most n frames a second (skips loop ticks, as a frame cap does)
 //
 // Screenshot contract: `window.__PLAYGROUND_READY__ === true` and a `playground-ready`
 // event fire after the first frame has compiled + rendered. Agent API on `window.__PLAYGROUND__`.
@@ -49,6 +52,12 @@ const timestampRequested = params.get('trackTimestamp') === '1';
 // Timestamp tracking allocates query slots in r181. Only enable it when this harness
 // will also drain those queries through the bounded profiler.
 const trackTimestamp = profileEnabled && timestampRequested;
+// The renderer's MSAA: a pass() scene node takes the renderer's sample count, so a surface that
+// ships with antialias: false (the breathing stage) is measured as it ships only with antialias=0.
+const antialias = params.get('antialias') !== '0';
+const maxFps = Number(params.get('maxFps'));
+const minFrameMs = Number.isFinite(maxFps) && maxFps > 0 ? 1000 / maxFps : 0;
+let lastLoopDraw = null;
 let lastObjectUrl = null; // revoked when a new dropped/picked image replaces it
 
 // ---- deterministic RNG (documented seed → reproducible ?t= captures) ----
@@ -641,7 +650,7 @@ function exposeApi() {
 
 async function init() {
     const forceWebGL = params.get('forceWebGL') === '1';
-    renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL, trackTimestamp });
+    renderer = new THREE.WebGPURenderer({ antialias, forceWebGL, trackTimestamp });
     await renderer.init();
     // Fire-and-forget: the HUD updates itself every frame, so the label appears once resolved.
     resolveAdapterLabel();
@@ -727,7 +736,10 @@ async function init() {
     window.renderer = renderer;
     window.THREE = THREE;
 
-    renderer.setAnimationLoop(() => {
+    renderer.setAnimationLoop((now) => {
+        // A cap skips ticks the way the game's frame caps do (the breathing stage's frameInterval).
+        if (minFrameMs > 0 && lastLoopDraw !== null && now - lastLoopDraw < minFrameMs - 0.5) return;
+        lastLoopDraw = now;
         const frameStart = performance.now();
         if (profileEnabled) {
             if (profileState.lastFrameStart != null) {

@@ -13,7 +13,7 @@
  * breathes (prepareNext), so its blink is just the dip.
  */
 import * as THREE from 'three/webgpu';
-import { BreathWorldHost, BREATH_QUALITY } from './breath-world-host.js';
+import { BreathWorldHost, BREATH_QUALITY, breathPixelRatio } from './breath-world-host.js';
 import {
     beginAsyncRenderPipelines, preloadAsyncRenderPipelines,
 } from '../../../../rendering/async-render-pipelines.js';
@@ -305,8 +305,7 @@ export class BreathStage {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
         if (!width || !height) return;
-        const { quality } = this;
-        const ratio = Math.min(window.devicePixelRatio || 1, quality.pixelRatio, Math.sqrt(quality.maxPixels / (width * height)));
+        const ratio = breathPixelRatio(this.quality, width, height, window.devicePixelRatio);
         this.renderer.setPixelRatio(ratio);
         this.renderer.setSize(width, height, false);
         this.host.setSize(width, height, height * ratio);

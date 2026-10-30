@@ -12,9 +12,12 @@
  *   quality=High           render tier
  *   focus=0.14             hero height above screen centre
  *   reduce=1               reduced-motion behaviour
+ *   stage=1                draw at the size the game's stage draws this tier at (its pixel ratio
+ *                          and pixel budget) instead of the playground's; with the playground's
+ *                          antialias=0 the renderer then matches the stage's (for measurements)
  */
 import * as THREE from 'three/webgpu';
-import { BreathWorldHost } from '../../ui/effects/breathing/stage/breath-world-host.js';
+import { BreathWorldHost, breathPixelRatio } from '../../ui/effects/breathing/stage/breath-world-host.js';
 import { resolveBreath } from '../../ui/effects/breathing/breath-clock.js';
 import { BREATH_WORLD_MOODS } from '../../ui/effects/breathing/worlds/index.js';
 
@@ -44,7 +47,13 @@ export function create({
     let mood = params.get('mood') ?? 0;
     host.setWorld(params.get('world') || 'deep-relaxation', { mood, seed });
     const drawingSize = new THREE.Vector2();
+    const stageSized = params.get('stage') === '1';
     const sync = () => {
+        if (stageSized) {
+            const { innerWidth: width, innerHeight: height } = window;
+            renderer.setPixelRatio(breathPixelRatio(host.quality, width, height, window.devicePixelRatio));
+            renderer.setSize(width, height, false);
+        }
         renderer.getDrawingBufferSize(drawingSize);
         host.setSize(window.innerWidth, window.innerHeight, drawingSize.y || window.innerHeight);
     };
