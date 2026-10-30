@@ -34,7 +34,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, clamp, cos, dot, exp, float, floor, fract, length, max, min, mix, pow, select, sin, smoothstep, sqrt, step,
+    Fn, If, clamp, cos, dot, exp, float, floor, fract, length, max, min, mix, pow, select, sin, smoothstep, sqrt, step,
     uniform, uv, vec2, vec3,
 } from 'three/tsl';
 
@@ -240,16 +240,22 @@ const starLayer = /* @__PURE__ */ Fn(([p, cells, seed, amount, px, t]) => {
     const q = p.mul(cells).toVar();
     const cell = floor(q).toVar();
     const pick = hash21(cell.add(seed)).toVar();
-    const pos = hash22(cell.add(seed.mul(1.7))).mul(0.7).add(0.15);
-    const mag = pow(hash21(cell.add(seed).add(9.1)), 5).toVar();
-    // One device pixel in cell units keeps the core crisp at every render scale.
-    const cellPx = px.mul(cells).toVar();
-    const d = length(fract(q).sub(pos)).toVar();
-    const core = exp(d.mul(d).negate().div(cellPx.mul(cellPx).mul(mag.mul(3.6).add(0.8))));
-    const halo = mag.mul(0.05).mul(exp(d.mul(-7))).div(d.mul(d).div(cellPx.mul(cellPx)).mul(0.02).add(1));
-    const twinkle = sin(t.mul(pick.mul(9).add(0.35)).add(pick.mul(60))).mul(0.2).add(0.8);
-    const tint = mix(vec3(0.72, 0.82, 1), vec3(1, 0.86, 0.7), hash21(cell.add(seed).add(3.3)));
-    return tint.mul(core.mul(mag.mul(1.4).add(0.25)).add(halo)).mul(twinkle).mul(step(pick, amount));
+    const star = vec3(0).toVar();
+    // Most cells hold no star (the star was multiplied by step(pick, amount) = 0): skip them.
+    // The cells are tens of pixels wide, so whole groups of pixels take the same path.
+    If(pick.lessThanEqual(amount), () => {
+        const pos = hash22(cell.add(seed.mul(1.7))).mul(0.7).add(0.15);
+        const mag = pow(hash21(cell.add(seed).add(9.1)), 5).toVar();
+        // One device pixel in cell units keeps the core crisp at every render scale.
+        const cellPx = px.mul(cells).toVar();
+        const d = length(fract(q).sub(pos)).toVar();
+        const core = exp(d.mul(d).negate().div(cellPx.mul(cellPx).mul(mag.mul(3.6).add(0.8))));
+        const halo = mag.mul(0.05).mul(exp(d.mul(-7))).div(d.mul(d).div(cellPx.mul(cellPx)).mul(0.02).add(1));
+        const twinkle = sin(t.mul(pick.mul(9).add(0.35)).add(pick.mul(60))).mul(0.2).add(0.8);
+        const tint = mix(vec3(0.72, 0.82, 1), vec3(1, 0.86, 0.7), hash21(cell.add(seed).add(3.3)));
+        star.assign(tint.mul(core.mul(mag.mul(1.4).add(0.25)).add(halo)).mul(twinkle));
+    });
+    return star;
 }).setLayout({
     name: 'br_starLayer',
     type: 'vec3',
@@ -349,23 +355,33 @@ export function shootingStar(p, u, {
     length: tailLength = 0.3, width = 1.1, color = [0.85, 0.92, 1.0], gain = 1,
 } = {}) {
     const ev = eventWindow(u.time, float(period), float(duration), float(chance), u.seed.mul(53.1).add(salt)).toVar();
-    const pick = ev.z;
-    const start = vec2(
-        mix(float(area[0]), float(area[2]), hash21(vec2(pick, 1.3))),
-        mix(float(area[1]), float(area[3]), hash21(vec2(pick, 2.9))),
-    );
-    // Downhill, to the left or the right.
-    const heading = mix(float(-2.5), float(-0.64), hash21(vec2(pick, 4.1)));
-    const dir = vec2(cos(heading), sin(heading)).toVar();
-    const head = start.add(dir.mul(ev.y.mul(travel)));
-    const rel = p.sub(head).toVar();
-    const behind = dot(rel, dir).negate().toVar();
-    const across = length(rel.add(dir.mul(behind)));
-    const tail = float(tailLength).mul(ev.y.mul(2.5).min(1).mul(0.7).add(0.3));
-    const along = step(0, behind).mul(fadeOut(0, tail, behind));
-    const w = u.px.mul(width);
-    const streak = exp(across.mul(across).div(w.mul(w)).negate()).mul(along.mul(along));
-    const glint = exp(dot(rel, rel).div(w.mul(w).mul(5)).negate());
-    return vec3(...color).mul(streak.add(glint.mul(0.6))).mul(ev.x).mul(u.life)
-        .mul(gain);
+    // The caller's nodes are pinned before the branch: a node first built inside it would read as
+    // unset wherever the caller uses it again after it.
+    const at = p.toVar();
+    const bounds = area.map((edge) => (typeof edge === 'number' ? float(edge) : float(edge).toVar()));
+    const meteor = vec3(0).toVar();
+    // Between meteors (nearly always) the streak was multiplied by an envelope of exactly 0. The
+    // test is the same for every pixel, so skipping the streak then costs no divergence.
+    If(ev.x.mul(u.life).greaterThan(0), () => {
+        const pick = ev.z;
+        const start = vec2(
+            mix(bounds[0], bounds[2], hash21(vec2(pick, 1.3))),
+            mix(bounds[1], bounds[3], hash21(vec2(pick, 2.9))),
+        );
+        // Downhill, to the left or the right.
+        const heading = mix(float(-2.5), float(-0.64), hash21(vec2(pick, 4.1)));
+        const dir = vec2(cos(heading), sin(heading)).toVar();
+        const head = start.add(dir.mul(ev.y.mul(travel)));
+        const rel = at.sub(head).toVar();
+        const behind = dot(rel, dir).negate().toVar();
+        const across = length(rel.add(dir.mul(behind)));
+        const tail = float(tailLength).mul(ev.y.mul(2.5).min(1).mul(0.7).add(0.3));
+        const along = step(0, behind).mul(fadeOut(0, tail, behind));
+        const w = u.px.mul(width);
+        const streak = exp(across.mul(across).div(w.mul(w)).negate()).mul(along.mul(along));
+        const glint = exp(dot(rel, rel).div(w.mul(w).mul(5)).negate());
+        meteor.assign(vec3(...color).mul(streak.add(glint.mul(0.6))).mul(ev.x).mul(u.life)
+            .mul(gain));
+    });
+    return meteor;
 }

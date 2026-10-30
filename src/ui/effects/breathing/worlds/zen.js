@@ -390,19 +390,24 @@ function makeVeil(look) {
         const dt = float(MIST_H).sub(height).max(0).div(dirD.w)
             .min(t)
             .toVar();
-        const mid = eyeR.xyz.add(dirD.xyz.mul(t.sub(dt.mul(0.5)))).toVar();
-        // Wisps drawn out along the breeze (x), slowly rolling.
-        const dens = fbm3(vec3(mid.x.mul(0.22).add(scene.y), mid.z.mul(0.5), scene.z.mul(0.025)), 3);
-        const thick = smoothstep(0.38, 0.66, dens).mul(0.9).add(0.1);
-        const mist = float(1).sub(exp(dt.mul(eyeR.w).mul(thick).mul(-0.5 * look.mist[1])));
         const forward = exp(scene.x.sub(1).mul(2.4)).toVar();
-        // The mist carries light: the breath ring glowing up into it, the lantern's warmth near it.
-        const gap = islandField(mid.x, mid.z, GROUPS[0].island, spread).d.sub(scene.w).toVar();
-        const toLamp = lampF.xyz.sub(mid).toVar();
-        const mistColor = MOONLIGHT.mul(forward.mul(0.15).add(0.075)).add(SKYLIGHT.mul(0.3))
-            .add(RING_LIGHT.mul(exp(gap.mul(gap).mul(-9))).mul(ringGlow.mul(0.15)))
-            .add(WARM.mul(lampF.w).mul(float(0.14).div(dot(toLamp, toLamp).mul(0.9).add(1))));
-        const c = mix(colour, mistColor, mist).toVar();
+        // Above the mist the ray crosses none of it: dt is 0, the mist's weight 1 - exp(0) is exactly 0
+        // and the colour passes through.
+        const c = colour.toVar();
+        If(dt.greaterThan(0), () => {
+            const mid = eyeR.xyz.add(dirD.xyz.mul(t.sub(dt.mul(0.5)))).toVar();
+            // Wisps drawn out along the breeze (x), slowly rolling.
+            const dens = fbm3(vec3(mid.x.mul(0.22).add(scene.y), mid.z.mul(0.5), scene.z.mul(0.025)), 3);
+            const thick = smoothstep(0.38, 0.66, dens).mul(0.9).add(0.1);
+            const mist = float(1).sub(exp(dt.mul(eyeR.w).mul(thick).mul(-0.5 * look.mist[1])));
+            // The mist carries light: the breath ring glowing up into it, the lantern's warmth near it.
+            const gap = islandField(mid.x, mid.z, GROUPS[0].island, spread).d.sub(scene.w).toVar();
+            const toLamp = lampF.xyz.sub(mid).toVar();
+            const mistColor = MOONLIGHT.mul(forward.mul(0.15).add(0.075)).add(SKYLIGHT.mul(0.3))
+                .add(RING_LIGHT.mul(exp(gap.mul(gap).mul(-9))).mul(ringGlow.mul(0.15)))
+                .add(WARM.mul(lampF.w).mul(float(0.14).div(dot(toLamp, toLamp).mul(0.9).add(1))));
+            c.assign(mix(colour, mistColor, mist));
+        });
         const air = float(1).sub(exp(t.mul(eyeR.w).mul(-0.02 * look.mist[2])));
         return mix(c, HAZE.add(MOONLIGHT.mul(forward).mul(0.025)), air);
     }).setLayout({
@@ -860,7 +865,10 @@ export function createZenWorld({ u, quality, mood }) {
                 const ol = dot(o, moonward.xyz).toVar();
                 const beam = ol.negate().div(moonward.w).toVar();
                 const miss = sqrt(dot(o, o).sub(ol.mul(ol).div(moonward.w)).max(0));
-                const soft = beam.mul(0.07).add(0.05).div(size.w).min(0.7)
+                // (The beam is clamped at 0: on the far side of a stone, where smoothstep(0, 0.2, beam) zeroes
+                // the shadow anyway, it would turn the softness negative and reverse fadeOut's edges.)
+                const soft = beam.max(0).mul(0.07).add(0.05).div(size.w)
+                    .min(0.7)
                     .toVar();
                 const blocked = fadeOut(float(0.97).sub(soft), float(0.97).add(soft), miss)
                     .mul(smoothstep(0, 0.2, beam));
@@ -903,10 +911,17 @@ export function createZenWorld({ u, quality, mood }) {
             const off = d0.sub(ringAt).toVar();
             // The ring shimmers as it rests: a slow, drifting unevenness along it (sampled on the
             // direction round the stone, so there is no seam), each stretch changing over seconds.
-            const mainIsle = vec2(spread.mul(GROUPS[0].island.c[0]), GROUPS[0].island.c[1]);
-            const round = ground.sub(mainIsle).add(vec2(1e-4, 0)).normalize();
-            const shimmer = gnoise(round.mul(2.4).add(vec2(u.time.mul(0.11), u.time.mul(-0.07)))).mul(0.42).add(0.79);
-            const ring = exp(off.mul(off).div(width.mul(width)).negate()).mul(shimmer).toVar();
+            // Away from the ring its exp() underflows to exactly 0, and so does the ring: read the
+            // shimmer only where it shows.
+            const peak = exp(off.mul(off).div(width.mul(width)).negate()).toVar();
+            const ring = float(0).toVar();
+            If(peak.greaterThan(0), () => {
+                const mainIsle = vec2(spread.mul(GROUPS[0].island.c[0]), GROUPS[0].island.c[1]);
+                const round = ground.sub(mainIsle).add(vec2(1e-4, 0)).normalize();
+                const shimmer = gnoise(round.mul(2.4).add(vec2(u.time.mul(0.11), u.time.mul(-0.07)))).mul(0.42)
+                    .add(0.79);
+                ring.assign(peak.mul(shimmer));
+            });
             const halo = exp(off.mul(off).div(width.mul(width).mul(6)).negate()).mul(0.22);
             const wake = smoothstep(ringAt.sub(1.6), ringAt, d0).mul(fadeOut(ringAt.sub(0.05), ringAt.add(0.2), d0))
                 .mul(0.12);
@@ -940,46 +955,57 @@ export function createZenWorld({ u, quality, mood }) {
 
             // Moss islands with soft, fuzzy edges; a moss border at the near edge of the garden.
             const nearest = min(isles[0].d, min(isles[1].d, isles[2].d)).toVar();
-            const fuzz = gnoise(ground.mul(4.7)).sub(0.5).mul(0.16)
-                .add(gnoise(ground.mul(13.3)).sub(0.5).mul(0.06))
-                .toVar();
-            const edge = max(fx, fz).add(0.015);
-            const wave = gnoise(vec2(gx.mul(1.1), 2.7)).sub(0.5).mul(0.22)
-                .add(gnoise(vec2(gx.mul(3.7), 5.1)).sub(0.5).mul(0.06));
-            const border = float(BORDER_Z).add(wave).sub(gz).toVar();
-            const moss = fadeOut(edge.negate(), edge, nearest.add(fuzz))
-                .max(smoothstep(edge.negate(), edge, border)).toVar();
-            const clump = gnoise(ground.mul(8.5)).toVar();
-            const fine = gnoise(ground.mul(29)).sub(0.5).mul(fadeOut(0.004, 0.012, fz));
-            const mossAlbedo = MOSS.mul(clump.mul(0.9).add(0.55)).mul(fine.add(1)).toVar();
-            if (snow > 0) {
-                // Snow lies on the moss too, the tallest clumps showing through.
-                mossAlbedo.assign(mix(mossAlbedo, SAND.mul(0.95), fadeOut(0.8, 0.97, clump).mul(snow)));
-            }
-            // Each island is a low cushion: its rim rolls down to the sand, catching the moon on the
-            // side that faces it. Its clumps catch the light too.
-            // (The near border is a bank too: it rolls down toward the garden.)
-            const bank = border.greaterThan(nearest.add(fuzz).negate()).toVar();
-            const isleOut = select(
-                isles[0].d.lessThan(min(isles[1].d, isles[2].d)),
-                isles[0].grad,
-                select(isles[1].d.lessThan(isles[2].d), isles[1].grad, isles[2].grad),
-            ).toVar();
-            const outward = select(bank, vec2(0, 1), isleOut).toVar();
-            const roll = smoothstep(-0.3, 0.0, select(bank, border.negate(), nearest.add(fuzz))).mul(0.9);
-            const cushion = normalize(vec3(outward.x.mul(roll), 1, outward.y.mul(roll)));
-            const clumpLit = dot(cushion, MOON).max(0).mul(clump.mul(0.7).add(0.65));
-            const mossColor = mossAlbedo.mul(MOONLIGHT.mul(shade.mul(clumpLit).mul(MOON_POWER)).add(SKYLIGHT)).toVar();
-            // Dew on the moss: a softer, sparser sparkle.
-            mossColor.addAssign(MOONLIGHT.mul(spot).mul(smoothstep(0.9, 0.94, r2.y)).mul(twinkle).mul(shade)
-                .mul(0.25)
-                .mul(visible));
-            mossColor.addAssign(RING_LIGHT.mul(ring.add(halo)).mul(mossAlbedo).mul(0.8));
-            mossColor.addAssign(mossAlbedo.mul(warmth).mul(1.4));
+            const edge = max(fx, fz).add(0.015).toVar();
+            // gnoise stays within 0.5 ± 0.72, so the fuzz never reaches 0.159 and the wave 0.202: farther
+            // than that from every island and from the near border the moss is exactly 0, and the floor
+            // is the sand (mixing in the finite moss colour by 0 changes nothing).
+            const floor = sand.toVar();
+            If(nearest.lessThan(edge.add(0.17)).or(gz.lessThan(edge.add(BORDER_Z + 0.22))), () => {
+                const fuzz = gnoise(ground.mul(4.7)).sub(0.5).mul(0.16)
+                    .add(gnoise(ground.mul(13.3)).sub(0.5).mul(0.06))
+                    .toVar();
+                const wave = gnoise(vec2(gx.mul(1.1), 2.7)).sub(0.5).mul(0.22)
+                    .add(gnoise(vec2(gx.mul(3.7), 5.1)).sub(0.5).mul(0.06));
+                const border = float(BORDER_Z).add(wave).sub(gz).toVar();
+                const moss = fadeOut(edge.negate(), edge, nearest.add(fuzz))
+                    .max(smoothstep(edge.negate(), edge, border)).toVar();
+                // Between the fuzzy edges and that bound the moss is 0 too: colour it only where it shows.
+                If(moss.greaterThan(0), () => {
+                    const clump = gnoise(ground.mul(8.5)).toVar();
+                    const fine = gnoise(ground.mul(29)).sub(0.5).mul(fadeOut(0.004, 0.012, fz));
+                    const mossAlbedo = MOSS.mul(clump.mul(0.9).add(0.55)).mul(fine.add(1)).toVar();
+                    if (snow > 0) {
+                        // Snow lies on the moss too, the tallest clumps showing through.
+                        mossAlbedo.assign(mix(mossAlbedo, SAND.mul(0.95), fadeOut(0.8, 0.97, clump).mul(snow)));
+                    }
+                    // Each island is a low cushion: its rim rolls down to the sand, catching the moon on the
+                    // side that faces it. Its clumps catch the light too.
+                    // (The near border is a bank too: it rolls down toward the garden.)
+                    const bank = border.greaterThan(nearest.add(fuzz).negate()).toVar();
+                    const isleOut = select(
+                        isles[0].d.lessThan(min(isles[1].d, isles[2].d)),
+                        isles[0].grad,
+                        select(isles[1].d.lessThan(isles[2].d), isles[1].grad, isles[2].grad),
+                    ).toVar();
+                    const outward = select(bank, vec2(0, 1), isleOut).toVar();
+                    const roll = smoothstep(-0.3, 0.0, select(bank, border.negate(), nearest.add(fuzz))).mul(0.9);
+                    const cushion = normalize(vec3(outward.x.mul(roll), 1, outward.y.mul(roll)));
+                    const clumpLit = dot(cushion, MOON).max(0).mul(clump.mul(0.7).add(0.65));
+                    const mossColor = mossAlbedo.mul(MOONLIGHT.mul(shade.mul(clumpLit).mul(MOON_POWER)).add(SKYLIGHT))
+                        .toVar();
+                    // Dew on the moss: a softer, sparser sparkle.
+                    mossColor.addAssign(MOONLIGHT.mul(spot).mul(smoothstep(0.9, 0.94, r2.y)).mul(twinkle).mul(shade)
+                        .mul(0.25)
+                        .mul(visible));
+                    mossColor.addAssign(RING_LIGHT.mul(ring.add(halo)).mul(mossAlbedo).mul(0.8));
+                    mossColor.addAssign(mossAlbedo.mul(warmth).mul(1.4));
+                    floor.assign(mix(sand, mossColor, moss));
+                });
+            });
 
             // A gutter of dark pebbles along the foot of the wall.
             const gutter = smoothstep(WALL_Z - 0.42, WALL_Z - 0.3, gz);
-            const floor = mix(sand, mossColor, moss).mul(contact).toVar();
+            floor.mulAssign(contact);
             floor.assign(mix(floor, vec3(0.01, 0.012, 0.016).add(SKYLIGHT.mul(0.1)), gutter));
             return veil(floor, tg, float(0));
         };
@@ -991,17 +1017,22 @@ export function createZenWorld({ u, quality, mood }) {
             const sky = mix(SKY_HORIZON, SKY_ZENITH, smoothstep(-0.02, 0.32, up)).toVar();
             const moonGlow = exp(toMoon.sub(1).mul(4)).mul(0.12).add(exp(toMoon.sub(1).mul(1.3)).mul(0.03));
             sky.addAssign(MOONLIGHT.mul(moonGlow).mul(look.lightGlow));
-            // A few long, thin clouds, silvered toward the moon.
-            const lift = up.max(0).add(0.08).toVar();
-            const cloudQ = vec2(view.x.div(lift).mul(0.9).add(drift.mul(0.3)), float(1).div(lift).mul(1.6));
-            const cloud = smoothstep(0.52, 0.8, fbm(cloudQ.mul(vec2(0.5, 1.8)), Math.max(3, octaves - 1)))
-                .mul(smoothstep(0.0, 0.08, up));
-            const silvered = SKY_HORIZON.mul(0.8).add(MOONLIGHT.mul(exp(toMoon.sub(1).mul(2)).mul(0.08).add(0.012)));
-            sky.assign(mix(sky, silvered, cloud.mul(0.7)));
-            if (look.stars > 0) {
-                sky.addAssign(starfield(p, u, look.stars).mul(smoothstep(0.02, 0.14, up)).mul(float(1).sub(cloud))
-                    .mul(0.85));
-            }
+            // A few long, thin clouds, silvered toward the moon. They and the stars fade in above the
+            // horizon (smoothstep(0, 0.08, up) and smoothstep(0.02, 0.14, up)): below it both are exactly 0.
+            const cloud = float(0).toVar();
+            If(up.greaterThan(0), () => {
+                const lift = up.max(0).add(0.08).toVar();
+                const cloudQ = vec2(view.x.div(lift).mul(0.9).add(drift.mul(0.3)), float(1).div(lift).mul(1.6));
+                cloud.assign(smoothstep(0.52, 0.8, fbm(cloudQ.mul(vec2(0.5, 1.8)), Math.max(3, octaves - 1)))
+                    .mul(smoothstep(0.0, 0.08, up)));
+                const silvered = SKY_HORIZON.mul(0.8)
+                    .add(MOONLIGHT.mul(exp(toMoon.sub(1).mul(2)).mul(0.08).add(0.012)));
+                sky.assign(mix(sky, silvered, cloud.mul(0.7)));
+                if (look.stars > 0) {
+                    sky.addAssign(starfield(p, u, look.stars).mul(smoothstep(0.02, 0.14, up)).mul(float(1).sub(cloud))
+                        .mul(0.85));
+                }
+            });
             if (look.meteor) {
                 // Now and then a meteor crosses the strip of night above the ridges (measured from the
                 // top of the screen, so it finds the sky on every shape of screen).
@@ -1036,34 +1067,43 @@ export function createZenWorld({ u, quality, mood }) {
             const th = float(HEDGE_Z).sub(eye.z).toVar();
             const hy = eye.y.add(dir.y.mul(th)).toVar();
             const hx = eye.x.add(dir.x.mul(th)).toVar();
-            const top = float(0).toVar();
-            const side = float(0).toVar();
-            // Two interleaved sets of domes of different widths, so no rhythm repeats.
-            Loop(tables.domes.count, ({ i }) => {
-                const set = row(tables.domes, i).toVar();
-                const cid = hx.div(set.x).floor().add(set.w).toVar();
-                const r = hash22(vec2(cid, set.y)).toVar();
-                const across = hx.sub(cid.add(r.x.mul(0.6).add(0.2)).mul(set.x))
-                    .div(r.y.mul(0.5).add(set.x.mul(0.42))).toVar();
-                const dome = r.x.mul(0.5).add(set.z).mul(sqrt(float(1).sub(across.mul(across)).max(0))).toVar();
-                side.assign(select(dome.greaterThan(top), across, side));
-                top.assign(max(top, dome));
+            const fh = pxm.mul(th).mul(1.2).toVar();
+            // No dome stands 1.8 high and the fray adds under 0.101: above that the hedge's weight
+            // smoothstep(-fh, fh, inside) is exactly 0, so draw it only below.
+            If(hy.lessThan(fh.mul(2).add(1.95)), () => {
+                const top = float(0).toVar();
+                const side = float(0).toVar();
+                // Two interleaved sets of domes of different widths, so no rhythm repeats.
+                Loop(tables.domes.count, ({ i }) => {
+                    const set = row(tables.domes, i).toVar();
+                    const cid = hx.div(set.x).floor().add(set.w).toVar();
+                    const r = hash22(vec2(cid, set.y)).toVar();
+                    const across = hx.sub(cid.add(r.x.mul(0.6).add(0.2)).mul(set.x))
+                        .div(r.y.mul(0.5).add(set.x.mul(0.42))).toVar();
+                    const dome = r.x.mul(0.5).add(set.z).mul(sqrt(float(1).sub(across.mul(across)).max(0))).toVar();
+                    side.assign(select(dome.greaterThan(top), across, side));
+                    top.assign(max(top, dome));
+                });
+                // Leafy, not smooth: the outline frays into clumps and sprigs.
+                const leafy = gnoise(vec2(hx.mul(3.4), hy.mul(3.4))).sub(0.5).mul(0.1)
+                    .add(gnoise(vec2(hx.mul(11), hy.mul(11))).sub(0.5).mul(0.04));
+                const inside = top.add(leafy).sub(hy).toVar();
+                const clumps = gnoise(vec2(hx, hy).mul(4.5)).mul(0.6).add(gnoise(vec2(hx, hy).mul(14)).mul(0.4))
+                    .toVar();
+                const rimLit = exp(inside.max(0).mul(-14)).mul(side.mul(0.35).add(0.65)).toVar();
+                let hedge = HEDGE.mul(clumps.mul(0.9).add(0.3))
+                    .add(MOONLIGHT.mul(rimLit.mul(0.1).add(smoothstep(0.55, 0.8, clumps).mul(0.012))).mul(clumps));
+                if (snow > 0) {
+                    // Snow caps every dome, broken where sprigs poke through.
+                    const capped = fadeOut(0.03, 0.16, inside).mul(smoothstep(0.3, 0.55, clumps)).mul(snow);
+                    hedge = mix(
+                        hedge,
+                        SNOW.mul(SKYLIGHT.mul(1.5).add(MOONLIGHT.mul(rimLit.mul(0.25).add(0.05)))),
+                        capped,
+                    );
+                }
+                c.assign(mix(c, mix(hedge, HAZE, 0.18), smoothstep(fh.negate(), fh, inside)));
             });
-            // Leafy, not smooth: the outline frays into clumps and sprigs.
-            const leafy = gnoise(vec2(hx.mul(3.4), hy.mul(3.4))).sub(0.5).mul(0.1)
-                .add(gnoise(vec2(hx.mul(11), hy.mul(11))).sub(0.5).mul(0.04));
-            const inside = top.add(leafy).sub(hy).toVar();
-            const fh = pxm.mul(th).mul(1.2);
-            const clumps = gnoise(vec2(hx, hy).mul(4.5)).mul(0.6).add(gnoise(vec2(hx, hy).mul(14)).mul(0.4)).toVar();
-            const rimLit = exp(inside.max(0).mul(-14)).mul(side.mul(0.35).add(0.65)).toVar();
-            let hedge = HEDGE.mul(clumps.mul(0.9).add(0.3))
-                .add(MOONLIGHT.mul(rimLit.mul(0.1).add(smoothstep(0.55, 0.8, clumps).mul(0.012))).mul(clumps));
-            if (snow > 0) {
-                // Snow caps every dome, broken where sprigs poke through.
-                const capped = fadeOut(0.03, 0.16, inside).mul(smoothstep(0.3, 0.55, clumps)).mul(snow);
-                hedge = mix(hedge, SNOW.mul(SKYLIGHT.mul(1.5).add(MOONLIGHT.mul(rimLit.mul(0.25).add(0.05)))), capped);
-            }
-            c.assign(mix(c, mix(hedge, HAZE, 0.18), smoothstep(fh.negate(), fh, inside)));
 
             // The wall: a tiled cap over oil-stained plaster, lit only by the moonlit sand below it.
             const tw = float(WALL_Z).sub(eye.z).toVar();
@@ -1071,36 +1111,43 @@ export function createZenWorld({ u, quality, mood }) {
             const wx = eye.x.add(dir.x.mul(tw)).toVar();
             const fw = pxm.mul(tw).mul(1.2).toVar();
             const capTop = float(WALL_H + CAP_H);
-            // Round tiles run up the cap: each catches a little moon on the flank turned toward it.
-            const ribPhase = wx.div(0.26).fract().sub(0.5).mul(Math.PI)
-                .toVar();
-            const ribLit = dot(normalize(vec3(ribPhase.sin(), ribPhase.cos().mul(0.9), -0.45)), MOON).max(0);
-            const aged = gnoise(vec2(wx.mul(1.7), wy.mul(4))).toVar();
-            const tileLight = MOONLIGHT.mul(ribLit.mul(0.22).add(0.14).mul(MOON_POWER)).add(SKYLIGHT);
-            const cap = TILE.mul(aged.mul(0.8).add(0.6)).mul(tileLight)
-                .toVar();
-            // The ridge of the cap is edged with moonlight from behind.
-            cap.addAssign(MOONLIGHT.mul(exp(capTop.sub(wy).max(0).mul(-90))).mul(0.09));
-            cap.mulAssign(smoothstep(WALL_H, WALL_H + 0.1, wy).mul(0.65).add(0.35));
-            if (snow > 0) {
-                // A bank of snow along the cap, its edge catching the low sun.
-                const heap = gnoise(vec2(wx.mul(6), 1.7)).mul(0.03);
-                const bank = smoothstep(WALL_H + CAP_H - 0.1, WALL_H + CAP_H - 0.06, wy.add(heap));
-                cap.assign(mix(cap, SNOW.mul(SKYLIGHT.mul(1.6).add(MOONLIGHT.mul(MOON_POWER * 0.12))), bank.mul(snow)));
-            }
-            const stain = fbm(vec2(wx.mul(0.6), wy.mul(1.5)), Math.max(3, octaves - 1)).toVar();
-            const streaks = gnoise(vec2(wx.mul(9), wy.mul(0.8))).mul(0.25).add(0.85);
-            const plaster = PLASTER.mul(stain.mul(0.75).add(0.45)).mul(streaks).toVar();
-            const bounce = SANDLIGHT.mul(MOON_POWER * 0.22).mul(fadeOut(0, WALL_H, wy).mul(0.5).add(0.5));
-            const under = smoothstep(WALL_H - 0.25, WALL_H, wy);
-            const face = plaster.mul(bounce.add(SKYLIGHT.mul(0.6))).mul(float(1).sub(under.mul(0.65))).toVar();
-            face.mulAssign(smoothstep(0.0, 0.07, wy).mul(0.7).add(0.3));
-            // The lantern's glow pools on the plaster behind it.
-            const pool = lampOn(vec3(wx, wy, WALL_Z), vec3(0, 0, -1)).toVar();
-            face.addAssign(plaster.mul(pool).mul(0.9));
-            cap.addAssign(TILE.mul(pool).mul(1.5));
-            const wall = mix(face, cap, smoothstep(WALL_H - 0.005, WALL_H + 0.005, wy));
-            c.assign(mix(c, veil(wall, tw, wy), fadeOut(capTop.sub(fw), capTop.add(fw), wy)));
+            // Over the cap's soft top edge the wall's weight is exactly 0: draw it only below.
+            If(wy.lessThan(capTop.add(fw.mul(2))), () => {
+                // Round tiles run up the cap: each catches a little moon on the flank turned toward it.
+                const ribPhase = wx.div(0.26).fract().sub(0.5).mul(Math.PI)
+                    .toVar();
+                const ribLit = dot(normalize(vec3(ribPhase.sin(), ribPhase.cos().mul(0.9), -0.45)), MOON).max(0);
+                const aged = gnoise(vec2(wx.mul(1.7), wy.mul(4))).toVar();
+                const tileLight = MOONLIGHT.mul(ribLit.mul(0.22).add(0.14).mul(MOON_POWER)).add(SKYLIGHT);
+                const cap = TILE.mul(aged.mul(0.8).add(0.6)).mul(tileLight)
+                    .toVar();
+                // The ridge of the cap is edged with moonlight from behind.
+                cap.addAssign(MOONLIGHT.mul(exp(capTop.sub(wy).max(0).mul(-90))).mul(0.09));
+                cap.mulAssign(smoothstep(WALL_H, WALL_H + 0.1, wy).mul(0.65).add(0.35));
+                if (snow > 0) {
+                    // A bank of snow along the cap, its edge catching the low sun.
+                    const heap = gnoise(vec2(wx.mul(6), 1.7)).mul(0.03);
+                    const bank = smoothstep(WALL_H + CAP_H - 0.1, WALL_H + CAP_H - 0.06, wy.add(heap));
+                    cap.assign(mix(
+                        cap,
+                        SNOW.mul(SKYLIGHT.mul(1.6).add(MOONLIGHT.mul(MOON_POWER * 0.12))),
+                        bank.mul(snow),
+                    ));
+                }
+                const stain = fbm(vec2(wx.mul(0.6), wy.mul(1.5)), Math.max(3, octaves - 1)).toVar();
+                const streaks = gnoise(vec2(wx.mul(9), wy.mul(0.8))).mul(0.25).add(0.85);
+                const plaster = PLASTER.mul(stain.mul(0.75).add(0.45)).mul(streaks).toVar();
+                const bounce = SANDLIGHT.mul(MOON_POWER * 0.22).mul(fadeOut(0, WALL_H, wy).mul(0.5).add(0.5));
+                const under = smoothstep(WALL_H - 0.25, WALL_H, wy);
+                const face = plaster.mul(bounce.add(SKYLIGHT.mul(0.6))).mul(float(1).sub(under.mul(0.65))).toVar();
+                face.mulAssign(smoothstep(0.0, 0.07, wy).mul(0.7).add(0.3));
+                // The lantern's glow pools on the plaster behind it.
+                const pool = lampOn(vec3(wx, wy, WALL_Z), vec3(0, 0, -1)).toVar();
+                face.addAssign(plaster.mul(pool).mul(0.9));
+                cap.addAssign(TILE.mul(pool).mul(1.5));
+                const wall = mix(face, cap, smoothstep(WALL_H - 0.005, WALL_H + 0.005, wy));
+                c.assign(mix(c, veil(wall, tw, wy), fadeOut(capTop.sub(fw), capTop.add(fw), wy)));
+            });
             return c;
         };
 
@@ -1234,6 +1281,10 @@ export function createZenWorld({ u, quality, mood }) {
                 Loop(shadowSteps, () => {
                     const h = rockField(at.add(MOON.mul(st))).toVar();
                     sun.assign(min(sun, h.mul(10).div(st).saturate()));
+                    // Once the shade is total no later step can lift it (min with a value >= 0): stop.
+                    If(sun.lessThanEqual(0), () => {
+                        Break();
+                    });
                     st.addAssign(h.max(0.03));
                 });
                 const tint = gnoise3(at.mul(0.45)).toVar();
@@ -1271,7 +1322,12 @@ export function createZenWorld({ u, quality, mood }) {
                     albedo.assign(mix(albedo, SNOW, lying.mul(snow)));
                 }
                 const ndl = dot(normal, MOON).toVar();
-                const direct = smoothstep(-0.05, 0.3, ndl).mul(ndl.max(0)).mul(sun).mul(cloudShade(at.x, at.z));
+                // Turned from the moon (ndl.max(0) is 0) or in full shade (sun 0) the direct light is exactly
+                // 0: read the cloud shade only where it lights the stone.
+                const direct = float(0).toVar();
+                If(ndl.greaterThan(0).and(sun.greaterThan(0)), () => {
+                    direct.assign(smoothstep(-0.05, 0.3, ndl).mul(ndl.max(0)).mul(sun).mul(cloudShade(at.x, at.z)));
+                });
                 const fill = dot(normal, BOUNCE).mul(0.5).add(0.5).toVar();
                 const ambient = SKYLIGHT.mul(normal.y.mul(0.4).add(0.6))
                     .add(SANDLIGHT.mul(MOON_POWER * 0.5).mul(fill.mul(fill))
@@ -1371,25 +1427,29 @@ export function createZenWorld({ u, quality, mood }) {
                     const size = blossom ? place.w.mul(0.62) : place.w;
                     const local = turn(mq.sub(place.xy), place.z.add(flutter)).div(size).toVar();
                     const r = local.length().toVar();
-                    // Five lobes (|sin| keeps the atan seam at the stem; nudged off the origin: atan(0, 0)
-                    // is undefined in GLSL).
-                    const angle = local.x.atan(local.y.add(1e-5)).toVar();
-                    const lobe = float(1).sub(angle.mul(2.5).sin().abs()).toVar();
-                    // Maple: a broad palm and five lobes that taper to points (lobe^0.6: wide at the base,
-                    // sharp tip), the lower pair smaller. Blossom: five round petals, each notched at its tip.
-                    const outline = blossom
-                        ? lobe.max(1e-4).pow(0.3).mul(0.7).add(0.25)
-                            .sub(exp(lobe.sub(1).mul(60)).mul(0.08))
-                        : lobe.max(1e-4).pow(0.6).mul(0.56).add(0.44)
-                            .mul(angle.cos().mul(0.24).add(0.76));
-                    const soft = blur.div(size);
-                    const m = fadeOut(outline.sub(soft), outline.add(soft), r).toVar();
-                    // Later leaves lie over earlier ones.
-                    depth.assign(mix(depth, leafLook.x, m));
-                    leaf.assign(max(leaf, m));
-                    // Maple: the veins; blossom: the deeper pink at the heart of the flower.
-                    const mark = blossom ? fadeOut(0.12, 0.4, r) : exp(lobe.sub(1).mul(r).mul(r).mul(60)).mul(0.25);
-                    vein.assign(mix(vein, mark, m));
+                    const soft = blur.div(size).toVar();
+                    // Every outline lies within 1 of the leaf's centre (a blossom's within 0.95): farther out
+                    // its mask is exactly 0, and depth, leaf and vein stay as they are.
+                    If(r.lessThan(soft.add(1.05)), () => {
+                        // Five lobes (|sin| keeps the atan seam at the stem; nudged off the origin: atan(0, 0)
+                        // is undefined in GLSL).
+                        const angle = local.x.atan(local.y.add(1e-5)).toVar();
+                        const lobe = float(1).sub(angle.mul(2.5).sin().abs()).toVar();
+                        // Maple: a broad palm and five lobes that taper to points (lobe^0.6: wide at the base,
+                        // sharp tip), the lower pair smaller. Blossom: five round petals, each notched at its tip.
+                        const outline = blossom
+                            ? lobe.max(1e-4).pow(0.3).mul(0.7).add(0.25)
+                                .sub(exp(lobe.sub(1).mul(60)).mul(0.08))
+                            : lobe.max(1e-4).pow(0.6).mul(0.56).add(0.44)
+                                .mul(angle.cos().mul(0.24).add(0.76));
+                        const m = fadeOut(outline.sub(soft), outline.add(soft), r).toVar();
+                        // Later leaves lie over earlier ones.
+                        depth.assign(mix(depth, leafLook.x, m));
+                        leaf.assign(max(leaf, m));
+                        // Maple: the veins; blossom: the deeper pink at the heart of the flower.
+                        const mark = blossom ? fadeOut(0.12, 0.4, r) : exp(lobe.sub(1).mul(r).mul(r).mul(60)).mul(0.25);
+                        vein.assign(mix(vein, mark, m));
+                    });
                 });
                 const backlit = toMoon.max(0).toVar();
                 const glowLeaf = blossom

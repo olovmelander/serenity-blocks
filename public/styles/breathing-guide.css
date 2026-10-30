@@ -53,6 +53,15 @@ body.start-modal-open .breath-guide {
 /* CSS guide: shown while the world loads, between worlds, and wherever no GPU is available. */
 .breath-guide__fallback { z-index: -1; }
 
+/* Once the world has dawned (its canvas is opaque) the orb is covered: stop painting it. Its glow
+   follows --breath, so it was repainted every frame, unseen. It is hidden only when the canvas
+   reaches full opacity (the same 1.3 s as the dawn), and returns at once when the world dips
+   between worlds or the practice pauses (the paused world is translucent over it). */
+.breath-guide.is-live:not(.is-paused) .breath-guide__fallback {
+    visibility: hidden;
+    transition: visibility 0s linear 1.3s;
+}
+
 .breath-guide__orb {
     position: absolute;
     left: 50%;

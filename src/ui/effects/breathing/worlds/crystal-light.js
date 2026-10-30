@@ -18,7 +18,7 @@
  *   beam = (travel direction x, y, core width, halo width)
  */
 import {
-    Fn, Loop, cos, dot, exp, float, length, max, mix, normalize, sin, smoothstep, vec2, vec3, vec4,
+    Fn, If, Loop, cos, dot, exp, float, length, max, mix, normalize, sin, smoothstep, vec2, vec3, vec4,
 } from 'three/tsl';
 import { fadeOut } from '../stage/breath-tsl.js';
 
@@ -60,29 +60,33 @@ const spectrum = (t) => vec3(
 export const prismFan = /* @__PURE__ */ Fn(([q, fan, look]) => {
     const spread = fan.z.toVar();
     const pitch = spread.mul(2 / (FAN_SAMPLES - 1)).toVar();
-    // The red ray leaves on the counter-clockwise edge; each next wavelength turns clockwise.
-    const c0 = cos(spread);
-    const s0 = sin(spread);
-    const ray = vec2(fan.x.mul(c0).sub(fan.y.mul(s0)), fan.x.mul(s0).add(fan.y.mul(c0))).toVar();
-    const cs = cos(pitch).toVar();
-    const sn = sin(pitch).toVar();
     const r = length(q).toVar();
     // Each band is as wide as the beam, then widens with its share of the fan (so they blend).
     const width = look.x.add(r.mul(max(pitch.mul(0.62), look.y))).toVar();
     const inv = float(1).div(width).toVar();
-    const sum = vec3(0).toVar();
-    // One loop over the wavelengths: the body is emitted once, the colour comes from the index.
-    Loop(FAN_SAMPLES, ({ i }) => {
-        const off = q.y.mul(ray.x).sub(q.x.mul(ray.y)).mul(inv);
-        sum.addAssign(spectrum(float(i).div(FAN_SAMPLES - 1)).mul(exp(off.mul(off).mul(-0.5))));
-        ray.assign(vec2(ray.x.mul(cs).add(ray.y.mul(sn)), ray.y.mul(cs).sub(ray.x.mul(sn))));
-    });
     // Light only travels forward, and the fan reaches as far as the breath sends it.
     const along = dot(q, fan.xy);
     const forward = smoothstep(-0.03, 0.05, along);
     const reach = fadeOut(fan.w.mul(0.3), fan.w, r);
+    const lit = forward.mul(reach).mul(look.z).toVar();
+    const sum = vec3(0).toVar();
+    // Where no light arrives the fan is exactly 0 whatever its bands hold: skip them there.
+    If(lit.notEqual(0), () => {
+        // The red ray leaves on the counter-clockwise edge; each next wavelength turns clockwise.
+        const c0 = cos(spread);
+        const s0 = sin(spread);
+        const ray = vec2(fan.x.mul(c0).sub(fan.y.mul(s0)), fan.x.mul(s0).add(fan.y.mul(c0))).toVar();
+        const cs = cos(pitch).toVar();
+        const sn = sin(pitch).toVar();
+        // One loop over the wavelengths: the body is emitted once, the colour comes from the index.
+        Loop(FAN_SAMPLES, ({ i }) => {
+            const off = q.y.mul(ray.x).sub(q.x.mul(ray.y)).mul(inv);
+            sum.addAssign(spectrum(float(i).div(FAN_SAMPLES - 1)).mul(exp(off.mul(off).mul(-0.5))));
+            ray.assign(vec2(ray.x.mul(cs).add(ray.y.mul(sn)), ray.y.mul(cs).sub(ray.x.mul(sn))));
+        });
+    });
     // Spreading: the same light covers a wider band further out.
-    return sum.mul(look.x.mul(inv).mul(WHITE_NORM)).mul(forward.mul(reach).mul(look.z));
+    return sum.mul(look.x.mul(inv).mul(WHITE_NORM)).mul(lit);
 }).setLayout({
     name: 'prism_fan',
     type: 'vec3',

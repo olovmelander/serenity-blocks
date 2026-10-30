@@ -150,9 +150,32 @@ export class BreathStage {
         this.running = true;
         await this.init();
         if (this.disposed || !this.running) return;
-        if (this.wantedWorld && this.wantedWorld !== this.worldId) await this._swap();
+        if (this.wantedWorld && this.wantedWorld !== this.worldId) {
+            await this._swap();
+        } else if (this.worldId && !this.swapping) {
+            // Started again on the world it already shows (a parked stage, a return from over the
+            // theme): nothing compiles, but the guide hid the canvas when it stopped. Without this
+            // the world drew every frame behind an invisible canvas and only the CSS orb showed.
+            this._draw(0);
+            this.onState?.('ready');
+        }
         this.lastFrame = null;
         this._requestFrame();
+    }
+
+    /**
+     * Get a world ready before the guide opens (a session's countdown): start the renderer and
+     * compile the world's pipelines behind the hidden canvas, with no frame loop. start() then
+     * opens on it at once. On the WebGL2 backend only the renderer starts: its shaders compile
+     * synchronously and would stall what is on screen meanwhile.
+     * @param {string} id
+     */
+    async prepare(id) {
+        this.wantedWorld = id;
+        await this.init();
+        // A start() since then owns the swap.
+        if (this.disposed || this.running || this.backend !== 'webgpu') return;
+        if (this.wantedWorld !== this.worldId) await this._swap();
     }
 
     stop() {

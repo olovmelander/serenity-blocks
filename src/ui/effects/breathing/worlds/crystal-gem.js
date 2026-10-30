@@ -20,7 +20,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, cameraPosition, clamp, dot, exp, float, length, max, min, modelWorldMatrix,
+    Fn, If, Loop, cameraPosition, clamp, dot, exp, float, length, max, min, modelWorldMatrix,
     modelWorldMatrixInverse, normalLocal, normalize, positionLocal, positionWorld, reflect, sin, smoothstep,
     sqrt, step, uniformArray, vec3, vec4,
 } from 'three/tsl';
@@ -432,20 +432,35 @@ export function createQuartzMaterial({
                 // everything reflects (total internal reflection), with no hard edge per colour.
                 const reflects = schlick(cosT);
                 const dir = normalize(heading.mul(index).sub(wall.mul(cosOut.mul(index).sub(cosT))));
-                return { dir, reflects };
+                return { dir, reflects, sin2 };
             };
+            // Past the critical angle (sin2 >= 1) cosT is 0, and schlick(0) = F0 + (1 - F0) rounds to
+            // exactly 1 in f32: nothing leaves, so what the grotto shows that way is not needed.
             if (first && dispersion) {
                 const red = leave(IOR_RGB[0]);
                 const green = leave(IOR_RGB[1]);
                 const blue = leave(IOR_RGB[2]);
                 const reflects = vec3(red.reflects, green.reflects, blue.reflects).toVar();
-                const seen = vec3(env(red.dir).x, env(green.dir).y, env(blue.dir).z);
-                radiance.addAssign(through.mul(vec3(1).sub(reflects)).mul(seen));
+                const seenRed = float(0).toVar();
+                const seenGreen = float(0).toVar();
+                const seenBlue = float(0).toVar();
+                If(red.sin2.lessThan(1), () => {
+                    seenRed.assign(env(red.dir).x);
+                });
+                If(green.sin2.lessThan(1), () => {
+                    seenGreen.assign(env(green.dir).y);
+                });
+                If(blue.sin2.lessThan(1), () => {
+                    seenBlue.assign(env(blue.dir).z);
+                });
+                radiance.addAssign(through.mul(vec3(1).sub(reflects)).mul(vec3(seenRed, seenGreen, seenBlue)));
                 through.mulAssign(reflects);
             } else {
                 const one = leave(IOR);
                 const reflects = one.reflects.toVar();
-                radiance.addAssign(through.mul(float(1).sub(reflects)).mul(env(one.dir)));
+                If(one.sin2.lessThan(1), () => {
+                    radiance.addAssign(through.mul(float(1).sub(reflects)).mul(env(one.dir)));
+                });
                 through.mulAssign(reflects);
             }
             // Quartz is nearly clear: a faint cool absorption over each run.

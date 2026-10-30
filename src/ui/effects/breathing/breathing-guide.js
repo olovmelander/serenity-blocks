@@ -25,6 +25,8 @@ import { setBreathSignal } from '../../../core/breath-signal.js';
 const PHASE_WORDS = ['Breathe in', 'Hold', 'Breathe out', 'Rest'];
 /** The four parts of a breath the voice can give words to (setCueWords). */
 const CUE_PARTS = ['in', 'hold', 'out', 'rest'];
+/** No spoken words yet: the world's own are shown. */
+const NO_WORDS = Object.freeze({});
 const SEGMENT_LABELS = ['In', 'Hold', 'Out', 'Rest'];
 const SESSION_STAGE_LABELS = {
     grounding: 'Arrive', active: 'Breathe', retention: 'Hold', carry: 'On your own', recovery: 'Recover', integration: 'Rest',
@@ -57,7 +59,13 @@ const LEAVE_MS = 420;
 // The stage is the only path from here to three.js: load it on first use, never at boot.
 let stageModulePromise = null;
 function loadStageModule() {
-    if (!stageModulePromise) stageModulePromise = import('./stage/breath-stage.js');
+    if (!stageModulePromise) {
+        stageModulePromise = import('./stage/breath-stage.js').catch((error) => {
+            // A failed fetch (a flaky network on the web build) may succeed next time.
+            stageModulePromise = null;
+            throw error;
+        });
+    }
     return stageModulePromise;
 }
 
@@ -362,6 +370,24 @@ export class BreathingGuide {
         this.timers.forEach((timer) => clearTimeout(timer));
         this.timers.clear();
         this._chapterTimer = null;
+        this._parkTimer = null;
+    }
+
+    /**
+     * A parked stage still holds a GPU device: give it back if no practice starts within
+     * STAGE_IDLE_MS. One timer for the guide, restarted by each new reason to keep the stage.
+     */
+    _parkStage() {
+        if (this._parkTimer) {
+            clearTimeout(this._parkTimer);
+            this.timers.delete(this._parkTimer);
+        }
+        this._parkTimer = this._later(() => {
+            this._parkTimer = null;
+            if (this.isActive) return;
+            this.stage?.dispose();
+            this.stage = null;
+        }, STAGE_IDLE_MS);
     }
 
     _renderWorld() {
@@ -561,11 +587,47 @@ export class BreathingGuide {
             this.root.classList.remove('is-leaving', 'is-live', 'is-over-theme');
         }, LEAVE_MS);
         // A parked stage still holds a GPU device: give it back once the player has moved on.
-        this._later(() => {
-            this.stage?.dispose();
-            this.stage = null;
-        }, STAGE_IDLE_MS);
+        this._parkStage();
         this._announce();
+    }
+
+    /**
+     * Fetch the stage's code ahead of a practice (the Breathing tab is open, a session is being
+     * prepared), so starting one does not wait for it. No renderer and no GPU work: just the module.
+     */
+    preloadStage() {
+        if (this._destroyed) return Promise.resolve(null);
+        return loadStageModule().catch(() => null);
+    }
+
+    /**
+     * Get a world ready while the guide is still closed (a Hale session's countdown): the stage
+     * starts its renderer and compiles the world behind the hidden canvas, so the session opens on
+     * its world instead of on the CSS orb while shaders compile. Kept like a parked stage: given
+     * back if no practice starts within STAGE_IDLE_MS.
+     * @param {string} worldId
+     */
+    prepare(worldId) {
+        if (this.isActive || this._destroyed || !this.techniques[worldId]) return;
+        this._parkStage();
+        const warm = (stage) => {
+            Promise.resolve(stage.prepare?.(worldId)).catch((error) => this._stageFailed(error, stage));
+        };
+        if (this.stage) {
+            warm(this.stage);
+            return;
+        }
+        const token = this.stageToken;
+        loadStageModule().then(({ BreathStage }) => {
+            // A practice that started meanwhile builds its own stage (_attachStage).
+            if (token !== this.stageToken || this.isActive || this._destroyed || this.stage) return;
+            const stage = new BreathStage(this.stageHost, {
+                quality: this._resolveQuality(),
+                onState: (state) => this._onStageState(state, stage),
+            });
+            this.stage = stage;
+            warm(stage);
+        }).catch(() => { /* the practice will try again, and fall back to the CSS guide */ });
     }
 
     toggle() {
@@ -887,7 +949,8 @@ export class BreathingGuide {
     setSessionPhase(type, progress = 0) {
         const changed = this.sessionPhase !== type;
         this.sessionPhase = type;
-        this.root.dataset.sessionPhase = type || '';
+        // A session reports ten times a second: write the attribute only when the stage changes.
+        if (this.root.dataset.sessionPhase !== (type || '')) this.root.dataset.sessionPhase = type || '';
         this._style(this.root, '--session-phase-progress', Math.max(0, Math.min(1, progress)).toFixed(4));
         if (changed) {
             this.stage?.setSessionPhase(type);
@@ -942,7 +1005,8 @@ export class BreathingGuide {
      * @param {number} [data.sessionRemaining]
      */
     updateProgress(data) {
-        this._progress = { ...this._progress, ...data };
+        // Merged in place: a session reports ten times a second.
+        Object.assign(this._progress, data);
         if (this._progressVisible) this._renderProgress();
     }
 
@@ -1009,26 +1073,33 @@ export class BreathingGuide {
         }
     }
 
-    /** What the cue says now: counted breaths, or the words of a stage that is not counted. */
+    /**
+     * What the cue says now: counted breaths, or the words of a stage that is not counted.
+     * Asked every frame, so it fills one object rather than building a new one each time.
+     */
     _words(index, remaining) {
+        const out = this._wordsOut || (this._wordsOut = { phase: '', count: '', hint: '' });
         const mode = this.guidance?.mode;
         if (mode === 'open-hold') {
-            const hint = this._coarse ? 'Tap anywhere to breathe in' : 'Press Space or click to breathe in';
-            return { phase: this._holdReady ? 'Breathe in when ready' : 'Hold', count: '', hint };
+            out.phase = this._holdReady ? 'Breathe in when ready' : 'Hold';
+            out.count = '';
+            out.hint = this._coarse ? 'Tap anywhere to breathe in' : 'Press Space or click to breathe in';
+            return out;
         }
         const words = mode && GUIDANCE_WORDS[mode];
         // A session may word its own stage (a rhythm without holds is not "in, hold, out, hold";
         // an evening session closes into sleep, not "come back").
         if (words) {
             const { phase, hint } = this.guidance;
-            return {
-                ...words, ...(phase ? { phase } : {}), ...(hint ? { hint } : {}), count: '',
-            };
+            out.phase = phase || words.phase;
+            out.count = '';
+            out.hint = hint || words.hint;
+            return out;
         }
         // A session's long stillness is timed by its journey strip, not a 120-second count.
         const retention = this.sessionPhase === 'retention';
         // The words the voice last spoke on this part of the breath, else the world's own.
-        const spoken = this.cueWords || {};
+        const spoken = this.cueWords || NO_WORDS;
         const { world } = this;
         let hint = '';
         if (index === 0) hint = spoken.in || world.cues[0];
@@ -1036,11 +1107,10 @@ export class BreathingGuide {
         else if (index === 1) hint = spoken.hold || world.holdCues?.[0] || 'Stay full, stay soft';
         else if (retention) hint = 'Rest in the stillness';
         else hint = spoken.rest || world.restCues?.[0] || 'Stay empty, stay easy';
-        return {
-            phase: index === 3 && retention ? 'Hold' : PHASE_WORDS[index],
-            count: retention ? '' : `${Math.max(1, Math.ceil(remaining))}`,
-            hint,
-        };
+        out.phase = index === 3 && retention ? 'Hold' : PHASE_WORDS[index];
+        out.count = retention ? '' : `${Math.max(1, Math.ceil(remaining))}`;
+        out.hint = hint;
+        return out;
     }
 
     // ── Clock ───────────────────────────────────────────────────────────────
@@ -1086,26 +1156,45 @@ export class BreathingGuide {
         const progress = Math.min(1, elapsed / duration);
         const breath = breathLevel(index, progress);
         this._fill = breath;
-        this.stage?.setBreath({ breath, phase: index, progress });
+        if (this.stage) {
+            // One state object for the life of the guide: the stage reads it at once, every frame.
+            const state = this._breathState || (this._breathState = { breath: 0, phase: 0, progress: 0 });
+            state.breath = breath;
+            state.phase = index;
+            state.progress = progress;
+            this.stage.setBreath(state);
+        }
         this._render(index, progress, breath, duration - elapsed);
         this.animationFrame = requestAnimationFrame(this._tick);
     }
 
+    /**
+     * One frame of words and marks. Runs every animation frame, so it compares numbers before it
+     * builds strings: a hold (or any unchanged value) allocates and writes nothing.
+     */
     _render(index, progress, breath, remaining) {
-        this._style(this.root, '--breath', breath.toFixed(4));
+        if (breath !== this._breathShown) {
+            this._breathShown = breath;
+            this._style(this.root, '--breath', breath.toFixed(4));
+        }
         if (this.root.dataset.phase !== BREATH_PHASES[index]) this.root.dataset.phase = BREATH_PHASES[index];
         const words = this._words(index, remaining);
         this._text(this.phaseWord, words.phase);
         this._text(this.count, words.count);
         this._text(this.hint, words.hint);
-        this.segments.forEach(({ segment, fill }, i) => {
+        const { segments } = this;
+        for (let i = 0; i < segments.length; i++) {
+            const entry = segments[i];
             let amount = 0;
             if (i < index) amount = 1;
             else if (i === index) amount = progress;
-            this._style(fill, 'transform', `scaleX(${amount.toFixed(4)})`);
+            if (entry.amount !== amount) {
+                entry.amount = amount;
+                this._style(entry.fill, 'transform', `scaleX(${amount.toFixed(4)})`);
+            }
             const active = i === index;
-            if ((segment.dataset.active === 'true') !== active) segment.dataset.active = String(active);
-        });
+            if ((entry.segment.dataset.active === 'true') !== active) entry.segment.dataset.active = String(active);
+        }
     }
 }
 

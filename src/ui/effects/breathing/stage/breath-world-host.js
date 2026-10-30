@@ -112,6 +112,15 @@ export class BreathWorldHost {
         this.rig = DEFAULT_RIG;
         this.post = this.quality.bloom > 0 ? new BreathPost(renderer, scene, camera, this.quality) : null;
         this.disposed = false;
+        // Per-frame state handed to the world and the lens: filled in place every frame, so the
+        // frame loop makes no garbage. Readers take what they need at once and keep nothing.
+        this._frameState = {
+            time: 0, delta: 0, breath: 0, breathSoft: 0, phase: 0, progress: 0, life: 1, ext: null, zoom: 1, pan: null,
+        };
+        this._light = { x: 0.5, y: 0.5, region: null };
+        this._lensState = {
+            breath: 0, light: null, region: null, aspect: 1,
+        };
     }
 
     /** Kept for diagnostics and tests: the pipeline exists only on tiers with post. */
@@ -217,13 +226,19 @@ export class BreathWorldHost {
         const ext = u.ext.value;
         const zoom = u.zoom.value;
         const pan = u.pan.value;
-        camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(ext.y / CAMERA_DISTANCE));
-        camera.aspect = ext.x / ext.y;
-        camera.near = 0.1;
-        camera.far = 60;
+        const fov = THREE.MathUtils.radToDeg(2 * Math.atan(ext.y / CAMERA_DISTANCE));
+        const aspect = ext.x / ext.y;
+        // The lens changes only with the screen's shape. The camera moves every frame, but its
+        // projection (and that matrix's inverse) is rebuilt only when one of its inputs changed.
+        if (camera.fov !== fov || camera.aspect !== aspect || camera.near !== 0.1 || camera.far !== 60) {
+            camera.fov = fov;
+            camera.aspect = aspect;
+            camera.near = 0.1;
+            camera.far = 60;
+            camera.updateProjectionMatrix();
+        }
         camera.position.set(pan.x, pan.y - u.focus.value / zoom, CAMERA_DISTANCE / zoom);
         camera.quaternion.identity();
-        camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
     }
 
@@ -271,25 +286,29 @@ export class BreathWorldHost {
         u.breathSoft.value = this.breathSoft;
         u.breathVel.value = this.breathVel;
         this._moveCamera();
-        this.world?.update?.({
-            time: this.time,
-            delta,
-            breath: u.breath.value,
-            breathSoft: this.breathSoft,
-            phase: u.phase.value,
-            progress: u.phaseT.value,
-            life: this.life,
-            ext: u.ext.value,
-            zoom: u.zoom.value,
-            pan: u.pan.value,
-        });
-        const light = this._shaftSource();
-        this.post?.update({
-            breath: this.breathSoft,
-            light,
-            region: light?.region ?? null,
-            aspect: this.width / this.height,
-        });
+        if (this.world?.update) {
+            const frame = this._frameState;
+            frame.time = this.time;
+            frame.delta = delta;
+            frame.breath = u.breath.value;
+            frame.breathSoft = this.breathSoft;
+            frame.phase = u.phase.value;
+            frame.progress = u.phaseT.value;
+            frame.life = this.life;
+            frame.ext = u.ext.value;
+            frame.zoom = u.zoom.value;
+            frame.pan = u.pan.value;
+            this.world.update(frame);
+        }
+        if (this.post) {
+            const light = this._shaftSource();
+            const lens = this._lensState;
+            lens.breath = this.breathSoft;
+            lens.light = light;
+            lens.region = light?.region ?? null;
+            lens.aspect = this.width / this.height;
+            this.post.update(lens);
+        }
     }
 
     /** Breath-led dolly and a slow Lissajous drift, both held still by reduced motion and calm. */
@@ -318,13 +337,19 @@ export class BreathWorldHost {
         const k = source[2] ?? 0;
         const scale = 1 + (u.zoom.value - 1) * k;
         const ext = u.ext.value;
-        const toUvY = (y) => 0.5 - 0.5 * (((y - u.pan.value.y * k) * scale + u.focus.value) / ext.y);
         const sx = (source[0] - u.pan.value.x * k) * scale;
-        return {
-            x: 0.5 + 0.5 * (sx / ext.x),
-            y: toUvY(source[1]),
-            region: Number.isFinite(shafts.region) ? toUvY(shafts.region) : null,
-        };
+        // Filled in place (called every frame); the arithmetic is the same as ever, term for term.
+        const light = this._light;
+        light.x = 0.5 + 0.5 * (sx / ext.x);
+        light.y = this._toUvY(source[1], k, scale);
+        light.region = Number.isFinite(shafts.region) ? this._toUvY(shafts.region, k, scale) : null;
+        return light;
+    }
+
+    /** A hero-space height on screen (uv, y = 0 at the top) for a layer of depth k. */
+    _toUvY(y, k, scale) {
+        const u = this.uniforms;
+        return 0.5 - 0.5 * (((y - u.pan.value.y * k) * scale + u.focus.value) / u.ext.value.y);
     }
 
     render() {

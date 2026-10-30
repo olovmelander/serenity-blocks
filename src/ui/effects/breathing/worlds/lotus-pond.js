@@ -134,21 +134,26 @@ export function createPadField() {
                     const q = vec2(rel.x.mul(spin.x).sub(rel.y.mul(spin.y)), rel.x.mul(spin.y).add(rel.y.mul(spin.x)))
                         .mul(at.z).toVar();
                     const d = q.length().toVar();
-                    const dir = q.div(d.max(1e-4));
-                    // Leaves are never perfect circles.
-                    const wobble = sin(dir.x.mul(5.3).add(dir.y.mul(2.1)).add(spin.z)).mul(0.03);
-                    const inside = float(1).add(wobble).sub(d).toVar();
                     const soft = planePx.mul(at.z).toVar();
-                    // The notch: a narrow wedge from the centre out through the rim.
-                    const slit = smoothstep(0.975, 0.992, dir.x).mul(smoothstep(0.02, 0.08, d));
-                    const here = smoothstep(soft.negate(), soft, inside).mul(float(1).sub(slit)).toVar();
-                    if (detail) {
-                        best.assign(select(here.greaterThanEqual(cover.max(0.02)), vec4(q, at.w, spin.w), best));
-                        // The water's meniscus: a thin dark line hugging the rim.
-                        const outside = inside.negate();
-                        meniscus.assign(max(meniscus, fadeOut(soft, soft.add(0.045), outside).mul(smoothstep(-0.01, soft, outside))));
-                    }
-                    cover.assign(max(cover, here));
+                    // The rim wobbles at most 0.03: from 1.08 + soft out the leaf and its meniscus are
+                    // exactly 0 and cover, best and meniscus keep their values. Skip the pad there.
+                    If(d.lessThan(soft.add(1.08)), () => {
+                        const dir = q.div(d.max(1e-4));
+                        // Leaves are never perfect circles.
+                        const wobble = sin(dir.x.mul(5.3).add(dir.y.mul(2.1)).add(spin.z)).mul(0.03);
+                        const inside = float(1).add(wobble).sub(d).toVar();
+                        // The notch: a narrow wedge from the centre out through the rim.
+                        const slit = smoothstep(0.975, 0.992, dir.x).mul(smoothstep(0.02, 0.08, d));
+                        const here = smoothstep(soft.negate(), soft, inside).mul(float(1).sub(slit)).toVar();
+                        if (detail) {
+                            best.assign(select(here.greaterThanEqual(cover.max(0.02)), vec4(q, at.w, spin.w), best));
+                            // The water's meniscus: a thin dark line hugging the rim.
+                            const outside = inside.negate();
+                            meniscus.assign(max(meniscus, fadeOut(soft, soft.add(0.045), outside)
+                                .mul(smoothstep(-0.01, soft, outside))));
+                        }
+                        cover.assign(max(cover, here));
+                    });
                 });
             });
         });

@@ -331,47 +331,56 @@ export function createForestWorld({ u, quality, mood = MOODS[0] }) {
         const col = air.add(SUNLIGHT.mul(shafts).mul(0.08)).toVar();
 
         // The forest floor: moss and litter in perspective, with pools of light and a path.
-        const below = horizon.sub(p.y).max(1e-3).toVar();
-        const groundDepth = ground.div(below).min(60).toVar();
-        const groundK = float(HERO_DEPTH).div(groundDepth).min(2.2);
-        const gq = layer(p, u, groundK);
-        const gx = gq.x.mul(groundDepth).toVar();
-        const gz = groundDepth.toVar();
-        const litter = fbm(vec2(gx.mul(1.4), gz.mul(1.4)), Math.max(3, octaves - 1)).toVar();
-        const fleck = gnoise(vec2(gx.mul(9), gz.mul(9)));
-        // Moss in the hollows, russet leaf litter on the rises (in autumn, almost everywhere).
-        const rises = fbm(vec2(gx.mul(0.8), gz.mul(0.8)).add(9.3), 3);
-        const russet = smoothstep(0.45 - m.cover, 0.75 - m.cover, rises).toVar();
-        const floorBase = mix(vec3(0.012, 0.013, 0.008), MOSS, litter.mul(1.4).sub(0.35).saturate())
-            .mul(fleck.mul(0.5).add(0.75)).toVar();
-        floorBase.assign(mix(floorBase.mul(1.4), vec3(...m.litter).mul(fleck.mul(0.6).add(0.7)), russet.mul(m.russet)));
-        // Dapples: light that slipped between trunks and leaves, stretched by the low angle.
-        const dapple = voronoi(vec2(gx.mul(2.6), gz.mul(1.1)).add(vec2(drift.mul(4), 0)), u.time.mul(0.08));
-        const broken = gnoise(vec2(gx.mul(7), gz.mul(3))).mul(0.18);
-        const spots = fadeOut(0.05, 0.22, dapple.x.add(broken)).mul(hash21(vec2(dapple.z.mul(91), 3.1)).mul(0.8).add(0.2));
-        const pathX = gx.sub(float(SUN[0]).mul(gz)).sub(sin(gz.mul(0.7)).mul(0.3)).abs()
-            .toVar();
-        const path = fadeOut(0.2, 0.9, pathX);
-        const sunDx = gq.x.sub(SUN[0]).toVar();
-        const sunward = exp(sunDx.mul(sunDx).mul(-1.8)).mul(exp(groundDepth.mul(-0.1))).toVar();
-        floorBase.addAssign(GOLD.mul(spots.mul(sunward).mul(path.mul(0.7).add(0.3)).mul(0.8 * m.dapple)).mul(glow));
-        floorBase.addAssign(vec3(...m.pathTint).mul(path).mul(glow));
-        if (m.wet > 0) {
-            // After rain the path holds puddles: still water with a crisp edge in a rim of dark wet
-            // earth, mirroring the bright mist and the sun.
-            const pooled = fbm(vec2(gx.mul(0.75), gz.mul(1.5)).add(4.1), 3).toVar();
-            // Kept off the nearest floor, where one large pool would read as a grey stone.
-            const onPath = fadeOut(0.3, 0.7, pathX).mul(smoothstep(1.1, 1.9, groundDepth)).mul(m.wet);
-            const puddle = smoothstep(0.556, 0.566, pooled).mul(onPath);
-            const mud = smoothstep(0.5, 0.556, pooled).mul(onPath);
-            floorBase.mulAssign(float(1).sub(mud.mul(0.45)));
-            const mirrored = fogColor.mul(0.75).add(GOLD.mul(sunward).mul(0.25).mul(glow));
-            floorBase.assign(mix(floorBase, mirrored, puddle.mul(0.7)));
-        }
-        // Aerial perspective on the floor too: it melts into the haze toward the horizon.
-        const floorFog = float(1).sub(exp(groundDepth.mul(-0.12 * m.fog)));
-        const floorColor = mix(floorBase, fogColor.mul(0.75), floorFog.mul(0.9));
-        col.assign(mix(col, floorColor, fadeOut(horizon.sub(u.px.mul(1.5)), horizon.add(u.px.mul(1.5)), p.y)));
+        // It is mixed in by a weight that is exactly 0 from 1.5 pixels above the horizon up (and the
+        // floor colour is finite there): skip it above the horizon.
+        If(p.y.lessThan(horizon.add(u.px.mul(2))), () => {
+            const below = horizon.sub(p.y).max(1e-3).toVar();
+            const groundDepth = ground.div(below).min(60).toVar();
+            const groundK = float(HERO_DEPTH).div(groundDepth).min(2.2);
+            const gq = layer(p, u, groundK);
+            const gx = gq.x.mul(groundDepth).toVar();
+            const gz = groundDepth.toVar();
+            const litter = fbm(vec2(gx.mul(1.4), gz.mul(1.4)), Math.max(3, octaves - 1)).toVar();
+            const fleck = gnoise(vec2(gx.mul(9), gz.mul(9)));
+            // Moss in the hollows, russet leaf litter on the rises (in autumn, almost everywhere).
+            const rises = fbm(vec2(gx.mul(0.8), gz.mul(0.8)).add(9.3), 3);
+            const russet = smoothstep(0.45 - m.cover, 0.75 - m.cover, rises).toVar();
+            const floorBase = mix(vec3(0.012, 0.013, 0.008), MOSS, litter.mul(1.4).sub(0.35).saturate())
+                .mul(fleck.mul(0.5).add(0.75)).toVar();
+            floorBase.assign(mix(
+                floorBase.mul(1.4),
+                vec3(...m.litter).mul(fleck.mul(0.6).add(0.7)),
+                russet.mul(m.russet),
+            ));
+            // Dapples: light that slipped between trunks and leaves, stretched by the low angle.
+            const dapple = voronoi(vec2(gx.mul(2.6), gz.mul(1.1)).add(vec2(drift.mul(4), 0)), u.time.mul(0.08));
+            const broken = gnoise(vec2(gx.mul(7), gz.mul(3))).mul(0.18);
+            const spots = fadeOut(0.05, 0.22, dapple.x.add(broken))
+                .mul(hash21(vec2(dapple.z.mul(91), 3.1)).mul(0.8).add(0.2));
+            const pathX = gx.sub(float(SUN[0]).mul(gz)).sub(sin(gz.mul(0.7)).mul(0.3)).abs()
+                .toVar();
+            const path = fadeOut(0.2, 0.9, pathX);
+            const sunDx = gq.x.sub(SUN[0]).toVar();
+            const sunward = exp(sunDx.mul(sunDx).mul(-1.8)).mul(exp(groundDepth.mul(-0.1))).toVar();
+            floorBase.addAssign(GOLD.mul(spots.mul(sunward).mul(path.mul(0.7).add(0.3)).mul(0.8 * m.dapple)).mul(glow));
+            floorBase.addAssign(vec3(...m.pathTint).mul(path).mul(glow));
+            if (m.wet > 0) {
+                // After rain the path holds puddles: still water with a crisp edge in a rim of dark wet
+                // earth, mirroring the bright mist and the sun.
+                const pooled = fbm(vec2(gx.mul(0.75), gz.mul(1.5)).add(4.1), 3).toVar();
+                // Kept off the nearest floor, where one large pool would read as a grey stone.
+                const onPath = fadeOut(0.3, 0.7, pathX).mul(smoothstep(1.1, 1.9, groundDepth)).mul(m.wet);
+                const puddle = smoothstep(0.556, 0.566, pooled).mul(onPath);
+                const mud = smoothstep(0.5, 0.556, pooled).mul(onPath);
+                floorBase.mulAssign(float(1).sub(mud.mul(0.45)));
+                const mirrored = fogColor.mul(0.75).add(GOLD.mul(sunward).mul(0.25).mul(glow));
+                floorBase.assign(mix(floorBase, mirrored, puddle.mul(0.7)));
+            }
+            // Aerial perspective on the floor too: it melts into the haze toward the horizon.
+            const floorFog = float(1).sub(exp(groundDepth.mul(-0.12 * m.fog)));
+            const floorColor = mix(floorBase, fogColor.mul(0.75), floorFog.mul(0.9));
+            col.assign(mix(col, floorColor, fadeOut(horizon.sub(u.px.mul(1.5)), horizon.add(u.px.mul(1.5)), p.y)));
+        });
 
         // Rows of trunks, far to near. Each row stands on its own ground line and has its own parallax.
         rows.forEach((row, index) => {
@@ -413,46 +422,56 @@ export function createForestWorld({ u, quality, mood = MOODS[0] }) {
                 const [fadeFrom, fadeTo] = [[0.5, 1.05], [0.75, 1.4], [1.15, 2.0]][index];
                 mask = mask.mul(fadeOut(groundLine.add(fadeFrom), groundLine.add(fadeTo), q.y));
             }
-            // Backlit cylinder: faces in shadow, a thin gold rim on the sunward edge.
-            const sunSide = float(SUN[0]).sub(q.x).sign();
-            // Backlight is strongest straight in front of the sun and falls away in every direction.
-            const dx = q.x.sub(SUN[0]).toVar();
-            const dy = q.y.sub(sunY).toVar();
-            const near = exp(dx.mul(dx).mul(-2.2).sub(dy.mul(dy).mul(0.7))).toVar();
-            // Clamped: a far trunk is a pixel or two wide, and its soft edge reaches |o| of 2 or 3, where
-            // edge⁷ would light it up as a hairline of pure white.
-            const edge = o.mul(sunSide).saturate().toVar();
-            const edge2 = edge.mul(edge);
-            const rim = edge2.mul(edge2).mul(edge2).mul(edge);
-            const roundness = sqrt(float(1).sub(o.mul(o)).max(0));
-            // Bark: deep vertical furrows, broken into plates.
-            const furrows = gnoise(vec2(o.mul(4.2).add(id.mul(7.7)), q.y.mul(row.d).mul(0.9))).toVar();
-            const plates = gnoise(vec2(o.mul(9).add(id.mul(3.3)), q.y.mul(row.d).mul(4)));
-            const moss = smoothstep(0.5, 0.85, fbm(vec2(o.mul(2).add(id), q.y.mul(row.d).mul(2.2)), 3)
-                .add(exp(height.mul(row.d).mul(-1.4)).mul(0.45)).add(o.mul(sunSide).mul(-0.15)));
-            const tone = hash21(vec2(id.mul(5.1), row.seed + 3)).mul(0.5).add(0.75);
-            const bark = mix(BARK.mul(tone), MOSS, moss.mul(0.75))
-                .mul(smoothstep(0.25, 0.75, furrows).mul(0.9).add(0.35)).mul(plates.mul(0.4).add(0.8))
-                .mul(roundness.mul(0.5).add(0.5))
-                .toVar();
-            // A little of the haze wraps into each trunk; the rim is the sun itself.
-            bark.addAssign(fogColor.mul(0.1).mul(roundness));
-            // Far trunks keep only a whisper of rim: the haze between eats it.
-            const rimGain = 2.4 / (1 + row.d * 0.6);
-            bark.addAssign(GOLD.mul(rim).mul(near.mul(rimGain).add(0.1)).mul(glow).mul(float(1).sub(moss.mul(0.6))));
-            if (m.wet > 0 && index >= 2) {
-                // Rain still runs down the bark: a glossy streak on the sunward shoulder, broken
-                // where the water runs in rivulets.
-                const shoulder = o.mul(sunSide).sub(0.5).div(0.14);
-                const runs = smoothstep(0.45, 0.75, gnoise(vec2(o.mul(14).add(id.mul(5.3)), q.y.mul(row.d).mul(0.6))));
-                const gloss = exp(shoulder.mul(shoulder).negate()).mul(runs.mul(0.7).add(0.3));
-                bark.addAssign(fogColor.mul(1.6).add(GOLD.mul(near).mul(0.3)).mul(gloss).mul(0.5 * m.wet)
-                    .mul(glow));
-            }
-            // The farther the row, the more of the air in front of it is lit by the sun's halo too.
-            const fog = 1 - Math.exp(-row.d * 0.14);
-            const trunk = mix(bark, mix(fogColor, air, fog * fog * 0.85), fog);
-            col.assign(mix(col, trunk, mask));
+            // Most of a row is the gaps between its trunks, where the mask is 0 and mixing in the
+            // (finite) trunk changes nothing: shade the bark only where a trunk stands.
+            mask = mask.toVar();
+            If(mask.greaterThan(0), () => {
+                // Backlit cylinder: faces in shadow, a thin gold rim on the sunward edge.
+                const sunSide = float(SUN[0]).sub(q.x).sign();
+                // Backlight is strongest straight in front of the sun and falls away in every direction.
+                const dx = q.x.sub(SUN[0]).toVar();
+                const dy = q.y.sub(sunY).toVar();
+                const near = exp(dx.mul(dx).mul(-2.2).sub(dy.mul(dy).mul(0.7))).toVar();
+                // Clamped: a far trunk is a pixel or two wide, and its soft edge reaches |o| of 2 or 3, where
+                // edge⁷ would light it up as a hairline of pure white.
+                const edge = o.mul(sunSide).saturate().toVar();
+                const edge2 = edge.mul(edge);
+                const rim = edge2.mul(edge2).mul(edge2).mul(edge);
+                const roundness = sqrt(float(1).sub(o.mul(o)).max(0));
+                // Bark: deep vertical furrows, broken into plates.
+                const furrows = gnoise(vec2(o.mul(4.2).add(id.mul(7.7)), q.y.mul(row.d).mul(0.9))).toVar();
+                const plates = gnoise(vec2(o.mul(9).add(id.mul(3.3)), q.y.mul(row.d).mul(4)));
+                const moss = smoothstep(0.5, 0.85, fbm(vec2(o.mul(2).add(id), q.y.mul(row.d).mul(2.2)), 3)
+                    .add(exp(height.mul(row.d).mul(-1.4)).mul(0.45)).add(o.mul(sunSide).mul(-0.15)));
+                const tone = hash21(vec2(id.mul(5.1), row.seed + 3)).mul(0.5).add(0.75);
+                const bark = mix(BARK.mul(tone), MOSS, moss.mul(0.75))
+                    .mul(smoothstep(0.25, 0.75, furrows).mul(0.9).add(0.35)).mul(plates.mul(0.4).add(0.8))
+                    .mul(roundness.mul(0.5).add(0.5))
+                    .toVar();
+                // A little of the haze wraps into each trunk; the rim is the sun itself.
+                bark.addAssign(fogColor.mul(0.1).mul(roundness));
+                // Far trunks keep only a whisper of rim: the haze between eats it.
+                const rimGain = 2.4 / (1 + row.d * 0.6);
+                bark.addAssign(GOLD.mul(rim).mul(near.mul(rimGain).add(0.1)).mul(glow)
+                    .mul(float(1).sub(moss.mul(0.6))));
+                if (m.wet > 0 && index >= 2) {
+                    // Rain still runs down the bark: a glossy streak on the sunward shoulder, broken
+                    // where the water runs in rivulets.
+                    const shoulder = o.mul(sunSide).sub(0.5).div(0.14);
+                    const runs = smoothstep(
+                        0.45,
+                        0.75,
+                        gnoise(vec2(o.mul(14).add(id.mul(5.3)), q.y.mul(row.d).mul(0.6))),
+                    );
+                    const gloss = exp(shoulder.mul(shoulder).negate()).mul(runs.mul(0.7).add(0.3));
+                    bark.addAssign(fogColor.mul(1.6).add(GOLD.mul(near).mul(0.3)).mul(gloss).mul(0.5 * m.wet)
+                        .mul(glow));
+                }
+                // The farther the row, the more of the air in front of it is lit by the sun's halo too.
+                const fog = 1 - Math.exp(-row.d * 0.14);
+                const trunk = mix(bark, mix(fogColor, air, fog * fog * 0.85), fog);
+                col.assign(mix(col, trunk, mask));
+            });
             // Mist pooled at the foot of each row, drifting.
             const wisp = fbm3(vec3(
                 q.x.mul(1.4).add(drift.mul(index + 1)).add(u.seed.mul(5.1)),
@@ -471,43 +490,54 @@ export function createForestWorld({ u, quality, mood = MOODS[0] }) {
             if (index === 3) {
                 // Now and then a bird crosses the clearing through the light, beating and gliding.
                 const flight = eventWindow(u.time, float(43), float(9), float(0.65), u.seed.mul(29.7).add(6.6)).toVar();
-                const bq = layer(p, u, HERO_DEPTH / 2.0).toVar();
-                const heading = step(0.5, hash21(vec2(flight.z, 2.2))).mul(2).sub(1);
-                const wide = u.ext.x.add(0.5);
-                const lift = hash21(vec2(flight.z, 6.1)).sub(0.5).mul(0.08);
-                const birdX = mix(wide.negate(), wide, flight.y).mul(heading).toVar();
-                // A shallow arc through the lit mist below the sun, where the dark shape reads best.
-                const fromSun = birdX.sub(SUN[0]).div(1.4);
-                const birdAt = vec2(
-                    birdX,
-                    sunY.sub(0.26).add(lift).sub(fromSun.mul(fromSun).mul(0.12)).add(flight.y.mul(9).sin().mul(0.02)),
-                );
-                const local = bq.sub(birdAt).mul(vec2(heading, 1)).toVar();
-                // Beats in bursts, then glides with its wings held level.
-                const beating = smoothstep(-0.6, -0.1, flight.y.mul(17).sin());
-                const beat = u.time.mul(9).add(flight.z.mul(20)).sin().mul(beating)
-                    .add(float(0.4).mul(float(1).sub(beating)));
-                const bird = birdSilhouette(local, float(0.095), beat, u.px.mul(1.2))
-                    .mul(smoothstep(0, 0.03, flight.x)).mul(u.life);
-                col.assign(mix(col, SHADE, bird));
+                // Between flights the bird's weight smoothstep(0, 0.03, flight.x) is 0 (alike in every pixel).
+                If(flight.x.greaterThan(0), () => {
+                    const bq = layer(p, u, HERO_DEPTH / 2.0).toVar();
+                    const heading = step(0.5, hash21(vec2(flight.z, 2.2))).mul(2).sub(1);
+                    const wide = u.ext.x.add(0.5);
+                    const lift = hash21(vec2(flight.z, 6.1)).sub(0.5).mul(0.08);
+                    const birdX = mix(wide.negate(), wide, flight.y).mul(heading).toVar();
+                    // A shallow arc through the lit mist below the sun, where the dark shape reads best.
+                    const fromSun = birdX.sub(SUN[0]).div(1.4);
+                    const birdAt = vec2(
+                        birdX,
+                        sunY.sub(0.26).add(lift).sub(fromSun.mul(fromSun).mul(0.12))
+                            .add(flight.y.mul(9).sin().mul(0.02)),
+                    );
+                    const local = bq.sub(birdAt).mul(vec2(heading, 1)).toVar();
+                    // Beats in bursts, then glides with its wings held level.
+                    const beating = smoothstep(-0.6, -0.1, flight.y.mul(17).sin());
+                    const beat = u.time.mul(9).add(flight.z.mul(20)).sin().mul(beating)
+                        .add(float(0.4).mul(float(1).sub(beating)));
+                    const bird = birdSilhouette(local, float(0.095), beat, u.px.mul(1.2))
+                        .mul(smoothstep(0, 0.03, flight.x)).mul(u.life);
+                    col.assign(mix(col, SHADE, bird));
+                });
             }
             // Undergrowth between the two nearest rows: low leafy mounds, rimmed where the sun is behind.
             if (index === 3) {
                 const depth = 1.75;
                 const bq = layer(p, u, HERO_DEPTH / depth).toVar();
                 const baseLine = horizon.sub(ground.div(depth)).toVar();
-                const mounds = fbm(vec2(bq.x.mul(2.4), 7.1), 3).sub(0.4).mul(0.32).max(0);
-                const leafy = gnoise(bq.mul(vec2(46, 34))).sub(0.5).mul(0.03);
-                const crest = baseLine.add(mounds).add(leafy).toVar();
-                // Clumps with forest floor between them, not a hedge.
-                const clumps = smoothstep(0.46, 0.58, fbm(vec2(bq.x.mul(1.3), 3.3), 3));
-                const bush = softStep(0, crest.sub(bq.y), u).mul(smoothstep(baseLine.sub(0.05), baseLine.sub(0.01), bq.y))
-                    .mul(clumps);
-                const bdx = bq.x.sub(SUN[0]).toVar();
-                const bushRim = exp(crest.sub(bq.y).max(0).mul(-220)).mul(exp(bdx.mul(bdx).mul(-2.5)));
-                const leaves = gnoise(bq.mul(vec2(55, 48))).mul(0.6).add(0.6);
-                const bushColor = mix(MOSS.mul(0.45).mul(leaves), fogColor.mul(0.6), 0.3).add(GOLD.mul(bushRim).mul(0.35).mul(glow));
-                col.assign(mix(col, mix(bushColor, fogColor, 1 - Math.exp(-depth * 0.14)), bush));
+                // fbm stays within -0.22..1.22 and gnoise too, so the crest never rises more than 0.284
+                // over the base line: below the base line's fade and over the crest's edge the bush is
+                // exactly 0. Draw it only in that band.
+                If(bq.y.greaterThan(baseLine.sub(0.06)).and(bq.y.lessThan(baseLine.add(0.3).add(u.px.mul(2)))), () => {
+                    const mounds = fbm(vec2(bq.x.mul(2.4), 7.1), 3).sub(0.4).mul(0.32).max(0);
+                    const leafy = gnoise(bq.mul(vec2(46, 34))).sub(0.5).mul(0.03);
+                    const crest = baseLine.add(mounds).add(leafy).toVar();
+                    // Clumps with forest floor between them, not a hedge.
+                    const clumps = smoothstep(0.46, 0.58, fbm(vec2(bq.x.mul(1.3), 3.3), 3));
+                    const bush = softStep(0, crest.sub(bq.y), u)
+                        .mul(smoothstep(baseLine.sub(0.05), baseLine.sub(0.01), bq.y))
+                        .mul(clumps);
+                    const bdx = bq.x.sub(SUN[0]).toVar();
+                    const bushRim = exp(crest.sub(bq.y).max(0).mul(-220)).mul(exp(bdx.mul(bdx).mul(-2.5)));
+                    const leaves = gnoise(bq.mul(vec2(55, 48))).mul(0.6).add(0.6);
+                    const bushColor = mix(MOSS.mul(0.45).mul(leaves), fogColor.mul(0.6), 0.3)
+                        .add(GOLD.mul(bushRim).mul(0.35).mul(glow));
+                    col.assign(mix(col, mix(bushColor, fogColor, 1 - Math.exp(-depth * 0.14)), bush));
+                });
             }
         });
 
@@ -516,37 +546,49 @@ export function createForestWorld({ u, quality, mood = MOODS[0] }) {
         // where the sun glints through (and where the post shafts are born).
         [[0.55, 0.0, 0.0], [1.0, 3.7, 1.0]].forEach(([k, seed, nearness]) => {
             const cq = layer(p, u, k).toVar();
-            const sway = u.time.mul(0.03).add(seed).add(gustOn.mul(u.time.mul(0.8).sin()).mul(0.1));
-            const warp = vec2(fbm(cq.mul(1.2).add(vec2(sway, 2.1 + seed)), 3), fbm(cq.mul(1.2).add(vec2(7.3, sway)), 3));
-            const clumps = fbm(cq.mul(vec2(1.5, 1.9)).add(warp.mul(1.1)).add(seed), Math.max(4, octaves)).toVar();
-            const cdx = cq.x.sub(SUN[0]).toVar();
-            const clearing = exp(cdx.mul(cdx).mul(-2.4)).toVar();
-            // A gentle ramp keeps the canopy overhead; the clumps decide where it actually hangs.
-            const ceiling = cq.y.sub(top).add(0.7 - 0.14 * nearness).sub(clearing.mul(0.28)).mul(0.9);
-            const density = clumps.sub(0.5).mul(1.9).add(0.5).add(ceiling)
-                .toVar();
-            const open = float(0.5).add(u.breathSoft.mul(0.04));
-            const cover = smoothstep(open.sub(0.07), open.add(0.12), density).toVar();
-            // One leaf per small cell, larger where the foliage is dense; they flutter a little.
-            const cells = 30 - nearness * 8;
-            // A little domain warp makes every leaf its own irregular shape instead of a round cell.
-            const lq = cq.mul(vec2(cells, cells * 1.35)).add(seed * 11).toVar();
-            const bent = vec2(gnoise(lq.mul(0.55)), gnoise(lq.mul(0.55).add(5.2))).sub(0.5).mul(0.7);
-            const leafCell = voronoi(lq.add(bent), u.time.mul(0.35).add(seed));
-            const radius = cover.sqrt().mul(0.92);
-            const leafEdge = u.px.mul(cells * 1.6);
-            // Where the foliage is dense it closes: no screen-door of pin-holes in the deep shade.
-            const leafMask = fadeOut(radius.sub(leafEdge), radius.add(leafEdge), leafCell.x)
-                .max(smoothstep(0.62, 0.85, cover))
-                .mul(smoothstep(0.02, 0.1, cover));
-            // Backlit leaves near the sun let light through: gold-green at the thin edges, dark in the mass.
-            const shine = exp(sunDistance.mul(sunDistance).mul(-3.2)).mul(float(1).sub(cover.mul(0.75))).toVar();
-            const tint = hash21(vec2(leafCell.z.mul(53), seed)).mul(0.5).add(0.75);
-            const leaf = mix(vec3(...m.leafDark), vec3(...m.leafLit), shine.mul(glow)).mul(tint).toVar();
-            leaf.addAssign(vec3(...m.leafGlint).mul(shine.mul(shine)).mul(glow).mul(0.8));
-            // The far canopy sits in the haze.
-            if (nearness < 1) leaf.assign(mix(leaf, fogColor, 0.45));
-            col.assign(mix(col, leaf, leafMask));
+            // fbm stays below 1.22 and the clearing only lowers the ceiling, so the density stays below
+            // 1.868 + 0.9 (cq.y - top + 0.7 - 0.14 nearness): this far below the top it is under 0.4, the
+            // cover is exactly 0 and so are the leaves. (Tall screens see that far down.)
+            If(cq.y.greaterThan(top.sub(2.34 - 0.14 * nearness)), () => {
+                const sway = u.time.mul(0.03).add(seed).add(gustOn.mul(u.time.mul(0.8).sin()).mul(0.1));
+                const warp = vec2(
+                    fbm(cq.mul(1.2).add(vec2(sway, 2.1 + seed)), 3),
+                    fbm(cq.mul(1.2).add(vec2(7.3, sway)), 3),
+                );
+                const clumps = fbm(cq.mul(vec2(1.5, 1.9)).add(warp.mul(1.1)).add(seed), Math.max(4, octaves)).toVar();
+                const cdx = cq.x.sub(SUN[0]).toVar();
+                const clearing = exp(cdx.mul(cdx).mul(-2.4)).toVar();
+                // A gentle ramp keeps the canopy overhead; the clumps decide where it actually hangs.
+                const ceiling = cq.y.sub(top).add(0.7 - 0.14 * nearness).sub(clearing.mul(0.28)).mul(0.9);
+                const density = clumps.sub(0.5).mul(1.9).add(0.5).add(ceiling)
+                    .toVar();
+                const open = float(0.5).add(u.breathSoft.mul(0.04));
+                const cover = smoothstep(open.sub(0.07), open.add(0.12), density).toVar();
+                // The leaves are masked by smoothstep(0.02, 0.1, cover): none where the cover is thinner.
+                If(cover.greaterThan(0.02), () => {
+                    // One leaf per small cell, larger where the foliage is dense; they flutter a little.
+                    const cells = 30 - nearness * 8;
+                    // A little domain warp makes every leaf its own irregular shape instead of a round cell.
+                    const lq = cq.mul(vec2(cells, cells * 1.35)).add(seed * 11).toVar();
+                    const bent = vec2(gnoise(lq.mul(0.55)), gnoise(lq.mul(0.55).add(5.2))).sub(0.5).mul(0.7);
+                    const leafCell = voronoi(lq.add(bent), u.time.mul(0.35).add(seed));
+                    const radius = cover.sqrt().mul(0.92);
+                    const leafEdge = u.px.mul(cells * 1.6);
+                    // Where the foliage is dense it closes: no screen-door of pin-holes in the deep shade.
+                    const leafMask = fadeOut(radius.sub(leafEdge), radius.add(leafEdge), leafCell.x)
+                        .max(smoothstep(0.62, 0.85, cover))
+                        .mul(smoothstep(0.02, 0.1, cover));
+                    // Backlit leaves near the sun let light through: gold-green at the thin edges, dark in the mass.
+                    const shine = exp(sunDistance.mul(sunDistance).mul(-3.2)).mul(float(1).sub(cover.mul(0.75)))
+                        .toVar();
+                    const tint = hash21(vec2(leafCell.z.mul(53), seed)).mul(0.5).add(0.75);
+                    const leaf = mix(vec3(...m.leafDark), vec3(...m.leafLit), shine.mul(glow)).mul(tint).toVar();
+                    leaf.addAssign(vec3(...m.leafGlint).mul(shine.mul(shine)).mul(glow).mul(0.8));
+                    // The far canopy sits in the haze.
+                    if (nearness < 1) leaf.assign(mix(leaf, fogColor, 0.45));
+                    col.assign(mix(col, leaf, leafMask));
+                });
+            });
         });
 
         // The gust's flurry: a few leaves loosed together, each entering at its own moment, blown
@@ -579,17 +621,24 @@ export function createForestWorld({ u, quality, mood = MOODS[0] }) {
 
         // Ferns at the frame's bottom corners, close to the lens and out of focus.
         const fq = layer(p, u, 2.4).toVar();
-        const bottom = u.ext.y.negate().sub(u.focus);
-        const fern = float(0).toVar();
-        FRONDS.forEach(([side, baseX, tilt, length, droop], index) => {
-            const base = vec2(u.ext.x.mul(side * baseX), bottom.sub(0.06));
-            const turnBy = side < 0 ? tilt : Math.PI - tilt;
-            const wave = sin(u.time.mul(0.4).add(index * 1.7)).mul(0.015);
-            fern.assign(fern.max(frond(fq, base, float(turnBy).add(wave), length, side < 0 ? droop : -droop, 0.012)));
+        const bottom = u.ext.y.negate().sub(u.focus).toVar();
+        // Every frond lies within 0.72 of its base (0.06 below the frame, 0.7 to 1.02 of the half-width
+        // out on its side): farther away each frond, and so the fern, is exactly 0. Draw them only there.
+        const nearLeft = fq.x.lessThan(u.ext.x.mul(-0.7).add(0.8));
+        const nearRight = fq.x.greaterThan(u.ext.x.mul(0.84).sub(0.8));
+        If(fq.y.lessThan(bottom.add(0.8)).and(nearLeft.or(nearRight)), () => {
+            const fern = float(0).toVar();
+            FRONDS.forEach(([side, baseX, tilt, length, droop], index) => {
+                const base = vec2(u.ext.x.mul(side * baseX), bottom.sub(0.06));
+                const turnBy = side < 0 ? tilt : Math.PI - tilt;
+                const wave = sin(u.time.mul(0.4).add(index * 1.7)).mul(0.015);
+                const bend = side < 0 ? droop : -droop;
+                fern.assign(fern.max(frond(fq, base, float(turnBy).add(wave), length, bend, 0.012)));
+            });
+            const fernDx = fq.x.sub(SUN[0]).toVar();
+            const fernLit = exp(fernDx.mul(fernDx).mul(-0.8)).mul(0.08).mul(glow);
+            col.assign(mix(col, vec3(...m.fern).add(GOLD.mul(fernLit)), fern.mul(0.96)));
         });
-        const fernDx = fq.x.sub(SUN[0]).toVar();
-        const fernLit = exp(fernDx.mul(fernDx).mul(-0.8)).mul(0.08).mul(glow);
-        col.assign(mix(col, vec3(...m.fern).add(GOLD.mul(fernLit)), fern.mul(0.96)));
         // The whole forest breathes a little brighter on the in-breath.
         return col.mul(u.breathSoft.mul(0.14).add(0.93));
     })();
