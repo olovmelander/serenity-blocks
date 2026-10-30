@@ -9,6 +9,8 @@
  * A world is { backdrop, objects, motes, bloom, shafts, grade, camera, exposure, update, dispose }.
  * It is built in one of its moods (stage/breath-moods.js): a visit picks one, and the host keeps
  * it for the rest of its life, so a session that returns to a world finds the same scene.
+ * A session's next world can be built ahead, off screen (prepareWorld), and compiled for the
+ * target it will draw into (compilePrepared); setWorld then adopts it as it is.
  * Its backdrop is a vec3 node painted on one screen-filling quad; the camera maps the z = 0 plane
  * onto the same hero space, so geometry and painted light line up without per-world camera work.
  *
@@ -23,6 +25,7 @@ import { createBreathUniforms } from './breath-tsl.js';
 import { createMotes } from './breath-motes.js';
 import { BreathPost } from './breath-post.js';
 import { pickBreathMood, resolveBreathMood } from './breath-moods.js';
+import { compileGroupUnderLiveLoop } from '../../../../rendering/odyssey/warmup/post-target-compile.js';
 import { BREATH_WORLD_BUILDERS, BREATH_WORLD_MOODS } from '../worlds/index.js';
 
 /**
@@ -77,6 +80,24 @@ function disposeObject(object) {
     });
 }
 
+const samePick = (a, b) => a.worldId === b.worldId && a.moodIndex === b.moodIndex && a.seed === b.seed;
+
+/**
+ * Dispose a world and its objects. While three's compile loop is still walking their materials
+ * (a world compiled ahead), wait for it to finish first.
+ */
+function retireWorld(world, objects, compile) {
+    const drop = () => {
+        try { world?.dispose?.(); } catch (error) { console.warn('[BreathWorldHost] world dispose failed:', error); }
+        objects.forEach((object) => {
+            object.parent?.remove(object);
+            disposeObject(object);
+        });
+    };
+    if (compile && !compile.done) compile.promise.then(drop);
+    else drop();
+}
+
 export class BreathWorldHost {
     constructor({
         renderer, scene, camera, quality = 'High', pickMood = pickBreathMood,
@@ -111,6 +132,10 @@ export class BreathWorldHost {
         this.exposure = 1;
         this.rig = DEFAULT_RIG;
         this.post = this.quality.bloom > 0 ? new BreathPost(renderer, scene, camera, this.quality) : null;
+        /** A world built ahead, off screen, for setWorld to adopt (prepareWorld). */
+        this.prepared = null;
+        /** The compile of the world on screen, when it was compiled ahead and may still be running. */
+        this._worldCompile = null;
         this.disposed = false;
         // Per-frame state handed to the world and the lens: filled in place every frame, so the
         // frame loop makes no garbage. Readers take what they need at once and keep nothing.
@@ -130,8 +155,112 @@ export class BreathWorldHost {
      * Build a world and swap it in. Synchronous; the caller decides how to hide the first frames.
      * `mood` (an index or a mood id) and `seed` (0..1, the visit's own variation) pin a version
      * for previews and captures; without them a first visit picks, and a return keeps the pick.
+     * A world built ahead (prepareWorld) with the same pick is adopted as it is: nothing is
+     * built again, and what was compiled ahead is what draws.
      */
     setWorld(id, { mood, seed } = {}) {
+        const pick = this._pick(id, mood, seed);
+        if (this._shows(pick)) return pick.worldId;
+        const ahead = this.prepared && samePick(this.prepared, pick) ? this.prepared : null;
+        if (ahead) this.prepared = null;
+        this._clearWorld();
+        this.moodMemory.set(pick.worldId, pick.moodIndex);
+        this.seedMemory.set(pick.worldId, pick.seed);
+        this.mood = pick.mood;
+        this.uniforms.seed.value = pick.seed;
+        const { world, objects } = ahead || this._build(pick);
+        objects.forEach((object) => this.root.add(object));
+        this._worldCompile = ahead?.compile ?? null;
+        this.world = world;
+        this.worldId = pick.worldId;
+        this.rig = { ...DEFAULT_RIG, ...world.camera };
+        this.exposure = world.exposure ?? 1;
+        this.post?.setWorld(world);
+        this._fitCamera();
+        return pick.worldId;
+    }
+
+    /**
+     * Build a world ahead, off screen, for setWorld to adopt: a Hale session's next stage, built
+     * while the current one is on screen. Its mood and visit seed are picked now, exactly as
+     * setWorld would pick them, and kept like a visit's; nothing on screen changes (the seed
+     * uniform is set when the world is adopted). Returns whether anything was built: nothing is
+     * when the world is the one on screen, or was already built ahead.
+     */
+    prepareWorld(id, { mood, seed } = {}) {
+        if (this.disposed) return false;
+        const pick = this._pick(id, mood, seed);
+        if (this._shows(pick)) {
+            this.discardPrepared();
+            return false;
+        }
+        if (this.prepared && samePick(this.prepared, pick)) return false;
+        this.discardPrepared();
+        this.moodMemory.set(pick.worldId, pick.moodIndex);
+        this.seedMemory.set(pick.worldId, pick.seed);
+        const { world, objects } = this._build(pick);
+        // A holder of its own, outside the scene: compileAsync walks it, render() never sees it.
+        const holder = new THREE.Group();
+        objects.forEach((object) => holder.add(object));
+        this.prepared = {
+            ...pick, world, objects, holder, compile: null,
+        };
+        return true;
+    }
+
+    /**
+     * Whether a world built ahead can be compiled ahead: on every tier with the lens's scene pass
+     * (the lightest tier draws straight to the canvas, and builds nothing ahead).
+     */
+    get compilesAhead() {
+        return Boolean(this.post?.scenePass?.renderTarget) && typeof this.renderer?.compileAsync === 'function';
+    }
+
+    /**
+     * Compile the world built ahead, while the world on screen keeps drawing: its shaders built in
+     * steps that yield to the frame loop, its pipelines created on the driver's workers. Its first
+     * frame then finds every shader and pipeline it needs. Resolves when that is done, or at once
+     * when nothing is built ahead (or this tier cannot compile ahead).
+     */
+    compilePrepared() {
+        const ahead = this.prepared;
+        if (!ahead || this.disposed || !this.compilesAhead) return Promise.resolve();
+        if (!ahead.compile) {
+            // The scene is drawn by the lens's scene pass, one render call deep inside its
+            // pipeline. three keys a material's shader build by that render context, and builds
+            // it after compileAsync's first await, reading whatever target is bound by then. A
+            // plain compileAsync builds for another context: the stage change would build and
+            // compile every shader again. compileGroupUnderLiveLoop (the Odyssey warm-up's, pinned
+            // by its contract tests) compiles in exactly the scene pass's context, its deferred
+            // builds answered from that binding while live frames see their own.
+            let compiling;
+            try {
+                compiling = compileGroupUnderLiveLoop(this.renderer, this.post, this.scene, this.camera, ahead.holder, {
+                    concurrency: 2,
+                });
+            } catch (error) {
+                compiling = Promise.reject(error);
+            }
+            const compile = { done: false, promise: null };
+            compile.promise = Promise.resolve(compiling).catch((error) => {
+                // The stage change still works: the world's pipelines are made as it first draws.
+                console.warn('[BreathWorldHost] compiling a world ahead failed:', error?.message || error);
+            }).then(() => { compile.done = true; });
+            ahead.compile = compile;
+        }
+        return ahead.compile.promise;
+    }
+
+    /** Drop the world built ahead (the plan changed, the practice ended). */
+    discardPrepared() {
+        const ahead = this.prepared;
+        if (!ahead) return;
+        this.prepared = null;
+        retireWorld(ahead.world, ahead.objects, ahead.compile);
+    }
+
+    /** The world (in its mood, with its visit seed) that a request means. */
+    _pick(id, mood, seed) {
         const worldId = BREATH_WORLD_BUILDERS[id] ? id : 'deep-relaxation';
         const moods = BREATH_WORLD_MOODS[worldId]?.length ? BREATH_WORLD_MOODS[worldId] : ONE_MOOD;
         let moodIndex = resolveBreathMood(moods, mood);
@@ -139,16 +268,22 @@ export class BreathWorldHost {
         moodIndex = THREE.MathUtils.clamp(Math.floor(moodIndex) || 0, 0, moods.length - 1);
         const visitSeed = Number.isFinite(seed)
             ? THREE.MathUtils.clamp(seed, 0, 1) : (this.seedMemory.get(worldId) ?? Math.random());
-        if (this.worldId === worldId && this.world && this.mood === moods[moodIndex]
-            && visitSeed === this.uniforms.seed.value) return worldId;
-        this._clearWorld();
-        this.moodMemory.set(worldId, moodIndex);
-        this.seedMemory.set(worldId, visitSeed);
-        this.mood = moods[moodIndex];
-        this.uniforms.seed.value = visitSeed;
+        return {
+            worldId, moodIndex, mood: moods[moodIndex], seed: visitSeed,
+        };
+    }
+
+    /** True when `pick` is what is on screen now. */
+    _shows(pick) {
+        return this.worldId === pick.worldId && Boolean(this.world) && this.mood === pick.mood
+            && pick.seed === this.uniforms.seed.value;
+    }
+
+    /** Build a world's artwork, not yet in any scene: its backdrop quad, its objects, its motes. */
+    _build({ worldId, mood }) {
         const random = seededRandom(0x51ed270b);
         const world = BREATH_WORLD_BUILDERS[worldId]({
-            u: this.uniforms, quality: this.quality, random, mood: this.mood,
+            u: this.uniforms, quality: this.quality, random, mood,
         });
         const backdropMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
         backdropMaterial.colorNode = world.backdrop;
@@ -157,30 +292,22 @@ export class BreathWorldHost {
         const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), backdropMaterial);
         backdrop.frustumCulled = false;
         backdrop.renderOrder = -1000;
-        this.root.add(backdrop);
-        (world.objects || []).forEach((object) => this.root.add(object));
+        const objects = [backdrop, ...(world.objects || [])];
         if (world.motes) {
             const list = Array.isArray(world.motes) ? world.motes : [world.motes];
-            list.forEach((options) => this.root.add(createMotes(this.uniforms, options, {
+            list.forEach((options) => objects.push(createMotes(this.uniforms, options, {
                 scale: this.quality.motes, random,
             })));
         }
-        this.world = world;
-        this.worldId = worldId;
-        this.rig = { ...DEFAULT_RIG, ...world.camera };
-        this.exposure = world.exposure ?? 1;
-        this.post?.setWorld(world);
-        this._fitCamera();
-        return worldId;
+        return { world, objects };
     }
 
     _clearWorld() {
         if (!this.world) return;
-        try { this.world.dispose?.(); } catch (error) { console.warn('[BreathWorldHost] world dispose failed:', error); }
-        [...this.root.children].forEach((child) => {
-            this.root.remove(child);
-            disposeObject(child);
-        });
+        const objects = [...this.root.children];
+        objects.forEach((child) => this.root.remove(child));
+        retireWorld(this.world, objects, this._worldCompile);
+        this._worldCompile = null;
         this.world = null;
         this.worldId = null;
     }
@@ -379,6 +506,7 @@ export class BreathWorldHost {
             mood: this.mood?.id ?? null,
             seed: this.uniforms.seed.value,
             quality: this.qualityName,
+            ahead: this.prepared?.worldId ?? null,
             post: Boolean(this.post),
             shafts: Boolean(this.post?.usesShafts),
             drawCalls: info?.render?.drawCalls ?? null,
@@ -391,6 +519,12 @@ export class BreathWorldHost {
     dispose() {
         if (this.disposed) return;
         this.disposed = true;
+        // The renderer goes with the host (the stage disposes it next): dispose everything now,
+        // before it, whether or not a compile ahead is still running; that compile only fails.
+        const ahead = this.prepared;
+        this.prepared = null;
+        if (ahead) retireWorld(ahead.world, ahead.objects, null);
+        this._worldCompile = null;
         this._clearWorld();
         this.scene.remove(this.root);
         this.post?.dispose();

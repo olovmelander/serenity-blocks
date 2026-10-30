@@ -206,6 +206,219 @@ describe('breathing world host', () => {
     });
 });
 
+describe('breathing lens', () => {
+    it('turns light shafts on and off between worlds without rebuilding its graph', () => {
+        const { host } = createHost('High');
+        const { post } = host;
+        const output = post.pipeline.outputNode;
+        expect(post.shaftsNode).toBeTruthy();
+        host.setWorld('zen-garden');
+        expect(post.usesShafts).toBe(false);
+        expect(post.shaftsNode.autoUpdate).toBe(false);
+        expect(post.shaftsFirst.autoUpdate).toBe(false);
+        host.setWorld('forest-breath');
+        expect(post.usesShafts).toBe(true);
+        expect(post.shaftsNode.autoUpdate).toBe(true);
+        expect(post.shaftsFirst.autoUpdate).toBe(true);
+        host.setSize(1280, 720);
+        host.step(1 / 60);
+        expect(post.uShaftStrength.value).toBeGreaterThan(0);
+        host.setWorld('zen-garden');
+        // Off again: the passes rest, and their last image is added at strength 0.
+        expect(post.shaftsNode.autoUpdate).toBe(false);
+        expect(post.uShaftStrength.value).toBe(0);
+        host.step(1 / 60);
+        expect(post.uShaftStrength.value).toBe(0);
+        // One graph throughout: nothing for a stage change to rebuild or compile.
+        expect(post.pipeline.outputNode).toBe(output);
+        host.dispose();
+    });
+});
+
+describe('breathing world host, a world built ahead', () => {
+    /**
+     * A host whose renderer records each compileAsync and the target bound for it; every compile
+     * stays pending until the test opens the gate.
+     */
+    function compilingHost(quality = 'High', pickMood = () => 0) {
+        const made = createHost(quality, pickMood);
+        const { renderer } = made;
+        let target = null;
+        let mrt = null;
+        renderer.getRenderTarget = vi.fn(() => target);
+        renderer.setRenderTarget = vi.fn((next) => { target = next; });
+        renderer.getMRT = vi.fn(() => mrt);
+        renderer.setMRT = vi.fn((next) => { mrt = next; });
+        made.bound = () => target;
+        let open;
+        made.gate = new Promise((resolve) => { open = resolve; });
+        made.open = () => open();
+        made.compiles = [];
+        renderer.compileAsync = vi.fn((object, camera, scene) => {
+            made.compiles.push({
+                object, camera, scene, target,
+            });
+            return made.gate;
+        });
+        return made;
+    }
+
+    it('builds the next world off screen, then adopts it as it is', () => {
+        const { host, scene } = compilingHost();
+        host.setWorld('zen-garden');
+        const shown = [...host.root.children];
+        const seed = host.uniforms.seed.value;
+        expect(host.prepareWorld('calm-sleep')).toBe(true);
+        expect(host.getDiagnostics().ahead).toBe('calm-sleep');
+        // Nothing on screen changes: the same objects, the same visit seed, nothing new in the scene.
+        expect(host.root.children).toHaveLength(shown.length);
+        shown.forEach((object, index) => expect(host.root.children[index]).toBe(object));
+        expect(host.uniforms.seed.value).toBe(seed);
+        expect(host.worldId).toBe('zen-garden');
+        const ahead = host.prepared.objects;
+        ahead.forEach((object) => expect(scene.getObjectById(object.id)).toBeUndefined());
+        // The stage change adopts those very objects: nothing is built again.
+        expect(host.setWorld('calm-sleep')).toBe('calm-sleep');
+        expect(host.root.children).toHaveLength(ahead.length);
+        ahead.forEach((object, index) => expect(host.root.children[index]).toBe(object));
+        expect(host.prepared).toBeNull();
+        host.dispose();
+    });
+
+    it('keeps the mood and seed it picked ahead for the visit', () => {
+        const picks = [];
+        const { host } = compilingHost('High', (id, count) => {
+            picks.push(id);
+            return count - 1;
+        });
+        host.setWorld('zen-garden');
+        host.prepareWorld('calm-sleep');
+        const { mood, seed } = host.prepared;
+        host.setWorld('calm-sleep');
+        expect(host.mood).toBe(mood);
+        expect(mood).toBe(BREATH_WORLD_MOODS['calm-sleep'].at(-1));
+        expect(host.uniforms.seed.value).toBe(seed);
+        expect(picks.filter((id) => id === 'calm-sleep')).toHaveLength(1);
+        host.dispose();
+    });
+
+    it('builds nothing ahead for the world on screen, and drops what no longer comes next', () => {
+        const { host } = compilingHost();
+        host.setWorld('zen-garden');
+        expect(host.prepareWorld('calm-sleep')).toBe(true);
+        expect(host.prepareWorld('calm-sleep')).toBe(false);
+        const stale = vi.spyOn(host.prepared.objects[0].geometry, 'dispose');
+        expect(host.prepareWorld('zen-garden')).toBe(false);
+        expect(host.prepared).toBeNull();
+        expect(stale).toHaveBeenCalled();
+        host.prepareWorld('calm-sleep');
+        const replaced = vi.spyOn(host.prepared.objects[0].geometry, 'dispose');
+        host.prepareWorld('ocean-breath');
+        expect(replaced).toHaveBeenCalled();
+        expect(host.prepared.worldId).toBe('ocean-breath');
+        // A world asked for that is not the one built ahead is built as ever; the other one waits.
+        host.setWorld('coherence');
+        expect(host.prepared.worldId).toBe('ocean-breath');
+        host.dispose();
+    });
+
+    it('compiles ahead in the scene pass\'s own context, and leaves the renderer as it was', async () => {
+        const {
+            host, renderer, camera, scene, compiles, bound, open,
+        } = compilingHost();
+        host.setWorld('zen-garden');
+        await host.compilePrepared();
+        expect(compiles).toHaveLength(0);
+        expect(host.compilesAhead).toBe(true);
+        host.prepareWorld('calm-sleep');
+        const compiled = host.compilePrepared();
+        expect(host.compilePrepared()).toBe(compiled);
+        expect(compiles.length).toBeGreaterThan(0);
+        const holder = host.prepared.holder;
+        compiles.forEach((call) => {
+            // Each object of the world built ahead, with the lights and caches of the real scene,
+            // compiled with the scene pass's target bound...
+            let inside = false;
+            call.object.traverseAncestors((node) => { if (node === holder) inside = true; });
+            expect(inside).toBe(true);
+            expect(call.camera).toBe(camera);
+            expect(call.scene).toBe(scene);
+            expect(call.target).toBe(host.post.scenePass.renderTarget);
+        });
+        // ...and only for compileAsync's synchronous start: the renderer is left as it was.
+        expect(bound()).toBeNull();
+        open();
+        await compiled;
+        // Compiled, never drawn.
+        expect(renderer.render).not.toHaveBeenCalled();
+        host.dispose();
+    });
+
+    it('builds and compiles nothing ahead on the lightest tier (no scene pass to compile for)', async () => {
+        const { host, compiles } = compilingHost('Minimal');
+        host.setWorld('zen-garden');
+        expect(host.compilesAhead).toBe(false);
+        host.prepareWorld('calm-sleep');
+        await host.compilePrepared();
+        expect(compiles).toHaveLength(0);
+        host.dispose();
+    });
+
+    it('lets a compile in flight finish before disposing what it drops', async () => {
+        const { host, open } = compilingHost();
+        host.setWorld('zen-garden');
+        host.prepareWorld('calm-sleep');
+        const compiled = host.compilePrepared();
+        const dispose = vi.spyOn(host.prepared.objects[0].geometry, 'dispose');
+        host.discardPrepared();
+        expect(dispose).not.toHaveBeenCalled();
+        open();
+        await compiled;
+        expect(dispose).toHaveBeenCalled();
+        host.dispose();
+    });
+
+    it('lets a compile in flight finish before disposing an adopted world it leaves', async () => {
+        const { host, open } = compilingHost();
+        host.setWorld('zen-garden');
+        host.prepareWorld('calm-sleep');
+        const compiled = host.compilePrepared();
+        host.setWorld('calm-sleep');
+        const backdrop = host.root.children[0];
+        const dispose = vi.spyOn(backdrop.geometry, 'dispose');
+        host.setWorld('ocean-breath');
+        // Off the screen at once; disposed only once the compile is done with it.
+        expect(host.root.children).not.toContain(backdrop);
+        expect(dispose).not.toHaveBeenCalled();
+        open();
+        await compiled;
+        expect(dispose).toHaveBeenCalled();
+        host.dispose();
+    });
+
+    it('disposes everything at once when it is disposed itself, compile or not (its renderer goes next)', () => {
+        const { host } = compilingHost();
+        host.setWorld('zen-garden');
+        host.prepareWorld('calm-sleep');
+        host.compilePrepared();
+        const ahead = vi.spyOn(host.prepared.objects[0].geometry, 'dispose');
+        host.dispose();
+        expect(ahead).toHaveBeenCalled();
+        expect(host.prepared).toBeNull();
+    });
+
+    it('carries on when compiling ahead fails: the world still shows, compiled as it draws', async () => {
+        const { host, renderer } = compilingHost();
+        host.setWorld('zen-garden');
+        host.prepareWorld('calm-sleep');
+        renderer.compileAsync = vi.fn(() => Promise.reject(new Error('no pipeline')));
+        await host.compilePrepared();
+        expect(console.warn).toHaveBeenCalled();
+        expect(host.setWorld('calm-sleep')).toBe('calm-sleep');
+        host.dispose();
+    });
+});
+
 describe('breathing world moods', () => {
     const cases = BREATH_WORLDS.flatMap((world) => BREATH_WORLD_MOODS[world.id]
         .map((mood, index) => [world.id, mood.id, index]));

@@ -58,6 +58,10 @@ beforeEach(async () => {
             constructor() {
                 this.worldId = null;
                 this.renders = 0;
+                this.compilesAhead = true;
+                this.prepareWorld = vi.fn(() => true);
+                this.compilePrepared = vi.fn(() => Promise.resolve());
+                this.discardPrepared = vi.fn();
                 hosts.push(this);
             }
 
@@ -185,5 +189,97 @@ describe('breath stage', () => {
         stage.dispose();
         expect(frames.size).toBe(0);
         expect(doc.listenerCount('visibilitychange')).toBe(0);
+    });
+});
+
+describe('breath stage, the next world built ahead', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    async function onScreen(id = 'zen-garden') {
+        const stage = new BreathStage(looseNode());
+        stage.setWorld(id);
+        const starting = stage.start();
+        await vi.advanceTimersByTimeAsync(100);
+        await starting;
+        return stage;
+    }
+
+    it('builds the next world once the one on screen has settled, and a moment more', async () => {
+        const stage = await onScreen();
+        const preparing = stage.prepareNext('calm-sleep');
+        await vi.advanceTimersByTimeAsync(1900);
+        expect(hosts[0].prepareWorld).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(200);
+        await preparing;
+        expect(hosts[0].prepareWorld).toHaveBeenCalledWith('calm-sleep');
+        expect(hosts[0].compilePrepared).toHaveBeenCalledOnce();
+        // What is on screen is untouched.
+        expect(hosts[0].worldId).toBe('zen-garden');
+        stage.dispose();
+    });
+
+    it('waits for a stage change in progress before building ahead', async () => {
+        const stage = await onScreen();
+        // A stage change: a 420 ms dip, then its pipelines settle (and only then is it ready).
+        stage.setWorld('coherence');
+        const preparing = stage.prepareNext('calm-sleep');
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(hosts[0].worldId).toBe('coherence');
+        expect(hosts[0].prepareWorld).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(500);
+        await preparing;
+        expect(hosts[0].prepareWorld).toHaveBeenCalledWith('calm-sleep');
+        stage.dispose();
+    });
+
+    it('serves only the latest request', async () => {
+        const stage = await onScreen();
+        stage.prepareNext('calm-sleep');
+        await vi.advanceTimersByTimeAsync(1000);
+        const preparing = stage.prepareNext('ocean-breath');
+        await vi.advanceTimersByTimeAsync(4000);
+        await preparing;
+        expect(hosts[0].prepareWorld.mock.calls).toEqual([['ocean-breath']]);
+        stage.dispose();
+    });
+
+    it('drops what it built ahead when nothing comes next', async () => {
+        const stage = await onScreen();
+        await stage.prepareNext(null);
+        expect(hosts[0].discardPrepared).toHaveBeenCalledOnce();
+        expect(hosts[0].prepareWorld).not.toHaveBeenCalled();
+        stage.dispose();
+    });
+
+    it('builds nothing ahead on WebGL2, where compiling would stall what is on screen', async () => {
+        webgpu = false;
+        const stage = await onScreen();
+        const preparing = stage.prepareNext('calm-sleep');
+        await vi.advanceTimersByTimeAsync(5000);
+        await preparing;
+        expect(stage.backend).toBe('webgl2');
+        expect(hosts[0].prepareWorld).not.toHaveBeenCalled();
+        stage.dispose();
+    });
+
+    it('builds nothing ahead on a tier that cannot compile ahead', async () => {
+        const stage = await onScreen();
+        hosts[0].compilesAhead = false;
+        const preparing = stage.prepareNext('calm-sleep');
+        await vi.advanceTimersByTimeAsync(3000);
+        await preparing;
+        expect(hosts[0].prepareWorld).not.toHaveBeenCalled();
+        stage.dispose();
+    });
+
+    it('builds nothing once disposed', async () => {
+        const stage = await onScreen();
+        const preparing = stage.prepareNext('calm-sleep');
+        await vi.advanceTimersByTimeAsync(500);
+        stage.dispose();
+        await vi.advanceTimersByTimeAsync(3000);
+        await preparing;
+        expect(hosts[0].prepareWorld).not.toHaveBeenCalled();
     });
 });

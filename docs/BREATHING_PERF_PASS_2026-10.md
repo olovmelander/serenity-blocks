@@ -9,7 +9,8 @@ figure** (ADR-0016): the pass changes code, and proves that the pictures did not
 pass on the reference renderer: every mood, empty and full lungs, another moment, the phone tier,
 Minimal and the WebGL2 backend (max abs diff 0 over 120 frames, plus ten frames with a meteor
 crossing; see Verification). The guide's own CSS changed only in what is painted where nobody can
-see it.
+see it. One later change does alter a picture, on purpose: Ocean Tide's turn ashore (its own
+follow-up, at the end).
 
 ## What changed
 
@@ -57,6 +58,55 @@ its pipelines all after the countdown, behind the CSS orb (seconds, on a first c
 - **The stage's code is fetched ahead** (`BreathingGuide.preloadStage()`, no GPU work) when the
   Breathing tab is shown and when a session's preparation screen opens. A failed fetch is no
   longer cached forever: the next start tries again.
+
+### …and change worlds without compiling (follow-up)
+
+A session moves through several worlds (Base: the forest, then round after round the storm, the
+cosmos and coherence; First and Elixir change at every stage). Each stage change used to build the
+next world and compile its shaders behind the dip, on the CSS orb, for as long as the driver took.
+Now the next stage's world is ready before the stage changes:
+
+- **Built and compiled ahead.** Each stage asks for the next one's world:
+  `BreathworkSessionManager._runPhase()` → `BreathingGuide.prepareNext(world)` →
+  `BreathStage.prepareNext()`. Two seconds after the world on screen has settled,
+  `BreathWorldHost.prepareWorld()` builds the next world off screen (its mood and visit seed picked
+  as a visit would pick them, nothing on screen touched) and `compilePrepared()` compiles it while
+  frames keep drawing. The stage change's `setWorld()` adopts those very objects: nothing is built
+  again, and the world is back as the dip ends. What was built ahead is dropped when the practice
+  ends or the plan changes, and disposed only once a compile in flight is done with it.
+- **Compiled for the scene pass's own context.** three r186 keys a material's shader build by its
+  render context (the scene pass draws one call deep, inside the lens's pipeline) and builds it
+  after `compileAsync`'s first await, reading whatever target is bound by then. A plain
+  `compileAsync` built every shader for another context, and the stage change built and compiled
+  them all again (the pipeline instrument showed the same material's fragment shader made twice,
+  its functions in another order). The host compiles through the Odyssey warm-up's
+  `compileGroupUnderLiveLoop` (`rendering/odyssey/warmup/post-target-compile.js`, pinned by its
+  contract tests), which compiles in exactly that context while live frames see their own.
+- **The lens no longer rebuilds for light shafts.** A world with shafts (Ancient Forest, Electric
+  Storm) used to swap the lens's output graph, which made the shaft passes, the output quad
+  (synchronously) and the bloom passes again at every change into or out of it: 14 pipelines. The
+  shaft passes are now in the one graph from the start and simply stop rendering while a world has
+  none (`RTTNode.autoUpdate`); their last image is added at strength 0, exactly nothing, for one
+  texture read. They render once on the first frame, so their two pipelines are made behind the
+  first dip with the rest of the lens's. A world change is uniforms only.
+- **Where it does not apply.** The WebGL2 backend compiles synchronously (building ahead would
+  stall the world on screen), and the lightest tier draws through three's frame-buffer target,
+  which those helpers do not cover: both change worlds as before.
+
+From the stage change's request to the world back on screen, in the headless check (the shipped
+guide and stage on SwiftShader WebGPU, High; timings are functional evidence only, ADR-0016):
+
+| Stage change | Cold | Built ahead |
+| --- | ---: | ---: |
+| Ocean Tide → Moonlit Waters | 1,239 ms, 3 pipelines made at the change | 591 ms, none |
+| Ocean Tide → Ancient Forest (shafts on) | 1,467 ms, 9 (23 before the lens stopped rebuilding) | 500 ms, none |
+
+What is left is the dip itself (420 ms) and three settle frames. Building ahead took ~3.3 s of the
+stage before; the world on screen kept drawing meanwhile (worst frame gap 133 ms, against 83 ms at
+rest, on the software renderer). Every world built ahead and adopted renders exactly as one built
+cold: every mood on High and every world on Low and Minimal, 72 frames, max abs diff 0. With the
+lens's one graph the full 120-frame set and the ten meteor frames still match the commit before
+this pass.
 
 ### The frame loop makes no garbage
 
@@ -170,12 +220,63 @@ starts first, preload); `hale-session-practice.test.js` (`prepareSession`); the 
 warnings), boundaries, release gates, the build and its boot closure, IP strings, the Pages
 artifact and the perf budgets.
 
+## Follow-up: Ocean Tide turns ashore in one motion (a change of look, on purpose)
+
+The owner found Ocean Tide's turn from the out-breath into the in-breath "a bit hacky": the water
+should feel smooth and connected all the time. Unlike everything above, this changes the picture,
+on purpose, and only Ocean Tide's.
+
+**What was wrong.** On the first frame of the in-breath three things stepped at once. The bore (the
+incoming wave's white water) jumped from its own path onto the swash front, and the out-breath
+look (the wave's hump and lit face, its uneven peaks, the glassy film and stranded bubbles on the
+sand) began to switch through a first-order ease, which sets off at full speed when its target
+steps. The picture popped, then went on changing for half a second while the water itself stood
+still at its reversal.
+
+**What changed** (`worlds/ocean.js`; the swash's per-frame state is now `createSwash()`):
+
+- The incoming wave comes to rest on the very line where the backwash stops (the front at empty
+  lungs, its lobes and all), and glides onto the front as the in-breath begins: the uprush carries
+  it on from where it is. Late in the out-breath it runs a few pixels from its old path, its shape
+  easing into the waterline's.
+- The out-breath look gives way over the first third of the in-breath (`outFor`), as the uprush
+  gathers, not in the half second after the turn.
+- What the breath still steps glides (`glide`: critically damped, it starts from rest), so nothing
+  sets off at full speed. The white water meets itself at every turn of every pattern: the natural
+  pace of the rest stages (4·1·6·1) used to dim it through the pause on empty lungs and whiten it
+  again at the turn.
+- A fresh world starts where the breath is: nothing glides in at the start of a practice.
+
+Mean change from one frame to the next (15 fps), from the last out-breath frame to the first
+in-breath frame:
+
+| | Whole frame | Near the shore |
+| --- | --- | --- |
+| Before | 0.58 → **2.16** | 0.94 → **4.15** |
+| Now | 0.58 → 0.53, lowest 0.37 a third of a second on | 0.93 → 0.80, lowest 0.45 |
+
+Motion now eases into the reversal and out of it, with one low point where the water turns. The
+turn into the out-breath is unchanged (within 0.01), and 4·1·6·1 has no step either.
+
+**Verification.** The real stage stepped at 30 Hz on SwiftShader WebGPU (High, 640 × 360, the
+first mood, visit seed 0.5) and captured at 15 fps across both turns of 4·0·4·0 and 4·1·6·1, with no
+console errors; moving the swash into `createSwash()` left all 96 frames pixel-identical. Frames
+differ from before from the second quarter of the out-breath to a third into the in-breath, and
+by under 0.15 on average elsewhere (the white water's glide). `breath-ocean-swash.test.js` (new)
+steps the swash at 60 Hz through 4·0·4·0, 4·0·6·0 and 4·1·6·1: no value steps more than 0.05 in a
+frame or changes pace by more than 0.015 (the old swash's eases kicked by 0.05, its bore jumped by
+1); the bore moves out to the break only once its white water is spent (under 0.025, as before);
+the out-breath look changes slowest in the in-breath's first tenth; and a fresh world's first
+frame is a pinned frame's.
+
 ## Not measured, and open
 
 - **Frame time on hardware.** The paint count and the allocations removed are facts about the
   code; what they buy in milliseconds on the integrated GPU or a phone is unmeasured (ADR-0016).
-- **The next world of a session** still compiles at its stage change (behind the dip). It could
-  compile during the stage before it, into the scene pass's own target; not done here.
+- **Building ahead on hardware.** The next world compiles on the driver's workers while the world
+  on screen draws; whether that costs the world on screen a frame on the integrated GPU or a phone
+  is unmeasured. On the WebGL2 backend and the lightest tier a session still compiles its next
+  world at the stage change, behind the dip.
 - **Display-rate tiers on high-refresh screens** (High and above draw at 120–165 Hz there).
   A 60 Hz cap would roughly halve their GPU work for slow breathing motion, but it changes the
   smoothness the owner asked to keep: the owner's call.

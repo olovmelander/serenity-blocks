@@ -110,6 +110,8 @@ export class BreathingGuide {
         this.sessionId = null;
         this.stage = null;
         this.stageToken = 0;
+        /** The world a session moves to next, which the stage builds ahead (prepareNext). */
+        this.nextTechnique = null;
         this.timers = new Set();
         this._isPaused = false;
         this._hiddenAt = null;
@@ -532,6 +534,7 @@ export class BreathingGuide {
             stage.setSessionPhase(this.sessionPhase);
             stage.setWorld(this.currentTechnique);
             if (!this._isPaused) stage.start().catch((error) => this._stageFailed(error, stage));
+            if (this.nextTechnique) this._prepareNextOn(stage);
         };
         if (this.stage) {
             begin(this.stage);
@@ -581,6 +584,9 @@ export class BreathingGuide {
         this.root.classList.add('is-leaving');
         this._closeConfirm();
         this._hideChapter();
+        // No next stage now: drop the world built ahead for it.
+        this.nextTechnique = null;
+        if (this.stage) this._prepareNextOn(this.stage);
         this.stage?.stop();
         this._later(() => {
             this.root.hidden = true;
@@ -628,6 +634,24 @@ export class BreathingGuide {
             this.stage = stage;
             warm(stage);
         }).catch(() => { /* the practice will try again, and fall back to the CSS guide */ });
+    }
+
+    /**
+     * The world a Hale session moves to next: the stage builds and compiles it while this one
+     * breathes (BreathStage.prepareNext), so the stage change shows it at the end of the dip
+     * instead of on the CSS orb while it compiles. null drops it.
+     * @param {string|null} worldId
+     */
+    prepareNext(worldId) {
+        // Only while a practice runs: stop() forgets it, so a later practice never inherits it.
+        this.nextTechnique = this.isActive && worldId && this.techniques[worldId] ? worldId : null;
+        if (this.isActive && !this._veiled && this.stage) this._prepareNextOn(this.stage);
+    }
+
+    _prepareNextOn(stage) {
+        Promise.resolve(stage.prepareNext?.(this.nextTechnique)).catch(() => {
+            // Only a head start: the stage change still builds and compiles the world itself.
+        });
     }
 
     toggle() {

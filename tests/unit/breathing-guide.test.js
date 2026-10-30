@@ -70,6 +70,7 @@ beforeEach(async () => {
                 this.setWorld = vi.fn(() => Promise.resolve());
                 this.start = vi.fn(() => Promise.resolve());
                 this.prepare = vi.fn(() => Promise.resolve());
+                this.prepareNext = vi.fn(() => Promise.resolve());
                 stages.push(this);
             }
         },
@@ -349,6 +350,39 @@ describe('breathing guide and its world', () => {
         vi.advanceTimersByTime(60000);
         expect(stages[0].dispose).toHaveBeenCalledOnce();
         expect(guide.stage).toBeNull();
+    });
+
+    it('hands a session\'s next world to its stage, and drops it when the practice ends', async () => {
+        guide.setTechnique('zen-garden');
+        guide.start();
+        await settle();
+        const [stage] = stages;
+        guide.prepareNext('calm-sleep');
+        expect(stage.prepareNext).toHaveBeenLastCalledWith('calm-sleep');
+        guide.prepareNext('no-such-world');
+        expect(stage.prepareNext).toHaveBeenLastCalledWith(null);
+        guide.prepareNext('calm-sleep');
+        guide.stop();
+        expect(stage.prepareNext).toHaveBeenLastCalledWith(null);
+        expect(guide.nextTechnique).toBeNull();
+    });
+
+    it('keeps no next world while no practice runs', async () => {
+        guide.prepareNext('calm-sleep');
+        expect(guide.nextTechnique).toBeNull();
+        guide.setTechnique('zen-garden');
+        guide.start();
+        await settle();
+        expect(stages[0].prepareNext).not.toHaveBeenCalled();
+    });
+
+    it('gives a stage that arrives late the next world asked for meanwhile', async () => {
+        guide.setTechnique('zen-garden');
+        guide.start();
+        guide.prepareNext('calm-sleep');
+        expect(stages).toHaveLength(0);
+        await settle();
+        expect(stages[0].prepareNext).toHaveBeenCalledWith('calm-sleep');
     });
 
     it('gets a world ready behind the closed guide, and opens on that stage', async () => {
