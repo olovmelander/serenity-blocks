@@ -25,9 +25,10 @@ import {
     vec3, vec4,
 } from 'three/tsl';
 import {
-    DEG, FLOW, FLOW_SPEED, TAU, WAVE, bakeWaterNoise,
+    DEG, FLOW, FLOW_SPEED, TAU, WAVE,
 } from './waves-core.js';
 import { HOURS, HOUR_COLOURS } from './waves-hours.js';
+import { sessionWaterNoise } from './waves-bakes.js';
 
 /**
  * The sun: degrees to the left of the line the eye looks down, and above the horizon at golden
@@ -47,7 +48,8 @@ export const DEEP = 15;
 
 /** The water's noise field as a texture (see bakeWaterNoise). */
 export function createWaterNoise(size) {
-    const map = new THREE.DataTexture(bakeWaterNoise(size), size, size, THREE.RGBAFormat);
+    // (kept for the session: waves-bakes.js)
+    const map = new THREE.DataTexture(sessionWaterNoise(size), size, size, THREE.RGBAFormat);
     map.wrapS = THREE.RepeatWrapping;
     map.wrapT = THREE.RepeatWrapping;
     map.magFilter = THREE.LinearFilter;
