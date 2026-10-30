@@ -108,6 +108,22 @@ export function resolveInfinityFollowCameraRow(
 }
 
 /**
+ * How far a blocked Infinity spawn may rise: the empty rows at the top of its shape (T, J and L
+ * point down and I lies on its second row, so at the roof their cells start a row low).
+ * Infinity has no hidden rows above its roof, row 0; rising by these rows is the guideline's
+ * "spawn a row up" and never puts a cell above the roof. Without it a stack two rows under the
+ * roof topped out on three pieces in seven.
+ *
+ * @param {unknown} shape the piece's matrix
+ * @returns {number}
+ */
+export function infinitySpawnLiftRows(shape) {
+    if (!Array.isArray(shape)) return 0;
+    const first = shape.findIndex((row) => Array.isArray(row) && row.some((cell) => cell > 0));
+    return first > 0 ? first : 0;
+}
+
+/**
  * @param {Record<string, any>} gameState
  * @param {number|null} [knownHighestOccupiedRow]
  */

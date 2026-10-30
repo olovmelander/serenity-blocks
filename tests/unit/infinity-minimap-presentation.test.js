@@ -284,6 +284,28 @@ describe('Infinity tower map', () => {
         expect(map.container.parentElement).toBe(null);
     });
 
+    it('draws the roof once the well can grow no more, so a full tower reaches it', () => {
+        // Square cells on a slim map leave spare height above a full well: it read as sky
+        // (room left) over a player who had topped out.
+        const roofCalls = (maxRows) => {
+            const { map, ctx } = mounted();
+            canvasHeight(map, 800);
+            const board = Array.from({ length: 100 }, () => Array(10).fill(null));
+            for (let y = 0; y < 100; y++) board[y][3] = { type: 'T', color: '#ff00aa' };
+            ctx.calls.length = 0;
+            update(map, { board, maxRows, boardVersion: 1 }, 80, 20);
+            return ctx.calls.filter((call) => call.method === 'fillRect' && String(call.fillStyle).startsWith('rgba(255, 156, 171'));
+        };
+        const atCeiling = roofCalls(100);
+        expect(atCeiling).toHaveLength(2);
+        const [, roofLine] = atCeiling;
+        const towerTop = atCeiling[0].args[3]; // the closed-off band ends where row 0 begins
+        expect(towerTop).toBeGreaterThan(0);
+        expect(roofLine.args[1] + roofLine.args[3]).toBe(towerTop);
+        // Below its ceiling the same well can still grow: the space above stays sky.
+        expect(roofCalls(1000)).toHaveLength(0);
+    });
+
     it('stays read-only for local versus: no drag, no look-around, no hint', () => {
         const host = element('div');
         const map = new InfinityMinimap({ container: host, explorable: false });

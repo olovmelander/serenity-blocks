@@ -259,9 +259,25 @@ describe('local versus HUD', () => {
 
         hud.showKnockout(1, 0);
         expect(nodes['p2-section'].children[0].innerHTML).toContain('By Ada');
+        expect(nodes['p2-section'].children[0].innerHTML).toContain('Back next round');
         hud.showKnockout(0, 0);
         expect(nodes['p1-section'].children[0].innerHTML).toContain('Topped out');
         vi.useRealTimers();
+    });
+
+    it('does not promise a next round in Infinity\'s Last Standing, which is one round', () => {
+        const { nodes, doc } = fakeDom(2);
+        const hud = new LocalVersusHud({
+            config: { isInfinityLMS: true, playerSlots: [{ name: 'Ada' }, { name: 'Bot 2', kind: 'bot' }] },
+            numPlayers: 2,
+            colorFor: () => ({ primary: '#3B82F6' }),
+            doc,
+        });
+        hud.showKnockout(1, 0);
+        const card = nodes['p2-section'].children[0].innerHTML;
+        expect(card).toContain('By Ada');
+        expect(card).toContain('Out for this match');
+        expect(card).not.toContain('next round');
     });
 
     it('crowns each winner\'s well with a Victory crest in their colour, then clears it', () => {

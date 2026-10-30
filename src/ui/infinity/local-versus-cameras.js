@@ -41,7 +41,8 @@ export class LocalVersusCameras {
     constructor({ reducedMotion = () => false, clock } = {}) {
         this.reducedMotion = reducedMotion;
         this.clock = clock;
-        /** @type {Array<{camera: InfinityPlayCamera, spawn: number, x: number, rotation: number}>} */
+        /** @type {Array<{camera: InfinityPlayCamera, locks: number, piece: string|null, x: number,
+         *   rotation: number}>} */
         this.boards = [];
     }
 
@@ -55,7 +56,8 @@ export class LocalVersusCameras {
         if (!this.boards[index]) {
             this.boards[index] = {
                 camera: new InfinityPlayCamera({ reducedMotion: this.reducedMotion, clock: this.clock }),
-                spawn: NaN,
+                locks: 0,
+                piece: null,
                 x: NaN,
                 rotation: NaN,
             };
@@ -116,6 +118,8 @@ export class LocalVersusCameras {
      */
     handle(kind, index, scene, state, detail) {
         const entry = this._board(index);
+        // Every lock ends the piece in hand: the next one seen is a new piece.
+        if (kind === 'lock') entry.locks += 1;
         if (kind === 'settled') {
             entry.camera.onCascadeComplete();
             return;
@@ -159,17 +163,19 @@ export class LocalVersusCameras {
     }
 
     /**
-     * The piece in hand moved or turned since the last look: that is the player's input. Pieces
-     * come from a pool (the next spawn can be the same object, put back at the spawn column), so
-     * a piece is known by its spawn count, not by identity. @private
+     * The piece in hand moved or turned since the last look: that is the player's input.
+     * A piece is known by this board's lock count and its spawn time, not by identity or
+     * piecesPlaced: the pool can hand the next spawn back as the same object at the spawn
+     * column, and spawnPiece syncs the boards (its draw callback) before it counts the spawn.
+     * @private
      */
     _watchInput(entry, state) {
         const piece = state.currentPiece;
-        const spawn = piece ? state.piecesPlaced : NaN;
-        if (piece && spawn === entry.spawn && (piece.x !== entry.x || piece.rotation !== entry.rotation)) {
+        const key = piece ? `${entry.locks}|${state.pieceSpawnTime}` : null;
+        if (piece && key === entry.piece && (piece.x !== entry.x || piece.rotation !== entry.rotation)) {
             entry.camera.onPlayerInput();
         }
-        entry.spawn = spawn;
+        entry.piece = key;
         entry.x = piece ? piece.x : NaN;
         entry.rotation = piece ? piece.rotation : NaN;
     }
