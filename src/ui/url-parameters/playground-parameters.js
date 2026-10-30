@@ -271,6 +271,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'antialias',
+        category: 'Playground',
+        scope: 'playground.html (all effects)',
+        description: 'Turn the playground renderer\'s MSAA off, so a pass() scene draws single-sampled as a '
+            + 'surface built without antialias (the breathing stage) does.',
+        values: '0 disables MSAA; any other value keeps it.',
+        defaultValue: 'On (4x MSAA).',
+        example: 'antialias=0',
+        notes: 'Use on playground.html. scripts/breathing-gpu-bench.mjs measures with antialias=0.',
+        sources: [
+            'src/playground/main.js',
+        ],
+    },
+    {
         name: 'az',
         category: 'Playground',
         scope: 'playground.html — black-hole',
@@ -2954,6 +2968,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'maxFps',
+        category: 'Playground',
+        scope: 'playground.html (all effects)',
+        description: 'Draw at most this many frames a second (loop ticks in between are skipped, as a frame '
+            + 'cap does).',
+        values: 'A positive number of frames a second.',
+        defaultValue: 'Uncapped (every display frame).',
+        example: 'maxFps=60',
+        notes: 'Use on playground.html, for frame-cap measurements.',
+        sources: [
+            'src/playground/main.js',
+        ],
+    },
+    {
         name: 'meteor',
         category: 'Playground',
         scope: 'playground.html — wolfhour',
@@ -4709,6 +4737,21 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/astral-weave.effect.js',
+        ],
+    },
+    {
+        name: 'stage',
+        category: 'Playground',
+        scope: 'playground.html — breathing',
+        description: 'Size the drawing buffer as the breathing stage does (its tier\'s pixel ratio and '
+            + 'pixel budget), not the playground\'s own.',
+        values: '1 enables.',
+        defaultValue: 'The playground\'s drawing buffer.',
+        example: 'stage=1',
+        notes: 'Use on playground.html with effect=breathing; pair with antialias=0 to measure the stage as '
+            + 'it ships.',
+        sources: [
+            'src/playground/effects/breathing.effect.js',
         ],
     },
     {

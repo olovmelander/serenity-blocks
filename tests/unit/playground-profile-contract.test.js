@@ -25,10 +25,18 @@ describe('playground profiling contract', () => {
         );
         expect(playgroundSource).toContain('if (profileEnabled) resetProfile();');
         expect(playgroundSource).toContain(
-            'new THREE.WebGPURenderer({ antialias: true, forceWebGL, trackTimestamp })',
+            'new THREE.WebGPURenderer({ antialias, forceWebGL, trackTimestamp })',
         );
         expect(playgroundSource).toContain("renderer.resolveTimestampsAsync('render')");
         expect(playgroundSource).toContain('profile: {');
         expect(playgroundSource).toContain('snapshot: profileSnapshot');
+    });
+
+    it('keeps MSAA on unless a measurement asks for the renderer a surface ships with', () => {
+        // A pass() scene takes the renderer's sample count: antialias=0 measures a stage built
+        // with antialias: false as it ships; every other session keeps the 4x default.
+        expect(playgroundReadme).toContain('`antialias=0`');
+        expect(playgroundSource).toContain("const antialias = params.get('antialias') !== '0';");
+        expect(playgroundReadme).toContain('`maxFps=<n>`');
     });
 });

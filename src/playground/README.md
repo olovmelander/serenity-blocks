@@ -24,6 +24,8 @@ npm run dev:playground        # opens /playground.html
 | `forceWebGL=1` | force the WebGL2 backend instead of WebGPU |
 | `trackTimestamp=1` | opt into GPU timestamp queries for measured capture sessions (active with `profile=1`) |
 | `profile=1` | collect a bounded 1,200-frame CPU/frame/GPU window through `window.__PLAYGROUND__.profile` |
+| `antialias=0` | build the renderer without MSAA. A `pass()` scene node takes the renderer's sample count, so a surface that ships with `antialias: false` (the breathing stage) is only measured as it ships with this; the default is 4× |
+| `maxFps=<n>` | draw at most n frames a second, skipping loop ticks as a frame cap does (e.g. GPU time and power at 60 Hz against the display's rate) |
 | `ref=<url>` | reference image to overlay, e.g. `/playground-refs/target.png` |
 | `refMode=overlay\|split\|side` | how the reference is shown |
 | `refOpacity=<0..1>` | reference opacity in `overlay` mode |
@@ -31,6 +33,10 @@ npm run dev:playground        # opens /playground.html
 | `webgpuInspector=1` | load `webgpu_inspector` (GPU frame/buffer/shader capture) — inspect via `window.webgpuInspector` or the extension/plugin panel |
 
 Example: `/playground.html?effect=nebula-dome&t=8&ref=/playground-refs/sky.png&refMode=split`
+
+The breathing worlds have their own bench on this profiler, `scripts/breathing-gpu-bench.mjs`
+(`effect=breathing&stage=1&antialias=0`: the stage's drawing-buffer size and renderer settings);
+see docs/BREATHING_PERF_PASS_2026-10.md.
 
 For a production-preview measurement, use `profile=1&trackTimestamp=1`, warm the effect,
 then call `window.__PLAYGROUND__.profile.reset()`. After the measurement window, read
