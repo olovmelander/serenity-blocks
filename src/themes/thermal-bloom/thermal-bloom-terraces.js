@@ -165,8 +165,11 @@ export function createTerraces(u, tier, tex) {
         const dist = length(toCam).toVar();
         const V = toCam.div(max(dist, 1e-3)).toVar();
         // Metres along the slope (downhill) and across it: the streaks run down the slope.
-        const along = st.y.mul((STAIR.sMax - STAIR.sMin) * STAIR.length);
-        const across = st.x.sub(0.5).mul(STAIR.halfWidth * 2);
+        // (Vars, written here: as plain nodes they were first written inside the seal fills'
+        // loop, which runs only while a fill lives, so at rest the washes below read 0 for both
+        // and the Stair's stains changed whenever a clear sealed a row.)
+        const along = st.y.mul((STAIR.sMax - STAIR.sMin) * STAIR.length).toVar();
+        const across = st.x.sub(0.5).mul(STAIR.halfWidth * 2).toVar();
         // Runoff fans: wide washes running down several tiers (each 10–30 m across, widening
         // downhill), apricot where the mats live in the outflow, fresh white where it is new.
         const fanX = across.div(along.mul(0.006).add(0.6));
