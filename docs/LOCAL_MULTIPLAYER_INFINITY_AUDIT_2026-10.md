@@ -110,8 +110,10 @@ On release the view jumped and rested between rows.
   settles). It steps on the clock, so the extra syncs in one frame do not move it again.
   main.js's multiplayer physics callbacks send it locks, flashes, cascade completions and hard
   drops (`_infinityCameraEvent`). Moves and turns have no callbacks in local versus, so it watches
-  the piece; pieces come from a pool (the next spawn can be the same object back at the spawn
-  column), so a piece is known by `piecesPlaced`, not identity. Grid growth shifts a held beat;
+  the piece. A piece is known by its board's lock count and its spawn time, not by identity
+  or `piecesPlaced`: pieces come from a pool (the next spawn can be the same object back at the
+  spawn column), and `spawnPiece` syncs the boards before it counts the spawn (see the
+  follow-up below). Grid growth shifts a held beat;
   a new match or round resets every camera. Reduced motion cuts long trips.
 - **The tower map is read-only in local versus** (`InfinityMinimap` `explorable: false`): no
   drag, no pause, no hint, no hover zoom, `pointer-events: none`. Infinity and Odyssey keep their
@@ -143,7 +145,8 @@ the landing beat before it showed.
 `tests/unit/local-versus-cameras.test.js` (13 new) covers:
 - the framing, and coming down to the tower after a clear as well as up;
 - 60 vs 165 Hz, and repeated syncs in one moment;
-- the landing and clear beats, input ending a beat, a pooled respawn not counting as input;
+- the landing and clear beats, input ending a beat, the next spawn (through the real
+  `spawnPiece`) not counting as input;
 - rows added, reduced motion, a view held by hand;
 - the mode stepping every board once a moment and routing beats to the right board.
 
@@ -152,4 +155,64 @@ boundaries, IP strings, TS ratchet (+1 checked file), lint ratchet (512 → 510)
 (LocalMultiplayerMode and main.js line counts lowered). The full suite is green but for the four
 known local-only failures.
 
-Not exercised: gamepad seats, three and four boards, and Electron (blocked on this machine).
+### Follow-up the same day: three and four boards, and a pad seat
+
+Run in Chrome on WebGPU (Electron is blocked on this machine), with simulated standard pads
+(`navigator.getGamepads` replaced in-page, buttons pressed by script).
+
+- **Four boards.** Three bots and an idle human on pad 3, Standard attacks, 85 s at 171 fps,
+  wells grown to 100 rows under garbage. Every bot board held its tower's top 20 % down
+  (median) and moved both ways. A clean 20 s stretch (165 fps) had every frame synced and no
+  board resting between rows. All four maps fit beside their boards and stayed read-only.
+- **Three boards.** The layout fits; the maps stay read-only.
+- **The pad seat found a bug in the merged code** (4592d1ea). Pad 3 steered a vertical I into a
+  shaft (D-pad), hard-dropped it (B), and the view never left home. `onPieceLock` fires while
+  the old piece is still in hand. `spawnPiece` then syncs the boards from its draw callback
+  before `piecesPlaced++`. So the camera saw the new piece, at the spawn column, under the old
+  count, took it for a move and ended the landing beat. The earlier keyboard test passed by
+  luck: the piece respawned at the column the camera had last seen.
+  - The fix: the piece key is the board's lock count (from the lock events) and its
+    `pieceSpawnTime` (set before the sync).
+  - After the fix the same pad drop dove: on the landing in 185–242 ms. A D-pad press inside
+    the hold ended it within a frame, and the view was home ~0.45 s later.
+  - The regression test replays the game's own order through the real `spawnPiece`. It fails
+    on the merged code and passes now.
+
+### Follow-up the same day: do players top out correctly?
+
+Asked by the owner, with "when topped out there seems to be a bit of space in the minimap to the
+top". Each way out was driven in a real 3-4 board match (Chrome, WebGPU) with every elimination
+logged:
+
+| Way out | Before | After |
+|---|---|---|
+| Blocked spawn | Topped out two rows under the roof on T, J and L, three pieces in seven. Their matrices start with an empty row, so at Infinity's spawn row 0 their cells began on row 1 and hit a stack on row 2 ("2 to roof"). This was the space on the map. | A blocked Infinity spawn first rises by its shape's empty top rows (`infinitySpawnLiftRows`; the guideline's "spawn a row up"). No cell goes above the roof. A T over a stack on row 2 now spawns, locks on rows 0-1, and the player is out at "0 to roof". With one row left only a flat I still fits. |
+| Garbage overflow | Correct: out when a burst would lift the stack to row 0; the frag goes to the attacker ("By Bot 1"). | Unchanged |
+| Stack reaches row 0 | Correct (`checkInfinityGameOver`, after pending physics) | Unchanged |
+| The rest of the board | The others play on. The last one standing gets the match end. Deaths and frags are counted once: a blocked spawn calls `handlePlayerDeath` twice, through `endMultiplayerGame` and then `_handleGameOver`, but `_eliminatePlayer` ignores a player who is already out. | Unchanged |
+
+Two more things were wrong:
+
+- **The knock-out card said "Back next round".** Infinity's Last Standing is one round, so the
+  card now says "Out for this match" there.
+- **The map showed space above a full well.** Cells stay square on the slim versus map, so
+  100 rows don't fill its height. The spare height above row 0 read as sky, meaning room to
+  grow, over a player who had topped out. Once a well has reached its ceiling, the map now draws
+  the roof (a coral line on row 0) and closes off the band above it. A topped-out tower visibly
+  reaches the roof; a well below its ceiling keeps its sky.
+
+The bots predict the same lift for their next piece (puzzle-bot-controller `makeSearchState`), so
+a bot two rows under the roof still plans its piece instead of giving up.
+
+A solid roof (no falling cell above row 0) was tried and dropped. The Odyssey benchmark treats a
+final lock partly above the roof as a legal top-out and counts that cell off the board
+(`odyssey-benchmark-authored-construction`), so that rule stays. The lift never puts a cell
+above row 0 by itself.
+
+Tests:
+- `local-multiplayer-infinity`: every piece spawns two rows under the roof, and a player tops
+  out only when none fits (fails on the old `game.js` with T).
+- `local-versus-hud`: no "next round" in Infinity.
+- `infinity-minimap-presentation`: the roof at the ceiling, and sky below it.
+
+Not exercised: a physical pad and Electron (blocked on this machine).

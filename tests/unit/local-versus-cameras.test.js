@@ -3,6 +3,8 @@ import {
 } from 'vitest';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { expandGridIfNeeded } from '../../src/core/infinity-grid.js';
+import { spawnPiece } from '../../src/core/game.js';
+import { piecePool } from '../../src/utils/object-pool.js';
 import { LocalVersusCameras } from '../../src/ui/infinity/local-versus-cameras.js';
 import { LocalMultiplayerMode } from '../../src/core/game-modes/LocalMultiplayerMode.js';
 
@@ -132,24 +134,35 @@ describe('Last Standing play cameras', () => {
         expect(cameras.boards[0].camera.beat).toBe(null);
     });
 
-    it('does not take the next spawn for input, even when the pool hands back the same piece', () => {
+    it('does not take the next spawn for input, in the order the game spawns it', () => {
+        // Found with a pad seat in the real game: a piece steered into the shaft and dropped
+        // lost its landing beat, because spawnPiece syncs the boards (its draw callback) before
+        // it counts the spawn, and the pool can hand back the same object at the spawn column.
         const cameras = new LocalVersusCameras();
         const s = scene(36);
         const state = player();
-        const piece = {
-            x: 0, y: 30, rotation: 1, shape: [[1], [1], [1], [1]],
-        };
-        state.currentPiece = piece;
-        state.piecesPlaced = 7;
+        state.nextPieces = ['I', 'O', 'T', 'L'];
+        state.simTimeMs = 1000;
+        spawnPiece(state, null, vi.fn());
+        const piece = state.currentPiece;
         cameras.step(0, s, state, 0);
-        // It locks out of sight; the next spawn reuses the object at the spawn column.
-        cameras.handle('lock', 0, s, state, { y: 80, shape: piece.shape });
-        Object.assign(piece, { x: 4, y: 34, rotation: 0 });
-        state.piecesPlaced = 8;
+        piece.x = 0; // steered into the shaft over a few frames
         cameras.step(0, s, state, 16);
+        // It hard-drops and locks out of sight, as lockPiece does: the event, then no piece.
+        cameras.handle('input', 0, s, state);
+        cameras.handle('lock', 0, s, state, { y: 80, shape: [[1], [1], [1], [1]] });
+        state.currentPiece = null;
+        piecePool.release(piece);
+        state.simTimeMs += 16;
+        spawnPiece(state, () => cameras.step(0, s, state, 20), vi.fn());
+        expect(state.currentPiece.x).not.toBe(0);
         expect(cameras.boards[0].camera.beat?.kind).toBe('landing');
-        run(cameras, s, state, { start: 32, ms: 450 }); // arrived, holding: the respawn did not end the beat
+        run(cameras, s, state, { start: 32, ms: 450 }); // arrived, holding: the respawn did not end it
         expect(top(s)).toBeGreaterThan(62);
+        // Moving the new piece still ends the beat.
+        state.currentPiece.x -= 1;
+        cameras.step(0, s, state, 500);
+        expect(cameras.boards[0].camera.beat).toBe(null);
     });
 
     it('moves a held beat down with rows added above the board', () => {

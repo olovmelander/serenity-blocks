@@ -8,7 +8,8 @@
  * it grows the map zooms out and the tower narrows, centred, keeping its true shape.
  * The rows the board shows are framed, the summit is marked, and a slim rail along
  * the side tracks the climb toward the ceiling with its milestones; in Infinity, beads on
- * the tower's edge mark where its big moments happened (setMarks). Drag (or touch) the
+ * the tower's edge mark where its big moments happened (setMarks). Once the well has grown to
+ * its ceiling, the roof (row 0) is drawn and the map above it closed off. Drag (or touch) the
  * map to look around the tower: the mode pauses and moves its camera
  * ('minimap-exploration-start', 'minimap-jump', 'minimap-exploration-end'). Local versus
  * shows its maps read-only (explorable: false): looking around there paused one player's
@@ -395,6 +396,16 @@ export class InfinityMinimap {
         if (topRow < rowsTotal) {
             ctx.fillStyle = 'rgba(255, 209, 128, 0.95)';
             ctx.fillRect(x0, Math.max(y0, yOf(topRow) - line), drawW, line);
+        }
+
+        // The roof. Once the well can grow no more, nothing is above row 0: the map's spare
+        // height there is not sky (room to grow) but outside, so it is closed off in the
+        // danger coral and the roof drawn, and a tower that tops out visibly reaches it.
+        if (firstRow === 0 && rowsTotal >= maxRows) {
+            ctx.fillStyle = 'rgba(255, 156, 171, 0.14)';
+            ctx.fillRect(x0, 0, drawW, y0);
+            ctx.fillStyle = 'rgba(255, 156, 171, 0.95)';
+            ctx.fillRect(x0, Math.max(0, y0 - line), drawW, line);
         }
 
         // The tower's memory: a bead on its right edge where each big moment happened.
