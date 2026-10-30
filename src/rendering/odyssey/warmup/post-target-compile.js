@@ -430,6 +430,77 @@ export function beginDeferredSideCapture(renderer) {
  */
 export const DEFAULT_COMPILE_CONCURRENCY = 6;
 
+/**
+ * three r187 keeps ONE precompile state per renderer (`_precompilationState`, set by
+ * `_beginPreCompile`, read and cleared by `_finishPreCompile`) while a compileAsync drains its
+ * queue, and the drain awaits between them. Two compileAsync calls draining at once on one renderer
+ * finish each other's items: three throws ("Cannot destructure property 'useFrameBufferTarget' of
+ * 'this._precompilationState' as it is null") and leaves the renderer half switched (the call depth,
+ * the render context, the target). Measured 2026-10-30 in the real game: every Odyssey prewarm
+ * failed that way and the board's canvas stopped presenting after the start. r187 also compiles up
+ * to 16 of one call's pipelines at once itself (#34816), the parallelism the fan-out was for.
+ *
+ * So on r187 a group is ONE compileAsync, and calls on one renderer take turns.
+ * @param {object} renderer
+ * @returns {boolean}
+ */
+export function drainsShareRendererState(renderer) {
+    return typeof renderer?._beginPreCompile === 'function';
+}
+
+/** renderer → the settling of its last compile turn */
+const compileTurns = new WeakMap();
+
+/**
+ * Run `launch` (which starts ONE compileAsync and returns its promise) once every earlier turn on
+ * `renderer` has settled. The launch's synchronous part runs at the start of its turn, so a binding
+ * made for the prologue only (launchCompileInScenePassPrologue) still frames it.
+ * @template T
+ * @param {object} renderer
+ * @param {() => Promise<T>} launch
+ * @returns {Promise<T>}
+ */
+export function takeCompileTurn(renderer, launch) {
+    const previous = compileTurns.get(renderer) ?? Promise.resolve();
+    const turn = previous.then(() => launch());
+    compileTurns.set(renderer, turn.then(() => {}, () => {}));
+    return turn;
+}
+
+const isRenderable = (node) => Boolean(node && (node.isMesh || node.isPoints || node.isSprite || node.isLine));
+
+/** Whether a light under `root` would enter a render list (chapter lights are virtual: hidden). */
+function hasVisibleLight(root) {
+    let found = false;
+    root.traverse((node) => {
+        if (node.isLight && node.visible !== false) found = true;
+    });
+    return found;
+}
+
+/**
+ * Show the hidden CONTAINERS under `root` (not its renderables, not its lights) for the synchronous
+ * part of `fn` only, and put them back before it returns.
+ * @template T
+ * @param {object} root
+ * @param {() => T} fn
+ * @returns {T}
+ */
+function withHiddenContainersShown(root, fn) {
+    const shown = [];
+    root.traverse((node) => {
+        if (node.visible === false && !node.isLight && !isRenderable(node)) {
+            shown.push(node);
+            node.visible = true;
+        }
+    });
+    try {
+        return fn();
+    } finally {
+        shown.forEach((node) => { node.visible = false; });
+    }
+}
+
 /** three's `DoubleSide` constant (kept numeric: this module has no three import on purpose). */
 const DOUBLE_SIDE = 2;
 
@@ -485,8 +556,21 @@ export async function compileObjectsFannedOut(
     const launch = typeof hooks.aroundCall === 'function'
         ? (object) => hooks.aroundCall(object, () => renderer.compileAsync(object, camera, scene))
         : (object) => renderer.compileAsync(object, camera, scene);
+    const shared = drainsShareRendererState(renderer);
+    // (A pseudo-group, such as the board's presentation residue over the scene's own children, is
+    // not an Object3D three can project: it keeps one call per object, in turns.)
+    if (shared && group?.isObject3D === true && typeof group.traverse === 'function' && !hasVisibleLight(group)) {
+        // three r187: the whole group in one call, in its turn (see drainsShareRendererState). A call
+        // per object compiled every visible renderable whatever its containers' visibility, so the
+        // hidden containers are shown for the call's synchronous prologue (the live path's prologue
+        // reveals the renderables too). A visible light under the group would enter the render list
+        // twice (projected, and from the scene): such a group keeps one call per object, in turns.
+        await takeCompileTurn(renderer, () => withHiddenContainersShown(group, () => launch(group)));
+        return 1;
+    }
+    const run = shared ? (object) => takeCompileTurn(renderer, () => launch(object)) : launch;
     if (!group || typeof group.traverse !== 'function') {
-        await launch(group);
+        await run(group);
         return 1;
     }
     const byMaterial = new Map();
@@ -534,7 +618,7 @@ export async function compileObjectsFannedOut(
     if (queue.length === 0) {
         // Nothing renderable under the group (or a group whose children are all hidden):
         // one plain call keeps three's own semantics for whatever is there.
-        await launch(group);
+        await run(group);
         return 1;
     }
     let calls = 0;
@@ -548,7 +632,7 @@ export async function compileObjectsFannedOut(
             for (const [object] of chain) {
                 calls += 1;
                 // eslint-disable-next-line no-await-in-loop
-                await launch(object);
+                await run(object);
             }
         }
     };

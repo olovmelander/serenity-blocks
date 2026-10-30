@@ -922,17 +922,29 @@ class R187Renderer extends R185Renderer {
         this.prologues.push({
             object: object.name, ctx: ctx.id, target: this._renderTarget, mrt: this._mrt,
         });
-        const items = [{
-            object,
+        // Projection as three does it: a hidden node hides its subtree; one item per renderable.
+        const projected = [];
+        const walk = (node) => {
+            if (!node || node.visible === false) return;
+            if (node.isMesh) projected.push(node);
+            (node.children || []).forEach(walk);
+        };
+        walk(object);
+        const items = projected.map((mesh) => ({
+            object: mesh,
             precompilationState: {
                 ...this._precompilationState, useFrameBufferTarget: true, renderTarget: this.getRenderTarget(), mrt: this.getMRT(), renderContext: ctx,
             },
-        }];
+        }));
         this._finishPreCompile();
         for (const item of items) {
             item.precompilationState.item = item;
             // As in r187, the first item begins inside the call (before the caller can restore).
             this._beginPreCompile(item.precompilationState);
+            // getForRenderAsync awaits while the item is begun: a second drain on this renderer
+            // interleaving here finishes this one's state (the r187 hazard).
+            // eslint-disable-next-line no-await-in-loop
+            await Promise.resolve();
             const before = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
             // getForRenderAsync's yield: finish, a frame may run, begin again.
             const active = this._precompilationState;
@@ -949,6 +961,24 @@ class R187Renderer extends R185Renderer {
     }
 }
 
+/** A scene-graph node for the r187 double: `children`, and three's `traverse`. */
+function node(name, children = [], visible = true, extra = {}) {
+    return {
+        name,
+        isObject3D: true,
+        visible,
+        children,
+        ...extra,
+        traverse(fn) {
+            fn(this);
+            this.children.forEach((child) => (child.traverse ? child.traverse(fn) : fn(child)));
+        },
+    };
+}
+const mesh = (name, visible = true) => ({
+    name, isMesh: true, visible, frustumCulled: true, material: { uuid: `m-${name}` },
+});
+
 describe('item 2.11 under three r187\'s drain (each item binds its own state around its build)', () => {
     it('drained builds see the scene pass, and no live frame between or inside them ever draws into it', async () => {
         const r = new R187Renderer();
@@ -958,7 +988,7 @@ describe('item 2.11 under three r187\'s drain (each item binds its own state aro
         const b = {
             name: 'b', isMesh: true, visible: false, frustumCulled: true, material: { uuid: 'mb' },
         };
-        const group = { name: 'ch6', visible: false, traverse(fn) { fn(this); fn(a); fn(b); } };
+        const group = node('ch6', [a, b], false);
         const post = { scenePass: { renderTarget: 'SCENE_RT', getMRT: () => 'SCENE_MRT' } };
         const done = compileGroupUnderLiveLoop(r, post, 'SCENE', 'CAM', group);
         for (let frame = 0; frame < 8; frame += 1) {
@@ -966,7 +996,11 @@ describe('item 2.11 under three r187\'s drain (each item binds its own state aro
             await tick(); // eslint-disable-line no-await-in-loop
         }
         await done;
+        // One call for the group (r187 compiles its pipelines in parallel itself), every hidden
+        // renderable revealed for its prologue.
+        expect(r.prologues.map((x) => x.object)).toEqual(['ch6']);
         expect(r.builds.map((x) => x.object).sort()).toEqual(['a', 'b']);
+        expect([group.visible, a.visible, b.visible]).toEqual([false, false, false]);
         for (const build of r.builds) {
             // The prologue resolves its context after _beginPreCompile raised the depth to 0: the
             // depth patch still makes it the scene pass's.
@@ -986,6 +1020,55 @@ describe('item 2.11 under three r187\'s drain (each item binds its own state aro
         expect(r._callDepth).toBe(-1);
         expect(r.__odysseyLiveCompileReads).toBeUndefined();
         expect(Object.prototype.hasOwnProperty.call(r, '_beginPreCompile')).toBe(false);
+    });
+
+    it('compiles groups that arrive together one after another: drains never share the renderer\'s state', async () => {
+        const r = new R187Renderer();
+        const first = node('ch3', [mesh('lake'), mesh('trees')]);
+        const second = node('ch4', [mesh('peaks')]);
+        const both = Promise.all([
+            compileGroupThroughPost(r, null, 'SCENE', 'CAM', first),
+            compileGroupThroughPost(r, null, 'SCENE', 'CAM', second),
+        ]);
+        await expect(both).resolves.toEqual([true, true]);
+        expect(r.prologues.map((x) => x.object)).toEqual(['ch3', 'ch4']);
+        expect(r.builds.map((x) => x.object)).toEqual(['lake', 'trees', 'peaks']);
+        expect(r._precompilationState).toBeNull();
+        expect(r._callDepth).toBe(-1);
+    });
+
+    it('without turns the same two drains break each other (why the turns exist)', async () => {
+        const r = new R187Renderer();
+        const calls = [r.compileAsync(node('ch3', [mesh('lake'), mesh('trees')])), r.compileAsync(node('ch4', [mesh('peaks')]))];
+        await expect(Promise.all(calls)).rejects.toThrow(TypeError);
+    });
+
+    it('shows hidden containers for the launch only, never hidden renderables or lights', async () => {
+        const r = new R187Renderer();
+        const shelf = node('shelf', [mesh('vase'), mesh('ghost', false)], false);
+        const lamp = { name: 'lamp', isLight: true, visible: false };
+        const group = node('ch5', [shelf, lamp], false);
+        await compileGroupThroughPost(r, null, 'SCENE', 'CAM', group);
+        expect(r.builds.map((x) => x.object)).toEqual(['vase']);
+        expect([group.visible, shelf.visible, lamp.visible]).toEqual([false, false, false]);
+    });
+
+    it('a pseudo-group (not an Object3D: the board presentation residue) keeps one call per object, in turns', async () => {
+        const r = new R187Renderer();
+        const a = mesh('ident');
+        const b = mesh('frame');
+        const residue = { name: 'residue', traverse(fn) { fn(a); fn(b); } };
+        await compileGroupThroughPost(r, null, 'SCENE', 'CAM', residue);
+        expect(r.prologues.map((x) => x.object).sort()).toEqual(['frame', 'ident']);
+        expect(r._precompilationState).toBeNull();
+    });
+
+    it('a group holding a visible light keeps one call per object, in turns', async () => {
+        const r = new R187Renderer();
+        const group = node('rig', [mesh('a'), mesh('b'), { name: 'sun', isLight: true, visible: true }]);
+        await compileGroupThroughPost(r, null, 'SCENE', 'CAM', group);
+        expect(r.prologues.map((x) => x.object).sort()).toEqual(['a', 'b']);
+        expect(r._precompilationState).toBeNull();
     });
 
     it('leaves three\'s own side handling in charge (no side capture is installed)', () => {

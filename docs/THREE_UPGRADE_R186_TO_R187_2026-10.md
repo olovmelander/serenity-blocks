@@ -100,6 +100,67 @@ second r186 capture as the noise floor. Zero console errors on either version.
   a horse.
 - The ACES fit fix (#35110) moves nothing visible: the ACES-toned themes match to a few levels.
 
+**Light re-sweep with both fixes in (2026-10-30, the owner's "light GPU" mode: playground
+`maxFps=30`, capture scale 1, RTX at about 50 °C / 13 W):** 125 surfaces on both versions: the 63
+themes, the 12 breathing worlds and every other playground effect (50: the Odyssey chapter pieces
+from the earth core to chapter 8, the one-world Act II, intro "First Light" (`intro-world`), the
+opening aurora, the logo warp, Infinity's ascent sky, the charm icons). Zero console errors, every
+page ready.
+- Identical: 60 themes, all 12 breathing worlds, 48 of the 50 other effects.
+- Chiral Gold: the reflection change above. Sunfall and `act2-tree-audition`: differ as much between
+  two r186 captures (noise from simulated events). Grainfields: a few pixels.
+- `earth-core-lake`: only its default `variant=split` view differs (3.6 % of pixels): it picks the
+  analytic or the baked lake noise per pixel by `select(positionLocal.x < split, …)` in the fragment
+  stage, and r187 evaluates that split differently. Both real paths (`variant=analytic`,
+  `variant=baked`) are identical on r187, and the game builds the lake with one of them
+  (`noise: 'analytic'` / the baked texture, earth-core.js), never the split: a playground comparison
+  view only.
+
+**Real game, every theme (2026-10-30, light):** the fleet bench on the r187 harness build (both fixes
+in) with the game's own cap, `--target-fps=30 --scale=1 --vsync=1`: per theme a fresh Electron boots
+the app, starts Single Player, loads the theme cold, switches to the anchor and back (the in-play
+switch: async pipelines and the build budget live), and plays two gameplay storms. **63 of 63: no
+error, both loads complete, and no console warning or error** other than Chromium's
+`powerPreference is ignored on Windows` notice (on r186 too). GPU about 50 °C, 5-30 W. Not a
+performance reading (capped, one sample).
+
+**Real game, Odyssey: a third r187 break, found and fixed.** `scripts/odyssey-feel-probe.mjs`
+(`--fps=30 --quality=High`, fresh profile = cold shader cache, dev servers of both trees): start,
+idle, travel, an orb, a chapter jump. On r187 every Odyssey prewarm threw "Cannot destructure property
+'useFrameBufferTarget' of 'this._precompilationState' as it is null", and after the start the
+board's canvas presented nothing. **r187's compileAsync is not re-entrant per renderer:** one
+`_precompilationState` is set while a call drains its queue and the drain awaits with it set, so a
+second call draining at the same time finishes the first's items and leaves the renderer half
+switched. Odyssey ran up to six calls at once (the r185 fan-out for overlapping pipeline compiles)
+and several groups at once. Fix (`post-target-compile.js`): on r187 a group is ONE compileAsync
+(r187 compiles its pipelines 16 at a time itself), its hidden containers shown for the prologue
+(the per-object calls compiled every visible renderable whatever its containers); a pseudo-group or
+a group holding a visible light keeps one call per object; every call on a renderer takes its turn
+(`takeCompileTurn`). Upstream issue candidate.
+
+| Odyssey, real game, cold cache, 30 fps | r186 | r187 before | r187 fixed |
+|---|---:|---:|---:|
+| Console errors | 0 | 15 | 0 |
+| Sync pipeline creations at the start | 11 | 37 | 11 |
+| Pipelines created during travel | 4 | 108 | 1 |
+| Worst frame at the start | 191 ms | 1,072 ms | 239 ms |
+| Board active after | 2.2 s | 2.9 s | 3.4 s |
+| Map presents after the start | yes | no | yes |
+
+Open: the board comes up about a second later on r187 (one cold-cache sample at a 30 fps cap): the
+compiles that overlapped now take turns. To measure at full speed and, if it holds, to win back
+(a drain-only turn, or one call over several groups).
+
+**Real game, boot:** `scripts/boot-smoothness-probe.mjs` (studio ident, intro "First Light", boot warp
+into the menu), both versions: same timeline (shell dismissed 15.0 s, warp handoff 27.4 s), 6 sync
+pipelines each, no console problem; the boot's longest main-thread frame 1,021 ms on r187 against
+1,385 ms on r186 (blocking 327 against 742 ms).
+
+**Real game, breathing:** `scripts/breathing-stage-change-probe.mjs` (Low tier: the stage's own 30 fps
+cap), Hale First Breath and Base, built ahead as shipped, both versions: all 8 stage changes adopt the
+world built ahead and are back in 434-446 ms on both; no sync pipeline at any change on r187 (r186
+made 12 at one).
+
 ## Phase 2 acceptance (open)
 
 - (Done, above.) Real-GPU captures of every theme, r186 build vs r187 build at the same frames (RTX; the playground

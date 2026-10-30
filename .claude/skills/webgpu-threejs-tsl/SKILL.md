@@ -287,6 +287,13 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
   warm-up helpers do), or hold the binding across the await as three's `PassNode.compileAsync` does.
 - `compileAsync` keeps the material side of each queued pass itself (#35016) and compiles up to
   16 pipelines at once (#34816); node builds are shared across call depths (#35014).
+- **Never run two `compileAsync` calls on one renderer at the same time.** r187 keeps one
+  `_precompilationState` per renderer while a call drains its queue, and the drain awaits with it
+  set: a second call's drain finishes the first's items ("Cannot destructure property
+  'useFrameBufferTarget' of 'this._precompilationState' as it is null") and leaves the renderer
+  half switched (Odyssey's six-wide prewarm: every prewarm failed, the map stopped presenting).
+  Compile a group in ONE call (r187 parallelises its pipelines) and queue calls per renderer:
+  `takeCompileTurn` / `compileObjectsFannedOut` in `src/rendering/odyssey/warmup/post-target-compile.js`.
 - An override pass (`scene.overrideMaterial`, the shadow pass) files its render objects under
   five keys, the source material fifth (`renderer._currentSourceMaterial`). Code that looks render
   objects up must add it (see `chainKeysOf` in `src/rendering/async-render-pipelines.js`).
