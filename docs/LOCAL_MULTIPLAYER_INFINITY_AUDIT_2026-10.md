@@ -73,3 +73,83 @@ The configured maximum remains a real roof. Reaching it, overflowing it with gar
 or having no legal spawn space at that maximum can still eliminate a player. The
 existing blocked-spawn rule is retained. Online rules and other local variants are
 covered by regression tests but are not the subject of this audit.
+
+## 2026-10-30: the camera and the tower map
+
+The owner reported that Infinity in local versus "does not work properly with the camera
+alignment" and asked whether the tower map should scroll there.
+
+### What each board's camera did
+
+Measured in the real game (2 bots, Peaceful and Standard attacks, Forest, Chrome at ~166 Hz) by
+sampling every board's `cameraSettings.currentTopRow` against its tower and piece each frame.
+
+| Failure | Measured | Cause |
+|---|---|---|
+| The view only climbed | 0 downward moves in 60 s on either board | `_updatePlayerCamera` moved up when the tower passed 30 % and down only to chase a falling piece; after a clear it never came back down to the tower |
+| The tower sat low | Tower top 30–75 % down the view (median 40–55 %); Infinity holds it at 20 % | The same 30 % rule, against the spawn anchor's 20 %: new pieces appeared inside the view instead of entering from above |
+| A board's camera stood still all match | Player 2's camera did not move in 31 s | It moved only when one of its two thresholds was crossed |
+| Speed tied to the frame rate and to the other players | 8 % of the distance per call | The lerp ran in `_syncBoardScenes`, which every player's physics `draw` also calls, so a camera moved again each time any board drew |
+| Rows cut at the well's edges | The view came to rest between rows (33.85, 23.89) | The lerp stopped wherever its threshold stopped holding |
+| A deep landing or clear never shown, a followed piece left behind | A piece followed down held its bottom at 50 % (its landing out of sight in a deep shaft); after its lock nothing brought the view back | No beats and no home |
+
+### What the tower map did
+
+Pressing a board's map paused that player alone (`playerPaused`) while the others played on:
+pressed for 3 s, Player 2's clock stood still while Player 1 placed three pieces. In Last One
+Standing that is a way never to top out, and anyone holding the mouse could freeze or scroll any
+board, bots included. Every seat plays on keys or a pad, so no player has a hand free for it.
+On release the view jumped and rested between rows.
+
+### Repairs
+
+- **Each board gets Infinity's play camera** (`src/ui/infinity/local-versus-cameras.js`): one
+  `InfinityPlayCamera` per board, the same framing (`playFramingTop`: the tower's top 20 % down,
+  a piece followed down a shaft until its landing shows), the same spring and the same beats
+  (a followed lock, a landing out of sight, a clear out of sight held until its cascade
+  settles). It steps on the clock, so the extra syncs in one frame do not move it again.
+  main.js's multiplayer physics callbacks send it locks, flashes, cascade completions and hard
+  drops (`_infinityCameraEvent`). Moves and turns have no callbacks in local versus, so it watches
+  the piece; pieces come from a pool (the next spawn can be the same object back at the spawn
+  column), so a piece is known by `piecesPlaced`, not identity. Grid growth shifts a held beat;
+  a new match or round resets every camera. Reduced motion cuts long trips.
+- **The tower map is read-only in local versus** (`InfinityMinimap` `explorable: false`): no
+  drag, no pause, no hint, no hover zoom, `pointer-events: none`. Infinity and Odyssey keep their
+  look-around. The exploration handlers, `_updatePlayerCamera` and
+  `_calculateGameplayCameraPosition` are gone (LocalMultiplayerMode 2434 → 2304 lines).
+
+### Verification
+
+In the real game after the change:
+
+- **Framing.** The off-floor board held its tower's top 20 % down (median and 90th
+  percentile). The view moved down as well as up, never came to rest between rows, and stepped at
+  most 0.32 rows a frame.
+- **Events.** Locks, flashes and cascade completions all reached the cameras.
+- **Hard drop down a shaft.** A vertical I hard-dropped 77 rows below the view made a four-line
+  clear. The view was on it within ~0.3 s, held until the cascade settled, and was home by
+  ~1.2 s.
+- **Soft drop down a shaft.** At ~20 rows/s the view followed with the piece's top 41–44 % down
+  (11 rows ahead on screen). It stopped at the floor with the landing in view, held 150 ms on the
+  lock, and was home in ~0.6 s. These are the single-player figures.
+- **Read-only map.** Pressing either map hits the card behind it; both boards' clocks ran on.
+- **New match.** "Play again" started both boards on fresh 44-row wells at the floor, with no
+  beat left over from a 100-row tower.
+- **Console.** Clean but for Chrome's own `powerPreference` notice.
+
+The first hard-drop run found the pooled-piece trap above: the respawn read as a move and ended
+the landing beat before it showed.
+
+`tests/unit/local-versus-cameras.test.js` (13 new) covers:
+- the framing, and coming down to the tower after a clear as well as up;
+- 60 vs 165 Hz, and repeated syncs in one moment;
+- the landing and clear beats, input ending a beat, a pooled respawn not counting as input;
+- rows added, reduced motion, a view held by hand;
+- the mode stepping every board once a moment and routing beats to the right board.
+
+`infinity-minimap-presentation` adds the read-only map. Gates green locally: typecheck,
+boundaries, IP strings, TS ratchet (+1 checked file), lint ratchet (512 → 510), fitness
+(LocalMultiplayerMode and main.js line counts lowered). The full suite is green but for the four
+known local-only failures.
+
+Not exercised: gamepad seats, three and four boards, and Electron (blocked on this machine).

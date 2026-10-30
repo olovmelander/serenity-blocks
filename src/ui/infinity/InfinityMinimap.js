@@ -10,7 +10,9 @@
  * the side tracks the climb toward the ceiling with its milestones; in Infinity, beads on
  * the tower's edge mark where its big moments happened (setMarks). Drag (or touch) the
  * map to look around the tower: the mode pauses and moves its camera
- * ('minimap-exploration-start', 'minimap-jump', 'minimap-exploration-end').
+ * ('minimap-exploration-start', 'minimap-jump', 'minimap-exploration-end'). Local versus
+ * shows its maps read-only (explorable: false): looking around there paused one player's
+ * board while the others played on, and anyone holding the mouse could do it to any board.
  *
  * It redraws only when the board, the camera or its own size changes; the build is
  * kept as a one-pixel-per-cell image that is redrawn only when the board does. While
@@ -65,6 +67,8 @@ export class InfinityMinimap {
      * @param {number} [options.maxRows] the ceiling when the state has none (default 1000)
      * @param {number} [options.width] initial canvas size, until it is measured
      * @param {number} [options.height]
+     * @param {boolean} [options.explorable] drag to look around (default true); false: a
+     *   read-only map
      */
     constructor(options = {}) {
         this.options = {
@@ -73,6 +77,7 @@ export class InfinityMinimap {
             maxRows: options.maxRows || 1000,
             width: options.width || 96,
             height: options.height || 420,
+            explorable: options.explorable !== false,
         };
         this.canvas = null;
         this.ctx = null;
@@ -130,6 +135,12 @@ export class InfinityMinimap {
         this.canvas.setAttribute('aria-label', 'The tower: the build, the rows on screen and the summit');
         this.ctx = this.canvas.getContext('2d');
 
+        if (!this.options.explorable) {
+            this.instructionLabel = null;
+            this.container.classList.add('is-read-only');
+            this.container.append(title, this.canvas);
+            return;
+        }
         this.instructionLabel = document.createElement('div');
         this.instructionLabel.className = 'minimap-instruction';
         this.instructionLabel.textContent = 'Drag to look';
@@ -152,9 +163,9 @@ export class InfinityMinimap {
         this.container.style.display = 'none';
     }
 
-    /** Paused: the map can be dragged to look around the tower. */
+    /** Paused: the map can be dragged to look around the tower (unless it is read-only). */
     onPause() {
-        this.container.classList.add('is-explorable');
+        if (this.options.explorable) this.container.classList.add('is-explorable');
     }
 
     onUnpause() {
