@@ -372,34 +372,41 @@ function coronalLoops(q, spin, pixel, steps, { arcs, row }) {
     const c = cos(spin).toVar();
     const s = sin(spin).toVar();
     const light = float(0).toVar();
+    // The loops of one group share its hub (consecutive rows of ARCS): the group is tested once.
+    const perGroup = ARCADES[0].loops.length;
     Loop({
-        start: 0, end: arcs.count, type: 'int', condition: '<', name: 'arc',
-    }, ({ arc }) => {
+        start: 0, end: arcs.count, type: 'int', condition: '<', name: 'first', update: perGroup,
+    }, ({ first }) => {
         // A group behind the star is skipped (the same branch for every pixel), and only pixels
         // near a group pay for its loops.
-        const hub = row(arcs, arc, 0).toVar();
+        const hub = row(arcs, first, 0).toVar();
         const centre = bodyToView(hub.xyz, c, s).toVar();
         If(centre.z.greaterThan(-0.35).and(length(q.sub(centre.xy)).lessThan(hub.w)), () => {
-            const m = bodyToView(row(arcs, arc, 1).xyz, c, s).toVar();
-            const e = bodyToView(row(arcs, arc, 2).xyz, c, s).toVar();
-            const lift = bodyToView(row(arcs, arc, 3).xyz, c, s).toVar();
-            const thread = float(0).toVar();
-            const previous = m.add(e).toVar();
             Loop({
-                start: 1, end: steps + 1, type: 'int', condition: '<', name: 'seg',
-            }, ({ seg }) => {
-                const k = float(seg).toVar();
-                const t = k.mul(Math.PI / steps);
-                const point = m.add(e.mul(cos(t))).add(lift.mul(sin(t))).toVar();
-                const middle = previous.add(point).mul(0.5);
-                // Hidden where it is behind the star and inside its outline; dim at the feet.
-                const shown = step(0.0, middle.z).max(step(1.0, length(middle.xy)));
-                const feet = sin(k.sub(0.5).mul(Math.PI / steps)).mul(0.7).add(0.3);
-                const gap = segmentDistance(q, previous.xy, point.xy).div(pixel.mul(1.3));
-                thread.assign(thread.max(exp(gap.mul(gap).negate()).mul(shown).mul(feet)));
-                previous.assign(point);
+                start: 0, end: perGroup, type: 'int', condition: '<', name: 'member',
+            }, ({ member }) => {
+                const arc = first.add(member).toVar();
+                const m = bodyToView(row(arcs, arc, 1).xyz, c, s).toVar();
+                const e = bodyToView(row(arcs, arc, 2).xyz, c, s).toVar();
+                const lift = bodyToView(row(arcs, arc, 3).xyz, c, s).toVar();
+                const thread = float(0).toVar();
+                const previous = m.add(e).toVar();
+                Loop({
+                    start: 1, end: steps + 1, type: 'int', condition: '<', name: 'seg',
+                }, ({ seg }) => {
+                    const k = float(seg).toVar();
+                    const t = k.mul(Math.PI / steps);
+                    const point = m.add(e.mul(cos(t))).add(lift.mul(sin(t))).toVar();
+                    const middle = previous.add(point).mul(0.5);
+                    // Hidden where it is behind the star and inside its outline; dim at the feet.
+                    const shown = step(0.0, middle.z).max(step(1.0, length(middle.xy)));
+                    const feet = sin(k.sub(0.5).mul(Math.PI / steps)).mul(0.7).add(0.3);
+                    const gap = segmentDistance(q, previous.xy, point.xy).div(pixel.mul(1.3));
+                    thread.assign(thread.max(exp(gap.mul(gap).negate()).mul(shown).mul(feet)));
+                    previous.assign(point);
+                });
+                light.addAssign(thread.mul(0.42));
             });
-            light.addAssign(thread.mul(0.42));
         });
     });
     return light;
@@ -554,9 +561,14 @@ function galaxyBand(p, u, {
     const spineAt = across.div(width);
     const spine = exp(spineAt.mul(spineAt).negate()).toVar();
     const clouds = fbm(drift.mul(2.2).add(1.3), 3);
-    const riftAt = across.div(width.mul(0.42));
-    const rift = smoothstep(0.47, 0.64, fbm(drift.mul(vec2(3.4, 2.6)).add(8.4), 3))
-        .mul(exp(riftAt.mul(riftAt).negate())).toVar();
+    const riftAt = across.div(width.mul(0.42)).toVar();
+    // From |riftAt| 4.5 out the rift is under 1.7e-9, far too faint to move 1 - rift * 0.85 (or 0.7)
+    // off 1.0 in f32: 0 stands in there, and only the band's middle pays for the rift's noise.
+    const rift = float(0).toVar();
+    If(riftAt.abs().lessThan(4.5), () => {
+        rift.assign(smoothstep(0.47, 0.64, fbm(drift.mul(vec2(3.4, 2.6)).add(8.4), 3))
+            .mul(exp(riftAt.mul(riftAt).negate())));
+    });
     const glow = spine.mul(smoothstep(0.3, 0.78, clouds).mul(0.8).add(0.2)).mul(float(1).sub(rift.mul(0.85)));
     const stars = starfield(drift.add(11.3), u, 1.5).mul(spine.mul(0.45).add(0.05)).mul(float(1).sub(rift.mul(0.7)));
     return vec3(...tint).mul(glow).mul(gain).add(stars.mul(0.6));
@@ -814,7 +826,10 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
         If(clearSky.greaterThan(0.001), () => {
             col.addAssign(galaxyBand(p, u, mood.galaxy).mul(clearSky));
         });
-        col.addAssign(starfield(p, u, 0.8).mul(smoothstep(0.35, 2.2, above)));
+        // The stars' fade-in is exactly 0 up to 0.35 above the limb (and under the disc): skip them there.
+        If(above.greaterThan(0.35), () => {
+            col.addAssign(starfield(p, u, 0.8).mul(smoothstep(0.35, 2.2, above)));
+        });
         if (mood.reflection) {
             // A reflection nebula: blue fibres of dust lit by the star, brightest near it.
             const rq = layer(p, u, 0.12).add(u.seed.mul(vec2(5.3, 11.9))).toVar();
@@ -876,25 +891,28 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
 
         // Solar wind: sparse glints streaming outward on a nearer layer, quickening on the in-breath.
         // Cells in (angle, log radius) scroll outward, so each glint accelerates as it leaves. Only
-        // where glints live (which also keeps atan away from the layer's centre).
+        // where glints live (which also keeps atan away from the layer's centre): a glint is exactly 0
+        // outside its ramps' 1.15..3.2 and in a cell picked at or under 0.88.
         const gust = layer(p, u, WIND.k).sub(centre).div(radius).toVar();
         const gustR = length(gust).toVar();
-        If(gustR.greaterThan(1.12).and(gustR.lessThan(3.3)), () => {
+        If(gustR.greaterThan(1.15).and(gustR.lessThan(3.2)), () => {
             const spoke = gust.y.atan(gust.x).div(TAU).add(0.5).mul(WIND.cells)
                 .toVar();
             const outflow = log(gustR).mul(7).sub(u.breathInt.mul(1.1)).sub(u.time.mul(0.12))
                 .toVar();
-            const lane = spoke.floor();
-            const slot = outflow.floor();
-            const pick = hash21(vec2(lane, slot));
-            const shade = hash21(vec2(lane.add(5.1), slot));
-            const sideways = spoke.fract().sub(hash21(vec2(slot, lane.add(17))).mul(0.6).add(0.2))
-                .mul(gustR.mul(TAU / WIND.cells).div(0.0035));
-            const lengthwise = outflow.fract().sub(0.5).div(0.16);
-            const glint = exp(sideways.mul(sideways).add(lengthwise.mul(lengthwise)).negate())
-                .mul(smoothstep(0.88, 0.97, pick).mul(shade.mul(0.8).add(0.2)))
-                .mul(smoothstep(1.15, 1.4, gustR).mul(fadeOut(1.9, 3.2, gustR)));
-            col.addAssign(coronaTint(gustR.sub(1)).mul(glint).mul(breath.mul(0.5).add(0.25)).mul(0.9));
+            const lane = spoke.floor().toVar();
+            const slot = outflow.floor().toVar();
+            const pick = hash21(vec2(lane, slot)).toVar();
+            If(pick.greaterThan(0.88), () => {
+                const shade = hash21(vec2(lane.add(5.1), slot));
+                const sideways = spoke.fract().sub(hash21(vec2(slot, lane.add(17))).mul(0.6).add(0.2))
+                    .mul(gustR.mul(TAU / WIND.cells).div(0.0035));
+                const lengthwise = outflow.fract().sub(0.5).div(0.16);
+                const glint = exp(sideways.mul(sideways).add(lengthwise.mul(lengthwise)).negate())
+                    .mul(smoothstep(0.88, 0.97, pick).mul(shade.mul(0.8).add(0.2)))
+                    .mul(smoothstep(1.15, 1.4, gustR).mul(fadeOut(1.9, 3.2, gustR)));
+                col.addAssign(coronaTint(gustR.sub(1)).mul(glint).mul(breath.mul(0.5).add(0.25)).mul(0.9));
+            });
         });
 
         // Prominences and the chromosphere, in the ring around the limb.
@@ -1019,8 +1037,11 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             // the corona around it, and the diamond: a bead of the last sunlight at its edge.
             const e = mood.eclipse;
             const moon = fadeOut(float(e.radius).sub(pixel.mul(1.2)), pixel.mul(1.2).add(e.radius), moonGap).toVar();
-            const mottle = fbm(q.mul(3.2).add(7.7), 3);
-            col.assign(mix(col, color(e.night).mul(mottle.mul(0.8).add(0.6)), moon));
+            // Off the moon its (finite) night side is mixed in by 0: only its disc pays for the mottle.
+            If(moon.greaterThan(0), () => {
+                const mottle = fbm(q.mul(3.2).add(7.7), 3);
+                col.assign(mix(col, color(e.night).mul(mottle.mul(0.8).add(0.6)), moon));
+            });
             const size = Math.hypot(...e.offset);
             const beadAt = q.sub(vec2(-e.offset[0] / size, -e.offset[1] / size)).toVar();
             const b2 = dot(beadAt, beadAt);
@@ -1150,16 +1171,20 @@ export function createSolarWorld({ u, quality, mood = MOODS[0] }) {
             const e = length(vec2(turned.x, turned.y.div(ring.ratio))).div(ring.radius).toVar();
             const soft = pixel.div(ring.radius * ring.ratio).mul(0.7).toVar();
             const edge = (from) => smoothstep(soft.negate().add(from), soft.add(from), e);
-            const sheet = edge(1.34).mul(float(1).sub(edge(2.24)));
-            const ringlets = sin(e.mul(23)).mul(0.18).add(gnoise(vec2(e.mul(9), 2.7)).mul(0.5)).add(0.55);
-            const gap = edge(1.8).mul(float(1).sub(edge(1.88)));
-            const density = sheet.mul(ringlets).mul(float(1).sub(gap.mul(0.9))).saturate().toVar();
-            // The far half of the rings passes behind the planet, the near half in front of it.
-            const shown = density.mul(mix(float(1).sub(body), float(1), step(turned.y, 0))).toVar();
+            const sheet = edge(1.34).mul(float(1).sub(edge(2.24))).toVar();
             col.assign(mix(col, night, body));
             col.addAssign(INNER_CORONA.mul(air.mul(1.4).add(halo.mul(0.18))).mul(glow));
-            const scatter = exp(above.mul(-1.8)).mul(0.22).add(0.035).mul(float(1).sub(disc.mul(0.8)));
-            col.assign(col.mul(float(1).sub(shown.mul(0.82))).add(INNER_CORONA.mul(shown.mul(scatter)).mul(glow)));
+            // Off the ring sheet nothing is shown (exactly 0) and the colour passes through as it is:
+            // only the rings themselves pay for their ringlets.
+            If(sheet.greaterThan(0), () => {
+                const ringlets = sin(e.mul(23)).mul(0.18).add(gnoise(vec2(e.mul(9), 2.7)).mul(0.5)).add(0.55);
+                const gap = edge(1.8).mul(float(1).sub(edge(1.88)));
+                const density = sheet.mul(ringlets).mul(float(1).sub(gap.mul(0.9))).saturate().toVar();
+                // The far half of the rings passes behind the planet, the near half in front of it.
+                const shown = density.mul(mix(float(1).sub(body), float(1), step(turned.y, 0))).toVar();
+                const scatter = exp(above.mul(-1.8)).mul(0.22).add(0.035).mul(float(1).sub(disc.mul(0.8)));
+                col.assign(col.mul(float(1).sub(shown.mul(0.82))).add(INNER_CORONA.mul(shown.mul(scatter)).mul(glow)));
+            });
         }
 
         if (bare) {
