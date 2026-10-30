@@ -5,9 +5,11 @@ frame loop, the stage and world host, the lens, the Hale session flow, and the t
 all their moods. It was done in a cloud session with no GPU, so **nothing here is a frame-time
 figure** (ADR-0016): the pass changes code, and proves that the pictures did not change.
 
-**The look is untouched.** Every world in every mood, and four more configurations, render
-pixel-identical to the commit before this pass (max abs diff 0 over 120 frames; see
-Verification). The guide's own CSS changed only in what is painted where nobody can see it.
+**The look is untouched.** All twelve worlds render pixel-identical to the commit before this
+pass on the reference renderer: every mood, empty and full lungs, another moment, the phone tier,
+Minimal and the WebGL2 backend (max abs diff 0 over 120 frames, plus ten frames with a meteor
+crossing; see Verification). The guide's own CSS changed only in what is painted where nobody can
+see it.
 
 ## What changed
 
@@ -163,8 +165,10 @@ WebGPU): the orb's visibility through dawn, pause and resume; the trace's paint 
 restart bug before and after; a prepared start. **Tests:** `breath-stage.test.js` (new: first
 world, restart on the same world, restart on another, prepare without a frame loop, a start during
 a prepare, WebGL2, stop and dispose); `breathing-guide.test.js` (prepare, parking, a practice that
-starts first, preload); `hale-session-practice.test.js` (`prepareSession`); the full unit suite,
-typecheck and lint (no new warnings).
+starts first, preload); `hale-session-practice.test.js` (`prepareSession`); the full unit suite
+(1,271 files) and typecheck; and CI's other gates: the lint ratchet (at its baseline, 9 fewer
+warnings), boundaries, release gates, the build and its boot closure, IP strings, the Pages
+artifact and the perf budgets.
 
 ## Not measured, and open
 
