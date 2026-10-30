@@ -249,7 +249,13 @@ function cityAt(q, up) {
     const building = vec3(0.0016, 0.0015, 0.0019).add(haze.mul(0.35));
     const row = (y0, spread, cells, size, density, salt) => {
         const args = [y0, spread, cells, size, density, salt].map((v) => float(v));
-        return cityRow(q, up, ...args);
+        // A light sits at most spread / 2 off its row and is at most 1.7 sizes in radius: farther
+        // from the row than that (with a margin) the row is exactly dark, so skip it.
+        const lights = vec3(0).toVar();
+        If(up.sub(y0).abs().lessThan(spread / 2 + size * 1.8), () => {
+            lights.assign(cityRow(q, up, ...args));
+        });
+        return lights;
     };
     const streets = row(0.07, 0.05, 5, 0.036, 0.9, 1).mul(0.14).add(row(0.17, 0.05, 8, 0.022, 0.75, 2).mul(0.1));
     const floors = row(0.36, 0.05, 6, 0.026, 0.6, 3).mul(0.075)
@@ -362,13 +368,17 @@ function paintRoom(rp, u, {
     bokeh.forEach((b) => {
         const centre = vec2(u.ext.x.mul(b.x), mix(horizonY.add(0.08), top.sub(0.05), b.y));
         const o = (b.near ? near : far).sub(centre).toVar();
-        // A six-bladed aperture rounds every point of light into a soft hexagon.
-        const hex = max(o.x.abs().mul(0.866).add(o.y.abs().mul(0.5)), o.y.abs());
-        const dist = mix(length(o), hex.mul(1.06), 0.35);
-        const disc = fadeOut(b.size * (1 - b.soft), b.size, dist);
-        // Out of focus, a point of light becomes a disc with a slightly brighter rim.
-        const rim = smoothstep(b.size * 0.5, b.size * 0.97, dist).mul(0.4).add(0.7);
-        col.addAssign(vec3(...b.tint).mul(disc.mul(rim).mul(b.gain)));
+        // `dist` is at least 0.97 of the larger of |o.x| and |o.y|: past 1.04 sizes along either
+        // axis the disc is exactly 0, so the rest of the room skips this light.
+        If(max(o.x.abs(), o.y.abs()).lessThan(b.size * 1.04), () => {
+            // A six-bladed aperture rounds every point of light into a soft hexagon.
+            const hex = max(o.x.abs().mul(0.866).add(o.y.abs().mul(0.5)), o.y.abs());
+            const dist = mix(length(o), hex.mul(1.06), 0.35);
+            const disc = fadeOut(b.size * (1 - b.soft), b.size, dist);
+            // Out of focus, a point of light becomes a disc with a slightly brighter rim.
+            const rim = smoothstep(b.size * 0.5, b.size * 0.97, dist).mul(0.4).add(0.7);
+            col.addAssign(vec3(...b.tint).mul(disc.mul(rim).mul(b.gain)));
+        });
     });
     if (M.neon) {
         // Neon signs on the far wall, far out of focus: a pink ring and an amber bar, each a soft
@@ -419,48 +429,58 @@ function paintBase(gb, pxg, glow, K) {
     } = K;
     const { x, y } = gb;
     const edge = pxg.mul(1.5).toVar();
-    const f = float(COLLAR).sub(y).div(COLLAR - FOOT_Y).clamp(0, 1)
-        .toVar();
-    const half = mix(float(RING), float(FOOT), f.mul(f).mul(0.6).add(f.mul(0.4))).toVar();
-    const across = x.div(RING);
-    const topFront = float(COLLAR).sub(sqrt(float(1).sub(across.mul(across)).max(0)).mul(RING * TILT))
-        .toVar();
-    const out = x.div(FOOT);
-    const footFront = float(FOOT_Y).sub(sqrt(float(1).sub(out.mul(out)).max(0)).mul(FOOT * TILT));
-    const body = fadeOut(half.sub(edge), half.add(edge), x.abs())
-        .mul(fadeOut(topFront.sub(edge), topFront.add(edge), y))
-        .mul(smoothstep(footFront.sub(edge), footFront.add(edge), y))
-        .toVar();
-    // The ring the glass sits in: inside the collar's outer ellipse, outside the glass.
-    const flat = length(vec2(x, y.sub(COLLAR).div(TILT))).toVar();
-    const ring = fadeOut(RING * 0.985, RING, flat).mul(smoothstep(HOLE, HOLE * 1.03, flat)).toVar();
-    // Black like the rest, but where the glass enters the collar the shell's light gathers in a line.
-    // Its back half is seen through the glass's foot, dimmer.
-    const lipGlow = flat.sub(HOLE).div(0.02);
-    const far = smoothstep(COLLAR - 0.01, COLLAR + 0.03, y).mul(0.65);
-    const ringCol = MAGENTA.mul(0.035).add(HOT.mul(exp(lipGlow.mul(lipGlow).negate()).mul(0.35)))
-        .mul(float(1).sub(far)).mul(glow);
+    const body = float(0).toVar();
+    const ring = float(0).toVar();
+    const ringCol = vec3(0).toVar();
+    const col = vec3(0).toVar();
+    // Outside this box (the foot's width, from under the foot's front to above the collar ring)
+    // the base and its ring are exactly 0: the rest of the frame skips them.
+    const inBox = x.abs().lessThan(edge.mul(2).add(FOOT))
+        .and(y.greaterThan(edge.mul(-2).add(FOOT_Y - FOOT * TILT)))
+        .and(y.lessThan(edge.mul(2).add(COLLAR + RING * TILT * 1.02)));
+    If(inBox, () => {
+        const f = float(COLLAR).sub(y).div(COLLAR - FOOT_Y).clamp(0, 1)
+            .toVar();
+        const half = mix(float(RING), float(FOOT), f.mul(f).mul(0.6).add(f.mul(0.4))).toVar();
+        const across = x.div(RING);
+        const topFront = float(COLLAR).sub(sqrt(float(1).sub(across.mul(across)).max(0)).mul(RING * TILT))
+            .toVar();
+        const out = x.div(FOOT);
+        const footFront = float(FOOT_Y).sub(sqrt(float(1).sub(out.mul(out)).max(0)).mul(FOOT * TILT));
+        body.assign(fadeOut(half.sub(edge), half.add(edge), x.abs())
+            .mul(fadeOut(topFront.sub(edge), topFront.add(edge), y))
+            .mul(smoothstep(footFront.sub(edge), footFront.add(edge), y)));
+        // The ring the glass sits in: inside the collar's outer ellipse, outside the glass.
+        const flat = length(vec2(x, y.sub(COLLAR).div(TILT))).toVar();
+        ring.assign(fadeOut(RING * 0.985, RING, flat).mul(smoothstep(HOLE, HOLE * 1.03, flat)));
+        // Black like the rest, but where the glass enters the collar the shell's light gathers in a line.
+        // Its back half is seen through the glass's foot, dimmer.
+        const lipGlow = flat.sub(HOLE).div(0.02);
+        const far = smoothstep(COLLAR - 0.01, COLLAR + 0.03, y).mul(0.65);
+        ringCol.assign(MAGENTA.mul(0.035).add(HOT.mul(exp(lipGlow.mul(lipGlow).negate()).mul(0.35)))
+            .mul(float(1).sub(far)).mul(glow));
 
-    const nx = x.div(half).clamp(-1, 1).toVar();
-    const facing = sqrt(float(1).sub(nx.mul(nx)).max(0)).toVar();
-    const col = vec3(0.0022, 0.0024, 0.005).toVar();
-    // The upper flare faces the globe: the black gloss mirrors its light in a band under the collar.
-    const band = f.sub(0.12).div(0.1);
-    col.addAssign(MAGENTA.mul(exp(band.mul(band).negate()).mul(facing).mul(0.16).mul(glow)));
-    col.addAssign(VIOLET.mul(exp(f.mul(-3)).mul(0.03).mul(glow)));
-    // A bevel just under the ring catches the light hardest.
-    const lip = topFront.sub(y).div(0.018);
-    col.addAssign(HOT.mul(exp(lip.mul(lip).negate()).mul(facing).mul(0.25).mul(glow)));
-    // The studio window as a narrow streak down the front; the strip lights along the edges.
-    const streak = nx.add(0.42);
-    col.addAssign(DAYLIGHT.mul(exp(streak.mul(streak).mul(-160)).mul(fadeOut(0.8, 1.0, f)).mul(0.06)));
-    const right = smoothstep(0.55, 0.95, nx);
-    const left = smoothstep(0.6, 0.95, nx.negate());
-    col.addAssign(BLUE.mul(right.mul(right).mul(0.12)).add(MAGENTA.mul(left.mul(left).mul(0.05))));
-    // A machined groove, and the foot a little darker where it meets the table.
-    const groove = f.sub(0.58).div(0.012);
-    col.mulAssign(float(1).sub(exp(groove.mul(groove).negate()).mul(0.6)));
-    col.mulAssign(fadeOut(0.82, 1.0, f).mul(0.5).add(0.5));
+        const nx = x.div(half).clamp(-1, 1).toVar();
+        const facing = sqrt(float(1).sub(nx.mul(nx)).max(0)).toVar();
+        col.assign(vec3(0.0022, 0.0024, 0.005));
+        // The upper flare faces the globe: the black gloss mirrors its light in a band under the collar.
+        const band = f.sub(0.12).div(0.1);
+        col.addAssign(MAGENTA.mul(exp(band.mul(band).negate()).mul(facing).mul(0.16).mul(glow)));
+        col.addAssign(VIOLET.mul(exp(f.mul(-3)).mul(0.03).mul(glow)));
+        // A bevel just under the ring catches the light hardest.
+        const lip = topFront.sub(y).div(0.018);
+        col.addAssign(HOT.mul(exp(lip.mul(lip).negate()).mul(facing).mul(0.25).mul(glow)));
+        // The studio window as a narrow streak down the front; the strip lights along the edges.
+        const streak = nx.add(0.42);
+        col.addAssign(DAYLIGHT.mul(exp(streak.mul(streak).mul(-160)).mul(fadeOut(0.8, 1.0, f)).mul(0.06)));
+        const right = smoothstep(0.55, 0.95, nx);
+        const left = smoothstep(0.6, 0.95, nx.negate());
+        col.addAssign(BLUE.mul(right.mul(right).mul(0.12)).add(MAGENTA.mul(left.mul(left).mul(0.05))));
+        // A machined groove, and the foot a little darker where it meets the table.
+        const groove = f.sub(0.58).div(0.012);
+        col.mulAssign(float(1).sub(exp(groove.mul(groove).negate()).mul(0.6)));
+        col.mulAssign(fadeOut(0.82, 1.0, f).mul(0.5).add(0.5));
+    });
     return {
         col, body, ring, ringCol,
     };
@@ -526,7 +546,12 @@ function paintElectrode(ctx) {
     const corona = MAGENTA.mul(exp(shell.mul(shell).negate()).mul(0.6))
         .add(MAGENTA.mul(exp(halo.mul(halo).negate()).mul(0.2)))
         .add(VIOLET.mul(exp(rq.mul(rq).mul(-14)).mul(0.1)));
-    light.addAssign(surface.add(spec).mul(ball).add(corona).mul(glow));
+    // The ball is exactly 0 outside the electrode: there only the gas round it shows.
+    const lit = corona.toVar();
+    If(er.lessThan(1.01), () => {
+        lit.assign(surface.add(spec).mul(ball).add(corona));
+    });
+    light.addAssign(lit.mul(glow));
 }
 
 /**
@@ -564,13 +589,6 @@ function paintFilament(rows, forks, ctx) {
     // How far out this pixel is along the filament's own (3D) radius: 1 at the glass.
     const k = along.div(shape.y).toVar();
     const kc = k.clamp(0, 1).toVar();
-    // Free to wander soon after leaving the electrode, so even the empty-lung stubs curl.
-    const loose = smoothstep(ELECTRODE, ELECTRODE + 0.3, kc);
-    const wander = gnoise(vec2(kc.mul(2.2).add(seed), flow.add(seed.mul(0.61)))).sub(0.5).mul(0.5)
-        .add(sin(kc.mul(twist).add(t.mul(0.45)).add(phase)).mul(0.013))
-        .add(sin(kc.mul(twist.mul(2.3)).sub(t.mul(0.33)).add(phase.mul(2.3))).mul(0.004))
-        .mul(loose)
-        .toVar();
     // Each reaches at its own pace (they don't all arrive together), and never past the glass.
     const raw = reach.mul(build.y).add(sin(t.mul(0.37).add(phase)).mul(0.012)).toVar();
     const tip = raw.min(1).toVar();
@@ -580,71 +598,106 @@ function paintFilament(rows, forks, ctx) {
     const cu = along.sub(shape.y).div(shape.z).toVar();
     const cu2 = cu.mul(cu).toVar();
     const out = vec3(0).toVar();
-    // Charge travels outward along the thread in slow swells (quicker while the lungs fill): about
-    // four seconds from bright to dim at any point, so the plasma lives without ever flickering.
-    const swell = sin(k.mul(8).sub(flow.mul(14)).add(phase)).mul(0.15).add(1).toVar();
     // Pink-white at the root, cooling toward blue-violet where it reaches the glass.
     const glowTint = mix(mix(PINK_GLOW, BLUE_GLOW, branch.w), TIP, kc.mul(kc).mul(0.55)).toVar();
-    const hazeTint = mix(PINK_HAZE, BLUE_HAZE, branch.w).toVar();
-    // Behind the electrode the lens's narrow focus softens the threads (focus > 1 there).
-    const coreScale = coreWidth.mul(build.x).mul(focus).mul(float(1.3).sub(kc.mul(0.5))).toVar();
-    const glowFocus = glowK.div(focus).toVar();
-    // Some filaments carry more of the current; those behind the electrode shine through more gas.
-    const current = gain.mul(0.6).add(0.4).mul(swell).toVar();
-
-    const thread = (lateral, from, scale, weight, rootBoost = 0) => {
-        const d = across.sub(lateral).toVar();
-        const d2 = d.mul(d).toVar();
-        // A thread finer than a pixel is drawn a pixel wide and dimmed to match (no dotted lines).
-        const fine = coreScale.mul(scale).toVar();
-        const w = max(fine, minWidth).toVar();
-        const start = float(from);
-        const span = smoothstep(start, start.add(0.04), k).mul(fadeOut(tip.sub(0.14), tip, k));
-        const aura = smoothstep(start, start.add(0.06), k).mul(fadeOut(tip.sub(0.05), tip.add(0.04), k));
-        let core = exp(d2.div(w.mul(w)).negate()).mul(span).mul(fine.div(w)).mul(sharp);
-        if (rootBoost) {
-            const root = k.sub(ELECTRODE).mul(7);
-            core = core.mul(exp(root.mul(root).negate()).mul(rootBoost).add(1));
-        }
-        const glow = exp(d2.mul(glowFocus).negate()).mul(aura);
-        const tail = float(1).div(d2.mul(tailK).add(1)).mul(aura);
-        out.addAssign(HOT.mul(core.mul(2.2)).add(glowTint.mul(glow.mul(0.45))).add(hazeTint.mul(tail.mul(0.012)))
-            .mul(current.mul(weight)));
-        // Where it meets the glass: a hot spot and a soft bloom, flattened as the glass turns away.
-        const rho2 = cu2.add(d2).toVar();
-        out.addAssign(HOT.mul(exp(rho2.mul(-1400)).mul(2.4)).add(glowTint.mul(exp(rho2.mul(-110)).mul(0.4)))
-            .mul(touch.mul(weight)));
-        return rho2;
+    const wander = float(0).toVar();
+    // Where a thread meets the glass: a hot spot and a soft bloom, flattened as the glass turns away.
+    // (`touch` is the same at every pixel, and exactly 0 until the filament nears the glass.)
+    const bloom = (rho2, weight) => HOT.mul(exp(rho2.mul(-1400)).mul(2.4))
+        .add(glowTint.mul(exp(rho2.mul(-110)).mul(0.4)))
+        .mul(touch.mul(weight));
+    // Offer this contact to the fern if it is the nearest so far.
+    const offer = (rho2) => {
+        const closer = rho2.lessThan(contact.d);
+        contact.at.assign(select(closer, vec2(cu, across.sub(wander)), contact.at));
+        contact.gain.assign(select(closer, touch, contact.gain));
+        contact.seed.assign(select(closer, seed, contact.seed));
+        contact.d.assign(min(contact.d, rho2));
     };
 
-    const rho2 = thread(wander, ELECTRODE - 0.03, 1, 1, 0.9);
-    // Offer this contact to the fern if it is the nearest so far.
-    const closer = rho2.lessThan(contact.d);
-    contact.at.assign(select(closer, vec2(cu, across.sub(wander)), contact.at));
-    contact.gain.assign(select(closer, touch, contact.gain));
-    contact.seed.assign(select(closer, seed, contact.seed));
-    contact.d.assign(min(contact.d, rho2));
+    If(k.greaterThan(ELECTRODE - 0.03), () => {
+        // Free to wander soon after leaving the electrode, so even the empty-lung stubs curl.
+        const loose = smoothstep(ELECTRODE, ELECTRODE + 0.3, kc);
+        wander.assign(gnoise(vec2(kc.mul(2.2).add(seed), flow.add(seed.mul(0.61)))).sub(0.5).mul(0.5)
+            .add(sin(kc.mul(twist).add(t.mul(0.45)).add(phase)).mul(0.013))
+            .add(sin(kc.mul(twist.mul(2.3)).sub(t.mul(0.33)).add(phase.mul(2.3))).mul(0.004))
+            .mul(loose));
+        // Charge travels outward along the thread in slow swells (quicker while the lungs fill): about
+        // four seconds from bright to dim at any point, so the plasma lives without ever flickering.
+        const swell = sin(k.mul(8).sub(flow.mul(14)).add(phase)).mul(0.15).add(1).toVar();
+        const hazeTint = mix(PINK_HAZE, BLUE_HAZE, branch.w).toVar();
+        // Behind the electrode the lens's narrow focus softens the threads (focus > 1 there).
+        const coreScale = coreWidth.mul(build.x).mul(focus).mul(float(1.3).sub(kc.mul(0.5))).toVar();
+        const glowFocus = glowK.div(focus).toVar();
+        // Some filaments carry more of the current; those behind the electrode shine through more gas.
+        const current = gain.mul(0.6).add(0.4).mul(swell).toVar();
 
-    // Forks split off and curve away; each starts tangent to its parent so the branching reads.
-    const jitter = (kk, rate, offset) => sin(k.mul(twist.mul(kk)).add(t.mul(rate)).add(phase.mul(offset)));
-    const spread = branch.x.mul(side).toVar();
-    const forkAt = build.z.toVar();
-    const da = k.sub(forkAt).max(0).toVar();
-    const forkA = wander.add(da.mul(smoothstep(0, 0.2, da)).mul(spread))
-        .add(jitter(1.7, 0.5, 3.1).mul(da).mul(0.05)).toVar();
-    thread(forkA, forkAt, 0.72, 0.62);
-    const forkBAt = forkAt.add(0.12).toVar();
-    const db = k.sub(forkBAt).max(0).toVar();
-    const forkB = wander.sub(db.mul(smoothstep(0, 0.18, db)).mul(spread.mul(0.85)))
-        .add(jitter(2.1, -0.42, 1.3).mul(db).mul(0.05));
-    thread(forkB, forkBAt, 0.62, 0.5);
-    if (forks > 2) {
-        const forkCAt = forkAt.add(0.22).toVar();
-        const dc = k.sub(forkCAt).max(0).toVar();
-        const forkC = forkA.add(dc.mul(smoothstep(0, 0.14, dc)).mul(side.mul(0.26)))
-            .add(jitter(2.9, 0.6, 0.7).mul(dc).mul(0.04));
-        thread(forkC, forkCAt, 0.5, 0.38);
-    }
+        const thread = (lateral, from, scale, weight, rootBoost = 0) => {
+            const d = across.sub(lateral).toVar();
+            const d2 = d.mul(d).toVar();
+            const start = float(from);
+            // A thread is exactly dark up to its start and from its tip on (its aura is gone by
+            // tip + 0.04): skip its light there.
+            If(k.greaterThan(start).and(k.lessThan(tip.add(0.05))), () => {
+                // A thread finer than a pixel is drawn a pixel wide and dimmed to match (no dotted lines).
+                const fine = coreScale.mul(scale).toVar();
+                const w = max(fine, minWidth).toVar();
+                const span = smoothstep(start, start.add(0.04), k).mul(fadeOut(tip.sub(0.14), tip, k));
+                const aura = smoothstep(start, start.add(0.06), k).mul(fadeOut(tip.sub(0.05), tip.add(0.04), k));
+                let core = exp(d2.div(w.mul(w)).negate()).mul(span).mul(fine.div(w)).mul(sharp);
+                if (rootBoost) {
+                    const root = k.sub(ELECTRODE).mul(7);
+                    core = core.mul(exp(root.mul(root).negate()).mul(rootBoost).add(1));
+                }
+                const glow = exp(d2.mul(glowFocus).negate()).mul(aura);
+                const tail = float(1).div(d2.mul(tailK).add(1)).mul(aura);
+                out.addAssign(HOT.mul(core.mul(2.2)).add(glowTint.mul(glow.mul(0.45)))
+                    .add(hazeTint.mul(tail.mul(0.012)))
+                    .mul(current.mul(weight)));
+            });
+            const rho2 = cu2.add(d2).toVar();
+            If(touch.greaterThan(0), () => {
+                out.addAssign(bloom(rho2, weight));
+            });
+            return rho2;
+        };
+
+        offer(thread(wander, ELECTRODE - 0.03, 1, 1, 0.9));
+
+        // Forks split off and curve away; each starts tangent to its parent so the branching reads.
+        const jitter = (kk, rate, offset) => sin(k.mul(twist.mul(kk)).add(t.mul(rate)).add(phase.mul(offset)));
+        const spread = branch.x.mul(side).toVar();
+        const forkAt = build.z.toVar();
+        const da = k.sub(forkAt).max(0).toVar();
+        const forkA = wander.add(da.mul(smoothstep(0, 0.2, da)).mul(spread))
+            .add(jitter(1.7, 0.5, 3.1).mul(da).mul(0.05)).toVar();
+        thread(forkA, forkAt, 0.72, 0.62);
+        const forkBAt = forkAt.add(0.12).toVar();
+        const db = k.sub(forkBAt).max(0).toVar();
+        const forkB = wander.sub(db.mul(smoothstep(0, 0.18, db)).mul(spread.mul(0.85)))
+            .add(jitter(2.1, -0.42, 1.3).mul(db).mul(0.05));
+        thread(forkB, forkBAt, 0.62, 0.5);
+        if (forks > 2) {
+            const forkCAt = forkAt.add(0.22).toVar();
+            const dc = k.sub(forkCAt).max(0).toVar();
+            const forkC = forkA.add(dc.mul(smoothstep(0, 0.14, dc)).mul(side.mul(0.26)))
+                .add(jitter(2.9, 0.6, 0.7).mul(dc).mul(0.04));
+            thread(forkC, forkCAt, 0.5, 0.38);
+        }
+    }).Else(() => {
+        // Up to the main thread's start every thread is exactly dark, and all of them run straight
+        // (`loose` is 0 here, so the wander is, and so is each fork's offset): only the blooms and
+        // the offer remain, all at the same distance from the contact.
+        const d = across.sub(wander).toVar();
+        const d2 = d.mul(d).toVar();
+        const rho2 = cu2.add(d2).toVar();
+        // One branch per thread's bloom, as above: the compiler then sums them exactly as before
+        // (in one branch it would factor the shared bloom out of the sum, and round it differently).
+        [1, 0.62, 0.5, 0.38].slice(0, forks + 1).forEach((weight) => If(touch.greaterThan(0), () => {
+            out.addAssign(bloom(rho2, weight));
+        }));
+        offer(rho2);
+    });
     // Filaments aimed away from the lens pass behind the electrode.
     const shown = mix(smoothstep(ELECTRODE * 0.9, ELECTRODE * 1.12, rq), float(1), branch.z);
     light.addAssign(out.mul(shown).mul(charge));
@@ -662,21 +715,26 @@ function paintFern(ctx) {
     const { MAGENTA, HOT } = K;
     const o = contact.at;
     const rho = length(o).toVar();
-    const dir = o.div(rho.max(1e-4)).toVar();
-    const t = u.time;
-    const n1 = gnoise(dir.mul(1.3).add(vec2(contact.seed, rho.mul(7).sub(t.mul(0.05)))));
-    const n2 = gnoise(dir.mul(2.9).add(vec2(contact.seed.add(7.7), rho.mul(14).add(t.mul(0.04)))));
-    const vein = (n) => {
-        const v = float(1).sub(n.sub(0.5).abs().mul(2)).max(0).toVar();
-        const v2 = v.mul(v);
-        const v4 = v2.mul(v2);
-        return v4.mul(v4).mul(v2);
-    };
-    const lines = vein(n1).add(vein(n2).mul(0.3)).toVar();
     // The fern spreads further as the contact settles in.
     const size = contact.gain.mul(0.06).add(0.045).toVar();
-    const spread = exp(rho.mul(rho).div(size.mul(size)).negate()).mul(smoothstep(0.006, 0.035, rho));
-    light.addAssign(mix(MAGENTA, HOT, lines.mul(0.6)).mul(lines.mul(spread).mul(contact.gain).mul(1.3).mul(charge)));
+    // With no contact (gain 0) the fern is exactly dark, and so it is eleven sizes out, where its
+    // spread underflows to 0: skip its noise there.
+    If(contact.gain.greaterThan(0).and(rho.lessThan(size.mul(11))), () => {
+        const dir = o.div(rho.max(1e-4)).toVar();
+        const t = u.time;
+        const n1 = gnoise(dir.mul(1.3).add(vec2(contact.seed, rho.mul(7).sub(t.mul(0.05)))));
+        const n2 = gnoise(dir.mul(2.9).add(vec2(contact.seed.add(7.7), rho.mul(14).add(t.mul(0.04)))));
+        const vein = (n) => {
+            const v = float(1).sub(n.sub(0.5).abs().mul(2)).max(0).toVar();
+            const v2 = v.mul(v);
+            const v4 = v2.mul(v2);
+            return v4.mul(v4).mul(v2);
+        };
+        const lines = vein(n1).add(vein(n2).mul(0.3)).toVar();
+        const spread = exp(rho.mul(rho).div(size.mul(size)).negate()).mul(smoothstep(0.006, 0.035, rho));
+        light.addAssign(mix(MAGENTA, HOT, lines.mul(0.6)).mul(lines.mul(spread).mul(contact.gain).mul(1.3)
+            .mul(charge)));
+    });
 }
 
 /**
@@ -987,7 +1045,12 @@ export function createStormWorld({ u, quality, mood = MOODS[0] }) {
         const touchEv = eventWindow(u.time, float(M.touch.period), float(11), float(M.touch.chance), touchSalt)
             .toVar();
         const touchOn = touchEv.x.mul(u.life).toVar();
-        If(rq.lessThan(1.02), () => {
+        const edge = pxg.mul(1.5).mul(blur.mul(3).add(1)).toVar();
+        const hx = gq.x.div(HOLE);
+        const holeFront = float(COLLAR).sub(sqrt(float(1).sub(hx.mul(hx)).max(0)).mul(HOLE * TILT)).toVar();
+        // The globe shows only through its glass, which is exactly 0 from the rim out and below the
+        // front of the hole the glass sinks into: paint it only inside.
+        If(rq.lessThan(1.001).and(gq.y.greaterThan(holeFront.sub(edge))), () => {
             paintElectrode(ctx);
             // Thin luminous gas between the filaments, stirring slowly.
             const wisps = gnoise3(vec3(gq.mul(2.6), u.time.mul(0.05))).toVar();
@@ -1004,31 +1067,31 @@ export function createStormWorld({ u, quality, mood = MOODS[0] }) {
             surface.assign(paintGlass(ctx));
         });
 
-        const edge = pxg.mul(1.5).mul(blur.mul(3).add(1)).toVar();
-        const hx = gq.x.div(HOLE);
-        const holeFront = float(COLLAR).sub(sqrt(float(1).sub(hx.mul(hx)).max(0)).mul(HOLE * TILT));
         const glass = fadeOut(float(1).sub(edge.mul(2)), float(1), rq)
             .mul(smoothstep(holeFront.sub(edge), holeFront.add(edge), gq.y)).toVar();
         const transmit = float(1).sub(F).mul(0.88).toVar();
         const base = paintBase(gb, pxg, glow, K);
-        const table = paintTable(g, charge, K, M);
         const globeLight = light.add(surface).toVar();
         const airGlow = (radius) => {
             const away = radius.sub(0.92).max(0);
             return float(1).div(away.mul(away).mul(6).add(1));
         };
 
-        // What the table mirrors: the room, the folded globe and base, fading with distance.
-        const glassM = glass.mul(belowG).toVar();
-        const image = room.col.mul(float(1).sub(glassM.mul(float(1).sub(transmit))))
-            .add(globeLight.mul(glassM).div(blur.mul(1.3).add(1))).toVar();
-        image.assign(mix(image, base.col, base.body.mul(belowB)));
-        image.addAssign(K.VIOLET.mul(airGlow(rq).mul(0.04).mul(charge).mul(belowG)));
-        const tableColor = table.diffuse.add(image.mul(table.reflect).mul(exp(sunk.mul(-0.5))));
-
         // The scene in front: room or table, then the collar ring, the glass, the base.
-        const onTable = fadeOut(HORIZON - 0.004, HORIZON + 0.004, g.y);
-        const col = mix(room.col, tableColor, onTable).toVar();
+        const onTable = fadeOut(HORIZON - 0.004, HORIZON + 0.004, g.y).toVar();
+        const col = room.col.toVar();
+        // Above the horizon there is no table (onTable is exactly 0): skip it and what it mirrors.
+        If(onTable.greaterThan(0), () => {
+            const table = paintTable(g, charge, K, M);
+            // What the table mirrors: the room, the folded globe and base, fading with distance.
+            const glassM = glass.mul(belowG).toVar();
+            const image = room.col.mul(float(1).sub(glassM.mul(float(1).sub(transmit))))
+                .add(globeLight.mul(glassM).div(blur.mul(1.3).add(1))).toVar();
+            image.assign(mix(image, base.col, base.body.mul(belowB)));
+            image.addAssign(K.VIOLET.mul(airGlow(rq).mul(0.04).mul(charge).mul(belowG)));
+            const tableColor = table.diffuse.add(image.mul(table.reflect).mul(exp(sunk.mul(-0.5))));
+            col.assign(mix(room.col, tableColor, onTable));
+        });
         col.assign(mix(col, base.ringCol, base.ring.mul(float(1).sub(belowB))));
         const glassD = glass.mul(float(1).sub(belowG)).toVar();
         col.assign(col.mul(float(1).sub(glassD.mul(float(1).sub(transmit)))).add(globeLight.mul(glassD)));

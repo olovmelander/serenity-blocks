@@ -70,7 +70,7 @@ loop with indices, and compare numbers before they build strings:
 | `BreathWorldHost._push` / `_shaftSource` | world update state, light source + closure, lens state | three objects filled in place |
 | `BreathWorldHost._fitCamera` | projection matrix and its inverse rebuilt every frame | rebuilt only when the screen's shape changes (the camera still moves every frame) |
 | Heart Glow (`lotus.js`, `lotus-flower.js`) | pose object, two `forEach` over a fresh array, petal `forEach` | filled pose, plain loops |
-| Sacred Geometry (`sacred-solids.js`, `sacred.js`) | four arrays of turns, two nested `forEach`, spread rotations, destructuring | a closed-form `turn()`, plain loops |
+| Sacred Geometry (`sacred-solids.js`, `sacred.js`) | four arrays of turns, two nested `forEach`, spread rotations, destructuring | a closed-form `tumble()`, plain loops |
 | Ocean Tide, Crystal Prism | a closure and two arrays (every ramp evaluated), a `forEach` with destructuring | module-level ramps (only the phase's own runs), a plain loop |
 
 And ten times a second during a session: the guide merges progress in place and writes
@@ -119,10 +119,20 @@ measurements.
 | Ancient Forest | the forest floor above the horizon; each trunk row's bark in the gaps between its trunks (most of the row); the undergrowth outside its proven band; the canopy's leaves where the cover is under their mask's threshold, and the whole canopy far below its top (tall screens); the ferns away from the bottom corners (every frond's reach bounded from its length, droop and angle); the bird between flights | ~9k of the backdrop's ~24k ops/px |
 | Zen Garden | the moss's noise and colour away from the islands' fuzzy edges and the near border; the breath ring's shimmer where the ring is 0; clouds and stars below the horizon; the hedge above its tallest dome, the wall above its cap; maple leaves and blossoms beyond their outline; on the stones, the shadow march once the shade is total, the cloud shade where no direct light falls, and the mist's noise above the mist | ~1.7k of ~8.4k ops/px (up to ~3.5k on the costliest stone pixels) |
 | Aurora Dreams | each curtain between its segments, in the moods whose curtains break; the hash the hem's jog shares with its pleat; the spruce where no tree stands, and each tree row outside its band of the horizon; the snow ranges' face above the skyline; the storm's red crown below its fade-in; the moon's face off its disc | ~1.5k of ~7.5k ops/px |
+| Electric Storm | each filament thread before its start and past its tip — and inside the electrode, where every thread of a filament is dark and runs straight, all of them at once, leaving only their contact blooms; the blooms while no filament touches the glass; the globe's interior outside its glass; the electrode ball's surface off the ball; the fern while nothing touches; Rain on the Window's city light rows away from their own band; each out-of-focus room light outside its square; the base outside its box; the table and its mirror image above the horizon | ~4k per globe pixel for the filaments, ~1.5k/px for the city rows, ~400/px for the room lights |
+| Ocean Tide | the sea's surface and colour on dry sand (no water there, so no depth: the bed is not bent and the sand is kept, the reef proved ≥ 2.2 units out); the foam and plankton above the water's reach where nothing is stranded; the chop's noise, the foam lace (moods without plankton), the caustic nets and the sun's glitter path where their distance fades are exactly 0; the ray and the gull between their visits | ~1.7k per dry pixel, ~2k on the 30–36 % of the frame above the reach |
 
 One fix rides along in Zen Garden: on the far side of a stone the shadow's softness went negative and
 reversed smoothstep's edges (undefined in GLSL, so on the WebGL2 path), where the shadow is
 multiplied by 0 anyway. The softness is now clamped there; no pixel changed on either backend.
+
+**Exact zeros were not enough.** A value computed inside a branch and read after it can round
+differently: the shader compiler folds constants through straight-line code ((x + c1) − c2,
+(x·c1)·c2, a·b + a·c → a·(b + c)) but not through a branch's merge. Ocean Tide's first version
+computed its gusts inside the dry-sand branch and moved one or two pixels a frame by one 8-bit
+level; the gusts are computed before the branch again, Electric Storm's blooms each keep their own
+branch so their sum is not refactored, and every value that leaves a branch was checked against the
+folding rules. The pixel test caught what the proofs could not.
 
 ## Verification
 
@@ -142,6 +152,11 @@ before and once from this branch, and compares every pixel (`--capture`, then `-
 
 Two captures of the same build agree to the bit, so any difference would be real: there was
 none (max abs diff 0 in all 120).
+
+That identity is exact on the reference renderer (Tint's SPIR-V, optimized by spirv-opt inside
+SwiftShader). A GPU driver compiles the same WGSL its own way, and may fuse or fold a restructured
+expression differently from the old one: on hardware a rare pixel can move by one 8-bit level, the
+same order as the difference between two drivers.
 
 **The guide in a real browser** (the shipped guide module and CSS, the real stage on SwiftShader
 WebGPU): the orb's visibility through dawn, pause and resume; the trace's paint counts; the
