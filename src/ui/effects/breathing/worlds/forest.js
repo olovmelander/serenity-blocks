@@ -393,84 +393,99 @@ export function createForestWorld({ u, quality, mood = MOODS[0] }) {
             // Height above this row's ground; never negative, so no term below the ground can blow up.
             const height = q.y.sub(groundLine).max(0).toVar();
             const lean = rand.sub(0.5).mul(0.08);
-            const bend = gnoise(vec2(q.y.mul(1.1).add(id.mul(3.1)), row.seed + 2)).sub(0.5).mul(0.1);
             const centre = hash21(vec2(id.mul(1.37), row.seed + 11)).sub(0.5).mul(0.5).add(0.5);
-            const across = worldX.fract().sub(centre).sub(height.mul(lean)).sub(bend)
-                .toVar();
             // Roots: the trunk flares where it meets the ground.
             const flare = exp(height.mul(row.d).mul(-2.6)).mul(0.85).add(1);
             const size = hash21(vec2(id.mul(2.3), row.seed + 7)).toVar();
             const girth = size.mul(size).mul(0.9).add(0.55).mul(row.width)
                 .mul(flare)
                 .toVar();
-            const o = across.div(girth).toVar();
             // Edge softness: about a pixel on screen whatever the depth.
             const edgePx = u.px.mul(1.5).div(girth.mul(row.cell).div(row.d)).toVar();
-            let mask = fadeOut(float(1).sub(edgePx).max(0), float(1).add(edgePx), o.abs())
-                .mul(softStep(groundLine, q.y, u));
-            // Some cells stand empty: a forest, not a fence (the far rows more so: no picket wall).
-            // Nearer rows leave the clearing open.
             const empty = index < 2 ? 0.38 : 0.12;
-            mask = mask.mul(smoothstep(empty, empty + 0.08, rand));
-            if (row.clear) mask = mask.mul(smoothstep(row.clear * 0.6, row.clear, q.x.sub(SUN[0]).abs()));
-            if (row.edges) mask = mask.mul(smoothstep(0.42, 0.7, q.x.abs().div(u.ext.x)));
-            // Far trunks dissolve into the sunlit haze before they reach the canopy.
-            if (index < 2) mask = mask.mul(fadeOut(top.sub(0.95 - index * 0.15), top.sub(0.45 - index * 0.1), q.y));
-            // On a tall screen the far trunks would stand as tall as the frame, a picket of gold rims:
-            // they melt into the haze a fixed height above their own ground.
-            if (index < 3) {
-                const [fadeFrom, fadeTo] = [[0.5, 1.05], [0.75, 1.4], [1.15, 2.0]][index];
-                mask = mask.mul(fadeOut(groundLine.add(fadeFrom), groundLine.add(fadeTo), q.y));
-            }
-            // Most of a row is the gaps between its trunks, where the mask is 0 and mixing in the
-            // (finite) trunk changes nothing: shade the bark only where a trunk stands.
-            mask = mask.toVar();
-            If(mask.greaterThan(0), () => {
-                // Backlit cylinder: faces in shadow, a thin gold rim on the sunward edge.
-                const sunSide = float(SUN[0]).sub(q.x).sign();
-                // Backlight is strongest straight in front of the sun and falls away in every direction.
-                const dx = q.x.sub(SUN[0]).toVar();
-                const dy = q.y.sub(sunY).toVar();
-                const near = exp(dx.mul(dx).mul(-2.2).sub(dy.mul(dy).mul(0.7))).toVar();
-                // Clamped: a far trunk is a pixel or two wide, and its soft edge reaches |o| of 2 or 3, where
-                // edge⁷ would light it up as a hairline of pure white.
-                const edge = o.mul(sunSide).saturate().toVar();
-                const edge2 = edge.mul(edge);
-                const rim = edge2.mul(edge2).mul(edge2).mul(edge);
-                const roundness = sqrt(float(1).sub(o.mul(o)).max(0));
-                // Bark: deep vertical furrows, broken into plates.
-                const furrows = gnoise(vec2(o.mul(4.2).add(id.mul(7.7)), q.y.mul(row.d).mul(0.9))).toVar();
-                const plates = gnoise(vec2(o.mul(9).add(id.mul(3.3)), q.y.mul(row.d).mul(4)));
-                const moss = smoothstep(0.5, 0.85, fbm(vec2(o.mul(2).add(id), q.y.mul(row.d).mul(2.2)), 3)
-                    .add(exp(height.mul(row.d).mul(-1.4)).mul(0.45)).add(o.mul(sunSide).mul(-0.15)));
-                const tone = hash21(vec2(id.mul(5.1), row.seed + 3)).mul(0.5).add(0.75);
-                const bark = mix(BARK.mul(tone), MOSS, moss.mul(0.75))
-                    .mul(smoothstep(0.25, 0.75, furrows).mul(0.9).add(0.35)).mul(plates.mul(0.4).add(0.8))
-                    .mul(roundness.mul(0.5).add(0.5))
+            const fade = index < 3 ? [[0.5, 1.05], [0.75, 1.4], [1.15, 2.0]][index] : null;
+            // Most of a row is the gaps between its trunks, the ground below it and the cells where none
+            // stands, where the mask below is exactly 0 and mixing in the (finite) trunk changes nothing.
+            // Plain tests find those places first, each a hair inside the edge where its factor reaches
+            // 0: below the soft ground line, an empty cell, the clearing, the frame's middle (nearest
+            // row), above a far row's fades; and farther from the unbent line than the trunk's soft edge
+            // plus how far the lean (at most 0.04 a unit of height) and the bend (at most 0.072: gnoise
+            // stays within 0.5 ± 0.72) can move it, where |o| ≥ 1 + edgePx and the edge fade is 0.
+            // There neither the bend's noise nor the mask is worked out; elsewhere both are, as before.
+            const HAIR = 1e-4;
+            const tests = [q.y.greaterThan(groundLine.sub(u.px.mul(1.5)).sub(HAIR)), rand.greaterThan(empty - HAIR)];
+            if (row.clear) tests.push(q.x.sub(SUN[0]).abs().greaterThan(row.clear * 0.6 - HAIR));
+            if (row.edges) tests.push(q.x.abs().div(u.ext.x).greaterThan(0.42 - HAIR));
+            if (index < 2) tests.push(q.y.lessThan(top.sub(0.45 - index * 0.1).add(HAIR)));
+            if (fade) tests.push(q.y.lessThan(groundLine.add(fade[1]).add(HAIR)));
+            const reach = girth.mul(edgePx.add(1)).mul(1.0001).add(height.mul(0.04)).add(0.0725 + HAIR);
+            tests.push(worldX.fract().sub(centre).abs().lessThan(reach));
+            If(tests.reduce((a, b) => a.and(b)), () => {
+                const bend = gnoise(vec2(q.y.mul(1.1).add(id.mul(3.1)), row.seed + 2)).sub(0.5).mul(0.1);
+                const across = worldX.fract().sub(centre).sub(height.mul(lean)).sub(bend)
                     .toVar();
-                // A little of the haze wraps into each trunk; the rim is the sun itself.
-                bark.addAssign(fogColor.mul(0.1).mul(roundness));
-                // Far trunks keep only a whisper of rim: the haze between eats it.
-                const rimGain = 2.4 / (1 + row.d * 0.6);
-                bark.addAssign(GOLD.mul(rim).mul(near.mul(rimGain).add(0.1)).mul(glow)
-                    .mul(float(1).sub(moss.mul(0.6))));
-                if (m.wet > 0 && index >= 2) {
-                    // Rain still runs down the bark: a glossy streak on the sunward shoulder, broken
-                    // where the water runs in rivulets.
-                    const shoulder = o.mul(sunSide).sub(0.5).div(0.14);
-                    const runs = smoothstep(
-                        0.45,
-                        0.75,
-                        gnoise(vec2(o.mul(14).add(id.mul(5.3)), q.y.mul(row.d).mul(0.6))),
-                    );
-                    const gloss = exp(shoulder.mul(shoulder).negate()).mul(runs.mul(0.7).add(0.3));
-                    bark.addAssign(fogColor.mul(1.6).add(GOLD.mul(near).mul(0.3)).mul(gloss).mul(0.5 * m.wet)
-                        .mul(glow));
-                }
-                // The farther the row, the more of the air in front of it is lit by the sun's halo too.
-                const fog = 1 - Math.exp(-row.d * 0.14);
-                const trunk = mix(bark, mix(fogColor, air, fog * fog * 0.85), fog);
-                col.assign(mix(col, trunk, mask));
+                const o = across.div(girth).toVar();
+                let mask = fadeOut(float(1).sub(edgePx).max(0), float(1).add(edgePx), o.abs())
+                    .mul(softStep(groundLine, q.y, u));
+                // Some cells stand empty: a forest, not a fence (the far rows more so: no picket wall).
+                // Nearer rows leave the clearing open.
+                mask = mask.mul(smoothstep(empty, empty + 0.08, rand));
+                if (row.clear) mask = mask.mul(smoothstep(row.clear * 0.6, row.clear, q.x.sub(SUN[0]).abs()));
+                if (row.edges) mask = mask.mul(smoothstep(0.42, 0.7, q.x.abs().div(u.ext.x)));
+                // Far trunks dissolve into the sunlit haze before they reach the canopy.
+                if (index < 2) mask = mask.mul(fadeOut(top.sub(0.95 - index * 0.15), top.sub(0.45 - index * 0.1), q.y));
+                // On a tall screen the far trunks would stand as tall as the frame, a picket of gold rims:
+                // they melt into the haze a fixed height above their own ground.
+                if (fade) mask = mask.mul(fadeOut(groundLine.add(fade[0]), groundLine.add(fade[1]), q.y));
+                // Shade the bark only where a trunk stands.
+                mask = mask.toVar();
+                If(mask.greaterThan(0), () => {
+                    // Backlit cylinder: faces in shadow, a thin gold rim on the sunward edge.
+                    const sunSide = float(SUN[0]).sub(q.x).sign();
+                    // Backlight is strongest straight in front of the sun and falls away in every direction.
+                    const dx = q.x.sub(SUN[0]).toVar();
+                    const dy = q.y.sub(sunY).toVar();
+                    const near = exp(dx.mul(dx).mul(-2.2).sub(dy.mul(dy).mul(0.7))).toVar();
+                    // Clamped: a far trunk is a pixel or two wide, and its soft edge reaches |o| of 2 or 3, where
+                    // edge⁷ would light it up as a hairline of pure white.
+                    const edge = o.mul(sunSide).saturate().toVar();
+                    const edge2 = edge.mul(edge);
+                    const rim = edge2.mul(edge2).mul(edge2).mul(edge);
+                    const roundness = sqrt(float(1).sub(o.mul(o)).max(0));
+                    // Bark: deep vertical furrows, broken into plates.
+                    const furrows = gnoise(vec2(o.mul(4.2).add(id.mul(7.7)), q.y.mul(row.d).mul(0.9))).toVar();
+                    const plates = gnoise(vec2(o.mul(9).add(id.mul(3.3)), q.y.mul(row.d).mul(4)));
+                    const moss = smoothstep(0.5, 0.85, fbm(vec2(o.mul(2).add(id), q.y.mul(row.d).mul(2.2)), 3)
+                        .add(exp(height.mul(row.d).mul(-1.4)).mul(0.45)).add(o.mul(sunSide).mul(-0.15)));
+                    const tone = hash21(vec2(id.mul(5.1), row.seed + 3)).mul(0.5).add(0.75);
+                    const bark = mix(BARK.mul(tone), MOSS, moss.mul(0.75))
+                        .mul(smoothstep(0.25, 0.75, furrows).mul(0.9).add(0.35)).mul(plates.mul(0.4).add(0.8))
+                        .mul(roundness.mul(0.5).add(0.5))
+                        .toVar();
+                    // A little of the haze wraps into each trunk; the rim is the sun itself.
+                    bark.addAssign(fogColor.mul(0.1).mul(roundness));
+                    // Far trunks keep only a whisper of rim: the haze between eats it.
+                    const rimGain = 2.4 / (1 + row.d * 0.6);
+                    bark.addAssign(GOLD.mul(rim).mul(near.mul(rimGain).add(0.1)).mul(glow)
+                        .mul(float(1).sub(moss.mul(0.6))));
+                    if (m.wet > 0 && index >= 2) {
+                        // Rain still runs down the bark: a glossy streak on the sunward shoulder, broken
+                        // where the water runs in rivulets.
+                        const shoulder = o.mul(sunSide).sub(0.5).div(0.14);
+                        const runs = smoothstep(
+                            0.45,
+                            0.75,
+                            gnoise(vec2(o.mul(14).add(id.mul(5.3)), q.y.mul(row.d).mul(0.6))),
+                        );
+                        const gloss = exp(shoulder.mul(shoulder).negate()).mul(runs.mul(0.7).add(0.3));
+                        bark.addAssign(fogColor.mul(1.6).add(GOLD.mul(near).mul(0.3)).mul(gloss).mul(0.5 * m.wet)
+                            .mul(glow));
+                    }
+                    // The farther the row, the more of the air in front of it is lit by the sun's halo too.
+                    const fog = 1 - Math.exp(-row.d * 0.14);
+                    const trunk = mix(bark, mix(fogColor, air, fog * fog * 0.85), fog);
+                    col.assign(mix(col, trunk, mask));
+                });
             });
             // Mist pooled at the foot of each row, drifting.
             const wisp = fbm3(vec3(
