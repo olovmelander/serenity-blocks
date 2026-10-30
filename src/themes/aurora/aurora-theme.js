@@ -17,6 +17,7 @@ import { canvasAntialias } from '../shared/scene-antialias.js';
 import { QUALITY_PRESETS, normalizeAuroraQuality } from './aurora-quality.js';
 import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
 import { AuroraWorld } from './aurora-world.js';
+import { auroraBakes } from './aurora-bakes.js';
 
 export { QUALITY_PRESETS } from './aurora-quality.js';
 
@@ -103,8 +104,12 @@ export default class AuroraTheme extends BaseTheme {
         this.applyQualityPreset(this.pendingQuality ?? this.getGraphicsQuality());
         this.pendingQuality = null;
 
+        // The noise, the range's grid and the shore ice (~60 ms on a first visit) bake in a worker
+        // while the renderer comes up; the build below finds them kept.
+        const baking = auroraBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return;
+        await baking;
         if (!current()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

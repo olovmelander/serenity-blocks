@@ -48,6 +48,7 @@ import { POST_LOOK, GeodePost, createPassThroughPipeline } from './geode-post.js
 import { PLAYER_SLOTS, readLayoutRects } from './geode-composition.js';
 import { GEODE_EVENT_HANDLERS, GeodeDirector } from './geode-director.js';
 import { approach } from './geode-core.js';
+import { geodeBakes } from './geode-bakes.js';
 
 const THEME_ID = 'geode';
 const LOG_PREFIX = '[Geode]';
@@ -193,8 +194,12 @@ export default class GeodeTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise, its mips and the shell (~45 ms on a first visit) bake in a worker while the
+        // renderer comes up; the build below finds them kept.
+        const baking = geodeBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

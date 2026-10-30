@@ -112,13 +112,25 @@ function* prepareSteps(quality, fields) {
     };
 }
 
+/**
+ * The prepared coast read from the baked assets, kept for the session per quality: its fields,
+ * mesh positions and texture data are only read once built, and reading, decoding and preparing
+ * them again cost every revisit. (A coast drawn from the plan, when an asset could not be read, is
+ * not kept: the next visit tries the assets again.)
+ */
+const keptPrepared = new Map();
+
 /** Read the baked coast and prepare it, yielding to the page between slices (abortable). */
 async function prepareData(quality, { signal } = {}) {
+    if (keptPrepared.has(quality)) return keptPrepared.get(quality);
     const fields = await loadCoast({ signal });
     const steps = prepareSteps(quality, fields);
     for (;;) {
         const next = steps.next();
-        if (next.done) return next.value;
+        if (next.done) {
+            if (next.value.source === 'asset') keptPrepared.set(quality, next.value);
+            return next.value;
+        }
         // eslint-disable-next-line no-await-in-loop
         await breathe();
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');

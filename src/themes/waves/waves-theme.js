@@ -56,6 +56,7 @@ import { POST_LOOK, WavesPost, createPassThroughPipeline } from './waves-post.js
 import { PLAYER_SLOTS, readLayoutRects } from './waves-composition.js';
 import { WAVES_EVENT_HANDLERS, WavesDirector } from './waves-director.js';
 import { approach } from './waves-core.js';
+import { wavesBakes } from './waves-bakes.js';
 
 const THEME_ID = 'waves';
 const LOG_PREFIX = '[Waves]';
@@ -206,8 +207,12 @@ export default class WavesTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The water's noise (~58 ms on a first visit) bakes in a worker while the renderer comes
+        // up; the build below finds it kept.
+        const baking = wavesBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

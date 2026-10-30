@@ -4,16 +4,22 @@ Handover of the first day of the fleet performance pass. The record with all num
 is [THEME_FLEET_240_2026-10.md](THEME_FLEET_240_2026-10.md); this page says where everything is, how
 to resume, and what to do next, in order.
 
-> **Pick up here (updated 2026-10-29 22:30, paused at the owner's request).**
-> - **Merged to main:** rounds four to six (`perf/first-visit-freezes` + `perf/gpu-heavy-three`) as
->   `2e16df31`.
-> - **Round seven:** branch `perf/first-visit-rest` (from `2e16df31`).
->   - `7f37df98`: Ice Temple's noise and ice bake in a worker on a first visit: freeze 90 → 44 ms
->     (record §17). Merged with this branch.
->   - Next: Geode, Chiral Gold and Aurora (93-106 ms first-visit freezes): find the worst frame with
->     `--trace-load=1 --build-trace=1` first.
->   - A whole-fleet High run, uncapped, on main was stopped after 20 themes to let the machine cool:
->     run it again from the start (~35-45 min) to find the new slowest themes.
+> **Pick up here (updated 2026-10-30 ~02:40, after the night pass).**
+> - **The night pass** (record §18): branch `perf/night-2026-10-30`, identical-output changes only,
+>   merged to main at the end of the night (see the merge commit). First-visit switch freezes:
+>   Geode 98 → 40, Chiral Gold 92 → 42, Aurora 110 → 63, Waves 89 → 48, Himalayan Peak 113 → 64,
+>   Halcyon Apex 88 → 57, Galaxy 61 → 32 ms; Painted Ages and High Coast revisits show 300-400 ms
+>   sooner; Grainfields' worst storm 203 → 209 fps. New shared helpers: `shared/half-float.js`,
+>   `shared/pmrem-warm.js`.
+> - **For the owner (not merged):** side branch `look/thermal-bloom-stair-washes` (`4f281590`): the
+>   Stair's washes read their slope coordinates at rest too (main shows plain cream risers at rest and
+>   the orange mats only during a clear). A look change: approve or drop.
+> - **Next:** the fleet tables in `reports/theme-fleet-bench/2026-10-30-night-high-*`. Left: Rainbark
+>   (owner's call), Neon District and Solar Eclipse (single big materials), Star Cradle and Stillwater
+>   (the switch's first frame: chunk load), Blood Moon (a GPU-process task), Murmuration (layout-bound
+>   particle state). GPU: Thermal Bloom 193, Grainfields 209, Verdant Hills 234 fps worst: the look.
+>
+> - **Round seven:** merged as `ed2c3ee5` (record §17): Ice Temple's first visit 90 → 44 ms.
 >
 > - **Round six:** merged (record §16).
 >   - Spring's sun shafts read a half-size light map: golden evening 216 → 260 fps (`281e13f0`).

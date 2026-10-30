@@ -71,7 +71,6 @@ import {
     STARFIRE,
     WAVE_LIVE,
     approach,
-    bakeNoise,
     clamp01,
     createGalaxyUniforms,
     createNoiseTexture,
@@ -84,7 +83,7 @@ import {
     powerForCombo,
     smooth,
 } from './galaxy-tsl.js';
-import { buildPlan, nurseryPosition } from './galaxy-plan.js';
+import { nurseryPosition } from './galaxy-plan.js';
 import { tierFor } from './galaxy-quality.js';
 import { createGiants, createMeteors, createSky } from './galaxy-sky.js';
 import { createDisc } from './galaxy-disc.js';
@@ -95,6 +94,7 @@ import { createRowBeams, createSeeds, createSparks } from './galaxy-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './galaxy-composition.js';
+import { sessionNoiseField, sessionPlan } from './galaxy-bakes.js';
 
 /** The rest camera: a long lens, far enough back that the disc keeps its shape. */
 export const REST_RIG = Object.freeze({
@@ -165,7 +165,8 @@ export class GalaxyWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.plan = buildPlan(seed, { stars: this.tier.stars });
+        // (kept for the session, with the noise: galaxy-bakes.js)
+        this.plan = sessionPlan(seed, { stars: this.tier.stars });
         this.root = new THREE.Group();
         this.root.name = 'Galaxy';
         this.parts = {};
@@ -331,7 +332,7 @@ export class GalaxyWorld {
     }
 
     build() {
-        const noise = createNoiseTexture(bakeNoise());
+        const noise = createNoiseTexture(sessionNoiseField());
         this.textures.push(noise);
         const u = createGalaxyUniforms({ noise });
         this.u = u;

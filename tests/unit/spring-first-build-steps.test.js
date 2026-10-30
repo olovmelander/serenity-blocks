@@ -100,7 +100,8 @@ describe('spring first visit: the big meshes built in steps', () => {
         expectSameGeometry(direct, part.mesh.geometry);
         expect(run(c.prepare(ground))).toEqual({ yields: 0, value: false });
         part.dispose();
-    });
+    // (each builds the whole mesh twice: over 5 s on a busy CI runner, 2026-10-29)
+    }, 30_000);
 
     it('the pour (no ground: one per session and tier) steps too, and matches one call', () => {
         const pourTier = { pourCols: 37, pourRows: 23 };
@@ -114,7 +115,7 @@ describe('spring first visit: the big meshes built in steps', () => {
         expectSameGeometry(direct, part.mesh.geometry);
         expect(run(preparePourSteps(pourTier))).toEqual({ yields: 0, value: false });
         part.dispose();
-    });
+    }, 30_000);
 });
 
 describe('spring fall plan: a column asked again answers the same', () => {

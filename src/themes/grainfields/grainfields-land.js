@@ -22,6 +22,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     Loop,
     atan,
     attribute,
@@ -249,26 +250,31 @@ export function trailsAt(u, xz) {
         const a = u.trails.element(tr.mul(3));
         const b = u.trails.element(tr.mul(3).add(1));
         const c = u.trails.element(tr.mul(3).add(2));
-        const age = u.time.sub(a.z);
+        const age = u.time.sub(a.z).toVar();
         // The trail's centre line: out along its heading, curling as it goes (a slow arc).
-        const rel = xz.sub(a.xy);
-        const along = dot(rel, b.xy);
-        const across0 = rel.x.mul(b.y).sub(rel.y.mul(b.x));
-        const curl = along.mul(along).mul(b.z);
-        const wave = sin(along.mul(0.011).add(a.w.mul(3.0))).mul(along.mul(0.06));
-        const across = across0.sub(curl).sub(wave);
+        const rel = xz.sub(a.xy).toVar();
+        const along = dot(rel, b.xy).toVar();
         // The head runs out fast, slowing; the lane behind it settles over a few seconds.
-        const head = float(1.0).sub(exp(age.mul(-0.55))).mul(2600.0);
-        const behind = head.sub(along);
-        const inLane = smoothstep(-40.0, 0.0, behind).mul(exp(max(behind, 0.0).div(-420.0)));
-        const widthM = b.w.mul(along.mul(0.0025).add(1.0));
-        const lane = exp(across.mul(across).div(widthM.mul(widthM)).negate()).mul(smoothstep(0.0, 30.0, along));
-        const live = smoothstep(0.0, 0.25, age).mul(float(1.0).sub(smoothstep(4.0, 7.5, age)));
-        const k = lane.mul(inLane).mul(live).mul(a.w);
-        lay.addAssign(k);
-        tint.addAssign(c.xyz.mul(k));
-        // The lane's wind runs out along its heading: the stalks lie over away from the eye.
-        push.addAssign(b.xy.mul(k));
+        const head = float(1.0).sub(exp(age.mul(-0.55))).mul(2600.0).toVar();
+        // A trail lays nothing outside its life (live), behind its start (the lane's smoothstep
+        // on `along`) or 40 m past its head (inLane): exactly 0 there, so its sums are skipped.
+        If(age.greaterThan(0.0).and(age.lessThan(7.5)).and(along.greaterThan(0.0))
+            .and(along.lessThan(head.add(40.0))), () => {
+            const across0 = rel.x.mul(b.y).sub(rel.y.mul(b.x));
+            const curl = along.mul(along).mul(b.z);
+            const wave = sin(along.mul(0.011).add(a.w.mul(3.0))).mul(along.mul(0.06));
+            const across = across0.sub(curl).sub(wave);
+            const behind = head.sub(along);
+            const inLane = smoothstep(-40.0, 0.0, behind).mul(exp(max(behind, 0.0).div(-420.0)));
+            const widthM = b.w.mul(along.mul(0.0025).add(1.0));
+            const lane = exp(across.mul(across).div(widthM.mul(widthM)).negate()).mul(smoothstep(0.0, 30.0, along));
+            const live = smoothstep(0.0, 0.25, age).mul(float(1.0).sub(smoothstep(4.0, 7.5, age)));
+            const k = lane.mul(inLane).mul(live).mul(a.w);
+            lay.addAssign(k);
+            tint.addAssign(c.xyz.mul(k));
+            // The lane's wind runs out along its heading: the stalks lie over away from the eye.
+            push.addAssign(b.xy.mul(k));
+        });
     });
     return { lay: clamp(lay, 0.0, 1.0), tint, push };
 }
@@ -287,22 +293,32 @@ export function pulsesAt(u, xz) {
     }, ({ pu }) => {
         const a = u.pulses.element(pu.mul(2));
         const b = u.pulses.element(pu.mul(2).add(1));
-        const age = u.time.sub(a.z);
-        const rel = xz.sub(a.xy);
-        const r = max(length(rel), 0.01);
-        const dir = rel.div(r);
-        const off = r.sub(age.mul(b.y));
-        const band = exp(off.mul(off).div(b.z.mul(b.z)).negate())
-            .mul(smoothstep(0.0, 0.15, age)).mul(float(1.0).sub(smoothstep(2.5, 6.0, age)));
-        const angle = atan(dir.y, dir.x);
-        const arms = sin(angle.mul(3.0).sub(age.mul(4.5)).add(r.mul(0.22))).mul(0.4).add(0.6);
-        const whirl = exp(r.mul(r).div(b.z.mul(b.z)).negate()).mul(arms)
-            .mul(smoothstep(0.0, 0.6, age)).mul(float(1.0).sub(smoothstep(3.5, 7.0, age)));
-        const isWhirl = b.x.greaterThan(0.5).and(b.x.lessThan(1.5));
-        const k = select(isWhirl, whirl, band).mul(a.w).toVar();
-        const tangent = normalize(vec2(dir.y.negate(), dir.x).add(dir.mul(-0.3)));
-        push.addAssign(select(isWhirl, tangent, dir).mul(k));
-        lay.addAssign(k);
+        const age = u.time.sub(a.z).toVar();
+        // A ring is 0 outside 0-6 s of age and a whirl outside 0-7 s; each pulse is one or the
+        // other for every pixel: only its own shape is worked out, and only while it lives.
+        If(age.greaterThan(0.0).and(age.lessThan(7.0)), () => {
+            const rel = xz.sub(a.xy);
+            const r = max(length(rel), 0.01).toVar();
+            const dir = rel.div(r).toVar();
+            const isWhirl = b.x.greaterThan(0.5).and(b.x.lessThan(1.5));
+            If(isWhirl, () => {
+                const angle = atan(dir.y, dir.x);
+                const arms = sin(angle.mul(3.0).sub(age.mul(4.5)).add(r.mul(0.22))).mul(0.4).add(0.6);
+                const whirl = exp(r.mul(r).div(b.z.mul(b.z)).negate()).mul(arms)
+                    .mul(smoothstep(0.0, 0.6, age)).mul(float(1.0).sub(smoothstep(3.5, 7.0, age)));
+                const k = whirl.mul(a.w).toVar();
+                const tangent = normalize(vec2(dir.y.negate(), dir.x).add(dir.mul(-0.3)));
+                push.addAssign(tangent.mul(k));
+                lay.addAssign(k);
+            }).Else(() => {
+                const off = r.sub(age.mul(b.y));
+                const band = exp(off.mul(off).div(b.z.mul(b.z)).negate())
+                    .mul(smoothstep(0.0, 0.15, age)).mul(float(1.0).sub(smoothstep(2.5, 6.0, age)));
+                const k = band.mul(a.w).toVar();
+                push.addAssign(dir.mul(k));
+                lay.addAssign(k);
+            });
+        });
     });
     return { push, lay: clamp(lay, 0.0, 1.2) };
 }

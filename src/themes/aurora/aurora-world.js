@@ -16,13 +16,15 @@ import { AuroraDirector } from './aurora-director.js';
 import { ExcitationMap } from './aurora-field.js';
 import { AURORA_HOURS } from './aurora-hours.js';
 import { AuroraLandscape } from './aurora-landscape.js';
-import { bakeAuroraNoise, createRandom } from './aurora-noise.js';
+import { createRandom } from './aurora-noise.js';
+import {
+    AURORA_SEED, NOISE_SIZE, landSeedOf, noiseSeedOf, sessionNoise,
+} from './aurora-bakes.js';
 import { resolveAuroraQuality } from './aurora-quality.js';
 import { AuroraSky } from './aurora-sky.js';
 
 /** The artwork is authored for this seed: the massifs, the saddle and the star field. */
-export const AURORA_SEED = 20261005;
-const NOISE_SIZE = 256;
+export { AURORA_SEED };
 /** Eye height above the lake, world units. High enough that ripples read as rings. */
 const EYE_HEIGHT = 8;
 /** The rig turns screen-fraction motion into translation over this distance. */
@@ -36,18 +38,6 @@ const METEOR_QUEUE = 16;
 const VOLLEY_GAP = 0.13;
 /** A meteor waits at most this long for a free slot, then takes the one furthest on. */
 const METEOR_PATIENCE = 1.5;
-
-/**
- * The shared noise tile depends only on its seed and nothing writes to it once baked (the
- * texture reads it), so it is baked once a session: most of the world's 89 ms constructor on
- * every Aurora start, a stall of the outgoing theme and the board in an in-play switch
- * (docs/THEME_FLEET_240_2026-10.md).
- */
-const noiseBakes = new Map();
-function sessionNoise(seed) {
-    if (!noiseBakes.has(seed)) noiseBakes.set(seed, bakeAuroraNoise(NOISE_SIZE, seed));
-    return noiseBakes.get(seed);
-}
 
 export class AuroraWorld {
     constructor({
@@ -87,7 +77,7 @@ export class AuroraWorld {
         };
 
         this.noiseTexture = new THREE.DataTexture(
-            sessionNoise(seed % 65521),
+            sessionNoise(noiseSeedOf(seed)),
             NOISE_SIZE,
             NOISE_SIZE,
             THREE.RGBAFormat,
@@ -127,7 +117,7 @@ export class AuroraWorld {
             noiseTexture: this.noiseTexture,
             uniforms: this.uniforms,
             random: createRandom(seed ^ 0x7a11e5),
-            seed: seed % 9973,
+            seed: landSeedOf(seed),
             eyeHeight: EYE_HEIGHT,
         });
         this.air = new AuroraAir({
