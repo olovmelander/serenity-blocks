@@ -191,13 +191,20 @@ export class BreathStage {
      * then adopts it instead of building and compiling behind the dip, and the world comes back
      * as soon as the dip ends. It starts once the world on screen has settled, and a moment more.
      * WebGPU only: the WebGL2 backend compiles synchronously, which would stall what is on screen.
-     * null drops what was built ahead.
+     * null drops what was built ahead: at once, or, while a stage change is under way, once it is
+     * done. A session's last stage asks for nothing next in the same moment as it asks for its own
+     * world, whose swap adopts what was built ahead only after the dip: dropped at once, that
+     * world was built and compiled again behind the dip (docs/BREATHING_PERF_PASS_2026-10.md,
+     * "Stage changes on hardware").
      * @param {string|null} id
      */
     prepareNext(id) {
         this.nextWorld = id || null;
         if (!this.nextWorld) {
-            this.host?.discardPrepared();
+            // Still nothing wanted next once the change is done: drop whatever was not adopted.
+            const drop = () => { if (!this.nextWorld) this.host?.discardPrepared(); };
+            if (this.swapping) this.swapping.then(drop, drop);
+            else drop();
             return Promise.resolve();
         }
         if (!this.preparing) this.preparing = this._prepareNext().finally(() => { this.preparing = null; });

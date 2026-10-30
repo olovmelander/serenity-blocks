@@ -252,6 +252,34 @@ describe('breath stage, the next world built ahead', () => {
         stage.dispose();
     });
 
+    it('lets the last stage change adopt what was built for it before anything is dropped', async () => {
+        const stage = await onScreen();
+        const setWorld = vi.spyOn(hosts[0], 'setWorld');
+        // A session's last stage: its world is asked for, and in the same moment nothing next.
+        stage.setWorld('coherence');
+        await stage.prepareNext(null);
+        expect(hosts[0].discardPrepared).not.toHaveBeenCalled();
+        // The dip ends and the swap takes the world built ahead; only then is the rest dropped.
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(setWorld).toHaveBeenCalledWith('coherence');
+        expect(hosts[0].discardPrepared).toHaveBeenCalledOnce();
+        expect(setWorld.mock.invocationCallOrder[0]).toBeLessThan(hosts[0].discardPrepared.mock.invocationCallOrder[0]);
+        stage.dispose();
+    });
+
+    it('keeps a request for the next world that comes during the change', async () => {
+        const stage = await onScreen();
+        stage.setWorld('coherence');
+        stage.prepareNext(null);
+        const preparing = stage.prepareNext('calm-sleep');
+        await vi.advanceTimersByTimeAsync(5000);
+        await preparing;
+        // The newer request stands: nothing is dropped after the change, the next world is built.
+        expect(hosts[0].discardPrepared).not.toHaveBeenCalled();
+        expect(hosts[0].prepareWorld).toHaveBeenCalledWith('calm-sleep');
+        stage.dispose();
+    });
+
     it('builds nothing ahead on WebGL2, where compiling would stall what is on screen', async () => {
         webgpu = false;
         const stage = await onScreen();
