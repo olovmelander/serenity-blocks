@@ -206,6 +206,35 @@ describe('breathing world host', () => {
     });
 });
 
+describe('breathing lens', () => {
+    it('turns light shafts on and off between worlds without rebuilding its graph', () => {
+        const { host } = createHost('High');
+        const { post } = host;
+        const output = post.pipeline.outputNode;
+        expect(post.shaftsNode).toBeTruthy();
+        host.setWorld('zen-garden');
+        expect(post.usesShafts).toBe(false);
+        expect(post.shaftsNode.autoUpdate).toBe(false);
+        expect(post.shaftsFirst.autoUpdate).toBe(false);
+        host.setWorld('forest-breath');
+        expect(post.usesShafts).toBe(true);
+        expect(post.shaftsNode.autoUpdate).toBe(true);
+        expect(post.shaftsFirst.autoUpdate).toBe(true);
+        host.setSize(1280, 720);
+        host.step(1 / 60);
+        expect(post.uShaftStrength.value).toBeGreaterThan(0);
+        host.setWorld('zen-garden');
+        // Off again: the passes rest, and their last image is added at strength 0.
+        expect(post.shaftsNode.autoUpdate).toBe(false);
+        expect(post.uShaftStrength.value).toBe(0);
+        host.step(1 / 60);
+        expect(post.uShaftStrength.value).toBe(0);
+        // One graph throughout: nothing for a stage change to rebuild or compile.
+        expect(post.pipeline.outputNode).toBe(output);
+        host.dispose();
+    });
+});
+
 describe('breathing world host, a world built ahead', () => {
     /**
      * A host whose renderer records each compileAsync and the target bound for it; every compile
