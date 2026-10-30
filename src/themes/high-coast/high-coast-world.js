@@ -51,7 +51,7 @@ import { tierFor } from './high-coast-quality.js';
 import { breathe, loadCoast, planCoast } from './high-coast-assets.js';
 import {
     GUSTS, createCoverTexture, createFieldTexture, createLatticeTexture, createNoiseTexture, createUniforms,
-    fieldTextureData,
+    fieldTextureSteps,
 } from './high-coast-tsl.js';
 import { groundHeight } from './high-coast-field.js';
 import { createFanGeometry, createLandMaterial, fanPositionSteps } from './high-coast-land.js';
@@ -104,7 +104,9 @@ function* prepareSteps(quality, fields) {
     const positions = yield* fanPositionSteps(fields, tier.fanCols, tier.fanRows);
     const textures = {};
     for (const name of FIELD_ORDER) {
-        textures[name] = fieldTextureData(fields[name].heights, fields[name].sky, FIELDS[name]);
+        // (a band of rows a step, never one field in one)
+        const rows = Math.max(1, Math.ceil(FIELDS[name].size / 8));
+        textures[name] = yield* fieldTextureSteps(fields[name].heights, fields[name].sky, FIELDS[name], rows);
         yield name;
     }
     return {
@@ -112,13 +114,25 @@ function* prepareSteps(quality, fields) {
     };
 }
 
+/**
+ * The prepared coast read from the baked assets, kept for the session per quality: its fields,
+ * mesh positions and texture data are only read once built, and reading, decoding and preparing
+ * them again cost every revisit. (A coast drawn from the plan, when an asset could not be read, is
+ * not kept: the next visit tries the assets again.)
+ */
+const keptPrepared = new Map();
+
 /** Read the baked coast and prepare it, yielding to the page between slices (abortable). */
 async function prepareData(quality, { signal } = {}) {
+    if (keptPrepared.has(quality)) return keptPrepared.get(quality);
     const fields = await loadCoast({ signal });
     const steps = prepareSteps(quality, fields);
     for (;;) {
         const next = steps.next();
-        if (next.done) return next.value;
+        if (next.done) {
+            if (next.value.source === 'asset') keptPrepared.set(quality, next.value);
+            return next.value;
+        }
         // eslint-disable-next-line no-await-in-loop
         await breathe();
         if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
