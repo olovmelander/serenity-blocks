@@ -11,9 +11,9 @@ to resume, and what to do next, in order.
 >   Halcyon Apex 88 → 57, Galaxy 61 → 32 ms; Painted Ages and High Coast revisits show 300-400 ms
 >   sooner; Grainfields' worst storm 203 → 209 fps. New shared helpers: `shared/half-float.js`,
 >   `shared/pmrem-warm.js`.
-> - **For the owner (not merged):** side branch `look/thermal-bloom-stair-washes` (`4f281590`): the
->   Stair's washes read their slope coordinates at rest too (main shows plain cream risers at rest and
->   the orange mats only during a clear). A look change: approve or drop.
+> - **Approved and merged the morning after:** `look/thermal-bloom-stair-washes` (`4f281590`): the
+>   Stair's washes read their slope coordinates at rest too (main showed plain cream risers at rest
+>   and the orange mats only during a clear).
 > - **Next:** the fleet tables in `reports/theme-fleet-bench/2026-10-30-night-high-*`. Left: Rainbark
 >   (owner's call), Neon District and Solar Eclipse (single big materials), Star Cradle and Stillwater
 >   (the switch's first frame: chunk load), Blood Moon (a GPU-process task), Murmuration (layout-bound

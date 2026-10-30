@@ -1144,9 +1144,9 @@ Left, with what they are:
 - **CI flake:** Spring's first-build step tests (each builds a whole mesh twice) timed out at 5 s on a
   runner and failed main's deploy once (re-run green); they now have 30 s (`b548f1cf`).
 
-### For the owner
+### The one look change (approved by the owner the morning after)
 
-- **Side branch `look/thermal-bloom-stair-washes`** (`4f281590`, not merged): main's Stair shader
+- **`look/thermal-bloom-stair-washes`** (`4f281590`, merged after the owner approved it from the crop): main's Stair shader
   first writes `along`/`across` inside the seal fills' loop, so at rest the washes read 0 for both and
   the risers show plain cream; during the ~6 s a sealed row lives they show the orange mats and
   flutes the shader draws. The fix makes rest look like the clears do (14.5 % of the frame at rest;
