@@ -216,15 +216,32 @@ function ramp(lo, hi, v) {
     return s * s * (3 - 2 * s);
 }
 
-/** The bore's white water through each phase of the breath (only the phase's own ramp runs). */
+/**
+ * The bore's white water through each phase of the breath (only the phase's own ramp runs). It
+ * meets itself at every turn of every pattern: through a pause on empty lungs it waits at the rest
+ * line, still white, and the uprush carries it on from there.
+ */
 function boreFor(phase, at) {
     switch (phase) {
     case 0: return 1 - ramp(0.25, 0.9, at);
     case 1: return 0;
     case 2: return ramp(0.15, 0.55, at);
-    case 3: return 1 - ramp(0, 1, at) * 0.6;
+    case 3: return 1;
     default: return 0;
     }
+}
+
+/**
+ * The swash's out-breath look through each phase of the breath: the sand draining with bubbles
+ * stranded on it, the next wave rolling in from the break, humped and lit through. It comes on at
+ * the top, where the white water is spent and nothing shows it, and holds through a pause on empty
+ * lungs. The wave that rolled in then breaks onto the sand as the uprush gathers: its look gives
+ * way over the first third of the in-breath, with the water's own motion, not all at once at the
+ * turn while the water stands still.
+ */
+function outFor(phase, at) {
+    if (phase === 0) return 1 - ramp(0, 0.35, at);
+    return phase === 1 ? 0 : 1;
 }
 
 /** The foam lace through each phase of the breath. */
@@ -236,6 +253,73 @@ function laceFor(phase, at) {
     case 3: return 0.2;
     default: return 0.2;
     }
+}
+
+/**
+ * A critically damped glide of `state` ({ value, velocity }) toward `target`, `rate` per second.
+ * A first-order ease jumps to full speed when its target steps (at a turn of the breath), and
+ * everything it drives kicks into motion in one frame; this one starts from rest, gathers pace and
+ * settles, in about the same time (half way in 1.7 / rate s, nine tenths in 3.9 / rate s). With no
+ * time step (a pinned frame) it lands at once.
+ */
+function glide(state, target, delta, rate) {
+    if (!(delta > 0)) {
+        state.value = target;
+        state.velocity = 0;
+        return state.value;
+    }
+    const offset = state.value - target;
+    const pull = state.velocity + rate * offset;
+    const decay = Math.exp(-rate * delta);
+    state.value = target + (offset + pull * delta) * decay;
+    state.velocity = (state.velocity - rate * pull * delta) * decay;
+    return state.value;
+}
+
+/**
+ * The swash as the breath drives it, frame by frame (plain numbers: the world copies them into its
+ * uniforms). `bore`: how much fresh white water the wave carries. `lace`: how much older lace rides
+ * the water, left by the uprush. `out`: how far the swash is in its out-breath look (see outFor).
+ * `incoming`: 1 while the bore rolls in from the break on a path of its own, 0 while it rides the
+ * swash front. Nothing here jumps or kicks into motion at a turn of the breath, save the spent bore
+ * moving out to the break at the top, where no one sees it go.
+ */
+export function createSwash() {
+    const boreGlide = { value: 0, velocity: 0 };
+    const outGlide = { value: 0, velocity: 0 };
+    const ashoreGlide = { value: 0, velocity: 0 };
+    // Until its first update the swash holds no breath's values: that update lands on its own.
+    let settled = false;
+    return {
+        bore: 0,
+        lace: 0.2,
+        out: 0,
+        incoming: 0,
+        /** One frame, `delta` seconds on (0 pins it: everything lands where the breath is). */
+        update(delta, phase, progress) {
+            const at = Math.min(1, Math.max(0, progress));
+            // A fresh world starts where the breath is: nothing glides in at the start of a practice.
+            const tick = settled ? delta : 0;
+            settled = true;
+            // White water, continuous at every turn: it builds as the next wave breaks during the
+            // out-breath, rides the front up the sand and is spent before the top (so the bore can
+            // move out to the break unseen). Lace gathers through the uprush and thins as it drains.
+            // The out-breath look steps on only at the top, where nothing shows it. All of them
+            // glide, so nothing they drive (the hump, the lit face, churn, film) kicks into motion.
+            const follow = tick > 0 ? 1 - Math.exp(-tick * 3) : 1;
+            this.bore = glide(boreGlide, boreFor(phase, at), tick, 5);
+            this.lace += (laceFor(phase, at) - this.lace) * follow;
+            this.out = glide(outGlide, outFor(phase, at), tick, 5);
+            // The bore moves out to the break at once as the out-breath begins: its white water is
+            // spent by then. Coming ashore it glides instead: the wave that rolled in carries on onto
+            // the uprush's front (which lags the breath a little at the turn) instead of jumping there.
+            if (phase >= 2) {
+                ashoreGlide.value = 1;
+                ashoreGlide.velocity = 0;
+            } else glide(ashoreGlide, 0, tick, 6);
+            this.incoming = ashoreGlide.value;
+        },
+    };
 }
 
 /**
@@ -351,15 +435,12 @@ export function createOceanWorld({ u, quality, mood = MOODS[0] }) {
     const SUN_POWER = m.sunPower;
     const GLINT = m.glint;
     const BIO = m.bio ? vec3(...m.bio) : null;
-    // The swash as the breath drives it (set in update). `uBore`: how much fresh white water the
-    // wave carries. `uLace`: how much older lace rides the water, left by the uprush. `uOut`: 0 while
-    // the wave runs up the sand, easing to 1 once the out-breath has begun (the sand drains and the
-    // next wave rolls in from the break). `uIncoming` is the same switch without the easing: it moves
-    // the bore out to the break at the turn of the breath, when its white water is spent.
-    const uBore = uniform(0);
-    const uLace = uniform(0.2);
-    const uOut = uniform(0);
-    const uIncoming = uniform(0);
+    // The swash as the breath drives it (see createSwash), copied in each update.
+    const swash = createSwash();
+    const uBore = uniform(swash.bore);
+    const uLace = uniform(swash.lace);
+    const uOut = uniform(swash.out);
+    const uIncoming = uniform(swash.incoming);
     const sun = vec3(...SUN_DIR);
 
     const backdrop = Fn(() => {
@@ -435,10 +516,13 @@ export function createOceanWorld({ u, quality, mood = MOODS[0] }) {
 
         // The bore: the white water a wave carries. While the lungs fill it is the swash's own front,
         // churning up the sand; once the out-breath begins the next wave breaks offshore and rolls in
-        // to meet the backwash, arriving just as the lungs empty. It rides a hump of water whose
-        // shoreward face, steep and thin, the low sun shines through.
-        const incoming = mix(float(REACH_EMPTY).add(0.02), float(BREAK_LINE), b.mul(b)).add(lobes.mul(0.3))
-            .add(cusps.mul(0.5));
+        // to meet the backwash, arriving just as the lungs empty: it comes to rest on the very line
+        // where the backwash stops (the front at empty lungs, lobes and all), so the uprush that
+        // follows carries it on from where it is. It rides a hump of water whose shoreward face,
+        // steep and thin, the low sun shines through.
+        const restAt = float(REACH_EMPTY).add(lobes.mul(0.4));
+        const breakAt = float(BREAK_LINE).add(lobes.mul(0.3)).add(cusps.mul(0.5));
+        const incoming = mix(restAt, breakAt, b.mul(b));
         const boreAt = mix(front, incoming, uIncoming).toVar();
         const xb = c.sub(boreAt).toVar();
         const crest = exp(sq(xb.div(0.075)).negate()).mul(uOut).mul(fadeOut(0.82, 1.0, b)).toVar();
@@ -806,18 +890,11 @@ export function createOceanWorld({ u, quality, mood = MOODS[0] }) {
         camera: { dolly: 0.03, drift: [0.03, 0.015], period: 70 },
         exposure: m.exposure,
         update({ delta, phase, progress }) {
-            const at = Math.min(1, Math.max(0, progress));
-            // White water, continuous at every turn: it builds as the next wave breaks during the
-            // out-breath, rides the front up the sand and is spent before the top (so the bore can
-            // move out to the break unseen). Lace gathers through the uprush and thins as it drains.
-            const bore = boreFor(phase, at);
-            const lace = laceFor(phase, at);
-            const out = phase >= 2 ? 1 : 0;
-            const follow = delta > 0 ? 1 - Math.exp(-delta * 3) : 1;
-            uBore.value += (bore - uBore.value) * follow;
-            uLace.value += (lace - uLace.value) * follow;
-            uOut.value += (out - uOut.value) * follow;
-            uIncoming.value = out;
+            swash.update(delta, phase, progress);
+            uBore.value = swash.bore;
+            uLace.value = swash.lace;
+            uOut.value = swash.out;
+            uIncoming.value = swash.incoming;
         },
     };
 }

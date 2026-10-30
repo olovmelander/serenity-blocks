@@ -9,7 +9,8 @@ figure** (ADR-0016): the pass changes code, and proves that the pictures did not
 pass on the reference renderer: every mood, empty and full lungs, another moment, the phone tier,
 Minimal and the WebGL2 backend (max abs diff 0 over 120 frames, plus ten frames with a meteor
 crossing; see Verification). The guide's own CSS changed only in what is painted where nobody can
-see it.
+see it. One later change does alter a picture, on purpose: Ocean Tide's turn ashore (its own
+follow-up, at the end).
 
 ## What changed
 
@@ -218,6 +219,55 @@ starts first, preload); `hale-session-practice.test.js` (`prepareSession`); the 
 (1,271 files) and typecheck; and CI's other gates: the lint ratchet (at its baseline, 9 fewer
 warnings), boundaries, release gates, the build and its boot closure, IP strings, the Pages
 artifact and the perf budgets.
+
+## Follow-up: Ocean Tide turns ashore in one motion (a change of look, on purpose)
+
+The owner found Ocean Tide's turn from the out-breath into the in-breath "a bit hacky": the water
+should feel smooth and connected all the time. Unlike everything above, this changes the picture,
+on purpose, and only Ocean Tide's.
+
+**What was wrong.** On the first frame of the in-breath three things stepped at once. The bore (the
+incoming wave's white water) jumped from its own path onto the swash front, and the out-breath
+look (the wave's hump and lit face, its uneven peaks, the glassy film and stranded bubbles on the
+sand) began to switch through a first-order ease, which sets off at full speed when its target
+steps. The picture popped, then went on changing for half a second while the water itself stood
+still at its reversal.
+
+**What changed** (`worlds/ocean.js`; the swash's per-frame state is now `createSwash()`):
+
+- The incoming wave comes to rest on the very line where the backwash stops (the front at empty
+  lungs, its lobes and all), and glides onto the front as the in-breath begins: the uprush carries
+  it on from where it is. Late in the out-breath it runs a few pixels from its old path, its shape
+  easing into the waterline's.
+- The out-breath look gives way over the first third of the in-breath (`outFor`), as the uprush
+  gathers, not in the half second after the turn.
+- What the breath still steps glides (`glide`: critically damped, it starts from rest), so nothing
+  sets off at full speed. The white water meets itself at every turn of every pattern: the natural
+  pace of the rest stages (4·1·6·1) used to dim it through the pause on empty lungs and whiten it
+  again at the turn.
+- A fresh world starts where the breath is: nothing glides in at the start of a practice.
+
+Mean change from one frame to the next (15 fps), from the last out-breath frame to the first
+in-breath frame:
+
+| | Whole frame | Near the shore |
+| --- | --- | --- |
+| Before | 0.58 → **2.16** | 0.94 → **4.15** |
+| Now | 0.58 → 0.53, lowest 0.37 a third of a second on | 0.93 → 0.80, lowest 0.45 |
+
+Motion now eases into the reversal and out of it, with one low point where the water turns. The
+turn into the out-breath is unchanged (within 0.01), and 4·1·6·1 has no step either.
+
+**Verification.** The real stage stepped at 30 Hz on SwiftShader WebGPU (High, 640 × 360, the
+first mood, visit seed 0.5) and captured at 15 fps across both turns of 4·0·4·0 and 4·1·6·1, with no
+console errors; moving the swash into `createSwash()` left all 96 frames pixel-identical. Frames
+differ from before from the second quarter of the out-breath to a third into the in-breath, and
+by under 0.15 on average elsewhere (the white water's glide). `breath-ocean-swash.test.js` (new)
+steps the swash at 60 Hz through 4·0·4·0, 4·0·6·0 and 4·1·6·1: no value steps more than 0.05 in a
+frame or changes pace by more than 0.015 (the old swash's eases kicked by 0.05, its bore jumped by
+1); the bore moves out to the break only once its white water is spent (under 0.025, as before);
+the out-breath look changes slowest in the in-breath's first tenth; and a fresh world's first
+frame is a pinned frame's.
 
 ## Not measured, and open
 
