@@ -17,6 +17,7 @@ import {
 import {
     SUMMER_HOUR_COLOURS, SUMMER_HOURS, createSummerHourState, summerHourAt, summerSunDirection,
 } from './summer-hours.js';
+import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
 import { SummerRings } from './summer-rings.js';
 
 /** Where the evening sun stands (degrees); the other hours' suns are in summer-hours.js. */
@@ -180,6 +181,9 @@ export class SummerLight {
         sunShadow.bias = -0.0011 * (2048 / tier.shadowMap[0]) ** 1.5;
         sunShadow.normalBias = 0;
         sunShadow.radius = 2.6;
+        // three r186's PCF (its disc scaled by the texel width on both axes): r187's per-axis disc
+        // grained the lit leaves on this 2:1 map. See shared/width-pcf-shadow-filter.js.
+        sunShadow.filterNode = widthPcfShadowFilter;
         // The land never moves and the sun moves slowly, so its shadows are drawn only when
         // the sun has moved a little way (aimSun), not every frame.
         sunShadow.autoUpdate = false;

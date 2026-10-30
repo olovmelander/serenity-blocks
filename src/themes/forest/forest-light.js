@@ -17,6 +17,7 @@ import {
 import {
     FOREST_HOUR_COLOURS, FOREST_HOURS, createForestHour, forestHourAt,
 } from './forest-hours.js';
+import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
 import { FOREST_LIGHT_FIELD_BOUNDS, ForestLightField } from './forest-light-field.js';
 import { FOREST_MOON_AZIMUTH_DEGREES, FOREST_MOON_ELEVATION_DEGREES } from './forest-plan.js';
 import { ForestPulses } from './forest-pulses.js';
@@ -206,6 +207,9 @@ export class ForestLight {
         moonShadow.bias = -0.0011 * (2048 / tier.shadowMap[0]) ** 1.5;
         moonShadow.normalBias = 0;
         moonShadow.radius = 2.6;
+        // three r186's PCF (its disc scaled by the texel width on both axes): r187's per-axis disc
+        // grained the moonlit canopy on this 2:1 map. See shared/width-pcf-shadow-filter.js.
+        moonShadow.filterNode = widthPcfShadowFilter;
         // The trees never move under a fixed moon, so their shadows are drawn once.
         moonShadow.autoUpdate = false;
         moonShadow.needsUpdate = true;

@@ -15,6 +15,7 @@ import {
     texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sakuraHourAt } from './sakura-hours.js';
+import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
 
 const TAU = Math.PI * 2;
 /** The steady evening breeze; hot play freshens it (update()). */
@@ -127,6 +128,9 @@ export class SakuraLight {
         moonShadow.bias = -0.0024;
         moonShadow.normalBias = 0.05;
         moonShadow.radius = 2.4;
+        // three r186's PCF (its disc scaled by the texel width on both axes): r187's per-axis disc
+        // grained the petals on this 2:1 map. See shared/width-pcf-shadow-filter.js.
+        moonShadow.filterNode = widthPcfShadowFilter;
         // The garden never moves under a fixed moon, so its shadows are drawn once.
         moonShadow.autoUpdate = false;
         moonShadow.needsUpdate = true;
