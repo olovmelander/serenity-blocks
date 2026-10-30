@@ -378,6 +378,8 @@ const STOP = `(async () => {
         diagnostics: window.__PLAYGROUND__.diagnostics(),
         stepSampleNs: [...steps].slice(0, 12),
         heapGrowthMB: snapshot.memory?.growthMB ?? null,
+        // Every frame drawn through the window (the frame-interval buffer keeps only the last 1,200).
+        drawn: snapshot.droppedFrames?.total ?? null,
         // Every frame's GPU ms in order (µs), to see a power-state change inside a reading.
         series: frames.sort((a, b) => a.frame - b.frame).map((f) => Math.round(f.total * 1000)),
     };
@@ -491,7 +493,7 @@ async function measure(win, tier, job, prep, variant, repeat, quiet) {
         quiet: quiet.quiet,
         presentHz: reading.frameMs?.p50 ? 1000 / reading.frameMs.p50 : null,
         // Frames drawn a second through the window (uncapped: how fast it could go).
-        fps: reading.frameMs?.samples ? (reading.frameMs.samples * 1000) / windowMs : null,
+        fps: reading.drawn ? (reading.drawn * 1000) / windowMs : null,
     };
     const faults = [
         !reading.countersConstant && 'counters changed',

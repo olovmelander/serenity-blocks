@@ -67,6 +67,10 @@ if (spec.userData) app.setPath('userData', path.resolve(String(spec.userData)));
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 /** World requests this soon after startSession are the session opening, not stage changes. */
 const OPENING_MS = 100;
+/** A stage whose median frame interval is longer than this was throttled, not drawn at the display's rate. */
+const THROTTLED_MS = 20;
+/** Console lines that are the harness's own (the blocked HMR socket, Electron's notices, muted audio). */
+const PROBE_NOISE = /vite\] failed to connect|Security Warning|vite\] connecting|AudioContext/;
 
 // In the page: the recorder, and hooks on the guide's stage once it exists.
 const RECORDER = `(() => {
@@ -78,7 +82,9 @@ const RECORDER = `(() => {
     const frame = (t) => { P.rafs.push(t); requestAnimationFrame(frame); };
     requestAnimationFrame(frame);
     P.hook = (stage) => {
-        if (!stage || P.hooked === stage) return P.hooked === stage;
+        // The guide holds no stage (null) until it makes one: nothing to hook yet.
+        if (!stage) return false;
+        if (P.hooked === stage) return true;
         if (!stage.renderer?.backend?.device || !stage.host) return false;
         P.hooked = stage;
         const device = stage.renderer.backend.device;
@@ -192,14 +198,39 @@ const FIRST_VISIT = `async ({ world, tier }) => {
     const guide = window.breathingIndicator;
     const pause = (ms) => new Promise((r) => setTimeout(r, ms));
     window.settingsManager?.update?.({ effectQuality: tier });
+    // What the guide holds before the visit: a stage made earlier (a parked one) is not a first visit.
+    const before = { stage: Boolean(guide.stage), shows: guide.stage?.worldId ?? null };
     guide.setTechnique(world);
     P.log('firstVisit:start', { world });
     guide.start();
     const t0 = performance.now();
     const ready = () => P.events.find((e) => e.type === 'state' && e.state === 'ready' && e.t > t0);
     while (!P.hook(guide.stage) && performance.now() - t0 < 30000) await pause(5);
-    while (performance.now() - t0 < 60000 && !ready()) await pause(10);
-    return { world, ms: ready() ? ready().t - t0 : null, quality: guide.stage?.qualityName ?? null };
+    // Keep hooking whatever stage the guide holds (a new one is hooked as soon as it exists).
+    while (performance.now() - t0 < 60000 && !ready()) {
+        P.hook(guide.stage);
+        await pause(10);
+    }
+    const stage = guide.stage;
+    return {
+        world,
+        ms: ready() ? ready().t - t0 : null,
+        quality: stage?.qualityName ?? null,
+        before,
+        hookedAt: (P.events.find((e) => e.type === 'hooked' && e.t > t0 - 100)?.t ?? NaN) - t0,
+        // When nothing came back: what the guide and its stage were doing.
+        state: ready() ? null : {
+            hooked: P.hooked === stage,
+            guideActive: guide.isActive,
+            stageRunning: stage?.running ?? null,
+            backend: stage?.backend ?? null,
+            shows: stage?.worldId ?? null,
+            wants: stage?.wantedWorld ?? null,
+            hostWorld: stage?.host?.worldId ?? null,
+            events: P.events.filter((e) => e.t > t0 - 100)
+                .map((e) => e.type + (e.state ? ':' + e.state : '')).slice(0, 30),
+        },
+    };
 }`;
 
 // Page-side: how many stage changes so far, and whether the last one is back on screen.
@@ -257,8 +288,13 @@ function analyse(page, mode) {
         const restFrom = (ready?.t ?? change.t) + 500;
         const windowFrom = build ? build.started - 1 : restFrom + 2000;
         const windowTo = compileEnd ? compileEnd.t + 1 : windowFrom + 1500;
+        // A window whose frames come about once a second (it lost its display's vsync: a display
+        // switch, a lock) measures nothing about the stage: its changes are void.
+        const stageFrames = intervalStats(rafs, change.t, Math.min(next, rafs[rafs.length - 1] ?? change.t));
         return {
             mode,
+            throttled: !(stageFrames.p50 <= THROTTLED_MS),
+            stageFrameP50: stageFrames.p50,
             to: change.id,
             msToReady: ready ? ready.t - change.t : null,
             adopted: adopt?.adopted ?? null,
@@ -293,7 +329,8 @@ function describeChange(run, c) {
     return `${run.session} ${run.mode} -> ${c.to}: ready ${f(c.msToReady)} ms, adopted ${c.adopted}, `
         + `pipelines ${c.pipelinesSync} sync / ${c.pipelinesAsync} async, shaders ${c.shaderModules}; ahead ${ahead}; `
         + `frames while building max ${f(building.max, 1)} (over ${building.over}/${building.frames}), `
-        + `at rest max ${f(c.framesAtRest.max, 1)}`;
+        + `at rest max ${f(c.framesAtRest.max, 1)}`
+        + `${c.throttled ? ` THROTTLED (frames every ${f(c.stageFrameP50, 1)} ms)` : ''}`;
 }
 
 async function bootGame(win, problems) {
@@ -362,10 +399,14 @@ async function firstVisit(win, world, problems) {
     visit.shaderModules = count('createShaderModule');
     visit.slowestAsyncMs = between.filter((e) => e.type === 'createRenderPipelineAsync:resolved')
         .reduce((top, e) => Math.max(top, e.ms), 0) || null;
+    visit.types = page.events.filter((e) => e.t >= startT - 50)
+        .reduce((all, e) => ({ ...all, [e.type]: (all[e.type] || 0) + 1 }), {});
     visit.problems = [...problems];
     const f = (n) => (Number.isFinite(n) ? n.toFixed(0) : '—');
+    const notReady = visit.state ? ` NOT READY ${JSON.stringify(visit.state)}` : '';
     console.log(`first visit ${world}: ready ${f(visit.ms)} ms, pipelines ${visit.pipelinesSync} sync / `
-        + `${visit.pipelinesAsync} async (slowest ${f(visit.slowestAsyncMs)} ms), shaders ${visit.shaderModules}`);
+        + `${visit.pipelinesAsync} async (slowest ${f(visit.slowestAsyncMs)} ms), shaders ${visit.shaderModules}`
+        + `${notReady} (before: ${JSON.stringify(visit.before)}, hooked at ${f(visit.hookedAt)} ms)`);
     return visit;
 }
 
@@ -377,27 +418,32 @@ async function main() {
         { urls: [`${spec.baseUrl.replace('http', 'ws')}/*`] },
         (_details, callback) => callback({ cancel: true }),
     );
-    const win = new BrowserWindow({
-        width: spec.width,
-        height: spec.height,
-        useContentSize: true,
-        frame: false,
-        // At a fractional display scale a frameless window with the thick (resize) frame gets a
-        // content size Windows will not set exactly; without it the size holds.
-        thickFrame: false,
-        show: false,
-        x: -6000,
-        y: -6000,
-        webPreferences: { backgroundThrottling: false, partition },
-    });
-    win.setPosition(-6000, -6000);
-    win.showInactive();
     const problems = [];
-    win.webContents.on('console-message', (_event, level, message) => {
-        if (level >= 2 && !/vite\] failed to connect|Security Warning|vite\] connecting|AudioContext/.test(message)) {
-            problems.push(message.slice(0, 300));
-        }
-    });
+    // A fresh window for every run: one that lost its display's vsync (a display switch) stays
+    // throttled, and would carry that into the runs after it.
+    const openWindow = () => {
+        const win = new BrowserWindow({
+            width: spec.width,
+            height: spec.height,
+            useContentSize: true,
+            frame: false,
+            // At a fractional display scale a frameless window with the thick (resize) frame gets a
+            // content size Windows will not set exactly; without it the size holds.
+            thickFrame: false,
+            show: false,
+            x: -6000,
+            y: -6000,
+            webPreferences: { backgroundThrottling: false, partition },
+        });
+        win.setPosition(-6000, -6000);
+        win.showInactive();
+        win.webContents.on('console-message', (_event, level, message) => {
+            if (level >= 2 && !PROBE_NOISE.test(message)) {
+                problems.push(message.slice(0, 300));
+            }
+        });
+        return win;
+    };
     const result = {
         spec,
         electron: process.versions.electron,
@@ -409,11 +455,21 @@ async function main() {
     const save = () => writeFile(out, JSON.stringify(result, null, 1));
     try {
         for (const run of spec.runs) {
-            result.runs.push(await runSession(win, run, problems));
+            const win = openWindow();
+            try {
+                result.runs.push(await runSession(win, run, problems));
+            } finally {
+                win.destroy();
+            }
             await save();
         }
         for (const world of spec.firstVisit) {
-            result.firstVisits.push(await firstVisit(win, world, problems));
+            const win = openWindow();
+            try {
+                result.firstVisits.push(await firstVisit(win, world, problems));
+            } finally {
+                win.destroy();
+            }
             await save();
         }
     } catch (error) {
@@ -422,7 +478,6 @@ async function main() {
     } finally {
         result.finishedAt = new Date().toISOString();
         await save();
-        win.destroy();
     }
     app.exit(result.error ? 1 : 0);
 }
