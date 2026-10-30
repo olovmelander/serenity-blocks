@@ -72,6 +72,44 @@ function drain(renderer, item, during = () => {}) {
     renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
 }
 
+/**
+ * compileAsync as r187 runs it up to its first await: the prologue (begin, queue one item, finish)
+ * and then the FIRST item's begin, all inside the call. `framebuffer` stands for a renderer whose
+ * output needs a framebuffer target while nothing is bound.
+ */
+function launchFirstItem(renderer, { framebuffer = null } = {}) {
+    const bound = renderer.getRenderTarget();
+    const useFrameBufferTarget = framebuffer !== null && bound === null;
+    const state = {
+        useFrameBufferTarget,
+        renderTarget: useFrameBufferTarget ? framebuffer : bound,
+        outputRenderTarget: bound,
+        activeCubeFace: renderer.getActiveCubeFace(),
+        activeMipmapLevel: renderer.getActiveMipmapLevel(),
+        item: null,
+        materialSide: null,
+        mrt: renderer.getMRT(),
+        outputMRT: renderer.getMRT(),
+        renderContext: 'compile-context',
+    };
+    renderer._beginPreCompile(state); // eslint-disable-line no-underscore-dangle
+    const item = {
+        material: { side: 2 },
+        side: 0,
+        precompilationState: {
+            ...renderer._precompilationState, // eslint-disable-line no-underscore-dangle
+            useFrameBufferTarget: true,
+            renderTarget: renderer.getRenderTarget(),
+            mrt: renderer.getMRT(),
+            renderContext: 'compile-context',
+        },
+    };
+    renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+    item.precompilationState.item = item;
+    renderer._beginPreCompile(item.precompilationState); // eslint-disable-line no-underscore-dangle
+    return item;
+}
+
 afterEach(() => resetPrecompileLiveRestoreForTests(bareRenderer()));
 
 describe('three r187 precompile hooks restore the live binding after each drained item', () => {
@@ -126,5 +164,39 @@ describe('three r187 precompile hooks restore the live binding after each draine
         expect(renderer.getRenderTarget()).toBe(cube);
         expect(renderer.getActiveCubeFace()).toBe(3);
         expect(renderer.getActiveMipmapLevel()).toBe(2);
+    });
+    // r187 begins the first drained item INSIDE the compileAsync call, before the caller can put its
+    // binding back (Spring in the playground stayed bound to its atlas for good, 2026-10-30).
+    it.runIf(hasHooks)('the first item, begun inside the call, does not bring back a launch-only target', () => {
+        const renderer = bareRenderer();
+        ensurePrecompileRestoresLiveState(renderer);
+        const atlas = { name: 'atlas' };
+        renderer.setRenderTarget(atlas);
+        launchFirstItem(renderer);
+        renderer.setRenderTarget(null); // the caller lets go as the call returns
+        renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+        expect(renderer.getRenderTarget()).toBeNull();
+    });
+
+    it.runIf(hasHooks)('a held binding survives the first item too', () => {
+        const renderer = bareRenderer();
+        ensurePrecompileRestoresLiveState(renderer);
+        const atlas = { name: 'atlas' };
+        renderer.setRenderTarget(atlas);
+        launchFirstItem(renderer);
+        renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+        expect(renderer.getRenderTarget()).toBe(atlas);
+    });
+
+    it.runIf(hasHooks)('with nothing bound, the framebuffer target an item builds into is let go after it', () => {
+        const renderer = bareRenderer();
+        ensurePrecompileRestoresLiveState(renderer);
+        const framebuffer = { name: 'framebuffer' };
+        const item = launchFirstItem(renderer, { framebuffer });
+        expect(renderer.getRenderTarget()).toBe(framebuffer); // the item builds against it
+        renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+        expect(renderer.getRenderTarget()).toBeNull();
+        drain(renderer, item);
+        expect(renderer.getRenderTarget()).toBeNull();
     });
 });

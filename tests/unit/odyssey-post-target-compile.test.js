@@ -931,8 +931,7 @@ class R187Renderer extends R185Renderer {
         this._finishPreCompile();
         for (const item of items) {
             item.precompilationState.item = item;
-            // eslint-disable-next-line no-await-in-loop -- the drain starts after the caller's frame
-            await new Promise((r) => { setTimeout(r, 0); });
+            // As in r187, the first item begins inside the call (before the caller can restore).
             this._beginPreCompile(item.precompilationState);
             const before = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
             // getForRenderAsync's yield: finish, a frame may run, begin again.
