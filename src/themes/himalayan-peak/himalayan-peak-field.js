@@ -66,13 +66,22 @@ export function decodeMassif(rgba, size) {
  */
 export function shadeMap(heights, sky, size) {
     const out = new Uint8Array(size * size * 4);
+    shadeRows(out, heights, sky, size, 0, size);
+    return out;
+}
+
+/**
+ * shadeMap's rows j0 … j1 − 1 into `out` (every texel is its own: any split of the rows writes the
+ * same bytes). deriveFieldInSteps fills the map a band of rows at a time: one call took ~105 ms.
+ */
+export function shadeRows(out, heights, sky, size, j0, j1) {
     const cell = GRID.span / (size - 1);
     const at = (i, j) => heights[Math.max(0, Math.min(size - 1, j)) * size + Math.max(0, Math.min(size - 1, i))];
     // The slope is read off the ground a little smoothed (a Sobel pair): the rain leaves it rough
     // at the scale of one cell, and a normal per cell reads as a grid of dots on a lit face.
     const across = (i, j) => at(i, j - 1) + 2 * at(i, j) + at(i, j + 1);
     const along = (i, j) => at(i - 1, j) + 2 * at(i, j) + at(i + 1, j);
-    for (let j = 0; j < size; j++) {
+    for (let j = j0; j < j1; j++) {
         for (let i = 0; i < size; i++) {
             const gx = (across(i + 1, j) - across(i - 1, j)) / (8 * cell);
             const gz = (along(i, j + 1) - along(i, j - 1)) / (8 * cell);
@@ -88,7 +97,6 @@ export function shadeMap(heights, sky, size) {
             out[o + 3] = Math.max(0, Math.min(255, Math.round((0.5 + hollow * 1.6) * 255)));
         }
     }
-    return out;
 }
 
 /** tan(elevation) the horizon map is clamped to. */
