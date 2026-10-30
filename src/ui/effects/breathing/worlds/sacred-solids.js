@@ -206,6 +206,16 @@ function faceMaterial(u, look, floorY) {
  * One full hierarchy of the three solids. `floorY` null: the solids themselves; a uniform node:
  * their reflection's materials (the caller mirrors the group).
  */
+/**
+ * The slow tumble of solid `index` (outer to inner) at `time`, opened by the breath `open`:
+ * closed-form, so a seeked frame is the same frame every time.
+ */
+function turn(rotation, index, time, open) {
+    if (index === 0) rotation.set(time * 0.043 + open * 0.2, time * 0.067, time * 0.019);
+    else if (index === 1) rotation.set(-time * 0.056, time * 0.041 - open * 0.32, time * 0.028);
+    else rotation.set(time * 0.078, -time * 0.094 + open * 0.55, open * 0.12);
+}
+
 function buildHierarchy(u, hold, geometry, floorY, looks) {
     const root = new THREE.Group();
     const parts = looks.map((look, index) => {
@@ -261,6 +271,7 @@ export function createSacredSolids(u, { hold, floorY, colors = null }) {
     });
     const solids = buildHierarchy(u, hold, geometry, null, looks);
     const mirror = buildHierarchy(u, hold, geometry, floorY, looks);
+    const sides = [solids, mirror];
 
     /**
      * Closed-form pose (no integration), so a seeked frame is the same frame every time.
@@ -268,29 +279,27 @@ export function createSacredSolids(u, { hold, floorY, colors = null }) {
      * mirror line. Returns the core's height (the crystal floats in a slow bob).
      */
     function pose(time, open, { centre, scale, floor }) {
-        const turns = [
-            [time * 0.043 + open * 0.2, time * 0.067, time * 0.019],
-            [-time * 0.056, time * 0.041 - open * 0.32, time * 0.028],
-            [time * 0.078, -time * 0.094 + open * 0.55, open * 0.12],
-        ];
         const core = centre + (Math.sin(time * 0.37) * 0.012 + open * 0.02) * scale;
         solids.root.position.set(0, core, 0);
         solids.root.scale.setScalar(scale);
         // Mirror about the floor line: y -> 2 floor - y.
         mirror.root.position.set(0, 2 * floor - core, 0);
         mirror.root.scale.set(scale, -scale, scale);
-        [solids, mirror].forEach(({ parts }) => {
-            parts.forEach(({ pivot, holders }, index) => {
-                const [lo, hi] = SOLIDS[index].scale;
-                pivot.scale.setScalar(lo + (hi - lo) * open);
-                pivot.rotation.set(...turns[index]);
+        // Plain loops and no temporary arrays: this runs every frame.
+        for (let side = 0; side < sides.length; side++) {
+            const { parts } = sides[side];
+            for (let index = 0; index < parts.length; index++) {
+                const { pivot, holders } = parts[index];
+                const range = SOLIDS[index].scale;
+                pivot.scale.setScalar(range[0] + (range[1] - range[0]) * open);
+                turn(pivot.rotation, index, time, open);
                 // The star unfolds: its two tetrahedra twist apart as the lungs fill.
                 if (holders.length === 2) {
                     holders[0].rotation.y = open * 0.3;
                     holders[1].rotation.y = -open * 0.3;
                 }
-            });
-        });
+            }
+        }
         return core;
     }
 

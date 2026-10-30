@@ -280,9 +280,10 @@ function layoutFor(ext, out) {
 function pathPoint(lap, { gate, centre }, out) {
     const along = (((lap % 1) + 1) % 1) * 4;
     const index = Math.min(3, Math.floor(along));
-    const [x, y, dx, dy] = SIDES[index];
+    // Indexed, not destructured: this runs every frame.
+    const side = SIDES[index];
     const t = (along - index) * 2 * gate;
-    return out.set(x * gate + dx * t, centre + y * gate + dy * t);
+    return out.set(side[0] * gate + side[2] * t, centre + side[1] * gate + side[3] * t);
 }
 
 /**

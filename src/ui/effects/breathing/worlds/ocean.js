@@ -210,6 +210,34 @@ export const MOODS = Object.freeze([
 /** x² as a product: no pow() of a base that may dip below zero. */
 const sq = (x) => x.mul(x);
 
+/** A smoothstep in JS, for the per-frame white-water ramps. */
+function ramp(lo, hi, v) {
+    const s = Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
+    return s * s * (3 - 2 * s);
+}
+
+/** The bore's white water through each phase of the breath (only the phase's own ramp runs). */
+function boreAt(phase, at) {
+    switch (phase) {
+        case 0: return 1 - ramp(0.25, 0.9, at);
+        case 1: return 0;
+        case 2: return ramp(0.15, 0.55, at);
+        case 3: return 1 - ramp(0, 1, at) * 0.6;
+        default: return 0;
+    }
+}
+
+/** The foam lace through each phase of the breath. */
+function laceAt(phase, at) {
+    switch (phase) {
+        case 0: return 0.2 + ramp(0, 0.6, at) * 0.4;
+        case 1: return 0.6;
+        case 2: return 0.6 - ramp(0.2, 1, at) * 0.4;
+        case 3: return 0.2;
+        default: return 0.2;
+    }
+}
+
 /**
  * 1 while a pattern of this wavelength (ground units) spans several pixels, fading to 0 before it
  * would shimmer: far ground is compressed, so its fine detail must bow out.
@@ -719,15 +747,11 @@ export function createOceanWorld({ u, quality, mood = MOODS[0] }) {
         exposure: m.exposure,
         update({ delta, phase, progress }) {
             const at = Math.min(1, Math.max(0, progress));
-            const ramp = (lo, hi, v) => {
-                const s = Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
-                return s * s * (3 - 2 * s);
-            };
             // White water, continuous at every turn: it builds as the next wave breaks during the
             // out-breath, rides the front up the sand and is spent before the top (so the bore can
             // move out to the break unseen). Lace gathers through the uprush and thins as it drains.
-            const bore = [1 - ramp(0.25, 0.9, at), 0, ramp(0.15, 0.55, at), 1 - ramp(0, 1, at) * 0.6][phase] ?? 0;
-            const lace = [0.2 + ramp(0, 0.6, at) * 0.4, 0.6, 0.6 - ramp(0.2, 1, at) * 0.4, 0.2][phase] ?? 0.2;
+            const bore = boreAt(phase, at);
+            const lace = laceAt(phase, at);
             const out = phase >= 2 ? 1 : 0;
             const follow = delta > 0 ? 1 - Math.exp(-delta * 3) : 1;
             uBore.value += (bore - uBore.value) * follow;

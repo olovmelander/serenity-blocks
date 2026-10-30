@@ -717,6 +717,8 @@ export class SessionsTab {
         begin.setAttribute('aria-label', `Begin ${info.name}. Intention optional.`);
         this.updateBegin();
         this.showStep('prepare');
+        // Fetch the breathing stage's code while you read (no GPU work until you begin).
+        this.sessionManager?.indicator?.preloadStage?.();
         // The flow is its own surface: the Hub steps aside but keeps holding gameplay.
         this.hub.hide();
         this.scheduleUI(() => (begin.disabled ? flow.querySelector('.hale-flow__ack-input') : begin).focus?.({ preventScroll: true }), 30);
@@ -773,6 +775,9 @@ export class SessionsTab {
         flow.querySelector('.hale-flow__intent').textContent = this.selectedIntention
             ? `Your intention · ${this.selectedIntention.label}` : 'Nothing to achieve. Just be here.';
         this.showStep('countdown');
+        // The countdown is the world's time to compile: the session then opens on it, not on the
+        // CSS orb while its shaders build.
+        this.sessionManager?.prepareSession?.(sessionId);
         this.scheduleUI(() => flow.querySelector('.hale-flow__cancel').focus?.({ preventScroll: true }), 30);
         const number = flow.querySelector('.hale-flow__number');
         const message = flow.querySelector('.hale-flow__message');

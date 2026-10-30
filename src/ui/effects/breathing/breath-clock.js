@@ -28,8 +28,11 @@ export function isValidPattern(pattern) {
         && pattern.some((seconds) => seconds > 0);
 }
 
+/** The whole breath in seconds. A plain loop: the guide asks every frame, and it allocates nothing. */
 export function cycleSeconds(pattern) {
-    return pattern.reduce((total, seconds) => total + seconds, 0);
+    let total = 0;
+    for (let i = 0; i < pattern.length; i++) total += pattern[i];
+    return total;
 }
 
 /** Index of the first phase with a duration, searching forward from `from` (wrapping). */

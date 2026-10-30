@@ -482,3 +482,23 @@ describe('a session waits for you', () => {
         expect(release).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('getting a session ready', () => {
+    it('prepares the world its first stage is set in, before the session starts', () => {
+        indicator.prepare = vi.fn();
+        manager.prepareSession('BASE');
+        // Base arrives in the forest (SESSION_WORLDS.BASE.grounding).
+        expect(indicator.prepare).toHaveBeenCalledWith('forest-breath');
+        manager.prepareSession('FIRST');
+        expect(indicator.prepare).toHaveBeenLastCalledWith('zen-garden');
+    });
+
+    it('prepares nothing for an unknown session or while one runs', () => {
+        indicator.prepare = vi.fn();
+        manager.prepareSession('NOPE');
+        expect(indicator.prepare).not.toHaveBeenCalled();
+        at('BASE', 1);
+        manager.prepareSession('TIDE');
+        expect(indicator.prepare).not.toHaveBeenCalled();
+    });
+});

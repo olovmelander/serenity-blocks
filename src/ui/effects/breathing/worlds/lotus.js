@@ -817,6 +817,10 @@ export function createLotusWorld({ u, quality, mood }) {
         breath: 0.85,
     };
     const [glowRest, glowSwing] = look.glow;
+    // The flower's pose for this frame, filled in place (the frame loop makes no garbage).
+    const pose = {
+        time: 0, breath: 0, glow: 1, elevation: 0,
+    };
     return {
         backdrop,
         objects: [...lotus.objects, veil],
@@ -831,10 +835,11 @@ export function createLotusWorld({ u, quality, mood }) {
         }) {
             const slope = lookDown(ext.y);
             // The flower tilts toward us as far as the pond is foreshortened at its foot.
-            const elevation = Math.asin(Math.min(slope, 0.95));
-            lotus.update({
-                time, breath, glow: glowRest + breathSoft * glowSwing, elevation,
-            });
+            pose.elevation = Math.asin(Math.min(slope, 0.95));
+            pose.time = time;
+            pose.breath = breath;
+            pose.glow = glowRest + breathSoft * glowSwing;
+            lotus.update(pose);
             lotus.heartOnScreen(u.focus.value, CAMERA_DISTANCE);
             shafts.source[0] = light.screen.value.x;
             shafts.source[1] = light.screen.value.y;

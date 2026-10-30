@@ -845,13 +845,17 @@ export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
             const open = 0.9 + 0.16 * breathSoft;
             const rx = (0.62 + 0.35 * (1 - tall)) * open;
             const ry = (0.5 + 0.55 * tall) * open;
-            shards.forEach((shard, index) => {
-                const [angle, reach, z, , spin] = SHARDS[index];
+            // A plain loop: this runs every frame, and a forEach with destructuring allocates.
+            for (let index = 0; index < shards.length; index++) {
+                const shard = shards[index];
+                const row = SHARDS[index];
+                const angle = row[0];
+                const reach = row[1];
                 const a = angle + time * 0.012 * (index % 2 ? -1 : 1);
                 const bob = Math.sin(time * 0.3 + index * 2) * 0.02;
-                shard.position.set(Math.cos(a) * reach * rx, Math.sin(a) * reach * ry + bob, z);
-                shard.rotation.y = time * spin + index;
-            });
+                shard.position.set(Math.cos(a) * reach * rx, Math.sin(a) * reach * ry + bob, row[2]);
+                shard.rotation.y = time * row[4] + index;
+            }
         },
     };
 }

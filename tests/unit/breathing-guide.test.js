@@ -69,6 +69,7 @@ beforeEach(async () => {
                 ['setFocus', 'setSessionPhase', 'setBreath', 'stop', 'dispose'].forEach((name) => { this[name] = vi.fn(); });
                 this.setWorld = vi.fn(() => Promise.resolve());
                 this.start = vi.fn(() => Promise.resolve());
+                this.prepare = vi.fn(() => Promise.resolve());
                 stages.push(this);
             }
         },
@@ -348,6 +349,68 @@ describe('breathing guide and its world', () => {
         vi.advanceTimersByTime(60000);
         expect(stages[0].dispose).toHaveBeenCalledOnce();
         expect(guide.stage).toBeNull();
+    });
+
+    it('gets a world ready behind the closed guide, and opens on that stage', async () => {
+        guide.prepare('calm-sleep');
+        await settle();
+        expect(stages).toHaveLength(1);
+        expect(stages[0].prepare).toHaveBeenCalledWith('calm-sleep');
+        expect(stages[0].options.quality).toBe('Medium');
+        expect(guide.isActive).toBe(false);
+        expect(guide.root.hidden).toBe(true);
+        // The practice that follows uses the prepared stage: no second renderer.
+        guide.setTechnique('calm-sleep');
+        guide.start();
+        await settle();
+        expect(stages).toHaveLength(1);
+        expect(stages[0].start).toHaveBeenCalledOnce();
+        expect(stages[0].setWorld).toHaveBeenLastCalledWith('calm-sleep');
+        // Started, it is not given back after the idle wait.
+        vi.advanceTimersByTime(60000);
+        expect(stages[0].dispose).not.toHaveBeenCalled();
+    });
+
+    it('gives back a prepared stage when nothing starts', async () => {
+        guide.prepare('calm-sleep');
+        await settle();
+        vi.advanceTimersByTime(44000);
+        // Prepared again (a second countdown): the wait starts over.
+        guide.prepare('ocean-breath');
+        await settle();
+        expect(stages).toHaveLength(1);
+        expect(stages[0].prepare).toHaveBeenLastCalledWith('ocean-breath');
+        vi.advanceTimersByTime(44000);
+        expect(stages[0].dispose).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(2000);
+        expect(stages[0].dispose).toHaveBeenCalledOnce();
+        expect(guide.stage).toBeNull();
+    });
+
+    it('prepares nothing while a practice runs, or for a world it does not know', async () => {
+        guide.prepare('no-such-world');
+        await settle();
+        expect(stages).toHaveLength(0);
+        guide.start();
+        await settle();
+        guide.prepare('calm-sleep');
+        await settle();
+        expect(stages).toHaveLength(1);
+        expect(stages[0].prepare).not.toHaveBeenCalled();
+    });
+
+    it('leaves a stage being prepared to a practice that starts first', async () => {
+        guide.prepare('calm-sleep');
+        guide.start();
+        await settle();
+        expect(stages).toHaveLength(1);
+        expect(stages[0].prepare).not.toHaveBeenCalled();
+        expect(stages[0].start).toHaveBeenCalledOnce();
+    });
+
+    it('fetches the stage code ahead without building a renderer', async () => {
+        await guide.preloadStage();
+        expect(stages).toHaveLength(0);
     });
 
     it('announces every start and stop so the Hub and the mode can follow', () => {

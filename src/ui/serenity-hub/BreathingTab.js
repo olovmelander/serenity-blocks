@@ -42,6 +42,8 @@ export class BreathingTab {
     onShow() {
         this.collection.reconcile({ silent: true });
         this.refresh();
+        // Begin is a click away: have the world stage's code ready (no GPU work until it starts).
+        this.breathingIndicator?.preloadStage?.();
     }
 
     renderKeepingFocus() {
