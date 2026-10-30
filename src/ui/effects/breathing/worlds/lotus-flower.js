@@ -507,6 +507,8 @@ export function createLotus(u, {
 
     const heartLocal = new THREE.Vector3(0, HEART_HEIGHT, 0);
     const heartWorld = new THREE.Vector3();
+    /** The flower and its image, posed alike every frame. */
+    const sides = [flower, image];
 
     /**
      * @param {{ time: number, breath: number, glow: number, elevation: number }} state
@@ -516,14 +518,17 @@ export function createLotus(u, {
         time, breath, glow, elevation,
     }) {
         // Outer rings lead the opening and inner rings lead the folding: the bloom unfolds in order.
-        layout.forEach((petal, index) => {
+        // (Plain loops: this runs every frame, and fresh closures and arrays would be garbage.)
+        for (let index = 0; index < layout.length; index++) {
+            const petal = layout[index];
             const { ring } = petal;
             const lead = Math.min(1, Math.max(0, breath * 1.3 - petal.order * 0.3 + petal.jitter));
             const eased = ring.still ? breath : lead * lead * (3 - 2 * lead);
             const angle = ring.closed + (ring.open - ring.closed) * eased + Math.sin(time * 0.33 + petal.sway) * 0.016;
             placePetal(matrices[index], petal, angle);
-        });
-        [flower, image].forEach((side) => {
+        }
+        for (let s = 0; s < sides.length; s++) {
+            const side = sides[s];
             // The stamens spread as the inner petals let them.
             const spread = 0.7 + 0.4 * breath;
             side.stamens.scale.set(spread, 0.8 + 0.25 * breath, spread);
@@ -532,17 +537,18 @@ export function createLotus(u, {
             side.halo.position.y = HEART_HEIGHT + 0.01 + (1 - breath) * 0.13;
             // A slow turn about the stem and the faint rocking of something afloat.
             side.body.rotation.set(Math.sin(time * 0.37) * 0.016, time * 0.012, Math.sin(time * 0.29 + 1.3) * 0.02);
-        });
+        }
         light.glow.value = glow;
 
         // The water plane passes through the flower's base, square to its axis. Reflecting through it
         // is the same as flipping the flower along its own axis: the image is the flower, tilted the
         // same way, scaled by -1 in y (three flips the winding of mirrored meshes itself).
-        [flower, image].forEach((side) => {
+        for (let s = 0; s < sides.length; s++) {
+            const side = sides[s];
             side.tilt.rotation.set(elevation, 0, 0);
             side.tilt.updateMatrix();
             side.body.updateMatrix();
-        });
+        }
         const ny = Math.cos(elevation);
         const nz = Math.sin(elevation);
         light.plane.value.set(0, ny, nz, ny * waterline);

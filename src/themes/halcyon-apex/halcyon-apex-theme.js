@@ -42,6 +42,7 @@ import { POST_LOOK, HalcyonApexPost, createPassThroughPipeline } from './halcyon
 import { PLAYER_SLOTS, readLayoutRects } from './halcyon-apex-composition.js';
 import { HALCYON_APEX_EVENT_HANDLERS, HalcyonApexDirector } from './halcyon-apex-director.js';
 import { approach } from './halcyon-apex-core.js';
+import { halcyonApexBakes } from './halcyon-apex-bakes.js';
 
 const THEME_ID = 'halcyon-apex';
 const LOG_PREFIX = '[HalcyonApex]';
@@ -189,8 +190,12 @@ export default class HalcyonApexTheme extends BaseTheme {
         container.replaceChildren();
         this.flags = readFlags();
 
+        // The noise and its mips (~26 ms on a first visit) bake in a worker while the renderer
+        // comes up; the build below finds them kept.
+        const baking = halcyonApexBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

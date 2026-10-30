@@ -9,7 +9,7 @@
  */
 import { GRID } from './himalayan-peak-core.js';
 import {
-    buildMassifMesh, decodeMassif, horizonMap, shadeMap, shadowSlices,
+    buildMassifMesh, decodeMassif, horizonMap, shadeMap, shadeRows, shadowSlices,
 } from './himalayan-peak-field.js';
 import { buildPlanHeights } from './himalayan-peak-massif.js';
 import manifest from './assets/massif-manifest.json';
@@ -118,8 +118,14 @@ const breathe = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 export async function deriveFieldInSteps(massif, stride) {
     const { heights, sky, size } = massif;
     const lowSize = Math.min(256, size);
-    const shade = shadeMap(heights, sky, size);
-    await breathe();
+    // The shading map a band of rows at a time (one call was ~105 ms of a first visit).
+    const shade = new Uint8Array(size * size * 4);
+    const band = Math.max(1, Math.ceil(size / 8));
+    for (let j = 0; j < size; j += band) {
+        shadeRows(shade, heights, sky, size, j, Math.min(size, j + band));
+        // eslint-disable-next-line no-await-in-loop
+        await breathe();
+    }
     const horizon = horizonMap(heights, size);
     await breathe();
     const slices = shadowSlices(heights, size, lowSize);

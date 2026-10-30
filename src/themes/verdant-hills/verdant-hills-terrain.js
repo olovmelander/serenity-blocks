@@ -19,6 +19,8 @@ import {
     sin, smoothstep, texture, vec2, vec3,
 } from 'three/tsl';
 import { VERDANT_HILLS_SUN_DIRECTION } from './verdant-hills-light.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { prepareSessionGeometry, sessionGeometry } from '../shared/session-geometry.js';
 
 const { smoothstep: ramp, clamp, degToRad } = THREE.MathUtils;
 
@@ -373,6 +375,64 @@ export function verdantHillsPathDistance(x, z) {
     return nearest;
 }
 
+/** The session-geometry key of the ground mesh (it depends on nothing but this module). */
+const GROUND_KEY = 'verdant-hills:ground';
+
+/**
+ * The ground mesh, as steps: the wedge's rings over verdantHillsGroundHeight, then its triangles
+ * and normals. Kept for the session (shared/session-geometry.js): 43 ms in one build step on every
+ * Verdant Hills start before.
+ */
+function* groundGeometrySteps() {
+    const clock = stepClock();
+    const rings = [];
+    for (let range = RANGE_NEAR; range < RANGE_FAR; range *= RING_GROWTH) rings.push(range);
+    rings.push(RANGE_FAR);
+    const wedge = degToRad(VERDANT_HILLS_WEDGE_DEGREES);
+    const columns = WEDGE_SEGMENTS + 1;
+    const positions = new Float32Array(rings.length * columns * 3);
+    for (let ring = 0; ring < rings.length; ring += 1) {
+        if (clock.due()) {
+            yield 'ground';
+            clock.restart();
+        }
+        const range = rings[ring];
+        for (let column = 0; column < columns; column += 1) {
+            const bearing = -wedge + (2 * wedge * column) / WEDGE_SEGMENTS;
+            const x = Math.sin(bearing) * range;
+            const z = -Math.cos(bearing) * range;
+            const offset = (ring * columns + column) * 3;
+            positions[offset] = x;
+            positions[offset + 1] = verdantHillsGroundHeight(x, z);
+            positions[offset + 2] = z;
+        }
+    }
+    const indices = new Uint32Array((rings.length - 1) * WEDGE_SEGMENTS * 6);
+    let cursor = 0;
+    for (let ring = 0; ring < rings.length - 1; ring += 1) {
+        for (let column = 0; column < WEDGE_SEGMENTS; column += 1) {
+            const a = ring * columns + column;
+            const b = a + 1;
+            const c = a + columns;
+            // Counter-clockwise seen from above: +Y faces the sky.
+            indices.set([a, b, c, b, c + 1, c], cursor);
+            cursor += 6;
+        }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+    // The mesh's own grain is as fine as anything the lens can resolve at each range.
+    geometry.computeVertexNormals();
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, -RANGE_FAR / 2), RANGE_FAR);
+    return { geometry };
+}
+
+/** Fill the session's ground mesh a few rings a step (the world runs it just before build()). */
+export function* prepareGroundSteps() {
+    return yield* prepareSessionGeometry(null, GROUND_KEY, groundGeometrySteps);
+}
+
 export class VerdantHillsTerrain {
     /** `landMap` is the baked patchwork; without it a coarse one is made from `trees`. */
     constructor({ light, trees = [], landMap = null }) {
@@ -389,42 +449,7 @@ export class VerdantHillsTerrain {
     }
 
     build() {
-        const rings = [];
-        for (let range = RANGE_NEAR; range < RANGE_FAR; range *= RING_GROWTH) rings.push(range);
-        rings.push(RANGE_FAR);
-        const wedge = degToRad(VERDANT_HILLS_WEDGE_DEGREES);
-        const columns = WEDGE_SEGMENTS + 1;
-        const positions = new Float32Array(rings.length * columns * 3);
-        for (let ring = 0; ring < rings.length; ring += 1) {
-            const range = rings[ring];
-            for (let column = 0; column < columns; column += 1) {
-                const bearing = -wedge + (2 * wedge * column) / WEDGE_SEGMENTS;
-                const x = Math.sin(bearing) * range;
-                const z = -Math.cos(bearing) * range;
-                const offset = (ring * columns + column) * 3;
-                positions[offset] = x;
-                positions[offset + 1] = verdantHillsGroundHeight(x, z);
-                positions[offset + 2] = z;
-            }
-        }
-        const indices = new Uint32Array((rings.length - 1) * WEDGE_SEGMENTS * 6);
-        let cursor = 0;
-        for (let ring = 0; ring < rings.length - 1; ring += 1) {
-            for (let column = 0; column < WEDGE_SEGMENTS; column += 1) {
-                const a = ring * columns + column;
-                const b = a + 1;
-                const c = a + columns;
-                // Counter-clockwise seen from above: +Y faces the sky.
-                indices.set([a, b, c, b, c + 1, c], cursor);
-                cursor += 6;
-            }
-        }
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-        // The mesh's own grain is as fine as anything the lens can resolve at each range.
-        geometry.computeVertexNormals();
-        geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, -RANGE_FAR / 2), RANGE_FAR);
+        const { geometry } = sessionGeometry(null, GROUND_KEY, () => drainSteps(groundGeometrySteps()));
         this.landMap = this.bakedMap || createLandMap(this.trees);
         const material = this.createMaterial();
         const mesh = new THREE.Mesh(geometry, material);
@@ -438,7 +463,7 @@ export class VerdantHillsTerrain {
         // A baked map belongs to the asset pack, which outlives a rebuild.
         if (!this.bakedMap) this.owned.push(this.landMap);
         this.mesh = mesh;
-        this.triangles = indices.length / 3;
+        this.triangles = geometry.index.count / 3;
         return this;
     }
 

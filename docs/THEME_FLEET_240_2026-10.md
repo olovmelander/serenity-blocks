@@ -1052,3 +1052,103 @@ both.
   attributes (the default plan and seed 7).
 - Load A/B, interleaved, 2 rounds, panel cadence, main → branch: first-visit freeze **90 → 44 ms**,
   revisit 23 → 20 ms, shown 797 → 792 ms (first) and 449 → 436 ms (revisit).
+
+## 18. The night pass (2026-10-29 → 30)
+
+Branch `perf/night-2026-10-30` (from main `ed2c3ee5`). Balanced, High, the owner away: only changes
+with identical output were kept (same-frame shots within run-to-run noise, or bakes checked byte for
+byte); anything that changed the look went to a side branch for the morning.
+
+### The fleet, uncapped (main `ed2c3ee5`)
+
+`reports/theme-fleet-bench/2026-10-30-night-high-uncapped/`, all 63 themes, High, uncapped. Slowest by
+their worst storm:
+
+| Theme | Rest | Worst storm | GPU ms rest / storm |
+|---|---:|---:|---:|
+| Thermal Bloom | 269 | 193 | 3.64 / 5.06 |
+| Grainfields | 228 | 209 | 4.30 / 4.41 |
+| Verdant Hills | 233 | 234 | 4.16 / 4.15 |
+| Summer | 264 | 249 | 3.65 / 3.87 |
+| Kaleidosonic | 374 | 251 | 2.49 / 3.87 |
+| Spring | 275 | 254 | 3.52 / 3.82 |
+| Moonlit Greenhouse | 294 | 257 | 3.31 / 3.78 |
+| Murmuration | 329 | 278 | 2.90 / 3.48 |
+
+All GPU-bound. Every other theme holds 270 fps or more in its worst storm.
+
+### Looked into, not changed
+
+- **Kaleidosonic's storms** (+1.4 ms): the strikes' and harmonics' light on the stone and in the air
+  (four per-pixel loops over the live events) is a sum of gaussians and 1/(d²+c) falls: never exactly
+  0, so no gate keeps the pixels. It stays above 240 in its storms.
+- **Thermal Bloom's storms**: with the scene hidden a storm frame still costs 2.1 ms against 1.2 at
+  rest (census-storm): the post's vapour march over the live steam bodies (a T-spin's devils +0.3 ms,
+  a hard drop's jet +0.1). Skipping the shapes a body is not saves ~0.1 ms and is not bit-identical.
+  The look.
+- **A survey for gateable loops** (a read-only agent over every theme): the ones worth it were done
+  (below); Stillwater's rings and strokes, Moonlit Greenhouse's reed clumps and Sunbraid's casters can
+  be gated too, but those themes run far above 240.
+
+### Changed (identical output)
+
+| Change | Measured (main → branch) |
+|---|---|
+| **Geode** keeps its noise field, mip chain, plan and shell for the session; a first visit bakes the noise, mips and shell in a worker (`geode-bake-data.js`, `geode-bakes.js`) | load A/B ×3: freeze 98 → **40** ms (first visit), 75 → **23** (revisit); shown 600 → 611 / 494 → 440 ms |
+| **Chiral Gold** compiles its reflection map's two pipelines (three's PMREM: the equirect pass and the GGX filter) asynchronously before its first frame (`shared/pmrem-warm.js`) | load A/B ×3: freeze 92 → **42** ms, 46 → **28**; shown 763 → 718 / 493 → 503 ms |
+| **Aurora** keeps its noise, the range's grid and mesh and the shore ice for the session; a first visit bakes the noise, grid and ice in a worker (`aurora-terrain.js`, `aurora-bakes.js`) | load A/B ×3: freeze 110 → **63** ms, 76 → **46**; shown 585 → 589 / 494 → 467 ms |
+| **Waves** keeps its water noise for the session; a first visit bakes it in a worker (`waves-bakes.js`) | load A/B ×3: freeze 89 → **48** ms, 57 → **32**; shown 583 → 587 / 484 → 448 ms |
+| **Himalayan Peak** fills its shading map a band of rows at a time (it was one ~105 ms part of its stepped first build) | load A/B ×3: freeze 113 → **64** ms (first visit), 49 → 45; shown 839 → 867 ms |
+| **Halcyon Apex** keeps its plan for the session (a test freezes it and runs two worlds through play), and a first visit bakes its noise and mips in a worker | load A/B ×3: freeze 88 → **57** ms, 45 → **37**; shown 678 → 661 ms |
+| **Painted Ages** and **High Coast** keep the land they read and prepared from their baked assets for the session (a land drawn from the plan is not kept) | load A/B ×3: revisit freeze 76 → **65** and 92 → **66** ms; revisit shown 922 → **614** and 1095 → **701** ms |
+| **Galaxy** keeps its plan, noise and mips for the session (the plan frozen in a test through play); a first visit bakes the noise and mips in a worker | load A/B ×3: freeze 61 → **32** ms, 51 → **19**; shown 505 → 519 / 447 → 415 ms |
+| **Verdant Hills** keeps its ground mesh for the session and builds it a few rings a step (one 43 ms step before) | load A/B ×3: freeze 67/60 → 66/68 ms: no change (its worst frame is elsewhere); revisit shown 781 → 753 ms. Kept: 43 ms less work a revisit, identical |
+| **Grainfields**: the clears' wind trails run only where they can lay grain, the pulses only while they live and as their own kind (ring or whirl) | uncapped A/B ×3: storms 217 → 219 and 203 → **209** fps; rest unchanged |
+| **Rainbow Terraces**: a fall pixel works out only its own fall's packets (`mine` is exactly 0 for the others) | shots within noise |
+
+Checks: the bakes byte for byte against main's code (Geode at three tiers: field, mips, plan data,
+shell and its 16-bit index; Aurora at three tiers: the range's points, normals, cover and index, the
+skyline profile, the ice, the noise); same-frame shots for the shader gates (Grainfields with the herd
+left out, whose poses vary from mount to mount; Rainbow Terraces within 1/255 on 0.002 %, as at rest).
+
+Tried and taken back: Painted Ages' and High Coast's field textures made a band of rows a step. Their
+first-visit freeze did not move (its worst frame is elsewhere) and the 24 extra breaths showed the
+theme 110-140 ms later.
+
+### The fleet at the screen's pace (this branch, after round one)
+
+`reports/theme-fleet-bench/2026-10-30-night-high-vsync/` (one sample a theme: ±10 ms). The worst
+first-visit switch freezes then: Rainbark 126 ms (the owner left its option, §16), Himalayan Peak 110,
+Murmuration 96, Neon District 94, Halcyon Apex 91, Waves 90, Solar Eclipse 85, Star Cradle 81,
+Stillwater 79, Blood Moon 77. Geode, Chiral Gold and Aurora had left the list. Round two took
+Himalayan Peak, Halcyon Apex, Waves, Galaxy, Painted Ages and High Coast (above).
+
+Left, with what they are:
+- **Neon District and Solar Eclipse:** one big material's node build each (57 and 73 ms), as §14.
+- **Star Cradle and Stillwater:** their worst frame is the switch's first (81 and 97 ms, 13-18 ms
+  after the request), before their scene code runs: the theme's chunk loading and compiling, not
+  its build. Stillwater's build itself is ~60 ms of small parts.
+- **Blood Moon:** a 69 ms task on the GPU process's main thread (no pipeline over 20 ms).
+- **Murmuration:** its particle state (27 ms) depends on the live layout; Wolfhour's worst is spread.
+
+### Gotchas
+
+- **The shared-node If trap, again.** A TSL node used in two places gets one var, written where it is
+  first *built*, which is not where it is declared. Wrapping a derivative or texture read in a branch
+  of its own (`If(fillCount > 0)`) moved the first write of `along` there, and the washes read it
+  later: 7.8 % of the frame changed. Take such reads as `.toVar()` before the gated loop instead.
+- **PMREM warm:** compiling three's `_equirectMaterial` on an empty geometry warms nothing: the
+  pipeline key holds the vertex layout and the texture binding. Compile the very draws
+  `fromEquirectangular` makes (its `_lodMeshes`, the real texture, a target of the same size and
+  format), and keep those materials alive (three frees a pipeline with its last material).
+- **CI flake:** Spring's first-build step tests (each builds a whole mesh twice) timed out at 5 s on a
+  runner and failed main's deploy once (re-run green); they now have 30 s (`b548f1cf`).
+
+### For the owner
+
+- **Side branch `look/thermal-bloom-stair-washes`** (`4f281590`, not merged): main's Stair shader
+  first writes `along`/`across` inside the seal fills' loop, so at rest the washes read 0 for both and
+  the risers show plain cream; during the ~6 s a sealed row lives they show the orange mats and
+  flutes the shader draws. The fix makes rest look like the clears do (14.5 % of the frame at rest;
+  identical during a clear). Crop: `morning/thermal-bloom-stair-rest-main-vs-fix.png` in the session
+  scratchpad.

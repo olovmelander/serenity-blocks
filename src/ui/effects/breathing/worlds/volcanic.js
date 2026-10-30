@@ -186,8 +186,11 @@ function paintSky(c) {
             sky.addAssign(vec3(0.016, 0.018, 0.03).mul(glow).mul(M.milky));
             density = density.add(lane.mul(dust).mul(M.milky));
         }
-        const stars = starfield(sp, u, density).mul(float(1).sub(ceiling)).mul(smoothstep(0.35, 1.0, alt));
-        sky.addAssign(stars);
+        // The stars are exactly 0 under a closed deck and low in the glow (alt <= 0.35): skip them there.
+        If(alt.greaterThan(0.35).and(ceiling.lessThan(1)), () => {
+            const stars = starfield(sp, u, density).mul(float(1).sub(ceiling)).mul(smoothstep(0.35, 1.0, alt));
+            sky.addAssign(stars);
+        });
     }
     if (M.moon) {
         // A small, high moon in a soft halo, behind the broken deck.
@@ -202,8 +205,13 @@ function paintSky(c) {
 
     // Distant volcanic slopes in silhouette, thin lava rivers threading down their flanks.
     const mq = layer(ps, u, 0.16).toVar();
-    const ridge = slopeSkyline(mq.x, u, L).toVar();
-    const below = ridge.sub(mq.y).toVar();
+    // The skyline never climbs past shore + 0.477. A pixel well above that fails the flanks' test (the
+    // only reader of `below`) either way, so -1 stands in there and only lower pixels pay for the noise.
+    const below = float(-1).toVar();
+    If(mq.y.lessThan(L.shore.add(0.5).add(u.px.mul(3))), () => {
+        const ridge = slopeSkyline(mq.x, u, L).toVar();
+        below.assign(ridge.sub(mq.y));
+    });
     const peakX = u.ext.x.mul(-0.55).toVar();
     // The far cone smoulders too: a thin plume trails downwind from its summit, lit from the crater.
     const summitY = L.shore.add(0.49).toVar();
@@ -292,42 +300,47 @@ function paintPlume(c) {
     // Round puffs with soft creases between them ride on the smoke's own roll.
     const puffs = float(1).sub(ridged(coord.mul(1.8).add(smoke.mul(1.1)), 3));
     const billow = smoke.mul(0.65).add(puffs.mul(0.35)).toVar();
-    const lower = fbm(rolled.sub(vec2(0, 0.16)), 3);
     // A defined column with a billowing silhouette, inside a wider, softer veil of fume.
     const body = exp(across.mul(across).mul(-1.6)).toVar();
     const column = smoothstep(0.42, 0.58, billow.add(body.sub(0.6)));
     const veil = smoothstep(0.3, 0.75, billow.add(exp(across.mul(across).mul(-0.5)).sub(0.75))).mul(0.45);
     const density = max(column, veil).mul(smoothstep(0.0, 0.12, climb)).mul(fadeOut(1.9, 2.5, across.abs()))
         .toVar();
-    // Light from below: strongest low down and over the fire, gone by the top of the column.
-    const light = exp(climb.mul(-1.6)).mul(body.mul(0.6).add(0.4)).mul(fire).mul(surge.mul(0.35).add(0.8))
-        .toVar();
-    // Undersides that face the fire catch it; the tops of billows fall into their own shadow.
-    const facing = smoke.sub(lower).mul(5).add(0.5).saturate();
-    const tint = mix(FIRELIGHT, EMBER, smoothstep(0.1, 0.9, climb));
-    const lit = tint.mul(light).mul(facing.mul(facing).mul(0.95).add(0.3)).mul(billow.add(0.3));
-    const glowing = ASH.mul(billow.mul(0.8).add(0.3)).add(lit).add(EMBER.mul(exp(climb.mul(-0.6))).mul(0.02).mul(fire))
-        .toVar();
-    // Volcanic lightning, seen only as light inside the ash: a lobe of the cloud glows up over a
-    // second and more, a second lobe beside it answers, and both sink back. Never a strike.
-    if (M.lightning.chance > 0) {
-        If(bolt.x.greaterThan(0.001), () => {
-            const id = bolt.z;
-            // Off to one flank of the plume, above the fountain's crown.
-            const flank = hash21(vec2(id, 1.3)).sub(0.5).sign().mul(mix(float(0.4), float(0.8), hash21(vec2(id, 3.9))));
-            const at = vec2(flank, mix(float(0.42), float(0.78), hash21(vec2(id, 2.7))).mul(L.reach)).toVar();
-            const d1 = vec2(across.sub(at.x).div(0.26), climb.sub(at.y).div(0.13));
-            const shift = vec2(hash21(vec2(id, 4.1)).sub(0.5).mul(0.8), hash21(vec2(id, 5.9)).mul(0.2).add(0.05));
-            const d2 = d1.sub(vec2(shift.x.div(0.26), shift.y.div(0.13)));
-            const second = smoothstep(0.25, 0.5, bolt.y).mul(fadeOut(0.62, 0.95, bolt.y)).mul(bolt.x);
-            const lobes = exp(dot(d1, d1).negate()).mul(bolt.x).add(exp(dot(d2, d2).negate()).mul(second).mul(0.7));
-            // Light branching through the cloud: brighter veins inside the glow.
-            const veins = ridged(vec2(across.mul(3.4), climb.mul(5.5)).add(id.mul(31)), 3).toVar();
-            const v2 = veins.mul(veins).toVar();
-            glowing.addAssign(BOLT.mul(lobes).mul(v2.mul(v2).mul(2.2).add(0.1)).mul(billow.mul(0.8).add(0.2))
-                .mul(M.lightning.gain));
-        });
-    }
+    // Where the density is exactly 0 the plume's (finite) colour is mixed in by 0: skip it there.
+    const glowing = vec3(0).toVar();
+    If(density.greaterThan(0), () => {
+        const lower = fbm(rolled.sub(vec2(0, 0.16)), 3);
+        // Light from below: strongest low down and over the fire, gone by the top of the column.
+        const light = exp(climb.mul(-1.6)).mul(body.mul(0.6).add(0.4)).mul(fire).mul(surge.mul(0.35).add(0.8))
+            .toVar();
+        // Undersides that face the fire catch it; the tops of billows fall into their own shadow.
+        const facing = smoke.sub(lower).mul(5).add(0.5).saturate();
+        const tint = mix(FIRELIGHT, EMBER, smoothstep(0.1, 0.9, climb));
+        const lit = tint.mul(light).mul(facing.mul(facing).mul(0.95).add(0.3)).mul(billow.add(0.3));
+        glowing.assign(ASH.mul(billow.mul(0.8).add(0.3)).add(lit)
+            .add(EMBER.mul(exp(climb.mul(-0.6))).mul(0.02).mul(fire)));
+        // Volcanic lightning, seen only as light inside the ash: a lobe of the cloud glows up over a
+        // second and more, a second lobe beside it answers, and both sink back. Never a strike.
+        if (M.lightning.chance > 0) {
+            If(bolt.x.greaterThan(0.001), () => {
+                const id = bolt.z;
+                // Off to one flank of the plume, above the fountain's crown.
+                const flank = hash21(vec2(id, 1.3)).sub(0.5).sign()
+                    .mul(mix(float(0.4), float(0.8), hash21(vec2(id, 3.9))));
+                const at = vec2(flank, mix(float(0.42), float(0.78), hash21(vec2(id, 2.7))).mul(L.reach)).toVar();
+                const d1 = vec2(across.sub(at.x).div(0.26), climb.sub(at.y).div(0.13));
+                const shift = vec2(hash21(vec2(id, 4.1)).sub(0.5).mul(0.8), hash21(vec2(id, 5.9)).mul(0.2).add(0.05));
+                const d2 = d1.sub(vec2(shift.x.div(0.26), shift.y.div(0.13)));
+                const second = smoothstep(0.25, 0.5, bolt.y).mul(fadeOut(0.62, 0.95, bolt.y)).mul(bolt.x);
+                const lobes = exp(dot(d1, d1).negate()).mul(bolt.x).add(exp(dot(d2, d2).negate()).mul(second).mul(0.7));
+                // Light branching through the cloud: brighter veins inside the glow.
+                const veins = ridged(vec2(across.mul(3.4), climb.mul(5.5)).add(id.mul(31)), 3).toVar();
+                const v2 = veins.mul(veins).toVar();
+                glowing.addAssign(BOLT.mul(lobes).mul(v2.mul(v2).mul(2.2).add(0.1)).mul(billow.mul(0.8).add(0.2))
+                    .mul(M.lightning.gain));
+            });
+        }
+    });
     return vec4(glowing, density.mul(0.94 * M.plume.density));
 }
 
@@ -393,12 +406,15 @@ function paintLake(c) {
     // Seams stay a deeper orange than the fountain: white-yellow belongs to the hero alone.
     const glow = heatColor(seamHeat).mul(SEAM_TINT).mul(crack.mul(open.mul(0.88).add(0.12)).add(bleed.mul(0.12))).toVar();
     if (fine) {
-        // Where the crust is shattered, a finer craquelure splits the plates.
-        const shattered = smoothstep(0.52, 0.72, gnoise(cellP.mul(0.23).add(9.1)).add(nearVent.mul(0.5)));
-        const cells2 = voronoi(cellP.mul(2.4).add(vec2(13.1, 5.7)), u.time.mul(0.07));
-        const crack2 = seamGlow(cells2.y.sub(cells2.x), width.mul(0.7), footprint.mul(2.4))
-            .mul(hash21(vec2(cells2.z.mul(37), 1.3)).mul(0.8).add(0.2));
-        glow.addAssign(heatColor(seamHeat.mul(0.85)).mul(crack2).mul(shattered).mul(0.6));
+        // Where the crust is shattered, a finer craquelure splits the plates. Whole crust adds exactly
+        // 0 (a finite glow times 0): only shattered crust pays for the second set of cells.
+        const shattered = smoothstep(0.52, 0.72, gnoise(cellP.mul(0.23).add(9.1)).add(nearVent.mul(0.5))).toVar();
+        If(shattered.greaterThan(0), () => {
+            const cells2 = voronoi(cellP.mul(2.4).add(vec2(13.1, 5.7)), u.time.mul(0.07));
+            const crack2 = seamGlow(cells2.y.sub(cells2.x), width.mul(0.7), footprint.mul(2.4))
+                .mul(hash21(vec2(cells2.z.mul(37), 1.3)).mul(0.8).add(0.2));
+            glow.addAssign(heatColor(seamHeat.mul(0.85)).mul(crack2).mul(shattered).mul(0.6));
+        });
     }
     // The crust: dark basalt with ropy texture; each plate its own age and tone.
     const tone = hash22(vec2(cells.z.mul(71), 3.3)).toVar();
@@ -463,30 +479,39 @@ function paintFountain(c) {
     const x = fq.x.sub(sway).toVar();
     // A narrow throat at the vent that fans open toward the crown.
     const half = height.mul(up.mul(up).mul(0.2).add(up.mul(0.08)).add(0.06)).add(0.03).toVar();
-    // Turbulence shoves the column about, harder toward the crown.
-    const turb = fbm3(vec3(x.mul(5.5), fq.y.mul(3.4).sub(rise.mul(1.4)), u.time.mul(0.4)), 3).sub(0.5);
-    const span = x.add(turb.mul(half).mul(up.mul(1.4).add(0.8))).div(half).toVar();
-    // Tongues: noise rising through the column. It decides where the crown ends.
-    const tongueAt = vec3(span.mul(1.5), fq.y.mul(3.4).sub(rise.mul(2.1)), u.time.mul(0.3).add(5));
-    const tongues = fbm3(tongueAt, Math.max(3, octaves - 1))
-        .sub(0.5)
-        .toVar();
-    // Spray: thin jets of molten droplets racing up the column, coarse and fine.
-    const jets = gnoise(vec2(span.mul(6.5), fq.y.div(height.add(0.2)).mul(1.8).sub(rise.mul(3.2))))
-        .mul(0.6)
-        .add(gnoise(vec2(span.mul(15).add(3.1), fq.y.div(height.add(0.2)).mul(3.4).sub(rise.mul(4.6)))).mul(0.4))
-        .toVar();
-    // A flat-topped cross-section: the column is full of spray right out to its torn edge.
-    const span2 = span.mul(span).toVar();
-    const profile = float(1).sub(span2.mul(span2)).max(0).toVar();
-    const crown = fadeOut(0.72, 1.14, up.add(tongues.mul(1.6)));
-    // Tongues lick only from the column's own edge, never out of thin air beside it.
-    const reachOut = fadeOut(1.0, 1.7, span.abs());
-    const heat = profile.mul(float(0.72).sub(up.mul(0.2))).mul(jets.mul(0.8).add(0.6))
-        .add(tongues.mul(up.mul(1.6).add(0.55)).mul(reachOut))
-        .mul(crown)
-        .mul(smoothstep(-0.03, 0.03, fq.y))
-        .toVar();
+    // |turb| < 0.93, so beyond this reach |span| > 1.7, where profile, tongues and throat are exactly 0:
+    // the column paints nothing there and only the boil below is left (span2 = 4 stands in).
+    const heat = float(0).toVar();
+    const span2 = float(4).toVar();
+    If(x.abs().lessThan(half.mul(up.mul(1.4).add(0.8).mul(0.95).add(1.7))), () => {
+        // Turbulence shoves the column about, harder toward the crown.
+        const turb = fbm3(vec3(x.mul(5.5), fq.y.mul(3.4).sub(rise.mul(1.4)), u.time.mul(0.4)), 3).sub(0.5);
+        const span = x.add(turb.mul(half).mul(up.mul(1.4).add(0.8))).div(half).toVar();
+        // Tongues: noise rising through the column. It decides where the crown ends.
+        const tongueAt = vec3(span.mul(1.5), fq.y.mul(3.4).sub(rise.mul(2.1)), u.time.mul(0.3).add(5));
+        const tongues = fbm3(tongueAt, Math.max(3, octaves - 1))
+            .sub(0.5)
+            .toVar();
+        // A flat-topped cross-section: the column is full of spray right out to its torn edge.
+        span2.assign(span.mul(span));
+        // Spray: thin jets of molten droplets racing up the column, coarse and fine. Outside it the
+        // profile they scale is exactly 0, so they are skipped there.
+        const jets = float(0).toVar();
+        If(span2.lessThan(1), () => {
+            jets.assign(gnoise(vec2(span.mul(6.5), fq.y.div(height.add(0.2)).mul(1.8).sub(rise.mul(3.2))))
+                .mul(0.6)
+                .add(gnoise(vec2(span.mul(15).add(3.1), fq.y.div(height.add(0.2)).mul(3.4).sub(rise.mul(4.6))))
+                    .mul(0.4)));
+        });
+        const profile = float(1).sub(span2.mul(span2)).max(0).toVar();
+        const crown = fadeOut(0.72, 1.14, up.add(tongues.mul(1.6)));
+        // Tongues lick only from the column's own edge, never out of thin air beside it.
+        const reachOut = fadeOut(1.0, 1.7, span.abs());
+        heat.assign(profile.mul(float(0.72).sub(up.mul(0.2))).mul(jets.mul(0.8).add(0.6))
+            .add(tongues.mul(up.mul(1.6).add(0.55)).mul(reachOut))
+            .mul(crown)
+            .mul(smoothstep(-0.03, 0.03, fq.y)));
+    });
     // The throat is white-hot.
     const core = float(1).sub(span2).max(0).mul(fadeOut(0.0, 0.45, up))
         .mul(0.24);
@@ -739,7 +764,18 @@ export function createVolcanicWorld({
         // The far wall's layer decides the regions: sky above its skyline, lake below its foot.
         const kWall = L.horizon.sub(L.shore).div(L.camH).toVar();
         const wq = layer(ps, u, kWall).toVar();
-        const skyline = wallSkyline(wq.x, u, L).toVar();
+        // Crags and notch keep the skyline within -0.076..+0.088 of its bowl. Farther from the bowl, a
+        // stand-in a whole unit above or below it makes the same sky and wall decisions (the wall's
+        // edge fade is exactly 1 there): only pixels near the skyline pay for its noise.
+        const bowlAt = wq.x.div(u.ext.x);
+        const bowl = L.shore.add(0.13).add(bowlAt.mul(bowlAt).mul(0.16)).toVar();
+        const skyline = bowl.add(1).toVar();
+        If(wq.y.greaterThan(bowl.sub(0.086).sub(margin)), () => {
+            skyline.assign(bowl.sub(1));
+            If(wq.y.lessThan(bowl.add(0.098).add(margin)), () => {
+                skyline.assign(wallSkyline(wq.x, u, L));
+            });
+        });
         const pq = layer(ps, u, 0.62).toVar();
         const climb = pq.y.sub(L.base.add(0.05)).max(0).toVar();
         const plumeWidth = climb.mul(0.58).add(0.24).mul(L.reach.mul(0.5).add(0.5)).mul(M.plume.width)
@@ -779,7 +815,9 @@ export function createVolcanicWorld({
         If(wq.y.lessThan(skyline.add(margin)).and(wq.y.greaterThan(L.shore.sub(margin))), () => {
             col.assign(mix(col, paintWall(c), fadeOut(skyline.sub(u.px.mul(1.2)), skyline.add(u.px.mul(1.2)), wq.y)));
         });
-        If(across.abs().lessThan(2.6).and(pq.y.greaterThan(L.base.sub(0.05))), () => {
+        // The plume's density is exactly 0 from |across| 2.5 out (its fadeOut) and at or below its
+        // foot (climb 0), where mixing it in changes nothing.
+        If(across.abs().lessThan(2.5).and(pq.y.greaterThan(L.base.add(0.05))), () => {
             const plume = paintPlume(c).toVar();
             col.assign(mix(col, plume.rgb, plume.a));
         });

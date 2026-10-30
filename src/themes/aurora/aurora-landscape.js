@@ -21,112 +21,32 @@ import {
     pow3,
 } from 'three/tsl';
 import { MOON_DIRECTION } from './aurora-hours.js';
-import { fbm2, ridged2 } from './aurora-noise.js';
+import { fbm2 } from './aurora-noise.js';
+import {
+    SHORE_ICE, SHORE_Z, bakeShoreIce, bankHeight, forestCover, rangeHeight, smooth,
+} from './aurora-terrain.js';
 import { AURORA_COLORS } from './aurora-palette.js';
 import { moonRadiance } from './aurora-sky.js';
+import { sessionRangeGrid, sessionShoreIce } from './aurora-bakes.js';
+import { sessionGeometry } from '../shared/session-geometry.js';
 
-/** Far shore: where the lake meets the foot of the range. */
-export const SHORE_Z = -640;
-const RANGE_DEPTH = 2700;
-/** The range grid fans out from the eye: half-width per unit of distance. */
-const RANGE_FAN = 1.3;
-/** Height of the tallest summits above the lake. */
-const RANGE_PEAK = 700;
+export {
+    SHORE_ICE, SHORE_Z, bakeShoreIce, bankHeight, forestCover, rangeHeight,
+};
+
 const LAKE_HALF_WIDTH = 5200;
 const PROFILE_BINS = 512;
 const PROFILE_MAX_ELEVATION = 0.4;
 const DEG = Math.PI / 180;
 /** How fast a lake ring fades (1/s): the shader and the slot choice read the same. */
 const RIPPLE_FADE = 0.55;
-/** The shore-ice mask covers the near water: x within ±half, z from `near` out to `far`. */
-export const SHORE_ICE = Object.freeze({
-    half: 200, near: 20, far: -220, width: 256, height: 160,
-});
-
-/**
- * Where the range stands tall. Two hero massifs frame the board; the saddle between them
- * stays low behind it, with a farther chain closing the horizon.
- */
-const MASSIFS = [
-    {
-        x: -900, z: -1650, weight: 1.0, spreadX: 430, spreadZ: 380,
-    },
-    {
-        x: -2050, z: -1500, weight: 0.8, spreadX: 600, spreadZ: 420,
-    },
-    {
-        x: -430, z: -1150, weight: 0.3, spreadX: 260, spreadZ: 200,
-    },
-    {
-        x: -150, z: -2600, weight: 0.62, spreadX: 520, spreadZ: 380,
-    },
-    {
-        x: 420, z: -2800, weight: 0.55, spreadX: 520, spreadZ: 380,
-    },
-    {
-        x: 1080, z: -1800, weight: 1.05, spreadX: 430, spreadZ: 380,
-    },
-    {
-        x: 2250, z: -1560, weight: 0.82, spreadX: 620, spreadZ: 420,
-    },
-    {
-        x: 620, z: -1180, weight: 0.28, spreadX: 250, spreadZ: 190,
-    },
-];
-
 const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
-const smooth = (edge0, edge1, value) => {
-    const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
-    return t * t * (3 - 2 * t);
-};
-
 /** vec2 → vec3 in [0, 1): hash without sine, so a cell keeps its value on every GPU. */
 const hash23 = /* @__PURE__ */ Fn(([cell]) => {
     const p3 = fract(vec3(cell.x, cell.y, cell.x).mul(vec3(0.1031, 0.103, 0.0973))).toVar();
     p3.addAssign(dot(p3, p3.yxz.add(33.33)));
     return fract(p3.xxy.add(p3.yzz).mul(p3.zyx));
 }).setLayout({ name: 'aurora_hash23', type: 'vec3', inputs: [{ name: 'cell', type: 'vec2' }] });
-
-/** Height of the range above the lake at a world position. Negative = under water. */
-export function rangeHeight(x, z, seed = 0) {
-    const inland = SHORE_Z - z;
-    if (inland <= 0) return -8;
-    const warpX = x + 230 * (fbm2(x / 870, z / 870, { seed: seed + 5, octaves: 3 }) - 0.5);
-    const warpZ = z + 230 * (fbm2(x / 870 + 31.7, z / 870 - 12.3, { seed: seed + 9, octaves: 3 }) - 0.5);
-    let envelope = 0.27;
-    for (const massif of MASSIFS) {
-        const dx = (warpX - massif.x) / massif.spreadX;
-        const dz = (warpZ - massif.z) / massif.spreadZ;
-        envelope += massif.weight * Math.exp(-(dx * dx + dz * dz));
-    }
-    // The summits come from the ridges, not from the envelope: a massif is a place where
-    // many sharp crests stand tall, never a smooth dome.
-    const ridge = ridged2(warpX / 900, warpZ / 900, { seed: seed + 21, octaves: 5, sharpness: 2.2 });
-    const crag = ridged2(warpX / 300, warpZ / 300, { seed: seed + 77, octaves: 4, sharpness: 2.4 });
-    const grain = fbm2(warpX / 95, warpZ / 95, { seed: seed + 131, octaves: 2 }) - 0.5;
-    const shape = ridge ** 1.35 * 0.9 + crag * (0.16 + 0.34 * ridge) + grain * 0.05;
-    // The saddle behind the board, and a rise out of the water.
-    const saddle = 1 - 0.36 * Math.exp(-((x / 560) ** 2)) * (1 - smooth(1500, 2400, inland) * 0.5);
-    return RANGE_PEAK * Math.min(1.3, envelope) * shape * saddle * smooth(0, 300, inland) - 8;
-}
-
-/** Where the range's low slopes carry dark spruce forest (0..1); the far trees stand here. */
-export function forestCover(x, y, z, seed = 0) {
-    return (1 - smooth(50, 150, y)) * smooth(2, 14, y)
-        * smooth(0.4, 0.6, fbm2(x / 260, z / 260, { seed: seed + 433, octaves: 3 }));
-}
-
-/**
- * Height of the near snow banks: two spits reaching into the lake from the frame's lower
- * corners. The channel between them widens with distance, so the water runs to the eye.
- */
-export function bankHeight(x, z, seed = 0) {
-    const away = Math.max(0, -z);
-    const side = smooth(11 + away * 0.3, 34 + away * 0.62, Math.abs(x));
-    const near = 1 - smooth(40, 165, away);
-    const mound = 5.6 + 3.4 * fbm2(x / 46, z / 46, { seed: seed + 301, octaves: 3 });
-    return -1.6 + side * near * mound;
-}
 
 function buildGrid(columns, rows, place) {
     const count = columns * rows;
@@ -137,6 +57,11 @@ function buildGrid(columns, rows, place) {
             positions.set([x, y, z], (row * columns + column) * 3);
         }
     }
+    return buildGridFrom(columns, rows, positions);
+}
+
+/** The grid's triangles and normals over its points (buildGrid's, or aurora-terrain.js's). */
+function buildGridFrom(columns, rows, positions) {
     const indices = new Uint32Array((columns - 1) * (rows - 1) * 6);
     let cursor = 0;
     for (let row = 0; row < rows - 1; row += 1) {
@@ -433,34 +358,6 @@ export function placeForest(count, random, seed = 0) {
     return trees;
 }
 
-/**
- * Shore ice: a frozen rim along the banks' waterline that runs out into the channel in
- * tongues. R = ice cover (0..1), G = frost (snow dusting the ice). The mask's border texels
- * stay empty, so the clamped lookup leaves open water everywhere beyond it.
- */
-export function bakeShoreIce(seed = 0) {
-    const { width, height } = SHORE_ICE;
-    const data = new Uint8Array(width * height * 4);
-    for (let j = 0; j < height; j += 1) {
-        for (let i = 0; i < width; i += 1) {
-            const index = (j * width + i) * 4;
-            data[index + 3] = 255;
-            if (i === 0 || j === 0 || i === width - 1 || j === height - 1) continue;
-            const x = (i / (width - 1)) * 2 * SHORE_ICE.half - SHORE_ICE.half;
-            const z = SHORE_ICE.near + (j / (height - 1)) * (SHORE_ICE.far - SHORE_ICE.near);
-            const depth = -bankHeight(x, z, seed);
-            // How deep the ice reaches, in water depth: tongues out into the channel, never across it.
-            const tongue = fbm2(x / 24, z / 24, { seed: seed + 701, octaves: 4 });
-            const reach = Math.min(1.35, 0.85 + 1.1 * (tongue - 0.5) * 2);
-            const ice = 1 - smooth(reach - 0.05, reach + 0.05, depth);
-            const frost = fbm2(x / 7, z / 7, { seed: seed + 733, octaves: 3 });
-            data[index] = Math.round(Math.max(0, Math.min(1, ice)) * 255);
-            data[index + 1] = Math.round(frost * 255);
-        }
-    }
-    return data;
-}
-
 export class AuroraLandscape {
     /**
      * @param {object} options
@@ -543,30 +440,30 @@ export class AuroraLandscape {
     createRange() {
         const { terrainColumns: columns, terrainRows: rows } = this.preset;
         const { seed, atmosphere, noiseTexture } = this;
-        const geometry = buildGrid(columns, rows, (u, v) => {
-            // Rows crowd toward the shore, where the range is largest on screen, and the
-            // columns fan out with distance so no vertex is spent outside the view.
-            const z = SHORE_Z - RANGE_DEPTH * v ** 1.5;
-            const x = (u * 2 - 1) * (120 - z * RANGE_FAN);
-            return [x, rangeHeight(x, z, seed), z];
+        // The range's mesh (its points, normals, cover and the skyline profile) is kept for the
+        // session (shared/session-geometry.js), over the grid's points (aurora-bakes.js: a first
+        // visit bakes them in a worker): ~28 ms of main thread on every Aurora start before.
+        const { geometry, ridgeProfile } = sessionGeometry(null, `aurora:range:${columns}x${rows}:${seed}:${this.eyeHeight}`, () => {
+            const built = buildGridFrom(columns, rows, sessionRangeGrid(columns, rows, seed));
+            const positions = built.attributes.position.array;
+            const normals = built.attributes.normal.array;
+            const cover = new Float32Array(columns * rows * 2);
+            for (let i = 0; i < columns * rows; i += 1) {
+                const x = positions[i * 3];
+                const y = positions[i * 3 + 1];
+                const z = positions[i * 3 + 2];
+                const flatness = normals[i * 3 + 1];
+                // Snow lies on gentle ground and thins on steep faces, which stay bare rock.
+                // Dark spruce forest fills the low slopes in patches.
+                const snow = smooth(0.6, 0.86, flatness) * (0.7 + 0.3 * smooth(40, 220, y))
+                    + 0.16 * fbm2(x / 90, z / 90, { seed: seed + 411, octaves: 2 });
+                cover[i * 2] = Math.max(0, Math.min(1, snow));
+                cover[i * 2 + 1] = Math.max(0, Math.min(1, forestCover(x, y, z, seed)));
+            }
+            built.setAttribute('cover', new THREE.BufferAttribute(cover, 2));
+            return { geometry: built, ridgeProfile: bakeRidgeProfile(positions, this.eyeHeight) };
         });
-        const positions = geometry.attributes.position.array;
-        const normals = geometry.attributes.normal.array;
-        const cover = new Float32Array(columns * rows * 2);
-        for (let i = 0; i < columns * rows; i += 1) {
-            const x = positions[i * 3];
-            const y = positions[i * 3 + 1];
-            const z = positions[i * 3 + 2];
-            const flatness = normals[i * 3 + 1];
-            // Snow lies on gentle ground and thins on steep faces, which stay bare rock.
-            // Dark spruce forest fills the low slopes in patches.
-            const snow = smooth(0.6, 0.86, flatness) * (0.7 + 0.3 * smooth(40, 220, y))
-                + 0.16 * fbm2(x / 90, z / 90, { seed: seed + 411, octaves: 2 });
-            cover[i * 2] = Math.max(0, Math.min(1, snow));
-            cover[i * 2 + 1] = Math.max(0, Math.min(1, forestCover(x, y, z, seed)));
-        }
-        geometry.setAttribute('cover', new THREE.BufferAttribute(cover, 2));
-        this.ridgeProfile = bakeRidgeProfile(positions, this.eyeHeight);
+        this.ridgeProfile = ridgeProfile;
 
         const material = new THREE.MeshBasicNodeMaterial({ fog: false });
         material.name = 'Aurora — snow range';
@@ -778,7 +675,7 @@ export class AuroraLandscape {
             this.textures.add(this.profileTexture);
         }
         this.iceTexture = new THREE.DataTexture(
-            bakeShoreIce(this.seed),
+            sessionShoreIce(this.seed),
             SHORE_ICE.width,
             SHORE_ICE.height,
             THREE.RGBAFormat,

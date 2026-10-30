@@ -3,10 +3,10 @@
  * The breathing stage's lens: bloom, light shafts, a per-world grade and a little glass.
  *
  * One pipeline serves every world. A world only states numbers (bloom, shafts, grade,
- * exposure); they live in uniforms, so swapping worlds never rebuilds the graph — except that
- * the light-shaft pass is a separate reduced-resolution target, present only in the output graph
- * of worlds that use it (a zeroed pass still costs its samples). The swap happens during the
- * world-change blink, so that one rebuild is never seen.
+ * exposure); they live in uniforms, so swapping worlds never rebuilds the graph. The light
+ * shafts' two reduced-resolution passes are in it from the start, but render only for worlds
+ * that use them (a zeroed pass would still cost its samples): off, they keep their last image,
+ * which the output adds at strength 0.
  *
  *   scene ─┬─ bloom (mip chain, tier-scaled) ───────────────┐
  *          ├─ shafts (radial march toward the light, ¼–½ res) ┤
@@ -68,8 +68,11 @@ export class BreathPost {
         this.bloomNode.setResolutionScale(quality.bloom);
         this.bloomBase = DEFAULT_BLOOM.strength;
         this.bloomBreath = DEFAULT_BLOOM.breath;
-        this.shaftsNode = null;
-        this.outputs = new Map();
+        // The light shafts are in the one output graph from the start: their passes render only
+        // while a world uses them (see _useShafts), and they render once on the first frame, so
+        // their pipelines are made behind the first dip like the rest of the lens's.
+        this.shaftsNode = quality.shafts > 0 ? this._createShafts() : null;
+        this.pipeline.outputNode = this._buildOutput(Boolean(this.shaftsNode));
         this.usesShafts = null;
         this._useShafts(false);
     }
@@ -159,13 +162,20 @@ export class BreathPost {
         })();
     }
 
+    /**
+     * Turn the light shafts on or off without touching the graph (a rebuild would make the bloom,
+     * shaft and output pipelines again at every stage change into or out of a world with shafts).
+     * Off, their two passes stop rendering and keep their last image, which the output adds at
+     * strength 0: exactly nothing, at the cost of one texture read. On, they render every frame.
+     */
     _useShafts(enabled) {
-        const want = Boolean(enabled && this.quality.shafts > 0);
+        const want = Boolean(enabled && this.shaftsNode);
         if (want === this.usesShafts) return;
-        if (want && !this.shaftsNode) this.shaftsNode = this._createShafts();
-        if (!this.outputs.has(want)) this.outputs.set(want, this._buildOutput(want));
-        this.pipeline.outputNode = this.outputs.get(want);
-        this.pipeline.needsUpdate = true;
+        if (this.shaftsNode) {
+            this.shaftsFirst.autoUpdate = want;
+            this.shaftsNode.autoUpdate = want;
+        }
+        if (!want) this.uShaftStrength.value = 0;
         this.usesShafts = want;
     }
 
@@ -233,6 +243,5 @@ export class BreathPost {
         this.bloomNode = null;
         this.shaftsNode = null;
         this.pipeline = null;
-        this.outputs.clear();
     }
 }

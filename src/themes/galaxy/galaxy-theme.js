@@ -51,6 +51,7 @@ import { POST_LOOK, GalaxyPost, createPassThroughPipeline } from './galaxy-post.
 import { PLAYER_SLOTS, readLayoutRects } from './galaxy-composition.js';
 import { GALAXY_EVENT_HANDLERS, GalaxyDirector } from './galaxy-director.js';
 import { approach } from './galaxy-core.js';
+import { galaxyBakes } from './galaxy-bakes.js';
 
 const THEME_ID = 'galaxy';
 const LOG_PREFIX = '[Galaxy]';
@@ -196,8 +197,12 @@ export default class GalaxyTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise and its mips (~20 ms on a first visit) bake in a worker while the renderer comes
+        // up; the build below finds them kept.
+        const baking = galaxyBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
+        await baking;
         if (!isCurrent()) {
             this.disposeRenderer(renderer, { nullInstance: false });
             return;

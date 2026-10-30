@@ -26,7 +26,9 @@ import { VerdantHillsSheep } from './verdant-hills-sheep.js';
 import { VerdantHillsSky } from './verdant-hills-sky.js';
 import { VerdantHillsStage } from './verdant-hills-stage.js';
 import { createVerdantHillsWorn, wearVerdantHillsFrame } from './verdant-hills-surge.js';
-import { VERDANT_HILLS_PLACES, VerdantHillsTerrain, verdantHillsGroundHeight } from './verdant-hills-terrain.js';
+import {
+    VERDANT_HILLS_PLACES, VerdantHillsTerrain, prepareGroundSteps, verdantHillsGroundHeight,
+} from './verdant-hills-terrain.js';
 import { createVerdantHillsPasture, layoutVerdantHillsSheep } from './verdant-hills-layout.js';
 import { VerdantHillsTrees } from './verdant-hills-trees.js';
 import { drainSteps } from '../shared/build-steps.js';
@@ -105,6 +107,7 @@ export class VerdantHillsWorld {
         this.terrain = new VerdantHillsTerrain({ light, landMap: this.assets?.land || null });
         this.group.add(this.terrain.group);
         yield 'light';
+        yield* prepareGroundSteps();
         this.terrain.build();
         yield 'terrain';
         this.sky = new VerdantHillsSky({ light, tier });

@@ -69,15 +69,11 @@ function circleLine(m, centre, radius, dx, dy, width) {
 }
 
 /**
- * The inscription's light at floor point `f` (floor units, origin under the gate's centre).
- * `reach` is how far from the centre the breath's light has spread (floor units); `wave` lights
- * a ring at that front while the lungs fill. `colors` = { gold, whiteGold, amber } (a mood's
- * lines); `surge` = (radius, strength): a band of extra light running out along the lines (a rare
- * event). Returns linear RGB.
+ * The inscription's two frames at floor point `f` and their screen derivatives. Derivatives need
+ * uniform control flow: a caller that draws the inscription inside a per-pixel branch takes them
+ * here, before the branch, and passes them in as `frames`.
  */
-export function inscription(f, u, {
-    reach, wave, detail, colors = null, surge = null,
-}) {
+export function inscriptionFrames(f, u) {
     // Two frames turning against each other: the flower, and the outer rings.
     const a = turn(f, u.time.mul(0.012)).toVar();
     const b = turn(f, u.time.mul(-0.007).add(0.26)).toVar();
@@ -85,6 +81,24 @@ export function inscription(f, u, {
     const ady = dFdy(a).toVar();
     const bdx = dFdx(b).toVar();
     const bdy = dFdy(b).toVar();
+    return {
+        a, b, adx, ady, bdx, bdy,
+    };
+}
+
+/**
+ * The inscription's light at floor point `f` (floor units, origin under the gate's centre).
+ * `reach` is how far from the centre the breath's light has spread (floor units); `wave` lights
+ * a ring at that front while the lungs fill. `colors` = { gold, whiteGold, amber } (a mood's
+ * lines); `surge` = (radius, strength): a band of extra light running out along the lines (a rare
+ * event); `frames`: inscriptionFrames(f, u), when taken earlier. Returns linear RGB.
+ */
+export function inscription(f, u, {
+    reach, wave, detail, colors = null, surge = null, frames = inscriptionFrames(f, u),
+}) {
+    const {
+        a, b, adx, ady, bdx, bdy,
+    } = frames;
     const r = length(f).toVar();
     const radial = a.div(r.max(1e-4)).toVar();
     const fpRadial = across(radial, adx, ady).toVar();

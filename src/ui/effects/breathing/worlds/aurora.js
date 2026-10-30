@@ -285,117 +285,126 @@ function makeCurtain(palette, name) {
             .add(sin(ph2).mul(fold.w)))
             .max(reach.mul(0.3))
             .toVar();
-        const dz = reach.mul(form.y.mul(bow).mul(2).add(lean)
-            .add(cos(turn).mul(cos(ph1).mul(0.8).add(1)).mul(fold.y).mul(fold.x))
-            .add(cos(ph2).mul(fold.w).mul(fold.z)))
-            .toVar();
-        // Looking along a sheet (a fold turned edge-on) crosses more of it: the path grows as `edgeOn`,
-        // and the brightness faster than that, so the folds blaze and the stretches seen face-on stay faint.
-        const tx = z.add(a.mul(dz));
-        const edgeOn = sqrt(tx.mul(tx).add(dz.mul(dz)).mul(a.mul(a).add(b.mul(b)).add(1))).div(z);
-        const path2 = edgeOn.mul(edgeOn);
-        const blaze = path2.mul(0.45).div(path2.mul(0.09).add(1)).add(0.35).toVar();
         // Where this ray meets the sheet: along it, and at what altitude.
         const s = a.mul(z).toVar();
-        const altitude = b.mul(z);
-        const pxw = state.w.mul(z).toVar();
-        // Pleats: here and there the sheet folds toward the eye, one per cell along it at a random place
-        // and strength. Seen edge-on a fold blazes in a thin vertical line, and the hem jogs up or down
-        // across it (between folds it drifts back, a sawtooth that never accumulates). Pleats fade out
-        // before they could alias.
-        const pc = s.mul(PLEATS).add(seed.mul(13)).sub(flow.x.mul(0.6)).toVar();
-        const cell = floor(pc).toVar();
-        const pleatW = pxw.mul(1.6).max(0.012).mul(PLEATS).toVar();
-        const pleatLod = fadeOut(0.06, 0.12, pxw.mul(PLEATS));
-        const pleat = float(0).toVar();
-        [-1, 0, 1].forEach((k) => {
-            const h = hash11(cell.add(k)).toVar();
-            const d = pc.sub(cell.add(k).add(h.mul(0.6).add(0.2))).toVar();
-            const strength = smoothstep(0.3, 0.9, fract(h.mul(7.31)));
-            pleat.addAssign(exp(d.mul(d).div(pleatW.mul(pleatW)).negate()).mul(strength));
-        });
-        pleat.mulAssign(pleatLod);
-        const h0 = hash11(cell).toVar();
-        const at = h0.mul(0.6).add(0.2).toVar();
-        const t = pc.sub(cell).toVar();
-        const across = smoothstep(pleatW.negate(), pleatW, t.sub(at));
-        const saw = mix(t.div(at).mul(-0.5), float(1).sub(t).div(float(1).sub(at)).mul(0.5), across);
-        const jog = saw.mul(smoothstep(0.3, 0.9, fract(h0.mul(7.31)))).mul(step(0.5, fract(h0.mul(3.17))).mul(2).sub(1))
-            .mul(pleatLod)
-            .mul(0.03);
-        // Rays: soft striations that run straight up the sheet, gathered into brighter bundles. The
-        // finer ones fade out before they could alias.
-        const coarseLod = fadeOut(0.22, 0.5, look.x.mul(pxw)).toVar();
-        const fineLod = fadeOut(0.22, 0.5, look.x.mul(2.7).mul(pxw)).toVar();
-        const bundle = noise1(s.mul(look.x.mul(0.3)).add(flow.y.mul(0.8)).add(seed.mul(5))).x.toVar();
-        const ray1 = noise1(s.mul(look.x).add(flow.y.mul(1.5)).add(seed.mul(11))).x.toVar();
-        const ray2 = gnoise(vec2(s.mul(look.x.mul(2.7)).sub(flow.y.mul(2.2)), flow.z.add(seed.mul(3)))).toVar();
-        const rays = bundle.mul(bundle).mul(0.7).add(0.5)
-            .mul(mix(float(1), ray1.mul(0.7).add(0.65), coarseLod))
-            .add(ray2.sub(0.5).mul(fineLod).mul(flow.w.mul(0.35).add(0.25)))
-            .max(0)
-            .toVar();
         // Curtain segments come and go along the sheet, often enough that even the nearest hem never
         // runs unbroken across the frame.
         const segment = noise1(a.mul(2.2).add(s.mul(0.12)).add(seed.mul(7.7)).add(flow.y.mul(0.25))).x;
-        const patch = mix(look.w, float(1), smoothstep(0.28, 0.72, segment));
-        // Fine ripples run along the hem like a flag's edge (smooth waves, not a jagged skyline); they
-        // fade out before they could alias.
-        const ripple = s.mul(11).add(sin(s.mul(3.7).add(seed.mul(2.1))).mul(1.1)).sub(flow.x.mul(1.3));
-        const waver = sin(ripple).mul(0.012).mul(fadeOut(0.12, 0.3, pxw.mul(11)));
-        // The hem undulates, ripples finely, jogs at the pleats and climbs with the breath.
-        const hem = form.z.add(state.x)
-            .add(sin(s.mul(1.9).add(seed.mul(3.1)).sub(flow.x.mul(1.4))).mul(0.045))
-            .add(noise1(s.mul(0.8).add(seed.mul(5.3))).x.sub(0.5).mul(0.16))
-            .add(noise1(s.mul(4.3).add(seed.mul(2.9)).add(flow.y)).x.sub(0.5).mul(0.035))
-            .add(waver)
-            .add(jog);
-        const dh = altitude.sub(hem).toVar();
-        // Tall rays, and bright bundles, reach higher than their neighbours.
-        const scale = state.y.mul(look.y).mul(ray1.mul(0.45).add(bundle.mul(0.35)).add(0.55));
-        const up = dh.max(0).div(scale).toVar();
-        // The sheet starts at a sharp lower edge (about a pixel soft at any distance).
-        const edge = pxw.mul(1.5).max(0.016);
-        const onset = smoothstep(edge.negate(), edge, dh).toVar();
-        const body = exp(up.mul(-1.45)).mul(onset).mul(0.8);
-        // The hem burns brightest just above that edge and fades up into the body; the rays stripe it,
-        // and its brilliance gathers where they bundle.
-        // The hem is the base of the rays, not a rim: a fine comb of bright ray feet with softer gaps
-        // between them (where the rays are too fine to see, an even line).
-        const fine = mix(float(0.45), smoothstep(0.2, 0.8, ray2), fineLod);
-        const comb = mix(float(0.6), fine.mul(0.7).add(smoothstep(0.35, 0.85, ray1).mul(0.35)), coarseLod).toVar();
-        const hemW = pxw.mul(2).max(0.035);
-        const hemLine = onset.mul(exp(dh.max(0).div(hemW).negate())).mul(bundle.mul(0.5).add(0.6))
-            .mul(comb.mul(1.1).add(0.22));
-        // The body rises in the same rays from the hem, and higher up thins out into separate ones.
-        // A pleat's blaze burns brightest along the hem.
-        const thin = smoothstep(0.0, 0.8, up).mul(0.6).add(0.4);
-        const striated = mix(mix(rays, rays.mul(rays).mul(1.25), thin), comb.mul(1.15).add(0.12), exp(up.mul(-5)));
-        const blazeUp = pleat.mul(exp(up.mul(-1.2))).mul(1.3).add(1);
-        const profile = body.mul(striated).mul(0.62).mul(mix(float(1), blaze, 0.55)).mul(blazeUp)
-            .add(hemLine.mul(blaze).mul(pleat.mul(1.2).add(1.3)));
-        // Below the edge the brightest rays run on as faint streamers, fading downward.
-        const sink = dh.negate().max(0);
-        const streamers = exp(sink.div(pxw.mul(4).max(0.06)).negate()).mul(float(1).sub(onset))
-            .mul(fine.mul(fine).mul(smoothstep(0.3, 0.8, ray1).mul(0.6).add(0.4)))
-            .mul(0.3);
-        const roseW = pxw.mul(2).max(0.026);
-        const below = dh.add(roseW.mul(1.3));
-        // The rose fringe shows only along the strongest stretches of the hem, broken by the rays.
-        const fringe = smoothstep(0.6, 0.95, bundle).mul(comb);
-        const rose = exp(below.mul(below).div(roseW.mul(roseW)).negate()).mul(fringe).mul(0.26).mul(rays);
-        // Colour by height above the hem: green-white hem, green body, violet then magenta tops.
-        const tint = mix(HEM, GREEN, smoothstep(0.0, 0.3, up)).toVar();
-        tint.assign(mix(tint, VIOLET, smoothstep(0.3, 1.0, up)));
-        tint.assign(mix(tint, MAGENTA, smoothstep(0.8, 1.8, up)));
-        // The air between: far sheets dim and sink into the horizon.
-        const air = exp(z.mul(-0.035)).mul(smoothstep(0.0, 0.05, b));
-        // A faint unstructured veil: up through the body, and well below the hem as diffuse aurora, so
-        // the sky under a curtain is lit like the sky between its rays, never a dark shape.
-        const veil = exp(up.mul(-0.8)).mul(smoothstep(-0.06, 0.05, dh)).mul(0.06)
-            .add(exp(sink.div(0.35).negate()).mul(float(1).sub(onset)).mul(0.045));
-        const light = tint.mul(profile.add(veil)).add(ROSE.mul(rose).add(HEM.mul(streamers)).mul(blaze));
-        return light.mul(patch.mul(air).mul(state.z).mul(look.z));
+        const patch = mix(look.w, float(1), smoothstep(0.28, 0.72, segment)).toVar();
+        // Between segments (patch 0) the whole sheet, finite everywhere, is multiplied by 0: skip it there.
+        const result = vec3(0).toVar();
+        If(patch.greaterThan(0), () => {
+            const dz = reach.mul(form.y.mul(bow).mul(2).add(lean)
+                .add(cos(turn).mul(cos(ph1).mul(0.8).add(1)).mul(fold.y).mul(fold.x))
+                .add(cos(ph2).mul(fold.w).mul(fold.z)))
+                .toVar();
+            // Looking along a sheet (a fold turned edge-on) crosses more of it: the path grows as `edgeOn`,
+            // and the brightness faster than that, so the folds blaze and the stretches seen face-on stay faint.
+            const tx = z.add(a.mul(dz));
+            const edgeOn = sqrt(tx.mul(tx).add(dz.mul(dz)).mul(a.mul(a).add(b.mul(b)).add(1))).div(z);
+            const path2 = edgeOn.mul(edgeOn);
+            const blaze = path2.mul(0.45).div(path2.mul(0.09).add(1)).add(0.35).toVar();
+            const altitude = b.mul(z);
+            const pxw = state.w.mul(z).toVar();
+            // Pleats: here and there the sheet folds toward the eye, one per cell along it at a random place
+            // and strength. Seen edge-on a fold blazes in a thin vertical line, and the hem jogs up or down
+            // across it (between folds it drifts back, a sawtooth that never accumulates). Pleats fade out
+            // before they could alias.
+            const pc = s.mul(PLEATS).add(seed.mul(13)).sub(flow.x.mul(0.6)).toVar();
+            const cell = floor(pc).toVar();
+            const pleatW = pxw.mul(1.6).max(0.012).mul(PLEATS).toVar();
+            const pleatLod = fadeOut(0.06, 0.12, pxw.mul(PLEATS));
+            const pleat = float(0).toVar();
+            // The cell's own pleat (k = 0) and the hem's jog below share one hash and strength (cell + 0 is
+            // cell, and the hash takes -0 and +0 alike).
+            const h0 = hash11(cell).toVar();
+            const strength0 = smoothstep(0.3, 0.9, fract(h0.mul(7.31)));
+            [-1, 0, 1].forEach((k) => {
+                const h = k === 0 ? h0 : hash11(cell.add(k)).toVar();
+                const d = pc.sub(cell.add(k).add(h.mul(0.6).add(0.2))).toVar();
+                const strength = k === 0 ? strength0 : smoothstep(0.3, 0.9, fract(h.mul(7.31)));
+                pleat.addAssign(exp(d.mul(d).div(pleatW.mul(pleatW)).negate()).mul(strength));
+            });
+            pleat.mulAssign(pleatLod);
+            const at = h0.mul(0.6).add(0.2).toVar();
+            const t = pc.sub(cell).toVar();
+            const across = smoothstep(pleatW.negate(), pleatW, t.sub(at));
+            const saw = mix(t.div(at).mul(-0.5), float(1).sub(t).div(float(1).sub(at)).mul(0.5), across);
+            const jog = saw.mul(strength0)
+                .mul(step(0.5, fract(h0.mul(3.17))).mul(2).sub(1))
+                .mul(pleatLod)
+                .mul(0.03);
+            // Rays: soft striations that run straight up the sheet, gathered into brighter bundles. The
+            // finer ones fade out before they could alias.
+            const coarseLod = fadeOut(0.22, 0.5, look.x.mul(pxw)).toVar();
+            const fineLod = fadeOut(0.22, 0.5, look.x.mul(2.7).mul(pxw)).toVar();
+            const bundle = noise1(s.mul(look.x.mul(0.3)).add(flow.y.mul(0.8)).add(seed.mul(5))).x.toVar();
+            const ray1 = noise1(s.mul(look.x).add(flow.y.mul(1.5)).add(seed.mul(11))).x.toVar();
+            const ray2 = gnoise(vec2(s.mul(look.x.mul(2.7)).sub(flow.y.mul(2.2)), flow.z.add(seed.mul(3)))).toVar();
+            const rays = bundle.mul(bundle).mul(0.7).add(0.5)
+                .mul(mix(float(1), ray1.mul(0.7).add(0.65), coarseLod))
+                .add(ray2.sub(0.5).mul(fineLod).mul(flow.w.mul(0.35).add(0.25)))
+                .max(0)
+                .toVar();
+            // Fine ripples run along the hem like a flag's edge (smooth waves, not a jagged skyline); they
+            // fade out before they could alias.
+            const ripple = s.mul(11).add(sin(s.mul(3.7).add(seed.mul(2.1))).mul(1.1)).sub(flow.x.mul(1.3));
+            const waver = sin(ripple).mul(0.012).mul(fadeOut(0.12, 0.3, pxw.mul(11)));
+            // The hem undulates, ripples finely, jogs at the pleats and climbs with the breath.
+            const hem = form.z.add(state.x)
+                .add(sin(s.mul(1.9).add(seed.mul(3.1)).sub(flow.x.mul(1.4))).mul(0.045))
+                .add(noise1(s.mul(0.8).add(seed.mul(5.3))).x.sub(0.5).mul(0.16))
+                .add(noise1(s.mul(4.3).add(seed.mul(2.9)).add(flow.y)).x.sub(0.5).mul(0.035))
+                .add(waver)
+                .add(jog);
+            const dh = altitude.sub(hem).toVar();
+            // Tall rays, and bright bundles, reach higher than their neighbours.
+            const scale = state.y.mul(look.y).mul(ray1.mul(0.45).add(bundle.mul(0.35)).add(0.55));
+            const up = dh.max(0).div(scale).toVar();
+            // The sheet starts at a sharp lower edge (about a pixel soft at any distance).
+            const edge = pxw.mul(1.5).max(0.016);
+            const onset = smoothstep(edge.negate(), edge, dh).toVar();
+            const body = exp(up.mul(-1.45)).mul(onset).mul(0.8);
+            // The hem burns brightest just above that edge and fades up into the body; the rays stripe it,
+            // and its brilliance gathers where they bundle.
+            // The hem is the base of the rays, not a rim: a fine comb of bright ray feet with softer gaps
+            // between them (where the rays are too fine to see, an even line).
+            const fine = mix(float(0.45), smoothstep(0.2, 0.8, ray2), fineLod);
+            const comb = mix(float(0.6), fine.mul(0.7).add(smoothstep(0.35, 0.85, ray1).mul(0.35)), coarseLod).toVar();
+            const hemW = pxw.mul(2).max(0.035);
+            const hemLine = onset.mul(exp(dh.max(0).div(hemW).negate())).mul(bundle.mul(0.5).add(0.6))
+                .mul(comb.mul(1.1).add(0.22));
+            // The body rises in the same rays from the hem, and higher up thins out into separate ones.
+            // A pleat's blaze burns brightest along the hem.
+            const thin = smoothstep(0.0, 0.8, up).mul(0.6).add(0.4);
+            const striated = mix(mix(rays, rays.mul(rays).mul(1.25), thin), comb.mul(1.15).add(0.12), exp(up.mul(-5)));
+            const blazeUp = pleat.mul(exp(up.mul(-1.2))).mul(1.3).add(1);
+            const profile = body.mul(striated).mul(0.62).mul(mix(float(1), blaze, 0.55)).mul(blazeUp)
+                .add(hemLine.mul(blaze).mul(pleat.mul(1.2).add(1.3)));
+            // Below the edge the brightest rays run on as faint streamers, fading downward.
+            const sink = dh.negate().max(0);
+            const streamers = exp(sink.div(pxw.mul(4).max(0.06)).negate()).mul(float(1).sub(onset))
+                .mul(fine.mul(fine).mul(smoothstep(0.3, 0.8, ray1).mul(0.6).add(0.4)))
+                .mul(0.3);
+            const roseW = pxw.mul(2).max(0.026);
+            const below = dh.add(roseW.mul(1.3));
+            // The rose fringe shows only along the strongest stretches of the hem, broken by the rays.
+            const fringe = smoothstep(0.6, 0.95, bundle).mul(comb);
+            const rose = exp(below.mul(below).div(roseW.mul(roseW)).negate()).mul(fringe).mul(0.26).mul(rays);
+            // Colour by height above the hem: green-white hem, green body, violet then magenta tops.
+            const tint = mix(HEM, GREEN, smoothstep(0.0, 0.3, up)).toVar();
+            tint.assign(mix(tint, VIOLET, smoothstep(0.3, 1.0, up)));
+            tint.assign(mix(tint, MAGENTA, smoothstep(0.8, 1.8, up)));
+            // The air between: far sheets dim and sink into the horizon.
+            const air = exp(z.mul(-0.035)).mul(smoothstep(0.0, 0.05, b));
+            // A faint unstructured veil: up through the body, and well below the hem as diffuse aurora, so
+            // the sky under a curtain is lit like the sky between its rays, never a dark shape.
+            const veil = exp(up.mul(-0.8)).mul(smoothstep(-0.06, 0.05, dh)).mul(0.06)
+                .add(exp(sink.div(0.35).negate()).mul(float(1).sub(onset)).mul(0.045));
+            const light = tint.mul(profile.add(veil)).add(ROSE.mul(rose).add(HEM.mul(streamers)).mul(blaze));
+            result.assign(light.mul(patch.mul(air).mul(state.z).mul(look.z)));
+        });
+        return result;
     }).setLayout({
         name: `aur_curtain_${name}`,
         type: 'vec3',
@@ -498,12 +507,17 @@ const grove = /* @__PURE__ */ Fn(([q, row, scene]) => {
     const metres = zt.div(LENS).toVar();
     const foot = scene.x.sub(float(LENS * EYE).div(zt));
     const ground = inland(trunk.mul(metres), zt, scene.y).toVar();
-    const presence = smoothstep(0.15, 0.6, ground).mul(smoothstep(0.06, 0.1, r3));
-    const height = r2.mul(r2).mul(8).add(8).mul(smoothstep(0.0, 9.0, ground).mul(0.6).add(0.45));
+    const presence = smoothstep(0.15, 0.6, ground).mul(smoothstep(0.06, 0.1, r3)).toVar();
     const ly = q.y.sub(foot).mul(metres).toVar();
-    const lx = q.x.sub(trunk).add(scene.w).mul(metres);
     const edge = scene.z.mul(1.3).mul(metres).toVar();
-    const tree = spruce(vec2(lx, ly.abs()), vec4(height, r1.mul(13).add(seed), edge, 0));
+    // Where no tree stands (presence 0) the mask is 0 and the caller mixes the tree and its snow in by
+    // it: grow the spruce only where one stands.
+    const tree = vec2(0).toVar();
+    If(presence.greaterThan(0), () => {
+        const height = r2.mul(r2).mul(8).add(8).mul(smoothstep(0.0, 9.0, ground).mul(0.6).add(0.45));
+        const lx = q.x.sub(trunk).add(scene.w).mul(metres);
+        tree.assign(spruce(vec2(lx, ly.abs()), vec4(height, r1.mul(13).add(seed), edge, 0)));
+    });
     return vec3(tree.x.mul(presence), tree.y, smoothstep(edge.negate(), edge, ly));
 }).setLayout({
     name: 'aur_grove',
@@ -572,48 +586,54 @@ function makeSnowFace(light, name) {
         const x = q.x.mul(freq).add(seed).toVar();
         const rise = q.y.sub(horizon).toVar();
         const depth = horizon.add(shape.x).add(skyline(x).mul(height)).sub(q.y).toVar();
-        const inside = smoothstep(px.mul(-1.5), px.mul(1.5), depth);
-        const d = depth.max(0).toVar();
-        // Ridges run down from the crests and wander as they descend.
-        const dx = d.mul(freq).toVar();
-        const wander = noise1(x.mul(0.8).add(dx.mul(2.5)).add(seed)).x.sub(0.5);
-        const xf = x.add(dx.mul(wander).mul(1.2)).toVar();
-        const slope = faceSlope(xf, dx).mul(height).mul(freq).toVar();
-        // Crags: an eroded height field on the face, stretched down the fall line, bump-lights it.
-        const stretch = rock.x.mul(freq).mul(0.5).toVar();
-        // The finest crags (four cycles per crag unit) fade out before they would alias.
-        const fine = fadeOut(0.18, 0.35, rock.x.mul(freq).mul(4).mul(px));
-        const crag = crags(vec2(x.mul(rock.x), q.y.mul(stretch)).add(seed), fine).toVar();
-        const bump = crag.yz.mul(vec2(rock.x.mul(freq), stretch)).mul(rock.y).toVar();
-        const normal = vec3(
-            slope.negate().sub(bump.x),
-            mix(float(0.32), float(0.8), smoothstep(0.0, base.mul(0.8), d)).sub(bump.y),
-            0.62,
-        ).normalize().toVar();
-        const lit = dot(normal, LIGHT_DIR).max(0);
-        // Snow fills the gullies, the ledges and the aprons at the foot; the crag ribs and the steepest
-        // upper flanks stay bare rock.
-        const apron = smoothstep(base.mul(0.25), base.mul(0.7), d);
-        const rib = crag.x.add(slope.abs().mul(0.15)).add(bump.length().mul(0.25))
-            .add(fadeOut(0.0, base.mul(0.3), d).mul(0.03))
-            .sub(apron.mul(0.12));
-        // Ledges: snow dusting the tilted strata across the rock (faded out before they would alias).
-        const strata = q.y.mul(freq).mul(24).add(x.mul(2.2)).add(noise1(x.mul(2.3)).x.mul(3));
-        const ledgeLod = fadeOut(0.12, 0.25, freq.mul(24).mul(px));
-        const ledge = smoothstep(0.6, 0.85, noise1(strata).x).mul(ledgeLod);
-        const snow = fadeOut(0.47, 0.56, rib).max(ledge.mul(0.55)).toVar();
-        // Dark forest climbs the foot of the range.
-        const forest = fadeOut(0.012, rock.w, rise.sub(crag.x.mul(0.03)));
-        const albedo = mix(float(0.13), float(0.9), snow).mul(float(1).sub(forest.mul(0.92)));
-        // Gullies sit in their own shade.
-        const hollow = crag.x.mul(0.8).add(0.55).toVar();
-        const fill = normal.y.mul(0.45).add(0.55).mul(hollow);
-        const face = AURORA_LIGHT.mul(glow).mul(lit).mul(hollow).add(SKY_LIGHT.mul(fill))
-            .mul(albedo)
-            .toVar();
-        // The crest catches the curtains burning behind the range.
-        face.addAssign(RIM.mul(exp(d.div(px.mul(2.5)).negate())).mul(glow).mul(rock.z.mul(0.08)));
-        return vec4(face, inside);
+        const inside = smoothstep(px.mul(-1.5), px.mul(1.5), depth).toVar();
+        // Over the skyline `inside` is exactly 0, and the caller mixes the face in by it: shade the face
+        // only below.
+        const shaded = vec3(0).toVar();
+        If(inside.greaterThan(0), () => {
+            const d = depth.max(0).toVar();
+            // Ridges run down from the crests and wander as they descend.
+            const dx = d.mul(freq).toVar();
+            const wander = noise1(x.mul(0.8).add(dx.mul(2.5)).add(seed)).x.sub(0.5);
+            const xf = x.add(dx.mul(wander).mul(1.2)).toVar();
+            const slope = faceSlope(xf, dx).mul(height).mul(freq).toVar();
+            // Crags: an eroded height field on the face, stretched down the fall line, bump-lights it.
+            const stretch = rock.x.mul(freq).mul(0.5).toVar();
+            // The finest crags (four cycles per crag unit) fade out before they would alias.
+            const fine = fadeOut(0.18, 0.35, rock.x.mul(freq).mul(4).mul(px));
+            const crag = crags(vec2(x.mul(rock.x), q.y.mul(stretch)).add(seed), fine).toVar();
+            const bump = crag.yz.mul(vec2(rock.x.mul(freq), stretch)).mul(rock.y).toVar();
+            const normal = vec3(
+                slope.negate().sub(bump.x),
+                mix(float(0.32), float(0.8), smoothstep(0.0, base.mul(0.8), d)).sub(bump.y),
+                0.62,
+            ).normalize().toVar();
+            const lit = dot(normal, LIGHT_DIR).max(0);
+            // Snow fills the gullies, the ledges and the aprons at the foot; the crag ribs and the steepest
+            // upper flanks stay bare rock.
+            const apron = smoothstep(base.mul(0.25), base.mul(0.7), d);
+            const rib = crag.x.add(slope.abs().mul(0.15)).add(bump.length().mul(0.25))
+                .add(fadeOut(0.0, base.mul(0.3), d).mul(0.03))
+                .sub(apron.mul(0.12));
+            // Ledges: snow dusting the tilted strata across the rock (faded out before they would alias).
+            const strata = q.y.mul(freq).mul(24).add(x.mul(2.2)).add(noise1(x.mul(2.3)).x.mul(3));
+            const ledgeLod = fadeOut(0.12, 0.25, freq.mul(24).mul(px));
+            const ledge = smoothstep(0.6, 0.85, noise1(strata).x).mul(ledgeLod);
+            const snow = fadeOut(0.47, 0.56, rib).max(ledge.mul(0.55)).toVar();
+            // Dark forest climbs the foot of the range.
+            const forest = fadeOut(0.012, rock.w, rise.sub(crag.x.mul(0.03)));
+            const albedo = mix(float(0.13), float(0.9), snow).mul(float(1).sub(forest.mul(0.92)));
+            // Gullies sit in their own shade.
+            const hollow = crag.x.mul(0.8).add(0.55).toVar();
+            const fill = normal.y.mul(0.45).add(0.55).mul(hollow);
+            const face = AURORA_LIGHT.mul(glow).mul(lit).mul(hollow).add(SKY_LIGHT.mul(fill))
+                .mul(albedo)
+                .toVar();
+            // The crest catches the curtains burning behind the range.
+            face.addAssign(RIM.mul(exp(d.div(px.mul(2.5)).negate())).mul(glow).mul(rock.z.mul(0.08)));
+            shaded.assign(face);
+        });
+        return vec4(shaded, inside);
     }).setLayout({
         name: `aur_snowFace_${name}`,
         type: 'vec4',
@@ -954,10 +974,13 @@ export function createAuroraWorld({ u, quality, mood }) {
         sky.addAssign(AIRGLOW.mul(exp(el.mul(-2.2))).mul(breath.mul(breath)).mul(0.35));
         if (look.crown) {
             // A great storm's red: a diffuse glow high overhead, above the curtains, in slow drifting patches.
-            const patchQ = vec2(az.mul(1.3), el.mul(2.2)).add(vec2(u.time.mul(0.01), visit.mul(7)));
-            const patches = gnoise(patchQ).mul(1.2).sub(0.1)
-                .max(0);
-            sky.addAssign(vec3(...look.crown).mul(smoothstep(0.3, 0.85, el)).mul(patches).mul(glow));
+            // (Its weight smoothstep(0.3, 0.85, el) is exactly 0 lower down: drawn only above.)
+            If(el.greaterThan(0.3), () => {
+                const patchQ = vec2(az.mul(1.3), el.mul(2.2)).add(vec2(u.time.mul(0.01), visit.mul(7)));
+                const patches = gnoise(patchQ).mul(1.2).sub(0.1)
+                    .max(0);
+                sky.addAssign(vec3(...look.crown).mul(smoothstep(0.3, 0.85, el)).mul(patches).mul(glow));
+            });
         }
         // The Milky Way: a faint band of unresolved stars with dark dust lanes.
         // It rises from the lower left through the darker middle of the sky.
@@ -985,18 +1008,21 @@ export function createAuroraWorld({ u, quality, mood }) {
             const centre = vec2(m.x, horizon.add(m.el));
             const mq = v.sub(centre).div(m.radius).toVar();
             const r = mq.length().toVar();
-            const disc = softStep(0, float(1).sub(r).mul(m.radius), u, 1.2);
-            const toLimb = dot(mq, vec2(m.limb[0], m.limb[1]));
-            const side = dot(mq, vec2(-m.limb[1], m.limb[0]));
-            const terminator = sqrt(float(1).sub(side.mul(side)).max(0)).mul(m.thin);
-            const crescent = smoothstep(terminator.sub(0.07), terminator.add(0.07), toLimb);
-            const mottle = gnoise(mq.mul(2.6).add(7.7)).mul(0.3).add(0.82);
-            const face = vec3(...m.color).mul(crescent.mul(1.1).add(0.035)).mul(mottle);
             const out = r.sub(1).max(0).mul(m.radius).toVar();
             const out2 = out.mul(out).toVar();
             const aureole = float(0.05).div(out2.div(0.0016).add(1)).add(float(0.012).div(out2.div(0.06).add(1)));
             sky.addAssign(vec3(...m.color).mul(aureole).mul(vec3(0.75, 0.85, 1.0)));
-            sky.assign(mix(sky, face, disc));
+            // From 1.2 pixels past the rim the disc's weight is exactly 0: draw the face only on the disc.
+            If(r.lessThan(u.px.mul(2 / m.radius).add(1)), () => {
+                const disc = softStep(0, float(1).sub(r).mul(m.radius), u, 1.2);
+                const toLimb = dot(mq, vec2(m.limb[0], m.limb[1]));
+                const side = dot(mq, vec2(-m.limb[1], m.limb[0]));
+                const terminator = sqrt(float(1).sub(side.mul(side)).max(0)).mul(m.thin);
+                const crescent = smoothstep(terminator.sub(0.07), terminator.add(0.07), toLimb);
+                const mottle = gnoise(mq.mul(2.6).add(7.7)).mul(0.3).add(0.82);
+                const face = vec3(...m.color).mul(crescent.mul(1.1).add(0.035)).mul(mottle);
+                sky.assign(mix(sky, face, disc));
+            });
         }
         sky.addAssign(aurora);
         // Now and then a meteor; the lake mirrors it.
@@ -1139,7 +1165,10 @@ export function createAuroraWorld({ u, quality, mood }) {
             const shoreline = bankReach(z, BANKS.left, bankScale).min(bankReach(z, BANKS.right, bankScale))
                 .sub(row.z * 0.11 + 0.75 + 1.8).max(0)
                 .mul(LENS / row.z);
-            If(q.x.abs().greaterThan(shoreline), () => {
+            // A spruce stands under 16.8 m, its foot within 12% of the row's depth: farther above or below
+            // the horizon than this no tree of the row (nor its reflection) reaches, and its mask is exactly 0.
+            const rowBand = q.y.lessThan(horizon.add(29 / row.z)).and(q.y.greaterThan(horizon.sub(34 / row.z)));
+            If(q.x.abs().greaterThan(shoreline).and(rowBand), () => {
                 const tree = grove(q, vec4(row.z, row.cell, row.seed, 0), scene).toVar();
                 const haziness = (1 - Math.exp(-row.z / 70)) * 0.4;
                 const shade = mix(SPRUCE.add(SPRUCE_SNOW.mul(tree.y).mul(lit)), haze, haziness).toVar();

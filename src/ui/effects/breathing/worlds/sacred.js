@@ -41,7 +41,9 @@ import {
 } from '../stage/breath-tsl.js';
 import { MOTE_MOTION, MOTE_SHAPE } from '../stage/breath-motes.js';
 import { REFERENCE_GATE, createSacredSolids } from './sacred-solids.js';
-import { footprint, inscription, lineOf } from './sacred-floor.js';
+import {
+    footprint, inscription, inscriptionFrames, lineOf,
+} from './sacred-floor.js';
 
 /** The gate's centre (hero y) and its half-size on landscape and on tall screens. */
 const GATE_CENTRE = 0.04;
@@ -280,9 +282,10 @@ function layoutFor(ext, out) {
 function pathPoint(lap, { gate, centre }, out) {
     const along = (((lap % 1) + 1) % 1) * 4;
     const index = Math.min(3, Math.floor(along));
-    const [x, y, dx, dy] = SIDES[index];
+    // Indexed, not destructured: this runs every frame.
+    const side = SIDES[index];
     const t = (along - index) * 2 * gate;
-    return out.set(x * gate + dx * t, centre + y * gate + dy * t);
+    return out.set(side[0] * gate + side[2] * t, centre + side[1] * gate + side[3] * t);
 }
 
 /**
@@ -301,15 +304,25 @@ function pathLight(s, head) {
 /**
  * pathLight for the light as it is, cross-faded from where it was if it jumped (a session
  * re-syncing the cycle, a skipped phase): the square's glow never snaps to a new pattern.
+ * The old light is drawn only while it fades: at fading 0 the mix is exactly the new light.
  */
-const walked = (s, light) => mix(pathLight(s, light.head), pathLight(s, light.was), light.fading);
+const walked = (s, light) => {
+    const lit = pathLight(s, light.head).toVar();
+    If(light.fading.greaterThan(0), () => {
+        lit.assign(mix(lit, pathLight(s, light.was), light.fading));
+    });
+    return lit;
+};
 
 /**
  * The gate's beams at hero point `g`: on each side a white-hot core, a gold glow and a long
  * faint haze, lit by pathLight. `blur` widens the core and glow (the reflection's gloss) while
- * keeping their light. `gate`/`centre`: the square's half-size and centre. Returns linear RGB.
+ * keeping their light. `gate`/`centre`: the square's half-size and centre; `corners`: walked at
+ * each corner (they depend only on the light: worked out once per pixel). Returns linear RGB.
  */
-function gateBeams(g, light, u, blur, { gate, centre, P }) {
+function gateBeams(g, light, u, blur, {
+    gate, centre, P, corners,
+}) {
     const { GOLD, WHITE_GOLD, VIOLET } = P;
     const coreW2 = u.px.mul(u.px).mul(1.4).add(blur.add(0.0034).mul(blur.add(0.0034))).toVar();
     const glowW2 = blur.mul(2).add(0.017).mul(blur.mul(2).add(0.017)).toVar();
@@ -332,7 +345,7 @@ function gateBeams(g, light, u, blur, { gate, centre, P }) {
         glowI.assign(max(glowI, exp(d2.div(glowW2).negate()).mul(lit)));
         hazeI.assign(max(hazeI, lit.div(d2.div(hazeW2).add(1))));
         // Corners: the gate's joints, a little brighter than the beams they join.
-        joints.addAssign(exp(dot(rel, rel).div(glowW2.mul(0.5)).negate()).mul(walked(float(index / 4), light)));
+        joints.addAssign(exp(dot(rel, rel).div(glowW2.mul(0.5)).negate()).mul(corners[index]));
         // Sparks: every short stretch of beam the light has just crossed may throw one, which
         // drifts off the beam to one side and fades within about a second.
         const cell = floor(along.min(side.sub(0.001)).div(SPARK_CELL)).toVar();
@@ -367,9 +380,17 @@ function cometHead(g, point, { GOLD, WHITE_GOLD, WHITE }) {
         .add(WHITE_GOLD.mul(glint).mul(0.4));
 }
 
-/** The travelling light, cross-faded from where it was if it jumped. */
-const travellingLight = (g, light, P) => cometHead(g, light.point, P).mul(light.fading.oneMinus())
-    .add(cometHead(g, light.wasPoint, P).mul(light.fading));
+/**
+ * The travelling light, cross-faded from where it was if it jumped. The old head is drawn only
+ * while it fades: at fading 0 its term is exactly 0.
+ */
+const travellingLight = (g, light, P) => {
+    const comet = cometHead(g, light.point, P).mul(light.fading.oneMinus()).toVar();
+    If(light.fading.greaterThan(0), () => {
+        comet.addAssign(cometHead(g, light.wasPoint, P).mul(light.fading));
+    });
+    return comet;
+};
 
 /**
  * The void at sky point `s`: indigo overhead, deep violet low, a slow nebulous haze in wisps and
@@ -486,17 +507,22 @@ function constellation(p, u, P, gate, centre) {
 function floorMist(p, hero, u, horizon, mood, glow, coreX, octaves) {
     const mq = layer(p, u, 0.45).toVar();
     const dy = p.y.sub(horizon).toVar();
-    const bank = exp(dy.max(0).div(0.075).pow2().negate()).mul(exp(dy.min(0).div(0.26).pow2().negate()));
-    const wisp = fbm3(vec3(
-        mq.x.mul(1.3).add(u.time.mul(0.03)).add(u.seed.mul(17)),
-        dy.mul(6.5).sub(u.time.mul(0.01)),
-        u.time.mul(0.02),
-    ), octaves);
-    const density = smoothstep(0.34, 0.78, wisp).mul(bank).toVar();
-    const dx = hero.x.sub(coreX);
-    const lit = float(0.75).div(dx.mul(dx).mul(1.6).add(1)).add(0.25);
-    return vec3(...mood.mist.colour).mul(density).mul(lit).mul(glow.mul(0.4).add(0.7))
-        .mul(mood.mist.gain);
+    const mist = vec3(0).toVar();
+    // From 0.79 above the horizon the bank is exactly 0 (exp(-111) underflows): skip the mist there.
+    If(dy.lessThan(0.79), () => {
+        const bank = exp(dy.max(0).div(0.075).pow2().negate()).mul(exp(dy.min(0).div(0.26).pow2().negate()));
+        const wisp = fbm3(vec3(
+            mq.x.mul(1.3).add(u.time.mul(0.03)).add(u.seed.mul(17)),
+            dy.mul(6.5).sub(u.time.mul(0.01)),
+            u.time.mul(0.02),
+        ), octaves);
+        const density = smoothstep(0.34, 0.78, wisp).mul(bank).toVar();
+        const dx = hero.x.sub(coreX);
+        const lit = float(0.75).div(dx.mul(dx).mul(1.6).add(1)).add(0.25);
+        mist.assign(vec3(...mood.mist.colour).mul(density).mul(lit).mul(glow.mul(0.4).add(0.7))
+            .mul(mood.mist.gain));
+    });
+    return mist;
 }
 
 /**
@@ -509,21 +535,30 @@ function roseWindow(w, u, octaves, { VIOLET, GOLD }) {
     const q = turn(w, u.time.mul(-0.004)).toVar();
     const r = length(q).toVar();
     const fp = u.px.mul(1.3).toVar();
-    const rings = [[1.05, 0.8], [1.12, 0.5], [1.95, 0.8], [2.02, 0.5], [2.75, 0.6]]
-        .reduce((sum, [radius, gain]) => sum.add(lineOf(r.sub(radius).abs(), fp, 0.0022).mul(gain)), float(0));
-    // The tracery: only the two circles either side of a point's angle can reach it.
-    // atan(0, 0) is undefined in GLSL: never ask for it.
-    const phi = atan(q.y, q.x.add(1e-6)).toVar();
-    const step12 = (Math.PI * 2) / 12;
-    const slot = floor(phi.div(step12)).toVar();
-    const tracery = [0, 1].reduce((most, k) => {
-        const angle = slot.add(k).mul(step12);
-        const offset = q.sub(vec2(angle.cos(), angle.sin()).mul(1.53));
-        return max(most, lineOf(length(offset).sub(0.45).abs(), fp, 0.0018));
-    }, float(0));
-    // The haze veils it: it shows through in some places and is lost in others.
-    const veil = smoothstep(0.32, 0.68, fbm(q.mul(0.55).add(vec2(u.time.mul(0.006), 2.4)), octaves)).mul(0.8).add(0.2);
-    return mix(VIOLET, GOLD, 0.4).mul(rings.add(tracery.mul(0.75))).mul(veil);
+    const rose = vec3(0).toVar();
+    // No line lies inside radius 1.05 and none spreads wider than sqrt(0.6 fp² + 0.0022²): within
+    // `clear` every line is more than sqrt(120) spreads away, exactly 0 (exp(-120) underflows), and
+    // so is the window. Skip it there.
+    const clear = float(1.05).sub(sqrt(fp.mul(fp).mul(0.6).add(0.0022 * 0.0022).mul(120)));
+    If(r.greaterThanEqual(clear), () => {
+        const rings = [[1.05, 0.8], [1.12, 0.5], [1.95, 0.8], [2.02, 0.5], [2.75, 0.6]]
+            .reduce((sum, [radius, gain]) => sum.add(lineOf(r.sub(radius).abs(), fp, 0.0022).mul(gain)), float(0));
+        // The tracery: only the two circles either side of a point's angle can reach it.
+        // atan(0, 0) is undefined in GLSL: never ask for it.
+        const phi = atan(q.y, q.x.add(1e-6)).toVar();
+        const step12 = (Math.PI * 2) / 12;
+        const slot = floor(phi.div(step12)).toVar();
+        const tracery = [0, 1].reduce((most, k) => {
+            const angle = slot.add(k).mul(step12);
+            const offset = q.sub(vec2(angle.cos(), angle.sin()).mul(1.53));
+            return max(most, lineOf(length(offset).sub(0.45).abs(), fp, 0.0018));
+        }, float(0));
+        // The haze veils it: it shows through in some places and is lost in others.
+        const veil = smoothstep(0.32, 0.68, fbm(q.mul(0.55).add(vec2(u.time.mul(0.006), 2.4)), octaves)).mul(0.8)
+            .add(0.2);
+        rose.assign(mix(VIOLET, GOLD, 0.4).mul(rings.add(tracery.mul(0.75))).mul(veil));
+    });
+    return rose;
 }
 
 export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
@@ -563,6 +598,10 @@ export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
         const look = {
             horizon, top, glow, octaves: Math.max(2, octaves - 2), P,
         };
+        // The light at the gate's corners (walked at 0, ¼, ½ and ¾ of a lap): the joints and the
+        // posts' feet share it.
+        const corners = [0, 1, 2, 3].map((index) => walked(float(index / 4), light));
+        const beams = { ...frame, corners };
 
         // ---------- The void ----------
         const sky = layer(p, u, 0.18).toVar();
@@ -592,73 +631,83 @@ export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
         // Floor units, origin under the gate's centre, y growing away from the viewer.
         const floorPoint = vec2(fq.x.mul(depth).div(focal), depth.sub(focal)).toVar();
         const fp = footprint(floorPoint).toVar();
-        // Obsidian mirrors little looking down and almost everything at a grazing angle.
-        const grazing = eye.div(sqrt(depth.mul(depth).add(eye.mul(eye))));
-        const sheen = fresnel(grazing, 0.08).toVar();
-        // The polish: broad, slow variation in how cleanly the stone mirrors (none where a pixel
-        // spans more floor than the variation: no shimmer near the horizon).
-        const near = fadeOut(0.02, 0.15, fp).toVar();
-        const polish = fbm(floorPoint.mul(1.4).add(9.1), 3).sub(0.5).mul(near).add(0.5)
-            .toVar();
-        const ripple = gnoise(floorPoint.mul(2.3).add(vec2(3.3, 1.7))).sub(0.5).mul(near).toVar();
-        const mirrorGain = sheen.mul(0.85).add(0.09).mul(polish.mul(0.45).add(0.78)).toVar();
-        // Bright lights mirror visibly even where the stone reflects little: the polish shows in them.
-        const glossGain = sheen.mul(0.45).add(0.45).mul(polish.mul(0.3).add(0.85)).toVar();
-        // The haze, mirrored about the horizon; the core's light, about the floor line.
-        const heroMirror = vec2(hero.x.add(ripple.mul(0.01)), floorY.mul(2).sub(hero.y).add(ripple.mul(0.02)));
-        const toCoreMirror = heroMirror.sub(vec2(0, coreY)).toVar();
-        const c2m = dot(toCoreMirror, toCoreMirror).toVar();
-        const reflected = voidAt(vec2(sky.x, horizon.mul(2).sub(sky.y).add(ripple.mul(0.03))), u, {
-            ...look, octaves: 2, lit: float(0.9).div(c2m.mul(0.9).add(1)).add(0.45), blurred: true,
-        });
-        const floorColour = P.OBSIDIAN.add(reflected.mul(mirrorGain)).toVar();
-        if (mood.marble) {
-            // Pale marble: fine grey veins wandering through the stone (gone where a pixel spans
-            // more floor than a vein is wide).
-            const veinNoise = fbm(floorPoint.mul(0.85).add(vec2(2.7, 8.1)), 3).sub(0.5).toVar();
-            const veins = exp(veinNoise.mul(veinNoise).mul(-700)).mul(near);
-            floorColour.mulAssign(float(1).sub(veins.mul(mood.marble)));
-        }
-        // The core mirrored, its glow drawn out into a vertical streak as on any glossy floor.
-        const streak = exp(toCoreMirror.x.mul(toCoreMirror.x).mul(-55))
-            .mul(exp(toCoreMirror.y.mul(toCoreMirror.y).mul(-1.6)));
-        floorColour.addAssign(auraAt(c2m, glow, P).mul(0.7).add(coreAt(c2m, u, glow, P).mul(0.5))
-            .add(WHITE_GOLD.mul(streak).mul(0.09).mul(glow))
-            .mul(glossGain));
-        // A pool of the crystal's light on the stone beneath it.
-        const r2 = dot(floorPoint, floorPoint).toVar();
-        floorColour.addAssign(GOLD.mul(exp(r2.div(scale.mul(scale)).mul(-14))).mul(0.06).mul(glow));
-        // The gate lights the stone it stands on: the bottom beam along its length, the posts at
-        // their feet, and the travelling light from wherever it is.
-        const bx = floorPoint.x.clamp(gate.negate(), gate).toVar();
-        const offBottom = vec2(floorPoint.x.sub(bx), floorPoint.y);
-        const bottom = exp(dot(offBottom, offBottom).mul(-90))
-            .mul(walked(gate.sub(bx).div(gate.mul(2)).add(3).div(4), light));
-        const feet = [[-1, 0], [1, 0.75]].reduce((sum, [x, s]) => {
-            const to = floorPoint.sub(vec2(gate.mul(x), 0));
-            return sum.add(exp(dot(to, to).mul(-80)).mul(walked(float(s), light)));
-        }, float(0));
-        const travelling = [[light.point, light.fading.oneMinus()], [light.wasPoint, light.fading]]
-            .reduce((sum, [point, weight]) => {
-                const height = point.y.sub(floorY);
-                const toHead = vec2(floorPoint.x.sub(point.x), floorPoint.y);
-                return sum.add(weight.div(dot(toHead, toHead).add(height.mul(height)).mul(45).add(1)));
-            }, float(0));
-        floorColour.addAssign(GOLD.mul(bottom.mul(0.16).add(feet.mul(0.16)).add(travelling.mul(0.22))));
-        // The inscription, drawn at the gate's scale: the breath's light spreads outward through it.
-        const reach = u.breathSoft.mul(2.7).add(0.55);
-        const wave = u.breathVel.max(0).mul(2.4).min(1);
-        const distance = exp(depth.sub(focal).max(0).mul(-0.11));
+        // The inscription's frames and their screen derivatives, taken here: derivatives need
+        // uniform control flow, and the floor below is drawn in a per-pixel branch.
         const mandala = floorPoint.div(scale);
-        // Now and then a wave of light runs out along the lines, centre to great circle (~8 s).
-        const swell = eventWindow(u.time, float(31), float(8), float(0.6), u.seed.mul(17.3).add(1.1)).toVar();
-        const surge = vec2(swell.y.mul(3.6).sub(0.2), swell.x.mul(u.life));
-        floorColour.addAssign(inscription(mandala, u, {
-            reach, wave, detail, colors: mood.inscription, surge,
-        }).mul(glow.mul(0.22).add(0.2))
-            .mul(distance));
-        const floorMask = fadeOut(horizon.sub(u.px.mul(1.5)), horizon.add(u.px.mul(1.5)), p.y);
-        col.assign(mix(col, floorColour, floorMask));
+        const frames = inscriptionFrames(mandala, u);
+        // The floor is mixed in by a mask that is exactly 0 above the horizon: skip it there. Below
+        // the floor line it is always drawn: the gate's reflection reads its ripple and gloss.
+        const floorMask = fadeOut(horizon.sub(u.px.mul(1.5)), horizon.add(u.px.mul(1.5)), p.y).toVar();
+        const under = floorY.sub(hero.y).toVar();
+        const ripple = float(0).toVar();
+        const glossGain = float(0).toVar();
+        If(floorMask.greaterThan(0).or(under.greaterThan(0)), () => {
+            // Obsidian mirrors little looking down and almost everything at a grazing angle.
+            const grazing = eye.div(sqrt(depth.mul(depth).add(eye.mul(eye))));
+            const sheen = fresnel(grazing, 0.08).toVar();
+            // The polish: broad, slow variation in how cleanly the stone mirrors (none where a pixel
+            // spans more floor than the variation: no shimmer near the horizon).
+            const near = fadeOut(0.02, 0.15, fp).toVar();
+            const polish = fbm(floorPoint.mul(1.4).add(9.1), 3).sub(0.5).mul(near).add(0.5)
+                .toVar();
+            ripple.assign(gnoise(floorPoint.mul(2.3).add(vec2(3.3, 1.7))).sub(0.5).mul(near));
+            const mirrorGain = sheen.mul(0.85).add(0.09).mul(polish.mul(0.45).add(0.78)).toVar();
+            // Bright lights mirror visibly even where the stone reflects little: the polish shows in them.
+            glossGain.assign(sheen.mul(0.45).add(0.45).mul(polish.mul(0.3).add(0.85)));
+            // The haze, mirrored about the horizon; the core's light, about the floor line.
+            const heroMirror = vec2(hero.x.add(ripple.mul(0.01)), floorY.mul(2).sub(hero.y).add(ripple.mul(0.02)));
+            const toCoreMirror = heroMirror.sub(vec2(0, coreY)).toVar();
+            const c2m = dot(toCoreMirror, toCoreMirror).toVar();
+            const reflected = voidAt(vec2(sky.x, horizon.mul(2).sub(sky.y).add(ripple.mul(0.03))), u, {
+                ...look, octaves: 2, lit: float(0.9).div(c2m.mul(0.9).add(1)).add(0.45), blurred: true,
+            });
+            const floorColour = P.OBSIDIAN.add(reflected.mul(mirrorGain)).toVar();
+            if (mood.marble) {
+                // Pale marble: fine grey veins wandering through the stone (gone where a pixel spans
+                // more floor than a vein is wide).
+                const veinNoise = fbm(floorPoint.mul(0.85).add(vec2(2.7, 8.1)), 3).sub(0.5).toVar();
+                const veins = exp(veinNoise.mul(veinNoise).mul(-700)).mul(near);
+                floorColour.mulAssign(float(1).sub(veins.mul(mood.marble)));
+            }
+            // The core mirrored, its glow drawn out into a vertical streak as on any glossy floor.
+            const streak = exp(toCoreMirror.x.mul(toCoreMirror.x).mul(-55))
+                .mul(exp(toCoreMirror.y.mul(toCoreMirror.y).mul(-1.6)));
+            floorColour.addAssign(auraAt(c2m, glow, P).mul(0.7).add(coreAt(c2m, u, glow, P).mul(0.5))
+                .add(WHITE_GOLD.mul(streak).mul(0.09).mul(glow))
+                .mul(glossGain));
+            // A pool of the crystal's light on the stone beneath it.
+            const r2 = dot(floorPoint, floorPoint).toVar();
+            floorColour.addAssign(GOLD.mul(exp(r2.div(scale.mul(scale)).mul(-14))).mul(0.06).mul(glow));
+            // The gate lights the stone it stands on: the bottom beam along its length, the posts at
+            // their feet, and the travelling light from wherever it is.
+            const bx = floorPoint.x.clamp(gate.negate(), gate).toVar();
+            const offBottom = vec2(floorPoint.x.sub(bx), floorPoint.y);
+            const bottom = exp(dot(offBottom, offBottom).mul(-90))
+                .mul(walked(gate.sub(bx).div(gate.mul(2)).add(3).div(4), light));
+            const feet = [[-1, corners[0]], [1, corners[3]]].reduce((sum, [x, lit]) => {
+                const to = floorPoint.sub(vec2(gate.mul(x), 0));
+                return sum.add(exp(dot(to, to).mul(-80)).mul(lit));
+            }, float(0));
+            const travelling = [[light.point, light.fading.oneMinus()], [light.wasPoint, light.fading]]
+                .reduce((sum, [point, weight]) => {
+                    const height = point.y.sub(floorY);
+                    const toHead = vec2(floorPoint.x.sub(point.x), floorPoint.y);
+                    return sum.add(weight.div(dot(toHead, toHead).add(height.mul(height)).mul(45).add(1)));
+                }, float(0));
+            floorColour.addAssign(GOLD.mul(bottom.mul(0.16).add(feet.mul(0.16)).add(travelling.mul(0.22))));
+            // The inscription, drawn at the gate's scale: the breath's light spreads outward through it.
+            const reach = u.breathSoft.mul(2.7).add(0.55);
+            const wave = u.breathVel.max(0).mul(2.4).min(1);
+            const distance = exp(depth.sub(focal).max(0).mul(-0.11));
+            // Now and then a wave of light runs out along the lines, centre to great circle (~8 s).
+            const swell = eventWindow(u.time, float(31), float(8), float(0.6), u.seed.mul(17.3).add(1.1)).toVar();
+            const surge = vec2(swell.y.mul(3.6).sub(0.2), swell.x.mul(u.life));
+            floorColour.addAssign(inscription(mandala, u, {
+                reach, wave, detail, colors: mood.inscription, surge, frames,
+            }).mul(glow.mul(0.22).add(0.2))
+                .mul(distance));
+            col.assign(mix(col, floorColour, floorMask));
+        });
         // The floor's far edge catches the light: a fine bright line along the horizon.
         const edge = p.y.sub(horizon).div(u.px.mul(2.5).add(0.002));
         const centredEdge = float(1).div(p.x.mul(p.x).mul(2).add(1));
@@ -670,29 +719,35 @@ export function createSacredWorld({ u, quality, mood = MOODS[0] }) {
 
         // ---------- Light in the air: aura, rays, the core ----------
         const above = smoothstep(floorY.sub(0.02), floorY.add(0.08), hero.y).toVar();
-        const rc = sqrt(c2).max(1e-3).toVar();
-        const dir = turn(toCore.div(rc), u.time.mul(0.012)).toVar();
-        // Painted rays under the post shafts, so the lightest tier keeps them too.
-        const fan = cube(gnoise(dir.mul(6.5).add(vec2(u.time.mul(0.025), 2.7)))).mul(1.6)
-            .add(cube(gnoise(dir.mul(15).add(vec2(5.1, u.time.mul(0.04))))).mul(0.9));
-        const falloff = rc.mul(rc).mul(float(3.4).sub(u.breathSoft.mul(1.8))).add(1);
-        const rays = fan.mul(smoothstep(0.05, 0.3, rc)).div(falloff)
-            .mul(glow)
-            .mul(0.08);
-        col.addAssign(auraAt(c2, glow, P).add(WHITE_GOLD.mul(rays)).mul(above));
+        // A little under the floor line `above` is exactly 0, and the aura and rays with it: skip them there.
+        If(above.greaterThan(0), () => {
+            const rc = sqrt(c2).max(1e-3).toVar();
+            const dir = turn(toCore.div(rc), u.time.mul(0.012)).toVar();
+            // Painted rays under the post shafts, so the lightest tier keeps them too.
+            const fan = cube(gnoise(dir.mul(6.5).add(vec2(u.time.mul(0.025), 2.7)))).mul(1.6)
+                .add(cube(gnoise(dir.mul(15).add(vec2(5.1, u.time.mul(0.04))))).mul(0.9));
+            const falloff = rc.mul(rc).mul(float(3.4).sub(u.breathSoft.mul(1.8))).add(1);
+            const rays = fan.mul(smoothstep(0.05, 0.3, rc)).div(falloff)
+                .mul(glow)
+                .mul(0.08);
+            col.addAssign(auraAt(c2, glow, P).add(WHITE_GOLD.mul(rays)).mul(above));
+        });
         col.addAssign(coreAt(c2, u, glow, P));
 
         // ---------- The gate, and its reflection in the floor ----------
         const gateGain = u.breathSoft.mul(0.3).add(0.85);
-        col.addAssign(gateBeams(hero, light, u, float(0), frame).add(travellingLight(hero, light, P)).mul(gateGain));
-        const under = floorY.sub(hero.y).toVar();
-        const depthBelow = under.max(0).toVar();
-        const mirrored = vec2(hero.x.add(ripple.mul(0.008)), floorY.mul(2).sub(hero.y));
-        const blur = depthBelow.mul(0.02);
-        const gateMirror = gateBeams(mirrored, light, u, blur, frame).add(travellingLight(mirrored, light, P).mul(0.7));
-        col.addAssign(gateMirror.mul(exp(depthBelow.mul(-1.3))).mul(smoothstep(0.0, 0.02, under)).mul(glossGain)
-            .mul(0.55)
-            .mul(gateGain));
+        col.addAssign(gateBeams(hero, light, u, float(0), beams).add(travellingLight(hero, light, P)).mul(gateGain));
+        // The reflection is exactly 0 above the floor line (smoothstep(0, 0.02, under) is): skip it there.
+        If(under.greaterThan(0), () => {
+            const depthBelow = under.max(0).toVar();
+            const mirrored = vec2(hero.x.add(ripple.mul(0.008)), floorY.mul(2).sub(hero.y));
+            const blur = depthBelow.mul(0.02);
+            const gateMirror = gateBeams(mirrored, light, u, blur, beams)
+                .add(travellingLight(mirrored, light, P).mul(0.7));
+            col.addAssign(gateMirror.mul(exp(depthBelow.mul(-1.3))).mul(smoothstep(0.0, 0.02, under)).mul(glossGain)
+                .mul(0.55)
+                .mul(gateGain));
+        });
 
         // The whole temple breathes a little brighter on the in-breath.
         return col.mul(u.breathSoft.mul(0.12).add(0.94));

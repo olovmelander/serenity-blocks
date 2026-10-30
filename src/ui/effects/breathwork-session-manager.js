@@ -894,6 +894,17 @@ export class BreathworkSessionManager {
         ].filter(Boolean);
     }
 
+    /**
+     * Get a session's first world ready while its countdown runs (BreathingGuide.prepare), so the
+     * session opens on its world rather than waiting for the world's shaders to compile.
+     * @param {string} sessionId a key of SESSIONS
+     */
+    prepareSession(sessionId) {
+        const phase = this.SESSIONS[sessionId]?.phases?.[0];
+        if (!phase || this.destroyed || this.activeSession) return;
+        this.indicator?.prepare?.(this._worldFor(phase, sessionId));
+    }
+
     /** The world a stage is set in (see SESSION_WORLDS). */
     _worldFor(phase, sessionId = this.sessionId) {
         const worlds = SESSION_WORLDS[sessionId] || SESSION_WORLDS.BASE;
@@ -1148,6 +1159,9 @@ export class BreathworkSessionManager {
         if (this.indicator) {
             this.indicator.setPrompt?.(phase.prompt, phase.subPrompt);
             this.indicator.setTechnique(this._worldFor(phase), false);
+            // The next stage's world is built and compiled while this one breathes.
+            const following = this.activeSession.phases[this.currentPhaseIndex + 1];
+            this.indicator.prepareNext?.(following ? this._worldFor(following) : null);
             this.indicator.overridePattern(this._getVisualPattern(phase));
             this.indicator.setSessionPhase?.(phase.type, 0);
             this.indicator.setGuidance?.(this._guidanceFor(phase));

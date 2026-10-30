@@ -482,3 +482,41 @@ describe('a session waits for you', () => {
         expect(release).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('getting a session ready', () => {
+    it('prepares the world its first stage is set in, before the session starts', () => {
+        indicator.prepare = vi.fn();
+        manager.prepareSession('BASE');
+        // Base arrives in the forest (SESSION_WORLDS.BASE.grounding).
+        expect(indicator.prepare).toHaveBeenCalledWith('forest-breath');
+        manager.prepareSession('FIRST');
+        expect(indicator.prepare).toHaveBeenLastCalledWith('zen-garden');
+    });
+
+    it('prepares nothing for an unknown session or while one runs', () => {
+        indicator.prepare = vi.fn();
+        manager.prepareSession('NOPE');
+        expect(indicator.prepare).not.toHaveBeenCalled();
+        at('BASE', 1);
+        manager.prepareSession('TIDE');
+        expect(indicator.prepare).not.toHaveBeenCalled();
+    });
+});
+
+describe('the next stage\'s world', () => {
+    it('is built ahead while each stage breathes, and nothing after the last', () => {
+        indicator.prepareNext = vi.fn();
+        const { phases } = manager.SESSIONS.BASE;
+        manager.startSession('BASE', vi.fn(), vi.fn());
+        // The forest arrival: next comes the first round, in the storm.
+        expect(indicator.setTechnique).toHaveBeenLastCalledWith('forest-breath', false);
+        expect(indicator.prepareNext).toHaveBeenLastCalledWith(manager._worldFor(phases[1], 'BASE'));
+        expect(indicator.prepareNext).toHaveBeenLastCalledWith('electric-storm');
+        phases.forEach((phase, index) => {
+            manager.currentPhaseIndex = index;
+            manager._runPhase();
+            const next = phases[index + 1];
+            expect(indicator.prepareNext).toHaveBeenLastCalledWith(next ? manager._worldFor(next, 'BASE') : null);
+        });
+    });
+});

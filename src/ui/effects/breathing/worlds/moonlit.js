@@ -419,18 +419,37 @@ export function createMoonlitWorld({ u, quality, mood }) {
             // No land stands higher than this: the rest of the sky, and of its reflection, skips the work.
             If(e.lessThan(soft.add(0.13)), () => {
                 const haze = skyGradient(float(0), x);
-                const ridge = smoothstep(0.1, 0.7, x).mul(fbm(vec2(x.mul(1.6).add(2.2), 8.1), 2).mul(0.02).add(0.005));
-                const islandX = x.sub(u.ext.x.mul(0.5).add(0.15)).div(0.3);
-                const island = float(1).sub(islandX.mul(islandX)).max(0).sqrt()
-                    .mul(fbm(vec2(x.mul(4).add(9.2), 3.3), 3).mul(0.05).add(0.02));
-                const tip = u.ext.x.mul(-0.4).sub(0.18);
-                const rise = fadeOut(tip.sub(0.5), tip, x).toVar();
-                const headland = rise.sqrt().mul(fbm(vec2(x.mul(2.3).add(4.1), 1.7), 3).mul(0.07).add(0.045))
-                    .add(gnoise(vec2(x.mul(70), 5.3)).mul(0.006).mul(rise)).toVar();
-                // A far cape behind the headland: layers of land, each paler with distance.
-                const capeTip = tip.add(0.42);
-                const cape = fadeOut(capeTip.sub(0.7), capeTip, x).sqrt()
-                    .mul(fbm(vec2(x.mul(3.1).add(1.3), 6.6), 2).mul(0.022).add(0.01));
+                // Each layer of land is exactly 0 outside its own stretch of the horizon (a smoothstep
+                // at 0 times its noise, or the root of 0): there it keeps that 0 and skips its noise.
+                // The ridge starts at x 0.1.
+                const ridge = float(0).toVar();
+                If(x.greaterThan(0.1), () => {
+                    ridge.assign(smoothstep(0.1, 0.7, x)
+                        .mul(fbm(vec2(x.mul(1.6).add(2.2), 8.1), 2).mul(0.02).add(0.005)));
+                });
+                // The island stands only where |islandX| < 1.
+                const islandX = x.sub(u.ext.x.mul(0.5).add(0.15)).div(0.3).toVar();
+                const island = float(0).toVar();
+                If(islandX.abs().lessThan(1), () => {
+                    island.assign(float(1).sub(islandX.mul(islandX)).max(0).sqrt()
+                        .mul(fbm(vec2(x.mul(4).add(9.2), 3.3), 3).mul(0.05).add(0.02)));
+                });
+                // The headland ends at its tip (`rise` is exactly 0 from a little past it).
+                const tip = u.ext.x.mul(-0.4).sub(0.18).toVar();
+                const headland = float(0).toVar();
+                If(x.lessThan(tip.add(0.01)), () => {
+                    const rise = fadeOut(tip.sub(0.5), tip, x).toVar();
+                    headland.assign(rise.sqrt().mul(fbm(vec2(x.mul(2.3).add(4.1), 1.7), 3).mul(0.07).add(0.045))
+                        .add(gnoise(vec2(x.mul(70), 5.3)).mul(0.006).mul(rise)));
+                });
+                // A far cape behind the headland: layers of land, each paler with distance. It ends at
+                // its own tip in the same way.
+                const capeTip = tip.add(0.42).toVar();
+                const cape = float(0).toVar();
+                If(x.lessThan(capeTip.add(0.01)), () => {
+                    cape.assign(fadeOut(capeTip.sub(0.7), capeTip, x).sqrt()
+                        .mul(fbm(vec2(x.mul(3.1).add(1.3), 6.6), 2).mul(0.022).add(0.01)));
+                });
                 c.assign(mix(c, mix(LAND, haze, 0.84), smoothstep(soft.negate(), soft, ridge.sub(e))));
                 c.assign(mix(c, mix(LAND, haze, 0.74), smoothstep(soft.negate(), soft, cape.sub(e))));
                 c.assign(mix(c, mix(LAND, haze, 0.66), smoothstep(soft.negate(), soft, island.sub(e))));
@@ -470,6 +489,8 @@ export function createMoonlitWorld({ u, quality, mood }) {
             const shimmer = sin(u.time.mul(1.3).add(sin(u.time.mul(0.47)).mul(2.5))).mul(0.08).add(0.92);
             return vec3(...look.beacon.color).mul(core.mul(1.5).add(halo)).mul(look.beacon.gain).mul(shimmer);
         };
+        // In fog the lamp is drawn twice, in the sky and again through the fog: build it once for both.
+        const lampInFog = look.beacon && look.fog > 0 ? beaconLight(p).toVar() : null;
 
         const sky = vec3(0).toVar();
         const sea = vec3(0).toVar();
@@ -602,10 +623,13 @@ export function createMoonlitWorld({ u, quality, mood }) {
             if (look.bank > 0) {
                 // A low bank of cloud far out over the sea, either side of the moon's open horizon: dark
                 // against the bright haze, translucent, its billowed tops touched with silver toward the moon.
-                If(e.lessThan(0.3), () => {
+                // Its crown never tops e 0.192 (fbm and gnoise stay under 1.22, so lumps under 1.40) and it
+                // is gone within 0.28 of the moon (`aside`): beyond either, `inside` is exactly 0 and the
+                // mix leaves the sky as it is, so only the rest does the work.
+                const bx = p.x.sub(moon.x).toVar();
+                If(e.lessThan(0.215).and(bx.abs().greaterThan(0.28)), () => {
                     const lumps = fbm(vec2(p.x.mul(2.2).add(seaT.mul(0.0025)), 4.7), Math.max(3, octaves - 1))
                         .add(gnoise(vec2(p.x.mul(7.5).add(seaT.mul(0.004)), 1.3)).sub(0.5).mul(0.25));
-                    const bx = p.x.sub(moon.x).toVar();
                     const aside = smoothstep(0.28, 0.75, bx.abs()).toVar();
                     const crown = lumps.mul(0.13).add(0.01).mul(aside).toVar();
                     const inside = smoothstep(-0.02, 0.02, crown.sub(e)).mul(aside).toVar();
@@ -619,7 +643,7 @@ export function createMoonlitWorld({ u, quality, mood }) {
                 });
             }
             sky.assign(withLand(c, p.x, e, u.px.mul(1.2)));
-            if (look.beacon) sky.addAssign(beaconLight(p));
+            if (look.beacon) sky.addAssign(lampInFog ?? beaconLight(p));
         });
         If(p.y.lessThan(yh.add(u.px.mul(2))), () => {
             // The water point under this pixel: a ray from the eye EYE metres up meets the plane.
@@ -853,7 +877,7 @@ export function createMoonlitWorld({ u, quality, mood }) {
         if (look.beacon && look.fog > 0) {
             const d = p.sub(beaconAt);
             const glowInFog = float(0.02 * look.fog).div(dot(d, d).div(0.01).add(1));
-            col.addAssign(beaconLight(p).mul(0.8).add(vec3(...look.beacon.color).mul(glowInFog)));
+            col.addAssign(lampInFog.mul(0.8).add(vec3(...look.beacon.color).mul(glowInFog)));
         }
         return col;
     })();

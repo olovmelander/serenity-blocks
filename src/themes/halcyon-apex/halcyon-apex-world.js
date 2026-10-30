@@ -76,7 +76,6 @@ import {
     SUNFIRE,
     WISP_FLIGHT,
     approach,
-    bakeNoise,
     clamp01,
     clearPassTime,
     compositionFor,
@@ -91,7 +90,7 @@ import {
     siteToWorld,
     smooth,
 } from './halcyon-apex-tsl.js';
-import { GEM, buildPlan } from './halcyon-apex-plan.js';
+import { GEM } from './halcyon-apex-plan.js';
 import { tierFor } from './halcyon-apex-quality.js';
 import { createSky } from './halcyon-apex-sky.js';
 import { createStone } from './halcyon-apex-stone.js';
@@ -108,6 +107,7 @@ import { createVisitors } from './halcyon-apex-visitors.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './halcyon-apex-composition.js';
+import { sessionNoiseField, sessionPlan } from './halcyon-apex-bakes.js';
 
 /** The rest camera: standing in the lagoon beside the causeway, a little above the water. */
 export const REST_RIG = Object.freeze({
@@ -170,13 +170,6 @@ const PARTS = [
     'upfall', 'beads', 'motes', 'birds', 'visitors', 'visitorLights', 'sparks', 'beacons', 'wisps', 'beams',
 ];
 
-/** The noise field depends only on its seed and is read only: baked once a session. */
-let noiseField = null;
-const sessionNoiseField = () => {
-    noiseField ??= bakeNoise();
-    return noiseField;
-};
-
 export class HalcyonApexWorld {
     /**
      * @param {object} params
@@ -195,7 +188,8 @@ export class HalcyonApexWorld {
         this.renderer = renderer;
         this.capture = capture;
         this.noiseField = sessionNoiseField();
-        this.plan = buildPlan(seed);
+        // (kept for the session, with the noise: halcyon-apex-bakes.js)
+        this.plan = sessionPlan(seed);
         this.root = new THREE.Group();
         this.root.name = 'HalcyonApex';
         this.parts = {};

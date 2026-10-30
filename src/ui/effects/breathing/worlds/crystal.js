@@ -429,12 +429,21 @@ function druseData(specs) {
 /**
  * The local frame of one druse point: `rel` is the pixel relative to the druse's root (y the way
  * its points grow), `lean` the point's record, `offset` where along the root line it stands. The
- * point's foot sits a little below the root line, so it grows out of the rock.
+ * point's foot sits a little below the root line, so it grows out of the rock. Returns the pixel
+ * relative to the foot (`from`) and the same turned into the point's own frame (`local`).
  */
 const druseLocal = (rel, lean, offset) => {
     const from = rel.sub(vec2(offset, lean.z.mul(-0.08))).toVar();
-    return vec2(from.x.mul(lean.x).add(from.y.mul(lean.y)), from.x.mul(lean.y).sub(from.y.mul(lean.x)));
+    const local = vec2(from.x.mul(lean.x).add(from.y.mul(lean.y)), from.x.mul(lean.y).sub(from.y.mul(lean.x)));
+    return { from, local };
 };
+
+/**
+ * How far from its foot a druse point can paint: quartzShape (root 0) covers nothing unless the
+ * pixel lies between -0.1 and length + 1.15 soft along the point and within half-width + soft
+ * across it, and `local` is `from` turned. Beyond this radius the point's cover is exactly 0.
+ */
+const druseReach = (lean, soft) => lean.z.add(lean.w).add(0.1).add(soft.mul(2.5));
 
 export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
     const { octaves } = quality;
@@ -504,6 +513,8 @@ export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
         // The hero plane: the crystal, the beam and the fan live here.
         const q = layer(p, u, 1).toVar();
         const fanLight = prismFan(q, fanV, lookV).mul(FAN_TINT).toVar();
+        // The fan's light is never negative: where this is 0 there is none of it at all.
+        const fanSum = fanLight.x.add(fanLight.y).add(fanLight.z).toVar();
         const rays = prismBeam(q, beamV).toVar();
         // Light scattered in the mist spreads the fan into a soft glow around its bands.
         const halo = prismFan(q, fanV, vec4(lookV.x.mul(6), lookV.y.mul(5), lookV.z, 0)).mul(FAN_TINT).toVar();
@@ -527,84 +538,108 @@ export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
         const fogColor = air.toVar();
         const col = air.toVar();
 
-        // The floor: dark polished stone, wet in pools, seen in perspective.
-        const below = horizon.sub(p.y).max(1e-3).toVar();
-        const depth = ground.div(below).min(40).toVar();
-        const fq = layer(p, u, float(1).div(depth).min(2.2)).toVar();
-        const gx = fq.x.mul(depth).toVar();
-        const tone = fbm(vec2(gx.mul(1.1), depth.mul(1.1)), Math.max(3, octaves - 1)).toVar();
-        const veinNoise = gnoise(vec2(gx.mul(2.3), depth.mul(2.3)).add(tone.mul(1.4))).sub(0.5);
-        // Pale mineral veins, broken: they come and go with the stone's tone.
-        const vein = exp(veinNoise.mul(veinNoise).mul(-700)).mul(smoothstep(0.45, 0.7, tone));
-        const wet = smoothstep(0.42, 0.6, fbm(vec2(gx.mul(0.45), depth.mul(0.6)).add(3.3), light2 ? 2 : 3)).toVar();
-        // A wet floor is a mirror at grazing angles (far away) and only glossy underfoot.
-        const graze = float(1).sub(below.div(sqrt(below.mul(below).add(1)))).toVar();
-        const graze2 = graze.mul(graze);
-        // Pools are mirrors (more so at grazing angles); the dry stone between them is only glossy.
-        const fresnelFloor = graze2.mul(graze2).mul(graze).toVar();
-        const shine = mix(fresnelFloor.mul(0.35).add(0.03), fresnelFloor.mul(0.7).add(0.3), wet).toVar();
-        // Reflections: the hero plane's light mirrored about where the floor passes beneath it,
-        // the air and its glows about the horizon; ripples in the pools break them up.
-        const ripple = gnoise(vec2(gx.mul(4), depth.mul(9).add(time.mul(0.15)))).sub(0.5).mul(0.035)
-            .mul(float(1).sub(wet.mul(0.6)));
-        const mq = vec2(q.x.add(ripple), contact.mul(2).sub(q.y)).toVar();
-        const mirrored = prismFan(mq, fanV, lookV).mul(FAN_TINT).mul(0.8)
-            .add(WHITE.mul(prismBeam(mq, beamV).x).mul(1.2))
-            .add(ICE.mul(exp(dot(mq, mq).mul(-1.6))).mul(0.1).mul(glow));
-        const farMirror = vec2(q.x.add(ripple.mul(2)), horizon.mul(2).sub(q.y));
-        const mirroredAir = mix(AIR_LOW, AIR_HIGH, smoothstep(horizon.sub(0.3), top.add(0.3), farMirror.y))
-            .mul(haze.mul(1.3).add(0.28))
-            .add(prismFan(farMirror, fanV, vec4(lookV.x.mul(6), lookV.y.mul(5), lookV.z, 0)).mul(FAN_TINT).mul(0.1))
-            .add(WHITE.mul(prismBeam(farMirror, beamV).y).mul(0.06));
-        // Where the fan meets the floor it lands as moving rainbow caustics.
-        const landing = exp(depth.sub(1).pow2().mul(-1.4)).mul(smoothstep(0.35, 0.7, depth)).toVar();
-        // Light through a slowly turning crystal lands as a web of bright, shifting ridges.
-        const cq = vec2(gx.mul(2.4), depth.mul(1.7)).toVar();
-        const warp = vec2(
-            gnoise(cq.mul(0.6).add(vec2(time.mul(0.05), 1.3))),
-            gnoise(cq.mul(0.6).add(vec2(5.2, time.mul(0.04)))),
-        ).sub(0.5).mul(1.4).toVar();
-        const crestA = ridged(cq.add(warp).add(vec2(time.mul(0.06), 0)), 2).toVar();
-        const crestB = ridged(cq.mul(1.6).sub(warp).add(vec2(3.3, time.mul(-0.05))), 2).toVar();
-        const a2 = crestA.mul(crestA);
-        const b2 = crestB.mul(crestB);
-        const caustics = a2.mul(a2).mul(1.1).add(b2.mul(b2).mul(0.7)).add(a2.mul(b2).mul(1.4))
-            .add(0.22)
-            .toVar();
-        const floorBase = STONE.mul(tone.mul(1.3).add(0.35)).add(c3(mood.vein).mul(vein).mul(0.4))
-            .mul(float(1).sub(wet.mul(0.6)))
-            .add(AIR_LOW.mul(0.25));
-        // The crystal's glow pools on the floor beneath it.
-        const pool = exp(q.x.mul(q.x).mul(-2.5).sub(depth.sub(1).pow2().mul(1.5))).mul(glow).mul(0.06);
-        const floorColor = floorBase.add(fanLight.mul(caustics).mul(landing).mul(1.3)).add(ICE.mul(pool))
-            .add(mirrored.add(mirroredAir).mul(shine))
-            .toVar();
         // A rare event: a drop falls from the vault into a pool on the floor and rings spread from
         // where it lands (some six seconds in all; the visit's seed keeps its own timetable).
         const { period: dripEvery, chance: dripChance } = mood.drips ?? { period: 19, chance: 0.75 };
         const dripSalt = u.seed.mul(41.3).add(2.7);
         const drip = eventWindow(time, float(dripEvery), float(6), float(dripChance), dripSalt).toVar();
         const dripOn = drip.x.mul(u.life).toVar();
-        const dropGlow = vec3(0).toVar();
-        If(dripOn.greaterThan(0.002), () => {
-            // Where it lands: a floor point between the near druses and the far field.
+        // Where it lands: a floor point between the near druses and the far field. The rings are
+        // drawn with the floor and the drop wherever it falls: each builds these for itself.
+        const dripLanding = () => {
             const landDepth = mix(float(1.15), float(2.3), hash21(vec2(drip.z, 1.9))).toVar();
             const landX = hash21(vec2(drip.z, 4.4)).sub(0.5).mul(1.4).mul(u.ext.x.min(1.6))
                 .toVar();
             const landY = horizon.sub(ground.div(landDepth)).toVar();
             const fall = drip.y.div(0.3).saturate().toVar();
             const age = drip.y.sub(0.3).div(0.7).toVar();
-            // The rings, in floor units round the landing point: circles seen in perspective.
-            const rho = length(vec2(gx.sub(landX.mul(landDepth)), depth.sub(landDepth))).toVar();
-            const spread = age.max(0).mul(0.42).toVar();
-            const w = spread.mul(0.05).add(0.016).toVar();
-            const ringA = exp(rho.sub(spread).div(w).pow2().negate());
-            const ringB = exp(rho.sub(spread.mul(0.6)).div(w.mul(0.8)).pow2().negate()).mul(0.6);
-            const fade = float(1).sub(age).saturate().pow2()
-                .mul(smoothstep(0, 0.02, age));
-            floorColor.addAssign(mix(ICE, WHITE, 0.5).mul(ringA.add(ringB)).mul(fade).mul(0.16)
-                .mul(dripOn));
-            // The drop: a bead of light falling from the vault, drawn out by its speed.
+            return {
+                landDepth, landX, landY, fall, age,
+            };
+        };
+
+        // The floor: dark polished stone, wet in pools, seen in perspective. Its weight in the
+        // grotto is exactly 0 from 1.5 px above the horizon up: skip it there.
+        If(p.y.lessThan(horizon.add(u.px.mul(2))), () => {
+            const below = horizon.sub(p.y).max(1e-3).toVar();
+            const depth = ground.div(below).min(40).toVar();
+            const fq = layer(p, u, float(1).div(depth).min(2.2)).toVar();
+            const gx = fq.x.mul(depth).toVar();
+            const tone = fbm(vec2(gx.mul(1.1), depth.mul(1.1)), Math.max(3, octaves - 1)).toVar();
+            const veinNoise = gnoise(vec2(gx.mul(2.3), depth.mul(2.3)).add(tone.mul(1.4))).sub(0.5);
+            // Pale mineral veins, broken: they come and go with the stone's tone.
+            const vein = exp(veinNoise.mul(veinNoise).mul(-700)).mul(smoothstep(0.45, 0.7, tone));
+            const wet = smoothstep(0.42, 0.6, fbm(vec2(gx.mul(0.45), depth.mul(0.6)).add(3.3), light2 ? 2 : 3)).toVar();
+            // A wet floor is a mirror at grazing angles (far away) and only glossy underfoot.
+            const graze = float(1).sub(below.div(sqrt(below.mul(below).add(1)))).toVar();
+            const graze2 = graze.mul(graze);
+            // Pools are mirrors (more so at grazing angles); the dry stone between them is only glossy.
+            const fresnelFloor = graze2.mul(graze2).mul(graze).toVar();
+            const shine = mix(fresnelFloor.mul(0.35).add(0.03), fresnelFloor.mul(0.7).add(0.3), wet).toVar();
+            // Reflections: the hero plane's light mirrored about where the floor passes beneath it,
+            // the air and its glows about the horizon; ripples in the pools break them up.
+            const ripple = gnoise(vec2(gx.mul(4), depth.mul(9).add(time.mul(0.15)))).sub(0.5).mul(0.035)
+                .mul(float(1).sub(wet.mul(0.6)));
+            const mq = vec2(q.x.add(ripple), contact.mul(2).sub(q.y)).toVar();
+            const mirrored = prismFan(mq, fanV, lookV).mul(FAN_TINT).mul(0.8)
+                .add(WHITE.mul(prismBeam(mq, beamV).x).mul(1.2))
+                .add(ICE.mul(exp(dot(mq, mq).mul(-1.6))).mul(0.1).mul(glow));
+            const farMirror = vec2(q.x.add(ripple.mul(2)), horizon.mul(2).sub(q.y));
+            const mirroredAir = mix(AIR_LOW, AIR_HIGH, smoothstep(horizon.sub(0.3), top.add(0.3), farMirror.y))
+                .mul(haze.mul(1.3).add(0.28))
+                .add(prismFan(farMirror, fanV, vec4(lookV.x.mul(6), lookV.y.mul(5), lookV.z, 0)).mul(FAN_TINT).mul(0.1))
+                .add(WHITE.mul(prismBeam(farMirror, beamV).y).mul(0.06));
+            // Where the fan meets the floor it lands as moving rainbow caustics. They only carry the
+            // fan's light where it lands: where either is exactly 0 they add 0, so skip them there.
+            const landing = exp(depth.sub(1).pow2().mul(-1.4)).mul(smoothstep(0.35, 0.7, depth)).toVar();
+            const fanFloor = vec3(0).toVar();
+            If(fanSum.greaterThan(0).and(landing.greaterThan(0)), () => {
+                // Light through a slowly turning crystal lands as a web of bright, shifting ridges.
+                const cq = vec2(gx.mul(2.4), depth.mul(1.7)).toVar();
+                const warp = vec2(
+                    gnoise(cq.mul(0.6).add(vec2(time.mul(0.05), 1.3))),
+                    gnoise(cq.mul(0.6).add(vec2(5.2, time.mul(0.04)))),
+                ).sub(0.5).mul(1.4).toVar();
+                const crestA = ridged(cq.add(warp).add(vec2(time.mul(0.06), 0)), 2).toVar();
+                const crestB = ridged(cq.mul(1.6).sub(warp).add(vec2(3.3, time.mul(-0.05))), 2).toVar();
+                const a2 = crestA.mul(crestA);
+                const b2 = crestB.mul(crestB);
+                const caustics = a2.mul(a2).mul(1.1).add(b2.mul(b2).mul(0.7)).add(a2.mul(b2).mul(1.4))
+                    .add(0.22)
+                    .toVar();
+                fanFloor.assign(fanLight.mul(caustics).mul(landing).mul(1.3));
+            });
+            const floorBase = STONE.mul(tone.mul(1.3).add(0.35)).add(c3(mood.vein).mul(vein).mul(0.4))
+                .mul(float(1).sub(wet.mul(0.6)))
+                .add(AIR_LOW.mul(0.25));
+            // The crystal's glow pools on the floor beneath it.
+            const pool = exp(q.x.mul(q.x).mul(-2.5).sub(depth.sub(1).pow2().mul(1.5))).mul(glow).mul(0.06);
+            const floorColor = floorBase.add(fanFloor).add(ICE.mul(pool))
+                .add(mirrored.add(mirroredAir).mul(shine))
+                .toVar();
+            If(dripOn.greaterThan(0.002), () => {
+                const { landDepth, landX, age } = dripLanding();
+                // The rings, in floor units round the landing point: circles seen in perspective.
+                const rho = length(vec2(gx.sub(landX.mul(landDepth)), depth.sub(landDepth))).toVar();
+                const spread = age.max(0).mul(0.42).toVar();
+                const w = spread.mul(0.05).add(0.016).toVar();
+                const ringA = exp(rho.sub(spread).div(w).pow2().negate());
+                const ringB = exp(rho.sub(spread.mul(0.6)).div(w.mul(0.8)).pow2().negate()).mul(0.6);
+                const fade = float(1).sub(age).saturate().pow2()
+                    .mul(smoothstep(0, 0.02, age));
+                floorColor.addAssign(mix(ICE, WHITE, 0.5).mul(ringA.add(ringB)).mul(fade).mul(0.16)
+                    .mul(dripOn));
+            });
+            // Aerial perspective: the floor melts into the haze toward the horizon.
+            floorColor.assign(mix(floorColor, fogColor, float(1).sub(exp(depth.mul(-0.16)))));
+            col.assign(mix(col, floorColor, fadeOut(horizon.sub(u.px.mul(1.5)), horizon.add(u.px.mul(1.5)), p.y)));
+        });
+        // The drop: a bead of light falling from the vault, drawn out by its speed.
+        const dropGlow = vec3(0).toVar();
+        If(dripOn.greaterThan(0.002), () => {
+            const {
+                landX, landY, fall, age,
+            } = dripLanding();
             const headY = mix(top.sub(0.1), landY, fall.mul(fall));
             const rel = p.sub(vec2(landX, headY)).toVar();
             const tail = fall.mul(0.035).add(0.006);
@@ -618,9 +653,6 @@ export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
                 .mul(smoothstep(0, 0.05, age)).mul(fadeOut(0.1, 0.3, age));
             dropGlow.assign(mix(ICE, WHITE, 0.6).mul(drop.mul(1.3).add(splash.mul(0.9))).mul(dripOn));
         });
-        // Aerial perspective: the floor melts into the haze toward the horizon.
-        floorColor.assign(mix(floorColor, fogColor, float(1).sub(exp(depth.mul(-0.16)))));
-        col.assign(mix(col, floorColor, fadeOut(horizon.sub(u.px.mul(1.5)), horizon.add(u.px.mul(1.5)), p.y)));
 
         // The distant crystal field, dissolving into the haze.
         {
@@ -634,41 +666,59 @@ export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
             const side = fract(wx).lessThan(0.5).select(float(-1), float(1));
             const soft = u.px.mul(1.3).mul(row.d).div(row.cell).toVar();
             const fog = 1 - Math.exp(-row.d * 0.36);
-            Loop(2, ({ i }) => {
-                const cell = id.add(side.mul(float(1).sub(float(i))));
-                const { shape, mask } = quartzCell(wx, wy, cell, row, soft);
-                col.assign(mix(col, mix(shadeQuartz(shape, beamSide, fanLight, glow, soft), fogColor, fog), mask));
+            // A point is at most 5.44 cells tall and 0.38 wide and leans at most 0.53 rad, so it
+            // covers only rows between -0.94 - soft / 2 and 5.48 + 1.65 soft: elsewhere its mask
+            // is exactly 0, so skip both cells there.
+            If(wy.greaterThan(soft.negate().sub(1.5)).and(wy.lessThan(soft.mul(2).add(6))), () => {
+                Loop(2, ({ i }) => {
+                    const cell = id.add(side.mul(float(1).sub(float(i))));
+                    const { shape, mask } = quartzCell(wx, wy, cell, row, soft);
+                    col.assign(mix(col, mix(shadeQuartz(shape, beamSide, fanLight, glow, soft), fogColor, fog), mask));
+                });
             });
         }
-        // Druses on the floor, far to near, each fading into the haze by its depth.
-        Loop(floorDruses.count, ({ i }) => {
-            const lean = floorDruses.lean.element(i).toVar();
-            const place = floorDruses.place.element(i).toVar();
-            const dq = layer(p, u, float(1).div(place.z));
-            const root = vec2(u.ext.x.mul(place.y), horizon.sub(ground.div(place.z)));
-            const rel = dq.sub(root).mul(place.z).toVar();
-            const soft = u.px.mul(1.3).mul(place.z).toVar();
-            const shape = quartzShape(druseLocal(rel, lean, place.x), lean.z, lean.w, soft, float(0)).toVar();
-            const shade = mix(shadeQuartz(shape, beamSide, fanLight, glow, soft), fogColor, place.w);
-            // Each point grows out of the floor: nothing of it shows below its root line.
-            col.assign(mix(col, shade, shape.x.mul(smoothstep(soft.negate(), soft, rel.y))));
+        // Druses on the floor, far to near, each fading into the haze by its depth. Every point's
+        // reach (druseReach) ends below horizon + 0.29 + 3.3 px, the camera's drift included:
+        // above that the points paint nothing, and each paints nothing beyond its reach. (The 0.35
+        // holds for this world's camera below; a larger dolly or drift needs it worked out again.)
+        If(p.y.lessThan(horizon.add(0.35).add(u.px.mul(4))), () => {
+            Loop(floorDruses.count, ({ i }) => {
+                const lean = floorDruses.lean.element(i).toVar();
+                const place = floorDruses.place.element(i).toVar();
+                const dq = layer(p, u, float(1).div(place.z));
+                const root = vec2(u.ext.x.mul(place.y), horizon.sub(ground.div(place.z)));
+                const rel = dq.sub(root).mul(place.z).toVar();
+                const soft = u.px.mul(1.3).mul(place.z).toVar();
+                const { from, local } = druseLocal(rel, lean, place.x);
+                const span = druseReach(lean, soft);
+                If(dot(from, from).lessThan(span.mul(span)), () => {
+                    const shape = quartzShape(local, lean.z, lean.w, soft, float(0)).toVar();
+                    const shade = mix(shadeQuartz(shape, beamSide, fanLight, glow, soft), fogColor, place.w);
+                    // Each point grows out of the floor: nothing of it shows below its root line.
+                    col.assign(mix(col, shade, shape.x.mul(smoothstep(soft.negate(), soft, rel.y))));
+                });
+            });
         });
 
         // A low bank of mist lying on the wet floor, thickest along the far floor line: it veils
         // the far crystals and drifts slowly sideways, lit by the light that passes through it.
-        const bankQ = layer(p, u, 0.5).toVar();
+        // Where the bank has thinned to exactly 0 it leaves the colour as it is: skip it there.
         const rise = p.y.sub(horizon).toVar();
         const bank = exp(rise.max(0).div(mood.mist.rise).pow2().negate())
-            .mul(exp(rise.min(0).div(0.3).pow2().negate()));
-        const roll = fbm3(vec3(
-            bankQ.x.mul(1.1).add(time.mul(0.035)).add(u.seed.mul(13)),
-            rise.mul(5).sub(time.mul(0.012)),
-            time.mul(0.02),
-        ), light2 ? 2 : 3);
-        const mist = smoothstep(0.3, 0.74, roll).mul(bank).mul(mood.mist.cover).toVar();
-        const mistLight = c3(mood.mist.colour).mul(glow.mul(0.3).add(0.85)).add(halo.mul(0.25))
-            .add(WHITE.mul(rays.y).mul(0.05));
-        col.assign(mix(col, mistLight, mist));
+            .mul(exp(rise.min(0).div(0.3).pow2().negate()))
+            .toVar();
+        If(bank.greaterThan(0), () => {
+            const bankQ = layer(p, u, 0.5).toVar();
+            const roll = fbm3(vec3(
+                bankQ.x.mul(1.1).add(time.mul(0.035)).add(u.seed.mul(13)),
+                rise.mul(5).sub(time.mul(0.012)),
+                time.mul(0.02),
+            ), light2 ? 2 : 3);
+            const mist = smoothstep(0.3, 0.74, roll).mul(bank).mul(mood.mist.cover).toVar();
+            const mistLight = c3(mood.mist.colour).mul(glow.mul(0.3).add(0.85)).add(halo.mul(0.25))
+                .add(WHITE.mul(rays.y).mul(0.05));
+            col.assign(mix(col, mistLight, mist));
+        });
 
         // Mist drifting between the crystals, lit by whatever light passes through it.
         const wq = layer(p, u, 0.6).toVar();
@@ -681,83 +731,116 @@ export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
         col.addAssign(dropGlow);
 
         // The beam and the fan in the dusty air of the hero plane. Dust streams along the rays.
-        const along = dot(q, fanV.xy).toVar();
-        const sideways = q.y.mul(fanV.x).sub(q.x.mul(fanV.y));
-        const radius = length(q).toVar();
-        const slope = sideways.div(along.max(0.05)).toVar();
-        const dustAt = vec3(radius.mul(1.3).sub(time.mul(0.05)), slope.mul(9), time.mul(0.04));
-        const dust = fbm3(dustAt, light2 ? 2 : 3).toVar();
-        const streak = gnoise(vec2(slope.mul(48), radius.mul(0.35).sub(time.mul(0.02)))).toVar();
-        const scatter = dust.mul(1.1).add(0.25).mul(streak.mul(0.7).add(0.65));
         // Below the line where the floor passes under the hero plane, the floor stands in front.
         const open = smoothstep(contact.sub(0.03), contact.add(0.03), q.y).toVar();
-        col.addAssign(fanLight.mul(scatter).mul(0.62).mul(open));
-        const beamAlong = dot(q, beamV.xy);
-        const beamAcross = q.y.mul(beamV.x).sub(q.x.mul(beamV.y));
-        const beamDust = gnoise(vec2(beamAlong.mul(2.6).sub(time.mul(0.12)), beamAcross.mul(38))).mul(0.7).add(0.55);
-        const beamGlow = u.breathSoft.mul(0.35).add(0.75);
-        col.addAssign(WHITE.mul(rays.x.mul(1.3).add(rays.y.mul(0.07))).mul(beamDust).mul(beamGlow));
+        // The dust only scatters the fan's light: where there is none, or the floor stands in
+        // front, it adds exactly 0, so skip it there.
+        If(fanSum.greaterThan(0).and(open.greaterThan(0)), () => {
+            const along = dot(q, fanV.xy).toVar();
+            const sideways = q.y.mul(fanV.x).sub(q.x.mul(fanV.y));
+            const radius = length(q).toVar();
+            const slope = sideways.div(along.max(0.05)).toVar();
+            const dustAt = vec3(radius.mul(1.3).sub(time.mul(0.05)), slope.mul(9), time.mul(0.04));
+            const dust = fbm3(dustAt, light2 ? 2 : 3).toVar();
+            const streak = gnoise(vec2(slope.mul(48), radius.mul(0.35).sub(time.mul(0.02)))).toVar();
+            const scatter = dust.mul(1.1).add(0.25).mul(streak.mul(0.7).add(0.65));
+            col.addAssign(fanLight.mul(scatter).mul(0.62).mul(open));
+        });
+        // The same for the beam's dust: where its core and halo are both 0 it adds exactly 0.
+        If(rays.x.add(rays.y).greaterThan(0), () => {
+            const beamAlong = dot(q, beamV.xy);
+            const beamAcross = q.y.mul(beamV.x).sub(q.x.mul(beamV.y));
+            const beamDust = gnoise(vec2(beamAlong.mul(2.6).sub(time.mul(0.12)), beamAcross.mul(38))).mul(0.7)
+                .add(0.55);
+            const beamGlow = u.breathSoft.mul(0.35).add(0.75);
+            col.addAssign(WHITE.mul(rays.x.mul(1.3).add(rays.y.mul(0.07))).mul(beamDust).mul(beamGlow));
+        });
         // The crystal's own glow on the air behind it (the bloom adds to this on tiers that have it).
         col.addAssign(ICE.mul(exp(dot(q, q).mul(-14))).mul(0.15).mul(glow));
 
-        // Dust motes glinting wherever the light passes.
+        // Dust motes glinting wherever the light passes; where none passes they add exactly 0.
         const glints = (k, cells, seed) => glintField(layer(p, u, k).mul(cells), float(seed), float(cells), u.px, time);
-        const sparkle = glints(1.15, 24, 1.3).add(glints(0.85, 38, 7.1).mul(0.7)).mul(mood.glints);
-        col.addAssign(fanLight.mul(1.6).add(WHITE.mul(rays.x.mul(1.2).add(rays.y.mul(0.4)))).mul(sparkle).mul(open));
+        If(fanSum.add(rays.x).add(rays.y).greaterThan(0).and(open.greaterThan(0)), () => {
+            const sparkle = glints(1.15, 24, 1.3).add(glints(0.85, 38, 7.1).mul(0.7)).mul(mood.glints);
+            col.addAssign(fanLight.mul(1.6).add(WHITE.mul(rays.x.mul(1.2).add(rays.y.mul(0.4)))).mul(sparkle)
+                .mul(open));
+        });
 
         // The grotto's rock, close to the lens: two dark masses that come down at the top corners
         // like the lip of a cave mouth, ragged with stalactite crests, and a cleft in the rock where
         // the beam comes in. The middle stays open to the misty vault.
         const kq = layer(p, u, ROCK_K).toVar();
         const lipAt = (x) => float(0.04).add(smoothstep(0.32, 1.05, x.abs().div(u.ext.x)).pow(1.6).mul(0.78));
-        const toEdge = kq.x.abs().div(u.ext.x).toVar();
-        const crests = ridged(vec2(kq.x.mul(3.2), 0.7), 3).toVar();
-        const lip = lipAt(kq.x).add(fbm(vec2(kq.x.mul(2.1), 3.1), light2 ? 3 : 4).mul(0.2))
-            .add(crests.mul(crests).mul(crests).mul(0.16).mul(smoothstep(0.2, 0.6, toEdge)))
-            .toVar();
-        const intoRock = lip.sub(top.sub(kq.y)).toVar();
-        const kAlong = dot(kq, beamV.xy);
-        const kAcross = kq.y.mul(beamV.x).sub(kq.x.mul(beamV.y));
-        const cleft = fadeOut(0.05, 0.13, kAcross.abs().add(gnoise(vec2(kAlong.mul(6), 1.7)).sub(0.5).mul(0.07)))
-            .mul(smoothstep(0.3, 0.7, kAlong.negate())).toVar();
-        const rock = smoothstep(-0.005, 0.005, intoRock).mul(float(1).sub(cleft)).toVar();
 
-        // Druses hanging from the rock (drawn first: the rock hides their roots).
+        // Druses hanging from the rock (drawn first: the rock hides their roots). Every point's
+        // reach (druseReach) ends above top - 0.62 - 3.2 vaultSoft: below that they paint nothing.
         const vaultSoft = u.px.mul(1.3).div(ROCK_K).toVar();
         const vaultFan = fanLight.mul(0.6).toVar();
-        Loop(vaultDruses.count, ({ i }) => {
-            const lean = vaultDruses.lean.element(i).toVar();
-            const place = vaultDruses.place.element(i).toVar();
-            const x0 = u.ext.x.mul(place.y).toVar();
-            const rel = vec2(kq.x.sub(x0), top.sub(lipAt(x0)).add(0.03).sub(kq.y)).mul(1 / ROCK_K).toVar();
-            const shape = quartzShape(druseLocal(rel, lean, place.x), lean.z, lean.w, vaultSoft, float(0)).toVar();
-            const shade = shadeQuartz(shape, beamSide, vaultFan, glow, vaultSoft).mul(0.75)
-                .add(ICE.mul(shape.z.pow2()).mul(nearCrystal.mul(0.3).add(0.02)).mul(glow));
-            col.assign(mix(col, shade, shape.x.mul(smoothstep(vaultSoft.negate(), vaultSoft, rel.y))));
+        If(kq.y.greaterThan(top.sub(0.7).sub(vaultSoft.mul(4))), () => {
+            Loop(vaultDruses.count, ({ i }) => {
+                const lean = vaultDruses.lean.element(i).toVar();
+                const place = vaultDruses.place.element(i).toVar();
+                const x0 = u.ext.x.mul(place.y).toVar();
+                const rel = vec2(kq.x.sub(x0), top.sub(lipAt(x0)).add(0.03).sub(kq.y)).mul(1 / ROCK_K).toVar();
+                const { from, local } = druseLocal(rel, lean, place.x);
+                const span = druseReach(lean, vaultSoft);
+                If(dot(from, from).lessThan(span.mul(span)), () => {
+                    const shape = quartzShape(local, lean.z, lean.w, vaultSoft, float(0)).toVar();
+                    const shade = shadeQuartz(shape, beamSide, vaultFan, glow, vaultSoft).mul(0.75)
+                        .add(ICE.mul(shape.z.pow2()).mul(nearCrystal.mul(0.3).add(0.02)).mul(glow));
+                    col.assign(mix(col, shade, shape.x.mul(smoothstep(vaultSoft.negate(), vaultSoft, rel.y))));
+                });
+            });
         });
 
         // Rock: near black, grained; its lip and the cleft's walls lit by the light that reaches them.
-        const grain = fbm(kq.mul(5.5), light2 ? 2 : 3).toVar();
-        const reaching = halo.mul(0.28).add(WHITE.mul(rays.y.mul(0.6).add(rays.x.mul(0.25))))
-            .add(ICE.mul(nearCrystal).mul(0.08).mul(glow))
-            .add(AIR_LOW.mul(0.5));
-        // The lip is rough: light catches its bumps and misses the hollows between them.
-        const rim = exp(intoRock.max(0).mul(-45)).mul(grain.mul(1.6).sub(0.25).saturate()).add(cleft.mul(0.7));
-        const flecks = glints(ROCK_K, 64, 4.4).mul(exp(intoRock.max(0).mul(-12))).mul(mood.flecks ?? 1);
-        const rockColor = c3(mood.rock).mul(grain.mul(0.9).add(0.5))
-            .add(reaching.mul(rim.mul(0.8).add(flecks.mul(0.8)).add(0.015)));
-        col.assign(mix(col, rockColor, rock));
+        // The lip hangs at most 0.404 below lipAt (|fbm - 0.5| <= 0.72, ridged <= 1): further down
+        // the rock's weight is exactly 0, so skip it there.
+        const lipBase = lipAt(kq.x).toVar();
+        If(top.sub(kq.y).lessThan(lipBase.add(0.42)), () => {
+            const toEdge = kq.x.abs().div(u.ext.x).toVar();
+            const crests = ridged(vec2(kq.x.mul(3.2), 0.7), 3).toVar();
+            const lip = lipBase.add(fbm(vec2(kq.x.mul(2.1), 3.1), light2 ? 3 : 4).mul(0.2))
+                .add(crests.mul(crests).mul(crests).mul(0.16).mul(smoothstep(0.2, 0.6, toEdge)))
+                .toVar();
+            const intoRock = lip.sub(top.sub(kq.y)).toVar();
+            const kAlong = dot(kq, beamV.xy);
+            const kAcross = kq.y.mul(beamV.x).sub(kq.x.mul(beamV.y));
+            const cleft = fadeOut(0.05, 0.13, kAcross.abs().add(gnoise(vec2(kAlong.mul(6), 1.7)).sub(0.5).mul(0.07)))
+                .mul(smoothstep(0.3, 0.7, kAlong.negate())).toVar();
+            const rock = smoothstep(-0.005, 0.005, intoRock).mul(float(1).sub(cleft)).toVar();
+            const grain = fbm(kq.mul(5.5), light2 ? 2 : 3).toVar();
+            const reaching = halo.mul(0.28).add(WHITE.mul(rays.y.mul(0.6).add(rays.x.mul(0.25))))
+                .add(ICE.mul(nearCrystal).mul(0.08).mul(glow))
+                .add(AIR_LOW.mul(0.5));
+            // The lip is rough: light catches its bumps and misses the hollows between them.
+            const rim = exp(intoRock.max(0).mul(-45)).mul(grain.mul(1.6).sub(0.25).saturate()).add(cleft.mul(0.7));
+            const flecks = glints(ROCK_K, 64, 4.4).mul(exp(intoRock.max(0).mul(-12))).mul(mood.flecks ?? 1);
+            const rockColor = c3(mood.rock).mul(grain.mul(0.9).add(0.5))
+                .add(reaching.mul(rim.mul(0.8).add(flecks.mul(0.8)).add(0.015)));
+            col.assign(mix(col, rockColor, rock));
+        });
 
-        // Out-of-focus crystals close to the lens frame the bottom corners.
+        // Out-of-focus crystals close to the lens frame the bottom corners. A point (root -0.5,
+        // soft 0.018) covers nothing beyond max(0.6, length + 0.021) + width + 0.02 from its root
+        // (`local` is `rel` turned), and so nothing above bottom + 1.
         const nq = layer(p, u, 2.2).toVar();
         const nearFan = fanLight.mul(0.35).toVar();
-        Loop(NEAR_POINTS.length, ({ i }) => {
-            const point = nearPoints.element(i).toVar();
-            const rel = nq.sub(vec2(u.ext.x.mul(point.x), bottom.sub(0.12))).toVar();
-            const local = vec2(rel.x.mul(point.y).add(rel.y.mul(point.z)), rel.x.mul(point.z).sub(rel.y.mul(point.y)));
-            const shape = quartzShape(local, point.w, nearWidths.element(i), float(0.018), float(-0.5)).toVar();
-            const shade = shadeQuartz(shape, beamSide, nearFan, glow, float(0.02)).mul(0.6);
-            col.assign(mix(col, shade, shape.x.mul(0.97)));
+        If(nq.y.lessThan(bottom.add(1.05)), () => {
+            Loop(NEAR_POINTS.length, ({ i }) => {
+                const point = nearPoints.element(i).toVar();
+                const rel = nq.sub(vec2(u.ext.x.mul(point.x), bottom.sub(0.12))).toVar();
+                const span = point.w.add(0.021).max(0.6).add(nearWidths.element(i)).add(0.02);
+                If(dot(rel, rel).lessThan(span.mul(span)), () => {
+                    const local = vec2(
+                        rel.x.mul(point.y).add(rel.y.mul(point.z)),
+                        rel.x.mul(point.z).sub(rel.y.mul(point.y)),
+                    );
+                    const shape = quartzShape(local, point.w, nearWidths.element(i), float(0.018), float(-0.5)).toVar();
+                    const shade = shadeQuartz(shape, beamSide, nearFan, glow, float(0.02)).mul(0.6);
+                    col.assign(mix(col, shade, shape.x.mul(0.97)));
+                });
+            });
         });
 
         // The whole grotto breathes a little brighter on the in-breath.
@@ -845,13 +928,17 @@ export function createCrystalWorld({ u, quality, mood = MOODS[0] }) {
             const open = 0.9 + 0.16 * breathSoft;
             const rx = (0.62 + 0.35 * (1 - tall)) * open;
             const ry = (0.5 + 0.55 * tall) * open;
-            shards.forEach((shard, index) => {
-                const [angle, reach, z, , spin] = SHARDS[index];
+            // A plain loop: this runs every frame, and a forEach with destructuring allocates.
+            for (let index = 0; index < shards.length; index++) {
+                const shard = shards[index];
+                const row = SHARDS[index];
+                const angle = row[0];
+                const reach = row[1];
                 const a = angle + time * 0.012 * (index % 2 ? -1 : 1);
                 const bob = Math.sin(time * 0.3 + index * 2) * 0.02;
-                shard.position.set(Math.cos(a) * reach * rx, Math.sin(a) * reach * ry + bob, z);
-                shard.rotation.y = time * spin + index;
-            });
+                shard.position.set(Math.cos(a) * reach * rx, Math.sin(a) * reach * ry + bob, row[2]);
+                shard.rotation.y = time * row[4] + index;
+            }
         },
     };
 }

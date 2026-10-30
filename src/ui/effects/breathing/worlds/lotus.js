@@ -471,24 +471,32 @@ export function createLotusWorld({ u, quality, mood }) {
             const md = vec2(sx.sub(moon.x), hy.sub(moon.y)).toVar();
             const mr = md.length().toVar();
             const disc = fadeOut(moon.r * 0.94, moon.r * 1.04, mr).toVar();
-            const maria = smoothstep(0.45, 0.7, gnoise(md.mul(1.8 / moon.r).add(4.2))).mul(0.22)
-                .add(smoothstep(0.5, 0.75, gnoise(md.mul(4 / moon.r).add(9.7))).mul(0.1));
-            const limb = float(1).sub(mr.div(moon.r).saturate().pow(2).mul(0.25));
             const moonHalo = exp(mr.mul(mr).mul(-1 / (moon.r * moon.r * 6))).mul(0.12)
                 .add(exp(mr.mul(mr).mul(-2.2)).mul(0.035));
             // In the water the disc itself breaks up into the glittering path (below), leaving its glow.
-            const face = disc.mul(float(1).sub(maria)).mul(limb).mul(moon.gain).mul(float(1).sub(water));
+            // The face is exactly 0 outside the disc and in the water: skip its maria there.
+            const face = float(0).toVar();
+            If(mr.lessThan(moon.r * 1.04).and(water.lessThan(1)), () => {
+                const maria = smoothstep(0.45, 0.7, gnoise(md.mul(1.8 / moon.r).add(4.2))).mul(0.22)
+                    .add(smoothstep(0.5, 0.75, gnoise(md.mul(4 / moon.r).add(9.7))).mul(0.1));
+                const limb = float(1).sub(mr.div(moon.r).saturate().pow(2).mul(0.25));
+                face.assign(disc.mul(float(1).sub(maria)).mul(limb).mul(moon.gain).mul(float(1).sub(water)));
+            });
             sky.addAssign(vec3(...moon.color).mul(face.add(moonHalo)));
         }
         // A low tree line, softer behind the flower and taller toward the sides, slightly out of focus.
-        const ridge = fbm(vec2(sx.mul(1.15).add(3.7), 0.6), Math.min(octaves - 1, 3)).mul(0.15)
-            .add(gnoise(vec2(sx.mul(6.5), 1.3)).mul(0.045))
-            .add(gnoise(vec2(sx.mul(16), 4.1)).mul(0.014))
-            .mul(smoothstep(0.0, 1.3, sx.abs()).mul(0.6).add(0.4))
-            .add(0.008)
-            .toVar();
-        const shore = fadeOut(ridge.sub(0.008), ridge.add(0.008), hy).toVar();
-        sky.assign(mix(sky, SHORE.add(HAZE.mul(exp(hy.mul(-24))).mul(0.5)), shore));
+        // Its noises stay within -0.22..1.22, so the ridge never passes hy 0.263 and the shore is
+        // exactly 0 from hy 0.271 up: skip it there.
+        If(hy.lessThan(0.28), () => {
+            const ridge = fbm(vec2(sx.mul(1.15).add(3.7), 0.6), Math.min(octaves - 1, 3)).mul(0.15)
+                .add(gnoise(vec2(sx.mul(6.5), 1.3)).mul(0.045))
+                .add(gnoise(vec2(sx.mul(16), 4.1)).mul(0.014))
+                .mul(smoothstep(0.0, 1.3, sx.abs()).mul(0.6).add(0.4))
+                .add(0.008)
+                .toVar();
+            const shore = fadeOut(ridge.sub(0.008), ridge.add(0.008), hy).toVar();
+            sky.assign(mix(sky, SHORE.add(HAZE.mul(exp(hy.mul(-24))).mul(0.5)), shore));
+        });
         // Lanterns among the far trees, far out of focus: soft discs with a brighter rim, breathing slowly.
         const lanterns = vec3(0).toVar();
         if (look.lanterns > 0) {
@@ -496,273 +504,311 @@ export function createLotusWorld({ u, quality, mood }) {
                 const at = lanternAt.element(i).toVar();
                 const tint = lanternTint.element(i).toVar();
                 const d = vec2(sx.sub(at.x), hy.sub(at.y)).length().mul(at.z).toVar();
-                const disc = fadeOut(0.82, 1.0, d).mul(smoothstep(0.55, 0.97, d).mul(0.3).add(0.7));
-                const halo = exp(d.mul(d).mul(-0.5)).mul(0.07);
-                const breathe = sin(u.time.mul(0.29).add(tint.w)).mul(0.1).add(0.9);
-                lanterns.addAssign(tint.xyz.mul(disc.add(halo)).mul(at.w).mul(breathe));
+                // From 15 radii out the disc is 0 and the halo underflows (exp(-112)): skip it there.
+                If(d.lessThan(15), () => {
+                    const disc = fadeOut(0.82, 1.0, d).mul(smoothstep(0.55, 0.97, d).mul(0.3).add(0.7));
+                    const halo = exp(d.mul(d).mul(-0.5)).mul(0.07);
+                    const breathe = sin(u.time.mul(0.29).add(tint.w)).mul(0.1).add(0.9);
+                    lanterns.addAssign(tint.xyz.mul(disc.add(halo)).mul(at.w).mul(breathe));
+                });
             });
         }
 
         // ---- The sky proper: a few stars high in the night, the lanterns, the haze. ----
         const skyColor = sky.add(lanterns).toVar();
         if (look.stars > 0) {
-            skyColor.addAssign(starfield(p, u, 0.45 * (look.stars / 0.5)).mul(smoothstep(0.25, 0.8, hy)).mul(0.5));
-        }
-
-        // ---- The pond: a dark mirror. Grazing views reflect almost everything; the near water only
-        // a little of the night, but bright things (the flower, the lanterns) still show in it. Long,
-        // slow swells keep the still surface from reading as glass: the night's sheen drifts across it.
-        const downward = below.max(0).toVar();
-        const cosView = downward.div(downward.mul(downward).add(1).sqrt());
-        const mirror = fresnel(cosView, 0.02).mul(0.6).add(0.4).toVar();
-        const shimmer = swell.mul(0.6).add(fine.mul(0.4)).toVar();
-        const glints = mix(float(0.3), smoothstep(0.42, 0.72, shimmer).mul(1.7), 0.85).toVar();
-        const swells = fbm(vec2(plane.x.mul(0.5).add(u.time.mul(0.012)), depth.min(12).mul(1.4).sub(u.time.mul(0.025))), 3);
-        const sheen = swells.mul(1.2).add(0.3).mul(shimmer.mul(0.5).add(0.75));
-        const pond = DEEP.add(sky.mul(mirror).mul(sheen)).toVar();
-        pond.addAssign(lanterns.mul(mirror).mul(glints));
-        if (look.sun) {
-            // The sun's warmth lies on the water below it: a faint path of glints toward us.
-            const { sun } = look;
-            const sunW = downward.mul(0.5).add(0.12);
-            const off = p.x.sub(sun.x).div(sunW);
-            const warmPath = exp(off.mul(off).negate()).mul(smoothstep(0.5, 0.8, shimmer)).mul(water)
-                .mul(exp(downward.mul(-2.0)));
-            pond.addAssign(vec3(...sun.color).mul(warmPath).mul(mirror).mul(0.22 * sun.gain));
-        }
-        if (look.moon) {
-            // The moon's path: glints on the wavelets in a column under the moon, widening toward us.
-            const { moon } = look;
-            const pathW = downward.mul(0.3).add(0.05);
-            const across = p.x.sub(moon.x).div(pathW);
-            const sparkle = smoothstep(0.52, 0.8, shimmer).mul(1.6).add(smoothstep(0.86, 0.95, fine).mul(1.5));
-            const path = exp(across.mul(across).negate()).mul(sparkle).mul(water)
-                .mul(exp(downward.mul(-1.2)).mul(0.7).add(0.3));
-            pond.addAssign(vec3(...moon.color).mul(path).mul(mirror).mul(0.45));
-        }
-
-        // The flower's image: its glow mirrored about the water, drawn downward and broken by the swell.
-        const hq = layer(p, u, 1).toVar();
-        const toHeart = hq.sub(light.screen).toVar();
-        const imageY = float(WATERLINE * 2).sub(light.screen.y);
-        const toImage = vec2(hq.x.mul(1.25), hq.y.sub(imageY).mul(0.5)).toVar();
-        const imageReach = dot(toImage, toImage).toVar();
-        const imageGlow = exp(imageReach.mul(-12)).mul(0.5).add(exp(imageReach.mul(-2.8)).mul(0.1)).toVar();
-        const brokenImage = mix(float(0.55), smoothstep(0.3, 0.75, shimmer).mul(1.5), 0.7).toVar();
-        pond.addAssign(mix(ROSE, GOLD, 0.45).mul(imageGlow).mul(brokenImage).mul(glow)
-            .mul(0.2));
-        // Glitter: wavelets near the flower catch its light in tiny points that drift and fade slowly.
-        const glitterRaw = gnoise(vec2(plane.x.mul(22).add(u.time.mul(0.15)), depth.mul(60).sub(u.time.mul(0.4))));
-        const glitter = smoothstep(0.84, 0.94, glitterRaw).mul(smoothstep(2.0, 5.0, unitPx.div(60))).mul(imageGlow);
-        pond.addAssign(GOLD.mul(glitter).mul(glow).mul(0.4));
-        // A warm pool where the flower's light falls on the water around its foot.
-        pond.addAssign(WARM.mul(exp(r.mul(r).mul(-5))).mul(glow).mul(0.035));
-        // Light: the flower's warmth falls off across the water.
-        const padWarm = exp(r.mul(r).mul(-1.6)).mul(0.9).add(float(0.08).div(r.mul(r).mul(3).add(1))).toVar();
-
-        // Ripple rings from the flower: one small wave packet leaves with each breath (breathInt runs
-        // while the lungs fill), flattened by the perspective. Their slopes tip the mirror: crests catch
-        // the flower's light — most on the near side, where it reflects toward us — troughs fall dark.
-        const ringAge = r.mul(1 / RING_GAP).sub(u.breathInt.mul(RING_PER_BREATH)).sub(u.time.mul(0.01));
-        const f = ringAge.fract().sub(0.5).toVar();
-        const wave = sin(f.mul(TAU * 8)).mul(exp(f.mul(f).mul(-55))).toVar();
-        const nearSide = fadeOut(-0.8, 0.5, rel.y.div(r.max(1e-3)));
-        const ringFade = smoothstep(0.2, 0.38, r).mul(exp(r.mul(-0.95))).mul(smoothstep(2.0, 5.0, unitPx.mul(RING_GAP / 8)))
-            .mul(nearSide.mul(0.65).add(0.35))
-            .mul(swell.mul(0.9).add(0.55))
-            .toVar();
-        const crest = wave.max(0).mul(wave.max(0)).mul(ringFade).toVar();
-        const ringLight = WARM.mul(exp(r.mul(r).mul(-1.2))).mul(glow).mul(0.07);
-        pond.assign(pond.mul(wave.mul(ringFade).mul(0.6).add(1)).add(ringLight.mul(crest)));
-
-        // ---- Now and then a koi glides by under the surface, across the pond and under the pads. ----
-        const koi = eventWindow(u.time, float(43), float(18), float(0.8), u.seed.mul(29.7).add(5.3)).toVar();
-        const koiShow = koi.x.mul(u.life).toVar();
-        If(koiShow.greaterThan(0.001), () => {
-            const heading = select(hash21(vec2(koi.z, 1.1)).greaterThan(0.5), float(1), float(-1)).toVar();
-            const bend = hash21(vec2(koi.z, 4.4)).mul(TAU).toVar();
-            const s = koi.y.mul(2).sub(1).toVar();
-            // It crosses the near water, in front of the flower (where the open water lies), weaving a little.
-            const koiAt = vec2(s.mul(1.6).mul(heading), mix(float(0.56), float(0.8), hash21(vec2(koi.z, 2.3)))
-                .add(sin(s.mul(2.2).add(bend)).mul(0.1)));
-            const forward = vec2(heading.mul(3.2), cos(s.mul(2.2).add(bend)).mul(0.1 * 2.2 * 2)).normalize().toVar();
-            const kRel = plane.sub(koiAt).toVar();
-            const kq = vec2(dot(kRel, forward), dot(kRel, vec2(forward.y.negate(), forward.x))).div(KOI_LENGTH * 0.5)
-                .toVar();
-            // It swims: a wave runs down the body toward the tail, larger toward the tail.
-            const tailward = float(1).sub(kq.x).mul(0.5).saturate()
-                .toVar();
-            const ky = kq.y.sub(sin(u.time.mul(4.2).sub(kq.x.mul(2.6))).mul(0.12).mul(tailward.mul(tailward))).toVar();
-            const along = kq.x.mul(0.5).add(0.5).toVar();
-            const halfW = sin(along.saturate().pow(0.75).mul(Math.PI)).max(0).pow(0.8).mul(0.2)
-                .toVar();
-            const blur = planePx.div(KOI_LENGTH * 0.5).max(0.12).toVar();
-            const body = fadeOut(halfW.sub(blur), halfW.add(blur), ky.abs()).mul(smoothstep(-1.02, -0.9, kq.x))
-                .mul(fadeOut(0.96, 1.04, kq.x));
-            // The tail fin fans out behind it; two small pectoral fins near the head.
-            const finT = float(-0.92).sub(kq.x).div(0.45).toVar();
-            const fin = fadeOut(finT.mul(0.24).add(0.02), finT.mul(0.24).add(0.02).add(blur), ky.abs())
-                .mul(smoothstep(-0.05, 0.1, finT)).mul(fadeOut(0.85, 1.05, finT));
-            const pecs = fadeOut(0.06, float(0.06).add(blur), vec2(kq.x.sub(0.35), ky.abs().sub(0.26)).length());
-            const koiMask = max(body, max(fin.mul(0.7), pecs.mul(0.6))).toVar();
-            const patch = smoothstep(0.48, 0.58, gnoise(kq.mul(vec2(1.7, 3.2)).add(koi.z.mul(37)))).toVar();
-            const albedo = mix(vec3(0.86, 0.84, 0.78), vec3(0.95, 0.34, 0.07), patch);
-            const kr = koiAt.sub(vec2(0, 1)).length();
-            const koiLight = pal.ambient.add(WARM.mul(glow).mul(exp(kr.mul(kr).mul(-1.6)).mul(0.5).add(0.04)));
-            // Seen through the water: dimmer, cooler, the surface's sheen over it.
-            const seen = albedo.mul(koiLight).mul(0.55).add(DEEP);
-            pond.assign(mix(pond, pond.mul(0.45).add(seen), koiMask.mul(koiShow).mul(0.8)));
-            // A faint wake on the surface just behind it.
-            const wakeR = vec2(kq.x.add(1.4), ky).length().toVar();
-            const wakeRing = sin(wakeR.mul(9).sub(u.time.mul(3))).mul(exp(wakeR.mul(wakeR).mul(-1.2)))
-                .mul(smoothstep(0.2, 0.6, wakeR)).mul(smoothstep(2.0, 4.0, unitPx.mul(KOI_LENGTH * 0.25)));
-            pond.mulAssign(wakeRing.mul(koiShow).mul(0.25).add(1));
-        });
-
-        // ---- Lily pads, shaded once in the covering pad's own coordinates. ----
-        const pads = padField(plane, planePx);
-        pond.mulAssign(float(1).sub(pads.meniscus.mul(0.75)));
-        const local = pads.local.toVar();
-        const seed = pads.seed.toVar();
-        const pd = local.length().toVar();
-        const padAngle = local.y.atan(local.x).toVar();
-        // Fine detail fades with the pad's size on screen.
-        const padDetail = smoothstep(1.5, 4.0, unitPx.mul(0.05)).toVar();
-        // Veins: sin of an integer multiple of the angle is seamless across atan's ±π jump. They fork
-        // toward the rim.
-        const veins = fadeOut(0.0, 0.12, sin(padAngle.mul(9)).abs()).mul(smoothstep(0.08, 0.35, pd)).mul(fadeOut(0.72, 0.95, pd))
-            .add(fadeOut(0.0, 0.1, sin(padAngle.mul(18).add(0.4)).abs()).mul(smoothstep(0.5, 0.72, pd)).mul(fadeOut(0.82, 0.95, pd))
-                .mul(0.6))
-            .mul(padDetail)
-            .toVar();
-        const blotch = fbm(local.mul(1.3).add(seed.mul(7.3)), 3).toVar();
-        const speck = gnoise(local.mul(7.0).add(seed.mul(2.1)));
-        // The leaf is never flat: faint concentric undulations around its centre.
-        const undulate = sin(pd.mul(15).add(blotch.mul(5))).mul(0.5).add(0.5).mul(padDetail);
-        const hue = mix(PAD_GREEN, PAD_TEAL, seed.mul(0.37).fract());
-        const leaf = mix(hue, PAD_YOUNG, pads.young).mul(blotch.mul(1.0).add(0.4)).mul(speck.mul(0.3).add(0.85))
-            .mul(undulate.mul(0.25).add(0.88))
-            .toVar();
-        leaf.mulAssign(veins.mul(0.3).add(1));
-        // The rim curls up a little; along one side of each leaf the wine-red underside shows.
-        const rim = smoothstep(0.88, 0.985, pd).toVar();
-        const curl = smoothstep(0.82, 0.97, pd).mul(smoothstep(0.5, 0.95, sin(padAngle.add(seed.mul(2.4))).mul(0.5).add(0.5)));
-        leaf.assign(mix(leaf, PAD_RIM, max(rim.mul(0.5), curl.mul(0.85))));
-        const padLit = leaf.mul(glow.mul(padWarm).mul(2.4).add(0.7)).toVar();
-        // Wax and water: the sky and the lanterns on the leaf, stronger at grazing angles, patchy
-        // where water beads; the curled rim catches the most.
-        const wet = smoothstep(0.42, 0.78, gnoise(local.mul(3.5).add(seed.mul(3.1)))).mul(0.6).add(rim.mul(0.6)).add(0.12)
-            .toVar();
-        padLit.addAssign(sky.mul(mirror).mul(wet).mul(sheen).mul(0.55));
-        padLit.addAssign(lanterns.mul(mirror).mul(glints).mul(wet).mul(0.2));
-        padLit.addAssign(mix(ROSE, GOLD, 0.5).mul(imageGlow.add(padWarm.mul(0.2))).mul(glow).mul(wet)
-            .mul(0.12));
-        // Beads of water resting on the leaf, each catching a point of light.
-        const beadCell = local.mul(4).add(seed.mul(13)).toVar();
-        const beadAt = beadCell.fract().sub(0.5).sub(hash22(beadCell.floor()).sub(0.5).mul(0.5));
-        const bead = step(0.96, hash21(beadCell.floor().add(5.7))).mul(fadeOut(0.03, 0.09, beadAt.length()))
-            .mul(fadeOut(0.75, 0.85, pd)).mul(padDetail);
-        padLit.addAssign(WARM.mul(padWarm).mul(glow).mul(0.25).add(HAZE.mul(1.5))
-            .mul(bead));
-        pond.assign(mix(pond, padLit, pads.cover));
-
-        // ---- Now and then a petal falls on the water: it lands, floats, and sends out a ring. ----
-        const drop = eventWindow(u.time, float(19), float(8), float(0.8), u.seed.mul(41.3).add(2.1)).toVar();
-        const dropShow = drop.x.mul(u.life).toVar();
-        If(dropShow.greaterThan(0.001), () => {
-            const dropAt = vec2(
-                mix(float(-1.3), float(1.3), hash21(vec2(drop.z, 3.7))),
-                mix(float(0.7), float(1.9), hash21(vec2(drop.z, 8.1))),
-            ).toVar();
-            const dRel = plane.sub(dropAt).toVar();
-            const dr = dRel.length().toVar();
-            const df = dr.sub(drop.y.mul(0.95).add(0.03)).toVar();
-            const dWave = sin(df.mul(TAU / 0.1)).mul(exp(df.mul(df).mul(-180))).toVar();
-            const dFade = dropShow.mul(exp(dr.mul(-1.6))).mul(smoothstep(2.0, 4.0, unitPx.mul(0.1))).mul(water)
-                .toVar();
-            const dCrest = dWave.max(0).mul(dWave.max(0)).mul(dFade);
-            const dLight = HAZE.mul(2.5).add(MIST.mul(0.8)).add(WARM.mul(glow).mul(padWarm).mul(0.12));
-            pond.assign(pond.mul(dWave.mul(dFade).mul(0.5).add(1)).add(dLight.mul(dCrest)));
-            // The petal itself, afloat where it fell, turning slowly.
-            const pTurn = drop.z.mul(TAU).add(drop.y).toVar();
-            const pc = cos(pTurn).toVar();
-            const ps = sin(pTurn).toVar();
-            const pq = vec2(dRel.x.mul(pc).add(dRel.y.mul(ps)), dRel.y.mul(pc).sub(dRel.x.mul(ps)))
-                .div(vec2(0.055, 0.024))
-                .toVar();
-            const petalSoft = planePx.div(0.024).max(0.15);
-            const petal = fadeOut(float(1).sub(petalSoft), float(1).add(petalSoft), pq.length()).mul(dropShow);
-            const petalLight = pal.ambient.add(WARM.mul(glow).mul(padWarm).mul(0.7)).add(HAZE.mul(1.5));
-            pond.assign(mix(pond, vec3(...look.petal).mul(petalLight).mul(pq.x.mul(0.25).add(0.85)), petal.mul(water)));
-        });
-
-        // ---- Closed buds standing in the water beside the pads, each with its image below it. ----
-        BUDS.forEach(([x, z, height, lean]) => {
-            const bq = layer(p, u, 1 / z).toVar();
-            const foot = vec2(x / z, horizon.sub(slope.div(z)));
-            const bud = bq.sub(foot).div(height / z).toVar();
-            // Above the water the bud itself; below, the same shape mirrored, dim and broken by the swell.
-            const up = bud.y.abs().toVar();
-            const inAir = smoothstep(-0.02, 0.02, bud.y).toVar();
-            const across = bud.x.sub(up.mul(up).mul(lean)).toVar();
-            const half = sin(up.min(1).pow(0.8).mul(Math.PI)).max(0).pow(0.85).mul(0.3)
-                .toVar();
-            const shape = fadeOut(half.sub(0.03), half.add(0.03), across.abs()).mul(fadeOut(0.97, 1.0, up)).toVar();
-            const budPetals = mix(vec3(0.42, 0.03, 0.17), vec3(0.95, 0.55, 0.66), smoothstep(0.15, 0.95, up))
-                .mul(float(1).sub(across.abs().div(half.max(0.02)).mul(0.55))).mul(glow.mul(0.05).add(0.1));
-            // Sepals: a green cup at the foot.
-            const tone = mix(budPetals, vec3(0.006, 0.018, 0.008), fadeOut(0.16, 0.3, up).mul(0.85)).toVar();
-            pond.assign(mix(pond, tone, shape.mul(inAir)));
-            pond.addAssign(tone.mul(shape).mul(float(1).sub(inAir)).mul(brokenImage).mul(0.35));
-        });
-
-        if (floaterAt) {
-            // ---- Paper lanterns afloat: each a warm glowing box on the water, its light pooled round
-            // it and its image drawn down into the pond. ----
-            Loop(FLOATERS.length, ({ i }) => {
-                const fl = floaterAt.element(i).toVar();
-                const fx = fl.x.add(sin(u.time.mul(0.05).add(fl.w)).mul(0.12)).toVar();
-                const fz = fl.y;
-                const fq = layer(p, u, float(1).div(fz)).toVar();
-                const size = fl.z.mul(0.11).div(fz).toVar();
-                const bob = sin(u.time.mul(0.7).add(fl.w.mul(3))).mul(0.04);
-                const ffoot = vec2(fx.div(fz), horizon.sub(slope.div(fz)));
-                const lq = fq.sub(ffoot).div(size).sub(vec2(0, bob)).toVar();
-                const ly = lq.y.abs().toVar();
-                const inAir = smoothstep(-0.03, 0.03, lq.y).toVar();
-                // A paper box a little taller than wide, its corners softened; a dark cap and base.
-                const box = fadeOut(0.5, 0.62, lq.x.abs()).mul(fadeOut(1.0, 1.1, ly)).toVar();
-                // Paper glowing from the candle inside, brightest low in the middle; a dark wooden cap
-                // and base, and faint ribs.
-                const ribs = sin(lq.x.mul(Math.PI * 4)).abs().mul(0.15).add(0.85);
-                const frame = smoothstep(0.84, 0.9, ly).add(fadeOut(0.08, 0.14, ly)).saturate();
-                const paper = vec3(1.0, 0.6, 0.26).mul(exp(lq.x.mul(lq.x).mul(-3)).mul(1.4).add(0.5))
-                    .mul(exp(ly.sub(0.4).mul(ly.sub(0.4)).mul(-2.5)).mul(0.8).add(0.4))
-                    .mul(ribs)
-                    .mul(float(1).sub(frame.mul(0.85)))
-                    .mul(sin(u.time.mul(0.9).add(fl.w.mul(5))).mul(0.06).add(1.1));
-                const halo = exp(vec2(lq.x, ly.sub(0.5)).length().pow(2).mul(-0.5)).mul(0.05);
-                pond.assign(mix(pond, paper, box.mul(inAir)));
-                pond.addAssign(paper.mul(box).mul(float(1).sub(inAir)).mul(brokenImage).mul(0.4));
-                pond.addAssign(vec3(1.0, 0.6, 0.3).mul(halo));
-                // The pool of light on the water round it.
-                const pool = plane.sub(vec2(fx, fz)).toVar();
-                pond.addAssign(vec3(1.0, 0.55, 0.25).mul(exp(dot(pool, pool).mul(-30))).mul(0.06).mul(water));
+            // The stars fade in from hy 0.25: below it they are exactly 0, so skip them there.
+            If(hy.greaterThan(0.25), () => {
+                skyColor.addAssign(starfield(p, u, 0.45 * (look.stars / 0.5)).mul(smoothstep(0.25, 0.8, hy))
+                    .mul(0.5));
             });
         }
 
-        // ---- Mist lies on the water: slow wisps in plane space, stretched along the surface, a haze
-        // thickening toward the far shore, lit warm by the flower near it. ----
-        const wispAt = vec3(plane.x.mul(0.38).add(u.time.mul(0.02)).add(u.seed.mul(13.7)), depth.min(10).mul(1.5), u.time.mul(0.03));
-        const wisps = fbm3(wispAt, mistOctaves).toVar();
-        const lying = smoothstep(0.4, 0.76, wisps).mul(exp(depth.mul(-0.1)).mul(0.5).add(0.5)).toVar();
-        const distance = smoothstep(1.5, 10.0, depth);
-        const mistAmount = lying.mul(0.7).add(distance.mul(0.3)).mul(water).mul(look.mistAmount)
-            .toVar();
-        const warmMist = exp(r.mul(r).mul(-0.7)).toVar();
-        const mistLight = MIST.add(mix(ROSE, GOLD, 0.35).mul(warmMist).mul(glow).mul(0.16));
-        const col = mix(skyColor, pond, water).toVar();
-        col.assign(col.mul(float(1).sub(mistAmount.mul(0.2).min(0.5))).add(mistLight.mul(mistAmount).mul(0.5)));
+        // Where the flower's heart is from here: its image lies in the water, its glow in the air.
+        const hq = layer(p, u, 1).toVar();
+        const toHeart = hq.sub(light.screen).toVar();
+        // Above the horizon the water is exactly 0, and the pond and its mist are mixed in by it:
+        // skip them there.
+        const col = skyColor.toVar();
+        If(water.greaterThan(0), () => {
+            // ---- The pond: a dark mirror. Grazing views reflect almost everything; the near water only
+            // a little of the night, but bright things (the flower, the lanterns) still show in it. Long,
+            // slow swells keep the still surface from reading as glass: the night's sheen drifts across it.
+            const downward = below.max(0).toVar();
+            const cosView = downward.div(downward.mul(downward).add(1).sqrt());
+            const mirror = fresnel(cosView, 0.02).mul(0.6).add(0.4).toVar();
+            const shimmer = swell.mul(0.6).add(fine.mul(0.4)).toVar();
+            const glints = mix(float(0.3), smoothstep(0.42, 0.72, shimmer).mul(1.7), 0.85).toVar();
+            const swells = fbm(vec2(plane.x.mul(0.5).add(u.time.mul(0.012)), depth.min(12).mul(1.4).sub(u.time.mul(0.025))), 3);
+            const sheen = swells.mul(1.2).add(0.3).mul(shimmer.mul(0.5).add(0.75));
+            const pond = DEEP.add(sky.mul(mirror).mul(sheen)).toVar();
+            pond.addAssign(lanterns.mul(mirror).mul(glints));
+            if (look.sun) {
+                // The sun's warmth lies on the water below it: a faint path of glints toward us.
+                const { sun } = look;
+                const sunW = downward.mul(0.5).add(0.12);
+                const off = p.x.sub(sun.x).div(sunW);
+                const warmPath = exp(off.mul(off).negate()).mul(smoothstep(0.5, 0.8, shimmer)).mul(water)
+                    .mul(exp(downward.mul(-2.0)));
+                pond.addAssign(vec3(...sun.color).mul(warmPath).mul(mirror).mul(0.22 * sun.gain));
+            }
+            if (look.moon) {
+                // The moon's path: glints on the wavelets in a column under the moon, widening toward us.
+                const { moon } = look;
+                const pathW = downward.mul(0.3).add(0.05);
+                const across = p.x.sub(moon.x).div(pathW);
+                const sparkle = smoothstep(0.52, 0.8, shimmer).mul(1.6).add(smoothstep(0.86, 0.95, fine).mul(1.5));
+                const path = exp(across.mul(across).negate()).mul(sparkle).mul(water)
+                    .mul(exp(downward.mul(-1.2)).mul(0.7).add(0.3));
+                pond.addAssign(vec3(...moon.color).mul(path).mul(mirror).mul(0.45));
+            }
+
+            // The flower's image: its glow mirrored about the water, drawn downward and broken by the swell.
+            const imageY = float(WATERLINE * 2).sub(light.screen.y);
+            const toImage = vec2(hq.x.mul(1.25), hq.y.sub(imageY).mul(0.5)).toVar();
+            const imageReach = dot(toImage, toImage).toVar();
+            const imageGlow = exp(imageReach.mul(-12)).mul(0.5).add(exp(imageReach.mul(-2.8)).mul(0.1)).toVar();
+            const brokenImage = mix(float(0.55), smoothstep(0.3, 0.75, shimmer).mul(1.5), 0.7).toVar();
+            pond.addAssign(mix(ROSE, GOLD, 0.45).mul(imageGlow).mul(brokenImage).mul(glow)
+                .mul(0.2));
+            // Glitter: wavelets near the flower catch its light in tiny points that drift and fade slowly.
+            const glitterRaw = gnoise(vec2(plane.x.mul(22).add(u.time.mul(0.15)), depth.mul(60).sub(u.time.mul(0.4))));
+            const glitter = smoothstep(0.84, 0.94, glitterRaw).mul(smoothstep(2.0, 5.0, unitPx.div(60))).mul(imageGlow);
+            pond.addAssign(GOLD.mul(glitter).mul(glow).mul(0.4));
+            // A warm pool where the flower's light falls on the water around its foot.
+            pond.addAssign(WARM.mul(exp(r.mul(r).mul(-5))).mul(glow).mul(0.035));
+            // Light: the flower's warmth falls off across the water.
+            const padWarm = exp(r.mul(r).mul(-1.6)).mul(0.9).add(float(0.08).div(r.mul(r).mul(3).add(1))).toVar();
+
+            // Ripple rings from the flower: one small wave packet leaves with each breath (breathInt runs
+            // while the lungs fill), flattened by the perspective. Their slopes tip the mirror: crests catch
+            // the flower's light — most on the near side, where it reflects toward us — troughs fall dark.
+            const ringAge = r.mul(1 / RING_GAP).sub(u.breathInt.mul(RING_PER_BREATH)).sub(u.time.mul(0.01));
+            const f = ringAge.fract().sub(0.5).toVar();
+            const wave = sin(f.mul(TAU * 8)).mul(exp(f.mul(f).mul(-55))).toVar();
+            const nearSide = fadeOut(-0.8, 0.5, rel.y.div(r.max(1e-3)));
+            const ringFade = smoothstep(0.2, 0.38, r).mul(exp(r.mul(-0.95))).mul(smoothstep(2.0, 5.0, unitPx.mul(RING_GAP / 8)))
+                .mul(nearSide.mul(0.65).add(0.35))
+                .mul(swell.mul(0.9).add(0.55))
+                .toVar();
+            const crest = wave.max(0).mul(wave.max(0)).mul(ringFade).toVar();
+            const ringLight = WARM.mul(exp(r.mul(r).mul(-1.2))).mul(glow).mul(0.07);
+            pond.assign(pond.mul(wave.mul(ringFade).mul(0.6).add(1)).add(ringLight.mul(crest)));
+
+            // ---- Now and then a koi glides by under the surface, across the pond and under the pads. ----
+            const koi = eventWindow(u.time, float(43), float(18), float(0.8), u.seed.mul(29.7).add(5.3)).toVar();
+            const koiShow = koi.x.mul(u.life).toVar();
+            If(koiShow.greaterThan(0.001), () => {
+                const heading = select(hash21(vec2(koi.z, 1.1)).greaterThan(0.5), float(1), float(-1)).toVar();
+                const bend = hash21(vec2(koi.z, 4.4)).mul(TAU).toVar();
+                const s = koi.y.mul(2).sub(1).toVar();
+                // It crosses the near water, in front of the flower (where the open water lies), weaving a little.
+                const koiAt = vec2(s.mul(1.6).mul(heading), mix(float(0.56), float(0.8), hash21(vec2(koi.z, 2.3)))
+                    .add(sin(s.mul(2.2).add(bend)).mul(0.1)));
+                const forward = vec2(heading.mul(3.2), cos(s.mul(2.2).add(bend)).mul(0.1 * 2.2 * 2)).normalize()
+                    .toVar();
+                const kRel = plane.sub(koiAt).toVar();
+                const kq = vec2(dot(kRel, forward), dot(kRel, vec2(forward.y.negate(), forward.x)))
+                    .div(KOI_LENGTH * 0.5)
+                    .toVar();
+                // It swims: a wave runs down the body toward the tail, larger toward the tail.
+                const tailward = float(1).sub(kq.x).mul(0.5).saturate()
+                    .toVar();
+                const ky = kq.y.sub(sin(u.time.mul(4.2).sub(kq.x.mul(2.6))).mul(0.12).mul(tailward.mul(tailward)))
+                    .toVar();
+                const along = kq.x.mul(0.5).add(0.5).toVar();
+                const halfW = sin(along.saturate().pow(0.75).mul(Math.PI)).max(0).pow(0.8).mul(0.2)
+                    .toVar();
+                const blur = planePx.div(KOI_LENGTH * 0.5).max(0.12).toVar();
+                const body = fadeOut(halfW.sub(blur), halfW.add(blur), ky.abs()).mul(smoothstep(-1.02, -0.9, kq.x))
+                    .mul(fadeOut(0.96, 1.04, kq.x));
+                // The tail fin fans out behind it; two small pectoral fins near the head.
+                const finT = float(-0.92).sub(kq.x).div(0.45).toVar();
+                const fin = fadeOut(finT.mul(0.24).add(0.02), finT.mul(0.24).add(0.02).add(blur), ky.abs())
+                    .mul(smoothstep(-0.05, 0.1, finT)).mul(fadeOut(0.85, 1.05, finT));
+                const pecs = fadeOut(0.06, float(0.06).add(blur), vec2(kq.x.sub(0.35), ky.abs().sub(0.26)).length());
+                const koiMask = max(body, max(fin.mul(0.7), pecs.mul(0.6))).toVar();
+                const patch = smoothstep(0.48, 0.58, gnoise(kq.mul(vec2(1.7, 3.2)).add(koi.z.mul(37)))).toVar();
+                const albedo = mix(vec3(0.86, 0.84, 0.78), vec3(0.95, 0.34, 0.07), patch);
+                const kr = koiAt.sub(vec2(0, 1)).length();
+                const koiLight = pal.ambient.add(WARM.mul(glow).mul(exp(kr.mul(kr).mul(-1.6)).mul(0.5).add(0.04)));
+                // Seen through the water: dimmer, cooler, the surface's sheen over it.
+                const seen = albedo.mul(koiLight).mul(0.55).add(DEEP);
+                pond.assign(mix(pond, pond.mul(0.45).add(seen), koiMask.mul(koiShow).mul(0.8)));
+                // A faint wake on the surface just behind it.
+                const wakeR = vec2(kq.x.add(1.4), ky).length().toVar();
+                const wakeRing = sin(wakeR.mul(9).sub(u.time.mul(3))).mul(exp(wakeR.mul(wakeR).mul(-1.2)))
+                    .mul(smoothstep(0.2, 0.6, wakeR)).mul(smoothstep(2.0, 4.0, unitPx.mul(KOI_LENGTH * 0.25)));
+                pond.mulAssign(wakeRing.mul(koiShow).mul(0.25).add(1));
+            });
+
+            // ---- Lily pads, shaded once in the covering pad's own coordinates. ----
+            const pads = padField(plane, planePx);
+            pond.mulAssign(float(1).sub(pads.meniscus.mul(0.75)));
+            // The leaf is mixed in by its cover, exactly 0 on open water: shade it only on the pads.
+            If(pads.cover.greaterThan(0), () => {
+                const local = pads.local.toVar();
+                const seed = pads.seed.toVar();
+                const pd = local.length().toVar();
+                const padAngle = local.y.atan(local.x).toVar();
+                // Fine detail fades with the pad's size on screen.
+                const padDetail = smoothstep(1.5, 4.0, unitPx.mul(0.05)).toVar();
+                // Veins: sin of an integer multiple of the angle is seamless across atan's ±π jump. They
+                // fork toward the rim.
+                const veins = fadeOut(0.0, 0.12, sin(padAngle.mul(9)).abs()).mul(smoothstep(0.08, 0.35, pd))
+                    .mul(fadeOut(0.72, 0.95, pd))
+                    .add(fadeOut(0.0, 0.1, sin(padAngle.mul(18).add(0.4)).abs()).mul(smoothstep(0.5, 0.72, pd))
+                        .mul(fadeOut(0.82, 0.95, pd))
+                        .mul(0.6))
+                    .mul(padDetail)
+                    .toVar();
+                const blotch = fbm(local.mul(1.3).add(seed.mul(7.3)), 3).toVar();
+                const speck = gnoise(local.mul(7.0).add(seed.mul(2.1)));
+                // The leaf is never flat: faint concentric undulations around its centre.
+                const undulate = sin(pd.mul(15).add(blotch.mul(5))).mul(0.5).add(0.5).mul(padDetail);
+                const hue = mix(PAD_GREEN, PAD_TEAL, seed.mul(0.37).fract());
+                const leaf = mix(hue, PAD_YOUNG, pads.young).mul(blotch.mul(1.0).add(0.4))
+                    .mul(speck.mul(0.3).add(0.85))
+                    .mul(undulate.mul(0.25).add(0.88))
+                    .toVar();
+                leaf.mulAssign(veins.mul(0.3).add(1));
+                // The rim curls up a little; along one side of each leaf the wine-red underside shows.
+                const rim = smoothstep(0.88, 0.985, pd).toVar();
+                const curl = smoothstep(0.82, 0.97, pd)
+                    .mul(smoothstep(0.5, 0.95, sin(padAngle.add(seed.mul(2.4))).mul(0.5).add(0.5)));
+                leaf.assign(mix(leaf, PAD_RIM, max(rim.mul(0.5), curl.mul(0.85))));
+                const padLit = leaf.mul(glow.mul(padWarm).mul(2.4).add(0.7)).toVar();
+                // Wax and water: the sky and the lanterns on the leaf, stronger at grazing angles, patchy
+                // where water beads; the curled rim catches the most.
+                const wet = smoothstep(0.42, 0.78, gnoise(local.mul(3.5).add(seed.mul(3.1)))).mul(0.6)
+                    .add(rim.mul(0.6))
+                    .add(0.12)
+                    .toVar();
+                padLit.addAssign(sky.mul(mirror).mul(wet).mul(sheen).mul(0.55));
+                padLit.addAssign(lanterns.mul(mirror).mul(glints).mul(wet).mul(0.2));
+                padLit.addAssign(mix(ROSE, GOLD, 0.5).mul(imageGlow.add(padWarm.mul(0.2))).mul(glow).mul(wet)
+                    .mul(0.12));
+                // Beads of water resting on the leaf, each catching a point of light.
+                const beadCell = local.mul(4).add(seed.mul(13)).toVar();
+                const beadAt = beadCell.fract().sub(0.5).sub(hash22(beadCell.floor()).sub(0.5).mul(0.5));
+                const bead = step(0.96, hash21(beadCell.floor().add(5.7))).mul(fadeOut(0.03, 0.09, beadAt.length()))
+                    .mul(fadeOut(0.75, 0.85, pd)).mul(padDetail);
+                padLit.addAssign(WARM.mul(padWarm).mul(glow).mul(0.25).add(HAZE.mul(1.5))
+                    .mul(bead));
+                pond.assign(mix(pond, padLit, pads.cover));
+            });
+
+            // ---- Now and then a petal falls on the water: it lands, floats, and sends out a ring. ----
+            const drop = eventWindow(u.time, float(19), float(8), float(0.8), u.seed.mul(41.3).add(2.1)).toVar();
+            const dropShow = drop.x.mul(u.life).toVar();
+            If(dropShow.greaterThan(0.001), () => {
+                const dropAt = vec2(
+                    mix(float(-1.3), float(1.3), hash21(vec2(drop.z, 3.7))),
+                    mix(float(0.7), float(1.9), hash21(vec2(drop.z, 8.1))),
+                ).toVar();
+                const dRel = plane.sub(dropAt).toVar();
+                const dr = dRel.length().toVar();
+                const df = dr.sub(drop.y.mul(0.95).add(0.03)).toVar();
+                const dWave = sin(df.mul(TAU / 0.1)).mul(exp(df.mul(df).mul(-180))).toVar();
+                const dFade = dropShow.mul(exp(dr.mul(-1.6))).mul(smoothstep(2.0, 4.0, unitPx.mul(0.1))).mul(water)
+                    .toVar();
+                const dCrest = dWave.max(0).mul(dWave.max(0)).mul(dFade);
+                const dLight = HAZE.mul(2.5).add(MIST.mul(0.8)).add(WARM.mul(glow).mul(padWarm).mul(0.12));
+                pond.assign(pond.mul(dWave.mul(dFade).mul(0.5).add(1)).add(dLight.mul(dCrest)));
+                // The petal itself, afloat where it fell, turning slowly.
+                const pTurn = drop.z.mul(TAU).add(drop.y).toVar();
+                const pc = cos(pTurn).toVar();
+                const ps = sin(pTurn).toVar();
+                const pq = vec2(dRel.x.mul(pc).add(dRel.y.mul(ps)), dRel.y.mul(pc).sub(dRel.x.mul(ps)))
+                    .div(vec2(0.055, 0.024))
+                    .toVar();
+                const petalSoft = planePx.div(0.024).max(0.15);
+                const petal = fadeOut(float(1).sub(petalSoft), float(1).add(petalSoft), pq.length()).mul(dropShow);
+                const petalLight = pal.ambient.add(WARM.mul(glow).mul(padWarm).mul(0.7)).add(HAZE.mul(1.5));
+                pond.assign(mix(
+                    pond,
+                    vec3(...look.petal).mul(petalLight).mul(pq.x.mul(0.25).add(0.85)),
+                    petal.mul(water),
+                ));
+            });
+
+            // ---- Closed buds standing in the water beside the pads, each with its image below it. ----
+            BUDS.forEach(([x, z, height, lean]) => {
+                const bq = layer(p, u, 1 / z).toVar();
+                const foot = vec2(x / z, horizon.sub(slope.div(z)));
+                const bud = bq.sub(foot).div(height / z).toVar();
+                // Above the water the bud itself; below, the same shape mirrored, dim and broken by the swell.
+                const up = bud.y.abs().toVar();
+                // The shape is exactly 0 from up 1, and beyond |x| 0.51 (its half-width is at most 0.33 and
+                // it leans at most 0.18): skip the bud outside that box.
+                If(up.lessThan(1).and(bud.x.abs().lessThan(0.52)), () => {
+                    const inAir = smoothstep(-0.02, 0.02, bud.y).toVar();
+                    const across = bud.x.sub(up.mul(up).mul(lean)).toVar();
+                    const half = sin(up.min(1).pow(0.8).mul(Math.PI)).max(0).pow(0.85).mul(0.3)
+                        .toVar();
+                    const shape = fadeOut(half.sub(0.03), half.add(0.03), across.abs()).mul(fadeOut(0.97, 1.0, up))
+                        .toVar();
+                    const budPetals = mix(vec3(0.42, 0.03, 0.17), vec3(0.95, 0.55, 0.66), smoothstep(0.15, 0.95, up))
+                        .mul(float(1).sub(across.abs().div(half.max(0.02)).mul(0.55))).mul(glow.mul(0.05).add(0.1));
+                    // Sepals: a green cup at the foot.
+                    const tone = mix(budPetals, vec3(0.006, 0.018, 0.008), fadeOut(0.16, 0.3, up).mul(0.85))
+                        .toVar();
+                    pond.assign(mix(pond, tone, shape.mul(inAir)));
+                    pond.addAssign(tone.mul(shape).mul(float(1).sub(inAir)).mul(brokenImage).mul(0.35));
+                });
+            });
+
+            if (floaterAt) {
+                // ---- Paper lanterns afloat: each a warm glowing box on the water, its light pooled round
+                // it and its image drawn down into the pond. ----
+                Loop(FLOATERS.length, ({ i }) => {
+                    const fl = floaterAt.element(i).toVar();
+                    const fx = fl.x.add(sin(u.time.mul(0.05).add(fl.w)).mul(0.12)).toVar();
+                    const fz = fl.y;
+                    const fq = layer(p, u, float(1).div(fz)).toVar();
+                    const size = fl.z.mul(0.11).div(fz).toVar();
+                    const bob = sin(u.time.mul(0.7).add(fl.w.mul(3))).mul(0.04);
+                    const ffoot = vec2(fx.div(fz), horizon.sub(slope.div(fz)));
+                    const lq = fq.sub(ffoot).div(size).sub(vec2(0, bob)).toVar();
+                    const ly = lq.y.abs().toVar();
+                    const inAir = smoothstep(-0.03, 0.03, lq.y).toVar();
+                    // A paper box a little taller than wide, its corners softened; a dark cap and base.
+                    const box = fadeOut(0.5, 0.62, lq.x.abs()).mul(fadeOut(1.0, 1.1, ly)).toVar();
+                    // The paper is mixed in by the box, exactly 0 outside it: skip it there.
+                    If(box.greaterThan(0), () => {
+                        // Paper glowing from the candle inside, brightest low in the middle; a dark wooden
+                        // cap and base, and faint ribs.
+                        const ribs = sin(lq.x.mul(Math.PI * 4)).abs().mul(0.15).add(0.85);
+                        const frame = smoothstep(0.84, 0.9, ly).add(fadeOut(0.08, 0.14, ly)).saturate();
+                        const paper = vec3(1.0, 0.6, 0.26).mul(exp(lq.x.mul(lq.x).mul(-3)).mul(1.4).add(0.5))
+                            .mul(exp(ly.sub(0.4).mul(ly.sub(0.4)).mul(-2.5)).mul(0.8).add(0.4))
+                            .mul(ribs)
+                            .mul(float(1).sub(frame.mul(0.85)))
+                            .mul(sin(u.time.mul(0.9).add(fl.w.mul(5))).mul(0.06).add(1.1));
+                        pond.assign(mix(pond, paper, box.mul(inAir)));
+                        pond.addAssign(paper.mul(box).mul(float(1).sub(inAir)).mul(brokenImage).mul(0.4));
+                    });
+                    const halo = exp(vec2(lq.x, ly.sub(0.5)).length().pow(2).mul(-0.5)).mul(0.05);
+                    pond.addAssign(vec3(1.0, 0.6, 0.3).mul(halo));
+                    // The pool of light on the water round it.
+                    const pool = plane.sub(vec2(fx, fz)).toVar();
+                    pond.addAssign(vec3(1.0, 0.55, 0.25).mul(exp(dot(pool, pool).mul(-30))).mul(0.06).mul(water));
+                });
+            }
+
+            // ---- Mist lies on the water: slow wisps in plane space, stretched along the surface, a haze
+            // thickening toward the far shore, lit warm by the flower near it. ----
+            const wispAt = vec3(plane.x.mul(0.38).add(u.time.mul(0.02)).add(u.seed.mul(13.7)), depth.min(10).mul(1.5), u.time.mul(0.03));
+            const wisps = fbm3(wispAt, mistOctaves).toVar();
+            const lying = smoothstep(0.4, 0.76, wisps).mul(exp(depth.mul(-0.1)).mul(0.5).add(0.5)).toVar();
+            const distance = smoothstep(1.5, 10.0, depth);
+            const mistAmount = lying.mul(0.7).add(distance.mul(0.3)).mul(water).mul(look.mistAmount)
+                .toVar();
+            const warmMist = exp(r.mul(r).mul(-0.7)).toVar();
+            const mistLight = MIST.add(mix(ROSE, GOLD, 0.35).mul(warmMist).mul(glow).mul(0.16));
+            col.assign(mix(skyColor, pond, water));
+            col.assign(col.mul(float(1).sub(mistAmount.mul(0.2).min(0.5))).add(mistLight.mul(mistAmount).mul(0.5)));
+        });
         // A band of haze sits on the horizon on both sides of it, thicker in some places than others.
         const band = exp(p.y.sub(horizon).mul(p.y.sub(horizon)).mul(-120 / Math.max(1, look.mistAmount)));
         const banks = gnoise(vec2(p.x.mul(1.3).add(u.time.mul(0.006)).add(u.seed.mul(7.7)), 5.3));
@@ -784,17 +830,23 @@ export function createLotusWorld({ u, quality, mood }) {
             const k = rl.y;
             const q = layer(p, u, k).toVar();
             const foot = vec2(u.ext.x.sub(shape.y).mul(side), bottom).toVar();
-            const lean = sin(u.time.mul(0.35).add(rl.w)).mul(side.mul(0.012)).add(shape.w).toVar();
-            const blade = reedBlade(q, foot, shape.z, lean, rl.x, k.mul(0.005));
-            reeds.assign(max(reeds, blade.mask));
-            // The edge toward the flower catches its light; the other edge, the sky's.
-            reedRim.assign(max(reedRim, blade.mask.mul(smoothstep(0.1, 0.9, blade.edge.mul(side.negate())))));
-            reedSky.assign(max(reedSky, blade.mask.mul(smoothstep(0.3, 0.95, blade.edge.mul(side)))));
-            // A seed head (cattail) part way up some of the stems.
-            const head = rl.z;
-            const centre = vec2(foot.x.add(lean.mul(head.mul(head))), foot.y.add(shape.z.mul(head)));
-            const hd = q.sub(centre).div(vec2(0.026, 0.08)).length();
-            reeds.assign(max(reeds, fadeOut(0.85, k.mul(0.08).add(1.0), hd).mul(step(0.01, head))));
+            // The blade reaches at most width + 0.001 + soft from its stem, which bends at most |bend| +
+            // 0.012; the seed head reaches at most 0.032 from it and sits below the tip. Outside this box
+            // both are exactly 0 and every max below keeps its value: skip the reed there.
+            const reach = rl.x.add(shape.w.abs()).add(k.mul(0.005)).add(0.045);
+            If(q.x.sub(foot.x).abs().lessThan(reach).and(q.y.lessThan(foot.y.add(shape.z.mul(1.001)))), () => {
+                const lean = sin(u.time.mul(0.35).add(rl.w)).mul(side.mul(0.012)).add(shape.w).toVar();
+                const blade = reedBlade(q, foot, shape.z, lean, rl.x, k.mul(0.005));
+                reeds.assign(max(reeds, blade.mask));
+                // The edge toward the flower catches its light; the other edge, the sky's.
+                reedRim.assign(max(reedRim, blade.mask.mul(smoothstep(0.1, 0.9, blade.edge.mul(side.negate())))));
+                reedSky.assign(max(reedSky, blade.mask.mul(smoothstep(0.3, 0.95, blade.edge.mul(side)))));
+                // A seed head (cattail) part way up some of the stems.
+                const head = rl.z;
+                const centre = vec2(foot.x.add(lean.mul(head.mul(head))), foot.y.add(shape.z.mul(head)));
+                const hd = q.sub(centre).div(vec2(0.026, 0.08)).length();
+                reeds.assign(max(reeds, fadeOut(0.85, k.mul(0.08).add(1.0), hd).mul(step(0.01, head))));
+            });
         });
         const reedTone = vec3(...look.reed).add(WARM.mul(reedRim).mul(glow).mul(0.05))
             .add(HAZE.mul(reedSky).mul(1.2));
@@ -817,6 +869,10 @@ export function createLotusWorld({ u, quality, mood }) {
         breath: 0.85,
     };
     const [glowRest, glowSwing] = look.glow;
+    // The flower's pose for this frame, filled in place (the frame loop makes no garbage).
+    const pose = {
+        time: 0, breath: 0, glow: 1, elevation: 0,
+    };
     return {
         backdrop,
         objects: [...lotus.objects, veil],
@@ -831,10 +887,11 @@ export function createLotusWorld({ u, quality, mood }) {
         }) {
             const slope = lookDown(ext.y);
             // The flower tilts toward us as far as the pond is foreshortened at its foot.
-            const elevation = Math.asin(Math.min(slope, 0.95));
-            lotus.update({
-                time, breath, glow: glowRest + breathSoft * glowSwing, elevation,
-            });
+            pose.elevation = Math.asin(Math.min(slope, 0.95));
+            pose.time = time;
+            pose.breath = breath;
+            pose.glow = glowRest + breathSoft * glowSwing;
+            lotus.update(pose);
             lotus.heartOnScreen(u.focus.value, CAMERA_DISTANCE);
             shafts.source[0] = light.screen.value.x;
             shafts.source[1] = light.screen.value.y;
