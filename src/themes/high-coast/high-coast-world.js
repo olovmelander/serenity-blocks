@@ -51,7 +51,7 @@ import { tierFor } from './high-coast-quality.js';
 import { breathe, loadCoast, planCoast } from './high-coast-assets.js';
 import {
     GUSTS, createCoverTexture, createFieldTexture, createLatticeTexture, createNoiseTexture, createUniforms,
-    fieldTextureSteps,
+    fieldTextureData,
 } from './high-coast-tsl.js';
 import { groundHeight } from './high-coast-field.js';
 import { createFanGeometry, createLandMaterial, fanPositionSteps } from './high-coast-land.js';
@@ -104,9 +104,7 @@ function* prepareSteps(quality, fields) {
     const positions = yield* fanPositionSteps(fields, tier.fanCols, tier.fanRows);
     const textures = {};
     for (const name of FIELD_ORDER) {
-        // (a band of rows a step, never one field in one)
-        const rows = Math.max(1, Math.ceil(FIELDS[name].size / 8));
-        textures[name] = yield* fieldTextureSteps(fields[name].heights, fields[name].sky, FIELDS[name], rows);
+        textures[name] = fieldTextureData(fields[name].heights, fields[name].sky, FIELDS[name]);
         yield name;
     }
     return {

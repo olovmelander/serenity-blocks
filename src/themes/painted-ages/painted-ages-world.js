@@ -51,7 +51,7 @@ import { tierFor } from './painted-ages-quality.js';
 import { breathe, loadBadlands, planBadlands } from './painted-ages-assets.js';
 import {
     createColumnTexture, createFieldTexture, createFlowTexture, createLatticeTexture, createNoiseTexture,
-    createRecordTexture, createUniforms, fieldTextureSteps,
+    createRecordTexture, createUniforms, fieldTextureData,
 } from './painted-ages-tsl.js';
 import {
     bilinear, fieldCoords, fieldInset, groundHeight,
@@ -132,9 +132,7 @@ function* prepareSteps(quality, fields) {
     const positions = yield* fanPositionSteps(fields, tier.fanCols, tier.fanRows);
     const textures = {};
     for (const name of FIELD_ORDER) {
-        // (a band of rows a step: the near field was ~53 ms in one)
-        const rows = Math.max(1, Math.ceil(FIELDS[name].size / 8));
-        textures[name] = yield* fieldTextureSteps(fields[name].heights, fields[name].sky, FIELDS[name], rows);
+        textures[name] = fieldTextureData(fields[name].heights, fields[name].sky, FIELDS[name]);
         yield name;
     }
     return {
