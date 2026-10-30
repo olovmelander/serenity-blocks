@@ -73,9 +73,36 @@ Validation on 0.187.0 (this machine, 2026-10-30):
   PMREM, 9.6 % of pixels more than 8 levels apart (max 55): the expected reflection change.
   Zero console errors on either.
 
+## Phase 2: look sweep (done 2026-10-30)
+
+The owner approved minor look changes for this upgrade ("I am okey with minor changes of the look
+of the themes"); anything that changes a theme's character is still to be raised.
+
+Every theme (63 playground effects) and all 12 breathing worlds, r186 (Phase 0 on 0.186.1) and r187
+served side by side, same fixed time, 2562×1601, RTX; then the changed ones again at 30 fps with a
+second r186 capture as the noise floor. Zero console errors on either version.
+
+- **Identical** (no pixel more than 2 levels apart): 56 themes and all 12 breathing worlds.
+- **Spring drew a navy canvas on r187: fixed (1d9660d4).** r187's compileAsync begins the first
+  drained item inside the call, before Spring's bake puts its own binding back; the precompile shim
+  restored the impostor atlas after it and every frame drew into the atlas. The shim now keeps a
+  binding the caller chose while the item ran. Spring on r187 then matches r186 to 1 level and
+  builds its world in 2.7 s against 4.9 s.
+- **Summer, Forest, Sakura Twilight grew a diamond screen-door grain on the lit leaves: fixed
+  (721ff57d).** r187's PCF fix for non-square shadow maps (#35018) doubled the height of the noise-
+  turned sampling disc on their 2:1 maps. `shared/width-pcf-shadow-filter.js` keeps r186's filter
+  for them; they now match r186 to 1-9 levels, none more than 8 apart.
+- **Chiral Gold: the one look change kept.** r187's PMREM makes the gold ribbons' reflections a
+  little darker and softer (10 % of pixels more than 8 levels apart, max 65): the same scene, a
+  slightly duller sheen. Within the owner's "minor".
+- Sunfall's vine leaves differed as much between two r186 captures as against r187 (0.60 % vs
+  0.68 %): the leaves sprout from simulated events, not an r187 change. Grainfields: a few pixels on
+  a horse.
+- The ACES fit fix (#35110) moves nothing visible: the ACES-toned themes match to a few levels.
+
 ## Phase 2 acceptance (open)
 
-- Real-GPU captures of every theme, r186 build vs r187 build at the same frames (RTX; the playground
+- (Done, above.) Real-GPU captures of every theme, r186 build vs r187 build at the same frames (RTX; the playground
   for fixed-time stations), image-diffed; every visible change to the owner as before/after crops.
 - Odyssey chapter stations one chapter at a time (TDR rule) and the breathing worlds, same method.
 - The real game: boot warp, a mode started, in-play theme switches (async pipelines + build budget
