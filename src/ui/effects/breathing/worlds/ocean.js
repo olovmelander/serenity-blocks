@@ -217,24 +217,24 @@ function ramp(lo, hi, v) {
 }
 
 /** The bore's white water through each phase of the breath (only the phase's own ramp runs). */
-function boreAt(phase, at) {
+function boreFor(phase, at) {
     switch (phase) {
-        case 0: return 1 - ramp(0.25, 0.9, at);
-        case 1: return 0;
-        case 2: return ramp(0.15, 0.55, at);
-        case 3: return 1 - ramp(0, 1, at) * 0.6;
-        default: return 0;
+    case 0: return 1 - ramp(0.25, 0.9, at);
+    case 1: return 0;
+    case 2: return ramp(0.15, 0.55, at);
+    case 3: return 1 - ramp(0, 1, at) * 0.6;
+    default: return 0;
     }
 }
 
 /** The foam lace through each phase of the breath. */
-function laceAt(phase, at) {
+function laceFor(phase, at) {
     switch (phase) {
-        case 0: return 0.2 + ramp(0, 0.6, at) * 0.4;
-        case 1: return 0.6;
-        case 2: return 0.6 - ramp(0.2, 1, at) * 0.4;
-        case 3: return 0.2;
-        default: return 0.2;
+    case 0: return 0.2 + ramp(0, 0.6, at) * 0.4;
+    case 1: return 0.6;
+    case 2: return 0.6 - ramp(0.2, 1, at) * 0.4;
+    case 3: return 0.2;
+    default: return 0.2;
     }
 }
 
@@ -750,8 +750,8 @@ export function createOceanWorld({ u, quality, mood = MOODS[0] }) {
             // White water, continuous at every turn: it builds as the next wave breaks during the
             // out-breath, rides the front up the sand and is spent before the top (so the bore can
             // move out to the break unseen). Lace gathers through the uprush and thins as it drains.
-            const bore = boreAt(phase, at);
-            const lace = laceAt(phase, at);
+            const bore = boreFor(phase, at);
+            const lace = laceFor(phase, at);
             const out = phase >= 2 ? 1 : 0;
             const follow = delta > 0 ? 1 - Math.exp(-delta * 3) : 1;
             uBore.value += (bore - uBore.value) * follow;

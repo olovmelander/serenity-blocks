@@ -203,19 +203,19 @@ function faceMaterial(u, look, floorY) {
 }
 
 /**
- * One full hierarchy of the three solids. `floorY` null: the solids themselves; a uniform node:
- * their reflection's materials (the caller mirrors the group).
- */
-/**
  * The slow tumble of solid `index` (outer to inner) at `time`, opened by the breath `open`:
  * closed-form, so a seeked frame is the same frame every time.
  */
-function turn(rotation, index, time, open) {
+function tumble(rotation, index, time, open) {
     if (index === 0) rotation.set(time * 0.043 + open * 0.2, time * 0.067, time * 0.019);
     else if (index === 1) rotation.set(-time * 0.056, time * 0.041 - open * 0.32, time * 0.028);
     else rotation.set(time * 0.078, -time * 0.094 + open * 0.55, open * 0.12);
 }
 
+/**
+ * One full hierarchy of the three solids. `floorY` null: the solids themselves; a uniform node:
+ * their reflection's materials (the caller mirrors the group).
+ */
 function buildHierarchy(u, hold, geometry, floorY, looks) {
     const root = new THREE.Group();
     const parts = looks.map((look, index) => {
@@ -292,7 +292,7 @@ export function createSacredSolids(u, { hold, floorY, colors = null }) {
                 const { pivot, holders } = parts[index];
                 const range = SOLIDS[index].scale;
                 pivot.scale.setScalar(range[0] + (range[1] - range[0]) * open);
-                turn(pivot.rotation, index, time, open);
+                tumble(pivot.rotation, index, time, open);
                 // The star unfolds: its two tetrahedra twist apart as the lungs fill.
                 if (holders.length === 2) {
                     holders[0].rotation.y = open * 0.3;
