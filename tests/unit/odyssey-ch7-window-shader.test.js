@@ -8,7 +8,9 @@
  * exit) is outside. Built through three's own node builders on a device-less renderer (the
  * earth-core-shaft set-up): not a compile, Tint and the driver never see these shaders here.
  */
-import { describe, expect, it, vi } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import { createSingularityWindowTSL } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js';
 
@@ -26,6 +28,8 @@ function stubRenderer(forceWebGL) {
     const renderer = new THREE.WebGPURenderer({ canvas, forceWebGL });
     renderer.hasFeature = () => false;
     renderer._initialized = true;
+    // r187 reads shared bind groups from the renderer's Bindings, which init() makes: a pass-through here.
+    renderer._bindings = { getSharedBindGroup: (group) => group };
     if (forceWebGL) renderer.backend.capabilities = { getUniformBufferLimit: () => 16384, getMaxAnisotropy: () => 1 };
     else renderer.backend.device = { limits: { maxUniformBufferBindingSize: 65536 }, features: new Set() };
     return renderer;
@@ -74,13 +78,15 @@ describe('Chapter 7 window: nothing of the tunnel is evaluated before the portal
             const tunnelIf = lines.findIndex((l, i) => i > firstIf && /< 0\.999 \) \) \{/.test(l));
             expect(tunnelIf).toBeGreaterThan(firstIf);
             expect(lines[tunnelIf].search(/\S/)).toBeGreaterThan(lines[firstIf].search(/\S/));
-            // The alpha test (the mouth) reads node vars assigned before the portal's branch.
+            // The alpha test (the mouth) reads node vars assigned before the portal's branch (three
+            // r187 declares the ones it caches as locals: `let nodeConst4 = …` / `float nodeConst4 = …`).
             const alpha = lines.findIndex((l) => /DiffuseColor\.w = \( DiffuseColor\.w \*/.test(l));
             expect(alpha).toBeGreaterThan(firstIf);
-            const read = [...new Set(lines[alpha].match(/nodeVar\d+/g) || [])];
+            const read = [...new Set(lines[alpha].match(/node(?:Var|Const)\d+/g) || [])];
             expect(read.length).toBeGreaterThan(0);
             read.forEach((name) => {
-                const assigned = lines.findIndex((l, i) => i > main && new RegExp(`^\\s*${name} = `).test(l));
+                const declared = String.raw`^\s*(?:(?:let|var|float|int|uint|bool|[biu]?vec[234])\s+)?`;
+                const assigned = lines.findIndex((l, i) => i > main && new RegExp(`${declared}${name}\\b[^=]*= `).test(l));
                 expect(assigned, `${name} is assigned in main`).toBeGreaterThan(main);
                 expect(assigned, `${name} is assigned before the portal's branch`).toBeLessThan(firstIf);
             });

@@ -36,6 +36,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { ensurePrecompileRestoresLiveState } from '../../rendering/three-precompile-live-restore.js';
 import { aerial, sunShare } from './spring-light.js';
 import { SpringForest } from './spring-forest.js';
 
@@ -212,6 +213,8 @@ export class ImpostorAtlas {
             const previous = renderer.getRenderTarget();
             const { depth, stencil } = renderer;
             let compiling;
+            // r187's drain binds the atlas again after each object unless this patch is in.
+            ensurePrecompileRestoresLiveState(renderer);
             renderer.setRenderTarget(this.albedoTarget);
             renderer.depth = this.albedoTarget.depthBuffer;
             renderer.stencil = this.albedoTarget.stencilBuffer;

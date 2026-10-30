@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file -- the r185 renderer double and its r187 subclass */
 /**
  * @fileoverview Unit tests for the Odyssey warm-up post-target compile helpers (E2 extraction).
  *
@@ -849,5 +850,139 @@ describe('item 2.11 — compileGroupUnderLiveLoop / compileGroupThroughPost(live
         const r = new R185Renderer();
         const { group } = hiddenChapter();
         expect(await compileGroupUnderLiveLoop(r, null, 'SCENE', 'CAM', group)).toBe(false);
+    });
+});
+
+// ── three r187: the drain binds each item's state around its build ─────────────────────────────
+// r187's compileAsync drains its queue between the caller's frames like r185/r186, but each item
+// runs between _beginPreCompile(item state), which binds the target + MRT the item was queued
+// under, and _finishPreCompile(), which binds the target + MRT bound when compileAsync was CALLED
+// (the scene pass here, bound for the launch only). The hooks below copy r187's (Renderer.js
+// _beginPreCompile / _finishPreCompile) for what this module touches.
+class R187Renderer extends R185Renderer {
+    constructor() {
+        super();
+        this._activeCubeFace = 0;
+        this._activeMipmapLevel = 0;
+        this._precompilationState = null;
+        this._currentRenderContext = null;
+    }
+
+    setRenderTarget(t, cubeFace = 0, mipLevel = 0) {
+        this._renderTarget = t;
+        this._activeCubeFace = cubeFace;
+        this._activeMipmapLevel = mipLevel;
+    }
+
+    _beginPreCompile(state) {
+        if (state.useFrameBufferTarget === true) this.setRenderTarget(state.renderTarget);
+        this.setMRT(state.mrt);
+        this._callDepth += 1;
+        state.previousRenderContext = this._currentRenderContext;
+        if (state.renderContext !== undefined) this._currentRenderContext = state.renderContext;
+        this._precompilationState = state;
+    }
+
+    _finishPreCompile() {
+        const state = this._precompilationState;
+        if (state.useFrameBufferTarget === true) this.setRenderTarget(state.outputRenderTarget, state.activeCubeFace, state.activeMipmapLevel);
+        this.setMRT(state.outputMRT);
+        this._currentRenderContext = state.previousRenderContext;
+        this._callDepth -= 1;
+        this._precompilationState = null;
+    }
+
+    async compileAsync(object) {
+        const useFrameBufferTarget = this.needsFrameBufferTarget && this._renderTarget === null;
+        const outputRenderTarget = this._renderTarget || this._outputRenderTarget;
+        const renderTarget = useFrameBufferTarget ? 'FRAMEBUFFER' : outputRenderTarget;
+        const state = {
+            useFrameBufferTarget,
+            renderTarget,
+            outputRenderTarget: useFrameBufferTarget ? outputRenderTarget : this._renderTarget,
+            activeCubeFace: this._activeCubeFace,
+            activeMipmapLevel: this._activeMipmapLevel,
+            item: null,
+            mrt: this._mrt,
+            outputMRT: this._mrt,
+        };
+        this._beginPreCompile(state);
+        const ctx = this._renderContexts.get(renderTarget, this._mrt, this._callDepth);
+        state.renderContext = ctx;
+        this.prologues.push({
+            object: object.name, ctx: ctx.id, target: this._renderTarget, mrt: this._mrt,
+        });
+        const items = [{
+            object,
+            precompilationState: {
+                ...this._precompilationState, useFrameBufferTarget: true, renderTarget: this.getRenderTarget(), mrt: this.getMRT(), renderContext: ctx,
+            },
+        }];
+        this._finishPreCompile();
+        for (const item of items) {
+            item.precompilationState.item = item;
+            // eslint-disable-next-line no-await-in-loop -- the drain starts after the caller's frame
+            await new Promise((r) => { setTimeout(r, 0); });
+            this._beginPreCompile(item.precompilationState);
+            const before = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
+            // getForRenderAsync's yield: finish, a frame may run, begin again.
+            const active = this._precompilationState;
+            this._finishPreCompile();
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((r) => { setTimeout(r, 0); });
+            this._beginPreCompile(active);
+            const after = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
+            this.builds.push({
+                object: item.object.name, ctx: item.precompilationState.renderContext.id, before, after,
+            });
+            this._finishPreCompile();
+        }
+    }
+}
+
+describe('item 2.11 under three r187\'s drain (each item binds its own state around its build)', () => {
+    it('drained builds see the scene pass, and no live frame between or inside them ever draws into it', async () => {
+        const r = new R187Renderer();
+        const a = {
+            name: 'a', isMesh: true, visible: false, frustumCulled: true, material: { uuid: 'ma' },
+        };
+        const b = {
+            name: 'b', isMesh: true, visible: false, frustumCulled: true, material: { uuid: 'mb' },
+        };
+        const group = { name: 'ch6', visible: false, traverse(fn) { fn(this); fn(a); fn(b); } };
+        const post = { scenePass: { renderTarget: 'SCENE_RT', getMRT: () => 'SCENE_MRT' } };
+        const done = compileGroupUnderLiveLoop(r, post, 'SCENE', 'CAM', group);
+        for (let frame = 0; frame < 8; frame += 1) {
+            r.render('post');
+            await tick(); // eslint-disable-line no-await-in-loop
+        }
+        await done;
+        expect(r.builds.map((x) => x.object).sort()).toEqual(['a', 'b']);
+        for (const build of r.builds) {
+            // The prologue resolves its context after _beginPreCompile raised the depth to 0: the
+            // depth patch still makes it the scene pass's.
+            expect(build.ctx).toBe(`SCENE_RT|SCENE_MRT|${POST_SCENE_PASS_CALL_DEPTH}`);
+            expect(build.before).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT', tone: 'none' });
+            expect(build.after).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT', tone: 'none' });
+        }
+        const quads = r.frames.filter((f) => f.label === 'post');
+        expect(quads.length).toBe(8);
+        quads.forEach((f) => {
+            expect(f.target).toBeNull();
+            expect(f.mrt).toBeNull();
+            expect(f.tone).toBe('ACES');
+        });
+        expect(r._renderTarget).toBeNull();
+        expect(r._mrt).toBeNull();
+        expect(r._callDepth).toBe(-1);
+        expect(r.__odysseyLiveCompileReads).toBeUndefined();
+        expect(Object.prototype.hasOwnProperty.call(r, '_beginPreCompile')).toBe(false);
+    });
+
+    it('leaves three\'s own side handling in charge (no side capture is installed)', () => {
+        const r = new R187Renderer();
+        r._createObjectPipeline = () => {};
+        expect(beginDeferredSideCapture(r)).toBeNull();
+        expect(r.__odysseySideCapture).toBeUndefined();
     });
 });

@@ -205,8 +205,13 @@ describe.each(TIERS)('Stellar Velocity shaders at %s', (quality) => {
             // No loop nested in the march: ANGLE's D3D11 path miscompiled the hoops' loop there
             // and washed the WebGL2 canyon in their colours. Their slots are unrolled.
             expect((code.match(/\bfor\s*\(/g) || []).length).toBe(1);
-            // The two light tables (hoops and fronts) are read where the tier lights the gas.
-            const tables = new Set(code.match(entry.label === 'WGSL' ? /NodeBuffer_\d+/g : /buffer\d+/g) || []);
+            // The two light tables (hoops and fronts) are read where the tier lights the gas: uniform
+            // arrays, named `NodeBuffer_N` (WGSL) / `bufferN` (GLSL) by three r186 and read as
+            // `nodeUniformN.value[i]` / `nodeUniformN[i]` by r187.
+            const indexed = entry.label === 'WGSL'
+                ? /\b(NodeBuffer_\d+)\b|\b(nodeUniform\d+)\.value\[/g
+                : /\b(buffer\d+)\b|\b(nodeUniform\d+)\[/g;
+            const tables = new Set([...code.matchAll(indexed)].map((m) => m[1] ?? m[2]));
             expect(tables.size).toBe(quality === 'Minimal' ? 0 : 2);
         }
     });

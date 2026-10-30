@@ -81,6 +81,7 @@ function makeHarness({ nativeCompileComputeAsync = false } = {}) {
         _isDeviceLost: false,
         info,
         _inspector: { beginCompute() {}, finishCompute() {} }, // the `inspector` accessor wraps this
+        _animation: { start() {} }, // r187 starts the animation loop on first use (compute())
         backend,
         _pipelines: pipelines,
         _bindings: bindings,

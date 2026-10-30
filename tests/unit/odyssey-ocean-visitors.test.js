@@ -35,6 +35,8 @@ function stubRenderer(forceWebGL) {
     const renderer = new THREE.WebGPURenderer({ canvas, forceWebGL });
     renderer.hasFeature = () => false;
     renderer._initialized = true;
+    // r187 reads shared bind groups from the renderer's Bindings, which init() makes: a pass-through here.
+    renderer._bindings = { getSharedBindGroup: (group) => group };
     if (forceWebGL) renderer.backend.capabilities = { getUniformBufferLimit: () => 16384, getMaxAnisotropy: () => 1 };
     else renderer.backend.device = { limits: { maxUniformBufferBindingSize: 65536 }, features: new Set() };
     return renderer;

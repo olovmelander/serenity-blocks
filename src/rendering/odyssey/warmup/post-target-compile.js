@@ -45,6 +45,8 @@
  * uploads, first update(), the non-representative bucket members' first draw).
  */
 
+import { ensurePrecompileRestoresLiveState } from '../../three-precompile-live-restore.js';
+
 /**
  * The renderer's ACTUAL bound target + MRT, bypassing the live-compile read override
  * ({@link beginLiveCompileReads}) — every save/restore in this module must see the truth.
@@ -227,8 +229,11 @@ export function beginNestedContextDepth(renderer) {
     const contexts = renderer?._renderContexts;
     if (!contexts || typeof contexts.get !== 'function' || contexts.__odysseyDepthPatched) return null;
     const originalGet = contexts.get;
-    contexts.get = function patchedGet(renderTarget = null, mrt = null, callDepth = 0) {
-        return originalGet.call(this, renderTarget, mrt, callDepth === 0 ? POST_SCENE_PASS_CALL_DEPTH : callDepth);
+    // Every further argument passes through: r187 keys contexts by the camera's type as well
+    // (`get(renderTarget, mrt, callDepth, camera)`), and an orthographic post quad must not
+    // resolve the perspective context.
+    contexts.get = function patchedGet(renderTarget = null, mrt = null, callDepth = 0, ...rest) {
+        return originalGet.call(this, renderTarget, mrt, callDepth === 0 ? POST_SCENE_PASS_CALL_DEPTH : callDepth, ...rest);
     };
     contexts.__odysseyDepthPatched = true;
     return () => {
@@ -266,6 +271,8 @@ export async function compileGroupThroughPost(
     options = {},
 ) {
     const postActive = !!postProcessingStack?.scenePass?.renderTarget;
+    // r187: each drained object puts back the binding that was live when it began.
+    ensurePrecompileRestoresLiveState(renderer);
     if (renderLoopActive && postActive) {
         if (!options.live) return false;
         return compileGroupUnderLiveLoop(renderer, postProcessingStack, scene, camera, group, options);
@@ -323,6 +330,10 @@ export async function compileGroupThroughPost(
  */
 export function beginDeferredSideCapture(renderer) {
     if (!renderer || typeof renderer._createObjectPipeline !== 'function') return null;
+    // r187 fixed this upstream (#35016): _createObjectPipeline queues `side: material.side` with
+    // the item's own precompile state, and _beginPreCompile applies it while the item builds. An
+    // item queued here would carry no `precompilationState`, which the drain reads first.
+    if (typeof renderer._beginPreCompile === 'function') return null;
     if (renderer.__odysseySideCapture) {
         renderer.__odysseySideCapture.count += 1;
         return renderer.__odysseySideCapture.release;
@@ -612,6 +623,8 @@ export function beginLiveCompileReads(renderer, binding) {
         count: 1,
         binding,
         liveDepth: 0,
+        /** Above 0 while three's own precompile hooks run (r187): their writes are dropped. */
+        inPrecompile: 0,
         backing: { renderTarget: renderer._renderTarget ?? null, mrt: renderer._mrt ?? null },
         release: null,
     };
@@ -623,11 +636,29 @@ export function beginLiveCompileReads(renderer, binding) {
     };
     shadow('_renderTarget', {
         get() { return active() ? state.binding.renderTarget : state.backing.renderTarget; },
-        set(value) { state.backing.renderTarget = value; },
+        set(value) { if (state.inPrecompile === 0) state.backing.renderTarget = value; },
     });
     shadow('_mrt', {
         get() { return active() ? state.binding.mrt : state.backing.mrt; },
-        set(value) { state.backing.mrt = value; },
+        set(value) { if (state.inPrecompile === 0) state.backing.mrt = value; },
+    });
+    // r187's drain binds each item's queue-time target + MRT around its build and then the launch's
+    // (_beginPreCompile / _finishPreCompile; three-precompile-live-restore.js). The launch here bound
+    // the scene pass, so those writes would leave it in the backing the next live frame draws with.
+    // The drained builds read the binding above anyway: drop the hooks' writes.
+    ['_beginPreCompile', '_finishPreCompile'].forEach((name) => {
+        const original = renderer[name];
+        if (typeof original !== 'function') return;
+        shadow(name, {
+            value: function odysseyPrecompileHook(...args) {
+                state.inPrecompile += 1;
+                try {
+                    return original.apply(this, args);
+                } finally {
+                    state.inPrecompile -= 1;
+                }
+            },
+        });
     });
     // Suspend the shadow for the whole synchronous extent of every entry point that reads or
     // rebinds the real target: renders, computes, clears, copies, resizes (the canvas MSAA buffers
@@ -765,6 +796,7 @@ export async function compileGroupUnderLiveLoop(renderer, postProcessingStack, s
     const scenePass = postProcessingStack?.scenePass;
     if (!scenePass?.renderTarget || typeof renderer?.compileAsync !== 'function') return false;
     if (renderer._isDeviceLost === true) return false;
+    ensurePrecompileRestoresLiveState(renderer);
     const binding = { renderTarget: scenePass.renderTarget, mrt: scenePass.getMRT?.() ?? null };
     const releaseReads = beginLiveCompileReads(renderer, binding);
     const releaseSideCapture = beginDeferredSideCapture(renderer);

@@ -249,13 +249,28 @@ function traceBuild(renderer, args, kind, ms, depth) {
     });
 }
 
-/** A first-time build the budget does not charge, timed for the trace. */
+/**
+ * The key RenderObjects files this draw's render object under: [object, material, renderContext,
+ * lightsNode], and from r187 the source material too while an override pass draws (a shadow map,
+ * `scene.overrideMaterial`: Renderer.renderObject sets `_currentSourceMaterial`). ChainMap keeps
+ * keys of each length in a map of their own, so a four-key lookup never finds a five-key entry:
+ * every shadow draw would read as a new build on every frame.
+ */
+function chainKeysOf(renderer, object, material, lightsNode) {
+    const keys = [object, material, renderer._currentRenderContext, lightsNode];
+    const source = renderer._currentSourceMaterial;
+    if (source !== undefined && source !== null) keys.push(source);
+    return keys;
+}
+
 /** Whether this draw would build a render object the renderer has not built yet. */
 function isNewRenderObject(renderer, args) {
     const [object, material, , , lightsNode, , , passId] = args;
     const chainMap = renderer._objects?.getChainMap?.(passId);
-    return Boolean(chainMap) && chainMap.get([object, material, renderer._currentRenderContext, lightsNode]) === undefined;
+    return Boolean(chainMap) && chainMap.get(chainKeysOf(renderer, object, material, lightsNode)) === undefined;
 }
+
+/** A first-time build the budget does not charge, timed for the trace. */
 
 function tracedExempt(renderer, original, args, kind) {
     if (!isNewRenderObject(renderer, args)) return original.apply(renderer, args);
@@ -287,7 +302,7 @@ function installBuildBudget(proto) {
         // A render object this renderer already built costs a cache lookup: never budgeted.
         const [object, material, , , lightsNode, , , passId] = args;
         const chainMap = this._objects?.getChainMap?.(passId);
-        if (!chainMap || chainMap.get([object, material, this._currentRenderContext, lightsNode]) !== undefined) {
+        if (!chainMap || chainMap.get(chainKeysOf(this, object, material, lightsNode)) !== undefined) {
             return original.apply(this, args);
         }
         const t0 = performance.now();

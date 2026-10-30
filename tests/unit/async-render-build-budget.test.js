@@ -2,6 +2,7 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
+import ChainMap from 'three/src/renderers/common/ChainMap.js';
 import {
     beginAsyncRenderPipelines,
     exemptBuildCount,
@@ -289,5 +290,72 @@ describe('a warm frame lets its parked drawables past the budget', () => {
         const renderer = new FakeRenderer();
         expect(withBuildBudgetExemptFor(renderer, new Set(), () => 'ran')).toBe('ran');
         expect(exemptBuildCount(renderer)).toBeNull();
+    });
+});
+
+describe('an override pass (a shadow map) keys its render objects by the source material too', () => {
+    // three r187 RenderObjects.get: while Renderer.renderObject draws with scene.overrideMaterial it
+    // sets _currentSourceMaterial and files the render object under five keys, [object, material,
+    // renderContext, lightsNode, sourceMaterial]. ChainMap keeps each key length in a map of its own,
+    // so the budget's lookup must use the same five or a built shadow draw reads as new every frame.
+    class OverrideRenderer {
+        constructor() {
+            this.built = [];
+            this.drawn = [];
+            this._currentRenderContext = { id: 'shadow-ctx' };
+            this._currentSourceMaterial = null;
+            this._renderTarget = { texture: { name: 'shadow' } };
+            this.lightsNode = { id: 'lights' };
+            const map = new ChainMap();
+            this._objects = { getChainMap: () => map };
+        }
+
+        _renderObjectDirect(object, material, scene, camera, lightsNode) {
+            const keys = [object, material, this._currentRenderContext, lightsNode];
+            if (this._currentSourceMaterial !== null) keys.push(this._currentSourceMaterial);
+            const map = this._objects.getChainMap('default');
+            if (map.get(keys) === undefined) {
+                now += buildMs;
+                map.set(keys, { object });
+                this.built.push(object.id);
+            }
+            this.drawn.push(object.id);
+        }
+
+        /** One shadow frame: every caster drawn with the one depth material, as the shadow pass does. */
+        shadowFrame(casters, depthMaterial) {
+            const handle = this._renderObjectDirect; // eslint-disable-line no-underscore-dangle
+            casters.forEach((caster) => {
+                this._currentSourceMaterial = caster.material;
+                handle.call(this, caster, depthMaterial, null, null, this.lightsNode, null, null, 'default');
+                this._currentSourceMaterial = null;
+            });
+            now += 16;
+        }
+    }
+
+    it('builds each caster once, then draws it every frame without charging or deferring it', async () => {
+        const renderer = new OverrideRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'summer', renderer }, {
+            buildBudgetMs: 8, rendererProto: OverrideRenderer.prototype,
+        });
+        const casters = objects(6);
+        const depth = { id: 'depth' };
+        for (let frame = 0; frame < 3; frame += 1) {
+            renderer.shadowFrame(casters, depth);
+            await nextTask(); // eslint-disable-line no-await-in-loop
+        }
+        expect(renderer.built).toEqual([0, 1, 2, 3, 4, 5]);
+        // A frame whose new scene objects spend the budget first: the built casters after them are
+        // cache hits, drawn, never deferred (a deferred one is a caster missing from the shadow).
+        const { deferredBuilds } = session;
+        renderer.drawn.length = 0;
+        const fresh = ['a', 'b', 'c', 'd'].map((id) => ({ id, material: { id } }));
+        fresh.forEach((object) => renderer._renderObjectDirect(object, object.material, null, null, renderer.lightsNode)); // eslint-disable-line no-underscore-dangle
+        expect(renderer.built).toEqual([0, 1, 2, 3, 4, 5, 'a', 'b', 'c']);
+        renderer.shadowFrame(casters, depth);
+        expect(renderer.drawn).toEqual(['a', 'b', 'c', 0, 1, 2, 3, 4, 5]);
+        expect(session.deferredBuilds).toBe(deferredBuilds + 1); // 'd' only
+        session.end();
     });
 });
