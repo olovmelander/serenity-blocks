@@ -204,13 +204,15 @@ export function ridged(p, octaves = 5) {
 /**
  * Animated Voronoi cells: returns (F1, F2, cell id). F2 - F1 is ~0 on a cell wall, so it draws
  * cracks, crust plates, caustic nets and granulation. `t` swings each cell's seed around its slot.
+ * The id is the nearest cell's hash, taken once for the cell the search keeps (the same cell, so
+ * the same value, as hashing all nine and keeping the nearest one's).
  */
 export const voronoi = /* @__PURE__ */ Fn(([p, t]) => {
     const n = floor(p).toVar();
     const f = fract(p).toVar();
     const f1 = float(8).toVar();
     const f2 = float(8).toVar();
-    const id = float(0).toVar();
+    const nearest = vec2(n).toVar();
     for (let j = -1; j <= 1; j++) {
         for (let i = -1; i <= 1; i++) {
             const cell = n.add(vec2(i, j)).toVar();
@@ -218,14 +220,13 @@ export const voronoi = /* @__PURE__ */ Fn(([p, t]) => {
             const offset = sin(seed.mul(6.2831).add(t)).mul(0.5).add(0.5);
             const r = vec2(i, j).add(offset).sub(f);
             const d = dot(r, r).toVar();
-            const cellId = hash21(cell.add(17.3)).toVar();
             const closer = d.lessThan(f1);
             f2.assign(select(closer, f1, min(f2, d)));
-            id.assign(select(closer, cellId, id));
+            nearest.assign(select(closer, cell, nearest));
             f1.assign(min(f1, d));
         }
     }
-    return vec3(sqrt(f1), sqrt(f2), id);
+    return vec3(sqrt(f1), sqrt(f2), hash21(nearest.add(17.3)));
 }).setLayout({
     name: 'br_voronoi', type: 'vec3', inputs: [{ name: 'p', type: 'vec2' }, { name: 't', type: 'float' }],
 });
