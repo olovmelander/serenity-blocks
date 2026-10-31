@@ -161,6 +161,76 @@ cap), Hale First Breath and Base, built ahead as shipped, both versions: all 8 s
 world built ahead and are back in 434-446 ms on both; no sync pipeline at any change on r187 (r186
 made 12 at one).
 
+## Phase 2: full-speed A/B (night of 2026-10-30 → 31)
+
+Same machine, Balanced mode (GPU limit 95 W) for the whole night, harness builds served by
+`vite preview`: r186 = Phase 0 on 0.186.1 (`fe9f23d6`), r187 = `c2220980`. Fleet bench at the panel's
+cadence (`--vsync=1 --target-fps=240`, `ab-load.sh`): per theme a cold switch from the anchor, a warm
+switch back to it, two 2 s gameplay storms; arms interleaved, two rounds each (means of 2).
+
+**Theme switches, 20 themes (the worst freezes plus a spread):**
+
+| Median over 20 themes | r186 | r187 |
+|---|---:|---:|
+| First visit: switch to shown | 930 ms | 795 ms (−15 %) |
+| Return visit: switch to shown | 628 ms | 497 ms (−21 %) |
+| Longest frame in a first-visit switch | 71 ms | 70 ms |
+| Longest frame in a return-visit switch | 58 ms | 39 ms (−33 %) |
+| Storm frame p99 / storm long tasks | 6.6 ms / 0 | 6.7 ms / 0 |
+
+Largest gains: Rainbark first-visit freeze 126 → 77 ms and return switch 1,036 → 514 ms; Solar Eclipse
+freezes 87 → 51 / 67 → 21 ms; Neon Quarter return freeze 82 → 34 ms; Spring first visit 2,190 →
+1,492 ms; Stellar Drift 70 → 48 / 52 → 23 ms. Worse: High Coast first-visit freeze 71 → 83 ms (its own
+build steps, a timer task), Rainbark first visit shown 1,662 → 1,805 ms. Storms: equal.
+
+**Odyssey, built game, the owner's settings (`--fps=144 --quality=Extreme`), cold (fresh profile) and
+warm (same profile), two rounds:** 0 errors on both; sync pipelines at the start 11 on both; worst frame
+just after the reveal 96-104 ms on r186, 17-46 ms on r187; start p99 18-39 → 12-22 ms. Board active
+after: warm 1,119-1,121 → 1,063-1,080 ms, but **cold 1,781-1,893 → 2,612-2,649 ms**: the compiles
+that overlapped on r186 took turns, each waiting for the previous one's GPU work.
+
+**Fixed (`df5ff946`): a turn ends with its call's drain, not its GPU work.** `watchCompileDrain` counts
+the objects a compileAsync queues and the pipelines its drain requests; after the last item's final
+`_finishPreCompile` three only awaits the pipelines and never touches `_precompilationState`, so the
+next call drains while they compile. Same A/B, r187 → r187 with drain turns:
+
+| Odyssey, Extreme, 144 fps cap | r186 | r187 (turns per call) | r187 (turns per drain) |
+|---|---:|---:|---:|
+| Board active, cold cache | 1,781 / 1,893 ms | 2,577 / 2,619 ms | **1,699 / 1,713 ms** |
+| Board active, warm cache | 1,121 / 1,119 ms | 1,083 / 1,054 ms | **990 / 1,001 ms** |
+| Worst frame after the reveal | 96-104 ms | 40-45 ms | 49-51 ms |
+| Errors / sync pipelines at the start | 0 / 11 | 0 / 11 | 0 / 11 |
+
+**Using r187 for switch freezes: sliced builds.** After r187 the worst first-visit freezes were frames
+built around one large material: the build budget defers builds past a frame's share, but a task's
+first build always runs whole inside the frame that meets it. r187 builds a render object's nodes
+asynchronously, yielding after each shader stage of each build stage
+(`NodeManager.getForRender(renderObject, yieldFn)` → `NodeBuilder.buildAsync`). With `sliceBuilds`
+(the in-play switch's hidden build only; rollback `?switchSlicedBuilds=0`) the budget wrapper never
+builds a new render object inside a frame: the draw creates the render object (cache keys only),
+queues it and is skipped like a deferred build; a queue builds it between frames, a stage at a time,
+with the render state it was met under (target, cube face, mip level, MRT, context node, render
+context, tone mapping, colour space) applied for each slice and the live state put back before each
+yield; built objects get their first draw a few per frame (`SLICED_FIRST_DRAWS_PER_TASK`). The first
+version let every finished object draw at once: Forest's texture uploads and mip generation then
+stalled the GPU process for 150 ms (its first-visit freeze 42 → 153 ms). With two first draws a frame,
+12 worst themes, r187 → r187 + sliced, two rounds: median first-visit freeze 78 → 66 ms, return 51 → 48;
+Rainbark 88/50 → 66/20 ms, Star Cradle 83/65 → 52/48, Solar Eclipse 51/20 → 33/12, Thermal Bloom
+87/63 → 66/51, Neon Quarter 78 → 67, Murmuration 94/51 → 84/42; Forest 49 → 59 ms; return switches
+until shown 520 → 642 ms (the held first draws). Shipped at four a frame with the mipmap warm below.
+
+**The only synchronous pipelines of a theme switch: three's mipmap pipelines.** Every synchronous
+pipeline the 40 first-visit switches above created was `mipmap-<format>-2d-array` (rgba8unorm ×26,
+rgba16float ×6, rgba8unorm-srgb ×4, r8unorm ×2): `WebGPUTexturePassUtils.getTransferPipeline` creates
+them with the synchronous `createRenderPipeline` when a texture of that format first needs mips, and
+every theme starts on a fresh GPUDevice. In 11 of the 40 the switch's worst frame began at one (Blood
+Moon 79-84 ms, Neon Quarter 80-82, Verdant Hills 78, Grainfields 55-60, Solar Eclipse 50-52, Ice Temple
+35-39): the GPU process compiling on the thread that also draws the display, the "GPU-process task" of
+Blood Moon's freeze the fleet pass could not place. `src/rendering/mipmap-pipeline-warm.js` creates the
+same four pipelines with `createRenderPipelineAsync` right after a renderer's `init()` (BaseTheme, the
+Odyssey board) and puts each into three's own cache unless three made one first (rollback
+`?mipmapPipelineWarm=0`; contract-tested against the installed three).
+
 ## Phase 2 acceptance (open)
 
 - (Done, above.) Real-GPU captures of every theme, r186 build vs r187 build at the same frames (RTX; the playground

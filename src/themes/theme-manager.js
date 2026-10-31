@@ -1326,6 +1326,9 @@ export class ThemeManager {
                 buildBudgetMs: SWITCH_BUILD_BUDGET_MS,
                 // Hidden until quiet: its post chain's final composite may compile async too.
                 asyncCompositeWhileHidden: true,
+                // three r187: every new material builds between frames, a shader stage at a time,
+                // instead of whole inside one (rollback: ?switchSlicedBuilds=0).
+                sliceBuilds: readFlag('switchSlicedBuilds', true),
             });
             this._behindBuild = { theme: themeInstance, themeName };
         }

@@ -284,6 +284,155 @@ function tracedExempt(renderer, original, args, kind) {
     }
 }
 
+// ── Sliced builds (three r187) ─────────────────────────────────────────────────────────────────
+//
+// The budget defers builds beyond a frame's share, but a task's FIRST build always runs, whole, in
+// the frame that meets it: one large material is a freeze no budget splits (Neon Quarter, Murmuration,
+// Verdant Hills, Thermal Bloom kept 75-110 ms switch freezes on r187, 2026-10-31). three r187 builds a
+// render object's nodes asynchronously, yielding after each shader stage of each build stage
+// (NodeManager.getForRender(renderObject, yieldFn) -> NodeBuilder.buildAsync). With `sliceBuilds` a
+// hidden build never builds a new render object inside a frame: the draw creates the render object
+// (cache keys only), queues it and is skipped, as a deferred build is; the queue builds it between
+// frames, a shader stage at a time, with the render state it was met under applied for each slice and
+// the live state put back before each yield. A later frame finds it built and draws it. r186 has no
+// async render build: nothing is sliced there.
+
+/** Slices share a task until this much of it is spent; the next waits for a frame. */
+const SLICE_TASK_MS = 6;
+/**
+ * First draws of sliced objects let through per task. A first draw uploads the object's textures
+ * and generates their mips (on the GPU process: three's mipmap pipelines are created synchronously).
+ * Slices finish many objects at once; all drawn in one frame, Forest's uploads stalled the GPU
+ * process for 150 ms (2026-10-31). A few a frame spreads them as the budget spread its builds (two
+ * held Forest at 59 ms but a return switch took 0.1 s longer; four, with the mipmap pipelines warmed
+ * by mipmap-pipeline-warm.js, is the shipped value: see the upgrade record).
+ */
+export const SLICED_FIRST_DRAWS_PER_TASK = 4;
+/** Render objects whose sliced build is queued or running (drawn only once built). */
+const slicing = new WeakSet();
+/** Sliced objects already built, waiting for their first draw (see SLICED_FIRST_DRAWS_PER_TASK). */
+const slicedReady = new WeakSet();
+/** renderer -> { queue, running } */
+const sliceQueues = new WeakMap();
+
+/** @param {any} renderer */
+export function canSliceBuilds(renderer) {
+    return typeof renderer?._beginPreCompile === 'function' && typeof renderer?._nodes?.getForRender === 'function';
+}
+
+/** What a node build reads off the renderer. @param {any} renderer */
+function renderStateOf(renderer) {
+    return {
+        renderTarget: renderer._renderTarget,
+        activeCubeFace: renderer._activeCubeFace,
+        activeMipmapLevel: renderer._activeMipmapLevel,
+        mrt: renderer._mrt,
+        contextNode: renderer.contextNode,
+        renderContext: renderer._currentRenderContext,
+        toneMapping: renderer.toneMapping,
+        outputColorSpace: renderer.outputColorSpace,
+    };
+}
+
+/** @param {any} renderer @param {ReturnType<typeof renderStateOf>} state */
+function applyRenderState(renderer, state) {
+    renderer.setRenderTarget(state.renderTarget, state.activeCubeFace, state.activeMipmapLevel);
+    renderer.setMRT(state.mrt);
+    renderer.contextNode = state.contextNode;
+    renderer._currentRenderContext = state.renderContext;
+    renderer.toneMapping = state.toneMapping;
+    renderer.outputColorSpace = state.outputColorSpace;
+}
+
+/** Resolves in this task while it is short, else after the next frame. @param {{t: number}} clock */
+function nextSlice(clock) {
+    if (performance.now() - clock.t < SLICE_TASK_MS) return Promise.resolve();
+    return new Promise((resolve) => {
+        const go = () => setTimeout(() => {
+            clock.t = performance.now(); // eslint-disable-line no-param-reassign
+            resolve();
+        }, 0);
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(go);
+        else go();
+    });
+}
+
+/**
+ * Build one queued render object a slice at a time. Resolves when it is built, or as soon as its
+ * session ends (its frames then build what is left as they always did).
+ */
+async function buildSliced(renderer, job, clock) {
+    let live = null;
+    const enter = () => {
+        live = renderStateOf(renderer);
+        applyRenderState(renderer, job.state);
+    };
+    const leave = () => {
+        if (live === null) return;
+        applyRenderState(renderer, live);
+        live = null;
+    };
+    const yieldFn = async () => {
+        leave();
+        await nextSlice(clock);
+        if (!job.session.active) await new Promise(() => {}); // abandoned: never resumes
+        enter();
+    };
+    await nextSlice(clock); // never in the frame that met it
+    if (!job.session.active) return;
+    enter();
+    let built;
+    try {
+        built = renderer._nodes.getForRender(job.renderObject, yieldFn);
+    } catch {
+        job.session.sliceFailed += 1; // eslint-disable-line no-param-reassign
+    } finally {
+        leave(); // a build that finished at once, or one now waiting in yieldFn (already left)
+    }
+    if (!built || typeof built.then !== 'function') return;
+    try {
+        await Promise.race([built, job.session.ended]);
+    } catch {
+        job.session.sliceFailed += 1; // eslint-disable-line no-param-reassign
+    } finally {
+        leave(); // the last slice applied the state again before the build returned
+    }
+}
+
+async function runSliceQueue(renderer) {
+    const q = sliceQueues.get(renderer);
+    if (!q || q.running) return;
+    q.running = true;
+    // Started from inside the frame that met the first object: the first slice waits for a frame.
+    const clock = { t: -Infinity };
+    try {
+        while (q.queue.length > 0) {
+            const job = q.queue.shift();
+            if (job.session.active) {
+                await buildSliced(renderer, job, clock); // eslint-disable-line no-await-in-loop
+            }
+            if (job.session.active) {
+                job.session.slicedBuilt += 1; // eslint-disable-line no-param-reassign
+                slicedReady.add(job.renderObject); // drawn when a frame has room for it
+            } else {
+                slicing.delete(job.renderObject);
+            }
+        }
+    } finally {
+        q.running = false;
+    }
+}
+
+function queueSlice(renderer, job) {
+    let q = sliceQueues.get(renderer);
+    if (!q) {
+        q = { queue: [], running: false };
+        sliceQueues.set(renderer, q);
+    }
+    q.queue.push(job);
+    if (!q.running) runSliceQueue(renderer);
+}
+
 function installBuildBudget(proto) {
     if (budgetPatched) return budgetPatched.proto === proto;
     const original = proto?._renderObjectDirect;
@@ -302,10 +451,36 @@ function installBuildBudget(proto) {
             return tracedExempt(this, original, args, kind);
         }
         // A render object this renderer already built costs a cache lookup: never budgeted.
-        const [object, material, , , lightsNode, , , passId] = args;
+        const [object, material, scene, camera, lightsNode, group, clippingContext, passId] = args;
         const chainMap = this._objects?.getChainMap?.(passId);
-        if (!chainMap || chainMap.get(chainKeysOf(this, object, material, lightsNode)) !== undefined) {
+        const existing = chainMap ? chainMap.get(chainKeysOf(this, object, material, lightsNode)) : null;
+        if (existing !== undefined && existing !== null && slicing.has(existing)) {
+            if (slicedReady.has(existing) && s.takeFirstDraw()) {
+                // Built between frames: its first draw (bindings, texture uploads) now.
+                slicing.delete(existing);
+                slicedReady.delete(existing);
+                return original.apply(this, args);
+            }
+            // Its sliced build is still running, or this frame's first draws are spent: not drawn
+            // yet, like a deferred build.
+            s.deferBuild();
+            return undefined;
+        }
+        if (!chainMap || existing !== undefined) {
             return original.apply(this, args);
+        }
+        if (s.sliceBuilds && canSliceBuilds(this) && (this._currentSourceMaterial ?? null) === null) {
+            // (Override passes, the shadow maps, keep the budget: their draw sets the override.)
+            const context = this._currentRenderContext;
+            const renderObject = this._objects.get(object, material, scene, camera, lightsNode, context, clippingContext, passId);
+            renderObject.drawRange = object.geometry?.drawRange;
+            renderObject.group = group;
+            slicing.add(renderObject);
+            queueSlice(this, { renderObject, state: renderStateOf(this), session: s });
+            s.slicedBuilds += 1;
+            s.deferBuild();
+            traceBuild(this, args, 'sliced', 0, chargeDepth);
+            return undefined;
         }
         const t0 = performance.now();
         if (!s.chargeable(chargeDepth > 0 ? t0 - chargeStart : 0)) {
@@ -351,7 +526,7 @@ function uninstallIfIdle() {
  * unless preloadAsyncRenderPipelines() has resolved, so callers keep their await structure.
  * @param {any} theme
  * @param {{label?: string, backendProto?: any, buildBudgetMs?: number, rendererProto?: any,
- *   exemptCanvasDraws?: boolean, asyncCompositeWhileHidden?: boolean}} [options]
+ *   exemptCanvasDraws?: boolean, asyncCompositeWhileHidden?: boolean, sliceBuilds?: boolean}} [options]
  *   buildBudgetMs: per-frame budget for first-time render-object builds (see BUILD BUDGET above);
  *   0 (the default) builds everything as it is met
  *   exemptCanvasDraws: never defer a draw into the canvas itself (the final composite of a VISIBLE
@@ -360,6 +535,8 @@ function uninstallIfIdle() {
  *   asyncCompositeWhileHidden: create the final composite's pipeline async too while the theme is
  *   still hidden (`theme._prewarmHidden`): for a build revealed only once it is quiet (the in-play
  *   switch). Once revealed, the composite is synchronous again.
+ *   sliceBuilds: with the build budget, build every new render object between frames, a shader
+ *   stage at a time (three r187; see "Sliced builds"): for a build nobody sees until it is quiet.
  */
 export function beginAsyncRenderPipelines(theme, {
     label = theme?.name ?? 'theme',
@@ -368,6 +545,7 @@ export function beginAsyncRenderPipelines(theme, {
     rendererProto = rendererProtoResolved,
     exemptCanvasDraws = false,
     asyncCompositeWhileHidden = false,
+    sliceBuilds = false,
 } = {}) {
     if (!theme || !backendProto || !install(backendProto)) return null;
     const stats = {
@@ -385,6 +563,10 @@ export function beginAsyncRenderPipelines(theme, {
         theme.asyncPipelinesInFlight = n;
         return n;
     };
+    let resolveEnded = () => {};
+    let firstDrawWindowOpen = false;
+    let firstDrawsInWindow = 0;
+    const ended = new Promise((resolve) => { resolveEnded = resolve; });
     const session = {
         label,
         theme,
@@ -396,6 +578,14 @@ export function beginAsyncRenderPipelines(theme, {
         buildBudgetMs: 0,
         exemptCanvasDraws: exemptCanvasDraws === true,
         asyncCompositeWhileHidden: asyncCompositeWhileHidden === true,
+        /** Build new render objects between frames (with the budget; see "Sliced builds"). */
+        sliceBuilds: false,
+        /** Render objects queued for a sliced build, and how many of them finished. */
+        slicedBuilds: 0,
+        slicedBuilt: 0,
+        sliceFailed: 0,
+        /** Resolves when the session ends: a sliced build still running is let go then. */
+        ended,
         /** Objects built whatever the budget says (see withBuildBudgetExemptFor), or null. */
         exemptObjects: null,
         /** How many of them were built (a warm frame reads it to know it reached them). */
@@ -430,6 +620,17 @@ export function beginAsyncRenderPipelines(theme, {
         chargeBuild(ms) {
             budgetSpent += ms;
             session.buildMs += ms;
+        },
+        /** Whether this task may give one more sliced object its first draw. */
+        takeFirstDraw() {
+            if (!firstDrawWindowOpen) {
+                firstDrawWindowOpen = true;
+                firstDrawsInWindow = 0;
+                afterThisTask(() => { firstDrawWindowOpen = false; });
+            }
+            if (firstDrawsInWindow >= SLICED_FIRST_DRAWS_PER_TASK) return false;
+            firstDrawsInWindow += 1;
+            return true;
         },
         deferBuild() {
             session.deferredBuilds += 1;
@@ -527,6 +728,7 @@ export function beginAsyncRenderPipelines(theme, {
         end() {
             if (session.active) {
                 session.active = false;
+                resolveEnded();
                 sessions.delete(session);
                 budgetSessions.delete(session);
                 uninstallIfIdle();
@@ -538,6 +740,7 @@ export function beginAsyncRenderPipelines(theme, {
     sessions.add(session);
     if (buildBudgetMs > 0 && rendererProto && installBuildBudget(rendererProto)) {
         session.buildBudgetMs = buildBudgetMs;
+        session.sliceBuilds = sliceBuilds === true;
         budgetSessions.add(session);
     }
     return session;

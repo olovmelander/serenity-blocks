@@ -294,6 +294,14 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
   half switched (Odyssey's six-wide prewarm: every prewarm failed, the map stopped presenting).
   Compile a group in ONE call (r187 parallelises its pipelines) and queue calls per renderer:
   `takeCompileTurn` / `compileObjectsFannedOut` in `src/rendering/odyssey/warmup/post-target-compile.js`.
+- three creates its **mipmap pipelines** (`mipmap-<format>-2d-array`) with the SYNCHRONOUS
+  `createRenderPipeline` the first time a texture of that format needs mips, once per GPUDevice: on the
+  GPU process's main thread, a visible stall (up to ~80 ms at a theme switch). Renderers started through
+  BaseTheme or the Odyssey board warm them with `warmMipmapPipelines` (`src/rendering/mipmap-pipeline-warm.js`);
+  a new renderer elsewhere that uploads mipmapped textures should call it right after `init()`.
+- r187 can build a render object's nodes asynchronously, a shader stage at a time
+  (`renderer._nodes.getForRender(renderObject, yieldFn)`); the in-play switch's hidden build uses it
+  (`sliceBuilds` in `src/rendering/async-render-pipelines.js`) so no large material builds inside a frame.
 - An override pass (`scene.overrideMaterial`, the shadow pass) files its render objects under
   five keys, the source material fifth (`renderer._currentSourceMaterial`). Code that looks render
   objects up must add it (see `chainKeysOf` in `src/rendering/async-render-pipelines.js`).

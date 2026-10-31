@@ -76,6 +76,7 @@ import {
     createFramePacer, resetFramePacer, resolveTargetFps, shouldRenderAtTargetFps,
 } from '../../themes/theme-frame-pacer.js';
 import { readFlag } from '../../core/flags.js';
+import { warmMipmapPipelines } from '../mipmap-pipeline-warm.js';
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
 import { applyOdysseyChapterMusic, releaseOdysseyBoardMusic } from '../../core/game-modes/odyssey-audio-policy.js';
@@ -3328,6 +3329,9 @@ export class OdysseyBoardController {
                 || (this._adaptiveGpuTiming && !forceWebGL),
         });
         await this.renderer.init();
+        // three's mipmap pipelines compiled off the GPU process's main thread before the chapters'
+        // textures need them (two synchronous creations at every board start otherwise).
+        if (readFlag('mipmapPipelineWarm', true)) warmMipmapPipelines(this.renderer);
         // WAVE -1c — name the passes the timestamp pool measures. AFTER init(): the renderer
         // constructs its own default InspectorBase and calls its init() from inside the init
         // promise, so replacing the slot afterwards is the clean seam. Gated on the profile flag

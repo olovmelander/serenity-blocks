@@ -172,6 +172,26 @@ export const FLAG_REGISTRY = [
         reader: 'flags',
     },
     {
+        name: 'mipmapPipelineWarm',
+        default: true,
+        purpose: 'a theme renderer compiles the three.js mipmap pipelines (rgba8unorm, -srgb, rgba16float, r8unorm) '
+            + 'with createRenderPipelineAsync right after init, into the three.js cache, instead of the synchronous '
+            + 'create on the GPU process when its first texture needs mips; rollback =0',
+        kind: 'refactor',
+        graduationBar: 'delete after the theme fleet bench shows no synchronous mipmap pipeline in a switch for one release',
+        reader: 'flags',
+    },
+    {
+        name: 'switchSlicedBuilds',
+        default: true,
+        purpose: 'three r187: the hidden incoming theme of an in-play switch builds every new material between '
+            + 'frames, a shader stage at a time (NodeBuilder.buildAsync), instead of whole inside a frame; rollback =0',
+        kind: 'refactor',
+        graduationBar: 'delete after the theme fleet bench switch freezes stay at or below the r187 baseline '
+            + 'for one release',
+        reader: 'flags',
+    },
+    {
         name: 'themeDeviceSpare',
         default: true,
         purpose: 'a theme start takes a GPUDevice requested ahead of time (src/rendering/theme-device-spare.js) '

@@ -15,6 +15,7 @@ import { readFlag } from '../core/flags.js';
 import { readExplorationSignal } from '../core/exploration-signal.js';
 import { adoptRendererForTheme } from '../rendering/async-render-pipelines.js';
 import { injectSpareThemeDevice } from '../rendering/theme-device-spare.js';
+import { warmMipmapPipelines } from '../rendering/mipmap-pipeline-warm.js';
 
 // Global render scale (set by settings system)
 let globalRenderScale = 1.0;
@@ -830,6 +831,9 @@ export class BaseTheme {
             // A loading-surface session for this theme owns the renderer even before
             // this.renderer is assigned (rendering/async-render-pipelines.js).
             adoptRendererForTheme(this, renderer);
+            // three's mipmap pipelines, compiled off the GPU process's main thread before the
+            // scene's textures need them (the only synchronous pipelines of a theme switch).
+            if (readFlag('mipmapPipelineWarm', true)) warmMipmapPipelines(renderer);
             return renderer;
         } catch (error) {
             if (!initSettled) {
