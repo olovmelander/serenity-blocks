@@ -7,10 +7,11 @@
  * moves the same at 60 and 165 Hz, and it starts and stops smoothly instead of whipping). The
  * target is the framing below, unless a beat holds the view on something the player should see.
  *
- * - The framing. The tower's top sits a fifth of the way down the view: room to steer above it,
- *   the stack beneath. A piece that goes deeper, down a shaft or into a hole, is followed with
- *   its top PIECE_LEAD_SHARE down the view, so the rows it falls toward are on screen, but the
- *   view goes no lower than it needs to show where the piece will land.
+ * - The framing. The tower's top sits three tenths of the way down the view: room to steer
+ *   above it (new pieces enter from just above the view), the stack beneath. A piece that
+ *   goes deeper, down a shaft or into a hole, is followed with its top PIECE_LEAD_SHARE down the
+ *   view, so the rows it falls toward are on screen, but the view goes no lower than it needs to
+ *   show where the piece will land.
  * - The lock. A piece the view followed down is shown locking before the view goes home.
  * - The landing. A piece hard-dropped out of sight is gone after, shown landing, then home.
  * - The clear. Rows cleared out of sight are gone to and watched until their cascade settles.
@@ -22,12 +23,15 @@
  * view's `top` is its first row on screen, and rows grow DOWN the tower (row 0 is the grid's top).
  */
 
+import { INFINITY_TOWER_TOP_SHARE } from '../../core/infinity-spawn-policy.js';
 import { springStep } from './ascent/tower-flight.js';
 
 export const PLAY_CAMERA = Object.freeze({
-    /** The tower's top sits this far down the view. */
-    TOWER_TOP_SHARE: 0.2,
-    /** A piece below the tower's top is followed with its top this far down the view. */
+    /** The tower's top sits this far down the view (0.3: six rows of twenty), the spawn
+     * window's own share, so new pieces enter from just above the view. */
+    TOWER_TOP_SHARE: INFINITY_TOWER_TOP_SHARE,
+    /** A piece below the tower's top is followed with its top this far down the view: the
+     * tower's own share, so following starts as the piece passes the tower's top. */
     PIECE_LEAD_SHARE: 0.3,
     /** Rows kept under a revealed landing. */
     LANDING_MARGIN_ROWS: 1,

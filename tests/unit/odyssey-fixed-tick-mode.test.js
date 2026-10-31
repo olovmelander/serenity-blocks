@@ -479,8 +479,8 @@ describe('OdysseyMode fixed-tick loop adapter', () => {
         expect(gameState.playerInput.config).toMatchObject(inputHandling);
     });
 
-    // 2026-10-22: the window is the 20 rows shown, framed with the garbage's top at 20 %, and
-    // the first piece enters two rows above it. (The legacy window added the starting rows: with
+    // 2026-10-22: the window is the 20 rows shown, framed with the garbage's top at 20 % (30 %
+    // since 2026-10-31), and the first piece enters two rows above it. (The legacy window added the starting rows: with
     // 16 of them the first piece spawned 16 rows above the view the well opened on.)
     it.each([0, 6, 16, 30])(
         'spawns the tall-board first piece just above its opening view with %i starting rows',
@@ -505,7 +505,7 @@ describe('OdysseyMode fixed-tick loop adapter', () => {
             const floorView = boardRows + 4 - mode.visibleRows;
             const garbageTop = boardRows + 4 - startingRows;
             const view = startingRows
-                ? Math.max(0, Math.min(floorView, garbageTop - 4))
+                ? Math.max(0, Math.min(floorView, garbageTop - 6))
                 : floorView;
             expect(gameState.infinityVisibleRows).toBe(mode.visibleRows);
             expect(gameState.cameraRow).toBe(view);
