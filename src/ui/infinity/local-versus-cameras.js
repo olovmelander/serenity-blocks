@@ -4,9 +4,9 @@
  * Infinity's play camera on every board of a local versus Last Standing match.
  *
  * Each board gets its own InfinityPlayCamera (infinity-play-camera.js), so it frames and moves
- * exactly as Infinity does: the tower's top a fifth of the way down the view, a piece taken down
- * a shaft followed until its landing shows, a landing or a clear out of sight shown and then the
- * view home, all on one spring that moves the same at 60 and 165 Hz.
+ * exactly as Infinity does: the tower's top three tenths of the way down the view, a piece taken
+ * down a shaft followed until its landing shows, a landing or a clear out of sight shown and then
+ * the view home, all on one spring that moves the same at 60 and 165 Hz.
  *
  * The mode syncs its boards several times a frame (its loop and every player's physics draw), so
  * the cameras step on the clock: a second step in the same moment does not move the view. Moving
@@ -66,8 +66,8 @@ export class LocalVersusCameras {
     }
 
     /**
-     * Where the board's view rests: the tower's top a fifth of the way down, lowered to follow a
-     * piece that went deeper and to show where it will land.
+     * Where the board's view rests: the tower's top three tenths of the way down, lowered to
+     * follow a piece that went deeper and to show where it will land.
      * @param {PlayerStateLike} state @param {number} visibleRows
      */
     static home(state, visibleRows) {

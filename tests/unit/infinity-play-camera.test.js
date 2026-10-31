@@ -30,18 +30,23 @@ describe('Infinity play camera framing', () => {
         expect(filledRowSpan(I_VERTICAL)).toEqual({ first: 0, last: 3 });
     });
 
-    it('rests an empty well on its floor and puts a tower\'s top a fifth of the way down', () => {
+    it('rests an empty well on its floor and puts a tower\'s top three tenths of the way down', () => {
+        expect(PLAY_CAMERA.TOWER_TOP_SHARE).toBe(0.3);
         expect(playFramingTop({ boardRows: 44, visibleRows: V, highestRow: 44 })).toBe(24);
-        expect(playFramingTop({ boardRows: 164, visibleRows: V, highestRow: 84 })).toBe(80);
+        // Six rows of twenty above the tower's top.
+        expect(playFramingTop({ boardRows: 164, visibleRows: V, highestRow: 84 })).toBe(78);
         // A low stack keeps the floor in view.
         expect(playFramingTop({ boardRows: 44, visibleRows: V, highestRow: 40 })).toBe(24);
     });
 
     it('leaves a piece above the tower to the tower framing', () => {
         const framing = { boardRows: 164, visibleRows: V, highestRow: 84 };
-        expect(playFramingTop({ ...framing, piece: { y: 78, shape: T }, landingY: 82 })).toBe(80);
-        // Hovering over a deep shaft changes nothing until the piece itself goes down.
-        expect(playFramingTop({ ...framing, piece: { y: 78, shape: T }, landingY: 162 })).toBe(80);
+        expect(playFramingTop({ ...framing, piece: { y: 78, shape: T }, landingY: 82 })).toBe(78);
+        // Hovering over a deep shaft changes nothing until the piece itself goes down...
+        expect(playFramingTop({ ...framing, piece: { y: 78, shape: T }, landingY: 162 })).toBe(78);
+        expect(playFramingTop({ ...framing, piece: { y: 84, shape: T }, landingY: 162 })).toBe(78);
+        // ...and the view follows from the row its top passes the tower's top.
+        expect(playFramingTop({ ...framing, piece: { y: 85, shape: T }, landingY: 162 })).toBe(79);
     });
 
     it('follows a piece down a shaft with the rows below it on screen, then shows its landing', () => {

@@ -14,6 +14,7 @@ import * as THREE from 'three/webgpu';
 import NeonDuskTheme from '../../src/themes/neon-dusk/neon-dusk-theme.js';
 import { AMBIENT_SHOOT_PERIOD, NeonDuskWorld, WORLD_QUALITY } from '../../src/themes/neon-dusk/neon-dusk-world.js';
 import { POST_LOOK } from '../../src/themes/neon-dusk/neon-dusk-post.js';
+import { TILE_HOLOGRAM, hologramPush } from '../../src/themes/neon-dusk/neon-dusk-fx.js';
 import { GRID_SPACING, RIG, SUN } from '../../src/themes/neon-dusk/neon-dusk-tsl.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
@@ -210,8 +211,8 @@ describe('neon-dusk world', () => {
         world.onPieceLock({ type: 'T', x: 1, rotation: 0 });
         const { iCell } = world.fx.tiles;
         const live = [];
-        // The cells ride the floor's scroll: z is stored at a scroll run of 0.
-        const run = world.u.scrollRun.value;
+        // The cells ride the tile run (the floor's scroll + their glide): z is stored at a run of 0.
+        const run = world.u.tileRun.value;
         for (let i = 0; i < iCell.count; i += 1) {
             if (iCell.array[i * 4 + 2] > -1e5) live.push([iCell.array[i * 4], iCell.array[i * 4 + 1] + run]);
         }
@@ -232,6 +233,79 @@ describe('neon-dusk world', () => {
         for (const [, z] of live) rows.set(z.toFixed(3), (rows.get(z.toFixed(3)) || 0) + 1);
         expect([...rows.values()].sort()).toEqual([1, 3]);
         world.dispose();
+    });
+
+    it('raises each locked piece far out on the sun\'s side and glides it in along the grid', () => {
+        const boardEdge = SOLO_BOARD.x0 * 2 - 1;
+        // Both halves of the board, every width, turned.
+        for (const [type, x, rotation] of [['T', 1, 0], ['I', 9, 0], ['S', 6, 1], ['L', 4, 2]]) {
+            const world = new NeonDuskWorld({ scene: new THREE.Scene(), random: seeded() }).build();
+            world.setLayout(16 / 9, SOLO_BOARD, { immediate: true });
+            const camera = viewCamera(world);
+            world.onPieceLock({ type, x, rotation });
+            const { iCell } = world.fx.tiles;
+            const live = [];
+            for (let i = 0; i < iCell.count; i += 1) {
+                if (iCell.array[i * 4 + 2] > -1e5) live.push(i);
+            }
+            expect(live).toHaveLength(4);
+            // One piece: its cells arrive together.
+            const arrive = iCell.array[live[0] * 4 + 3];
+            for (const i of live) expect(iCell.array[i * 4 + 3]).toBe(arrive);
+            const t0 = world.time;
+            // Where the tiles' shader draws it: the tile run plus the push it set off with.
+            const run = () => world.u.tileRun.value + hologramPush(world.time - t0);
+            const view = () => live.map((i) => {
+                const p = new THREE.Vector3(iCell.array[i * 4], 0, iCell.array[i * 4 + 1] + run());
+                const depth = -p.clone().applyMatrix4(camera.matrixWorldInverse).z;
+                return { depth, ndc: p.project(camera) };
+            });
+            const nearest = (cells) => Math.min(...cells.map((c) => c.depth));
+
+            // It rises far out, on screen, left of the board.
+            const start = view();
+            expect(nearest(start)).toBeGreaterThan(70);
+            for (const { ndc } of start) {
+                expect(ndc.x).toBeGreaterThan(-1);
+                expect(ndc.x).toBeLessThan(boardEdge);
+                expect(Math.abs(ndc.y)).toBeLessThan(1);
+            }
+
+            // It glides in toward the camera, never behind the board, at an even pace down the
+            // screen (it leaves the far glass quickly and slows as it comes near)...
+            let t = world.time;
+            const step = (seconds) => {
+                for (const end = t + seconds; t < end - 1e-9;) {
+                    t += 1 / 30;
+                    world.update({ time: t, delta: 1 / 30 });
+                }
+            };
+            const lowest = (cells) => Math.min(...cells.map((c) => c.ndc.y));
+            const drops = [];
+            let before = start;
+            for (let k = 0; k < 4; k += 1) {
+                step(1);
+                const now = view();
+                for (const { ndc } of now) expect(ndc.x).toBeLessThan(boardEdge);
+                expect(nearest(now)).toBeLessThan(nearest(before));
+                drops.push(lowest(before) - lowest(now));
+                before = now;
+            }
+            expect(Math.max(...drops) / Math.min(...drops)).toBeLessThan(2.5);
+
+            // ...and lies down in the glass a few seconds on, nearer, but not up at the lens.
+            const togo = () => arrive - run();
+            while (togo() > 0) step(0.1);
+            expect(t - t0).toBeGreaterThan(3);
+            expect(t - t0).toBeLessThan(8);
+            const arrived = view();
+            expect(nearest(arrived)).toBeGreaterThan(25);
+            expect(nearest(arrived)).toBeLessThan(46);
+            for (const { ndc } of arrived) expect(ndc.x).toBeLessThan(boardEdge);
+            step(1);
+            expect(togo()).toBeLessThan(-TILE_HOLOGRAM.fade);
+            world.dispose();
+        }
     });
 
     it('sends the combo pixels from the sun across the whole screen', () => {

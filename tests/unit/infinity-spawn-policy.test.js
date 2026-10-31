@@ -14,6 +14,7 @@ import {
     INFINITY_SPAWN_POLICY_CAMERA_V1,
     normalizeInfinitySpawnPolicy,
     projectInfinityPresentationCamera,
+    INFINITY_TOWER_TOP_SHARE,
     resolveInfinityFollowCameraRow,
     resolveInfinitySimulationCameraRow,
     resolveInfinitySpawnRow,
@@ -90,10 +91,12 @@ describe('Infinity deterministic spawn policy', () => {
         const state = createInfinityState();
         state.boardGrid[20][4] = { color: '#fff' };
 
+        // The tower's top (row 20) at 30 % of the window: six rows down, the spawn two above that.
+        expect(INFINITY_TOWER_TOP_SHARE).toBe(0.3);
         const cameraBefore = resolveInfinitySimulationCameraRow(state);
         const spawnBefore = resolveInfinitySpawnRow(state);
-        expect(cameraBefore).toBe(16);
-        expect(spawnBefore).toBe(14);
+        expect(cameraBefore).toBe(14);
+        expect(spawnBefore).toBe(12);
 
         expect(expandGridIfNeeded(state, 54)).toBe(true);
         expect(resolveInfinitySimulationCameraRow(state)).toBe(cameraBefore + 10);
@@ -111,7 +114,8 @@ describe('Infinity deterministic spawn policy', () => {
 
         expect(resolveInfinitySpawnRow(state)).toBe(16);
         state.piecesPlaced = 1;
-        expect(resolveInfinitySpawnRow(state)).toBe(11);
+        // 30 % of 26 rows is seven: 18 - 7 - 2.
+        expect(resolveInfinitySpawnRow(state)).toBe(9);
     });
 
     it('spawns above a tall tower while the camera still frames a piece locked deep beside it', () => {
@@ -143,7 +147,7 @@ describe('Infinity deterministic spawn policy', () => {
         expect(cameraAnchored.isGameOver).toBe(true);
 
         const boardAnchored = deepLock(INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1);
-        expect(spawnSeededPiece(boardAnchored)?.y).toBe(84 - 4 - 2);
+        expect(spawnSeededPiece(boardAnchored)?.y).toBe(84 - 6 - 2);
         expect(boardAnchored.isGameOver).toBe(false);
     });
 
@@ -154,8 +158,8 @@ describe('Infinity deterministic spawn policy', () => {
         state.boardGrid = replacement;
 
         expect(state.board).not.toBe(state.boardGrid);
-        expect(resolveInfinitySpawnRow(state)).toBe(14);
-        expect(spawnSeededPiece(state)?.y).toBe(14);
+        expect(resolveInfinitySpawnRow(state)).toBe(12);
+        expect(spawnSeededPiece(state)?.y).toBe(12);
         expect(state.board).toBe(state.boardGrid);
     });
 
@@ -182,9 +186,10 @@ describe('Infinity deterministic spawn policy', () => {
         expect(restored.infinityVisibleRows).toBe(18);
         expect(restored.infinitySpawnOffsetRows).toBe(3);
         expect(restored.board).toBe(restored.boardGrid);
-        expect(restored.cameraRow).toBe(17);
-        expect(restored.cameraCenterRow).toBe(26);
-        expect(resolveInfinitySpawnRow(restored)).toBe(14);
+        // 30 % of 18 rows is five: the window at 20 - 5, the spawn three above it.
+        expect(restored.cameraRow).toBe(15);
+        expect(restored.cameraCenterRow).toBe(24);
+        expect(resolveInfinitySpawnRow(restored)).toBe(12);
 
         const normalState = new GameState();
         expect(() => restoreGameStateSnapshot(normalState, snapshot, {
@@ -267,13 +272,13 @@ describe('Infinity deterministic spawn policy', () => {
         const state = createInfinityState();
         // An empty well rests on its floor.
         expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(24);
-        // A tower: its top at 20 % of the view, and the next spawn two rows above the view.
+        // A tower: its top at 30 % of the view, and the next spawn two rows above the view.
         state.boardGrid[10][4] = { color: '#fff' };
         state.piecesPlaced = 4;
-        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(6);
-        expect(resolveInfinitySpawnRow(state)).toBe(6 - 2);
-        // A piece above 80 % of that view changes nothing...
-        expect(resolveInfinityFollowCameraRow(state, 20, { y: 18, shape: [[1], [1]] })).toBe(6);
+        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(4);
+        expect(resolveInfinitySpawnRow(state)).toBe(4 - 2);
+        // A piece down to 80 % of that view changes nothing...
+        expect(resolveInfinityFollowCameraRow(state, 20, { y: 18, shape: [[1], [1]] })).toBe(4);
         // ...one soft-dropped past it lowers the view so its bottom sits at 80 %, within the floor.
         expect(resolveInfinityFollowCameraRow(state, 20, { y: 30, shape: [[1], [1]] })).toBe(32 - 16);
         expect(resolveInfinityFollowCameraRow(state, 20, { y: 42, shape: [[1], [1]] })).toBe(24);
@@ -293,7 +298,7 @@ describe('Infinity deterministic spawn policy', () => {
             const seededHarness = createCameraHarness(seeded);
             scenes.push(seededHarness.scene);
             seededHarness.scene.configureCamera();
-            expect(seededHarness.scene.cameraSettings.currentTopRow).toBe(6);
+            expect(seededHarness.scene.cameraSettings.currentTopRow).toBe(4);
 
             const empty = createInfinityState();
             const emptyHarness = createCameraHarness(empty);

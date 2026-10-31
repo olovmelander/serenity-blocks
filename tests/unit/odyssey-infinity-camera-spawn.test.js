@@ -43,14 +43,15 @@ describe('Odyssey Infinity camera-independent spawning', () => {
     // 2026-10-22: the window is the 20 rows shown, framed over the garbage's top, and the first
     // piece enters two rows above it. The window used to add the starting rows, which put these
     // first spawns at 52 and 6 — 32 and 8 rows above the view the well opened on.
-    it.each([[55, 70], [38, 14]])('spawns level %i\'s first piece just above the view it opens on', (id, view) => {
+    it.each([[55, 68], [38, 14]])('spawns level %i\'s first piece just above the view it opens on', (id, view) => {
         const { state } = createAttempt(id);
         const level = getLevelById(id);
         expect(state.infinitySpawnPolicy).toBe(INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1);
         expect(state.infinityVisibleRows).toBe(20);
-        // The view the well opens on: the garbage's top at 20 % of it, within the floor.
+        // The view the well opens on: the garbage's top at 30 % of it (20 % before 2026-10-31),
+        // within the floor.
         const garbageTop = state.boardGrid.length - level.mechanics.board.startingRows;
-        expect(view).toBe(Math.min(state.boardGrid.length - 20, garbageTop - 4));
+        expect(view).toBe(Math.min(state.boardGrid.length - 20, garbageTop - 6));
         expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(view);
         const anchor = state.cameraRow;
         expect(projectInfinityPresentationCamera(state, state.boardGrid.length - 20)).toBe(false);
@@ -137,10 +138,10 @@ describe('Odyssey Infinity camera-independent spawning', () => {
         // The count is capped to leave the top eight rows open...
         expect(state.lockedPieces).toHaveLength(96);
         expect(state.infinityVisibleRows).toBe(20);
-        // ...so the view opens at row 4 (the garbage's top, row 8, at 20 %), the spawn two above.
-        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(4);
+        // ...so the view opens at row 2 (the garbage's top, row 8, at 30 %), the spawn two above.
+        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(2);
         state.nextPieces = ['O'];
-        expect(spawnPiece(state)?.y).toBe(2);
+        expect(spawnPiece(state)?.y).toBe(0);
         expect(state.isGameOver).toBe(false);
     });
 

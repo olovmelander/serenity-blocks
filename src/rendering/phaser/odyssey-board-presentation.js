@@ -40,7 +40,7 @@ export function configureOdysseyBoardPresentation({
     scene.configureCamera?.();
     if (session.gameState.isInfinityMode) {
         // Open on the frame the follow camera holds (resolveInfinityFollowCameraRow: the tower's
-        // top at 20 % of the view, the first piece entering two rows above it). This framed the
+        // top at 30 % of the view, the first piece entering two rows above it). This framed the
         // tower's top at the view's bottom edge, so Indra's Net opened on twenty rows of empty
         // well and the follow then glided sixteen rows down into place as play began.
         scene.updateCameraPosition?.(resolveInfinityFollowCameraRow(session.gameState, ROWS, null), true);

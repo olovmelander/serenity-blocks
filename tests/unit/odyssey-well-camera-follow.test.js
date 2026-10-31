@@ -19,7 +19,7 @@ import {
  * 2026-10-22: a tall well's camera is the spawn's camera. It used to follow on thresholds of its
  * own (a piece past 60 % of the view to 30 %, the tower only into the top 40 %), so the view and
  * the board-anchored spawn drifted apart — in orb 7 every piece spawned ten rows above the view.
- * It now frames resolveInfinityFollowCameraRow every frame: the tower's top at 20 % of the view
+ * It now frames resolveInfinityFollowCameraRow every frame: the tower's top at 30 % of the view
  * (the window the next piece is anchored to, two rows above it), lowered only while a falling
  * piece's bottom would pass 80 %.
  */
@@ -71,8 +71,8 @@ describe('Odyssey tall-well camera follow', () => {
     it('frames the window the next piece spawns into: two rows above the view', () => {
         const { mode, cameraSettings, gameState } = createMode({ stackTop: 30 });
         settle(mode);
-        // The tower's top at 20 % of the view...
-        expect(cameraSettings.currentTopRow).toBeCloseTo(30 - 4, 3);
+        // The tower's top at 30 % of the view...
+        expect(cameraSettings.currentTopRow).toBeCloseTo(30 - 6, 3);
         // ...and the next piece enters two rows above it, on screen at once.
         expect(resolveInfinitySpawnRow(gameState)).toBe(Math.round(cameraSettings.currentTopRow) - 2);
     });
@@ -86,10 +86,10 @@ describe('Odyssey tall-well camera follow', () => {
     it('follows a falling piece down only past 80 % of the view, keeping its bottom there', () => {
         // Above the line: the view stays on the tower.
         const high = createMode({
-            rows: 80, stackTop: 50, topRow: 46, piece: { y: 52, shape: [[1], [1]] },
+            rows: 80, stackTop: 50, topRow: 44, piece: { y: 52, shape: [[1], [1]] },
         });
         high.mode._updateCameraPosition();
-        expect(high.scene.updateCameraPosition).toHaveBeenLastCalledWith(46);
+        expect(high.scene.updateCameraPosition).toHaveBeenLastCalledWith(44);
         // Below it (a soft drop down a shaft): the view lowers so the bottom sits at 80 %.
         const deep = createMode({ stackTop: 20, topRow: 16, piece: { y: 38, shape: [[1], [1]] } });
         deep.mode._updateCameraPosition();

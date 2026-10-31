@@ -1940,8 +1940,8 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * The view's home for the board as it stands (playFramingTop): the tower's top a fifth of
-     * the way down, lowered to follow a piece that went deeper and to show where it will land.
+     * The view's home for the board as it stands (playFramingTop): the tower's top three tenths
+     * of the way down, lowered to follow a piece that went deeper and to show where it will land.
      * Also where the ascent flies home to.
      * @returns {number} Target camera top row
      * @private

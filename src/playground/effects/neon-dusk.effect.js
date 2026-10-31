@@ -14,6 +14,8 @@
  *   hud=0                    board without the HUD mock
  *   event=lock|clear|combo|tetris|levelUp  fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, piece=<T..>)
+ *   event=locks              a run of `count` locks (default 6), one every `every` s (default
+ *                            1), each piece and column in turn; eventAge is the last one's age
  *   parts=sky,mountains,...  draw only these parts (sky mountains floor fx)
  *   noPost=1                 raw scene (no bloom/grade)
  *   reflect=<scale> blur=<mip> msaa=<n> chroma=0 bloom=0 dust=<n>   A/B overrides
@@ -152,8 +154,31 @@ export function create({
         world.update(sim(time, dt));
         pushPost(time);
     };
+    // A run of locks as a quick hand plays them: the pieces and columns in turn.
+    const RUN = [['T', 1, 0], ['I', 7, 0], ['S', 3, 1], ['O', 8, 0], ['L', 0, 2], ['Z', 5, 0], ['J', 2, 3]];
+    const lockRun = (time) => {
+        const count = Math.max(1, Math.round(num(params, 'count', 6)));
+        const every = Math.max(0.05, num(params, 'every', 1));
+        let t = Math.max(0, time - eventAge - (count - 1) * every);
+        world.seek(t);
+        step(t, 0);
+        for (let k = 0; k < count; k += 1) {
+            const [type, x, rotation] = RUN[k % RUN.length];
+            world.onPieceLock({ type, x, rotation });
+            const span = k < count - 1 ? every : eventAge;
+            const steps = Math.max(1, Math.round(span * 60));
+            for (let i = 1; i <= steps; i += 1) step(t + (i * span) / steps, span / steps);
+            t += span;
+        }
+        step(time, 0);
+    };
+
     // Seek: rebuild the event state at (t − age) so every capture of `t` is identical.
     const seekTo = (time) => {
+        if (eventName === 'locks') {
+            lockRun(time);
+            return;
+        }
         const t0 = Math.max(0, time - (eventName ? eventAge : 0));
         world.seek(t0);
         step(t0, 0);
