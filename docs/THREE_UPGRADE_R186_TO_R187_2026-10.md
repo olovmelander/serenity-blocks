@@ -414,6 +414,45 @@ per drawn frame, worst storm gap 7-18 ms). What was left in switches:
   on a 60 Hz display. Now by the clock (100 ms still, 50 ms quiet, a few frames minimum; the session's
   `isQuietFor`), the same here and ~230 ms sooner at 60 Hz.
 
+## Final acceptance at full speed (`a9dc0635`, 2026-10-31 afternoon)
+
+The owner's shortened full-speed run (Balanced, 95 W limit; one round, interleaved; differences under
+~10 % are noise). r186 = the Phase 0 build on 0.186.1, final = `a9dc0635`.
+
+**Theme switches, the same 20 themes** (fleet bench at the panel's cadence, `ab-load.sh`):
+
+| Median over 20 themes | r186 | final |
+|---|---:|---:|
+| Longest frame in a first-visit switch | 74 ms | **38 ms** |
+| Longest frame in a return-visit switch | 56 ms | **17 ms** |
+| First visit: switch to shown | 830 ms | 788 ms |
+| Return visit: switch to shown | 606 ms | 490 ms |
+| Synchronous pipelines in a first-visit switch | 1 | 0 |
+| Storm frame p99 | 6.7 ms | 6.7 ms |
+
+First-visit / return freezes, r186 → final: Rainbark 125/93 → 66/27, Murmuration 101/63 → 41/39,
+Solar Eclipse 90/79 → 34/12, Blood Moon 84 → 60, Neon Quarter 83/66 → 51/38, Verdant Hills 81/64 → 45/16,
+Star Cradle 79/74 → 17/12, Thermal Bloom 78/67 → 24/13, High Coast 74/66 → 38/18, Stillwater 74/54 →
+24/17, Stellar Drift 73/56 → 28/11, Painted Ages 71/63 → 39/18, Aurora 56/39 → 16/11. Worse in this round:
+Forest 44 → 52 and Spring 49 → 63 on the first visit (both a GPU-process wait with no script, where the
+once-per-shader-cache copy pipeline lands; their returns 34 → 18 and 33 → 23).
+
+**Odyssey** (Extreme, 144 fps cap, cold and warm): 0 errors on both; board active cold 1,804 → 1,699 ms,
+warm 1,107 → 989 ms; worst frame after the reveal cold 99 → 45 ms, warm 98 → 23 ms; synchronous pipelines
+at the start 11 → 9.
+
+**Frame rate, uncapped:** Grainfields 231 → 231, Thermal Bloom 280 → 280, Verdant Hills 236 → 244, Summer
+260 → 281 fps; worst storm −1 … +4 %. Unchanged within the spread.
+
+**All 63 themes on `a9dc0635`, light cadence:** every theme loaded, no console error or new message, rest
+shots match the earlier runs' contact sheets.
+
+**Known and left:** five themes keep a private, bit-identical copy of three's `computeVertexNormals` sliced
+into steps (Verdant Hills, Spring, Summer, Fall, Forest; Thermal Bloom's Stair): move them into one shared
+helper, and re-check them on the next three upgrade. Stellar Drift probes its bake cache through
+`derivedOnce` with a throwing maker (a shared `isDerived` would be cleaner). Sunfall's `createScene` catch
+disposes before its `isCurrent()` check, so a failed build is swallowed (older than this work).
+
 ## Phase 2 acceptance (open)
 
 - (Done, above.) Real-GPU captures of every theme, r186 build vs r187 build at the same frames (RTX; the playground
