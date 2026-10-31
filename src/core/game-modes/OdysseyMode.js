@@ -4106,7 +4106,7 @@ export class OdysseyMode extends BaseGameMode {
     /**
      * THE WELL'S CAMERA IS THE SPAWN'S CAMERA (2026-10-22). A tall well's view follows
      * resolveInfinityFollowCameraRow every frame: the window the next piece is anchored to (the
-     * tower's top at 20 % of the view, spawns entering two rows above it), lowered only while a
+     * tower's top at 30 % of the view, spawns entering two rows above it), lowered only while a
      * falling piece's bottom would pass 80 %. It used to move on thresholds of its own (follow a
      * piece past 60 % to 30 %, follow the tower only into the top 40 %), so the view and the spawn
      * anchor drifted apart: in orb 7 every piece spawned ten rows above the view and fell unseen

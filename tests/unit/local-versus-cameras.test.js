@@ -48,9 +48,10 @@ function run(cameras, s, state, { start = 0, ms, hz = 60 }) {
 const top = (s) => s.cameraSettings.currentTopRow;
 
 describe('Last Standing play cameras', () => {
-    it('rests on the floor of a young well and holds a tower\'s top a fifth of the way down', () => {
+    it('rests on the floor of a young well and holds a tower\'s top three tenths of the way down', () => {
         expect(LocalVersusCameras.home(player(44, 44), VISIBLE)).toBe(24);
-        expect(LocalVersusCameras.home(player(84, 40), VISIBLE)).toBe(36);
+        // Six rows of twenty above the tower's top (row 40), as in Infinity.
+        expect(LocalVersusCameras.home(player(84, 40), VISIBLE)).toBe(34);
     });
 
     it('comes down to the tower after a clear lowered it, as well as up to it', () => {
@@ -59,7 +60,7 @@ describe('Last Standing play cameras', () => {
             const cameras = new LocalVersusCameras();
             const s = scene(from);
             run(cameras, s, player(), { ms: 2000 });
-            expect(top(s)).toBeCloseTo(36, 1);
+            expect(top(s)).toBeCloseTo(34, 1);
         }
     });
 
@@ -72,7 +73,7 @@ describe('Last Standing play cameras', () => {
         };
         expect(Math.abs(at(60) - at(165))).toBeLessThan(0.25);
         expect(at(60)).toBeGreaterThan(6);
-        expect(at(60)).toBeLessThan(36);
+        expect(at(60)).toBeLessThan(34);
     });
 
     it('does not move again when the board is synced twice in one moment', () => {
@@ -98,7 +99,7 @@ describe('Last Standing play cameras', () => {
         const now = run(cameras, s, state, { start: 16, ms: 450 }); // arrived, holding
         expect(top(s)).toBeGreaterThan(62);
         run(cameras, s, state, { start: now, ms: 2000 });
-        expect(top(s)).toBeCloseTo(36, 1);
+        expect(top(s)).toBeCloseTo(34, 1);
     });
 
     it('watches a clear out of sight until its cascade settles', () => {
@@ -111,7 +112,7 @@ describe('Last Standing play cameras', () => {
         expect(top(s)).toBeGreaterThan(62);
         cameras.handle('settled', 0, s, state);
         run(cameras, s, state, { start: now, ms: 2000 });
-        expect(top(s)).toBeCloseTo(36, 1);
+        expect(top(s)).toBeCloseTo(34, 1);
     });
 
     it('lets the player end a beat by moving the next piece', () => {
@@ -182,7 +183,7 @@ describe('Last Standing play cameras', () => {
         const state = player();
         cameras.step(0, s, state, 0);
         cameras.step(0, s, state, 16);
-        expect(top(s)).toBe(36);
+        expect(top(s)).toBe(34);
     });
 
     it('leaves a view held by hand alone, and ignores boards outside Infinity', () => {
@@ -230,8 +231,8 @@ describe('Last Standing boards use the play camera', () => {
             now += 16;
             m._syncBoardScenes();
         }
-        expect(top(scenes[0])).toBeCloseTo(36, 1);
-        expect(top(scenes[1])).toBeCloseTo(56, 1);
+        expect(top(scenes[0])).toBeCloseTo(34, 1);
+        expect(top(scenes[1])).toBeCloseTo(54, 1);
     });
 
     it('routes the physics callbacks\' beats to the right board, and only in Infinity', () => {

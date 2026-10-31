@@ -39,9 +39,18 @@ export function findHighestOccupiedInfinityRow(board) {
 }
 
 /**
- * Resolve the deterministic top row of Infinity's simulation viewport. This
- * mirrors the established camera target (tower at 20% of the viewport) but is
- * derived only from snapshottable board/rules state, never Phaser lerp state.
+ * How far down the view the tower's top sits on every Infinity board (single player, local
+ * versus, Odyssey's wells), and so how far down the simulation's window it sits: the window the
+ * next piece is anchored to, spawning two rows above it. 2026-10-31, owner's call: 30 %, up from
+ * 20 %. Six rows of room above the tower and fourteen of stack on a 20-row view; a new piece
+ * enters from just above the view and starts eight rows over the tower's top (six before).
+ */
+export const INFINITY_TOWER_TOP_SHARE = 0.3;
+
+/**
+ * Resolve the deterministic top row of Infinity's simulation viewport: the tower's top
+ * INFINITY_TOWER_TOP_SHARE down it, as the camera frames it. It is derived only from
+ * snapshottable board/rules state, never Phaser lerp state.
  *
  * @param {Record<string, any>} gameState
  * @param {number|null} [knownHighestOccupiedRow]
@@ -71,7 +80,7 @@ export function resolveInfinitySimulationCameraRow(
 
     if (highestOccupiedRow >= board.length) return maxCameraRow;
 
-    const topPaddingRows = Math.floor(visibleRows * 0.2);
+    const topPaddingRows = Math.floor(visibleRows * INFINITY_TOWER_TOP_SHARE);
     return Math.max(0, Math.min(maxCameraRow, highestOccupiedRow - topPaddingRows));
 }
 
@@ -82,9 +91,9 @@ export const INFINITY_FOLLOW_PIECE_BOTTOM_SHARE = 0.8;
  * The top row a tall well's PRESENTATION camera frames: the simulation's own window (the row the
  * next spawn is anchored to, so a new piece always enters just above the view's top), lowered
  * only as far as a falling piece needs to keep its bottom within the view's lower fifth.
- * Infinity's camera rule (the tower top at 20 % of the view, a piece's bottom at most 80 %) as
- * one function, so a mode's camera and its spawns can never disagree about where the well's
- * top is.
+ * Infinity's camera rule (the tower top at INFINITY_TOWER_TOP_SHARE of the view, a piece's
+ * bottom at most 80 %) as one function, so a mode's camera and its spawns can never disagree
+ * about where the well's top is.
  *
  * @param {Record<string, any>} gameState
  * @param {number} visibleRows the presentation viewport's rows

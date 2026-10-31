@@ -66,7 +66,8 @@ describe('local multiplayer Infinity stacking and roof rules', () => {
             const piece = spawnPiece(player, null, onDeath);
 
             expect(piece).not.toBeNull();
-            expect(piece.y).toBe(14);
+            // The tower's top (row 20) six rows down the window (30 %), the spawn two above it.
+            expect(piece.y).toBe(12);
             expect(canPlacePiece(player, piece, piece.x, piece.y)).toBe(true);
             expect(onDeath).not.toHaveBeenCalled();
             expect(projectInfinityPresentationCamera(player, 24)).toBe(false);
@@ -165,7 +166,7 @@ describe('local multiplayer Infinity stacking and roof rules', () => {
         expect(player.boardGrid).toHaveLength(54);
         expect(scene.cameraSettings.currentTopRow).toBe(34);
         expect(scene.cameras.main.centerOn).toHaveBeenCalledWith(200, 1760);
-        expect(player.cameraRow).toBe(26);
+        expect(player.cameraRow).toBe(24);
         expect(player.infinityStats.rowsReached).toBe(54);
     });
 
@@ -209,7 +210,7 @@ describe('local multiplayer Infinity stacking and roof rules', () => {
         const low = createMatch().players[0];
         setTower(low, 20);
         low.nextPieces = ['T'];
-        expect(spawnPiece(low, null, vi.fn()).y).toBe(14);
+        expect(spawnPiece(low, null, vi.fn()).y).toBe(12);
     });
 
     it('restores standard board rules when a match switches out of Infinity', () => {
@@ -242,8 +243,8 @@ describe('local multiplayer Infinity stacking and roof rules', () => {
         expect(result.rowsAdded).toBe(30);
         expect(player.boardGrid).toHaveLength(74);
         expect(scene.cameraSettings.currentTopRow).toBe(54);
-        expect(player.cameraRow).toBe(4);
-        expect(piece.y).toBe(2);
+        expect(player.cameraRow).toBe(2);
+        expect(piece.y).toBe(0);
         expect(canPlacePiece(player, piece, piece.x, piece.y)).toBe(true);
         expect(player.infinityStats.rowsReached).toBe(74);
         expect(onDeath).not.toHaveBeenCalled();

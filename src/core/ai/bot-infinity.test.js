@@ -88,7 +88,7 @@ describe('Infinity bot lookahead', () => {
 
         expect(livePiece).toBeTruthy();
         expect(searchState.currentPiece.y).toBe(livePiece.y);
-        expect(searchState.currentPiece.y).toBe(10);
+        expect(searchState.currentPiece.y).toBe(8);
         expect(canPlaceCandidate(futureBoard, future.candidate)).toBe(true);
         expect(canPlaceCandidate(futureBoard, {
             ...future.candidate,

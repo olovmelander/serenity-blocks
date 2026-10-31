@@ -48,10 +48,11 @@ describe('Odyssey shared board presentation', () => {
 
     it('frames real seeded garbage while keeping simulation camera ownership unchanged', () => {
         const { session, scene, owner } = fixture(55);
-        // The garbage's top (row 74 of 104) at 20 % of the view, as the follow camera and the
-        // spawn window hold it (2026-10-22). This was 54: the top at the view's bottom edge.
-        expect(scene.updateCameraPosition).toHaveBeenCalledWith(70, true);
-        expect(session.gameState.cameraRow).toBe(70);
+        // The garbage's top (row 74 of 104) at 30 % of the view, as the follow camera and the
+        // spawn window hold it (2026-10-31; 20 % from 2026-10-22, and 54 before that: the top at
+        // the view's bottom edge).
+        expect(scene.updateCameraPosition).toHaveBeenCalledWith(68, true);
+        expect(session.gameState.cameraRow).toBe(68);
         expect(session.gameState.lockedPieces).toHaveLength(30);
         owner.dispose();
     });
