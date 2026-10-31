@@ -140,6 +140,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './thermal-bloom-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { FedColumn, STEAM_LEAD } from './thermal-bloom-fed-column.js';
 import { GameplaySurge, SURGE_WEIGHTS } from '../shared/gameplay-surge.js';
 
@@ -627,15 +628,27 @@ export class ThermalBloomWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a part to a step (the theme breathes between them: shared/build-steps.js),
+     * the same work in the same order. Built in one task, the Chalice, the geyser and the Stair held
+     * the first-visit switch's worst frame at 69-92 ms (2026-10-31).
+     */
+    * buildSteps() {
         this.u = createThermalBloomUniforms();
         this.tex = this.bakeTextures();
         // The cloud shadows (tbCloudShade) read the shared noise from the bag, so every part's
         // sun term can take them, including the parts that are handed no textures.
         this.u.cloudTex = this.tex.noise;
-        THERMAL_BLOOM_PARTS.forEach((name) => {
+        yield 'textures';
+        for (let i = 0; i < THERMAL_BLOOM_PARTS.length; i++) {
+            const name = THERMAL_BLOOM_PARTS[i];
             const make = PART_BUILDERS[name];
             if (make) this.addPart(name, make(this));
-        });
+            yield name;
+        }
         this.resetState(this.time);
         this.writeComposition();
         this.scene.add(this.root);

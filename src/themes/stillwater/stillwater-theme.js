@@ -60,6 +60,7 @@ import { POST_LOOK, StillwaterPost, createPassThroughPipeline } from './stillwat
 import { PLAYER_SLOTS, readLayoutRects } from './stillwater-composition.js';
 import { STILLWATER_EVENT_HANDLERS, StillwaterDirector } from './stillwater-director.js';
 import { approach } from './stillwater-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'stillwater';
 const LOG_PREFIX = '[Stillwater]';
@@ -252,14 +253,19 @@ export default class StillwaterTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new StillwaterWorld({
+            const world = new StillwaterWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
                 // The mirror takes the scene pass's samples (setupPost: the tier's `msaa`).
                 samples: (POST_LOOK[this.quality] || POST_LOOK.High).msaa,
-            }).build();
+            });
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

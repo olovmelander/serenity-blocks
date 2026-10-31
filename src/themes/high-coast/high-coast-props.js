@@ -36,7 +36,8 @@ import { EYE, PLACES, mulberry32 } from './high-coast-core.js';
 import { groundHeight } from './high-coast-field.js';
 import { aerial } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
-import { createPine } from './high-coast-pine.js';
+import { createPineSteps } from './high-coast-pine.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { bakeSignField } from './high-coast-sign.js';
 import { simplex } from './high-coast-plan.js';
 
@@ -228,7 +229,16 @@ function nearMaterial(u, t, kind) {
 
 // ── The part ──────────────────────────────────────────────────────────────────────
 
-export function createProps(u, t, tier, fields, { coverage = false } = {}) {
+export function createProps(u, t, tier, fields, options = {}) {
+    return drainSteps(createPropsSteps(u, t, tier, fields, options));
+}
+
+/**
+ * `createProps` as steps (the world's build breathes between them): the pine in its own steps,
+ * then the sign, then the rest. In one step the props held High Coast's first-visit switch frame
+ * at 86-93 ms (the pine 71 ms, the sign's lettering 21 ms; 2026-10-31).
+ */
+export function* createPropsSteps(u, t, tier, fields, { coverage = false } = {}) {
     const meshes = [];
     const disposables = [];
     const ground = (x, z) => groundHeight(fields, x, z, true);
@@ -236,13 +246,15 @@ export function createProps(u, t, tier, fields, { coverage = false } = {}) {
     // The old pine (its wood, its needles and its shadow on the summit). `coverage`: the scene
     // pass is multisampled, so the needles cut out by alpha-to-coverage.
     const pineFoot = new THREE.Vector3(PLACES.pine.x, ground(PLACES.pine.x, PLACES.pine.z) - 0.6, PLACES.pine.z);
-    const pine = createPine(u, t, tier, ground, pineFoot, { coverage });
+    const pine = yield* createPineSteps(u, t, tier, ground, pineFoot, { coverage });
     meshes.push(...pine.meshes);
     disposables.push(pine);
+    yield 'pine';
 
     // The trail sign: a post, two boards turned toward the eye (a little to the right).
     const letters = signTexture();
     disposables.push(letters);
+    yield 'sign lettering';
     const sign = new THREE.Group();
     sign.name = 'HighCoastSign';
     const baseY = ground(PLACES.sign.x, PLACES.sign.z);

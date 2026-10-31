@@ -299,11 +299,44 @@ that the 2026-10-30 r187 light run did not have, none much slower to show; the r
 run's contact sheet (only what moves with time differs). The seven static-shadow themes built their
 casters early (longest pause between two 1-75 ms, the last pipeline before the theme runs).
 
-**Seen in the Forest traces, not acted on (all versions):** on a cold cache the GPU process compiled a
-vertex/fragment pair synchronously for 38-44 ms right after the switch's first canvas-sourced texture
-upload (`copyExternalImageToTexture`, a 1440×384 canvas); no renderer pipeline was created then, so it
-is most likely Dawn's internal copy pipeline, rebuilt on every theme's fresh GPUDevice. A warm cache
-does not show it.
+**The first canvas upload of a fresh GPUDevice (measured, not acted on).** On a cold cache the GPU
+process compiled a vertex/fragment pair synchronously for 38-44 ms right after a switch's first
+canvas-sourced texture upload (`copyExternalImageToTexture`), with no renderer pipeline created then:
+Dawn's internal copy pipeline. A probe in the game page (three fresh devices in a row, a 64² canvas
+copied as three issues it, light cadence, two runs): the first device's first copy 50-63 ms, each later
+device's first copy 12-20 ms, steady copies 3-4 ms, a new canvas on a warmed device nothing extra, other
+formats nothing extra. So the full cost is once per shader cache (once per install or driver update:
+the browser's cache keeps it), and each theme start pays ~10-15 ms after that. The fleet bench gives
+every theme a fresh profile, so its first-visit numbers carry that once-per-install cost for every
+theme that uploads a canvas texture; a player pays it once.
+
+**The worst first-visit switch frames that were the game's own code (2026-10-31).** CPU profiles of
+the first switch (bench `--profile-load=1` on an unminified harness build, light cadence) put the
+worst frames of three of the five worst themes in one long task each; split without changing what is
+built (same work, same order, same random draws):
+- **High Coast:** the field textures' half-float conversion (61-70 ms per field, one task each: three's
+  `DataUtils.toHalfFloat` per value, 4.2 M values a field) → `src/rendering/half-float.js` `halfBits`,
+  three's own tables and clamp bit for bit (tested against the installed three, NaN sign included), in
+  bands of 256 rows (`high-coast-field-data.js`); the mesh positions yield every 8 ms instead of every 48
+  rows; the props (101 ms: the old pine 71, its needle geometry alone 41, the sign's lettering 21) build
+  as steps (`createPropsSteps` / `createPineSteps` / `needleGeometrySteps`, the old functions drain them).
+- **Stillwater:** the whole world in one `build()` (85 ms, its noise bake in the constructor) → a
+  `buildSteps()` generator, a few parts to a step, built by `buildWorldBreathing` as Fall, Forest and
+  Spring already are.
+- **Thermal Bloom:** the world's build in the bake worker's message task (64-92 ms) → `buildSteps()`, a
+  part to a step.
+
+Worst first-visit switch frame, light cadence (30 fps cap, rAF at the panel's 240 Hz), two runs each:
+
+| Theme | before | after | what is left in the worst frame |
+|---|---:|---:|---|
+| Stillwater | 85-87 ms (85 ms of script) | **23-27 ms** | — |
+| Thermal Bloom | 62-75 ms (64-72 ms of script) | **34-36 ms** | — |
+| High Coast | 73-90 ms (72-93 ms of script) | 62-65 ms | 6 ms of script: a GPU-process wait; next frames 28-33 ms |
+
+Same pictures (rest shots side by side), unit tests for the bit-exact conversion and the band/whole
+equality. Murmuration's (45-48 ms of `createScene` then the first frame in one task) and Neon Quarter's
+(7 ms of script, the rest the GPU process) are left.
 
 ## Phase 2 acceptance (open)
 

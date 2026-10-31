@@ -49,6 +49,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { EYE, mulberry32 } from './high-coast-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { hcCells, outcropRelief } from './high-coast-land.js';
 import { aerial } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
@@ -295,12 +296,25 @@ const SKY_DIRS = (() => {
     return out;
 })();
 
+/** How long a slice of the needle tufts' build runs before it yields to the page (ms). */
+const NEEDLE_SLICE_MS = 8;
+
 /**
  * The needle tufts: two crossed cards per tuft, in plates. Attributes: `uv` (the card), `aTuft`
  * (the plate's dome normal at the tuft, local; sky openness), `aSeed` (hash, depth in the plate,
  * height in the crown, 0).
  */
-export function needleGeometry(plates, { density = PINE_FOLIAGE.density[1], seed = 0x9e3d } = {}) {
+export function needleGeometry(plates, options = {}) {
+    return drainSteps(needleGeometrySteps(plates, options));
+}
+
+/**
+ * `needleGeometry` as steps (the world's build breathes between them): the same work in the same
+ * order, yielding after the tufts are placed and every NEEDLE_SLICE_MS of the sky tracing and the
+ * cards. In one step it held High Coast's first-visit switch (41 ms of the props' 101, 2026-10-31).
+ */
+export function* needleGeometrySteps(plates, { density = PINE_FOLIAGE.density[1], seed = 0x9e3d } = {}) {
+    const clock = stepClock(NEEDLE_SLICE_MS);
     const random = mulberry32(seed);
     const { flat, card } = PINE_FOLIAGE;
     const tufts = [];
@@ -334,6 +348,8 @@ export function needleGeometry(plates, { density = PINE_FOLIAGE.density[1], seed
             hi = Math.max(hi, p.y);
         }
     });
+    yield 'tufts';
+    clock.restart();
     // How open each tuft is to the sky: rays against the other plates (they let a little through).
     const o = new THREE.Vector3();
     for (const tf of tufts) {
@@ -349,6 +365,10 @@ export function needleGeometry(plates, { density = PINE_FOLIAGE.density[1], seed
             open += pass;
         }
         tf.open = open / SKY_DIRS.length;
+        if (clock.due()) {
+            yield 'sky';
+            clock.restart();
+        }
     }
     const n = tufts.length * 8;
     const pos = new Float32Array(n * 3);
@@ -386,6 +406,10 @@ export function needleGeometry(plates, { density = PINE_FOLIAGE.density[1], seed
             }
             index.set([first, first + 1, first + 2, first, first + 2, first + 3], ix);
             ix += 6;
+        }
+        if (clock.due()) {
+            yield 'cards';
+            clock.restart();
         }
     }
     const g = new THREE.BufferGeometry();
@@ -831,7 +855,12 @@ function shadowPatch(u, t, ground, casters, frame) {
  * The old pine: `ground(x, z)` gives the summit's height (the land's own sampling), `foot` where
  * the trunk stands. Returns its meshes (wood, needles, and on props tiers ≥ 1 the shadow patch).
  */
-export function createPine(u, t, tier, ground, foot, { coverage = false } = {}) {
+export function createPine(u, t, tier, ground, foot, options = {}) {
+    return drainSteps(createPineSteps(u, t, tier, ground, foot, options));
+}
+
+/** `createPine` as steps: the plan, the wood, the needle texture, the needles (in slices), the shadow. */
+export function* createPineSteps(u, t, tier, ground, foot, { coverage = false } = {}) {
     const frame = pineFrame(foot.x, foot.y, foot.z);
     const eyeLocal = new THREE.Vector3(EYE.x, EYE.y, EYE.z).applyMatrix4(frame.inverse);
     const w = new THREE.Vector3();
@@ -840,13 +869,16 @@ export function createPine(u, t, tier, ground, foot, { coverage = false } = {}) 
         return ground(w.x, w.z) - frame.foot.y;
     };
     const plan = pinePlan(eyeLocal, groundLocal);
+    yield 'plan';
     const level = Math.min(2, Math.max(0, tier.props ?? 1));
     const woodGeo = woodGeometry(plan.wood);
     const woodMat = woodMaterial(u, t);
     const wood = new THREE.Mesh(woodGeo, woodMat);
     wood.name = 'HighCoastPineWood';
+    yield 'wood';
     const { texture: needleTex } = bakeNeedleTexture(level > 0 ? 128 : 64);
-    const { geometry: needleGeo, tufts } = needleGeometry(plan.plates, { density: PINE_FOLIAGE.density[level] });
+    yield 'needle texture';
+    const { geometry: needleGeo, tufts } = yield* needleGeometrySteps(plan.plates, { density: PINE_FOLIAGE.density[level] });
     const needleMat = needleMaterial(u, t, needleTex, coverage);
     const needles = new THREE.Mesh(needleGeo, needleMat);
     needles.name = 'HighCoastPineNeedles';

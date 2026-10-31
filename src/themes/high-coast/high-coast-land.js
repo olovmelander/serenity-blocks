@@ -87,6 +87,9 @@ export const ROCK = Object.freeze({
 
 const c3 = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
 
+/** How long one slice of the mesh positions runs before it yields to the page (ms). */
+const FAN_SLICE_MS = 8;
+
 /**
  * The mesh's positions as a Float32Array (x, y, z per post), `cols × rows` posts, built in
  * slices: a generator that yields between slices and returns the array.
@@ -96,6 +99,7 @@ export function* fanPositionSteps(fields, cols, rows) {
     const half = FAN.halfAngle * DEG;
     const lnNear = Math.log(FAN.near);
     const lnFar = Math.log(FAN.far);
+    let sliceStart = performance.now();
     for (let r = 0; r < rows; r++) {
         const dist = Math.exp(lnNear + (lnFar - lnNear) * (r / (rows - 1)));
         for (let c = 0; c < cols; c++) {
@@ -107,7 +111,11 @@ export function* fanPositionSteps(fields, cols, rows) {
             positions[o + 1] = groundHeight(fields, x, z, dist < 3000);
             positions[o + 2] = z;
         }
-        if (r % 48 === 47) yield r;
+        // A slice ends once it has run FAN_SLICE_MS (every 48 rows held a High-tier task ~31 ms).
+        if (r < rows - 1 && performance.now() - sliceStart >= FAN_SLICE_MS) {
+            yield r;
+            sliceStart = performance.now();
+        }
     }
     return positions;
 }
