@@ -50,8 +50,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'The journey begins deep within the Earth\'s core. Pressure surrounds you, but crystal light shows the way.',
-            outro: 'You emerge from the molten depths. Above, you sense the vast liquid worlds waiting...',
+            intro: 'The journey begins deep inside the Earth, where a lake of lava lights a vault of black rock.',
+            outro: 'Lava meets the sea in a wall of steam, and the path sinks into deep water.',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
     },
@@ -59,7 +59,7 @@ export const CHAPTER_CONFIGS = [
     {
         id: 2,
         name: 'Deep Ocean & Liquid Worlds',
-        subtitle: 'Drift, dive, recover',
+        subtitle: 'Dive deep, then rise',
         levelRange: [6, 10],
         arcBeats: ['arrival', 'teach', 'reinforce', 'boss', 'reinforce'],
         targetDifficultyCurve: [3, 4, 4, 6, 5],
@@ -84,8 +84,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'Stone gives way to water and pressure eases into flow. The ocean teaches patience before it asks for command.',
-            outro: 'Light spills down from above. The sea lifts you toward land, color, and changing seasons...',
+            intro: 'Light fades from teal to indigo in the deep sea, where whales and mantas glide past.',
+            outro: 'The path rises through the light and breaks the surface into open air.',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
     },
@@ -121,8 +121,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'You break into daylight and living air. Forests, fields, heat, and wind teach rhythm through contrast instead of pressure.',
-            outro: 'The earth begins to rise beneath your feet. Foothills harden into a climb toward colder air and sharper edges...',
+            intro: 'Sunlight falls on a warm sea and green islands, with mountains far off on the horizon.',
+            outro: 'The land rises under you as the foothills climb toward snow and thinner air.',
         },
         boardTransition: {
             ...DEFAULT_BOARD_TRANSITION,
@@ -162,8 +162,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'Foothills turn to ridgelines and the climb becomes deliberate. Every gain in altitude asks for cleaner decisions.',
-            outro: 'At the summit, stone gives way to light. The next step is no longer upward through land, but outward into sky...',
+            intro: 'Snow peaks rise on every side as the path climbs from orb to orb into cold, clear air.',
+            outro: 'At the summit the ground falls away, and the path lifts into open sky.',
         },
         boardTransition: {
             ...DEFAULT_BOARD_TRANSITION,
@@ -202,8 +202,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'The mountain drops away beneath you. Clouds, aurora, sun halos, and coloured suns become the new terrain.',
-            outro: 'The last breath of atmosphere fades. What remains ahead is pure distance and the cold logic of space...',
+            intro: 'Above the peaks, the sky becomes the land: clouds, aurora, halos and colored suns.',
+            outro: 'The air thins to nothing, and the stars come out.',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
     },
@@ -249,8 +249,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'You exit the atmosphere into outer space. Vastness replaces familiarity. Stars, planets, and nebulae surround you.',
-            outro: 'A darkness grows ahead. Not empty void, but something denser. The event horizon awaits...',
+            intro: 'The Earth turns below you, wrapped in aurora. Ahead lie galaxies, ringed giants and the dark.',
+            outro: 'The black hole fills the way ahead, and the path runs straight into it.',
         },
         boardTransition: {
             ...DEFAULT_BOARD_TRANSITION,
@@ -264,7 +264,7 @@ export const CHAPTER_CONFIGS = [
     {
         id: 7,
         name: 'Black Hole & Abstract Transcendence',
-        subtitle: 'Surrender to abstraction',
+        subtitle: 'Into another dimension',
         levelRange: [49, 56],
         arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'release', 'teach', 'boss', 'test'],
         targetDifficultyCurve: [8, 9, 9, 10, 8, 7, 10, 10],
@@ -292,8 +292,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'The journey collapses inward toward a black hole. Space, geometry, and light begin to distort.',
-            outro: 'Beyond the singularity, physical reality dissolves. The core journey ends here, in pure abstraction.',
+            intro: 'The path falls through the event horizon. Inside, space folds into a new room for every orb.',
+            outro: 'The folds straighten into lines of neon, and the black hole opens onto a city.',
         },
         boardTransition: {
             ...DEFAULT_BOARD_TRANSITION,
@@ -331,8 +331,8 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'Beyond abstraction, the journey takes one last turn through neon-lit cityscapes. Four final orbs await in this electric encore.',
-            outro: 'The city fades like an afterimage. What remains is the memory of the journey and the pulse of these electric nights.',
+            intro: 'Rain shines on a boulevard of neon under a huge retro sun. The last stretch of the journey.',
+            outro: 'The pier lights come on over the sea, and the journey is complete.',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },
     },

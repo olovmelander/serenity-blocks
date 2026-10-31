@@ -1,11 +1,12 @@
-# Odyssey orb copy: every orb's words, rewritten and in one place
+# Odyssey orb and chapter copy: every orb's and chapter's words, rewritten
 
 Status: **Implemented.** Date: 2026-10-31.
 
 The owner asked for the text, titles and descriptions on all Odyssey orbs to be written well.
 Every orb's name, card description and tip was reviewed against what the orb shows and how it
 plays; all 60 descriptions and 54 tips were rewritten and 11 orbs renamed. The words now live in
-one table, so what is in that table is exactly what ships.
+one table, so what is in that table is exactly what ships. A follow-up the same day rewrote the
+eight chapters' subtitles, intros and outros ([Chapter text](#chapter-text)).
 
 ## What was wrong
 
@@ -86,7 +87,43 @@ description one word to a line. It now stretches across the card
   all 60 orbs in headless Chromium at 1920×1080, 1366×768, 1024×768 and 390×844. No description is
   clipped (two lines, three on a phone) and there are no console errors. At 1366×768, 108
   characters always fit the two-line clamp and 120 never did.
-- No theme, chapter or WebGPU code changed, so no world capture was needed.
+- No theme, chapter environment or WebGPU code changed, so no world capture was needed.
+
+## Chapter text
+
+The follow-up, also asked by the owner. Each chapter speaks in three places: its subtitle (the
+navigator's eyebrow and the arrival card), its intro (the arrival screen and the navigator's
+header) and its outro (the farewell the arrival flow plays as the world carries you out of it).
+They now say what the map shows at that point of the journey, in the orbs' voice.
+
+| Chapter | What was wrong | Now |
+|---|---|---|
+| 1 Earth Core | "crystal light shows the way" over a lava vault; a trailing "..." | The lava lake and its vault; the farewell is the steam where lava meets the sea (the 1→2 seam). |
+| 2 Deep Ocean | "The ocean teaches patience before it asks for command"; subtitle "Drift, dive, recover" | The deep sea's light and its whales and mantas; "Dive deep, then rise"; the farewell breaks the surface. |
+| 3 Surface World | "teach rhythm through contrast instead of pressure" | The warm sea, islands and far mountains of the map. |
+| 4 Mountains | "asks for cleaner decisions"; "no longer upward through land, but outward into sky" | Snow peaks and the climb; the summit lifts into open sky. |
+| 5 Sky | "coloured" | The owner's "the sky becomes the land" image, in US spelling; the farewell is the stars coming out. |
+| 6 Space | "Vastness replaces familiarity" | The Earth and its aurora below (the map's opening view), galaxies and ringed giants; the farewell is the black hole ahead. |
+| 7 Black Hole | "collapses inward toward a black hole"; "The core journey ends here" (chapter 8 follows) | Inside the black hole: the event horizon, then a room for every orb (the fold); the farewell is the folds straightening into the city's neon. Subtitle "Into another dimension", the owner's brief for the chapter. |
+| 8 Urban Dreams | "Four final orbs await" (a count); the city "fades like an afterimage" | The rain-soaked neon boulevard and its retro sun; the outro ends at the pier, as orb 60 does. |
+
+**The black hole stays in chapter 7's name.** The orb copy pass first listed "Black Hole" in
+chapter 7's name as a mismatch, because orb 47 (The Singularity) plays a black hole in chapter 6.
+The owner corrected it: chapter 7 is where the journey is inside the black hole. The map agrees
+(`odyssey-black-hole-fall.js`, [the fall](ODYSSEY_CH7_FALL_2026-10.md), [the fold](ODYSSEY_CH7_FOLD_2026-10.md)):
+chapter 6's path runs into the hole, the dive happens on the glide from orb 49 to orb 50, and the
+orbs of chapter 7 sit inside it until it opens onto the city. Orb 47 shows it from outside.
+
+**One short name on the map's arrival card.** The card took its title from the renderer's chapter
+profile ("Sky & Drift", "Urban Encore"), while the navigator, records, menus and finale say "Sky"
+and "Urban Dreams Encore". It now takes the chapter's short name like the rest
+(`OdysseyMode._showChapterArrivalCue`); the profile names stay as they are, as renderer keys.
+
+`tests/unit/odyssey-chapter-copy.test.js` holds the rules: every chapter has the three lines, no
+digits, no ellipses, no design vocabulary, US spelling, an intro short enough for the navigator's
+one line at 1366×768 (rendered: all eight fit at 1920×1080, 1366×768 and 1024×768, two lines on a
+phone), the fall into the black hole at chapter 6's end and the inside of it in chapter 7, and the
+arrival card's name.
 
 ## Left for the owner
 
@@ -96,6 +133,3 @@ description one word to a line. It now stretches across the card
 - Several timed orbs show three times (a bonus, two star times) besides the limit, for example
   Gathering Storm: bonus under 2:00, stars under 2:30 and 1:45, limit 4:30.
 - The final rival is named Neon, two orbs after Neon Dusk (named for its theme).
-- Chapter text was out of scope: chapter 7 is "Black Hole & Abstract Transcendence" though the
-  black hole orb is in chapter 6, chapter 6's outro still says the event horizon awaits, and the
-  chapter 5 intro spells "coloured".
