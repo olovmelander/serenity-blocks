@@ -50,7 +50,8 @@ import {
 import { tierFor } from './high-coast-quality.js';
 import { breathe, loadCoast, planCoast } from './high-coast-assets.js';
 import {
-    GUSTS, createCoverTexture, createFieldTexture, createLatticeTexture, createNoiseTexture, createUniforms,
+    GUSTS, bakeLattice, bakeNoise, createCoverTexture, createFieldTexture, createLatticeTexture, createNoiseTexture,
+    createUniforms,
 } from './high-coast-tsl.js';
 import { fillFieldTextureRows } from './high-coast-field-data.js';
 import { groundHeight } from './high-coast-field.js';
@@ -100,6 +101,9 @@ const unsmooth = (v) => 0.5 - Math.sin(Math.asin(1 - 2 * clamp(v, 0, 1)) / 3);
 
 /** Rows of a field's texture data prepared per build step (a 1024-post field: four steps). */
 const FIELD_ROWS_PER_STEP = 256;
+
+/** The noise and lattice texture data (seeded, no inputs), baked once a session; each world gets its own textures. */
+const keptBakes = { noise: null, lattice: null };
 
 /** Everything heavy a world needs once the fields are read: the mesh and the field textures. */
 function* prepareSteps(quality, fields) {
@@ -329,12 +333,19 @@ export class HighCoastWorld {
             coverTex[name] = createCoverTexture(prepared.fields[name].flow, FIELDS[name]);
         }
         this.fields = prepared.fields;
+        // The noise and the lattice take no inputs: baked once a session, the noise in a step of its
+        // own. A revisit baked them again in the build's first step, with the shadow pass and the
+        // mesh: one 53 ms task of a warm second visit (2026-10-31).
+        keptBakes.noise ??= bakeNoise();
+        yield 'noise';
+        keptBakes.lattice ??= bakeLattice();
         this.textures = {
             fields: fieldTex,
             cover: coverTex,
-            noise: createNoiseTexture(),
-            lattice: createLatticeTexture(),
+            noise: createNoiseTexture(keptBakes.noise),
+            lattice: createLatticeTexture(keptBakes.lattice),
         };
+        yield 'textures';
         this.shadowPass = createShadowPass(this.u, fieldTex, tier);
         this.textures.shadow = this.shadowPass.textures;
 

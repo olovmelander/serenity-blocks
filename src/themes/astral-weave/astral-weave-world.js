@@ -41,7 +41,7 @@ import { uniform, uniformArray } from 'three/tsl';
 import {
     PLAYER_SLOTS, REST_RIG, VIEW_HEIGHT, boardInLoom, fallbackLayout, screenToLoom, solveLoom,
 } from './astral-weave-composition.js';
-import { approach, createNoiseTexture, mulberry32 } from './astral-weave-tsl.js';
+import { approach, createNoiseTextureSteps, mulberry32 } from './astral-weave-tsl.js';
 import { compileComputeAsync, isAsyncComputeCapable } from '../../rendering/webgpu-compute-pipeline-async.js';
 import { createSky, lampFlare, lampPositions } from './astral-weave-sky.js';
 import {
@@ -54,6 +54,7 @@ import {
     createFlares, createHoop, createPegs, createRosette, createSparks, createWarp, createWefts,
 } from './astral-weave-loom.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
@@ -228,7 +229,18 @@ export class AstralWeaveWorld {
     }
 
     build() {
-        this.noiseTex = createNoiseTexture();
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order: the noise (sliced), the sky, the
+     * loom, the dust and the motes. Built in one task with its noise bake, it held the first-visit
+     * switch's worst game-code task at ~38 ms (2026-10-31).
+     */
+    * buildSteps() {
+        this.noiseTex = yield* createNoiseTextureSteps();
+        yield 'noise';
         const far = () => new THREE.Vector4(0, 0, -1000, 0);
         const [first] = ASTRAL_MOODS;
         const s = {
@@ -277,6 +289,7 @@ export class AstralWeaveWorld {
 
         const { tier } = this;
         this.sky = createSky(s, this.quality);
+        yield 'sky';
         this.rosette = createRosette(s, tier.threads, tier.segments);
         this.wefts = createWefts(s, tier.segments);
         this.warp = createWarp(s, tier.warp, tier.segments);
@@ -292,6 +305,7 @@ export class AstralWeaveWorld {
         this.pegs = createPegs(s, tier.pegs);
         this.flares = createFlares(s);
         this.sparks = createSparks(s, tier.sparks);
+        yield 'loom';
         const dustTier = DUST_TIERS[this.quality];
         const simulate = dustTier.compute && this.renderer?.backend?.isWebGPUBackend === true
             && isAsyncComputeCapable(this.renderer);
@@ -1236,7 +1250,8 @@ export class AstralWeaveWorld {
         this.group.removeFromParent();
         [
             this.sky, this.rosette, this.wefts, this.warp, this.hoop, this.pegs, this.flares, this.sparks, this.dust,
-            this.motes, ...this.gimbals,
+            // A build stopped between its steps (shared/build-steps.js) may not have made them yet.
+            this.motes, ...(this.gimbals ?? []),
         ].forEach((part) => part?.dispose());
         this.noiseTex?.dispose();
         this.timers.length = 0;

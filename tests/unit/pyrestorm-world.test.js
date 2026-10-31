@@ -137,13 +137,17 @@ describe('PyrestormWorld contract', () => {
         expect(new Set(PYRESTORM_PARTS).size).toBe(PYRESTORM_PARTS.length);
     });
 
-    it('works a frame between breaths, longer when the page is slow to give the thread back', () => {
-        expect(bakeSliceMs(0)).toBe(24);
-        expect(bakeSliceMs(8)).toBe(24);
-        // A software renderer drawing the previous theme: a breath of half a second buys a second's work.
-        expect(bakeSliceMs(500)).toBe(1000);
+    it('works a short slice between breaths, longer when the page is slow to give the thread back', () => {
+        // The theme still playing keeps its frames: a breath of a few frames buys 10 ms of work.
+        expect(bakeSliceMs(0)).toBe(10);
+        expect(bakeSliceMs(8)).toBe(10);
+        expect(bakeSliceMs(33)).toBe(10);
+        expect(bakeSliceMs(50)).toBe(10);
+        // A software renderer drawing the previous theme: a breath of half a second buys 0.9 s of work.
+        expect(bakeSliceMs(100)).toBe(100);
+        expect(bakeSliceMs(500)).toBe(900);
         expect(bakeSliceMs(60_000)).toBe(2000);
-        expect(bakeSliceMs(Number.NaN)).toBe(24);
+        expect(bakeSliceMs(Number.NaN)).toBe(10);
     });
 
     it('prepares the same land asynchronously, and gives up a preparation nobody wants', async () => {

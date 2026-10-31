@@ -73,6 +73,11 @@ const coneRadius = (j, rings) => VOLCANO.radius * 0.998 * (j / rings) ** 1.35;
 /**
  * Grid heights, slice by slice (a generator: the caller yields to the page between slices).
  * Returns positions + normals + shade for both meshes.
+ *
+ * It yields after every row (of the fan, of the cone, of each grid's normals), and the caller's
+ * clock decides where a slice ends (pyrestorm-world.js prepareData): a step is a row, never more.
+ * Yielding every 24 fan rows and 20 cone rings, with the normals of a grid in one step, a step ran
+ * up to 15 ms in node at Extreme, and a slice ran on that long past its budget (2026-10-31).
  */
 export function* landSteps(tier) {
     const { fanCols } = tier;
@@ -88,7 +93,7 @@ export function* landSteps(tier) {
             fan[o + 1] = p[1];
             fan[o + 2] = p[2];
         }
-        if (j % 24 === 23) yield 'fan';
+        yield 'fan';
     }
     const rings = tier.coneRings;
     const segs = tier.coneSegs;
@@ -107,11 +112,10 @@ export function* landSteps(tier) {
             cone[o + 1] = plainHeight(x, z) + volcanoHeight(x, z) + satelliteHeight(x, z) - skirt;
             cone[o + 2] = z;
         }
-        if (j % 20 === 19) yield 'cone';
+        yield 'cone';
     }
-    const fanNS = gridNormals(fan, fanCols + 1, fanRows + 1, false);
-    yield 'normals';
-    const coneNS = gridNormals(cone, segs + 1, rings + 1, true);
+    const fanNS = yield* gridNormalsSteps(fan, fanCols + 1, fanRows + 1, false);
+    const coneNS = yield* gridNormalsSteps(cone, segs + 1, rings + 1, true);
     return {
         fan: {
             positions: fan, normals: fanNS.normals, shade: fanNS.shade, cols: fanCols, rows: fanRows,
@@ -124,9 +128,10 @@ export function* landSteps(tier) {
 
 /**
  * Normals and a hollow/crest shade from a grid's neighbours. `wrapI` joins the last column to
- * the first (the cone's rings close).
+ * the first (the cone's rings close). A generator: it yields after every row (landSteps).
+ * @returns {Generator<string, { normals: Float32Array, shade: Float32Array }>}
  */
-function gridNormals(pos, nx, ny, wrapI) {
+function* gridNormalsSteps(pos, nx, ny, wrapI) {
     const n = nx * ny;
     const normals = new Float32Array(n * 3);
     const shade = new Float32Array(n);
@@ -168,6 +173,7 @@ function gridNormals(pos, nx, ny, wrapI) {
             const span = Math.max(1, (Math.hypot(ax, az) + Math.hypot(bx, bz)) * 0.25);
             shade[j * nx + i] = Math.max(0, Math.min(1, 0.62 + ((at(i, j, 1) - mean) / span) * 2.2));
         }
+        yield 'normals';
     }
     return { normals, shade };
 }

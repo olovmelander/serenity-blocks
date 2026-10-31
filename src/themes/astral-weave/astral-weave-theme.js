@@ -41,6 +41,7 @@ import { POST_LOOK, AstralWeavePost, createPassThroughPipeline } from './astral-
 import { REST_RIG, readLayoutRects } from './astral-weave-composition.js';
 import { ASTRAL_WEAVE_EVENT_HANDLERS, AstralWeaveDirector } from './astral-weave-director.js';
 import { approach } from './astral-weave-tsl.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'astral-weave';
 const LOG_PREFIX = '[AstralWeave]';
@@ -207,12 +208,17 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(REST_RIG.fov, aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new AstralWeaveWorld({
+            const world = new AstralWeaveWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
-            }).build();
+            });
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
         } catch (error) {

@@ -153,6 +153,7 @@ describe('the stepped themes build their worlds in steps', () => {
         // The first-visit stutter pass of 2026-10-31 (their builds held a switch frame 40-90 ms).
         'stillwater', 'thermal-bloom', 'painted-ages', 'himalayan-peak', 'lunara', 'nebula-flow', 'vesper-chrysalis',
         'tornado', 'void-ember', 'chiral-gold', 'ocean',
+        'astral-weave', 'pyrestorm',
     ];
     /** A theme's world module (Sakura's carries the short name). */
     const worldOf = (id) => source(`${id}/${id === 'sakura-twilight' ? 'sakura' : id}-world.js`);

@@ -77,6 +77,7 @@ import {
 } from './pyrestorm-fire.js';
 import { cardUnion, fallbackLayout } from './pyrestorm-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { RidgeShake } from './pyrestorm-shake.js';
@@ -160,13 +161,22 @@ const breathe = () => new Promise((resolve) => {
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
+/** How long a slice of the prepare works before it breathes (ms), on a page quick to give it back. */
+const BAKE_SLICE_MS = 10;
+/** A breath longer than this (three 60 Hz frames) is a slow page's: past it the slices grow. */
+const SLOW_BREATH_MS = 50;
+
 /**
- * How long to work before the next breath (ms), from how long the last one took: at least a
- * frame's worth, and twice the breath, so a page slow to give the thread back (a software renderer
- * drawing the previous theme) costs the bake a few breaths, never one per slice.
+ * How long to work before the next breath (ms), from how long the last one took: BAKE_SLICE_MS
+ * while the page gives the thread back within a few frames, so the theme still playing keeps its
+ * frames (a floor of 24 ms, and twice a frame-long breath, held a first-visit switch 23-31 ms a
+ * slice, 2026-10-31); past SLOW_BREATH_MS twice the excess, so a page slow to give the thread back
+ * (a software renderer drawing the previous theme) costs the bake a few breaths, never one per slice.
+ * Only when the work runs changes: the steps are the same.
  */
 export function bakeSliceMs(lastBreathMs) {
-    return Math.max(24, Math.min(2000, (Number(lastBreathMs) || 0) * 2));
+    const slow = (Number(lastBreathMs) || 0) - SLOW_BREATH_MS;
+    return Math.max(BAKE_SLICE_MS, Math.min(2000, slow * 2));
 }
 
 async function prepareData(quality, { signal, bakesReady = null } = {}) {
@@ -362,6 +372,17 @@ export class PyrestormWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order: the textures and the land, the sky
+     * and the ash, the fire. Built in one task it held a first-visit switch frame 13 ms of its 17.5
+     * (2026-10-31). A part is added in the step that makes it, so a build stopped between steps
+     * leaves dispose() everything it made.
+     */
+    * buildSteps() {
         if (this.root.parent) return this;
         const prepared = this.prepared || PyrestormWorld.prepareSync(this.quality);
         this.prepared = null;
@@ -376,6 +397,7 @@ export class PyrestormWorld {
         };
         const t = this.textures;
         this.addPart('land', createLand(u, t, tier, prepared.land));
+        yield 'land';
         this.addPart('sky', createSky(u, t));
         this.addPart('anvil', createAnvil(u, t, tier));
         this.smoke = new Smoke(u, t, tier);
@@ -393,6 +415,7 @@ export class PyrestormWorld {
                 this.fume.dispose();
             },
         });
+        yield 'sky and ash';
         this.bolts = createBolts(u, tier);
         this.addPart('bolts', this.bolts);
         this.addPart('jets', createJets(u, tier));

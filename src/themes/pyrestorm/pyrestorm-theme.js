@@ -35,6 +35,7 @@ import { sceneSamples } from '../shared/scene-antialias.js';
 import { PLAYER_SLOTS, readLayoutRects } from './pyrestorm-composition.js';
 import { PYRESTORM_EVENT_HANDLERS, PyrestormDirector } from './pyrestorm-director.js';
 import { approach } from './pyrestorm-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'pyrestorm';
 const LOG_PREFIX = '[Pyrestorm]';
@@ -257,14 +258,17 @@ export default class PyrestormTheme extends BaseTheme {
                 settleBake();
             }
             if (!isCurrent()) return;
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new PyrestormWorld({
+            const world = new PyrestormWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 prepared,
             });
-            this.world.build();
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
