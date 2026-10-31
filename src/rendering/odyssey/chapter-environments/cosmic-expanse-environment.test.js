@@ -10,11 +10,12 @@ import {
     resolveCosmicEntryContinuity,
     resolveSummitEarthStaging,
     updateCosmicExpanseEnvironment,
+    CH6_AMBIENT_ALL,
 } from './cosmic-expanse.js';
 
 describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
     it('mounts the asteroid garland, star tiers, and streak motes', () => {
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
 
         expect(group.userData.asteroids?.name).toBe('asteroid-garland');
         expect(group.userData.asteroids.count).toBe(12);
@@ -36,7 +37,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
     });
 
     it('suppresses dense opener clutter until the aurora handoff completes', () => {
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         group.userData.chapterOpacity = 1;
 
         updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0.05);
@@ -50,7 +51,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
     });
 
     it('keeps the black hole at one place ahead down the corridor, at one size', () => {
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         const { blackHole } = group.userData;
         const { forward, origin } = group.userData.corridorFrame;
         const ahead = (v) => v.clone().sub(origin).dot(forward);
@@ -80,7 +81,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
         // corridor ran -Z, leaving the heroes 31-68 deg off a ~49 deg half-FOV forward ray
         // (the gas giant reached ndcX -1.00 by p=0.68). Assert each hero sits within the
         // frustum's angular reach of the corridor axis at BOTH march endpoints.
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         const { forward, origin } = group.userData.corridorFrame;
         const { blackHole, heroPlanet, galaxy } = group.userData;
 
@@ -182,7 +183,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
         });
 
         it('shows only the giant, the twilight stars and the aurora carry as the giant rises', () => {
-            const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+            const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
             group.userData.chapterOpacity = 1;
             // Camera is null here, so `approach` falls back to the progress value — which
             // is exactly the pre-boundary case: chapter-local reveals are all still 0.
@@ -210,7 +211,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
     });
 
     it('tumbles the asteroids without losing their stations', () => {
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         const { asteroids } = group.userData;
         expect(asteroids.userData.seats.length).toBe(36);
         expect(asteroids.userData.spins.length).toBe(36);
@@ -321,7 +322,7 @@ describe('omen -> Gargantua handoff runs on progress and keeps one opaque shadow
         expect(handoff.end).toBeCloseTo(0.8487, 3);
         expect(handoff.start).toBeLessThan(handoff.end);
 
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         group.userData.chapterOpacity = 1;
         const camera = new THREE.PerspectiveCamera(66, 16 / 9, 0.1, 9000);
         camera.position.set(240, 1280, -1170);
@@ -344,7 +345,7 @@ describe('omen -> Gargantua handoff runs on progress and keeps one opaque shadow
     });
 
     it('never flips the exempt shadow transparent through the destination staging', () => {
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         group.userData.chapterOpacity = 0.4;
         updateCosmicExpanseEnvironment(group, 0.016, 2.0, null, 0.55);
         const { shadow } = group.userData.blackHole.userData;

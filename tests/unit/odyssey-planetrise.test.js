@@ -17,6 +17,7 @@ import { getChapterPathRange, getOdysseyPathCurve } from '../../src/rendering/od
 import {
     ORBIT_EARTH,
     ORBIT_EARTH_SCHEDULE,
+    createOrbitEarth,
     orbitEarthAt,
 } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
@@ -180,5 +181,22 @@ describe('the ringed giant rises over the Earth\'s edge', () => {
             });
         });
         expect(covered).toBeGreaterThan(20);
+    });
+
+    it('is DRAWN behind the Earth: after the stars, before the backdrop, so the aurora lies over it', () => {
+        // 2026-10-31, Olov: "it feels like it is to close the earth and like hiding some of the
+        // aurora". The backdrop writes no depth (only its disc's twin does), so whatever draws after
+        // it paints over its air and its aurora: the giant drew at 1-3 and did, from the limb up.
+        const earth = createOrbitEarth();
+        const behind = earth.mesh.renderOrder;
+        [body, rings, air].forEach((mesh) => {
+            expect(mesh.renderOrder, mesh.name).toBeLessThan(behind);
+        });
+        expect(body.renderOrder).toBeLessThan(rings.renderOrder);
+        expect(rings.renderOrder).toBeLessThan(air.renderOrder);
+        [env.userData.starsFar, env.userData.starsNear].filter(Boolean).forEach((stars) => {
+            expect(stars.renderOrder, stars.name).toBeLessThan(body.renderOrder);
+        });
+        earth.dispose();
     });
 });

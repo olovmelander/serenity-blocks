@@ -21,6 +21,7 @@ import {
     SUMMIT_EARTH_REVEAL,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
+    CH6_AMBIENT_ALL,
 } from './cosmic-expanse.js';
 import { deriveOdysseyChapterPositions } from '../../../core/odyssey/data/odyssey-layout.js';
 
@@ -116,7 +117,7 @@ describe('ch6 nebula field — the authored masses as luminous gas', () => {
 
     it('stages its reveal via uReveal, outside the entryContinuity buckets', { timeout: 20000 }, () => {
         vi.stubGlobal('window', { location: { search: '' } });
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         group.userData.chapterOpacity = 1;
         const mesh = group.userData.nebulaField;
         expect(mesh).toBeTruthy();
@@ -139,7 +140,7 @@ describe('ch6 nebula field — the authored masses as luminous gas', () => {
 
     it('a chapter-opacity sweep rides uReveal and never writes material.opacity', () => {
         vi.stubGlobal('window', { location: { search: '' } });
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
         group.userData.chapterOpacity = 0.5;
         updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0.55);
         const fieldGroup = group.userData.nebulaField;

@@ -716,3 +716,38 @@ rest of Act II pays nothing.
   through the whole time it is on screen;
 - its limb sits at its own dip, and it hands the world that depression (0 with no Earth);
 - it builds on WGSL and GLSL under the world's atmosphere.
+
+## §9. The planetrise from behind the Earth (2026-10-31)
+
+Olov, on the ringed giant's rise: *"it feels like it is to close the earth and like hiding some of
+the aurora, we need to make this better implemented and more visually stunning and perfect when
+this planet appear."*
+
+**Why it looked near.** The giant rose from below the limb, but it was DRAWN after the Earth:
+- The Earth's backdrop (renderOrder -0.5) writes no depth. Only its disc's twin does, and only
+  where the solid planet is.
+- The giant's body, rings and air drew at 1-3. They painted over the Earth's air above the limb
+  and over the aurora, and were cut only where the solid disc began, ~45 px under the visible
+  limb.
+- So the giant sat in front of the Earth's edge and on top of the curtains.
+
+**What changed:**
+- **Draw order** (`GIANT_DRAW_ORDER`, `CH6_STAR_DRAW_ORDER`): the stars first (-0.95; they are
+  additive, so nothing else changes), then the giant (-0.8 body, -0.75 rings, -0.7 air), then the
+  Earth (-0.5). The Earth's disc covers the giant, its rim veils it a little, and its aurora's
+  light lies over it. As a bonus, no star shows through the rings any more (one did, over the B
+  ring).
+- **Through the Earth's air** (`orbitEarthTransmittance`, `ORBIT_EARTH_TRANSMIT`): anything far
+  seen just over the limb is seen through the Earth's atmosphere, as the Moon is from orbit. The
+  ray's closest approach to the surface (the same one the Earth's rim is drawn from) sets an
+  optical depth that falls off over 0.0035 Earth radii, red passing most. Before it rises, the
+  giant's top shows only as a faint warm glow on the limb. It comes up dark and deep red at the
+  edge, warms, and clears within ~3-4° of the limb. Body, rings and air all wear it.
+- The rise itself (riseDeg, riseSlant, the window) is unchanged. It was already searched to stay
+  clear of the rail and the orbs.
+
+The planetrise test now also pins the draw order (stars < body < rings < air < the Earth).
+
+![Before (left) and after (right) at p 0.760, 0.766 and 0.772: the giant comes up from behind the limb, the aurora in front of it](images/odyssey-into-space-2026-10-31/planetrise-behind-earth.jpg)
+
+![The rings at p 0.785, before (left: a star drawn over the ring) and after](images/odyssey-into-space-2026-10-31/rings-over-stars.jpg)
