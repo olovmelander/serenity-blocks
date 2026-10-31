@@ -293,6 +293,12 @@ over 163-679 ms with a 425 ms pause on final, over 170-240 ms with at most 38 ms
 (r187: 0-95 ms, 39 ms); last pipeline before the theme runs again (810 vs 864 ms; final 883 vs 872);
 same frame. The full-speed re-measure is left for a full-speed session.
 
+**All 63 themes in the real game on `9250a577`, light cadence** (fleet bench `--vsync=1 --target-fps=30
+--scale=1 --shots=1 --build-trace=1`, 2026-10-31): every theme loaded, no console error and no message
+that the 2026-10-30 r187 light run did not have, none much slower to show; the rest shots match that
+run's contact sheet (only what moves with time differs). The seven static-shadow themes built their
+casters early (longest pause between two 1-75 ms, the last pipeline before the theme runs).
+
 **Seen in the Forest traces, not acted on (all versions):** on a cold cache the GPU process compiled a
 vertex/fragment pair synchronously for 38-44 ms right after the switch's first canvas-sourced texture
 upload (`copyExternalImageToTexture`, a 1440×384 canvas); no renderer pipeline was created then, so it
