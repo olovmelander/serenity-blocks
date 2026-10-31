@@ -92,6 +92,7 @@ import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, wheelAt } from '../shared/mood-clock.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { loadBitmapTexture } from '../shared/decoded-texture.js';
 
 /** The rest camera: standing in the flats, looking down the valley and a little up at the sky. */
 export const REST_RIG = Object.freeze({
@@ -423,11 +424,17 @@ export class LunaraWorld {
                 this.mapReady = true;
                 resolve(true);
             };
-            try {
-                new THREE.TextureLoader().load(MOON_MAP_URL, arrived, undefined, () => resolve(false));
-            } catch {
-                resolve(false); // no image decoding here (a headless host): the moons stay smooth
-            }
+            const viaLoader = () => {
+                try {
+                    new THREE.TextureLoader().load(MOON_MAP_URL, arrived, undefined, () => resolve(false));
+                } catch {
+                    resolve(false); // no image decoding here (a headless host): the moons stay smooth
+                }
+            };
+            // Decoded off the main thread (shared/decoded-texture.js): its upload decoded the 2K map
+            // on the main thread, ~15 ms of a first-visit switch (2026-10-31). TextureLoader where
+            // that cannot run.
+            loadBitmapTexture(MOON_MAP_URL).then((tex) => (tex ? arrived(tex) : viaLoader()), () => resolve(false));
         });
     }
 

@@ -16,6 +16,7 @@ import { loadVerdantHillsClouds, loadVerdantHillsLand } from './verdant-hills-la
 import { disposeVerdantHillsSheep, loadVerdantHillsSheep } from './verdant-hills-sheep.js';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const VERDANT_HILLS_TREE_URLS = Object.freeze({
     'oak-hero': new URL('./assets/oak-hero.glb', import.meta.url).href,
@@ -235,7 +236,7 @@ export async function loadVerdantHillsAssets({
         loadVerdantHillsSheep({ loader }),
         loader.loadAsync(VERDANT_HILLS_FOLIAGE_URL),
         loader.loadAsync(VERDANT_HILLS_PROPS_URL),
-        layout && textureLoader ? textureLoader.loadAsync(VERDANT_HILLS_IMPOSTOR_URL) : null,
+        layout && textureLoader ? loadDecodedTexture(VERDANT_HILLS_IMPOSTOR_URL, textureLoader) : null,
         ...names.map((name) => {
             if (!VERDANT_HILLS_TREE_URLS[name]) throw new Error(`[Verdant Hills] Unknown tree asset "${name}".`);
             return loader.loadAsync(VERDANT_HILLS_TREE_URLS[name]);

@@ -5,6 +5,7 @@ import {
     atan, clamp,
 } from 'three/tsl';
 import { resolveWolfhourComposition } from './wolfhour-composition.js';
+import { loadTextureDecoded } from '../shared/decoded-texture.js';
 
 /** `value` within 0..`top` (0 when it is not a number). */
 const clampTo = (value, top) => Math.max(0, Math.min(top, Number.isFinite(value) ? value : 0));
@@ -291,7 +292,7 @@ export function createWolfhourSky({
     geometry.setAttribute('aCenter', new THREE.InstancedBufferAttribute(centers, 2));
     group.add(stars);
 
-    const moonTexture = new THREE.TextureLoader().load('./textures/2k_moon.jpg');
+    const moonTexture = loadTextureDecoded('./textures/2k_moon.jpg'); // decoded off the main thread
     moonTexture.colorSpace = THREE.SRGBColorSpace;
     const moonPulse = uniform(0);
     const moonLight = uniform(new THREE.Vector3(-0.72, 0.3, 0.98).normalize());

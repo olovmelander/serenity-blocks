@@ -166,6 +166,33 @@ describe('the async session build budget', () => {
         session.end();
     });
 
+    it('is quiet by the clock as well as by frames: a fast display waits as long as a slow one', async () => {
+        const renderer = new FakeRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'summer', renderer }, { buildBudgetMs: 8 });
+        const scene = objects(6);
+        renderer.renderFrame(scene); // three built, three deferred
+        session.noteFrame();
+        const deferredAt = session.lastDeferAt;
+        await nextTask();
+        renderer.renderFrame(scene); // the rest built: nothing deferred
+        session.noteFrame();
+        // A fast display: many frames, little time since the last deferral.
+        now = deferredAt + 40;
+        for (let i = 0; i < 10; i += 1) session.noteFrame();
+        expect(session.isQuietFor(50)).toBe(false);
+        now = deferredAt + 50;
+        expect(session.isQuietFor(50)).toBe(true);
+        // A slow display: the time has passed, but not the few frames that confirm it.
+        session.deferBuild();
+        now += 100;
+        session.noteFrame();
+        expect(session.isQuietFor(50)).toBe(false);
+        session.noteFrame();
+        session.noteFrame();
+        expect(session.isQuietFor(50)).toBe(true);
+        session.end();
+    });
+
     it('spends the budget per task: a frame of long builds does not reopen it from its own length', async () => {
         buildMs = 20; // each build longer than the old 14 ms wall-clock window, which each one reopened
         const renderer = new FakeRenderer();

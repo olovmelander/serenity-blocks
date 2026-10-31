@@ -370,8 +370,11 @@ describe('Lunara theme: one node renderer on both backends', () => {
     it('says nothing when the map arrives, or when the world it was for has gone', async () => {
         const load = vi.spyOn(THREE.TextureLoader.prototype, 'load')
             .mockImplementation((url, onLoad) => onLoad(new THREE.Texture()));
+        // The map is decoded off the main thread where the host can (shared/decoded-texture.js);
+        // here (no createImageBitmap) the TextureLoader takes it a task later.
+        const nextTask = () => new Promise((resolve) => { setTimeout(resolve, 0); });
         const { theme } = await startTheme({ quality: 'Low' });
-        await Promise.resolve();
+        await nextTask();
         expect(load).toHaveBeenCalledOnce();
         expect(load.mock.calls[0][0]).toBe('./textures/2k_moon.jpg');
         expect(theme.world.mapReady).toBe(true);
@@ -381,6 +384,7 @@ describe('Lunara theme: one node renderer on both backends', () => {
         let arrive = null;
         load.mockImplementation((url, onLoad) => { arrive = onLoad; });
         await theme.createScene(theme.lifecycleGeneration);
+        await nextTask();
         theme.disposeRuntime();
         arrive(new THREE.Texture());
         await Promise.resolve();

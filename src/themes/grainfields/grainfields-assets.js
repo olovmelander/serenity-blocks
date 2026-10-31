@@ -18,6 +18,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const GRAINFIELDS_TREE_URLS = Object.freeze({
     'birch-grove-a': new URL('./assets/birch-grove-a.glb', import.meta.url).href,
@@ -334,7 +335,7 @@ export async function loadGrainfieldsAssets({
     const layout = grainfieldsImpostorLayout();
     const [foliageGltf, impostorTexture, horseGltf, ruinGltf, gooseGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(GRAINFIELDS_FOLIAGE_URL),
-        layout && textureLoader ? textureLoader.loadAsync(GRAINFIELDS_IMPOSTOR_URL) : null,
+        layout && textureLoader ? loadDecodedTexture(GRAINFIELDS_IMPOSTOR_URL, textureLoader) : null,
         horse ? loadHorse(loader) : null,
         ruin ? loadRuin(loader) : null,
         goose ? loadGoose(loader) : null,

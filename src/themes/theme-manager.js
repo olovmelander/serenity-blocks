@@ -31,6 +31,15 @@ const SWITCH_BEHIND_MAX_MS = 12000;
 const SWITCH_BUILD_BUDGET_MS = 8;
 /** Extra wait while pipelines are still compiling at that cap. */
 const SWITCH_BEHIND_TAIL_MS = 3000;
+/**
+ * The hidden incoming theme is revealed once its scene has held still this long (and this many
+ * frames), with no pipeline created and no build deferred for SWITCH_QUIET_MS. These were counts of
+ * frames (20 still, 10 quiet): ~115 ms at this laptop's rAF rate but ~330 ms on a 60 Hz display, for
+ * the same quiet (2026-10-31). The times match the old counts at ~176 Hz.
+ */
+const SWITCH_STILL_MS = 100;
+const SWITCH_STILL_MIN_FRAMES = 4;
+const SWITCH_QUIET_MS = 50;
 
 /** Timeout in ms for theme init() and start() — prevents game freeze from hanging themes */
 const THEME_LIFECYCLE_TIMEOUT = 10000;
@@ -1490,7 +1499,10 @@ export class ThemeManager {
         });
         const startedAt = performance.now();
         let stableFrames = 0;
+        let stableSince = startedAt;
         let lastCount = -1;
+        const quiet = () => (typeof session.isQuietFor === 'function'
+            ? session.isQuietFor(SWITCH_QUIET_MS) : session.isQuiet(10));
         for (;;) {
             if (!stillOwned()) return 'superseded';
             const elapsed = performance.now() - startedAt;
@@ -1513,8 +1525,10 @@ export class ThemeManager {
             } else {
                 stableFrames = 0;
                 lastCount = count;
+                stableSince = performance.now();
             }
-            if (stableFrames >= 20 && session.isQuiet(10)) return 'quiet';
+            if (stableFrames >= SWITCH_STILL_MIN_FRAMES && performance.now() - stableSince >= SWITCH_STILL_MS
+                && quiet()) return 'quiet';
         }
     }
 

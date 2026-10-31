@@ -335,9 +335,10 @@ describe('Grainfields asset sources', () => {
         const module = new URL('../../src/themes/grainfields/grainfields-assets.js', import.meta.url);
         const source = readFileSync(module, 'utf8');
         const imports = [...source.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1]);
-        // Shared helpers are not another theme's: the attribute reader all the GLB parsers use.
-        expect(imports.sort()).toEqual(['../shared/attribute-floats.js', './assets/asset-manifest.json',
-            'three/addons/loaders/GLTFLoader.js', 'three/webgpu'].sort());
+        // Shared helpers are not another theme's: the attribute reader all the GLB parsers use, and the
+        // off-main-thread image decode the impostor atlas goes through.
+        expect(imports.sort()).toEqual(['../shared/attribute-floats.js', '../shared/decoded-texture.js',
+            './assets/asset-manifest.json', 'three/addons/loaders/GLTFLoader.js', 'three/webgpu'].sort());
     });
 });
 

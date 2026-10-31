@@ -13,6 +13,7 @@ import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
 import { freshGeometry } from '../shared/fresh-geometry.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const FALL_TREE_URLS = Object.freeze({
     'maple-hero': new URL('./assets/maple-hero.glb', import.meta.url).href,
@@ -241,7 +242,7 @@ async function loadFallAssetsFresh({
     const layout = fallImpostorLayout();
     const [foliageGltf, impostorTexture, squirrelGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(FALL_FOLIAGE_URL),
-        layout && textureLoader ? textureLoader.loadAsync(FALL_IMPOSTOR_URL) : null,
+        layout && textureLoader ? loadDecodedTexture(FALL_IMPOSTOR_URL, textureLoader) : null,
         // The grove does without its squirrel rather than fail to open.
         squirrel ? loader.loadAsync(FALL_SQUIRREL_URL).catch((error) => {
             console.warn('[Fall] the squirrel did not arrive:', error?.message || error);

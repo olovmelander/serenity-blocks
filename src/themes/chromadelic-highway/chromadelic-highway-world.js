@@ -61,6 +61,7 @@ import {
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity.js';
+import { loadTextureDecoded } from '../shared/decoded-texture.js';
 
 const tier = (o) => o;
 
@@ -518,7 +519,8 @@ export class ChromadelicWorld {
     }
 
     loadTexture(path, { wrapT = THREE.ClampToEdgeWrapping } = {}) {
-        const tex = new THREE.TextureLoader().load(`${this.textureBase}${path}`);
+        // Decoded off the main thread (shared/decoded-texture.js), filled when it lands as before.
+        const tex = loadTextureDecoded(`${this.textureBase}${path}`);
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = wrapT;

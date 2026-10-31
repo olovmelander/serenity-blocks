@@ -393,6 +393,27 @@ Grainfields +50-150 (an in-play switch keeps the old theme playing meanwhile). 0
 match old vs new for all 15. Left: Grainfields' goose-route planning (14-37 ms) also runs from resize via
 `warmTakeoffs`; Spring's `buildCourse()` (~9 ms) at module load.
 
+**Third round: compute, images, the reveal's wait (2026-10-31, light cadence).** The 63-theme light run on
+`d6a9937c` was clean (0 errors, no new messages); gameplay is smooth on every theme (main thread 1-3 ms
+per drawn frame, worst storm gap 7-18 ms). What was left in switches:
+- **Wolfhour's compute pipelines** (the stars' twinkle, the meteor trails, the debris) were created by
+  their first dispatch, synchronously on the GPU process's main thread: the twinkle's in the theme's
+  first frame, the trails' and the debris' at the session's first meteor, in play. Now
+  `compileComputeAsync` (r187) before the first frame, as Murmuration.
+- **Images decoded on the main thread at upload** (three hands `copyExternalImageToTexture` an
+  HTMLImageElement; the earlier fleet pass found `img.decode()` does not help): Lunara's moon map
+  ~15 ms, Verdant Hills' maps ~25 ms, Chromadelic Highway's five 2K maps 37 ms in one frame. The
+  forest family's impostor atlases, the moon maps (Forest, Lunara, Wolfhour), Verdant Hills' land and
+  cloud fields (unflipped), Wolfhour's nebulas and Chromadelic's maps now go through
+  `shared/decoded-texture.js` (`loadDecodedTexture` for the asset loaders that take a TextureLoader,
+  `loadTextureDecoded` for the `TextureLoader.load(url)` shape, a `flipY` option): decoded on a worker,
+  flipped at decode, the same texels. In a cold first visit the frame is then the browser's one-time
+  copy-pipeline compile instead (above); on a warm second visit Chromadelic's worst switch frame
+  went 38.5 → 6.9 ms (Lunara 17 → 12; Verdant Hills, Forest within noise, under 25 ms).
+- **The reveal's quiet wait** counted frames (20 still, 10 without a new pipeline): ~115 ms here, ~330 ms
+  on a 60 Hz display. Now by the clock (100 ms still, 50 ms quiet, a few frames minimum; the session's
+  `isQuietFor`), the same here and ~230 ms sooner at 60 Hz.
+
 ## Phase 2 acceptance (open)
 
 - (Done, above.) Real-GPU captures of every theme, r186 build vs r187 build at the same frames (RTX; the playground

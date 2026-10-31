@@ -576,6 +576,10 @@ export function beginAsyncRenderPipelines(theme, {
         frame: 0,
         lastCreateFrame: -1,
         lastDeferFrame: -1,
+        /** performance.now() of the session's start, its last pipeline created and its last build deferred. */
+        startedAt: performance.now(),
+        lastCreateAt: -Infinity,
+        lastDeferAt: -Infinity,
         buildBudgetMs: 0,
         exemptCanvasDraws: exemptCanvasDraws === true,
         asyncCompositeWhileHidden: asyncCompositeWhileHidden === true,
@@ -636,6 +640,7 @@ export function beginAsyncRenderPipelines(theme, {
         deferBuild() {
             session.deferredBuilds += 1;
             session.lastDeferFrame = session.frame;
+            session.lastDeferAt = performance.now();
         },
         get engaged() { return stats.async > 0; },
         /** Run `fn` once, when this session first creates a pipeline async (now if it has). */
@@ -659,6 +664,7 @@ export function beginAsyncRenderPipelines(theme, {
                 stats.async += 1;
                 stats.maxInFlight = Math.max(stats.maxInFlight, bump(1));
                 session.lastCreateFrame = session.frame;
+                session.lastCreateAt = performance.now();
                 // three's own promise always resolves (finally → resolve), but a compileAsync
                 // array can carry other code's promises: a rejection must still land, or the
                 // theme reads busy forever.
@@ -695,6 +701,20 @@ export function beginAsyncRenderPipelines(theme, {
             if (stamp !== undefined && stamp === lastFrameStamp) return;
             lastFrameStamp = stamp ?? null;
             session.frame += 1;
+        },
+        /**
+         * Quiet by the clock: nothing in flight, and no pipeline created or build deferred for
+         * `quietMs` and at least `minFrames` frames. A count of frames alone waited four times as
+         * long on a 60 Hz display as on a 240 Hz one (theme-manager's reveal, 2026-10-31).
+         * @param {number} quietMs @param {number} [minFrames]
+         */
+        isQuietFor(quietMs, minFrames = 3) {
+            if (session.inFlight > 0) return false;
+            const now = performance.now();
+            if (session.lastDeferFrame >= 0
+                && (session.frame - session.lastDeferFrame < minFrames || now - session.lastDeferAt < quietMs)) return false;
+            if (session.lastCreateFrame < 0) return session.frame >= minFrames && now - session.startedAt >= quietMs;
+            return session.frame - session.lastCreateFrame >= minFrames && now - session.lastCreateAt >= quietMs;
         },
         isQuiet(quietFrames = 12) {
             if (session.inFlight > 0) return false;

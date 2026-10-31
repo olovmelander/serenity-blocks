@@ -14,6 +14,7 @@ import cloudManifest from './assets/verdant-clouds.json';
 import manifest from './assets/verdant-land.json';
 import { VERDANT_HILLS_CLOUD_SCHEMA, prepareVerdantHillsClouds } from './verdant-hills-light.js';
 import { VERDANT_HILLS_LAND_SCHEMA } from './verdant-hills-terrain.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const VERDANT_HILLS_LAND_URL = new URL('./assets/verdant-land.png', import.meta.url).href;
 export const VERDANT_HILLS_CLOUDS_URL = new URL('./assets/verdant-clouds.png', import.meta.url).href;
@@ -47,7 +48,7 @@ export async function loadVerdantHillsLand({ textureLoader = new THREE.TextureLo
     try {
         if (manifest.schema !== VERDANT_HILLS_LAND_SCHEMA) throw new Error(`land schema ${manifest.schema}`);
         if (!textureLoader || typeof textureLoader.loadAsync !== 'function') return null;
-        const texture = await textureLoader.loadAsync(VERDANT_HILLS_LAND_URL);
+        const texture = await loadDecodedTexture(VERDANT_HILLS_LAND_URL, textureLoader, { flipY: false });
         const { width, height } = texture.image || {};
         if (width !== manifest.size || height !== manifest.size) {
             texture.dispose();
@@ -78,7 +79,7 @@ export async function loadVerdantHillsClouds({ textureLoader = new THREE.Texture
             throw new Error('cloud level table missing');
         }
         if (!textureLoader || typeof textureLoader.loadAsync !== 'function') return null;
-        const texture = await textureLoader.loadAsync(VERDANT_HILLS_CLOUDS_URL);
+        const texture = await loadDecodedTexture(VERDANT_HILLS_CLOUDS_URL, textureLoader, { flipY: false });
         const { width, height } = texture.image || {};
         if (width !== cloudManifest.size || height !== cloudManifest.size) {
             texture.dispose();
