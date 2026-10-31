@@ -60,6 +60,7 @@ import {
     mulberry32,
     sunDirection,
 } from './himalayan-peak-core.js';
+import { halfBits } from '../../rendering/half-float.js';
 
 export * from './himalayan-peak-core.js';
 
@@ -197,7 +198,7 @@ export function createNoiseTexture(field, size = NOISE_SIZE) {
     let w = size;
     for (;;) {
         const half = new Uint16Array(level.length);
-        for (let i = 0; i < level.length; i++) half[i] = THREE.DataUtils.toHalfFloat(level[i]);
+        for (let i = 0; i < level.length; i++) half[i] = halfBits(level[i]);
         mipmaps.push({ data: half, width: w, height: w });
         if (w === 1) break;
         const nw = w >> 1;
@@ -253,7 +254,9 @@ const halves = (floats) => {
     let out = halfMaps.get(floats);
     if (!out) {
         out = new Uint16Array(floats.length);
-        for (let i = 0; i < floats.length; i++) out[i] = THREE.DataUtils.toHalfFloat(floats[i]);
+        // three's DataUtils.toHalfFloat bit for bit (rendering/half-float.js), without its per-call cost:
+        // the horizon map alone is two million values (~12 ms of a first visit's build, 2026-10-31).
+        for (let i = 0; i < floats.length; i++) out[i] = halfBits(floats[i]);
         halfMaps.set(floats, out);
     }
     return out;

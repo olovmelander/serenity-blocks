@@ -42,6 +42,7 @@ import { groundHeight } from './painted-ages-field.js';
 import { PAVILION, SPUR } from './painted-ages-plan.js';
 import { aerial, cloudShadow } from './painted-ages-light.js';
 import { shadowAt } from './painted-ages-shadow.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Surface kinds (the `aKind` attribute). */
 export const KIND = Object.freeze({
@@ -245,7 +246,11 @@ export function findCrest(fields, step = 2.2) {
     return run;
 }
 
-function boardwalkParts(fields, crest, glows = []) {
+/** How long one slice of the props' build runs before it yields to the page (ms). */
+const PROPS_SLICE_MS = 8;
+
+/** The boardwalk's pieces along the crest, as steps: yields between sections once `clock` is due. */
+function* boardwalkPartsSteps(fields, crest, glows = [], clock = stepClock(PROPS_SLICE_MS)) {
     const parts = [];
     const ground = (x, z) => groundHeight(fields, x, z, true);
     const width = 1.7;
@@ -266,6 +271,10 @@ function boardwalkParts(fields, crest, glows = []) {
     });
     let sinceLamp = 0;
     for (let i = 0; i < deck.length - 1; i++) {
+        if (clock.due()) {
+            yield 'boardwalk';
+            clock.restart();
+        }
         const a = deck[i];
         const b = deck[i + 1];
         const run = Math.hypot(b.x - a.x, b.z - a.z);
@@ -321,9 +330,23 @@ function boardwalkParts(fields, crest, glows = []) {
 // ── The mesh and its material ─────────────────────────────────────────────────────
 
 export function createProps(u, t, tier, fields) {
+    return drainSteps(createPropsSteps(u, t, tier, fields));
+}
+
+/**
+ * `createProps` as steps (the world's build breathes between them): the crest, the boardwalk in
+ * slices, the pavilion, then the merged mesh and its material. In one step the props were ~32 ms
+ * of a first visit's build (the boardwalk ~21 ms; 2026-10-31).
+ */
+export function* createPropsSteps(u, t, tier, fields) {
+    const clock = stepClock(PROPS_SLICE_MS);
     const crest = findCrest(fields);
     const glows = [];
-    const walk = boardwalkParts(fields, crest, glows);
+    const walk = yield* boardwalkPartsSteps(fields, crest, glows, clock);
+    if (clock.due()) {
+        yield 'boardwalk';
+        clock.restart();
+    }
     const pavGlows = [];
     const pav = pavilionParts(pavGlows);
     const ground = groundHeight(fields, PAVILION.x, PAVILION.z, true);
@@ -339,6 +362,8 @@ export function createProps(u, t, tier, fields) {
         v.set(x, y, z).applyMatrix4(place);
         glows.push([v.x, v.y, v.z, size, kind]);
     }
+    yield 'pavilion';
+    clock.restart();
     const geometry = mergeGeometries([...walk, ...pav], false);
     for (const g of [...walk, ...pav]) g.dispose();
     geometry.computeBoundingSphere();

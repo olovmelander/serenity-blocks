@@ -40,6 +40,7 @@ import {
 import {
     FLASHES, RINGS, funnelCentreNode, noiseAt, tnGauss,
 } from './tornado-tsl.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** How far the stalks reach from the lens, metres. */
 export const WHEAT_REACH = 58;
@@ -295,9 +296,19 @@ function createPoles({ u }) {
     return mesh;
 }
 
-export function createField({ u, noise, tier }) {
+export function createField(options) {
+    return drainSteps(createFieldSteps(options));
+}
+
+/**
+ * `createField` as steps (the world's build breathes between them: shared/build-steps.js): the
+ * ground and the wheat, then the power line. In one task the field held 17 ms of the Tornado's
+ * first-visit switch (the power line 11 ms, the wheat 6 ms; 2026-10-31).
+ */
+export function* createFieldSteps({ u, noise, tier }) {
     const ground = createGround({ u, noise });
     const wheat = createWheat({ u, noise, tier });
+    yield 'ground and wheat';
     const poles = createPoles({ u });
     return {
         ground,

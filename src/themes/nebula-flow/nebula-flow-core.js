@@ -10,6 +10,8 @@
  * are all nursery-space points.
  */
 
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
@@ -88,6 +90,9 @@ export function nurseryToScreen(x, y, aspect, out = { x: 0.5, y: 0.5 }) {
 
 export const NOISE_SIZE = 256;
 
+/** How long one slice of a bake (the noise, the relief) runs before it yields to the page (ms). */
+const BAKE_SLICE_MS = 8;
+
 /** Periodic gradient noise: one octave, value and exact gradient (lattice units). */
 function gradientOctave(rand, period, n, visit) {
     const gx = new Float32Array(period * period);
@@ -155,6 +160,17 @@ function normalise(field) {
  * @returns {Float32Array} size × size × 4
  */
 export function bakeNoise(seed = 7331, size = NOISE_SIZE) {
+    return drainSteps(bakeNoiseSteps(seed, size));
+}
+
+/**
+ * `bakeNoise` as steps (the world's build breathes between them: shared/build-steps.js): the same
+ * field from the same draws, yielding between octaves once a slice has run BAKE_SLICE_MS. In one
+ * task it held the theme's first-visit switch 27 ms (2026-10-31).
+ * @returns {Generator<string, Float32Array>} size × size × 4
+ */
+export function* bakeNoiseSteps(seed = 7331, size = NOISE_SIZE) {
+    const clock = stepClock(BAKE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const out = new Float32Array(n * n * 4);
@@ -172,6 +188,10 @@ export function bakeNoise(seed = 7331, size = NOISE_SIZE) {
                 field[k] += w * a;
             });
             amp *= kind === 'ridge' ? 0.55 : 0.5;
+            if (clock.due()) {
+                yield 'noise';
+                clock.restart();
+            }
         }
         const { lo, range } = normalise(field);
         for (let i = 0; i < field.length; i += 1) out[i * 4 + c] = (field[i] - lo) / range;
@@ -190,6 +210,16 @@ export function bakeNoise(seed = 7331, size = NOISE_SIZE) {
  * @returns {Float32Array} size × size × 4
  */
 export function bakeRelief(seed = 9127, size = NOISE_SIZE) {
+    return drainSteps(bakeReliefSteps(seed, size));
+}
+
+/**
+ * `bakeRelief` as steps, as bakeNoiseSteps: the same draws, yielding between octaves once a slice
+ * has run BAKE_SLICE_MS (14 ms in one task on a first visit, 2026-10-31).
+ * @returns {Generator<string, Float32Array>} size × size × 4
+ */
+export function* bakeReliefSteps(seed = 9127, size = NOISE_SIZE) {
+    const clock = stepClock(BAKE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const out = new Float32Array(n * n * 4);
@@ -207,6 +237,10 @@ export function bakeRelief(seed = 9127, size = NOISE_SIZE) {
             hy[k] += dvy * a * period;
         });
         amp *= 0.5;
+        if (clock.due()) {
+            yield 'relief';
+            clock.restart();
+        }
     }
     amp = 1;
     for (let o = 0; o < 5; o += 1) {
@@ -215,6 +249,10 @@ export function bakeRelief(seed = 9127, size = NOISE_SIZE) {
             h2[k] += v * a;
         });
         amp *= 0.5;
+        if (clock.due()) {
+            yield 'relief';
+            clock.restart();
+        }
     }
     const one = normalise(h);
     const two = normalise(h2);

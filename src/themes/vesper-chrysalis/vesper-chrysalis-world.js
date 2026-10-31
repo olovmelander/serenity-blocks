@@ -72,7 +72,7 @@ import {
     WING_FALL,
     WING_STEPS,
     approach,
-    bakeNoise,
+    bakeNoiseSteps,
     clamp01,
     createNoiseTexture,
     createVesperUniforms,
@@ -104,6 +104,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout, fillWingCover, frontPast, wingCoverAt,
 } from './vesper-chrysalis-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 
 /** The rest camera's lens (the theme builds its camera from it). */
@@ -160,7 +161,8 @@ export class VesperWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.noiseField = bakeNoise();
+        /** Baked by the build's first steps (a fixed seed: the same field wherever it runs). */
+        this.noiseField = null;
         this.root = new THREE.Group();
         this.root.name = 'VesperChrysalis';
         this.parts = {};
@@ -310,6 +312,17 @@ export class VesperWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order. Built in one task with the noise
+     * bake, it held the first-visit switch's worst frame at ~41 ms (2026-10-31).
+     */
+    * buildSteps() {
+        if (!this.noiseField) this.noiseField = yield* bakeNoiseSteps();
+        yield 'noise';
         const noise = createNoiseTexture(this.noiseField, NOISE_SIZE);
         this.textures.push(noise);
         const u = createVesperUniforms({ noise });
@@ -331,6 +344,7 @@ export class VesperWorld {
         this.addPart('lake', this.lake);
         if (this.lake.reflectorTarget) this.root.add(this.lake.reflectorTarget);
         this.addPart('sky', createSky(u, { lite: tier.lite }));
+        yield 'lake and sky';
 
         // ── What stands in the scene (mirrored by the lake's pass) ──
         this.spires = planSpires(tier.spires);
@@ -349,6 +363,7 @@ export class VesperWorld {
         this.blooms = createBlooms(u, planBlooms(tier.blooms), { whorls: tier.whorls });
         this.addPart('blooms', this.blooms, true);
         if (tier.fireflies > 0) this.addPart('fireflies', createFireflies(u, tier.fireflies), true);
+        yield 'shore, relic, wings and blooms';
 
         // ── Gameplay effects (pools, always drawn) ──
         this.moths = createMoths(u);

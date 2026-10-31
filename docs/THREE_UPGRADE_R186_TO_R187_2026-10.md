@@ -351,6 +351,48 @@ equality and the upload helper. Neon Quarter's worst frame (73 ms, 7-17 ms of sc
 copy pipeline above (42 ms, once per shader cache) plus the GPU process parsing its 100 KB shop shader
 (23 ms, `createShaderModule` is synchronous); left.
 
+**Second stutter pass: 15 more themes (2026-10-31).** The 63-theme light run ranked every theme by the
+longest single script in its first switch's long frames; 15 more had one of 41-71 ms. CPU profiles
+(unminified build, light cadence) put each in the theme's own build: a whole world built in one task
+(Lunara, Star Cradle, Vesper Chrysalis, Tornado; Void Ember, Chiral Gold, Ocean in the bake worker's reply),
+or a step of a stepped build that never yielded inside a big loop (Shifting Sands' formations and terrain,
+Sunbraid's spires and land, Moonlit Greenhouse's iron and plants, Himalayan Peak's field shading, horizon
+map and massif mesh, Painted Ages' fan and fields as High Coast's, Grainfields' fan and crop sites, Verdant
+Hills' ground, layouts and meadow, Spring's land, face, river, pours, woods and the fall plan's module
+constants). All now build as `buildSteps()` generators or time-sliced loops (`stepClock`, mostly 8-10 ms),
+the same work in the same order with the same random draws: every world was fingerprinted before and after
+on the CPU (geometry, indices, instance matrices, textures and mips, uniforms, node ids where relevant) at
+several tiers, drained and stepped, byte-identical. The old sync functions drain the new generators. Spring's
+`LANDINGS`/`BURSTS` constants became the lazy `fallLandings()`/`fallBursts()` (same frozen tables). Fleet
+test: tests/unit/build-steps.test.js now pins 11 more stepped worlds.
+
+Old vs new, light cadence, interleaved, two rounds (longest game-code script in the switch; worst frame):
+
+| Theme | longest script | worst frame |
+|---|---|---|
+| Star Cradle | 54 → 0 ms | 52-57 → 11-12 ms |
+| Sunbraid | 55-58 → 0 | 56 → 17 |
+| Chiral Gold | (bake reply) → 0 | 39 → 16-17 |
+| Ocean | 45-46 → 0 | 45-47 → 16-17 |
+| Vesper Chrysalis | 41 → 0 | 34-46 → 12-17 |
+| Void Ember | 41 → 0 | 44-45 → 12-17 |
+| Tornado | 51-52 → 0 | 50-51 → 18-28 |
+| Shifting Sands | 67 → 0 | 62 → 23-33 |
+| Himalayan Peak | 52-53 → 0 | 50 → 29-34 |
+| Moonlit Greenhouse | 66-67 → 0 | 60-67 → 33-35 |
+| Grainfields | 52 → 0-6 | 52-62 → 39-50 |
+| Verdant Hills | 64-66 → 13-15 | 62-66 → 53-54 |
+| Spring | 48-50 → 0 | 50-74 → 50-61 |
+| Lunara | 51-57 → 0-6 | 52-62 → 56-66 |
+| Painted Ages | 58-71 → 0-5 | 67-78 → 62-73 |
+
+The last five's worst frames are now GPU-process work (texture uploads, shader builds; Lunara's moon map
+`copyExternalImageToTexture` 15 ms, its first render's node build), not game code. The extra breaths cost
+some time to show: Himalayan Peak +170 ms, Spring +120, Moonlit Greenhouse +100, Shifting Sands and
+Grainfields +50-150 (an in-play switch keeps the old theme playing meanwhile). 0 console errors; rest shots
+match old vs new for all 15. Left: Grainfields' goose-route planning (14-37 ms) also runs from resize via
+`warmTakeoffs`; Spring's `buildCourse()` (~9 ms) at module load.
+
 ## Phase 2 acceptance (open)
 
 - (Done, above.) Real-GPU captures of every theme, r186 build vs r187 build at the same frames (RTX; the playground

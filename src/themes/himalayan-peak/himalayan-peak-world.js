@@ -48,6 +48,7 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     AVALANCHE_SLOTS,
@@ -96,7 +97,7 @@ import { tierFor } from './himalayan-peak-quality.js';
 import { SUN_RADIUS, createSky } from './himalayan-peak-sky.js';
 import { createMassif } from './himalayan-peak-terrain.js';
 import { createCloudSea } from './himalayan-peak-clouds.js';
-import { createPassSnow, createShrine } from './himalayan-peak-pass.js';
+import { createPassSnowSteps, createShrine } from './himalayan-peak-pass.js';
 import { createCords, createFlags } from './himalayan-peak-flags.js';
 import { createDust, createPapers, createRowBeams } from './himalayan-peak-fx.js';
 import { createAvalanche, createSpindrift } from './himalayan-peak-snow.js';
@@ -340,15 +341,30 @@ export class HimalayanPeakWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order. Built in one task it held a first
+     * visit's switch ~70 ms (2026-10-31).
+     */
+    * buildSteps() {
         if (!this.field) {
             // build() without load(): the plan stands in.
             this.massif = this.massif || planMassif();
             this.field = deriveField(this.massif);
         }
         const { field, tier } = this;
-        const noise = createNoiseTexture(bakeNoise());
+        const noiseField = bakeNoise();
+        yield 'noise bake';
+        const noise = createNoiseTexture(noiseField);
+        // (Owned at once, so a build stopped here disposes it; the list ends in the same order.)
+        this.textures.push(noise);
+        yield 'noise';
         const maps = createFieldTextures(field);
-        this.textures.push(noise, maps.shade, maps.horizon, maps.volume, maps.ground);
+        this.textures.push(maps.shade, maps.horizon, maps.volume, maps.ground);
         const u = createPeakUniforms({ noise, ...maps });
         this.u = u;
 
@@ -361,6 +377,7 @@ export class HimalayanPeakWorld {
         }
         this.skyline = top;
         this.anchors = anchors(field);
+        yield 'fields';
 
         // ── The amphitheatre ──
         this.addPart('massif', createMassif(u, field, { stride: tier.stride, air: tier.air }));
@@ -368,14 +385,17 @@ export class HimalayanPeakWorld {
         this.addPart('clouds', createCloudSea(u, { cloud: tier.cloud, billows: tier.billows, air: tier.air }));
         this.addPart('spindrift', createSpindrift(u, field, tier.spindrift));
         this.addPart('avalanche', createAvalanche(u, field, tier.powder));
+        yield 'amphitheatre';
 
         // ── The pass ──
-        this.addPart('pass', createPassSnow(u, field, { glints: tier.glints }), { space: 'near' });
+        this.addPart('pass', yield* createPassSnowSteps(u, field, { glints: tier.glints }), { space: 'near' });
+        yield 'pass';
         this.addPart('shrine', createShrine(u, field), { space: 'near' });
         this.cords = createCords(u);
         this.addPart('cords', this.cords, { space: 'near' });
         this.flags = createFlags(u, { flags: tier.flags });
         this.addPart('flags', this.flags, { space: 'near' });
+        yield 'shrine and flags';
 
         // ── Gameplay effects (pools, always drawn) ──
         this.papers = createPapers(u, tier.papers);

@@ -49,7 +49,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { clamp as clampJs, smooth } from './spring-core.js';
+import { SPRING_SLICE_MS, clamp as clampJs, smooth } from './spring-core.js';
 import { aerial, skyColour } from './spring-light.js';
 import { EVENT_ROWS, SURGES, spLuma } from './spring-tsl.js';
 import {
@@ -302,7 +302,7 @@ export function riverStations(detail = 1) {
  * ground, from which the banks' horizon the water mirrors is measured (without it, a flat bank).
  */
 export function* riverGeometrySteps({ cols = 40, detail = 1, baked = null } = {}) {
-    const clock = stepClock();
+    const clock = stepClock(SPRING_SLICE_MS);
     const { upper, lower } = riverStations(detail);
     const across = cols + 1;
     const count = (upper.length + lower.length) * across;

@@ -36,6 +36,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import {
@@ -54,11 +55,11 @@ import {
 } from './tornado-core.js';
 import { tierFor } from './tornado-quality.js';
 import {
-    BOLTS, FLASHES, FLIGHTS, RIBBONS, RINGS, createNoiseTexture, createUniforms,
+    BOLTS, FLASHES, FLIGHTS, RIBBONS, RINGS, createNoiseTextureSteps, createUniforms,
 } from './tornado-tsl.js';
 import { createSky } from './tornado-sky.js';
 import { createFunnel } from './tornado-funnel.js';
-import { createField } from './tornado-field.js';
+import { createFieldSteps } from './tornado-field.js';
 import { createFx } from './tornado-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -305,10 +306,22 @@ export class TornadoWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work in
+     * the same order: the noise baked in slices, the sky, the field in its own steps, then the
+     * funnel and the rest. Built in one task it held the first-visit switch's worst frame at ~50 ms
+     * (2026-10-31).
+     */
+    * buildSteps() {
         const { u, tier } = this;
-        this.noise = createNoiseTexture(1925);
+        this.noise = yield* createNoiseTextureSteps(1925);
+        yield 'noise';
         this.sky = createSky({ u, noise: this.noise, tier });
-        this.field = createField({ u, noise: this.noise, tier });
+        this.field = yield* createFieldSteps({ u, noise: this.noise, tier });
+        yield 'field';
         this.funnel = createFunnel({ u, noise: this.noise, tier });
         this.fx = createFx({ u, tier });
         this.addPart('sky', this.sky.object);

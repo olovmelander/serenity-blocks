@@ -34,7 +34,8 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { mulberry32 } from './spring-core.js';
+import { SPRING_SLICE_MS, mulberry32 } from './spring-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { aerial } from './spring-light.js';
 import { EYE, PLACES, bearingOf } from './spring-plan.js';
 import { fallToWorld, worldToFall } from './spring-fall-plan.js';
@@ -400,15 +401,29 @@ export class SpringForest {
     }
 
     build(baked) {
-        return this.buildPlacements(layoutForest(baked, this.assets, this.tier.trees ?? 60));
+        return drainSteps(this.buildSteps(baked));
+    }
+
+    /** build(), a time slice a step (the world's first visit: 15 ms in one step before). */
+    * buildSteps(baked) {
+        const clock = stepClock(SPRING_SLICE_MS);
+        return yield* this.buildPlacementsSteps(layoutForest(baked, this.assets, this.tier.trees ?? 60), clock);
     }
 
     /** Build these trees ({ asset, x, y, z, yaw, scale, tone, far } each). */
     buildPlacements(placements) {
+        return drainSteps(this.buildPlacementsSteps(placements));
+    }
+
+    * buildPlacementsSteps(placements, clock = stepClock(SPRING_SLICE_MS)) {
         this.placements = placements;
         this.stats.trees = this.placements.length;
         this.buildBark();
-        this.buildFoliage();
+        if (clock.due()) {
+            yield 'bark';
+            clock.restart();
+        }
+        yield* this.buildFoliageSteps(clock);
         return this;
     }
 
@@ -542,6 +557,10 @@ export class SpringForest {
     }
 
     buildFoliage() {
+        drainSteps(this.buildFoliageSteps());
+    }
+
+    * buildFoliageSteps(clock = stepClock(SPRING_SLICE_MS)) {
         const buckets = new Map();
         const position = new THREE.Vector3();
         const rotation = new THREE.Quaternion();
@@ -551,7 +570,12 @@ export class SpringForest {
         const matrix = new THREE.Matrix4();
         const { variants } = this.assets.foliage;
         const keepNear = this.bake ? 1 : this.tier.foliage ?? 0.8;
-        this.placements.forEach((tree, treeIndex) => {
+        for (let treeIndex = 0; treeIndex < this.placements.length; treeIndex += 1) {
+            if (clock.due()) {
+                yield 'foliage';
+                clock.restart();
+            }
+            const tree = this.placements[treeIndex];
             const asset = this.assets.trees[tree.asset];
             const { sites } = asset;
             const keep = this.bake ? 1
@@ -586,8 +610,12 @@ export class SpringForest {
                 bucket.bent.push(bentNormal.x, bentNormal.y, bentNormal.z, tree.tone);
                 bucket.tree.push(tree.x, tree.y, tree.z, asset.height * tree.scale);
             }
-        });
-        buckets.forEach((bucket, key) => {
+        }
+        for (const [key, bucket] of buckets) {
+            if (clock.due()) {
+                yield 'foliage';
+                clock.restart();
+            }
             const spray = this.assets.foliage.meshes[bucket.mesh];
             if (!spray) throw new Error(`[Spring] Foliage mesh "${bucket.mesh}" is missing from the asset pack.`);
             const geometry = bucket.thin ? leafLod(spray) : spray;
@@ -608,7 +636,7 @@ export class SpringForest {
             this.group.add(mesh);
             this.stats.sprays += count;
             this.stats.foliageTriangles += (geometry.index.count / 3) * count;
-        });
+        }
     }
 
     dispose() {

@@ -9,7 +9,7 @@ import { BOW } from '../../src/themes/spring/spring-light.js';
 import { PACKET } from '../../src/themes/spring/spring-fall.js';
 import { BOIL } from '../../src/themes/spring/spring-river.js';
 import {
-    FALL_FRAME, LANDINGS, POOL_Y, worldToFall,
+    FALL_FRAME, POOL_Y, fallLandings, worldToFall,
 } from '../../src/themes/spring/spring-fall-plan.js';
 
 describe('spring waterfall: the splash where the tongues land', () => {
@@ -18,7 +18,7 @@ describe('spring waterfall: the splash where the tongues land', () => {
 
     it('throws quick, crisp plumes up out of the pool where the water lands', () => {
         expect(splashes.length).toBeGreaterThan(60);
-        const landed = LANDINGS.filter((row) => row.power > 0.05);
+        const landed = fallLandings().filter((row) => row.power > 0.05);
         const frame = {};
         for (const r of splashes) {
             // Born at the pool's surface, short-lived, opaque, and rising.
@@ -71,7 +71,7 @@ describe('spring waterfall: the water', () => {
         expect(BOIL.height).toBeLessThan(2);
         for (let k = 1; k < BOIL.reach.length; k++) expect(BOIL.reach[k]).toBeGreaterThan(BOIL.reach[k - 1]);
         // Full where the main tongue lands (about eight metres out from the lip).
-        const main = LANDINGS.reduce((best, row) => (row.power > best.power ? row : best), LANDINGS[0]);
+        const main = fallLandings().reduce((best, row) => (row.power > best.power ? row : best), fallLandings()[0]);
         expect(main.along).toBeGreaterThanOrEqual(BOIL.reach[0]);
         expect(main.along).toBeLessThanOrEqual(BOIL.reach[2]);
     });

@@ -11,6 +11,7 @@
 import {
     afterAll, beforeAll, describe, expect, it, vi,
 } from 'vitest';
+import { createHash } from 'node:crypto';
 import * as THREE from 'three/webgpu';
 import {
     PHASE0, POST_EVENTS, REST_RIG, SUNBRAID_PARTS, SunbraidWorld, fovForAspect,
@@ -39,6 +40,41 @@ const COUNTERS = [
 const {
     tick, twist, level: LEVEL, conjunction, dusk: DUSK,
 } = BRAID_EVENTS;
+
+/** Every array a world built, in scene order: names, geometry attributes and index, instance matrices. */
+function fingerprint(root) {
+    const hash = createHash('sha256');
+    const bytes = (a) => new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    root.traverse((o) => {
+        hash.update(`${o.type}|${o.name}|`);
+        if (o.geometry) {
+            for (const [name, attribute] of Object.entries(o.geometry.attributes)) {
+                hash.update(name);
+                hash.update(bytes(attribute.array));
+            }
+            if (o.geometry.index) hash.update(bytes(o.geometry.index.array));
+        }
+        if (o.isInstancedMesh) hash.update(bytes(o.instanceMatrix.array));
+    });
+    return hash.digest('hex');
+}
+
+/** Run a world's build steps on a clock that is always due, so every slice breathes; the steps run. */
+function buildEveryBreath(world) {
+    let t = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+        t += 50;
+        return t;
+    });
+    try {
+        let steps = 0;
+        const run = world.buildSteps();
+        while (!run.next().done) steps += 1;
+        return steps;
+    } finally {
+        now.mockRestore();
+    }
+}
 
 /** The land, prepared once. */
 let land;
@@ -905,5 +941,30 @@ describe('SunbraidWorld teardown', () => {
             unbuilt.dispose();
             unbuilt.dispose();
         }).not.toThrow();
+    });
+});
+
+describe('SunbraidWorld build in slices', () => {
+    it('builds the same world when every slice of the fan and the towers breathes', () => {
+        const once = new THREE.Scene();
+        new SunbraidWorld({
+            scene: once, quality: QUALITY, capture: true, prepared: land,
+        }).build();
+        const scene = new THREE.Scene();
+        const sliced = new SunbraidWorld({
+            scene, quality: QUALITY, capture: true, prepared: land,
+        });
+        // The world's own steps, and the fan's rows and the towers' rows and passes between them.
+        expect(buildEveryBreath(sliced)).toBeGreaterThan(100);
+        expect(fingerprint(scene)).toBe(fingerprint(once));
+        sliced.dispose();
+    });
+
+    it('lays the land plan out over breaths, and gives up on an aborted start', async () => {
+        expect(SunbraidWorld.prepareSync(QUALITY)).toEqual(land);
+        const controller = new AbortController();
+        const pending = SunbraidWorld.prepare(QUALITY, { signal: controller.signal });
+        controller.abort();
+        await expect(pending).resolves.toBeNull();
     });
 });

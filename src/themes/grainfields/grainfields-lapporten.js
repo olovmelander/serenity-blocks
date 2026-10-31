@@ -43,6 +43,7 @@ import {
 } from 'three/tsl';
 import { EYE, PLACES, smooth } from './grainfields-core.js';
 import { aerial, lightSurface } from './grainfields-light.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const G = PLACES.gate;
 /** The gate's frame: unit vectors toward the eye (along the trough) and to the eye's right. */
@@ -208,8 +209,15 @@ export const gateHeight = (x, z) => gateSample(x, z).h;
 
 // ── The mesh ───────────────────────────────────────────────────────────────────────
 
-/** The fells' mesh: a grid in the gate's frame, its columns crowded where the silhouette turns. */
-export function createGateGeometry(cols = 420, rows = 150) {
+/** How long one slice of the fells' mesh runs before it yields to the page (ms). */
+const GATE_SLICE_MS = 8;
+
+/**
+ * The fells' mesh: a grid in the gate's frame, its columns crowded where the silhouette turns.
+ * As steps: yields between rows of the grid once `clock` is due, and around the normals (the
+ * whole mesh was one ~38 ms piece of a first visit's build, 2026-10-31); returns the geometry.
+ */
+export function* createGateGeometrySteps(cols = 420, rows = 150, clock = stepClock(GATE_SLICE_MS)) {
     const positions = new Float32Array(cols * rows * 3);
     const shape = new Float32Array(cols * rows * 3);
     const c0 = GATE.span[0] * SIZE.across;
@@ -236,6 +244,10 @@ export function createGateGeometry(cols = 420, rows = 150) {
             shape[o + 1] = s.face;
             shape[o + 2] = s.cirque;
         }
+        if (clock.due()) {
+            yield 'gate';
+            clock.restart();
+        }
     }
     const index = new Uint32Array((cols - 1) * (rows - 1) * 6);
     let k = 0;
@@ -255,12 +267,16 @@ export function createGateGeometry(cols = 420, rows = 150) {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('aShape', new THREE.BufferAttribute(shape, 3));
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
+    yield 'gate';
+    clock.restart();
     geometry.computeVertexNormals();
     // Up-facing normals throughout (the grid's winding follows the frame's handedness).
     const n = geometry.attributes.normal;
     let flip = 0;
     for (let i = 0; i < n.count; i += 97) flip += n.getY(i);
     if (flip < 0) {
+        yield 'gate';
+        clock.restart();
         for (let i = 0; i < index.length; i += 3) {
             const t = index[i + 1];
             index[i + 1] = index[i + 2];
@@ -271,6 +287,11 @@ export function createGateGeometry(cols = 420, rows = 150) {
     }
     geometry.computeBoundingSphere();
     return geometry;
+}
+
+/** createGateGeometrySteps at once. */
+export function createGateGeometry(cols = 420, rows = 150) {
+    return drainSteps(createGateGeometrySteps(cols, rows));
 }
 
 /**
@@ -304,8 +325,9 @@ export const WALL = Object.freeze({
     bump: 1.35,
 });
 
-export function createLapporten(u, t, tier) {
-    const geometry = createGateGeometry(tier.fells.cols, tier.fells.rows);
+/** The fells, as steps (their mesh yields: createGateGeometrySteps); returns the part. */
+export function* createLapportenSteps(u, t, tier, clock = stepClock(GATE_SLICE_MS)) {
+    const geometry = yield* createGateGeometrySteps(tier.fells.cols, tier.fells.rows, clock);
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'GrainfieldsLapporten';
     material.fog = false;
@@ -437,6 +459,11 @@ export function createLapporten(u, t, tier) {
             material.dispose();
         },
     };
+}
+
+/** createLapportenSteps at once. */
+export function createLapporten(u, t, tier) {
+    return drainSteps(createLapportenSteps(u, t, tier));
 }
 
 /** The gate's U at the ridge line, as a world point (the middle of the floor). */

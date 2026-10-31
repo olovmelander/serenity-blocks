@@ -43,6 +43,7 @@ import { DEG, EYE, clamp01 } from './grainfields-core.js';
 import { groundHeight } from './grainfields-plan.js';
 import { aerial } from './grainfields-light.js';
 import { deckShadow } from './grainfields-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -324,11 +325,17 @@ function spriteMaterial(u, t, impostors, tile, look, coverage) {
     return material;
 }
 
+/** How long one slice of the shelterbelts' build runs before it yields to the page (ms). */
+const FOREST_SLICE_MS = 8;
+
 /**
  * The shelterbelts. `sites` from grainfields-plan treeSites (x, ground y, z, height, kind, seed,
  * width, lean); `assets` from loadGrainfieldsAssets; `tier.forest` = { near, sprays, sprites }.
+ * As steps: yields between sites, trees and sections once `clock` is due (the whole belt was one
+ * ~27 ms piece of a first visit's build, 2026-10-31); returns the part.
  */
-export function createForest(u, t, assets, sites, tier, { coverage = false } = {}) {
+export function* createForestSteps(u, t, assets, sites, tier, options = {}, clock = stepClock(FOREST_SLICE_MS)) {
+    const { coverage = false } = options;
     const owned = [];
     const borrowed = [];
     const own = (resource) => {
@@ -344,6 +351,10 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
     const placements = [];
     const far = [];
     for (let i = 0; i < sites.length; i += 8) {
+        if (clock.due()) {
+            yield 'forest';
+            clock.restart();
+        }
         const species = TREE_SPECIES[sites[i + 4]] || 'larch';
         const seed = sites[i + 5];
         const x = sites[i];
@@ -414,6 +425,10 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
         borrowed.push(asset.bark);
         stats.barkTriangles += (drawn / 3) * trees.length;
     });
+    if (clock.due()) {
+        yield 'forest';
+        clock.restart();
+    }
 
     // ── Sprays, per kind and variant ──
     const buckets = new Map();
@@ -424,7 +439,12 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
     const scale = new THREE.Vector3();
     const matrix = new THREE.Matrix4();
     const { variants } = assets.foliage;
-    placements.forEach((tree, treeIndex) => {
+    for (let treeIndex = 0; treeIndex < placements.length; treeIndex++) {
+        if (clock.due()) {
+            yield 'forest';
+            clock.restart();
+        }
+        const tree = placements[treeIndex];
         const asset = assets.trees[tree.name];
         const { sites: crownSites } = asset;
         const keep = Math.min(1, sprays * sprayShare(tree.d));
@@ -456,7 +476,11 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
             bucket.bent.push(bentNormal.x, bentNormal.y, bentNormal.z, tree.tone);
             bucket.tree.push(tree.x, tree.y, tree.z, asset.height * tree.scale);
         }
-    });
+    }
+    if (clock.due()) {
+        yield 'forest';
+        clock.restart();
+    }
     buckets.forEach((bucket, key) => {
         const geometry = assets.foliage.meshes[key];
         if (!geometry) throw new Error(`[Grainfields] Foliage mesh "${key}" is missing from the asset pack.`);
@@ -480,6 +504,10 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
         stats.sprays += count;
         stats.foliageTriangles += (geometry.index.count / 3) * count;
     });
+    if (clock.due()) {
+        yield 'forest';
+        clock.restart();
+    }
 
     // ── The far belts: sprites ──
     const { impostors } = assets;
@@ -542,4 +570,9 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
             borrowed.length = 0;
         },
     };
+}
+
+/** createForestSteps at once. */
+export function createForest(u, t, assets, sites, tier, options = {}) {
+    return drainSteps(createForestSteps(u, t, assets, sites, tier, options));
 }

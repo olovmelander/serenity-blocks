@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     DUSK_LEVEL_STEP, DUSK_WALK, SAND_FLOW, ShiftingSandsWorld, WORLD_TIERS, idleWind,
@@ -10,6 +13,41 @@ import { POST_LOOK } from '../../src/themes/shifting-sands/shifting-sands-post.j
 import { SETTLE, SLOT_SUMMONED } from '../../src/themes/shifting-sands/shifting-sands-worm.js';
 
 const TIERS = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
+
+/** Every array a world built, in scene order: names, geometry attributes and index, instance matrices. */
+function fingerprint(root) {
+    const hash = createHash('sha256');
+    const bytes = (a) => new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    root.traverse((o) => {
+        hash.update(`${o.type}|${o.name}|`);
+        if (o.geometry) {
+            for (const [name, attribute] of Object.entries(o.geometry.attributes)) {
+                hash.update(name);
+                hash.update(bytes(attribute.array));
+            }
+            if (o.geometry.index) hash.update(bytes(o.geometry.index.array));
+        }
+        if (o.isInstancedMesh) hash.update(bytes(o.instanceMatrix.array));
+    });
+    return hash.digest('hex');
+}
+
+/** Run a world's build steps on a clock that is always due, so every slice breathes; the steps run. */
+function buildEveryBreath(world) {
+    let t = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+        t += 50;
+        return t;
+    });
+    try {
+        let steps = 0;
+        const run = world.buildSteps();
+        while (!run.next().done) steps += 1;
+        return steps;
+    } finally {
+        now.mockRestore();
+    }
+}
 
 function countDescendants(root) {
     let n = 0;
@@ -433,5 +471,19 @@ describe('shifting sands build-up', () => {
         expect(after.gold).toBeLessThan(rest.gold + 0.03);
         expect(world.exposure).toBeGreaterThan(0.995);
         world.dispose();
+    });
+});
+
+describe('shifting sands world build in slices', () => {
+    it('builds the same world when every slice of the lathes and the terrain bake breathes', () => {
+        const once = makeWorld('Minimal');
+        const scene = new THREE.Scene();
+        const sliced = new ShiftingSandsWorld({ scene, quality: 'Minimal', capture: true });
+        // The world's own four steps, and the formations' rings and the bake's rows between them.
+        expect(buildEveryBreath(sliced)).toBeGreaterThan(200);
+        expect(fingerprint(scene)).toBe(fingerprint(once.scene));
+        expect(sliced.terrain.stats.vertices).toBe(once.world.terrain.stats.vertices);
+        once.world.dispose();
+        sliced.dispose();
     });
 });

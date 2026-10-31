@@ -37,8 +37,15 @@ import {
 } from 'three/tsl';
 import { groundPointAt, SENTINEL } from './shifting-sands-composition.js';
 import { mulberry32, ssTexNoise } from './shifting-sands-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const TAU = Math.PI * 2;
+
+/**
+ * How long a slice of the formations' lathes runs before it yields to the page (ms). In one step
+ * the Sentinel's lathe held Shifting Sands' first-visit switch ~66 ms (2026-10-31).
+ */
+const LATHE_SLICE_MS = 8;
 
 /** Smooth periodic footprint noise: a few random harmonics. */
 function makeFootprint(rand, {
@@ -95,11 +102,14 @@ function spireProfile(s) {
 }
 
 /**
- * One lathe formation.
+ * One lathe formation, appended to `out`, as steps: it yields between its rings once `clock` is
+ * due, and returns the vertices it added.
  * @param {object} f  { x, z, base, height, radius, rings, segs, profile, footprint, flutes, strata, seed }
- * @returns {{ positions:number[], normals:number[], params:number[], indices:number[] }}
+ * @param {{ positions:number[], normals:number[], params:number[], indices:number[] }} out
+ * @param {number} vertexOffset
+ * @param {{ due: () => boolean, restart: () => void }} clock  (shared/build-steps.js stepClock)
  */
-function buildLathe(f, out, vertexOffset) {
+function* buildLatheSteps(f, out, vertexOffset, clock) {
     const rand = mulberry32(f.seed);
     const fluteK = 6 + Math.floor(rand() * 6);
     const flutePh = rand() * TAU;
@@ -159,6 +169,10 @@ function buildLathe(f, out, vertexOffset) {
             out.positions.push(a[0], a[1], a[2]);
             out.normals.push(nx, ny, nz);
             out.params.push(s, f.height, f.kind, f.seed % 97);
+        }
+        if (clock.due()) {
+            yield 'lathe rings';
+            clock.restart();
         }
     }
     for (let i = 0; i < rings; i++) {
@@ -240,7 +254,16 @@ function buildEscarpment(rand, out, vertexOffset, { dist = 8200, base = -40, seg
  * @param {import('./shifting-sands-terrain.js').DuneField} field  (for base heights)
  * @param {object} [opts] { tier }
  */
-export function buildFormations(field, { detail = 1 } = {}) {
+export function buildFormations(field, options = {}) {
+    return drainSteps(buildFormationsSteps(field, options));
+}
+
+/**
+ * `buildFormations` as steps (the world's build breathes between them): the same formations in
+ * the same order from the same random numbers, the lathes yielding every LATHE_SLICE_MS.
+ */
+export function* buildFormationsSteps(field, { detail = 1 } = {}) {
+    const clock = stepClock(LATHE_SLICE_MS);
     const rand = mulberry32(777);
     const list = [];
     const s = SENTINEL;
@@ -318,8 +341,15 @@ export function buildFormations(field, { detail = 1 } = {}) {
         positions: [], normals: [], params: [], indices: [],
     };
     let offset = 0;
-    list.forEach((f) => { offset += buildLathe(f, out, offset); });
+    for (let i = 0; i < list.length; i++) {
+        const added = yield* buildLatheSteps(list[i], out, offset, clock);
+        offset += added;
+    }
     offset += buildEscarpment(rand, out, offset);
+    if (clock.due()) {
+        yield 'escarpment';
+        clock.restart();
+    }
 
     const geometry = new THREE.BufferGeometry();
     const IndexAttr = offset > 65535 ? THREE.Uint32BufferAttribute : THREE.Uint16BufferAttribute;
@@ -414,8 +444,13 @@ export function createRockMaterial(shared) {
     return material;
 }
 
-export function createFormations({ field, shared, detail = 1 }) {
-    const built = buildFormations(field, { detail });
+export function createFormations(options) {
+    return drainSteps(createFormationsSteps(options));
+}
+
+/** `createFormations` as steps: the geometry in slices (buildFormationsSteps), then the material and mesh. */
+export function* createFormationsSteps({ field, shared, detail = 1 }) {
+    const built = yield* buildFormationsSteps(field, { detail });
     const material = createRockMaterial(shared);
     const mesh = new THREE.Mesh(built.geometry, material);
     mesh.name = 'shifting-sands-rocks';

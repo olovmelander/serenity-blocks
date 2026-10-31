@@ -9,6 +9,7 @@ import {
     positionWorld, reflect, select, smoothstep, step, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { groundHeight } from './sunbraid-plan.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import {
     DEG, haze, mist, sbCellEdge, sbHash21, sunLight, sunVisibility,
 } from './sunbraid-tsl.js';
@@ -62,8 +63,20 @@ const ridgeRise = (x) => {
 /** The selenite: the share of the glitter's cells that hold a crystal, and how bright its glint is. */
 export const SELENITE = Object.freeze({ share: 0.018, gain: 3.6 });
 
+/**
+ * How long a slice of the fan's vertices runs before it yields to the page (ms). In one step the
+ * fan held Sunbraid's first-visit switch ~37 ms (2026-10-31).
+ */
+const FAN_SLICE_MS = 8;
+
 /** The fan's vertices, normals and indices (CPU). */
 export function buildFan(cols, rows) {
+    return drainSteps(buildFanSteps(cols, rows));
+}
+
+/** `buildFan` as steps (the world's build breathes between them): the same rows, yielding every FAN_SLICE_MS. */
+export function* buildFanSteps(cols, rows) {
+    const clock = stepClock(FAN_SLICE_MS);
     const count = cols * rows;
     const position = new Float32Array(count * 3);
     const normal = new Float32Array(count * 3);
@@ -90,6 +103,10 @@ export function buildFan(cols, rows) {
             normal[k + 1] = 1 / len;
             normal[k + 2] = -dz / len;
         }
+        if (clock.due()) {
+            yield 'fan rows';
+            clock.restart();
+        }
     }
     const index = new Uint32Array((cols - 1) * (rows - 1) * 6);
     let n = 0;
@@ -112,7 +129,12 @@ export function buildFan(cols, rows) {
 }
 
 export function createLand(u, t, tier) {
-    const fan = buildFan(tier.fan.cols, tier.fan.rows);
+    return drainSteps(createLandSteps(u, t, tier));
+}
+
+/** `createLand` as steps: the fan in slices (buildFanSteps), then the geometry, material and mesh. */
+export function* createLandSteps(u, t, tier) {
+    const fan = yield* buildFanSteps(tier.fan.cols, tier.fan.rows);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(fan.position, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(fan.normal, 3));

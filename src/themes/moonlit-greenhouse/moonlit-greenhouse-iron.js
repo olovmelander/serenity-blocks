@@ -44,6 +44,7 @@ import {
 import {
     TUNE, mgHash21, mgMoonVis, mgSurface,
 } from './moonlit-greenhouse-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
 
@@ -674,16 +675,43 @@ export function ironDetail(tier) {
 }
 
 /**
+ * How long a slice of the iron's build runs before it yields to the page (ms). In one step the
+ * ribs and the columns held Moonlit Greenhouse's first-visit switch ~48 ms (2026-10-31).
+ */
+const IRON_SLICE_MS = 8;
+
+/**
  * The iron's geometry for a plan and a tier: { solid, lattice, brick } as HouseMesh builders
  * (call .geometry() for three's) and the detail used.
  */
 export function buildIronMeshes(plan, tier) {
+    return drainSteps(buildIronMeshesSteps(plan, tier));
+}
+
+/**
+ * `buildIronMeshes` as steps (the world's build breathes between them): the same ribs and
+ * columns in the same order, yielding between them once `clock` is due.
+ */
+export function* buildIronMeshesSteps(plan, tier, clock = stepClock(IRON_SLICE_MS)) {
     const detail = ironDetail(tier);
     const solid = new HouseMesh({ aIron: 4 });
     const lattice = new HouseMesh({ aLat: 4 });
     const brick = new HouseMesh({ aBrick: 4 });
-    plan.ribs.forEach((z) => addRib(solid, lattice, z, detail));
-    plan.columns.forEach((c) => addColumn(solid, c.x, c.z, detail));
+    for (let i = 0; i < plan.ribs.length; i += 1) {
+        addRib(solid, lattice, plan.ribs[i], detail);
+        if (clock.due()) {
+            yield 'iron ribs';
+            clock.restart();
+        }
+    }
+    for (let i = 0; i < plan.columns.length; i += 1) {
+        const c = plan.columns[i];
+        addColumn(solid, c.x, c.z, detail);
+        if (clock.due()) {
+            yield 'iron columns';
+            clock.restart();
+        }
+    }
     addSpringBeams(solid);
     addRidge(solid);
     addEndFrame(solid, detail);
@@ -779,10 +807,20 @@ function mossAt(uv, climb, U, noise) {
 /**
  * The iron part. ctx = { tier, U, noise, plan }.
  */
-export function createIron({
+export function createIron(ctx) {
+    return drainSteps(createIronSteps(ctx));
+}
+
+/** `createIron` as steps: the geometry in slices (buildIronMeshesSteps), then the meshes and materials. */
+export function* createIronSteps({
     tier, U, noise, plan,
 }) {
-    const built = buildIronMeshes(plan, tier);
+    const clock = stepClock(IRON_SLICE_MS);
+    const built = yield* buildIronMeshesSteps(plan, tier, clock);
+    if (clock.due()) {
+        yield 'iron built';
+        clock.restart();
+    }
     const group = new THREE.Group();
     group.name = 'moonlit-greenhouse-iron';
     const geometries = [];

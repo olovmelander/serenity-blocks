@@ -150,17 +150,22 @@ describe('the stepped themes build their worlds in steps', () => {
     const stepped = [
         ...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'rainbow-terraces', 'bioluminescence', 'koi-pond',
         'shifting-sands', 'sakura-twilight', 'grainfields', 'sunbraid',
+        // The first-visit stutter pass of 2026-10-31 (their builds held a switch frame 40-90 ms).
+        'stillwater', 'thermal-bloom', 'painted-ages', 'himalayan-peak', 'lunara', 'nebula-flow', 'vesper-chrysalis',
+        'tornado', 'void-ember', 'chiral-gold', 'ocean',
     ];
     /** A theme's world module (Sakura's carries the short name). */
     const worldOf = (id) => source(`${id}/${id === 'sakura-twilight' ? 'sakura' : id}-world.js`);
     it.each(stepped)('%s: build() drains buildSteps(); the theme owns the world once whole', (id) => {
         const world = worldOf(id);
-        expect(world).toMatch(/\n {4}build\(\) \{\n {8}drainSteps\(this\.buildSteps\(\)\);\n {8}return this;\n {4}\}/);
+        // Either form: drain then `return this`, or return what buildSteps() returns (the world).
+        expect(world).toMatch(new RegExp('\\n {4}build\\(\\) \\{\\n {8}(?:drainSteps\\(this\\.buildSteps\\(\\)\\);'
+            + '\\n {8}return this;|return drainSteps\\(this\\.buildSteps\\(\\)\\);)\\n {4}\\}'));
         expect(world).toMatch(/\n {4}\* buildSteps\(\) \{/);
         expect(world.match(/yield /g).length).toBeGreaterThanOrEqual(2);
         const theme = source(`${id}/${id}-theme.js`);
         // Never a half-built this.world between the breaths (a resume or a resize would draw it).
-        expect(theme).toContain('if (!(await buildWorldBreathing(world, isCurrent))) return');
+        expect(theme).toContain('if (!(await buildWorldBreathing(world, isCurrent)))');
         expect(theme).toContain('this.world = world;');
         expect(theme).not.toMatch(/this\.world = new /);
     });

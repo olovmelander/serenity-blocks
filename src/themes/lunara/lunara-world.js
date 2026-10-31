@@ -61,7 +61,7 @@ import {
     TAU,
     WISP_FLIGHT,
     approach,
-    bakeNoise,
+    bakeNoiseSteps,
     celestialAnchors,
     clamp01,
     createHeightTexture,
@@ -88,6 +88,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './lunara-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, wheelAt } from '../shared/mood-clock.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
@@ -162,8 +163,13 @@ export class LunaraWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.noiseField = bakeNoise();
-        this.plan = buildPlan(this.noiseField, NOISE_SIZE, seed);
+        /**
+         * The noise field and the valley's plan are made by the build's first steps (fixed seeds:
+         * the same field and plan wherever they run); nothing reads them before it.
+         */
+        this.noiseField = null;
+        this.plan = null;
+        this.planSeed = seed;
         this.root = new THREE.Group();
         this.root.name = 'Lunara';
         this.parts = {};
@@ -321,6 +327,19 @@ export class LunaraWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order. Built in one task with the noise
+     * bake and the plan, it held the first-visit switch's worst frame at ~60 ms (2026-10-31).
+     */
+    * buildSteps() {
+        if (!this.noiseField) this.noiseField = yield* bakeNoiseSteps();
+        yield 'noise';
+        if (!this.plan) this.plan = buildPlan(this.noiseField, NOISE_SIZE, this.planSeed);
+        yield 'plan';
         const noise = createNoiseTexture(this.noiseField, NOISE_SIZE);
         const heights = createHeightTexture(this.plan.heights);
         const blank = createPlaceholderTexture();
@@ -337,6 +356,7 @@ export class LunaraWorld {
         this.addPart('companion', createMoon(u, this.moonMap, this.mapFade, { companion: true, relief: tier.relief }));
         this.meteors = createMeteors(u, tier.meteors);
         this.addPart('meteors', this.meteors);
+        yield 'sky';
 
         this.addPart('ranges', createRanges(u, plan));
         this.addPart('banks', createBanks(u, plan));
@@ -344,6 +364,7 @@ export class LunaraWorld {
         this.addPart('water', water);
         if (water.reflectorTarget) this.root.add(water.reflectorTarget);
         this.reflection = water.reflection;
+        yield 'land and water';
 
         const stones = createCrystals(u, plan, { count: tier.crystals, dispersion: tier.dispersion });
         this.crystals = stones.crystals;
@@ -353,6 +374,7 @@ export class LunaraWorld {
 
         if (tier.flowers > 0) this.addPart('flowers', createFlowers(u, plan, tier.flowers));
         if (tier.motes > 0) this.addPart('motes', createMotes(u, tier.motes));
+        yield 'crystals and flora';
 
         // ── Gameplay effects (pools, always drawn) ──
         this.shards = createShards(u, tier.shards);

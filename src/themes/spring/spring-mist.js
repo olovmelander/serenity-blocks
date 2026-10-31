@@ -44,7 +44,7 @@ import {
     FALL, LEDGES, S_OUTLET, S_POOL, courseAt, levelAt,
 } from './spring-plan.js';
 import {
-    BURSTS, FALL_FRAME, LANDINGS, fallToWorld,
+    FALL_FRAME, fallBursts, fallLandings, fallToWorld,
 } from './spring-fall-plan.js';
 
 /**
@@ -77,9 +77,10 @@ function pickBy(rows, random) {
 export function mistLayout(count = 360, seed = 0x3a17) {
     const random = mulberry32(seed);
     const rows = [];
+    const bursts = fallBursts();
     const nFoot = Math.round(count * 0.4);
     const nSplash = Math.round(count * 0.14);
-    const nBurst = BURSTS.length ? Math.round(count * 0.14) : 0;
+    const nBurst = bursts.length ? Math.round(count * 0.14) : 0;
     const nBoil = Math.round(count * 0.16);
     const nLedge = count - nFoot - nSplash - nBurst - nBoil;
     const { tx, tz } = FALL_FRAME;
@@ -87,7 +88,7 @@ export function mistLayout(count = 360, seed = 0x3a17) {
     // Where the tongues land, by how hard: the main one throws a cloud that billows up the face
     // and rolls out over the pool, the side ones less.
     // (Weighted by the root of the power: the cloud spreads along the whole foot, not in one ball.)
-    const landings = LANDINGS.filter((row) => row.power > 0.05)
+    const landings = fallLandings().filter((row) => row.power > 0.05)
         .map((row) => ({ ...row, power: Math.sqrt(row.power) }));
     for (let i = 0; i < nFoot; i++) {
         const row = pickBy(landings, random);
@@ -109,7 +110,7 @@ export function mistLayout(count = 360, seed = 0x3a17) {
     }
     // Spray thrown up off the face where the water lands on a ledge or meets a slab.
     for (let i = 0; i < nBurst; i++) {
-        const burst = pickBy(BURSTS, random);
+        const burst = pickBy(bursts, random);
         fallToWorld(burst.along + 0.5 + random() * 1.6, burst.across + (random() - 0.5) * 1.6, p);
         rows.push([p.x, burst.y + 0.2, p.z, 3 + random() * 3,
             tx * (2 + random() * 4), tz * (2 + random() * 4), 1.2 + random() * 2.6, 1.6 + random() * 2.8,

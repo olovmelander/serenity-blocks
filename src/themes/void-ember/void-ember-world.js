@@ -67,7 +67,7 @@ import {
     WAVE_LIVE,
     WAVE_SLOTS,
     approach,
-    bakeFbm,
+    bakeFbmSteps,
     bakeLattice,
     clamp01,
     createFbmTexture,
@@ -99,6 +99,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './void-ember-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { VOID_EMBER_TETROMINOS } from './void-ember-tetrominos.js';
@@ -398,13 +399,25 @@ export class VoidEmberWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order. Built in one task with its fBm bake,
+     * it held the first-visit switch's worst frame at ~50 ms (2026-10-31).
+     */
+    * buildSteps() {
         const lattice = createLatticeTexture(bakeLattice());
-        const fbm = createFbmTexture(bakeFbm());
+        const fbmField = yield* bakeFbmSteps();
+        yield 'fbm';
+        const fbm = createFbmTexture(fbmField);
         const plates = createPlatesTexture();
         this.textures.push(lattice, fbm, plates);
         const u = createVoidEmberUniforms({ lattice, fbm, plates });
         this.u = u;
         const { tier } = this;
+        yield 'textures';
 
         this.star = createPhotosphere(u, { detail: tier.starDetail, segments: tier.segments });
         this.addPart('star', this.star);
@@ -414,6 +427,7 @@ export class VoidEmberWorld {
         });
         this.addPart('sky', createSky(u, { layers: tier.skyLayers, dust: tier.dust }));
         this.addPart('ring', createDustRing(u, { detail: tier.ringDetail }));
+        yield 'star, belt and sky';
         this.corona = createCorona(u, { detail: tier.coronaDetail });
         this.addPart('corona', this.corona);
         this.loops = createLoops(u);

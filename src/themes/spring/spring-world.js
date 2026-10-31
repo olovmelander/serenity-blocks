@@ -47,10 +47,10 @@
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
-    DEG, PIECE_COLORS, Rejoin, TAU, TIMING, approach, clamp, hexToLinear, mulberry32, smooth,
+    DEG, PIECE_COLORS, Rejoin, SPRING_SLICE_MS, TAU, TIMING, approach, clamp, hexToLinear, mulberry32, smooth,
 } from './spring-core.js';
 import {
     EYE, RIG, S_POOL, levelAt, pointAt, riverNearest, rigFor,
@@ -61,7 +61,8 @@ import {
 } from './spring-hours.js';
 import { tierFor } from './spring-quality.js';
 import {
-    EVENT_ROWS, PALETTE_ROWS, PATCHES, SURGES, createLatticeTexture, createNoiseTexture, createUniforms,
+    EVENT_ROWS, PALETTE_ROWS, PATCHES, SURGES, bakeNoiseSteps, createLatticeTexture, createNoiseTexture,
+    createUniforms,
 } from './spring-tsl.js';
 import { SPRING_FLOWERS, springFlowerSlotForPiece } from './spring-flowers.js';
 import { PATCH, SpringMeadow } from './spring-meadow.js';
@@ -72,9 +73,10 @@ import {
 import {
     createPour, createStepFace, prepareFaceSteps, preparePourSteps,
 } from './spring-fall.js';
+import { prepareFallPlanSteps } from './spring-fall-plan.js';
 import { createRocks } from './spring-rocks.js';
 import { SpringForest } from './spring-forest.js';
-import { createWoods } from './spring-woods.js';
+import { createWoodsSteps } from './spring-woods.js';
 import { ImpostorAtlas } from './spring-impostors.js';
 import { loadSpringAssets, loadSpringValley } from './spring-assets.js';
 import { createSky } from './spring-sky.js';
@@ -315,6 +317,8 @@ export class SpringWorld {
         };
         this.overrides = { hour: null };
         this.ground = null;
+        /** A part its build is making in steps, not yet one of the world's parts. */
+        this.building = null;
         // ── What gameplay lights, all of it taken up where it stands by the next event ──
         /** How hot play runs (shared/gameplay-surge.js); `heat` is this frame's reading of it. */
         this.playSurge = new GameplaySurge();
@@ -419,10 +423,16 @@ export class SpringWorld {
         this.prepared = null;
         this.ground = prepared.ground;
         const { tier } = this;
+        // The noise's bake (13 ms) a time slice a step; what follows starts a step of its own.
+        const noise = createNoiseTexture(yield* bakeNoiseSteps(undefined, undefined, stepClock(SPRING_SLICE_MS)));
         this.textures = {
-            noise: createNoiseTexture(),
+            noise,
             lattice: createLatticeTexture(),
         };
+        yield 'textures';
+        // Where the fall's tongues land and burst (the river's boil and the mist read them): traced
+        // a time slice a step on a session's first visit (they were 50-60 ms of the code's loading).
+        if (yield* prepareFallPlanSteps()) yield 'fall plan';
         // The ground, and the granite step the river falls over (its own sheer face). A session's
         // first visit builds their geometry here in steps (later visits keep it).
         if (yield* prepareLandSteps(this.ground, tier)) yield 'land rows';
@@ -455,7 +465,11 @@ export class SpringWorld {
         this.addPart('rocks', createRocks(this.u, this.textures, prepared.assets, this.ground, tier));
         yield 'rocks';
         if (prepared.assets) {
-            const forest = new SpringForest(this.u, this.textures, prepared.assets, tier).build(this.ground);
+            // (A part built in steps is disposed with the world until it is one of its parts.)
+            const forest = new SpringForest(this.u, this.textures, prepared.assets, tier);
+            this.building = forest;
+            yield* forest.buildSteps(this.ground);
+            this.building = null;
             this.forest = forest;
             this.addPart('trees', {
                 mesh: forest.group, meshes: [forest.group], stats: forest.stats, dispose: () => forest.dispose(),
@@ -469,7 +483,10 @@ export class SpringWorld {
         this.impostors = prepared.assets
             ? new ImpostorAtlas(this.u, this.textures, prepared.assets, { cellPixels: tier.impostorCell ?? 256 })
             : null;
-        const woods = createWoods(this.u, this.textures, tier, this.ground, {
+        // (Its bake trees took 5-8 ms: the sites start a step of their own.)
+        if (this.impostors) yield 'impostors';
+        // Its sites walked a time slice a step (21 ms of one step on a first visit before).
+        const woods = yield* createWoodsSteps(this.u, this.textures, tier, this.ground, {
             atlas: this.impostors, samples: this.samples,
         });
         this.addPart('woods', {
@@ -482,7 +499,9 @@ export class SpringWorld {
         });
         yield 'woods';
         const meadow = new SpringMeadow(this.u, this.textures, tier, this.ground);
+        this.building = meadow;
         yield* meadow.buildSteps();
+        this.building = null;
         this.meadow = meadow;
         this.addPart('meadow', {
             mesh: meadow.group, meshes: [meadow.group], stats: meadow.stats, dispose: () => meadow.dispose(),
@@ -1597,6 +1616,12 @@ export class SpringWorld {
         this.disposed = true;
         this.root.removeFromParent();
         for (const part of this.partList) part.dispose();
+        // A build stopped between its steps: the part it was making, and the atlas before the woods
+        // part (which disposes it) was added.
+        this.building?.dispose();
+        this.building = null;
+        this.impostors?.dispose();
+        this.impostors = null;
         if (this.textures) {
             this.textures.noise.dispose();
             this.textures.lattice.dispose();

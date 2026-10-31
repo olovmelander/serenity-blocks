@@ -47,6 +47,7 @@ import { CHIRAL_GOLD_EVENT_HANDLERS, ChiralGoldDirector } from './chiral-gold-di
 import { approach } from './chiral-gold-core.js';
 import { chiralGoldBakes } from './chiral-gold-bakes.js';
 import { warmPmremPipelines } from '../shared/pmrem-warm.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'chiral-gold';
 const LOG_PREFIX = '[ChiralGold]';
@@ -224,11 +225,16 @@ export default class ChiralGoldTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            this.world = new ChiralGoldWorld({
+            const world = new ChiralGoldWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
-            }).build();
+            });
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

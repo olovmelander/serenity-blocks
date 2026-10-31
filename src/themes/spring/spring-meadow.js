@@ -45,7 +45,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { mulberry32 } from './spring-core.js';
+import { SPRING_SLICE_MS, mulberry32 } from './spring-core.js';
 import { aerial } from './spring-light.js';
 import { EYE } from './spring-plan.js';
 import {
@@ -54,7 +54,7 @@ import {
 import { EVENT_ROWS } from './spring-tsl.js';
 import { AIR } from './spring-air.js';
 import { SPRING_FLOWERS, createSpringFlowerGeometry, createSpringGrassGeometry } from './spring-flowers.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const NEAR_VARIANTS = 2;
 /** Where the meadow grows: bearings (degrees, wide enough for portrait's turn) and distances (m). */
@@ -128,11 +128,24 @@ export class SpringMeadow {
         return this;
     }
 
-    /** The meadow in steps for the world's breathing build: the grass near and far, the flowers. */
+    /**
+     * The meadow in steps for the world's breathing build, a time slice a step: the grass near and
+     * far, the flowers (22 and 31 ms in one step each on a first visit before).
+     */
     * buildSteps() {
-        yield* this.grassSteps();
+        const clock = stepClock(SPRING_SLICE_MS);
+        yield* this.grassSteps(clock);
         yield 'grass';
-        this.buildFlowers();
+        clock.restart();
+        yield* this.flowerSteps(clock);
+    }
+
+    /** Yield when the slice has run (asked every `every` turns of a loop). */
+    * breathe(clock, turn = 0, every = 1) {
+        if (turn % every === 0 && clock.due()) {
+            yield 'meadow';
+            clock.restart();
+        }
     }
 
     /** A random spot in the meadow's wedge: `bias` > 1 crowds the picks toward the lens. */
@@ -149,6 +162,11 @@ export class SpringMeadow {
 
     /** One draw of `geometry` for a list of plants (x, y, z, yaw, scale, phase, hue). */
     plant(geometry, material, plants, name) {
+        return drainSteps(this.plantSteps(geometry, material, plants, name, stepClock(SPRING_SLICE_MS)));
+    }
+
+    /** plant(), its instance data filled a time slice a step. */
+    * plantSteps(geometry, material, plants, name, clock) {
         if (!plants.length) return null;
         const count = plants.length / 7;
         const roots = new Float32Array(count * 4);
@@ -158,11 +176,20 @@ export class SpringMeadow {
         const order = Array.from({ length: count }, (_, i) => i);
         const away = (i) => Math.hypot(plants[i * 7] - EYE.x, plants[i * 7 + 2] - EYE.z);
         const depth = Float64Array.from(order, away);
+        yield* this.breathe(clock);
         order.sort((a, b) => depth[a] - depth[b] || a - b);
         for (let i = 0; i < count; i += 1) {
+            yield* this.breathe(clock, i, 256);
             const o = order[i] * 7;
-            roots.set([plants[o], plants[o + 1], plants[o + 2], plants[o + 5]], i * 4);
-            turns.set([Math.cos(plants[o + 3]), Math.sin(plants[o + 3]), plants[o + 4], plants[o + 6]], i * 4);
+            const at = i * 4;
+            roots[at] = plants[o];
+            roots[at + 1] = plants[o + 1];
+            roots[at + 2] = plants[o + 2];
+            roots[at + 3] = plants[o + 5];
+            turns[at] = Math.cos(plants[o + 3]);
+            turns[at + 1] = Math.sin(plants[o + 3]);
+            turns[at + 2] = plants[o + 4];
+            turns[at + 3] = plants[o + 6];
         }
         // The vertex data is shared; only the instance data belongs to this draw.
         const instanced = this.own(new THREE.BufferGeometry());
@@ -338,31 +365,37 @@ export class SpringMeadow {
         return material;
     }
 
-    * grassSteps() {
-        const { rng, tier, baked } = this;
-        const material = this.createGrassMaterial();
+    /** Grass scattered over the meadow, a time slice a step. */
+    * scatterGrassSteps(clock, wanted, nearest, farthest, bias, far) {
+        const { rng, baked } = this;
         const w = {};
         const n = [0, 1, 0];
-        const scatter = (wanted, nearest, farthest, bias, far) => {
-            const plants = [];
-            for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 6; attempt += 1) {
-                const place = this.spot(nearest, farthest, bias);
-                const { cover } = meadowCover(baked, place.x, place.z, w, n);
-                if (rng() >= cover) continue;
-                const scale = (0.8 + rng() * 0.5) * (far ? 1 + place.depth * 0.02 : 1);
-                const y = groundHeight(baked, place.x, place.z) - 0.02;
-                plants.push(place.x, y, place.z, rng() * Math.PI * 2, scale, rng(), rng());
-                made += 1;
-            }
-            return plants;
-        };
+        const plants = [];
+        for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 6; attempt += 1) {
+            yield* this.breathe(clock, attempt, 64);
+            const place = this.spot(nearest, farthest, bias);
+            const { cover } = meadowCover(baked, place.x, place.z, w, n);
+            if (rng() >= cover) continue;
+            const scale = (0.8 + rng() * 0.5) * (far ? 1 + place.depth * 0.02 : 1);
+            const y = groundHeight(baked, place.x, place.z) - 0.02;
+            plants.push(place.x, y, place.z, rng() * Math.PI * 2, scale, rng(), rng());
+            made += 1;
+        }
+        return plants;
+    }
+
+    * grassSteps(clock = stepClock(SPRING_SLICE_MS)) {
+        const { tier } = this;
+        const material = this.createGrassMaterial();
         const near = this.own(createSpringGrassGeometry({ far: false, seed: 11 }));
         const far = this.own(createSpringGrassGeometry({ far: true, seed: 23 }));
-        const nearPlants = scatter(tier.grassNear, MEADOW.nearest, MEADOW.near, 1.4, false);
+        const { nearest, near: nearTo, farthest } = MEADOW;
+        const nearPlants = yield* this.scatterGrassSteps(clock, tier.grassNear, nearest, nearTo, 1.4, false);
         yield 'grass near';
-        const farPlants = scatter(tier.grassFar, MEADOW.near - 2, MEADOW.farthest, 1.2, true);
-        this.plant(near, material, nearPlants, 'SpringGrass near');
-        this.plant(far, material, farPlants, 'SpringGrass far');
+        clock.restart();
+        const farPlants = yield* this.scatterGrassSteps(clock, tier.grassFar, nearTo - 2, farthest, 1.2, true);
+        yield* this.plantSteps(near, material, nearPlants, 'SpringGrass near', clock);
+        yield* this.plantSteps(far, material, farPlants, 'SpringGrass far', clock);
         this.stats.grass = (nearPlants.length + farPlants.length) / 7;
         this.stats.grassTriangles = (nearPlants.length / 7) * (near.index.count / 3)
             + (farPlants.length / 7) * (far.index.count / 3);
@@ -417,6 +450,10 @@ export class SpringMeadow {
     }
 
     buildFlowers() {
+        drainSteps(this.flowerSteps());
+    }
+
+    * flowerSteps(clock = stepClock(SPRING_SLICE_MS)) {
         const { rng, tier, baked } = this;
         const material = this.createFlowerMaterial();
         const total = SPRING_FLOWERS.reduce((sum, flower) => sum + flower.share, 0);
@@ -441,10 +478,12 @@ export class SpringMeadow {
             }
             return weights.length - 1;
         };
-        const scatter = (wanted, nearest, farthest, bias, far) => {
+        const meadow = this;
+        const scatter = function* scatterSteps(wanted, nearest, farthest, bias, far) {
             const lists = SPRING_FLOWERS.map(() => Array.from({ length: far ? 1 : NEAR_VARIANTS }, () => []));
             for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 8; attempt += 1) {
-                const place = this.spot(nearest, farthest, bias);
+                yield* meadow.breathe(clock, attempt, 64);
+                const place = meadow.spot(nearest, farthest, bias);
                 const { cover, wet } = meadowCover(baked, place.x, place.z, w, n);
                 if (rng() >= cover) continue;
                 const kind = choose(place.x, place.z, wet);
@@ -454,21 +493,29 @@ export class SpringMeadow {
                 const list = lists[kind][Math.floor(rng() * lists[kind].length) % lists[kind].length];
                 const y = groundHeight(baked, place.x, place.z) - 0.012;
                 list.push(place.x, y, place.z, rng() * Math.PI * 2, scale, rng(), rng());
-                this.census[flower.id] += 1;
+                meadow.census[flower.id] += 1;
                 made += 1;
             }
             return lists;
         };
-        const draw = (lists, far) => lists.forEach((variants, kind) => variants.forEach((plants, variant) => {
-            if (!plants.length) return;
-            const { id } = SPRING_FLOWERS[kind];
-            const geometry = this.own(createSpringFlowerGeometry(id, { far, variant }));
-            this.plant(geometry, material, plants, `SpringFlower ${id}${far ? ' far' : ''} ${variant}`);
-            this.stats.flowers += plants.length / 7;
-            this.stats.flowerTriangles += (plants.length / 7) * (geometry.index.count / 3);
-        }));
-        draw(scatter(tier.flowersNear, MEADOW.nearest + 0.4, MEADOW.near - 1, 1.3, false), false);
-        draw(scatter(tier.flowersFar, MEADOW.near - 2.5, MEADOW.farthest, 1.15, true), true);
+        const draw = function* drawSteps(lists, far) {
+            for (let kind = 0; kind < lists.length; kind += 1) {
+                for (let variant = 0; variant < lists[kind].length; variant += 1) {
+                    const plants = lists[kind][variant];
+                    if (plants.length) {
+                        yield* meadow.breathe(clock);
+                        const { id } = SPRING_FLOWERS[kind];
+                        const geometry = meadow.own(createSpringFlowerGeometry(id, { far, variant }));
+                        const name = `SpringFlower ${id}${far ? ' far' : ''} ${variant}`;
+                        yield* meadow.plantSteps(geometry, material, plants, name, clock);
+                        meadow.stats.flowers += plants.length / 7;
+                        meadow.stats.flowerTriangles += (plants.length / 7) * (geometry.index.count / 3);
+                    }
+                }
+            }
+        };
+        yield* draw(yield* scatter(tier.flowersNear, MEADOW.nearest + 0.4, MEADOW.near - 1, 1.3, false), false);
+        yield* draw(yield* scatter(tier.flowersFar, MEADOW.near - 2.5, MEADOW.farthest, 1.15, true), true);
     }
 
     dispose() {

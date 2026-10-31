@@ -19,7 +19,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
-import { breathe, drainSteps } from '../shared/build-steps.js';
+import { breathe, drainSteps, stepClock } from '../shared/build-steps.js';
 import { GameplaySurge } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import {
@@ -30,13 +30,14 @@ import {
 } from './grainfields-hours.js';
 import { tierFor } from './grainfields-quality.js';
 import {
-    CLOSE_STAND, PATH, PATH_POINTS, flowerWidth, grainSites, groundHeight, pathDistance, treeSites,
+    CLOSE_STAND, PATH, PATH_POINTS, PLANT_SLICE_MS, flowerWidth, grainSitesSteps, groundHeight, pathDistance,
+    treeSites,
 } from './grainfields-plan.js';
 import { createNoiseTexture, createUniforms, deckThreshold } from './grainfields-tsl.js';
-import { createLand, fanSteps } from './grainfields-land.js';
-import { createLapporten, gateHeight } from './grainfields-lapporten.js';
+import { createLandSteps, fanSteps } from './grainfields-land.js';
+import { createLapportenSteps, gateHeight } from './grainfields-lapporten.js';
 import { createSky } from './grainfields-sky.js';
-import { createForest } from './grainfields-forest.js';
+import { createForestSteps } from './grainfields-forest.js';
 import { disposeGrainfieldsAssets, loadGrainfieldsAssets } from './grainfields-assets.js';
 import { createGrain } from './grainfields-grain.js';
 import { createBeams } from './grainfields-beams.js';
@@ -113,22 +114,29 @@ export function sunGapSwing(time, cover, breaking = 0) {
     return storm * Math.max(0, swell);
 }
 
-/** Everything heavy a world needs before its scene objects: the land's mesh data. */
+/**
+ * Everything heavy a world needs before its scene objects: the land's mesh data. One clock for
+ * all of it: each piece yields once it has run PLANT_SLICE_MS (the fan's rows and the barley's
+ * tries; the near stand was one ~59 ms step, 2026-10-31).
+ */
 function* prepareSteps(quality) {
     const tier = tierFor(quality);
-    const fan = yield* fanSteps(tier.fan.cols, tier.fan.rows);
+    const clock = stepClock(PLANT_SLICE_MS);
+    const fan = yield* fanSteps(tier.fan.cols, tier.fan.rows, clock);
     const trees = treeSites();
     yield 'trees';
+    clock.restart();
     const { grain } = tier;
-    const near = grainSites({
+    const near = yield* grainSitesSteps({
         count: grain.near, near: 2.5, far: grain.nearReach, knee: 7, seed: 0x6a7e,
-    });
+    }, clock);
     yield 'grain-near';
-    const far = grainSites({
+    clock.restart();
+    const far = yield* grainSitesSteps({
         count: grain.far, near: grain.nearReach * 0.92, far: grain.farReach, seed: 0x6a7f,
-    });
+    }, clock);
     // The clearing round the eye, planted for the portrait lens (drawn only under it).
-    const close = grainSites({
+    const close = yield* grainSitesSteps({
         count: Math.round(grain.near * CLOSE_STAND.share),
         near: CLOSE_STAND.near,
         far: CLOSE_STAND.far,
@@ -137,7 +145,7 @@ function* prepareSteps(quality) {
         bank: false,
         fade: false,
         seed: 0x6a7d,
-    });
+    }, clock);
     return {
         quality, fan, trees, grain: { near, far, close },
     };
@@ -157,15 +165,17 @@ async function prepareData(quality, { signal, loader, textureLoader } = {}) {
         });
     const steps = prepareSteps(quality);
     let data;
+    // A breath before each step, the first included: the layout never shares a task with the start
+    // that asked for it (the renderer's setup, the assets' requests).
     for (;;) {
+        // eslint-disable-next-line no-await-in-loop
+        await breathe();
+        if (aborted()) break;
         const next = steps.next();
         if (next.done) {
             data = next.value;
             break;
         }
-        // eslint-disable-next-line no-await-in-loop
-        await breathe();
-        if (aborted()) break;
     }
     const assets = await loading;
     if (aborted()) {
@@ -292,19 +302,23 @@ export class GrainfieldsWorld {
             noise: createNoiseTexture(), trample: this.trample.texture, herdShadow: this.herdShadow.texture,
         };
         this.writePath();
+        // (The noise bake and the barley were one ~30 ms step of a first visit, 2026-10-31.)
+        yield 'textures';
         const { u, textures: t, tier } = this;
         this.addPart('grain', createGrain(u, t, prepared.grain, { coverage: this.samples > 0 }));
         yield 'grain';
-        this.addPart('land', createLand(u, t, tier, prepared));
+        this.addPart('land', yield* createLandSteps(u, t, tier, prepared));
         yield 'land';
-        this.addPart('lapporten', createLapporten(u, t, tier));
+        // The fells' mesh and the belts yield inside too, by their own clocks.
+        this.addPart('lapporten', yield* createLapportenSteps(u, t, tier));
         // The ruin is authored too; without it the knoll stands bare.
         const fort = createFort(u, t, prepared.assets?.ruin);
         if (fort) this.addPart('fort', fort);
         yield 'lapporten';
         // The trees need their authored assets; without them the belts stand as the land's canopy.
         if (prepared.assets) {
-            this.addPart('trees', createForest(u, t, prepared.assets, prepared.trees, tier, { coverage: this.samples > 0 }));
+            const options = { coverage: this.samples > 0 };
+            this.addPart('trees', yield* createForestSteps(u, t, prepared.assets, prepared.trees, tier, options));
         }
         yield 'trees';
 
@@ -319,7 +333,10 @@ export class GrainfieldsWorld {
         const geese = createGeese(u, t, tier.birds, prepared.assets?.goose);
         if (geese) {
             this.addPart('geese', geese);
+            // Scoring the take-off routes for the layout is a step of its own (~20-35 ms).
+            yield 'herd and geese';
             this.warmTakeoffs();
+            yield 'takeoffs';
         }
         this.addPart('sky', createSky(u, t, tier));
         this.addPart('beams', createBeams(u, t, this.reactions));

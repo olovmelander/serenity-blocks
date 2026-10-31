@@ -42,7 +42,9 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { clamp as clampJs, smooth } from './spring-core.js';
+import {
+    SPRING_SLICE_MS, clamp as clampJs, smooth, vertexNormalsSteps,
+} from './spring-core.js';
 import { aerial, skyColour, sunShare } from './spring-light.js';
 import {
     FALL_FRAME, LIP_Y, POOL_Y, POUR_TIME, RIBS, TONGUES, faceAlong, faceBlock, fallToWorld, lipCrest, lipDepth, lipFlow,
@@ -83,7 +85,7 @@ const R3 = [FALL_FRAME.rx, 0, FALL_FRAME.rz];
  * where it moves slowly and bends over the lip).
  */
 export function* pourGeometrySteps({ cols = 190, rows = 150 } = {}) {
-    const clock = stepClock();
+    const clock = stepClock(SPRING_SLICE_MS);
     const across = cols + 1;
     const count = across * (rows + 1);
     const position = new Float32Array(count * 3);
@@ -146,6 +148,10 @@ export function* pourGeometrySteps({ cols = 190, rows = 150 } = {}) {
     }
     // Normals: across the lip × down the water's path, turned out of the face (toward the eye).
     for (let k = 0; k <= cols; k++) {
+        if (clock.due()) {
+            yield 'pour normals';
+            clock.restart();
+        }
         for (let j = 0; j <= rows; j++) {
             const o = j * across + k;
             const a = Math.max(0, j - 1) * across + k;
@@ -174,6 +180,10 @@ export function* pourGeometrySteps({ cols = 190, rows = 150 } = {}) {
     }
     const index = [];
     for (let j = 0; j < rows; j++) {
+        if (clock.due()) {
+            yield 'pour normals';
+            clock.restart();
+        }
         for (let k = 0; k < cols; k++) {
             // Skip quads no water crosses (between dry columns, or after both have landed).
             const a = j * across + k;
@@ -413,7 +423,7 @@ export function createPour(u, tex, tier) {
  * cap turning back over the step's top so no edge shows.
  */
 export function* faceGeometrySteps(baked, { cols = 300, rows = 170, capRows = 6 } = {}) {
-    const clock = stepClock();
+    const clock = stepClock(SPRING_SLICE_MS);
     const across = cols + 1;
     const total = rows + 1 + capRows;
     const count = across * total;
@@ -524,18 +534,23 @@ export function* faceGeometrySteps(baked, { cols = 300, rows = 170, capRows = 6 
             index[o++] = c;
         }
     }
+    // computeVertexNormals' normals, summed a time slice a step (one call took 10-14 ms).
+    const normals = yield* vertexNormalsSteps(position, index, clock);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
     geometry.setAttribute('aFace', new THREE.BufferAttribute(face, 4));
     geometry.setIndex(new THREE.BufferAttribute(index, 1));
-    geometry.computeVertexNormals();
+    const n = new THREE.BufferAttribute(normals, 3);
+    geometry.setAttribute('normal', n);
+    // (As computeVertexNormals leaves it.)
+    n.needsUpdate = true;
     // The face looks downstream (toward the eye): turn any normal that came out backwards.
-    const n = geometry.getAttribute('normal');
     let outward = 0;
     for (let i = 0; i < n.count; i++) outward += n.getX(i) * FALL_FRAME.tx + n.getZ(i) * FALL_FRAME.tz;
     if (outward < 0) {
         for (let i = 0; i < n.count; i++) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i));
     }
+    if (clock.due()) yield 'face shade';
     geometry.computeBoundingSphere();
     return { geometry, triangles: index.length / 3 };
 }

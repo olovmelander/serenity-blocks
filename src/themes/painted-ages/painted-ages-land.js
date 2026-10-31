@@ -58,6 +58,9 @@ import {
 /** The fan: half-width (degrees) of the bearings it covers, and its nearest and farthest rows. */
 export const FAN = Object.freeze({ halfAngle: 46, near: 8, far: 42000 });
 
+/** How long one slice of the mesh positions runs before it yields to the page (ms). */
+const FAN_SLICE_MS = 8;
+
 /**
  * The mesh's positions as a Float32Array (x, y, z per post), `cols × rows` posts, built in
  * slices: a generator that yields between slices and returns the array (drive it to the end
@@ -68,6 +71,7 @@ export function* fanPositionSteps(fields, cols, rows) {
     const half = FAN.halfAngle * DEG;
     const lnNear = Math.log(FAN.near);
     const lnFar = Math.log(FAN.far);
+    let sliceStart = performance.now();
     for (let r = 0; r < rows; r++) {
         const dist = Math.exp(lnNear + (lnFar - lnNear) * (r / (rows - 1)));
         for (let c = 0; c < cols; c++) {
@@ -79,7 +83,11 @@ export function* fanPositionSteps(fields, cols, rows) {
             positions[o + 1] = groundHeight(fields, x, z, dist < 3000);
             positions[o + 2] = z;
         }
-        if (r % 48 === 47) yield r;
+        // A slice ends once it has run FAN_SLICE_MS (every 48 rows held a High-tier task ~36 ms).
+        if (r < rows - 1 && performance.now() - sliceStart >= FAN_SLICE_MS) {
+            yield r;
+            sliceStart = performance.now();
+        }
     }
     return positions;
 }

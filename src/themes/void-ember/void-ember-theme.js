@@ -58,6 +58,7 @@ import { PLAYER_SLOTS, readLayoutRects } from './void-ember-composition.js';
 import { VOID_EMBER_EVENT_HANDLERS, VoidEmberDirector } from './void-ember-director.js';
 import { approach } from './void-ember-core.js';
 import { voidEmberBakes } from './void-ember-bakes.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'void-ember';
 const LOG_PREFIX = '[Void Ember]';
@@ -231,14 +232,17 @@ export default class VoidEmberTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new VoidEmberWorld({
+            const world = new VoidEmberWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
             });
-            this.world.build();
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

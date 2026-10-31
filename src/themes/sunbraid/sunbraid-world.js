@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { breathe, drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import {
@@ -18,10 +18,11 @@ import {
 } from './sunbraid-core.js';
 import { tierFor } from './sunbraid-quality.js';
 import { eyePosition, spireCasters } from './sunbraid-plan.js';
+import { noiseData } from './sunbraid-noise.js';
 import { createNoiseTexture, createUniforms, writeCasters } from './sunbraid-tsl.js';
 import { createSky } from './sunbraid-sky.js';
-import { createLand } from './sunbraid-land.js';
-import { createSpires } from './sunbraid-spires.js';
+import { createLandSteps } from './sunbraid-land.js';
+import { createSpiresSteps } from './sunbraid-spires.js';
 import { createGliders } from './sunbraid-gliders.js';
 import { fallbackLayout } from './sunbraid-composition.js';
 import { BRAID_EVENTS, Braid } from './sunbraid-braid.js';
@@ -103,11 +104,31 @@ const SNAPSHOT = Object.freeze(['time', 'level', 'combo', 'peak', 'b2b', 'stir']
 const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
 
 export class SunbraidWorld {
-    static async prepare(quality = 'High') {
-        return SunbraidWorld.prepareSync(quality);
+    /**
+     * The land plan with a breath before each of its steps (prepareSteps), so none of it shares a
+     * task with the renderer's setup: in one task it held Sunbraid's first-visit switch ~23 ms
+     * (2026-10-31). Resolves null when `signal` is aborted meanwhile (the build then lays the
+     * plan out itself, should it still run).
+     */
+    static async prepare(quality = 'High', { signal } = {}) {
+        const steps = SunbraidWorld.prepareSteps(quality);
+        for (;;) {
+            // eslint-disable-next-line no-await-in-loop
+            await breathe();
+            if (signal?.aborted) return null;
+            const next = steps.next();
+            if (next.done) return next.value;
+        }
     }
 
     static prepareSync(quality = 'High') {
+        return drainSteps(SunbraidWorld.prepareSteps(quality));
+    }
+
+    /** The plan as steps: the baked noise the valley's heights read (once a page), then the towers' casters. */
+    static* prepareSteps(quality = 'High') {
+        noiseData();
+        yield 'noise';
         return { quality, casters: spireCasters() };
     }
 
@@ -198,9 +219,11 @@ export class SunbraidWorld {
         writeCasters(u, prepared.casters);
         u.eye.value.copy(this.eyeVector);
         u.groundY.value = 0;
-        this.addPart('land', createLand(u, t, tier));
+        const land = yield* createLandSteps(u, t, tier);
+        this.addPart('land', land);
         yield 'land';
-        this.addPart('spires', createSpires(u, t, tier));
+        const spires = yield* createSpiresSteps(u, t, tier);
+        this.addPart('spires', spires);
         yield 'spires';
         this.addPart('gliders', createGliders(u, t, tier.gliders));
         this.addPart('sky', createSky(u, t));

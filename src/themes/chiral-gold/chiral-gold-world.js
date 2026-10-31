@@ -84,7 +84,7 @@ import {
     smooth,
 } from './chiral-gold-tsl.js';
 import { tierFor } from './chiral-gold-quality.js';
-import { createTower } from './chiral-gold-helix.js';
+import { createTowerSteps } from './chiral-gold-helix.js';
 import { BANDS, createRing, poseRing } from './chiral-gold-ring.js';
 import { createWater } from './chiral-gold-water.js';
 import { createBackdrop, createMotes, createShafts } from './chiral-gold-atmosphere.js';
@@ -107,6 +107,7 @@ import {
     towerPlacement,
 } from './chiral-gold-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
@@ -270,6 +271,16 @@ export class ChiralGoldWorld {
     // ── build ───────────────────────────────────────────────────────────────────
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order: the hall, each tower in two (before
+     * its core), the air, the tally. Built in one task, the towers and the tally's lettering held
+     * the first-visit switch's worst frame at ~52 ms (2026-10-31).
+     */
+    * buildSteps() {
         const { tier } = this;
         this.textures.noise = createNoiseTexture();
         this.textures.studio = createStudioEquirect(tier.studio);
@@ -301,15 +312,18 @@ export class ChiralGoldWorld {
         this.root.add(this.ring.group);
         this.groups.ring = [this.ring.group];
         this.ring.parts.forEach((part) => this.parts.push(part));
+        yield 'hall';
 
         this.groups.towers = [];
-        [-1, 1].forEach((hand) => {
-            const tower = createTower(u, hand, tier);
+        const hands = [-1, 1];
+        for (let i = 0; i < hands.length; i++) {
+            const tower = yield* createTowerSteps(u, hands[i], tier);
             this.towers.push(tower);
             this.root.add(tower.group);
             this.groups.towers.push(tower.group);
             tower.parts.forEach((part) => this.parts.push(part));
-        });
+            if (i === 0) yield 'left tower';
+        }
 
         if (tier.shafts) add('shafts', createShafts(u));
         add('motes', createMotes(u, tier.motes));
@@ -318,6 +332,7 @@ export class ChiralGoldWorld {
         this.blades = add('blades', createBlades(u));
         this.flares = add('flares', createFlares(u));
         this.braid = tier.braid > 0 ? add('braid', createBraid(u, tier.braid)) : null;
+        yield 'air';
         // The tally is drawn with the page's canvas; where there is none it is simply absent.
         const atlas = bakeTallyAtlas();
         this.tally = atlas ? add('tally', createTally(u, atlas)) : null;

@@ -17,8 +17,9 @@
  * lip), `across` metres to the river's right there (seen from the eye, to the LEFT: the fall
  * faces the eye), heights in world metres.
  */
-import { clamp, smooth } from './spring-core.js';
+import { SPRING_SLICE_MS, clamp, smooth } from './spring-core.js';
 import { FALL, S_LIP, courseAt } from './spring-plan.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const LIP_COURSE = courseAt(S_LIP, {});
 
@@ -472,62 +473,108 @@ export function pathAt(path, t, out = {}) {
 const LANDING_STEP = 0.5;
 const LANDING_SPAN = 21;
 
+/** Where one column's water meets the pool: its row of the landings. */
+function landingAt(across) {
+    const path = pourPath(across);
+    if (!path) return Object.freeze({ across, along: 0, power: 0 });
+    let hit = path[path.length - 1];
+    for (const p of path) {
+        if (p.y <= POOL_Y) {
+            hit = p;
+            break;
+        }
+    }
+    return Object.freeze({
+        across, along: hit.along, power: lipFlow(across) * clamp(hit.speed / 18, 0.25, 1),
+    });
+}
+
+/** The bursts on one column's way down the face, pushed onto `out`. */
+function burstsAt(across, out) {
+    const path = pourPath(across);
+    if (!path) return;
+    let last = 0;
+    for (const p of path) {
+        if (p.white > 0.5 && p.white > last + 0.2 && p.y > POOL_Y + 1) {
+            out.push(Object.freeze({
+                across, along: p.along, y: p.y, power: p.white * lipFlow(across),
+            }));
+        }
+        last = p.white;
+    }
+}
+
+/** The two tables once traced (a session's first need traces them). */
+let landings = null;
+let bursts = null;
+
+/**
+ * Trace the landings and the bursts ahead, a time slice a step (true when it traced: the
+ * session's first). They were module constants: 120 pours traced while the theme's code loaded,
+ * 50-60 ms of one task in an in-play switch. The world's build runs this before the river's.
+ * @returns {Generator<string, boolean>}
+ */
+export function* prepareFallPlanSteps() {
+    if (landings && bursts) return false;
+    const clock = stepClock(SPRING_SLICE_MS);
+    if (!landings) {
+        const rows = [];
+        for (let across = -LANDING_SPAN; across <= LANDING_SPAN + 1e-6; across += LANDING_STEP) {
+            rows.push(landingAt(across));
+            if (clock.due()) {
+                yield 'landings';
+                clock.restart();
+            }
+        }
+        // (Traced meanwhile by a call that did not wait: the same table, and the first stands.)
+        if (!landings) landings = Object.freeze(rows);
+    }
+    if (!bursts) {
+        const out = [];
+        for (let across = -18.5; across <= 18.5; across += 1.0) {
+            burstsAt(across, out);
+            if (clock.due()) {
+                yield 'bursts';
+                clock.restart();
+            }
+        }
+        if (!bursts) bursts = Object.freeze(out);
+    }
+    return true;
+}
+
 /**
  * Where each column's water meets the pool (m along), how hard (0..1: its share of the river
- * times how fast it falls), and the bursts on the face on its way down (along, y, power).
+ * times how fast it falls): `{ across, along, power }` every LANDING_STEP m across the lip.
+ * @returns {ReadonlyArray<{ across: number, along: number, power: number }>}
  */
-export const LANDINGS = Object.freeze((() => {
-    const rows = [];
-    for (let across = -LANDING_SPAN; across <= LANDING_SPAN + 1e-6; across += LANDING_STEP) {
-        const path = pourPath(across);
-        if (!path) {
-            rows.push(Object.freeze({ across, along: 0, power: 0 }));
-            continue;
-        }
-        let hit = path[path.length - 1];
-        for (const p of path) {
-            if (p.y <= POOL_Y) {
-                hit = p;
-                break;
-            }
-        }
-        rows.push(Object.freeze({
-            across, along: hit.along, power: lipFlow(across) * clamp(hit.speed / 18, 0.25, 1),
-        }));
-    }
-    return rows;
-})());
+export function fallLandings() {
+    if (!landings) drainSteps(prepareFallPlanSteps());
+    return landings;
+}
 
-/** The bursts on the face (where water lands on a ledge or a slab), for the spray. */
-export const BURSTS = Object.freeze((() => {
-    const out = [];
-    for (let across = -18.5; across <= 18.5; across += 1.0) {
-        const path = pourPath(across);
-        if (!path) continue;
-        let last = 0;
-        for (const p of path) {
-            if (p.white > 0.5 && p.white > last + 0.2 && p.y > POOL_Y + 1) {
-                out.push(Object.freeze({
-                    across, along: p.along, y: p.y, power: p.white * lipFlow(across),
-                }));
-            }
-            last = p.white;
-        }
-    }
-    return out;
-})());
+/**
+ * The bursts on the face (where water lands on a ledge or a slab), for the spray:
+ * `{ across, along, y, power }`.
+ * @returns {ReadonlyArray<{ across: number, along: number, y: number, power: number }>}
+ */
+export function fallBursts() {
+    if (!bursts) drainSteps(prepareFallPlanSteps());
+    return bursts;
+}
 
 /**
  * The boil on the pool at (along, across) in the fall's frame (0..1): white where the tongues
  * land, rolling out downstream and thinning.
  */
 export function poolBoil(along, across) {
+    const rows = landings || fallLandings();
     const f = (across + LANDING_SPAN) / LANDING_STEP;
     let boil = 0;
     // The landings within a couple of metres across spread their boil sideways.
     for (let k = Math.floor(f) - 4; k <= Math.ceil(f) + 4; k++) {
-        if (k < 0 || k >= LANDINGS.length) continue;
-        const row = LANDINGS[k];
+        if (k < 0 || k >= rows.length) continue;
+        const row = rows[k];
         if (row.power <= 0) continue;
         const side = Math.exp(-(((row.across - across) / 1.8) ** 2));
         const d = along - row.along;

@@ -27,6 +27,7 @@ import {
 import {
     TAU, WORLD, mulberry32,
 } from './tornado-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** vec2 → [0,1) */
 export const tnHash21 = /* @__PURE__ */ Fn(([pIn]) => {
@@ -44,6 +45,9 @@ export const tnGauss = (x) => exp(x.mul(x).negate());
 
 export const NOISE_SIZE = 256;
 
+/** How long one slice of the noise bake runs before it yields to the page (ms). */
+const NOISE_SLICE_MS = 8;
+
 /**
  * Four periodic fBm gradient-noise fields, one per channel, each stretched to 0..1. R and G
  * start at four cells a tile (the cloud's lobes, the funnel's streaks), B at eight, A at sixteen
@@ -51,6 +55,17 @@ export const NOISE_SIZE = 256;
  * @returns {Uint8Array} size × size × 4
  */
 export function bakeNoise(seed = 1925, size = NOISE_SIZE) {
+    return drainSteps(bakeNoiseSteps(seed, size));
+}
+
+/**
+ * `bakeNoise` as steps (the world's build breathes between them: shared/build-steps.js): the same
+ * field from the same draws, yielding between rows once a slice has run NOISE_SLICE_MS. In one
+ * task it held the Tornado's first-visit switch 18 ms (2026-10-31).
+ * @returns {Generator<string, Uint8Array>} size × size × 4
+ */
+export function* bakeNoiseSteps(seed = 1925, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const data = new Uint8Array(n * n * 4);
@@ -95,6 +110,10 @@ export function bakeNoise(seed = 1925, size = NOISE_SIZE) {
                     const bottom = d01 + (d11 - d01) * sx;
                     field[y * n + x] += (top + (bottom - top) * sy) * amp;
                 }
+                if (clock.due()) {
+                    yield 'noise';
+                    clock.restart();
+                }
             }
             amp *= 0.5;
         }
@@ -111,7 +130,12 @@ export function bakeNoise(seed = 1925, size = NOISE_SIZE) {
 }
 
 export function createNoiseTexture(seed) {
-    const data = bakeNoise(seed);
+    return drainSteps(createNoiseTextureSteps(seed));
+}
+
+/** `createNoiseTexture` as steps: the bake in slices (bakeNoiseSteps), then the texture. */
+export function* createNoiseTextureSteps(seed) {
+    const data = yield* bakeNoiseSteps(seed);
     const tex = new THREE.DataTexture(data, NOISE_SIZE, NOISE_SIZE, THREE.RGBAFormat, THREE.UnsignedByteType);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;

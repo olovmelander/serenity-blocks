@@ -22,10 +22,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    buildFerns, buildLeaves, buildPalms, buildVines,
+    buildFernsSteps, buildLeavesSteps, buildPalmsSteps, buildVinesSteps,
 } from './moonlit-greenhouse-flora-geometry.js';
 import { createBasketMaterial, createLeafMaterial, createTrunkMaterial } from './moonlit-greenhouse-flora-shading.js';
 import { EYE } from './moonlit-greenhouse-core.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** A merged mesh from a finished batch (moonlit-greenhouse-flora-geometry.js FloraBatch.finish). */
 export function floraGeometry(data) {
@@ -106,7 +107,12 @@ const leaves = (ctx, data, label, order, shapes, { canopy = true } = {}) => ({
 
 /** The palms: ringed trunks and crowns of arching Kentia fronds (headings: palmFrondAngle). */
 export function createPalms(ctx) {
-    const built = buildPalms(ctx.plan, ctx.tier);
+    return drainSteps(createPalmsSteps(ctx));
+}
+
+/** `createPalms` as steps: the palms in slices (buildPalmsSteps), then their meshes. */
+export function* createPalmsSteps(ctx) {
+    const built = yield* buildPalmsSteps(ctx.plan, ctx.tier);
     return floraPart('palms', [
         trunks(ctx, built.trunks, 'palm-trunks', 4),
         // The crowns are the canopy: they are not shaded by mgCanopy's fronds themselves.
@@ -116,7 +122,12 @@ export function createPalms(ctx) {
 
 /** The ferns: tree ferns (trunks, lacy crowns, fiddleheads) and the ground ferns of the beds. */
 export function createFerns(ctx) {
-    const built = buildFerns(ctx.plan, ctx.tier);
+    return drainSteps(createFernsSteps(ctx));
+}
+
+/** `createFerns` as steps: the ferns in slices (buildFernsSteps), then their meshes. */
+export function* createFernsSteps(ctx) {
+    const built = yield* buildFernsSteps(ctx.plan, ctx.tier);
     return floraPart('ferns', [
         trunks(ctx, built.trunks, 'fern-trunks', 3),
         leaves(ctx, built.fronds, 'fern-fronds', 3, ['treeFern', 'fern', 'solid']),
@@ -125,7 +136,12 @@ export function createFerns(ctx) {
 
 /** The broad leaves: bananas and strelitzia, monstera and philodendron, and the urns' planting. */
 export function createLeaves(ctx) {
-    const built = buildLeaves(ctx.plan, ctx.tier);
+    return drainSteps(createLeavesSteps(ctx));
+}
+
+/** `createLeaves` as steps: the plants in slices (buildLeavesSteps), then their meshes. */
+export function* createLeavesSteps(ctx) {
+    const built = yield* buildLeavesSteps(ctx.plan, ctx.tier);
     return floraPart('leaves', [
         trunks(ctx, built.stems, 'leaf-stems', 2),
         leaves(ctx, built.leaves, 'broad-leaves', 2, ['paddle', 'heart']),
@@ -135,7 +151,12 @@ export function createLeaves(ctx) {
 
 /** The vines from the vault and the hanging baskets of fern on their chains. */
 export function createVines(ctx) {
-    const built = buildVines(ctx.plan, ctx.tier, [EYE.x, EYE.y, EYE.z]);
+    return drainSteps(createVinesSteps(ctx));
+}
+
+/** `createVines` as steps: the strands and baskets in slices (buildVinesSteps), then their meshes. */
+export function* createVinesSteps(ctx) {
+    const built = yield* buildVinesSteps(ctx.plan, ctx.tier, [EYE.x, EYE.y, EYE.z]);
     return floraPart('vines', [
         leaves(ctx, built.leaves, 'vine-leaves', 6, ['heart', 'solid']),
         leaves(ctx, built.fronds, 'basket-ferns', 6, ['fern']),

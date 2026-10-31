@@ -52,6 +52,7 @@ import {
     TERRAIN,
     mulberry32,
 } from './lunara-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export * from './lunara-core.js';
 
@@ -97,11 +98,25 @@ export const luBell = (x) => {
 
 export const NOISE_SIZE = 256;
 
+/** How long one slice of the noise bake runs before it yields to the page (ms). */
+const NOISE_SLICE_MS = 8;
+
 /**
  * Periodic fBm gradient noise, four decorrelated channels stretched to [0, 1].
  * @returns {Float32Array} size × size × 4
  */
 export function bakeNoise(seed = 7717, size = NOISE_SIZE) {
+    return drainSteps(bakeNoiseSteps(seed, size));
+}
+
+/**
+ * `bakeNoise` as steps (the world's build breathes between them: shared/build-steps.js): the same
+ * field from the same draws, yielding between rows once a slice has run NOISE_SLICE_MS. In one
+ * task it held Lunara's first-visit switch 19 ms (2026-10-31).
+ * @returns {Generator<string, Float32Array>} size × size × 4
+ */
+export function* bakeNoiseSteps(seed = 7717, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -143,6 +158,10 @@ export function bakeNoise(seed = 7717, size = NOISE_SIZE) {
                     const top = d00 + (d10 - d00) * sx;
                     const bottom = d01 + (d11 - d01) * sx;
                     field[y * n + x] += (top + (bottom - top) * sy) * amp;
+                }
+                if (clock.due()) {
+                    yield 'noise';
+                    clock.restart();
                 }
             }
             amp *= 0.5;
