@@ -178,15 +178,102 @@ const MEADOW_MAP_WIDTH = 512;
 const MEADOW_MAP_HEIGHT = 256;
 
 /**
+ * The work a time-sliced loop of a first build does between breaths (ms). Each breath costs the
+ * theme still playing a frame; slices of 24 ms (and whole loops of 15-30 ms) showed as hitches of
+ * the outgoing theme in a first switch (2026-10-31).
+ */
+export const SUMMER_SLICE_MS = 8;
+
+/**
+ * A breath in a time-sliced loop of a build written as steps: yields `label` once the slice has
+ * run, and starts the next.
+ * @param {{ due: () => boolean, restart: () => void }} clock
+ * @param {string} label
+ */
+export function* summerSlice(clock, label) {
+    if (clock.due()) {
+        yield label;
+        clock.restart();
+    }
+}
+
+/**
+ * three's BufferGeometry.computeVertexNormals() of an indexed mesh, as steps: each face's cross
+ * product added to its three corners' float32 sums in the same order, then each sum normalised as
+ * Vector3.normalize() does, so the same bits (the same as Verdant Hills' and Spring's).
+ * @param {Float32Array} position
+ * @param {ArrayLike<number>} index
+ * @param {{ due: () => boolean, restart: () => void }} clock
+ * @returns {Generator<string, Float32Array>}
+ */
+export function* summerVertexNormalsSteps(position, index, clock) {
+    const normal = new Float32Array(position.length);
+    for (let i = 0; i < index.length; i += 3) {
+        const a = index[i] * 3;
+        const b = index[i + 1] * 3;
+        const c = index[i + 2] * 3;
+        const bx = position[b];
+        const by = position[b + 1];
+        const bz = position[b + 2];
+        const cbx = position[c] - bx;
+        const cby = position[c + 1] - by;
+        const cbz = position[c + 2] - bz;
+        const abx = position[a] - bx;
+        const aby = position[a + 1] - by;
+        const abz = position[a + 2] - bz;
+        const nx = cby * abz - cbz * aby;
+        const ny = cbz * abx - cbx * abz;
+        const nz = cbx * aby - cby * abx;
+        // All three sums are read before any is written, as three does (a corner named twice).
+        const ax0 = normal[a] + nx;
+        const ay0 = normal[a + 1] + ny;
+        const az0 = normal[a + 2] + nz;
+        const bx0 = normal[b] + nx;
+        const by0 = normal[b + 1] + ny;
+        const bz0 = normal[b + 2] + nz;
+        const cx0 = normal[c] + nx;
+        const cy0 = normal[c + 1] + ny;
+        const cz0 = normal[c + 2] + nz;
+        normal[a] = ax0;
+        normal[a + 1] = ay0;
+        normal[a + 2] = az0;
+        normal[b] = bx0;
+        normal[b + 1] = by0;
+        normal[b + 2] = bz0;
+        normal[c] = cx0;
+        normal[c + 1] = cy0;
+        normal[c + 2] = cz0;
+        if (i % 6144 === 0 && clock.due()) {
+            yield 'normals';
+            clock.restart();
+        }
+    }
+    for (let i = 0; i < normal.length; i += 3) {
+        const x = normal[i];
+        const y = normal[i + 1];
+        const z = normal[i + 2];
+        const scale = 1 / (Math.sqrt(x * x + y * y + z * z) || 1);
+        normal[i] = x * scale;
+        normal[i + 1] = y * scale;
+        normal[i + 2] = z * scale;
+        if (i % 6144 === 0 && clock.due()) {
+            yield 'normals';
+            clock.restart();
+        }
+    }
+    return normal;
+}
+
+/**
  * The lake map's texels, kept for the session: the same function every visit, and nothing writes
  * to them (the texture reads them). One 70-90 ms step of every Summer start before
- * (docs/THEME_FLEET_240_2026-10.md §13); a session's first bakes them in steps of ~24 ms.
+ * (docs/THEME_FLEET_240_2026-10.md §13); a session's first bakes them a time slice a step.
  */
 let lakeMapData = null;
 
 /** R = ground height (biased), G = metres from the shore out on the water / 40. As steps. */
 export function* lakeMapDataSteps() {
-    const clock = stepClock();
+    const clock = stepClock(SUMMER_SLICE_MS);
     const data = new Uint8Array(MAP_WIDTH * MAP_HEIGHT * 4);
     const {
         minX, maxX, minZ, maxZ,
@@ -227,13 +314,18 @@ function lakeMapTexture(data) {
     return map;
 }
 
-/** R = trodden path, G = the mown ring around the maypole, B = the crest of tall flowers. */
-function createMeadowMap() {
+/**
+ * R = trodden path, G = the mown ring around the maypole, B = the crest of tall flowers. As steps,
+ * a time slice a step (one 18-23 ms piece of a first visit's build before).
+ * @param {{ due: () => boolean, restart: () => void }} clock
+ */
+function* meadowMapSteps(clock) {
     const data = new Uint8Array(MEADOW_MAP_WIDTH * MEADOW_MAP_HEIGHT * 4);
     const {
         minX, maxX, minZ, maxZ,
     } = SUMMER_MEADOW_BOUNDS;
     for (let row = 0; row < MEADOW_MAP_HEIGHT; row += 1) {
+        yield* summerSlice(clock, 'meadow map rows');
         for (let column = 0; column < MEADOW_MAP_WIDTH; column += 1) {
             const x = minX + ((maxX - minX) * column) / (MEADOW_MAP_WIDTH - 1);
             const z = minZ + ((maxZ - minZ) * row) / (MEADOW_MAP_HEIGHT - 1);
@@ -248,6 +340,11 @@ function createMeadowMap() {
             data[offset + 3] = 255;
         }
     }
+    return data;
+}
+
+/** The meadow map over its texels. */
+function meadowMapTexture(data) {
     const map = new THREE.DataTexture(data, MEADOW_MAP_WIDTH, MEADOW_MAP_HEIGHT, THREE.RGBAFormat);
     map.magFilter = THREE.LinearFilter;
     map.minFilter = THREE.LinearFilter;
@@ -290,8 +387,13 @@ export class SummerTerrain {
         return this;
     }
 
-    /** The terrain in three steps for the world's breathing build: the ground, the lake's map, the rest. */
+    /**
+     * The terrain as steps for the world's breathing build, a time slice a step: the ground and its
+     * normals, the lake's map, the meadow's map, the rest (the ground was one 25-35 ms step of a
+     * first visit, the meadow's map most of another).
+     */
     * buildSteps() {
+        const clock = stepClock(SUMMER_SLICE_MS);
         const {
             minX, maxX, minZ, maxZ,
         } = SUMMER_BOUNDS;
@@ -299,6 +401,7 @@ export class SummerTerrain {
         const zs = gridLines(minZ, maxZ, -34, 22, 0.5, 1.1);
         const positions = new Float32Array(xs.length * zs.length * 3);
         for (let row = 0; row < zs.length; row += 1) {
+            yield* summerSlice(clock, 'ground');
             for (let column = 0; column < xs.length; column += 1) {
                 positions.set(
                     [xs[column], summerGroundHeight(xs[column], zs[row]), zs[row]],
@@ -308,6 +411,7 @@ export class SummerTerrain {
         }
         const indices = [];
         for (let row = 0; row < zs.length - 1; row += 1) {
+            yield* summerSlice(clock, 'ground');
             for (let column = 0; column < xs.length - 1; column += 1) {
                 const a = row * xs.length + column;
                 const b = a + 1;
@@ -318,12 +422,19 @@ export class SummerTerrain {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setIndex(indices);
-        geometry.computeVertexNormals();
+        // computeVertexNormals(), summed a slice at a time.
+        const normals = yield* summerVertexNormalsSteps(positions, geometry.index.array, clock);
+        const normal = new THREE.BufferAttribute(normals, 3);
+        geometry.setAttribute('normal', normal);
+        // (As computeVertexNormals leaves it.)
+        normal.needsUpdate = true;
         geometry.computeBoundingSphere();
         yield 'ground';
         this.lakeMap = lakeMapTexture(yield* sessionLakeMapData());
         yield 'lake map';
-        this.meadowMap = createMeadowMap();
+        clock.restart();
+        const meadowData = yield* meadowMapSteps(clock);
+        this.meadowMap = meadowMapTexture(meadowData);
         const material = this.createMaterial();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'SummerGround';

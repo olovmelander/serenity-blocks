@@ -2118,7 +2118,7 @@ describe('Summer world ownership', () => {
         const material = new THREE.MeshBasicNodeMaterial();
         const geometryDisposal = vi.spyOn(geometry, 'dispose');
         const materialDisposal = vi.spyOn(material, 'dispose');
-        vi.spyOn(SummerForest.prototype, 'build').mockImplementation(function failedBuild() {
+        vi.spyOn(SummerForest.prototype, 'buildSteps').mockImplementation(function failedBuild() {
             this.own(geometry);
             this.own(material);
             this.group.add(new THREE.Mesh(geometry, material));

@@ -96,7 +96,7 @@ import {
 } from '../shared/mood-clock.js';
 import { readBreathSignal } from '../../core/breath-signal.js';
 import { flashScale } from '../../utils/photosensitivity.js';
-import { loadBitmapTexture } from '../shared/decoded-texture.js';
+import { loadBitmapTexture, uploadTextureNow } from '../shared/decoded-texture.js';
 
 const DEG = Math.PI / 180;
 
@@ -548,6 +548,17 @@ export class NeonDistrictWorld {
     }
 
     /**
+     * Upload an arrived atlas in the task it arrived in (renderer.initTexture), not at the next
+     * frame's first draw: three's upload copies its pixels to the GPU process on the main thread
+     * (WritePixels, up to ~17 ms an atlas), and in a switch that copy stacked with the hidden build's
+     * node builds into one 94 ms frame (2026-10-31). The same data, uploaded earlier.
+     * @param {THREE.Texture} tex configured (format, mips) before it is uploaded
+     */
+    uploadNow(tex) {
+        uploadTextureNow(this.renderer, tex);
+    }
+
+    /**
      * Fetch the shopfront and billboard atlases. Never awaited by the first frame: the district
      * stands dark where they go and powers up when they arrive.
      * @returns {Promise<boolean>} true when both atlases are in
@@ -567,6 +578,7 @@ export class NeonDistrictWorld {
                 tex.generateMipmaps = true;
                 tex.minFilter = THREE.LinearMipmapLinearFilter;
                 tex.name = `neon-district-atlas-${slot}`;
+                this.uploadNow(tex);
                 this.textures.push(tex);
                 node.value = tex;
                 this.atlasReady[slot] = true;
@@ -608,6 +620,7 @@ export class NeonDistrictWorld {
                 tex.magFilter = THREE.LinearFilter;
                 tex.anisotropy = 4;
                 tex.name = `neon-district-${name}`;
+                this.uploadNow(tex);
                 resolve(tex);
             };
             const viaLoader = () => {

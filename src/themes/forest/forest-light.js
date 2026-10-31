@@ -23,6 +23,9 @@ import { FOREST_LIGHT_FIELD_BOUNDS, ForestLightField } from './forest-light-fiel
 import { FOREST_MOON_AZIMUTH_DEGREES, FOREST_MOON_ELEVATION_DEGREES } from './forest-plan.js';
 import { ForestPulses } from './forest-pulses.js';
 import { FOREST_BOUNDS, forestGroundHeight } from './forest-terrain.js';
+import { FOREST_SLICE_MS, forestSlice } from './forest-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { halfBits } from '../../rendering/half-float.js';
 
 const MOON_AZIMUTH = THREE.MathUtils.degToRad(FOREST_MOON_AZIMUTH_DEGREES);
 const MOON_ELEVATION = THREE.MathUtils.degToRad(FOREST_MOON_ELEVATION_DEGREES);
@@ -84,20 +87,38 @@ const SHADOW_REDRAW_SECONDS = [2, 5, 10, 20];
 const HEIGHT_MAP_WIDTH = 256;
 const HEIGHT_MAP_HEIGHT = 208;
 
-/** The floor's height in metres, so mist can lie in the hollows and the valley. */
-function createHeightTexture() {
+/**
+ * The height map's texels (half floats), a time slice a step: a world that builds in steps bakes
+ * them before its light (they were half of the light's 17 ms on a first visit). halfBits is three's
+ * DataUtils.toHalfFloat bit for bit (rendering/half-float.js).
+ * @param {{ due: () => boolean, restart: () => void }} clock
+ * @returns {Generator<string, Uint16Array>}
+ */
+export function* forestHeightDataSteps(clock) {
     const data = new Uint16Array(HEIGHT_MAP_WIDTH * HEIGHT_MAP_HEIGHT);
     const {
         minX, maxX, minZ, maxZ,
     } = FOREST_BOUNDS;
     for (let row = 0; row < HEIGHT_MAP_HEIGHT; row += 1) {
+        yield* forestSlice(clock, 'floor heights');
         for (let column = 0; column < HEIGHT_MAP_WIDTH; column += 1) {
             const x = minX + ((maxX - minX) * column) / (HEIGHT_MAP_WIDTH - 1);
             const z = minZ + ((maxZ - minZ) * row) / (HEIGHT_MAP_HEIGHT - 1);
-            data[row * HEIGHT_MAP_WIDTH + column] = THREE.DataUtils.toHalfFloat(forestGroundHeight(x, z));
+            data[row * HEIGHT_MAP_WIDTH + column] = halfBits(forestGroundHeight(x, z));
         }
     }
-    const map = new THREE.DataTexture(data, HEIGHT_MAP_WIDTH, HEIGHT_MAP_HEIGHT, THREE.RedFormat, THREE.HalfFloatType);
+    return data;
+}
+
+/**
+ * The floor's height in metres, so mist can lie in the hollows and the valley: over `data`
+ * (forestHeightDataSteps' texels), or baked here.
+ * @param {Uint16Array | null} [data]
+ */
+function createHeightTexture(data = null) {
+    const heights = data ?? drainSteps(forestHeightDataSteps(stepClock(FOREST_SLICE_MS)));
+    const { RedFormat, HalfFloatType } = THREE;
+    const map = new THREE.DataTexture(heights, HEIGHT_MAP_WIDTH, HEIGHT_MAP_HEIGHT, RedFormat, HalfFloatType);
     map.magFilter = THREE.LinearFilter;
     map.minFilter = THREE.LinearFilter;
     map.wrapS = THREE.ClampToEdgeWrapping;
@@ -110,7 +131,8 @@ function createHeightTexture() {
 }
 
 export class ForestLight {
-    constructor({ tier, rng = Math.random }) {
+    /** `heights`: the height map's texels baked ahead (forestHeightDataSteps), or baked here. */
+    constructor({ tier, rng = Math.random, heights = null }) {
         this.tier = tier;
         this.uTime = uniform(0);
         this.uMoonDir = uniform(FOREST_MOON_DIRECTION.clone());
@@ -178,7 +200,7 @@ export class ForestLight {
         this.uGlow = uniform(0);
         this.uWake = uniform(0);
         this.noiseTexture = createNoiseTexture(rng);
-        this.heightTexture = createHeightTexture();
+        this.heightTexture = createHeightTexture(heights);
         this.groundNodes = new WeakMap();
 
         this.pulses = new ForestPulses(Math.max(1, tier.pulses));

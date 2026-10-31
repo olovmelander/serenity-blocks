@@ -39,7 +39,8 @@
  * on the first's, the ladder cools from the top down, full pools are topped up, spinning devils
  * are fed, and springs and boil-overs that must make room fade out.
  *
- * The parts are built from a registry (PART_BUILDERS); a part not built yet is simply absent.
+ * The parts are built from a registry (PART_BUILDERS, the heavy ones as steps in PART_STEPS); a
+ * part not built yet is simply absent.
  * Nothing is created at event time: events write numbers into preallocated state, so seek(t)
  * plus a fixed-step replay reproduces any frame. What moves at a changing rate is integrated;
  * everything else is closed form in the clock.
@@ -121,12 +122,12 @@ import {
 import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
 import { createBasin } from './thermal-bloom-basin.js';
-import { createTerraces, stairBakeArgs } from './thermal-bloom-terraces.js';
+import { createTerracesSteps, stairBakeArgs } from './thermal-bloom-terraces.js';
 import { createMist, createSteam } from './thermal-bloom-steam.js';
 import { createFumaroles } from './thermal-bloom-fumaroles.js';
 import { createDevils } from './thermal-bloom-devils.js';
 import {
-    COLUMN_KIND, COLUMN_SLOT, createChalice, createColumns, createConsort, createSleeper, createSpray,
+    COLUMN_KIND, COLUMN_SLOT, createChaliceSteps, createColumns, createConsort, createSleeper, createSpray,
 } from './thermal-bloom-geyser.js';
 import { createPines } from './thermal-bloom-flora.js';
 import { createSnags } from './thermal-bloom-snags.js';
@@ -285,9 +286,13 @@ const SPOUTERS = Object.freeze([
     }),
 ]);
 
-/** The Chalice's cone, the dormant Sleeper and Consort, the eruption columns and the spray. */
-function buildGeyser(world) {
-    const chalice = createChalice(world.u, world.tier, world.tex);
+/**
+ * The Chalice's cone, the dormant Sleeper and Consort, the eruption columns and the spray, as
+ * steps: the Chalice in slices and a step of its own, then the rest.
+ */
+function* buildGeyserSteps(world) {
+    const chalice = yield* createChaliceSteps(world.u, world.tier, world.tex);
+    yield 'chalice';
     const sleeper = createSleeper(world.u, world.tier, world.tex);
     const consort = createConsort(world.u, world.tier, world.tex);
     const columns = createColumns(world.u, world.tier, world.tex);
@@ -336,12 +341,19 @@ function buildGeyser(world) {
 const PART_BUILDERS = Object.freeze({
     sky: (world) => createSky(world.u, world.tier, world.tex),
     basin: (world) => createBasin(world.u, world.tier, world.tex),
-    terraces: (world) => createTerraces(world.u, world.tier, world.tex),
     steam: buildSteam,
-    geyser: buildGeyser,
     flora: buildFlora,
     // The events' drops (the boil-overs, the jets, the chain's vents).
     fx: (world) => createBursts(world.u, world.tier.burstDrops || 48),
+});
+
+/**
+ * The parts built as steps (generators returning the part): each yields inside, so the Stair's
+ * normals and the Chalice never hold one task (the world's build breathes between the yields).
+ */
+const PART_STEPS = Object.freeze({
+    terraces: (world) => createTerracesSteps(world.u, world.tier, world.tex),
+    geyser: buildGeyserSteps,
 });
 
 /** The analytic steam veil's strength per tier: the fewer the sheets, the more it carries. */
@@ -634,7 +646,8 @@ export class ThermalBloomWorld {
     /**
      * The build as steps, a part to a step (the theme breathes between them: shared/build-steps.js),
      * the same work in the same order. Built in one task, the Chalice, the geyser and the Stair held
-     * the first-visit switch's worst frame at 69-92 ms (2026-10-31).
+     * the first-visit switch's worst frame at 69-92 ms (2026-10-31); a step each, the Stair's
+     * normals still held 17 ms and the geyser 33 ms, so those two yield inside as well (PART_STEPS).
      */
     * buildSteps() {
         this.u = createThermalBloomUniforms();
@@ -645,8 +658,10 @@ export class ThermalBloomWorld {
         yield 'textures';
         for (let i = 0; i < THERMAL_BLOOM_PARTS.length; i++) {
             const name = THERMAL_BLOOM_PARTS[i];
+            const steps = PART_STEPS[name];
             const make = PART_BUILDERS[name];
-            if (make) this.addPart(name, make(this));
+            if (steps) this.addPart(name, yield* steps(this));
+            else if (make) this.addPart(name, make(this));
             yield name;
         }
         this.resetState(this.time);

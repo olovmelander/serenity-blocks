@@ -8,6 +8,7 @@ import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { AuroraAir } from './aurora-air.js';
 import { AuroraAtmosphere } from './aurora-atmosphere.js';
@@ -40,8 +41,13 @@ const VOLLEY_GAP = 0.13;
 const METEOR_PATIENCE = 1.5;
 
 export class AuroraWorld {
+    /**
+     * @param {object} options
+     * @param {boolean} [options.build=true] false: the owner builds it, by build() or in steps
+     *   (buildSteps(), the theme breathing between them: shared/build-steps.js)
+     */
     constructor({
-        scene, camera, quality = 'High', seed = AURORA_SEED,
+        scene, camera, quality = 'High', seed = AURORA_SEED, build = true,
     }) {
         if (!scene?.add) throw new TypeError('AuroraWorld requires a Three.js scene');
         this.scene = scene;
@@ -100,6 +106,21 @@ export class AuroraWorld {
         this.atmosphere = new AuroraAtmosphere({
             uniforms: this.uniforms, noiseTexture: this.noiseTexture, curtains: this.curtains,
         });
+        if (build) this.build();
+    }
+
+    build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work
+     * in the same order: the sky, the landscape's parts, the air and the camera. Built in one task
+     * in the constructor, it held the first-visit switch's worst frame at 44 ms (the world 34 ms of
+     * it, 2026-10-31).
+     */
+    * buildSteps() {
+        const { seed, camera } = this;
         this.sky = new AuroraSky({
             parent: this.group,
             preset: this.preset,
@@ -109,7 +130,8 @@ export class AuroraWorld {
             uniforms: this.uniforms,
             random: createRandom(seed ^ 0x51f15e),
         });
-        this.landscape = new AuroraLandscape({
+        yield 'sky';
+        const land = {
             parent: this.group,
             preset: this.preset,
             curtains: this.curtains,
@@ -119,7 +141,10 @@ export class AuroraWorld {
             random: createRandom(seed ^ 0x7a11e5),
             seed: landSeedOf(seed),
             eyeHeight: EYE_HEIGHT,
-        });
+        };
+        this.landscape = new AuroraLandscape({ ...land, build: false });
+        yield* this.landscape.buildSteps(land);
+        yield 'landscape';
         this.air = new AuroraAir({
             parent: this.group,
             preset: this.preset,
@@ -145,6 +170,7 @@ export class AuroraWorld {
         this.tangentX = 1;
         this.prepareCamera(camera.aspect || 16 / 9);
         this.applyDirector();
+        return this;
     }
 
     /** Frame the scene for an aspect ratio: the horizon sinks as the frame grows taller. */
@@ -369,9 +395,10 @@ export class AuroraWorld {
     dispose() {
         if (this.disposed) return;
         this.disposed = true;
-        this.air.dispose();
-        this.landscape.dispose();
-        this.sky.dispose();
+        // A world stopped part-way through its steps has only some of its parts.
+        this.air?.dispose();
+        this.landscape?.dispose();
+        this.sky?.dispose();
         this.curtains.dispose();
         this.noiseTexture.dispose();
         this.group.removeFromParent();

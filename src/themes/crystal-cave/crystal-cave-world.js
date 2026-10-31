@@ -18,7 +18,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
-import { createCaveLight } from './crystal-cave-light.js';
+import { createCaveLightSteps } from './crystal-cave-light.js';
 import { createGemField } from './crystal-cave-gems.js';
 import { createCaveRock } from './crystal-cave-rock.js';
 import { createCavePool } from './crystal-cave-water.js';
@@ -29,6 +29,7 @@ import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
 import { resolveCrystalCaveQuality } from './crystal-cave-quality.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import {
@@ -71,8 +72,13 @@ function alongCrystal(crystal, fraction, target = new THREE.Vector3()) {
 }
 
 export class CrystalCaveWorld {
+    /**
+     * @param {object} options
+     * @param {boolean} [options.build=true] false: the owner builds it, by build() or in steps
+     *   (buildSteps(), the theme breathing between them: shared/build-steps.js)
+     */
     constructor({
-        scene, camera, assets, quality = 'High',
+        scene, camera, assets, quality = 'High', build = true,
     }) {
         if (!scene?.add) throw new TypeError('CrystalCaveWorld requires a Three.js scene');
         if (!assets?.geometry) throw new TypeError('CrystalCaveWorld requires the loaded cavern');
@@ -96,9 +102,7 @@ export class CrystalCaveWorld {
         this.group = new THREE.Group();
         this.group.name = 'Crystal Cave';
         scene.add(this.group);
-        this.build();
-        this.prepareCamera(camera.aspect || 16 / 9);
-        this.reset();
+        if (build) this.build();
     }
 
     random() {
@@ -107,9 +111,19 @@ export class CrystalCaveWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work
+     * in the same order. Built in one task in the constructor, with the light's noise bake, it held
+     * the first-visit switch's worst frame at 49 ms (the world 27 ms of it, 2026-10-31).
+     */
+    * buildSteps() {
         const { preset } = this.quality;
         const { assets } = this;
-        this.light = createCaveLight();
+        this.light = yield* createCaveLightSteps();
+        yield 'light';
         this.rock = createCaveRock({
             light: this.light,
             geometry: assets.geometry,
@@ -137,6 +151,7 @@ export class CrystalCaveWorld {
         });
         this.gems.setCrystals(this.crystals.map((crystal) => ({ ...crystal, growth: crystal.group === 0 ? 1 : 0 })));
         this.group.add(this.gems.mesh);
+        yield 'rock and gems';
 
         // The light in the air: the post gathers it along the view, the pool along its mirror.
         this.shaftLevel = uniform(1);
@@ -170,6 +185,7 @@ export class CrystalCaveWorld {
         this.group.add(this.pool.mesh);
 
         this.indexCrystals();
+        yield 'air light, pool and index';
         this.air = createCaveAir({
             light: this.light,
             assets: { ...assets, tips: this.tips },
@@ -194,6 +210,9 @@ export class CrystalCaveWorld {
         this.pointA = new THREE.Vector3();
         this.pointB = new THREE.Vector3();
         this.pointC = new THREE.Vector3();
+        this.prepareCamera(this.camera.aspect || 16 / 9);
+        this.reset();
+        return this;
     }
 
     /** Lookup tables the reactions need: who can be charged, who links, who grows. */
@@ -988,12 +1007,13 @@ export class CrystalCaveWorld {
     dispose() {
         if (this.disposed) return;
         this.disposed = true;
-        this.effects.dispose();
-        this.air.dispose();
-        this.pool.dispose();
-        this.gems.dispose();
-        this.rock.dispose();
-        this.light.dispose();
+        // A world stopped part-way through its steps has only some of its parts.
+        this.effects?.dispose();
+        this.air?.dispose();
+        this.pool?.dispose();
+        this.gems?.dispose();
+        this.rock?.dispose();
+        this.light?.dispose();
         this.group.removeFromParent();
         this.group.clear();
     }

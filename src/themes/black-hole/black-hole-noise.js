@@ -3,6 +3,10 @@
  * shader advects, and the galaxy the hole bends. Nothing here touches three or the DOM, so
  * every bake is reproducible from its seed and testable in plain node.
  */
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+
+/** How long one slice of the gas bake runs before it yields to the page (ms). */
+const DISK_SLICE_MS = 8;
 
 /** Small seeded generator (mulberry32) for placement and per-instance attributes. */
 export function createRandom(seed = 1) {
@@ -115,6 +119,16 @@ function fbm3(x, y, z, seed, octaves) {
  * Each channel is stretched to the full byte range so shader thresholds stay predictable.
  */
 export function bakeDiskTexture(width = 512, height = 128, seed = 7919) {
+    return drainSteps(bakeDiskTextureSteps(width, height, seed));
+}
+
+/**
+ * `bakeDiskTexture` as steps: the same bytes, yielding between rows once a slice has run
+ * DISK_SLICE_MS. In one task it held a first visit's switch frame 28 ms (2026-10-31).
+ * @returns {Generator<string, Uint8Array>}
+ */
+export function* bakeDiskTextureSteps(width = 512, height = 128, seed = 7919) {
+    const clock = stepClock(DISK_SLICE_MS);
     const channels = [
         {
             seed: seed + 11, periodX: 3, periodY: 9, octaves: 4,
@@ -131,7 +145,8 @@ export function bakeDiskTexture(width = 512, height = 128, seed = 7919) {
     ];
     const data = new Uint8Array(width * height * 4);
     const plane = new Float32Array(width * height);
-    channels.forEach((channel, index) => {
+    for (let index = 0; index < channels.length; index += 1) {
+        const channel = channels[index];
         let low = Infinity;
         let high = -Infinity;
         for (let y = 0; y < height; y += 1) {
@@ -149,12 +164,16 @@ export function bakeDiskTexture(width = 512, height = 128, seed = 7919) {
                 if (value < low) low = value;
                 if (value > high) high = value;
             }
+            if (clock.due()) {
+                yield 'gas';
+                clock.restart();
+            }
         }
         const scale = 255 / Math.max(1e-6, high - low);
         for (let i = 0; i < plane.length; i += 1) {
             data[i * 4 + index] = Math.round((plane[i] - low) * scale);
         }
-    });
+    }
     return data;
 }
 

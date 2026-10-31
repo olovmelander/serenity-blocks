@@ -46,6 +46,14 @@ import {
     blPulseAt,
 } from './bioluminescence-tsl.js';
 import { ISLETS, VAULT, capCentre } from './bioluminescence-layout.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+
+/**
+ * How long a slice of a rock mesh's build runs before it yields to the page (ms): the world's
+ * build breathes there (shared/build-steps.js). Each of the vault, the floor and the islets held
+ * a first visit's switch frame 14-38 ms in one task (2026-10-31).
+ */
+const ROCK_SLICE_MS = 8;
 
 /** Everything the rock's fragment needs; `bake` = (occlusion, primary, secondary, accent glow). */
 function rockColor(u, {
@@ -149,12 +157,14 @@ function concavity(field, gx, gz, i, j, cell, sign) {
 }
 
 /**
- * Build a height-field mesh over the plan's extent.
+ * Build a height-field mesh over the plan's extent, as steps: yields between rows once a slice
+ * has run ROCK_SLICE_MS, and returns what it built.
  * @param {Float32Array} field   gx × gz heights
  * @param {number} sign          +1 = a floor (faces up), −1 = a vault (faces down)
  * @param {(i: number, j: number) => boolean} keep  whether a vertex is worth drawing
  */
-function fieldGeometry(field, gx, gz, sign, keep) {
+function* fieldGeometrySteps(field, gx, gz, sign, keep) {
+    const clock = stepClock(ROCK_SLICE_MS);
     const {
         x0, x1, z0, z1,
     } = TERRAIN;
@@ -178,6 +188,10 @@ function fieldGeometry(field, gx, gz, sign, keep) {
             normal[o * 3 + 2] = (-sz * sign) / len;
             bake[o * 4] = concavity(field, gx, gz, i, j, dx, sign);
         }
+        if (clock.due()) {
+            yield 'rock';
+            clock.restart();
+        }
     }
     const index = [];
     for (let j = 0; j < gz - 1; j++) {
@@ -189,6 +203,10 @@ function fieldGeometry(field, gx, gz, sign, keep) {
             const d = c + 1;
             if (sign > 0) index.push(a, c, b, b, c, d);
             else index.push(a, b, c, b, d, c);
+        }
+        if (clock.due()) {
+            yield 'rock';
+            clock.restart();
         }
     }
     const geometry = new THREE.BufferGeometry();
@@ -231,6 +249,11 @@ function bakeLesserGlow(plan, position, bake, gx, gz) {
 
 /** The floor and banks. */
 export function createFloor(u, plan) {
+    return drainSteps(createFloorSteps(u, plan));
+}
+
+/** `createFloor` as steps (its mesh in slices): the same part, built in the same order. */
+export function* createFloorSteps(u, plan) {
     const { nx, nz } = TERRAIN;
     const gridFloor = (i, j) => plan.ground[j * nx + i];
     const vaultOver = (i, j) => {
@@ -240,7 +263,7 @@ export function createFloor(u, plan) {
     };
     // Not what lies well under the water, nor what is buried in the vault.
     const keep = (i, j) => gridFloor(i, j) > -0.45 && gridFloor(i, j) < vaultOver(i, j) + 2.5;
-    const { geometry, bake, position } = fieldGeometry(plan.ground, nx, nz, 1, keep);
+    const { geometry, bake, position } = yield* fieldGeometrySteps(plan.ground, nx, nz, 1, keep);
     bakeLesserGlow(plan, position, bake, nx, nz);
     geometry.getAttribute('aBake').needsUpdate = true;
 
@@ -262,13 +285,20 @@ const ISLET_SIDES = 36;
  * (a polar grid over the plan's exact floor) rather than a few cells of the floor's.
  */
 export function createIslets(u, plan) {
+    return drainSteps(createIsletsSteps(u, plan));
+}
+
+/** `createIslets` as steps (yielding between rings): the same part, built in the same order. */
+export function* createIsletsSteps(u, plan) {
+    const clock = stepClock(ROCK_SLICE_MS);
     const position = [];
     const normal = [];
     const bake = [];
     const index = [];
     const centre = [0, 0, 0];
     const lesser = plan.mushrooms.slice(plan.heroCount);
-    ISLETS.forEach(([ix, iz, r]) => {
+    for (let islet = 0; islet < ISLETS.length; islet++) {
+        const [ix, iz, r] = ISLETS[islet];
         const base = position.length / 3;
         const reach = r * 1.28;
         for (let k = 0; k <= ISLET_RINGS; k++) {
@@ -297,6 +327,10 @@ export function createIslets(u, plan) {
                 }
                 bake.push(ao, glow[0], glow[1], glow[2]);
             }
+            if (clock.due()) {
+                yield 'islets';
+                clock.restart();
+            }
         }
         const row = ISLET_SIDES + 1;
         for (let k = 0; k < ISLET_RINGS; k++) {
@@ -305,7 +339,7 @@ export function createIslets(u, plan) {
                 index.push(a, a + 1, a + row, a + 1, a + row + 1, a + row);
             }
         }
-    });
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
     geometry.setAttribute('aNormal', new THREE.Float32BufferAttribute(normal, 3));
@@ -323,6 +357,11 @@ export function createIslets(u, plan) {
 
 /** The vault. */
 export function createVault(u, plan) {
+    return drainSteps(createVaultSteps(u, plan));
+}
+
+/** `createVault` as steps (its mesh in slices): the same part, built in the same order. */
+export function* createVaultSteps(u, plan) {
     const gx = VAULT.nx;
     const gz = VAULT.nz;
     const floorUnder = (i, j) => {
@@ -331,7 +370,7 @@ export function createVault(u, plan) {
         return plan.floorAt(x, z);
     };
     const keep = (i, j) => plan.vault[j * gx + i] > floorUnder(i, j) - 3;
-    const { geometry } = fieldGeometry(plan.vault, gx, gz, -1, keep);
+    const { geometry } = yield* fieldGeometrySteps(plan.vault, gx, gz, -1, keep);
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'BioluminescenceVault';
     material.fog = false;

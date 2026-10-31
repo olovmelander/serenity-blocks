@@ -26,6 +26,7 @@ import {
     stairPoint,
     tierHalf,
 } from './halcyon-apex-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Stone kinds (the material tints and patterns by these). */
 export const STONE = Object.freeze({
@@ -42,6 +43,8 @@ const AO_REACH = 7.5;
 const AO_FLOOR = 0.3;
 /** How far a ley strip floats over the stone it is inlaid in. */
 const LEY_PROUD = 0.07;
+/** How long the plan's stone runs before it yields to the page, at a quad's end (ms). */
+const PLAN_SLICE_MS = 8;
 
 const frameAt = (ox, oz, angle) => ({
     ox, oz, ax: [Math.cos(angle), -Math.sin(angle)], az: [Math.sin(angle), Math.cos(angle)],
@@ -190,6 +193,18 @@ class StoneBuilder {
 
     /** Emit every quad as flat triangles: positions, normals, uvs (metres) and (ao, kind, hash, _). */
     finish(seed = 1) {
+        return drainSteps(this.finishSteps(seed));
+    }
+
+    /**
+     * `finish` as steps: the same triangles from the same draws, yielding between quads once
+     * `clock`'s slice has run (shared/build-steps.js). Every point of a quad's grid reads the
+     * occluders round it: the stone's occlusion was ~13 ms of a first visit's plan in one task
+     * (2026-10-31).
+     * @param {number} [seed]
+     * @param {{ due: () => boolean, restart: () => void }} [clock]
+     */
+    * finishSteps(seed = 1, clock = stepClock(PLAN_SLICE_MS)) {
         const rand = mulberry32(seed);
         let cells = 0;
         const grids = this.quads.map((q) => {
@@ -217,6 +232,10 @@ class StoneBuilder {
             v += 1;
         };
         for (let qi = 0; qi < this.quads.length; qi++) {
+            if (clock.due()) {
+                yield 'stone';
+                clock.restart();
+            }
             const q = this.quads[qi];
             const {
                 nu, nv, lu, lv,
@@ -541,6 +560,16 @@ function buildDial(stone, ley, gems, rand) {
  * @param {number} [seed]
  */
 export function buildPlan(seed = 0x4a1c) {
+    return drainSteps(buildPlanSteps(seed));
+}
+
+/**
+ * `buildPlan` as steps: the same plan from the same draws, its stone's triangles yielding to the
+ * page once a slice has run (the plan was ~17 ms of a first visit's start in one task, 2026-10-31).
+ * @param {number} [seed]
+ */
+export function* buildPlanSteps(seed = 0x4a1c) {
+    const clock = stepClock(PLAN_SLICE_MS);
     const rand = mulberry32(seed);
     const gems = [];
     const stone = new StoneBuilder();
@@ -550,11 +579,15 @@ export function buildPlan(seed = 0x4a1c) {
     const dialLey = createLeyBuilder();
     buildDial(dialStone, dialLey, gems, rand);
     const shards = gems.filter((g) => g.kind === GEM.shard);
+    // Finished in the order the plan lists them (each stone draws from its own seed).
+    const stoneMesh = yield* stone.finishSteps(seed + 11, clock);
+    const leyMesh = ley.finish();
+    const dialStoneMesh = yield* dialStone.finishSteps(seed + 23, clock);
     return {
         seed,
-        stone: stone.finish(seed + 11),
-        ley: ley.finish(),
-        dialStone: dialStone.finish(seed + 23),
+        stone: stoneMesh,
+        ley: leyMesh,
+        dialStone: dialStoneMesh,
         dialLey: dialLey.finish(),
         gems,
         /** World position of the Apex's centre. */

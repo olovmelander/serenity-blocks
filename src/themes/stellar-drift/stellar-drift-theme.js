@@ -59,6 +59,7 @@ import { PLAYER_SLOTS, readLayoutRects } from './stellar-drift-composition.js';
 import { STELLAR_DRIFT_EVENT_HANDLERS, StellarDriftDirector } from './stellar-drift-director.js';
 import { approach } from './stellar-drift-core.js';
 import { stellarDriftBakes } from './stellar-drift-bakes.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'stellar-drift';
 const LOG_PREFIX = '[Stellar Drift]';
@@ -233,14 +234,17 @@ export default class StellarDriftTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new StellarDriftWorld({
+            const world = new StellarDriftWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
             });
-            this.world.build();
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

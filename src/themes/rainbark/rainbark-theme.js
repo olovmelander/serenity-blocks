@@ -57,6 +57,7 @@ import { POST_LOOK, RainbarkPost, createPassThroughPipeline } from './rainbark-p
 import { PLAYER_SLOTS, readLayoutRects } from './rainbark-composition.js';
 import { RAINBARK_EVENT_HANDLERS, RainbarkDirector } from './rainbark-director.js';
 import { approach } from './rainbark-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'rainbark';
 const LOG_PREFIX = '[Rainbark]';
@@ -243,13 +244,16 @@ export default class RainbarkTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new RainbarkWorld({
+            const world = new RainbarkWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
             });
-            this.world.build();
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

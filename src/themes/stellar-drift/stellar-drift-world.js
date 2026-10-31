@@ -83,7 +83,7 @@ import {
     createBandBlurTexture,
     createBandColorTexture,
     createBandMetaTexture,
-    createFbmTexture,
+    createFbmTextureSteps,
     createLatticeTexture,
     createRingTexture,
     createStellarDriftUniforms,
@@ -112,6 +112,7 @@ import {
     BOARD_GRID, PLAYER_SLOTS, boardFor, boardPoint, fallbackLayout,
 } from './stellar-drift-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 
 /** The rest camera: a long lens, so the giant keeps its roundness off-centre. */
@@ -384,9 +385,20 @@ export class StellarDriftWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order from the same draws. Built in one
+     * task, it held the first-visit switch's worst frame at ~34 ms (2026-10-31).
+     */
+    * buildSteps() {
         const { tier } = this;
         const lattice = createLatticeTexture(bakeLattice(this.seed + 11));
-        const fbm = createFbmTexture(bakeFbm(this.seed + 23, tier.fbmSize, tier.fbmOctaves), tier.fbmSize);
+        // A first visit derives the fBm's mip chain a slice to a step.
+        const fbm = yield* createFbmTextureSteps(bakeFbm(this.seed + 23, tier.fbmSize, tier.fbmOctaves), tier.fbmSize);
+        yield 'fbm';
         this.ringProfile = bakeRingProfile(tier.ringSize, this.seed + 37);
         const rings = createRingTexture(this.ringProfile);
         const meta = bakeBandMeta(512, this.seed + 41);
@@ -402,6 +414,7 @@ export class StellarDriftWorld {
         this.u = u;
 
         this.addPart('space', createSpace(u, tier));
+        yield 'space';
         this.ice = createIce(u, tier.ice, this.seed + 53);
         this.addPart('boulders', this.ice.boulders);
         this.addPart('shards', this.ice.shards);
@@ -412,6 +425,7 @@ export class StellarDriftWorld {
         this.addPart('meteors', this.meteors);
         this.heads = createHeads(u, this.meteors);
         this.addPart('heads', this.heads);
+        yield 'ice and fx';
 
         this.resetState(this.time);
         this.compose();

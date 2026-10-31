@@ -173,12 +173,13 @@ describe('Blood Moon authored lunar surface', () => {
             const canvas = { width: 0, height: 0 };
             canvas.getContext = () => ({
                 drawImage: vi.fn(),
-                getImageData: () => {
-                    const data = new Uint8ClampedArray(canvas.width * canvas.height * 4);
-                    for (let y = 0; y < canvas.height; y++) {
-                        for (let x = 0; x < canvas.width; x++) {
-                            const pixel = (y * canvas.width + x) * 4;
-                            const shade = 40 + y + (x % 8);
+                // The bake reads the drawn atlas back a band of rows at a time.
+                getImageData: (sx = 0, sy = 0, sw = canvas.width, sh = canvas.height) => {
+                    const data = new Uint8ClampedArray(sw * sh * 4);
+                    for (let y = 0; y < sh; y++) {
+                        for (let x = 0; x < sw; x++) {
+                            const pixel = (y * sw + x) * 4;
+                            const shade = 40 + sy + y + ((sx + x) % 8);
                             data[pixel] = shade; data[pixel + 1] = shade; data[pixel + 2] = shade;
                             data[pixel + 3] = 255;
                         }

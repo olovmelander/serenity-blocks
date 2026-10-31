@@ -59,12 +59,13 @@ import { createSea } from './synthwave-sunset-sea.js';
 import { NEON_RING, WHEEL, createWheel } from './synthwave-sunset-wheel.js';
 import { createPier } from './synthwave-sunset-pier.js';
 import { createCoaster } from './synthwave-sunset-coaster.js';
-import { createPromenade } from './synthwave-sunset-promenade.js';
+import { createPromenadeSteps } from './synthwave-sunset-promenade.js';
 import { createPalms } from './synthwave-sunset-palms.js';
 import { SynthwaveGulls, loadGullGeometry } from './synthwave-sunset-gulls.js';
 import { FIREWORK_COLORS, Fireworks, WILLOW_GOLD } from './synthwave-sunset-fireworks.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 /**
@@ -443,6 +444,15 @@ export class SynthwaveWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a part or two to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order, drawing the same random numbers.
+     * Built in one task, a first visit's held the switch's worst frame at ~45 ms (2026-10-31).
+     */
+    * buildSteps() {
         const { q, u, rand } = this;
         this.parts.sky = createSky(u, { cloudOctaves: q.cloudOctaves, stars: q.stars, shootingStars: q.shooting });
         this.parts.sea = createSea(u, {
@@ -451,10 +461,15 @@ export class SynthwaveWorld {
         this.reflection = this.parts.sea.userData.reflection ?? null;
         if (this.reflection) this.root.add(this.reflection.target);
         this.parts.wheel = createWheel(u, { mirrorLayer: MIRROR_LAYER });
+        yield 'sky, sea and wheel';
         this.parts.pier = createPier(u, { mirrorLayer: MIRROR_LAYER });
+        yield 'pier';
         this.parts.coaster = createCoaster(u, { mirrorLayer: MIRROR_LAYER });
-        this.parts.promenade = createPromenade(u, { rand, mirrorLayer: MIRROR_LAYER });
+        yield 'coaster';
+        this.parts.promenade = yield* createPromenadeSteps(u, { rand, mirrorLayer: MIRROR_LAYER });
+        yield 'hotels';
         this.parts.palms = createPalms(u, { rand, count: q.palms });
+        yield 'palms';
         this.gulls = new SynthwaveGulls(u, { count: q.gulls, mirrorLayer: MIRROR_LAYER });
         this.parts.gulls = this.gulls.group;
         this.fireworks = new Fireworks(u, { capacity: q.fireworks, rand, mirrorLayer: MIRROR_LAYER });

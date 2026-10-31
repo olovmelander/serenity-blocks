@@ -13,6 +13,8 @@
  *
  * Three-free: plain arrays in and out, so the planner and the tests use it as the renderer does.
  */
+import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** The squirrel's two trees (the hero maple and oak of fall-composition.js). */
 export const SQUIRREL_TREE_NAMES = Object.freeze(['maple', 'oak']);
@@ -47,9 +49,18 @@ const wrapAngle = (a) => {
  * @param {{low:number,high:number,step:number}} o.span
  * @returns {{ heights: Float64Array, centres: Float64Array, radii: Float64Array, rays: number, base: number[], low: number, high: number }}
  */
-export function measureTrunk({
+export function measureTrunk(o) {
+    return drainSteps(measureTrunkSteps(o, stepClock(FALL_SLICE_MS)));
+}
+
+/**
+ * measureTrunk(), a time slice a step (a first visit's build measures both trunks).
+ * @param {Parameters<typeof measureTrunk>[0]} o
+ * @param {{ due: () => boolean, restart: () => void }} clock
+ */
+export function* measureTrunkSteps({
     positions, index, sway = null, place, span, rays = TRUNK_RAYS,
-}) {
+}, clock) {
     const { low, high, step } = span;
     const count = Math.round((high - low) / step) + 1;
     const heights = new Float64Array(count);
@@ -59,6 +70,7 @@ export function measureTrunk({
     const reach = 3.2;
     const tris = [];
     for (let t = 0; t < index.length; t += 3) {
+        if (t % 6144 === 0) yield* fallSlice(clock, 'trunk');
         const a = index[t] * 3;
         const b = index[t + 1] * 3;
         const c = index[t + 2] * 3;
@@ -82,6 +94,7 @@ export function measureTrunk({
     const cosYaw = Math.cos(place.yaw || 0);
     const sinYaw = Math.sin(place.yaw || 0);
     for (let k = 0; k < count; k++) {
+        yield* fallSlice(clock, 'trunk');
         const y = heights[k] / scale;
         // The axis here: the middle of the band's own vertices, nearer the old one (the trunk leans).
         let sx = 0;

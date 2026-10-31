@@ -6,6 +6,7 @@
  * baseline at 0) baked into a signed-distance texture once, so the boards' shader can carve them
  * crisp at any size (no canvas: a theme draws no 2D context).
  */
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Stroke half-width, em units; extra space between letters (carved letters need room). */
 export const TRACKING = 0.09;
@@ -85,7 +86,25 @@ function segmentDistance(px, py, s) {
  * The text as an 8-bit signed-distance field `width × height` (row 0 at the BOTTOM, as a DataTexture maps uv.y = 0): 128 on the
  * stroke's edge, higher inside. The text is centred, its cap height `cap` of the board's height.
  */
-export function bakeSignField(text, width = 512, height = 96, { cap = 0.56 } = {}) {
+export function bakeSignField(text, width = 512, height = 96, options = {}) {
+    return drainSteps(bakeSignFieldSteps(text, width, height, options));
+}
+
+/** How long a slice of a board's lettering bake runs before it yields to the page (ms). */
+const SIGN_SLICE_MS = 8;
+
+/**
+ * `bakeSignField` as steps (the world's build breathes between them): the same field, yielding
+ * between two rows once a slice has run. The two boards in one step held High Coast's first-visit
+ * switch 21-24 ms (2026-10-31).
+ */
+export function* bakeSignFieldSteps(
+    text,
+    width = 512,
+    height = 96,
+    { cap = 0.56 } = {},
+    clock = stepClock(SIGN_SLICE_MS),
+) {
     const { glyphs: laid, width: textWidth } = layoutText(text);
     const em = height * cap;
     const left = (width - textWidth * em) / 2;
@@ -93,6 +112,10 @@ export function bakeSignField(text, width = 512, height = 96, { cap = 0.56 } = {
     const out = new Uint8Array(width * height);
     const range = 0.14;
     for (let j = 0; j < height; j++) {
+        if (clock.due()) {
+            yield 'lettering';
+            clock.restart();
+        }
         // Row 0 is the bottom of the board (a DataTexture's first row is at uv.y = 0).
         const py = (j + 0.5 - base) / em;
         for (let i = 0; i < width; i++) {

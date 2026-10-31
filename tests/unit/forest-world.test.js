@@ -1863,7 +1863,7 @@ describe('Forest world ownership', () => {
         const material = new THREE.MeshBasicNodeMaterial();
         const geometryDisposal = vi.spyOn(geometry, 'dispose');
         const materialDisposal = vi.spyOn(material, 'dispose');
-        vi.spyOn(ForestTrees.prototype, 'build').mockImplementation(function failedBuild() {
+        vi.spyOn(ForestTrees.prototype, 'buildSteps').mockImplementation(function failedBuild() {
             this.own(geometry);
             this.own(material);
             this.group.add(new THREE.Mesh(geometry, material));

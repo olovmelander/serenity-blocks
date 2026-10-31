@@ -74,6 +74,7 @@ import {
 import { EYE, PLACES } from './grainfields-core.js';
 import { grazingPullAt, trampleAt } from './grainfields-trample.js';
 import { herdShadeAt } from './grainfields-herd-shadow.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const STEM = 0;
 const EAR = 1;
@@ -462,7 +463,19 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
  * stems opaque, then the ears), the instances from grainfields-plan grainSites, nearest first.
  * `coverage` when the scene pass is multisampled (the awns as alpha-to-coverage).
  */
-export function createGrain(u, t, sites, { coverage = false } = {}) {
+export function createGrain(u, t, sites, options = {}) {
+    return drainSteps(createGrainSteps(u, t, sites, options));
+}
+
+/** How long a slice of the barley's build runs before it yields to the page (ms). */
+const GRAIN_SLICE_MS = 8;
+
+/**
+ * `createGrain` as steps (the world's build breathes between them): the same bands in the same
+ * order, a yield between two bands once a slice has run. In one step the barley held a first-visit
+ * switch task 14-21 ms (2026-10-31).
+ */
+export function* createGrainSteps(u, t, sites, { coverage = false } = {}, clock = stepClock(GRAIN_SLICE_MS)) {
     const meshes = [];
     const parts = [];
     const counts = { near: 0, far: 0 };
@@ -503,12 +516,17 @@ export function createGrain(u, t, sites, { coverage = false } = {}) {
         meshes.push(...drawn);
     }
     let order = 1;
-    GRAIN_BANDS.forEach((band) => {
+    for (let b = 0; b < GRAIN_BANDS.length; b++) {
+        if (clock.due()) {
+            yield 'grain band';
+            clock.restart();
+        }
+        const band = GRAIN_BANDS[b];
         const { drawn, count } = drawBand(band, order);
         counts[band.field] += count;
         order += drawn.length * 0.001;
         meshes.push(...drawn);
-    });
+    }
     const main = meshes[close.length];
     const showClose = () => {
         // (A capture's showOnlyParts may have shown it: only the lens and the stand decide.)

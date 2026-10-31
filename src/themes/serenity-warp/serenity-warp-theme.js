@@ -57,6 +57,7 @@ import { PLAYER_SLOTS, readLayoutRects } from './serenity-warp-composition.js';
 import { SERENITY_WARP_EVENT_HANDLERS, SerenityWarpDirector } from './serenity-warp-director.js';
 import { approach } from './serenity-warp-core.js';
 import { serenityWarpBakes } from './serenity-warp-bakes.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'serenity-warp';
 const LOG_PREFIX = '[Serenity Warp]';
@@ -238,15 +239,18 @@ export default class SerenityWarpTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed. The world
-            // needs the renderer: it paints the sky for the glass inside update().
-            this.world = new SerenityWarpWorld({
+            // The world needs the renderer: it paints the sky for the glass inside update().
+            const world = new SerenityWarpWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
             });
-            this.world.build();
+            // The pieces' solids in slices and the parts with a breath between
+            // (shared/build-steps.js). The theme owns the world once it is whole; a build that
+            // throws half-way, or a start stopped meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

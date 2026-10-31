@@ -39,13 +39,15 @@ import { createLapportenSteps, gateHeight } from './grainfields-lapporten.js';
 import { createSky } from './grainfields-sky.js';
 import { createForestSteps } from './grainfields-forest.js';
 import { disposeGrainfieldsAssets, loadGrainfieldsAssets } from './grainfields-assets.js';
-import { createGrain } from './grainfields-grain.js';
+import { createGrainSteps } from './grainfields-grain.js';
 import { createBeams } from './grainfields-beams.js';
 import { createMotes } from './grainfields-motes.js';
 import { createLensEars } from './grainfields-lens.js';
 import { createFort } from './grainfields-fort.js';
 import { createGeese } from './grainfields-geese.js';
-import { planTakeoff } from './grainfields-goose-flight.js';
+import {
+    askTakeoffs, planTakeoff, stepTakeoffs, takeoffSteps,
+} from './grainfields-goose-flight.js';
 import { createHerd } from './grainfields-herd.js';
 import { createTrample } from './grainfields-trample.js';
 import { createHerdShadow } from './grainfields-herd-shadow.js';
@@ -94,6 +96,8 @@ const RAY_LANDINGS = Object.freeze([
 const GUST_SPEED = 7.5;
 /** A level-up's (or a fever's) flight out goes up at most once in this long (two can be in the air at once). */
 const SKEIN_AWAY = 45;
+/** The take-off routes' slices in the stepped build (ms; a frame's share after it, goose-flight's own). */
+const TAKEOFF_BUILD_SLICE_MS = 8;
 
 /**
  * How far the sun's own gap swings off the eye's line under a heavy deck (shares of its radius):
@@ -305,7 +309,7 @@ export class GrainfieldsWorld {
         // (The noise bake and the barley were one ~30 ms step of a first visit, 2026-10-31.)
         yield 'textures';
         const { u, textures: t, tier } = this;
-        this.addPart('grain', createGrain(u, t, prepared.grain, { coverage: this.samples > 0 }));
+        this.addPart('grain', yield* createGrainSteps(u, t, prepared.grain, { coverage: this.samples > 0 }));
         yield 'grain';
         this.addPart('land', yield* createLandSteps(u, t, tier, prepared));
         yield 'land';
@@ -333,9 +337,10 @@ export class GrainfieldsWorld {
         const geese = createGeese(u, t, tier.birds, prepared.assets?.goose);
         if (geese) {
             this.addPart('geese', geese);
-            // Scoring the take-off routes for the layout is a step of its own (~20-35 ms).
+            // Scoring the take-off routes for the layout: steps of their own (~20-35 ms at once).
             yield 'herd and geese';
             this.warmTakeoffs();
+            yield* takeoffSteps(TAKEOFF_BUILD_SLICE_MS);
             yield 'takeoffs';
         }
         this.addPart('sky', createSky(u, t, tier));
@@ -415,9 +420,13 @@ export class GrainfieldsWorld {
         this.warmTakeoffs();
     }
 
-    /** Score the geese's take-off routes for the layout now (cached), so a level-up need not. */
+    /**
+     * Ask for the geese's take-off routes for the layout (cached), so a level-up need not score them:
+     * scored a slice a frame from the next update on (a resize or a layout read scoring them at once
+     * held its task 19-23 ms); the same routes for the same layout either way.
+     */
     warmTakeoffs() {
-        if (this.parts.geese) planTakeoff({ layout: this.layout, aspect: this.aspect });
+        if (this.parts.geese) askTakeoffs(this.layout, this.aspect);
     }
 
     /**
@@ -861,6 +870,8 @@ export class GrainfieldsWorld {
             const w = this.herdShadow.window;
             u.herdShadow.value.set(w.x, w.z, w.span);
         }
+        // The take-off routes a resize or a layout asked for, a slice a frame (warmTakeoffs).
+        if (this.parts.geese) stepTakeoffs();
     }
 
     /**

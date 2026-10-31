@@ -10,6 +10,8 @@
  * Coordinates are metres before the figure's `scale`: x toward the nose, y up from the
  * ground, z a little depth so the figure is not a flat card. Pure data, no three.js.
  */
+import { FOREST_SLICE_MS, forestSlice } from './forest-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** How far inside the outline a point still counts as being on it. */
 const EDGE = 0.045;
@@ -710,7 +712,7 @@ const cellsOf = new WeakMap();
  * figure changes by little more than the distance moved (a tapered limb bends it by up to
  * an eighth), so a cell's centre tells what the cell can hold.
  */
-function cells(figure) {
+function* cellsSteps(figure, clock) {
     let found = cellsOf.get(figure);
     if (!found) {
         const {
@@ -720,6 +722,7 @@ function cells(figure) {
         const line = [];
         const inside = [];
         for (let y = minY; y < maxY; y += CELL) {
+            yield* forestSlice(clock, 'figure cells');
             for (let x = minX; x < maxX; x += CELL) {
                 const distance = forestFigureDistance(figure, x + CELL / 2, y + CELL / 2);
                 if (distance < reach && distance > -EDGE - reach) line.push(x, y);
@@ -750,7 +753,7 @@ function somewhere(among, rng, target) {
  * set: the outline is covered from end to end first and filled in after, and no two lights
  * crowd each other. Returns how many lights are written.
  */
-function drawOutline(figure, points, from, to, line, rng) {
+function* drawOutlineSteps(figure, points, from, to, line, rng, clock) {
     const wanted = Math.max(0, to - from);
     const places = wanted * CHOICE;
     const placeX = new Float32Array(places);
@@ -759,6 +762,7 @@ function drawOutline(figure, points, from, to, line, rng) {
     const at = [0, 0];
     let found = 0;
     for (let guard = places * 40; found < places && line.length > 0 && guard > 0; guard -= 1) {
+        if ((guard & 255) === 0) yield* forestSlice(clock, 'figure outline');
         somewhere(line, rng, at);
         const distance = forestFigureDistance(figure, at[0], at[1]);
         // On the outline, or just inside it (and a number: a broken generator finds no place).
@@ -774,6 +778,7 @@ function drawOutline(figure, points, from, to, line, rng) {
     const lights = Math.min(wanted, found);
     let pick = 0;
     for (let placed = 0; placed < lights; placed += 1) {
+        if ((placed & 7) === 0) yield* forestSlice(clock, 'figure outline');
         const x = placeX[pick];
         const y = placeY[pick];
         const girth = Math.min(0.2, -depth[pick] * 0.9 + 0.03);
@@ -792,10 +797,11 @@ function drawOutline(figure, points, from, to, line, rng) {
 }
 
 /** The lights that stand inside a figure, from light `from` up to `to`: dimmer, and where they fall. */
-function scatterInside(figure, points, from, to, inside, rng) {
+function* scatterInsideSteps(figure, points, from, to, inside, rng, clock) {
     const at = [0, 0];
     let written = from;
     for (let guard = Math.max(0, to - from) * 400; written < to && inside.length > 0 && guard > 0; guard -= 1) {
+        if ((guard & 255) === 0) yield* forestSlice(clock, 'figure inside');
         somewhere(inside, rng, at);
         const [x, y] = at;
         const distance = forestFigureDistance(figure, x, y);
@@ -812,6 +818,14 @@ function scatterInside(figure, points, from, to, inside, rng) {
  * outline and the strokes and lower inside the body, so the outline can be drawn brighter.
  */
 export function createForestFigurePoints(figure, count, rng = Math.random) {
+    return drainSteps(createForestFigurePointsSteps(figure, count, rng, stepClock(FOREST_SLICE_MS)));
+}
+
+/**
+ * createForestFigurePoints(), a time slice a step: a session's first Forest lays every animal out
+ * in its build (single steps of 15-37 ms before, 2026-10-31).
+ */
+export function* createForestFigurePointsSteps(figure, count, rng, clock) {
     const total = Number.isFinite(count) ? Math.max(8, Math.floor(count)) : 8;
     const points = new Float32Array(total * 4);
     const { strokes, twin } = figure;
@@ -840,10 +854,10 @@ export function createForestFigurePoints(figure, count, rng = Math.random) {
         written += 1;
     }
     // Body: the outline carries the drawing, and a share of the lights stand inside it.
-    const { line, inside } = cells(figure);
+    const { line, inside } = yield* cellsSteps(figure, clock);
     const within = inside.length ? Math.round((total - written) * figure.fill) : 0;
-    written = drawOutline(figure, points, written, total - within, line, rng);
-    written = scatterInside(figure, points, written, total, inside, rng);
+    written = yield* drawOutlineSteps(figure, points, written, total - within, line, rng, clock);
+    written = yield* scatterInsideSteps(figure, points, written, total, inside, rng, clock);
     // A figure too small to fill (never in practice) repeats what it has.
     for (let i = written; i < total; i += 1) {
         const from = (i % Math.max(1, written)) * 4;
@@ -861,6 +875,11 @@ const laidOut = new WeakMap();
  * is laid out once however often the forest is built. The array is shared: read it only.
  */
 export function forestFigureLights(figure, count) {
+    return drainSteps(forestFigureLightsSteps(figure, count, stepClock(FOREST_SLICE_MS)));
+}
+
+/** forestFigureLights(), laid out (the first time) a time slice a step. */
+export function* forestFigureLightsSteps(figure, count, clock) {
     const lights = Number.isFinite(count) ? Math.max(8, Math.floor(count)) : 8;
     let kept = laidOut.get(figure);
     if (!kept) {
@@ -870,10 +889,10 @@ export function forestFigureLights(figure, count) {
     let points = kept.get(lights);
     if (!points) {
         let state = FIGURE_SEED;
-        points = createForestFigurePoints(figure, lights, () => {
+        points = yield* createForestFigurePointsSteps(figure, lights, () => {
             state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
             return state / 4294967296;
-        });
+        }, clock);
         kept.set(lights, points);
     }
     return points;

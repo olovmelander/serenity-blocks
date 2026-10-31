@@ -21,6 +21,8 @@ import {
 } from 'three/tsl';
 
 import { TAU, mulberry32 } from './aether-tides-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { halfBits } from '../../rendering/half-float.js';
 
 export * from './aether-tides-core.js';
 
@@ -70,11 +72,25 @@ export const atPerp = (v) => vec2(v.y.negate(), v.x);
 
 export const NOISE_SIZE = 256;
 
+/** How long one slice of the noise bake (or of its texture) runs before it yields to the page (ms). */
+const NOISE_SLICE_MS = 8;
+
 /**
  * Periodic fBm gradient noise, four decorrelated channels stretched to [0, 1].
  * @returns {Float32Array} size × size × 4
  */
 export function bakeNoise(seed = 4127, size = NOISE_SIZE) {
+    return drainSteps(bakeNoiseSteps(seed, size));
+}
+
+/**
+ * `bakeNoise` as steps (the world's build breathes between them: shared/build-steps.js): the same
+ * field from the same draws, yielding between rows once a slice has run NOISE_SLICE_MS. In one
+ * task with its texture it was 16 ms of the world's 22 ms build on a first visit (2026-10-31).
+ * @returns {Generator<string, Float32Array>} size × size × 4
+ */
+export function* bakeNoiseSteps(seed = 4127, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -117,6 +133,10 @@ export function bakeNoise(seed = 4127, size = NOISE_SIZE) {
                     const bottom = d01 + (d11 - d01) * sx;
                     field[y * n + x] += (top + (bottom - top) * sy) * amp;
                 }
+                if (clock.due()) {
+                    yield 'noise';
+                    clock.restart();
+                }
             }
             amp *= 0.5;
         }
@@ -137,12 +157,31 @@ export function bakeNoise(seed = 4127, size = NOISE_SIZE) {
  * half-float mips on the GPU is not portable to every WebGL2 device).
  */
 export function createNoiseTexture(field, size = NOISE_SIZE) {
+    return drainSteps(createNoiseTextureSteps(field, size));
+}
+
+/**
+ * `createNoiseTexture` as steps: the same mips and the same half floats (rendering/half-float.js
+ * halfBits is three's DataUtils.toHalfFloat bit for bit), yielding between rows once a slice has
+ * run NOISE_SLICE_MS (5 ms of a first visit's build in one task, 2026-10-31).
+ * @returns {Generator<string, THREE.DataTexture>}
+ */
+export function* createNoiseTextureSteps(field, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const mipmaps = [];
     let level = field;
     let w = size;
     for (;;) {
         const half = new Uint16Array(level.length);
-        for (let i = 0; i < level.length; i++) half[i] = THREE.DataUtils.toHalfFloat(level[i]);
+        const row = w * 4;
+        for (let start = 0; start < level.length; start += row) {
+            const end = start + row;
+            for (let i = start; i < end; i++) half[i] = halfBits(level[i]);
+            if (clock.due()) {
+                yield 'noise texture';
+                clock.restart();
+            }
+        }
         mipmaps.push({ data: half, width: w, height: w });
         if (w === 1) break;
         const nw = w >> 1;

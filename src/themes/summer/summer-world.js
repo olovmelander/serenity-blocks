@@ -81,10 +81,11 @@ export class SummerWorld {
     }
 
     /**
-     * The build as steps, a part (or a half of the terrain or the meadow) to a step: run at once by
-     * build(), or with a breath between steps while the theme comes in (shared/build-steps.js), so
-     * no single task holds the page for the whole 0.4-0.5 s. The same parts in the same order,
-     * drawing from the same random sequence.
+     * The build as steps, a part to a step: run at once by build(), or with a breath between steps
+     * while the theme comes in (shared/build-steps.js), so no single task holds the page for the
+     * whole 0.4-0.5 s. The same parts in the same order, drawing from the same random sequence. The
+     * terrain, the woods and the meadow take their own time slices (SUMMER_SLICE_MS): single steps
+     * of 15-55 ms on a first visit before (2026-10-31).
      */
     * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed SummerWorld.');
@@ -108,7 +109,7 @@ export class SummerWorld {
             light, assets: this.assets, tier, rng,
         });
         this.group.add(this.forest.group);
-        this.forest.build();
+        yield* this.forest.buildSteps();
         yield 'forest';
         this.backdrop = new SummerBackdrop({
             light, impostors, tier, rng,

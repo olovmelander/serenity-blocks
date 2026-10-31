@@ -154,6 +154,9 @@ describe('the stepped themes build their worlds in steps', () => {
         'stillwater', 'thermal-bloom', 'painted-ages', 'himalayan-peak', 'lunara', 'nebula-flow', 'vesper-chrysalis',
         'tornado', 'void-ember', 'chiral-gold', 'ocean',
         'astral-weave', 'pyrestorm',
+        // Its third round (tasks of 30-60 ms the long-frame reports did not show, found by profile).
+        'aether-tides', 'aurora', 'crystal-cave', 'fluid-dreams', 'halcyon-apex', 'neon-dusk', 'serenity-warp',
+        'stellar-drift', 'rainbark', 'sunfall', 'synthwave-sunset',
     ];
     /** A theme's world module (Sakura's carries the short name). */
     const worldOf = (id) => source(`${id}/${id === 'sakura-twilight' ? 'sakura' : id}-world.js`);

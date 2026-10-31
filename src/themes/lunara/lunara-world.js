@@ -92,7 +92,7 @@ import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, wheelAt } from '../shared/mood-clock.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
-import { loadBitmapTexture } from '../shared/decoded-texture.js';
+import { loadBitmapTexture, uploadTextureNow } from '../shared/decoded-texture.js';
 
 /** The rest camera: standing in the flats, looking down the valley and a little up at the sky. */
 export const REST_RIG = Object.freeze({
@@ -419,6 +419,8 @@ export class LunaraWorld {
                 tex.generateMipmaps = true;
                 tex.minFilter = THREE.LinearMipmapLinearFilter;
                 tex.name = 'lunara-moon-map';
+                // Uploaded in the task it arrived in, not at the next frame's first draw (shared/decoded-texture.js).
+                uploadTextureNow(this.renderer, tex);
                 this.textures.push(tex);
                 this.moonMap.value = tex;
                 this.mapReady = true;

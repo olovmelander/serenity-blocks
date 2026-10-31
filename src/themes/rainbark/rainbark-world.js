@@ -88,6 +88,7 @@ import {
     canopyWind,
     climbHeight,
     createBarkTextures,
+    evenRibbonPhasesSteps,
     createRainbarkUniforms,
     groupMean,
     hexToLinear,
@@ -97,7 +98,8 @@ import {
     mistGrainAt,
     mistOnset,
     pieceCode,
-    planGrove,
+    PLAN_SLICE_MS,
+    planGroveSteps,
     projectRest,
     recordAxis,
     restLens,
@@ -117,6 +119,7 @@ import {
 import { tierFor } from './rainbark-quality.js';
 import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { bakeAtlasSet, bakeCanopySet } from './rainbark-bake.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { createSky } from './rainbark-sky.js';
 import { createTrunks } from './rainbark-trunks.js';
 import { createMist } from './rainbark-mist.js';
@@ -206,10 +209,21 @@ export function rainbarkBakes(quality) {
  * shares), so a Climb never computes one mid-flight.
  */
 let FLECK_STOREYS = null;
-function fleckStoreys() {
+/** The storeys' calibration as steps (the build's): yielding between storeys once a slice has run. */
+function* fleckStoreysSteps() {
     if (!FLECK_STOREYS) {
         const { gap } = canopyBakes();
-        FLECK_STOREYS = Object.freeze(Array.from({ length: 12 }, (_, i) => storeyFleck(gap, i + 1)));
+        const clock = stepClock(PLAN_SLICE_MS);
+        const storeys = [];
+        for (let i = 0; i < 12; i++) {
+            if (clock.due()) {
+                yield 'storeys';
+                clock.restart();
+            }
+            storeys.push(storeyFleck(gap, i + 1));
+        }
+        // (Found meanwhile by another world's build: the same calibration, the first kept.)
+        if (!FLECK_STOREYS) FLECK_STOREYS = Object.freeze(storeys);
     }
     return FLECK_STOREYS;
 }
@@ -502,21 +516,38 @@ export class RainbarkWorld {
     }
 
     build() {
-        this.preparePlan();
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work
+     * in the same order: the grove's plan, the even ribbon phases and the gobo's storeys in slices
+     * (PLAN_SLICE_MS), then the parts a few to a step. Built in one task, a first visit's held the
+     * switch's worst frame at ~47 ms (2026-10-31).
+     */
+    * buildSteps() {
+        yield* this.preparePlanSteps();
+        yield 'plan';
         const bakes = bakesFor(this.tier.atlas);
         this.matrixShare = bakes.atlas.matrixShare;
         this.islandShare = bakes.atlas.islandShare;
         const textures = createBarkTextures(bakes);
         this.textures.push(...Object.values(textures));
+        // (What the uniforms below write first: found once, in slices.)
+        yield* evenRibbonPhasesSteps();
+        yield 'textures';
         this.u = createRainbarkUniforms(textures);
-        fleckStoreys();
+        yield* fleckStoreysSteps();
         // The ribbons' places in their tile's cycle, spread by their area (the same on every tier).
         writeRibbonPhases(this.u.tables.palette, bakes.atlas.phases);
-        RAINBARK_PARTS.forEach((name) => {
+        yield 'uniforms';
+        for (let i = 0; i < RAINBARK_PARTS.length; i++) {
+            const name = RAINBARK_PARTS[i];
             const make = PART_BUILDERS[name];
             const part = make ? make(this) : null;
             if (part) this.addPart(name, part);
-        });
+            if (name === 'trunks' || name === 'curls') yield name;
+        }
         this.prepareEmitters();
         this.resetState(this.time);
         this.placeGrove(this.heightAt(this.time));
@@ -530,7 +561,12 @@ export class RainbarkWorld {
      * a mutable stand-in per solved trunk, and where each limb's parent stands.
      */
     preparePlan() {
-        const plan = planGrove(this.seed, this.tier);
+        drainSteps(this.preparePlanSteps());
+    }
+
+    /** `preparePlan` as steps: the plan laid in slices (planGroveSteps), then what placing it needs. */
+    * preparePlanSteps() {
+        const plan = yield* planGroveSteps(this.seed, this.tier);
         this.plan = plan;
         this._heroSeeds = plan.heroes.map(({ seed }) => seed);
         this._standing.clear();

@@ -46,6 +46,7 @@ import {
 } from './synthwave-sunset-geo.js';
 import { BULB, createBulbField } from './synthwave-sunset-bulbs.js';
 import { buildHotels, createHotelMaterial } from './synthwave-sunset-hotels.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 const KIND = {
     wall: 0, paint: 1, ridge: 3,
@@ -178,8 +179,19 @@ function createPromenadeMaterial(u) {
  * @param {number} [opts.mirrorLayer]
  * @returns {THREE.Group}
  */
-export function createPromenade(u, { rand, mirrorLayer } = {}) {
+export function createPromenade(u, opts = {}) {
+    return drainSteps(createPromenadeSteps(u, opts));
+}
+
+/**
+ * `createPromenade` as steps (the world's build breathes between them: shared/build-steps.js):
+ * the same promenade from the same draws, a breath between the promenade's own build and the
+ * hotels'.
+ * @returns {Generator<string, THREE.Group>}
+ */
+export function* createPromenadeSteps(u, { rand, mirrorLayer } = {}) {
     const { out, lamps } = buildPromenade();
+    yield 'promenade';
     const hotelOut = makeOut();
     const beacons = buildHotels(hotelOut, rand ?? Math.random);
     const group = new THREE.Group();

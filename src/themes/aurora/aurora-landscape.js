@@ -28,7 +28,8 @@ import {
 import { AURORA_COLORS } from './aurora-palette.js';
 import { moonRadiance } from './aurora-sky.js';
 import { sessionRangeGrid, sessionShoreIce } from './aurora-bakes.js';
-import { sessionGeometry } from '../shared/session-geometry.js';
+import { prepareSessionGeometry, sessionGeometry } from '../shared/session-geometry.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export {
     SHORE_ICE, SHORE_Z, bakeShoreIce, bankHeight, forestCover, rangeHeight,
@@ -40,6 +41,8 @@ const PROFILE_MAX_ELEVATION = 0.4;
 const DEG = Math.PI / 180;
 /** How fast a lake ring fades (1/s): the shader and the slot choice read the same. */
 const RIPPLE_FADE = 0.55;
+/** How long one slice of the range's cover runs before it yields to the page (ms). */
+const RANGE_SLICE_MS = 8;
 const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
 /** vec2 → vec3 in [0, 1): hash without sine, so a cell keeps its value on every GPU. */
 const hash23 = /* @__PURE__ */ Fn(([cell]) => {
@@ -104,6 +107,42 @@ export function bakeRidgeProfile(positions, eyeHeight) {
         data[bin * 4 + 3] = 255;
     }
     return data;
+}
+
+/**
+ * The range's mesh over the grid's points (aurora-bakes.js), as steps: its triangles and normals,
+ * then the snow and forest cover in rows, yielding once a slice has run RANGE_SLICE_MS, then the
+ * skyline profile. The same values in the same order as in one piece.
+ * @returns {Generator<string, { geometry: THREE.BufferGeometry, ridgeProfile: Uint8Array }>}
+ */
+function* rangeMeshSteps(columns, rows, seed, eyeHeight) {
+    const built = buildGridFrom(columns, rows, sessionRangeGrid(columns, rows, seed));
+    yield 'range normals';
+    const clock = stepClock(RANGE_SLICE_MS);
+    const positions = built.attributes.position.array;
+    const normals = built.attributes.normal.array;
+    const cover = new Float32Array(columns * rows * 2);
+    for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < columns; column += 1) {
+            const i = row * columns + column;
+            const x = positions[i * 3];
+            const y = positions[i * 3 + 1];
+            const z = positions[i * 3 + 2];
+            const flatness = normals[i * 3 + 1];
+            // Snow lies on gentle ground and thins on steep faces, which stay bare rock.
+            // Dark spruce forest fills the low slopes in patches.
+            const snow = smooth(0.6, 0.86, flatness) * (0.7 + 0.3 * smooth(40, 220, y))
+                + 0.16 * fbm2(x / 90, z / 90, { seed: seed + 411, octaves: 2 });
+            cover[i * 2] = Math.max(0, Math.min(1, snow));
+            cover[i * 2 + 1] = Math.max(0, Math.min(1, forestCover(x, y, z, seed)));
+        }
+        if (clock.due()) {
+            yield 'range cover';
+            clock.restart();
+        }
+    }
+    built.setAttribute('cover', new THREE.BufferAttribute(cover, 2));
+    return { geometry: built, ridgeProfile: bakeRidgeProfile(positions, eyeHeight) };
 }
 
 /** a + Σ vᵢ·kᵢ over (v, k) pairs, for the spruce builder's small vectors. */
@@ -371,9 +410,10 @@ export class AuroraLandscape {
      * @param {Function} options.random seeded generator
      * @param {number} options.seed
      * @param {number} options.eyeHeight camera height above the lake
+     * @param {boolean} [options.build=true] false: the owner builds it, by buildSteps(options)
      */
     constructor({
-        parent, preset, curtains, atmosphere, noiseTexture, uniforms, random, seed = 0, eyeHeight = 8,
+        parent, preset, curtains, atmosphere, noiseTexture, uniforms, random, seed = 0, eyeHeight = 8, build = true,
     }) {
         this.parent = parent;
         this.preset = preset;
@@ -399,9 +439,21 @@ export class AuroraLandscape {
         this.rippleData = Array.from({ length: slots }, () => new THREE.Vector4(0, 0, -1000, 0));
         this.rippleTint = Array.from({ length: slots }, () => new THREE.Vector4(0.3, 1, 0.6, 26));
 
-        this.createRange();
+        if (build) drainSteps(this.buildSteps({ random, curtains, noiseTexture }));
+    }
+
+    /**
+     * The landscape's parts as steps (the world's build breathes between them:
+     * shared/build-steps.js), the same work in the same order, from the constructor's `random`,
+     * `curtains` and `noiseTexture`. Built in one task, they were 27 ms of a first visit's switch
+     * frame (the range 16 of them, 2026-10-31).
+     */
+    * buildSteps({ random, curtains, noiseTexture }) {
+        yield* this.createRangeSteps();
+        yield 'range';
         this.createBanks();
         this.createSpruces(random);
+        yield 'banks and spruces';
         this.createForest(random);
         this.createLake(curtains, noiseTexture);
     }
@@ -438,31 +490,27 @@ export class AuroraLandscape {
     }
 
     createRange() {
+        drainSteps(this.createRangeSteps());
+    }
+
+    * createRangeSteps() {
         const { terrainColumns: columns, terrainRows: rows } = this.preset;
-        const { seed, atmosphere, noiseTexture } = this;
+        const {
+            seed, atmosphere, noiseTexture, eyeHeight,
+        } = this;
         // The range's mesh (its points, normals, cover and the skyline profile) is kept for the
         // session (shared/session-geometry.js), over the grid's points (aurora-bakes.js: a first
-        // visit bakes them in a worker): ~28 ms of main thread on every Aurora start before.
-        const { geometry, ridgeProfile } = sessionGeometry(null, `aurora:range:${columns}x${rows}:${seed}:${this.eyeHeight}`, () => {
-            const built = buildGridFrom(columns, rows, sessionRangeGrid(columns, rows, seed));
-            const positions = built.attributes.position.array;
-            const normals = built.attributes.normal.array;
-            const cover = new Float32Array(columns * rows * 2);
-            for (let i = 0; i < columns * rows; i += 1) {
-                const x = positions[i * 3];
-                const y = positions[i * 3 + 1];
-                const z = positions[i * 3 + 2];
-                const flatness = normals[i * 3 + 1];
-                // Snow lies on gentle ground and thins on steep faces, which stay bare rock.
-                // Dark spruce forest fills the low slopes in patches.
-                const snow = smooth(0.6, 0.86, flatness) * (0.7 + 0.3 * smooth(40, 220, y))
-                    + 0.16 * fbm2(x / 90, z / 90, { seed: seed + 411, octaves: 2 });
-                cover[i * 2] = Math.max(0, Math.min(1, snow));
-                cover[i * 2 + 1] = Math.max(0, Math.min(1, forestCover(x, y, z, seed)));
-            }
-            built.setAttribute('cover', new THREE.BufferAttribute(cover, 2));
-            return { geometry: built, ridgeProfile: bakeRidgeProfile(positions, this.eyeHeight) };
+        // visit bakes them in a worker): ~28 ms of main thread on every Aurora start before. A
+        // session's first build makes it in steps and takes that mesh itself, as sessionGeometry
+        // hands it out; a later one gets a new geometry over the kept arrays.
+        const key = `aurora:range:${columns}x${rows}:${seed}:${eyeHeight}`;
+        let made = null;
+        yield* prepareSessionGeometry(null, key, function* rangeSteps() {
+            made = yield* rangeMeshSteps(columns, rows, seed, eyeHeight);
+            return made;
         });
+        const { geometry, ridgeProfile } = made
+            ?? sessionGeometry(null, key, () => drainSteps(rangeMeshSteps(columns, rows, seed, eyeHeight)));
         this.ridgeProfile = ridgeProfile;
 
         const material = new THREE.MeshBasicNodeMaterial({ fog: false });
@@ -833,7 +881,8 @@ export class AuroraLandscape {
         this.reflection?.target.removeFromParent();
         this.reflection?.dispose();
         this.reflection = null;
-        this.spruces.dispose();
+        // A landscape stopped part-way through its steps has only some of its parts.
+        this.spruces?.dispose();
         this.forest?.dispose();
         for (const geometry of this.geometries) geometry.dispose();
         for (const material of this.materials) material.dispose();

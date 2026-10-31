@@ -78,7 +78,7 @@ import { wolfhourLandscapeBakes } from './wolfhour-landscape-bakes.js';
 import { createWolfhourMeteor, setWolfhourRibbon } from './wolfhour-meteor.js';
 import { updateWolfhourCamera } from './wolfhour-composition.js';
 import { easedMotion, prefersReducedMotion } from '../shared/reduced-motion.js';
-import { loadTextureDecoded } from '../shared/decoded-texture.js';
+import { loadTextureDecoded, uploadTextureNow } from '../shared/decoded-texture.js';
 
 /** How long the compute pipelines' first compile is waited for before the scene goes on (ms). */
 const COMPUTE_COMPILE_TIMEOUT_MS = 3000;
@@ -2019,10 +2019,11 @@ export default class WolfhourTheme extends BaseTheme {
         const texturePath = './textures/wolfhour/';
 
         // Decoded off the main thread (shared/decoded-texture.js), filled when they land as before.
+        const onImage = (landed) => uploadTextureNow(this.renderer, landed); // in the task it lands in
         const textures = [
-            loadTextureDecoded(`${texturePath}nebula-silver-1.png`),
-            loadTextureDecoded(`${texturePath}nebula-silver-2.png`),
-            loadTextureDecoded(`${texturePath}nebula-silver-3.png`),
+            loadTextureDecoded(`${texturePath}nebula-silver-1.png`, { onImage }),
+            loadTextureDecoded(`${texturePath}nebula-silver-2.png`, { onImage }),
+            loadTextureDecoded(`${texturePath}nebula-silver-3.png`, { onImage }),
         ];
 
         textures.forEach((t) => {
@@ -2113,7 +2114,10 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createMoonHero() {
-        const moonTexture = loadTextureDecoded('./textures/2k_moon.jpg'); // decoded off the main thread
+        // Decoded off the main thread and uploaded in the task it lands in.
+        const moonTexture = loadTextureDecoded('./textures/2k_moon.jpg', {
+            onImage: (landed) => uploadTextureNow(this.renderer, landed),
+        });
         moonTexture.colorSpace = THREE.SRGBColorSpace;
         moonTexture.anisotropy = Math.min(8, this.renderer?.capabilities?.getMaxAnisotropy?.() || 1);
         this.moonTexture = moonTexture;

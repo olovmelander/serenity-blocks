@@ -39,20 +39,39 @@ import { groundByte, groundHeight, inField } from './high-coast-field.js';
 import { CANOPY } from './high-coast-land.js';
 import { aerial, cloudShadow } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** How far out single trees stand (metres from the eye) before the land's canopy takes over. */
 export const FOREST_REACH = CANOPY.to;
+
+/** How long a slice of the forest's build runs before it yields to the page (ms). */
+const FOREST_SLICE_MS = 8;
+/** The walk reads the clock every this many tries (a read per try would cost more than a try). */
+const SITE_CLOCK_EVERY = 32;
 
 /**
  * Where the trees stand: the baked forest cover, sampled by a seeded walk over the frame's sector
  * (a little wider than the widest lens), thinning with distance (far trees are drawn larger).
  */
 export function treeSites(fields, count = 12000, seed = 0x7ee5) {
+    return drainSteps(treeSitesSteps(fields, count, seed));
+}
+
+/**
+ * `treeSites` as steps (the world's build breathes between them): the same walk drawing the same
+ * numbers, yielding whenever a slice has run FOREST_SLICE_MS. In one step it held High Coast's
+ * first-visit switch frame (26 of the forest's 34 ms, 2026-10-31).
+ */
+export function* treeSitesSteps(fields, count = 12000, seed = 0x7ee5, clock = stepClock(FOREST_SLICE_MS)) {
     const random = mulberry32(seed);
     const sites = [];
     const half = 52 * (Math.PI / 180);
     let tries = 0;
     while (sites.length < count && tries < count * 60) {
+        if (tries % SITE_CLOCK_EVERY === 0 && clock.due()) {
+            yield 'tree sites';
+            clock.restart();
+        }
         tries++;
         // Distance by area: the far sector is huge, so draw distance with a bias toward the eye.
         const d = 60 + (FOREST_REACH - 60) * random() ** 1.35;
@@ -212,7 +231,19 @@ export function conferMaterial(u, t, { instanced = true } = {}) {
 export const FOREST_LOD = 650;
 
 export function createForest(u, t, tier, fields) {
-    const sites = treeSites(fields, tier.trees);
+    return drainSteps(createForestSteps(u, t, tier, fields));
+}
+
+/**
+ * `createForest` as steps (the world's build breathes between them): the planting in slices
+ * (treeSitesSteps), then the four pools, a yield between them once a slice has run. The same
+ * trees in the same order. In one step the forest held the first-visit switch frame 38 ms.
+ */
+export function* createForestSteps(u, t, tier, fields, clock = stepClock(FOREST_SLICE_MS)) {
+    const sites = yield* treeSitesSteps(fields, tier.trees, undefined, clock);
+    // The pools' geometries in a step of their own (a few ms after a slice of the walk was one too many).
+    yield 'tree sites';
+    clock.restart();
     const material = conferMaterial(u, t);
     const meshes = [];
     const geometries = [];
@@ -229,6 +260,10 @@ export function createForest(u, t, tier, fields) {
         [sites.filter((s) => s.kind === 1 && !near(s)), spruceGeometry({ tiers: 3, segments: 5 }), 'HighCoastSprucesFar'],
     ];
     for (const [list, geometry, name] of groups) {
+        if (clock.due()) {
+            yield 'forest pool';
+            clock.restart();
+        }
         const data = new Float32Array(Math.max(1, list.length) * 4);
         list.forEach((s, i) => data.set([s.kind, s.seed, s.height, s.d], i * 4));
         geometry.setAttribute('aTree', new THREE.InstancedBufferAttribute(data, 4));

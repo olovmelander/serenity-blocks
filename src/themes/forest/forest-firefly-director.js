@@ -11,13 +11,14 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    FOREST_FIGURES, FOREST_FIGURE_ROOM, forestFigure, forestFigureLights,
+    FOREST_FIGURES, FOREST_FIGURE_ROOM, forestFigure, forestFigureLights, forestFigureLightsSteps,
 } from './forest-figures.js';
 import { FOREST_FIREFLY_DEW } from './forest-firefly-sim.js';
 import { FOREST_FIGURE_TIMING } from './forest-reactions.js';
 import { FOREST_STAGE_DEPTH } from './forest-stage.js';
 import { flashScale } from '../../utils/photosensitivity.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { FOREST_SLICE_MS } from './forest-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const REFERENCE_FIREFLIES = 2400;
 const CLEAR_WINDOW = 0.5;
@@ -204,19 +205,21 @@ export class ForestFireflyDirector {
      * Lay every animal out, a step whenever `budgetMs` is spent (63 ms all at once on a session's
      * first Forest; laid out once a session, so a revisit spends nothing and never yields). A world
      * that builds in steps runs these as its own: each step costs the outgoing theme a frame, so
-     * the steps are few and full rather than one an animal.
+     * the steps are few and full. The slices are taken inside an animal's layout (an animal took
+     * 15-37 ms of one step before, 2026-10-31).
      */
-    * layOutSteps(budgetMs = 24) {
+    * layOutSteps(budgetMs = FOREST_SLICE_MS) {
         if (!this.figureAnchor) return;
-        let since = performance.now();
+        const clock = stepClock(budgetMs);
         for (const figure of FOREST_FIGURES) {
-            this.pointsFor(figure);
-            this.extraPointsFor(figure);
-            if (performance.now() - since > budgetMs) {
-                yield figure.id;
-                since = performance.now();
-            }
+            yield* this.layOutFigureSteps(figure, this.figurePoints, this.figureLights, clock);
+            yield* this.layOutFigureSteps(figure, this.figureExtra, this.figureExtraLights, clock);
         }
+    }
+
+    /** One animal's lights (`count` of them) laid out into `kept`, as pointsFor() and extraPointsFor() do. */
+    * layOutFigureSteps(figure, kept, count, clock) {
+        if (!kept.get(figure.id)) kept.set(figure.id, yield* forestFigureLightsSteps(figure, count, clock));
     }
 
     /** The lights of one animal, in its own plane (shared with every forest: not to be written to). */

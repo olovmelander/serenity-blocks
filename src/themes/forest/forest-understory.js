@@ -17,6 +17,8 @@ import {
     FOREST_EYE, forestRide, forestRideHalfWidth, forestRidePoint,
 } from './forest-plan.js';
 import { FOREST_KNOLL, forestGroundHeight, forestPlateau } from './forest-terrain.js';
+import { FOREST_SLICE_MS, forestSlice } from './forest-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const TAU = Math.PI * 2;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -181,12 +183,25 @@ export class ForestUnderstory {
     }
 
     build() {
-        this.buildProps();
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The floor's life as steps for the world's breathing build, a time slice a step: the dead wood
+     * and the stones, the ferns, the grass, the foxfire and the wood stars (one 12-25 ms step of a
+     * first visit before).
+     */
+    * buildSteps() {
+        const clock = stepClock(FOREST_SLICE_MS);
+        yield* this.propsSteps(clock);
+        yield* forestSlice(clock, 'understory');
         this.buildFerns();
-        this.buildGrass();
+        yield* forestSlice(clock, 'understory');
+        yield* this.grassSteps(clock);
+        yield* forestSlice(clock, 'understory');
         this.buildFungi();
         this.buildFlowers();
-        return this;
     }
 
     /** Is a spot on the floor clear of every trunk? */
@@ -268,6 +283,11 @@ export class ForestUnderstory {
     }
 
     buildProps() {
+        drainSteps(this.propsSteps(stepClock(FOREST_SLICE_MS)));
+    }
+
+    /** The log, the stump, the snag and the stones, a time slice a step. */
+    * propsSteps(clock) {
         const { rng, tier } = this;
         const { meshes } = this.assets.props || { meshes: {} };
         const timber = this.createTimberMaterial();
@@ -306,6 +326,7 @@ export class ForestUnderstory {
         FEATURE_STONES.slice(0, tier.rocks).forEach(([x, z, size]) => place(x, z, size));
         const wanted = Math.max(0, tier.rocks - FEATURE_STONES.length);
         for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 20; attempt += 1) {
+            if ((attempt & 63) === 0) yield* forestSlice(clock, 'stones');
             const x = (rng() * 2 - 1) * 40;
             const z = 10 - rng() * 62;
             const inPlace = FOREST_FIGURE_STANDS.some((stand) => Math.hypot(stand.x - x, stand.z - z) < STAND_CLEARING);
@@ -470,6 +491,11 @@ export class ForestUnderstory {
 
     // -- grass --------------------------------------------------------------------------
     buildGrass() {
+        drainSteps(this.grassSteps(stepClock(FOREST_SLICE_MS)));
+    }
+
+    /** The grass, its tussocks placed a time slice a step. */
+    * grassSteps(clock) {
         const { light, rng } = this;
         const count = this.tier.grass;
         if (!(count > 0)) return;
@@ -503,6 +529,7 @@ export class ForestUnderstory {
         // The keep test is a hash of the place, so the generator's draws are spent as before
         // per attempt; more attempts are allowed, so the tier still gets its count.
         for (let attempt = 0; made < count && attempt < count * 14; attempt += 1) {
+            if ((attempt & 63) === 0) yield* forestSlice(clock, 'grass');
             const range = 2.8 + rng() ** 1.7 * 40;
             const bearing = (rng() * 2 - 1) * 0.9 - 0.04;
             const x = FOREST_EYE.x + Math.sin(bearing) * range;

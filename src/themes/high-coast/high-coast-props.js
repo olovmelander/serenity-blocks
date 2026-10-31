@@ -37,8 +37,8 @@ import { groundHeight } from './high-coast-field.js';
 import { aerial } from './high-coast-light.js';
 import { shadowAt } from './high-coast-shadow.js';
 import { createPineSteps } from './high-coast-pine.js';
-import { drainSteps } from '../shared/build-steps.js';
-import { bakeSignField } from './high-coast-sign.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { bakeSignFieldSteps } from './high-coast-sign.js';
 import { simplex } from './high-coast-plan.js';
 
 // ── The trail sign ────────────────────────────────────────────────────────────────
@@ -57,16 +57,20 @@ export const SIGN = Object.freeze({
     texture: { w: 512, h: 96 },
 });
 
-function signTexture() {
+/** How long a slice of the lettering's bake runs before it yields to the page (ms). */
+const LETTERING_SLICE_MS = 8;
+
+/** The boards' lettering as one texture, in steps (bakeSignFieldSteps: one clock for both boards). */
+function* signTextureSteps(clock = stepClock(LETTERING_SLICE_MS)) {
     const { w, h } = SIGN.texture;
     const data = new Uint8Array(w * h * 2 * 4);
-    SIGN.boards.forEach((b, k) => {
-        const field = bakeSignField(b.text, w, h);
+    for (let k = 0; k < SIGN.boards.length; k++) {
+        const field = yield* bakeSignFieldSteps(SIGN.boards[k].text, w, h, undefined, clock);
         for (let i = 0; i < w * h; i++) {
             data[(k * w * h + i) * 4] = field[i];
             data[(k * w * h + i) * 4 + 3] = 255;
         }
-    });
+    }
     const tex = new THREE.DataTexture(data, w, h * 2, THREE.RGBAFormat, THREE.UnsignedByteType);
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearFilter;
@@ -252,7 +256,7 @@ export function* createPropsSteps(u, t, tier, fields, { coverage = false } = {})
     yield 'pine';
 
     // The trail sign: a post, two boards turned toward the eye (a little to the right).
-    const letters = signTexture();
+    const letters = yield* signTextureSteps();
     disposables.push(letters);
     yield 'sign lettering';
     const sign = new THREE.Group();

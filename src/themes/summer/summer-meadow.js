@@ -19,9 +19,10 @@ import {
 import { SUMMER_VIEWS, summerEye } from './summer-composition.js';
 import { SUMMER_FLOWERS, createSummerFlowerGeometry, createSummerGrassGeometry } from './summer-flowers.js';
 import {
-    SUMMER_CREST, SUMMER_PLACES, summerGroundHeight, summerMaypoleDistance, summerPathDistance, summerShores,
+    SUMMER_CREST, SUMMER_PLACES, SUMMER_SLICE_MS, summerGroundHeight, summerMaypoleDistance, summerPathDistance,
+    summerShores, summerSlice,
 } from './summer-terrain.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const NEAR_VARIANTS = 2;
 const { smoothstep: ramp } = THREE.MathUtils;
@@ -85,11 +86,19 @@ export class SummerMeadow {
         return this;
     }
 
-    /** The meadow in steps for the world's breathing build: the near grass, the far grass, the flowers. */
+    /**
+     * The meadow in steps for the world's breathing build, a time slice a step: the near grass, the
+     * far grass, the flowers (steps of 20-55 ms on a first visit before, the flowers the longest).
+     */
     * buildSteps() {
-        yield* this.grassSteps();
-        yield 'grass';
-        this.buildFlowers();
+        const clock = stepClock(SUMMER_SLICE_MS);
+        yield* this.grassSteps(clock);
+        yield* this.flowerSteps(clock);
+    }
+
+    /** Yield when the slice has run (asked every `every` turns of a loop). */
+    * breathe(clock, turn = 0, every = 1) {
+        if (turn % every === 0) yield* summerSlice(clock, 'meadow');
     }
 
     /** A random spot in front of the camera: `bias` > 1 crowds the picks toward the lens. */
@@ -104,11 +113,17 @@ export class SummerMeadow {
 
     /** One draw of `geometry` for a list of plants (x, y, z, yaw, scale, phase, hue). */
     plant(geometry, material, plants, name) {
+        return drainSteps(this.plantSteps(geometry, material, plants, name, stepClock(SUMMER_SLICE_MS)));
+    }
+
+    /** plant(), its instance data filled a time slice a step. */
+    * plantSteps(geometry, material, plants, name, clock) {
         if (!plants.length) return null;
         const count = plants.length / 7;
         const roots = new Float32Array(count * 4);
         const turns = new Float32Array(count * 4);
         for (let i = 0; i < count; i += 1) {
+            yield* this.breathe(clock, i, 512);
             const o = i * 7;
             roots.set([plants[o], plants[o + 1], plants[o + 2], plants[o + 5]], i * 4);
             turns.set([Math.cos(plants[o + 3]), Math.sin(plants[o + 3]), plants[o + 4], plants[o + 6]], i * 4);
@@ -215,43 +230,46 @@ export class SummerMeadow {
         drainSteps(this.grassSteps());
     }
 
-    * grassSteps() {
-        const { rng, tier } = this;
-        const material = this.createGrassMaterial();
-        const scatter = (wanted, nearest, farthest, bias, far) => {
-            const plants = [];
-            for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 6; attempt += 1) {
-                const place = this.spot(nearest, farthest, bias);
-                const cover = summerMeadowCover(place.x, place.z);
-                if (rng() < cover) {
-                    const mown = 1 - ramp(
-                        summerMaypoleDistance(place.x, place.z),
-                        SUMMER_PLACES.maypole.ring - 0.5,
-                        SUMMER_PLACES.maypole.ring + 0.6,
-                    );
-                    const tall = 1 + crestness(place.z) * 0.22 - mown * 0.66;
-                    const scale = (0.78 + rng() * 0.5) * tall * (far ? 1 + place.depth * 0.022 : 1);
-                    plants.push(
-                        place.x,
-                        summerGroundHeight(place.x, place.z) - 0.02,
-                        place.z,
-                        rng() * Math.PI * 2,
-                        scale,
-                        rng(),
-                        rng(),
-                    );
-                    made += 1;
-                }
+    /** Grass clumps scattered over the meadow, a time slice a step. */
+    * scatterGrassSteps(clock, wanted, nearest, farthest, bias, far) {
+        const { rng } = this;
+        const plants = [];
+        for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 6; attempt += 1) {
+            yield* this.breathe(clock, attempt, 64);
+            const place = this.spot(nearest, farthest, bias);
+            const cover = summerMeadowCover(place.x, place.z);
+            if (rng() < cover) {
+                const mown = 1 - ramp(
+                    summerMaypoleDistance(place.x, place.z),
+                    SUMMER_PLACES.maypole.ring - 0.5,
+                    SUMMER_PLACES.maypole.ring + 0.6,
+                );
+                const tall = 1 + crestness(place.z) * 0.22 - mown * 0.66;
+                const scale = (0.78 + rng() * 0.5) * tall * (far ? 1 + place.depth * 0.022 : 1);
+                plants.push(
+                    place.x,
+                    summerGroundHeight(place.x, place.z) - 0.02,
+                    place.z,
+                    rng() * Math.PI * 2,
+                    scale,
+                    rng(),
+                    rng(),
+                );
+                made += 1;
             }
-            return plants;
-        };
+        }
+        return plants;
+    }
+
+    * grassSteps(clock = stepClock(SUMMER_SLICE_MS)) {
+        const { tier } = this;
+        const material = this.createGrassMaterial();
         const near = this.own(createSummerGrassGeometry({ far: false, seed: 11 }));
         const far = this.own(createSummerGrassGeometry({ far: true, seed: 23 }));
-        const nearPlants = scatter(tier.grassNear, 0.9, 11.5, 1.45, false);
-        yield 'grass near';
-        const farPlants = scatter(tier.grassFar, 9.5, 36, 1.22, true);
-        this.plant(near, material, nearPlants, 'SummerGrass near');
-        this.plant(far, material, farPlants, 'SummerGrass far');
+        const nearPlants = yield* this.scatterGrassSteps(clock, tier.grassNear, 0.9, 11.5, 1.45, false);
+        const farPlants = yield* this.scatterGrassSteps(clock, tier.grassFar, 9.5, 36, 1.22, true);
+        yield* this.plantSteps(near, material, nearPlants, 'SummerGrass near', clock);
+        yield* this.plantSteps(far, material, farPlants, 'SummerGrass far', clock);
         this.stats.grass = (nearPlants.length + farPlants.length) / 7;
         this.stats.grassTriangles = (nearPlants.length / 7) * (near.index.count / 3)
             + (farPlants.length / 7) * (far.index.count / 3);
@@ -300,10 +318,24 @@ export class SummerMeadow {
     }
 
     buildFlowers() {
-        const { rng, tier } = this;
+        drainSteps(this.flowerSteps());
+    }
+
+    /** The flowers, a time slice a step: scattered near and drawn kind by kind, then the far ones. */
+    * flowerSteps(clock = stepClock(SUMMER_SLICE_MS)) {
+        const { tier } = this;
         const material = this.createFlowerMaterial();
         /** Shared with the shore, which plants its water lilies with it. */
         this.flowerMaterial = material;
+        const near = yield* this.scatterFlowerSteps(clock, tier.flowersNear, 1.25, 10.5, 1.3, false);
+        yield* this.drawFlowerSteps(clock, material, near, false);
+        const far = yield* this.scatterFlowerSteps(clock, tier.flowersFar, 9, 36, 1.16, true);
+        yield* this.drawFlowerSteps(clock, material, far, true);
+    }
+
+    /** Flowers scattered over the meadow, a list per kind and variant, a time slice a step. */
+    * scatterFlowerSteps(clock, wanted, nearest, farthest, bias, far) {
+        const { rng } = this;
         const total = SUMMER_FLOWERS.reduce((sum, flower) => sum + flower.share, 0);
         /** Pick a kind for a spot: each grows in its own drifts, the tall ones on the crest. */
         const choose = (x, z, crest) => {
@@ -326,44 +358,52 @@ export class SummerMeadow {
             }
             return weights.length - 1;
         };
-        const scatter = (wanted, nearest, farthest, bias, far) => {
-            const lists = SUMMER_FLOWERS.map(() => Array.from({ length: far ? 1 : NEAR_VARIANTS }, () => []));
-            for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 8; attempt += 1) {
-                const place = this.spot(nearest, farthest, bias);
-                const cover = summerMeadowCover(place.x, place.z);
-                const mown = summerMaypoleDistance(place.x, place.z) < SUMMER_PLACES.maypole.ring + 0.2;
-                if (!mown && rng() < cover) {
-                    const crest = crestness(place.z);
-                    const kind = choose(place.x, place.z, crest);
-                    const flower = SUMMER_FLOWERS[kind];
-                    // Far flowers are drawn larger than life so the meadow keeps its colour.
-                    const scale = (0.82 + rng() * 0.42) * (far ? 1.05 + place.depth * 0.017 : 1 + crest * 0.14);
-                    const list = lists[kind][Math.floor(rng() * lists[kind].length) % lists[kind].length];
-                    list.push(
-                        place.x,
-                        summerGroundHeight(place.x, place.z) - 0.015,
-                        place.z,
-                        rng() * Math.PI * 2,
-                        scale,
-                        rng(),
-                        rng(),
-                    );
-                    this.census[flower.id] += 1;
-                    made += 1;
+        const lists = SUMMER_FLOWERS.map(() => Array.from({ length: far ? 1 : NEAR_VARIANTS }, () => []));
+        for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 8; attempt += 1) {
+            yield* this.breathe(clock, attempt, 64);
+            const place = this.spot(nearest, farthest, bias);
+            const cover = summerMeadowCover(place.x, place.z);
+            const mown = summerMaypoleDistance(place.x, place.z) < SUMMER_PLACES.maypole.ring + 0.2;
+            if (!mown && rng() < cover) {
+                const crest = crestness(place.z);
+                const kind = choose(place.x, place.z, crest);
+                const flower = SUMMER_FLOWERS[kind];
+                // Far flowers are drawn larger than life so the meadow keeps its colour.
+                const scale = (0.82 + rng() * 0.42) * (far ? 1.05 + place.depth * 0.017 : 1 + crest * 0.14);
+                const list = lists[kind][Math.floor(rng() * lists[kind].length) % lists[kind].length];
+                list.push(
+                    place.x,
+                    summerGroundHeight(place.x, place.z) - 0.015,
+                    place.z,
+                    rng() * Math.PI * 2,
+                    scale,
+                    rng(),
+                    rng(),
+                );
+                this.census[flower.id] += 1;
+                made += 1;
+            }
+        }
+        return lists;
+    }
+
+    /** One draw per kind and variant that has flowers, a time slice a step. */
+    * drawFlowerSteps(clock, material, lists, far) {
+        for (let kind = 0; kind < lists.length; kind += 1) {
+            const variants = lists[kind];
+            for (let variant = 0; variant < variants.length; variant += 1) {
+                const plants = variants[variant];
+                if (plants.length) {
+                    yield* this.breathe(clock);
+                    const { id } = SUMMER_FLOWERS[kind];
+                    const geometry = this.own(createSummerFlowerGeometry(id, { far, variant }));
+                    const name = `SummerFlower ${id}${far ? ' far' : ''} ${variant}`;
+                    yield* this.plantSteps(geometry, material, plants, name, clock);
+                    this.stats.flowers += plants.length / 7;
+                    this.stats.flowerTriangles += (plants.length / 7) * (geometry.index.count / 3);
                 }
             }
-            return lists;
-        };
-        const draw = (lists, far) => lists.forEach((variants, kind) => variants.forEach((plants, variant) => {
-            if (!plants.length) return;
-            const { id } = SUMMER_FLOWERS[kind];
-            const geometry = this.own(createSummerFlowerGeometry(id, { far, variant }));
-            this.plant(geometry, material, plants, `SummerFlower ${id}${far ? ' far' : ''} ${variant}`);
-            this.stats.flowers += plants.length / 7;
-            this.stats.flowerTriangles += (plants.length / 7) * (geometry.index.count / 3);
-        }));
-        draw(scatter(tier.flowersNear, 1.25, 10.5, 1.3, false), false);
-        draw(scatter(tier.flowersFar, 9, 36, 1.16, true), true);
+        }
     }
 
     dispose() {

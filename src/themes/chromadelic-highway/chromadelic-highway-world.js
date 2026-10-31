@@ -61,7 +61,7 @@ import {
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity.js';
-import { loadTextureDecoded } from '../shared/decoded-texture.js';
+import { loadTextureDecoded, uploadTextureNow } from '../shared/decoded-texture.js';
 
 const tier = (o) => o;
 
@@ -344,9 +344,11 @@ export class ChromadelicWorld {
      * @param {boolean} [opts.capture=false]  deterministic capture mode (no pointer parallax)
      */
     constructor({
-        scene, quality = 'High', random = Math.random, textureBase = './textures/', capture = false,
+        scene, quality = 'High', random = Math.random, textureBase = './textures/', capture = false, renderer = null,
     }) {
         this.scene = scene;
+        /** Uploads each map in the task it lands in (shared/decoded-texture.js); null leaves it to the first draw. */
+        this.renderer = renderer;
         this.quality = WORLD_TIERS[quality] ? quality : 'High';
         this.tier = WORLD_TIERS[this.quality];
         this.random = random;
@@ -520,7 +522,9 @@ export class ChromadelicWorld {
 
     loadTexture(path, { wrapT = THREE.ClampToEdgeWrapping } = {}) {
         // Decoded off the main thread (shared/decoded-texture.js), filled when it lands as before.
-        const tex = loadTextureDecoded(`${this.textureBase}${path}`);
+        const tex = loadTextureDecoded(`${this.textureBase}${path}`, {
+            onImage: (landed) => uploadTextureNow(this.renderer, landed),
+        });
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = wrapT;

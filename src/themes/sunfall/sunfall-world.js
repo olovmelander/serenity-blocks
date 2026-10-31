@@ -31,7 +31,8 @@ import {
 } from './sunfall-core.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
-import { bakeAllSunfallTextures, bakeUnderstoryGrid } from './sunfall-bake.js';
+import { bakeAllSunfallTexturesSteps, bakeUnderstoryGridSteps } from './sunfall-bake.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { disposeSunfallAssets, loadSunfallAssets } from './sunfall-assets.js';
 import { sunfallBakes } from './sunfall-bakes.js';
 import { cameraRigFor } from './sunfall-composition.js';
@@ -46,6 +47,8 @@ import {
 import { buildSunfallLife } from './sunfall-life.js';
 
 const DEG = Math.PI / 180;
+/** How long one slice of the jungle's build runs before it yields to the page (ms). */
+const BUILD_SLICE_MS = 8;
 /** The sunfall's gold in a fever (linear): a deep late-afternoon gold, never cream. */
 const GILT_CORE = new THREE.Vector3(1.0, 0.62, 0.26);
 const GILT_SCATTER = new THREE.Vector3(1.0, 0.66, 0.3);
@@ -67,6 +70,11 @@ export class SunfallWorld {
         disposeSunfallAssets(assets);
     }
 
+    /** A world whose build is left to `build()` or `buildSteps()` (the theme's, breathing). */
+    static unbuilt(options = {}) {
+        return new SunfallWorld({ ...options, build: false });
+    }
+
     static async prepareSafely(options = {}) {
         // The textures' bakes (a first visit's ~60-90 ms) run in a worker while the assets load.
         const baking = sunfallBakes();
@@ -80,6 +88,11 @@ export class SunfallWorld {
         }
     }
 
+    /**
+     * @param {object} [options]
+     * @param {boolean} [options.build=true]  build the world here, at once; false leaves it to
+     *   `build()` or `buildSteps()` (the theme builds it breathing: shared/build-steps.js)
+     */
     constructor({
         scene = null,
         camera = null,
@@ -87,6 +100,7 @@ export class SunfallWorld {
         seed = SUNFALL_SEED,
         parts = null,
         assets = null,
+        build = true,
     } = {}) {
         this.preset = resolveSunfallQuality(quality);
         this.seed = seed >>> 0;
@@ -110,28 +124,55 @@ export class SunfallWorld {
             time: 0, exposure: 1, bloomBoost: 0, flash: 0, flashColour: null,
         };
 
-        this.textures = bakeAllSunfallTextures(this.seed, assets);
+        /** Made by the build (buildSteps): the textures, the uniforms, the parts and their life. */
+        this.textures = null;
+        this.u = null;
+        this.partGroups = new Map();
+        this.disposables = [];
+        this.visibleParts = new Set(SUNFALL_PARTS);
+        this.life = null;
+        this.partsFilter = parts;
+        this.built = false;
+        if (build) this.build();
+    }
+
+    /** Build the world at once (the constructor's default); a world already built is left as it is. */
+    build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work
+     * in the same order: the textures, the sky and the cave, the jungle's crowns, its understory
+     * (the grid, then its normals), the trunks and the gours, then the life. Built in one task, a
+     * first visit's held the switch's worst frame at ~46 ms (2026-10-31).
+     */
+    * buildSteps() {
+        if (this.built) return this;
+        this.built = true;
+        const { assets } = this;
+        this.textures = yield* bakeAllSunfallTexturesSteps(this.seed, assets);
         this.u = createSunfallUniforms(this.textures, assets?.manifest);
         this.u.eye = new THREE.Vector3();
 
-        this.partGroups = new Map();
         for (const partName of SUNFALL_PARTS) {
             const g = new THREE.Group();
             g.name = `sunfall-${partName}`;
             this.scene.add(g);
             this.partGroups.set(partName, g);
         }
-        this.disposables = [];
-        this.visibleParts = new Set(SUNFALL_PARTS);
 
         this._buildSky();
         if (assets) {
             this._buildCave();
-            this._buildJungle();
+            yield 'sky and cave';
+            yield* this._buildJungleSteps();
             this._buildGours();
         }
+        yield 'jungle';
         this.life = buildSunfallLife(this);
-        if (parts) this.setParts(parts);
+        if (this.partsFilter) this.setParts(this.partsFilter);
+        return this;
     }
 
     _track(resource) {
@@ -201,6 +242,16 @@ export class SunfallWorld {
      * the oculus rim outside (seen from beneath against the sky, so its trees have trunks).
      */
     _buildJungle() {
+        drainSteps(this._buildJungleSteps());
+    }
+
+    /**
+     * `_buildJungle` as steps (buildSteps): the same crowns, understory and trunks from the same
+     * draws, yielding between crown variants once a slice has run BUILD_SLICE_MS, and round the
+     * understory.
+     */
+    * _buildJungleSteps() {
+        const clock = stepClock(BUILD_SLICE_MS);
         const group = this.partGroups.get('jungle');
         const { plan, crowns, manifest } = this.assets;
         const [vs0, vs1] = manifest?.crownVerticalScale || [0.92, 0.26];
@@ -251,9 +302,14 @@ export class SunfallWorld {
         // New Growth: which crowns stand near a spot, so a shoot can flush the nearest few.
         this.crownIndex = new Map();
         this.growAttrs = [];
-        crowns.forEach((geometry, variant) => {
+        for (let variant = 0; variant < crowns.length; variant += 1) {
+            if (clock.due()) {
+                yield 'crowns';
+                clock.restart();
+            }
+            const geometry = crowns[variant];
             const mine = sites.filter((site) => Math.min(crowns.length - 1, Math.max(0, site.variant)) === variant);
-            if (!mine.length) return;
+            if (!mine.length) continue;
             const mesh = new THREE.InstancedMesh(geometry, material, mine.length);
             const data = new Float32Array(mine.length * 4);
             const grow = new Float32Array(mine.length * 4);
@@ -285,8 +341,9 @@ export class SunfallWorld {
             mesh.computeBoundingSphere();
             mesh.renderOrder = 10;
             group.add(mesh);
-        });
-        this._buildUnderstory(group);
+        }
+        yield 'crowns';
+        yield* this._buildUnderstorySteps(group);
         // Trunks for the trees seen against the sky.
         const trunks = sites.filter((site) => site.trunk > 0);
         if (trunks.length) {
@@ -312,9 +369,15 @@ export class SunfallWorld {
 
     /** The understory layer under the crowns: deep foliage in every gap of the canopy. */
     _buildUnderstory(group) {
+        drainSteps(this._buildUnderstorySteps(group));
+    }
+
+    /** `_buildUnderstory` as steps: its grid baked in slices, a breath after it and after its mesh. */
+    * _buildUnderstorySteps(group) {
         const floorGrid = this.assets.manifest?.floorGrid;
         if (!floorGrid || !this.textures.canopyHeights) return;
-        const grid = bakeUnderstoryGrid(floorGrid, this.textures.canopyHeights);
+        const grid = yield* bakeUnderstoryGridSteps(floorGrid, this.textures.canopyHeights);
+        yield 'understory grid';
         const geometry = this._track(new THREE.BufferGeometry());
         geometry.setAttribute('position', new THREE.BufferAttribute(grid.position, 3));
         geometry.setAttribute('aMask', new THREE.BufferAttribute(grid.mask, 1));
@@ -325,6 +388,7 @@ export class SunfallWorld {
         mesh.name = 'sunfall-understory';
         mesh.renderOrder = 9;
         group.add(mesh);
+        yield 'understory';
     }
 
     applySnapshot(snap) {

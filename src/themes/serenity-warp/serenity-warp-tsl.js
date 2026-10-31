@@ -43,6 +43,7 @@ import {
     WAVE_SLOTS,
 } from './serenity-warp-core.js';
 import { derivedOnce } from '../shared/bake-cache.js';
+import { halfBits } from '../../rendering/half-float.js';
 import { FBM_SIZE } from './serenity-warp-bake.js';
 
 export * from './serenity-warp-core.js';
@@ -190,14 +191,18 @@ export function createFbmTexture(field, size = FBM_SIZE) {
     return tex;
 }
 
-/** The half-float mip chain of a field (pure: derived once per field). */
+/**
+ * The half-float mip chain of a field (pure: derived once per field). The half floats are
+ * rendering/half-float.js halfBits, three's DataUtils.toHalfFloat bit for bit without its per-call
+ * range check: the conversion was most of a first visit's ~6 ms here (2026-10-31).
+ */
 function mipsFbm(field, size) {
     const mipmaps = [];
     let level = field;
     let w = size;
     for (;;) {
         const half = new Uint16Array(level.length);
-        for (let i = 0; i < level.length; i++) half[i] = THREE.DataUtils.toHalfFloat(level[i]);
+        for (let i = 0; i < level.length; i++) half[i] = halfBits(level[i]);
         mipmaps.push({ data: half, width: w, height: w });
         if (w === 1) break;
         const nw = w >> 1;

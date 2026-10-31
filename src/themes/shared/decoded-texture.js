@@ -70,12 +70,14 @@ export async function loadDecodedTexture(url, textureLoader, options = {}) {
  * `new THREE.TextureLoader().load(url)` decoded off the main thread: the texture is returned at
  * once, imageless, and filled when the bitmap arrives (as TextureLoader fills its texture when the
  * image arrives). Where a bitmap cannot be decoded, an ImageLoader fills it the old way (three's
- * own flip). A texture disposed before its image arrives lets the bitmap go.
+ * own flip). A texture disposed before its image arrives lets the bitmap go. `onImage(texture)` runs
+ * in the task the image arrived in, once it is in (e.g. `uploadTextureNow`).
  * @param {string} url
- * @param {{ flipY?: boolean }} [options] the texture's flip, done at decode (three's default true)
+ * @param {{ flipY?: boolean, onImage?: ((texture: THREE.Texture) => void) | null }} [options]
+ *   flipY: the texture's flip, done at decode (three's default true)
  * @returns {THREE.Texture}
  */
-export function loadTextureDecoded(url, { flipY = true } = {}) {
+export function loadTextureDecoded(url, { flipY = true, onImage = null } = {}) {
     const texture = new THREE.Texture();
     texture.flipY = flipY;
     let disposed = false;
@@ -86,6 +88,7 @@ export function loadTextureDecoded(url, { flipY = true } = {}) {
             if (disposed) return;
             texture.image = image;
             texture.needsUpdate = true;
+            onImage?.(texture);
         });
     };
     decodeBitmap(url, flipY).then((bitmap) => {
@@ -101,6 +104,25 @@ export function loadTextureDecoded(url, { flipY = true } = {}) {
         texture.flipY = false; // flipped at decode, when it is to be
         texture.needsUpdate = true;
         texture.addEventListener('dispose', () => bitmap.close?.());
+        onImage?.(texture);
     }, viaLoader);
     return texture;
+}
+
+/**
+ * Upload a configured texture now (`renderer.initTexture`), in the task its image arrived in, not
+ * at the next frame's first draw: three's upload of an image copies its pixels to the GPU process
+ * on the main thread (WritePixels, up to ~17 ms for a large atlas), and in a switch that copy
+ * stacked with the hidden build's node builds (Neon Quarter: one 94 ms frame, 2026-10-31). The same
+ * data, uploaded earlier. A renderer that cannot (none, uninitialised, WebGL2 quirks) is left to
+ * the first draw.
+ * @param {any} renderer
+ * @param {THREE.Texture} texture
+ */
+export function uploadTextureNow(renderer, texture) {
+    try {
+        if (typeof renderer?.initTexture === 'function') renderer.initTexture(texture);
+    } catch {
+        // The first draw uploads it.
+    }
 }

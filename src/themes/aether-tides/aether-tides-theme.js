@@ -52,6 +52,7 @@ import { POST_LOOK, AetherTidesPost, createPassThroughPipeline } from './aether-
 import { PLAYER_SLOTS, readLayoutRects } from './aether-tides-composition.js';
 import { AETHER_TIDES_EVENT_HANDLERS, AetherTidesDirector } from './aether-tides-director.js';
 import { approach } from './aether-tides-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'aether-tides';
 const LOG_PREFIX = '[AetherTides]';
@@ -224,12 +225,17 @@ export default class AetherTidesTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(REST_RIG.fov, aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new AetherTidesWorld({
+            const world = new AetherTidesWorld({
                 scene: this.scene,
                 renderer,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
-            }).build();
+            });
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

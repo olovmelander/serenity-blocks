@@ -91,10 +91,17 @@ import {
 } from './thermal-bloom-tsl.js';
 import { STAIR, stairGenerator } from './thermal-bloom-bake.js';
 import { flatVarying } from '../shared/flat-varying.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const TAU = Math.PI * 2;
 /** Gravity (m/s²) for the spray. */
 const G = 9.81;
+/**
+ * How long a slice of the Chalice's build runs before it yields to the page (ms): the world's
+ * build breathes there (shared/build-steps.js). In one task, with the rest of the geyser, it held
+ * a first visit's switch frame 33 ms (2026-10-31).
+ */
+const CHALICE_SLICE_MS = 8;
 
 // ── The Chalice's ground (CPU) ─────────────────────────────────────────────────
 
@@ -287,6 +294,15 @@ export function chaliceField({ tiers = 10 } = {}) {
  * lobed skirt each vertex lies (its outer part takes the apron's colour).
  */
 export function chaliceGeometry(field, spokes, rings) {
+    return drainSteps(chaliceGeometrySteps(field, spokes, rings));
+}
+
+/**
+ * `chaliceGeometry` as steps: the same mesh, yielding between rings once a slice has run
+ * CHALICE_SLICE_MS on `clock` (a caller's, so the field's bake counts toward the first slice).
+ * @returns {Generator<string, THREE.BufferGeometry>}
+ */
+export function* chaliceGeometrySteps(field, spokes, rings, clock = stepClock(CHALICE_SLICE_MS)) {
     const S = CHALICE_SHAPE;
     const count = 1 + rings * spokes;
     const positions = new Float32Array(count * 3);
@@ -303,6 +319,10 @@ export function chaliceGeometry(field, spokes, rings) {
             positions[o + 1] = field.height(x, z);
             positions[o + 2] = z;
             skirt[1 + i * spokes + j] = field.skirtAt(x, z);
+        }
+        if (clock.due()) {
+            yield 'chalice';
+            clock.restart();
         }
     }
     const index = new Uint32Array(spokes * 3 + (rings - 1) * spokes * 6);
@@ -459,10 +479,16 @@ function cellularTri(tex, P, N, tile) {
  * @param {object} tex  the world's baked textures
  */
 export function createChalice(u, tier, tex) {
+    return drainSteps(createChaliceSteps(u, tier, tex));
+}
+
+/** `createChalice` as steps (its mesh in slices): the same part, built in the same order. */
+export function* createChaliceSteps(u, tier, tex) {
+    const clock = stepClock(CHALICE_SLICE_MS);
     const field = chaliceField({ tiers: tier.stairTiers });
     const spokes = tier.columnMesh[0] * 8;
     const rings = Math.round(tier.columnMesh[1] * 7);
-    const geometry = chaliceGeometry(field, spokes, rings);
+    const geometry = yield* chaliceGeometrySteps(field, spokes, rings, clock);
     const C = CHALICE_SHAPE.cone;
     const chaliceFn = Fn(() => {
         const P = positionWorld.toVar();

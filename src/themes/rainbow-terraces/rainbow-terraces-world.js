@@ -77,7 +77,7 @@ import { EventEffects, LOCK, SPARKS } from './rainbow-terraces-events.js';
 import { FlashGovernor } from './rainbow-terraces-flash.js';
 import { boardFor } from './rainbow-terraces-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
@@ -331,6 +331,11 @@ const SPILLWAY = Object.freeze({
 });
 /** Columns across the frame the falls' lower edge is kept in (fallEdge). */
 const FALL_EDGE_BINS = 64;
+/**
+ * How long a slice of a frame's solve and placing (applyFrameSteps) runs before it may yield (ms).
+ * A first layout ran 18-22 ms in one task (the falls' life, the spray's fit, the clouds placed).
+ */
+const LAYOUT_SLICE_MS = 6;
 /**
  * How much of the frame the spray may cover (screens: every puff's quad summed, the overdraw) for
  * a capacity: a tier with more puffs makes finer ones, never a heavier fill, and a layout that
@@ -693,7 +698,7 @@ export class RainbowTerracesWorld {
         }));
 
         this.scene.add(this.root);
-        this.applyFrame();
+        yield* this.applyFrameSteps();
         this.applyHour(0);
         this.built = true;
     }
@@ -716,11 +721,19 @@ export class RainbowTerracesWorld {
     }
 
     setViewport(width, height, aspect) {
+        drainSteps(this.setViewportSteps(width, height, aspect));
+    }
+
+    /**
+     * `setViewport` as steps (applyFrameSteps): the theme's first layout of a build breathes
+     * between them. Nothing else may touch the world until they have all run.
+     */
+    * setViewportSteps(width, height, aspect, clock) {
         this.viewport.width = width;
         this.viewport.height = height;
         const a = Number.isFinite(aspect) && aspect > 0 ? aspect : width / Math.max(1, height);
         this.aspect = a;
-        this.applyFrame();
+        yield* this.applyFrameSteps(clock);
     }
 
     /** The live layout rects (screen fractions) or null (menus, boot): the frame is re-solved. */
@@ -738,6 +751,16 @@ export class RainbowTerracesWorld {
 
     /** Solve the frame and write everything that follows from it. */
     applyFrame() {
+        drainSteps(this.applyFrameSteps());
+    }
+
+    /**
+     * `applyFrame` as steps: the same writes in the same order, yielding between its pieces (the
+     * solve, the clouds, the isles placed, the strokes' cut, the falls, the spray's fit, the pools)
+     * once a slice has run LAYOUT_SLICE_MS. A world's first solves ran 18-22 ms each, in the same
+     * task as the end of the build and the theme's first resize (2026-10-31).
+     */
+    * applyFrameSteps(clock = stepClock(LAYOUT_SLICE_MS)) {
         const f = frameFor(this.aspect, this.layout, this.frame);
         const { U } = this;
         U.A.value.set(f.A[0], f.A[1], f.A[2]);
@@ -777,6 +800,10 @@ export class RainbowTerracesWorld {
         }
         this.showerScale = smile ? 0.4 : 1;
         U.showerAmt.value = (this.showerHour ?? 0.85) * this.showerScale;
+        if (clock.due()) {
+            yield 'solve';
+            clock.restart();
+        }
         this.parts.cumulus?.place(f, U.shower.value.x);
         this.writeCalm(f);
         U.bowDeep.value.set(f.plan === 'smile' ? 0.9 : 0.35, f.plan === 'smile' ? 0.9 : 0.7);
@@ -804,6 +831,10 @@ export class RainbowTerracesWorld {
             U.deckRoom.value = this.deckRoom(f);
         }
         if (this.parts.isles) this.parts.isles.place(this.placement);
+        if (clock.due()) {
+            yield 'placed';
+            clock.restart();
+        }
         // The strokes are cut again round what stands in front of the bows, now it is placed: no
         // link paints an arc the player cannot see (once per solve: the same screen and rects keep
         // the solve, its plan and its cut).
@@ -817,7 +848,11 @@ export class RainbowTerracesWorld {
             rows[i].x = s ? s.phi0 : 0;
             rows[i].y = s ? s.phi1 : 0;
         }
-        if (this.parts.falls) this.writeStaticFalls();
+        if (clock.due()) {
+            yield 'strokes';
+            clock.restart();
+        }
+        if (this.parts.falls) yield* this.writeStaticFallsSteps(clock);
         this.placeSprayColumn();
         if (this.parts.pools && this.parts.isles) this.placePools();
         this.flock?.setThermals(this.placement.thermals);
@@ -1209,10 +1244,19 @@ export class RainbowTerracesWorld {
      * sheet breaks into horsetails and goes to mist on screen in every layout.
      */
     writeStaticFalls() {
+        drainSteps(this.writeStaticFallsSteps());
+    }
+
+    /** `writeStaticFalls` as steps (applyFrameSteps): a yield after the edge, the falls and before the spray's fit. */
+    * writeStaticFallsSteps(clock = stepClock(LAYOUT_SLICE_MS)) {
         const { U } = this;
         const { isles } = this.parts;
         if (!isles) return;
         this.fallEdge();
+        if (clock.due()) {
+            yield 'fall edge';
+            clock.restart();
+        }
         /** Write a fall whose life is told in shares of the drop the frame shows of it. */
         const put = (slot, spec, life = null, lo = 2.5, hi = 10) => {
             const fall = { ...spec, phase: slot * 1.7 };
@@ -1283,6 +1327,10 @@ export class RainbowTerracesWorld {
                 kind: FALL_KIND.horsetail,
             }, HORSE, 2.5, HORSE.most);
         });
+        if (clock.due()) {
+            yield 'falls';
+            clock.restart();
+        }
         // Hairlines off the archipelago's nearest isles (every third is on its nearest layer).
         const hairs = Math.min(HAIRLINES, this.tier.hairlineFalls);
         for (let i = 0; i < HAIRLINES; i++) {
@@ -1306,7 +1354,11 @@ export class RainbowTerracesWorld {
                 kind: FALL_KIND.hairline,
             });
         }
-        this.fitSpray();
+        if (clock.due()) {
+            yield 'hairlines';
+            clock.restart();
+        }
+        yield* this.fitSpraySteps(clock);
     }
 
     /**
@@ -2845,6 +2897,11 @@ export class RainbowTerracesWorld {
      * calls this when a layout places the falls.
      */
     fitSpray() {
+        return drainSteps(this.fitSpraySteps());
+    }
+
+    /** `fitSpray` as steps (writeStaticFallsSteps): a yield between its moments once a slice has run. */
+    * fitSpraySteps(clock = stepClock(LAYOUT_SLICE_MS)) {
         if (!this.parts.spray) return 1;
         this.sprayFit = 1;
         const { basis: { f, r, u }, tanX, tanY } = this.frame.cam;
@@ -2859,7 +2916,13 @@ export class RainbowTerracesWorld {
             area += span(cx, (0.5 * radius) / (zf * tanX)) * span(cy, (0.5 * radius) / (zf * tanY));
         };
         const moments = 6;
-        for (let k = 0; k < moments; k++) this.sprayPuffs(k * 1.618, k * 1.618, still, add);
+        for (let k = 0; k < moments; k++) {
+            if (k > 0 && clock.due()) {
+                yield 'spray fit';
+                clock.restart();
+            }
+            this.sprayPuffs(k * 1.618, k * 1.618, still, add);
+        }
         area /= moments;
         this.sprayFit = Math.min(1, sprayFill(this.parts.spray.capacity) / Math.max(area, 1e-6));
         this.sprayArea = area * this.sprayFit;

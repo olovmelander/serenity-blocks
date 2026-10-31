@@ -1628,6 +1628,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             random: () => this.rand(),
             textureBase: './textures/',
             capture: captureMode,
+            renderer: this.renderer,
         }).build();
         if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
         this.layoutState = { applied: undefined, pending: undefined, veil: 0 };

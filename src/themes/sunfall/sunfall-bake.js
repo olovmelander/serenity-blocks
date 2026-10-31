@@ -16,10 +16,11 @@
 import * as THREE from 'three/webgpu';
 import { SUNFALL_SEED, clamp01, smooth } from './sunfall-core.js';
 import {
-    CANOPY_TEX_SIZE, FBM_SIZE, LATTICE_SIZE, OCULUS_TEX, bakeCanopyHeight, bakeFbm, bakeLattice, bakeOculus,
-    fbmKey, latticeKey, oculusKey,
+    BAKE_SLICE_MS, CANOPY_TEX_SIZE, FBM_SIZE, LATTICE_SIZE, OCULUS_TEX, bakeCanopyHeightSteps, bakeFbm, bakeLattice,
+    bakeOculus, fbmKey, latticeKey, oculusKey,
 } from './sunfall-bake-data.js';
 import { bakeOnce } from '../shared/bake-cache.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export {
     CANOPY_TEX_SIZE, FBM_SIZE, LATTICE_SIZE, LATTICE_SLICE, OCULUS_TEX, bakeCanopyHeight, bakeFbm, bakeLattice,
@@ -46,7 +47,22 @@ function repeatTexture(data, width, height, { mips = true, name = '' } = {}) {
  * round it within about 14 m, 0 where the layer is cut away, so it never meets the walls)
  * and 16-bit `index`.
  */
-export function bakeUnderstoryGrid(floorGrid, canopyHeights, { size = 160, texSize = CANOPY_TEX_SIZE } = {}) {
+export function bakeUnderstoryGrid(floorGrid, canopyHeights, options = {}) {
+    return drainSteps(bakeUnderstoryGridSteps(floorGrid, canopyHeights, options));
+}
+
+/**
+ * `bakeUnderstoryGrid` as steps (the world's build breathes between them): the same grid,
+ * yielding between rows once a slice has run `clock`'s budget. In one task it held a first
+ * Sunfall switch ~9 ms (2026-10-31).
+ * @returns {Generator<string, { position: Float32Array, mask: Float32Array, index: Uint16Array }>}
+ */
+export function* bakeUnderstoryGridSteps(
+    floorGrid,
+    canopyHeights,
+    { size = 160, texSize = CANOPY_TEX_SIZE } = {},
+    clock = stepClock(BAKE_SLICE_MS),
+) {
     const [x0, x1] = floorGrid.x;
     const [z0, z1] = floorGrid.z;
     const [gw, gh] = floorGrid.size;
@@ -68,6 +84,10 @@ export function bakeUnderstoryGrid(floorGrid, canopyHeights, { size = 160, texSi
     const T = texSize;
     const sat = new Float32Array((T + 1) * (T + 1));
     for (let j = 0; j < T; j += 1) {
+        if (clock.due()) {
+            yield 'understory cover';
+            clock.restart();
+        }
         let run = 0;
         const z = z0 + (j / (T - 1)) * (z1 - z0);
         for (let i = 0; i < T; i += 1) {
@@ -89,6 +109,10 @@ export function bakeUnderstoryGrid(floorGrid, canopyHeights, { size = 160, texSi
     const position = new Float32Array(size * size * 3);
     const mask = new Float32Array(size * size);
     for (let gj = 0; gj < size; gj += 1) {
+        if (clock.due()) {
+            yield 'understory grid';
+            clock.restart();
+        }
         const v = gj / (size - 1);
         const z = z0 + v * (z1 - z0);
         for (let gi = 0; gi < size; gi += 1) {
@@ -138,10 +162,11 @@ export function createCanopyTexture(heights, size = CANOPY_TEX_SIZE) {
 
 /** The canopy's heights, kept per authored plan (the session keeps its assets, so its plan). */
 const canopyKept = new WeakMap();
-function canopyHeightsFor(plan, floorGrid, crownScale) {
+/** The canopy's heights for a plan (kept), baked in slices (bakeCanopyHeightSteps) when new. */
+function* canopyHeightsSteps(plan, floorGrid, crownScale, clock) {
     const kept = canopyKept.get(plan);
     if (kept && kept.floorGrid === floorGrid && kept.crownScale === crownScale) return kept.heights;
-    const heights = bakeCanopyHeight(plan, floorGrid, crownScale);
+    const heights = yield* bakeCanopyHeightSteps(plan, floorGrid, crownScale, undefined, clock);
     canopyKept.set(plan, { floorGrid, crownScale, heights });
     return heights;
 }
@@ -151,6 +176,16 @@ function canopyHeightsFor(plan, floorGrid, crownScale) {
  * canopy plan and the floor grid; without them the canopy map is the floor alone.
  */
 export function bakeAllSunfallTextures(seed = SUNFALL_SEED, assets = null) {
+    return drainSteps(bakeAllSunfallTexturesSteps(seed, assets));
+}
+
+/**
+ * `bakeAllSunfallTextures` as steps (the world's build breathes between them): the same
+ * textures in the same order, the canopy's heights baked in slices (BAKE_SLICE_MS) on a first
+ * visit, a breath before the canopy texture is made from them.
+ */
+export function* bakeAllSunfallTexturesSteps(seed = SUNFALL_SEED, assets = null) {
+    const clock = stepClock(BAKE_SLICE_MS);
     // Baked once a session (on a first visit in the bake worker: sunfall-bakes.js); the textures
     // only read them. They were baked again on every visit: ~60 ms, up to 90 cold.
     const latticeData = bakeOnce(latticeKey(seed, LATTICE_SIZE), () => bakeLattice(seed));
@@ -170,7 +205,8 @@ export function bakeAllSunfallTextures(seed = SUNFALL_SEED, assets = null) {
     const floorGrid = manifest?.floorGrid || {
         x: [-440, 380], z: [-960, -20], size: [2, 2], heights: [-150, -150, -150, -150],
     };
-    const heights = canopyHeightsFor(plan, floorGrid, manifest?.crownVerticalScale);
+    const heights = yield* canopyHeightsSteps(plan, floorGrid, manifest?.crownVerticalScale, clock);
+    if (clock.due()) yield 'canopy heights';
     const canopy = createCanopyTexture(heights);
     return {
         lattice,

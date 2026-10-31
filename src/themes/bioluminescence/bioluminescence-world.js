@@ -86,7 +86,7 @@ import {
 import { takeBakedPlan } from './bioluminescence-bakes.js';
 import { tierFor } from './bioluminescence-quality.js';
 import {
-    createBackdrop, createFloor, createIslets, createSpikes, createVault,
+    createBackdrop, createFloorSteps, createIsletsSteps, createSpikes, createVaultSteps,
 } from './bioluminescence-cavern.js';
 import { createMushrooms } from './bioluminescence-mushrooms.js';
 import { createPads, createWater } from './bioluminescence-water.js';
@@ -337,12 +337,13 @@ export class BioluminescenceWorld {
         this._post.lamps = u.lampRows;
         yield 'textures';
 
+        // The rock's meshes yield inside too, in slices (bioluminescence-cavern.js).
         this.addPart('backdrop', createBackdrop(u));
-        this.addPart('vault', createVault(u, plan));
+        this.addPart('vault', yield* createVaultSteps(u, plan));
         yield 'vault';
-        this.addPart('floor', createFloor(u, plan));
+        this.addPart('floor', yield* createFloorSteps(u, plan));
         yield 'floor';
-        this.addPart('islets', createIslets(u, plan));
+        this.addPart('islets', yield* createIsletsSteps(u, plan));
         yield 'islets';
         this.addPart('spikes', createSpikes(u, plan, tier.spikes));
         const water = createWater(u, plan, { reflectionScale: tier.reflection, sparkle: tier.sparkle });

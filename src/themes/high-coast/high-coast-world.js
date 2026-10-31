@@ -60,7 +60,7 @@ import { createSea } from './high-coast-sea.js';
 import { createShadowPass } from './high-coast-shadow.js';
 import { createSky } from './high-coast-sky.js';
 import { createCumulus } from './high-coast-cumulus.js';
-import { createForest } from './high-coast-forest.js';
+import { createForestSteps } from './high-coast-forest.js';
 import { createPropsSteps } from './high-coast-props.js';
 import { createHamlet } from './high-coast-hamlet.js';
 import { createFleet } from './high-coast-fleet.js';
@@ -365,7 +365,7 @@ export class HighCoastWorld {
         yield 'land';
         this.addPart('sea', createSea(this.u, this.textures, tier));
         yield 'sea';
-        this.addPart('forest', createForest(this.u, this.textures, tier, this.fields));
+        this.addPart('forest', yield* createForestSteps(this.u, this.textures, tier, this.fields));
         yield 'forest';
         const props = yield* createPropsSteps(this.u, this.textures, tier, this.fields, { coverage: this.samples > 1 });
         this.addPart('props', props);

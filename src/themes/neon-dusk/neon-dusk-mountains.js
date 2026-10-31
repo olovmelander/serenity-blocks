@@ -41,8 +41,11 @@ import {
     ndSunAlign,
     rgb,
 } from './neon-dusk-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const DEG = Math.PI / 180;
+/** How long the ranges' terrain runs before it yields to the page, at a column's end (ms). */
+const MOUNTAIN_SLICE_MS = 6;
 
 /**
  * Ranges, back to front. r0/r1 = the band's distance from the rest camera; peak/base = crest
@@ -184,7 +187,11 @@ function ridged(noise, x, y, octaves = 6) {
     return Math.min(1, sum / 0.98) ** 1.3;
 }
 
-function buildRange(range, index, noise) {
+/**
+ * One range's strip, as steps: the same vertices, yielding between columns once `clock`'s slice
+ * has run (shared/build-steps.js).
+ */
+function* buildRangeSteps(range, index, noise, clock) {
     const { seg, rows } = range;
     const span = range.span * DEG;
     const count = (seg + 1) * (rows + 1);
@@ -224,6 +231,10 @@ function buildRange(range, index, noise) {
             info[v * 2 + 1] = t;
             v += 1;
         }
+        if (clock.due()) {
+            yield 'mountains';
+            clock.restart();
+        }
     }
     const indices = [];
     const col = rows + 1;
@@ -233,12 +244,24 @@ function buildRange(range, index, noise) {
             const b = a + col;
             indices.push(a, b, a + 1, a + 1, b, b + 1);
         }
+        if (clock.due()) {
+            yield 'mountains';
+            clock.restart();
+        }
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
     geometry.setAttribute('aInfo', new THREE.BufferAttribute(info, 2));
     geometry.setIndex(indices);
+    if (clock.due()) {
+        yield 'mountains';
+        clock.restart();
+    }
     geometry.computeVertexNormals();
+    if (clock.due()) {
+        yield 'mountains';
+        clock.restart();
+    }
     return geometry;
 }
 
@@ -282,13 +305,35 @@ function mergeGeometries(list) {
  * @param {number} [opts.seed=TERRAIN_SEED]
  * @returns {THREE.Mesh}
  */
-export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN_SEED } = {}) {
+export function createMountains(u, opts = {}) {
+    return drainSteps(createMountainsSteps(u, opts));
+}
+
+/**
+ * `createMountains` as steps: the same terrain, yielding between a range's columns once a slice
+ * has run (the world's build breathes there, shared/build-steps.js). Built in one piece, the
+ * ranges' noise held a first visit's switch frame ~25-30 ms (2026-10-31).
+ * @param {object} u
+ * @param {object} [opts]  as createMountains
+ * @returns {Generator<string, THREE.Mesh>}
+ */
+export function* createMountainsSteps(u, { detail = 1, contours = true, seed = TERRAIN_SEED } = {}) {
+    const clock = stepClock(MOUNTAIN_SLICE_MS);
     const noise = makePerlin(mulberry32(seed));
-    const geometry = mergeGeometries(RANGES.map((range, i) => buildRange({
-        ...range,
-        seg: Math.max(48, Math.round(range.seg * detail)),
-        rows: Math.max(8, Math.round(range.rows * Math.sqrt(detail))),
-    }, i, noise)));
+    const strips = [];
+    for (let i = 0; i < RANGES.length; i++) {
+        const range = RANGES[i];
+        strips.push(yield* buildRangeSteps({
+            ...range,
+            seg: Math.max(48, Math.round(range.seg * detail)),
+            rows: Math.max(8, Math.round(range.rows * Math.sqrt(detail))),
+        }, i, noise, clock));
+    }
+    if (clock.due()) {
+        yield 'mountains';
+        clock.restart();
+    }
+    const geometry = mergeGeometries(strips);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'NeonDuskMountains';

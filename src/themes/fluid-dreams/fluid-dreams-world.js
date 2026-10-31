@@ -21,12 +21,13 @@
 import * as THREE from 'three/webgpu';
 
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import {
     DEG, DREAMFIRE, FEVER_DUSK, FEVER_HORIZON, FLUID_PALETTES, HERO, PALETTE_KEYS, SMOOTH_K, approach, clamp01,
     dreamDrift, lerp, mulberry32, paletteAt, paletteNear, pieceColor, sceneAnchors,
 } from './fluid-dreams-core.js';
 import { easeStep } from '../shared/mood-clock.js';
-import { bakeNoise, createNoiseTexture } from './fluid-dreams-tsl.js';
+import { bakeNoiseSteps, createNoiseTextureSteps } from './fluid-dreams-tsl.js';
 import { createLiquidMaterial, createLiquidMesh, createLiquidUniforms } from './fluid-dreams-liquid.js';
 import { createMotes, createSpray } from './fluid-dreams-spray.js';
 import { FluidChoreography } from './fluid-dreams-choreography.js';
@@ -212,6 +213,15 @@ export class FluidDreamsWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work
+     * in the same order. Built in one task with the noise bake and its texture, it held the
+     * first-visit switch's worst frame at 38 ms (createScene 23 ms of it, 2026-10-31).
+     */
+    * buildSteps() {
         const { tier } = this;
         this.choreo = new FluidChoreography({
             satellites: tier.satellites,
@@ -220,7 +230,10 @@ export class FluidDreamsWorld {
             crownSpokes: tier.crownSpokes,
             emit: (burst) => this.parts.spray?.emit({ ...burst, time: this.choreo.time }),
         });
-        this.noise = createNoiseTexture(bakeNoise());
+        const baked = yield* bakeNoiseSteps();
+        yield 'noise';
+        this.noise = yield* createNoiseTextureSteps(baked);
+        yield 'noise texture';
         const u = createLiquidUniforms(this.choreo.tables, this.noise);
         this.u = u;
         this.group = new THREE.Group();

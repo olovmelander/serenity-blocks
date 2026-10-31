@@ -50,6 +50,7 @@ import { POST_LOOK, FluidDreamsPost, createPassThroughPipeline } from './fluid-d
 import { PLAYER_SLOTS, readLayoutRects } from './fluid-dreams-composition.js';
 import { FLUID_DREAMS_EVENT_HANDLERS, FluidDreamsDirector } from './fluid-dreams-director.js';
 import { approach } from './fluid-dreams-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'fluid-dreams';
 const LOG_PREFIX = '[Fluid Dreams]';
@@ -218,12 +219,17 @@ export default class FluidDreamsTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new FluidDreamsWorld({
+            const world = new FluidDreamsWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
-            }).build();
+            });
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

@@ -38,6 +38,7 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import {
@@ -105,7 +106,7 @@ import {
 import { tierFor } from './serenity-warp-quality.js';
 import { GAS_SEED, GAS_SIZE } from './serenity-warp-bake.js';
 import { createSky } from './serenity-warp-sky.js';
-import { createGlass, matchShape } from './serenity-warp-glass.js';
+import { createGlassSteps, matchShape } from './serenity-warp-glass.js';
 import { MOTE_DEPTH, STAR_DEPTH, createStreakField } from './serenity-warp-stars.js';
 import { createFlares, createStreams } from './serenity-warp-fx.js';
 import {
@@ -390,6 +391,15 @@ export class SerenityWarpWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order from the same draws. Built in one
+     * task, it held the first-visit switch's worst frame at ~38 ms (2026-10-31).
+     */
+    * buildSteps() {
         const { tier } = this;
         const gas = createGasTexture(bakeGasNoise(GAS_SEED, GAS_SIZE), GAS_SIZE);
         const fbm = createFbmTexture(bakeFbm());
@@ -403,8 +413,10 @@ export class SerenityWarpWorld {
 
         this.sky = createSky(u, tier);
         this.addPart('sky', this.sky);
-        this.glass = createGlass(u, { count: this.capacity, bevel: tier.bevel });
+        yield 'textures and sky';
+        this.glass = yield* createGlassSteps(u, { count: this.capacity, bevel: tier.bevel });
         this.addPart('glass', this.glass);
+        yield 'glass';
         this.stars = createStreakField(u, { count: tier.stars, kind: 'stars', seed: this.seed + 11 });
         this.addPart('stars', this.stars);
         this.motes = createStreakField(u, { count: tier.motes, kind: 'motes', seed: this.seed + 23 });

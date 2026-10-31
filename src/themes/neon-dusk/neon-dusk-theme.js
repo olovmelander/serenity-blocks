@@ -34,6 +34,7 @@ import {
     NeonDuskPost,
     createPassThroughPipeline,
 } from './neon-dusk-post.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const LAYOUT_POLL_MS = 1000;
 const LAYOUT_DEBOUNCE_MS = 150;
@@ -152,12 +153,20 @@ export default class NeonDuskTheme extends BaseTheme {
 
         const ready = await this.initRenderer(container, ownerGeneration);
         if (!ready) return;
+        const isCurrent = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
 
-        this.world = new NeonDuskWorld({
+        const world = new NeonDuskWorld({
             scene: this.scene,
             quality: this.currentQuality,
             random: () => this.random(),
-        }).build();
+        });
+        // The ranges in slices and the parts with a breath between (shared/build-steps.js). The
+        // theme owns the world once it is whole; a build that throws half-way, or a start
+        // stopped meanwhile, leaves it disposed.
+        if (!(await buildWorldBreathing(world, isCurrent))) return;
+        this.world = world;
         this.world.bindCamera(this.camera);
         this.world.setLevel(this.level, { silent: true });
         this.world.seek(this.time);

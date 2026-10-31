@@ -17,7 +17,9 @@ import { centroidVarying } from '../shared/centroid-varying.js';
 import {
     FOREST_FEATURE_TREES, FOREST_GROVE_CEILING, createForestVisibilityTest, layoutForestGrove,
 } from './forest-composition.js';
+import { FOREST_SLICE_MS, forestSlice } from './forest-slices.js';
 import { forestGroundHeight } from './forest-terrain.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -67,14 +69,24 @@ export class ForestTrees {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The trees as steps for the world's breathing build, a time slice a step: the bark, then the
+     * sprays tree by tree and their draws (one 12-23 ms step of a first visit before).
+     */
+    * buildSteps() {
+        const clock = stepClock(FOREST_SLICE_MS);
         const grove = layoutForestGrove(this.rng, FOREST_GROVE_CEILING).slice(0, this.tier.groveTrees);
         this.placements = [...FOREST_FEATURE_TREES, ...grove]
             .filter((tree) => this.assets.trees[tree.asset])
             .map((tree) => ({ ...tree, y: forestGroundHeight(tree.x, tree.z) - 0.05 }));
         this.stats.trees = this.placements.length;
         this.buildBark();
-        this.buildFoliage();
-        return this;
+        yield* forestSlice(clock, 'bark');
+        yield* this.foliageSteps(clock);
     }
 
     // -- bark ---------------------------------------------------------------------------
@@ -276,6 +288,11 @@ export class ForestTrees {
     }
 
     buildFoliage() {
+        drainSteps(this.foliageSteps(stepClock(FOREST_SLICE_MS)));
+    }
+
+    /** The sprays of every tree, a time slice a step, then a draw for each kind and variant. */
+    * foliageSteps(clock) {
         const visible = createForestVisibilityTest();
         const buckets = new Map();
         const position = new THREE.Vector3();
@@ -285,14 +302,16 @@ export class ForestTrees {
         const scale = new THREE.Vector3();
         const matrix = new THREE.Matrix4();
         const { variants } = this.assets.foliage;
-        this.placements.forEach((tree, treeIndex) => {
+        for (let treeIndex = 0; treeIndex < this.placements.length; treeIndex += 1) {
+            const tree = this.placements[treeIndex];
             const asset = this.assets.trees[tree.asset];
             const { sites } = asset;
-            if (!asset.foliage || !sites.count) return;
+            if (!asset.foliage || !sites.count) continue;
             const keep = Math.min(1, this.tier.foliage * (tree.far ? 0.62 : 1));
             const grow = (1 / keep) ** 0.36;
             yaw.setFromAxisAngle(UP, tree.yaw);
             for (let i = 0; i < sites.count; i += 1) {
+                if ((i & 255) === 0) yield* forestSlice(clock, 'foliage');
                 if (keepHash(i, treeIndex + 1) <= keep) {
                     position.fromArray(sites.position, i * 3).multiplyScalar(tree.scale).applyQuaternion(yaw);
                     position.x += tree.x;
@@ -322,8 +341,9 @@ export class ForestTrees {
                     } else this.stats.culledSprays += 1;
                 }
             }
-        });
-        buckets.forEach((bucket, key) => {
+        }
+        for (const [key, bucket] of buckets) {
+            yield* forestSlice(clock, 'foliage');
             const geometry = this.assets.foliage.meshes[key];
             if (!geometry) throw new Error(`[Forest] Foliage mesh "${key}" is missing from the asset pack.`);
             const count = bucket.matrices.length / 16;
@@ -345,7 +365,7 @@ export class ForestTrees {
             this.group.add(mesh);
             this.stats.sprays += count;
             this.stats.foliageTriangles += (geometry.index.count / 3) * count;
-        });
+        }
     }
 
     /** Points among the lower boughs of the near trees, where fireflies like to hang. */

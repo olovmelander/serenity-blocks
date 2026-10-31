@@ -2,7 +2,9 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
-import { loadBitmapTexture, loadDecodedTexture, loadTextureDecoded } from '../../src/themes/shared/decoded-texture.js';
+import {
+    loadBitmapTexture, loadDecodedTexture, loadTextureDecoded, uploadTextureNow,
+} from '../../src/themes/shared/decoded-texture.js';
 
 /**
  * Images decoded off the main thread (src/themes/shared/decoded-texture.js): three's upload of an
@@ -91,5 +93,34 @@ describe('loadTextureDecoded', () => {
         expect(load).toHaveBeenCalledWith('nebula.png', expect.any(Function));
         expect(old.image).toBe(image);
         expect(old.flipY).toBe(true); // three flips it at upload, as before
+    });
+});
+
+describe('uploads in the task the image lands in', () => {
+    it('calls onImage once the image is in, on either path', async () => {
+        const { bitmap } = stubDecoder();
+        const seen = [];
+        const texture = loadTextureDecoded('moon.jpg', { onImage: (t) => seen.push(t.image) });
+        expect(seen).toEqual([]);
+        await flush();
+        expect(seen).toEqual([bitmap]);
+        expect(texture.image).toBe(bitmap);
+
+        vi.stubGlobal('createImageBitmap', undefined);
+        const image = { width: 2, height: 2 };
+        vi.spyOn(THREE.ImageLoader.prototype, 'load').mockImplementation((url, onLoad) => onLoad(image));
+        const old = [];
+        loadTextureDecoded('nebula.png', { onImage: (t) => old.push(t.image) });
+        await flush();
+        expect(old).toEqual([image]);
+    });
+
+    it('uploadTextureNow hands the texture to initTexture, and shrugs off a renderer that cannot', () => {
+        const texture = new THREE.Texture();
+        const renderer = { initTexture: vi.fn() };
+        uploadTextureNow(renderer, texture);
+        expect(renderer.initTexture).toHaveBeenCalledWith(texture);
+        expect(() => uploadTextureNow({ initTexture: () => { throw new Error('not initialised'); } }, texture)).not.toThrow();
+        expect(() => uploadTextureNow(null, texture)).not.toThrow();
     });
 });
