@@ -3,7 +3,7 @@ import { getLevelById, LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.
 import { resolveScenario, supportsScenario } from '../../scripts/odyssey-benchmark/scenarios.mjs';
 
 describe('isolated Odyssey balance experiments', () => {
-    it('keeps the historical orb59 scenario on Neon District wherever Electric Apex sits', () => {
+    it('keeps the historical orb59 scenario on Neon District wherever Rainlit Streets sits', () => {
         const original = getLevelById(59);
         expect(original.theme.primary).toBe('neon-district');
         const before = structuredClone(original);

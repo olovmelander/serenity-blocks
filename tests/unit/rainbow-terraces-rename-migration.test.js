@@ -127,10 +127,11 @@ describe('Sky Children was renamed Rainbow Terraces: what a player already has n
         const orb = LEVEL_CONFIGS.find((level) => level.theme?.primary === 'rainbow-terraces');
         expect(orb).toBeDefined();
         // Orb 34 of the shipped campaign (authored as 33; chapter 5 ends on it): the chapter's rival
-        // duel, whose briefing is written from the campaign rules and opens with the orb's name.
+        // duel, whose briefing shows the terraces and names the rival who waits there.
         expect(orb.id).toBe(34);
         expect(orb.name).toBe('Where Color Falls');
-        expect(orb.metadata.description).toMatch(/^Where Color Falls: /);
+        expect(orb.metadata.description).toMatch(/terraces/);
+        expect(orb.metadata.description).toMatch(/Zephyr/);
         expect(JSON.stringify(LEVEL_CONFIGS)).not.toMatch(/sky-children|Sky Children|Ethereal Heights/);
     });
 });

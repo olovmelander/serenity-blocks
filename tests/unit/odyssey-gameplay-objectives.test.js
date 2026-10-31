@@ -308,7 +308,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
     });
 
-    it('accepts the Electric Apex goal at 200 seconds and preserves its showcase beyond the deadline', async () => {
+    it('accepts the Rainlit Streets goal at 200 seconds and preserves its showcase beyond the deadline', async () => {
         const harness = createMode(getLevelById(59));
         const { mode, session } = harness;
         mode.levelStartTime = 1000000;

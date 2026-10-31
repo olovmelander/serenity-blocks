@@ -74,11 +74,11 @@ describe('Odyssey campaign objectives', () => {
             const positions = levels.map((level) => level.pathPosition);
             expect([...positions].sort((left, right) => left - right)).toEqual(positions);
         }
-        expect(getLevelById(4).name).toBe('Crystal Cavern');
+        expect(getLevelById(4).name).toBe('The Living Grotto');
         expect(getLevelById(5).name).toBe('Molten Flow');
         expect(getLevelById(55).name).toBe("Indra's Net");
-        expect(getLevelById(59).name).toBe('Electric Apex');
-        expect(getLevelById(60).name).toBe('Electric Nights');
+        expect(getLevelById(59).name).toBe('Rainlit Streets');
+        expect(getLevelById(60).name).toBe('Last Light');
         expect(getLevelById(5).theme.primary).toBe('pyrestorm');
         expect(getLevelById(4).theme.primary).toBe('bioluminescence');
     });
@@ -149,8 +149,11 @@ describe('Odyssey campaign objectives', () => {
         expect(getLevelById(37).metadata.tip).not.toContain('ms');
         expect(getLevelById(51).metadata.tip).not.toContain('ms');
         for (const id of DUEL_IDS) {
-            expect(getLevelById(id).metadata.description).toContain('3 knockouts');
-            expect(getLevelById(id).metadata.tip).toContain('only resets the round');
+            // The goal line carries the knockouts; the card shows the world and who the rival is.
+            const duel = getLevelById(id);
+            expect(duel.victory.primary.description).toContain(`${ODYSSEY_DUEL_KNOCKOUTS} knockouts`);
+            expect(duel.metadata.description).toContain(duel.mechanics.versus.botName);
+            expect(duel.metadata.tip).not.toMatch(/stars?\b/);
         }
     });
 });

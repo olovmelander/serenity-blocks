@@ -49,9 +49,9 @@ describe('sunfall-rename-migration', () => {
         expect(getThemeMusic('moonrise-summit')?.trackKey).toBe('Sunfall');
     });
 
-    it('updates Odyssey Garden Under Stone and Cloud Walker levels and Chapter 4 to sunfall', () => {
+    it('updates Odyssey Garden Under Stone and Lantern Sky levels and Chapter 4 to sunfall', () => {
         const gardenLevel = LEVEL_CONFIGS.find((l) => l.name === 'Garden Under Stone');
-        const cloudWalker = LEVEL_CONFIGS.find((l) => l.name === 'Cloud Walker');
+        const cloudWalker = LEVEL_CONFIGS.find((l) => l.name === 'Lantern Sky');
         expect(gardenLevel).toBeDefined();
         expect(gardenLevel.theme.primary).toBe('sunfall');
         expect(cloudWalker).toBeDefined();

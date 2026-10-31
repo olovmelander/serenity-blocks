@@ -249,7 +249,7 @@ describe('Legal construction on authored boards', () => {
 
     it('preserves ordinary-primary precedence when the drained board reaches the Infinity roof', async () => {
         vi.spyOn(BenchmarkBot.prototype, 'plan').mockImplementation(legalLeftStack);
-        // Isolate the simultaneous-boundary order, leaving Crystal Cavern's (orb 4) board,
+        // Isolate the simultaneous-boundary order, leaving The Living Grotto's (orb 4) board,
         // physics and normal finish policy intact. No score/board cells are injected.
         vi.spyOn(GameplayHybridEngine.prototype, 'checkVictory').mockImplementation(function reachedRoof() {
             return checkInfinityGameOver(this.gameState);

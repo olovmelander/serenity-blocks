@@ -140,8 +140,8 @@ describe('Kaleidosonic took the Singing Bowl orb: what a player already has now 
         });
         expect(orb.name).toBe('Indra\'s Net');
         expect(JSON.stringify(LEVEL_CONFIGS)).not.toMatch(/Recursive Infinity/);
-        expect(orb.metadata.description).toBe('The final abstract challenge. A kaleidoscopic temple of folded light '
-            + 'rings with every piece you lock, and folds deeper with every cascade you build.');
+        expect(orb.metadata.description).toBe('A temple of folded light folds deeper with every cascade you make. '
+            + 'Reach the goal, then play on for stars.');
         expect(LEVEL_CONFIGS.some((level) => level.theme?.primary === OLD_THEME)).toBe(false);
         expect(LEVEL_CONFIGS.some((level) => (level.theme?.overlays || []).includes(OLD_THEME))).toBe(false);
         expect(JSON.stringify(LEVEL_CONFIGS)).not.toMatch(/singing-bowl|Singing Bowl|Reflected geometric branches/);

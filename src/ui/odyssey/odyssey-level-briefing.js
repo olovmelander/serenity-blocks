@@ -2,8 +2,11 @@ import { formatOdysseyMapObjective } from './objective-copy.js';
 
 const CASCADE_RULE = 'A cascade counts when falling blocks clear again.';
 const CHAIN_RULE = 'One locked piece must trigger the whole chain; the first clear is wave one.';
-const ATTACK_RULE = 'Clear lines to send attacks; topping out the rival with an attack scores a knockout.';
-const RESET_RULE = 'Both wells reset after a knockout.';
+// A clear sends one row fewer than the lines one piece cleared, cascade waves included
+// (src/core/garbage.js), so a single sends nothing; any top-out ends the round.
+const ATTACK_RULE = 'Clear two or more lines with one piece to send attack rows. '
+    + 'Topping out the rival with an attack scores a knockout.';
+const RESET_RULE = 'Both wells reset after every top-out.';
 const MULTIPLIER_RULE = 'Clears on consecutive pieces raise your score multiplier.';
 const MIRROR_RULE = 'Left and right controls are reversed.';
 

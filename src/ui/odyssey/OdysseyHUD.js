@@ -556,8 +556,9 @@ export class OdysseyHUD {
         this._duelShown = null; // a new duel writes its whole panel on the first update
         this.container.classList.add('is-duel');
         this.objectiveDisplay.textContent = formatOdysseyDuelGoal(botName, this.duel.targetFrags);
-        this.guideText.textContent = `Clear lines to send attacks. Topping out ${botName} with an attack scores a knockout. `
-            + 'Both wells reset after a knockout; the first to the goal wins.';
+        this.guideText.textContent = 'Clear two or more lines with one piece to send attack rows. '
+            + `Topping out ${botName} with an attack scores a knockout. `
+            + `Both wells reset after every top-out; the first to ${this.duel.targetFrags} knockouts wins.`;
         this.guide.hidden = false;
 
         if (!this.duelScoreboard) {

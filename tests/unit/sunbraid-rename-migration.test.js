@@ -143,8 +143,8 @@ describe('Sunbraid took the Rainy Window orb: what a player already has now mean
         expect(orb.role).toBe('test');
         expect(orb.modifiers.active).toEqual(['time-attack']);
         expect(orb.victory.primary.type).toBe('lines');
-        expect(orb.metadata.description).toMatch(/Three coloured suns/);
-        expect(orb.metadata.description).toMatch(/every shadow takes a colour/);
+        expect(orb.metadata.description).toMatch(/Three colored suns/);
+        expect(orb.metadata.description).toMatch(/every shadow takes a color/);
         expect(orb.metadata.description).not.toMatch(/storm|rain|window/i);
         expect(orb.metadata.tip).toMatch(/suns/);
         expect(orb.metadata.tip).not.toMatch(/storm|rain/i);

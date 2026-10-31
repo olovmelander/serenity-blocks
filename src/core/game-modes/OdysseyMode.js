@@ -138,6 +138,7 @@ import {
     waitForAnimationFrames,
 } from '../../ui/odyssey/odyssey-cover-paint.js';
 import { coverOdysseyMapWith } from '../../ui/odyssey/odyssey-map-cover.js';
+import { shortOdysseyChapterName } from '../../ui/odyssey/odyssey-navigator-model.js';
 import {
     beginOdysseyGameplayReveal,
     finishOdysseyGameplayUiReveal,
@@ -3415,7 +3416,9 @@ export class OdysseyMode extends BaseGameMode {
         const subtitle = document.getElementById('odyssey-arrival-subtitle');
 
         if (kicker) kicker.textContent = `Chapter ${chapterId}`;
-        if (title) title.textContent = profile.name || chapter.name;
+        // The chapter's short name, as the navigator, records and menus name it (the profile's
+        // own name is a renderer key: "Sky & Drift", "Urban Encore").
+        if (title) title.textContent = shortOdysseyChapterName(chapter.name) || profile.name || '';
         if (subtitle) subtitle.textContent = chapter.subtitle || '';
 
         if (this.chapterArrivalCueTimer) {

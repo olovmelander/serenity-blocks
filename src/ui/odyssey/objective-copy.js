@@ -24,11 +24,49 @@ export function formatOdysseyMapObjective(primary) {
     }
 }
 
+function countOf(amount, singular, plural = `${singular}s`) {
+    return `${amount.toLocaleString()} ${amount === 1 ? singular : plural}`;
+}
+
+/** A bonus time limit in words: "90 seconds" reads as "1:30", whole minutes as "2 minutes". */
+function formatOdysseyBonusDuration(seconds) {
+    if (seconds < 60) return countOf(seconds, 'second');
+    if (seconds % 60 === 0) return countOf(seconds / 60, 'minute');
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+/**
+ * A bonus goal as the HUD checklist and the star lines name it. Written from the goal's own
+ * type and number, so every orb words the same goal the same way and a retuned number can never
+ * leave stale words behind; the authored `description` only names a type this does not know.
+ */
 export function formatOdysseyBonusObjective(bonus) {
-    if (bonus.type === 'combo' || bonus.type === 'max-cascade-depth') {
+    const target = Number(bonus?.target);
+    const hasTarget = Number.isFinite(target) && target > 0;
+    switch (bonus?.type) {
+    case 'combo':
+    case 'max-cascade-depth':
         return formatOdysseyChainGoal(bonus.target);
+    case 'tetris-count':
+        if (hasTarget) return `Clear ${countOf(target, 'Quad')}`;
+        break;
+    case 'cascade':
+        if (hasTarget) return `Trigger ${countOf(target, 'cascade')}`;
+        break;
+    case 'time':
+        if (hasTarget) return `Finish in under ${formatOdysseyBonusDuration(target)}`;
+        break;
+    case 'pieces':
+        if (hasTarget) return `Finish within ${countOf(target, 'piece')}`;
+        break;
+    case 'no-singles':
+        return 'No single-line clears';
+    case 'no-top-out':
+        return 'Never top out';
+    default:
+        break;
     }
-    return bonus.description;
+    return bonus?.description || '';
 }
 
 export function getOdysseyLevelGuide(level) {
@@ -136,13 +174,13 @@ export function formatOdysseyStarCondition(condition, starIndex = 0, bonuses = [
             parts.push(starIndex === 0 ? 'Clear the orb' : `${value.toLocaleString()}+ pts`);
             break;
         case 'cascades':
-            parts.push(starIndex === 0 ? 'Clear the orb' : `${value}+ cascades`);
+            parts.push(starIndex === 0 ? 'Clear the orb' : formatOdysseyAtLeast(value, 'cascade'));
             break;
         case 'time':
             parts.push(formatOdysseyUnderTime(value));
             break;
         case 'tetrises':
-            parts.push(`${value}+ quads`);
+            parts.push(formatOdysseyAtLeast(value, 'Quad'));
             break;
         case 'maxCascadeDepth':
         case 'combo':
@@ -151,11 +189,13 @@ export function formatOdysseyStarCondition(condition, starIndex = 0, bonuses = [
                 hasChainRequirement = true;
             }
             break;
-        case 'bonuses':
-            parts.push(formatOdysseyStarBonuses(value, bonuses));
+        case 'bonuses': {
+            const text = formatOdysseyStarBonuses(value, bonuses, condition);
+            if (text) parts.push(text);
             break;
+        }
         case 'frags':
-            parts.push(starIndex === 0 ? 'Win the match' : `Win ${value} knockouts`);
+            parts.push('Win the match');
             break;
         case 'maxDeaths':
             parts.push(value === 0 ? 'No top-outs' : `At most ${value} top-out${value === 1 ? '' : 's'}`);
@@ -168,12 +208,42 @@ export function formatOdysseyStarCondition(condition, starIndex = 0, bonuses = [
     return parts.join(' + ') || '...';
 }
 
-function formatOdysseyStarBonuses(count, bonuses) {
-    const names = (Array.isArray(bonuses) ? bonuses : []).map(formatOdysseyBonusObjective).filter(Boolean);
-    if (names.length === 0 || count > names.length) return count === 1 ? 'Get bonus' : `${count} bonuses`;
-    if (names.length === 1) return names[0];
-    if (count === names.length) return names.join(' and ');
-    return `${count === 1 ? 'One' : count} of: ${names.join(', ')}`;
+/**
+ * True when the star's other requirements already guarantee this bonus: a star that asks for
+ * 6+ Quads has earned "Clear 6 Quads" by the time it is met, so naming both says it twice.
+ */
+function odysseyBonusImpliedByCondition(bonus, condition = {}) {
+    const target = Number(bonus?.target);
+    if (!Number.isFinite(target)) return false;
+    switch (bonus?.type) {
+    case 'tetris-count': return Number(condition.tetrises) >= target;
+    case 'cascade': return Number(condition.cascades) >= target;
+    case 'combo':
+    case 'max-cascade-depth': return getOdysseyChainTarget(condition) >= target;
+    case 'time': return Number.isFinite(condition.time) && condition.time <= target;
+    default: return false;
+    }
+}
+
+/**
+ * The bonuses a star asks for, by name. Bonuses its other requirements already guarantee count
+ * toward the number but are not named again; when they cover it, the star asks for nothing more.
+ */
+function formatOdysseyStarBonuses(count, bonuses, condition) {
+    const list = Array.isArray(bonuses) ? bonuses : [];
+    const implied = list.filter((bonus) => odysseyBonusImpliedByCondition(bonus, condition));
+    const needed = count - implied.length;
+    if (list.length > 0 && count <= list.length && needed <= 0) return '';
+    const names = list.filter((bonus) => !implied.includes(bonus))
+        .map(formatOdysseyBonusObjective).filter(Boolean);
+    if (names.length === 0 || needed > names.length) return count === 1 ? 'Get bonus' : `${count} bonuses`;
+    if (needed === names.length) return names.join(' and ');
+    return `${needed === 1 ? 'One' : needed} of: ${names.join(', ')}`;
+}
+
+/** "1 Quad", "5+ Quads": a star's count of something, at least that many. */
+function formatOdysseyAtLeast(value, singular) {
+    return value === 1 ? `1 ${singular}` : `${value.toLocaleString()}+ ${singular}s`;
 }
 
 function formatOdysseyUnderTime(seconds) {
@@ -219,6 +289,24 @@ function readOdysseyStarMetrics(results = {}) {
     };
 }
 
+/**
+ * Whether a star's named bonuses were earned. With the per-bonus results the attempt reports,
+ * only the bonuses the star names count (a guaranteed one is judged by its own goal); without
+ * them, the earned total against the star's number.
+ */
+function odysseyStarBonusesMet(count, bonuses, condition, results, metrics) {
+    const flags = results?.bonuses;
+    if (Array.isArray(flags) && flags.length === bonuses.length) {
+        const implied = bonuses.map((bonus) => odysseyBonusImpliedByCondition(bonus, condition));
+        const needed = count - implied.filter(Boolean).length;
+        const earned = flags.filter((flag, index) => (
+            !implied[index] && (flag === true || flag?.earned === true)
+        )).length;
+        return earned >= needed;
+    }
+    return odysseyStarPartMet('bonuses', count, metrics);
+}
+
 /** true or false against the condition, or null when the attempt did not report the metric. */
 function odysseyStarPartMet(key, value, metrics) {
     const actual = metrics[key];
@@ -240,7 +328,7 @@ export function formatOdysseyStarActual(key, metrics) {
     case 'cascades': return plural(actual, 'cascade');
     case 'maxCascadeDepth':
     case 'combo': return `${actual}-wave chain`;
-    case 'tetrises': return plural(actual, 'quad');
+    case 'tetrises': return plural(actual, 'Quad');
     case 'time': return formatOdysseyClock(actual);
     case 'bonuses': return plural(actual, 'bonus', 'bonuses');
     case 'frags': return plural(actual, 'knockout');
@@ -271,6 +359,17 @@ export function describeOdysseyStarOutcome(level, results = {}) {
                     label: `${target}-wave chain`,
                     met: odysseyStarPartMet('maxCascadeDepth', target, metrics),
                     actual: formatOdysseyStarActual('maxCascadeDepth', metrics),
+                }];
+            }
+            if (key === 'bonuses') {
+                // Named as the star line names them; nothing to add when the star's other goals
+                // already guarantee its bonuses. The label says what is needed, so no "you:" count.
+                const bonuses = level?.victory?.bonuses || [];
+                const label = formatOdysseyStarBonuses(value, bonuses, condition);
+                if (!label) return [];
+                const met = odysseyStarBonusesMet(value, bonuses, condition, results, metrics);
+                return [{
+                    key, value, label, met, actual: '',
                 }];
             }
             return [{

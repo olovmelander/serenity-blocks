@@ -252,7 +252,7 @@ describe('Odyssey orb-level objective presentation', () => {
     it('shows higher line targets instead of silently dropping them from star requirements', () => {
         const hud = hudFixture();
         expect(hud._formatStarCondition({ lines: 25, time: 150 }, 1)).toBe('25 lines + Under 2:30');
-        expect(hud._formatStarCondition({ frags: 7, maxDeaths: 0 }, 2)).toBe('Win 7 knockouts + No top-outs');
+        expect(hud._formatStarCondition({ frags: 7, maxDeaths: 0 }, 2)).toBe('Win the match + No top-outs');
         expect(hud._formatStarCondition({ maxDeaths: 1 }, 2)).toBe('At most 1 top-out');
     });
 

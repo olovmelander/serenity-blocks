@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import { LEVEL_CONFIGS, getLevelById } from '../../src/core/odyssey/data/levels.js';
 import {
-    describeOdysseyStarOutcome, formatOdysseyNextStar, formatOdysseyStarCondition,
+    describeOdysseyStarOutcome, formatOdysseyBonusObjective, formatOdysseyNextStar, formatOdysseyStarCondition,
 } from '../../src/ui/odyssey/objective-copy.js';
 import { createOdysseyStarNotes } from '../../src/ui/odyssey/odyssey-star-notes.js';
 import { describeOdysseyOrbKind, renderOdysseyLevelPanel } from '../../src/ui/odyssey/odyssey-level-panel.js';
@@ -54,13 +54,14 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
         expect(outcome.stars).toBe(2);
         expect(outcome.tiers.map((tier) => tier.earned)).toEqual([true, true, false]);
         expect(outcome.tiers.map((tier) => tier.label)).toEqual([
-            'Clear the orb', '20 lines + Under 2:30', '20 lines + Under 2 min + Clear no single lines',
+            'Clear the orb', '20 lines + Under 2:30', '20 lines + Under 2 min + No single-line clears',
         ]);
         expect(outcome.next.tier).toBe('three');
+        // A named bonus says what it needs, so it carries no "you:" count.
         expect(outcome.next.missed.map((part) => [part.key, part.actual])).toEqual([
-            ['time', '2:28'], ['bonuses', '0 bonuses'],
+            ['time', '2:28'], ['bonuses', ''],
         ]);
-        expect(formatOdysseyNextStar(outcome)).toBe('Next star: Under 2 min (you: 2:28) · Clear no single lines (you: 0 bonuses)');
+        expect(formatOdysseyNextStar(outcome)).toBe('Next star: Under 2 min (you: 2:28) · No single-line clears');
     });
 
     it('says so when every star is earned, and never invents a shortfall from numbers it was not given', () => {
@@ -95,7 +96,7 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
             stars: 2, duel: { playerFrags: 3, botFrags: 1, deaths: 1 },
         });
         expect(outcome.tiers.map((tier) => tier.label)).toEqual([
-            'Win the match', 'Win 3 knockouts + At most 1 top-out', 'Win 3 knockouts + No top-outs',
+            'Win the match', 'Win the match + At most 1 top-out', 'Win the match + No top-outs',
         ]);
         expect(formatOdysseyNextStar(outcome)).toBe('Next star: No top-outs (you: 1 top-out)');
     });
@@ -104,7 +105,7 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
         const outcome = describeOdysseyStarOutcome(getLevelById(49), {
             stars: 1, score: 40000, tetrises: 6, maxCascadeDepth: 2,
         });
-        expect(formatOdysseyNextStar(outcome)).toBe('Next star: 8+ quads (you: 6 quads)');
+        expect(formatOdysseyNextStar(outcome)).toBe('Next star: 8+ Quads (you: 6 Quads)');
     });
 
     it('describes every campaign tier with a readable label and no duplicated requirement', () => {
@@ -125,6 +126,64 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
                 expect(labels.every(Boolean)).toBe(true);
             }
         }
+    });
+});
+
+describe('Odyssey bonus goals and the stars that ask for them', () => {
+    it('names each bonus goal from its own numbers, the same way on every orb', () => {
+        expect(formatOdysseyBonusObjective({ type: 'tetris-count', target: 1, description: 'stale' })).toBe('Clear 1 Quad');
+        expect(formatOdysseyBonusObjective({ type: 'tetris-count', target: 6 })).toBe('Clear 6 Quads');
+        expect(formatOdysseyBonusObjective({ type: 'cascade', target: 8 })).toBe('Trigger 8 cascades');
+        expect(formatOdysseyBonusObjective({ type: 'no-singles', description: 'Clear no single lines' }))
+            .toBe('No single-line clears');
+        expect(formatOdysseyBonusObjective({ type: 'time', target: 45 })).toBe('Finish in under 45 seconds');
+        expect(formatOdysseyBonusObjective({ type: 'time', target: 60 })).toBe('Finish in under 1 minute');
+        expect(formatOdysseyBonusObjective({ type: 'time', target: 90 })).toBe('Finish in under 1:30');
+        expect(formatOdysseyBonusObjective({ type: 'time', target: 120 })).toBe('Finish in under 2 minutes');
+        expect(formatOdysseyBonusObjective({ type: 'max-cascade-depth', target: 4 }))
+            .toBe('Trigger a chain of at least 4 waves');
+        expect(formatOdysseyBonusObjective({ type: 'no-top-out' })).toBe('Never top out');
+        expect(formatOdysseyBonusObjective({ type: 'pieces', target: 80 })).toBe('Finish within 80 pieces');
+        expect(formatOdysseyBonusObjective({ type: 'unknown', description: 'Authored words' })).toBe('Authored words');
+    });
+
+    it('never names a bonus the star\'s other goals already guarantee', () => {
+        const quadBonus = [{ type: 'no-singles' }, { type: 'tetris-count', target: 6 }];
+        expect(formatOdysseyStarCondition({ lines: 45, tetrises: 6, bonuses: 2 }, 2, quadBonus))
+            .toBe('45 lines + 6+ Quads + No single-line clears');
+        const cascadeBonus = [{ type: 'cascade', target: 3 }, { type: 'no-singles' }];
+        expect(formatOdysseyStarCondition({ lines: 40, cascades: 3, bonuses: 1 }, 2, cascadeBonus))
+            .toBe('40 lines + 3+ cascades');
+        expect(formatOdysseyStarCondition({ lines: 40, cascades: 2, bonuses: 1 }, 2, cascadeBonus))
+            .toBe('40 lines + 2+ cascades + One of: Trigger 3 cascades, No single-line clears');
+        expect(formatOdysseyStarCondition({ lines: 20, tetrises: 1 }, 1)).toBe('20 lines + 1 Quad');
+    });
+
+    it('explains the next star from the goals it names, judging each bonus by its own result', () => {
+        const level = {
+            stars: {
+                one: { lines: 45 },
+                two: { lines: 45, tetrises: 4 },
+                three: { lines: 45, tetrises: 6, bonuses: 2 },
+            },
+            victory: { bonuses: [{ type: 'no-singles' }, { type: 'tetris-count', target: 6 }] },
+        };
+        // No singles were cleared; the missing piece is the Quads, which its own goal reports.
+        const short = describeOdysseyStarOutcome(level, {
+            stars: 2, lines: 45, tetrises: 4, bonuses: [true, false],
+        });
+        expect(short.next.missed.map((part) => part.key)).toEqual(['tetrises']);
+        expect(formatOdysseyNextStar(short)).toBe('Next star: 6+ Quads (you: 4 Quads)');
+        const singles = describeOdysseyStarOutcome(level, {
+            stars: 2, lines: 45, tetrises: 6, bonuses: [false, true],
+        });
+        expect(formatOdysseyNextStar(singles)).toBe('Next star: No single-line clears');
+        const guaranteed = describeOdysseyStarOutcome({
+            stars: { one: { lines: 40 }, two: { lines: 40, cascades: 3, bonuses: 1 } },
+            victory: { bonuses: [{ type: 'cascade', target: 3 }, { type: 'no-singles' }] },
+        }, { stars: 1, lines: 40, cascades: 2, bonuses: [false, false] });
+        expect(guaranteed.next.parts.map((part) => part.key)).toEqual(['lines', 'cascades']);
+        expect(formatOdysseyNextStar(guaranteed)).toBe('Next star: 3+ cascades (you: 2 cascades)');
     });
 });
 
@@ -151,10 +210,10 @@ describe('Odyssey star notes list', () => {
         ]);
         expect(notes.list.children.map((item) => item.dataset.earned)).toEqual(['true', 'true', 'false', undefined]);
         expect(notes.list.children[0].ariaLabel).toBe('Clear the orb: earned');
-        expect(notes.list.children[2].ariaLabel).toBe('20 lines + Under 2 min + Clear no single lines: not earned');
-        expect(texts(notes.list.children[2])).toEqual(['·', '20 lines + Under 2 min + Clear no single lines']);
+        expect(notes.list.children[2].ariaLabel).toBe('20 lines + Under 2 min + No single-line clears: not earned');
+        expect(texts(notes.list.children[2])).toEqual(['·', '20 lines + Under 2 min + No single-line clears']);
         expect(notes.list.children[3].textContent)
-            .toBe('Next star: Under 2 min (you: 2:28) · Clear no single lines (you: 0 bonuses)');
+            .toBe('Next star: Under 2 min (you: 2:28) · No single-line clears');
         expect(notes.words).toHaveLength(4);
         expect(notes.readingWords).toEqual([notes.list.children[3].textContent]);
     });
@@ -201,7 +260,7 @@ describe('Odyssey map orb panel', () => {
         expect(doc.nodes.get('level-panel-stars').dataset.earned).toBe('false');
         expect(text('level-panel-goal')).toBe('Defeat Cinder · First to 3 knockouts');
         expect(goalTexts(doc.nodes.get('level-panel-star-goals'))).toEqual([
-            '1 ★ Win the match', '2 ★ Win 3 knockouts + At most 1 top-out', '3 ★ Win 3 knockouts + No top-outs',
+            '1 ★ Win the match', '2 ★ Win the match + At most 1 top-out', '3 ★ Win the match + No top-outs',
         ]);
         expect(text('level-panel-rules-label')).toBe('What changes here');
         expect(texts(doc.nodes.get('level-panel-rules')))
@@ -227,7 +286,7 @@ describe('Odyssey map orb panel', () => {
         expect(node('level-panel-stars').attributes['aria-label']).toBe('2 of 3 stars earned');
         expect(node('level-panel-goal').textContent).toBe('Clear 20 lines');
         expect(goalTexts(node('level-panel-star-goals'))).toEqual([
-            '1 ★ Clear the orb', '2 ★ 20 lines + Under 2:30', '3 ★ 20 lines + Under 2 min + Clear no single lines',
+            '1 ★ Clear the orb', '2 ★ 20 lines + Under 2:30', '3 ★ 20 lines + Under 2 min + No single-line clears',
         ]);
         expect(node('level-panel-rules-label').textContent).toBe('Rules');
         expect(texts(node('level-panel-rules'))).toEqual(getOdysseyLevelBriefing(level).rules);
