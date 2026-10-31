@@ -20,6 +20,9 @@ import {
     OCEAN_ROAM, roamAt, roamLane, stepRoamArrival,
 } from '../../src/rendering/odyssey/composition/odyssey-ocean-roam.js';
 import { WHALE_PASS_PAIR } from '../../src/rendering/odyssey/composition/odyssey-whale-pass.js';
+import {
+    oceanLifeDrawn, throughSurfaceShare,
+} from '../../src/rendering/odyssey/composition/odyssey-through-surface.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 
 const DT = 1 / 30;
@@ -71,7 +74,15 @@ describe("Act I's ocean animals (real camera, the board's clock)", () => {
                 camera.aspect = 16 / 9;
                 camera.updateProjectionMatrix();
                 const water = waterAt(p, camera.position.y);
-                const on = water.inChapter && water.submerged > 0.5 && water.life > 0.001;
+                roamAt(path, t, at);
+                const on = oceanLifeDrawn({
+                    ready: true,
+                    inChapter: water.inChapter,
+                    life: water.life,
+                    eyeY: camera.position.y,
+                    seaLevel: ODYSSEY_SEA_LEVEL,
+                    seen: throughSurfaceShare(camera.position, at, ODYSSEY_SEA_LEVEL),
+                });
                 if (!on) {
                     // The board resets it out of the water: it arrives afresh next time.
                     if (state.arrive !== undefined) ended = true;
@@ -79,7 +90,6 @@ describe("Act I's ocean animals (real camera, the board's clock)", () => {
                     continue;
                 }
                 const fade = stepRoamArrival(state, DT) * water.life;
-                roamAt(path, t, at);
                 if (fade <= 0.01) continue;
                 if (met === null) met = { p, distance: at.distanceTo(camera.position), fade };
                 if (fade > 0.9 && rig.inFrame(camera, at, 1)) company += DT;
@@ -94,5 +104,55 @@ describe("Act I's ocean animals (real camera, the board's clock)", () => {
             expect(company, `${name} in frame and arrived`).toBeGreaterThan(15);
             expect(ended).toBe(true);
         });
+    });
+
+    /**
+     * PASSED, NEVER SWITCHED OFF IN VIEW (2026-10-31, Olov: "the fishes pops away right in front of
+     * the camera, we need to wait until we have moved past them across the surface of the sea").
+     * The manta glides just under the surface ahead of orb 10, and the glide to orb 11 carries the
+     * eye up through the surface. Over that glide, from many clock phases and at several paces, no
+     * animal may stop being drawn while it is in frame and would still show (through the surface,
+     * once the eye is above it): it leaves by leaving the frame or by fading into the reflection.
+     */
+    it('carries every animal through the breach until the climb has passed it', () => {
+        const from = rig.parkOf(10);
+        const to = rig.parkOf(11);
+        const at = new THREE.Vector3();
+        let mantaSeenFromAbove = 0;
+        Object.entries(ROUTES).forEach(([name, path]) => {
+            for (let k = 0; k < 24; k += 1) {
+                for (const glideS of [1, 3]) {
+                    const t0 = (k / 24) * path.period;
+                    let wasDrawn = false;
+                    for (let t = 0; t <= glideS + 2; t += DT) {
+                        const p = from + ((to - from) * Math.min(1, t / glideS));
+                        const camera = rig.poseAt(p);
+                        camera.aspect = 16 / 9;
+                        camera.updateProjectionMatrix();
+                        const eye = camera.position;
+                        roamAt(path, t0 + t, at);
+                        const water = waterAt(p, eye.y);
+                        const seen = throughSurfaceShare(eye, at, ODYSSEY_SEA_LEVEL);
+                        const drawn = oceanLifeDrawn({
+                            ready: true,
+                            inChapter: water.inChapter,
+                            life: water.life,
+                            eyeY: eye.y,
+                            seaLevel: ODYSSEY_SEA_LEVEL,
+                            seen,
+                        });
+                        const inView = rig.inFrame(camera, at, 1.1);
+                        if (wasDrawn && !drawn) {
+                            expect(inView && seen > 0.02, `${name} switched off in view at p ${p.toFixed(4)}`)
+                                .toBe(false);
+                        }
+                        if (name === 'manta' && drawn && inView && eye.y > ODYSSEY_SEA_LEVEL) mantaSeenFromAbove += 1;
+                        wasDrawn = drawn;
+                    }
+                }
+            }
+        });
+        // The manta is still there under the surface once the eye has broken through it.
+        expect(mantaSeenFromAbove).toBeGreaterThan(0);
     });
 });

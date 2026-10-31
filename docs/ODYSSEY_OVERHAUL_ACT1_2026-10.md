@@ -391,3 +391,41 @@ past the rail through the middle of the climb, at times a third of the frame tal
 write their own fragment depth, so those draws lose early depth rejection; they are small and few.
 The sea life is now submitted from the boundary rather than from ~85 % steam density, about 1 s of
 drift earlier.
+
+## 10. Passed, never switched off: the breach (2026-10-31)
+
+Olov: *"We need to fix the pop away of the manta and fishes also, the fishes pops away right in
+front of the camera, we need to wait until we have moved past them across the surface of the
+sea."*
+
+**What the player saw.** The glide from orb 10 (eye ~16 u under the surface) to orb 11 carries the
+eye up through the surface. Two hard switches ended the sea's life on the way:
+- **The manta and whale shark** were switched off at `submerged > 0.5`, with the eye still ~5 u
+  under (p ~0.1346), while the manta glided in frame just under the surface ahead.
+- **The fish** were switched off the instant the eye left the water.
+- And the sea is opaque from above, so even kept on they would have vanished behind it.
+
+**What changed** (`composition/odyssey-through-surface.js`):
+- **Drawn while the eye is in the water**, all the way to the surface (`oceanLifeDrawn`; the whales
+  too).
+- **Seen through the surface from above.** An animal under the surface shows through the water to
+  an eye above it, as in clear sea:
+  - the sea's own reflectance (`waterFresnel` on a flat surface) takes a share;
+  - the water takes more of the rest the longer the path under the surface, tinted toward blue.
+  - The animal is drawn over the sea at that share. The visitors and the fish are transparent now,
+    drawn just after the sea (renderOrder 1.5 and 2), still writing depth. Under the water the
+    share is 1, so nothing there changes.
+- **Gone only when it can no longer be seen.** After the breach each animal stays while any of it
+  still shows through the surface (the CPU twin `throughSurfaceShare`). On the real glide they
+  leave by sliding out of the bottom of the frame as the eye rises, or by fading into the water as
+  the view of them grows grazing.
+- **The whales stay opaque.** They keep to the deep, behind the breach, and are never in frame
+  from above.
+
+The arrivals test now plays the glide from orb 10 to orb 11 (24 clock phases, two paces) and
+checks that no animal stops being drawn while it is in frame and would still show. On the old rule
+it fails ("manta switched off in view at p 0.1347").
+
+![Looking down at the manta from 14, 8 and 3 u above the surface (the last also shows a fish school and the whale shark)](images/odyssey-breach-2026-10-31/seen-through-surface.jpg)
+
+![The real glide from orb 10 to orb 11: the fish and the manta stay until they leave the frame](images/odyssey-breach-2026-10-31/breach-glide.jpg)

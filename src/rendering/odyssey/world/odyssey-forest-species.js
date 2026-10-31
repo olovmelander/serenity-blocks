@@ -124,9 +124,13 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         // their bright lime-chartreuse in the vividness pass (B pulled hard down: chroma in
         // foliage lives in the R:G ratio and the ABSENCE of blue).
         crown: Object.freeze([0.175, 0.270, 0.078]),
-        // A quieter ramp than the birch's: the reference greens vary too (yellow-green through
-        // deep olive), just without crossing into another colour family.
-        crownAlt: Object.freeze([0.105, 0.205, 0.062]),
+        // A quieter ramp than the birch's: the reference greens vary too, just without crossing
+        // into another colour family. ROUND THREE (2026-10-31): the far end was a darker shade of
+        // the SAME lime, so every lowland tree wore one hue and the forest read as a carpet. It is
+        // now a deeper, cooler blue-green: each tree lands somewhere between sunny lime and
+        // blue-green, the mosaic of near-hues a mixed broadleaf wood shows from above (still
+        // green, still in this species' family; the skew keeps lime the majority).
+        crownAlt: Object.freeze([0.085, 0.212, 0.098]),
         trunk: Object.freeze([0.098, 0.062, 0.040]),
         // 7, not 5: a Witness canopy is a countable cluster, and five lobes at this spread
         // leaves gaps that read as a lopsided ball rather than a crown.

@@ -6,9 +6,11 @@ import { describe, expect, it } from 'vitest';
 import {
     MORPH_END,
     buildOdysseyClipmap,
+    continuousMorphEndCeiling,
     morphEndCeiling,
     spacingForReach,
 } from './odyssey-clipmap.js';
+import { ODYSSEY_WORLD_QUALITY } from './odyssey-world-renderer.js';
 
 // The clipmap has two failure modes that produce NO error and NO warning: rings that crack
 // because the morph runs past the overlap band, and bounds computed from the fake vertex data
@@ -26,6 +28,15 @@ describe('the morph invariant', () => {
         [LANE_A, LANE_B].forEach((cfg) => {
             expect(MORPH_END).toBeLessThanOrEqual(morphEndCeiling(cfg.gridN, cfg.holeShrink));
         });
+    });
+
+    it('leaves the ground room for its CONTINUOUS morph on every quality tier', () => {
+        // The ground's morph is measured from the LOD centre (2026-10-31): it must finish
+        // 4 / gridN before the overlap band, which the 32-cell water and cloud lattices could not.
+        Object.values(ODYSSEY_WORLD_QUALITY).forEach((tier) => {
+            expect(MORPH_END).toBeLessThanOrEqual(continuousMorphEndCeiling(tier.gridN, tier.holeShrink));
+        });
+        expect(MORPH_END).toBeGreaterThan(continuousMorphEndCeiling(32, 1));
     });
 
     it('THROWS rather than cracking silently when a config violates it', () => {
@@ -182,10 +193,16 @@ describe('clipmap stage discipline in the water material', () => {
         const source = codeLines.join('\n');
         // The ripple FETCHES carry the coordinate since the topside glitter and shore foam began
         // reading the fetch's `.b` as well as its `.rg` — `rippleA/B` are now swizzles of them.
-        ['const rippleTexA = ', 'const rippleTexB = '].forEach((decl) => {
+        // Since ONE WATER (2026-10-31) both fetches come from the shared `waterRippleTex`, so the
+        // coordinate is the one the sea hands it, and both fetches must be that pair.
+        const seaFetch = codeLines.find((candidate) => candidate.includes('const seaRipples = '));
+        expect(seaFetch, 'const seaRipples = not found').toBeTruthy();
+        expect(seaFetch, 'the sea\'s ripple fetches must sample on positionWorld.xz')
+            .toContain('waterRippleTex(positionWorld.xz)');
+        [['const rippleTexA = ', 'seaRipples.a'], ['const rippleTexB = ', 'seaRipples.b']].forEach(([decl, from]) => {
             const line = codeLines.find((candidate) => candidate.includes(decl));
             expect(line, `${decl} not found`).toBeTruthy();
-            expect(line, `${decl}must sample on positionWorld.xz`).toContain('positionWorld.xz');
+            expect(line, `${decl}must be the sea's own fetch`).toContain(from);
         });
         // The whitecap break-up, and the crest term the underside's SSS rides. The break-up was
         // a per-pixel simplex on positionWorld; it is now the ripple fetches' scalar channel,

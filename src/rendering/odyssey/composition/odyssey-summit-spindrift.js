@@ -26,30 +26,62 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, fract, hash,
-    instanceIndex, length, mix, normalize, positionGeometry, smoothstep, sqrt, uniform, varying, vec2, vec3,
+    Fn, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, dot, exp, float, fract, hash,
+    instanceIndex, length, mix, normalize, positionGeometry, sin, smoothstep, sqrt, uniform, varying, vec2, vec3,
     vec4,
 } from 'three/tsl';
 import { noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 
 /** The plume. `wind` is the direction the snow travels (unit-ish; west-north-west, lifting). */
 export const ODYSSEY_SPINDRIFT = Object.freeze({
-    count: 96,
+    count: 140,
     wind: Object.freeze([-0.92, 0.07, -0.37]),
     /** How far a sheet rides before it is born again (world units), and how long that takes. */
-    run: 230,
-    life: 7.5,
+    run: 330,
+    life: 5.2,
     /** Sheet radius at birth and at the end of its run (world units). */
-    size: Object.freeze([8, 40]),
+    size: Object.freeze([7, 34]),
     /** How far a sheet is drawn out along the wind, and how thin across it (x its radius). */
     stretch: 2.6,
-    thin: 0.5,
+    thin: 0.30,
     /** The crest the snow leaves: spread round the summit point (horizontal, down). */
     crest: Object.freeze([30, 28]),
     /** Peak alpha of one sheet. */
-    alpha: 0.5,
+    alpha: 0.42,
     /** [fade in from, fully in by, fade out from, gone by] in JOURNEY progress. */
     window: Object.freeze([0.140, 0.160, 0.662, 0.692]),
+});
+
+/**
+ * THE BANNER PLUME (round three, 2026-10-31). Olov, at the summit: "i am not sure about the top
+ * peak wind, that must be possible to make more impressive? the wind at the top of the mountain."
+ * The streamers above read as a short smear on the tip, and the banner cloud the field parked in
+ * the summit's lee (two sculpted masses) read as two ordinary clouds beside it. A summit in a gale
+ * flies a BANNER: cloud condensing in the lee of the tip and torn away downwind in a continuous
+ * plume, dense where it leaves the peak, billowing and spreading as it goes, thinning to wisps
+ * hundreds of metres off (Everest, the Matterhorn). Soft billows, born a steady stream at the tip
+ * and carried off at gale speed; each grows, rolls in its own eddy and frays, sunlit white on its
+ * top and a cool sky-lit slate under it, as the field's Witness paint does.
+ */
+export const ODYSSEY_SUMMIT_PLUME = Object.freeze({
+    count: 230,
+    /** Life of one billow (s) and how far it travels in it (u): a gale of ~55 u/s. */
+    life: 17,
+    run: 940,
+    /** Radius at birth and at the end (u). */
+    size: Object.freeze([12, 92]),
+    /** Born in the tip's lee: how far downwind, how far round, how far below the tip (u). */
+    lee: Object.freeze([10, 16, 26]),
+    /** The plume's own spread at the end of its run: sideways and up/down (u). */
+    spread: Object.freeze([95, 55]),
+    /** The lee's sink over the run (u) and the lift just off the tip (u). */
+    sink: 70,
+    lift: 26,
+    /** Peak alpha of one billow, and over which part of its life it thins away. */
+    alpha: 0.72,
+    fade: Object.freeze([0.28, 0.92]),
+    /** How far a billow is drawn out along the wind (x its radius). */
+    stretch: 1.05,
 });
 
 const win = (w, p) => THREE.MathUtils.smoothstep(p, w[0], w[1]) * (1 - THREE.MathUtils.smoothstep(p, w[2], w[3]));
@@ -147,10 +179,97 @@ export function createSummitSpindrift({ summit, sunColour = null, hazeColour = n
         return vec4(lit, cover.mul(vSheet.z));
     })();
 
-    const mesh = new THREE.Mesh(geometry, material);
+    const streamers = new THREE.Mesh(geometry, material);
+    streamers.name = 'odyssey-summit-spindrift-streamers';
+    streamers.frustumCulled = false;
+    streamers.renderOrder = 12;
+
+    // ── THE BANNER PLUME (see ODYSSEY_SUMMIT_PLUME) ─────────────────────────────────────────
+    const P = ODYSSEY_SUMMIT_PLUME;
+    const plumeGeometry = new THREE.InstancedBufferGeometry();
+    plumeGeometry.index = plane.index;
+    plumeGeometry.setAttribute('position', plane.getAttribute('position'));
+    plumeGeometry.setAttribute('uv', plane.getAttribute('uv'));
+    plumeGeometry.instanceCount = P.count;
+    const plumeMaterial = new THREE.MeshBasicNodeMaterial();
+    plumeMaterial.name = 'OdysseySummitPlume';
+    plumeMaterial.transparent = true;
+    plumeMaterial.depthWrite = false;
+    plumeMaterial.fog = false;
+    const vBillow = varying(vec4(0.0), 'plumeBillow'); // x age, y seed, z alpha, w up across the sprite
+    plumeMaterial.vertexNode = Fn(() => {
+        const i = instanceIndex.toFloat();
+        const h1 = hash(i.add(41.5)).toVar();
+        const h2 = hash(i.add(733.5)).toVar();
+        const h3 = hash(i.add(1777.5)).toVar();
+        const h4 = hash(i.add(2903.5)).toVar();
+        const age = fract(uTime.div(P.life).add(i.add(h1.mul(0.9)).div(P.count))).toVar();
+        const side = vec3(-wind.z, 0, wind.x);
+        // Born in the tip's lee, a little below it, round the downwind side.
+        const birth = vec3(top.x, top.y, top.z)
+            .add(vec3(wind.x, 0, wind.z).mul(P.lee[0]))
+            .add(side.mul(h2.sub(0.5).mul(2 * P.lee[1])))
+            .add(vec3(0, h3.mul(P.lee[2]).negate(), 0));
+        // Torn off fast, then carried at the wind's pace; lifting just off the tip, then sinking
+        // into the lee; the plume spreading as it goes, each billow rolling in its own eddy.
+        const along = age.pow(0.82).mul(P.run);
+        const rise = age.mul(float(1).sub(age)).mul(4 * P.lift).sub(age.mul(age).mul(P.sink));
+        const eddyT = age.mul(7.0).add(h4.mul(6.2831));
+        const spreadS = h2.sub(0.5).mul(2).mul(age.pow(0.8)).mul(P.spread[0])
+            .add(cos(eddyT).mul(age).mul(14.0));
+        const spreadY = h3.sub(0.5).mul(2).mul(age.pow(0.8)).mul(P.spread[1])
+            .add(sin(eddyT).mul(age).mul(10.0));
+        const centre = birth
+            .add(vec3(wind.x, 0, wind.z).mul(along))
+            .add(vec3(0, rise.add(spreadY), 0))
+            .add(side.mul(spreadS))
+            .toVar();
+        const radius = mix(float(P.size[0]), float(P.size[1]), age.pow(0.7)).mul(mix(float(0.7), float(1.3), h4));
+        const view = cameraViewMatrix.mul(vec4(centre, 1.0));
+        const windView = cameraViewMatrix.mul(vec4(wind.x, wind.y, wind.z, 0.0)).xy;
+        const along2 = normalize(windView.add(vec2(1e-4, 0)));
+        const across2 = vec2(along2.y.negate(), along2.x);
+        const corner = along2.mul(positionGeometry.x.mul(radius.mul(2.0 * P.stretch)))
+            .add(across2.mul(positionGeometry.y.mul(radius.mul(2.0))));
+        const lifted = view.add(vec4(corner, 0.0, 0.0));
+        const toEye = length(centre.sub(cameraPosition));
+        const life = smoothstep(0.0, 0.04, age).mul(float(1).sub(smoothstep(P.fade[0], P.fade[1], age)));
+        const near = smoothstep(radius.mul(1.1), radius.mul(2.6), toEye);
+        const alpha = life.mul(near).mul(uReveal).mul(P.alpha);
+        // The world's up, in the view, against the sprite's across axis: which way is "top".
+        const upView = normalize(cameraViewMatrix.mul(vec4(0.0, 1.0, 0.0, 0.0)).xy.add(vec2(0, 1e-4)));
+        vBillow.assign(vec4(age, h1, alpha, dot(upView, across2)));
+        return alpha.greaterThan(0.002).select(cameraProjectionMatrix.mul(lifted), vec4(0.0, 0.0, -2.0, 1.0));
+    })();
+    // A billow: a soft lobed disc, torn at its rim by drifting value noise (more as it ages, so the
+    // tail frays into wisps), lit from its top: sunlit white above, a cool slate below.
+    plumeMaterial.colorNode = Fn(() => {
+        const q = positionGeometry.xy.mul(2.0);
+        const r2 = dot(q, q);
+        const seed = vBillow.y.mul(53.0);
+        const n = noise2(q.mul(1.6).add(vec2(seed, vBillow.x.mul(3.1))))
+            .mul(0.62)
+            .add(noise2(q.mul(3.7).add(vec2(seed.mul(1.7), vBillow.x.mul(5.3)))).mul(0.38));
+        const disc = exp(r2.mul(-2.4));
+        const fray = mix(float(0.34), float(0.58), vBillow.x);
+        const torn = smoothstep(fray, fray.add(0.16), n.add(disc.mul(0.55)));
+        const cover = clamp(disc.mul(torn), 0.0, 1.0);
+        const up = q.y.mul(vBillow.w).add(q.x.mul(float(1).sub(vBillow.w.abs())).mul(0.3));
+        const sunlit = smoothstep(-0.30, 0.38, up.add(n.sub(0.5).mul(0.5)));
+        const slate = mix(sky.mul(0.86), vec3(0.80, 0.84, 0.90), 0.45);
+        const lit = mix(slate, sun.mul(0.98).add(vec3(0.04)), sunlit);
+        return vec4(lit, cover.mul(vBillow.z));
+    })();
+    const plume = new THREE.Mesh(plumeGeometry, plumeMaterial);
+    plume.name = 'odyssey-summit-plume';
+    plume.frustumCulled = false;
+    // Under the streamers: the fast snow is torn across the face of the banner.
+    plume.renderOrder = 11;
+
+    const mesh = new THREE.Group();
     mesh.name = 'odyssey-summit-spindrift';
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 12;
+    mesh.add(plume);
+    mesh.add(streamers);
     mesh.visible = false;
 
     return {
@@ -168,8 +287,10 @@ export function createSummitSpindrift({ summit, sunColour = null, hazeColour = n
         },
         dispose() {
             geometry.dispose();
+            plumeGeometry.dispose();
             plane.dispose();
             material.dispose();
+            plumeMaterial.dispose();
             mesh.removeFromParent();
         },
     };

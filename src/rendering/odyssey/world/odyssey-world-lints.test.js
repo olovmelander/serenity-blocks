@@ -158,8 +158,10 @@ describe('every world material opts out of scene fog', () => {
         // to be, so a graph reading `positionWorld` would shade and fade the mass at its old
         // place — silently, and only visibly once the drift amplitude grew.
         expect(source).toMatch(/const cfWorld = varying\(positionLocal\.add\(cfOffset\)/);
-        // The aerial grades the painted colour at the drifted cfWorld.
-        expect(source).toMatch(/heroAerial\(fieldCol, cfWorld\)/);
+        // The aerial grades the painted colour at the drifted cfWorld (`fieldAerial` is the hero
+        // aerial, or a cloud look's lighter share of it: odyssey-cloud-looks.js).
+        expect(source).toMatch(/fieldAerial\(fieldCol, cfWorld\)/);
+        expect(source).toMatch(/: heroAerial;/);
         // The offset is a plain expression of the drift and the breath, so the vertex position
         // and the cfWorld varying stay in the agreement this lint enforces. (The departure no
         // longer shrinks the masses in place: the eye climbs above them, 2026-10-24.)

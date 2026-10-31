@@ -4,7 +4,7 @@
  *
  * Both were faded on round-number progress windows, and both faded in plain view:
  *  - the bow faded over L21 -> L22 with two thirds of it on screen, and L21 (framed for "the bow
- *    beyond") parked on it at 78 %;
+ *    beyond") parked on it at 78 % (since round three, 2026-10-31, the bow stands the whole act);
  *  - the eagle faded over p 0.386-0.404 with its whole thermal in frame, so the player parked at
  *    L28 watched it dissolve to 15 % in the middle of the picture.
  * The same audit moved the swallows (shrank with a third of them in view) and the summit kettle
@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 import { ODYSSEY_WORLD_SUN } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import { ODYSSEY_BOW, antisolarSchedule } from '../../src/rendering/odyssey/world/odyssey-sky-optics.js';
-import { odysseyWorldHeight } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
+import { ODYSSEY_SEA_LEVEL, odysseyWorldHeight } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import {
     ODYSSEY_EAGLE, eaglePoint, eagleRevealAt,
 } from '../../src/rendering/odyssey/composition/odyssey-eagle-flight.js';
@@ -127,26 +127,49 @@ describe('Act II set pieces fade only out of view (real camera, live spline, hei
     const actT = (p) => (p - rig.cp[1]) / (rig.cp[5] - rig.cp[1]);
     const dirs = antisolarDirections();
 
-    it('holds the bow and its shower full while L21 looks at them', () => {
-        const park = parkOf(rig, 21);
-        expect(antisolarSchedule(actT(park)).bow).toBeGreaterThan(0.999);
-        expect(antisolarSchedule(actT(park)).veil).toBeGreaterThan(0.999);
-        // ...and L21 does look at them (the guard below would be vacuous otherwise).
-        expect(skySeen(poseAt(rig, park), dirs.bow)).toBeGreaterThan(10);
+    // THE BOW STANDS THE WHOLE ACT (round three, 2026-10-31: "the rainbow needs to be there all the
+    // time not just for a short while"). It used to leave in a blind stretch after L21; it is in
+    // frame through the whole climb, so it now stays until the departure.
+    it('holds the bow and its shower full at every orb that looks at them, up the whole climb', () => {
+        [16, 21, 26, 29, 30, 33].forEach((id) => {
+            const park = parkOf(rig, id);
+            expect(antisolarSchedule(actT(park)).bow, `bow at L${id}`).toBeGreaterThan(0.999);
+            expect(antisolarSchedule(actT(park)).veil, `shower at L${id}`).toBeGreaterThan(0.999);
+            // ...and they do look at it (the guard would be vacuous otherwise).
+            expect(skySeen(poseAt(rig, park), dirs.bow), `bow seen at L${id}`).toBeGreaterThan(10);
+        });
     });
 
-    it('fades the bow only where no part of it reaches the screen', () => {
-        const [a, b] = fadeOutSpan((p) => antisolarSchedule(actT(p)).bow, parkOf(rig, 21), rig.cp[4]);
-        for (let p = a - LAG; p <= b; p += STEP) {
-            expect(skySeen(poseAt(rig, p), dirs.bow), `bow seen at p=${p.toFixed(4)}`).toBe(0);
+    it('brings the bow and the shower in only where no part of them reaches the screen', () => {
+        const fadeIn = (strength) => {
+            let start = null;
+            for (let p = rig.cp[1]; p <= parkOf(rig, 12); p += STEP) {
+                const v = strength(p);
+                if (start === null && v > 0) start = p;
+                if (start !== null && v > 0.999) return [start, p];
+            }
+            throw new Error('no fade-in found');
+        };
+        // An eye still under the sea (chapter 2's rise) sees the surface's own sky, never the dome.
+        const domeSeen = (p, ds) => {
+            const pose = poseAt(rig, p);
+            return pose.position.y < ODYSSEY_SEA_LEVEL ? 0 : skySeen(pose, ds);
+        };
+        const [a, b] = fadeIn((p) => antisolarSchedule(actT(p)).bow);
+        for (let p = a; p <= b + LAG; p += STEP) {
+            expect(domeSeen(p, dirs.bow), `bow seen at p=${p.toFixed(4)}`).toBe(0);
+        }
+        const [c, d] = fadeIn((p) => antisolarSchedule(actT(p)).veil);
+        for (let p = c; p <= d + LAG; p += STEP) {
+            expect(domeSeen(p, dirs.veil), `shower seen at p=${p.toFixed(4)}`).toBe(0);
         }
     });
 
-    it('fades the shower only where no part of it reaches the screen', () => {
-        const [a, b] = fadeOutSpan((p) => antisolarSchedule(actT(p)).veil, parkOf(rig, 21), rig.cp[4]);
-        for (let p = a - LAG; p <= b; p += STEP) {
-            expect(skySeen(poseAt(rig, p), dirs.veil), `shower seen at p=${p.toFixed(4)}`).toBe(0);
-        }
+    it('leaves only with the departure, once the eye climbs out over the cloud deck', () => {
+        const [a, b] = fadeOutSpan((p) => antisolarSchedule(actT(p)).bow, parkOf(rig, 33), rig.cp[5]);
+        expect(a).toBeGreaterThan(parkOf(rig, 33));
+        expect(a).toBeGreaterThan(0.68);
+        expect(b).toBeLessThan(0.725);
     });
 
     // The bird anywhere on its thermal over one round (a seek can show any of them).

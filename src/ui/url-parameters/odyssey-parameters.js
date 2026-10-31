@@ -517,6 +517,14 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         { scope: WORLD_SCOPE },
     ),
     parameter(
+        'odysseyCloudLook',
+        'Chooses how the Act II clouds are painted and laid out, for comparing looks.',
+        'today, light or banks; anything else uses banks',
+        'banks',
+        'today',
+        { scope: WORLD_SCOPE },
+    ),
+    parameter(
         'lakeTint',
         'Chooses a comparison palette for the continuous world’s northern lake.',
         'mirror, ocean, tarn, ghibli, deepstill or alpine',

@@ -15,6 +15,7 @@ import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from './world/odyssey-world
 import { awaitWorldBake, startWorldBake } from './world/odyssey-world-bake-loader.js';
 import { makeReliefSampler } from './world/odyssey-world-bake-data.js';
 import { ODYSSEY_CLOUD_FIELD_SPECS } from './world/odyssey-cloud-field-specs.js';
+import { cloudFieldSpecsForLook, resolveCloudLook } from './world/odyssey-cloud-looks.js';
 import { forestLodDistanceForTier } from './world/odyssey-forest-species.js';
 import {
     ONE_WORLD_APPLY_EXPOSURE,
@@ -288,13 +289,18 @@ function readWorldBuildOptions(qualityName) {
     const q = ODYSSEY_WORLD_QUALITY[weakLane ? 'low' : 'high'] || ODYSSEY_WORLD_QUALITY.high;
     const cloudField = !readBooleanUrlFlag('odysseyWorldNoCloudField');
     const cloudFieldCount = Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0;
-    const cloudSpecs = cloudFieldCount > 0
-        ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
-        : ODYSSEY_CLOUD_FIELD_SPECS;
     const railSamples = Array.from({ length: 48 }, (_, i) => {
         const pt = getOdysseyPathPointAt(i / 47);
         return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
     });
+    // `?odysseyCloudLook=today|light|banks` (odyssey-cloud-looks.js). The look's layout decides
+    // the specs here, once, so the bake worker and the world sculpt and expect the same masses.
+    const cloudLook = resolveCloudLook(readUrlValue('odysseyCloudLook'));
+    const cloudSpecs = cloudFieldSpecsForLook(
+        cloudLook,
+        cloudFieldCount > 0 ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount) : ODYSSEY_CLOUD_FIELD_SPECS,
+        railSamples,
+    );
     // The forest scatter runs in the bake worker (it needs only the height mirror and the
     // rail); createOdysseyWorld builds the same options object and uses the landed result.
     const forestLodValue = readUrlValue('odysseyForestLod');
@@ -309,7 +315,7 @@ function readWorldBuildOptions(qualityName) {
             lodDistance: forestLodDistanceForTier(qualityName),
         };
     return {
-        weakLane, q, cloudField, cloudFieldCount, cloudSpecs, railSamples, scatter,
+        weakLane, q, cloudField, cloudFieldCount, cloudLook, cloudSpecs, railSamples, scatter,
     };
 }
 
@@ -1313,6 +1319,10 @@ export class OdysseyBoardController {
                     // tree edit between runs. Unset ships the default.
                     lakeTint: readUrlValue('lakeTint') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
+                    // `?odysseyCloudLook=` (odyssey-cloud-looks.js): the paint, and the specs the
+                    // bake sculpted, so the landed field matches the masses this build expects.
+                    cloudLook: this._worldBakeOptions?.cloudLook ?? null,
+                    cloudSpecs: this._worldBakeOptions?.cloudSpecs ?? null,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch — the
                     // SAME 48 plain points the bake used (item 2.1), so the worker's cloud LOD
                     // promotion and the main thread's seating agree.
