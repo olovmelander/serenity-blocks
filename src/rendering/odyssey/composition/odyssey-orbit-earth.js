@@ -843,6 +843,37 @@ export function orbitEarthLimbSin(altitude) {
     return Math.sqrt(h * (h + 2)) / (1 + h);
 }
 
+/**
+ * THE EARTH'S AIR IN FRONT OF THE FAR SKY (2026-10-31). Olov, on the ringed giant's rise: "it
+ * feels like it is to close the earth and like hiding some of the aurora, we need to make this
+ * better implemented and more visually stunning". The giant is drawn BEHIND the Earth now (before
+ * it: the disc covers it, the rim veils it, the aurora's light lies over it), and anything far
+ * seen just over the limb is seen through the Earth's air, as the Moon is from orbit: dark and
+ * deep red where its ray grazes the surface, warming and clearing within a few scale heights of
+ * it. `dir` is the unit view direction (world frame); returns what the air lets through (rgb),
+ * white with no Earth. Same closest approach as the Earth's own rim (earthLook's `aClose`).
+ */
+export const ORBIT_EARTH_TRANSMIT = Object.freeze({
+    /** The air's scale height here (Earth radii): a little under the drawn rim's, so the far thing
+     * clears just above the rim's glow. */
+    scale: 0.0035,
+    /** Optical depth along a ray that grazes the surface... */
+    depth: 6,
+    /** ...per channel (red passes most: the far thing goes deep red before it goes dark). */
+    tint: Object.freeze([0.45, 0.8, 1.6]),
+});
+
+export function orbitEarthTransmittance(dir) {
+    const T = ORBIT_EARTH_TRANSMIT;
+    const etK = U.alt.add(1);
+    const etDy = dir.y;
+    const etCos = sqrt(max(float(1).sub(etDy.mul(etDy)), 0));
+    const etClose = select(etDy.lessThan(0), etK.mul(etCos).sub(1), U.alt);
+    const etTau = exp(max(etClose, 0).div(T.scale).negate()).mul(T.depth).mul(U.presence);
+    const etThrough = exp(vec3(...T.tint).mul(etTau).negate());
+    return select(etClose.lessThan(0).and(U.presence.greaterThan(0.001)), vec3(0, 0, 0), etThrough);
+}
+
 export function orbitEarthOver(dir, air, surfaceAir = air, worldAir = null) {
     const look = earthLook(dir, air, surfaceAir, worldAir);
     return look.colour.mul(look.arrived).add(surfaceAir.mul(float(1).sub(look.alpha)));

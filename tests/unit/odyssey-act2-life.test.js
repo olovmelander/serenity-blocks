@@ -26,7 +26,7 @@ import {
 import { createOdysseyEagle } from '../../src/rendering/odyssey/composition/odyssey-eagle.js';
 import { airMoteKindsAt, createOdysseyAirMotes } from '../../src/rendering/odyssey/composition/odyssey-air-motes.js';
 import {
-    ODYSSEY_SPINDRIFT, createSummitSpindrift, findHeroSummit, spindriftRevealAt,
+    ODYSSEY_SPINDRIFT, ODYSSEY_SUMMIT_PLUME, createSummitSpindrift, findHeroSummit, spindriftRevealAt,
 } from '../../src/rendering/odyssey/composition/odyssey-summit-spindrift.js';
 import { antisolarSchedule, applyAntisolarSky } from '../../src/rendering/odyssey/world/odyssey-sky-optics.js';
 import { cloudShadowSchedule } from '../../src/rendering/odyssey/world/odyssey-world-renderer.js';
@@ -308,26 +308,48 @@ describe('the summit spindrift', () => {
         expect(spindriftRevealAt(CP[5] - 0.06)).toBe(0);
     });
 
-    it('builds for both backends', () => {
-        const plume = createSummitSpindrift({ summit, sunColour: uniform(new THREE.Color(1, 0.95, 0.9)) });
-        expect(plume.mesh.material.transparent).toBe(true);
-        expect(plume.mesh.material.depthWrite).toBe(false);
-        expect(plume.mesh.material.fog).toBe(false);
-        BACKENDS.forEach(([label, Builder]) => expectClean(build(Builder, plume.mesh), `spindrift ${label}`));
-        plume.dispose();
+    it('builds both layers (the banner plume and the streamers) for both backends', () => {
+        const spindrift = createSummitSpindrift({ summit, sunColour: uniform(new THREE.Color(1, 0.95, 0.9)) });
+        const layers = spindrift.mesh.children;
+        expect(layers.map((m) => m.name)).toEqual(['odyssey-summit-plume', 'odyssey-summit-spindrift-streamers']);
+        layers.forEach((layer) => {
+            expect(layer.material.transparent).toBe(true);
+            expect(layer.material.depthWrite).toBe(false);
+            expect(layer.material.fog).toBe(false);
+            BACKENDS.forEach(([label, Builder]) => expectClean(build(Builder, layer), `${layer.name} ${label}`));
+        });
+        spindrift.dispose();
+    });
+
+    it('flies the banner downwind, away from the rail, a long way past the streamers', () => {
+        const w = ODYSSEY_SPINDRIFT.wind;
+        const len = Math.hypot(...w);
+        const end = {
+            x: summit.x + (w[0] / len) * ODYSSEY_SUMMIT_PLUME.run,
+            y: summit.y - ODYSSEY_SUMMIT_PLUME.sink,
+            z: summit.z + (w[2] / len) * ODYSSEY_SUMMIT_PLUME.run,
+        };
+        const [a, , , d] = ODYSSEY_SPINDRIFT.window;
+        expect(ODYSSEY_SUMMIT_PLUME.run).toBeGreaterThan(ODYSSEY_SPINDRIFT.run * 2);
+        expect(railDistance(end, a, d)).toBeGreaterThan(railDistance(summit, a, d));
     });
 });
 
 describe('the antisolar sky', () => {
-    it('stands the bow over the chapter 3-4 orbs only, the shower around it', () => {
-        // Act II progress (actT) of a few orbs: L14 0.168, L16 0.206, L20 0.281, L25 0.373.
-        expect(antisolarSchedule(0.10).bow).toBe(0);
-        expect(antisolarSchedule(0.206).bow).toBeGreaterThan(0.99);
-        expect(antisolarSchedule(0.281).bow).toBeGreaterThan(0.99);
-        expect(antisolarSchedule(0.373).bow).toBe(0);
-        expect(antisolarSchedule(0.373).veil).toBe(0);
+    it('stands the bow over the whole act, from the shore to the top of the climb, the shower round it', () => {
+        // Act II progress (actT) of a few orbs: L14 0.168, L16 0.206, L20 0.281, L25 0.373, L33 ~0.85.
+        // (Round three, 2026-10-31: "the rainbow needs to be there all the time".)
+        expect(antisolarSchedule(0.02).bow).toBe(0);
+        [0.168, 0.206, 0.281, 0.373, 0.6, 0.85].forEach((t) => {
+            expect(antisolarSchedule(t).bow, `bow at ${t}`).toBeGreaterThan(0.99);
+            expect(antisolarSchedule(t).veil, `veil at ${t}`).toBeGreaterThan(0.99);
+        });
+        // Gone with the departure.
+        expect(antisolarSchedule(0.97).bow).toBe(0);
+        expect(antisolarSchedule(0.97).veil).toBe(0);
         // The shower gathers before the bow and thins after it.
-        expect(antisolarSchedule(0.17).veil).toBeGreaterThan(antisolarSchedule(0.17).bow);
+        expect(antisolarSchedule(0.07).veil).toBeGreaterThan(antisolarSchedule(0.07).bow);
+        expect(antisolarSchedule(0.93).veil).toBeGreaterThan(antisolarSchedule(0.93).bow);
     });
 
     it('builds the sky term for both backends', () => {

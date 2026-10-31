@@ -35,11 +35,19 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
     it('mounts every shipped tier when no flag is set', () => {
         const group = buildWithSearch('');
         [
-            'voidSky', 'blackHole', 'heroPlanet', 'galaxy', 'debris',
-            'starsFar', 'starsNear', 'nebulaField',
-            'dustNear', 'dustFar', 'streakMotes', 'asteroids',
+            'voidSky', 'blackHole', 'heroPlanet', 'galaxy',
+            'starsFar', 'starsNear', 'dustFar', 'streakMotes',
         ].forEach((key) => {
             expect(group.userData[key], key).toBeTruthy();
+        });
+        // A sky, not a crowd (CH6_AMBIENT, 2026-10-31): the gas field, the near dust and the rock
+        // garland are no longer built; ?odysseyCh6Clutter=1 brings them all back.
+        ['nebulaField', 'dustNear', 'asteroids', 'debris'].forEach((key) => {
+            expect(group.userData[key], key).toBeUndefined();
+        });
+        const all = buildWithSearch('?odysseyCh6Clutter=1');
+        ['nebulaField', 'dustNear', 'asteroids', 'comet', 'debris'].forEach((key) => {
+            expect(all.userData[key], `${key} with the clutter flag`).toBeTruthy();
         });
         // The additive sprite tiers + billboard pillar are RETIRED (Wave 3 swap) —
         // absent by default, restorable via ?odysseyCh6NebulaSprites=1.
@@ -49,7 +57,7 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
     });
 
     it('?odysseyCh6NoDome=1 removes the void dome and nothing else', () => {
-        const group = buildWithSearch('?odysseyCh6NoDome=1');
+        const group = buildWithSearch('?odysseyCh6NoDome=1&odysseyCh6Clutter=1');
         expect(group.userData.voidSky).toBeUndefined();
         expect(group.userData.blackHole).toBeTruthy();
         expect(group.userData.nebulaField).toBeTruthy();
@@ -58,7 +66,7 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
     });
 
     it('?odysseyCh6NoHeroes=1 removes the triad but keeps the infall debris seated', () => {
-        const group = buildWithSearch('?odysseyCh6NoHeroes=1');
+        const group = buildWithSearch('?odysseyCh6NoHeroes=1&odysseyCh6Clutter=1');
         expect(group.userData.blackHole).toBeUndefined();
         expect(group.userData.heroPlanet).toBeUndefined();
         expect(group.userData.galaxy).toBeUndefined();
@@ -92,7 +100,7 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
     });
 
     it('?odysseyCh6NoDust=1 removes dust, debris and streak motes but keeps asteroids', () => {
-        const group = buildWithSearch('?odysseyCh6NoDust=1');
+        const group = buildWithSearch('?odysseyCh6NoDust=1&odysseyCh6Clutter=1');
         expect(group.userData.dustNear).toBeUndefined();
         expect(group.userData.dustFar).toBeUndefined();
         expect(group.userData.debris).toBeUndefined();

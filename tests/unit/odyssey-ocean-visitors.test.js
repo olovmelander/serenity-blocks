@@ -17,6 +17,7 @@ import {
     parseOceanVisitors,
 } from '../../src/rendering/odyssey/composition/odyssey-ocean-visitors.js';
 import { setSteamVeil } from '../../src/rendering/odyssey/composition/odyssey-steam-quench.js';
+import { OCEAN_ROAM, roamAt } from '../../src/rendering/odyssey/composition/odyssey-ocean-roam.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -85,7 +86,7 @@ function lookingUp(y) {
 }
 
 describe('ocean visitors — lifecycle and swimming', () => {
-    it('stays hidden until the board marks it ready, then shows; never out of the water', async () => {
+    it('stays hidden until the board marks it ready, then shows; from above only while it shows through', async () => {
         const visitors = await loadedVisitors();
         const camera = lookingUp(130);
         visitors.update(10, 0.016, camera, 1, true, 1);
@@ -93,8 +94,20 @@ describe('ocean visitors — lifecycle and swimming', () => {
         visitors.markReady();
         for (let i = 0; i < 200; i += 1) visitors.update(10 + (i * 0.016), 0.016, camera, 1, true, 1);
         expect(visitors.group.visible).toBe(true);
-        // Above the water (submerged 0) or outside the chapter: nothing.
-        visitors.update(20, 0.016, camera, 0, true, 1);
+        // Above the water (2026-10-31, odyssey-through-surface.js): right over the manta, looking
+        // down, it shows through the surface; far off, where the surface reflects nearly all of
+        // the light, it is gone. Outside the chapter: nothing.
+        const manta = new THREE.Vector3();
+        roamAt(OCEAN_ROAM.manta, 20, manta);
+        const over = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
+        over.position.set(manta.x, 287.31 + 30, manta.z + 10);
+        over.lookAt(manta);
+        visitors.update(20, 0.016, over, 0, true, 1);
+        expect(visitors.group.getObjectByName('odyssey-visitor-manta').visible).toBe(true);
+        const far = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
+        far.position.set(4000, 287.31 + 20, 4000);
+        far.lookAt(0, 287.31, 0);
+        visitors.update(20, 0.016, far, 0, true, 1);
         expect(visitors.group.visible).toBe(false);
         visitors.update(20, 0.016, camera, 1, false, 1);
         expect(visitors.group.visible).toBe(false);

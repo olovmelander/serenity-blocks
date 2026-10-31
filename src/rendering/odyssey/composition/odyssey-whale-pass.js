@@ -33,6 +33,7 @@ import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
 import {
     OCEAN_ROAM, roamAt, roamHeading, roamLane, stepRoamArrival,
 } from './odyssey-ocean-roam.js';
+import { oceanLifeDrawn } from './odyssey-through-surface.js';
 
 /** Whale length in world units (the GLB is auto-scaled to this by its largest bound). */
 const MOTHER_LENGTH = 58;
@@ -181,7 +182,8 @@ export function createWhalePass({
          * @param {number} time seconds
          * @param {number} delta seconds
          * @param {THREE.Camera} camera
-         * @param {number} submerged 0..1 (the world's underwater blend)
+         * @param {number} submerged 0..1 (the world's underwater blend; kept for the board's
+         *   call, the eye's own height decides since 2026-10-31)
          * @param {boolean} inChapter whether the camera is inside the ocean chapter's span
          * @param {number} [presence] 0..1 ocean-life presence from the world's 1->2 carry
          *   (`oneWorld.state.lifePresence`): the pair arrives with the fish as the quench thins,
@@ -192,7 +194,13 @@ export function createWhalePass({
             const depth = seaLevel - camY;
             const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
             const dt = Math.min(Math.max(Number.isFinite(delta) ? delta : 0, 0), 0.1);
-            const on = ready && inChapter && submerged > 0.5 && life > 0.001;
+            // Drawn while the eye is in the water (no longer from ~5 u under it: that switched
+            // animals off in front of the eye). The pair is never in frame from above the surface
+            // (it keeps to the deep, behind the breach), so unlike the visitors it stays opaque and
+            // is not drawn through the surface (odyssey-through-surface.js).
+            const on = oceanLifeDrawn({
+                ready, inChapter, life, eyeY: camY, seaLevel,
+            });
             if (!on) {
                 // Out of the water (or the chapter): the pair arrives afresh next time.
                 arrival = {};

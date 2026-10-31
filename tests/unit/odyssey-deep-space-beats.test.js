@@ -14,6 +14,7 @@ import {
     DEEP_SPACE_BEATS,
     resolveDeepSpaceBeats,
     updateCosmicExpanseEnvironment,
+    CH6_AMBIENT_ALL,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
 import { createBakedVoidSkyTSL } from '../../src/rendering/odyssey/chapter-environments/odyssey-cosmic-backdrop.js';
 import { getChapterPathRange } from '../../src/rendering/odyssey/path-utils.js';
@@ -62,7 +63,7 @@ describe('DEEP_SPACE_BEATS — by progress', () => {
 });
 
 describe('chapter 6 stages its sky on the beats', () => {
-    const env = createCosmicExpanseEnvironment({ particleCount: 200 });
+    const env = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
     const range = getChapterPathRange(6);
     env.position.set(range.center.x, range.center.y, range.center.z);
     env.userData.yStart = range.start.y;

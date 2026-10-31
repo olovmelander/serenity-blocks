@@ -59,6 +59,7 @@ import {
     positionView,
     positionWorld,
     pow,
+    sqrt,
     screenSize,
     sin,
     smoothstep,
@@ -1018,24 +1019,19 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
 
 // ── The inflow — the rail's last reach into the black hole ───────────────────────
 
-/** The rail's light where it meets the mouth (chapter 7's first orb, on the 6/7 boundary). */
-function mouthRecipeColour(key, share = 0.5) {
-    const a = new THREE.Color(ODYSSEY_RIBBON_RECIPES[5][key]);
-    return a.lerp(new THREE.Color(ODYSSEY_RIBBON_RECIPES[6][key]), share);
-}
-
 /**
- * THE INFLOW (odyssey-path-inflow.js): a stream of the rail's light from the mouth orb into the
- * black hole's centre. A camera-facing strip whose vertices the renderer rewrites each frame;
- * `aInflow` carries (along, rim, inner, across). Additive and depth-tested: every point of it is
- * nearer the eye than the shadow's near surface, so it draws over the shadow into the middle of
- * the disc while the disk band, the orbs and the rail occlude it.
+ * THE INFLOW (odyssey-path-inflow.js): the orb path's last reach, from the mouth orb into the black
+ * hole's centre. A camera-facing strip whose vertices the renderer rewrites each frame; `aInflow`
+ * carries (along, rim, inner, across).
  *
- * It leaves the orb in the rail's own light (chapter 6's stardust; the haze its glow), heats to
- * the accretion disk's amber on the way in, flares white where it crosses the photon ring, then
- * reddens and dims toward the centre: swallowed. Packets of light ride it in at an even pace along
- * the logarithmic spiral, so on screen they run on the way to the hole and slow and crowd as they
- * near its centre.
+ * THE PATH ITSELF (2026-10-31; Olov: "why do we need this neon line into the black hole, cant just
+ * the orb path go into the black hole???"). It was a neon thread: a hot white core in a glow four
+ * times its width, heating to the disk's amber, flaring white at the photon ring. It is drawn as
+ * the rail is now (the ribbon's own recipe for chapter 6, its shading read across the strip as
+ * across a tube): an indigo body, the lavender line of light along its middle, the violet haze at
+ * its edges, stardust riding in. Blended over what is behind it, like the rail, and swallowed into
+ * the dark toward the hole's centre. Every point of it is nearer the eye than the shadow's near
+ * surface, so it is seen going in.
  * @param {object} uTime shared time uniform
  * @param {object} [opts]
  * @param {number} [opts.segments] centre-line points (two vertices each)
@@ -1043,7 +1039,7 @@ function mouthRecipeColour(key, share = 0.5) {
  */
 export function createPathInflowTSL(uTime = uniform(0), opts = {}) {
     const segments = opts.segments ?? 128;
-    const glow = opts.glow ?? 3.4;
+    const glow = opts.glow ?? 2.0;
     const uWeight = opts.uWeight ?? uniform(0);
     const geometry = new THREE.BufferGeometry();
     const position = new THREE.BufferAttribute(new Float32Array(segments * 6), 3);
@@ -1059,44 +1055,43 @@ export function createPathInflowTSL(uTime = uniform(0), opts = {}) {
     }
     geometry.setIndex(index);
 
-    const uRail = uniform(mouthRecipeColour('emis', 0.25));
-    const uRailHaze = uniform(mouthRecipeColour('haze', 0.25));
-    const uAmber = uniform(new THREE.Color(ODYSSEY_RIBBON_RECIPES[6].emis));
+    // Chapter 6's rail (ODYSSEY_RIBBON_RECIPES[5]): the path it continues.
+    const R6 = ODYSSEY_RIBBON_RECIPES[5];
+    const uBase = uniform(new THREE.Color(R6.base));
+    const uEmis = uniform(new THREE.Color(R6.emis));
+    const uHaze = uniform(new THREE.Color(R6.haze));
 
     const f = varying(attribute('aInflow', 'vec4'));
     const along = f.x;
-    const rim = f.y;
     const inner = f.z;
     const across = abs(f.w);
-    // Across: a hot thread, the stream's core (1 / glow of the strip) and its glow.
-    const coreEdge = 1 / glow;
-    const thread = float(1.0).sub(smoothstep(0.0, coreEdge * 0.45, across));
-    const core = float(1.0).sub(smoothstep(coreEdge * 0.3, coreEdge * 1.2, across));
-    const halo = exp(across.mul(across).mul(-4.5)).mul(0.45);
-    // Packets riding in: a bright head with a tail behind it.
-    const phase = fract(along.mul(16.0).sub(uTime.mul(1.1)));
-    const packet = smoothstep(0.35, 0.93, phase).mul(float(1.0).sub(smoothstep(0.93, 1.0, phase)));
-    // The light: the rail's, to amber, a flare at the photon ring, reddening inside the shadow and
-    // fading only at its very centre (the path is seen going in, not cut off at the edge).
-    const heat = smoothstep(0.0, 0.3, along);
-    let colour = mix(mix(uRailHaze, uRail, thread), uAmber, heat.mul(0.8));
-    colour = mix(colour, vec3(1.0, 0.93, 0.8), clamp(rim.mul(thread.add(core.mul(0.5))), 0.0, 1.0));
-    colour = mix(colour, vec3(1.0, 0.3, 0.16), smoothstep(0.05, 0.5, inner));
-    const swallow = float(1.0).sub(smoothstep(0.35, 1.0, inner).mul(0.85));
+    // Across the strip as across a tube: its edge at 1 / glow, the facing (n.v) from there.
+    const xn = across.mul(glow);
+    const ndv = sqrt(max(float(1.0).sub(xn.mul(xn)), 0.0));
+    const tube = float(1.0).sub(smoothstep(0.82, 1.0, xn));
+    // The ribbon's terms: a lit body, the line of light along its middle, haze at its silhouette.
+    const body = uBase.mul(mix(float(1.0), float(0.85), float(R6.lit)));
+    const centre = pow(ndv, 6.0).mul(R6.core);
+    // Stardust riding in, as on the rail (its pulse): packets that slow as they near the centre.
+    const phase = fract(along.mul(16.0).sub(uTime.mul(0.9)));
+    const packet = smoothstep(0.4, 0.92, phase).mul(float(1.0).sub(smoothstep(0.92, 1.0, phase)));
+    const emissive = uEmis.mul(R6.gain).mul(centre.add(0.05).add(packet.mul(R6.pulse).mul(0.6)));
+    const rim = pow(clamp(float(1.0).sub(ndv), 0.0, 1.0), 2.0);
+    const haze = uHaze.mul(rim).mul(R6.hazeAmt * 3.0);
+    // Swallowed: into the dark toward the hole's centre (the light stays a little longer).
+    const dark = float(1.0).sub(smoothstep(0.1, 0.95, inner).mul(0.9));
+    // ...and the rail's haze shell round the body (out to glowScale = 2 body radii), soft and violet.
+    const shell = float(1.0).sub(smoothstep(1.0, 2.0, xn)).mul(0.3);
+    const colour = mix(uHaze.mul(R6.hazeAmt * 4.0), body.add(emissive).add(haze), tube).mul(dark);
     const leaveOrb = smoothstep(0.0, 0.02, along);
-    const body = thread.mul(1.1).add(core.mul(0.8)).add(halo);
-    const light = body.mul(packet.mul(1.6).add(0.4)).mul(rim.mul(2.4).add(1.0))
-        .mul(swallow)
-        .mul(leaveOrb)
-        .mul(uWeight);
+    const fadeCentre = float(1.0).sub(smoothstep(0.7, 1.0, inner));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = colour.mul(light);
-    material.opacityNode = float(1.0);
+    material.colorNode = colour;
+    material.opacityNode = max(tube, shell).mul(leaveOrb).mul(fadeCentre).mul(uWeight);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
-    material.blending = THREE.AdditiveBlending;
     material.forceSinglePass = true;
     material.fog = false;
     material.userData.emitsBloom = true;

@@ -63,6 +63,7 @@ import {
     GIANT_RINGS,
 } from './odyssey-ringed-giant.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
+import { orbitEarthTransmittance } from '../composition/odyssey-orbit-earth.js';
 import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
 
@@ -113,6 +114,12 @@ export function getRingedGiantTextures() {
 }
 
 const RING_SPAN = GIANT_RINGS.to - GIANT_RINGS.from;
+
+/**
+ * The giant's draw order: after the star shells (CH6_STAR_DRAW_ORDER), before the Earth's backdrop
+ * (-0.5, odyssey-orbit-earth.js), body then rings then air (see createSurface).
+ */
+export const GIANT_DRAW_ORDER = Object.freeze({ surface: -0.8, rings: -0.75, air: -0.7 });
 const vec3Of = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
 
 /**
@@ -239,10 +246,16 @@ function createSurface(u, radius, segments) {
         surface.addAssign(vec3Of(P.night).mul(rim2.mul(rim2)).mul(dark).mul(0.5));
         return surface;
     })();
+    // Seen through the Earth's air as it rises over the limb (orbitEarthTransmittance).
+    material.colorNode = material.colorNode.mul(orbitEarthTransmittance(normalize(positionWorld.sub(cameraPosition))));
     const geometry = new THREE.SphereGeometry(radius, segments, Math.round(segments * 0.6));
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'hero-planet-surface';
-    mesh.renderOrder = 1;
+    // BEHIND THE EARTH (2026-10-31): the giant draws after the stars (-0.95) and BEFORE the
+    // Earth's backdrop (-0.5), so the Earth's disc covers it, its rim veils it and its aurora's
+    // light lies over it. At 1-3 (after the backdrop, which writes no depth) it was drawn over the
+    // aurora and the air above the limb, cut only where the disc's depth twin began.
+    mesh.renderOrder = GIANT_DRAW_ORDER.surface;
     return { mesh, material, geometry };
 }
 
@@ -293,13 +306,13 @@ function createRings(u, radius) {
             .mul(oneMinus(smoothstep(GIANT_RINGS.to - 0.02, GIANT_RINGS.to, rr)));
         return vec4(color, alpha);
     })();
-    material.colorNode = out.xyz;
+    material.colorNode = out.xyz.mul(orbitEarthTransmittance(normalize(positionWorld.sub(cameraPosition))));
     material.opacityNode = out.w.mul(materialOpacity);
     const geometry = new THREE.RingGeometry(GIANT_RINGS.from * radius, GIANT_RINGS.to * radius, 384, 6);
     geometry.rotateX(-Math.PI / 2);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'hero-planet-rings';
-    mesh.renderOrder = 2;
+    mesh.renderOrder = GIANT_DRAW_ORDER.rings;
     return { mesh, material, geometry };
 }
 
@@ -325,7 +338,7 @@ function createAtmosphere(u, radius) {
     const backlight = pow(clamp(dot(rayDir, sunN), 0.0, 1.0), 6.0);
     const haloColor = mix(vec3Of(P.haze), vec3(1.0, 0.5, 0.25), sunsetBand.mul(0.8)).mul(u.uLightColor);
     const strength = thickness.mul(day.mul(0.55).add(sunsetBand.mul(0.45)).add(backlight.mul(1.2)));
-    material.colorNode = haloColor.mul(strength);
+    material.colorNode = haloColor.mul(strength).mul(orbitEarthTransmittance(rayDir));
     material.opacityNode = clamp(strength, 0.0, 1.0).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
@@ -335,7 +348,7 @@ function createAtmosphere(u, radius) {
     const geometry = new THREE.SphereGeometry(shellRadius, 96, 48);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'hero-planet-atmosphere';
-    mesh.renderOrder = 3;
+    mesh.renderOrder = GIANT_DRAW_ORDER.air;
     return { mesh, material, geometry };
 }
 

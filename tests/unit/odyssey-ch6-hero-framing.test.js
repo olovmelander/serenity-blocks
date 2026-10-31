@@ -190,6 +190,9 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
             const frame = frameAt(controller, chapterPositions, 6, progress);
             const heroes = heroesAt(env, frame.camPos, progress);
             if (progress < planetriseEnd) delete heroes.heroPlanet;
+            // The galaxy (lower left since 2026-10-31) comes up with the Milky Way, after the
+            // planetrise: while the view still leans over the Earth it may wait past the left edge.
+            if (progress < planetriseEnd) delete heroes.galaxy;
             ASPECTS.forEach((aspect) => {
                 Object.entries(heroes).forEach(([name, world]) => {
                     const r = project(frame, world, aspect);

@@ -73,6 +73,7 @@ import {
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
 import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { behindSteamDepth, steamVeilWeight } from './odyssey-steam-quench.js';
+import { oceanLifeDrawn, throughSurfaceNode, throughSurfaceShare } from './odyssey-through-surface.js';
 import {
     OCEAN_ROAM, roamAt, roamHeading, stepRoamArrival,
 } from './odyssey-ocean-roam.js';
@@ -233,7 +234,7 @@ const rotY = (v, a) => {
  * vertex carries (constant over a draw, so the branch is coherent); the per-animal phase, beat and
  * turn come from the object's userData through per-object uniforms.
  */
-function createVisitorMaterial(uWater, uSurface) {
+function createVisitorMaterial(uWater, uSurface, seaLevel) {
     const uPhase = uniform(0).onObjectUpdate(({ object }) => object.userData.swimPhase ?? 0);
     const uBeat = uniform(1).onObjectUpdate(({ object }) => object.userData.swimBeat ?? 1);
     const uTurn = uniform(0).onObjectUpdate(({ object }) => object.userData.swimTurn ?? 0);
@@ -337,10 +338,18 @@ function createVisitorMaterial(uWater, uSurface) {
         const lit = albedo.mul(ambient.add(top.mul(fromAbove.mul(0.8).add(0.12)))).mul(ao)
             .add(vec3(0.42, 0.78, 0.84).mul(rim).mul(clamp(N.y.add(0.6), 0.0, 1.0)).mul(uSurface)
                 .mul(0.38));
-        // The water between it and the eye, and the fade-in from the blue.
+        // The water between it and the eye, and the fade-in from the blue. Seen from above the
+        // surface (odyssey-through-surface.js) the water is only the path under the surface, and
+        // what the water leaves of it is tinted and drawn over the sea at the share that shows.
+        const seen = throughSurfaceNode(positionWorld, cameraPosition, seaLevel);
         const haze = smoothstep(26.0, 300.0, dist).mul(0.86);
-        return mix(lit, uWater, max(haze, oneMinus(uFade)));
+        return mix(lit.mul(seen.tint), uWater, max(haze, oneMinus(uFade)));
     })();
+    // TRANSPARENT since 2026-10-31, drawn just after the sea (renderOrder 1.5 on each mesh): from
+    // above the surface it shows through the water at `share`; under it the share is 1 and the
+    // pixels are as before. It still writes depth, so the motes and rays behind it stay hidden.
+    material.opacityNode = throughSurfaceNode(positionWorld, cameraPosition, seaLevel).share;
+    material.transparent = true;
     material.side = THREE.FrontSide;
     material.depthWrite = true;
     // Behind the 1->2 steam while it is up: it arrives there, never through it.
@@ -365,7 +374,7 @@ export function createOceanVisitors({
     group.visible = false;
     const uWater = uniform(new THREE.Color().copy(shallowColour));
     const uSurface = uniform(0.5);
-    const material = createVisitorMaterial(uWater, uSurface);
+    const material = createVisitorMaterial(uWater, uSurface, seaLevel);
     const actors = [];
     let ready = false;
     let loaded = false;
@@ -395,6 +404,8 @@ export function createOceanVisitors({
                 mesh.frustumCulled = false;
                 mesh.scale.setScalar(cast.size);
                 mesh.visible = false;
+                // After the sea (1), before the fish (2), the rays (3) and the motes (4).
+                mesh.renderOrder = 1.5;
                 group.add(mesh);
                 actors.push({
                     cast,
@@ -419,7 +430,8 @@ export function createOceanVisitors({
          * @param {number} time seconds
          * @param {number} delta seconds
          * @param {THREE.Camera} camera
-         * @param {number} submerged 0..1
+         * @param {number} submerged 0..1 (kept for the board's call; the eye's own height and
+         *   what still shows through the surface decide since 2026-10-31)
          * @param {boolean} inChapter
          * @param {number} [presence] ocean-life presence from the world's 1->2 carry
          */
@@ -427,7 +439,7 @@ export function createOceanVisitors({
             const camY = camera?.position?.y ?? seaLevel;
             const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
             const dt = Math.min(Math.max(Number.isFinite(delta) ? delta : 0, 0), 0.1);
-            const on = ready && inChapter && submerged > 0.5 && life > 0.001;
+            const eye = camera?.position ?? { x: 0, y: camY, z: 0 };
             let any = false;
             const depth = seaLevel - camY;
             const t01 = THREE.MathUtils.clamp((depth - 20) / 220, 0, 1);
@@ -436,15 +448,25 @@ export function createOceanVisitors({
             uSurface.value = 0.35 + (0.65 * (1 - THREE.MathUtils.clamp(depth / 200, 0, 1)));
             actors.forEach((actor) => {
                 const { cast, path, mesh } = actor;
-                if (!on) {
-                    // Out of the water (or the chapter): it arrives afresh next time.
+                // Its place on its own route (the clock's, never the camera's), faint as it arrives.
+                roamAt(path, time, mesh.position, velocity);
+                // Drawn while the eye is in the water, and after the breach while it still shows
+                // through the surface (odyssey-through-surface.js): it is passed, never switched off.
+                const drawn = oceanLifeDrawn({
+                    ready,
+                    inChapter,
+                    life,
+                    eyeY: camY,
+                    seaLevel,
+                    seen: throughSurfaceShare(eye, mesh.position, seaLevel),
+                });
+                if (!drawn) {
+                    // Out of the water and out of sight (or the chapter): it arrives afresh next time.
                     actor.roam = {};
                     actor.heading = null;
                     mesh.visible = false;
                     return;
                 }
-                // Its place on its own route (the clock's, never the camera's), faint as it arrives.
-                roamAt(path, time, mesh.position, velocity);
                 // Under a thick veil of the 1->2 steam it is already here when the steam clears.
                 if (steamVeilWeight() > 0.3) actor.roam.arrive = 1;
                 actor.fade = stepRoamArrival(actor.roam, dt) * life;

@@ -83,6 +83,8 @@ import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-
 import { pickStellarClass } from './odyssey-stellar-ramp.js';
 import { ORBIT_EARTH_SCHEDULE, orbitEarthAt } from '../composition/odyssey-orbit-earth.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
+import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
+import { createSpiralGalaxySteps } from './odyssey-spiral-galaxy.tsl.js';
 
 /**
  * Cosmic Expanse environment configuration
@@ -432,11 +434,17 @@ export const PLANET_WORLD_SEAT = Object.freeze({
  * disk band. `angularRadius` sizes the disc: 7 deg reads as a grand spiral, not a speck.
  */
 export const GALAXY_SKY_SEAT = Object.freeze({
-    along: 0.897,
-    up: 0.1661,
-    right: -0.4096,
+    // LOWER LEFT since 2026-10-31 (Olov: "can we have it a bit more down to the left????"):
+    // (0.897, 0.1661, -0.4096) held it upper left, ndc ~(-0.5, 0.65) at 16:9 through the chapter;
+    // this holds it ~(-0.53, 0.33), level with the hole and clear of its disk band, inside the frame
+    // at 4:3 too, gone off the left edge only on the dive.
+    along: 0.88,
+    up: -0.02,
+    right: -0.44,
     distance: 1600,
-    angularRadius: THREE.MathUtils.degToRad(7),
+    // 10 deg (7 until 2026-10-31): the Galaxy theme's disc and suns (odyssey-spiral-galaxy.tsl.js)
+    // want the room to read as a galaxy, not a badge.
+    angularRadius: THREE.MathUtils.degToRad(10),
 });
 
 /**
@@ -663,6 +671,9 @@ const DUST_FAR_CAP = 800;
 // 2400 u dome (behind everything), are billboarded in their own frame, and are sized for
 // that distance (a 3-8 px quad around a 1-2 px core). A share of the far tier is pulled
 // into the dome's galactic plane so the sky has a Milky Way, not an even sprinkle.
+/** The star shells' draw order: first in space, before the ringed giant (GIANT_DRAW_ORDER). */
+export const CH6_STAR_DRAW_ORDER = -0.95;
+
 export const CH6_STARFIELD = Object.freeze({
     far: Object.freeze({
         radiusMin: 1950, radiusSpan: 330, sizeBase: 6, sizeSpan: 13, perParticle: 5.5, min: 600,
@@ -925,6 +936,44 @@ function readCh6UrlFlag(name) {
     }
 }
 
+/**
+ * A SKY, NOT A CROWD (2026-10-31, the space masterpiece pass). Olov: "how can we make chapter 6
+ * less clutterly and more visually impressive? I want a more epic visually experience". From
+ * ~p 0.81 one frame held the black hole, the ringed giant, the galaxy, a lumpy violet gas field
+ * (drawn over the giant's lower half), a garland of twelve red rocks round the hole, near dust
+ * like falling snow and a comet: nothing led, so nothing was big. Space reads as epic with ONE
+ * great thing at a time in a lot of dark. So the ambient layers that only added noise are not
+ * built: the gas field (the dome's painted Milky Way and nebulosity carry the colour), the rock
+ * garland and the near dust. The far fine dust stays for parallax, and the streaks for the pull.
+ * `?odysseyCh6Clutter=1` (or `options.ambient`) builds them all again, for a side by side.
+ */
+export const CH6_AMBIENT = Object.freeze({
+    nebulaField: false,
+    // The glitter in the hole's disk plane: the traced hole (odyssey-gargantua-lens.tsl.js)
+    // carries its own gas, and the sparks read as dust on the lens.
+    debris: false,
+    dustNear: false,
+    dustFar: true,
+    asteroids: false,
+    streaks: true,
+    comet: true,
+});
+/** Every ambient layer: the chapter as it was before the masterpiece pass. */
+export const CH6_AMBIENT_ALL = Object.freeze({
+    nebulaField: true,
+    debris: true,
+    dustNear: true,
+    dustFar: true,
+    asteroids: true,
+    streaks: true,
+    comet: true,
+});
+
+function resolveCh6Ambient(options = {}) {
+    if (options.ambient) return { ...CH6_AMBIENT, ...options.ambient };
+    return readCh6UrlFlag('odysseyCh6Clutter') ? CH6_AMBIENT_ALL : CH6_AMBIENT;
+}
+
 function resolveCh6BisectLevers() {
     return {
         dome: !readCh6UrlFlag('odysseyCh6NoDome'),
@@ -998,6 +1047,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
 
     const particleCount = options.particleCount || 1000;
     const bisect = resolveCh6BisectLevers();
+    const ambient = resolveCh6Ambient(options);
     group.userData.ch6Bisect = bisect;
     yield;
 
@@ -1022,7 +1072,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     // in update(): scale 1.25→3.0, z -900→-640, y 20→70 so it rides the upper third and
     // never sits as a tiny dot on the bottom edge — the #1 Space hero fix). Initial pose
     // matches APPROACH.*A so the first frame / smoke test agrees with the march.
-    const blackHole = bisect.heroes ? yield* createBlackHoleSteps(uniforms) : null;
+    const blackHole = bisect.heroes ? yield* createBlackHoleSteps(uniforms, options) : null;
     if (blackHole) {
         blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
         blackHole.scale.setScalar(APPROACH.bhScaleA);
@@ -1041,7 +1091,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
 
     // 1c. Distant galaxy / quasar — a sharp, persistent deep-space focal anchor
     // up and to the right of the hero, so Space always has a bright far point.
-    const galaxy = bisect.heroes ? createDistantGalaxy(uniforms) : null;
+    const galaxy = bisect.heroes ? yield* createDistantGalaxySteps(uniforms, options) : null;
     if (galaxy) {
         group.add(galaxy);
         group.userData.galaxy = galaxy;
@@ -1050,7 +1100,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     // 2. Matter spiralling into the void (aligned to the disk plane). Tracks the BH
     // omen's transform each frame in update() so the infall stays seated on the hole as
     // it looms (starts at the BH entry pose).
-    const debris = bisect.dust ? createSuctionParticles(uniforms, particleCount) : null;
+    const debris = (bisect.dust && ambient.debris) ? createSuctionParticles(uniforms, particleCount) : null;
     if (debris) {
         // Initial pose = the BH entry pose (APPROACH.*A) rather than a copy of the hole's
         // transform, so the infall stays seated even when the hero tier is bisected out
@@ -1113,7 +1163,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     // off, sprites on) via `?odysseyCh6NebulaSprites=1` — gpu-split configuration
     // `ch6-nebula-sprites`, so the differential IS the swap's price in one window.
     const nebulaSprites = readCh6UrlFlag('odysseyCh6NebulaSprites');
-    const nebulaField = (bisect.nebula && !nebulaSprites) ? yield* createNebulaFieldTSLSteps({
+    const nebulaField = (bisect.nebula && !nebulaSprites && ambient.nebulaField) ? yield* createNebulaFieldTSLSteps({
         uTime: uniforms.uTime,
         // The board's quality preset (seamless pass): Medium/Low trim the gas's finest octaves.
         qualityTier: options.qualityTier,
@@ -1173,7 +1223,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     // motes that fills the corridor with twinkling life, plus a FAR tier of fine dim dust
     // for deep parallax. Both INSTANCED + CAPPED + scaled off particleCount; the near tier
     // drifts faster than the far for a strong parallax read as the camera dollies.
-    const dustNear = !bisect.dust ? null : createCosmicDust(
+    const dustNear = !(bisect.dust && ambient.dustNear) ? null : createCosmicDust(
         uniforms,
         Math.min(DUST_NEAR_CAP, Math.max(120, Math.floor(particleCount * 0.40))),
         {
@@ -1195,7 +1245,7 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
         group.userData.dustNear = dustNear;
     }
 
-    const dustFar = !bisect.dust ? null : createCosmicDust(
+    const dustFar = !(bisect.dust && ambient.dustFar) ? null : createCosmicDust(
         uniforms,
         Math.min(DUST_FAR_CAP, Math.max(160, Math.floor(particleCount * 0.5))),
         {
@@ -1231,9 +1281,11 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     // travel), staged UP-RIGHT of the rail with the hero march. Orange accretion rim
     // toward the hole + violet fill come free from the chapter's two lights. Two or
     // three pass within ~30 units of the camera corridor for genuine scale shock.
-    const asteroids = createAsteroidGarland();
-    corridor.add(asteroids);
-    group.userData.asteroids = asteroids;
+    const asteroids = ambient.asteroids ? createAsteroidGarland() : null;
+    if (asteroids) {
+        corridor.add(asteroids);
+        group.userData.asteroids = asteroids;
+    }
     yield;
 
     // 2g. AURORA→FILAMENT BRIDGE (creative plan asset 8, Transition In beat 3): the
@@ -1242,16 +1294,18 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
     // ~18% local progress, becoming the first crimson nebula filaments.
     // 2h. STREAK-MOTE TIER (creative plan asset 6): a sparse rail-hugging tier of
     // slightly elongated quads that sell forward speed through the long middle act.
-    const streakMotes = bisect.dust ? createStreakMotes(uniforms, 90) : null;
+    const streakMotes = (bisect.dust && ambient.streaks) ? createStreakMotes(uniforms, 90) : null;
     if (streakMotes) {
         corridor.add(streakMotes);
         group.userData.streakMotes = streakMotes;
     }
 
     // The comet (Wave 5): the reef's authored moment — unlevered, two opaque draws.
-    const comet = createComet();
-    corridor.add(comet);
-    group.userData.comet = comet;
+    const comet = ambient.comet ? createComet() : null;
+    if (comet) {
+        corridor.add(comet);
+        group.userData.comet = comet;
+    }
     yield;
 
     // (The aurora bridge, a curtain band round the eye, lived here until 2026-10-24: the aurora is
@@ -1341,10 +1395,13 @@ function createVoidSky(uniforms) {
     return mesh;
 }
 
-function* createBlackHoleSteps(uniforms) {
-    // TSL builder: assembles the converted accretion disk + lensing shell with the
-    // plain horizon / photon ring / glow rings. Returns { group, disk, lens }.
-    const { group } = yield* createBlackHoleTSLSteps(uniforms.uTime, uniforms.uEnergy);
+function* createBlackHoleSteps(uniforms, options = {}) {
+    // TSL builder: the shadow and, round it, the traced hole (odyssey-gargantua-lens.tsl.js);
+    // `?odysseyPaintedHole=1` the painted one it replaced (photon ring, fold arcs, disk band).
+    const { group } = yield* createBlackHoleTSLSteps(uniforms.uTime, uniforms.uEnergy, {
+        painted: readCh6UrlFlag('odysseyPaintedHole'),
+        quality: pickByQualityTier(options.qualityTier, { high: 'high', medium: 'high', low: 'low' }),
+    });
     group.userData.uniforms = uniforms;
     return group;
 }
@@ -1770,6 +1827,9 @@ function createVoidStars(uniforms, count, opts = {}) {
 
     const points = new THREE.Mesh(geometry, material);
     points.name = name;
+    // FIRST in space (the farthest thing): before the ringed giant and the Earth's backdrop, so
+    // both cover the stars they stand in front of (they are additive, so nothing else changes).
+    points.renderOrder = CH6_STAR_DRAW_ORDER;
     points.frustumCulled = false;
     return points;
 }
@@ -2231,12 +2291,22 @@ function createComet() {
     return group;
 }
 
-function createDistantGalaxy(uniforms) {
-    // Sharp, persistent spiral-galaxy/quasar billboard — a crisp deep-space focal anchor
-    // up-right of the hero. B-COMPOSE marches it inward toward frame + grows it as the
-    // camera approaches the seam ((150,150,-820)/120 → (120,170,-720)/175) via uApproach
-    // in update(), so it reads as a real bright spiral rather than a pinprick off-edge.
+function* createDistantGalaxySteps(uniforms, options = {}) {
+    // THE GALAXY THEME'S GALAXY (2026-10-31, odyssey-spiral-galaxy.tsl.js): a disc of gas, dust
+    // and a bulge seen through its own frame, in place of the painted quad. It faces +Z as the
+    // quad did, so update() seats and turns it the same way. `?odysseyCh6PaintedGalaxy=1` builds
+    // the painted quad again.
+    if (!readCh6UrlFlag('odysseyCh6PaintedGalaxy')) {
+        const spiral = yield* createSpiralGalaxySteps({
+            uTime: uniforms.uTime,
+            quality: pickByQualityTier(options.qualityTier, { high: 'high', medium: 'high', low: 'low' }),
+        });
+        spiral.mesh.name = 'distant-galaxy-anchor';
+        spiral.mesh.position.set(APPROACH.galaxyA.x, APPROACH.galaxyA.y, APPROACH.galaxyA.z);
+        return spiral.mesh;
+    }
     const { mesh } = createDistantGalaxyTSL(uniforms.uTime);
+    mesh.userData.discRadius = 0.47;
     mesh.position.set(APPROACH.galaxyA.x, APPROACH.galaxyA.y, APPROACH.galaxyA.z);
     mesh.scale.setScalar(APPROACH.galaxyA.s);
     mesh.frustumCulled = false;
@@ -2433,6 +2503,13 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             // of its own light. It grows out of a point as the light around it fades in.
             shadow.scale.setScalar(Math.max(1e-3, Math.sqrt(omenReveal)));
         }
+        // The traced hole round that shadow (odyssey-gargantua-lens.tsl.js): one circle with it,
+        // the disk in the disk pivot's plane, drawn exactly while the omen's shadow is.
+        const tracer = blackHole.userData.lens;
+        if (tracer) {
+            tracer.mesh.visible = omenShadowLive && omenReveal > 0.002;
+            if (tracer.mesh.visible) tracer.update(blackHole.userData.diskPivot, delta, shadow?.scale.x ?? 1);
+        }
     }
     const lens = group.userData.lensWorldPos;
     if (lens) {
@@ -2519,7 +2596,9 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             galaxy.position.set(APPROACH.galaxyA.x, APPROACH.galaxyA.y, APPROACH.galaxyA.z);
         }
         // The quad's disc reaches 0.47 of its side: size it to the seat's angular radius.
-        galaxy.scale.setScalar((GALAXY_SKY_SEAT.distance * Math.tan(GALAXY_SKY_SEAT.angularRadius)) / 0.47);
+        // (The disc's radius in the mesh's own units: the quad's feathered edge, or the spiral's arms.)
+        galaxy.scale.setScalar((GALAXY_SKY_SEAT.distance * Math.tan(GALAXY_SKY_SEAT.angularRadius))
+            / (galaxy.userData.discRadius ?? 0.47));
     }
 
     const { diskLight } = group.userData;

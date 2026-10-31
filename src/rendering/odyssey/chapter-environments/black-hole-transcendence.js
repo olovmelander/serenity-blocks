@@ -72,6 +72,7 @@ import {
     resolveGargantuaFallPosition,
 } from './black-hole-transcendence.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
+import { createGargantuaLensSteps } from './odyssey-gargantua-lens.tsl.js';
 
 export const BLACK_HOLE_TRANSCENDENCE_CONFIG = {
     id: 7,
@@ -375,6 +376,16 @@ export function* buildBlackHoleTranscendenceEnvironmentSteps(options = {}) {
 
     // 1. Gargantua — the one hero, camera-locked in update().
     const distantHole = createGargantua(uniforms, tier);
+    if (!readPaintedHoleFlag()) {
+        const lens = yield* createGargantuaLensSteps({
+            shadowRadius: CH7_GARGANTUA.shadowRadius,
+            uReveal: uniform(0),
+            quality: tier === CH7_QUALITY_TIERS.low ? 'low' : 'high',
+        });
+        lens.mesh.visible = false;
+        distantHole.userData.face.add(lens.mesh);
+        distantHole.userData.lens = lens;
+    }
     group.add(distantHole);
     group.userData.distantHole = distantHole;
     group.userData.eventHorizon = distantHole.userData.face;
@@ -586,6 +597,23 @@ export function advanceWarpDrive(state, delta, progress, warp, opts = {}) {
     return state;
 }
 
+/**
+ * THE TRACED HOLE, AS SEEN FROM OUTSIDE (2026-10-31; odyssey-gargantua-lens.tsl.js). Chapter 6's
+ * omen and Gargantua are one hole: the same traced lens round the same shadow, in the same pose,
+ * so the 6->7 hand-over changes nothing. The lens marches from a sphere ~4.5 shadow radii out and
+ * the eye must stay outside it, which it leaves at ~12.9 deg of hole: on the dive, past `from`
+ * degrees, it hands the hole to the painted parts that carry the plunge (the photon ring on the
+ * silhouette, the band sweeping through edge-on), gone by `to`. `?odysseyPaintedHole=1` keeps
+ * the painted hole throughout.
+ */
+export const CH7_TRACED_HOLE = Object.freeze({ from: 8.5, to: 12 });
+
+function readPaintedHoleFlag() {
+    if (typeof window === 'undefined' || !window.location?.search) return false;
+    const value = new URLSearchParams(window.location.search).get('odysseyPaintedHole');
+    return value === '1' || value === 'true';
+}
+
 /** `?odysseyCh7Fold=0|1`: hold the fold off or on inside the hole (A/B captures and timing). */
 function readCh7FoldOverride() {
     if (typeof window === 'undefined' || !window.location?.search) return null;
@@ -770,25 +798,42 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
                 : 1;
         }
     }
-    if (hero?.uDiskFade) hero.uDiskFade.value = band;
     // THE FAR DISK'S IMAGE IS A VIEW FROM OUTSIDE (overhaul 2026-10-20). The lensed halo spans 1-2.2
     // shadow radii: once the hole outgrows ~9 deg it would flood the frame with amber (the 6->7
     // gate read 100 luma at p 0.893), so it fades out by ~19 deg. The photon ring stays: on the
     // silhouette it is a razor at every size (it used to dim from 12 deg as a fat band).
     const holeDeg = THREE.MathUtils.radToDeg(fall.alpha ?? 0);
     const imageFade = 1 - THREE.MathUtils.smoothstep(holeDeg, 9, 19);
-    scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, band * imageFade);
-    scaleBridge(hero?.photonRing?.material?.uniforms?.uOpacity, 1);
+    // The traced hole (CH7_TRACED_HOLE) while it is seen from outside; the painted parts after.
+    const tracer = hero?.lens;
+    const traced = tracer ? 1 - THREE.MathUtils.smoothstep(holeDeg, CH7_TRACED_HOLE.from, CH7_TRACED_HOLE.to) : 0;
+    const painted = 1 - traced;
+    if (tracer) {
+        tracer.uniforms.reveal.value = band * traced;
+        tracer.mesh.visible = !!hero.horizon?.visible && band * traced > 0.002;
+        if (tracer.mesh.visible) tracer.update(hero.diskPivot, delta, 1);
+    }
+    if (hero?.uDiskFade) hero.uDiskFade.value = band * painted;
+    // With the traced hole the painted far-side arcs never draw: by the time it hands over they
+    // have faded (the image is a view from outside, below).
+    scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, band * imageFade * (tracer ? 0 : 1));
+    scaleBridge(hero?.photonRing?.material?.uniforms?.uOpacity, painted);
     const {
         infallEmbers, corridorDust: dust, shards: shardMesh, lensingStarfield: stars,
     } = group.userData;
-    scaleBridge(infallEmbers?.material?.uniforms?.uOpacity, band);
+    // The embers belong to the plunge's painted disk: the traced gas has its own, and the sparks read
+    // as dust on the lens while it is up.
+    scaleBridge(infallEmbers?.material?.uniforms?.uOpacity, band * painted);
     scaleBridge(dust?.material?.uniforms?.uOpacity, motifs);
     scaleBridge(shardMesh?.material?.uniforms?.uOpacity, motifs);
     scaleBridge(stars?.material?.uniforms?.uOpacity, motifs);
     // Hidden outright once collapsed / gone, so nothing keeps drawing at zero.
+    // (The traced lens reads the pivot's pose whether or not it is drawn.)
     if (hero?.diskPivot) hero.diskPivot.visible = band > 0.002;
-    hero?.foldArcs?.forEach((fold) => { fold.visible = band * imageFade > 0.002; });
+    if (hero?.disk) hero.disk.visible = band * painted > 0.002;
+    if (infallEmbers) infallEmbers.visible = band * painted > 0.002;
+    hero?.foldArcs?.forEach((fold) => { fold.visible = band * imageFade * (tracer ? 0 : 1) > 0.002; });
+    if (hero?.photonRing) hero.photonRing.visible = painted > 0.002;
     if (dust) dust.visible = motifs > 0.002;
     if (shardMesh) shardMesh.visible = motifs > 0.002;
     // The far stars sit behind the window once inside: depth-rejected fill, so they stop drawing.

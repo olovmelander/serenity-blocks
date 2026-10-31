@@ -27,6 +27,17 @@ export function morphEndCeiling(gridN, holeShrink) {
 }
 
 /**
+ * The same ceiling for a CONTINUOUS morph (2026-10-31): one measured from the LOD centre itself
+ * rather than from the ring's snapped origin, so it glides as the eye moves instead of stepping
+ * every 2 cells. The snapped origin trails the centre by up to 2 cells, so a vertex's continuous
+ * position in its ring reads up to 4 / gridN short of its snapped one, and the morph must finish
+ * that much earlier to complete before the overlap band.
+ */
+export function continuousMorphEndCeiling(gridN, holeShrink) {
+    return morphEndCeiling(gridN, holeShrink) - (4 / gridN);
+}
+
+/**
  * Base spacing that holds a given world reach as the lattice gets coarser or finer, so a
  * quality tier can trade triangles for detail without also moving the horizon.
  */

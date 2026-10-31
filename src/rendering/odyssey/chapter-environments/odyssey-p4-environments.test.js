@@ -5,7 +5,7 @@ import {
     vi,
 } from 'vitest';
 import { createSkyDriftEnvironment } from './sky-drift.js';
-import { createCosmicExpanseEnvironment } from './cosmic-expanse.js';
+import { createCosmicExpanseEnvironment, CH6_AMBIENT_ALL } from './cosmic-expanse.js';
 import {
     createBlackHoleTranscendenceEnvironment,
     BLACK_HOLE_TRANSCENDENCE_CONFIG,
@@ -43,7 +43,7 @@ describe('Odyssey P4 chapter environment anchors', () => {
     });
 
     it('uses a volumetric black-hole anchor and hero planet in chapter 6', () => {
-        const group = createCosmicExpanseEnvironment({ particleCount: 8 });
+        const group = createCosmicExpanseEnvironment({ particleCount: 8, ambient: CH6_AMBIENT_ALL });
 
         expect(group.userData.blackHole?.name).toBe('volumetric-black-hole-anchor');
         expect(group.userData.blackHole?.isMesh).not.toBe(true);

@@ -1,8 +1,9 @@
 import * as THREE from 'three/webgpu';
 import {
     Break, Fn, If, Loop, int,
-    abs, atan, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
-    hash, length, max, min, mix, reflect, select, sign, sqrt,
+    abs, acos, atan, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
+    log2,
+    hash, length, max, min, mix, reflect, select, sign, sqrt, uniformArray,
     normalize, normalLocal, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin,
     smoothstep, screenUV, step as tslStep, texture, uniform, uv, varying, varyingProperty, vec2, vec3, vec4,
     cameraPosition as cameraPositionNode,
@@ -39,8 +40,12 @@ import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
 import { noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { buildKelpGeometry, buildSpireGeometry, planOceanForms } from './odyssey-ocean-forms.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
-import { antisolarSchedule, applyAntisolarSky } from './odyssey-sky-optics.js';
+import {
+    ODYSSEY_BOW, antisolarSchedule, bowSkyLight, bowSpectrum,
+} from './odyssey-sky-optics.js';
+import { ODYSSEY_SHOWER, showerBowVolume } from './odyssey-shower.js';
 import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
+import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import {
     FOREST_LEAF_CARD, FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW,
 } from './odyssey-forest-geometry.js';
@@ -50,6 +55,7 @@ import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-spe
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './odyssey-forest-shade.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
+import { bakeValleyMist } from './odyssey-valley-mist.js';
 import {
     billboardWorld, makeQuadInstancedGeometry,
 } from '../chapter-environments/shared/odyssey-tsl-billboard.js';
@@ -64,6 +70,7 @@ import {
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
 import { behindSteamDepth, steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
 import { ORBIT_EARTH_SEAM, orbitEarthOver } from '../composition/odyssey-orbit-earth.js';
+import { throughSurfaceNode, throughSurfaceShare } from '../composition/odyssey-through-surface.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
 export { bakeOdysseyCloudField };
@@ -99,7 +106,13 @@ export { ODYSSEY_WORLD_SUN };
 
 export const ODYSSEY_WORLD_QUALITY = Object.freeze({
     high: {
-        gridN: 128,
+        // 160 since 2026-10-31 (was 128): the lattice's spacing at a given range is ~range /
+        // (gridN / 2), so the massif, seen at 0.5-1.5 km, is drawn a fifth finer and changes far
+        // less as the rings pass over it (see clipmapXZ's continuous morph). ~373k ground
+        // triangles (was ~239k). The water and the cloud deck keep the lattice their spacing was
+        // tuned on (`waterLattice`).
+        gridN: 160,
+        waterLattice: 128,
         levels: 9,
         baseSpacing: 1.6,
         holeShrink: 3,
@@ -111,6 +124,8 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         ridgeRock: 0.16,
         cloudShadows: true,
         leafClumps: true,
+        // Water pass steps 2-3: the waters trace the clouds and the sea marches the land.
+        waterReflections: true,
     },
     low: {
         gridN: 96,
@@ -125,6 +140,7 @@ export const ODYSSEY_WORLD_QUALITY = Object.freeze({
         ridgeRock: 0.12,
         cloudShadows: false,
         leafClumps: false,
+        waterReflections: false,
     },
 });
 
@@ -181,6 +197,28 @@ const GROUND_SNOW_CREST_STRIP = 0.75;
  */
 /** Crisp rock ramps in over this altitude band (u): above the shore lowlands, below the scree. */
 const ROCK_CRISP_FROM = Object.freeze([320, 380]);
+/**
+ * THE SUMMIT'S ROCK (2026-10-31): snow ledges on the layered rock and a sky-lit shade, above
+ * `from` only (the climb's close-ups; the massif's flanks keep the measured mineral shade).
+ *   step/width — a layer every `step` u, its top `width` of the layer held in snow;
+ *   wobble     — how far the atlas grain bends a ledge (u); cliff — no ledges past this slope;
+ *   cover      — how much snow a ledge adds; rockAmbient / rockSkyChroma — the shaded stone's
+ *   sky fill and how much of the sky's hue it takes (mineral: 0.22 and GROUND_AMBIENT_CHROMA).
+ */
+const SUMMIT_LEDGES = Object.freeze({
+    from: Object.freeze([600, 690]),
+    step: 7.5,
+    width: 0.16,
+    wobble: 26,
+    /** The strata's dip: height gained per world unit across the mountain (x, z). */
+    dip: Object.freeze([0.16, -0.09]),
+    /** The along-ledge break-up's scale (1 / u): runs of snow ~10-30 u long. */
+    runScale: 0.055,
+    cliff: Object.freeze([0.80, 0.95]),
+    cover: 0.95,
+    rockAmbient: 0.50,
+    rockSkyChroma: 0.55,
+});
 const SNOW_CRISP = Object.freeze({
     from: Object.freeze([560, 680]),
     breakup: 0.20,
@@ -420,27 +458,87 @@ const LAKE_TINT_VARIANTS = {
 const LAKE_TINT_DEFAULT = 'alpine';
 /**
  * THE TARN'S MIRROR (see the tarn material): the march (`steps`, the first step and how each grows,
- * world units), the ripple (plane scale and slope), where the reflected land turns to rock and to
- * snow (altitude ramps), its light (sun gain over the baked visibility, sky ambient), the water's
- * own colours (shallow over the bank, deep by `deepBy` u), and the mirror's share of the surface:
- * [floor, grazing gain, cap] on (1 - cos)^3.
+ * world units), where the reflected land turns to rock and to snow (altitude ramps), and its light
+ * (sun gain over the baked visibility, sky ambient).
+ *
+ * ONE WATER (2026-10-31): the tarn's water is the sea's (the `water*` helpers), with three pond
+ * settings: `absorb` drives the sea's pigment ramp by the tarn's own few units of depth (the sea's
+ * 0.02 a metre would leave a 3 u pond at the palest step), `calm` scales the sea's ripple slope
+ * (a sheltered pond, not open water), and `fresnel` is the sea's [gain, floor] with a higher floor,
+ * because still water mirrors more than a sea under wind.
  */
+/**
+ * The sea turns blue sooner (2026-10-31, "can we improve the water in the ocean"): a gain on the
+ * colour script's measured absorption. At 1 the visible sea sat in the ramp's pale upper plates
+ * from every Act II station, a milky aqua; above 1 the same depths reach cerulean and cobalt.
+ */
+const SEA_ABSORB_GAIN = 2.6;
+/**
+ * THE WATERS' OWN PIGMENTS (water pass, 2026-10-31, "do what you think will be most beautiful").
+ * This is a cool northern island (a snowy horn, conifers, meadows): its sea is turquoise only in
+ * the thin band over the sand and turns a deep teal-blue within a few metres, clear and cold, like
+ * the Lofoten or Fiordland coasts; the colour script's ramp (Act I's, unchanged) leaned tropical,
+ * a wide band of bright aqua that was the most saturated thing in every frame. The sea keeps the
+ * script's turquoise for the sand and steps through teal to a blue-green deep. The tarn under the
+ * horn is fed by its snow: the milky jade-turquoise of glacial flour, brighter and less saturated
+ * than the sea and nearly opaque, so it reads as an alpine lake rather than a pool. Both keep the
+ * script's four plates (`bands`) and every other water term in common.
+ */
+const SEA_RAMP = Object.freeze({
+    shore: ODYSSEY_WATER_RAMP.shore,
+    shelf: Object.freeze([0.10, 0.41, 0.50]),
+    open: Object.freeze([0.05, 0.27, 0.40]),
+    deep: Object.freeze([0.03, 0.15, 0.24]),
+});
+/**
+ * THE SHOWER'S LOOK (round three; the layout is odyssey-shower.js): how fast the rain falls (u/s)
+ * and how long its streaks are (u), the even veil and the streaks' share of its density, and how
+ * strong the bow is in it against the sky's old bow.
+ */
+const SHOWER_LOOK = Object.freeze({
+    /** Optical depth per unit of integrated (1 - r^2) rain: the bow's mask is ~0.9 through the line. */
+    density: 0.009,
+    /** The bow against the sky's old one, the glow inside it, and Alexander's band (a darkening). */
+    bowGain: 2.0,
+    glow: 0.08,
+    band: 0.10,
+});
+const TARN_RAMP = Object.freeze({
+    shore: Object.freeze([0.40, 0.78, 0.70]),
+    shelf: Object.freeze([0.18, 0.66, 0.66]),
+    open: Object.freeze([0.10, 0.54, 0.59]),
+    deep: Object.freeze([0.06, 0.42, 0.50]),
+});
+/**
+ * THE WORLD IN THE SEA (water pass step 3): the sea's own march over the macro and relief plates
+ * (no summit plate: the summit stands too far back to stand in the water), coarse and short: its
+ * steps grow faster than the tarn's, it stops once a ray has climbed over every summit
+ * (`ceiling`), and only water within `reach` of the eye marches (beyond it the sea's mirror is
+ * the sky's, and the horizon dissolve owns the frame).
+ */
+const SEA_MIRROR = Object.freeze({
+    steps: 18,
+    firstStep: 6.0,
+    stepGrowth: 1.24,
+    soft: 3.0,
+    ceiling: 1150,
+    reach: 1000,
+});
 const TARN_MIRROR = Object.freeze({
     steps: 24,
     firstStep: 3.0,
     stepGrowth: 1.22,
-    rippleScale: 0.42,
-    ripple: 0.022,
     rockFrom: Object.freeze([420, 520]),
     snowFrom: Object.freeze([610, 700]),
     sunLit: 0.95,
     ambient: 0.45,
-    shallow: Object.freeze([0.16, 0.24, 0.20]),
-    deep: Object.freeze([0.035, 0.075, 0.095]),
-    deepBy: 2.0,
     /** How close a reflected ray may pass over the land and still take some of it (u, or 2% of the run). */
     soft: 1.6,
-    mirror: Object.freeze([0.50, 0.70, 0.9]),
+    absorb: 0.6,
+    calm: 0.35,
+    /** How many rings (rises) the pond carries at once (water pass step 4). */
+    rings: 3,
+    fresnel: Object.freeze([0.62, 0.30]),
 });
 /**
  * The jade a thin wave crest transmits, seen from ABOVE (the topside twin of `uWaterGlow`'s
@@ -538,6 +636,47 @@ const DEPART_AIRGLOW = Object.freeze([0.20, 0.78, 0.46]);
 const SCRIPT_RUNOUT_FROM = 0.82;
 /** Peak opacity of the valley mist (item 7) — a veil, never a fog bank. */
 const VALLEY_MIST_GAIN = 0.20;
+/**
+ * MIST LYING LOW (round three, 2026-10-31). Olov: "soft haze lying in the valleys and hollows, so
+ * the forest and hills stack in layers instead of reading flat." The air's haze grows with range
+ * and thins with height over ~650 u, so from the meadows (the eye 60-100 u over the sea) the
+ * forest, the slopes behind it and the far hills all hazed alike. Two thin bodies of mist lie on
+ * the land as well, both integrated along the eye's ray:
+ *  - a LAYER over the sea and the low land, its density falling with height above the sea over a
+ *    few tens of units, so the feet of every far hill stand in pale air and their tops stand clear;
+ *  - POOLS in the hollows (odyssey-valley-mist.js), each a slab of mist from the ground up to its
+ *    level top, so a basin's floor goes soft while the crowns and ridges round it stand out.
+ * Its colour is the sunlit air's, never grey: the sky's own air washed toward white, a touch cooler
+ * in the land's shadows, and glowing toward the sun.
+ */
+const GROUND_MIST = Object.freeze({
+    /** The layer: density at the sea (per u) and its scale height (u). */
+    density: 0.0012,
+    height: 35,
+    /** The pools: density per u of path through them, the longest path counted (u), and the
+     * shallowest slant a ray is counted at (|dir.y|). */
+    pool: 0.008,
+    poolPath: 400,
+    graze: 0.08,
+    /** The most it veils, the clear zone round the eye (u), and the eye heights over the sea it
+     * fades out between on the climb (u). */
+    gain: 0.5,
+    near: Object.freeze([150, 1000]),
+    eyeFade: Object.freeze([1400, 2600]),
+    /** Wisps: the noise's scale (1/u), its swing (±), and the wind it drifts on (u/s). */
+    wispScale: 1 / 1100,
+    wisp: 0.35,
+    drift: Object.freeze([3.0, -1.8]),
+    /** Its colour: the sunlit white and how bright it is against the land, how much of the sky's
+     * air it keeps, its shade (a multiplier, in the land's shadow) and its glow toward the sun. */
+    white: Object.freeze([0.97, 0.975, 0.98]),
+    bright: 1.25,
+    air: 0.35,
+    shade: 0.92,
+    forward: 0.30,
+    /** Over the open sea it is laid thinner, so the water keeps its blue to the horizon. */
+    sea: 0.4,
+});
 /**
  * RIGID DRIFT (plan Wave 3). Amplitudes in world units and the period band in seconds.
  *
@@ -1124,6 +1263,11 @@ export function createOdysseyWorld({
     heroes = false,
     cloudField = true,
     cloudFieldCount = 0,
+    // THE CLOUD LOOK (odyssey-cloud-looks.js): the paint the field wears, and the specs it is
+    // sculpted from (the board resolves both once, so the bake worker sculpts the same masses).
+    // Unset = the shipped paint and the shipped table.
+    cloudLook = null,
+    cloudSpecs = null,
     // REVIEW LEVER ONLY (playground `?lakeTint=`): pick a north-lake water palette from
     // LAKE_TINT_VARIANTS. Unset ships LAKE_TINT_DEFAULT, so the game has exactly one
     // answer and the comparison arms cannot leak into it.
@@ -1158,6 +1302,7 @@ export function createOdysseyWorld({
     // piece is baked right here, synchronously, as before — one code path, pinned by goldens.
     prebaked = null,
 } = {}) {
+    const cloudLookPaint = cloudLook?.paint || null;
     // ── THE CLIMB'S FRAME (2026-10-24) ──────────────────────────────────────────────────
     // At the end of chapter 5 the board shrinks this whole group toward the sea-level point
     // beneath the eye (`setClimb`, odyssey-world-act-gate.js `worldClimbScale`): a world shrunk
@@ -1220,6 +1365,15 @@ export function createOdysseyWorld({
     // everywhere else.
     const summitBake = preTex.summit ?? bakeSculptPlateData();
     const summitTex = halfFloatTexture(summitBake.data, summitBake.res, THREE.ClampToEdgeWrapping);
+    // THE LATTICE'S PREFILTER (2026-10-31): the two height plates the ground's vertices read are
+    // mipmapped, so each ring reads the height at its own spacing (see groundMat.positionNode).
+    // Every other read of them stays on level 0, explicitly. The image data is untouched (the
+    // mips are made on the GPU), so the pinned bake bytes are too.
+    [heightTex, summitTex].forEach((t) => {
+        t.generateMipmaps = true;
+        t.minFilter = THREE.LinearMipmapLinearFilter;
+        t.needsUpdate = true;
+    });
     // THE FOREST'S SHADE PLATE (odyssey-forest-shade.js): baked with the scatter in the worker,
     // or after it below when the scatter runs here; zeros (no shade) when there is no forest.
     // MIPMAPPED, unlike the other plates: it is read at every range, a crown's shadow is two
@@ -1253,6 +1407,19 @@ export function createOdysseyWorld({
     leafAtlasTex.wrapT = THREE.ClampToEdgeWrapping;
     leafAtlasTex.generateMipmaps = true;
     leafAtlasTex.needsUpdate = true;
+    // THE MIST PLATE (GROUND_MIST; odyssey-valley-mist.js): R = the hollows' mist top over the
+    // sea, G = the pool's depth, both in u, read at `xz / RELIEF_EXTENT + 0.5`.
+    const valleyMistTex = (() => {
+        const plate = bakeValleyMist(relief.sample, ODYSSEY_SEA_LEVEL);
+        const half = new Uint16Array(plate.data.length);
+        const one = THREE.DataUtils.toHalfFloat(1);
+        for (let t = 0; t < plate.data.length; t += 4) {
+            half[t] = THREE.DataUtils.toHalfFloat(plate.data[t] - ODYSSEY_SEA_LEVEL);
+            half[t + 1] = THREE.DataUtils.toHalfFloat(plate.data[t + 1]);
+            half[t + 3] = one;
+        }
+        return halfFloatTexture(half, plate.res, THREE.ClampToEdgeWrapping);
+    })();
     const t1 = (typeof performance !== 'undefined' ? performance.now() : 0);
 
     const group = new THREE.Group();
@@ -1261,7 +1428,7 @@ export function createOdysseyWorld({
     const ground = buildOdysseyClipmap({
         gridN: q.gridN, levels: q.levels, baseSpacing: q.baseSpacing, holeShrink: q.holeShrink,
     });
-    const waterSpacing = (q.baseSpacing * q.gridN) / 32;
+    const waterSpacing = (q.baseSpacing * (q.waterLattice ?? q.gridN)) / 32;
     // `waterGeo`, not `water` — the option of that name is the build gate (matches cloudGeo).
     const waterGeo = buildOdysseyClipmap({
         gridN: 32, levels: q.levels, baseSpacing: waterSpacing, holeShrink: 1,
@@ -1315,6 +1482,9 @@ export function createOdysseyWorld({
     // VALLEY-MIST GATE: the mist term rides smoothstep(350, 470, eye y), exactly 0 below 350 u (all of
     // ch2-3) — so it only runs above that, as a uniform branch inside applyAerial.
     const uValleyMist = uniform(0);
+    // GROUND-MIST GATE (GROUND_MIST): 1 while the eye is in the air and under the height the mist
+    // has faded out by, so the sea's depths and the climb out never build it.
+    const uGroundMist = uniform(0);
     // THE 1->2 CARRY (see `odysseyQuenchCarry`): bubble behaviour, ring profile, carried tint, the
     // extra rise phase the CPU accumulates (a speed change on a time-scaled fract would make every
     // mote jump), and the presence of ocean life. Neutral values = today's ocean exactly.
@@ -1543,6 +1713,9 @@ export function createOdysseyWorld({
     // no blend state, the opaque path unchanged. JS-gated: only the caller that passes it builds it.
     // `perFragmentMedium` (JS flag, the ground only): inside the breach band, decide the medium per
     // fragment instead of by the eye's smoothed uSubmerged — see `subW` in submergedOf.
+    // The trailing arguments of a call that takes the ground's mist and nothing else (the sea: its share).
+    const MIST_ONLY = [false, null, false, true];
+    const MIST_SEA = [false, null, false, GROUND_MIST.sea];
     const applyAerial = (
         lit,
         wp,
@@ -1551,6 +1724,8 @@ export function createOdysseyWorld({
         valleyMist = false,
         hazeFloor = null,
         perFragmentMedium = false,
+        // GROUND_MIST: true (all of it), false, or the share of it this surface takes.
+        groundMist = valleyMist,
     ) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
@@ -1581,11 +1756,9 @@ export function createOdysseyWorld({
         // (Mirrored about the Earth's limb, THE HORIZON IS THE LIMB.)
         const mirroredAir = vec3(toDir.x, limbMirror(toDir.y), toDir.z);
         const lookDown = ORBIT_EARTH_SEAM.presence.mul(smoothstep(float(0), float(0.05), dirY.negate()));
-        const airBase = mix(
-            lit,
-            mix(skyAirAt(toDir), skyAirAt(mirroredAir), lookDown),
-            clamp(float(1).sub(exp(airDepth.negate())).mul(float(rate)), 0, ceil),
-        );
+        const airCol = mix(skyAirAt(toDir), skyAirAt(mirroredAir), lookDown);
+        const airW = clamp(float(1).sub(exp(airDepth.negate())).mul(float(rate)), 0, ceil);
+        const airBase = mix(lit, airCol, airW);
         // VALLEY MIST (item 7) — height haze for LAND seen from the climb. Aerial perspective
         // here is a function of range only, so from 600 u up the forest at the massif's feet
         // and the meadow beside the rail hazed identically and the slopes stacked flat. Mist
@@ -1602,6 +1775,55 @@ export function createOdysseyWorld({
                 .mul(smoothstep(float(350), float(470), cameraPosition.y))
                 .mul(VALLEY_MIST_GAIN),
         );
+        // MIST LYING LOW (GROUND_MIST): the layer's optical depth along the ray (the same mean of
+        // an exponential over the ray's heights the air takes, at the layer's own scale height),
+        // plus the path through the hollow's pool over this point, broken into slow wisps. The
+        // mist lies NEARER than the air beyond it, so its colour is hazed by the same air:
+        // mix(base, mix(mist, air, airW), w) is exactly the mist laid under the air.
+        const gmStrength = groundMist === true ? 1 : (Number(groundMist) || 0);
+        const groundMistOf = (base) => {
+            const gmUv = wp.xz.div(float(RELIEF_EXTENT)).add(0.5);
+            const gmPlate = texture(valleyMistTex, gmUv).level(0);
+            const gmUnder = clamp(gmPlate.r.add(ODYSSEY_SEA_LEVEL).sub(wp.y), float(0), gmPlate.g);
+            const gmPoolPath = min(
+                gmUnder.div(max(abs(dirY), float(GROUND_MIST.graze))),
+                min(d, float(GROUND_MIST.poolPath)),
+            );
+            const gmHEye = max(cameraPosition.y.sub(ODYSSEY_SEA_LEVEL), 0).div(GROUND_MIST.height);
+            const gmHPoint = max(wp.y.sub(ODYSSEY_SEA_LEVEL), 0).div(GROUND_MIST.height);
+            const gmEEye = exp(gmHEye.negate());
+            const gmEPoint = exp(gmHPoint.negate());
+            const gmMean = max(
+                abs(gmEPoint.sub(gmEEye)).div(max(abs(gmHEye.sub(gmHPoint)), float(0.01))),
+                min(gmEPoint, gmEEye),
+            );
+            const gmWispN = texture(
+                detailTex,
+                wp.xz.sub(vec2(...GROUND_MIST.drift).mul(uTime)).mul(GROUND_MIST.wispScale),
+            ).b;
+            const gmWisp = gmWispN.sub(0.5).mul(2 * GROUND_MIST.wisp).add(1);
+            const gmTau = d.mul(gmMean).mul(GROUND_MIST.density)
+                .add(gmPoolPath.mul(GROUND_MIST.pool))
+                .mul(max(gmWisp, float(0)));
+            const gmW = float(1).sub(exp(gmTau.negate()))
+                .mul(smoothstep(float(GROUND_MIST.near[0]), float(GROUND_MIST.near[1]), d))
+                .mul(float(1).sub(smoothstep(
+                    float(ODYSSEY_SEA_LEVEL + GROUND_MIST.eyeFade[0]),
+                    float(ODYSSEY_SEA_LEVEL + GROUND_MIST.eyeFade[1]),
+                    cameraPosition.y,
+                )))
+                .mul(GROUND_MIST.gain * gmStrength);
+            const gmSun = texture(sunVisTex, gmUv).level(0).r;
+            const gmGlow = max(dot(toDir, uSunDir), 0).pow(6).mul(GROUND_MIST.forward);
+            const gmCol = mix(
+                vec3(...GROUND_MIST.white).mul(uSunColour).mul(GROUND_MIST.bright),
+                airCol,
+                float(GROUND_MIST.air),
+            )
+                .mul(mix(float(GROUND_MIST.shade), float(1), clamp(gmSun, 0, 1)))
+                .add(uSunColour.mul(gmGlow));
+            return mix(base, mix(gmCol, airCol, airW), gmW);
+        };
         const submergedOf = (air) => {
             // PER-CHANNEL BEER-LAMBERT, so red dies first and distance reads as WATER rather than
             // as blue fog: one scalar became a vec3 whose red extinguishes ~3.5x faster than blue,
@@ -1694,18 +1916,30 @@ export function createOdysseyWorld({
             if (valleyMist) {
                 If(uValleyMist.greaterThan(0.5), () => { out.assign(valleyMistOf(airBase)); });
             }
+            if (gmStrength > 0) {
+                If(uGroundMist.greaterThan(0.5), () => { out.assign(groundMistOf(out)); });
+            }
             If(uSubmerged.greaterThan(0.001), () => { out.assign(submergedOf(out)); });
             return out;
         })();
     };
 
-    const clipmapXZ = (spacing0, halfN) => {
+    // `continuousMorph` (the ground, 2026-10-31): the morph is measured from the LOD centre
+    // itself, not from the ring's snapped origin. Measured from the origin, a vertex's place in
+    // its morph band jumped by 2 / halfN (a fifth of the band) each time the origin stepped 2
+    // cells, every 25-51 u of travel where the massif is seen, and every step redrew its ridges
+    // and faces: Olov, "why does some of the shape of the mountain like change a bit as we move
+    // along the path". Measured from the centre, it glides with the eye. It must finish 4 / gridN
+    // earlier (continuousMorphEndCeiling, pinned by the clipmap test for the ground's tiers); the
+    // water and cloud lattices (gridN 32) have no such margin and keep the snapped morph.
+    const clipmapXZ = (spacing0, halfN, continuousMorph = false) => {
         const aGrid = attribute('position', 'vec3');
         const spacing = float(spacing0).mul(exp2(aGrid.y));
         const origin = floor(uLodCenter.div(spacing.mul(2))).mul(spacing.mul(2));
         const gridXZ = vec2(aGrid.x, aGrid.z);
         const local = gridXZ.mul(spacing);
-        const cheb = max(abs(local.x), abs(local.y)).div(spacing.mul(float(halfN)));
+        const fromCentre = continuousMorph ? origin.add(local).sub(uLodCenter) : local;
+        const cheb = max(abs(fromCentre.x), abs(fromCentre.y)).div(spacing.mul(float(halfN)));
         const morph = clamp(cheb.sub(float(MORPH_START)).div(float(MORPH_END - MORPH_START)), 0, 1);
         const coarse = floor(gridXZ.mul(0.5)).mul(2).mul(spacing);
         return {
@@ -1734,7 +1968,7 @@ export function createOdysseyWorld({
     // because expressing it in TSL froze every first compile for minutes. Do not resurrect it.)
 
     // ── ground ──
-    const g = clipmapXZ(q.baseSpacing, q.gridN / 2);
+    const g = clipmapXZ(q.baseSpacing, q.gridN / 2, true);
     const reliefUv = g.worldXZ.div(float(RELIEF_EXTENT)).add(0.5);
     const vUv = varying(reliefUv, 'vUv');
     // Macro terrain comes from the BAKE, not from analytic TSL — see bakeMacroTexture. The
@@ -1746,24 +1980,37 @@ export function createOdysseyWorld({
     const summitUv = g.worldXZ.sub(vec2(ODYSSEY_SCULPT_PLATE.x, ODYSSEY_SCULPT_PLATE.z))
         .div(float(ODYSSEY_SCULPT_PLATE.extent))
         .add(0.5);
+    // EACH RING READS THE HEIGHT AT ITS OWN SPACING (2026-10-31). The relief (8.8 u texels) and
+    // the summit's sculpt (1.8 u) hold form far finer than the 12.8-51 u rings the massif is seen
+    // on, so a coarse vertex caught whichever sliver of a ridge it happened to land on, and the
+    // morph between rings swapped those slivers as the rail moved: the summit's faces and ridge
+    // lines changed shape on the way (Olov: "why does some of the shape of the mountain like
+    // change a bit as we move along the path"). Read at the mip that matches the vertex's spacing
+    // (which the morph carries smoothly from one ring's to the next), the geometry holds only the
+    // form it can draw, and that form does not change as the rings pass over it. The near rings
+    // (spacing under a relief texel) still read level 0; the shading reads level 0 everywhere.
+    const gReliefMip = max(log2(g.spacing.div(RELIEF_EXTENT / q.reliefRes)), 0);
+    const gSummitMip = max(log2(g.spacing.div(ODYSSEY_SCULPT_PLATE.extent / summitBake.res)), 0);
     groundMat.positionNode = vec3(
         g.worldXZ.x,
-        gMacro.add(texture(heightTex, reliefUv).level(0).r.mul(gWeight))
-            .add(texture(summitTex, summitUv).level(0).r),
+        gMacro.add(texture(heightTex, reliefUv).level(gReliefMip).r.mul(gWeight))
+            .add(texture(summitTex, summitUv).level(gSummitMip).r),
         g.worldXZ.y,
     );
     const vSummitUv = varying(summitUv, 'vSuv');
-    const vWeight = varying(gWeight, 'vW');
     const vSpacing = varying(g.spacing, 'vS');
-    const vMDx = varying(gMacroTex.b, 'vMDx');
-    const vMDz = varying(gMacroTex.a, 'vMDz');
 
-    const aux = texture(heightTex, vUv);
-    const summitAux = texture(summitTex, vSummitUv);
+    const aux = texture(heightTex, vUv).level(0);
+    const summitAux = texture(summitTex, vSummitUv).level(0);
+    // THE SURFACE PER FRAGMENT, not per lattice vertex (2026-10-31; see `height` below). The
+    // macro's slope and the relief's weight were varyings, interpolated across triangles 12.8-51 u
+    // wide where the massif is seen, so its normals — every light and shadow on its faces —
+    // changed each time the rings stepped. Read at the fragment's own uv they are the surface's.
+    const surfaceMacro = texture(macroTex, vUv).level(0);
     const baseNormal = normalize(vec3(
-        aux.g.mul(vWeight).add(vMDx).add(summitAux.g).negate(),
+        aux.g.mul(surfaceMacro.g).add(surfaceMacro.b).add(summitAux.g).negate(),
         1,
-        aux.b.mul(vWeight).add(vMDz).add(summitAux.b).negate(),
+        aux.b.mul(surfaceMacro.g).add(surfaceMacro.a).add(summitAux.b).negate(),
     ));
     const footprint = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
     /**
@@ -1834,13 +2081,24 @@ export function createOdysseyWorld({
         // Curvature, on the same weight ramp as the relief it was baked from, so it fades out
         // with the detail rather than surviving as shading over a lattice too coarse to show it.
         // ...and the summit's own couloirs (+) and aretes (-) join it (bakeSculptPlateData).
-        const curvature = clamp(aux.a.mul(vWeight).add(summitAux.a).mul(9.0), -1, 1);
+        const curvature = clamp(aux.a.mul(surfaceMacro.g).add(summitAux.a).mul(9.0), -1, 1);
         const gully = max(curvature, 0);
         const crest = max(curvature.negate(), 0);
         const flatness = clamp(baseNormal.y, 0, 1);
         const normal = normalize(baseNormal.add(vec3(bump.x, 0, bump.y).mul(flatness.mul(0.42))));
 
-        const height = positionWorld.y;
+        // THE SURFACE'S OWN HEIGHT, not the mesh's (2026-10-31). Olov: "why does some of the
+        // shape of the mountain like change a bit as we move along the path". Every band that
+        // draws the mountain — the snow line, the mantle, the strata, the summit's ledges, the
+        // crisp rock — is a function of height, and `positionWorld.y` is the LATTICE's: on the
+        // 12.8-51 u rings the massif is seen on, a fragment's height is interpolated between
+        // vertices up to tens of units apart, and each step of the rings (the lattice re-centring
+        // every 2 cells as the rail moves, its morph bands moving with it) moved it by units, so
+        // the bands crawled and jumped across the faces. The height field is sampled here at the
+        // fragment's own place (the same three plates the vertex reads, at the varying uv, which
+        // is exact: xz is linear across every triangle), so the paint stays on the mountain
+        // whatever the lattice does. Measured on a frozen frame with only the rings moved.
+        const height = surfaceMacro.r.add(aux.r.mul(surfaceMacro.g)).add(summitAux.r).toVar();
         // Biome follows the LANDFORM; only lighting sees the grain. Driving both from the
         // detailed normal makes grass and rock track the surface noise, which reads as
         // camouflage blotching.
@@ -1874,8 +2132,11 @@ export function createOdysseyWorld({
         const atlas = Fn(() => {
             const a = atlasTop.toVar();
             If(steepness.greaterThan(0.001), () => {
-                const fromX = texture(groundTex, positionWorld.zy.div(float(GROUND_ATLAS_WORLD))).level(0);
-                const fromZ = texture(groundTex, positionWorld.xy.div(float(GROUND_ATLAS_WORLD))).level(0);
+                // Projected on the SURFACE's height, not the lattice's (see `height`): the side
+                // projections run up the face, so a lattice that moved a fragment a few units slid
+                // the whole face's rock and snow with it as the rings stepped.
+                const fromX = texture(groundTex, vec2(positionWorld.z, height).div(float(GROUND_ATLAS_WORLD))).level(0);
+                const fromZ = texture(groundTex, vec2(positionWorld.x, height).div(float(GROUND_ATLAS_WORLD))).level(0);
                 const wx = abs(baseNormal.x);
                 const side = mix(fromZ, fromX, wx.div(max(wx.add(abs(baseNormal.z)), float(1e-4))));
                 a.assign(mix(atlasTop, side, steepness));
@@ -2116,7 +2377,7 @@ export function createOdysseyWorld({
         const snowCover = wSnow.add(edgeBreak.mul(SNOW_CRISP.breakup).mul(detailMelt)).toVar();
         const snowEdge = clamp(fwidth(snowCover).mul(1.2), SNOW_CRISP.edge[0], SNOW_CRISP.edge[1]);
         const snowCrisp = smoothstep(float(0.5).sub(snowEdge), float(0.5).add(snowEdge), snowCover);
-        const kSnow = mix(
+        const kSnowField = mix(
             wSnow,
             snowCrisp,
             smoothstep(float(SNOW_CRISP.from[0]), float(SNOW_CRISP.from[1]), height),
@@ -2129,6 +2390,52 @@ export function createOdysseyWorld({
         const rockEdge = clamp(fwidth(rockCover).mul(1.2), SNOW_CRISP.edge[0], SNOW_CRISP.edge[1]);
         const rockCrisp = smoothstep(float(0.5).sub(rockEdge), float(0.5).add(rockEdge), rockCover);
         const wRockCrisp = mix(wRock, rockCrisp, smoothstep(float(ROCK_CRISP_FROM[0]), float(ROCK_CRISP_FROM[1]), height));
+        // SNOW LEDGES (2026-10-31, the climb's close-ups). Up close the summit's rock read as flat
+        // black paint: crisp snow decided big islands of bare stone, and nothing inside them said
+        // "rock". Alpine rock is layered, and every layer's top holds a line of snow: thin bands
+        // across the rock, broken by the atlas grain and the snow jitter so no two run parallel
+        // for long, on faces that are not cliffs, above ~600 u. Each line is a pixel-filtered band
+        // in the layer coordinate and fades where the lines would crowd under ~2 px.
+        const summitGate = smoothstep(float(SUMMIT_LEDGES.from[0]), float(SUMMIT_LEDGES.from[1]), height).toVar();
+        // The strata DIP across the mountain (alpine layers are tilted, never level), the slow
+        // jitter bends them, and a warp of the layer coordinate by itself spaces them unevenly.
+        const ledgeRaw = height
+            .add(dot(positionWorld.xz, vec2(...SUMMIT_LEDGES.dip)))
+            .add(snowJitterRaw.sub(0.5).mul(SUMMIT_LEDGES.wobble))
+            .div(SUMMIT_LEDGES.step);
+        const ledgeCoord = ledgeRaw.add(sin(ledgeRaw.mul(0.71).add(1.3)).mul(0.35)).toVar();
+        const ledgeLayer = floor(ledgeCoord).toVar();
+        const ledgeF = fract(ledgeCoord);
+        // Derivatives in uniform control flow (WGSL): taken here, before the summit's branch.
+        const ledgeAA = fwidth(ledgeCoord).toVar();
+        // Each layer its own thickness (hashed from the layer's index, kept positive: TSL's hash
+        // reads its seed as an unsigned integer).
+        const ledgeW = hash(ledgeLayer.add(4096)).mul(0.9).add(0.55)
+            .mul(SUMMIT_LEDGES.width)
+            .toVar();
+        const ledgeLine = smoothstep(float(0), ledgeAA.add(0.02), ledgeF)
+            .mul(float(1).sub(smoothstep(ledgeW, ledgeAA.add(ledgeW).add(0.06), ledgeF)));
+        const ledgeBase = ledgeLine
+            .mul(float(1).sub(smoothstep(float(0.18), float(0.45), ledgeAA)))
+            .mul(float(1).sub(smoothstep(float(SUMMIT_LEDGES.cliff[0]), float(SUMMIT_LEDGES.cliff[1]), slope)))
+            .mul(summitGate)
+            .mul(float(1).sub(kSnowField))
+            .toVar();
+        // ...broken along their length: value noise (ALU only, and only where a ledge can be at
+        // all) leaves runs of snow with bare gaps between, a different run on every layer.
+        const ledges = Fn(() => {
+            const out = float(0).toVar();
+            If(ledgeBase.greaterThan(0.001), () => {
+                const runAt = positionWorld.xz.mul(SUMMIT_LEDGES.runScale)
+                    .add(vec2(ledgeLayer.mul(3.17), ledgeLayer.mul(-1.91)));
+                const run = noise2(runAt);
+                out.assign(ledgeBase.mul(smoothstep(float(0.42), float(0.58), run)));
+            });
+            return out;
+        })();
+        // (Built as a new value, not assigned: this graph is built outside any Fn, where an
+        // `.assign()` has no stack to land on and is silently dropped.)
+        const kSnow = kSnowField.add(ledges.mul(SUMMIT_LEDGES.cover)).toVar();
         const kRock = wRockCrisp.mul(float(1).sub(kSnow)).toVar();
         const kSand = wSand.mul(float(1).sub(wRockCrisp)).mul(float(1).sub(kSnow)).toVar();
         const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
@@ -2455,10 +2762,17 @@ export function createOdysseyWorld({
             .mul(float(1).sub(forestShade.g.mul(FOREST_FLOOR_AO)));
         // THREE families now, weighted by the explicit material weights: snow split out of
         // `mineralW` (item 5), because snow in shade is lit by the sky it faces and stays bright.
+        // High rock takes more of the sky (2026-10-31): at the summit, open to the whole dome and to
+        // the bounce off the snow round it, shaded stone is a slate lit by the sky, not black paint.
+        const rockAmbient = mix(
+            float(ODYSSEY_GROUND_SHADE.mineral.ambient),
+            float(SUMMIT_LEDGES.rockAmbient),
+            summitGate,
+        );
         const ambient = mix(
             mix(float(ODYSSEY_GROUND_SHADE.deepAmbient), float(ODYSSEY_GROUND_SHADE.snow.deep), kSnow),
             float(ODYSSEY_GROUND_SHADE.vegetation.ambient).mul(clamp(float(1).sub(kRock).sub(kSnow), 0, 1))
-                .add(float(ODYSSEY_GROUND_SHADE.mineral.ambient).mul(kRock))
+                .add(rockAmbient.mul(kRock))
                 .add(float(ODYSSEY_GROUND_SHADE.snow.ambient).mul(kSnow)),
             openness,
         ).toVar();
@@ -2469,7 +2783,7 @@ export function createOdysseyWorld({
         const ambientHue = uShadowTint.div(max(dot(uShadowTint, vec3(...ODYSSEY_GROUND_LUMA)), 0.001));
         const lightCol = mix(
             mix(vec3(1), ambientHue, mix(
-                float(GROUND_AMBIENT_CHROMA),
+                mix(float(GROUND_AMBIENT_CHROMA), float(SUMMIT_LEDGES.rockSkyChroma), kRock.mul(summitGate)),
                 float(ODYSSEY_GROUND_SHADE.snow.skyChroma),
                 kSnow,
             )),
@@ -2730,7 +3044,7 @@ export function createOdysseyWorld({
         //   of a lake bright while the near side stays dark.
         const lakeUv = vec2(positionWorld.x, positionWorld.z).div(float(RELIEF_EXTENT)).add(0.5);
         const lakeBedTex = texture(macroTex, lakeUv);
-        const lakeBedY = lakeBedTex.r.add(texture(heightTex, lakeUv).r.mul(lakeBedTex.g));
+        const lakeBedY = lakeBedTex.r.add(texture(heightTex, lakeUv).level(0).r.mul(lakeBedTex.g));
         const lakeDepth = float(ODYSSEY_NORTH_LAKE.waterY).sub(lakeBedY).toVar();
         const shallowT = smoothstep(float(LAKE_TINT.shallowFrom), float(LAKE_TINT.shallowTo), lakeDepth);
         const body = mix(vec3(...LAKE_TINT.shallow), vec3(...LAKE_TINT.deep), shallowT);
@@ -2752,7 +3066,7 @@ export function createOdysseyWorld({
         // pale sky. Hazing like the land it sits in is both cheaper to look at and the
         // physically sane answer for a pond 1 km away.
         lakeMat.colorNode = toOutput(
-            applyAerial(lakeCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND),
+            applyAerial(lakeCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND, ...MIST_ONLY),
         );
         lakeMat.side = THREE.FrontSide;
     }
@@ -2770,6 +3084,136 @@ export function createOdysseyWorld({
         lakeMeshes.push(lakeMesh);
     });
 
+    // ── ONE WATER (2026-10-31) ──────────────────────────────────────────────────────────
+    // Olov: "the water in the pond looks totally different than the water in the ocean!" The
+    // tarn had a palette of its own (murky green over near-black) under a grey mirror, while the
+    // sea wears the colour script's pigment ramp, a stepped wash of sky and sun glints. These are
+    // the sea's terms as functions, read by both waters, so they are painted from one set and
+    // cannot drift apart again. Call them inside a Fn (they make vars).
+    /** The pigment ramp (viridian, cerulean, cobalt, Prussian) at driver `t`, in flat plates. */
+    const waterRampBody = (t, ramp = ODYSSEY_WATER_RAMP) => {
+        const bands = float(ODYSSEY_WATER_RAMP.bands);
+        const cell = t.mul(bands).toVar();
+        const seg = floor(cell).add(smoothstep(float(0.45), float(0.55), fract(cell)))
+            .div(bands)
+            .mul(3)
+            .toVar();
+        return mix(
+            mix(
+                mix(vec3(...ramp.shore), vec3(...ramp.shelf), clamp(seg, 0, 1)),
+                vec3(...ramp.open),
+                clamp(seg.sub(1), 0, 1),
+            ),
+            vec3(...ramp.deep),
+            clamp(seg.sub(2), 0, 1),
+        );
+    };
+    /**
+     * The sky in the reflected direction, on four stepped plates of the sky's own sqrt curve,
+     * lifted a quarter up it (the bottom plate is the palest horizon and bleached the sea to milk).
+     */
+    const waterSkyWash = (reflDir) => {
+        const t = sqrt(clamp(reflDir.y, 0, 1)).mul(4).toVar();
+        const step = floor(t).add(smoothstep(float(0.40), float(0.60), fract(t))).div(4).toVar();
+        const s = step.mul(0.75).add(0.25);
+        return skyColourFor(s.mul(s));
+    };
+    /** The share of sky: (1 - N·V)^4 · gain + floor. */
+    const waterFresnel = (N, V, gain, floorShare) => {
+        const fb = float(1).sub(max(dot(N, V), 0));
+        return fb.mul(fb).mul(fb).mul(fb)
+            .mul(gain)
+            .add(floorShare);
+    };
+    /** The sun on water: a hairline core on the half vector and a broad road on the mirror ray. */
+    const waterSunCore = (N, V) => smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(V)), N))
+        .mul(0.9);
+    const waterSunRoad = (reflDir) => smoothstep(float(0.90), float(0.995), clamp(dot(reflDir, uSunDir), 0, 1))
+        .mul(0.45);
+    /** The glints' colour. */
+    const WATER_GLINT = [1, 0.96, 0.88];
+    /**
+     * The sea's two scrolling ripple fetches from the detail bake (rg = signed slopes, b = the
+     * scalar noise the glitter and the foam break up with).
+     */
+    const waterRippleTex = (xz) => ({
+        a: texture(detailTex, xz.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014)))),
+        b: texture(detailTex, xz.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008)))),
+    });
+    /** Twinkling glitter where the two ripple fields coincide, toward grazing, faded with range. */
+    const waterSparkle = (rip, fb, dist) => smoothstep(float(0.70), float(0.80), rip.b.b)
+        .mul(smoothstep(float(0.62), float(0.74), rip.a.b))
+        .mul(fb)
+        .mul(clamp(float(1).sub(dist.div(420)), 0, 1))
+        .mul(0.34);
+    // ── WIND ON THE WATER (water pass step 4) ──────────────────────────────────────────────
+    // The water rides the same wind as the land (`gustFront`, ONE WIND: the meadow lightens and the
+    // crowns lean as a front passes): where the front is up, drifting patches of rougher water (a
+    // sailor's cat's paws) sweep downwind over both waters, and between them the water lies calm.
+    // Returns 0 calm .. 1 in a gust. One fetch of the detail bake's value noise, ~400 u a tile,
+    // scrolling along the wind (+x/+z, the front's direction).
+    const WATER_WIND = vec2(0.8, 0.6);
+    const waterGust = (xz) => {
+        const front = gustFront(xz).mul(0.5).add(0.5);
+        const paws = texture(detailTex, xz.mul(0.0025).sub(WATER_WIND.mul(uTime.mul(0.0042)))).b;
+        return smoothstep(float(0.40), float(0.72), paws.add(front.sub(0.5).mul(0.40)));
+    };
+    // ── CLOUDS IN THE WATER (water pass step 2; odyssey-water-clouds.js) ──────────────────
+    // The reflected ray traced against the few cloud masses the CPU picked this frame (their
+    // mirror image in view), each an ellipsoid fitted to its lobes and drifting with the field.
+    // The ray's closest approach to a mass's centre, in the mass's unit frame, says how far inside
+    // its outline the ray passes: the outline is broken into lobes by three sines of that point,
+    // cut flat at the mass's base, lit from its crown (sunlit white) to its base (the cool under
+    // tone), and hazed by the run like the field itself. `sky` is the water's own sky in that
+    // direction, so a ray that misses every mass returns it unchanged.
+    const waterCloudRows = Array.from({ length: WATER_CLOUD_SLOTS * 3 }, () => new THREE.Vector4());
+    const uWaterCloudRows = uniformArray(waterCloudRows, 'vec4');
+    const uWaterCloudCount = uniform(0);
+    const waterCloudTop = mix(uSunColour, vec3(1.0, 1.0, 1.0), float(0.55)).mul(1.02);
+    const waterCloudBase = mix(skyColourFor(float(0.30)), vec3(0.86, 0.88, 0.93), float(0.5));
+    const waterCloudsAlong = (O, R, skyIn) => {
+        if (!q.waterReflections) return skyIn;
+        const sky = vec3(skyIn).toVar();
+        const col = vec3(sky).toVar();
+        const rise = smoothstep(float(0.0), float(0.03), R.y).toVar();
+        Loop({
+            start: int(0), end: int(uWaterCloudCount), type: 'int', condition: '<', name: 'wcl',
+        }, ({ wcl }) => {
+            const r0 = uWaterCloudRows.element(wcl.mul(3)).toVar();
+            const r1 = uWaterCloudRows.element(wcl.mul(3).add(1)).toVar();
+            const r2 = uWaterCloudRows.element(wcl.mul(3).add(2)).toVar();
+            const rel = O.sub(r0.xyz);
+            const lo = vec3(
+                rel.x.mul(r0.w).add(rel.z.mul(r1.w)),
+                rel.y,
+                rel.z.mul(r0.w).sub(rel.x.mul(r1.w)),
+            ).mul(r1.xyz).toVar();
+            const ld = vec3(
+                R.x.mul(r0.w).add(R.z.mul(r1.w)),
+                R.y,
+                R.z.mul(r0.w).sub(R.x.mul(r1.w)),
+            ).mul(r1.xyz).toVar();
+            const tStar = dot(lo, ld).negate().div(max(dot(ld, ld), float(1e-9))).toVar();
+            const qc = lo.add(ld.mul(tStar)).toVar();
+            const lobes = sin(qc.x.mul(7.1).add(r2.y))
+                .add(sin(qc.z.mul(5.3).add(r2.y.mul(1.7))))
+                .add(sin(qc.x.add(qc.z).mul(4.3).add(r2.y.mul(0.6))))
+                .mul(0.045);
+            const cov = float(1).sub(smoothstep(float(0.66), float(1.0), length(qc).add(lobes)))
+                .mul(smoothstep(r2.x, r2.x.add(0.18), qc.y))
+                .mul(tslStep(float(0), tStar))
+                .mul(rise)
+                .toVar();
+            If(cov.greaterThan(0.002), () => {
+                const up = smoothstep(r2.x, float(0.75), qc.y);
+                const lit = mix(waterCloudBase, waterCloudTop, up);
+                const haze = clamp(float(1).sub(exp(tStar.mul(uAerialK).negate())), 0, 0.82).mul(0.42);
+                col.assign(mix(col, mix(lit, sky, haze), cov));
+            });
+        });
+        return col;
+    };
+
     // ── THE TARN (Act II pass, step 6) — the meadow pond that mirrors the massif ─────────
     // See ODYSSEY_TARN (odyssey-world-height.js) for where it is and why: the pond the chapter-3
     // basin was scooped for, on the line the chapter-4 eyes look along. Its water is a MIRROR,
@@ -2783,10 +3227,99 @@ export function createOdysseyWorld({
     //
     // COST: a 24-step march (three fetches a step) for the tarn's own pixels only, at most a few
     // percent of the frame from L20-L23 and nothing elsewhere (the discs are culled out of view).
+    // ── THE LAND IN THE WATER (shared since water pass step 3) ─────────────────────────────
+    // The reflected ray marched over the height plates (steps that grow with range: fine by the
+    // bank, long toward the massif), keeping its closest pass over the land too, so a ray that
+    // only grazes a ridge takes some of it: the reflected skyline is soft instead of a pixel-hard
+    // stair that would crawl as the ripple moves. `heightAt` is the water's own choice of plates
+    // (the tarn reads all three, the sea the macro shape only); `ceiling` stops a ray that has
+    // climbed over every summit. Returns the hit distance (or the closest pass) and how much of
+    // the land the ray takes.
+    const waterPlateUv = (xz) => xz.div(float(RELIEF_EXTENT)).add(0.5);
+    const waterMarchLand = (P, R, {
+        heightAt, steps, firstStep, stepGrowth, soft, ceiling = null,
+    }) => {
+        const tHit = float(-1).toVar();
+        const tPrev = float(0).toVar();
+        const tCur = float(firstStep).toVar();
+        const gapMin = float(1e6).toVar();
+        const tClose = float(firstStep).toVar();
+        Loop({
+            start: int(0), end: int(steps), type: 'int', condition: '<',
+        }, () => {
+            const qr = P.add(R.mul(tCur)).toVar();
+            if (ceiling !== null) {
+                If(qr.y.greaterThan(ceiling), () => {
+                    Break();
+                });
+            }
+            const gap = qr.y.sub(heightAt(qr.xz)).toVar();
+            If(gap.lessThan(gapMin), () => {
+                gapMin.assign(gap);
+                tClose.assign(tCur);
+            });
+            If(gap.lessThan(0), () => {
+                // One halving between the last two steps.
+                const tMid = tPrev.add(tCur).mul(0.5).toVar();
+                const qm = P.add(R.mul(tMid)).toVar();
+                tHit.assign(select(heightAt(qm.xz).greaterThan(qm.y), tMid, tCur));
+                Break();
+            });
+            tPrev.assign(tCur);
+            tCur.assign(tCur.mul(stepGrowth).add(firstStep));
+        });
+        const hit = tHit.greaterThan(0);
+        const tLand = select(hit, tHit, tClose).toVar();
+        const landW = select(
+            hit,
+            float(1),
+            float(1).sub(smoothstep(float(0), max(float(soft), tClose.mul(0.02)), gapMin)),
+        ).toVar();
+        return { tLand, landW };
+    };
+    /**
+     * The land a reflected ray meets at H, by height from the ground palette's own poles: the
+     * beach just over the sea, meadow, the forest (the shade plate's cover), rock, snow. Lit by its
+     * own slope (the relief plate's gradient) under the baked sun, broken by a little value noise
+     * so a reflected hillside is not one flat colour, and hazed by the run toward the air on R.
+     */
+    const waterLandLit = (H, tLand, airOnR) => {
+        const T = TARN_MIRROR;
+        const cover = texture(
+            forestShadeTex,
+            H.xz.sub(vec2(FOREST_SHADE_PLATE.x, FOREST_SHADE_PLATE.z)).div(FOREST_SHADE_PLATE.extent).add(0.5),
+        ).level(0).g;
+        const meadow = mix(vec3(...ODYSSEY_GROUND_PALETTE.grass.damp), vec3(0.075, 0.13, 0.05), cover);
+        const beach = mix(
+            vec3(...ODYSSEY_GROUND_PALETTE.sand.dry),
+            meadow,
+            smoothstep(float(ODYSSEY_SEA_LEVEL + 2), float(ODYSSEY_SEA_LEVEL + 9), H.y),
+        );
+        const rock = vec3(...ODYSSEY_GROUND_PALETTE.rock.dry);
+        const snow = vec3(...ODYSSEY_GROUND_PALETTE.snow.dry);
+        const land = mix(
+            mix(beach, rock, smoothstep(float(T.rockFrom[0]), float(T.rockFrom[1]), H.y)),
+            snow,
+            smoothstep(float(T.snowFrom[0]), float(T.snowFrom[1]), H.y),
+        );
+        const reliefAt = texture(heightTex, waterPlateUv(H.xz)).level(0);
+        const n = normalize(vec3(reliefAt.g.negate(), 1, reliefAt.b.negate()));
+        const vis = texture(sunVisTex, waterPlateUv(H.xz)).level(0).r;
+        const ndl = clamp(dot(n, uSunDir), 0, 1);
+        const grain = noise2(H.xz.mul(0.045)).mul(0.35).add(0.82);
+        const lit = land.mul(grain).mul(uSunColour.mul(ndl.mul(vis).mul(T.sunLit)).add(uShadowTint.mul(T.ambient)));
+        const haze = clamp(
+            float(1).sub(exp(tLand.mul(uAerialK).negate())).mul(AERIAL_RATE_LAND),
+            0,
+            AERIAL_CEIL_LAND,
+        );
+        return mix(lit, airOnR, haze);
+    };
+
     const tarnMat = new THREE.MeshBasicNodeMaterial();
     {
         const T = TARN_MIRROR;
-        const plateUv = (xz) => xz.div(float(RELIEF_EXTENT)).add(0.5);
+        const plateUv = waterPlateUv;
         const sculptUv = (xz) => xz.sub(vec2(ODYSSEY_SCULPT_PLATE.x, ODYSSEY_SCULPT_PLATE.z))
             .div(float(ODYSSEY_SCULPT_PLATE.extent))
             .add(0.5);
@@ -2797,99 +3330,83 @@ export function createOdysseyWorld({
             return m.r.add(texture(heightTex, plateUv(xz)).level(0).r.mul(m.g))
                 .add(texture(summitTex, sculptUv(xz)).level(0).r);
         };
+        // RINGS (water pass step 4): a fish rising, an insect landing. A few rings at a time, each
+        // slot on its own clock, born at a hashed point inside one of the lobes, spreading at
+        // ~3.6 u/s and dying in ~6 s (drawn large, as the meadow's butterflies are: the eye is ~200 u
+        // off). The ring is a travelling ripple in the slope (its radial
+        // derivative), so it lives in the reflection and the glints, not as a drawn line.
+        const tarnRings = (xz) => {
+            let slope = vec2(0, 0);
+            const { lobes } = ODYSSEY_TARN;
+            for (let k = 0; k < T.rings; k += 1) {
+                const lobe = lobes[k % lobes.length];
+                const period = 6.2 + (k * 1.37);
+                const clock = uTime.add(k * 2.31).div(period);
+                const cycle = floor(clock);
+                const age = fract(clock).mul(period);
+                const seed = cycle.add(4096 + (k * 977));
+                const hx = hash(seed.mul(3)).sub(0.5).mul(lobe.rx * 1.3);
+                const hz = hash(seed.mul(3).add(1)).sub(0.5).mul(lobe.rz * 1.3);
+                const rel = xz.sub(vec2(hx.add(lobe.x), hz.add(lobe.z)));
+                const r = length(rel);
+                const front = r.sub(age.mul(3.6));
+                const life = float(1).sub(smoothstep(float(1.5), float(5.8), age))
+                    .mul(smoothstep(float(0.0), float(0.25), age));
+                const wave = sin(front.mul(2.2)).mul(exp(front.mul(front).mul(-0.35)));
+                slope = slope.add(rel.div(max(r, float(0.05))).mul(wave.mul(life).mul(0.09)));
+            }
+            return slope;
+        };
         const tarnCol = Fn(() => {
             const P = positionWorld.toVar();
             const V = normalize(cameraPosition.sub(P)).toVar();
-            // A slow, faint ripple: two drifting value-noise slopes, so the mirror shivers.
-            const rq = P.xz.mul(T.rippleScale);
-            const rip = vec2(
-                noise2(rq.add(vec2(uTime.mul(0.21), 3.7))).sub(0.5),
-                noise2(rq.mul(1.37).add(vec2(-11.2, uTime.mul(-0.17)))).sub(0.5),
-            ).mul(T.ripple);
-            const N = normalize(vec3(rip.x, 1, rip.y)).toVar();
+            // The sea's ripple (ONE WATER), calmed: the same two scrolling fetches and slopes, a
+            // third as steep, so the pond's surface has the sea's grain but holds its mirror.
+            const ripTex = waterRippleTex(P.xz);
+            // The wind's patches (water pass step 4): the pond lies a mirror in the lulls and
+            // shivers under a gust, as a sheltered pond does.
+            const gust = waterGust(P.xz).toVar();
+            const rip = ripTex.a.rg.mul(0.9).add(ripTex.b.rg.mul(0.5))
+                .mul(T.calm)
+                .mul(mix(float(0.35), float(2.6), gust))
+                .add(tarnRings(P.xz))
+                .toVar();
+            const N = normalize(vec3(rip.x.negate(), 1, rip.y.negate())).toVar();
             const Rraw = reflect(V.negate(), N);
             const R = normalize(vec3(Rraw.x, max(Rraw.y, 0.004), Rraw.z)).toVar();
-            // The march: steps that grow with range (fine by the bank, long toward the massif). It
-            // keeps the ray's closest pass over the land too, so a ray that only grazes a ridge
-            // takes some of it: the reflected skyline is soft instead of a pixel-hard stair that
-            // would crawl as the ripple moves.
-            const tHit = float(-1).toVar();
-            const tPrev = float(0).toVar();
-            const tCur = float(T.firstStep).toVar();
-            const gapMin = float(1e6).toVar();
-            const tClose = float(T.firstStep).toVar();
-            Loop({
-                start: int(0), end: int(T.steps), type: 'int', condition: '<',
-            }, () => {
-                const qr = P.add(R.mul(tCur)).toVar();
-                const gap = qr.y.sub(landAt(qr.xz)).toVar();
-                If(gap.lessThan(gapMin), () => {
-                    gapMin.assign(gap);
-                    tClose.assign(tCur);
-                });
-                If(gap.lessThan(0), () => {
-                    // One halving between the last two steps.
-                    const tMid = tPrev.add(tCur).mul(0.5).toVar();
-                    const qm = P.add(R.mul(tMid)).toVar();
-                    tHit.assign(select(landAt(qm.xz).greaterThan(qm.y), tMid, tCur));
-                    Break();
-                });
-                tPrev.assign(tCur);
-                tCur.assign(tCur.mul(T.stepGrowth).add(T.firstStep));
+            const { tLand, landW } = waterMarchLand(P, R, {
+                heightAt: landAt, steps: T.steps, firstStep: T.firstStep, stepGrowth: T.stepGrowth, soft: T.soft,
             });
-            const sky = skyAirAt(R).toVar();
-            const hit = tHit.greaterThan(0);
-            const tLand = select(hit, tHit, tClose).toVar();
-            const landW = select(
-                hit,
-                float(1),
-                float(1).sub(smoothstep(float(0), max(float(T.soft), tClose.mul(0.02)), gapMin)),
-            ).toVar();
             const H = P.add(R.mul(tLand)).toVar();
-            // The land's colour by height, from the ground palette's own poles: meadow, the forest
-            // (the shade plate's cover), rock, snow.
-            const cover = texture(
-                forestShadeTex,
-                H.xz.sub(vec2(FOREST_SHADE_PLATE.x, FOREST_SHADE_PLATE.z)).div(FOREST_SHADE_PLATE.extent).add(0.5),
-            ).level(0).g;
-            const meadow = mix(vec3(...ODYSSEY_GROUND_PALETTE.grass.damp), vec3(0.075, 0.13, 0.05), cover);
-            const rock = vec3(...ODYSSEY_GROUND_PALETTE.rock.dry);
-            const snow = vec3(...ODYSSEY_GROUND_PALETTE.snow.dry);
-            const land = mix(
-                mix(meadow, rock, smoothstep(float(T.rockFrom[0]), float(T.rockFrom[1]), H.y)),
-                snow,
-                smoothstep(float(T.snowFrom[0]), float(T.snowFrom[1]), H.y),
+            // ONE WATER: where the ray runs into open sky the pond shows the sea's stepped sky wash
+            // and the clouds above it; the land it meets is hazed toward the real air on that ray.
+            const reflected = mix(
+                waterCloudsAlong(P, R, waterSkyWash(R)),
+                waterLandLit(H, tLand, skyAirAt(R)),
+                landW,
             );
-            // Lit by its own slope (the relief plate's gradient) under the baked sun, and broken by
-            // a little value noise so a reflected hillside is not one flat colour.
-            const reliefAt = texture(heightTex, plateUv(H.xz)).level(0);
-            const n = normalize(vec3(reliefAt.g.negate(), 1, reliefAt.b.negate()));
-            const vis = texture(sunVisTex, plateUv(H.xz)).level(0).r;
-            const ndl = clamp(dot(n, uSunDir), 0, 1);
-            const grain = noise2(H.xz.mul(0.045)).mul(0.35).add(0.82);
-            const lit = land.mul(grain).mul(uSunColour.mul(ndl.mul(vis).mul(T.sunLit)).add(uShadowTint.mul(T.ambient)));
-            // Hazed by the run, like the land the eye sees directly at that range.
-            const haze = clamp(
-                float(1).sub(exp(tLand.mul(uAerialK).negate())).mul(AERIAL_RATE_LAND),
-                0,
-                AERIAL_CEIL_LAND,
-            );
-            const reflected = mix(sky, mix(lit, sky, haze), landW);
-            // The water itself: dark and green-blue, lighter where the bed shows by the bank.
+            // The water itself is the sea's: the pigment ramp driven by the pond's own depth,
+            // viridian over the bank to cobalt in the middle, in the sea's flat plates.
             const depth = float(ODYSSEY_TARN.waterY).sub(landAt(P.xz)).toVar();
-            const body = mix(vec3(...T.shallow), vec3(...T.deep), smoothstep(float(0.15), float(T.deepBy), depth));
-            // A stylised mirror: the reflection owns most of the surface at these viewing angles.
-            const oneMinus = float(1).sub(clamp(dot(N, V), 0, 1));
-            const fres = clamp(
-                float(T.mirror[0]).add(oneMinus.mul(oneMinus).mul(oneMinus).mul(T.mirror[1])),
-                0,
-                T.mirror[2],
-            );
-            // ...and the shore: a thin pale lip where the water thins over the bank.
-            const lip = float(1).sub(smoothstep(float(0.0), float(0.35), depth)).mul(0.3);
-            return mix(mix(body, reflected, fres), vec3(...T.shallow).mul(1.4), lip);
+            const body = waterRampBody(clamp(float(1).sub(exp2(depth.mul(-T.absorb))), 0, 1), TARN_RAMP);
+            // A gust's rough patch mirrors less of the bright sky: cat's paws read darker.
+            const fres = waterFresnel(N, V, T.fresnel[0], T.fresnel[1]).mul(mix(float(1), float(0.68), gust)).toVar();
+            // The sea's sun: core, road and glitter, over the baked sun visibility at the pond.
+            const wVis = texture(sunVisTex, plateUv(P.xz)).r;
+            const fb = float(1).sub(max(dot(N, V), 0));
+            const glints = waterSunCore(N, V).add(waterSunRoad(R))
+                .add(waterSparkle(ripTex, fb, length(P.xz.sub(cameraPosition.xz))));
+            const wl = mix(body, reflected, fres)
+                .add(vec3(...WATER_GLINT).mul(glints).mul(wVis))
+                .mul(wVis.mul(0.18).add(0.82));
+            // ...and the sea's pale shore lip, scaled to a pond's few units of bank.
+            const lip = smoothstep(float(0.45), float(0.05), depth)
+                .mul(smoothstep(float(-0.2), float(0.12), depth))
+                .mul(0.09);
+            return wl.add(vec3(0.92, 0.97, 0.99).mul(lip));
         })();
-        tarnMat.colorNode = toOutput(applyAerial(tarnCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND));
+        const tarnAired = applyAerial(tarnCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND, ...MIST_ONLY);
+        tarnMat.colorNode = toOutput(tarnAired);
         tarnMat.side = THREE.FrontSide;
     }
     ODYSSEY_TARN.lobes.forEach((lb, li) => {
@@ -2904,6 +3421,127 @@ export function createOdysseyWorld({
         group.add(tarnMesh);
         lakeMeshes.push(tarnMesh);
     });
+
+    // ── THE SHOWER (round three, 2026-10-31; odyssey-shower.js) ──────────────────────────────
+    // A soft COLUMN of rain under each storm mass (the field's rain cloud), and the bow IN it.
+    // Each column is an elliptic cylinder shaped from its cloud's base, tucked into it at the top,
+    // leaning a little in the wind down to the ground or the sea. A closed proxy hull is drawn; each
+    // pixel works out, in closed form, how much rain its view ray crosses: the density falls off
+    // as (1 - r^2) across the column, so the integral along the chord is exact and smooth, densest
+    // through the middle and fading to nothing at the column's edge (no noise, no hard edge). The
+    // rain takes its cloud's shaded base colour where it leaves it and turns to a sunlit silver
+    // lower down (the sun is behind every eye that sees the bow); a few broad, soft bands drift down
+    // it. The bow is drawn in it at the true angle round the antisolar point (`bowSpectrum`),
+    // brightest where the rain is thickest. World geometry: the climb leaves it below with the
+    // clouds. (A first cut of flat strips of fine streaks read as dark noise, not as rain.)
+    const showerMat = new THREE.MeshBasicNodeMaterial();
+    const showerMesh = (() => {
+        // One volume along the whole line (odyssey-shower.js `showerBowVolume`): the bow's rain.
+        const columns = [showerBowVolume()];
+        // A unit cylinder, y 0 (top) .. 1 (foot), capped: front faces cover the column's whole
+        // silhouette from any side, above it too. A little proud of the ellipse, so the analytic
+        // edge is never clipped by the hull.
+        const hull = new THREE.CylinderGeometry(1.03, 1.03, 1, 28, 1, false);
+        const geo = new THREE.InstancedBufferGeometry();
+        geo.index = hull.index;
+        geo.setAttribute('position', hull.getAttribute('position'));
+        const aA = new Float32Array(columns.length * 4);
+        const aB = new Float32Array(columns.length * 4);
+        const aC = new Float32Array(columns.length * 4);
+        columns.forEach((c, k) => {
+            aA.set([c.x, c.z, c.top, c.bottom], k * 4);
+            aB.set([c.rx, c.rz, c.cos, c.sin], k * 4);
+            aC.set([c.leanX, c.leanZ, c.seed, 0], k * 4);
+        });
+        geo.setAttribute('aColA', new THREE.InstancedBufferAttribute(aA, 4));
+        geo.setAttribute('aColB', new THREE.InstancedBufferAttribute(aB, 4));
+        geo.setAttribute('aColC', new THREE.InstancedBufferAttribute(aC, 4));
+        geo.instanceCount = columns.length;
+        const cA = attribute('aColA', 'vec4');
+        const cB = attribute('aColB', 'vec4');
+        const cC = attribute('aColC', 'vec4');
+        // The hull in the world: its unit ring scaled to the ellipse and turned to the mass's axis,
+        // sheared by the lean (none at the top, all of it at the foot).
+        const down = float(0.5).sub(positionGeometry.y);
+        const ringX = positionGeometry.x.mul(cB.x);
+        const ringZ = positionGeometry.z.mul(cB.y);
+        showerMat.positionNode = vec3(
+            cA.x.add(ringX.mul(cB.z)).sub(ringZ.mul(cB.w)).add(cC.x.mul(down)),
+            mix(cA.z, cA.w, down),
+            cA.y.add(ringX.mul(cB.w)).add(ringZ.mul(cB.z)).add(cC.y.mul(down)),
+        );
+        showerMat.outputNode = Fn(() => {
+            const shTop = cA.z.toVar();
+            const shFoot = cA.w.toVar();
+            const shH = shTop.sub(shFoot).toVar();
+            const shO = cameraPosition.toVar();
+            const shHullP = vec3(
+                cA.x.add(ringX.mul(cB.z)).sub(ringZ.mul(cB.w)).add(cC.x.mul(down)),
+                mix(cA.z, cA.w, down),
+                cA.y.add(ringX.mul(cB.w)).add(ringZ.mul(cB.z)).add(cC.y.mul(down)),
+            );
+            const shD = normalize(varying(shHullP, 'vShowerHull').sub(shO)).toVar();
+            // The ray in the column's unsheared, unit frame: u(t) = shA + shB t.
+            const shE1 = vec2(cB.z, cB.w);
+            const shE2 = vec2(cB.w.negate(), cB.z);
+            const shLean = vec2(cC.x, cC.y);
+            const shRayA = shO.xz.sub(cA.xy).sub(shLean.mul(shTop.sub(shO.y).div(shH)));
+            const shRayB = shD.xz.add(shLean.mul(shD.y.div(shH)));
+            const shA = vec2(dot(shRayA, shE1).div(cB.x), dot(shRayA, shE2).div(cB.y)).toVar();
+            const shB = vec2(dot(shRayB, shE1).div(cB.x), dot(shRayB, shE2).div(cB.y)).toVar();
+            const shBb = max(dot(shB, shB), float(1e-12)).toVar();
+            const shAb = dot(shA, shB);
+            const shDisc = shAb.mul(shAb).sub(shBb.mul(dot(shA, shA).sub(1))).toVar();
+            const shHalf = sqrt(max(shDisc, float(0))).div(shBb).toVar();
+            const shMid = shAb.negate().div(shBb).toVar();
+            // ...and between the shFoot and the cloud base, in front of the eye.
+            const shTA = shFoot.sub(shO.y).div(shD.y);
+            const shTB = shTop.sub(shO.y).div(shD.y);
+            const shLo = max(max(shMid.sub(shHalf), min(shTA, shTB)), float(0));
+            const shHi = min(shMid.add(shHalf), max(shTA, shTB));
+            // The density (1 - r^2) integrated exactly over [shLo, shHi], in the chord's own centred
+            // coordinate (x = t - shMid, |x| <= shHalf: small numbers, no cancellation).
+            const shXl = clamp(shLo.sub(shMid), shHalf.negate(), shHalf);
+            const shXh = clamp(shHi.sub(shMid), shHalf.negate(), shHalf);
+            const shPrim = (x) => shHalf.mul(shHalf).mul(x).sub(x.mul(x).mul(x).div(3));
+            const shDepth = max(shPrim(shXh).sub(shPrim(shXl)), float(0)).mul(shBb).mul(tslStep(float(0), shDisc)).toVar();
+            // Where along its height the ray crosses it: thinning to its shFoot, melting into the base.
+            const shTMid = shLo.add(shHi).mul(0.5);
+            const shYMid = shO.y.add(shD.y.mul(shTMid));
+            const shUp01 = clamp(shYMid.sub(shFoot).div(shH), 0, 1).toVar();
+            // Soft at the sea and melting away under the cloud base.
+            const shVertical = smoothstep(float(0.0), float(0.10), shUp01)
+                .mul(float(1).sub(smoothstep(float(0.80), float(1.0), shUp01)));
+            // How much of this ray's way lies in the (unseen) rain: the bow's mask.
+            const shRain = float(1).sub(exp(shDepth.mul(SHOWER_LOOK.density).mul(shVertical).negate()))
+                .mul(uBow)
+                .toVar();
+            // The bow and the sky's own light round it, all light added (no veil): the spectrum with
+            // its supernumeraries, the glow inside the primary, and Alexander's band between the
+            // two bows as a faint darkening of whatever is behind (the alpha of a premultiplied over).
+            const shTheta = acos(clamp(dot(shD, uSunDir.negate()), -1, 1)).mul(57.29578).toVar();
+            const shSky = bowSkyLight(shTheta);
+            const shLight = bowSpectrum(shTheta).mul(ODYSSEY_BOW.gain * SHOWER_LOOK.bowGain).mul(uSunColour)
+                .add(uSunColour.mul(shSky.glow.mul(SHOWER_LOOK.glow)))
+                .mul(shRain);
+            // The air between: a far bow is a little softer than a near one.
+            const shAt = shO.add(shD.mul(shTMid));
+            const shAir = clamp(float(1).sub(exp(length(shAt.sub(shO)).mul(uAerialK).negate())), 0, 0.6);
+            const shDark = shSky.band.mul(SHOWER_LOOK.band).mul(shRain);
+            return vec4(toOutput(shLight.mul(float(1).sub(shAir.mul(0.5)))), shDark);
+        })();
+        showerMat.transparent = true;
+        showerMat.premultipliedAlpha = true;
+        showerMat.depthWrite = false;
+        showerMat.side = THREE.FrontSide;
+        const mesh = new THREE.Mesh(geo, showerMat);
+        mesh.frustumCulled = false;
+        // After the sea (1): the rain over it stands in front of the water behind it.
+        mesh.renderOrder = 5;
+        mesh.name = 'odyssey-world-shower';
+        return mesh;
+    })();
+    group.add(showerMesh);
 
     // ── sky ──
     const skyMat = new THREE.MeshBasicNodeMaterial();
@@ -2982,18 +3620,8 @@ export function createOdysseyWorld({
     // `skyAir` and `skyDir` are built at the root first, so neither branch can starve the other.
     const skyShaded = Fn(() => {
         const base = skyAir.toVar('skyBaseCol');
-        // The rainbow and its shower, only while the CPU schedules them (chapters 3-4).
-        If(uBow.add(uShowerVeil).greaterThan(0.001), () => {
-            base.assign(applyAntisolarSky({
-                sky: skyAir,
-                dir: skyDir,
-                anti: uSunDir.negate(),
-                bow: uBow,
-                veil: uShowerVeil,
-                sunColour: uSunColour,
-                time: uTime,
-            }));
-        });
+        // (The rainbow and its shower are no longer painted on the dome: since round three they
+        // are the world's own, the shower's rain curtains under its rain cloud. See THE SHOWER.)
         If(uSubmerged.greaterThan(0.001), () => { base.assign(mix(skyAir, skyWater, uSubmerged)); });
         const out = toOutputFaded(base, skyFade).toVar('skyOutCol');
         If(uLimbGlow.greaterThan(0.0001), () => {
@@ -3156,7 +3784,7 @@ export function createOdysseyWorld({
     // the single largest cause of the minutes-long first compile (see bakeMacroTexture).
     const bedTex = texture(macroTex, wUv);
     const depth = float(ODYSSEY_SEA_LEVEL)
-        .sub(bedTex.r.add(texture(heightTex, wUv).r.mul(bedTex.g))).toVar();
+        .sub(bedTex.r.add(texture(heightTex, wUv).level(0).r.mul(bedTex.g))).toVar();
     // (`depthLive` — the water column under the LIVE, swash-raised surface — is built with the
     // shore foam below, inside the topside regime: see `shoreTerms`.)
     // ── THE PAINTED SEA (Ghibli-water Wave 1) ────────────────────────────────────────
@@ -3166,11 +3794,8 @@ export function createOdysseyWorld({
     // that ramp's flat upper region — one colour, no structure, exactly the "flat steel-blue
     // sheet" the capture critique found. Now: a Beer-Lambert depth driver tuned so the
     // measured range spans the whole ramp, quantised into flat plates, over the four-stop
-    // pigment ramp the colour script owns (viridian -> cerulean -> cobalt -> Prussian).
-    const wShore = vec3(...ODYSSEY_WATER_RAMP.shore);
-    const wShelf = vec3(...ODYSSEY_WATER_RAMP.shelf);
-    const wOpen = vec3(...ODYSSEY_WATER_RAMP.open);
-    const wDeep = vec3(...ODYSSEY_WATER_RAMP.deep);
+    // pigment ramp the colour script owns (viridian -> cerulean -> cobalt -> Prussian):
+    // `waterRampBody`, shared with the tarn since ONE WATER (2026-10-31).
     // THE NORMAL IS THE GRADIENT NOW, plus animated ripple detail (Wave 2). The old normal
     // was built from the swell's VALUE, which is not a slope at all — it tilted +-0.0275 and
     // pointed the wrong way, so fresnel and the sun glint were effectively static. The wave
@@ -3205,8 +3830,10 @@ export function createOdysseyWorld({
     // taken from) is the free break-up field for the topside glitter and the shore foam — same
     // fetch, no new sampler. First built at the Fn root through the `wN` pin, so a branch that
     // reads `.b` reuses the root's sample rather than starving (the root-pin note below).
-    const rippleTexA = texture(detailTex, positionWorld.xz.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014))));
-    const rippleTexB = texture(detailTex, positionWorld.xz.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008))));
+    // (ONE WATER: the fetches are `waterRippleTex`, shared with the tarn.)
+    const seaRipples = waterRippleTex(positionWorld.xz);
+    const rippleTexA = seaRipples.a;
+    const rippleTexB = seaRipples.b;
     const rippleA = rippleTexA.rg;
     const rippleB = rippleTexB.rg;
     const ripple = rippleA.mul(0.9).add(rippleB.mul(0.5)).toVar();
@@ -3223,10 +3850,13 @@ export function createOdysseyWorld({
     const wFrag = waveField(positionWorld.xz);
     const waveH = wFrag.h.mul(wFragFade).toVar();
     const waveSlope = vec2(wFrag.dx, wFrag.dz).mul(wFragFade).toVar();
-    const wSlope = waveSlope.add(ripple.mul(vSwellFade)).toVar();
+    // The wind's patches roughen the chop (water pass step 4): calm lanes hold the mirror, gusts
+    // break it and glitter.
+    const seaGust = waterGust(positionWorld.xz).toVar();
+    const wSlope = waveSlope.add(ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust))).toVar();
     const wN = normalize(vec3(wSlope.x.negate(), 1, wSlope.y.negate())).toVar();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
-    const spec = smoothstep(float(0.9955), float(0.9995), dot(normalize(uSunDir.add(viewDir)), wN)).mul(0.9);
+    const spec = waterSunCore(wN, viewDir);
     const grazing = float(1).sub(clamp(abs(dot(wN, viewDir)), 0, 1));
     // WAVE 5 — the MENISCUS: while the eye is within ~6 u of the plane, the extreme-grazing
     // sliver of the surface lights as a thin bright line — the crossing cue that makes the
@@ -3323,32 +3953,17 @@ export function createOdysseyWorld({
             // exp2 absorption, not a linear lerp: near-shore metres get the resolution
             // they need while the deep saturates instead of clipping.
             const wT = clamp(
-                float(1).sub(exp2(depth.mul(-ODYSSEY_WATER_RAMP.absorptionPerMetre))),
+                float(1).sub(exp2(depth.mul(-ODYSSEY_WATER_RAMP.absorptionPerMetre * SEA_ABSORB_GAIN))),
                 0,
                 1,
             ).toVar();
-            // QUANTISE into flat plates with an anti-aliased edge. A hard floor()
-            // posterise aliases badly at 720p on a surface this size.
-            const bands = float(ODYSSEY_WATER_RAMP.bands);
-            const wCell = wT.mul(bands).toVar();
-            const wStep = floor(wCell).add(smoothstep(float(0.45), float(0.55), fract(wCell)))
-                .div(bands)
-                .toVar();
-            const wSeg = wStep.mul(3).toVar();
-            const body = mix(
-                mix(
-                    mix(wShore, wShelf, clamp(wSeg, 0, 1)),
-                    wOpen,
-                    clamp(wSeg.sub(1), 0, 1),
-                ),
-                wDeep,
-                clamp(wSeg.sub(2), 0, 1),
-            );
+            // QUANTISE into flat plates with an anti-aliased edge (`waterRampBody`, ONE WATER).
+            // A hard floor() posterise aliases badly at 720p on a surface this size.
+            const body = waterRampBody(wT, SEA_RAMP);
             // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. Ghibli
             // water is not a mirror: the sky arrives as a colour wash, never an image.
             const fb = float(1).sub(max(dot(wN, viewDir), 0));
-            const fres = fb.mul(fb).mul(fb).mul(fb).mul(0.62)
-                .add(0.05);
+            const fres = waterFresnel(wN, viewDir, 0.62, 0.05).mul(mix(float(1), float(0.78), seaGust));
             const wVis = texture(sunVisTex, wUv).r;
             // THE SKY IN THE REFLECTED DIRECTION, not one constant (`skyColourFor(0.22)` was
             // the whole sea's sky for the life of this graph). Near water reflects high sky
@@ -3358,14 +3973,43 @@ export function createOdysseyWorld({
             // into the wobbling bands of painted water instead of a smooth airbrush ramp.
             // ALU only: the sky is analytic.
             const reflDir = reflect(viewDir.negate(), wN).toVar();
-            const reflT = sqrt(clamp(reflDir.y, 0, 1)).mul(4).toVar();
-            const reflQ = floor(reflT).add(smoothstep(float(0.40), float(0.60), fract(reflT))).div(4).toVar();
-            // Lifted a quarter up the curve: the bottom plate is grazing horizon, which is the
-            // palest colour in the palette, and unlifted it bleached the whole mid-distance
-            // sea to milk in the first capture. Painted seas hold their blue to the haze line;
-            // the horizon dissolve below still owns the far convergence.
-            const reflSky = reflQ.mul(0.75).add(0.25);
-            const skyRefl = skyColourFor(reflSky.mul(reflSky));
+            // Lifted a quarter up the curve (`waterSkyWash`): the bottom plate is grazing horizon,
+            // which is the palest colour in the palette, and unlifted it bleached the whole
+            // mid-distance sea to milk in the first capture. Painted seas hold their blue to the
+            // haze line; the horizon dissolve below still owns the far convergence.
+            // ...and the clouds above it (water pass step 2).
+            const skyRefl = waterCloudsAlong(positionWorld, reflDir, waterSkyWash(reflDir)).toVar();
+            // THE WORLD IN THE SEA (water pass step 3): the beach, the hills and the massif stand
+            // upside down in the water near the eye. High tier only; past `reach` the sky's.
+            const seaMirror = vec3(skyRefl).toVar();
+            if (q.waterReflections) {
+                If(wFragDist.lessThan(SEA_MIRROR.reach), () => {
+                    const seaHeightAt = (xz) => {
+                        const m = texture(macroTex, waterPlateUv(xz)).level(0);
+                        return m.r.add(texture(heightTex, waterPlateUv(xz)).level(0).r.mul(m.g));
+                    };
+                    // A distant shore is mirrored by the swell, not the chop: the fine ripple sends
+                    // neighbouring rays to the shore and to the sky by turns (dark dashes across the
+                    // sea), so the land is marched along a smoother normal, the swell and a third of
+                    // the ripple, and its rays held a little off the water.
+                    const landSlope = waveSlope.add(ripple.mul(vSwellFade).mul(0.3));
+                    const landN = normalize(vec3(landSlope.x.negate(), 1, landSlope.y.negate()));
+                    const landRaw = reflect(viewDir.negate(), landN);
+                    const landDir = normalize(vec3(landRaw.x, max(landRaw.y, float(0.02)), landRaw.z)).toVar();
+                    const { tLand, landW } = waterMarchLand(positionWorld, landDir, {
+                        heightAt: seaHeightAt,
+                        steps: SEA_MIRROR.steps,
+                        firstStep: SEA_MIRROR.firstStep,
+                        stepGrowth: SEA_MIRROR.stepGrowth,
+                        soft: SEA_MIRROR.soft,
+                        ceiling: SEA_MIRROR.ceiling,
+                    });
+                    const H = positionWorld.add(landDir.mul(tLand));
+                    const near = float(1)
+                        .sub(smoothstep(float(SEA_MIRROR.reach * 0.7), float(SEA_MIRROR.reach), wFragDist));
+                    seaMirror.assign(mix(skyRefl, waterLandLit(H, tLand, skyRefl), landW.mul(near).mul(0.8)));
+                });
+            }
             // JADE WAVE BACKS — the topside twin of the underside's crest SSS. Thin crests
             // transmit light and go jade; troughs sink a step deeper. Driven by the displaced
             // height the triangle actually carries (vSwell), so the colour rides the moving
@@ -3377,21 +4021,40 @@ export function createOdysseyWorld({
                 vec3(...WATER_JADE),
                 crestGlow.mul(0.50),
             );
+            // SUNLIT SHALLOWS (2026-10-31, "can we improve the water in the ocean"). Over the sand,
+            // a clear sea shows the light its ripples focus on the bed: the underside's caustic
+            // net (two crossing iso-lines of the ripple fetches, knots where they cross), seen
+            // here from ABOVE through the water body, so it rides the body and not the reflection.
+            // Strongest in the first few metres, gone by ~9 m and by ~320 u of range (before it
+            // can shimmer), only in the sun. No fetch: both ripple texels are already resident.
+            const shoalAt = smoothstep(float(0.25), float(1.2), depthLive)
+                .mul(float(1).sub(smoothstep(float(6.0), float(24.0), depthLive)))
+                .mul(float(1).sub(smoothstep(float(180), float(320), wFragDist)))
+                .toVar();
+            const shoalDiff = rippleTexA.b.sub(rippleTexB.b);
+            const shoalSum = rippleTexA.b.add(rippleTexB.b).sub(1);
+            const shoalAA = abs(dFdx(shoalDiff)).add(abs(dFdy(shoalDiff)));
+            const shoalAAs = abs(dFdx(shoalSum)).add(abs(dFdy(shoalSum)));
+            const shoalW = rippleTexA.b.mul(0.035).add(0.012);
+            const shoalA = float(1).sub(smoothstep(float(0.0), shoalAA.add(shoalW), abs(shoalDiff)));
+            const shoalB = float(1).sub(smoothstep(float(0.0), shoalAAs.add(shoalW), abs(shoalSum)));
+            const shoalLight = max(shoalA, shoalB).mul(0.45).add(shoalA.mul(shoalB).mul(1.2))
+                .mul(smoothstep(float(0.25), float(0.60), rippleTexB.b.add(rippleTexA.b.mul(0.35))))
+                .mul(shoalAt)
+                .mul(float(1).sub(fres))
+                .mul(wVis);
+            const bodyShoal = bodyLive.add(vec3(1, 0.97, 0.84).mul(shoalLight).mul(0.32));
             // SUN ROAD: a broad lobe on the reflected ray (the hairline `spec` stays for the
             // tight core). Act II mostly flies away from the sun, so this is quiet there and
             // lights only when a camera turns toward it.
-            const road = smoothstep(float(0.90), float(0.995), clamp(dot(reflDir, uSunDir), 0, 1)).mul(0.45);
+            const road = waterSunRoad(reflDir);
             // GLITTER: two scrolled value fields that only coincide in small, short-lived
             // patches, so the sparks TWINKLE as the layers slide past each other. Weighted to
             // grazing water (where real glints live) and faded with range before they can
             // alias into shimmer.
-            const sparkle = smoothstep(float(0.70), float(0.80), rippleTexB.b)
-                .mul(smoothstep(float(0.62), float(0.74), rippleTexA.b))
-                .mul(fb)
-                .mul(clamp(float(1).sub(wFragDist.div(420)), 0, 1))
-                .mul(0.34);
-            const wl = mix(bodyLive, skyRefl, fres)
-                .add(vec3(1, 0.96, 0.88).mul(spec.add(road).add(sparkle)).mul(wVis))
+            const sparkle = waterSparkle(seaRipples, fb, wFragDist).mul(mix(float(0.55), float(1.7), seaGust));
+            const wl = mix(bodyShoal, seaMirror, fres)
+                .add(vec3(...WATER_GLINT).mul(spec.add(road).add(sparkle)).mul(wVis))
                 .mul(wVis.mul(0.18).add(0.82))
                 .toVar();
             // WHITECAPS — The Witness reference: opaque flat white with a drawn edge, so
@@ -3408,14 +4071,30 @@ export function createOdysseyWorld({
             // threshold sits higher so caps live only where the three waves stack, the body is
             // translucent and holed by the finer field, and the brightest white is a drawn lip
             // just inside the cap's edge — the painted-foam profile.
-            const capBreak = rippleTexA.b.sub(0.5).mul(0.40).add(rippleTexB.b.sub(0.5).mul(0.20));
-            const capBody = smoothstep(float(0.56), float(0.70), crestNorm.add(capBreak))
+            const capBreak = rippleTexA.b.sub(0.5).mul(0.30).add(rippleTexB.b.sub(0.5).mul(0.34));
+            const capBody = smoothstep(float(0.60), float(0.71), crestNorm.add(capBreak))
                 .mul(smoothstep(float(0.4), float(2.5), depth))
                 .toVar();
-            const capLace = smoothstep(float(0.30), float(0.54), rippleTexB.b);
+            const capLace = smoothstep(float(0.38), float(0.62), rippleTexB.b);
             const capLip = capBody.mul(float(1).sub(capBody)).mul(4);
-            const cap = capBody.mul(mix(float(0.30), float(0.78), capLace)).add(capLip.mul(0.22));
-            wl.assign(mix(wl, vec3(0.94, 0.98, 1.0), clamp(cap, 0, 0.88)));
+            const cap = capBody.mul(mix(float(0.12), float(0.80), capLace)).add(capLip.mul(0.22));
+            wl.assign(mix(wl, vec3(0.94, 0.98, 1.0), clamp(cap, 0, 0.80)));
+            // WINDROWS (water pass step 5): the foam a wind leaves on open water lies in long thin
+            // streaks along it. The detail bake's value noise read in the wind's frame, drawn out
+            // 4:1 along it and cut thin, in deep water only, stronger in a gust, gone by ~520 u
+            // (before it can shimmer) and never on the shallows' lit band.
+            const along = dot(positionWorld.xz, WATER_WIND);
+            const across = positionWorld.x.mul(WATER_WIND.y).sub(positionWorld.z.mul(WATER_WIND.x));
+            const rowN = texture(detailTex, vec2(along.mul(0.0035), across.mul(0.014))
+                .add(vec2(uTime.mul(0.006), 0))).b;
+            const rowLine = float(1).sub(smoothstep(float(0.008), float(0.06), abs(rowN.sub(0.5))));
+            const rows = rowLine
+                .mul(smoothstep(float(0.35), float(0.70), rippleTexA.b))
+                .mul(smoothstep(float(8), float(20), depth))
+                .mul(float(1).sub(smoothstep(float(300), float(520), wFragDist)))
+                .mul(mix(float(0.35), float(1), seaGust))
+                .mul(0.20);
+            wl.assign(mix(wl, vec3(0.93, 0.97, 1.0), rows));
             // THE SHORE FOAM (rings + swash front, built at the root — see `shoreFoam`),
             // before the horizon dissolve so far foam melts into the sky with the sea.
             wl.assign(mix(wl, vec3(0.95, 0.99, 1.0), shoreFoam.mul(0.92)));
@@ -3425,7 +4104,7 @@ export function createOdysseyWorld({
             // shore brightening band (proven live by the Wave 0 GPU probe) — faint now that
             // the moving foam owns the waterline, kept so the shore still reads at range.
             const wHorizon = clamp(
-                length(positionWorld.sub(cameraPosition)).mul(1 / 1200),
+                length(positionWorld.sub(cameraPosition)).mul(1 / 1700),
                 0,
                 1,
             ).pow(1.4).mul(0.8);
@@ -3532,7 +4211,8 @@ export function createOdysseyWorld({
         });
         return col.add(vec3(0.95, 0.99, 1.0).mul(meniscus));
     })();
-    waterMat.colorNode = meltIntoSky(toOutputSurface(applyAerial(waterShaded, positionWorld)), positionWorld);
+    const waterAired = applyAerial(waterShaded, positionWorld, AERIAL_CEIL_WATER, 1, ...MIST_SEA);
+    waterMat.colorNode = meltIntoSky(toOutputSurface(waterAired), positionWorld);
     // The film thins toward the LIVE waterline (the swash), and foam is opaque where the
     // film under it is not — otherwise the lapping front would be drawn at ~20 % alpha.
     waterMat.opacityNode = clamp(max(
@@ -4185,7 +4865,11 @@ export function createOdysseyWorld({
     // Wrap diffuse: (dot(N,L) + w) / (1 + w) — the GPU-Gems scatter approximation the
     // Witness reuses from its vegetation. w=0.75 keeps the whole mass lit and moves the
     // terminator far around the limb, which is what "no hard terminator" looks like.
-    const cfWrap = clamp(dot(cfN, uSunDir).add(0.75).div(1.75), 0, 1).toVar('fieldWrap');
+    // THE CLOUD LOOK (odyssey-cloud-looks.js, 2026-10-31): `null` is the shipped paint, constant
+    // for constant, so the default look builds the same shader as before the looks existed.
+    const FP = cloudLookPaint;
+    const cfWrapW = FP ? FP.wrap : 0.75;
+    const cfWrap = clamp(dot(cfN, uSunDir).add(cfWrapW).div(1 + cfWrapW), 0, 1).toVar('fieldWrap');
     // THE BAKED SCULPT, finally read (item 8): `color.r` is the crevice occlusion (1 open,
     // lower in a fold between lobes), `color.g` the height within the mass (0 base, 1 crown).
     const cfBake = attribute('color', 'vec3');
@@ -4197,8 +4881,22 @@ export function createOdysseyWorld({
     // the cauliflower: dark creases, bright bulges, every pixel still on an authored tone.
     // Edges are never equal (the shift moves both).
     const cfShift = cfOcc.mul(FIELD_AO_SHIFT);
-    const cfBand = smoothstep(float(0.42).add(cfShift), float(0.62).add(cfShift), cfWrap).toVar('fieldBand');
-    const cfBody = mix(cloudUnderShade, cloudTop, cfBand).toVar('fieldBody');
+    const cfBandLo = FP ? FP.band[0] : 0.42;
+    const cfBandHi = FP ? FP.band[1] : 0.62;
+    const cfBand = smoothstep(float(cfBandLo).add(cfShift), float(cfBandHi).add(cfShift), cfWrap).toVar('fieldBand');
+    // A look's shade is the SKY'S OWN COLOUR on the face turned from the sun (the references'
+    // hue shift: cooler, barely darker), read from the dome along the face's own normal, held
+    // above the horizon so a downward face takes the low sky rather than the ground's air.
+    const cfShadeTone = FP
+        ? mix(
+            cloudWhite.mul(FP.shadeLift),
+            skyAirAt(normalize(vec3(cfN.x, max(cfN.y, float(0.08)), cfN.z))),
+            float(FP.shadeSky),
+        ).toVar('fieldShadeTone')
+        : null;
+    const fUnderShade = FP ? cfShadeTone : cloudUnderShade;
+    const fUnderLit = FP ? mix(cfShadeTone, cloudWhite, float(0.5)) : cloudUnderLit;
+    const cfBody = mix(fUnderShade, cloudTop, cfBand).toVar('fieldBody');
     // The underside stays its own family, keyed to the BENT normal's up component so the
     // whole mass turns together instead of each lobe flipping on its own. (Forward-edge
     // smoothsteps: `1 - smoothstep(lo, hi, x)` reads as the descending ramp it is.)
@@ -4215,7 +4913,7 @@ export function createOdysseyWorld({
     // The sculpted masses are lobed all round (no flat base), so "base" is read from BOTH cues:
     // how far a face turns down, and how low it sits in its mass (`color.g`, 0 at the foot) —
     // the lower half of every cumulus falls into the core, which is what draws a flat bottom.
-    const cfBaseCore = cloudUnderShade.mul(vec3(0.74, 0.77, 0.88));
+    const cfBaseCore = fUnderShade.mul(FP ? vec3(0.84, 0.86, 0.93) : vec3(0.74, 0.77, 0.88));
     // How much this fragment is BASE (faces turned down) — the edge rule below keys off it too.
     const cfUnderness = float(1).sub(smoothstep(float(-0.25), float(0.05), cfN.y)).toVar('fieldUnder');
     const cfCoreW = clamp(
@@ -4226,8 +4924,8 @@ export function createOdysseyWorld({
     );
     const cfUnder = mix(
         mix(
-            cloudUnderLit,
-            cloudUnderShade,
+            fUnderLit,
+            fUnderShade,
             float(1).sub(smoothstep(float(-0.70).add(cfShift.mul(0.6)), float(-0.20).add(cfShift.mul(0.6)), cfN.y)),
         ),
         cfBaseCore,
@@ -4242,11 +4940,11 @@ export function createOdysseyWorld({
     // every other tone here (a narrow step on the occlusion), so it draws a crease rather than
     // smudging a gradient, and kept LIGHTER than the sky behind it (the anti-navy rule).
     const cfCrease = smoothstep(float(0.30), float(0.42), cfOcc).mul(0.75);
-    const cfCreaseTone = cloudUnderShade.mul(vec3(0.84, 0.86, 0.94));
+    const cfCreaseTone = fUnderShade.mul(FP ? vec3(0.90, 0.92, 0.96) : vec3(0.84, 0.86, 0.94));
     const cfLit = mix(
         mix(cfLitBase, cfCreaseTone, cfCrease),
         cloudWhite,
-        smoothstep(float(0.55), float(0.95), cfCrown).mul(cfBand).mul(FIELD_CROWN_WHITE),
+        smoothstep(float(0.55), float(0.95), cfCrown).mul(cfBand).mul(FP ? FP.crownWhite : FIELD_CROWN_WHITE),
     ).toVar('fieldLit');
     // ── LIGHT THAT WORKS WITH A SUN BEHIND THE CAMERA (item 9) ─────────────────────────
     // The old Mie gate fired only when the view looked INTO the sun (dot < -0.9), and Act II's
@@ -4271,23 +4969,93 @@ export function createOdysseyWorld({
     // the BASE it does the opposite — a cloud's thin rim seen from below is the brightest part of
     // its underside (sky light passing through the thinnest water), so the silhouette of a base
     // is drawn as a luminous lining round a darker core instead of dissolving into the sky.
+    const cfEdgeDark = FP ? FP.edgeDark : 1;
     const fieldPaint = mix(
         cfWarm,
         mix(mix(cloudShade, uSkyHorizon, float(0.30)), cloudWhite, cfUnderness.mul(0.9)),
-        cfEdge.mul(mix(float(0.55).mul(float(1).sub(cfBand.mul(0.85))), float(0.62), cfUnderness)),
+        cfEdge.mul(mix(float(0.55 * cfEdgeDark).mul(float(1).sub(cfBand.mul(0.85))), float(0.62), cfUnderness)),
     ).add(uSunColour.mul(cfSilver).mul(FIELD_MIE_GAIN));
     // SOFT RIMS (2026-10-20 overhaul): the outermost rim of a mass is its thinnest cloud, and a
     // thin cloud shows the sky behind it — so the last few pixels of every silhouette lean toward
     // the sky colour along that ray (a little white kept), and the sticker-like hard outline
     // dissolves into the sky. Strongest on the lit body, gentler on the bright base lining.
     const cfBehind = skyAirAt(cfV.negate());
-    const cfSoftRim = smoothstep(float(0.80), float(0.985), cfRim)
-        .mul(mix(float(FIELD_SOFT_RIM), float(FIELD_SOFT_RIM * 0.45), cfUnderness));
-    const fieldCol = mix(fieldPaint, mix(cfBehind, cloudWhite, float(0.35)), cfSoftRim);
+    // A look widens the rim and keeps more white in it, so the outline thins into a soft glow
+    // (the references' few-pixel luminous edge) instead of a drawn line.
+    const cfRimFrom = FP ? FP.rim.from : 0.80;
+    const cfRimStrength = FP ? FP.rim.strength : FIELD_SOFT_RIM;
+    const cfSoftRim = smoothstep(float(cfRimFrom), float(0.985), cfRim)
+        .mul(mix(float(cfRimStrength), float(cfRimStrength * 0.45), cfUnderness));
+    const fieldColRim = mix(fieldPaint, mix(cfBehind, cloudWhite, float(FP ? FP.rim.white : 0.35)), cfSoftRim);
+    // THE WITNESS PAINT (a look's `style: 'witness'`, 2026-10-31). The shipped paint layers many
+    // edge terms (a drawn edge, a crease line, a rim that fades to the sky behind), and together
+    // they draw every lobe's outline inside the silhouette and let the sky through the rim: from
+    // the meadows the clouds read as glass bubbles. The references paint a cloud as ONE solid body
+    // in two soft tones: white where it is high and turned to the sun, a cool slate-blue where it
+    // is low, turned down or folded in, the base flat and darkest, and the edge a little BRIGHTER
+    // than the body on the sunward side (light through its thin rim), never see-through.
+    const cfWitness = (() => {
+        if (FP?.style !== 'witness') return null;
+        const W = FP.witness;
+        // THE CAULIFLOWER: each bump lit from its OWN centre (the sculptor's dominant lobe for
+        // this vertex), so every lobe has a sunlit cap and a shaded belly, as the references'
+        // do, over the whole mass's turn from crown to base.
+        const lobeN = normalize(positionLocal.sub(cfLobe.xyz));
+        const lobeTop = lobeN.y.mul(0.5).add(0.5);
+        const lobeSun = clamp(dot(lobeN, uSunDir).mul(0.5).add(0.5), 0, 1);
+        const lightT = clamp(
+            cfCrown.mul(W.height)
+                .add(lobeTop.mul(W.lobe))
+                .add(lobeSun.mul(W.sun))
+                .sub(cfUnderness.mul(W.under))
+                .sub(cfOcc.mul(W.fold))
+                .add(W.bias),
+            0,
+            1,
+        );
+        // THE RAIN CLOUD (round three; odyssey-shower.js): a mass standing over the shower line is
+        // the cloud the rain falls from, the same sculpt and paint, heavier: more of it in shade and
+        // its shade a deep, rain-laden slate. Keyed on the mass's own centre, so no new attribute.
+        const showerRel = cfCentre.xz.sub(vec2(ODYSSEY_SHOWER.centre.x, ODYSSEY_SHOWER.centre.z));
+        const showerAx = vec2(...ODYSSEY_SHOWER.across);
+        const showerT = clamp(dot(showerRel, showerAx), -ODYSSEY_SHOWER.halfLength, ODYSSEY_SHOWER.halfLength);
+        const storm = float(1).sub(smoothstep(float(160), float(260), length(showerRel.sub(showerAx.mul(showerT)))));
+        const tone = smoothstep(
+            float(W.tone[0]).add(storm.mul(0.05)),
+            float(W.tone[1]).add(storm.mul(0.04)),
+            lightT,
+        );
+        const skyUp = skyAirAt(normalize(vec3(cfN.x, max(cfN.y, float(0.25)), cfN.z)));
+        const slate = mix(cloudWhite.mul(W.shadeLift), skyUp, float(W.shadeSky)).mul(storm.mul(-0.12).add(1));
+        const lit = mix(uSunColour, cloudWhite, float(0.70)).mul(W.litGain);
+        const body = mix(slate, lit, tone);
+        // The silver edge: the last of the silhouette brightens on the side that faces the sun.
+        const silverRim = smoothstep(float(0.72), float(0.98), cfRim)
+            .mul(clamp(dot(cfN, uSunDir).add(0.35), 0, 1))
+            .mul(W.silver);
+        const silvered = mix(body, cloudWhite.mul(W.litGain), silverRim)
+            .add(uSunColour.mul(cfSilver).mul(FIELD_MIE_GAIN));
+        // The last pixel or two of the outline melt a little toward a bright sky-white: enough to
+        // round a far hull's polygon corners, too narrow to let the sky through the body.
+        const melt = smoothstep(float(W.melt[0]), float(0.995), cfRim).mul(W.melt[1]);
+        return mix(silvered, mix(cfBehind, cloudWhite, float(0.6)), melt);
+    })();
+    // A look lifts the sunlit side only (`litGain`), so the form runs from shade to white.
+    const fieldColLook = FP ? fieldColRim.mul(mix(float(1), float(FP.litGain ?? 1), cfBand)) : fieldColRim;
+    const fieldCol = cfWitness ?? fieldColLook;
+    // ...and keeps only `haze` of the field's aerial haze, so far clouds stay clouds.
+    const fieldAerial = FP
+        ? (c, wp) => {
+            const to = wp.sub(cameraPosition);
+            const d = length(to);
+            const weight = clamp(float(1).sub(exp(d.mul(uAerialK.negate()))), 0, 0.82).mul(0.42 * FP.haze);
+            return mix(c, skyAirAt(to.div(max(d, float(0.001)))), weight);
+        }
+        : heroAerial;
     const fieldMat = new THREE.MeshBasicNodeMaterial();
     // The cloud tops below are the last thing the departure takes (item 10): they fade at the
     // horizon pace, so the climb leaves a lit cloud sea under a black sky — the edge of space.
-    fieldMat.colorNode = intoEarth(toOutputFaded(heroAerial(fieldCol, cfWorld), uFadeHorizon.mul(notOverEarth)));
+    fieldMat.colorNode = intoEarth(toOutputFaded(fieldAerial(fieldCol, cfWorld), uFadeHorizon.mul(notOverEarth)));
     // Built from the plain `cfOffset` EXPRESSION, never from a shared var — see the note at
     // its definition. This line reading zero while the colour graph read the right value is
     // exactly what "the clouds do not move" looked like.
@@ -4310,18 +5078,24 @@ export function createOdysseyWorld({
 
     let fieldProbeMesh = null;
     let fieldProbeBuild = null;
+    let waterCloudProxies = null;
     if (cloudField) {
         // Built only when asked — an unmounted geometry is still a CPU bake and a GPU upload
         // nobody requested. `cloudFieldCount` slices the spec table so the Wave 0 cost-curve
         // instrument still works against the REAL field: two counts answer what one number
         // cannot, namely whether the price tracks mass count (so composition and LOD are the
         // levers) or is dominated by the per-draw constant. Wave 0 measured the latter.
-        const fieldSpecs = cloudFieldCount > 0
+        const shippedSpecs = cloudFieldCount > 0
             ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount)
             : ODYSSEY_CLOUD_FIELD_SPECS;
+        const fieldSpecs = Array.isArray(cloudSpecs) ? cloudSpecs : shippedSpecs;
         // A worker-sculpted field is used only if it was sculpted for THIS spec slice.
         const preField = pre.cloudField && pre.cloudField.masses === fieldSpecs.length ? pre.cloudField : null;
         fieldProbeBuild = buildCloudFieldGeometry(fieldSpecs, railSamples, preField);
+        // The same masses as proxies for the waters' reflections (odyssey-water-clouds.js).
+        waterCloudProxies = buildWaterCloudProxies(fieldSpecs, {
+            x: cfAnchorMassif.x, z: cfAnchorMassif.z, radius: CLOUD_FIELD_ANCHOR.radius,
+        });
         fieldProbeMesh = new THREE.Mesh(fieldProbeBuild.geometry, fieldMat);
         // Same three invariants as the heroes: unculled (a breathing +-1 draw voids pairs via
         // the content-match guard), static matrix, opaque queue.
@@ -4751,6 +5525,9 @@ export function createOdysseyWorld({
     // chapter) and one small warm-gold school near the light as the complementary accent.
     let fishMesh = null;
     let fishMat = null;
+    // Each school's ring (centre, radii, reach in depth), for the gate that keeps the fish drawn
+    // while any of them still shows through the surface to an eye above it.
+    const fishRings = [];
     const FISH_SCHOOLS = [
         // f: fraction along the open-water span; dy: ring centre above that rail point; rx/rz:
         // ring radii; omega: angular speed (rad/s, sign = handedness); bob: vertical undulation;
@@ -4868,6 +5645,9 @@ export function createOdysseyWorld({
             }
             const phase0 = fh((si * 131) + 3) * Math.PI * 2;
             const meanR = (school.rx + school.rz) / 2;
+            fishRings.push({
+                x: anchor.x, y: cy, z: anchor.z, rx: school.rx, rz: school.rz, up: school.bob + school.spread[2],
+            });
             for (let k = 0; k < school.count; k += 1, fi += 1) {
                 const n = (si * 1009) + (k * 17);
                 aPath.set([anchor.x, cy, anchor.z, school.rx], fi * 4);
@@ -4979,7 +5759,23 @@ export function createOdysseyWorld({
         const fFlash = smoothstep(float(0.80), float(0.97), fRefl.y).mul(fFlank).mul(0.95);
         const fLit = fAlbedo.mul(fLight)
             .add(vec3(0.82, 0.96, 1.0).mul(fFlash).mul(float(1).sub(fDorsal.mul(0.6))));
-        fishMat.colorNode = toOutput(applyAerial(fLit, positionWorld, AERIAL_CEIL_WATER, 1, false, float(1).sub(uLife)));
+        // SEEN THROUGH THE SURFACE (2026-10-31, odyssey-through-surface.js): from above the sea a
+        // school shows through the water at the share the surface and the path leave it, tinted
+        // by the water, drawn just after the sea (renderOrder 2 > the sea's 1). Under the water
+        // the share is 1 and nothing changes. Still depth-writing, so the rays and motes behind a
+        // fish stay hidden.
+        const fSeen = throughSurfaceNode(positionWorld, cameraPosition, ODYSSEY_SEA_LEVEL);
+        fishMat.colorNode = toOutput(applyAerial(
+            fLit.mul(fSeen.tint),
+            positionWorld,
+            AERIAL_CEIL_WATER,
+            1,
+            false,
+            float(1).sub(uLife),
+        ));
+        fishMat.opacityNode = fSeen.share;
+        fishMat.transparent = true;
+        fishMat.depthWrite = true;
         fishMat.depthNode = behindSteamDepth(positionWorld);
         fishMat.side = THREE.DoubleSide;
         fishMat.fog = false;
@@ -4989,6 +5785,25 @@ export function createOdysseyWorld({
         fishMesh.name = 'odyssey-world-fish';
         group.add(fishMesh);
     }
+    // Whether any school still shows through the surface to the eye (eight points round each
+    // ring, at the top of its reach): the CPU side of the fish's opacity.
+    const fishProbe = { x: 0, y: 0, z: 0 };
+    const fishEye = new THREE.Vector3();
+    const fishSeenFromAbove = (viewCamera) => {
+        if (!viewCamera?.getWorldPosition) return false;
+        const eye = viewCamera.getWorldPosition(fishEye);
+        if (!(eye.y > ODYSSEY_SEA_LEVEL)) return false;
+        return fishRings.some((ring) => {
+            for (let k = 0; k < 8; k += 1) {
+                const a = (k / 8) * Math.PI * 2;
+                fishProbe.x = ring.x + (Math.cos(a) * ring.rx);
+                fishProbe.y = ring.y + ring.up;
+                fishProbe.z = ring.z + (Math.sin(a) * ring.rz);
+                if (throughSurfaceShare(eye, fishProbe, ODYSSEY_SEA_LEVEL) > 0.01) return true;
+            }
+            return false;
+        });
+    };
 
     // ── ocean forms (Odyssey audit 2026-10-18): what stands in the blue around the column ──
     // Spires in the deep bowl and kelp on the shelf (odyssey-ocean-forms.js), so a look away from
@@ -5210,6 +6025,9 @@ export function createOdysseyWorld({
     treeMat.colorNode = toOutput(applyAerial(
         forestPaint ? treeProbe : treeIncumbent,
         positionWorld,
+        AERIAL_CEIL_WATER,
+        1,
+        ...MIST_ONLY,
     ));
 
     const treeMeshes = [];
@@ -5762,7 +6580,8 @@ export function createOdysseyWorld({
     // 3,600 units out is ~100% fogged at any density the chapters use — so the colour script
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
-    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat]
+    [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat,
+        showerMat]
         .forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
@@ -5773,6 +6592,21 @@ export function createOdysseyWorld({
     // FogExp2 is 1-exp(-(d*z)^2); applyAerial is 1-exp(-K*z). Equal at z = FOG_MATCH_DISTANCE.
     const FOG_MATCH_DISTANCE = 1200;
     const scratchViewDir = new THREE.Vector3();
+    // The waters' cloud picks (water pass step 2): the camera's frustum, the eye, and the field's
+    // drift constants the vertex stage moves the masses by.
+    const waterCloudFrustum = new THREE.Frustum();
+    const waterCloudProjView = new THREE.Matrix4();
+    const waterCloudSphere = new THREE.Sphere();
+    const waterCloudEye = new THREE.Vector3();
+    const WATER_CLOUD_DRIFT = Object.freeze({
+        xz: FIELD_DRIFT_XZ, y: FIELD_DRIFT_Y, periodMin: FIELD_DRIFT_PERIOD_MIN, periodMax: FIELD_DRIFT_PERIOD_MAX,
+    });
+    const WATER_CLOUD_LEVELS = Object.freeze([ODYSSEY_SEA_LEVEL, ODYSSEY_TARN.waterY]);
+    const waterCloudInView = (x, y, z, r) => {
+        waterCloudSphere.center.set(x, y, z);
+        waterCloudSphere.radius = r;
+        return waterCloudFrustum.intersectsSphere(waterCloudSphere);
+    };
 
     // LIVE STATE, for instruments only — never read by the renderer itself.
     // `uSubmerged` and the active colour-script keyframe are computed every frame and were
@@ -5976,6 +6810,25 @@ export function createOdysseyWorld({
          */
         update(time, railPoint, progress, eyeY = null, viewCamera = null) {
             uTime.value = time;
+            // Clouds in the water: the masses whose mirror image can be in view this frame. Off
+            // in the climb's frame (the waters are below the climbed eye's frame by then).
+            const waterCam = uClimb.value === 1 && viewCamera?.projectionMatrix && viewCamera.matrixWorldInverse;
+            if (waterCloudProxies && waterCam) {
+                waterCloudProjView.multiplyMatrices(viewCamera.projectionMatrix, viewCamera.matrixWorldInverse);
+                waterCloudFrustum.setFromProjectionMatrix(waterCloudProjView);
+                viewCamera.getWorldPosition(waterCloudEye);
+                uWaterCloudCount.value = selectWaterClouds(
+                    waterCloudProxies,
+                    time,
+                    WATER_CLOUD_DRIFT,
+                    waterCloudEye,
+                    waterCloudInView,
+                    WATER_CLOUD_LEVELS,
+                    waterCloudRows,
+                );
+            } else {
+                uWaterCloudCount.value = 0;
+            }
             // The lattice centres on the rail's ground track IN THE CLIMB'S FRAME, so the rings
             // stay round the point beneath the climbed eye (a 30 u offset is 1,500 u at x50).
             if (uClimb.value === 1) {
@@ -6075,6 +6928,8 @@ export function createOdysseyWorld({
             // surface (+4 u of swell): exact, so the gate changes no pixel.
             uCeilNet.value = (ODYSSEY_SEA_LEVEL - submergedRefY) < 66 ? 1 : 0;
             uValleyMist.value = submergedRefY > 349 ? 1 : 0;
+            uGroundMist.value = submergedRefY > ODYSSEY_SEA_LEVEL
+                && submergedRefY < ODYSSEY_SEA_LEVEL + GROUND_MIST.eyeFade[1] ? 1 : 0;
 
             // ── THE 1->2 CARRY (consumed; neutral when the board did not call this frame) ──
             const dt = lastUpdateTime === null ? 0 : Math.min(Math.max(time - lastUpdateTime, 0), 0.1);
@@ -6170,7 +7025,9 @@ export function createOdysseyWorld({
                 // A sort key only (no pipeline change): after the steam's shell (12) while veiled.
                 moteMesh.renderOrder = uMoteVeil.value > 0.01 ? 13 : 4;
             }
-            if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001 && lifeOn;
+            // The fish stay while the eye is in the water, and after the breach while any school
+            // still shows through the surface: they are passed, never switched off in view.
+            if (fishMesh) fishMesh.visible = (uSubmerged.value > 0.001 || fishSeenFromAbove(viewCamera)) && lifeOn;
             if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             const forestDrawable = uSubmerged.value < 0.999 && !earthCovers;
@@ -6197,7 +7054,7 @@ export function createOdysseyWorld({
             // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
             [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat,
-                tarnMat].forEach((m) => m.dispose());
+                tarnMat, showerMat].forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             // fishMat was missing here (the same SB-15 teardown class heroMat was): every world
@@ -6207,8 +7064,8 @@ export function createOdysseyWorld({
             if (kelpMat) kelpMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
-            [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex, leafAtlasTex]
-                .forEach((t) => t.dispose());
+            [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, forestShadeTex, leafAtlasTex,
+                valleyMistTex].forEach((t) => t.dispose());
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();
             treeGeo.dispose();

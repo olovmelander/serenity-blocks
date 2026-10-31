@@ -66,6 +66,7 @@ import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 import { auroraSurfaceTerm, createPlanetAuroraCrown } from './odyssey-planet-aurora.js';
 import { createRingedGiantTSLSteps } from './odyssey-ringed-giant.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
+import { createGargantuaLensSteps } from './odyssey-gargantua-lens.tsl.js';
 
 // ── Nebula void dome — FBM galactic backdrop (-100 backstop; must NOT bloom) ──────
 
@@ -309,7 +310,7 @@ export function createBlackHoleTSL(uTime, uEnergy) {
  * @param {*} uTime
  * @param {*} uEnergy
  */
-export function* createBlackHoleTSLSteps(uTime, uEnergy) {
+export function* createBlackHoleTSLSteps(uTime, uEnergy, { painted = false, quality = 'high' } = {}) {
     const S = OMEN_SHADOW_RADIUS;
     const time = uTime ?? uniform(0);
     const energy = uEnergy ?? uniform(0.3);
@@ -338,6 +339,33 @@ export function* createBlackHoleTSLSteps(uTime, uEnergy) {
     // omen popped in whole the frame space opened: +14 luma at the 5->6 boundary once it hangs at
     // its full size. The chapter drives this uniform instead.
     const uReveal = uniform(1);
+    if (!painted) {
+        // TRACED (2026-10-31, odyssey-gargantua-lens.tsl.js): the photon ring, the lensed far side
+        // of the disk, the disk and its glowing gas all come out of one material that bends every
+        // view ray round the hole, round this same shadow. The disk's plane is the DISK pivot's
+        // (the pose the painted band had). `?odysseyPaintedHole=1` builds the painted hole again.
+        const diskPivot = new THREE.Group();
+        diskPivot.name = 'omen-disk-pivot';
+        diskPivot.rotation.order = 'ZYX';
+        diskPivot.rotation.set(-(Math.PI / 2 - 0.10), 0, -0.10);
+        face.add(diskPivot);
+        const lens = yield* createGargantuaLensSteps({ shadowRadius: S, uReveal, quality });
+        face.add(lens.mesh);
+        group.userData.uReveal = uReveal;
+        group.userData.face = face;
+        group.userData.diskPivot = diskPivot;
+        group.userData.shadow = horizon;
+        group.userData.lens = lens;
+        return {
+            group,
+            disk: null,
+            dispose() {
+                horizon.geometry?.dispose?.();
+                horizon.material?.dispose?.();
+                lens.dispose();
+            },
+        };
+    }
     const photon = createGargantuaPhotonRingTSL(time, {
         shadowRadius: S, innerRadius: S, outerRadius: S * 1.075, uFade: uReveal,
     });

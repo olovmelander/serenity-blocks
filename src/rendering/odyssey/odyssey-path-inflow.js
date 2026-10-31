@@ -29,10 +29,11 @@ export const ODYSSEY_PATH_INFLOW = Object.freeze({
     /** Centre-line points (a strip of two vertices each). */
     segments: 128,
     /** A LOGARITHMIC spiral on screen, counter-clockwise (the disk's sense): it turns `pitch`
-     * radians for every e-fold it closes, so it bends gently on the way to the hole and swirls
+     * radians for every e-fold it closes, so it bends gently on the way to the hole and curls
      * into the centre, and anything moving along it at an even pace slows as it nears the
-     * centre (the frozen-at-the-horizon look). */
-    pitch: 0.42,
+     * centre (the frozen-at-the-horizon look). 0.42 until 2026-10-31: it is the orb path going
+     * in now (THE PATH ITSELF, below), and a path bends, it does not whirl. */
+    pitch: 0.15,
     /** It ends this share of the shadow's radius from the centre. */
     endRadius: 0.02,
     /** The first `leave` of the stream follows the rail out of the orb... */
@@ -43,14 +44,21 @@ export const ODYSSEY_PATH_INFLOW = Object.freeze({
     depthBias: 0.75,
     /** The far end sits at this share of the shadow's near-surface distance (in front of it). */
     nearMargin: 0.94,
-    /** Core radius at the orb (world u): a little over the rail's own (outerRadius 0.4)... */
-    coreRadius: 0.55,
-    /** ...thinning to this share of it at the far end... */
-    coreTail: 0.4,
+    /**
+     * THE PATH ITSELF (2026-10-31). Olov: "why do we need this neon line into the black hole, cant
+     * just the orb path go into the black hole???" It was a thin neon thread with a glow four
+     * times its width, heating to amber and flaring white at the photon ring. It is the orb path
+     * now: the rail's own tube, at the rail's own width (outerRadius 0.4), in chapter 6's colours
+     * (createPathInflowTSL), thinning only with distance as it runs into the hole.
+     * Core radius at the orb (world u)...
+     */
+    coreRadius: 0.4,
+    /** ...this share of it at the far end... */
+    coreTail: 1.0,
     /** ...never under this share of the frame height (~1.1 px of radius at 720p). */
     coreFloor: 0.0015,
-    /** Strip half-width over core radius: the glow around the core. */
-    glow: 4.0,
+    /** Strip half-width over core radius: the rail's haze shell, 2 body radii (it was 4: a neon glow). */
+    glow: 2.0,
     /** Fades in over this much progress once the rail ends at the mouth. */
     fadeIn: 0.006,
     /** Fades out as the orb comes this near the eye's plane (u, along the view axis). */
