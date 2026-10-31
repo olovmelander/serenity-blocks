@@ -4373,16 +4373,10 @@ class SerenityBlocks {
                     currentMode._syncBoardScenes();
                 }
             },
-            onLevelUp: (level) => {
-                if (currentMode?._syncBoardScenes) {
-                    currentMode._syncBoardScenes();
-                }
-            },
-            onScoreAdd: (points) => {
-                if (currentMode?._syncBoardScenes) {
-                    currentMode._syncBoardScenes();
-                }
-            },
+            onLevelUp: () => currentMode?._syncBoardScenes?.(),
+            onScoreAdd: () => currentMode?._syncBoardScenes?.(),
+            // Last Standing's play cameras (local-versus-cameras.js) hear the board's beats.
+            onCascadeComplete: (count) => count > 0 && currentMode?._infinityCameraEvent?.(playerNum - 1, 'settled'),
             onLineClear: (count, _holeColumns, _rowMasks, ...rest) => {
                 const clearedRows = Array.isArray(rest[0]) ? rest[0] : [];
                 // Emit event for theme reactions
@@ -4424,6 +4418,7 @@ class SerenityBlocks {
                     playerState.hitStopRemaining = Math.max(playerState.hitStopRemaining || 0, 30);
                 }
                 this.soundManager.sfxPlayer.playDrop();
+                currentMode?._infinityCameraEvent?.(playerNum - 1, 'input');
                 const scene = sceneRef();
                 if (scene?.playHardDropEffect) {
                     scene.playHardDropEffect(dropData);
@@ -4437,6 +4432,7 @@ class SerenityBlocks {
             // Settings gating happens once, inside SharedEffects — the former
             // call-site gate here double-gated MP while SP had none.
             triggerFlash: (clearedRows) => {
+                currentMode?._infinityCameraEvent?.(playerNum - 1, 'clear', clearedRows);
                 effectHandlers.clearFlashBeat(clearedRows);
             },
             triggerBackgroundPulse: () => {}, // no per-player background pulse
@@ -4471,6 +4467,7 @@ class SerenityBlocks {
             onPerfectClear: (depth) => sceneRef()?.sharedEffects?.playPerfectClear(depth),
             onPieceLock: (piece) => {
                 effectHandlers.lockBeat(piece);
+                currentMode?._infinityCameraEvent?.(playerNum - 1, 'lock', piece);
 
                 // Quadra handicap: accumulate per-opponent stamps on each placement
                 // (no-op unless players have differing handicap levels).

@@ -8,9 +8,12 @@
  * it grows the map zooms out and the tower narrows, centred, keeping its true shape.
  * The rows the board shows are framed, the summit is marked, and a slim rail along
  * the side tracks the climb toward the ceiling with its milestones; in Infinity, beads on
- * the tower's edge mark where its big moments happened (setMarks). Drag (or touch) the
+ * the tower's edge mark where its big moments happened (setMarks). Once the well has grown to
+ * its ceiling, the roof (row 0) is drawn and the map above it closed off. Drag (or touch) the
  * map to look around the tower: the mode pauses and moves its camera
- * ('minimap-exploration-start', 'minimap-jump', 'minimap-exploration-end').
+ * ('minimap-exploration-start', 'minimap-jump', 'minimap-exploration-end'). Local versus
+ * shows its maps read-only (explorable: false): looking around there paused one player's
+ * board while the others played on, and anyone holding the mouse could do it to any board.
  *
  * It redraws only when the board, the camera or its own size changes; the build is
  * kept as a one-pixel-per-cell image that is redrawn only when the board does. While
@@ -65,6 +68,8 @@ export class InfinityMinimap {
      * @param {number} [options.maxRows] the ceiling when the state has none (default 1000)
      * @param {number} [options.width] initial canvas size, until it is measured
      * @param {number} [options.height]
+     * @param {boolean} [options.explorable] drag to look around (default true); false: a
+     *   read-only map
      */
     constructor(options = {}) {
         this.options = {
@@ -73,6 +78,7 @@ export class InfinityMinimap {
             maxRows: options.maxRows || 1000,
             width: options.width || 96,
             height: options.height || 420,
+            explorable: options.explorable !== false,
         };
         this.canvas = null;
         this.ctx = null;
@@ -130,6 +136,12 @@ export class InfinityMinimap {
         this.canvas.setAttribute('aria-label', 'The tower: the build, the rows on screen and the summit');
         this.ctx = this.canvas.getContext('2d');
 
+        if (!this.options.explorable) {
+            this.instructionLabel = null;
+            this.container.classList.add('is-read-only');
+            this.container.append(title, this.canvas);
+            return;
+        }
         this.instructionLabel = document.createElement('div');
         this.instructionLabel.className = 'minimap-instruction';
         this.instructionLabel.textContent = 'Drag to look';
@@ -152,9 +164,9 @@ export class InfinityMinimap {
         this.container.style.display = 'none';
     }
 
-    /** Paused: the map can be dragged to look around the tower. */
+    /** Paused: the map can be dragged to look around the tower (unless it is read-only). */
     onPause() {
-        this.container.classList.add('is-explorable');
+        if (this.options.explorable) this.container.classList.add('is-explorable');
     }
 
     onUnpause() {
@@ -384,6 +396,16 @@ export class InfinityMinimap {
         if (topRow < rowsTotal) {
             ctx.fillStyle = 'rgba(255, 209, 128, 0.95)';
             ctx.fillRect(x0, Math.max(y0, yOf(topRow) - line), drawW, line);
+        }
+
+        // The roof. Once the well can grow no more, nothing is above row 0: the map's spare
+        // height there is not sky (room to grow) but outside, so it is closed off in the
+        // danger coral and the roof drawn, and a tower that tops out visibly reaches it.
+        if (firstRow === 0 && rowsTotal >= maxRows) {
+            ctx.fillStyle = 'rgba(255, 156, 171, 0.14)';
+            ctx.fillRect(x0, 0, drawW, y0);
+            ctx.fillStyle = 'rgba(255, 156, 171, 0.95)';
+            ctx.fillRect(x0, Math.max(0, y0 - line), drawW, line);
         }
 
         // The tower's memory: a bead on its right edge where each big moment happened.

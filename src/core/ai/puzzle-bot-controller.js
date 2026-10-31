@@ -2,10 +2,12 @@ import { getBotDifficultyConfig, rollReactionDelay } from './bot-difficulty.js';
 import { analyzeCascadePreparation, measureBoard, rankCandidates } from './board-evaluator.js';
 import { simulatePlacement } from './cascade-simulator.js';
 import { estimateLatentDischarge } from './latent-chain.js';
-import { findReachablePlacements } from './reachability-pathfinder.js';
+import { canPlaceCandidate, findReachablePlacements } from './reachability-pathfinder.js';
 import { BotInputScheduler } from './bot-input-scheduler.js';
 import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
-import { resolveInfinitySpawnRow, usesDeterministicInfinitySpawn } from '../infinity-spawn-policy.js';
+import {
+    infinitySpawnLiftRows, resolveInfinitySpawnRow, usesDeterministicInfinitySpawn,
+} from '../infinity-spawn-policy.js';
 
 function defaultRng() {
     return Math.random();
@@ -98,6 +100,12 @@ function makeSearchState(boardGrid, shapeKey, sourceState, nextPieces = []) {
     };
     const currentPiece = makeSpawnPiece(shapeKey, searchState);
     if (!currentPiece) return null;
+    // At Infinity's roof a blocked spawn rises by its empty top rows, as spawnPiece does.
+    const lift = searchState.isInfinityMode ? infinitySpawnLiftRows(currentPiece.shape) : 0;
+    if (lift > 0 && !canPlaceCandidate(boardGrid, currentPiece)
+        && canPlaceCandidate(boardGrid, { ...currentPiece, y: currentPiece.y - lift })) {
+        currentPiece.y -= lift;
+    }
 
     searchState.currentPiece = currentPiece;
     return searchState;

@@ -6,6 +6,7 @@ import {
     applyGarbage, spawnPiece, hardDrop, canPlacePiece,
 } from '../../src/core/game.js';
 import { rebuildBoardGridFromPieces } from '../../src/core/board.js';
+import { expandGridIfNeeded } from '../../src/core/infinity-grid.js';
 import { LocalMultiplayerMode } from '../../src/core/game-modes/LocalMultiplayerMode.js';
 import { startLocalMultiplayerModeLoop } from '../../src/core/game-modes/local-multiplayer-loop.js';
 import { projectInfinityPresentationCamera } from '../../src/core/infinity-spawn-policy.js';
@@ -166,6 +167,49 @@ describe('local multiplayer Infinity stacking and roof rules', () => {
         expect(scene.cameras.main.centerOn).toHaveBeenCalledWith(200, 1760);
         expect(player.cameraRow).toBe(26);
         expect(player.infinityStats.rowsReached).toBe(54);
+    });
+
+    it('spawns every piece two rows under the roof, and tops out only when none fits', () => {
+        // Found in game: a stack two rows under the roof topped out on T, J and L (their
+        // matrices start with an empty row, so at row 0 their cells began a row low).
+        const spawnUnderRoof = (top, key) => {
+            const player = createMatch().players[0];
+            while (player.boardGrid.length < player.maxRows) expandGridIfNeeded(player, player.maxRows);
+            // A stack across the well (column 0 open, so nothing clears).
+            player.lockedPieces = [{
+                x: 1,
+                y: top,
+                shape: Array.from({ length: player.boardGrid.length - top }, () => Array(9).fill(1)),
+                pieceId: 1,
+                shapeKey: 'J',
+                color: '#ff0000',
+            }];
+            rebuildBoardGridFromPieces(player.lockedPieces, player.boardGrid);
+            player.boardCacheDirty = true;
+            player.nextPieces = [key, 'O'];
+            const onDeath = vi.fn();
+            const piece = spawnPiece(player, null, onDeath);
+            return { player, piece, onDeath };
+        };
+        const firstCellRow = (piece) => piece.y + piece.shape.findIndex((row) => row.some(Boolean));
+        for (const key of ['I', 'O', 'T', 'S', 'Z', 'J', 'L']) {
+            const { player, piece, onDeath } = spawnUnderRoof(2, key);
+            expect(onDeath, key).not.toHaveBeenCalled();
+            expect(player.isGameOver, key).toBe(false);
+            expect(canPlacePiece(player, piece, piece.x, piece.y), key).toBe(true);
+            // T, J and L rose to the roof; the rest fit where they spawn (a flat I on row 1).
+            expect(firstCellRow(piece), key).toBe(key === 'I' ? 1 : 0);
+        }
+        // One row of room: only a flat I still fits.
+        for (const key of ['O', 'T', 'S', 'Z', 'J', 'L']) {
+            expect(spawnUnderRoof(1, key).onDeath, key).toHaveBeenCalledOnce();
+        }
+        expect(spawnUnderRoof(1, 'I').onDeath).not.toHaveBeenCalled();
+        // Below the roof a T spawns where it always has (nothing rises).
+        const low = createMatch().players[0];
+        setTower(low, 20);
+        low.nextPieces = ['T'];
+        expect(spawnPiece(low, null, vi.fn()).y).toBe(14);
     });
 
     it('restores standard board rules when a match switches out of Infinity', () => {

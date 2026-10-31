@@ -387,8 +387,8 @@ export class LocalVersusHud {
     }
 
     /**
-     * The knock-out card over a board (3–4 players, until the round ends), naming who
-     * did it.
+     * The knock-out card over a board (3–4 players, until the round ends; in Infinity's
+     * Last Standing, until the match ends), naming who did it.
      * @param {number} index the player out
      * @param {number|null} [by] who knocked them out (null or themselves: topped out)
      */
@@ -402,9 +402,11 @@ export class LocalVersusHud {
         const knockedBy = Number.isInteger(by) && by !== index;
         const cause = knockedBy ? `By ${this._name(by)}` : 'Topped out';
         const byColor = knockedBy ? ` style="--by-color:${this._color(by)}"` : '';
+        // Last Standing in Infinity is one round: there is no next one to come back for.
+        const note = this.config.isInfinityLMS ? 'Out for this match' : 'Back next round';
         card.innerHTML = '<span class="lv-ko__title">Out</span>'
             + `<span class="lv-ko__cause"${byColor}>${escapeHtml(cause)}</span>`
-            + '<span class="lv-ko__note">Back next round</span>';
+            + `<span class="lv-ko__note">${note}</span>`;
         section.appendChild(card);
         this._knockouts.set(index, card);
         // Let the board fade first, then the card rises.

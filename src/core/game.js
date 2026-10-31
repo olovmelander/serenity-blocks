@@ -24,6 +24,7 @@ import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid, expandGridIfNeeded } from './infinity-grid.js';
 import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+    infinitySpawnLiftRows,
     normalizeInfinitySpawnPolicy,
     resolveInfinitySpawnRow,
     synchronizeInfinitySimulationCamera,
@@ -889,7 +890,14 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
 
-    // Check if piece can spawn (game over condition)
+    // Check if piece can spawn (game over condition). At Infinity's roof a blocked piece
+    // first rises by its empty top rows (infinitySpawnLiftRows), staying below the roof.
+    const lift = gameState.isInfinityMode ? infinitySpawnLiftRows(piece.shape) : 0;
+    if (lift > 0 && !canPlacePiece(gameState, piece, piece.x, piece.y)
+        && canPlacePiece(gameState, piece, piece.x, piece.y - lift)) {
+        piece.y -= lift;
+        invalidateGhostCache(gameState);
+    }
     if (!canPlacePiece(
         gameState,
         gameState.currentPiece,

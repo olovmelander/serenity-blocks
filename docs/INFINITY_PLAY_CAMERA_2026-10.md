@@ -112,5 +112,6 @@ made Cornerstone cascade once instead of eight times in the first run.
 
 ## Open
 
-- Odyssey's Infinity wells and Infinity local multiplayer still move their cameras with a
-  per-frame lerp (frame-rate bound). Both could adopt this camera.
+- Odyssey's Infinity wells still move their camera with a per-frame lerp (frame-rate bound) and
+  could adopt this camera. Infinity local versus adopted it on 2026-10-30, one camera per board
+  (`src/ui/infinity/local-versus-cameras.js`; LOCAL_MULTIPLAYER_INFINITY_AUDIT_2026-10.md).
