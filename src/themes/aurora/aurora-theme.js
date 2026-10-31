@@ -18,6 +18,7 @@ import { QUALITY_PRESETS, normalizeAuroraQuality } from './aurora-quality.js';
 import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
 import { AuroraWorld } from './aurora-world.js';
 import { auroraBakes } from './aurora-bakes.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 export { QUALITY_PRESETS } from './aurora-quality.js';
 
@@ -126,7 +127,10 @@ export default class AuroraTheme extends BaseTheme {
         container.appendChild(renderer.domElement);
         this.setupGpuResilience();
         try {
-            this.buildScene();
+            if (await this.buildScene(current) === false) {
+                if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+                return;
+            }
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
@@ -177,10 +181,17 @@ export default class AuroraTheme extends BaseTheme {
         }
     }
 
-    buildScene() {
+    /** Resolves false when the start stopped before the world was whole (nothing kept). */
+    async buildScene(isCurrent = () => true) {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(55, 1, 0.5, 12000);
-        this.world = new AuroraWorld({ scene: this.scene, camera: this.camera, quality: this.quality });
+        const world = new AuroraWorld({
+            scene: this.scene, camera: this.camera, quality: this.quality, build: false,
+        });
+        // Built in steps with a breath between them (one long task otherwise), and the theme's only
+        // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+        if (!(await buildWorldBreathing(world, isCurrent))) return false;
+        this.world = world;
         this.post = new AuroraPost({
             renderer: this.renderer,
             scene: this.scene,
@@ -189,6 +200,7 @@ export default class AuroraTheme extends BaseTheme {
             antialias: this.getAntialiasEnabled(),
         });
         this.applyMotionPreference();
+        return true;
     }
 
     getDiagnostics() {

@@ -242,34 +242,6 @@ export function createRecordTexture(record) {
     return tex;
 }
 
-/**
- * A field's GPU form: (height normalised to its [lo, hi], dh/dx, dh/dz, sky) as half floats, the
- * slope read off the heights a little smoothed (a Sobel pair) so a normal per cell never shows
- * as a grid of dots; and, for the near and mid fields, drainage as an 8-bit red texture.
- */
-export function fieldTextureData(heights, sky, field) {
-    const { size } = field;
-    const cell = field.span / (size - 1);
-    const range = field.hi - field.lo;
-    const toHalf = THREE.DataUtils.toHalfFloat;
-    const data = new Uint16Array(size * size * 4);
-    const at = (i, j) => heights[Math.max(0, Math.min(size - 1, j)) * size + Math.max(0, Math.min(size - 1, i))];
-    for (let j = 0; j < size; j++) {
-        for (let i = 0; i < size; i++) {
-            const gx = (at(i + 1, j - 1) + 2 * at(i + 1, j) + at(i + 1, j + 1)
-                - at(i - 1, j - 1) - 2 * at(i - 1, j) - at(i - 1, j + 1)) / (8 * cell);
-            const gz = (at(i - 1, j + 1) + 2 * at(i, j + 1) + at(i + 1, j + 1)
-                - at(i - 1, j - 1) - 2 * at(i, j - 1) - at(i + 1, j - 1)) / (8 * cell);
-            const o = (j * size + i) * 4;
-            data[o] = toHalf((heights[j * size + i] - field.lo) / range);
-            data[o + 1] = toHalf(gx);
-            data[o + 2] = toHalf(gz);
-            data[o + 3] = toHalf(sky[j * size + i] / 255);
-        }
-    }
-    return data;
-}
-
 export function createFieldTexture(data, field) {
     const tex = new THREE.DataTexture(data, field.size, field.size, THREE.RGBAFormat, THREE.HalfFloatType);
     tex.wrapS = THREE.ClampToEdgeWrapping;

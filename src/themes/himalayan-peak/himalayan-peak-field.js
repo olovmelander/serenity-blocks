@@ -16,6 +16,15 @@
 import {
     EYE, GRID, HEIGHT_RANGE, SHADOW_TAN, SUN_AZIMUTH,
 } from './himalayan-peak-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+
+/**
+ * How long one slice of the derivation runs before it yields to the page (ms). The `…Steps`
+ * generators below yield whenever their clock has run this long (deriveFieldInSteps breathes
+ * there); the sync functions drain them at once. A first visit held the outgoing theme 46 ms in
+ * the horizon map and 58 ms in the mesh, each one task (2026-10-31).
+ */
+export const FIELD_SLICE_MS = 8;
 
 /** Bilinear height at a world point; far below the cloud outside the grid. */
 export function sampleField(heights, size, x, z) {
@@ -72,7 +81,8 @@ export function shadeMap(heights, sky, size) {
 
 /**
  * shadeMap's rows j0 … j1 − 1 into `out` (every texel is its own: any split of the rows writes the
- * same bytes). deriveFieldInSteps fills the map a band of rows at a time: one call took ~105 ms.
+ * same bytes). deriveFieldInSteps fills the map a row at a time, yielding by the clock: one call
+ * took ~105 ms, and eighth-of-the-map bands still ~17 ms each.
  */
 export function shadeRows(out, heights, sky, size, j0, j1) {
     const cell = GRID.span / (size - 1);
@@ -111,10 +121,13 @@ export const HORIZON_RANGE = Object.freeze([-0.4, 1.0]);
  * the sun and keeping the upper hull of the ground already passed: the horizon of the next point
  * is the hull's last corner.
  *
- * @returns {Float32Array} size² × 2: (the ground's horizon, the horizon of the cloud sea's top
- *   at y = 0 over the same spot), both as tan(elevation), clamped to HORIZON_RANGE.
+ * As steps: yields between lines (and rows) once `clock` is due, and returns the map. Every line
+ * is walked on its own (its hull starts empty), so a pause anywhere changes nothing.
+ *
+ * @returns {Generator<string, Float32Array>} size² × 2: (the ground's horizon, the horizon of the
+ *   cloud sea's top at y = 0 over the same spot), both as tan(elevation), clamped to HORIZON_RANGE.
  */
-export function horizonMap(heights, size) {
+export function* horizonMapSteps(heights, size, clock = stepClock(FIELD_SLICE_MS)) {
     const cell = GRID.span / (size - 1);
     const sz = Math.cos(SUN_AZIMUTH);
     // One row farther from the sun (+z) is this many columns west, and this far along the ground.
@@ -163,10 +176,18 @@ export function horizonMap(heights, size) {
             ground[line * size + j] = g < lo ? lo : Math.min(hi, g);
             cloud[line * size + j] = k < lo ? lo : Math.min(hi, k);
         }
+        if (clock.due()) {
+            yield 'horizon';
+            clock.restart();
+        }
     }
     // Every grid point lies between two lines.
     const out = new Float32Array(size * size * 2);
     for (let j = 0; j < size; j++) {
+        if (clock.due()) {
+            yield 'horizon';
+            clock.restart();
+        }
         for (let i = 0; i < size; i++) {
             const c = i + shift * j;
             const a = Math.floor(c);
@@ -186,14 +207,20 @@ export function horizonMap(heights, size) {
     return out;
 }
 
+/** horizonMapSteps at once. @returns {Float32Array} */
+export function horizonMap(heights, size) {
+    return drainSteps(horizonMapSteps(heights, size));
+}
+
 /**
  * The height the amphitheatre's shadow stands at in the AIR, for the four baked elevations (the
  * haze, the blown snow and the paper horses are lit above it). It is a maximum of terms linear
  * in tan(elevation), so a blend of two slices is close; it is kept small and soft.
- * @returns {{ volume: Float32Array, low: Float32Array, lowSize: number }}
+ * As steps: yields between rows once `clock` is due (each row's state is kept across the pause).
+ * @returns {Generator<string, { volume: Float32Array, low: Float32Array, lowSize: number }>}
  *   `volume`: lowSize² × 4 heights (metres), one per slice; `low`: lowSize², the ground itself.
  */
-export function shadowSlices(heights, size, lowSize = 256) {
+export function* shadowSlicesSteps(heights, size, lowSize = 256, clock = stepClock(FIELD_SLICE_MS)) {
     const cell = GRID.span / (size - 1);
     const sz = Math.cos(SUN_AZIMUTH);
     const shift = Math.sin(SUN_AZIMUTH) / sz;
@@ -222,6 +249,10 @@ export function shadowSlices(heights, size, lowSize = 256) {
                 volume[(Math.floor(j / block) * lowSize + Math.floor(i / block)) * 4 + s] += cast;
             }
             prev.set(row);
+            if (clock.due()) {
+                yield 'shadow';
+                clock.restart();
+            }
         }
     }
     const inv = 1 / (block * block);
@@ -230,8 +261,17 @@ export function shadowSlices(heights, size, lowSize = 256) {
         for (let i = 0; i < size; i++) {
             low[Math.floor(j / block) * lowSize + Math.floor(i / block)] += heights[j * size + i] * inv;
         }
+        if (clock.due()) {
+            yield 'shadow';
+            clock.restart();
+        }
     }
     return { volume, low, lowSize };
+}
+
+/** shadowSlicesSteps at once. @returns {{ volume: Float32Array, low: Float32Array, lowSize: number }} */
+export function shadowSlices(heights, size, lowSize = 256) {
+    return drainSteps(shadowSlicesSteps(heights, size, lowSize));
 }
 
 /** Height (metres) the shadow stands at over a world point for slice weights `w`. CPU twin. */
@@ -261,14 +301,16 @@ export const CLOUD_CUT = -300;
 export const WEDGE = 64 * (Math.PI / 180);
 
 /**
- * Build the mesh of what the eye can see.
+ * Build the mesh of what the eye can see, as steps: yields between azimuths, rows and runs of
+ * cells once `clock` is due, and returns the mesh.
  * @param {Float32Array} heights
  * @param {number} size
  * @param {object} [options]
  * @param {number} [options.stride=1]  grid cells per mesh cell
- * @returns {{ positions: Float32Array, indices: Uint32Array, cells: number, kept: number }}
+ * @param {{ due: () => boolean, restart: () => void }} [clock]
+ * @returns {Generator<string, { positions: Float32Array, indices: Uint32Array, cells: number, kept: number }>}
  */
-export function buildMassifMesh(heights, size, { stride = 1 } = {}) {
+export function* buildMassifMeshSteps(heights, size, { stride = 1 } = {}, clock = stepClock(FIELD_SLICE_MS)) {
     const cell = GRID.span / (size - 1);
     const n = Math.floor((size - 1) / stride) + 1;
     const step = cell * stride;
@@ -290,9 +332,17 @@ export function buildMassifMesh(heights, size, { stride = 1 } = {}) {
             if (t > top) top = t;
             horizon[b * rings + k] = top;
         }
+        if (clock.due()) {
+            yield 'mesh';
+            clock.restart();
+        }
     }
     const seen = new Uint8Array(n * n);
     for (let j = 0; j < n; j++) {
+        if (clock.due()) {
+            yield 'mesh';
+            clock.restart();
+        }
         for (let i = 0; i < n; i++) {
             const x = GRID.x0 + i * step - EYE.x;
             const z = GRID.z0 + j * step - EYE.z;
@@ -331,6 +381,10 @@ export function buildMassifMesh(heights, size, { stride = 1 } = {}) {
     const cellsKept = [];
     const cellBucket = [];
     for (let j = 0; j < n - 1; j++) {
+        if (clock.due()) {
+            yield 'mesh';
+            clock.restart();
+        }
         for (let i = 0; i < n - 1; i++) {
             const h00 = at(i, j);
             const h10 = at(i + 1, j);
@@ -377,6 +431,10 @@ export function buildMassifMesh(heights, size, { stride = 1 } = {}) {
         return remap[id];
     };
     for (let c = 0; c < order.length; c++) {
+        if ((c & 1023) === 0 && clock.due()) {
+            yield 'mesh';
+            clock.restart();
+        }
         const i = order[c] % n;
         const j = Math.floor(order[c] / n);
         const a = vertex(i, j);
@@ -391,4 +449,15 @@ export function buildMassifMesh(heights, size, { stride = 1 } = {}) {
     return {
         positions: new Float32Array(positions), indices, cells: (n - 1) * (n - 1), kept: order.length,
     };
+}
+
+/**
+ * buildMassifMeshSteps at once.
+ * @param {Float32Array} heights
+ * @param {number} size
+ * @param {{ stride?: number }} [options]
+ * @returns {{ positions: Float32Array, indices: Uint32Array, cells: number, kept: number }}
+ */
+export function buildMassifMesh(heights, size, options = {}) {
+    return drainSteps(buildMassifMeshSteps(heights, size, options));
 }

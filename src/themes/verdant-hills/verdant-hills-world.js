@@ -29,7 +29,9 @@ import { createVerdantHillsWorn, wearVerdantHillsFrame } from './verdant-hills-s
 import {
     VERDANT_HILLS_PLACES, VerdantHillsTerrain, prepareGroundSteps, verdantHillsGroundHeight,
 } from './verdant-hills-terrain.js';
-import { createVerdantHillsPasture, layoutVerdantHillsSheep } from './verdant-hills-layout.js';
+import {
+    createVerdantHillsPasture, layoutVerdantHillsSheep, prepareVerdantHillsLayoutSteps,
+} from './verdant-hills-layout.js';
 import { VerdantHillsTrees } from './verdant-hills-trees.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
@@ -117,19 +119,25 @@ export class VerdantHillsWorld {
         light.cloudPass = this.sky;
         if (this.assets) {
             // The pack: the old oak and the field trees, the sprite trees of the far hills, and
-            // what people built. Without it (a test, a failed load) the hills stand bare.
+            // what people built. Without it (a test, a failed load) the hills stand bare. A
+            // session's first visit plants the layout's lists just before the part that reads
+            // each, a time slice a step (the far trees were 47 ms of one step).
+            if (yield* prepareVerdantHillsLayoutSteps('field')) yield 'field trees';
             this.trees = new VerdantHillsTrees({
                 light, assets: this.assets, tier, rng,
             });
             this.group.add(this.trees.group);
             this.trees.build();
             yield 'trees';
+            if (yield* prepareVerdantHillsLayoutSteps('far')) yield 'far trees';
             this.backdrop = new VerdantHillsBackdrop({
                 light, impostors: this.assets.impostors, tier, rng,
             });
             this.group.add(this.backdrop.group);
             this.backdrop.build();
             yield 'backdrop';
+            // The flock's places (the homestead's still sheep or the living flock read them).
+            if (yield* prepareVerdantHillsLayoutSteps('sheep')) yield 'flock places';
             // With its two rigged models the flock lives (verdant-hills-flock.js); without them the
             // homestead stands its old still sheep where the layout puts them.
             const living = Boolean(this.assets.sheep) && tier.sheep > 0;
@@ -159,6 +167,8 @@ export class VerdantHillsWorld {
         }
         this.meadow = new VerdantHillsMeadow({ light, tier, rng });
         this.group.add(this.meadow.group);
+        // (Its sight of the hill took 8 ms: the grass starts a step of its own.)
+        yield 'meadow sight';
         yield* this.meadow.buildSteps();
         yield 'meadow';
         this.life = new VerdantHillsLife({ light, tier, rng });

@@ -11,6 +11,7 @@ import {
     Fn, dot, exp, float, floor, fract, length, max, mix, sin, smoothstep, step, texture, uniform, uniformArray,
     vec2, vec3, vec4,
 } from 'three/tsl';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Mineral families. A crystal, its baked light and a tetromino colour share an index. */
 export const GEM_FAMILIES = Object.freeze([
@@ -38,6 +39,9 @@ const ENV_LOBES = Object.freeze([
     }, // right wall
 ]);
 
+/** How long one slice of the noise bake runs before it yields to the page (ms). */
+const NOISE_SLICE_MS = 8;
+
 function lcg(seed) {
     let state = seed >>> 0;
     return () => {
@@ -51,6 +55,18 @@ function lcg(seed) {
  * Built once on the CPU so both backends sample identical values.
  */
 export function createCaveNoiseTexture(seed = 8317) {
+    return drainSteps(createCaveNoiseTextureSteps(seed));
+}
+
+/**
+ * `createCaveNoiseTexture` as steps (the world's build breathes between them:
+ * shared/build-steps.js): the same texels from the same draws, yielding between rows once a slice
+ * has run NOISE_SLICE_MS. In one task it was 13 ms of the world's 26 ms build on a first visit
+ * (2026-10-31).
+ * @returns {Generator<string, THREE.DataTexture>}
+ */
+export function* createCaveNoiseTextureSteps(seed = 8317) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const size = 256;
     const random = lcg(seed);
     const lattice = (cells) => ({ cells, values: Float32Array.from({ length: cells * cells }, random) });
@@ -87,6 +103,10 @@ export function createCaveNoiseTexture(seed = 8317) {
             data[offset + 2] = Math.round(random() * 255);
             data[offset + 3] = Math.round(Math.min(1, second / 0.96875) * 255);
         }
+        if (clock.due()) {
+            yield 'noise';
+            clock.restart();
+        }
     }
     const result = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
     result.name = 'Crystal Cave — mineral noise';
@@ -103,7 +123,12 @@ export function createCaveNoiseTexture(seed = 8317) {
  * @returns the shared uniforms and TSL helpers. Nothing here owns a scene object.
  */
 export function createCaveLight() {
-    const noise = createCaveNoiseTexture();
+    return drainSteps(createCaveLightSteps());
+}
+
+/** `createCaveLight` as steps: its noise texture is baked in slices (createCaveNoiseTextureSteps). */
+export function* createCaveLightSteps() {
+    const noise = yield* createCaveNoiseTextureSteps();
     const familyColors = GEM_FAMILIES.map((family) => new THREE.Color(family.hex));
     const uniforms = {
         time: uniform(0),

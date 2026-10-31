@@ -63,6 +63,7 @@ import { POST_LOOK, NebulaFlowPost, createPassThroughPipeline } from './nebula-f
 import { PLAYER_SLOTS, readLayoutRects } from './nebula-flow-composition.js';
 import { NEBULA_FLOW_EVENT_HANDLERS, NebulaFlowDirector } from './nebula-flow-director.js';
 import { approach } from './nebula-flow-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'nebula-flow';
 const LOG_PREFIX = '[NebulaFlow]';
@@ -240,15 +241,19 @@ export default class NebulaFlowTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed. The world
-            // is handed the renderer as every rebuilt world is (the playground builds it the same way).
-            this.world = new NebulaFlowWorld({
+            // The world is handed the renderer as every rebuilt world is (the playground builds it
+            // the same way).
+            const world = new NebulaFlowWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
             });
-            this.world.build();
+            // The bakes in slices and the parts with a breath between (shared/build-steps.js). The
+            // theme owns the world once it is whole; a build that throws half-way, or a start
+            // stopped meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

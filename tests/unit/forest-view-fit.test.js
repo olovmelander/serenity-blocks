@@ -267,8 +267,12 @@ describe('Forest: small guards', () => {
     it('the static shadow map is drawn again by the clock, for pipelines that land late', () => {
         const light = new ForestLight({ tier: forestTier('Minimal') });
         light.frameShadows();
-        // Past every frame-counted redraw without a second going by.
-        for (let i = 0; i < 200; i += 1) light.update(0, 0, {});
+        // Past every frame-counted redraw without a second going by, each frame's render drawing the
+        // map as three does (the first redraws count draws: shared/static-shadow-draws.js).
+        for (let i = 0; i < 200; i += 1) {
+            light.update(0, 0, {});
+            light.moon.shadow.needsUpdate = false;
+        }
         light.moon.shadow.needsUpdate = false;
         light.update(1, 1, {});
         expect(light.moon.shadow.needsUpdate).toBe(false);

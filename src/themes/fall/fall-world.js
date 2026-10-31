@@ -18,15 +18,16 @@ import { FallLight } from './fall-light.js';
 import { FALL_MOODS, fallMoodDrift, fallMoodName } from './fall-moods.js';
 import { fallTier } from './fall-quality.js';
 import { FallStage } from './fall-stage.js';
-import { createSquirrel } from './fall-squirrel.js';
+import { createSquirrelSteps } from './fall-squirrel.js';
 import { SquirrelMind } from './fall-squirrel-mind.js';
 import {
-    SQUIRREL_TRUNK_SPAN, TrunkSurface, createSquirrelStage, measureTrunk,
+    SQUIRREL_TRUNK_SPAN, TrunkSurface, createSquirrelStage, measureTrunkSteps,
 } from './fall-squirrel-stage.js';
 import { FallTerrain, fallTerrainHeight } from './fall-terrain.js';
 import { FallUnderstory } from './fall-understory.js';
+import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** How quickly the grove takes a level's step, per second: most of the way in four seconds. */
 const MOOD_FOLLOW = 0.6;
@@ -77,7 +78,9 @@ export class FallWorld {
     /**
      * The build as steps, a part or two to a step (shared/build-steps.js breathes between them):
      * the whole grove in one call was a ~80 ms task on every Fall start, the switch's longest
-     * frame (docs/THEME_FLEET_240_2026-10.md §13). Same parts, same order, same random draws.
+     * frame (docs/THEME_FLEET_240_2026-10.md §13). Same parts, same order, same random draws. The
+     * floor, the grove, the understory and the squirrel build a time slice a step themselves (single
+     * steps of 18-40 ms on a first visit before, 2026-10-31).
      */
     * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed FallWorld.');
@@ -94,19 +97,20 @@ export class FallWorld {
         const { foliage, impostors } = this.assets;
         this.terrain = new FallTerrain({ light, rng });
         this.group.add(this.terrain.group);
-        this.terrain.build();
+        yield 'light';
+        yield* this.terrain.buildSteps();
         yield 'terrain';
         this.forest = new FallForest({
             light, assets: this.assets, tier, rng,
         });
         this.group.add(this.forest.group);
-        this.forest.build();
+        yield* this.forest.buildSteps();
         yield 'forest';
         this.understory = new FallUnderstory({
             light, foliage, tier, rng,
         });
         this.group.add(this.understory.group);
-        this.understory.build();
+        yield* this.understory.buildSteps();
         yield 'understory';
         this.backdrop = new FallBackdrop({
             light, impostors, tier, rng,
@@ -124,7 +128,7 @@ export class FallWorld {
         this.group.add(this.leaves.group);
         this.leaves.build();
         yield 'leaves';
-        this.buildSquirrel();
+        yield* this.buildSquirrelSteps();
         yield 'squirrel';
         this.prepareCamera(this.camera.aspect);
         this.director = new FallLeafDirector({
@@ -142,16 +146,23 @@ export class FallWorld {
      * asset is missing (the grove is whole without it).
      */
     buildSquirrel() {
+        drainSteps(this.buildSquirrelSteps());
+    }
+
+    /** buildSquirrel(), a time slice a step: each trunk measured, then the body. */
+    * buildSquirrelSteps() {
         const gltf = this.assets.squirrel;
         if (!this.squirrelWanted || !gltf) return;
+        const clock = stepClock(FALL_SLICE_MS);
         const trunks = {};
         for (const [name, tree] of Object.entries(SQUIRREL_TREES)) {
+            yield* fallSlice(clock, 'squirrel trunks');
             const asset = this.assets.trees[tree.asset];
             if (!asset?.bark?.index) return;
             const { bark } = asset;
             const colour = bark.attributes.color;
             const sway = colour ? Float32Array.from({ length: colour.count }, (_, i) => colour.getX(i)) : null;
-            trunks[name] = new TrunkSurface(measureTrunk({
+            trunks[name] = new TrunkSurface(yield* measureTrunkSteps({
                 positions: bark.attributes.position.array,
                 index: bark.index.array,
                 sway,
@@ -159,7 +170,7 @@ export class FallWorld {
                     x: tree.x, y: fallTerrainHeight(tree.x, tree.z), z: tree.z, yaw: tree.yaw, scale: tree.scale,
                 },
                 span: SQUIRREL_TRUNK_SPAN[name],
-            }), name);
+            }, clock), name);
         }
         const eye = FALL_VIEWS.landscape.position;
         this.squirrelStage = createSquirrelStage({
@@ -168,7 +179,8 @@ export class FallWorld {
         this.squirrelMind = new SquirrelMind({
             stage: this.squirrelStage, seed: this.squirrelSeed, start: this.squirrelStart, script: this.squirrelScript,
         });
-        this.squirrel = createSquirrel({ light: this.light, gltf });
+        yield* fallSlice(clock, 'squirrel trunks');
+        this.squirrel = yield* createSquirrelSteps({ light: this.light, gltf, clock });
         this.group.add(this.squirrel.group, this.squirrel.shade);
         this.squirrelPose = null;
     }

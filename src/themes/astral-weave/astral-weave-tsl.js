@@ -32,6 +32,8 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { halfBits } from '../../rendering/half-float.js';
 
 export const TAU = Math.PI * 2;
 
@@ -117,12 +119,27 @@ export const awSpectrum = /* @__PURE__ */ Fn(([t, heat]) => {
 
 export const NOISE_SIZE = 256;
 
+/** How long one slice of the noise bake runs before it yields to the page (ms). */
+const NOISE_SLICE_MS = 8;
+
 /**
  * A tileable RGBA fBm texture: four decorrelated channels of periodic gradient noise (five
  * octaves), stretched to [0, 1] and stored as half floats so the dark nebula gradients never
  * band. Baked once on the CPU (≈ 40 ms); every nebula octave in the sky is ONE fetch of it.
  */
 export function createNoiseTexture(seed = 7411, size = NOISE_SIZE) {
+    return drainSteps(createNoiseTextureSteps(seed, size));
+}
+
+/**
+ * `createNoiseTexture` as steps (the world's build breathes between them: shared/build-steps.js):
+ * the same field from the same draws, yielding between rows once a slice has run NOISE_SLICE_MS,
+ * and the same half floats (rendering/half-float.js halfBits is three's DataUtils.toHalfFloat bit
+ * for bit). In one task it was 17.5 ms of the world's 26 ms build on a first visit (2026-10-31).
+ * @returns {Generator<string, THREE.DataTexture>}
+ */
+export function* createNoiseTextureSteps(seed = 7411, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const data = new Uint16Array(n * n * 4);
@@ -165,6 +182,10 @@ export function createNoiseTexture(seed = 7411, size = NOISE_SIZE) {
                     const bottom = d01 + (d11 - d01) * sx;
                     field[y * n + x] += (top + (bottom - top) * sy) * amp;
                 }
+                if (clock.due()) {
+                    yield 'noise';
+                    clock.restart();
+                }
             }
             amp *= 0.5;
         }
@@ -176,7 +197,7 @@ export function createNoiseTexture(seed = 7411, size = NOISE_SIZE) {
         }
         const inv = 1 / Math.max(1e-6, hi - lo);
         for (let i = 0; i < field.length; i++) {
-            data[i * 4 + c] = THREE.DataUtils.toHalfFloat((field[i] - lo) * inv);
+            data[i * 4 + c] = halfBits((field[i] - lo) * inv);
         }
     }
     const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat, THREE.HalfFloatType);

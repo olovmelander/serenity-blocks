@@ -62,6 +62,7 @@ import {
 import {
     mulberry32, ssHash21, ssHash22, ssTexNoise,
 } from './shifting-sands-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 // ── Dune profile ────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,14 @@ const GRID = Object.freeze({
 });
 
 /**
+ * How long a slice of the terrain bake runs before it yields to the page (ms). In one step the
+ * bake held Shifting Sands' first-visit switch ~57 ms (2026-10-31).
+ */
+const TERRAIN_SLICE_MS = 8;
+
+const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : 0);
+
+/**
  * Bake the terrain geometry.
  * @param {DuneField} field
  * @param {object} opts
@@ -244,8 +253,27 @@ const GRID = Object.freeze({
  * @param {{x:number,y:number,z:number}} opts.shadowDir  unit vector toward the (mean) sun
  * @returns {{ geometry: THREE.BufferGeometry, stats: object }}
  */
-export function bakeTerrainGeometry(field, { tier, shadowDir }) {
-    const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+export function bakeTerrainGeometry(field, options) {
+    return drainSteps(bakeTerrainGeometrySteps(field, options));
+}
+
+/**
+ * `bakeTerrainGeometry` as steps (the world's build breathes between them): the same passes over
+ * the same grid in the same order, each yielding between its rows every TERRAIN_SLICE_MS.
+ * `stats.bakeMs` counts the bake's own time, not the breaths.
+ */
+export function* bakeTerrainGeometrySteps(field, { tier, shadowDir }) {
+    const clock = stepClock(TERRAIN_SLICE_MS);
+    let bakeMs = 0;
+    let resumed = nowMs();
+    /** A breath between rows once the slice has run its time. */
+    function* slice(label) {
+        if (!clock.due()) return;
+        bakeMs += nowMs() - resumed;
+        yield label;
+        resumed = nowMs();
+        clock.restart();
+    }
     const { rows } = tier;
     const { cols } = tier;
     const n = rows * cols;
@@ -275,6 +303,7 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
             dune[k * 4 + 3] = s.amp;
             shade[k * 4 + 3] = s.rust;
         }
+        yield* slice('terrain heights');
     }
 
     // Gradients of u and of the smooth base from grid neighbours (radial × tangential solve).
@@ -304,6 +333,7 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
             shade[k * 4] = (db1 * e2z - db2 * e1z) / det;
             shade[k * 4 + 1] = (e1x * db2 - e2x * db1) / det;
         }
+        yield* slice('terrain gradients');
     }
 
     // Horizon tangent toward the suns: one geometric march per sub-grid vertex.
@@ -335,6 +365,7 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
             }
             sub[si * subCols + sj] = maxTan;
         }
+        yield* slice('terrain horizons');
     }
     for (let i = 0; i < rows; i++) {
         const fi = i / stride;
@@ -350,6 +381,7 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
             const d = sub[(si + 1) * subCols + sj + 1];
             shade[(i * cols + j) * 4 + 2] = (a * (1 - tj) + b * tj) * (1 - ti) + (c * (1 - tj) + d * tj) * ti;
         }
+        yield* slice('terrain shade');
     }
 
     const quads = (rows - 1) * (cols - 1);
@@ -365,6 +397,7 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
             index[w++] = a; index[w++] = b; index[w++] = c;
             index[w++] = b; index[w++] = d; index[w++] = c;
         }
+        yield* slice('terrain index');
     }
 
     const geometry = new THREE.BufferGeometry();
@@ -373,11 +406,11 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
     geometry.setAttribute('aDune', new THREE.BufferAttribute(dune, 4));
     geometry.setAttribute('aShade', new THREE.BufferAttribute(shade, 4));
     geometry.computeBoundingSphere();
-    const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
+    bakeMs += nowMs() - resumed;
     return {
         geometry,
         stats: {
-            vertices: n, triangles: quads * 2, bakeMs: Math.round((t1 - t0) * 10) / 10,
+            vertices: n, triangles: quads * 2, bakeMs: Math.round(bakeMs * 10) / 10,
         },
     };
 }
@@ -701,11 +734,16 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
 /**
  * The terrain object: bake + material + mesh.
  */
-export function createTerrain({
+export function createTerrain(options) {
+    return drainSteps(createTerrainSteps(options));
+}
+
+/** `createTerrain` as steps: the bake in slices (bakeTerrainGeometrySteps), then the material and mesh. */
+export function* createTerrainSteps({
     field, shared, tierName = 'High', shadowDir,
 }) {
     const tier = TERRAIN_TIERS[tierName] || TERRAIN_TIERS.High;
-    const { geometry, stats } = bakeTerrainGeometry(field, { tier, shadowDir });
+    const { geometry, stats } = yield* bakeTerrainGeometrySteps(field, { tier, shadowDir });
     const { material, uniforms } = createSandMaterial(shared, {
         glitter: tierName !== 'Minimal',
         ripples: tierName !== 'Minimal',

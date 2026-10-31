@@ -1221,9 +1221,12 @@ describe('Summer world in play', () => {
         const lightDirection = () => light.sun.position.clone().sub(light.sun.target.position).normalize();
         world.update(0, 0, { hour: 0 });
         expect(lightDirection().distanceTo(SUMMER_SUN_DIRECTION)).toBeLessThan(1e-9);
-        // Let the first frames' redraws pass, as a renderer would.
-        for (let frame = 0; frame < 12; frame += 1) world.update(frame / 60, 1 / 60, { hour: 0 });
-        shadow.needsUpdate = false;
+        // Let the first frames' redraws pass, as a renderer would: each frame's render draws the map
+        // (the first redraws count draws: shared/static-shadow-draws.js).
+        for (let frame = 0; frame < 12; frame += 1) {
+            world.update(frame / 60, 1 / 60, { hour: 0 });
+            shadow.needsUpdate = false;
+        }
         // The sun standing still asks for nothing.
         for (let frame = 0; frame < 20; frame += 1) world.update(1, 1 / 60, { hour: 0 });
         expect(shadow.needsUpdate).toBe(false);
@@ -2115,7 +2118,7 @@ describe('Summer world ownership', () => {
         const material = new THREE.MeshBasicNodeMaterial();
         const geometryDisposal = vi.spyOn(geometry, 'dispose');
         const materialDisposal = vi.spyOn(material, 'dispose');
-        vi.spyOn(SummerForest.prototype, 'build').mockImplementation(function failedBuild() {
+        vi.spyOn(SummerForest.prototype, 'buildSteps').mockImplementation(function failedBuild() {
             this.own(geometry);
             this.own(material);
             this.group.add(new THREE.Mesh(geometry, material));

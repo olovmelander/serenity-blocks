@@ -59,6 +59,7 @@ import {
     mulberry32,
     plateAtlasSize,
 } from './void-ember-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export * from './void-ember-core.js';
 
@@ -243,11 +244,25 @@ export function sampleLattice(data, x, y, z, size = LATTICE_SIZE) {
     return slice(iz) + (slice(iz + 1) - slice(iz)) * fz;
 }
 
+/** How long the fBm bake runs before it yields to the page, at a channel's end (ms). */
+const FBM_SLICE_MS = 8;
+
 /**
  * Periodic fBm gradient noise, four decorrelated channels stretched to [0, 1].
  * @returns {Float32Array} size × size × 4
  */
 export function bakeFbm(seed = 3141, size = FBM_SIZE) {
+    return drainSteps(bakeFbmSteps(seed, size));
+}
+
+/**
+ * `bakeFbm` as steps: the same field, a channel or more to a step (it yields at a channel's end
+ * once FBM_SLICE_MS has run; the world's build breathes there, shared/build-steps.js), returned
+ * at the end. Baked in one piece it was 16 ms of the world's 47 ms build task (2026-10-31).
+ * @returns {Generator<number, Float32Array>}
+ */
+export function* bakeFbmSteps(seed = 3141, size = FBM_SIZE) {
+    const clock = stepClock(FBM_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -301,6 +316,10 @@ export function bakeFbm(seed = 3141, size = FBM_SIZE) {
         }
         const inv = 1 / Math.max(1e-6, hi - lo);
         for (let i = 0; i < field.length; i++) base[i * 4 + c] = (field[i] - lo) * inv;
+        if (c < 3 && clock.due()) {
+            yield c;
+            clock.restart();
+        }
     }
     return base;
 }

@@ -63,6 +63,7 @@ import { POST_LOOK, TornadoPost, createPassThroughPipeline } from './tornado-pos
 import { PLAYER_SLOTS, readLayoutRects } from './tornado-composition.js';
 import { TORNADO_EVENT_HANDLERS, TornadoDirector } from './tornado-director.js';
 import { approach } from './tornado-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 import { TORNADO_PARAM_DEFAULTS } from './params.ts';
 
 const THEME_ID = 'tornado';
@@ -243,12 +244,17 @@ export default class TornadoTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new TornadoWorld({
+            const world = new TornadoWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
-            }).build();
+            });
+            // The bake in slices and the parts with a breath between (shared/build-steps.js). The
+            // theme owns the world once it is whole; a build that throws half-way, or a start
+            // stopped meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

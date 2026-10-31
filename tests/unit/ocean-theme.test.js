@@ -391,7 +391,8 @@ describe('Ocean theme: one node renderer on both backends', () => {
         const called = (object) => [...new Set(
             [...source.matchAll(new RegExp(`\\b${object}\\??\\.(\\w+)(?:\\?\\.)?\\(`, 'g'))].map((m) => m[1]),
         )].sort();
-        expect(source).toMatch(/new OceanWorld\(\{[^}]+\}\)\.build\(\)/);
+        // The world is built through shared/build-steps.js: its buildSteps() breathing, or its build().
+        expect(source).toMatch(/const world = new OceanWorld\(\{[^}]+\}\);[\s\S]*?buildWorldBreathing\(world, /);
         expect(['build', ...called('world')].sort()).toEqual([...mocks.WORLD_CONTRACT, ...mocks.WORLD_OPTIONAL].sort());
         expect(called('post')).toEqual([...mocks.POST_CONTRACT].sort());
         expect(called('passThrough')).toEqual([...mocks.PASS_THROUGH_CONTRACT].sort());

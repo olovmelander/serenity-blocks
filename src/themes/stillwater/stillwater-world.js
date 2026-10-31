@@ -115,6 +115,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stillwater-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
@@ -170,7 +171,8 @@ export class StillwaterWorld {
         this.capture = capture;
         /** The scene pass's samples; the water's mirror takes the same. */
         this.samples = samples;
-        this.noiseField = bakeNoise();
+        /** Baked by the build's first step (a fixed seed: the same field wherever it runs). */
+        this.noiseField = null;
         /** World space: the water, the sky, and everything gameplay throws about. */
         this.root = new THREE.Group();
         this.root.name = 'Stillwater';
@@ -364,6 +366,17 @@ export class StillwaterWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order. Built in one task with the noise
+     * bake, it held the first-visit switch's worst frame at 79-84 ms (2026-10-31).
+     */
+    * buildSteps() {
+        if (!this.noiseField) this.noiseField = bakeNoise();
+        yield 'noise';
         const noise = createNoiseTexture(this.noiseField, NOISE_SIZE);
         const shore = createShoreTexture();
         this.textures.push(noise, shore);
@@ -392,12 +405,15 @@ export class StillwaterWorld {
         this.addPart('water', this.water);
         if (this.water.reflectorTarget) this.root.add(this.water.reflectorTarget);
         this.addPart('sky', createSky(u, { lite: tier.lite, wood: tier.wood }));
+        yield 'water and sky';
 
         // ── The stage: what stands in the scene (mirrored by the water's pass) ──
         this.trunkPlan = planTrunks(tier.trunks);
         this.addPart('ground', createGround(u, { cell: tier.cell }), banks);
+        yield 'ground';
         this.addPart('boulders', createBoulders(u, planBoulders(tier.boulders)), banks);
         this.addPart('trunks', createTrunks(u, this.trunkPlan), banks);
+        yield 'boulders and trunks';
         this.addPart('crowns', createCrowns(u, planCrowns(this.trunkPlan), { samples: this.samples }), banks);
         if (tier.boughs > 0) {
             const boughs = planBoughs(this.trunkPlan, tier.boughs);
@@ -410,13 +426,16 @@ export class StillwaterWorld {
             }), banks);
             if (fringe.length) this.addPart('fringe', createBoughs(u, fringe, 'StillwaterFringe', opts), banks);
         }
+        yield 'crowns and boughs';
         if (tier.saplings > 0) this.addPart('saplings', createSaplings(u, planSaplings(tier.saplings)), banks);
         if (tier.ferns > 0) this.addPart('ferns', createFerns(u, planFerns(tier.ferns)), banks);
         if (tier.reeds > 0) this.addPart('reeds', createReeds(u, planReeds(tier.reeds)), banks);
+        yield 'understory';
         const lilyPlan = planLilies(tier.lilies);
         this.addPart('pads', createPads(u, lilyPlan), banks);
         this.addPart('lilies', createLilies(u, lilyPlan.filter((p) => p.flower)), banks);
         this.addPart('caps', createCaps(u, planCaps(tier.caps)), banks);
+        yield 'water plants';
         this.spirit = createSpirit(u, { lod: tier.spirit, motes: tier.motes });
         this.addPart('spirit', this.spirit, banks);
         this.troll = createTroll(u, {
@@ -426,6 +445,7 @@ export class StillwaterWorld {
         });
         this.addPart('troll', this.troll, banks);
         this.resetFigures();
+        yield 'figures';
 
         // ── The air of the place, and what gameplay sets in flight (world space) ──
         const air = { hero: true };
@@ -440,6 +460,7 @@ export class StillwaterWorld {
         this.sparks = createSparks(u, tier.sparks);
         this.addPart('sparks', this.sparks, air);
         this.addPart('orb', createHeartOrb(u), air);
+        yield 'air';
 
         this.applySqueeze();
         this.applyPalette();

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CubeUVReflectionMapping } from 'three/src/constants.js';
+import * as THREE_CONSTANTS from 'three/src/constants.js';
+import CubeRenderTarget from 'three/src/renderers/common/CubeRenderTarget.js';
 import QuadMesh from 'three/src/renderers/common/QuadMesh.js';
 import { isFinalComposite, isOneShotRenderTarget } from '../../src/rendering/async-render-pipelines.js';
 
@@ -8,25 +9,26 @@ import { isFinalComposite, isOneShotRenderTarget } from '../../src/rendering/asy
 //
 // The session wrapper turns an OWNED renderer's live `backend.createRenderPipeline(renderObject,
 // null)` into the compileAsync branch (a promises array) so the compile runs through
-// createRenderPipelineAsync, relying on the r186 internals pinned here:
+// createRenderPipelineAsync, relying on the r187 internals pinned here:
 //   - the live path hands the backend promises = null, compileAsync hands it an array;
 //   - Pipelines caches the pipeline and sets renderObject.pipeline BEFORE the backend create
 //     (its sole caller), so the wrapper can read backend.get(renderObject.pipeline);
 //   - a pending pipeline makes Pipelines.isReady false, so _renderObjectDirect skips the draw;
 //   - WebGPUBackend.draw drops objects whose pipelineData.error is true (the scope repair);
-//   - PMREM bake targets are recognisable (isPMREMTexture / 'PMREM.cubeUv' / CubeUV mapping);
+//   - PMREM bake targets are recognisable (r187: CubeRenderTargets, texture 'PMREM' / isPMREMTexture);
 //   - the final composite (RenderPipeline's / the output pass's QuadMesh) draws to a canvas
 //     render context whose renderTarget is null (isFinalComposite keeps it synchronous);
 //   - compileAsync hands each object a fresh promises array (counted, but passed through).
-// The app imports 'three/webgpu' (build/three.webgpu.js), so every snippet is checked in the src
-// tree AND in the build. The header of async-render-pipelines.js cites src line numbers; those are
+// The app imports 'three/webgpu' (build/three.webgpu.js, which from r187 imports the node system
+// and QuadMesh / CubeRenderTarget from build/three.tsl.js), so every snippet is checked in the src
+// tree AND in the shipped build (both files). The header of async-render-pipelines.js cites src line numbers; those are
 // pinned too so the comment stays honest. If this fails after a three upgrade: re-verify the
 // wrapper against the new Pipelines / WebGPUPipelineUtils before touching the pins.
 
 const THREE_ROOT = new URL('../../node_modules/three/', import.meta.url);
 const read = (rel) => readFileSync(new URL(rel, THREE_ROOT), 'utf8').replace(/\r\n/g, '\n');
 
-const build = read('build/three.webgpu.js');
+const build = `${read('build/three.webgpu.js')}\n${read('build/three.tsl.js')}`;
 const buildCore = read('build/three.core.js');
 const srcRenderer = read('src/renderers/common/Renderer.js');
 const srcPipelines = read('src/renderers/common/Pipelines.js');
@@ -49,7 +51,7 @@ const CREATE_RENDER_PIPELINE = 'createRenderPipeline( renderObject, promises ) {
 const GET_RENDER_PIPELINE = '_getRenderPipeline( renderObject, stageVertex, stageFragment, cacheKey, promises ) {';
 const RENDER_OBJECT_DIRECT = '_renderObjectDirect( object, material, scene, camera, lightsNode, group, '
     + 'clippingContext, passId ) {';
-const PMREM_CREATE_TARGET = 'function _createRenderTarget( width, height, depthBuffer ) {';
+const PMREM_CREATE_TARGET = 'function _createRenderTarget( size, generateMipmaps, depthBuffer ) {';
 
 // Consecutive statements: only whitespace and line comments may sit between the parts.
 const adjacent = (...parts) => new RegExp(parts.map((r) => r.source).join(String.raw`\s*(?:\/\/[^\n]*\s*)*`));
@@ -94,10 +96,10 @@ function jsFilesUnder(rel) {
         .map((p) => ({ path: `${rel}${p}`, text: readFileSync(new URL(p, root), 'utf8') }));
 }
 
-describe('three r186 render-pipeline contract (async render pipelines)', () => {
-    it('is pinned to three 0.186.1', () => {
+describe('three r187 render-pipeline contract (async render pipelines)', () => {
+    it('is pinned to three 0.187.0', () => {
         const why = 're-verify src/rendering/async-render-pipelines.js against the new three';
-        expect(pkg.version, why).toBe('0.186.1');
+        expect(pkg.version, why).toBe('0.187.0');
     });
 
     it('three/webgpu exports the WebGPUBackend class whose prototype the preload resolves', () => {
@@ -137,9 +139,11 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
                 ),
                 /\} else \{/,
                 /pipelinePromise = device\.createRenderPipelineAsync\( _renderPipelineDescriptor \);/,
+                // r187 pops the validation scope BEFORE awaiting the compile (#34816): other GPU work
+                // can no longer land in it, the misattribution track() repairs (kept, harmless).
+                /const errorScopePromise = device\.popErrorScope\(\);/,
                 /pipelineData\.pipeline = await pipelinePromise;/,
-                // The validation scope is popped only after the compile (the misattribution window).
-                /const errorScope = await device\.popErrorScope\(\);/,
+                /const errorScope = await errorScopePromise;/,
                 adjacent(/if \( errorScope !== null \|\| asyncError !== null \) \{/, /pipelineData\.error = true;/),
                 adjacent(/\} finally \{/, /resolve\(\);/, /\}/),
                 /promises\.push\( p \);/,
@@ -159,8 +163,8 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
             atLine(srcPipelineUtils, 71, CREATE_RENDER_PIPELINE);
             atLine(srcPipelineUtils, 260, 'if ( promises === null ) {');
             atLine(srcPipelineUtils, 291, 'device.createRenderPipelineAsync( _renderPipelineDescriptor );');
-            atLine(srcPipelineUtils, 315, 'const errorScope = await device.popErrorScope();');
-            atLine(srcPipelineUtils, 338, 'promises.push( p );');
+            atLine(srcPipelineUtils, 303, 'const errorScopePromise = device.popErrorScope();');
+            atLine(srcPipelineUtils, 342, 'promises.push( p );');
         });
     });
 
@@ -201,12 +205,12 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
         });
 
         it('the header\'s Pipelines.js line numbers still point at the anchors', () => {
-            atLine(srcPipelines, 161, 'getForRender( renderObject, promises = null ) {');
-            atLine(srcPipelines, 256, 'isReady( renderObject ) {');
-            atLine(srcPipelines, 332, 'updateForRender( renderObject ) {');
-            atLine(srcPipelines, 334, 'this.getForRender( renderObject );');
-            atLine(srcPipelines, 382, GET_RENDER_PIPELINE);
-            atLine(srcPipelines, 402, 'this.backend.createRenderPipeline( renderObject, promises );');
+            atLine(srcPipelines, 166, 'getForRender( renderObject, promises = null ) {');
+            atLine(srcPipelines, 265, 'isReady( renderObject ) {');
+            atLine(srcPipelines, 341, 'updateForRender( renderObject ) {');
+            atLine(srcPipelines, 343, 'this.getForRender( renderObject );');
+            atLine(srcPipelines, 393, GET_RENDER_PIPELINE);
+            atLine(srcPipelines, 413, 'this.backend.createRenderPipeline( renderObject, promises );');
         });
     });
 
@@ -231,7 +235,7 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
         for (const body of bodies) expect(body).toMatch(re);
         // No other draw path in the renderer bypasses the gate.
         expect(srcRenderer.match(/\.backend\.draw\(/g)).toHaveLength(1);
-        atLine(srcRenderer, 3895, 'if ( this._pipelines.isReady( renderObject ) ) {');
+        atLine(srcRenderer, 4098, 'if ( this._pipelines.isReady( renderObject ) ) {');
     });
 
     it('WebGPUBackend.draw returns early on pipelineData.error (what the scope repair clears)', () => {
@@ -242,7 +246,7 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
         );
         const bodies = bothMethods('class WebGPUBackend extends Backend {', srcBackend, 'draw( renderObject, info ) {');
         for (const body of bodies) expect(body).toMatch(re);
-        atLine(srcBackend, 2220, 'if ( pipelineData.error === true ) return;');
+        atLine(srcBackend, 2249, 'if ( pipelineData.error === true ) return;');
     });
 
     it('Backend exposes backend.renderer (set by init) and a stable per-object get()', () => {
@@ -269,15 +273,19 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
         inBoth(srcCubeRenderTarget, 'this.isCubeRenderTarget = true;');
     });
 
-    it('PMREMGenerator._createRenderTarget marks its targets the way isOneShotRenderTarget reads them', () => {
-        const bodies = bothMethods('class PMREMGenerator {', srcPmrem, PMREM_CREATE_TARGET, '\n}\n');
-        for (const body of bodies) {
-            expect(body).toContain('cubeUVRenderTarget.texture.mapping = CubeUVReflectionMapping;');
-            expect(body).toContain("cubeUVRenderTarget.texture.name = 'PMREM.cubeUv';");
-            expect(body).toContain('cubeUVRenderTarget.texture.isPMREMTexture = true;');
+    it('PMREMGenerator draws into CubeRenderTargets, which isOneShotRenderTarget keeps synchronous', () => {
+        // r187 (#34585): the source and the PMREM are cube render targets; the PMREM's texture is
+        // also named 'PMREM' and marked isPMREMTexture.
+        const factory = methodOf(srcPmrem, 'class PMREMGenerator {', PMREM_CREATE_TARGET, '\n}\n');
+        expect(factory).toContain('return new CubeRenderTarget( size, {');
+        expect(build).toMatch(/function _createRenderTarget\( size, generateMipmaps, depthBuffer \) \{\s*return new CubeRenderTarget\( size, \{/);
+        for (const body of bothMethods('class PMREMGenerator {', srcPmrem, '_allocateTarget() {')) {
+            expect(body).toContain('const pmremTarget = _createRenderTarget( size, false, false );');
+            expect(body).toContain("pmremTarget.texture.name = 'PMREM';");
+            expect(body).toContain('pmremTarget.texture.isPMREMTexture = true;');
         }
-        atLine(srcPmrem, 838, PMREM_CREATE_TARGET);
-        atLine(srcPmrem, 855, 'return cubeUVRenderTarget;');
+        atLine(srcPmrem, 562, PMREM_CREATE_TARGET);
+        expect(isOneShotRenderTarget(new CubeRenderTarget(16))).toBe(true);
     });
 
     describe('final composite (isFinalComposite)', () => {
@@ -331,11 +339,13 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
 
     describe('compileAsync drains (passed through, counted for an owned renderer)', () => {
         it('the drain hands each object a fresh promises array and awaits it', () => {
-            const re = adjacent(
+            // r187 (#34816): up to 16 objects' pipelines compile at once; each gets its own array.
+            const re = inOrder(
                 /const pipelinePromises = \[\];/,
                 /this\._pipelines\.getForRender\( renderObject, pipelinePromises \);/,
                 /if \( pipelinePromises\.length > 0 \) \{/,
-                /await Promise\.all\( pipelinePromises \);/,
+                /const promise = Promise\.all\( pipelinePromises \)\.then\(/,
+                /await Promise\.all\( compilingPipelines \);/,
             );
             expect(srcRenderer).toMatch(re);
             expect(build).toMatch(re);
@@ -362,7 +372,7 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
             for (const body of bothMethods('class Renderer {', srcRenderer, signature)) {
                 expect(body).toContain('this._handleObjectFunction = this._renderObjectDirect;');
             }
-            atLine(srcRenderer, 1737, 'this._handleObjectFunction = this._renderObjectDirect;');
+            atLine(srcRenderer, 2077, 'this._handleObjectFunction = this._renderObjectDirect;');
         });
 
         it('_renderObjectDirect starts by looking the render object up', () => {
@@ -372,21 +382,31 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
                 // The first statement of the method body.
                 expect(body.slice(0, 400)).toContain(lookup);
             }
-            atLine(srcRenderer, 3853, '_renderObjectDirect( object, material');
+            atLine(srcRenderer, 4056, '_renderObjectDirect( object, material');
         });
 
-        it('RenderObjects keys its chain map [object, material, renderContext, lightsNode] per passId', () => {
-            // The build renames the module's key array (_chainKeys$3).
+        it('RenderObjects keys its chain map [object, material, renderContext, lightsNode(, source)] per passId', () => {
+            // r187: an override pass (Renderer.renderObject with scene.overrideMaterial, the shadow
+            // pass) adds the source material as a fifth key, in ChainMap's separate five-key map:
+            // chainKeysOf() in the budget adds it the same way. The build renames the key arrays.
             const re = adjacent(
                 /const chainMap = this\.getChainMap\( passId \);/,
-                /_chainKeys(?:\$\d+)?\[ 0 \] = object;/,
-                /_chainKeys(?:\$\d+)?\[ 1 \] = material;/,
-                /_chainKeys(?:\$\d+)?\[ 2 \] = renderContext;/,
-                /_chainKeys(?:\$\d+)?\[ 3 \] = lightsNode;/,
-                /let renderObject = chainMap\.get\( _chainKeys(?:\$\d+)? \);/,
+                /const sourceMaterial = this\.renderer\._currentSourceMaterial;/,
+                /const sourceMaterialVersion = sourceMaterial !== null \? sourceMaterial\.version : 0;/,
+                /const chainKeys = sourceMaterial !== null \? _overrideChainKeys(?:\$\d+)? : _chainKeys(?:\$\d+)?;/,
+                /chainKeys\[ 0 \] = object;/,
+                /chainKeys\[ 1 \] = material;/,
+                /chainKeys\[ 2 \] = renderContext;/,
+                /chainKeys\[ 3 \] = lightsNode;/,
+                /if \( sourceMaterial !== null \) chainKeys\[ 4 \] = sourceMaterial;/,
+                /let renderObject = chainMap\.get\( chainKeys \);/,
             );
             expect(srcRenderObjects).toMatch(re);
             expect(build).toMatch(re);
+            // ChainMap: one WeakMap chain per key length.
+            expect(read('src/renderers/common/ChainMap.js')).toContain('let weakMap = this.weakMaps[ length ];');
+            // Renderer.renderObject sets it for the override draw.
+            expect(srcRenderer).toMatch(/if \( material\.allowOverride === true && scene\.overrideMaterial !== null \) \{\s*this\._currentSourceMaterial = material;/);
         });
 
         it('three/webgpu exports Renderer (the preload resolves its prototype)', () => {
@@ -395,10 +415,9 @@ describe('three r186 render-pipeline contract (async render pipelines)', () => {
         });
     });
 
-    it('CubeUVReflectionMapping is still 306 (the wrapper hard-codes it)', () => {
-        expect(srcConstants).toContain('export const CubeUVReflectionMapping = 306;');
-        expect(buildCore).toContain('const CubeUVReflectionMapping = 306;');
-        expect(CubeUVReflectionMapping).toBe(306);
-        expect(isOneShotRenderTarget({ texture: { mapping: CubeUVReflectionMapping } })).toBe(true);
+    it('CubeUVReflectionMapping is gone (r187, #34585): the wrapper no longer reads a mapping', () => {
+        expect(srcConstants).not.toContain('CubeUVReflectionMapping');
+        expect(buildCore).not.toContain('CubeUVReflectionMapping');
+        expect(THREE_CONSTANTS.CubeUVReflectionMapping).toBeUndefined();
     });
 });

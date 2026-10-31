@@ -75,6 +75,8 @@ import {
     SHAPE_KEYS,
     VORTEX_ARMS,
     approach,
+    bakeNoiseSteps,
+    bakeReliefSteps,
     birthDone,
     birthLight,
     cellsFromMatrix,
@@ -111,6 +113,7 @@ import {
 } from './nebula-flow-composition.js';
 import { NEBULA_FLOW_TETROMINOS } from './nebula-flow-tetrominos.js';
 import { cameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
@@ -358,10 +361,27 @@ export class NebulaFlowWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work in
+     * the same order: the noise and the relief baked in slices, each made a texture, then the parts.
+     * Built in one task, the two bakes held the first-visit switch's worst frame at ~56 ms
+     * (2026-10-31).
+     */
+    * buildSteps() {
         const { tier } = this;
-        const noise = createNoiseTexture();
-        const relief = createReliefTexture();
-        this.textures.push(noise, relief);
+        const noiseField = yield* bakeNoiseSteps();
+        yield 'noise field';
+        const noise = createNoiseTexture(noiseField);
+        this.textures.push(noise);
+        yield 'noise';
+        const reliefField = yield* bakeReliefSteps();
+        yield 'relief field';
+        const relief = createReliefTexture(reliefField);
+        this.textures.push(relief);
+        yield 'relief';
         const u = createNebulaUniforms();
         this.u = u;
         this.addPart('nebula', createNebula(u, noise, relief, {

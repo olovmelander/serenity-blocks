@@ -62,6 +62,7 @@ import { POST_LOOK, OceanPost, createPassThroughPipeline } from './ocean-post.js
 import { PLAYER_SLOTS, readLayoutRects } from './ocean-composition.js';
 import { OCEAN_EVENT_HANDLERS, OceanDirector } from './ocean-director.js';
 import { approach } from './ocean-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'ocean';
 const LOG_PREFIX = '[Ocean]';
@@ -267,14 +268,19 @@ export default class OceanTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            this.world = new OceanWorld({
+            const world = new OceanWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
                 creatures: pack,
                 visitSeed: keptSeed,
-            }).build();
+            });
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

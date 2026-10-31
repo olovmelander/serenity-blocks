@@ -51,13 +51,14 @@ import { tierFor } from './painted-ages-quality.js';
 import { breathe, loadBadlands, planBadlands } from './painted-ages-assets.js';
 import {
     createColumnTexture, createFieldTexture, createFlowTexture, createLatticeTexture, createNoiseTexture,
-    createRecordTexture, createUniforms, fieldTextureData,
+    createRecordTexture, createUniforms,
 } from './painted-ages-tsl.js';
+import { fillFieldTextureRows } from './painted-ages-field-data.js';
 import {
     bilinear, fieldCoords, fieldInset, groundHeight,
 } from './painted-ages-field.js';
 import { RIVER_LENGTH } from './painted-ages-plan.js';
-import { createProps } from './painted-ages-props.js';
+import { createPropsSteps } from './painted-ages-props.js';
 import { createCumulus } from './painted-ages-cumulus.js';
 import { createPoplars } from './painted-ages-life.js';
 import { EventTables, MOTE_KIND, Motes } from './painted-ages-fx.js';
@@ -66,6 +67,7 @@ import { createShadowPass } from './painted-ages-shadow.js';
 import { createSky } from './painted-ages-sky.js';
 import { cardUnion, fallbackLayout } from './painted-ages-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 
 export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulus', 'poplars', 'motes']);
@@ -126,14 +128,24 @@ function loadSwell(swell, state) {
 /** How hot play ran, so a rebuilt world carries the heat on instead of dropping it. */
 const SURGE_SCALARS = Object.freeze(['shown', 'shownAt', 'fever', 'feverAt', 'stage']);
 
+/** Rows of a field's texture data prepared per step (a 1024-post field: four steps). */
+const FIELD_ROWS_PER_STEP = 256;
+
 /** Everything heavy a world needs once the fields are read: the mesh and the field textures. */
 function* prepareSteps(quality, fields) {
     const tier = tierFor(quality);
     const positions = yield* fanPositionSteps(fields, tier.fanCols, tier.fanRows);
     const textures = {};
     for (const name of FIELD_ORDER) {
-        textures[name] = fieldTextureData(fields[name].heights, fields[name].sky, FIELDS[name]);
-        yield name;
+        // A band of rows a step, so no step holds a frame (a whole field was one 58-66 ms task).
+        const field = FIELDS[name];
+        const { heights, sky } = fields[name];
+        const data = new Uint16Array(field.size * field.size * 4);
+        for (let j = 0; j < field.size; j += FIELD_ROWS_PER_STEP) {
+            fillFieldTextureRows(data, heights, sky, field, j, Math.min(field.size, j + FIELD_ROWS_PER_STEP));
+            yield name;
+        }
+        textures[name] = data;
     }
     return {
         quality, fields, positions, textures, source: fields.source,
@@ -296,6 +308,17 @@ export class PaintedAgesWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order. Built in one task it held a first
+     * visit's switch ~72 ms (the props ~32, the noise bake ~14; 2026-10-31). The textures are the
+     * world's (and disposed with it) once all of them are made; until then none has reached the GPU.
+     */
+    * buildSteps() {
         if (this.root.parent) return this;
         const prepared = this.prepared || PaintedAgesWorld.prepareSync(this.quality);
         this.prepared = null;
@@ -308,12 +331,17 @@ export class PaintedAgesWorld {
             mid: createFlowTexture(prepared.fields.mid.flow, FIELDS.mid),
         };
         this.fields = prepared.fields;
+        const column = createColumnTexture(this.beds);
+        const record = createRecordTexture(this.record);
+        yield 'column';
+        const noise = createNoiseTexture();
+        yield 'noise';
         this.textures = {
             fields: fieldTex,
             flow: flowTex,
-            column: createColumnTexture(this.beds),
-            record: createRecordTexture(this.record),
-            noise: createNoiseTexture(),
+            column,
+            record,
+            noise,
             lattice: createLatticeTexture(),
         };
         this.shadowPass = createShadowPass(this.u, fieldTex, tier);
@@ -321,6 +349,7 @@ export class PaintedAgesWorld {
         // The poplars come first: the land reads their shadow map.
         const poplars = createPoplars(this.u, this.textures, tier, this.fields);
         this.textures.poplarShade = poplars.shade;
+        yield 'poplars';
 
         // The land.
         const geometry = createFanGeometry(prepared.positions, tier.fanCols, tier.fanRows);
@@ -336,7 +365,9 @@ export class PaintedAgesWorld {
                 material.dispose();
             },
         });
-        this.addPart('props', createProps(this.u, this.textures, tier, this.fields));
+        yield 'land';
+        this.addPart('props', yield* createPropsSteps(this.u, this.textures, tier, this.fields));
+        yield 'props';
         this.addPart('poplars', poplars);
         this.addPart('sky', createSky(this.u, this.textures, tier));
         this.addPart('cumulus', createCumulus(this.u, this.textures, tier, tier.banks));

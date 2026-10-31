@@ -2,11 +2,13 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
+import ChainMap from 'three/src/renderers/common/ChainMap.js';
 import {
     beginAsyncRenderPipelines,
     exemptBuildCount,
     preloadAsyncRenderPipelines,
     resetAsyncRenderPipelinesForTests,
+    SLICED_FIRST_DRAWS_PER_TASK,
     withBuildBudgetExemptFor,
 } from '../../src/rendering/async-render-pipelines.js';
 
@@ -164,6 +166,33 @@ describe('the async session build budget', () => {
         session.end();
     });
 
+    it('is quiet by the clock as well as by frames: a fast display waits as long as a slow one', async () => {
+        const renderer = new FakeRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'summer', renderer }, { buildBudgetMs: 8 });
+        const scene = objects(6);
+        renderer.renderFrame(scene); // three built, three deferred
+        session.noteFrame();
+        const deferredAt = session.lastDeferAt;
+        await nextTask();
+        renderer.renderFrame(scene); // the rest built: nothing deferred
+        session.noteFrame();
+        // A fast display: many frames, little time since the last deferral.
+        now = deferredAt + 40;
+        for (let i = 0; i < 10; i += 1) session.noteFrame();
+        expect(session.isQuietFor(50)).toBe(false);
+        now = deferredAt + 50;
+        expect(session.isQuietFor(50)).toBe(true);
+        // A slow display: the time has passed, but not the few frames that confirm it.
+        session.deferBuild();
+        now += 100;
+        session.noteFrame();
+        expect(session.isQuietFor(50)).toBe(false);
+        session.noteFrame();
+        session.noteFrame();
+        expect(session.isQuietFor(50)).toBe(true);
+        session.end();
+    });
+
     it('spends the budget per task: a frame of long builds does not reopen it from its own length', async () => {
         buildMs = 20; // each build longer than the old 14 ms wall-clock window, which each one reopened
         const renderer = new FakeRenderer();
@@ -289,5 +318,250 @@ describe('a warm frame lets its parked drawables past the budget', () => {
         const renderer = new FakeRenderer();
         expect(withBuildBudgetExemptFor(renderer, new Set(), () => 'ran')).toBe('ran');
         expect(exemptBuildCount(renderer)).toBeNull();
+    });
+});
+
+describe('an override pass (a shadow map) keys its render objects by the source material too', () => {
+    // three r187 RenderObjects.get: while Renderer.renderObject draws with scene.overrideMaterial it
+    // sets _currentSourceMaterial and files the render object under five keys, [object, material,
+    // renderContext, lightsNode, sourceMaterial]. ChainMap keeps each key length in a map of its own,
+    // so the budget's lookup must use the same five or a built shadow draw reads as new every frame.
+    class OverrideRenderer {
+        constructor() {
+            this.built = [];
+            this.drawn = [];
+            this._currentRenderContext = { id: 'shadow-ctx' };
+            this._currentSourceMaterial = null;
+            this._renderTarget = { texture: { name: 'shadow' } };
+            this.lightsNode = { id: 'lights' };
+            const map = new ChainMap();
+            this._objects = { getChainMap: () => map };
+        }
+
+        _renderObjectDirect(object, material, scene, camera, lightsNode) {
+            const keys = [object, material, this._currentRenderContext, lightsNode];
+            if (this._currentSourceMaterial !== null) keys.push(this._currentSourceMaterial);
+            const map = this._objects.getChainMap('default');
+            if (map.get(keys) === undefined) {
+                now += buildMs;
+                map.set(keys, { object });
+                this.built.push(object.id);
+            }
+            this.drawn.push(object.id);
+        }
+
+        /** One shadow frame: every caster drawn with the one depth material, as the shadow pass does. */
+        shadowFrame(casters, depthMaterial) {
+            const handle = this._renderObjectDirect; // eslint-disable-line no-underscore-dangle
+            casters.forEach((caster) => {
+                this._currentSourceMaterial = caster.material;
+                handle.call(this, caster, depthMaterial, null, null, this.lightsNode, null, null, 'default');
+                this._currentSourceMaterial = null;
+            });
+            now += 16;
+        }
+    }
+
+    it('builds each caster once, then draws it every frame without charging or deferring it', async () => {
+        const renderer = new OverrideRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'summer', renderer }, {
+            buildBudgetMs: 8, rendererProto: OverrideRenderer.prototype,
+        });
+        const casters = objects(6);
+        const depth = { id: 'depth' };
+        for (let frame = 0; frame < 3; frame += 1) {
+            renderer.shadowFrame(casters, depth);
+            await nextTask(); // eslint-disable-line no-await-in-loop
+        }
+        expect(renderer.built).toEqual([0, 1, 2, 3, 4, 5]);
+        // A frame whose new scene objects spend the budget first: the built casters after them are
+        // cache hits, drawn, never deferred (a deferred one is a caster missing from the shadow).
+        const { deferredBuilds } = session;
+        renderer.drawn.length = 0;
+        const fresh = ['a', 'b', 'c', 'd'].map((id) => ({ id, material: { id } }));
+        fresh.forEach((object) => renderer._renderObjectDirect(object, object.material, null, null, renderer.lightsNode)); // eslint-disable-line no-underscore-dangle
+        expect(renderer.built).toEqual([0, 1, 2, 3, 4, 5, 'a', 'b', 'c']);
+        renderer.shadowFrame(casters, depth);
+        expect(renderer.drawn).toEqual(['a', 'b', 'c', 0, 1, 2, 3, 4, 5]);
+        expect(session.deferredBuilds).toBe(deferredBuilds + 1); // 'd' only
+        session.end();
+    });
+});
+
+describe('sliced builds (three r187): a hidden build never builds a material inside a frame', () => {
+    // A renderer double shaped like r187 where it matters: _beginPreCompile exists, render objects
+    // come from a ChainMap through _objects.get, and _nodes.getForRender(renderObject, yieldFn)
+    // builds asynchronously, calling yieldFn after each stage and reading the renderer's target / MRT
+    // / context node while it works (as NodeBuilder does).
+    class SlicingRenderer {
+        constructor(stages = 3, stageMs = 1) {
+            this.stages = stages;
+            this.stageMs = stageMs;
+            this.drawn = [];
+            this.syncBuilds = [];
+            this.sliceLog = [];
+            this._renderTarget = null;
+            this._activeCubeFace = 0;
+            this._activeMipmapLevel = 0;
+            this._mrt = null;
+            this.contextNode = { id: 'default' };
+            this._currentRenderContext = { id: 'canvas-ctx' };
+            this._currentSourceMaterial = null;
+            this.toneMapping = 'ACES';
+            this.outputColorSpace = 'srgb';
+            this.passCtx = { id: 'pass-ctx' };
+            this.lights = { id: 'lights' };
+            const map = new ChainMap();
+            const built = new WeakSet();
+            this.built = built;
+            const renderer = this;
+            this._objects = {
+                getChainMap: () => map,
+                get(object, material, scene, camera, lightsNode, renderContext) {
+                    const keys = [object, material, renderContext, lightsNode];
+                    let ro = map.get(keys);
+                    if (!ro) {
+                        ro = { object, material, context: renderContext };
+                        map.set(keys, ro);
+                    }
+                    return ro;
+                },
+            };
+            this._nodes = {
+                getForRender(ro, yieldFn) {
+                    if (built.has(ro)) return { built: true };
+                    const see = () => ({
+                        target: renderer._renderTarget, mrt: renderer._mrt, ctx: renderer.contextNode.id, tone: renderer.toneMapping,
+                    });
+                    return (async () => {
+                        for (let i = 0; i < renderer.stages; i += 1) {
+                            renderer.sliceLog.push({ id: ro.object.id, stage: i, ...see() });
+                            now += renderer.stageMs; // a stage's cost on the fake clock
+                            await yieldFn(); // eslint-disable-line no-await-in-loop
+                        }
+                        built.add(ro);
+                        return { built: true };
+                    })();
+                },
+            };
+        }
+
+        _beginPreCompile() {}
+
+        setRenderTarget(t, face = 0, level = 0) {
+            this._renderTarget = t;
+            this._activeCubeFace = face;
+            this._activeMipmapLevel = level;
+        }
+
+        setMRT(m) { this._mrt = m; }
+
+        _renderObjectDirect(object, material, scene, camera, lightsNode, group, clippingContext, passId) {
+            const ro = this._objects.get(object, material, scene, camera, lightsNode, this._currentRenderContext, clippingContext, passId);
+            if (!this.built.has(ro)) {
+                this.syncBuilds.push(object.id);
+                this.built.add(ro);
+            }
+            this.drawn.push(object.id);
+        }
+
+        /** A frame drawing `list` inside a post pass (its own target, MRT and context node). */
+        passFrame(list) {
+            this.drawn.length = 0;
+            const previous = {
+                t: this._renderTarget, m: this._mrt, c: this.contextNode, ctx: this._currentRenderContext,
+            };
+            this.setRenderTarget('PASS_RT');
+            this.setMRT('PASS_MRT');
+            this.contextNode = { id: 'pass' };
+            this._currentRenderContext = this.passCtx;
+            const handle = this._renderObjectDirect; // eslint-disable-line no-underscore-dangle
+            list.forEach((o) => handle.call(this, o, o.material, null, null, this.lights, null, null, 'default'));
+            this.setRenderTarget(previous.t);
+            this.setMRT(previous.m);
+            this.contextNode = previous.c;
+            this._currentRenderContext = previous.ctx;
+            now += 16;
+        }
+    }
+
+    const until = async (fn, tries = 400) => {
+        for (let i = 0; i < tries && !fn(); i += 1) await nextTask(); // eslint-disable-line no-await-in-loop
+    };
+
+    it('queues new materials, builds them between frames with the pass state, then draws them', async () => {
+        const renderer = new SlicingRenderer(3);
+        const session = beginAsyncRenderPipelines({ name: 'neon-district', renderer }, {
+            buildBudgetMs: 8, rendererProto: SlicingRenderer.prototype, sliceBuilds: true,
+        });
+        const n = SLICED_FIRST_DRAWS_PER_TASK + 1;
+        const scene = objects(n);
+        renderer.passFrame(scene);
+        expect(renderer.drawn).toEqual([]); // nothing new drawn in the frame that met it
+        expect(renderer.syncBuilds).toEqual([]);
+        expect(renderer.sliceLog).toEqual([]); // and nothing built in it
+        expect(session.slicedBuilds).toBe(n);
+        expect(session.isQuiet(1)).toBe(false);
+        await until(() => session.slicedBuilt === n);
+        expect(session.slicedBuilt).toBe(n);
+        // Every slice saw the state the object was met under, never the live one.
+        renderer.sliceLog.forEach((slice) => {
+            expect(slice).toMatchObject({
+                target: 'PASS_RT', mrt: 'PASS_MRT', ctx: 'pass', tone: 'ACES',
+            });
+        });
+        expect(renderer.sliceLog).toHaveLength(3 * n);
+        // Between slices and after them, the live state is back.
+        expect(renderer._renderTarget).toBeNull();
+        expect(renderer._mrt).toBeNull();
+        expect(renderer.contextNode.id).toBe('default');
+        // Built: the next frames draw them without building, a few first draws a frame (their
+        // texture uploads spread out).
+        renderer.passFrame(scene);
+        expect(renderer.drawn).toEqual(scene.slice(0, SLICED_FIRST_DRAWS_PER_TASK).map((o) => o.id));
+        await nextTask();
+        renderer.passFrame(scene);
+        expect(renderer.drawn).toEqual(scene.map((o) => o.id));
+        expect(renderer.syncBuilds).toEqual([]);
+        session.end();
+    });
+
+    it('a frame meeting an object whose build is still running skips it and sees the live state', async () => {
+        const renderer = new SlicingRenderer(6, 5); // 30 ms of stages: more than one task's share
+        const session = beginAsyncRenderPipelines({ name: 'murmuration', renderer }, {
+            buildBudgetMs: 8, rendererProto: SlicingRenderer.prototype, sliceBuilds: true,
+        });
+        const scene = objects(1);
+        renderer.passFrame(scene);
+        await nextTask();
+        expect(renderer._renderTarget).toBeNull(); // a frame here sees the live binding
+        renderer.passFrame(scene); // mid-build
+        expect(renderer.drawn).toEqual([]);
+        expect(renderer.syncBuilds).toEqual([]);
+        session.end();
+    });
+
+    it('lets an unfinished build go when the session ends, and leaves the live state alone', async () => {
+        const renderer = new SlicingRenderer(50);
+        const session = beginAsyncRenderPipelines({ name: 'verdant-hills', renderer }, {
+            buildBudgetMs: 8, rendererProto: SlicingRenderer.prototype, sliceBuilds: true,
+        });
+        renderer.passFrame(objects(2));
+        await nextTask();
+        session.end();
+        await nextTask();
+        await nextTask();
+        expect(renderer._renderTarget).toBeNull();
+        expect(renderer._mrt).toBeNull();
+        expect(renderer.contextNode.id).toBe('default');
+    });
+
+    it('stays off on a three without async render builds (r186)', () => {
+        const plain = new FakeRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'summer', renderer: plain }, { buildBudgetMs: 8, sliceBuilds: true });
+        plain.renderFrame(objects(2));
+        expect(plain.built.length).toBeGreaterThan(0); // the budget builds as before
+        expect(session.slicedBuilds).toBe(0);
+        session.end();
     });
 });

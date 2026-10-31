@@ -5,7 +5,10 @@
  * the columns, four lines hush the house and open the Queen of the Night, the night turns with the
  * level and the clock, and a seek plus the same script gives the same world.
  */
-import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     MOONLIT_GREENHOUSE_PARTS, MoonlitGreenhouseWorld,
@@ -15,6 +18,41 @@ import { fallbackLayout } from '../../src/themes/moonlit-greenhouse/moonlit-gree
 import {
     NIGHT_SECONDS, TIMING, mossForCombo, syncForCombo,
 } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-core.js';
+
+/** Every array a world built, in scene order: names, geometry attributes and index, instance matrices. */
+function fingerprint(root) {
+    const hash = createHash('sha256');
+    const bytes = (a) => new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+    root.traverse((o) => {
+        hash.update(`${o.type}|${o.name}|`);
+        if (o.geometry) {
+            for (const [name, attribute] of Object.entries(o.geometry.attributes)) {
+                hash.update(name);
+                hash.update(bytes(attribute.array));
+            }
+            if (o.geometry.index) hash.update(bytes(o.geometry.index.array));
+        }
+        if (o.isInstancedMesh) hash.update(bytes(o.instanceMatrix.array));
+    });
+    return hash.digest('hex');
+}
+
+/** Run a world's build steps on a clock that is always due, so every slice breathes; the steps run. */
+function buildEveryBreath(world) {
+    let t = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => {
+        t += 50;
+        return t;
+    });
+    try {
+        let steps = 0;
+        const run = world.buildSteps();
+        while (!run.next().done) steps += 1;
+        return steps;
+    } finally {
+        now.mockRestore();
+    }
+}
 
 const W = 1600;
 const H = 900;
@@ -426,5 +464,20 @@ describe('moonlit greenhouse world', () => {
         expect(c.released).toBe(a.released);
         expect(c.locks).toBe(a.locks);
         expect(c.sync).toBeCloseTo(a.sync, 1);
+    });
+});
+
+describe('Moonlit Greenhouse world build in slices', () => {
+    it('builds the same world when every slice of its plants, iron, pads and reeds breathes', () => {
+        const once = new THREE.Scene();
+        const whole = new MoonlitGreenhouseWorld({ scene: once, quality: 'Low' }).build();
+        const scene = new THREE.Scene();
+        const sliced = new MoonlitGreenhouseWorld({ scene, quality: 'Low' });
+        // A step a part, and the iron's ribs and columns, the plants and the reeds between them.
+        expect(buildEveryBreath(sliced)).toBeGreaterThan(200);
+        expect(fingerprint(scene)).toBe(fingerprint(once));
+        expect(Object.keys(sliced.parts)).toEqual(Object.keys(whole.parts));
+        whole.dispose();
+        sliced.dispose();
     });
 });

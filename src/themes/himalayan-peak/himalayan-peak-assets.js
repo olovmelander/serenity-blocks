@@ -9,8 +9,10 @@
  */
 import { GRID } from './himalayan-peak-core.js';
 import {
-    buildMassifMesh, decodeMassif, horizonMap, shadeMap, shadeRows, shadowSlices,
+    FIELD_SLICE_MS, buildMassifMeshSteps, decodeMassif, horizonMap, horizonMapSteps, shadeMap, shadeRows,
+    shadowSlices, shadowSlicesSteps,
 } from './himalayan-peak-field.js';
+import { stepClock } from '../shared/build-steps.js';
 import { buildPlanHeights } from './himalayan-peak-massif.js';
 import manifest from './assets/massif-manifest.json';
 
@@ -110,28 +112,26 @@ export async function loadMassif(url = MASSIF_URL) {
 const breathe = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 /**
- * deriveField() in steps, yielding to the page between them, plus the massif's mesh for
- * `stride`: about half a second of arithmetic that must not land in one frame.
- * @param {{ heights: Float32Array, sky: Uint8Array, size: number, source: string }} massif
- * @param {number} stride  grid cells per mesh cell (the tier's)
+ * deriveField() as a generator, plus the massif's mesh for `stride`: the same arithmetic in the
+ * same order, yielding wherever FIELD_SLICE_MS of it has run (between rows of the shading, lines
+ * and rows of the horizon, rows of the shadow, azimuths, rows and cells of the mesh).
  */
-export async function deriveFieldInSteps(massif, stride) {
+function* deriveFieldSteps(massif, stride) {
+    const clock = stepClock(FIELD_SLICE_MS);
     const { heights, sky, size } = massif;
     const lowSize = Math.min(256, size);
-    // The shading map a band of rows at a time (one call was ~105 ms of a first visit).
+    // The shading map a row at a time (one call was ~105 ms of a first visit; eighths ~17 ms each).
     const shade = new Uint8Array(size * size * 4);
-    const band = Math.max(1, Math.ceil(size / 8));
-    for (let j = 0; j < size; j += band) {
-        shadeRows(shade, heights, sky, size, j, Math.min(size, j + band));
-        // eslint-disable-next-line no-await-in-loop
-        await breathe();
+    for (let j = 0; j < size; j++) {
+        shadeRows(shade, heights, sky, size, j, j + 1);
+        if (clock.due()) {
+            yield 'shade';
+            clock.restart();
+        }
     }
-    const horizon = horizonMap(heights, size);
-    await breathe();
-    const slices = shadowSlices(heights, size, lowSize);
-    await breathe();
-    const mesh = { ...buildMassifMesh(heights, size, { stride }), stride };
-    await breathe();
+    const horizon = yield* horizonMapSteps(heights, size, clock);
+    const slices = yield* shadowSlicesSteps(heights, size, lowSize, clock);
+    const mesh = { ...(yield* buildMassifMeshSteps(heights, size, { stride }, clock)), stride };
     return {
         heights,
         size,
@@ -144,6 +144,26 @@ export async function deriveFieldInSteps(massif, stride) {
         lowSize,
         mesh,
     };
+}
+
+/**
+ * deriveField() in steps, yielding to the page between them, plus the massif's mesh for
+ * `stride`: about half a second of arithmetic that must not land in one frame. A breath before
+ * the first slice and after the last, so neither the decode before it nor the build after it
+ * shares a task with it.
+ * @param {{ heights: Float32Array, sky: Uint8Array, size: number, source: string }} massif
+ * @param {number} stride  grid cells per mesh cell (the tier's)
+ */
+export async function deriveFieldInSteps(massif, stride) {
+    const steps = deriveFieldSteps(massif, stride);
+    let next;
+    do {
+        // eslint-disable-next-line no-await-in-loop
+        await breathe();
+        next = steps.next();
+    } while (!next.done);
+    await breathe();
+    return next.value;
 }
 
 /**

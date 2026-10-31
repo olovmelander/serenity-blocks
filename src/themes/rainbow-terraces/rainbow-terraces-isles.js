@@ -34,7 +34,7 @@ import { mulberry32, smooth } from './rainbow-terraces-core.js';
 import {
     airColour, earthShadowAt, horizonHaze, scHash21, scWrap, scWrapPi, seaTone, skyBase,
 } from './rainbow-terraces-tsl.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Stone kinds (attribute aMat). */
 export const MAT = Object.freeze({
@@ -299,6 +299,9 @@ export function buildBody(p, {
     return g;
 }
 
+/** How long a slice of the isles' build runs before it yields to the page (ms). */
+const ISLES_SLICE_MS = 8;
+
 // ── The massif: an upturned mountain, not a carrot ──
 
 /**
@@ -452,9 +455,18 @@ export function cliffBeds(p, seed = 1) {
  * Rings × radial vertices; attributes aMat, aAO (a first guess, refined by the bake), aBed (bed
  * tone, depth within the bed; -1 on the crown) and aMoss.
  */
-export function buildMassif(p, {
+export function buildMassif(p, options = {}) {
+    return drainSteps(buildMassifSteps(p, options));
+}
+
+/**
+ * `buildMassif` as steps (the isles' build breathes between them): the same rings drawing the same
+ * numbers, yielding between two rings once a slice has run. The Spring Isle's massif in one step
+ * held a first-visit switch task 12-22 ms (2026-10-31).
+ */
+export function* buildMassifSteps(p, {
     radial = 96, rings = 64, seed = 1, asym = 0.2, outletTh = null, spur = null,
-} = {}) {
+} = {}, clock = stepClock(ISLES_SLICE_MS)) {
     const N = makeNoise(seed);
     const S = makeNoise(p.shapeSeed ?? seed + 5);
     const rand = mulberry32(seed * 17 + 3);
@@ -556,6 +568,10 @@ export function buildMassif(p, {
     const crownRings = Math.max(6, rings - rootRings - 3);
     const depth = p.lip - p.root;
     for (let i = rootRings; i >= 1; i--) {
+        if (clock.due()) {
+            yield 'massif';
+            clock.restart();
+        }
         const s = 0.985 * (i / rootRings) ** 1.35; // 0 under the rim, ~1 at the tip
         const y = p.lip - 6 - (depth - 6) * s;
         const [sx, sz] = spineAt(s);
@@ -600,6 +616,10 @@ export function buildMassif(p, {
     });
     // The crown: a dome from the rim in.
     for (let i = 1; i <= crownRings; i++) {
+        if (clock.due()) {
+            yield 'massif';
+            clock.restart();
+        }
         const q = 1.03 * (1 - (i / (crownRings + 1)) ** 0.85);
         for (let c = 0; c < cols; c++) {
             const th = (c / cols) * Math.PI * 2;
@@ -625,6 +645,10 @@ export function buildMassif(p, {
     const [tx, tz] = spineAt(1);
     push(tx, p.root - 4, tz, MAT.iron, 0.45, beds[beds.length - 1].tone, 1, 0);
     for (let c = 0; c < cols; c++) index.push(c, (c + 1) % cols, tip);
+    if (clock.due()) {
+        yield 'massif';
+        clock.restart();
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('aMat', new THREE.Float32BufferAttribute(mat, 1));
@@ -918,10 +942,26 @@ export function buildSatellites(p, spots, { seed = 1, detail = 1 } = {}) {
  * Returns { geometry, pools, levels, outlets, footprint, flow } (local space; footprint: [x, z, r]
  * circles over every dam and pool; flow: the apron's line, [x, z, half width] points).
  */
-export function buildCascade(p, {
+export function buildCascade(p, options = {}) {
+    return drainSteps(buildCascadeSteps(p, options));
+}
+
+/**
+ * `buildCascade` as steps (the isles' build breathes between them): the same dams, pools, curtains
+ * and outlets drawing the same numbers, yielding between two dams (or outlets) once a slice has run.
+ * The Spring Isle's cascade in one step held a first-visit switch task 10-16 ms (2026-10-31).
+ */
+export function* buildCascadeSteps(p, {
     count = 12, radial = 32, seed = 3, endTh = 0.62, startX = -0.12, startZ = -0.06, bend = [0.12, 0.42], groundAt = null,
     crownAt = null,
-} = {}) {
+} = {}, clock = stepClock(ISLES_SLICE_MS)) {
+    /** A yield once the slice has run (between two pieces of the cascade). */
+    function* slice() {
+        if (clock.due()) {
+            yield 'cascade';
+            clock.restart();
+        }
+    }
     const N = makeNoise(seed);
     const rand = mulberry32(seed * 7 + 1);
     const R = p.radius;
@@ -1005,7 +1045,9 @@ export function buildCascade(p, {
         };
         dams.push(d);
     }
-    dams.forEach((d, i) => {
+    for (let i = 0; i < dams.length; i++) {
+        yield* slice();
+        const d = dams[i];
         // A dam's bowed middle stops well short of the next dam's wings (which stand on its centre
         // line): rimstone dams never run through one another.
         const next = dams[i + 1];
@@ -1025,7 +1067,7 @@ export function buildCascade(p, {
             d.width *= 0.92;
             if (k >= 3) d.c = [d.c[0] - d.tx * 1.5, d.c[1] - d.tz * 1.5];
         }
-    });
+    }
     // Each pool's level: just over the ground its dam's middle stands on (the lowest turf under the
     // middle half of the crest), never so high that the crest stands more than a couple of metres
     // proud of it, nor over the highest ground it holds; never above the pool upstream of it. Its
@@ -1054,7 +1096,7 @@ export function buildCascade(p, {
     // none), set back straight up the flow (the crest's bowed normals would draw them together),
     // each clear of its neighbours, its downstream rim just behind the crest, and kept to where its
     // centre is under water (the rising slope behind swallows its upstream rim).
-    const reach = dams.map((d, i) => {
+    const reachOf = (d, i) => {
         const level = levels[i];
         const wet = [];
         for (let k = 0; k <= 30; k++) {
@@ -1106,7 +1148,12 @@ export function buildCascade(p, {
             });
         });
         return far;
-    });
+    };
+    const reach = [];
+    for (let i = 0; i < dams.length; i++) {
+        yield* slice();
+        reach.push(reachOf(dams[i], i));
+    }
     // The dam's section, from the upstream edge of its basin to the foot of its curtain: [out (m,
     // along the crest's outward normal), dy over the level]: a dish of travertine under the pools,
     // its back rim just over the water (where the turf behind lies lower; under the turf where it
@@ -1117,7 +1164,7 @@ export function buildCascade(p, {
     // turf lies lower, by the turf where it rises over the rims.
     const FLOOR = -0.2;
     const RIM = 0.05;
-    dams.forEach((d, i) => {
+    const damPiece = (d, i) => {
         const level = levels[i];
         const far = reach[i] / scaleR;
         const section = [[-far - 0.8, RIM], [-far, RIM], [-far * 0.5, FLOOR], [-0.9, FLOOR], [-0.35, -0.12], [0.05, 0.05],
@@ -1177,11 +1224,16 @@ export function buildCascade(p, {
         g.setIndex(index);
         g.computeVertexNormals();
         pieces.push(ensureAttrs(g, MAT.travertine));
-    });
+    };
+    for (let i = 0; i < dams.length; i++) {
+        yield* slice();
+        damPiece(dams[i], i);
+    }
     // Rim outlets round the front, where the falls leave: on the rim as the crown lays it, on its
     // turf (in the spillway's notch, the notch's floor).
     const outlets = [];
     for (let k = 0; k <= 24; k++) {
+        yield* slice();
         const th = -1.25 + (2.5 * k) / 24;
         const nx = Math.sin(th);
         const nz = Math.cos(th);
@@ -1243,6 +1295,7 @@ export function buildCascade(p, {
         const lip = outletAt(outlets, p.notch.th);
         flow.push([cx0 + ox * 1.4 * scaleR, cz0 + oz * 1.4 * scaleR, 1.5 * scaleR * 2], [lip.x, lip.z, 4 * scaleR]);
     }
+    yield* slice();
     // Circles [x, z, r] covering every dam and pool, to keep the other works off them.
     const footprint = [
         ...dams.flatMap((d) => Array.from({ length: 13 }, (_, k) => [...d.crest(-1 + k / 6), 3 * scaleR])),
@@ -2066,9 +2119,23 @@ function leafLobe(N, x, y, z, rx, ry, rz, i) {
  * 2 a shrub (a low clump).
  */
 export function buildGrove(spots, seed = 41) {
+    return drainSteps(buildGroveSteps(spots, seed));
+}
+
+/**
+ * `buildGrove` as steps (the isles' build breathes between them): the same trees drawing the same
+ * numbers, yielding between two trees once a slice has run. A grove in one step held Rainbow
+ * Terraces' first-visit switch frame (12 of its 22 ms, 2026-10-31).
+ */
+export function* buildGroveSteps(spots, seed = 41, clock = stepClock(ISLES_SLICE_MS)) {
     const N = makeNoise(seed);
     const parts = [];
-    spots.forEach(([x, y, z, size, kind], i) => {
+    for (let i = 0; i < spots.length; i++) {
+        if (clock.due()) {
+            yield 'grove';
+            clock.restart();
+        }
+        const [x, y, z, size, kind] = spots[i];
         if (kind === 0) {
             const h = size * (3.2 + N.rand() * 1.2);
             parts.push(buildTrunk(x, y - 0.5, z, 0, 1, 0, size * 0.09, size * 0.06));
@@ -2113,7 +2180,11 @@ export function buildGrove(spots, seed = 41) {
             const r = size * (0.6 + N.rand() * 0.3);
             parts.push(leafLobe(N, x, y + r * 0.35, z, r, r * 0.7, r, i * 7));
         }
-    });
+    }
+    if (clock.due()) {
+        yield 'grove';
+        clock.restart();
+    }
     const merged = mergeGeometries(parts, false);
     parts.forEach((g) => g.dispose());
     return merged;
@@ -2734,16 +2805,21 @@ export function springPath(plan) {
 
 /** An isle's rimstone cascade ('spring' | 'twin') as the world builds it on a tier. */
 export function isleCascade(plan, tier, name) {
+    return drainSteps(isleCascadeSteps(plan, tier, name));
+}
+
+/** `isleCascade` as steps (buildCascadeSteps). */
+export function* isleCascadeSteps(plan, tier, name, clock = stepClock(ISLES_SLICE_MS)) {
     const p = isleShapes(plan)[name];
     const build = name === 'spring' ? SPRING_BUILD : TWIN_BUILD;
     const segments = name === 'spring' ? tier.terraceSegments : Math.round(tier.terraceSegments * 0.4);
-    return buildCascade(p, {
+    return yield* buildCascadeSteps(p, {
         count: p.terraces * 2,
         radial: Math.max(12, Math.round(segments / 7)),
         seed: build.seed + 11,
         endTh: 0.62,
         crownAt: (x, z) => massifCrownAt(p, x, z, build),
-    });
+    }, clock);
 }
 
 /** Circles [x, z, r] every few metres along a path's segments (not only at its corners). */
@@ -2813,15 +2889,28 @@ export function createIsles(args) {
 /**
  * createIsles as steps (0.2 s of main thread in one call otherwise, play-feel probe 2026-10-16): the
  * same pieces in the same order, a yield between the cascades, the crags, each isle and the far
- * archipelago, so the world's stepped build can breathe between them. Returns what createIsles does.
+ * archipelago, so the world's stepped build can breathe between them, and inside those wherever a
+ * slice has run ISLES_SLICE_MS (between the two cascades, the two crags, the groves' trees, an
+ * isle's body, terraces and strands: a step still held a first-visit switch frame 22 ms on
+ * 2026-10-31). Returns what createIsles does.
  */
 export function* createIslesSteps({
     plan, tier, U, tex,
-}) {
+}, clock = stepClock(ISLES_SLICE_MS)) {
+    /** A yield once the slice has run (between two pieces of a step). */
+    function* slice(label) {
+        if (clock.due()) {
+            yield label;
+            clock.restart();
+        }
+    }
     // The cascades first: the stone's apron follows their flow lines, and the groves and the
     // outcrops keep off every dam and pool.
-    const cascades = { spring: isleCascade(plan, tier, 'spring'), twin: isleCascade(plan, tier, 'twin') };
+    const springCascade = yield* isleCascadeSteps(plan, tier, 'spring', clock);
+    yield* slice('spring cascade');
+    const cascades = { spring: springCascade, twin: yield* isleCascadeSteps(plan, tier, 'twin', clock) };
     yield 'cascades';
+    clock.restart();
     const material = createStoneMaterial({
         U,
         tex,
@@ -2841,9 +2930,12 @@ export function* createIslesSteps({
     const gateMaterial = createFarStoneMaterial({
         U, tex, reach: 4800, grounded: true,
     });
+    yield* slice('materials');
     const cornerL = buildParapet(true);
+    yield* slice('crag');
     const cornerR = buildParapet(false);
     yield 'crags';
+    clock.restart();
     // The crags lie in the overlook's shadow; only a line along their tops stands in the sun. No
     // mineral drips (lipY far above them).
     const cornerMaterial = createStoneMaterial({
@@ -2856,14 +2948,20 @@ export function* createIslesSteps({
     const outlets = {};
     const anchors = isleAnchors(plan);
 
-    const isle = (name, p, opts) => {
-        const body = p.dome
-            ? bakeCavity(buildMassif(p, {
+    function* isle(name, p, opts) {
+        let body;
+        if (p.dome) {
+            const massif = yield* buildMassifSteps(p, {
                 radial: opts.radial, rings: opts.rings, seed: opts.seed, asym: opts.asym ?? 0.2, outletTh: opts.outletTh ?? null, spur: opts.spur ?? null,
-            }))
-            : buildBody(p, {
+            }, clock);
+            yield* slice(`${name} massif`);
+            body = bakeCavity(massif);
+        } else {
+            body = buildBody(p, {
                 radial: opts.radial, rings: opts.rings, seed: opts.seed, frontCut: p.terraces ? 0.14 : 0.04, asym: opts.asym ?? 0.2,
             });
+        }
+        yield* slice(`${name} body`);
         const parts = [body];
         if (opts.pinnacles) {
             parts.push(buildPinnacles(p, {
@@ -2888,11 +2986,13 @@ export function* createIslesSteps({
             terraces.pools.forEach((q) => pools.push({
                 isle: name, local: { x: q.x, y: q.y, z: q.z }, radius: q.radius, level: q.level, world: [0, 0, 0],
             }));
+            yield* slice(`${name} terraces`);
         }
         if (p.dome && opts.strands) {
             parts.push(buildStrands(p, {
                 count: opts.strands, seed: opts.seed, asym: opts.asym ?? 0.2, outletTh: opts.outletTh ?? null, lushTh: opts.outletTh ?? null,
             }));
+            yield* slice(`${name} strands`);
         }
         (opts.extra || []).forEach((g) => parts.push(g));
         const geometry = mergeGeometries(parts.map((g) => ensureAttrs(g, MAT.travertine)), false);
@@ -2905,24 +3005,27 @@ export function* createIslesSteps({
         mesh.renderOrder = 10;
         meshes.push(mesh);
         return mesh;
-    };
+    }
 
     // ── The Spring Isle: the bell-arch on its left shoulder, the summit hump, a stand of trees ──
     const { spring: springP, twin: twinP } = isleShapes(plan);
     const { arch: a } = anchors;
     const arch = buildGateway();
     arch.translate(a.x, a.y, a.z);
+    yield* slice('gateway');
     // The groves keep off the gateway's terrace (and the path's foot at its door), the aqueduct's line.
     const groves = isleGroves(plan, tier, cascades);
-    const trees = buildGrove(groves.spring, 41);
+    const trees = yield* buildGroveSteps(groves.spring, 41, clock);
     yield 'spring grove';
+    clock.restart();
     // Outcrops on the crown, clear of the cascade, the path and the gateway.
     const outcrops = springOutcrops(plan, tier, cascades.spring);
     // Rocks adrift beside the Spring Isle and under it (none in front of the Mother Fall).
     const springRocks = buildSatellites(springP, [
         [-1.05, -70, -0.2, 9], [-0.9, -150, 0.6, 7], [0.25, -215, 0.8, 5], [1.22, -35, -0.85, 7], [-1.0, -215, -0.1, 5],
     ], { seed: 5 });
-    const springMesh = isle('spring', springP, {
+    yield* slice('spring rocks');
+    const springMesh = yield* isle('spring', springP, {
         radial: tier.isleRadial,
         rings: tier.isleRings,
         segments: tier.terraceSegments,
@@ -2935,14 +3038,17 @@ export function* createIslesSteps({
         extra: [arch, trees, springRocks, outcrops],
     });
     yield 'spring';
+    clock.restart();
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
     const aqA = anchors.aqueduct;
     const aq = buildAqueduct(aqA.spans, aqA.span, aqA.lower, aqA.upper, aqA.depth, aqA.groundAt).geometry;
     aq.translate(aqA.x, aqA.y, aqA.z);
-    const twinTrees = buildGrove(groves.twin, 43);
+    yield* slice('aqueduct');
+    const twinTrees = yield* buildGroveSteps(groves.twin, 43, clock);
     const twinRocks = buildSatellites(twinP, [[-1.05, -55, 0.15, 6], [0.95, -95, -0.25, 4.5]], { seed: 9, detail: 0.8 });
-    const twinMesh = isle('twin', twinP, {
+    yield* slice('twin rocks');
+    const twinMesh = yield* isle('twin', twinP, {
         // A third of the Spring Isle's apparent size: half its segments, half its rings.
         radial: Math.round(tier.isleRadial * 0.5),
         rings: Math.round(tier.isleRings * 0.55),
@@ -2955,6 +3061,7 @@ export function* createIslesSteps({
         material: twinMaterial,
     });
     yield 'twin';
+    clock.restart();
 
     // ── The Far Gate: a colossal broken arch on a far isle's crown ──
     const gateP = plan.gate;
@@ -2967,10 +3074,12 @@ export function* createIslesSteps({
     anchors.weir = { x: farGate.weir[0], y: farGate.weir[1] - gateP.sink, z: farGate.weir[2] };
     const gateArch = farGate.geometry;
     gateArch.translate(0, -gateP.sink, 0);
-    const gateMesh = isle('gate', gateBase, {
+    yield* slice('far gate');
+    const gateMesh = yield* isle('gate', gateBase, {
         radial: 40, rings: 28, segments: 32, ...GATE_BUILD, pinnacles: 3, pinnacleRadial: 8, extra: [gateArch], material: gateMaterial,
     });
     yield 'gate';
+    clock.restart();
 
     // ── The foreground: two dark crags in the overlook's shadow ──
     geometries.push(cornerL, cornerR);
@@ -3000,6 +3109,7 @@ export function* createIslesSteps({
     // rewritten only when the frame is re-solved).
     const count = tier.archipelago;
     yield 'bell';
+    clock.restart();
     const variants = buildFarIsles(tier.archipelago >= 12 ? 1.2 : 1);
     const slotOf = (i) => variants[(i * 3) % variants.length];
     const farGeo = mergeGeometries(Array.from({ length: count }, (_, i) => slotOf(i)), false);

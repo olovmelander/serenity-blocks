@@ -19,7 +19,8 @@ import {
     createFaceGeometry, createPour, createPourGeometry, createStepFace, prepareFaceSteps, preparePourSteps,
 } from '../../src/themes/spring/spring-fall.js';
 import { createRiver, createRiverGeometry, prepareRiverSteps } from '../../src/themes/spring/spring-river.js';
-import { faceAlong, lipDepth } from '../../src/themes/spring/spring-fall-plan.js';
+import { FALL_FRAME, faceAlong, lipDepth } from '../../src/themes/spring/spring-fall-plan.js';
+import { woodSites, woodSitesSteps } from '../../src/themes/spring/spring-woods.js';
 import { createUniforms } from '../../src/themes/spring/spring-tsl.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -129,4 +130,52 @@ describe('spring fall plan: a column asked again answers the same', () => {
             expect([lipDepth(across[k]), faceAlong(across[k], 20), faceAlong(across[k], 8.5)]).toEqual(first[k]);
         }
     });
+});
+
+describe('spring first visit: the rest of the build in time slices', () => {
+    it('the face\'s normals are three\'s computeVertexNormals, turned out of the rock, bit for bit', () => {
+        const tier = tierFor('Low');
+        const ground = { ...valleyGround() };
+        const { geometry } = createFaceGeometry(ground, { cols: tier.faceCols ?? 300, rows: tier.faceRows ?? 170 });
+        const check = new THREE.BufferGeometry();
+        check.setAttribute('position', new THREE.BufferAttribute(geometry.getAttribute('position').array, 3));
+        check.setIndex(new THREE.BufferAttribute(geometry.index.array, 1));
+        check.computeVertexNormals();
+        const n = check.getAttribute('normal');
+        let outward = 0;
+        for (let i = 0; i < n.count; i++) outward += n.getX(i) * FALL_FRAME.tx + n.getZ(i) * FALL_FRAME.tz;
+        if (outward < 0) {
+            for (let i = 0; i < n.count; i++) n.setXYZ(i, -n.getX(i), -n.getY(i), -n.getZ(i));
+        }
+        expect(new Uint32Array(geometry.getAttribute('normal').array.buffer)).toEqual(new Uint32Array(n.array.buffer));
+        expect(Object.keys(geometry.attributes)).toEqual(['position', 'aFace', 'normal']);
+    }, 30_000);
+
+    it('the fall\'s landings and bursts trace in steps what one call traces (they were module constants)', async () => {
+        // Modules of their own: the tables are traced once a module.
+        vi.resetModules();
+        const stepped = await import('../../src/themes/spring/spring-fall-plan.js');
+        slowClock();
+        const first = run(stepped.prepareFallPlanSteps());
+        vi.restoreAllMocks();
+        expect(first.value).toBe(true);
+        expect(first.yields).toBeGreaterThan(3);
+        expect(run(stepped.prepareFallPlanSteps())).toEqual({ yields: 0, value: false });
+        vi.resetModules();
+        const direct = await import('../../src/themes/spring/spring-fall-plan.js');
+        expect(stepped.fallLandings()).toEqual(direct.fallLandings());
+        expect(stepped.fallBursts()).toEqual(direct.fallBursts());
+        expect(direct.fallLandings()).toHaveLength(85);
+        expect(Object.isFrozen(direct.fallLandings())).toBe(true);
+    }, 30_000);
+
+    it('the woods\' sites walked in steps are the sites walked at once', () => {
+        const ground = valleyGround();
+        const direct = woodSites(ground, 3000, 0x3d71, { nearBirches: true });
+        slowClock();
+        const stepped = run(woodSitesSteps(ground, 3000, 0x3d71, { nearBirches: true }));
+        vi.restoreAllMocks();
+        expect(stepped.yields).toBeGreaterThan(3);
+        expect(stepped.value).toEqual(direct);
+    }, 30_000);
 });

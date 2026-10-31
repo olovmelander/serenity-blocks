@@ -484,7 +484,7 @@ describe('Himalayan Peak theme: the massif is read before the world is built', (
         stubBrowser({ gpu: true, quality: 'High' });
         const gate = deferred();
         mocks.loadMassif = vi.fn(() => gate.promise);
-        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'build');
+        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'buildSteps');
         const theme = createTheme();
         const start = theme.createScene(theme.lifecycleGeneration);
         await vi.waitFor(() => expect(mocks.loadMassif).toHaveBeenCalledOnce());
@@ -538,7 +538,7 @@ describe('Himalayan Peak theme: the massif is read before the world is built', (
         const gate = deferred();
         mocks.loadMassif = vi.fn(() => gate.promise);
         const load = vi.spyOn(HimalayanPeakWorld.prototype, 'load');
-        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'build');
+        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'buildSteps');
         const failed = vi.spyOn(console, 'error').mockImplementation(() => {});
         const theme = createTheme();
         const start = theme.createScene(theme.lifecycleGeneration);
@@ -571,7 +571,7 @@ describe('Himalayan Peak theme: the massif is read before the world is built', (
             .mockImplementationOnce(() => gate.promise)
             .mockImplementation(async () => mocks.massif('asset'));
         const load = vi.spyOn(HimalayanPeakWorld.prototype, 'load');
-        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'build');
+        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'buildSteps');
         const theme = createTheme();
         const first = theme.createScene(theme.lifecycleGeneration);
         await vi.waitFor(() => expect(mocks.loadMassif).toHaveBeenCalledOnce());
@@ -599,6 +599,34 @@ describe('Himalayan Peak theme: the massif is read before the world is built', (
         expect(() => stepFrames(theme, 2)).not.toThrow();
     });
 
+    it('builds its world a few parts to a breath, and retires it when the theme stops half-way', async () => {
+        stubBrowser({ gpu: true, quality: 'High' });
+        const failed = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const theme = createTheme();
+        const { buildSteps } = HimalayanPeakWorld.prototype;
+        let building = null;
+        let steps = 0;
+        vi.spyOn(HimalayanPeakWorld.prototype, 'buildSteps').mockImplementation(function* stoppedHalfWay() {
+            building = this;
+            const inner = buildSteps.call(this);
+            for (let next = inner.next(); !next.done; next = inner.next()) {
+                steps += 1;
+                expect(theme.world).toBeNull(); // never published half-built
+                if (steps === 2) theme.stop();
+                yield next.value;
+            }
+        });
+        await expect(theme.createScene(theme.lifecycleGeneration)).resolves.toBeUndefined();
+        expect(steps).toBe(2); // nothing ran after the stop
+        expect(building.disposed).toBe(true);
+        expect(theme.world).toBeNull();
+        expect(theme.renderer).toBeNull();
+        expect(theme.director).toBeNull();
+        expect(theme.disposeRenderer).toHaveBeenCalledTimes(1);
+        expect(requestAnimationFrame).not.toHaveBeenCalled();
+        expect(failed).not.toHaveBeenCalled();
+    });
+
     it('retires what it had published when its start is invalidated without a stop', async () => {
         stubBrowser({ gpu: true, quality: 'High' });
         const theme = createTheme();
@@ -621,7 +649,7 @@ describe('Himalayan Peak theme: the massif is read before the world is built', (
     it('retires a world whose build fails, and rejects the start', async () => {
         stubBrowser({ quality: 'High' });
         vi.spyOn(console, 'error').mockImplementation(() => {});
-        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'build').mockImplementation(() => {
+        const build = vi.spyOn(HimalayanPeakWorld.prototype, 'buildSteps').mockImplementation(() => {
             throw new Error('no ground to stand on');
         });
         const theme = createTheme();

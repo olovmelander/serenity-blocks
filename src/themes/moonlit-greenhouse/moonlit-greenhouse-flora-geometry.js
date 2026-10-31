@@ -31,6 +31,7 @@ import {
     FLOOR, HOUSE, clamp, lerp, mulberry32, smooth, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
 import { palmCrownCentre, palmFrondAngle } from './moonlit-greenhouse-plan.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** The surface under a point for the plants: the floor, a bed's soil, the canal's water. */
 function groundAt(x, z) {
@@ -87,6 +88,15 @@ const pick = (x, steps, otherwise) => (steps.find(([at]) => x >= at) || [0, othe
 /** A seeded stream for one plant (the plan's seed is 0..1). */
 const streamFor = (seed, salt) => mulberry32(Math.floor(seed * 1e7) + salt * 7919);
 
+/**
+ * How long a slice of a part's plants runs before it yields to the page (ms): built in one step,
+ * the ferns held Moonlit Greenhouse's first-visit switch ~82 ms, the broad leaves ~24 and the
+ * palms ~22 (2026-10-31). The steps yield between plants, so each plant is laid whole.
+ */
+const FLORA_SLICE_MS = 8;
+/** How many triangles' (or vertices') work a batch's finish runs between looks at its clock. */
+const FINISH_RUN = 6144;
+
 // ── The batch: vertices and triangles of one merged mesh ────────────────────────────────────
 
 export class FloraBatch {
@@ -123,6 +133,14 @@ export class FloraBatch {
 
     /** Typed arrays, with the normals that were not given accumulated from the triangles. */
     finish() {
+        return drainSteps(this.finishSteps());
+    }
+
+    /**
+     * `finish` as steps: the same sums in the same order, yielding between runs of triangles and
+     * of vertices once `clock` is due (a builder passes its own, so its slices run on).
+     */
+    * finishSteps(clock = stepClock(FLORA_SLICE_MS)) {
         const count = this.vertexCount;
         const P = this.position;
         const acc = new Float64Array(count * 3);
@@ -145,6 +163,10 @@ export class FloraBatch {
                 acc[k + 1] += ny;
                 acc[k + 2] += nz;
             }
+            if ((t + 3) % FINISH_RUN === 0 && clock.due()) {
+                yield 'flora normals';
+                clock.restart();
+            }
         }
         const normal = new Float32Array(count * 3);
         for (let i = 0; i < count; i += 1) {
@@ -159,6 +181,14 @@ export class FloraBatch {
                 normal[k + 1] = l > 0 ? acc[k + 1] / l : 1;
                 normal[k + 2] = l > 0 ? acc[k + 2] / l : 0;
             }
+            if ((i + 1) % FINISH_RUN === 0 && clock.due()) {
+                yield 'flora normals';
+                clock.restart();
+            }
+        }
+        if (clock.due()) {
+            yield 'flora normals';
+            clock.restart();
         }
         return {
             position: new Float32Array(P),
@@ -428,12 +458,19 @@ export function palmEnvelope(sigma, widest, stalk = 0.12) {
  * Returns { fronds, trunks, frondHeadings } (headings per palm, in plan order, for the tests).
  */
 export function buildPalms(plan, tier) {
+    return drainSteps(buildPalmsSteps(plan, tier));
+}
+
+/** `buildPalms` as steps (the world's build breathes between them): the same palms in the same order. */
+export function* buildPalmsSteps(plan, tier) {
+    const clock = stepClock(FLORA_SLICE_MS);
     const { segments, across, sides } = floraDetail(tier);
     const fronds = new FloraBatch();
     const trunks = new FloraBatch();
     const frondHeadings = plan.palms.map(() => []);
     const order = plan.palms.map((palm, i) => ({ palm, i })).sort((a, b) => b.palm.z - a.palm.z);
-    order.forEach(({ palm, i }) => {
+    for (let pl = 0; pl < order.length; pl += 1) {
+        const { palm, i } = order[pl];
         const rand = streamFor(palm.seed, 11 + i);
         const C = palmCrownCentre(palm);
         const crown = [C.x, C.y, C.z];
@@ -535,8 +572,14 @@ export function buildPalms(plan, tier) {
             r.sway = [swayPlant, phPlant, 0.2 * r.sigma, rand() * TAU];
         });
         layStrip(fronds, spearRings, 3, [spearLen, i * 64 + 63, 0, packKind(KIND.palm, 0.05)]);
-    });
-    return { fronds: fronds.finish(), trunks: trunks.finish(), frondHeadings };
+        if (clock.due()) {
+            yield 'palms';
+            clock.restart();
+        }
+    }
+    const frondData = yield* fronds.finishSteps(clock);
+    const trunkData = yield* trunks.finishSteps(clock);
+    return { fronds: frondData, trunks: trunkData, frondHeadings };
 }
 
 // ── Ferns ───────────────────────────────────────────────────────────────────────────────────
@@ -645,13 +688,20 @@ export function bedFrontClumps(plan, tier) {
  * fronts they spill over the kerb). Returns { fronds, trunks }.
  */
 export function buildFerns(plan, tier) {
+    return drainSteps(buildFernsSteps(plan, tier));
+}
+
+/** `buildFerns` as steps (the world's build breathes between them): the same ferns in the same order. */
+export function* buildFernsSteps(plan, tier) {
+    const clock = stepClock(FLORA_SLICE_MS);
     const { segments, across, sides } = floraDetail(tier);
     const fronds = new FloraBatch();
     const trunks = new FloraBatch();
     const { soil } = FLOOR.bed;
 
     const tree = plan.treeFerns.map((fern, i) => ({ fern, i })).sort((a, b) => b.fern.z - a.fern.z);
-    tree.forEach(({ fern, i }) => {
+    for (let pl = 0; pl < tree.length; pl += 1) {
+        const { fern, i } = tree[pl];
         const rand = streamFor(fern.seed, 211 + i);
         const id = 1000 + i;
         const lean = rand() * TAU;
@@ -730,12 +780,17 @@ export function buildFerns(plan, tier) {
             });
             layStrip(fronds, rings, 3, [lenC, id * 64 + 40 + c, 0, packKind(KIND.crosier)]);
         }
-    });
+        if (clock.due()) {
+            yield 'tree ferns';
+            clock.restart();
+        }
+    }
 
     // Ground ferns: the plan's rosettes, and the understory grown round them (see understory()).
     const fernSegments = Math.max(5, Math.round(segments * 0.55));
     const ground = understory(plan, tier).map((fern, i) => ({ fern, i })).sort((a, b) => b.fern.z - a.fern.z);
-    ground.forEach(({ fern, i }) => {
+    for (let pl = 0; pl < ground.length; pl += 1) {
+        const { fern, i } = ground[pl];
         const rand = streamFor(fern.seed, 401 + i);
         const id = 2000 + i;
         const centre = [fern.x, soil + 0.04, fern.z];
@@ -771,8 +826,14 @@ export function buildFerns(plan, tier) {
             });
             layStrip(fronds, rings, 3, [L, id * 64 + k, age, packKind(KIND.groundFern, stalk)]);
         }
-    });
-    return { fronds: fronds.finish(), trunks: trunks.finish() };
+        if (clock.due()) {
+            yield 'ground ferns';
+            clock.restart();
+        }
+    }
+    const frondData = yield* fronds.finishSteps(clock);
+    const trunkData = yield* trunks.finishSteps(clock);
+    return { fronds: frondData, trunks: trunkData };
 }
 
 // ── Broad leaves: bananas, monsteras, the urns ──────────────────────────────────────────────
@@ -857,6 +918,12 @@ function broadLeaf(batch, {
  * Returns { leaves, fronds (the urns' ferns), stems }.
  */
 export function buildLeaves(plan, tier) {
+    return drainSteps(buildLeavesSteps(plan, tier));
+}
+
+/** `buildLeaves` as steps (the world's build breathes between them): the same plants in the same order. */
+export function* buildLeavesSteps(plan, tier) {
+    const clock = stepClock(FLORA_SLICE_MS);
     const { segments, sides } = floraDetail(tier);
     const across = 5;
     const leaves = new FloraBatch();
@@ -866,7 +933,8 @@ export function buildLeaves(plan, tier) {
     const leafSegments = Math.max(6, Math.round(segments * 0.75));
 
     // The urns first: they are nearest the eye.
-    plan.urns.forEach((urn, u) => {
+    for (let u = 0; u < plan.urns.length; u += 1) {
+        const urn = plan.urns[u];
         const rand = mulberry32(9001 + u * 131);
         const side = Math.sign(urn.x);
         const rim = urn.height;
@@ -928,11 +996,16 @@ export function buildLeaves(plan, tier) {
                 rand,
             });
         }
-    });
+        if (clock.due()) {
+            yield 'urns';
+            clock.restart();
+        }
+    }
 
     // Bananas and bird-of-paradise.
     const bananas = plan.bananas.map((b, i) => ({ b, i })).sort((a, c) => c.b.z - a.b.z);
-    bananas.forEach(({ b, i }) => {
+    for (let pl = 0; pl < bananas.length; pl += 1) {
+        const { b, i } = bananas[pl];
         const rand = streamFor(b.seed, 601 + i);
         const id = 3000 + i;
         const strelitzia = b.seed > 0.66;
@@ -996,13 +1069,18 @@ export function buildLeaves(plan, tier) {
                 rand,
             });
         }
-    });
+        if (clock.due()) {
+            yield 'bananas';
+            clock.restart();
+        }
+    }
 
     // Monstera and philodendron: the plan's, and clumps crowding the bed fronts near the eye.
     const monsteras = [...plan.monsteras, ...bedFrontClumps(plan, tier)]
         .map((m, i) => ({ m, i }))
         .sort((a, c) => c.m.z - a.m.z);
-    monsteras.forEach(({ m, i }) => {
+    for (let pl = 0; pl < monsteras.length; pl += 1) {
+        const { m, i } = monsteras[pl];
         const rand = streamFor(m.seed, 801 + i);
         const id = 5000 + i;
         const philodendron = m.seed < 0.3;
@@ -1035,8 +1113,15 @@ export function buildLeaves(plan, tier) {
                 rand,
             });
         }
-    });
-    return { leaves: leaves.finish(), fronds: fronds.finish(), stems: stems.finish() };
+        if (clock.due()) {
+            yield 'monsteras';
+            clock.restart();
+        }
+    }
+    const leafData = yield* leaves.finishSteps(clock);
+    const frondData = yield* fronds.finishSteps(clock);
+    const stemData = yield* stems.finishSteps(clock);
+    return { leaves: leafData, fronds: frondData, stems: stemData };
 }
 
 // ── Vines and baskets ───────────────────────────────────────────────────────────────────────
@@ -1049,6 +1134,12 @@ export function buildLeaves(plan, tier) {
  * chains and the moss lining) }.
  */
 export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
+    return drainSteps(buildVinesSteps(plan, tier, eye));
+}
+
+/** `buildVines` as steps (the world's build breathes between them): the same strands and baskets in the same order. */
+export function* buildVinesSteps(plan, tier, eye = [0, 2.05, 4.2]) {
+    const clock = stepClock(FLORA_SLICE_MS);
     const { segments } = floraDetail(tier);
     const leaves = new FloraBatch();
     const fronds = new FloraBatch();
@@ -1056,7 +1147,8 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
     const spacing = pick(tier.frond, [[16, 0.07], [12, 0.085]], 0.11);
 
     const vines = plan.vines.map((v, i) => ({ v, i })).sort((a, b) => b.v.z - a.v.z);
-    vines.forEach(({ v, i }) => {
+    for (let pl = 0; pl < vines.length; pl += 1) {
+        const { v, i } = vines[pl];
         const rand = streamFor(v.seed, 1001 + i);
         const id = 6000 + i;
         for (let s = 0; s < v.strands; s += 1) {
@@ -1120,9 +1212,14 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
                 layStrip(leaves, leafRings, 3, info);
             }
         }
-    });
+        if (clock.due()) {
+            yield 'vines';
+            clock.restart();
+        }
+    }
 
-    plan.baskets.forEach((b, i) => {
+    for (let i = 0; i < plan.baskets.length; i += 1) {
+        const b = plan.baskets[i];
         const rand = streamFor(b.seed, 1201 + i);
         const id = 7000 + i;
         const R = 0.3 * b.scale;
@@ -1216,6 +1313,13 @@ export function buildVines(plan, tier, eye = [0, 2.05, 4.2]) {
             });
             layStrip(fronds, rings, 3, [L, id * 64 + 8 + k, rand() * 0.4, packKind(KIND.swordFern, stalk)]);
         }
-    });
-    return { leaves: leaves.finish(), fronds: fronds.finish(), iron: iron.finish() };
+        if (clock.due()) {
+            yield 'baskets';
+            clock.restart();
+        }
+    }
+    const leafData = yield* leaves.finishSteps(clock);
+    const frondData = yield* fronds.finishSteps(clock);
+    const ironData = yield* iron.finishSteps(clock);
+    return { leaves: leafData, fronds: frondData, iron: ironData };
 }

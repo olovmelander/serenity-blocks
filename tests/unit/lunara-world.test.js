@@ -289,6 +289,8 @@ describe('lunara world: the moon map', () => {
         const { world } = makeWorld('Low');
         const pending = world.loadTextures();
         world.dispose();
+        // No createImageBitmap here: the TextureLoader takes the map a task later (shared/decoded-texture.js).
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
         const late = new THREE.Texture();
         const dispose = vi.spyOn(late, 'dispose');
         arrive(late);

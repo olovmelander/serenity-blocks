@@ -53,8 +53,10 @@
 import * as THREE from 'three/webgpu';
 import { float, shadow } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
 import { easeStep } from '../shared/mood-clock.js';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import {
     CLEAR_AFTERGLOW,
     CLEAR_SLOTS,
@@ -96,7 +98,7 @@ import { createSky } from './halcyon-apex-sky.js';
 import { createStone } from './halcyon-apex-stone.js';
 import { createCrystals } from './halcyon-apex-crystals.js';
 import { createWater } from './halcyon-apex-water.js';
-import { createTerrain } from './halcyon-apex-terrain.js';
+import { createTerrainSteps } from './halcyon-apex-terrain.js';
 import {
     createBeads, createBirds, createMotes, createUpfall,
 } from './halcyon-apex-atmosphere.js';
@@ -107,7 +109,7 @@ import { createVisitors } from './halcyon-apex-visitors.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './halcyon-apex-composition.js';
-import { sessionNoiseField, sessionPlan } from './halcyon-apex-bakes.js';
+import { sessionNoiseField, sessionPlanSteps } from './halcyon-apex-bakes.js';
 
 /** The rest camera: standing in the lagoon beside the causeway, a little above the water. */
 export const REST_RIG = Object.freeze({
@@ -187,9 +189,14 @@ export class HalcyonApexWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.noiseField = sessionNoiseField();
-        // (kept for the session, with the noise: halcyon-apex-bakes.js)
-        this.plan = sessionPlan(seed);
+        /**
+         * The noise field and the plan are taken by the build's first step (kept for the session:
+         * halcyon-apex-bakes.js; fixed seeds, the same wherever they are made); nothing reads them
+         * before it.
+         */
+        this.noiseField = null;
+        this.plan = null;
+        this.planSeed = seed;
         this.root = new THREE.Group();
         this.root.name = 'HalcyonApex';
         this.parts = {};
@@ -200,6 +207,7 @@ export class HalcyonApexWorld {
         this.sun = null;
         this.shadowNode = null;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
         this.shadowWasEnabled = null;
         this.stone = null;
         this.crystals = null;
@@ -327,6 +335,18 @@ export class HalcyonApexWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order from the same draws. Built in one
+     * task with the plan, it held the first-visit switch's worst frame at ~55 ms (2026-10-31).
+     */
+    * buildSteps() {
+        if (!this.noiseField) this.noiseField = sessionNoiseField();
+        // A first visit cuts the plan a slice to a step; its last slice shares a step with the sky.
+        if (!this.plan) this.plan = yield* sessionPlanSteps(this.planSeed);
         const noise = createNoiseTexture(this.noiseField, NOISE_SIZE);
         this.textures.push(noise);
         const u = createSanctuaryUniforms({ noise });
@@ -357,10 +377,12 @@ export class HalcyonApexWorld {
         }
 
         this.addPart('sky', createSky(u, { decks: tier.decks, lit: tier.litClouds }));
-        const terrain = createTerrain(u, plan, { segments: tier.ranges, seed: plan.seed });
+        yield 'sun and sky';
+        const terrain = yield* createTerrainSteps(u, plan, { segments: tier.ranges, seed: plan.seed });
         this.addPart('ranges', terrain.ranges);
         this.addPart('islets', terrain.islets);
         this.addPart('flora', terrain.flora);
+        yield 'land';
         const water = createWater(u, {
             reflectionScale: tier.reflection, glitter: tier.glitter, bedDetail: tier.bedDetail, islets: terrain.shore,
         });
@@ -377,6 +399,7 @@ export class HalcyonApexWorld {
         this.crystals = gems.crystals;
         this.addPart('crystals', gems.crystals);
         this.addPart('halos', gems.halos);
+        yield 'water and stone';
 
         this.addPart('upfall', createUpfall(u, tier.upfall));
         this.addPart('beads', createBeads(u, tier.beads));
@@ -385,10 +408,12 @@ export class HalcyonApexWorld {
             this.birds = createBirds(u, tier.birds);
             this.addPart('birds', this.birds);
         }
+        yield 'air';
         // Every tier: one small hull at a time, drawn only while it flies.
         this.visitors = createVisitors(u);
         this.addPart('visitors', this.visitors.hulls);
         this.addPart('visitorLights', this.visitors.lights);
+        yield 'visitors';
 
         // ── Gameplay effects (pools, always drawn) ──
         this.sparks = createSparks(u, tier.sparks);
@@ -607,6 +632,7 @@ export class HalcyonApexWorld {
         sun.target.updateMatrixWorld(true);
         sun.shadow.needsUpdate = true;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     /** Put every crystal where the world's clocks say it is. */
@@ -1484,8 +1510,8 @@ export class HalcyonApexWorld {
         if (this.sun) {
             this.shadowFrames += 1;
             const every = this.tier.shadowEvery;
-            if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150
-                || (every > 0 && this.shadowFrames % every === 0)) this.sun.shadow.needsUpdate = true;
+            redrawStaticShadow(this, this.sun.shadow, this.shadowFrames === 45 || this.shadowFrames === 150
+                || (every > 0 && this.shadowFrames % every === 0));
         }
 
         // ── Post ──

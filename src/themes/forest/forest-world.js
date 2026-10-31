@@ -12,7 +12,7 @@ import { forestEye, forestViewFor } from './forest-composition.js';
 import { ForestFireflies } from './forest-fireflies.js';
 import { ForestFireflyDirector, forestFigureBox } from './forest-firefly-director.js';
 import { forestHourDrift, forestHourName, forestNearestTurn } from './forest-hours.js';
-import { ForestLight } from './forest-light.js';
+import { ForestLight, forestHeightDataSteps } from './forest-light.js';
 import { ForestOwl } from './forest-owl.js';
 import { ForestOwlMind } from './forest-owl-mind.js';
 import { FOREST_EYE } from './forest-plan.js';
@@ -22,7 +22,8 @@ import { ForestStage } from './forest-stage.js';
 import { FOREST_HEARTH, ForestTerrain, forestGroundHeight } from './forest-terrain.js';
 import { ForestTrees } from './forest-trees.js';
 import { FOREST_FIGURE_STAND, FOREST_FIGURE_STANDS, ForestUnderstory } from './forest-understory.js';
-import { drainSteps } from '../shared/build-steps.js';
+import { FOREST_SLICE_MS } from './forest-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 /** Half the angle a firefly figure fills at its usual range, with a margin; ranges to try. */
@@ -90,7 +91,9 @@ export class ForestWorld {
     /**
      * The build as steps, a part to a step: run at once by build(), or with a breath between steps
      * while the theme comes in (shared/build-steps.js), so no single task holds the page for the
-     * whole build. The same parts in the same order, drawing from the same random sequence.
+     * whole build. The same parts in the same order, drawing from the same random sequence. The
+     * light's height map, the floor, the trees, the understory and the animals' layout take their
+     * own time slices (FOREST_SLICE_MS): single steps of 15-40 ms on a first visit before (2026-10-31).
      */
     * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed ForestWorld.');
@@ -98,7 +101,10 @@ export class ForestWorld {
         if (!this.assets) throw new Error('[Forest] The world needs its loaded assets before it can build.');
         this.built = true;
         this.scene.add(this.group);
-        this.light = new ForestLight({ tier: this.tier, rng: this.rng });
+        // The light's height map, baked ahead a time slice a step (half of the light's 17 ms first step).
+        const heights = yield* forestHeightDataSteps(stepClock(FOREST_SLICE_MS));
+        yield 'floor heights';
+        this.light = new ForestLight({ tier: this.tier, rng: this.rng, heights });
         this.light.addTo(this.group);
         this.light.frameShadows();
         // Each part is owned before it builds: if one throws halfway, dispose() still
@@ -106,20 +112,21 @@ export class ForestWorld {
         const { light, tier, rng } = this;
         this.terrain = new ForestTerrain({ light, tier });
         this.group.add(this.terrain.group);
-        this.terrain.build();
+        yield 'light';
+        yield* this.terrain.buildSteps();
         yield 'terrain';
         this.trees = new ForestTrees({
             light, assets: this.assets, tier, rng,
         });
         this.group.add(this.trees.group);
-        this.trees.build();
+        yield* this.trees.buildSteps();
         yield 'trees';
         const trunks = this.trees.trunks();
         this.understory = new ForestUnderstory({
             light, assets: this.assets, tier, rng, trunks,
         });
         this.group.add(this.understory.group);
-        this.understory.build();
+        yield* this.understory.buildSteps();
         yield 'understory';
         this.backdrop = new ForestBackdrop({
             light, impostors: this.assets.impostors, tier, rng,

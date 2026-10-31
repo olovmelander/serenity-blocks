@@ -50,17 +50,18 @@ import {
 import { tierFor } from './high-coast-quality.js';
 import { breathe, loadCoast, planCoast } from './high-coast-assets.js';
 import {
-    GUSTS, createCoverTexture, createFieldTexture, createLatticeTexture, createNoiseTexture, createUniforms,
-    fieldTextureData,
+    GUSTS, bakeLattice, bakeNoise, createCoverTexture, createFieldTexture, createLatticeTexture, createNoiseTexture,
+    createUniforms,
 } from './high-coast-tsl.js';
+import { fillFieldTextureRows } from './high-coast-field-data.js';
 import { groundHeight } from './high-coast-field.js';
 import { createFanGeometry, createLandMaterial, fanPositionSteps } from './high-coast-land.js';
 import { createSea } from './high-coast-sea.js';
 import { createShadowPass } from './high-coast-shadow.js';
 import { createSky } from './high-coast-sky.js';
 import { createCumulus } from './high-coast-cumulus.js';
-import { createForest } from './high-coast-forest.js';
-import { createProps } from './high-coast-props.js';
+import { createForestSteps } from './high-coast-forest.js';
+import { createPropsSteps } from './high-coast-props.js';
 import { createHamlet } from './high-coast-hamlet.js';
 import { createFleet } from './high-coast-fleet.js';
 import { MOTE_KIND, Motes } from './high-coast-motes.js';
@@ -98,14 +99,27 @@ const CALM_RISE = 1.4;
 /** The inverse of smooth(0, 1, x) on [0, 1]: where a smoothstep reads `v`. */
 const unsmooth = (v) => 0.5 - Math.sin(Math.asin(1 - 2 * clamp(v, 0, 1)) / 3);
 
+/** Rows of a field's texture data prepared per build step (a 1024-post field: four steps). */
+const FIELD_ROWS_PER_STEP = 256;
+
+/** The noise and lattice texture data (seeded, no inputs), baked once a session; each world gets its own textures. */
+const keptBakes = { noise: null, lattice: null };
+
 /** Everything heavy a world needs once the fields are read: the mesh and the field textures. */
 function* prepareSteps(quality, fields) {
     const tier = tierFor(quality);
     const positions = yield* fanPositionSteps(fields, tier.fanCols, tier.fanRows);
     const textures = {};
     for (const name of FIELD_ORDER) {
-        textures[name] = fieldTextureData(fields[name].heights, fields[name].sky, FIELDS[name]);
-        yield name;
+        // A band of rows a step, so no step holds a frame (a whole field was one 61-70 ms task).
+        const field = FIELDS[name];
+        const { heights, sky } = fields[name];
+        const data = new Uint16Array(field.size * field.size * 4);
+        for (let j = 0; j < field.size; j += FIELD_ROWS_PER_STEP) {
+            fillFieldTextureRows(data, heights, sky, field, j, Math.min(field.size, j + FIELD_ROWS_PER_STEP));
+            yield name;
+        }
+        textures[name] = data;
     }
     return {
         quality, fields, positions, textures, source: fields.source,
@@ -319,12 +333,19 @@ export class HighCoastWorld {
             coverTex[name] = createCoverTexture(prepared.fields[name].flow, FIELDS[name]);
         }
         this.fields = prepared.fields;
+        // The noise and the lattice take no inputs: baked once a session, the noise in a step of its
+        // own. A revisit baked them again in the build's first step, with the shadow pass and the
+        // mesh: one 53 ms task of a warm second visit (2026-10-31).
+        keptBakes.noise ??= bakeNoise();
+        yield 'noise';
+        keptBakes.lattice ??= bakeLattice();
         this.textures = {
             fields: fieldTex,
             cover: coverTex,
-            noise: createNoiseTexture(),
-            lattice: createLatticeTexture(),
+            noise: createNoiseTexture(keptBakes.noise),
+            lattice: createLatticeTexture(keptBakes.lattice),
         };
+        yield 'textures';
         this.shadowPass = createShadowPass(this.u, fieldTex, tier);
         this.textures.shadow = this.shadowPass.textures;
 
@@ -344,9 +365,10 @@ export class HighCoastWorld {
         yield 'land';
         this.addPart('sea', createSea(this.u, this.textures, tier));
         yield 'sea';
-        this.addPart('forest', createForest(this.u, this.textures, tier, this.fields));
+        this.addPart('forest', yield* createForestSteps(this.u, this.textures, tier, this.fields));
         yield 'forest';
-        this.addPart('props', createProps(this.u, this.textures, tier, this.fields, { coverage: this.samples > 1 }));
+        const props = yield* createPropsSteps(this.u, this.textures, tier, this.fields, { coverage: this.samples > 1 });
+        this.addPart('props', props);
         yield 'props';
         this.addPart('hamlet', createHamlet(this.u, this.textures, tier, this.fields));
         yield 'hamlet';

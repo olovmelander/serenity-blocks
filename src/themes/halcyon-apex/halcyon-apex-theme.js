@@ -43,6 +43,7 @@ import { PLAYER_SLOTS, readLayoutRects } from './halcyon-apex-composition.js';
 import { HALCYON_APEX_EVENT_HANDLERS, HalcyonApexDirector } from './halcyon-apex-director.js';
 import { approach } from './halcyon-apex-core.js';
 import { halcyonApexBakes } from './halcyon-apex-bakes.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'halcyon-apex';
 const LOG_PREFIX = '[HalcyonApex]';
@@ -224,12 +225,17 @@ export default class HalcyonApexTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new HalcyonApexWorld({
+            const world = new HalcyonApexWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
-            }).build();
+            });
+            // The plan in slices and the parts with a breath between (shared/build-steps.js). The
+            // theme owns the world once it is whole; a build that throws half-way, or a start
+            // stopped meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

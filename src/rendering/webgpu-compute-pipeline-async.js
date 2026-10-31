@@ -1,16 +1,16 @@
 // @ts-check
 /**
- * Native async compute compilation for three 0.186.1.
+ * Native async compute compilation for three 0.187.0.
  *
  * Boot surfaces compile on Dawn's workers before dispatching. Native compileComputeAsync
  * yields while building nodes, before a pipeline is cached, so a live compute() must also
  * wait during that interval (otherwise it creates the pipeline synchronously). The backend
- * guard covers cached pending/failed pipelines: r186 still calls setPipeline unguarded.
+ * guard covers cached pending/failed pipelines: r187 still calls setPipeline unguarded.
  *
  * A native compile promise resolves even on GPU validation/creation failure. Read the
  * actual pipeline slot before reporting ready. A timeout only stops waiting; both guards
  * remain installed until compilation settles. Await readiness before one-shot dispatches.
- * Pinned by tests/unit/three-r186-compute-pipeline-contract.test.js.
+ * Pinned by tests/unit/three-r187-compute-pipeline-contract.test.js.
  */
 const STATE = new WeakMap(); // backend -> state
 const TIMEOUT = Symbol('compute-compile-timeout');

@@ -22,8 +22,10 @@ import { VERDANT_HILLS_VIEWS, VerdantHillsSight, verdantHillsEye } from './verda
 import {
     VERDANT_HILLS_FLOWERS, createVerdantHillsFlowerGeometry, createVerdantHillsGrassGeometry,
 } from './verdant-hills-flora.js';
-import { VERDANT_HILLS_PLACES, verdantHillsNoise, verdantHillsPathDistance } from './verdant-hills-terrain.js';
-import { drainSteps } from '../shared/build-steps.js';
+import {
+    VERDANT_HILLS_PLACES, VERDANT_HILLS_SLICE_MS, verdantHillsNoise, verdantHillsPathDistance,
+} from './verdant-hills-terrain.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const FLOWER_VARIANTS = 2;
 const { smoothstep: ramp, degToRad } = THREE.MathUtils;
@@ -69,10 +71,22 @@ export class VerdantHillsMeadow {
         return this;
     }
 
-    /** The meadow in two steps for the world's breathing build: the near grass, then the rest. */
+    /**
+     * The meadow in steps for the world's breathing build, a time slice a step: the near grass, the
+     * far grass, the flowers (two steps of 30-70 ms on a first visit before).
+     */
     * buildSteps() {
-        yield* this.grassSteps();
-        this.buildFlowers();
+        const clock = stepClock(VERDANT_HILLS_SLICE_MS);
+        yield* this.grassSteps(clock);
+        yield* this.flowerSteps(clock);
+    }
+
+    /** Yield when the slice has run (asked every `every` turns of a loop). */
+    * breathe(clock, turn = 0, every = 1) {
+        if (turn % every === 0 && clock.due()) {
+            yield 'meadow';
+            clock.restart();
+        }
     }
 
     /**
@@ -88,14 +102,27 @@ export class VerdantHillsMeadow {
 
     /** One draw of `geometry` for a list of plants (x, y, z, yaw, scale, phase, hue). */
     plant(geometry, material, plants, name) {
+        return drainSteps(this.plantSteps(geometry, material, plants, name, stepClock(VERDANT_HILLS_SLICE_MS)));
+    }
+
+    /** plant(), its instance data filled a time slice a step. */
+    * plantSteps(geometry, material, plants, name, clock) {
         if (!plants.length) return null;
         const count = plants.length / 7;
         const roots = new Float32Array(count * 4);
         const turns = new Float32Array(count * 4);
         for (let i = 0; i < count; i += 1) {
+            yield* this.breathe(clock, i, 256);
             const o = i * 7;
-            roots.set([plants[o], plants[o + 1], plants[o + 2], plants[o + 5]], i * 4);
-            turns.set([Math.cos(plants[o + 3]), Math.sin(plants[o + 3]), plants[o + 4], plants[o + 6]], i * 4);
+            const at = i * 4;
+            roots[at] = plants[o];
+            roots[at + 1] = plants[o + 1];
+            roots[at + 2] = plants[o + 2];
+            roots[at + 3] = plants[o + 5];
+            turns[at] = Math.cos(plants[o + 3]);
+            turns[at + 1] = Math.sin(plants[o + 3]);
+            turns[at + 2] = plants[o + 4];
+            turns[at + 3] = plants[o + 6];
         }
         // The vertex data is shared; only the instance data belongs to this draw.
         const instanced = this.own(new THREE.BufferGeometry());
@@ -225,35 +252,38 @@ export class VerdantHillsMeadow {
         drainSteps(this.grassSteps());
     }
 
-    * grassSteps() {
-        const { rng, tier } = this;
-        const material = this.createGrassMaterial();
-        const scatter = (wanted, nearest, farthest, far) => {
-            const plants = [];
-            for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 8; attempt += 1) {
-                const place = this.spot(nearest, farthest);
-                if (place && rng() < verdantHillsMeadowCover(place.x, place.z)) {
-                    // Tall on the brow, where it stands against the valley; shorter in the oak's shade.
-                    const { oak } = VERDANT_HILLS_PLACES;
-                    const shade = 1 - ramp(Math.hypot(place.x - oak.x, place.z - oak.z), 3, 9.5);
-                    const lush = 0.88 + 0.3 * verdantHillsNoise(place.x / 6, place.z / 6, 51);
-                    // Feet and sheep keep the grass short beside the path.
-                    const verge = 0.4 + 0.6 * ramp(verdantHillsPathDistance(place.x, place.z), 1.1, 3.6);
-                    const scale = (0.78 + rng() * 0.42) * lush * (1 - shade * 0.32) * verge
-                        * (far ? 1 + place.depth * 0.02 : 1);
-                    plants.push(place.x, place.y - 0.02, place.z, rng() * Math.PI * 2, scale, rng(), rng());
-                    made += 1;
-                }
+    /** Plants scattered over the meadow, a time slice a step. */
+    * scatterGrassSteps(clock, wanted, nearest, farthest, far) {
+        const { rng } = this;
+        const plants = [];
+        for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 8; attempt += 1) {
+            yield* this.breathe(clock, attempt, 64);
+            const place = this.spot(nearest, farthest);
+            if (place && rng() < verdantHillsMeadowCover(place.x, place.z)) {
+                // Tall on the brow, where it stands against the valley; shorter in the oak's shade.
+                const { oak } = VERDANT_HILLS_PLACES;
+                const shade = 1 - ramp(Math.hypot(place.x - oak.x, place.z - oak.z), 3, 9.5);
+                const lush = 0.88 + 0.3 * verdantHillsNoise(place.x / 6, place.z / 6, 51);
+                // Feet and sheep keep the grass short beside the path.
+                const verge = 0.4 + 0.6 * ramp(verdantHillsPathDistance(place.x, place.z), 1.1, 3.6);
+                const scale = (0.78 + rng() * 0.42) * lush * (1 - shade * 0.32) * verge
+                    * (far ? 1 + place.depth * 0.02 : 1);
+                plants.push(place.x, place.y - 0.02, place.z, rng() * Math.PI * 2, scale, rng(), rng());
+                made += 1;
             }
-            return plants;
-        };
+        }
+        return plants;
+    }
+
+    * grassSteps(clock = stepClock(VERDANT_HILLS_SLICE_MS)) {
+        const { tier } = this;
+        const material = this.createGrassMaterial();
         const near = this.own(createVerdantHillsGrassGeometry({ far: false, seed: 11 }));
         const far = this.own(createVerdantHillsGrassGeometry({ far: true, seed: 23 }));
-        const nearPlants = scatter(tier.grassNear, 1.3, 17, false);
-        yield 'grass near';
-        const farPlants = scatter(tier.grassFar, 12, 150, true);
-        this.plant(near, material, nearPlants, 'VerdantHillsGrass near');
-        this.plant(far, material, farPlants, 'VerdantHillsGrass far');
+        const nearPlants = yield* this.scatterGrassSteps(clock, tier.grassNear, 1.3, 17, false);
+        const farPlants = yield* this.scatterGrassSteps(clock, tier.grassFar, 12, 150, true);
+        yield* this.plantSteps(near, material, nearPlants, 'VerdantHillsGrass near', clock);
+        yield* this.plantSteps(far, material, farPlants, 'VerdantHillsGrass far', clock);
         this.stats.grass = (nearPlants.length + farPlants.length) / 7;
         this.stats.grassTriangles = (nearPlants.length / 7) * (near.index.count / 3)
             + (farPlants.length / 7) * (far.index.count / 3);
@@ -297,6 +327,10 @@ export class VerdantHillsMeadow {
     }
 
     buildFlowers() {
+        drainSteps(this.flowerSteps());
+    }
+
+    * flowerSteps(clock = stepClock(VERDANT_HILLS_SLICE_MS)) {
         const { rng, tier } = this;
         const material = this.createFlowerMaterial();
         const total = VERDANT_HILLS_FLOWERS.reduce((sum, flower) => sum + flower.share, 0);
@@ -324,6 +358,7 @@ export class VerdantHillsMeadow {
         const lists = VERDANT_HILLS_FLOWERS.map(() => Array.from({ length: FLOWER_VARIANTS }, () => []));
         const wanted = tier.flowers;
         for (let made = 0, attempt = 0; made < wanted && attempt < wanted * 8; attempt += 1) {
+            yield* this.breathe(clock, attempt, 64);
             const place = this.spot(1.5, 70);
             // Flowers keep to their drifts: between them the down is grass alone.
             const drifted = place ? ramp(verdantHillsNoise(place.x / 9, place.z / 9, 77), 0.36, 0.66) : 0;
@@ -346,14 +381,19 @@ export class VerdantHillsMeadow {
                 made += 1;
             }
         }
-        lists.forEach((variants, kind) => variants.forEach((plants, variant) => {
-            if (!plants.length) return;
-            const { id } = VERDANT_HILLS_FLOWERS[kind];
-            const geometry = this.own(createVerdantHillsFlowerGeometry(id, { variant }));
-            this.plant(geometry, material, plants, `VerdantHillsFlower ${id} ${variant}`);
-            this.stats.flowers += plants.length / 7;
-            this.stats.flowerTriangles += (plants.length / 7) * (geometry.index.count / 3);
-        }));
+        for (let kind = 0; kind < lists.length; kind += 1) {
+            for (let variant = 0; variant < lists[kind].length; variant += 1) {
+                const plants = lists[kind][variant];
+                if (plants.length) {
+                    yield* this.breathe(clock);
+                    const { id } = VERDANT_HILLS_FLOWERS[kind];
+                    const geometry = this.own(createVerdantHillsFlowerGeometry(id, { variant }));
+                    yield* this.plantSteps(geometry, material, plants, `VerdantHillsFlower ${id} ${variant}`, clock);
+                    this.stats.flowers += plants.length / 7;
+                    this.stats.flowerTriangles += (plants.length / 7) * (geometry.index.count / 3);
+                }
+            }
+        }
     }
 
     dispose() {

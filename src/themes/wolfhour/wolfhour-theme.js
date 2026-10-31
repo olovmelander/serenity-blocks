@@ -20,6 +20,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { readLockViewportOrigin } from '../../events/lock-origin.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { compileComputeAsync, isAsyncComputeCapable } from '../../rendering/webgpu-compute-pipeline-async.js';
 import { WOLFHOUR_TETROMINOS } from './wolfhour-tetrominos.js';
 
 // Import shaders
@@ -77,6 +78,10 @@ import { wolfhourLandscapeBakes } from './wolfhour-landscape-bakes.js';
 import { createWolfhourMeteor, setWolfhourRibbon } from './wolfhour-meteor.js';
 import { updateWolfhourCamera } from './wolfhour-composition.js';
 import { easedMotion, prefersReducedMotion } from '../shared/reduced-motion.js';
+import { loadTextureDecoded, uploadTextureNow } from '../shared/decoded-texture.js';
+
+/** How long the compute pipelines' first compile is waited for before the scene goes on (ms). */
+const COMPUTE_COMPILE_TIMEOUT_MS = 3000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Quality Presets
@@ -1241,6 +1246,24 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
+    /**
+     * Compile every compute system's pipeline asynchronously (rendering/webgpu-compute-pipeline-async.js).
+     * Their dispatches are skipped until ready; a failure or a timeout leaves that guard to it.
+     */
+    async compileComputeSystems() {
+        if (!this.shouldUseCompute() || !isAsyncComputeCapable(this.renderer)) return;
+        const nodes = [
+            this.starTwinkleCompute, this.spiritCompute, this.ambientParticleCompute,
+            this.meteorTrailBatchCompute, this.debrisBatchCompute,
+        ].map((system) => system?.computeNode).filter(Boolean);
+        if (nodes.length === 0) return;
+        try {
+            await compileComputeAsync(this.renderer, nodes, { timeoutMs: COMPUTE_COMPILE_TIMEOUT_MS });
+        } catch (error) {
+            console.warn('[Wolfhour] Compute compile failed:', error);
+        }
+    }
+
     disposeComputeSystems() {
         if (this.starTwinkleCompute) {
             this.starTwinkleCompute.dispose?.();
@@ -1448,6 +1471,12 @@ export default class WolfhourTheme extends BaseTheme {
         this.configureRendererColorPipeline();
         this.setupReactivePools();
         this.runReactivePrewarm();
+        // The compute pipelines (the stars' twinkle, the meteor trails, the debris) compile on Dawn's
+        // workers before their first dispatch (three r187 compileComputeAsync). Made by that dispatch
+        // they were synchronous compiles on the GPU process's main thread: the twinkle's in the first
+        // frame, the trails' and the debris' at the session's first meteor, in play.
+        await this.compileComputeSystems();
+        if (ownerGeneration !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) return;
         this.setupEventListeners();
         this.setupQualityListener();
         this.startAnimation();
@@ -1986,14 +2015,15 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createNebulaBackdrop() {
-        const textureLoader = new THREE.TextureLoader();
         // Correct path for Vite public folder
         const texturePath = './textures/wolfhour/';
 
+        // Decoded off the main thread (shared/decoded-texture.js), filled when they land as before.
+        const onImage = (landed) => uploadTextureNow(this.renderer, landed); // in the task it lands in
         const textures = [
-            textureLoader.load(`${texturePath}nebula-silver-1.png`),
-            textureLoader.load(`${texturePath}nebula-silver-2.png`),
-            textureLoader.load(`${texturePath}nebula-silver-3.png`),
+            loadTextureDecoded(`${texturePath}nebula-silver-1.png`, { onImage }),
+            loadTextureDecoded(`${texturePath}nebula-silver-2.png`, { onImage }),
+            loadTextureDecoded(`${texturePath}nebula-silver-3.png`, { onImage }),
         ];
 
         textures.forEach((t) => {
@@ -2084,8 +2114,10 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     createMoonHero() {
-        const textureLoader = new THREE.TextureLoader();
-        const moonTexture = textureLoader.load('./textures/2k_moon.jpg');
+        // Decoded off the main thread and uploaded in the task it lands in.
+        const moonTexture = loadTextureDecoded('./textures/2k_moon.jpg', {
+            onImage: (landed) => uploadTextureNow(this.renderer, landed),
+        });
         moonTexture.colorSpace = THREE.SRGBColorSpace;
         moonTexture.anisotropy = Math.min(8, this.renderer?.capabilities?.getMaxAnisotropy?.() || 1);
         this.moonTexture = moonTexture;

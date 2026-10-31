@@ -5,6 +5,7 @@ import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 import { SUNFALL_CLEAR, approach } from './sunfall-core.js';
 import {
     SUNFALL_PIXEL_RATIO_CAP, boolSunfallSetting, readSunfallFlags,
@@ -60,7 +61,6 @@ export default class SunfallTheme extends BaseTheme {
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return;
         if (!isCurrent()) { this.disposeRenderer(renderer, { nullInstance: false }); return; }
-
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         renderer.setClearColor(SUNFALL_CLEAR, 1);
@@ -75,9 +75,9 @@ export default class SunfallTheme extends BaseTheme {
         if (!isCurrent()) { SunfallWorld.disposeAssets(assets); return; }
         try {
             this.sceneSamples = sceneSamples(this.quality, this.getAntialiasEnabled());
-            this.world = new SunfallWorld({ quality: this.quality, parts: this.flags.parts, assets });
-            this.scene = this.world.scene;
-            this.camera = this.world.camera;
+            const world = SunfallWorld.unbuilt({ quality: this.quality, parts: this.flags.parts, assets });
+            if (!(await buildWorldBreathing(world, isCurrent))) return; // in steps; disposed if stopped
+            this.world = world; Object.assign(this, { scene: world.scene, camera: world.camera });
             this.director ??= new SunfallDirector({ level: this.level, reducedMotion: this.reducedMotion });
             // The tier's cap, on a director kept from the last build too (Minimal's 0 is a cap: 8).
             this.director.setNewGrowthLimit(this.qualityPreset.newGrowthSlots);

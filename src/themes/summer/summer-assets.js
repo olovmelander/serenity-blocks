@@ -13,6 +13,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const SUMMER_TREE_URLS = Object.freeze({
     'birch-hero': new URL('./assets/birch-hero.glb', import.meta.url).href,
@@ -186,7 +187,7 @@ export async function loadSummerAssets({
     const [foliageGltf, propsGltf, impostorTexture, ...treeGltfs] = await Promise.all([
         loader.loadAsync(SUMMER_FOLIAGE_URL),
         loader.loadAsync(SUMMER_PROPS_URL),
-        layout && textureLoader ? textureLoader.loadAsync(SUMMER_IMPOSTOR_URL) : null,
+        layout && textureLoader ? loadDecodedTexture(SUMMER_IMPOSTOR_URL, textureLoader) : null,
         ...names.map((name) => {
             if (!SUMMER_TREE_URLS[name]) throw new Error(`[Summer] Unknown tree asset "${name}".`);
             return loader.loadAsync(SUMMER_TREE_URLS[name]);

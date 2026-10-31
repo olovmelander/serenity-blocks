@@ -1,3 +1,4 @@
+/* eslint-disable max-classes-per-file -- the r185 renderer double and its r187 subclass */
 /**
  * @fileoverview Unit tests for the Odyssey warm-up post-target compile helpers (E2 extraction).
  *
@@ -170,8 +171,9 @@ describe('the r185 hold-across-await contract', () => {
         // Signature + the JSDoc that defines the third parameter as the target SCENE.
         expect(src).toMatch(/async compileAsync\(\s*scene,\s*camera,\s*targetScene\s*=\s*null,\s*onProgress\s*=\s*null\s*\)/);
         expect(src).toMatch(/@param \{\?Scene\} targetScene - If the first argument is a 3D object/);
-        // The first argument is what gets projected; lights come from targetScene.
-        expect(src).toMatch(/this\._projectObject\(\s*scene,\s*camera,\s*0,\s*renderList/);
+        // The first argument is what gets projected (r187: through the drawing pipeline); lights
+        // come from targetScene.
+        expect(src).toMatch(/this\.drawingPipeline\.project\(\s*scene,\s*camera,\s*0,\s*renderList/);
         expect(src).toMatch(/targetScene\.traverseVisible\(/);
     });
 
@@ -544,18 +546,27 @@ describe("beginNestedContextDepth (compile at the scene pass's call depth)", () 
         expect(calls.length).toBe(5);
     });
 
-    it("pins three's contract: RenderContexts keys by attachment + mrt + callDepth; _callDepth starts at -1", () => {
+    it("pins three's contract: RenderContexts keys by attachment + mrt + camera type + callDepth; _callDepth starts at -1", () => {
         const contexts = readFileSync(path.resolve('node_modules/three/src/renderers/common/RenderContexts.js'), 'utf8');
-        expect(contexts).toMatch(/get\( renderTarget = null, mrt = null, callDepth = 0 \)/);
-        expect(contexts).toMatch(/attachmentState \+ '-' \+ mrtState \+ '-' \+ callDepth/);
+        // r187 adds the camera (#35123): the patch must pass it through.
+        expect(contexts).toMatch(/get\( renderTarget = null, mrt = null, callDepth = 0, camera = null \)/);
+        expect(contexts).toMatch(/const stateKey = attachmentState \+ '-' \+ mrtState \+ '-' \+ cameraState;/);
+        expect(contexts).toMatch(/const renderStateKey = stateKey \+ '-' \+ callDepth;/);
         const rendererSrc = readFileSync(path.resolve('node_modules/three/src/renderers/common/Renderer.js'), 'utf8');
         expect(rendererSrc).toMatch(/this\._callDepth = - 1;/);
-        expect(rendererSrc).toMatch(/this\._renderContexts\.get\( renderTarget, this\._mrt, this\._callDepth \)/);
-        // compileAsync resolves its context at the DEFAULT depth — the reason the patch exists.
-        expect(rendererSrc).toMatch(/const renderContext = this\._renderContexts\.get\( renderTarget, this\._mrt \);/);
-        // The deferred drain the side capture works around.
-        expect(rendererSrc).toMatch(/this\._compilationPromises\.push\( \{/);
+        expect(rendererSrc).toMatch(/this\._renderContexts\.get\( renderTarget, this\._mrt, this\._callDepth, camera \)/);
+        // compileAsync resolves its context after _beginPreCompile has raised the depth from -1 to 0,
+        // where the live scene pass renders at 1: the reason the patch still maps 0 to 1.
+        expect(rendererSrc).toMatch(/this\._beginPreCompile\( precompilationState \);\s*const renderContext = this\._renderContexts\.get\( renderTarget, this\._mrt, this\._callDepth, camera \);/);
+        expect(rendererSrc).toMatch(/_beginPreCompile\( precompilationState \) \{[\s\S]*?this\._callDepth \+\+;/);
+        // r187 keys node builds by the depth-free state key (#35014): a build at the wrong depth is
+        // shared, only the render objects and bindings are per depth.
+        const renderObject = readFileSync(path.resolve('node_modules/three/src/renderers/common/RenderObject.js'), 'utf8');
+        expect(renderObject).toContain('cacheKey += this.context.stateKey + \',\';');
+        // The deferred drain, and the side it now carries itself (#35016: the side capture stands aside).
+        expect(rendererSrc).toMatch(/this\._compilationPromises\.push\( \{\s*object,\s*material,\s*side: material\.side,/);
         expect(rendererSrc).toMatch(/for \( const item of compilationPromises \)/);
+        expect(rendererSrc).toMatch(/item\.material\.side = item\.side;/);
     });
 });
 
@@ -849,5 +860,221 @@ describe('item 2.11 — compileGroupUnderLiveLoop / compileGroupThroughPost(live
         const r = new R185Renderer();
         const { group } = hiddenChapter();
         expect(await compileGroupUnderLiveLoop(r, null, 'SCENE', 'CAM', group)).toBe(false);
+    });
+});
+
+// ── three r187: the drain binds each item's state around its build ─────────────────────────────
+// r187's compileAsync drains its queue between the caller's frames like r185/r186, but each item
+// runs between _beginPreCompile(item state), which binds the target + MRT the item was queued
+// under, and _finishPreCompile(), which binds the target + MRT bound when compileAsync was CALLED
+// (the scene pass here, bound for the launch only). The hooks below copy r187's (Renderer.js
+// _beginPreCompile / _finishPreCompile) for what this module touches.
+class R187Renderer extends R185Renderer {
+    constructor() {
+        super();
+        this._activeCubeFace = 0;
+        this._activeMipmapLevel = 0;
+        this._precompilationState = null;
+        this._currentRenderContext = null;
+    }
+
+    setRenderTarget(t, cubeFace = 0, mipLevel = 0) {
+        this._renderTarget = t;
+        this._activeCubeFace = cubeFace;
+        this._activeMipmapLevel = mipLevel;
+    }
+
+    _beginPreCompile(state) {
+        if (state.useFrameBufferTarget === true) this.setRenderTarget(state.renderTarget);
+        this.setMRT(state.mrt);
+        this._callDepth += 1;
+        state.previousRenderContext = this._currentRenderContext;
+        if (state.renderContext !== undefined) this._currentRenderContext = state.renderContext;
+        this._precompilationState = state;
+    }
+
+    _finishPreCompile() {
+        const state = this._precompilationState;
+        if (state.useFrameBufferTarget === true) this.setRenderTarget(state.outputRenderTarget, state.activeCubeFace, state.activeMipmapLevel);
+        this.setMRT(state.outputMRT);
+        this._currentRenderContext = state.previousRenderContext;
+        this._callDepth -= 1;
+        this._precompilationState = null;
+    }
+
+    async compileAsync(object) {
+        const useFrameBufferTarget = this.needsFrameBufferTarget && this._renderTarget === null;
+        const outputRenderTarget = this._renderTarget || this._outputRenderTarget;
+        const renderTarget = useFrameBufferTarget ? 'FRAMEBUFFER' : outputRenderTarget;
+        const state = {
+            useFrameBufferTarget,
+            renderTarget,
+            outputRenderTarget: useFrameBufferTarget ? outputRenderTarget : this._renderTarget,
+            activeCubeFace: this._activeCubeFace,
+            activeMipmapLevel: this._activeMipmapLevel,
+            item: null,
+            mrt: this._mrt,
+            outputMRT: this._mrt,
+        };
+        this._beginPreCompile(state);
+        const ctx = this._renderContexts.get(renderTarget, this._mrt, this._callDepth);
+        state.renderContext = ctx;
+        this.prologues.push({
+            object: object.name, ctx: ctx.id, target: this._renderTarget, mrt: this._mrt,
+        });
+        // Projection as three does it: a hidden node hides its subtree; one item per renderable.
+        const projected = [];
+        const walk = (node) => {
+            if (!node || node.visible === false) return;
+            if (node.isMesh) projected.push(node);
+            (node.children || []).forEach(walk);
+        };
+        walk(object);
+        const items = projected.map((mesh) => ({
+            object: mesh,
+            precompilationState: {
+                ...this._precompilationState, useFrameBufferTarget: true, renderTarget: this.getRenderTarget(), mrt: this.getMRT(), renderContext: ctx,
+            },
+        }));
+        this._finishPreCompile();
+        for (const item of items) {
+            item.precompilationState.item = item;
+            // As in r187, the first item begins inside the call (before the caller can restore).
+            this._beginPreCompile(item.precompilationState);
+            // getForRenderAsync awaits while the item is begun: a second drain on this renderer
+            // interleaving here finishes this one's state (the r187 hazard).
+            // eslint-disable-next-line no-await-in-loop
+            await Promise.resolve();
+            const before = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
+            // getForRenderAsync's yield: finish, a frame may run, begin again.
+            const active = this._precompilationState;
+            this._finishPreCompile();
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((r) => { setTimeout(r, 0); });
+            this._beginPreCompile(active);
+            const after = { target: this.getRenderTarget(), mrt: this.getMRT(), tone: this.currentToneMapping };
+            this.builds.push({
+                object: item.object.name, ctx: item.precompilationState.renderContext.id, before, after,
+            });
+            this._finishPreCompile();
+        }
+    }
+}
+
+/** A scene-graph node for the r187 double: `children`, and three's `traverse`. */
+function node(name, children = [], visible = true, extra = {}) {
+    return {
+        name,
+        isObject3D: true,
+        visible,
+        children,
+        ...extra,
+        traverse(fn) {
+            fn(this);
+            this.children.forEach((child) => (child.traverse ? child.traverse(fn) : fn(child)));
+        },
+    };
+}
+const mesh = (name, visible = true) => ({
+    name, isMesh: true, visible, frustumCulled: true, material: { uuid: `m-${name}` },
+});
+
+describe('item 2.11 under three r187\'s drain (each item binds its own state around its build)', () => {
+    it('drained builds see the scene pass, and no live frame between or inside them ever draws into it', async () => {
+        const r = new R187Renderer();
+        const a = {
+            name: 'a', isMesh: true, visible: false, frustumCulled: true, material: { uuid: 'ma' },
+        };
+        const b = {
+            name: 'b', isMesh: true, visible: false, frustumCulled: true, material: { uuid: 'mb' },
+        };
+        const group = node('ch6', [a, b], false);
+        const post = { scenePass: { renderTarget: 'SCENE_RT', getMRT: () => 'SCENE_MRT' } };
+        const done = compileGroupUnderLiveLoop(r, post, 'SCENE', 'CAM', group);
+        for (let frame = 0; frame < 8; frame += 1) {
+            r.render('post');
+            await tick(); // eslint-disable-line no-await-in-loop
+        }
+        await done;
+        // One call for the group (r187 compiles its pipelines in parallel itself), every hidden
+        // renderable revealed for its prologue.
+        expect(r.prologues.map((x) => x.object)).toEqual(['ch6']);
+        expect(r.builds.map((x) => x.object).sort()).toEqual(['a', 'b']);
+        expect([group.visible, a.visible, b.visible]).toEqual([false, false, false]);
+        for (const build of r.builds) {
+            // The prologue resolves its context after _beginPreCompile raised the depth to 0: the
+            // depth patch still makes it the scene pass's.
+            expect(build.ctx).toBe(`SCENE_RT|SCENE_MRT|${POST_SCENE_PASS_CALL_DEPTH}`);
+            expect(build.before).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT', tone: 'none' });
+            expect(build.after).toEqual({ target: 'SCENE_RT', mrt: 'SCENE_MRT', tone: 'none' });
+        }
+        const quads = r.frames.filter((f) => f.label === 'post');
+        expect(quads.length).toBe(8);
+        quads.forEach((f) => {
+            expect(f.target).toBeNull();
+            expect(f.mrt).toBeNull();
+            expect(f.tone).toBe('ACES');
+        });
+        expect(r._renderTarget).toBeNull();
+        expect(r._mrt).toBeNull();
+        expect(r._callDepth).toBe(-1);
+        expect(r.__odysseyLiveCompileReads).toBeUndefined();
+        expect(Object.prototype.hasOwnProperty.call(r, '_beginPreCompile')).toBe(false);
+    });
+
+    it('compiles groups that arrive together one after another: drains never share the renderer\'s state', async () => {
+        const r = new R187Renderer();
+        const first = node('ch3', [mesh('lake'), mesh('trees')]);
+        const second = node('ch4', [mesh('peaks')]);
+        const both = Promise.all([
+            compileGroupThroughPost(r, null, 'SCENE', 'CAM', first),
+            compileGroupThroughPost(r, null, 'SCENE', 'CAM', second),
+        ]);
+        await expect(both).resolves.toEqual([true, true]);
+        expect(r.prologues.map((x) => x.object)).toEqual(['ch3', 'ch4']);
+        expect(r.builds.map((x) => x.object)).toEqual(['lake', 'trees', 'peaks']);
+        expect(r._precompilationState).toBeNull();
+        expect(r._callDepth).toBe(-1);
+    });
+
+    it('without turns the same two drains break each other (why the turns exist)', async () => {
+        const r = new R187Renderer();
+        const calls = [r.compileAsync(node('ch3', [mesh('lake'), mesh('trees')])), r.compileAsync(node('ch4', [mesh('peaks')]))];
+        await expect(Promise.all(calls)).rejects.toThrow(TypeError);
+    });
+
+    it('shows hidden containers for the launch only, never hidden renderables or lights', async () => {
+        const r = new R187Renderer();
+        const shelf = node('shelf', [mesh('vase'), mesh('ghost', false)], false);
+        const lamp = { name: 'lamp', isLight: true, visible: false };
+        const group = node('ch5', [shelf, lamp], false);
+        await compileGroupThroughPost(r, null, 'SCENE', 'CAM', group);
+        expect(r.builds.map((x) => x.object)).toEqual(['vase']);
+        expect([group.visible, shelf.visible, lamp.visible]).toEqual([false, false, false]);
+    });
+
+    it('a pseudo-group (not an Object3D: the board presentation residue) keeps one call per object, in turns', async () => {
+        const r = new R187Renderer();
+        const a = mesh('ident');
+        const b = mesh('frame');
+        const residue = { name: 'residue', traverse(fn) { fn(a); fn(b); } };
+        await compileGroupThroughPost(r, null, 'SCENE', 'CAM', residue);
+        expect(r.prologues.map((x) => x.object).sort()).toEqual(['frame', 'ident']);
+        expect(r._precompilationState).toBeNull();
+    });
+
+    it('a group holding a visible light keeps one call per object, in turns', async () => {
+        const r = new R187Renderer();
+        const group = node('rig', [mesh('a'), mesh('b'), { name: 'sun', isLight: true, visible: true }]);
+        await compileGroupThroughPost(r, null, 'SCENE', 'CAM', group);
+        expect(r.prologues.map((x) => x.object).sort()).toEqual(['a', 'b']);
+        expect(r._precompilationState).toBeNull();
+    });
+
+    it('leaves three\'s own side handling in charge (no side capture is installed)', () => {
+        const r = new R187Renderer();
+        r._createObjectPipeline = () => {};
+        expect(beginDeferredSideCapture(r)).toBeNull();
+        expect(r.__odysseySideCapture).toBeUndefined();
     });
 });

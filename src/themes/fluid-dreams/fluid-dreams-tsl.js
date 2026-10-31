@@ -20,6 +20,8 @@ import {
 } from 'three/tsl';
 
 import { TAU, mulberry32 } from './fluid-dreams-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+import { halfBits } from '../../rendering/half-float.js';
 
 // ── Hashes (GPU) ────────────────────────────────────────────────────────────────
 
@@ -60,8 +62,14 @@ export const NOISE_SIZE = 256;
 /** The slope channels store d(height)/d(texel) · NOISE_SLOPE_GAIN + 0.5. */
 export const NOISE_SLOPE_GAIN = 0.5;
 
-/** One periodic fBm gradient-noise field over an n × n tile, not normalised. */
-function fbmField(rand, n, firstPeriod, octaves, gain) {
+/** How long one slice of the noise bake (or of its texture) runs before it yields to the page (ms). */
+const NOISE_SLICE_MS = 8;
+
+/**
+ * One periodic fBm gradient-noise field over an n × n tile, not normalised; as steps, yielding
+ * between rows once `clock` is due.
+ */
+function* fbmFieldSteps(rand, n, firstPeriod, octaves, gain, clock) {
     const field = new Float32Array(n * n);
     const fade = (v) => v * v * v * (v * (v * 6 - 15) + 10);
     let amp = 1;
@@ -99,6 +107,10 @@ function fbmField(rand, n, firstPeriod, octaves, gain) {
                 const bottom = d01 + (d11 - d01) * sx;
                 field[y * n + x] += (top + (bottom - top) * sy) * amp;
             }
+            if (clock.due()) {
+                yield 'noise';
+                clock.restart();
+            }
         }
         amp *= gain;
     }
@@ -125,10 +137,21 @@ function stretch(field) {
  * @returns {Float32Array} size × size × 4
  */
 export function bakeNoise(seed = 4129, size = NOISE_SIZE) {
+    return drainSteps(bakeNoiseSteps(seed, size));
+}
+
+/**
+ * `bakeNoise` as steps (the world's build breathes between them: shared/build-steps.js): the same
+ * tile from the same draws, yielding between rows once a slice has run NOISE_SLICE_MS. In one task
+ * with its texture it was 15 ms of the world's 20 ms build on a first visit (2026-10-31).
+ * @returns {Generator<string, Float32Array>} size × size × 4
+ */
+export function* bakeNoiseSteps(seed = 4129, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
-    const ripple = stretch(fbmField(rand, n, 8, 4, 0.55));
-    const ink = stretch(fbmField(rand, n, 3, 5, 0.52));
+    const ripple = stretch(yield* fbmFieldSteps(rand, n, 8, 4, 0.55, clock));
+    const ink = stretch(yield* fbmFieldSteps(rand, n, 3, 5, 0.52, clock));
     const out = new Float32Array(n * n * 4);
     let peak = 1e-6;
     const sx = new Float32Array(n * n);
@@ -143,6 +166,10 @@ export function bakeNoise(seed = 4129, size = NOISE_SIZE) {
             sx[i] = (ripple[y * n + xp] - ripple[y * n + xm]) * 0.5;
             sy[i] = (ripple[yp + x] - ripple[ym + x]) * 0.5;
             peak = Math.max(peak, Math.abs(sx[i]), Math.abs(sy[i]));
+        }
+        if (clock.due()) {
+            yield 'noise';
+            clock.restart();
         }
     }
     for (let i = 0; i < n * n; i += 1) {
@@ -159,12 +186,31 @@ export function bakeNoise(seed = 4129, size = NOISE_SIZE) {
  * at grazing angles; generating half-float mips on the GPU is not portable to every WebGL2 device).
  */
 export function createNoiseTexture(field, size = NOISE_SIZE) {
+    return drainSteps(createNoiseTextureSteps(field, size));
+}
+
+/**
+ * `createNoiseTexture` as steps: the same mips and the same half floats (rendering/half-float.js
+ * halfBits is three's DataUtils.toHalfFloat bit for bit), yielding between rows once a slice has
+ * run NOISE_SLICE_MS (5 ms of a first visit's build in one task, 2026-10-31).
+ * @returns {Generator<string, THREE.DataTexture>}
+ */
+export function* createNoiseTextureSteps(field, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const mipmaps = [];
     let level = field;
     let w = size;
     for (;;) {
         const half = new Uint16Array(level.length);
-        for (let i = 0; i < level.length; i += 1) half[i] = THREE.DataUtils.toHalfFloat(level[i]);
+        const row = w * 4;
+        for (let start = 0; start < level.length; start += row) {
+            const end = start + row;
+            for (let i = start; i < end; i += 1) half[i] = halfBits(level[i]);
+            if (clock.due()) {
+                yield 'noise texture';
+                clock.restart();
+            }
+        }
         mipmaps.push({ data: half, width: w, height: w });
         if (w === 1) break;
         const nw = w >> 1;

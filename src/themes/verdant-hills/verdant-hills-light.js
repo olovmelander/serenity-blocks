@@ -21,6 +21,7 @@ import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     smoothstep, texture, texture3D, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { bakeVerdantHillsCloudVolume } from './verdant-hills-cloud-volume.js';
 import { VERDANT_HILLS_MOODS, createVerdantHillsMood, verdantHillsMoodAt } from './verdant-hills-moods.js';
 import { VerdantHillsRings } from './verdant-hills-rings.js';
@@ -366,6 +367,7 @@ export class VerdantHillsLight {
         sunShadow.needsUpdate = true;
         this.shadowNode = shadow(this.sun);
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     /** Aim the shadow camera so its box holds the home hill: the oak, the wall and the lens. */
@@ -387,6 +389,7 @@ export class VerdantHillsLight {
         sun.target.updateMatrixWorld(true);
         sun.shadow.needsUpdate = true;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     addTo(group) {
@@ -718,11 +721,9 @@ export class VerdantHillsLight {
             this.uSunPool.value.set(frame.pool.x, frame.pool.z, frame.pool.radius || 400, clamp01(frame.pool.strength));
         } else this.uSunPool.value.w = 0;
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
-        // over the first frames so no late tree is missing from the static map.
+        // over its first draws (shared/static-shadow-draws.js) so no late tree is missing from the static map.
         this.shadowFrames += 1;
-        if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150) {
-            this.sun.shadow.needsUpdate = true;
-        }
+        redrawStaticShadow(this, this.sun.shadow, this.shadowFrames === 45 || this.shadowFrames === 150);
     }
 
     /**

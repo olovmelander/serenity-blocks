@@ -18,7 +18,7 @@ import {
 } from './black-hole-lens.js';
 import { BlackHoleMatter } from './black-hole-matter.js';
 import {
-    LATTICE_SIZE, bakeDiskTexture, bakeLattice, bakeSkyRows, bakeSkyTexture, createRandom,
+    LATTICE_SIZE, bakeDiskTexture, bakeDiskTextureSteps, bakeLattice, bakeSkyRows, bakeSkyTexture, createRandom,
 } from './black-hole-noise.js';
 import { resolveBlackHoleQuality } from './black-hole-quality.js';
 import { easeStep, moodDrift } from '../shared/mood-clock.js';
@@ -116,7 +116,25 @@ export async function bakeBlackHoleTexturesAsync(preset, seed = BLACK_HOLE_SEED)
         // A synchronous bake may have finished first; either result is the same bytes.
         if (!bakeCache.has(skyKey)) bakeCache.set(skyKey, data);
     }
-    if (!bakeCache.has(`disk:${seed}:${diskWidth}x${diskHeight}`)) await yieldToLoop();
+    // The gas in slices too, a task each (in one task it held a first visit's switch frame 28 ms).
+    const diskKey = `disk:${seed}:${diskWidth}x${diskHeight}`;
+    if (!bakeCache.has(diskKey)) {
+        const steps = bakeDiskTextureSteps(diskWidth, diskHeight, seed % 65521);
+        let next;
+        do {
+            // eslint-disable-next-line no-await-in-loop
+            await yieldToLoop();
+            next = steps.next();
+        } while (!next.done);
+        if (!bakeCache.has(diskKey)) bakeCache.set(diskKey, next.value);
+    }
+    // The lattice (a few ms) in a task of its own: not with the gas's last slice, nor the caller's.
+    const latticeKey = `lattice:${seed}`;
+    if (!bakeCache.has(latticeKey)) {
+        await yieldToLoop();
+        cached(latticeKey, () => bakeLattice(seed % 7919));
+        await yieldToLoop();
+    }
     return bakeBlackHoleTextures(preset, seed);
 }
 

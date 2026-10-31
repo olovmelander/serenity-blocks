@@ -733,7 +733,7 @@ describe('Nebula Flow theme: one node renderer on both backends', () => {
         const theme = createTheme();
         await expect(theme.createScene(theme.lifecycleGeneration)).rejects.toThrow(/world unavailable/);
         expect(console.error).toHaveBeenCalledOnce();
-        // Whatever the half-built world had made is let go: the theme owned it before it built.
+        // Whatever the half-built world had made is let go: a build that throws disposes it.
         expect(mocks.worlds[0]).toMatchObject({ built: false, disposed: true });
         expect(theme.world).toBeNull();
         expect(theme.post).toBeNull();

@@ -12,7 +12,9 @@ import {
     positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, vec2, vec3,
 } from 'three/tsl';
 import { FALL_FEATURE_TREES } from './fall-composition.js';
+import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
 import { fallLeafLayer, fallPathDistance, fallTerrainHeight } from './fall-terrain.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const TAU = Math.PI * 2;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -150,11 +152,21 @@ export class FallUnderstory {
     }
 
     build() {
-        this.buildLitter();
-        this.buildPlants();
-        this.buildStones();
-        this.buildMushrooms();
+        drainSteps(this.buildSteps());
         return this;
+    }
+
+    /**
+     * The understory as steps for the world's breathing build, a time slice a step: the litter, the
+     * dry grass and ferns, the stones, the caps (one 10-18 ms step of a first visit before).
+     */
+    * buildSteps() {
+        const clock = stepClock(FALL_SLICE_MS);
+        yield* this.litterSteps(clock);
+        yield* this.plantsSteps(clock);
+        yield* this.stonesSteps(clock);
+        yield* fallSlice(clock, 'understory');
+        this.buildMushrooms();
     }
 
     /** Ground shading shared by everything that lies or grows on the floor. */
@@ -170,12 +182,18 @@ export class FallUnderstory {
         return light.haze(lit, { world });
     }
 
-    scatter(count, {
+    scatter(count, options, place) {
+        return drainSteps(this.scatterSteps(count, options, place, stepClock(FALL_SLICE_MS)));
+    }
+
+    /** scatter(), a time slice a step. */
+    * scatterSteps(count, {
         near = 14, far = -70, spread = 34, pathClear = 0, bias = 1.8,
-    }, place) {
+    }, place, clock) {
         const { rng } = this;
         let placed = 0;
         for (let attempt = 0; placed < count && attempt < count * 6; attempt += 1) {
+            if ((attempt & 63) === 0) yield* fallSlice(clock, 'understory');
             const z = near - (rng() ** bias) * (near - far);
             const x = (rng() * 2 - 1) * (spread + Math.max(0, -z) * 0.5);
             if (fallPathDistance(x, z) >= pathClear) {
@@ -187,6 +205,11 @@ export class FallUnderstory {
     }
 
     buildLitter() {
+        drainSteps(this.litterSteps(stepClock(FALL_SLICE_MS)));
+    }
+
+    /** The fallen leaves, a kind at a time, a time slice a step. */
+    * litterSteps(clock) {
         const { light, rng } = this;
         const kinds = [
             {
@@ -203,7 +226,8 @@ export class FallUnderstory {
             },
         ];
         const dummy = new THREE.Object3D();
-        kinds.forEach((kind) => {
+        for (const kind of kinds) {
+            yield* fallSlice(clock, 'litter');
             const geometry = this.foliage.meshes[kind.mesh];
             const count = Math.max(1, Math.round(this.tier.litter * kind.share));
             if (geometry) {
@@ -230,7 +254,8 @@ export class FallUnderstory {
                 const species = {
                     leaf_maple: 0, leaf_maple_far: 0, leaf_oak: 1, leaf_birch: 2,
                 }[kind.mesh];
-                mesh.count = this.scatter(count, { near: kind.range[0], far: kind.range[1], spread: 30 }, (index, x, y, z) => {
+                const options = { near: kind.range[0], far: kind.range[1], spread: 30 };
+                mesh.count = yield* this.scatterSteps(count, options, (index, x, y, z) => {
                     dummy.position.set(x, y + 0.03 + rng() * 0.035, z);
                     dummy.rotation.set(-Math.PI / 2 + (rng() - 0.5) * 0.5, 0, rng() * TAU, 'YXZ');
                     dummy.rotation.y = rng() * TAU;
@@ -238,16 +263,21 @@ export class FallUnderstory {
                     dummy.updateMatrix();
                     mesh.setMatrixAt(index, dummy.matrix);
                     data.set([rng(), species, rng(), 0.35 + rng() * 0.65], index * 4);
-                });
+                }, clock);
                 mesh.instanceMatrix.needsUpdate = true;
                 mesh.frustumCulled = false;
                 mesh.matrixAutoUpdate = false;
                 this.group.add(mesh);
             }
-        });
+        }
     }
 
     buildPlants() {
+        drainSteps(this.plantsSteps(stepClock(FALL_SLICE_MS)));
+    }
+
+    /** The dry grass and the copper ferns, a time slice a step. */
+    * plantsSteps(clock) {
         const { light, rng } = this;
         const dummy = new THREE.Object3D();
         const fractHash = (position) => sin(position.x.mul(1.71).add(position.z.mul(2.37))).mul(0.5).add(0.5);
@@ -276,32 +306,42 @@ export class FallUnderstory {
             material.colorNode = this.shade(albedo, vec3(0, 1, 0), { translucent: height.mul(1.4).add(0.3) });
             return material;
         };
-        const add = (name, geometry, material, count, options, scale) => {
-            const mesh = new THREE.InstancedMesh(this.own(geometry), material, Math.max(1, count));
-            mesh.name = name;
-            mesh.count = this.scatter(count, options, (index, x, y, z) => {
-                dummy.position.set(x, y - 0.02, z);
-                dummy.rotation.set(0, rng() * TAU, 0);
-                dummy.scale.setScalar(scale[0] + rng() * (scale[1] - scale[0]));
-                dummy.updateMatrix();
-                mesh.setMatrixAt(index, dummy.matrix);
-            });
-            mesh.instanceMatrix.needsUpdate = true;
-            mesh.frustumCulled = false;
-            mesh.matrixAutoUpdate = false;
-            this.group.add(mesh);
-        };
-        add('FallDryGrass', grassGeometry(rng), plantMaterial('FallDryGrass', 0x4a3414, 0xc8963a, {
-            tints: [0x7a7a2c, 0xb4561c],
-        }), this.tier.grass, {
+        const grass = grassGeometry(rng);
+        const grassMaterial = plantMaterial('FallDryGrass', 0x4a3414, 0xc8963a, { tints: [0x7a7a2c, 0xb4561c] });
+        yield* this.tuftsSteps(clock, dummy, 'FallDryGrass', grass, grassMaterial, this.tier.grass, {
             near: 15, far: -64, spread: 30, pathClear: 2.6,
         }, [0.55, 1.2]);
-        add('FallCopperFerns', fernGeometry(), plantMaterial('FallCopperFerns', 0x3c2a10, 0xb4701c), this.tier.ferns, {
+        const ferns = fernGeometry();
+        const fernMaterial = plantMaterial('FallCopperFerns', 0x3c2a10, 0xb4701c);
+        yield* this.tuftsSteps(clock, dummy, 'FallCopperFerns', ferns, fernMaterial, this.tier.ferns, {
             near: 13, far: -44, spread: 26, pathClear: 3.4, bias: 1.3,
         }, [0.55, 1.05]);
     }
 
+    /** One kind of plant scattered over the floor, a time slice a step. */
+    * tuftsSteps(clock, dummy, name, geometry, material, count, options, scale) {
+        const { rng } = this;
+        const mesh = new THREE.InstancedMesh(this.own(geometry), material, Math.max(1, count));
+        mesh.name = name;
+        mesh.count = yield* this.scatterSteps(count, options, (index, x, y, z) => {
+            dummy.position.set(x, y - 0.02, z);
+            dummy.rotation.set(0, rng() * TAU, 0);
+            dummy.scale.setScalar(scale[0] + rng() * (scale[1] - scale[0]));
+            dummy.updateMatrix();
+            mesh.setMatrixAt(index, dummy.matrix);
+        }, clock);
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        this.group.add(mesh);
+    }
+
     buildStones() {
+        drainSteps(this.stonesSteps(stepClock(FALL_SLICE_MS)));
+    }
+
+    /** The mossy stones, a time slice a step. */
+    * stonesSteps(clock) {
         const { light, rng } = this;
         const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false }));
         material.name = 'FallMossyStones';
@@ -330,7 +370,7 @@ export class FallUnderstory {
         const mesh = new THREE.InstancedMesh(this.own(rockGeometry()), material, Math.max(1, this.tier.rocks));
         mesh.name = 'FallMossyStones';
         const dummy = new THREE.Object3D();
-        mesh.count = this.scatter(this.tier.rocks, {
+        mesh.count = yield* this.scatterSteps(this.tier.rocks, {
             near: 12, far: -56, spread: 28, pathClear: 3, bias: 1.2,
         }, (index, x, y, z) => {
             const size = 0.22 + rng() ** 2 * 0.9;
@@ -339,7 +379,7 @@ export class FallUnderstory {
             dummy.scale.set(size * (0.9 + rng() * 0.5), size, size * (0.9 + rng() * 0.5));
             dummy.updateMatrix();
             mesh.setMatrixAt(index, dummy.matrix);
-        });
+        }, clock);
         mesh.instanceMatrix.needsUpdate = true;
         mesh.castShadow = false;
         mesh.frustumCulled = false;

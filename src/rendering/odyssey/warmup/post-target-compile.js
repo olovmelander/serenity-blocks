@@ -45,6 +45,8 @@
  * uploads, first update(), the non-representative bucket members' first draw).
  */
 
+import { ensurePrecompileRestoresLiveState, watchCompileDrain } from '../../three-precompile-live-restore.js';
+
 /**
  * The renderer's ACTUAL bound target + MRT, bypassing the live-compile read override
  * ({@link beginLiveCompileReads}) — every save/restore in this module must see the truth.
@@ -227,8 +229,11 @@ export function beginNestedContextDepth(renderer) {
     const contexts = renderer?._renderContexts;
     if (!contexts || typeof contexts.get !== 'function' || contexts.__odysseyDepthPatched) return null;
     const originalGet = contexts.get;
-    contexts.get = function patchedGet(renderTarget = null, mrt = null, callDepth = 0) {
-        return originalGet.call(this, renderTarget, mrt, callDepth === 0 ? POST_SCENE_PASS_CALL_DEPTH : callDepth);
+    // Every further argument passes through: r187 keys contexts by the camera's type as well
+    // (`get(renderTarget, mrt, callDepth, camera)`), and an orthographic post quad must not
+    // resolve the perspective context.
+    contexts.get = function patchedGet(renderTarget = null, mrt = null, callDepth = 0, ...rest) {
+        return originalGet.call(this, renderTarget, mrt, callDepth === 0 ? POST_SCENE_PASS_CALL_DEPTH : callDepth, ...rest);
     };
     contexts.__odysseyDepthPatched = true;
     return () => {
@@ -266,6 +271,8 @@ export async function compileGroupThroughPost(
     options = {},
 ) {
     const postActive = !!postProcessingStack?.scenePass?.renderTarget;
+    // r187: each drained object puts back the binding that was live when it began.
+    ensurePrecompileRestoresLiveState(renderer);
     if (renderLoopActive && postActive) {
         if (!options.live) return false;
         return compileGroupUnderLiveLoop(renderer, postProcessingStack, scene, camera, group, options);
@@ -323,6 +330,10 @@ export async function compileGroupThroughPost(
  */
 export function beginDeferredSideCapture(renderer) {
     if (!renderer || typeof renderer._createObjectPipeline !== 'function') return null;
+    // r187 fixed this upstream (#35016): _createObjectPipeline queues `side: material.side` with
+    // the item's own precompile state, and _beginPreCompile applies it while the item builds. An
+    // item queued here would carry no `precompilationState`, which the drain reads first.
+    if (typeof renderer._beginPreCompile === 'function') return null;
     if (renderer.__odysseySideCapture) {
         renderer.__odysseySideCapture.count += 1;
         return renderer.__odysseySideCapture.release;
@@ -419,6 +430,98 @@ export function beginDeferredSideCapture(renderer) {
  */
 export const DEFAULT_COMPILE_CONCURRENCY = 6;
 
+/**
+ * three r187 keeps ONE precompile state per renderer (`_precompilationState`, set by
+ * `_beginPreCompile`, read and cleared by `_finishPreCompile`) while a compileAsync drains its
+ * queue, and the drain awaits between them. Two compileAsync calls draining at once on one renderer
+ * finish each other's items: three throws ("Cannot destructure property 'useFrameBufferTarget' of
+ * 'this._precompilationState' as it is null") and leaves the renderer half switched (the call depth,
+ * the render context, the target). Measured 2026-10-30 in the real game: every Odyssey prewarm
+ * failed that way and the board's canvas stopped presenting after the start. r187 also compiles up
+ * to 16 of one call's pipelines at once itself (#34816), the parallelism the fan-out was for.
+ *
+ * So on r187 a group is ONE compileAsync, and calls on one renderer take turns.
+ * @param {object} renderer
+ * @returns {boolean}
+ */
+export function drainsShareRendererState(renderer) {
+    return typeof renderer?._beginPreCompile === 'function';
+}
+
+/** renderer → the settling of its last compile turn */
+const compileTurns = new WeakMap();
+
+/**
+ * Run `launch` (which starts ONE compileAsync and returns its promise) once every earlier turn on
+ * `renderer` has settled. The launch's synchronous part runs at the start of its turn, so a binding
+ * made for the prologue only (launchCompileInScenePassPrologue) still frames it.
+ * @template T
+ * @param {object} renderer
+ * @param {() => Promise<T>} launch
+ * @returns {Promise<T>}
+ */
+export function takeCompileTurn(renderer, launch) {
+    const previous = compileTurns.get(renderer) ?? Promise.resolve();
+    let free;
+    const freed = new Promise((resolve) => { free = resolve; });
+    // The next turn starts once this call's DRAIN is over (its objects built, their pipelines
+    // requested: watchCompileDrain), while those pipelines still compile on the GPU: compiles of
+    // consecutive turns overlap as the r186 fan-out's did. Or when the call settles, if that is first.
+    const turn = previous.then(() => {
+        const watch = watchCompileDrain(renderer);
+        let call;
+        try {
+            call = Promise.resolve(launch());
+        } catch (error) {
+            watch?.dispose();
+            free();
+            throw error;
+        }
+        const settled = call.then(() => {}, () => {});
+        (watch ? Promise.race([watch.done, settled]) : settled).then(() => {
+            watch?.dispose();
+            free();
+        });
+        return call;
+    });
+    compileTurns.set(renderer, freed);
+    return turn;
+}
+
+const isRenderable = (node) => Boolean(node && (node.isMesh || node.isPoints || node.isSprite || node.isLine));
+
+/** Whether a light under `root` would enter a render list (chapter lights are virtual: hidden). */
+function hasVisibleLight(root) {
+    let found = false;
+    root.traverse((node) => {
+        if (node.isLight && node.visible !== false) found = true;
+    });
+    return found;
+}
+
+/**
+ * Show the hidden CONTAINERS under `root` (not its renderables, not its lights) for the synchronous
+ * part of `fn` only, and put them back before it returns.
+ * @template T
+ * @param {object} root
+ * @param {() => T} fn
+ * @returns {T}
+ */
+function withHiddenContainersShown(root, fn) {
+    const shown = [];
+    root.traverse((node) => {
+        if (node.visible === false && !node.isLight && !isRenderable(node)) {
+            shown.push(node);
+            node.visible = true;
+        }
+    });
+    try {
+        return fn();
+    } finally {
+        shown.forEach((node) => { node.visible = false; });
+    }
+}
+
 /** three's `DoubleSide` constant (kept numeric: this module has no three import on purpose). */
 const DOUBLE_SIDE = 2;
 
@@ -474,8 +577,21 @@ export async function compileObjectsFannedOut(
     const launch = typeof hooks.aroundCall === 'function'
         ? (object) => hooks.aroundCall(object, () => renderer.compileAsync(object, camera, scene))
         : (object) => renderer.compileAsync(object, camera, scene);
+    const shared = drainsShareRendererState(renderer);
+    // (A pseudo-group, such as the board's presentation residue over the scene's own children, is
+    // not an Object3D three can project: it keeps one call per object, in turns.)
+    if (shared && group?.isObject3D === true && typeof group.traverse === 'function' && !hasVisibleLight(group)) {
+        // three r187: the whole group in one call, in its turn (see drainsShareRendererState). A call
+        // per object compiled every visible renderable whatever its containers' visibility, so the
+        // hidden containers are shown for the call's synchronous prologue (the live path's prologue
+        // reveals the renderables too). A visible light under the group would enter the render list
+        // twice (projected, and from the scene): such a group keeps one call per object, in turns.
+        await takeCompileTurn(renderer, () => withHiddenContainersShown(group, () => launch(group)));
+        return 1;
+    }
+    const run = shared ? (object) => takeCompileTurn(renderer, () => launch(object)) : launch;
     if (!group || typeof group.traverse !== 'function') {
-        await launch(group);
+        await run(group);
         return 1;
     }
     const byMaterial = new Map();
@@ -523,7 +639,7 @@ export async function compileObjectsFannedOut(
     if (queue.length === 0) {
         // Nothing renderable under the group (or a group whose children are all hidden):
         // one plain call keeps three's own semantics for whatever is there.
-        await launch(group);
+        await run(group);
         return 1;
     }
     let calls = 0;
@@ -537,7 +653,7 @@ export async function compileObjectsFannedOut(
             for (const [object] of chain) {
                 calls += 1;
                 // eslint-disable-next-line no-await-in-loop
-                await launch(object);
+                await run(object);
             }
         }
     };
@@ -612,6 +728,8 @@ export function beginLiveCompileReads(renderer, binding) {
         count: 1,
         binding,
         liveDepth: 0,
+        /** Above 0 while three's own precompile hooks run (r187): their writes are dropped. */
+        inPrecompile: 0,
         backing: { renderTarget: renderer._renderTarget ?? null, mrt: renderer._mrt ?? null },
         release: null,
     };
@@ -623,11 +741,29 @@ export function beginLiveCompileReads(renderer, binding) {
     };
     shadow('_renderTarget', {
         get() { return active() ? state.binding.renderTarget : state.backing.renderTarget; },
-        set(value) { state.backing.renderTarget = value; },
+        set(value) { if (state.inPrecompile === 0) state.backing.renderTarget = value; },
     });
     shadow('_mrt', {
         get() { return active() ? state.binding.mrt : state.backing.mrt; },
-        set(value) { state.backing.mrt = value; },
+        set(value) { if (state.inPrecompile === 0) state.backing.mrt = value; },
+    });
+    // r187's drain binds each item's queue-time target + MRT around its build and then the launch's
+    // (_beginPreCompile / _finishPreCompile; three-precompile-live-restore.js). The launch here bound
+    // the scene pass, so those writes would leave it in the backing the next live frame draws with.
+    // The drained builds read the binding above anyway: drop the hooks' writes.
+    ['_beginPreCompile', '_finishPreCompile'].forEach((name) => {
+        const original = renderer[name];
+        if (typeof original !== 'function') return;
+        shadow(name, {
+            value: function odysseyPrecompileHook(...args) {
+                state.inPrecompile += 1;
+                try {
+                    return original.apply(this, args);
+                } finally {
+                    state.inPrecompile -= 1;
+                }
+            },
+        });
     });
     // Suspend the shadow for the whole synchronous extent of every entry point that reads or
     // rebinds the real target: renders, computes, clears, copies, resizes (the canvas MSAA buffers
@@ -765,6 +901,7 @@ export async function compileGroupUnderLiveLoop(renderer, postProcessingStack, s
     const scenePass = postProcessingStack?.scenePass;
     if (!scenePass?.renderTarget || typeof renderer?.compileAsync !== 'function') return false;
     if (renderer._isDeviceLost === true) return false;
+    ensurePrecompileRestoresLiveState(renderer);
     const binding = { renderTarget: scenePass.renderTarget, mrt: scenePass.getMRT?.() ?? null };
     const releaseReads = beginLiveCompileReads(renderer, binding);
     const releaseSideCapture = beginDeferredSideCapture(renderer);

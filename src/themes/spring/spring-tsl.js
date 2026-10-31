@@ -52,7 +52,19 @@ export const NOISE_SIZE = 256;
  * Tileable value-noise fBm, four independent fields (RGBA) at lattice periods 8, 16, 32 and 64
  * across the tile: broad, mid, fine, and grain. A feature in channel c is (tile / period) wide.
  */
-export function bakeNoise(size = NOISE_SIZE, seed = 0x5b12) {
+export function bakeNoise(size, seed) {
+    // (Never due: the steps run to the end in one.)
+    return bakeNoiseSteps(size, seed).next().value;
+}
+
+/** A clock that is never due (shared/build-steps.js stepClock's shape). */
+const UNTIMED = Object.freeze({ due: () => false, restart() {} });
+
+/**
+ * bakeNoise, a time slice of rows a step on the world's build clock (a stepClock; the world's first
+ * step baked it whole: 13 ms).
+ */
+export function* bakeNoiseSteps(size = NOISE_SIZE, seed = 0x5b12, clock = UNTIMED) {
     const out = new Uint8Array(size * size * 4);
     const lattices = [8, 16, 32, 64].map((period, c) => {
         const random = mulberry32(seed + c * 977);
@@ -75,6 +87,10 @@ export function bakeNoise(size = NOISE_SIZE, seed = 0x5b12) {
         return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
     };
     for (let j = 0; j < size; j++) {
+        if (clock.due()) {
+            yield 'noise';
+            clock.restart();
+        }
         for (let i = 0; i < size; i++) {
             for (let c = 0; c < 4; c++) {
                 let sum = 0;

@@ -39,6 +39,8 @@ import {
 } from './stellar-drift-core.js';
 import { LATTICE_SIZE, LATTICE_SLICE } from './stellar-drift-bake.js';
 import { derivedOnce } from '../shared/bake-cache.js';
+import { halfBits } from '../../rendering/half-float.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export * from './stellar-drift-core.js';
 export * from './stellar-drift-bake.js';
@@ -105,13 +107,48 @@ export function createLatticeTexture(data, size = LATTICE_SIZE) {
     return tex;
 }
 
+/** How long the fBm's mip chain runs before it yields to the page, at a row's end (ms). */
+const FBM_SLICE_MS = 8;
+/** What a probe's `make` throws: derivedOnce keeps nothing for a make that throws. */
+const NOT_DERIVED = Symbol('not derived');
+
+/** Whether the bake cache already holds what `tag` derives from `source` (nothing is made). */
+function isDerived(source, tag) {
+    try {
+        derivedOnce(source, tag, () => {
+            throw NOT_DERIVED;
+        });
+        return true;
+    } catch (error) {
+        if (error !== NOT_DERIVED) throw error;
+        return false;
+    }
+}
+
 /**
  * The fBm field as a tileable half-float texture with a CPU-built mip chain (generating
  * half-float mips on the GPU is not portable to every WebGL2 device).
  */
 export function createFbmTexture(field, size) {
+    return drainSteps(createFbmTextureSteps(field, size));
+}
+
+/**
+ * `createFbmTexture` as steps: a field's first texture derives its mip chain a slice at a time
+ * (the world's build breathes between, shared/build-steps.js), the same half floats; a field whose
+ * chain is derived already is made at once. At 512 px the chain was ~16 ms of a first visit's
+ * build task (2026-10-31).
+ * @param {Float32Array} field
+ * @param {number} size
+ * @param {{ due: () => boolean, restart: () => void }} [clock]
+ */
+export function* createFbmTextureSteps(field, size, clock = stepClock(FBM_SLICE_MS)) {
     // The CPU mip chain is derived once per cached field; each texture gets its own records.
-    const mipmaps = derivedOnce(field, `mips:${size}`, () => mipsFbm(field, size)).map((mip) => ({ ...mip }));
+    const tag = `mips:${size}`;
+    let made = null;
+    if (!isDerived(field, tag)) made = yield* mipsFbmSteps(field, size, clock);
+    // Kept as made (or, were another build to derive it meanwhile, the same chain it made).
+    const mipmaps = derivedOnce(field, tag, () => made).map((mip) => ({ ...mip }));
     const tex = new THREE.DataTexture(mipmaps[0].data, size, size, THREE.RGBAFormat, THREE.HalfFloatType);
     tex.mipmaps = mipmaps;
     tex.wrapS = THREE.RepeatWrapping;
@@ -125,14 +162,28 @@ export function createFbmTexture(field, size) {
     return tex;
 }
 
-/** The half-float mip chain of a field (pure: derived once per field). */
-function mipsFbm(field, size) {
+/**
+ * The half-float mip chain of a field (pure: derived once per field), as steps that yield at a
+ * row's end once `clock`'s slice has run. The half floats are rendering/half-float.js halfBits,
+ * three's DataUtils.toHalfFloat bit for bit without its per-call range check (most of the chain's
+ * time, 2026-10-31).
+ */
+function* mipsFbmSteps(field, size, clock) {
     const mipmaps = [];
     let level = field;
     let w = size;
     for (;;) {
         const half = new Uint16Array(level.length);
-        for (let i = 0; i < level.length; i++) half[i] = THREE.DataUtils.toHalfFloat(level[i]);
+        // A row of the level at a time, yielding once the slice has run.
+        const row = w * 4;
+        for (let start = 0; start < level.length; start += row) {
+            const end = Math.min(level.length, start + row);
+            for (let i = start; i < end; i++) half[i] = halfBits(level[i]);
+            if (clock.due()) {
+                yield 'fbm';
+                clock.restart();
+            }
+        }
         mipmaps.push({ data: half, width: w, height: w });
         if (w === 1) break;
         const nw = w >> 1;
@@ -147,6 +198,10 @@ function mipsFbm(field, size) {
                 for (let c = 0; c < 4; c++) {
                     next[o + c] = (level[a + c] + level[b2 + c] + level[c2 + c] + level[d2 + c]) * 0.25;
                 }
+            }
+            if (clock.due()) {
+                yield 'fbm';
+                clock.restart();
             }
         }
         level = next;

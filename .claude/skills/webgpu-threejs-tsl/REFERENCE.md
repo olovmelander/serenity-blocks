@@ -352,9 +352,22 @@ if (adapter.limits.maxBufferSize >= desiredSize) {
 
 See `docs/limits-and-features.md` for full details.
 
-## Version Notes (installed: 0.186.1 / r186)
+## Version Notes (installed: 0.187.0 / r187)
 
-**r186 changes from the r185 pin:**
+**r187 changes from the r186 pin** (audit: docs/THREE_UPGRADE_R186_TO_R187_2026-10.md; SKILL.md
+"r187 compile, override passes and generated code" has the details):
+- `compileAsync`'s drain binds each queued object's target + MRT, then the launch-time binding:
+  launch-only bindings need `ensurePrecompileRestoresLiveState(renderer)`.
+- Override passes key render objects by the source material too (five keys).
+- PMREMs are cube render targets; `CubeUVReflectionMapping` removed; reflections shift slightly.
+- ACES Filmic fit fix; PCF radius fix for non-square shadow maps; TSL type promotion.
+- `pixelationPass()`'s `pixelSize` is a Number only; `ViewportDepthNode.getProjectionDepth()` is
+  `projectionDepth()`; struct storage buffers are always arrays (`storage.element( 0 ).get( 'm' )`);
+  a custom light registers with `CustomLight.registerNode( CustomLightNode )`;
+  `iridescenceThicknessRange` is deprecated (`iridescenceThicknessMinimum` / `Maximum`).
+- The internal animation loop starts on first use, not at `init()`.
+
+**Retained r186 behavior (changes vs the r185 pin):**
 - Native `renderer.compileComputeAsync(nodes)` compiles without dispatching. Use the
   repo's `webgpu-compute-pipeline-async.js` wrapper to verify GPU slots and guard
   pending/failed dispatch; native compilation may resolve with an error flag.

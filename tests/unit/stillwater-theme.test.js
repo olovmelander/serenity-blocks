@@ -437,7 +437,9 @@ describe('Stillwater theme: one node renderer on both backends', () => {
         const called = (object) => [...new Set(
             [...source.matchAll(new RegExp(`\\b${object}\\??\\.(\\w+)(?:\\?\\.)?\\(`, 'g'))].map((m) => m[1]),
         )].sort();
-        expect(source).toMatch(/new StillwaterWorld\(\{[^}]+\}\)\.build\(\)/);
+        // Built a few parts to a step (buildWorldBreathing runs its buildSteps, or build on a double).
+        expect(source).toMatch(/const world = new StillwaterWorld\(\{[^}]+\}\);/);
+        expect(source).toContain('if (!(await buildWorldBreathing(world, isCurrent))) return;');
         expect(['build', ...called('world')].sort()).toEqual([...mocks.WORLD_CONTRACT, ...mocks.WORLD_OPTIONAL].sort());
         expect(called('post')).toEqual([...mocks.POST_CONTRACT].sort());
         expect(called('passThrough')).toEqual([...mocks.PASS_THROUGH_CONTRACT].sort());

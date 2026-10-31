@@ -6,12 +6,15 @@
 import {
     SUNFALL_SEED, clamp01, mulberry32, smooth,
 } from './sunfall-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export const LATTICE_SIZE = 256;
 export const LATTICE_SLICE = Object.freeze([37, 17]);
 export const FBM_SIZE = 256;
 export const OCULUS_TEX = Object.freeze({ width: 256, height: 64, reach: 1.4 });
 export const CANOPY_TEX_SIZE = 512;
+/** How long one slice of a bake run inside a build written as steps lasts before it yields (ms). */
+export const BAKE_SLICE_MS = 8;
 
 export function bakeLattice(seed = SUNFALL_SEED, size = LATTICE_SIZE) {
     const rand = mulberry32(seed ^ 0x1a77);
@@ -175,6 +178,22 @@ export function bakeOculus(seed = SUNFALL_SEED, { width, height, reach } = OCULU
  * where no crown stands, a dome per crown (its top at the authored height, falling as d²).
  */
 export function bakeCanopyHeight(plan, floorGrid, crownScale = [0.92, 0.26], size = CANOPY_TEX_SIZE) {
+    return drainSteps(bakeCanopyHeightSteps(plan, floorGrid, crownScale, size));
+}
+
+/**
+ * `bakeCanopyHeight` as steps (the world's build breathes between them: shared/build-steps.js):
+ * the same heights, yielding between rows and between crowns once a slice has run `clock`'s
+ * budget. In one task a first visit's held the switch ~10 ms (2026-10-31).
+ * @returns {Generator<string, Float32Array>}
+ */
+export function* bakeCanopyHeightSteps(
+    plan,
+    floorGrid,
+    crownScale = [0.92, 0.26],
+    size = CANOPY_TEX_SIZE,
+    clock = stepClock(BAKE_SLICE_MS),
+) {
     const [x0, x1] = floorGrid.x;
     const [z0, z1] = floorGrid.z;
     const [gw, gh] = floorGrid.size;
@@ -183,6 +202,10 @@ export function bakeCanopyHeight(plan, floorGrid, crownScale = [0.92, 0.26], siz
     const sx = (x1 - x0) / (size - 1);
     const sz = (z1 - z0) / (size - 1);
     for (let j = 0; j < size; j += 1) {
+        if (clock.due()) {
+            yield 'canopy floor';
+            clock.restart();
+        }
         const fz = (j / (size - 1)) * (gh - 1);
         const jz = Math.min(gh - 2, Math.floor(fz));
         const tz = fz - jz;
@@ -199,6 +222,10 @@ export function bakeCanopyHeight(plan, floorGrid, crownScale = [0.92, 0.26], siz
     }
     const { position, crown, count } = plan;
     for (let k = 0; k < count; k += 1) {
+        if (clock.due()) {
+            yield 'canopy crowns';
+            clock.restart();
+        }
         const cx = position[k * 3];
         const top = position[k * 3 + 1];
         const cz = position[k * 3 + 2];

@@ -2,6 +2,13 @@
  * Rainbark core: three-free constants and maths shared by the world, the director, the
  * playground effect and the unit tests. Nothing here touches the DOM, the bus or a renderer.
  */
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+
+/**
+ * How long one slice of a long plan or search (the grove's plan, the ribbons' phases, the gobo's
+ * storeys) runs before it yields to the page, inside a build written as steps (ms).
+ */
+export const PLAN_SLICE_MS = 8;
 
 /** Piece shape → integer bark code (the girdle and shadow-well encoding). 7 = old husk / unknown. */
 export const PIECE_CODE = Object.freeze({
@@ -301,6 +308,19 @@ function vividSwing(places, w, total) {
  * `areas` lists the ribbons' visible areas (any unit); a ribbon that shows nowhere takes a sliver.
  */
 export function ribbonPhases(areas) {
+    return drainSteps(ribbonPhasesSteps(areas));
+}
+
+/**
+ * `ribbonPhases` as steps (a build written as steps breathes between them:
+ * shared/build-steps.js): the same search in the same order, yielding between swaps' rows once a
+ * slice has run `clock`'s budget (PLAN_SLICE_MS by default). In one task the even phases held
+ * Rainbark's first-visit switch ~10 ms (2026-10-31).
+ * @param {ArrayLike<number>} areas
+ * @param {{ due: () => boolean, restart: () => void }} [clock]
+ * @returns {Generator<string, Float32Array>}
+ */
+export function* ribbonPhasesSteps(areas, clock = stepClock(PLAN_SLICE_MS)) {
     const n = areas.length;
     const out = new Float32Array(n);
     if (!n) return out;
@@ -312,6 +332,10 @@ export function ribbonPhases(areas) {
     for (let pass = 0; pass < 3; pass++) {
         let improved = false;
         for (let a = 0; a < n - 1; a++) {
+            if (clock.due()) {
+                yield 'phases';
+                clock.restart();
+            }
             for (let b = a + 1; b < n; b++) {
                 [order[a], order[b]] = [order[b], order[a]];
                 const swing = vividSwing(placesFor(order, w, total, places), w, total);
@@ -326,6 +350,28 @@ export function ribbonPhases(areas) {
         if (!improved) break;
     }
     return placesFor(order, w, total, out);
+}
+
+/** The ribbons' places for areas all alike (evenRibbonPhases), found once: only ever read. */
+let EVEN_PHASES = null;
+/**
+ * The ribbons' places in their cycle for ATLAS_RIBBONS ribbons of one area (ribbonPhases): what
+ * the palette's phase rows hold until the atlas's own (spread by area) are written. A pure
+ * function of the constants, found once (its steps: evenRibbonPhasesSteps).
+ * @returns {Float32Array}
+ */
+export function evenRibbonPhases() {
+    return drainSteps(evenRibbonPhasesSteps());
+}
+
+/** `evenRibbonPhases` as steps (ribbonPhasesSteps); a build runs them before the uniforms read them. */
+export function* evenRibbonPhasesSteps(clock = stepClock(PLAN_SLICE_MS)) {
+    if (!EVEN_PHASES) {
+        const phases = yield* ribbonPhasesSteps(new Float32Array(ATLAS_RIBBONS).fill(1), clock);
+        // (Found meanwhile by a call run at once: the same places, the first kept.)
+        if (!EVEN_PHASES) EVEN_PHASES = phases;
+    }
+    return EVEN_PHASES;
 }
 
 export const ISLAND_LIFT = 0.3;
@@ -1904,10 +1950,27 @@ function deepFreeze(value) {
  * @param {{ trunks: number, limbs: number }} tier  a content tier (rainbark-quality.js)
  */
 export function planGrove(seed, tier) {
+    return drainSteps(planGroveSteps(seed, tier));
+}
+
+/**
+ * `planGrove` as steps (a build written as steps breathes between them: shared/build-steps.js):
+ * the same plan from the same draws, yielding between trunks and between limbs once a slice has
+ * run PLAN_SLICE_MS. Laid in one task, a first visit's plan held Rainbark's switch ~21 ms
+ * (2026-10-31).
+ * @param {number} seed
+ * @param {{ trunks: number, limbs: number }} tier
+ * @returns {Generator<string, object>}
+ */
+export function* planGroveSteps(seed, tier) {
     const base = (Number(seed) >>> 0) || 1;
     const counts = groveCounts(tier);
     const key = `${base}:${counts.join(',')}:${limbsWanted(tier)}`;
-    if (!PLANS.has(key)) PLANS.set(key, deepFreeze(layGrove(base, counts, tier)));
+    if (!PLANS.has(key)) {
+        const plan = deepFreeze(yield* layGroveSteps(base, counts, tier));
+        // (Laid meanwhile by a call run at once: the same plan, the first kept.)
+        if (!PLANS.has(key)) PLANS.set(key, plan);
+    }
     return PLANS.get(key);
 }
 
@@ -1925,7 +1988,9 @@ const PLAN_FRAMES = GROVE_FRAMES.map((aspect) => {
     };
 });
 
-function layGrove(base, counts, tier) {
+/** The plan laid (planGroveSteps), yielding between trunks and limbs once a slice has run. */
+function* layGroveSteps(base, counts, tier) {
+    const clock = stepClock(PLAN_SLICE_MS);
     const heroRand = mulberry32(base);
     const heroes = HERO_TRUNKS.map((trunk) => ({ trunk, seed: 1 + Math.floor(heroRand() * 999) }));
     // The 16:9 fallback (as world.setLayout gives it) measures what the frame shows; every
@@ -2006,11 +2071,17 @@ function layGrove(base, counts, tier) {
         endsOf(trunk, trunk.seed, candidateEnds);
         return ends.some((e) => Math.sign(candidateEnds[0] - e[0]) !== Math.sign(candidateEnds[1] - e[1]));
     };
-    const ranks = GROVE_RANKS.map((rule) => {
+    const ranks = [];
+    for (let r = 0; r < GROVE_RANKS.length; r++) {
+        const rule = GROVE_RANKS[r];
         const rand = mulberry32((base ^ Math.imul(rule.rank, 0x9e3779b1)) >>> 0);
         const list = [];
         let behind = 0;
         for (let i = 0; i < rule.count; i++) {
+            if (clock.due()) {
+                yield 'grove';
+                clock.restart();
+            }
             let trunk = null;
             // The rank's first trunk tries the left air lane first (it may not fit there).
             const laneTries = rule.lane && i === 0 ? 300 : 0;
@@ -2090,15 +2161,16 @@ function layGrove(base, counts, tier) {
             }
         }
         // What a 16:9 frame shows first (a stable partition), so a small tier's few trunks show.
-        return [...list.filter((t) => t.visible), ...list.filter((t) => !t.visible)];
-    });
+        ranks.push([...list.filter((t) => t.visible), ...list.filter((t) => !t.visible)]);
+    }
     const trunks = heroes.filter(({ trunk }) => trunk.code === 0).map(({ trunk, seed: s }) => ({
         ...trunk, rank: 1, seed: s,
     }));
     const standing = ranks.map((list, r) => list.slice(0, counts[r]));
     standing.forEach((list) => list.forEach((trunk) => trunks.push(trunk)));
+    const limbs = yield* planLimbsSteps(base, heroes, standing, ranks, tier, clock);
     return {
-        seed: base, heroes, trunks, limbs: planLimbs(base, heroes, standing, ranks, tier),
+        seed: base, heroes, trunks, limbs,
     };
 }
 
@@ -2191,8 +2263,10 @@ function limbThinnest(record) {
  * @param {object[][]} ranks the trunks each far rank stands on this tier (the limbs' parents)
  * @param {object[][]} all   every rank's full list (what a limb must not cross)
  * @param {object} tier
+ * @param {{ due: () => boolean, restart: () => void }} clock  the plan's slice (planGroveSteps):
+ *   the limbs yield between parents once it is due
  */
-function planLimbs(base, heroes, ranks, all, tier) {
+function* planLimbsSteps(base, heroes, ranks, all, tier, clock) {
     const want = limbsWanted(tier);
     if (!want) return [];
     const rand = mulberry32((base ^ 0x51ed27) >>> 0);
@@ -2306,6 +2380,10 @@ function planLimbs(base, heroes, ranks, all, tier) {
     };
     const tipY = CANOPY_Y + LIMB_TIP_OVER;
     for (let i = 0; i < parents.length && limbs.length < want; i++) {
+        if (clock.due()) {
+            yield 'limbs';
+            clock.restart();
+        }
         const { trunk: parent, seed: parentSeed } = parents[i];
         trunkRecord(parent, parentSeed, limbPlanParent, 0, LIMB_EYE);
         const toEye = Math.atan2(-parent.z, -parent.x);

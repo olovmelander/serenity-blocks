@@ -97,11 +97,11 @@ import {
     barkAlbedo,
     buildMips,
     climbHeight,
+    evenRibbonPhases,
     fleckLodAt,
     hexToLinear,
     mistGrainAt,
     rampAt,
-    ribbonPhases,
     sunDirection,
     tideAt,
 } from './rainbark-core.js';
@@ -362,7 +362,7 @@ export function createRainbarkUniforms(textures = null) {
         palette[PALETTE_ROWS.pieceAge + code].set(rgb[0], rgb[1], rgb[2], age);
     });
     // The ribbons' places in their cycle: evenly spread until the atlas's own (by area) arrive.
-    writeRibbonPhases(palette, ribbonPhases(new Float32Array(ATLAS_RIBBONS).fill(1)));
+    writeRibbonPhases(palette, evenRibbonPhases());
     const sun = sunDirection(zone.sunElevation);
     const camY = climbHeight(4);
     const tables = { palette, events };

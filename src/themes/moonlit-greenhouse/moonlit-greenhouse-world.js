@@ -69,13 +69,13 @@ import {
 } from './moonlit-greenhouse-composition.js';
 import { createGardenNoise, createNight, tune } from './moonlit-greenhouse-tsl.js';
 import { createGlass } from './moonlit-greenhouse-glass.js';
-import { createIron } from './moonlit-greenhouse-iron.js';
+import { createIronSteps } from './moonlit-greenhouse-iron.js';
 import { createFloor } from './moonlit-greenhouse-floor.js';
 import { createLanterns } from './moonlit-greenhouse-lanterns.js';
 import {
-    createFerns, createLeaves, createPalms, createVines,
+    createFernsSteps, createLeavesSteps, createPalmsSteps, createVinesSteps,
 } from './moonlit-greenhouse-flora.js';
-import { createPads, createReeds, createWater } from './moonlit-greenhouse-pond.js';
+import { createPadsSteps, createReedsSteps, createWater } from './moonlit-greenhouse-pond.js';
 import {
     DEW, createDew, createFireflies, createMoths, createMotes, dropFall, turnOfTheAirAt,
 } from './moonlit-greenhouse-air.js';
@@ -378,9 +378,10 @@ export class MoonlitGreenhouseWorld {
     }
 
     /**
-     * The build as steps, the plan and then a part to a step: run at once by build(), or with a
-     * breath between steps while the theme comes in (shared/build-steps.js), so no single task
-     * holds the page for the whole build. The same parts in the same order.
+     * The build as steps, the plan and then a part to a step (the heavy parts, made as steps
+     * themselves, in slices of their own): run at once by build(), or with a breath between steps
+     * while the theme comes in (shared/build-steps.js), so no single task holds the page for the
+     * whole build. The same parts in the same order.
      */
     * buildSteps() {
         const { tier, U } = this;
@@ -391,18 +392,19 @@ export class MoonlitGreenhouseWorld {
             tier, U, noise: this.noise, plan: this.plan, seed: this.seed,
         };
         this.ctx = ctx;
+        // A part made as steps (a generator) is run through with yield*.
         const make = {
             glass: createGlass,
-            iron: createIron,
+            iron: createIronSteps,
             floor: createFloor,
             lanterns: createLanterns,
-            palms: createPalms,
-            ferns: createFerns,
-            leaves: createLeaves,
-            vines: createVines,
+            palms: createPalmsSteps,
+            ferns: createFernsSteps,
+            leaves: createLeavesSteps,
+            vines: createVinesSteps,
             water: createWater,
-            pads: createPads,
-            reeds: createReeds,
+            pads: createPadsSteps,
+            reeds: createReedsSteps,
             fireflies: createFireflies,
             moths: createMoths,
             motes: createMotes,
@@ -410,8 +412,9 @@ export class MoonlitGreenhouseWorld {
             blooms: createBlooms,
             queen: createQueen,
         };
+        const stepped = new Set(['iron', 'palms', 'ferns', 'leaves', 'vines', 'pads', 'reeds']);
         for (const name of Object.keys(make)) {
-            this.parts[name] = make[name](ctx);
+            this.parts[name] = stepped.has(name) ? yield* make[name](ctx) : make[name](ctx);
             yield name;
         }
         this.parts.glows = createGlows({ capacity: tier.glows, U });

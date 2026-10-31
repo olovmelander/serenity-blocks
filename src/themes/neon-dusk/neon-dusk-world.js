@@ -41,10 +41,11 @@ import {
     SUN,
 } from './neon-dusk-tsl.js';
 import { SLITS, createSky } from './neon-dusk-sky.js';
-import { createMountains } from './neon-dusk-mountains.js';
+import { createMountainsSteps } from './neon-dusk-mountains.js';
 import { AMBIENT_PULSE, createFloor } from './neon-dusk-floor.js';
 import { DIRECT_ONLY_LAYER, NeonDuskFx, pieceOutlineBits } from './neon-dusk-fx.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import {
     GameplaySurge, SURGE_WEIGHTS, Swell, softCeiling,
 } from '../shared/gameplay-surge.js';
@@ -417,9 +418,20 @@ export class NeonDuskWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work
+     * in the same order from the same draws. Built in one task, the ranges' terrain held the
+     * first-visit switch's worst frame at ~44 ms (2026-10-31).
+     */
+    * buildSteps() {
         const { q, u, rand } = this;
         this.parts.sky = createSky(u, { clouds: q.clouds, starDensity: q.stars });
-        this.parts.mountains = createMountains(u, { detail: q.detail, contours: q.contours });
+        yield 'sky';
+        this.parts.mountains = yield* createMountainsSteps(u, { detail: q.detail, contours: q.contours });
+        yield 'mountains';
         const floor = createFloor(u, { reflectionScale: q.reflection, reflectionBlur: q.reflectionBlur });
         this.parts.floor = floor.mesh;
         this.reflection = floor.reflection;

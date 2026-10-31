@@ -50,6 +50,7 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     CALLS,
@@ -85,7 +86,7 @@ import {
     VORTEX,
     VORTEX_HOLD,
     approach,
-    bakeNoise,
+    bakeNoiseSteps,
     clamp01,
     createLightPass,
     createNoiseTexture,
@@ -367,7 +368,19 @@ export class OceanWorld {
     }
 
     build() {
-        const noise = createNoiseTexture(bakeNoise(), NOISE_SIZE);
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order: the noise, the water and the
+     * seabed, the reef, the kelp and the grass, the life. Built in one task with its noise bake and
+     * the plans, it held the first-visit switch's worst frame at ~53 ms (2026-10-31).
+     */
+    * buildSteps() {
+        const noiseField = yield* bakeNoiseSteps();
+        yield 'noise';
+        const noise = createNoiseTexture(noiseField, NOISE_SIZE);
         this.textures.push(noise);
         const u = createOceanUniforms({ noise, light: null });
         this.u = u;
@@ -380,14 +393,17 @@ export class OceanWorld {
         this.addPart('backdrop', this.backdrop);
         this.addPart('surface', createSurface(u, { waves: tier.waves, clouds: tier.clouds, light: tier.light }));
         this.addPart('seabed', createSeabed(u, { detail: tier.seabed }), { stage: true });
+        yield 'water and seabed';
 
         // ── What grows on the canyon ──
         const reef = planReef(tier.corals);
         this.reef = reef;
         this.gardens = gardensOf(reef);
         COLONY_KINDS.forEach((kind) => this.addPart(kind, createColonies(u, kind, reef[kind]), { stage: true }));
+        yield 'reef';
         this.addPart('kelp', createKelp(u, planKelp(tier.kelp), tier.blades), { stage: true });
         this.addPart('grass', createGrass(u, planGrass(tier.grass)), { stage: true });
+        yield 'kelp and grass';
 
         // ── What lives in the water (world space: each places itself with the squeeze) ──
         this.addPart('school', createSchool(u, tier.school, { glints: tier.glints }));

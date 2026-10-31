@@ -18,6 +18,7 @@
 import {
     CREST, EYE, PLACES, clamp01, mulberry32, smooth,
 } from './grainfields-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 // ── Small fields of numbers ───────────────────────────────────────────────────────
 
@@ -367,6 +368,9 @@ export const CLOSE_STAND = Object.freeze({
     near: 1.25, far: 2.55, bearings: Object.freeze([-44, 20]), share: 0.0153,
 });
 
+/** How long one slice of the barley's planting runs before it yields to the page (ms). */
+export const PLANT_SLICE_MS = 8;
+
 /**
  * The barley's clumps round the eye: `count` sites between `near` and `far` metres, kept only where
  * barley grows. Inside `knee` metres they stand at a crop's own density (uniform over the ground);
@@ -375,10 +379,13 @@ export const CLOSE_STAND = Object.freeze({
  * fade) where fade runs from 1 to 0 over the last eighth of the reach (the land's carpet takes
  * over; `fade: false` keeps them whole to the edge). `bearings` the span they cover; `bank: false`
  * plants the clearing round the eye too (the close stand). Deterministic for a seed.
+ *
+ * As steps: yields between tries once `clock` is due (a High-tier near stand was one ~59 ms task
+ * of a first visit, 2026-10-31); the same draws in the same order, so the same sites.
  */
-export function grainSites({
+export function* grainSitesSteps({
     count, near, far, knee = near, seed = 0x6a7e, bearings = GRAIN_BEARINGS, bank = true, fade = true,
-}) {
+}, clock = stepClock(PLANT_SLICE_MS)) {
     const random = mulberry32(seed);
     const out = new Float32Array(count * 8);
     const k = Math.max(near, Math.min(far, knee));
@@ -393,6 +400,10 @@ export function grainSites({
     let n = 0;
     let tries = 0;
     while (n < count && tries < count * 6) {
+        if ((tries & 255) === 0 && clock.due()) {
+            yield 'grain';
+            clock.restart();
+        }
         tries += 1;
         const r = distance(random());
         const bearing = b0 + (b1 - b0) * random();
@@ -413,6 +424,11 @@ export function grainSites({
         n += 1;
     }
     return { data: out.subarray(0, n * 8), count: n };
+}
+
+/** grainSitesSteps at once. @returns {{ data: Float32Array, count: number }} */
+export function grainSites(options) {
+    return drainSteps(grainSitesSteps(options));
 }
 
 // ── What the barley covers ────────────────────────────────────────────────────────

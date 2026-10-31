@@ -61,6 +61,7 @@ import {
     ThermalBloomWorld, REST_RIG, fovForAspect, thermalBloomBakeJobs,
 } from './thermal-bloom-world.js';
 import { prepareThermalBloomBakes } from './thermal-bloom-bake-loader.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 import { POST_LOOK, ThermalBloomPost, createPassThroughPipeline } from './thermal-bloom-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './thermal-bloom-composition.js';
 import { THERMAL_BLOOM_EVENT_HANDLERS, ThermalBloomDirector } from './thermal-bloom-director.js';
@@ -254,13 +255,16 @@ export default class ThermalBloomTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new ThermalBloomWorld({
+            const world = new ThermalBloomWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
             });
-            this.world.build();
+            // A part to a step with a breath between (shared/build-steps.js). The theme owns the
+            // world once it is whole; a build that throws half-way, or a start stopped meanwhile,
+            // leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

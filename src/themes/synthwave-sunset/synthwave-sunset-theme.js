@@ -23,6 +23,7 @@ import { BaseTheme } from '../base-theme.js';
 import { resolveTargetFps } from '../theme-frame-pacer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { ComboTracker } from '../../core/combo-tracker.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { RIG } from './synthwave-sunset-tsl.js';
 import {
@@ -181,11 +182,19 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         const ready = await this.initRenderer(container, ownerGeneration);
         if (!ready) return;
 
-        this.world = new SynthwaveWorld({
+        const isCurrent = () => ownerGeneration === this.lifecycleGeneration
+            && this.isActive
+            && !this.cleanupComplete;
+        const world = new SynthwaveWorld({
             scene: this.scene,
             quality: this.currentQuality,
             random: () => this.random(),
-        }).build();
+        });
+        // A part or two to a step with a breath between (shared/build-steps.js). The theme owns
+        // the world once it is whole; a build that throws half-way, or a start stopped
+        // meanwhile, leaves it disposed.
+        if (!(await buildWorldBreathing(world, isCurrent))) return;
+        this.world = world;
         this.world.bindCamera(this.camera);
         this.appliedBoard = readBoardRect();
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);

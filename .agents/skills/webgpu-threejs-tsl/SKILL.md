@@ -1,16 +1,17 @@
 ---
 name: webgpu-threejs-tsl
-description: Three.js WebGPU + TSL reference (node materials, compute shaders, post-processing) verified against this repo's pinned three 0.186.1 (r186). Use when creating or changing any visual surface — a theme (src/themes), a playground effect (src/playground/effects), an Odyssey chapter (src/rendering/odyssey) — or when working with shaders, particles, glow/bloom, reflections, auroras, GPU compute, node materials, or debugging WebGPU validation errors and TSL compile failures. Not for Phaser 2D code, DOM/CSS UI, Electron shell, or audio work.
+description: Three.js WebGPU + TSL reference (node materials, compute shaders, post-processing) verified against this repo's pinned three 0.187.0 (r187). Use when creating or changing any visual surface — a theme (src/themes), a playground effect (src/playground/effects), an Odyssey chapter (src/rendering/odyssey) — or when working with shaders, particles, glow/bloom, reflections, auroras, GPU compute, node materials, or debugging WebGPU validation errors and TSL compile failures. Not for Phaser 2D code, DOM/CSS UI, Electron shell, or audio work.
 ---
 
-# WebGPU Three.js with TSL (three r186)
+# WebGPU Three.js with TSL (three r187)
 
 TSL (Three.js Shading Language) is a node-based shader abstraction: you write GPU
 shaders in JavaScript instead of GLSL/WGSL strings. Every visual surface in this
 repo (themes, playground effects, Odyssey chapters) is WebGPU/TSL.
 
-**Version contract:** this repo pins `three@0.186.1` (r186). The migration-sensitive APIs below
-were reverified against that package; historical r185 notes describe retained behavior. TSL churns fast between releases — when an API is in
+**Version contract:** this repo pins `three@0.187.0` (r187). The r187 notes below come from the
+audit of that package (docs/THREE_UPGRADE_R186_TO_R187_2026-10.md); r186 and r185 notes describe
+behavior that audit found retained. TSL churns fast between releases — when an API is in
 doubt, the source of truth is `node_modules/three/src/Three.TSL.js` (TSL exports)
 and `node_modules/three/src/Three.WebGPU.js` (renderer/material exports), not your
 training data and not the three.js wiki.
@@ -275,7 +276,54 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 > reversed-edge smoothsteps (`halcyon-apex.effect.js` at 182ebd19).
 > Prefer forward edges for readability; do not "fix" a working reversed one on this rule's say-so.
 
-## r186 lifecycle and compute
+## r187 compile, override passes and generated code
+
+- `compileAsync` drains its queue between your frames, and each queued object now binds the
+  target + MRT it was queued under, then the ones bound when `compileAsync` was CALLED. Binding
+  a target for the launch only (`setRenderTarget(t); const p = renderer.compileAsync(...);
+  setRenderTarget(previous)`) gets `t` bound again after every drained object, so the next frame
+  draws into it. Call `ensurePrecompileRestoresLiveState(renderer)` from
+  `src/rendering/three-precompile-live-restore.js` first (Spring's impostors and Odyssey's
+  warm-up helpers do), or hold the binding across the await as three's `PassNode.compileAsync` does.
+- `compileAsync` keeps the material side of each queued pass itself (#35016) and compiles up to
+  16 pipelines at once (#34816); node builds are shared across call depths (#35014).
+- **Never run two `compileAsync` calls on one renderer at the same time.** r187 keeps one
+  `_precompilationState` per renderer while a call drains its queue, and the drain awaits with it
+  set: a second call's drain finishes the first's items ("Cannot destructure property
+  'useFrameBufferTarget' of 'this._precompilationState' as it is null") and leaves the renderer
+  half switched (Odyssey's six-wide prewarm: every prewarm failed, the map stopped presenting).
+  Compile a group in ONE call (r187 parallelises its pipelines) and queue calls per renderer:
+  `takeCompileTurn` / `compileObjectsFannedOut` in `src/rendering/odyssey/warmup/post-target-compile.js`.
+- three creates its **mipmap pipelines** (`mipmap-<format>-2d-array`) with the SYNCHRONOUS
+  `createRenderPipeline` the first time a texture of that format needs mips, once per GPUDevice: on the
+  GPU process's main thread, a visible stall (up to ~80 ms at a theme switch). Renderers started through
+  BaseTheme or the Odyssey board warm them with `warmMipmapPipelines` (`src/rendering/mipmap-pipeline-warm.js`);
+  a new renderer elsewhere that uploads mipmapped textures should call it right after `init()`.
+- r187 can build a render object's nodes asynchronously, a shader stage at a time
+  (`renderer._nodes.getForRender(renderObject, yieldFn)`); the in-play switch's hidden build uses it
+  (`sliceBuilds` in `src/rendering/async-render-pipelines.js`) so no large material builds inside a frame.
+  Its first frames then draw nothing, and three draws a shadow map only in a frame that draws a
+  receiver: a static map (`shadow.autoUpdate = false`) redrawn "on the first N frames" misses its
+  casters. Count the first redraws as draws with `redrawStaticShadow` (`src/themes/shared/static-shadow-draws.js`).
+- An override pass (`scene.overrideMaterial`, the shadow pass) files its render objects under
+  five keys, the source material fifth (`renderer._currentSourceMaterial`). Code that looks render
+  objects up must add it (see `chainKeysOf` in `src/rendering/async-render-pipelines.js`).
+- PMREMs are cube render targets (#34585); `CubeUVReflectionMapping` is gone. Reflections and
+  environment lighting look slightly different from r186.
+- ACES Filmic's fit denominator was fixed (#35110): ACES-toned themes shift slightly. The PCF
+  radius of non-square shadow maps was fixed (#35018).
+- TSL promotes mixed operand types in operators and math functions (#33695).
+- Generated code names changed: cached values are locals named `nodeConstN` (`let nodeConstN = …`
+  in WGSL, `float nodeConstN = …` in GLSL), and a uniform array is read as `nodeUniformN.value[i]`
+  (WGSL) / `nodeUniformN[i]` (GLSL), not `NodeBuffer_N`. Shader-text tests must not pin one
+  version's names.
+- A device-less renderer used to build shaders in a test needs
+  `renderer._bindings = { getSharedBindGroup: (group) => group }` (shared bind groups are read from
+  the renderer's Bindings, which `init()` makes).
+- `build/three.webgpu.js` imports the node system, `QuadMesh` and `CubeRenderTarget` from
+  `build/three.tsl.js`; source contracts read both.
+
+## r186 lifecycle and compute (retained in r187)
 
 - Use `compileComputeAsync` from `src/rendering/webgpu-compute-pipeline-async.js`
   on loading surfaces. It delegates to native compilation, checks actual GPU readiness,

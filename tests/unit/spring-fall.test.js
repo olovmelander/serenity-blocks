@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    BURSTS, LANDINGS, LIP_Y, POOL_Y, POUR, POUR_TIME, RIBS, TONGUES, faceAlong, fallToWorld, lipAlong, lipCrest,
-    lipDepth, pourPath, poolBoil, worldToFall,
+    LIP_Y, POOL_Y, POUR, POUR_TIME, RIBS, TONGUES, faceAlong, fallBursts, fallLandings, fallToWorld, lipAlong,
+    lipCrest, lipDepth, pourPath, poolBoil, worldToFall,
 } from '../../src/themes/spring/spring-fall-plan.js';
 import { IMPOSTOR, impostorCells } from '../../src/themes/spring/spring-impostors.js';
 
@@ -86,14 +86,14 @@ describe('spring fall: the water', () => {
     });
 
     it('lands out from the face and boils there, calming downstream', () => {
-        const strongest = LANDINGS.reduce((a, b) => (b.power > a.power ? b : a));
+        const strongest = fallLandings().reduce((a, b) => (b.power > a.power ? b : a));
         expect(strongest.along).toBeGreaterThan(4);
         expect(strongest.along).toBeLessThan(11);
         expect(poolBoil(strongest.along, strongest.across)).toBeGreaterThan(0.85);
         expect(poolBoil(strongest.along + 40, strongest.across)).toBeLessThan(0.45);
         expect(poolBoil(strongest.along, 60)).toBe(0);
-        expect(BURSTS.length).toBeGreaterThan(4);
-        for (const burst of BURSTS) expect(burst.y).toBeGreaterThan(POOL_Y);
+        expect(fallBursts().length).toBeGreaterThan(4);
+        for (const burst of fallBursts()) expect(burst.y).toBeGreaterThan(POOL_Y);
     });
 });
 

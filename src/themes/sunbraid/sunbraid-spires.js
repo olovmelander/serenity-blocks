@@ -14,7 +14,8 @@ import {
     positionWorld, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { SPIRE_LAYOUT, spireFoot } from './sunbraid-plan.js';
-import { SPIRE_VARIANTS, buildSpireMesh } from './sunbraid-spire-shape.js';
+import { SPIRE_SLICE_MS, SPIRE_VARIANTS, buildSpireMeshSteps } from './sunbraid-spire-shape.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { centroidVarying } from '../shared/centroid-varying.js';
 import {
     haze, mist, sbHash21, sunLight, sunVisibility,
@@ -140,6 +141,15 @@ function createSpireMaterial(u, t) {
 }
 
 export function createSpires(u, t, tier) {
+    return drainSteps(createSpiresSteps(u, t, tier));
+}
+
+/**
+ * `createSpires` as steps (the world's build breathes between them): the material, then each
+ * shape's mesh in slices (buildSpireMeshSteps, one clock across them) and its instances.
+ */
+export function* createSpiresSteps(u, t, tier) {
+    const clock = stepClock(SPIRE_SLICE_MS);
     const material = createSpireMaterial(u, t);
     const meshes = [];
     const geometries = [];
@@ -153,7 +163,7 @@ export function createSpires(u, t, tier) {
         const members = SPIRE_LAYOUT.map((spire, index) => ({ spire, index }))
             .filter(({ spire }) => spire.variant === v);
         if (!members.length) continue;
-        const shape = buildSpireMesh(v, tier.spire.segs, tier.spire.rings);
+        const shape = yield* buildSpireMeshSteps(v, tier.spire.segs, tier.spire.rings, clock);
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.BufferAttribute(shape.position, 3));
         geometry.setAttribute('normal', new THREE.BufferAttribute(shape.normal, 3));

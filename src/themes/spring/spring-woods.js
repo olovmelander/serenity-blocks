@@ -32,15 +32,18 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { DEG, clamp as clampJs, mulberry32 } from './spring-core.js';
+import {
+    DEG, SPRING_SLICE_MS, clamp as clampJs, mulberry32,
+} from './spring-core.js';
 import { aerial, sunShare } from './spring-light.js';
 import { noise3 } from './spring-tsl.js';
 import { EYE, PLACES } from './spring-plan.js';
 import { fallToWorld } from './spring-fall-plan.js';
-import { createImpostorWoods } from './spring-impostors.js';
+import { createImpostorWoodsSteps } from './spring-impostors.js';
 import {
     birchShare, forestCover, groundHeight, groundNormal, knollOutside, standable, waterEdge,
 } from './spring-terrain.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /**
  * Where the woods stand: bearings (degrees, wide enough for portrait's turn and the camera's
@@ -56,7 +59,18 @@ export const FALL_WOODS = Object.freeze({ share: 0.05, along: Object.freeze([-90
  * The trees: the forest cover sampled by a seeded walk over the wedge, thinning with distance
  * (far trees are drawn larger, as groups). Never in the water, on the knoll's meadow or on a cliff.
  */
-export function woodSites(baked, count = 10000, seed = 0x3d71, { nearBirches = false } = {}) {
+export function woodSites(baked, count, seed, options) {
+    return drainSteps(woodSitesSteps(baked, count, seed, options));
+}
+
+/** woodSites, a time slice a step (a first visit's woods took 21 ms of one step). */
+export function* woodSitesSteps(
+    baked,
+    count = 10000,
+    seed = 0x3d71,
+    { nearBirches = false } = {},
+    clock = stepClock(SPRING_SLICE_MS),
+) {
     const random = mulberry32(seed);
     const sites = [];
     const w = {};
@@ -67,6 +81,10 @@ export function woodSites(baked, count = 10000, seed = 0x3d71, { nearBirches = f
     // where the wedge's walk, thinning with distance, would leave them bare.
     const fallShare = Math.round(count * FALL_WOODS.share);
     while (sites.length < count && tries < count * 40) {
+        if ((tries & 63) === 0 && clock.due()) {
+            yield 'wood sites';
+            clock.restart();
+        }
         tries++;
         let x;
         let z;
@@ -256,11 +274,19 @@ export function woodsMaterial(u, tex) {
  * The woods: cards of the modelled trees from the impostor atlas when there is one
  * (spring-impostors.js), else the simple trees below.
  */
-export function createWoods(u, tex, tier, baked, { atlas = null, samples = 0 } = {}) {
+export function createWoods(u, tex, tier, baked, options) {
+    return drainSteps(createWoodsSteps(u, tex, tier, baked, options));
+}
+
+/** createWoods, its sites walked a time slice a step; the meshes are made in the last. */
+export function* createWoodsSteps(u, tex, tier, baked, { atlas = null, samples = 0 } = {}) {
     if (atlas?.layout.cells.length) {
-        return createImpostorWoods(u, atlas, woodSites(baked, tier.woods, 0x3d71, { nearBirches: true }), { samples });
+        const sites = yield* woodSitesSteps(baked, tier.woods, 0x3d71, { nearBirches: true });
+        yield 'wood sites';
+        return yield* createImpostorWoodsSteps(u, atlas, sites, { samples });
     }
-    const sites = woodSites(baked, tier.woods);
+    const sites = yield* woodSitesSteps(baked, tier.woods);
+    yield 'wood sites';
     const material = woodsMaterial(u, tex);
     const meshes = [];
     const geometries = [];

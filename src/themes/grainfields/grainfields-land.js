@@ -57,6 +57,7 @@ import {
 } from './grainfields-plan.js';
 import { gfHash21, PATH_ROWS } from './grainfields-tsl.js';
 import { aerial, lightSurface, sunGlow } from './grainfields-light.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** The fan: half-width (degrees) of the bearings it covers, and its nearest and farthest rows. */
 export const FAN = Object.freeze({ halfAngle: 54, near: 0.4, far: 60000 });
@@ -104,11 +105,16 @@ function canopyHeight(x, z) {
     return 17 + 5 * n;
 }
 
+/** How long one slice of the mesh's posts runs before it yields to the page (ms). */
+const FAN_SLICE_MS = 8;
+
 /**
  * The mesh's posts as two Float32Arrays (positions xyz, cover: forest, belt, belt kind, unused),
- * `cols × rows` posts, built in slices: a generator that yields between slices.
+ * `cols × rows` posts, built in slices: a generator that yields between slices (rows) once its
+ * clock is due (`clock`: shared with the steps around it; fixed 24-row slices ran 3-11 ms each, and
+ * back to back held the first visit ~50 ms, 2026-10-31).
  */
-export function* fanSteps(cols, rows) {
+export function* fanSteps(cols, rows, clock = stepClock(FAN_SLICE_MS)) {
     const positions = new Float32Array(cols * rows * 3);
     const cover = new Float32Array(cols * rows * 4);
     const half = FAN.halfAngle * DEG;
@@ -134,7 +140,10 @@ export function* fanSteps(cols, rows) {
             cover[q + 2] = belt.kind;
             cover[q + 3] = 0;
         }
-        if (r % 24 === 23) yield r;
+        if (r < rows - 1 && clock.due()) {
+            yield r;
+            clock.restart();
+        }
     }
     return { positions, cover };
 }
@@ -477,8 +486,17 @@ export function createLandMaterial(u, t) {
 }
 
 export function createLand(u, t, tier, prepared) {
+    return drainSteps(createLandSteps(u, t, tier, prepared));
+}
+
+/**
+ * `createLand` as steps: the fan's geometry, then its material and the knoll's finer mesh (the
+ * whole land was one ~18 ms piece of a first visit's build, 2026-10-31); returns the part.
+ */
+export function* createLandSteps(u, t, tier, prepared) {
     const { cols, rows } = tier.fan;
     const geometry = createFanGeometry(prepared.fan, cols, rows);
+    yield 'fan';
     const material = createLandMaterial(u, t);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'GrainfieldsLand';

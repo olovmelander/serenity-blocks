@@ -11,6 +11,8 @@ import {
     Fn, abs, cameraPosition, color, cos, dot, float, floor, fract, fwidth, hash, length, mix, normalize,
     positionWorld, pow, reflect, saturate, sin, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
+import { FALL_SLICE_MS, fallSlice, fallVertexNormalsSteps } from './fall-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export const FALL_GROUND_BOUNDS = Object.freeze({
     minX: -110, maxX: 110, minZ: -150, maxZ: 30,
@@ -109,8 +111,13 @@ function leafTint(hue) {
     return mix(warm, dry, smoothstep(0.46, 0.58, hue)).mul(mix(1, 1.32, smoothstep(0.9, 0.98, hue)));
 }
 
-/** R = trodden path, G = damp moss, B = broad tonal drift, A = sunlit clearing. */
-function createGroundMap(rng) {
+/**
+ * R = trodden path, G = damp moss, B = broad tonal drift, A = sunlit clearing: the texels, a time
+ * slice a step (its lattice drawn from `rng` first, as before).
+ * @param {() => number} rng
+ * @param {{ due: () => boolean, restart: () => void }} clock
+ */
+function* groundMapSteps(rng, clock) {
     const data = new Uint8Array(MAP_SIZE * MAP_SIZE * 4);
     const cells = 12;
     const lattice = new Float32Array(cells * cells * 2);
@@ -130,6 +137,7 @@ function createGroundMap(rng) {
         minX, maxX, minZ, maxZ,
     } = FALL_GROUND_BOUNDS;
     for (let row = 0; row < MAP_SIZE; row += 1) {
+        yield* fallSlice(clock, 'ground map rows');
         for (let column = 0; column < MAP_SIZE; column += 1) {
             const u = column / (MAP_SIZE - 1);
             const v = row / (MAP_SIZE - 1);
@@ -148,6 +156,11 @@ function createGroundMap(rng) {
             data[offset + 3] = Math.round(THREE.MathUtils.clamp(clearing, 0, 1) * 255);
         }
     }
+    return data;
+}
+
+/** The ground map over its texels. */
+function groundMapTexture(data) {
     const map = new THREE.DataTexture(data, MAP_SIZE, MAP_SIZE, THREE.RGBAFormat);
     map.magFilter = THREE.LinearFilter;
     map.minFilter = THREE.LinearFilter;
@@ -179,6 +192,16 @@ export class FallTerrain {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The floor as steps for the world's breathing build, a time slice a step: its heights, its
+     * normals, its ground map, its material (one 20-30 ms step of a first visit before).
+     */
+    * buildSteps() {
+        const clock = stepClock(FALL_SLICE_MS);
         const {
             minX, maxX, minZ, maxZ,
         } = FALL_GROUND_BOUNDS;
@@ -186,13 +209,18 @@ export class FallTerrain {
         geometry.rotateX(-Math.PI / 2);
         const positions = geometry.attributes.position;
         for (let i = 0; i < positions.count; i += 1) {
+            if ((i & 255) === 0) yield* fallSlice(clock, 'floor');
             const x = positions.getX(i) + (minX + maxX) / 2;
             const z = positions.getZ(i) + (minZ + maxZ) / 2;
             positions.setXYZ(i, x, fallTerrainHeight(x, z), z);
         }
-        geometry.computeVertexNormals();
+        // computeVertexNormals(), summed a slice at a time into the plane's own normals.
+        const { normal } = geometry.attributes;
+        normal.array.set(yield* fallVertexNormalsSteps(positions.array, geometry.index.array, clock));
+        // (As computeVertexNormals leaves it.)
+        normal.needsUpdate = true;
         geometry.computeBoundingSphere();
-        this.groundMap = createGroundMap(this.rng);
+        this.groundMap = groundMapTexture(yield* groundMapSteps(this.rng, clock));
         const material = this.createMaterial();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'FallLeafCarpet';
@@ -201,7 +229,6 @@ export class FallTerrain {
         this.group.add(mesh);
         this.owned.push(geometry, material, this.groundMap);
         this.mesh = mesh;
-        return this;
     }
 
     createMaterial() {

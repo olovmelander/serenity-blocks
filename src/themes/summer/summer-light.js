@@ -17,6 +17,8 @@ import {
 import {
     SUMMER_HOUR_COLOURS, SUMMER_HOURS, createSummerHourState, summerHourAt, summerSunDirection,
 } from './summer-hours.js';
+import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { SummerRings } from './summer-rings.js';
 
 /** Where the evening sun stands (degrees); the other hours' suns are in summer-hours.js. */
@@ -180,12 +182,16 @@ export class SummerLight {
         sunShadow.bias = -0.0011 * (2048 / tier.shadowMap[0]) ** 1.5;
         sunShadow.normalBias = 0;
         sunShadow.radius = 2.6;
+        // three r186's PCF (its disc scaled by the texel width on both axes): r187's per-axis disc
+        // grained the lit leaves on this 2:1 map. See shared/width-pcf-shadow-filter.js.
+        sunShadow.filterNode = widthPcfShadowFilter;
         // The land never moves and the sun moves slowly, so its shadows are drawn only when
         // the sun has moved a little way (aimSun), not every frame.
         sunShadow.autoUpdate = false;
         sunShadow.needsUpdate = true;
         this.shadowNode = shadow(this.sun);
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     /** Aim the shadow camera so its box holds the meadow, its trees and the cove. */
@@ -205,6 +211,7 @@ export class SummerLight {
         camera.updateProjectionMatrix();
         this.aimSun(true);
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     /**
@@ -423,11 +430,9 @@ export class SummerLight {
         this.speciesVectors[0].fromArray(this.species, 0);
         this.speciesVectors[1].fromArray(this.species, 4);
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
-        // over the first frames so no late tree is missing from the static map.
+        // over its first draws (shared/static-shadow-draws.js) so no late tree is missing from the static map.
         this.shadowFrames += 1;
-        if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150) {
-            this.sun.shadow.needsUpdate = true;
-        }
+        redrawStaticShadow(this, this.sun.shadow, this.shadowFrames === 45 || this.shadowFrames === 150);
     }
 
     /**

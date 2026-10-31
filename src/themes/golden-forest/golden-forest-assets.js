@@ -14,6 +14,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const GOLDEN_FOREST_TREE_URLS = Object.freeze({
     'spruce-hero': new URL('./assets/spruce-hero.glb', import.meta.url).href,
@@ -239,7 +240,7 @@ export async function loadGoldenForestAssets({
     const [foliageGltf, propsGltf, impostorTexture, craneGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(GOLDEN_FOREST_FOLIAGE_URL),
         loader.loadAsync(GOLDEN_FOREST_PROPS_URL),
-        layout && textureLoader ? textureLoader.loadAsync(GOLDEN_FOREST_IMPOSTOR_URL) : null,
+        layout && textureLoader ? loadDecodedTexture(GOLDEN_FOREST_IMPOSTOR_URL, textureLoader) : null,
         crane ? loadCrane(loader) : null,
         ...names.map((name) => {
             if (!GOLDEN_FOREST_TREE_URLS[name]) throw new Error(`[GoldenForest] Unknown tree asset "${name}".`);

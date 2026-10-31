@@ -15,6 +15,8 @@ import {
     smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { forestRide } from './forest-plan.js';
+import { FOREST_SLICE_MS, forestSlice, forestVertexNormalsSteps } from './forest-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export const FOREST_BOUNDS = Object.freeze({
     minX: -260, maxX: 260, minZ: -380, maxZ: 40,
@@ -86,6 +88,16 @@ export class ForestTerrain {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The floor as steps for the world's breathing build, a time slice a step: its heights, its
+     * triangles, its normals, its material (one 13-22 ms piece of a first visit's build before).
+     */
+    * buildSteps() {
+        const clock = stepClock(FOREST_SLICE_MS);
         const {
             minX, maxX, minZ, maxZ,
         } = FOREST_BOUNDS;
@@ -93,6 +105,7 @@ export class ForestTerrain {
         const zs = gridLines(minZ, maxZ, -42, 20, 0.5, 1.1);
         const positions = new Float32Array(xs.length * zs.length * 3);
         for (let row = 0; row < zs.length; row += 1) {
+            yield* forestSlice(clock, 'floor');
             for (let column = 0; column < xs.length; column += 1) {
                 positions.set(
                     [xs[column], forestGroundHeight(xs[column], zs[row]), zs[row]],
@@ -102,6 +115,7 @@ export class ForestTerrain {
         }
         const indices = [];
         for (let row = 0; row < zs.length - 1; row += 1) {
+            yield* forestSlice(clock, 'floor');
             for (let column = 0; column < xs.length - 1; column += 1) {
                 const a = row * xs.length + column;
                 const b = a + 1;
@@ -112,8 +126,14 @@ export class ForestTerrain {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
         geometry.setIndex(indices);
-        geometry.computeVertexNormals();
+        // computeVertexNormals(), summed a slice at a time.
+        const normals = yield* forestVertexNormalsSteps(positions, geometry.index.array, clock);
+        const normal = new THREE.BufferAttribute(normals, 3);
+        geometry.setAttribute('normal', normal);
+        // (As computeVertexNormals leaves it.)
+        normal.needsUpdate = true;
         geometry.computeBoundingSphere();
+        yield* forestSlice(clock, 'floor');
         const material = this.createMaterial();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'ForestGround';
@@ -123,7 +143,6 @@ export class ForestTerrain {
         this.group.add(mesh);
         this.owned.push(geometry, material);
         this.mesh = mesh;
-        return this;
     }
 
     createMaterial() {

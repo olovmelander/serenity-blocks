@@ -73,7 +73,7 @@ import { POST_LOOK, RainbowTerracesPost, createPassThroughPipeline } from './rai
 import { PLAYER_SLOTS, readLayoutRects } from './rainbow-terraces-composition.js';
 import { RAINBOW_TERRACES_EVENT_HANDLERS, RainbowTerracesDirector } from './rainbow-terraces-director.js';
 import { approach } from './rainbow-terraces-core.js';
-import { buildWorldBreathing } from '../shared/build-steps.js';
+import { breathe, buildWorldBreathing, drainSteps } from '../shared/build-steps.js';
 
 const THEME_ID = 'rainbow-terraces';
 const LOG_PREFIX = '[Rainbow Terraces]';
@@ -217,6 +217,8 @@ export default class RainbowTerracesTheme extends BaseTheme {
         this.reducedMotionQuery = null;
         this.appliedSize = null;
         this.bufferSize = new THREE.Vector2();
+        /** A build's first resize still running in steps (resizeBreathing), or null. */
+        this.resizeInFlight = null;
         this.rebuildQueued = false;
         this.rebuildPending = false;
         /** The run a restart of this sitting takes with it (snapshotRun()); stop() forgets it. */
@@ -342,7 +344,10 @@ export default class RainbowTerracesTheme extends BaseTheme {
             },
         });
         this.appliedSize = null;
-        this.resize(width, height);
+        // The new world's first layout (the frame solved for the screen, the clouds, the isles, the
+        // falls and the spray placed) in steps with a breath between them: in one task with the
+        // build's end it held a first-visit switch frame ~60 ms (2026-10-31).
+        if (!(await this.resizeBreathing(width, height, isCurrent))) return;
         this.applyReactionSettings(null);
         this.setupEvents();
         this.layout = { applied: null, live: false, strength: 0 };
@@ -689,6 +694,18 @@ export default class RainbowTerracesTheme extends BaseTheme {
      * @param {number} height
      */
     resize(width, height) {
+        this.finishResize();
+        drainSteps(this.resizeSteps(width, height));
+    }
+
+    /**
+     * `resize` as steps: with `stepped`, the world's part (setViewportSteps) yields between its
+     * pieces, for a build's first resize (resizeBreathing). The same calls in the same order.
+     * @param {number} width
+     * @param {number} height
+     * @param {boolean} [stepped]
+     */
+    * resizeSteps(width, height, stepped = false) {
         if (!this.renderer || !this.camera) return;
         const w = Math.max(1, Math.round(Number(width) || 1));
         const h = Math.max(1, Math.round(Number(height) || 1));
@@ -701,10 +718,51 @@ export default class RainbowTerracesTheme extends BaseTheme {
         this.renderer.setPixelRatio(pixelRatio);
         this.renderer.setSize(w, h, false);
         this.renderer.getDrawingBufferSize(this.bufferSize);
-        this.world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        const { world } = this;
+        if (stepped && typeof world?.setViewportSteps === 'function') {
+            yield* world.setViewportSteps(this.bufferSize.x, this.bufferSize.y, w / h);
+        } else {
+            world?.setViewport(this.bufferSize.x, this.bufferSize.y, w / h);
+        }
         this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
         this.director?.setViewport(w, h);
         this.scheduleLayoutReads();
+    }
+
+    /** A first resize still in steps (resizeBreathing) runs out now, before anything else touches the world. */
+    finishResize() {
+        const steps = this.resizeInFlight;
+        if (!steps) return;
+        this.resizeInFlight = null;
+        drainSteps(steps);
+    }
+
+    /**
+     * A build's first resize in steps, a breath before each (shared/build-steps.js): the world's
+     * first solve of the frame for the screen and all that follows from it took 18-22 ms in one
+     * task. Resolves false once the start is no longer current after a breath (the rest goes with
+     * its runtime). A resize or a resume meanwhile first runs the rest of these steps, so the two
+     * follow each other as two calls would.
+     * @param {number} width
+     * @param {number} height
+     * @param {() => boolean} isCurrent
+     * @returns {Promise<boolean>}
+     */
+    async resizeBreathing(width, height, isCurrent) {
+        this.finishResize();
+        const steps = this.resizeSteps(width, height, true);
+        this.resizeInFlight = steps;
+        try {
+            for (;;) {
+                // eslint-disable-next-line no-await-in-loop
+                await breathe();
+                if (this.resizeInFlight !== steps) return isCurrent(); // run out by a resize, or retired
+                if (!isCurrent()) return false;
+                if (steps.next().done) return true;
+            }
+        } finally {
+            if (this.resizeInFlight === steps) this.resizeInFlight = null;
+        }
     }
 
     // ── frame loop ──────────────────────────────────────────────────────────────
@@ -836,6 +894,7 @@ export default class RainbowTerracesTheme extends BaseTheme {
 
     disposeRuntime() {
         this.runtimeGeneration += 1;
+        this.resizeInFlight = null; // its world goes below: nothing may run its steps any more
         this.cancelAnimationFrames();
         this.animationLoopStarted = false;
         this.built = false;

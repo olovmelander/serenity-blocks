@@ -63,6 +63,7 @@ import {
     TUNE, mgCanopy, mgGlazing, mgHash21, mgHash33, mgHouseExit, mgLanterns, mgLine, mgMax3, mgMoonVis, mgSky,
     mgSurface,
 } from './moonlit-greenhouse-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
 
@@ -652,11 +653,30 @@ function addTube(sheet, x, z, y0, y1, radiusAt, sides, rings, kind, aReed) {
     sheet.grid(rows, true);
 }
 
+/**
+ * How long a slice of the reeds runs before it yields to the page (ms). In one step they held
+ * Moonlit Greenhouse's first-visit switch ~18 ms (2026-10-31).
+ */
+const REED_SLICE_MS = 8;
+/** How long the pads' build runs before it breathes between its meshes (ms). */
+const PADS_SLICE_MS = 8;
+
 /** Every reed and cattail of the plan, merged. */
 export function buildReedGeometry(reeds, segments = 6) {
+    return drainSteps(buildReedGeometrySteps(reeds, segments));
+}
+
+/** `buildReedGeometry` as steps (the world's build breathes between them): the same reeds in the same order. */
+export function* buildReedGeometrySteps(reeds, segments = 6) {
+    const clock = stepClock(REED_SLICE_MS);
     const sheet = new Sheet(['aReed', 'aBlade']);
     const { water } = FLOOR.canal;
-    reeds.forEach((r, n) => {
+    for (let n = 0; n < reeds.length; n += 1) {
+        if (clock.due()) {
+            yield 'reeds';
+            clock.restart();
+        }
+        const r = reeds[n];
         const rand = mulberry32(Math.floor(r.seed * 1e6) + n * 7919);
         const side = Math.sign(r.x) || 1;
         const aReed = [r.x, r.z, Math.floor(r.seed * 1000), r.height];
@@ -685,7 +705,7 @@ export function buildReedGeometry(reeds, segments = 6) {
         if (!r.cattail) {
             // Some reeds carry a plume: a straight stem and a drooping feathery head of thin
             // strands, silvery buff, that the moon lights through when it stands behind it.
-            if (rand() > 0.24 || r.height < 1.1) return;
+            if (rand() > 0.24 || r.height < 1.1) continue;
             const top = r.height * lerp(1.0, 1.12, rand());
             [0, Math.PI / 2].forEach((turn) => {
                 addBlade(sheet, base, {
@@ -723,7 +743,7 @@ export function buildReedGeometry(reeds, segments = 6) {
                     dry: 0,
                 }, aReed);
             }
-            return;
+            continue;
         }
         // The cattail: a straight stalk, the velvet head high on it and the thin spike above.
         const tipX = r.x + Math.sin(r.lean) * Math.cos(r.yaw) * r.height * 0.5;
@@ -755,7 +775,7 @@ export function buildReedGeometry(reeds, segments = 6) {
         };
         addTube(sheet, hx, hz, headFrom, headTo, headRadius, 8, 6, REED.head, aReed);
         addTube(sheet, hx, hz, headTo, stalkTop, (k) => 0.0035 * (1 - k * 0.8), 4, 2, REED.spike, aReed);
-    });
+    }
     return sheet.geometry();
 }
 
@@ -1208,9 +1228,18 @@ export function createWater({
  * The pads part: the Victoria pads, the small lily pads and the resident water lilies.
  * ctx = { tier, U, noise, plan }.
  */
-export function createPads({
+export function createPads(ctx) {
+    return drainSteps(createPadsSteps(ctx));
+}
+
+/**
+ * `createPads` as steps: the same three meshes in the same order, a breath between them once
+ * PADS_SLICE_MS has run (the richest tiers' pads ran ~20 ms in one step).
+ */
+export function* createPadsSteps({
     tier, U, noise, plan,
 }) {
+    const clock = stepClock(PADS_SLICE_MS);
     const detail = detailFor(tier);
     const { night } = U;
     const group = new THREE.Group();
@@ -1368,6 +1397,10 @@ export function createPads({
         return vec4(lit.mul(under).add(ruby).add(sheen).add(beads.mul(float(1.0).sub(puddle))), 1.0);
     })();
     add(buildVictoriaGeometry(plan.pads, detail.victoria), victoria, 'moonlit-greenhouse-pads-victoria', 4);
+    if (clock.due()) {
+        yield 'victoria pads';
+        clock.restart();
+    }
 
     // ── The small water-lily pads.
     const lily = new THREE.MeshBasicNodeMaterial({ fog: false });
@@ -1417,6 +1450,10 @@ export function createPads({
         return vec4(lit.add(sheen).add(beads), 1.0);
     })();
     add(buildLilyPadGeometry(plan.pads, detail.lily), lily, 'moonlit-greenhouse-pads-lily', 4);
+    if (clock.due()) {
+        yield 'lily pads';
+        clock.restart();
+    }
 
     // ── The resident water lilies.
     const lilies = residentLilies(plan.pads, detail.lilies);
@@ -1520,10 +1557,15 @@ function reedSway(U) {
 /**
  * The reeds part. ctx = { tier, U, plan }.
  */
-export function createReeds({ tier, U, plan }) {
+export function createReeds(ctx) {
+    return drainSteps(createReedsSteps(ctx));
+}
+
+/** `createReeds` as steps: the reeds in slices (buildReedGeometrySteps), then the material and mesh. */
+export function* createReedsSteps({ tier, U, plan }) {
     const detail = detailFor(tier);
     const { night } = U;
-    const geometry = buildReedGeometry(plan.reeds, detail.reed);
+    const geometry = yield* buildReedGeometrySteps(plan.reeds, detail.reed);
     const material = new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide });
     material.name = 'moonlit-greenhouse-reeds';
     material.positionNode = reedSway(U);

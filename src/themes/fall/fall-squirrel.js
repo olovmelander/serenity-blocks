@@ -23,7 +23,9 @@ import {
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from './fall-squirrel-clips.js';
 import { FLICK_LENGTH } from './fall-squirrel-mind.js';
-import { createPlumeHair } from './fall-squirrel-plume.js';
+import { createPlumeHairSteps } from './fall-squirrel-plume.js';
+import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** How far the head turns to the board at most (radians), and how the turn is shared. */
 const LOOK_REACH = 1.15;
@@ -172,6 +174,21 @@ const FORWARD = new THREE.Vector3(0, 0, 1);
  * @param {number} [o.scale]
  */
 export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
+    return drainSteps(createSquirrelSteps({ light, gltf, scale }));
+}
+
+/**
+ * createSquirrel(), a time slice a step (one 11-17 ms piece of a first visit's build before): the
+ * model and its coats, then the plume's hair measured and built, then its clips.
+ * @param {object} o
+ * @param {import('./fall-light.js').FallLight} o.light
+ * @param {object} o.gltf
+ * @param {number} [o.scale]
+ * @param {{ due: () => boolean, restart: () => void }} [o.clock]
+ */
+export function* createSquirrelSteps({
+    light, gltf, scale = SQUIRREL_SCALE, clock = stepClock(FALL_SLICE_MS),
+}) {
     const model = cloneSkinned(gltf.scene);
     model.name = 'FallSquirrelModel';
     const material = createFurMaterial(light);
@@ -196,7 +213,8 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
     });
     model.scale.setScalar(scale);
     // The plume's hair: cards on the tail's own bones (fall-squirrel-plume.js).
-    const plumeHair = body ? createPlumeHair({ body, light }) : null;
+    yield* fallSlice(clock, 'squirrel');
+    const plumeHair = body ? yield* createPlumeHairSteps({ body, light }, clock) : null;
     if (plumeHair) {
         triangles += plumeHair.triangles;
         // The comb laid along the plume as measured.
@@ -204,6 +222,7 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
         material.userData.comb.tailBase.value.copy(first.centre);
         material.userData.comb.tailAxis.value.copy(first.axis);
     }
+    yield* fallSlice(clock, 'squirrel');
     const pivot = new THREE.Group();
     pivot.name = 'FallSquirrel';
     pivot.add(model);

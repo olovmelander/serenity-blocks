@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => {
         failPassThrough: 0,
     };
     const WORLD_CALLS = [
-        'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek',
+        'build', 'buildSteps', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek',
         'resetSession', 'updateCamera', 'update', 'onLock', 'onClear', 'onCrown', 'onSpin', 'onCombo', 'levelUp',
         'dispose',
     ];
@@ -422,7 +422,8 @@ describe('Halcyon Apex theme: one node renderer on both backends', () => {
         expect(params.quality).toBe('High');
         expect(params.capture).toBe(false);
         expect(params.seed).toBeUndefined();
-        expect(world.build).toHaveBeenCalledOnce();
+        // Built breathing, a few parts to a step (shared/build-steps.js runs its buildSteps).
+        expect(world.buildSteps).toHaveBeenCalledOnce();
         expect(world.bindCamera).toHaveBeenCalledWith(theme.camera);
         expect(world.showOnlyParts).not.toHaveBeenCalled();
         expect(world.seek).toHaveBeenCalledWith(0);
@@ -770,8 +771,9 @@ describe('Halcyon Apex theme: one node renderer on both backends', () => {
         const first = theme.world;
         win.settings.effectQuality = 'Minimal';
         theme.handleSettingsChanged({ detail: { effectQuality: 'Minimal' } });
-        // The rebuild is queued a microtask later and builds a whole world: wait for it.
-        await vi.waitFor(() => expect(mocks.worlds).toHaveLength(2), { timeout: 4000 });
+        // The rebuild is queued a microtask later and builds a whole world, a few parts to a
+        // breath: wait for the theme to take it.
+        await vi.waitFor(() => expect(theme.world).toBe(mocks.worlds[1]?.world), { timeout: 4000 });
         expect(theme.quality).toBe('Minimal');
         expect(mocks.worlds[1].params.quality).toBe('Minimal');
         expect(mocks.posts[1].params.look).toBe(POST_LOOK.Minimal);
@@ -796,7 +798,7 @@ describe('Halcyon Apex theme: one node renderer on both backends', () => {
         expect(theme.world.levelUp).toHaveBeenCalledWith(4);
         win.settings.effectQuality = 'Low';
         theme.handleSettingsChanged({ detail: { effectQuality: 'Low' } });
-        await vi.waitFor(() => expect(mocks.worlds).toHaveLength(2), { timeout: 4000 });
+        await vi.waitFor(() => expect(theme.world).toBe(mocks.worlds[1]?.world), { timeout: 4000 });
         // The new world takes up level 4 without the level-up's ceremony, before its first frame.
         const rebuilt = theme.world;
         expect(rebuilt.levelUp).toHaveBeenCalledOnce();

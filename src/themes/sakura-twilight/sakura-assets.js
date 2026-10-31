@@ -12,6 +12,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const SAKURA_TREE_URLS = Object.freeze({
     'sakura-hero-weeping': new URL('./assets/sakura-hero-weeping.glb', import.meta.url).href,
@@ -190,7 +191,7 @@ export async function loadSakuraAssets({
         loader.loadAsync(SAKURA_BLOSSOM_URL),
         loader.loadAsync(SAKURA_PROPS_URL),
         loader.loadAsync(SAKURA_FUJI_URL),
-        layout && textureLoader ? textureLoader.loadAsync(SAKURA_IMPOSTOR_URL) : null,
+        layout && textureLoader ? loadDecodedTexture(SAKURA_IMPOSTOR_URL, textureLoader) : null,
         // The garden is whole without its foxes: a failed download only leaves them out.
         loader.loadAsync(SAKURA_FOX_URL).catch(() => null),
         ...names.map((name) => {

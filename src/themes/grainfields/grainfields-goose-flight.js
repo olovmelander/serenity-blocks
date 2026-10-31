@@ -28,6 +28,7 @@ import {
 } from './grainfields-core.js';
 import { groundHeight, nearField } from './grainfields-plan.js';
 import { outsideKeepOut } from './grainfields-composition.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const record = manifest.assets.find((entry) => entry.kind === 'goose');
 
@@ -387,7 +388,17 @@ export function planTakeoff({ layout = null, aspect = 16 / 9, seed = 1 } = {}) {
     return best ? { ...best } : null;
 }
 
-let routeCache = { key: null, routes: null };
+/** How long a slice of the take-off routes' scoring runs before it yields (ms): a share of a frame. */
+const ROUTE_SLICE_MS = 4;
+
+/**
+ * The routes of one layout (the last one asked for), as planTakeoff reads them: its key, the layout
+ * the routes are scored for (the first to ask for that key, as it was then), the routes once scored
+ * and their scoring while it is still in steps (and its slice of time).
+ */
+let routeCache = {
+    key: null, layout: null, aspect: 0, routes: null, steps: null, slice: null,
+};
 
 /** A layout's key (its rects, to a thousandth of the screen) and the aspect's. */
 function layoutKey(layout, aspect) {
@@ -395,10 +406,72 @@ function layoutKey(layout, aspect) {
     return [Math.round(aspect * 1000), ...(layout?.cards || []).map(r), r(layout?.hud)].join('|');
 }
 
+/** The rects the scoring reads (outsideKeepOut), as they are now. */
+const rectNow = (q) => (q ? {
+    x0: q.x0, y0: q.y0, x1: q.x1, y1: q.y1,
+} : q);
+const layoutNow = (layout) => (layout ? {
+    cards: (layout.cards || []).map(rectNow), hud: rectNow(layout.hud),
+} : layout);
+
+/** The cache's entry for a layout: kept while the key is the same, a new one (unscored) otherwise. */
+function routeEntry(layout, aspect) {
+    const key = layoutKey(layout, aspect);
+    if (routeCache.key !== key) {
+        routeCache = {
+            key, layout: layoutNow(layout), aspect, routes: null, steps: null, slice: null,
+        };
+    }
+    return routeCache;
+}
+
 /** Every candidate route with how long it keeps the flock in the open (cached per layout). */
 function scoredRoutes(layout, aspect) {
-    const key = layoutKey(layout, aspect);
-    if (routeCache.key === key) return routeCache.routes;
+    const entry = routeEntry(layout, aspect);
+    if (!entry.routes) {
+        // Not scored yet, or still in steps (askTakeoffs): the rest now, for the layout that asked first.
+        entry.routes = drainSteps(entry.steps ?? routeSteps(entry.layout, entry.aspect));
+        entry.steps = null;
+    }
+    return entry.routes;
+}
+
+/**
+ * Ask for a layout's take-off routes ahead of a launch (a resize, a layout read): noted now, as a
+ * launch then would find them, and scored a slice at a time by stepTakeoffs (a launch before that
+ * scores the rest itself, for the same layout). Scored at once, a layout held its task 19-23 ms (a
+ * first-visit switch frame, 2026-10-31).
+ */
+export function askTakeoffs(layout, aspect) {
+    routeEntry(layout, aspect);
+}
+
+/**
+ * Score the asked-for routes for a slice of `budgetMs` (or not much more). True once they are scored
+ * (or nothing was asked for).
+ */
+export function stepTakeoffs(budgetMs = ROUTE_SLICE_MS) {
+    const entry = routeCache;
+    if (entry.routes || entry.key === null) return true;
+    entry.slice = stepClock(budgetMs);
+    entry.steps ??= routeSteps(entry.layout, entry.aspect, {
+        due: () => entry.slice.due(),
+        restart: () => entry.slice.restart(),
+    });
+    const next = entry.steps.next();
+    if (!next.done) return false;
+    entry.routes = next.value;
+    entry.steps = null;
+    return true;
+}
+
+/** stepTakeoffs to the end, a yield between slices (a stepped build). */
+export function* takeoffSteps(budgetMs = ROUTE_SLICE_MS) {
+    while (!stepTakeoffs(budgetMs)) yield 'takeoffs';
+}
+
+/** The scoring of every candidate route for a layout, yielding between sites once a slice has run. */
+function* routeSteps(layout, aspect, clock = stepClock(ROUTE_SLICE_MS)) {
     const project = restProjector(aspect);
     const rig = rigFor(aspect);
     const half = Math.atan(Math.tan(rig.fov * DEG * 0.5) * aspect) / DEG;
@@ -413,6 +486,10 @@ function scoredRoutes(layout, aspect) {
     };
     for (let bearing = rig.yaw - half + 3; bearing <= rig.yaw + half - 3; bearing += 2) {
         for (const distance of TAKEOFF_DISTANCES) {
+            if (clock.due()) {
+                yield 'routes';
+                clock.restart();
+            }
             const sx = EYE.x + Math.sin(bearing * DEG) * distance;
             const sz = EYE.z - Math.cos(bearing * DEG) * distance;
             // The near field only (the far land lies below the crest's line of ears).
@@ -447,7 +524,6 @@ function scoredRoutes(layout, aspect) {
             }
         }
     }
-    routeCache = { key, routes };
     return routes;
 }
 

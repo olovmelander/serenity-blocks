@@ -42,7 +42,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { DEG, smooth } from './spring-core.js';
+import { DEG, SPRING_SLICE_MS, smooth } from './spring-core.js';
 import { aerial, sunShare } from './spring-light.js';
 import { spHash21 } from './spring-tsl.js';
 import {
@@ -97,7 +97,7 @@ const GULLY_FRAMES = [0, 60, 120].map((deg, i) => Object.freeze({
  * `tier.landRow` × distance apart (never closer than `tier.landMinRow` metres).
  */
 export function* landGeometrySteps(baked, tier) {
-    const clock = stepClock();
+    const clock = stepClock(SPRING_SLICE_MS);
     const cols = Math.max(32, tier.landCols | 0);
     const rel = tier.landRow ?? 0.012;
     const minRow = tier.landMinRow ?? 0.3;
@@ -148,6 +148,10 @@ export function* landGeometrySteps(baked, tier) {
     const index = new Uint32Array((rows - 1) * cols * 6);
     let o = 0;
     for (let r = 0; r < rows - 1; r++) {
+        if (clock.due()) {
+            yield 'land rows';
+            clock.restart();
+        }
         for (let c = 0; c < cols; c++) {
             const a = r * (cols + 1) + c;
             const bb = a + 1;

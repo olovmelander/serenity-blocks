@@ -48,7 +48,10 @@ const mocks = vi.hoisted(() => {
         failPost: 0,
         failPassThrough: 0,
         gameOverHook: true,
-        /** Every call the theme makes on its world, `build` first (it is chained on the constructor). */
+        /**
+         * Every call the theme makes on its world, `build` first (shared/build-steps.js runs it: these
+         * doubles have no buildSteps).
+         */
         WORLD_CONTRACT: [
             'build', 'bindCamera', 'showOnlyParts', 'setReducedMotion', 'setViewport', 'setLayout', 'updateCamera',
             'update', 'seek', 'onLock', 'onClear', 'onCrown', 'onSpin', 'onCombo', 'levelUp', 'resetSession',
@@ -366,7 +369,8 @@ describe('Vesper Chrysalis theme: one node renderer on both backends', () => {
         const called = (object) => [...new Set(
             [...source.matchAll(new RegExp(`\\b${object}\\??\\.(\\w+)(?:\\?\\.)?\\(`, 'g'))].map((m) => m[1]),
         )].sort();
-        expect(source).toMatch(/new VesperWorld\(\{[^}]+\}\)\.build\(\)/);
+        expect(source).toMatch(/const world = new VesperWorld\(\{[^}]+\}\);/);
+        expect(source).toMatch(/\(!\(await buildWorldBreathing\(world, isCurrent\)\)\) return;\s+this\.world = world;/);
         expect(['build', ...called('world')].sort()).toEqual([...mocks.WORLD_CONTRACT, ...mocks.WORLD_OPTIONAL].sort());
         expect(called('post')).toEqual([...mocks.POST_CONTRACT].sort());
         expect(called('passThrough')).toEqual([...mocks.PASS_THROUGH_CONTRACT].sort());

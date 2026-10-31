@@ -36,7 +36,10 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { ensurePrecompileRestoresLiveState } from '../../rendering/three-precompile-live-restore.js';
 import { aerial, sunShare } from './spring-light.js';
+import { SPRING_SLICE_MS } from './spring-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import { SpringForest } from './spring-forest.js';
 
 /**
@@ -212,6 +215,8 @@ export class ImpostorAtlas {
             const previous = renderer.getRenderTarget();
             const { depth, stencil } = renderer;
             let compiling;
+            // r187's drain binds the atlas again after each object unless this patch is in.
+            ensurePrecompileRestoresLiveState(renderer);
             renderer.setRenderTarget(this.albedoTarget);
             renderer.depth = this.albedoTarget.depthBuffer;
             renderer.stencil = this.albedoTarget.stencilBuffer;
@@ -291,7 +296,18 @@ const GLOW = [1.3, 1.4, 0.32];
  * The cards for a list of woods sites ({ x, y, z, kind, height, seed, lean, d, width }): a cell
  * per site by its kind and seed, its size from the cell's framing.
  */
-export function createImpostorWoods(u, atlas, sites, { samples = 0 } = {}) {
+export function createImpostorWoods(u, atlas, sites, options) {
+    return drainSteps(createImpostorWoodsSteps(u, atlas, sites, options));
+}
+
+/** createImpostorWoods, its cards filled a time slice a step (14 ms in one step at Extreme). */
+export function* createImpostorWoodsSteps(
+    u,
+    atlas,
+    sites,
+    { samples = 0 } = {},
+    clock = stepClock(SPRING_SLICE_MS),
+) {
     const { cells, columns, rows } = atlas.layout;
     const birches = cells.filter((c) => c.species === 0);
     const spruces = cells.filter((c) => c.species === 1);
@@ -302,7 +318,12 @@ export function createImpostorWoods(u, atlas, sites, { samples = 0 } = {}) {
     // Nearest first: the eye stands still on the knoll, so the near cards fill the depth before
     // the thousands behind them are shaded (the picture is the same in any order).
     const nearestFirst = sites.map((site, i) => [site.d ?? 0, i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    nearestFirst.forEach(([, at], i) => {
+    for (let i = 0; i < nearestFirst.length; i++) {
+        if ((i & 255) === 0 && clock.due()) {
+            yield 'wood cards';
+            clock.restart();
+        }
+        const [, at] = nearestFirst[i];
         const site = sites[at];
         // A birch's card from the birches, a spruce's from the spruces (either, when one is missing).
         let pool = site.kind === 0 ? birches : spruces;
@@ -316,7 +337,8 @@ export function createImpostorWoods(u, atlas, sites, { samples = 0 } = {}) {
         base.set([site.x, site.y, site.z, site.seed], i * 4);
         size.set([width, height, (0.03 / c.scale) * k + 0.4, site.lean], i * 4);
         cell.set([c.column, c.row, (site.seed * 7.31) % 1, c.species], i * 4);
-    });
+    }
+    if (clock.due()) yield 'wood cards';
     const quad = new THREE.PlaneGeometry(1, 1);
     quad.translate(0, 0.5, 0);
     quad.deleteAttribute('normal');

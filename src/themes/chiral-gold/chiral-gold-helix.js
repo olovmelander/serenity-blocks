@@ -59,6 +59,7 @@ import {
     ribbonPoint,
     wirePoint,
 } from './chiral-gold-tsl.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 const HEIGHT = HELIX.top - HELIX.bottom;
 
@@ -465,6 +466,16 @@ export function createCore(u, hand) {
  * @param {{ segments: number, wires: number, beads: number }} tier
  */
 export function createTower(u, hand, tier) {
+    return drainSteps(createTowerSteps(u, hand, tier));
+}
+
+/**
+ * `createTower` as steps: the same parts in the same order, yielding once, before the core (the
+ * world's build breathes there, shared/build-steps.js). Both towers in one task were 30 ms of the
+ * world's 50 ms build on a first visit (2026-10-31).
+ * @returns {Generator<string, { group: THREE.Group, parts: object[], hand: number }>}
+ */
+export function* createTowerSteps(u, hand, tier) {
     const group = new THREE.Group();
     group.name = hand < 0 ? 'ChiralGoldTowerLeft' : 'ChiralGoldTowerRight';
     const parts = [
@@ -486,6 +497,7 @@ export function createTower(u, hand, tier) {
         ));
         if (tier.beads > 0) parts.push(createBeads(u, hand, tier.beads, tier.wires));
     }
+    yield 'ribbons and wires';
     parts.push(...createCore(u, hand));
     parts.forEach((part) => {
         // The shared gold reads which tower it is drawing from the object (u.hand).

@@ -30,9 +30,9 @@ import {
 import {
     ATMOSPHERE_LOOK, createAtmosphere, createNoiseTexture,
 } from './shifting-sands-tsl.js';
-import { DuneField, createTerrain, GROUND_PULSE_SLOTS } from './shifting-sands-terrain.js';
+import { DuneField, createTerrainSteps, GROUND_PULSE_SLOTS } from './shifting-sands-terrain.js';
 import { createSky } from './shifting-sands-sky.js';
-import { createFormations } from './shifting-sands-rocks.js';
+import { createFormationsSteps } from './shifting-sands-rocks.js';
 import { WORM_SLOTS, WormDirector, createWorm } from './shifting-sands-worm.js';
 import {
     BLOW_SLOTS, FX_TIERS, createDustGeysers, createGoldMotes, createSpindrift, createWormSand,
@@ -205,9 +205,9 @@ export class ShiftingSandsWorld {
     }
 
     /**
-     * The build as steps, the heavy parts a step each (the formations' lathes, the terrain's bake):
-     * run at once by build(), or with a breath between steps while the theme comes in
-     * (shared/build-steps.js). The same parts in the same order.
+     * The build as steps, the heavy parts in slices of their own (the formations' lathes, the
+     * terrain's bake): run at once by build(), or with a breath between steps while the theme comes
+     * in (shared/build-steps.js). The same parts in the same order.
      */
     * buildSteps() {
         const wind = windDirXZ();
@@ -260,12 +260,12 @@ export class ShiftingSandsWorld {
         // ── The erg ──
         this.field = new DuneField({ wind, offset: { x: 1830, z: -420 } });
         // Formations first: their solids join the shadow march.
-        this.rocks = createFormations({ field: this.field, shared: s, detail: this.tier.rockDetail ?? 1 });
+        this.rocks = yield* createFormationsSteps({ field: this.field, shared: s, detail: this.tier.rockDetail ?? 1 });
         this.field.extraHeight = this.rocks.heightAt;
         this.group.add(this.rocks.mesh);
         yield 'formations';
         const mid = sunA.clone().add(sunB).multiplyScalar(0.5).normalize();
-        this.terrain = createTerrain({
+        this.terrain = yield* createTerrainSteps({
             field: this.field, shared: s, tierName: this.quality, shadowDir: mid,
         });
         this.group.add(this.terrain.mesh);

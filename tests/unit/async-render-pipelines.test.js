@@ -426,7 +426,7 @@ describe('async-render-pipelines', () => {
             const bakeTargets = [
                 { isCubeRenderTarget: true, texture: { name: '' } },
                 { texture: { isPMREMTexture: true } },
-                { texture: { mapping: 306 } }, // CubeUVReflectionMapping
+                { texture: { name: 'PMREM' } }, // r187: a CubeRenderTarget whose texture is named 'PMREM'
                 { texture: { name: 'PMREM.cubeUv' } },
                 { texture: { name: 'PMREM.pingPong' } },
                 { isOneShotBake: true, texture: { name: 'spring-impostor-albedo' } }, // a theme's own bake
@@ -517,7 +517,8 @@ describe('async-render-pipelines', () => {
             expect(isOneShotRenderTarget({ texture: { name: 'my-PMREM' } })).toBe(false);
             expect(isOneShotRenderTarget({ isCubeRenderTarget: true })).toBe(true);
             expect(isOneShotRenderTarget({ texture: { isPMREMTexture: true } })).toBe(true);
-            expect(isOneShotRenderTarget({ texture: { mapping: 306 } })).toBe(true);
+            // r187 removed CubeUVReflectionMapping (306): a mapping alone no longer marks a PMREM.
+            expect(isOneShotRenderTarget({ texture: { mapping: 306 } })).toBe(false);
             expect(isOneShotRenderTarget({ texture: { name: 'PMREM.cubeUv' } })).toBe(true);
             expect(isOneShotRenderTarget({ isOneShotBake: true, texture: { name: 'atlas' } })).toBe(true);
             expect(isOneShotRenderTarget({ isOneShotBake: 'yes', texture: { name: 'atlas' } })).toBe(false);

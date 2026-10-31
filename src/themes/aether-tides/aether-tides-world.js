@@ -30,6 +30,7 @@
 import { texture } from 'three/tsl';
 
 import { cameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { meltPalettes, nearestStep } from '../shared/mood-clock.js';
 import {
@@ -51,9 +52,9 @@ import {
     WELL_OPEN,
     WELL_RELEASE,
     approach,
-    bakeNoise,
+    bakeNoiseSteps,
     clamp01,
-    createNoiseTexture,
+    createNoiseTextureSteps,
     lerp,
     maelstromPosition,
     paletteDrift,
@@ -232,8 +233,20 @@ export class AetherTidesWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps (the theme breathes between them: shared/build-steps.js), the same work
+     * in the same order. Built in one task with the noise bake and its texture, it held the
+     * first-visit switch's worst frame at 44 ms (createScene 27 ms of it, 2026-10-31).
+     */
+    * buildSteps() {
         const { tier } = this;
-        this.noise = createNoiseTexture(bakeNoise());
+        const baked = yield* bakeNoiseSteps();
+        yield 'noise';
+        this.noise = yield* createNoiseTextureSteps(baked);
+        yield 'noise texture';
         this.tide = createTideUniforms();
         this.fieldUniforms = createFieldUniforms();
         this.picture = createPictureUniforms();
@@ -251,6 +264,7 @@ export class AetherTidesWorld {
         this.light = new TideLight({
             tide: this.tide, picture: this.picture, fluid: this.fluid, steps: tier.lightSteps,
         });
+        yield 'fluid and light';
         this.nebula = createNebula({
             tide: this.tide, picture: this.picture, fluid: this.fluid, light: this.light, tier, field, view: this.view,
         });

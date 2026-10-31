@@ -15,7 +15,8 @@ import {
 import {
     SUMMER_FEATURE_TREES, SUMMER_GROVE_CEILING, createSummerVisibilityTest, layoutSummerGrove,
 } from './summer-composition.js';
-import { summerGroundHeight } from './summer-terrain.js';
+import { SUMMER_SLICE_MS, summerGroundHeight, summerSlice } from './summer-terrain.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -89,14 +90,23 @@ export class SummerForest {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The woods as steps for the world's breathing build, a time slice a step: the bark, then the
+     * sprays tree by tree and their draws (one 15-16 ms step of a first visit before).
+     */
+    * buildSteps() {
+        const clock = stepClock(SUMMER_SLICE_MS);
         const grove = layoutSummerGrove(this.rng, SUMMER_GROVE_CEILING).slice(0, this.tier.groveTrees);
         this.placements = [...SUMMER_FEATURE_TREES, ...grove]
             .filter((tree) => this.assets.trees[tree.asset])
             .map((tree) => ({ ...tree, y: summerGroundHeight(tree.x, tree.z) - 0.05 }));
         this.stats.trees = this.placements.length;
         this.buildBark();
-        this.buildFoliage();
-        return this;
+        yield* this.foliageSteps(clock);
     }
 
     // -- bark ---------------------------------------------------------------------------
@@ -263,6 +273,11 @@ export class SummerForest {
     }
 
     buildFoliage() {
+        drainSteps(this.foliageSteps(stepClock(SUMMER_SLICE_MS)));
+    }
+
+    /** The sprays of every tree, a time slice a step, then a draw for each kind and variant. */
+    * foliageSteps(clock) {
         const visible = createSummerVisibilityTest();
         const buckets = new Map();
         const position = new THREE.Vector3();
@@ -272,13 +287,15 @@ export class SummerForest {
         const scale = new THREE.Vector3();
         const matrix = new THREE.Matrix4();
         const { variants } = this.assets.foliage;
-        this.placements.forEach((tree, treeIndex) => {
+        for (let treeIndex = 0; treeIndex < this.placements.length; treeIndex += 1) {
+            const tree = this.placements[treeIndex];
             const asset = this.assets.trees[tree.asset];
             const { sites } = asset;
             const keep = Math.min(1, this.tier.foliage * (tree.far ? 0.62 : 1));
             const grow = (1 / keep) ** 0.36;
             yaw.setFromAxisAngle(UP, tree.yaw);
             for (let i = 0; i < sites.count; i += 1) {
+                if ((i & 255) === 0) yield* summerSlice(clock, 'foliage');
                 if (keepHash(i, treeIndex + 1) <= keep) {
                     position.fromArray(sites.position, i * 3).multiplyScalar(tree.scale).applyQuaternion(yaw);
                     position.x += tree.x;
@@ -304,8 +321,9 @@ export class SummerForest {
                     } else this.stats.culledSprays += 1;
                 }
             }
-        });
-        buckets.forEach((bucket, key) => {
+        }
+        for (const [key, bucket] of buckets) {
+            yield* summerSlice(clock, 'foliage');
             const geometry = this.assets.foliage.meshes[key];
             if (!geometry) throw new Error(`[Summer] Foliage mesh "${key}" is missing from the asset pack.`);
             const count = bucket.matrices.length / 16;
@@ -328,7 +346,7 @@ export class SummerForest {
             this.group.add(mesh);
             this.stats.sprays += count;
             this.stats.foliageTriangles += (geometry.index.count / 3) * count;
-        });
+        }
     }
 
     /** Points among the crowns near the camera, where swallows and seed down pass. */

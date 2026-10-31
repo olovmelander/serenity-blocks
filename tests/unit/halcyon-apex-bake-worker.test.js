@@ -70,7 +70,7 @@ describe('Halcyon Apex keeps its plan and noise for the session', () => {
         expect(source('halcyon-apex-bake-data.js')).not.toMatch(/from 'three/);
         expect(source('halcyon-apex-bake.worker.js')).toMatch(/\bnoise: bakeNoiseData\b/);
         expect(source('halcyon-apex-theme.js')).toContain('const baking = halcyonApexBakes();');
-        expect(source('halcyon-apex-world.js')).toContain('this.plan = sessionPlan(seed);');
+        expect(source('halcyon-apex-world.js')).toContain('this.plan = yield* sessionPlanSteps(this.planSeed);');
     });
 
     it('resolves at once without a Worker, leaving the build to bake as before', async () => {

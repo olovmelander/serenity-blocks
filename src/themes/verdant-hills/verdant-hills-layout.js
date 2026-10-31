@@ -21,9 +21,10 @@ import {
 } from './verdant-hills-composition.js';
 import { VERDANT_HILLS_KITE_STATIONS, VERDANT_HILLS_POST_HEIGHT } from './verdant-hills-kites.js';
 import {
-    VERDANT_HILLS_PATH, VERDANT_HILLS_PLACES, verdantHillsFieldAt, verdantHillsGroundHeight, verdantHillsNoise,
-    verdantHillsWaterDistance,
+    VERDANT_HILLS_PATH, VERDANT_HILLS_PLACES, VERDANT_HILLS_SLICE_MS, verdantHillsFieldAt, verdantHillsGroundHeight,
+    verdantHillsNoise, verdantHillsWaterDistance,
 } from './verdant-hills-terrain.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Every layout list is planted from `seededRandom(VERDANT_HILLS_LAYOUT_SEED + k)`. */
 export const VERDANT_HILLS_LAYOUT_SEED = 4177;
@@ -184,7 +185,9 @@ const FIELD_WATER = 14;
 /** How many places are tried once, from which the field trees are then chosen. */
 const FIELD_DRAWS = 9000;
 
-function plantFieldTrees(rng) {
+/** The field trees, as steps (a time slice at a time: a first visit plants them in its build). */
+function* plantFieldTreesSteps(rng) {
+    const clock = stepClock(VERDANT_HILLS_SLICE_MS);
     const visible = createVerdantHillsVisibilityTest();
     const spacing = createSpacing(FIELD_SPACING);
     VERDANT_HILLS_FEATURE_TREES.forEach((tree) => spacing.add(tree.x, tree.z));
@@ -193,6 +196,10 @@ function plantFieldTrees(rng) {
     const hedgerows = [];
     const pastures = [];
     for (let draw = 0; draw < FIELD_DRAWS; draw += 1) {
+        if ((draw & 255) === 0 && clock.due()) {
+            yield 'field trees';
+            clock.restart();
+        }
         const bearing = (rng() * 2 - 1) * WEDGE_DEGREES;
         const [x, z] = polar(bearing, FIELD_NEAR * (FIELD_FAR / FIELD_NEAR) ** rng());
         if (!hidesTheMill(x, z) && verdantHillsWaterDistance(x, z) >= FIELD_WATER
@@ -216,6 +223,10 @@ function plantFieldTrees(rng) {
     const beside = (bearing, side) => bearing * side >= SIDE_THIRD[0] && bearing * side <= SIDE_THIRD[1];
     const trees = [];
     for (let slot = 0; slot < VERDANT_HILLS_FIELD_TREE_CEILING; slot += 1) {
+        if (clock.due()) {
+            yield 'field trees';
+            clock.restart();
+        }
         // Two in three stand in a hedgerow; the third stands alone in its pasture.
         const hedgerow = slot % 3 !== 2;
         const pool = hedgerow ? hedgerows : pastures;
@@ -257,6 +268,10 @@ function plantFieldTrees(rng) {
     return trees;
 }
 
+function plantFieldTrees(rng) {
+    return drainSteps(plantFieldTreesSteps(rng));
+}
+
 const FAR_NEAR = 200;
 const FAR_FAR = 5200;
 const FAR_SPACING = 12;
@@ -271,12 +286,17 @@ function prominence(x, z, y = verdantHillsGroundHeight(x, z)) {
         + verdantHillsGroundHeight(x, z + 70) + verdantHillsGroundHeight(x, z - 70)) / 4;
 }
 
-function plantFarTrees(rng) {
+/** The far trees, as steps (a time slice at a time: a first visit plants them in its build). */
+function* plantFarTreesSteps(rng) {
+    const clock = stepClock(VERDANT_HILLS_SLICE_MS);
     const visible = createVerdantHillsVisibilityTest();
     const spacing = createSpacing(FAR_SPACING);
     VERDANT_HILLS_FEATURE_TREES.forEach((tree) => spacing.add(tree.x, tree.z));
     // The field trees stand whether a tier models them or draws them as sprites.
+    yield* plantLayoutSteps('field');
     layoutVerdantHillsFieldTrees().forEach((tree) => spacing.add(tree.x, tree.z));
+    /** Whether the slice has run (asked every `every` turns of a loop). */
+    const spent = (turn, every) => (turn % every === 0 && clock.due());
     const trees = [];
     const plant = (x, z, kind, cell) => {
         const name = VERDANT_HILLS_SPRITE_CELLS[cell];
@@ -310,6 +330,10 @@ function plantFarTrees(rng) {
     // Copses first, so the crests are still free: the dozen most prominent crests in sight.
     const crests = [];
     for (let attempt = 0; attempt < 900; attempt += 1) {
+        if (spent(attempt, 16)) {
+            yield 'far trees';
+            clock.restart();
+        }
         const [x, z] = polar((rng() * 2 - 1) * (WEDGE_DEGREES - 4), 320 + 2900 * rng());
         const y = verdantHillsGroundHeight(x, z);
         if (verdantHillsWaterDistance(x, z) > 60 && !hidesTheMill(x, z) && Math.hypot(x - mill.x, z - mill.z) > 90) {
@@ -325,8 +349,12 @@ function plantFarTrees(rng) {
         }
     }
     const perCopse = Math.round((VERDANT_HILLS_FAR_TREE_CEILING * FAR_SHARES.copse) / COPSES);
-    copses.forEach((copse) => {
+    for (const copse of copses) {
         for (let made = 0, attempt = 0; made < perCopse && attempt < perCopse * 14; attempt += 1) {
+            if (spent(attempt, 16)) {
+                yield 'far trees';
+                clock.restart();
+            }
             // Denser at the heart of the copse than at its rim.
             const away = COPSE_RADIUS * Math.sqrt(rng()) * (0.35 + 0.65 * rng());
             const turn = rng() * TAU;
@@ -338,12 +366,16 @@ function plantFarTrees(rng) {
                 made += 1;
             }
         }
-    });
+    }
     const inCopses = trees.length;
 
     // Hedgerow trees: the oaks and ashes left standing when the hedge was laid.
     const hedgerows = Math.round(VERDANT_HILLS_FAR_TREE_CEILING * FAR_SHARES.hedgerow);
     for (let made = 0, attempt = 0; made < hedgerows && attempt < 90000; attempt += 1) {
+        if (spent(attempt, 64)) {
+            yield 'far trees';
+            clock.restart();
+        }
         const [x, z] = somewhere();
         if (verdantHillsFieldAt(x, z).hedge > 0.5 && free(x, z, verdantHillsGroundHeight(x, z))) {
             plant(x, z, 'hedgerow', Math.floor(rng() * 3) % 3);
@@ -355,6 +387,10 @@ function plantFarTrees(rng) {
     // The rest stand alone, well inside a pasture; a third of them are old spreading oaks.
     const alone = VERDANT_HILLS_FAR_TREE_CEILING - inCopses - inHedgerows;
     for (let made = 0, attempt = 0; made < alone && attempt < 12000; attempt += 1) {
+        if (spent(attempt, 64)) {
+            yield 'far trees';
+            clock.restart();
+        }
         const [x, z] = somewhere();
         const field = verdantHillsFieldAt(x, z);
         const open = field.hedge < 0.02 && field.edge > 22 && verdantHillsWaterDistance(x, z) > 10;
@@ -364,7 +400,12 @@ function plantFarTrees(rng) {
         }
     }
     // Nearest first: a tier's prefix drops only the farthest.
+    if (clock.due()) yield 'far trees';
     return trees.sort((a, b) => verdantHillsRange(a.x, a.z) - verdantHillsRange(b.x, b.z));
+}
+
+function plantFarTrees(rng) {
+    return drainSteps(plantFarTreesSteps(rng));
 }
 
 /**
@@ -505,9 +546,15 @@ export function createVerdantHillsPasture() {
     };
 }
 
-function plantSheep(rng) {
+/** The flock, as steps (a time slice at a time: a first visit plants it in its build). */
+function* plantSheepSteps(rng) {
+    const clock = stepClock(VERDANT_HILLS_SLICE_MS);
+    // Every tree a sheep keeps clear of (sheepTreeSpacing) is planted first.
+    yield* plantLayoutSteps('field');
+    yield* plantLayoutSteps('far');
     const flock = [];
-    VERDANT_HILLS_FLOCK_HOMES.forEach((home, group) => {
+    for (let group = 0; group < VERDANT_HILLS_FLOCK_HOMES.length; group += 1) {
+        const home = VERDANT_HILLS_FLOCK_HOMES[group];
         const heading = rng() * TAU;
         const reach = 3 + 2.2 * Math.sqrt(home.ewes);
         const placed = [];
@@ -521,6 +568,10 @@ function plantSheep(rng) {
             return e < home.lambs - twins ? 1 : 0;
         });
         for (let e = 0; e < home.ewes; e += 1) {
+            if (clock.due()) {
+                yield 'sheep';
+                clock.restart();
+            }
             let ewe = null;
             for (let tries = 0; tries < 200 && !ewe; tries += 1) {
                 const away = reach * Math.sqrt(rng());
@@ -573,18 +624,48 @@ function plantSheep(rng) {
                 }
             }
         }
-    });
+    }
     return flock.slice(0, VERDANT_HILLS_SHEEP_CEILING);
 }
 
+function plantSheep(rng) {
+    return drainSteps(plantSheepSteps(rng));
+}
+
 const cache = {};
+/** Each list's salt on VERDANT_HILLS_LAYOUT_SEED and its planting as steps. */
+const PLANTINGS = Object.freeze({
+    field: Object.freeze({ salt: 1, steps: plantFieldTreesSteps }),
+    far: Object.freeze({ salt: 2, steps: plantFarTreesSteps }),
+    sheep: Object.freeze({ salt: 3, steps: plantSheepSteps }),
+});
+
+/** Plant a list from the layout's own seed into the cache, as steps; false when it was planted. */
+function* plantLayoutSteps(name) {
+    if (cache[name]) return false;
+    const { salt, steps } = PLANTINGS[name];
+    const list = Object.freeze((yield* steps(seededRandom(VERDANT_HILLS_LAYOUT_SEED + salt))).map(Object.freeze));
+    // (Planted meanwhile by a call that did not wait: the first stands.)
+    if (!cache[name]) cache[name] = list;
+    return true;
+}
+
+/**
+ * Plant the layout's own `field`, `far` or `sheep` list ahead, a time slice a step (true when it
+ * planted: the session's first). A first visit's build runs it just before the part that reads
+ * the list: the far trees took 47 ms of one build step, the field trees and the flock 13-15 ms.
+ * @param {'field' | 'far' | 'sheep'} name
+ * @returns {Generator<string, boolean>}
+ */
+export function prepareVerdantHillsLayoutSteps(name) {
+    return plantLayoutSteps(name);
+}
+
 /** A layout from the layout's own seed is the same every time: plant it once. */
-function planted(name, salt, plant, rng, count, ceiling) {
+function planted(name, plant, rng, count, ceiling) {
     const wanted = clamp(Number.isFinite(count) ? Math.floor(count) : ceiling, 0, ceiling);
     if (rng) return plant(rng).slice(0, wanted);
-    if (!cache[name]) {
-        cache[name] = Object.freeze(plant(seededRandom(VERDANT_HILLS_LAYOUT_SEED + salt)).map(Object.freeze));
-    }
+    if (!cache[name]) drainSteps(plantLayoutSteps(name));
     return cache[name].slice(0, wanted);
 }
 
@@ -595,7 +676,7 @@ function planted(name, salt, plant, rng, count, ceiling) {
  * sprites from `cell`, `height` and `spread`.
  */
 export function layoutVerdantHillsFieldTrees(rng = null, count = VERDANT_HILLS_FIELD_TREE_CEILING) {
-    return planted('field', 1, plantFieldTrees, rng, count, VERDANT_HILLS_FIELD_TREE_CEILING);
+    return planted('field', plantFieldTrees, rng, count, VERDANT_HILLS_FIELD_TREE_CEILING);
 }
 
 /**
@@ -604,7 +685,7 @@ export function layoutVerdantHillsFieldTrees(rng = null, count = VERDANT_HILLS_F
  * plants them.
  */
 export function layoutVerdantHillsFarTrees(rng = null, count = VERDANT_HILLS_FAR_TREE_CEILING) {
-    return planted('far', 2, plantFarTrees, rng, count, VERDANT_HILLS_FAR_TREE_CEILING);
+    return planted('far', plantFarTrees, rng, count, VERDANT_HILLS_FAR_TREE_CEILING);
 }
 
 /**
@@ -613,7 +694,7 @@ export function layoutVerdantHillsFarTrees(rng = null, count = VERDANT_HILLS_FAR
  * `yaw`; a group heads much the same way. `look` is each animal's own seed (its fleece, its face).
  */
 export function layoutVerdantHillsSheep(rng = null, count = VERDANT_HILLS_SHEEP_CEILING) {
-    return planted('sheep', 3, plantSheep, rng, count, VERDANT_HILLS_SHEEP_CEILING);
+    return planted('sheep', plantSheep, rng, count, VERDANT_HILLS_SHEEP_CEILING);
 }
 
 /**

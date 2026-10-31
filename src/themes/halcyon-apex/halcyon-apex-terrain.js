@@ -44,11 +44,14 @@ import {
     siteToWorld,
     smooth,
 } from './halcyon-apex-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** What a triangle of the land is (the material shades by it). */
 const LAND = Object.freeze({
     range: 0, sand: 1, rock: 2, grass: 3, bark: 4, leaf: 5,
 });
+/** How long the islets' growth runs before it yields to the page, at a rock's or tree's end (ms). */
+const TERRAIN_SLICE_MS = 8;
 
 /** Flat triangles with a colour and a kind per vertex. */
 class LandBuilder {
@@ -376,6 +379,19 @@ function createLandMaterial(u, { caster }) {
  * @param {number} [opts.seed]
  */
 export function createTerrain(u, plan, opts = {}) {
+    return drainSteps(createTerrainSteps(u, plan, opts));
+}
+
+/**
+ * `createTerrain` as steps: the same land from the same draws, yielding between rocks and trees
+ * once a slice has run (shared/build-steps.js). Each rock and tree is cut from a three.js solid:
+ * ~13 ms of a first visit's build in one task (2026-10-31).
+ * @param {object} u
+ * @param {object} plan
+ * @param {object} [opts]
+ */
+export function* createTerrainSteps(u, plan, opts = {}) {
+    const clock = stepClock(TERRAIN_SLICE_MS);
     const rand = mulberry32((opts.seed ?? plan.seed ?? 1) + 0x77);
     const far = new LandBuilder();
     buildRanges(far, opts.segments ?? 96, rand);
@@ -384,20 +400,29 @@ export function createTerrain(u, plan, opts = {}) {
     const islets = isletPlan();
     const ground = new LandBuilder();
     const growth = new LandBuilder();
-    islets.forEach((islet) => {
+    for (let k = 0; k < islets.length; k++) {
+        const islet = islets[k];
         buildIslet(ground, islet, rand);
         for (let i = 0; i < islet.rocks; i++) {
             const a = rand() * TAU;
             const r = islet.radius * (0.35 + rand() * 0.75);
             const size = 0.5 + rand() * (0.6 + islet.radius * 0.07);
             buildRock(ground, islet.x + Math.cos(a) * r, Math.max(0.1, islet.height * (1 - r / islet.radius) * 0.7), islet.z + Math.sin(a) * r, size, rand);
+            if (clock.due()) {
+                yield 'rocks';
+                clock.restart();
+            }
         }
         for (let i = 0; i < islet.trees; i++) {
             const a = rand() * TAU;
             const r = islet.radius * rand() * 0.34;
             buildTree(growth, islet.x + Math.cos(a) * r, islet.height * 0.8, islet.z + Math.sin(a) * r, 5 + rand() * 2.5 + islet.radius * 0.1, rand);
+            if (clock.due()) {
+                yield 'trees';
+                clock.restart();
+            }
         }
-    });
+    }
     const landMaterial = createLandMaterial(u, { caster: true });
     const isletPart = haPart('HalcyonApexIslets', ground.geometry(), landMaterial, -34);
     const flora = haPart('HalcyonApexFlora', growth.geometry(), landMaterial, -33);

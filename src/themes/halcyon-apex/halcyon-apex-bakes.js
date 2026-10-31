@@ -11,7 +11,8 @@ import { bakeInWorker } from '../shared/bake-worker-client.js';
 import {
     NOISE_SIZE, bakeNoise, halfMipChain,
 } from './halcyon-apex-bake-data.js';
-import { buildPlan } from './halcyon-apex-plan.js';
+import { buildPlanSteps } from './halcyon-apex-plan.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** The seed the world bakes its noise with (bakeNoise's default). */
 export const NOISE_SEED = 4471;
@@ -32,8 +33,21 @@ export function sessionNoiseMips(field, size = NOISE_SIZE) {
 
 /** The plan for a seed (buildPlan's default when none), kept for the session. */
 export function sessionPlan(seed) {
+    return drainSteps(sessionPlanSteps(seed));
+}
+
+/**
+ * `sessionPlan` as steps (a world's build breathes between them, shared/build-steps.js): a plan
+ * already kept is handed back at once; a first visit's is cut a slice at a time. If another world
+ * kept the seed's plan meanwhile, that one is handed back: worlds share one plan.
+ * @param {number} [seed]
+ */
+export function* sessionPlanSteps(seed) {
     const key = seed ?? 'default';
-    if (!kept.plans.has(key)) kept.plans.set(key, seed === undefined ? buildPlan() : buildPlan(seed));
+    if (!kept.plans.has(key)) {
+        const plan = yield* (seed === undefined ? buildPlanSteps() : buildPlanSteps(seed));
+        if (!kept.plans.has(key)) kept.plans.set(key, plan);
+    }
     return kept.plans.get(key);
 }
 

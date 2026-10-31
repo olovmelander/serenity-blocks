@@ -12,6 +12,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
+import { loadDecodedTexture } from '../shared/decoded-texture.js';
 
 export const FOREST_TREE_URLS = Object.freeze({
     'spruce-elder': new URL('./assets/spruce-elder.glb', import.meta.url).href,
@@ -205,8 +206,8 @@ export async function loadForestAssets({
     const [foliageGltf, propsGltf, impostorTexture, moonTexture, owlGltf, ...treeGltfs] = await Promise.all([
         loader.loadAsync(FOREST_FOLIAGE_URL),
         loader.loadAsync(FOREST_PROPS_URL),
-        layout && textureLoader ? textureLoader.loadAsync(FOREST_IMPOSTOR_URL) : null,
-        textureLoader ? textureLoader.loadAsync(FOREST_MOON_MAP_URL).catch(() => null) : null,
+        layout && textureLoader ? loadDecodedTexture(FOREST_IMPOSTOR_URL, textureLoader) : null,
+        textureLoader ? loadDecodedTexture(FOREST_MOON_MAP_URL, textureLoader).catch(() => null) : null,
         // The owl is the one creature the forest can do without: a failed load leaves it out.
         owl ? loader.loadAsync(FOREST_OWL_URL).catch((error) => {
             console.warn('[Forest] the owl did not arrive:', error?.message || error);

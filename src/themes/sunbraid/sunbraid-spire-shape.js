@@ -13,6 +13,7 @@
  */
 import { TAU, mulberry32, smooth } from './sunbraid-core.js';
 import { noiseAt } from './sunbraid-noise.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** How many shapes the towers share (each instanced). */
 export const SPIRE_VARIANTS = 8;
@@ -167,10 +168,29 @@ export function spireAxis(rec, t, out = [0, 0]) {
 }
 
 /**
+ * How long a slice of a tower's mesh runs before it yields to the page (ms). In one step the eight
+ * shapes held Sunbraid's first-visit switch ~53 ms (2026-10-31).
+ */
+export const SPIRE_SLICE_MS = 8;
+
+/**
  * The mesh of variant `v` at unit height: `segs` bearings × `rings` heights, capped flat on top.
  * Attributes: position, normal, and aSpire (height fraction, ambient occlusion).
  */
 export function buildSpireMesh(v, segs = 64, rings = 140) {
+    return drainSteps(buildSpireMeshSteps(v, segs, rings));
+}
+
+/**
+ * `buildSpireMesh` as steps (the world's build breathes between them): the same mesh, yielding
+ * between its rows and its passes once `clock` is due (the towers' build shares one clock).
+ */
+export function* buildSpireMeshSteps(v, segs = 64, rings = 140, clock = stepClock(SPIRE_SLICE_MS)) {
+    function* slice(label) {
+        if (!clock.due()) return;
+        yield label;
+        clock.restart();
+    }
     const rec = spireRecipe(v);
     const cols = segs + 1;
     // Rings crowd round the setbacks and the foot so the steps stay sharp.
@@ -196,6 +216,7 @@ export function buildSpireMesh(v, segs = 64, rings = 140) {
             position[k * 3 + 2] = axis[1] + Math.sin(theta) * r;
             spire[k * 2] = t;
         }
+        yield* slice('spire rows');
     }
     // The flat top's centre.
     const top = cols * R;
@@ -228,6 +249,7 @@ export function buildSpireMesh(v, segs = 64, rings = 140) {
         index[n++] = top;
         index[n++] = last + i + 1;
     }
+    yield* slice('spire index');
 
     // Normals: area-weighted from the faces, the seam welded (first column = last).
     const acc = new Float64Array(count * 3);
@@ -250,6 +272,7 @@ export function buildSpireMesh(v, segs = 64, rings = 140) {
             acc[v3 + 2] += nz;
         }
     }
+    yield* slice('spire faces');
     for (let j = 0; j < R; j++) {
         const a = j * cols * 3;
         const b = (j * cols + segs) * 3;

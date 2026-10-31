@@ -21,8 +21,14 @@ import manifest from './assets/asset-manifest.json';
 // Reads a (possibly normalised integer) attribute as floats, bit-identical to the getters.
 import { attributeFloats as floats } from '../shared/attribute-floats.js';
 import { freshGeometry } from '../shared/fresh-geometry.js';
+import { breathe, drainSteps, stepClock } from '../shared/build-steps.js';
 
 export const SUNFALL_ASSET_SCHEMA = 1;
+/** How long one slice of the parse and the weld runs before it yields to the page (ms). */
+const PARSE_SLICE_MS = 8;
+/** Vertices between two looks at the slice's clock, and weld candidates (each 27 cell lookups). */
+const CHECK_EVERY = 1024;
+const CHECK_CANDIDATES = 64;
 export const SUNFALL_ASSET_MANIFEST = manifest;
 export const SUNFALL_ASSET_URLS = Object.freeze({
     shell: new URL('./assets/sunfall-shell.glb', import.meta.url).href,
@@ -70,6 +76,16 @@ function meshGeometry(object) {
  * Only a vertex inside another chunk's bounds can be on a seam. Returns the vertices welded.
  */
 export function weldChunkSeams(geometries, tolerance = 0.05) {
+    return drainSteps(weldChunkSeamsSteps(geometries, tolerance));
+}
+
+/**
+ * `weldChunkSeams` as steps (the load breathes between them): the same weld in the same order,
+ * yielding between vertices, candidates and groups once a slice has run `clock`'s budget. In one
+ * task the parse and weld held a first Sunfall switch ~30 ms (2026-10-31).
+ * @returns {Generator<string, number>} the vertices welded
+ */
+export function* weldChunkSeamsSteps(geometries, tolerance = 0.05, clock = stepClock(PARSE_SLICE_MS)) {
     if (geometries.length < 2) return 0;
     const boxes = geometries.map((g) => g.boundingBox.clone().expandByScalar(tolerance));
     const at = new THREE.Vector3();
@@ -77,9 +93,13 @@ export function weldChunkSeams(geometries, tolerance = 0.05) {
     const cellOf = (p) => [0, 1, 2].map((c) => Math.floor(p[c] / tolerance));
     const cand = []; // [chunk, offset of its x in the position array]
     const cells = new Map();
-    geometries.forEach((g, gi) => {
-        const p = g.attributes.position.array;
+    for (let gi = 0; gi < geometries.length; gi += 1) {
+        const p = geometries[gi].attributes.position.array;
         for (let i = 0; i < p.length; i += 3) {
+            if (i % (3 * CHECK_EVERY) === 0 && clock.due()) {
+                yield 'weld';
+                clock.restart();
+            }
             at.fromArray(p, i);
             if (!boxes.some((box, bi) => bi !== gi && box.containsPoint(at))) continue;
             const key = cellOf(p.subarray(i, i + 3)).join();
@@ -87,7 +107,7 @@ export function weldChunkSeams(geometries, tolerance = 0.05) {
             cells.get(key).push(cand.length);
             cand.push([gi, i]);
         }
-    });
+    }
     // Union-find over the candidates of different chunks that lie within the tolerance.
     const parent = cand.map((_, k) => k);
     const root = (k) => {
@@ -95,7 +115,12 @@ export function weldChunkSeams(geometries, tolerance = 0.05) {
         while (parent[r] !== r) r = parent[r];
         return r;
     };
-    cand.forEach((c, k) => {
+    for (let k = 0; k < cand.length; k += 1) {
+        if (k % CHECK_CANDIDATES === 0 && clock.due()) {
+            yield 'weld';
+            clock.restart();
+        }
+        const c = cand[k];
         const p = pos(c);
         const [cx, cy, cz] = cellOf(p);
         for (let dx = -1; dx <= 1; dx += 1) {
@@ -109,25 +134,39 @@ export function weldChunkSeams(geometries, tolerance = 0.05) {
                 }
             }
         }
-    });
+    }
     const groups = new Map();
-    cand.forEach((_, k) => {
+    for (let k = 0; k < cand.length; k += 1) {
+        if (k % CHECK_EVERY === 0 && clock.due()) {
+            yield 'weld';
+            clock.restart();
+        }
         const r = root(k);
         if (!groups.has(r)) groups.set(r, []);
         groups.get(r).push(k);
-    });
+    }
     let welded = 0;
+    let seen = 0;
     for (const members of groups.values()) {
+        seen += 1;
+        if (seen % CHECK_EVERY === 0 && clock.due()) {
+            yield 'weld';
+            clock.restart();
+        }
         if (members.length < 2) continue;
         const mean = [0, 0, 0];
         members.forEach((k) => pos(cand[k]).forEach((v, c) => { mean[c] += v / members.length; }));
         members.forEach((k) => pos(cand[k]).set(mean));
         welded += members.length;
     }
-    geometries.forEach((g) => {
-        g.computeBoundingSphere();
-        g.computeBoundingBox();
-    });
+    for (let gi = 0; gi < geometries.length; gi += 1) {
+        if (clock.due()) {
+            yield 'weld';
+            clock.restart();
+        }
+        geometries[gi].computeBoundingSphere();
+        geometries[gi].computeBoundingBox();
+    }
     return welded;
 }
 
@@ -139,17 +178,36 @@ function checkSchema(gltf, kind) {
     }
 }
 
-function meshesNamed(gltf, prefix) {
+/** The named meshes' geometries in name order, yielding between meshes once a slice has run. */
+function* meshesNamedSteps(gltf, prefix, clock) {
     const out = [];
     gltf.scene.traverse((object) => {
         if (object.isMesh && object.name.startsWith(prefix)) out.push(object);
     });
     out.sort((a, b) => a.name.localeCompare(b.name, 'en', { numeric: true }));
-    return out.map(meshGeometry);
+    const geometries = [];
+    for (let i = 0; i < out.length; i += 1) {
+        if (clock.due()) {
+            yield 'meshes';
+            clock.restart();
+        }
+        geometries.push(meshGeometry(out[i]));
+    }
+    return geometries;
 }
 
 /** Turn the three parsed GLBs into geometries and the canopy plan. */
-export function parseSunfallAssets({ shell, ledge, crowns }) {
+export function parseSunfallAssets(gltfs) {
+    return drainSteps(parseSunfallAssetsSteps(gltfs));
+}
+
+/**
+ * `parseSunfallAssets` as steps (loadSunfallAssets breathes between them): the same geometries,
+ * welded the same, made in the same order, yielding once a slice has run PARSE_SLICE_MS.
+ * @returns {Generator<string, object>}
+ */
+export function* parseSunfallAssetsSteps({ shell, ledge, crowns }) {
+    const clock = stepClock(PARSE_SLICE_MS);
     checkSchema(shell, 'shell');
     checkSchema(ledge, 'ledge');
     checkSchema(crowns, 'crowns');
@@ -160,15 +218,16 @@ export function parseSunfallAssets({ shell, ledge, crowns }) {
     if (!planObject) throw new Error('[Sunfall] The crowns asset has no canopy plan.');
     const position = worldPositions(planObject);
     const crown = floats(planObject.geometry.attributes._crown, 4);
-    const shellChunks = meshesNamed(shell, 'Shell');
-    const ledgeChunks = meshesNamed(ledge, 'Ledge');
-    weldChunkSeams(shellChunks);
-    weldChunkSeams(ledgeChunks);
+    const shellChunks = yield* meshesNamedSteps(shell, 'Shell', clock);
+    const ledgeChunks = yield* meshesNamedSteps(ledge, 'Ledge', clock);
+    yield* weldChunkSeamsSteps(shellChunks, undefined, clock);
+    yield* weldChunkSeamsSteps(ledgeChunks, undefined, clock);
+    const crownChunks = yield* meshesNamedSteps(crowns, 'Crown', clock);
     return {
         manifest,
         shell: shellChunks,
         ledge: ledgeChunks,
-        crowns: meshesNamed(crowns, 'Crown'),
+        crowns: crownChunks,
         plan: { count: position.length / 3, position, crown },
     };
 }
@@ -235,7 +294,16 @@ async function loadSunfallAssetsFresh(loader) {
         loader.loadAsync(SUNFALL_ASSET_URLS.ledge),
         loader.loadAsync(SUNFALL_ASSET_URLS.crowns),
     ]);
-    const assets = parseSunfallAssets({ shell, ledge, crowns });
+    // Parsed and welded in slices, a breath before each (shared/build-steps.js), so the theme
+    // still playing keeps its frames; the session keeps the result, so it always runs to the end.
+    const steps = parseSunfallAssetsSteps({ shell, ledge, crowns });
+    let next;
+    do {
+        // eslint-disable-next-line no-await-in-loop
+        await breathe();
+        next = steps.next();
+    } while (!next.done);
+    const assets = next.value;
     [shell, ledge, crowns].forEach(releaseGltf);
     return assets;
 }

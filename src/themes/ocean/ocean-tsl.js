@@ -71,6 +71,7 @@ import {
     skyDirection,
 } from './ocean-core.js';
 import { HOURS, HOUR_COLOURS } from './ocean-hours.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 export * from './ocean-core.js';
 export * from './ocean-hours.js';
@@ -126,11 +127,25 @@ export const ocTurnY = (v, s, c) => vec3(v.x.mul(c).add(v.z.mul(s)), v.y, v.z.mu
 
 export const NOISE_SIZE = 256;
 
+/** How long the noise bake runs before it yields to the page, at a channel's end (ms). */
+const NOISE_SLICE_MS = 8;
+
 /**
  * Periodic fBm gradient noise, four decorrelated channels stretched to [0, 1].
  * @returns {Float32Array} size × size × 4
  */
 export function bakeNoise(seed = 7741, size = NOISE_SIZE) {
+    return drainSteps(bakeNoiseSteps(seed, size));
+}
+
+/**
+ * `bakeNoise` as steps: the same field, a channel or more to a step (it yields at a channel's end
+ * once NOISE_SLICE_MS has run; the world's build breathes there, shared/build-steps.js), returned
+ * at the end. Baked in one piece it was 14 ms of the world's 49 ms build task (2026-10-31).
+ * @returns {Generator<number, Float32Array>}
+ */
+export function* bakeNoiseSteps(seed = 7741, size = NOISE_SIZE) {
+    const clock = stepClock(NOISE_SLICE_MS);
     const n = size;
     const rand = mulberry32(seed);
     const base = new Float32Array(n * n * 4);
@@ -184,6 +199,10 @@ export function bakeNoise(seed = 7741, size = NOISE_SIZE) {
         }
         const inv = 1 / Math.max(1e-6, hi - lo);
         for (let i = 0; i < field.length; i++) base[i * 4 + c] = (field[i] - lo) * inv;
+        if (c < 3 && clock.due()) {
+            yield c;
+            clock.restart();
+        }
     }
     return base;
 }

@@ -61,7 +61,7 @@ import {
     TAU,
     WISP_FLIGHT,
     approach,
-    bakeNoise,
+    bakeNoiseSteps,
     celestialAnchors,
     clamp01,
     createHeightTexture,
@@ -88,9 +88,11 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './lunara-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, wheelAt } from '../shared/mood-clock.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { loadBitmapTexture, uploadTextureNow } from '../shared/decoded-texture.js';
 
 /** The rest camera: standing in the flats, looking down the valley and a little up at the sky. */
 export const REST_RIG = Object.freeze({
@@ -162,8 +164,13 @@ export class LunaraWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.noiseField = bakeNoise();
-        this.plan = buildPlan(this.noiseField, NOISE_SIZE, seed);
+        /**
+         * The noise field and the valley's plan are made by the build's first steps (fixed seeds:
+         * the same field and plan wherever they run); nothing reads them before it.
+         */
+        this.noiseField = null;
+        this.plan = null;
+        this.planSeed = seed;
         this.root = new THREE.Group();
         this.root.name = 'Lunara';
         this.parts = {};
@@ -321,6 +328,19 @@ export class LunaraWorld {
     }
 
     build() {
+        return drainSteps(this.buildSteps());
+    }
+
+    /**
+     * The build as steps, a few parts to a step (the theme breathes between them:
+     * shared/build-steps.js), the same work in the same order. Built in one task with the noise
+     * bake and the plan, it held the first-visit switch's worst frame at ~60 ms (2026-10-31).
+     */
+    * buildSteps() {
+        if (!this.noiseField) this.noiseField = yield* bakeNoiseSteps();
+        yield 'noise';
+        if (!this.plan) this.plan = buildPlan(this.noiseField, NOISE_SIZE, this.planSeed);
+        yield 'plan';
         const noise = createNoiseTexture(this.noiseField, NOISE_SIZE);
         const heights = createHeightTexture(this.plan.heights);
         const blank = createPlaceholderTexture();
@@ -337,6 +357,7 @@ export class LunaraWorld {
         this.addPart('companion', createMoon(u, this.moonMap, this.mapFade, { companion: true, relief: tier.relief }));
         this.meteors = createMeteors(u, tier.meteors);
         this.addPart('meteors', this.meteors);
+        yield 'sky';
 
         this.addPart('ranges', createRanges(u, plan));
         this.addPart('banks', createBanks(u, plan));
@@ -344,6 +365,7 @@ export class LunaraWorld {
         this.addPart('water', water);
         if (water.reflectorTarget) this.root.add(water.reflectorTarget);
         this.reflection = water.reflection;
+        yield 'land and water';
 
         const stones = createCrystals(u, plan, { count: tier.crystals, dispersion: tier.dispersion });
         this.crystals = stones.crystals;
@@ -353,6 +375,7 @@ export class LunaraWorld {
 
         if (tier.flowers > 0) this.addPart('flowers', createFlowers(u, plan, tier.flowers));
         if (tier.motes > 0) this.addPart('motes', createMotes(u, tier.motes));
+        yield 'crystals and flora';
 
         // ── Gameplay effects (pools, always drawn) ──
         this.shards = createShards(u, tier.shards);
@@ -396,16 +419,24 @@ export class LunaraWorld {
                 tex.generateMipmaps = true;
                 tex.minFilter = THREE.LinearMipmapLinearFilter;
                 tex.name = 'lunara-moon-map';
+                // Uploaded in the task it arrived in, not at the next frame's first draw (shared/decoded-texture.js).
+                uploadTextureNow(this.renderer, tex);
                 this.textures.push(tex);
                 this.moonMap.value = tex;
                 this.mapReady = true;
                 resolve(true);
             };
-            try {
-                new THREE.TextureLoader().load(MOON_MAP_URL, arrived, undefined, () => resolve(false));
-            } catch {
-                resolve(false); // no image decoding here (a headless host): the moons stay smooth
-            }
+            const viaLoader = () => {
+                try {
+                    new THREE.TextureLoader().load(MOON_MAP_URL, arrived, undefined, () => resolve(false));
+                } catch {
+                    resolve(false); // no image decoding here (a headless host): the moons stay smooth
+                }
+            };
+            // Decoded off the main thread (shared/decoded-texture.js): its upload decoded the 2K map
+            // on the main thread, ~15 ms of a first-visit switch (2026-10-31). TextureLoader where
+            // that cannot run.
+            loadBitmapTexture(MOON_MAP_URL).then((tex) => (tex ? arrived(tex) : viaLoader()), () => resolve(false));
         });
     }
 

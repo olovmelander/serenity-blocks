@@ -6,10 +6,19 @@
  * v=1 is north, and the composed near side faces +Z (u=0.25). DataTexture
  * therefore stays flipY=false, including the OpenGL-style +Y normal map.
  */
+import { breathe, stepClock } from '../../themes/shared/build-steps.js';
+
 const surfaceCache = new Map();
 const authoredSurfaceCache = new Map();
 let authoredImageReady;
 const TAU = Math.PI * 2;
+/**
+ * How long a slice of the authored atlas's bake runs before it yields to the page (ms). In one
+ * task it held a first visit's switch frame 44 ms (2026-10-31), four times that at 2048 wide.
+ */
+const AUTHORED_SLICE_MS = 8;
+/** Rows of the drawn atlas read back at a time. */
+const AUTHORED_BAND_ROWS = 16;
 
 function seededRandom(seed) {
     let state = seed >>> 0;
@@ -288,24 +297,36 @@ export function createLunarSurface(THREE, size = 1024) {
     };
 }
 
-/** Preserve the authored lunar geology, with only gentle matching fine relief. */
-function bakeAuthoredSurface(image, width) {
+/**
+ * Preserve the authored lunar geology, with only gentle matching fine relief: as steps, the drawn
+ * atlas read back a band of rows at a time and both passes yielding between rows once a slice has
+ * run AUTHORED_SLICE_MS. The same canvas, the same pixels read, the same bytes.
+ */
+function* bakeAuthoredSurfaceSteps(image, width) {
+    const clock = stepClock(AUTHORED_SLICE_MS);
     const height = width / 2;
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     const context = canvas.getContext('2d', { willReadFrequently: true });
     if (!context) throw new Error('Lunar atlas canvas is unavailable');
     context.drawImage(image, 0, 0, width, height);
-    const { data } = context.getImageData(0, 0, width, height);
     const pixels = new Uint8Array(width * height * 4);
     const normals = new Uint8Array(pixels.length);
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-            const input = (y * width + x) * 4;
-            const output = ((height - 1 - y) * width + x) * 4;
-            const shade = Math.round(data[input] * 0.2126 + data[input + 1] * 0.7152 + data[input + 2] * 0.0722);
-            pixels[output] = shade; pixels[output + 1] = shade; pixels[output + 2] = shade;
-            pixels[output + 3] = 255;
+    for (let band = 0; band < height; band += AUTHORED_BAND_ROWS) {
+        const rows = Math.min(AUTHORED_BAND_ROWS, height - band);
+        const { data } = context.getImageData(0, band, width, rows);
+        for (let y = band; y < band + rows; y++) {
+            for (let x = 0; x < width; x++) {
+                const input = ((y - band) * width + x) * 4;
+                const output = ((height - 1 - y) * width + x) * 4;
+                const shade = Math.round(data[input] * 0.2126 + data[input + 1] * 0.7152 + data[input + 2] * 0.0722);
+                pixels[output] = shade; pixels[output + 1] = shade; pixels[output + 2] = shade;
+                pixels[output + 3] = 255;
+            }
+        }
+        if (clock.due()) {
+            yield 'lunar albedo';
+            clock.restart();
         }
     }
     for (let y = 0; y < height; y++) {
@@ -321,10 +342,26 @@ function bakeAuthoredSurface(image, width) {
             normals[output + 2] = Math.round((inverseLength * 0.5 + 0.5) * 255);
             normals[output + 3] = 255;
         }
+        if (clock.due()) {
+            yield 'lunar relief';
+            clock.restart();
+        }
     }
     return {
         pixels, normals, width, height, source: 'authored',
     };
+}
+
+/** The authored atlas's bake with a macrotask between its slices: the page's frames run there. */
+async function bakeAuthoredSurface(image, width) {
+    const steps = bakeAuthoredSurfaceSteps(image, width);
+    let next = steps.next();
+    while (!next.done) {
+        // eslint-disable-next-line no-await-in-loop
+        await breathe();
+        next = steps.next();
+    }
+    return next.value;
 }
 
 /** Two caller-owned textures; image decode and each size's CPU atlas are shared. */

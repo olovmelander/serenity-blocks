@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-    buildWorldBreathing, drainSteps, runStepsBreathing, stepClock,
+    buildWorldBreathing, drainSteps, runStepsBreathing, stepClock, uploadTexturesBreathing,
 } from '../../src/themes/shared/build-steps.js';
 
 /**
@@ -150,21 +150,60 @@ describe('the stepped themes build their worlds in steps', () => {
     const stepped = [
         ...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'rainbow-terraces', 'bioluminescence', 'koi-pond',
         'shifting-sands', 'sakura-twilight', 'grainfields', 'sunbraid',
+        // The first-visit stutter pass of 2026-10-31 (their builds held a switch frame 40-90 ms).
+        'stillwater', 'thermal-bloom', 'painted-ages', 'himalayan-peak', 'lunara', 'nebula-flow', 'vesper-chrysalis',
+        'tornado', 'void-ember', 'chiral-gold', 'ocean',
+        'astral-weave', 'pyrestorm',
+        // Its third round (tasks of 30-60 ms the long-frame reports did not show, found by profile).
+        'aether-tides', 'aurora', 'crystal-cave', 'fluid-dreams', 'halcyon-apex', 'neon-dusk', 'serenity-warp',
+        'stellar-drift', 'rainbark', 'sunfall', 'synthwave-sunset',
     ];
     /** A theme's world module (Sakura's carries the short name). */
     const worldOf = (id) => source(`${id}/${id === 'sakura-twilight' ? 'sakura' : id}-world.js`);
     it.each(stepped)('%s: build() drains buildSteps(); the theme owns the world once whole', (id) => {
         const world = worldOf(id);
-        expect(world).toMatch(/\n {4}build\(\) \{\n {8}drainSteps\(this\.buildSteps\(\)\);\n {8}return this;\n {4}\}/);
+        // Either form: drain then `return this`, or return what buildSteps() returns (the world).
+        expect(world).toMatch(new RegExp('\\n {4}build\\(\\) \\{\\n {8}(?:drainSteps\\(this\\.buildSteps\\(\\)\\);'
+            + '\\n {8}return this;|return drainSteps\\(this\\.buildSteps\\(\\)\\);)\\n {4}\\}'));
         expect(world).toMatch(/\n {4}\* buildSteps\(\) \{/);
         expect(world.match(/yield /g).length).toBeGreaterThanOrEqual(2);
         const theme = source(`${id}/${id}-theme.js`);
         // Never a half-built this.world between the breaths (a resume or a resize would draw it).
-        expect(theme).toContain('if (!(await buildWorldBreathing(world, isCurrent))) return');
+        expect(theme).toContain('if (!(await buildWorldBreathing(world, isCurrent)))');
         expect(theme).toContain('this.world = world;');
         expect(theme).not.toMatch(/this\.world = new /);
     });
     it.each([...family, 'sakura-twilight'])('%s: its start keeps nothing when stopped mid-build', (id) => {
         expect(source(`${id}/${id}-theme.js`)).toContain('if (await this.buildScene(current) === false)');
+    });
+});
+
+describe('uploadTexturesBreathing', () => {
+    const tex = (name) => ({ isTexture: true, name });
+
+    it('uploads each texture in its own task, in order, and leaves others to the first draw', async () => {
+        const log = [];
+        const renderer = { initTexture: (t) => log.push(`upload ${t.name}`) };
+        const pause = vi.fn(async () => { log.push('breath'); });
+        await expect(uploadTexturesBreathing(renderer, [tex('near'), { name: 'not a texture' }, tex('mid')], () => true, pause))
+            .resolves.toBe(true);
+        expect(log).toEqual(['breath', 'upload near', 'breath', 'breath', 'upload mid']);
+    });
+
+    it('stops when the start is no longer current, and shrugs off a renderer that throws or cannot', async () => {
+        let current = true;
+        const uploaded = [];
+        const renderer = {
+            initTexture: (t) => {
+                uploaded.push(t.name);
+                current = false;
+            },
+        };
+        await expect(uploadTexturesBreathing(renderer, [tex('a'), tex('b')], () => current, async () => {}))
+            .resolves.toBe(false);
+        expect(uploaded).toEqual(['a']);
+        const failing = { initTexture: () => { throw new Error('lost'); } };
+        await expect(uploadTexturesBreathing(failing, [tex('a')], () => true, async () => {})).resolves.toBe(true);
+        await expect(uploadTexturesBreathing({}, [tex('a')])).resolves.toBe(true);
     });
 });

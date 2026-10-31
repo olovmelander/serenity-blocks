@@ -15,7 +15,7 @@ import {
     GRIDS, KNOLL, VALLEY_SCHEMA, decodeValley, encodeValley, forestCover, groundHeight, knollOutside, terrainHeight,
 } from '../../src/themes/spring/spring-terrain.js';
 import { SPRING_FLOWERS, springFlowerSlotForPiece } from '../../src/themes/spring/spring-flowers.js';
-import { LANDINGS, poolBoil } from '../../src/themes/spring/spring-fall-plan.js';
+import { fallLandings, poolBoil } from '../../src/themes/spring/spring-fall-plan.js';
 import { SPRING_TETROMINOS } from '../../src/themes/spring/spring-tetrominos.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -153,7 +153,7 @@ describe('spring plan: the river', () => {
 
     it('runs fast and white below the fall and in the rapids, quiet up the valley', () => {
         // The pool boils where the main tongue lands (spring-fall-plan.js), calmer downstream.
-        const main = LANDINGS.reduce((a, b) => (b.power > a.power ? b : a));
+        const main = fallLandings().reduce((a, b) => (b.power > a.power ? b : a));
         expect(poolBoil(main.along, main.across)).toBeGreaterThan(0.85);
         expect(poolBoil(main.along + 40, main.across)).toBeLessThan(poolBoil(main.along, main.across) * 0.5);
         expect(turbulenceAt(S_LIP - 200)).toBeLessThan(0.1);

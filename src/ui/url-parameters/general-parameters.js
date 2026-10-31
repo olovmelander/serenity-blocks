@@ -218,6 +218,20 @@ export const GENERAL_URL_PARAMETERS = [
         'src/themes/theme-manager.js',
     ),
     sharedFlag(
+        'mipmapPipelineWarm',
+        'Startup',
+        'Compile the three.js mipmap pipelines off the GPU process when a theme renderer starts.',
+        'Every theme start and in-play switch',
+        'src/rendering/mipmap-pipeline-warm.js',
+    ),
+    sharedFlag(
+        'switchSlicedBuilds',
+        'Startup',
+        'Build the incoming theme of an in-play switch between frames, a shader stage at a time (three r187).',
+        'Level-mode level-ups, the Random timer and theme picks during play',
+        'src/rendering/async-render-pipelines.js',
+    ),
+    sharedFlag(
         'themeDeviceSpare',
         'Startup',
         'Start a theme on a GPU device requested ahead of time instead of waiting for a new one.',

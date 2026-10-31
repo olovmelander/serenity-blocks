@@ -22,6 +22,7 @@ import {
     texture, uniform, vec2, vec3,
 } from 'three/tsl';
 import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { FALL_MOODS, createFallMood, fallMoodAt } from './fall-moods.js';
 
@@ -182,6 +183,7 @@ export class FallLight {
         sunShadow.needsUpdate = true;
         this.shadowNode = shadow(this.sun);
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     /** Aim the shadow camera so its box holds everything the play camera can see. */
@@ -203,6 +205,7 @@ export class FallLight {
         sun.target.updateMatrixWorld(true);
         sun.shadow.needsUpdate = true;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     addTo(group) {
@@ -365,11 +368,9 @@ export class FallLight {
         );
         this.uHaze.value = this.restHaze * (1 - HAZE_CLEAR * fever);
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
-        // over the first frames so no late tree is missing from the static map.
+        // over its first draws (shared/static-shadow-draws.js) so no late tree is missing from the static map.
         this.shadowFrames += 1;
-        if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150) {
-            this.sun.shadow.needsUpdate = true;
-        }
+        redrawStaticShadow(this, this.sun.shadow, this.shadowFrames === 45 || this.shadowFrames === 150);
     }
 
     dispose() {

@@ -986,7 +986,7 @@ describe('Fall world ownership', () => {
         const material = new THREE.MeshBasicNodeMaterial();
         const geometryDisposal = vi.spyOn(geometry, 'dispose');
         const materialDisposal = vi.spyOn(material, 'dispose');
-        vi.spyOn(FallForest.prototype, 'build').mockImplementation(function failedBuild() {
+        vi.spyOn(FallForest.prototype, 'buildSteps').mockImplementation(function failedBuild() {
             this.own(geometry);
             this.own(material);
             this.group.add(new THREE.Mesh(geometry, material));
@@ -1003,7 +1003,7 @@ describe('Fall world ownership', () => {
     });
 
     it('leaves the scene clean when a part fails half way through its build', async () => {
-        vi.spyOn(FallForest.prototype, 'build').mockImplementation(() => {
+        vi.spyOn(FallForest.prototype, 'buildSteps').mockImplementation(() => {
             throw new Error('partial forest failure');
         });
         const { world, scene } = createWorld('Minimal', await loadBundle());

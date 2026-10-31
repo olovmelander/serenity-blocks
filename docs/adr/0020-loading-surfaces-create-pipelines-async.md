@@ -166,7 +166,7 @@ the historical timings below were measured with that earlier policy, not this re
 
 ## Enforcement
 
-- `tests/unit/async-render-pipelines-contract.test.js`, `tests/unit/three-r186-compute-pipeline-contract.test.js`:
+- `tests/unit/async-render-pipelines-contract.test.js`, `tests/unit/three-r187-compute-pipeline-contract.test.js`:
   pin the r186.1 internals both helpers depend on (a three upgrade fails loudly; listed in ADR-0018).
 - `tests/unit/async-render-pipelines.test.js`, `tests/unit/webgpu-compute-pipeline-async.test.js`,
   `tests/unit/theme-prewarm-async.test.js`, `tests/unit/intro-async-pipelines.test.js`,

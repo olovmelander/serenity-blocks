@@ -70,6 +70,75 @@ import {
     tbSteamVeil,
 } from './thermal-bloom-tsl.js';
 import { STAIR, bakeStair } from './thermal-bloom-bake.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
+
+/**
+ * How long a slice of the Stair's normals runs before it yields to the page (ms): the world's
+ * build breathes there (shared/build-steps.js). In one task the normals held a first visit's
+ * switch 16-17 ms (2026-10-31).
+ */
+const NORMALS_SLICE_MS = 8;
+/** Triangles between two looks at the clock. */
+const NORMALS_CHECK = 2048;
+
+/**
+ * three's BufferGeometry.computeVertexNormals for an indexed geometry that has no normals yet,
+ * as steps: the same Vector3 operations on the same triangles in the same order, then three's own
+ * normalizeNormals, so the same normals bit for bit; it yields between runs of triangles once a
+ * slice has run NORMALS_SLICE_MS. Any other geometry takes three's call at once.
+ * @param {THREE.BufferGeometry} geometry
+ */
+function* vertexNormalsSteps(geometry) {
+    const { index } = geometry;
+    const positionAttribute = geometry.getAttribute('position');
+    if (!index || positionAttribute === undefined || geometry.getAttribute('normal') !== undefined) {
+        geometry.computeVertexNormals();
+        return;
+    }
+    const clock = stepClock(NORMALS_SLICE_MS);
+    const normalAttribute = new THREE.BufferAttribute(new Float32Array(positionAttribute.count * 3), 3);
+    geometry.setAttribute('normal', normalAttribute);
+    const pA = new THREE.Vector3();
+    const pB = new THREE.Vector3();
+    const pC = new THREE.Vector3();
+    const nA = new THREE.Vector3();
+    const nB = new THREE.Vector3();
+    const nC = new THREE.Vector3();
+    const cb = new THREE.Vector3();
+    const ab = new THREE.Vector3();
+    let check = NORMALS_CHECK;
+    for (let i = 0, il = index.count; i < il; i += 3) {
+        const vA = index.getX(i + 0);
+        const vB = index.getX(i + 1);
+        const vC = index.getX(i + 2);
+        pA.fromBufferAttribute(positionAttribute, vA);
+        pB.fromBufferAttribute(positionAttribute, vB);
+        pC.fromBufferAttribute(positionAttribute, vC);
+        cb.subVectors(pC, pB);
+        ab.subVectors(pA, pB);
+        cb.cross(ab);
+        nA.fromBufferAttribute(normalAttribute, vA);
+        nB.fromBufferAttribute(normalAttribute, vB);
+        nC.fromBufferAttribute(normalAttribute, vC);
+        nA.add(cb);
+        nB.add(cb);
+        nC.add(cb);
+        normalAttribute.setXYZ(vA, nA.x, nA.y, nA.z);
+        normalAttribute.setXYZ(vB, nB.x, nB.y, nB.z);
+        normalAttribute.setXYZ(vC, nC.x, nC.y, nC.z);
+        check -= 1;
+        if (check === 0) {
+            check = NORMALS_CHECK;
+            if (clock.due()) {
+                yield 'stair normals';
+                clock.restart();
+            }
+        }
+    }
+    if (clock.due()) yield 'stair normals';
+    geometry.normalizeNormals();
+    normalAttribute.needsUpdate = true;
+}
 
 /** The Stair's bake arguments for a tier (the world's bake loader asks for the same). */
 export function stairBakeArgs(tier) {
@@ -123,6 +192,11 @@ const C = Object.freeze({
  * @param {object} tex   the world's baked textures (the noise atlas)
  */
 export function createTerraces(u, tier, tex) {
+    return drainSteps(createTerracesSteps(u, tier, tex));
+}
+
+/** `createTerraces` as steps (its normals in slices): the same part, built in the same order. */
+export function* createTerracesSteps(u, tier, tex) {
     const { columns } = gridFor(tier);
     // Shared and read-only (the bake cache keeps it for the next build).
     const bake = bakeStair(stairBakeArgs(tier));
@@ -135,7 +209,7 @@ export function createTerraces(u, tier, tex) {
     geometry.setAttribute('uv', new THREE.BufferAttribute(bake.uvs, 2));
     geometry.setAttribute('edge', new THREE.BufferAttribute(bake.edges, 1));
     geometry.setIndex(new THREE.BufferAttribute(bake.indices, 1));
-    geometry.computeVertexNormals();
+    yield* vertexNormalsSteps(geometry);
     // One typed array, two views: linear for the distances, nearest for the tier id.
     const layoutLinear = createThermalBloomTexture(bake.layout, bake.layoutSize, bake.layoutSize, {
         name: 'thermal-bloom-stair-layout', filter: 'linear', wrap: 'clamp',

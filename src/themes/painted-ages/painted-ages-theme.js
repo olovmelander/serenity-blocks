@@ -28,6 +28,7 @@ import { POST_LOOK, PaintedAgesPost, createPassThroughPipeline } from './painted
 import { PLAYER_SLOTS, readLayoutRects } from './painted-ages-composition.js';
 import { PAINTED_AGES_EVENT_HANDLERS, PaintedAgesDirector } from './painted-ages-director.js';
 import { approach } from './painted-ages-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'painted-ages';
 const LOG_PREFIX = '[Painted Ages]';
@@ -229,14 +230,17 @@ export default class PaintedAgesTheme extends BaseTheme {
                 if (this.bakeAbort === bakeAbort) this.bakeAbort = null;
             }
             if (!isCurrent()) return;
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new PaintedAgesWorld({
+            const world = new PaintedAgesWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 prepared,
             });
-            this.world.build();
+            // Built a few parts to a step with a breath between (shared/build-steps.js), and the
+            // theme's only once whole: a stop meanwhile, or a part that throws half-way, disposes it
+            // there (gameplay meanwhile waits in pendingWorldCalls, as during the bake).
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

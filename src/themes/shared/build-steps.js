@@ -56,6 +56,34 @@ export async function runStepsBreathing(steps, isCurrent = () => true, pause = b
 }
 
 /**
+ * Upload a built world's big textures one to a breath (`renderer.initTexture`), before its first
+ * frame. three uploads a texture when the first draw binds it, so a world's first frame uploaded
+ * them all at once: High Coast's three fields (~18 MB of half floats) held the GPU process ~50 ms in
+ * one frame of a first visit (2026-10-31). Uploaded earlier, the same data, so the same pictures.
+ * Resolves false as soon as `isCurrent()` turns false after a breath; a texture that fails here is
+ * left to the first draw, as before.
+ * @param {any} renderer
+ * @param {ReadonlyArray<any>} textures
+ * @param {() => boolean} [isCurrent]
+ * @param {() => Promise<void>} [pause]
+ * @returns {Promise<boolean>}
+ */
+export async function uploadTexturesBreathing(renderer, textures, isCurrent = () => true, pause = breathe) {
+    if (typeof renderer?.initTexture !== 'function') return true;
+    for (let i = 0; i < textures.length; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        await pause();
+        if (!isCurrent()) return false;
+        try {
+            if (textures[i]?.isTexture === true) renderer.initTexture(textures[i]);
+        } catch {
+            // The first draw uploads it.
+        }
+    }
+    return true;
+}
+
+/**
  * Build a world (its `buildSteps()` breathing, or its `build()` at once) and hand it over only when
  * it is whole. Between the breaths the theme has no world: a resume, a resize or a setting changed
  * meanwhile finds none, as during any other wait of a start, never a half-built one. A start

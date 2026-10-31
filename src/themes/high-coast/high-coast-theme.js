@@ -28,7 +28,7 @@ import { POST_LOOK, HighCoastPost, createPassThroughPipeline } from './high-coas
 import { PLAYER_SLOTS, readLayoutRects } from './high-coast-composition.js';
 import { HIGH_COAST_EVENT_HANDLERS, HighCoastDirector } from './high-coast-director.js';
 import { approach } from './high-coast-core.js';
-import { buildWorldBreathing } from '../shared/build-steps.js';
+import { buildWorldBreathing, uploadTexturesBreathing } from '../shared/build-steps.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 
 const THEME_ID = 'high-coast';
@@ -255,6 +255,11 @@ export default class HighCoastTheme extends BaseTheme {
             throw error; // current-attempt failure -> start() rejects -> manager falls back
         }
         if (!isCurrent()) return;
+        // The coast's fields and cover uploaded one to a task now, not all in the first frame that
+        // draws the land (a ~50 ms GPU-process stall on a first visit, 2026-10-31).
+        const { fields = {}, cover = {} } = this.world.textures ?? {};
+        const big = [...Object.values(fields), ...Object.values(cover)];
+        if (!(await uploadTexturesBreathing(this.renderer, big, isCurrent))) return;
 
         // Its sink resolves this.world dynamically, so the director can keep all per-player
         // trackers, wells and pending events while the renderer and terrain are rebuilt.

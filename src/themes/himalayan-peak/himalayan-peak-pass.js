@@ -40,6 +40,7 @@ import {
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EYE, mulberry32 } from './himalayan-peak-core.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 import {
     BOOTS, CAIRN, CHORTEN, PASS_REACH, anchors, passHeight,
 } from './himalayan-peak-layout.js';
@@ -48,6 +49,8 @@ import {
 } from './himalayan-peak-tsl.js';
 
 const SNOW = [0.82, 0.87, 0.95];
+/** How long one slice of the pass's snow runs before it yields to the page (ms). */
+const PASS_SLICE_MS = 8;
 
 /**
  * The shadow an upright shaft throws on the snow at `P`: 1 inside it. The shaft stands on
@@ -76,7 +79,15 @@ const shaftShadow = (u, P, foot, height, r0, r1) => {
  * @param {object} options
  * @param {boolean} [options.glints=true]
  */
-export function createPassSnow(u, field, { glints = true } = {}) {
+export function createPassSnow(u, field, options = {}) {
+    return drainSteps(createPassSnowSteps(u, field, options));
+}
+
+/**
+ * `createPassSnow` as steps: the fan's rows (five height reads a post) yield once `clock` is due
+ * (one ~12-17 ms piece of a first visit's build, 2026-10-31); returns the part.
+ */
+export function* createPassSnowSteps(u, field, { glints = true } = {}, clock = stepClock(PASS_SLICE_MS)) {
     const at = anchors(field);
     // A fan about the eye: fine underfoot, coarse at the rim.
     const columns = 150;
@@ -98,6 +109,10 @@ export function createPassSnow(u, field, { glints = true } = {}) {
             const o = (j * columns + i) * 3;
             positions.set([x, h, z], o);
             normals.set([-gx * inv, inv, -gz * inv], o);
+        }
+        if (clock.due()) {
+            yield 'pass';
+            clock.restart();
         }
     }
     const indices = [];

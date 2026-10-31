@@ -54,6 +54,7 @@ import { POST_LOOK, VesperPost, createPassThroughPipeline } from './vesper-chrys
 import { PLAYER_SLOTS, readLayoutRects } from './vesper-chrysalis-composition.js';
 import { VESPER_EVENT_HANDLERS, VesperDirector } from './vesper-chrysalis-director.js';
 import { approach } from './vesper-chrysalis-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'vesper-chrysalis';
 const LOG_PREFIX = '[VesperChrysalis]';
@@ -234,13 +235,18 @@ export default class VesperChrysalisTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new VesperWorld({
+            const world = new VesperWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
                 mirrorSamples: (POST_LOOK[this.quality] || POST_LOOK.High).msaa ?? 0,
-            }).build();
+            });
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns
+            // the world once it is whole; a build that throws half-way, or a start stopped
+            // meanwhile, leaves it disposed.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

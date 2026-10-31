@@ -1420,6 +1420,46 @@ describe('Rainbow Terraces theme: one node renderer on both backends', () => {
         expect(renderer.setSize).toHaveBeenLastCalledWith(1, 1, false);
     });
 
+    it('takes a build\'s first resize in steps: a resize meanwhile runs the rest first, a stop none', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        const { world } = theme;
+        const calls = [];
+        world.setViewportSteps = function* steps(width, height) {
+            calls.push(`steps ${width}x${height}`);
+            yield 'solve';
+            calls.push(`steps done ${width}x${height}`);
+        };
+        vi.spyOn(world, 'setViewport').mockImplementation((width, height) => calls.push(`at once ${width}x${height}`));
+        const breath = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+        const ratio = () => theme.renderer.getPixelRatio();
+        const px = (w, h) => `${Math.floor(w * ratio())}x${Math.floor(h * ratio())}`;
+        // Nothing runs before the first breath; then its first step, and a resize between two steps
+        // runs the rest of them before its own (as two calls one after the other would).
+        const first = theme.resizeBreathing(900, 700, () => true);
+        expect(calls).toEqual([]);
+        await breath();
+        expect(calls).toEqual([`steps ${px(900, 700)}`]);
+        theme.resize(1000, 800);
+        expect(calls).toEqual([`steps ${px(900, 700)}`, `steps done ${px(900, 700)}`, `at once ${px(1000, 800)}`]);
+        expect(await first).toBe(true);
+        expect(theme.resizeInFlight).toBeNull();
+        expect(theme.renderer.setSize).toHaveBeenLastCalledWith(1000, 800, false);
+        // A start stopped meanwhile runs none of it, and leaves nothing for a later resize to run.
+        let current = true;
+        const second = theme.resizeBreathing(640, 480, () => current);
+        current = false;
+        expect(await second).toBe(false);
+        expect(theme.resizeInFlight).toBeNull();
+        expect(calls).toHaveLength(3);
+        theme.resize(640, 480);
+        expect(calls.at(-1)).toBe(`at once ${px(640, 480)}`);
+        // A runtime retired meanwhile takes the steps with it.
+        const third = theme.resizeBreathing(800, 600, () => true);
+        theme.disposeRuntime();
+        await third;
+        expect(calls).toHaveLength(4);
+    });
+
     it('follows a drawing buffer someone else resized', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         stepFrames(theme, 1);

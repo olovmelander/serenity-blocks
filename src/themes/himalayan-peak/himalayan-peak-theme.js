@@ -49,6 +49,7 @@ import { POST_LOOK, HimalayanPeakPost, createPassThroughPipeline } from './himal
 import { PLAYER_SLOTS, readLayoutRects } from './himalayan-peak-composition.js';
 import { HIMALAYAN_PEAK_EVENT_HANDLERS, HimalayanPeakDirector } from './himalayan-peak-director.js';
 import { approach } from './himalayan-peak-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'himalayan-peak';
 const LOG_PREFIX = '[HimalayanPeak]';
@@ -246,8 +247,14 @@ export default class HimalayanPeakTheme extends BaseTheme {
                 return;
             }
             this.massifSource = loaded?.source ?? null;
-            this.world = world; // published before it is built: a failed build is retired with the rest
-            world.build();
+            // A few parts to a step with a breath between (shared/build-steps.js). The theme owns the
+            // world once it is whole; a build that throws half-way, or a start stopped meanwhile,
+            // leaves it disposed (and the catch below retires the rest of a failed start).
+            if (!(await buildWorldBreathing(world, isCurrent))) {
+                if (generation === this.runtimeGeneration) this.disposeRuntime();
+                return;
+            }
+            this.world = world;
             world.bindCamera(this.camera);
             if (this.flags.parts) world.showOnlyParts(this.flags.parts);
             this.setupPost();

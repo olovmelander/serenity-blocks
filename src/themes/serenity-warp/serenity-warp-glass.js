@@ -57,6 +57,7 @@ import {
     GATE, SHAPES, SHAPE_KEYS, cellsFromMatrix, packCells,
 } from './serenity-warp-core.js';
 import { swQuatRotate } from './serenity-warp-tsl.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Floats per piece in an instance buffer: place, turn, tint, shape, state (five vec4). */
 export const GLASS_STRIDE = 20;
@@ -66,6 +67,8 @@ export const GLASS_ABSORB = 1.6;
 /** How far the rounded edge reaches in from a face (cells), and the radius of a corner seen face on. */
 export const PIECE_BEVEL = 0.1;
 export const PIECE_CORNER = 0.14;
+/** How long the pieces' solids are cut before the build yields to the page, at a shape's end (ms). */
+const GLASS_SLICE_MS = 6;
 
 /** A soft light from above, a little toward us and to the right (world space). */
 const TOP_LIGHT = /* @__PURE__ */ vec3(0.36, 0.84, 0.4).normalize();
@@ -249,7 +252,20 @@ export function matchShape(cells) {
  * @param {object} u  shared uniforms
  * @param {{ count: number, bevel: number, dispersion: boolean }} options
  */
-export function createGlass(u, { count = 24, bevel = 3 } = {}) {
+export function createGlass(u, options = {}) {
+    return drainSteps(createGlassSteps(u, options));
+}
+
+/**
+ * `createGlass` as steps: the same material and solids, yielding between the seven shapes once a
+ * slice has run (the world's build breathes there, shared/build-steps.js). Each solid is an
+ * extrusion with its vertices merged and its normals made: ~7 ms of a first visit's build task
+ * (2026-10-31).
+ * @param {object} u
+ * @param {{ count?: number, bevel?: number }} [options]
+ */
+export function* createGlassSteps(u, { count = 24, bevel = 3 } = {}) {
+    const clock = stepClock(GLASS_SLICE_MS);
     const place = attribute('aPlace', 'vec4');
     const turn = attribute('aTurn', 'vec4');
     const tint = attribute('aTint', 'vec4');
@@ -386,7 +402,13 @@ export function createGlass(u, { count = 24, bevel = 3 } = {}) {
 
     const group = new THREE.Group();
     group.name = 'SerenityWarpPieces';
-    const shapes = SHAPE_KEYS.map((key) => {
+    const shapes = [];
+    for (let k = 0; k < SHAPE_KEYS.length; k++) {
+        if (k > 0 && clock.due()) {
+            yield 'glass';
+            clock.restart();
+        }
+        const key = SHAPE_KEYS[k];
         const geometry = new THREE.InstancedBufferGeometry();
         const solid = createShapeGeometry(cellsFromMatrix(SHAPES[key]), bevel);
         geometry.index = solid.index;
@@ -410,10 +432,10 @@ export function createGlass(u, { count = 24, bevel = 3 } = {}) {
         mesh.matrixAutoUpdate = false;
         mesh.renderOrder = 10;
         group.add(mesh);
-        return {
+        shapes.push({
             key, mesh, geometry, data, buffer, codes: packCells(cellsFromMatrix(SHAPES[key])), used: 0,
-        };
-    });
+        });
+    }
 
     const part = { mesh: group, material, geometry: null };
     part.count = count;

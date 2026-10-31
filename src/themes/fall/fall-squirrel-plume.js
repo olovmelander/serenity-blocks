@@ -21,6 +21,8 @@ import {
     abs, attribute, cameraPosition, dot, float, floor, fract, hash, mix, normalize, normalWorldGeometry, positionWorld,
     fwidth, pow, saturate, sin, smoothstep, step, tangentWorld, vec3,
 } from 'three/tsl';
+import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
+import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** The tail bones, root to brush. */
 export const PLUME_BONES = Object.freeze(['tail0', 'tail1', 'tail2', 'tail3', 'tail4', 'tail5', 'tail6']);
@@ -53,6 +55,15 @@ const smoothstepJs = (e0, e1, x) => {
  * @returns {null | {stations: object[], length: number, end: number}}
  */
 export function measurePlume(body) {
+    return drainSteps(measurePlumeSteps(body, stepClock(FALL_SLICE_MS)));
+}
+
+/**
+ * measurePlume(), its walk over the body's vertices a time slice a step.
+ * @param {THREE.SkinnedMesh} body
+ * @param {{ due: () => boolean, restart: () => void }} clock
+ */
+export function* measurePlumeSteps(body, clock) {
     const geometry = body?.geometry;
     const skeleton = body?.skeleton;
     if (!geometry?.attributes?.position || !geometry.attributes.skinIndex || !skeleton) return null;
@@ -92,6 +103,7 @@ export function measurePlume(body) {
     const rel = new THREE.Vector3();
     let end = 0;
     for (let v = 0; v < position.count; v++) {
+        if ((v & 255) === 0) yield* fallSlice(clock, 'plume');
         let onTail = 0;
         for (let j = 0; j < 4; j++) {
             if (tailBone.has(skinIndex.getComponent(v, j))) onTail += skinWeight.getComponent(v, j);
@@ -355,8 +367,14 @@ function createHairMaterial(light, { root, tip }) {
  * @param {{root: THREE.Color, tip: THREE.Color}} [o.colours]  linear colours at the hair's root and tip
  */
 export function createPlumeHair({ body, light, colours }) {
-    const plume = measurePlume(body);
+    return drainSteps(createPlumeHairSteps({ body, light, colours }, stepClock(FALL_SLICE_MS)));
+}
+
+/** createPlumeHair(), a time slice a step: the plume measured, then its cards built. */
+export function* createPlumeHairSteps({ body, light, colours }, clock) {
+    const plume = yield* measurePlumeSteps(body, clock);
     if (!plume) return null;
+    yield* fallSlice(clock, 'plume');
     const geometry = buildPlumeGeometry(plume);
     const root = colours?.root ?? new THREE.Color().setRGB(0.39, 0.068, 0.0103);
     const tip = colours?.tip ?? new THREE.Color().setRGB(0.71, 0.25, 0.05);
