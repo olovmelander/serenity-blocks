@@ -34,6 +34,8 @@
  */
 
 const PATCHED = Symbol.for('serenity.precompileLiveRestore');
+/** renderer -> the watcher of the compileAsync draining on it */
+const drainWatchers = new WeakMap();
 /** precompilationState → { before: the binding before begin, applied: the binding begin left } */
 const bindingsByState = new WeakMap();
 
@@ -99,10 +101,65 @@ export function ensurePrecompileRestoresLiveState(renderer) {
             const mrt = now.mrt === entry.applied.mrt ? entry.before.mrt : now.mrt;
             if (this._mrt !== mrt) this.setMRT(mrt);
         }
+        drainWatchers.get(this)?.onFinish();
         return result;
     };
-    proto[PATCHED] = { begin, finish };
+    const createObjectPipeline = proto._createObjectPipeline;
+    if (typeof createObjectPipeline === 'function') {
+        proto._createObjectPipeline = function serenityCreateObjectPipeline(...args) {
+            const watcher = drainWatchers.get(this);
+            if (watcher && this._compilationPromises !== null) watcher.queued += 1; // queued, built later
+            return createObjectPipeline.apply(this, args);
+        };
+    }
+    proto[PATCHED] = { begin, finish, createObjectPipeline };
     return true;
+}
+
+/**
+ * Watch the next compileAsync on `renderer` (call it right before the launch) and learn when its
+ * DRAIN is over: the last queued object built, its pipelines requested and its precompile state
+ * finished. three then only waits for those pipelines on the GPU (`Promise.all(compilingPipelines)`)
+ * and never touches `_precompilationState` again, so the next compileAsync on the renderer can drain
+ * while they compile. Counts: objects queued in the prologue (`_createObjectPipeline` with a queue),
+ * pipelines requested in the drain (`_pipelines.getForRender` with a promise array, inside an item);
+ * the finish after the last request is the last item's final one. Null on r186 / without the patch.
+ * @param {any} renderer
+ * @returns {?{ done: Promise<void>, dispose: () => void }}
+ */
+export function watchCompileDrain(renderer) {
+    const proto = hookOwner(renderer);
+    if (!proto?.[PATCHED]?.createObjectPipeline) return null;
+    const pipelines = renderer._pipelines;
+    if (!pipelines || typeof pipelines.getForRender !== 'function') return null;
+    if (!Object.prototype.hasOwnProperty.call(pipelines, '__serenityDrainCount')) {
+        const { getForRender } = pipelines;
+        pipelines.getForRender = function serenityCountedGetForRender(renderObject, promises = null) {
+            const watcher = drainWatchers.get(renderer);
+            if (watcher && Array.isArray(promises) && renderer._precompilationState?.item) watcher.requested += 1;
+            return getForRender.call(this, renderObject, promises);
+        };
+        Object.defineProperty(pipelines, '__serenityDrainCount', { value: true });
+    }
+    let resolveDone;
+    const done = new Promise((resolve) => { resolveDone = resolve; });
+    const watcher = {
+        queued: 0,
+        requested: 0,
+        finished: false,
+        onFinish() {
+            if (watcher.finished || watcher.requested < watcher.queued) return;
+            watcher.finished = true;
+            resolveDone();
+        },
+    };
+    drainWatchers.set(renderer, watcher);
+    return {
+        done,
+        dispose() {
+            if (drainWatchers.get(renderer) === watcher) drainWatchers.delete(renderer);
+        },
+    };
 }
 
 /**
@@ -115,5 +172,6 @@ export function resetPrecompileLiveRestoreForTests(renderer) {
     if (!saved) return;
     proto._beginPreCompile = saved.begin;
     proto._finishPreCompile = saved.finish;
+    if (saved.createObjectPipeline) proto._createObjectPipeline = saved.createObjectPipeline;
     delete proto[PATCHED];
 }

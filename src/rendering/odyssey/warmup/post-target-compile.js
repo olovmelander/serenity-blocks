@@ -45,7 +45,7 @@
  * uploads, first update(), the non-representative bucket members' first draw).
  */
 
-import { ensurePrecompileRestoresLiveState } from '../../three-precompile-live-restore.js';
+import { ensurePrecompileRestoresLiveState, watchCompileDrain } from '../../three-precompile-live-restore.js';
 
 /**
  * The renderer's ACTUAL bound target + MRT, bypassing the live-compile read override
@@ -462,8 +462,29 @@ const compileTurns = new WeakMap();
  */
 export function takeCompileTurn(renderer, launch) {
     const previous = compileTurns.get(renderer) ?? Promise.resolve();
-    const turn = previous.then(() => launch());
-    compileTurns.set(renderer, turn.then(() => {}, () => {}));
+    let free;
+    const freed = new Promise((resolve) => { free = resolve; });
+    // The next turn starts once this call's DRAIN is over (its objects built, their pipelines
+    // requested: watchCompileDrain), while those pipelines still compile on the GPU: compiles of
+    // consecutive turns overlap as the r186 fan-out's did. Or when the call settles, if that is first.
+    const turn = previous.then(() => {
+        const watch = watchCompileDrain(renderer);
+        let call;
+        try {
+            call = Promise.resolve(launch());
+        } catch (error) {
+            watch?.dispose();
+            free();
+            throw error;
+        }
+        const settled = call.then(() => {}, () => {});
+        (watch ? Promise.race([watch.done, settled]) : settled).then(() => {
+            watch?.dispose();
+            free();
+        });
+        return call;
+    });
+    compileTurns.set(renderer, freed);
     return turn;
 }
 

@@ -5,6 +5,7 @@ import {
 import Renderer from 'three/src/renderers/common/Renderer.js';
 import {
     ensurePrecompileRestoresLiveState,
+    watchCompileDrain,
     resetPrecompileLiveRestoreForTests,
 } from '../../src/rendering/three-precompile-live-restore.js';
 
@@ -198,5 +199,72 @@ describe('three r187 precompile hooks restore the live binding after each draine
         expect(renderer.getRenderTarget()).toBeNull();
         drain(renderer, item);
         expect(renderer.getRenderTarget()).toBeNull();
+    });
+});
+
+describe('watchCompileDrain: when a compileAsync drain is over (three r187)', () => {
+    it.runIf(hasHooks)('is done at the last queued object\'s final finish, not at a yield before it', async () => {
+        const renderer = bareRenderer();
+        ensurePrecompileRestoresLiveState(renderer);
+        const requests = [];
+        renderer._pipelines = { getForRender: (ro, promises) => requests.push([ro, promises]) }; // eslint-disable-line no-underscore-dangle
+        renderer._compilationPromises = null; // eslint-disable-line no-underscore-dangle
+        const watch = watchCompileDrain(renderer);
+        expect(watch).not.toBeNull();
+        let done = false;
+        watch.done.then(() => { done = true; });
+        // The prologue: begin, queue two objects through three's own _createObjectPipeline, finish.
+        const prologue = {
+            useFrameBufferTarget: false, renderTarget: null, outputRenderTarget: null, activeCubeFace: 0, activeMipmapLevel: 0,
+            item: null, materialSide: null, mrt: null, outputMRT: null, renderContext: 'ctx',
+        };
+        renderer._beginPreCompile(prologue); // eslint-disable-line no-underscore-dangle
+        const queue = [];
+        renderer._compilationPromises = queue; // eslint-disable-line no-underscore-dangle
+        const material = { side: 0 };
+        renderer._createObjectPipeline({ id: 'a' }, material, null, null, null, null, null, 'default'); // eslint-disable-line no-underscore-dangle
+        renderer._createObjectPipeline({ id: 'b' }, material, null, null, null, null, null, 'default'); // eslint-disable-line no-underscore-dangle
+        renderer._compilationPromises = null; // eslint-disable-line no-underscore-dangle
+        renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+        expect(queue).toHaveLength(2);
+        const run = (item, { yieldFirst = false } = {}) => {
+            item.precompilationState.item = item; // eslint-disable-line no-param-reassign
+            renderer._beginPreCompile(item.precompilationState); // eslint-disable-line no-underscore-dangle
+            if (yieldFirst) { // the node build's yield: finish, (a frame), begin again
+                const active = renderer._precompilationState; // eslint-disable-line no-underscore-dangle
+                renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+                renderer._beginPreCompile(active); // eslint-disable-line no-underscore-dangle
+            }
+            renderer._pipelines.getForRender({ item }, []); // eslint-disable-line no-underscore-dangle
+            renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+        };
+        run(queue[0]);
+        await Promise.resolve();
+        expect(done).toBe(false);
+        run(queue[1], { yieldFirst: true });
+        await Promise.resolve();
+        expect(done).toBe(true);
+        expect(requests).toHaveLength(2);
+        watch.dispose();
+    });
+
+    it.runIf(hasHooks)('is done at the prologue\'s finish when nothing was queued', async () => {
+        const renderer = bareRenderer();
+        ensurePrecompileRestoresLiveState(renderer);
+        renderer._pipelines = { getForRender: () => {} }; // eslint-disable-line no-underscore-dangle
+        const watch = watchCompileDrain(renderer);
+        let done = false;
+        watch.done.then(() => { done = true; });
+        renderer._beginPreCompile({ // eslint-disable-line no-underscore-dangle
+            useFrameBufferTarget: false, renderTarget: null, outputRenderTarget: null, item: null, mrt: null, outputMRT: null,
+        });
+        renderer._finishPreCompile(); // eslint-disable-line no-underscore-dangle
+        await Promise.resolve();
+        expect(done).toBe(true);
+        watch.dispose();
+    });
+
+    it.skipIf(hasHooks)('is unavailable on a three without the hooks (r186)', () => {
+        expect(watchCompileDrain(bareRenderer())).toBeNull();
     });
 });
