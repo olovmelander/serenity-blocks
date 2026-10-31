@@ -90,7 +90,7 @@ describe('loadTextureDecoded', () => {
         const load = vi.spyOn(THREE.ImageLoader.prototype, 'load').mockImplementation((url, onLoad) => onLoad(image));
         const old = loadTextureDecoded('nebula.png');
         await flush();
-        expect(load).toHaveBeenCalledWith('nebula.png', expect.any(Function));
+        expect(load).toHaveBeenCalledWith('nebula.png', expect.any(Function), undefined, expect.any(Function));
         expect(old.image).toBe(image);
         expect(old.flipY).toBe(true); // three flips it at upload, as before
     });
@@ -122,5 +122,22 @@ describe('uploads in the task the image lands in', () => {
         expect(renderer.initTexture).toHaveBeenCalledWith(texture);
         expect(() => uploadTextureNow({ initTexture: () => { throw new Error('not initialised'); } }, texture)).not.toThrow();
         expect(() => uploadTextureNow(null, texture)).not.toThrow();
+    });
+});
+
+describe('a host that cannot decode images at all (no createImageBitmap, no DOM)', () => {
+    it('leaves the texture imageless and raises nothing', async () => {
+        vi.stubGlobal('createImageBitmap', undefined);
+        vi.spyOn(THREE.ImageLoader.prototype, 'load').mockImplementation(() => {
+            throw new ReferenceError('document is not defined');
+        });
+        const unhandled = vi.fn();
+        process.on('unhandledRejection', unhandled);
+        const texture = loadTextureDecoded('moon.jpg', { onImage: vi.fn() });
+        await flush();
+        await flush();
+        process.off('unhandledRejection', unhandled);
+        expect(unhandled).not.toHaveBeenCalled();
+        expect(texture.image == null || texture.image.width === undefined).toBe(true);
     });
 });

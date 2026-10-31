@@ -84,12 +84,18 @@ export function loadTextureDecoded(url, { flipY = true, onImage = null } = {}) {
     texture.addEventListener('dispose', () => { disposed = true; });
     const viaLoader = () => {
         if (disposed) return;
-        new THREE.ImageLoader().load(url, (image) => {
-            if (disposed) return;
-            texture.image = image;
-            texture.needsUpdate = true;
-            onImage?.(texture);
-        });
+        try {
+            new THREE.ImageLoader().load(url, (image) => {
+                if (disposed) return;
+                texture.image = image;
+                texture.needsUpdate = true;
+                onImage?.(texture);
+            }, undefined, () => {});
+        } catch {
+            // No image decoding here (a headless host, the unit tests): the texture stays imageless,
+            // as a TextureLoader's did. Thrown inside the decode's promise, it was an unhandled
+            // error (CI's test job failed on it, 2026-10-31).
+        }
     };
     decodeBitmap(url, flipY).then((bitmap) => {
         if (!bitmap) {
