@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-    buildWorldBreathing, drainSteps, runStepsBreathing, stepClock,
+    buildWorldBreathing, drainSteps, runStepsBreathing, stepClock, uploadTexturesBreathing,
 } from '../../src/themes/shared/build-steps.js';
 
 /**
@@ -166,5 +166,35 @@ describe('the stepped themes build their worlds in steps', () => {
     });
     it.each([...family, 'sakura-twilight'])('%s: its start keeps nothing when stopped mid-build', (id) => {
         expect(source(`${id}/${id}-theme.js`)).toContain('if (await this.buildScene(current) === false)');
+    });
+});
+
+describe('uploadTexturesBreathing', () => {
+    const tex = (name) => ({ isTexture: true, name });
+
+    it('uploads each texture in its own task, in order, and leaves others to the first draw', async () => {
+        const log = [];
+        const renderer = { initTexture: (t) => log.push(`upload ${t.name}`) };
+        const pause = vi.fn(async () => { log.push('breath'); });
+        await expect(uploadTexturesBreathing(renderer, [tex('near'), { name: 'not a texture' }, tex('mid')], () => true, pause))
+            .resolves.toBe(true);
+        expect(log).toEqual(['breath', 'upload near', 'breath', 'breath', 'upload mid']);
+    });
+
+    it('stops when the start is no longer current, and shrugs off a renderer that throws or cannot', async () => {
+        let current = true;
+        const uploaded = [];
+        const renderer = {
+            initTexture: (t) => {
+                uploaded.push(t.name);
+                current = false;
+            },
+        };
+        await expect(uploadTexturesBreathing(renderer, [tex('a'), tex('b')], () => current, async () => {}))
+            .resolves.toBe(false);
+        expect(uploaded).toEqual(['a']);
+        const failing = { initTexture: () => { throw new Error('lost'); } };
+        await expect(uploadTexturesBreathing(failing, [tex('a')], () => true, async () => {})).resolves.toBe(true);
+        await expect(uploadTexturesBreathing({}, [tex('a')])).resolves.toBe(true);
     });
 });

@@ -41,6 +41,10 @@ import { SwarmPostPipeline, getSwarmPostProfile } from './post/render-pipeline.j
 import { FLUID_BUDGETS, FluidParticleSim, getFluidBudget } from './sim/fluid-particles.js';
 import { SHAPE_NAMES } from './sim/shape-formations.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { compileComputeAsync, isAsyncComputeCapable } from '../../rendering/webgpu-compute-pipeline-async.js';
+
+/** How long the swarm's first compute compile is waited for before the scene goes on (ms). */
+const SWARM_COMPILE_TIMEOUT_MS = 3000;
 
 const BOARD_MOUNT_SELECTOR = '#phaser-game-container, #online-main-board, .phaser-board-container';
 const BOARD_OBSERVATION_ROOT_SELECTOR = [
@@ -219,6 +223,12 @@ export default class MurmurationTheme extends BaseTheme {
         this.camera.updateMatrixWorld();
 
         this._buildWorld();
+
+        // The swarm's compute pipeline compiles on Dawn's workers before its first dispatch. Made
+        // by that dispatch, it was a synchronous compile on the GPU process's main thread (84 ms on
+        // a first visit, 2026-10-31), and the build and the first frame shared one task.
+        await this._compileSwarmCompute();
+        if (ownerGeneration !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) return;
 
         // ── Events ──
         this._setupEventListeners();
@@ -743,6 +753,20 @@ export default class MurmurationTheme extends BaseTheme {
                 radius: BOARD_HALO.radius,
                 glow: BOARD_HALO.glow,
             });
+        }
+    }
+
+    /**
+     * Compile the swarm's compute pipeline asynchronously (rendering/webgpu-compute-pipeline-async.js).
+     * Until it is ready its dispatches are skipped; a failure or a timeout leaves that guard to it.
+     */
+    async _compileSwarmCompute() {
+        const sim = this.fluidSim;
+        if (!sim?.computeNode || sim.isCPU || !isAsyncComputeCapable(this.renderer)) return;
+        try {
+            await compileComputeAsync(this.renderer, sim.computeNode, { timeoutMs: SWARM_COMPILE_TIMEOUT_MS });
+        } catch (error) {
+            console.warn('[Murmuration] Swarm compute compile failed:', error);
         }
     }
 

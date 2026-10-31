@@ -332,11 +332,24 @@ Worst first-visit switch frame, light cadence (30 fps cap, rAF at the panel's 24
 |---|---:|---:|---|
 | Stillwater | 85-87 ms (85 ms of script) | **23-27 ms** | — |
 | Thermal Bloom | 62-75 ms (64-72 ms of script) | **34-36 ms** | — |
-| High Coast | 73-90 ms (72-93 ms of script) | 62-65 ms | 6 ms of script: a GPU-process wait; next frames 28-33 ms |
+| High Coast | 73-90 ms (72-93 ms of script) | 62-65 ms → **37-51 ms** (below) | — |
+| Murmuration | 80-85 ms (a GPU-process wait) | **40 ms** (below) | — |
 
-Same pictures (rest shots side by side), unit tests for the bit-exact conversion and the band/whole
-equality. Murmuration's (45-48 ms of `createScene` then the first frame in one task) and Neon Quarter's
-(7 ms of script, the rest the GPU process) are left.
+Two more were the GPU process (GPU traces of the switch, light cadence):
+- **Murmuration:** its swarm's compute pipeline was created synchronously by the first dispatch: one
+  84 ms task on the GPU process's main thread (a 37.5 ms shader compile in it). The theme now awaits
+  `compileComputeAsync` (rendering/webgpu-compute-pipeline-async.js, as Astral Weave does) between its
+  build and its first frame, so the compile runs on Dawn's workers and the build's task ends first. (The
+  bench's "sync pipelines" count only counts render pipelines.)
+- **High Coast:** after its CPU tasks were split, the worst frame was the first draw of the land
+  uploading the three field textures and their cover maps at once (17 + 32 ms GPU-process tasks).
+  `uploadTexturesBreathing` (shared/build-steps.js) uploads them one to a task with `initTexture`
+  before the first frame: the same data, earlier.
+
+Same pictures (rest shots side by side), unit tests for the bit-exact conversion, the band/whole
+equality and the upload helper. Neon Quarter's worst frame (73 ms, 7-17 ms of script) is the canvas
+copy pipeline above (42 ms, once per shader cache) plus the GPU process parsing its 100 KB shop shader
+(23 ms, `createShaderModule` is synchronous); left.
 
 ## Phase 2 acceptance (open)
 
