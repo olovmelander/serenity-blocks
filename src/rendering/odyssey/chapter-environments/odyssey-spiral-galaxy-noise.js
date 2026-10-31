@@ -30,6 +30,7 @@ function mulberry32(seed) {
  * @returns {Generator<string, { field: Float32Array, mips: { data: Float32Array, width: number }[] }>}
  */
 export function* bakeSpiralGalaxyNoiseSteps(spec = SPIRAL_GALAXY_NOISE) {
+    /** @type {number} */
     const n = spec.size;
     const rand = mulberry32(spec.seed);
     const base = new Float32Array(n * n * 4);

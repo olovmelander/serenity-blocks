@@ -674,6 +674,8 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         ['odysseyCh6GiantAurora', 'Builds the retired auroral crown on the ringed giant, for comparison.'],
         ['odysseyCh6ProceduralDome', 'Restores the old procedural space dome instead of the baked dome.'],
         ['odysseyCh6NebulaSprites', 'Restores the old nebula sprites instead of the sculpted nebula field.'],
+        ['odysseyCh6Clutter', 'Builds the space chapter’s retired gas field, rock garland, near dust and glitter.'],
+        ['odysseyCh6PaintedGalaxy', 'Restores the old painted galaxy quad instead of the theme’s disc and suns.'],
     ].map(([name, description]) => toggle(name, description, {
         scope: 'Odyssey chapter 6: Space', sources: [COSMOS],
     })),
@@ -701,6 +703,10 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
             notes: 'For captures and timing: the tunnel and the fold at the same place.',
         },
     ),
+    toggle('odysseyPaintedHole', 'Restores the painted black hole (ring, fold arcs, band) over the traced one.', {
+        scope: 'Odyssey chapters 6 and 7: Space and Black Hole',
+        sources: [COSMOS, 'src/rendering/odyssey/chapter-environments/black-hole-transcendence.js'],
+    }),
     toggle('odysseyCh6CorridorSheets', 'Restores the retired additive haze sheets along the space corridor.', {
         scope: 'Odyssey chapter 6: Space',
         sources: ['src/rendering/odyssey/composition/odyssey-corridor-field.js'],

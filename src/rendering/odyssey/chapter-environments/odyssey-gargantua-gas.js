@@ -70,15 +70,16 @@ function fbm2(x, y, seed, octaves, periodX, periodY) {
     return total / weight;
 }
 
+/** @type {ReadonlyArray<{ seed: number, periodX: number, periodY: number, octaves: number, ridged: boolean }>} */
 const CHANNELS = Object.freeze([
     Object.freeze({
-        seed: 11, periodX: 3, periodY: 9, octaves: 4,
+        seed: 11, periodX: 3, periodY: 9, octaves: 4, ridged: false,
     }),
     Object.freeze({
-        seed: 523, periodX: 12, periodY: 44, octaves: 3,
+        seed: 523, periodX: 12, periodY: 44, octaves: 3, ridged: false,
     }),
     Object.freeze({
-        seed: 1009, periodX: 14, periodY: 9, octaves: 2,
+        seed: 1009, periodX: 14, periodY: 9, octaves: 2, ridged: false,
     }),
     Object.freeze({
         seed: 2203, periodX: 4, periodY: 13, octaves: 3, ridged: true,
