@@ -209,8 +209,27 @@ function footFirst(geometry) {
     geometry.clearGroups();
 }
 
-/** How a locked piece's hologram stands: full height (in grid cells) and when it rises. */
-export const TILE_HOLOGRAM = Object.freeze({ height: 0.9, rise: 0.16, sink: 0.45 });
+/**
+ * How a locked piece's hologram stands and travels: its full height (in grid cells), how long it
+ * takes to rise (s), how fast it glides in along the grid on top of the grid's own scroll
+ * (units/s), the push it sets off with (`push` units more, most of it within `pushTime` s: it
+ * leaves the far glass quickly and settles to the grid's pace as it comes near, so it drifts
+ * down the screen at an even pace), how far before its arrival it starts to lie back down and
+ * how far past it its footprint is gone (units), and the longest it may live (s).
+ */
+export const TILE_HOLOGRAM = Object.freeze({
+    height: 0.9, rise: 0.16, glide: 2, push: 26, pushTime: 1.5, sink: 16, fade: 6, maxAge: 24,
+});
+
+/**
+ * How far a hologram's push has carried it `age` s after it rose (units). `motion` is the
+ * world's motion (1, or toward 0 under reduced motion: the push then runs at 30 %, as the
+ * floor does). The tiles' shader runs the same curve.
+ */
+export function hologramPush(age, motion = 1) {
+    const H = TILE_HOLOGRAM;
+    return H.push * (0.3 + 0.7 * motion) * (1 - Math.exp(-Math.max(0, age) / H.pushTime));
+}
 
 /**
  * Where a cell of a piece's hologram meets the rest of the piece, as bits of one integer (world
@@ -284,8 +303,9 @@ export function pieceOutlineBits(cells) {
 /**
  * Each locked piece stands up out of the glass as ONE hologram: a solid footprint in the glass,
  * walls round its outline that fade toward the top, one glowing outline at the foot and one at
- * the lid. It sinks back into the glass as it rides the floor's scroll toward the camera,
- * leaving its footprint to fade.
+ * the lid. It rises far out on the glass and glides in toward the camera along the grid (the
+ * grid's scroll plus its own glide, u.tileRun, and the push it sets off with); as it arrives it
+ * sinks back into the glass, leaving its footprint to fade.
  *
  * One box per cell, every box the full grid pitch (no gaps); the outline bits (above) drop the
  * walls and edges between cells, so nothing marks where one cell meets the next. The footprint
@@ -294,7 +314,8 @@ export function pieceOutlineBits(cells) {
  * (every footprint, seen from above) before its front faces (the walls turned toward the eye),
  * so a wall is never dimmed by a footprint behind it.
  *
- * Height, rise and fade are a function of age (closed form, no uploads per frame).
+ * The rise is a function of age, the sink and the fade of the distance still to travel (closed
+ * form, no uploads per frame), so a hot grid that runs faster brings a piece in sooner.
  */
 function createTiles(u, count) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -306,21 +327,26 @@ function createTiles(u, count) {
     material.side = THREE.DoubleSide;
     material.fog = false;
 
-    const cell = attribute('iCell', 'vec4'); // x, z at a scroll run of 0, t0, life
+    const cell = attribute('iCell', 'vec4'); // x, z at a tile run of 0, t0, the tile run it arrives at
     const tint = attribute('iTint', 'vec4'); // r, g, b, outline bits
+    const H = TILE_HOLOGRAM;
     const age = u.time.sub(cell.z);
-    const lifeT = clamp(age.div(max(cell.w, 1e-3)), 0.0, 1.0);
-    const alive = step(0.0, age).mul(step(age, cell.w));
-    // Pops up (a small overshoot), holds, then sinks back into the glass by `sink` of its life.
-    const up = smoothstep(0.0, TILE_HOLOGRAM.rise, age);
-    const pop = up.add(exp(age.sub(TILE_HOLOGRAM.rise).mul(-9.0)).mul(0.18).mul(up));
-    const stand = pop.mul(float(1.0).sub(smoothstep(TILE_HOLOGRAM.sink * 0.35, TILE_HOLOGRAM.sink, lifeT)));
+    // The push it set off with (hologramPush), then the distance it still has to glide before
+    // it arrives (the same for all its cells).
+    const push = float(H.push).mul(u.ambient.mul(0.7).add(0.3))
+        .mul(float(1.0).sub(exp(max(age, 0.0).div(-H.pushTime))));
+    const togo = cell.w.sub(u.tileRun).sub(push);
+    const alive = step(0.0, age).mul(step(age, H.maxAge)).mul(step(-H.fade, togo));
+    // Pops up (a small overshoot) far out, stands while it glides in, lies down as it arrives.
+    const up = smoothstep(0.0, H.rise, age);
+    const pop = up.add(exp(age.sub(H.rise).mul(-9.0)).mul(0.18).mul(up));
+    const stand = pop.mul(smoothstep(0.0, H.sink, togo));
     // The lift stands every live hologram taller as play heats (a skyline in the glass).
-    const height = stand.mul(GRID_SPACING * TILE_HOLOGRAM.height).mul(u.tileLift).add(0.02);
-    // Ride the scroll: the piece keeps its place on the grid however fast the grid runs.
+    const height = stand.mul(GRID_SPACING * H.height).mul(u.tileLift).add(0.02);
+    // Ride the tile run (the grid's scroll, however fast it runs, plus the glide) and the push.
     const local = positionLocal.mul(alive);
     material.positionNode = vec3(local.x, local.y.mul(height), local.z)
-        .add(vec3(cell.x, 0.04, cell.y.add(u.scrollRun)));
+        .add(vec3(cell.x, 0.04, cell.y.add(u.tileRun).add(push)));
     material.outputNode = Fn(() => {
         // The box before it is stretched: x, z ±half a cell, y 0 (foot) … 1 (lid).
         const g = positionGeometry;
@@ -377,7 +403,12 @@ function createTiles(u, count) {
         const scan = sin(h.mul(26.0).sub(u.time.mul(7.0))).mul(0.5).add(0.5).mul(0.08);
         const fill = baseFill.mul(isBase).add(sideFill.add(scan).mul(isSide)).add(isTop.mul(0.05));
         const flash = exp(age.mul(-6.0)).mul(1.4);
-        const fade = smoothstep(0.0, 0.04, lifeT).mul(pow(float(1.0).sub(lifeT), 1.4)).mul(alive).toVar();
+        // Full light the whole way in; it dims as the piece lies down, its footprint last.
+        const fade = smoothstep(0.0, 0.1, age)
+            .mul(smoothstep(-H.fade, H.sink * 0.6, togo))
+            .mul(float(1.0).sub(smoothstep(H.maxAge - 3, H.maxAge, age)))
+            .mul(alive)
+            .toVar();
         const edgeGain = mix(float(1.2), float(2.3), isBase.add(isTop.mul(0.6)));
         const light = tint.xyz.mul(edge.mul(edgeGain).add(fill).add(flash.mul(fill))).mul(fade).mul(shown);
         // Premultiplied: the light is added; the footprint also covers the glass beneath it.
@@ -393,7 +424,7 @@ function createTiles(u, count) {
     mesh.name = 'NeonDuskTiles';
     const iCell = instanced(count, 4);
     const iTint = instanced(count, 4);
-    for (let i = 0; i < count; i += 1) iCell.array.set([0, 0, -1e6, 1], i * 4);
+    for (let i = 0; i < count; i += 1) iCell.array.set([0, 0, -1e6, 0], i * 4);
     geometry.setAttribute('iCell', iCell);
     geometry.setAttribute('iTint', iTint);
     mesh.frustumCulled = false;
@@ -434,10 +465,6 @@ export class NeonDuskFx {
 
     get burstCapacity() {
         return this.burst.iSpawn.count;
-    }
-
-    get tileCapacity() {
-        return this.tiles.iCell.count;
     }
 
     /**
@@ -482,16 +509,17 @@ export class NeonDuskFx {
 
     /**
      * Stand one locked piece up in the glass: its cells (world x, z of each centre at t0, and
-     * each cell's outline bits, see pieceOutlineBits), nearest the camera first, in one colour
-     * for `life` s. `run` is the floor's scroll run at t0 (the piece rides it).
+     * each cell's outline bits, see pieceOutlineBits), nearest the camera first, in one colour.
+     * `run` is the tile run at t0 (the piece rides it in) and `arrive` the tile run at which it
+     * has come all the way in and lies flat in the glass.
      */
-    spawnPiece(t0, cells, color, life, run) {
+    spawnPiece(t0, cells, color, run, arrive) {
         const { iCell, iTint } = this.tiles;
         const n = iCell.count;
         for (const cell of cells) {
             this.tileCursor = (this.tileCursor - 1 + n) % n;
             const i = this.tileCursor;
-            iCell.array.set([cell.x, cell.z - run, t0, life], i * 4);
+            iCell.array.set([cell.x, cell.z - run, t0, arrive], i * 4);
             iTint.array.set([color.r, color.g, color.b, cell.bits], i * 4);
             touch(iCell, i);
             touch(iTint, i);

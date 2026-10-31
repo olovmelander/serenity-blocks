@@ -43,7 +43,9 @@ import {
 import { SLITS, createSky } from './neon-dusk-sky.js';
 import { createMountainsSteps } from './neon-dusk-mountains.js';
 import { AMBIENT_PULSE, createFloor } from './neon-dusk-floor.js';
-import { DIRECT_ONLY_LAYER, NeonDuskFx, pieceOutlineBits } from './neon-dusk-fx.js';
+import {
+    DIRECT_ONLY_LAYER, NeonDuskFx, TILE_HOLOGRAM, pieceOutlineBits,
+} from './neon-dusk-fx.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
 import {
@@ -66,7 +68,7 @@ export const WORLD_QUALITY = Object.freeze({
         contours: true,
         dust: 0,
         burst: 120,
-        tiles: 32,
+        tiles: 48,
         clouds: false,
         stars: 0.6,
         reflection: 0,
@@ -77,7 +79,7 @@ export const WORLD_QUALITY = Object.freeze({
         contours: true,
         dust: 60,
         burst: 200,
-        tiles: 48,
+        tiles: 64,
         clouds: true,
         stars: 1,
         reflection: 0,
@@ -88,7 +90,7 @@ export const WORLD_QUALITY = Object.freeze({
         contours: true,
         dust: 120,
         burst: 300,
-        tiles: 64,
+        tiles: 96,
         clouds: true,
         stars: 1,
         reflection: 0.3,
@@ -99,7 +101,7 @@ export const WORLD_QUALITY = Object.freeze({
         contours: true,
         dust: 180,
         burst: 450,
-        tiles: 64,
+        tiles: 96,
         clouds: true,
         stars: 1,
         reflection: 0.4,
@@ -110,7 +112,7 @@ export const WORLD_QUALITY = Object.freeze({
         contours: true,
         dust: 240,
         burst: 600,
-        tiles: 96,
+        tiles: 128,
         clouds: true,
         stars: 1,
         reflection: 0.5,
@@ -121,7 +123,7 @@ export const WORLD_QUALITY = Object.freeze({
         contours: true,
         dust: 300,
         burst: 800,
-        tiles: 128,
+        tiles: 160,
         clouds: true,
         stars: 1,
         reflection: 0.6,
@@ -149,6 +151,13 @@ const BURST_COLORS = [0xff4fd8, 0x39f0ff, 0xffd25a, 0xb46bff, 0xffffff, 0xff7aa8
 
 /** Camera-space depth the sun burst floats at: well in front of the mountains. */
 const BURST_DEPTH = 60;
+
+/**
+ * A locked piece's hologram's way in (view depths, world units): it rises `far` out and glides
+ * in along the grid until it lies down `near` the camera, where it comes in between `edge` (NDC
+ * x; −1 is the screen's left edge) and the board.
+ */
+export const HOLO_PATH = Object.freeze({ far: [85, 105], near: [36, 42], edge: -1 });
 
 /** Gameplay boards carry data-player; the lobby's avatar cards reuse .player-card without it. */
 export const BOARD_SELECTOR = '.player-card[data-player]';
@@ -285,8 +294,10 @@ export function createWorldUniforms() {
         crown: uniform(0),
         /** The holograms' height (1 at rest; taller as play heats). */
         tileLift: uniform(1),
-        /** The floor's scroll, unwrapped (the holograms ride it). */
+        /** The floor's scroll, unwrapped. */
         scrollRun: uniform(0),
+        /** The holograms' run: the floor's scroll plus their own glide in (TILE_HOLOGRAM.glide). */
+        tileRun: uniform(0),
         /** The dust's clock (the world's time at rest; quicker as play heats) and its light. */
         dustRun: uniform(0),
         dustGain: uniform(1.6),
@@ -382,6 +393,7 @@ export class NeonDuskWorld {
         // Integrated clocks the heat quickens (closed form at rest, so a seek lands right).
         this.scrollExtra = 0;
         this.scrollRun = 0;
+        this.tileRun = 0;
         this.pulsePhase = 0;
         this.slitPhase = 0;
         this.dustRun = 0;
@@ -574,6 +586,10 @@ export class NeonDuskWorld {
         this.scrollExtra += dt * SCROLL_SPEED * (0.45 * warm + 0.55 * hot + 0.65 * fever) * motion;
         this.scrollRun = t * SCROLL_SPEED - this.scrollLag + this.scrollExtra;
         u.scrollRun.value = this.scrollRun;
+        // The holograms glide in on top of the scroll (slower too under reduced motion).
+        this.glideLag = (this.glideLag ?? 0) + dt * TILE_HOLOGRAM.glide * 0.7 * (1 - motion);
+        this.tileRun = this.scrollRun + t * TILE_HOLOGRAM.glide - this.glideLag;
+        u.tileRun.value = this.tileRun;
         u.scroll.value = ((this.scrollRun % SCROLL_WRAP) + SCROLL_WRAP) % SCROLL_WRAP;
         u.ambient.value = motion;
 
@@ -783,10 +799,49 @@ export class NeonDuskWorld {
     }
 
     /**
-     * A piece lock stands its hologram up in the glass: ONE solid piece in the piece's colour on
-     * the floor beside the board (left of it for pieces that landed in the board's left half),
-     * a ripple ring spreading out from it and a few pixels rising off it. A hard drop lands
-     * harder: a stronger ripple, more pixels, a bigger thump.
+     * Where a locked piece's hologram rises (world x, z) and how far it glides in along the grid
+     * (`travel`, units); `fh` is the view's level forward. The grid runs in from the sun's
+     * point, so every lane fans out from there. With a board on screen the sun sits left of
+     * it, and only there do the lanes run in at the camera (right of the board they run off
+     * sideways), so every piece comes in on the sun's side: its lane is chosen by where it
+     * comes in (HOLO_PATH.near), by the column it landed in — the board's left column farthest
+     * out, its right column beside the board — and it runs from near the sun out to there,
+     * never behind the board, however wide the piece (`halfWidth`, units). With no board the
+     * lanes spread across the whole view.
+     */
+    hologramPath(col, r, halfWidth = 0) {
+        const { lerp } = THREE.MathUtils;
+        const P = HOLO_PATH;
+        const { fwd, right } = this.viewBasis();
+        const tanH = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2) * this.lens.aspect;
+        const fh = this._a.set(fwd.x, 0, fwd.z).normalize();
+        // One unit along the grid's run (+z) brings a point this much nearer in view depth.
+        const closing = Math.max(0.3, -fh.z);
+        const near = lerp(P.near[0], P.near[1], r());
+        const far = lerp(P.far[0], P.far[1], r());
+        const b = this.board;
+        let nx = -0.85 + (col / 9) * 1.7;
+        if (b && b.x0 > 0.16) {
+            // The piece's whole width stays clear of the board.
+            const byBoard = b.x0 * 2 - 1 - 0.08 - halfWidth / (tanH * near);
+            nx = lerp(P.edge, Math.max(P.edge, byBoard), col / 9);
+        }
+        const cam = this._camRest;
+        const travel = (far - near) / closing;
+        return {
+            x: cam.x + fh.x * near + right.x * nx * tanH * near,
+            z: cam.z + fh.z * near + right.z * nx * tanH * near - travel,
+            travel,
+            fh,
+        };
+    }
+
+    /**
+     * A piece lock stands its hologram up in the glass: ONE solid piece in the piece's colour,
+     * far out on the floor on the sun's side of the board (hologramPath), gliding in along the
+     * grid toward the camera and lying back down in the glass as it arrives; a ripple ring
+     * spreads out from where it rose and a few pixels rise off it.
+     * A hard drop lands harder: a stronger ripple, more pixels, a bigger thump.
      */
     onPieceLock(piece) {
         const r = this.rand;
@@ -801,29 +856,6 @@ export class NeonDuskWorld {
         const type = pieceType(piece);
         const color = pieceColor(piece, type, this._color);
         const col = Number.isFinite(piece?.x) ? THREE.MathUtils.clamp(piece.x, 0, 9) : Math.floor(r() * 10);
-        let nx;
-        const b = this.board;
-        if (b && b.x0 > 0.16) {
-            const leftHi = b.x0 * 2 - 1 - 0.08;
-            const rightLo = b.x1 * 2 - 1 + 0.08;
-            nx = col < 5
-                ? THREE.MathUtils.lerp(-0.92, leftHi, col / 4)
-                : THREE.MathUtils.lerp(rightLo, 0.92, (col - 5) / 4);
-        } else {
-            nx = -0.85 + (col / 9) * 1.7;
-        }
-        // Close to the camera, where the glass is steep enough on screen to read the shape.
-        const D = 20 + r() * 20;
-        const { fwd, right } = this.viewBasis();
-        const tanH = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2) * this.lens.aspect;
-        const fh = this._a.set(fwd.x, 0, fwd.z).normalize();
-        const wx = this._camRest.x + fh.x * D + right.x * nx * tanH * D;
-        const wz = this._camRest.z + fh.z * D + right.z * nx * tanH * D;
-        // Snap to the grid as it stands now (cell centres sit half a cell off the lines).
-        const S = GRID_SPACING;
-        const scroll = this.u.scroll.value;
-        const cx = (Math.floor(wx / S) + 0.5) * S;
-        const cz = scroll + (Math.floor((wz - scroll) / S) + 0.5) * S;
         const turns = Number.isFinite(piece?.rotation) ? piece.rotation & 3 : 0;
         const cells = TETROMINO_SHAPES[type].map(([x, y]) => {
             let px = x;
@@ -831,6 +863,20 @@ export class NeonDuskWorld {
             for (let k = 0; k < turns; k += 1) [px, py] = [-py, px];
             return [px, py];
         });
+        const S = GRID_SPACING;
+        const xs = cells.map(([x]) => x);
+        const ys = cells.map(([, y]) => y);
+        const midX = (Math.min(...xs) + Math.max(...xs)) / 2;
+        const midY = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const halfWidth = ((Math.max(...xs) - Math.min(...xs) + 1) * S) / 2;
+        // Far out on the glass, gliding in to where the glass is steep enough to read the shape;
+        // the path is the piece's middle.
+        const path = this.hologramPath(col, r, halfWidth);
+        const { fh } = path;
+        // Snap to the grid as it stands now (cell centres sit half a cell off the lines).
+        const scroll = this.u.scroll.value;
+        const cx = (Math.floor(path.x / S - midX) + 0.5) * S;
+        const cz = scroll + (Math.floor((path.z - scroll) / S + midY) + 0.5) * S;
         // One solid piece: each cell knows which of its sides join the piece (no seams).
         const bits = pieceOutlineBits(cells);
         const placed = cells.map(([px, py], i) => {
@@ -842,13 +888,8 @@ export class NeonDuskWorld {
         });
         // Nearest the camera first: the fx draw the farther cells before the nearer ones.
         placed.sort((p, q) => p.depth - q.depth);
-        // A hot hand's holograms stand longer (as long as the pool holds a quick hand's pieces).
-        const life = Math.min(
-            2.6 + 0.8 * this.drive.hot + 0.6 * this.drive.fever,
-            Math.max(2.6, (this.fx.tileCapacity / 4) * 0.3),
-        );
-        this.fx.spawnPiece(t, placed, color, life, this.scrollRun);
-        this.spawnRipple(cx, cz, hard ? 1.5 : 1);
+        this.fx.spawnPiece(t, placed, color, this.tileRun, this.tileRun + path.travel);
+        this.spawnRipple(path.x, path.z, hard ? 1.5 : 1);
         const pixels = hard ? 10 : 6;
         for (let i = 0; i < pixels; i += 1) {
             const [px, py] = cells[i % cells.length];
