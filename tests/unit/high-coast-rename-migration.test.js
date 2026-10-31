@@ -136,7 +136,7 @@ describe('High Coast took the Mountain orb: what a player already has now means 
         expect(orb.theme.transitionIn).toBe('crossfade');
         expect(orb.metadata.description).toMatch(/High Coast/);
         expect(orb.metadata.description).toMatch(/let the land rise/);
-        // Other orbs legitimately say "mountain" (orb 19 is "Mountain Base"), so look for the old
+        // Other orbs legitimately say "mountain" (orb 19's card mentions the mountains), so look for the old
         // theme id and the old orb name rather than the word.
         expect(LEVEL_CONFIGS.some((level) => level.theme?.primary === OLD_THEME)).toBe(false);
         expect(LEVEL_CONFIGS.some((level) => (level.theme?.overlays || []).includes(OLD_THEME))).toBe(false);

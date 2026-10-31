@@ -112,7 +112,7 @@ describe('Electric Dreams V3 became Murmuration: what a player already has still
         const orb = LEVEL_CONFIGS.find((level) => level.theme?.primary === 'murmuration');
         expect(orb).toBeDefined();
         expect(orb.name).toBe('Murmuration');
-        expect(orb.metadata.description).toMatch(/flock of light/);
+        expect(orb.metadata.description).toMatch(/swarm of light/);
         expect(JSON.stringify(LEVEL_CONFIGS)).not.toMatch(/electric-dreams|Electric Dreams/);
     });
 });

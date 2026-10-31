@@ -1542,6 +1542,12 @@
         width: min(46vw, 180px);
     }
 
+    /* The copy is a size container, so it has no width of its own to centre: centred, it shrank
+       to nothing and set the orb's name and description one word to a line. It spans the card. */
+    #odyssey-level-select .odyssey-postcard__copy {
+        justify-self: stretch;
+    }
+
     #odyssey-level-select .odyssey-postcard__actions {
         justify-content: center;
     }

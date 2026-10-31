@@ -408,7 +408,7 @@ describe('Steam Cloud collection reconciliation', () => {
                 19: { stars: 3, themeId: 'vesper-chrysalis' },
             },
         };
-        // Current public ids: Stillwater Sanctuary is orb 9 and the authored Vesper slot is orb 17.
+        // Current public ids: Tarn of Wisps (Stillwater) is orb 9 and the authored Vesper slot is orb 17.
         const current = {
             version: ODYSSEY_SAVE_VERSION,
             completedLevels: { 9: { stars: 2, themeId: 'stillwater' } },

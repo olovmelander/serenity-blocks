@@ -137,11 +137,11 @@ describe('Grainfields took the Misty Lake orb: what a player already has now mea
         expect(orb.isChapterStart).toBe(true);
         expect(orb.name).toBe('Grainfields');
         expect(orb.theme.transitionIn).toBe('crossfade');
-        // The live briefing is the rebalance table's, written for the new world: ripe barley, the
-        // Lapland gate, the storm breaking into sunbeams, the wind in the grain.
+        // The live briefing (orb-copy.js) is written for the new world: ripe barley, the Lapland
+        // gate, the storm breaking into sunbeams.
         expect(orb.metadata.description).toMatch(/barley/);
         expect(orb.metadata.description).toMatch(/Lapporten/);
-        expect(orb.metadata.description).toMatch(/wind run through the grain/);
+        expect(orb.metadata.description).toMatch(/Sunbeams break through a storm/);
         expect(orb.metadata.description).not.toMatch(/lake|mist|volcano/i);
         // The chapter's theme list names it in the orb's own slot.
         expect(CHAPTER_CONFIGS.find((chapter) => chapter.id === 3).themes.primary[0]).toBe('grainfields');

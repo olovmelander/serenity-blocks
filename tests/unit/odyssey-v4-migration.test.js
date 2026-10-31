@@ -157,7 +157,7 @@ describe('Odyssey v4 challenge identity migration', () => {
             version: 3, completedLevels: { 10: completed('bioluminescence-2'), 11: completed('stillwater', 2) },
         }));
         const state = new OdysseyStateManager();
-        // Stillwater Sanctuary is orb 9 today: its chapter now ends on the Coral duel.
+        // Tarn of Wisps (Stillwater) is orb 9 today: its chapter now ends on the Coral duel.
         expect(state.isLevelCompleted(9)).toBe(true);
         expect(state.getTotalStars()).toBe(2);
         state.completeLevel(1, { stars: 1 });

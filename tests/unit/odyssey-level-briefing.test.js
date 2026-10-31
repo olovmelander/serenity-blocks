@@ -20,11 +20,10 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
     it('presents the composed first duel and explains knockouts instead of obsolete solo objectives', () => {
         const result = briefing(5, 4);
         expect(result.goal).toBe('Defeat Cinder · First to 3 knockouts');
-        expect(result.changes).toEqual([
-            'Clear lines to send attacks; topping out the rival with an attack scores a knockout.',
-            'Both wells reset after a knockout.',
-        ]);
-        expect(result.rules).toEqual(['Clear lines to send attacks; topping out the rival with an attack scores a knockout.']);
+        const attack = 'Clear two or more lines with one piece to send attack rows. '
+            + 'Topping out the rival with an attack scores a knockout.';
+        expect(result.changes).toEqual([attack, 'Both wells reset after every top-out.']);
+        expect(result.rules).toEqual([attack]);
         expect(result.deadline).toBeNull();
         expect(JSON.stringify(result)).not.toMatch(/points|seconds|speed boost/i);
     });

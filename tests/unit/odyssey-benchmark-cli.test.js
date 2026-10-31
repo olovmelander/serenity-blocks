@@ -7,7 +7,7 @@ describe('Odyssey benchmark command configuration', () => {
     it('includes all 60 current orbs and accepts the new finale without reusing historical scenario positions', () => {
         expect(parseOptions([]).levelIds).toEqual(Array.from({ length: 60 }, (_, index) => index + 1));
         const options = parseOptions(['--levels=59-60', '--samples=1', '--profiles=stacker', '--scenarios=all']);
-        // Neon District (Electric Apex) is orb 59 again now that the chapter 8 rival closes the campaign.
+        // Neon District (Rainlit Streets) is orb 59 again now that the chapter 8 rival closes the campaign.
         expect(buildTasks(options).filter((task) => task.scenarioId.startsWith('orb59'))
             .map((task) => task.levelId)).toEqual([59, 59]);
         expect(parseOptions(['--construction-levels=49,55,59']).constructionLevelIds).toEqual([49, 55, 59]);

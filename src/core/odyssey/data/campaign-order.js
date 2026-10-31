@@ -21,7 +21,6 @@ function createVesperLevel(template, pathPosition) {
     return {
         ...template,
         id: 43,
-        name: 'Celestial Chrysalis',
         chapter: 6,
         pathPosition,
         theme: {
@@ -42,12 +41,6 @@ function createVesperLevel(template, pathPosition) {
                 { type: 'no-singles', description: 'Clear no single lines' },
             ],
         },
-        metadata: {
-            ...template.metadata,
-            description: 'An alien lake reflects impossible worlds and a waking crystal heart. '
-                + 'Build your score in a quiet pocket before the next cosmic trial.',
-            tip: 'There is no countdown. Let the stack settle and choose clean scoring routes.',
-        },
     };
 }
 
@@ -55,7 +48,6 @@ function createWarpLevel(template, pathPosition) {
     return {
         ...template,
         id: 55,
-        name: 'Serenity Passage',
         chapter: 7,
         pathPosition,
         theme: {
@@ -85,13 +77,9 @@ function createWarpLevel(template, pathPosition) {
             three: { cascades: 10, maxCascadeDepth: 4 },
         },
         metadata: {
-            description: 'A tunnel of light carries you toward the final abstraction. '
-                + 'Trigger 10 cascades on a taller board before the summit challenge.',
             difficulty: 6,
             // Authored rehearsal profile: gentler fixed speed and no deadline before the capstone.
             difficultyModel: { scalar: 0.60, band: 'tough', profile: 'tall-board-rehearsal' },
-            tip: 'Use the starting shelves to rehearse layered cascades. '
-                + 'There is no timer; leave room for the next piece.',
         },
     };
 }
