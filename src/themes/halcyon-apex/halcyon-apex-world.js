@@ -55,6 +55,7 @@ import { float, shadow } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
 import { easeStep } from '../shared/mood-clock.js';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import {
     CLEAR_AFTERGLOW,
     CLEAR_SLOTS,
@@ -200,6 +201,7 @@ export class HalcyonApexWorld {
         this.sun = null;
         this.shadowNode = null;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
         this.shadowWasEnabled = null;
         this.stone = null;
         this.crystals = null;
@@ -607,6 +609,7 @@ export class HalcyonApexWorld {
         sun.target.updateMatrixWorld(true);
         sun.shadow.needsUpdate = true;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     /** Put every crystal where the world's clocks say it is. */
@@ -1484,8 +1487,8 @@ export class HalcyonApexWorld {
         if (this.sun) {
             this.shadowFrames += 1;
             const every = this.tier.shadowEvery;
-            if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150
-                || (every > 0 && this.shadowFrames % every === 0)) this.sun.shadow.needsUpdate = true;
+            redrawStaticShadow(this, this.sun.shadow, this.shadowFrames === 45 || this.shadowFrames === 150
+                || (every > 0 && this.shadowFrames % every === 0));
         }
 
         // ── Post ──

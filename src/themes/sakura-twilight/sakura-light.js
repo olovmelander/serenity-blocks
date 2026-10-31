@@ -16,6 +16,7 @@ import {
 } from 'three/tsl';
 import { sakuraHourAt } from './sakura-hours.js';
 import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 
 const TAU = Math.PI * 2;
 /** The steady evening breeze; hot play freshens it (update()). */
@@ -136,6 +137,7 @@ export class SakuraLight {
         moonShadow.needsUpdate = true;
         this.shadowNode = shadow(this.moon);
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
         this.shadowBox = {
             centre: new THREE.Vector3(0, 7, -24), halfWidth: 78, halfHeight: 34, depth: 320,
         };
@@ -168,6 +170,7 @@ export class SakuraLight {
         moon.target.updateMatrixWorld(true);
         moon.shadow.needsUpdate = true;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     addTo(group) {
@@ -419,14 +422,12 @@ export class SakuraLight {
         this.uFront.value.set(first ? first.x : 0, push(first), 14, 0);
         this.uFront2.value.set(second ? second.x : 0, push(second), third ? third.x : 0, push(third));
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
-        // over the first frames so no late tree is missing from the static map. In the game
+        // over its first draws (shared/static-shadow-draws.js) so no late tree is missing from the static map. In the game
         // the prewarm compiles asynchronously and skips what is not ready, so on a busy machine
         // the casters' shadow pipelines can come later than frame 150: a few later redraws
         // (one shadow pass each) keep the near grass from standing in full moonlight.
         this.shadowFrames += 1;
-        if (this.shadowFrames < 10 || SHADOW_REDRAWS.has(this.shadowFrames)) {
-            this.moon.shadow.needsUpdate = true;
-        }
+        redrawStaticShadow(this, this.moon.shadow, SHADOW_REDRAWS.has(this.shadowFrames));
     }
 
     dispose() {

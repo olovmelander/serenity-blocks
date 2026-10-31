@@ -17,6 +17,7 @@ import {
     texture, uniform, vec2, vec3,
 } from 'three/tsl';
 import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { GOLDEN_FOREST_MOODS, createGoldenForestMood, goldenForestMoodAt } from './golden-forest-moods.js';
 
@@ -158,6 +159,7 @@ export class GoldenForestLight {
         sunShadow.needsUpdate = true;
         this.shadowNode = shadow(this.sun);
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     /** Aim the shadow camera so its box holds the near shores and the water between them. */
@@ -179,6 +181,7 @@ export class GoldenForestLight {
         sun.target.updateMatrixWorld(true);
         sun.shadow.needsUpdate = true;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
     }
 
     addTo(group) {
@@ -345,11 +348,9 @@ export class GoldenForestLight {
         this.uFront.value.set(first ? first.x : 0, push(first), FRONT_WIDTH, 0);
         this.uFront2.value.set(second ? second.x : 0, push(second), third ? third.x : 0, push(third));
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
-        // over the first frames so no late tree is missing from the static map.
+        // over its first draws (shared/static-shadow-draws.js) so no late tree is missing from the static map.
         this.shadowFrames += 1;
-        if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150) {
-            this.sun.shadow.needsUpdate = true;
-        }
+        redrawStaticShadow(this, this.sun.shadow, this.shadowFrames === 45 || this.shadowFrames === 150);
     }
 
     dispose() {

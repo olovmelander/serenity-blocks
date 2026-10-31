@@ -1,7 +1,8 @@
 # Three.js r186 to r187 upgrade
 
-**Status: Phase 0 and Phase 1 on branch `perf/three-r187`; Phase 2 (real-GPU acceptance, look
-review, perf) open. Not merged.** Started 2026-10-30 from `c52f42b0`, the day 0.187.0 was published,
+**Status: Phase 0 and Phase 1 on branch `perf/three-r187`; Phase 2 look sweep, full-speed A/B and the
+final candidate's checks done (2026-10-31, below); merge waits for the owner. Not merged.** Started
+2026-10-30 from `c52f42b0`, the day 0.187.0 was published,
 following [ADR-0018](adr/0018-three-js-pinning-and-upgrade-protocol.md). Merging waits for the
 Phase 2 evidence and the owner's approval of every look change; 0.187.1 (if it ships soon) should be
 audited as a patch on top before the merge.
@@ -230,6 +231,73 @@ Blood Moon's freeze the fleet pass could not place. `src/rendering/mipmap-pipeli
 same four pipelines with `createRenderPipelineAsync` right after a renderer's `init()` (BaseTheme, the
 Odyssey board) and puts each into three's own cache unless three made one first (rollback
 `?mipmapPipelineWarm=0`; contract-tested against the installed three).
+
+## Phase 2: the final candidate (`a9e52dd7`, measured 2026-10-31)
+
+Same machine and mode as above, full speed. r187 = `c2220980`, final = `a9e52dd7` (drain turns, sliced
+builds at four first draws a frame, mipmap warm).
+
+**Theme switches, the same 20 themes, r187 → final, two rounds each:**
+
+| Median over 20 themes | r187 | final |
+|---|---:|---:|
+| Synchronous pipelines in a first-visit switch | 1 (up to 4) | **0 on all 20** |
+| Longest frame in a first-visit switch | 68 ms | **61 ms** |
+| Longest frame in a return-visit switch | 38 ms | **29 ms** |
+| First visit: switch to shown | 795 ms | 813 ms (+2 %) |
+| Return visit: switch to shown | 491 ms | 501 ms |
+| Storm frame p99 / storm long tasks | 6.7 ms / 0 | 6.7 ms / 0 |
+
+First-visit / return freezes, r187 → final: Solar Eclipse 51/19 → 20/12 ms, Starlight 46 → 23, Ice Temple
+45/18 → 28/14, Aurora 41 → 26, Blood Moon 79 → 57, Rainbark 89/56 → 67/29, Sunfall 52/38 → 40/26,
+Murmuration 98 → 81, Star Cradle 69/63 → 61/53. Worse: **Forest 47/17 → 67/28 ms** (below, fixed), High
+Coast 79 → 84, Chiral Gold 41 → 45. Against r186 (table above) the first-visit median is 71 → 61 ms and
+the return median 58 → 29 ms.
+
+**Odyssey, final vs drain turns (`df5ff946`), Extreme, 144 fps cap, two rounds:** 0 errors on both. Board
+active cold 1,757 / 1,657 ms (drain turns 1,714 / 1,738), warm 1,001 / 950 ms (992 / 973). Synchronous
+pipelines at the start 11 → 9: the two mipmap pipelines are gone; the nine left are the board's bloom
+chain and four of its own (`Bloom_*`, `RenderPipeline_23/98/99/100`). Worst frame after the reveal cold
+47-51 ms (drain turns 50-57), warm 28 ms (29-33). Travel p99 6.6-6.7 ms on both.
+
+**Frame rate, uncapped (`--vsync=0`), r186 → final, two rounds:** equal within the run-to-run spread.
+Rest fps Summer 249 → 260, Verdant Hills 238 → 236, Thermal Bloom 272 → 270, Grainfields 230 → 229,
+Spring 275 → 274, Kaleidosonic 374 → 374; worst storm within −5 … +4 %. r187 changes compile and build
+cost, not the per-frame GPU cost. (Spring's first visit showed after 9.1 s on the r186 build in both
+rounds and 1.5 s on final; not explained, not claimed.)
+
+**Forest's regression: its static shadow map was drawn before its casters were built.** Forest, Fall,
+Golden Forest, Halcyon Apex, Sakura Twilight, Summer and Verdant Hills draw a static shadow map
+(`autoUpdate = false`) on their first 9 frames, then at a few later marks (frame 45, 150, …), so a late
+caster still lands in it. three draws a shadow map only in a frame that draws a receiver
+(`ShadowNode.updateBefore` runs from the receivers' render objects). Under sliced builds the first
+frames draw no receivers, so the frame count ran out with the map drawn once and 11 of Forest's 28
+casters built; the other 17 were built, and four shadow pipelines compiled, at the frame-45 redraw, at
+the reveal. A GPU trace of that frame: the GPU process spent 50.6 ms allocating the canvas's next swap
+buffer (normally 0.3-0.5 ms), with two queue submits of 35 and 26 ms before it; none of them on r187.
+Forest, three cold switches per arm, full speed:
+
+| Forest first visit (median of 3) | longest frame |
+|---|---:|
+| r187 | 48 ms |
+| final, `?switchSlicedBuilds=0&mipmapPipelineWarm=0` | 52 ms |
+| final, `?switchSlicedBuilds=0` (mipmap warm only) | 52 ms |
+| final, `?mipmapPipelineWarm=0` (sliced builds only) | 63 ms |
+| final | 79 ms |
+
+Fixed: `src/themes/shared/static-shadow-draws.js` counts the first redraws as draws (three clears
+`shadow.needsUpdate` when it has drawn), so they wait for the frames that draw; all seven lights use it.
+With every frame drawing (no sliced build, r186) the same frames redraw as before (unit-tested against
+the old rule). Checked at the light 30 fps cadence (the owner's cool-GPU rule): Forest's casters built
+over 163-679 ms with a 425 ms pause on final, over 170-240 ms with at most 38 ms between two on the fix
+(r187: 0-95 ms, 39 ms); last pipeline before the theme runs again (810 vs 864 ms; final 883 vs 872);
+same frame. The full-speed re-measure is left for a full-speed session.
+
+**Seen in the Forest traces, not acted on (all versions):** on a cold cache the GPU process compiled a
+vertex/fragment pair synchronously for 38-44 ms right after the switch's first canvas-sourced texture
+upload (`copyExternalImageToTexture`, a 1440×384 canvas); no renderer pipeline was created then, so it
+is most likely Dawn's internal copy pipeline, rebuilt on every theme's fresh GPUDevice. A warm cache
+does not show it.
 
 ## Phase 2 acceptance (open)
 

@@ -563,6 +563,7 @@ export function beginAsyncRenderPipelines(theme, {
         theme.asyncPipelinesInFlight = n;
         return n;
     };
+    /** @type {(value?: unknown) => void} */
     let resolveEnded = () => {};
     let firstDrawWindowOpen = false;
     let firstDrawsInWindow = 0;

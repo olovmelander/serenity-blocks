@@ -302,6 +302,9 @@ Check this table before debugging "shader looks wrong / nothing renders / slow".
 - r187 can build a render object's nodes asynchronously, a shader stage at a time
   (`renderer._nodes.getForRender(renderObject, yieldFn)`); the in-play switch's hidden build uses it
   (`sliceBuilds` in `src/rendering/async-render-pipelines.js`) so no large material builds inside a frame.
+  Its first frames then draw nothing, and three draws a shadow map only in a frame that draws a
+  receiver: a static map (`shadow.autoUpdate = false`) redrawn "on the first N frames" misses its
+  casters. Count the first redraws as draws with `redrawStaticShadow` (`src/themes/shared/static-shadow-draws.js`).
 - An override pass (`scene.overrideMaterial`, the shadow pass) files its render objects under
   five keys, the source material fifth (`renderer._currentSourceMaterial`). Code that looks render
   objects up must add it (see `chainKeysOf` in `src/rendering/async-render-pipelines.js`).

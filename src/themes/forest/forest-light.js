@@ -18,6 +18,7 @@ import {
     FOREST_HOUR_COLOURS, FOREST_HOURS, createForestHour, forestHourAt,
 } from './forest-hours.js';
 import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
+import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { FOREST_LIGHT_FIELD_BOUNDS, ForestLightField } from './forest-light-field.js';
 import { FOREST_MOON_AZIMUTH_DEGREES, FOREST_MOON_ELEVATION_DEGREES } from './forest-plan.js';
 import { ForestPulses } from './forest-pulses.js';
@@ -215,6 +216,7 @@ export class ForestLight {
         moonShadow.needsUpdate = true;
         this.shadowNode = shadow(this.moon);
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
         this.shadowSeconds = 0;
     }
 
@@ -237,6 +239,7 @@ export class ForestLight {
         moon.target.updateMatrixWorld(true);
         moon.shadow.needsUpdate = true;
         this.shadowFrames = 0;
+        this.shadowDraws = 0;
         this.shadowSeconds = 0;
     }
 
@@ -455,14 +458,12 @@ export class ForestLight {
         } else this.uFront.value.y = 0;
         this.pulses.update(Number.isFinite(dt) ? Math.max(0, dt) : 0);
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
-        // over the first frames so no late tree is missing from the static map.
+        // over its first draws (shared/static-shadow-draws.js) so no late tree is missing from the static map.
         this.shadowFrames += 1;
         const before = this.shadowSeconds;
         this.shadowSeconds += Number.isFinite(dt) ? Math.max(0, dt) : 0;
         const due = SHADOW_REDRAW_SECONDS.some((mark) => before < mark && this.shadowSeconds >= mark);
-        if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150 || due) {
-            this.moon.shadow.needsUpdate = true;
-        }
+        redrawStaticShadow(this, this.moon.shadow, this.shadowFrames === 45 || this.shadowFrames === 150 || due);
     }
 
     /** Hand the gathered firefly light to the GPU. */
