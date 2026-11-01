@@ -126,3 +126,11 @@ A real fish's body wave, in the vertex stage (no bones):
 - The tuna's finlets show as a fine serrated edge at game size; on a tuna seen from below and
   side-on, a pale line still runs along the flank just under the dark back. It reads as light on
   the silver flank to me, but it is the one place I would look again.
+
+## GPU timing (lead, 2026-11-01 evening)
+
+Timed with the birds, deer and fish together on the RTX at full speed (2560x1440, High, two rounds,
+main against this work at the same stations: p 0.095 and 0.11 the fish, 0.168, 0.194 and 0.22 the
+deer, gulls and swallows, 0.31 the swallows and geese, 0.62 the summit kettle). GPU time per frame
+was within 0.07 ms of main at every station (for example 2.10 ms both at L15, 1.18 against 1.11-1.18
+ms at the kettle), so the new animals cost nothing measurable there.
