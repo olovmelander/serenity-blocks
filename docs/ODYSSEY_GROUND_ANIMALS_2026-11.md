@@ -129,6 +129,17 @@ Closer (L17, enlarged 4x): the rump patch now shows round the tail, the heads ar
 
 ![Close crop at L17, before and after](images/odyssey-animals-2026-11-01/polish-game-close.jpg)
 
+### The orb card and the herd (lead, 2026-11-01 evening)
+
+Checked with the screen as the owner sees it: 2560x1600 at 150 %, Odyssey started the way a click
+starts it, the map reached with its Map button, the UI left on.
+- The orb card sits on the right of the screen. On the rail at orb 15 the herd is at the lower left;
+  at orb 17 it is near the bottom middle. The card never covers it.
+- After clicking orb 15 or 17, the camera frames the orb close-up and the herd is out of frame to the
+  left, so nothing covers it there either.
+
+![The rail at orb 15 and orb 17 with the UI on: the card on the right, the herd lower left and bottom middle](images/odyssey-animals-2026-11-01/orb-card-l15-l17.jpg)
+
 ## GPU timing (lead, 2026-11-01 evening)
 
 Timed with the birds, deer and fish together on the RTX at full speed (2560x1440, High, two rounds,
