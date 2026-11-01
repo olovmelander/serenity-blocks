@@ -88,6 +88,7 @@
     "src/rendering/odyssey/chapter-environments/shared/chapter-build-steps.js",
     "src/rendering/odyssey/chapter-environments/shared/odyssey-journey-constellation.js",
     "src/rendering/odyssey/chapter-environments/shared/odyssey-resident-textures.js",
+    "src/rendering/odyssey/composition/odyssey-jellyfish-drift.js",
     "src/rendering/odyssey/composition/odyssey-ocean-roam.js",
     "src/rendering/odyssey/odyssey-path-horizon.js",
     "src/rendering/odyssey/odyssey-path-inflow.js",

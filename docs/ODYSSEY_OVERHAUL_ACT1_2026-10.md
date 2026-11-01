@@ -132,8 +132,8 @@ JSONs: `$S/lanes/act1/perf/`.
   out of frame at ch2 0.45-0.6. In play they loop through view every 38 s (manta) / 64 s (shark).
 - The selenite chapel's floating basalt shell was removed (the chapel is its molten heart + corona);
   Olov had earlier asked for its crystals to go — if he liked the shell, it is one block to restore.
-- Not tried (in the research list): jellyfish; the Geode-style crystal fire (the chapel has no
-  crystals since Olov's 2026-08 request).
+- Not tried (in the research list): jellyfish (done 2026-11-01, §11); the Geode-style crystal
+  fire (the chapel has no crystals since Olov's 2026-08 request).
 - `serenity-blocks-eagle` (a parked, merged worktree) was checked out at `d557160a` for the perf base
   and left clean there.
 
@@ -428,3 +428,11 @@ it fails ("manta switched off in view at p 0.1347").
 ![Looking down at the manta from 14, 8 and 3 u above the surface (the last also shows a fish school and the whale shark)](images/odyssey-breach-2026-10-31/seen-through-surface.jpg)
 
 ![The real glide from orb 10 to orb 11: the fish and the manta stay until they leave the frame](images/odyssey-breach-2026-10-31/breach-glide.jpg)
+
+## 11. Jellyfish in the open water (2026-11-01)
+
+The mid-water between the big animals' passes (§5's "not tried: jellyfish") now holds a drift of 29
+jellyfish: moon jellies, sea nettles and small deep lanterns, each beating and drifting on its own
+slow loop by the clock, placed on the real rail camera, behind the 1->2 steam and seen through the
+surface after the breach by the same rules as the fish. One draw. Record, numbers and pictures:
+[docs/ODYSSEY_CH2_JELLYFISH_2026-11.md](ODYSSEY_CH2_JELLYFISH_2026-11.md).

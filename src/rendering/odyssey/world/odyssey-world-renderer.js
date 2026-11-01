@@ -71,6 +71,7 @@ import {
 import { behindSteamDepth, steamQuenchDensity } from '../composition/odyssey-steam-quench.js';
 import { ORBIT_EARTH_SEAM, orbitEarthOver } from '../composition/odyssey-orbit-earth.js';
 import { throughSurfaceNode, throughSurfaceShare } from '../composition/odyssey-through-surface.js';
+import { createOdysseyJellyfish } from './odyssey-jellyfish.js';
 
 // The golden suite imports the cloud silhouette bake from here; it now lives in the pure module.
 export { bakeOdysseyCloudField };
@@ -5805,6 +5806,23 @@ export function createOdysseyWorld({
         });
     };
 
+    // ── jellyfish (2026-11-01): a living drift in the open water, one draw ─────────────────
+    // The big animals swim long loops and are in view part of the time; between their passes the
+    // mid-water was sparse. A few dozen jellies hang in it on their own slow loops (placed on the
+    // real rail camera, odyssey-jellyfish-drift.js), beating and trailing their strands, so the
+    // climb is never through empty water (odyssey-jellyfish.js). Hazed by the world's water as the
+    // fish are, behind the 1->2 steam while it is up, and seen through the surface after the
+    // breach while any of them still shows (the fish's rules).
+    const jellyfish = openWater.length > 2 ? createOdysseyJellyfish({
+        uTime,
+        uLife,
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        haze: (c, wp) => applyAerial(c, wp, AERIAL_CEIL_WATER, 1, false, float(1).sub(uLife)),
+        grade: toOutput,
+        gradeLight: (c) => toOutputFaded(c, float(0)),
+    }) : null;
+    if (jellyfish) group.add(jellyfish.mesh);
+
     // ── ocean forms (Odyssey audit 2026-10-18): what stands in the blue around the column ──
     // Spires in the deep bowl and kelp on the shelf (odyssey-ocean-forms.js), so a look away from
     // the rail — an orb close-up, the arrival orbit — finds silhouettes layered by the water's
@@ -6663,6 +6681,7 @@ export function createOdysseyWorld({
         godRays: rayCount > 2 ? rayCount : 0,
         motes: moteMesh ? 640 : 0,
         fish: fishMesh ? FISH : 0,
+        jellyfish: jellyfish ? jellyfish.count : 0,
         spires: oceanPlan.spires.length,
         kelp: oceanPlan.kelp.length,
         skyRadius: domeRadius,
@@ -7028,6 +7047,11 @@ export function createOdysseyWorld({
             // The fish stay while the eye is in the water, and after the breach while any school
             // still shows through the surface: they are passed, never switched off in view.
             if (fishMesh) fishMesh.visible = (uSubmerged.value > 0.001 || fishSeenFromAbove(viewCamera)) && lifeOn;
+            // The jellies likewise, while any of them in view still shows through the surface.
+            if (jellyfish) {
+                jellyfish.mesh.visible = (uSubmerged.value > 0.001 || jellyfish.seenFromAbove(viewCamera, time))
+                    && lifeOn;
+            }
             if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             const forestDrawable = uSubmerged.value < 0.999 && !earthCovers;
@@ -7060,6 +7084,7 @@ export function createOdysseyWorld({
             // fishMat was missing here (the same SB-15 teardown class heroMat was): every world
             // dispose leaked the compiled fish material.
             if (fishMat) fishMat.dispose();
+            if (jellyfish) jellyfish.dispose();
             if (spireMat) spireMat.dispose();
             if (kelpMat) kelpMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
