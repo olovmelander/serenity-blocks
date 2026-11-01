@@ -42,9 +42,10 @@ from below, and from the front](images/odyssey-birds-2026-11-01/models.jpg)
   the breast, pale belly; swept, pointed wings; a deeply forked tail with long streamers.
 - **Greylag goose**: 326 triangles. A heavy grey-brown body with a barred back and flanks, a long
   neck, an orange bill, white under the tail; the pale grey forewing against dark flight feathers.
-- **Griffon vulture** (the summit kettle): 328 triangles. Long, broad wings ending in six splayed
-  primaries ("fingers"), a short square dark tail, a small pale head on a pale ruff; sandy brown
-  body and coverts against blackish flight feathers.
+- **Griffon vulture** (the summit kettle): 388 triangles (328 before the polish below). Long,
+  broad wings ending in six broad primaries ("fingers") with short slots at their rounded tips, a
+  short square dark tail, a small pale head on a pale ruff; sandy brown body and coverts against
+  blackish flight feathers.
 
 Bodies, heads and bills are closed shapes. Wings and tails are single sheets, drawn from both
 sides: each side has its own colours (the gull's white underwing, the swallow's buff, the goose's
@@ -105,7 +106,7 @@ geese at 0.155, swallows at 0.21).
 
 - Draws: 3 (was 1), one pipeline (as before). The summit kettle: 1 draw, 1 pipeline (as before).
 - Triangles: 12 gulls x 296 + 12 swallows x 196 + 9 geese x 326 = 8,838 (was 297); the kettle 12 x
-  328 = 3,936 (was 108). Each flock is only drawn while its window is open.
+  388 = 4,656 (was 108; 3,936 before the polish). Each flock is only drawn while its window is open.
 - Code: the models add about 30 KB to the bundle.
 
 ## Tests
@@ -130,3 +131,25 @@ main against this work at the same stations: p 0.095 and 0.11 the fish, 0.168, 0
 deer, gulls and swallows, 0.31 the swallows and geese, 0.62 the summit kettle). GPU time per frame
 was within 0.07 ms of main at every station (for example 2.10 ms both at L15, 1.18 against 1.11-1.18
 ms at the kettle), so the new animals cost nothing measurable there.
+
+## Polish (2026-11-01 evening)
+
+Seen in the game at p 0.62: when a vulture raised a wing toward the eye, its six primaries showed
+as thin dark spikes with open gaps all the way in, a black comb, more like a hand than feathers.
+A griffon's fingers are broad, touch at the base and taper to rounded tips, with only short,
+narrow slots between them.
+
+![The summit vultures before (left) and after (right) at p 0.62 in the game, 2560 x 1440 crops
+over time](images/odyssey-birds-2026-11-01/vulture-polish-game.jpg)
+
+- The solid hand now reaches further out (one more station), so the fingers are shorter and
+  broader.
+- Neighbouring fingers share their edge out to 45 % of their length, so there is no slot there.
+  Beyond it each finger narrows to a rounded tip, opening a short, narrow slot.
+- The fingertips curl up half as much (they read as a fan from below).
+- 388 triangles (was 328). The wing still bends without tearing (worst stretch 1.04x), and the
+  script still writes the same file on every run. The gull, swallow and goose are unchanged:
+  checked at game size from below, from behind and from the side, nothing was wrong.
+
+![The vulture in Blender from below, three-quarter below and behind-below, gliding and at the top
+of a beat: before (top two rows) and after](images/odyssey-birds-2026-11-01/vulture-polish-model.jpg)
