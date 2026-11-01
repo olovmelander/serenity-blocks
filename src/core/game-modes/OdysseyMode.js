@@ -373,6 +373,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Default to board view (level selection)
         this.isInBoardView = true;
+        let openingSweepTo = null;
         try {
             // Paint the ODYSSEY overlay + commit its compositor animations before the
             // cold WebGPU board build steals the main thread (else the build runs in the
@@ -382,10 +383,18 @@ export class OdysseyMode extends BaseGameMode {
             // Selected from the start: an orb left selected on an earlier visit no longer gets its
             // panel (and its theme prefetched) on the way.
             const revealLevelId = this._resolveRevealLevelId();
-            if (Number.isFinite(revealLevelId)) this.selectedLevelId = revealLevelId;
-            this.boardViewReadyPromise = this._showBoardView(Number.isFinite(revealLevelId)
-                ? { focusLevelId: revealLevelId, seatOnFocus: true }
-                : {});
+            // THE OPENING SWEEP (2026-11-01): the map opens at orb 1, built around chapter 1, and
+            // glides to that orb once it is on screen (_startOpeningSweep).
+            openingSweepTo = this._resolveOpeningSweepLevelId(revealLevelId);
+            if (Number.isFinite(openingSweepTo)) {
+                this.selectedLevelId = null;
+                this.boardViewReadyPromise = this._showBoardView({ focusLevelId: null, openingSweepTo });
+            } else {
+                if (Number.isFinite(revealLevelId)) this.selectedLevelId = revealLevelId;
+                this.boardViewReadyPromise = this._showBoardView(Number.isFinite(revealLevelId)
+                    ? { focusLevelId: revealLevelId, seatOnFocus: true }
+                    : {});
+            }
             await this.boardViewReadyPromise;
         } catch (error) {
             console.error('[Odyssey] Failed to prepare board view:', error);
@@ -413,6 +422,7 @@ export class OdysseyMode extends BaseGameMode {
         // Arrows, the D-pad and A travel and play on the map; the charm chip and Y open the charm guide.
         this._disposeMapInput?.();
         this._disposeMapInput = installOdysseyMapInputWithCharmGuide(this);
+        if (Number.isFinite(openingSweepTo)) this._startOpeningSweep(openingSweepTo);
 
         // Console debug handles — DEV/capture-tooling only. testOdysseyLevel unlocks levels
         // into the real save, so exposing it in the shipped game makes the Steam leaderboard
@@ -2842,6 +2852,9 @@ export class OdysseyMode extends BaseGameMode {
             showLoadingOverlay = true,
             // Build a board that is not built yet already framed on focusLevelId (mode entry).
             seatOnFocus = false,
+            // Mode entry with the opening sweep: build the board at orb 1 around chapter 1, with
+            // this orb's chapter music, for _startOpeningSweep to fly to it after the reveal.
+            openingSweepTo = null,
         } = options;
 
         const generation = this._boardPresentationGeneration || 0;
@@ -2862,6 +2875,7 @@ export class OdysseyMode extends BaseGameMode {
         this._perfMark(boardInitMark);
         const initialized = await this._initializeOdysseyBoard({
             revealLevelId: seatOnFocus && Number.isFinite(focusLevelId) ? focusLevelId : null,
+            openingSweepTo,
         });
         if (initialized === false || !isCurrent()) return false;
         this._perfMeasure('odyssey:mode:board-init', boardInitMark);
@@ -2972,6 +2986,47 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
+     * THE OPENING SWEEP (2026-11-01; the owner: "when Odyssey Mode starts, it should always begin
+     * at the start of the path in Chapter 1, and then pan a bit faster to the current unfinished
+     * orb"). The orb the map sweeps to from orb 1 when the mode starts, or null to open framed on
+     * it at once as before: no orb to open on (a fresh journey's welcome), orb 1 itself, reduced
+     * motion, or `?odysseyOpeningSweep=0`.
+     * @param {?number} revealLevelId the orb the map would open on (_resolveRevealLevelId)
+     * @returns {?number}
+     * @private
+     */
+    _resolveOpeningSweepLevelId(revealLevelId) {
+        if (!Number.isFinite(revealLevelId) || revealLevelId === 1) return null;
+        if (this.deps?.settingsManager?.get?.()?.reducedMotion === true) return null;
+        try {
+            if (new URLSearchParams(globalThis.location?.search || '').get('odysseyOpeningSweep') === '0') return null;
+        } catch {
+            // No URL: the sweep as default.
+        }
+        return revealLevelId;
+    }
+
+    /**
+     * Fly the freshly revealed map from orb 1 to `levelId` (OdysseyBoardController.playOpeningSweep).
+     * Its panel opens on arrival through onLevelSelect; a scroll, an orb choice, leaving the map
+     * or an orb starting ends it there.
+     * @param {number} levelId
+     * @private
+     */
+    _startOpeningSweep(levelId) {
+        const board = this.boardController;
+        if (!board?.playOpeningSweep) return;
+        const generation = this._boardPresentationGeneration || 0;
+        const isCurrent = () => this.isActive && this.isInBoardView && this.boardController === board
+            && generation === (this._boardPresentationGeneration || 0) && !this.isEnteringLevel;
+        board.playOpeningSweep(levelId, { isCurrent }).then((arrived) => {
+            if (arrived && isCurrent()) this.selectedLevelId = levelId;
+        }).catch((error) => {
+            console.warn('[Odyssey] Opening sweep failed:', error);
+        });
+    }
+
+    /**
      * @param {?number} levelId
      * @returns {?number} the level's chapter, or null for no (or an unknown) level
      * @private
@@ -2989,7 +3044,7 @@ export class OdysseyMode extends BaseGameMode {
      * (load everything) when progress can't be resolved, so the fallback is the old behaviour.
      * @private
      */
-    _computeEagerStartupChapters(revealLevelId = null) {
+    _computeEagerStartupChapters(revealLevelId = null, focusOverride = null) {
         try {
             // Eager-CREATE only the reveal neighbourhood: the FOCUS chapter the board reveals
             // into (odysseyState.currentChapter — the same one fast-start warms, see the
@@ -3004,7 +3059,8 @@ export class OdysseyMode extends BaseGameMode {
             //
             // The focus is the chapter of the orb the map opens on (when the board is built framed
             // on one), so what is built before the reveal is what the reveal shows.
-            const focusChapter = this._chapterOfLevel(revealLevelId) ?? (this.odysseyState?.currentChapter || 1);
+            const focusChapter = Number.isInteger(focusOverride) ? focusOverride
+                : (this._chapterOfLevel(revealLevelId) ?? (this.odysseyState?.currentChapter || 1));
             const chapterCount = (this.levelRegistry?.getPresentationLayout?.()?.chapterPositions?.length || 9) - 1;
             const lo = Math.max(1, focusChapter - 1);
             const hi = Math.min(Math.max(2, chapterCount), focusChapter + 1);
@@ -3046,7 +3102,8 @@ export class OdysseyMode extends BaseGameMode {
      * after the Odyssey loading overlay is already visible.
      * @private
      */
-    async _runOdysseyBoardBuild({ revealLevelId = null } = {}) {
+    async _runOdysseyBoardBuild({ revealLevelId = null, openingSweepTo = null } = {}) {
+        const sweeping = Number.isFinite(openingSweepTo);
         // Create container for the 3D board
         let boardContainer = document.getElementById('odyssey-board-3d');
         if (!boardContainer) {
@@ -3073,9 +3130,11 @@ export class OdysseyMode extends BaseGameMode {
             getReducedMotion: () => this.deps.settingsManager?.get?.()?.reducedMotion === true,
             // Cold-start: eagerly load only the reveal chapter and its neighbours; the rest load
             // in the background.
-            startupChapters: this._computeEagerStartupChapters(revealLevelId),
+            startupChapters: this._computeEagerStartupChapters(revealLevelId, sweeping ? 1 : null),
             // The chapter the board reveals into — fast-start warms only this one.
-            focusChapter: this._chapterOfLevel(revealLevelId) ?? (this.odysseyState?.currentChapter || 1),
+            focusChapter: sweeping ? 1 : (this._chapterOfLevel(revealLevelId) ?? (this.odysseyState?.currentChapter || 1)),
+            // The opening sweep flies to an orb in this chapter: its music from the start.
+            musicChapter: sweeping ? this._chapterOfLevel(openingSweepTo) : null,
             // The orb the camera opens framed on (null: the old opening at orb 1).
             revealLevelId: Number.isFinite(revealLevelId) ? revealLevelId : null,
         });

@@ -177,6 +177,16 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyDeferSeamCompilesOff', 'Disables deferred transition compilation, '
         + 'restoring the pre-reveal barrier.'),
     parameter(
+        'odysseyOpeningSweep',
+        'Opens the map at orb 1 and glides to the next orb to play when the mode starts.',
+        '0 opens framed on that orb at once',
+        'On',
+        '0',
+        {
+            sources: ['src/core/game-modes/OdysseyMode.js'],
+        },
+    ),
+    parameter(
         'odysseyLiveCompile',
         'Compiles background chapters through the running renderer before warming them.',
         '0 disables; other values enable',
