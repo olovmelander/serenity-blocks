@@ -343,6 +343,9 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
         uRainDensity: uniform(1),
         // The journey's end (0..1): the smog parts over the city for the journey in the sky.
         uClear: uniform(0),
+        // THE RISE (2026-11-01): 1 from the street, 0 once the eye is over the roofs (the skyline
+        // cards' flat feet would show from up there). See SKYLINE_RISE_FADE.
+        uSkylineFade: uniform(1),
     };
     group.userData.uniforms = uniforms;
 
@@ -428,12 +431,16 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     // near-black roofline ranks between the Retrosun and the last towers, so the disc
     // is PARTIALLY OCCLUDED and reads distant + enormous, plus the magenta-violet haze
     // band that supplies the chapter's missing mid-value layer.
-    const skylineFar = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: 31, lift: 0 });
+    const skylineFar = createSkylineSilhouetteTSL(uniforms.uTime, {
+        seedOffset: 31, lift: 0, uFade: uniforms.uSkylineFade,
+    });
     skylineFar.mesh.position.set(...CH8_RETROSUN_STAGE.skylineFar);
     skylineFar.mesh.scale.set(1.08, 0.9, 1);
     skylineFar.mesh.renderOrder = -88;
     corridor.add(skylineFar.mesh);
-    const skylineNear = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: 0, lift: 0.012 });
+    const skylineNear = createSkylineSilhouetteTSL(uniforms.uTime, {
+        seedOffset: 0, lift: 0.012, uFade: uniforms.uSkylineFade,
+    });
     skylineNear.mesh.position.set(...CH8_RETROSUN_STAGE.skylineNear);
     skylineNear.mesh.renderOrder = -86;
     corridor.add(skylineNear.mesh);
@@ -445,7 +452,9 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
         [skylineFar, CH8_RETROSUN_STAGE.skylineBackFar, 31],
     ].map(([front, at, seedOffset]) => {
         const lift = front === skylineNear ? 0.012 : 0;
-        const card = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: seedOffset + 7, lift });
+        const card = createSkylineSilhouetteTSL(uniforms.uTime, {
+            seedOffset: seedOffset + 7, lift, uFade: uniforms.uSkylineFade,
+        });
         card.mesh.position.set(...at);
         card.mesh.rotation.y = Math.PI;
         card.mesh.scale.copy(front.mesh.scale);
@@ -567,6 +576,13 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
 
     return group;
 }
+
+/**
+ * The eye's height in the corridor's frame (the street is at y -60) over which the skyline cards
+ * fade: from the street the eye sits at ~14; ordinary roofs reach ~45, the tall ones ~115.
+ */
+export const SKYLINE_RISE_FADE = Object.freeze([50, 120]);
+const _skylineEye = new THREE.Vector3();
 
 export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...updateArgs) {
     // ChapterEnvironmentManager calls update(group, delta, time, camera, cameraProgress,
@@ -693,6 +709,13 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             neon.sunVisible.value = (sunOpacity ? sunOpacity.value : 1) * afterHandover
                 * (CH8_RETROSUN_STAGE.revealFloor + easedReveal * (1 - CH8_RETROSUN_STAGE.revealFloor));
         }
+    }
+
+    // THE RISE: the skyline cards fade as the eye climbs over the roofs (the journey's end crane,
+    // JOURNEY_END_RISE in the camera), by its height in the corridor's frame.
+    if (uniforms?.uSkylineFade && camera?.getWorldPosition && group.userData.corridor) {
+        const eye = group.userData.corridor.worldToLocal(camera.getWorldPosition(_skylineEye));
+        uniforms.uSkylineFade.value = 1 - THREE.MathUtils.smoothstep(eye.y, ...SKYLINE_RISE_FADE);
     }
 
     // THE JOURNEY IN THE SKY: over the journey's last stretch (the manager's journeyEnd ramp) the

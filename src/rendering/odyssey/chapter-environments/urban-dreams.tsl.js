@@ -399,7 +399,7 @@ export function createSynthwaveSunTSL(uTime, uEnergy, { uReveal } = {}) {
 // so the sun rises BEHIND a city that reads kilometres deep — jagged rooflines,
 // setbacks and antenna spikes, partially occluding the disc. No bloom; uOpacity
 // exposed (material.uniforms) so the ecotone crossfade reaches the cards.
-export function createSkylineSilhouetteTSL(uTime = uniform(0), { seedOffset = 0, lift = 0 } = {}) {
+export function createSkylineSilhouetteTSL(uTime = uniform(0), { seedOffset = 0, lift = 0, uFade = null } = {}) {
     const uOpacity = uniform(1);
     const vUv = uv();
     // The silhouette is static; uTime stays in the signature for builder uniformity
@@ -422,7 +422,9 @@ export function createSkylineSilhouetteTSL(uTime = uniform(0), { seedOffset = 0,
     // Near-black silhouette; `lift` nudges the nearer card faintly blue so the two
     // ranks separate (#0A0F1F near, #07050F far — never RGB 0,0,0).
     material.colorNode = vec3(0.027 + lift, 0.02 + lift * 1.4, 0.059 + lift * 2.2);
-    material.opacityNode = mask.mul(uOpacity);
+    // `uFade` (optional, the chapter's): the cards fill the horizon seen from the street; once the
+    // eye rises over the roofs their flat bottom edge would show, so they fade (THE RISE).
+    material.opacityNode = uFade ? mask.mul(uOpacity).mul(uFade) : mask.mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
@@ -452,7 +454,10 @@ export function createHorizonHazeTSL(uTime = uniform(0)) {
         vec3(0.776, 0.0, 1.0), // deep magenta #C600FF
         oneMinus(vUv.y).mul(0.8).add(t0),
     );
-    const band = smoothstep(0.0, 0.25, vUv.y).mul(oneMinus(smoothstep(0.55, 1.0, vUv.y)));
+    // Feathered ends too (2026-11-01): from the street only the band's middle shows, but the
+    // journey's end rises over the roofs (JOURNEY_END_RISE) and its flat ends showed as panels.
+    const band = smoothstep(0.0, 0.25, vUv.y).mul(oneMinus(smoothstep(0.55, 1.0, vUv.y)))
+        .mul(smoothstep(0.0, 0.22, vUv.x)).mul(oneMinus(smoothstep(0.78, 1.0, vUv.x)));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = colorNode.mul(0.68);

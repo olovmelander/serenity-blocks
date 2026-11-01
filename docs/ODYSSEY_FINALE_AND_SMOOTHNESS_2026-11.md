@@ -124,6 +124,21 @@ At the end of the rail it now ends under the stars:
 **Tried and left out:** looking much further up (22 deg) once the journey is done. From the street
 the view up was mostly tower walls leaning in, with the sky a thin wedge.
 
+**The rise (2026-11-01, evening).** So the journey gets the open sky instead: once every orb is
+done, the arrival shot (the eye resting at the end of the rail) cranes up 140 units out of the
+canyon over the rooftops, eased in over 18 s, and looks 8 degrees further up once risen
+(`JOURNEY_END_RISE` in the camera). The line draws itself in its first 8 s, so the eye rises into a
+sky where the journey is already drawn: the city below, the sun on the horizon behind the spire.
+Any scroll or travel brings it back down smoothly; reduced motion never starts the arrival shot.
+- The skyline cards (flat rooftop silhouettes that fill the horizon seen from the street) showed
+  their flat feet from up there; they fade as the eye passes 110-180 units over the street
+  (`uSkylineFade`, `SKYLINE_RISE_FADE`).
+- The horizon haze band's flat ends showed as lighter panels; its ends are feathered now (from the
+  street only its middle is ever seen, and the street views are unchanged).
+- Tried 80, 140 and 200 units: 80 is still among the tower walls, 200 shows the city's edge.
+
+![The rise, at 0.5, 4, 8, 12, 18 and 30 s of the arrival shot](images/odyssey-finale-2026-11-01/journey-end-rise.jpg)
+
 **Trap:** a three.js Group's `renderOrder` sorts its children as a group ahead of everything else,
 so the sky dome painted over the stars. The order goes on the meshes.
 

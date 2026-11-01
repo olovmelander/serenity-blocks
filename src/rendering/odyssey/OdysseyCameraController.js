@@ -595,6 +595,13 @@ export const CHAPTER_8_CRANE = Object.freeze({
 // A gentle lift: the street, the spire and the sun stay in the frame (looking further up from inside
 // the canyon showed mostly tower walls leaning in).
 export const JOURNEY_END_LOOK = Object.freeze({ pitchDeg: 7, fovOffset: 4, band: 0.18 });
+/**
+ * THE RISE (2026-11-01, evening): with the whole journey done, the arrival shot (the eye resting
+ * at the end of the rail) cranes up out of the canyon over the rooftops, so the journey drawn in
+ * the sky has the open sky round it instead of the strip between the towers. `height` world units
+ * along the stage's up, eased in over `seconds` of the shot; `pitchDeg` more look up once risen.
+ */
+export const JOURNEY_END_RISE = Object.freeze({ height: 140, seconds: 18, pitchDeg: 8 });
 
 /**
  * 0..1: how far the journey's-end look up has come at `progress` (0 unless `complete`).
@@ -2198,6 +2205,13 @@ export class OdysseyCameraController {
         offset.applyQuaternion(this._arrivalQuat).multiplyScalar(1 - ARRIVAL_SHOT.pushIn * orbitEase * weight);
         camPos.copy(pivot).add(offset);
 
+        // THE RISE (JOURNEY_END_RISE): only with every orb done, out of the canyon over the roofs.
+        const endLook = this._journeyEndLookNow ?? 0;
+        const rise = JOURNEY_END_RISE;
+        const riseT = THREE.MathUtils.clamp(this._arrivalTime / rise.seconds, 0, 1);
+        const riseShare = riseT * riseT * riseT * (riseT * (riseT * 6 - 15) + 10) * endLook * weight;
+        if (riseShare > 0) camPos.addScaledVector(axis, rise.height * riseShare);
+
         // Hero aim: the spire on the right third, a touch above it.
         if (!stage) return;
         const hero = this._resolveArrivalHero(stage);
@@ -2212,7 +2226,7 @@ export class OdysseyCameraController {
             pitchAxis.normalize();
             // With the whole journey done the shot looks up past the spire, at the journey in the
             // sky (JOURNEY_END_LOOK), instead of keeping the final node in the lower frame.
-            const lift = JOURNEY_END_LOOK.pitchDeg * (this._journeyEndLookNow ?? 0);
+            const lift = (JOURNEY_END_LOOK.pitchDeg * endLook) + (rise.pitchDeg * riseShare);
             this._arrivalQuat.setFromAxisAngle(pitchAxis, THREE.MathUtils.degToRad(ARRIVAL_SHOT.heroPitchDeg + lift));
             aim.applyQuaternion(this._arrivalQuat);
         }
