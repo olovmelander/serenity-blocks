@@ -1189,6 +1189,7 @@ export class OdysseyBoardController {
         this.nodeManager.updateFromProgress(this.progressData);
         // The ribbon's lit frontier starts at the furthest unlocked node (not at 0).
         this._syncPathFrontier(this.progressData);
+        this._publishJourneyChart();
 
         // A/B lever, applied HERE so it works on its own (fixed 2026-08-12). It used to be
         // read only inside _sampleGpuProfile, i.e. ?odysseyHideLevelNodes=1 was a silent
@@ -5604,6 +5605,22 @@ export class OdysseyBoardController {
         this.progressData = progressData;
         this.nodeManager?.updateFromProgress(progressData);
         this._syncPathFrontier(progressData);
+        this._publishJourneyChart();
+    }
+
+    /**
+     * Hand the orbs' places and progress to the chapters (the finale's constellation of the
+     * journey, chapter 8). Cheap: sixty plain records, rebuilt only when progress or layout moves.
+     * @private
+     */
+    _publishJourneyChart() {
+        if (typeof this.nodeManager?.getJourneyChart !== 'function') return;
+        const chart = this.nodeManager.getJourneyChart();
+        this.environmentManager?.setJourneyChart?.(chart);
+        // Every orb done: the eye at the journey's end looks up at it (resolveJourneyEndLook).
+        if (this.cameraController) {
+            this.cameraController.journeyComplete = chart.length > 0 && chart.every((orb) => orb.completed);
+        }
     }
 
     /**
@@ -5660,6 +5677,7 @@ export class OdysseyBoardController {
             this.nodeManager.updateFromProgress(this.progressData);
             // The re-laid-out nodes moved along the path; the lit frontier follows them.
             this._syncPathFrontier(this.progressData);
+            this._publishJourneyChart();
         }
 
         this.cameraController.applyLayout(this.pathRenderer.pathCurve, {

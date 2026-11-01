@@ -535,8 +535,11 @@ export const CHAPTER_5_SHOTS = Object.freeze({
     face: Object.freeze({
         in: Object.freeze([-2, -1]), out: Object.freeze([0.03, 0.10]), pitchDeg: -16, yawDeg: 0, fovOffset: 6,
     }),
+    // (2026-11-01: in from 0.07, as the face shot lets go. It came in at 0.17, so L28, parked at
+    // 0.125 between the two, was framed by the base arc alone and sat on the top edge, the eye
+    // looking up the face at it: the open item since the 2026-10-20 overhaul.)
     lift: Object.freeze({
-        in: Object.freeze([0.17, 0.25]), out: Object.freeze([0.80, 0.90]), pitchDeg: 23, yawDeg: 0, fovOffset: 0,
+        in: Object.freeze([0.07, 0.16]), out: Object.freeze([0.80, 0.90]), pitchDeg: 23, yawDeg: 0, fovOffset: 0,
     }),
     lookOut: Object.freeze({
         in: Object.freeze([0.29, 0.36]), out: Object.freeze([0.41, 0.47]), pitchDeg: -4, yawDeg: 16, fovOffset: 4,
@@ -577,6 +580,33 @@ export const CHAPTER_8_CRANE = Object.freeze({
     fovOffset: 6,
     stageAim: 0.92,
 });
+/**
+ * The look up at the journey's end (2026-11-01): once every orb is done, the eye arriving at the
+ * end of the rail tilts from the city to the sky where the journey is drawn in stars, on a slightly
+ * wider lens. Over the same last stretch of the final chapter as the environment manager's
+ * journeyEnd ramp (JOURNEY_END_BAND there), so the sky clears, the line draws and the eye lifts
+ * together.
+ */
+// A gentle lift: the street, the spire and the sun stay in the frame (looking further up from inside
+// the canyon showed mostly tower walls leaning in).
+export const JOURNEY_END_LOOK = Object.freeze({ pitchDeg: 7, fovOffset: 4, band: 0.18 });
+
+/**
+ * 0..1: how far the journey's-end look up has come at `progress` (0 unless `complete`).
+ * @param {number} progress
+ * @param {number[]} chapterPositions [s1, ..., sN, 1]
+ * @param {boolean} complete every orb done
+ */
+export function resolveJourneyEndLook(progress, chapterPositions, complete) {
+    if (!complete || !Number.isFinite(progress) || !Array.isArray(chapterPositions)) return 0;
+    const last = chapterPositions.length - 1;
+    const end = chapterPositions[last] ?? 1;
+    const start = chapterPositions[last - 1];
+    if (!Number.isFinite(start) || !(end > start)) return 0;
+    const from = end - ((end - start) * JOURNEY_END_LOOK.band);
+    return smooth01((progress - from) / Math.max(1e-6, end - from));
+}
+
 function resolveChapter8Framing(t) {
     const crane = urbanIgnition(THREE.MathUtils.clamp(t, 0, 1));
     const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_8_BASE };
@@ -1951,6 +1981,18 @@ export class OdysseyCameraController {
         // exponential ease below only filters it.
         const reducedMotion = this.prefersReducedMotion();
         const target = resolveJourneyFraming(this.currentPosition, this.chapterPositions, reducedMotion);
+        // THE JOURNEY'S END (2026-11-01): with every orb done, the eye arriving at the end of the
+        // rail lifts from the city to the sky, where the whole journey is drawn in stars
+        // (chapter-environments/shared/odyssey-journey-constellation.js). Until then orb 60 stays
+        // in the frame, to be played.
+        const complete = this.journeyComplete === true;
+        const endLook = resolveJourneyEndLook(this.currentPosition, this.chapterPositions, complete);
+        // (The arrival shot at the end of the rail aims by itself and reads this too.)
+        this._journeyEndLookNow = endLook;
+        if (endLook > 0) {
+            target.pitchDeg = (target.pitchDeg ?? 0) + (JOURNEY_END_LOOK.pitchDeg * endLook);
+            target.fovOffset = (target.fovOffset ?? 0) + (JOURNEY_END_LOOK.fovOffset * endLook);
+        }
         let fall = resolveJourneyFallCamera(this.currentPosition, this.chapterPositions, reducedMotion);
         const previousFall = this._fallCameraFraming;
         const active = this._activeFraming;
@@ -2163,7 +2205,10 @@ export class OdysseyCameraController {
         const pitchAxis = this._frameAxis.crossVectors(aim, axis);
         if (pitchAxis.lengthSq() > 1e-8) {
             pitchAxis.normalize();
-            this._arrivalQuat.setFromAxisAngle(pitchAxis, THREE.MathUtils.degToRad(ARRIVAL_SHOT.heroPitchDeg));
+            // With the whole journey done the shot looks up past the spire, at the journey in the
+            // sky (JOURNEY_END_LOOK), instead of keeping the final node in the lower frame.
+            const lift = JOURNEY_END_LOOK.pitchDeg * (this._journeyEndLookNow ?? 0);
+            this._arrivalQuat.setFromAxisAngle(pitchAxis, THREE.MathUtils.degToRad(ARRIVAL_SHOT.heroPitchDeg + lift));
             aim.applyQuaternion(this._arrivalQuat);
         }
         const current = this._arrivalScratch.copy(lookTarget).sub(camPos).normalize();

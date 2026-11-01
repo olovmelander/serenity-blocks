@@ -12,6 +12,7 @@ import {
     CH7_CORRIDOR_DUST_SETTINGS,
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_CHAPTER_PROFILES } from './shared/chapter-profile.js';
+import { GARGANTUA_HOLE } from './odyssey-gargantua-lens.tsl.js';
 import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 import { CH7_SUN_CARRY, resolveSunCarry } from './urban-dreams-sun-carry.js';
 import { resolveRetrosunStage } from './urban-dreams.js';
@@ -51,9 +52,19 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
             .applyQuaternion(face.getWorldQuaternion(new THREE.Quaternion()));
         const tiltOutOfEdgeOn = Math.asin(Math.abs(diskNormal.dot(towardEye)));
         expect(tiltOutOfEdgeOn).toBeCloseTo(CH7_GARGANTUA.diskTilt, 3);
-        // The disk wraps the shadow: inner edge outside the photon ring.
-        expect(disk.geometry.parameters.innerRadius)
-            .toBeGreaterThan(CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.photonOuter);
+        // The disk wraps the shadow: its gas's inner edge lies outside the photon ring. The plunge's
+        // band (2026-11-01) is the traced disk's own gas: its ring reaches in to the faint plunge
+        // glow, and the disk proper begins at the innermost stable orbit (3 Rs), outside the ring.
+        if (disk.name === 'gargantua-band') {
+            const rs = CH7_GARGANTUA.shadowRadius / GARGANTUA_HOLE.CRITICAL;
+            expect(GARGANTUA_HOLE.DISK_INNER * rs)
+                .toBeGreaterThan(CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.photonOuter);
+            expect(disk.geometry.parameters.innerRadius).toBeCloseTo(GARGANTUA_HOLE.PLUNGE * rs, 6);
+            expect(disk.geometry.parameters.outerRadius).toBeCloseTo(GARGANTUA_HOLE.DISK_OUTER * 1.08 * rs, 6);
+        } else {
+            expect(disk.geometry.parameters.innerRadius)
+                .toBeGreaterThan(CH7_GARGANTUA.shadowRadius * CH7_GARGANTUA.photonOuter);
+        }
         // Retired: the lensing shell that sat INSIDE the opaque horizon, the off-frame halo,
         // the entry hero, the five secondary mini-holes, the glow rings, the violet wash.
         const names = [];

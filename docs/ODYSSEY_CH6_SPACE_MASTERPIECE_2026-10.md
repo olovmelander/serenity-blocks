@@ -145,6 +145,9 @@ Earth's backdrop (-0.5) → everything at 0 and above (the orbs, the rail, the h
 ## Not done yet
 
 - **One hero per stage:** the giant still hangs lower right all chapter.
-- **The giant flyby:** a seat near the rail so the rings sweep past and it drops behind before the
-  hole's light comes up.
-- **The plunge's painted band** could take the traced gas's look.
+- **The giant flyby:** tried 2026-11-01 and left out. A nearer seat (same rise, shrunk to the same
+  angle) sank it out before the hole's light, but from chapter 5's eye it showed over the Earth's
+  limb before its rise and came inside the Earth's near disc
+  ([ODYSSEY_FINALE_AND_SMOOTHNESS_2026-11.md](ODYSSEY_FINALE_AND_SMOOTHNESS_2026-11.md) §5).
+- ~~**The plunge's painted band** could take the traced gas's look.~~ Done 2026-11-01: the band is
+  the traced disk's own gas, drawn flat (same doc, §4).

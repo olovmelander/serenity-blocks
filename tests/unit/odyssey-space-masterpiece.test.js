@@ -139,6 +139,16 @@ describe('the space masterpiece shaders build for both backends', () => {
             const lens = runChapterSteps(createGargantuaLensSteps({ shadowRadius: 24, uReveal: uniform(1) }));
             expect(build(lens.mesh, forceWebGL)).toEqual([]);
         });
+        it(`builds the plunge's band from the lens's gas (${label})`, () => {
+            const lens = runChapterSteps(createGargantuaLensSteps({ shadowRadius: 24, uReveal: uniform(1) }));
+            const band = lens.createBand();
+            // The traced disk's own extent: from the plunge to past its outer edge.
+            band.mesh.geometry.computeBoundingSphere();
+            expect(band.mesh.geometry.boundingSphere.radius)
+                .toBeCloseTo(24 * ((GARGANTUA_HOLE.DISK_OUTER * 1.08) / GARGANTUA_HOLE.CRITICAL), 3);
+            expect(build(band.mesh, forceWebGL)).toEqual([]);
+            lens.dispose();
+        });
         it(`builds the galaxy's disc and its suns (${label})`, () => {
             const galaxy = runChapterSteps(createSpiralGalaxySteps({ quality: 'low' }));
             expect(galaxy.mesh.children.length).toBe(1);

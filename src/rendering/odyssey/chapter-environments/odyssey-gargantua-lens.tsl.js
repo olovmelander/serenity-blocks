@@ -27,8 +27,8 @@
 import * as THREE from 'three/webgpu';
 import {
     Break, Fn, If, Loop, abs, atan, cameraPosition, clamp, cross, dot, exp, float, fwidth, length, log2,
-    max, min, mix, normalize, positionWorld, pow, select, sign, sin, cos, smoothstep, sqrt, texture,
-    uniform, vec2, vec3, vec4,
+    max, min, mix, modelScale, normalize, positionLocal, positionWorld, pow, select, sign, sin, cos,
+    smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GARGANTUA_GAS, bakeGargantuaGasSteps } from './odyssey-gargantua-gas.js';
 
@@ -63,6 +63,9 @@ export const GARGANTUA_LENS_QUALITY = Object.freeze({
     low: Object.freeze({ steps: 44, stepScale: 0.19, detail: false }),
 });
 
+/** The plunge's flat band's light, against the traced disk's gas alone (see createBand). */
+const BAND_GAIN = 1.35;
+
 /** Seconds for the gas at the inner edge to circle the hole, and the shear phases' reset period. */
 const INNER_ORBIT_SECONDS = 13;
 const FLOW_PERIOD = 2.2;
@@ -95,58 +98,16 @@ const blackbody = (heat) => {
 };
 
 /**
- * Build the traced hole, in steps (the gas bake yields between rows).
- * @param {object} options
- * @param {number} options.shadowRadius the chapter's shadow sphere radius (group-local units)
- * @param {*} [options.uReveal] 0..1 uniform: the hole's light arriving (premultiplied fade)
- * @param {'high'|'low'} [options.quality]
+ * The disk's gas, sheared Keplerian over the baked texture and lit by the blackbody ramp with
+ * relativistic beaming: the theme's shadeDisk. Shared by the lens (where a traced ray crosses the
+ * disk's plane) and the plunge's band (createGargantuaBandMaterial), so the two are one gas.
+ * Returns (p, radius, towardCamera, order, travelled, pixelAngle) -> vec4(emission, opacity), with
+ * `p` in the disk's frame (+Y its normal) and lengths in Schwarzschild radii.
  */
-export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), quality = 'high' }) {
+function makeShadeDisk(gasTex, u, detail) {
     const H = GARGANTUA_HOLE;
-    const Q = GARGANTUA_LENS_QUALITY[quality] ?? GARGANTUA_LENS_QUALITY.high;
-    const gas = yield* bakeGargantuaGasSteps();
-    const gasTex = new THREE.DataTexture(gas, GARGANTUA_GAS.width, GARGANTUA_GAS.height, THREE.RGBAFormat);
-    gasTex.wrapS = THREE.RepeatWrapping;
-    gasTex.wrapT = THREE.RepeatWrapping;
-    gasTex.magFilter = THREE.LinearFilter;
-    gasTex.minFilter = THREE.LinearMipmapLinearFilter;
-    gasTex.generateMipmaps = true;
-    gasTex.colorSpace = THREE.NoColorSpace;
-    gasTex.needsUpdate = true;
-    yield 'gas';
-
-    const u = {
-        hole: uniform(new THREE.Vector3()),
-        rs: uniform(1),
-        /** World -> the disk's frame (+Y is the disk normal). */
-        worldToDisk: uniform(new THREE.Matrix3()),
-        diskRigid: uniform(0),
-        flowA: uniform(0),
-        flowB: uniform(0),
-        flowMix: uniform(0),
-        diskGain: uniform(1),
-        diskHeat: uniform(1),
-        doppler: uniform(0.8),
-        ringGain: uniform(1),
-        // 0.55 of the theme's: its haze filled a frame round a hole that IS the frame; here the hole
-        // shares the sky (the galaxy, the giant), and the full haze spread a wide orange wash past
-        // the disk's own edge.
-        coronaGain: uniform(0.55),
-        reveal: uReveal,
-    };
     const rowsPerRadius = GARGANTUA_GAS.height / (H.DISK_OUTER - H.DISK_INNER);
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'Odyssey Gargantua — lens';
-    material.transparent = true;
-    material.premultipliedAlpha = true;
-    material.depthWrite = false;
-    material.side = THREE.FrontSide;
-    material.fog = false;
-    material.userData.emitsBloom = true;
-
-    /** Emission and opacity of the disk where a ray crosses its plane (the theme's shadeDisk). */
-    const shadeDisk = (p, radius, towardCamera, order, travelled, pixelAngle) => {
+    return (p, radius, towardCamera, order, travelled, pixelAngle) => {
         const turn = atan(p.z, p.x).div(TAU);
         const orbit = pow(float(H.DISK_INNER).div(radius), 1.5);
         const shear = orbit.sub(RIGID_RATE);
@@ -158,7 +119,7 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         const texels = pixelAngle.mul(travelled).mul(rowsPerRadius).div(grazing);
         const lod = max(log2(max(texels, 1)).sub(0.6).add(order.mul(1.2)), 0).toVar();
         const g0 = mix(texture(gasTex, uvA).level(lod), texture(gasTex, uvB).level(lod), u.flowMix).toVar();
-        const fine = Q.detail
+        const fine = detail
             ? mix(
                 texture(gasTex, uvA.mul(vec2(4, 3))).level(lod.add(1.6)),
                 texture(gasTex, uvB.mul(vec2(4, 3))).level(lod.add(1.6)),
@@ -196,6 +157,65 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         const alpha = float(1).sub(exp(density.mul(envelope).mul(-3.4).div(grazing.add(0.1))));
         return vec4(emission.mul(envelope), alpha);
     };
+}
+
+/** The gas texture the lens and the band read (one upload, mipmapped, tiled both ways). */
+function createGasTexture(gas) {
+    const gasTex = new THREE.DataTexture(gas, GARGANTUA_GAS.width, GARGANTUA_GAS.height, THREE.RGBAFormat);
+    gasTex.wrapS = THREE.RepeatWrapping;
+    gasTex.wrapT = THREE.RepeatWrapping;
+    gasTex.magFilter = THREE.LinearFilter;
+    gasTex.minFilter = THREE.LinearMipmapLinearFilter;
+    gasTex.generateMipmaps = true;
+    gasTex.colorSpace = THREE.NoColorSpace;
+    gasTex.needsUpdate = true;
+    return gasTex;
+}
+
+/**
+ * Build the traced hole, in steps (the gas bake yields between rows).
+ * @param {object} options
+ * @param {number} options.shadowRadius the chapter's shadow sphere radius (group-local units)
+ * @param {*} [options.uReveal] 0..1 uniform: the hole's light arriving (premultiplied fade)
+ * @param {'high'|'low'} [options.quality]
+ */
+export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), quality = 'high' }) {
+    const H = GARGANTUA_HOLE;
+    const Q = GARGANTUA_LENS_QUALITY[quality] ?? GARGANTUA_LENS_QUALITY.high;
+    const gas = yield* bakeGargantuaGasSteps();
+    const gasTex = createGasTexture(gas);
+    yield 'gas';
+
+    const u = {
+        hole: uniform(new THREE.Vector3()),
+        rs: uniform(1),
+        /** World -> the disk's frame (+Y is the disk normal). */
+        worldToDisk: uniform(new THREE.Matrix3()),
+        diskRigid: uniform(0),
+        flowA: uniform(0),
+        flowB: uniform(0),
+        flowMix: uniform(0),
+        diskGain: uniform(1),
+        diskHeat: uniform(1),
+        doppler: uniform(0.8),
+        ringGain: uniform(1),
+        // 0.55 of the theme's: its haze filled a frame round a hole that IS the frame; here the hole
+        // shares the sky (the galaxy, the giant), and the full haze spread a wide orange wash past
+        // the disk's own edge.
+        coronaGain: uniform(0.55),
+        reveal: uReveal,
+    };
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.name = 'Odyssey Gargantua — lens';
+    material.transparent = true;
+    material.premultipliedAlpha = true;
+    material.depthWrite = false;
+    material.side = THREE.FrontSide;
+    material.fog = false;
+    material.userData.emitsBloom = true;
+
+    const shadeDisk = makeShadeDisk(gasTex, u, Q.detail);
 
     material.outputNode = Fn(() => {
         const rayWorld = normalize(positionWorld.sub(cameraPosition)).toVar();
@@ -324,6 +344,8 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
     mesh.frustumCulled = false;
 
     let turns = 0;
+    /** @type {THREE.Mesh[]} */
+    const bands = [];
     const _pos = new THREE.Vector3();
     const _scale = new THREE.Vector3();
     const _quat = new THREE.Quaternion();
@@ -368,9 +390,60 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
             u.flowB.value = (b - 0.5) * FLOW_PERIOD;
             u.flowMix.value = Math.abs((2 * a) - 1);
         },
+        /**
+         * The plunge's band: the same gas as the traced disk, drawn flat on a ring in `diskPivot`'s
+         * local XY plane (+Z its normal), over the traced disk's own extent (the plunge to past the
+         * outer edge). Chapter 7 hands the hole to it once the eye nears the march sphere, so the
+         * hand-over changes the bend and nothing else: the lanes, the beaming, the colours and the
+         * motion are the lens's own (it reads the lens's uniforms; keep calling update()).
+         * @param {{ uFade?: *, uOpacity?: * }} [options] fades (the chapter's, the ecotone bridge)
+         * @returns {{ mesh: THREE.Mesh, material: THREE.MeshBasicNodeMaterial, uniforms: object }}
+         */
+        createBand({ uFade = uniform(1), uOpacity = uniform(1) } = {}) {
+            const toRs = H.CRITICAL / shadowRadius;
+            const band = new THREE.MeshBasicNodeMaterial();
+            band.name = 'Odyssey Gargantua — band';
+            band.transparent = true;
+            band.premultipliedAlpha = true;
+            band.depthWrite = false;
+            band.side = THREE.DoubleSide;
+            band.forceSinglePass = true;
+            band.fog = false;
+            band.userData.emitsBloom = true;
+            band.outputNode = Fn(() => {
+                // The ring's local XY (pivot units) in the disk's frame: X, the normal, X x normal.
+                const p = vec3(positionLocal.x, 0, positionLocal.y.negate()).mul(toRs).toVar();
+                const radius = length(p.xz).toVar();
+                const toEye = normalize(cameraPosition.sub(positionWorld)).toVar();
+                const towardCamera = u.worldToDisk.mul(toEye).toVar();
+                const pixelAngle = max(length(fwidth(toEye)), 1e-5);
+                // The eye's distance in the band's own Schwarzschild radii (the pivot shrinks it in the plunge).
+                const travelled = length(cameraPosition.sub(positionWorld)).div(modelScale.x.mul(1 / toRs));
+                const disk = shadeDisk(p, radius, towardCamera, float(0), travelled, pixelAngle).toVar();
+                const fade = uFade.mul(uOpacity);
+                // The traced disk's front also carries its corona's light; without it the flat band
+                // read a third dimmer at the hand-over (CH7_TRACED_HOLE).
+                return vec4(disk.rgb.mul(fade).mul(BAND_GAIN), disk.a.mul(fade));
+            })();
+            band.uniforms = { uOpacity }; // the ecotone crossfade bridge
+            const ring = new THREE.RingGeometry(
+                shadowRadius * (H.PLUNGE / H.CRITICAL),
+                shadowRadius * ((H.DISK_OUTER * 1.08) / H.CRITICAL),
+                256,
+                16,
+            );
+            const bandMesh = new THREE.Mesh(ring, band);
+            bandMesh.name = 'gargantua-band';
+            bands.push(bandMesh);
+            return { mesh: bandMesh, material: band, uniforms: { uFade, uOpacity } };
+        },
         dispose() {
             geometry.dispose();
             material.dispose();
+            bands.forEach((band) => {
+                band.geometry.dispose();
+                band.material.dispose();
+            });
             gasTex.dispose();
         },
     };

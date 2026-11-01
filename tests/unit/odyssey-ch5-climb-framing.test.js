@@ -102,6 +102,18 @@ describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
         }
     });
 
+    it('frames L28 from its own stop, not on the top edge', () => {
+        // The open item since 2026-10-20: from L28's stop the orb sat at ndc y ~0.84 in game, the eye
+        // looking up the face at it (it was parked between the face shot and the lift). (L27 sits on
+        // the 4->5 seam, framed by the seam blend this bare rig does not model; in game it is ~0.47.)
+        [28].forEach((level) => {
+            const r = viewAt(rig, station(level)).project(rig.curve.getPointAt(station(level)));
+            expect(r.behind, `L${level}`).toBe(false);
+            expect(r.y, `L${level} ndcY ${r.y.toFixed(2)}`).toBeLessThan(0.6);
+            expect(r.y, `L${level} ndcY ${r.y.toFixed(2)}`).toBeGreaterThan(-0.3);
+        });
+    });
+
     it('never loses the way ahead between stations', () => {
         // The point 0.015 of progress ahead (~38 u of rail) is on screen for the whole climb.
         for (let p = station(29); p <= station(34); p += 0.005) {
@@ -135,14 +147,15 @@ describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
     });
 
     it('leaves the 5->6 hand-off pose exactly as it was, and the climb shots after the face shot', () => {
-        // The face shot (2026-10-20, below) owns the lift-off; every other shot keeps its window.
+        // The face shot (2026-10-20, below) owns the lift-off; the lift picks up as it lets go
+        // (2026-11-01, so L28 is framed), and every shot is gone before the hand-off.
         const climb = Object.entries(CHAPTER_5_SHOTS).filter(([name]) => name !== 'face').map(([, s]) => s);
         const firstIn = Math.min(...climb.map((shot) => shot.in[0]));
         const lastOut = Math.max(...climb.map((shot) => shot.out[1]));
-        expect(firstIn).toBeGreaterThanOrEqual(0.15);
+        expect(firstIn).toBeGreaterThanOrEqual(CHAPTER_5_SHOTS.face.out[0]);
         expect(lastOut).toBeLessThanOrEqual(0.9);
         expect(CHAPTER_5_SHOTS.face.out[1]).toBeLessThanOrEqual(0.12);
-        [0.12, firstIn, lastOut, 0.95, 1].forEach((t) => {
+        [lastOut, 0.95, 1].forEach((t) => {
             const framing = resolveChapterFramingForProgress(5, t);
             expect(framing.pitchDeg, `pitch @t=${t}`).toBeCloseTo(0, 9);
             expect(framing.yawDeg, `yaw @t=${t}`).toBeCloseTo(0, 9);
