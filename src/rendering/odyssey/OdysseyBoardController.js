@@ -270,6 +270,34 @@ function readUrlValue(name) {
 /** How long a directed glide waits for its destination's compile before it sets out (ms). */
 const GLIDE_COMPILE_HEAD_START_MS = 250;
 
+/**
+ * THE OPENING SWEEP (2026-11-01; the owner: "when Odyssey Mode starts, it should always begin at
+ * the start of the path in Chapter 1, and then pan a bit faster to the current unfinished orb").
+ * The map opens at orb 1 and glides to the orb to play next. It waits at the start (`minHoldMs`
+ * at least, `maxHoldMs` at most) until every chapter on the way is built, compiled and warmed, so
+ * the flight never meets a cold chapter; then it flies `baseMs + perProgressMs x distance` (plus
+ * the plunge's own time), slower than a click's glide so the journey so far reads as it passes.
+ */
+export const OPENING_SWEEP = Object.freeze({
+    minHoldMs: 900,
+    maxHoldMs: 9000,
+    baseMs: 1500,
+    perProgressMs: 4600,
+});
+
+/**
+ * The opening sweep's flight time (ms) from `from` to `to` in journey progress.
+ * @param {number} from
+ * @param {number} to
+ * @param {number[]} [chapterPositions]
+ * @returns {number}
+ */
+export function computeOpeningSweepDuration(from, to, chapterPositions) {
+    const distance = Math.abs((to ?? 0) - (from ?? 0));
+    const plunge = plungeTravelExtraMs(from, to, chapterPositions);
+    return Math.round(OPENING_SWEEP.baseMs + (distance * OPENING_SWEEP.perProgressMs) + plunge);
+}
+
 function readGlideCompileHeadStartMs() {
     const value = Number.parseFloat(readUrlValue('odysseyGlideCompileMs'));
     return Number.isFinite(value) && value >= 0 ? Math.min(value, 2000) : GLIDE_COMPILE_HEAD_START_MS;
@@ -568,6 +596,13 @@ export class OdysseyBoardController {
         // framed on it, so the chapters built and warmed before the reveal are the ones on
         // screen. Null keeps the old opening at orb 1 (a fresh journey's first arrival).
         this.revealLevelId = Number.isFinite(options.revealLevelId) ? options.revealLevelId : null;
+        // The chapter whose music the board opens with when it is not the focus chapter (the
+        // opening sweep opens at orb 1 and flies to an orb in this chapter: its track throughout).
+        this.openingMusicChapter = Number.isFinite(options.musicChapter) ? options.musicChapter : null;
+        // While the opening sweep holds and flies: no chapter music changes, no seam stingers.
+        this._openingSweepActive = false;
+        // One World's pipelines are compiled (before the reveal, or by the post-reveal queue).
+        this._oneWorldCompiled = false;
         // Set once the camera is framed on that orb; cleared as soon as anything moves it.
         this._revealSeatLevelId = null;
         // LEVER 2 — chapter LRU eviction (default OFF; opt-in ?odysseyChapterEvict=1, window N=2).
@@ -1474,7 +1509,7 @@ export class OdysseyBoardController {
         if (this._disposed) return;
 
         this.isActive = true;
-        this._applyChapterMusic(this.focusChapter || 1, { reason: 'odyssey-board-initial' });
+        this._applyChapterMusic(this.openingMusicChapter || this.focusChapter || 1, { reason: 'odyssey-board-initial' });
         this.animate();
         if (this.backgroundChapterLoadingEnabled) {
             this._queueChapterPrewarm(2);
@@ -2920,6 +2955,7 @@ export class OdysseyBoardController {
             try {
                 // eslint-disable-next-line no-await-in-loop
                 await this._prewarmGroup(target, `${label} (post-reveal)`, { rethrow: true });
+                if (label === 'one-world') this._oneWorldCompiled = true;
             } catch (error) {
                 console.warn(`[OdysseyBoard] deferred compile failed for ${label}:`, error?.message || error);
                 // (A WGSL validation error is asynchronous and never reaches this catch; the
@@ -3852,6 +3888,7 @@ export class OdysseyBoardController {
                 // Compiled here, a world that cannot build falls back as it does after the reveal.
                 const worldGroup = this.oneWorld?.group;
                 const worldWarm = deferred ? null : this._prewarmGroup(worldGroup, 'one world', { rethrow: true })
+                    .then(() => { if (worldGroup) this._oneWorldCompiled = true; })
                     .catch((error) => this._abandonWorldAfterFailedCompile(error, worldGroup));
                 // The board's OWN presentation — path tube/core/glow + chapter rings, the 55
                 // level nodes and their instanced glass/glow/lock/star meshes, the starfield —
@@ -4728,6 +4765,106 @@ export class OdysseyBoardController {
             traveled,
         });
         return true;
+    }
+
+    /**
+     * THE OPENING SWEEP (OPENING_SWEEP): from where the map opened (orb 1) to `levelId`. Holds at
+     * the start until every chapter on the way is built, compiled and warmed (or OPENING_SWEEP's
+     * cap), then glides there and frames the orb as a click would (its panel follows through
+     * onLevelSelect). The music stays on the track the board opened with, and the seams it crosses
+     * play no stingers. Any scroll, orb choice or teardown ends it.
+     * @param {number} levelId
+     * @param {{isCurrent?: () => boolean}} [options]
+     * @returns {Promise<boolean>} whether it arrived and framed the orb
+     */
+    async playOpeningSweep(levelId, { isCurrent = () => true } = {}) {
+        const cc = this.cameraController;
+        const node = this.nodeManager?.nodes?.get(levelId);
+        if (this._disposed || !cc || !node) return false;
+        const chapterPositions = this.presentationLayout?.chapterPositions;
+        const toChapter = node.config?.chapter ?? 1;
+        const levelProgress = node.pathPosition ?? cc.getCurrentPosition();
+        const target = resolveOrbParkProgress(toChapter, levelProgress, chapterPositions);
+        const fromChapter = this.environmentManager?.getBlendState?.(cc.getCurrentPosition())?.activeChapter ?? 1;
+        const sequence = this.selectionSequence;
+        const inputAt = cc.travelModel?.lastInputAt || 0;
+        const untouched = () => !this._disposed && this.isActive && isCurrent() !== false
+            && this.selectionSequence === sequence && (cc.travelModel?.lastInputAt || 0) === inputAt;
+        const startedAt = performance.now();
+        this._openingSweepActive = true;
+        try {
+            // Build (urgent) and compile + warm (the drain, nearest first) everything on the way.
+            this._requestGlideChapters(fromChapter, toChapter).catch(() => false);
+            for (let ch = Math.min(fromChapter, toChapter); ch <= Math.max(fromChapter, toChapter); ch += 1) {
+                this._queueChapterPrewarm(ch);
+            }
+            for (;;) {
+                if (!untouched()) return false;
+                const held = performance.now() - startedAt;
+                if (held >= OPENING_SWEEP.maxHoldMs) break;
+                if (held >= OPENING_SWEEP.minHoldMs && this._openingSweepPathReady(fromChapter, toChapter)) break;
+                // eslint-disable-next-line no-await-in-loop
+                await new Promise((resolve) => { setTimeout(resolve, 100); });
+            }
+            this._openingSweepTimings = {
+                holdMs: Math.round(performance.now() - startedAt),
+                ready: this._openingSweepPathReady(fromChapter, toChapter),
+                chapters: this._openingSweepPathStates(fromChapter, toChapter),
+            };
+            const travelDuration = computeOpeningSweepDuration(cc.getCurrentPosition(), target, chapterPositions);
+            this._openingSweepTimings.flightMs = travelDuration;
+            console.log('[OdysseyBoard] opening sweep', JSON.stringify(this._openingSweepTimings));
+            return await this.travelToLevel(levelId, { travelDuration, isCurrent });
+        } finally {
+            this._openingSweepActive = false;
+            // Ended early (a scroll mid-flight): the music catches up with the chapter it is in.
+            const here = this.environmentManager?.getBlendState?.(cc.getCurrentPosition())?.activeChapter;
+            if (Number.isFinite(here)) this._syncChapterMusic(here);
+        }
+    }
+
+    /**
+     * Whether everything the opening sweep flies through is ready: each chapter after the one on
+     * screen built, compiled and render-warmed, or, for the One World's chapters, the world compiled.
+     * @param {number} fromChapter
+     * @param {number} toChapter
+     * @returns {boolean}
+     * @private
+     */
+    _openingSweepPathReady(fromChapter, toChapter) {
+        const suppressed = this.environmentManager?.suppressedChapters;
+        const step = toChapter >= fromChapter ? 1 : -1;
+        for (let ch = fromChapter + step; ch !== toChapter + step; ch += step) {
+            if (this.oneWorld && suppressed?.has(ch)) {
+                if (!this._oneWorldCompiled) return false;
+            } else {
+                const env = this.environmentManager?.environments?.get(ch);
+                if (!env || !env.prewarmed || !env._renderWarmed) return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Each chapter's state on the opening sweep's way, for the log and the probes: 'world' (drawn by
+     * the One World, compiled), 'world-cold', 'warm', 'compiled', 'built' or 'missing'.
+     * @param {number} fromChapter
+     * @param {number} toChapter
+     * @returns {Record<number, string>}
+     * @private
+     */
+    _openingSweepPathStates(fromChapter, toChapter) {
+        const out = {};
+        const suppressed = this.environmentManager?.suppressedChapters;
+        const step = toChapter >= fromChapter ? 1 : -1;
+        for (let ch = fromChapter + step; ch !== toChapter + step; ch += step) {
+            const env = this.environmentManager?.environments?.get(ch);
+            if (this.oneWorld && suppressed?.has(ch)) out[ch] = this._oneWorldCompiled ? 'world' : 'world-cold';
+            else if (!env) out[ch] = 'missing';
+            else if (env._renderWarmed) out[ch] = 'warm';
+            else out[ch] = env.prewarmed ? 'compiled' : 'built';
+        }
+        return out;
     }
 
     /**
@@ -5936,6 +6073,8 @@ export class OdysseyBoardController {
     _syncChapterMusic(chapterId) {
         // Not before the board's own first chapter music (setup flips the chapter before it).
         if (this._odysseyMusicChapter == null) return false;
+        // The opening sweep keeps its destination's track (playOpeningSweep).
+        if (this._openingSweepActive) return false;
         if (!Number.isFinite(chapterId) || chapterId === this._odysseyMusicChapter) return false;
         const crossfadeDurationMs = getChapterProfile(chapterId)?.transition?.crossfadeDurationMs || 3500;
         return this._applyChapterMusic(chapterId, {
@@ -5949,6 +6088,7 @@ export class OdysseyBoardController {
         if (!boundaryId || this.seamMusicBoundaryId === boundaryId) {
             return false;
         }
+        if (this._openingSweepActive) return false;
 
         this.seamMusicBoundaryId = boundaryId;
         const crossfadeDurationMs = transition.crossfadeDurationMs
@@ -5963,6 +6103,8 @@ export class OdysseyBoardController {
     }
 
     _playThresholdStinger(boundaryId, intensity = 1, transition = null) {
+        // A stinger at every seam the opening sweep crosses would be a pile of them in seconds.
+        if (this._openingSweepActive) return;
         const profile = getOdysseyThresholdProfile(boundaryId);
         const stinger = transition?.stinger || profile.stinger;
         try {
