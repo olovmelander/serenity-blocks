@@ -168,6 +168,52 @@ describe.each([['school', 0, 240], ['cruiser', 1, 330]])('the %s hull', (name, h
         // At least the two tail tips.
         expect(tips).toBeGreaterThanOrEqual(2);
     });
+
+    it('holds its side fins off the flank (no fin lying in the skin to fight it for depth)', () => {
+        // 2026-11-01 polish: the tuna's pectoral, swept back along a flank that keeps widening
+        // behind it, lay almost IN the skin for half its length and drew as a freckled patch.
+        const tris = [];
+        for (let t = 0; t < h.bodyTriangleCount; t += 1) {
+            tris.push([0, 1, 2].map((k) => v3(h.positions, h.index[(t * 3) + k])));
+        }
+        const closest = (p, [a, b, c]) => {
+            // Ericson, Real-Time Collision Detection 5.1.5.
+            const ab = sub(b, a);
+            const ac = sub(c, a);
+            const ap = sub(p, a);
+            const d1 = dot(ab, ap);
+            const d2 = dot(ac, ap);
+            if (d1 <= 0 && d2 <= 0) return a;
+            const bp = sub(p, b);
+            const d3 = dot(ab, bp);
+            const d4 = dot(ac, bp);
+            if (d3 >= 0 && d4 <= d3) return b;
+            const vc = (d1 * d4) - (d3 * d2);
+            if (vc <= 0 && d1 >= 0 && d3 <= 0) return a.map((x, k) => x + (ab[k] * (d1 / (d1 - d3))));
+            const cp = sub(p, c);
+            const d5 = dot(ab, cp);
+            const d6 = dot(ac, cp);
+            if (d6 >= 0 && d5 <= d6) return c;
+            const vb = (d5 * d2) - (d1 * d6);
+            if (vb <= 0 && d2 >= 0 && d6 <= 0) return a.map((x, k) => x + (ac[k] * (d2 / (d2 - d6))));
+            const va = (d3 * d6) - (d5 * d4);
+            if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+                const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+                return b.map((x, k) => x + ((c[k] - x) * w));
+            }
+            const denom = 1 / (va + vb + vc);
+            return a.map((x, k) => x + (ab[k] * vb * denom) + (ac[k] * vc * denom));
+        };
+        let checked = 0;
+        for (let i = 0; i < h.vertexCount; i += 1) {
+            const p = v3(h.positions, i);
+            if (region(i) !== 1 || h.parts[(i * 4) + 2] <= 0 || Math.abs(p[0]) < 0.01) continue;
+            const gap = Math.min(...tris.map((tri) => Math.hypot(...sub(p, closest(p, tri)))));
+            expect(gap, `side-fin point ${i}`).toBeGreaterThan(0.045);
+            checked += 1;
+        }
+        expect(checked).toBeGreaterThanOrEqual(8);
+    });
 });
 
 describe('both hulls ride one geometry and one draw', () => {
@@ -291,6 +337,9 @@ describe('the fish build for both backends', () => {
             // The swim bends the hull's own normal and hands it to the fragment.
             expect(out.vertex).toMatch(/vFishN/);
             expect(out.fragment).toMatch(/vFishN/);
+            // The flank flashes from its upright silvering, not the curve of the skin.
+            expect(out.vertex).toMatch(/vFishMirror/);
+            expect(out.fragment).toMatch(/vFishMirror/);
             fish.dispose();
         });
     });
