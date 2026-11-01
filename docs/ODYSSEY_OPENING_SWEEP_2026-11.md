@@ -31,7 +31,9 @@ the last orb, and I think a transition would look much better."
 
 ## How
 
-**The mode** (`OdysseyMode._resolveOpeningSweepLevelId`, `_startOpeningSweep`):
+**The mode** (`src/ui/odyssey/odyssey-opening-sweep.js`: `prepareOdysseyOpening`,
+`odysseyOpeningBoardOptions`, `startOdysseyOpeningSweep`; OdysseyMode.js only calls them, which keeps it
+inside its line budget):
 - It builds the board at orb 1. The board is built and warmed around chapter 1 (the eager window is
   chapters 1-2 and the focus chapter is 1), with the next orb's music.
 - Once the map is on screen, it asks the board to sweep.

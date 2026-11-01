@@ -183,7 +183,7 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         'On',
         '0',
         {
-            sources: ['src/core/game-modes/OdysseyMode.js'],
+            sources: ['src/ui/odyssey/odyssey-opening-sweep.js'],
         },
     ),
     parameter(

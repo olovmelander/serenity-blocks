@@ -23,6 +23,9 @@ vi.mock('../../src/ui/cinematic-loading-overlay.js', () => ({
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
 import {
+    odysseyOpeningBoardOptions, prepareOdysseyOpening, resolveOdysseyOpeningSweep, startOdysseyOpeningSweep,
+} from '../../src/ui/odyssey/odyssey-opening-sweep.js';
+import {
     OPENING_SWEEP, OdysseyBoardController, computeOpeningSweepDuration,
 } from '../../src/rendering/odyssey/OdysseyBoardController.js';
 import { resolveOrbParkProgress } from '../../src/rendering/odyssey/odyssey-chapter-arrival.js';
@@ -45,25 +48,58 @@ function fakeMode({ reducedMotion = false } = {}) {
         odysseyState: { currentLevel: 35, currentChapter: registry.getLevel(35).chapter },
         levelRegistry: registry,
         _chapterOfLevel: OdysseyMode.prototype._chapterOfLevel,
+        _computeEagerStartupChapters: OdysseyMode.prototype._computeEagerStartupChapters,
     };
 }
 
 describe('when the mode sweeps from orb 1', () => {
     it('sweeps to the orb the map opens on', () => {
-        expect(OdysseyMode.prototype._resolveOpeningSweepLevelId.call(fakeMode(), 35)).toBe(35);
+        expect(resolveOdysseyOpeningSweep(fakeMode(), 35)).toBe(35);
     });
 
     it('opens framed on it at once for orb 1, no orb, reduced motion or ?odysseyOpeningSweep=0', () => {
-        expect(OdysseyMode.prototype._resolveOpeningSweepLevelId.call(fakeMode(), 1)).toBeNull();
-        expect(OdysseyMode.prototype._resolveOpeningSweepLevelId.call(fakeMode(), null)).toBeNull();
-        expect(OdysseyMode.prototype._resolveOpeningSweepLevelId.call(fakeMode({ reducedMotion: true }), 35))
-            .toBeNull();
+        expect(resolveOdysseyOpeningSweep(fakeMode(), 1)).toBeNull();
+        expect(resolveOdysseyOpeningSweep(fakeMode(), null)).toBeNull();
+        expect(resolveOdysseyOpeningSweep(fakeMode({ reducedMotion: true }), 35)).toBeNull();
         vi.stubGlobal('location', { search: '?odysseyOpeningSweep=0' });
-        expect(OdysseyMode.prototype._resolveOpeningSweepLevelId.call(fakeMode(), 35)).toBeNull();
+        expect(resolveOdysseyOpeningSweep(fakeMode(), 35)).toBeNull();
     });
 
-    it('builds chapter 1 and its neighbour before the reveal, whatever the save', () => {
-        expect(OdysseyMode.prototype._computeEagerStartupChapters.call(fakeMode(), 35, 1)).toEqual([1, 2]);
+    it('opens with nothing selected while it sweeps, framed on the orb otherwise', () => {
+        const sweeping = fakeMode();
+        expect(prepareOdysseyOpening(sweeping, 35)).toEqual({ focusLevelId: null });
+        expect(sweeping.selectedLevelId).toBeNull();
+        expect(sweeping._openingSweepTo).toBe(35);
+        const still = fakeMode({ reducedMotion: true });
+        expect(prepareOdysseyOpening(still, 35)).toEqual({ focusLevelId: 35, seatOnFocus: true });
+        expect(still.selectedLevelId).toBe(35);
+        expect(still._openingSweepTo).toBeNull();
+        expect(prepareOdysseyOpening(fakeMode(), null)).toEqual({});
+    });
+
+    it("builds the board at orb 1 around chapter 1, with the sweep orb's music", () => {
+        const mode = fakeMode();
+        prepareOdysseyOpening(mode, 35);
+        expect(odysseyOpeningBoardOptions(mode)).toEqual({
+            startupChapters: [1, 2], focusChapter: 1, revealLevelId: null, musicChapter: registry.getLevel(35).chapter,
+        });
+        expect(odysseyOpeningBoardOptions(fakeMode())).toEqual({});
+    });
+
+    it('asks the board to sweep once, and selects the orb when it arrives', async () => {
+        const mode = fakeMode();
+        prepareOdysseyOpening(mode, 35);
+        let arrive;
+        mode.boardController = { playOpeningSweep: vi.fn(() => new Promise((resolve) => { arrive = resolve; })) };
+        Object.assign(mode, { isActive: true, isInBoardView: true, isEnteringLevel: false });
+        startOdysseyOpeningSweep(mode);
+        startOdysseyOpeningSweep(mode);
+        expect(mode.boardController.playOpeningSweep).toHaveBeenCalledTimes(1);
+        expect(mode.boardController.playOpeningSweep).toHaveBeenCalledWith(35, expect.any(Object));
+        arrive(true);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(mode.selectedLevelId).toBe(35);
     });
 });
 
