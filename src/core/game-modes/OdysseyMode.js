@@ -102,6 +102,7 @@ import {
 } from '../odyssey/odyssey-charm-use.js';
 import { createOdysseyMinimap } from '../../ui/odyssey/odyssey-minimap-controls.js';
 import { mountOdysseyBoardLayout } from '../../ui/odyssey/odyssey-board-layout.js';
+import * as odysseyOpening from '../../ui/odyssey/odyssey-opening-sweep.js';
 import {
     configureOdysseyBoardPresentation, prepareOdysseyOpponentPresentation, resetOdysseyRoundPresentation,
 } from '../../rendering/phaser/odyssey-board-presentation.js';
@@ -378,14 +379,11 @@ export class OdysseyMode extends BaseGameMode {
             // cold WebGPU board build steals the main thread (else the build runs in the
             // same task and the overlay never paints — user sees a frozen menu).
             await waitForCinematicLoadingOverlayPresented();
-            // The map opens on the next orb to play, built around it (see _resolveRevealLevelId).
+            // The map opens on the next orb to play, or sweeps there from orb 1 (odyssey-opening-sweep.js).
             // Selected from the start: an orb left selected on an earlier visit no longer gets its
             // panel (and its theme prefetched) on the way.
             const revealLevelId = this._resolveRevealLevelId();
-            if (Number.isFinite(revealLevelId)) this.selectedLevelId = revealLevelId;
-            this.boardViewReadyPromise = this._showBoardView(Number.isFinite(revealLevelId)
-                ? { focusLevelId: revealLevelId, seatOnFocus: true }
-                : {});
+            this.boardViewReadyPromise = this._showBoardView(odysseyOpening.prepareOdysseyOpening(this, revealLevelId));
             await this.boardViewReadyPromise;
         } catch (error) {
             console.error('[Odyssey] Failed to prepare board view:', error);
@@ -413,6 +411,7 @@ export class OdysseyMode extends BaseGameMode {
         // Arrows, the D-pad and A travel and play on the map; the charm chip and Y open the charm guide.
         this._disposeMapInput?.();
         this._disposeMapInput = installOdysseyMapInputWithCharmGuide(this);
+        odysseyOpening.startOdysseyOpeningSweep(this);
 
         // Console debug handles — DEV/capture-tooling only. testOdysseyLevel unlocks levels
         // into the real save, so exposing it in the shipped game makes the Steam leaderboard
@@ -3078,6 +3077,7 @@ export class OdysseyMode extends BaseGameMode {
             focusChapter: this._chapterOfLevel(revealLevelId) ?? (this.odysseyState?.currentChapter || 1),
             // The orb the camera opens framed on (null: the old opening at orb 1).
             revealLevelId: Number.isFinite(revealLevelId) ? revealLevelId : null,
+            ...odysseyOpening.odysseyOpeningBoardOptions(this),
         });
         this.boardController = controller;
 

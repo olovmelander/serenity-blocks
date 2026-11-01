@@ -39,10 +39,10 @@ at L17. From the sea some of them stand behind trees; at L15 and L17 most of the
 
 `scripts/blender/odyssey/red_deer.py`, headless Blender, rebuilds `assets/chapter-03/deer/red-deer.glb`
 byte for byte. A red deer hind at real size: 1.16 m at the withers, built from rounded shapes,
-1,786 triangles, skinned to 25 bones (spine, neck, head, ears, four-bone legs, tail). The legs are a
-little thicker than life so they stay solid lines when drawn small. The coat is painted into the
-vertex colours: red-brown body, greyer neck and legs, a pale rump patch and belly, dark hooves and
-nose.
+1,786 triangles (1,798 after the polish below), skinned to 25 bones (spine, neck, head, ears,
+four-bone legs, tail). The legs are a little thicker than life so they stay solid lines when drawn
+small. The coat is painted into the vertex colours: red-brown body, greyer neck and legs, a pale
+rump patch and belly, dark hooves and nose.
 
 ![The model's poses: alert, grazing, walking, looking round](images/odyssey-animals-2026-11-01/model-poses.jpg)
 
@@ -96,6 +96,49 @@ leaving in view.
 
 - A stag (antlers would be one or two pixels thick at this size and would flicker).
 - Ibex on the massif: only worth it if the camera ever comes close to the rock.
+
+## Polish (2026-11-01 evening)
+
+The owner, up close: "The deer's head looks a bit horse-like. A slimmer muzzle, bigger ears and the
+pale rump patch would fix it." Changed in the Blender builder (the rebuild is still byte for byte):
+
+- **The head** is a deer's wedge now, not a horse's box: 0.34 m from the poll to the nose instead of
+  0.40, deep at the cheek and the eye and narrowing to a fine nose, with a forehead and brows over
+  large eyes (the eye line). It is a little smaller against the neck (the top of the neck is a touch
+  thicker).
+- **The ears** are bigger broad ovals with a rounded tip (21.5 cm long, 11 cm wide), set high on the
+  poll and angled well out to the sides.
+- **The rump patch**: everything on the buttocks that faces back, from just above the tail down toward
+  the hocks, is a pale cream, with a slightly darker edge round its top and sides; the short tail on
+  it is cream with a thin dark stripe along its top. A pale chin too. In the game the pale is creamier
+  than before (it was a tan).
+- Because the face is shorter, the grazing pose swings the neck a little lower (so the muzzle still
+  reaches the grass); everything else (rig, weights, poses, herd, places) is as it was.
+- 1,798 triangles (was 1,786). All the deer tests pass unchanged (hooves, places, sizes, no pop).
+- Not done: spots on the calf. By September a red deer calf has mostly lost them, and at 15-25 px
+  they would only read as noise.
+
+![The model before (top) and after (bottom): side, three-quarter front, behind, the head](images/odyssey-animals-2026-11-01/polish-model-before-after.jpg)
+
+In the game, before (left) and after (right), the same moments (the clock pinned): L17 three times,
+then L15 (2560x1440, crops enlarged 2x):
+
+![In the game, before and after](images/odyssey-animals-2026-11-01/polish-game-before-after.jpg)
+
+Closer (L17, enlarged 4x): the rump patch now shows round the tail, the heads are finer.
+
+![Close crop at L17, before and after](images/odyssey-animals-2026-11-01/polish-game-close.jpg)
+
+### The orb card and the herd (lead, 2026-11-01 evening)
+
+Checked with the screen as the owner sees it: 2560x1600 at 150 %, Odyssey started the way a click
+starts it, the map reached with its Map button, the UI left on.
+- The orb card sits on the right of the screen. On the rail at orb 15 the herd is at the lower left;
+  at orb 17 it is near the bottom middle. The card never covers it.
+- After clicking orb 15 or 17, the camera frames the orb close-up and the herd is out of frame to the
+  left, so nothing covers it there either.
+
+![The rail at orb 15 and orb 17 with the UI on: the card on the right, the herd lower left and bottom middle](images/odyssey-animals-2026-11-01/orb-card-l15-l17.jpg)
 
 ## GPU timing (lead, 2026-11-01 evening)
 

@@ -60,11 +60,13 @@ import {
     positionGeometry,
     positionWorld as positionWorldNode,
     reflect,
+    sign,
     sin,
     smoothstep,
     step,
     varying,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { ODYSSEY_FISH_HULLS } from './odyssey-fish-hulls.js';
 import { behindSteamDepth } from '../composition/odyssey-steam-quench.js';
@@ -419,8 +421,15 @@ export function createOdysseyFish({
         fLeft.mul(bx).add(fUp.mul(by)).add(fFwd.mul(positionGeometry.z)).mul(fScale.mul(keep)),
     );
     const vFishN = varying(fLeft.mul(nbx).add(fUp.mul(nby)).add(fFwd.mul(nz)), 'vFishN');
-    // (d dorsal share, flex, region) for the fragment; region is constant over a triangle.
-    const vFishPart = varying(vec3(fPart.y, fPart.z, region), 'vFishPart');
+    // The flank's MIRROR: a fish's silvering is a stack of reflecting platelets standing upright in
+    // the skin, parallel to the body, whatever the curve of the flank over them (that is how a
+    // silver fish hides in open water). So the mirror's normal is the fish's own sideways axis —
+    // rolled with the bank and bent by the body wave like a normal — not the surface's: a curved
+    // mirror would shine as a hairline along the turn of the body, a flat one lights the flank.
+    const vFishMirror = varying(fLeft.mul(cb).add(fUp.mul(sb)).sub(fFwd.mul(swayDz)), 'vFishMirror');
+    // (d dorsal share, flex, region, hull) for the fragment; region and hull are constant over a
+    // triangle.
+    const vFishPart = varying(vec4(fPart.y, fPart.z, region, vertHull), 'vFishPart');
 
     // COUNTERSHADING from the hull's own baked dorsal share, so the dark back is a property of
     // the fish rather than of where the light is — exactly how a real fish's pigment works. The
@@ -464,25 +473,34 @@ export function createOdysseyFish({
     const fDepth = clamp(float(seaLevel).sub(positionWorld.y).div(180), 0, 1);
     const fLight = mix(float(0.50), float(1.05), fDown).mul(float(1).sub(fDepth.mul(0.45)));
     // THE FLASH: the flank mirrors the surface when the reflected eye ray climbs into the Snell
-    // window (y > ~0.8). Flanks only — a belly or back cannot flash, nor a fin; the eye glints.
-    const fRefl = reflect(fV.negate(), fN);
-    const fFlank = float(1).sub(abs(fN.y));
-    // Only where the flank FACES the eye. A smooth flank seen from below turns edge-on toward the
-    // silhouette, and there a mirror reflects the up-going view ray straight back up into the
-    // window: without this every fish wore a bright hairline round its edge, which sparkled.
-    // Seen from below a fish is a dark shape against the light; it flashes when it rolls a flank
-    // to the eye (the roll below).
-    const fFacing = smoothstep(float(0.30), float(0.65), abs(dot(fN, fV)));
-    const fFlash = smoothstep(float(0.80), float(0.97), fRefl.y).mul(fFlank).mul(fFacing).mul(0.95)
-        .mul(isBody.add(isEye.mul(0.6)));
-    // The mirror is the silver flank: below the back's gradient, never on the back itself (where
-    // an upturned normal reflects the window best, and a dark back flashing drew a pale stripe
-    // along the ridge of every fish seen from below).
-    const fSilver = float(1).sub(smoothstep(float(0.40), float(0.62), d));
+    // window (y > ~0.8). The mirror is the flank's upright silvering (vFishMirror, on the side this
+    // fragment is on), so a fish flashes as a whole flank, the signature glint of a school turning.
+    // What shows is the CONTRAST between what the mirror sends the eye and the water behind the
+    // fish: an upright mirror seen from below sends the eye light from as high as the eye looks
+    // (that is the camouflage), so only a roll or a swerve that tips the mirror toward the surface
+    // lights it, and it goes out again as the fish rights itself. It fades with how squarely the
+    // skin itself faces the eye, so a flank turning edge-on draws no line.
+    const mirrorRaw = normalize(vFishMirror);
+    const fM = mirrorRaw.mul(sign(dot(fN, mirrorRaw)).add(0.0001));
+    const fFacing = smoothstep(float(0.15), float(0.50), abs(dot(fN, fV)));
+    const fWindow = (y) => smoothstep(float(0.86), float(0.98), y);
+    const fMirrorFlash = clamp(fWindow(reflect(fV.negate(), fM).y).sub(fWindow(fV.y.negate())), 0, 1)
+        .mul(step(float(0), dot(fM, fV))).mul(fFacing);
+    // The silver runs from the belly's edge up the flank to the back's gradient: neither the belly
+    // nor the dark back flash.
+    // Soft at both ends, so a lit flank melts into the belly below and the back above.
+    const fSilver = smoothstep(float(0.04), float(0.34), d)
+        .mul(float(1).sub(smoothstep(float(0.42), float(0.64), d)));
+    // The eye is a wet ball: a faint glint, so it stays a dark eye.
+    const fEyeGlint = smoothstep(float(0.80), float(0.97), reflect(fV.negate(), fN).y);
+    // The tuna's flank is half a jack's: a big, slow fish holding a roll would otherwise glare.
+    const fFlashGain = mix(float(0.95), float(0.4), vFishPart.w);
+    const fFlash = fMirrorFlash.mul(fSilver).mul(isBody).mul(fFlashGain)
+        .add(fEyeGlint.mul(isEye).mul(0.12));
     // Light through a fin seen from below: the bright water above shows through its membrane.
     const fThrough = clamp(fV.y.negate(), 0, 1).mul(isFin).mul(0.16);
     const fLit = fAlbedo.mul(fLight)
-        .add(vec3(0.82, 0.96, 1.0).mul(fFlash).mul(fSilver))
+        .add(vec3(0.82, 0.96, 1.0).mul(fFlash))
         .add(fTint.mul(vec3(0.55, 0.75, 0.8)).mul(fThrough));
     const fSeen = throughSurfaceNode(positionWorld, cameraPosition, seaLevel);
     fishMat.colorNode = grade(haze(fLit.mul(fSeen.tint), positionWorld));

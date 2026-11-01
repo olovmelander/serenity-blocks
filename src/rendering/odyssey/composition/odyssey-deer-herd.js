@@ -55,7 +55,7 @@ export const ODYSSEY_DEER = Object.freeze({
     /** Local rotations of a grazing head (the neck swung down, the face toward the grass) and how
      * far the forehand dips while grazing (radians of body pitch). */
     graze: Object.freeze({
-        neck0: 2.0, neck1: 0, head: -1.5, dip: 0.06,
+        neck0: 2.2, neck1: 0, head: -1.65, dip: 0.06,
     }),
     members: Object.freeze([
         Object.freeze({

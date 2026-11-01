@@ -59,7 +59,7 @@ NAME = "red-deer"
 SPECIES = "Red deer (Cervus elaphus), a hind"
 GENERATOR = "Serenity Blocks - Odyssey red deer (scripts/blender/odyssey/red_deer.py)"
 SCHEMA_VERSION = 1
-VOXEL = 0.011
+VOXEL = 0.0095
 TARGET_TRIANGLES = 1800
 LEG_THICKEN = 1.3
 
@@ -73,7 +73,9 @@ FORE_X = 0.105
 HIND_X = 0.11
 
 # The head's frame: from the poll, s forward along the face (52 degrees below the horizontal), t
-# toward the forehead, x across. A long, narrow head, 0.40 m from the poll to the nose.
+# toward the forehead, x across. A deer's wedge of a head, 0.34 m from the poll to the nose: deep at
+# the cheek and the eye, the face narrowing to a fine nose (a horse's face stays deep to a big
+# muzzle; that is what read as a horse up close).
 POLL = _point(1.52, 0.72)
 HEAD_PITCH = math.radians(52.0)
 HEAD_FORWARD = np.array([0.0, -math.sin(HEAD_PITCH), math.cos(HEAD_PITCH)])
@@ -85,12 +87,13 @@ def head_point(s, t, x=0.0):
 
 
 def _ear_base(side):
-    return head_point(0.0, 0.03, 0.05 * side)
+    # Set high on the poll, either side of the forehead.
+    return head_point(0.0, 0.04, 0.045 * side)
 
 
 def _ear_direction(side):
-    # Up, out and a little back: the alert hind's ears.
-    return _unit(np.array([0.70 * side, 0.64, -0.28]))
+    # Up and well out to the sides, a little back: the alert hind's big ears.
+    return _unit(np.array([0.74 * side, 0.6, -0.22]))
 
 
 def _bone_table():
@@ -200,35 +203,38 @@ def design():
     # its base, the throat line straight.
     neck = Tube([_point(0.98, 0.38), _point(1.13, 0.50), _point(1.29, 0.60), _point(1.44, 0.68),
                  _point(1.53, 0.71)],
-                [0.145, 0.112, 0.088, 0.074, 0.07], squash_axis=X_AXIS, squash=[0.72, 0.74, 0.78, 0.8, 0.82],
+                [0.145, 0.115, 0.093, 0.08, 0.072], squash_axis=X_AXIS, squash=[0.72, 0.74, 0.78, 0.8, 0.82],
                 k=0.03).tag(PARTS["neck"])
 
     head = Union([
-        Ellipsoid(head_point(0.06, -0.035), (0.072, 0.075, 0.095), along=HEAD_FORWARD),     # cranium
-        Ellipsoid(head_point(0.08, -0.095), (0.058, 0.07, 0.085), along=HEAD_FORWARD),      # jowl
-        RoundCone(head_point(0.11, -0.04), head_point(0.35, -0.055), 0.062, 0.037,
-                  (X_AXIS, 0.82)),                                                          # face
-        Ellipsoid(head_point(0.37, -0.066), (0.034, 0.04, 0.042), along=HEAD_FORWARD),      # muzzle
-        Ellipsoid(head_point(0.355, -0.095), (0.024, 0.022, 0.03), along=HEAD_FORWARD),     # chin
-        *[Ellipsoid(head_point(0.10, -0.004, 0.066 * s), (0.016, 0.018, 0.022), along=HEAD_FORWARD)
+        Ellipsoid(head_point(0.05, -0.03), (0.066, 0.068, 0.082), along=HEAD_FORWARD),      # cranium
+        Ellipsoid(head_point(0.10, 0.004), (0.06, 0.028, 0.06), along=HEAD_FORWARD),        # forehead
+        Ellipsoid(head_point(0.075, -0.083), (0.048, 0.06, 0.07), along=HEAD_FORWARD),      # cheek
+        RoundCone(head_point(0.10, -0.036), head_point(0.30, -0.05), 0.054, 0.023,
+                  (X_AXIS, 0.78)),                                                          # face
+        Ellipsoid(head_point(0.315, -0.054), (0.021, 0.028, 0.029), along=HEAD_FORWARD),    # nose
+        Ellipsoid(head_point(0.29, -0.074), (0.015, 0.013, 0.024), along=HEAD_FORWARD),     # chin
+        *[Ellipsoid(head_point(0.105, -0.008, 0.056 * s), (0.019, 0.021, 0.025), along=HEAD_FORWARD)
           for s in (1.0, -1.0)],                                                            # eyes
-    ], k=0.035).tag(PARTS["head"])
+        *[Ellipsoid(head_point(0.095, 0.016, 0.047 * s), (0.017, 0.012, 0.03), along=HEAD_FORWARD)
+          for s in (1.0, -1.0)],                                                            # brows
+    ], k=0.03).tag(PARTS["head"])
 
-    # Big ears, the first thing the silhouette needs: leaf-shaped and cupped (thin front to back).
+    # Big ears, the first thing the silhouette needs: broad ovals with a rounded tip, thin front to back.
     ears = []
     for side, part in ((1.0, PARTS["earLeft"]), (-1.0, PARTS["earRight"])):
         base = _ear_base(side)
         direction = _ear_direction(side)
         across = _unit(np.array(Z_AXIS) - direction * direction[2])
-        ear = Tube([base, base + 0.09 * direction, base + 0.205 * direction], [0.038, 0.05, 0.014],
-                   squash_axis=across, squash=0.42, k=0.01).tag(part)
+        ear = Tube([base, base + 0.075 * direction, base + 0.15 * direction, base + 0.215 * direction],
+                   [0.03, 0.056, 0.05, 0.018], squash_axis=across, squash=0.4, k=0.012).tag(part)
         for leaf in ear.leaves():
             leaf.ear = True
         ears.append(ear)
 
     # The short tail, held down over the rump patch.
-    tail = Tube([_point(1.04, -0.64), _point(0.98, -0.685), _point(0.90, -0.70)], [0.042, 0.038, 0.022],
-                squash_axis=X_AXIS, squash=0.8, k=0.01).tag(PARTS["tail"])
+    tail = Tube([_point(1.045, -0.64), _point(0.985, -0.69), _point(0.91, -0.705)], [0.044, 0.042, 0.026],
+                squash_axis=Z_AXIS, squash=0.75, k=0.01).tag(PARTS["tail"])
 
     legs = []
     for leg, name in zip([_front_leg(1.0), _front_leg(-1.0), _hind_leg(1.0), _hind_leg(-1.0)],
@@ -241,9 +247,10 @@ def design():
         *[(leg, 0.06) for leg in legs], (tail, 0.03),
     ]), axis=1)
     landmarks = dict(
-        muzzle=head_point(0.40, -0.066),
-        eyes=[head_point(0.10, -0.004, 0.066 * s) for s in (1.0, -1.0)],
-        nose=head_point(0.39, -0.05),
+        muzzle=head_point(0.338, -0.054),
+        eyes=[head_point(0.105, -0.008, 0.062 * s) for s in (1.0, -1.0)],
+        nose=head_point(0.332, -0.044),
+        chin=head_point(0.29, -0.08),
         tailRoot=_point(1.04, -0.64),
         # The neck's axis (y, z) from its base to the poll.
         neckAxis=((0.98, 0.38), (1.53, 0.71)),
@@ -380,21 +387,33 @@ def paint(shape, landmarks, positions, normals, parts):
     x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
     legs = np.isin(parts, [PARTS["frontLeft"], PARTS["frontRight"], PARTS["hindLeft"], PARTS["hindRight"]])
     ears = np.isin(parts, [PARTS["earLeft"], PARTS["earRight"]])
-    # Pale: the buff rump patch round the tail, the belly and the insides of the legs and ears.
-    rump = _smoothstep(-0.50, -0.62, z) * _smoothstep(0.66, 0.78, y) * _smoothstep(0.16, 0.08, np.abs(x))
+    body = parts == PARTS["body"]
+    tail = parts == PARTS["tail"]
+    # Pale: the cream rump patch round the tail (the buttocks, from a little above the tail's root
+    # down toward the hocks, everything that faces back), the tail itself, the belly, the insides of
+    # the legs and ears, the chin.
+    back = _smoothstep(-0.1, -0.55, normals[:, 2])
+    rump = (body * back * _smoothstep(-0.46, -0.56, z) * _smoothstep(0.62, 0.70, y) * _smoothstep(1.13, 1.06, y)
+            * _smoothstep(0.155, 0.115, np.abs(x)))
+    tail_pale = tail * 0.9
     belly = _smoothstep(0.70, 0.62, y) * (parts == PARTS["body"]) * _smoothstep(0.0, -0.6, normals[:, 1])
     inside = legs * _smoothstep(0.0, -0.8, normals[:, 0] * np.sign(x + 1e-9)) * _smoothstep(0.85, 0.55, y) * 0.6
     ear_in = ears * np.clip((positions - 0.0) @ np.array([0.0, 0.0, 1.0]) * 0.0 + _smoothstep(0.2, 0.9, normals[:, 2]),
                             0.0, 1.0) * 0.7
-    pale = np.clip(np.maximum.reduce([rump, belly * 0.7, inside, ear_in]), 0.0, 1.0)
+    chin = _smoothstep(0.045, 0.02, np.linalg.norm(positions - landmarks["chin"], axis=1)) * 0.6
+    pale = np.clip(np.maximum.reduce([rump, tail_pale, belly * 0.7, inside, ear_in, chin]), 0.0, 1.0)
     # Dark: the hooves, the nose, the eyes, the tail's top and the ears' rims.
     hooves = legs * _smoothstep(0.075, 0.055, y)
     nose = _smoothstep(0.06, 0.025, np.linalg.norm(positions - landmarks["nose"], axis=1))
     eyes = np.maximum.reduce([_smoothstep(0.03, 0.016, np.linalg.norm(positions - e, axis=1))
                               for e in landmarks["eyes"]])
-    tail_top = (parts == PARTS["tail"]) * _smoothstep(-0.2, 0.6, normals[:, 1] + normals[:, 2] * 0.0)
-    ear_rim = ears * _smoothstep(0.10, 0.17, np.linalg.norm(positions - head_point(0.0, 0.03), axis=1)) * 0.6
-    dark = np.clip(np.maximum.reduce([hooves, nose, eyes, tail_top * 0.8, ear_rim]), 0.0, 1.0)
+    # The tail's dark top stripe, and a darker edge round the top and sides of the rump patch.
+    tail_top = tail * _smoothstep(0.55, 0.85, normals[:, 1]) * _smoothstep(0.03, 0.012, np.abs(x))
+    wide = (body * _smoothstep(0.25, -0.3, normals[:, 2]) * _smoothstep(-0.40, -0.50, z) * _smoothstep(0.80, 0.9, y)
+            * _smoothstep(1.2, 1.12, y) * _smoothstep(0.2, 0.15, np.abs(x)))
+    rim = np.clip(wide - rump * 1.4, 0.0, 1.0) * 0.3
+    ear_rim = ears * _smoothstep(0.15, 0.21, np.linalg.norm(positions - head_point(0.0, 0.04), axis=1)) * 0.65
+    dark = np.clip(np.maximum.reduce([hooves, nose, eyes, tail_top * 0.6, ear_rim, rim]), 0.0, 1.0)
     # Grey: the neck and head greyer than the body, and the legs below the knee and hock.
     neck_grey = np.isin(parts, [PARTS["neck"], PARTS["head"]]) * 0.75
     leg_grey = legs * _smoothstep(0.52, 0.36, y) * 0.8
@@ -535,7 +554,7 @@ def skin_vertices(deer, matrices):
 
 POSES = {
     "alert": {},
-    "graze": dict(root=(0.06, 0, 0), neck0=(2.0, 0, 0), neck1=(0.0, 0, 0), head=(-1.5, 0, 0), earL=(0.25, 0, -0.2),
+    "graze": dict(root=(0.06, 0, 0), neck0=(2.2, 0, 0), neck1=(0.0, 0, 0), head=(-1.65, 0, 0), earL=(0.25, 0, -0.2),
                   earR=(0.25, 0, 0.2), humerusL=(-0.14, 0, 0), humerusR=(-0.01, 0, 0)),
     "walk": dict(neck0=(0.05, 0, 0), humerusL=(-0.32, 0, 0), forearmL=(-0.3, 0, 0),
                  foreCannonL=(1.0, 0, 0), foreHoofL=(0.45, 0, 0), humerusR=(0.2, 0, 0),
@@ -545,7 +564,7 @@ POSES = {
 }
 
 COAT = np.array([0.30, 0.13, 0.05])
-PALE = np.array([0.72, 0.60, 0.42])
+PALE = np.array([0.78, 0.68, 0.50])
 GREY = np.array([0.22, 0.17, 0.13])
 DARK = np.array([0.03, 0.025, 0.02])
 
@@ -582,16 +601,33 @@ def previews(deer, directory):
                   size=(1000, 560), samples=16)
     studio.render(directory / "deer-side.png", eye=(9.0, 1.0, 0.0), target=(0.0, 0.75, 0.0), lens=55,
                   size=(1000, 560), samples=16)
-    # A small far view to judge the silhouette near game size (upscaled x6 for the eye).
-    studio.render(directory / "deer-game.png", eye=(55.0, 26.0, 30.0), target=(0.0, 0.7, 0.0), lens=50,
-                  size=(240, 135), samples=16)
-    big = bpy.data.images.load(str(directory / "deer-game.png"))
-    w, h = big.size
-    pixels = np.array(big.pixels[:], dtype=np.float32).reshape(h, w, 4)
-    up = np.repeat(np.repeat(pixels, 6, axis=0), 6, axis=1)
-    out = bpy.data.images.new("deer-game-x6", w * 6, h * 6, alpha=True)
+    # Close-ups of one alert hind: side, three-quarter front, behind (the rump patch), the head.
+    for obj in objects:
+        obj.hide_render = True
+    p, n = skin_vertices(deer, pose_matrices(POSES["alert"]))
+    single = studio.mesh_object("deer_single", p, deer.triangles, colors=colours)
+    single.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(n)])
+    single.data.materials.append(material)
+    views = {
+        "close-side": ((4.2, 1.15, 0.15), (0.0, 0.95, 0.15), 50),
+        "close-front34": ((2.4, 1.75, 3.2), (0.0, 1.05, 0.35), 50),
+        "close-behind": ((-1.5, 1.6, -4.2), (0.0, 0.92, -0.25), 50),
+        "close-head": ((1.35, 1.5, 1.35), (0.0, 1.32, 0.86), 50),
+    }
+    for name, (eye, target, lens) in views.items():
+        studio.render(directory / ("deer-%s.png" % name), eye=eye, target=target, lens=lens, size=(640, 480),
+                      samples=16)
+    # At game size: L17's view of a 3x hind (her withers ~50 px at 1440p) as a 320x180 crop of the
+    # 2560x1440 frame (vertical field 7.1 degrees), rendered at life size from 33 m, upscaled x4.
+    studio.render(directory / "deer-game.png", eye=(26.5, 13.0, 15.3), target=(0.0, 0.7, 0.0), lens=163,
+                  size=(320, 180), samples=16)
+    small = bpy.data.images.load(str(directory / "deer-game.png"))
+    w, h = small.size
+    pixels = np.array(small.pixels[:], dtype=np.float32).reshape(h, w, 4)
+    up = np.repeat(np.repeat(pixels, 4, axis=0), 4, axis=1)
+    out = bpy.data.images.new("deer-game-x4", w * 4, h * 4, alpha=True)
     out.pixels.foreach_set(up.reshape(-1))
-    out.filepath_raw = str(directory / "deer-game-x6.png")
+    out.filepath_raw = str(directory / "deer-game-x4.png")
     out.file_format = "PNG"
     out.save()
     studio.dispose()

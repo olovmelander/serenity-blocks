@@ -239,17 +239,42 @@ def build_wing(b, spec, side, colour_of):
     last = rows[-1]
     if spec.get("fingers"):
         # Splayed primaries (a soaring bird's slotted hand): from each pair of neighbouring chord
-        # points of the last station a finger runs out to its own blunt tip, narrower than its
-        # base, so the slots between the fingers open toward the tips.
-        hw = spec["fingerHalfWidth"]
-        for j, (fs, fz) in enumerate(spec["fingers"]):
-            c = (j + 0.5) / len(spec["fingers"])
+        # points of the last station a broad finger runs out to its own rounded tip. Neighbouring
+        # fingers share their edge out to a seam point (`fingerSeam` of the way along), so they
+        # touch there, with no slot; only beyond it does each narrow to a rounded tip, opening a
+        # short, narrow slot as a griffon's outer primaries do. (Thin bars with open gaps all the
+        # way in read as a black comb at 40-80 px: 2026-11-01 evening.)
+        tips = spec["fingers"]
+        n = len(tips)
+        seam_at = spec["fingerSeam"]
+        along, width = spec["fingerShoulder"]  # where the rounded tip begins, and its width there
+        runs = []
+        for j, (fs, fz) in enumerate(tips):
+            a, e = b.verts[last[j]], b.verts[last[j + 1]]
+            base = [(a[k] + e[k]) / 2 for k in range(3)]
+            runs.append([side * fs - base[0], spec["wingY"](fs) - base[1], fz - base[2]])
+        seams = []
+        for k in range(n + 1):
+            near = [runs[max(0, k - 1)], runs[min(n - 1, k)]]
+            run = [(near[0][i] + near[1][i]) / 2 for i in range(3)]
+            p0 = b.verts[last[k]]
+            point = [p0[i] + run[i] * seam_at for i in range(3)]
+            c = k / n
+            top, under = colour_of(abs(point[0]), c)
+            seams.append(b.vert(point, top, under, wing_weights(spec, abs(point[0]), c), 1.0))
+        for j, (fs, fz) in enumerate(tips):
+            c = (j + 0.5) / n
             top, under = colour_of(fs, c)
-            w = wing_weights(spec, fs, c)
-            ta = b.vert((side * fs, spec["wingY"](fs), fz + hw), top, under, w, 1.0)
-            tb = b.vert((side * (fs - 0.01), spec["wingY"](fs), fz - hw), top, under, w, 1.0)
-            b.tris.append((last[j], ta, tb))
-            b.tris.append((last[j], tb, last[j + 1]))
+            a, e = b.verts[last[j]], b.verts[last[j + 1]]
+            half = [(a[k] - e[k]) / 2 for k in range(3)]  # base centre -> the leading-edge side
+            centre = [(a[k] + e[k]) / 2 + runs[j][k] * along for k in range(3)]
+            w = wing_weights(spec, abs(centre[0]), c)
+            lead = b.vert([centre[k] + half[k] * width for k in range(3)], top, under, w, 1.0)
+            trail = b.vert([centre[k] - half[k] * width for k in range(3)], top, under, w, 1.0)
+            tip = b.vert((side * fs, spec["wingY"](fs), fz), top, under, wing_weights(spec, fs, c), 1.0)
+            b.quad(last[j], seams[j], seams[j + 1], last[j + 1])
+            b.quad(seams[j], lead, trail, seams[j + 1])
+            b.tris.append((lead, tip, trail))
     else:
         ts, tz = spec["tip"]
         top, under = colour_of(ts, 0.5)
@@ -630,12 +655,15 @@ VULTURE = {
     # Broad and nearly square to the wrist, the hand tapering a little to the slotted tip.
     "planform": [
         (0.100, 0.200, -0.420), (0.250, 0.220, -0.440), (0.400, 0.232, -0.442), (0.550, 0.240, -0.425),
-        (0.700, 0.205, -0.385), (0.850, 0.150, -0.345), (0.975, 0.090, -0.300),
+        (0.700, 0.205, -0.385), (0.850, 0.150, -0.345), (0.960, 0.098, -0.305), (1.060, 0.058, -0.270),
     ],
-    # Six fingers, leading edge to trailing edge: the middle ones the longest.
-    "fingers": [(1.160, 0.090), (1.240, 0.010), (1.290, -0.075), (1.300, -0.160), (1.265, -0.245),
-                (1.200, -0.330)],
-    "fingerHalfWidth": 0.021,
+    # Six fingers, leading edge to trailing edge: the middle ones the longest, fanned a little.
+    "fingers": [(1.170, 0.050), (1.245, -0.008), (1.290, -0.072), (1.300, -0.140), (1.270, -0.205),
+                (1.210, -0.268)],
+    # Neighbouring fingers touch out to 45 % of their length; each rounded tip begins at 80 %,
+    # 72 % as wide as the finger's base.
+    "fingerSeam": 0.45,
+    "fingerShoulder": (0.80, 0.72),
     "chord": [0.0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1.0],
     "camber": 0.03,
     "wingY": lambda s: 0.010,
@@ -718,9 +746,9 @@ FLIGHT = {
     },
     "vulture": {
         "rate": 1.3,
-        "glide": {"lift": 0.10, "sweep": 0.02, "bend": 0.05, "fold": 0.02, "curl": 0.24},
+        "glide": {"lift": 0.10, "sweep": 0.02, "bend": 0.05, "fold": 0.02, "curl": 0.12},
         "beat": {"lift": [0.06, 0.40], "hand": [0.08, 0.46], "lag": 0.7, "fold": [0.02, 0.12],
-                 "sweep": [0.0, 0.05], "curl": 0.26},
+                 "sweep": [0.0, 0.05], "curl": 0.16},
     },
     "goose": {
         "rate": 2.8,
@@ -917,6 +945,7 @@ def previews(built_meshes, out_dir):
         "top": Vector((0.0, 0.001, 1.0)), "below": Vector((0.0, 0.2, -1.0)),
         "front": Vector((0.0, -1.0, 0.08)), "side": Vector((1.0, 0.0, 0.06)),
         "threeq": Vector((0.6, -0.5, 0.45)), "threeqBelow": Vector((0.6, 0.45, -0.5)),
+        "behindBelow": Vector((0.25, 0.9, -0.45)),
     }
 
     def shoot(vname, d, size, ortho, light):
@@ -952,13 +981,13 @@ def previews(built_meshes, out_dir):
                 objs[0].hide_render = below
                 objs[1].hide_render = not below
                 tiles[(pname, vname, "big")] = shoot(vname, d, (300, 200), ortho, "STUDIO")
-                tiles[(pname, vname, "game")] = shoot(vname, d, (40, 27), ortho, "FLAT")
+                tiles[(pname, vname, "game")] = shoot(vname, d, (64, 43), ortho, "FLAT")
             for o in objs:
                 mesh = o.data
                 bpy.data.objects.remove(o, do_unlink=True)
                 bpy.data.meshes.remove(mesh)
         pnames, vnames = list(PREVIEW_POSES), list(views)
-        for mode, (tw, th), scale in (("big", (300, 200), 1), ("game", (40, 27), 6)):
+        for mode, (tw, th), scale in (("big", (300, 200), 1), ("game", (64, 43), 4)):
             sheet = np.zeros((len(pnames) * th * scale, len(vnames) * tw * scale, 4), dtype=np.float32)
             for r, p in enumerate(pnames):
                 for c, v in enumerate(vnames):

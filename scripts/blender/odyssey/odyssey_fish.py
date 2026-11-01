@@ -433,12 +433,40 @@ def fins_for(fish):
         dorsal_fin(sheets, fish, 1.02, 0.30, [0.10, 0.30, 0.24, 0.13, 0.06, 0.02], rake=0.45)
         dorsal_fin(sheets, fish, 0.22, -0.16, [0.06, 0.40, 0.18, 0.04], rake=1.05)
         anal_fin(sheets, fish, 0.10, -0.24, [0.05, 0.36, 0.16, 0.04], rake=1.05)
-        finlets(sheets, fish, -0.36, -1.18, 6, 0.13, True)
-        finlets(sheets, fish, -0.40, -1.18, 5, 0.12, False)
+        # Small and low (a serration, not a comb): seen edge-on at game size, bigger flags drew
+        # a dotted line along the tuna's back.
+        finlets(sheets, fish, -0.36, -1.18, 6, 0.10, True)
+        finlets(sheets, fish, -0.40, -1.18, 5, 0.09, False)
         paired_fin(sheets, fish, 1.22, 0.55, 0.62, 0.17, 0.18, 0.30, d=0.6)
         paired_fin(sheets, fish, 1.00, 0.06, 0.22, 0.10, 0.85, 0.25, d=0.2)
         lunate_tail(sheets, fish)
     return sheets
+
+
+FIN_CLEARANCE = 0.05  # hull units a side fin's blade keeps off the flank
+
+
+def clear_side_fins(body, sheets):
+    """Lift every free point of the side fins (pectoral, pelvic) at least FIN_CLEARANCE off the
+    body. A blade swept back along a flank that keeps widening behind it lay ALMOST IN the skin
+    for half its length, and the two fought for depth there: the fin drew as a freckled patch.
+    The roots stay sunk, so each blade leaves the body at a clear angle."""
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    tree = BVHTree.FromObject(body, depsgraph)
+    lifted = 0
+    for i, (p, (d, flex, region)) in enumerate(zip(sheets.verts, sheets.extra)):
+        if region != 1 or flex <= 0.0 or abs(p[0]) < 0.01:
+            continue
+        hit, nrm, _, _ = tree.find_nearest(to_blender(p))
+        if hit is None:
+            continue
+        q = Vector(to_game(hit))
+        n = Vector(to_game(nrm)).normalized()
+        gap = (Vector(p) - q).dot(n)
+        if gap < FIN_CLEARANCE:
+            sheets.verts[i] = tuple(Vector(p) + n * (FIN_CLEARANCE - gap))
+            lifted += 1
+    return lifted
 
 
 def eyes_for(fish, body, sheets):
@@ -498,6 +526,8 @@ def gather(fish):
         tris.append(tuple(p.vertices))
     body_tris = len(tris)
     sheets = fins_for(fish)
+    lifted = clear_side_fins(body, sheets)
+    print(f"{TAG} {fish['name']}: lifted {lifted} side-fin points off the flank")
     eyes_for(fish, body, sheets)
     # Wind every sheet triangle round its vertices' own normal, so the two sides of a fin are
     # the two faces the renderer tells apart (and Blender's previews shade them alike).
