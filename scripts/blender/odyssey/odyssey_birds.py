@@ -236,12 +236,26 @@ def build_wing(b, spec, side, colour_of):
     for ra, rb in zip(rows, rows[1:]):
         for j in range(len(chord) - 1):
             b.quad(ra[j], rb[j], rb[j + 1], ra[j + 1])
-    ts, tz = spec["tip"]
-    top, under = colour_of(ts, 0.5)
-    tip = b.vert((side * ts, spec["wingY"](ts), tz), top, under, wing_weights(spec, ts, 0.5), 1.0)
     last = rows[-1]
-    for j in range(len(chord) - 1):
-        b.tris.append((last[j], tip, last[j + 1]))
+    if spec.get("fingers"):
+        # Splayed primaries (a soaring bird's slotted hand): from each pair of neighbouring chord
+        # points of the last station a finger runs out to its own blunt tip, narrower than its
+        # base, so the slots between the fingers open toward the tips.
+        hw = spec["fingerHalfWidth"]
+        for j, (fs, fz) in enumerate(spec["fingers"]):
+            c = (j + 0.5) / len(spec["fingers"])
+            top, under = colour_of(fs, c)
+            w = wing_weights(spec, fs, c)
+            ta = b.vert((side * fs, spec["wingY"](fs), fz + hw), top, under, w, 1.0)
+            tb = b.vert((side * (fs - 0.01), spec["wingY"](fs), fz - hw), top, under, w, 1.0)
+            b.tris.append((last[j], ta, tb))
+            b.tris.append((last[j], tb, last[j + 1]))
+    else:
+        ts, tz = spec["tip"]
+        top, under = colour_of(ts, 0.5)
+        tip = b.vert((side * ts, spec["wingY"](ts), tz), top, under, wing_weights(spec, ts, 0.5), 1.0)
+        for j in range(len(chord) - 1):
+            b.tris.append((last[j], tip, last[j + 1]))
     b.end("sheet", f"wing{'L' if side > 0 else 'R'}")
 
 
@@ -570,8 +584,109 @@ def build_goose():
     return b
 
 
-SPECS = {"gull": GULL, "swallow": SWALLOW, "goose": GOOSE}
-BUILDERS = {"gull": build_gull, "swallow": build_swallow, "goose": build_goose}
+# =================================================================================================
+# THE GRIFFON VULTURE (Gyps fulvus): 2.60 m span, 1.0 m long - the summit kettle (chapter 5,
+# composition/odyssey-summit-birds.js), 18-80 px across in the game frame. Long, broad, almost
+# rectangular wings ending in six splayed primaries, a short square tail, a small pale head on a
+# pale ruff. Sandy brown body and coverts against blackish flight feathers and tail; from below,
+# a pale bar along the underwing coverts.
+# =================================================================================================
+
+VULTURE_PLUMAGE = {
+    "body": lin("#9c7a55"),
+    "under": lin("#866444"),
+    "ruff": lin("#e2d8c6"),
+    "head": lin("#d2cbbf"),
+    "bill": lin("#5f5a55"),
+    "covert": lin("#a88560"),
+    "greater": lin("#8a6a4a"),
+    "flight": lin("#2a231e"),
+    "tail": lin("#2e2722"),
+    "underCovert": lin("#7c5f43"),
+    "underBar": lin("#c1a57f"),
+    "underFlight": lin("#3a322c"),
+}
+
+
+def vulture_body_colour(z, ca, sa):
+    P = VULTURE_PLUMAGE
+    col = mix(P["under"], P["body"], smooth(-0.3, 0.4, sa))
+    # The pale ruff round the neck's base.
+    return mix(col, P["ruff"], smooth(0.20, 0.25, z))
+
+
+def vulture_head_colour(z, ca, sa):
+    P = VULTURE_PLUMAGE
+    return mix(P["ruff"], P["head"], smooth(0.30, 0.36, z))
+
+
+VULTURE = {
+    "span": 2.60,
+    "shoulder": (0.110, 0.010, 0.200),
+    "wrist": (0.550, 0.010, 0.240),
+    "armBand": (0.100, 0.260), "armBandTE": (0.080, 0.380),
+    "handBand": (0.520, 0.600), "handBandTE": (0.380, 0.760),
+    "tipBand": (0.860, 1.300),
+    # Broad and nearly square to the wrist, the hand tapering a little to the slotted tip.
+    "planform": [
+        (0.100, 0.200, -0.420), (0.250, 0.220, -0.440), (0.400, 0.232, -0.442), (0.550, 0.240, -0.425),
+        (0.700, 0.205, -0.385), (0.850, 0.150, -0.345), (0.975, 0.090, -0.300),
+    ],
+    # Six fingers, leading edge to trailing edge: the middle ones the longest.
+    "fingers": [(1.160, 0.090), (1.240, 0.010), (1.290, -0.075), (1.300, -0.160), (1.265, -0.245),
+                (1.200, -0.330)],
+    "fingerHalfWidth": 0.021,
+    "chord": [0.0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1.0],
+    "camber": 0.03,
+    "wingY": lambda s: 0.010,
+}
+
+
+def vulture_wing_colour(s, c):
+    P = VULTURE_PLUMAGE
+    hand = smooth(0.60, 0.78, s)
+    # Above: sandy coverts over the front half, a darker row of greater coverts, the blackish
+    # flight feathers behind and over the whole outer hand.
+    top = mix(P["covert"], P["greater"], smooth(0.30, 0.45, c))
+    top = mix(top, P["flight"], max(smooth(0.48, 0.62, c), hand))
+    # Below: brown coverts with the pale bar, dark flight feathers.
+    under = mix(P["underCovert"], P["underBar"], smooth(0.12, 0.25, c) * smooth(0.48, 0.36, c) * (1 - hand))
+    under = mix(under, P["underFlight"], max(smooth(0.45, 0.58, c), hand))
+    return top, under
+
+
+def build_vulture():
+    b = Builder("vulture")
+    P = VULTURE_PLUMAGE
+    shell(b, "body", [
+        (-0.300, 0.040, 0.030, 0.030, 0.000),
+        (-0.180, 0.100, 0.070, 0.090, 0.000),
+        (-0.020, 0.140, 0.090, 0.120, -0.010),
+        (0.120, 0.130, 0.090, 0.120, -0.010),
+        (0.215, 0.090, 0.080, 0.090, 0.000),
+        (0.265, 0.075, 0.075, 0.072, 0.012),
+    ], 8, vulture_body_colour,
+        tail=((0.0, 0.0, -0.315), P["body"]), nose=((0.0, 0.015, 0.285), P["ruff"]))
+    shell(b, "head", [
+        (0.255, 0.050, 0.050, 0.045, 0.020),
+        (0.320, 0.040, 0.042, 0.038, 0.022),
+        (0.375, 0.046, 0.048, 0.040, 0.028),
+        (0.425, 0.030, 0.030, 0.026, 0.024),
+    ], 6, vulture_head_colour,
+        tail=((0.0, 0.020, 0.245), P["ruff"]), nose=((0.0, 0.022, 0.440), P["head"]), power=0.95)
+    cone(b, "bill", 0.420, (0.0, 0.002, 0.500), 0.020, 0.014, 0.016, lambda t: P["bill"])
+    for side in (1, -1):
+        build_wing(b, VULTURE, side, vulture_wing_colour)
+    # The tail: short, square, dark.
+    pts, mirror = mirrored([(0.0, 0.004, -0.220), (0.080, 0.004, -0.220), (0.0, 0.004, -0.420),
+                            (0.120, 0.004, -0.410), (0.0, 0.004, -0.500), (0.125, 0.004, -0.490)])
+    build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 5), (2, 5, 4)], mirror),
+                lambda p: (P["tail"], P["tail"]))
+    return b
+
+
+SPECS = {"gull": GULL, "swallow": SWALLOW, "goose": GOOSE, "vulture": VULTURE}
+BUILDERS = {"gull": build_gull, "swallow": build_swallow, "goose": build_goose, "vulture": build_vulture}
 
 # -- the wingbeat ---------------------------------------------------------------------------------
 #
@@ -600,6 +715,12 @@ FLIGHT = {
         "glide": {"lift": 0.06, "sweep": 0.34, "bend": -0.06, "fold": 0.44, "curl": 0.02},
         "beat": {"lift": [0.06, 0.58], "hand": [0.04, 0.64], "lag": 0.6, "fold": [0.14, 0.40],
                  "sweep": [0.04, 0.16], "curl": 0.10},
+    },
+    "vulture": {
+        "rate": 1.3,
+        "glide": {"lift": 0.10, "sweep": 0.02, "bend": 0.05, "fold": 0.02, "curl": 0.24},
+        "beat": {"lift": [0.06, 0.40], "hand": [0.08, 0.46], "lag": 0.7, "fold": [0.02, 0.12],
+                 "sweep": [0.0, 0.05], "curl": 0.26},
     },
     "goose": {
         "rate": 2.8,
@@ -696,7 +817,7 @@ def record(kind, b, normals):
     zs = [v[2] for v in b.verts]
     hi, lo = stretch(b, spec, kind)
     species = {"gull": "herring gull (Larus argentatus)", "swallow": "barn swallow (Hirundo rustica)",
-               "goose": "greylag goose (Anser anser)"}[kind]
+               "goose": "greylag goose (Anser anser)", "vulture": "griffon vulture (Gyps fulvus)"}[kind]
     return {
         "species": species,
         "span": round(max(xs) - min(xs), 4),
@@ -863,7 +984,7 @@ def main():
             opts[a[2:]] = argv[i + 1]
     built_meshes = {}
     records = {}
-    for kind in ("gull", "swallow", "goose"):
+    for kind in ("gull", "swallow", "goose", "vulture"):
         b = BUILDERS[kind]()
         b.orient()
         normals = b.normals()

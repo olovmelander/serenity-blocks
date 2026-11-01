@@ -38,11 +38,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, cos, cross, dot, faceDirection, float, fract, length, max, mix,
-    normalize, positionLocal, positionWorld, sin, smoothstep, uniform, uniformArray, varying, vec3,
+    Fn, abs, attribute, cameraPosition, clamp, cos, cross, dot, float, fract, length, max, mix,
+    normalize, positionLocal, sin, smoothstep, uniform, uniformArray, varying, vec3,
 } from 'three/tsl';
 import {
-    birdWingPoseAt as birdWingPoseOf, decodeBirdModel, foldBirdNode, foldBirdPoint, setBirdTemplate,
+    birdColourNode, birdWingPoseAt as birdWingPoseOf, decodeBirdModel, foldBirdNode, foldBirdPoint, setBirdTemplate,
 } from './odyssey-bird-rig.js';
 
 const TAU = Math.PI * 2;
@@ -435,31 +435,17 @@ export function createOdysseyFlights({
     // the eye sees: a wing or a tail shows its upperside on its front face and its underside on
     // its back face (the gull's white underwing, the swallow's buff, the goose's grey).
     const sunCol = sunColour ?? vec3(1.0, 0.96, 0.88);
-    const sunD = new THREE.Vector3(...sunDir).normalize();
+    const sunD = new THREE.Vector3(...sunDir).normalize().toArray();
     const haze = hazeColour ?? vec3(0.71, 0.81, 0.91);
-    material.colorNode = Fn(() => {
-        // Clamped: with MSAA a varying is read at the pixel centre even when only a corner sample
-        // is covered, so on a sliver of a far wing it is extrapolated past its vertices' values.
-        const top = clamp(attribute('aTop', 'vec3'), 0.0, 1.0);
-        const under = clamp(attribute('aUnder', 'vec3'), 0.0, 1.0);
-        const thin = clamp(attribute('aHinge', 'vec4').w, 0.0, 1.0);
-        const facing = faceDirection;
-        const speck = clamp(vSpeck, 0.0, 1.0);
-        const albedo = mix(under, top, facing.mul(0.5).add(0.5)).mul(float(1).sub(speck.y));
-        const N = normalize(vBirdN.add(vec3(0, 1e-5, 0))).mul(facing).toVar();
-        const toEye = cameraPosition.sub(positionWorld);
-        const V = normalize(toEye);
-        const ndl = clamp(dot(N, vec3(sunD.x, sunD.y, sunD.z)), 0.0, 1.0);
-        const skyUp = clamp(N.y, 0.0, 1.0);
-        const groundUp = clamp(N.y.negate(), 0.0, 1.0);
-        const ambient = haze.mul(skyUp.mul(0.22).add(0.18)).add(clamp(vBounce, 0.0, 1.0).mul(groundUp.mul(0.45)));
-        const lit = albedo.mul(sunCol.mul(ndl.mul(0.92)).add(ambient));
-        const edge = float(1.0).sub(abs(dot(N, V)));
-        const rim = haze.mul(edge.mul(edge).mul(edge).mul(thin.mul(0.14).add(0.06)))
-            .mul(float(1).sub(speck.x));
-        const range = length(toEye);
-        return mix(lit.add(rim), haze, smoothstep(float(180.0), float(1400.0), range).mul(0.6));
-    })();
+    material.colorNode = birdColourNode({
+        normal: vBirdN,
+        speck: vSpeck,
+        bounce: vBounce,
+        sunColour: sunCol,
+        sunDir: sunD,
+        haze,
+        hazeRange: [180, 1400, 0.6],
+    });
     material.side = THREE.DoubleSide;
     material.depthWrite = true;
     // It carries its own colour-with-distance; scene fog is the chapter-profile lerp.

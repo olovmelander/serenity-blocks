@@ -1,16 +1,17 @@
 /**
  * THE BLENDER BIRDS (2026-11, docs/ODYSSEY_BLENDER_BIRDS_2026-11.md): the herring gull, barn
- * swallow and greylag goose the Blender script (scripts/blender/odyssey/odyssey_birds.py) writes
- * into odyssey-bird-models.js, folded by odyssey-bird-rig.js, and the flights that draw them
- * (odyssey-flights.js).
+ * swallow, greylag goose and griffon vulture the Blender script (scripts/blender/odyssey/
+ * odyssey_birds.py) writes into odyssey-bird-models.js, folded by odyssey-bird-rig.js, and what
+ * draws them: the lowland flights (odyssey-flights.js) and the summit kettle
+ * (odyssey-summit-birds.js).
  *
  *  - THE MODELS: sizes and triangle budgets for the pixels they cover, shells facing out and
  *    sheets facing up, hinge weights where the joints are, the plumage each species is named by.
  *  - THE WINGBEAT: the CPU twin of the vertex stage (birdWingPose + foldBirdPoint) over every
  *    pose a bird flies: no edge torn or crushed, no wing turned inside out, the outer wing lagging
  *    the inner, each kind's rhythm (gull glides, swallow bursts, goose steady).
- *  - THE DRAW: one material shared by the three flocks' draws, inside WebGPU's vertex-buffer limit,
- *    built for WebGPU (WGSL) and the WebGL2 fallback (GLSL) without a word.
+ *  - THE DRAW: one material shared by the three flocks' draws, inside WebGPU's vertex-buffer limit;
+ *    it and the kettle's built for WebGPU (WGSL) and the WebGL2 fallback (GLSL) without a word.
  */
 import {
     afterEach, describe, expect, it, vi,
@@ -22,6 +23,12 @@ import {
     lowlandBirdModel,
 } from '../../src/rendering/odyssey/composition/odyssey-flights.js';
 import { ODYSSEY_BIRD_MODELS } from '../../src/rendering/odyssey/composition/odyssey-bird-models.js';
+import {
+    birdWingPoseAt as rigPoseAt, decodeBirdModel,
+} from '../../src/rendering/odyssey/composition/odyssey-bird-rig.js';
+import {
+    SUMMIT_BIRDS, createSummitBirds, summitWingPose,
+} from '../../src/rendering/odyssey/composition/odyssey-summit-birds.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -31,6 +38,8 @@ const KINDS = [
     ['swallow', FLIGHT_KIND.SWALLOW, 0.33],
     ['goose', FLIGHT_KIND.GOOSE, 1.60],
 ];
+/** Every Blender bird: the lowland kinds and the summit kettle's vulture (no flight kind). */
+const BIRDS = [...KINDS, ['vulture', null, 2.60]];
 const luminance = (c) => (0.2126 * c[0]) + (0.7152 * c[1]) + (0.0722 * c[2]);
 const vec = (a, i) => [a[i * 3], a[(i * 3) + 1], a[(i * 3) + 2]];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -48,19 +57,21 @@ function nearest(model, target) {
     return best;
 }
 
-/** Every pose a bird flies in `seconds` of clock, for a few birds. */
+/** Every pose a bird flies in `seconds` of clock, for a few birds (the vulture: the kettle's). */
 function posesFlown(kind, seconds = 12, step = 1 / 30) {
     const out = [];
     [0.07, 0.31, 0.58, 0.93].forEach((seed) => {
-        for (let t = 0; t < seconds; t += step) out.push(birdWingPose(kind, t, seed));
+        for (let t = 0; t < seconds; t += step) {
+            out.push(kind === null ? summitWingPose(t, seed) : birdWingPose(kind, t, seed));
+        }
     });
     return out;
 }
 
-describe('the lowland birds (Blender models)', () => {
-    KINDS.forEach(([name, kind, span]) => {
+describe('the Blender birds (models)', () => {
+    BIRDS.forEach(([name, , span]) => {
         it(`models the ${name} at its real size in a few hundred triangles`, () => {
-            const m = lowlandBirdModel(kind);
+            const m = decodeBirdModel(name);
             expect(m.name).toBe(name);
             expect(m.span).toBeCloseTo(span, 1);
             expect(m.triangleCount).toBeGreaterThanOrEqual(100);
@@ -71,11 +82,11 @@ describe('the lowland birds (Blender models)', () => {
             expect(m.hinge.length).toBe(m.vertexCount * 4);
             expect(Math.max(...m.index)).toBeLessThan(m.vertexCount);
             // Decoded once and shared.
-            expect(lowlandBirdModel(kind)).toBe(m);
+            expect(decodeBirdModel(name)).toBe(m);
         });
 
         it(`faces the ${name}'s body out and its wings up, with unit normals`, () => {
-            const m = lowlandBirdModel(kind);
+            const m = decodeBirdModel(name);
             let wingUp = 0;
             let wingCount = 0;
             for (let i = 0; i < m.vertexCount; i += 1) {
@@ -98,7 +109,7 @@ describe('the lowland birds (Blender models)', () => {
         });
 
         it(`weights the ${name}'s wings at the shoulder, the wrist and the tip, and nothing else`, () => {
-            const m = lowlandBirdModel(kind);
+            const m = decodeBirdModel(name);
             for (let i = 0; i < m.vertexCount; i += 1) {
                 const [x] = vec(m.positions, i);
                 const [arm, hand, tip, thin] = [0, 1, 2, 3].map((k) => m.hinge[(i * 4) + k]);
@@ -139,6 +150,12 @@ describe('the lowland birds (Blender models)', () => {
         expect(back[2]).toBeGreaterThan(back[0]);
         expect(luminance(belly)).toBeGreaterThan(0.6);
         expect(throat[0]).toBeGreaterThan(throat[1] * 2);
+        // Vulture: sandy coverts over blackish flight feathers, a pale head.
+        const vulture = decodeBirdModel('vulture');
+        const covert = vec(vulture.top, nearest(vulture, [0.3, 0.01, 0.15]));
+        const flightV = vec(vulture.top, nearest(vulture, [0.3, 0.01, -0.42]));
+        expect(luminance(covert)).toBeGreaterThan(luminance(flightV) * 4);
+        expect(luminance(vec(vulture.top, nearest(vulture, [0, 0.07, 0.36])))).toBeGreaterThan(luminance(covert));
         // Goose: grey-brown, an orange bill, a pale forewing over dark flight feathers.
         const bill = vec(goose.top, nearest(goose, [0, -0.015, 0.47]));
         expect(bill[0]).toBeGreaterThan(bill[2] * 3);
@@ -148,16 +165,16 @@ describe('the lowland birds (Blender models)', () => {
     });
 
     it('writes the module the script measured (the record it carries matches the arrays)', () => {
-        KINDS.forEach(([name, kind]) => {
+        BIRDS.forEach(([name]) => {
             const src = ODYSSEY_BIRD_MODELS[name];
-            const m = lowlandBirdModel(kind);
+            const m = decodeBirdModel(name);
             expect(src.vertexCount).toBe(m.vertexCount);
             expect(src.stretch[0]).toBeLessThan(1.4);
         });
     });
 });
 
-describe('the lowland birds\' wingbeat (CPU twin of the vertex stage)', () => {
+describe('the Blender birds\' wingbeat (CPU twin of the vertex stage)', () => {
     it('holds a rest pose at zero angles', () => {
         const m = lowlandBirdModel(FLIGHT_KIND.GULL);
         const zero = {
@@ -170,9 +187,9 @@ describe('the lowland birds\' wingbeat (CPU twin of the vertex stage)', () => {
         }
     });
 
-    KINDS.forEach(([name, kind]) => {
+    BIRDS.forEach(([name, kind]) => {
         it(`never tears, crushes or turns over the ${name}'s skin in any pose it flies`, () => {
-            const m = lowlandBirdModel(kind);
+            const m = decodeBirdModel(name);
             const rest = [];
             const w = [];
             for (let i = 0; i < m.vertexCount; i += 1) {
@@ -219,7 +236,8 @@ describe('the lowland birds\' wingbeat (CPU twin of the vertex stage)', () => {
         });
 
         it(`lags the ${name}'s outer wing behind the inner over a beat`, () => {
-            const { lag } = lowlandBirdModel(kind).flight.beat;
+            const m = decodeBirdModel(name);
+            const { lag } = m.flight.beat;
             expect(lag).toBeGreaterThan(0.3);
             expect(lag).toBeLessThan(1.2);
             // The hand's own elevation peaks after the arm's.
@@ -229,12 +247,28 @@ describe('the lowland birds\' wingbeat (CPU twin of the vertex stage)', () => {
             let handBest = -Infinity;
             for (let k = 0; k < 360; k += 1) {
                 const phi = (k / 360) * Math.PI * 2;
-                const p = birdWingPoseAt(kind, phi, 1);
+                const p = rigPoseAt(m, phi, 1);
                 if (p.lift > armBest) { armBest = p.lift; armPeak = phi; }
                 if (p.lift + p.bend > handBest) { handBest = p.lift + p.bend; handPeak = phi; }
             }
             expect(handPeak).toBeGreaterThan(armPeak);
         });
+    });
+
+    it('soars the summit vultures on held wings, the fingers curled up, a slow beat now and then', () => {
+        let held = 0;
+        let n = 0;
+        [0.2, 0.5, 0.8].forEach((seed) => {
+            for (let t = 0; t < 120; t += 0.5) {
+                const p = summitWingPose(t, seed);
+                if (Math.abs(p.lift - decodeBirdModel('vulture').flight.glide.lift) < 0.02) held += 1;
+                n += 1;
+            }
+        });
+        expect(held / n).toBeGreaterThan(0.5);
+        expect(held / n).toBeLessThan(0.95);
+        expect(decodeBirdModel('vulture').flight.glide.curl).toBeGreaterThan(0.1);
+        expect(decodeBirdModel('vulture').flight.rate).toBeLessThan(2);
     });
 
     it('flies each kind its own way: gulls glide, swallows burst, geese beat steadily', () => {
@@ -316,38 +350,60 @@ describe('the lowland flights draw', () => {
         return renderer;
     }
 
+    /** Both stages of every mesh under `root` as one backend writes them; returns what three said. */
+    function buildAll(root, forceWebGL) {
+        const scene = new THREE.Scene();
+        scene.add(root);
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.5, 6000);
+        camera.position.set(0, 340, 0);
+        camera.updateMatrixWorld(true);
+        root.updateMatrixWorld(true);
+        const renderer = stubRenderer(forceWebGL);
+        const heard = [];
+        vi.spyOn(console, 'warn').mockImplementation((...a) => heard.push(a.join(' ')));
+        vi.spyOn(console, 'error').mockImplementation((...a) => heard.push(a.join(' ')));
+        const targets = [];
+        root.traverse((o) => { if (o.isMesh) targets.push(o); });
+        targets.forEach((target) => {
+            const builder = renderer.backend.createNodeBuilder(target, renderer);
+            builder.scene = scene;
+            builder.material = target.material;
+            builder.camera = camera;
+            builder.context.material = target.material;
+            builder.lightsNode = renderer.lighting.getNode(scene);
+            builder.fogNode = null;
+            builder.clippingContext = null;
+            builder.build();
+            expect(builder.fragmentShader.length, target.name).toBeGreaterThan(200);
+            expect(builder.vertexShader).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
+            expect(builder.fragmentShader).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
+        });
+        return { heard, count: targets.length };
+    }
+
     [['WGSL', false], ['GLSL', true]].forEach(([label, forceWebGL]) => {
-        it(`builds the birds' material (${label}) without a word`, () => {
+        it(`builds the flights' material (${label}) without a word`, () => {
             const flights = createOdysseyFlights({
                 hazeColour: vec3(0.7, 0.8, 0.9),
                 sunColour: uniform(new THREE.Color(1, 0.95, 0.9)),
             });
-            const scene = new THREE.Scene();
-            scene.add(flights.group);
-            const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.5, 6000);
-            camera.position.set(0, 340, 0);
-            camera.updateMatrixWorld(true);
-            flights.group.updateMatrixWorld(true);
-            const renderer = stubRenderer(forceWebGL);
-            const heard = [];
-            vi.spyOn(console, 'warn').mockImplementation((...a) => heard.push(a.join(' ')));
-            vi.spyOn(console, 'error').mockImplementation((...a) => heard.push(a.join(' ')));
-            flights.meshes.forEach((target) => {
-                const builder = renderer.backend.createNodeBuilder(target, renderer);
-                builder.scene = scene;
-                builder.material = target.material;
-                builder.camera = camera;
-                builder.context.material = target.material;
-                builder.lightsNode = renderer.lighting.getNode(scene);
-                builder.fogNode = null;
-                builder.clippingContext = null;
-                builder.build();
-                expect(builder.fragmentShader.length, target.name).toBeGreaterThan(200);
-                expect(builder.vertexShader).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
-                expect(builder.fragmentShader).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
-            });
+            const { heard, count } = buildAll(flights.group, forceWebGL);
+            expect(count).toBe(ODYSSEY_FLIGHTS.length);
             expect(heard).toEqual([]);
             flights.dispose();
+        });
+
+        it(`builds the summit vultures' material (${label}) without a word`, () => {
+            const birds = createSummitBirds({
+                hazeColour: vec3(0.7, 0.8, 0.9),
+                sunColour: uniform(new THREE.Color(1, 0.95, 0.9)),
+            });
+            expect(birds.mesh.geometry.instanceCount).toBe(SUMMIT_BIRDS.count);
+            expect(Object.keys(birds.mesh.geometry.attributes).length).toBeLessThanOrEqual(8);
+            const { heard, count } = buildAll(birds.mesh, forceWebGL);
+            expect(count).toBe(1);
+            expect(heard).toEqual([]);
+            birds.dispose();
         });
     });
 });

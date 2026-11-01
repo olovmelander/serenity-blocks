@@ -3652,7 +3652,7 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] the Earth below unavailable (non-fatal):', error);
                     this.orbitEarth = null;
                 }
-                // THE SUMMIT BIRDS — a kettle soaring beside the chapter-5 mountain (see
+                // THE SUMMIT BIRDS — griffon vultures soaring beside the chapter-5 mountain (see
                 // composition/odyssey-summit-birds.js). One opaque instanced draw, created here
                 // so the board-presentation compile below builds its pipeline before the reveal;
                 // after that it is uniforms only. BISECT LEVER: ?odysseyNoBirds=1.
@@ -3660,6 +3660,7 @@ export class OdysseyBoardController {
                     if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoBirds')) {
                         this.summitBirds = createSummitBirds({
                             hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
                         });
                         this.scene.add(this.summitBirds.mesh);
                     }

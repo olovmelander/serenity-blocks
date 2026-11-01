@@ -16,7 +16,8 @@
  * `foldBirdPoint` its CPU twin (the tests' stretch check), `fold()` in the script the previews'.
  */
 import {
-    cos, float, select, sin, vec3,
+    Fn, abs, attribute, cameraPosition, clamp, cos, dot, faceDirection, float, length, mix, normalize, positionWorld,
+    select, sin, smoothstep, vec3,
 } from 'three/tsl';
 import { ODYSSEY_BIRD_MODELS } from './odyssey-bird-models.js';
 
@@ -188,4 +189,48 @@ export function foldBirdNode({
         local: vec3(side.mul(S.x.add(du5)), S.y.add(dy5), S.z.add(dz4)),
         normal: vec3(side.mul(nu4), ny4, nz3),
     };
+}
+
+/**
+ * The birds' light (TSL colour node), the act's as on the eagle: the sun from behind the camera's
+ * shoulder on the backs and the near wings, the sky from above, what lies below bounced up under
+ * the wings, a rim of sky on the edges so a bird keeps its shape, and the air between it and the
+ * eye. The plumage is the one the eye sees: a wing or a tail shows its upperside on its front face
+ * and its underside on its back face.
+ * @param {object} o
+ * @param {object} o.normal varying vec3: the folded normal, world
+ * @param {object} o.speck varying vec3: x how far the bird has shrunk to a speck (the rim fades),
+ *   y how much its plumage darkens toward its silhouette
+ * @param {object} o.bounce varying or node vec3: the ground's colour bounced up under the wings
+ * @param {object} o.sunColour vec3 node
+ * @param {number[]} o.sunDir unit direction TOWARD the sun
+ * @param {object} o.haze vec3 node: the air's colour
+ * @param {number[]} o.hazeRange [from, to, most]: the air mixed in over range
+ */
+export function birdColourNode({
+    normal, speck, bounce, sunColour, sunDir, haze, hazeRange,
+}) {
+    return Fn(() => {
+        // Clamped: with MSAA a varying is read at the pixel centre even when only a corner sample
+        // is covered, so on a sliver of a far wing it is extrapolated past its vertices' values.
+        const top = clamp(attribute('aTop', 'vec3'), 0.0, 1.0);
+        const under = clamp(attribute('aUnder', 'vec3'), 0.0, 1.0);
+        const thin = clamp(attribute('aHinge', 'vec4').w, 0.0, 1.0);
+        const facing = faceDirection;
+        const far = clamp(speck, 0.0, 1.0);
+        const albedo = mix(under, top, facing.mul(0.5).add(0.5)).mul(float(1).sub(far.y));
+        const N = normalize(normal.add(vec3(0, 1e-5, 0))).mul(facing).toVar();
+        const toEye = cameraPosition.sub(positionWorld);
+        const V = normalize(toEye);
+        const ndl = clamp(dot(N, vec3(...sunDir)), 0.0, 1.0);
+        const skyUp = clamp(N.y, 0.0, 1.0);
+        const groundUp = clamp(N.y.negate(), 0.0, 1.0);
+        const ambient = haze.mul(skyUp.mul(0.22).add(0.18)).add(clamp(bounce, 0.0, 1.0).mul(groundUp.mul(0.45)));
+        const lit = albedo.mul(sunColour.mul(ndl.mul(0.92)).add(ambient));
+        const edge = float(1.0).sub(abs(dot(N, V)));
+        const rim = haze.mul(edge.mul(edge).mul(edge).mul(thin.mul(0.14).add(0.06)))
+            .mul(float(1).sub(far.x));
+        const [from, to, most] = hazeRange;
+        return mix(lit.add(rim), haze, smoothstep(float(from), float(to), length(toEye)).mul(most));
+    })();
 }
