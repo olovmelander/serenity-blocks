@@ -601,7 +601,7 @@ export class OdysseyBoardController {
         this.openingMusicChapter = Number.isFinite(options.musicChapter) ? options.musicChapter : null;
         // While the opening sweep holds and flies: no chapter music changes, no seam stingers.
         this._openingSweepActive = false;
-        // One World's pipelines are compiled (before the reveal, or by the post-reveal queue).
+        // One World's pipelines are compiled by the post-reveal queue (_worldCompiledForSweep).
         this._oneWorldCompiled = false;
         // Set once the camera is framed on that orb; cleared as soon as anything moves it.
         this._revealSeatLevelId = null;
@@ -3888,7 +3888,6 @@ export class OdysseyBoardController {
                 // Compiled here, a world that cannot build falls back as it does after the reveal.
                 const worldGroup = this.oneWorld?.group;
                 const worldWarm = deferred ? null : this._prewarmGroup(worldGroup, 'one world', { rethrow: true })
-                    .then(() => { if (worldGroup) this._oneWorldCompiled = true; })
                     .catch((error) => this._abandonWorldAfterFailedCompile(error, worldGroup));
                 // The board's OWN presentation — path tube/core/glow + chapter rings, the 55
                 // level nodes and their instanced glass/glow/lock/star meshes, the starfield —
@@ -4836,13 +4835,23 @@ export class OdysseyBoardController {
         const step = toChapter >= fromChapter ? 1 : -1;
         for (let ch = fromChapter + step; ch !== toChapter + step; ch += step) {
             if (this.oneWorld && suppressed?.has(ch)) {
-                if (!this._oneWorldCompiled) return false;
+                if (!this._worldCompiledForSweep()) return false;
             } else {
                 const env = this.environmentManager?.environments?.get(ch);
                 if (!env || !env.prewarmed || !env._renderWarmed) return false;
             }
         }
         return true;
+    }
+
+    /**
+     * Whether One World has compiled: in the pre-reveal pool (its timing is recorded when it lands;
+     * a failed compile abandons the world, so this.oneWorld is gone then) or by the post-reveal queue.
+     * @returns {boolean}
+     * @private
+     */
+    _worldCompiledForSweep() {
+        return this._oneWorldCompiled === true || this._compileTimings?.['one-world'] != null;
     }
 
     /**
@@ -4859,7 +4868,7 @@ export class OdysseyBoardController {
         const step = toChapter >= fromChapter ? 1 : -1;
         for (let ch = fromChapter + step; ch !== toChapter + step; ch += step) {
             const env = this.environmentManager?.environments?.get(ch);
-            if (this.oneWorld && suppressed?.has(ch)) out[ch] = this._oneWorldCompiled ? 'world' : 'world-cold';
+            if (this.oneWorld && suppressed?.has(ch)) out[ch] = this._worldCompiledForSweep() ? 'world' : 'world-cold';
             else if (!env) out[ch] = 'missing';
             else if (env._renderWarmed) out[ch] = 'warm';
             else out[ch] = env.prewarmed ? 'compiled' : 'built';
