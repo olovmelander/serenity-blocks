@@ -66,7 +66,9 @@ import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-
 import { createShaftFalls, createShaftWallSteps, planEarthCoreShaft } from './earth-core-shaft.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
 import { lakeNoiseBakeEnabled } from './shared/odyssey-lake-noise-bake.js';
-import { steamQuenchDensity, steamQuenchFogColour, steamQuenchSeamT } from '../composition/odyssey-steam-quench.js';
+import {
+    steamQuenchDensity, steamQuenchFogColour, steamQuenchSeamT, steamQuenchWarmHue,
+} from '../composition/odyssey-steam-quench.js';
 
 // The cavern's lights draw after the quench's steam (see earthCoreVeilTransmission).
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
@@ -630,9 +632,9 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
             smoothstep(-1.4, 0.1, sY).mul(magmaSurgeTSL(time).mul(0.30).add(0.70)),
             splash,
         ));
-    // Seam: the ember columns thin and WHITEN into rising steam (1→2 Steam Quench).
+    // Seam: the ember columns thin (uSeam) and WHITEN into rising steam as the steam turns (uFlecks).
     const steamColor = vec3(0.72, 0.86, 0.9).mul(glow).mul(0.55);
-    material.colorNode = mix(hotColor.mul(glow), steamColor, uniforms.uSeam.mul(0.85));
+    material.colorNode = mix(hotColor.mul(glow), steamColor, uniforms.uFlecks.mul(0.85));
     material.opacityNode = glow.mul(alpha)
         .mul(oneMinus(uniforms.uSeam.mul(0.35)))
         .mul(mix(float(1), float(0.55), cinder))
@@ -721,9 +723,9 @@ function createNearCameraEmbers(uniforms, count, yLow, yHigh) {
     const core = smoothstep(0.18, 0.0, dist.mul(0.5));
     const hotColor = mix(rampColor, vec3(1.0, 0.97, 0.9), core.mul(0.6));
 
-    // Seam: near sparks whiten into steam flecks with the rest of the quench.
+    // Seam: near sparks whiten into steam flecks as the steam turns to the sea's colour (uFlecks).
     const steamSpark = vec3(0.75, 0.88, 0.92).mul(glow).mul(0.6);
-    material.colorNode = mix(hotColor.mul(glow), steamSpark, uniforms.uSeam.mul(0.85));
+    material.colorNode = mix(hotColor.mul(glow), steamSpark, uniforms.uFlecks.mul(0.85));
     material.opacityNode = glow.mul(life.mul(0.7).add(0.3))
         .mul(oneMinus(uniforms.uSeam.mul(0.3)))
         .mul(uniforms.uVeil ? earthCoreVeilTransmission(uniforms.uVeil, center) : float(1))
@@ -940,6 +942,11 @@ export function* buildEarthCoreEnvironmentSteps(options = {}) {
         // The steam's mean colour at the camera (steamQuenchFogColour): the haze puffs become
         // the near billows of the vapour in it.
         uVeilColour: uniform(new THREE.Color(0, 0, 0)),
+        // THE SPARKS STAY EMBERS IN THE GOLDEN STEAM (2026-11-01): 0 while the vapour is the fire's
+        // colour, 1 once it has turned to the sea's (steamQuenchWarmHue) — the embers and near
+        // sparks whiten into steam flecks with the steam itself, not with uSeam (local 0.70-0.86),
+        // which had them white-blue through the whole golden stretch.
+        uFlecks: uniform(0),
         // The updraft's rise clock, banked on the CPU (never time x a changing rate): it runs
         // faster in gusts (the music's beats, the camera's glides) — see updateEarthCoreEnvironment.
         uRisePhase: uniform(0),
@@ -2177,6 +2184,7 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         const veil = steamQuenchDensity(veilT);
         uniforms.uVeil.value = veil * veil;
         if (uniforms.uVeilColour) steamQuenchFogColour(veilT, uniforms.uVeilColour.value);
+        if (uniforms.uFlecks) uniforms.uFlecks.value = 1 - steamQuenchWarmHue(veilT);
         // The haze draws after the steam's shell while it is the steam's near billows (a sort
         // key only: no pipeline changes).
         if (group.userData.haze) group.userData.haze.renderOrder = veil > 0.05 ? EARTH_CORE_THROUGH_STEAM_ORDER : -10;

@@ -165,6 +165,18 @@ describe('steam quench material contract', () => {
         q.dispose();
     });
 
+    it('builds the shell (the golden climb\'s decks included) for WebGPU and WebGL2', () => {
+        const q = createSteamQuench();
+        [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]].forEach(([label, Builder]) => {
+            const out = build(Builder, q.mesh);
+            expect(out.thrown, `${label} ${out.thrown?.stack ?? ''}`).toBeUndefined();
+            expect(out.heard, label).toEqual([]);
+            expect(out.fragment, label).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
+            if (label === 'WGSL') expect(unassignedReads(out.fragment)).toEqual([]);
+        });
+        q.dispose();
+    });
+
     it('is one draw with a sensible radius, and disposes what it made', () => {
         const q = createSteamQuench();
         expect(q.mesh.isMesh).toBe(true);

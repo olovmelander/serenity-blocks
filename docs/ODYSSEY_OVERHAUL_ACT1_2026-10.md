@@ -121,10 +121,9 @@ JSONs: `$S/lanes/act1/perf/`.
 
 ## 5. Open items
 
-- **The steam veil** (local ~0.8-1.0) is still mostly vapour: the throat walls, near billows and
-  rising sparks/bubbles give it depth, but the last fifth of the climb has nothing else in it. A
-  richer gold would need more light than the 1->2 gate likes; there is now ~15 luma of headroom if
-  the integrator wants to spend it.
+- ~~**The steam veil** (local ~0.8-1.0) is still mostly vapour~~ — DONE (2026-11-01): golden decks
+  of billows the eye climbs through, a glowing heart, gold to the boundary; seam 1->2 PASS 29.5. See
+  [ODYSSEY_CH1_GENESIS_2026-10.md §5](ODYSSEY_CH1_GENESIS_2026-10.md).
 - **The falls read as radial streaks** from below (any vertical line does, looking straight up);
   in motion their streaks pour toward the lens. A side-on view (an orb close-up) shows the curtain.
 - **The rock is a touch soft** at close range (smooth relief between ledges); a curvature/joint term

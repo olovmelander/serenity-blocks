@@ -65,5 +65,79 @@ JSONs: `repos/odyssey-gpu/perf-baseline/ch1g-1/`.
   shapes the pockets' and the lake geodes' spheres in place into lumpy, pitted volcanic bombs
   (deterministic multi-scale Perlin; closed shell, welded seam normals, UVs kept). Seam 1->2 PASS
   (42.9).
-- The steam is warm tan rather than truly luminous gold; its exposure cap keeps it dim by design
-  (the seam gate) — a richer look would trade brightness for saturation further.
+- ~~The steam is warm tan rather than truly luminous gold~~ — DONE (2026-11-01, §5 below): the
+  climb is now golden steam with billows, depth and a glowing heart, inside the same seam gate.
+
+## 5. The golden climb (2026-11-01)
+
+The owner's ask: make the last stretch of the climb (chapter-local ~0.8-1.0, p ~0.052-0.065) a
+luminous, golden steam with shape and depth, while it still hides the hand-over to chapter 2.
+
+### What the player saw
+
+From p ~0.045 the steam fills the frame. It was one flat tan haze with a starburst of straight
+rays from the centre (it read as a zoom blur) and dark stains. From p ~0.058 the hue started to
+leave gold, so p 0.058-0.065 was brown-grey, then grey at the boundary. Nothing in it moved
+toward you, so the climb had no depth. The sparks had already turned white-blue.
+
+### What changed
+
+| Change | Where | What the player sees |
+|---|---|---|
+| **Decks of vapour you climb through.** Three horizontal sheets of billows at fixed heights above the eye (10 u apart). The view ray meets each sheet (no ray march); they are laid front to back. Near sheets are big and fast, far ones small and slow. They fade in far away and out before they reach the lens, and they rise slowly (0.9 u/s), so a parked eye still sees steam streaming up. | `steamDecks` in `odyssey-steam-quench.js` | real parallax: billows open out past you as you climb |
+| **Billows lit by the lava below.** Each billow has a bright flank toward the lava's light and a lee that falls to deep ember (not brown). Thin vapour glows with the light above; a thick billow in front of it stands a little darker. Far sheets sink into the lit air between them. | same | shape and depth instead of a flat haze |
+| **A light at the end of the climb.** A white-gold heart at the zenith. The sheets are thinner along the vent's axis, so billows cross the light rather than block it. The gaps show lit air that brightens toward the light (the old dark shell behind bright billows read as camouflage). | same | the steam glows; the eye climbs toward light |
+| **Gold to the end, then the sea's light breaks through.** The hue turn is narrower and later (warmth 0.475-0.53, was 0.46-0.64), and it starts at the light ahead and reaches the vapour round the eye last, broken up by the billows. At the boundary the heart is pearl white while the near billows are still lava-lit; just after, blue spreads outward. | same | gold from p 0.045 to ~0.064; the turn reads as fire meeting water, not as grey fog |
+| **Brighter highlights, same average.** The exposure ceiling is 9x the luminance cap (was 3.6x) and the soft shoulder starts at 1.5 (was 0.7), so the heart and lit flanks can glow while the average stays on the seam's brightness ramp. | same | luminous, not dim tan |
+| **Sparks stay embers.** The rising embers and near sparks whiten into steam flecks when the steam itself turns (`uFlecks` = 1 − `steamQuenchWarmHue`), not with `uSeam` (local 0.70-0.86). | `earth-core.js` | gold sparks rising and dying in the gold steam |
+
+Unchanged on purpose: the shell's opacity (density curve, alpha), the window widths, the scene fog
+weight and `behindSteamDepth`. The decks only change the shell's colour. At the boundary the shell is
+still fully opaque, and the sea's life is still drawn behind it and arrives whole as it clears.
+No new draws, materials or textures: it is the same one shell draw.
+
+![Before (top) and after (bottom) at p 0.048, 0.054, 0.058, 0.061, 0.0635, 0.0649, 0.067, 0.070, same frozen clock](images/odyssey-steam-2026-11-01/steam-before-after.jpg)
+
+![A climb from p 0.055 to 0.0605 (every 0.001 p), live clock. Top: before (the same starburst all the way). Bottom: after (billows open out past the eye)](images/odyssey-steam-2026-11-01/steam-climb-glide.jpg)
+
+![The turn at p 0.0635, 0.0645, 0.0649 (the boundary), 0.0655, 0.0661, 0.067](images/odyssey-steam-2026-11-01/steam-boundary-turn.jpg)
+
+### Verification
+
+- **Seam 1→2 luma gate** (`odyssey-chapter-capture.mjs --seam=1-2 --settle=6000`, then
+  `odyssey-seam-luma.mjs`): **PASS, maxStep 29.5** (main before this pass: 23.9; the 43.1 in §2 was
+  an older layout). The curve, before → after: p 0.0409 32.6 → 37.1, 0.0469 45.6 → 49.7,
+  0.0529 59.9 → 67.4, 0.0589 73.1 → 78.8, 0.0649 79.7 → 82.6, 0.0689 71.1 → 71.3. The steepest step is
+  now the rise into the steam (0.0469 → 0.0529); the step down after the boundary is −28.1.
+  A first cut had the pearl heart brighter (boundary 87.1, step −39.5); it is dimmed by a third while
+  the hue turns.
+- Captures (WebGPU, High, 1600x900, 30 fps cap, a frozen clock for before/after): no console errors
+  or WebGPU validation messages.
+- **WebGL2** (`?forceWebGL=1`) p 0.054, 0.0635, 0.0649, 0.067: the same look, console clean.
+- Tests: `odyssey-steam-quench.test.js` (new: the shell builds for WGSL and GLSL, no unassigned
+  reads), the Earth Core environment / drawable budget / shaft / lake tests, the world carry test,
+  the TSL build test, the act I arrivals and ocean visitors tests: all pass.
+
+### Cost
+
+One full-screen draw as before; the decks add 18 value-noise lookups per steam pixel (about as
+many hash calls as the shell already did). Not measured: a GPU timing at the 30 fps cap swung
+0.8-4.6 ms in both arms (clock scaling), so it says nothing. A Lane A GPU split at p 0.054 and 0.0635
+would settle it.
+
+### Tried and dropped
+
+- Round "pouch" billows (a cell field of domes, lit as spheres): hard faceted creases, read as bubble
+  wrap.
+- Crisper value-noise billows (a fourth octave, a tight edge): torn-paper camouflage.
+- A dark shell showing between bright billows: camouflage again; the gaps are now lit air.
+- A ring-shaped hue turn (centre first, a sharp radius): a visible porthole; the turn is now broad
+  and broken by the billows.
+
+### Open
+
+- Light shafts from the lava rising through the steam were not added; the lit flanks and the heart
+  carry the light. They would need a short march per pixel.
+- The near deck is soft (it is close); fine detail lives in the far decks.
+- p 0.0652-0.0658 (half a second of travel) still passes through a brownish grey at the edges while
+  blue spreads from the centre.
