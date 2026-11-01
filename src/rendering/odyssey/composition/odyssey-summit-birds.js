@@ -4,9 +4,16 @@
  *
  * The climb had a mountain, clouds and nothing ALIVE: no moving thing to give the peak its
  * scale, and nothing to look at but the rail. A dozen birds now circle beside the summit's east
- * shoulder for the whole climb — small dark silhouettes against the sky and the cloud from the
- * wall, the subject of the look-out's pan, wheeling beside the summit in its shot, and BELOW the
- * eye from the shoulder, seen from above against the island.
+ * shoulder for the whole climb — against the sky and the cloud from the wall, the subject of the
+ * look-out's pan, wheeling beside the summit in its shot, and BELOW the eye from the shoulder,
+ * seen from above against the island.
+ *
+ * THE BIRDS (2026-11): griffon vultures, the Blender birds' fourth (odyssey_birds.py ->
+ * odyssey-bird-models.js, folded by odyssey-bird-rig.js) — they are 18-80 px across on the climb,
+ * so the flat paper shape they were read as a cut-out. Long broad wings held in a shallow
+ * dihedral with six splayed primaries curled up at the tip, a short square tail, a pale ruff;
+ * sandy brown above against blackish flight feathers, lit by the act's sun and sky. They soar,
+ * with a slow beat or two now and then (`summitWingPose` is the vertex stage's pose).
  *
  * WHERE: the kettle's centre and lanes were solved on the in-game camera (BEYOND profile, drift
  * pinned) so it is in frame at every station from L29 to L34, clears the hero cone (>= 30 u) and
@@ -23,8 +30,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, cos, float, length, mix, positionLocal, sin, smoothstep, uniform, vec3,
+    Fn, attribute, cameraPosition, cos, float, fract, length, max, mix, positionLocal, sin, smoothstep, uniform,
+    varying, vec3,
 } from 'three/tsl';
+import {
+    birdColourNode, birdWingPoseAt, decodeBirdModel, foldBirdNode, setBirdTemplate,
+} from './odyssey-bird-rig.js';
 
 /** The kettle: centre of the thermal, lane radii and heights, and one lap's period. */
 export const SUMMIT_BIRDS = Object.freeze({
@@ -33,8 +44,8 @@ export const SUMMIT_BIRDS = Object.freeze({
     radius: Object.freeze([55, 95]),
     heightSpread: 22,
     lapSeconds: 44,
-    /** World units per template unit: a 3.8-unit wingspan becomes ~11 u. */
-    size: 3.0,
+    /** A bird's wingspan, world units (the old 3.8-unit template at 3.0 u per unit). */
+    span: 11.4,
     /** Roll into the turn, radians. */
     bank: 0.32,
     /**
@@ -69,53 +80,36 @@ export function resolveSummitBirdLanes(config = SUMMIT_BIRDS) {
     return lanes;
 }
 
+const jsSmooth = (e0, e1, x) => {
+    const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return k * k * (3 - (2 * k));
+};
+
 /**
- * One bird, in its own space: -Z is the nose, +X the right wing, +Y up. `aWing` is 0 on the
- * body and at the wing roots, ~0.45 at the wrist and 1 at the tips — the flap bends there.
+ * The vertex stage's wing pose at clock `t` for a bird of `seed` (the CPU twin, for the tests):
+ * soaring on held wings, fingers curled up, with a few slow beats now and then on its own clock.
  */
-function buildBirdTemplate() {
-    const positions = [];
-    const wing = [];
-    const tri = (a, b, c) => {
-        [a, b, c].forEach(([x, y, z, w]) => {
-            positions.push(x, y, z);
-            wing.push(w);
-        });
-    };
-    // Body: a slim diamond with a short tail fan.
-    const nose = [0, 0, -0.95, 0];
-    const tail = [0, 0, 0.85, 0];
-    const bl = [-0.13, 0, -0.1, 0];
-    const br = [0.13, 0, -0.1, 0];
-    tri(nose, br, bl);
-    tri(bl, br, tail);
-    tri(tail, [0.22, 0, 1.15, 0], [-0.22, 0, 1.15, 0]);
-    // Wings: an inner panel (shoulder -> wrist) and a swept outer panel (wrist -> tip).
-    [-1, 1].forEach((side) => {
-        const rootF = [0.1 * side, 0, -0.42, 0];
-        const rootB = [0.1 * side, 0, 0.28, 0];
-        const wristF = [0.92 * side, 0, -0.5, 0.45];
-        const wristB = [0.88 * side, 0, 0.12, 0.45];
-        const tip = [1.9 * side, 0, 0.18, 1];
-        tri(rootF, wristF, rootB);
-        tri(rootB, wristF, wristB);
-        tri(wristF, tip, wristB);
-    });
-    return { positions: new Float32Array(positions), wing: new Float32Array(wing) };
+export function summitWingPose(t, seed, out = {}) {
+    const model = decodeBirdModel('vulture');
+    const beating = jsSmooth(0.55, 0.9, Math.sin((t * 0.21) + (seed * 11)));
+    const cycles = (model.flight.rate * (1 + ((seed - 0.5) * 0.06)) * t) + (seed * 7);
+    return birdWingPoseAt(model, (cycles - Math.floor(cycles)) * TAU, beating, out);
 }
 
 /**
  * @param {object} [opts]
  * @param {object} [opts.hazeColour] TSL node (vec3) the far birds haze toward — the world's own
  *   horizon colour when it built one; a daylight constant otherwise.
+ * @param {object} [opts.sunColour] TSL vec3 node, the world's sun colour (else a daylight white)
+ * @param {number[]} [opts.sunDir] direction TOWARD the sun (world); defaults to the Act II sun
  * @param {object} [opts.config] override of SUMMIT_BIRDS (tests, the playground)
  */
-export function createSummitBirds({ hazeColour = null, config = SUMMIT_BIRDS } = {}) {
+export function createSummitBirds({
+    hazeColour = null, sunColour = null, sunDir = [-0.46, 0.36, 0.61], config = SUMMIT_BIRDS,
+} = {}) {
     const lanes = resolveSummitBirdLanes(config);
-    const template = buildBirdTemplate();
-    const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(template.positions, 3));
-    geometry.setAttribute('aWing', new THREE.BufferAttribute(template.wing, 1));
+    const model = decodeBirdModel('vulture');
+    const geometry = setBirdTemplate(new THREE.InstancedBufferGeometry(), model, THREE.BufferAttribute);
     const lane = new Float32Array(lanes.length * 4);
     lanes.forEach((l, i) => lane.set([l.phase, l.radius, l.height, l.seed], i * 4));
     geometry.setAttribute('aLane', new THREE.InstancedBufferAttribute(lane, 4));
@@ -124,7 +118,6 @@ export function createSummitBirds({ hazeColour = null, config = SUMMIT_BIRDS } =
     const uTime = uniform(0);
     const uReveal = uniform(0);
     const aLane = attribute('aLane', 'vec4');
-    const aWing = attribute('aWing', 'float');
     const seed = aLane.w;
 
     // Round the thermal, counter-clockwise; each bird a little faster or slower than its lap.
@@ -136,31 +129,64 @@ export function createSummitBirds({ hazeColour = null, config = SUMMIT_BIRDS } =
     // Right wing = forward x up = -radial (toward the centre); banking dips it into the turn.
     const cosB = Math.cos(config.bank);
     const sinB = Math.sin(config.bank);
-    const right = radial.negate().mul(cosB).sub(vec3(0, sinB, 0));
+    const left = radial.mul(cosB).add(vec3(0, sinB, 0));
     const up = vec3(0, cosB, 0).sub(radial.mul(sinB));
-
-    // SOARING: wings held in a shallow dihedral, with a few slow beats now and then (each bird on
-    // its own clock). The outer panel lags the inner one, which is what makes it a wingbeat.
-    const beating = smoothstep(0.55, 0.9, sin(uTime.mul(0.21).add(seed.mul(11.0))));
-    const beat = uTime.mul(5.2).add(seed.mul(20.0));
-    const wingLift = aWing.mul(float(0.2).add(beating.mul(0.5).mul(sin(beat))))
-        .add(aWing.mul(aWing).mul(beating).mul(0.34).mul(sin(beat.sub(0.9))));
-
     const bob = sin(uTime.mul(0.23).add(seed.mul(9.0))).mul(3.0);
     const centre = vec3(...config.centre);
     const seat = centre.add(radial.mul(aLane.y)).add(vec3(0, 1, 0).mul(aLane.z.add(bob)));
-    const local = positionLocal;
-    const offset = right.mul(local.x)
-        .add(up.mul(local.y.add(wingLift)))
-        .sub(forward.mul(local.z));
+
+    const vBirdN = varying(vec3(0, 1, 0), 'summitBirdN');
+    const vSpeck = varying(vec3(0, 0, 0), 'summitBirdSpeck');
+    const { glide, beat } = model.flight;
+    const positionNode = Fn(() => {
+        // SOARING (the twin: summitWingPose): wings held in a shallow dihedral, the fingers
+        // curled up, a slow beat or two now and then (each bird on its own clock); the hand lags.
+        const beating = smoothstep(0.55, 0.9, sin(uTime.mul(0.21).add(seed.mul(11.0))));
+        const rate = seed.sub(0.5).mul(0.06).add(1.0).mul(model.flight.rate);
+        const phi = fract(rate.mul(uTime).add(seed.mul(7.0))).mul(TAU).toVar();
+        const sinPhi = sin(phi);
+        const upK = max(sinPhi.negate(), 0.0).mul(max(sinPhi.negate(), 0.0));
+        const beatLift = cos(phi).mul(beat.lift[1]).add(beat.lift[0]);
+        const beatHand = cos(phi.sub(beat.lag)).mul(beat.hand[1]).add(beat.hand[0]);
+        const pose = (name, value) => mix(float(glide[name]), value, beating);
+        const { local, normal } = foldBirdNode({
+            position: positionLocal,
+            normal: attribute('normal', 'vec3'),
+            hinge: attribute('aHinge', 'vec4'),
+            pose: {
+                lift: pose('lift', beatLift),
+                sweep: pose('sweep', upK.mul(beat.sweep[1]).add(beat.sweep[0])),
+                bend: pose('bend', beatHand.sub(beatLift)),
+                fold: pose('fold', upK.mul(beat.fold[1]).add(beat.fold[0])),
+                curl: pose('curl', max(sinPhi, 0.0).mul(beat.curl)),
+            },
+            shoulder: model.shoulder,
+            wrist: model.wrist,
+        });
+        vBirdN.assign(left.mul(normal.x).add(up.mul(normal.y)).add(forward.mul(normal.z)));
+        // Under ~14 px across a bird darkens a little toward its silhouette and loses its rim
+        // (the flights' rule: a far bird reads only while it is darker than the air behind it).
+        const across = float(config.span).div(max(length(seat.sub(cameraPosition)), 1.0));
+        const far = float(1).sub(smoothstep(0.0048, 0.0112, across));
+        vSpeck.assign(vec3(far, far.mul(0.35), 0));
+        const size = float(config.span / model.span).mul(uReveal);
+        return seat.add(left.mul(local.x).add(up.mul(local.y)).add(forward.mul(local.z)).mul(size));
+    })();
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = seat.add(offset.mul(float(config.size).mul(uReveal)));
-    // A slate silhouette, hazed a little toward the horizon with range so the far side of the
-    // kettle sits back in the air.
-    const haze = hazeColour ?? vec3(0.71, 0.81, 0.91);
-    const range = length(seat.sub(cameraPosition));
-    material.colorNode = mix(vec3(0.085, 0.10, 0.14), haze, smoothstep(250.0, 1500.0, range).mul(0.55));
+    material.name = 'OdysseySummitBirds';
+    material.positionNode = positionNode;
+    // The act's light (the flights' and the eagle's); the island's rock and green bounced up
+    // under the wings; the far side of the kettle sits back in the air as before.
+    material.colorNode = birdColourNode({
+        normal: vBirdN,
+        speck: vSpeck,
+        bounce: vec3(0.21, 0.22, 0.19),
+        sunColour: sunColour ?? vec3(1.0, 0.96, 0.88),
+        sunDir: new THREE.Vector3(...sunDir).normalize().toArray(),
+        haze: hazeColour ?? vec3(0.71, 0.81, 0.91),
+        hazeRange: [250, 1500, 0.55],
+    });
     material.side = THREE.DoubleSide;
     material.depthWrite = true;
     // It carries its own colour-with-distance; scene fog is the chapter-profile lerp.
