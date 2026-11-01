@@ -71,8 +71,20 @@ It ran on both builds, two rounds each: the first launch with a fresh profile, t
     on purpose: it is ~2 s of driver work, and the map opened that much later when it ran first.
   - A second launch hits the shader cache and has none.
 
-**Left as it is (an owner call):** hold the loading cover on the very first launch until that
-compile ends (about 2 s longer once; later launches unchanged).
+**Tried and left out (2026-11-01, evening): holding the cover on the first launch.** A profile
+that had never compiled the island compiled it behind the loading cover (a marker in local
+storage), later launches as before. Feel probe on a fresh profile, then the same profile again:
+
+| | map opens | frames over 20 ms after the reveal | worst | pipelines compiling after the reveal |
+|---|---|---|---|---|
+| hold, 1st launch | 2.39 s | 7 | 60 ms | 45 |
+| hold, 2nd launch | 1.65 s | 1 | 23 ms | 56 |
+
+The map opened 0.7 s later and the stutter stayed. The island was only part of it: about 45 other
+pipelines still compile in the two seconds after the reveal (the other chapters' background
+compiles, the whales, the eagle and the sea visitors, all compiled on the live map by design). A
+hold that removes the stutter would have to wait for all of them, which means reworking the
+loading order; not worth it for one launch. Reverted.
 
 ## 3. The journey in the sky (item 1)
 

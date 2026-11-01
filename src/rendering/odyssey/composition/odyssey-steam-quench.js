@@ -24,6 +24,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
+    Fn,
+    If,
     cameraFar,
     cameraNear,
     cameraPosition,
@@ -31,6 +33,7 @@ import {
     clamp,
     dot,
     float,
+    floor,
     length,
     log,
     max,
@@ -245,12 +248,25 @@ const STEAM_WARM_WHITENING = 0.6; // how much less the flash whitens the vapour 
 // The warmth at which the hue starts and finishes leaving gold for the cool side (shader and
 // steamQuenchMeanColour share them, so scene fog keeps the steam's colour). Narrow and late:
 // a wide crossing spent the whole dense stretch in salmon, mauve and grey (capture p 0.058-0.063).
-const STEAM_WARM_HUE_LO = 0.46;
-const STEAM_WARM_HUE_HI = 0.64;
+// 0.46..0.64 -> 0.475..0.53 (golden climb, 2026-11-01): the climb stays gold to p ~0.063 and turns
+// in the last ~0.003 p, through the white flash at the boundary (it read brown-grey at 0.061-0.065).
+const STEAM_WARM_HUE_LO = 0.475;
+const STEAM_WARM_HUE_HI = 0.53;
 const warmHueOf = (w) => {
     const x = Math.max(0, Math.min(1, (w - STEAM_WARM_HUE_LO) / (STEAM_WARM_HUE_HI - STEAM_WARM_HUE_LO)));
     return x * x * (3 - (2 * x));
 };
+
+/**
+ * How much of the vapour's hue is still the fire's at a seamT (1 gold .. 0 the sea's), the same
+ * turn the shader paints: the cavern's sparks stay embers until the steam itself turns.
+ * @param {number} seamT 0..1 (0.5 at the boundary)
+ * @returns {number}
+ */
+export function steamQuenchWarmHue(seamT) {
+    const t = Math.max(0, Math.min(1, Number.isFinite(seamT) ? seamT : 0));
+    return warmHueOf(1 - t);
+}
 
 /**
  * The vapour's AVERAGE colour at a seamT — the same warm -> lit -> cool -> submerged ramp the
@@ -311,9 +327,12 @@ export function steamQuenchMeanLuma(seamT) {
  * Hot spots (the aperture, the rays) may rise this far above the cap — the light the eye climbs
  * toward has to be brighter than the vapour around it, or the volume is a flat card. 2.4 -> 3.6
  * (audit pass, 2026-10-22): the whole opening, where the eye looks, sat above the old ceiling's
- * knee and was squeezed ~5x into one plateau.
+ * knee and was squeezed ~5x into one plateau. 3.6 -> 9 (golden climb, 2026-11-01): at 3.6 the
+ * heart and the decks' lit flanks topped out at a dim tan; the average is unchanged (exposure).
  */
-export const STEAM_QUENCH_HIGHLIGHT_HEADROOM = 3.6;
+export const STEAM_QUENCH_HIGHLIGHT_HEADROOM = 9;
+/** The headroom without the golden climb's decks (Low): the vapour as it was before them. */
+export const STEAM_QUENCH_HIGHLIGHT_HEADROOM_FLAT = 3.6;
 /**
  * The light the shader ADDS on top of the vapour's mean colour (rims, rays, the core) as a share
  * of that mean: the exposure reference is scaled by it so the frame's average still follows the
@@ -386,14 +405,107 @@ export function behindSteamDepth(wp) {
     return viewZToPerspectiveDepth(viewZ, cameraNear, cameraFar);
 }
 
+/** Vertical gap between the vapour decks the eye climbs through (world units). */
+export const STEAM_DECK_SPACING = 10;
+/** How many decks are drawn above the eye at once (the nearest fades out as it reaches the lens). */
+export const STEAM_DECK_COUNT = 3;
+/**
+ * Decks per quality tier (`pickByQualityTier`). Each deck is six value-noise lookups per pixel of
+ * a full-screen shell: the three cost ~0.65 ms at 2560x1440 on the RTX (bench 2026-11-01). Medium
+ * (the iGPU lane) keeps two; Low draws the vapour as it was before the climb (no decks).
+ */
+export const STEAM_DECKS_BY_TIER = Object.freeze({ high: 3, medium: 2, low: 0 });
+/** The decks rise on their own (u/s), so a parked eye still sees vapour streaming up past it. */
+export const STEAM_DECK_RISE = 0.9;
+// The lava's key in the decks' plane: the light reaches them from below and a little from one
+// side, so every billow has a lit flank and a lee (world xz, unit length).
+const DECK_KEY = [0.6, -0.8];
+
+/**
+ * THE GOLDEN CLIMB (2026-11-01): decks of vapour at fixed world heights that the eye climbs
+ * through. Each is a horizontal sheet of billows met by the view ray (plane intersection, no
+ * march), composited front to back, so near decks are big and fast and far ones small and slow:
+ * the parallax of climbing. The lava below lights each billow's underside, brighter on the flank
+ * toward its key; toward the light above, a thick billow's heart stands darker and its thin rim
+ * glows; farther decks sink into the lit air between them.
+ * @param {object} o
+ * @param {*} o.viewDir normalised view ray (vec3 node)
+ * @param {*} o.uTime seconds (uniform)
+ * @param {*} o.fill vec3 node, the lava's light on the billows' undersides
+ * @param {*} o.lee vec3 node, the tint the fill takes in a billow's shaded flank
+ * @param {*} o.glow vec3 node, the light above shining through thin vapour
+ * @param {*} o.air vec3 node, the lit vapour between the decks (far decks sink into it)
+ * @param {*} o.above float node, how strong the light above is along this ray
+ * @param {*} o.presence float node, how much of the decks there is (0..1) along this ray
+ * @param {number} [o.count] how many decks (STEAM_DECKS_BY_TIER)
+ * @returns {{ colour: *, transmit: * }} the decks' light, and how much of what lies beyond shows
+ */
+function steamDecks({
+    viewDir, uTime, fill, lee, glow, air, above, presence, count = STEAM_DECK_COUNT,
+}) {
+    const eyeY = cameraPosition.y.sub(uTime.mul(STEAM_DECK_RISE));
+    const below = floor(eyeY.div(STEAM_DECK_SPACING));
+    const up = max(viewDir.y, float(0.22));
+    // Horizontal sheets seen edge-on would smear into streaks: only where the eye looks up.
+    const facing = smoothstep(0.18, 0.42, viewDir.y);
+    const reach = STEAM_DECK_SPACING * count;
+    const drift = vec2(uTime.mul(0.05), uTime.mul(-0.032));
+    // The thick hearts darken only where the light above is behind them.
+    const backlit = smoothstep(0.6, 1.6, above);
+    let colour = vec3(0.0, 0.0, 0.0);
+    let transmit = float(1.0);
+    for (let k = 1; k <= count; k += 1) {
+        const n = below.add(k);
+        // Height of this deck above the eye: (0, reach]. It fades in far away and out again
+        // before it reaches the lens, so a deck never pops as the eye passes through it.
+        const height = n.mul(STEAM_DECK_SPACING).sub(eyeY);
+        const hit = cameraPosition.xz.add(viewDir.xz.mul(height.div(up)));
+        const q = hit.mul(0.26).add(vec2(n.mul(7.31), n.mul(-4.17))).add(drift);
+        const warp = noise2(q.mul(0.43).add(vec2(3.1, 1.7)));
+        const qw = q.add(vec2(warp, warp.mul(-0.7)).mul(1.5));
+        const o1 = noise2(qw);
+        const o2 = noise2(qw.mul(2.03).add(vec2(5.2, 1.3)));
+        const o3 = noise2(qw.mul(4.11).add(vec2(-2.7, 8.1)));
+        const broad = o1.mul(0.5).add(o2.mul(0.25));
+        const body = broad.add(o3.mul(0.125));
+        // Lit flank: the billow thins toward the lava's key (density falls that way), so seen from
+        // below each hanging billow is a dome lit on one side and in shade on the other.
+        const toKey = qw.add(vec2(DECK_KEY[0], DECK_KEY[1]).mul(0.3));
+        const broadKey = noise2(toKey).mul(0.5).add(noise2(toKey.mul(2.03).add(vec2(5.2, 1.3))).mul(0.25));
+        const flank = clamp(broad.sub(broadKey).mul(4.0).add(0.5), 0.0, 1.0);
+        const dens = smoothstep(0.32, 0.65, body);
+        const fade = smoothstep(2.0, 7.5, height)
+            .mul(oneMinus(smoothstep(reach * 0.6, reach, height)))
+            .mul(facing)
+            .mul(presence);
+        const alpha = clamp(dens.mul(1.6), 0.0, 1.0).mul(fade).mul(0.92);
+        // The lee falls to ember, not to brown: a darker fill alone read as mud.
+        const lavaLit = mix(fill.mul(lee).mul(0.32), fill.mul(1.4), flank);
+        const heart = mix(float(1.0), float(0.78), smoothstep(0.6, 1.0, dens).mul(backlit));
+        const thin = smoothstep(0.0, 0.25, dens).mul(oneMinus(smoothstep(0.3, 0.9, dens)));
+        // Farther decks sink into the lit air between them: the depth the climb passes through.
+        const haze = smoothstep(0.0, reach, height).mul(0.55);
+        const shade = mix(lavaLit.mul(heart).add(glow.mul(thin).mul(above)), air, haze);
+        colour = colour.add(shade.mul(alpha).mul(transmit));
+        transmit = transmit.mul(oneMinus(alpha));
+    }
+    return { colour, transmit };
+}
+
 /**
  * @param {object} [opts]
  * @param {number} [opts.radius] world radius of the volume
+ * @param {number} [opts.decks] vapour decks the eye climbs through (STEAM_DECKS_BY_TIER); 0 draws
+ *   the vapour as it was before the golden climb
  * @returns {{ mesh: THREE.Mesh, update: (t:number, seamT:number) => void, dispose: () => void }}
  *   `seamT` is 0 approaching the boundary, 0.5 at it, 1 leaving it.
  */
-export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
+export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS, decks = STEAM_DECK_COUNT } = {}) {
+    const deckCount = Math.max(0, Math.min(STEAM_DECK_COUNT, Math.round(decks)));
     const uTime = uniform(0);
+    // 1 while the decks can show (the steam is up and not yet murk): the shader skips their
+    // noise where they cannot (a uniform branch; about half the steam's stretch is the exit murk).
+    const uDecksOn = uniform(0);
     // 0 outside the seam, 1 at the boundary. Drives density AND colour together so the
     // ember->vapour shift and the occlusion peak are the same event.
     const uDensity = uniform(0);
@@ -556,14 +668,79 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
         // shadowed vapour. Without it the peak was an even field of white. 0.52 -> 0.40 (audit
         // pass): with the light in the rays and the core, a darker rim of smoke frames it.
         .mul(mix(float(0.40), float(1.0), smoothstep(0.25, 0.95, viewUp)));
+    // THE GOLDEN CLIMB (2026-11-01): the decks the eye climbs through, in front of the vapour
+    // above (which now shows only through their gaps). Only while the steam is dense.
+    const golden = () => {
+        // The light at the end of the climb: a white-gold heart at the zenith that the decks
+        // stand against (over the sea, the same heart cools to the daylight above the water).
+        const endCore = smoothstep(0.9, 0.999, viewUp);
+        // THE SEA'S LIGHT BREAKS THROUGH FIRST. The turn from fire to sea starts at the light
+        // ahead and reaches the vapour round the eye last: at the boundary the heart is already
+        // the sea's pearl while the near billows are still lit by the lava below, so the turn is
+        // fire meeting water rather than one grey moment (it read as brown-grey fog across
+        // p 0.061-0.065). A broad lead, broken by the billows, so the turn spreads through the
+        // vapour, not as a ring.
+        const hueLead = oneMinus(smoothstep(0.6, 0.995, viewUp)).mul(0.035)
+            .add(billowRaw.sub(0.5).mul(0.025));
+        const hue = smoothstep(STEAM_WARM_HUE_LO, STEAM_WARM_HUE_HI, w.add(hueLead));
+        // Where the hue turns, the light at the end goes pearl white and the vapour round it smoky.
+        const turning = oneMinus(hue.mul(2.0).sub(1.0).abs());
+        // A little dimmer while it turns: the pearl heart at the boundary is the frame's brightest
+        // moment, and the 1->2 seam gate measures the step down from it into the deep (45 per 0.01 p).
+        const endLight = mix(mix(vec3(0.85, 0.95, 1.0), vec3(1.0, 0.76, 0.44), hue), vec3(1.0, 0.97, 0.94), turning)
+            .mul(endCore.mul(endCore).mul(1.6).add(smoothstep(0.55, 0.99, viewUp).mul(0.3)))
+            .mul(oneMinus(turning.mul(0.35)));
+        const air = mix(vec3(0.22, 0.30, 0.36), vec3(0.42, 0.18, 0.05), hue);
+        const deckLight = steamDecks({
+            viewDir,
+            uTime,
+            fill: mix(vec3(0.30, 0.42, 0.50), vec3(0.70, 0.36, 0.09), hue).mul(oneMinus(turning.mul(0.35))),
+            lee: mix(vec3(0.85, 0.95, 1.05), vec3(1.0, 0.55, 0.38), hue),
+            glow: mix(vec3(0.75, 0.9, 1.0), vec3(1.0, 0.78, 0.42), hue),
+            air,
+            above: float(0.35).add(endCore.mul(endCore).mul(2.0)),
+            // Thinner along the vent's axis, where the hot core blows through, and thinning while
+            // the hue turns: the turn is a white-out with soft forms crossing the light.
+            presence: oneMinus(endCore.mul(endCore).mul(0.5)).mul(oneMinus(turning.mul(0.45))),
+            count: deckCount,
+        });
+        // What the gaps show: mostly the lit air brightening toward the light, a little of the
+        // shell's own billows (a dark shell behind bright decks read as camouflage).
+        const beyond = mix(colour, air.mul(float(0.5).add(smoothstep(0.55, 0.995, viewUp).mul(1.3))), 0.6)
+            .add(endLight);
+        return mix(colour, deckLight.colour.add(beyond.mul(deckLight.transmit)), d);
+    };
+    // The decks' noise runs only while they can show (uDecksOn, a uniform branch). Every value
+    // the branch shares with the rest of the shell is pinned at the root first: TSL emits a
+    // shared value where it is first BUILT, and one first built inside the branch would read as
+    // zero outside it (the TSL skill's "branch reads ZEROS" trap).
+    const climbed = deckCount > 0
+        ? Fn(() => {
+            const out = colour.toVar();
+            d.toVar();
+            viewUp.toVar();
+            viewDir.toVar();
+            w.toVar();
+            billowRaw.toVar();
+            If(uDecksOn.greaterThan(0.5), () => {
+                out.assign(golden());
+            });
+            return out;
+        })()
+        : colour;
     // A SOFT SHOULDER ON LUMINANCE, HUE KEPT (audit pass, 2026-10-22). This was a per-channel
     // min(0.96): where the eye looks up the shaft the aperture, rays and billows sum past it, red
     // clipped first while green kept rising, and the fire-lit vapour came out tan and olive — a flat
     // plateau exactly where the light should be. Linear to 0.7, then rolling off toward 1.2.
-    const preLuma = dot(colour, vec3(0.2126, 0.7152, 0.0722));
-    const over = max(preLuma.sub(0.7), float(0.0));
-    const shoulder = min(preLuma, float(0.7).add(over.div(over.mul(2.0).add(1.0))));
-    const shaped = colour.mul(shoulder.div(max(preLuma, float(1e-4))));
+    // 0.7 -> 1.5, toward 2.5 (golden climb, 2026-11-01): the decks' lit flanks and the heart need
+    // ~9x the frame's mean to glow, and the average is still set by the exposure below. Without
+    // decks (Low) the vapour keeps the old knee.
+    const knee = deckCount > 0 ? 1.5 : 0.7;
+    const roll = deckCount > 0 ? 1.0 : 2.0;
+    const preLuma = dot(climbed, vec3(0.2126, 0.7152, 0.0722));
+    const over = max(preLuma.sub(knee), float(0.0));
+    const shoulder = min(preLuma, float(knee).add(over.div(over.mul(roll).add(1.0))));
+    const shaped = climbed.mul(shoulder.div(max(preLuma, float(1e-4))));
     // EXIT: the same volume becomes murk in the water's own colour, brightest toward the surface
     // light above, with only a soft breath of the billow left — water clearing, not cloud lifting.
     const murk = uCool.mul(float(0.82).add(billow.mul(0.22))).mul(float(0.75).add(aperture.mul(0.45)));
@@ -578,7 +755,9 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     const exitLuma = dot(exitRaw, vec3(0.2126, 0.7152, 0.0722));
     const exposure = min(float(1.0), uLumaCap.div(max(uLumaRef, float(1e-4))));
     const exposedLuma = exitLuma.mul(exposure);
-    const ceiling = uLumaCap.mul(STEAM_QUENCH_HIGHLIGHT_HEADROOM);
+    const ceiling = uLumaCap.mul(deckCount > 0
+        ? STEAM_QUENCH_HIGHLIGHT_HEADROOM
+        : STEAM_QUENCH_HIGHLIGHT_HEADROOM_FLAT);
     // A KNEE, not a wall (audit pass): a hard min() at the ceiling flattened the opening — the
     // brightest third of the frame, where the eye looks — into one plateau. Linear to half the
     // ceiling, then easing toward it, so the billows against the light keep their shape.
@@ -630,6 +809,7 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
             // Warm while the cavern is still behind you, cold once the water owns the frame.
             uWarmth.value = 1 - t;
             uExit.value = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
+            uDecksOn.value = (deckCount > 0 && uDensity.value > 1e-3 && uExit.value < 0.999) ? 1 : 0;
             // Exit only (t>0.5, i.e. under water): converge the cool constant onto the water
             // column's colour. ^1.5 keeps the first stretch past the boundary near-white so
             // the quench's white-out beat survives; by the window's end the veil is fully in

@@ -135,8 +135,8 @@ hole outgrows the frame (11° → 22°) and the photon ring dims at the frame's 
 - **5→6 rising steps.** After the boundary fix the gate still counts gentle rises (+3–4 luma per
   0.01 p) as the hole materialises and the nebula and comet arrive; main fails the same rule
   (two rises). A build-up, not a pop; left as it is.
-- **Chapter 1's steam** (local 0.8–1.0) is still mostly vapour; the 1→2 gate now has ~15 luma of
-  headroom for a brighter, golder steam with structure.
+- ~~**Chapter 1's steam** (local 0.8–1.0) is still mostly vapour~~ — DONE (2026-11-01): golden steam
+  with billows and depth; see [ODYSSEY_CH1_GENESIS_2026-10.md §5](ODYSSEY_CH1_GENESIS_2026-10.md).
 - **Chapters 3–5** are richer but still cartoon-painted: tree crowns, sticker clouds, a smooth
   summit cone in close shots; not built from the research list: the waterfall, the glory, the
   storm cell, light shafts in air. L27/L28 still look ~45° up the face (a camera-rig change).
