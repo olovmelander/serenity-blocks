@@ -162,6 +162,9 @@ describe('the board holds at orb 1 until the way is ready, then flies', () => {
         expect(board._openingSweepPathReady(1, 8)).toBe(true);
         board._oneWorldCompiled = false;
         expect(board._openingSweepPathReady(1, 8)).toBe(false);
+        // Compiled before the reveal: its timing landed.
+        board._compileTimings = { 'one-world': 412 };
+        expect(board._openingSweepPathReady(1, 8)).toBe(true);
         board.environmentManager.environments.delete(8);
         expect(board._openingSweepPathStates(1, 8)[8]).toBe('missing');
     });
