@@ -60,6 +60,7 @@ import { createOceanVisitors } from './composition/odyssey-ocean-visitors.js';
 import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
+import { createOdysseyDeer } from './composition/odyssey-deer.js';
 import { createOdysseyAirMotes } from './composition/odyssey-air-motes.js';
 import { createOdysseyMeadowLife } from './composition/odyssey-meadow-life.js';
 import { createSummitSpindrift, findHeroSummit } from './composition/odyssey-summit-spindrift.js';
@@ -611,6 +612,8 @@ export class OdysseyBoardController {
         // massif's eagle (the whale pass's fetch -> live-compile -> ready lifecycle).
         this.flights = null;
         this.eagle = null;
+        // The glade's deer (chapter 3's ground animals, 2026-11-01): the eagle's lifecycle.
+        this.deer = null;
         this.airMotes = null;
         this.meadowLife = null;
         this.spindrift = null;
@@ -2671,6 +2674,51 @@ export class OdysseyBoardController {
     }
 
     /**
+     * The glade's deer, one step per frame — the eagle's lifecycle (see _tickEagle): fetch as their
+     * window approaches (no GPU), compile through the live-loop path only while the board is idle
+     * (with the same 4 s starvation escape), then draw. Their window opens deep in chapter 2, where
+     * the glade cannot be seen, so they are compiled and standing long before the breach. Any
+     * failure leaves them hidden for the session; the act is exactly as it was without them.
+     */
+    _tickDeer(cameraProgress) {
+        const { deer } = this;
+        if (!deer || this._deerFailed) return;
+        const near = deer.revealAt(cameraProgress + 0.03) > 0 || deer.revealAt(cameraProgress) > 0;
+        if (!deer.isLoaded && !this._deerLoading && this.isActive && near) {
+            this._deerLoading = true;
+            deer.load()
+                .then((ok) => {
+                    if (!ok) return;
+                    this._deerLoadedAt = performance.now();
+                    console.log('[OdysseyBoard] deer loaded');
+                })
+                .catch((error) => {
+                    this._deerFailed = true;
+                    console.warn('[OdysseyBoard] deer load failed (non-fatal):', error);
+                })
+                .finally(() => { this._deerLoading = false; });
+        }
+        const waitedMs = performance.now() - (this._deerLoadedAt ?? performance.now());
+        if (deer.isLoaded && !deer.isReady && !this._deerCompiling && this.liveCompileEnabled
+            && this._renderLoopActive() && (this._canRunBackgroundTask() || waitedMs > 4000)) {
+            this._deerCompiling = true;
+            this._compileGroupThroughPost(deer.group, { live: true })
+                .then((compiled) => {
+                    if (compiled) {
+                        deer.markReady();
+                        console.log('[OdysseyBoard] deer ready (live-loop compiled)');
+                    } else this._deerFailed = true;
+                })
+                .catch((error) => {
+                    this._deerFailed = true;
+                    console.warn('[OdysseyBoard] deer compile failed (non-fatal):', error);
+                })
+                .finally(() => { this._deerCompiling = false; });
+        }
+        deer.update(this.time, cameraProgress);
+    }
+
+    /**
      * The ocean visitors' lifecycle — the whale pass's, step for step (see _tickWhalePass): fetch
      * as chapter 2 approaches (no GPU), live-compile only while idle (4 s starvation escape), then
      * draw. Any failure leaves them hidden for the session.
@@ -3698,6 +3746,24 @@ export class OdysseyBoardController {
                 } catch (error) {
                     console.warn('[OdysseyBoard] eagle unavailable (non-fatal):', error);
                     this.eagle = null;
+                }
+                // THE GLADE'S DEER (chapters 2-3, composition/odyssey-deer.js): a herd of red deer
+                // grazing the slope above the chapter-3 shore. Created HIDDEN and GPU-free like the
+                // eagle: fetched as chapter 2 begins, live-compiled while idle, only then drawn (see
+                // _tickDeer). Their hooves stand on the world's own height mirror.
+                // BISECT LEVER: ?odysseyNoDeer=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoDeer')) {
+                        this.deer = createOdysseyDeer({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            heightAt: this.oneWorld?.heightAt || undefined,
+                        });
+                        this.scene.add(this.deer.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] deer unavailable (non-fatal):', error);
+                    this.deer = null;
                 }
                 // THE AIR (composition/odyssey-air-motes.js): pollen over the shore, down on the
                 // meadows, diamond dust on the climb — one additive draw of world-anchored motes in
@@ -4982,6 +5048,7 @@ export class OdysseyBoardController {
         // The lowland flights (same contract) and the massif's eagle (fetch/compile lifecycle).
         if (this.flights) this.flights.update(this.time, cameraProgress);
         if (this.eagle) this._tickEagle(delta, cameraProgress);
+        if (this.deer) this._tickDeer(cameraProgress);
         if (this.airMotes) this.airMotes.update(this.time, cameraProgress);
         if (this.meadowLife) this.meadowLife.update(this.time, cameraProgress);
         if (this.spindrift) this.spindrift.update(this.time, cameraProgress);
@@ -6088,6 +6155,10 @@ export class OdysseyBoardController {
         if (this.eagle) {
             this.eagle.dispose();
             this.eagle = null;
+        }
+        if (this.deer) {
+            this.deer.dispose();
+            this.deer = null;
         }
         if (this.meadowLife) {
             this.meadowLife.dispose();
