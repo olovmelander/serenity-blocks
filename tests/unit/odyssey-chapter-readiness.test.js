@@ -271,7 +271,7 @@ describe('chapter 7\'s hypercubes', () => {
 
     it('are made hidden at startup and wait, clock and all, for the first fold frame', () => {
         const src = read('rendering/odyssey/OdysseyBoardController.js');
-        const quench = src.indexOf('this.steamQuench = createSteamQuench();');
+        const quench = src.indexOf('this.steamQuench = createSteamQuench(');
         const made = src.indexOf('this._foldHypercubes = createFoldHypercubes({ count: 8 });', quench);
         const presentation = src.indexOf("'board presentation'", quench);
         // In setupDirector beside the steam quench, before the board-presentation compile.
