@@ -102,7 +102,8 @@ A real fish's body wave, in the vertex stage (no bones):
   screen, so the edge of a fish seen from below does not freckle.
 - The flank flash is kept to the silver flank that faces the eye. On the first try a smooth flank
   seen almost edge-on flashed as a bright hairline along every fish's edge, and on the back of the
-  tuna. Fixed.
+  tuna. Fixed. (A last hairline on the tuna was fixed at its cause the same evening: the flash now
+  uses an upright mirror, see "Polish".)
 - The body's inside faces are not drawn. When they were, they fought the outside faces along
   every edge and left dark specks.
 
@@ -123,9 +124,9 @@ A real fish's body wave, in the vertex stage (no bones):
   and four schools; at p 0.08 a frame often holds most of them at once. A turtle would crowd it.
 - No new URL lever: the fish are not new. (`?odysseyFish...` does not exist; to compare, check out
   the commit before this one.)
-- The tuna's finlets show as a fine serrated edge at game size; on a tuna seen from below and
-  side-on, a pale line still runs along the flank just under the dark back. It reads as light on
-  the silver flank to me, but it is the one place I would look again.
+- ~~The tuna's finlets show as a fine serrated edge at game size; on a tuna seen from below and
+  side-on, a pale line still runs along the flank just under the dark back.~~ Fixed the same
+  evening: see "Polish" below.
 
 ## GPU timing (lead, 2026-11-01 evening)
 
@@ -134,3 +135,56 @@ main against this work at the same stations: p 0.095 and 0.11 the fish, 0.168, 0
 deer, gulls and swallows, 0.31 the swallows and geese, 0.62 the summit kettle). GPU time per frame
 was within 0.07 ms of main at every station (for example 2.10 ms both at L15, 1.18 against 1.11-1.18
 ms at the kettle), so the new animals cost nothing measurable there.
+
+## Polish (2026-11-01 evening)
+
+Olov: *"The tuna show a thin pale line along their sides."*
+
+![Before and after, the same frozen moment](images/odyssey-fish-2026-11-01/polish-before-after.jpg)
+
+*Left: before. Right: after. The clock is frozen (the same moment in both), 2560 x 1440 crops at
+2x. Top: a tuna seen from below and the side (p 0.08). Middle: a tuna side-on (p 0.095). Bottom: a
+near jack (p 0.095).*
+
+**What drew the line.** I switched the shading terms off one at a time on a frozen frame (the flash,
+the light, the colour) and drew each term on its own. The line was the **flank flash**, and only it.
+The flash treated the skin as a curved mirror. A round body acts like a chrome pipe: it reflects the
+bright surface along one thin strip, right where the flank turns toward the back. On a tuna seen
+from below and the side, that strip landed just inside its edge as a pale hairline.
+
+**The fix, at the cause.** A real fish's silver is a layer of tiny upright mirrors in the skin,
+standing parallel to the body whatever the curve of the flank over them. (That is how a silver fish
+hides in open water.) So the flash now uses the fish's own sideways direction as its mirror. It
+still rolls with the fish and bends with the swim, but it ignores the curve of the skin. Three
+things change:
+
+- A flank now lights as a whole, softly, and melts into the belly and the back: no hairline.
+- The flash is how much brighter the mirror's light is than the water behind the fish. A fish seen
+  from straight below sends you water as bright as what is behind it (the camouflage), so it stays
+  a dark shape. It flashes only when a roll or swerve tips the flank up toward the surface, and it
+  fades as the fish rights itself.
+- The tuna's flash is now 0.4 of a jack's (it was the same). A big, slow fish holding a roll
+  otherwise glared.
+
+![The tuna's flank catching the light and letting it go, 0.4 s apart](images/odyssey-fish-2026-11-01/polish-tuna-motion.jpg)
+
+**The audit (both fish, in motion, from below and side-on):**
+
+- **Freckled side fins (fixed).** The tuna's side fins (pectorals) sweep back along a flank that
+  keeps widening behind them. Half of each fin lay almost in the skin, and the two fought over which
+  was in front, so the fin drew as a freckled patch. The Blender script now lifts every free point
+  of the side fins at least 0.05 off the body, so each fin leaves the body at a clear angle. A test
+  holds it: the old model fails it with a fin point 0.003 off the skin.
+- **Finlets (softened).** Smaller: 0.10 and 0.09 instead of 0.13 and 0.12. Seen edge-on they had
+  drawn a dotted line along the tuna's back; now they read as a light serration.
+- **Eyes (kept dark).** The new flash would have whitened the whole eye disc at some angles. The
+  eye keeps only a faint glint.
+- **Left as is:**
+  - A jack seen from below shows its anal fin edge-on as a slightly lighter line along the belly.
+    That is the real fin, and it was there before.
+  - A few pixels of the tuna's first dorsal fin show edge-on at the top of its head.
+  - Nothing sparkled or popped in the frames, and the console stayed clean.
+
+Same counts as before: 214 and 301 triangles, one draw, no new pipeline (the flash change only
+reworks the shader's terms). New tests: the side fins keep off the flank, and the flank flash comes
+from the upright mirror in both the WebGPU and the WebGL2 shader.
