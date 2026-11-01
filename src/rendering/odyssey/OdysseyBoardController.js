@@ -39,6 +39,7 @@ import {
     worldDepartureFade,
 } from './world/odyssey-world-act-gate.js';
 import {
+    STEAM_DECKS_BY_TIER,
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_FOG_DENSITY,
@@ -80,6 +81,7 @@ import { readFlag } from '../../core/flags.js';
 import { warmMipmapPipelines } from '../mipmap-pipeline-warm.js';
 import { ChapterThresholdDirector, getOdysseyThresholdProfile } from './transitions/ChapterThresholdDirector.js';
 import { getChapterProfile } from './chapter-environments/shared/chapter-profile.js';
+import { pickByQualityTier } from './chapter-environments/shared/odyssey-quality-tier.js';
 import { applyOdysseyChapterMusic, releaseOdysseyBoardMusic } from '../../core/game-modes/odyssey-audio-policy.js';
 import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gltf-loader.js';
 import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
@@ -3564,7 +3566,10 @@ export class OdysseyBoardController {
                 try {
                     const boundary12 = this.presentationLayout?.chapterPositions?.[1];
                     if (Number.isFinite(boundary12)) {
-                        this.steamQuench = createSteamQuench();
+                        // The golden climb's decks per tier (each costs a full-screen noise pass).
+                        this.steamQuench = createSteamQuench({
+                            decks: pickByQualityTier(this.qualityName, STEAM_DECKS_BY_TIER),
+                        });
                         const at = getOdysseyPathPointAt(boundary12);
                         this.steamQuench.mesh.position.set(at.x, at.y, at.z);
                         this.steamQuench.mesh.visible = false; // gated in the update below

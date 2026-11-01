@@ -121,9 +121,22 @@ No new draws, materials or textures: it is the same one shell draw.
 ### Cost
 
 One full-screen draw as before; the decks add 18 value-noise lookups per steam pixel (about as
-many hash calls as the shell already did). Not measured: a GPU timing at the 30 fps cap swung
-0.8-4.6 ms in both arms (clock scaling), so it says nothing. A Lane A GPU split at p 0.054 and 0.0635
-would settle it.
+many hash calls as the shell already did).
+
+Measured on the RTX at full speed (Balanced, 2560x1440, High, two rounds, GPU time per frame):
+
+| p | before | the golden climb |
+|---|---|---|
+| 0.052-0.065 (the decks show) | 1.5-1.8 ms | 2.2-2.8 ms (+0.65-0.9) |
+| 0.067-0.070 (the exit murk) | 1.8 ms | 2.4-2.6 ms at first; 1.8 ms after the switch below |
+
+Two changes followed (same day):
+- **The decks only run where they can show.** A uniform switch (`uDecksOn`) skips their noise
+  while the steam is thin or has become the exit's murk, where they never showed. That gave back
+  the ~0.7 ms over p 0.066-0.09.
+- **Decks per quality tier** (`STEAM_DECKS_BY_TIER`): High 3, Medium 2 (the iGPU lane), Low none
+  (the vapour as it was, with its old highlight settings). The hue's later turn and the sparks
+  that stay embers are on every tier.
 
 ### Tried and dropped
 

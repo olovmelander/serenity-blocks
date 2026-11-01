@@ -6,6 +6,7 @@ import path from 'node:path';
 import * as THREE from 'three/webgpu';
 import { positionWorld } from 'three/tsl';
 import {
+    STEAM_DECKS_BY_TIER,
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_DARK_FRACTION,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
@@ -165,16 +166,26 @@ describe('steam quench material contract', () => {
         q.dispose();
     });
 
-    it('builds the shell (the golden climb\'s decks included) for WebGPU and WebGL2', () => {
-        const q = createSteamQuench();
-        [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]].forEach(([label, Builder]) => {
-            const out = build(Builder, q.mesh);
-            expect(out.thrown, `${label} ${out.thrown?.stack ?? ''}`).toBeUndefined();
-            expect(out.heard, label).toEqual([]);
-            expect(out.fragment, label).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
-            if (label === 'WGSL') expect(unassignedReads(out.fragment)).toEqual([]);
+    // Every tier's deck count (High 3, Medium 2, Low none): the decks sit in a uniform branch, so
+    // a value first built inside it would read as zero outside (unassignedReads catches that).
+    [...new Set(Object.values(STEAM_DECKS_BY_TIER))].forEach((decks) => {
+        it(`builds the shell with ${decks} golden-climb deck(s) for WebGPU and WebGL2`, () => {
+            const q = createSteamQuench({ decks });
+            [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]].forEach(([label, Builder]) => {
+                const out = build(Builder, q.mesh);
+                expect(out.thrown, `${label} ${out.thrown?.stack ?? ''}`).toBeUndefined();
+                expect(out.heard, label).toEqual([]);
+                expect(out.fragment, label).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
+                if (label === 'WGSL') expect(unassignedReads(out.fragment)).toEqual([]);
+            });
+            q.dispose();
         });
-        q.dispose();
+    });
+
+    it('keeps fewer decks on the lower tiers, none on Low', () => {
+        expect(STEAM_DECKS_BY_TIER.high).toBeGreaterThan(STEAM_DECKS_BY_TIER.medium);
+        expect(STEAM_DECKS_BY_TIER.medium).toBeGreaterThan(STEAM_DECKS_BY_TIER.low);
+        expect(STEAM_DECKS_BY_TIER.low).toBe(0);
     });
 
     it('is one draw with a sensible radius, and disposes what it made', () => {

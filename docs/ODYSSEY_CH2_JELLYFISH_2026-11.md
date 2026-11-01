@@ -126,4 +126,9 @@ One more draw call and one more pipeline (built with the world). 29 jellies x 80
 (~23,000 vertices, ~27,600 triangles). The shader places every vertex from the clock (three
 evaluations of the jelly's motion per strand vertex). The fragment cost is small: translucent,
 mostly a few pixels each. No textures. No CPU work per jelly under the water; above it, a check per
-jelly per frame until none in view still shows. Not timed on the GPU (captures only, kept cool).
+jelly per frame until none in view still shows.
+
+Timed on the RTX at full speed (2560x1440, High, the jellies' material switched off and on at the
+same stations, p 0.068-0.138, two rounds): 0 to +0.15 ms of GPU time per frame. One station showed
++1.7 ms once; a second run with the jellies switched off showed the same spike at another station,
+so it was other work on the GPU, not the jellies.
