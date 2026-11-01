@@ -136,6 +136,8 @@ Any scroll or travel brings it back down smoothly; reduced motion never starts t
 - The horizon haze band's flat ends showed as lighter panels; its ends are feathered now (from the
   street only its middle is ever seen, and the street views are unchanged).
 - Tried 80, 140 and 200 units: 80 is still among the tower walls, 200 shows the city's edge.
+- High and Medium rise. Low keeps the street view (with the 7 degree lift): its city is four tower
+  banks wide instead of six, and from up there the ground's dark edges showed.
 
 ![The rise, at 0.5, 4, 8, 12, 18 and 30 s of the arrival shot](images/odyssey-finale-2026-11-01/journey-end-rise.jpg)
 

@@ -1368,6 +1368,9 @@ export class OdysseyBoardController {
                 maxScrollVelocity: Number.parseFloat(readUrlValue('odysseyMaxScroll')) || undefined,
             },
         );
+        // The journey's end rise over the roofs (JOURNEY_END_RISE) needs the full-width city:
+        // Low builds four tower banks, and from up there its ground's edges showed.
+        this.cameraController.journeyEndRise = pickByQualityTier(this.qualityName, { high: true, low: false });
 
         // Optimization: Link camera LUT evaluator to node manager to avoid redundant spline calls
         if (this.nodeManager && this.cameraController) {

@@ -600,6 +600,8 @@ export const JOURNEY_END_LOOK = Object.freeze({ pitchDeg: 7, fovOffset: 4, band:
  * at the end of the rail) cranes up out of the canyon over the rooftops, so the journey drawn in
  * the sky has the open sky round it instead of the strip between the towers. `height` world units
  * along the stage's up, eased in over `seconds` of the shot; `pitchDeg` more look up once risen.
+ * The board turns it off on the Low tiers (`journeyEndRise = false`): their city is four tower
+ * banks wide, and from up there its ground's edges showed.
  */
 export const JOURNEY_END_RISE = Object.freeze({ height: 140, seconds: 18, pitchDeg: 8 });
 
@@ -2208,8 +2210,9 @@ export class OdysseyCameraController {
         // THE RISE (JOURNEY_END_RISE): only with every orb done, out of the canyon over the roofs.
         const endLook = this._journeyEndLookNow ?? 0;
         const rise = JOURNEY_END_RISE;
+        const riseOn = this.journeyEndRise === false ? 0 : 1;
         const riseT = THREE.MathUtils.clamp(this._arrivalTime / rise.seconds, 0, 1);
-        const riseShare = riseT * riseT * riseT * (riseT * (riseT * 6 - 15) + 10) * endLook * weight;
+        const riseShare = riseT * riseT * riseT * (riseT * (riseT * 6 - 15) + 10) * endLook * weight * riseOn;
         if (riseShare > 0) camPos.addScaledVector(axis, rise.height * riseShare);
 
         // Hero aim: the spire on the right third, a touch above it.
