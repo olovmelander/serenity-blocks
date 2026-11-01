@@ -181,11 +181,12 @@ export function createOdysseyDeer({
             const seen = clamp(vPaint.w, 0, 1);
             const tone = vLook.y;
             // The summer coat: a warm red-brown, a little redder or duller from one hind to the next;
-            // the neck, head and lower legs greyer; the rump patch, belly and insides buff; the
+            // the neck, head and lower legs greyer; the rump patch, belly and insides cream; the
             // hooves, nose and eyes near black.
             const coat = mix(vec3(0.20, 0.072, 0.026), vec3(0.27, 0.105, 0.04), tone);
             const greyCoat = mix(coat, vec3(0.115, 0.075, 0.05), grey.mul(0.8));
-            const buff = mix(greyCoat, vec3(0.55, 0.43, 0.27), pale);
+            // The rump patch (and the tail on it) a pale cream, the belly and chin toward it.
+            const buff = mix(greyCoat, vec3(0.66, 0.56, 0.39), pale);
             const albedo = mix(buff, vec3(0.018, 0.014, 0.012), dark).toVar();
             // Fur wraps the light round itself a little; the bake's occlusion darkens the creases.
             const ndl = clamp(dot(N, L).add(0.35).div(1.35), 0, 1);
