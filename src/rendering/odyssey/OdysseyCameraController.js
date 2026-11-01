@@ -606,6 +606,18 @@ export const JOURNEY_END_LOOK = Object.freeze({ pitchDeg: 7, fovOffset: 4, band:
 export const JOURNEY_END_RISE = Object.freeze({ height: 140, seconds: 18, pitchDeg: 8 });
 
 /**
+ * THE LOOK AROUND (2026-11-01; the owner: "When we move the mouse cursor to the sides in odyssey
+ * mode, can the camera also move so that we can look around a bit, it feels so static now drifting
+ * in the odyssey mode. We have this for almost all the themes also"). The themes' pointer parallax
+ * (themes/shared/camera-rig.js) on the map: the eye swings on a small arc round what it looks at,
+ * toward the cursor's side, eased so it never snaps. `x`/`y` are fractions of the screen's height
+ * at full deflection (the rig's unit: the same look at every distance and lens), `dampRate` its
+ * easing (s^-1). Off with reduced motion and in the free camera; the cursor over the map's panels
+ * leaves it where it was.
+ */
+export const LOOK_AROUND = Object.freeze({ x: 0.12, y: 0.07, dampRate: 2.4 });
+
+/**
  * 0..1: how far the journey's-end look up has come at `progress` (0 unless `complete`).
  * @param {number} progress
  * @param {number[]} chapterPositions [s1, ..., sN, 1]
@@ -1089,6 +1101,12 @@ export class OdysseyCameraController {
 
         // Breathing animation state
         this.breatheTime = 0;
+        // The look around (LOOK_AROUND): where the cursor asks for (-1..1, right / up) and the
+        // eased value, and the offset applied this frame (taken out again at the next update).
+        this._lookTarget = { x: 0, y: 0 };
+        this._look = { x: 0, y: 0 };
+        this._lookOffset = new THREE.Vector3();
+        this._lookApplied = false;
         this._breathOffset = new THREE.Vector3();
         // 0..1 envelope: reset whenever breathing is suspended (focus/zoom animations, portal,
         // free camera) and eased back in, so it never resumes at full amplitude in one frame.
@@ -1433,8 +1451,7 @@ export class OdysseyCameraController {
         const direction = Math.sign(clampedPosition - startPosition);
 
         const now = performance.now();
-        const fromPosition = this.camera.position.clone();
-        if (this._breathApplied) fromPosition.sub(this._breathOffset);
+        const fromPosition = this._restingPosition(new THREE.Vector3());
         this.pathTravel = {
             active: true,
             startTime: now,
@@ -1538,7 +1555,7 @@ export class OdysseyCameraController {
         this.animationStartTime = performance.now();
         this.animationDuration = duration;
 
-        this.animationStartPos.copy(this.camera.position);
+        this._restingPosition(this.animationStartPos);
         if (viewDir?.isVector3 && viewDir.lengthSq() > 1e-8) {
             this.animationEndPos.copy(nodePosition)
                 .addScaledVector(viewDir, -this.config.focusDistance)
@@ -1560,6 +1577,7 @@ export class OdysseyCameraController {
 
         if (duration <= 0) {
             this.camera.position.copy(this.animationEndPos);
+            this._forgetAppliedOffsets();
             this.lookAtTarget.copy(this.animationEndLookAt);
             this.camera.fov = this.animationEndFov;
             this.camera.updateProjectionMatrix();
@@ -1587,7 +1605,7 @@ export class OdysseyCameraController {
         this.animationStartTime = performance.now();
         this.animationDuration = duration;
 
-        this.animationStartPos.copy(this.camera.position);
+        this._restingPosition(this.animationStartPos);
 
         // Zoom very close to the position (almost inside it)
         const zoomOffset = new THREE.Vector3(0, 0, 1); // Very close
@@ -1635,7 +1653,7 @@ export class OdysseyCameraController {
         this.animationStartTime = performance.now();
         this.animationDuration = Math.max(1, durationMs);
 
-        const startPosition = this.camera.position.clone();
+        const startPosition = this._restingPosition(new THREE.Vector3());
         const direction = startPosition.clone().sub(targetPosition);
         if (direction.lengthSq() < 1e-6) {
             this.camera.getWorldDirection(direction);
@@ -1682,7 +1700,7 @@ export class OdysseyCameraController {
         }
 
         this._cancelActiveAnimation(false);
-        const startPosition = this.camera.position.clone();
+        const startPosition = this._restingPosition(new THREE.Vector3());
         const startLookAt = this.lookAtTarget.clone();
         const startDistance = Math.max(startPosition.distanceTo(targetPosition), 1);
         const approachDirection = startPosition.clone().sub(targetPosition);
@@ -1748,7 +1766,7 @@ export class OdysseyCameraController {
         this.animationStartTime = performance.now();
         this.animationDuration = duration;
 
-        this.animationStartPos.copy(this.camera.position);
+        this._restingPosition(this.animationStartPos);
 
         // Move camera closer along the look direction
         const direction = new THREE.Vector3();
@@ -1777,6 +1795,10 @@ export class OdysseyCameraController {
         if (this._breathApplied) {
             this.camera.position.sub(this._breathOffset);
             this._breathApplied = false;
+        }
+        if (this._lookApplied) {
+            this.camera.position.sub(this._lookOffset);
+            this._lookApplied = false;
         }
         // Desired view-axis roll for this frame, applied AFTER lookAt() (which would otherwise
         // rebuild the quaternion and discard any camera.rotation.z written before it). Set by
@@ -1815,6 +1837,7 @@ export class OdysseyCameraController {
 
         // Apply cinematic breathing effects
         this.applyBreathingMotion(deltaTime);
+        this.applyLookAround(deltaTime);
 
         // Keep the baseline framing synced to the OdysseyDirector camera profile.
         this.applyBaseFov(deltaTime, teleported);
@@ -1849,6 +1872,71 @@ export class OdysseyCameraController {
     applyFramingRoll() {
         const rollDeg = this._activeFraming?.rollDeg ?? 0;
         if (rollDeg) this.camera.rotateZ(THREE.MathUtils.degToRad(rollDeg));
+    }
+
+    /**
+     * Where the cursor is over the map (LOOK_AROUND), -1..1 each way: x to the right, y up.
+     * @param {number} x
+     * @param {number} y
+     */
+    setLookPointer(x, y) {
+        this._lookTarget.x = THREE.MathUtils.clamp(Number(x) || 0, -1, 1);
+        this._lookTarget.y = THREE.MathUtils.clamp(Number(y) || 0, -1, 1);
+    }
+
+    /**
+     * Swing the eye on a small arc round the look target toward the cursor (LOOK_AROUND). Applied
+     * after the follow, every animation and the breathing, and taken out again at the start of the
+     * next update, so nothing the camera works out from its pose ever sees it.
+     * @param {number} deltaTime seconds
+     */
+    applyLookAround(deltaTime = 0) {
+        if (this.mode === 'free' || this.prefersReducedMotion()) {
+            this._look.x = 0;
+            this._look.y = 0;
+            return;
+        }
+        const damp = 1 - Math.exp(-LOOK_AROUND.dampRate * Math.max(0, deltaTime));
+        this._look.x += (this._lookTarget.x - this._look.x) * damp;
+        this._look.y += (this._lookTarget.y - this._look.y) * damp;
+        if (Math.abs(this._look.x) < 1e-5 && Math.abs(this._look.y) < 1e-5) return;
+        const forward = this._breathForward.copy(this.lookAtTarget).sub(this.camera.position);
+        const distance = forward.length();
+        if (!(distance > 1e-4)) return;
+        forward.divideScalar(distance);
+        const right = this._breathRight.crossVectors(forward, this.followCameraUp || FREE_CAMERA_WORLD_UP);
+        if (right.lengthSq() < 1e-8) return;
+        right.normalize();
+        const up = this._breathUp.crossVectors(right, forward).normalize();
+        // One screen height at the look target, the rig's unit (camera-rig.js).
+        const screen = THREE.MathUtils.degToRad(this.camera.fov || 60) * distance;
+        this._lookOffset.set(0, 0, 0)
+            .addScaledVector(right, this._look.x * LOOK_AROUND.x * screen)
+            .addScaledVector(up, this._look.y * LOOK_AROUND.y * screen);
+        this.camera.position.add(this._lookOffset);
+        this._lookApplied = true;
+    }
+
+    /**
+     * The camera was placed outright (an instant focus, a direct follow): it no longer carries the
+     * breathing and look-around offsets, so the next update must not take them out of it.
+     */
+    _forgetAppliedOffsets() {
+        this._breathApplied = false;
+        this._lookApplied = false;
+    }
+
+    /**
+     * The camera's position without this frame's breathing and look-around offsets: where an
+     * animation starting now starts from (they are added again on top of it).
+     * @param {THREE.Vector3} out
+     * @returns {THREE.Vector3}
+     */
+    _restingPosition(out) {
+        out.copy(this.camera.position);
+        if (this._breathApplied) out.sub(this._breathOffset);
+        if (this._lookApplied) out.sub(this._lookOffset);
+        return out;
     }
 
     /** The game setting can reduce motion; the OS preference can always reduce it too. */
@@ -2943,6 +3031,7 @@ export class OdysseyCameraController {
 
         if (direct) {
             this.camera.position.copy(camPos);
+            this._forgetAppliedOffsets();
             this.lookAtTarget.copy(lookTarget);
             this.followCameraUp.copy(normal);
             this._appliedFallEyeOffset.copy(fallEyeOffset);
