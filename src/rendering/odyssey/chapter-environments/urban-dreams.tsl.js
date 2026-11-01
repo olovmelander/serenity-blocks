@@ -155,11 +155,14 @@ export function billboardStageVertical(center, sizeXY) {
 
 // ── Night-sky gradient dome (-100 backstop; must NOT bloom) ───────────────────────
 
-export function createSkyGradientTSL(uTime, uEnergy, { uReveal, uStorm } = {}) {
+export function createSkyGradientTSL(uTime, uEnergy, { uReveal, uStorm, uClear } = {}) {
     const uTimeNode = uTime ?? uniform(0);
     const uEnergyNode = uEnergy ?? uniform(0.45);
     const revealNode = uReveal ?? uniform(0);
     const stormNode = uStorm ?? uniform(0);
+    // The journey's end (0..1): the smog thins to wisps over a clear night, for the journey's
+    // constellation (urban-dreams.js).
+    const clearNode = uClear ?? uniform(0);
     const uOpacity = uniform(1.0);
 
     // 2026-10-20 NEON CITY (after Neon District's sky, neon-district-sky.js createSky): the sky
@@ -186,7 +189,9 @@ export function createSkyGradientTSL(uTime, uEnergy, { uReveal, uStorm } = {}) {
         const n1 = latticeNoise3(vec3(cuv.x.mul(1.1).add(drift), cuv.y.mul(1.1).add(drift.mul(0.6)), 4.2));
         const n2 = latticeNoise3(vec3(cuv.x.mul(3.1).sub(drift.mul(1.7)), cuv.y.mul(3.1).add(drift), 9.1));
         const body = n1.mul(0.62).add(n2.mul(0.38));
-        const cloud = smoothstep(0.34, 0.66, body);
+        // At the journey's end the smog thins from its gaps outward, to wisps over a clear night.
+        const clear = clearNode.toVar();
+        const cloud = smoothstep(clear.mul(0.3).add(0.34), clear.mul(0.24).add(0.66), body);
         const veil = smoothstep(0.03, 0.24, up);
         // The city lights the cloud bottoms: rose over one district, cyan over the next.
         const district = smoothstep(0.38, 0.62, latticeNoise3(vec3(cuv.x.mul(0.16), cuv.y.mul(0.16), 1.3)));
@@ -196,8 +201,11 @@ export function createSkyGradientTSL(uTime, uEnergy, { uReveal, uStorm } = {}) {
         const underlight = mix(vec3(0.09, 0.034, 0.13), tint.mul(0.12), 0.42)
             .mul(exp(up.mul(-1.9)).mul(1.6).add(0.12))
             .mul(billow)
-            .mul(revealNode.mul(0.25).add(1.0));
-        const gap = vec3(0.006, 0.005, 0.016);
+            .mul(revealNode.mul(0.25).add(1.0))
+            .mul(clear.mul(-0.45).add(1.0));
+        // The gaps: smog-dark, then a clear night, deep blue overhead.
+        const night = mix(vec3(0.010, 0.012, 0.03), vec3(0.003, 0.004, 0.014), smoothstep(0.1, 0.8, up));
+        const gap = mix(vec3(0.006, 0.005, 0.016), night, clear);
         const ceiling = mix(gap, underlight, cloud);
         // Sheet lightning inside the smog now and then (Neon District's storm): a patch of the
         // ceiling lit cold from within for a moment (resolveUrbanStorm drives it).

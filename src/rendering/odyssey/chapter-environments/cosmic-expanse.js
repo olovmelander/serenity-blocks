@@ -424,6 +424,12 @@ export const PLANET_WORLD_SEAT = Object.freeze({
     // about the line of sight.
     poleTilt: THREE.MathUtils.degToRad(18),
     poleRoll: THREE.MathUtils.degToRad(-14),
+    // NOT NEARER (2026-11-01, a flyby tried and left out): bringing the seat nearer along its line
+    // from the planetrise's rail point (shrunk to the same angle) let it sink out past the lower
+    // right before the hole's light comes up, but from chapter 5's lower eye a nearer giant shows
+    // over the Earth's limb before its rise (even at half the distance), and it comes inside the
+    // Earth's near disc (ORBIT_EARTH.nearRadius). Hiding it would need a deeper, faster rise; the
+    // owner asked for the slow one. tests/unit/odyssey-planetrise.test.js pins both.
 });
 
 /**

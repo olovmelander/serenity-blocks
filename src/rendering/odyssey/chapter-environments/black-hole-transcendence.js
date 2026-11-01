@@ -385,6 +385,16 @@ export function* buildBlackHoleTranscendenceEnvironmentSteps(options = {}) {
         lens.mesh.visible = false;
         distantHole.userData.face.add(lens.mesh);
         distantHole.userData.lens = lens;
+        // The plunge's band is the traced disk's own gas, drawn flat (the lens hands the hole to it
+        // at CH7_TRACED_HOLE): the old painted band's lanes and colours changed the look mid-dive.
+        const { diskPivot, disk: paintedDisk, uDiskFade } = distantHole.userData;
+        const band = lens.createBand({ uFade: uDiskFade });
+        band.mesh.visible = false;
+        diskPivot.remove(paintedDisk);
+        paintedDisk.geometry.dispose();
+        paintedDisk.material.dispose();
+        diskPivot.add(band.mesh);
+        distantHole.userData.disk = band.mesh;
     }
     group.add(distantHole);
     group.userData.distantHole = distantHole;
@@ -811,12 +821,16 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     if (tracer) {
         tracer.uniforms.reveal.value = band * traced;
         tracer.mesh.visible = !!hero.horizon?.visible && band * traced > 0.002;
-        if (tracer.mesh.visible) tracer.update(hero.diskPivot, delta, 1);
+        // The plunge's band reads the lens's frame and gas motion, so they keep turning after the
+        // hand-over.
+        if (tracer.mesh.visible || band * painted > 0.002) tracer.update(hero.diskPivot, delta, 1);
     }
     if (hero?.uDiskFade) hero.uDiskFade.value = band * painted;
     // With the traced hole the painted far-side arcs never draw: by the time it hands over they
-    // have faded (the image is a view from outside, below).
-    scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, band * imageFade * (tracer ? 0 : 1));
+    // have faded (the image is a view from outside, below). (Carrying them on past the hand-over,
+    // 2026-11-01, brought back a ruled, target-like halo that is not the traced gas.)
+    const arcs = band * imageFade * (tracer ? 0 : 1);
+    scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, arcs);
     scaleBridge(hero?.photonRing?.material?.uniforms?.uOpacity, painted);
     const {
         infallEmbers, corridorDust: dust, shards: shardMesh, lensingStarfield: stars,
@@ -832,7 +846,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     if (hero?.diskPivot) hero.diskPivot.visible = band > 0.002;
     if (hero?.disk) hero.disk.visible = band * painted > 0.002;
     if (infallEmbers) infallEmbers.visible = band * painted > 0.002;
-    hero?.foldArcs?.forEach((fold) => { fold.visible = band * imageFade * (tracer ? 0 : 1) > 0.002; });
+    hero?.foldArcs?.forEach((fold) => { fold.visible = arcs > 0.002; });
     if (hero?.photonRing) hero.photonRing.visible = painted > 0.002;
     if (dust) dust.visible = motifs > 0.002;
     if (shardMesh) shardMesh.visible = motifs > 0.002;

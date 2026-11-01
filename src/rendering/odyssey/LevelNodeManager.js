@@ -989,6 +989,31 @@ export class LevelNodeManager {
     }
 
     /**
+     * The journey's constellation chart (chapter 8's finale draws it in the sky): every orb in path
+     * order, its resting place on the path, its chapter's glow colour (linear RGB) and the player's
+     * progress on it.
+     * @returns {Array<{ id: number, position: { x: number, y: number, z: number },
+     *   colour: number[], completed: boolean, stars: number }>}
+     */
+    getJourneyChart() {
+        const colour = new THREE.Color();
+        return [...this.nodes.entries()]
+            .filter(([, node]) => Number.isFinite(node.pathPosition))
+            .sort((a, b) => a[1].pathPosition - b[1].pathPosition)
+            .map(([id, node]) => {
+                const seat = this.cachedBasePositions.get(id) ?? node.group.position;
+                colour.setHex(getOdysseyNodeChapterLook(node.config?.chapter).glow);
+                return {
+                    id,
+                    position: { x: seat.x, y: seat.y, z: seat.z },
+                    colour: [colour.r, colour.g, colour.b],
+                    completed: !!node.group.userData.completed,
+                    stars: node.group.userData.stars || 0,
+                };
+            });
+    }
+
+    /**
      * Path position (arc parameter, 0..1) of a level's node, or null if unknown.
      * @param {number} levelId
      * @returns {number|null}

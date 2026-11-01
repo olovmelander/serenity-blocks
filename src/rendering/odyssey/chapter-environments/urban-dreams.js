@@ -72,6 +72,9 @@ import {
     createHorizonHazeTSL,
 } from './urban-dreams.tsl.js';
 import { runChapterSteps } from './shared/chapter-build-steps.js';
+import { advanceJourneyDrawing, JOURNEY_CONSTELLATION } from './shared/odyssey-journey-constellation.js';
+import { createJourneyConstellation } from './shared/odyssey-journey-constellation.tsl.js';
+import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
 
 export const URBAN_DREAMS_CONFIG = {
     id: 8,
@@ -177,6 +180,7 @@ function createSkyGradient(uniforms, neon) {
     const { mesh } = createSkyGradientTSL(uniforms.uTime, uniforms.uEnergy, {
         uReveal: neon?.reveal,
         uStorm: neon?.storm,
+        uClear: uniforms.uClear,
     });
     return mesh;
 }
@@ -337,6 +341,8 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
         uDim: uniform(0),
         // Rain density (0..1): thins out over the finale resolve.
         uRainDensity: uniform(1),
+        // The journey's end (0..1): the smog parts over the city for the journey in the sky.
+        uClear: uniform(0),
     };
     group.userData.uniforms = uniforms;
 
@@ -385,6 +391,20 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     // ring wrapped the view axis. Rotated with the city, the horizon glow sits behind the
     // skyline where it silhouettes the towers.
     corridor.add(sky);
+    yield;
+
+    // THE JOURNEY IN THE SKY (2026-11-01, shared/odyssey-journey-constellation*.js): at the end of
+    // the rail the smog parts and every orb of the journey is a star over the city, joined in the
+    // order they were played. In the corridor, so it sits on the city's sky; after the dome, and
+    // before the horizon haze and the skyline, which veil its foot.
+    const constellation = createJourneyConstellation({ count: 60 });
+    // On the meshes, not the group: a group's renderOrder sorts its children as a group ahead of
+    // everything else, and the dome then painted over the stars.
+    constellation.group.children.forEach((child) => { child.renderOrder = -99; });
+    constellation.group.visible = false;
+    corridor.add(constellation.group);
+    group.userData.constellation = constellation;
+    group.userData.journeyDraw = { drawn: 0 };
     yield;
 
     // (The 420-u curtain-wall backdrop is retired from the live chapter: with the 2026-10
@@ -673,6 +693,26 @@ export function updateUrbanDreamsEnvironment(group, delta, time, camera, ...upda
             neon.sunVisible.value = (sunOpacity ? sunOpacity.value : 1) * afterHandover
                 * (CH8_RETROSUN_STAGE.revealFloor + easedReveal * (1 - CH8_RETROSUN_STAGE.revealFloor));
         }
+    }
+
+    // THE JOURNEY IN THE SKY: over the journey's last stretch (the manager's journeyEnd ramp) the
+    // smog parts, and once the eye has arrived the line draws itself through every orb's star.
+    const journeyEnd = Number.isFinite(group.userData.journeyEnd) ? group.userData.journeyEnd : 0;
+    if (uniforms?.uClear) uniforms.uClear.value = journeyEnd;
+    // ...and the rain, thinned by the resolve above, stops under the clearing sky.
+    if (uniforms?.uRainDensity) uniforms.uRainDensity.value *= 1 - journeyEnd;
+    const { constellation } = group.userData;
+    if (constellation) {
+        const chart = group.userData.journeyChart;
+        if (chart) constellation.setChart(chart);
+        const drawn = advanceJourneyDrawing(group.userData.journeyDraw, journeyEnd, delta, {
+            reducedMotion: prefersReducedMotion(),
+        });
+        const cu = constellation.uniforms;
+        cu.time.value = time;
+        cu.drawn.value = drawn;
+        cu.gain.value = THREE.MathUtils.smoothstep(journeyEnd, JOURNEY_CONSTELLATION.reset, 0.95);
+        constellation.group.visible = !!chart && cu.gain.value > 0.002;
     }
 
     // EXIT DIMMING (creative plan Transition Out): over the resolve (chapter-local 0.9→1,

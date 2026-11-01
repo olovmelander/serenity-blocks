@@ -1240,6 +1240,18 @@ export class ChapterEnvironmentManager {
         const start = end - span * JOURNEY_END_BAND;
         const journeyEnd = smoothstep01((progress - start) / Math.max(1e-5, end - start));
         env.group.userData.journeyEnd = journeyEnd;
+        // The journey in the sky (urban-dreams.js): every orb's place and progress, from the board.
+        env.group.userData.journeyChart = this._journeyChart ?? null;
+    }
+
+    /**
+     * The orbs for the journey's constellation (shared/odyssey-journey-constellation.js), in journey
+     * order: { id, position (world), colour ([r, g, b] 0..1), completed, stars }. The board sets it
+     * whenever the player's progress changes; the finale reads it at the journey's end.
+     * @param {ReadonlyArray<object>|null} chart
+     */
+    setJourneyChart(chart) {
+        this._journeyChart = Array.isArray(chart) ? chart : null;
     }
 
     /**
