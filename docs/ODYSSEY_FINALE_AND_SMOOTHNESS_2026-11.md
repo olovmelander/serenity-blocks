@@ -159,9 +159,12 @@ From orb 28's stop the orb sat at the top edge of the frame (ndc y 0.84), the ey
 face at it:
 - It is parked at chapter-local 0.125, between the face shot (out by 0.10) and the climb's lift
   (in from 0.17).
-- The lift now comes in from 0.07, as the face shot lets go, so orb 28 sits in the upper third
-  (0.37). The summit sits lower in the frame there, as through the rest of the climb.
-- Orb 27 was already framed (0.47) and is unchanged.
+- A small tilt up (`CHAPTER_5_SHOTS.ledge`, 13 deg) now comes in just before it and hands over to
+  the lift, so orb 28 sits in the upper half (0.45).
+- Orb 27's stop is unchanged. It parks at 0.112, just past the 4->5 seam, and keeps the geese's
+  crossing up the wall in view (`odyssey-act2-fade-out-of-view.test.js`).
+  - Bringing the whole lift in earlier did frame orb 28, but it tilted that view off the geese, so
+    the tilt starts after it.
 - `tests/unit/odyssey-ch5-climb-framing.test.js` pins orb 28 below 0.6; it failed at 0.85 on the
   old camera.
 

@@ -147,8 +147,8 @@ describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
     });
 
     it('leaves the 5->6 hand-off pose exactly as it was, and the climb shots after the face shot', () => {
-        // The face shot (2026-10-20, below) owns the lift-off; the lift picks up as it lets go
-        // (2026-11-01, so L28 is framed), and every shot is gone before the hand-off.
+        // The face shot (2026-10-20, below) owns the lift-off; L28's small tilt (2026-11-01) comes in
+        // after it, and every shot is gone before the hand-off.
         const climb = Object.entries(CHAPTER_5_SHOTS).filter(([name]) => name !== 'face').map(([, s]) => s);
         const firstIn = Math.min(...climb.map((shot) => shot.in[0]));
         const lastOut = Math.max(...climb.map((shot) => shot.out[1]));

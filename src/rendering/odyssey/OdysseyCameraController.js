@@ -535,11 +535,16 @@ export const CHAPTER_5_SHOTS = Object.freeze({
     face: Object.freeze({
         in: Object.freeze([-2, -1]), out: Object.freeze([0.03, 0.10]), pitchDeg: -16, yawDeg: 0, fovOffset: 6,
     }),
-    // (2026-11-01: in from 0.07, as the face shot lets go. It came in at 0.17, so L28, parked at
-    // 0.125 between the two, was framed by the base arc alone and sat on the top edge, the eye
-    // looking up the face at it: the open item since the 2026-10-20 overhaul.)
+    // L28'S STOP (2026-11-01). L28 parks at 0.125, between the face shot and the lift, and was framed
+    // by the base arc alone: the orb sat on the top edge, the eye looking up the face at it (the
+    // open item since the 2026-10-20 overhaul). A small tilt up comes in just past L27's stop (which
+    // parks at 0.112, past the 4->5 seam, and keeps the geese's crossing up the wall in view) and
+    // hands over to the lift: the orb sits in the upper half.
+    ledge: Object.freeze({
+        in: Object.freeze([0.114, 0.124]), out: Object.freeze([0.17, 0.25]), pitchDeg: 13, yawDeg: 0, fovOffset: 0,
+    }),
     lift: Object.freeze({
-        in: Object.freeze([0.07, 0.16]), out: Object.freeze([0.80, 0.90]), pitchDeg: 23, yawDeg: 0, fovOffset: 0,
+        in: Object.freeze([0.17, 0.25]), out: Object.freeze([0.80, 0.90]), pitchDeg: 23, yawDeg: 0, fovOffset: 0,
     }),
     lookOut: Object.freeze({
         in: Object.freeze([0.29, 0.36]), out: Object.freeze([0.41, 0.47]), pitchDeg: -4, yawDeg: 16, fovOffset: 4,

@@ -184,8 +184,8 @@ renderer TSL build, the URL parameter catalogue — see the lane report for the 
 - **L27/L28** (the first climb orbs) still look ~45 deg up the face: the orb underfoot is ~35 u
   straight above the eye on the near-vertical rail, so any further pitch-down loses it. A real
   fix moves the eye off the wall (an eye offset, not an aim), which is a camera-rig change.
-  *2026-11-01:* L28 was parked between the face shot and the climb's lift; the lift now comes in as
-  the face shot lets go and frames it in the upper third (L27 was already framed).
+  *2026-11-01:* L28 was parked between the face shot and the climb's lift; a small tilt now comes in as
+  L27's stop is passed and frames it in the upper half (L27's stop keeps the geese in view).
   [ODYSSEY_FINALE_AND_SMOOTHNESS_2026-11.md](ODYSSEY_FINALE_AND_SMOOTHNESS_2026-11.md) §6.
 - The summit is clean white with fluted streaks but still a smooth cone at the closest summit
   shots; snow texture at that range (wind crust, glints) would be the next step.
