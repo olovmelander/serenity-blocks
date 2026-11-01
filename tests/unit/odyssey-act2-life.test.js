@@ -111,19 +111,24 @@ function railDistance(pt, a, b) {
 }
 
 describe('the lowland flights', () => {
-    it('is one opaque, fog-exempt instanced draw, hidden until a flock is staged', () => {
+    it('is one opaque, fog-exempt material over an instanced draw per flock, hidden until staged', () => {
         const flights = createOdysseyFlights();
-        const { mesh } = flights;
-        expect(mesh.name).toBe('odyssey-flights');
-        expect(mesh.visible).toBe(false);
-        expect(mesh.material.transparent).toBe(false);
-        expect(mesh.material.depthWrite).toBe(true);
-        expect(mesh.material.fog).toBe(false);
-        expect(mesh.frustumCulled).toBe(false);
+        const { group, meshes, material } = flights;
+        expect(group.name).toBe('odyssey-flights');
+        expect(group.visible).toBe(false);
+        expect(material.transparent).toBe(false);
+        expect(material.depthWrite).toBe(true);
+        expect(material.fog).toBe(false);
+        meshes.forEach((mesh) => {
+            expect(mesh.material).toBe(material);
+            expect(mesh.visible).toBe(false);
+            expect(mesh.frustumCulled).toBe(false);
+            // The bird's position, normal, hinge weights and two plumages + two packed
+            // per-instance vec4s: inside WebGPU's 8 vertex buffers.
+            expect(Object.keys(mesh.geometry.attributes).length).toBeLessThanOrEqual(8);
+        });
         const total = ODYSSEY_FLIGHTS.reduce((n, f) => n + f.count, 0);
-        expect(mesh.geometry.instanceCount).toBe(total);
-        // position + aWing + two packed per-instance vec4s: well inside WebGPU's 8 vertex buffers.
-        expect(Object.keys(mesh.geometry.attributes).length).toBeLessThanOrEqual(4);
+        expect(meshes.reduce((n, m) => n + m.geometry.instanceCount, 0)).toBe(total);
         flights.dispose();
     });
 
@@ -139,11 +144,11 @@ describe('the lowland flights', () => {
             expect(d).toBeGreaterThan(c);
         });
         flights.update(9, 0.10);
-        expect(flights.mesh.visible).toBe(false);
+        expect(flights.group.visible).toBe(false);
         flights.update(9, 0.19);
-        expect(flights.mesh.visible).toBe(true);
+        expect(flights.group.visible).toBe(true);
         flights.update(9, 0.45);
-        expect(flights.mesh.visible).toBe(false);
+        expect(flights.group.visible).toBe(false);
         flights.dispose();
     });
 
@@ -176,7 +181,9 @@ describe('the lowland flights', () => {
             hazeColour: vec3(0.7, 0.8, 0.9),
             sunColour: uniform(new THREE.Color(1, 0.95, 0.9)),
         });
-        BACKENDS.forEach(([label, Builder]) => expectClean(build(Builder, flights.mesh), `flights ${label}`));
+        BACKENDS.forEach(([label, Builder]) => flights.meshes.forEach((mesh) => {
+            expectClean(build(Builder, mesh), `${mesh.name} ${label}`);
+        }));
         flights.dispose();
     });
 });

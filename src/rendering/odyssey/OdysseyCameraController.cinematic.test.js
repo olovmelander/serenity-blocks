@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { ARRIVAL_SHOT, OdysseyCameraController } from './OdysseyCameraController.js';
+import { ARRIVAL_SHOT, JOURNEY_END_RISE, OdysseyCameraController } from './OdysseyCameraController.js';
 import { getLevelRegistry } from '../../core/odyssey/LevelRegistry.js';
 import { getOdysseyPathCurve } from './path-utils.js';
 import { getCameraProfileForChapter } from './chapter-environments/shared/chapter-profile.js';
@@ -117,6 +117,40 @@ describe('OdysseyCameraController cinematic language (2026-10)', () => {
         controller.travelToPosition(0.98, 2000);
         controller.update(1 / 60);
         expect(camera.position.distanceTo(before)).toBeLessThan(2);
+    });
+
+    it('rises over the roofs at the end only once the whole journey is done, spire still framed', () => {
+        // THE RISE (JOURNEY_END_RISE): the arrival shot cranes up along the city's up.
+        const settle = (complete, rise = true) => {
+            const { controller, camera } = createRealPathController(1);
+            controller.setDirectorState({ camera: getCameraProfileForChapter(8) });
+            controller.journeyComplete = complete;
+            controller.journeyEndRise = rise;
+            controller.setCurrentPosition(1);
+            for (let i = 0; i < 60 * (ARRIVAL_SHOT.orbitSeconds + 4); i += 1) controller.update(1 / 60);
+            camera.updateMatrixWorld(true);
+            return { controller, camera };
+        };
+        const street = settle(false);
+        const done = settle(true);
+        const stage = done.controller._getStageFrame();
+        const up = stage.up.clone().normalize();
+        const lifted = done.camera.position.clone().sub(street.camera.position).dot(up);
+        expect(lifted).toBeGreaterThan(JOURNEY_END_RISE.height * 0.9);
+        expect(lifted).toBeLessThan(JOURNEY_END_RISE.height * 1.1);
+        // The Low tiers keep the street (their narrow city shows its edges from up there).
+        const low = settle(true, false);
+        expect(low.camera.position.clone().sub(street.camera.position).dot(up)).toBeLessThan(1);
+        // From up there the spire is still in the frame, a little right of centre.
+        const hero = done.controller._resolveArrivalHero(stage).clone().project(done.camera);
+        expect(hero.x).toBeGreaterThan(0.05);
+        expect(hero.x).toBeLessThan(0.6);
+        expect(Math.abs(hero.y)).toBeLessThan(0.9);
+        // ...and travel takes it back down without a jump.
+        const before = done.camera.position.clone();
+        done.controller.travelToPosition(0.98, 2000);
+        done.controller.update(1 / 60);
+        expect(done.camera.position.distanceTo(before)).toBeLessThan(2.5);
     });
 
     it('eases breathing back in after a focus zoom instead of resuming at full amplitude', () => {

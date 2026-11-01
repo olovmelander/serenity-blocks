@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three/webgpu';
 import {
     CH8_RETROSUN_STAGE,
+    SKYLINE_RISE_FADE,
     createUrbanDreamsEnvironment,
     resolveUrbanStorm,
     updateUrbanDreamsEnvironment,
@@ -41,6 +43,27 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
         const bridges = group.userData.gateBridge.getObjectByName('neon-skybridges');
         expect(bridges?.isInstancedMesh).toBe(true);
         expect(bridges.count).toBeGreaterThanOrEqual(2);
+    });
+
+    it("fades the skyline cards once the eye is over the roofs (the journey's end rise)", () => {
+        const group = createUrbanDreamsEnvironment();
+        group.updateMatrixWorld(true);
+        const { corridor, uniforms } = group.userData;
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.5, 6000);
+        const seat = (y) => {
+            camera.position.copy(corridor.localToWorld(new THREE.Vector3(14, y, -12)));
+            camera.updateMatrixWorld(true);
+            updateUrbanDreamsEnvironment(group, 0.016, 1.0, camera, 1.0);
+            return uniforms.uSkylineFade.value;
+        };
+        // From the street (the arrival's eye sits at ~14): the cards stand whole.
+        expect(seat(14)).toBe(1);
+        expect(seat(SKYLINE_RISE_FADE[0])).toBe(1);
+        // Over the roofs they are gone (their flat feet would show).
+        expect(seat(SKYLINE_RISE_FADE[1] + 20)).toBe(0);
+        const half = seat((SKYLINE_RISE_FADE[0] + SKYLINE_RISE_FADE[1]) / 2);
+        expect(half).toBeGreaterThan(0.2);
+        expect(half).toBeLessThan(0.8);
     });
 
     it('seats every skybridge between two inner towers, below the rail', () => {

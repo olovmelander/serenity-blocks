@@ -436,3 +436,12 @@ jellyfish: moon jellies, sea nettles and small deep lanterns, each beating and d
 slow loop by the clock, placed on the real rail camera, behind the 1->2 steam and seen through the
 surface after the breach by the same rules as the fish. One draw. Record, numbers and pictures:
 [docs/ODYSSEY_CH2_JELLYFISH_2026-11.md](ODYSSEY_CH2_JELLYFISH_2026-11.md).
+
+## 12. Fish modelled in Blender (2026-11-01)
+
+The four schools keep their paths, counts and colours, but the 11-triangle code-built hull is gone:
+the three schools are a jack (214 triangles) and the cruisers a tuna (301), both modelled in
+Blender (`scripts/blender/odyssey/odyssey_fish.py`), with smooth normals that bend with a real body
+wave (growing to the tail, the head yawing against it, the tuna stiffer). Still one draw, now in one
+pass. Record, numbers and pictures:
+[docs/ODYSSEY_BLENDER_FISH_2026-11.md](ODYSSEY_BLENDER_FISH_2026-11.md).
