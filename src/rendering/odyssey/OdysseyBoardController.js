@@ -4082,6 +4082,10 @@ export class OdysseyBoardController {
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        // The look around (LOOK_AROUND in the camera): a mouse over the map, not a pen or touch.
+        if ((!event.pointerType || event.pointerType === 'mouse') && !event.sourceCapabilities?.firesTouchEvents) {
+            this.cameraController?.setLookPointer?.(this.mouse.x, this.mouse.y);
+        }
 
         // Check for level node hover
         this.checkHover();
