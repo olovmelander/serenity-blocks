@@ -3669,7 +3669,8 @@ export class OdysseyBoardController {
                 }
                 // THE LOWLAND FLIGHTS — gulls over the surf, swallows over the meadows and a skein
                 // of geese across the massif (chapters 3-4, composition/odyssey-flights.js). Same
-                // pattern as the summit birds: one opaque instanced draw created here, so the
+                // pattern as the summit birds: one opaque instanced draw per flock (the Blender
+                // birds, all three on one material and so one pipeline) created here, so the
                 // board-presentation compile below builds it before the reveal; uniforms after.
                 // BISECT LEVER: ?odysseyNoFlights=1.
                 try {
@@ -3678,7 +3679,7 @@ export class OdysseyBoardController {
                             hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
                             sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
                         });
-                        this.scene.add(this.flights.mesh);
+                        this.scene.add(this.flights.group);
                     }
                 } catch (error) {
                     console.warn('[OdysseyBoard] flights unavailable (non-fatal):', error);
