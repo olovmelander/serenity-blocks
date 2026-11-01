@@ -559,6 +559,9 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyNoEagle', 'Removes the eagle thermalling off the massif in chapters 4 and 5.', {
         scope: 'Odyssey mountains, One World enabled',
     }),
+    toggle('odysseyNoDeer', 'Removes the red deer grazing the slope above the chapter 3 shore.', {
+        scope: 'Odyssey shore and meadows, One World enabled',
+    }),
     toggle('odysseyNoAirMotes', 'Removes the pollen, down and diamond dust in the air of chapters 3 to 5.', {
         scope: 'Odyssey Act II air, One World enabled',
     }),
