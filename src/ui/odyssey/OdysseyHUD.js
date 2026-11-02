@@ -18,12 +18,20 @@ import { ODYSSEY_CHARMS, ODYSSEY_STILL_AIR_MS } from '../../core/odyssey/odyssey
 import { ODYSSEY_CHARM_REFUSALS } from '../../core/odyssey/odyssey-charm-use.js';
 import { OdysseyCharmIconTray } from './odyssey-charm-icon-stage.js';
 import { OdysseyHudFit } from './odyssey-hud-fit.js';
+import { getInputMode } from '../keystone/input-mode.js';
 
 /** How long a refused press shows its reason under the tray, and the clock its bought seconds. */
 const CHARM_FLASH_MS = 1400;
 const CLOCK_FLASH_MS = 1200;
-/** The tray's caption when no charm has anything to say. */
+/** The tray's caption when no charm has anything to say (the tiles wear a pad's buttons). */
 const CHARM_CAPTION_HINT = 'Press 1–4 to use';
+const CHARM_CAPTION_PAD_HINT = 'Press a charm\'s button to use';
+const charmCaptionHint = () => (getInputMode() === 'gamepad' ? CHARM_CAPTION_PAD_HINT : CHARM_CAPTION_HINT);
+
+/** Esc on a keyboard, Menu (☰) on a controller: the glyphs follow the input (keystone.css). */
+const PAUSE_KEYS = '<kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>&#9776;</kbd>';
+const PAUSE_HINT = `${PAUSE_KEYS} Pause`;
+const RESUME_HINT = `Paused · ${PAUSE_KEYS} Resume`;
 
 const setText = (element, value) => {
     const text = String(value);
@@ -356,8 +364,13 @@ export class OdysseyHUD {
         this.charmsCaption = document.createElement('p');
         this.charmsCaption.className = 'charms-caption';
         this.charmsCaption.innerHTML = '<span class="charms-caption__name"></span>'
-            + `<span class="charms-caption__text">${CHARM_CAPTION_HINT}</span>`;
+            + `<span class="charms-caption__text">${charmCaptionHint()}</span>`;
         section.appendChild(this.charmsCaption);
+        // A controller picked up (or put down) mid-orb: the how-to line follows it.
+        if (!this.onInputMode && typeof window !== 'undefined' && window.addEventListener) {
+            this.onInputMode = () => this._renderCharmCaption();
+            window.addEventListener('sb:inputmode', this.onInputMode);
+        }
 
         // State changes are spoken once (used, armed, ended); the countdown is not.
         this.charmsLive = document.createElement('p');
@@ -459,7 +472,7 @@ export class OdysseyHUD {
             else if (this.charmView?.paused) said = { text: sentence(ODYSSEY_CHARM_REFUSALS.paused), tone: 'paused' };
         }
         const {
-            id = '', name = '', text = CHARM_CAPTION_HINT, tone = '',
+            id = '', name = '', text = charmCaptionHint(), tone = '',
         } = said || {};
         if (caption.dataset) {
             caption.dataset.charm = id;
@@ -546,7 +559,7 @@ export class OdysseyHUD {
     _createPauseHint() {
         this.pauseHint = document.createElement('p');
         this.pauseHint.className = 'odyssey-pause-hint';
-        this.pauseHint.innerHTML = '<kbd class="sb-kbd" data-key>Esc</kbd> Pause';
+        this.pauseHint.innerHTML = PAUSE_HINT;
         this.container.appendChild(this.pauseHint);
     }
 
@@ -708,9 +721,7 @@ export class OdysseyHUD {
         this.container.classList.toggle('is-paused', this.isPaused);
         this.duelPanel?.classList.toggle('is-paused', this.isPaused);
         this.opponentBoard?.setPaused(this.isPaused);
-        this.pauseHint.innerHTML = this.isPaused
-            ? 'Paused · <kbd class="sb-kbd" data-key>Esc</kbd> Resume'
-            : '<kbd class="sb-kbd" data-key>Esc</kbd> Pause';
+        this.pauseHint.innerHTML = this.isPaused ? RESUME_HINT : PAUSE_HINT;
     }
 
     /**
@@ -1174,6 +1185,8 @@ export class OdysseyHUD {
      * Destroy HUD and clean up.
      */
     destroy() {
+        if (this.onInputMode) window.removeEventListener?.('sb:inputmode', this.onInputMode);
+        this.onInputMode = null;
         this.charmFlashTimers?.forEach((timer) => clearTimeout(timer));
         this.charmFlashTimers?.clear();
         if (this.clockFlashTimer) clearTimeout(this.clockFlashTimer);

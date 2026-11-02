@@ -361,8 +361,9 @@ export const DEFAULT_SETTINGS = {
         hardDrop: 1,
         pause: 9,
     },
+    // View is the Hub's button in every mode (core/controller-layout.js); Y shows the hints.
     serenityGamepadBindings: {
-        toggleHub: 3,
+        toggleHub: 8,
         toggleBreathing: 2,
         randomTheme: 10,
         toggleFullscreen: 11,
@@ -370,7 +371,7 @@ export const DEFAULT_SETTINGS = {
         nextTrack: 5,
         volumeDown: 6,
         volumeUp: 7,
-        toggleControlHints: 8,
+        toggleControlHints: 3,
         openSettings: 9,
         previousBreathingTechnique: 12,
         nextBreathingTechnique: 13,

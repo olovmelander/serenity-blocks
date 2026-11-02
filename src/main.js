@@ -2192,6 +2192,13 @@ class SerenityBlocks {
         // Phase 5.4 replaces the global with per-player DAS state in GameState.
         window.gamepadController = this.gamepadController;
 
+        // The Hub tile (and the main menu's dock button, which clicks it) before the Hub has
+        // loaded: build it and open it. Once built, the Hub's own click handler toggles it.
+        document.getElementById?.('serenity-hub-icon')?.addEventListener?.('click', () => {
+            if (this.serenityHub) return;
+            this.openSerenityHub().catch((error) => console.warn('[Main] Could not open the Serenity Hub:', error));
+        });
+
         // Connect gamepad controller to modal manager
         this.modalManager.setGamepadController(this.gamepadController);
 
@@ -2286,6 +2293,19 @@ class SerenityBlocks {
 
         // this.startBackgroundScene(); // Moved to end of init
         this.applyEffectQuality(this.settingsManager.get().effectQuality);
+    }
+
+    /**
+     * Open the Serenity Hub, building it first if it has not loaded yet (it starts with the
+     * deferred services, a moment after the menu). The pad's View and the Hub tile reach it
+     * this way, so a press made before then is not lost.
+     * @returns {Promise<boolean>} whether the Hub is open
+     */
+    async openSerenityHub() {
+        const hub = this.serenityHub || (await this.initializeGlobalSerenityHub());
+        if (!hub || this.isCleaningUp) return false;
+        hub.show?.();
+        return hub.isOpen === true;
     }
 
     /**
@@ -4102,6 +4122,9 @@ class SerenityBlocks {
 
         // Check if GameModeManager has a running mode
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
+            // The Hub over a look around the tower (Infinity, an Odyssey tall well) is a menu
+            // over it, as Settings is: the camera goes home and the game stays paused.
+            this.gameModeManager.getCurrentMode().endExplorationForMenu?.();
             this.gameModeManager.pauseCurrentMode();
             return;
         }
@@ -4217,6 +4240,10 @@ class SerenityBlocks {
             console.log('[Main] Settings already open, just pausing game');
             // Just pause the game without showing modal again
             if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
+                // The gear and the pad's Start come this way (Settings shows first); a look
+                // around the tower ends as it does for Escape (openSettingsMenu), or the board
+                // went on animating the look under Settings.
+                this.gameModeManager.getCurrentMode().endExplorationForMenu?.();
                 this.gameModeManager.pauseCurrentMode();
                 return;
             }

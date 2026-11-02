@@ -194,6 +194,8 @@ export class JourneyReturnTransition {
         const root = this.document.createElement('div');
         root.className = 'journey-return-transition';
         root.setAttribute(WHEEL_LOCK_ATTRIBUTE, 'true');
+        // The pad's Start reads this as Escape's guard (gamepad-controller.js toggleSettings).
+        if (run.captureEscape) root.setAttribute('data-blocks-settings', '');
         root.style.cssText = `
             position: fixed;
             inset: 0;
@@ -577,6 +579,8 @@ export class JourneyReturnTransition {
         }
 
         run.finishing = true;
+        // Escape is released as the run finishes (onKeyDown); Start with it.
+        run.dom?.root?.removeAttribute?.('data-blocks-settings');
         if (run.frameId !== null) {
             this.cancelAnimationFrame(run.frameId);
             run.frameId = null;

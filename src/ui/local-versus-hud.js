@@ -234,7 +234,9 @@ export class LocalVersusHud {
                     <span class="lv-plate__name">
                         <span class="lv-plate__name-text">${escapeHtml(name)}</span>${teamChip}
                     </span>
-                    <span class="lv-plate__controls">${escapeHtml(versusControls(i, slot, this.settings))}</span>
+                    <span class="lv-plate__controls">${escapeHtml(versusControls(i, slot, this.settings, {
+        padConnected: this.padConnected(i),
+    }))}</span>
                 </span>
                 <span class="lv-plate__rank" hidden></span>
                 <span class="lv-plate__stat">
@@ -466,7 +468,9 @@ export class LocalVersusHud {
             const coach = this.doc.createElement('div');
             coach.className = 'lv-coach';
             coach.setAttribute('role', 'note');
-            coach.innerHTML = versusCoachRows(i, this.settings).map(([action, keys]) => {
+            coach.innerHTML = versusCoachRows(i, this.settings, {
+                padConnected: this.padConnected(i),
+            }).map(([action, keys]) => {
                 const caps = keys.filter(Boolean).map((k) => `<kbd>${escapeHtml(k)}</kbd>`).join('');
                 return `<span class="lv-coach__row"><span class="lv-coach__action">${action}</span>`
                     + `<span class="lv-coach__keys">${caps}</span></span>`;
@@ -479,6 +483,12 @@ export class LocalVersusHud {
             if (room > 0 && width > room) coach.style.setProperty('--lv-coach-fit', (room / width).toFixed(3));
         }
         this._coachTimer = setTimeout(() => this.hideCoach(), COACH_MS);
+    }
+
+    /** Whether seat `index`'s controller is connected (the pad drives that seat then). */
+    padConnected(index) {
+        const pad = globalThis.window?.gamepadController;
+        return Boolean(pad?.connected?.[index]);
     }
 
     hideCoach() {

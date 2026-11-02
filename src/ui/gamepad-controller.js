@@ -2,6 +2,14 @@
  * @fileoverview Gamepad Controller for Serenity Blocks
  * Handles Xbox controllers and other Bluetooth gamepads
  * Supports up to 4 controllers for local multiplayer
+ *
+ * One meaning per button, in every mode (docs/CONTROLLER_UX_2026-11.md): Menu (Start) is
+ * Settings and the pause sheet; View (Select) is the Serenity Hub (Serenity's `toggleHub`
+ * binding; Stillfall's View is its puzzle atlas); A chooses and B goes back in every menu; the
+ * D-pad and left stick move focus and repeat when held; LB / RB change tabs; the right stick
+ * scrolls a menu (in Infinity's play it looks around the tower). A Steam invite answers to A / B
+ * outside play. Panels over the board (Stillfall's atlas, a replay's bar, a spectator's spotlight,
+ * the Odyssey finale) take the pad first through setPanelControls.
  */
 
 import { performanceMonitor } from '../utils/performance-monitor.js';
@@ -60,6 +68,11 @@ const AXIS_MAP = {
     RIGHT_STICK_Y: 3,
 };
 
+/** What each standard-mapping button is called on screen (Xbox names; ☰ is Menu/Start). */
+const PAD_BUTTON_LABELS = Object.freeze([
+    'A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', '☰', 'L3', 'R3', '↑', '↓', '←', '→', 'Home',
+]);
+
 /** Buttons that play the game: pressed while looking around Infinity's tower, the view goes home. */
 const EXPLORATION_GAME_BUTTONS = Object.freeze([
     BUTTON_MAP.A, BUTTON_MAP.B, BUTTON_MAP.X, BUTTON_MAP.Y, BUTTON_MAP.LB, BUTTON_MAP.RB,
@@ -81,8 +94,12 @@ const DEFAULT_GAMEPAD_CONFIG = {
     pause: { type: 'button', index: BUTTON_MAP.START },
 };
 
+/**
+ * Serenity's pad shortcuts. Its `toggleHub` is the Hub's button in every mode (View unless
+ * rebound): the controller's one way to the Hub, as H is the keyboard's (docs/CONTROLLER_UX_2026-11.md).
+ */
 const DEFAULT_SERENITY_GAMEPAD_BINDINGS = {
-    toggleHub: BUTTON_MAP.Y,
+    toggleHub: BUTTON_MAP.SELECT,
     toggleBreathing: BUTTON_MAP.X,
     randomTheme: BUTTON_MAP.L_STICK,
     toggleFullscreen: BUTTON_MAP.R_STICK,
@@ -90,7 +107,7 @@ const DEFAULT_SERENITY_GAMEPAD_BINDINGS = {
     nextTrack: BUTTON_MAP.RB,
     volumeDown: BUTTON_MAP.LT,
     volumeUp: BUTTON_MAP.RT,
-    toggleControlHints: BUTTON_MAP.SELECT,
+    toggleControlHints: BUTTON_MAP.Y,
     openSettings: BUTTON_MAP.START,
     previousBreathingTechnique: BUTTON_MAP.D_UP,
     nextBreathingTechnique: BUTTON_MAP.D_DOWN,
@@ -101,6 +118,43 @@ const DEFAULT_SERENITY_GAMEPAD_BINDINGS = {
 };
 
 const GAMEPLAY_BINDING_ACTIONS = Object.freeze(Object.keys(DEFAULT_GAMEPAD_CONFIG));
+
+/** One Hub press from any route (play, a menu, the open Hub) toggles it once. */
+const HUB_TOGGLE_COOLDOWN_MS = 500;
+/** A menu's own buttons: a Hub binding on one of these leaves the menus their meaning (View opens it there). */
+const MENU_RESERVED_BUTTONS = new Set([
+    BUTTON_MAP.A, BUTTON_MAP.B, BUTTON_MAP.LB, BUTTON_MAP.RB, BUTTON_MAP.START,
+    BUTTON_MAP.D_UP, BUTTON_MAP.D_DOWN, BUTTON_MAP.D_LEFT, BUTTON_MAP.D_RIGHT,
+]);
+/** The right stick scrolls a menu this many px per poll at full tilt (the Hub's own rate). */
+const MENU_SCROLL_PX = 15;
+/** A surface marked with this attribute holds Start back from Settings (Escape's twin guard). */
+const SETTINGS_HOLD_SELECTOR = '[data-blocks-settings]';
+
+/** True when the element scrolls vertically (it overflows and its CSS lets it). */
+function scrollsVertically(element) {
+    if (!element || element.scrollHeight - element.clientHeight <= 1) return false;
+    const view = element.ownerDocument?.defaultView || (typeof window !== 'undefined' ? window : null);
+    const overflowY = view?.getComputedStyle?.(element)?.overflowY || '';
+    return overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay';
+}
+
+/** The first element inside `root` (itself excluded) that scrolls vertically, in document order. */
+function firstScrollableWithin(root) {
+    const all = root?.querySelectorAll?.('*') || [];
+    for (const element of all) {
+        if (scrollsVertically(element)) return element;
+    }
+    return null;
+}
+
+/** The newest Steam invite on screen (invite-toast.js), or null. */
+function getInviteToast() {
+    if (typeof document === 'undefined') return null;
+    const container = document.getElementById?.('invite-toast-container');
+    const toast = container?.lastElementChild;
+    return toast?.classList?.contains('invite-toast') ? toast : null;
+}
 
 function ownBindingsMatch(bindings, cached) {
     const snapshot = cached.values;
@@ -227,6 +281,8 @@ export class GamepadController {
         this.menuNavigationRepeatDelay = 420; // ms before repeat starts
         this.menuNavigationRepeatInterval = 180; // ms between repeats
         this.menuRepeat = [{}, {}, {}, {}];
+        // The open Hub's held directions (the menus' records are re-latched while it is up).
+        this.hubRepeat = [{}, {}, {}, {}];
 
         // Game mode selection state
         this.gameModeSelectionEnabled = false;
@@ -718,6 +774,10 @@ export class GamepadController {
                 markInputMode('gamepad');
             }
 
+            // A Steam invite answers to A (Join) and B (Decline) wherever the pad is not
+            // playing a falling-block game; it timed out unanswered on a controller.
+            if (this.processInviteToast(freshGamepad, slot)) continue;
+
             if (this.odysseyShowcaseControls?.process(freshGamepad, slot)) continue;
             // An orb's charms on spare buttons; the ordinary gameplay poll still runs this frame.
             this.odysseyCharmControls?.process(freshGamepad, slot);
@@ -813,6 +873,201 @@ export class GamepadController {
         return pressed;
     }
 
+    /**
+     * Whether the pad is playing a falling-block game now (its face buttons are moves): no
+     * menu, sheet, results screen or Hub owns it, and Serenity Mode (nothing falls) is not on.
+     */
+    isInLivePlay() {
+        if (this.gameModeSelectionEnabled || this.menuNavigationEnabled) return false;
+        if (this.serenityModeCallbacks?.isHubOpen?.() === true) return false;
+        if (typeof document === 'undefined') return false;
+        if (document.body?.classList?.contains('serenity-hub-open')) return false;
+        if (document.getElementById?.('game-over-modal')?.classList?.contains('visible')) return false;
+        if (this.getMenuSheet()) return false;
+        return !this.serenityShortcutsLive();
+    }
+
+    /**
+     * A Steam invite toast (invite-toast.js): A joins (or queues), B declines, on any pad,
+     * wherever the pad is not playing. In play those buttons stay the game's; the toast's
+     * glyphs then say ☰ (Settings opens over the game, and A and B answer there). The press
+     * that answers is latched, so it cannot also act on the menu or the game beneath.
+     * @returns {boolean} true when the press was the invite's
+     */
+    processInviteToast(gamepad, slot) {
+        const previous = this.previousStates[slot];
+        const accept = Boolean(gamepad.buttons[BUTTON_MAP.A]?.pressed);
+        const decline = Boolean(gamepad.buttons[BUTTON_MAP.B]?.pressed);
+        const acceptEdge = accept && !previous.inviteAccept;
+        const declineEdge = decline && !previous.inviteDecline;
+        previous.inviteAccept = accept;
+        previous.inviteDecline = decline;
+
+        const toast = getInviteToast();
+        if (!toast) return false;
+        const live = this.isInLivePlay();
+        const container = toast.parentElement;
+        const answers = live ? 'pause' : 'buttons';
+        if (container?.dataset && container.dataset.padAnswers !== answers) container.dataset.padAnswers = answers;
+        if (live || (!acceptEdge && !declineEdge)) return false;
+        if (!this.claimMenuAction(slot, 'invite')) return true;
+        this.latchAllHeld(gamepad, slot);
+        toast.querySelector(acceptEdge ? '.invite-toast-accept' : '.invite-toast-decline')?.click();
+        return true;
+    }
+
+    /** A button's on-screen name (A, LB, View, ☰...), for hints that follow the bindings. */
+    padButtonLabel(index) {
+        return PAD_BUTTON_LABELS[index] || `Button ${index}`;
+    }
+
+    /**
+     * The button that opens and closes the Serenity Hub in every mode: Serenity's Hub binding
+     * (View unless the player rebound it in Settings → Controls → Serenity).
+     * @returns {number}
+     */
+    getHubButton() {
+        const button = this.getSerenityGamepadBindings().toggleHub;
+        return Number.isInteger(button) ? button : BUTTON_MAP.SELECT;
+    }
+
+    /** The Hub's button in a menu: View when the binding is one of the menu's own buttons. */
+    getMenuHubButton() {
+        const button = this.getHubButton();
+        return MENU_RESERVED_BUTTONS.has(button) ? BUTTON_MAP.SELECT : button;
+    }
+
+    /** True when the button plays the game for this pad (custom bindings included). */
+    isGameplayButton(slot, button) {
+        const config = this.getGameplayBindingConfig(slot);
+        return GAMEPLAY_BINDING_ACTIONS.some((action) => config[action]?.index === button);
+    }
+
+    /**
+     * Open or close the Serenity Hub. Before the Hub has loaded (it starts with the deferred
+     * services, a moment after the menu) the app builds it and opens it, so the first press
+     * in the main menu is never lost. One toggle per HUB_TOGGLE_COOLDOWN_MS, whichever route.
+     * @returns {boolean} whether a toggle was made
+     */
+    toggleSerenityHub() {
+        if (!this.hubToggleReady()) return false;
+        this.hubToggledAt = performance.now();
+        const callbacks = this.serenityModeCallbacks;
+        if (typeof callbacks?.toggleHub === 'function') {
+            callbacks.toggleHub();
+            return true;
+        }
+        const app = typeof window !== 'undefined' ? window.serenityBlocks : null;
+        if (typeof app?.openSerenityHub === 'function') {
+            Promise.resolve(app.openSerenityHub()).catch((error) => {
+                console.warn('[Gamepad] Could not open the Serenity Hub:', error);
+            });
+            return true;
+        }
+        return false;
+    }
+
+    /** False for a moment after the Hub opened or closed: one press is one toggle. */
+    hubToggleReady() {
+        return performance.now() - (this.hubToggledAt ?? -Infinity) >= HUB_TOGGLE_COOLDOWN_MS;
+    }
+
+    /**
+     * The Hub's button in play, in every mode but Serenity (which reads its own bindings, and
+     * Stillfall, whose View is its puzzle atlas: stillfall-pad-list.js takes it first). A button
+     * the player bound to a game control plays that control instead.
+     */
+    processHubButton(gamepad, slot) {
+        const previous = this.previousStates[slot];
+        let button = this.getHubButton();
+        // A Hub binding that plays the game here (Y rotates outside Serenity) leaves View the Hub's.
+        if (this.isGameplayButton(slot, button)) button = BUTTON_MAP.SELECT;
+        const pressed = !this.isGameplayButton(slot, button) && Boolean(gamepad.buttons[button]?.pressed);
+        if (pressed && !previous.serenityToggleHub && this.toggleSerenityHub()) this.latchHubButtons(gamepad, slot);
+        previous.serenityToggleHub = pressed;
+    }
+
+    /**
+     * The Hub opened from this pad: what it holds now (a direction still held from play, the
+     * button that opened it) waits for its release before it acts in the Hub.
+     */
+    latchHubButtons(gamepad, slot) {
+        const previous = this.previousStates[slot];
+        const bindings = this.getSerenityGamepadBindings();
+        for (const action of Object.keys(bindings)) {
+            const stateKey = `serenity${action.charAt(0).toUpperCase()}${action.slice(1)}`;
+            previous[stateKey] = this.isSerenityButtonPressed(gamepad, bindings, action);
+        }
+        previous.serenityHubStart = this.isSerenityButtonPressed(gamepad, bindings, 'openSettings');
+        previous.serenityHub_up = previous.serenityPreviousBreathingTechnique
+            || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
+        previous.serenityHub_down = previous.serenityNextBreathingTechnique
+            || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
+        previous.serenityHub_left = previous.serenityNavigateLeft || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
+        previous.serenityHub_right = previous.serenityNavigateRight
+            || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
+        this.hubRepeat[slot] = {};
+    }
+
+    /**
+     * The Hub's button in a menu. Over Settings the Hub takes its place, as the sheet's own
+     * Serenity Hub button does: Settings closes and the Hub opens in one task, so no frame of
+     * play runs between them and the Hub never opens with Settings still under it. Over a
+     * multiplayer screen it does nothing (the keyboard's H does nothing there either).
+     */
+    processMenuHubButton(gamepad, slot, menuSheet = this.getMenuSheet()) {
+        const previous = this.previousStates[slot];
+        const pressed = Boolean(gamepad.buttons[this.getMenuHubButton()]?.pressed);
+        const fires = pressed && !previous.serenityToggleHub;
+        previous.serenityToggleHub = pressed;
+        if (!fires || menuSheet?.name === 'multiplayer' || !this.hubToggleReady()
+            || !this.claimMenuAction(slot, 'hub')) return;
+        if (menuSheet?.name === 'settings') {
+            const close = document.getElementById('close-settings');
+            if (!close) return;
+            close.click();
+        }
+        if (this.toggleSerenityHub()) this.latchHubButtons(gamepad, slot);
+    }
+
+    /**
+     * The right stick scrolls the menu: the scroll area holding the focused control, else the
+     * nearest one beside it (a chat log next to its field), else the sheet's first. Long text
+     * with nothing focusable in it (results tables, help, the URL parameters list) could not
+     * be read on a controller. The area is chosen once per push of the stick.
+     * @param {Gamepad} gamepad
+     * @param {Element|null} root the open sheet or menu
+     */
+    processMenuScroll(gamepad, root) {
+        const value = this.stickAxisValue(gamepad, AXIS_MAP.RIGHT_STICK_Y);
+        if (!value || !root) {
+            this.menuScrollTarget = null;
+            return false;
+        }
+        let target = this.menuScrollTarget;
+        if (!target?.isConnected || !root.contains(target)) {
+            target = this.findMenuScrollTarget(root);
+            this.menuScrollTarget = target;
+        }
+        if (!target) return false;
+        target.scrollTop = (Number(target.scrollTop) || 0) + value * MENU_SCROLL_PX;
+        return true;
+    }
+
+    /** @param {Element} root @returns {Element|null} */
+    findMenuScrollTarget(root) {
+        const active = typeof document !== 'undefined' ? document.activeElement : null;
+        let node = active && active !== document.body && root.contains(active) ? active : root;
+        while (node) {
+            if (scrollsVertically(node)) return node;
+            const beside = firstScrollableWithin(node);
+            if (beside) return beside;
+            if (node === root) break;
+            node = node.parentElement;
+        }
+        return null;
+    }
+
     setOdysseyShowcaseControls(callbacks) {
         const controls = createOdysseyShowcasePadControls(this, callbacks);
         this.odysseyShowcaseControls = controls;
@@ -884,9 +1139,11 @@ export class GamepadController {
      * @param {string} key previousStates flag (menuUp, gameModeDown...)
      * @param {boolean} pressed
      * @param {boolean} wasPressed
+     * @param {Array<Object>} [store] per-slot hold records (the open Hub keeps its own: the
+     *   poll re-latches the menu's every frame while the Hub is up)
      */
-    menuDirectionFires(slot, key, pressed, wasPressed) {
-        const holds = this.menuRepeat[slot] || (this.menuRepeat[slot] = {});
+    menuDirectionFires(slot, key, pressed, wasPressed, store = this.menuRepeat) {
+        const holds = store[slot] || (store[slot] = {});
         if (!pressed) {
             delete holds[key];
             return false;
@@ -1298,24 +1555,11 @@ export class GamepadController {
         }
         prevState.gameModeStart = startPressed;
 
-        // SELECT button - Toggle Serenity Hub (if available)
-        if (this.serenityModeActive && this.serenityModeCallbacks) {
-            const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
-            const wasSelectPressed = prevState.gameModeSelect_hub;
+        // View: the Serenity Hub (built on the first press if it has not loaded yet).
+        this.processMenuHubButton(gamepad, slot, null);
 
-            // Check cooldown to prevent double-triggering
-            const now = performance.now();
-            if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
-            const cooldownActive = now - this._serenitySelectCooldown < 500;
-
-            if (selectPressed && !wasSelectPressed && !cooldownActive) {
-                const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
-                console.log('[Gamepad] SELECT pressed in game mode selection - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
-                this.serenityModeCallbacks.toggleHub?.();
-                this._serenitySelectCooldown = now;
-            }
-            prevState.gameModeSelect_hub = selectPressed;
-        }
+        // The right stick scrolls the menu (a short window can cut the stage off).
+        this.processMenuScroll(gamepad, document.getElementById('start-modal'));
     }
 
     /**
@@ -1436,6 +1680,9 @@ export class GamepadController {
             return;
         }
 
+        // The right stick scrolls the open sheet (text and tables with nothing to focus).
+        this.processMenuScroll(gamepad, inputSheet || this.getMenuSheet()?.element || null);
+
         // D-pad Up / Left stick up - Navigate up
         if (fires('menuUp', upPressed, 'up')) {
             if (!(this.selectEditState.active
@@ -1518,24 +1765,8 @@ export class GamepadController {
         }
         prevState.menuStart = startPressed;
 
-        // SELECT button - Toggle Serenity Hub (if available)
-        if (this.serenityModeActive && this.serenityModeCallbacks) {
-            const selectPressed = gamepad.buttons[BUTTON_MAP.SELECT]?.pressed;
-            const wasSelectPressed = prevState.menuSelect_hub;
-
-            // Check cooldown to prevent double-triggering
-            const now = performance.now();
-            if (!this._serenitySelectCooldown) this._serenitySelectCooldown = 0;
-            const cooldownActive = now - this._serenitySelectCooldown < 500;
-
-            if (selectPressed && !wasSelectPressed && !cooldownActive) {
-                const hubIsOpen = this.serenityModeCallbacks.isHubOpen?.();
-                console.log('[Gamepad] SELECT pressed in menu navigation - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
-                this.serenityModeCallbacks.toggleHub?.();
-                this._serenitySelectCooldown = now;
-            }
-            prevState.menuSelect_hub = selectPressed;
-        }
+        // View: the Serenity Hub (over Settings it takes Settings' place).
+        this.processMenuHubButton(gamepad, slot);
     }
 
     /**
@@ -1725,6 +1956,15 @@ export class GamepadController {
         // Chapter arrivals focus a static heading for reading. Resolve its action
         // only when the player presses A, without moving idle reading focus.
         const readingFocus = sheet?.sheet.odyssey && !getSheetFocusables(sheet.element).includes(current);
+        // A multiplayer screen names no primary control: with nothing focused there (a host
+        // alone, whose Start is disabled; a spectator; a roster rebuilt under the focus) A
+        // pressed its first control, Leave. The first A only shows where focus is.
+        if (sheet?.name === 'multiplayer' && !sheet.element.contains(current)) {
+            const focusables = getSheetFocusables(sheet.element);
+            const primary = focusables.find((element) => element.matches?.('.sb-btn--primary, [autofocus]'));
+            (primary || focusables[0])?.focus({ preventScroll: false });
+            return;
+        }
         if (sheet && (!sheet.element.contains(current) || readingFocus)) {
             current = getSheetInitialFocus(sheet.sheet, sheet.element);
             current?.focus({ preventScroll: !sheet.sheet.odyssey });
@@ -1810,6 +2050,10 @@ export class GamepadController {
         } else {
             // Settings is closed, open it
             console.log('[Gamepad] Settings is closed, opening...');
+
+            // A passage that keeps Escape from Settings (the Odyssey's return to the map) keeps
+            // Start from it too: its pause sheet offered Back to map and Retry mid-return.
+            if (document.querySelector?.(SETTINGS_HOLD_SELECTOR)) return;
 
             // Prevent rapid toggling by adding a small delay flag
             if (this._toggleCooldown) {
@@ -2184,9 +2428,12 @@ export class GamepadController {
         }
 
         // In Serenity Mode its shortcuts (Hub, breathing, music...) run alongside game input;
-        // with the hub open, the early return above already gave it every button.
+        // with the hub open, the early return above already gave it every button. Everywhere
+        // else View (the Hub's binding) opens the Hub, as H does on the keyboard.
         if (this.serenityShortcutsLive()) {
             this.processSerenityModeInput(gamepad, slot);
+        } else if (slot === 0) {
+            this.processHubButton(gamepad, slot);
         }
 
         // Infinity's exploration (InfinityAscent): the right stick looks around the tower (a pull
@@ -2215,6 +2462,14 @@ export class GamepadController {
             }
             // R3 held keeps its old meaning in Infinity: the stick looks, play waits.
             if (held) return;
+        }
+
+        // R3 in play: the mode's overview (online versus: the scoreboard Tab shows).
+        if (slot === 0 && this.infoButtonHandler) {
+            const pressed = !this.isGameplayButton(slot, BUTTON_MAP.R_STICK)
+                && Boolean(gamepad.buttons[BUTTON_MAP.R_STICK]?.pressed);
+            if (pressed && !prevState.infoButton) this.infoButtonHandler();
+            prevState.infoButton = pressed;
         }
 
         if (slot === 0 && !this.serenityShortcutsLive()) this.processThemeStepInput(gamepad, slot);
@@ -2692,8 +2947,9 @@ export class GamepadController {
     }
 
     getSerenityGamepadBindings() {
-        const savedBindings = window.settingsManager?.get?.()?.serenityGamepadBindings
-            || window.settings?.serenityGamepadBindings
+        const app = typeof window !== 'undefined' ? window : null;
+        const savedBindings = app?.settingsManager?.get?.()?.serenityGamepadBindings
+            || app?.settings?.serenityGamepadBindings
             || null;
 
         const cached = this.serenityBindingCache;
@@ -2751,6 +3007,16 @@ export class GamepadController {
             if (pressed && !prevState[stateKey]) this.themeStepper(direction);
             prevState[stateKey] = pressed;
         }
+    }
+
+    /**
+     * R3 in play opens the mode's overview, as Tab does on the keyboard (online versus: the
+     * scoreboard). One handler at a time; null clears it. Infinity's R3 (a look around the
+     * tower) is its exploration, which does not use this.
+     * @param {(() => void)|null} handler
+     */
+    setInfoButtonHandler(handler) {
+        this.infoButtonHandler = typeof handler === 'function' ? handler : null;
     }
 
     /**
@@ -2820,17 +3086,10 @@ export class GamepadController {
             return pressed;
         };
 
-        const now = performance.now();
-        if (!this._serenityHubToggleCooldown) this._serenityHubToggleCooldown = 0;
-
+        // The Hub's button (View unless rebound) opens and closes it: one press, one toggle,
+        // whichever route saw it (play, a menu, the open Hub share the cooldown).
         const hubTogglePressed = buttonActive('toggleHub');
-        const hubToggleCooldownActive = now - this._serenityHubToggleCooldown < 500;
-        if (hubTogglePressed && !prevState.serenityToggleHub && !hubToggleCooldownActive) {
-            const hubIsOpen = callbacks.isHubOpen?.();
-            console.log('[Gamepad] Serenity hub toggle pressed - Hub is:', hubIsOpen ? 'OPEN' : 'CLOSED');
-            callbacks.toggleHub?.();
-            this._serenityHubToggleCooldown = now;
-        }
+        if (hubTogglePressed && !prevState.serenityToggleHub) this.toggleSerenityHub();
         prevState.serenityToggleHub = hubTogglePressed;
 
         onButtonPress('toggleBreathing', 'serenityToggleBreathing', () => {
@@ -2867,21 +3126,27 @@ export class GamepadController {
             }
         });
 
-        onButtonPress('previousBreathingTechnique', 'serenityPreviousBreathingTechnique', () => {
-            if (callbacks.isHubOpen?.()) {
-                callbacks.navigate?.('up');
-            } else {
-                callbacks.previousBreathingTechnique?.();
-            }
-        });
+        const hubOpen = callbacks.isHubOpen?.() === true;
+        // The Hub's four directions: the D-pad (its Serenity bindings) and the left stick.
+        const directions = [
+            ['up', buttonActive('previousBreathingTechnique') || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y)],
+            ['down', buttonActive('nextBreathingTechnique') || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y)],
+            ['left', buttonActive('navigateLeft') || this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X)],
+            ['right', buttonActive('navigateRight') || this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X)],
+        ];
 
-        onButtonPress('nextBreathingTechnique', 'serenityNextBreathingTechnique', () => {
-            if (callbacks.isHubOpen?.()) {
-                callbacks.navigate?.('down');
-            } else {
+        // D-pad up and down with the Hub closed: the breathing technique.
+        if (hubOpen) {
+            prevState.serenityPreviousBreathingTechnique = buttonActive('previousBreathingTechnique');
+            prevState.serenityNextBreathingTechnique = buttonActive('nextBreathingTechnique');
+        } else {
+            onButtonPress('previousBreathingTechnique', 'serenityPreviousBreathingTechnique', () => {
+                callbacks.previousBreathingTechnique?.();
+            });
+            onButtonPress('nextBreathingTechnique', 'serenityNextBreathingTechnique', () => {
                 callbacks.nextBreathingTechnique?.();
-            }
-        });
+            });
+        }
 
         if (buttonActive('volumeDown')) {
             callbacks.volumeDown?.();
@@ -2892,7 +3157,7 @@ export class GamepadController {
         }
 
         // Hub-specific controls (only when hub is open)
-        if (callbacks.isHubOpen?.()) {
+        if (hubOpen) {
             onButtonPress('confirmSelection', 'serenityConfirmSelection', () => {
                 callbacks.confirmSelection?.();
             });
@@ -2901,43 +3166,35 @@ export class GamepadController {
                 callbacks.closeHub?.();
             });
 
-            onButtonPress('navigateLeft', 'serenityNavigateLeft', () => {
-                callbacks.navigate?.('left');
-            });
-
-            onButtonPress('navigateRight', 'serenityNavigateRight', () => {
-                callbacks.navigate?.('right');
-            });
-
-            // D-Pad for navigation
-            const stickLeft = this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_X);
-            if (stickLeft && !prevState.serenityStickLeft) {
-                callbacks.navigate?.('left');
+            // Start (Settings' button) still reaches Settings: the Hub gives way to it, as
+            // Settings' own Serenity Hub button gives way to the Hub. It closes without
+            // resuming play, so no frame of play runs between the two. It used to do nothing.
+            const settingsButton = this.getSerenityGamepadBindings().openSettings;
+            const startPressed = Number.isInteger(settingsButton) && Boolean(gamepad.buttons[settingsButton]?.pressed);
+            if (startPressed && !prevState.serenityHubStart && callbacks.isHubOpen?.() === true) {
+                if (typeof callbacks.closeForSettings === 'function') callbacks.closeForSettings();
+                else callbacks.closeHub?.();
+                if (callbacks.isHubOpen?.() !== true) {
+                    this.hubToggledAt = performance.now();
+                    this.toggleSettings(slot);
+                }
             }
-            prevState.serenityStickLeft = stickLeft;
+            prevState.serenityHubStart = startPressed;
 
-            const stickRight = this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_X);
-            if (stickRight && !prevState.serenityStickRight) {
-                callbacks.navigate?.('right');
+            // The directions walk the Hub; held, they repeat as the menus do (a long theme
+            // grid took one press per card).
+            for (const [direction, pressed] of directions) {
+                const key = `serenityHub_${direction}`;
+                if (this.menuDirectionFires(slot, key, pressed, Boolean(prevState[key]), this.hubRepeat)) {
+                    callbacks.navigate?.(direction);
+                }
+                prevState[key] = pressed;
             }
-            prevState.serenityStickRight = stickRight;
-
-            const stickUp = this.isAxisNegative(gamepad, AXIS_MAP.LEFT_STICK_Y);
-            if (stickUp && !prevState.serenityStickUp) {
-                callbacks.navigate?.('up');
-            }
-            prevState.serenityStickUp = stickUp;
-
-            const stickDown = this.isAxisPositive(gamepad, AXIS_MAP.LEFT_STICK_Y);
-            if (stickDown && !prevState.serenityStickDown) {
-                callbacks.navigate?.('down');
-            }
-            prevState.serenityStickDown = stickDown;
 
             // Right stick for scrolling
-            const rightStickY = gamepad.axes[AXIS_MAP.RIGHT_STICK_Y];
-            if (Math.abs(rightStickY) > this.deadzone) {
-                callbacks.scrollContent?.(rightStickY * 15);
+            const rightStickY = this.stickAxisValue(gamepad, AXIS_MAP.RIGHT_STICK_Y);
+            if (rightStickY) {
+                callbacks.scrollContent?.(rightStickY * MENU_SCROLL_PX);
             }
             // A press that closes the Hub must not also reach the session behind it.
             prevState.serenitySessionPrimary = buttonActive('confirmSelection');
@@ -2963,8 +3220,10 @@ export class GamepadController {
             });
             prevState.serenityConfirmSelection = buttonActive('confirmSelection');
             prevState.serenityCloseHub = buttonActive('closeHub');
-            prevState.serenityNavigateLeft = buttonActive('navigateLeft');
-            prevState.serenityNavigateRight = buttonActive('navigateRight');
+            prevState.serenityHubStart = buttonActive('openSettings');
+            // A direction held as the Hub opens waits for its release there.
+            for (const [direction, pressed] of directions) prevState[`serenityHub_${direction}`] = pressed;
+            if (this.hubRepeat[slot] && Object.keys(this.hubRepeat[slot]).length) this.hubRepeat[slot] = {};
         }
     }
 

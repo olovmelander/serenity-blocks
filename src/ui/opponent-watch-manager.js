@@ -4,6 +4,8 @@ import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { escapeAttribute, sanitizeCssColor } from '../utils/dom-safety.js';
+import { createSpectatorPadControls } from './spectator-pad-controls.js';
+import { menuCoversGame } from './sheet-input.js';
 import {
     createOutCard, createStatusCard, showOutCard, showStatusCard,
 } from './keystone/out-card.js';
@@ -1004,6 +1006,24 @@ export class OpponentWatchManager {
             }
         }
         this._resizeSpotlight();
+    }
+
+    /**
+     * Spotlight the next (1) or previous (-1) board, in the grid's order: a controller's D-pad
+     * (a mini-board's click is mouse-only).
+     * @param {number} direction
+     * @returns {boolean} whether the spotlight moved
+     */
+    stepSpotlight(direction) {
+        const ids = [...this.playerBoards.keys()];
+        if (!this.spotlightMode || ids.length === 0 || !direction) return false;
+        const current = this._getPlayerId(this._resolveSpotlightPlayer());
+        const index = ids.indexOf(current);
+        const step = direction > 0 ? 1 : -1;
+        const next = index < 0 ? ids[0] : ids[(index + step + ids.length) % ids.length];
+        if (!next || next === current) return false;
+        this.setSpotlightPlayer(next);
+        return true;
     }
 
     /** The player object the spotlight should currently show (explicit pick, else a default). */
@@ -2231,6 +2251,8 @@ export class OpponentWatchManager {
      */
     destroy() {
         this.stopAnimationLoop();
+        this.spectatorPad?.dispose?.();
+        this.spectatorPad = null;
 
         if (this._themeUnsub) {
             try { this._themeUnsub(); } catch (e) { /* noop */ }
@@ -2303,9 +2325,19 @@ export class OpponentWatchManager {
  * @param {{ getPlayerColor?: (id: string) => string|undefined }} [hooks]
  *   getPlayerColor resolves a roster id to its assigned colour (fallback tint).
  */
-export function wireSpectatorSpotlight(watchManager, { getPlayerColor } = {}) {
+export function wireSpectatorSpotlight(watchManager, { getPlayerColor, gamepadController, isActive } = {}) {
     const spotlightCanvas = document.querySelector('#online-main-board .spectator-spotlight-canvas');
     if (!spotlightCanvas) return;
+    // A controller's D-pad left and right walk the spotlight (spectator-pad-controls.js).
+    if (typeof gamepadController?.setPanelControls === 'function') {
+        watchManager.spectatorPad?.dispose?.();
+        watchManager.spectatorPad = gamepadController.setPanelControls(createSpectatorPadControls({
+            isActive: () => watchManager.spotlightMode && (isActive?.() ?? true)
+                && !document.body?.classList?.contains('serenity-hub-open')
+                && !document.querySelector('.modal.visible') && !menuCoversGame(document),
+            step: (direction) => watchManager.stepSpotlight(direction),
+        }));
+    }
     const nameEl = document.querySelector('#online-main-board .spectator-spotlight-name');
     const fragsEl = document.querySelector('#online-main-board .spectator-spotlight-frags');
     const eyeEl = document.querySelector('#online-main-board .spectator-spotlight-eye');

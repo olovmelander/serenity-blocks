@@ -5,6 +5,7 @@ import { GamepadController } from '../../src/ui/gamepad-controller.js';
 
 const Y = 3;
 const RB = 5;
+const VIEW = 8;
 
 function pad() {
     return {
@@ -43,10 +44,10 @@ describe('Serenity pad shortcuts', () => {
         expect(callbacks.nextTrack).not.toHaveBeenCalled();
     });
 
-    it('work in Serenity Mode', () => {
+    it('work in Serenity Mode (View opens the Hub there as everywhere)', () => {
         const { controller, callbacks } = setup(new Set(['serenity-mode']));
         const gamepad = pad();
-        gamepad.buttons[Y].pressed = true;
+        gamepad.buttons[VIEW].pressed = true;
 
         controller.processGamepadInput(gamepad, 0);
 

@@ -980,6 +980,7 @@
                     <li><kbd class="sb-kbd" data-key>&uarr;</kbd><kbd class="sb-kbd" data-key>&darr;</kbd><kbd class="sb-kbd" data-pad>&#9650;&#9660;</kbd>Choose</li>
                     <li><kbd class="sb-kbd" data-key>Enter</kbd><kbd class="sb-kbd" data-pad>A</kbd>Play</li>
                     <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>&#9776;</kbd>Settings</li>
+                    <li class="sb-hints__pad-only"><kbd class="sb-kbd" data-pad>View</kbd>Serenity Hub</li>
                 </ul>
             </footer>
         </div>
@@ -1671,6 +1672,19 @@
                                     <h5>How rebinding works</h5>
                                     <p>Choose a set of controls, then a binding — click it or press Enter — and press the new key or button. A key or button that another action in the same set already uses swaps with it. Esc cancels; after ten seconds the binding stays as it was. In Local Versus a key both players have bound plays for Player 2.</p>
                                 </div>
+                                <div class="controls-helper-card" id="controls-controller-map">
+                                    <h5>On a controller, everywhere</h5>
+                                    <p class="controls-shortcuts">
+                                        <span>Settings · pause · back to the menu</span><span><kbd class="sb-kbd">&#9776;</kbd> Menu (Start)</span>
+                                        <span>Serenity Hub, in every mode</span><span><kbd class="sb-kbd">View</kbd> (Select) · in Stillfall: its puzzles</span>
+                                        <span>Move through any menu</span><span><kbd class="sb-kbd">D-pad</kbd> or left stick · hold to repeat</span>
+                                        <span>Choose · go back</span><span><kbd class="sb-kbd">A</kbd> · <kbd class="sb-kbd">B</kbd></span>
+                                        <span>Tabs (Settings, Hub, Records, chapters)</span><span><kbd class="sb-kbd">LB</kbd> <kbd class="sb-kbd">RB</kbd></span>
+                                        <span>Scroll a menu · look around the tower</span><span>Right stick (<kbd class="sb-kbd">R3</kbd> looks at once)</span>
+                                        <span>Replays</span><span><kbd class="sb-kbd">A</kbd> play/pause · <kbd class="sb-kbd">&larr;</kbd><kbd class="sb-kbd">&rarr;</kbd> seek · <kbd class="sb-kbd">LB</kbd><kbd class="sb-kbd">RB</kbd> speed · <kbd class="sb-kbd">B</kbd> stop</span>
+                                        <span>A Steam invite</span><span><kbd class="sb-kbd">A</kbd> join · <kbd class="sb-kbd">B</kbd> decline (in play, <kbd class="sb-kbd">&#9776;</kbd> first)</span>
+                                    </p>
+                                </div>
                                 <div class="controls-helper-card">
                                     <h5>Theme shortcuts</h5>
                                     <p class="controls-shortcuts">
@@ -1691,8 +1705,8 @@
                                 <h4 class="controls-section-title">Serenity on a gamepad</h4>
                                 <div class="settings-grid">
                                     <div class="setting setting--binding">
-                                        <label for="gamepad-serenity-toggleHub">Open or close the Hub</label>
-                                        <div id="gamepad-serenity-toggleHub" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
+                                        <label for="gamepad-serenity-toggleHub">Serenity Hub · every mode</label>
+                                        <div id="gamepad-serenity-toggleHub" class="gamepad-input key-input" tabindex="0">View (Select)</div>
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-serenity-toggleBreathing">Breathing guide</label>
@@ -1724,11 +1738,11 @@
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-serenity-toggleControlHints">Button hints</label>
-                                        <div id="gamepad-serenity-toggleControlHints" class="gamepad-input key-input" tabindex="0">Select (Share)</div>
+                                        <div id="gamepad-serenity-toggleControlHints" class="gamepad-input key-input" tabindex="0">Y (Triangle)</div>
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-serenity-openSettings">Settings</label>
-                                        <div id="gamepad-serenity-openSettings" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-serenity-openSettings" class="gamepad-input key-input" tabindex="0">Menu (Start)</div>
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-serenity-previousBreathingTechnique">Previous technique · up</label>
@@ -1940,7 +1954,7 @@
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-pause">Pause</label>
-                                        <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-pause" class="gamepad-input key-input" tabindex="0">Menu (Start)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
@@ -1981,7 +1995,7 @@
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-p2-pause">Pause</label>
-                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-p2-pause" class="gamepad-input key-input" tabindex="0">Menu (Start)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
@@ -2022,7 +2036,7 @@
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-p3-pause">Pause</label>
-                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-p3-pause" class="gamepad-input key-input" tabindex="0">Menu (Start)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">
@@ -2063,7 +2077,7 @@
                                     </div>
                                     <div class="setting setting--binding">
                                         <label for="gamepad-p4-pause">Pause</label>
-                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">Start (Options)</div>
+                                        <div id="gamepad-p4-pause" class="gamepad-input key-input" tabindex="0">Menu (Start)</div>
                                     </div>
                                 </div>
                                 <div class="controls-subtab-actions">

@@ -5,6 +5,7 @@ import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
 import { ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds } from '../odyssey/odyssey-progress-schema.js';
 import { resolveOwnedMusicPreference } from '../progression/music-preference.js';
 import { mergeStatisticsSnapshots } from '../progression/score-statistics.js';
+import { CONTROLLER_LAYOUT_VERSION, migrateSerenityPadLayout } from '../controller-layout.js';
 
 const CLOUD_FILES = {
     MANIFEST: 'cloud_manifest.json',
@@ -49,6 +50,8 @@ const CLOUD_KEYBIND_KEYS = [
     'player2KeyBindings',
     'serenityKeyBindings',
     'serenityGamepadBindings',
+    // Which pad layout serenityGamepadBindings is in (core/controller-layout.js).
+    'controllerLayoutVersion',
 ];
 
 // The unlocks, Odyssey, score and stats uploads first merge the remote copy, so a
@@ -706,10 +709,12 @@ export class SteamCloudSyncManager {
                 ...current.serenityKeyBindings,
                 ...(keybinds.serenityKeyBindings || {}),
             },
+            // A copy from a device that predates View as the Hub's button takes its layout here.
             serenityGamepadBindings: {
                 ...current.serenityGamepadBindings,
-                ...(keybinds.serenityGamepadBindings || {}),
+                ...migrateSerenityPadLayout(keybinds.serenityGamepadBindings, keybinds.controllerLayoutVersion),
             },
+            controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
         };
         this.settingsManager.update(merged, true);
         this.settingsManager.save({ emitEvent: false });

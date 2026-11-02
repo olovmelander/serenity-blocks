@@ -54,7 +54,7 @@ const keycap = (label, kind = '') => `<kbd class="sb-kbd"${kind ? ` data-${kind}
 
 /** Serenity's default bindings; the player's own (settings) are laid over them. */
 const DEFAULT_PAD_BINDINGS = Object.freeze({
-    toggleHub: 3,
+    toggleHub: 8,
     toggleBreathing: 2,
     randomTheme: 10,
     toggleFullscreen: 11,
@@ -62,7 +62,7 @@ const DEFAULT_PAD_BINDINGS = Object.freeze({
     nextTrack: 5,
     volumeDown: 6,
     volumeUp: 7,
-    toggleControlHints: 8,
+    toggleControlHints: 3,
     openSettings: 9,
     previousBreathingTechnique: 12,
     nextBreathingTechnique: 13,
@@ -83,8 +83,8 @@ const PAD_BUTTON_NAMES = Object.freeze({
     5: 'RB',
     6: 'LT',
     7: 'RT',
-    8: 'Select',
-    9: 'Start',
+    8: 'View',
+    9: '☰',
     10: 'L3',
     11: 'R3',
     12: 'D-Up',
@@ -1060,6 +1060,8 @@ export class SerenityHub {
         this.gamepadCallbacks = {
             toggleHub: () => this.toggle(),
             closeHub: () => { if (!this.closeActiveCollectionDetails()) this.hide(); },
+            // Start with the Hub open: it gives way to Settings without resuming play between.
+            closeForSettings: () => this.hide({ resumeGameplay: false }),
             isHubOpen: () => this.isOpen,
 
             // Tab navigation (LB / RB)
@@ -1200,7 +1202,7 @@ export class SerenityHub {
     }
 
     /**
-     * Show or hide the controls overlay (/ on a keyboard, Select on a pad). It lists the
+     * Show or hide the controls overlay (/ on a keyboard, Y on a pad). It lists the
      * player's own bindings as Keystone keycaps and steps away by itself after ten seconds.
      */
     toggleButtonHints() {
@@ -1231,7 +1233,7 @@ export class SerenityHub {
             [[padName('volumeDown'), padName('volumeUp')], 'Music volume'],
             [[padName('toggleHub')], 'Open the hub (drift, rest)'],
             [[padName('toggleFullscreen')], 'Full screen'],
-            [[padName('openSettings')], 'Settings'],
+            [[padName('openSettings')], 'Settings (and back to the menu)'],
         ] : [
             [[keyName('previousTheme'), keyName('nextTheme')], 'Change theme'],
             [[keyName('randomTheme')], 'Random theme'],
@@ -1251,7 +1253,8 @@ export class SerenityHub {
             [[padName('confirmSelection')], 'Choose'],
             [[padName('previousTrack'), padName('nextTrack')], 'Switch tabs'],
             [['R-stick'], 'Scroll'],
-            [[padName('closeHub')], 'Close the hub'],
+            [[padName('closeHub'), padName('toggleHub')], 'Close the hub'],
+            [[padName('openSettings')], 'Settings'],
         ] : [
             [['&larr;', '&rarr;'], 'Switch tabs'],
             [['Tab'], 'Move between controls'],

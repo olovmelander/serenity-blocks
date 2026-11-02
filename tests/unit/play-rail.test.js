@@ -143,7 +143,8 @@ describe('play rail', () => {
         expect(gear.getAttribute('aria-label')).toBe('Settings');
         expect(labelText(hub)).toContain('Serenity Hub');
         expect(labelText(hub)).toContain('>H<');
-        // Outside Serenity the pad reaches the Hub through Settings, not Y.
+        // View opens the Hub in every mode (Y plays the game outside Serenity).
+        expect(labelText(hub)).toContain('>View<');
         expect(labelText(hub)).not.toContain('>Y<');
         expect(rail.dataset.mode).toBe('single');
     });
@@ -153,8 +154,26 @@ describe('play rail', () => {
         const [hub, gear] = (await install()).children;
 
         expect(labelText(hub)).toContain('>H<');
-        expect(labelText(hub)).toContain('>Y<');
+        expect(labelText(hub)).toContain('>View<');
         expect(labelText(gear)).not.toContain('Esc');
+    });
+
+    it('in Stillfall, names no pad Hub button (View is its puzzle atlas there)', async () => {
+        setup('stillfall');
+        const [hub] = (await install()).children;
+
+        expect(labelText(hub)).toContain('>H<');
+        expect(labelText(hub)).not.toContain('>View<');
+    });
+
+    it('falls back to View when an old Hub binding plays the game (Y rotates outside Serenity)', async () => {
+        setup('single', {
+            settings: { serenityGamepadBindings: { toggleHub: 3 }, gamepadBindings: { rotateLeft: 3 } },
+        });
+        const [hub] = (await install()).children;
+
+        expect(labelText(hub)).toContain('>View<');
+        expect(labelText(hub)).not.toContain('>Y<');
     });
 
     it('names the rebound Hub key', async () => {

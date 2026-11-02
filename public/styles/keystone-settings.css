@@ -1046,6 +1046,11 @@
     overflow-wrap: normal;
 }
 
+/* The controller map's right column is a sentence: it wraps rather than widening the card. */
+#settings-modal #controls-controller-map .controls-shortcuts {
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+}
+
 #settings-modal .controls-shortcuts .sb-kbd {
     min-width: 24px;
     height: 24px;
