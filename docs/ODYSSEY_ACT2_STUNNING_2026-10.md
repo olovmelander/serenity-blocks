@@ -987,3 +987,122 @@ the shade plate keeps the scatter's colour: its mean is the same within a few pe
 
 **Tests** (`world/odyssey-forest-greens.test.js`): the names, only the green broadleaf touched,
 crowns stay green and vary, the mosaic's mean near the lime. The URL catalogue lists the lever.
+
+# The water round the island (2026-11-02)
+
+Olov chose two water items from the lead's list:
+
+- *"Real water for the lake. It would get the same treatment as the swans' pond: reflections of the
+  sky and clouds, a turquoise-to-blue depth colour, and a soft shoreline instead of a hard dark
+  edge."*
+- *"Depth colour around all the coasts. The same shallow-to-deep shading around the rest of the
+  island and the small island to the east, so the whole sea stops looking milky and flat"*, with
+  *"water that shades from turquoise in the shallows to deep blue further out, with a soft white
+  line of foam."*
+
+Both are seen from the top of the climb (L32-L34, p 0.60-0.70). The lake is at the bottom of the
+L33 frame and fills it when the player looks down with the mouse (look-around, 9 degrees).
+
+![Before (left) and after (right), the player looking down: p 0.60, 0.645, 0.653 and 0.66](images/odyssey-water-2026-11-02/lake-and-coasts-before-after.jpg)
+
+![Close, before and after: the lake, the island's east coast, the east isle](images/odyssey-water-2026-11-02/lake-coast-isle-close.jpg)
+
+## §19. The north lake, real water (2026-11-02)
+
+**Before.** A painted disc: a depth tint, a sky-coloured graze and one broad analytic glint. From
+the climb it read as one flat blue patch with a pale band and a hard edge at the bank.
+
+**Now it is the island's one water** (the sea's and the tarn's shared terms, with lake settings in
+`LAKE_WATER`, `world/odyssey-water-looks.js`):
+
+- **The sky and the clouds in it.** The reflected ray takes the sea's stepped sky wash and the
+  cloud masses the CPU picks (the lake's level joined the sea's and the tarn's in the pick, so
+  the masses over the lake are in it). There is no land march: from the climb the reflected rays
+  rise 30-50 degrees and clear the low banks within a few units, so a march would buy a hairline at
+  the far shore for its cost. The summit is never painted in (§17).
+- **Its own pigment** (`LAKE_RAMP`), by the real depth of the drawn bed (macro + relief, as
+  before): turquoise for the first ~3 u, teal to ~10 u (the arms), then blue, and a deep blue in
+  the main basin. It is bluer than the tarn's glacial jade and greener than the sea. The ramp
+  keeps the waters' four flat plates.
+- **A soft shore.** The lake is a blended film now, like the sea. It thins to nothing over the last
+  1.6 u of depth, or three pixels' worth from afar (the depth's own screen footprint), with a pale
+  wet line on the thinnest film. The bank shows through, so there is no drawn edge: the depth
+  buffer still cuts the discs where the carve's rims rise through them, but the film is already
+  clear there.
+- **Ripple and wind.** The sea's ripple, calmed, and the wind's gusts (cat's paws mirror less sky).
+  The fine ripple is finer than a pixel from the climb (the detail bake has no mips) and speckled
+  the clouds in the water, so it fades from 300 to 900 u. A broad, slow undulation (the same bake
+  read ~10x coarser, drifting downwind) bends the reflection instead: the clouds' edges and the
+  sky's plates waver gently.
+- **The light.** The sea's sun core, sun road and glitter, over the baked sun visibility. The land
+  aerial stays (an inland surface hazes like its banks).
+
+**What it looks like.** A turquoise rim, teal arms and a deep blue middle, with the big cumulus
+over the lake standing pale in it. The sky's share is 0.24: higher, and those clouds turned the
+west arm milky.
+
+The `?lakeTint=` review lever chose between the painted lake's six palettes. It is retired with
+them (the board, the world playground and both URL catalogues).
+
+## §20. The sea from above: depth colour round every coast (2026-11-02)
+
+**Why the sea read milky.** The sea already had its depth ramp (turquoise over the sand to a deep
+teal-blue, §6 of the water pass). From the climb it was hidden by the **horizon dissolve**: the sea
+converges on a pale horizon colour by range alone, 60-80% by 1-2 km. That is right for an eye
+looking along the water. But from the climb the sea 1-2 km off lies 20-40 degrees below the eye,
+and it took the same pale wash: the whole sea one milky blue, the coasts' colour gone. The aerial
+haze (`applyAerial`, with its thinner air above) was a smaller share and is kept.
+
+**The dissolve follows the view's angle** (`SEA_HORIZON_DOWN`). It starts to let go where the eye
+looks down more steeply than ~3 degrees and is gone by ~14. The shore orbs look along the water
+at under ~3 degrees wherever the dissolve is strong, so their sea is unchanged. The far sea from
+the climb still meets the haze at the horizon. Now the climb sees turquoise shallows, teal and deep
+blue round the whole island, and round the east isle its shallow terrace inside the surf.
+
+**The reflection from above.** Where the eye looks down on far water, the reflection and its
+fresnel share ride the swell and only 5% of the ripple. The full ripple is finer than a pixel
+there and turned the clouds in the sea into speckle and grain. The shore orbs (under the gate) are
+unchanged.
+
+**A soft surf line from afar** (`SEA_SURF`). The swash front lives in the last 0.75 m of depth,
+under a pixel from the climb, and the foam rings fade to their faint mean with range. So a coast
+from above had no white line. Once a pixel spans more than ~0.3 m of depth, a soft line takes over
+on the waterline:
+
+- about three pixels wide, measured in the depth's own screen footprint, so it keeps its width at
+  any range and slope;
+- it swells as the swash runs up and is broken along the coast by a slow drifting field;
+- it reaches a pixel over the dry side (the opacity follows the foam), so the coast shades into
+  the sand;
+- far off, where one pixel spans the whole surf zone (2-8 m of depth), it thins to 40%. The east
+  isle is 3.5 km off: at full strength it read as a white outline.
+
+**The north beach.** The depth colour reads the real seabed (the macro and relief plates), so the
+land helper's gently shelving north beach gets its turquoise shallows and its surf line with no
+change here.
+
+**Chapter 2 is untouched.** Every change is inside the sea's topside branch (a uniform branch on
+`uSubmerged`); the underside and its root terms are as they were (checked at p 0.07, 0.09, 0.12).
+
+## Checks and cost (§19-§20)
+
+- **Stations** (30 fps, PNG): the climb p 0.55-0.70, the same with the player looking down
+  (p 0.58-0.68), the shore orbs p 0.15-0.21, chapter 4 and early 5 (p 0.25-0.50, no sea in frame,
+  unchanged), chapter 2 p 0.07-0.12 (unchanged). High and Low tiers. Console logs clean.
+- **Tests:**
+  - `world/odyssey-water-looks.test.js` holds the CPU twins of the new terms: both waters' depth
+    colour darkens and turns bluer with depth and never back; the lake's plates step at ~3, 10
+    and 22 u; the dissolve stays whole along the water and is gone looking down; the surf line
+    lies only on the waterline, keeps its pixel width, leaves the near shore to the swash front
+    and thins far off; the lake's film is clear at the waterline; no NaN for any depth or pixel
+    footprint.
+  - `tests/unit/odyssey-water-shaders.test.js` builds the lake and the sea on WGSL and GLSL, on
+    both tiers: no throw, nothing said, no unassigned var reads.
+- **Cost** (not timed at full speed; the owner keeps the GPU on capped captures):
+  - The lake's pixels now pay the sea's terms: two ripple fetches, a gust fetch, one swell fetch,
+    the cloud trace on the high tier (up to 12 ellipsoids, shared with the sea's pick) and two bed
+    fetches. They had two fetches before. The lake is only seen from the climb; through chapters
+    3-4 it is in frame behind the massif, where the depth test rejects it before it shades (it
+    writes no depth and has no discard).
+  - The sea adds one fetch (the surf line's break-up) and a few ALU on topside pixels.
+  - The low tier skips the cloud trace, as before.

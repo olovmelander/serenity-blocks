@@ -3292,7 +3292,8 @@ export function createOdysseyWorld({
         lakeMat.opacityNode = smoothstep(float(0), lakeShoreW, lakeDepth);
         lakeMat.transparent = true;
         lakeMat.depthWrite = false;
-        lakeMat.alphaTest = 0.004;
+        // No alphaTest (a discard): through chapters 3-4 the lake is in frame but behind the
+        // massif, and the depth test should reject it before it shades. A clear film just blends.
         lakeMat.side = THREE.FrontSide;
     }
     ODYSSEY_NORTH_LAKE.lobes.forEach((lb, li) => {
