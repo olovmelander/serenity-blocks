@@ -3802,6 +3802,8 @@ export function createOdysseyWorld({
         // of depth, a soft line takes over on the waterline: about three pixels wide, measured in
         // the depth's own screen footprint, so it keeps its width at any range and on any slope.
         // It swells as the swash runs up and is broken along the coast by a slow drifting field.
+        // Far off, where one pixel spans the whole surf zone (the east isle from the climb), it
+        // thins: the foam is only part of what that pixel sees.
         // It reaches a pixel over the dry side too (opacity follows the foam), so the coast
         // shades softly into the sand instead of stopping at a line.
         const depthPx = max(abs(dFdx(depthLive)).add(abs(dFdy(depthLive))), float(1e-3));
@@ -3814,6 +3816,8 @@ export function createOdysseyWorld({
             .mul(float(1).sub(smoothstep(float(1.0), surfWidth, surfPx)))
             .mul(mix(float(SEA_SURF.broken), float(1), smoothstep(float(0.30), float(0.62), surfBreak)))
             .mul(smoothstep(float(0.3), float(1.2), depthPx))
+            .mul(float(1).sub(smoothstep(float(SEA_SURF.thinPx[0]), float(SEA_SURF.thinPx[1]), depthPx)
+                .mul(1 - SEA_SURF.thinKeep)))
             .mul(SEA_SURF.gain);
         shoreFoam.assign(clamp(max(rings.mul(0.80).add(swashFront.mul(0.90)), surfLine), 0, 1));
     };

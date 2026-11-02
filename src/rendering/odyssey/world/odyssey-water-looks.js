@@ -88,13 +88,16 @@ export const SEA_HORIZON_DOWN = Object.freeze([0.05, 0.25]);
  * THE SURF LINE FROM AFAR (2026-11-02): the soft white line on the waterline once a pixel spans
  * more depth than the swash front. Its width in pixels (calm, at the top of a run-up), how much of
  * it a broken stretch keeps, the scale of the drifting field that breaks it (per unit), and its
- * strength.
+ * strength. `thinPx`, `thinKeep`: where one pixel spans more than the whole surf zone (metres of
+ * depth a pixel, from-to) the foam is only part of that pixel, so the line thins to `thinKeep`.
  */
 export const SEA_SURF = Object.freeze({
     widthPx: Object.freeze([2.4, 3.6]),
     broken: 0.45,
     breakScale: 0.0045,
     gain: 0.70,
+    thinPx: Object.freeze([2.0, 8.0]),
+    thinKeep: 0.4,
 });
 
 // ── CPU twins ─────────────────────────────────────────────────────────────────────────────────
@@ -156,7 +159,8 @@ export function seaSurfLine(depth, depthPx, pulse = 0, breakN = 1) {
     return smoothstepGpu(-1.0, 0.4, u)
         * (1 - smoothstepGpu(1.0, width, u))
         * (SEA_SURF.broken + ((1 - SEA_SURF.broken) * smoothstepGpu(0.30, 0.62, breakN)))
-        * smoothstepGpu(0.3, 1.2, px);
+        * smoothstepGpu(0.3, 1.2, px)
+        * (1 - (smoothstepGpu(SEA_SURF.thinPx[0], SEA_SURF.thinPx[1], px) * (1 - SEA_SURF.thinKeep)));
 }
 
 /** The width (units of depth) of the lake's soft shore where one pixel spans `depthPx`. */

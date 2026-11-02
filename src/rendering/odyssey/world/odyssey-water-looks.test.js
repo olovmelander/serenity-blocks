@@ -71,15 +71,17 @@ describe('the surf line from afar (2026-11-02)', () => {
                 expect(seaSurfLine(outer + 1e-6, depthPx, pulse)).toBe(0);
                 expect(seaSurfLine(outer * 4, depthPx, pulse)).toBe(0);
                 expect(seaSurfLine(-1.0001 * depthPx, depthPx, pulse)).toBe(0);
-                expect(seaSurfLine(0.5 * depthPx, depthPx, pulse)).toBeGreaterThan(0.5);
+                expect(seaSurfLine(0.5 * depthPx, depthPx, pulse)).toBeGreaterThan(0.5 * SEA_SURF.thinKeep);
             });
         });
     });
 
     it('keeps its width in pixels at any range and slope', () => {
+        // (measured against its own peak: far off it thins, but keeps its width)
         const widthPx = (depthPx) => {
+            const peak = seaSurfLine(0.5 * depthPx, depthPx);
             let n = 0;
-            for (let u = -2; u <= 6; u += 0.01) if (seaSurfLine(u * depthPx, depthPx) > 0.25) n += 1;
+            for (let u = -2; u <= 6; u += 0.01) if (seaSurfLine(u * depthPx, depthPx) > 0.25 * peak) n += 1;
             return n * 0.01;
         };
         const near = widthPx(1.5);
@@ -91,6 +93,19 @@ describe('the surf line from afar (2026-11-02)', () => {
     it('leaves the near shore to the swash front (a pixel spans under ~0.3 m of depth)', () => {
         [0, 0.05, 0.1, 0.2].forEach((d) => expect(seaSurfLine(d, 0.25)).toBe(0));
         expect(seaSurfLine(0.2, 0.3)).toBe(0);
+    });
+
+    it('thins (but stays) where one pixel spans the whole surf zone', () => {
+        const at = (px) => seaSurfLine(0.5 * px, px);
+        expect(at(1.5)).toBeGreaterThan(0.9);
+        expect(at(SEA_SURF.thinPx[0])).toBeCloseTo(at(1.5), 9);
+        expect(at(SEA_SURF.thinPx[1])).toBeCloseTo(at(1.5) * SEA_SURF.thinKeep, 9);
+        expect(at(50)).toBeGreaterThan(0);
+        let prev = at(SEA_SURF.thinPx[0]);
+        for (let px = SEA_SURF.thinPx[0]; px <= SEA_SURF.thinPx[1] + 1; px += 0.1) {
+            expect(at(px)).toBeLessThanOrEqual(prev + 1e-12);
+            prev = at(px);
+        }
     });
 
     it('is broken, not cut: a broken stretch keeps part of the line', () => {
