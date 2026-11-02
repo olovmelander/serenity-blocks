@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
+    CHAPTER_6_SHOTS,
     OdysseyCameraController,
     resolveChapterFramingForProgress,
 } from '../../src/rendering/odyssey/OdysseyCameraController.js';
@@ -76,13 +77,17 @@ function createRealController() {
 
 /**
  * Settled follow frame for a chapter at a global progress. computeFollowFrame returns
- * SHARED scratch vectors, so everything is cloned before the next call.
+ * SHARED scratch vectors, so everything is cloned before the next call. `bare` leaves out the
+ * chapter's own angular views (CHAPTER_6_SHOTS): the follow frame along the rail itself.
  */
-function frameAt(controller, chapterPositions, chapterId, progress) {
+function frameAt(controller, chapterPositions, chapterId, progress, bare = false) {
     const start = chapterPositions[chapterId - 1];
     const end = chapterPositions[chapterId] ?? 1;
     const inChapter = THREE.MathUtils.clamp((progress - start) / Math.max(1e-6, end - start), 0, 1);
-    controller._activeFraming = resolveChapterFramingForProgress(chapterId, inChapter);
+    const framing = resolveChapterFramingForProgress(chapterId, inChapter);
+    controller._activeFraming = bare ? {
+        ...framing, yawDeg: 0, pitchDeg: 0, fovOffset: 0,
+    } : framing;
     const frame = controller.computeFollowFrame(progress);
     return {
         camPos: frame.camPos.clone(),
@@ -151,8 +156,8 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
 
     // A real perspective camera on the path at `progress`, or — `orbEye` — the same eye moved off
     // the rail and turned away, the way an orb close-up moves it.
-    const liveCamera = (progress, orbEye = false) => {
-        const frame = frameAt(controller, chapterPositions, 6, progress);
+    const liveCamera = (progress, orbEye = false, bare = false) => {
+        const frame = frameAt(controller, chapterPositions, 6, progress, bare);
         const cam = new THREE.PerspectiveCamera(BEYOND.fovBase, 16 / 9, 0.1, 20000);
         cam.position.copy(frame.camPos);
         cam.up.copy(frame.cameraUp);
@@ -166,8 +171,8 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         cam.updateMatrixWorld(true);
         return { frame, cam };
     };
-    const omenAt = (progress, orbEye = false) => {
-        const { frame, cam } = liveCamera(progress, orbEye);
+    const omenAt = (progress, orbEye = false, bare = false) => {
+        const { frame, cam } = liveCamera(progress, orbEye, bare);
         updateCosmicExpanseEnvironment(env, 0.016, 1, cam, progress);
         env.updateMatrixWorld(true);
         const { blackHole } = env.userData;
@@ -185,8 +190,16 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
     // has no lean.
     const planetriseEnd = ch6Start + (ch6End - ch6Start) * ORBIT_EARTH_SCHEDULE.rise[1];
 
-    it('keeps all three heroes inside the frame for the whole chapter', () => {
-        samples.forEach((progress) => {
+    // ONE HERO AT A TIME (CHAPTER_6_SHOTS, 2026-11-02): from L38 to L45 each orb turns the view to
+    // its own hero, so the checks that want all three heroes in one frame hold outside that run:
+    // the planetrise at the entry, and the run into the hole at the end.
+    const viewsRun = (progress) => {
+        const t = (progress - ch6Start) / (ch6End - ch6Start);
+        return t > CHAPTER_6_SHOTS[0].t && t < CHAPTER_6_SHOTS[CHAPTER_6_SHOTS.length - 1].t;
+    };
+
+    it('keeps all three heroes inside the frame at the entry and on the run into the hole', () => {
+        samples.filter((progress) => !viewsRun(progress)).forEach((progress) => {
             const frame = frameAt(controller, chapterPositions, 6, progress);
             const heroes = heroesAt(env, frame.camPos, progress);
             if (progress < planetriseEnd) delete heroes.heroPlanet;
@@ -296,9 +309,9 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         const riseTo = cpAll[5] + span * ORBIT_EARTH_SCHEDULE.rise[1];
         const places = resolveCh6HeroPlaces(cpAll);
         const cam = new THREE.PerspectiveCamera(BEYOND.fovBase, 16 / 9, 0.1, 20000);
-        const measure = (progress, orbEye = false) => {
+        const measure = (progress, orbEye = false, bare = false) => {
             const chapterId = progress < cpAll[5] ? 5 : 6;
-            const frame = frameAt(controller, chapterPositions, chapterId, progress);
+            const frame = frameAt(controller, chapterPositions, chapterId, progress, bare);
             cam.position.copy(frame.camPos);
             cam.up.copy(frame.cameraUp);
             if (orbEye) {
@@ -328,7 +341,9 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         expect(revealStart).toBeLessThan(riseFrom);
         const below = measure(revealStart);
         expect(measure(riseFrom).opacity).toBeGreaterThan(0.6);
-        const risen = measure(riseTo);
+        // On the rail's own frame (`bare`): the rise ends in the glide to L39, where the view turns to
+        // the giant (CHAPTER_6_SHOTS), so in game it ends nearer the middle of the frame.
+        const risen = measure(riseTo, false, true);
         expect(risen.opacity).toBeGreaterThan(0.95);
         expect(below.world.distanceTo(places.planetBelow)).toBeLessThan(1e-6);
         expect(risen.world.distanceTo(places.planet)).toBeLessThan(1e-6);
@@ -369,8 +384,10 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
                     expect(step, `slid against the sky ${where}`).toBeLessThanOrEqual(parallax * 1.02 + 1e-9);
                 }
                 expect(r.behind, `behind ${where}`).toBe(false);
-                expect(Math.abs(r.x), `ndcX ${where}`).toBeLessThan(0.88);
-                expect(Math.abs(r.y), `ndcY ${where}`).toBeLessThan(0.88);
+                if (!viewsRun(p)) {
+                    expect(Math.abs(r.x), `ndcX ${where}`).toBeLessThan(0.88);
+                    expect(Math.abs(r.y), `ndcY ${where}`).toBeLessThan(0.88);
+                }
             }
             prev = r;
         }
@@ -388,9 +405,12 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         const handoff = resolveOmenHandoffWindow(chapterPositions);
         const curve = getOdysseyPathCurve();
         const pathLength = curve.getLength();
+        // Measured on the rail's own frame (`bare`): the omen is placed by progress, never by the aim
+        // (the orb-eye check below), so the views of CHAPTER_6_SHOTS move it on screen by design.
+        // They are zero from L45 on, before the hand-off (the views test below).
         // Where the rail heads on the path camera: the vanishing point of its tangent.
         const offFromHeading = (progress, r) => {
-            const frame = frameAt(controller, chapterPositions, 6, progress);
+            const frame = frameAt(controller, chapterPositions, 6, progress, true);
             const heading = project(
                 frame,
                 frame.camPos.clone().addScaledVector(curve.getTangentAt(progress).normalize(), 1e5),
@@ -398,11 +418,11 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
             );
             return new THREE.Vector2(r.x - heading.x, r.y - heading.y);
         };
-        const first = omenAt(ch6Start);
+        const first = omenAt(ch6Start, false, true);
         const firstOff = offFromHeading(ch6Start, first);
         let prev = { ...first, p: ch6Start };
         for (let p = ch6Start + 0.003; p < handoff.start; p += 0.003) {
-            const r = omenAt(p);
+            const r = omenAt(p, false, true);
             const where = `@p=${p.toFixed(4)}`;
             // Locked to the path: the rail runs into it at the same spot all chapter.
             const off = offFromHeading(p, r);
@@ -411,7 +431,7 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
             expect(omenAt(p, true).world.distanceTo(r.world), `orb eye moved it ${where}`).toBeLessThan(1e-6);
             // Already on chapter 7's place on screen, so the hand-over is a settle, not a move.
             const lock = project(
-                frameAt(controller, chapterPositions, 6, p),
+                frameAt(controller, chapterPositions, 6, p, true),
                 resolveGargantuaLockPosition(r.cam, new THREE.Vector3()),
                 16 / 9,
             );
