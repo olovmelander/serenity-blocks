@@ -529,6 +529,31 @@ const SEA_MIRROR = Object.freeze({
     ceiling: 1150,
     reach: 1000,
 });
+/**
+ * THE SWANS' WAKES on the tarn (life at the pond, 2026-11-02): the V's spread (tan of ~19.5 deg),
+ * where it starts behind the breast and how wide its arms are and grow, how far it reaches, the
+ * speed at which it is whole, its crests per unit, how much it tilts the water and lifts it toward
+ * white; the bow wave; the swans in the mirror (body and neck above the water, drawn units).
+ */
+const TARN_WAKE = Object.freeze({
+    spread: 0.36,
+    bow: 0.6,
+    width: 0.5,
+    widen: 0.05,
+    reach: 34,
+    fullSpeed: 0.9,
+    crests: 1.7,
+    tilt: 0.28,
+    whiten: 0.12,
+    bowAt: 1.5,
+    bowR: 0.9,
+    bodyY: 0.35,
+    bodyR: 1.1,
+    neckAt: 1.3,
+    neckY: 1.5,
+    neckR: 0.35,
+    swanWhite: Object.freeze([0.80, 0.82, 0.83]),
+});
 const TARN_MIRROR = Object.freeze({
     steps: 24,
     firstStep: 3.0,
@@ -3324,6 +3349,10 @@ export function createOdysseyWorld({
         return mix(lit, airOnR, haze);
     };
 
+    // THE SWANS ON THE TARN (life at the pond, composition/odyssey-pond-life.js): each swan's place
+    // and velocity (x, z, vx, vz), handed in every frame by `setTarnSwans`; far away when none.
+    const tarnSwanRows = [new THREE.Vector4(1e5, 0, 0, 0), new THREE.Vector4(1e5, 0, 0, 0)];
+    const uTarnSwans = uniformArray(tarnSwanRows, 'vec4');
     const tarnMat = new THREE.MeshBasicNodeMaterial();
     {
         const T = TARN_MIRROR;
@@ -3365,6 +3394,57 @@ export function createOdysseyWorld({
             }
             return slope;
         };
+        // THE WAKES (TARN_WAKE): behind each swan a soft V (the Kelvin angle, ~19.5 deg), its arms
+        // a few short crests that travel out, widening and fading over ~26 u; a small bow wave
+        // round the breast. They tilt the water (so they live in its reflection and glints) and lift
+        // it a little toward white. Returns the slope and the wake's strength.
+        const tarnWakes = (xz) => {
+            const W = TARN_WAKE;
+            let slope = vec2(0, 0);
+            let lift = float(0);
+            for (let k = 0; k < tarnSwanRows.length; k += 1) {
+                const row = uTarnSwans.element(k);
+                const speed = max(length(row.zw), float(0.05));
+                const f = row.zw.div(speed);
+                const side = vec2(f.y.negate(), f.x);
+                const rel = xz.sub(row.xy);
+                const behind = dot(rel, f).negate();
+                const across = dot(rel, side);
+                const arm = abs(across).sub(behind.mul(W.spread)).sub(W.bow);
+                const width = behind.mul(W.widen).add(W.width);
+                const fade = exp(behind.div(-W.reach)).mul(smoothstep(float(-1.2), float(1.6), behind))
+                    .mul(min(speed.div(W.fullSpeed), 1.2));
+                const crest = sin(behind.mul(W.crests).sub(uTime.mul(2.2))).mul(0.5).add(0.5);
+                const amp = exp(arm.div(width).pow2().negate()).mul(fade).mul(crest.mul(0.6).add(0.4));
+                const bow = exp(length(rel.sub(f.mul(W.bowAt))).sub(W.bowR).div(0.55).pow2()
+                    .negate())
+                    .mul(min(speed.div(W.fullSpeed), 1.2)).mul(0.6);
+                const outward = side.mul(select(across.greaterThanEqual(0), float(1), float(-1)));
+                slope = slope.add(outward.mul(amp.mul(W.tilt))).add(normalize(rel.add(1e-4)).mul(bow.mul(W.tilt)));
+                lift = lift.add(amp).add(bow);
+            }
+            return { slope, lift: min(lift, float(1)) };
+        };
+        // The swans in the mirror: the reflected ray's nearest pass to each swan's body and neck,
+        // a soft white shape (the pond's own ripple breaks it as it breaks everything else).
+        const tarnSwanMirror = (P, R) => {
+            const W = TARN_WAKE;
+            let cover = float(0);
+            for (let k = 0; k < tarnSwanRows.length; k += 1) {
+                const row = uTarnSwans.element(k);
+                const f = row.zw.div(max(length(row.zw), float(0.05)));
+                const body = vec3(row.x, float(ODYSSEY_TARN.waterY + W.bodyY), row.y);
+                const neck = vec3(row.x.add(f.x.mul(W.neckAt)), float(ODYSSEY_TARN.waterY + W.neckY), row.y.add(f.y.mul(W.neckAt)));
+                const passBody = cross(body.sub(P), R);
+                const passNeck = cross(neck.sub(P), R);
+                const ahead = smoothstep(float(0), float(1), dot(body.sub(P), R));
+                cover = max(cover, max(
+                    exp(length(passBody).div(W.bodyR).pow2().negate()),
+                    exp(length(passNeck).div(W.neckR).pow2().negate()),
+                ).mul(ahead));
+            }
+            return cover;
+        };
         const tarnCol = Fn(() => {
             const P = positionWorld.toVar();
             const V = normalize(cameraPosition.sub(P)).toVar();
@@ -3379,6 +3459,8 @@ export function createOdysseyWorld({
                 .mul(mix(float(0.35), float(2.6), gust))
                 .add(tarnRings(P.xz))
                 .toVar();
+            const wake = tarnWakes(P.xz);
+            rip.addAssign(wake.slope);
             const N = normalize(vec3(rip.x.negate(), 1, rip.y.negate())).toVar();
             const Rraw = reflect(V.negate(), N);
             const R = normalize(vec3(Rraw.x, max(Rraw.y, 0.004), Rraw.z)).toVar();
@@ -3389,9 +3471,13 @@ export function createOdysseyWorld({
             // ONE WATER: where the ray runs into open sky the pond shows the sea's stepped sky wash
             // and the clouds above it; the land it meets is hazed toward the real air on that ray.
             const reflected = mix(
-                waterCloudsAlong(P, R, waterSkyWash(R)),
-                waterLandLit(H, tLand, skyAirAt(R)),
-                landW,
+                mix(
+                    waterCloudsAlong(P, R, waterSkyWash(R)),
+                    waterLandLit(H, tLand, skyAirAt(R)),
+                    landW,
+                ),
+                vec3(...TARN_WAKE.swanWhite),
+                tarnSwanMirror(P, R).mul(0.85),
             );
             // The water itself is the sea's: the pigment ramp driven by the pond's own depth,
             // viridian over the bank to cobalt in the middle, in the sea's flat plates.
@@ -3411,7 +3497,7 @@ export function createOdysseyWorld({
             const lip = smoothstep(float(0.45), float(0.05), depth)
                 .mul(smoothstep(float(-0.2), float(0.12), depth))
                 .mul(0.09);
-            return wl.add(vec3(0.92, 0.97, 0.99).mul(lip));
+            return wl.add(vec3(0.92, 0.97, 0.99).mul(lip.add(wake.lift.mul(TARN_WAKE.whiten))));
         })();
         const tarnAired = applyAerial(tarnCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND, ...MIST_ONLY);
         tarnMat.colorNode = toOutput(tarnAired);
@@ -6599,6 +6685,20 @@ export function createOdysseyWorld({
          * @param {number} scale 1 = untouched
          * @param {{x:number,z:number}} eye camera position
          */
+        /**
+         * THE SWANS ON THE TARN (composition/odyssey-pond-life.js): their places and velocities,
+         * `rows` = [x, z, vx, vz] per swan (x 1e5 = none). The tarn's water draws their wakes and
+         * their reflections from these.
+         * @param {ArrayLike<number>} rows
+         */
+        setTarnSwans(rows) {
+            tarnSwanRows.forEach((v, i) => v.set(
+                rows[i * 4] ?? 1e5,
+                rows[(i * 4) + 1] ?? 0,
+                rows[(i * 4) + 2] ?? 0,
+                rows[(i * 4) + 3] ?? 0,
+            ));
+        },
         setClimb(scale, eye) {
             const s = Number.isFinite(scale) && eye ? Math.min(Math.max(scale, 1e-3), 1) : 1;
             if (s === 1) {

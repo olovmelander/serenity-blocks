@@ -62,6 +62,7 @@ import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
 import { createOdysseyDeer } from './composition/odyssey-deer.js';
+import { createOdysseyPondLife } from './composition/odyssey-pond-life.js';
 import { createOdysseyAirMotes } from './composition/odyssey-air-motes.js';
 import { createOdysseyMeadowLife } from './composition/odyssey-meadow-life.js';
 import { createSummitSpindrift, findHeroSummit } from './composition/odyssey-summit-spindrift.js';
@@ -676,6 +677,8 @@ export class OdysseyBoardController {
         this.eagle = null;
         // The glade's deer (chapter 3's ground animals, 2026-11-01): the eagle's lifecycle.
         this.deer = null;
+        // Life at the pond (swans, a heron, two drinking deer; 2026-11-02): the deer's lifecycle.
+        this.pondLife = null;
         this.airMotes = null;
         this.meadowLife = null;
         this.spindrift = null;
@@ -2791,6 +2794,45 @@ export class OdysseyBoardController {
     }
 
     /**
+     * Life at the pond, one step per frame: the deer's lifecycle exactly (see _tickDeer). Its window
+     * opens deep in chapter 2, where the tarn cannot be seen, so it is compiled and in place long
+     * before the tarn comes into view.
+     */
+    _tickPondLife(cameraProgress) {
+        const pond = this.pondLife;
+        if (!pond || this._pondFailed) return;
+        const near = pond.revealAt(cameraProgress + 0.03) > 0 || pond.revealAt(cameraProgress) > 0;
+        if (!pond.isLoaded && !this._pondLoading && this.isActive && near) {
+            this._pondLoading = true;
+            pond.load()
+                .then((ok) => {
+                    if (ok) this._pondLoadedAt = performance.now();
+                })
+                .catch((error) => {
+                    this._pondFailed = true;
+                    console.warn('[OdysseyBoard] pond life load failed (non-fatal):', error);
+                })
+                .finally(() => { this._pondLoading = false; });
+        }
+        const waitedMs = performance.now() - (this._pondLoadedAt ?? performance.now());
+        if (pond.isLoaded && !pond.isReady && !this._pondCompiling && this.liveCompileEnabled
+            && this._renderLoopActive() && (this._canRunBackgroundTask() || waitedMs > 4000)) {
+            this._pondCompiling = true;
+            this._compileGroupThroughPost(pond.group, { live: true })
+                .then((compiled) => {
+                    if (compiled) pond.markReady();
+                    else this._pondFailed = true;
+                })
+                .catch((error) => {
+                    this._pondFailed = true;
+                    console.warn('[OdysseyBoard] pond life compile failed (non-fatal):', error);
+                })
+                .finally(() => { this._pondCompiling = false; });
+        }
+        pond.update(this.time, cameraProgress);
+    }
+
+    /**
      * The ocean visitors' lifecycle — the whale pass's, step for step (see _tickWhalePass): fetch
      * as chapter 2 approaches (no GPU), live-compile only while idle (4 s starvation escape), then
      * draw. Any failure leaves them hidden for the session.
@@ -3850,6 +3892,24 @@ export class OdysseyBoardController {
                 } catch (error) {
                     console.warn('[OdysseyBoard] deer unavailable (non-fatal):', error);
                     this.deer = null;
+                }
+                // LIFE AT THE POND (chapter 3, composition/odyssey-pond-life.js): two swans on the
+                // tarn (their wakes drawn by its water), a heron in its shallows, a hind and calf
+                // that come down to drink. The deer's lifecycle (see _tickPondLife).
+                // BISECT LEVER: ?odysseyNoPondLife=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoPondLife')) {
+                        this.pondLife = createOdysseyPondLife({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            heightAt: this.oneWorld?.heightAt || undefined,
+                            world: this.oneWorld,
+                        });
+                        this.scene.add(this.pondLife.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] pond life unavailable (non-fatal):', error);
+                    this.pondLife = null;
                 }
                 // THE AIR (composition/odyssey-air-motes.js): pollen over the shore, down on the
                 // meadows, diamond dust on the climb — one additive draw of world-anchored motes in
@@ -5252,6 +5312,7 @@ export class OdysseyBoardController {
         if (this.flights) this.flights.update(this.time, cameraProgress);
         if (this.eagle) this._tickEagle(delta, cameraProgress);
         if (this.deer) this._tickDeer(cameraProgress);
+        if (this.pondLife) this._tickPondLife(cameraProgress);
         if (this.airMotes) this.airMotes.update(this.time, cameraProgress);
         if (this.meadowLife) this.meadowLife.update(this.time, cameraProgress);
         if (this.spindrift) this.spindrift.update(this.time, cameraProgress);
@@ -6367,6 +6428,10 @@ export class OdysseyBoardController {
         if (this.deer) {
             this.deer.dispose();
             this.deer = null;
+        }
+        if (this.pondLife) {
+            this.pondLife.dispose();
+            this.pondLife = null;
         }
         if (this.meadowLife) {
             this.meadowLife.dispose();
