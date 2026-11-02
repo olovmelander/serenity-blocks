@@ -248,3 +248,153 @@ compile, the same places, sizes and no-pop windows, `?odysseyNoDeer=1` as before
 `tests/unit/odyssey-ground-animals.test.js`: no hoof slides, every joint smooth through every change
 of state, smooth starts and stops, turns walked or stepped round (never spun), the four-beat order,
 the loop's seam, walks leaving the way the deer faces.
+
+## Life at the pond (2026-11-02)
+
+The owner agreed to: "Life at the pond. It's on screen from orbs 20 to 23. A pair of white swans
+glides across it, leaving V-shaped wakes ... A grey heron stands in the shallows, stalks slowly and
+now and then strikes. A hind and her calf from the herd sometimes come down to drink at the bank."
+
+![Before (left, `?odysseyNoPondLife=1`) and after (right): the L18 -> L19 glide (p 0.25), L22 and L23 (crops of 1280x720 shots, enlarged 3x)](images/odyssey-animals-2026-11-02/pond-before-after.jpg)
+
+### Where, with numbers
+
+Scored on the real rail camera (`odyssey-camera-rig.js`, the terrain, the forest's crowns as
+spheres):
+
+- **When it is in view.** Nearly the whole tarn is in frame and unblocked while the rail glides
+  from L18 to L19 (p 0.23-0.267). It leaves the frame at the L19-L21 parks (p 0.269-0.272). It comes
+  back at L22 and L23 (p 0.278-0.30), but only its west lobe.
+- **So everything lives on the west side:**
+  - the swans' route runs through the west and middle lobes;
+  - the heron keeps to the west lobe's south-west shallows;
+  - the drinkers come down to the west lobe's bank.
+- **Why that bank.** The bowl's rim is steep (0.5-0.9) almost all round. Its gentlest crossing is
+  on the west side, about 0.6.
+
+At 1440p, drawn at three times life:
+
+| | Distance | Size at 1440p |
+|---|---|---|
+| A swan (3.4 u long) | 190-320 u | 13-22 px long |
+| The heron (3.1 u tall) | 190-310 u | 12-20 px tall |
+| The hind (withers 3.5 u) | 200-325 u | 13-22 px |
+
+They are smaller than the glade's deer (24-51 px), but white on turquoise, a grey stroke on the
+bank and a red-brown pair over the water all read.
+
+![Full frames at p 0.25 and L22, before and after](images/odyssey-animals-2026-11-02/pond-full-frames.jpg)
+
+### The models
+
+`scripts/blender/odyssey/pond_birds.py`, headless Blender, writes `assets/chapter-03/pond/swan.glb`
+and `heron.glb`. It uses the red deer's method: a distance field of ellipsoids, round cones and
+tubes, its left half meshed, decimated and mirrored, then painted and skinned.
+
+- **The mute swan:**
+  - 1,300 triangles, 6 bones (the root, four neck bones, the head);
+  - the hull cut at the waterline, the arched wings and raised tail;
+  - the neck in an S, an orange bill with its black knob.
+- **The grey heron:**
+  - 1,150 triangles, 11 bones (the root, three neck bones, the head, and each leg's thigh, shin and
+    foot);
+  - the body tilted up at the front, a white neck, a black crest and eye stripe, a yellow dagger
+    bill;
+  - long yellow legs, 1.9x thicker than life so they stay lines when drawn small.
+
+![The swan and the heron (Blender previews, life size)](images/odyssey-animals-2026-11-02/pond-birds-model.jpg)
+
+### Their life (`composition/odyssey-pond-life-motion.js`)
+
+Everything follows the board clock and is fixed in the world. The camera only passes them.
+
+- **The swans** glide round one closed, smooth route through the deep water at ~0.95 u/s, the speed
+  breathing slowly. The second swims 8.5 s behind the first and 2.6 u to its left. On their own
+  loops each:
+  - looks round;
+  - dips its head under to feed;
+  - or turns its neck back over the wing to preen.
+
+  The neck sways a little all the time. The hull sits 0.2 u under the water, and the water hides
+  the cut.
+- **The heron:**
+  - Stands mostly still, as herons do, its head turning slowly.
+  - Leans into a slow stalk now and then, and sometimes strikes: a crouch, the neck shot out and
+    down in 0.18 s, held, drawn back over 1.5 s.
+  - Every 40-70 s walks a few slow steps to its next spot. Each foot is planted where it lands
+    while the body passes over it, and a two-segment leg solve reaches it; the heel bends back.
+    The body turns from the way it stood to the way it walks over the first step. It stands
+    facing the way it came.
+- **The drinkers** are a second, small herd (`ODYSSEY_TARN_DEER`): the glade's deer model, rig,
+  paths and footsteps, created again (`createOdysseyDeer({ herd })`). A hind and her calf keep to
+  the ground west of the tarn. A third of their five-minute loop they stand at the bank grazing,
+  which here is drinking: the head down to the water at the waterline. The calf keeps spots beside
+  its mother's and walks a little slower, so it follows her down a few seconds behind.
+
+![L22, six frames 1.6 s apart: the swans move on, their wakes behind; the heron in the shallows; the drinkers at the bank](images/odyssey-animals-2026-11-02/pond-clip-l22.jpg)
+
+### The wakes and the swans in the water
+
+The tarn's own water draws them (`TARN_WAKE` in the world renderer). Each frame the swans' places
+and velocities go to the world (`setTarnSwans`).
+
+- **The wake.** Behind each swan is a soft V at the Kelvin angle (~19.5°). Its arms are a few short
+  crests that travel outward, widening and fading over ~34 u, with a small bow wave round the
+  breast. They tilt the water, so they show in its reflection and glints, and they lift it a little
+  toward white.
+- **The swans in the water.** The reflected ray's nearest pass to each swan's body and neck gives
+  a soft white shape under it, broken by the pond's ripple.
+- **The tarn stays the turquoise pool it is.** With no swans the water is unchanged.
+
+### No popping, no hitch
+
+- **Drawn from p 0.09 to 0.34.** The eye is far under the sea when the window opens. As it closes,
+  every swan, the heron and the drinkers' spots are out of frame (tested at every clock phase).
+- **The deer's lifecycle.** The models are fetched as chapter 2 begins, compiled while the board is
+  idle, and only then drawn. If they fail to load, the act is as it was.
+- **Turn it off** with `?odysseyNoPondLife=1`.
+
+### Cost
+
+| | Triangles | Draws |
+|---|---|---|
+| The swans | 2 x 1,300 | 1 |
+| The heron | 1,150 | 1 |
+| The drinkers | 2 x 2,098 | 2 (the herd's draw and its shadows) |
+
+- **Pipelines.** Two new: the birds' material, built per species. The drinkers reuse the deer's.
+- **The tarn.** Its water gains the wake and the mirror term for two swans, on its own pixels only.
+- **CPU.** Posing three birds and two deer each frame. The tables are written in place: no new
+  per-frame allocation.
+
+### Tests (`tests/unit/odyssey-pond-life.test.js`)
+
+- **The models:** the skeletons, the skins (weights sum to 1, every index in the skeleton), and
+  both shader backends (WGSL and GLSL) building the birds' draw cleanly.
+- **The draw:** hidden until ready, drawn only in the window, the wakes sent to the world and
+  withdrawn.
+- **The swans:**
+  - never leave the water: the whole hull over water 0.6 u deep or more, all the loop;
+  - keep apart;
+  - turn and change speed calmly;
+  - the head under water only when dipping.
+- **The heron:**
+  - its feet in the shallows;
+  - a planted foot never slides;
+  - its legs reach their feet.
+- **The drinkers:**
+  - reach the water's edge, never deeper than the fetlocks;
+  - cross the gentlest stretch of the rim (under 0.75);
+  - their standing hooves on the ground;
+  - clear of trees and the boulders.
+- **The camera:**
+  - swans in frame for most of the L18 -> L19 glide and a quarter of the time at L22-L23;
+  - the heron and the bank in frame there;
+  - the sizes above;
+  - never appearing or leaving in view.
+
+### Left for later
+
+- **The drinkers' timing** follows their own five-minute loop, so a given pass may find them on the
+  ground above the bank rather than at the water.
+- **The heron does not catch anything.** Its strike comes back empty.

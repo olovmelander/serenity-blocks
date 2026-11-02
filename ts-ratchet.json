@@ -91,6 +91,7 @@
     "src/rendering/odyssey/composition/odyssey-deer-herd.js",
     "src/rendering/odyssey/composition/odyssey-jellyfish-drift.js",
     "src/rendering/odyssey/composition/odyssey-ocean-roam.js",
+    "src/rendering/odyssey/composition/odyssey-pond-life-motion.js",
     "src/rendering/odyssey/odyssey-path-horizon.js",
     "src/rendering/odyssey/odyssey-path-inflow.js",
     "src/rendering/odyssey/odyssey-quality-profile.js",
