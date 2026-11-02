@@ -62,6 +62,9 @@ import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
 import { createOdysseyDeer } from './composition/odyssey-deer.js';
+import { createOdysseyPondLife } from './composition/odyssey-pond-life.js';
+import { createOdysseyIbex } from './composition/odyssey-ibex.js';
+import { createOdysseyHorses, driveOdysseyHorses } from './composition/odyssey-horses.js';
 import { createOdysseyAirMotes } from './composition/odyssey-air-motes.js';
 import { createOdysseyMeadowLife } from './composition/odyssey-meadow-life.js';
 import { createSummitSpindrift, findHeroSummit } from './composition/odyssey-summit-spindrift.js';
@@ -367,6 +370,7 @@ function readWorldBuildOptions(qualityName) {
             seaLevel: ODYSSEY_SEA_LEVEL,
             rail: railSamples,
             visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+            meadowClearing: !readBooleanUrlFlag('odysseyNoMeadowClearing'),
             forceLod: ['hero', 'mid', 'far'].includes(forestLodValue) ? forestLodValue : null,
             lodDistance: forestLodDistanceForTier(qualityName),
         };
@@ -676,6 +680,10 @@ export class OdysseyBoardController {
         this.eagle = null;
         // The glade's deer (chapter 3's ground animals, 2026-11-01): the eagle's lifecycle.
         this.deer = null;
+        // Life at the pond (swans, a heron, two drinking deer; 2026-11-02): the deer's lifecycle.
+        this.pondLife = null;
+        // The massif's ibex (chapter 4, 2026-11-02): the deer's lifecycle, run by the ibex (tick).
+        this.ibex = null;
         this.airMotes = null;
         this.meadowLife = null;
         this.spindrift = null;
@@ -1367,6 +1375,8 @@ export class OdysseyBoardController {
                     // `?odysseyWorldNoVisCull=1` puts every tree back, so a suspected hole is
                     // attributable in one reload rather than unfalsifiable.
                     visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+                    // The wild horses' meadow kept open; `?odysseyNoMeadowClearing=1` restores it.
+                    meadowClearing: !readBooleanUrlFlag('odysseyNoMeadowClearing'),
                     // EXPERIMENT: `?odysseyForestLod=hero` pins every tree to the hero tier so
                     // the look can be FELT in the real game. Costs ~18 ms of forest on the
                     // integrated lane against a 10.6 ms whole-frame budget, so it is a test
@@ -1385,10 +1395,6 @@ export class OdysseyBoardController {
                     // flat sheet back alongside or instead.
                     // (Same reads as _readWorldBuildOptions — the bake and the build agree.)
                     cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
-                    // REVIEW LEVER (temporary, colour pass): pick a north-lake water
-                    // palette so the GRADED capture harness can shoot the arms without a
-                    // tree edit between runs. Unset ships the default.
-                    lakeTint: readUrlValue('lakeTint') || '',
                     // `?odysseyForestGreens=` (odyssey-forest-greens.js): the broadleaf palette.
                     forestGreens: readUrlValue('odysseyForestGreens') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
@@ -2791,6 +2797,45 @@ export class OdysseyBoardController {
     }
 
     /**
+     * Life at the pond, one step per frame: the deer's lifecycle exactly (see _tickDeer). Its window
+     * opens deep in chapter 2, where the tarn cannot be seen, so it is compiled and in place long
+     * before the tarn comes into view.
+     */
+    _tickPondLife(cameraProgress) {
+        const pond = this.pondLife;
+        if (!pond || this._pondFailed) return;
+        const near = pond.revealAt(cameraProgress + 0.03) > 0 || pond.revealAt(cameraProgress) > 0;
+        if (!pond.isLoaded && !this._pondLoading && this.isActive && near) {
+            this._pondLoading = true;
+            pond.load()
+                .then((ok) => {
+                    if (ok) this._pondLoadedAt = performance.now();
+                })
+                .catch((error) => {
+                    this._pondFailed = true;
+                    console.warn('[OdysseyBoard] pond life load failed (non-fatal):', error);
+                })
+                .finally(() => { this._pondLoading = false; });
+        }
+        const waitedMs = performance.now() - (this._pondLoadedAt ?? performance.now());
+        if (pond.isLoaded && !pond.isReady && !this._pondCompiling && this.liveCompileEnabled
+            && this._renderLoopActive() && (this._canRunBackgroundTask() || waitedMs > 4000)) {
+            this._pondCompiling = true;
+            this._compileGroupThroughPost(pond.group, { live: true })
+                .then((compiled) => {
+                    if (compiled) pond.markReady();
+                    else this._pondFailed = true;
+                })
+                .catch((error) => {
+                    this._pondFailed = true;
+                    console.warn('[OdysseyBoard] pond life compile failed (non-fatal):', error);
+                })
+                .finally(() => { this._pondCompiling = false; });
+        }
+        pond.update(this.time, cameraProgress);
+    }
+
+    /**
      * The ocean visitors' lifecycle — the whale pass's, step for step (see _tickWhalePass): fetch
      * as chapter 2 approaches (no GPU), live-compile only while idle (4 s starvation escape), then
      * draw. Any failure leaves them hidden for the session.
@@ -3850,6 +3895,55 @@ export class OdysseyBoardController {
                 } catch (error) {
                     console.warn('[OdysseyBoard] deer unavailable (non-fatal):', error);
                     this.deer = null;
+                }
+                // LIFE AT THE POND (chapter 3, composition/odyssey-pond-life.js): two swans on the
+                // tarn (their wakes drawn by its water), a heron in its shallows, a hind and calf
+                // that come down to drink. The deer's lifecycle (see _tickPondLife).
+                // BISECT LEVER: ?odysseyNoPondLife=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoPondLife')) {
+                        this.pondLife = createOdysseyPondLife({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            heightAt: this.oneWorld?.heightAt || undefined,
+                            world: this.oneWorld,
+                        });
+                        this.scene.add(this.pondLife.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] pond life unavailable (non-fatal):', error);
+                    this.pondLife = null;
+                }
+                // THE MASSIF'S IBEX (chapter 4, composition/odyssey-ibex.js): a buck, two nannies and a
+                // kid on the rock band's shelf at the massif's foot; the deer's lifecycle (fetched near
+                // their window, live-compiled while idle, then drawn). BISECT LEVER: ?odysseyNoIbex=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoIbex')) {
+                        this.ibex = createOdysseyIbex({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            heightAt: this.oneWorld?.heightAt || undefined,
+                        });
+                        this.scene.add(this.ibex.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] ibex unavailable (non-fatal):', error);
+                    this.ibex = null;
+                }
+                // THE MEADOW'S WILD HORSES (chapters 3-4, composition/odyssey-horses.js): the deer's
+                // lifecycle (driveOdysseyHorses). BISECT LEVER: ?odysseyNoHorses=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoHorses')) {
+                        this.horses = createOdysseyHorses({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            heightAt: this.oneWorld?.heightAt || undefined,
+                        });
+                        this.scene.add(this.horses.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] wild horses unavailable (non-fatal):', error);
+                    this.horses = null;
                 }
                 // THE AIR (composition/odyssey-air-motes.js): pollen over the shore, down on the
                 // meadows, diamond dust on the climb — one additive draw of world-anchored motes in
@@ -5252,6 +5346,9 @@ export class OdysseyBoardController {
         if (this.flights) this.flights.update(this.time, cameraProgress);
         if (this.eagle) this._tickEagle(delta, cameraProgress);
         if (this.deer) this._tickDeer(cameraProgress);
+        if (this.pondLife) this._tickPondLife(cameraProgress);
+        if (this.ibex) this.ibex.tick(this, cameraProgress);
+        if (this.horses) driveOdysseyHorses(this, this.horses, cameraProgress);
         if (this.airMotes) this.airMotes.update(this.time, cameraProgress);
         if (this.meadowLife) this.meadowLife.update(this.time, cameraProgress);
         if (this.spindrift) this.spindrift.update(this.time, cameraProgress);
@@ -6367,6 +6464,18 @@ export class OdysseyBoardController {
         if (this.deer) {
             this.deer.dispose();
             this.deer = null;
+        }
+        if (this.pondLife) {
+            this.pondLife.dispose();
+            this.pondLife = null;
+        }
+        if (this.ibex) {
+            this.ibex.dispose();
+            this.ibex = null;
+        }
+        if (this.horses) {
+            this.horses.dispose();
+            this.horses = null;
         }
         if (this.meadowLife) {
             this.meadowLife.dispose();

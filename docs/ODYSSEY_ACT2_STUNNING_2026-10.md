@@ -987,3 +987,229 @@ the shade plate keeps the scatter's colour: its mean is the same within a few pe
 
 **Tests** (`world/odyssey-forest-greens.test.js`): the names, only the green broadleaf touched,
 crowns stay green and vary, the mosaic's mean near the lime. The URL catalogue lists the lever.
+
+# The land behind the mountain (2026-11-02)
+
+Olov chose two land items: *"A beach on the north coast. A wide crescent of pale sand with a few
+grassy dunes behind it, and water that shades from turquoise in the shallows to deep blue further
+out, with a soft white line of foam."* and *"Shape on the plain. Soft hills and hollows, darker
+groves of pine among the autumn trees, and meadows in a few different greens, so it reads as
+countryside rather than a flat map."* The water's colour and foam are the water pass's; this pass
+is the ground under it.
+
+## §19. The north beach, and the plain's swells, groves and meadows (2026-11-02)
+
+**Where it is seen from.** Probed on the game's own camera (position, turn and lens read from the
+live board at 31 stations, p 0.55-0.70): from p ~0.60 to ~0.67 the climb looks out at 40-50°
+(north-east) and 15-25° down. The island's north-east corner is the coast those views see best,
+1,700-2,100 u out. The old coast there fell 100 u in ~200 u, so from above the waterline hid behind
+its own brow: the thin pale line. From 0.68 the island is under the clouds.
+
+**The bay** (`ODYSSEY_NORTH_BEACH` in `world/odyssey-world-height.js`). A crescent cut into that
+corner, its chord from the north coast (420, -2890) to the east coast (1175, -2240), across the
+view, so the crescent spans the frame with its belly toward the camera. In the bay's own frame
+(`odysseyNorthBeachAt`: `u` along the chord, `s` inland of a parabolic waterline 150 u in at the
+middle), the ground is drawn to one profile (`odysseyNorthBeachProfile`):
+
+- a shelving seabed, 26 m deep 380 u out (Dean's profile, near enough), then falling to the sea
+  floor, so the shallows the water colours exist;
+- the beach, 120 u of sand rising 4.5 u (about 2°);
+- dunes, 120-270 u in: low ridges along the shore broken into hummocks, 5-14 u above the sea;
+- a grassy bank back up to the land, never above it.
+
+It is blended in by `odysseyNorthBeachWeight`, exactly zero beyond the horns, past the shelf and up
+the bank, and closed before z -3400 like the coast it sits in. The relief keeps 4% on the beach
+(its ±10 u would break a 2° slope). No tree stands on the sand or the dunes (`siteOnNorthBeach` in
+the scatter; the forest's disc does not reach the coast anyway).
+
+**The paint** (`NORTH_BEACH_PAINT` in `world/odyssey-world-renderer.js`). The same frame in the
+ground shader:
+
+- sand from the water up through the dunes, its inner edge broken by the atlas grain;
+- paler than the island's golden shore sand, with a broad tonal swell along it;
+- wet only in a thin strip at the water (the wet band of the south shore would have made the
+  whole low beach damp and brown);
+- tufts of pale olive dune grass in clumps at two scales, thickening toward the dunes' back, where
+  the meadow takes over;
+- the shelf's bed kept sand-coloured under the shallows, so they read light.
+
+**The plain.**
+
+- **Swells and hollows** (`PLAIN_SWELLS`): five soft, compact rises and dips (10-18 u high,
+  140-210 u in radius) between the lake and the bay. They are clear of the lake (its rims are
+  unchanged) and of the plateau pins (both unchanged). Under the low side sun each has a lit flank
+  and a shaded one.
+- **Dark conifer groves** (`FOREST_PINE_GROVES` in `world/odyssey-forest-scatter.js`). They grow
+  on the autumn side of the plain behind the massif, where their own patch field is in its top
+  slice. The rules:
+  - the darkest conifer of the roster stands there, 0.6 of its value and 1.15 wide;
+  - the carve and the distance thins leave the groves, so they read as masses;
+  - only on the far tier (beyond the rail's 520 u pool gate), so nothing near the rail changes;
+  - the subalpine fir, not the pine: from 1-2 km a fir grove is a pine grove, and the fir already
+    has buckets in those chunks, so the groves add no draw (the pine would have added one, over
+    the 40-bucket station ceiling).
+- **Meadows in three greens** (`PLAIN_MEADOWS`): painted patches over the plain's grass, a few
+  hundred units across with soft painted edges. A fresh yellow-green, a deep blue-green and a warm
+  olive, each a multiplier on the grass colour. North of z -1250 only, so chapters 3-4's meadows
+  are untouched.
+
+![p 0.60, 0.63, 0.65 before (left) and after (right)](images/odyssey-island-2026-11-02/north-land-climb.jpg)
+
+![Close crops at p 0.65 and 0.63, before (left) and after (right): the crescent, the dunes' grassy edge, the dark groves among the autumn trees](images/odyssey-island-2026-11-02/north-land-close.jpg)
+
+**What else moved.**
+
+- The golden relief-total and macro hashes were re-pinned, with a note.
+- The forest visibility mask was re-baked: its stamp changed, its cells did not.
+- The archipelago's NE and NW thresholds were re-emitted. The groves leave the pool, and the
+  swells move a few sites. ⚠️ On main the calibration sim already disagreed with the committed
+  SEAM, NE, NW, WEND and WMID thresholds (terrain changes since their last emission). SEAM, WEND
+  and WMID are left as committed so that the chapter 3-4 forests do not move here. A full
+  re-emission is its own decision.
+- The sim's exempt list mirrors the groves.
+
+**Cost.** One more branch in the ground shader:
+
+- the bay's frame is a few ALU on every ground fragment;
+- the tufts' and meadows' value noise runs only on the bay's and the plain's fragments (three
+  noise calls for the plain);
+- no texture, no draw, no material.
+
+The forest gains ~360 far trees in the groves, with no new bucket at the stations. Not measured
+on the GPU: the climb stations were captured at the capped 30 fps.
+
+**Tests** (`world/odyssey-north-land.test.js`):
+
+- the beach's height band and slope (under 0.12);
+- the shelf deepening outward, shallow 100 u out and 18+ m at its edge;
+- the dunes low: above the beach, 50+ u below the plateau;
+- the relief off the beach;
+- the bay compact (zero beyond the horns, past the shelf and the bank, at z -3400, at the pins and
+  the lake);
+- no tree on the sand or the dunes;
+- the plateau pins and the lake's rims;
+- the swells' real spread;
+- the groves: 200+ dark firs, all on the plain and all far.
+
+**Not done.** The water's turquoise-to-blue and the foam line are the water pass's (the
+shallows are there for them). The groves could also take the painted far forest's tone, beyond the
+draw distance. They stand nearer than that from the climb, so it was not needed.
+
+# The water round the island (2026-11-02)
+
+Olov chose two water items from the lead's list:
+
+- *"Real water for the lake. It would get the same treatment as the swans' pond: reflections of the
+  sky and clouds, a turquoise-to-blue depth colour, and a soft shoreline instead of a hard dark
+  edge."*
+- *"Depth colour around all the coasts. The same shallow-to-deep shading around the rest of the
+  island and the small island to the east, so the whole sea stops looking milky and flat"*, with
+  *"water that shades from turquoise in the shallows to deep blue further out, with a soft white
+  line of foam."*
+
+Both are seen from the top of the climb (L32-L34, p 0.60-0.70). The lake is at the bottom of the
+L33 frame and fills it when the player looks down with the mouse (look-around, 9 degrees).
+
+![Before (left) and after (right), the player looking down: p 0.60, 0.645, 0.653 and 0.66](images/odyssey-water-2026-11-02/lake-and-coasts-before-after.jpg)
+
+![Close, before and after: the lake, the island's east coast, the east isle](images/odyssey-water-2026-11-02/lake-coast-isle-close.jpg)
+
+## §20. The north lake, real water (2026-11-02)
+
+**Before.** A painted disc: a depth tint, a sky-coloured graze and one broad analytic glint. From
+the climb it read as one flat blue patch with a pale band and a hard edge at the bank.
+
+**Now it is the island's one water** (the sea's and the tarn's shared terms, with lake settings in
+`LAKE_WATER`, `world/odyssey-water-looks.js`):
+
+- **The sky and the clouds in it.** The reflected ray takes the sea's stepped sky wash and the
+  cloud masses the CPU picks (the lake's level joined the sea's and the tarn's in the pick, so
+  the masses over the lake are in it). There is no land march: from the climb the reflected rays
+  rise 30-50 degrees and clear the low banks within a few units, so a march would buy a hairline at
+  the far shore for its cost. The summit is never painted in (§17).
+- **Its own pigment** (`LAKE_RAMP`), by the real depth of the drawn bed (macro + relief, as
+  before): turquoise for the first ~3 u, teal to ~10 u (the arms), then blue, and a deep blue in
+  the main basin. It is bluer than the tarn's glacial jade and greener than the sea. The ramp
+  keeps the waters' four flat plates.
+- **A soft shore.** The lake is a blended film now, like the sea. It thins to nothing over the last
+  1.6 u of depth, or three pixels' worth from afar (the depth's own screen footprint), with a pale
+  wet line on the thinnest film. The bank shows through, so there is no drawn edge: the depth
+  buffer still cuts the discs where the carve's rims rise through them, but the film is already
+  clear there.
+- **Ripple and wind.** The sea's ripple, calmed, and the wind's gusts (cat's paws mirror less sky).
+  The fine ripple is finer than a pixel from the climb (the detail bake has no mips) and speckled
+  the clouds in the water, so it fades from 300 to 900 u. A broad, slow undulation (the same bake
+  read ~10x coarser, drifting downwind) bends the reflection instead: the clouds' edges and the
+  sky's plates waver gently.
+- **The light.** The sea's sun core, sun road and glitter, over the baked sun visibility. The land
+  aerial stays (an inland surface hazes like its banks).
+
+**What it looks like.** A turquoise rim, teal arms and a deep blue middle, with the big cumulus
+over the lake standing pale in it. The sky's share is 0.24: higher, and those clouds turned the
+west arm milky.
+
+The `?lakeTint=` review lever chose between the painted lake's six palettes. It is retired with
+them (the board, the world playground and both URL catalogues).
+
+## §21. The sea from above: depth colour round every coast (2026-11-02)
+
+**Why the sea read milky.** The sea already had its depth ramp (turquoise over the sand to a deep
+teal-blue, §6 of the water pass). From the climb it was hidden by the **horizon dissolve**: the sea
+converges on a pale horizon colour by range alone, 60-80% by 1-2 km. That is right for an eye
+looking along the water. But from the climb the sea 1-2 km off lies 20-40 degrees below the eye,
+and it took the same pale wash: the whole sea one milky blue, the coasts' colour gone. The aerial
+haze (`applyAerial`, with its thinner air above) was a smaller share and is kept.
+
+**The dissolve follows the view's angle** (`SEA_HORIZON_DOWN`). It starts to let go where the eye
+looks down more steeply than ~3 degrees and is gone by ~14. The shore orbs look along the water
+at under ~3 degrees wherever the dissolve is strong, so their sea is unchanged. The far sea from
+the climb still meets the haze at the horizon. Now the climb sees turquoise shallows, teal and deep
+blue round the whole island, and round the east isle its shallow terrace inside the surf.
+
+**The reflection from above.** Where the eye looks down on far water, the reflection and its
+fresnel share ride the swell and only 5% of the ripple. The full ripple is finer than a pixel
+there and turned the clouds in the sea into speckle and grain. The shore orbs (under the gate) are
+unchanged.
+
+**A soft surf line from afar** (`SEA_SURF`). The swash front lives in the last 0.75 m of depth,
+under a pixel from the climb, and the foam rings fade to their faint mean with range. So a coast
+from above had no white line. Once a pixel spans more than ~0.3 m of depth, a soft line takes over
+on the waterline:
+
+- about three pixels wide, measured in the depth's own screen footprint, so it keeps its width at
+  any range and slope;
+- it swells as the swash runs up and is broken along the coast by a slow drifting field;
+- it reaches a pixel over the dry side (the opacity follows the foam), so the coast shades into
+  the sand;
+- far off, where one pixel spans the whole surf zone (2-8 m of depth), it thins to 40%. The east
+  isle is 3.5 km off: at full strength it read as a white outline.
+
+**The north beach.** The depth colour reads the real seabed (the macro and relief plates), so the
+land helper's gently shelving north beach gets its turquoise shallows and its surf line with no
+change here.
+
+**Chapter 2 is untouched.** Every change is inside the sea's topside branch (a uniform branch on
+`uSubmerged`); the underside and its root terms are as they were (checked at p 0.07, 0.09, 0.12).
+
+## Checks and cost (§20-§21)
+
+- **Stations** (30 fps, PNG): the climb p 0.55-0.70, the same with the player looking down
+  (p 0.58-0.68), the shore orbs p 0.15-0.21, chapter 4 and early 5 (p 0.25-0.50, no sea in frame,
+  unchanged), chapter 2 p 0.07-0.12 (unchanged). High and Low tiers. Console logs clean.
+- **Tests:**
+  - `world/odyssey-water-looks.test.js` holds the CPU twins of the new terms: both waters' depth
+    colour darkens and turns bluer with depth and never back; the lake's plates step at ~3, 10
+    and 22 u; the dissolve stays whole along the water and is gone looking down; the surf line
+    lies only on the waterline, keeps its pixel width, leaves the near shore to the swash front
+    and thins far off; the lake's film is clear at the waterline; no NaN for any depth or pixel
+    footprint.
+  - `tests/unit/odyssey-water-shaders.test.js` builds the lake and the sea on WGSL and GLSL, on
+    both tiers: no throw, nothing said, no unassigned var reads.
+- **Cost** (not timed at full speed; the owner keeps the GPU on capped captures):
+  - The lake's pixels now pay the sea's terms: two ripple fetches, a gust fetch, one swell fetch,
+    the cloud trace on the high tier (up to 12 ellipsoids, shared with the sea's pick) and two bed
+    fetches. They had two fetches before. The lake is only seen from the climb; through chapters
+    3-4 it is in frame behind the massif, where the depth test rejects it before it shades (it
+    writes no depth and has no discard).
+  - The sea adds one fetch (the surf line's break-up) and a few ALU on topside pixels.
+  - The low tier skips the cloud trace, as before.

@@ -110,6 +110,26 @@ export const ODYSSEY_BOULDERS = Object.freeze({
     ]),
 });
 
+/**
+ * THE IBEX'S PERCHES (2026-11-02): three rocks set by hand on the shelf above the grey rock band at
+ * the massif's foot, where the ibex live (composition/odyssey-ibex-herd.js): a broad boulder for the
+ * buck, a low slab and a low step. The ibex stand on them and leap between them and the shelf. Drawn
+ * and seated like every other rock (the same shapes, material and tiers), but never dropped by the
+ * forest or the rail rules: they are sited clear of both (odyssey-boulders.test.js holds that), and
+ * the ibex's feet need them to be there. `buildPerchTops` gives the feet their top surfaces.
+ */
+export const ODYSSEY_PERCH_ROCKS = Object.freeze([
+    Object.freeze({
+        x: -150, z: -559, sx: 5.0, sy: 3.6, sz: 3.8, yaw: 0.4, shape: 0, tone: 0.35, moss: 0.35,
+    }),
+    Object.freeze({
+        x: -158.5, z: -556.5, sx: 4.0, sy: 2.6, sz: 2.8, yaw: -0.3, shape: 1, tone: 0.6, moss: 0.5,
+    }),
+    Object.freeze({
+        x: -144, z: -566.5, sx: 3.4, sy: 2.8, sz: 3.0, yaw: 1.1, shape: 2, tone: 0.5, moss: 0.4,
+    }),
+]);
+
 /** A small deterministic generator (mulberry32). */
 function rng(seed) {
     let s = (seed * 2654435761) >>> 0;
@@ -220,7 +240,10 @@ function seatRock(heightAt, rock) {
         low = Math.min(low, heightAt(x + (lx * c) + (lz * s), z - (lx * s) + (lz * c)));
     }
     const [gx, gz] = slopeAt(heightAt, x, z);
-    const { lean, sink } = ODYSSEY_BOULDERS;
+    // (A perch stands proud of its slope, and nearly level: something to stand on and leap to.)
+    const perch = rock.kind === 'perch';
+    const lean = perch ? 0.25 : ODYSSEY_BOULDERS.lean;
+    const sink = perch ? 0.02 : ODYSSEY_BOULDERS.sink;
     return {
         ...rock,
         // The shape's underside sits at -0.42 of its (flattened) radius; its height spans ~1.4.
@@ -246,6 +269,9 @@ export function buildBoulderSites(heightAt, { trees = [] } = {}) {
     const clearOfTrees = (x, z, radius) => !trees.some((t) => Math.hypot(t.x - x, t.z - z) < radius + B.treeClear);
     const track = railTrack();
     const clearOfRail = (x, z) => !track.some((p) => Math.hypot(p.x - x, p.z - z) < B.railClear);
+    ODYSSEY_PERCH_ROCKS.forEach((rock) => {
+        rocks.push(seatRock(heightAt, { ...rock, anchor: -1, kind: 'perch' }));
+    });
     B.anchors.forEach((anchor, ai) => {
         const r = rng(anchor.seed * 7919);
         const push = (rock) => {
@@ -337,4 +363,87 @@ export function boulderMatrix(rock, out = new THREE.Matrix4()) {
         q,
         new THREE.Vector3(rock.sx, rock.sy, rock.sz),
     );
+}
+
+/**
+ * The perches' tops for feet (the ibex): each perch seated on `heightAt` as buildBoulderSites seats
+ * it, its near-tier mesh laid into a fine height grid (the highest surface over each cell), so a
+ * hoof stands on the rock the eye sees. Built once (CPU, a few ms).
+ * @param {(x: number, z: number) => number} heightAt the drawn ground
+ * @param {number} [cell] grid spacing (u)
+ * @returns {{ rocks: object[], topAt: (x: number, z: number) => number }} topAt is -Infinity off every rock
+ */
+export function buildPerchTops(heightAt, cell = 0.2) {
+    const rocks = ODYSSEY_PERCH_ROCKS.map((rock) => seatRock(heightAt, { ...rock, anchor: -1, kind: 'perch' }));
+    const v = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+    const grids = rocks.map((rock) => {
+        const geo = buildBoulderGeometry(rock.shape, ODYSSEY_BOULDERS.lod.near);
+        const pos = geo.attributes.position;
+        const m = boulderMatrix(rock);
+        const pts = [];
+        for (let i = 0; i < pos.count; i += 1) {
+            pts.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)).applyMatrix4(m));
+        }
+        geo.dispose();
+        const minX = Math.min(...pts.map((q) => q.x));
+        const minZ = Math.min(...pts.map((q) => q.z));
+        const nx = Math.ceil((Math.max(...pts.map((q) => q.x)) - minX) / cell) + 1;
+        const nz = Math.ceil((Math.max(...pts.map((q) => q.z)) - minZ) / cell) + 1;
+        const top = new Float32Array(nx * nz).fill(-Infinity);
+        // Each triangle facing up, rasterised over the cells whose centre it covers.
+        for (let t = 0; t < pts.length; t += 3) {
+            v[0].copy(pts[t]);
+            v[1].copy(pts[t + 1]);
+            v[2].copy(pts[t + 2]);
+            const ax = v[1].x - v[0].x;
+            const az = v[1].z - v[0].z;
+            const bx = v[2].x - v[0].x;
+            const bz = v[2].z - v[0].z;
+            const det = (ax * bz) - (az * bx);
+            if (Math.abs(det) < 1e-9) continue;
+            const i0 = Math.max(0, Math.floor((Math.min(v[0].x, v[1].x, v[2].x) - minX) / cell));
+            const i1 = Math.min(nx - 1, Math.ceil((Math.max(v[0].x, v[1].x, v[2].x) - minX) / cell));
+            const j0 = Math.max(0, Math.floor((Math.min(v[0].z, v[1].z, v[2].z) - minZ) / cell));
+            const j1 = Math.min(nz - 1, Math.ceil((Math.max(v[0].z, v[1].z, v[2].z) - minZ) / cell));
+            for (let j = j0; j <= j1; j += 1) {
+                for (let i = i0; i <= i1; i += 1) {
+                    const px = minX + (i * cell) - v[0].x;
+                    const pz = minZ + (j * cell) - v[0].z;
+                    const b1 = ((px * bz) - (pz * bx)) / det;
+                    const b2 = ((ax * pz) - (az * px)) / det;
+                    if (b1 < -1e-6 || b2 < -1e-6 || b1 + b2 > 1 + 1e-6) continue;
+                    const y = v[0].y + (b1 * (v[1].y - v[0].y)) + (b2 * (v[2].y - v[0].y));
+                    const k = (j * nx) + i;
+                    if (y > top[k]) top[k] = y;
+                }
+            }
+        }
+        return {
+            minX, minZ, nx, nz, top,
+        };
+    });
+    const sample = (g, x, z) => {
+        const fx = (x - g.minX) / cell;
+        const fz = (z - g.minZ) / cell;
+        const i = Math.floor(fx);
+        const j = Math.floor(fz);
+        if (i < 0 || j < 0 || i >= g.nx - 1 || j >= g.nz - 1) return -Infinity;
+        const a = g.top[(j * g.nx) + i];
+        const b = g.top[(j * g.nx) + i + 1];
+        const c = g.top[((j + 1) * g.nx) + i];
+        const d = g.top[((j + 1) * g.nx) + i + 1];
+        // (At the rim, where a corner is off the rock, the ground takes over.)
+        if (!(Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && Number.isFinite(d))) return -Infinity;
+        const u = fx - i;
+        const w = fz - j;
+        return (a * (1 - u) * (1 - w)) + (b * u * (1 - w)) + (c * (1 - u) * w) + (d * u * w);
+    };
+    return {
+        rocks,
+        topAt(x, z) {
+            let best = -Infinity;
+            for (const g of grids) best = Math.max(best, sample(g, x, z));
+            return best;
+        },
+    };
 }

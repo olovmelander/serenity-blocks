@@ -114,15 +114,18 @@ export function parseOdysseyDeer(root) {
  * @param {(x: number, z: number) => number} [opts.heightAt] the drawn ground (the world's mirror)
  * @param {string} [opts.url] model URL
  * @param {(url: string) => Promise<{scene: THREE.Object3D}>} [opts.loadGltf] the fetch + parse (tests)
+ * @param {typeof ODYSSEY_DEER} [opts.herd] the herd: its members, their spots and its window (the
+ *   glade's by default; the tarn's drinkers are a second, odyssey-pond-life-motion.js)
+ * @param {string} [opts.name] the group's name
  */
 export function createOdysseyDeer({
     hazeColour = null, sunColour = null, heightAt = odysseyWorldHeight, url = ODYSSEY_DEER_URL,
-    loadGltf = loadOdysseyGltfCached,
+    loadGltf = loadOdysseyGltfCached, herd: cfg = ODYSSEY_DEER, name = 'odyssey-deer',
 } = {}) {
     const group = new THREE.Group();
-    group.name = 'odyssey-deer';
+    group.name = name;
     group.visible = false;
-    const herd = buildHerd(ODYSSEY_DEER);
+    const herd = buildHerd(cfg);
     const count = herd.length;
     const sun = sunColour ?? vec3(1.0, 0.95, 0.86);
     const haze = hazeColour ?? vec3(0.72, 0.82, 0.93);
@@ -260,7 +263,7 @@ export function createOdysseyDeer({
         const sz = -sunD.z / flat;
         herd.forEach((deer, i) => {
             const base = i * row * 4;
-            const out = poseDeer(rig, deer, time, heightAt, data, base);
+            const out = poseDeer(rig, deer, time, heightAt, data, base, cfg);
             const { state } = out;
             Object.assign(states[i], {
                 x: state.x, z: state.z, heading: state.heading, head: state.head,
@@ -298,7 +301,7 @@ export function createOdysseyDeer({
             // so planning never holds a frame.
             await herd.reduce((before, deer) => before.then(() => new Promise((resolve) => {
                 setTimeout(() => {
-                    planFootfalls([deer], rig);
+                    planFootfalls([deer], rig, cfg);
                     resolve();
                 }, 0);
             })), Promise.resolve());
@@ -334,13 +337,13 @@ export function createOdysseyDeer({
         /** Triangles the herd draws (all instances), for the record. */
         get triangles() { return triangles; },
         /** Reveal (0 or 1) the progress window asks for at `p`. */
-        revealAt(p) { return deerRevealAt(p); },
+        revealAt(p) { return deerRevealAt(p, cfg); },
         /**
          * @param {number} time board clock (s)
          * @param {number} progress journey progress
          */
         update(time, progress) {
-            const show = ready && deerRevealAt(progress) > 0;
+            const show = ready && deerRevealAt(progress, cfg) > 0;
             group.visible = show;
             if (!show) return;
             poseHerd(time);
