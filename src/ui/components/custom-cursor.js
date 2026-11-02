@@ -682,7 +682,10 @@ export class CustomCursor {
         if (now - this.lastPointerActivity < 1200) {
             return false;
         }
-        return !!document.querySelector('.gamepad-focused');
+        // A controller in hand (input-mode.js) hides the cursor everywhere, not only on the
+        // main menu's cards: it sat over Settings, the Hub and the lobbies while the pad was used.
+        return Boolean(document.body?.classList?.contains('sb-input-gamepad')
+            || document.querySelector('.gamepad-focused'));
     }
 
     shouldRender() {

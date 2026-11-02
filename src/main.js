@@ -4102,7 +4102,7 @@ class SerenityBlocks {
 
         // Check if GameModeManager has a running mode
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
-            this.gameModeManager.pauseCurrentMode();
+            this.gameModeManager.pauseCurrentMode({ endLook: true });
             return;
         }
 
@@ -4217,7 +4217,7 @@ class SerenityBlocks {
             console.log('[Main] Settings already open, just pausing game');
             // Just pause the game without showing modal again
             if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
-                this.gameModeManager.pauseCurrentMode();
+                this.gameModeManager.pauseCurrentMode({ endLook: true });
                 return;
             }
             if (!this.gameState.isPaused) {

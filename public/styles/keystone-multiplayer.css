@@ -3254,6 +3254,29 @@ body.start-modal-open #invite-toast-container {
     to { transform: scaleX(0); }
 }
 
+/* A controller's answer (gamepad-controller.js processInviteToast): A / B on the buttons
+   where the pad can answer; in play, a line that says ☰ first (A and B are the game's). */
+#invite-toast-container .invite-toast-btn .sb-kbd[data-pad] {
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+#invite-toast-container .invite-toast-padnote {
+    display: none;
+    margin: 8px 0 0;
+    color: var(--sb-text-muted);
+    font: 600 0.75rem / 1.3 var(--sb-font-text);
+    text-align: right;
+}
+
+body.sb-input-gamepad #invite-toast-container[data-pad-answers='pause'] .invite-toast-padnote {
+    display: block;
+}
+
+body.sb-input-gamepad #invite-toast-container[data-pad-answers='pause'] .invite-toast-btn .sb-kbd[data-pad] {
+    display: none;
+}
+
 /* =================================================================================
  * In-game multiplayer HUD — type and colour only. Layout sizes stay exactly as the
  * modes measure them (LocalMultiplayerMode chrome heights, the online column widths).

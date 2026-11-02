@@ -137,7 +137,7 @@ describe('gamepad binding configuration ownership', () => {
 
         bindings.toggleHub = 5;
         controller.processSerenityModeInput(gamepad, 0);
-        controller._serenityHubToggleCooldown = -Infinity;
+        controller.hubToggledAt = -Infinity;
         gamepad.buttons[5].pressed = true;
         controller.processSerenityModeInput(gamepad, 0);
         expect(toggleHub).toHaveBeenCalledTimes(2);

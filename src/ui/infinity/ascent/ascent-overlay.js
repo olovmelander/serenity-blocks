@@ -90,7 +90,9 @@ export class AscentOverlay {
         this.altimeter.innerHTML = '<span class="ia-altimeter__label">Altitude</span>'
             + '<span class="ia-altimeter__value"></span><span class="ia-altimeter__unit">rows</span>'
             + '<span class="ia-altimeter__sub"></span><span class="ia-altimeter__hint">'
-            + 'Scroll or drag the tower to look · any game key returns</span>';
+            + '<span class="sb-when-not-pad">Scroll or drag the tower to look · any game key returns</span>'
+            + '<span class="sb-when-pad">Right stick to look · R3 looks at once · any game button returns</span>'
+            + '</span>';
         this.altValue = /** @type {HTMLElement} */ (this.altimeter.querySelector('.ia-altimeter__value'));
         this.altSub = /** @type {HTMLElement} */ (this.altimeter.querySelector('.ia-altimeter__sub'));
 

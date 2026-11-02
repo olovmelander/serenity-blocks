@@ -10,7 +10,8 @@
  * the side tracks the climb toward the ceiling with its milestones; in Infinity, beads on
  * the tower's edge mark where its big moments happened (setMarks). Once the well has grown to
  * its ceiling, the roof (row 0) is drawn and the map above it closed off. Drag (or touch) the
- * map to look around the tower: the mode pauses and moves its camera
+ * map, or on a controller push the right stick, to look around the tower: the mode pauses and
+ * moves its camera
  * ('minimap-exploration-start', 'minimap-jump', 'minimap-exploration-end'). Local versus
  * shows its maps read-only (explorable: false): looking around there paused one player's
  * board while the others played on, and anyone holding the mouse could do it to any board.
@@ -144,7 +145,9 @@ export class InfinityMinimap {
         }
         this.instructionLabel = document.createElement('div');
         this.instructionLabel.className = 'minimap-instruction';
-        this.instructionLabel.textContent = 'Drag to look';
+        // A controller cannot drag: the right stick looks around the tower (InfinityAscent).
+        this.instructionLabel.innerHTML = '<span class="sb-when-not-pad">Drag to look</span>'
+            + '<span class="sb-when-pad">Right stick to look</span>';
 
         this.container.append(title, this.canvas, this.instructionLabel);
         this.canvas.addEventListener('pointerdown', this.handlePointerDown);

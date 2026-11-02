@@ -1,9 +1,10 @@
 /**
  * MultiplayerScoreboardOverlay - Fullscreen scoreboard overlay for online multiplayer
- * (Tab). Ranks and labels players by the same rules as the in-game scoreboard
- * (scoreboard-metrics.js): the number that decides the match first.
+ * (Tab, or R3 on a controller). Ranks and labels players by the same rules as the in-game
+ * scoreboard (scoreboard-metrics.js): the number that decides the match first.
  */
 import { escapeHtml } from '../utils/dom-safety.js';
+import { menuCoversGame } from './sheet-input.js';
 import {
     METRIC_LABELS,
     compareStandings,
@@ -26,6 +27,12 @@ export class MultiplayerScoreboardOverlay {
         this.playersDirty = false;
 
         this.createUI();
+        // A controller's R3 in play is Tab's twin (gamepad-controller.js setInfoButtonHandler);
+        // the overlay lives as long as the online match does.
+        const pad = globalThis.window?.gamepadController;
+        this.releasePad = pad?.setInfoButtonHandler?.(() => {
+            if (!menuCoversGame()) this.toggle();
+        }) || null;
     }
 
     createUI() {
@@ -162,6 +169,8 @@ export class MultiplayerScoreboardOverlay {
     }
 
     destroy() {
+        this.releasePad?.();
+        this.releasePad = null;
         if (this.container) {
             this.container.remove();
             this.container = null;

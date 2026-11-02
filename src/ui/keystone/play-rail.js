@@ -15,7 +15,9 @@
  *
  * Keys: Esc (Start on a pad) opens Settings in every mode but Serenity, where Esc goes
  * back to the menu and Start opens it. The Hub key (H unless rebound) opens the Hub in
- * every mode; Serenity Mode handles its own (and Y on a pad, which elsewhere plays).
+ * every mode, and so does the pad's View (Serenity's Hub binding: gamepad-controller.js);
+ * Serenity Mode handles its own. Stillfall's View opens its puzzle atlas instead, so there
+ * the Hub tile names no pad button (Start, then Serenity Hub, reaches it).
  *
  * Styles: public/styles/keystone-overlays.css (`#sb-play-rail`). Record:
  * docs/MENU_UI_OVERHAUL_2026-10.md §5.5.
@@ -23,6 +25,7 @@
 
 import { escapeHtml } from '../../utils/dom-safety.js';
 import { menuCoversGame } from '../sheet-input.js';
+import { openSerenityHub } from '../serenity-hub/hub-launcher.js';
 
 const RAIL_ID = 'sb-play-rail';
 const SETTINGS_ID = 'settings-btn-global';
@@ -33,7 +36,7 @@ const RAIL_SHY_SURFACES = '#stillfall-atlas:not([hidden])';
 /** Left to right; the corner belongs to Settings. */
 const TILE_IDS = [NAVIGATOR_ID, HUB_ID, SETTINGS_ID];
 const MODE_EVENTS = ['modeActivated', 'modeStarted', 'modeStopped', 'modeDeactivated'];
-const PAD_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'Select', '&#9776;', 'L3', 'R3',
+const PAD_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View', '&#9776;', 'L3', 'R3',
     '&uarr;', '&darr;', '&larr;', '&rarr;'];
 
 /** How many runs of each mode open the tray to name its controls, and for how long. */
@@ -49,6 +52,13 @@ let rail = null;
 let modeWatchBound = false;
 let peekTimer = null;
 const labels = new WeakMap();
+const lazyHubTiles = new WeakSet();
+
+/** The Hub tile (and the dock's button, which clicks it) before the Hub has loaded: build and open it. */
+function onHubTileClick() {
+    if (window.serenityBlocks?.serenityHub) return; // built: its own handler toggles it
+    openSerenityHub().catch((error) => console.warn('[PlayRail] Could not open the Serenity Hub:', error));
+}
 
 function keycap(text, kind) {
     return `<kbd class="sb-kbd" data-${kind}>${text}</kbd>`;
@@ -63,6 +73,24 @@ function currentSettings() {
 function hubKey() {
     const key = currentSettings().serenityKeyBindings?.toggleHub;
     return typeof key === 'string' && key ? key : 'h';
+}
+
+/**
+ * The pad button that opens the Hub in this mode: Serenity's Hub binding (View by default),
+ * or View where that binding plays the game (Y rotates outside Serenity). Stillfall's View
+ * is its puzzle atlas, so there the tile names none.
+ */
+function hubPadKeycap(modeId) {
+    if (modeId === 'stillfall') return '';
+    const bound = currentSettings().serenityGamepadBindings?.toggleHub;
+    let button = Number.isInteger(bound) ? bound : 8;
+    if (modeId !== 'serenity' && padButtonPlaysTheGame(button)) button = 8;
+    return keycap(PAD_NAMES[button] || 'View', 'pad');
+}
+
+/** True when a pad button plays the game for player 1 (rebound controls). */
+function padButtonPlaysTheGame(button) {
+    return Object.values(currentSettings().gamepadBindings || {}).includes(button);
 }
 
 /** A binding as its keycap reads; a rebound key is the player's text, so it is escaped. */
@@ -84,9 +112,7 @@ function describe(id, modeId) {
         return { text: 'Settings', keys: (serenity ? '' : keycap('Esc', 'key')) + keycap('&#9776;', 'pad') };
     }
     if (id === HUB_ID) {
-        const pad = PAD_NAMES[currentSettings().serenityGamepadBindings?.toggleHub ?? 3] || 'Y';
-        // Outside Serenity the pad reaches the Hub through Settings (Start, then Serenity Hub).
-        return { text: 'Serenity Hub', keys: keycap(keyName(hubKey()), 'key') + (serenity ? keycap(pad, 'pad') : '') };
+        return { text: 'Serenity Hub', keys: keycap(keyName(hubKey()), 'key') + hubPadKeycap(modeId) };
     }
     return { text: 'Chapters', keys: '' };
 }
@@ -253,6 +279,10 @@ function adoptTiles() {
     TILE_IDS.forEach((id) => {
         const tile = document.getElementById(id);
         if (!tile) return;
+        if (id === HUB_ID && !lazyHubTiles.has(tile)) {
+            lazyHubTiles.add(tile);
+            tile.addEventListener?.('click', onHubTileClick);
+        }
         const slot = previous ? previous.nextElementSibling : rail.firstElementChild;
         if (tile !== slot) rail.insertBefore(tile, slot);
         previous = tile;

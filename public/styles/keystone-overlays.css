@@ -1814,6 +1814,16 @@ body:not(.serenity-mode) #serenity-notification {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
+/* Controller glyphs (replay-pad-controls.js): A, B, ← →, LB RB, shown only on a pad. */
+#playback-controls .pb-pad.sb-kbd[data-pad] {
+    flex: none;
+    align-self: center;
+}
+
+body.sb-input-gamepad #playback-controls .playback-progress-container {
+    gap: 8px;
+}
+
 #playback-controls.playback-controls .playback-speed {
     display: flex;
     gap: 3px;

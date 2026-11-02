@@ -954,7 +954,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                         <canvas class="spectator-spotlight-canvas"></canvas>
                     </div>
                 </div>
-                <div class="spectator-spotlight-hint">Click a board on the left to spotlight a player</div>
+                <div class="spectator-spotlight-hint"><span class="sb-when-not-pad">Click a board on the left to spotlight a player</span><span class="sb-when-pad"><kbd class="sb-kbd">&larr;</kbd> <kbd class="sb-kbd">&rarr;</kbd> spotlight another player</span></div>
             </div>
         `;
     }

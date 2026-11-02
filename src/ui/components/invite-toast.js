@@ -2,13 +2,25 @@
  * InviteToastManager
  *
  * Keystone toast for Steam invites: stacked bottom-centre with the other toasts,
- * announced as an alert, with focusable Join / Decline buttons. Styles: `.invite-toast*`
- * in public/styles/keystone-multiplayer.css.
+ * announced as an alert, with focusable Join / Decline buttons. A controller answers with
+ * A and B wherever it is not playing a falling-block game (gamepad-controller.js
+ * processInviteToast), which marks the container `data-pad-answers` "buttons" or "pause";
+ * the glyphs follow it. Styles: `.invite-toast*` in public/styles/keystone-multiplayer.css.
  *
  * This module loads at startup (steam-invite-manager.js), so it also installs the
  * `serenity:toast` listener for the general toasts (./toast.js).
  */
 import './toast.js';
+
+/** A controller glyph keycap (shown only while a pad is the input: keystone.css). */
+function padGlyph(label) {
+    const cap = document.createElement('kbd');
+    cap.className = 'sb-kbd';
+    cap.setAttribute('data-pad', '');
+    cap.setAttribute('aria-hidden', 'true');
+    cap.textContent = label;
+    return cap;
+}
 
 class InviteToastManager {
     constructor() {
@@ -66,14 +78,22 @@ class InviteToastManager {
         declineBtn.type = 'button';
         declineBtn.className = 'invite-toast-btn invite-toast-decline';
         declineBtn.textContent = declineText;
+        declineBtn.appendChild(padGlyph('B'));
 
         const acceptBtn = document.createElement('button');
         acceptBtn.type = 'button';
         acceptBtn.className = 'invite-toast-btn invite-toast-accept';
         acceptBtn.textContent = acceptText;
+        acceptBtn.appendChild(padGlyph('A'));
 
         actionsEl.appendChild(declineBtn);
         actionsEl.appendChild(acceptBtn);
+
+        // In play A and B are the game's: the pad answers once Settings is open over it.
+        const padNote = document.createElement('p');
+        padNote.className = 'invite-toast-padnote';
+        padNote.setAttribute('aria-hidden', 'true');
+        padNote.append(padGlyph('\u2630'), document.createTextNode(' then A or B to answer'));
 
         // A thin bar drains while the invite is open (decorative).
         const timerEl = document.createElement('span');
@@ -84,6 +104,7 @@ class InviteToastManager {
         toast.appendChild(titleEl);
         toast.appendChild(messageEl);
         toast.appendChild(actionsEl);
+        toast.appendChild(padNote);
         toast.appendChild(timerEl);
 
         const cleanup = () => {

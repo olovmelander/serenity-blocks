@@ -65,17 +65,19 @@ const DEFAULT_KEYS = [
 
 /**
  * How a seat plays, for its in-game plate: "Arrow keys", "WASD", "Controller 3" or
- * "Bot · Master".
+ * "Bot · Master". Seats 1 and 2 also answer to their controller: with it connected the plate
+ * names the controller (the keys were named to a player holding a pad).
  * @param {number} index seat (0–3)
  * @param {{ kind?: string, difficulty?: number }} slot
  * @param {object} settings
+ * @param {{ padConnected?: boolean }} [options]
  */
-export function versusControls(index, slot = {}, settings = {}) {
+export function versusControls(index, slot = {}, settings = {}, { padConnected = false } = {}) {
     if (slot.kind === 'bot') {
         const tier = BOT_SKILL_TIERS[(Number(slot.difficulty) || 1) - 1];
         return tier ? `Bot · ${tier}` : 'Bot';
     }
-    const keys = settings?.[KEY_BINDINGS[index]] || DEFAULT_KEYS[index];
+    const keys = padConnected ? null : settings?.[KEY_BINDINGS[index]] || DEFAULT_KEYS[index];
     return keys ? keyboardScheme(keys) : `Controller ${index + 1}`;
 }
 
@@ -92,11 +94,14 @@ export function seatSetupControls(index, settings = {}) {
 }
 
 /**
- * The controls card's rows: [action, keys].
+ * The controls card's rows: [action, keys]. With the seat's controller connected, its buttons.
+ * @param {number} index seat (0–3)
+ * @param {object} settings
+ * @param {{ padConnected?: boolean }} [options]
  * @returns {Array<[string, string[]]>}
  */
-export function versusCoachRows(index, settings = {}) {
-    const keys = settings?.[KEY_BINDINGS[index]] || DEFAULT_KEYS[index];
+export function versusCoachRows(index, settings = {}, { padConnected = false } = {}) {
+    const keys = padConnected ? null : settings?.[KEY_BINDINGS[index]] || DEFAULT_KEYS[index];
     if (keys) {
         return [
             ['Move', [keys.moveLeft, keys.moveRight].map(keyName)],
