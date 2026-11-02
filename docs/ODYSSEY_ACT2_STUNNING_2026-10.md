@@ -48,7 +48,7 @@ of cold pipeline compile.
 2. **The summit sculpted, and its wind.** Arêtes, rock faces and couloirs in the height field.
    Snow by slope and exposure with wind-scoured ridges, rock that does not stretch on steep faces,
    and a spindrift plume that reads. Varied framing for chapter 5's long stare. *Done (§2), the
-   framing left for later.*
+   framing later (§14).*
 3. **Trees and the treeline.** Softer, back-lit crowns, ragged conifer silhouettes, a far ring of
    forest, and a transition from forest through krummholz and alpine meadow to rock and snow. A
    cheap band of real grass by the rail, in the wind. *Done (§3): the crowns' bands follow the
@@ -158,7 +158,7 @@ and `bakeWorldTextureData` returns an eleventh buffer. The loader's fake worker 
 plate. The forest visibility stamp was re-baked.
 
 **Not done here (moved on).** Varied camera framing for chapter 5's long stare: the summit now
-carries the view.
+carries the view. *Done later (§14).*
 
 ## §3. Trees, their shade, and the treeline (2026-10-25)
 
@@ -773,3 +773,54 @@ integrated GPU.
 **Tests.** The conifer card test pins the layout (needle cards at hero and mid, first in the
 buffer, of the needle kind; the cypress's clump column; no cards at far); the atlas test now
 checks both rows (a spray's middle band full, the sky above it open, nothing past the rim).
+
+## §14. The climb's views (2026-11-02)
+
+Olov asked for more variety on chapter 5's long climb. From L28 to L32 the view was one picture:
+the summit cone dead ahead, sky all round it. The two short moves that were there (a pan right at
+L30, a longer lens at L31-L32) did not change that.
+
+**What limits the camera.** The rail climbs at about 50°. The eye sits 42 u behind the orb, so the
+orb underfoot is about 45° above the eye. `odyssey-ch5-climb-framing` keeps the orb underfoot and
+the next orb in frame. Measured on the real camera, that leaves about ±35° of turn and only a few
+degrees of tilt down. A look straight down to the island is not possible until the shoulder (L33).
+So the variety comes from where the view turns, the lens, and how much of the world shows under
+the summit.
+
+**One view per orb** (`CHAPTER_5_CLIMB_SHOTS` in `OdysseyCameraController.js`). It is the keyframed
+language of chapters 3 and 4, on top of the lift. A parked orb shows exactly its key. The glide to
+the next orb is the pan.
+
+| Orb | View | Turn, tilt, lens |
+|---|---|---|
+| L28 | the ledge, unchanged | 0 |
+| L29 | the summit above, the wall | 0 |
+| L30 | across the west slope: the summit on the right, its plume, the west peak, the horizon | −34°, −4°, +8° |
+| L31 | the horn looms on a long lens, the plume tearing off it | −8°, +4°, −8° |
+| L32 | out east among the clouds, the island and the sea below | +26°, −3°, +9° |
+| L33 | the shoulder: down past the horn to the island, the lake and the kettle below | +8°, −6°, +8° |
+| L34 | unchanged, into the hand-off to space | 0 |
+
+L27, L28 and L34 are as before, so both seams are untouched.
+
+![Before and after at each orb of the climb, L29 to L34, in pairs (before left)](images/odyssey-act2-2026-10-25/climb-views-before-after.jpg)
+
+**Calm.** No pan is more than 35° a glide. Simulated on the real controller (a 1 s orb glide, the
+framing ease on), the turn rate peaks where it did before: the shoulder glides (L32-L34) are 131
+and 180°/s at their peak, against 165 and 172 before, and that peak is the rail bending past the
+summit, not these keys. The opening sweep's peak in chapter 5 is the same as before (318 against
+314°/s).
+
+**The kettle.** At L33 the view now looks down over the summit's kettle of birds. It leaves the
+frame ~0.005 later on the way to L34, so its fade moved to 0.679-0.709 (it was 0.674-0.704). It
+still fades only out of view (`odyssey-act2-fade-out-of-view`).
+
+**Tests.** `odyssey-ch5-climb-framing`:
+
+- The guard for the orb underfoot and the way ahead is unchanged, and holds.
+- The summit stays mid-frame at L29 and L31. (L32 now looks away from it.)
+- A new test pins the views: L30 west of the wall with the summit on the right, L31 the tightest
+  lens, L32 east with the summit at the left edge, L33 the lowest and level. Neighbouring orbs
+  differ by a real turn or lens change.
+- A new test pins the smoothness: the keys change at most 1.5° per 0.001 of progress, hold still
+  at each orb, and the real camera never steps between neighbouring samples.
