@@ -248,3 +248,132 @@ compile, the same places, sizes and no-pop windows, `?odysseyNoDeer=1` as before
 `tests/unit/odyssey-ground-animals.test.js`: no hoof slides, every joint smooth through every change
 of state, smooth starts and stops, turns walked or stepped round (never spun), the four-beat order,
 the loop's seam, walks leaving the way the deer faces.
+
+## Wild horses on the meadow (2026-11-02)
+
+The owner agreed to: "A band of wild horses on the open meadows (chapters 3-4). Most of the time they
+graze and wander, with a foal beside its mother. Now and then they run in a wide arc across the
+meadow with a little dust, a moment you catch from the path."
+
+### Choosing the place (the scouting numbers)
+
+Measured on the real rail camera (`tests/unit/helpers/odyssey-camera-rig.js`), the real terrain and
+both forest tiers, every 10 m over the island, for every orb park of chapters 3-4 and the glides
+between them. A cell counts as open meadow when it is dry, its slope is under 0.3, it is clear of the
+boulders, the tarn and the rail's ground track, and it is more than 3 m outside the inner 60 % of every
+crown. The withers of a 3x mare are 4.1 m tall.
+
+| Open ground | Seen from (withers at 1440p) | Room for a run |
+|---|---|---|
+| East of the rail: a long band of grass at z -350..-315, x -145..+10, and a corridor at z -430..-415 south of a copse | L11-L12 (21-25 px), L13 (26), L15-L16 (29-36), L17-L18 (39-49), the L18-L19 glide | yes: an oval round the copse, ~400 m |
+| Round the tarn (its kept-open clearing) and west of it | L17-L18 (29-42 px), L22-L24 (34-37) | yes, but the pond animals live there |
+
+The east meadow wins: it is in view at seven chapter-3 parks, and it leaves the tarn to the pond's
+animals. L14 does not see it, and chapter 4's parks (L19-L26) do not either. So in practice the
+horses are a chapter-3 sight (the band's window runs to p 0.29, just past L21).
+
+**The catch, seen in the game:** the "open meadow" is a glade among scattered trees. From the rail
+(63-172 m up, looking across), the crowns in front hide much of the grass. The horses show in the gaps
+(L16, L17, L18 best; at L15 one or two), not as a herd on open grass. The scouting counted the ground,
+not the crowns between it and the eye.
+
+### The model
+
+`scripts/blender/odyssey/wild_horse.py` (headless Blender, rebuilt byte for byte) builds
+`assets/chapter-03/horses/wild-horses.glb`. It holds two meshes on the deer's pipeline (a signed
+distance field polygonised, decimated and mirrored):
+- A stocky wild mare of the Przewalski / Konik type: 1.38 m at the withers, a big straight head, a
+  short upright mane, a full tail. 2,396 triangles.
+- A leggy foal: 1.04 m at the withers. 1,796 triangles.
+
+Each has its own 29-bone skeleton (the deer's bones, plus a three-bone tail). The vertex colours are
+masks (pale, points, black, sky seen), and the coat is a tint per horse: bay, dun or grey.
+
+![The mare and foal at game size, three coats](images/odyssey-animals-2026-11-02/horses-model-game-size.png)
+
+### Their life (`composition/odyssey-horse-band.js`)
+
+- **Five adults and two foals.** The lead mare (dun, with a dun foal), a grey mare, a bay mare (with a
+  bay foal), a dun mare and a bay stallion.
+- **Two grazing places:** the west and the east end of the open band. Each horse has its own two spots
+  in each. It grazes there like the deer: head down, slow steps along short curves, a look round, a
+  walk to its other spot.
+- **The foals** keep to spots at their mothers' sides. About every minute or two a foal trots out to
+  its own open playground, sometimes bucks (both hinds kicked up and back), looks round and trots back.
+- **The runs.** Twice in the 300 s loop the band runs.
+  - At 118 s the heads come up, each horse turns toward the way out, and the band sets off in a loose
+    file behind the lead mare. The foals run at their mothers' flanks. They go the long way round the
+    copse: down the west side, along the south corridor, up the east side, to the east place
+    (~400 m, 22-26 s).
+  - At 262 s they canter straight back along the band to the west place (9-12 s).
+  - The horses keep one west-to-east order in both places and set off in that order, so no one
+    overtakes another.
+- **Speed.** A run speeds up over 4.6 s and slows over 4.6 s. The gait follows the speed: walk, trot,
+  canter, gallop. The top speed is a slow gallop, 7 m/s at life size (21 m/s drawn).
+- **Gaits** (`ODYSSEY_HORSES.gaits`): a four-beat walk, a two-beat trot (diagonal pairs), a three-beat
+  canter and a four-beat gallop, both leading with the left fore. Their footfall timings, stride rates
+  and stance shares blend smoothly with the speed.
+- **The feet.** A footstep planner like the deer's walks each horse through its loop once at load
+  (60 steps a second). It lifts each hoof when its timing comes round and lands it where it should
+  stand half a stance later. A planted hoof never moves. The plan also keeps the stride phase, which
+  the pose reads.
+- **The pose** is the deer's (two-segment legs, the body riding on its feet, three neck bones), plus
+  the gaits' own motion:
+  - the trot's bounce;
+  - the canter's rocking and the neck's pump;
+  - the body carried lower at speed, and the neck stretched;
+  - the tail streaming in a run and swished at flies while grazing (a wave down its three bones);
+  - a grazing foal splays its fores a little.
+
+![Before (left, `?odysseyNoHorses=1`) and after (right), the clock pinned to a grazing moment: L15, L16, L17, L18 (crops of 1280x720, enlarged 3x)](images/odyssey-animals-2026-11-02/horses-before-after.jpg)
+
+![The run at L17, 3.6 s apart: the band moving off, then a dun and a bay in full gallop through the gap (crops enlarged 1.5x)](images/odyssey-animals-2026-11-02/horses-gallop-l17.jpg)
+
+### Light, shadow, no popping
+
+- The deer's light (the world sun, the sky softened toward the warm air, the meadow's green from
+  below, a little sky on the edges, the air), and a soft shadow on the slope under each horse.
+- Drawn from p 0.08 (deep under the sea) to p 0.29. The test checks that the eye is under water at the
+  start and that every horse, at every moment of the loop, is out of the frame round the end.
+- The deer's lifecycle (`driveOdysseyHorses`): fetched and planned as chapter 2 begins, compiled while
+  the board is idle, then drawn; a failure leaves the act as it was. Off: `?odysseyNoHorses=1`.
+
+### Cost
+
+- 3 draws: the mares (5 x 2,396), the foals (2 x 1,796) and the shadows. 15,572 triangles.
+- One instanced attribute a draw (the coat is an index picked in the shader). WebGPU allows 8 vertex
+  buffers a draw, and three colour attributes went over it on the first try.
+- CPU: posing the band costs about 0.1 ms a frame. Planning the feet takes ~120 ms in all, one horse a
+  task (12-28 ms each), so it never holds a frame. A 6.8 KB table goes to the GPU each frame.
+- The bake-loader ratio test, the perf-budgets gate, the entry-hold and async-build budgets still pass.
+
+### Tests (`tests/unit/odyssey-wild-horses.test.js`)
+
+- **The models:** two meshes, 29 bones, within their triangle budgets.
+- **The shaders:** all three build for WGSL and GLSL, in at most eight vertex buffers.
+- **The clock:** every loop exactly 300 s (so the band's runs stay together), two runs minutes apart.
+- **The gait maths:** a four-beat walk, diagonal pairs in the trot, rate and stance share moving
+  smoothly with the speed.
+- **The ground,** every horse at every moment of its loop, runs included:
+  - dry grass under 0.36 slope;
+  - clear of trunks and low crowns in both forest tiers, of the boulders, of the tarn
+    (distance > 1.5) and of the rail's track (> 30 m);
+  - hooves that bear weight planted (99 % within 0.08 of the drawn size), never dug in;
+  - the horses apart, each foal within 40 m of its mother;
+  - every horse, the foals too, reaching the band's speed.
+- **The camera:** in the frame at L11, L15-L18 at the sizes above; never appearing or leaving in view.
+
+### Left for later / owner decisions
+
+- **The crowns hide the band** much of the time (see above). Options:
+  - (a) thin the forest scatter over the meadow band (a clearing like the tarn's), so the grass is
+    really open from the rail;
+  - (b) move the band to the tarn's clearing, shared with the pond's animals (seen from L17-L18 and
+    L22-L24);
+  - (c) keep it as a glimpse through the trees.
+- **Dust.** The runs have no dust trail yet (the brief's "a little dust"). It would be a small additive
+  puff per hoof landing at gallop speed, fed from the plan's footfalls.
+- **The mother and foal** graze on their own spots side by side, not tied to each other. A foal
+  following its mother step by step would read better up close.
+- The runs are scheduled in the loop (every ~2.5 minutes). They are not timed to the rail's
+  arrivals.
