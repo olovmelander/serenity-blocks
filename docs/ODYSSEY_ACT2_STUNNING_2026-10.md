@@ -902,3 +902,32 @@ squashed into a sliver of it whatever the mirror does. This is an art call: the 
 commit to keep the turquoise pool.
 
 **Cost.** 30 steps of three fetches (was 24) plus three halvings, on the tarn's own pixels only.
+
+## §17. The broadleaf greens: three palettes for the owner (2026-11-02)
+
+**Why.** Round three gave the shore broadleaf one ramp, lime to a deeper blue-green, skewed to
+lime. From the rail the canopy still read as one lime: most trees sit near the lime end, all with
+the same warmth. The palette is the owner's call, so three are offered
+(`world/odyssey-forest-greens.js`, `?odysseyForestGreens=`):
+
+- **`mosaic`, the default (recommended).** Lime is still the majority, with a share of cool
+  blue-greens and a share of warm olive, and a wider value spread (±18%). Neighbouring crowns
+  separate as a mixed broadleaf wood does from above. Its mean stays within a few percent of the
+  species' lime.
+- **`today`.** The round-three ramp exactly, one lever away.
+- **`deep`.** A darker, cooler wood: deep greens and blue-greens, lime only as an accent.
+
+Each tree lands between three poles by two hashes of where it stands. The shade colour follows
+from the crown by the forest's own shade law (`shadeColourFor`). The forest's light bands and the
+leaf cards are untouched. The colour is applied where the renderer fills the forest's instances,
+so the scatter, its golden bytes and the bake worker are unchanged. The far forest painted from
+the shade plate keeps the scatter's colour: its mean is the same within a few percent.
+
+![today, mosaic and deep (columns) at p 0.215, 0.26 and 0.30 (rows)](images/odyssey-island-2026-11-02/greens-options.jpg)
+
+![Close crops of the same: today, mosaic, deep](images/odyssey-island-2026-11-02/greens-options-close.jpg)
+
+**Cost.** None at draw time: one colour per tree, set at build.
+
+**Tests** (`world/odyssey-forest-greens.test.js`): the names, only the green broadleaf touched,
+crowns stay green and vary, the mosaic's mean near the lime. The URL catalogue lists the lever.

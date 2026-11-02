@@ -52,7 +52,8 @@ import {
 import { forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex } from './odyssey-forest-cards.js';
 import { bakeForestLeafAtlas } from './odyssey-forest-leaf-atlas.js';
 import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
-import { scatterZonedForest } from './odyssey-forest-scatter.js';
+import { scatterZonedForest, shadeColourFor } from './odyssey-forest-scatter.js';
+import { forestGreensCrown, resolveForestGreens } from './odyssey-forest-greens.js';
 import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './odyssey-forest-shade.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { bakeValleyMist } from './odyssey-valley-mist.js';
@@ -1297,6 +1298,9 @@ export function createOdysseyWorld({
     // LAKE_TINT_VARIANTS. Unset ships LAKE_TINT_DEFAULT, so the game has exactly one
     // answer and the comparison arms cannot leak into it.
     lakeTint = '',
+    // THE BROADLEAF GREENS (odyssey-forest-greens.js, `?odysseyForestGreens=`): the palette the
+    // lowland broadleaf's crowns take per tree. Unset ships ODYSSEY_FOREST_GREENS_DEFAULT.
+    forestGreens = '',
     water = true,
     forest = true,
     forestPaint = false,
@@ -5829,6 +5833,7 @@ export function createOdysseyWorld({
     ));
 
     const treeMeshes = [];
+    const greensPalette = resolveForestGreens(forestGreens);
     let forestV2Stats = null;
     let forestPlacements = null;
     const m4 = new THREE.Matrix4();
@@ -6335,8 +6340,12 @@ export function createOdysseyWorld({
                 // Non-uniform: the growth stage IS a proportion change.
                 fs.set(t.scaleXZ * FOREST_V2_SCALE, t.scaleY * FOREST_V2_SCALE, t.scaleXZ * FOREST_V2_SCALE);
                 mesh.setMatrixAt(i, fm4.compose(fp, fq, fs));
-                aCrownSnow.setXYZW(i, t.crown[0], t.crown[1], t.crown[2], t.snow);
-                aShadePhase.setXYZW(i, t.shade[0], t.shade[1], t.shade[2], t.rot * 3.7);
+                // The broadleaf greens: a palette's crown for this tree, its shade by the forest's law.
+                const greens = forestGreensCrown(t, greensPalette);
+                const crown = greens ?? t.crown;
+                const shade = greens ? shadeColourFor(greens, getForestSpecies(t.speciesId).role) : t.shade;
+                aCrownSnow.setXYZW(i, crown[0], crown[1], crown[2], t.snow);
+                aShadePhase.setXYZW(i, shade[0], shade[1], shade[2], t.rot * 3.7);
                 aTrunk.setXYZW(
                     i,
                     trunkCol[0],
