@@ -133,12 +133,17 @@ export function resolveGargantuaFallPosition(camera, out, depth = GARGANTUA_LOCK
 
 // ── The singularity window — the shadow's surface opens onto the warp tunnel (the fall) ──
 //
-// The colours of every world the journey has crossed, streaming down the tunnel inside the
-// singularity: ember, deep ocean, island green, snow, aurora, nebula violet, accretion amber,
-// the city's neon. Authored in sRGB; the texture is tagged so the sampler returns linear.
+// THE HOLE'S OWN LIGHT, carried inside (2026-11-02). The tunnel used to stream the colours of
+// every world the journey had crossed (ember, ocean, island green, snow, aurora, violet, amber,
+// neon pink). After the traced dive they read as garish blobs of green and pink once the warp's
+// zoom blur smeared the walls: the hole you just fell through is amber gas round a dark shadow,
+// and the inside did not follow from it. Two families now, in bands down the walls: the disk's gas
+// as it heats (ember, amber, gold, near white) and the cool of the lensed starlight round the
+// shadow (plum, violet, indigo). Authored in sRGB; the texture is tagged so the sampler returns
+// linear.
 const CH7_JOURNEY_PALETTE = Object.freeze([
-    [255, 112, 40], [24, 132, 220], [92, 196, 84], [214, 228, 255],
-    [72, 255, 156], [150, 84, 255], [255, 168, 64], [255, 70, 186],
+    [192, 74, 24], [240, 120, 36], [255, 186, 104], [255, 232, 200],
+    [236, 128, 48], [104, 46, 108], [86, 64, 196], [40, 34, 118],
 ]);
 let _journeyPalette = null;
 function getJourneyPaletteTexture() {
@@ -364,7 +369,8 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // At speed the walls darken a touch so the added streak light does not lift the frame's luma.
     const wallGain = oneMinus(speedLook.mul(0.3));
     const streakColor = mix(mix(tint, vec3(1.0, 0.94, 0.84), head.mul(0.45)), starbow, bowMix);
-    const tunnel = tint.mul(filaments.mul(0.15).add(ridges.mul(0.07)).add(0.009)).mul(wallGain)
+    // (The walls a shade lower than they were, 0.15: deep colours, so the streaks carry the light.)
+    const tunnel = tint.mul(filaments.mul(0.12).add(ridges.mul(0.06)).add(0.009)).mul(wallGain)
         .mul(far.mul(0.8).add(0.2)).mul(axisFade)
         .add(streakColor.mul(streaks)
             .mul(warp.mul(1.8).add(0.35)).mul(axisFade))
