@@ -2780,7 +2780,14 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             chapterOpacity,
         ));
         // The earth is the ONE element allowed through before the boundary.
-        entryTargets.earth.forEach((object) => setOpacityScale(object, earthReveal, chapterOpacity));
+        // SOLID ON THE WAY INTO THE HOLE (2026-11-02): the "earth" here is the gas giant. Faded by the
+        // 6->7 crossfade it hung half see-through beside the growing hole (0.53 at p 0.870), the disk
+        // and the shadow showing through it. Through the chapter's second half it keeps its own
+        // opacity: the growing shadow covers it from ~0.878 and it leaves the frame's foot by ~0.880,
+        // while the chapter is still drawn to ~0.885, so it never pops. (Its rise keeps the weight.)
+        const giantWeight = camera && Number.isFinite(cameraProgress) && chapterPositions
+            && cameraProgress > (chapterPositions[5] + chapterPositions[6]) / 2 ? 1 : chapterOpacity;
+        entryTargets.earth.forEach((object) => setOpacityScale(object, earthReveal, giantWeight));
         entryTargets.heroes.forEach((object) => setOpacityScale(
             object,
             entryState.heroReveal * spaceReveal,

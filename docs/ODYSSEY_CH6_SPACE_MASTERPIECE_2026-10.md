@@ -206,6 +206,55 @@ Tests: `tests/unit/odyssey-hole-dive.test.js` covers:
 - the carrier 120 u ahead of the eye, with the hole unmoved;
 - the trip's marks: over a second to the mouth, half a second at the rim, under 5.5 s.
 
+### After the dive: the tunnel, the giant and the orbs (2026-11-02)
+
+The owner picked these from the follow-up list: "The tunnel right after the dive", "The gas giant
+goes slightly see-through over the hole as chapter 6 fades out" and "The nearest orb looks
+egg-shaped at the bottom edge of the screen".
+
+**The tunnel takes the hole's own light** (`CH7_JOURNEY_PALETTE`, black-hole-transcendence.tsl.js).
+- **Before.** The warp tunnel streamed the colours of every world the journey crossed: ember,
+  ocean, island green, snow, aurora, violet, amber, neon pink. After the traced dive they read as
+  garish blobs of green and pink once the warp's zoom blur smeared the walls.
+- **Now.** The same eight bands hold two families:
+  - the disk's gas as it heats: ember, amber, gold, near white;
+  - the cool of the lensed starlight round the shadow: plum, violet, indigo.
+- **The walls** are a shade lower (filaments 0.12, was 0.15), so the streaks carry the light. The
+  structure, the starbow at speed, the fold and the exit are unchanged.
+
+![The tunnel before (top) and after (bottom)](images/odyssey-space-2026-11-02/tunnel-before-after.jpg)
+
+**The gas giant stays solid on the way in** (cosmic-expanse.js).
+- **Why it showed through.** Its materials fade with the chapter (the `earth` entry in the
+  chapter's own fades; the giant carries that legacy name). Through the 6->7 crossfade it hung
+  half see-through beside the growing hole (0.53 at p 0.870), with the disk and the shadow showing
+  through it.
+- **Now.** Through the chapter's second half it keeps its own opacity. The growing shadow covers
+  it from ~0.878 and it leaves the frame's foot by ~0.880, while the chapter is still drawn to
+  ~0.885, so it never pops. Its rise at the chapter's start keeps the weight.
+- **One trap.** The chapter's own fade (`setOpacityScale`) writes after the environment manager,
+  every frame, so a hold written earlier in the update loses to it.
+
+**The orbs draw round on screen** (`roundOnScreen`, odyssey-orb-round.tsl.js).
+- **Why the egg.** A flat projection stretches a ball off the view's centre by 1 / cos θ along
+  the line from the centre. The orb the eye has just left, close and at the frame's foot, read as
+  an egg (~1.2 : 1).
+- **The fix.** The glass shell, the halo and the world window squeeze their vertices about the
+  orb's centre, in view space, by cos θ along that line. The orb draws round anywhere in the
+  frame; its width, depth and shading are untouched.
+- **The glass's centre.** The glass is instanced, so its centre rides in a new instanced
+  attribute (`aCentre`), written with each instance matrix.
+- **Opt-in.** The glass takes the squeeze with `createGlassShellTSL(uTime, { roundOnScreen: true })`
+  (the board's); the playground's orb design keeps the plain shell.
+
+![The orb just left, at the frame's foot: before (left) and after (right)](images/odyssey-space-2026-11-02/orb-round-before-after.jpg)
+
+Tests:
+- `tests/unit/odyssey-orb-round.test.js`: the egg was > 1.12 : 1, it is now within 3 % of round,
+  its width is kept, and an orb at the centre is untouched;
+- `cosmic-expanse-environment.test.js`: the giant whole late in the chapter, by the weight early;
+- `LevelNodeManager.test.js`: the centre rides with the bob.
+
 ## 4. The galaxy, as the Galaxy theme draws one (odyssey-spiral-galaxy*.js)
 
 It was one quad painted with a 2D spiral: thin rings of blue with pink dots. It is now the Galaxy

@@ -73,6 +73,7 @@ import {
 } from 'three/tsl';
 import { hash21, snoise3 } from './chapter-environments/shared/odyssey-tsl-noise.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './chapter-environments/shared/odyssey-tsl-billboard.js';
+import { roundOnScreen } from './odyssey-orb-round.tsl.js';
 
 // Geometry constants mirror LevelNodeManager.js so the pilot reproduces orb sizes.
 const GLASS_ORB_SCALE = 1.4;
@@ -125,8 +126,10 @@ function breathe(uTime) {
  * lower rim, and the selection ring. A perfect sphere: the per-world shell displacements it
  * used to carry (ribs, steps, ripples) broke the marble's outline round the round window.
  * @param {*} [uTime] shared time uniform
+ * @param {{ roundOnScreen?: boolean }} [options] squeeze each shell so it draws round on screen
+ *   (odyssey-orb-round.tsl.js); the geometry then needs an instanced `aCentre` (vec3, world)
  */
-export function createGlassShellTSL(uTime = uniform(0)) {
+export function createGlassShellTSL(uTime = uniform(0), { roundOnScreen: round = false } = {}) {
     const aState = attribute('aState', 'vec4'); // x:locked y:completed z:hovered+2*current w:selected
     const aNodeColor = attribute('aNodeColor', 'vec3');
     const aNodeAccentColor = attribute('aNodeAccentColor', 'vec3');
@@ -183,6 +186,9 @@ export function createGlassShellTSL(uTime = uniform(0)) {
     };
 
     const material = new THREE.MeshBasicNodeMaterial();
+    // ROUND ON SCREEN: the instance matrices are applied before positionNode, so positionLocal is
+    // the shell's world position here (the mesh sits at the scene's root).
+    if (round) material.positionNode = roundOnScreen(positionLocal, attribute('aCentre', 'vec3'));
     material.colorNode = Fn(() => glassTerms().col)();
     material.opacityNode = Fn(() => glassTerms().alpha)();
     material.transparent = true;
@@ -211,7 +217,8 @@ export function createOrbHaloTSL(uTime = uniform(0), uBeatPulse = uniform(0)) {
     const uFogDensity = uniform(0).onObjectUpdate(({ scene }) => (scene?.fog?.isFogExp2 ? scene.fog.density : 0));
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.positionNode = billboardWorld(aHalo.xyz, aHalo.w.mul(ORB_HALO_SPAN * 2));
+    // ROUND ON SCREEN (odyssey-orb-round.tsl.js): the corona draws round wherever the orb is.
+    material.positionNode = roundOnScreen(billboardWorld(aHalo.xyz, aHalo.w.mul(ORB_HALO_SPAN * 2)), aHalo.xyz);
     material.colorNode = Fn(() => {
         const locked = vState.x;
         const selected = step(1.5, vState.y);
@@ -311,10 +318,11 @@ export function createOrbWindowTSL(arrayTexture, uTime = uniform(0)) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     const toEye = normalize(cameraPosition.sub(aWindow.xyz));
-    material.positionNode = billboardWorld(
+    // ROUND ON SCREEN (odyssey-orb-round.tsl.js), about the orb's centre like the glass round it.
+    material.positionNode = roundOnScreen(billboardWorld(
         aWindow.xyz.add(toEye.mul(aWindow.w.mul(ORB_WINDOW_DEPTH))),
         aWindow.w.mul(ORB_WINDOW_SHARE * 2),
-    );
+    ), aWindow.xyz);
     material.colorNode = Fn(() => {
         const p = uv().mul(2.0).sub(1.0); // the disc, radius 1, y up
         const r = length(p);
