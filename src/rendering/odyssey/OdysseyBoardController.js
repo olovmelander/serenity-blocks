@@ -1395,10 +1395,6 @@ export class OdysseyBoardController {
                     // flat sheet back alongside or instead.
                     // (Same reads as _readWorldBuildOptions — the bake and the build agree.)
                     cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
-                    // REVIEW LEVER (temporary, colour pass): pick a north-lake water
-                    // palette so the GRADED capture harness can shoot the arms without a
-                    // tree edit between runs. Unset ships the default.
-                    lakeTint: readUrlValue('lakeTint') || '',
                     // `?odysseyForestGreens=` (odyssey-forest-greens.js): the broadleaf palette.
                     forestGreens: readUrlValue('odysseyForestGreens') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
