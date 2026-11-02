@@ -326,6 +326,67 @@ It uses the theme's tileable four-channel noise, re-baked in steps with its own 
 
 ![The disc before (left) and after (right) its suns](images/odyssey-space-2026-10-31/galaxy-suns.jpg)
 
+## 5. The aurora from orbit (2026-11-02)
+
+The first thing seen in space. At p 0.745-0.78 the eye is in orbit over the Earth's night side,
+and its aurora read as blocky green walls with stepped edges over a broad green smear. At
+p 0.735, the same curtains edge-on on the limb, it read better.
+
+**Which layer.** The Earth's backdrop (`composition/odyssey-orbit-earth.js`). Its curtains are
+three folded sheets round an oval, walked along each view ray through the shell they stand in.
+The gas giant's own aurora crown (`odyssey-planet-aurora.js`) has been off by default since the
+ringed giant, and `cosmic-expanse*.js` only gates the giant's crown, so neither is involved.
+
+**Why it was blocky:**
+
+- **A sheet lit only where it was crossed.** The march lit a sheet where two steps fell on
+  opposite sides of it. At every fold the ray runs along the sheet and then misses it, so the
+  light switched off within one pixel: the hard vertical "walls".
+- **A broad glow summed at the march's steps.** It smeared green under the walls and banded along
+  the limb. The cloud tops under the oval took a green glow at 0.16 on top of it.
+- **The rays and patches came from the lattice noise.** Its interpolation steps showed, and the
+  patches switched sections of curtain on and off.
+
+**What it is now** (`ORBIT_EARTH_AURORA.look`):
+
+- **One exact path per step.** Each step adds the integral of the sheet's Gaussian profile over
+  that step: the erf difference between where the step starts and ends, or the plain profile
+  where the ray runs along the sheet. A sheet seen edge-on, crossed, or just missed changes
+  smoothly, so every edge is soft. The sheets are thinner (0.0021 rad, was 0.0028) and the march
+  takes 32 steps (was 28). The broad glow is gone, and the ground glow is down to 0.035.
+- **Fine rays.** Smooth sines along the oval (integer frequencies, so the oval's seam joins), bent
+  a little by the folds, drifting slowly. The two finest fade with distance (0.1-0.24 radii), so
+  toward the limb they never crawl below a pixel.
+- **Green low, red-violet high.** A soft bright lower border, green falling off with height, and
+  a faint crimson-violet glow above it.
+- **Calm.** Broad, slow patches that dim a stretch of curtain without ending it. A parked clip over
+  3.5 s drifts without flicker.
+
+The arrival is unchanged: the schedule (`ORBIT_EARTH_SCHEDULE.auroraIn` / `auroraOut`) and the
+darkness gate in `cosmic-expanse.js` are untouched, and the oval stays fixed under the sun.
+
+![p 0.735, 0.745, 0.755, 0.76 and 0.7725: before (left) and after (right)](images/odyssey-space-2026-11-02/orbit-aurora-before-after.jpg)
+
+![Close: p 0.76 from above, p 0.745 at the limb, p 0.7725 the near arc; before (left) and after (right)](images/odyssey-space-2026-11-02/orbit-aurora-close.jpg)
+
+**The seam's light.** The frame's mean luma (0-255) before and after:
+
+| p | 0.725 | 0.735 | 0.745 | 0.755 | 0.76 | 0.7725 | 0.785 |
+|---|---|---|---|---|---|---|---|
+| before | 57.0 | 25.5 | 21.4 | 21.1 | 21.2 | 15.5 | 10.9 |
+| after | 57.0 | 24.5 | 16.1 | 16.3 | 17.1 | 14.0 | 10.9 |
+
+The green smear was a third of the night side's light. Without it the darkening runs more evenly
+into space, with no new step.
+
+**Cost.** Four more march steps, and one erf (a `tanh`) per sheet per step, on the rays near the
+oval only. The broad glow and its exponentials per step are gone.
+
+**Tests** (`tests/unit/odyssey-orbit-earth.test.js`). `orbitAuroraSheetPath` is the shader's
+twin. A clean crossing gets the analytic path (sqrt(pi) w / rate). Crossing, running along the
+sheet and just missing it meet without a jump. The erf's slope at 0 matches the plain profile,
+so the switch between the two forms is seamless.
+
 ## Draw order in space
 
 stars (-0.95) → galaxy disc (-0.9) and suns (-0.89) → the ringed giant (-0.8 / -0.75 / -0.7) → the
