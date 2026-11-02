@@ -255,6 +255,42 @@ Tests:
 - `cosmic-expanse-environment.test.js`: the giant whole late in the chapter, by the weight early;
 - `LevelNodeManager.test.js`: the centre rides with the bob.
 
+### Space that moves past you (2026-11-02)
+
+The owner: "Can we improve the particles in space?"
+
+**Why space felt like a backdrop.** After the clutter pass (§1) chapter 6 kept two star shells
+(1,700-2,300 u out) and a far fine dust (120-1,300 u). From the rail all three are fixed points: a
+glide between orbs moved nothing but the planet. The near dust that used to move was dropped because
+it read as falling snow.
+
+**The near field** (`odyssey-space-motes.js`, `CH6_AMBIENT.motes`):
+- **Sparse, at many depths.** 240 soft motes in a 130 u box that travels with the eye. Each one is
+  fixed in the world and wraps to the box's far side when it leaves; faded at the box's faces and
+  within 17 u of the eye, so a wrap or a near pass is never seen.
+- **Streaked by the eye's speed.** On a glide each mote stretches along the eye's motion as seen on
+  screen (a 0.11 s shutter, up to 6 u), its light spread over the length. The streaks point out
+  from the heading, so the glide reads as flight. At rest they are soft points.
+- **Pulled toward the hole.** From 0.056 before the mouth to 0.021 before it the field drifts toward
+  the hole at up to 9 u/s and warms from starlight to the disk's amber. Gone by 0.003 before the
+  mouth: the dive keeps its own light.
+- **Not snow.** No fall; cool blue-white, faint violet and pale gold; most dim and small (a power
+  law), large ones dimmer (defocus), 7 % glints that breathe slowly.
+- **In** after the Earth falls away (0.012-0.03 into the chapter, `SPACE_MOTES_STAGE`), and with
+  the chapter's crossfade.
+- One draw, 240 quads.
+
+The stars were left as they are: the stellar ramp (Wave 5) already gives them seeded classes,
+colours and a galactic band.
+
+![A glide between orbs 40 and 41: before (left) and after (right), with a crop](images/odyssey-space-2026-11-02/space-motes-before-after.jpg)
+
+Tests: `tests/unit/odyssey-space-motes.test.js` covers:
+- the field is seeded, sparse and mostly small;
+- it tracks the eye's speed, ignoring a cut;
+- it flows toward the hole and hides without a camera;
+- it comes in after the Earth and is gone before the mouth.
+
 ## 4. The galaxy, as the Galaxy theme draws one (odyssey-spiral-galaxy*.js)
 
 It was one quad painted with a 2D spiral: thin rings of blue with pink dots. It is now the Galaxy
