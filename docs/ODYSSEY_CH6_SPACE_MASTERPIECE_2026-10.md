@@ -93,6 +93,45 @@ It is drawn as the rail now:
 
 ![The orb path from the mouth orb into the hole (p 0.866)](images/odyssey-space-2026-10-31/path-into-hole.jpg)
 
+### The rail itself runs into the hole (2026-11-02)
+
+The owner: "i dont like that neon line going from our path towards the black hole, can we extend
+the length of that chapter slightly and use the orb path going into the black hole instead of this
+neon line?"
+
+**Why there was a line.** The black hole hangs on the camera's own aim, 900 units ahead
+(`GARGANTUA_LOCK`). Through chapter 6 the rail is drawn only to the mouth orb, chapter 7's first
+(odyssey-path-horizon.js).
+- Up to p ~0.86 the camera looked at the rail ahead, so the rail and its orbs climbed into the
+  middle of the hole.
+- On the last approach, the camera's look-ahead ran on past the mouth into chapter 7's bend.
+- By the mouth the aim was 31 degrees off the rail. The hole, which follows the aim, slid away from
+  the rail, and the stream had to bridge the gap. Measured on the real camera: the mouth projected
+  inside the hole's shadow up to p 0.86 and outside it from p 0.865 on.
+
+**The fix: the camera never aims past where the rail is drawn** (`RAIL_END_AIM` in
+OdysseyCameraController.js).
+- As the look-ahead reaches the mouth, the aim is held on the mouth, eased in over 0.008 of
+  progress.
+- So the rail runs straight into the centre of the hole all the way to the mouth. Through the
+  plunge the mouth orb waits at the hole's centre with the rail leading in.
+- The hold lets go round the moment the way on is revealed inside the hole: from 0.010 before that
+  starts to 0.004 after it ends. The reveal alone was too quick a swing. The seam continuity test
+  holds the 6->7 crossing under its limits for eye, target and aim.
+
+**The stream is off.** `?odysseyPathInflow=1` brings it back to compare.
+
+**The chapter's length is unchanged.** Holding the aim did what the extra length was meant to do,
+and every orb keeps its place.
+
+![Before (left) and after (right): p 0.866, at the mouth, and into the hole at p 0.875 and 0.8775](images/odyssey-space-2026-11-02/rail-into-hole-before-after.jpg)
+
+Tests: `tests/unit/odyssey-rail-into-hole.test.js`, on the real camera:
+- the mouth stays inside the hole's shadow (within 0.6 of its radius) for the last 0.03 of the
+  approach;
+- the aim is within 2.5 degrees of the mouth on the last stretch;
+- the hold is zero far from the hole and lets go inside it.
+
 ## 4. The galaxy, as the Galaxy theme draws one (odyssey-spiral-galaxy*.js)
 
 It was one quad painted with a 2D spiral: thin rings of blue with pink dots. It is now the Galaxy

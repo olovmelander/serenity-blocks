@@ -3227,6 +3227,14 @@ export class OdysseyBoardController {
      */
     _updatePathInflow(cameraProgress) {
         if (!this.pathRenderer?.setInflow) return;
+        // Off since 2026-11-02 (the owner: "i dont like that neon line"): the camera now holds its
+        // aim on the rail's end, so the rail itself runs into the hole (RAIL_END_AIM in the camera).
+        // ?odysseyPathInflow=1 brings the stream back to compare.
+        if (this._pathInflowOn === undefined) this._pathInflowOn = readUrlValue('odysseyPathInflow') === '1';
+        if (!this._pathInflowOn) {
+            this.pathRenderer.setInflow(null);
+            return;
+        }
         const layout = this.presentationLayout;
         const weight = resolveOdysseyPathInflowWeight(cameraProgress, layout?.chapterPositions, layout?.levelPositions);
         const hole = weight > 0 ? this._resolveInflowHole() : null;
