@@ -9,6 +9,7 @@ import { railSeesForestSite } from './odyssey-forest-visibility.js';
 import {
     ODYSSEY_NORTH_LAKE, ODYSSEY_TARN, odysseyNorthLakeRn, odysseyTarnRn,
 } from './odyssey-world-height.js';
+import { ODYSSEY_MEADOW_CLEARING, odysseyMeadowOpenness } from './odyssey-meadow-clearing.js';
 
 /**
  * A site standing IN the north lake (north-island plan Wave 1). The sea rejection below
@@ -853,11 +854,17 @@ export function scatterZonedForest(heightAt, {
     zoneCell = 900,
     /** The treeline's dwarf firs (FOREST_KRUMMHOLZ); off for calibration and the old tests. */
     krummholz = true,
+    /**
+     * The wild horses' meadow kept open (odyssey-meadow-clearing.js, 2026-11-02): no tree in its
+     * core, a ragged thinning treeline at its rim. false only for probes comparing the two.
+     */
+    meadowClearing = true,
     rail = [],
     species = ODYSSEY_FOREST_SPECIES,
     framing = ODYSSEY_FOREST_FRAMING,
 } = {}) {
     const placements = [];
+    const meadowCleared = [];
     // Built once for the whole scatter: 384² height lookups plus two linear passes, against
     // 15,000 sites that would each otherwise need their own estimate of where the sea is.
     const shoreAt = buildShoreDistance(heightAt, seaLevel);
@@ -877,6 +884,12 @@ export function scatterZonedForest(heightAt, {
             // The incumbent's rejections, preserved verbatim — each was measured, not guessed.
             if (y < seaLevel + 3 || y > snowStart) continue;
             if (siteInNorthLake(x, z, y)) continue;
+            // The horses' meadow: open in its core (but for a few lone trees), the treeline
+            // thinning raggedly across its rim (one hash per site, so the edge is scattered trees).
+            // A cleared site still runs the rest of the scatter and is reported (`meadowCleared`)
+            // rather than planted, so the boulders that kept clear of it stay exactly as they were.
+            const open = meadowClearing ? odysseyMeadowOpenness(x, z) : 0;
+            const cleared = open >= 1 ? hash2(i, j, 37) > ODYSSEY_MEADOW_CLEARING.lone : hash2(i, j, 37) < open;
             const e = 4;
             const slope = Math.hypot(
                 (heightAt(x + e, z) - heightAt(x - e, z)) / (2 * e),
@@ -1011,6 +1024,10 @@ export function scatterZonedForest(heightAt, {
                 : spec.crown;
             const crown = base.map((c) => Math.max(0, c * jitter));
 
+            if (cleared) {
+                meadowCleared.push({ x, z });
+                continue;
+            }
             placements.push({
                 x,
                 y,
@@ -1234,6 +1251,8 @@ export function scatterZonedForest(heightAt, {
     return {
         placements,
         buckets,
+        /** Sites the horses' meadow left open (x, z): not drawn; the boulders keep clear of them. */
+        meadowCleared,
         stats: {
             trees: placements.length,
             /** Of `trees`, the treeline's dwarf firs (FOREST_KRUMMHOLZ). */
