@@ -3285,18 +3285,18 @@ export function createOdysseyWorld({
             });
             If(gap.lessThan(0), () => {
                 // Halvings between the last two steps (one for the sea; the tarn's long rays take more).
-                const lo = tPrev.toVar();
-                const hi = tCur.toVar();
+                const tBelow = tPrev.toVar();
+                const tAbove = tCur.toVar();
                 for (let k = 0; k < refine; k += 1) {
-                    const tMid = lo.add(hi).mul(0.5).toVar();
+                    const tMid = tBelow.add(tAbove).mul(0.5).toVar();
                     const qm = P.add(R.mul(tMid)).toVar();
                     If(heightAt(qm.xz).greaterThan(qm.y), () => {
-                        hi.assign(tMid);
+                        tAbove.assign(tMid);
                     }).Else(() => {
-                        lo.assign(tMid);
+                        tBelow.assign(tMid);
                     });
                 }
-                tHit.assign(hi);
+                tHit.assign(tAbove);
                 Break();
             });
             tPrev.assign(tCur);
@@ -3415,14 +3415,14 @@ export function createOdysseyWorld({
             // steepened as a whole; the ripple's tilt (rippled minus flat) is added back unbent.
             const Rflat = vec3(V.x.negate(), V.y, V.z.negate());
             const centre = vec2(...T.paint.centre);
-            const look = centre.sub(cameraPosition.xz);
+            const toTarn = centre.sub(cameraPosition.xz);
             const toSummit = vec2(ODYSSEY_SUMMIT_SCULPT.x - T.paint.centre[0], ODYSSEY_SUMMIT_SCULPT.z - T.paint.centre[1]);
-            const turn = atan(toSummit.y, toSummit.x).sub(atan(look.y, look.x));
+            const turn = atan(toSummit.y, toSummit.x).sub(atan(toTarn.y, toTarn.x));
             const ct = cos(turn);
             const st = sin(turn);
             const flatXZ = normalize(Rflat.xz);
             const bentXZ = vec2(flatXZ.x.mul(ct).sub(flatXZ.y.mul(st)), flatXZ.x.mul(st).add(flatXZ.y.mul(ct)));
-            const midTan = cameraPosition.y.sub(ODYSSEY_TARN.waterY).div(max(length(look), float(1)));
+            const midTan = cameraPosition.y.sub(ODYSSEY_TARN.waterY).div(max(length(toTarn), float(1)));
             const lift = clamp(
                 float(Math.tan((T.paint.rise * Math.PI) / 180)).div(max(midTan, float(1e-3))),
                 T.paint.lift[0],
@@ -6468,11 +6468,11 @@ export function createOdysseyWorld({
             if (!mine.length) return;
             ['near', 'far'].forEach((tier) => {
                 const geo = buildBoulderGeometry(si, lod[tier]);
-                const look = new THREE.InstancedBufferAttribute(new Float32Array(mine.length * 4), 4);
-                geo.setAttribute('aRock', look);
+                const rockLook = new THREE.InstancedBufferAttribute(new Float32Array(mine.length * 4), 4);
+                geo.setAttribute('aRock', rockLook);
                 const mesh = new THREE.InstancedMesh(geo, boulderMat, mine.length);
                 mesh.name = `odyssey-world-boulders-${si}-${tier}`;
-                mesh.userData.boulders = { rocks: mine, tier, look };
+                mesh.userData.boulders = { rocks: mine, tier, rockLook };
                 mesh.count = 0;
                 mesh.frustumCulled = true;
                 group.add(mesh);
@@ -6490,19 +6490,19 @@ export function createOdysseyWorld({
         if (key === boulderTierKey) return;
         boulderTierKey = key;
         boulderMeshes.forEach((mesh) => {
-            const { rocks, tier, look } = mesh.userData.boulders;
+            const { rocks, tier, rockLook } = mesh.userData.boulders;
             let n = 0;
             rocks.forEach((rock) => {
                 if ((tier === 'near') !== near(rock)) return;
                 mesh.setMatrixAt(n, boulderMatrix(rock, boulderMatrix4));
                 const tall = rock.sy * ODYSSEY_BOULDERS.shapes[rock.shape].flat * 1.42;
-                look.setXYZW(n, rock.tone, rock.moss, rock.ground, tall);
+                rockLook.setXYZW(n, rock.tone, rock.moss, rock.ground, tall);
                 n += 1;
             });
             mesh.count = n;
             mesh.computeBoundingSphere();
             mesh.instanceMatrix.needsUpdate = true;
-            look.needsUpdate = true;
+            rockLook.needsUpdate = true;
         });
     };
     updateBoulderTiers(-160, -260);
