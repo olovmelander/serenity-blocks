@@ -535,6 +535,16 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         { scope: WORLD_SCOPE },
     ),
     parameter(
+        'odysseyForestGreens',
+        'Chooses the palette of the Act II broadleaf crowns, for comparing greens.',
+        'mosaic, today or deep; anything else uses mosaic',
+        'mosaic',
+        'deep',
+        {
+            scope: WORLD_SCOPE, sources: [BOARD, 'src/rendering/odyssey/world/odyssey-world-renderer.js'],
+        },
+    ),
+    parameter(
         'lakeTint',
         'Chooses a comparison palette for the continuous world’s northern lake.',
         'mirror, ocean, tarn, ghibli, deepstill or alpine',

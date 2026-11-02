@@ -531,6 +531,7 @@ export class LevelNodeManager {
                     node.group.scale,
                 );
                 this.glassInstancedMesh.setMatrixAt(idx, matrix);
+                this._setGlassCentre(idx, node.group.position);
 
                 // The glass rim's chapter light and the selection ring's accent (static).
                 const look = getOdysseyNodeChapterLook(level.chapter || 1);
@@ -547,6 +548,7 @@ export class LevelNodeManager {
         }
 
         this.glassInstancedMesh.instanceMatrix.needsUpdate = true;
+        this._flagGlassCentres();
         this.glassInstancedMesh.geometry.getAttribute('aNodeColor').needsUpdate = true;
         this.glassInstancedMesh.geometry.getAttribute('aNodeAccentColor').needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
@@ -572,7 +574,7 @@ export class LevelNodeManager {
 
         // 1. The glass marbles (InstancedMesh, TSL NodeMaterial with per-instance state). The
         // raycast picks against these; aNodeColor / aNodeAccentColor are set in createNodes.
-        const glass = createGlassShellTSL(this.uTime);
+        const glass = createGlassShellTSL(this.uTime, { roundOnScreen: true });
         this.glassInstancedMesh = new THREE.InstancedMesh(this.sharedGlassGeo, glass.material, count);
         this.glassInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
         // Same stale-cached-bounding-sphere hazard as the star/window meshes below: three
@@ -586,6 +588,8 @@ export class LevelNodeManager {
         glassGeo.setAttribute('aState', new THREE.InstancedBufferAttribute(new Float32Array(count * 4), 4));
         glassGeo.setAttribute('aNodeColor', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
         glassGeo.setAttribute('aNodeAccentColor', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
+        // Each shell's centre (world), for its squeeze to a round outline (odyssey-orb-round.tsl.js).
+        glassGeo.setAttribute('aCentre', new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
         this.scene.add(this.glassInstancedMesh);
 
         // 2. The halos: instanced camera-facing quads (a smooth corona — the icosahedron shell
@@ -1414,6 +1418,7 @@ export class LevelNodeManager {
             // Sync instance matrices
             matrix.compose(node.group.position, node.group.quaternion, node.group.scale);
             this.glassInstancedMesh.setMatrixAt(idx, matrix);
+            this._setGlassCentre(idx, node.group.position);
 
             // Star/marker PLACEMENT runs every frame in _updateIndicatorBillboards() (camera-
             // relative) so it tracks free-look / idle camera moves where path progress — and
@@ -1477,6 +1482,7 @@ export class LevelNodeManager {
         // board is settled we early-out above, so the instanced-buffer GPU re-upload no
         // longer happens every frame.
         this.glassInstancedMesh.instanceMatrix.needsUpdate = true;
+        this._flagGlassCentres();
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
         if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
         if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
@@ -1537,6 +1543,21 @@ export class LevelNodeManager {
      * instance sparkle buffer each frame; these few matrices and vec4s cost next to nothing.
      * @private
      */
+    /**
+     * A shell's centre (world) for its squeeze to a round outline (ROUND ON SCREEN,
+     * odyssey-orb-round.tsl.js); written with its instance matrix.
+     * @private
+     */
+    _setGlassCentre(idx, position) {
+        this.glassInstancedMesh?.geometry.getAttribute('aCentre')?.setXYZ(idx, position.x, position.y, position.z);
+    }
+
+    /** @private */
+    _flagGlassCentres() {
+        const centres = this.glassInstancedMesh?.geometry.getAttribute('aCentre');
+        if (centres) centres.needsUpdate = true;
+    }
+
     _bobDrawnNodes() {
         const windowAttr = this.windowMesh?.geometry.getAttribute('aWindow') || null;
         const haloAttr = this.haloMesh?.geometry.getAttribute('aHalo') || null;
@@ -1549,12 +1570,14 @@ export class LevelNodeManager {
             const { position } = node.group;
             matrix.compose(position, node.group.quaternion, node.group.scale);
             this.glassInstancedMesh.setMatrixAt(idx, matrix);
+            this._setGlassCentre(idx, position);
             windowAttr?.setXYZ(idx, position.x, position.y, position.z);
             haloAttr?.setXYZ(idx, position.x, position.y, position.z);
             moved = true;
         });
         if (!moved) return;
         this.glassInstancedMesh.instanceMatrix.needsUpdate = true;
+        this._flagGlassCentres();
         if (windowAttr) windowAttr.needsUpdate = true;
         if (haloAttr) haloAttr.needsUpdate = true;
     }

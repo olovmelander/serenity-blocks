@@ -48,7 +48,7 @@ of cold pipeline compile.
 2. **The summit sculpted, and its wind.** Arêtes, rock faces and couloirs in the height field.
    Snow by slope and exposure with wind-scoured ridges, rock that does not stretch on steep faces,
    and a spindrift plume that reads. Varied framing for chapter 5's long stare. *Done (§2), the
-   framing left for later.*
+   framing later (§14).*
 3. **Trees and the treeline.** Softer, back-lit crowns, ragged conifer silhouettes, a far ring of
    forest, and a transition from forest through krummholz and alpine meadow to rock and snow. A
    cheap band of real grass by the rail, in the wind. *Done (§3): the crowns' bands follow the
@@ -158,7 +158,7 @@ and `bakeWorldTextureData` returns an eleventh buffer. The loader's fake worker 
 plate. The forest visibility stamp was re-baked.
 
 **Not done here (moved on).** Varied camera framing for chapter 5's long stare: the summit now
-carries the view.
+carries the view. *Done later (§14).*
 
 ## §3. Trees, their shade, and the treeline (2026-10-25)
 
@@ -773,3 +773,217 @@ integrated GPU.
 **Tests.** The conifer card test pins the layout (needle cards at hero and mid, first in the
 buffer, of the needle kind; the cypress's clump column; no cards at far); the atlas test now
 checks both rows (a spray's middle band full, the sky above it open, nothing past the rim).
+
+## §14. The climb's views (2026-11-02)
+
+Olov asked for more variety on chapter 5's long climb. From L28 to L32 the view was one picture:
+the summit cone dead ahead, sky all round it. The two short moves that were there (a pan right at
+L30, a longer lens at L31-L32) did not change that.
+
+**What limits the camera.** The rail climbs at about 50°. The eye sits 42 u behind the orb, so the
+orb underfoot is about 45° above the eye. `odyssey-ch5-climb-framing` keeps the orb underfoot and
+the next orb in frame. Measured on the real camera, that leaves about ±35° of turn and only a few
+degrees of tilt down. A look straight down to the island is not possible until the shoulder (L33).
+So the variety comes from where the view turns, the lens, and how much of the world shows under
+the summit.
+
+**One view per orb** (`CHAPTER_5_CLIMB_SHOTS` in `OdysseyCameraController.js`). It is the keyframed
+language of chapters 3 and 4, on top of the lift. A parked orb shows exactly its key. The glide to
+the next orb is the pan.
+
+| Orb | View | Turn, tilt, lens |
+|---|---|---|
+| L28 | the ledge, unchanged | 0 |
+| L29 | the summit above, the wall | 0 |
+| L30 | across the west slope: the summit on the right, its plume, the west peak, the horizon | −34°, −4°, +8° |
+| L31 | the horn looms on a long lens, the plume tearing off it | −8°, +4°, −8° |
+| L32 | out east among the clouds, the island and the sea below | +26°, −3°, +9° |
+| L33 | the shoulder: down past the horn to the island, the lake and the kettle below | +8°, −6°, +8° |
+| L34 | unchanged, into the hand-off to space | 0 |
+
+L27, L28 and L34 are as before, so both seams are untouched.
+
+![Before and after at each orb of the climb, L29 to L34, in pairs (before left)](images/odyssey-act2-2026-10-25/climb-views-before-after.jpg)
+
+**Calm.** No pan is more than 35° a glide. Simulated on the real controller (a 1 s orb glide, the
+framing ease on), the turn rate peaks where it did before: the shoulder glides (L32-L34) are 131
+and 180°/s at their peak, against 165 and 172 before, and that peak is the rail bending past the
+summit, not these keys. The opening sweep's peak in chapter 5 is the same as before (318 against
+314°/s).
+
+**The kettle.** At L33 the view now looks down over the summit's kettle of birds. It leaves the
+frame ~0.005 later on the way to L34, so its fade moved to 0.679-0.709 (it was 0.674-0.704). It
+still fades only out of view (`odyssey-act2-fade-out-of-view`).
+
+**Tests.** `odyssey-ch5-climb-framing`:
+
+- The guard for the orb underfoot and the way ahead is unchanged, and holds.
+- The summit stays mid-frame at L29 and L31. (L32 now looks away from it.)
+- A new test pins the views: L30 west of the wall with the summit on the right, L31 the tightest
+  lens, L32 east with the summit at the left edge, L33 the lowest and level. Neighbouring orbs
+  differ by a real turn or lens change.
+- A new test pins the smoothness: the keys change at most 1.5° per 0.001 of progress, hold still
+  at each orb, and the real camera never steps between neighbouring samples.
+
+# The island's leftovers (2026-11-02)
+
+Four items left open by the second audit: boulders, cloud variety, the summit in the tarn, and
+the broadleaf greens.
+
+## §15. Boulders and outcrops for scale (2026-11-02)
+
+**Why.** Grass, rock and flowers are all painted into the ground, so nothing on the meadows said
+how big they are.
+
+**Where** (`ODYSSEY_BOULDERS.anchors` in `world/odyssey-boulders.js`). Fifteen anchors, scored on
+the real rail camera at p 0.16-0.50. A site counts when it is:
+
+- in frame, in the lower part of it, 80-700 u from the eye, and in the line of sight;
+- clear of trees (none within 13 u), the tarn's open meadow, the rail's track and the deer's glade.
+
+The rail sees them from p ~0.16 to ~0.37. On the climb the camera looks up, past them. Flat
+anchors hold a **field group** (a main boulder 14-22 u across and two to four smaller ones round
+it). Slope anchors hold an **outcrop** (three to five slabs along the contour, tilted out of the
+slope). Rocks too near a trunk, the rail, or too buried on a steep slope are dropped: about 40
+stand.
+
+**Size.** The act draws its life at about three times life, and the eye flies 47-90 u up. A main
+boulder is half a tree's height: ~15-40 px from the rail's usual 200-400 u.
+
+**Shape.** Three rocks made in code: an icosphere cut by 7-11 planes, a little lumpy, flattened,
+its underside cut flat. The facets carry their plane's normal and the shoulders the sphere's, so
+the light breaks on flat faces with rounded edges between.
+
+**Tiers.** Each shape at two levels of detail, 320 triangles near and 80 far, switched at 360 u
+from the eye. Six instanced meshes (three shapes, two tiers) share one material. An instance moves
+between tiers only when a rock crosses the switch distance.
+
+**Seating.** The base is the lowest ground under the rock's own (turned) footprint, sunk by 15% of
+its height. It leans with 60% of the slope.
+
+**The light** is the ground's rock: the S-shaped Lambert under the baked sun, the tree shadows and
+the drifting cloud shade, the mineral shade (desaturated, the warm deep tint), and the sky's fill.
+A little lichen sits on the tops, the meadow creeps up the foot, and the ground's air and mist go
+over it. The albedo is darker than the painted scree: the first cut, at the scree's value, read
+as pale eggs on the grass.
+
+![p 0.275, 0.29 and 0.30, before (left) and after (right)](images/odyssey-island-2026-11-02/boulders-before-after.jpg)
+
+![Close crops at p 0.275 and 0.29, before (left) and after (right)](images/odyssey-island-2026-11-02/boulders-close.jpg)
+
+**Cost.** About 40 rocks, at most 320 triangles each (under 13k triangles), six draws and one material
+(one more pipeline to compile). Two texture reads a fragment (the sun plate, the shade plate).
+
+**Tests** (`world/odyssey-boulders.test.js`): the set's size, clear of the tarn's meadow, the rail
+and the deer's glade, clear of every trunk, seated with the underside buried and the top standing
+out, the triangle budget, and outward unit normals.
+
+**Not done.** The rocks cast no shadow on the grass. The forest's shade plate could carry them,
+but the plate is baked with the scatter in the worker.
+
+## §16. Cloud variety (2026-11-02)
+
+**Why.** The audit saw "small puffs, all one size, spread evenly", with no big shapes on the
+horizon. The `banks` layout ([ODYSSEY_CLOUDS_LOOKS_2026-10.md](ODYSSEY_CLOUDS_LOOKS_2026-10.md))
+had grown each role by one factor, so every mass of a role kept its place in the size order.
+
+**What changed** (`BANKS_VARIETY` in `world/odyssey-cloud-looks.js`). Each mass now grows by its
+own share of its role's range, taken from its seed and weighted to the low end, so most grow a
+little and a few a lot:
+
+| Role | Width growth (was) | Height |
+|---|---|---|
+| middle distance (`overhead`) | 1.08-1.62 (1.22) | half the width's growth |
+| horizon row (`strata`) | 1.30-2.05 (1.42) | 0.55 of it |
+| framing masses | 1.08-1.45 (1.12) | 0.45 of it |
+| horizon masses already at full detail | 1.30-1.65 | 0.35 of it |
+
+Growth is always wider than tall: the owner's wide, low shapes, not towers. The big shapes come
+from the masses the field already draws at full detail, so they cost no triangles. Every other
+mass is still held under the width at which the field would promote it to a finer tier
+(`widthBeforeNear`), so the field stays inside its 34k-triangle budget. The paint, the shower's
+masses over the bow and the zenith masses are unchanged.
+
+![p 0.42, 0.50, 0.58 and 0.64, the same clock: before (left) and after (right)](images/odyssey-island-2026-11-02/clouds-before-after.jpg)
+
+**The honest outcome: a modest step.** The middle distance and the near horizon now read as a
+few wide banks among smaller clouds. The far horizon row is still small puffs: those masses are
+at the coarsest tier, and any of them grown past the promotion width costs ~900 triangles the
+budget does not have. Bigger shapes there, or a cloud sea under the climb, need a new budget or a
+cheaper far tier (an impostor, for example), which is a larger piece of work.
+
+**Tests.** The looks and field suites pass unchanged: every grown mass is wider than it shipped,
+clears the live rail by its role's margin, and the field stays under 34,000 triangles.
+
+## §17. The summit in the tarn (2026-11-02): tried and dropped
+
+**Dropped the same day.** The painter's mirror below was tried and taken out again, on the
+owner's choice of the recommendation: the summit showed only as a faint pale wedge, and the tarn
+lost its turquoise. The tarn is back as §6 left it. Kept here for the finding: a true mirror on
+this tarn cannot show the summit from anywhere on the rail.
+
+
+**Why it never showed.** Probed on the rail camera at L20-L23 (p 0.246-0.30), against a fine
+march over the drawn ground:
+
+- The eye looks down on the tarn at 13-29°, so a true mirror's rays rise at 13-29°.
+- The summit stands **52° up** from the tarn, and **20-80° round** from where those rays look
+  (the eye sees the tarn from the south-east; the summit is north of it).
+- So a true mirror there shows the meadow bank, the low hills and the sky. 70-90% of its rays
+  hit land within 1-100 u, at 293-386 u high.
+- The march was not the cause: its 24 steps reach ~1,600 u, and a fine march agreed with it.
+
+No eye on the rail can see the summit in this tarn: the reflection would need the eye to look
+down on the water at about 50°.
+
+**The painter's mirror** (`TARN_MIRROR.paint`). The reflection is painted, as a whole:
+
+- turned round by one angle, so the ray off the tarn's middle looks at the summit (the mirror
+  keeps its width, so both skylines can stay in it);
+- steepened by one factor on its rise, so that ray rises 47°: the apex lands just nearer the eye
+  than the middle (bounded 1-4.5×);
+- the ripple's own tilt added back unbent, and the sun's road kept on the true ray.
+
+Both angles come from the eye and the tarn's middle, so they change smoothly along the rail. The
+bent rays run ~1 km to the summit, so the march takes 30 shorter steps (2.5 u, growing 1.16) and
+three halvings at a hit. In the reflected land, steep faces and broken patches above the snow line
+stay bare rock, so the summit reads as snow and rock rather than a white wedge. The water's sky
+share rises from 0.30 to 0.42, so the reflection shows over the water's own turquoise.
+
+![p 0.246, 0.26 and 0.29, before (left) and after (right)](images/odyssey-island-2026-11-02/tarn-before-after.jpg)
+
+**The outcome: subtle** (why it was dropped). At p 0.26-0.29 a pale, snow-and-rock wedge stands upside down in
+the middle of the water. At p 0.246 the trees hide the part of the tarn that holds it. The tarn
+also reads bluer (more sky, less turquoise). The tarn is ~9° tall on screen, so the massif is
+squashed into a sliver of it whatever the mirror does. Dropped to keep the turquoise pool.
+
+**Cost.** 30 steps of three fetches (was 24) plus three halvings, on the tarn's own pixels only.
+
+## §18. The broadleaf greens: three palettes for the owner (2026-11-02)
+
+**Why.** Round three gave the shore broadleaf one ramp, lime to a deeper blue-green, skewed to
+lime. From the rail the canopy still read as one lime: most trees sit near the lime end, all with
+the same warmth. The palette is the owner's call, so three are offered
+(`world/odyssey-forest-greens.js`, `?odysseyForestGreens=`):
+
+- **`mosaic`, the default (recommended).** Lime is still the majority, with a share of cool
+  blue-greens and a share of warm olive, and a wider value spread (±18%). Neighbouring crowns
+  separate as a mixed broadleaf wood does from above. Its mean stays within a few percent of the
+  species' lime.
+- **`today`.** The round-three ramp exactly, one lever away.
+- **`deep`.** A darker, cooler wood: deep greens and blue-greens, lime only as an accent.
+
+Each tree lands between three poles by two hashes of where it stands. The shade colour follows
+from the crown by the forest's own shade law (`shadeColourFor`). The forest's light bands and the
+leaf cards are untouched. The colour is applied where the renderer fills the forest's instances,
+so the scatter, its golden bytes and the bake worker are unchanged. The far forest painted from
+the shade plate keeps the scatter's colour: its mean is the same within a few percent.
+
+![today, mosaic and deep (columns) at p 0.215, 0.26 and 0.30 (rows)](images/odyssey-island-2026-11-02/greens-options.jpg)
+
+![Close crops of the same: today, mosaic, deep](images/odyssey-island-2026-11-02/greens-options-close.jpg)
+
+**Cost.** None at draw time: one colour per tree, set at build.
+
+**Tests** (`world/odyssey-forest-greens.test.js`): the names, only the green broadleaf touched,
+crowns stay green and vary, the mosaic's mean near the lime. The URL catalogue lists the lever.

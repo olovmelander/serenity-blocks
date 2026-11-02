@@ -14,6 +14,23 @@ import {
 } from './cosmic-expanse.js';
 
 describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
+    it('keeps the gas giant solid through the second half of the chapter, by the weight before', () => {
+        // SOLID ON THE WAY INTO THE HOLE (2026-11-02): the 6->7 crossfade left it half see-through
+        // beside the growing hole; the hole covers it and it leaves the frame before ch6 hides.
+        const cp = deriveOdysseyChapterPositions();
+        const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
+        const camera = new THREE.PerspectiveCamera(65, 16 / 9, 0.1, 20000);
+        camera.position.set(0, 1200, 0);
+        camera.updateMatrixWorld(true);
+        const planet = () => group.userData.heroPlanet.userData.planet.material.opacity;
+        group.userData.chapterOpacity = 0.4;
+        updateCosmicExpanseEnvironment(group, 0.016, 1.0, camera, cp[6] - 0.001);
+        expect(planet()).toBeGreaterThan(0.99);
+        // Early in the chapter (the rise), the crossfade's weight as before.
+        updateCosmicExpanseEnvironment(group, 0.016, 1.0, camera, cp[5] + ((cp[6] - cp[5]) * 0.2));
+        expect(planet()).toBeLessThan(0.41);
+    });
+
     it('mounts the asteroid garland, star tiers, and streak motes', () => {
         const group = createCosmicExpanseEnvironment({ particleCount: 200, ambient: CH6_AMBIENT_ALL });
 

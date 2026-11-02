@@ -526,8 +526,8 @@ const CHAPTER_5_EXIT_FRAMING = Object.freeze({
  *   - `lift`     tilts the view up the face for the whole climb: the node underfoot at y ~0.5,
  *                the next at 0.6-0.8, the summit mid-frame, and — passing the summit, where the
  *                base arc looked DOWN — a level look across the world from the shoulder (L34).
- *   - `lookOut`  at L31: pan right off the face, across the open island, on a wider lens.
- *   - `summit`   at L32-L33: pan back past the rail onto the summit, on a longer lens; it looms.
+ * (The `lookOut` and `summit` windows that sat here became one view per orb in 2026-11:
+ * CHAPTER_5_CLIMB_SHOTS below.)
  */
 export const CHAPTER_5_SHOTS = Object.freeze({
     // THE FACE AT LIFT-OFF (2026-10-20): L27 sits on the 4->5 boundary where the rail stands
@@ -547,14 +547,30 @@ export const CHAPTER_5_SHOTS = Object.freeze({
     lift: Object.freeze({
         in: Object.freeze([0.17, 0.25]), out: Object.freeze([0.80, 0.90]), pitchDeg: 23, yawDeg: 0, fovOffset: 0,
     }),
-    lookOut: Object.freeze({
-        in: Object.freeze([0.29, 0.36]), out: Object.freeze([0.41, 0.47]), pitchDeg: -4, yawDeg: 16, fovOffset: 4,
-    }),
-    summit: Object.freeze({
-        in: Object.freeze([0.43, 0.49]), out: Object.freeze([0.64, 0.72]), pitchDeg: 0, yawDeg: -12, fovOffset: -4,
-    }),
 });
 const CHAPTER_5_SHOT_LIST = Object.values(CHAPTER_5_SHOTS);
+
+/**
+ * THE CLIMB'S VIEWS (2026-11-02, the owner: "more variety on chapter 5's long climb"). The climb
+ * was one picture: the summit cone dead ahead, from L28 to L32. Now each orb of the climb holds its
+ * own view, in the keyframed language of chapters 3 and 4, on top of the lift. The glide between
+ * two orbs is the pan, and a parked orb shows exactly its key.
+ *
+ * The rail climbs at ~50 deg, so the orb underfoot sits ~45 deg above the eye. To keep it and the
+ * next orb in frame (odyssey-ch5-climb-framing) the view can turn about +-35 deg and drop only a
+ * few degrees. So the variety is in where the view turns, the lens, and how much of the world
+ * below the frame shows. Pans stay at 35 deg or less a glide.
+ * Orbs (chapter-local t): L28 0.125, L29 0.25, L30 0.375, L31 0.5, L32 0.625, L33 0.75, L34 0.875.
+ */
+export const CHAPTER_5_CLIMB_SHOTS = Object.freeze([
+    shotKey(0.125, 0), // L28: the ledge shot (CHAPTER_5_SHOTS.ledge) alone
+    shotKey(0.250, 0), // L29: the summit above, the wall
+    shotKey(0.375, -34, -4, 8), // L30: across the west slope: the plume, the west peak, the horizon
+    shotKey(0.500, -8, 4, -8), // L31: the horn looms, on a long lens, the plume tearing off it
+    shotKey(0.625, 26, -3, 9), // L32: out east among the clouds, the island and the sea below
+    shotKey(0.750, 8, -6, 8), // L33: the shoulder: down past the horn to the island below
+    shotKey(0.875, 0), // L34: as before, into the 5->6 hand-off
+]);
 
 function resolveChapter5Framing(t) {
     const clamped = THREE.MathUtils.clamp(t, 0, 1);
@@ -570,7 +586,8 @@ function resolveChapter5Framing(t) {
         );
         out[key] = THREE.MathUtils.lerp(entryToBase, CHAPTER_5_EXIT_FRAMING[key], toExit);
     }
-    return addChapterShots(out, clamped, CHAPTER_5_SHOT_LIST);
+    addChapterShots(out, clamped, CHAPTER_5_SHOT_LIST);
+    return addKeyframedShots(out, clamped, CHAPTER_5_CLIMB_SHOTS);
 }
 
 // ── Chapter 8 Urban — FINALE CRANE arc ────────────────────────────────────────────

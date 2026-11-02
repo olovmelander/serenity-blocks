@@ -1389,6 +1389,8 @@ export class OdysseyBoardController {
                     // palette so the GRADED capture harness can shoot the arms without a
                     // tree edit between runs. Unset ships the default.
                     lakeTint: readUrlValue('lakeTint') || '',
+                    // `?odysseyForestGreens=` (odyssey-forest-greens.js): the broadleaf palette.
+                    forestGreens: readUrlValue('odysseyForestGreens') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
                     // `?odysseyCloudLook=` (odyssey-cloud-looks.js): the paint, and the specs the
                     // bake sculpted, so the landed field matches the masses this build expects.

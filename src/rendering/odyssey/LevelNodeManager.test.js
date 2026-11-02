@@ -146,7 +146,11 @@ describe('Odyssey orb bob', () => {
             haloMesh: { geometry: { getAttribute: () => haloAttr } },
             _scratchMatrix: new THREE.Matrix4(),
             _applyBob: LevelNodeManager.prototype._applyBob,
+            _setGlassCentre: LevelNodeManager.prototype._setGlassCentre,
+            _flagGlassCentres: LevelNodeManager.prototype._flagGlassCentres,
         };
+        // The shells' centres ride with them (ROUND ON SCREEN, odyssey-orb-round.tsl.js).
+        glass.geometry.setAttribute('aCentre', new THREE.InstancedBufferAttribute(new Float32Array(6), 3));
         const bob = () => LevelNodeManager.prototype._bobDrawnNodes.call(manager);
         manager.time = 1;
         bob();
@@ -162,6 +166,7 @@ describe('Odyssey orb bob', () => {
         expect(new THREE.Vector3().setFromMatrixPosition(m).distanceTo(second)).toBeLessThan(1e-5);
         expect(windowAttr.getX(0)).toBeCloseTo(second.x, 4);
         expect(haloAttr.getY(0)).toBeCloseTo(second.y, 4);
+        expect(glass.geometry.getAttribute('aCentre').getZ(0)).toBeCloseTo(second.z, 4);
         // A hidden orb is left where the dirty pass parked it.
         expect(manager.nodes.get(2).group.position.length()).toBe(0);
     });

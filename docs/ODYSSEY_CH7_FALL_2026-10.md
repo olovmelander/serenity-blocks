@@ -62,7 +62,9 @@ cot θ. On that:
 - accretion filaments: 2 baked-lattice fetches, stretched along the tunnel on **log** depth (cot θ
   crowds everything into the centre; its log spreads features evenly across screen radius);
 - the **journey palette** — ember, deep ocean, island green, snow, aurora, nebula violet, accretion
-  amber, neon — banded on log depth and zooming outward (an 8-texel sRGB texture);
+  amber, neon — banded on log depth and zooming outward (an 8-texel sRGB texture). Since
+  2026-11-02 the hole's own light instead: the disk's gas (ember to near white) and the lensed
+  starlight's plum, violet and indigo (ODYSSEY_CH6_SPACE_MASTERPIECE_2026-10.md, "After the dive");
 - the exit light dead ahead (it becomes the Retrosun);
 - the mouth (`uOpen`, rad): alpha-tested away, with a blazing rim that fades as it widens (at full
   width a fixed rim was a huge bright circle — a +20 luma spike in the 7→8 gate); the tunnel walls
