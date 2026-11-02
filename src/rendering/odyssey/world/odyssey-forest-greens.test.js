@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    FOREST_GREENS_SPECIES, ODYSSEY_FOREST_GREENS, ODYSSEY_FOREST_GREENS_DEFAULT, forestGreensCrown, resolveForestGreens,
+    FOREST_GREENS_SPECIES, ODYSSEY_FOREST_GREENS_DEFAULT, forestGreensCrown, resolveForestGreens,
 } from './odyssey-forest-greens.js';
 import { getForestSpecies } from './odyssey-forest-species.js';
 
