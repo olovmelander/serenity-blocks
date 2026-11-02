@@ -7,9 +7,19 @@ import {
 } from './odyssey-forest-species.js';
 import { railSeesForestSite } from './odyssey-forest-visibility.js';
 import {
-    ODYSSEY_NORTH_LAKE, ODYSSEY_TARN, odysseyNorthLakeRn, odysseyTarnRn,
+    ODYSSEY_NORTH_BEACH, ODYSSEY_NORTH_LAKE, ODYSSEY_TARN, odysseyNorthBeachAt, odysseyNorthLakeRn, odysseyTarnRn,
 } from './odyssey-world-height.js';
 import { ODYSSEY_MEADOW_CLEARING, odysseyMeadowOpenness } from './odyssey-meadow-clearing.js';
+
+/**
+ * A site on the north beach (2026-11-02): no tree stands on the sand, the dunes or the foot of the
+ * bank behind them, between the bay's horns. The bay's own frame, so it cannot disagree with the
+ * landform.
+ */
+export function siteOnNorthBeach(x, z) {
+    const b = odysseyNorthBeachAt(x, z);
+    return !!b && b.wU > 0.05 && b.s < ODYSSEY_NORTH_BEACH.duneBack + 60;
+}
 
 /**
  * A site standing IN the north lake (north-island plan Wave 1). The sea rejection below
@@ -21,6 +31,7 @@ import { ODYSSEY_MEADOW_CLEARING, odysseyMeadowOpenness } from './odyssey-meadow
  * disagree with the carve.
  */
 function siteInNorthLake(x, z, y) {
+    if (siteOnNorthBeach(x, z)) return true;
     // ...and the tarn in the meadow (2026-10-26): no tree stands in its water, nor in the open
     // meadow round it (`clearing`), which is what lets the eye see its banks over the forest.
     if (y <= ODYSSEY_TARN.waterY + 30 && odysseyTarnRn(x, z) <= ODYSSEY_TARN.clearing) return true;
@@ -359,8 +370,14 @@ const FOREST_ARCH_T_BY_AREA = Object.freeze({
     SEAM: 0.5783012033777011,
     ETIP: 0.6269598341870908,
     EMASS: 0.8244496408416748,
-    NE: 0.40705873430606576,
-    NW: 0.44261230923999884,
+    // NE and NW re-emitted 2026-11-02 for the plain's swells and the pine groves (which the
+    // carve exempts, so they leave the pool). On this terrain the sim moves NE 0.4256 -> 0.4321
+    // and NW 0.4213 -> 0.4205 and leaves the other five where it puts them on main. ⚠️ On main
+    // the sim already disagreed with SEAM, NE, NW, WEND and WMID here (terrain changes since
+    // the last emission); SEAM, WEND and WMID are left as committed so the chapter 3-4 forests
+    // do not move in this change.
+    NE: 0.43212869445249147,
+    NW: 0.42050884657357923,
     WEND: 0.5732750837682767,
     WMID: 0.5042125928823078,
 });
@@ -431,7 +448,7 @@ function forestAreaOf(x, z, dRail) {
  * this in-loop rejection (every downstream mechanism is site-local; the call site's
  * !spec.grove guard is the blossom exemption, matching the glade's own idiom).
  */
-function archKeep(x, z, dRail, shoreDist, rail) {
+function archKeep(x, z, dRail, shoreDist, rail, groveValue = 1) {
     const rx = Math.round(x);
     const rz = Math.round(z);
     {
@@ -483,6 +500,8 @@ function archKeep(x, z, dRail, shoreDist, rail) {
             return true;
         }
     }
+    // The pine groves are stands by construction (FOREST_PINE_GROVES), so the carve leaves them.
+    if (groveValue < 1) return true;
     if (forestRegionAt(x, z) > FOREST_ARCH_TERRACE.region && z > FOREST_ARCH_TERRACE.zMin
         && shoreDist >= FOREST_ARCH_TERRACE.shoreLo
         && shoreDist < FOREST_ARCH_TERRACE.shoreHi) return true;
@@ -508,6 +527,35 @@ const FOREST_SHORE_FADE = 95;
  * autumn area does too — the golds read BECAUSE something dark is standing in them.
  */
 const FOREST_AUTUMN_BOOST = 0.24;
+
+/**
+ * THE PINE GROVES (2026-11-02). From the top of the climb the autumn side read as one even
+ * speckle of red and gold. Dark stands of pine now stand among them: where its own patch field
+ * (`cell` u, salt 151) is in its top slice, on the autumn side of the island, the pine wins the
+ * site. The same shape as the anchor and grove clauses (rare almost everywhere, decisive in a few
+ * places), so it changes which tree stands, never whether one does.
+ */
+export const FOREST_PINE_GROVES = Object.freeze({
+    // The dark conifer of the roster. Read from the climb (1-2 km) a fir grove is a pine grove,
+    // and the fir already stands in these chunks, so the groves add no draw.
+    species: 'S3-subalpine-fir',
+    cell: 240,
+    salt: 151,
+    /** The patch value above which a site is in a grove, and the boost there. */
+    patch: 0.66,
+    boost: 1.6,
+    /** A grove's pines are darker than the pine elsewhere (value only, the hue is the pine's)... */
+    value: 0.6,
+    /** ...and broader, so a grove closes into one dark mass from the climb. */
+    width: 1.15,
+    /** The autumn side only: region weight ramps in across this span... */
+    region: Object.freeze([0.55, 0.85]),
+    /**
+     * ...and on the plain behind the massif only (z, ramping in): the autumn mass the rail flies
+     * past in chapters 3-4, the owner's red-maple run among it, is left exactly as it was.
+     */
+    plainZ: Object.freeze([-1250, -1400]),
+});
 
 /**
  * DISTANCE TO THE WATERLINE, in metres, as a sampled field.
@@ -680,9 +728,24 @@ function forestRegionAt(x, z) {
  * varies over ~500 u, i.e. several canopy diameters, which is the width §1b R5 measured on the
  * reference island (2-10 canopy diameters per zone).
  */
-function pickSpecies(x, y, z, species, zoneCell, shoreDist) {
+/**
+ * How much darker a pine stands here: FOREST_PINE_GROVES.value inside a grove, else exactly 1.
+ * Exported for the archipelago's calibration sim, which leaves the groves out of its pools.
+ */
+export function forestPineGroveValue(x, z) {
+    const pg = FOREST_PINE_GROVES;
+    const w = clamp01((forestRegionAt(x, z) - pg.region[0]) / (pg.region[1] - pg.region[0]))
+        * clamp01((z - pg.plainZ[0]) / (pg.plainZ[1] - pg.plainZ[0]));
+    if (w <= 0 || patchNoise(x, z, pg.cell, pg.salt) <= pg.patch) return 1;
+    return 1 - ((1 - pg.value) * w);
+}
+
+function pickSpecies(x, y, z, species, zoneCell, shoreDist, groveValue = 1) {
     let best = null;
     let bestScore = -Infinity;
+    // The pine groves (FOREST_PINE_GROVES): one field per site, read by the pine only.
+    const pg = FOREST_PINE_GROVES;
+    const pineGrove = (1 - groveValue) * (pg.boost / (1 - pg.value));
     for (let i = 0; i < species.length; i += 1) {
         const s = species[i];
         const fit = bandFit(s, y);
@@ -744,7 +807,7 @@ function pickSpecies(x, y, z, species, zoneCell, shoreDist) {
         // a quarter of it: firs prefer the heights without forbidding anything else there. The
         // reference island works the same way — its zones are regions, not contour lines.
         const score = patch + (fit * FOREST_FIT_WEIGHT) + ((s.weight - 1) * 0.35)
-            + anchorBoost + autumnBoost + groveBoost;
+            + anchorBoost + autumnBoost + groveBoost + (s.id === pg.species ? pineGrove : 0);
         if (score > bestScore) { bestScore = score; best = s; }
     }
     return best;
@@ -935,7 +998,17 @@ export function scatterZonedForest(heightAt, {
             const lakeRnHere = odysseyNorthLakeRn(x, z);
             const inLakeshoreRing = lakeRnHere >= FOREST_ARCH_LAKESHORE.rnLo
                 && lakeRnHere <= FOREST_ARCH_LAKESHORE.rnHi;
-            if (!inLakeshoreRing && hash2(i, j, 29) < thin) continue;
+            // ...and so do the pine groves (FOREST_PINE_GROVES): the autumn side's extra thin left
+            // them as scattered spikes, and a grove reads as a dark mass only at full density.
+            // Far from the rail only (the archipelago's pool gate): the groves are for the climb's
+            // long view, and a near grove would be a new bucket in the rail's own chunks.
+            let groveValue = forestPineGroveValue(x, z);
+            if (groveValue < 1 && rail.length) {
+                const gcx = (Math.floor(x / FOREST_CHUNK) + 0.5) * FOREST_CHUNK;
+                const gcz = (Math.floor(z / FOREST_CHUNK) + 0.5) * FOREST_CHUNK;
+                if (railDist2(gcx, gcz, rail) <= FOREST_ARCH_POOL_RAIL_D * FOREST_ARCH_POOL_RAIL_D) groveValue = 1;
+            }
+            if (!inLakeshoreRing && groveValue >= 1 && hash2(i, j, 29) < thin) continue;
 
             /**
              * THE RAIL CANNOT SEE THIS SITE. Act II's camera is pinned to a spline over a fixed
@@ -953,7 +1026,7 @@ export function scatterZonedForest(heightAt, {
              */
             if (visibilityCull && !railSeesForestSite(x, z)) continue;
             const shoreDistHere = shoreAt(x, z);
-            const spec = pickSpecies(x, y, z, species, zoneCell, shoreDistHere);
+            const spec = pickSpecies(x, y, z, species, zoneCell, shoreDistHere, groveValue);
             if (!spec) continue;
             // THE BROADLEAF CEILING — see the constant. Enforced HERE, on the winner, rather
             // than as a zeroed `bandFit`, and the difference is the whole request: zeroing the
@@ -990,7 +1063,7 @@ export function scatterZonedForest(heightAt, {
             // stage order matches the sim the thresholds were calibrated in; before the
             // stage pick so a carved site costs nothing further. The blossom grove is exempt
             // exactly as it is from the glade; framing trees never enter this loop.
-            if (archCarve && !spec.grove && !archKeep(x, z, dRail, shoreDistHere, rail)) continue;
+            if (archCarve && !spec.grove && !archKeep(x, z, dRail, shoreDistHere, rail, groveValue)) continue;
 
             const stage = pickStage(spec, hash2(i, j, 8));
 
@@ -1022,7 +1095,8 @@ export function scatterZonedForest(heightAt, {
             const base = spec.crownAlt
                 ? spec.crown.map((c, k) => c + ((spec.crownAlt[k] - c) * hueT))
                 : spec.crown;
-            const crown = base.map((c) => Math.max(0, c * jitter));
+            const groveDark = spec.id === FOREST_PINE_GROVES.species ? groveValue : 1;
+            const crown = base.map((c) => Math.max(0, c * jitter * groveDark));
 
             if (cleared) {
                 meadowCleared.push({ x, z });
@@ -1037,7 +1111,7 @@ export function scatterZonedForest(heightAt, {
                 // Filled in below, per CHUNK — see the LOD note there.
                 lod: null,
                 // Non-uniform, because a growth stage IS a proportion change (see the header).
-                scaleXZ: stage.w,
+                scaleXZ: stage.w * (groveDark < 1 ? FOREST_PINE_GROVES.width : 1),
                 scaleY: stage.h,
                 rot: hash2(i, j, 6) * Math.PI * 2,
                 // Broadleaves lean more than conifers: a tilted pine reads as falling over
@@ -1047,6 +1121,7 @@ export function scatterZonedForest(heightAt, {
                 crown,
                 shade: shadeColourFor(crown, spec.role),
                 snow,
+                ...(groveDark < 1 ? { pineGrove: true } : {}),
             });
         }
     }

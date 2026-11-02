@@ -356,6 +356,184 @@ const NORTH_HILLS = Object.freeze([
 ]);
 
 /**
+ * THE PLAIN'S SWELLS AND HOLLOWS (2026-11-02, the land behind the mountain). From the top of the
+ * chapter-5 climb (p 0.60-0.68) the camera looks down at 15-25 degrees over the plateau north-east
+ * of the lake, and it read as a flat green map. These are soft, broad rises and dips there: low
+ * (10-18 u) and wide (140-210 u in radius), so under the low side sun each one has a lit flank
+ * and a shaded one. The same compact profile as the north hills (exactly zero at hn >= 1),
+ * signed, and sited clear of the lake (no rim moves) and of the plateau pins at (-700, -1900) and
+ * (-220, -2400). Where the north beach's bank reaches one, the bank is drawn over it.
+ */
+const PLAIN_SWELLS = Object.freeze([
+    Object.freeze({
+        x: 860, z: -1880, r: 210, h: 18,
+    }), // between the lake's east shore and the east coast
+    Object.freeze({
+        x: 980, z: -1450, r: 170, h: 12,
+    }),
+    Object.freeze({
+        x: 470, z: -2120, r: 170, h: -10,
+    }), // a hollow north-east of the lake, behind the bay
+    Object.freeze({
+        x: 230, z: -2240, r: 140, h: 14,
+    }),
+    Object.freeze({
+        x: 40, z: -2580, r: 190, h: -10,
+    }),
+]);
+
+/**
+ * THE NORTH BEACH (2026-11-02). The north coast was a steep bank: from the climb the shoreline
+ * hid behind its own brow and read as a thin pale line. This is a wide crescent bay cut into the
+ * island's north-east corner, the coast the climb-top views (p 0.60-0.68, heading ~40-50 deg)
+ * look straight at, ~1,700-2,100 u out. Its chord runs from the north coast to the east coast,
+ * across the view, so the crescent spans the frame with its belly toward the camera.
+ *
+ * In the bay's own frame (`u` along the chord from its middle, `v` inland across it) the
+ * waterline is a parabola, `bite` inland at the middle and on the chord at the horns. `s` is the
+ * distance inland from it. Across `s` the ground is drawn to one profile:
+ *
+ *   - a shelving seabed, `shelfDepth` deep `shelf` u out, then falling to the sea floor (so the
+ *     shallows exist for the water's depth colour to show);
+ *   - a gently rising beach of pale sand, `beach` u wide, `beachTop` u high at the dune foot;
+ *   - dunes, low ridges along the shore broken into hummocks, below the plateau everywhere;
+ *   - a grassy bank rising back to the land.
+ *
+ * Compact like every term here: the profile is blended in by `beachWeight`, which is exactly zero
+ * beyond the horns (`hornOut`), past `shelfOut` seaward and past `bankTo` inland. It finishes
+ * well inside the coast's own taper (z > -3400) and the bake plate, and far from the rail.
+ */
+export const ODYSSEY_NORTH_BEACH = Object.freeze({
+    /** The horns: on the north coast, and on the east coast. */
+    ax: 420,
+    az: -2890,
+    bx: 1175,
+    bz: -2240,
+    bite: 150,
+    beach: 120,
+    beachTop: 4.5,
+    duneBack: 270,
+    duneTop: 11,
+    duneHump: 8,
+    bankTo: 680,
+    bankSlope: 0.26,
+    shelf: 380,
+    shelfDepth: 26,
+    shelfOut: 540,
+    /** Lateral taper, as fractions of the half-chord. */
+    hornIn: 0.75,
+    hornOut: 1.45,
+    /** How much of the relief survives on the beach (it would break a 2-degree slope). */
+    reliefKeep: 0.04,
+});
+
+const BEACH = ODYSSEY_NORTH_BEACH;
+const BEACH_LEN = Math.hypot(BEACH.bx - BEACH.ax, BEACH.bz - BEACH.az);
+/** The bay's frame: middle of the chord, the unit chord, the inland normal, the half-chord. */
+export const ODYSSEY_NORTH_BEACH_FRAME = Object.freeze({
+    mx: (BEACH.ax + BEACH.bx) / 2,
+    mz: (BEACH.az + BEACH.bz) / 2,
+    tx: (BEACH.bx - BEACH.ax) / BEACH_LEN,
+    tz: (BEACH.bz - BEACH.az) / BEACH_LEN,
+    nx: -(BEACH.bz - BEACH.az) / BEACH_LEN,
+    nz: (BEACH.bx - BEACH.ax) / BEACH_LEN,
+    halfChord: BEACH_LEN / 2,
+});
+const BF = ODYSSEY_NORTH_BEACH_FRAME;
+
+/**
+ * Where a point sits in the bay: `u` along the chord, `s` inland of the waterline (negative out at
+ * sea), and `wU` the lateral weight (1 between the horns, 0 beyond them). Null outside the box the
+ * bay can touch, which is the exact reject that keeps the bakes fast.
+ * @param {number} x
+ * @param {number} z
+ * @returns {{u:number, s:number, wU:number}|null}
+ */
+export function odysseyNorthBeachAt(x, z) {
+    const dx = x - BF.mx;
+    const dz = z - BF.mz;
+    const u = (dx * BF.tx) + (dz * BF.tz);
+    const U = BF.halfChord;
+    if (Math.abs(u) >= U * BEACH.hornOut) return null;
+    const v = (dx * BF.nx) + (dz * BF.nz);
+    const un = u / U;
+    const s = v - (BEACH.bite * (1 - (un * un)));
+    if (s <= -BEACH.shelfOut || s >= BEACH.bankTo) return null;
+    const wU = 1 - smoothstep01(BEACH.hornIn, BEACH.hornOut, Math.abs(un));
+    return { u, s, wU };
+}
+
+/**
+ * How much of the bay's profile holds at a point, in [0, 1]: the lateral weight times the
+ * cross-shore one (whole from the shelf to the dunes' back, feathered out to sea and up the
+ * bank). Exactly 0 outside the bay. The relief and the ground shader read the same weight.
+ * @param {number} x
+ * @param {number} z
+ * @returns {number}
+ */
+export function odysseyNorthBeachWeight(x, z) {
+    const b = odysseyNorthBeachAt(x, z);
+    if (!b) return 0;
+    return b.wU * beachCrossWeight(b.s, z);
+}
+
+/** The coast's own closing law: nothing of the bay reaches the open sea past here (z). */
+const BEACH_SEA_CLOSE = Object.freeze([-3400, -3250]);
+
+function beachCrossWeight(s, z) {
+    if (s < 0 && z < BEACH_SEA_CLOSE[1]) {
+        if (z <= BEACH_SEA_CLOSE[0]) return 0;
+        return beachCrossWeight(s, BEACH_SEA_CLOSE[1]) * smoothstep01(BEACH_SEA_CLOSE[0], BEACH_SEA_CLOSE[1], z);
+    }
+    if (s < -BEACH.shelf) return smoothstep01(-BEACH.shelfOut, -BEACH.shelf, s);
+    if (s > BEACH.duneBack) return 1 - smoothstep01(BEACH.duneBack, BEACH.bankTo, s);
+    return 1;
+}
+
+/**
+ * The dunes' own relief: low ridges along the shore (stretched along the chord), broken into
+ * hummocks, inside a window across the dune belt. World units above the dune base.
+ */
+function beachDunes(u, s) {
+    const win = smoothstep01(BEACH.beach - 20, BEACH.beach + 50, s)
+        * (1 - smoothstep01(BEACH.duneBack - 90, BEACH.duneBack + 30, s));
+    if (win <= 0) return 0;
+    const ridge = valueNoise((u / 115) + 7.3, (s / 58) - 2.1);
+    const hummock = valueNoise((u / 64) - 3.7, (s / 64) + 11.9);
+    return BEACH.duneHump * win * (((ridge * 0.65) + (hummock * 0.35)) ** 1.5);
+}
+
+/**
+ * The bay's profile at `s` (height above sea level) — seabed, beach, dune base, bank.
+ * @param {number} s
+ * @returns {number}
+ */
+export function odysseyNorthBeachProfile(s) {
+    if (s <= 0) {
+        // The shelf: shallow for a long way, then deepening (Dean's beach profile, near enough).
+        return -BEACH.shelfDepth * (Math.min(1, -s / BEACH.shelf) ** 1.25);
+    }
+    if (s <= BEACH.beach) return BEACH.beachTop * ((s / BEACH.beach) ** 0.8);
+    if (s <= BEACH.duneBack) {
+        const t = (s - BEACH.beach) / (BEACH.duneBack - BEACH.beach);
+        return BEACH.beachTop + ((BEACH.duneTop - BEACH.beachTop) * t);
+    }
+    return BEACH.duneTop + ((s - BEACH.duneBack) * BEACH.bankSlope);
+}
+
+/** The bay drawn over the `ground` the rest of the macro field gives. */
+function northBeachBlend(x, z, ground) {
+    const b = odysseyNorthBeachAt(x, z);
+    if (!b) return ground;
+    const w = b.wU * beachCrossWeight(b.s, z);
+    if (w <= 0) return ground;
+    let target = ODYSSEY_SEA_LEVEL + odysseyNorthBeachProfile(b.s) + beachDunes(b.u, b.s);
+    // The bank only ever cuts down to the beach: where the land behind is low it is left alone.
+    if (b.s > BEACH.duneBack) target = Math.min(target, ground);
+    return ground + ((target - ground) * w);
+}
+
+/**
  * THE OUTER ISLES (all-angles pass, 2026-10-18). From the coast (chapters 3-4) and from the
  * climb (chapter 5) half of every turn of the head faced open sea: water to a white horizon with
  * nothing standing on it. These are the archipelago the island belongs to — a volcano, a long
@@ -561,6 +739,15 @@ export function odysseyWorldMacro(x, z) {
         const hn = Math.sqrt(d2) / hh.r;
         hills += (1 - smoothstep01(0.25, 1.0, hn)) * hh.h;
     }
+    // The plain's swells and hollows: the same profile, signed.
+    for (let i = 0; i < PLAIN_SWELLS.length; i += 1) {
+        const ps = PLAIN_SWELLS[i];
+        const dx = x - ps.x;
+        const dz = z - ps.z;
+        const d2 = (dx * dx) + (dz * dz);
+        if (d2 >= ps.r * ps.r) continue;
+        hills += (1 - smoothstep01(0.25, 1.0, Math.sqrt(d2) / ps.r)) * ps.h;
+    }
 
     // The outer isles: compact, and only where the land term is still the open-sea floor.
     let isles = 0;
@@ -573,7 +760,8 @@ export function odysseyWorldMacro(x, z) {
         isles = Math.max(isles, isleRise(isle, isleRadius(isle, x, z), land));
     }
 
-    const ground = land + basin + lakeBowl + hills + isles;
+    // The north beach is drawn over everything else there (it replaces the steep coast).
+    const ground = northBeachBlend(x, z, land + basin + lakeBowl + hills + isles);
 
     // THE PEAKS RISE FROM THE GROUND, they do not replace it.
     //
@@ -634,7 +822,10 @@ export function odysseyWorldDetailWeight(x, z) {
     // The base weight is deliberately low. Relief is what gives the massif its character, but
     // away from the peaks it is also the only thing that can push terrain up through the rail,
     // and the rail's clearance margin is the one budget a height field must never overspend.
-    return 0.16 + (0.84 * strongest);
+    const weight = 0.16 + (0.84 * strongest);
+    // ...and almost none on the north beach: +-10 u of relief would break a 2-degree beach.
+    const beachW = odysseyNorthBeachWeight(x, z);
+    return beachW > 0 ? weight * (1 - ((1 - ODYSSEY_NORTH_BEACH.reliefKeep) * beachW)) : weight;
 }
 
 /** LOCAL RELIEF, baked to half-float. Frequency band is set by the bake resolution, not taste. */

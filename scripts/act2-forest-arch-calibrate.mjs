@@ -27,7 +27,7 @@
  * rim coin). All free per the salt ledger (29/31/71/91/137/23/17+7i/1-13 taken).
  */
 import {
-    scatterZonedForest, buildShoreDistance, FOREST_CHUNK_BY_LOD,
+    scatterZonedForest, buildShoreDistance, FOREST_CHUNK_BY_LOD, forestPineGroveValue,
 } from '../src/rendering/odyssey/world/odyssey-forest-scatter.js';
 import {
     odysseyNorthLakeRn,
@@ -167,6 +167,8 @@ const isExempt = (t) => t.framing
     || chunkCentreD(t.x, t.z) <= 520
     || Math.hypot(t.x - CYP.cx, t.z - CYP.cz) < CYP.r
     || lakeshoreRing(t.x, t.z)
+    // The pine groves (FOREST_PINE_GROVES) are exempt from the carve, like the lakeshore ring.
+    || forestPineGroveValue(t.x, t.z) < 1
     || (regionAt(t.x, t.z) > TERRACE.region && t.z > TERRACE.zMin
         && shoreAt(t.x, t.z) >= TERRACE.shoreLo && shoreAt(t.x, t.z) < TERRACE.shoreHi);
 const T_BY_AREA = {};
