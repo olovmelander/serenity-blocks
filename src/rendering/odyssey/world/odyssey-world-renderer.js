@@ -52,10 +52,14 @@ import {
 import { forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex } from './odyssey-forest-cards.js';
 import { bakeForestLeafAtlas } from './odyssey-forest-leaf-atlas.js';
 import { forestLodDistanceForTier, getForestSpecies } from './odyssey-forest-species.js';
-import { scatterZonedForest } from './odyssey-forest-scatter.js';
+import { scatterZonedForest, shadeColourFor } from './odyssey-forest-scatter.js';
+import { forestGreensCrown, resolveForestGreens } from './odyssey-forest-greens.js';
 import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './odyssey-forest-shade.js';
 import { ODYSSEY_HERO_CLOUD_SPECS } from './odyssey-hero-cloud-specs.js';
 import { bakeValleyMist } from './odyssey-valley-mist.js';
+import {
+    ODYSSEY_BOULDERS, boulderMatrix, buildBoulderGeometry, buildBoulderSites,
+} from './odyssey-boulders.js';
 import {
     billboardWorld, makeQuadInstancedGeometry,
 } from '../chapter-environments/shared/odyssey-tsl-billboard.js';
@@ -526,9 +530,29 @@ const SEA_MIRROR = Object.freeze({
     reach: 1000,
 });
 const TARN_MIRROR = Object.freeze({
-    steps: 24,
-    firstStep: 3.0,
-    stepGrowth: 1.22,
+    steps: 30,
+    firstStep: 2.5,
+    stepGrowth: 1.16,
+    /** Halvings at a hit: the bent rays meet the summit ~1 km out, where a step is ~150 u. */
+    refine: 3,
+    /**
+     * THE PAINTER'S MIRROR (2026-11-02). Probed on the rail camera (L20-L23), the eye looks down on
+     * the tarn at 13-29 deg, so a true mirror's rays rise at 13-29 deg; the summit stands 52 deg up
+     * from the tarn and 20-80 deg round from where those rays look. A true mirror there shows the
+     * meadow bank and the low hills, never the summit. So the reflection is painted, as a whole:
+     *  - turned round by one angle, so the ray off the tarn's middle looks at the summit (the
+     *    mirror keeps its width, so the massif's two skylines stay in it);
+     *  - steepened by one factor on the rise's tangent, so that ray rises `rise` deg: the summit's
+     *    apex lands just nearer the eye than the middle, the high flank beyond it;
+     *  - the ripple's own tilt added back unbent.
+     * Both come from the eye and the tarn's middle (`centre`), so they change smoothly along the
+     * rail. `lift` bounds the steepening.
+     */
+    paint: Object.freeze({
+        centre: Object.freeze([-262, -432]),
+        rise: 47,
+        lift: Object.freeze([1, 4.5]),
+    }),
     rockFrom: Object.freeze([420, 520]),
     snowFrom: Object.freeze([610, 700]),
     sunLit: 0.95,
@@ -539,7 +563,8 @@ const TARN_MIRROR = Object.freeze({
     calm: 0.35,
     /** How many rings (rises) the pond carries at once (water pass step 4). */
     rings: 3,
-    fresnel: Object.freeze([0.62, 0.30]),
+    /** Raised from [0.62, 0.30] with the painter's mirror, so the massif reads over the water's own colour. */
+    fresnel: Object.freeze([0.62, 0.42]),
 });
 /**
  * The jade a thin wave crest transmits, seen from ABOVE (the topside twin of `uWaterGlow`'s
@@ -1273,6 +1298,9 @@ export function createOdysseyWorld({
     // LAKE_TINT_VARIANTS. Unset ships LAKE_TINT_DEFAULT, so the game has exactly one
     // answer and the comparison arms cannot leak into it.
     lakeTint = '',
+    // THE BROADLEAF GREENS (odyssey-forest-greens.js, `?odysseyForestGreens=`): the palette the
+    // lowland broadleaf's crowns take per tree. Unset ships ODYSSEY_FOREST_GREENS_DEFAULT.
+    forestGreens = '',
     water = true,
     forest = true,
     forestPaint = false,
@@ -3238,7 +3266,7 @@ export function createOdysseyWorld({
     // the land the ray takes.
     const waterPlateUv = (xz) => xz.div(float(RELIEF_EXTENT)).add(0.5);
     const waterMarchLand = (P, R, {
-        heightAt, steps, firstStep, stepGrowth, soft, ceiling = null,
+        heightAt, steps, firstStep, stepGrowth, soft, ceiling = null, refine = 1,
     }) => {
         const tHit = float(-1).toVar();
         const tPrev = float(0).toVar();
@@ -3260,10 +3288,19 @@ export function createOdysseyWorld({
                 tClose.assign(tCur);
             });
             If(gap.lessThan(0), () => {
-                // One halving between the last two steps.
-                const tMid = tPrev.add(tCur).mul(0.5).toVar();
-                const qm = P.add(R.mul(tMid)).toVar();
-                tHit.assign(select(heightAt(qm.xz).greaterThan(qm.y), tMid, tCur));
+                // Halvings between the last two steps (one for the sea; the tarn's long rays take more).
+                const tBelow = tPrev.toVar();
+                const tAbove = tCur.toVar();
+                for (let k = 0; k < refine; k += 1) {
+                    const tMid = tBelow.add(tAbove).mul(0.5).toVar();
+                    const qm = P.add(R.mul(tMid)).toVar();
+                    If(heightAt(qm.xz).greaterThan(qm.y), () => {
+                        tAbove.assign(tMid);
+                    }).Else(() => {
+                        tBelow.assign(tMid);
+                    });
+                }
+                tHit.assign(tAbove);
                 Break();
             });
             tPrev.assign(tCur);
@@ -3298,13 +3335,17 @@ export function createOdysseyWorld({
         );
         const rock = vec3(...ODYSSEY_GROUND_PALETTE.rock.dry);
         const snow = vec3(...ODYSSEY_GROUND_PALETTE.snow.dry);
+        const reliefAt = texture(heightTex, waterPlateUv(H.xz)).level(0);
+        const n = normalize(vec3(reliefAt.g.negate(), 1, reliefAt.b.negate()));
+        // High up, the steep faces and a broken pattern of patches stay bare rock, as the summit's
+        // own crisp snow leaves them (so the reflected summit reads as snow and rock, not a white wedge).
+        const bare = smoothstep(float(0.55), float(0.85), float(1).sub(n.y))
+            .max(smoothstep(float(0.55), float(0.7), noise2(H.xz.mul(0.02))));
         const land = mix(
             mix(beach, rock, smoothstep(float(T.rockFrom[0]), float(T.rockFrom[1]), H.y)),
             snow,
-            smoothstep(float(T.snowFrom[0]), float(T.snowFrom[1]), H.y),
+            smoothstep(float(T.snowFrom[0]), float(T.snowFrom[1]), H.y).mul(float(1).sub(bare.mul(0.85))),
         );
-        const reliefAt = texture(heightTex, waterPlateUv(H.xz)).level(0);
-        const n = normalize(vec3(reliefAt.g.negate(), 1, reliefAt.b.negate()));
         const vis = texture(sunVisTex, waterPlateUv(H.xz)).level(0).r;
         const ndl = clamp(dot(n, uSunDir), 0, 1);
         const grain = noise2(H.xz.mul(0.045)).mul(0.35).add(0.82);
@@ -3374,9 +3415,34 @@ export function createOdysseyWorld({
                 .toVar();
             const N = normalize(vec3(rip.x.negate(), 1, rip.y.negate())).toVar();
             const Rraw = reflect(V.negate(), N);
-            const R = normalize(vec3(Rraw.x, max(Rraw.y, 0.004), Rraw.z)).toVar();
+            // THE PAINTER'S MIRROR (TARN_MIRROR.paint): the flat mirror's ray, turned round and
+            // steepened as a whole; the ripple's tilt (rippled minus flat) is added back unbent.
+            const Rflat = vec3(V.x.negate(), V.y, V.z.negate());
+            const centre = vec2(...T.paint.centre);
+            const toTarn = centre.sub(cameraPosition.xz);
+            const toSummit = vec2(ODYSSEY_SUMMIT_SCULPT.x - T.paint.centre[0], ODYSSEY_SUMMIT_SCULPT.z - T.paint.centre[1]);
+            const turn = atan(toSummit.y, toSummit.x).sub(atan(toTarn.y, toTarn.x));
+            const ct = cos(turn);
+            const st = sin(turn);
+            const flatXZ = normalize(Rflat.xz);
+            const bentXZ = vec2(flatXZ.x.mul(ct).sub(flatXZ.y.mul(st)), flatXZ.x.mul(st).add(flatXZ.y.mul(ct)));
+            const midTan = cameraPosition.y.sub(ODYSSEY_TARN.waterY).div(max(length(toTarn), float(1)));
+            const lift = clamp(
+                float(Math.tan((T.paint.rise * Math.PI) / 180)).div(max(midTan, float(1e-3))),
+                T.paint.lift[0],
+                T.paint.lift[1],
+            );
+            const rise = Rflat.y.div(max(length(Rflat.xz), float(1e-3))).mul(lift);
+            const Rpaint = normalize(vec3(bentXZ.x, rise, bentXZ.y));
+            const Rbent = Rpaint.add(Rraw.sub(Rflat));
+            const R = normalize(vec3(Rbent.x, max(Rbent.y, 0.004), Rbent.z)).toVar();
             const { tLand, landW } = waterMarchLand(P, R, {
-                heightAt: landAt, steps: T.steps, firstStep: T.firstStep, stepGrowth: T.stepGrowth, soft: T.soft,
+                heightAt: landAt,
+                steps: T.steps,
+                firstStep: T.firstStep,
+                stepGrowth: T.stepGrowth,
+                soft: T.soft,
+                refine: T.refine,
             });
             const H = P.add(R.mul(tLand)).toVar();
             // ONE WATER: where the ray runs into open sky the pond shows the sea's stepped sky wash
@@ -3395,7 +3461,8 @@ export function createOdysseyWorld({
             // The sea's sun: core, road and glitter, over the baked sun visibility at the pond.
             const wVis = texture(sunVisTex, plateUv(P.xz)).r;
             const fb = float(1).sub(max(dot(N, V), 0));
-            const glints = waterSunCore(N, V).add(waterSunRoad(R))
+            // The sun's road stays on the true mirror ray: the sun is not painted round.
+            const glints = waterSunCore(N, V).add(waterSunRoad(normalize(vec3(Rraw.x, max(Rraw.y, 0.004), Rraw.z))))
                 .add(waterSparkle(ripTex, fb, length(P.xz.sub(cameraPosition.xz))));
             const wl = mix(body, reflected, fres)
                 .add(vec3(...WATER_GLINT).mul(glints).mul(wVis))
@@ -5766,7 +5833,9 @@ export function createOdysseyWorld({
     ));
 
     const treeMeshes = [];
+    const greensPalette = resolveForestGreens(forestGreens);
     let forestV2Stats = null;
+    let forestPlacements = null;
     const m4 = new THREE.Matrix4();
     const quat = new THREE.Quaternion();
     const pos = new THREE.Vector3();
@@ -6271,8 +6340,12 @@ export function createOdysseyWorld({
                 // Non-uniform: the growth stage IS a proportion change.
                 fs.set(t.scaleXZ * FOREST_V2_SCALE, t.scaleY * FOREST_V2_SCALE, t.scaleXZ * FOREST_V2_SCALE);
                 mesh.setMatrixAt(i, fm4.compose(fp, fq, fs));
-                aCrownSnow.setXYZW(i, t.crown[0], t.crown[1], t.crown[2], t.snow);
-                aShadePhase.setXYZW(i, t.shade[0], t.shade[1], t.shade[2], t.rot * 3.7);
+                // The broadleaf greens: a palette's crown for this tree, its shade by the forest's law.
+                const greens = forestGreensCrown(t, greensPalette);
+                const crown = greens ?? t.crown;
+                const shade = greens ? shadeColourFor(greens, getForestSpecies(t.speciesId).role) : t.shade;
+                aCrownSnow.setXYZW(i, crown[0], crown[1], crown[2], t.snow);
+                aShadePhase.setXYZW(i, shade[0], shade[1], shade[2], t.rot * 3.7);
                 aTrunk.setXYZW(
                     i,
                     trunkCol[0],
@@ -6307,8 +6380,141 @@ export function createOdysseyWorld({
             treeMeshes.push(mesh);
         });
         forestV2Stats = zoned.stats;
+        forestPlacements = zoned.placements;
         geoCache.forEach((cached) => cached.dispose());
     }
+
+    // ── BOULDERS AND OUTCROPS (Act II leftovers, 2026-11-02; odyssey-boulders.js) ─────────────
+    // Rocks for scale on the meadows and slopes, sited on the rail camera. Three shapes at two
+    // tiers, six instanced meshes, one material. Lit as the ground's rock is: the S-shaped Lambert
+    // under the baked sun (terrain and tree shadows, the drifting cloud shade), rock's mineral shade
+    // (desaturated, the warm deep tint, the sky's fill from above), the meadow creeping up the foot
+    // and a little lichen on the tops, then the ground's own air and mist.
+    const boulderMat = new THREE.MeshBasicNodeMaterial();
+    boulderMat.name = 'OdysseyWorldBoulders';
+    const boulderMeshes = [];
+    let boulderRocks = [];
+    {
+        const vRock = varying(vec4(0), 'odBoulderLook');
+        boulderMat.positionNode = Fn(() => {
+            vRock.assign(attribute('aRock', 'vec4'));
+            return positionLocal;
+        })();
+        const boulderCol = Fn(() => {
+            const N = normalize(normalWorld).toVar();
+            const P = positionWorld.toVar();
+            const tone = vRock.x;
+            const moss = vRock.y;
+            // 0 at the ground under the rock, 1 at its top.
+            const lift = clamp(P.y.sub(vRock.z).div(max(vRock.w, float(0.5))), 0, 1).toVar();
+            const grain = noise2(P.xz.mul(0.31).add(P.y.mul(0.23))).mul(0.22)
+                .add(noise2(P.xz.mul(0.09).sub(P.y.mul(0.07))).mul(0.16))
+                .add(0.83);
+            // Darker than the painted scree (it stands against the meadow, not on the rock), a
+            // little warm or cool from one rock to the next.
+            const rockAlb = mix(
+                vec3(...ODYSSEY_GROUND_PALETTE.rock.damp),
+                vec3(...ODYSSEY_GROUND_PALETTE.rock.dry).mul(vec3(1.0, 0.96, 0.88)),
+                tone.mul(0.55),
+            ).mul(grain);
+            // Lichen and moss on the open tops (an olive-gold); the meadow creeping up the foot.
+            const lichen = mix(
+                vec3(...ODYSSEY_GROUND_PALETTE.grass.damp),
+                vec3(...ODYSSEY_GROUND_PALETTE.grass.dry),
+                0.55,
+            ).mul(1.35);
+            const top = smoothstep(float(0.5), float(0.92), N.y).mul(moss).mul(0.55);
+            const foot = float(1).sub(smoothstep(float(0.0), float(0.32), lift));
+            const albedo = mix(
+                mix(rockAlb, lichen, top),
+                vec3(...ODYSSEY_GROUND_PALETTE.grass.damp).mul(1.1),
+                foot.mul(0.7),
+            ).toVar();
+            const sunVisHere = texture(sunVisTex, P.xz.div(float(RELIEF_EXTENT)).add(0.5)).r;
+            const shadeHere = texture(
+                forestShadeTex,
+                P.xz.sub(vec2(FOREST_SHADE_PLATE.x, FOREST_SHADE_PLATE.z)).div(FOREST_SHADE_PLATE.extent).add(0.5),
+            );
+            const treeLight = float(1).sub(shadeHere.r.mul(FOREST_SHADOW_DEPTH));
+            const cloudLight = q.cloudShadows ? cloudShadowLight(P.xz) : float(1);
+            const ndl = max(dot(N, uSunDir), 0);
+            const lightAmt = smoothstep(
+                float(ODYSSEY_GROUND_SHADE.terminator[0]),
+                float(ODYSSEY_GROUND_SHADE.terminator[1]),
+                clamp(ndl.mul(sunVisHere).mul(treeLight).mul(cloudLight), 0, 1),
+            ).toVar();
+            const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA));
+            const shadeCol = mix(
+                albedo,
+                vec3(albLuma),
+                float(ODYSSEY_GROUND_SHADE.mineral.desat).mul(float(1).sub(foot)),
+            ).mul(mix(vec3(...ODYSSEY_GROUND_SHADE.deepTint), vec3(1), lightAmt));
+            const surface = mix(shadeCol, albedo, lightAmt);
+            // The sky's fill: more on faces turned up, less in the crease at the foot and under trees.
+            const ambient = mix(
+                float(ODYSSEY_GROUND_SHADE.deepAmbient),
+                float(ODYSSEY_GROUND_SHADE.mineral.ambient).add(N.y.mul(0.08)),
+                smoothstep(float(0.0), float(0.45), lift).mul(float(1).sub(shadeHere.g.mul(FOREST_FLOOR_AO))),
+            );
+            // The tops catch the sky, the sides fall off: the form reads even with the sun behind.
+            const skyTop = N.y.mul(0.22).add(0.84);
+            const value = ambient.add(float(1).sub(ambient).mul(lightAmt)).mul(float(GROUND_LIT_GAIN)).mul(skyTop);
+            const ambientHue = uShadowTint.div(max(dot(uShadowTint, vec3(...ODYSSEY_GROUND_LUMA)), 0.001));
+            const lightCol = mix(mix(vec3(1), ambientHue, float(GROUND_AMBIENT_CHROMA)), uSunColour, lightAmt);
+            return surface.mul(lightCol).mul(value);
+        })();
+        boulderMat.colorNode = toOutputSurface(applyAerial(
+            boulderCol,
+            positionWorld,
+            AERIAL_CEIL_LAND,
+            AERIAL_RATE_LAND,
+            true,
+        ));
+        boulderRocks = buildBoulderSites(relief.sample, { trees: forestPlacements ?? [] });
+        const { lod } = ODYSSEY_BOULDERS;
+        ODYSSEY_BOULDERS.shapes.forEach((_, si) => {
+            const mine = boulderRocks.filter((r) => r.shape === si);
+            if (!mine.length) return;
+            ['near', 'far'].forEach((tier) => {
+                const geo = buildBoulderGeometry(si, lod[tier]);
+                const rockLook = new THREE.InstancedBufferAttribute(new Float32Array(mine.length * 4), 4);
+                geo.setAttribute('aRock', rockLook);
+                const mesh = new THREE.InstancedMesh(geo, boulderMat, mine.length);
+                mesh.name = `odyssey-world-boulders-${si}-${tier}`;
+                mesh.userData.boulders = { rocks: mine, tier, rockLook };
+                mesh.count = 0;
+                mesh.frustumCulled = true;
+                group.add(mesh);
+                boulderMeshes.push(mesh);
+            });
+        });
+    }
+    // Which tier each rock is drawn at, rewritten only when one crosses `lod.switchAt`.
+    let boulderTierKey = '';
+    const boulderMatrix4 = new THREE.Matrix4();
+    const updateBoulderTiers = (eyeX, eyeZ) => {
+        if (!boulderMeshes.length) return;
+        const near = (rock) => Math.hypot(rock.x - eyeX, rock.z - eyeZ) < ODYSSEY_BOULDERS.lod.switchAt;
+        const key = boulderRocks.map((rock) => (near(rock) ? 1 : 0)).join('');
+        if (key === boulderTierKey) return;
+        boulderTierKey = key;
+        boulderMeshes.forEach((mesh) => {
+            const { rocks, tier, rockLook } = mesh.userData.boulders;
+            let n = 0;
+            rocks.forEach((rock) => {
+                if ((tier === 'near') !== near(rock)) return;
+                mesh.setMatrixAt(n, boulderMatrix(rock, boulderMatrix4));
+                const tall = rock.sy * ODYSSEY_BOULDERS.shapes[rock.shape].flat * 1.42;
+                rockLook.setXYZW(n, rock.tone, rock.moss, rock.ground, tall);
+                n += 1;
+            });
+            mesh.count = n;
+            mesh.computeBoundingSphere();
+            mesh.instanceMatrix.needsUpdate = true;
+            rockLook.needsUpdate = true;
+        });
+    };
+    updateBoulderTiers(-160, -260);
 
     const t2 = (typeof performance !== 'undefined' ? performance.now() : 0);
     // The game puts a per-CHAPTER FogExp2 on the scene. Left on, it saturates the sky dome —
@@ -6316,7 +6522,7 @@ export function createOdysseyWorld({
     // was never once visible in-game, and the ground got double-fogged on top of applyAerial.
     // These four materials carry their own aerial perspective; the scene fog is not theirs.
     [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat, tarnMat,
-        showerMat]
+        showerMat, boulderMat]
         .forEach((m) => { m.fog = false; });
 
     // What the scene fog SHOULD be, for everything the world does not draw (the path ribbon,
@@ -6588,6 +6794,7 @@ export function createOdysseyWorld({
             state.lodCenter.x = railPoint.x;
             state.lodCenter.z = railPoint.z;
             state.eyeY = eyeY;
+            updateBoulderTiers(railPoint.x, railPoint.z);
             const actP = Math.max(0, Math.min(1, progress));
             const runoutStart = 0.05 + (SCRIPT_RUNOUT_FROM * 0.9);
             const scriptP = actP <= SCRIPT_RUNOUT_FROM
@@ -6795,7 +7002,7 @@ export function createOdysseyWorld({
             // the heroes retired it is usually never uploaded, but the ?odysseyWorldHeroes=1
             // escape hatch still renders it and must not leak (the SB-15 teardown class).
             [groundMat, waterMat, skyMat, treeMat, forestV2Mat, forestCardMat, cloudMat, heroMat, fieldMat, lakeMat,
-                tarnMat, showerMat].forEach((m) => m.dispose());
+                tarnMat, showerMat, boulderMat].forEach((m) => m.dispose());
             if (rayMat) rayMat.dispose();
             if (moteMat) moteMat.dispose();
             // The fish's material was missing here once (the same SB-15 teardown class heroMat was):
