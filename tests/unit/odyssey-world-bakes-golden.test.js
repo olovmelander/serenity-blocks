@@ -131,7 +131,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // relief noise is unchanged (hash above), the total height gains the isles.
         // ...and moved 2026-10-25 with the summit sculpt (odysseySummitSculpt joins the drawn height),
         // and 2026-10-26 with the tarn in the meadow (odysseyTarnCarve, the same sculpt delta).
-        expect(sha(a.total)).toBe('2d03ac3ea7e05271fadcbc9aee3588b0');
+        // ...and 2026-11-02 with the north beach and the plain's swells (ODYSSEY_NORTH_BEACH,
+        // PLAIN_SWELLS): the macro gains the bay and the swells, the detail weight drops on the beach.
+        expect(sha(a.total)).toBe('8cc0ef346c8e85bd726209b32f89b7e5');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -143,8 +145,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
     it('pins the macro texels at 64²', () => {
         const m = bakeMacroData(64);
         expect(m.data.length).toBe(64 * 64 * 4);
-        // Moved 2026-10-18 with the outer isles (see the relief pin above).
-        expect(sha(m.data)).toBe('2ffdeae30d92e9e860c8f2c425404efa');
+        // Moved 2026-10-18 with the outer isles (see the relief pin above), and 2026-11-02 with
+        // the north beach and the plain's swells (the same note).
+        expect(sha(m.data)).toBe('85c56ad6b8aba54c9533f7d14d885d7f');
     });
 
     it('bakeWorldTextureData returns every plate with transferable buffers and per-stage timings', () => {

@@ -13,6 +13,8 @@ import {
 
 import {
     ODYSSEY_MASSIFS,
+    ODYSSEY_NORTH_BEACH,
+    ODYSSEY_NORTH_BEACH_FRAME,
     ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
     ODYSSEY_SCULPT_PLATE,
@@ -179,6 +181,38 @@ const GROUND_EDGE_TINT = Object.freeze([0.80, 0.72, 0.55]);
 const GROUND_EDGE_AMT = 0.55;
 /** Wind-swept lighter bands. Deliberately small: this is a Ghibli stroke, not a strobe. */
 const GROUND_WIND_LIFT = 0.055;
+/**
+ * THE NORTH BEACH'S PAINT (2026-11-02; the landform is ODYSSEY_NORTH_BEACH). The sand there is
+ * paler than the island's golden shore sand (`pale`, mixed in by `paleMix`), wet only in a thin
+ * strip at the water, and broken on the dunes by tufts of dune grass (`grass`, a pale olive),
+ * clumps at two scales (u) that thicken toward the dunes' back. `bedKeep` keeps the shallow
+ * seabed sand-coloured, so the shallows over it read light.
+ */
+const NORTH_BEACH_PAINT = Object.freeze({
+    pale: Object.freeze([0.90, 0.81, 0.60]),
+    paleMix: 0.6,
+    grass: Object.freeze([0.21, 0.25, 0.085]),
+    tuftScales: Object.freeze([38, 12]),
+    toneScale: 90,
+    tone: 0.07,
+    bedKeep: 0.7,
+});
+/**
+ * THE PLAIN'S MEADOWS (2026-11-02). North of the massif the meadow was one green. Painted
+ * patches of three greens now lie over it, a few hundred units across, with soft-edged painted
+ * shapes rather than a mottle: a fresh yellow-green, a deep blue-green and a warm olive, each a
+ * multiplier on the grass colour (about luma-neutral). `from` is where the plain begins (z, u),
+ * so the meadows the rail flies over in chapters 3-4 are untouched.
+ */
+const PLAIN_MEADOWS = Object.freeze({
+    from: Object.freeze([-1250, -1450]),
+    cell: 260,
+    cellOlive: 170,
+    fresh: Object.freeze([0.96, 1.12, 0.55]),
+    deep: Object.freeze([0.56, 0.88, 1.28]),
+    olive: Object.freeze([1.45, 1.02, 0.70]),
+    edge: 0.05,
+});
 /**
  * Snow's ice-blue shadow, from mountain-language.js — the ONE shadow colour here that is prior
  * art rather than a measurement (no reference frame contains snow). Authored luma-neutral
@@ -2182,11 +2216,52 @@ export function createOdysseyWorld({
         // the grass palette by 38% moved that plain's screen luma by 1.6% — it was barely grass.
         // 11 u of height on this shore is a beach a person could walk across; the swing stays
         // under the band width, per the dissolve law.
-        const wSand = float(1).sub(smoothstep(
+        const wSandShore = float(1).sub(smoothstep(
             float(ODYSSEY_SEA_LEVEL - 2),
             float(ODYSSEY_SEA_LEVEL + 11),
             height.add(edgeBreak.mul(4)),
         ));
+        /**
+         * THE NORTH BEACH (2026-11-02): the bay of `odysseyNorthBeachAt`, in its own frame (`u`
+         * along the chord, `s` inland of the waterline). Sand from the water up through the
+         * dunes, with tufts of dune grass on the dunes that thicken toward their back, where the
+         * meadow takes over. ALU only, and the tufts' noise runs only on the bay's fragments.
+         */
+        const NB = ODYSSEY_NORTH_BEACH;
+        const NBF = ODYSSEY_NORTH_BEACH_FRAME;
+        const nbRel = positionWorld.xz.sub(vec2(NBF.mx, NBF.mz));
+        const nbUn = dot(nbRel, vec2(NBF.tx, NBF.tz)).div(NBF.halfChord).toVar();
+        const nbS = dot(nbRel, vec2(NBF.nx, NBF.nz))
+            .sub(float(NB.bite).mul(float(1).sub(nbUn.mul(nbUn)))).toVar();
+        // The sand's reach: the whole bay out to sea, the beach and the dunes, gone by their back
+        // (the boundary broken by the atlas grain, like every lowland edge).
+        const nbBelt = float(1).sub(smoothstep(float(NB.hornIn), float(NB.hornOut), abs(nbUn)))
+            .mul(smoothstep(float(-NB.shelfOut), float(-NB.shelf), nbS))
+            .mul(float(1).sub(smoothstep(
+                float(NB.duneBack - 60),
+                float(NB.duneBack + 10),
+                nbS.add(edgeBreak.mul(18).mul(detailMelt)),
+            )))
+            .toVar();
+        // 0 on the beach, 1 at the dunes' back: how much of the dune grass stands.
+        const nbDune = smoothstep(float(NB.beach - 30), float(NB.duneBack - 30), nbS).toVar();
+        const nbTufts = Fn(() => {
+            const nbOut = vec2(0, 1).toVar();
+            If(nbBelt.greaterThan(0.001), () => {
+                const nbXZ = positionWorld.xz;
+                const nbClump = noise2(nbXZ.div(float(NORTH_BEACH_PAINT.tuftScales[0])).add(vec2(3.1, 7.7))).mul(0.62)
+                    .add(noise2(nbXZ.div(float(NORTH_BEACH_PAINT.tuftScales[1])).add(vec2(9.2, 1.3))).mul(0.38));
+                // Grass where the clump field falls under the cover, a painted edge either side.
+                const nbCover = nbDune.mul(0.82);
+                const nbTuftW = smoothstep(nbCover.add(0.035), nbCover.sub(0.035), nbClump).mul(smoothstep(float(0.02), float(0.12), nbDune));
+                // A broad tonal swell along the sand, so the beach is never one flat stripe.
+                const nbTone = noise2(nbXZ.div(float(NORTH_BEACH_PAINT.toneScale)).add(vec2(4.4, 2.9))).sub(0.5)
+                    .mul(2 * NORTH_BEACH_PAINT.tone).add(1);
+                nbOut.assign(vec2(nbTuftW, nbTone));
+            });
+            return nbOut;
+        })().toVar();
+        const wSand = max(wSandShore, nbBelt.mul(float(1).sub(nbTufts.x)));
         // ALPINE SURFACE LANGUAGE (Ch4 port). The peaks survive suppression as terms in the
         // height field, so the camera stares at them for all of Ch4 — but a generic biome ramp
         // gives them a CLEAN HORIZONTAL snow band, which reads as a contour line on a map rather
@@ -2458,7 +2533,13 @@ export function createOdysseyWorld({
          * wins rather than both adding.
          */
         const wetBand = smoothstep(float(ODYSSEY_SEA_LEVEL + 11), float(ODYSSEY_SEA_LEVEL + 0.5), height);
-        const moist = clamp(max(plate.b, wetBand.mul(0.94)), 0, 1).toVar();
+        // On the north beach only a thin strip at the water is wet; the rest is dry, pale sand.
+        const nbDry = nbBelt.mul(smoothstep(float(-8), float(8), nbS)).toVar();
+        const moist = mix(
+            clamp(max(plate.b, wetBand.mul(0.94)), 0, 1),
+            smoothstep(float(ODYSSEY_SEA_LEVEL + 1.6), float(ODYSSEY_SEA_LEVEL + 0.2), height).mul(0.94),
+            nbDry,
+        ).toVar();
         // SHAPED, not linear. A linear read put the whole shoreline plain on the golden pole,
         // because the midpoint of a two-pole lerp is already half-way to gold and the midpoint
         // is where most of the island sits. Ref1's lawn is GREEN with golden patches — so green
@@ -2476,8 +2557,39 @@ export function createOdysseyWorld({
             vec3(...ODYSSEY_GROUND_PALETTE[mat].dry),
             dryness.mul(float(ODYSSEY_GROUND_MOISTURE[mat])),
         );
-        let albedo = poles('grass').mul(kGrass)
-            .add(poles('sand').mul(kSand))
+        /**
+         * THE PLAIN'S MEADOWS (see PLAIN_MEADOWS): three greens in painted patches over the
+         * plain behind the massif. Two noise fields (the second for the olive), thresholded with
+         * a narrow soft edge; only the plain's fragments pay for them.
+         */
+        const plainW = smoothstep(float(PLAIN_MEADOWS.from[0]), float(PLAIN_MEADOWS.from[1]), positionWorld.z)
+            .mul(float(1).sub(nbBelt)).toVar();
+        const meadowTint = Fn(() => {
+            const mTint = vec3(1, 1, 1).toVar();
+            If(plainW.greaterThan(0.001), () => {
+                const mXZ = positionWorld.xz;
+                const mWarp = noise2(mXZ.div(float(PLAIN_MEADOWS.cell * 2.7)).add(vec2(1.7, 6.1))).sub(0.5).mul(0.9);
+                const mField = noise2(mXZ.div(float(PLAIN_MEADOWS.cell)).add(vec2(mWarp, mWarp.negate())).add(vec2(13.3, 2.2)));
+                const mOliveField = noise2(mXZ.div(float(PLAIN_MEADOWS.cellOlive)).add(vec2(mWarp.negate(), mWarp)).add(vec2(5.9, 17.4)));
+                const mEdge = float(PLAIN_MEADOWS.edge);
+                const mDeep = smoothstep(float(0.40).add(mEdge), float(0.40).sub(mEdge), mField);
+                const mFresh = smoothstep(float(0.60).sub(mEdge), float(0.60).add(mEdge), mField);
+                const mOlive = smoothstep(float(0.70).sub(mEdge), float(0.70).add(mEdge), mOliveField);
+                const mTintA = mix(vec3(1, 1, 1), vec3(...PLAIN_MEADOWS.deep), mDeep);
+                const mTintB = mix(mTintA, vec3(...PLAIN_MEADOWS.fresh), mFresh);
+                mTint.assign(mix(vec3(1, 1, 1), mix(mTintB, vec3(...PLAIN_MEADOWS.olive), mOlive), plainW));
+            });
+            return mTint;
+        })();
+        // The north beach: dune grass in the tufts, and paler sand with a broad tonal swell.
+        const grassPole = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
+        const sandPole = mix(
+            poles('sand'),
+            vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
+            nbBelt.mul(NORTH_BEACH_PAINT.paleMix),
+        ).mul(mix(float(1), nbTufts.y, nbBelt));
+        let albedo = grassPole.mul(kGrass)
+            .add(sandPole.mul(kSand))
             .add(poles('rock').mul(kRock))
             .add(poles('snow').mul(kSnow));
 
@@ -2575,7 +2687,10 @@ export function createOdysseyWorld({
                 // green-grey bed with the sand atlas's own grain doubled into speckle
                 // (mean-preserving, like the tooth).
                 const seabed = smoothstep(float(ODYSSEY_SEA_LEVEL - 4), float(ODYSSEY_SEA_LEVEL - 30), height)
-                    .mul(kSand);
+                    .mul(kSand)
+                    // The north beach's shelf stays sand under the shallows (they read light).
+                    .mul(float(1).sub(nbBelt.mul(NORTH_BEACH_PAINT.bedKeep)
+                        .mul(smoothstep(float(ODYSSEY_SEA_LEVEL - 34), float(ODYSSEY_SEA_LEVEL - 14), height))));
                 /**
                  * A FIELD, NOT A CARPET (Odyssey audit 2026-10-18). The bed read the atlas's sand
                  * channel straight — parallel crests every 3.7 u, repeating every 22 u tile — at

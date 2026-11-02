@@ -987,3 +987,110 @@ the shade plate keeps the scatter's colour: its mean is the same within a few pe
 
 **Tests** (`world/odyssey-forest-greens.test.js`): the names, only the green broadleaf touched,
 crowns stay green and vary, the mosaic's mean near the lime. The URL catalogue lists the lever.
+
+# The land behind the mountain (2026-11-02)
+
+Olov chose two land items: *"A beach on the north coast. A wide crescent of pale sand with a few
+grassy dunes behind it, and water that shades from turquoise in the shallows to deep blue further
+out, with a soft white line of foam."* and *"Shape on the plain. Soft hills and hollows, darker
+groves of pine among the autumn trees, and meadows in a few different greens, so it reads as
+countryside rather than a flat map."* The water's colour and foam are the water pass's; this pass
+is the ground under it.
+
+## §19. The north beach, and the plain's swells, groves and meadows (2026-11-02)
+
+**Where it is seen from.** Probed on the game's own camera (position, turn and lens read from the
+live board at 31 stations, p 0.55-0.70): from p ~0.60 to ~0.67 the climb looks out at 40-50°
+(north-east) and 15-25° down. The island's north-east corner is the coast those views see best,
+1,700-2,100 u out. The old coast there fell 100 u in ~200 u, so from above the waterline hid behind
+its own brow: the thin pale line. From 0.68 the island is under the clouds.
+
+**The bay** (`ODYSSEY_NORTH_BEACH` in `world/odyssey-world-height.js`). A crescent cut into that
+corner, its chord from the north coast (420, -2890) to the east coast (1175, -2240), across the
+view, so the crescent spans the frame with its belly toward the camera. In the bay's own frame
+(`odysseyNorthBeachAt`: `u` along the chord, `s` inland of a parabolic waterline 150 u in at the
+middle), the ground is drawn to one profile (`odysseyNorthBeachProfile`):
+
+- a shelving seabed, 26 m deep 380 u out (Dean's profile, near enough), then falling to the sea
+  floor, so the shallows the water colours exist;
+- the beach, 120 u of sand rising 4.5 u (about 2°);
+- dunes, 120-270 u in: low ridges along the shore broken into hummocks, 5-14 u above the sea;
+- a grassy bank back up to the land, never above it.
+
+It is blended in by `odysseyNorthBeachWeight`, exactly zero beyond the horns, past the shelf and up
+the bank, and closed before z -3400 like the coast it sits in. The relief keeps 4% on the beach
+(its ±10 u would break a 2° slope). No tree stands on the sand or the dunes (`siteOnNorthBeach` in
+the scatter; the forest's disc does not reach the coast anyway).
+
+**The paint** (`NORTH_BEACH_PAINT` in `world/odyssey-world-renderer.js`). The same frame in the
+ground shader:
+
+- sand from the water up through the dunes, its inner edge broken by the atlas grain;
+- paler than the island's golden shore sand, with a broad tonal swell along it;
+- wet only in a thin strip at the water (the wet band of the south shore would have made the
+  whole low beach damp and brown);
+- tufts of pale olive dune grass in clumps at two scales, thickening toward the dunes' back, where
+  the meadow takes over;
+- the shelf's bed kept sand-coloured under the shallows, so they read light.
+
+**The plain.**
+
+- **Swells and hollows** (`PLAIN_SWELLS`): five soft, compact rises and dips (10-18 u high,
+  140-210 u in radius) between the lake and the bay. They are clear of the lake (its rims are
+  unchanged) and of the plateau pins (both unchanged). Under the low side sun each has a lit flank
+  and a shaded one.
+- **Dark conifer groves** (`FOREST_PINE_GROVES` in `world/odyssey-forest-scatter.js`). They grow
+  on the autumn side of the plain behind the massif, where their own patch field is in its top
+  slice. The rules:
+  - the darkest conifer of the roster stands there, 0.6 of its value and 1.15 wide;
+  - the carve and the distance thins leave the groves, so they read as masses;
+  - only on the far tier (beyond the rail's 520 u pool gate), so nothing near the rail changes;
+  - the subalpine fir, not the pine: from 1-2 km a fir grove is a pine grove, and the fir already
+    has buckets in those chunks, so the groves add no draw (the pine would have added one, over
+    the 40-bucket station ceiling).
+- **Meadows in three greens** (`PLAIN_MEADOWS`): painted patches over the plain's grass, a few
+  hundred units across with soft painted edges. A fresh yellow-green, a deep blue-green and a warm
+  olive, each a multiplier on the grass colour. North of z -1250 only, so chapters 3-4's meadows
+  are untouched.
+
+![p 0.60, 0.63, 0.65 before (left) and after (right)](images/odyssey-island-2026-11-02/north-land-climb.jpg)
+
+![Close crops at p 0.65 and 0.63, before (left) and after (right): the crescent, the dunes' grassy edge, the dark groves among the autumn trees](images/odyssey-island-2026-11-02/north-land-close.jpg)
+
+**What else moved.**
+
+- The golden relief-total and macro hashes were re-pinned, with a note.
+- The forest visibility mask was re-baked: its stamp changed, its cells did not.
+- The archipelago's NE and NW thresholds were re-emitted. The groves leave the pool, and the
+  swells move a few sites. ⚠️ On main the calibration sim already disagreed with the committed
+  SEAM, NE, NW, WEND and WMID thresholds (terrain changes since their last emission). SEAM, WEND
+  and WMID are left as committed so that the chapter 3-4 forests do not move here. A full
+  re-emission is its own decision.
+- The sim's exempt list mirrors the groves.
+
+**Cost.** One more branch in the ground shader:
+
+- the bay's frame is a few ALU on every ground fragment;
+- the tufts' and meadows' value noise runs only on the bay's and the plain's fragments (three
+  noise calls for the plain);
+- no texture, no draw, no material.
+
+The forest gains ~360 far trees in the groves, with no new bucket at the stations. Not measured
+on the GPU: the climb stations were captured at the capped 30 fps.
+
+**Tests** (`world/odyssey-north-land.test.js`):
+
+- the beach's height band and slope (under 0.12);
+- the shelf deepening outward, shallow 100 u out and 18+ m at its edge;
+- the dunes low: above the beach, 50+ u below the plateau;
+- the relief off the beach;
+- the bay compact (zero beyond the horns, past the shelf and the bank, at z -3400, at the pins and
+  the lake);
+- no tree on the sand or the dunes;
+- the plateau pins and the lake's rims;
+- the swells' real spread;
+- the groves: 200+ dark firs, all on the plain and all far.
+
+**Not done.** The water's turquoise-to-blue and the foam line are the water pass's (the
+shallows are there for them). The groves could also take the painted far forest's tone, beyond the
+draw distance. They stand nearer than that from the climb, so it was not needed.
