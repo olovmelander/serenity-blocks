@@ -773,3 +773,59 @@ integrated GPU.
 **Tests.** The conifer card test pins the layout (needle cards at hero and mid, first in the
 buffer, of the needle kind; the cypress's clump column; no cards at far); the atlas test now
 checks both rows (a spray's middle band full, the sky above it open, nothing past the rim).
+
+# The island's leftovers (2026-11-02)
+
+Four items left open by the second audit: boulders, cloud variety, the summit in the tarn, and
+the broadleaf greens.
+
+## §14. Boulders and outcrops for scale (2026-11-02)
+
+**Why.** Grass, rock and flowers are all painted into the ground, so nothing on the meadows said
+how big they are.
+
+**Where** (`ODYSSEY_BOULDERS.anchors` in `world/odyssey-boulders.js`). Fifteen anchors, scored on
+the real rail camera at p 0.16-0.50. A site counts when it is:
+
+- in frame, in the lower part of it, 80-700 u from the eye, and in the line of sight;
+- clear of trees (none within 13 u), the tarn's open meadow, the rail's track and the deer's glade.
+
+The rail sees them from p ~0.16 to ~0.37. On the climb the camera looks up, past them. Flat
+anchors hold a **field group** (a main boulder 14-22 u across and two to four smaller ones round
+it). Slope anchors hold an **outcrop** (three to five slabs along the contour, tilted out of the
+slope). Rocks too near a trunk, the rail, or too buried on a steep slope are dropped: about 40
+stand.
+
+**Size.** The act draws its life at about three times life, and the eye flies 47-90 u up. A main
+boulder is half a tree's height: ~15-40 px from the rail's usual 200-400 u.
+
+**Shape.** Three rocks made in code: an icosphere cut by 7-11 planes, a little lumpy, flattened,
+its underside cut flat. The facets carry their plane's normal and the shoulders the sphere's, so
+the light breaks on flat faces with rounded edges between.
+
+**Tiers.** Each shape at two levels of detail, 320 triangles near and 80 far, switched at 360 u
+from the eye. Six instanced meshes (three shapes, two tiers) share one material. An instance moves
+between tiers only when a rock crosses the switch distance.
+
+**Seating.** The base is the lowest ground under the rock's own (turned) footprint, sunk by 15% of
+its height. It leans with 60% of the slope.
+
+**The light** is the ground's rock: the S-shaped Lambert under the baked sun, the tree shadows and
+the drifting cloud shade, the mineral shade (desaturated, the warm deep tint), and the sky's fill.
+A little lichen sits on the tops, the meadow creeps up the foot, and the ground's air and mist go
+over it. The albedo is darker than the painted scree: the first cut, at the scree's value, read
+as pale eggs on the grass.
+
+![p 0.275, 0.29 and 0.30, before (left) and after (right)](images/odyssey-island-2026-11-02/boulders-before-after.jpg)
+
+![Close crops at p 0.275 and 0.29, before (left) and after (right)](images/odyssey-island-2026-11-02/boulders-close.jpg)
+
+**Cost.** About 40 rocks, at most 320 triangles each (under 13k triangles), six draws and one material
+(one more pipeline to compile). Two texture reads a fragment (the sun plate, the shade plate).
+
+**Tests** (`world/odyssey-boulders.test.js`): the set's size, clear of the tarn's meadow, the rail
+and the deer's glade, clear of every trunk, seated with the underside buried and the top standing
+out, the triangle budget, and outward unit normals.
+
+**Not done.** The rocks cast no shadow on the grass. The forest's shade plate could carry them,
+but the plate is baked with the scatter in the worker.
