@@ -85,6 +85,7 @@ import { ORBIT_EARTH_SCHEDULE, orbitEarthAt } from '../composition/odyssey-orbit
 import { runChapterSteps } from './shared/chapter-build-steps.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import { createSpiralGalaxySteps } from './odyssey-spiral-galaxy.tsl.js';
+import { createSpaceMotes, updateSpaceMotes } from './odyssey-space-motes.js';
 
 /**
  * Cosmic Expanse environment configuration
@@ -963,6 +964,9 @@ export const CH6_AMBIENT = Object.freeze({
     asteroids: false,
     streaks: true,
     comet: true,
+    // SPACE THAT MOVES PAST YOU (2026-11-02, odyssey-space-motes.js): a sparse near field at many
+    // depths, world-fixed, so a glide between orbs carries the eye through it.
+    motes: true,
 });
 /** Every ambient layer: the chapter as it was before the masterpiece pass. */
 export const CH6_AMBIENT_ALL = Object.freeze({
@@ -973,6 +977,20 @@ export const CH6_AMBIENT_ALL = Object.freeze({
     asteroids: true,
     streaks: true,
     comet: true,
+    motes: true,
+});
+
+/**
+ * When the near motes show (odyssey-space-motes.js), as progress from chapter 6's start (`in*`) and
+ * before the mouth, chapter 7's start (`out*`, `pull*`).
+ */
+export const SPACE_MOTES_STAGE = Object.freeze({
+    inFrom: 0.012,
+    inTo: 0.03,
+    pullFrom: 0.056,
+    pullTo: 0.021,
+    outFrom: 0.01,
+    outTo: 0.003,
 });
 
 function resolveCh6Ambient(options = {}) {
@@ -1273,6 +1291,13 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
         group.userData.dustFar = dustFar;
     }
     yield;
+
+    // SPACE THAT MOVES PAST YOU (odyssey-space-motes.js): the near field the eye flies through.
+    const spaceMotes = (bisect.dust && ambient.motes) ? createSpaceMotes(uniforms) : null;
+    if (spaceMotes) {
+        group.add(spaceMotes.mesh);
+        group.userData.spaceMotes = spaceMotes;
+    }
 
     // 2d. Hero nebula PILLAR — a one-time Pillars-of-Creation reveal off the mid-act
     // path, faded in via uApproach (mid-chapter beat). Capped to ONE.
@@ -2636,6 +2661,27 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     }
 
     const chapterOpacity = group.userData.chapterOpacity ?? 1;
+
+    // SPACE THAT MOVES PAST YOU (odyssey-space-motes.js): in once the Earth has fallen away, pulled
+    // toward the hole as it rises, gone before the mouth (the dive keeps its own light).
+    const { spaceMotes } = group.userData;
+    if (spaceMotes) {
+        let motesReveal = 0;
+        let motesPull = 0;
+        if (camera && Number.isFinite(cameraProgress) && chapterPositions) {
+            const cp5 = chapterPositions[5];
+            const cp6 = chapterPositions[6];
+            motesReveal = rampBetween(cameraProgress, cp5 + SPACE_MOTES_STAGE.inFrom, cp5 + SPACE_MOTES_STAGE.inTo)
+                * (1 - rampBetween(cameraProgress, cp6 - SPACE_MOTES_STAGE.outFrom, cp6 - SPACE_MOTES_STAGE.outTo))
+                * chapterOpacity;
+            motesPull = rampBetween(cameraProgress, cp6 - SPACE_MOTES_STAGE.pullFrom, cp6 - SPACE_MOTES_STAGE.pullTo);
+        }
+        updateSpaceMotes(spaceMotes, camera, group.position, delta, {
+            reveal: motesReveal,
+            pull: motesPull,
+            hole: group.userData.lensWorldPos ?? null,
+        });
+    }
     // THE VOID SKY OWNS THE BACKGROUND BEFORE THE WORLD LETS GO (seamless pass). It used to
     // ride `spaceArrival` too, which is still ~0.52 at p 0.7765 — the frame the One World
     // switches off — so the colour behind the departing sky changed from the world's to the

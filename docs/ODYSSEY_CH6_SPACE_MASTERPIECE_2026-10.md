@@ -255,6 +255,42 @@ Tests:
 - `cosmic-expanse-environment.test.js`: the giant whole late in the chapter, by the weight early;
 - `LevelNodeManager.test.js`: the centre rides with the bob.
 
+### Space that moves past you (2026-11-02)
+
+The owner: "Can we improve the particles in space?"
+
+**Why space felt like a backdrop.** After the clutter pass (§1) chapter 6 kept two star shells
+(1,700-2,300 u out) and a far fine dust (120-1,300 u). From the rail all three are fixed points: a
+glide between orbs moved nothing but the planet. The near dust that used to move was dropped because
+it read as falling snow.
+
+**The near field** (`odyssey-space-motes.js`, `CH6_AMBIENT.motes`):
+- **Sparse, at many depths.** 240 soft motes in a 130 u box that travels with the eye. Each one is
+  fixed in the world and wraps to the box's far side when it leaves; faded at the box's faces and
+  within 17 u of the eye, so a wrap or a near pass is never seen.
+- **Streaked by the eye's speed.** On a glide each mote stretches along the eye's motion as seen on
+  screen (a 0.11 s shutter, up to 6 u), its light spread over the length. The streaks point out
+  from the heading, so the glide reads as flight. At rest they are soft points.
+- **Pulled toward the hole.** From 0.056 before the mouth to 0.021 before it the field drifts toward
+  the hole at up to 9 u/s and warms from starlight to the disk's amber. Gone by 0.003 before the
+  mouth: the dive keeps its own light.
+- **Not snow.** No fall; cool blue-white, faint violet and pale gold; most dim and small (a power
+  law), large ones dimmer (defocus), 7 % glints that breathe slowly.
+- **In** after the Earth falls away (0.012-0.03 into the chapter, `SPACE_MOTES_STAGE`), and with
+  the chapter's crossfade.
+- One draw, 240 quads.
+
+The stars were left as they are: the stellar ramp (Wave 5) already gives them seeded classes,
+colours and a galactic band.
+
+![A glide between orbs 40 and 41: before (left) and after (right), with a crop](images/odyssey-space-2026-11-02/space-motes-before-after.jpg)
+
+Tests: `tests/unit/odyssey-space-motes.test.js` covers:
+- the field is seeded, sparse and mostly small;
+- it tracks the eye's speed, ignoring a cut;
+- it flows toward the hole and hides without a camera;
+- it comes in after the Earth and is gone before the mouth.
+
 ## 4. The galaxy, as the Galaxy theme draws one (odyssey-spiral-galaxy*.js)
 
 It was one quad painted with a 2D spiral: thin rings of blue with pink dots. It is now the Galaxy
@@ -290,6 +326,134 @@ It uses the theme's tileable four-channel noise, re-baked in steps with its own 
 
 ![The disc before (left) and after (right) its suns](images/odyssey-space-2026-10-31/galaxy-suns.jpg)
 
+## 5. The aurora from orbit (2026-11-02)
+
+The first thing seen in space. At p 0.745-0.78 the eye is in orbit over the Earth's night side,
+and its aurora read as blocky green walls with stepped edges over a broad green smear. At
+p 0.735, the same curtains edge-on on the limb, it read better.
+
+**Which layer.** The Earth's backdrop (`composition/odyssey-orbit-earth.js`). Its curtains are
+three folded sheets round an oval, walked along each view ray through the shell they stand in.
+The gas giant's own aurora crown (`odyssey-planet-aurora.js`) has been off by default since the
+ringed giant, and `cosmic-expanse*.js` only gates the giant's crown, so neither is involved.
+
+**Why it was blocky:**
+
+- **A sheet lit only where it was crossed.** The march lit a sheet where two steps fell on
+  opposite sides of it. At every fold the ray runs along the sheet and then misses it, so the
+  light switched off within one pixel: the hard vertical "walls".
+- **A broad glow summed at the march's steps.** It smeared green under the walls and banded along
+  the limb. The cloud tops under the oval took a green glow at 0.16 on top of it.
+- **The rays and patches came from the lattice noise.** Its interpolation steps showed, and the
+  patches switched sections of curtain on and off.
+
+**What it is now** (`ORBIT_EARTH_AURORA.look`):
+
+- **One exact path per step.** Each step adds the integral of the sheet's Gaussian profile over
+  that step: the erf difference between where the step starts and ends, or the plain profile
+  where the ray runs along the sheet. A sheet seen edge-on, crossed, or just missed changes
+  smoothly, so every edge is soft. The sheets are thinner (0.0021 rad, was 0.0028) and the march
+  takes 32 steps (was 28). The broad glow is gone, and the ground glow is down to 0.035.
+- **Fine rays.** Smooth sines along the oval (integer frequencies, so the oval's seam joins), bent
+  a little by the folds, drifting slowly. The two finest fade with distance (0.1-0.24 radii), so
+  toward the limb they never crawl below a pixel.
+- **Green low, red-violet high.** A soft bright lower border, green falling off with height, and
+  a faint crimson-violet glow above it.
+- **Calm.** Broad, slow patches that dim a stretch of curtain without ending it. A parked clip over
+  3.5 s drifts without flicker.
+
+The arrival is unchanged: the schedule (`ORBIT_EARTH_SCHEDULE.auroraIn` / `auroraOut`) and the
+darkness gate in `cosmic-expanse.js` are untouched, and the oval stays fixed under the sun.
+
+![p 0.735, 0.745, 0.755, 0.76 and 0.7725: before (left) and after (right)](images/odyssey-space-2026-11-02/orbit-aurora-before-after.jpg)
+
+![Close: p 0.76 from above, p 0.745 at the limb, p 0.7725 the near arc; before (left) and after (right)](images/odyssey-space-2026-11-02/orbit-aurora-close.jpg)
+
+**The seam's light.** The frame's mean luma (0-255) before and after:
+
+| p | 0.725 | 0.735 | 0.745 | 0.755 | 0.76 | 0.7725 | 0.785 |
+|---|---|---|---|---|---|---|---|
+| before | 57.0 | 25.5 | 21.4 | 21.1 | 21.2 | 15.5 | 10.9 |
+| after | 57.0 | 24.5 | 16.1 | 16.3 | 17.1 | 14.0 | 10.9 |
+
+The green smear was a third of the night side's light. Without it the darkening runs more evenly
+into space, with no new step.
+
+**Cost.** Four more march steps, and one erf (a `tanh`) per sheet per step, on the rays near the
+oval only. The broad glow and its exponentials per step are gone.
+
+**Tests** (`tests/unit/odyssey-orbit-earth.test.js`). `orbitAuroraSheetPath` is the shader's
+twin. A clean crossing gets the analytic path (sqrt(pi) w / rate). Crossing, running along the
+sheet and just missing it meet without a jump. The erf's slope at 0 matches the plain profile,
+so the switch between the two forms is seamless.
+
+## 6. One hero at a time (2026-11-02)
+
+The owner: "a more well compositioned chapter 6".
+
+**What was there.** From p ~0.78 to 0.81 every orb showed one picture: the galaxy upper left, the
+ringed giant lower right, the rail between them. Then the black hole rose between the two, and all
+three filled the frame.
+
+**Why the camera.** The giant and the galaxy keep their seats (the owner placed the galaxy by
+hand), and a giant flyby was tried and left out. The three heroes lie on one diagonal through the
+hole, so any frame with the hole in its middle holds all three. Only the view can choose.
+
+**One view per orb** (`CHAPTER_6_SHOTS` in `OdysseyCameraController.js`), in the keyframed language
+of chapters 3-5. A parked orb shows exactly its key, and the glide to the next orb is the pan.
+
+| Orb | View | Turn, tilt, lens (deg) |
+|---|---|---|
+| L35-L38 | the planetrise over the Earth's limb, unchanged | 0 |
+| L39 | the ringed giant near the middle, on a long lens; the galaxy out of frame | +20, −8, −10 |
+| L40 | turning to the galaxy; the giant leaves at the lower right | −6, +5, −8 |
+| L41 | the galaxy and the Milky Way's band; the giant out of frame | −22, +10, −6 |
+| L42 | the black hole rises, right of the galaxy; the giant sunk to the corner | −10, +10, −4 |
+| L43 | the hole, a little closer to the middle | −6, +8, −2 |
+| L44 | settling onto the rail | −2, +5, 0 |
+| L45-L48 | the rail into the hole, unchanged | 0 |
+
+![Before and after at L39 to L44, in pairs (before left): the giant, the turn, the galaxy, the hole rising](images/odyssey-space-2026-11-02/ch6-one-hero-before-after.jpg)
+
+**Calm.** The largest pan is L39 to L40 (26° of turn and 13° of tilt). On the real controller,
+in the game's 1.5 s trip after an orb, its turn peaks at 44°/s. Chapter 3's largest orb pans, on
+their ~0.9 s glides, peak at 68-80°/s. In the opening sweep, chapter 6's peak turn rate is
+unchanged (99°/s, at the 5->6 seam).
+
+**What stays as it was:**
+
+- The planetrise orbs (L35-L38). The rise ends in the glide to L39, so the view is already turning
+  to the giant as it clears the Earth.
+- From L45 on the keys are zero, so these are untouched:
+  - the rail running into the middle of the hole (`RAIL_END_AIM`; its test watches from p 0.841);
+  - the hole's hand-off to chapter 7's lock (p 0.845-0.849);
+  - the 6->7 seam and the dive.
+
+**Not done: the hole alone at the end.** On L45-L48 the giant is still under the hole's disk at
+the lower right. There the aim must hold the rail's end, which runs into the middle of the hole.
+The giant sits 33° off that aim, and a modest long lens only pushes it into the corner. To clear
+it would take one of:
+- moving the giant;
+- fading it as the hole's light grows;
+- a long lens through the last orbs, which changes the dive's scale on screen.
+
+All three are the owner's call.
+
+**Tests.**
+
+- `odyssey-ch6-one-hero.test.js` (new), on the game's camera and the real chapter environment:
+  - the keys sit on the orbs and are zero through the planetrise and from L45 on;
+  - the giant near the middle at L39, with the galaxy out of frame;
+  - the galaxy near the middle at L41, with the giant out of frame;
+  - the hole rising at L42-L43, with the giant sunk below 0.85;
+  - the orb underfoot and the next orb in frame at every turned view;
+  - pans of at most 6° per 0.001 of progress, still at each orb, and no step in the camera.
+- `odyssey-ch6-hero-framing.test.js`:
+  - "all three heroes in frame" now holds at the entry and on the run into the hole;
+  - the giant's in-frame check skips the turned views;
+  - the hole's path-riding checks are measured on the rail's own frame. The hole's place never
+    depends on the aim (its orb-eye check), and the keys are zero before the hand-off.
+
 ## Draw order in space
 
 stars (-0.95) → galaxy disc (-0.9) and suns (-0.89) → the ringed giant (-0.8 / -0.75 / -0.7) → the
@@ -306,7 +470,8 @@ Earth's backdrop (-0.5) → everything at 0 and above (the orbs, the rail, the h
 
 ## Not done yet
 
-- **One hero per stage:** the giant still hangs lower right all chapter.
+- ~~**One hero per stage.**~~ Done 2026-11-02 up to L44 (§6). On the last orbs, L45-L48, the giant
+  still hangs lower right, under the hole's disk (§6 has why, and the options).
 - **The giant flyby:** tried 2026-11-01 and left out. A nearer seat (same rise, shrunk to the same
   angle) sank it out before the hole's light, but from chapter 5's eye it showed over the Earth's
   limb before its rise and came inside the Earth's near disc

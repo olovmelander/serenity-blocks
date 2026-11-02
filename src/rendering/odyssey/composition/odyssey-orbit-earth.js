@@ -136,17 +136,44 @@ export const ORBIT_EARTH_AURORA = Object.freeze({
     radius: 0.35,
     foot: 0.0035,
     top: 0.011,
-    width: 0.0028,
+    /** A sheet's thickness (radians of arc): the scale of its Gaussian profile. */
+    width: 0.0021,
     fold: 0.024,
-    steps: 28,
-    /** The longest path a ray may spend inside one sheet (radii), where it runs along it. */
-    maxPath: 0.01,
-    /** The soft glow round the sheets (their thickness), against their crossings. */
-    soft: 0.06,
+    steps: 32,
     gain: 170,
     /** The light's soft shoulder: seen edge-on at the limb the curtains are many times brighter
      * than from above, and this keeps both readable. */
     shoulder: 1.4,
+    /**
+     * THE CURTAINS' LOOK (2026-11-02, "the aurora from orbit"). Seen from above at p 0.75-0.78 the
+     * curtains read as blocky green walls with stepped edges over a green smear. Three causes:
+     *   - each sheet was lit only where the march saw it CROSS (a sign change between two steps),
+     *     so at every fold, where the ray runs along the sheet and then misses it, the light
+     *     switched off in one pixel: hard vertical edges;
+     *   - a broad glow summed at the march's steps, which smeared green under the walls and banded
+     *     along the limb;
+     *   - the rays and the patches came from the lattice noise, whose blend steps showed.
+     * Now each step adds the exact integral of the sheet's Gaussian profile over that step (`erf`
+     * of where the step starts and ends), so a sheet seen edge-on, crossed, or just missed changes
+     * smoothly; the broad glow is gone; the rays are smooth, fine and slow.
+     *   - `lower`: the bright lower border's softness below and above the foot (radii);
+     *   - `body`: the green's fall with height (radii);
+     *   - `topAt`, `topWidth`, `topGain`: the red-violet upper glow (radii, radii, share);
+     *   - `rays`: how much the fine rays modulate the curtain (0 none, 1 full), `fineFade` where
+     *     the finest fade out with distance;
+     *   - `patch`: the calm patches along the oval (the floor of the dim stretches).
+     */
+    look: Object.freeze({
+        lower: Object.freeze([0.0003, 0.00022]),
+        body: 0.0026,
+        topAt: 0.0072,
+        topWidth: 0.0026,
+        topGain: 0.17,
+        rays: 0.75,
+        /** The eye distances (radii) over which the finer rays fade out (sub-pixel toward the limb). */
+        fineFade: Object.freeze([0.1, 0.24]),
+        patch: 0.3,
+    }),
 });
 
 /**
@@ -397,9 +424,8 @@ const TWO_PI = Math.PI * 2;
 /** The aurora's three parallel sheets: which component of the march's distances, and how bright
  * (a real arc is a stack of curtains, the poleward ones fainter). */
 const SHEETS = [['x', 1], ['y', 0.6], ['z', 0.35]];
-/** The path a ray spends inside one sheet, per unit of how fast it crosses it (radians per radius):
- * the integral of the sheet's Gaussian profile `width` wide. */
-const SHEET_PATH = Math.sqrt(Math.PI) * ORBIT_EARTH_AURORA.width;
+/** The upper glow's violet, mixed into the crimson (oxygen's red over nitrogen's blue-violet). */
+const AURORA_VIOLET = [0.42, 0.10, 0.78];
 /** How far from the oval's mean radius its sheets and their glow can reach (radians): the folds,
  * the wander, the poleward sheets' offsets and own folds, and the glow round them. */
 const OVAL_REACH = (ORBIT_EARTH_AURORA.fold * (1 + 0.3 + 0.45)) + (ORBIT_EARTH_AURORA.width * (5.4 + 3.2 * 2.5));
@@ -541,7 +567,7 @@ function swirl(v, { at, radius, turn }) {
 // the pole, the folded centre line of its sheets there, the sheets' activity and rays (which
 // run along the oval, so a curtain seen side-on shows them upright, field-aligned), and a broad
 // glow round their feet for the light they cast on the cloud below.
-function ovalAt(n) {
+function ovalAt(n, fine = null) {
     const ang = acos(clamp(dot(n, uPole), -1, 1));
     const phi = atan(dot(n, uAxis2), dot(n, uAxis1));
     const turn = phi.div(TWO_PI).add(0.5); // 0..1 round the oval, seamless
@@ -559,13 +585,60 @@ function ovalAt(n) {
     const own3 = sin(phi.mul(37).sub(t.mul(0.069)).add(5.2)).mul(ORBIT_EARTH_AURORA.fold * 0.45);
     const near = ang.sub(centre.sub(ORBIT_EARTH_AURORA.width * 2.6)).div(0.03);
     const glow = exp(near.mul(near).negate());
-    const activity = smoothstep(0.32, 0.74, latticeNoise3(vec3(turn.mul(N_LAT * 3), 3.3, t.mul(0.05))))
-        .mul(0.92).add(0.08);
-    const ray = latticeNoise3(vec3(turn.mul(N_LAT * 20).add(fold.mul(2.4)), 1.0, t.mul(0.22)));
-    const rays = ray.mul(ray).mul(1.6);
+    // Calm patches: broad and slow, never fully off (the curtain dims along its length, it does not
+    // end in a wall).
+    const L = ORBIT_EARTH_AURORA.look;
+    const activity = smoothstep(0.18, 0.82, latticeNoise3(vec3(turn.mul(N_LAT * 3), 3.3, t.mul(0.03))))
+        .mul(1 - L.patch).add(L.patch);
+    // Fine rays along the curtain (field-aligned, so constant up its height): smooth sines at
+    // integer frequencies round the oval, drifting slowly, bent a little by the folds.
+    const ph = phi.add(fold.mul(0.012));
+    // The finer two fade with the distance (`fine`, 0..1): far along the oval, toward the limb,
+    // they would be finer than a pixel and crawl as the eye moves.
+    const fineW = fine ?? float(1);
+    const rayWave = sin(ph.mul(613).add(t.mul(0.09)).add(sin(ph.mul(23).sub(t.mul(0.05))).mul(1.4))).mul(0.45)
+        .add(sin(ph.mul(1049).sub(t.mul(0.13)).add(2.1)).mul(fineW.mul(0.33)))
+        .add(sin(ph.mul(1693).add(t.mul(0.17)).add(4.4)).mul(fineW.mul(fineW).mul(0.22)));
+    const ray = rayWave.mul(0.5).add(0.5);
+    const rays = mix(float(1), ray.mul(ray).mul(1.9), L.rays);
     return {
         ang, centre, own2, own3, activity, rays, glow,
     };
+}
+
+/**
+ * erf(x) within ~0.0004 (the tanh form 2/sqrt(pi) (x + 11x^3/123), whose slope at 0 is erf's own,
+ * so the step that switches to the plain profile where the span is tiny meets it without a jump).
+ * Its argument is kept small enough that tanh never overflows.
+ */
+const ERF_K = 2 / Math.sqrt(Math.PI);
+const ERF_C = 11 / 123;
+function erfApprox(x) {
+    return clamp(x.add(x.mul(x).mul(x).mul(ERF_C)).mul(ERF_K), -9, 9).tanh();
+}
+
+/**
+ * The CPU twin of one march step's light path through one sheet (the shader's `inside`): the ray
+ * spends `dt` (radii) in the step while its distance from the sheet runs from `fa` to `fb`
+ * (radians); returns the path weighted by the sheet's Gaussian profile `width` thick, by the same
+ * erf difference and the same clamps. For tests: crossing, grazing and just missing meet smoothly.
+ * @param {number} fa
+ * @param {number} fb
+ * @param {number} dt
+ * @param {number} [width]
+ * @returns {number}
+ */
+export function orbitAuroraSheetPath(fa, fb, dt, width = ORBIT_EARTH_AURORA.width) {
+    const za = Math.min(Math.max(fa / width, -6), 6);
+    const zb = Math.min(Math.max(fb / width, -6), 6);
+    if (!(Math.min(Math.abs(za), Math.abs(zb)) < 3.2 || za * zb < 0)) return 0;
+    const dz = zb - za;
+    const zm = (za + zb) / 2;
+    const erf = (x) => Math.tanh(Math.min(Math.max((x + (x * x * x * ERF_C)) * ERF_K, -9), 9));
+    const mean = Math.abs(dz) > 0.02
+        ? ((erf(zb) - erf(za)) / dz) * (Math.sqrt(Math.PI) / 2)
+        : Math.exp(-zm * zm);
+    return dt * Math.max(mean, 0);
 }
 
 /**
@@ -759,7 +832,7 @@ function earthLook(dir, air = null, surfaceAir = air, worldAir = null) {
     If(U.aurora.greaterThan(0.001), () => {
         const under = ovalAt(N);
         surf.addAssign(albedo.mul(vec3(...AURORA_PALETTE.greenWarm)).mul(under.glow.mul(under.activity))
-            .mul(U.aurora.mul(night).mul(0.16)));
+            .mul(U.aurora.mul(night).mul(0.035)));
     });
     // The air between the eye and the surface: more of it toward the limb. While the world is
     // there it is the WORLD's own air (2026-10-26): its colour for this direction and its column
@@ -911,6 +984,8 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
     const greenWarm = vec3(...AURORA_PALETTE.greenWarm);
     const greenCool = vec3(...AURORA_PALETTE.greenCool);
     const crimson = vec3(...AURORA_PALETTE.crimson);
+    const LK = A.look;
+    const topColour = mix(crimson, vec3(...AURORA_VIOLET), 0.2);
     const shade = Fn(() => {
         const dir = normalize(positionWorld.sub(cameraPosition)).toVar();
         const look = earthLook(dir, haze ? haze(dir) : null, haze ? haze(dir) : null, worldAir ? worldAir(dir) : null);
@@ -973,34 +1048,41 @@ export function createOrbitEarth({ radius = ORBIT_EARTH.radius, haze = null, wor
                     const o = ovalAt(normalize(Xs));
                     const d = o.ang.sub(o.centre).toVar();
                     const f = vec3(d, d.add(o.own2).add(A.width * 2.6), d.add(o.own3).add(A.width * 5.4)).toVar();
-                    // The sheets' thickness: a soft glow round each, sampled (the ray just past a
-                    // fold's silhouette still passes through the curtain's edge).
-                    const altS = length(Xs).sub(1);
-                    const fw = f.div(A.width * 3.2);
-                    const near = exp(fw.x.mul(fw.x).negate())
-                        .add(exp(fw.y.mul(fw.y).negate()).mul(0.6))
-                        .add(exp(fw.z.mul(fw.z).negate()).mul(0.35));
-                    light.addAssign(greenWarm.mul(near.mul(step).mul(A.soft)
-                        .mul(smoothstep(A.foot - 0.0004, A.foot + 0.0004, altS))
-                        .mul(exp(altS.sub(A.foot).div(0.003).negate()))));
                     If(i.greaterThan(int(0)), () => {
                         const dt = max(tt.sub(prevT), 1e-6).toVar();
                         SHEETS.forEach(([c, weight]) => {
-                            const fa = prevF[c];
-                            const fb = f[c];
-                            If(fa.mul(fb).lessThan(0), () => {
-                                const X = along(prevT.add(dt.mul(fa.div(fa.sub(fb))))).toVar();
+                            // The sheet's distance runs from fa to fb across this step (linear). The
+                            // path the ray spends in its Gaussian profile over the step is exact:
+                            // dt x the mean of exp(-z^2) from za to zb, the erf difference over the
+                            // span (its plain value where the span is tiny: the ray runs along it).
+                            const za = clamp(prevF[c].div(A.width), -6, 6).toVar();
+                            const zb = clamp(f[c].div(A.width), -6, 6).toVar();
+                            If(min(abs(za), abs(zb)).lessThan(3.2).or(za.mul(zb).lessThan(0)), () => {
+                                const dz = zb.sub(za);
+                                const zm = za.add(zb).mul(0.5);
+                                const mean = select(
+                                    abs(dz).greaterThan(0.02),
+                                    erfApprox(zb).sub(erfApprox(za)).div(dz).mul(Math.sqrt(Math.PI) / 2),
+                                    exp(zm.mul(zm).negate()),
+                                );
+                                const inside = dt.mul(max(mean, 0)).toVar();
+                                // Lit where the ray is nearest the sheet in this step.
+                                const away = za.sub(zb).add(select(dz.greaterThanEqual(0), -1e-6, 1e-6));
+                                const sAt = clamp(za.div(away), 0, 1);
+                                const tAt = prevT.add(dt.mul(sAt)).toVar();
+                                const X = along(tAt).toVar();
                                 const r = length(X).toVar();
                                 const alt = r.sub(1).toVar();
-                                const oc = ovalAt(X.div(r));
-                                const crossing = abs(fb.sub(fa)).div(dt);
-                                const inside = float(SHEET_PATH).div(max(crossing, SHEET_PATH / A.maxPath));
-                                const lower = smoothstep(A.foot - 0.00025, A.foot + 0.00012, alt);
-                                const body = exp(alt.sub(A.foot).div(0.003).negate());
-                                const high = exp(alt.sub(A.top - 0.0025).div(0.002).pow2().negate()).mul(0.16);
-                                const green = mix(greenWarm, greenCool, oc.rays)
-                                    .mul(lower.mul(body).mul(oc.rays.mul(0.7).add(0.3)));
-                                light.addAssign(green.add(crimson.mul(high)).mul(oc.activity.mul(weight).mul(inside)));
+                                const fine = float(1).sub(smoothstep(LK.fineFade[0], LK.fineFade[1], tAt));
+                                const oc = ovalAt(X.div(r), fine);
+                                const lower = smoothstep(A.foot - LK.lower[0], A.foot + LK.lower[1], alt);
+                                const body = exp(alt.sub(A.foot).div(LK.body).negate());
+                                const high = exp(alt.sub(A.foot + LK.topAt).div(LK.topWidth).pow2().negate())
+                                    .mul(LK.topGain);
+                                const green = mix(greenWarm, greenCool, clamp(oc.rays.mul(0.5), 0, 1))
+                                    .mul(lower.mul(body).mul(oc.rays));
+                                const top = topColour.mul(high.mul(oc.rays.mul(0.4).add(0.6)));
+                                light.addAssign(green.add(top).mul(oc.activity.mul(weight).mul(inside)));
                             });
                         });
                     });
