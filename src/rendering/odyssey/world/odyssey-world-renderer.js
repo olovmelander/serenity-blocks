@@ -529,9 +529,29 @@ const SEA_MIRROR = Object.freeze({
     reach: 1000,
 });
 const TARN_MIRROR = Object.freeze({
-    steps: 24,
-    firstStep: 3.0,
-    stepGrowth: 1.22,
+    steps: 30,
+    firstStep: 2.5,
+    stepGrowth: 1.16,
+    /** Halvings at a hit: the bent rays meet the summit ~1 km out, where a step is ~150 u. */
+    refine: 3,
+    /**
+     * THE PAINTER'S MIRROR (2026-11-02). Probed on the rail camera (L20-L23), the eye looks down on
+     * the tarn at 13-29 deg, so a true mirror's rays rise at 13-29 deg; the summit stands 52 deg up
+     * from the tarn and 20-80 deg round from where those rays look. A true mirror there shows the
+     * meadow bank and the low hills, never the summit. So the reflection is painted, as a whole:
+     *  - turned round by one angle, so the ray off the tarn's middle looks at the summit (the
+     *    mirror keeps its width, so the massif's two skylines stay in it);
+     *  - steepened by one factor on the rise's tangent, so that ray rises `rise` deg: the summit's
+     *    apex lands just nearer the eye than the middle, the high flank beyond it;
+     *  - the ripple's own tilt added back unbent.
+     * Both come from the eye and the tarn's middle (`centre`), so they change smoothly along the
+     * rail. `lift` bounds the steepening.
+     */
+    paint: Object.freeze({
+        centre: Object.freeze([-262, -432]),
+        rise: 47,
+        lift: Object.freeze([1, 4.5]),
+    }),
     rockFrom: Object.freeze([420, 520]),
     snowFrom: Object.freeze([610, 700]),
     sunLit: 0.95,
@@ -542,7 +562,8 @@ const TARN_MIRROR = Object.freeze({
     calm: 0.35,
     /** How many rings (rises) the pond carries at once (water pass step 4). */
     rings: 3,
-    fresnel: Object.freeze([0.62, 0.30]),
+    /** Raised from [0.62, 0.30] with the painter's mirror, so the massif reads over the water's own colour. */
+    fresnel: Object.freeze([0.62, 0.42]),
 });
 /**
  * The jade a thin wave crest transmits, seen from ABOVE (the topside twin of `uWaterGlow`'s
@@ -3241,7 +3262,7 @@ export function createOdysseyWorld({
     // the land the ray takes.
     const waterPlateUv = (xz) => xz.div(float(RELIEF_EXTENT)).add(0.5);
     const waterMarchLand = (P, R, {
-        heightAt, steps, firstStep, stepGrowth, soft, ceiling = null,
+        heightAt, steps, firstStep, stepGrowth, soft, ceiling = null, refine = 1,
     }) => {
         const tHit = float(-1).toVar();
         const tPrev = float(0).toVar();
@@ -3263,10 +3284,19 @@ export function createOdysseyWorld({
                 tClose.assign(tCur);
             });
             If(gap.lessThan(0), () => {
-                // One halving between the last two steps.
-                const tMid = tPrev.add(tCur).mul(0.5).toVar();
-                const qm = P.add(R.mul(tMid)).toVar();
-                tHit.assign(select(heightAt(qm.xz).greaterThan(qm.y), tMid, tCur));
+                // Halvings between the last two steps (one for the sea; the tarn's long rays take more).
+                const lo = tPrev.toVar();
+                const hi = tCur.toVar();
+                for (let k = 0; k < refine; k += 1) {
+                    const tMid = lo.add(hi).mul(0.5).toVar();
+                    const qm = P.add(R.mul(tMid)).toVar();
+                    If(heightAt(qm.xz).greaterThan(qm.y), () => {
+                        hi.assign(tMid);
+                    }).Else(() => {
+                        lo.assign(tMid);
+                    });
+                }
+                tHit.assign(hi);
                 Break();
             });
             tPrev.assign(tCur);
@@ -3301,13 +3331,17 @@ export function createOdysseyWorld({
         );
         const rock = vec3(...ODYSSEY_GROUND_PALETTE.rock.dry);
         const snow = vec3(...ODYSSEY_GROUND_PALETTE.snow.dry);
+        const reliefAt = texture(heightTex, waterPlateUv(H.xz)).level(0);
+        const n = normalize(vec3(reliefAt.g.negate(), 1, reliefAt.b.negate()));
+        // High up, the steep faces and a broken pattern of patches stay bare rock, as the summit's
+        // own crisp snow leaves them (so the reflected summit reads as snow and rock, not a white wedge).
+        const bare = smoothstep(float(0.55), float(0.85), float(1).sub(n.y))
+            .max(smoothstep(float(0.55), float(0.7), noise2(H.xz.mul(0.02))));
         const land = mix(
             mix(beach, rock, smoothstep(float(T.rockFrom[0]), float(T.rockFrom[1]), H.y)),
             snow,
-            smoothstep(float(T.snowFrom[0]), float(T.snowFrom[1]), H.y),
+            smoothstep(float(T.snowFrom[0]), float(T.snowFrom[1]), H.y).mul(float(1).sub(bare.mul(0.85))),
         );
-        const reliefAt = texture(heightTex, waterPlateUv(H.xz)).level(0);
-        const n = normalize(vec3(reliefAt.g.negate(), 1, reliefAt.b.negate()));
         const vis = texture(sunVisTex, waterPlateUv(H.xz)).level(0).r;
         const ndl = clamp(dot(n, uSunDir), 0, 1);
         const grain = noise2(H.xz.mul(0.045)).mul(0.35).add(0.82);
@@ -3377,9 +3411,34 @@ export function createOdysseyWorld({
                 .toVar();
             const N = normalize(vec3(rip.x.negate(), 1, rip.y.negate())).toVar();
             const Rraw = reflect(V.negate(), N);
-            const R = normalize(vec3(Rraw.x, max(Rraw.y, 0.004), Rraw.z)).toVar();
+            // THE PAINTER'S MIRROR (TARN_MIRROR.paint): the flat mirror's ray, turned round and
+            // steepened as a whole; the ripple's tilt (rippled minus flat) is added back unbent.
+            const Rflat = vec3(V.x.negate(), V.y, V.z.negate());
+            const centre = vec2(...T.paint.centre);
+            const look = centre.sub(cameraPosition.xz);
+            const toSummit = vec2(ODYSSEY_SUMMIT_SCULPT.x - T.paint.centre[0], ODYSSEY_SUMMIT_SCULPT.z - T.paint.centre[1]);
+            const turn = atan(toSummit.y, toSummit.x).sub(atan(look.y, look.x));
+            const ct = cos(turn);
+            const st = sin(turn);
+            const flatXZ = normalize(Rflat.xz);
+            const bentXZ = vec2(flatXZ.x.mul(ct).sub(flatXZ.y.mul(st)), flatXZ.x.mul(st).add(flatXZ.y.mul(ct)));
+            const midTan = cameraPosition.y.sub(ODYSSEY_TARN.waterY).div(max(length(look), float(1)));
+            const lift = clamp(
+                float(Math.tan((T.paint.rise * Math.PI) / 180)).div(max(midTan, float(1e-3))),
+                T.paint.lift[0],
+                T.paint.lift[1],
+            );
+            const rise = Rflat.y.div(max(length(Rflat.xz), float(1e-3))).mul(lift);
+            const Rpaint = normalize(vec3(bentXZ.x, rise, bentXZ.y));
+            const Rbent = Rpaint.add(Rraw.sub(Rflat));
+            const R = normalize(vec3(Rbent.x, max(Rbent.y, 0.004), Rbent.z)).toVar();
             const { tLand, landW } = waterMarchLand(P, R, {
-                heightAt: landAt, steps: T.steps, firstStep: T.firstStep, stepGrowth: T.stepGrowth, soft: T.soft,
+                heightAt: landAt,
+                steps: T.steps,
+                firstStep: T.firstStep,
+                stepGrowth: T.stepGrowth,
+                soft: T.soft,
+                refine: T.refine,
             });
             const H = P.add(R.mul(tLand)).toVar();
             // ONE WATER: where the ray runs into open sky the pond shows the sea's stepped sky wash
@@ -3398,7 +3457,8 @@ export function createOdysseyWorld({
             // The sea's sun: core, road and glitter, over the baked sun visibility at the pond.
             const wVis = texture(sunVisTex, plateUv(P.xz)).r;
             const fb = float(1).sub(max(dot(N, V), 0));
-            const glints = waterSunCore(N, V).add(waterSunRoad(R))
+            // The sun's road stays on the true mirror ray: the sun is not painted round.
+            const glints = waterSunCore(N, V).add(waterSunRoad(normalize(vec3(Rraw.x, max(Rraw.y, 0.004), Rraw.z))))
                 .add(waterSparkle(ripTex, fb, length(P.xz.sub(cameraPosition.xz))));
             const wl = mix(body, reflected, fres)
                 .add(vec3(...WATER_GLINT).mul(glints).mul(wVis))

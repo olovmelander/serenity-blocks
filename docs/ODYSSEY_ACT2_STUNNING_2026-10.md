@@ -863,3 +863,42 @@ cheaper far tier (an impostor, for example), which is a larger piece of work.
 
 **Tests.** The looks and field suites pass unchanged: every grown mass is wider than it shipped,
 clears the live rail by its role's margin, and the field stays under 34,000 triangles.
+
+## §16. The summit in the tarn (2026-11-02)
+
+**Why it never showed.** Probed on the rail camera at L20-L23 (p 0.246-0.30), against a fine
+march over the drawn ground:
+
+- The eye looks down on the tarn at 13-29°, so a true mirror's rays rise at 13-29°.
+- The summit stands **52° up** from the tarn, and **20-80° round** from where those rays look
+  (the eye sees the tarn from the south-east; the summit is north of it).
+- So a true mirror there shows the meadow bank, the low hills and the sky. 70-90% of its rays
+  hit land within 1-100 u, at 293-386 u high.
+- The march was not the cause: its 24 steps reach ~1,600 u, and a fine march agreed with it.
+
+No eye on the rail can see the summit in this tarn: the reflection would need the eye to look
+down on the water at about 50°.
+
+**The painter's mirror** (`TARN_MIRROR.paint`). The reflection is painted, as a whole:
+
+- turned round by one angle, so the ray off the tarn's middle looks at the summit (the mirror
+  keeps its width, so both skylines can stay in it);
+- steepened by one factor on its rise, so that ray rises 47°: the apex lands just nearer the eye
+  than the middle (bounded 1-4.5×);
+- the ripple's own tilt added back unbent, and the sun's road kept on the true ray.
+
+Both angles come from the eye and the tarn's middle, so they change smoothly along the rail. The
+bent rays run ~1 km to the summit, so the march takes 30 shorter steps (2.5 u, growing 1.16) and
+three halvings at a hit. In the reflected land, steep faces and broken patches above the snow line
+stay bare rock, so the summit reads as snow and rock rather than a white wedge. The water's sky
+share rises from 0.30 to 0.42, so the reflection shows over the water's own turquoise.
+
+![p 0.246, 0.26 and 0.29, before (left) and after (right)](images/odyssey-island-2026-11-02/tarn-before-after.jpg)
+
+**The honest outcome: subtle.** At p 0.26-0.29 a pale, snow-and-rock wedge stands upside down in
+the middle of the water. At p 0.246 the trees hide the part of the tarn that holds it. The tarn
+also reads bluer (more sky, less turquoise). The tarn is ~9° tall on screen, so the massif is
+squashed into a sliver of it whatever the mirror does. This is an art call: the lead can drop the
+commit to keep the turquoise pool.
+
+**Cost.** 30 steps of three fetches (was 24) plus three halvings, on the tarn's own pixels only.
