@@ -30,7 +30,9 @@ import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gl
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import { odysseyWorldHeight } from '../world/odyssey-world-height.js';
 import { createDeerRig, planFootfalls, poseDeer } from './odyssey-deer-herd.js';
-import { ODYSSEY_IBEX, buildIbexHerd, ibexRevealAt } from './odyssey-ibex-herd.js';
+import {
+    ODYSSEY_IBEX, buildIbexHerd, createIbexGround, ibexRevealAt,
+} from './odyssey-ibex-herd.js';
 
 export const ODYSSEY_IBEX_URL = new URL('../assets/chapter-04/ibex/alpine-ibex.glb', import.meta.url).href;
 
@@ -122,6 +124,8 @@ export function createOdysseyIbex({
     group.visible = false;
     const cfg = ODYSSEY_IBEX;
     const herd = buildIbexHerd(cfg);
+    // The hooves stand on the drawn ground or on the perch rocks' tops (built when it loads).
+    let groundAt = heightAt;
     const count = herd.length;
     const sun = sunColour ?? vec3(1.0, 0.95, 0.86);
     const haze = hazeColour ?? vec3(0.72, 0.82, 0.93);
@@ -158,8 +162,13 @@ export function createOdysseyIbex({
             const r = int(floor(look.x.add(0.5)));
             const ids = attribute('_bones', 'vec4');
             const ws = attribute('_weights', 'vec4');
-            // Each animal's horns, scaled about their roots (the buck's full sweep, the kid's buds).
-            const p = mix(positionGeometry, horn.xyz.add(positionGeometry.sub(horn.xyz).mul(look.w)), horn.w);
+            // Each animal's horns (w 1) scaled about their roots (the buck's full sweep, a nanny's short
+            // horns, the kid's buds), and the beard (w 2) about the chin: the buck's only.
+            const hornMask = clamp(float(1).sub(abs(horn.w.sub(1))), 0, 1);
+            const beardMask = clamp(horn.w.sub(1), 0, 1);
+            const grow = hornMask.mul(look.w).add(beardMask.mul(clamp(look.w.sub(0.6).mul(2.5), 0, 1)));
+            const grown = horn.xyz.add(positionGeometry.sub(horn.xyz).mul(grow));
+            const p = mix(positionGeometry, grown, hornMask.add(beardMask));
             const n = attribute('normal', 'vec3');
             const pos = vec3(0).toVar();
             const nor = vec3(0).toVar();
@@ -190,9 +199,15 @@ export function createOdysseyIbex({
             // fronts of the legs, along the back and on the chest; the belly and the insides pale; the
             // hooves, nose and eyes near black; the horns a dark grey-brown.
             const coat = mix(vec3(0.115, 0.095, 0.07), vec3(0.17, 0.145, 0.108), tone);
-            const darker = mix(coat, vec3(0.065, 0.045, 0.03), brown.mul(0.85));
+            const darker = mix(coat, vec3(0.022, 0.016, 0.011), brown);
             const belly = mix(darker, vec3(0.6, 0.55, 0.45), pale);
-            const albedo = mix(mix(belly, vec3(0.018, 0.014, 0.012), dark), vec3(0.085, 0.075, 0.06), vHorn).toVar();
+            const hornC = clamp(float(1).sub(abs(vHorn.sub(1))), 0, 1);
+            const beardC = clamp(vHorn.sub(1), 0, 1);
+            const albedo = mix(
+                mix(mix(belly, vec3(0.018, 0.014, 0.012), dark), vec3(0.085, 0.075, 0.06), hornC),
+                vec3(0.03, 0.022, 0.016),
+                beardC,
+            ).toVar();
             const ndl = clamp(dot(N, L).add(0.35).div(1.35), 0, 1);
             const skyUp = max(N.y, 0);
             const groundUp = max(N.y.negate(), 0);
@@ -260,7 +275,7 @@ export function createOdysseyIbex({
         const sz = -sunD.z / flat;
         herd.forEach((animal, i) => {
             const base = i * row * 4;
-            const out = poseDeer(rig, animal, time, heightAt, data, base, /** @type {any} */ (cfg));
+            const out = poseDeer(rig, animal, time, groundAt, data, base, /** @type {any} */ (cfg));
             const { state } = out;
             Object.assign(states[i], {
                 x: state.x, z: state.z, heading: state.heading, head: state.head,
@@ -292,6 +307,7 @@ export function createOdysseyIbex({
             const gltf = await loadGltf(url);
             model = parseOdysseyIbex(gltf.scene);
             rig = createDeerRig(model.skeleton);
+            groundAt = createIbexGround(heightAt);
             // Every hoof's steps through the loop, planned once, one animal a task.
             await herd.reduce((before, animal) => before.then(() => new Promise((resolve) => {
                 setTimeout(() => {
