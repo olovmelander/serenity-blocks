@@ -211,6 +211,8 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
     const cycle = cfg.cycle * Math.sqrt(member.size);
     const walkSpeed = strideW / cycle;
     const pivot = cfg.pivotBack * k;
+    // The leap's shape (the ibex's config only; ODYSSEY_DEER has none, and deer never leap).
+    const leapCfg = /** @type {any} */ (cfg).leap;
     const { spots } = member;
     const n = spots.length;
     const build = (h0) => {
@@ -276,6 +278,32 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
             z = to[1];
             h = end.heading;
         };
+        /**
+         * LEAP to `to` (the ibex, odyssey-ibex-herd.js; deer never leap): it turns to face the
+         * landing on the spot first, then crouches, flies a straight line and lands, absorbing it.
+         */
+        const leap = (to) => {
+            const L = leapCfg;
+            const want = wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h);
+            if (Math.abs(want) > 0.05) turn(want);
+            const d = Math.hypot(to[0] - x, to[1] - z);
+            const flight = L.flight[0] + ((L.flight[1] - L.flight[0]) * clamp01(d / (L.reach * k)));
+            push({
+                kind: 'leap',
+                dur: L.crouch + flight + L.absorb,
+                crouch: L.crouch,
+                flight,
+                absorb: L.absorb,
+                apex: (L.apex * k) + (L.apexPerDistance * d),
+                head: 0,
+                alert: 0.7,
+                x1: to[0],
+                z1: to[1],
+                h1: h,
+            });
+            x = to[0];
+            z = to[1];
+        };
         const walkTime = spots.reduce((sum, s, i) => {
             const next = spots[(i + 1) % n];
             return sum + (Math.hypot(next[0] - s[0], next[1] - s[1]) / walkSpeed) + cfg.accel + 4;
@@ -313,6 +341,11 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
             // WALK to the next spot: the head comes up, a turn on the spot only for what a curve
             // cannot take, then the curve.
             const to = spots[(i + 1) % n];
+            if (/** @type {any} */ (member).leaps?.[i] && leapCfg) {
+                still('look', 1.6, 0.1, wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h) * 0.5, 0.9);
+                leap(to);
+                continue;
+            }
             const want = wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h);
             if (Math.abs(want) > 0.5) turn(want - (Math.sign(want) * 0.3));
             else still('look', 1.2, 0.2, want * 0.6, 0.6);
@@ -365,6 +398,12 @@ export function deerPathAt(deer, time, out = { x: 0, z: 0, heading: 0 }) {
         out.x = s.px + (fx * s.about);
         out.z = s.pz + (fz * s.about);
         out.heading = h;
+    } else if (s.kind === 'leap') {
+        // Standing through the crouch, a straight line at a steady speed in the air, standing again.
+        const f = clamp01((t - s.t0 - s.crouch) / s.flight);
+        out.x = s.x0 + ((s.x1 - s.x0) * f);
+        out.z = s.z0 + ((s.z1 - s.z0) * f);
+        out.heading = s.h0;
     } else if (s.curve) {
         curveAt(s.curve, moveProfile(u, s.ramp), out);
     } else {
@@ -372,6 +411,46 @@ export function deerPathAt(deer, time, out = { x: 0, z: 0, heading: 0 }) {
         out.z = s.z0;
         out.heading = s.h0;
     }
+    return out;
+}
+
+/**
+ * Where a leap is at `time` (all zero outside one): `sink` the crouch before and the give after
+ * (0..1, the body lowered), `arc` the body's height over the straight line between the two
+ * grounds, `rise` the arc's slope along the ground (for the body's pitch), `f` the flight's share.
+ */
+export function deerLeapAt(deer, time, out = {
+    on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0,
+}) {
+    out.on = false;
+    out.f = 0;
+    out.arc = 0;
+    out.rise = 0;
+    out.sink = 0;
+    out.apex = 0;
+    const t = wrapTime(deer, time);
+    const s = deer.segments[segmentAt(deer.segments, t)];
+    if (s.kind !== 'leap') return out;
+    const local = t - s.t0;
+    out.on = true;
+    out.apex = s.apex;
+    if (local < s.crouch) {
+        // Down over the first part, then springing up through the take-off.
+        const u = local / s.crouch;
+        out.sink = u < 0.62 ? s5(u / 0.62) : 1 - s5((u - 0.62) / 0.38);
+        return out;
+    }
+    const f = (local - s.crouch) / s.flight;
+    if (f <= 1) {
+        const d = Math.max(1e-6, Math.hypot(s.x1 - s.x0, s.z1 - s.z0));
+        out.f = f;
+        out.arc = 4 * s.apex * f * (1 - f);
+        out.rise = (4 * s.apex * (1 - (2 * f))) / d;
+        return out;
+    }
+    const u = clamp01((local - s.crouch - s.flight) / s.absorb);
+    out.f = 1;
+    out.sink = 0.8 * Math.sin(Math.PI * u);
     return out;
 }
 
@@ -477,6 +556,8 @@ function planDeer(deer, rig, cfg) {
     const total = deer.loop * loops;
     const keepFrom = (deer.loop * (loops - 1)) - 4;
     let startState = null;
+    const leapPlanned = new Set();
+    let leapUntil = -Infinity;
     for (let t = 0; t < total; t += dt) {
         if (!startState && t >= deer.loop * (loops - 1)) startState = planted.map((p) => [...p]);
         // Land any swing that is done.
@@ -550,6 +631,31 @@ function planDeer(deer, rig, cfg) {
                 bestTarget = target;
             }
         }
+        // A LEAP (ibex): from the end of the crouch every hoof leaves (the fores a moment first) and
+        // lands where it stands under the body at the landing (the fores first); nothing else steps
+        // until it is down.
+        const seg = deer.segments[segmentAt(deer.segments, t % deer.loop)];
+        if (seg.kind === 'leap' && !leapPlanned.has(seg) && (t % deer.loop) >= seg.t0 + seg.crouch - 0.12) {
+            leapPlanned.add(seg);
+            const base = t - (t % deer.loop);
+            const off = base + seg.t0 + seg.crouch;
+            const landAt = off + seg.flight;
+            for (let l = 0; l < 4; l += 1) {
+                const front = l === 1 || l === 3;
+                const from = swinging[l] ? [swinging[l][4], swinging[l][5]] : planted[l];
+                const lift = Math.max(off - (front ? 0.07 : 0), swinging[l] ? swinging[l][1] : -Infinity);
+                const land = landAt + (front ? 0 : 0.08);
+                const to = ideal(l, land + 0.02, [0, 0]);
+                swinging[l] = [lift, land, from[0], from[1], to[0], to[1], 2];
+                if (lift >= keepFrom) {
+                    const back = deer.loop * (loops - 1);
+                    steps[l].push([lift - back, land - back, from[0], from[1], to[0], to[1], 2]);
+                }
+            }
+            leapUntil = landAt + 0.25;
+            lastLift = t;
+        }
+        if (t < leapUntil) best = -1;
         if (best >= 0) due[best] = false;
         if (best >= 0) {
             const l = best;
@@ -583,8 +689,9 @@ function planDeer(deer, rig, cfg) {
  * and whether it is planted). Planted hooves never move.
  */
 export function deerFootAt(deer, l, time, out = {
-    x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0,
+    x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0, kind: 0, fx: 0, fz: 0, tx: 0, tz: 0,
 }) {
+    out.kind = 0;
     const t = wrapTime(deer, time);
     const list = deer.plan.steps[l];
     let lo = 0;
@@ -611,7 +718,13 @@ export function deerFootAt(deer, l, time, out = {
     const s = list[found];
     if (t < s[1]) {
         const u = (t - s[0]) / (s[1] - s[0]);
-        const e = s5(u);
+        // (In a leap the hooves travel with the body, at its steady speed.)
+        const e = s[6] === 2 ? u : s5(u);
+        out.kind = s[6];
+        out.fx = s[2];
+        out.fz = s[3];
+        out.tx = s[4];
+        out.tz = s[5];
         out.x = s[2] + ((s[4] - s[2]) * e);
         out.z = s[3] + ((s[5] - s[3]) * e);
         out.swing = u;
@@ -759,8 +872,11 @@ export function createDeerRig(skeleton) {
             x: 0, z: 0, heading: 0, speed: 0, turning: 0, head: 0, alert: 0,
         },
         feet: LEGS.map(() => ({
-            x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0,
+            x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0, kind: 0, fx: 0, fz: 0, tx: 0, tz: 0,
         })),
+        leap: {
+            on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0,
+        },
         hooves: LEGS.map(() => ({
             x: 0, y: 0, z: 0, ground: 0, stance: 0, planX: 0, planZ: 0,
         })),
@@ -794,8 +910,16 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     const { feet } = rig;
     rig.legs.forEach((leg, l) => {
         const f = deerFootAt(deer, l, time, feet[l]);
-        f.ground = heightAt(f.x, f.z);
+        // (In a leap the ground under a hoof is the line between where it left and where it lands,
+        // or the rock under it where that stands higher.)
+        f.ground = f.kind === 2 && !f.planted
+            ? Math.max(
+                heightAt(f.fx, f.fz) + ((heightAt(f.tx, f.tz) - heightAt(f.fx, f.fz)) * f.swing),
+                heightAt(f.x, f.z),
+            )
+            : heightAt(f.x, f.z);
     });
+    const leap = deerLeapAt(deer, time, rig.leap);
     // THE BODY rides on them: height from the ground under the hooves, pitch from fore to hind,
     // roll from side to side (part of the way), the hips and shoulders rising and rolling a little
     // with each swing, a slow shift of weight, breathing.
@@ -807,7 +931,10 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     const hind = 0.5 * (feet[0].ground + feet[2].ground);
     const left = 0.5 * (feet[0].ground + feet[1].ground);
     const right = 0.5 * (feet[2].ground + feet[3].ground);
-    const pitch = (-Math.atan2(fore - hind, 0.98 * k) * 0.9) + (cfg.graze.dip * g);
+    const pitch = (-Math.atan2(fore - hind, 0.98 * k) * 0.9) + (cfg.graze.dip * g)
+        // (In a leap: nose up off the rock, level at the top, nose down to land; held to ~17
+        // degrees, as far as the legs can reach for it.)
+        - (leap.on ? Math.max(-0.3, Math.min(0.3, Math.atan(leap.rise) * 0.45)) : 0);
     const roll = -Math.atan2(left - right, 0.22 * k) * 0.12;
     const swingOf = (l) => (feet[l].planted ? 0 : Math.sin(Math.PI * feet[l].swing));
     const breathe = Math.sin(((time / 3.4) + (seed * 0.37)) * TAU);
@@ -854,7 +981,8 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     const groundMean = 0.25 * (feet[0].ground + feet[1].ground + feet[2].ground + feet[3].ground);
     J[rootIndex][0] = state.x;
     J[rootIndex][1] = groundMean + (skeleton[rootIndex].head[1] * k) - ((0.016 + (0.055 * walk)) * k)
-        + (0.003 * k * breathe);
+        + (0.003 * k * breathe)
+        + (leap.on ? leap.arc - (/** @type {any} */ (cfg).leap.sink * k * leap.sink) : 0);
     J[rootIndex][2] = state.z;
     const fkBone = (b) => {
         const { parent, head } = skeleton[b];
@@ -908,8 +1036,13 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         const { parent } = skeleton[leg.top];
         const P = R[parent];
         const A = J[leg.top];
-        const lift = f.planted ? 0
+        let lift = f.planted ? 0
             : cfg.lift * k * Math.min(1, 0.35 + (f.length / deer.strideW)) * Math.sin(Math.PI * f.swing);
+        // In a leap the hooves ride the body's arc, folded up under it.
+        if (f.kind === 2 && !f.planted) {
+            lift = (4 * leap.apex * f.swing * (1 - f.swing))
+                + (/** @type {any} */ (cfg).leap.tuck * (leg.front ? 1 : 0.7) * k * Math.sin(Math.PI * f.swing));
+        }
         const tx = f.x;
         const ty = f.ground + (leg.fetlock * k) + lift;
         const tz = f.z;

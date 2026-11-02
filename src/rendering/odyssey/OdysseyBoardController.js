@@ -62,6 +62,7 @@ import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
 import { createOdysseyDeer } from './composition/odyssey-deer.js';
+import { createOdysseyIbex } from './composition/odyssey-ibex.js';
 import { createOdysseyAirMotes } from './composition/odyssey-air-motes.js';
 import { createOdysseyMeadowLife } from './composition/odyssey-meadow-life.js';
 import { createSummitSpindrift, findHeroSummit } from './composition/odyssey-summit-spindrift.js';
@@ -676,6 +677,8 @@ export class OdysseyBoardController {
         this.eagle = null;
         // The glade's deer (chapter 3's ground animals, 2026-11-01): the eagle's lifecycle.
         this.deer = null;
+        // The massif's ibex (chapter 4, 2026-11-02): the deer's lifecycle, run by the ibex (tick).
+        this.ibex = null;
         this.airMotes = null;
         this.meadowLife = null;
         this.spindrift = null;
@@ -3851,6 +3854,22 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] deer unavailable (non-fatal):', error);
                     this.deer = null;
                 }
+                // THE MASSIF'S IBEX (chapter 4, composition/odyssey-ibex.js): a buck, two nannies and a
+                // kid on the rock band's shelf at the massif's foot; the deer's lifecycle (fetched near
+                // their window, live-compiled while idle, then drawn). BISECT LEVER: ?odysseyNoIbex=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoIbex')) {
+                        this.ibex = createOdysseyIbex({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            heightAt: this.oneWorld?.heightAt || undefined,
+                        });
+                        this.scene.add(this.ibex.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] ibex unavailable (non-fatal):', error);
+                    this.ibex = null;
+                }
                 // THE AIR (composition/odyssey-air-motes.js): pollen over the shore, down on the
                 // meadows, diamond dust on the climb — one additive draw of world-anchored motes in
                 // a box round the eye, built here (presentation compile), uniforms after. Fewer on
@@ -5252,6 +5271,7 @@ export class OdysseyBoardController {
         if (this.flights) this.flights.update(this.time, cameraProgress);
         if (this.eagle) this._tickEagle(delta, cameraProgress);
         if (this.deer) this._tickDeer(cameraProgress);
+        if (this.ibex) this.ibex.tick(this, cameraProgress);
         if (this.airMotes) this.airMotes.update(this.time, cameraProgress);
         if (this.meadowLife) this.meadowLife.update(this.time, cameraProgress);
         if (this.spindrift) this.spindrift.update(this.time, cameraProgress);
@@ -6367,6 +6387,10 @@ export class OdysseyBoardController {
         if (this.deer) {
             this.deer.dispose();
             this.deer = null;
+        }
+        if (this.ibex) {
+            this.ibex.dispose();
+            this.ibex = null;
         }
         if (this.meadowLife) {
             this.meadowLife.dispose();
