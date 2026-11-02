@@ -393,8 +393,120 @@ and velocities go to the world (`setTarnSwans`).
   - the sizes above;
   - never appearing or leaving in view.
 
+### Design and motion pass (2026-11-02)
+
+The owner asked: "are the animals designed so they are visually stunning and animates so that the
+animation and movements feels natural and smooth?" They were not yet. The first swan read as a pool
+float with a straight neck, and the heron as a grey blob on yellow stilts. Nobody had watched them
+move up close.
+
+**A way to watch them.** The playground effect `odyssey-pond-life` shows the game's own poses with a
+camera that follows one animal:
+
+- `animal=swan0|swan1|heron|hind|calf`;
+- `view=34|side|front|back|top|game`;
+- `t0=` sets where on the animal's clock to start, and `?t=` gives phase-locked frames.
+
+All the clips below are its frames.
+
+**The models** (`pond_birds.py`), rebuilt from reference proportions:
+
+- **The mute swan.** The body is long, low and tapers to both ends, with the tail lifted to a point.
+  The neck is a deep S that arches forward at the top, the head held with the bill angled down. The
+  orange bill is black at its base and carries the black knob. The wings are raised and arched over
+  the back ("busking"): the two humps of the fluffed scapulars make the heart-shaped back seen from
+  behind. The wings are their own bones (9 bones, 1,598 triangles).
+- **The grey heron.** It is slender and upright, the body held up at ~35°. The neck is folded into an
+  S and hunched into the shoulders. It has a dagger bill, a white face with the black stripe from the
+  eye to the long crest plumes, a grey back with black shoulder patches, dark primaries, a streaked
+  pale front and hanging breast plumes. The legs are thinner than before but still 1.55x life, so
+  they read (12 bones, 1,338 triangles).
+
+![Before: the first models (Blender, life size)](images/odyssey-animals-2026-11-02/pond-models-before.jpg)
+
+![After: the swan and the heron from the front, side, behind, above and three-quarter](images/odyssey-animals-2026-11-02/pond-models-after.jpg)
+
+![In the game's own light (the playground), before and after: front, side, behind, above, three-quarter, game distance](images/odyssey-animals-2026-11-02/pond-models-ingame-before.jpg)
+
+![...after](images/odyssey-animals-2026-11-02/pond-models-ingame-after.jpg)
+
+At game size (L22 and L23, 4x crops, before left, after right), the swans show their S necks and
+raised backs, and their V wakes trail behind:
+
+![Game size, before and after](images/odyssey-animals-2026-11-02/pond-game-size.jpg)
+
+**The motion** (`odyssey-pond-life-motion.js`):
+
+- **Necks are posed by segment angles.** Each pose (rest, a swan's dip or stretch, a heron's stalk,
+  coil and shot) gives every neck segment its angle in the bird's plane. Each bone takes the change
+  less what its parents already turned, so the chain always bends as one curve. The head keeps its
+  own pitch whatever the neck does: level while the heron stalks, the bill down to feed or strike.
+- **The swans:**
+  - The paddle strokes give a slight surge, bob and rock, at each swan's own rate.
+  - They lean into turns.
+  - The neck sways, the motion travelling down it.
+  - A look is a turn, a hold and a turn back, each eased.
+  - Feeding reaches the neck forward and down until the head is under, the body tipping forward.
+  - Preening swings the neck back over the wing.
+  - Once a loop each swan sits back, opens its neck upright, and lifts and beats its wings twice.
+  - Every event is eased in and out, and each swan has its own timing.
+- **The heron:**
+  - It breathes, and turns its head in small, quick, eased steps between holds, settling to the
+    front before and after a walk.
+  - It stalks one deliberate step at a time: it lifts a foot, carries the body over it, sets it
+    down and pauses (0.7-1.9 s, different every time). The trailing foot comes up beside the other
+    at the end.
+  - While the body moves under it, its head stays still in the air. A few iterative steps on the
+    neck angles hold the head back by exactly what the body has moved; the head glides on in the
+    pause. In the tests the head moves less than a fifth as far as the body during a step.
+  - The strike leans in, draws the neck into a tight coil, shoots it out and down in 0.2 s (eased at
+    both ends), holds, and draws back.
+  - Some strikes are followed by a quick, dying head shake.
+- **The drinking deer.** The head comes down to the water over ~2 s on the herd's own eased curves.
+  It was already smooth, and was left as it was.
+
+Before (top) and after (bottom), the same moments of each clock:
+
+![A swan feeding, before](images/odyssey-animals-2026-11-02/pond-motion-swan-dip-before.jpg)
+
+![A swan feeding, after: the neck reaches forward and down, the head goes under](images/odyssey-animals-2026-11-02/pond-motion-swan-dip.jpg)
+
+![The heron's strike, before](images/odyssey-animals-2026-11-02/pond-motion-heron-strike-before.jpg)
+
+![The heron's strike, after: the coil, the shot, the hold and the slow return](images/odyssey-animals-2026-11-02/pond-motion-heron-strike.jpg)
+
+![The heron walking, before: a continuous gait](images/odyssey-animals-2026-11-02/pond-motion-heron-walk-before.jpg)
+
+![The heron stalking, after: one step at a time, the head held level and still](images/odyssey-animals-2026-11-02/pond-motion-heron-stalk.jpg)
+
+The other behaviours, after:
+
+![The swans gliding (paddle bob and rock, 0.25 s apart)](images/odyssey-animals-2026-11-02/pond-motion-swan-glide.jpg)
+
+![Preening](images/odyssey-animals-2026-11-02/pond-motion-swan-preen.jpg)
+
+![The wing stretch](images/odyssey-animals-2026-11-02/pond-motion-swan-stretch.jpg)
+
+![The heron standing: breathing, small head turns](images/odyssey-animals-2026-11-02/pond-motion-heron-stand.jpg)
+
+![A shake after a strike](images/odyssey-animals-2026-11-02/pond-motion-heron-shake.jpg)
+
+![The hind lowering her head to drink](images/odyssey-animals-2026-11-02/pond-motion-deer-drink.jpg)
+
+**Tests** (added to `tests/unit/odyssey-pond-life.test.js`):
+
+- the new skeletons;
+- a dipping swan's head goes under the water;
+- no swan bone turns faster than 6 rad/s at 30 fps (the wing beat is the fastest);
+- the heron's head stays still during its steps (it moves under 0.2 of the body's travel);
+- no heron bone turns faster than 12 rad/s outside the strike's shot, nor 30 rad/s in it (eased,
+  never a jump).
+
+The paddle surge is allowed in the calm-speed test (under 0.5 u/s²).
+
 ### Left for later
 
 - **The drinkers' timing** follows their own five-minute loop, so a given pass may find them on the
   ground above the bank rather than at the water.
 - **The heron does not catch anything.** Its strike comes back empty.
+- **The swans' paddling feet** are not drawn: under the turquoise they would not show.
