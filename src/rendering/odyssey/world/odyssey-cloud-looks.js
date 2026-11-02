@@ -120,6 +120,37 @@ const BANKS_GROWTH = Object.freeze({
     framing: Object.freeze([1.12, 1.10]),
 });
 const SATELLITE_GATHER = 0.45;
+/**
+ * VARIETY (the island's leftovers, 2026-11-02). The second audit still saw "small puffs, all one
+ * size, spread evenly". Each mass now grows by its own share of its role's range, from its seed:
+ * a few become wide, low banks and the rest stay near their size. Growth is always wider than
+ * tall (`flatten`: the height takes that share of the width's growth), the owner's wide, low
+ * shapes. The near-tier masses are already drawn at full detail, so the big horizon shapes come
+ * from them (`near`): growing them costs no triangles. Everything else stays under the width the
+ * field would promote (`widthBeforeNear`), so the budget holds.
+ *   [least, most] width growth, and `flatten`.
+ */
+const BANKS_VARIETY = Object.freeze({
+    overhead: Object.freeze({ width: Object.freeze([1.08, 1.62]), flatten: 0.5 }),
+    strata: Object.freeze({ width: Object.freeze([1.30, 2.05]), flatten: 0.55 }),
+    framing: Object.freeze({ width: Object.freeze([1.08, 1.45]), flatten: 0.45 }),
+    /** A mass the field already draws near (the horizon's big shapes): its growth range. */
+    near: Object.freeze({ width: Object.freeze([1.30, 1.65]), flatten: 0.35 }),
+});
+/** A mass's share of its role's range, from its seed (0..1, stable). */
+function varietyShare(spec) {
+    const v = Math.sin((spec.seed * 12.9898) + 78.233) * 43758.5453;
+    return v - Math.floor(v);
+}
+/** [width, height] growth for a mass in the `banks` layout. */
+function bankGrowth(spec) {
+    const range = spec.lod === 'near' && spec.role !== 'framing' ? BANKS_VARIETY.near : BANKS_VARIETY[spec.role];
+    if (!range) return BANKS_GROWTH[spec.role] || null;
+    const share = varietyShare(spec);
+    // Weighted toward the low end: most masses grow a little, a few a lot.
+    const gw = range.width[0] + ((range.width[1] - range.width[0]) * share * share);
+    return [gw, 1 + ((gw - 1) * range.flatten)];
+}
 /** The masses in the sky opposite the sun that the shower's rain cloud replaces. */
 const SHOWER_REPLACES = Object.freeze(['A09', 'A10', 'A11', 'O04']);
 /**
@@ -190,7 +221,7 @@ function bankSpecs(specs, railSamples) {
             });
         }
         if (s.role === 'banner' || /^Z\d/.test(s.id)) return s;
-        const growth = BANKS_GROWTH[s.role];
+        const growth = bankGrowth(s);
         if (!growth) return s;
         const [gw, gh] = growth;
         const w = Math.min(Math.round(s.w * gw), Math.max(s.w, widthBeforeNear(s, railSamples)));

@@ -829,3 +829,37 @@ out, the triangle budget, and outward unit normals.
 
 **Not done.** The rocks cast no shadow on the grass. The forest's shade plate could carry them,
 but the plate is baked with the scatter in the worker.
+
+## §15. Cloud variety (2026-11-02)
+
+**Why.** The audit saw "small puffs, all one size, spread evenly", with no big shapes on the
+horizon. The `banks` layout ([ODYSSEY_CLOUDS_LOOKS_2026-10.md](ODYSSEY_CLOUDS_LOOKS_2026-10.md))
+had grown each role by one factor, so every mass of a role kept its place in the size order.
+
+**What changed** (`BANKS_VARIETY` in `world/odyssey-cloud-looks.js`). Each mass now grows by its
+own share of its role's range, taken from its seed and weighted to the low end, so most grow a
+little and a few a lot:
+
+| Role | Width growth (was) | Height |
+|---|---|---|
+| middle distance (`overhead`) | 1.08-1.62 (1.22) | half the width's growth |
+| horizon row (`strata`) | 1.30-2.05 (1.42) | 0.55 of it |
+| framing masses | 1.08-1.45 (1.12) | 0.45 of it |
+| horizon masses already at full detail | 1.30-1.65 | 0.35 of it |
+
+Growth is always wider than tall: the owner's wide, low shapes, not towers. The big shapes come
+from the masses the field already draws at full detail, so they cost no triangles. Every other
+mass is still held under the width at which the field would promote it to a finer tier
+(`widthBeforeNear`), so the field stays inside its 34k-triangle budget. The paint, the shower's
+masses over the bow and the zenith masses are unchanged.
+
+![p 0.42, 0.50, 0.58 and 0.64, the same clock: before (left) and after (right)](images/odyssey-island-2026-11-02/clouds-before-after.jpg)
+
+**The honest outcome: a modest step.** The middle distance and the near horizon now read as a
+few wide banks among smaller clouds. The far horizon row is still small puffs: those masses are
+at the coarsest tier, and any of them grown past the promotion width costs ~900 triangles the
+budget does not have. Bigger shapes there, or a cloud sea under the climb, need a new budget or a
+cheaper far tier (an impostor, for example), which is a larger piece of work.
+
+**Tests.** The looks and field suites pass unchanged: every grown mass is wider than it shipped,
+clears the live rail by its role's margin, and the field stays under 34,000 triangles.
