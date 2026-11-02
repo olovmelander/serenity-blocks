@@ -136,12 +136,37 @@ describe('the rail flows on into the black hole (the inflow)', () => {
     });
 
     it('closes on the centre the way the disk turns, and flares where it crosses the photon ring', () => {
-        const { stream } = layAt(0.8709 + 0.002);
-        const peak = Math.max(...stream.rim);
-        expect(peak).toBeGreaterThan(0.9);
+        // Since 2026-11-02 the camera holds its aim on the mouth (RAIL_END_AIM), so on the real
+        // trip the orb already sits inside the shadow's disc: there is no ring to cross, which is
+        // why the stream is off. Its rim logic (kept for ?odysseyPathInflow=1) is checked here
+        // with the orb set outside the disc, beside the hole as the old aim left it.
+        const camera = rig.poseAt(0.8709 + 0.002);
+        const hole = holeAt(camera, 0.8709 + 0.002);
+        const axis = hole.centre.clone().sub(camera.position).normalize();
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        const side = right.clone().sub(axis.clone().multiplyScalar(right.dot(axis))).normalize();
+        const z0 = start.clone().sub(camera.position).dot(axis);
+        const alpha = Math.asin(hole.radius / hole.d);
+        const outside = camera.position.clone()
+            .addScaledVector(axis, z0)
+            .addScaledVector(side, Math.tan(1.6 * alpha) * z0);
+        const stream = createOdysseyPathInflowStream();
+        expect(buildOdysseyPathInflow({
+            eye: camera.position,
+            right,
+            tanHalfFov: Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)),
+            centre: hole.centre,
+            radius: hole.radius,
+            start: outside,
+            tangent,
+        }, stream)).toBe(true);
+        expect(Math.max(...stream.rim)).toBeGreaterThan(0.9);
         // Inside the disc it heads for the centre: `inner` grows to ~1 at the far end.
         expect(stream.inner[stream.t.length - 1]).toBeGreaterThan(0.95);
         expect(stream.inner[0]).toBe(0);
+        // On the real trip the mouth orb is well inside the disc.
+        const toMouth = start.clone().sub(camera.position).normalize();
+        expect(toMouth.angleTo(axis) / alpha).toBeLessThan(0.6);
     });
 
     it('is a camera-facing strip that never flips over', () => {
