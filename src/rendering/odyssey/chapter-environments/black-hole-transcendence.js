@@ -49,6 +49,7 @@ import { resolveFoldRoom, resolveFoldRoomAnchors } from '../transitions/odyssey-
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
 import { pickByQualityTier } from './shared/odyssey-quality-tier.js';
 import {
+    CH7_FALL,
     blackHoleFallAtRest,
     resolveBlackHoleFall,
     resolveBlackHoleFallDepth,
@@ -471,9 +472,11 @@ export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
     const { distantHole } = group.userData;
     if (!distantHole || !camera?.position) return false;
     const fallState = fall ?? blackHoleFallAtRest();
+    // Grown: in the fall, or already looming on the run-in before it (CH7_APPROACH).
+    const grown = fallState.active || fallState.alpha > CH7_FALL.restAlpha + 1e-9;
     // THE FALL: as the hole grows it recedes along the view axis just enough to keep its near
     // surface clear of the rail and nodes, and eases onto the axis (resolveBlackHoleFallDepth).
-    const depth = fallState.active ? resolveBlackHoleFallDepth(fallState.alpha) : GARGANTUA_LOCK.lockDepth;
+    const depth = grown ? resolveBlackHoleFallDepth(fallState.alpha) : GARGANTUA_LOCK.lockDepth;
     resolveGargantuaFallPosition(camera, _heroWorld, depth, fallState.centring);
     // THE 7->8 GLIDE: off the lock onto the Retrosun's direction, at the lock's distance (so the
     // shadow keeps its angular size, which is also the sun disc's). The target is held within
@@ -498,7 +501,7 @@ export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
     // The hero's scale: the shadow subtends the fall's angular radius from the eye (exactly 1 at
     // rest, where the lock already subtends it).
     const heroDistance = _heroWorld.distanceTo(camera.position);
-    const heroScale = fallState.active
+    const heroScale = grown
         ? Math.max(1e-3, (heroDistance * Math.sin(fallState.alpha)) / CH7_GARGANTUA.shadowRadius)
         : 1;
     distantHole.scale.setScalar(heroScale);
@@ -608,15 +611,18 @@ export function advanceWarpDrive(state, delta, progress, warp, opts = {}) {
 }
 
 /**
- * THE TRACED HOLE, AS SEEN FROM OUTSIDE (2026-10-31; odyssey-gargantua-lens.tsl.js). Chapter 6's
- * omen and Gargantua are one hole: the same traced lens round the same shadow, in the same pose,
- * so the 6->7 hand-over changes nothing. The lens marches from a sphere ~4.5 shadow radii out and
- * the eye must stay outside it, which it leaves at ~12.9 deg of hole: on the dive, past `from`
- * degrees, it hands the hole to the painted parts that carry the plunge (the photon ring on the
- * silhouette, the band sweeping through edge-on), gone by `to`. `?odysseyPaintedHole=1` keeps
- * the painted hole throughout.
+ * THE TRACED HOLE CARRIES THE DIVE (2026-10-31; 2026-11-02). Chapter 6's omen and Gargantua are one
+ * hole: the same traced lens round the same shadow, in the same pose, so the 6->7 hand-over changes
+ * nothing. Until 2026-11-02 the eye had to stay outside the lens's march sphere, which it left at
+ * ~12.9 deg of hole, and the dive was handed to painted parts (a razor ring on the silhouette, a
+ * flat band, embers): the bent light went flat exactly as the hole filled the frame. The lens now
+ * works with the eye inside (GARGANTUA_LENS_CARRIER), so the traced hole carries the whole dive:
+ * the disk arching over and under the shadow as it sweeps through edge-on, its gas fading as it
+ * has swept past (the fall's `band`), and the photon ring riding the silhouette out past the
+ * frame's edges (~51 deg of hole on a 16:9 frame), gone between `ringFrom` and `ringTo` degrees.
+ * `?odysseyPaintedHole=1` builds the painted hole and keeps it throughout.
  */
-export const CH7_TRACED_HOLE = Object.freeze({ from: 8.5, to: 12 });
+export const CH7_TRACED_HOLE = Object.freeze({ ringFrom: 58, ringTo: 70 });
 
 function readPaintedHoleFlag() {
     if (typeof window === 'undefined' || !window.location?.search) return false;
@@ -814,16 +820,21 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     // silhouette it is a razor at every size (it used to dim from 12 deg as a fat band).
     const holeDeg = THREE.MathUtils.radToDeg(fall.alpha ?? 0);
     const imageFade = 1 - THREE.MathUtils.smoothstep(holeDeg, 9, 19);
-    // The traced hole (CH7_TRACED_HOLE) while it is seen from outside; the painted parts after.
+    // The traced hole carries the whole dive (CH7_TRACED_HOLE); the painted parts only without it.
     const tracer = hero?.lens;
-    const traced = tracer ? 1 - THREE.MathUtils.smoothstep(holeDeg, CH7_TRACED_HOLE.from, CH7_TRACED_HOLE.to) : 0;
+    const traced = tracer ? 1 : 0;
     const painted = 1 - traced;
     if (tracer) {
-        tracer.uniforms.reveal.value = band * traced;
-        tracer.mesh.visible = !!hero.horizon?.visible && band * traced > 0.002;
-        // The plunge's band reads the lens's frame and gas motion, so they keep turning after the
-        // hand-over.
-        if (tracer.mesh.visible || band * painted > 0.002) tracer.update(hero.diskPivot, delta, 1);
+        // The ring rides the silhouette out of the frame; the gas fades as the disk sweeps past.
+        const ring = (carry?.band ?? 1)
+            * (1 - THREE.MathUtils.smoothstep(holeDeg, CH7_TRACED_HOLE.ringFrom, CH7_TRACED_HOLE.ringTo));
+        tracer.uniforms.reveal.value = ring;
+        tracer.uniforms.gas.value = ring > 1e-3 ? Math.min(1, band / ring) : 0;
+        tracer.mesh.visible = !!hero.horizon?.visible && ring > 0.002;
+        // The eye goes in: the lens's carrier stays ahead of it.
+        if (tracer.mesh.visible || band * painted > 0.002) {
+            tracer.update(hero.diskPivot, delta, 1, camera?.position ?? null);
+        }
     }
     if (hero?.uDiskFade) hero.uDiskFade.value = band * painted;
     // With the traced hole the painted far-side arcs never draw: by the time it hands over they

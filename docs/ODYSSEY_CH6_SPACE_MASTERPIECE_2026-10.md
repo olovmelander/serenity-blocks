@@ -60,15 +60,10 @@ sphere round it, premultiplied:
 - **The painted hole:** `?odysseyPaintedHole=1` builds it again.
 
 **Chapter 7 is inside the hole.** The 6→7 hand-over changes nothing: both chapters use the same
-lens round the same shadow, in the same pose. The lens marches from a sphere ~4.5 shadow radii out
-and the eye must stay outside it, which it leaves at ~12.9° of hole. So on the dive (the glide from
-orb 49 to 50), between 8.5° and 12° (`CH7_TRACED_HOLE`), the traced hole hands over to the painted
-parts that carry the plunge:
-- the photon ring on the silhouette;
-- the band sweeping through edge-on, with its embers.
-
-The window then opens onto the tunnel. Before the dive, the painted far-side arcs, the band and the
-embers are hidden.
+lens round the same shadow, in the same pose. Until 2026-11-02 the eye had to stay outside the
+lens's march sphere (~4.5 shadow radii out), which it left at ~12.9° of hole, and the dive was handed
+to painted parts (a razor ring on the silhouette, a flat band, embers). The traced hole now carries
+the whole dive: see "The dive" below.
 
 ![The traced hole at p 0.845](images/odyssey-space-2026-10-31/traced-gargantua.jpg)
 
@@ -92,6 +87,124 @@ It is drawn as the rail now:
   centre.
 
 ![The orb path from the mouth orb into the hole (p 0.866)](images/odyssey-space-2026-10-31/path-into-hole.jpg)
+
+### The rail itself runs into the hole (2026-11-02)
+
+The owner: "i dont like that neon line going from our path towards the black hole, can we extend
+the length of that chapter slightly and use the orb path going into the black hole instead of this
+neon line?"
+
+**Why there was a line.** The black hole hangs on the camera's own aim, 900 units ahead
+(`GARGANTUA_LOCK`). Through chapter 6 the rail is drawn only to the mouth orb, chapter 7's first
+(odyssey-path-horizon.js).
+- Up to p ~0.86 the camera looked at the rail ahead, so the rail and its orbs climbed into the
+  middle of the hole.
+- On the last approach, the camera's look-ahead ran on past the mouth into chapter 7's bend.
+- By the mouth the aim was 31 degrees off the rail. The hole, which follows the aim, slid away from
+  the rail, and the stream had to bridge the gap. Measured on the real camera: the mouth projected
+  inside the hole's shadow up to p 0.86 and outside it from p 0.865 on.
+
+**The fix: the camera never aims past where the rail is drawn** (`RAIL_END_AIM` in
+OdysseyCameraController.js).
+- As the look-ahead reaches the mouth, the aim is held on the mouth, eased in over 0.008 of
+  progress.
+- So the rail runs straight into the centre of the hole all the way to the mouth. Through the
+  plunge the mouth orb waits at the hole's centre with the rail leading in.
+- The hold lets go round the moment the way on is revealed inside the hole: from 0.010 before that
+  starts to 0.004 after it ends. The reveal alone was too quick a swing. The seam continuity test
+  holds the 6->7 crossing under its limits for eye, target and aim.
+
+**The stream is off.** `?odysseyPathInflow=1` brings it back to compare.
+
+**The chapter's length is unchanged.** Holding the aim did what the extra length was meant to do,
+and every orb keeps its place.
+
+![Before (left) and after (right): p 0.866, at the mouth, and into the hole at p 0.875 and 0.8775](images/odyssey-space-2026-11-02/rail-into-hole-before-after.jpg)
+
+Tests: `tests/unit/odyssey-rail-into-hole.test.js`, on the real camera:
+- the mouth stays inside the hole's shadow (within 0.6 of its radius) for the last 0.03 of the
+  approach;
+- the aim is within 2.5 degrees of the mouth on the last stretch;
+- the hold is zero far from the hole and lets go inside it.
+
+### The dive (2026-11-02)
+
+The owner: "can we extend the length of that chapter slightly and use the orb path going into the
+black hole instead of this neon line? Can you investigate that and really improve this visual
+experience."
+
+**What a film of the 48 → 49 trip showed** (the trip that dives: orbs 49 and 50 both park inside):
+- **A static approach.** The hole is camera-locked, so it held its 8.3° from orb 48 to the mouth.
+  For ~1.2 s the frames were the same picture.
+- **A flat dive.** At ~12° the traced hole gave way to painted parts in one frame. The bent light
+  went flat exactly as the hole filled the frame.
+- **A short plunge.** From 8° to swallowing the frame took ~0.4 s.
+
+**1. The hole looms on the way in** (`CH7_APPROACH`, odyssey-black-hole-fall.js).
+- Its size is one approach from just before orb 48's park (`runIn` 0.0095 of progress) to the
+  horizon.
+- The eye closes on it at a steady pace, so it grows as one over the distance:
+  sin α = sin(rest) / (1 − c·w).
+- That gives ~14° at the mouth and on without a pause.
+- From `landFrom` (60°) it eases onto the horizon's 72°, with the pace matched at the join.
+- The old growth (u^1.9 from the chapter line) started from a standstill.
+- The hole grows as the hero's scale (`poseGargantua`), so the post lens grows with it.
+
+**2. The traced hole carries the dive** (`GARGANTUA_LENS_CARRIER`, odyssey-gargantua-lens.tsl.js;
+`CH7_TRACED_HOLE`).
+- **The march already worked with the eye inside its sphere.** It starts at the eye. In this
+  model the shadow's edge stays on the black sphere from any distance (a ray is captured when
+  |x × v| < 3√3/2, and from the eye that is the sphere's own angle).
+- **The carrier was the problem.** The sphere that carries the fragments was drawn front faces
+  only, and from inside there are none.
+- **The carrier now shrinks to stay 120 u ahead of the eye.** That is behind the rail and the orbs
+  (the mouth orb is never more than ~80 u out) and in front of the shadow's near surface (never
+  nearer than 150 u).
+- **Each fragment writes the depth of its own light** (`depthNode`): on the shadow's surface where
+  the ray meets the shadow, at the ray's closest approach to the hole elsewhere. So the gas giant,
+  nearer than the hole, now hangs in front of the disk. The carrier's depth had drawn the disk
+  over it while the giant covered the shadow.
+- **No gas within reach of the eye.** From inside the disk's radius, a physical disk is a floor
+  across half the frame. The gas is cut off from 0.7 to 0.85 of the eye's distance from the hole
+  (the painted band's own 0.85).
+- **The disk's gas fades as the disk sweeps past** (the fall's `band`, the lens's new `gas`
+  uniform). The photon ring rides the silhouette out of the frame and goes between 58° and 70°.
+  The painted parts are drawn only with `?odysseyPaintedHole=1`.
+- **Two artefacts that only show from inside, fixed:**
+  - *A sawtooth along the gas.* Whether a crossing of the disk lies in front of the hole was
+    judged at each march step's start, so the call flipped a whole step at a time. It is now
+    judged at the crossing and eased across the closest approach. Halving the step halved the
+    teeth, which is how it was found.
+  - *Stair-stepped gas when magnified.* The gas's level of detail now reads the light's own path
+    length rather than the eye's distance to the hole. Where a texel would cover more than 1.5 px
+    along its long side, the gas is read through a cubic B-spline.
+
+**3. The trip lingers** (`CH7_PLUNGE_TRAVEL`).
+- **The run-in** weighs 3 (`runInDwell`) and gives a trip across it 1 s more (`runInExtraMs`).
+- **The plunge** gets 3 s (was 2.6 s).
+- **A beat at the rim:** where the hole is 50° (its rim and the ring crossing the frame's edges),
+  a Gaussian weight of 70 over 0.00035 of progress.
+- **The measure** is integrated once per layout into a table (it no longer has a closed form).
+- **The 48 → 49 trip now runs 4.9 s:**
+  - the hole visibly growing from ~0.5 s;
+  - the mouth at 1.8 s;
+  - 40° → 60° over 0.56 s (was 0.37 s);
+  - inside at 3.3 s;
+  - the fold by 4 s.
+- No orb moved: the chapter is "longer" in time, not in path.
+
+![Before (left) and after (right) on the 48 -> 49 trip: the run-in, the traced hole, the disk edge-on and the rim](images/odyssey-space-2026-11-02/dive-before-after.jpg)
+
+Not done: stretching the rail and orbs as they cross the rim. They never cross it: the rail runs
+into the hole's middle, in front of the shadow, and the hole closes round it, so a stretch would
+read as a glitch rather than as gravity. The bent light around the rim does that job.
+
+Tests: `tests/unit/odyssey-hole-dive.test.js` covers:
+- the approach: rest before it, ~14° at the mouth, no pause or jump, the landing's pace matched;
+- the hole posed bigger on the run-in;
+- the traced hole on and the painted parts off through the dive;
+- the carrier 120 u ahead of the eye, with the hole unmoved;
+- the trip's marks: over a second to the mouth, half a second at the rim, under 5.5 s.
 
 ## 4. The galaxy, as the Galaxy theme draws one (odyssey-spiral-galaxy*.js)
 

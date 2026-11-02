@@ -27,6 +27,7 @@ import {
 } from '../../src/rendering/odyssey/odyssey-path-inflow.js';
 import { resolveOdysseyPathReveal } from '../../src/rendering/odyssey/odyssey-path-horizon.js';
 import {
+    CH7_APPROACH,
     CH7_FALL,
     CH7_FALL_LOCK,
     CH7_PLUNGE_TRAVEL,
@@ -136,12 +137,37 @@ describe('the rail flows on into the black hole (the inflow)', () => {
     });
 
     it('closes on the centre the way the disk turns, and flares where it crosses the photon ring', () => {
-        const { stream } = layAt(0.8709 + 0.002);
-        const peak = Math.max(...stream.rim);
-        expect(peak).toBeGreaterThan(0.9);
+        // Since 2026-11-02 the camera holds its aim on the mouth (RAIL_END_AIM), so on the real
+        // trip the orb already sits inside the shadow's disc: there is no ring to cross, which is
+        // why the stream is off. Its rim logic (kept for ?odysseyPathInflow=1) is checked here
+        // with the orb set outside the disc, beside the hole as the old aim left it.
+        const camera = rig.poseAt(0.8709 + 0.002);
+        const hole = holeAt(camera, 0.8709 + 0.002);
+        const axis = hole.centre.clone().sub(camera.position).normalize();
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        const side = right.clone().sub(axis.clone().multiplyScalar(right.dot(axis))).normalize();
+        const z0 = start.clone().sub(camera.position).dot(axis);
+        const alpha = Math.asin(hole.radius / hole.d);
+        const outside = camera.position.clone()
+            .addScaledVector(axis, z0)
+            .addScaledVector(side, Math.tan(1.6 * alpha) * z0);
+        const stream = createOdysseyPathInflowStream();
+        expect(buildOdysseyPathInflow({
+            eye: camera.position,
+            right,
+            tanHalfFov: Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)),
+            centre: hole.centre,
+            radius: hole.radius,
+            start: outside,
+            tangent,
+        }, stream)).toBe(true);
+        expect(Math.max(...stream.rim)).toBeGreaterThan(0.9);
         // Inside the disc it heads for the centre: `inner` grows to ~1 at the far end.
         expect(stream.inner[stream.t.length - 1]).toBeGreaterThan(0.95);
         expect(stream.inner[0]).toBe(0);
+        // On the real trip the mouth orb is well inside the disc.
+        const toMouth = start.clone().sub(camera.position).normalize();
+        expect(toMouth.angleTo(axis) / alpha).toBeLessThan(0.6);
     });
 
     it('is a camera-facing strip that never flips over', () => {
@@ -191,7 +217,8 @@ describe('the plunge takes its time', () => {
         const after = plungeMs(rig.parkOf(48), rig.parkOf(49));
         expect(before.plunge).toBeLessThan(150);
         expect(after.plunge).toBeGreaterThan(900);
-        expect(after.total).toBeLessThan(4000);
+        // The run-in and the beat at the rim (2026-11-02) are watched too: ~5 s, not ~3.6 s.
+        expect(after.total).toBeLessThan(5500);
     });
 
     it('inverts exactly, and leaves trips that never reach the plunge as they were', () => {
@@ -208,7 +235,11 @@ describe('the plunge takes its time', () => {
     });
 
     it('gives a long trip through the hole only a little more time', () => {
-        expect(plungeTravelExtraMs(rig.parkOf(48), rig.parkOf(49), cp)).toBeCloseTo(CH7_PLUNGE_TRAVEL.extraMs, 6);
+        // The plunge's time, and the run-in's for the share of it the trip crosses (it starts at
+        // orb 48's park, a hair past the run-in's start).
+        const runIn = Math.min(1, (cp[6] - rig.parkOf(48)) / CH7_APPROACH.runIn);
+        expect(plungeTravelExtraMs(rig.parkOf(48), rig.parkOf(49), cp))
+            .toBeCloseTo(CH7_PLUNGE_TRAVEL.extraMs + (CH7_PLUNGE_TRAVEL.runInExtraMs * runIn), 6);
         expect(plungeTravelExtraMs(rig.parkOf(30), rig.parkOf(56), cp)).toBe(0);
     });
 
@@ -262,7 +293,10 @@ describe('the hole stays a black hole all the way in', () => {
             // The ring's inner edge is on the silhouette (the centre plane put it at
             // atan(sin alpha): 35 deg for a 45 deg hole, behind the shadow).
             expect(THREE.MathUtils.radToDeg(Math.abs(seen - fall.alpha)), `u=${u}`).toBeLessThan(0.4);
-            expect(ring.material.uniforms.uOpacity.value).toBeCloseTo(1, 6);
+            // Drawn only with the painted hole: the traced hole carries the whole dive since
+            // 2026-11-02 (CH7_TRACED_HOLE), its own photon ring with it.
+            const traced = !!group.userData.distantHole.userData.lens;
+            expect(ring.material.uniforms.uOpacity.value).toBeCloseTo(traced ? 0 : 1, 6);
         });
         // Without a camera (headless smoke) there is no silhouette: the centre plane, never NaN/inf.
         updateBlackHoleTranscendenceEnvironment(group, 1 / 60, 3, null, cp[6] + 0.005);

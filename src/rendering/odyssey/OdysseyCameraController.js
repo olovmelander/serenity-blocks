@@ -8,6 +8,7 @@
 import * as THREE from 'three/webgpu';
 import { orbitEarthAt } from './composition/odyssey-orbit-earth.js';
 import { odysseyScrollPace } from './odyssey-scroll-pace.js';
+import { ODYSSEY_PATH_HORIZON, resolveOdysseyPathReveal } from './odyssey-path-horizon.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import {
     ODYSSEY_ACTS,
@@ -669,6 +670,21 @@ export function invertSweepPacing(table, share) {
     return (lo + f) / n;
 }
 
+/**
+ * THE RAIL RUNS INTO THE HOLE (2026-11-02; the owner: "i dont like that neon line going from our
+ * path towards the black hole ... use the orb path going into the black hole instead"). Through
+ * chapter 6 the rail is drawn only to the mouth orb (odyssey-path-horizon.js), and the black hole
+ * hangs on the camera's own aim (GARGANTUA_LOCK). On the last approach the follow camera's look-ahead
+ * ran on past the mouth into chapter 7's bend, so the aim swung up to 31 degrees off the rail and the
+ * hole slid off it: the inflow's thin stream had to bridge the gap. Now, as the look-ahead reaches
+ * the rail's drawn end, the aim is held on that end (eased over `lead` of progress before it), so
+ * the rail climbs straight into the middle of the hole all the way to the mouth; it lets go round
+ * the moment the way on is laid out inside the hole (from `releaseEarly` before it starts to
+ * `releaseLate` after it ends: the reveal alone is ~0.003 of progress, too quick a swing), hidden by
+ * the hole filling the view.
+ */
+export const RAIL_END_AIM = Object.freeze({ lead: 0.008, releaseEarly: 0.010, releaseLate: 0.004 });
+
 export const LOOK_AROUND = Object.freeze({
     yawDeg: 16,
     pitchDeg: 9,
@@ -1166,6 +1182,8 @@ export class OdysseyCameraController {
         this._look = { x: 0, y: 0 };
         this._lookOffset = new THREE.Vector3();
         this._lookTurnAxis = new THREE.Vector3();
+        this._frameRailEnd = new THREE.Vector3();
+        this._frameRailEndScratch = new THREE.Vector3();
         this._lookApplied = false;
         this._breathOffset = new THREE.Vector3();
         // 0..1 envelope: reset whenever breathing is suspended (focus/zoom animations, portal,
@@ -1986,6 +2004,43 @@ export class OdysseyCameraController {
             table[i] = ((1 - share) * (paced[i] / pacedTotal)) + (share * (unitTotal > 1e-9 ? units[i] / unitTotal : 0));
         }
         return table;
+    }
+
+    /**
+     * How far the follow aim is held on the rail's drawn end (RAIL_END_AIM), and where that end is.
+     * @param {number} lookAheadT the look-ahead's raw progress
+     * @param {number} position the camera's progress
+     * @param {THREE.Vector3} out the rail's drawn end (world), written when the weight is > 0
+     * @returns {number} 0..1
+     * @private
+     */
+    _resolveRailEndAim(lookAheadT, position, out) {
+        // The rail's end while it is held (odyssey-path-horizon.js): the mouth, chapter 6's end. A
+        // fixed point, so the aim never chases the horizon as it opens; the weight's two ramps (the
+        // look-ahead reaching it, the release round the reveal) say when it applies.
+        const mouth = this.chapterPositions?.[ODYSSEY_PATH_HORIZON.chapter];
+        if (!Number.isFinite(mouth)) return 0;
+        const { lead } = RAIL_END_AIM;
+        const x = THREE.MathUtils.clamp((lookAheadT - (mouth - lead)) / lead, 0, 1);
+        let weight = x * x * (3 - (2 * x));
+        // ...and it lets go as the way on is laid out inside the hole (the reveal), at its pace.
+        const reveal = resolveOdysseyPathReveal(this.chapterPositions, this.levelPositions);
+        if (reveal && reveal.end > reveal.start) {
+            const from = reveal.start - RAIL_END_AIM.releaseEarly;
+            const to = reveal.end + RAIL_END_AIM.releaseLate;
+            const r = THREE.MathUtils.clamp((position - from) / (to - from), 0, 1);
+            weight *= 1 - (r * r * (3 - (2 * r)));
+        }
+        if (weight <= 0) return 0;
+        const { position: end } = this.getPathDataAt(
+            mouth,
+            this._frameRailEndScratch,
+            this._frameThrow,
+            this._frameThrow,
+            this._frameThrow,
+        );
+        out.copy(end);
+        return weight;
     }
 
     /**
@@ -3088,6 +3143,10 @@ export class OdysseyCameraController {
             .addScaledVector(cameraUp, framing.lookUp);
 
         lookTarget.add(this.getLookAtOffset(clampedPosition));
+
+        // THE RAIL RUNS INTO THE HOLE (RAIL_END_AIM): never aim past where the rail is drawn.
+        const railEndWeight = this._resolveRailEndAim(rawLookAheadT, clampedPosition, this._frameRailEnd);
+        if (railEndWeight > 0) lookTarget.lerp(this._frameRailEnd, railEndWeight);
 
         // STAGE AIM: blend the look DIRECTION toward the stage forward (distance preserved).
         if (stage && stageAimWeight > 0) {
