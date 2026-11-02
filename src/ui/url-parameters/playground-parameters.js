@@ -2407,19 +2407,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'lakeTint',
-        category: 'Playground',
-        scope: 'playground.html — odyssey-world',
-        description: 'Choose the Act II lake color treatment.',
-        values: 'mirror, ocean, tarn, ghibli, deepstill or alpine.',
-        defaultValue: 'alpine.',
-        example: 'lakeTint=tarn',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/odyssey-world.effect.js',
-        ],
-    },
-    {
         name: 'layers',
         category: 'Playground',
         scope: 'playground.html — logo-warp-transition',

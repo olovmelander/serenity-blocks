@@ -545,16 +545,6 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         },
     ),
     parameter(
-        'lakeTint',
-        'Chooses a comparison palette for the continuous world’s northern lake.',
-        'mirror, ocean, tarn, ghibli, deepstill or alpine',
-        'alpine',
-        'tarn',
-        {
-            scope: WORLD_SCOPE, sources: [BOARD, 'src/rendering/odyssey/world/odyssey-world-renderer.js'],
-        },
-    ),
-    parameter(
         'odysseyNoWhales',
         'Removes the mother-and-calf whale pass above the ocean ascent.',
         '1 enables removal; other values retain the whales',

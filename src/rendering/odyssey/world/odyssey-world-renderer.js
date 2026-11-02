@@ -47,6 +47,9 @@ import { ODYSSEY_SHOWER, showerBowVolume } from './odyssey-shower.js';
 import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import {
+    LAKE_RAMP, LAKE_WATER, SEA_ABSORB_GAIN, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+} from './odyssey-water-looks.js';
+import {
     FOREST_LEAF_CARD, FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW,
 } from './odyssey-forest-geometry.js';
 import { forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex } from './odyssey-forest-cards.js';
@@ -359,109 +362,6 @@ const FIELD_CROWN_WHITE = 0.38;
 const FIELD_SOFT_RIM = 0.42;
 
 /**
- * THE NORTH LAKE'S WATER PALETTE (owner-directed colour pass 2026-08-16).
- *
- * Authored in the world's LINEAR working space, before `toOutput` (which multiplies by
- * ONE_WORLD_OUTPUT_SCALE 0.82 and pulls saturation to 0.72) and before `applyAerial`.
- * ⚠️ That stack costs roughly a fifth of the value and a quarter of the chroma, so these
- * are deliberately DEEPER and MORE saturated than the pixel they are meant to produce —
- * the same overshoot rule the theme work records for playground-vs-graded tuning.
- *
- * `shallowFrom/To` are water DEPTHS in world units, and they are set against MEASURED
- * bathymetry, not taste: the arms run 4-11 u deep and the main basin 7-40 u, so a shore
- * band wider than ~13 u tints the entire lake "shallow" and the depth read disappears.
- *
- * THE ARMS OF THE COMPARISON ARE KEPT. `?lakeTint=<name>` selects one in the playground
- * AND through the graded capture harness (`--url-flag lakeTint=ocean`), which is the only
- * honest way to judge a colour here — the playground is flat NoToneMapping, and requiring
- * a tree edit per arm is what makes people compare across capture runs, which silently
- * changes the CAMERA (sparse-station hysteresis) and invalidates the A/B.
- *
- * MEASURED, all four arms at p=0.640 from the same station list, sky luma 163.7:
- *   mirror (incumbent)  luma 158.1  sat 19%   0.96x sky — reads as a hole, not water
- *   tarn                luma 147.9  sat 34%
- *   deepstill           luma 122.4  sat 36%   0.74x sky — deepest, coolest
- *   alpine (SHIPPED)    luma 136.1  sat 35%   0.83x sky
- * ⚠️ Judge colour at p 0.60-0.65 ONLY. The world's departure fade opens at p=0.6327 and
- * is already 34% by p=0.68, lerping everything toward 0x05060f — an A/B taken at 0.67+
- * measures the fade, not the palette.
- */
-const LAKE_TINT_VARIANTS = {
-    // A — the incumbent sky mirror, kept as the control arm for the comparison.
-    mirror: {
-        shallow: [0.30, 0.40, 0.60],
-        deep: [0.20, 0.29, 0.52],
-        shallowFrom: 0,
-        shallowTo: 1,
-        skyLevel: 0.92,
-        grazeMax: 0.0,
-        grazePow: 5,
-        glintGain: 0.30,
-    },
-    // B — the world's OWN ocean family (uWaterShallow/Mid), so the island's water reads
-    // as one substance. Cool, fairly blue.
-    ocean: {
-        shallow: [0.29, 0.54, 0.69],
-        deep: [0.10, 0.29, 0.42],
-        shallowFrom: 0.5,
-        shallowTo: 13,
-        skyLevel: 0.85,
-        grazeMax: 0.35,
-        grazePow: 4,
-        glintGain: 0.16,
-    },
-    // C — alpine tarn: green-teal shallows over a deep blue body, the classic
-    // mountain-lake read and the one that separates most from the sky.
-    tarn: {
-        shallow: [0.30, 0.58, 0.55],
-        deep: [0.055, 0.20, 0.34],
-        shallowFrom: 0.5,
-        shallowTo: 13,
-        skyLevel: 0.85,
-        grazeMax: 0.35,
-        grazePow: 4,
-        glintGain: 0.16,
-    },
-    // D — Ghibli daylight lake: warmer, lighter, higher chroma, less depth contrast.
-    ghibli: {
-        shallow: [0.38, 0.66, 0.66],
-        deep: [0.12, 0.34, 0.50],
-        shallowFrom: 0.5,
-        shallowTo: 15,
-        skyLevel: 0.95,
-        grazeMax: 0.40,
-        grazePow: 3.5,
-        glintGain: 0.20,
-    },
-    // E — deep still water: minimal shore band, dark body, strong grazing sky. The most
-    // "mirror at the far shore, ink in the middle" of the set.
-    deepstill: {
-        shallow: [0.16, 0.34, 0.46],
-        deep: [0.035, 0.13, 0.26],
-        shallowFrom: 0.5,
-        shallowTo: 11,
-        skyLevel: 0.90,
-        grazeMax: 0.40,
-        grazePow: 3,
-        glintGain: 0.14,
-    },
-    // F — alpine (SHIPPED): deepstill's value ladder — measured 0.74x the sky's luma at
-    // the rail, where the incumbent mirror sat at 0.96x and read as a hole in the ground
-    // — carrying tarn's teal in the shallows so the shore band belongs to the island's
-    // greens rather than to the sky.
-    alpine: {
-        shallow: [0.24, 0.50, 0.50],
-        deep: [0.045, 0.16, 0.30],
-        shallowFrom: 0.5,
-        shallowTo: 12,
-        skyLevel: 0.88,
-        grazeMax: 0.38,
-        grazePow: 3.5,
-        glintGain: 0.15,
-    },
-};
-const LAKE_TINT_DEFAULT = 'alpine';
-/**
  * THE TARN'S MIRROR (see the tarn material): the march (`steps`, the first step and how each grows,
  * world units), where the reflected land turns to rock and to snow (altitude ramps), and its light
  * (sun gain over the baked visibility, sky ambient).
@@ -472,29 +372,6 @@ const LAKE_TINT_DEFAULT = 'alpine';
  * (a sheltered pond, not open water), and `fresnel` is the sea's [gain, floor] with a higher floor,
  * because still water mirrors more than a sea under wind.
  */
-/**
- * The sea turns blue sooner (2026-10-31, "can we improve the water in the ocean"): a gain on the
- * colour script's measured absorption. At 1 the visible sea sat in the ramp's pale upper plates
- * from every Act II station, a milky aqua; above 1 the same depths reach cerulean and cobalt.
- */
-const SEA_ABSORB_GAIN = 2.6;
-/**
- * THE WATERS' OWN PIGMENTS (water pass, 2026-10-31, "do what you think will be most beautiful").
- * This is a cool northern island (a snowy horn, conifers, meadows): its sea is turquoise only in
- * the thin band over the sand and turns a deep teal-blue within a few metres, clear and cold, like
- * the Lofoten or Fiordland coasts; the colour script's ramp (Act I's, unchanged) leaned tropical,
- * a wide band of bright aqua that was the most saturated thing in every frame. The sea keeps the
- * script's turquoise for the sand and steps through teal to a blue-green deep. The tarn under the
- * horn is fed by its snow: the milky jade-turquoise of glacial flour, brighter and less saturated
- * than the sea and nearly opaque, so it reads as an alpine lake rather than a pool. Both keep the
- * script's four plates (`bands`) and every other water term in common.
- */
-const SEA_RAMP = Object.freeze({
-    shore: ODYSSEY_WATER_RAMP.shore,
-    shelf: Object.freeze([0.10, 0.41, 0.50]),
-    open: Object.freeze([0.05, 0.27, 0.40]),
-    deep: Object.freeze([0.03, 0.15, 0.24]),
-});
 /**
  * THE SHOWER'S LOOK (round three; the layout is odyssey-shower.js): how fast the rain falls (u/s)
  * and how long its streaks are (u), the even veil and the streaks' share of its density, and how
@@ -1273,10 +1150,6 @@ export function createOdysseyWorld({
     // Unset = the shipped paint and the shipped table.
     cloudLook = null,
     cloudSpecs = null,
-    // REVIEW LEVER ONLY (playground `?lakeTint=`): pick a north-lake water palette from
-    // LAKE_TINT_VARIANTS. Unset ships LAKE_TINT_DEFAULT, so the game has exactly one
-    // answer and the comparison arms cannot leak into it.
-    lakeTint = '',
     // THE BROADLEAF GREENS (odyssey-forest-greens.js, `?odysseyForestGreens=`): the palette the
     // lowland broadleaf's crowns take per tree. Unset ships ODYSSEY_FOREST_GREENS_DEFAULT.
     forestGreens = '',
@@ -3001,97 +2874,6 @@ export function createOdysseyWorld({
     groundMesh.name = 'odyssey-world-ground';
     group.add(groundMesh);
 
-    // ── THE NORTH LAKE (north-island plan Wave 1, tripled + sculpted per owner) ─────
-    // A PAINTED lake: it is only ever seen from the climb rail ~1000 u away, so it is
-    // opaque flat discs — a sky-mirror colour family plus one big analytic sun-glint
-    // streak. No reflector, no ripples, no blend state; the SHORELINE IS DRAWN BY THE
-    // DEPTH BUFFER where the carve's rims rise through the discs, so the lobed waterline
-    // is organic for free. ONE DISC PER LOBE, each stepped 2 cm lower than the last —
-    // coplanar overlapping discs would z-fight in the waist, and 2 cm is invisible at
-    // range while giving the depth test a clean answer.
-    const lakeMat = new THREE.MeshBasicNodeMaterial();
-    const LAKE_TINT = LAKE_TINT_VARIANTS[lakeTint] || LAKE_TINT_VARIANTS[LAKE_TINT_DEFAULT];
-    {
-        // The glint is computed against the UNION's midpoint so one streak crosses the
-        // whole bean rather than each lobe growing its own.
-        const lakeLobes = ODYSSEY_NORTH_LAKE.lobes;
-        const glintCx = lakeLobes.reduce((s, lb) => s + lb.x, 0) / lakeLobes.length;
-        const glintCz = lakeLobes.reduce((s, lb) => s + lb.z, 0) / lakeLobes.length;
-        const lakeRel = vec2(
-            positionWorld.x.sub(glintCx),
-            positionWorld.z.sub(glintCz),
-        );
-        // Sun azimuth in the ground plane; the glint is a streak ALONG it — elongated
-        // toward the light, soft across it, the way every painted reference draws water.
-        const sunAz = normalize(vec2(uSunDir.x, uSunDir.z));
-        const glintAlong = dot(lakeRel, sunAz);
-        const glintAcross = dot(lakeRel, vec2(sunAz.y.negate(), sunAz.x));
-        // ⚠️ WIDE AND SOFT, because a narrow one reads as a SEAM. At 34 u across on a
-        // 700 u lake the streak was a hard-edged band sitting exactly over the waist
-        // where the lobes join — an aerial review read it as a construction scar rather
-        // than as sun on water. 150 u across, feathered over most of that, and squared
-        // so the falloff is gentle in the middle and quick at the rim.
-        const glint = smoothstep(float(150), float(24), abs(glintAcross)).pow(2)
-            .mul(smoothstep(float(560), float(90), abs(glintAlong)));
-
-        // ── THE WATER MODEL ────────────────────────────────────────────────────────
-        // Measured on the sky-mirror version: the lake read 0.85x the sky's luma at 28%
-        // saturation — pale, and the same family as the sky it sat under, which is why
-        // it looked like a hole rather than water. Water reads as water for two reasons
-        // a flat mirror tint cannot supply:
-        //
-        //   DEPTH. Shallow shore water shows the bed and goes light and green; the body
-        //   goes dark and blue. The sea material already computes bed depth from the
-        //   baked plates (macro.r + relief.r * macro.g) — the lake uses the identical
-        //   pattern, two fetches, so the shore band follows the MEANDERED waterline
-        //   exactly instead of an ellipse approximation.
-        //
-        //   GRAZING REFLECTION. Looking steeply down you see INTO water; looking along
-        //   it you see the sky in it. With the surface normal fixed at +Y, that is a
-        //   plain Fresnel-ish ramp on the view vector, and it is what makes the far side
-        //   of a lake bright while the near side stays dark.
-        const lakeUv = vec2(positionWorld.x, positionWorld.z).div(float(RELIEF_EXTENT)).add(0.5);
-        const lakeBedTex = texture(macroTex, lakeUv);
-        const lakeBedY = lakeBedTex.r.add(texture(heightTex, lakeUv).level(0).r.mul(lakeBedTex.g));
-        const lakeDepth = float(ODYSSEY_NORTH_LAKE.waterY).sub(lakeBedY).toVar();
-        const shallowT = smoothstep(float(LAKE_TINT.shallowFrom), float(LAKE_TINT.shallowTo), lakeDepth);
-        const body = mix(vec3(...LAKE_TINT.shallow), vec3(...LAKE_TINT.deep), shallowT);
-        // View-angle sky reflection. `uSkyHorizon` rather than the zenith: a lake
-        // reflects the sky it can SEE at a grazing angle, which is the horizon band.
-        const lakeView = normalize(cameraPosition.sub(positionWorld));
-        const graze = clamp(float(1).sub(abs(lakeView.y)), 0.0, 1.0).pow(LAKE_TINT.grazePow);
-        const skyInWater = mix(uSkyHorizon, uSkyZenith, float(0.25)).mul(LAKE_TINT.skyLevel);
-        const lakeCol = mix(body, skyInWater, graze.mul(LAKE_TINT.grazeMax))
-            .add(uSunColour.mul(glint).mul(LAKE_TINT.glintGain));
-        // ⚠️ THE **LAND** AERIAL, NOT THE WATER ONE — measured, and it was most of the
-        // washed-out look. `applyAerial`'s defaults are the SEA's (ceil 0.82, rate 1.0),
-        // because the ocean's haze has a job: converging on the same plate the sky
-        // converges on. This lake is an inland surface sitting inside terrain that hazes
-        // at the land rate (ceil 0.58, rate 0.62), so on the defaults it faded toward the
-        // sky ~1.6x faster than its own banks — and from above, `skyColourFor` returns
-        // EXACTLY uSkyHorizon (the `below` ramp is 0 for any downward ray), which is the
-        // palest colour in the palette. About a quarter of the shipped pixel was pure
-        // pale sky. Hazing like the land it sits in is both cheaper to look at and the
-        // physically sane answer for a pond 1 km away.
-        lakeMat.colorNode = toOutput(
-            applyAerial(lakeCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND, ...MIST_ONLY),
-        );
-        lakeMat.side = THREE.FrontSide;
-    }
-    ODYSSEY_NORTH_LAKE.lobes.forEach((lb, li) => {
-        const lakeGeo = new THREE.CircleGeometry(1, 48);
-        lakeGeo.rotateX(-Math.PI / 2);
-        const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
-        lakeMesh.position.set(lb.x, ODYSSEY_NORTH_LAKE.waterY - (li * 0.02), lb.z);
-        lakeMesh.scale.set(lb.rx, 1, lb.rz);
-        lakeMesh.frustumCulled = false;
-        lakeMesh.matrixAutoUpdate = false;
-        lakeMesh.updateMatrix();
-        lakeMesh.name = `odyssey-world-north-lake-${li}`;
-        group.add(lakeMesh);
-        lakeMeshes.push(lakeMesh);
-    });
-
     // ── ONE WATER (2026-10-31) ──────────────────────────────────────────────────────────
     // Olov: "the water in the pond looks totally different than the water in the ocean!" The
     // tarn had a palette of its own (murky green over near-black) under a grey mirror, while the
@@ -3428,6 +3210,103 @@ export function createOdysseyWorld({
         tarnMesh.name = `odyssey-world-tarn-${li}`;
         group.add(tarnMesh);
         lakeMeshes.push(tarnMesh);
+    });
+
+    // ── THE NORTH LAKE: REAL WATER (2026-11-02) ──────────────────────────────────────────────
+    // Olov: "Real water for the lake. It would get the same treatment as the swans' pond:
+    // reflections of the sky and clouds, a turquoise-to-blue depth colour, and a soft shoreline
+    // instead of a hard dark edge." It was a painted disc (a tint, a sky-coloured graze and one
+    // analytic glint), and from the climb, the only place it is seen, it read as a flat navy
+    // patch. Now it is the island's one water, the terms the sea and the tarn share (LAKE_WATER):
+    //   - the sea's ripple and the wind's gusts, calmed for a big sheltered lake;
+    //   - the sky in the reflected direction and the cloud masses above it. No land march: from
+    //     the climb the reflected rays rise 30-50 degrees and clear the low banks within a few
+    //     units, so a march would buy a hairline at the far shore for its cost on a big surface;
+    //   - its own pigment ramp (LAKE_RAMP) by its real depth, read from the plates the ground
+    //     draws (macro + relief), so the colour follows the meandered shore: turquoise over the
+    //     shelf, teal, then deep blue in the middle;
+    //   - a soft shoreline: the water thins to nothing over the last metres of depth (a few
+    //     pixels' worth from afar) with a pale wet line on it, so the bank shows through and no
+    //     edge is drawn. The waterline is still where the carve's rims rise through the discs
+    //     (the depth buffer); the film is already clear there.
+    // One disc per lobe, each 2 cm lower than the last (coplanar overlaps would z-fight in the
+    // waist). Blended now, like the sea, so it draws after the land and writes no depth.
+    const lakeMat = new THREE.MeshBasicNodeMaterial();
+    {
+        const L = LAKE_WATER;
+        const lakeUv = waterPlateUv(positionWorld.xz);
+        const lakeBedTex = texture(macroTex, lakeUv);
+        // The water column over the drawn bed. A var built at the colour Fn's root (its first
+        // read), so the opacity below reads the same value.
+        const lakeDepth = float(ODYSSEY_NORTH_LAKE.waterY)
+            .sub(lakeBedTex.r.add(texture(heightTex, lakeUv).level(0).r.mul(lakeBedTex.g)))
+            .toVar('lakeDepth');
+        // How much depth one pixel spans: the shore's soft band is at least `shorePx` of them wide.
+        const lakeDepthPx = abs(dFdx(lakeDepth)).add(abs(dFdy(lakeDepth)));
+        const lakeShoreW = max(float(L.shore), lakeDepthPx.mul(L.shorePx));
+        const lakeCol = Fn(() => {
+            const depth = lakeDepth.toVar('lakeRootDepth');
+            const P = positionWorld.toVar();
+            const V = normalize(cameraPosition.sub(P)).toVar();
+            const ripTex = waterRippleTex(P.xz);
+            const gust = waterGust(P.xz).toVar();
+            const dist = length(P.xz.sub(cameraPosition.xz)).toVar();
+            // The sea's fine ripple is finer than a pixel from the climb (the detail bake has no
+            // mips): it would speckle the clouds in the water. It fades with range, and a broad,
+            // slow undulation (the same bake read ~10x coarser, drifting downwind) bends the
+            // reflection instead, so the sky's plates and the clouds' edges waver gently.
+            const swellTex = texture(detailTex, P.xz.mul(L.swellScale).sub(WATER_WIND.mul(uTime.mul(0.0011))));
+            const rip = ripTex.a.rg.mul(0.9).add(ripTex.b.rg.mul(0.5))
+                .mul(float(1).sub(smoothstep(float(L.rippleFade[0]), float(L.rippleFade[1]), dist).mul(0.85)))
+                .mul(L.calm)
+                .add(swellTex.rg.mul(L.swell))
+                .mul(mix(float(0.55), float(1.9), gust))
+                .toVar();
+            const N = normalize(vec3(rip.x.negate(), 1, rip.y.negate())).toVar();
+            const Rraw = reflect(V.negate(), N);
+            const R = normalize(vec3(Rraw.x, max(Rraw.y, 0.004), Rraw.z)).toVar();
+            // The sky and the clouds in the water (the sea's stepped sky wash, the picked masses).
+            const reflected = waterCloudsAlong(P, R, waterSkyWash(R));
+            const body = waterRampBody(clamp(float(1).sub(exp2(depth.mul(-L.absorb))), 0, 1), LAKE_RAMP);
+            // A gust's rough patch mirrors less of the bright sky: cat's paws read darker.
+            const fres = waterFresnel(N, V, L.fresnel[0], L.fresnel[1]).mul(mix(float(1), float(0.72), gust));
+            const wVis = texture(sunVisTex, lakeUv).r;
+            const fb = float(1).sub(max(dot(N, V), 0));
+            const glints = waterSunCore(N, V).add(waterSunRoad(R)).add(waterSparkle(ripTex, fb, dist));
+            const wl = mix(body, reflected, fres)
+                .add(vec3(...WATER_GLINT).mul(glints).mul(wVis))
+                .mul(wVis.mul(0.18).add(0.82));
+            // The wet line: pale where the film is thinnest, on the inner half of the soft band.
+            const lip = float(1).sub(smoothstep(float(0), lakeShoreW.mul(0.6), depth))
+                .mul(smoothstep(lakeShoreW.mul(-0.1), lakeShoreW.mul(0.15), depth))
+                .mul(L.lip);
+            return mix(wl, vec3(0.90, 0.96, 0.95), lip);
+        })();
+        // THE **LAND** AERIAL, not the sea's (measured on the painted lake, 2026-08): an inland
+        // surface inside terrain that hazes at the land rate; on the sea's rate it faded toward
+        // the sky ~1.6x faster than its own banks and read washed out.
+        lakeMat.colorNode = toOutput(
+            applyAerial(lakeCol, positionWorld, AERIAL_CEIL_LAND, AERIAL_RATE_LAND, ...MIST_ONLY),
+        );
+        // The soft shore: clear at the waterline, the full film past `lakeShoreW` of depth.
+        lakeMat.opacityNode = smoothstep(float(0), lakeShoreW, lakeDepth);
+        lakeMat.transparent = true;
+        lakeMat.depthWrite = false;
+        lakeMat.alphaTest = 0.004;
+        lakeMat.side = THREE.FrontSide;
+    }
+    ODYSSEY_NORTH_LAKE.lobes.forEach((lb, li) => {
+        const lakeGeo = new THREE.CircleGeometry(1, 48);
+        lakeGeo.rotateX(-Math.PI / 2);
+        const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
+        lakeMesh.position.set(lb.x, ODYSSEY_NORTH_LAKE.waterY - (li * 0.02), lb.z);
+        lakeMesh.scale.set(lb.rx, 1, lb.rz);
+        lakeMesh.frustumCulled = false;
+        lakeMesh.matrixAutoUpdate = false;
+        lakeMesh.updateMatrix();
+        lakeMesh.name = `odyssey-world-north-lake-${li}`;
+        group.add(lakeMesh);
+        lakeMeshes.push(lakeMesh);
     });
 
     // ── THE SHOWER (round three, 2026-10-31; odyssey-shower.js) ──────────────────────────────
@@ -3917,7 +3796,26 @@ export function createOdysseyWorld({
         const swashFront = smoothstep(float(-0.03), float(0.10), depthLive)
             .mul(float(1).sub(smoothstep(float(0.18), float(0.75), depthLive)))
             .mul(mix(float(0.6), float(1), smoothstep(float(0.30), float(0.60), rippleTexB.b)));
-        shoreFoam.assign(clamp(rings.mul(0.80).add(swashFront.mul(0.90)), 0, 1));
+        // THE SURF LINE FROM AFAR (2026-11-02, "a soft white line of foam"). The front lives in
+        // the last 0.75 m of depth and the rings collapse to their faint mean with range, so a
+        // coast seen from the climb had no white line at all. Once a pixel spans more than ~0.3 m
+        // of depth, a soft line takes over on the waterline: about three pixels wide, measured in
+        // the depth's own screen footprint, so it keeps its width at any range and on any slope.
+        // It swells as the swash runs up and is broken along the coast by a slow drifting field.
+        // It reaches a pixel over the dry side too (opacity follows the foam), so the coast
+        // shades softly into the sand instead of stopping at a line.
+        const depthPx = max(abs(dFdx(depthLive)).add(abs(dFdy(depthLive))), float(1e-3));
+        const surfPx = depthLive.div(depthPx);
+        const swashPulse = swashRise(positionWorld.xz).sub(SWASH_BASE).div(SWASH_RUN);
+        const surfBreak = texture(detailTex, positionWorld.xz.mul(SEA_SURF.breakScale)
+            .add(vec2(uTime.mul(0.0031), uTime.mul(-0.0023)))).b;
+        const surfWidth = mix(float(SEA_SURF.widthPx[0]), float(SEA_SURF.widthPx[1]), swashPulse);
+        const surfLine = smoothstep(float(-1.0), float(0.4), surfPx)
+            .mul(float(1).sub(smoothstep(float(1.0), surfWidth, surfPx)))
+            .mul(mix(float(SEA_SURF.broken), float(1), smoothstep(float(0.30), float(0.62), surfBreak)))
+            .mul(smoothstep(float(0.3), float(1.2), depthPx))
+            .mul(SEA_SURF.gain);
+        shoreFoam.assign(clamp(max(rings.mul(0.80).add(swashFront.mul(0.90)), surfLine), 0, 1));
     };
     // ── THE REGIME BRANCH (MEASURED, and it pays for the whole Ghibli package) ────────
     // The cold-machine sweep priced waves 1+2 at +2.36 ms on the deep station — OVER its
@@ -3968,10 +3866,22 @@ export function createOdysseyWorld({
             // QUANTISE into flat plates with an anti-aliased edge (`waterRampBody`, ONE WATER).
             // A hard floor() posterise aliases badly at 720p on a surface this size.
             const body = waterRampBody(wT, SEA_RAMP);
+            // FROM ABOVE, THE FAR RIPPLE IS FINER THAN A PIXEL (2026-11-02): the detail bake has
+            // no mips, so a reflected ray jittered by it flickers in and out of a cloud's outline,
+            // and the clouds in the sea under the climb came out speckled (and the fresnel's share
+            // of them grainy). Where the eye looks down on far water, the reflection and its share
+            // ride the swell and a little of the ripple. The shore orbs look along the water (under
+            // the gate), so their sea is unchanged.
+            const reflRipple = float(1).sub(
+                smoothstep(float(SEA_HORIZON_DOWN[0]), float(SEA_HORIZON_DOWN[1]), viewDir.y)
+                    .mul(smoothstep(float(250), float(900), wFragDist))
+                    .mul(0.95),
+            );
+            const reflN = normalize(mix(vec3(waveSlope.x.negate(), 1, waveSlope.y.negate()), wN, reflRipple));
             // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. Ghibli
             // water is not a mirror: the sky arrives as a colour wash, never an image.
             const fb = float(1).sub(max(dot(wN, viewDir), 0));
-            const fres = waterFresnel(wN, viewDir, 0.62, 0.05).mul(mix(float(1), float(0.78), seaGust));
+            const fres = waterFresnel(reflN, viewDir, 0.62, 0.05).mul(mix(float(1), float(0.78), seaGust));
             const wVis = texture(sunVisTex, wUv).r;
             // THE SKY IN THE REFLECTED DIRECTION, not one constant (`skyColourFor(0.22)` was
             // the whole sea's sky for the life of this graph). Near water reflects high sky
@@ -3980,7 +3890,7 @@ export function createOdysseyWorld({
             // plates with an anti-aliased riser, so the ripple normal bends each plate edge
             // into the wobbling bands of painted water instead of a smooth airbrush ramp.
             // ALU only: the sky is analytic.
-            const reflDir = reflect(viewDir.negate(), wN).toVar();
+            const reflDir = reflect(viewDir.negate(), reflN).toVar();
             // Lifted a quarter up the curve (`waterSkyWash`): the bottom plate is grazing horizon,
             // which is the palest colour in the palette, and unlifted it bleached the whole
             // mid-distance sea to milk in the first capture. Painted seas hold their blue to the
@@ -4111,11 +4021,21 @@ export function createOdysseyWorld({
             // the caps so far foam melts into sky instead of shimmering; then a faint static
             // shore brightening band (proven live by the Wave 0 GPU probe) — faint now that
             // the moving foam owns the waterline, kept so the shore still reads at range.
+            // ...but only where the eye looks ALONG the sea (2026-11-02). The dissolve is the sea
+            // meeting the sky at the horizon. By range alone it also took the sea under the
+            // climbing eye, 1-2 km off but 20-40 degrees down, to 60-80% of the pale horizon
+            // colour: from the climb the whole sea read milky and flat, and the coasts' depth
+            // colour was gone. A ray that looks down more steeply than ~3 degrees now starts to keep
+            // the sea's own colour, and by ~14 degrees keeps all of it (the air's haze, applyAerial,
+            // still lies over it): the east isle, 3.5 km off and 11 degrees down from the climb,
+            // keeps its shallows. From the shore orbs the eye looks along the water at under ~3
+            // degrees wherever the dissolve is strong, so the coast views keep it.
             const wHorizon = clamp(
                 length(positionWorld.sub(cameraPosition)).mul(1 / 1700),
                 0,
                 1,
-            ).pow(1.4).mul(0.8);
+            ).pow(1.4).mul(0.8)
+                .mul(float(1).sub(smoothstep(float(SEA_HORIZON_DOWN[0]), float(SEA_HORIZON_DOWN[1]), viewDir.y)));
             wl.assign(mix(wl, skyColourFor(float(0.16)), wHorizon));
             wl.assign(wl.add(vec3(0.92, 0.97, 0.99).mul(
                 smoothstep(float(2.6), float(0.15), depth)
@@ -6482,7 +6402,7 @@ export function createOdysseyWorld({
     const WATER_CLOUD_DRIFT = Object.freeze({
         xz: FIELD_DRIFT_XZ, y: FIELD_DRIFT_Y, periodMin: FIELD_DRIFT_PERIOD_MIN, periodMax: FIELD_DRIFT_PERIOD_MAX,
     });
-    const WATER_CLOUD_LEVELS = Object.freeze([ODYSSEY_SEA_LEVEL, ODYSSEY_TARN.waterY]);
+    const WATER_CLOUD_LEVELS = Object.freeze([ODYSSEY_SEA_LEVEL, ODYSSEY_TARN.waterY, ODYSSEY_NORTH_LAKE.waterY]);
     const waterCloudInView = (x, y, z, r) => {
         waterCloudSphere.center.set(x, y, z);
         waterCloudSphere.radius = r;
