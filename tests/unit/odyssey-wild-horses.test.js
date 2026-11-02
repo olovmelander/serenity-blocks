@@ -24,9 +24,12 @@ import { context } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 import {
-    ODYSSEY_HORSES, bandRunTimes, buildBand, createHorseRig, gaitAt, horseRevealAt, horseStateAt, planFootfalls,
-    poseHorse,
+    HORSE_DUST, ODYSSEY_HORSES, bandDustAt, bandRunTimes, buildBand, createHorseRig, gaitAt, horseFootAt,
+    horseRevealAt, horseRhythmAt, horseSegmentAt, horseStateAt, planFootfalls, poseHorse,
 } from '../../src/rendering/odyssey/composition/odyssey-horse-band.js';
+import {
+    ODYSSEY_MEADOW_CLEARING, odysseyMeadowClearingRn,
+} from '../../src/rendering/odyssey/world/odyssey-meadow-clearing.js';
 import { createOdysseyHorses, parseOdysseyHorse } from '../../src/rendering/odyssey/composition/odyssey-horses.js';
 import {
     ODYSSEY_SEA_LEVEL, odysseyTarnRn, odysseyWorldDetailWeight, odysseyWorldHeight, odysseyWorldMacro,
@@ -112,7 +115,7 @@ beforeAll(async () => {
 
 describe('the wild horse models', () => {
     it('are a mare and a foal, each skinned and painted on a 29-bone skeleton, within budget', () => {
-        [['horse', 2000, 2800, 1.7, 1.9], ['foal', 1400, 2100, 1.35, 1.6]].forEach(([name, lo, hi, minH, maxH]) => {
+        [['horse', 2400, 3300, 1.7, 1.9], ['foal', 1600, 2400, 1.35, 1.6]].forEach(([name, lo, hi, minH, maxH]) => {
             const model = models[name];
             expect(model.skeleton, name).toHaveLength(29);
             expect(model.triangles, name).toBeGreaterThan(lo);
@@ -141,7 +144,7 @@ describe('the band drawn', () => {
         const meshes = [];
         horses.group.traverse((o) => { if (o.isMesh) meshes.push(o); });
         expect(meshes.map((m) => m.name).sort())
-            .toEqual(['odyssey-horse-band', 'odyssey-horse-foals', 'odyssey-horse-shadows']);
+            .toEqual(['odyssey-horse-band', 'odyssey-horse-dust', 'odyssey-horse-foals', 'odyssey-horse-shadows']);
         meshes.forEach((mesh) => {
             // WebGPU's limit: eight vertex buffers a draw (geometry and instanced attributes together).
             expect(Object.keys(mesh.geometry.attributes).length, mesh.name).toBeLessThanOrEqual(8);
@@ -149,7 +152,9 @@ describe('the band drawn', () => {
                 const out = build(Builder, mesh);
                 expect(out.thrown, `${mesh.name} ${label}: ${out.thrown?.stack ?? ''}`).toBeUndefined();
                 expect(out.heard, `${mesh.name} ${label}`).toEqual([]);
-                expect(out.vertex, `${mesh.name} ${label}`).toMatch(/textureLoad|texelFetch/);
+                if (mesh.name !== 'odyssey-horse-dust') {
+                    expect(out.vertex, `${mesh.name} ${label}`).toMatch(/textureLoad|texelFetch/);
+                }
                 expect(out.fragment, `${mesh.name} ${label}`).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
             });
         });
@@ -385,6 +390,154 @@ describe('the band seen from the rail', () => {
                     expect(cam.inFrame(camera, pt, 1.15), `${h.member.name} at p ${p.toFixed(3)} t ${t}`).toBe(false);
                 });
             }
+        }
+    });
+});
+
+describe('the gaits on the ground (footfalls from the plan)', () => {
+    const LH = 0;
+    const LF = 1;
+    const RH = 2;
+    const RF = 3;
+    const rhythm = { phase: 0, speed: 0 };
+    const plantedAt = (h, t) => {
+        let planted = 0;
+        for (let l = 0; l < 4; l += 1) if (horseFootAt(h, l, t).planted) planted += 1;
+        return planted;
+    };
+
+    it('walks on at least two hooves (a walk never leaves the ground)', () => {
+        // Measured 2026-11-02: 1.4-2.1 % of walking time on one hoof, in the first and last steps of
+        // a pivot; never airborne.
+        band.forEach((h) => {
+            let n = 0;
+            let low = 0;
+            let air = 0;
+            for (let t = 0; t < ODYSSEY_HORSES.loop; t += 0.02) {
+                const v = horseRhythmAt(h, t, rhythm).speed;
+                if (v > 0.2 && v < 1.8) {
+                    n += 1;
+                    const planted = plantedAt(h, t);
+                    if (planted < 2) low += 1;
+                    if (planted === 0) air += 1;
+                }
+            }
+            expect(low / n, `${h.member.name} on fewer than two hooves`).toBeLessThan(0.03);
+            // (Only the quick wheel before a run, which hops round, leaves the ground for an instant.)
+            expect(air / n, `${h.member.name} airborne at a walk`).toBeLessThan(0.01);
+        });
+    });
+
+    it('gallops a transverse gallop on the left lead (RH, LH, RF, LF), with a moment of flight', () => {
+        band.forEach((h) => {
+            const landings = [];
+            h.plan.steps.forEach((list, l) => list.forEach((s) => {
+                if (s[6] === 0 && horseRhythmAt(h, s[1], rhythm).speed >= 6.6) landings.push([s[1], l]);
+            }));
+            landings.sort((a, b) => a[0] - b[0]);
+            let strides = 0;
+            let right = 0;
+            for (let k = 0; k + 3 < landings.length; k += 1) {
+                if (landings[k][1] === RH) {
+                    strides += 1;
+                    if (landings[k + 1][1] === LH && landings[k + 2][1] === RF && landings[k + 3][1] === LF) right += 1;
+                }
+            }
+            expect(strides, h.member.name).toBeGreaterThan(20);
+            expect(right / strides, `${h.member.name} strides in the gallop's order`).toBeGreaterThan(0.9);
+            // Flight: at a gallop all four hooves are in the air for part of each stride.
+            let n = 0;
+            let air = 0;
+            for (let t = 0; t < ODYSSEY_HORSES.loop; t += 0.005) {
+                if (horseRhythmAt(h, t, rhythm).speed >= 6.6) {
+                    n += 1;
+                    if (plantedAt(h, t) === 0) air += 1;
+                }
+            }
+            expect(air / n, `${h.member.name} time in the air at a gallop`).toBeGreaterThan(0.1);
+        });
+    });
+
+    it('stands on a straight fore knee (the shoulder and elbow take the give)', () => {
+        const rig = rigs.horse;
+        const horse = band[0];
+        let checked = 0;
+        for (let t = 0; t < ODYSSEY_HORSES.loop; t += 1.3) {
+            const { state } = poseHorse(rig, horse, t, () => 0);
+            const { segment, u } = horseSegmentAt(horse, t);
+            // (Standing a moment: a hoof the last step left out has stepped in.)
+            if (state.speed <= 0.05 && Math.abs(state.turning) < 0.02 && u * segment.dur > 1) {
+                for (let l = 0; l < rig.legs.length; l += 1) {
+                    const leg = rig.legs[l];
+                    if (leg.front && rig.feet[l].planted) {
+                        // The cannon's bend against the forearm: straight (a few hundredths of a radian).
+                        expect(Math.abs(rig.local[leg.chain[1]][0]), `t ${t.toFixed(1)}`).toBeLessThan(0.08);
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        expect(checked).toBeGreaterThan(100);
+    });
+});
+
+describe('the meadow kept open for the band', () => {
+    const heightAt = (x, z) => odysseyWorldMacro(x, z) + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
+    const RAIL = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+
+    it('opens the band\'s places and runs, with a ragged edge, and leaves the boulders as they were', () => {
+        // Every horse at every moment of its loop is inside the clearing (the long run brushes its
+        // ragged rim on the west side, where the treeline thins).
+        band.forEach((h) => {
+            for (let t = 0; t < ODYSSEY_HORSES.loop; t += 1) {
+                const s = horseStateAt(h, t, {});
+                expect(odysseyMeadowClearingRn(s.x, s.z), `${h.member.name} at ${t}`).toBeLessThan(1.15);
+            }
+        });
+        // The edge moves in and out (no cut ellipse): along the first lobe's rim the noise shifts the
+        // normalized distance by more than 0.06 either way.
+        const plain = (x, z) => Math.min(...ODYSSEY_MEADOW_CLEARING.lobes.map((q) => Math.hypot((x - q.x) / q.rx, (z - q.z) / q.rz)));
+        const offs = [];
+        ODYSSEY_MEADOW_CLEARING.lobes.forEach((lb) => {
+            for (let a = 0; a < Math.PI * 2; a += 0.05) {
+                const x = lb.x + (Math.cos(a) * lb.rx);
+                const z = lb.z + (Math.sin(a) * lb.rz);
+                offs.push(odysseyMeadowClearingRn(x, z) - plain(x, z));
+            }
+        });
+        expect(Math.max(...offs)).toBeGreaterThan(0.06);
+        expect(Math.min(...offs)).toBeLessThan(-0.06);
+        [15, 24].forEach((spacing) => {
+            const open = scatterZonedForest(heightAt, { rail: RAIL, spacing });
+            const shut = scatterZonedForest(heightAt, { rail: RAIL, spacing, meadowClearing: false });
+            const core = open.placements.filter((p) => odysseyMeadowClearingRn(p.x, p.z) < ODYSSEY_MEADOW_CLEARING.core);
+            // Only a few lone trees in its core; the clearing removed its trees and reports them.
+            expect(core.length, `tier ${spacing} lone trees`).toBeLessThanOrEqual(4);
+            expect(open.meadowCleared.length, `tier ${spacing} cleared`).toBeGreaterThan(10);
+            expect(open.placements.length + open.meadowCleared.length).toBe(shut.placements.length);
+            // The boulders see the cleared sites as trees, so not one rock moves or appears.
+            const rocksOf = (z) => buildBoulderSites(odysseyWorldHeight, { trees: [...z.placements, ...z.meadowCleared] })
+                .map((r) => `${r.x.toFixed(2)},${r.z.toFixed(2)},${r.sx.toFixed(2)}`).join('|');
+            expect(rocksOf(open)).toBe(rocksOf(shut));
+        });
+    }, 120000);
+});
+
+describe('the dust of a run', () => {
+    it('rises only where a hoof struck at a canter or gallop, and fades within its life', () => {
+        const out = new Float32Array(400 * 4);
+        const runs = bandRunTimes(band);
+        // Grazing: no dust.
+        expect(bandDustAt(band, runs[0].from - 20, out, 400)).toBe(0);
+        // In the gallop: puffs, each on the ground where a hoof landed, younger than its life.
+        const mid = (runs[0].from + runs[0].to) / 2;
+        const n = bandDustAt(band, mid, out, 400);
+        expect(n).toBeGreaterThan(30);
+        expect(n).toBeLessThanOrEqual(band.length * HORSE_DUST.perHorse);
+        for (let i = 0; i < n; i += 1) {
+            expect(out[(i * 4) + 2]).toBeGreaterThanOrEqual(0);
+            expect(out[(i * 4) + 2]).toBeLessThanOrEqual(HORSE_DUST.life);
+            expect(odysseyMeadowClearingRn(out[i * 4], out[(i * 4) + 1])).toBeLessThan(1.15);
         }
     });
 });

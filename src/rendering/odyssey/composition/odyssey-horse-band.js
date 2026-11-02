@@ -82,8 +82,13 @@ export const ODYSSEY_HORSES = Object.freeze({
     playSpeed: 2.6,
     /** Seconds to reach walking speed from standing, and to stop. */
     accel: 1.1,
-    /** The fastest a turn on the spot turns (rad/s), and its pivot behind the middle (share of size). */
+    /**
+     * The fastest a turn on the spot turns (rad/s) while grazing, and when the band wheels to run
+     * (a horse moving off swings round in a second or two, it does not pivot for seven); and the
+     * pivot behind the middle (share of size).
+     */
     turnRate: 0.6,
+    wheelRate: 2.2,
     pivotBack: 0.36,
     /** How far a swinging hoof lifts (share of size) and how much more at speed. */
     lift: 0.08,
@@ -97,10 +102,10 @@ export const ODYSSEY_HORSES = Object.freeze({
      */
     graze: Object.freeze({
         horse: Object.freeze({
-            neck0: 1.12, neck1: 0.336, neck2: 0.246, head: -1.4, dip: 0.06,
+            neck0: 1.16, neck1: 0.33, neck2: 0.242, head: -1.32, dip: 0,
         }),
         foal: Object.freeze({
-            neck0: 1.45, neck1: 0.44, neck2: 0.33, head: -1.9, dip: 0.08, splay: 0.12,
+            neck0: 1.58, neck1: 0.45, neck2: 0.33, head: -1.98, dip: 0, splay: 0.12,
         }),
     }),
     /** The coats (linear albedo): body, points (mane, tail, legs), pale (the mealy muzzle and belly). */
@@ -446,16 +451,16 @@ export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES) {
         const still = (kind, dur, head, look = 0, alert = 0) => push({
             kind, dur, head, look, alert, x1: x, z1: z, h1: h,
         });
-        const turnDur = (by) => 0.6 + ((1.875 * Math.abs(by)) / cfg.turnRate);
+        const turnDur = (by, rate = Number(cfg.turnRate)) => (rate > 1 ? 0.3 : 0.6) + ((1.875 * Math.abs(by)) / rate);
         /** Turn on the spot by `by` (radians), pivoting round a point behind the middle. */
-        const turn = (by, about = pivot, head = 0.2) => {
+        const turn = (by, about = pivot, head = 0.2, rate = Number(cfg.turnRate)) => {
             const [fx, fz] = dir(h);
             const px = x - (fx * about);
             const pz = z - (fz * about);
             const h1 = h + by;
             const [gx, gz] = dir(h1);
             push({
-                kind: 'turn', dur: turnDur(by), head, alert: 0.4, px, pz, about, x1: px + (gx * about), z1: pz + (gz * about), h1,
+                kind: 'turn', dur: turnDur(by, rate), head, alert: 0.4, px, pz, about, x1: px + (gx * about), z1: pz + (gz * about), h1,
             });
             x = px + (gx * about);
             z = pz + (gz * about);
@@ -564,10 +569,10 @@ export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES) {
             const out = way[0] ?? member.spots[run.to][0];
             const want = wrapAngle(Math.atan2(out[0] - x, out[1] - z) - h);
             const by = Math.abs(want) > 0.12 ? want : 0;
-            const need = (by ? turnDur(by) : 0) + 1.6;
+            const need = (by ? turnDur(by, cfg.wheelRate) : 0) + 1.6;
             if (setOff - need - t > 1e-6) still('graze', setOff - need - t, 1);
             still('look', 1.6, 0, 0, 1);
-            if (by) turn(by, pivot, 0);
+            if (by) turn(by, pivot, 0, cfg.wheelRate);
             place = run.to;
             spotIndex = 0;
             const dest = member.spots[place][0];
@@ -769,6 +774,13 @@ function planHorse(horse, rig, cfg) {
     const swinging = offsets.map(() => null);
     const steps = offsets.map(() => []);
     const landedAt = [-Infinity, -Infinity, -Infinity, -Infinity];
+    // A hoof whose turn in the stride has come waits (due) until it may lift, so the gait's
+    // order holds even when a hoof is held a moment (rested, or its partner in the air).
+    const due = [false, false, false, false];
+    // (A turn that comes round within half a stride of the hoof's last lift is that lift's own:
+    // keeping it would lift the hoof again as soon as it lands, and the hoof would run on its
+    // own clock instead of the gait's.)
+    const liftedAt = [-Infinity, -Infinity, -Infinity, -Infinity];
     let stillFor = 0;
     let phase = 0;
     let lastLift = -Infinity;
@@ -789,6 +801,12 @@ function planHorse(horse, rig, cfg) {
         horsePathAt(horse, t, pNow);
         const moving = Math.hypot(pNow.x - pBefore.x, pNow.z - pBefore.z) / dt > 0.03 * k
             || Math.abs(wrapAngle(pNow.heading - pBefore.heading)) / dt > 0.03;
+        // Setting off from standing, the stride starts afresh with the left hind (the others
+        // follow in the gait's order), so a walk or trot begins cleanly, not mid-stride.
+        if (moving && stillFor > 0.3) {
+            phase = Math.floor(phase) + 0.98;
+            due.fill(false);
+        }
         stillFor = moving ? 0 : stillFor + dt;
         // THE RHYTHM: the stride phase advances at the gait's rate for the ground the hooves cover
         // (the body's travel and its turning, in adult-life metres a second).
@@ -812,19 +830,29 @@ function planHorse(horse, rig, cfg) {
         const swingT = Math.max(0.16, Math.min(0.5, gait.rate > 1e-3 ? (1 - gait.duty) / gait.rate : 0.4));
         const lead = Math.min(0.6, 0.5 * stance);
         const walking = v < 2.0;
+        // A hoof left past its leg's reach must go whatever the rhythm says; at speed that is
+        // past where the stride would have lifted it anyway (three quarters of a stance's travel).
+        const limit = Math.max(reach, 0.75 * pace * stance);
         let swingCount = swinging.filter(Boolean).length;
         for (let l = 0; l < 4; l += 1) {
+            if (Math.floor(phase - gait.lift[l]) > Math.floor(prevPhase - gait.lift[l])
+                && t - liftedAt[l] > 0.5 / Math.max(0.5, gait.rate)) due[l] = true;
+            if (stillFor > 0.3) due[l] = false;
             if (swinging[l]) continue;
             footUnder(pNow, l, now);
             const off = Math.hypot(planted[l][0] - now[0], planted[l][1] - now[1]);
-            const rested = t - landedAt[l] > Math.max(0.12, 0.45 * stance);
-            const due = Math.floor(phase - gait.lift[l]) > Math.floor(prevPhase - gait.lift[l]);
+            const rested = t - landedAt[l] > Math.max(0.05, 0.5 * stance);
             let kind = -1;
-            if (off > reach) kind = 0;
-            else if (due && pace > 0.04 * horse.walkSpeed && rested) {
+            if (off > limit) kind = 0;
+            else if (due[l] && pace > 0.04 * horse.walkSpeed && rested) {
                 // (A hoof already where it would land stays put.)
                 const land = ideal(l, t + swingT + lead, soon);
                 if (Math.hypot(planted[l][0] - land[0], planted[l][1] - land[1]) > 0.08 * horse.strideW) kind = 0;
+                else due[l] = false;
+            } else if (stillFor > 0.08 && off > 0.55 * reach && swingCount < 2 && rested) {
+                // A hoof left well out under a horse that has stopped steps in at once (else the
+                // body would sink to reach it).
+                kind = 1;
             } else if (stillFor > cfg.settleAfter && swingCount < 2 && rested && t - lastLift > 0.18) {
                 // In the loop's closing seconds every hoof settles exactly (the seam).
                 const closing = t > total - 2.6;
@@ -832,11 +860,13 @@ function planHorse(horse, rig, cfg) {
             }
             if (kind < 0) continue;
             // At a walk a hoof never lifts with its partner (the other hind or fore) in the air.
-            if (walking && kind === 0 && off <= reach && (swinging[l ^ 2] || swingCount >= 2)) continue;
+            if (walking && kind === 0 && off <= limit && (swinging[l ^ 2] || swingCount >= 2)) continue;
+            due[l] = false;
             const settle = kind === 1;
             const dur = settle ? 0.32 : swingT;
             const land = settle ? ideal(l, t + dur, [0, 0]) : ideal(l, t + dur + lead, [0, 0]);
             swinging[l] = [t, t + dur, planted[l][0], planted[l][1], land[0], land[1], settle ? 1 : 0];
+            if (!settle) liftedAt[l] = t;
             steps[l].push([...swinging[l]]);
             swingCount += 1;
             lastLift = t;
@@ -991,6 +1021,38 @@ function quatFrom(m, out, o) {
 }
 
 /**
+ * Solve a two-segment chain in its plane (y down, z forward): the swing of the top and the bend of
+ * the joint between `u1` and `u2` so the chain's end reaches (down, vz). `sign` picks the fold
+ * (+1 folds the lower segment back, as a knee; -1 forward, as a hock or an elbow) and `most` caps
+ * the fold past straight. A fold-back joint takes the straighter root when it is no less than
+ * `floor` (a knee kept straight against a bent elbow). Writes [swing, bend] into `out`.
+ */
+function solveTwo(u1, u2, down, vz, sign, most, out, floor = null) {
+    const [u1y, u1z] = u1;
+    const [u2y, u2z] = u2;
+    const l1 = Math.hypot(u1y, u1z);
+    const l2 = Math.hypot(u2y, u2z);
+    const d = Math.min(Math.max(Math.hypot(down, vz), Math.abs(l1 - l2) * 1.05), (l1 + l2) * 0.999);
+    const Pdot = (u1y * u2y) + (u1z * u2z);
+    const Q = (u1z * u2y) - (u1y * u2z);
+    const m = (((d * d) - ((l1 * l1) + (l2 * l2))) / 2);
+    const Rm = Math.hypot(Pdot, Q) || 1e-9;
+    const phi0 = Math.atan2(Q, Pdot);
+    const spread = Math.acos(Math.max(-1, Math.min(1, m / Rm)));
+    let bend = sign > 0
+        ? Math.min(wrapAngle(phi0 + spread), phi0 + most)
+        : Math.max(wrapAngle(phi0 - spread), phi0 - most);
+    if (sign > 0 && floor !== null && wrapAngle(phi0 - spread) >= floor) bend = wrapAngle(phi0 - spread);
+    const cb = Math.cos(bend);
+    const sb = Math.sin(bend);
+    const cy = u1y + ((u2y * cb) - (u2z * sb));
+    const cz = u1z + ((u2y * sb) + (u2z * cb));
+    out[0] = wrapAngle(Math.atan2(vz, down) - Math.atan2(cz, cy));
+    out[1] = bend;
+    return out;
+}
+
+/**
  * A rig for one skeleton (the mare's or the foal's): scratch, lookups and each leg's rest
  * geometry, built once.
  * @param {HorseBone[]} skeleton
@@ -1008,7 +1070,16 @@ export function createHorseRig(skeleton) {
         const C = head(chain[2]);
         const u1 = [B[1] - A[1], B[2] - A[2]];
         const u2 = [C[1] - B[1], C[2] - B[2]];
+        // A fore leg also solves through the elbow (shoulder to elbow, elbow to fetlock with the
+        // knee straight): its stance, as a horse stands and walks on a straight fore leg.
+        const E = head(chain[0]);
+        const e1 = [E[1] - A[1], E[2] - A[2]];
+        const e2 = [C[1] - E[1], C[2] - E[2]];
+        const f1 = [B[1] - E[1], B[2] - E[2]];
         return {
+            e1,
+            e2,
+            f1,
             leg,
             front,
             top: index[top],
@@ -1036,6 +1107,8 @@ export function createHorseRig(skeleton) {
         L: new Float64Array(9),
         T: new Float64Array(9),
         legBones: new Set(legs.flatMap((leg) => leg.chain)),
+        solveK: [0, 0],
+        solveE: [0, 0],
         rhythm: { phase: 0, speed: 0 },
         state: {
             x: 0, z: 0, heading: 0, speed: 0, turning: 0, head: 0, alert: 0,
@@ -1113,7 +1186,9 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     const pump = canter * 0.13 * Math.sin(ph - 0.4);
     const stretch = canter * 0.22;
     const grazeT = (time * 0.43) + seed;
-    set('neck0', (G.neck0 * g) + (0.12 * walk * (1 - g)) + stretch + nod + pump - (0.05 * (1 - g) * (1 - canter))
+    // (A trot carries the head up and steady; a walk lets it down a little and nod.)
+    set('neck0', (G.neck0 * g) + (0.12 * walk * (1 - g) * (1 - trot)) - (0.12 * trot * (1 - g)) + stretch + nod + pump
+        - (0.05 * (1 - g) * (1 - canter))
         + (0.35 * buck), lookAt(0.42) * 0.2);
     set('neck1', (G.neck1 * g) - (0.5 * pump), lookAt(0.32) * 0.26);
     set('neck2', (G.neck2 * g) - (0.06 * (1 - g) * state.alert) - (0.1 * stretch), lookAt(0.22) * 0.26);
@@ -1146,7 +1221,10 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     // Height: over the mean of the ground under the hooves, carried lower the faster it goes (the
     // legs need the give), the trot's bounce twice a stride, the canter's rise and fall once.
     const groundMean = 0.25 * (feet[0].ground + feet[1].ground + feet[2].ground + feet[3].ground);
-    const carry = (0.012 + (0.03 * walk) + (0.035 * trot) + (0.06 * canter)) * life;
+    // (Standing, the legs are straight: a grazing horse does not fold its knees. A body tipped
+    // nose-down to graze would lift the hips out of the hind legs' reach, drop the whole horse
+    // and fold the fore knees, so the head reaches the grass by the neck alone: `dip` is 0.)
+    const carry = (0.004 + (0.03 * walk) + (0.035 * trot) + (0.06 * canter)) * life;
     const bounce = ((0.012 * trot * Math.cos(2 * ph)) + (0.03 * canter * Math.sin(ph + 1.4))) * life;
     J[rootIndex][0] = state.x;
     J[rootIndex][1] = groundMean + (skeleton[rootIndex].head[1] * k) - carry + bounce + (0.003 * k * breathe);
@@ -1216,35 +1294,31 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
         const vx = (P[0] * wx) + (P[3] * wy) + (P[6] * wz);
         const vy = (P[1] * wx) + (P[4] * wy) + (P[7] * wz);
         const vz = (P[2] * wx) + (P[5] * wy) + (P[8] * wz);
-        const [u1y, u1z] = leg.u1;
-        const [u2y, u2z] = leg.u2;
-        const l1 = Math.hypot(u1y, u1z);
-        const l2 = Math.hypot(u2y, u2z);
         // A grazing foal splays its fores a little (its legs are long for its neck).
         const splay = foal && leg.front ? (G.splay ?? 0) * g * (leg.restX >= 0 ? 1 : -1) : 0;
         const side = vx - leg.restX - splay;
         const down = -Math.hypot(vy, side);
-        const d = Math.min(Math.max(Math.hypot(down, vz), Math.abs(l1 - l2) * 1.05), (l1 + l2) * 0.999);
-        const Pdot = (u1y * u2y) + (u1z * u2z);
-        const Q = (u1z * u2y) - (u1y * u2z);
-        const m = (((d * d) - ((l1 * l1) + (l2 * l2))) / 2);
-        const Rm = Math.hypot(Pdot, Q) || 1e-9;
-        const phi0 = Math.atan2(Q, Pdot);
-        const spread = Math.acos(Math.max(-1, Math.min(1, m / Rm)));
-        const bend = leg.front
-            ? Math.min(wrapAngle(phi0 + spread), phi0 + 1.9)
-            : Math.max(wrapAngle(phi0 - spread), phi0 - 1.9);
-        const cb = Math.cos(bend);
-        const sb = Math.sin(bend);
-        const cy = u1y + ((u2y * cb) - (u2z * sb));
-        const cz = u1z + ((u2y * sb) + (u2z * cb));
-        const swingAngle = Math.atan2(vz, down) - Math.atan2(cz, cy);
         const abduct = -Math.atan2(side + splay, Math.max(0.2, -vy)) + (splay * 0.6);
         const [c0, c1, c2] = leg.chain;
-        local[leg.top][0] = wrapAngle(swingAngle);
+        // A fore leg bearing weight stands on a straight knee: the shoulder and elbow take the
+        // give (the elbow's bend from a solve through the elbow, the knee held straight). In the
+        // air that bend eases out and the knee folds. Then the knee's solve runs through the
+        // elbow as it is, so the hoof always lands exactly where the plan put it.
+        let elbow = 0;
+        if (leg.front) {
+            const share = (f.planted ? 1 : 1 - (s5(f.swing / 0.22) * s5((1 - f.swing) / 0.22))) * (1 - kick);
+            if (share > 0) elbow = solveTwo(leg.e1, leg.e2, down, vz, -1, 1.2, rig.solveE)[1] * share;
+        }
+        const ce = Math.cos(elbow);
+        const se = Math.sin(elbow);
+        const upper = leg.front
+            ? [leg.e1[0] + ((leg.f1[0] * ce) - (leg.f1[1] * se)), leg.e1[1] + ((leg.f1[0] * se) + (leg.f1[1] * ce))]
+            : leg.u1;
+        solveTwo(upper, leg.u2, down, vz, leg.front ? 1 : -1, 1.9, rig.solveK, leg.front ? elbow - 0.03 : null);
+        local[leg.top][0] = rig.solveK[0];
         local[leg.top][2] = abduct;
-        local[c0][0] = 0;
-        local[c1][0] = bend;
+        local[c0][0] = elbow;
+        local[c1][0] = rig.solveK[1] - elbow;
         fkBone(leg.top);
         fkBone(c0);
         fkBone(c1);
@@ -1318,4 +1392,69 @@ export function bandRunTimes(band) {
         });
     });
     return runs.sort((a, b) => a.from - b.from);
+}
+
+/**
+ * The gait's shares at adult-life speed `v` (m/s): how much trot (its bounce) and how much canter
+ * or gallop (the rocking, the streaming hair). The pose and the shader read the same.
+ * @param {number} v
+ */
+export function gaitShares(v) {
+    return {
+        trot: smooth(1.8, 3.0, v) * (1 - smooth(4.0, 5.0, v)),
+        canter: smooth(4.0, 5.2, v),
+    };
+}
+
+/** Dust: how long a puff lives (s), and the slowest stride (adult-life m/s) that kicks one up. */
+export const HORSE_DUST = Object.freeze({ life: 1.9, minSpeed: 4.2, perHorse: 12 });
+
+/**
+ * The dust the band's hooves kick up at board time `time`: a puff where each hind hoof landed in
+ * the last `HORSE_DUST.life` seconds at a canter or a gallop, world-anchored (it stays where the
+ * hoof struck). Writes [x, z, age, strength] per puff into `out` and returns the count.
+ * @param {ReturnType<typeof buildBand>} band (planned)
+ * @param {number} time board clock (s)
+ * @param {Float32Array} out 4 floats a puff
+ * @param {number} max the most puffs to write
+ */
+export function bandDustAt(band, time, out, max) {
+    const D = HORSE_DUST;
+    const rhythm = { phase: 0, speed: 0 };
+    let n = 0;
+    for (let b = 0; b < band.length && n < max; b += 1) {
+        const horse = band[b];
+        const t = wrapTime(horse, time);
+        let mine = 0;
+        // The hind hooves only (0, 2): two puffs a stride read as a run without doubling the cost.
+        for (const l of [0, 2]) {
+            const list = horse.plan.steps[l];
+            let lo = 0;
+            let hi = list.length - 1;
+            let found = -1;
+            while (lo <= hi) {
+                const mid = (lo + hi) >> 1;
+                if (list[mid][1] <= t) {
+                    found = mid;
+                    lo = mid + 1;
+                } else hi = mid - 1;
+            }
+            for (let k = found; k >= 0 && n < max && mine < D.perHorse; k -= 1) {
+                const s = list[k];
+                const age = t - s[1];
+                if (age > D.life) break;
+                if (s[6] === 1) continue;
+                const v = horseRhythmAt(horse, s[1], rhythm).speed * (horse.legScale ?? 1);
+                if (v < D.minSpeed) continue;
+                const o = n * 4;
+                out[o] = s[4];
+                out[o + 1] = s[5];
+                out[o + 2] = age;
+                out[o + 3] = Math.min(1, (v - D.minSpeed) / 2.5) * horse.k * (horse.member.model === 'foal' ? 0.7 : 1);
+                n += 1;
+                mine += 1;
+            }
+        }
+    }
+    return n;
 }
