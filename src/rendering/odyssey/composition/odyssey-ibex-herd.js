@@ -23,6 +23,7 @@
  * All of it is a function of the board clock: world-anchored and deterministic.
  */
 import { buildHerd } from './odyssey-deer-herd.js';
+import { buildPerchTops } from '../world/odyssey-boulders.js';
 
 /** The group and its clock. Spots are world (x, z); `size` is a share of a nanny; `horn` scales the horns. */
 export const ODYSSEY_IBEX = Object.freeze({
@@ -46,6 +47,8 @@ export const ODYSSEY_IBEX = Object.freeze({
     lift: 0.1,
     settleAfter: 0.45,
     settleAt: 0.07,
+    /** Grazing, they stray about half as far from a spot as the deer (the rocks are near). */
+    roam: 0.5,
     /** A grazing head: a goat's shorter neck swung down to the lichen. */
     graze: Object.freeze({
         neck0: 1.5, neck1: 0.45, neck2: 0.35, head: -1.9, dip: 0.1,
@@ -56,51 +59,58 @@ export const ODYSSEY_IBEX = Object.freeze({
      * body sinks in the crouch (share of size), how high the hooves fold up in the air.
      */
     leap: Object.freeze({
-        crouch: 0.42,
-        absorb: 0.5,
+        crouch: 0.5,
+        absorb: 0.55,
         flight: Object.freeze([0.5, 0.82]),
         reach: 3.0,
         apex: 0.3,
         apexPerDistance: 0.2,
-        sink: 0.1,
+        sink: 0.12,
         tuck: 0.2,
     }),
+    /**
+     * The group. A spot `[x, z, 1]` is a perch: the top of one of the perch rocks
+     * (ODYSSEY_PERCH_ROCKS in world/odyssey-boulders.js), where it stands and looks round rather than
+     * stepping about; `leaps[i]` leaps from spot i to the next instead of walking.
+     */
     members: Object.freeze([
         Object.freeze({
+            // The buck keeps to the broad boulder above the band, and leaps down to graze and back up.
             name: 'buck',
             size: 1.18,
-            horn: 0.92,
+            horn: 1.0,
             seed: 7,
-            tone: 0.25,
-            spots: Object.freeze([[-156, -560], [-150, -562]]),
-            leaps: Object.freeze([true, false]),
+            tone: 0.2,
+            spots: Object.freeze([[-150, -558.5, 1], [-157.5, -562]]),
+            leaps: Object.freeze([true, true]),
         }),
         Object.freeze({
             name: 'nanny',
             size: 0.95,
-            horn: 0.3,
+            horn: 0.33,
             seed: 19,
             tone: 0.6,
-            spots: Object.freeze([[-148, -566], [-143, -569], [-145, -573]]),
-            leaps: Object.freeze([false, false, true]),
+            spots: Object.freeze([[-145.5, -570.5], [-144, -566.5, 1], [-141.5, -574]]),
+            leaps: Object.freeze([true, true, false]),
         }),
         Object.freeze({
             name: 'nanny',
             size: 1.0,
-            horn: 0.33,
+            horn: 0.36,
             seed: 31,
             tone: 0.8,
-            spots: Object.freeze([[-162, -553], [-164, -559], [-160, -564]]),
-            leaps: Object.freeze([false, true, false]),
+            spots: Object.freeze([[-163, -553], [-158.5, -556.5, 1], [-164, -559]]),
+            leaps: Object.freeze([true, true, false]),
         }),
         Object.freeze({
+            // The kid hops about near its mother (the first nanny).
             name: 'kid',
             size: 0.55,
-            horn: 0.1,
+            horn: 0.12,
             seed: 53,
             tone: 0.45,
-            spots: Object.freeze([[-146, -562], [-141, -566], [-140, -570]]),
-            leaps: Object.freeze([true, true, false]),
+            spots: Object.freeze([[-151.5, -565], [-149.5, -568.5]]),
+            leaps: Object.freeze([true, true]),
         }),
     ]),
 });
@@ -113,4 +123,15 @@ export function buildIbexHerd(cfg = ODYSSEY_IBEX) {
 /** Reveal (0 or 1) at journey progress `p`: drawn through the window, never faded in view. */
 export function ibexRevealAt(p, cfg = ODYSSEY_IBEX) {
     return p >= cfg.window[0] && p <= cfg.window[1] ? 1 : 0;
+}
+
+/**
+ * The ground under the ibex's hooves: the drawn ground, or the top of a perch rock where one stands
+ * higher (the rocks the world draws, seated on the same ground).
+ * @param {(x: number, z: number) => number} heightAt the drawn ground
+ * @returns {(x: number, z: number) => number}
+ */
+export function createIbexGround(heightAt) {
+    const { topAt } = buildPerchTops(heightAt);
+    return (x, z) => Math.max(heightAt(x, z), topAt(x, z));
 }

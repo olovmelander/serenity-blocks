@@ -23,8 +23,9 @@ import {
     createDeerRig, deerFootAt, deerLeapAt, deerStateAt, planFootfalls, poseDeer,
 } from '../../src/rendering/odyssey/composition/odyssey-deer-herd.js';
 import {
-    ODYSSEY_IBEX, buildIbexHerd, ibexRevealAt,
+    ODYSSEY_IBEX, buildIbexHerd, createIbexGround, ibexRevealAt,
 } from '../../src/rendering/odyssey/composition/odyssey-ibex-herd.js';
+import { ODYSSEY_PERCH_ROCKS, buildPerchTops } from '../../src/rendering/odyssey/world/odyssey-boulders.js';
 import { createOdysseyIbex, parseOdysseyIbex } from '../../src/rendering/odyssey/composition/odyssey-ibex.js';
 import { ODYSSEY_SEA_LEVEL, odysseyWorldHeight } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { scatterZonedForest } from '../../src/rendering/odyssey/world/odyssey-forest-scatter.js';
@@ -34,6 +35,8 @@ const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilde
 const GLB = new URL('../../src/rendering/odyssey/assets/chapter-04/ibex/alpine-ibex.glb', import.meta.url);
 const DEER_BONES = ['root', 'pelvis', 'chest', 'neck0', 'neck1', 'neck2', 'head', 'jaw', 'earL', 'earR', 'tail'];
 const H = odysseyWorldHeight;
+// The ground under the hooves: the drawn ground, or a perch rock's top.
+const G = createIbexGround(H);
 const gradient = (x, z) => Math.hypot((H(x + 1.5, z) - H(x - 1.5, z)) / 3, (H(x, z + 1.5) - H(x, z - 1.5)) / 3);
 
 function stubRenderer() {
@@ -187,7 +190,7 @@ describe('the ibex on the rock', () => {
         const times = Array.from({ length: Math.ceil(longest * 15) }, (_, f) => f / 15);
         times.forEach((t) => {
             herd.forEach((animal, i) => {
-                const pose = poseDeer(rig, animal, t, H, null, 0, ODYSSEY_IBEX);
+                const pose = poseDeer(rig, animal, t, G, null, 0, ODYSSEY_IBEX);
                 const s = pose.state;
                 const m = stats[i];
                 const leaping = deerLeapAt(animal, t).on;
@@ -243,6 +246,38 @@ describe('the ibex on the rock', () => {
         });
     });
 
+    it('stands on the perch rocks: on its rock the hooves bearing weight are on the rock\'s top', () => {
+        const { rocks, topAt } = buildPerchTops(H);
+        expect(rocks).toHaveLength(ODYSSEY_PERCH_ROCKS.length);
+        let perchedFrames = 0;
+        herd.forEach((animal) => {
+            const perches = animal.member.spots.filter((spot) => spot[2] === 1);
+            perches.forEach(([px, pz]) => {
+                // Every perch's top stands proud of the shelf where it is stood on.
+                expect(topAt(px, pz) - H(px, pz), `${animal.member.name} perch (${px}, ${pz})`).toBeGreaterThan(0.6);
+            });
+            if (!perches.length) return;
+            for (let t = 0; t < animal.loop; t += 0.5) {
+                const s = deerStateAt(animal, t, {});
+                const on = perches.some(([px, pz]) => Math.hypot(s.x - px, s.z - pz) < 0.6);
+                if (!on || deerLeapAt(animal, t).on) continue;
+                const pose = poseDeer(rig, animal, t, G, null, 0, ODYSSEY_IBEX);
+                const onRock = pose.hooves
+                    .filter((h) => h.stance > 0.95 && topAt(h.planX, h.planZ) > H(h.planX, h.planZ));
+                const planted = pose.hooves.filter((h) => h.stance > 0.95);
+                if (planted.length < 3) continue;
+                perchedFrames += 1;
+                // (A hoof may stand on the shelf at the rock's edge; most stand on the rock.)
+                expect(onRock.length, `${animal.member.name} at ${t.toFixed(1)} s`).toBeGreaterThanOrEqual(3);
+                onRock.forEach((h) => {
+                    expect(Math.abs(h.y - topAt(h.planX, h.planZ)) / animal.k, `${animal.member.name} hoof on the rock`)
+                        .toBeLessThan(0.08);
+                });
+            }
+        });
+        expect(perchedFrames).toBeGreaterThan(200);
+    });
+
     it('keeps the animals apart (the kid near its mother, never inside her)', () => {
         expect(gap).toBeGreaterThan(0.9);
     });
@@ -259,10 +294,10 @@ describe('the ibex on the rock', () => {
                 for (let l = 0; l < 4; l += 1) {
                     expect(deerFootAt(animal, l, mid, {}).planted, `${label} hoof ${l}`).toBe(false);
                 }
-                const standing = poseDeer(rig, animal, s.t0 - 0.5, H, null, 0, ODYSSEY_IBEX);
+                const standing = poseDeer(rig, animal, s.t0 - 0.5, G, null, 0, ODYSSEY_IBEX);
                 const standY = rig.J[rig.index.root][1] - standing.ground;
-                const flying = poseDeer(rig, animal, mid, H, null, 0, ODYSSEY_IBEX);
-                const line = H(s.x0, s.z0) + ((H(s.x1, s.z1) - H(s.x0, s.z0)) * 0.5);
+                const flying = poseDeer(rig, animal, mid, G, null, 0, ODYSSEY_IBEX);
+                const line = G(s.x0, s.z0) + ((G(s.x1, s.z1) - G(s.x0, s.z0)) * 0.5);
                 expect(rig.J[rig.index.root][1] - line - standY, label).toBeGreaterThan(0.3 * animal.k);
                 expect(flying.state.x, label).toBeCloseTo((s.x0 + s.x1) / 2, 0);
                 // After the landing every hoof is planted, near where it lands.
@@ -275,8 +310,9 @@ describe('the ibex on the rock', () => {
                 }
             });
         });
-        // The buck, a nanny each and the kid's two hops.
-        expect(leaps).toBe(5);
+        // Two each: the buck down off its boulder and back up, each nanny onto her rock and off, the
+        // kid's two hops.
+        expect(leaps).toBe(8);
     });
 });
 
@@ -284,7 +320,7 @@ describe('the ibex seen from the rail', () => {
     const cam = createOdysseyCameraRig();
     /** An animal's shoulder on screen at 1440p, or 0 when it is out of the frame or behind ground. */
     function seenPx(camera, animal, s) {
-        const ground = H(s.x, s.z);
+        const ground = G(s.x, s.z);
         const top = new THREE.Vector3(s.x, ground + (0.79 * animal.k), s.z);
         if (!cam.inFrame(camera, top, 0.97)) return 0;
         const eye = camera.position;
@@ -331,7 +367,7 @@ describe('the ibex seen from the rail', () => {
                 const camera = cam.poseAt(p);
                 [0, 60, 120, 180].forEach((t) => herd.forEach((animal) => {
                     const s = deerStateAt(animal, t, {});
-                    const pt = new THREE.Vector3(s.x, H(s.x, s.z) + animal.k, s.z);
+                    const pt = new THREE.Vector3(s.x, G(s.x, s.z) + animal.k, s.z);
                     expect(cam.inFrame(camera, pt, 1.1), `${animal.member.name} at p ${p.toFixed(4)}`).toBe(false);
                 }));
             }

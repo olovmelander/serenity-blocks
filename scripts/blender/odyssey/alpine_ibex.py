@@ -57,10 +57,10 @@ GENERATOR = "Serenity Blocks - Odyssey Alpine ibex (scripts/blender/odyssey/alpi
 SCHEMA_VERSION = 1
 VOXEL = 0.0085
 TARGET_TRIANGLES = 2200
-LEG_THICKEN = 1.22
+LEG_THICKEN = 1.32
 
 PARTS = {"body": 0, "neck": 1, "head": 2, "frontLeft": 3, "frontRight": 4, "hindLeft": 5, "hindRight": 6,
-         "tail": 7, "earLeft": 8, "earRight": 9, "hornLeft": 10, "hornRight": 11}
+         "tail": 7, "earLeft": 8, "earRight": 9, "hornLeft": 10, "hornRight": 11, "beard": 12}
 
 FRONT_Z = 0.27
 HIND_Z = -0.40
@@ -92,11 +92,17 @@ def horn_root(side):
     return head_point(0.03, 0.045, 0.022 * side)
 
 
-# The buck's horn as offsets from its root: up off the forehead, then sweeping back in a wide arc
-# over the neck, a little outward, ~0.87 m along the curve; thick at the root, ridged to a point.
-HORN_PATH = [(0.0, 0.0, 0.0), (0.010, 0.13, -0.03), (0.025, 0.26, -0.12), (0.045, 0.34, -0.27),
-             (0.060, 0.33, -0.43), (0.070, 0.26, -0.56), (0.075, 0.17, -0.63)]
-HORN_RADII = [0.042, 0.038, 0.032, 0.026, 0.019, 0.012, 0.006]
+# THE BUCK'S HORN (2026-11-02 design pass: the first cut was a segmented, oversized scythe). A
+# scimitar: one smooth arc rising off the forehead and sweeping back over the neck toward the
+# shoulders, a little outward, 0.62 m along the curve at the model's size (0.73 m on the buck);
+# thick at the root and tapering to a point; the front face knotted with transverse ridges.
+HORN_LENGTH = 0.62
+HORN_TILT = math.radians(16.0)  # the root's lean back from upright
+HORN_SWEEP = math.radians(128.0)  # how far the curve turns from root to tip
+HORN_SPREAD = 0.1  # outward (x) at the tip
+HORN_ROOT_RADIUS = 0.047
+HORN_SAMPLES = 18
+HORN_KNOTS = 11  # ridges along the front, over the first four fifths
 
 
 def _bone_table():
@@ -178,18 +184,47 @@ def _hind_leg(side):
     ], k=0.02)
 
 
-def _horn(side):
+def horn_frame(side, u):
+    """A point on the horn's axis at share u of its length, its tangent, the outward (front) side,
+    and its radius there."""
+    radius_of_curve = HORN_LENGTH / HORN_SWEEP
+    theta = HORN_TILT + HORN_SWEEP * u
     root = horn_root(side)
-    points = [root + np.array([dx * side, dy, dz]) for dx, dy, dz in HORN_PATH]
-    return Tube(points, HORN_RADII, squash_axis=X_AXIS, squash=0.72, k=0.01)
+    point = root + np.array([
+        side * HORN_SPREAD * (u ** 1.4),
+        radius_of_curve * (math.sin(theta) - math.sin(HORN_TILT)),
+        radius_of_curve * (math.cos(theta) - math.cos(HORN_TILT)),
+    ])
+    tangent = _unit(np.array([side * HORN_SPREAD * 1.4 * (u ** 0.4) / HORN_LENGTH,
+                              math.cos(theta), -math.sin(theta)]))
+    outward = np.array([0.0, math.sin(theta), math.cos(theta)])
+    radius = HORN_ROOT_RADIUS * ((1.0 - u) ** 0.85) + 0.005
+    return point, tangent, outward, radius
+
+
+def _horn(side):
+    samples = [horn_frame(side, i / HORN_SAMPLES) for i in range(HORN_SAMPLES + 1)]
+    shaft = Tube([f[0] for f in samples], [f[3] for f in samples], squash_axis=X_AXIS, squash=0.74, k=0.008)
+    knots = []
+    for i in range(HORN_KNOTS):
+        u = 0.07 + 0.74 * i / (HORN_KNOTS - 1)
+        point, tangent, outward, radius = horn_frame(side, u)
+        knots.append(Ellipsoid(point + outward * radius * 0.72, (radius * 0.66, radius * 0.42, 0.011),
+                               along=tangent))
+    return Union([shaft, *[(knot, 0.004) for knot in knots]], k=0.004)
+
+
+def _beard():
+    chin = head_point(0.165, -0.075)
+    return RoundCone(chin, chin + np.array([0.0, -0.085, -0.012]), 0.022, 0.008, (X_AXIS, 0.7))
 
 
 # -- the ibex -------------------------------------------------------------------------------
 def design():
     body = Union([
         # A deep, round barrel low between short legs; the chest deep behind the elbows.
-        Ellipsoid(_point(0.55, -0.06), (0.15, 0.165, 0.34)),
-        Ellipsoid(_point(0.55, 0.14), (0.15, 0.175, 0.19)),
+        Ellipsoid(_point(0.535, -0.06), (0.158, 0.19, 0.34)),
+        Ellipsoid(_point(0.535, 0.14), (0.162, 0.2, 0.19)),
         (Ellipsoid(_point(0.44, 0.20), (0.095, 0.10, 0.10)), 0.06),
         # The withers standing a little over the back (a goat's hump of shoulder), the shoulders.
         (Ellipsoid(_point(0.70, 0.12), (0.085, 0.085, 0.18)), 0.08),
@@ -206,7 +241,7 @@ def design():
     # A short, thick neck carried up and forward.
     neck = Tube([_point(0.64, 0.24), _point(0.71, 0.31), _point(0.79, 0.37), _point(0.87, 0.42),
                  _point(0.92, 0.45)],
-                [0.13, 0.10, 0.08, 0.068, 0.062], squash_axis=X_AXIS, squash=[0.72, 0.76, 0.8, 0.82, 0.84],
+                [0.148, 0.118, 0.092, 0.076, 0.066], squash_axis=X_AXIS, squash=[0.72, 0.76, 0.8, 0.82, 0.84],
                 k=0.03).tag(PARTS["neck"])
 
     head = Union([
@@ -233,8 +268,9 @@ def design():
     horns = [_horn(1.0).tag(PARTS["hornLeft"]), _horn(-1.0).tag(PARTS["hornRight"])]
 
     # The short tail, turned up a little.
-    tail = Tube([_point(0.70, -0.46), _point(0.715, -0.51), _point(0.70, -0.55)], [0.03, 0.028, 0.016],
+    tail = Tube([_point(0.695, -0.455), _point(0.69, -0.495), _point(0.665, -0.525)], [0.028, 0.025, 0.014],
                 squash_axis=Z_AXIS, squash=0.7, k=0.01).tag(PARTS["tail"])
+    beard = _beard().tag(PARTS["beard"])
 
     legs = []
     for leg, name in zip([_front_leg(1.0), _front_leg(-1.0), _hind_leg(1.0), _hind_leg(-1.0)],
@@ -244,7 +280,7 @@ def design():
 
     root = HalfSpace(Union([
         (body, 0.0), (neck, 0.08), (head, 0.05), *[(ear, 0.015) for ear in ears],
-        *[(horn, 0.012) for horn in horns], *[(leg, 0.05) for leg in legs], (tail, 0.025),
+        *[(horn, 0.012) for horn in horns], *[(leg, 0.05) for leg in legs], (tail, 0.025), (beard, 0.012),
     ]), axis=1)
     landmarks = dict(
         muzzle=head_point(0.22, -0.044),
@@ -295,7 +331,7 @@ def skin(positions, parts, triangles, smoothing=4):
     put(head_part, "jaw", w_jaw)
     put(parts == PARTS["earLeft"], "earL", 1.0)
     put(parts == PARTS["earRight"], "earR", 1.0)
-    put(np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"]]), "head", 1.0)
+    put(np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"], PARTS["beard"]]), "head", 1.0)
 
     tail = parts == PARTS["tail"]
     w_tail = _smoothstep(-0.45, -0.49, z)
@@ -328,7 +364,7 @@ def skin(positions, parts, triangles, smoothing=4):
 
     weights /= np.maximum(weights.sum(axis=1, keepdims=True), 1e-9)
     neighbours = _neighbours(count, triangles)
-    horn = np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"]])
+    horn = np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"], PARTS["beard"]])
     for _ in range(smoothing):
         mean = np.stack([weights[around].mean(axis=0) if len(around) else weights[v]
                          for v, around in enumerate(neighbours)])
@@ -345,51 +381,62 @@ def skin(positions, parts, triangles, smoothing=4):
 
 
 def horn_attribute(positions, parts):
-    """_HORN = (root x, y, z, 1) on a horn's vertices, (0, 0, 0, 0) elsewhere."""
+    """_HORN = (root x, y, z, 1) on a horn's vertices, (chin, 2) on the beard's, 0 elsewhere."""
     out = np.zeros((len(positions), 4), dtype=np.float32)
     for side, part in ((1.0, PARTS["hornLeft"]), (-1.0, PARTS["hornRight"])):
         mask = parts == part
         out[mask, :3] = horn_root(side)
         out[mask, 3] = 1.0
+    beard = parts == PARTS["beard"]
+    out[beard, :3] = head_point(0.165, -0.075)
+    out[beard, 3] = 2.0
     return out
 
 
 def paint(shape, landmarks, positions, normals, parts):
-    """COLOR_0 = (pale, dark, brown, sky seen)."""
+    """COLOR_0 = (pale, dark, brown, sky seen).
+
+    An Alpine ibex in its summer coat: a dark brown-grey, darker still down the legs (the lower legs
+    all round, the fronts of the forelegs to the elbow), along a dorsal stripe from the withers to
+    the tail and in a band along the lower flank; the chest and throat dark; the belly, the insides
+    of the legs and a patch under the tail pale; the tail, hooves, nose and eyes near black.
+    """
     x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
     legs = np.isin(parts, [PARTS["frontLeft"], PARTS["frontRight"], PARTS["hindLeft"], PARTS["hindRight"]])
     fore = np.isin(parts, [PARTS["frontLeft"], PARTS["frontRight"]])
     ears = np.isin(parts, [PARTS["earLeft"], PARTS["earRight"]])
-    horns = np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"]])
+    apart = np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"], PARTS["beard"]])
     body = parts == PARTS["body"]
+    trunk = np.isin(parts, [PARTS["body"], PARTS["neck"]])
     tail = parts == PARTS["tail"]
-    # Pale: the belly and the insides of the legs, the insides of the ears, the chin and lips, a
-    # pale patch under the tail.
-    belly = _smoothstep(0.48, 0.40, y) * body * _smoothstep(0.1, -0.6, normals[:, 1])
-    inside = legs * _smoothstep(0.0, -0.8, normals[:, 0] * np.sign(x + 1e-9)) * _smoothstep(0.55, 0.35, y) * 0.7
-    ear_in = ears * _smoothstep(0.2, 0.9, normals[:, 2]) * 0.7
-    chin = _smoothstep(0.045, 0.02, np.linalg.norm(positions - landmarks["chin"], axis=1)) * 0.5
+    side = np.abs(normals[:, 0])
+    # Pale.
+    belly = _smoothstep(0.46, 0.39, y) * body * _smoothstep(0.1, -0.6, normals[:, 1])
+    inside = legs * _smoothstep(0.0, -0.8, normals[:, 0] * np.sign(x + 1e-9)) * _smoothstep(0.52, 0.36, y) * 0.65
+    ear_in = ears * _smoothstep(0.2, 0.9, normals[:, 2]) * 0.6
+    lips = _smoothstep(0.04, 0.018, np.linalg.norm(positions - landmarks["chin"], axis=1)) * 0.35
     under_tail = body * _smoothstep(-0.2, -0.7, normals[:, 2]) * _smoothstep(-0.38, -0.46, z) \
-        * _smoothstep(0.52, 0.60, y) * _smoothstep(0.70, 0.64, y) * _smoothstep(0.08, 0.04, np.abs(x)) * 0.8
-    pale = np.clip(np.maximum.reduce([belly * 0.9, inside, ear_in, chin, under_tail]), 0.0, 1.0)
-    # Dark: the hooves, the nose, the eyes, the tail's tip; the horns are coloured apart (see _HORN).
+        * _smoothstep(0.50, 0.58, y) * _smoothstep(0.70, 0.64, y) * _smoothstep(0.08, 0.04, np.abs(x)) * 0.8
+    pale = np.clip(np.maximum.reduce([belly * 0.9, inside, ear_in, lips, under_tail]), 0.0, 1.0)
+    # Dark.
     hooves = legs * _smoothstep(0.05, 0.035, y)
     nose = _smoothstep(0.04, 0.018, np.linalg.norm(positions - landmarks["nose"], axis=1))
     eyes = np.maximum.reduce([_smoothstep(0.028, 0.016, np.linalg.norm(positions - e, axis=1))
                               for e in landmarks["eyes"]])
-    tail_tip = tail * _smoothstep(-0.50, -0.545, z) * 0.85
-    dark = np.clip(np.maximum.reduce([hooves, nose, eyes, tail_tip]), 0.0, 1.0)
-    dark[horns] = 0.0
-    # Brown (darker): down the fronts of the legs, the lower legs, along the back from the withers
-    # to the tail, the chest's front and the throat.
-    leg_front = legs * _smoothstep(-0.1, 0.6, normals[:, 2] * np.where(fore, 1.0, 0.6)) * _smoothstep(0.62, 0.45, y)
-    shins = legs * _smoothstep(0.30, 0.18, y) * 0.7
-    dorsal = (np.isin(parts, [PARTS["body"], PARTS["neck"]]) * _smoothstep(0.5, 0.9, normals[:, 1])
-              * _smoothstep(0.66, 0.74, y) * _smoothstep(0.07, 0.03, np.abs(x)) * 0.8)
-    chest = (np.isin(parts, [PARTS["body"], PARTS["neck"]]) * _smoothstep(0.3, 0.85, normals[:, 2])
-             * _smoothstep(0.10, 0.22, z) * _smoothstep(0.70, 0.50, y) * 0.7)
-    brown = np.clip(np.maximum.reduce([leg_front, shins, dorsal, chest]), 0.0, 1.0)
-    brown[horns] = 0.0
+    dark = np.clip(np.maximum.reduce([hooves, nose, eyes, tail * 0.75]), 0.0, 1.0)
+    dark[apart] = 0.0
+    # Brown (the darker coat).
+    lower_legs = legs * _smoothstep(0.34, 0.22, y)
+    fore_front = fore * _smoothstep(-0.2, 0.5, normals[:, 2]) * _smoothstep(0.58, 0.44, y)
+    hind_front = legs * ~fore * _smoothstep(0.0, 0.6, normals[:, 2]) * _smoothstep(0.52, 0.36, y) * 0.8
+    dorsal = trunk * _smoothstep(0.35, 0.8, normals[:, 1]) * _smoothstep(0.1, 0.05, np.abs(x)) \
+        * _smoothstep(0.60, 0.68, y)
+    flank = body * _smoothstep(0.45, 0.75, side) * _smoothstep(0.37, 0.42, y) * _smoothstep(0.58, 0.50, y) \
+        * _smoothstep(-0.38, -0.28, z) * _smoothstep(0.28, 0.18, z)
+    chest = trunk * _smoothstep(0.2, 0.8, normals[:, 2]) * _smoothstep(0.06, 0.2, z) * _smoothstep(0.74, 0.44, y)
+    throat = (parts == PARTS["neck"]) * _smoothstep(0.0, -0.6, normals[:, 1]) * 0.7
+    brown = np.clip(np.maximum.reduce([lower_legs, fore_front, hind_front, dorsal, flank, chest, throat]), 0.0, 1.0)
+    brown[apart] = 0.0
     seen = occlusion(shape, positions, normals, rays=20, reach=0.6, ground=0.6)
     return np.stack([pale, dark, brown, seen], axis=1)
 
@@ -508,12 +555,17 @@ def pose_matrices(local, offset=(0.0, 0.0, 0.0)):
     return matrices
 
 
+def beard_scale(horn):
+    """The beard grows with the horns: the buck's full, none on a nanny or the kid (as the game)."""
+    return float(np.clip((horn - 0.6) * 2.5, 0.0, 1.0))
+
+
 def with_horns(ibex, scale):
-    """The model's positions with each horn scaled about its root (as the game does)."""
+    """The model's positions with each horn and the beard scaled about their roots (as the game)."""
     p = ibex.positions.copy()
-    mask = ibex.horn[:, 3] > 0.5
-    roots = ibex.horn[mask, :3]
-    p[mask] = roots + (p[mask] - roots) * scale
+    for mask, k in ((np.abs(ibex.horn[:, 3] - 1.0) < 0.5, scale), (ibex.horn[:, 3] > 1.5, beard_scale(scale))):
+        roots = ibex.horn[mask, :3]
+        p[mask] = roots + (p[mask] - roots) * k
     return p
 
 
@@ -540,11 +592,12 @@ POSES = {
                  femurL=(0.8, 0, 0), hindCannonL=(-0.4, 0, 0), femurR=(0.9, 0, 0), hindCannonR=(-0.3, 0, 0)),
 }
 
-COAT = np.array([0.36, 0.28, 0.19])
-PALE = np.array([0.82, 0.76, 0.64])
-BROWN = np.array([0.16, 0.11, 0.07])
+# The game's coat (composition/odyssey-ibex.js), brightened for the preview's Cycles light.
+COAT = np.array([0.30, 0.25, 0.185])
+PALE = np.array([0.80, 0.74, 0.62])
+BROWN = np.array([0.035, 0.026, 0.019])
 DARK = np.array([0.03, 0.025, 0.02])
-HORN = np.array([0.20, 0.17, 0.13])
+HORN = np.array([0.22, 0.19, 0.15])
 
 
 def _albedo(ibex):
@@ -552,12 +605,15 @@ def _albedo(ibex):
     base = COAT * (1 - brown) + BROWN * brown
     base = base * (1 - pale) + PALE * pale
     base = base * (1 - dark) + DARK * dark
-    horn = ibex.horn[:, 3:4]
+    horn = (np.abs(ibex.horn[:, 3:4] - 1.0) < 0.5).astype(np.float64)
+    beard = (ibex.horn[:, 3:4] > 1.5).astype(np.float64)
     base = base * (1 - horn) + HORN * horn
+    base = base * (1 - beard) + BROWN * beard
     return np.clip(base * (0.45 + 0.55 * seen), 0.0, 1.0)
 
 
 def previews(ibex, directory):
+    import bpy
     from fall_grove import studio as studio_module
     from fall_grove.studio import to_blender
     directory.mkdir(parents=True, exist_ok=True)
@@ -570,7 +626,7 @@ def previews(ibex, directory):
     material = studio.material("ibex", roughness=0.85)
     objects = []
     # The buck (full horns, 1.18x), a nanny (short horns), the kid (buds, 0.55x), and the buck's poses.
-    cast = [("buck", 1.18, 1.0, "alert"), ("nanny", 1.0, 0.3, "alert"), ("kid", 0.55, 0.1, "alert"),
+    cast = [("buck", 1.18, 1.0, "alert"), ("nanny", 1.0, 0.33, "alert"), ("kid", 0.55, 0.12, "alert"),
             ("buck-graze", 1.18, 1.0, "graze"), ("nanny-look", 1.0, 0.3, "look"), ("buck-leap", 1.18, 1.0, "leap")]
     for index, (name, size, horn, pose) in enumerate(cast):
         p, n = skin_vertices(ibex, pose_matrices(POSES[pose]), with_horns(ibex, horn))
@@ -590,6 +646,7 @@ def previews(ibex, directory):
     single.data.materials.append(material)
     views = {
         "close-side": ((3.4, 0.9, 0.1), (0.0, 0.8, 0.05), 50),
+        "close-front": ((0.25, 1.0, 3.8), (0.0, 0.85, 0.2), 50),
         "close-front34": ((2.0, 1.4, 2.6), (0.0, 0.85, 0.2), 50),
         "close-behind": ((-1.4, 1.3, -3.2), (0.0, 0.75, -0.2), 50),
         "close-head": ((1.0, 1.35, 1.1), (0.0, 1.15, 0.5), 50),
@@ -597,6 +654,26 @@ def previews(ibex, directory):
     for name, (eye, target, lens) in views.items():
         studio.render(directory / ("ibex-%s.png" % name), eye=eye, target=target, lens=lens, size=(640, 480),
                       samples=16)
+    single.hide_render = True
+    # AT GAME SIZE: the buck, a nanny and the kid as L25 shows them (about 30 px a metre at 1440p, the
+    # buck's shoulder ~28 px), from a little above, rendered small and enlarged x4 without smoothing.
+    for name, size, horn, z in (("buck", 1.18, 1.0, -1.9), ("nanny", 1.0, 0.33, 0.1), ("kid", 0.55, 0.12, 1.7)):
+        p, n = skin_vertices(ibex, pose_matrices(POSES["alert"]), with_horns(ibex, horn))
+        obj = studio.mesh_object("ibex_game_" + name, p * size + np.array([0.0, 0.0, z]), ibex.triangles,
+                                 colors=colours)
+        obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(n)])
+        obj.data.materials.append(material)
+    studio.render(directory / "ibex-game.png", eye=(12.0, 2.6, 0.0), target=(0.0, 0.5, 0.0), lens=72,
+                  size=(180, 90), samples=16)
+    small = bpy.data.images.load(str(directory / "ibex-game.png"))
+    w, h = small.size
+    pixels = np.array(small.pixels[:], dtype=np.float32).reshape(h, w, 4)
+    up = np.repeat(np.repeat(pixels, 4, axis=0), 4, axis=1)
+    out = bpy.data.images.new("ibex-game-x4", w * 4, h * 4, alpha=True)
+    out.pixels.foreach_set(up.reshape(-1))
+    out.filepath_raw = str(directory / "ibex-game-x4.png")
+    out.file_format = "PNG"
+    out.save()
     studio.dispose()
 
 
@@ -622,6 +699,7 @@ def motion(ibex, spec_path, directory):
     w = ibex.weights.astype(np.float64) / 255.0
     ids = ibex.bones.astype(np.int64)
     for index, frame in enumerate(spec["frames"]):
+        made = []
         for animal in frame["animals"]:
             table = np.asarray(animal["table"], dtype=np.float64).reshape(-1, 8)
             positions = with_horns(ibex, animal.get("horn", 1.0))
@@ -638,10 +716,11 @@ def motion(ibex, spec_path, directory):
             obj = studio.mesh_object("ibex_frame", p, ibex.triangles, colors=colours)
             obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(n)])
             obj.data.materials.append(material)
+            made.append(obj)
         cam = frame["camera"]
         studio.render(directory / ("f%04d.png" % index), eye=cam["eye"], target=cam["target"], lens=cam.get("lens", 50),
                       size=tuple(spec.get("size", (480, 300))), samples=8)
-        for obj in [o for o in bpy.data.objects if o.name.startswith("ibex_frame")]:
+        for obj in made:
             data = obj.data
             bpy.data.objects.remove(obj, do_unlink=True)
             bpy.data.meshes.remove(data)

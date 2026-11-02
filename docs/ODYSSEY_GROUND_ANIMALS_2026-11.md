@@ -375,9 +375,81 @@ The deer's tests pass unchanged: the leap only runs for a member that asks for o
 
 ### Left for later
 
-- **Rock under their feet.** The shelf is grass, just above the grey band. The rock that the ground
-  paints grey is the band itself, at slope 1.0-1.2. That is too steep for the leg solver to stand
-  on without the hooves sliding or sinking. A few perch slabs on the shelf (the boulders' rocks)
-  would give the classic picture of an ibex on a rock, and something to leap between.
+- ~~**Rock under their feet.**~~ Done: the perch rocks (below). The shelf is grass, just above the
+  grey band; the band itself, at slope 1.0-1.2, is too steep for the leg solver.
 - **A dark buck.** In late autumn the buck's coat darkens almost to black. At these sizes, darker
   would read as a hole in the grass.
+
+### Design and motion pass, and the perch rocks (2026-11-02)
+
+The owner asked whether the animals are "visually stunning" and move "natural and smooth". For the
+ibex the answer was not yet, so this pass reworked the model and the motion and gave them rocks.
+
+**The model** (`alpine_ibex.py`, still rebuilt byte for byte; 2,184 triangles).
+- **The horns** were a segmented, oversized scythe. Each is now one smooth arc: thick at the root,
+  tapering to a point, rising off the forehead and sweeping back over the neck toward the
+  shoulders, a little outward. Eleven transverse ridges knot the front face. They are 0.73 m along
+  the curve on the buck; the nannies' are short and thin, the kid has buds.
+- **The buck has a short beard.** Like the horns, it is scaled per animal about its own root
+  (`_horn` w = 2), so it is the buck's only.
+- **Stockier:** a deeper chest and barrel, a thicker neck, thicker legs, a shorter tail.
+- **The coat:**
+  - dark brown on the lower legs all round and down the fronts of the forelegs;
+  - a dorsal stripe from the withers to the tail, a band along the lower flank, and a dark chest
+    and throat;
+  - a pale belly and inner legs; the tail, hooves, nose and eyes near black.
+  - The darks are deep enough to survive the screen's gamma: the first coat's "darker brown" was
+    lost in it.
+
+![Before (top) and after: front, side, three-quarter, the head, behind, and the group at game size](images/odyssey-animals-2026-11-02/ibex-design-model.jpg)
+
+**The perch rocks** (`ODYSSEY_PERCH_ROCKS` in `world/odyssey-boulders.js`): three rocks set by hand
+on the shelf:
+- a broad boulder for the buck (1.8 u proud of the slope at its middle, 3 u on its downhill face);
+- a low slab and a low step for the nannies.
+
+They are the world's own boulders: the same shapes, material and tiers, seated by the same rule,
+but standing prouder and leaning less, so there is a top to stand on. They are never dropped by
+the forest or rail rules; the boulder tests hold them clear of both. `buildPerchTops` lays each
+rock's mesh into a fine height grid, and the ibex's hooves stand on the rock the eye sees
+(`createIbexGround`).
+
+**Their life on the rocks.**
+- **The buck** keeps to his boulder: he stands and looks round from the top. Twice a loop he leaps
+  down to graze, and back up.
+- **Each nanny** leaps onto her rock and down again.
+- **The kid** hops about near its mother.
+- **On a perch** (a spot marked `[x, z, 1]`) an animal stays put: no grazing steps off the top, more
+  looking round, and turns on the spot about its middle.
+- **Roaming:** grazing ibex roam about half as far from a spot as the deer (`roam`), so they stay
+  off the rocks' edges.
+
+**The leap, reworked:**
+- **Gather:** the haunches drop (nose up) before the push.
+- **Push and flight:** the take-off and a tucked flight on the arc.
+- **Landing:** the fores take the weight first (nose down), the body gives quickly, and it comes back
+  up more slowly as the hinds come under. The feet then settle.
+
+![Close-up of the game's own motion in slow motion: the buck's leap and the kid's hop, before (rows 1 and 3) and after (rows 2 and 4)](images/odyssey-animals-2026-11-02/ibex-design-leap-hop.jpg)
+
+![In the game at L21, L22, L24 and L25, before and after: the buck on his boulder, the nannies by their rocks](images/odyssey-animals-2026-11-02/ibex-design-perches.jpg)
+
+![L24, 0.2 s apart: the buck turns, gathers and leaps up onto his boulder](images/odyssey-animals-2026-11-02/ibex-design-game-leap.jpg)
+
+**How the motion was filmed.** The game's own solver poses the animals on the CPU, frame by frame.
+`alpine_ibex.py --motion` renders those pose tables in Blender, close up, with the terrain and the
+perch rocks, for every behaviour:
+- the stand, grazing, walking;
+- the kid's hop;
+- the buck's leap.
+
+**Tests** (`tests/unit/odyssey-ibex.test.js`):
+- On its rock an animal's weight-bearing hooves stand on the rock's top, within 0.08 of its drawn
+  size, and at least three of the four are on the rock.
+- Every perch stands proud of the shelf.
+- Eight leaps, each leaving and landing on all four hooves.
+- The earlier checks still hold: hooves, spacing, trees, sizes from the rail, and never popping.
+- The deer's tests pass unchanged.
+
+**Left for later.** At 13-28 px the coat's markings read mostly as dark legs. The flank band and
+the dorsal stripe show only up close.

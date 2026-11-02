@@ -213,6 +213,8 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
     const pivot = cfg.pivotBack * k;
     // The leap's shape (the ibex's config only; ODYSSEY_DEER has none, and deer never leap).
     const leapCfg = /** @type {any} */ (cfg).leap;
+    // How far a grazing animal strays from its spot (1: the deer's; the ibex keep closer, off the rocks).
+    const roam = /** @type {any} */ (cfg).roam ?? 1;
     const { spots } = member;
     const n = spots.length;
     const build = (h0) => {
@@ -282,10 +284,10 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
          * LEAP to `to` (the ibex, odyssey-ibex-herd.js; deer never leap): it turns to face the
          * landing on the spot first, then crouches, flies a straight line and lands, absorbing it.
          */
-        const leap = (to) => {
+        const leap = (to, fromPerch = false) => {
             const L = leapCfg;
             const want = wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h);
-            if (Math.abs(want) > 0.05) turn(want);
+            if (Math.abs(want) > 0.05) turn(want, fromPerch ? 0 : pivot);
             const d = Math.hypot(to[0] - x, to[1] - z);
             const flight = L.flight[0] + ((L.flight[1] - L.flight[0]) * clamp01(d / (L.reach * k)));
             push({
@@ -311,26 +313,29 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
         const grazeEach = Math.max(20, (cfg.loop - walkTime) / n);
         for (let i = 0; i < n; i += 1) {
             const spot = spots[i];
+            // On a perch (an ibex on its rock, `spot[2]`) it stays put: no steps off the top.
+            const perched = spot[2] === 1;
             let left = grazeEach;
             while (left > 5) {
                 const bite = Math.min(left, 5 + (rand() * 9));
                 still('graze', bite, 1);
                 left -= bite;
                 if (left < 5) break;
-                if (rand() < 0.32) {
+                if (rand() < (perched ? 0.6 : 0.32)) {
                     const dur = Math.min(left, 3 + (rand() * 4));
                     still('look', dur, 0, (rand() - 0.5) * 1.6, 1);
                     left -= dur;
                     if (left < 5) break;
                 }
+                if (perched) continue;
                 // A grazing step: a pace or two along a short curve, turning a little, drawn back
                 // toward the spot when it has wandered.
                 const away = Math.hypot(x - spot[0], z - spot[1]);
                 const home = Math.atan2(spot[0] - x, spot[1] - z);
                 const wander = h + ((rand() - 0.5) * 0.8);
-                const pull = clamp01((away - (0.25 * k)) / (0.7 * k));
+                const pull = clamp01((away - (0.25 * k * roam)) / (0.7 * k * roam));
                 const aim = wrapAngle(wander + (wrapAngle(home - wander) * pull));
-                const dist = (0.3 + (rand() * 0.4)) * strideW;
+                const dist = (0.3 + (rand() * 0.4)) * strideW * (0.5 + (0.5 * roam));
                 const before = t;
                 if (Math.abs(wrapAngle(aim - h)) > 0.6) turn(wrapAngle(aim - h) * 0.75);
                 const [ax, az] = dir(aim);
@@ -343,7 +348,7 @@ export function buildDeerSchedule(member, cfg = ODYSSEY_DEER) {
             const to = spots[(i + 1) % n];
             if (/** @type {any} */ (member).leaps?.[i] && leapCfg) {
                 still('look', 1.6, 0.1, wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h) * 0.5, 0.9);
-                leap(to);
+                leap(to, perched);
                 continue;
             }
             const want = wrapAngle(Math.atan2(to[0] - x, to[1] - z) - h);
@@ -420,8 +425,9 @@ export function deerPathAt(deer, time, out = { x: 0, z: 0, heading: 0 }) {
  * grounds, `rise` the arc's slope along the ground (for the body's pitch), `f` the flight's share.
  */
 export function deerLeapAt(deer, time, out = {
-    on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0,
+    on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0, phase: 0,
 }) {
+    out.phase = 0;
     out.on = false;
     out.f = 0;
     out.arc = 0;
@@ -443,14 +449,17 @@ export function deerLeapAt(deer, time, out = {
     const f = (local - s.crouch) / s.flight;
     if (f <= 1) {
         const d = Math.max(1e-6, Math.hypot(s.x1 - s.x0, s.z1 - s.z0));
+        out.phase = 1;
         out.f = f;
         out.arc = 4 * s.apex * f * (1 - f);
         out.rise = (4 * s.apex * (1 - (2 * f))) / d;
         return out;
     }
     const u = clamp01((local - s.crouch - s.flight) / s.absorb);
+    out.phase = 2;
     out.f = 1;
-    out.sink = 0.8 * Math.sin(Math.PI * u);
+    // The give: down fast as the fores take it, then back up more slowly as the hinds come under.
+    out.sink = 0.8 * Math.sin(Math.PI * Math.min(1, (u < 0.3 ? u / 0.6 : 0.5 + ((u - 0.3) / 1.4))));
     return out;
 }
 
@@ -875,7 +884,7 @@ export function createDeerRig(skeleton) {
             x: 0, z: 0, swing: 0, planted: true, length: 0, ground: 0, kind: 0, fx: 0, fz: 0, tx: 0, tz: 0,
         })),
         leap: {
-            on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0,
+            on: false, f: 0, arc: 0, rise: 0, sink: 0, apex: 0, phase: 0,
         },
         hooves: LEGS.map(() => ({
             x: 0, y: 0, z: 0, ground: 0, stance: 0, planX: 0, planZ: 0,
@@ -934,7 +943,9 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     const pitch = (-Math.atan2(fore - hind, 0.98 * k) * 0.9) + (cfg.graze.dip * g)
         // (In a leap: nose up off the rock, level at the top, nose down to land; held to ~17
         // degrees, as far as the legs can reach for it.)
-        - (leap.on ? Math.max(-0.3, Math.min(0.3, Math.atan(leap.rise) * 0.45)) : 0);
+        - (leap.on ? Math.max(-0.3, Math.min(0.3, Math.atan(leap.rise) * 0.45)) : 0)
+        - (leap.on && leap.phase === 0 ? 0.16 * leap.sink : 0)
+        + (leap.on && leap.phase === 2 ? 0.12 * leap.sink : 0);
     const roll = -Math.atan2(left - right, 0.22 * k) * 0.12;
     const swingOf = (l) => (feet[l].planted ? 0 : Math.sin(Math.PI * feet[l].swing));
     const breathe = Math.sin(((time / 3.4) + (seed * 0.37)) * TAU);
