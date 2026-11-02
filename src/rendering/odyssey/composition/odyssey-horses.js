@@ -25,22 +25,28 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cross, dot, exp, float, floor, instanceIndex, int, ivec2,
-    length, max, mix, normalize, positionGeometry, positionWorld, smoothstep, textureLoad, varying,
-    vec2, vec3, vec4,
+    length, max, mix, mx_noise_float as mxNoise, mx_worley_noise_float as mxWorley, normalize, positionGeometry, positionWorld, pow,
+    sin, smoothstep, textureLoad, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import { odysseyWorldHeight } from '../world/odyssey-world-height.js';
 import {
-    ODYSSEY_HORSES, buildBand, createHorseRig, horseRevealAt, planFootfalls, poseHorse,
+    HORSE_DUST, ODYSSEY_HORSES, bandDustAt, buildBand, createHorseRig, gaitShares, horseRevealAt, planFootfalls,
+    poseHorse,
 } from './odyssey-horse-band.js';
 
 export const ODYSSEY_HORSES_URL = new URL('../assets/chapter-03/horses/wild-horses.glb', import.meta.url).href;
 
 /** The vertex attributes each model must carry. */
-const HORSE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_bones', '_weights']);
-/** Texels a row of the table holds after the bones: the shadow (centre, cast, plane). */
-const SHADOW_TEXELS = 3;
+const HORSE_ATTRIBUTES = Object.freeze(['position', 'normal', 'color', '_bones', '_weights', '_hair']);
+/**
+ * Texels a row of the table holds after the bones: the shadow (centre, cast, plane), then the
+ * gait (stride phase, trot share, canter share, board time) the hair moves with.
+ */
+const EXTRA_TEXELS = 4;
+/** The most dust puffs drawn at once (the band at a gallop raises ~60). */
+const DUST_MAX = 112;
 /** How far a shadow is drawn toward the eye along its line of sight, as a share of the distance. */
 const SHADOW_PULL = 0.002;
 /** The coats' order in the shader's pick (`look.z`). */
@@ -98,7 +104,7 @@ export function parseOdysseyHorse(root, name) {
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    ['color', '_bones', '_weights'].forEach((attr) => geometry.setAttribute(attr, bytes(source.attributes[attr])));
+    ['color', '_bones', '_weights', '_hair'].forEach((attr) => geometry.setAttribute(attr, bytes(source.attributes[attr])));
     geometry.setIndex(new THREE.BufferAttribute(Uint16Array.from(source.index.array), 1));
     geometry.name = name === 'foal' ? 'OdysseyHorseFoal' : 'OdysseyHorse';
     return {
@@ -135,6 +141,12 @@ export function createOdysseyHorses({
     const rigs = {};
     let table = null;
     let data = null;
+    let dustMesh = null;
+    let dustData = null;
+    let dustAttr = null;
+    let dustSize = null;
+    let dustSizeAttr = null;
+    const dustScratch = new Float32Array(DUST_MAX * 4);
     let row = 0;
     let bones = 0;
     let loaded = false;
@@ -147,13 +159,16 @@ export function createOdysseyHorses({
         const material = new THREE.MeshBasicNodeMaterial();
         material.name = name === 'foal' ? 'OdysseyHorseFoals' : 'OdysseyHorses';
         material.fog = false;
-        // (Five geometry attributes and ONE instanced: WebGPU allows eight vertex buffers a draw,
+        // (Six geometry attributes and ONE instanced: WebGPU allows eight vertex buffers a draw,
         // so the coat is an index into the three coats, picked here, not three colour attributes.)
         const look = attribute('look', 'vec4'); // row, tone, coat (0 bay, 1 dun, 2 grey), -
         const paint = attribute('color', 'vec4'); // pale, points, black, sky seen
+        const hairMask = attribute('_hair', 'vec4'); // hair, flutter, definition, barring
         const vNormal = varying(vec3(0, 1, 0), 'odHorseNormal');
         const vPaint = varying(vec4(0), 'odHorsePaint');
         const vLook = varying(vec4(0), 'odHorseLook');
+        const vHair = varying(vec4(0), 'odHorseHair');
+        const vRest = varying(vec3(0), 'odHorseRest');
         material.positionNode = Fn(() => {
             const r = int(floor(look.x.add(0.5)));
             const ids = attribute('_bones', 'vec4');
@@ -170,9 +185,27 @@ export function createOdysseyHorses({
                 pos.addAssign(turn(q, p).mul(t.w).add(t.xyz).mul(w));
                 nor.addAssign(turn(q, n).mul(w));
             });
+            // THE HAIR MOVES WITH THE GAIT: the mane, forelock and tail tips (their flutter) bob
+            // with the stride (twice a stride at a trot, once at a canter, lagging toward the
+            // tips), stream back and lift in a run, and sway a little in the air while it stands.
+            const gait = textureLoad(table, ivec2(int(bones * 2 + 3), r)).toVar(); // phase, trot, canter, time
+            const root = textureLoad(table, ivec2(int(0), r));
+            const scale = textureLoad(table, ivec2(int(1), r)).w;
+            const fwd = turn(root, vec3(0, 0, 1));
+            const side = turn(root, vec3(1, 0, 0));
+            const f = hairMask.y;
+            const ph = gait.x.mul(Math.PI * 2);
+            const bob = sin(ph.mul(2).sub(f.mul(1.4))).mul(gait.y.mul(0.035))
+                .add(sin(ph.sub(f.mul(1.3))).mul(gait.z.mul(0.06)));
+            const stream = gait.z.mul(0.1).add(gait.y.mul(0.03));
+            const sway = sin(gait.w.mul(1.3).add(look.x.mul(1.7)).add(f.mul(2.2))).mul(0.02);
+            pos.addAssign(vec3(0, 1, 0).mul(bob.add(gait.z.mul(0.035))).sub(fwd.mul(stream)).add(side.mul(sway))
+                .mul(f.mul(scale)));
             vNormal.assign(normalize(nor));
             vPaint.assign(paint);
             vLook.assign(look);
+            vHair.assign(hairMask);
+            vRest.assign(p);
             return pos;
         })();
         material.colorNode = Fn(() => {
@@ -183,32 +216,110 @@ export function createOdysseyHorses({
             const points = clamp(vPaint.y, 0, 1);
             const black = clamp(vPaint.z, 0, 1);
             const seen = clamp(vPaint.w, 0, 1);
-            // The coat: its body colour a touch lighter or darker from one horse to the next; the
-            // mealy muzzle and belly toward the pale; the mane, tail and lower legs the points
-            // colour; hooves, eyes and nostrils near black whatever the coat.
+            const hair = clamp(vHair.x, 0, 1);
+            const definition = vHair.z;
+            const barring = clamp(vHair.w, 0, 1);
+            const idx = vLook.z;
+            const dun = smoothstep(0.4, 0.6, idx).mul(smoothstep(1.6, 1.4, idx));
+            const grey = smoothstep(1.4, 1.6, idx);
             const coat = (key) => {
                 const [a, b, c] = COAT_ORDER.map((coatName) => vec3(...ODYSSEY_HORSES.coats[coatName][key]));
-                const idx = vLook.z;
                 return mix(mix(a, b, smoothstep(0.4, 0.6, idx)), c, smoothstep(1.4, 1.6, idx));
             };
-            const body = coat('body').mul(mix(float(0.88), float(1.1), vLook.y));
+            // THE COAT. Its body colour a touch lighter or darker from one horse to the next; a
+            // grey's dappled (light rounds in a darker net, on the body, not the legs or head);
+            // the mealy muzzle and belly toward the pale; the mane, tail, dorsal stripe and
+            // lower legs the points colour, and a dun's faint bars on the forearms and gaskins;
+            // hooves, eyes and nostrils near black whatever the coat.
+            // (Dapples: soft light rounds in a darker net over the barrel and quarters, fading up
+            // the neck and down the legs.)
+            const dappleCell = mxWorley(vRest.mul(6.5));
+            const onBody = smoothstep(0.55, 0.85, vRest.y).mul(smoothstep(1.75, 1.35, vRest.y));
+            const dapple = smoothstep(0.12, 0.5, dappleCell).mul(grey).mul(float(1).sub(points)).mul(onBody);
+            const body = coat('body').mul(mix(float(0.88), float(1.1), vLook.y)).mul(float(1.06).sub(dapple.mul(0.2)));
             const mealy = mix(body, coat('pale'), pale.mul(0.85));
-            const pointed = mix(mealy, coat('points'), points);
-            const albedo = mix(pointed, vec3(0.016, 0.013, 0.012), black).toVar();
-            const ndl = clamp(dot(N, L).add(0.35).div(1.35), 0, 1);
+            // (A dun's leg bars: faint, thin and a little uneven, never a zebra's.)
+            const wobble = mxNoise(vRest.mul(9)).mul(0.012);
+            const bars = smoothstep(0.62, 0.9, sin(vRest.y.add(wobble).mul((Math.PI * 2) / 0.085)).mul(0.5).add(0.5));
+            const barred = barring.mul(bars).mul(dun).mul(0.12);
+            const pointed = mix(mealy, coat('points'), clamp(points.add(barred), 0, 1));
+            // The hair in strands: a streaked darkening along its fall.
+            const strands = mxNoise(vRest.mul(vec3(70, 9, 70))).mul(0.5).add(0.5);
+            const haired = pointed.mul(mix(float(1), mix(float(0.72), float(1.12), strands), hair));
+            const albedo = mix(haired, vec3(0.016, 0.013, 0.012), black).toVar();
+            // MUSCLE: the baked definition (bulges up, creases down) shapes the light as well as
+            // the normals do; strongest where the sun falls on it.
+            const ndlRaw = dot(N, L);
+            const ndl = clamp(ndlRaw.add(0.35).div(1.35), 0, 1);
+            const relief = float(1).add(definition.sub(0.5).mul(mix(float(0.55), float(0.95), ndl)));
             const skyUp = max(N.y, 0);
             const meadowUp = max(N.y.negate(), 0);
             const sky = mix(haze, vec3(0.62, 0.58, 0.5), 0.45);
             const ambient = sky.mul(skyUp.mul(0.26).add(0.17))
                 .add(vec3(0.2, 0.24, 0.1).mul(meadowUp.mul(0.34).add(0.06)));
             const occlusion = mix(float(0.5), float(1), seen);
-            const lit = albedo.mul(sun.mul(ndl.mul(0.95)).add(ambient)).mul(occlusion).toVar();
+            const lit = albedo.mul(sun.mul(ndl.mul(0.95)).add(ambient)).mul(occlusion).mul(relief).toVar();
+            // A sheen on the coat and the hair where the low sun grazes it, a little sky on the
+            // edges: the outline against the grass.
+            const H = normalize(L.add(V));
+            const sheen = pow(clamp(dot(N, H), 0, 1), 18).mul(mix(float(0.05), float(0.12), hair)).mul(ndl);
             const edge = float(1).sub(abs(dot(N, V)));
-            const rim = haze.mul(edge.mul(edge).mul(edge).mul(0.05));
+            const rim = haze.mul(edge.mul(edge).mul(edge).mul(0.06)).add(sun.mul(sheen));
             const air = float(1).sub(exp(length(toEye).div(-2600.0)));
             return mix(lit.add(rim), haze, air.mul(0.8));
         })();
         return material;
+    }
+
+    /** The dust's draw: soft, world-anchored puffs where the hooves struck at a run. */
+    function buildDust() {
+        const geometry = new THREE.InstancedBufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute([
+            -1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0,
+        ], 3));
+        geometry.setIndex([0, 1, 2, 0, 2, 3]);
+        dustData = new Float32Array(DUST_MAX * 4);
+        dustAttr = new THREE.InstancedBufferAttribute(dustData, 4);
+        dustAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('puff', dustAttr);
+        dustSize = new Float32Array(DUST_MAX);
+        dustSizeAttr = new THREE.InstancedBufferAttribute(dustSize, 1);
+        dustSizeAttr.setUsage(THREE.DynamicDrawUsage);
+        geometry.setAttribute('puffSize', dustSizeAttr);
+        geometry.instanceCount = 0;
+        geometry.name = 'OdysseyHorseDust';
+        const material = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+        material.name = 'OdysseyHorseDust';
+        material.fog = false;
+        const puff = attribute('puff', 'vec4'); // x, y (the ground), z, age (s)
+        const strength = attribute('puffSize', 'float'); // the puff's drawn size (u)
+        const vUv = varying(vec2(0), 'odHorseDustUv');
+        const vFade = varying(float(0), 'odHorseDustFade');
+        material.positionNode = Fn(() => {
+            const u = clamp(puff.w.div(HORSE_DUST.life), 0, 1);
+            const size = strength.mul(mix(float(0.18), float(0.62), pow(u, 0.6)));
+            const centre = vec3(puff.x, puff.y.add(strength.mul(0.12)).add(u.mul(strength.mul(0.22))), puff.z);
+            const toEye = normalize(cameraPosition.sub(centre));
+            const right = normalize(cross(vec3(0, 1, 0), toEye));
+            const up = cross(toEye, right);
+            const corner = positionGeometry;
+            vUv.assign(corner.xy);
+            vFade.assign(smoothstep(0, 0.08, u).mul(float(1).sub(u)).mul(float(1).sub(u)));
+            return centre.add(right.mul(corner.x.mul(size))).add(up.mul(corner.y.mul(size.mul(0.7))));
+        })();
+        material.colorNode = Fn(() => {
+            const d = length(vUv);
+            const soft = smoothstep(1, 0.1, d);
+            const toEye = cameraPosition.sub(positionWorld);
+            const air = float(1).sub(exp(length(toEye).div(-2600.0)));
+            const dust = mix(vec3(0.5, 0.43, 0.31).mul(sun.mul(0.6).add(0.45)), haze, air.mul(0.8));
+            return vec4(dust, soft.mul(vFade).mul(0.42));
+        })();
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'odyssey-horse-dust';
+        mesh.frustumCulled = false;
+        mesh.renderOrder = 2;
+        return mesh;
     }
 
     /** The shadows' draw: an ellipse on the slope's plane under each horse, cast from the sun. */
@@ -285,8 +396,29 @@ export function createOdysseyHorses({
             data[o + 7] = (0.36 * horse.k * long) + (0.85 * horse.k * long * (1 - along));
             data[o + 8] = out.gx;
             data[o + 9] = out.gz;
+            // The gait the hair moves with.
+            const shares = gaitShares(out.rhythm.speed);
+            data[o + 12] = out.rhythm.phase - Math.floor(out.rhythm.phase);
+            data[o + 13] = shares.trot;
+            data[o + 14] = shares.canter;
+            data[o + 15] = time % 1000;
         });
         table.needsUpdate = true;
+        // The dust: the puffs the planned hoof landings raised, each on the ground where it struck.
+        const n = bandDustAt(order, time, dustScratch, DUST_MAX);
+        for (let i = 0; i < n; i += 1) {
+            const o = i * 4;
+            dustData[o] = dustScratch[o];
+            dustData[o + 1] = heightAt(dustScratch[o], dustScratch[o + 1]);
+            dustData[o + 2] = dustScratch[o + 1];
+            dustData[o + 3] = dustScratch[o + 2];
+            dustSize[i] = dustScratch[o + 3];
+        }
+        dustMesh.geometry.instanceCount = n;
+        if (n) {
+            dustAttr.needsUpdate = true;
+            dustSizeAttr.needsUpdate = true;
+        }
     }
 
     const api = {
@@ -310,7 +442,7 @@ export function createOdysseyHorses({
                 }, 0);
             })), Promise.resolve());
             bones = models.horse.skeleton.length;
-            row = (bones * 2) + SHADOW_TEXELS;
+            row = (bones * 2) + EXTRA_TEXELS;
             data = new Float32Array(row * count * 4);
             table = new THREE.DataTexture(data, row, count, THREE.RGBAFormat, THREE.FloatType);
             table.minFilter = THREE.NearestFilter;
@@ -319,6 +451,8 @@ export function createOdysseyHorses({
             table.colorSpace = THREE.NoColorSpace;
             table.name = 'OdysseyHorsePoses';
             group.add(buildShadow());
+            dustMesh = buildDust();
+            group.add(dustMesh);
             MODELS.forEach((name) => {
                 const { geometry } = models[name];
                 const rows = order.map((h, i) => [h, i]).filter(([h]) => h.member.model === name);

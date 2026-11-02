@@ -1318,6 +1318,9 @@ export function createOdysseyWorld({
     // was measured at 0.00% of pixels changed across four rail stations, for 0.20 ms p50 — and
     // `?odysseyWorldNoVisCull=1` restores every tree (ADR-0015).
     visibilityCull = true,
+    // The wild horses' meadow kept open (odyssey-meadow-clearing.js). Ships ON;
+    // `?odysseyNoMeadowClearing=1` puts its trees back (ADR-0015).
+    meadowClearing = true,
     // EXPERIMENT: pin every tree to one LOD tier. `?odysseyForestLod=hero` is the "what would
     // high-detail trees everywhere feel like" lever. Not a quality setting — it ignores
     // distance entirely, so it costs ~18 ms of forest on the integrated lane.
@@ -5862,6 +5865,7 @@ export function createOdysseyWorld({
     const greensPalette = resolveForestGreens(forestGreens);
     let forestV2Stats = null;
     let forestPlacements = null;
+    let forestClearedSites = [];
     const m4 = new THREE.Matrix4();
     const quat = new THREE.Quaternion();
     const pos = new THREE.Vector3();
@@ -6298,6 +6302,7 @@ export function createOdysseyWorld({
             seaLevel: ODYSSEY_SEA_LEVEL,
             rail: railSamples,
             visibilityCull,
+            meadowClearing,
             forceLod: forestLod,
             lodDistance: forestLodDistanceForTier(qualityTier),
         };
@@ -6407,6 +6412,8 @@ export function createOdysseyWorld({
         });
         forestV2Stats = zoned.stats;
         forestPlacements = zoned.placements;
+        // The horses' meadow's cleared sites still count for the boulders' clearance (they stay as they were).
+        forestClearedSites = zoned.meadowCleared ?? [];
         geoCache.forEach((cached) => cached.dispose());
     }
 
@@ -6496,7 +6503,7 @@ export function createOdysseyWorld({
             AERIAL_RATE_LAND,
             true,
         ));
-        boulderRocks = buildBoulderSites(relief.sample, { trees: forestPlacements ?? [] });
+        boulderRocks = buildBoulderSites(relief.sample, { trees: [...(forestPlacements ?? []), ...forestClearedSites] });
         const { lod } = ODYSSEY_BOULDERS;
         ODYSSEY_BOULDERS.shapes.forEach((_, si) => {
             const mine = boulderRocks.filter((r) => r.shape === si);

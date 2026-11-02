@@ -3,9 +3,10 @@
 ## Wild horse mare and foal (`wild-horses.glb`)
 
 Generated, not captured: `scripts/blender/odyssey/wild_horse.py` builds it in headless Blender (a signed
-distance field of ellipsoids and round cones, polygonised and decimated to about 2,400 triangles for the
-mare and 1,800 for the foal, each skinned to its own 29-bone skeleton through `_bones`/`_weights`
-attributes, the coat's masks painted into the vertex colours). The proportions follow the Grainfields
+distance field of ellipsoids and round cones, polygonised and decimated to about 3,000 triangles for the
+mare and 2,100 for the foal, each skinned to its own 29-bone skeleton through `_bones`/`_weights`
+attributes, the coat's masks painted into the vertex colours, the hair and the muscles' definition in
+`_hair`). The proportions follow the Grainfields
 horse (`scripts/blender/grainfields/horse.py`) and the meshing reuses its helpers
 (`scripts/blender/grainfields/horse_sdf.py`). No photograph, scan or third-party model is involved, so
 there is nothing to attribute.

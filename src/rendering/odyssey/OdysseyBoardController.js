@@ -370,6 +370,7 @@ function readWorldBuildOptions(qualityName) {
             seaLevel: ODYSSEY_SEA_LEVEL,
             rail: railSamples,
             visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+            meadowClearing: !readBooleanUrlFlag('odysseyNoMeadowClearing'),
             forceLod: ['hero', 'mid', 'far'].includes(forestLodValue) ? forestLodValue : null,
             lodDistance: forestLodDistanceForTier(qualityName),
         };
@@ -1374,6 +1375,8 @@ export class OdysseyBoardController {
                     // `?odysseyWorldNoVisCull=1` puts every tree back, so a suspected hole is
                     // attributable in one reload rather than unfalsifiable.
                     visibilityCull: !readBooleanUrlFlag('odysseyWorldNoVisCull'),
+                    // The wild horses' meadow kept open; `?odysseyNoMeadowClearing=1` restores it.
+                    meadowClearing: !readBooleanUrlFlag('odysseyNoMeadowClearing'),
                     // EXPERIMENT: `?odysseyForestLod=hero` pins every tree to the hero tier so
                     // the look can be FELT in the real game. Costs ~18 ms of forest on the
                     // integrated lane against a 10.6 ms whole-frame budget, so it is a test

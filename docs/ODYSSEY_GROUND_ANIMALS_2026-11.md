@@ -844,3 +844,109 @@ masks (pale, points, black, sky seen), and the coat is a tint per horse: bay, du
   following its mother step by step would read better up close.
 - The runs are scheduled in the loop (every ~2.5 minutes). They are not timed to the rail's
   arrivals.
+
+### Design and motion pass, and the open meadow (2026-11-02, later)
+
+The owner asked: "are the animals designed so they are visually stunning and animates so that the
+animation and movements feels natural and smooth?" The answer for the horses was "not yet". This
+pass is the recommended work: an open meadow, the look, the motion, and the dust.
+
+**The meadow is open now** (`world/odyssey-meadow-clearing.js`). The forest scatter keeps it open
+the way it keeps the tarn's meadow open:
+- no tree in its core, but for a few lone trees (3.5 % of sites);
+- a treeline that thins at the rim;
+- an outline of four overlapping ellipses pushed in and out by a low noise, so it is not a cut
+  circle.
+
+It covers both grazing places, the long run round the copse, and the rise between the band and the
+rail's view, where the crowns hid it.
+- It removes 40 trees on High and 16 on Low. The scatter reports them (`meadowCleared`), and the
+  boulders still keep clear of them, so not one rock moves or appears.
+- Measured with crown ellipsoids on the real rail camera (first outline; the final one is a little
+  larger), the share of the band in view and not
+  behind a crown went up on High: L15 18 → 62 %, L16 47 → 74 %, L17 37 → 49 %, L18 43 → 83 %,
+  L11 45 → 54 %. On Low: L15 70 → 91 %, L18 72 → 99 %.
+- Only L10-L18 see it; no later orb looks at it.
+- The forest visibility mask needs no re-bake: its stamp covers only the rail and the terrain.
+- The golden bakes do not include the forest. The forest's shade plate is built from the scatter
+  at load, so it follows the clearing.
+- Turn it off with `?odysseyNoMeadowClearing=1`.
+
+**The look.**
+- The model (`wild_horse.py`) has muscle masses under the skin: the shoulder blade, triceps,
+  quarters, hamstrings and the long back muscle.
+- The head is a refined wedge: a flat forehead, round jowls, a faint dish, a smaller muzzle with
+  flared nostrils and a dark tip, and wider-set eyes.
+- The mare has a thick, upright mane, a forelock and a fuller tail. The foal has a brush mane and
+  a bottle-brush tail.
+- A new `_hair` attribute carries four masks: hair, flutter, muscle definition and leg bars.
+- The shader uses those masks for:
+  - muscle relief, strongest in the sun;
+  - a streaked, sheened mane and tail;
+  - a grey's dapples (soft light rounds in a darker net over the barrel and quarters);
+  - a dun's faint, uneven leg bars and dark dorsal stripe;
+  - a bay's black points.
+- The mane, forelock and tail tips move with the gait: they bob twice a stride at a trot and once
+  at a canter, stream back in a run, and sway a little while the horse stands.
+- Mare 2,998 triangles (was 2,396), foal 2,086 (was 1,796).
+
+**The motion.** Filmed up close and in slow motion (`src/playground/effects/odyssey-horses.effect.js`,
+`?effect=odyssey-horses&t=<board s>&horse=<0-6>&view=side|three|front|rear|band`), and measured
+on the plan:
+- **The gallop** was a pace in disguise: it landed lateral pairs (RF and RH, then LH and LF). A hoof
+  whose turn came round while it could not lift lost that turn, and reach-limit lifts took over the
+  rhythm. Now a hoof's turn waits until it can lift, a turn that falls inside its own lift is
+  dropped, and the reach limit follows the stance's length. It is a transverse gallop on the left
+  lead (RH, LH, RF, LF) in more than 90 % of strides, with a moment of flight in each.
+- **The walk** never leaves the ground. Before, it was briefly airborne (9 % of one walk).
+- **Standing forelegs** folded about 1 rad at the knee. The grazing dip tipped the body nose-down,
+  which lifted the hips out of the hind legs' reach, sank the whole horse and bunched the shoulder
+  (the "fin" at the withers). Now the head reaches the grass by the neck alone. A fore leg bearing
+  weight stands on a straight knee, with the shoulder and elbow taking the give, and folds its knee
+  only in the air. A hoof left out under a horse that has stopped steps in at once.
+- **The wheel before a run** was a 6-9 s pivot on the spot. Now it is a quick wheel (2.2 rad/s at
+  most) after the heads come up.
+- **The trot** carries the head up and steady. Its diagonal pairs lock only after a stride or two.
+  The adults pass through the trot in about a second, and the foals' play trots are short, so it
+  is left at that.
+
+**Dust.** Soft, world-anchored puffs rise where a hind hoof struck at a canter or gallop. Each
+fades over 1.9 s, at most 12 a horse. It is one extra draw of camera-facing quads, posed from the
+plan's footfalls; none rise while the band grazes.
+
+**Cost.** 4 draws (mares, foals, shadows, dust), 19,162 triangles plus up to ~84 dust quads. The
+pose is about 0.1 ms a frame on the CPU, as before.
+
+The meadow before (left, `?odysseyNoMeadowClearing=1`) and after (right), from every orb that sees
+it: L11, L13, L14, L15, L16, L17, L18 (the clock pinned to a grazing moment):
+
+![The meadow from every orb that sees it, before and after](images/odyssey-animals-2026-11-02/horses-clearing-before-after.jpg)
+
+![The band on the open meadow at L15, L16, L17 and L18, before and after (crops enlarged 2x)](images/odyssey-animals-2026-11-02/horses-clearing-band.jpg)
+
+![The long run seen from L16, 1.8 s apart: the band moves off, runs round the copse and comes back up the east side](images/odyssey-animals-2026-11-02/horses-clearing-gallop-l16.jpg)
+
+The model before (left) and after (right), and at game size (before above, after below):
+
+![The model before and after: side, three-quarter front, front, behind, the head, the three coats](images/odyssey-animals-2026-11-02/horses-design-model-before-after.jpg)
+
+![At game size, before and after](images/odyssey-animals-2026-11-02/horses-design-game-size-before-after.jpg)
+
+Close up in the playground, before (top row of each) and after (bottom row), the same board times:
+the gallop (0.12 s apart), the wheel before a run, grazing, and a foal's buck:
+
+![The gallop, before and after](images/odyssey-animals-2026-11-02/horses-motion-gallop-before-after.jpg)
+
+![The wheel before a run, before and after](images/odyssey-animals-2026-11-02/horses-motion-turn-before-after.jpg)
+
+![Grazing, before and after](images/odyssey-animals-2026-11-02/horses-motion-graze-before-after.jpg)
+
+![A foal's buck, before and after](images/odyssey-animals-2026-11-02/horses-motion-buck-before-after.jpg)
+
+**Tests** (`tests/unit/odyssey-wild-horses.test.js`), added this pass:
+- the walk keeps at least two hooves down;
+- the gallop lands in its order, with flight;
+- the standing fore knee is straight;
+- the clearing holds every horse and every puff, has a ragged edge, keeps only a few lone trees in
+  its core, and leaves the boulders exactly as they were;
+- dust rises only in a run.
