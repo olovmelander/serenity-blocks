@@ -51,7 +51,8 @@ export const CH7_FALL = Object.freeze({
      * 70 deg-FOV frustum's corners with margin). */
     restAlpha: Math.asin(SHADOW_RADIUS / LOCK_DISTANCE),
     horizonAlpha: 72 * DEG,
-    /** Growth exponent on u = local/horizon: slow at first, then the plunge. */
+    /** Growth exponent on u = local/horizon: slow at first, then the plunge. Unused since the
+     * approach (CH7_APPROACH) took over the hole's size (2026-11-02); kept for the record. */
     growth: 1.9,
     /** The shadow's near surface never comes closer than this to the eye, so the rail and the
      * level nodes (all within ~100 u) always draw in front of it. */
@@ -91,6 +92,54 @@ export const CH7_FALL = Object.freeze({
     fovPeakDeg: 10,
     camForwardPeak: 6.5,
 });
+
+/**
+ * THE HOLE LOOMS ON THE WAY IN (2026-11-02). Olov: "can we extend the length of that chapter
+ * slightly and use the orb path going into the black hole". The hole is camera-locked, so it held
+ * its 8.3 deg all the way from orb 48 to the mouth and only began to grow at the chapter line, where
+ * its growth (u^1.9) started from a standstill: frames a second apart were the same picture, then
+ * the hole swallowed the frame in ~0.4 s. Its size is now one approach, from `runIn` of progress
+ * before the mouth (just before orb 48's park) to the horizon: the eye closes on it at a steady
+ * pace, so it grows as 1 / distance (sin alpha = sin rest / (1 - c w)), ~14 deg at the mouth and
+ * on without a pause, until `landFrom` degrees, where it eases onto the horizon's size (the slope
+ * matched at the join, flat at the horizon).
+ */
+export const CH7_APPROACH = Object.freeze({
+    /** Progress before the mouth (chapter 7's start) where the hole begins to loom. */
+    runIn: 0.0095,
+    /** Degrees past which the approach eases onto `horizonAlpha`. */
+    landFrom: 60,
+});
+
+/**
+ * The hole's angular radius on the approach: `restAlpha` before it, `horizonAlpha` from the horizon.
+ * @param {number} progress absolute path progress
+ * @param {number} ch7Start
+ * @param {number} ch8Start
+ * @returns {number} radians
+ */
+export function resolveBlackHoleApproachAlpha(progress, ch7Start, ch8Start) {
+    const F = CH7_FALL;
+    const start = ch7Start - CH7_APPROACH.runIn;
+    const end = ch7Start + ((ch8Start - ch7Start) * F.horizon);
+    if (!Number.isFinite(progress) || !(end > start) || progress <= start) return F.restAlpha;
+    if (progress >= end) return F.horizonAlpha;
+    const w = (progress - start) / (end - start);
+    const s0 = Math.sin(F.restAlpha);
+    const sH = Math.sin(F.horizonAlpha);
+    const c = 1 - (s0 / sH);
+    const landAlpha = CH7_APPROACH.landFrom * DEG;
+    // Where the steady approach reaches `landFrom`, and how fast it is growing there (per unit w).
+    const wLand = (1 - (s0 / Math.sin(landAlpha))) / c;
+    if (w <= wLand) return Math.asin(Math.min(1, s0 / (1 - (c * w))));
+    const d = s0 / Math.sin(landAlpha);
+    const slope = (s0 * c) / (d * d * Math.cos(landAlpha));
+    // The landing: a cubic from landAlpha (that slope) to horizonAlpha (no slope).
+    const x = (w - wLand) / (1 - wLand);
+    const a = Math.min(3, (slope * (1 - wLand)) / (F.horizonAlpha - landAlpha));
+    const h = (a * x) + ((3 - (2 * a)) * x * x) + ((a - 2) * x * x * x);
+    return landAlpha + ((F.horizonAlpha - landAlpha) * h);
+}
 
 const REST = Object.freeze({
     active: false,
@@ -174,10 +223,11 @@ export function resolveBlackHoleFall(progress, chapterPositions) {
         return blackHoleFallAtRest();
     }
     const local = (progress - ch7Start) / (ch8Start - ch7Start);
-    if (local <= 0) return { ...REST, local };
+    // The run-in (CH7_APPROACH): the hole already looms before the chapter line, nothing else moves.
+    const alpha = resolveBlackHoleApproachAlpha(progress, ch7Start, ch8Start);
+    if (local <= 0) return { ...REST, local, alpha };
     const F = CH7_FALL;
     const u = Math.min(1, local / F.horizon);
-    const alpha = F.restAlpha + ((F.horizonAlpha - F.restAlpha) * (u ** F.growth));
     const exit = resolveBlackHoleFallExit(chapterPositions) ?? 0.82;
     const camera = resolveBlackHoleFallCamera(local, exit);
     return {
@@ -220,8 +270,9 @@ export function resolveBlackHoleInsideProgress(chapterPositions) {
  * the hole grew from 8 deg to swallowing the frame in ~0.12 s — seven frames, a cut. Every path
  * travel now spends its time as if the plunge were `dwell` times longer (the camera controller's
  * travel eases in this measure, not in progress), and a short trip through it is given `extraMs`
- * more: the hole looms, the rail's inflow draws the eye in, and the photon ring sweeps past the
- * frame over ~1.4 s, then the tunnel takes the eye on at full speed.
+ * more. Since 2026-11-02 the run-in before the mouth and a beat at the rim weigh in too: the 48 -> 49
+ * trip runs ~4.9 s, the hole looming for ~1.8 s, the rim crossing the frame over ~0.56 s, then the
+ * tunnel takes the eye on at full speed.
  */
 export const CH7_PLUNGE_TRAVEL = Object.freeze({
     /** How much more a unit of progress through the plunge weighs than open path. */
@@ -229,11 +280,27 @@ export const CH7_PLUNGE_TRAVEL = Object.freeze({
     /** Progress over which that weight eases in before the mouth and out after the inside point. */
     shoulder: 0.004,
     /** Time added to a trip that crosses the whole plunge... */
-    extraMs: 2600,
+    extraMs: 3000,
     /** ...in full up to this trip length (progress), fading to none by `longTrip + longFade`
      * (a trip across the journey has seconds of its own to spend in the hole). */
     longTrip: 0.04,
     longFade: 0.1,
+    /**
+     * THE RUN-IN (2026-11-02, CH7_APPROACH): the stretch from just before orb 48 to the mouth, where
+     * the hole now looms, weighs `runInDwell` and a trip across it is given `runInExtraMs` more, so
+     * the way in is watched rather than crossed (the owner asked for the chapter "slightly" longer;
+     * no orb moves, the time is spent there instead).
+     */
+    runInDwell: 3,
+    runInExtraMs: 1000,
+    /**
+     * THE BEAT: where the hole has grown to `beatDeg` (its rim, with the photon ring, crossing the
+     * frame's edges) the trip lingers: an extra weight `beatDwell` in a Gaussian `beatWidth` of
+     * progress wide, so the eye hangs at the edge for a moment before the tunnel takes it on.
+     */
+    beatDeg: 50,
+    beatWidth: 0.00035,
+    beatDwell: 70,
 });
 
 /**
@@ -247,34 +314,84 @@ export function resolvePlungeStretch(chapterPositions) {
     return { from: chapterPositions[6], to: inside };
 }
 
-// ∫0..x of smooth01: x^3 - x^4 / 2 (so 1/2 over a whole shoulder).
-const shoulderArea = (x) => {
-    const t = Math.min(1, Math.max(0, x));
-    return (t ** 3) - ((t ** 4) / 2);
-};
+/**
+ * The progress at which the hole has grown to `deg` on the approach (CH7_APPROACH).
+ * @returns {number|null}
+ */
+export function resolveBlackHoleApproachProgress(deg, chapterPositions) {
+    const ch7Start = chapterPositions?.[6];
+    const ch8Start = chapterPositions?.[7];
+    if (!Number.isFinite(ch7Start) || !Number.isFinite(ch8Start) || ch8Start <= ch7Start) return null;
+    const target = deg * DEG;
+    let lo = ch7Start - CH7_APPROACH.runIn;
+    let hi = ch7Start + ((ch8Start - ch7Start) * CH7_FALL.horizon);
+    for (let i = 0; i < 48; i += 1) {
+        const mid = (lo + hi) / 2;
+        if (resolveBlackHoleApproachAlpha(mid, ch7Start, ch8Start) < target) lo = mid;
+        else hi = mid;
+    }
+    return (lo + hi) / 2;
+}
+
+const TABLE_SAMPLES = 2048;
+let travelTable = null;
 
 /**
- * The travel measure of progress `p`: progress itself plus the plunge's extra weight up to `p`
- * (monotone, so it inverts). Travel eased in this measure slows through the plunge.
+ * The travel weight's extra over open path, integrated once per layout: from where the run-in's
+ * shoulder starts to past the plunge's and the beat's ends.
+ * @returns {{ lo: number, hi: number, step: number, area: Float64Array }|null}
+ */
+function resolveTravelTable(chapterPositions) {
+    const stretch = resolvePlungeStretch(chapterPositions);
+    if (!stretch) return null;
+    const ch8Start = chapterPositions[7];
+    if (travelTable && travelTable.a === stretch.from && travelTable.b === stretch.to && travelTable.c === ch8Start) {
+        return travelTable;
+    }
+    const T = CH7_PLUNGE_TRAVEL;
+    const s = T.shoulder;
+    const a = stretch.from;
+    const b = stretch.to;
+    const runFrom = a - CH7_APPROACH.runIn;
+    const beatAt = resolveBlackHoleApproachProgress(T.beatDeg, chapterPositions);
+    const sigma = T.beatWidth;
+    const lo = runFrom - s;
+    const hi = Math.max(b + s, Number.isFinite(beatAt) ? beatAt + (4 * sigma) : b + s);
+    // 0 before `from - s`, 1 from `from` to `to`, 0 again by `to + s` (the old plunge's shoulders).
+    const plateau = (p, from, to) => smooth01((p - (from - s)) / s) * (1 - smooth01((p - to) / s));
+    const extra = (p) => ((T.runInDwell - 1) * plateau(p, runFrom, b))
+        + ((T.dwell - T.runInDwell) * plateau(p, a, b))
+        + (Number.isFinite(beatAt) ? T.beatDwell * Math.exp(-(((p - beatAt) / sigma) ** 2)) : 0);
+    const step = (hi - lo) / TABLE_SAMPLES;
+    const area = new Float64Array(TABLE_SAMPLES + 1);
+    let prev = extra(lo);
+    for (let i = 1; i <= TABLE_SAMPLES; i += 1) {
+        const next = extra(lo + (i * step));
+        area[i] = area[i - 1] + ((prev + next) * 0.5 * step);
+        prev = next;
+    }
+    travelTable = {
+        a, b, c: ch8Start, lo, hi, step, area,
+    };
+    return travelTable;
+}
+
+/**
+ * The travel measure of progress `p`: progress itself plus the run-in's, the plunge's and the
+ * beat's extra weight up to `p` (monotone, so it inverts). Travel eased in this measure slows there.
  * @param {number} p path progress
  * @param {number[]} chapterPositions live chapter boundaries
  * @returns {number}
  */
 export function plungeTravelMeasure(p, chapterPositions) {
-    const stretch = resolvePlungeStretch(chapterPositions);
-    if (!stretch || !Number.isFinite(p)) return p;
-    const { dwell, shoulder: s } = CH7_PLUNGE_TRAVEL;
-    const a = stretch.from;
-    const b = stretch.to;
-    let area;
-    if (p <= a - s) area = 0;
-    else if (p <= a) area = s * shoulderArea((p - (a - s)) / s);
-    else if (p <= b) area = (s / 2) + (p - a);
-    else {
-        const x = Math.min(1, (p - b) / s);
-        area = (s / 2) + (b - a) + (s * (x - shoulderArea(x)));
-    }
-    return p + ((dwell - 1) * area);
+    const table = resolveTravelTable(chapterPositions);
+    if (!table || !Number.isFinite(p)) return p;
+    if (p <= table.lo) return p;
+    if (p >= table.hi) return p + table.area[TABLE_SAMPLES];
+    const x = (p - table.lo) / table.step;
+    const i = Math.min(TABLE_SAMPLES - 1, Math.floor(x));
+    const f = x - i;
+    return p + table.area[i] + ((table.area[i + 1] - table.area[i]) * f);
 }
 
 /**
@@ -284,9 +401,10 @@ export function plungeTravelMeasure(p, chapterPositions) {
  * @returns {number}
  */
 export function plungeTravelProgress(m, chapterPositions) {
-    if (!resolvePlungeStretch(chapterPositions) || !Number.isFinite(m)) return m;
+    const table = resolveTravelTable(chapterPositions);
+    if (!table || !Number.isFinite(m)) return m;
     // The measure grows at least as fast as progress, so the answer lies in [m - extra, m].
-    let lo = m - ((CH7_PLUNGE_TRAVEL.dwell - 1) * 1.01);
+    let lo = m - table.area[TABLE_SAMPLES] - 1e-9;
     let hi = m;
     for (let i = 0; i < 48; i += 1) {
         const mid = (lo + hi) / 2;
@@ -297,18 +415,17 @@ export function plungeTravelProgress(m, chapterPositions) {
 }
 
 /**
- * Whether a trip between `p0` and `p1` passes through the plunge's weighted stretch at all.
+ * Whether a trip between `p0` and `p1` passes through the weighted stretch (run-in, plunge, beat).
  * @returns {boolean}
  */
 export function plungeTravelTouches(p0, p1, chapterPositions) {
-    const stretch = resolvePlungeStretch(chapterPositions);
-    if (!stretch || !Number.isFinite(p0) || !Number.isFinite(p1)) return false;
-    const s = CH7_PLUNGE_TRAVEL.shoulder;
-    return Math.max(p0, p1) > stretch.from - s && Math.min(p0, p1) < stretch.to + s;
+    const table = resolveTravelTable(chapterPositions);
+    if (!table || !Number.isFinite(p0) || !Number.isFinite(p1)) return false;
+    return Math.max(p0, p1) > table.lo && Math.min(p0, p1) < table.hi;
 }
 
 /**
- * The time a trip between `p0` and `p1` is given on top of its own for the plunge (ms).
+ * The time a trip between `p0` and `p1` is given on top of its own for the run-in and the plunge (ms).
  * @returns {number}
  */
 export function plungeTravelExtraMs(p0, p1, chapterPositions) {
@@ -316,10 +433,11 @@ export function plungeTravelExtraMs(p0, p1, chapterPositions) {
     if (!stretch || !Number.isFinite(p0) || !Number.isFinite(p1)) return 0;
     const lo = Math.min(p0, p1);
     const hi = Math.max(p0, p1);
-    const crossed = Math.max(0, Math.min(hi, stretch.to) - Math.max(lo, stretch.from)) / (stretch.to - stretch.from);
+    const share = (from, to) => Math.max(0, Math.min(hi, to) - Math.max(lo, from)) / (to - from);
     const T = CH7_PLUNGE_TRAVEL;
     const short = 1 - smooth01(((hi - lo) - T.longTrip) / T.longFade);
-    return T.extraMs * crossed * short;
+    const runIn = share(stretch.from - CH7_APPROACH.runIn, stretch.from);
+    return ((T.extraMs * share(stretch.from, stretch.to)) + (T.runInExtraMs * runIn)) * short;
 }
 
 /**

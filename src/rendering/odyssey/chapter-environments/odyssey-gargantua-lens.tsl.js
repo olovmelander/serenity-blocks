@@ -26,9 +26,10 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, abs, atan, cameraPosition, clamp, cross, dot, exp, float, fwidth, length, log2,
-    max, min, mix, modelScale, normalize, positionLocal, positionWorld, pow, select, sign, sin, cos,
-    smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
+    Break, Fn, If, Loop, abs, atan, cameraFar, cameraNear, cameraPosition, cameraViewMatrix, clamp, cross, dot,
+    exp, exp2, float, floor, fract, fwidth, length, log2, max, min, mix, modelScale, normalize, positionLocal,
+    positionWorld, pow, select, sign, sin, cos, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
+    viewZToPerspectiveDepth,
 } from 'three/tsl';
 import { GARGANTUA_GAS, bakeGargantuaGasSteps } from './odyssey-gargantua-gas.js';
 
@@ -61,6 +62,27 @@ const CORONA = Object.freeze({
 export const GARGANTUA_LENS_QUALITY = Object.freeze({
     high: Object.freeze({ steps: 72, stepScale: 0.125, detail: true }),
     low: Object.freeze({ steps: 44, stepScale: 0.19, detail: false }),
+});
+
+/**
+ * THE EYE GOES IN (2026-11-02). The march starts at the eye when the eye is inside its sphere, but
+ * the sphere's front faces are what carry the fragments, and from inside there are none: chapter 7
+ * had to hand the hole to painted parts from ~12 deg of hole. The carrier now shrinks as the eye
+ * nears, keeping its front `front` units ahead of the eye: behind the rail and the orbs (the mouth
+ * orb is never more than ~80 u away) and in front of the shadow's near surface (never nearer than
+ * 150 u, CH7_FALL.nearSurface), so the gas still draws over the shadow and under the rail. The
+ * shader reads only each fragment's direction, so the picture does not change with it.
+ * And once the eye is within the disk's own radius, the gas is cut off short of it (from `capFrom`
+ * to `capTo` of the eye's distance from the hole): a disk passing under the eye is a floor across
+ * half the frame (the painted band's 0.85, black-hole-transcendence.js).
+ */
+export const GARGANTUA_LENS_CARRIER = Object.freeze({
+    front: 120,
+    minScale: 0.01,
+    capFrom: 0.7,
+    capTo: 0.85,
+    /** The depth each fragment writes is pulled this share nearer (see the material's depthNode). */
+    depthPull: 0.985,
 });
 
 /** The plunge's flat band's light, against the traced disk's gas alone (see createBand). */
@@ -98,6 +120,51 @@ const blackbody = (heat) => {
 };
 
 /**
+ * THE GAS UP CLOSE (2026-11-02). From inside the disk's own radius (the eye goes in, chapter 7's
+ * dive) the gas is seen from a few Schwarzschild radii at a slant: its level of detail is chosen
+ * for the squeezed direction, and along the other a texel of the 512 x 128 gas covers tens of
+ * pixels. Bilinear filtering kinks at every texel edge, and the gas's sharp thresholds (lanes, gaps,
+ * clumps) printed those kinks as stair steps along the band. Where a texel would cover more than
+ * `GAS_SMOOTH_ABOVE_PX` pixels, the gas is read through a cubic B-spline instead (four bilinear
+ * taps at the same level, Sigg & Hadwiger), smooth across the texel edges; elsewhere the one
+ * mipmapped tap as before.
+ */
+const GAS_SMOOTH_ABOVE_PX = 1.5;
+
+function sampleGasSmooth(gasTex, uv, lod) {
+    const size = vec2(GARGANTUA_GAS.width, GARGANTUA_GAS.height).mul(exp2(lod.negate())).toVar();
+    const st = uv.mul(size).sub(0.5).toVar();
+    const cell = floor(st).toVar();
+    const f = fract(st).toVar();
+    const f2 = f.mul(f);
+    const f3 = f2.mul(f);
+    // The cubic B-spline's four weights per axis (each sums with the others to 1).
+    const w0 = f3.negate().add(f2.mul(3)).sub(f.mul(3))
+        .add(1)
+        .div(6);
+    const w1 = f3.mul(3).sub(f2.mul(6)).add(4)
+        .div(6);
+    const w2 = f3.mul(-3).add(f2.mul(3)).add(f.mul(3))
+        .add(1)
+        .div(6);
+    const w3 = f3.div(6);
+    const g0 = w0.add(w1).toVar();
+    const g1 = w2.add(w3).toVar();
+    // Where to put each bilinear tap so it weighs its two texels as the spline does.
+    const h0 = w1.div(g0).sub(1).add(cell)
+        .add(0.5)
+        .div(size)
+        .toVar();
+    const h1 = w3.div(g1).add(1).add(cell)
+        .add(0.5)
+        .div(size)
+        .toVar();
+    const tap = (x, y) => texture(gasTex, vec2(x, y)).level(lod);
+    return tap(h0.x, h0.y).mul(g0.x).add(tap(h1.x, h0.y).mul(g1.x)).mul(g0.y)
+        .add(tap(h0.x, h1.y).mul(g0.x).add(tap(h1.x, h1.y).mul(g1.x)).mul(g1.y));
+}
+
+/**
  * The disk's gas, sheared Keplerian over the baked texture and lit by the blackbody ramp with
  * relativistic beaming: the theme's shadeDisk. Shared by the lens (where a traced ray crosses the
  * disk's plane) and the plunge's band (createGargantuaBandMaterial), so the two are one gas.
@@ -119,6 +186,14 @@ function makeShadeDisk(gasTex, u, detail) {
         const texels = pixelAngle.mul(travelled).mul(rowsPerRadius).div(grazing);
         const lod = max(log2(max(texels, 1)).sub(0.6).add(order.mul(1.2)), 0).toVar();
         const g0 = mix(texture(gasTex, uvA).level(lod), texture(gasTex, uvB).level(lod), u.flowMix).toVar();
+        // THE GAS UP CLOSE: where a texel at this level spans more than GAS_SMOOTH_ABOVE_PX pixels
+        // along its long side (the unsqueezed one: around the disk or across it, whichever is
+        // denser), through the cubic B-spline (no texel kinks).
+        const perPixel = pixelAngle.mul(travelled)
+            .mul(max(float(rowsPerRadius), float(GARGANTUA_GAS.width / TAU).div(max(radius, 1)))).toVar();
+        If(exp2(lod).greaterThan(perPixel.mul(GAS_SMOOTH_ABOVE_PX)), () => {
+            g0.assign(mix(sampleGasSmooth(gasTex, uvA, lod), sampleGasSmooth(gasTex, uvB, lod), u.flowMix));
+        });
         const fine = detail
             ? mix(
                 texture(gasTex, uvA.mul(vec2(4, 3))).level(lod.add(1.6)),
@@ -204,6 +279,9 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         // the disk's own edge.
         coronaGain: uniform(0.55),
         reveal: uReveal,
+        /** The disk's and the corona's share of the light (the photon ring keeps `reveal` alone):
+         * chapter 7 fades the gas as the disk sweeps past while the ring rides the silhouette out. */
+        gas: uniform(1),
     };
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -228,6 +306,10 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         const impact = max(length(closest), 1e-4).toVar();
         const away = closest.div(impact).toVar();
         const cameraDistance = length(origin).toVar();
+        // THE EYE GOES IN (GARGANTUA_LENS_CARRIER): no gas within reach of the eye.
+        const capFrom = cameraDistance.mul(GARGANTUA_LENS_CARRIER.capFrom).toVar();
+        const capTo = cameraDistance.mul(GARGANTUA_LENS_CARRIER.capTo).toVar();
+        const nearCap = (ringRadius) => float(1).sub(smoothstep(capFrom, capTo, ringRadius));
 
         const colour = vec3(0).toVar();
         const through = float(1).toVar();
@@ -244,6 +326,9 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
             const h2 = dot(swept, swept).toVar();
             const order = float(0).toVar();
             const escaped = float(0).toVar();
+            // How far the light has come from the eye (the gas's level of detail: from inside the
+            // disk the eye's distance to the hole is no measure of the distance to the gas it sees).
+            const travelled = start.sub(along).toVar();
 
             Loop(Q.steps, () => {
                 const r2 = dot(position, position).toVar();
@@ -277,7 +362,8 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
                 const reach = smoothstep(H.PLUNGE * 0.9, H.DISK_INNER * 1.15, ring)
                     .mul(exp(ring.sub(H.DISK_INNER).mul(-CORONA.FALL)))
                     .mul(smoothstep(1.6, H.DISK_INNER * 1.05, length(mid)))
-                    .mul(smoothstep(H.BOUND - 0.4, H.DISK_OUTER * 0.72, length(mid)));
+                    .mul(smoothstep(H.BOUND - 0.4, H.DISK_OUTER * 0.72, length(mid)))
+                    .mul(nearCap(ring));
                 const column = sheet.mul(length(next.sub(position))).mul(reach).toVar();
                 const cSpeed = sqrt(float(0.5).div(max(ring.sub(1), 0.62)));
                 const cTangent = vec3(mid.z.negate(), 0, mid.x).div(max(ring, 0.05));
@@ -296,15 +382,21 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
                     const radius = length(hit.xz).toVar();
                     If(radius.greaterThan(H.PLUNGE).and(radius.lessThan(H.DISK_OUTER * 1.08)), () => {
                         const toEye = normalize(velocity).negate();
-                        const disk = shadeDisk(hit, radius, toEye, order, cameraDistance, pixelAngle).toVar();
+                        const toHit = travelled.add(length(hit.sub(position)));
+                        const shaded = shadeDisk(hit, radius, toEye, order, toHit, pixelAngle);
+                        const disk = shaded.mul(nearCap(radius)).toVar();
                         colour.addAssign(disk.rgb.mul(through));
                         through.mulAssign(disk.a.oneMinus());
-                        If(outward.lessThan(0), () => {
-                            front.mulAssign(disk.a.oneMinus());
-                        });
+                        // Gas in front of the hole (still on its way in where it crosses), judged at the
+                        // crossing itself and eased across the closest approach: judged at the step's
+                        // start, the call flipped a whole step at a time, which printed the march's
+                        // steps as a sawtooth once the eye was inside the disk (THE EYE GOES IN).
+                        const inbound = smoothstep(0.2, -0.2, dot(normalize(hit), normalize(velocity)));
+                        front.mulAssign(disk.a.mul(inbound).oneMinus());
                     });
                     order.addAssign(1);
                 });
+                travelled.addAssign(length(next.sub(position)));
                 position.assign(next);
             });
             // A ray still circling when the budget ran out is on the photon ring, not the sky.
@@ -317,6 +409,8 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         const warmth = min(hazeHeat.div(max(haze, 1e-4)).mul(0.72).add(0.16), 1.1).mul(u.diskHeat);
         const coronaGain = u.diskGain.mul(u.coronaGain).mul(CORONA.GAIN * 2.7);
         colour.addAssign(blackbody(warmth).mul(haze).mul(coronaGain));
+        // The gas's share (the ring, below, keeps its own).
+        colour.mulAssign(u.gas);
 
         // The shadow's edge is exact: a ray from outside is captured iff b < 3√3/2.
         const pixel = pixelAngle.mul(cameraDistance);
@@ -334,8 +428,28 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
         // What is behind still shows: past the hole, what the gas leaves of the sky (`through`);
         // in the shadow, what the gas on the near side leaves of the chapter's own shadow sphere.
         const leaves = select(inbound, mix(front, through, outside), through);
-        const alpha = clamp(float(1).sub(leaves), 0, 1).mul(u.reveal);
+        const alpha = clamp(float(1).sub(leaves), 0, 1).mul(u.gas).mul(u.reveal);
         return vec4(colour.mul(u.reveal), alpha);
+    })();
+
+    // THE HOLE'S LIGHT IS AT THE HOLE (2026-11-02). The carrier's own depth (120 u out while the eye
+    // is in) put the hole's light in front of everything nearer than the hole: the gas giant hung in
+    // front of the shadow but under the disk. Each fragment now writes where its light is: on the
+    // shadow's surface where the ray meets the shadow (pulled a hair nearer, so the gas in front of
+    // the shadow still draws over it), at the ray's closest approach to the hole elsewhere, and
+    // never nearer than the carrier's front (the rail and the orbs stay over it).
+    material.depthNode = Fn(() => {
+        const ray = normalize(positionWorld.sub(cameraPosition)).toVar();
+        const eye = cameraPosition.sub(u.hole).div(u.rs).toVar();
+        const along = dot(eye, ray).toVar();
+        const impact2 = max(dot(eye, eye).sub(along.mul(along)), 0).toVar();
+        const crit2 = float(H.CRITICAL * H.CRITICAL);
+        const onShadow = impact2.lessThan(crit2);
+        const toShadow = along.negate().sub(sqrt(max(crit2.sub(impact2), 0))).toVar();
+        const reach = select(onShadow, toShadow, along.negate()).mul(u.rs).mul(GARGANTUA_LENS_CARRIER.depthPull);
+        const dist = max(reach, float(GARGANTUA_LENS_CARRIER.front));
+        const viewZ = cameraViewMatrix.mul(vec4(cameraPosition.add(ray.mul(dist)), 1)).z;
+        return viewZToPerspectiveDepth(viewZ, cameraNear, cameraFar);
     })();
 
     const geometry = new THREE.SphereGeometry(shadowRadius * (H.BOUND / H.CRITICAL), 64, 40);
@@ -364,13 +478,26 @@ export function* createGargantuaLensSteps({ shadowRadius, uReveal = uniform(1), 
          * @param {number} dt seconds
          * @param {number} [shadowScale] the shadow sphere's own scale (it grows out of a point as
          *   the hole arrives): the traced shadow follows it, so the two stay one circle
+         * @param {THREE.Vector3|null} [eye] the camera's world position: the carrier shrinks to stay
+         *   ahead of it (GARGANTUA_LENS_CARRIER)
          */
-        update(diskPivot, dt = 0, shadowScale = 1) {
+        update(diskPivot, dt = 0, shadowScale = 1, eye = null) {
+            mesh.scale.setScalar(1);
             mesh.updateWorldMatrix(true, false);
             mesh.matrixWorld.decompose(_pos, _quat, _scale);
             u.hole.value.copy(_pos);
             const grown = Number.isFinite(shadowScale) ? Math.max(shadowScale, 1e-3) : 1;
             u.rs.value = Math.max((shadowRadius * _scale.x * grown) / H.CRITICAL, 1e-6);
+            // THE EYE GOES IN (GARGANTUA_LENS_CARRIER): the carrier keeps its front ahead of the eye.
+            if (eye) {
+                const C = GARGANTUA_LENS_CARRIER;
+                const bound = shadowRadius * (H.BOUND / H.CRITICAL) * _scale.x;
+                const carrier = THREE.MathUtils.clamp((_pos.distanceTo(eye) - C.front) / Math.max(bound, 1e-6), C.minScale, 1);
+                if (carrier < 1) {
+                    mesh.scale.setScalar(carrier);
+                    mesh.updateWorldMatrix(false, false);
+                }
+            }
             if (diskPivot) {
                 diskPivot.updateWorldMatrix(true, false);
                 const e = diskPivot.matrixWorld.elements;

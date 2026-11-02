@@ -27,6 +27,7 @@ import {
 } from '../../src/rendering/odyssey/odyssey-path-inflow.js';
 import { resolveOdysseyPathReveal } from '../../src/rendering/odyssey/odyssey-path-horizon.js';
 import {
+    CH7_APPROACH,
     CH7_FALL,
     CH7_FALL_LOCK,
     CH7_PLUNGE_TRAVEL,
@@ -216,7 +217,8 @@ describe('the plunge takes its time', () => {
         const after = plungeMs(rig.parkOf(48), rig.parkOf(49));
         expect(before.plunge).toBeLessThan(150);
         expect(after.plunge).toBeGreaterThan(900);
-        expect(after.total).toBeLessThan(4000);
+        // The run-in and the beat at the rim (2026-11-02) are watched too: ~5 s, not ~3.6 s.
+        expect(after.total).toBeLessThan(5500);
     });
 
     it('inverts exactly, and leaves trips that never reach the plunge as they were', () => {
@@ -233,7 +235,11 @@ describe('the plunge takes its time', () => {
     });
 
     it('gives a long trip through the hole only a little more time', () => {
-        expect(plungeTravelExtraMs(rig.parkOf(48), rig.parkOf(49), cp)).toBeCloseTo(CH7_PLUNGE_TRAVEL.extraMs, 6);
+        // The plunge's time, and the run-in's for the share of it the trip crosses (it starts at
+        // orb 48's park, a hair past the run-in's start).
+        const runIn = Math.min(1, (cp[6] - rig.parkOf(48)) / CH7_APPROACH.runIn);
+        expect(plungeTravelExtraMs(rig.parkOf(48), rig.parkOf(49), cp))
+            .toBeCloseTo(CH7_PLUNGE_TRAVEL.extraMs + (CH7_PLUNGE_TRAVEL.runInExtraMs * runIn), 6);
         expect(plungeTravelExtraMs(rig.parkOf(30), rig.parkOf(56), cp)).toBe(0);
     });
 
@@ -287,7 +293,10 @@ describe('the hole stays a black hole all the way in', () => {
             // The ring's inner edge is on the silhouette (the centre plane put it at
             // atan(sin alpha): 35 deg for a 45 deg hole, behind the shadow).
             expect(THREE.MathUtils.radToDeg(Math.abs(seen - fall.alpha)), `u=${u}`).toBeLessThan(0.4);
-            expect(ring.material.uniforms.uOpacity.value).toBeCloseTo(1, 6);
+            // Drawn only with the painted hole: the traced hole carries the whole dive since
+            // 2026-11-02 (CH7_TRACED_HOLE), its own photon ring with it.
+            const traced = !!group.userData.distantHole.userData.lens;
+            expect(ring.material.uniforms.uOpacity.value).toBeCloseTo(traced ? 0 : 1, 6);
         });
         // Without a camera (headless smoke) there is no silhouette: the centre plane, never NaN/inf.
         updateBlackHoleTranscendenceEnvironment(group, 1 / 60, 3, null, cp[6] + 0.005);
