@@ -3,8 +3,8 @@
 ## Red deer hind (`red-deer.glb`)
 
 Generated, not captured: `scripts/blender/odyssey/red_deer.py` builds it in headless Blender (a signed
-distance field of ellipsoids and round cones, polygonised and decimated to about 1,800 triangles,
-skinned to its own 25-bone skeleton through `_bones`/`_weights` attributes, its coat painted into the
+distance field of ellipsoids and round cones, polygonised and decimated to about 2,100 triangles,
+skinned to its own 27-bone skeleton through `_bones`/`_weights` attributes, its coat painted into the
 vertex colours). The meshing reuses the Grainfields horse's helpers
 (`scripts/blender/grainfields/horse_sdf.py`). No photograph, scan or third-party model is involved,
 so there is nothing to attribute.

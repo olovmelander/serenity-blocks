@@ -5,7 +5,7 @@
  * odyssey-deer-herd.js (three-free); this draws it.
  *
  * The model is a Blender-built red deer hind (`assets/chapter-03/deer/red-deer.glb`, built by
- * scripts/blender/odyssey/red_deer.py: one mesh, ~1,800 triangles, skinned to 25 bones through
+ * scripts/blender/odyssey/red_deer.py: one mesh, ~2,100 triangles, skinned to 27 bones through
  * its own `_bones`/`_weights` attributes, coat paint in its vertex colours). Every deer is one
  * instance of ONE draw: the herd poses each on the CPU, its bones go into a float table (a row a
  * deer, two texels a bone: its rotation in the world, and where its rest frame lands with its
@@ -35,7 +35,7 @@ import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gl
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import { odysseyWorldHeight } from '../world/odyssey-world-height.js';
 import {
-    ODYSSEY_DEER, buildHerd, createDeerRig, deerRevealAt, deerStateAt, poseDeer,
+    ODYSSEY_DEER, buildHerd, createDeerRig, deerRevealAt, planFootfalls, poseDeer,
 } from './odyssey-deer-herd.js';
 
 export const ODYSSEY_DEER_URL = new URL('../assets/chapter-03/deer/red-deer.glb', import.meta.url).href;
@@ -259,9 +259,12 @@ export function createOdysseyDeer({
         const sx = -sunD.x / flat;
         const sz = -sunD.z / flat;
         herd.forEach((deer, i) => {
-            const state = deerStateAt(deer, time, states[i]);
             const base = i * row * 4;
-            const out = poseDeer(rig, state, deer.k, heightAt, time, deer.member.seed, data, base);
+            const out = poseDeer(rig, deer, time, heightAt, data, base);
+            const { state } = out;
+            Object.assign(states[i], {
+                x: state.x, z: state.z, heading: state.heading, head: state.head,
+            });
             // The shadow: under the body, drawn a little from the sun (the sun is low: the cast is
             // kept short and soft, a contact shade more than a silhouette).
             const o = base + (bones * 8);
@@ -291,6 +294,14 @@ export function createOdysseyDeer({
             const gltf = await loadGltf(url);
             model = parseOdysseyDeer(gltf.scene);
             rig = createDeerRig(model.skeleton);
+            // Every hoof's steps through the loop, planned once (CPU, ~10 ms a deer): one deer a task,
+            // so planning never holds a frame.
+            await herd.reduce((before, deer) => before.then(() => new Promise((resolve) => {
+                setTimeout(() => {
+                    planFootfalls([deer], rig);
+                    resolve();
+                }, 0);
+            })), Promise.resolve());
             bones = model.skeleton.length;
             row = (bones * 2) + SHADOW_TEXELS;
             data = new Float32Array(row * count * 4);

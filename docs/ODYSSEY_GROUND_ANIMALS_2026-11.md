@@ -147,3 +147,104 @@ main against this work at the same stations: p 0.095 and 0.11 the fish, 0.168, 0
 deer, gulls and swallows, 0.31 the swallows and geese, 0.62 the summit kettle). GPU time per frame
 was within 0.07 ms of main at every station (for example 2.10 ms both at L15, 1.18 against 1.11-1.18
 ms at the kettle), so the new animals cost nothing measurable there.
+
+## Design and motion pass (2026-11-02)
+
+The owner: "We really need to improve the look and design and animation and movement of the deer! I
+want it to move in a more natural and smooth way when eating, walking, turning, looking etc."
+
+### The audit (before)
+
+Watched at game size (30 fps clips at L15 and L17 with the board clock pinned, so the same moments
+can be compared) and measured on the game's own CPU twin of the herd over every deer's whole loop:
+
+1. **Hooves slid while bearing weight.** The legs were swung by angles, not planted: a standing hoof
+   moved up to 0.7-1.3 of the deer's drawn size over a stance (2-4 m on a 3x hind), most at the
+   start and end of every walk.
+2. **Pops.** A leg fix-up that switched on and off made joints jump: 285-744 frames a loop where a
+   joint turned faster than 6 rad/s, the hooves up to 41 rad/s in single frames.
+3. **Turning on the spot like a turntable.** 10-17 s a loop of the body turning while hardly
+   moving, up to 4.3 rad/s; at L15 a hind spun about 180 degrees in place before walking off (top row
+   of the L15 image below).
+4. **The calf** hung at a fixed place beside its mother and was swung round her when she turned, at
+   up to 12 m/s.
+5. **A hinge for a neck.** Two neck bones: the head went down to graze and came up like a lever; no
+   jaw, no breathing; grazing was a held pose with a small nod; ears and tail barely moved.
+6. **The body.** Thick legs (to stay visible), a straight barrel with no waist, small eyes, little
+   shading on the coat.
+
+What a red deer does (and what the new motion follows): a four-beat walk, the hooves lifting left
+hind, left fore, right hind, right fore, each on the ground about 60 % of the stride and planted
+while it bears weight; the head nods with the fore feet; it turns by walking a curve with the body
+following the head, or, for a sharp turn, by stepping the forehand round its hind legs; the head goes
+down to graze over a second or two, crops in small nods and sways and chews; it looks up ears first,
+then the head, then the neck; the tail and ears flick.
+
+### What changed
+
+**The model** (`scripts/blender/odyssey/red_deer.py`, still rebuilt byte for byte): 27 bones (three
+neck bones and a jaw), a deeper chest, a tucked-up waist, rounder quarters, longer, slimmer legs with
+clearer knees and hocks, larger eyes in a dark rim, a darker back line, a paler belly and darker lower
+legs. 2,098 triangles (was 1,798). The neck's root blends into the chest over a longer band so the
+bend down to graze is a curve over the withers.
+
+![The model before (top) and after (bottom): side, three-quarter front, behind, the head](images/odyssey-animals-2026-11-02/model-before-after.jpg)
+
+**The motion** (`composition/odyssey-deer-herd.js`, rewritten). Procedural, not baked Blender
+cycles: the deer walk on a sloping glade along curves of any length and turn by any angle, so baked
+cycles would have to be stretched, blended and corrected for the ground anyway (that is where foot
+sliding comes from). Instead:
+- **Paths.** Walks are curves that leave the way the deer faces, with a smooth start and stop (no
+  instant start or stop); a turn too sharp for a curve is first made on the spot by pivoting round the
+  hind legs, never faster than 0.7 rad/s. Grazing steps are short, slow curves.
+- **Feet.** A footstep planner walks each deer through its loop once when the herd loads (about 10 ms
+  a deer, one deer per task so it never holds a frame) and records every hoof's steps. While the deer
+  moves, the hooves lift in the four-beat order as the ground goes by (shorter, quicker steps when
+  it moves slowly); where each one lands is where it should stand half a stance later; when it stops,
+  the hooves settle under it with a step or two. A planted hoof never moves.
+- **Legs** reach their hooves with a two-segment solve each (the knees fold back, the hocks forward,
+  each never past about 110 degrees), the hoof flat on the ground while planted and flicked back in
+  the swing.
+- **Body** rides on the feet: height, pitch and roll from the ground under them, carried a little
+  lower in a walk, hips and shoulders rolling with each step, breathing, a slow shift of weight while
+  it stands.
+- **Head and neck** move through the three neck bones; every change (head down to graze, up to look)
+  is eased over 1-2 s on a curve that cannot jump, however short the segments. Grazing crops with
+  small nods and sways and the jaw chews; it chews the cud now and then with the head up. A look turns
+  the ears first, then the head, then the neck down its length. Ears swivel and flick, the tail
+  flicks.
+- The calf has its own spots next to its mother's (a fixed slot at her side swung it round her).
+
+![Blender close-ups of the game's own motion, 0.6 s apart: grazing, the head comes up, a turn stepped round, the walk](images/odyssey-animals-2026-11-02/blender-turn-walk.jpg)
+
+![Grazing: the head going down over 1.8 s, a step, cropping](images/odyssey-animals-2026-11-02/blender-graze.jpg)
+
+![A look: the head comes up from grazing, ears and head lead, the neck follows](images/odyssey-animals-2026-11-02/blender-look.jpg)
+
+In the game, before (top row) and after (bottom row), one frame a second, the same moments of the
+board clock (2560x1440, crops enlarged):
+
+![L17: a turn and the walk after it](images/odyssey-animals-2026-11-02/game-l17-turn-walk.jpg)
+
+![L17: grazing and a look-up](images/odyssey-animals-2026-11-02/game-l17-graze-look.jpg)
+
+![L15: before, a spin on the spot; after, a stepped turn and a walk along a curve](images/odyssey-animals-2026-11-02/game-l15-turn-walk.jpg)
+
+### Numbers (after, every deer's whole loop at 30 fps)
+
+| | before | after |
+|---|---|---|
+| A weight-bearing hoof's slide (share of the drawn size) | 0.7-1.3 | under 0.05 in 99 % of frames, 0.16 at worst |
+| Fastest leg joint | 38-41 rad/s (pops) | 10-14 rad/s (a walk's swing) |
+| Fastest spine, neck or head joint | (part of the pops) | about 3 rad/s (the head going down to graze) |
+| Turning on the spot | up to 4.3 rad/s, spun | at most 0.64 rad/s, stepped round |
+| Turning in a walk | | at most 0.23 rad/s (curves) |
+| Body acceleration | | at most 2.7 m/s^2 |
+| Walk order kept | | 89-100 % of lifts |
+| CPU per frame (whole herd) | ~0.05 ms | ~0.03 ms |
+
+Still two draws (5 x 2,098 = 10,490 triangles plus the shadows), no new pipelines after the first
+compile, the same places, sizes and no-pop windows, `?odysseyNoDeer=1` as before. New tests in
+`tests/unit/odyssey-ground-animals.test.js`: no hoof slides, every joint smooth through every change
+of state, smooth starts and stops, turns walked or stepped round (never spun), the four-beat order,
+the loop's seam, walks leaving the way the deer faces.
