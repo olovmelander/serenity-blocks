@@ -11,10 +11,12 @@ import { float, vec3 } from 'three/tsl';
 import {
     createOrbitEarth,
     ORBIT_EARTH,
+    ORBIT_EARTH_AURORA,
     ORBIT_EARTH_COVERS,
     ORBIT_EARTH_SCHEDULE,
     ORBIT_EARTH_SEAM,
     orbitEarthAirglowElevation,
+    orbitAuroraSheetPath,
     orbitEarthAt,
     orbitEarthLandHeight,
     orbitEarthLimbSin,
@@ -381,5 +383,43 @@ describe('the Earth builds on both backends', () => {
                 }
             }, 60_000);
         });
+    });
+});
+
+/**
+ * THE AURORA FROM ORBIT (2026-11-02). Each march step adds the exact path the ray spends in a
+ * sheet's Gaussian profile (orbitAuroraSheetPath is the shader's twin). It used to light a sheet
+ * only where two steps straddled it, so at every fold the light switched off in one pixel: the
+ * blocky walls. These pin the replacement: a crossing gets the analytic path, and crossing,
+ * grazing and just missing meet without a jump.
+ */
+describe('the aurora sheets: one exact path per step', () => {
+    const w = ORBIT_EARTH_AURORA.width;
+
+    it('gives a clean crossing the analytic path through the profile (sqrt(pi) w / rate)', () => {
+        [0.02, 0.05, 0.2].forEach((rate) => {
+            const dt = (12 * w) / rate;
+            const path = orbitAuroraSheetPath(-6 * w, 6 * w, dt);
+            expect(path / ((Math.sqrt(Math.PI) * w) / rate)).toBeGreaterThan(0.97);
+            expect(path / ((Math.sqrt(Math.PI) * w) / rate)).toBeLessThan(1.03);
+        });
+    });
+
+    it('runs smoothly from crossing to running along the sheet to just missing it', () => {
+        const dt = 0.004;
+        let prev = null;
+        for (let k = 0; k <= 400; k += 1) {
+            // The step's span shrinks to nothing (grazing), then its middle slides off the sheet.
+            const span = Math.max(0, 1 - (k / 200)) * 4 * w;
+            const mid = Math.max(0, (k - 200) / 200) * 4 * w;
+            const path = orbitAuroraSheetPath(mid - (span / 2), mid + (span / 2), dt);
+            expect(Number.isFinite(path)).toBe(true);
+            if (prev !== null) expect(Math.abs(path - prev)).toBeLessThan(0.03 * dt);
+            prev = path;
+        }
+        // Running along the sheet's middle the whole step: the full step.
+        expect(orbitAuroraSheetPath(0, 0, dt)).toBeCloseTo(dt, 6);
+        // Far off it: nothing.
+        expect(orbitAuroraSheetPath(5 * w, 6 * w, dt)).toBe(0);
     });
 });
