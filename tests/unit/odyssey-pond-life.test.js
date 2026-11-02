@@ -40,6 +40,15 @@ const FILES = {
     heron: new URL(`${ASSETS}pond/heron.glb`, import.meta.url),
     deer: new URL(`${ASSETS}deer/red-deer.glb`, import.meta.url),
 };
+/** The fastest any bone turned between two frames of world rotations (quaternions), per second at 30 fps. */
+function fastestTurn(q, prev) {
+    let w = 0;
+    q.forEach((v, b) => {
+        const dot = Math.abs((v[0] * prev[b][0]) + (v[1] * prev[b][1]) + (v[2] * prev[b][2]) + (v[3] * prev[b][3]));
+        w = Math.max(w, 2 * Math.acos(Math.min(1, dot)) * 30);
+    });
+    return w;
+}
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
 const W = ODYSSEY_TARN.waterY;
 
@@ -114,12 +123,14 @@ beforeAll(async () => {
 });
 
 describe('the pond birds: models, skins, the draw', () => {
-    it('are small skinned models: a swan of 6 bones, a heron of 11, under 1,500 triangles each', () => {
-        expect(swanModel.skeleton.map((b) => b.name)).toEqual(['root', 'neck0', 'neck1', 'neck2', 'neck3', 'head']);
-        expect(heronModel.skeleton.length).toBe(11);
+    it('are small skinned models: a swan of 9 bones (its wings their own), a heron of 12, under 1,700 triangles', () => {
+        expect(swanModel.skeleton.map((b) => b.name))
+            .toEqual(['root', 'neck0', 'neck1', 'neck2', 'neck3', 'neck4', 'head', 'wingL', 'wingR']);
+        expect(heronModel.skeleton.map((b) => b.name).slice(0, 6)).toEqual(['root', 'neck0', 'neck1', 'neck2', 'neck3', 'head']);
+        expect(heronModel.skeleton.length).toBe(12);
         [swanModel, heronModel].forEach((m) => {
             expect(m.triangles).toBeGreaterThan(600);
-            expect(m.triangles).toBeLessThan(1500);
+            expect(m.triangles).toBeLessThan(1700);
             // Every vertex's four weights sum to one, every bone index is in the skeleton.
             const w = m.geometry.attributes._weights;
             const b = m.geometry.attributes._bones;
@@ -201,7 +212,8 @@ describe('the swans', () => {
         });
         expect(gap).toBeGreaterThan(3);
         expect(turn).toBeLessThan(0.45);
-        expect(accel).toBeLessThan(0.05);
+        // The paddle strokes surge it a little, smoothly (a stroke a second).
+        expect(accel).toBeLessThan(0.5);
         // The same clock gives the same place: nothing follows the camera.
         expect(swanStateAt(0, 123.4, {}).x).toBe(swanStateAt(0, 123.4, {}).x);
     });
@@ -213,8 +225,26 @@ describe('the swans', () => {
             const s = poseSwan(rig, 0, t, W, table, 0, {});
             expect(table.every(Number.isFinite)).toBe(true);
             const headY = rig.hw[rig.index.head][1];
-            if (s.dip < 0.05) expect(headY).toBeGreaterThan(W + 1.2);
+            if (s.dip < 0.05 && s.preen < 0.05) expect(headY).toBeGreaterThan(W + 1.2);
+            if (s.dip > 0.95) expect(headY).toBeLessThan(W + 0.6);
         }
+    });
+
+    it('move every bone smoothly: no joint of the neck, head or wings turns faster than it can', () => {
+        // Each bone's world rotation, frame to frame at 30 fps over both swans' whole loops: the
+        // fastest is a wing beat in a stretch; nothing pops.
+        [0, 1].forEach((i) => {
+            const rig = createBirdRig(swanModel.skeleton);
+            let prev = null;
+            let fastest = 0;
+            for (let t = 0; t < ODYSSEY_POND.swans.loop; t += 1 / 30) {
+                poseSwan(rig, i, t, W, null, 0, {});
+                const q = rig.qw.map((v) => [...v]);
+                if (prev) fastest = Math.max(fastest, fastestTurn(q, prev));
+                prev = q;
+            }
+            expect(fastest, `swan ${i} (rad/s)`).toBeLessThan(6);
+        });
     });
 });
 
@@ -256,11 +286,49 @@ describe('the heron', () => {
         expect(miss).toBeLessThan(0.35);
     });
 
+    it('holds its head still while it steps, and moves every joint smoothly', () => {
+        // Over each stalk: the head's travel while the body moves under it, against the body's; and
+        // the fastest any bone turns, frame to frame at 30 fps (the strike's shot is the fastest).
+        const r = createBirdRig(heronModel.skeleton);
+        let prev = null;
+        let fastest = 0;
+        let fastestShot = 0;
+        let bodyMoved = 0;
+        let headMoved = 0;
+        let last = null;
+        for (let t = 0; t < HERON_LOOP; t += 1 / 30) {
+            const s = poseHeron(r, t, odysseyWorldHeight, null, 0, { feet: [{}, {}] });
+            const q = r.qw.map((v) => [...v]);
+            if (prev) {
+                const w = fastestTurn(q, prev);
+                if (s.shoot > 0.001 && s.shoot < 0.999) fastestShot = Math.max(fastestShot, w);
+                else fastest = Math.max(fastest, w);
+            }
+            prev = q;
+            const headAt = r.hw[r.index.head];
+            if (last && s.walking && s.headLag > 0.01 && last.lag < s.headLag && Math.abs(s.heading - last.heading) < 1e-4) {
+                bodyMoved += Math.hypot(s.x - last.x, s.z - last.z);
+                headMoved += Math.hypot(headAt[0] - last.hx, headAt[1] - last.hy, headAt[2] - last.hz);
+            }
+            last = {
+                x: s.x, z: s.z, hx: headAt[0], hy: headAt[1], hz: headAt[2], lag: s.headLag, heading: s.heading,
+            };
+        }
+        expect(bodyMoved).toBeGreaterThan(1);
+        expect(headMoved / bodyMoved).toBeLessThan(0.2);
+        // Calm moves stay under ~2 turns a second; the strike's shot, a heron's fastest move, is
+        // eased at both ends and never jumps.
+        expect(fastest).toBeLessThan(12);
+        expect(fastestShot).toBeLessThan(30);
+    });
+
     it('reaches with a two-segment solve whose heel bends back', () => {
         const { upper, lower } = legReach(0.26, 0.27, 0.01, -0.5);
         expect(upper).toBeLessThan(lower);
-        expect(Math.hypot((0.26 * Math.sin(upper)) + (0.27 * Math.sin(lower)),
-            (0.26 * Math.cos(upper)) + (0.27 * Math.cos(lower)))).toBeCloseTo(Math.hypot(0.01, 0.5), 4);
+        expect(Math.hypot(
+            (0.26 * Math.sin(upper)) + (0.27 * Math.sin(lower)),
+            (0.26 * Math.cos(upper)) + (0.27 * Math.cos(lower)),
+        )).toBeCloseTo(Math.hypot(0.01, 0.5), 4);
     });
 });
 
@@ -294,12 +362,12 @@ describe('the drinkers', () => {
                     (odysseyWorldHeight(s.x + e, s.z) - odysseyWorldHeight(s.x - e, s.z)) / (2 * e),
                     (odysseyWorldHeight(s.x, s.z + e) - odysseyWorldHeight(s.x, s.z - e)) / (2 * e),
                 ));
-                pose.hooves.forEach((h) => {
+                for (const h of pose.hooves) {
                     wet = Math.max(wet, W - h.ground);
                     if (h.stance > 0.95) hoof = Math.max(hoof, Math.abs(h.y - h.ground) / deer.k);
-                });
-                trees.forEach((tr) => { clear = Math.min(clear, Math.hypot(tr.x - s.x, tr.z - s.z) - (0.6 * 4.6 * tr.scaleXZ)); });
-                rocks.forEach((r) => { clear = Math.min(clear, Math.hypot(r.x - s.x, r.z - s.z) - Math.max(r.sx, r.sz) - 1); });
+                }
+                for (const tr of trees) clear = Math.min(clear, Math.hypot(tr.x - s.x, tr.z - s.z) - (0.6 * 4.6 * tr.scaleXZ));
+                for (const r of rocks) clear = Math.min(clear, Math.hypot(r.x - s.x, r.z - s.z) - Math.max(r.sx, r.sz) - 1);
             }
             const label = `${deer.member.name} #${i}`;
             expect(nearest, `${label} comes down to the water`).toBeLessThan(1.05);
@@ -328,13 +396,15 @@ describe('the pond on the rail camera', () => {
             let px = Infinity;
             for (let t = 0; t < loop; t += 3) {
                 n += 1;
-                const hit = [0, 1].some((i) => {
+                let hit = false;
+                for (const i of [0, 1]) {
                     const s = swanStateAt(i, t, {});
                     const at = new THREE.Vector3(s.x, W + 1, s.z);
-                    if (!cam.inFrame(camera, at, 0.95)) return false;
-                    px = Math.min(px, 3.4 * pxAt(camera, camera.position.distanceTo(at)));
-                    return true;
-                });
+                    if (cam.inFrame(camera, at, 0.95)) {
+                        px = Math.min(px, 3.4 * pxAt(camera, camera.position.distanceTo(at)));
+                        hit = true;
+                    }
+                }
                 if (hit) seen += 1;
             }
             const label = `p ${p.toFixed(4)}`;

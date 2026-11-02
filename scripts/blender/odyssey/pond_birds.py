@@ -130,50 +130,69 @@ def finish_weights(weights, triangles, smoothing=3):
 
 
 # == THE SWAN =============================================================================
-SWAN_PARTS = {"body": 0, "neck": 1, "head": 2, "bill": 3, "knob": 4}
-# The neck's S, (y, z): up and forward from the breast, back at the top, the head held forward.
-SWAN_NECK = [(0.17, 0.36), (0.33, 0.46), (0.50, 0.46), (0.63, 0.41), (0.72, 0.385)]
-SWAN_HEAD_FORWARD = _unit(np.array([0.0, -0.32, 0.95]))
-SWAN_POLL = _point(0.745, 0.40)
+# A mute swan at real size, from reference proportions: 1.45 m from bill to tail; the body long, low
+# and tapering at both ends (0.95 m, 0.42 m wide), riding with its back ~0.25 m over the water; the
+# full breast rising out of it; the short tail lifted to a point; the wings raised and arched over
+# the back ("busking"), the two humps of the fluffed scapulars making the heart-shaped back seen
+# from behind; the neck in its deep S, the head held forward with the bill angled down; the orange
+# bill, black at its base, with the black knob.
+SWAN_PARTS = {"body": 0, "neck": 1, "head": 2, "bill": 3, "knob": 4, "wingLeft": 5, "wingRight": 6}
+# The neck's S, (y, z): up and forward out of the breast, swept back through its middle, the top
+# arching forward over into the head.
+SWAN_NECK = [(0.13, 0.33), (0.27, 0.42), (0.42, 0.42), (0.54, 0.35), (0.64, 0.31), (0.71, 0.35)]
+SWAN_HEAD_FORWARD = _unit(np.array([0.0, -0.58, 0.82]))
+SWAN_POLL = _point(0.735, 0.37)
+SWAN_WING = 0.105  # the wings' x
 
 
 def swan_bones():
-    return [
-        ("root", None, (0.0, 0.12, 0.0)),
-        ("neck0", "root", (0.0, 0.17, 0.36)),
-        ("neck1", "neck0", (0.0, 0.33, 0.46)),
-        ("neck2", "neck1", (0.0, 0.50, 0.46)),
-        ("neck3", "neck2", (0.0, 0.63, 0.41)),
-        ("head", "neck3", (0.0, 0.72, 0.385)),
-    ]
+    bones = [("root", None, (0.0, 0.10, 0.0))]
+    names = ["neck0", "neck1", "neck2", "neck3", "neck4"]
+    parent = "root"
+    for name, (y, z) in zip(names, SWAN_NECK[:5]):
+        bones.append((name, parent, (0.0, y, z)))
+        parent = name
+    bones.append(("head", "neck4", (0.0, SWAN_NECK[5][0], SWAN_NECK[5][1])))
+    bones += [("wingL", "root", (SWAN_WING, 0.2, 0.12)), ("wingR", "root", (-SWAN_WING, 0.2, 0.12))]
+    return bones
 
 
 def swan_design():
     P = SWAN_PARTS
     body = Union([
-        # The hull, low and long, riding with its keel under the water (cut at y = 0).
-        Ellipsoid(_point(0.08, -0.03), (0.21, 0.17, 0.47)),
-        # The full breast forward, the stern lifting to the tail.
-        Ellipsoid(_point(0.11, 0.27), (0.17, 0.15, 0.19)),
-        (Ellipsoid(_point(0.20, -0.40), (0.11, 0.075, 0.15), along=(0.0, 0.42, -0.91)), 0.06),
-        # The wings folded and lifted a little over the back (the mute swan's arched back).
-        *[(Ellipsoid(_point(0.22, -0.08, 0.095 * s), (0.11, 0.085, 0.34), along=(0.0, 0.16, 0.99)), 0.07)
-          for s in (1.0, -1.0)],
-    ], k=0.08).tag(P["body"])
-    neck = Tube([_point(y, z) for y, z in SWAN_NECK], [0.088, 0.058, 0.05, 0.045, 0.044],
-                squash_axis=X_AXIS, squash=[0.8, 0.85, 0.88, 0.9, 0.9], k=0.03).tag(P["neck"])
+        # The hull, long and low, tapering to both ends (cut at the waterline, y = 0).
+        Ellipsoid(_point(0.05, -0.04), (0.205, 0.13, 0.43)),
+        # The full breast, rising out of the water at the front.
+        Ellipsoid(_point(0.09, 0.24), (0.165, 0.135, 0.17)),
+        # The stern lifting to the short pointed tail.
+        (RoundCone(_point(0.11, -0.26), _point(0.20, -0.55), 0.13, 0.022, (X_AXIS, 0.8)), 0.06),
+    ], k=0.09).tag(P["body"])
+    wings = []
+    for side, part in ((1.0, P["wingLeft"]), (-1.0, P["wingRight"])):
+        x = SWAN_WING * side
+        wings.append(Union([
+            # The folded wing lying along the flank, rising toward the back...
+            Ellipsoid(_point(0.17, -0.10, x * 1.02), (0.09, 0.105, 0.33), along=(0.0, 0.22, -0.97)),
+            # ...and the raised, fluffed scapulars arching over the back: one hump a side, so the
+            # back seen from behind is heart-shaped.
+            Ellipsoid(_point(0.27, -0.17, x * 0.82), (0.085, 0.085, 0.2), along=(0.0, 0.35, -0.94)),
+        ], k=0.05).tag(part))
+    neck = Tube([_point(y, z) for y, z in SWAN_NECK], [0.075, 0.052, 0.046, 0.043, 0.042, 0.044],
+                squash_axis=X_AXIS, squash=[0.78, 0.84, 0.88, 0.9, 0.9, 0.9], k=0.03).tag(P["neck"])
     f = SWAN_HEAD_FORWARD
+    up = _unit(np.cross(np.array(X_AXIS), f))
     head = Union([
-        Ellipsoid(SWAN_POLL + 0.03 * f, (0.042, 0.046, 0.068), along=f),
-        *[Ellipsoid(SWAN_POLL + 0.045 * f + np.array([0.03 * s, 0.006, 0.0]), (0.012, 0.012, 0.012))
-          for s in (1.0, -1.0)],
+        Ellipsoid(SWAN_POLL + 0.03 * f, (0.038, 0.044, 0.066), along=f),
+        # The forehead sloping into the bill.
+        Ellipsoid(SWAN_POLL + 0.07 * f + 0.008 * up, (0.03, 0.03, 0.04), along=f),
     ], k=0.02).tag(P["head"])
-    bill = RoundCone(SWAN_POLL + 0.085 * f + np.array([0.0, -0.01, 0.0]), SWAN_POLL + 0.18 * f + np.array([0.0, -0.022, 0.0]),
-                     0.03, 0.013, (X_AXIS, 0.75)).tag(P["bill"])
-    knob = Ellipsoid(SWAN_POLL + 0.08 * f + np.array([0.0, 0.02, 0.0]), (0.018, 0.022, 0.024), along=f).tag(P["knob"])
-    root = HalfSpace(Union([(body, 0.0), (neck, 0.09), (head, 0.04), (bill, 0.02), (knob, 0.015)]), axis=1)
-    landmarks = dict(eyes=[SWAN_POLL + 0.045 * f + np.array([0.034 * s, 0.006, 0.0]) for s in (1.0, -1.0)],
-                     billTip=SWAN_POLL + 0.18 * f)
+    bill = RoundCone(SWAN_POLL + 0.085 * f - 0.006 * up, SWAN_POLL + 0.185 * f - 0.014 * up,
+                     0.026, 0.012, (X_AXIS, 0.72)).tag(P["bill"])
+    knob = Ellipsoid(SWAN_POLL + 0.085 * f + 0.024 * up, (0.019, 0.024, 0.03), along=f).tag(P["knob"])
+    root = HalfSpace(Union([(body, 0.0), *[(w, 0.05) for w in wings], (neck, 0.08), (head, 0.03), (bill, 0.015),
+                            (knob, 0.012)]), axis=1)
+    landmarks = dict(eyes=[SWAN_POLL + 0.04 * f + 0.004 * up + np.array([0.032 * s, 0.0, 0.0]) for s in (1.0, -1.0)],
+                     billTip=SWAN_POLL + 0.185 * f - 0.014 * up, billBase=SWAN_POLL + 0.085 * f)
     return root, landmarks
 
 
@@ -184,15 +203,20 @@ def swan_skin(positions, parts, triangles, index):
     def put(mask, name, value):
         weights[mask, index[name]] += value[mask] if np.ndim(value) else value
 
-    body = parts == P["body"]
-    put(body, "root", 1.0)
+    put(parts == P["body"], "root", 1.0)
+    for part, bone in (("wingLeft", "wingL"), ("wingRight", "wingR")):
+        wing = parts == P[part]
+        # The wing follows its bone, its root (low on the flank) blended into the body.
+        into = _smoothstep(0.16, 0.08, positions[:, 1])
+        put(wing, bone, 1.0 - 0.7 * into)
+        put(wing, "root", 0.7 * into)
     neck = parts == P["neck"]
     knots = np.array([[0.0, y, z] for y, z in SWAN_NECK])
     t = _polyline_t(positions, knots)
     lengths = np.linalg.norm(np.diff(knots, axis=0), axis=1)
-    at = np.cumsum(lengths)[:-1] / lengths.sum()
-    chain = _chain_weights(t, list(at) + [0.98], ["neck0", "neck1", "neck2", "neck3", "head"], 0.06)
-    base = _smoothstep(0.18, 0.0, t)
+    at = list(np.cumsum(lengths)[:-1] / lengths.sum())
+    chain = _chain_weights(t, at, ["neck0", "neck1", "neck2", "neck3", "neck4", "head"], 0.05)
+    base = _smoothstep(0.14, 0.0, t)
     for name, value in chain.items():
         put(neck, name, value * (1.0 - 0.7 * base))
     put(neck, "root", 0.7 * base)
@@ -203,34 +227,42 @@ def swan_skin(positions, parts, triangles, index):
 
 def swan_paint(shape, landmarks, positions, normals, parts):
     P = SWAN_PARTS
-    bill = (parts == P["bill"]).astype(float)
-    eyes = np.maximum.reduce([_smoothstep(0.02, 0.011, np.linalg.norm(positions - e, axis=1))
+    bill_part = (parts == P["bill"]).astype(float)
+    # The bill's base and the line round it black (the knob's skin runs down to the face).
+    base = _smoothstep(0.03, 0.012, np.linalg.norm(positions - landmarks["billBase"], axis=1))
+    eyes = np.maximum.reduce([_smoothstep(0.018, 0.009, np.linalg.norm(positions - e, axis=1))
                               for e in landmarks["eyes"]])
-    # The black knob, the bill's nail and its edge at the face.
-    nail = _smoothstep(0.03, 0.015, np.linalg.norm(positions - landmarks["billTip"], axis=1))
-    dark = np.clip(np.maximum.reduce([(parts == P["knob"]).astype(float), eyes, nail * 0.8]), 0.0, 1.0)
+    nail = _smoothstep(0.022, 0.01, np.linalg.norm(positions - landmarks["billTip"], axis=1))
+    dark = np.clip(np.maximum.reduce([(parts == P["knob"]).astype(float), eyes, nail * 0.8, base * 0.9]), 0.0, 1.0)
+    bill = np.clip(bill_part - dark, 0.0, 1.0)
     white = np.clip(1.0 - bill - dark, 0.0, 1.0)
     seen = occlusion(shape, positions, normals, rays=16, reach=0.5, ground=0.0)
     return np.stack([bill, dark, white, seen], axis=1)
 
 
 # == THE HERON ============================================================================
+# A grey heron at real size, from reference proportions: 0.95 m standing; a slender body (0.42 m
+# long, 0.13 m wide) held up at ~35 degrees; the long neck folded into an S and hunched into the
+# shoulders at rest; a 0.12 m dagger bill; long thin legs (the bare shin and the tarsus each ~0.25 m),
+# drawn a little thicker than life so they read; the black crest plumes trailing from the nape.
 HERON_PARTS = {"body": 0, "neck": 1, "head": 2, "bill": 3, "crest": 4, "legLeft": 5, "legRight": 6}
-HERON_NECK = [(0.71, 0.13), (0.80, 0.20), (0.87, 0.16), (0.935, 0.14), (0.99, 0.18)]
-HERON_HIP = (0.56, -0.01)
-HERON_HEEL = (0.30, -0.035)
+HERON_NECK = [(0.72, 0.12), (0.80, 0.185), (0.855, 0.105), (0.915, 0.09), (0.965, 0.15)]
+HERON_HIP = (0.56, -0.02)
+HERON_HEEL = (0.31, -0.045)
 HERON_FOOT = (0.035, 0.0)
-HERON_X = 0.045
-LEG_THICKEN = 1.9
+HERON_X = 0.04
+LEG_THICKEN = 1.55
+HERON_UP = _unit(np.array([0.0, 0.57, 0.82]))
 
 
 def heron_bones():
     bones = [
         ("root", None, (0.0, 0.62, 0.0)),
-        ("neck0", "root", (0.0, 0.71, 0.13)),
-        ("neck1", "neck0", (0.0, 0.80, 0.20)),
-        ("neck2", "neck1", (0.0, 0.87, 0.16)),
-        ("head", "neck2", (0.0, 0.99, 0.18)),
+        ("neck0", "root", (0.0,) + HERON_NECK[0]),
+        ("neck1", "neck0", (0.0,) + HERON_NECK[1]),
+        ("neck2", "neck1", (0.0,) + HERON_NECK[2]),
+        ("neck3", "neck2", (0.0,) + HERON_NECK[3]),
+        ("head", "neck3", (0.0,) + HERON_NECK[4]),
     ]
     for side, tag in ((1.0, "L"), (-1.0, "R")):
         x = HERON_X * side
@@ -246,46 +278,51 @@ def _heron_leg(side):
     x = HERON_X * side
     k = LEG_THICKEN
     return Union([
-        # The feathered thigh into the body, the long bare shin, the heel joint, the tarsus.
-        Ellipsoid(_point(0.58, -0.005, x), (0.03, 0.05, 0.035)),
+        # The feathered thigh into the belly, the long bare shin, the heel, the tarsus.
+        Ellipsoid(_point(0.585, -0.02, x), (0.026, 0.045, 0.03)),
         Tube([_point(HERON_HIP[0], HERON_HIP[1], x), _point(HERON_HEEL[0], HERON_HEEL[1], x)],
-             [0.011 * k, 0.008 * k]),
-        Ellipsoid(_point(HERON_HEEL[0], HERON_HEEL[1], x), (0.01 * k, 0.012 * k, 0.012 * k)),
+             [0.01 * k, 0.0075 * k]),
+        Ellipsoid(_point(HERON_HEEL[0], HERON_HEEL[1], x), (0.0095 * k, 0.011 * k, 0.011 * k)),
         Tube([_point(HERON_HEEL[0], HERON_HEEL[1], x), _point(HERON_FOOT[0] + 0.01, HERON_FOOT[1], x)],
-             [0.008 * k, 0.0075 * k]),
+             [0.0075 * k, 0.007 * k]),
         # Three long toes forward and spread, one back, on the ground.
-        *[Tube([_point(0.012, 0.0, x), _point(0.008, 0.0 + 0.09 * math.cos(a), x + 0.09 * math.sin(a) * side)],
-               [0.006 * k, 0.004 * k]) for a in (-0.45, 0.0, 0.45)],
-        Tube([_point(0.012, 0.0, x), _point(0.008, -0.06, x)], [0.006 * k, 0.004 * k]),
-    ], k=0.008)
+        *[Tube([_point(0.012, 0.0, x), _point(0.008, 0.0 + 0.085 * math.cos(a), x + 0.085 * math.sin(a) * side)],
+               [0.0055 * k, 0.0035 * k]) for a in (-0.45, 0.0, 0.45)],
+        Tube([_point(0.012, 0.0, x), _point(0.008, -0.055, x)], [0.0055 * k, 0.0035 * k]),
+    ], k=0.007)
 
 
 def heron_design():
     P = HERON_PARTS
-    up = _unit(np.array([0.0, 0.36, 0.93]))
+    up = HERON_UP
+    back = -up
     body = Union([
-        Ellipsoid(_point(0.63, 0.0), (0.085, 0.10, 0.20), along=up),
-        # The folded wings over the back and flanks, the tail tip below and behind.
-        *[(Ellipsoid(_point(0.645, -0.03, 0.035 * s), (0.055, 0.092, 0.215), along=up), 0.03) for s in (1.0, -1.0)],
-        (Ellipsoid(_point(0.55, -0.21), (0.05, 0.035, 0.075), along=(0.0, -0.5, -0.87)), 0.03),
-        # The breast plumes hanging at the front.
-        (Ellipsoid(_point(0.60, 0.12), (0.055, 0.085, 0.045)), 0.04),
-    ], k=0.05).tag(P["body"])
-    neck = Tube([_point(y, z) for y, z in HERON_NECK], [0.05, 0.034, 0.029, 0.027, 0.029],
-                squash_axis=X_AXIS, squash=0.85, k=0.02).tag(P["neck"])
-    poll = _point(1.005, 0.19)
+        # The slender body held up at the front, the breast deepest, tapering to the tail.
+        Ellipsoid(_point(0.635, 0.0), (0.064, 0.078, 0.2), along=up),
+        Ellipsoid(_point(0.68, 0.07), (0.058, 0.07, 0.08), along=up),
+        # The folded wings over the back and flanks, their long primaries to the tail tip.
+        *[(Ellipsoid(_point(0.65, -0.03, 0.03 * s), (0.04, 0.072, 0.21), along=up), 0.025) for s in (1.0, -1.0)],
+        (RoundCone(_point(0.565, -0.13), _point(0.48, -0.26), 0.045, 0.012, (X_AXIS, 0.75)), 0.03),
+        # The long breast plumes hanging at the front of the neck's base.
+        (RoundCone(_point(0.71, 0.13), _point(0.6, 0.15), 0.035, 0.018, (X_AXIS, 0.6)), 0.03),
+    ], k=0.04).tag(P["body"])
+    neck = Tube([_point(y, z) for y, z in HERON_NECK], [0.04, 0.03, 0.027, 0.025, 0.026],
+                squash_axis=X_AXIS, squash=0.82, k=0.018).tag(P["neck"])
+    poll = _point(0.975, 0.16)
+    fwd = _unit(np.array([0.0, -0.12, 0.99]))
     head = Union([
-        Ellipsoid(poll + np.array([0.0, 0.0, 0.025]), (0.027, 0.03, 0.05)),
-        *[Ellipsoid(poll + np.array([0.022 * s, 0.006, 0.04]), (0.008, 0.008, 0.008)) for s in (1.0, -1.0)],
-    ], k=0.012).tag(P["head"])
-    bill = RoundCone(poll + np.array([0.0, -0.006, 0.065]), poll + np.array([0.0, -0.016, 0.20]), 0.017, 0.004,
-                     (X_AXIS, 0.75)).tag(P["bill"])
-    crest = Tube([poll + np.array([0.0, 0.022, 0.0]), poll + np.array([0.0, 0.018, -0.07]),
-                  poll + np.array([0.0, 0.002, -0.14])], [0.008, 0.006, 0.003]).tag(P["crest"])
+        Ellipsoid(poll + 0.022 * fwd, (0.024, 0.027, 0.046), along=fwd),
+        *[Ellipsoid(poll + 0.035 * fwd + np.array([0.019 * s, 0.006, 0.0]), (0.007, 0.007, 0.007)) for s in (1.0, -1.0)],
+    ], k=0.01).tag(P["head"])
+    bill = RoundCone(poll + 0.055 * fwd - np.array([0.0, 0.004, 0.0]), poll + 0.175 * fwd - np.array([0.0, 0.006, 0.0]),
+                     0.015, 0.003, (X_AXIS, 0.72)).tag(P["bill"])
+    crest = Tube([poll + np.array([0.0, 0.02, -0.01]), poll + np.array([0.0, 0.016, -0.08]),
+                  poll + np.array([0.0, -0.004, -0.15])], [0.0075, 0.0055, 0.003]).tag(P["crest"])
     legs = [_heron_leg(1.0).tag(P["legLeft"]), _heron_leg(-1.0).tag(P["legRight"])]
-    root = HalfSpace(Union([(body, 0.0), (neck, 0.05), (head, 0.03), (bill, 0.01), (crest, 0.01),
-                            *[(leg, 0.03) for leg in legs]]), axis=1)
-    landmarks = dict(poll=poll, eyes=[poll + np.array([0.025 * s, 0.006, 0.04]) for s in (1.0, -1.0)])
+    root = HalfSpace(Union([(body, 0.0), (neck, 0.04), (head, 0.025), (bill, 0.008), (crest, 0.008),
+                            *[(leg, 0.025) for leg in legs]]), axis=1)
+    landmarks = dict(poll=poll, fwd=fwd, eyes=[poll + 0.035 * fwd + np.array([0.021 * s, 0.006, 0.0]) for s in (1.0, -1.0)],
+                     back=back)
     return root, landmarks
 
 
@@ -302,9 +339,9 @@ def heron_skin(positions, parts, triangles, index):
     knots = np.array([[0.0, yy, zz] for yy, zz in HERON_NECK])
     t = _polyline_t(positions, knots)
     lengths = np.linalg.norm(np.diff(knots, axis=0), axis=1)
-    at = np.cumsum(lengths)[:-1] / lengths.sum()
-    chain = _chain_weights(t, [at[0], at[1], 0.97], ["neck0", "neck1", "neck2", "head"], 0.06)
-    base = _smoothstep(0.2, 0.0, t)
+    at = list(np.cumsum(lengths)[:-1] / lengths.sum())
+    chain = _chain_weights(t, at, ["neck0", "neck1", "neck2", "neck3", "head"], 0.05)
+    base = _smoothstep(0.18, 0.0, t)
     for name, value in chain.items():
         put(neck, name, value * (1.0 - 0.7 * base))
     put(neck, "root", 0.7 * base)
@@ -312,7 +349,6 @@ def heron_skin(positions, parts, triangles, index):
         put(parts == P[part], "head", 1.0)
     for part, tag in (("legLeft", "L"), ("legRight", "R")):
         leg = parts == P[part]
-        # Down the leg by height: the feathered thigh into the body, the shin to the heel, the foot.
         into = _smoothstep(0.54, 0.6, y)
         shin = _smoothstep(HERON_HEEL[0] + 0.02, HERON_HEEL[0] - 0.02, y)
         foot = _smoothstep(0.05, 0.02, y)
@@ -327,23 +363,30 @@ def heron_paint(shape, landmarks, positions, normals, parts):
     P = HERON_PARTS
     x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
     legs = np.isin(parts, [P["legLeft"], P["legRight"]]) & (y < 0.53)
-    yellow = np.clip((parts == P["bill"]) + legs * 0.8, 0.0, 1.0)
+    yellow = np.clip((parts == P["bill"]) * 1.0 + legs * 0.75, 0.0, 1.0)
     poll = landmarks["poll"]
-    stripe = ((parts == P["head"]) * _smoothstep(0.004, 0.018, (positions - poll)[:, 1])
-              * _smoothstep(0.012, 0.022, np.abs(x)))
-    eyes = np.maximum.reduce([_smoothstep(0.012, 0.006, np.linalg.norm(positions - e, axis=1))
+    rel = positions - poll
+    head = parts == P["head"]
+    # The black stripe from the eye back over the side of the crown to the crest.
+    stripe = head * _smoothstep(0.0, 0.012, rel[:, 1]) * _smoothstep(0.03, 0.0, rel @ landmarks["fwd"]) \
+        * _smoothstep(0.01, 0.019, np.abs(x))
+    eyes = np.maximum.reduce([_smoothstep(0.011, 0.005, np.linalg.norm(positions - e, axis=1))
                               for e in landmarks["eyes"]])
-    # The black shoulder patch at the wing's bend and the dark flight feathers at the wing's edge.
     body = parts == P["body"]
-    shoulder = body * _smoothstep(0.08, 0.12, z) * _smoothstep(0.66, 0.7, y) * _smoothstep(0.05, 0.075, np.abs(x)) * 0.8
-    edge = body * _smoothstep(-0.05, -0.16, z) * _smoothstep(0.62, 0.56, y) * _smoothstep(0.045, 0.07, np.abs(x)) * 0.55
-    # The neck's front stripe of dark streaks (a faint line down the throat).
-    throat = (parts == P["neck"]) * _smoothstep(0.6, 0.9, normals[:, 2]) * _smoothstep(0.012, 0.004, np.abs(x)) * 0.5
-    dark = np.clip(np.maximum.reduce([(parts == P["crest"]).astype(float), stripe, eyes, shoulder, edge, throat]),
+    # The black shoulder patch at the bend of the wing, and the dark primaries at the wing's end.
+    shoulder = body * _smoothstep(0.06, 0.1, z) * _smoothstep(0.66, 0.70, y) * _smoothstep(0.035, 0.055, np.abs(x)) * 0.9
+    primaries = body * _smoothstep(-0.12, -0.2, z) * _smoothstep(0.035, 0.05, np.abs(x)) * 0.6
+    # The streaked front: dark streaks down the throat and the breast's middle.
+    neck = parts == P["neck"]
+    streak = (neck | body) * _smoothstep(0.55, 0.9, normals[:, 2]) * _smoothstep(0.011, 0.004, np.abs(x)) \
+        * (0.5 + 0.5 * np.sin(y * 260.0)) * 0.55
+    dark = np.clip(np.maximum.reduce([(parts == P["crest"]).astype(float), stripe, eyes, shoulder, primaries, streak]),
                    0.0, 1.0)
+    # White: the face, the neck, the breast plumes and the pale belly.
     white = np.clip(np.maximum.reduce([
-        (np.isin(parts, [P["neck"], P["head"]])).astype(float) * 0.9,
-        body * _smoothstep(0.08, 0.14, z) * _smoothstep(0.62, 0.55, y) * 0.75,  # the breast plumes
+        (head | neck).astype(float) * 0.95,
+        body * _smoothstep(0.1, 0.14, z) * 0.85,
+        body * _smoothstep(0.62, 0.55, y) * _smoothstep(0.03, -0.1, normals[:, 1] * -1.0) * 0.6,
     ]) - dark, 0.0, 1.0)
     seen = occlusion(shape, positions, normals, rays=16, reach=0.5, ground=0.6)
     return np.stack([yellow, dark, white, seen], axis=1)
@@ -352,9 +395,9 @@ def heron_paint(shape, landmarks, positions, normals, parts):
 # == THE BUILD ============================================================================
 BIRDS = {
     "swan": dict(name="swan", species="Mute swan (Cygnus olor)", design=swan_design, bones=swan_bones,
-                 skin=swan_skin, paint=swan_paint, voxel=0.0075, target=1300),
+                 skin=swan_skin, paint=swan_paint, voxel=0.0065, target=1600),
     "heron": dict(name="heron", species="Grey heron (Ardea cinerea)", design=heron_design, bones=heron_bones,
-                  skin=heron_skin, paint=heron_paint, voxel=0.0045, target=1200),
+                  skin=heron_skin, paint=heron_paint, voxel=0.0038, target=1400),
 }
 
 
@@ -445,27 +488,36 @@ def _albedo(bird):
 
 
 def previews(birds, directory):
+    """Each bird alone from the front, the side, behind, above and three-quarter, life size."""
     from fall_grove import studio as studio_module
     from fall_grove.studio import to_blender
     directory.mkdir(parents=True, exist_ok=True)
     studio = studio_module.Studio()
     studio.setup_preview(sun_direction=(-0.46, 0.36, 0.61), sun_strength=4.0, sky=(0.5, 0.62, 0.8), sky_strength=0.8)
-    ground = studio.mesh_object("water", np.array([[-6, 0, -6], [6, 0, -6], [6, 0, 6], [-6, 0, 6]], dtype=float),
-                                np.array([[0, 2, 1], [0, 3, 2]]))
-    ground.data.materials.append(studio.material("water", vertex_color=False, base=(0.1, 0.45, 0.5)))
+    water = studio.mesh_object("water", np.array([[-6, 0, -6], [6, 0, -6], [6, 0, 6], [-6, 0, 6]], dtype=float),
+                               np.array([[0, 2, 1], [0, 3, 2]]))
+    water.data.materials.append(studio.material("water", vertex_color=False, base=(0.1, 0.45, 0.5)))
     material = studio.material("bird", roughness=0.8)
-    for index, bird in enumerate(birds):
-        offset = np.array([(index - 0.5) * 1.6, 0.0, 0.0])
-        obj = studio.mesh_object("bird_" + bird.spec["name"], bird.positions + offset, bird.triangles,
-                                 colors=_albedo(bird))
+    objects = []
+    for bird in birds:
+        obj = studio.mesh_object("bird_" + bird.spec["name"], bird.positions, bird.triangles, colors=_albedo(bird))
         obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(bird.normals)])
         obj.data.materials.append(material)
-    studio.render(directory / "pond-birds-side.png", eye=(5.0, 1.2, 1.0), target=(0.0, 0.45, 0.0), lens=50,
-                  size=(900, 500), samples=16)
-    studio.render(directory / "pond-birds-34.png", eye=(3.2, 2.2, 3.6), target=(0.0, 0.45, 0.0), lens=50,
-                  size=(900, 500), samples=16)
-    studio.render(directory / "pond-birds-above.png", eye=(1.0, 6.0, 3.0), target=(0.0, 0.3, 0.0), lens=50,
-                  size=(900, 500), samples=16)
+        objects.append(obj)
+    for bird, obj in zip(birds, objects):
+        for other in objects:
+            other.hide_render = other is not obj
+        h = 0.42 if bird.spec["name"] == "swan" else 0.55
+        views = {
+            "front": ((0.0, h + 0.1, 3.2), (0.0, h, 0.0)),
+            "side": ((3.2, h + 0.05, 0.0), (0.0, h, 0.0)),
+            "back": ((0.0, h + 0.35, -3.2), (0.0, h, 0.0)),
+            "top": ((0.01, 3.4, 0.0), (0.0, 0.0, 0.0)),
+            "34": ((2.2, h + 1.0, 2.4), (0.0, h, 0.0)),
+        }
+        for name, (eye, target) in views.items():
+            studio.render(directory / ("%s-%s.png" % (bird.spec["name"], name)), eye=eye, target=target, lens=50,
+                          size=(480, 360), samples=16)
     studio.dispose()
 
 
