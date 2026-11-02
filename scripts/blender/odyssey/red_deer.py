@@ -20,15 +20,19 @@ How it is made (the meshing is the Grainfields horse's, scripts/blender/grainfie
 - **Mesh.** The field's left half is sampled on a grid, polygonised with surface nets, projected
   onto the zero set, decimated in Blender with a quadric edge collapse, cleaned of folds and
   mirrored, so the deer is exactly symmetric.
-- **Skeleton.** Twenty-five bones (BONES): the root, the pelvis and the chest; two neck bones, the
-  head, the ears; each fore leg's humerus, forearm, cannon and hoof; each hind leg's femur, tibia,
-  cannon and hoof; the tail. Every bone rests aligned with the deer's own axes (x left, y up, z
+- **Skeleton.** Twenty-seven bones (BONES): the root, the pelvis and the chest; three neck bones (so
+  the neck bends down to graze and turns to look in a curve, not at a hinge), the head, the jaw, the
+  ears; each fore leg's humerus, forearm, cannon and hoof; each hind leg's femur, tibia, cannon and
+  hoof; the tail. Every bone rests aligned with the deer's own axes (x left, y up, z
   forward), so a pose is a rotation of each bone about its head in its parent's frame (R = Ry Rz Rx).
 - **Skin.** Up to four bones a vertex (`_BONES`, `_WEIGHTS`): each part follows its chain with blends
   at the joints, fades into the trunk across a band, and the weights are smoothed over the mesh.
-- **Paint.** COLOR_0 = (pale, dark, grey, sky seen): the buff rump patch, the pale belly and the
-  inside of the legs and ears; the hooves, the nose, the eyes and the tail's dark top; the greyer
-  neck, head and legs; ambient occlusion traced through the field.
+- **Paint.** COLOR_0 = (pale, dark, grey, sky seen): the cream rump patch, the pale belly and the
+  inside of the legs and ears; the hooves, the nose, the large eyes in a dark rim, the tail's dark
+  top, a darker back and darker lower legs; the greyer neck, head and legs; ambient occlusion traced
+  through the field.
+- **Previews** (never shipped): `--preview <dir>` renders the model; `--motion <json> --motion-out
+  <dir>` renders frames of motion exported from the game's own solver (the pose table per frame).
 
 Frame: metres at real size, +z forward (toward the head), +y up, the hooves on y = 0, the body
 centred on x = 0; the deer faces +z, so its left side is +x. No external asset is used.
@@ -60,8 +64,8 @@ SPECIES = "Red deer (Cervus elaphus), a hind"
 GENERATOR = "Serenity Blocks - Odyssey red deer (scripts/blender/odyssey/red_deer.py)"
 SCHEMA_VERSION = 1
 VOXEL = 0.0095
-TARGET_TRIANGLES = 1800
-LEG_THICKEN = 1.3
+TARGET_TRIANGLES = 2100
+LEG_THICKEN = 1.15
 
 PARTS = {"body": 0, "neck": 1, "head": 2, "frontLeft": 3, "frontRight": 4, "hindLeft": 5, "hindRight": 6,
          "tail": 7, "earLeft": 8, "earRight": 9}
@@ -103,8 +107,10 @@ def _bone_table():
         ("pelvis", "root", (0.0, 0.95, -0.30)),
         ("chest", "root", (0.0, 0.95, 0.18)),
         ("neck0", "chest", (0.0, 1.00, 0.42)),
-        ("neck1", "neck0", (0.0, 1.22, 0.58)),
-        ("head", "neck1", tuple(float(v) for v in POLL)),
+        ("neck1", "neck0", (0.0, 1.16, 0.53)),
+        ("neck2", "neck1", (0.0, 1.33, 0.63)),
+        ("head", "neck2", tuple(float(v) for v in POLL)),
+        ("jaw", "head", tuple(float(v) for v in head_point(0.07, -0.085))),
         ("earL", "head", tuple(float(v) for v in _ear_base(1.0))),
         ("earR", "head", tuple(float(v) for v in _ear_base(-1.0))),
         ("tail", "pelvis", (0.0, 1.03, -0.66)),
@@ -149,8 +155,8 @@ def _front_leg(side):
              [0.062 * k, 0.044 * k, 0.03 * k], squash_axis=X_AXIS, squash=0.86),
         Ellipsoid(_point(0.75, z - 0.045, x * 1.02), (0.036, 0.045, 0.045)),
         # The knee, the long thin cannon, the fetlock and the small pointed hoof.
-        Ellipsoid(_point(0.40, z, x), (0.029 * k, 0.034 * k, 0.033 * k)),
-        Tube([_point(0.39, z - 0.002, x), _point(0.11, z - 0.004, x)], [0.021 * k, 0.019 * k],
+        Ellipsoid(_point(0.40, z + 0.004, x), (0.031 * k, 0.037 * k, 0.036 * k)),
+        Tube([_point(0.39, z - 0.002, x), _point(0.11, z - 0.004, x)], [0.02 * k, 0.018 * k],
              squash_axis=X_AXIS, squash=0.85),
         Ellipsoid(_point(0.095, z - 0.004, x), (0.023 * k, 0.026 * k, 0.027 * k)),
         RoundCone(_point(0.075, z + 0.004, x), _point(0.016, z + 0.036, x), 0.021 * k, 0.026 * k),
@@ -181,29 +187,30 @@ def _hind_leg(side):
 def design():
     """The hind as a distance field, and the landmarks the paint and the skin use."""
     body = Union([
-        # A deep chest over a slimmer barrel, the belly tucked up toward the flank.
-        Ellipsoid(_point(0.87, -0.06), (0.185, 0.215, 0.48)),
-        Ellipsoid(_point(0.80, -0.02), (0.17, 0.16, 0.32)),
-        Ellipsoid(_point(0.88, 0.28), (0.17, 0.235, 0.22)),
-        (Ellipsoid(_point(0.75, 0.34), (0.11, 0.11, 0.13)), 0.08),
+        # A deep chest (the ribs carried low behind the elbows), the barrel narrowing to a slim
+        # waist, the belly tucked up toward the flank.
+        Ellipsoid(_point(0.90, -0.10), (0.165, 0.185, 0.42)),
+        Ellipsoid(_point(0.82, 0.08), (0.168, 0.17, 0.26)),
+        Ellipsoid(_point(0.87, 0.28), (0.17, 0.25, 0.22)),
+        (Ellipsoid(_point(0.73, 0.33), (0.11, 0.11, 0.13)), 0.08),
         # The withers, and the shoulders sloping down and forward from them.
         (Ellipsoid(_point(1.03, 0.25), (0.09, 0.08, 0.20)), 0.1),
         *[(Ellipsoid(_point(0.92, 0.34, 0.085 * s), (0.08, 0.15, 0.11), along=(0.0, 0.85, 0.52)), 0.08)
           for s in (1.0, -1.0)],
         # The loins, a little below the withers and the croup.
         Ellipsoid(_point(0.99, -0.14), (0.14, 0.08, 0.30)),
-        # The quarters, the croup falling to the tail, the thighs and the buttocks.
-        Ellipsoid(_point(0.90, -0.45), (0.18, 0.21, 0.23)),
+        # Rounded quarters, the croup falling to the tail, full thighs and the buttocks.
+        Ellipsoid(_point(0.91, -0.45), (0.185, 0.215, 0.235)),
         (Ellipsoid(_point(1.02, -0.42), (0.12, 0.09, 0.21), along=(0.0, 0.25, 0.97)), 0.1),
-        *[(Ellipsoid(_point(0.81, -0.49, 0.105 * s), (0.075, 0.16, 0.12)), 0.08) for s in (1.0, -1.0)],
-        (Ellipsoid(_point(0.90, -0.60), (0.12, 0.14, 0.08)), 0.08),
+        *[(Ellipsoid(_point(0.83, -0.48, 0.11 * s), (0.08, 0.17, 0.13)), 0.08) for s in (1.0, -1.0)],
+        (Ellipsoid(_point(0.90, -0.60), (0.125, 0.145, 0.085)), 0.08),
     ], k=0.1).tag(PARTS["body"])
 
     # The neck: long and slender, rising at about 40 degrees from the chest to the poll, deeper at
     # its base, the throat line straight.
     neck = Tube([_point(0.98, 0.38), _point(1.13, 0.50), _point(1.29, 0.60), _point(1.44, 0.68),
                  _point(1.53, 0.71)],
-                [0.145, 0.115, 0.093, 0.08, 0.072], squash_axis=X_AXIS, squash=[0.72, 0.74, 0.78, 0.8, 0.82],
+                [0.155, 0.11, 0.086, 0.076, 0.07], squash_axis=X_AXIS, squash=[0.7, 0.74, 0.78, 0.8, 0.82],
                 k=0.03).tag(PARTS["neck"])
 
     head = Union([
@@ -214,7 +221,7 @@ def design():
                   (X_AXIS, 0.78)),                                                          # face
         Ellipsoid(head_point(0.315, -0.054), (0.021, 0.028, 0.029), along=HEAD_FORWARD),    # nose
         Ellipsoid(head_point(0.29, -0.074), (0.015, 0.013, 0.024), along=HEAD_FORWARD),     # chin
-        *[Ellipsoid(head_point(0.105, -0.008, 0.056 * s), (0.019, 0.021, 0.025), along=HEAD_FORWARD)
+        *[Ellipsoid(head_point(0.105, -0.008, 0.056 * s), (0.022, 0.024, 0.028), along=HEAD_FORWARD)
           for s in (1.0, -1.0)],                                                            # eyes
         *[Ellipsoid(head_point(0.095, 0.016, 0.047 * s), (0.017, 0.012, 0.03), along=HEAD_FORWARD)
           for s in (1.0, -1.0)],                                                            # brows
@@ -248,7 +255,7 @@ def design():
     ]), axis=1)
     landmarks = dict(
         muzzle=head_point(0.338, -0.054),
-        eyes=[head_point(0.105, -0.008, 0.062 * s) for s in (1.0, -1.0)],
+        eyes=[head_point(0.11, -0.006, 0.066 * s) for s in (1.0, -1.0)],
         nose=head_point(0.332, -0.044),
         chin=head_point(0.29, -0.08),
         tailRoot=_point(1.04, -0.64),
@@ -317,19 +324,27 @@ def skin(positions, parts, triangles, smoothing=4):
     put(trunk, "pelvis", w_pelvis)
     put(trunk, "root", w_root)
 
-    # The neck from its base (on the chest) to the poll; the head whole.
+    # The neck from its base (on the chest) to the poll, down a chain of three bones; the head
+    # whole but for its lower jaw.
     neck = parts == PARTS["neck"]
     (y0, z0), (y1, z1) = ((0.98, 0.38), (1.53, 0.71))
     t = _segment_t(positions[:, 1:], np.array([y0, z0]), np.array([y1, z1]))
-    w_base = _smoothstep(0.18, 0.0, t)
-    w_head = _smoothstep(0.82, 1.0, t)
-    w_n1 = _smoothstep(0.25, 0.65, t) * (1.0 - w_head)
-    w_n0 = np.clip(1.0 - w_base - w_head - w_n1, 0.0, 1.0)
+    knots = [(_segment_t(np.array([joint(n)[1:]]), np.array([y0, z0]), np.array([y1, z1]))[0]) for n in
+             ("neck1", "neck2", "head")]
+    chain = _chain(-t, [-knots[0], -knots[1], -knots[2]], ["neck0", "neck1", "neck2", "head"], 0.07)
+    # The neck's root blends into the chest over its first quarter, so the bend down to graze is a
+    # curve over the withers, not a crease.
+    w_base = _smoothstep(0.26, 0.0, t)
+    for name, value in chain.items():
+        put(neck, name, value * (1.0 - 0.6 * w_base))
     put(neck, "chest", w_base * 0.6)
-    put(neck, "neck0", w_n0 + w_base * 0.4)
-    put(neck, "neck1", w_n1)
-    put(neck, "head", w_head)
-    put(parts == PARTS["head"], "head", 1.0)
+    head_part = parts == PARTS["head"]
+    rel = positions - POLL
+    s_h = rel @ HEAD_FORWARD
+    t_h = rel @ HEAD_UP
+    w_jaw = _smoothstep(-0.058, -0.078, t_h) * _smoothstep(0.08, 0.15, s_h)
+    put(head_part, "head", 1.0 - w_jaw)
+    put(head_part, "jaw", w_jaw)
     put(parts == PARTS["earLeft"], "earL", 1.0)
     put(parts == PARTS["earRight"], "earR", 1.0)
 
@@ -401,19 +416,26 @@ def paint(shape, landmarks, positions, normals, parts):
     ear_in = ears * np.clip((positions - 0.0) @ np.array([0.0, 0.0, 1.0]) * 0.0 + _smoothstep(0.2, 0.9, normals[:, 2]),
                             0.0, 1.0) * 0.7
     chin = _smoothstep(0.045, 0.02, np.linalg.norm(positions - landmarks["chin"], axis=1)) * 0.6
-    pale = np.clip(np.maximum.reduce([rump, tail_pale, belly * 0.7, inside, ear_in, chin]), 0.0, 1.0)
+    pale = np.clip(np.maximum.reduce([rump, tail_pale, belly * 0.85, inside, ear_in, chin]), 0.0, 1.0)
     # Dark: the hooves, the nose, the eyes, the tail's top and the ears' rims.
     hooves = legs * _smoothstep(0.075, 0.055, y)
     nose = _smoothstep(0.06, 0.025, np.linalg.norm(positions - landmarks["nose"], axis=1))
-    eyes = np.maximum.reduce([_smoothstep(0.03, 0.016, np.linalg.norm(positions - e, axis=1))
+    # The eyes, large and dark, in a darker rim.
+    eyes = np.maximum.reduce([np.maximum(_smoothstep(0.034, 0.02, np.linalg.norm(positions - e, axis=1)),
+                                         0.45 * _smoothstep(0.046, 0.034, np.linalg.norm(positions - e, axis=1)))
                               for e in landmarks["eyes"]])
+    # A darker back (the line from the withers along the spine and up the neck's crest) and darker
+    # lower legs.
+    dorsal = (np.isin(parts, [PARTS["body"], PARTS["neck"]]) * _smoothstep(0.5, 0.85, normals[:, 1])
+              * _smoothstep(0.98, 1.06, y) * _smoothstep(0.12, 0.05, np.abs(x)) * 0.32)
+    shins = legs * _smoothstep(0.46, 0.3, y) * 0.14
     # The tail's dark top stripe, and a darker edge round the top and sides of the rump patch.
     tail_top = tail * _smoothstep(0.55, 0.85, normals[:, 1]) * _smoothstep(0.03, 0.012, np.abs(x))
     wide = (body * _smoothstep(0.25, -0.3, normals[:, 2]) * _smoothstep(-0.40, -0.50, z) * _smoothstep(0.80, 0.9, y)
             * _smoothstep(1.2, 1.12, y) * _smoothstep(0.2, 0.15, np.abs(x)))
     rim = np.clip(wide - rump * 1.4, 0.0, 1.0) * 0.3
     ear_rim = ears * _smoothstep(0.15, 0.21, np.linalg.norm(positions - head_point(0.0, 0.04), axis=1)) * 0.65
-    dark = np.clip(np.maximum.reduce([hooves, nose, eyes, tail_top * 0.6, ear_rim, rim]), 0.0, 1.0)
+    dark = np.clip(np.maximum.reduce([hooves, nose, eyes, tail_top * 0.6, ear_rim, rim, dorsal, shins]), 0.0, 1.0)
     # Grey: the neck and head greyer than the body, and the legs below the knee and hock.
     neck_grey = np.isin(parts, [PARTS["neck"], PARTS["head"]]) * 0.75
     leg_grey = legs * _smoothstep(0.52, 0.36, y) * 0.8
@@ -554,13 +576,14 @@ def skin_vertices(deer, matrices):
 
 POSES = {
     "alert": {},
-    "graze": dict(root=(0.06, 0, 0), neck0=(2.2, 0, 0), neck1=(0.0, 0, 0), head=(-1.65, 0, 0), earL=(0.25, 0, -0.2),
-                  earR=(0.25, 0, 0.2), humerusL=(-0.14, 0, 0), humerusR=(-0.01, 0, 0)),
-    "walk": dict(neck0=(0.05, 0, 0), humerusL=(-0.32, 0, 0), forearmL=(-0.3, 0, 0),
+    "graze": dict(root=(0.08, 0, 0), neck0=(1.85, 0, 0), neck1=(0.5, 0, 0), neck2=(0.4, 0, 0), head=(-2.3, 0, 0),
+                  jaw=(0.08, 0, 0), earL=(0.15, 0.3, -0.25), earR=(0.15, -0.2, 0.25)),
+    "walk": dict(neck0=(0.18, 0, 0), humerusL=(-0.32, 0, 0), forearmL=(-0.3, 0, 0),
                  foreCannonL=(1.0, 0, 0), foreHoofL=(0.45, 0, 0), humerusR=(0.2, 0, 0),
                  femurL=(0.25, 0, 0), femurR=(-0.3, 0, 0), tibiaR=(0.4, 0, 0), hindCannonR=(-0.7, 0, 0),
                  hindHoofR=(0.5, 0, 0), tail=(0.15, 0, 0)),
-    "look": dict(neck0=(-0.06, 0.3, 0), neck1=(0.0, 0.35, 0), head=(0.08, 0, 0), earL=(0, 0, 0.3)),
+    "look": dict(neck0=(-0.06, 0.15, 0), neck1=(0.0, 0.25, 0), neck2=(-0.05, 0.25, 0), head=(0.08, 0.15, 0),
+                 earL=(0, 0.6, 0.1), earR=(0, 0.5, -0.1)),
 }
 
 COAT = np.array([0.30, 0.13, 0.05])
@@ -633,6 +656,57 @@ def previews(deer, directory):
     studio.dispose()
 
 
+def _quat_matrix(q):
+    x, y, z, w = q
+    return np.array([
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+    ])
+
+
+def motion(deer, spec_path, directory):
+    """Render frames of a motion exported from the game's own solver (the pose table per frame:
+    per bone a quaternion and where its rest frame lands, `pos = q v k + t`), each with its camera.
+    Previews only: the tables come from the CPU twin of odyssey-deer-herd.js."""
+    import bpy
+    from fall_grove import studio as studio_module
+    from fall_grove.studio import to_blender
+    spec = json.loads(Path(spec_path).read_text())
+    directory.mkdir(parents=True, exist_ok=True)
+    studio = studio_module.Studio()
+    studio.setup_preview(sun_direction=(-0.46, 0.36, 0.61), sun_strength=4.0, sky=(0.5, 0.62, 0.8), sky_strength=0.8)
+    colours = _albedo(deer.colors)
+    ground = studio.mesh_object("ground", np.array([[-60, 0, -60], [60, 0, -60], [60, 0, 60], [-60, 0, 60]],
+                                                   dtype=float), np.array([[0, 2, 1], [0, 3, 2]]))
+    ground.data.materials.append(studio.material("grass", vertex_color=False, base=(0.09, 0.2, 0.05)))
+    material = studio.material("deer", roughness=0.85)
+    w = deer.weights.astype(np.float64) / 255.0
+    ids = deer.bones.astype(np.int64)
+    for index, frame in enumerate(spec["frames"]):
+        table = np.asarray(frame["table"], dtype=np.float64).reshape(-1, 8)
+        mats = [_quat_matrix(row[:4]) for row in table]
+        p = np.zeros_like(deer.positions)
+        n = np.zeros_like(deer.normals)
+        for k in range(4):
+            R = np.stack([mats[i] for i in ids[:, k]])
+            T = table[ids[:, k], 4:7]
+            K = table[ids[:, k], 7:8]
+            p += w[:, k:k + 1] * (np.einsum("nij,nj->ni", R, deer.positions) * K + T)
+            n += w[:, k:k + 1] * np.einsum("nij,nj->ni", R, deer.normals)
+        n /= np.maximum(np.linalg.norm(n, axis=1), 1e-9)[:, None]
+        obj = studio.mesh_object("deer_frame", p, deer.triangles, colors=colours)
+        obj.data.normals_split_custom_set_from_vertices([tuple(v) for v in to_blender(n)])
+        obj.data.materials.append(material)
+        cam = frame["camera"]
+        studio.render(directory / ("f%04d.png" % index), eye=cam["eye"], target=cam["target"], lens=cam.get("lens", 50),
+                      size=tuple(spec.get("size", (480, 300))), samples=8)
+        data = obj.data
+        bpy.data.objects.remove(obj, do_unlink=True)
+        bpy.data.meshes.remove(data)
+    studio.dispose()
+
+
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     options = {}
@@ -653,6 +727,9 @@ def main():
     if options.get("preview"):
         previews(deer, Path(options["preview"]))
         print("%s previews in %s" % (TAG, options["preview"]), flush=True)
+    if options.get("motion"):
+        motion(deer, options["motion"], Path(options["motion-out"]))
+        print("%s motion frames in %s" % (TAG, options["motion-out"]), flush=True)
 
 
 if __name__ == "__main__":

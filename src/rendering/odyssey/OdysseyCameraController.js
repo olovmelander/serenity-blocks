@@ -607,15 +607,74 @@ export const JOURNEY_END_RISE = Object.freeze({ height: 140, seconds: 18, pitchD
 
 /**
  * THE LOOK AROUND (2026-11-01; the owner: "When we move the mouse cursor to the sides in odyssey
- * mode, can the camera also move so that we can look around a bit, it feels so static now drifting
- * in the odyssey mode. We have this for almost all the themes also"). The themes' pointer parallax
- * (themes/shared/camera-rig.js) on the map: the eye swings on a small arc round what it looks at,
- * toward the cursor's side, eased so it never snaps. `x`/`y` are fractions of the screen's height
- * at full deflection (the rig's unit: the same look at every distance and lens), `dampRate` its
- * easing (s^-1). Off with reduced motion and in the free camera; the cursor over the map's panels
- * leaves it where it was.
+ * mode, can the camera also move so that we can look around a bit ... We have this for almost all
+ * the themes also"; then 2026-11-02: "We need to improve this so that we look the way we move the
+ * mouse pointer, i want to be able to look around a bit more!"). The view TURNS toward the cursor:
+ * `yawDeg` sideways and `pitchDeg` up or down at the screen's edges, after the camera has aimed, so
+ * nothing it frames or follows changes. A little of the themes' parallax stays under it: the eye also
+ * shifts `shift` of a screen height (the themes' rig unit, camera-rig.js) toward the same side, so
+ * near things slide past far ones as it turns. Eased at `dampRate` (s^-1) so it never snaps. Off with
+ * reduced motion and in the free camera; the cursor over the map's panels leaves it where it was, and
+ * leaving the window brings it back to the middle.
  */
-export const LOOK_AROUND = Object.freeze({ x: 0.12, y: 0.07, dampRate: 2.4 });
+/**
+ * THE OPENING SWEEP'S PACE (2026-11-02; the owner: "The scroll and sweep is to fast in this moment").
+ * An ordinary glide eases in and out on a cubic, so its middle runs at three times its average:
+ * across most of the journey that is chapters flashing by. The sweep instead eases in over `easeIn`
+ * and out over `easeOut` of its time and cruises between (its top speed is ~1.35x its average), and
+ * it keeps the wheel's own pace on the way (odysseyScrollPace: slower where the climb into space
+ * changes the picture fastest), measured over `samples` steps. `chapterShare` of its time is shared
+ * evenly between the chapters it crosses and the rest by (paced) distance: by distance alone the
+ * short early chapters (the ocean, the island, the forest) passed in about half a second each while
+ * the long climb of chapter 5 took half the flight.
+ */
+export const SWEEP_TRAVEL = Object.freeze({
+    easeIn: 0.22, easeOut: 0.30, samples: 256, chapterShare: 0.5,
+});
+
+/**
+ * Time share -> distance share for SWEEP_TRAVEL: a smooth start, a constant cruise, a smooth stop.
+ * @param {number} t 0..1
+ * @returns {number} 0..1
+ */
+export function sweepTravelEase(t) {
+    const x = THREE.MathUtils.clamp(t, 0, 1);
+    const a = SWEEP_TRAVEL.easeIn;
+    const b = SWEEP_TRAVEL.easeOut;
+    // Constant acceleration in, cruise at v, constant deceleration out; v makes the whole come to 1.
+    const v = 1 / (1 - (a / 2) - (b / 2));
+    if (x < a) return (v / (2 * a)) * x * x;
+    if (x <= 1 - b) return (v * a) / 2 + v * (x - a);
+    const r = 1 - x;
+    return 1 - ((v / (2 * b)) * r * r);
+}
+
+/**
+ * The trip's parameter (0..1) at which a cumulative pacing table reaches `share`.
+ * @param {Float32Array} table cumulative shares, table[0] = 0, table[n] = 1
+ * @param {number} share 0..1
+ * @returns {number}
+ */
+export function invertSweepPacing(table, share) {
+    const n = table.length - 1;
+    const x = THREE.MathUtils.clamp(share, 0, 1);
+    let lo = 0;
+    let hi = n;
+    while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (table[mid] < x) lo = mid; else hi = mid;
+    }
+    const span = table[hi] - table[lo];
+    const f = span > 1e-12 ? (x - table[lo]) / span : 0;
+    return (lo + f) / n;
+}
+
+export const LOOK_AROUND = Object.freeze({
+    yawDeg: 16,
+    pitchDeg: 9,
+    shift: 0.035,
+    dampRate: 2.2,
+});
 
 /**
  * 0..1: how far the journey's-end look up has come at `progress` (0 unless `complete`).
@@ -1106,6 +1165,7 @@ export class OdysseyCameraController {
         this._lookTarget = { x: 0, y: 0 };
         this._look = { x: 0, y: 0 };
         this._lookOffset = new THREE.Vector3();
+        this._lookTurnAxis = new THREE.Vector3();
         this._lookApplied = false;
         this._breathOffset = new THREE.Vector3();
         // 0..1 envelope: reset whenever breathing is suspended (focus/zoom animations, portal,
@@ -1482,7 +1542,11 @@ export class OdysseyCameraController {
                 up: this.followCameraUp.clone(),
             },
             blendMs: Math.min(TRAVEL_BLEND_IN_MS, travelDuration * TRAVEL_BLEND_SHARE),
+            // The opening sweep's profile (SWEEP_TRAVEL): its cruise and the wheel's pace on the way.
+            sweep: options.profile === 'sweep',
+            paced: null,
         };
+        if (this.pathTravel.sweep) this.pathTravel.paced = this._buildSweepPacing(this.pathTravel);
 
         return new Promise((resolve) => {
             this.animationResolve = resolve;
@@ -1855,6 +1919,8 @@ export class OdysseyCameraController {
 
         this.camera.up.copy(this.followCameraUp || FREE_CAMERA_WORLD_UP);
         this.camera.lookAt(this.lookAtTarget);
+        // The look around's turn toward the cursor (LOOK_AROUND), on the aimed view.
+        this.applyLookTurn();
 
         // Re-apply the subtle breathing / portal-approach roll about the local view axis,
         // AFTER lookAt has set the orientation (masterplan §2 #6 — this roll was previously
@@ -1875,6 +1941,54 @@ export class OdysseyCameraController {
     }
 
     /**
+     * The opening sweep's measure along its trip: share of the paced distance (each step weighed
+     * by 1 / odysseyScrollPace at its place) at each of SWEEP_TRAVEL.samples steps of the trip's own
+     * parameter (the plunge's measure through the black hole, else progress), so the sweep slows
+     * where the wheel does.
+     * @param {object} travel this.pathTravel
+     * @returns {Float32Array | null} the cumulative shares, or null when the trip has no length
+     * @private
+     */
+    _buildSweepPacing(travel) {
+        const n = SWEEP_TRAVEL.samples;
+        const at = (q) => (travel.plunge
+            ? plungeTravelProgress(THREE.MathUtils.lerp(travel.plunge.from, travel.plunge.to, q), this.chapterPositions)
+            : THREE.MathUtils.lerp(travel.startPosition, travel.endPosition, q));
+        const cp = this.chapterPositions || [];
+        // Chapter units: the chapter's index plus how far through it (each chapter one unit long).
+        const unitOf = (p) => {
+            for (let c = 0; c < cp.length - 1; c += 1) {
+                if (p < cp[c + 1] || c === cp.length - 2) {
+                    const span = Math.max(1e-6, cp[c + 1] - cp[c]);
+                    return c + THREE.MathUtils.clamp((p - cp[c]) / span, 0, 1);
+                }
+            }
+            return p;
+        };
+        const paced = new Float32Array(n + 1);
+        const units = new Float32Array(n + 1);
+        let pacedTotal = 0;
+        let unitTotal = 0;
+        let previous = at(0);
+        for (let i = 1; i <= n; i += 1) {
+            const position = at(i / n);
+            const middle = (position + previous) / 2;
+            pacedTotal += Math.abs(position - previous) / odysseyScrollPace(middle, this.chapterPositions);
+            unitTotal += Math.abs(unitOf(position) - unitOf(previous));
+            paced[i] = pacedTotal;
+            units[i] = unitTotal;
+            previous = position;
+        }
+        if (!(pacedTotal > 1e-9)) return null;
+        const share = unitTotal > 1e-9 ? SWEEP_TRAVEL.chapterShare : 0;
+        const table = new Float32Array(n + 1);
+        for (let i = 1; i <= n; i += 1) {
+            table[i] = ((1 - share) * (paced[i] / pacedTotal)) + (share * (unitTotal > 1e-9 ? units[i] / unitTotal : 0));
+        }
+        return table;
+    }
+
+    /**
      * Where the cursor is over the map (LOOK_AROUND), -1..1 each way: x to the right, y up.
      * @param {number} x
      * @param {number} y
@@ -1885,9 +1999,10 @@ export class OdysseyCameraController {
     }
 
     /**
-     * Swing the eye on a small arc round the look target toward the cursor (LOOK_AROUND). Applied
-     * after the follow, every animation and the breathing, and taken out again at the start of the
-     * next update, so nothing the camera works out from its pose ever sees it.
+     * Ease the look toward the cursor and shift the eye a little toward its side (LOOK_AROUND's
+     * parallax). Applied after the follow, every animation and the breathing, and taken out again
+     * at the start of the next update, so nothing the camera works out from its pose ever sees it.
+     * The turn itself comes after the aim (applyLookTurn).
      * @param {number} deltaTime seconds
      */
     applyLookAround(deltaTime = 0) {
@@ -1911,10 +2026,27 @@ export class OdysseyCameraController {
         // One screen height at the look target, the rig's unit (camera-rig.js).
         const screen = THREE.MathUtils.degToRad(this.camera.fov || 60) * distance;
         this._lookOffset.set(0, 0, 0)
-            .addScaledVector(right, this._look.x * LOOK_AROUND.x * screen)
-            .addScaledVector(up, this._look.y * LOOK_AROUND.y * screen);
+            .addScaledVector(right, this._look.x * LOOK_AROUND.shift * screen)
+            .addScaledVector(up, this._look.y * LOOK_AROUND.shift * 0.6 * screen);
         this.camera.position.add(this._lookOffset);
         this._lookApplied = true;
+    }
+
+    /**
+     * Turn the aimed view toward the cursor (LOOK_AROUND): about the scene's up for the sideways
+     * look, then about the view's own right for up and down. Called right after lookAt; the roll
+     * that follows is about the turned view.
+     */
+    applyLookTurn() {
+        const { x, y } = this._look;
+        if (Math.abs(x) < 1e-5 && Math.abs(y) < 1e-5) return;
+        if (this.mode === 'free' || this.prefersReducedMotion()) return;
+        const axis = this._lookTurnAxis.copy(this.followCameraUp || FREE_CAMERA_WORLD_UP);
+        if (axis.lengthSq() < 1e-8) return;
+        axis.normalize();
+        // A positive turn about up looks left: the cursor's right is the negative.
+        this.camera.rotateOnWorldAxis(axis, -THREE.MathUtils.degToRad(LOOK_AROUND.yawDeg) * x);
+        this.camera.rotateX(THREE.MathUtils.degToRad(LOOK_AROUND.pitchDeg) * y);
     }
 
     /**
@@ -3155,9 +3287,13 @@ export class OdysseyCameraController {
         if (paused) return;
         const { elapsed } = travel;
         const rawProgress = Math.min(elapsed / travel.duration, 1);
-        const easedProgress = rawProgress < 0.5
+        let easedProgress = rawProgress < 0.5
             ? 4 * rawProgress * rawProgress * rawProgress
             : 1 - ((-2 * rawProgress + 2) ** 3) / 2;
+        if (travel.sweep) {
+            easedProgress = sweepTravelEase(rawProgress);
+            if (travel.paced) easedProgress = invertSweepPacing(travel.paced, easedProgress);
+        }
         const nextPosition = travel.plunge
             ? plungeTravelProgress(
                 THREE.MathUtils.lerp(travel.plunge.from, travel.plunge.to, easedProgress),
