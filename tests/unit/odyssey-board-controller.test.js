@@ -611,7 +611,8 @@ describe('OdysseyBoardController wheel routing', () => {
         controller.setupInteraction();
         controller.setupInteraction();
 
-        expect(canvas.addEventListener).toHaveBeenCalledTimes(5);
+        // mousemove, mouseleave (the look around re-centres), click and the three touch events.
+        expect(canvas.addEventListener).toHaveBeenCalledTimes(6);
         expect(document.addEventListener).toHaveBeenCalledTimes(1);
         expect(document.addEventListener).toHaveBeenCalledWith(
             'wheel',
@@ -629,6 +630,10 @@ describe('OdysseyBoardController wheel routing', () => {
         expect(canvas.removeEventListener).toHaveBeenCalledWith(
             'mousemove',
             controller.boundHandlers.mousemove,
+        );
+        expect(canvas.removeEventListener).toHaveBeenCalledWith(
+            'mouseleave',
+            controller.boundHandlers.mouseleave,
         );
         expect(canvas.removeEventListener).toHaveBeenCalledWith(
             'click',
