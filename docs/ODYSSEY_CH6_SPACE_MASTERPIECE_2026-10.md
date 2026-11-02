@@ -470,8 +470,8 @@ Earth's backdrop (-0.5) → everything at 0 and above (the orbs, the rail, the h
 
 ## Not done yet
 
-- ~~**One hero per stage.**~~ Done 2026-11-02 up to L44 (§5). On the last orbs, L45-L48, the giant
-  still hangs lower right, under the hole's disk (§5 has why, and the options).
+- ~~**One hero per stage.**~~ Done 2026-11-02 up to L44 (§6). On the last orbs, L45-L48, the giant
+  still hangs lower right, under the hole's disk (§6 has why, and the options).
 - **The giant flyby:** tried 2026-11-01 and left out. A nearer seat (same rise, shrunk to the same
   angle) sank it out before the hole's light, but from chapter 5's eye it showed over the Earth's
   limb before its rise and came inside the Earth's near disc
