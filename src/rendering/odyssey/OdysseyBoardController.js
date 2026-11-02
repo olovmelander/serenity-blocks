@@ -64,6 +64,7 @@ import { createOdysseyEagle } from './composition/odyssey-eagle.js';
 import { createOdysseyDeer } from './composition/odyssey-deer.js';
 import { createOdysseyPondLife } from './composition/odyssey-pond-life.js';
 import { createOdysseyIbex } from './composition/odyssey-ibex.js';
+import { createOdysseyHorses, driveOdysseyHorses } from './composition/odyssey-horses.js';
 import { createOdysseyAirMotes } from './composition/odyssey-air-motes.js';
 import { createOdysseyMeadowLife } from './composition/odyssey-meadow-life.js';
 import { createSummitSpindrift, findHeroSummit } from './composition/odyssey-summit-spindrift.js';
@@ -3930,6 +3931,21 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] ibex unavailable (non-fatal):', error);
                     this.ibex = null;
                 }
+                // THE MEADOW'S WILD HORSES (chapters 3-4, composition/odyssey-horses.js): the deer's
+                // lifecycle (driveOdysseyHorses). BISECT LEVER: ?odysseyNoHorses=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoHorses')) {
+                        this.horses = createOdysseyHorses({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            heightAt: this.oneWorld?.heightAt || undefined,
+                        });
+                        this.scene.add(this.horses.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] wild horses unavailable (non-fatal):', error);
+                    this.horses = null;
+                }
                 // THE AIR (composition/odyssey-air-motes.js): pollen over the shore, down on the
                 // meadows, diamond dust on the climb — one additive draw of world-anchored motes in
                 // a box round the eye, built here (presentation compile), uniforms after. Fewer on
@@ -5333,6 +5349,7 @@ export class OdysseyBoardController {
         if (this.deer) this._tickDeer(cameraProgress);
         if (this.pondLife) this._tickPondLife(cameraProgress);
         if (this.ibex) this.ibex.tick(this, cameraProgress);
+        if (this.horses) driveOdysseyHorses(this, this.horses, cameraProgress);
         if (this.airMotes) this.airMotes.update(this.time, cameraProgress);
         if (this.meadowLife) this.meadowLife.update(this.time, cameraProgress);
         if (this.spindrift) this.spindrift.update(this.time, cameraProgress);
@@ -6456,6 +6473,10 @@ export class OdysseyBoardController {
         if (this.ibex) {
             this.ibex.dispose();
             this.ibex = null;
+        }
+        if (this.horses) {
+            this.horses.dispose();
+            this.horses = null;
         }
         if (this.meadowLife) {
             this.meadowLife.dispose();
