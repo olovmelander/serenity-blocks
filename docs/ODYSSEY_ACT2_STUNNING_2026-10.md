@@ -915,7 +915,13 @@ cheaper far tier (an impostor, for example), which is a larger piece of work.
 **Tests.** The looks and field suites pass unchanged: every grown mass is wider than it shipped,
 clears the live rail by its role's margin, and the field stays under 34,000 triangles.
 
-## §17. The summit in the tarn (2026-11-02)
+## §17. The summit in the tarn (2026-11-02): tried and dropped
+
+**Dropped the same day.** The painter's mirror below was tried and taken out again, on the
+owner's choice of the recommendation: the summit showed only as a faint pale wedge, and the tarn
+lost its turquoise. The tarn is back as §6 left it. Kept here for the finding: a true mirror on
+this tarn cannot show the summit from anywhere on the rail.
+
 
 **Why it never showed.** Probed on the rail camera at L20-L23 (p 0.246-0.30), against a fine
 march over the drawn ground:
@@ -946,11 +952,10 @@ share rises from 0.30 to 0.42, so the reflection shows over the water's own turq
 
 ![p 0.246, 0.26 and 0.29, before (left) and after (right)](images/odyssey-island-2026-11-02/tarn-before-after.jpg)
 
-**The honest outcome: subtle.** At p 0.26-0.29 a pale, snow-and-rock wedge stands upside down in
+**The outcome: subtle** (why it was dropped). At p 0.26-0.29 a pale, snow-and-rock wedge stands upside down in
 the middle of the water. At p 0.246 the trees hide the part of the tarn that holds it. The tarn
 also reads bluer (more sky, less turquoise). The tarn is ~9° tall on screen, so the massif is
-squashed into a sliver of it whatever the mirror does. This is an art call: the lead can drop the
-commit to keep the turquoise pool.
+squashed into a sliver of it whatever the mirror does. Dropped to keep the turquoise pool.
 
 **Cost.** 30 steps of three fetches (was 24) plus three halvings, on the tarn's own pixels only.
 
