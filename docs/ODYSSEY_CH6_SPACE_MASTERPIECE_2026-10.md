@@ -290,6 +290,73 @@ It uses the theme's tileable four-channel noise, re-baked in steps with its own 
 
 ![The disc before (left) and after (right) its suns](images/odyssey-space-2026-10-31/galaxy-suns.jpg)
 
+## 5. One hero at a time (2026-11-02)
+
+The owner: "a more well compositioned chapter 6".
+
+**What was there.** From p ~0.78 to 0.81 every orb showed one picture: the galaxy upper left, the
+ringed giant lower right, the rail between them. Then the black hole rose between the two, and all
+three filled the frame.
+
+**Why the camera.** The giant and the galaxy keep their seats (the owner placed the galaxy by
+hand), and a giant flyby was tried and left out. The three heroes lie on one diagonal through the
+hole, so any frame with the hole in its middle holds all three. Only the view can choose.
+
+**One view per orb** (`CHAPTER_6_SHOTS` in `OdysseyCameraController.js`), in the keyframed language
+of chapters 3-5. A parked orb shows exactly its key, and the glide to the next orb is the pan.
+
+| Orb | View | Turn, tilt, lens (deg) |
+|---|---|---|
+| L35-L38 | the planetrise over the Earth's limb, unchanged | 0 |
+| L39 | the ringed giant near the middle, on a long lens; the galaxy out of frame | +20, −8, −10 |
+| L40 | turning to the galaxy; the giant leaves at the lower right | −6, +5, −8 |
+| L41 | the galaxy and the Milky Way's band; the giant out of frame | −22, +10, −6 |
+| L42 | the black hole rises, right of the galaxy; the giant sunk to the corner | −10, +10, −4 |
+| L43 | the hole, a little closer to the middle | −6, +8, −2 |
+| L44 | settling onto the rail | −2, +5, 0 |
+| L45-L48 | the rail into the hole, unchanged | 0 |
+
+![Before and after at L39 to L44, in pairs (before left): the giant, the turn, the galaxy, the hole rising](images/odyssey-space-2026-11-02/ch6-one-hero-before-after.jpg)
+
+**Calm.** The largest pan is L39 to L40 (26° of turn and 13° of tilt). On the real controller,
+in the game's 1.5 s trip after an orb, its turn peaks at 44°/s. Chapter 3's largest orb pans, on
+their ~0.9 s glides, peak at 68-80°/s. In the opening sweep, chapter 6's peak turn rate is
+unchanged (99°/s, at the 5->6 seam).
+
+**What stays as it was:**
+
+- The planetrise orbs (L35-L38). The rise ends in the glide to L39, so the view is already turning
+  to the giant as it clears the Earth.
+- From L45 on the keys are zero, so these are untouched:
+  - the rail running into the middle of the hole (`RAIL_END_AIM`; its test watches from p 0.841);
+  - the hole's hand-off to chapter 7's lock (p 0.845-0.849);
+  - the 6->7 seam and the dive.
+
+**Not done: the hole alone at the end.** On L45-L48 the giant is still under the hole's disk at
+the lower right. There the aim must hold the rail's end, which runs into the middle of the hole.
+The giant sits 33° off that aim, and a modest long lens only pushes it into the corner. To clear
+it would take one of:
+- moving the giant;
+- fading it as the hole's light grows;
+- a long lens through the last orbs, which changes the dive's scale on screen.
+
+All three are the owner's call.
+
+**Tests.**
+
+- `odyssey-ch6-one-hero.test.js` (new), on the game's camera and the real chapter environment:
+  - the keys sit on the orbs and are zero through the planetrise and from L45 on;
+  - the giant near the middle at L39, with the galaxy out of frame;
+  - the galaxy near the middle at L41, with the giant out of frame;
+  - the hole rising at L42-L43, with the giant sunk below 0.85;
+  - the orb underfoot and the next orb in frame at every turned view;
+  - pans of at most 6° per 0.001 of progress, still at each orb, and no step in the camera.
+- `odyssey-ch6-hero-framing.test.js`:
+  - "all three heroes in frame" now holds at the entry and on the run into the hole;
+  - the giant's in-frame check skips the turned views;
+  - the hole's path-riding checks are measured on the rail's own frame. The hole's place never
+    depends on the aim (its orb-eye check), and the keys are zero before the hand-off.
+
 ## Draw order in space
 
 stars (-0.95) → galaxy disc (-0.9) and suns (-0.89) → the ringed giant (-0.8 / -0.75 / -0.7) → the
@@ -306,7 +373,8 @@ Earth's backdrop (-0.5) → everything at 0 and above (the orbs, the rail, the h
 
 ## Not done yet
 
-- **One hero per stage:** the giant still hangs lower right all chapter.
+- ~~**One hero per stage.**~~ Done 2026-11-02 up to L44 (§5). On the last orbs, L45-L48, the giant
+  still hangs lower right, under the hole's disk (§5 has why, and the options).
 - **The giant flyby:** tried 2026-11-01 and left out. A nearer seat (same rise, shrunk to the same
   angle) sank it out before the hole's light, but from chapter 5's eye it showed over the Earth's
   limb before its rise and came inside the Earth's near disc

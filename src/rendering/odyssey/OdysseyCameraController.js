@@ -590,6 +590,38 @@ function resolveChapter5Framing(t) {
     return addKeyframedShots(out, clamped, CHAPTER_5_CLIMB_SHOTS);
 }
 
+/**
+ * CHAPTER 6, ONE HERO AT A TIME (2026-11-02, the owner: "a more well compositioned chapter 6").
+ * From p ~0.78 to 0.81 every frame was one picture: the galaxy upper left, the ringed giant lower
+ * right, the rail between them; then the black hole rose between the two. The heroes stay where
+ * they are in the world (they lie on one diagonal through the hole), so the composition comes from
+ * the camera alone. Each orb holds its own view, in the keyframed language of chapters 3-5:
+ *   - the planetrise orbs (L35-L38) as before;
+ *   - L39 the ringed giant, on a long lens, the galaxy out of frame;
+ *   - L40-L41 the galaxy and the Milky Way's band, before the hole's light comes up, the giant out
+ *     at the lower right;
+ *   - L42-L44 the hole rising, the view tilted up so the giant sinks to the corner.
+ * From L45 on the keys are zero: the rail runs into the hole (RAIL_END_AIM), the hole is handed
+ * to chapter 7's lock on the aim (resolveOmenHandoffWindow), and the 6->7 seam is untouched.
+ * Orbs (chapter-local t): L38 0.227, L39 0.305, L40 0.383, L41 0.461, L42 0.539, L43 0.577,
+ * L44 0.617, L45 0.695.
+ */
+export const CHAPTER_6_SHOTS = Object.freeze([
+    shotKey(0.227, 0), // L38: the giant over the Earth's limb (the planetrise), as before
+    shotKey(0.305, 20, -8, -10), // L39: the ringed giant, close on a long lens, the galaxy out of frame
+    shotKey(0.383, -6, 5, -8), // L40: turning to the galaxy, the giant leaving at the lower right
+    shotKey(0.461, -22, 10, -6), // L41: the galaxy and the Milky Way's band
+    shotKey(0.539, -10, 10, -4), // L42: the black hole rises right of the galaxy
+    shotKey(0.577, -6, 8, -2), // L43: the hole, the giant sunk to the corner
+    shotKey(0.617, -2, 5, 0), // L44: settling onto the rail
+    shotKey(0.695, 0), // L45: the rail into the hole, as before
+]);
+const CHAPTER_6_BASE = CHAPTER_FRAMING_OVERRIDES[6];
+function resolveChapter6Framing(t) {
+    const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_6_BASE };
+    return addKeyframedShots(out, THREE.MathUtils.clamp(t, 0, 1), CHAPTER_6_SHOTS);
+}
+
 // ── Chapter 8 Urban — FINALE CRANE arc ────────────────────────────────────────────
 // ONE clock with the env + post (composition/odyssey-stage-frame.js urbanIgnition): the
 // arrival is a dark, level dolly down the canyon; as the spire ignites (local 0.35->0.9) the
@@ -778,6 +810,7 @@ function resolveChapterFramingForProgress(
     if (chapterId === 3) return resolveChapter3Framing(inChapterProgress);
     if (chapterId === 4) return resolveChapter4Framing(inChapterProgress);
     if (chapterId === 5) return resolveChapter5Framing(inChapterProgress);
+    if (chapterId === 6) return resolveChapter6Framing(inChapterProgress);
     if (chapterId === 7) return resolveChapter7Framing(inChapterProgress, chapterPositions, reducedMotion);
     if (chapterId === 8) return resolveChapter8Framing(inChapterProgress);
     return resolveChapterFraming(chapterId);
