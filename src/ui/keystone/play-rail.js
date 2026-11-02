@@ -25,6 +25,7 @@
 
 import { escapeHtml } from '../../utils/dom-safety.js';
 import { menuCoversGame } from '../sheet-input.js';
+import { openSerenityHub } from '../serenity-hub/hub-launcher.js';
 
 const RAIL_ID = 'sb-play-rail';
 const SETTINGS_ID = 'settings-btn-global';
@@ -51,6 +52,13 @@ let rail = null;
 let modeWatchBound = false;
 let peekTimer = null;
 const labels = new WeakMap();
+const lazyHubTiles = new WeakSet();
+
+/** The Hub tile (and the dock's button, which clicks it) before the Hub has loaded: build and open it. */
+function onHubTileClick() {
+    if (window.serenityBlocks?.serenityHub) return; // built: its own handler toggles it
+    openSerenityHub().catch((error) => console.warn('[PlayRail] Could not open the Serenity Hub:', error));
+}
 
 function keycap(text, kind) {
     return `<kbd class="sb-kbd" data-${kind}>${text}</kbd>`;
@@ -271,6 +279,10 @@ function adoptTiles() {
     TILE_IDS.forEach((id) => {
         const tile = document.getElementById(id);
         if (!tile) return;
+        if (id === HUB_ID && !lazyHubTiles.has(tile)) {
+            lazyHubTiles.add(tile);
+            tile.addEventListener?.('click', onHubTileClick);
+        }
         const slot = previous ? previous.nextElementSibling : rail.firstElementChild;
         if (tile !== slot) rail.insertBefore(tile, slot);
         previous = tile;

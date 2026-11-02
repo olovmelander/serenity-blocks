@@ -1042,8 +1042,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // card tint) lives with the watch manager — see wireSpectatorSpotlight.
             wireSpectatorSpotlight(this.opponentWatchManager, {
                 getPlayerColor: (id) => this._getPlayerColor(id),
-                gamepadController: this.deps?.gamepadController,
-                isActive: () => this.isInMatch,
             });
         }
 
@@ -2347,16 +2345,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         window.addEventListener('keydown', this.scoreboardToggleHandler);
-        // A controller's R3 is Tab's twin (gamepad-controller.js setInfoButtonHandler).
-        const pad = this.deps?.gamepadController;
-        pad?.setInfoButtonHandler?.(() => {
-            if (!this.isInMatch || menuCoversGame()) return;
-            this.scoreboardOverlay?.toggle();
-        });
         this.cleanupHandlers.push(() => {
             window.removeEventListener('keydown', this.scoreboardToggleHandler);
             this.scoreboardToggleHandler = null;
-            pad?.setInfoButtonHandler?.(null);
         });
     }
 

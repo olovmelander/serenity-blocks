@@ -53,24 +53,30 @@ tower map and altimeter, the spectator hint.
   Settings, not over lobbies, lazily before the Hub loads, the shared cooldown, the fallback; Start
   from the Hub; the Hub's hold-repeat and latch; Start held back by `data-blocks-settings`;
   right-stick scroll; invite answers and their latch; A on an unfocused lobby; R3; the layout
-  migration, through `SettingsManager.load`) and `tests/unit/replay-spectator-pad.test.js`.
+  migration, through `SettingsManager.load`; `endLook`; the scoreboard's R3) and
+  `tests/unit/replay-spectator-pad.test.js`.
+- The real game in headless Chromium with a simulated Xbox pad (Vite dev server): the main menu's
+  View opened the Hub, RB changed its tab, Start handed it over to Settings, RB walked Settings to
+  Controls, the right stick scrolled it, View put the Hub in Settings' place, B closed it; the
+  menu's pad hint row and the Controls card were captured. (The headless GPU starves the poll at
+  times while it compiles theme pipelines; a press then goes unseen, as any frame stall would.)
 
 ## 3. What changed
 
 | Gap (found by the audit) | Fix |
 |---|---|
-| No pad button reached the Hub in play outside Serenity (the keyboard had H); in the main menu View worked only once the deferred Hub had loaded. | View (Serenity's `toggleHub`) opens the Hub in every mode (`processHubButton`, `processMenuHubButton`); before the Hub exists the app builds it and opens it (`SerenityBlocks.openSerenityHub`, also behind the Hub tile and the dock's button). One shared 500 ms cooldown. |
+| No pad button reached the Hub in play outside Serenity (the keyboard had H); in the main menu View worked only once the deferred Hub had loaded. | View (Serenity's `toggleHub`) opens the Hub in every mode (`processHubButton`, `processMenuHubButton`); before the Hub exists it is built and opened (`src/ui/serenity-hub/hub-launcher.js`, also behind the Hub tile and the dock's button). One shared 500 ms cooldown. |
 | Serenity used View for the hints and Y for the Hub, the opposite of the new rule. | Defaults swapped (Y hints, View Hub); a save still on the old default pair takes the new one once (`src/core/controller-layout.js`, `controllerLayoutVersion` 2, also applied to an older Steam Cloud keybinds copy). |
 | Start did nothing while the Hub was open. | It hands the Hub over to Settings (`closeForSettings`: closed without resuming play, Settings opens in the same task). |
 | The Hub's D-pad and stick took one press per card. | Held, they repeat at the menus' rate; a direction held from play waits for its release (`latchHubButtons`, `hubRepeat`). |
 | Nothing scrolled a menu's text, tables or logs (results tables, Settings help, the URL parameters tab, chat logs, the waiting room's facts). | The right stick scrolls the open sheet and the main menu (`processMenuScroll`). |
 | A pad user who accepted a Steam invite in the overlay had it time out (the toast could not be reached). | A joins, B declines wherever the pad is not playing; in play the toast says ☰ first (`processInviteToast`, `data-pad-answers`). |
 | Replays: no pause, seek, speed or stop on a pad. | The replay bar owns the pad while it is up, with glyphs on its controls. |
-| Start over a look around a tall Odyssey well (and the gear's click) opened Settings without ending the look, unlike Escape. | `pauseGame()`'s gear path and the Hub's `pauseGameOnly()` end the look first (`endExplorationForMenu`), as `openSettingsMenu()` does. |
+| Start over a look around a tall Odyssey well (and the gear's click) opened Settings without ending the look, unlike Escape. | `pauseGame()`'s gear path and the Hub's `pauseGameOnly()` pause with `pauseCurrentMode({ endLook: true })`: `GameModeManager` ends the look first (`endExplorationForMenu`), as `openSettingsMenu()` does. |
 | Start could open Settings mid-return to the Odyssey map (Escape is held there since 2026-10-23). | The return marks itself `data-blocks-settings` while it holds Escape; Start reads it. |
 | A with nothing focused on a lobby screen pressed its first control: Leave. | The first A only places focus (the primary control, else the first). |
 | Create match opened on its Match name field, which a pad cannot type. | On a pad it opens on Create match. |
-| Online: the scoreboard was Tab only; a spectator chose a board by mouse only. | R3 toggles the scoreboard; the D-pad walks the spotlight. |
+| Online: the scoreboard was Tab only; a spectator chose a board by mouse only. | R3 toggles the scoreboard (the overlay holds `setInfoButtonHandler` for its life); the D-pad walks the spotlight (`wireSpectatorSpotlight`). |
 | Hints that named only keys: Infinity's "Drag to look" and "Scroll or drag", the Odyssey pause line and charm caption, the intro's "Press any key", Serenity's first-visit line, the spectator hint; Local Versus seats 1–2 showed keyboard keys to a pad player. | Each says what the controller does when one is the input (`.sb-when-pad` / `.sb-when-not-pad`, `data-pad` keycaps); seats show their controller's buttons when it is connected. |
 | The cursor stayed over the menus while a pad drove them. | Hidden while the pad is the input; moving the mouse brings it back. |
 

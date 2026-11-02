@@ -2325,14 +2325,16 @@ export class OpponentWatchManager {
  * @param {{ getPlayerColor?: (id: string) => string|undefined }} [hooks]
  *   getPlayerColor resolves a roster id to its assigned colour (fallback tint).
  */
-export function wireSpectatorSpotlight(watchManager, { getPlayerColor, gamepadController, isActive } = {}) {
+export function wireSpectatorSpotlight(watchManager, { getPlayerColor } = {}) {
     const spotlightCanvas = document.querySelector('#online-main-board .spectator-spotlight-canvas');
     if (!spotlightCanvas) return;
-    // A controller's D-pad left and right walk the spotlight (spectator-pad-controls.js).
+    // A controller's D-pad left and right walk the spotlight (spectator-pad-controls.js); the
+    // manager's destroy() releases them with the match.
+    const gamepadController = globalThis.window?.gamepadController;
     if (typeof gamepadController?.setPanelControls === 'function') {
         watchManager.spectatorPad?.dispose?.();
         watchManager.spectatorPad = gamepadController.setPanelControls(createSpectatorPadControls({
-            isActive: () => watchManager.spotlightMode && (isActive?.() ?? true)
+            isActive: () => watchManager.spotlightMode
                 && !document.body?.classList?.contains('serenity-hub-open')
                 && !document.querySelector('.modal.visible') && !menuCoversGame(document),
             step: (direction) => watchManager.stepSpotlight(direction),

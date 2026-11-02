@@ -116,14 +116,16 @@ describe('View opens the Serenity Hub in every mode', () => {
         expect(toggleHub).toHaveBeenCalledTimes(1);
     });
 
-    it('builds the Hub on the first press before it has loaded', () => {
-        const openSerenityHub = vi.fn(() => Promise.resolve(true));
-        vi.stubGlobal('window', { serenityBlocks: { openSerenityHub } });
+    it('builds the Hub on the first press before it has loaded, and opens it', async () => {
+        const hub = { isOpen: false, show: vi.fn(() => { hub.isOpen = true; }) };
+        const initializeGlobalSerenityHub = vi.fn(() => Promise.resolve(hub));
+        vi.stubGlobal('window', { serenityBlocks: { initializeGlobalSerenityHub } });
         stubDocument();
         const controller = new GamepadController();
 
         expect(controller.toggleSerenityHub()).toBe(true);
-        expect(openSerenityHub).toHaveBeenCalledTimes(1);
+        await vi.waitFor(() => expect(hub.show).toHaveBeenCalledTimes(1));
+        expect(initializeGlobalSerenityHub).toHaveBeenCalledTimes(1);
     });
 
     it('over Settings, closes Settings and opens the Hub in its place', () => {
@@ -466,5 +468,44 @@ describe('a saved settings file from before View was the Hub\'s button', () => {
         });
 
         expect(manager.get().serenityGamepadBindings.toggleHub).toBe(BUTTON.Y);
+    });
+});
+
+describe('a menu over a look around the tower', () => {
+    it('ends the look before the mode pauses (the gear, Start and the Hub, as Escape does)', async () => {
+        const { GameModeManager } = await import('../../src/core/game-modes/GameModeManager.js');
+        const order = [];
+        const mode = {
+            isRunning: true,
+            endExplorationForMenu: vi.fn(() => order.push('end look')),
+            onPause: vi.fn((options) => order.push(['pause', options])),
+        };
+        const manager = Object.create(GameModeManager.prototype);
+        manager.currentMode = mode;
+        manager.currentModeId = 'infinity';
+        manager._emitEvent = () => {};
+
+        manager.pauseCurrentMode({ endLook: true });
+        manager.pauseCurrentMode();
+
+        expect(order).toEqual(['end look', ['pause', {}], ['pause', {}]]);
+    });
+});
+
+describe('the online scoreboard on a controller', () => {
+    it('takes R3 while it lives, and lets it go when destroyed', async () => {
+        const { MultiplayerScoreboardOverlay } = await import('../../src/ui/multiplayer-scoreboard-overlay.js');
+        stubDocument();
+        const controller = new GamepadController();
+        vi.stubGlobal('window', { gamepadController: controller });
+        vi.spyOn(MultiplayerScoreboardOverlay.prototype, 'createUI').mockImplementation(() => {});
+        const toggle = vi.spyOn(MultiplayerScoreboardOverlay.prototype, 'toggle').mockImplementation(() => {});
+
+        const overlay = new MultiplayerScoreboardOverlay();
+        controller.infoButtonHandler();
+        expect(toggle).toHaveBeenCalledTimes(1);
+
+        overlay.destroy();
+        expect(controller.infoButtonHandler).toBe(null);
     });
 });

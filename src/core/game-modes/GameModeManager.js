@@ -330,8 +330,13 @@ export class GameModeManager {
             return;
         }
 
-        console.log(`[GameModeManager] Pausing mode: ${this.currentModeId}`, options);
-        this.currentMode.onPause(options);
+        // endLook: a menu opened over a look around the tower (the gear, a controller's Start,
+        // the Serenity Hub) ends the look first, as Escape does (main.js openSettingsMenu); the
+        // board went on animating the look under the menu. The game stays paused.
+        const { endLook = false, ...pauseOptions } = options;
+        if (endLook) this.currentMode.endExplorationForMenu?.();
+        console.log(`[GameModeManager] Pausing mode: ${this.currentModeId}`, pauseOptions);
+        this.currentMode.onPause(pauseOptions);
         this._emitEvent('modePaused', { modeId: this.currentModeId, mode: this.currentMode });
     }
 

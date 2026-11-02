@@ -26,6 +26,7 @@ import { createOdysseyShowcasePadControls } from './odyssey/odyssey-showcase-inp
 import { createOdysseyMapPadControls } from './odyssey/odyssey-map-input.js';
 import { createOdysseyCharmPadControls } from './odyssey/odyssey-charm-input.js';
 import { isGameOverArmed } from './game-over-arm.js';
+import { canOpenSerenityHub, openSerenityHub } from './serenity-hub/hub-launcher.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -945,8 +946,8 @@ export class GamepadController {
 
     /**
      * Open or close the Serenity Hub. Before the Hub has loaded (it starts with the deferred
-     * services, a moment after the menu) the app builds it and opens it, so the first press
-     * in the main menu is never lost. One toggle per HUB_TOGGLE_COOLDOWN_MS, whichever route.
+     * services, a moment after the menu) it is built and opened (hub-launcher.js), so the
+     * first press in the main menu is never lost. One toggle per HUB_TOGGLE_COOLDOWN_MS, whichever route.
      * @returns {boolean} whether a toggle was made
      */
     toggleSerenityHub() {
@@ -957,14 +958,9 @@ export class GamepadController {
             callbacks.toggleHub();
             return true;
         }
-        const app = typeof window !== 'undefined' ? window.serenityBlocks : null;
-        if (typeof app?.openSerenityHub === 'function') {
-            Promise.resolve(app.openSerenityHub()).catch((error) => {
-                console.warn('[Gamepad] Could not open the Serenity Hub:', error);
-            });
-            return true;
-        }
-        return false;
+        if (!canOpenSerenityHub()) return false;
+        openSerenityHub().catch((error) => console.warn('[Gamepad] Could not open the Serenity Hub:', error));
+        return true;
     }
 
     /** False for a moment after the Hub opened or closed: one press is one toggle. */
@@ -3014,9 +3010,14 @@ export class GamepadController {
      * scoreboard). One handler at a time; null clears it. Infinity's R3 (a look around the
      * tower) is its exploration, which does not use this.
      * @param {(() => void)|null} handler
+     * @returns {() => void} releases the handler (if it is still the one set)
      */
     setInfoButtonHandler(handler) {
-        this.infoButtonHandler = typeof handler === 'function' ? handler : null;
+        const set = typeof handler === 'function' ? handler : null;
+        this.infoButtonHandler = set;
+        return () => {
+            if (set && this.infoButtonHandler === set) this.infoButtonHandler = null;
+        };
     }
 
     /**
