@@ -95,7 +95,8 @@ leaving in view.
 ## Left for later
 
 - A stag (antlers would be one or two pixels thick at this size and would flicker).
-- Ibex on the massif: only worth it if the camera ever comes close to the rock.
+- Ibex on the massif: only worth it if the camera ever comes close to the rock. (Done lower down,
+  2026-11-02: "Ibex on the rock band" below.)
 
 ## Polish (2026-11-01 evening)
 
@@ -398,3 +399,135 @@ and velocities go to the world (`setTarnSwans`).
 - **The drinkers' timing** follows their own five-minute loop, so a given pass may find them on the
   ground above the bank rather than at the water.
 - **The heron does not catch anything.** Its strike comes back empty.
+
+## Ibex on the rock band (2026-11-02)
+
+The owner, on the animals pass: ibex, "but further down, not at the snowy top". A buck, two nannies
+and a kid now live on the shelf at the top of the grey rock band at the massif's foot, east of
+where the rail climbs the face. They graze, look round, walk short curves and, now and then, leap.
+
+### Not at the top: why
+
+The first scout looked at the summit's rock from the chapter-5 climb, with the new climb views.
+I measured every rock point the climb can see, on the real rail camera with the real terrain:
+
+| | Biggest 3x buck at 1440p (shoulder) | Distance | Where in the frame |
+|---|---|---|---|
+| L27-L28 | 10-14 px | 280-390 m | middle |
+| L29-L30 | 15-19 px | 245-285 m | bottom edge |
+| L31 | 21 px | 224 m | bottom edge |
+| L32-L33 | 25-30 px | 171-188 m | bottom-left corner |
+
+- No ledge reads from more than one orb: none is 18 px or more from two parks.
+- The 25-30 px figures come from the frame's edge, where the lens stretches things.
+- Nothing is against the sky from any climb park. The camera rises away from the rock.
+
+![The climb's best ledges (red rings), with a 3x buck's body to scale (dark boxes), at L30-L33](images/odyssey-animals-2026-11-02/ibex-summit-scout.jpg)
+
+### Choosing the place
+
+The second scout covered the lower rocky ground: the boulder outcrops on the slopes, the massif's
+foot wall, and the rock bands between the forest and the snow.
+- **The boulders** are 300-700 u from the rail at every park, so 5-15 px.
+- **The foot wall** is the only place in view for several orbs. Its rock band (slope 1.0-1.2,
+  which the ground paints grey) runs along the massif's foot at about (-150, -560). Above it lies a
+  shelf of gentler ground (slope 0.3-0.5) that can hold an animal's feet.
+- **The trees.** The shelf has a few. The spots keep clear of their trunks and low crowns, in both
+  forest tiers.
+
+| Park | Buck (3x, 0.93 m shoulder) at 1440p | Where in the frame |
+|---|---|---|
+| L17-L18 | ~11 px | right of the middle |
+| L19-L21 | 13 px | the middle, low |
+| L22 | 19 px | right |
+| L23 | out (the view turns west) | |
+| L24 | 25 px | lower right |
+| L25 | 28 px | lower right |
+
+The nannies are about four fifths of the buck's size; the kid a little under half. That is short of
+the hope (25 px or more, mid-frame, for several orbs): they read at 25-28 px from two orbs and are
+smaller from the others. They are drawn from p 0.179 to 0.348. At both ends they are out of the
+frame at every clock phase.
+
+### The model
+
+`scripts/blender/odyssey/alpine_ibex.py` (headless Blender, rebuilt byte for byte) makes
+`assets/chapter-04/ibex/alpine-ibex.glb`. It uses the red deer's method and meshing:
+- **Body.** A stocky, deep-chested goat on short, sturdy legs, with a short thick neck and a short,
+  broad head carried steep. It is built at a nanny's size: 0.79 m at the withers.
+- **Horns.** One model serves all four. Every horn vertex carries its root (`_horn`), and the game
+  scales each horn about its root per animal:
+  - the buck's great backward sweep, about 0.85 m along the curve;
+  - a nanny's short horns;
+  - the kid's buds.
+- **Skeleton.** The deer's own 27 bones, so the deer's herd code poses the ibex unchanged.
+- **Coat.** A grey-brown summer coat, darker down the fronts of the legs, along the back and on the
+  chest; a pale belly; dark hooves, nose and eyes.
+- **Size.** 2,192 triangles.
+
+![The model: the buck, a nanny and the kid, the buck grazing, a nanny looking round; the buck's side](images/odyssey-animals-2026-11-02/ibex-model.jpg)
+
+### Their life, and the leap
+
+Each ibex keeps to two or three spots on the shelf, with the deer's life between them:
+- planned footfalls, so a planted hoof never slides;
+- walked curves and stepped turns;
+- grazing with small nods and a chewing jaw;
+- looks that turn the ears, then the head, then the neck.
+
+The new thing is **the leap** (in `odyssey-deer-herd.js`; deer never leap):
+- **Before:** the ibex looks to where it will land and turns to face it on the spot.
+- **Crouch:** the body sinks, then springs.
+- **Flight:** a straight line at a steady speed, on an arc whose height grows with the distance.
+  - The hooves leave together, the fores a moment first, and ride the arc folded up.
+  - The body tips nose up off the rock and nose down to land, held to about 17°.
+- **Landing:** the fores first, on the spots the planner chose; every hoof stays planted. The body
+  gives with the landing.
+
+The buck and each nanny leap between two of their spots once a loop (5-9 u at three times life),
+and the kid hops twice near its mother.
+
+![The buck turns to the landing and leaps (L25, 0.2 s apart, 2560x1440 crops)](images/odyssey-animals-2026-11-02/ibex-leap.jpg)
+
+![On the shelf above the grey band at L24, 0.7 s apart: grazing, a look, the kid's hop](images/odyssey-animals-2026-11-02/ibex-on-the-shelf.jpg)
+
+![Before and after at L21, L22, L24 and L25 (2560x1440 crops, the board clock pinned)](images/odyssey-animals-2026-11-02/ibex-before-after.jpg)
+
+### Light, popping, cost
+
+- **Light and shadow:** the deer's, with a contact shadow under each animal that fades while it is
+  in the air.
+- **No popping, no hitch:** they come in the deer's way. They are fetched as their window nears,
+  compiled while the board is idle, and only then drawn. The ibex runs that lifecycle itself
+  (`tick`), so the board edit is an import, a create, a tick and a dispose.
+  - Turn them off with `?odysseyNoIbex=1`.
+- **Cost:** two draws (4 x 2,192 = 8,768 triangles, plus the shadows), no new pipelines after the
+  first compile.
+  - Posing the group takes about 0.06 ms a frame on the CPU (measured with the full height
+    function; the game reads the faster height mirror).
+  - Planning the footfalls takes about 11 ms an animal, once, one animal per task.
+
+### Tests
+
+`tests/unit/odyssey-ibex.test.js` checks:
+- **The model:** the deer's skeleton, the horns riding the head, and the triangle budget.
+- **The shaders:** both backends build cleanly.
+- **Lifecycle:** hidden until ready.
+- **The ground:** every animal on the standable shelf by the rock band, clear of the trees.
+- **The feet:** the hooves bearing weight where the plan put them (99 % within 0.07 of the drawn
+  size). In the air the hooves stay out of the rock (under 0.2).
+- **Spacing:** the animals keep apart.
+- **The leaps:** all four hooves leave, the arc rises, and all four land planted near the landing.
+- **The camera:** in view at L19-L25 (but L23) at the sizes above, and never appearing or leaving in
+  view.
+
+The deer's tests pass unchanged: the leap only runs for a member that asks for one.
+
+### Left for later
+
+- **Rock under their feet.** The shelf is grass, just above the grey band. The rock that the ground
+  paints grey is the band itself, at slope 1.0-1.2. That is too steep for the leg solver to stand
+  on without the hooves sliding or sinking. A few perch slabs on the shelf (the boulders' rocks)
+  would give the classic picture of an ibex on a rock, and something to leap between.
+- **A dark buck.** In late autumn the buck's coat darkens almost to black. At these sizes, darker
+  would read as a hole in the grass.

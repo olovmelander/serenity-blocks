@@ -89,6 +89,7 @@
     "src/rendering/odyssey/chapter-environments/shared/odyssey-journey-constellation.js",
     "src/rendering/odyssey/chapter-environments/shared/odyssey-resident-textures.js",
     "src/rendering/odyssey/composition/odyssey-deer-herd.js",
+    "src/rendering/odyssey/composition/odyssey-ibex-herd.js",
     "src/rendering/odyssey/composition/odyssey-jellyfish-drift.js",
     "src/rendering/odyssey/composition/odyssey-ocean-roam.js",
     "src/rendering/odyssey/composition/odyssey-pond-life-motion.js",
