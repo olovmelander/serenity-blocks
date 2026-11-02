@@ -102,6 +102,7 @@ import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hyperc
 import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
 import { foldHypercubeCages } from './transitions/odyssey-fold-rooms.js';
 import { resolveChapterArrivalProgress, resolveOrbParkProgress } from './odyssey-chapter-arrival.js';
+import { odysseyScrollPace } from './odyssey-scroll-pace.js';
 import {
     normalizeOdysseyWarmupMode,
     resolveOdysseyAdaptiveFrameRate,
@@ -275,14 +276,18 @@ const GLIDE_COMPILE_HEAD_START_MS = 250;
  * the start of the path in Chapter 1, and then pan a bit faster to the current unfinished orb").
  * The map opens at orb 1 and glides to the orb to play next. It waits at the start (`minHoldMs`
  * at least, `maxHoldMs` at most) until every chapter on the way is built, compiled and warmed, so
- * the flight never meets a cold chapter; then it flies `baseMs + perProgressMs x distance` (plus
- * the plunge's own time), slower than a click's glide so the journey so far reads as it passes.
+ * the flight never meets a cold chapter; then it flies `baseMs + perPacedMs x the paced distance`
+ * (the distance with each stretch weighed by 1 / the wheel's pace, odysseyScrollPace) plus the
+ * plunge's own time, on its own cruise profile (SWEEP_TRAVEL in the camera).
+ * 2026-11-02 (the owner: "The scroll and sweep is to fast in this moment"): it was 1.5 s + 4.6 s per
+ * journey on a click's cubic ease, whose middle ran at three times its average; now it is longer and
+ * cruises (its top speed about a third of what it was), slower where the wheel is slower.
  */
 export const OPENING_SWEEP = Object.freeze({
     minHoldMs: 900,
     maxHoldMs: 9000,
-    baseMs: 1500,
-    perProgressMs: 4600,
+    baseMs: 2500,
+    perPacedMs: 7500,
 });
 
 /**
@@ -293,9 +298,29 @@ export const OPENING_SWEEP = Object.freeze({
  * @returns {number}
  */
 export function computeOpeningSweepDuration(from, to, chapterPositions) {
-    const distance = Math.abs((to ?? 0) - (from ?? 0));
     const plunge = plungeTravelExtraMs(from, to, chapterPositions);
-    return Math.round(OPENING_SWEEP.baseMs + (distance * OPENING_SWEEP.perProgressMs) + plunge);
+    return Math.round(OPENING_SWEEP.baseMs + (pacedSweepDistance(from, to, chapterPositions) * OPENING_SWEEP.perPacedMs)
+        + plunge);
+}
+
+/**
+ * The distance from `from` to `to` with each stretch weighed by 1 / the wheel's pace there
+ * (odysseyScrollPace), the measure the opening sweep cruises in.
+ * @param {number} from
+ * @param {number} to
+ * @param {number[]} [chapterPositions]
+ * @returns {number}
+ */
+export function pacedSweepDistance(from, to, chapterPositions) {
+    const a = from ?? 0;
+    const b = to ?? 0;
+    const steps = 200;
+    let total = 0;
+    for (let i = 0; i < steps; i += 1) {
+        const mid = a + ((b - a) * (i + 0.5)) / steps;
+        total += Math.abs(b - a) / steps / odysseyScrollPace(mid, chapterPositions);
+    }
+    return total;
 }
 
 function readGlideCompileHeadStartMs() {
@@ -924,6 +949,11 @@ export class OdysseyBoardController {
         };
         this.boundHandlers = {
             mousemove: this.onMouseMove.bind(this),
+            // The look around comes back to the middle when the mouse leaves the window (over the
+            // map's panels it stays where it was: relatedTarget is then the panel).
+            mouseleave: (event) => {
+                if (!event?.relatedTarget) this.cameraController?.setLookPointer?.(0, 0);
+            },
             click: this.onClick.bind(this),
             wheel: this.onWheel.bind(this),
             touchstart: this.onTouchStart.bind(this),
@@ -4038,6 +4068,7 @@ export class OdysseyBoardController {
         const canvas = this.renderer.domElement;
 
         canvas.addEventListener('mousemove', this.boundHandlers.mousemove);
+        canvas.addEventListener('mouseleave', this.boundHandlers.mouseleave);
         canvas.addEventListener('click', this.boundHandlers.click);
 
         // Touch support
@@ -4064,6 +4095,7 @@ export class OdysseyBoardController {
         const canvas = this.renderer?.domElement;
         if (canvas) {
             canvas.removeEventListener('mousemove', this.boundHandlers.mousemove);
+            canvas.removeEventListener('mouseleave', this.boundHandlers.mouseleave);
             canvas.removeEventListener('click', this.boundHandlers.click);
             canvas.removeEventListener('touchstart', this.boundHandlers.touchstart);
             canvas.removeEventListener('touchmove', this.boundHandlers.touchmove);
@@ -4735,7 +4767,8 @@ export class OdysseyBoardController {
                     this.computeTravelDuration(currentProgress, targetProgress),
                 ));
             const travelOptions = options.pathTravel === true || options.isPaused || options.isCurrent
-                ? [{ isCurrent, isPaused: options.isPaused }] : [];
+                || options.travelProfile
+                ? [{ isCurrent, isPaused: options.isPaused, profile: options.travelProfile }] : [];
             const arrived = await this.cameraController.travelToPosition(targetProgress, duration, ...travelOptions);
             if (arrived === false || !isCurrent()) return false;
         }
@@ -4817,7 +4850,7 @@ export class OdysseyBoardController {
             const travelDuration = computeOpeningSweepDuration(cc.getCurrentPosition(), target, chapterPositions);
             this._openingSweepTimings.flightMs = travelDuration;
             console.log('[OdysseyBoard] opening sweep', JSON.stringify(this._openingSweepTimings));
-            return await this.travelToLevel(levelId, { travelDuration, isCurrent });
+            return await this.travelToLevel(levelId, { travelDuration, isCurrent, travelProfile: 'sweep' });
         } finally {
             this._openingSweepActive = false;
             // Ended early (a scroll mid-flight): the music catches up with the chapter it is in.

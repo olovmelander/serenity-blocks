@@ -44,8 +44,8 @@ inside its line budget):
 2. It holds at orb 1 for at least 0.9 s. It sets out once each of those chapters is built, compiled
    and render-warmed, or once One World's compile has landed for chapters 2-5. It never waits more
    than 9 s.
-3. It flies with the ordinary orb travel: 1.5 s plus 4.6 s per whole journey, slower than a click's
-   glide (0.9 s plus 2.6 s per journey). It adds the plunge's own time as a click's glide does.
+3. It flies with the ordinary orb travel on its own pace (below). It adds the plunge's own time as a
+   click's glide does.
 
 **Why the hold:** an ordinary long glide only gives its destination a quarter second to compile.
 The chapters in between keep compiling under the flight. An opening seen on every launch should
@@ -73,12 +73,38 @@ chapters 2-5 were the world, compiled, and chapters 6, 7 and 8 were warm.
   background compiles: they wait while the camera moves and all resume when it stops.
 - In the old opening the same moment happened behind the loading cover.
 
+## Slower and calmer (2026-11-02)
+
+The owner: "The scroll and sweep is to fast in this moment."
+
+The first version flew 1.5 s plus 4.6 s per whole journey on a click's ease. That ease is a cubic,
+so the middle of the flight ran at three times its average speed. The short early chapters (the
+ocean, the island, the forest) were each gone in under half a second. Now:
+- **It cruises** (`SWEEP_TRAVEL`, `sweepTravelEase` in the camera). It speeds up over the first 22 %
+  of its time and slows down over the last 30 %. Between them it holds one speed, about 1.35 times
+  its average.
+- **It slows where scrolling does.** Each stretch is weighed by the wheel's pace there
+  (`odysseyScrollPace`), which is slowest on the climb into space.
+- **Each chapter gets its share.** Half of the flight is shared evenly between the chapters it
+  crosses and half goes by distance. By distance alone, chapter 5's long climb took half the flight.
+- **It is longer:** 2.5 s plus 7.5 s per paced journey (`pacedSweepDistance`).
+
+To orb 40, in the game:
+
+| | flight | top speed | chapters 2, 3, 4, 5, 6 entered at |
+|---|---|---|---|
+| first version | 4.4 s | 0.50 of the journey per second | 1.0, 1.4, 1.8, 2.1, 3.5 s |
+| now | 10.4 s | 0.25 per second | 1.7, 2.7, 3.8, 4.9, 8.0 s |
+
+To orb 12 it now takes 3.7 s. Neither flight had a slow frame. The one frame of about 70 ms after
+arrival is still there (see above).
+
 ## Tests
 
 `tests/unit/odyssey-opening-sweep.test.js` covers:
 - when the mode sweeps (not for orb 1, no orb, reduced motion or the lever);
 - chapters 1-2 built before the reveal;
-- the flight time;
+- the flight time, its pace (the cruise, the wheel's pace, each chapter's share);
 - each chapter's state on the way;
 - the hold (its minimum, waiting for a compiling chapter, its cap);
 - a scroll or an orb choice ending it;

@@ -26,8 +26,11 @@ import {
     odysseyOpeningBoardOptions, prepareOdysseyOpening, resolveOdysseyOpeningSweep, startOdysseyOpeningSweep,
 } from '../../src/ui/odyssey/odyssey-opening-sweep.js';
 import {
-    OPENING_SWEEP, OdysseyBoardController, computeOpeningSweepDuration,
+    OPENING_SWEEP, OdysseyBoardController, computeOpeningSweepDuration, pacedSweepDistance,
 } from '../../src/rendering/odyssey/OdysseyBoardController.js';
+import {
+    OdysseyCameraController, invertSweepPacing, sweepTravelEase,
+} from '../../src/rendering/odyssey/OdysseyCameraController.js';
 import { resolveOrbParkProgress } from '../../src/rendering/odyssey/odyssey-chapter-arrival.js';
 import { plungeTravelExtraMs } from '../../src/rendering/odyssey/transitions/odyssey-black-hole-fall.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
@@ -103,20 +106,67 @@ describe('when the mode sweeps from orb 1', () => {
     });
 });
 
-describe('the sweep\'s flight time', () => {
-    it('grows with the distance, from a little over a click\'s glide', () => {
+describe('the sweep\'s flight time and pace', () => {
+    it('grows with the distance, weighing each stretch by the wheel\'s pace', () => {
         const near = computeOpeningSweepDuration(0, 0.2, CP);
         const far = computeOpeningSweepDuration(0, 0.8, CP);
-        expect(near).toBe(Math.round(OPENING_SWEEP.baseMs + (0.2 * OPENING_SWEEP.perProgressMs)));
+        expect(near).toBe(Math.round(OPENING_SWEEP.baseMs + (pacedSweepDistance(0, 0.2, CP) * OPENING_SWEEP.perPacedMs)));
         expect(far).toBeGreaterThan(near);
-        expect(far).toBeLessThan(6000);
+        // Slower than it was (1.5 s + 4.6 s per journey: 5.2 s to 0.8), still under a quarter minute.
+        expect(far).toBeGreaterThan(8500);
+        expect(far).toBeLessThan(14000);
+        // The climb into space, where the wheel slows, weighs more than its length.
+        const cp = CP;
+        expect(pacedSweepDistance(cp[4], cp[5], cp)).toBeGreaterThan((cp[5] - cp[4]) * 1.05);
+        expect(pacedSweepDistance(0, cp[1], cp)).toBeCloseTo(cp[1], 6);
     });
 
     it("adds the plunge's own time exactly as a click's glide does", () => {
         [[0, 0.99], [0.95, 0.965]].forEach(([from, to]) => {
-            const plain = OPENING_SWEEP.baseMs + ((to - from) * OPENING_SWEEP.perProgressMs);
+            const plain = OPENING_SWEEP.baseMs + (pacedSweepDistance(from, to, CP) * OPENING_SWEEP.perPacedMs);
             expect(computeOpeningSweepDuration(from, to, CP)).toBe(Math.round(plain + plungeTravelExtraMs(from, to, CP)));
         });
+    });
+
+    it('cruises instead of rushing its middle: a smooth start, a steady top speed, a smooth stop', () => {
+        expect(sweepTravelEase(0)).toBe(0);
+        expect(sweepTravelEase(1)).toBeCloseTo(1, 9);
+        let top = 0;
+        let previous = 0;
+        for (let i = 1; i <= 1000; i += 1) {
+            const value = sweepTravelEase(i / 1000);
+            expect(value).toBeGreaterThanOrEqual(previous - 1e-12);
+            top = Math.max(top, (value - previous) * 1000);
+            previous = value;
+        }
+        // A click's cubic peaks at 3x its average; the sweep under 1.4x.
+        expect(top).toBeLessThan(1.4);
+        expect(top).toBeGreaterThan(1.2);
+        // Starts and stops gently.
+        expect(sweepTravelEase(0.02)).toBeLessThan(0.002);
+        expect(1 - sweepTravelEase(0.98)).toBeLessThan(0.002);
+    });
+
+    it('gives the short early chapters a fair share of the flight, not just their length', () => {
+        const table = OdysseyCameraController.prototype._buildSweepPacing.call(
+            { chapterPositions: CP },
+            { startPosition: 0, endPosition: 0.8, plunge: null },
+        );
+        const shareAt = (p) => table[Math.round((p / 0.8) * (table.length - 1))];
+        // Chapter 2 (the ocean) is under a tenth of the way; by length alone it got that share.
+        const ocean = shareAt(CP[2]) - shareAt(CP[1]);
+        expect(ocean).toBeGreaterThan(((CP[2] - CP[1]) / 0.8) * 1.25);
+        // ...and chapter 5's long climb no longer takes half the flight.
+        expect(shareAt(CP[5]) - shareAt(CP[4])).toBeLessThan(0.45);
+        expect(table[table.length - 1]).toBeCloseTo(1, 6);
+    });
+
+    it('inverts its pacing table exactly', () => {
+        const table = new Float32Array([0, 0.1, 0.5, 0.6, 1]);
+        expect(invertSweepPacing(table, 0)).toBe(0);
+        expect(invertSweepPacing(table, 1)).toBe(1);
+        expect(invertSweepPacing(table, 0.3)).toBeCloseTo(0.375, 6);
+        expect(invertSweepPacing(table, 0.6)).toBeCloseTo(0.75, 6);
     });
 });
 

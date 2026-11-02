@@ -36,6 +36,28 @@ its `onMouseMove` (`setLookPointer`).
   focus never jumps by the offset. A camera placed outright between frames forgets it
   (`_forgetAppliedOffsets`).
 
+## Looking the way the mouse goes (2026-11-02)
+
+The owner: "We need to improve this so that we look the way we move the mouse pointer, i want to be
+able to look around a bit more!"
+
+The first version only shifted the camera on a small arc round what it looked at, like the themes'
+parallax. The view never turned toward the cursor; it swung about 8 degrees, against the cursor.
+Now:
+- **The view turns toward the cursor:** 16 degrees sideways and 9 degrees up or down at the screen's
+  edges (`LOOK_AROUND.yawDeg`, `pitchDeg`).
+  - The turn comes after the camera has aimed (`applyLookTurn`, right after `lookAt`), so what the
+    camera follows and frames is unchanged.
+  - Sideways it turns about the scene's up, so the horizon stays level. Up and down it turns about
+    the view's own right.
+- **A little parallax stays under it:** the eye also shifts 0.035 of a screen height toward the same
+  side, so near things slide past far ones as it turns. That shift re-aims about 2 degrees back, so
+  the full sideways turn is about 14 degrees.
+- **Easing:** it eases at 2.2/s, so it takes about a second to settle.
+- **Leaving the window** brings it back to the middle. Over the map's panels it stays where it was.
+
+![The view with the cursor left, in the middle, right and top right: in the ocean (top) and at orb 15 (bottom)](images/odyssey-look-around-2026-11-01/look-turn-left-middle-right-upright.jpg)
+
 ## Tests
 
 `tests/unit/odyssey-look-around.test.js` covers:
