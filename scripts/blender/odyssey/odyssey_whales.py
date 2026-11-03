@@ -12,10 +12,11 @@ keys a real swim, so the motion can be read off the curves and scrubbed in Blend
 
 THE BODY is a signed distance field of smooth masses and fins (the Ocean theme's authoring library,
 scripts/blender/ocean_creatures/sdf.py, which is generic), meshed by Blender's openvdb, decimated
-mirror-symmetric, normals from the field. The design numbers are this file's own copy of the Ocean
-pack's humpback (so a change to the theme never moves Odyssey's whale): a heavy body deepest behind
-the flippers, a flat broad head, the throat pouch, the low hump and its small fin, flippers a third
-of the body long with a knobbed leading edge, wide notched flukes with a ragged trailing edge.
+mirror-symmetric, normals from the field. The design numbers are this file's own (started from the
+Ocean pack's humpback and redrawn, so a change to the theme never moves Odyssey's whale), drawn to
+the marks a humpback is known by (see "The design" below): flippers a third of the body long with a
+scalloped leading edge, a broad head flat on top and rounded at the tip, a stocky body deepest
+just behind the flippers, a small fin on a low hump, broad flukes serrated and notched.
 
 THE RIG: a chain from the centre of mass back to the flukes (root, spine x3, tail stock x2, flukes)
 and forward (chest, head), and two bones in each flipper. Weights are a smooth partition along the
@@ -61,55 +62,77 @@ FPS = 24
 STROKE_FRAMES = 96  # one stroke: 4 s at 24 fps (the game plays it slower for the mother)
 KEYS_PER_STROKE = 16
 
-# ── The design (the Ocean pack's humpback, copied) ──────────────────────────────────────────
+# ── The design: a humpback, by its marks ────────────────────────────────────────────────────
+#
+# Started from the Ocean pack's humpback (2026-11-03) and redrawn the same day (the lead: "it reads
+# as a slender rorqual"). What tells a humpback from a blue or fin whale, all of it judged at the
+# game's size (the review's game-size sheet):
+#   - flippers a third of the body long, white, their leading edge scalloped (knobs);
+#   - a broad head, flat on top and ROUNDED at the tip seen from above (a rorqual's comes to a
+#     point), the lower jaw broad and just past the upper;
+#   - a stocky body, deepest just behind the flippers, the tail stock tall and narrow;
+#   - a small dorsal fin on a low hump two thirds of the way back;
+#   - broad flukes, the trailing edge serrated and a clear notch in the middle.
+# The tubercles (the knobs along the jaw) are a few hundredths of the length: under two pixels at
+# the size the journey shows the pair, so they are left out.
 
 
 def humpback():
+    # (s from the nose, half width, half height, centre height). The tip is a broad round cap.
     rows = [
-        (0.000, 0.008, 0.004, -0.022),
-        (0.025, 0.048, 0.019, -0.024),
-        (0.060, 0.074, 0.033, -0.024),
-        (0.120, 0.098, 0.054, -0.022),
-        (0.200, 0.114, 0.078, -0.018),
-        (0.300, 0.124, 0.100, -0.012),
-        (0.400, 0.125, 0.109, -0.005),
-        (0.500, 0.114, 0.104, 0.000),
-        (0.600, 0.093, 0.092, 0.004),
-        (0.700, 0.064, 0.076, 0.006),
-        (0.780, 0.041, 0.059, 0.006),
-        (0.850, 0.023, 0.044, 0.004),
-        (0.905, 0.013, 0.028, 0.002),
-        (0.940, 0.009, 0.014, 0.000),
+        (0.000, 0.030, 0.012, -0.024),
+        (0.018, 0.056, 0.020, -0.025),
+        (0.045, 0.079, 0.031, -0.026),
+        (0.090, 0.100, 0.047, -0.026),
+        (0.160, 0.119, 0.070, -0.024),
+        (0.240, 0.132, 0.094, -0.020),
+        (0.320, 0.140, 0.114, -0.014),
+        (0.390, 0.140, 0.122, -0.008),
+        (0.470, 0.130, 0.116, -0.002),
+        (0.560, 0.108, 0.101, 0.003),
+        (0.650, 0.078, 0.083, 0.006),
+        (0.730, 0.050, 0.065, 0.006),
+        (0.800, 0.030, 0.050, 0.004),
+        (0.860, 0.018, 0.036, 0.002),
+        (0.910, 0.011, 0.021, 0.000),
+        (0.940, 0.008, 0.011, 0.000),
     ]
     body = body_chain(rows, step=0.012, k=0.014)
-    # The throat swells under the head (the pleated pouch), the lower jaw reaches the snout.
-    body.append(Prim('ell', 'body', k=0.05, c=V(0.0, -0.066, 0.26), r=V(0.1, 0.074, 0.21)))
-    body.append(Prim('ell', 'body', k=0.025, c=V(0.0, -0.038, 0.41), r=V(0.06, 0.026, 0.095)))
+    # The throat swells under the head (the pleated pouch); the lower jaw is broad and reaches just
+    # past the upper, its chin rounded.
+    body.append(Prim('ell', 'body', k=0.05, c=V(0.0, -0.07, 0.25), r=V(0.115, 0.08, 0.22)))
+    body.append(Prim('ell', 'body', k=0.03, c=V(0.0, -0.044, 0.40), r=V(0.085, 0.03, 0.105)))
     # The low hump two thirds of the way back, and its small fin.
-    body.append(Prim('ell', 'body', k=0.02, c=V(0.0, 0.08, -0.14), r=V(0.02, 0.022, 0.06)))
+    body.append(Prim('ell', 'body', k=0.025, c=V(0.0, 0.088, -0.145), r=V(0.024, 0.026, 0.075)))
     prims = list(body)
     for side in (1, -1):
-        zs = np.linspace(0.488, 0.285, 9)
-        ys = -0.022 - 0.036 * ((0.488 - zs) / 0.203) ** 1.4
-        prims += groove(body, lip_line(body, zs, ys, side, inset=-0.0005), 0.0034)
-        prims.append(eye(body, 0.272, -0.04, 0.0068, side))
-    # The flippers: a third of the body long, swept back and down, knobbed along the leading edge.
-    root = surface_point(body, V(0.0, -0.064, 0.205), V(1, 0, 0)) - V(0.012, 0.0, 0.0)
-    us, lead, trail = planform(0.30, 0.074, 0.016, sweep=0.035, tip_round=0.2,
-                               lead_wave=lambda f: -0.0042 * np.sin(np.pi * f * 10.5) ** 2 * _smooth(0.08, 0.35, f))
-    flipper = fin('pectoral', root, V(1.0, -0.42, -0.5), V(0, 0, -1), us, lead, trail,
-                  0.011 - 0.007 * us / 0.30, k=0.018, tmin=0.0026, bow=-0.03 * (us / 0.30) ** 2,
+        # The mouth line, from the corner up to near the tip (kept short of it, where the groove
+        # used to cut a dark slit at the snout).
+        zs = np.linspace(0.462, 0.27, 9)
+        ys = -0.026 - 0.034 * ((0.462 - zs) / 0.192) ** 1.4
+        prims += groove(body, lip_line(body, zs, ys, side, inset=-0.0005), 0.003)
+        prims.append(eye(body, 0.262, -0.044, 0.0072, side))
+    # The flippers: a third of the body long, out from the body and swept back, a little down; the
+    # leading edge scalloped with nine knobs, big enough to show.
+    root = surface_point(body, V(0.0, -0.07, 0.21), V(1, 0, 0)) - V(0.014, 0.0, 0.0)
+    span = 0.40
+    us, lead, trail = planform(span, 0.078, 0.02, sweep=0.05, tip_round=0.18,
+                               lead_wave=lambda f: -0.0085 * np.sin(np.pi * f * 9.0) ** 2 * _smooth(0.05, 0.25, f))
+    fdir = V(1.0, -0.3, -0.62)
+    flipper = fin('pectoral', root, fdir, V(0, 0, -1), us, lead, trail,
+                  0.012 - 0.008 * us / span, k=0.018, tmin=0.0026, bow=-0.035 * (us / span) ** 2,
                   side=1, along=0.295)
     prims += both(flipper)
-    # The dorsal fin on the hump.
-    us, lead, trail = planform(0.04, 0.075, 0.014, sweep=0.03, tip_round=0.3, trail_bulge=-0.006)
-    prims.append(fin('dorsal', V(0.0, 0.088, -0.112), V(0.0, 1.0, -0.85), V(0, 0, -1), us, lead, trail,
-                     0.009 - 0.005 * us / 0.04, k=0.012, tmin=0.0026))
-    # The flukes: wide, swept, the trailing edge ragged, notched in the middle.
-    us, lead, trail = planform(0.175, 0.07, 0.012, sweep=0.072, tip_round=0.12,
-                               trail_wave=lambda f: 0.0024 * np.sin(f * np.pi * 15) * f - 0.016 * np.exp(-(f / 0.07) ** 2))
+    # The dorsal fin on the hump: small, its back edge hooked.
+    us, lead, trail = planform(0.05, 0.085, 0.016, sweep=0.04, tip_round=0.3, trail_bulge=-0.008)
+    prims.append(fin('dorsal', V(0.0, 0.106, -0.12), V(0.0, 1.0, -0.9), V(0, 0, -1), us, lead, trail,
+                     0.01 - 0.006 * us / 0.05, k=0.012, tmin=0.0026))
+    # The flukes: broad and swept, the trailing edge serrated, a clear notch in the middle.
+    us, lead, trail = planform(0.18, 0.072, 0.012, sweep=0.075, tip_round=0.12,
+                               trail_wave=lambda f: (0.0055 * np.sin(f * np.pi * 9) * _smooth(0.1, 0.3, f))
+                               - (0.03 * np.exp(-(f / 0.075) ** 2)))
     fluke = fin('tail', V(0.0, 0.0, -0.418), V(1.0, 0.0, -0.18), V(0, 0, -1), us, lead, trail,
-                0.012 * (1 - 0.75 * us / 0.175), k=0.012, tmin=0.0026, side=1)
+                0.012 * (1 - 0.75 * us / 0.18), k=0.012, tmin=0.0026, side=1)
     prims += both(fluke)
 
     def masks(P, N, part, s):
@@ -122,7 +145,7 @@ def humpback():
         return belly, fins
 
     meta = {'voxel': 0.0024, 'triangles': 6000, 'masks': masks, 'nose': 0.5, 'tail': -0.5,
-            'rows': rows, 'flipper_root': root, 'flipper_dir': sdf.unit(V(1.0, -0.42, -0.5)), 'flipper_len': 0.30}
+            'rows': rows, 'flipper_root': root, 'flipper_dir': sdf.unit(fdir), 'flipper_len': span}
     return prims, meta
 
 
@@ -487,7 +510,11 @@ def review(arm, mesh, out_dir, log=print):
         scene.display.shading.color_type = color
         d = d.normalized()
         cam.location = d * 4
-        cam.rotation_euler = (-d).to_track_quat('-Z', 'Y').to_euler()
+        q = (-d).to_track_quat('-Z', 'Y')
+        if abs(d.z) > 0.9:
+            # Straight up or down: turn the frame so the whale lies across it, nose to the right.
+            q = q @ Quaternion((0, 0, 1), math.pi / 2 * (1 if d.z > 0 else -1))
+        cam.rotation_euler = q.to_euler()
         cam_data.ortho_scale = scale
         scene.render.resolution_x = w
         scene.render.resolution_y = h
@@ -496,8 +523,10 @@ def review(arm, mesh, out_dir, log=print):
 
     # The vertex colour shows the masks raw (red = white); a clay pass shows the form.
     for name, d in views.items():
-        shoot(f'colour-{name}', d)
-        shoot(f'clay-{name}', d, color='SINGLE')
+        # Straight up or down the flippers reach wider than the frame's height at 1.15.
+        sc = 1.45 if abs(d.normalized().z) > 0.9 else 1.15
+        shoot(f'colour-{name}', d, scale=sc)
+        shoot(f'clay-{name}', d, scale=sc, color='SINGLE')
     scene.display.shading.single_color = (0.62, 0.66, 0.7)
     # Motion strips: 8 frames over one stroke, side and top.
     for vname in ('side', 'top'):
@@ -523,11 +552,60 @@ def review(arm, mesh, out_dir, log=print):
             paths[k].append([v.x, v.y, v.z])
         ev.to_mesh_clear()
     (out_dir / 'tip-paths.json').write_text(json.dumps(paths))
+    game_size(mesh, out_dir, shoot_small=lambda name, d, w, h, scale: shoot(name, d, w=w, h=h, scale=scale, color='VERTEX'))
     onion(out_dir, [out_dir / f'strip-side-{k}.png' for k in range(8)], out_dir / 'onion-side.png')
     plot_paths(paths, out_dir / 'tip-paths.png')
     (out_dir / 'motion.json').write_text(json.dumps(motion_numbers(arm), indent=1))
     log(f'review: {out_dir}')
     return paths
+
+
+def game_size(mesh, out_dir, shoot_small):
+    """The whale at the lengths the journey draws it (1280 x 720: the calf ~110 px, the mother
+    ~250 px; at 2560 x 1600 about twice that), from below (the climb's view), the side and above,
+    each blown up with hard pixels to judge what shows."""
+    views = {'below': Vector((0, 0.0001, -1)), 'side': Vector((1, 0, 0)), 'top': Vector((0, 0.0001, 1)),
+             'underq': Vector((0.6, -0.4, -0.7))}
+    # A look like the game's for these: a dark skin, the white of the fins, a hint of the belly's.
+    me = mesh.data
+    src = me.color_attributes['Col']
+    look = me.color_attributes.new('Look', 'BYTE_COLOR', 'POINT')
+    for i in range(len(me.vertices)):
+        r, g, _b, _a = src.data[i].color
+        k = min(1.0, r * 0.85 + g * 0.22)
+        look.data[i].color = (0.07 + 0.68 * k, 0.09 + 0.71 * k, 0.12 + 0.70 * k, 1.0)
+    me.color_attributes.active_color = look
+    cells = []
+    for px, up in ((110, 4), (250, 2)):
+        for name, d in views.items():
+            w = int(px * 1.25)
+            h = int(px * 0.75)
+            shoot_small(f'game-{name}-{px}', d, w, h, 1.25 * 1.05)
+            a = _load(out_dir / f'game-{name}-{px}.png')
+            cells.append(np.repeat(np.repeat(a, up, axis=0), up, axis=1))
+    rows = []
+    for r in range(2):
+        row = cells[r * 4:(r + 1) * 4]
+        hmax = max(c.shape[0] for c in row)
+        padded = []
+        for c in row:
+            pad = np.zeros((hmax, c.shape[1] + 6, 4), dtype=np.float32)
+            pad[..., :3] = 0.12
+            pad[..., 3] = 1
+            pad[:c.shape[0], :c.shape[1]] = c
+            padded.append(pad)
+        rows.append(np.concatenate(padded, axis=1))
+    wmax = max(r.shape[1] for r in rows)
+    out = []
+    for r in rows:
+        pad = np.zeros((r.shape[0] + 6, wmax, 4), dtype=np.float32)
+        pad[..., :3] = 0.12
+        pad[..., 3] = 1
+        pad[:r.shape[0], :r.shape[1]] = r
+        out.append(pad)
+    _save(np.concatenate(out, axis=0), out_dir / 'game-size.png')
+    me.color_attributes.active_color = src
+    me.color_attributes.remove(look)
 
 
 def _load(path):

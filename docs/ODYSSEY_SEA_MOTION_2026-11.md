@@ -26,12 +26,15 @@ their clocks, the 1->2 steam rule and the zero-hitch load are unchanged.
 `scripts/blender/odyssey/odyssey_whales.py` (headless Blender, re-runnable, same file every run)
 writes `assets/chapter-02/creatures/humpback-swim.glb`:
 
-- **The body** is a signed distance field of smooth masses and fins: a heavy body deepest behind the
-  flippers, the flat broad head, the throat pouch, the low hump with its small fin, flippers a third
-  of the body long with a knobbed leading edge, wide notched flukes with a ragged trailing edge. It
-  uses the generic SDF library of the Ocean theme's authoring scripts, with this file's own copy of
-  the design numbers, so a change to the theme never moves Odyssey's whale. Meshed by Blender's
-  openvdb, decimated mirror-symmetric to 6,000 triangles, normals from the field.
+- **The body** is a signed distance field of smooth masses and fins, drawn to the marks a humpback
+  is known by (redrawn the same day; see "The design" below): flippers a third of the body long,
+  white, their leading edge scalloped with nine knobs; a broad head, flat on top and rounded at the
+  tip seen from above, the lower jaw broad and just past the upper; a stocky body deepest just
+  behind the flippers, the tail stock tall and narrow; a small fin on a low hump two thirds of the
+  way back; broad flukes with a serrated trailing edge and a clear notch. It uses the generic SDF
+  library of the Ocean theme's authoring scripts with its own design numbers, so a change to the
+  theme never moves Odyssey's whale. Meshed by Blender's openvdb, decimated mirror-symmetric to
+  6,000 triangles, normals from the field.
 - **The rig**: 13 bones. A chain from the centre of mass back to the flukes (root, three spine
   bones, two tail-stock bones, the flukes), the chest and head forward, two bones in each flipper.
   Weights are a smooth partition along the body; the flippers along their span.
@@ -49,6 +52,29 @@ writes `assets/chapter-02/creatures/humpback-swim.glb`:
 ![The humpback in Blender: clay from six sides, the marks (red = white), and the stroke over one cycle](images/odyssey-sea-motion-2026-11/humpback-blender.jpg)
 
 ![Onion skin of one stroke (blue early, red late) and the tip paths over two strokes, swimming forward: fluke tip (orange), flipper tip (blue), snout (green). Smooth waves, no corners](images/odyssey-sea-motion-2026-11/humpback-onion-tip-paths.jpg)
+
+**The design (redrawn, 2026-11-03).** The first humpback copied the Ocean pack's numbers, and the
+lead saw a slender rorqual in it: flippers about a fifth of the length, the head narrowing to a
+point from above, a slim body, a fin too small to show, flukes with barely a serration. Redrawn:
+
+| | first | now |
+|---|---|---|
+| flipper (span / length) | 0.30, swept down | 0.40, out and back, nine knobs on the leading edge |
+| head seen from above (half width) | narrows to a point (0.008 at the tip) | a round cap (0.03 at the tip, 0.10 a tenth of the way back) |
+| greatest depth / width | 0.22 / 0.25 of the length | 0.24 / 0.28, just behind the flippers |
+| dorsal fin | 0.04 tall, lost in the hump | 0.05 on a larger hump at 0.64 |
+| flukes' trailing edge | 15 small ripples across the pair, a shallow notch | 9 clear serrations across the pair, a notch twice as deep |
+
+Judged at the game's size (the calf ~110 px long, the mother ~250 px at 1280 x 720) from below,
+the side and above: the long white flippers, the round head and the serrated flukes all show. The
+tubercles (the knobs along the jaw) would be under two pixels there, so they are left out. The
+"dark spike" at one end of the side views is the flukes seen exactly edge-on (the tail end; the
+snout is the other end, with the mouth line). The rig, the keyed stroke, the 6,000 triangles, the
+sizes, routes and timing are unchanged.
+
+![First humpback (top rows) and redrawn (bottom rows): from below, the side, above and the marks; then at game size (250 and 110 px long, blown up x2 and x4) from below, the side, above and three-quarters below](images/odyssey-sea-motion-2026-11/humpback-design-before-after.jpg)
+
+![In the game, p 0.0989, the same moment: the first humpback (left) and the redrawn one (right)](images/odyssey-sea-motion-2026-11/humpback-design-in-game.jpg)
 
 **In the game** (`composition/odyssey-whale-pass.js` with `composition/odyssey-whale-swim.js`):
 
