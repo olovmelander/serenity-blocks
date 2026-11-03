@@ -127,7 +127,8 @@ describe('the lowland flights', () => {
             // per-instance vec4s: inside WebGPU's 8 vertex buffers.
             expect(Object.keys(mesh.geometry.attributes).length).toBeLessThanOrEqual(8);
         });
-        const total = ODYSSEY_FLIGHTS.reduce((n, f) => n + f.count, 0);
+        // ... and the swallow fly-by, one more instance of the swallows' draw.
+        const total = ODYSSEY_FLIGHTS.reduce((n, f) => n + f.count, 0) + 1;
         expect(meshes.reduce((n, m) => n + m.geometry.instanceCount, 0)).toBe(total);
         flights.dispose();
     });
@@ -155,7 +156,7 @@ describe('the lowland flights', () => {
     it('flies the same birds every session', () => {
         expect(resolveFlightLanes()).toEqual(resolveFlightLanes());
         const lanes = resolveFlightLanes();
-        expect(lanes).toHaveLength(ODYSSEY_FLIGHTS.reduce((n, f) => n + f.count, 0));
+        expect(lanes).toHaveLength(ODYSSEY_FLIGHTS.reduce((n, f) => n + f.count, 0) + 1); // + the swallow fly-by
     });
 
     it('keeps every bird above the ground and off the rail while its flock is shown', () => {

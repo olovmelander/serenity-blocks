@@ -36,6 +36,8 @@
  *     spacing breathing slowly;
  *   - every bird banks with its turn (soft at the limit, a moment ahead of the turn) and fans
  *     and twists its tail into it. No swallow's path ever runs straight up (its heading spun).
+ *   - THE SWALLOW FLY-BY (odyssey-swallow-flyby.js): now and then one more swallow of this draw
+ *     sweeps up the meadow past the orbs' seats, 16-20 u from the eye, and is gone.
  *
  * Every bird is CLOSED FORM in the vertex stage (position at t, heading from the position a
  * moment either side, bank from the turn, the wingbeat from the clock), so nothing is written per
@@ -52,13 +54,17 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cos, cross, dot, float, fract, length, max, mix,
-    normalize, pow, positionLocal, sin, smoothstep, uniform, uniformArray, varying, vec3,
+    normalize, pow, positionLocal, select, sin, smoothstep, uniform, uniformArray, varying, vec3,
 } from 'three/tsl';
 import {
     BIRD_BEAT_CHANNELS, beatHarmonicsNode, beatSeriesNode, birdBoutAt, birdBoutNode, birdColourNode,
     birdWingPoseAt as birdWingPoseOfModel, decodeBirdModel, foldBirdNode, foldBirdPoint, packBeatSeries,
     setBirdTemplate, smootherstep, smootherstepNode, tailBirdNode,
 } from './odyssey-bird-rig.js';
+import {
+    ODYSSEY_SWALLOW_FLYBY, createSwallowFlybyArming, swallowFlybyBeatWeight, swallowFlybyBeatWeightNode,
+    swallowFlybyPassAt, swallowFlybyPassNode, swallowFlybyPointNode, swallowFlybyPositionAt,
+} from './odyssey-swallow-flyby.js';
 
 const TAU = Math.PI * 2;
 /** How far a gull's loop centre wanders over a minute or so (world units). */
@@ -178,8 +184,12 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
     }),
 ]);
 
-/** Deterministic lanes (no Math.random: the same flocks every session). */
-export function resolveFlightLanes(flocks = ODYSSEY_FLIGHTS) {
+/**
+ * Deterministic lanes (no Math.random: the same flocks every session). With `flyby` (the default)
+ * the swallow flock gets one more lane after its own: the fly-by swallow (`flyby: true`, radius -1
+ * marks it for the vertex stage).
+ */
+export function resolveFlightLanes(flocks = ODYSSEY_FLIGHTS, { flyby = ODYSSEY_SWALLOW_FLYBY } = {}) {
     let state = 0x5f3759df;
     const rnd = () => {
         state = Math.imul(state ^ (state >>> 15), 0x2c1b3c6d) >>> 0;
@@ -223,6 +233,21 @@ export function resolveFlightLanes(flocks = ODYSSEY_FLIGHTS) {
             });
         }
     });
+    const swallows = flocks.findIndex((f) => f.kind === FLIGHT_KIND.SWALLOW);
+    if (flyby && swallows >= 0) {
+        lanes.push({
+            flock: swallows,
+            kind: FLIGHT_KIND.SWALLOW,
+            cx: 0,
+            cy: 0,
+            cz: 0,
+            radius: -1,
+            lap: 1,
+            phase: 0,
+            seed: flyby.seed,
+            flyby,
+        });
+    }
     return lanes;
 }
 
@@ -239,6 +264,7 @@ const swallowSkew = (seed) => (seed - 0.5) * 1.6;
  * @returns {{x:number,y:number,z:number,shown:boolean}}
  */
 export function flightPositionAt(lane, t, flocks = ODYSSEY_FLIGHTS) {
+    if (lane.flyby) return swallowFlybyPositionAt(t, lane.flyby);
     const flock = flocks[lane.flock];
     if (flock.kind === FLIGHT_KIND.GOOSE) {
         const cyc = ((((t / flock.period) + flock.phase) % 1) + 1) % 1;
@@ -338,6 +364,7 @@ export function lowlandBirdModel(kind) {
 }
 
 const bout = { weight: 0, phase: 0 };
+const flybyScratch = {};
 
 /**
  * The beat a bird of `lane` is in at clock `t`: weight 0 glide .. 1 beating, and the phase (in
@@ -352,6 +379,13 @@ export function birdBeatOf(lane, t, out = { weight: 0, phase: 0 }) {
         birdBoutAt(t, lane.seed, { ...GULL_BOUTS, rate }, bout);
         out.weight = bout.weight;
         out.phase = bout.phase;
+        return out;
+    }
+    if (lane.flyby) {
+        // A few quick beats, then a swept glide through each banked swerve.
+        const pass = swallowFlybyPassAt(t, lane.flyby, flybyScratch);
+        out.weight = swallowFlybyBeatWeight(pass.tau, flightFrameAt(lane, t).bank, lane.flyby);
+        out.phase = (rate * pass.tau) + (lane.seed * 7);
         return out;
     }
     if (lane.kind === FLIGHT_KIND.SWALLOW) {
@@ -409,11 +443,22 @@ export { foldBirdPoint };
  * @param {object} [opts.sunColour] TSL vec3 node, the world's sun colour (else a daylight white)
  * @param {number[]} [opts.sunDir] direction TOWARD the sun (world); defaults to the Act II sun
  * @param {Array} [opts.flocks] override of ODYSSEY_FLIGHTS (tests, the playground)
+ * @param {object|null} [opts.flyby] the swallow fly-by (ODYSSEY_SWALLOW_FLYBY), or null for none
+ *   (the board's `?odysseyNoSwallowFlyby=1`)
  */
 export function createOdysseyFlights({
     hazeColour = null, sunColour = null, sunDir = [-0.46, 0.36, 0.61], flocks = ODYSSEY_FLIGHTS,
+    flyby = ODYSSEY_SWALLOW_FLYBY,
 } = {}) {
-    const lanes = resolveFlightLanes(flocks);
+    const lanes = resolveFlightLanes(flocks, { flyby });
+    const swallowFlock = flocks.findIndex((f) => f.kind === FLIGHT_KIND.SWALLOW);
+    const hasFlyby = !!flyby && swallowFlock >= 0;
+    // The fly-by's route (its control points) and whether the pass under way is shown (armed as it
+    // starts, with the camera in the meadow: createSwallowFlybyArming).
+    const uRoute = uniformArray((hasFlyby ? flyby.route : [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        .map((q) => new THREE.Vector4(q[0], q[1], q[2], 0)), 'vec4');
+    const uFlybyArm = uniform(0);
+    const arming = hasFlyby ? createSwallowFlybyArming(flyby) : null;
     const models = [0, 1, 2].map((k) => lowlandBirdModel(k));
 
     const uTime = uniform(0);
@@ -449,6 +494,8 @@ export function createOdysseyFlights({
     const isGull = float(1).sub(clamp(abs(kind.sub(FLIGHT_KIND.GULL)), 0, 1));
     const isSwallow = float(1).sub(clamp(abs(kind.sub(FLIGHT_KIND.SWALLOW)), 0, 1));
     const isGoose = float(1).sub(clamp(abs(kind.sub(FLIGHT_KIND.GOOSE)), 0, 1));
+    // The fly-by swallow: the swallow draw's lane marked by a negative radius.
+    const isFlyby = hasFlyby ? isSwallow.mul(select(aSeat.w.lessThan(0.0), float(1), float(0))) : float(0);
     const seed = aMotion.z;
     /** A per-kind constant: gull, swallow, goose. */
     const perKind = (values) => float(values[0]).mul(isGull)
@@ -477,12 +524,15 @@ export function createOdysseyFlights({
                 sin(ang.mul(0.5).add(seed.mul(9.0))).mul(6.0),
                 sin(ang).mul(r).mul(wob.mul(0.8)),
             ));
-        // SWALLOW (the skew kept within +-0.8 rad: see swallowSkew)
-        const swal = aSeat.xyz.add(vec3(
+        // SWALLOW (the skew kept within +-0.8 rad: see swallowSkew); the fly-by on its route.
+        const eight = aSeat.xyz.add(vec3(
             sin(ang).mul(r),
             sin(ang.mul(2.0).add(seed.mul(5.0))).mul(r.mul(0.32)),
             sin(ang.mul(2.0).add(seed.sub(0.5).mul(1.6))).mul(r.mul(0.62)),
         ));
+        const swal = hasFlyby
+            ? mix(eight, swallowFlybyPointNode(swallowFlybyPassNode(t, flyby).tau, uRoute, flyby), isFlyby)
+            : eight;
         // GOOSE: s runs 0..1 across `travel` of the period; the V trails behind the leader.
         const period = float(goose ? goose.period : 1);
         const cyc = fract(t.div(period).add(goose ? goose.phase : 0));
@@ -540,10 +590,18 @@ export function createOdysseyFlights({
         const ang = t.mul(TAU).div(lap).add(aMotion.y.mul(TAU));
         const swallowWeight = smootherstepNode(SWALLOW_STRAIGHT[0], SWALLOW_STRAIGHT[1], abs(cos(ang)))
             .mul(smootherstepNode(SWALLOW_GATE[0], SWALLOW_GATE[1], sin(t.mul(SWALLOW_GATE[2]).add(seed.mul(9.0)))));
-        const beatWeight = gullBout.weight.mul(isGull).add(swallowWeight.mul(isSwallow)).add(isGoose).toVar();
-        const swallowPhase = seed.sub(0.5).mul(0.06).add(1.0).mul(flight[1].rate)
+        // The fly-by: a few quick beats, then a swept glide through each banked swerve.
+        const flybyPass = hasFlyby ? swallowFlybyPassNode(t, flyby) : null;
+        const swallowBeat = hasFlyby
+            ? mix(swallowWeight, swallowFlybyBeatWeightNode(flybyPass.tau, bank, flyby), isFlyby)
+            : swallowWeight;
+        const beatWeight = gullBout.weight.mul(isGull).add(swallowBeat.mul(isSwallow)).add(isGoose).toVar();
+        const eightPhase = seed.sub(0.5).mul(0.06).add(1.0).mul(flight[1].rate)
             .mul(t)
             .add(seed.mul(7.0));
+        const swallowPhase = hasFlyby
+            ? mix(eightPhase, flybyPass.tau.mul(flight[1].rate).add(seed.mul(7.0)), isFlyby)
+            : eightPhase;
         const goosePhase = t.mul(flight[2].rate).add(seed.mul(0.04)).sub(aSeat.x.mul(SKEIN_RANK_LAG))
             .add(sin(t.mul(0.23).add(seed.mul(6.1))).mul(0.03));
         const phase = gullBout.phase.mul(isGull).add(swallowPhase.mul(isSwallow)).add(goosePhase.mul(isGoose));
@@ -607,7 +665,9 @@ export function createOdysseyFlights({
                 .mul(float(1).sub(smoothstep(goose.travel - 0.04, goose.travel, goosePeriodK)))
             : float(0);
         const shown = mix(float(1), gooseShown, isGoose);
-        const size = drawScale.mul(reveal).mul(shown);
+        // The fly-by keeps its own size: shown only for an armed pass, eased at its route's ends.
+        const flybyShow = hasFlyby ? flybyPass.size.mul(uFlybyArm) : float(0);
+        const size = drawScale.mul(mix(reveal, flybyShow, isFlyby)).mul(shown);
         // A FAR bird reads as a speck only while it is darker than the air behind it: lit pale
         // plumage (a goose's sunlit flank and belly, its pale underwing) is the sky's own value at
         // ten pixels, and the skein vanished where the old dark cut-outs had read. Under ~24 px
@@ -684,7 +744,11 @@ export function createOdysseyFlights({
         meshes,
         material,
         lanes,
-        uniforms: { uTime, uFlocks, uBeats },
+        uniforms: {
+            uTime, uFlocks, uBeats, uRoute, uFlybyArm,
+        },
+        /** Whether the swallow fly-by's pass under way is shown (it is armed as it starts). */
+        get flybyArmed() { return uFlybyArm.value > 0.5; },
         /** Reveal per flock at journey progress `p` (0..1 each). */
         revealAt(p) {
             return flocks.map((f) => windowWeight(f.window, p));
@@ -694,12 +758,15 @@ export function createOdysseyFlights({
          * @param {number} progress journey progress 0..1
          */
         update(time, progress) {
+            const armed = arming ? arming.step(time, progress) : false;
+            uFlybyArm.value = armed ? 1 : 0;
             let any = false;
             flocks.forEach((f, i) => {
                 const r = windowWeight(f.window, progress);
                 flockRows[i].x = r;
-                meshes[i].visible = r > 0.01;
-                if (r > 0.01) any = true;
+                // An armed fly-by keeps the swallows' draw on to the end of its pass.
+                meshes[i].visible = r > 0.01 || (armed && i === swallowFlock);
+                if (meshes[i].visible) any = true;
             });
             uTime.value = time;
             group.visible = any;
