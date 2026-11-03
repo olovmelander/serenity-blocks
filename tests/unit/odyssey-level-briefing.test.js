@@ -69,8 +69,9 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
         next.victory.primary = { type: 'combo', target: 4 };
         next.victory.failure.value = 45;
         next.modifiers.active.push('mirror');
-        // Orb 52 plays unmirrored (orb 53 is the mirrored orb since the level design audit 2026-11).
-        const result = getOdysseyLevelBriefing(next, getLevelById(52));
+        // Orb 54 plays unmirrored, without a clock or a chain goal (since pass 2 of the level design audit, orbs 51
+        // and 53 are the mirrored orbs and 52 is a timed chain test).
+        const result = getOdysseyLevelBriefing(next, getLevelById(54));
         expect(result.goal).toBe('Trigger a chain of at least 4 waves');
         expect(result.changes).toEqual([
             'Left and right controls are reversed.',

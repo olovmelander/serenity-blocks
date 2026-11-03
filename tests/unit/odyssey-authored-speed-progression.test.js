@@ -124,9 +124,9 @@ describe.each([
 
 // Level design audit 2026-11 (R1): speed changes only through the proportional curve. Every standard or
 // hybrid orb with progression authors its opening interval and scales from it; none falls back to the raw
-// 720 -> 320 ms schedule. Orb 39 (survival, phase 3) speeds up with time instead, on its own ramp.
-const PROPORTIONAL_ORBS = [1, 4, 6, 8, 11, 13, 15, 16, 19, 21, 23, 24, 27, 28, 31, 33, 35, 37, 38, 40, 41, 42,
-    43, 45, 46, 49, 50, 51, 57, 58, 59];
+// 720 -> 320 ms schedule. Orb 39 (survival, phase 3) speeds up with time instead, on its own ramp; orb 58 (the
+// rising tide) holds a steady speed while the rows rise.
+const PROPORTIONAL_ORBS = [1, 4, 6, 8, 11, 13, 15, 16, 17, 19, 23, 27, 28, 33, 35, 37, 41, 45, 46, 49, 50, 57, 59];
 
 it('scales every authored opening proportionally across all 60 composed configurations', () => {
     const scaledIds = [];

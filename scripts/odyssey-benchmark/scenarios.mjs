@@ -2,9 +2,11 @@
 import { LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.js';
 import { levelIdForTheme } from './campaign-targets.mjs';
 
-// Scenario IDs identify historical artifacts, while eligibility follows the authored challenge.
+// Scenario IDs identify historical artifacts, while eligibility follows the authored challenge. Pass 2 of the level
+// design audit (2026-11) moved the sprint from orb 51 (chiral-gold) to orb 50 (nebula-flow), so the fall scenarios
+// follow it there; orb 59 now races the rising tide, so the deadline scenarios only reproduce the earlier runs.
 const deadlineTheme = 'neon-district';
-const fallTheme = 'chiral-gold';
+const fallTheme = 'nebula-flow';
 const duelIds = LEVEL_CONFIGS.filter((level) => level.mechanics?.versus).map((level) => level.id);
 
 export const BENCHMARK_SCENARIOS = Object.freeze([
@@ -27,14 +29,14 @@ export const BENCHMARK_SCENARIOS = Object.freeze([
     },
     {
         id: 'orb51-fall75',
-        label: `Chiral Gold (orb ${levelIdForTheme(fallTheme)}): initial fall 75 ms`,
+        label: `The sprint (orb ${levelIdForTheme(fallTheme)}; historically 51): initial fall 75 ms`,
         levelIds: [levelIdForTheme(fallTheme)],
         themeId: fallTheme,
         description: 'Scale the entire fall schedule; preserve score level and progression.',
     },
     {
         id: 'orb51-fall100',
-        label: `Chiral Gold (orb ${levelIdForTheme(fallTheme)}): initial fall 100 ms`,
+        label: `The sprint (orb ${levelIdForTheme(fallTheme)}; historically 51): initial fall 100 ms`,
         levelIds: [levelIdForTheme(fallTheme)],
         themeId: fallTheme,
         description: 'Scale the entire fall schedule; preserve score level and progression.',

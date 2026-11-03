@@ -226,7 +226,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(softDropLock.accepted).toBe(false);
     });
 
-    it('keeps orb 51 scoring and scaled fall after a real 15-line level boundary', async () => {
+    it('keeps the sprint (orb 50) scoring and scaled fall after a real 15-line level boundary', async () => {
         const states = [];
         const originalReset = GameState.prototype.reset;
         vi.spyOn(GameState.prototype, 'reset').mockImplementation(function captureProgression() {
@@ -246,13 +246,13 @@ describe('Odyssey benchmark real gameplay runtime', () => {
             // Each virtual-clock owner must finish before the next attempt starts.
             // eslint-disable-next-line no-await-in-loop
             attempts.push(await runAttempt({
-                levelId: 51, seed: 42, scenarioId, maxPieces: 1, maxSimSeconds: 5,
+                levelId: 50, seed: 42, scenarioId, maxPieces: 1, maxSimSeconds: 5,
             }));
         }
         expect(attempts.every((attempt) => attempt.outcome === 'censored')).toBe(true);
         expect(states.map((state) => [state.lines, state.level])).toEqual([[15, 14], [15, 14], [15, 14]]);
-        // Orb 51 authors a 120 ms opening on the proportional curve (level design audit 2026-11), so the
-        // fall scenarios scale the level-13 schedule from there.
+        // The sprint (orb 50 since pass 2) authors a 120 ms opening on the proportional curve (level design audit
+        // 2026-11), so the fall scenarios scale the level-13 schedule from there.
         const base = attempts[0].effectiveConfig.physicsPolicy.authoredInitialIntervalMs;
         expect(base).toBe(120);
         const initialIntervals = attempts.slice(1).map((attempt) => (
@@ -264,7 +264,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(states[2].dropInterval).toBeCloseTo(LEVEL_SPEEDS[13] * (100 / LEVEL_SPEEDS[12]));
         expect(states[1].score).toBe(states[0].score);
         expect(states[2].score).toBe(states[0].score);
-        expect(getLevelById(51).mechanics.speed).toEqual(attempts[0].effectiveConfig.speed);
+        expect(getLevelById(50).mechanics.speed).toEqual(attempts[0].effectiveConfig.speed);
     });
 
     it('retires and drains real in-flight physics without changing the censored metric snapshot', async () => {

@@ -373,7 +373,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('treats a timed board top-out as a top-out failure and records one attempt', async () => {
-        const harness = createMode(getLevelById(51));
+        const harness = createMode(getLevelById(50));
         const { mode, session } = harness;
         session.hybridEngine.updateTime(10);
         session.gameState.isGameOver = true;
@@ -422,7 +422,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('builds the retry debrief from the drained attempt and freezes its clock at failure', async () => {
-        const harness = createMode(getLevelById(51), { renderFailure: true });
+        const harness = createMode(getLevelById(50), { renderFailure: true });
         const { mode, session } = harness;
         const physics = deferred();
         session.hybridEngine.victoryEvaluator.onLineClear(12);
@@ -458,7 +458,7 @@ describe('OdysseyMode gameplay objectives', () => {
             metrics: { score: 4875, time: 28, lines: 12 },
             includeLegacyResults: true,
         });
-        expect(mode.odysseyState.recordAttempt).toHaveBeenCalledExactlyOnceWith(51);
+        expect(mode.odysseyState.recordAttempt).toHaveBeenCalledExactlyOnceWith(50);
         expect(mode.odysseyState.completeLevel).not.toHaveBeenCalled();
     });
 
@@ -561,7 +561,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('rejects a primary goal reached after its deadline and fences later callbacks', async () => {
-        const harness = createMode(getLevelById(51));
+        const harness = createMode(getLevelById(50));
         const { mode, session } = harness;
         const callbacks = mode._getPhysicsCallbacks(session);
         session.gameState.isProcessingPhysics = true;

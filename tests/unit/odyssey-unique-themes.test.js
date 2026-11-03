@@ -116,13 +116,14 @@ describe('Odyssey exclusive orb themes', () => {
         expect(registry.isFinalLevel(60)).toBe(true);
     });
 
-    it('uses a score release and a bounded cascade rehearsal before the established capstones', () => {
+    it('uses a chain practice and a bounded cascade rehearsal before the established capstones', () => {
         const vesper = registry.getLevel(43);
         const warp = registry.getLevel(54);
-        expect(vesper.role).toBe('release');
-        // Level design audit 2026-11: Vesper is its own short rest; Warp rehearses (practise) for orb 55.
-        expect(vesper.victory.primary).toEqual({ type: 'score', target: 30000 });
-        expect(vesper.victory.failure.type).toBe('top-out');
+        expect(vesper.role).toBe('reinforce');
+        // Level design audit 2026-11, pass 2: Vesper practises the 4-wave chain against a clock (D9); Warp rehearses
+        // (practise) for orb 55.
+        expect(vesper.victory.primary).toEqual({ type: 'combo', target: 4 });
+        expect(vesper.victory.failure).toEqual({ type: 'time', value: 150 });
         expect(warp.role).toBe('reinforce');
         expect(warp.victory.primary).toEqual({ type: 'cascade', target: 10 });
         expect(warp.victory.failure.type).toBe('top-out');

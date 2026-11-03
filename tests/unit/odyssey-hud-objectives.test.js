@@ -106,8 +106,18 @@ afterEach(() => {
 });
 
 describe('Odyssey orb-level objective presentation', () => {
+    it('shows orb 52, the chain test (pass 2), as one 4-wave chain', () => {
+        const hud = hudFixture();
+        const condition = getLevelById(52).stars.three;
+        const text = hud._formatStarCondition(condition, 2);
+        expect(condition).toEqual({ combo: 4, bonuses: 2 });
+        expect(text).toContain('4-wave chain');
+        expect(text.match(/-wave chain/g)).toHaveLength(1);
+        expect(text).not.toContain('x combo');
+    });
+
     it.each([
-        [52, 4], [55, 5], [59, 5],
+        [55, 5], [59, 5],
     ])('shows orb %i mastery as one effective %i-wave chain without changing its conditions', (levelId, waves) => {
         const hud = hudFixture();
         const condition = getLevelById(levelId).stars.three;
@@ -231,7 +241,9 @@ describe('Odyssey orb-level objective presentation', () => {
 
     it.each([55, 59])('explains orb %i acquisition timing and optional showcase continuation', (levelId) => {
         const text = getOdysseyLevelGuide(getLevelById(levelId));
-        expect(text).toContain('Reach the goal within the time limit.');
+        // Pass 2: orb 59 races the rising tide instead of a clock, so only orb 55 names a time limit.
+        if (levelId === 55) expect(text).toContain('Reach the goal within the time limit.');
+        else expect(text).not.toContain('time limit');
         expect(text).toContain('After the goal, keep playing for stars until you choose Finish orb or top out.');
         expect(text).not.toContain('ends automatically');
     });
