@@ -89,6 +89,7 @@ export class OdysseyHUD {
         this.objectiveDisplay = null;
         this.progressValue = null;
         this.progressBar = null;
+        this.tideDisplay = null;
         this.timeDisplay = null;
         this.starsDisplay = null;
         this.bonusesDisplay = null;
@@ -223,6 +224,12 @@ export class OdysseyHUD {
         this.progressTrack = barContainer;
         barContainer.appendChild(this.progressBar);
         section.appendChild(barContainer);
+
+        // The rising tide's next row, on orbs that have one.
+        this.tideDisplay = document.createElement('div');
+        this.tideDisplay.className = 'hud-tide';
+        this.tideDisplay.hidden = true;
+        section.appendChild(this.tideDisplay);
 
         this.container.appendChild(section);
     }
@@ -886,7 +893,19 @@ export class OdysseyHUD {
             this.metrics.bonuses = this.completedBonuses.size;
         }
         this._updateProgress();
+        this._updateTide();
         this._checkStars();
+    }
+
+    /** The next tide row and the rows risen so far; it keeps counting through a survival lap. */
+    _updateTide() {
+        if (!this.tideDisplay) return;
+        const next = this.metrics.tideNextSeconds;
+        const hasTide = Number.isFinite(next);
+        this.tideDisplay.hidden = !hasTide;
+        if (!hasTide) return;
+        setText(this.tideDisplay, `Rubble rises in ${Math.ceil(next)} s · ${this.metrics.tideRows || 0} risen`);
+        this.tideDisplay.classList.toggle('is-warning', next <= 1.5);
     }
 
     _updateProgress() {

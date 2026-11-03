@@ -6,6 +6,7 @@
  */
 
 import { LEVEL_CONFIGS } from './data/levels.js';
+import { isOdysseyTideConfig } from './odyssey-tide.js';
 import { CHAPTER_CONFIGS } from './data/chapters.js';
 import {
     applyOdysseyLayoutToLevels,
@@ -476,6 +477,11 @@ export class LevelRegistry {
                         + ' without a victory lap');
                 }
             }
+        }
+        // A rising tide: a first row, an interval that only tightens and a ramp to get there, on a solo orb.
+        const tide = levelConfig.mechanics?.tide;
+        if (tide !== undefined && (!isOdysseyTideConfig(tide) || levelConfig.mechanics?.versus)) {
+            errors.push('A rising tide needs a start, an interval that only tightens and a ramp, on a solo orb');
         }
         // A survival ramp is the orb's one speed driver: it never runs beside line-based level-ups.
         const doubling = levelConfig.mechanics?.speed?.doublingSeconds;

@@ -139,10 +139,10 @@ describe('Sunbraid took the Rainy Window orb: what a player already has now mean
         expect(orb.isChapterStart).toBe(false);
         expect(orb.name).toBe('The Turning Suns');
         expect(orb.theme.transitionIn).toBe('crossfade');
-        // Still the chapter's sprint test: lines against the clock, pieces falling fast.
+        // Still the chapter's test against the clock; pass 2 of the level design audit made it the Quad test.
         expect(orb.role).toBe('test');
         expect(orb.modifiers.active).toEqual(['time-attack']);
-        expect(orb.victory.primary.type).toBe('lines');
+        expect(orb.victory.primary.type).toBe('tetrises');
         expect(orb.metadata.description).toMatch(/Three colored suns/);
         expect(orb.metadata.description).toMatch(/every shadow takes a color/);
         expect(orb.metadata.description).not.toMatch(/storm|rain|window/i);

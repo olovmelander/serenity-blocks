@@ -17,6 +17,7 @@ import { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
 import { countRubbleRows } from './odyssey-rubble.js';
+import { createOdysseyTide, isOdysseyTideConfig } from './odyssey-tide.js';
 import { bindLegacySessionRng } from '../session-rng.js';
 import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from '../infinity-spawn-policy.js';
 
@@ -67,6 +68,7 @@ export class GameplayHybridEngine {
         this.mechanicsMixer = new MechanicsMixer();
         this.rubbleStart = 0;
         this.rampBaseInterval = null;
+        this.tide = null;
     }
 
     /**
@@ -178,6 +180,10 @@ export class GameplayHybridEngine {
         this.refreshRubble();
         // A survival ramp (phase 3) halves the drop interval every `doublingSeconds` of play, from the opening.
         this.rampBaseInterval = Number(mechanics.speed?.doublingSeconds) > 0 ? this.gameState.dropInterval : null;
+        // The rising tide: rubble rows rise from below on a tightening schedule, gaps from the attempt's seed.
+        this.tide = isOdysseyTideConfig(mechanics.tide)
+            ? createOdysseyTide(mechanics.tide, gameStateOverrides.rngSeed ?? this.levelConfig.id)
+            : null;
 
         console.log('[HybridEngine] GameState created:', {
             isInfinityMode: isInfinityBased,
@@ -288,10 +294,38 @@ export class GameplayHybridEngine {
             originalOnPieceLock?.(piece, ...args);
         };
 
+        // The rising tide: rows due by now rise between pieces, never under a falling one.
+        const originalSpawnPiece = modifiedCallbacks.spawnPiece;
+        if (this.tide && originalSpawnPiece) {
+            modifiedCallbacks.spawnPiece = (...args) => {
+                if (this.riseTide(modifiedCallbacks)) return undefined;
+                return originalSpawnPiece(...args);
+            };
+        }
+
         // Apply modifier-specific callback wrappers
         modifiedCallbacks = this.modifierStack.applyToCallbacks(modifiedCallbacks, this.gameState);
 
         return modifiedCallbacks;
+    }
+
+    /**
+     * Raise the tide rows due by now. A row that would push the stack past the top is refused by the garbage
+     * boundary, so the run ends here, through the mode's own game-over path (a survival lap then finishes).
+     * @returns {boolean} true when the tide topped the well out
+     */
+    riseTide(callbacks = {}) {
+        if (!this.tide || !this.gameState || this.gameState.isGameOver) return false;
+        const entries = this.tide.take(this.victoryEvaluator.trackedMetrics.time);
+        if (!entries.length) return false;
+        const result = applyGarbage(this.gameState, entries);
+        if (result?.topOut) {
+            if (callbacks.onTideTopOut) callbacks.onTideTopOut();
+            else this.gameState.isGameOver = true;
+            return true;
+        }
+        callbacks.onGarbageApplied?.(entries.length);
+        return false;
     }
 
     /** Lengthen a deadline orb's limit during the attempt (Long Breath). @returns {number} the bonus so far */
@@ -382,7 +416,12 @@ export class GameplayHybridEngine {
      */
     getMetrics() {
         this.refreshRubble();
-        return this.victoryEvaluator.getMetrics();
+        const metrics = this.victoryEvaluator.getMetrics();
+        if (this.tide) {
+            metrics.tideRows = this.tide.risen;
+            metrics.tideNextSeconds = this.tide.secondsUntilNext(metrics.time);
+        }
+        return metrics;
     }
 
     /** Count the rubble rows left on the settled board (cheap: one pass over the grid). */
@@ -425,6 +464,7 @@ export class GameplayHybridEngine {
         this.victoryEvaluator.reset();
         this.rubbleStart = 0;
         this.rampBaseInterval = null;
+        this.tide = null;
         this.modifierStack.clear();
         this.mechanicsMixer.reset();
     }
