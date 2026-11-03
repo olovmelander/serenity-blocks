@@ -77,7 +77,7 @@ const KIND_MODEL = Object.freeze(['gull', 'swallow', 'goose']);
  */
 export const FLIGHT_STYLE = Object.freeze([
     Object.freeze({
-        bankGain: 0.16, bankMax: 0.95, tail: Object.freeze([0.10, 0.24, 0.30]), flex: Object.freeze([0.035, 0.04, 0.9]),
+        bankGain: 0.20, bankMax: 0.95, tail: Object.freeze([0.10, 0.24, 0.30]), flex: Object.freeze([0.035, 0.04, 0.9]),
     }),
     Object.freeze({
         bankGain: 0.06, bankMax: 1.0, tail: Object.freeze([0.06, 0.28, 0.28]), flex: Object.freeze([0.02, 0.02, 1.5]),
@@ -88,6 +88,17 @@ export const FLIGHT_STYLE = Object.freeze([
 ]);
 /** A smooth |bank| (no corner at level flight) for the tail's fan: sqrt(b^2 + e^2) - e. */
 const TAIL_EASE = 0.08;
+/**
+ * A far bird reads only as a silhouette darker than the air behind it (2026-11-03 visibility
+ * check): under ~24 px across (was 14) its plumage darkens toward its outline by this much (gull,
+ * swallow, goose) and it takes on this much less of the air's haze.
+ */
+export const FAR_SPECK = Object.freeze({
+    /** The angular span (radians) where a bird is all speck .. where it starts to be one. */
+    across: Object.freeze([0.0048, 0.0192]),
+    darken: Object.freeze([0.2, 0.25, 0.7]),
+    air: Object.freeze([0.4, 0.4, 0.6]),
+});
 /** The bank reads the turn this much ahead (s): a bird rolls into a turn as it begins it. */
 const BANK_LEAD = 0.1;
 /** The stencil (s) the heading and the turn are read over. */
@@ -107,6 +118,8 @@ const SKEIN_RANK_LAG = 0.16;
  * The flocks. Windows are [fade in from, fully in by, fade out from, gone by] in JOURNEY progress
  * (chapter 3 is 0.1427-0.2457, chapter 4 0.2457-0.3489). Positions are world units; `span` is a
  * bird's wingspan in world units (artistically large: a 1.4 m gull at 150 u is a 6 px speck).
+ * The 2026-11-03 visibility check drew the gulls 1.25x (4.6 -> 5.75), the swallows 1.54x
+ * (1.3 -> 2.0) and the geese 1.3x (6.6 -> 8.6): measured in the game, they were specks.
  * Sited on the CPU height mirror against the real rail (see odyssey-flights.test.js).
  */
 export const ODYSSEY_FLIGHTS = Object.freeze([
@@ -123,7 +136,7 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
         radius: Object.freeze([18, 38]),
         height: Object.freeze([-6, 18]),
         lapSeconds: Object.freeze([16, 27]),
-        span: 4.6,
+        span: 5.75,
         window: Object.freeze([0.132, 0.142, 0.221, 0.234]),
     }),
     Object.freeze({
@@ -139,7 +152,7 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
         radius: Object.freeze([9, 22]),
         height: Object.freeze([-7, 9]),
         lapSeconds: Object.freeze([5.5, 8.5]),
-        span: 1.3,
+        span: 2.0,
         // Out only once neither party is in frame (p ~0.323 on the real camera; the shrink began
         // at 0.314 with a third of them still in view) — odyssey-act2-fade-out-of-view.test.js.
         window: Object.freeze([0.196, 0.206, 0.324, 0.334]),
@@ -160,7 +173,7 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
         travel: 0.78,
         phase: 0.36, // where in its period the skein is at clock 0 (mid-frame at the capture clock)
         spacing: 9,
-        span: 6.6,
+        span: 8.6,
         window: Object.freeze([0.150, 0.160, 0.412, 0.426]),
     }),
 ]);
@@ -597,13 +610,14 @@ export function createOdysseyFlights({
         const size = drawScale.mul(reveal).mul(shown);
         // A FAR bird reads as a speck only while it is darker than the air behind it: lit pale
         // plumage (a goose's sunlit flank and belly, its pale underwing) is the sky's own value at
-        // ten pixels, and the skein vanished where the old dark cut-outs had read. Under ~14 px
-        // across (its angular span at 60 degrees and 1440p) a goose darkens toward its silhouette
-        // and every bird loses its rim of sky; near birds keep their full plumage.
+        // ten pixels, and the skein vanished where the old dark cut-outs had read. Under ~24 px
+        // across (its angular span at 60 degrees and 1440p; 14 px until the 2026-11-03 visibility
+        // check) a bird darkens toward its silhouette (a goose most), takes on less of the air
+        // and loses its rim of sky; near birds keep their full plumage.
         const across = drawScale.mul(perKind(models.map((m) => m.span)))
             .div(max(length(p0.sub(cameraPosition)), 1.0));
-        const far = float(1).sub(smoothstep(0.0048, 0.0112, across));
-        vSpeck.assign(vec3(far, far.mul(perKind([0.15, 0.2, 0.55])), 0));
+        const far = float(1).sub(smoothstep(FAR_SPECK.across[0], FAR_SPECK.across[1], across));
+        vSpeck.assign(vec3(far, far.mul(perKind(FAR_SPECK.darken)), far.mul(perKind(FAR_SPECK.air))));
         // The body rides up and down against the beat (heave, in the bird's own up).
         const offset = leftB.mul(local.x).add(upB.mul(local.y.add(heave))).add(fwd.mul(local.z)).mul(size);
         return p0.add(offset);

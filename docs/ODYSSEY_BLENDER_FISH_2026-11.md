@@ -205,3 +205,10 @@ unchanged; how the fish move is new:
   into the curve it swims.
 
 `fishPoseAt` is the CPU twin of the vertex stage; tests/unit/odyssey-ch2-sea-motion.test.js reads it.
+
+## Visibility (2026-11-03)
+
+Measured against the water on the real climb (docs/ODYSSEY_SEA_MOTION_2026-11.md, "Visibility"): the
+tuna was blue on blue (11 % of them read) and the jacks melted in the brighter upper climb (74 %).
+The bellies' silvering is pushed for every school and the tuna has a yellowfin's yellow second
+dorsal, anal fin and finlets (`FISH_LOOK`): 89 % and 94 % read now.

@@ -377,13 +377,15 @@ def gull_wing_colour(s, c):
     # the outer hand black with a white mirror near the tip.
     top = mix(P["covert"], P["mantle"], smooth(0.2, 0.6, c))
     top = mix(top, P["white"], smooth(0.80, 1.0, c) * smooth(0.56, 0.46, s) * 0.9)
-    black = smooth(0.50, 0.575, s)
+    # The black hand, the herring gull's mark at range (2026-11-03: begun a little further in, so
+    # it still shows at 20-30 px).
+    black = smooth(0.47, 0.55, s)
     top = mix(top, P["black"], black)
     mirror = smooth(0.61, 0.64, s) * smooth(0.69, 0.655, s) * smooth(0.3, 0.55, c)
     top = mix(top, P["mirror"], mirror * 0.95)
     # Below: white coverts, pale grey flight feathers, the black primaries' tips.
     under = mix(P["underwing"], P["underFlight"], smooth(0.35, 0.8, c))
-    under = mix(under, P["underTip"], smooth(0.53, 0.60, s))
+    under = mix(under, P["underTip"], smooth(0.50, 0.58, s))
     under = mix(under, P["mirror"], mirror * 0.85)
     return top, under
 

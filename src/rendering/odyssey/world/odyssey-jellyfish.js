@@ -92,7 +92,9 @@ export const JELLY_MESH = Object.freeze({
 export const JELLY_LOOK = Object.freeze({
     tissue: [[0.62, 0.80, 0.90], [1.9, 0.62, 0.16], [0.10, 0.035, 0.11]],
     accent: [[0.86, 0.56, 0.90], [1.25, 0.20, 0.06], [0.34, 0.03, 0.10]],
-    alpha: [[0.07, 0.55], [0.14, 0.55], [0.30, 0.45]],
+    // The lantern's dome is dense (Periphylla's deep-red bell is nearly opaque): 0.30 -> 0.62. At
+    // 0.30 it melted into the dark water it lives in (visibility, 2026-11-03).
+    alpha: [[0.07, 0.55], [0.14, 0.55], [0.62, 0.62]],
     strand: [[0.78, 0.90, 0.97], [1.5, 0.36, 0.20], [0.36, 0.42, 0.78]],
     strandAlpha: [0.36, 0.42, 0.34],
     arm: [[0.80, 0.88, 0.96], [1.45, 0.92, 0.66], [0.55, 0.30, 0.62]],
@@ -396,7 +398,7 @@ export function createOdysseyJellyfish({
     const glowCol = pick(L.glow);
     const bellGlow = glowCol.mul(
         rhopalia.mul(0.30).mul(kMoon)
-            .add(lampBand.mul(lamps).mul(run.mul(1.1).add(0.15).add(flare2.mul(0.6))).mul(kLantern))
+            .add(lampBand.mul(lamps).mul(run.mul(1.1).add(0.3).add(flare2.mul(0.6))).mul(kLantern))
             .add(heart.mul(0.04).mul(kLantern)),
     ).add(bellCol.mul(rim).mul(through).mul(0.35));
 

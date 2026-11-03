@@ -27,8 +27,12 @@ import { buildPerchTops } from '../world/odyssey-boulders.js';
 
 /** The group and its clock. Spots are world (x, z); `size` is a share of a nanny; `horn` scales the horns. */
 export const ODYSSEY_IBEX = Object.freeze({
-    /** Drawn larger than life, like the act's other life. */
-    scale: 3.0,
+    /**
+     * Drawn larger than life, like the act's other life, and a fifth more than the deer's three times
+     * (2026-11-03, the visibility check): seen from 130-170 m, the nannies were 22-25 px at L22 and the
+     * buck under 21 px at L19-L21. The model is a nanny's size, so the buck is still a hind's height.
+     */
+    scale: 3.6,
     /**
      * [first, last] journey progress the group is drawn at. Both ends are where the rock band is out
      * of the frame (odyssey-ground-animals' ibex tests hold the camera to that at every clock phase),
@@ -47,6 +51,11 @@ export const ODYSSEY_IBEX = Object.freeze({
     lift: 0.1,
     settleAfter: 0.45,
     settleAt: 0.07,
+    /**
+     * The share of the ground's side tilt the body rolls with (the deer's 0.12): a goat on the shelf's
+     * 27-degree slope leans into it, so its uphill and downhill legs both stay in reach.
+     */
+    rollShare: 0.35,
     /** Grazing, they stray about half as far from a spot as the deer (the rocks are near). */
     roam: 0.5,
     /** A grazing head: a goat's shorter neck swung down to the lichen. */

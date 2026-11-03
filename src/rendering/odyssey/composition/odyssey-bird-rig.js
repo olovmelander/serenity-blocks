@@ -372,7 +372,7 @@ export function foldBirdNode({
  * @param {object} o
  * @param {object} o.normal varying vec3: the folded normal, world
  * @param {object} o.speck varying vec3: x how far the bird has shrunk to a speck (the rim fades),
- *   y how much its plumage darkens toward its silhouette
+ *   y how much its plumage darkens toward its silhouette, z how much less air it takes on
  * @param {object} o.bounce varying or node vec3: the ground's colour bounced up under the wings
  * @param {object} o.sunColour vec3 node
  * @param {number[]} o.sunDir unit direction TOWARD the sun
@@ -402,7 +402,9 @@ export function birdColourNode({
         const edge = float(1.0).sub(abs(dot(N, V)));
         const rim = haze.mul(edge.mul(edge).mul(edge).mul(thin.mul(0.14).add(0.06)))
             .mul(float(1).sub(far.x));
+        // The air with distance; a far speck keeps more of its dark silhouette (speck.z cuts it).
         const [from, to, most] = hazeRange;
-        return mix(lit.add(rim), haze, smoothstep(float(from), float(to), length(toEye)).mul(most));
+        const air = smoothstep(float(from), float(to), length(toEye)).mul(most).mul(float(1).sub(far.z));
+        return mix(lit.add(rim), haze, air);
     })();
 }

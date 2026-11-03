@@ -616,6 +616,145 @@ drinkers read as before:
   cut.
 - **The wake's crests** keep their travel speed; their strength already follows the swan's speed.
 
+### Visibility (2026-11-03): the heron seen, and flying
+
+The owner: "the heron is very hard to see!" Then the visibility check of every animal
+(the shared method in the visibility brief). The heron, then the swans and the drinkers.
+
+**How it was measured.** Real-game shots in Chrome over CDP (`cstations.mjs`, 2560x1440, PNG),
+the board clock frozen, the camera's breathing off, each shot taken twice: with the animal and
+with its mesh hidden. The pixels that differ (more than 0.08, in a body of them, the biggest
+blob and 2 px round it) are the animal. Its shadow and wake are not in it: the heron casts
+none, and a swan's wake and mirror image stay in both shots. Contrast is
+|mean Y animal - mean Y ground| / mean Y ground (linear luminance); dE is the mean CIE76 colour
+difference (Lab, D65). "Longest" is the farthest two of its pixels. Time in frame is from the
+rail camera in node (`odyssey-camera-rig.js`) over the whole loop.
+
+#### The heron
+
+**Before** (three times life, at its south-west spot): a 4-6 px wide stroke at the water's edge,
+10-11 px at the start of the L18 -> L19 glide and 22 px at L22-L23, at the very foot of the
+frame there. Its grey matched the shallows and its white the bright water.
+
+**What changed, in order, measured after each:**
+
+1. **Contrast.** A darker slate back (0.16, 0.18, 0.22), a whiter face, neck and crown sides
+   (0.94), a black shoulder patch and darker primaries, a yellower bill. Against the low sun the
+   edges of its feathers light up, most on white (a sun rim; the sun is behind it from the rail).
+   At 4-6 px wide this alone moved little (dE about the same, contrast mixed): it was too thin.
+2. **Size: 4.2 times life** (1.4x the pond's 3.0). It stands 26-30 px tall at the parks and 17-25
+   px through the glide. Beside the swans and the hind it still looks like a heron of its size
+   (below).
+3. **Where, inside the west lobe.** Its round now starts on the lobe's north shore, which every
+   view of the pond sees (in frame 100 % of the loop at p 0.235-0.255 and at L22-L23, higher in
+   the frame there than the old spot), and keeps the south-west shallows as its second place.
+4. **The flight**, every two or three minutes (two a loop: 115 s and 164 s apart).
+
+| Heron | p 0.235 | p 0.245 | p 0.255 | L22 | L23 |
+|---|---|---|---|---|---|
+| Before, longest (px) | 10.5 | 11.0 | 18.1 | 22.0 | 22.4 |
+| Before, contrast / dE | 1.97 / 26 | 0.77 / 28 | 0.44 / 33 | 0.14 / 32 | 0.15 / 28 |
+| Contrast step only, longest / dE | 11.0 / 25 | 14.0 / 27 | 18.1 / 36 | 22.0 / 32 | 23.5 / 29 |
+| After, south-west spot, longest | 16.5 | 20.4 | 25.7 | 28.9 | 27.0 |
+| After, south-west, contrast / dE | 1.40 / 30 | 1.46 / 32 | 0.97 / 38 | 1.34 / 38 | 1.26 / 32 |
+| After, north shore, longest | 18.0 | 21.1 | 25.1 | 32.3 | 33.1 |
+| After, north shore, contrast / dE | 1.36 / 27 | 1.22 / 27 | 1.95 / 32 | 1.23 / 31 | 0.80 / 33 |
+| In flight over the bank, longest | 23.0 | 26.5 | 32.2 | 37.2 | 36.2 |
+| In flight over the bank, contrast / dE | 2.3 / 29 | 2.7 / 30 | 3.2 / 32 | 6.0 / 35 | 6.9 / 35 |
+| In flight over the water, longest | 22.8 | 26.7 | 36.2 | 40.7 | 37.4 |
+| Reads? before | stroke | stroke | shape | shape | shape |
+| Reads? after | shape | shape / heron | heron | heron | heron |
+
+Trees and terrain hide it at none of these stations. At p 0.265 only the north shore is in frame
+(59 % of the loop). Its flights are in frame 100 % of their air time at every station but p 0.265
+(55 %); the second one leaves from the south-west shallows below the parks' frame and flies up
+into it.
+
+![The heron x3: rows p 0.245, p 0.255, L22, L23; columns before (south-west spot), after (south-west), after (north shore), in flight](images/odyssey-animals-2026-11-03/pond-heron-visibility-x4.jpg)
+
+![The same at real size (1:1)](images/odyssey-animals-2026-11-03/pond-heron-visibility-x1.jpg)
+
+**The flight** (`odyssey-pond-life-motion.js`, `HERON_FLIGHT`):
+
+- **The wings.** `pond_birds.py` builds open wings for it: broad and rounded, bowed down at the
+  hand, pale grey coverts and black flight feathers, 1.85 m tip to tip (times 4.2). Each has an
+  arm and a hand bone. Standing, they are drawn at size 0, so it looks as it did. As it takes
+  off they grow and unfold, the arm swung back and the hand folded forward at first.
+- **Keyed in Blender.** Nine channels (along the path, height, crouch, the shoulder's stroke, the
+  forward sweep, how open, body pitch, the neck, the legs) are keyframed on an Empty with Bezier
+  keys and auto-clamped handles, and sampled at 30 Hz into
+  `composition/odyssey-heron-flight-keys.js` (generated; `--flight-out`). The game reads them
+  cubic between samples.
+- **The take-off:** a crouch, the wings open, three deep beats to rise, the legs reaching down
+  and then trailing.
+- **In the air:** two slow beats (about 1.4 a second), a glide with the wings a little raised,
+  the neck drawn back into a tight S, the legs straight out behind, the body level. It follows a
+  curved path, its heading the path's way over 3 u (so the spline's knots never jerk it), banked
+  into its turns as a bird flies them (tan bank = speed x turn rate / g, at life size; at most
+  0.38 rad). Its feet stay 2 u and more over the bank it crosses; at most 1.4 m up (5.9 u).
+- **The landing:** braking beats with the wings swept forward, the body flared up, the legs
+  reaching for the water, a give as it lands, the wings folding away, then two quick steps to
+  settle (its head carried with them).
+- **The two flights:** from the north shore round over the west bank to the south-west shallows
+  (34.5 u), and back over the water (35.4 u). The 6.6 s flight is a calm one, about 12 u/s.
+- **Smooth:** in the air its body and neck turn at most 2.5 rad/s, its legs 5 rad/s (as they
+  swing back and forward again) and the wing bones 11.8 rad/s (the beats). Its heading turns at
+  most 1.8 rad/s. In its walks and stands nothing changed.
+
+![L22 (x2), 0.5 s apart: off the north shore, round over the dark bank, down into the south-west shallows](images/odyssey-animals-2026-11-03/pond-heron-flight-l22-x2.jpg)
+
+![The same flight at real size from the glide (p 0.245)](images/odyssey-animals-2026-11-03/pond-heron-flight-p245-x1.jpg)
+
+![Blender review renders of the game's own motion: one wingbeat (0.07 s a frame), the take-off, the landing](images/odyssey-animals-2026-11-03/pond-heron-flight-review.jpg)
+
+#### The swans
+
+Measured the same way (their bodies only). They are white on pale turquoise, so their luminance
+contrast is low (0.04-0.6) and their colour difference carries them. One change: a little warmer
+white (a mute swan's cream), less of the water's teal bounced up into its underside, and a
+smaller sun rim (0.45). Their size is unchanged (three times life).
+
+| Swans (both) | p 0.235 | p 0.245 | p 0.255 | L22 | L23 |
+|---|---|---|---|---|---|
+| Longest (px) | 16 | 18-19 | 22-27 | 22-28 | 19-26 |
+| dE before | 22-23 | 22 | 23 | 20 | 19-20 |
+| dE after | 22-24 | 22-23 | 24 | 20-21 | 20-21 |
+| Reads? | shape | shape | swan | swan | swan |
+
+![Swans x4, before (left) and after (right): p 0.235, 0.245, 0.255, L22, L23](images/odyssey-animals-2026-11-03/pond-swans-visibility-x4.jpg)
+
+#### The drinkers
+
+The deer helper measured them (the hind a speck at L15-L17, the calf a shape) and asked for
+1.2x: `ODYSSEY_TARN_DEER.scale` is now 3.6. At that size the calf's middle spot moved 2 u east
+(to -365.5, -438.1), so it keeps to gentle ground (slope 0.67, under the 0.75 gate) and its
+standing hooves meet the bank (0.07 of its size, under 0.1). The hind's spots are as they were
+(slope 0.62, hooves 0.07).
+
+![L22 (x2), before and after: the heron (north shore, right of the swans), the swans, the hind and her calf on the bank](images/odyssey-animals-2026-11-03/pond-scale-l22.jpg)
+
+**Scale beside each other.** The heron stands a little taller than a swan's raised head (in
+life they are about the same) and the hind stays the largest. It reads as one pond.
+
+**Cost.** The heron is 1,656 triangles (was 1,336: +320 for the wings) and 17 bones (was 13), in
+the same single instanced draw. No new texture, pass or pipeline. In a flight, the CPU adds a few
+path lookups and four ground heights a frame. The sun rim is a few shader instructions.
+
+**Tests** (`tests/unit/odyssey-pond-life.test.js`, 16): the heron's 17 bones (fish, then the
+four wing bones); its walks and stands as before; the wing bones under 14 rad/s; its heading
+under 2.2 rad/s in the air; two flights a loop, 90-180 s apart, the wings at size 0 whenever it
+is not flying, its feet over 1 u clear of the water and the bank, at most 8 u up; the flights in
+frame at L22-L23 (over 70 % of their air time); none of them in frame as the window closes.
+
+**For the owner:**
+
+- **A darker reflection under the heron** on the water would part it from the shallows a little
+  more. It needs a third row in the tarn's mirror (the world shader). Not done.
+- **The swans at 1.2x** (with their wake and mirror numbers) would bring them over 24 px through
+  the whole glide and keep their size beside the heron. Not done: they read at the parks.
+- **The flight is calm** (about 3 m/s at life size): slower than a real heron's cruise (8-10 m/s),
+  so the beats look deep and slow. A faster one would cross the view in two seconds.
+
 ### Left for later
 
 - **The drinkers' timing** follows their own five-minute loop, so a given pass may find them on the
@@ -1176,6 +1315,108 @@ measured values:
 - The walk's lateral order holds in about a third of the strides (the walks are short; they
   start and stop within a few strides).
 
+### Visibility (2026-11-03)
+
+The owner, about the heron: "the heron is very hard to see!", then: "start the visibility check".
+The question for the band: does a player on the rail see the horses and the foals, and see what
+they are? Do the dun and the bay melt into the meadow?
+
+**How it was measured** (the shared visibility brief):
+- Shots: the installed Chrome over CDP (Electron is blocked on this machine), 2560x1440 PNG. The
+  board clock is pinned and the frame step frozen, so the shots of one moment differ only where
+  the horses are (checked: no stray pixels, or only their dust in a run).
+- Four shots a moment: everything; no shadows or dust; no foals; no horses. Their differences
+  give each horse's own pixels, and the foals apart from the mares.
+- Where: L11, L15, L16, the glide L16-L17, L17 and L18. Grazing at board time 60 s (the west
+  place) and 200 s (the east place); the runs at 128 and 142 s (west to east) and 268 s (back).
+- Per horse: its longest extent; its luminance contrast |La - Lb| / Lb and its colour difference
+  ΔE (CIE Lab) against the pixels it covers. And, on the CPU twin over the 300 s loop, the share
+  of the loop it is in frame and not hidden by crowns or terrain.
+- The rule of thumb: it reads at 24 px or more, with a contrast of 0.35 or more or a ΔE of 20 or
+  more.
+
+**What was found:**
+- The adults read wherever they are in clear view: 28-84 px from L15 to L18, ΔE 20-43.
+- The dun does not melt. This meadow is a deep green, dark under the low sun. The dun and the grey
+  are 2-6 times brighter than the grass under them.
+- The bay was the one at the grass's own brightness (contrast 0.12-0.64 grazing). It read by its
+  hue alone (ΔE 27-31).
+- The bay foal was the weakest: 23-26 px at the median from L15-L16, contrast mostly 0.01-0.5. It
+  wore its mother's coat, and melted into her when it stood against her.
+- Crowns hide two places from L15-L16: the west end of the west place (the lead mare, her foal and
+  the grey), and the grey's spot in the east place (behind one tree).
+
+**What changed:**
+1. **A bright red bay.** The bay's body is lighter and redder: linear (0.20, 0.085, 0.035) became
+   (0.28, 0.118, 0.045). Its mealy pale is a little lighter too.
+2. **The foals' own coat.** A foal now wears its mother's colour, paler and softer, with lighter
+   legs and mane (`ODYSSEY_HORSES.foalCoat`: the body 40 % toward the pale, the points 45 % toward
+   the body). Real foals are born so; the dark points come with the first moult. It also parts a
+   foal from its mother.
+3. **The foals x1.1, as a share of their mothers** (`FOAL_SIZE`; the bay foal 1.1 x 0.95, as her
+   mother). As built a foal was 0.75 of its mother at the withers (two or three months old); now
+   it is 0.83 (about five months). It is still plainly a foal: long legs, a short body (0.65 of
+   her length), a big head. x1.12 beside the smaller bay mare looked like a yearling up close, so
+   the step follows the mother.
+4. **The grey's east spots, about 20 m south**, out from behind a tree as seen from L15, still
+   inside the east place.
+
+Measured in the frozen shots from L15 to L18 (median, with the lowest in brackets; "reads" counts
+the shots that pass the rule of thumb):
+
+| Horse | Size (px) | Contrast | ΔE | Reads | At real size |
+|---|---|---|---|---|---|
+| lead mare (dun) | 54 → 54 | 3.5 → 3.7 (1.4) | 32 (20) | 11/12 → 11/12 | yes |
+| mare (grey) | 56 → 54 | 3.1 → 3.7 (1.1) | 34 → 36 (22) | 11/11 → 14/14 | yes |
+| mare (bay) | 38 → 37 | **0.58 (0.12) → 0.91 (0.37)** | 29 → 30 (20) | 15/15 → 17/17 | yes |
+| mare (dun) | 48 → 46 | 2.5 → 2.0 (0.2) | 29 → 26 (20) | 12/13 → 14/15 | yes |
+| stallion (bay) | 48 → 48 | 0.73 (0.36) → 0.91 (0.62) | 27 → 29 (20) | 11/11 → 13/13 | yes |
+| foal (dun) | 36 → 43 | 3.3 → 3.3 (0.5) | 27 → 30 (16) | 8/10 → 9/11 | shape → yes |
+| foal (bay) | 24 → 24 | **0.18 (0.01) → 1.14 (0.32)** | 23 → 26 (11) | 4/12 → 8/15 | shape → yes from L16, a shape at L15 |
+
+(More shots count after: the grey is seen from L15 now, and a foal lands in a frozen shot where it
+was hidden before. The foals stand elsewhere at a given moment after the size step, so one shot's
+size is a sample; the loop below is the measure of size.)
+
+The share of the 300 s loop each horse is in frame and not hidden, and its median size there (the
+CPU twin, every 3 s):
+
+| Seen · median size | L11 | L15 | L16 | glide L16-L17 | L17 | L18 |
+|---|---|---|---|---|---|---|
+| lead mare (dun) | 39 % · 24 px | 32 % · 40 px | 46 % · 42 px | 46 % · 64 px | 52 % · 54 px | 54 % · 60 px |
+| mare (grey) | 41 → 40 % · 25 → 26 px | 7 → 47 % · 38 px | 47 → 46 % · 48 → 34 px | 47 → 46 % · 75 → 58 px | 2 % · 58 px | 36 % · 68 px |
+| mare (bay) | 2 % · 38 px | 96 % · 36 px | 96 % · 39 px | 91 % · 43 px | 27 % · 88 px | 28 % · 91 px |
+| mare (dun) | 31 % · 24 px | 98 % · 45 px | 96 % · 45 px | 77 % · 65 px | 13 % · 76 px | 4 % · 45 px |
+| stallion (bay) | 80 % · 25 px | 57 % · 35 px | 79 % · 32 px | 57 % · 52 px | 2 % · 138 px | 3 % · 61 px |
+| foal (dun) | 28 → 31 % · 16 → 18 px | 36 → 32 % · 25 → 24 px | 46 % · 25 → 31 px | 45 % · 35 → 46 px | 38 → 39 % · 33 → 43 px | 53 % · 41 → 48 px |
+| foal (bay) | 2 % · 22 → 24 px | 91 → 90 % · 23 → 26 px | 94 % · 26 → 28 px | 91 → 92 % · 34 → 35 px | 46 % · 42 → 45 px | 26 % · 39 → 51 px |
+
+![1:1 crops at 1440p, before and after: the bay redder, the foals pale beside their mothers, the grey (east) out from behind the tree](images/odyssey-animals-2026-11-03/horses-vis-x1-before-after.jpg)
+
+![x4 crops, before and after: the bay foal no longer melts into its bay mother; the dun foal a little larger; the bays brighter](images/odyssey-animals-2026-11-03/horses-vis-x4-before-after.jpg)
+
+![L16, the whole frame after: the band in the east place below the mountain](images/odyssey-animals-2026-11-03/horses-vis-l16-frame-after.jpg)
+
+**Kept:** the places, the runs and the clock (world-anchored, the window, never popping), the
+model and the draws, the cost, the levers. No glow, no outline. The contact shadow is as it was:
+on this dark grass a darker shade adds little.
+
+**Left, and owner decisions:**
+- **The west end, from L15-L16.** A wall of crowns hides everything west of x -112 from L15 and
+  L16. The lead mare, her foal and the grey graze there for about half the loop, so from those two
+  parks they are seen 32-47 % of the loop. Options:
+  - (a) leave it: they are seen there from L17-L18, and from L15-L16 in the east place;
+  - (b) move the west place 20-35 m east (every spot east of x -100 is seen from L15 to L18); but
+    seven horses then graze in ~45 m, and the round run starts differently;
+  - (c) thin the crowns in front (the forest's, another owner).
+- **L11** sees the band far off over a ridge: 13-30 px, ΔE 8-27, mostly hidden by the terrain. A
+  distant glimpse; more would need a much bigger band.
+- **The bay foal at L15** is 26 px at the median and under 24 px for about half its time there. A
+  further step (x1.2 of the mother) would make it read there, but beside her it would look like a
+  yearling.
+- A foal at its mother's far side, or nursing, is hidden by her for a share of the time. That is
+  natural, and stays.
+
 ## Hoofed motion pass: the red deer and the ibex (2026-11-03)
 
 The owner, on all the animals: "I want them to feel natural and move in a smooth and natural way".
@@ -1271,3 +1512,73 @@ far along the same line.
 - On a perch rock's faceted top a hoof's tilt can step when a turn carries it over a facet edge
   (one leg spike per loop for a nanny).
 - The ibex's leg speeds in the push stay high (a real leap's push is quick too).
+
+### Visibility (2026-11-03)
+
+The owner, after "the heron is very hard to see!": "start the visibility check". The question for
+each animal: does a player on the rail see it, and see what it is?
+
+**How it was measured.** The real game in Chrome at 2560x1440, parked at each station with the board
+clock pinned, the camera held still and the film grain off. Each station was shot three times: with
+the animals, without their bodies (their shadows kept), and with them again. The pixels that differ
+are the animal; whatever also changes between the two "with" shots (the orb's glass, motes) is not
+counted. Each animal's pixels were found from its projected skeleton. For each:
+- its longest extent in px;
+- its luminance contrast against what it covers;
+- ΔE (CIE Lab) against that.
+
+A node probe with the real camera and spline gave the time in view over the whole loop. Terrain hid
+nothing at any of these stations; trees are noted below. As a rule of thumb, an animal reads at 24 px
+or more, with a contrast of 0.35 or more or a ΔE of 20 or more.
+
+| Animal, station | Size (px) | Contrast | ΔE | Reads? |
+|---|---|---|---|---|
+| Glade deer, L10 and p 0.14 | hinds 20-41, calf 11 | 0.3-0.6 | 14-24 | a shape (the act's blue haze) |
+| Glade deer, L11 | hinds 21-37, yearling 19 | 0.1-0.5 | 17-24 | a shape, the nearest a deer |
+| Glade deer, L14 | hinds 28-38, yearling 23 | 0.6-1.3 | 27-28 | yes (some behind tree crowns) |
+| Glade deer, L15 and L17 | hinds 47-82, yearling 29-36, calf 18-35 | 0.5-0.9 | 26-35 | yes |
+| Tarn drinkers, L15-L17 | hind about 17, calf about 10 | | | a speck |
+| Tarn drinkers, L18 | hind 24, calf 14 | 0.68 | 17 | a shape |
+| Tarn drinkers, p 0.25, L22, L23 | hind 27-34, calf 15-19 | 0.4-2.0 | 19-26 | the hind yes, the calf a shape |
+| Ibex, L19-L21, before / after | buck 17 / 20, nannies 12-14 / 15-17 | 1.6-2.4 | 18-22 | a speck / a shape |
+| Ibex, L22, before / after | buck 51 / 62, nannies 24-28 / 29-33 | 1.0-3.0 | 19-24 | nannies borderline / yes |
+| Ibex, L24-L25, before / after | buck 49-54 / 56-80, nannies 24-40 / 29-49, kid 20 / 25 | 1.5-5.4 | 18-27 | yes / yes, the kid now too |
+
+In the glade, every deer is in view 100 % of the time from L10 to L15. At L17 two hinds walk out of
+the frame for part of the loop. The drinkers and the ibex are in view 100 % of the time at every
+station listed.
+
+**The ibex coat** reads against the grass: luminance contrast 1.6-5.8, ΔE 18-27 (a pale goat on dark
+grass). Seen end-on in shade, the contrast drops to 0.1-0.2, but ΔE stays at 20-28. Against the perch
+rock under it, it reads weakly: contrast 0.3-0.6, ΔE 8-16. Only a small part of the outline is against
+the rock (15-40 px of 900-1,600). The dark markings do not show at game size. What tells a player it
+is an ibex is the buck's horns, and before this check he spent most of his time on his rock grazing,
+head down.
+
+**What changed (the ibex):**
+- **Drawn 1.2 times larger** (`ODYSSEY_IBEX.scale` 3 -> 3.6). The model is a nanny's size, so the
+  buck now stands a hind's height at the withers (3.35 u against her 3.4 u), and the nannies stand
+  lower.
+- **On a perch it mostly stands head up and looks out:** short bites, longer looks. That share went
+  from 22-30 % to 62-74 % of their time on the rock, so the buck's horns stand against the slope.
+- **The body rolls more with the shelf's 27-degree slope** (`rollShare` 0.35, the deer's 0.12). It
+  is still smooth: root angular acceleration p99 3.7-7.2 rad/s², max 36. Uphill and downhill legs
+  stay in reach at the larger size.
+
+![The ibex at L22 and L25, before and after (crops enlarged 3.75x; the board clock pinned at 66 s)](images/odyssey-animals-2026-11-03/visibility-ibex-x4.jpg)
+
+![The same, at real size (1:1)](images/odyssey-animals-2026-11-03/visibility-ibex-x1.jpg)
+
+![L24, the full frame, before and after](images/odyssey-animals-2026-11-03/visibility-ibex-full.jpg)
+
+![The glade deer at L11, L14, L15 and the drinkers at L18, p 0.25 and L22 (crops, enlarged)](images/odyssey-animals-2026-11-03/visibility-glade-tarn-x4.jpg)
+
+**Left as they are, and why:**
+- **The glade deer read from L14 on.** At L10-L11 they are shapes in the act's haze, which is right
+  for the distance.
+- **The tarn's drinkers:** the hind reads from p 0.25 on, while the calf stays a shape. Their size
+  and their place are the pond's (`ODYSSEY_TARN_DEER` in `odyssey-pond-life-motion.js`). A scale of
+  3.6 (1.2 times) would make the hind 23 px at L18 and about 36 px at L22, and the calf 15-23 px.
+  That is proposed, not done.
+- **The ibex at L19-L21 stay specks or shapes.** The shelf is 130-170 m from those parks; reading
+  there would need twice the size or another place. That is an owner decision.
