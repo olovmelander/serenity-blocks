@@ -14,7 +14,7 @@ const CUES = Object.freeze({
     clear: [1, 0.75],
     combo: [1, 0.9],
     tspin: [2, 1],
-    tetris: [3, 1.1],
+    quad: [3, 1.1],
     perfectClear: [4, 1.25],
     levelUp: [2, 0.85],
 });

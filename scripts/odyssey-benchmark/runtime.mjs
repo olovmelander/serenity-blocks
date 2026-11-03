@@ -62,7 +62,7 @@ export function summarizeFeel(samples) {
         if (sample.nearTop && !wasNear) nearMisses++;
         wasNear = sample.nearTop;
         const before = play[index - 1];
-        if (before && ['doubles', 'triples', 'tetrises', 'cascades'].some((key) => sample[key] > before[key])) {
+        if (before && ['doubles', 'triples', 'quads', 'cascades'].some((key) => sample[key] > before[key])) {
             events.push(sample.t);
         }
     });
@@ -75,7 +75,7 @@ export function summarizeFeel(samples) {
     gaps.push(last.t - previous);
     const third = Math.max(1, Math.floor(play.length / 3));
     const meanHeight = (entries) => entries.reduce((sum, entry) => sum + entry.height, 0) / entries.length;
-    const clears = Object.fromEntries(['singles', 'doubles', 'triples', 'tetrises']
+    const clears = Object.fromEntries(['singles', 'doubles', 'triples', 'quads']
         .map((key) => [key, last[key] - first[key]]));
     const totalClears = Object.values(clears).reduce((sum, count) => sum + count, 0);
     const minutes = (last.t - first.t) / 60;
@@ -524,7 +524,7 @@ export async function runAttempt({
                         singles: settled.singles || 0,
                         doubles: settled.doubles || 0,
                         triples: settled.triples || 0,
-                        tetrises: settled.tetrises || 0,
+                        quads: settled.quads || 0,
                         cascades: settled.cascades || 0,
                         goal: gameState.goalComplete === true,
                     });

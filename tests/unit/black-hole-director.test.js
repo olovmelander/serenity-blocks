@@ -278,7 +278,7 @@ describe('Black Hole director: clears, streaks and the jets', () => {
         expect(director.jets).toBeLessThan(0.3);
         expect(active(director.bursts)).toHaveLength(1);
         expect(director.ripples.some((ripple) => ripple.active && ripple.fromHole)).toBe(true);
-        expect(director.shakeAmount).toBe(SHAKE.TETRIS[0]);
+        expect(director.shakeAmount).toBe(SHAKE.QUAD[0]);
         run(director, 0.5);
         expect(director.jets).toBeGreaterThan(0.98);
         run(director, 1);

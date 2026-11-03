@@ -178,7 +178,7 @@ describe('Blood Moon production lifecycle', () => {
         const { scene } = allocation();
         win.settings.effectQuality = 'low';
         win.settings.graphicsQuality = 'Extreme';
-        win.location.search = '?board=1&event=tetris&eventAge=.5&t=2&bloodMoonTime=8&bloodMoonSeed=71';
+        win.location.search = '?board=1&event=quad&eventAge=.5&t=2&bloodMoonTime=8&bloodMoonSeed=71';
         await value.createScene();
         const { params } = mocks.create.mock.calls[0][0];
         expect(params.get('quality')).toBe('Low');
@@ -275,7 +275,7 @@ describe('Blood Moon production lifecycle', () => {
         value.setupListeners();
         const clear = { lineCount: 4, comboCount: 3 };
         eventBus.emit(EVENTS.LINE_CLEAR, clear);
-        expect(scene.cue).toHaveBeenCalledExactlyOnceWith('tetris', clear);
+        expect(scene.cue).toHaveBeenCalledExactlyOnceWith('quad', clear);
         value.pause();
         eventBus.emit(EVENTS.LINE_CLEAR, clear);
         expect(scene.cue).toHaveBeenCalledTimes(1);

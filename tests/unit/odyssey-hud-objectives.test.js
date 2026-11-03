@@ -308,8 +308,8 @@ describe('Odyssey orb-level objective presentation', () => {
         hud.levelConfig.victory.primary = { type: 'combo', target: 4 };
         hud.updateMetrics({ combo: 3 });
         expect(hud.progressValue.textContent).toBe('3 / 4');
-        hud.levelConfig.victory.primary = { type: 'tetrises', target: 3 };
-        hud.updateMetrics({ tetrises: 2 });
+        hud.levelConfig.victory.primary = { type: 'quads', target: 3 };
+        hud.updateMetrics({ quads: 2 });
         expect(hud.progressValue.textContent).toBe('2 / 3');
     });
 

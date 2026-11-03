@@ -12,7 +12,7 @@
  * Per-event responses (asked for by the show):
  *   - HARD_DROP   → small punch toward board impact point
  *   - LINE_CLEAR  → no change (fluid handles the visual)
- *   - TETRIS      → dolly push 0.4u toward fluid center over 0.4s
+ *   - QUAD      → dolly push 0.4u toward fluid center over 0.4s
  *   - COMBO 7+    → dolly-zoom (Vertigo) over 1.2s
  *   - GAME_OVER   → slow pull-back to wide shot over 2s
  *

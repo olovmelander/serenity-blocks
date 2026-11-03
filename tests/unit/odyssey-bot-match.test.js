@@ -205,7 +205,7 @@ describe('Odyssey beat-the-bot match', () => {
             await vi.runAllTimersAsync();
             await human.latestPhysicsPromise;
             expect(session.hybridEngine.getMetrics().lines).toBe(4);
-            expect(session.hybridEngine.getMetrics().tetrises).toBe(1);
+            expect(session.hybridEngine.getMetrics().quads).toBe(1);
             expect(match.getSnapshot().botPendingGarbage).toBeGreaterThanOrEqual(3);
             expect(match.multiplayer.lastAttackerIds[1]).toBe(0);
             expect(human.currentPiece).not.toBeNull();

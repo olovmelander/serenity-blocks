@@ -334,16 +334,16 @@ describe('Fall reaction director', () => {
     describe('line clears', () => {
         it('blows twin jets out of both sides at the height of the cleared rows', () => {
             const single = create();
-            const tetris = create();
+            const quad = create();
             expect(single.onLineClear(1, { clearedRows: [23] })).toBe(true);
-            expect(tetris.onLineClear(4, { clearedRows: [20, 21, 22, 23] })).toBe(true);
+            expect(quad.onLineClear(4, { clearedRows: [20, 21, 22, 23] })).toBe(true);
             expect(single.frame.emitters.map((emitter) => emitter.kind)).toEqual(['clear', 'clear']);
             expect(single.frame.emitters.map((emitter) => emitter.side)).toEqual([-1, 1]);
             for (const emitter of single.frame.emitters) {
                 expect(emitter.row).toBeCloseTo(0.025, 10);
                 expect(emitter).toMatchObject({ lines: 1, age: 0 });
             }
-            const jets = emittersOf(tetris.frame, 'clear');
+            const jets = emittersOf(quad.frame, 'clear');
             expect(jets.map((emitter) => emitter.side)).toEqual([-1, 1]);
             for (const emitter of jets) {
                 expect(emitter.row).toBeCloseTo(0.1, 10);
@@ -358,7 +358,7 @@ describe('Fall reaction director', () => {
             const top = create();
             top.onLineClear(1, { clearedRows: [4] });
             expect(top.frame.emitters[0].row).toBeCloseTo(0.975, 10);
-            expectBounded(tetris.frame, tetris.maxEmitters);
+            expectBounded(quad.frame, quad.maxEmitters);
         });
 
         it('adds a gust front from two lines and a canopy shower only for four', () => {
@@ -788,14 +788,14 @@ describe('Fall reaction director', () => {
 
         it('makes the whole grove exhale on a perfect clear', () => {
             const perfect = create();
-            const tetris = create();
+            const quad = create();
             expect(perfect.onPerfectClear({ depth: 4 })).toBe(true);
-            tetris.onLineClear(4);
+            quad.onLineClear(4);
             const { frame } = perfect;
             expect(frame.emitters.map((emitter) => emitter.kind)).toEqual(['shower', 'crown']);
             expect(frame.front).not.toBeNull();
-            for (const key of ENVELOPES) expect(frame[key]).toBeGreaterThanOrEqual(tetris.frame[key]);
-            const shower = emittersOf(tetris.frame, 'shower')[0];
+            for (const key of ENVELOPES) expect(frame[key]).toBeGreaterThanOrEqual(quad.frame[key]);
+            const shower = emittersOf(quad.frame, 'shower')[0];
             expect(frame.emitters[0].strength).toBeGreaterThanOrEqual(shower.strength);
             expect(frame.emitters[0].duration).toBeGreaterThanOrEqual(shower.duration);
             const wound = advance(perfect, 0.5);

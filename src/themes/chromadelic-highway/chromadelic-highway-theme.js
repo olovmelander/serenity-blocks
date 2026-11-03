@@ -1861,7 +1861,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
     /**
      * Hor+ lens: 60° vertical, the horizontal FOV widening with the aspect and capped at 104°
      * (the composition is authored in viewport heights). The world adds pace widening and the
-     * Tetris surge on top each frame.
+     * Quad surge on top each frame.
      */
     updateCameraProjection(width, height) {
         if (!this.camera) return;

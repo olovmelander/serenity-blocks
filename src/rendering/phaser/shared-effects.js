@@ -527,7 +527,7 @@ export class SharedEffects {
 
     /**
      * Resolve a line-clear "tier" from the number of lines cleared in one drop.
-     * Drives an escalating crescendo: a single clears cleanly, a quad (Tetris)
+     * Drives an escalating crescendo: a single clears cleanly, a quad
      * gets a white-hot flash, big shake, full-screen pop and a hit-stop.
      * @param {number} lineCount - Lines cleared simultaneously (this cascade stage)
      * @returns {{name:string, flashAlpha:number, whiteCore:boolean, fullscreen:boolean, shake:number, shakeDur:number, particleBoost:number, hitStop:number}}

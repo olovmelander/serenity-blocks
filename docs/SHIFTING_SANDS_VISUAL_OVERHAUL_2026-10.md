@@ -54,7 +54,7 @@ names and fails the build on any of them.
 | `shifting-sands-tsl.js` | Shared TSL helpers (all `setLayout`-wrapped), the value-noise texture, the one atmosphere. |
 
 Playground: `playground.html?effect=shifting-sands` mounts the same world and post
-(`quality=`, `board=1`, `event=lock|combo|clear|tetris|levelUp&eventAge=…`, `dusk=0..1`,
+(`quality=`, `board=1`, `event=lock|combo|clear|quad|levelUp&eventAge=…`, `dusk=0..1`,
 `parts=dunes,sky,rocks,worm,fx`, `falseColor=1`, `noPost=1`, `rays=`, `bloom=`, `icon=1`; for the
 worm: `breach=1` makes `?t=` count from the idle worm breaking the sand, `cycle=<n>` picks the
 cycle, `wormAz/wormDist/wormHeading/wormLeap/wormR` hold it at a site, `follow=1` aims a tight

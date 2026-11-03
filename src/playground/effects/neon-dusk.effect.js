@@ -12,7 +12,7 @@
  *                            layout rules from public/styles/main.css; the composition solver
  *                            reads its rect exactly as in game). board=0 → the centred menu shot
  *   hud=0                    board without the HUD mock
- *   event=lock|clear|combo|tetris|levelUp  fire a gameplay event...
+ *   event=lock|clear|combo|quad|levelUp  fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, piece=<T..>)
  *   event=locks              a run of `count` locks (default 6), one every `every` s (default
  *                            1), each piece and column in turn; eventAge is the last one's age
@@ -117,7 +117,7 @@ export function create({
             });
         } else if (eventName === 'combo') world.onCombo(num(params, 'combo', 4));
         else if (eventName === 'clear') world.onLineClear(num(params, 'lines', 2));
-        else if (eventName === 'tetris') world.onLineClear(4);
+        else if (eventName === 'quad') world.onLineClear(4);
         else if (eventName === 'levelUp') world.onLevelUp();
         else if (eventName === 'perfect') world.onPerfectClear();
         else if (eventName === 'tspin') world.onTSpin(num(params, 'lines', 0));

@@ -135,7 +135,7 @@ const metricAlias = (key) => ({
     combo: 'maxCombo',
     cascade: 'cascades',
     'max-cascade-depth': 'maxCascadeDepth',
-    'tetris-count': 'tetrises',
+    'quad-count': 'quads',
     pieces: 'piecesPlaced',
     maxDeaths: 'deaths',
 }[key] || key);
@@ -215,7 +215,7 @@ function searchUtility(node, rules, previews, geometryObjective) {
         if (requirement.timeUnvalidated || requirement.upperBound || !requirement.target) continue;
         const ratio = Math.min(1, requirement.actual / requirement.target);
         if (['maxCombo', 'maxCascadeDepth'].includes(requirement.metric)) score += 140000 * ratio ** 3;
-        else if (requirement.metric === 'tetrises') score += 30000 * ratio;
+        else if (requirement.metric === 'quads') score += 30000 * ratio;
         else if (requirement.metric === 'cascades') score += 20000 * ratio;
         else score += 10000 * ratio;
     }

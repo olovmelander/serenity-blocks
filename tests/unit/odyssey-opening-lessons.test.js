@@ -59,6 +59,6 @@ describe('prepared openings teach their lesson', () => {
     it('orb 12: an I in the open column clears all four rows, the first Quad', async () => {
         expect(getLevelById(12).mechanics.board.opening).toEqual(Array(4).fill('XXXXXXXXX.'));
         const metrics = await play(12, [UPRIGHT_I]);
-        expect(metrics).toMatchObject({ lines: 4, tetrises: 1 });
+        expect(metrics).toMatchObject({ lines: 4, quads: 1 });
     });
 });

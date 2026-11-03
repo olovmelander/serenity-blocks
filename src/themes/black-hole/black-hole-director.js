@@ -687,7 +687,7 @@ export class BlackHoleDirector {
                 this.jetPulse = Math.max(this.jetPulse, 2.6);
                 this.eject(0.85 * scale, 0.35);
                 holeRipple = Math.max(holeRipple, 0.04);
-                this.shake(...SHAKE.TETRIS);
+                this.shake(...SHAKE.QUAD);
             }
             if (streak >= 8) holeRipple = Math.max(holeRipple, 0.03);
             if (depth >= 2) holeRipple = Math.max(holeRipple, 0.014 + depth * 0.005);

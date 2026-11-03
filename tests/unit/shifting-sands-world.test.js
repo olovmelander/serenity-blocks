@@ -174,7 +174,7 @@ describe('shifting sands world', () => {
         expect(scene.children.length).toBe(0);
     });
 
-    it('answers a Tetris with the worm and a dust geyser at its emergence', () => {
+    it('answers a Quad with the worm and a dust geyser at its emergence', () => {
         const { world, camera } = makeWorld();
         world.seek(10);
         world.update({ time: 10, delta: 0 }, camera);

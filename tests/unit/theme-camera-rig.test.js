@@ -77,8 +77,8 @@ describe('ThemeCameraRig', () => {
         expect(amount(2, 1)).toBeGreaterThan(amount(1, 1)); // more lines → bigger
         expect(amount(1, 6)).toBeGreaterThan(amount(1, 1)); // longer chain → bigger
         expect(amount(4, 20)).toBeLessThanOrEqual(SHAKE.CLEAR_MAX); // capped
-        expect(SHAKE.TETRIS[0]).toBeGreaterThan(amount(1, 1));
-        expect(SHAKE.APEX[0]).toBeGreaterThan(SHAKE.TETRIS[0]);
+        expect(SHAKE.QUAD[0]).toBeGreaterThan(amount(1, 1));
+        expect(SHAKE.APEX[0]).toBeGreaterThan(SHAKE.QUAD[0]);
     });
 
     it('never accumulates: its own output is never next frame\'s input', () => {
@@ -155,7 +155,7 @@ describe('ThemeCameraRig', () => {
             const { camera, rig, base } = makeRig({ distance: 1200, breathe: true });
             const trace = [];
             for (let i = 0; i < 60; i += 1) {
-                if (i === 5 || i === 30) rig.shake(...SHAKE.TETRIS);
+                if (i === 5 || i === 30) rig.shake(...SHAKE.QUAD);
                 rig.apply(1 / 60, base);
                 trace.push([camera.position.x, camera.position.y, camera.quaternion.z]);
             }

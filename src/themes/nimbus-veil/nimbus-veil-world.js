@@ -817,7 +817,7 @@ export class NimbusWorld {
     }
 
     /**
-     * A heavenly burst (combos, Tetris, level up): golden glints leave the sun and drift to their
+     * A heavenly burst (combos, Quad, level up): golden glints leave the sun and drift to their
      * own targets across the WHOLE screen — 70 % anywhere in the view, 30 % around the sun — then
      * float upward and twinkle out. Velocities are solved from the drag model (travel = v / drag).
      */

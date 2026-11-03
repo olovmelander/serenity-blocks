@@ -18,7 +18,7 @@ function node(overrides = {}) {
             level: 7, linesUntilNextLevel: 15, disableLevelProgression: false, isInfinityMode: false,
         },
         metrics: {
-            score: 0, lines: 0, tetrises: 0, maxCombo: 0, maxCascadeDepth: 0, cascades: 0,
+            score: 0, lines: 0, quads: 0, maxCombo: 0, maxCascadeDepth: 0, cascades: 0,
         },
         pathCost: 0,
         ...overrides,
@@ -93,7 +93,7 @@ describe('structural mastery setup guidance', () => {
         });
         const quad = node({
             metrics: {
-                ...node().metrics, tetrises: 1, lines: 4, score: 3400,
+                ...node().metrics, quads: 1, lines: 4, score: 3400,
             },
         });
         const single = node({
@@ -102,7 +102,7 @@ describe('structural mastery setup guidance', () => {
             },
         });
         expect(masteryGeometryUtility(quad, objective)).toBeGreaterThan(masteryGeometryUtility(single, objective));
-        expect(createMasteryGeometryObjective(observation(49, { tetrises: 8 })))
+        expect(createMasteryGeometryObjective(observation(49, { quads: 8 })))
             .toMatchObject({ phase: 'chain-storage', minimumStoredCells: 110, chainDepth: 5 });
     });
 

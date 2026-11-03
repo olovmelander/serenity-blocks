@@ -12,7 +12,7 @@
  *                            layout rules from public/styles/main.css; the composition solver
  *                            reads its rect exactly as in game). board=0 → the centred menu shot
  *   hud=0                    board without the HUD mock
- *   event=lock|clear|combo|tetris|levelUp  fire a gameplay event...
+ *   event=lock|clear|combo|quad|levelUp  fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>)
  *   parts=sky,sea,...        draw only these parts (sky sea cumulus fx)
  *   noPost=1                 raw scene (no bloom/grade)
@@ -101,7 +101,7 @@ export function create({
             world.onPieceLock();
         } else if (eventName === 'combo') world.onCombo(num(params, 'combo', 4));
         else if (eventName === 'clear') world.onLineClear(num(params, 'lines', 2));
-        else if (eventName === 'tetris') world.onLineClear(4);
+        else if (eventName === 'quad') world.onLineClear(4);
         else if (eventName === 'levelUp') world.onLevelUp();
     };
 

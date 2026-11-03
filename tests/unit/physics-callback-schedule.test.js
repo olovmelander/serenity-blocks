@@ -202,10 +202,10 @@ describe.each([
 
     it('B2B: fires only when the PREVIOUS lock was difficult and this one is too', async () => {
         // onB2B(true) fires BEFORE b2bActive is re-set — it reflects the prior
-        // lock (physics.js:850-853). A tetris with b2bActive preset → fires and
+        // lock (physics.js:850-853). A quad with b2bActive preset → fires and
         // stays armed.
-        const tetrisRows = [BOTTOM, BOTTOM - 1, BOTTOM - 2, BOTTOM - 3].map((y) => fullRowPiece(y, `r${y}`));
-        const armed = makeState({ b2bActive: true, lockedPieces: [...tetrisRows, loneBlock(0, BOTTOM - 8)] });
+        const quadRows = [BOTTOM, BOTTOM - 1, BOTTOM - 2, BOTTOM - 3].map((y) => fullRowPiece(y, `r${y}`));
+        const armed = makeState({ b2bActive: true, lockedPieces: [...quadRows, loneBlock(0, BOTTOM - 8)] });
         const armedLog = [];
         await processPhysics(armed, recorder(armedLog));
         const names = armedLog.map(([n]) => n);

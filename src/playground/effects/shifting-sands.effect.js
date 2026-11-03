@@ -10,7 +10,7 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); the
  *                            post's calm zones read its rects
  *   statsHud=0               with board=1: board only, no HUD mock
- *   event=lock|combo|clear|tetris|levelUp   fire a gameplay event...
+ *   event=lock|combo|clear|quad|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, level=<n>)
  *   dusk=0..1                hold the dusk still (otherwise the clock walks it: golden hour,
  *                            halfway, deep dusk and back, a stop every DUSK_WALK.seconds)
@@ -155,7 +155,7 @@ export function create({
         if (eventName === 'lock') world.onPieceLock?.();
         else if (eventName === 'combo') world.onCombo?.(num(params, 'combo', 4));
         else if (eventName === 'clear') world.onLineClear?.(num(params, 'lines', 2));
-        else if (eventName === 'tetris') world.onLineClear?.(4);
+        else if (eventName === 'quad') world.onLineClear?.(4);
         else if (eventName === 'levelUp') world.onLevelUp?.(num(params, 'level', 2));
     };
 

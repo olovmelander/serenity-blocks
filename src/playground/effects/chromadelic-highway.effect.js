@@ -12,7 +12,7 @@
  *                            the composition solver and the post's board veil read its rects
  *   hud=0                    with board=1: board only, no HUD mock
  *   pulse / ring / particle / ambient = 0..1   hold a reactive state
- *   event=lock|combo|clear|tetris|levelUp|tspin|b2b|perfect  fire a gameplay event...
+ *   event=lock|combo|clear|quad|levelUp|tspin|b2b|perfect  fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, level=<n>)
  *   parts=sky,stars,...      draw only these parts (sky stars planets road rails rings streaks
  *                            motes meteors) for isolated iteration
@@ -138,7 +138,7 @@ export function create({
         if (ev.name === 'lock') world.onPieceLock();
         else if (ev.name === 'combo') world.onCombo(ev.combo);
         else if (ev.name === 'clear') world.onLineClear(ev.lines);
-        else if (ev.name === 'tetris') world.onLineClear(4);
+        else if (ev.name === 'quad') world.onLineClear(4);
         else if (ev.name === 'levelUp') world.onLevelUp(ev.level);
         else if (ev.name === 'tspin') world.onTSpin(ev.lines);
         else if (ev.name === 'b2b') world.onB2B();

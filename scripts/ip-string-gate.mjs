@@ -4,19 +4,14 @@
  *
  * Two classes of third-party token, two scopes:
  *
- * A. Shipped surfaces — the genre mark. Scans, case-insensitively, for standalone "tetris"
- *    and any "tetrimino" spelling in:
+ * A. Shipped surfaces — the genre mark. Scans, case-insensitively, for "tetris" and any
+ *    "tetrimino" spelling in:
  *      1. public/** and index.html  — copied verbatim into every build
- *      2. dist/**                   — the built web artifact, when present
- *    Allowed:
- *      - CREDITS.md / README.md copies in dist (the counsel-reviewed legal notice)
- *      - internal identifiers that survive minification into JS bundles: tokens that are
- *        identifier fragments (tetrisFlash, _cueTetris, isTetris), property accesses
- *        (.tetris/.TETRIS), object keys (tetris:), bare string literals ('tetris' event
- *        kind), and the serialized victory-condition type 'tetris-count'. Renaming these
- *        touches save/replay data and is tracked as P2 hygiene in the review — this gate
- *        stops NEW consumer-facing uses (e.g. a "like Tetris" sentence in copy) while that
- *        debt exists.
+ *      2. the runtime source         — tracked text under src/ and electron/
+ *      3. dist/**                   — the built web artifact, when present
+ *    The only allowance: the CREDITS.md / README.md copies in dist (the legal notice). Code
+ *    names its own things (a four-line clear is a quad, its event 'quad', its Odyssey goal
+ *    'quads'), so identifiers, keys and string literals get no exemption either.
  *
  * B. The whole tracked tree — names from other people's fictional worlds. A theme may evoke
  *    a setting (an alien twin-sun desert with a giant worm is fine); it may not name one, and
@@ -43,7 +38,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    BLOCKED_TOKENS, RATCHET_TOKENS, compareToBaseline, countTokens, findToken, isInternalIdentifierUse,
+    BLOCKED_TOKENS, RATCHET_TOKENS, compareToBaseline, countTokens, findToken,
 } from './ip-tokens.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -69,15 +64,10 @@ function* walk(dir) {
     }
 }
 
-function scanFile(fullPath, relPath, token, { allowInternalIdentifiers = false } = {}) {
+function scanFile(fullPath, relPath, token) {
     const violations = [];
     const source = fs.readFileSync(fullPath, 'utf8');
     for (const match of source.matchAll(token)) {
-        if (
-            allowInternalIdentifiers &&
-            isInternalIdentifierUse(source, match.index, match[0].length)
-        )
-            continue;
         const start = Math.max(0, match.index - 24);
         const context = source.slice(start, match.index + match[0].length + 24);
         const line = source.slice(0, match.index).split('\n').length;
@@ -107,9 +97,9 @@ function trackedFiles() {
 
 const violations = [];
 const surfaces = [];
+const tracked = trackedFiles().filter((rel) => !TREE_SKIP.has(rel) && fs.existsSync(path.join(repoRoot, rel)));
 
-// A1. Verbatim-copied source surfaces (always scanned; no identifier allowance —
-//     nothing in public/ or index.html should need these tokens at all).
+// A1. Verbatim-copied source surfaces (always scanned).
 const publicDir = path.join(repoRoot, 'public');
 if (fs.existsSync(publicDir)) {
     for (const file of walk(publicDir)) {
@@ -125,16 +115,23 @@ if (fs.existsSync(indexHtml)) {
     surfaces.push('index.html');
 }
 
-// A2. Built artifact, when present (JS bundles get the identifier allowance for the genre
-//     mark; world names get none).
+// A2. The runtime source: everything under src/ and electron/ that ends up in a build.
+let runtimeCount = 0;
+for (const rel of tracked) {
+    if (!/^(src|electron)\//.test(rel) || !TREE_TEXT_EXT.test(rel)) continue;
+    violations.push(...scanFile(path.join(repoRoot, rel), rel, GENRE_TOKEN));
+    runtimeCount++;
+}
+surfaces.push(`runtime source (${runtimeCount} text files)`);
+
+// A3. Built artifact, when present.
 const distDir = path.join(repoRoot, 'dist');
 if (fs.existsSync(distDir)) {
     for (const file of walk(distDir)) {
         if (!TEXT_EXT.test(file)) continue;
         const rel = path.relative(repoRoot, file).replace(/\\/g, '/');
         if (ALLOWED_FILES.has(rel)) continue;
-        const isBundle = /\.(js|mjs)$/i.test(rel);
-        violations.push(...scanFile(file, rel, GENRE_TOKEN, { allowInternalIdentifiers: isBundle }));
+        violations.push(...scanFile(file, rel, GENRE_TOKEN));
         violations.push(...scanFile(file, rel, WORLD_TOKEN));
         const text = fs.readFileSync(file, 'utf8');
         for (const token of BLOCKED_TOKENS) {
@@ -152,7 +149,6 @@ if (fs.existsSync(distDir)) {
 }
 
 // B. Every tracked text file: world names from other franchises, anywhere.
-const tracked = trackedFiles().filter((rel) => !TREE_SKIP.has(rel) && fs.existsSync(path.join(repoRoot, rel)));
 let treeCount = 0;
 for (const rel of tracked) {
     if (!TREE_TEXT_EXT.test(rel)) continue;

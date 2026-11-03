@@ -217,7 +217,7 @@ describe.each(TIERS)('shifting sands shaders at %s', (quality) => {
         const camera = new THREE.PerspectiveCamera(50, 16 / 9, 2, 26000);
         world = new ShiftingSandsWorld({ scene, quality, capture: true }).build();
         world.setViewport(900, camera);
-        // A frame mid-breach, after a Tetris called the second worm and a clear threw geysers.
+        // A frame mid-breach, after a Quad called the second worm and a clear threw geysers.
         const t0 = world.director.idleBreach(0).t0 + 3;
         world.seek(t0);
         const sim = (time) => ({

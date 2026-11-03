@@ -1199,7 +1199,7 @@ export class NeonDuskWorld {
     }
 
     /**
-     * A neon pixel burst (combos, Tetris, level up): pixels leave the sun's face and fly to their
+     * A neon pixel burst (combos, Quad, level up): pixels leave the sun's face and fly to their
      * own targets across the WHOLE screen — 70 % anywhere in the view, 30 % around the sun — then
      * flicker out. Velocities are solved from the drag model (travel = v / drag).
      */

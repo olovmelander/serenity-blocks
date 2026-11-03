@@ -41,13 +41,13 @@ describe('bounded Odyssey mastery search', () => {
     it('requires actual joint tier-three metrics but keeps independent optional bonuses separate', () => {
         const rules = rulesFor(55);
         const progress = metrics({
-            score: 400000, cascades: 28, maxCascadeDepth: 6, maxCombo: 6, tetrises: 0,
+            score: 400000, cascades: 28, maxCascadeDepth: 6, maxCombo: 6, quads: 0,
         });
         const quality = evaluateMasteryMetrics(rules, progress);
         expect(quality.masteryUntimedConditionsMet).toBe(true);
         expect(quality.tierThreeUntimedConditionsMet).toBe(true);
         expect(quality.allBonusesUntimedConditionsMet).toBe(false);
-        expect(quality.bonuses.find((bonus) => bonus.type === 'tetris-count').untimedConditionMet).toBe(false);
+        expect(quality.bonuses.find((bonus) => bonus.type === 'quad-count').untimedConditionMet).toBe(false);
         expect(quality.timedStars).toBeNull();
         // Showcase completion may follow a top-out; these authored tiers do not require survival.
         expect(evaluateMasteryMetrics(rules, progress, { isGameOver: true }).masteryUntimedConditionsMet).toBe(true);

@@ -282,7 +282,7 @@ const WAVE_PRESETS = {
     clear: {
         v0: 650, accel: 1400, amp: 0.5, hue: 11 / 12, width: 22, white: 0.25, tau: 0.6,
     },
-    tetris: {
+    quad: {
         v0: 700, accel: 1800, amp: 0.8, hue: -1, width: 24, white: 0.1, tau: 0.65,
     },
     levelUp: {
@@ -1491,9 +1491,9 @@ export class ChromadelicWorld {
         if (n >= 4) {
             // Three staggered beats: bands out of the card, the prism cascade (every arch turns
             // into the spectrum as the front passes, the light climbing it), the streak warp.
-            // The next rings out of the board are prism arcs too: the Tetris echoes down the road.
+            // The next rings out of the board are prism arcs too: the Quad echoes down the road.
             // A second quad adds to the first's warp and lens instead of restarting them.
-            for (let i = 0; i < 4; i++) this.launchWave('tetris', { white: 0.1 + i * 0.13 }, i * 0.05);
+            for (let i = 0; i < 4; i++) this.launchWave('quad', { white: 0.1 + i * 0.13 }, i * 0.05);
             this.schedule(0.15, () => this.launchCascade({ amp: 1.0, speed: 2400, prism: true }));
             this.schedule(0.3, () => { this.env.warp.hit(1, this.time); });
             this.prismEcho = Math.min(this.prismEcho + 3, this.ringCount + 4);
@@ -1992,7 +1992,7 @@ export class ChromadelicWorld {
     /**
      * Camera rig: the rest pose (60° Hor+ lens), a slow closed-form float, pointer parallax,
      * a damped look-ahead into the road curve and a gentle bank. FOV widens with pace (Medium+)
-     * and surges on a Tetris. Refreshes the pixel-scale uniforms when the FOV changes.
+     * and surges on a Quad. Refreshes the pixel-scale uniforms when the FOV changes.
      * @param {THREE.PerspectiveCamera} camera
      * @param {{ time: number, delta?: number, pace?: number, pointerX?: number, pointerY?: number }} sim
      */
@@ -2035,7 +2035,7 @@ export class ChromadelicWorld {
         camera.lookAt(_look);
         camera.rotateZ(this.cam.bank.x);
 
-        // Lens: Hor+ base + pace widening (Medium+) + the Tetris surge + the overdrive (the lens
+        // Lens: Hor+ base + pace widening (Medium+) + the Quad surge + the overdrive (the lens
         // opens with the heat of play; a fever stretches the tunnel toward warp).
         let fov = restVerticalFov(camera.aspect || this.aspect);
         if (this.tier.paceFov) {

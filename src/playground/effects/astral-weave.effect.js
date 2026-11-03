@@ -14,7 +14,7 @@
  *   combo=<n>                hold a combo of n (the rosette's petals and its temperature)
  *   level=<n>                rest on level n's figure, the light n - 1 moods on from where the clock
  *                            (?t=) has turned it (astral-weave-moods.js)
- *   event=lock|drop|clear|tetris|tspin|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,rosette,...    draw only these parts
@@ -165,7 +165,7 @@ export function create({
         if (eventName === 'lock') world.lock({ rows: [row, row - 1], u });
         else if (eventName === 'drop') world.lock({ rows: [row, row - 1], u, hardDrop: true });
         else if (eventName === 'clear') world.clear({ rows: bottom(lines), lines, combo: Math.max(1, holdCombo) });
-        else if (eventName === 'tetris') world.clear({ rows: bottom(4), lines: 4, combo: Math.max(1, holdCombo) });
+        else if (eventName === 'quad') world.clear({ rows: bottom(4), lines: 4, combo: Math.max(1, holdCombo) });
         else if (eventName === 'tspin') {
             world.clear({
                 rows: bottom(2), lines: 2, tspin: true, combo: Math.max(1, holdCombo),

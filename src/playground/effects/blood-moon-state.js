@@ -502,7 +502,7 @@ export class BloodMoonReactions {
             lunarCombo = Math.min(1, depth / 8);
             lunarDuration = Math.min(1.9, 1.35 + depth * 0.05);
             break;
-        case 'tetris':
+        case 'quad':
             f.lines = 4;
             f.cascade = Math.max(f.cascade, clamp(Math.floor(finite(payload?.cascadeCount, 1)), 1, 12));
             pulse = 0.62 + chain * 0.012;

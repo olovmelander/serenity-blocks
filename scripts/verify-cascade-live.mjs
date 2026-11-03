@@ -89,7 +89,7 @@ async function main() {
     spawnPiece(gs, null, () => { gs.isGameOver = true; });
 
     const stats = {
-        pieces: 0, totalLines: 0, clears: 0, cascades: 0, tetrisPlus: 0,
+        pieces: 0, totalLines: 0, clears: 0, cascades: 0, quadPlus: 0,
         maxDepth: 0, maxComplexity: 0, perfectClears: 0, attackSent: 0,
         bySize: {}, fires: [],
     };
@@ -124,7 +124,7 @@ async function main() {
             stats.totalLines += depth;
             stats.bySize[depth] = (stats.bySize[depth] || 0) + 1;
             if (complexity >= 2) stats.cascades += 1;
-            if (depth >= 4) stats.tetrisPlus += 1;
+            if (depth >= 4) stats.quadPlus += 1;
             stats.maxDepth = Math.max(stats.maxDepth, depth);
             stats.maxComplexity = Math.max(stats.maxComplexity, complexity);
             stats.attackSent += Math.max(0, depth - 1) + (clean ? Math.floor((1 + depth) / 2) : 0);
@@ -153,7 +153,7 @@ async function main() {
         hold: HOLD_TARGET, safeRows: SAFE_ROWS, seed: SEED, pieces: stats.pieces,
         toppedOut: gs.isGameOver, totalLines: stats.totalLines,
         linesPerPiece: +(stats.totalLines / Math.max(1, stats.pieces)).toFixed(3),
-        clears: stats.clears, cascades: stats.cascades, tetrisPlus: stats.tetrisPlus,
+        clears: stats.clears, cascades: stats.cascades, quadPlus: stats.quadPlus,
         big5: stats.fires.filter((f) => f.depth >= 5).length,
         maxDepth: stats.maxDepth, maxComplexity: stats.maxComplexity,
         avgCascadeDepth: +avgCascadeDepth.toFixed(2), attackSent: stats.attackSent,

@@ -58,11 +58,11 @@ const METRIC_BY_VICTORY_TYPE = Object.freeze({
     height: 'height',
     lines: 'lines',
     score: 'score',
-    tetrises: 'tetrises',
+    quads: 'quads',
     time: 'time',
 });
 
-const DERIVABLE_VICTORY_TYPES = new Set(['cascade', 'combo', 'height', 'lines', 'score', 'tetrises', 'time']);
+const DERIVABLE_VICTORY_TYPES = new Set(['cascade', 'combo', 'height', 'lines', 'score', 'quads', 'time']);
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -208,7 +208,7 @@ function getVictoryTarget(victoryType, difficulty) {
         return roundTo(lerp(12000, 90000, difficulty ** 1.4), 1000);
     case 'combo':
         return roundToInt(lerp(3, 15, difficulty));
-    case 'tetrises':
+    case 'quads':
         return roundToInt(lerp(2, 12, difficulty));
     case 'height':
         return roundToInt(lerp(8, 24, difficulty));

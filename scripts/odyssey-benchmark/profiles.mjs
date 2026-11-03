@@ -191,7 +191,7 @@ function outcomeMetrics(candidate, metrics) {
         cascades: (metrics.cascades || 0) + (depth >= 2 ? 1 : 0),
         maxCombo: Math.max(metrics.maxCombo || 0, depth >= 2 ? depth : 0),
         maxCascadeDepth: Math.max(metrics.maxCascadeDepth || 0, depth >= 2 ? depth : 0),
-        tetrises: (metrics.tetrises || 0) + waves.filter((wave) => wave.lineCount === 4).length,
+        quads: (metrics.quads || 0) + waves.filter((wave) => wave.lineCount === 4).length,
         singles: (metrics.singles || 0) + waves.filter((wave) => wave.lineCount === 1).length,
         piecesPlaced: (metrics.piecesPlaced || 0) + 1,
         height: Math.max(metrics.height || 0, candidate.boardMetrics.maxHeight),
@@ -203,7 +203,7 @@ function progressReward(type, target, before, after) {
         cascade: 'cascades',
         combo: 'maxCombo',
         'max-cascade-depth': 'maxCascadeDepth',
-        'tetris-count': 'tetrises',
+        'quad-count': 'quads',
     };
     const key = aliases[type] || type;
     if (!(target > 0) || type === 'time' || type === 'frags') return 0;

@@ -89,7 +89,7 @@ describe('Blood Moon ripples', () => {
         expect(rippleCue('lock')).toEqual({ count: 1, strength: 0.55 });
         expect(rippleCue('clear', { lineCount: 1 }).count).toBe(1);
         expect(rippleCue('clear', { lines: 3 }).count).toBe(2);
-        expect(rippleCue('tetris').count).toBe(3);
+        expect(rippleCue('quad').count).toBe(3);
         expect(rippleCue('perfectClear').count).toBe(4);
         expect(rippleCue('unknown')).toBeNull();
     });

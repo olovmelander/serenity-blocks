@@ -251,7 +251,7 @@ export default class BloodMoonTheme extends BaseTheme {
             }),
             eventBus.on(EVENTS.LINE_CLEAR, (data) => {
                 noteClear(data);
-                cue((data?.lineCount ?? data?.lines) >= 4 ? 'tetris' : 'clear', data);
+                cue((data?.lineCount ?? data?.lines) >= 4 ? 'quad' : 'clear', data);
             }),
             eventBus.on(EVENTS.COMBO, (data) => cue('combo', data)),
             eventBus.on(EVENTS.TSPIN, (data) => cue('tspin', data)),

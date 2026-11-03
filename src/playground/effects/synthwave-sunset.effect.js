@@ -126,7 +126,7 @@ export function create({
         } else if (eventName === 'clear') {
             world.onPieceLock({ type: 'S', x: 4, rotation: 0 });
             world.onLineClear(num(params, 'lines', 2));
-        } else if (eventName === 'quad' || eventName === 'tetris') {
+        } else if (eventName === 'quad') {
             world.onPieceLock({ type: 'I', x: 6, rotation: 1 });
             world.onLineClear(4);
         } else if (eventName === 'chain') {

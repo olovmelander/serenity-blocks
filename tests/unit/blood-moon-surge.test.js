@@ -17,7 +17,7 @@ function clearingLock(state, combo, lines = 1) {
     state.cue('hardDrop');
     state.cue('lock');
     state.setCombo(combo);
-    state.cue(lines >= 4 ? 'tetris' : 'clear', { lineCount: lines });
+    state.cue(lines >= 4 ? 'quad' : 'clear', { lineCount: lines });
 }
 
 const live = (state) => state.waves.filter((front) => front.age !== Infinity);
@@ -27,7 +27,7 @@ describe('Blood Moon builds with play', () => {
         const quad = new BloodMoonReactions();
         const both = new BloodMoonReactions();
         for (const state of [quad, both]) {
-            state.cue('tetris', { lineCount: 4 });
+            state.cue('quad', { lineCount: 4 });
             run(state, 0.2);
         }
         const front = both.waves[both._newestFront];
@@ -119,7 +119,7 @@ describe('Blood Moon builds with play', () => {
         expect(spin.crescendo.spin).toBeGreaterThan(0.3);
 
         const b2b = new BloodMoonReactions();
-        b2b.cue('tetris', { lineCount: 4 });
+        b2b.cue('quad', { lineCount: 4 });
         b2b.cue('b2b', { active: true });
         const fronts = live(b2b);
         expect(fronts).toHaveLength(2);

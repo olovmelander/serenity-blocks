@@ -191,10 +191,10 @@ describe('resolveCascade ≡ processPhysics (structured scenarios)', () => {
         baseContext(),
         'double',
     ));
-    it('tetris with B2B armed', () => compare(
+    it('quad with B2B armed', () => compare(
         [BOTTOM, BOTTOM - 1, BOTTOM - 2, BOTTOM - 3].map((y) => fullRowPiece(y, `r${y}`)).concat(block(0, BOTTOM - 8)),
         baseContext({ b2bActive: true }),
-        'tetris-b2b',
+        'quad-b2b',
     ));
     it('perfect clear', () => compare([fullRowPiece(BOTTOM)], baseContext(), 'perfect'));
     it('two-wave cascade into perfect clear', () => compare([

@@ -19,7 +19,7 @@
  * steps aside, a white sliver burns, the night stops down, and the moon slides back into
  * totality as the hands rest.
  *
- * ?quality=High&board=1&event=tetris&eventAge=.45&t=8
+ * ?quality=High&board=1&event=quad&eventAge=.45&t=8
  * ?icon=1&t=0 (square window): the hub icon's framing, moon centred over its reflection.
  */
 import * as THREE from 'three/webgpu';
@@ -296,7 +296,7 @@ export function create({
     const ripples = new BloodMoonRipples(tier.ripples);
     const meteors = new BloodMoonMeteors();
     /** Big clears that send a fireball across the sky, and how bright (a T-spin's by its lines). */
-    const FIREBALLS = { tetris: 1.2, perfectClear: 1.6 };
+    const FIREBALLS = { quad: 1.2, perfectClear: 1.6 };
     const fireballFor = (kind, data) => {
         if (kind !== 'tspin') return FIREBALLS[kind] || 0;
         const lines = Number(data?.lineCount ?? data?.lines ?? 1);

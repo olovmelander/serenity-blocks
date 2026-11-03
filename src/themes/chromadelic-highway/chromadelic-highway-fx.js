@@ -189,7 +189,7 @@ function shapeFactor(theta, shapeN) {
  * as they clear it), sweep out through the side zones, dim to a glass line over the hero planet,
  * and dissolve before the lens (D 330 → 150).
  *
- * Events: the light waves tint them, the cascades (Tetris, level-up, back-to-back, a perfect
+ * Events: the light waves tint them, the cascades (Quad, level-up, back-to-back, a perfect
  * clear, deep cascade waves) sweep fronts through them (white, a colour, or a prism; two at once),
  * and line clears send chase lights climbing every arch from its feet to its crown (two chases at
  * once). The packets' phase is integrated on the CPU (uRingPhase): its rate follows the combo and
@@ -305,7 +305,7 @@ export function createTunnelRings({
         const glow = exp(g.mul(g).negate());
         const halo = exp(v.mul(-3.4)).mul(float(1.0).sub(smoothstep(0.8, 1.0, v)));
 
-        // Prism rings (and the Tetris prism cascade) carry the spectrum along the arc.
+        // Prism rings (and the Quad prism cascade) carry the spectrum along the arc.
         const arcN = theta.sub(ARC_THETA0).div(ARC_THETA1 - ARC_THETA0);
         const prismOn = step(0.5, vGlow.w);
         const prismCol = chdNeonColor(fract(vGlow.w).add(arcN.mul(0.85)), float(0.5));

@@ -597,7 +597,7 @@ export class FluidChoreography {
     }
 
     /**
-     * A four-line clear while the Drop is down (a back-to-back Tetris): no second hush, no second
+     * A four-line clear while the Drop is down (a back-to-back Quad): no second hush, no second
      * fall. Before the impact it lands harder; after it, the crater answers again — rings of
      * dreamfire, the overdrive climbs, the rain thickens.
      */

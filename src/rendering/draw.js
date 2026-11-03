@@ -269,7 +269,7 @@ export function drawNextPieces(nextCanvases, nextPieces = []) {
 
 /**
  * Triggers the line clear flash effect on specific rows
- * Tetris Effect-inspired: particles, prismatic waves, and energy bursts
+ * A line clear's light show: particles, prismatic waves, and energy bursts
  * @param {Array<number>} clearedRows - Array of Y coordinates of cleared rows
  * @param {HTMLElement} customContainer - Optional custom container element (for multiplayer)
  */
@@ -292,13 +292,13 @@ export function triggerLineClearFlash(clearedRows = [], customContainer = null) 
         flashBar.style.top = `${topPosition}px`;
         flashBar.style.height = `${rowHeight}px`;
 
-        // Stagger animation slightly for multiple lines (Tetris Effect technique)
+        // Stagger animation slightly for multiple lines
         const staggerDelay = index * 20;
         flashBar.style.animationDelay = `${staggerDelay}ms`;
 
         container.appendChild(flashBar);
 
-        // Add particle burst effect (Tetris Effect signature)
+        // Add particle burst effect
         createParticleBurst(container, topPosition, rowHeight, staggerDelay);
 
         // Trigger animation
@@ -314,7 +314,7 @@ export function triggerLineClearFlash(clearedRows = [], customContainer = null) 
         }, 600 + staggerDelay);
     });
 
-    // Add center radial burst for multi-line clears (Tetris Effect style)
+    // Add center radial burst for multi-line clears
     if (clearedRows.length >= 2) {
         createRadialBurst(container, clearedRows);
     }
@@ -322,7 +322,7 @@ export function triggerLineClearFlash(clearedRows = [], customContainer = null) 
 
 /**
  * Creates a particle burst effect from a cleared line
- * Inspired by Tetris Effect's explosive particle systems
+ * Explosive particle bursts
  */
 function createParticleBurst(container, topPosition, rowHeight, delay) {
     const particleCount = 12;
@@ -363,7 +363,7 @@ function createParticleBurst(container, topPosition, rowHeight, delay) {
 
 /**
  * Creates a radial energy burst for multi-line clears
- * Tetris Effect-style expanding ring effect
+ * An expanding ring
  */
 function createRadialBurst(container, clearedRows) {
     if (!container) return;
@@ -393,7 +393,7 @@ function createRadialBurst(container, clearedRows) {
 
 /**
  * Creates ripple effects when a piece locks
- * Tetris Effect-inspired tactile feedback
+ * Tactile feedback
  * @param {Object} piece - The locked piece with x, y, shape
  * @param {Array} lockedPieces - Already locked pieces to detect contact points
  */
@@ -582,7 +582,7 @@ function createBlockMergeGlows(piece, lockedPieces, containerElement = null) {
 
 /**
  * Triggers a subtle background pulse on line clear
- * Tetris Effect-inspired ambient reaction
+ * An ambient reaction
  * @param {number} lineCount - Number of lines cleared (affects intensity)
  */
 export function triggerBackgroundPulse(lineCount = 1) {
@@ -597,7 +597,7 @@ export function triggerBackgroundPulse(lineCount = 1) {
 
     // Adjust intensity based on line count
     if (lineCount >= 4) {
-        pulse.classList.add('intense'); // Tetris
+        pulse.classList.add('intense'); // Quad
     } else if (lineCount >= 3) {
         pulse.classList.add('strong'); // Triple
     } else if (lineCount >= 2) {

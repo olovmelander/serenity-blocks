@@ -258,12 +258,12 @@ describe('Blood Moon reactions', () => {
         expect(state.cue('lock')).toBe(0);
         expect(state.cue('combo', { combo: 2 })).toBeGreaterThan(0);
         state.reducedMotion = true;
-        expect(state.cue('tetris')).toBe(0);
+        expect(state.cue('quad')).toBe(0);
     });
 
     it('decays identically at 30 and 144 FPS and with a single equivalent time step', () => {
         const states = [new BloodMoonReactions(), new BloodMoonReactions(), new BloodMoonReactions()];
-        states.forEach((state) => state.cue('tetris'));
+        states.forEach((state) => state.cue('quad'));
         for (let i = 0; i < 30; i++) states[0].update(1 / 30);
         for (let i = 0; i < 144; i++) states[1].update(1 / 144);
         states[2].update(1);
@@ -345,7 +345,7 @@ describe('Blood Moon reactions', () => {
         expect(normal.time).toBe(0);
     });
 
-    it.each(['tetris', 'tspin', 'perfectClear', 'levelUp'])('gives %s a bounded moon-first cue', (kind) => {
+    it.each(['quad', 'tspin', 'perfectClear', 'levelUp'])('gives %s a bounded moon-first cue', (kind) => {
         const state = new BloodMoonReactions();
         state.cue(kind);
         expect(state.corona).toBeGreaterThan(state.starBoost);

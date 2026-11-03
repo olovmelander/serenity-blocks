@@ -57,7 +57,7 @@ import { canWriteLegacySinglePlayerResults } from './single-player-result-compat
 import { saveRunScore } from '../progression/run-score.js';
 
 /**
- * SinglePlayerMode - Classic single-player Tetris experience
+ * SinglePlayerMode - Classic single-player falling-block experience
  *
  * Manages:
  * - Single GameState instance

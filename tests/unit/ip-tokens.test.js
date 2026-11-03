@@ -22,16 +22,6 @@ describe('IP-string gate, class C (scripts/ip-tokens.mjs)', () => {
         expect(counts.get('gargantua').hits[0]).toContain('(file name)');
     });
 
-    it('counts the genre mark in runtime source as prose only, never identifiers or keys', () => {
-        const source = [
-            "const isTetris = lines === 4; emit('tetris'); me.tetris += 1; const o = { tetris: 1 };",
-            '// a Tetris Effect-style burst',
-        ].join('\n');
-        const counts = countTokens(RATCHET_TOKENS, ['src/x.js', 'docs/y.md'], () => source);
-        expect(counts.get('genre-mark-in-source').count).toBe(1);
-        expect(counts.get('genre-mark-in-source').hits[0]).toMatch(/^src\/x\.js:2:/);
-    });
-
     it('lets a ratcheted count fall, never rise', () => {
         const counts = new Map([['ghibli', { count: 5 }], ['hale', { count: 2 }], ['chiral', { count: 1 }]]);
         const { over, under } = compareToBaseline(counts, { ghibli: 4, hale: 3 });

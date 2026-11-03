@@ -115,7 +115,7 @@ describe('Odyssey difficulty balance', () => {
 
     it('keeps star tiers monotonic on the primary objective metric for every level', () => {
         const METRIC = {
-            cascade: 'cascades', lines: 'lines', score: 'score', combo: 'combo', tetrises: 'tetrises', time: 'time', height: 'height',
+            cascade: 'cascades', lines: 'lines', score: 'score', combo: 'combo', quads: 'quads', time: 'time', height: 'height',
         };
         for (const level of LEVEL_CONFIGS) {
             const victoryType = level.victory?.primary?.type;

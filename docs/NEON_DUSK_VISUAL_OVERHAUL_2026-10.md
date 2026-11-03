@@ -77,7 +77,7 @@ is the fleet validator's capture of it.
 ## Reproduce
 
 `npm run dev:playground`, then `/playground.html?effect=neon-dusk&t=20&quality=High`. Add
-`board=0` for the menu framing, `event=lock|clear|tetris|combo|levelUp` with `eventAge=<s>` (and
+`board=0` for the menu framing, `event=lock|clear|quad|combo|levelUp` with `eventAge=<s>` (and
 `piece=`, `x=`, `lines=`, `combo=`), `forceWebGL=1`, `noPost=1`. `t=12.4&board=0` shows the first
 ambient shooting star.
 

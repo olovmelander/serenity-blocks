@@ -496,7 +496,7 @@ export class ShiftingSandsWorld {
 
     /**
      * Lines cleared: geysers of dust, a gust, the suns flare. A cascade's later waves build on
-     * the first (harder, brighter, a drum beat each, louder each time); a Tetris calls the worm.
+     * the first (harder, brighter, a drum beat each, louder each time); a Quad calls the worm.
      * @param {number} lines
      * @param {{ cascade?: number, react?: boolean, player?: number }} [opts] cascade: which wave
      *   of its lock this clear is (1: the lock's own); the last COMBO's depth when absent
@@ -525,7 +525,7 @@ export class ShiftingSandsWorld {
         if (combo >= 2) this.glowSwell.hit(0.1 + Math.min(combo, 10) * 0.05, t);
         if (deep > 0) this.drumBeat(Math.min(DRUM_MAX, 1.1 + deep * 0.3), t);
         if (n >= 4) {
-            // A Tetris calls the worm: one great blow where it will break the surface. If the
+            // A Quad calls the worm: one great blow where it will break the surface. If the
             // last one it called is still above the sand, the geysers answer instead.
             if (this.director.summon(t)) {
                 this.heraldWorm();

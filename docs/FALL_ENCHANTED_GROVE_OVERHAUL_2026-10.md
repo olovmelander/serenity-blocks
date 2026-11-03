@@ -142,7 +142,7 @@ scene is about 1.2 M triangles; at Minimal about 0.35 M. The historical
 - **Playground** (`npm run dev:playground`, `?effect=fall&orbit=0&seed=271&hud=0`): the
   captures above, each with a clean console (no WebGPU validation errors, no TSL
   warnings), on native WebGPU and with `forceWebGL=1`. Events are reproducible with
-  `&t=8&event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|level`,
+  `&t=8&event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level`,
   `&eventAge=<s>`, `&col=0..9&row=0..19`, `&combo=<n>` and `&board=1` for a stand-in card.
 - **In the game**: `node scripts/validate-all-themes.mjs --theme fall` on a production
   build — PASS, 0 lifecycle failures, 0 console errors (activation, teardown,
