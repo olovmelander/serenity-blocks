@@ -99,15 +99,6 @@ if (!colorsBlock) {
 }
 results.push(screenPalette('default (src/core/constants.js)', extractPalette(colorsBlock[0])));
 
-// 1b. The opening and menu world's pieces (the first pieces a player sees).
-const introSrc = fs.readFileSync(path.join(repoRoot, 'src', 'ui', 'intro-world', 'intro-world-core.js'), 'utf8');
-const introBlock = introSrc.match(/export const PIECE_COLORS = Object\.freeze\(\{[\s\S]*?\}\);/);
-if (!introBlock) {
-    console.error('palette-gate: could not locate PIECE_COLORS in src/ui/intro-world/intro-world-core.js');
-    process.exit(1);
-}
-results.push(screenPalette('intro (src/ui/intro-world/intro-world-core.js)', extractPalette(introBlock[0])));
-
 // 2. Every theme tetromino config, plus a wiring check for dead configs.
 for (const dir of fs.readdirSync(themesDir, { withFileTypes: true })) {
     if (!dir.isDirectory()) continue;

@@ -73,7 +73,7 @@ function menuIntro(body) {
     intro.hasCompleted = true;
     intro.menuBgReady = true;
     for (const name of ['ensureIntroMusic', 'setRendererPhase', 'setLoadingState', 'scheduleMenuLogoLayoutUpdate',
-        'syncTitleBounds', 'installTetrominoPointerListener', '_claimMenuLogoIdentity', 'createStarfield']) {
+        'syncTitleBounds', 'installWorldPointerListener', '_claimMenuLogoIdentity', 'createStarfield']) {
         vi.spyOn(intro, name).mockImplementation(() => {});
     }
     vi.spyOn(intro, '_prefersReducedMotion').mockReturnValue(false);

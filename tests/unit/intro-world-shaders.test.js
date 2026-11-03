@@ -118,13 +118,12 @@ describe.each(TIERS)('First Light shaders at %s', (quality) => {
         world.dispose();
     });
 
-    it('builds the sky, the veils, the seven pieces and the motes from node materials', () => {
+    it('builds the sky, the veils, the murmuration and the motes from node materials', () => {
         const names = Object.keys(built).map((k) => k.replace(/^#\d+ /, ''));
         expect(names).toEqual(expect.arrayContaining([
-            'FirstLightSky', 'FirstLightVeils', 'FirstLightMotes',
-            'FirstLightPieceI', 'FirstLightPieceO', 'FirstLightPieceT', 'FirstLightPieceS',
-            'FirstLightPieceZ', 'FirstLightPieceJ', 'FirstLightPieceL',
+            'FirstLightSky', 'FirstLightVeils', 'FirstLightMurmuration', 'FirstLightMotes',
         ]));
+        expect(names.some((n) => /Piece|Form/.test(n))).toBe(false);
     });
 
     it('writes every material for WebGPU and for the WebGL2 fallback without a word', () => {
