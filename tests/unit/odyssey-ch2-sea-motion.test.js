@@ -359,3 +359,30 @@ describe('the jellies beat without a step', () => {
         expect(Math.abs(endSpeed - startSpeed)).toBeLessThan(1e-3);
     });
 });
+
+describe('the sea\'s animals read against the water (visibility, 2026-11-03)', () => {
+    it('pushes the fish\'s silver and gives the tuna its yellow fins', async () => {
+        const { FISH_LOOK } = await import('../../src/rendering/odyssey/world/odyssey-fish.js');
+        expect(FISH_LOOK.bellySilver).toBeGreaterThanOrEqual(0.35);
+        expect(FISH_LOOK.bellyGain).toBeGreaterThanOrEqual(0.8);
+        const [r, g, b] = FISH_LOOK.tunaYellow;
+        expect(r).toBeGreaterThan(b * 3);
+        expect(g).toBeGreaterThan(b * 3);
+    });
+
+    it('puts the visitors\' bellies in their own shadow seen from below, the whale shark always', async () => {
+        const { VISITOR_LOOK } = await import('../../src/rendering/odyssey/composition/odyssey-ocean-visitors.js');
+        expect(VISITOR_LOOK.sharkShade).toBeGreaterThan(0.5);
+        expect(VISITOR_LOOK.sharkShade).toBeLessThan(0.8);
+        expect(VISITOR_LOOK.mantaShade).toBeGreaterThan(0.4);
+        expect(VISITOR_LOOK.mantaShade).toBeLessThan(0.8);
+    });
+
+    it('gives the deep lantern a dense dome', async () => {
+        const { JELLY_LOOK } = await import('../../src/rendering/odyssey/world/odyssey-jellyfish.js');
+        expect(JELLY_LOOK.alpha[2][0]).toBeGreaterThanOrEqual(0.6);
+        // the glass of the moon jelly and the sea nettle stays glass
+        expect(JELLY_LOOK.alpha[0][0]).toBeLessThan(0.2);
+        expect(JELLY_LOOK.alpha[1][0]).toBeLessThan(0.2);
+    });
+});

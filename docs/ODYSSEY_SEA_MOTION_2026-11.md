@@ -229,3 +229,63 @@ beat with the pace (the calf quicker, never jumping), the C-bend (soft cap, no c
 jerk, follow-the-leader, leaning and bending toward the inside); the manta (flaps while speeding up,
 glides while slowing, eases between); `softLimit` without a corner; the jellies' seam. The existing
 fish, jellyfish, roam, visitors, arrivals and world tests pass unchanged.
+
+## Visibility (2026-11-03)
+
+Olov: *"the heron is very hard to see!"*, then *"start the visibility check"* for every animal. The
+question for each sea animal: does a player on the rail see it, and see what it is?
+
+**How it was measured.** 14 moments on the climb (p 0.077-0.126, each at a fixed clock), chosen on
+the real camera so that every animal is in frame at its typical size and at its larger sizes. At
+each moment the game's loop was stopped and the same frozen frame drawn once per animal, with only
+that animal shown, and once with none (2560 x 1440; the frame without any animal drawn twice
+differs by at most 1/255). The pixels that differ are the animal. For each one (each fish and each
+jelly on its own): its longest extent, its coverage, its luminance contrast against the water it
+covers (|L_animal - L_water| / L_water) and its colour difference (ΔE, CIE Lab, sRGB D65). The
+brief's test: it reads when it is at least 24 px long and its contrast is at least 0.35 or its
+ΔE at least 20. How often each is in frame comes from the real camera over the whole climb.
+
+| animal | in frame (share of the climb) | length on screen, typical | contrast before → after | ΔE before → after | reads before → after | what it is |
+|---|---|---|---|---|---|---|
+| jacks (3 schools) | 37-63 % | 54-81 px a fish | 0.41 → 0.73 (worst tenth 0.20 → 0.41) | 12.4 → 15.0 | 74 % → 94 % | a school of fish |
+| tuna | 11 % | 160-180 px | 0.20 → 0.76 | 6.7 → 14.4 | 11 % → 89 % | a shape → a tuna |
+| jellies | moon 28 %, nettle 38 %, lantern 8 % | bells 28 / 58 / 54 px | 0.72 → 0.74 | 14.3 → 15.1 | 73 % → 77 % | jellyfish (the far moons stay small, by design) |
+| humpback mother | 39 % | 320 px | 1.39 (unchanged) | 16.7 | 100 % | a humpback |
+| humpback calf | 47 % | 150 px | 0.95 (unchanged) | 15.5 | 100 % | a humpback calf |
+| whale shark | 47 % | 590 px | 0.18 → 0.75 | 9.1 → 22.8 | 50 % → 100 % | a shape → a whale shark |
+| manta | 49 % | 355 px | 0.61 → 0.52 (worst tenth 0.04 → 0.49) | 11.7 → 14.1 | 67 % → 100 % | a manta |
+
+Nothing was hidden by the sea floor or the spires at these moments; only the rail and the orbs
+cross them now and then.
+
+**What was blue on blue, and what changed** (worst first; colour and light only, no size, place or
+motion changed):
+
+- **The whale shark** matched the water: seen from below, its pale belly lit by the water's own
+  light was the water's colour (contrast 0.00 at one moment). Its belly is now in its own shadow, as
+  a body seen from below against the brighter water above is: a dark navy silhouette, its pale spots
+  still on its back and flanks (`VISITOR_LOOK.sharkShade`).
+- **The tuna** was a slate-blue body on blue water. Its silvered belly is pushed (as the jacks'),
+  and it has a yellowfin's yellow: the second dorsal, the anal fin and the finlets (`FISH_LOOK`).
+  The tail fin stays dark.
+- **The jack schools** read as pale fish in the deep, but in the brighter upper climb their bellies
+  matched the water (the teal school most). The silvering is paler and brighter for every school;
+  their colours (silver, teal, gold) stay.
+- **The manta** reads well near the surface (its white belly), but seen from far below it melted.
+  Its belly now goes into its own shadow as the view looks steeply up at it, so from the deep it is
+  a dark silhouette under the bright surface; near and level its white belly still shows
+  (`VISITOR_LOOK.mantaShade`).
+- **The deep lantern jellies** (Periphylla) were translucent dark-red domes in dark water. Their
+  dome is dense now, as the real bell is (opacity 0.30 → 0.62), and their ring of lights a little
+  brighter (they are bioluminescent). ΔE of the big ones 12-15 → 16-22.
+- The humpbacks already read (pale bodies and long white flippers against the deep blue): unchanged.
+
+![Before (left) and after (right), every animal shown: p 0.0829, 0.1054 and 0.1264, the same frozen moment](images/odyssey-sea-motion-2026-11/visibility-full-before-after.jpg)
+
+![1:1 crops, before (top) and after (bottom): the whale shark (2), the tuna (2), jacks (2), deep lanterns (2), the manta from the deep, the calf](images/odyssey-sea-motion-2026-11/visibility-crops-x1.jpg)
+
+![x4 crops, before (top) and after (bottom): a tuna, jacks, a lantern, the manta from the deep, the calf](images/odyssey-sea-motion-2026-11/visibility-crops-x4.jpg)
+
+**Left as it is.** The far moon jellies stay small (10-24 px): the drift was designed restrained,
+mostly far, a few near (see the jellyfish doc). The calm deep-blue look and the 1->2 steam rule are
+unchanged; no glow was added where the animal has none.

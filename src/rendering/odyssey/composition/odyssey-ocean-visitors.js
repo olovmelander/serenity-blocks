@@ -220,6 +220,12 @@ export const OCEAN_VISITOR_STROKE = Object.freeze({
 });
 
 /**
+ * How much of its belly's light each visitor loses in its own shadow when seen from below
+ * (visibility, 2026-11-03): the whale shark always, the manta as the view looks steeply up at it.
+ */
+export const VISITOR_LOOK = Object.freeze({ sharkShade: 0.62, mantaShade: 0.6 });
+
+/**
  * The manta's flap (1) or glide (0) at a point of its route's pace: it flaps while it speeds up.
  * @param {{ share: number, change: number }} pace roamPace's
  * @param {{ pace: number, paceS: number }} route
@@ -368,9 +374,16 @@ function createVisitorMaterial(uWater, uSurface, seaLevel) {
         const fromAbove = clamp(N.y, 0.0, 1.0);
         const facing = clamp(abs(dot(N, V)), 0.0, 1.0);
         const rim = pow(oneMinus(facing), 2.4);
-        const ambient = uWater.mul(1.7);
+        // VISIBILITY (2026-11-03): the belly the climb looks up at is in the animal's own shadow,
+        // so against the brighter water above it reads as a silhouette (blue on blue before: the
+        // lit belly matched the water). The whale shark, a dark animal, always; the manta as the
+        // eye looks steeply up at it from far below (near and level, its white belly still shows).
+        const belly = smoothstep(0.15, -0.55, N.y);
+        const lookUp = smoothstep(0.45, 0.85, V.y.negate());
+        const shadowed = belly.mul(select(isRay, lookUp.mul(VISITOR_LOOK.mantaShade), float(VISITOR_LOOK.sharkShade)));
+        const ambient = uWater.mul(1.7).mul(oneMinus(shadowed));
         const top = vec3(0.30, 0.70, 0.74).mul(uSurface);
-        const lit = albedo.mul(ambient.add(top.mul(fromAbove.mul(0.8).add(0.12)))).mul(ao)
+        const lit = albedo.mul(ambient.add(top.mul(fromAbove.mul(0.8).add(oneMinus(shadowed).mul(0.12))))).mul(ao)
             .add(vec3(0.42, 0.78, 0.84).mul(rim).mul(clamp(N.y.add(0.6), 0.0, 1.0)).mul(uSurface)
                 .mul(0.38));
         // The water between it and the eye, and the fade-in from the blue. Seen from above the

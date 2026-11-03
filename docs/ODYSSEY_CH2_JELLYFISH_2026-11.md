@@ -140,3 +140,10 @@ not quite stopped when the next stroke began, so the bell's speed stepped at eve
 radii a second, a corner in its path). A small cubic term (`JELLY_SURGE_END`) now brings it to rest
 exactly as the next stroke begins; the shader does the same. The places, the look and the beat's
 shape are unchanged.
+
+## Visibility (2026-11-03)
+
+Measured against the water (docs/ODYSSEY_SEA_MOTION_2026-11.md, "Visibility"): the deep lanterns'
+translucent dark-red domes melted into the dark water they live in. Their dome is dense now, as
+Periphylla's bell is (opacity 0.30 -> 0.62), and their ring of lights a little brighter; the far moon
+jellies stay small by design.
