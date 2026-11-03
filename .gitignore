@@ -104,3 +104,8 @@ __pycache__/
 /reports/**/chrome-tools.json
 /reports/**/failed-page.html
 /reports/**/failed-capture.png
+
+# Playground reference stills: local only, never committed (third-party images included).
+# The owner's copies are kept outside the repo; drop them back in here to use them.
+public/playground-refs/*
+!public/playground-refs/README.md
