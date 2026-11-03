@@ -309,3 +309,95 @@ beat, rising as the wings come down. A test checks both have no corner.
 - The flight paths and their siting. Only the swallows' eight changed shape a little, inside the
   same clearances (the fade-out and clearance tests pass).
 - No head held steady: the head rides on the body, which now bobs 1-2 cm (under a pixel).
+
+## Visibility (2026-11-03)
+
+Asked for by Olov ("the heron is very hard to see!", then "start the visibility check"): does a
+player on the rail see each bird, and see what it is?
+
+### How it was measured
+
+The real game in Chrome at 2560 x 1440, parked at the orbs and the glides where each bird is
+seen, the board's clock and the camera frozen. Each moment was shot twice, with the flock and
+without it (hidden after its own update), so the pixels that differ are the birds alone (two
+shots of the same frozen moment differ in 0 pixels). Each bird's pixels are found round its
+projected place:
+
+- its **extent** (the longer side of its box) and its cover in pixels;
+- its **contrast** against what it covers, |L bird - L ground| / L ground, and its **Delta E**
+  (CIE Lab, the mean colours);
+- whether trees or terrain hide it.
+
+How long each is in frame comes from the same cameras over a minute or two of the clock. It
+**reads** when its extent is at least 24 px and its contrast at least 0.35 or its Delta E at
+least 20. 124 pairs of shots (gulls at L11-L16, swallows L17-L24, geese L11-L27, the kettle L27-L33,
+the eagle L26-L28 and the glide after, butterflies L18-L23).
+
+### What it found, and what changed
+
+| | extent median | at least 24 px | contrast | Delta E | reads (every bird seen) | a bird that reads in the shot |
+|---|---|---|---|---|---|---|
+| Gulls, before | 19 px | 34 % | 0.37 | 15 | 22 % | 52 % |
+| Gulls, after | 24 px | 51 % | 0.42 | 16 | 35 % | 61 % |
+| Swallows, before | 8 px | 6 % | 0.49 | 15 | 5 % | 21 % |
+| Swallows, after | 12 px | 13 % | 0.54 | 17 | 12 % | 25 % |
+| Geese, before | 9 px | 7 % | 0.24 | 12 | 7 % | 11 % |
+| Geese, after | 13 px | 12 % | 0.34 | 14 | 11 % | 11 % |
+| Summit vultures, before | 21 px | 44 % | 0.51 | 24 | 43 % | 60 % |
+| Summit vultures, after | 25 px | 52 % | 0.53 | 25 | 51 % | 65 % |
+| Eagle (unchanged) | 54 px | 89 % | 0.66 | 29 | 89 % | 89 % |
+| Butterflies (unchanged) | 45 px | 89 % | 1.32 | 59 | 79 % | 100 % |
+
+Nothing hid them for long: 0-3 % of the birds in frame were behind trees or terrain. In frame
+(of the time at the stations where each lives): gulls 77 %, swallows 93 %, the skein 42 % (it
+crosses once every 52 s), the kettle 92 %, the eagle 63 %.
+
+- **Far birds washed into the air.** The geese and the kettle at L27-L29 (500-800 u) took on the
+  haze of their true distance, but they are drawn 4-5 times life, so they stood in more air than
+  birds of their size would. They faded toward the sky's own colour. A bird under ~24 px across
+  (was 14) now darkens toward its silhouette (the geese most) and takes on less of the air, as a
+  far bird against the sky is a dark shape. The skein's contrast doubled at the far stations
+  (0.16-0.31 -> 0.32-0.38).
+- **Too small.** Gulls are drawn 1.25x (5.75 u, 4.1 times life), swallows 1.54x (2.0 u), geese
+  1.3x (8.6 u) and the vultures 1.2x (13.7 u: now 1.24x the eagle, as a griffon is to a golden
+  eagle). Beside their neighbours the scale still holds: the swallows stay small birds of the
+  meadow, the gulls bigger, the vultures bigger than the eagle.
+- **Gulls edge-on.** They bank a little more into their turns (gain 0.16 -> 0.20), so more of the
+  time they show their wings; the black of the hand begins a little further in, the herring
+  gull's mark at range.
+- **The skein reads as a skein.** One goose is still a speck at 6-14 px, but all nine are in
+  view, in a V 80-160 px wide (400 px at L27): a skein of geese, which is what it is.
+
+![Gulls in the game, the same shots before (top two rows) and after (bottom two): each at 1:1
+(the small square) and x4](images/odyssey-birds-visibility-2026-11-03/gull-before-after.jpg)
+
+![Swallows, before (top) and after (bottom), 1:1 and x4](images/odyssey-birds-visibility-2026-11-03/swallow-before-after.jpg)
+
+![Geese, before (top) and after (bottom), 1:1 and x4](images/odyssey-birds-visibility-2026-11-03/goose-before-after.jpg)
+
+![The summit vultures, before (top) and after (bottom), 1:1 and x4](images/odyssey-birds-visibility-2026-11-03/summit-before-after.jpg)
+
+![Full frames after, 2560 x 1440: L16 (gulls, swallows), L24 (swallows), L26 (the eagle, the skein
+far right), L33 (the kettle)](images/odyssey-birds-visibility-2026-11-03/full-frames-after.jpg)
+
+### Verdicts
+
+- **Eagle**: reads (yes). **Butterflies**: read (yes).
+- **Summit vultures**: read from L31 up (73-98 %); at L27-L29 the far kettle is a ring of dark
+  soaring shapes (16-20 px), which it is meant to be until the climb brings it near.
+- **Gulls**: read at L15-L16 (100 %); at L11-L14 the parties are 190-230 u off and often against
+  grey hills: a white or grey shape, seen as a gull about half the time.
+- **Swallows**: small dark birds darting over the meadow (the biggest in a shot 22 px, was 15);
+  they read as swallows at L24, elsewhere as a shape.
+- **Geese**: a skein (a shape that names itself), single birds specks.
+
+### Left for the owner
+
+- **Swallows nearer.** Their parties are as near the rail as their siting allows: 20 % nearer
+  brings them within 14 u of the rail and 17 u of the eye, for 15-20 % more size. Options: (a)
+  leave them as a small hunting party; (b) let one swallow now and then sweep low past the orb,
+  15-25 u from the eye and gone again (barn swallows hunt round people this way); (c) a third,
+  nearer party along the meadow edge of L19-L23.
+- **The skein nearer.** It crosses 400-800 u off at L11-L24 (moved north in October to clear the
+  wall's rail). Options: (a) leave it; (b) a second, lower skein that crosses nearer at L19-L24.
+- **Gulls at L11-L14.** Their first party could hunt 20-30 u nearer the shore orbs.
