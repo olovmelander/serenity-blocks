@@ -26,7 +26,7 @@ import { IntroWorldPost, POST_LOOK, WAVES_MAX } from '../../ui/intro-world/intro
 export const meta = {
     id: 'intro-world',
     title: 'First Light (opening + menu world)',
-    description: 'The world behind the opening and the main menu: silk light, rising pieces, the breath.',
+    description: 'The world behind the opening and the main menu: silk light, murmurations of light, the breath.',
 };
 
 function num(params, key, fallback = 0) {

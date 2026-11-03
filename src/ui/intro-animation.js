@@ -21,7 +21,7 @@ import {
     createFramePacer, resetFramePacer, resolveTargetFps, shouldRenderAtTargetFps,
 } from '../themes/theme-frame-pacer.js';
 
-const INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR = [
+const INTRO_WORLD_BLOCKED_POINTER_SELECTOR = [
     'a[href]',
     'button',
     'input',
@@ -116,10 +116,10 @@ export class IntroAnimation {
         this.menuLayoutTrackingInstalled = false;
         this.menuLayoutResizeObserver = null;
         this.menuLayoutObservedElement = null;
-        this.tetrominoPointerListenerInstalled = false;
+        this.worldPointerListenerInstalled = false;
         this.boundMenuLayoutUpdate = this.scheduleMenuLogoLayoutUpdate.bind(this);
         this.boundMenuModalChange = this.handleMenuModalChange.bind(this);
-        this.boundIntroTetrominoPointerDown = this.handleIntroTetrominoPointerDown.bind(this);
+        this.boundIntroWorldPointerDown = this.handleIntroWorldPointerDown.bind(this);
         const params = typeof window !== 'undefined'
             ? new URLSearchParams(window.location.search)
             : new URLSearchParams();
@@ -475,7 +475,7 @@ export class IntroAnimation {
     }
 
     /**
-     * Tell the world where the main menu stands (screen fractions): its pieces keep out of the
+     * Tell the world where the main menu stands (screen fractions): its murmuration keeps out of the
      * navigation and the logo, and its light is softened behind the navigation, the stage card
      * and the dock. Measured on layout changes only, never per frame.
      */
@@ -1062,7 +1062,7 @@ export class IntroAnimation {
         this._titleReadyResolve = null;
         this.setupMenuLogoLayoutTracking();
         this.syncTitleBounds(performance.now());
-        this.installTetrominoPointerListener();
+        this.installWorldPointerListener();
     }
 
     /** `.no-world` when no renderer started: the CSS sky and stars are then the whole picture. */
@@ -1147,34 +1147,34 @@ export class IntroAnimation {
         }, 100);
     }
 
-    installTetrominoPointerListener() {
-        if (this.tetrominoPointerListenerInstalled || typeof window === 'undefined') {
+    installWorldPointerListener() {
+        if (this.worldPointerListenerInstalled || typeof window === 'undefined') {
             return;
         }
 
-        window.addEventListener('pointerdown', this.boundIntroTetrominoPointerDown, {
+        window.addEventListener('pointerdown', this.boundIntroWorldPointerDown, {
             capture: true,
             passive: true,
         });
-        this.tetrominoPointerListenerInstalled = true;
+        this.worldPointerListenerInstalled = true;
     }
 
-    removeTetrominoPointerListener() {
-        if (!this.tetrominoPointerListenerInstalled || typeof window === 'undefined') {
+    removeWorldPointerListener() {
+        if (!this.worldPointerListenerInstalled || typeof window === 'undefined') {
             return;
         }
 
-        window.removeEventListener('pointerdown', this.boundIntroTetrominoPointerDown, true);
-        this.tetrominoPointerListenerInstalled = false;
+        window.removeEventListener('pointerdown', this.boundIntroWorldPointerDown, true);
+        this.worldPointerListenerInstalled = false;
     }
 
-    shouldHandleTetrominoPointer(event) {
+    shouldHandleWorldPointer(event) {
         if (!event
             || this.isActive
             || !this.isAnimating
             || !this.container
             || !document.body.contains(this.container)
-            || !this.threeRenderer?.triggerTetrominoBounceAt) {
+            || !this.threeRenderer?.touchWorldAt) {
             return false;
         }
 
@@ -1194,7 +1194,7 @@ export class IntroAnimation {
             return true;
         }
 
-        if (target.closest(INTRO_TETROMINO_BLOCKED_POINTER_SELECTOR)) {
+        if (target.closest(INTRO_WORLD_BLOCKED_POINTER_SELECTOR)) {
             return false;
         }
 
@@ -1206,20 +1206,20 @@ export class IntroAnimation {
         return true;
     }
 
-    handleIntroTetrominoPointerDown(event) {
-        if (!this.shouldHandleTetrominoPointer(event)) {
+    handleIntroWorldPointerDown(event) {
+        if (!this.shouldHandleWorldPointer(event)) {
             return;
         }
 
         try {
-            const result = this.threeRenderer.triggerTetrominoBounceAt(event.clientX, event.clientY);
+            const result = this.threeRenderer.touchWorldAt(event.clientX, event.clientY);
             if (result && typeof result.catch === 'function') {
                 result.catch((error) => {
-                    console.warn('[IntroAnimation] Tetromino click bounce failed:', error);
+                    console.warn('[IntroAnimation] World touch failed:', error);
                 });
             }
         } catch (error) {
-            console.warn('[IntroAnimation] Tetromino click bounce failed:', error);
+            console.warn('[IntroAnimation] World touch failed:', error);
         }
     }
 
@@ -1398,7 +1398,7 @@ export class IntroAnimation {
         }
 
         this.threeRenderer?.setBackgroundMode?.(true);
-        this.installTetrominoPointerListener();
+        this.installWorldPointerListener();
         // Let the menu establish its real layout while the visible wordmark stays
         // in the handoff layer. Its flight owns the full move, including the landing.
         this.setRendererPhase(INTRO_PHASES.MENU_BG);
@@ -1426,7 +1426,7 @@ export class IntroAnimation {
         this.isActive = false;
         this.isAnimating = false;
         this.hasCompleted = true;
-        this.removeTetrominoPointerListener();
+        this.removeWorldPointerListener();
 
         // Remove event listeners if still attached
         if (this.container) {
@@ -1517,7 +1517,7 @@ export class IntroAnimation {
         this.menuWordmarkFlight?.cancel();
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
-        this.removeTetrominoPointerListener();
+        this.removeWorldPointerListener();
         this.isActive = false;
         if (this.container) {
             this.container.classList.add('hidden');
@@ -1560,7 +1560,7 @@ export class IntroAnimation {
         this.releaseMenuArrivalGuard = null;
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
-        this.removeTetrominoPointerListener();
+        this.removeWorldPointerListener();
         this.hasCompleted = false;
         this.isActive = false;
         this.isAnimating = false;
@@ -1671,7 +1671,7 @@ export class IntroAnimation {
                 this.setRendererPhase(INTRO_PHASES.MENU_BG, true);
                 this.startRenderLoop();
             }
-            this.installTetrominoPointerListener();
+            this.installWorldPointerListener();
             return;
         }
 
@@ -1744,7 +1744,7 @@ export class IntroAnimation {
         this.setupMenuLogoLayoutTracking();
         this.scheduleMenuLogoLayoutUpdate();
         this.syncTitleBounds(performance.now());
-        this.installTetrominoPointerListener();
+        this.installWorldPointerListener();
 
         // Trigger animations
         requestAnimationFrame(() => {

@@ -7,8 +7,10 @@
  *   - the breath: the whole world breathes in for 4 s and out for 6 s, and its integral (the
  *     "rise clock") paces everything that ascends, so speeds follow the breath without the
  *     phase jumping (a clock times a changing rate would);
- *   - the pieces' lanes: solid tetrominoes rising at every depth on either side of the title,
- *     never through it;
+ *   - the murmuration: one great flock of light whose head flies a slow loop round the title and
+ *     whose body follows it, banking, bulging, splitting and closing on the breath;
+ *   - the gathering: on every third breath the whole flock pours into a ring of light round the
+ *     title, holds it, and unravels;
  *   - the camera's poses for the opening, the title and the menu, and the curves between them.
  */
 
@@ -35,35 +37,6 @@ export const BRAND = Object.freeze({
     mint: '#c5f1cf',
     cream: '#fff6e9',
     coral: '#ffac88',
-});
-
-export const PIECE_KEYS = Object.freeze(['I', 'O', 'T', 'S', 'Z', 'J', 'L']);
-
-/**
- * The pieces in the logo's light: the wordmark's spectrum, so the world reads as one family
- * with the title. Solid colour, never four cells. No shape wears its familiar Guideline hue
- * (I cyan, O yellow, T purple, S green, Z red, J blue, L orange): 0/7 on the palette gate
- * (scripts/palette-guideline-check.mjs, PAL-1), the house ideal.
- */
-export const PIECE_COLORS = Object.freeze({
-    I: '#b49cff', // lavender
-    O: '#86e3ef', // aqua
-    T: '#a6eec0', // mint
-    S: '#ff9d8c', // coral
-    Z: '#8eaeff', // periwinkle
-    J: '#ffd89c', // soft gold
-    L: '#f6a8d6', // rose
-});
-
-/** Each shape's cells in its spawn orientation, centred on its bounding box (x right, y up). */
-export const PIECE_CELLS = Object.freeze({
-    I: [-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0],
-    O: [-0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5],
-    T: [-1, -0.5, 0, -0.5, 1, -0.5, 0, 0.5],
-    S: [-1, -0.5, 0, -0.5, 0, 0.5, 1, 0.5],
-    Z: [-1, 0.5, 0, 0.5, 0, -0.5, 1, -0.5],
-    J: [-1, 0.5, -1, -0.5, 0, -0.5, 1, -0.5],
-    L: [1, 0.5, -1, -0.5, 0, -0.5, 1, -0.5],
 });
 
 // ── The breath ──────────────────────────────────────────────────────────────────
@@ -178,13 +151,15 @@ export function mixPose(a, b, t) {
  * resting pose itself a blend of title and menu (m 0..1), then a breath dolly and the drift.
  */
 export function cameraPoseAt({
-    travel = 1, menu = 0, breath = 0, time = 0, pointerX = 0, pointerY = 0, motion = 1,
+    travel = 1, menu = 0, breath = 0, time = 0, pointerX = 0, pointerY = 0, motion = 1, gather = 0,
 }) {
     const rest = mixPose(POSES.title, POSES.menu, easeInOutCubic(menu));
     const pose = mixPose(POSES.open, rest, clamp01(travel));
     // The breath carries the eye a little forward and up on the inhale.
     pose.pos[2] -= (breath - 0.5) * 0.9 * motion;
     pose.pos[1] += (breath - 0.5) * 0.35 * motion;
+    // As the flock gathers round the title the eye leans in toward it, and back as it lets go.
+    pose.pos[2] -= easeInOutCubic(gather) * 2.2 * motion;
     // A slow drift, and the pointer's parallax (the eye moves; it keeps looking at the scene).
     const dx = (Math.sin(time * 0.071) * 0.9 + Math.sin(time * 0.033 + 1.3) * 0.6) * motion;
     const dy = Math.sin(time * 0.053 + 0.4) * 0.45 * motion;
@@ -208,189 +183,133 @@ export function mulberry32(seed) {
     };
 }
 
-// ── The pieces ──────────────────────────────────────────────────────────────────
+// ── The frame ───────────────────────────────────────────────────────────────────
 
 /** Half the reference frame's height at depth z (world units), for the reference camera. */
 export function halfHeightAt(z) {
     return (REF_CAMERA.z - z) * Math.tan((REF_CAMERA.fov * Math.PI) / 360);
 }
 
-/** Depth bands: near (large, quick, a few), middle, far (small, slow, hazed). */
-const BANDS = [
-    {
-        name: 'near', share: 0.1, z: [6, 13], scale: [0.95, 1.2], speed: [0.85, 1.15], sx: [0.78, 1.08],
-    },
-    {
-        name: 'mid', share: 0.38, z: [-18, -4], scale: [0.72, 0.98], speed: [0.38, 0.62], sx: [0.5, 1.06],
-    },
-    {
-        name: 'far', share: 0.52, z: [-66, -26], scale: [0.95, 1.4], speed: [0.2, 0.36], sx: [0.34, 1.1],
-    },
-];
+// ── The murmuration: one great flock of light ───────────────────────────────────
 
 /**
- * The lanes: one piece each. `sx` is the lane's place across the reference frame (-1 left edge,
- * +1 right edge), so a portrait screen keeps the same composition; it alternates sides and
- * keeps clear of the title's column.
- * @param {{ count?: number, seed?: number }} [options]
+ * The flock's character. Its head flies a loop round the title (`rx`, `ry`: shares of the frame's
+ * half width and height at its depth `z`), swinging `zAmp` nearer and further; its body covers
+ * `span` radians of that loop behind the head; `width` is its greatest half-width across, `thick`
+ * its thickness against that, `speed` how fast its head flies (radians a second).
  */
-export function buildPieceField({ count = 26, seed = 7 } = {}) {
+export const MURMURATION = Object.freeze({
+    z: -9,
+    zAmp: 8,
+    rx: 0.66,
+    ry: 0.62,
+    span: 3.7,
+    width: 4.4,
+    thick: 0.18,
+    speed: 0.075,
+});
+
+/**
+ * The motes: s along the flock (0 head, 1 tail), an angle and a radius across it, a random of
+ * their own.
+ * @returns {Float32Array} count rows of (s, angle, radius, r)
+ */
+export function buildMurmurationSeeds(count, seed = 29) {
     const rnd = mulberry32(seed);
-    const range = ([a, b]) => a + (b - a) * rnd();
-    const lanes = [];
-    let shapeCursor = Math.floor(rnd() * PIECE_KEYS.length);
-    // The middle band rises in twins (same shape, same side), so a stack can find a partner.
-    const twinShapes = ['O', 'J', 'I', 'L'].map((k) => PIECE_KEYS.indexOf(k));
-    BANDS.forEach((band, bandIndex) => {
-        const n = bandIndex === BANDS.length - 1
-            ? count - lanes.length
-            : Math.max(1, Math.round(count * band.share));
-        for (let i = 0; i < n; i++) {
-            const twins = band.name === 'mid';
-            const pair = Math.floor(i / 2);
-            let side;
-            if (twins) side = pair % 2 === 0 ? -1 : 1;
-            else side = (lanes.length + bandIndex) % 2 === 0 ? -1 : 1;
-            // Spread the lanes over the band's width rather than leaving it to chance (twins
-            // share a stretch of it, so they rise near each other).
-            const across = twins
-                ? (Math.floor(pair / 2) + 0.25 + (i % 2) * 0.4 + rnd() * 0.2) / Math.ceil(n / 4)
-                : (i + rnd() * 0.85) / n;
-            const sx = side * (band.sx[0] + (band.sx[1] - band.sx[0]) * Math.min(1, across));
-            const axis = [rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1];
-            const len = Math.hypot(...axis) || 1;
-            shapeCursor = (shapeCursor + 3) % PIECE_KEYS.length;
-            lanes.push({
-                band: band.name,
-                shape: twins ? twinShapes[pair % twinShapes.length] : shapeCursor,
-                sx,
-                z: range(band.z),
-                scale: range(band.scale),
-                speed: range(band.speed),
-                phase: rnd(),
-                swayAmp: 0.4 + rnd() * 0.9,
-                swayFreq: 0.05 + rnd() * 0.07,
-                swayPhase: rnd() * TAU,
-                axis: axis.map((v) => v / len),
-                spin: (0.07 + rnd() * 0.16) * (rnd() < 0.5 ? -1 : 1),
-                angle0: rnd() * TAU,
-                seed: rnd(),
-            });
-        }
-    });
-    return lanes;
-}
-
-/** Quaternion [x, y, z, w] for a unit axis and an angle. */
-export function axisAngle(axis, angle) {
-    const s = Math.sin(angle / 2);
-    return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(angle / 2)];
+    const out = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+        out[i * 4] = rnd();
+        out[i * 4 + 1] = rnd() * TAU;
+        // Denser toward its middle line, a few out at its edges.
+        out[i * 4 + 2] = Math.sqrt(rnd()) * (0.75 + 0.25 * rnd());
+        out[i * 4 + 3] = rnd();
+    }
+    return out;
 }
 
 /**
- * Where a lane's piece is: it rises through the whole frame (and the margin beyond it, so it
- * never pops in or out), sways, and tumbles slowly.
- * @param {object} lane
- * @param {{ rise: number, time: number, aspect: number, extraRise?: number, extraSpin?: number }} ctx
- * @returns {{ x: number, y: number, z: number, q: number[], scale: number }}
+ * A point on the flock's middle line (s 0 at its head, 1 at its tail) for a state from
+ * `murmurationAt`: the same law the vertex stage uses (intro-world-murmuration.js), on the CPU.
+ * @returns {number[]} [x, y, z]
  */
-export function pieceAt(lane, {
-    rise, time, aspect, extraRise = 0, extraSpin = 0,
+export function murmurationLine(m, s) {
+    const phi = m.head - s * m.span;
+    const wob = 1 + 0.1 * Math.sin(3 * phi + m.wobble) + 0.05 * Math.sin(5 * phi - 1.7 * m.wobble);
+    const swing = phi + m.wobble * 0.6;
+    return [
+        m.center[0] + m.radii[0] * wob * Math.cos(phi),
+        m.center[1] + m.radii[1] * wob * Math.sin(phi),
+        m.center[2] + m.radii[2] * Math.sin(swing),
+    ];
+}
+
+/**
+ * The murmuration at time t. `menu` (0..1) draws it in to the right of the menu's navigation;
+ * `motion` (0..1) calms it for reduced motion; `gather` (0..1) how far it has poured into the ring
+ * round the title. A closed form of time, so a seek lands where playing would.
+ */
+export function murmurationAt({
+    time, breath = 0, aspect = 16 / 9, menu = 0, motion = 1, gather = 0,
 }) {
-    const hh = halfHeightAt(lane.z);
-    const margin = lane.scale * 2.4 + 3;
-    const span = 2 * (hh + margin);
-    const travel = lane.phase * span + lane.speed * (rise + extraRise);
-    const y = -hh - margin + wrap(travel, span);
-    // A wide screen spreads the lanes; a tall one keeps them inside its narrower frame.
+    const M = MURMURATION;
+    const hh = halfHeightAt(M.z);
     const hw = hh * Math.max(0.56, aspect);
-    const x = lane.sx * hw + Math.sin(time * lane.swayFreq * TAU + lane.swayPhase) * lane.swayAmp;
-    const q = axisAngle(lane.axis, lane.angle0 + lane.spin * time + extraSpin);
-    // On a narrow screen a near piece would fill the frame's side: draw it smaller.
-    const fit = lane.band === 'near' ? Math.max(0.6, Math.min(1, aspect / 1.4)) : 1;
+    const tall = smoothstep(1.25, 0.85, aspect);
+    const m = easeInOutCubic(menu);
+    // It draws in a little on the in-breath.
+    const draw = 1 - 0.07 * breath;
+    const rx = lerp(M.rx * hw, 0.36 * hw, m) * draw;
+    const ry = lerp(M.ry * hh, 0.6 * hh, m) * draw;
+    // Out-breaths open it into two streams, more on some breaths than others.
+    const split = (0.5 - 0.5 * Math.cos((TAU * time) / 40)) * (1 - breath) * 0.85 * motion;
+    const ringBreath = 0.97 + 0.06 * breath;
     return {
-        x, y, z: lane.z, q, scale: lane.scale * fit,
+        center: [lerp(0, 0.5 * hw, m), lerp(0.02, 0.04, m) * hh, M.z],
+        radii: [rx, ry, M.zAmp * (0.4 + 0.6 * motion)],
+        head: time * M.speed + 0.6,
+        span: M.span,
+        width: M.width * (1 + 0.1 * breath) * lerp(1, 0.7, tall) * (1 - 0.25 * m),
+        thick: M.thick,
+        split,
+        // A wave of banking: about two and a half turns along it, rolling from head to tail.
+        bank: [2.5, time * 1.5, 1.3 * motion, 0.35],
+        wobble: time * 0.21,
+        bulge: time * 0.5,
+        light: (0.8 + 0.35 * breath) * (1 - 0.2 * m),
+        swirl: time * 0.3,
+        // The ring it gathers into stands round the title.
+        // It breathes with the breath while it holds.
+        ring: [0, 0.02 * hh, hw * lerp(0.4, 0.84, tall) * ringBreath, hh * lerp(0.48, 0.4, tall) * ringBreath],
+        ringTube: 1.05,
+        gather: clamp01(gather),
     };
 }
 
-// ── Quaternions (x, y, z, w) ────────────────────────────────────────────────────
-
-export function qMul(a, b) {
-    return [
-        a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
-        a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
-        a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
-        a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
-    ];
-}
-
-/** v turned by the unit quaternion q. */
-export function qRotate(q, v) {
-    const [x, y, z, w] = q;
-    const tx = 2 * (y * v[2] - z * v[1]);
-    const ty = 2 * (z * v[0] - x * v[2]);
-    const tz = 2 * (x * v[1] - y * v[0]);
-    return [
-        v[0] + w * tx + (y * tz - z * ty),
-        v[1] + w * ty + (z * tx - x * tz),
-        v[2] + w * tz + (x * ty - y * tx),
-    ];
-}
-
-export function qSlerp(a, b, t) {
-    let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
-    const s = d < 0 ? -1 : 1;
-    d *= s;
-    if (d > 0.9995) {
-        const out = a.map((v, i) => v + (b[i] * s - v) * t);
-        const len = Math.hypot(...out) || 1;
-        return out.map((v) => v / len);
-    }
-    const th = Math.acos(Math.min(1, d));
-    const k0 = Math.sin((1 - t) * th) / Math.sin(th);
-    const k1 = Math.sin(t * th) / Math.sin(th);
-    return a.map((v, i) => v * k0 + b[i] * s * k1);
-}
-
-// ── The stack: two pieces find each other on a breath ───────────────────────────
-
-/**
- * Shapes that lock with a twin of their own into a rectangle: the twin is turned `turn` about
- * the face and docked `offset` cells away in the first one's frame. Two J (or two L) make a
- * 2 x 4, two O a 4 x 2, two I a bar of eight.
- */
-export const STACK_FITS = Object.freeze({
-    O: { offset: [2, 0], turn: 0 },
-    I: { offset: [4, 0], turn: 0 },
-    J: { offset: [1, 0], turn: Math.PI },
-    L: { offset: [-1, 0], turn: Math.PI },
-});
-
-/** The stack's rhythm: once every three breaths, from the in-breath through the out-breath. */
-export const STACK = Object.freeze({
+/** The gathering's rhythm: once every three breaths, from the in-breath through the out-breath. */
+export const GATHER = Object.freeze({
     every: 3 * BREATH_PERIOD,
     first: 2 * BREATH_PERIOD,
     approach: 3.7,
     hold: 3.1,
     release: 4.6,
 });
-export const STACK_SECONDS = STACK.approach + STACK.hold + STACK.release;
+export const GATHER_SECONDS = GATHER.approach + GATHER.hold + GATHER.release;
 
-/** Which stack (k) a moment belongs to and how far into it (seconds), or null between them. */
-export function stackSlot(t) {
-    if (t < STACK.first) return null;
-    const k = Math.floor((t - STACK.first) / STACK.every);
-    const tau = t - STACK.first - k * STACK.every;
-    return tau < STACK_SECONDS ? { k, tau, start: t - tau } : null;
+/** Which gathering (k) a moment belongs to and how far into it (seconds), or null between them. */
+export function gatherSlot(t) {
+    if (t < GATHER.first) return null;
+    const k = Math.floor((t - GATHER.first) / GATHER.every);
+    const tau = t - GATHER.first - k * GATHER.every;
+    return tau < GATHER_SECONDS ? { k, tau, start: t - tau } : null;
 }
 
 /**
- * How far the pair is joined (0..1), the flash of the lock and the lock's moment, at tau seconds
- * into a stack: they glide together on the in-breath, lock at its top, hold, and let go on the
- * out-breath.
+ * How far the flock has gathered (0..1), the flash as the ring closes and that moment, at tau
+ * seconds into a gathering: it pours in on the in-breath, closes at its top, holds, and lets go on
+ * the out-breath.
  */
-export function stackPhase(tau) {
-    const { approach, hold, release } = STACK;
+export function gatherPhase(tau) {
+    const { approach, hold, release } = GATHER;
     let join;
     if (tau < approach) join = easeInOutCubic(tau / approach);
     else if (tau < approach + hold) join = 1;
@@ -398,32 +317,6 @@ export function stackPhase(tau) {
     const sinceLock = tau - approach * 0.96;
     const flash = sinceLock >= 0 ? Math.exp(-sinceLock * 1.7) : 0;
     return { join: clamp01(join), flash, locked: sinceLock >= 0 && tau < approach + hold };
-}
-
-/**
- * Choose the pair for a stack starting at `start`: an anchor in the middle band, low enough in
- * the frame to stay in view for the whole breath, on the side the mode allows, and the nearest
- * twin of its shape on the same side, not too far in depth. Returns null when no pair fits.
- * @param {object[]} lanes
- * @param {{ start: number, aspect: number, side?: number }} options side: -1 left, +1 right, 0 either
- */
-export function chooseStackPair(lanes, { start, aspect, side = 0 }) {
-    const rise = riseClock(start);
-    const at = lanes.map((lane) => pieceAt(lane, { rise, time: start, aspect }));
-    let best = null;
-    lanes.forEach((a, i) => {
-        if (a.band !== 'mid' || !STACK_FITS[PIECE_KEYS[a.shape]]) return;
-        if (side !== 0 && Math.sign(a.sx) !== side) return;
-        const hh = halfHeightAt(a.z);
-        if (at[i].y < -hh * 0.75 || at[i].y > -hh * 0.05) return;
-        lanes.forEach((b, j) => {
-            if (j === i || b.shape !== a.shape || Math.sign(b.sx) !== Math.sign(a.sx)) return;
-            if (Math.abs(b.z - a.z) > 14) return;
-            const d = Math.hypot(at[j].x - at[i].x, at[j].y - at[i].y, (at[j].z - at[i].z) * 0.5);
-            if (!best || d < best.d) best = { anchor: i, partner: j, d };
-        });
-    });
-    return best ? { anchor: best.anchor, partner: best.partner } : null;
 }
 
 // ── The motes ───────────────────────────────────────────────────────────────────
@@ -443,25 +336,4 @@ export function buildMoteSeeds(count, seed = 11) {
         out[i * 4 + 3] = rnd();
     }
     return out;
-}
-
-// ── Avoid zones ─────────────────────────────────────────────────────────────────
-
-/**
- * How present a piece is (0..1) given where it is on screen (NDC, y up) and the rects it must
- * keep out of (screen fractions, y down: { x0, y0, x1, y1 }), measured with a soft edge.
- */
-export function presenceAt(ndcX, ndcY, radius, rects) {
-    if (!rects || rects.length === 0) return 1;
-    const sx = ndcX * 0.5 + 0.5;
-    const sy = 0.5 - ndcY * 0.5;
-    let presence = 1;
-    for (const r of rects) {
-        if (!r) continue;
-        const dx = Math.max(r.x0 - sx, 0, sx - r.x1);
-        const dy = Math.max(r.y0 - sy, 0, sy - r.y1);
-        const d = Math.hypot(dx, dy) - radius;
-        presence = Math.min(presence, smoothstep(-0.01, 0.06, d));
-    }
-    return presence;
 }

@@ -7,7 +7,7 @@
  * them (ADR-0020, IntroAnimation.beginIntroPipelineSession).
  *
  * Contract with IntroAnimation (kept from the renderer it replaces): init(), update(), setPhase(),
- * setBackgroundMode(), setTitleBounds(), setAudioPulse(), triggerTetrominoBounceAt(),
+ * setBackgroundMode(), setTitleBounds(), setAudioPulse(), touchWorldAt(),
  * getDevice(), isLost(), setParked(), destroy(), and `renderer`. New: beginOpening(),
  * pulseBegin(), setMenuLayout().
  */
@@ -183,7 +183,7 @@ export default class ThreeJSIntroRendererWebGPU {
         this.syncViewport();
     }
 
-    /** The wordmark's rect (CSS px): the halo stands behind it and pieces keep clear of it. */
+    /** The wordmark's rect (CSS px): the halo stands behind it and the murmuration keeps clear of it. */
     setTitleBounds(bounds) {
         if (!bounds || !this.world) return;
         this.world.setTitleRect({
@@ -192,7 +192,7 @@ export default class ThreeJSIntroRendererWebGPU {
     }
 
     /**
-     * The main menu's layout (screen fractions, y down): `avoid` the pieces keep out of (the
+     * The main menu's layout (screen fractions, y down): `avoid` the murmuration keeps out of (the
      * navigation and the logo), `calm` the light the post softens behind (navigation, card).
      */
     setMenuLayout({ avoid = [], calm = [] } = {}) {
@@ -244,8 +244,8 @@ export default class ThreeJSIntroRendererWebGPU {
         this.world?.pulseBegin(origin);
     }
 
-    /** A click on a piece spins and lights it. */
-    triggerTetrominoBounceAt(clientX, clientY) {
+    /** A click sends a pulse of light along the murmuration. */
+    touchWorldAt(clientX, clientY) {
         if (!this.world || !this.canvas) return false;
         const rect = this.canvas.getBoundingClientRect?.();
         if (!rect || !(rect.width > 0 && rect.height > 0)) return false;

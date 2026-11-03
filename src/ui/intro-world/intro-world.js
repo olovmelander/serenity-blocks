@@ -1,17 +1,21 @@
 /**
  * First Light — the world behind the opening, the title and the main menu.
  *
- * The parts (sky, veils, pieces, motes) are built once; this class owns their shared uniforms
+ * The parts (sky, veils, the murmuration, motes) are built once; this class owns their shared uniforms
  * and directs them:
  *   - the clocks: time, the breath, and the rise clock (the breath's integral) that paces
  *     everything that ascends;
  *   - the opening: from the frame the loading screen paints (low in the light, the veils not
- *     yet drawn) the eye rises and draws back while the veils unfurl, the pieces rise past and a
- *     wave of light leaves the logo;
- *   - the modes: the title (a halo behind the wordmark, pieces clear of it) and the menu (the
- *     light lower, calmer; pieces clear of the navigation), blended over a second and a half;
- *   - the player's touch: the pointer's parallax, a click that spins and lights a piece, the
- *     begin wave when the title is dismissed.
+ *     yet drawn) the eye rises and draws back while the veils unfurl, the murmuration pours up out
+ *     of the light below and a wave of light leaves the logo;
+ *   - the modes: the title (a halo behind the wordmark, the murmuration flying round it) and the
+ *     menu (the light lower, calmer; the murmuration to the right of the navigation), blended over
+ *     a second and a half;
+ *   - the gathering: on every third breath on the title the whole flock pours into a ring of
+ *     light round the wordmark, and a wave of light leaves it as the ring closes;
+ *   - the music: the flock swells and brightens with the soundtrack's level;
+ *   - the player's touch: the pointer's parallax, a click that sends a pulse of light along the
+ *     flock, the begin wave when the title is dismissed.
  * Everything is a function of time except what the player does, so `seek(t)` reproduces any
  * moment of the opening (the playground's fixed-time captures).
  */
@@ -19,52 +23,48 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import {
+    GATHER,
+    MURMURATION,
     OPENING_RISE,
     OPENING_SECONDS,
-    PIECE_KEYS,
-    STACK,
-    STACK_FITS,
-    axisAngle,
     breathAt,
-    buildPieceField,
     cameraPoseAt,
-    chooseStackPair,
     clamp01,
     easeInOutCubic,
     easeOutCubic,
+    gatherPhase,
+    gatherSlot,
+    halfHeightAt,
+    murmurationAt,
+    murmurationLine,
     openingState,
-    pieceAt,
-    presenceAt,
-    qMul,
-    qRotate,
-    qSlerp,
     riseClock,
     smoothstep,
-    stackPhase,
-    stackSlot,
 } from './intro-world-core.js';
 import { bakeGrainTexture } from './intro-world-tsl.js';
 import { createSky } from './intro-world-sky.js';
 import { createVeils } from './intro-world-veils.js';
-import { createPieces } from './intro-world-pieces.js';
+import { createMurmuration } from './intro-world-murmuration.js';
 import { createMotes } from './intro-world-motes.js';
 
 /** Content per tier (the intro renderer maps its HIGH / MEDIUM / LOW budget onto these). */
 export const WORLD_TIERS = Object.freeze({
     High: {
-        pieces: 21, motes: 1800, grain: true, bevel: 3, post: 'High', dprCap: 2,
+        murmuration: 110000, motes: 1800, grain: true, bevel: 3, post: 'High', dprCap: 2,
     },
     Medium: {
-        pieces: 18, motes: 1100, grain: true, bevel: 2, post: 'Medium', dprCap: 1.5,
+        murmuration: 52000, motes: 1100, grain: true, bevel: 2, post: 'Medium', dprCap: 1.5,
     },
     Low: {
-        pieces: 14, motes: 600, grain: false, bevel: 1, post: 'Low', dprCap: 1,
+        murmuration: 18000, motes: 600, grain: false, bevel: 1, post: 'Low', dprCap: 1,
     },
 });
 
 const MODE_SECONDS = 1.6;
 const BEGIN_WAVE_SECONDS = 1.7;
-const CLICK_SPIN = Math.PI * 0.9;
+/** The murmuration's light at 110 000 motes; fewer motes each carry more (the same total light). */
+const MURMUR_GAIN = 1.25;
+const MURMUR_REFERENCE = 110000;
 
 const damp = (current, target, rate, dt) => current + (target - current) * (1 - Math.exp(-rate * dt));
 
@@ -89,12 +89,9 @@ export class IntroWorld {
         };
         this.time = 0;
         this.riseBase = 0;
-        this.lanes = buildPieceField({ count: this.tier.pieces, seed });
-        this.presence = new Float32Array(this.lanes.length).fill(1);
-        this.flash = new Float32Array(this.lanes.length);
-        this.spinBase = new Float32Array(this.lanes.length);
-        this.spinKick = this.lanes.map(() => null);
-        this.pushKick = this.lanes.map(() => null);
+        // A touch's pulse along the flock (its start and where), and the begin wave's flash.
+        this.pulse = null;
+        this.flockFlash = 0;
         this.viewport = {
             width: 1920, height: 1080, aspect: 16 / 9,
         };
@@ -127,10 +124,11 @@ export class IntroWorld {
         this.grain = bakeGrainTexture(128);
         this.sky = createSky(this.u, this.grain, { grain: this.tier.grain });
         this.veils = createVeils(this.u, this.grain);
-        const perShape = Math.ceil(this.lanes.length / 7) + 2;
-        this.pieces = createPieces(this.u, { count: perShape, bevel: this.tier.bevel });
+        this.murmuration = createMurmuration(this.u, { count: this.tier.murmuration });
+        this.murmuration.setGain(MURMUR_GAIN * (MURMUR_REFERENCE / this.tier.murmuration));
+        this.murmuration.setViewport(this.viewport.height, this.viewport.aspect);
         this.motes = createMotes(this.u, { count: this.tier.motes });
-        this.parts = [this.sky, this.veils, this.pieces, this.motes];
+        this.parts = [this.sky, this.veils, this.murmuration, this.motes];
         for (const p of this.parts) scene.add(p.mesh);
         return this;
     }
@@ -146,18 +144,19 @@ export class IntroWorld {
         if (!(width > 0 && height > 0)) return;
         this.viewport = { width, height, aspect: width / height };
         this.u.aspect.value = this.viewport.aspect;
+        this.murmuration?.setViewport(height, this.viewport.aspect);
         if (this.camera) {
             this.camera.aspect = this.viewport.aspect;
             this.camera.updateProjectionMatrix();
         }
     }
 
-    /** The wordmark's rect in CSS pixels (or null): the halo stands behind it, pieces keep clear. */
+    /** The wordmark's rect in CSS pixels (or null): the halo stands behind it, the flock keeps clear. */
     setTitleRect(rect) {
         this.titleRect = rect && rect.width > 0 && rect.height > 0 ? { ...rect } : null;
     }
 
-    /** Screen-fraction rects (y down) the pieces must keep out of (the menu's navigation…). */
+    /** Screen-fraction rects (y down) the flock keeps out of (the menu's navigation…). */
     setAvoidRects(rects) {
         this.avoidRects = Array.isArray(rects) ? rects.filter(Boolean) : [];
     }
@@ -219,8 +218,8 @@ export class IntroWorld {
     pulseBegin(origin = null) {
         const o = origin || this.titleCentre() || { x: 0.5, y: 0.47 };
         this.beginWave = { at: this.time, x: o.x, y: o.y };
-        // Everything takes a small breath outward and the pieces catch the light.
-        this.lanes.forEach((_, i) => { this.flash[i] = Math.max(this.flash[i], 0.35); });
+        // Everything takes a small breath outward and the flock catches the light.
+        this.flockFlash = Math.max(this.flockFlash, 0.35);
     }
 
     titleCentre() {
@@ -237,41 +236,24 @@ export class IntroWorld {
         return clamp01((this.time - this.opening.at) / this.opening.seconds);
     }
 
-    /** A click at a point (NDC, y up): the nearest piece under it spins and lights. */
+    /**
+     * A click at a point (NDC, y up): a pulse of light runs both ways along the flock from the
+     * part of it nearest the click (if the click is near it at all).
+     */
     pick(ndcX, ndcY) {
-        if (!this.camera || !this._piecesNow) return false;
+        if (!this.camera || !this._flockLine) return false;
         let best = -1;
         let bestD = Infinity;
-        for (let i = 0; i < this._piecesNow.length; i++) {
-            const p = this._piecesNow[i];
-            if (!p || p.presence < 0.5) continue;
-            const dx = (p.ndcX - ndcX) * this.viewport.aspect;
-            const dy = p.ndcY - ndcY;
-            const d = Math.hypot(dx, dy);
-            if (d < p.ndcRadius * 1.25 && d < bestD) {
+        this._flockLine.forEach((p, i) => {
+            const d = Math.hypot((p.x - ndcX) * this.viewport.aspect, p.y - ndcY);
+            if (d < bestD) {
                 best = i;
                 bestD = d;
             }
-        }
-        if (best < 0) return false;
-        const p = this._piecesNow[best];
-        this.flash[best] = 1;
-        this.settleKick(best);
-        this.spinKick[best] = { at: this.time, amount: CLICK_SPIN * (Math.random() < 0.5 ? -1 : 1) };
-        // Pushed away from the click, a little, and back.
-        const dx = p.ndcX - ndcX;
-        const dy = p.ndcY - ndcY;
-        const len = Math.hypot(dx, dy) || 1;
-        this.pushKick[best] = { at: this.time, x: (dx / len) * 1.4, y: (dy / len) * 1.4 + 0.6 };
+        });
+        if (best < 0 || bestD > 0.5) return false;
+        this.pulse = { at: this.time, s: best / (this._flockLine.length - 1) };
         return true;
-    }
-
-    settleKick(i) {
-        const kick = this.spinKick[i];
-        if (kick) {
-            this.spinBase[i] += kick.amount * easeOutCubic((this.time - kick.at) / 1.6);
-            this.spinKick[i] = null;
-        }
     }
 
     // ── The frame ───────────────────────────────────────────────────────────────
@@ -285,13 +267,13 @@ export class IntroWorld {
         this.pointer.x = damp(this.pointer.x, this.pointerTarget.x, 2.2, step);
         this.pointer.y = damp(this.pointer.y, this.pointerTarget.y, 2.2, step);
         this.motion = damp(this.motion, this.motionTarget, 2.5, step);
-        for (let i = 0; i < this.flash.length; i++) this.flash[i] *= Math.exp(-step * 2.4);
-        this.pose(step, false);
+        this.flockFlash *= Math.exp(-step * 2.4);
+        this.pose();
     }
 
     /**
      * Jump to time t (deterministic). `opening` (seconds since the opening began, or null for
-     * none yet) and `menu` (0..1) place the moment; presence is evaluated directly.
+     * none yet) and `menu` (0..1) place the moment.
      */
     seek(t, { opening = undefined, menu = undefined } = {}) {
         this.time = Math.max(0, t);
@@ -305,10 +287,10 @@ export class IntroWorld {
         this.pointer = { ...this.pointerTarget };
         this.motion = this.motionTarget;
         this.riseBase = riseClock(this.time) * (0.35 + 0.65 * this.motion);
-        this.pose(0, true);
+        this.pose();
     }
 
-    pose(step, direct) {
+    pose() {
         const { u } = this;
         const t = this.time;
         const breath = breathAt(t);
@@ -330,7 +312,8 @@ export class IntroWorld {
         u.unfurl.value = open.unfurl;
         // The world is luminous from its first frame (the eye starts in the light below); the
         // opening adds the veils, the halo and the last of the light.
-        u.veilGain.value = (0.7 + 0.3 * open.light) * (1 - 0.3 * menu);
+        // The veils are the murmuration's sky now, not the show: they keep to a quieter light.
+        u.veilGain.value = (0.7 + 0.3 * open.light) * (1 - 0.3 * menu) * 0.55;
         u.moteGain.value = (0.7 + 0.3 * open.light) * (1 - 0.25 * menu) * (1 + this.audio * 0.35);
         const haloGain = (1 - menu) * open.halo * (this.titleRect ? 1 : 0.6);
         const hazeGain = (0.85 + 0.15 * open.light) * (1 - 0.18 * menu);
@@ -338,7 +321,7 @@ export class IntroWorld {
 
         this.updateCamera(open, breath, menu);
         this.updateHalo();
-        this.posePieces(open, breath, menu, step, direct);
+        this.poseMurmuration(open, breath, menu);
         this.sky.follow(this.camera);
     }
 
@@ -353,6 +336,7 @@ export class IntroWorld {
             pointerX: this.pointer.x,
             pointerY: this.pointer.y,
             motion: this.motion,
+            gather: this.gatheringNow(menu)?.join ?? 0,
         });
         cam.position.set(pose.pos[0], pose.pos[1], pose.pos[2]);
         cam.up.set(0, 1, 0);
@@ -374,149 +358,70 @@ export class IntroWorld {
     }
 
     /**
-     * The stack in progress, if any: which two lanes, how far joined, the lock's flash, and the
-     * turn they meet in. Every third breath on the title, every sixth behind the menu (and only
-     * on its right, clear of the navigation); never during the opening or under reduced motion.
+     * The gathering in progress, if any: how far the flock has poured into the ring and the flash
+     * as it closes. Every third breath, on the title only (behind the menu the ring would cross
+     * the navigation); never during the opening or under reduced motion.
      */
-    stackNow(menu) {
-        const slot = stackSlot(this.time);
+    gatheringNow(menu) {
+        const slot = gatherSlot(this.time);
         if (!slot || !this.opening || this.openingProgress() < 1 || this.motion < 0.5) return null;
-        const inMenu = menu > 0.5;
-        if (inMenu && slot.k % 2 === 1) return null;
-        if (!this._stackCache || this._stackCache.k !== slot.k || this._stackCache.inMenu !== inMenu) {
-            // Behind the menu always on the right (the navigation is on the left); on the title the
-            // sides take turns.
-            let side = slot.k % 2 === 0 ? 1 : -1;
-            if (inMenu) side = 1;
-            const pair = chooseStackPair(this.lanes, { start: slot.start, aspect: this.viewport.aspect, side });
-            const tilt = slot.k % 2 === 0 ? 0.32 : -0.32;
-            this._stackCache = {
-                k: slot.k,
-                inMenu,
-                pair,
-                q: qMul(axisAngle([0.2005, 0.9724, 0.1203], tilt), axisAngle([1, 0, 0], -0.16)),
-            };
-        }
-        const { pair, q } = this._stackCache;
-        if (!pair) return null;
-        const fit = STACK_FITS[PIECE_KEYS[this.lanes[pair.anchor].shape]];
-        // Where they meet across the frame: two thirds out on the title's side, or in the gutter
-        // to the right of the menu's card, so the moment is never cut by the frame's edge.
-        const sideSign = Math.sign(this.lanes[pair.anchor].sx) || 1;
-        const across = inMenu ? 0.9 : 0.66 * sideSign;
-        return {
-            ...pair, ...stackPhase(slot.tau), tau: slot.tau, fit, q, across,
-        };
+        // It lets go as the menu comes in.
+        const phase = gatherPhase(slot.tau);
+        const away = 1 - smoothstep(0, 0.5, menu);
+        if (away <= 0) return null;
+        return { ...phase, join: phase.join * away, tau: slot.tau };
     }
 
-    posePieces(open, breath, menu, step, direct) {
+    poseMurmuration(open, breath, menu) {
         const cam = this.camera;
-        const { pieces } = this;
-        pieces.begin();
+        if (!cam) return;
         const { aspect } = this.viewport;
-        const rise = this.u.rise.value;
-        const stack = this.stackNow(menu);
-        this._stackWave = null;
+        const gathering = this.gatheringNow(menu);
+        this._gatherWave = null;
         const avoid = [...this.avoidRects];
         if (this.titleRect && menu < 0.5) {
             const r = this.titleRect;
             const { width: W, height: H } = this.viewport;
             avoid.push({
-                x0: (r.x - r.width * 0.08) / W,
-                y0: (r.y - r.height * 0.12) / H,
-                x1: (r.x + r.width * 1.08) / W,
-                y1: (r.y + r.height * 1.12) / H,
+                x0: (r.x - r.width * 0.04) / W,
+                y0: (r.y - r.height * 0.06) / H,
+                x1: (r.x + r.width * 1.04) / W,
+                y1: (r.y + r.height * 1.06) / H,
             });
         }
-        const now = this._piecesNow || (this._piecesNow = []);
-        const v = this._ndc;
-        const halfFov = Math.tan(((cam?.fov ?? 38) * Math.PI) / 360);
-        // Every piece where its lane puts it (and where a touch has pushed it)...
-        const placed = this.lanes.map((lane, i) => {
-            const kick = this.spinKick[i];
-            let spin = this.spinBase[i];
-            if (kick) {
-                const k = (this.time - kick.at) / 1.6;
-                spin += kick.amount * easeOutCubic(k);
-                if (k >= 1) this.settleKick(i);
-            }
-            const p = pieceAt(lane, {
-                rise, time: this.time, aspect, extraSpin: spin,
-            });
-            const push = this.pushKick[i];
-            if (push) {
-                const k = this.time - push.at;
-                const bump = Math.exp(-k * 1.6) - Math.exp(-k * 6);
-                p.x += push.x * bump * 2.2;
-                p.y += push.y * bump * 2.2;
-                if (k > 4) this.pushKick[i] = null;
-            }
-            return p;
+        this.murmuration.setAvoid(avoid);
+        const m = murmurationAt({
+            time: this.time, breath, aspect, menu, motion: this.motion, gather: gathering ? gathering.join : 0,
         });
-        // ...then the stack: the twins glide to meet halfway, turn to fit and lock as one.
-        const stackFlash = new Map();
-        if (stack) {
-            const a = placed[stack.anchor];
-            const b = placed[stack.partner];
-            // A little larger as they meet: the moment draws the eye.
-            const s = ((a.scale + b.scale) / 2) * 1.18;
-            const mid = [(a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2];
-            // Placed through the live camera (the menu's view is turned): move across until the
-            // meeting point stands at `across` on screen.
-            v.set(mid[0], mid[1], mid[2]).project(cam);
-            const depth = Math.hypot(mid[0] - cam.position.x, mid[1] - cam.position.y, mid[2] - cam.position.z);
-            mid[0] += (stack.across - v.x) * depth * halfFov * aspect;
-            const half = qRotate(stack.q, [(stack.fit.offset[0] * s) / 2, (stack.fit.offset[1] * s) / 2, 0]);
-            const qa = stack.q;
-            const qb = qMul(stack.q, axisAngle([0, 0, 1], stack.fit.turn));
-            const { join } = stack;
-            const dock = (p, sign, q) => {
-                p.x += (mid[0] + half[0] * sign - p.x) * join;
-                p.y += (mid[1] + half[1] * sign - p.y) * join;
-                p.z += (mid[2] + half[2] * sign - p.z) * join;
-                p.scale += (s - p.scale) * join;
-                p.q = qSlerp(p.q, q, join);
-            };
-            dock(a, -1, qa);
-            dock(b, 1, qb);
-            stackFlash.set(stack.anchor, stack.flash);
-            stackFlash.set(stack.partner, stack.flash);
-            const sinceLock = stack.tau - STACK.approach * 0.96;
-            if (sinceLock >= 0 && sinceLock < 1.8) {
-                v.set(mid[0], mid[1], mid[2]).project(cam);
-                this._stackWave = { x: v.x * 0.5 + 0.5, y: 0.5 - v.y * 0.5, age: sinceLock };
+        // While the world opens it pours up out of the light below.
+        m.center[1] -= (1 - open.rise) * halfHeightAt(MURMURATION.z) * 1.5;
+        // The music: the flock swells and brightens with the soundtrack's level.
+        m.width *= 1 + this.audio * 0.12;
+        const flash = Math.max(this.flockFlash, gathering ? gathering.flash : 0);
+        m.light *= (0.3 + 0.7 * open.light) * (1 + flash * 1.2) * (1 + this.audio * 0.55);
+        if (this.pulse) {
+            m.pulse = this.time - this.pulse.at;
+            m.pulseAt = this.pulse.s;
+            m.pulseAmp = 1;
+            if (m.pulse > 4) this.pulse = null;
+        }
+        this.murmuration.write(m);
+        // Where the flock's line is on screen, for a touch.
+        const line = this._flockLine || (this._flockLine = Array.from({ length: 25 }, () => ({ x: 0, y: 0 })));
+        const v = this._ndc;
+        line.forEach((p, i) => {
+            const [x, y, z] = murmurationLine(m, i / (line.length - 1));
+            v.set(x, y, z).project(cam);
+            p.x = v.x;
+            p.y = v.y;
+        });
+        if (gathering) {
+            const sinceLock = gathering.tau - GATHER.approach * 0.96;
+            if (sinceLock >= 0 && sinceLock < 2.4) {
+                const c = this.titleCentre() || { x: 0.5, y: 0.47 };
+                this._gatherWave = { x: c.x, y: c.y, age: sinceLock };
             }
         }
-        for (let i = 0; i < this.lanes.length; i++) {
-            const lane = this.lanes[i];
-            const p = placed[i];
-            // Where it is on screen, for the quiet zones and for picking.
-            const dist = Math.hypot(p.x - cam.position.x, p.y - cam.position.y, p.z - cam.position.z);
-            v.set(p.x, p.y, p.z).project(cam);
-            const ndcRadius = (p.scale * 1.7) / Math.max(1e-3, dist * halfFov);
-            // NDC spans two screen heights; the rects are screen fractions.
-            const target = v.z < 1 ? presenceAt(v.x, v.y, ndcRadius * 0.42, avoid) : 1;
-            this.presence[i] = direct ? target : damp(this.presence[i], target, 3.2, step);
-            now[i] = {
-                ndcX: v.x, ndcY: v.y, ndcRadius, presence: this.presence[i],
-            };
-            // The far ones are hazed by the air; near ones keep their colour.
-            const air = lane.band === 'near' ? 0.4 : 1;
-            pieces.write({
-                shape: lane.shape,
-                x: p.x,
-                y: p.y,
-                z: p.z,
-                scale: p.scale,
-                q: p.q,
-                glow: 0.028 + breath * 0.033 + this.audio * 0.03,
-                flash: Math.max(this.flash[i], stackFlash.get(i) ?? 0),
-                presence: Math.max(0.0001, this.presence[i]),
-                seed: lane.seed,
-                air,
-            });
-        }
-        pieces.commit();
     }
 
     // ── What the post needs ─────────────────────────────────────────────────────
@@ -546,14 +451,14 @@ export class IntroWorld {
                 });
             }
         }
-        // The stack's lock: a small ring of light where the twins meet.
-        if (this._stackWave) {
-            const k = this._stackWave.age / 1.8;
+        // The gathering: as the ring closes, a wave of light leaves the title.
+        if (this._gatherWave) {
+            const k = this._gatherWave.age / 2.4;
             waves.push({
-                x: this._stackWave.x,
-                y: this._stackWave.y,
-                radius: 0.015 + easeOutCubic(k) * 0.3,
-                strength: (1 - smoothstep(0.1, 1, k)) * 0.55 * (1 - menu * 0.5),
+                x: this._gatherWave.x,
+                y: this._gatherWave.y,
+                radius: 0.05 + easeOutCubic(k) * 0.95,
+                strength: (1 - smoothstep(0.1, 1, k)) * 0.7 * (1 - menu * 0.5),
             });
         }
         const calm = [...this.calmRects];
@@ -581,9 +486,8 @@ export class IntroWorld {
             opening: this.opening ? Math.round(this.openingProgress() * 1000) / 1000 : null,
             mode: this.mode,
             menu: Math.round(this.menuBlend * 1000) / 1000,
-            pieces: this.lanes.length,
+            murmuration: this.tier.murmuration,
             motes: this.tier.motes,
-            present: Array.from(this.presence).filter((p) => p > 0.5).length,
         };
     }
 
