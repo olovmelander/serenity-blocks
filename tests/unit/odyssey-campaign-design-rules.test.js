@@ -20,7 +20,7 @@ const MEASURED = Object.freeze({
     4: [75, 30],
     6: [45, 20],
     7: [49, 88],
-    8: [66, 28],
+    8: [31, 16],
     9: [61, 102],
     11: [69, 26],
     12: [52, 284],
@@ -47,7 +47,7 @@ const MEASURED = Object.freeze({
     36: [95, 148],
     37: [84, 36],
     38: [157, 66],
-    39: [168, 65],
+    39: [112, 43],
     40: [115, 45],
     41: [154, 60],
     42: [115, 45],
@@ -97,8 +97,10 @@ const QUAD_ASK = Object.freeze({
 const ROLES = new Set(['arrival', 'teach', 'reinforce', 'twist', 'release', 'test', 'boss', 'rival']);
 const PEAKS = new Set(['test', 'boss', 'rival']);
 const GENTLE = new Set(['arrival', 'teach', 'twist', 'release']);
-const SHOWCASES = [32, 47, 55, 59];
-const PRIMARY_METRIC = Object.freeze({ cascade: 'cascades' });
+// 39 is the survival orb (phase 3): its lap is the survival beyond the goal, where the extra stars are.
+const SHOWCASES = [32, 39, 47, 55, 59];
+// Phase 3: a rubble goal's stars count rows dug out; a survival goal's count seconds survived (a lower bound).
+const PRIMARY_METRIC = Object.freeze({ cascade: 'cascades', rubble: 'rubbleCleared', time: 'survived' });
 const CHAIN_KEYS = ['maxCascadeDepth', 'combo'];
 
 const solo = LEVEL_CONFIGS.filter((level) => !level.mechanics.versus);
@@ -115,6 +117,10 @@ function opening(level) {
 /** The fastest fall on the way to one star: the proportional curve after the measured lines. */
 function fastestBeforeOneStar(level) {
     const { speed } = level.mechanics;
+    // A survival ramp (phase 3) halves the drop every doublingSeconds; at the goal it is the fastest before one star.
+    if (speed.doublingSeconds > 0) {
+        return opening(level) * 0.5 ** (level.victory.primary.target / speed.doublingSeconds);
+    }
     if (!speed.levelProgression) return opening(level);
     const reached = Math.min(speed.startLevel + Math.floor(MEASURED[level.id][1] / 15), LEVEL_SPEEDS.length);
     return LEVEL_SPEEDS[reached - 1] * (opening(level) / LEVEL_SPEEDS[speed.startLevel - 1]);

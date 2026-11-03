@@ -68,8 +68,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'koi-pond': {
         name: 'Koi Sanctuary',
         description: 'Koi rise through a moonlit garden pond beside a stone lantern. '
-            + 'Dig through the silt one line at a time.',
-        tip: 'Clear the opening rows one clean line at a time, and keep one column open for multi-line clears.',
+            + 'Dig the silt off the pond floor.',
+        tip: 'Silt rows have gaps: clear the rows above them, then drop pieces into the gaps to wash the silt away.',
     },
     stillwater: {
         name: 'Tarn of Wisps',
@@ -268,8 +268,10 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     'void-ember': {
         name: 'Dying Ember',
-        description: 'A dying star glows like a banked coal, fire in the cracks of its crust. Keep the score climbing.',
-        tip: 'Quads score the most here. Keep clears flowing; a piece that clears nothing resets the multiplier.',
+        description: 'A dying star glows like a banked coal, fire in its cracks. '
+            + 'Keep it alive, then play on for stars.',
+        tip: 'The pieces keep speeding up: build low and clean while they are slow, '
+            + 'and every second you survive counts.',
     },
     'aether-tides': {
         name: 'Aether Surge',

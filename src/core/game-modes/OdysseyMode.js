@@ -32,6 +32,7 @@ import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
 import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
 import { OdysseyBotMatch } from '../odyssey/OdysseyBotMatch.js';
 import { ODYSSEY_VISIBLE_ROWS } from '../odyssey/odyssey-board-shape.js';
+import { isOdysseyTimeBoardRun } from '../odyssey/odyssey-time-board.js';
 import { startOdysseyGameplayLoop } from './odyssey-gameplay-loop.js';
 import {
     createOdysseyLevelSession,
@@ -3688,9 +3689,8 @@ export class OdysseyMode extends BaseGameMode {
             version: '1.0.0',
         };
 
-        // A run that used a charm does not race plain runs on the orb's time board (audit
-        // 2026-10-18); its stars count in full. `results.charms` is the list of charms used.
-        const timeBoardEligible = !(results.charms?.length > 0);
+        // Charmed runs and survival orbs stay off the fastest-first time board (odyssey-time-board.js).
+        const timeBoardEligible = isOdysseyTimeBoardRun(session.levelConfig, results);
         await Promise.all([
             steamService.uploadScore(
                 STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
@@ -3980,17 +3980,9 @@ export class OdysseyMode extends BaseGameMode {
 
         // Update HUD metrics
         this.odysseyHUD.updateMetrics({
-            lines: metrics.lines,
+            ...metrics,
             score: this._activeLevelSession?.duel?.score ?? (this.gameState?.score || 0),
-            cascades: metrics.cascades,
-            maxCascadeDepth: metrics.maxCascadeDepth,
-            tetrises: metrics.tetrises,
-            singles: metrics.singles,
             combo: metrics.maxCombo,
-            height: metrics.height,
-            piecesPlaced: metrics.piecesPlaced,
-            frags: metrics.frags,
-            deaths: metrics.deaths,
             bonusResults: this.hybridEngine.evaluateBonuses(),
         });
 

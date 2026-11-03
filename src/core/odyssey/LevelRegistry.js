@@ -408,7 +408,9 @@ export class LevelRegistry {
         if (levelConfig.victory) {
             // 'tetrises' is supported by VictoryConditionEvaluator (primary switch) but was
             // missing here, so a tetrises-primary level would falsely fail validation (masterplan §2 #10).
-            const validTypes = ['lines', 'score', 'time', 'height', 'cascade', 'combo', 'tetrises', 'frags', 'custom'];
+            const validTypes = [
+                'lines', 'score', 'time', 'height', 'cascade', 'combo', 'tetrises', 'rubble', 'frags', 'custom',
+            ];
             const { primary } = levelConfig.victory;
             if (!primary) {
                 errors.push('Missing primary victory condition');
@@ -416,6 +418,11 @@ export class LevelRegistry {
                 errors.push(`Invalid victory type: ${primary.type}`);
             } else if (primary.type !== 'custom' && (!Number.isFinite(primary.target) || primary.target <= 0)) {
                 errors.push('Victory target must be a positive number');
+            } else if (primary.type === 'rubble') {
+                // Dig out N rubble rows: never more than the orb starts with.
+                const board = levelConfig.mechanics?.board || {};
+                const seeded = Array.isArray(board.opening) ? board.opening.length : Number(board.startingRows) || 0;
+                if (primary.target > seeded) errors.push('Rubble goal asks for more rows than the orb starts with');
             }
         }
 
@@ -461,13 +468,28 @@ export class LevelRegistry {
         }
 
         if (primary && levelConfig.victoryLapPolicy === 'none' && primary.type !== 'time') {
-            const metric = primary.type === 'cascade' ? 'cascades' : primary.type;
+            const metric = { cascade: 'cascades', rubble: 'rubbleCleared' }[primary.type] || primary.type;
             for (const tier of ['one', 'two', 'three']) {
                 const condition = levelConfig.stars?.[tier];
                 if (Number.isFinite(condition?.[metric]) && condition[metric] > primary.target) {
                     errors.push(`${tier}-star ${metric} requirement exceeds the completion target`
                         + ' without a victory lap');
                 }
+            }
+        }
+        // A survival ramp is the orb's one speed driver: it never runs beside line-based level-ups.
+        const doubling = levelConfig.mechanics?.speed?.doublingSeconds;
+        if (doubling !== undefined && (!(Number(doubling) > 0) || levelConfig.mechanics.speed.levelProgression)) {
+            errors.push('A speed ramp needs a positive doubling time and no line-based speed-ups');
+        }
+        // A survival star (`survived`: at least N seconds) belongs to a survival goal, and asking for longer
+        // than the goal needs the lap that keeps the orb going after it.
+        for (const tier of ['one', 'two', 'three']) {
+            const survived = levelConfig.stars?.[tier]?.survived;
+            if (survived === undefined) continue;
+            if (primary?.type !== 'time') errors.push(`${tier}-star survival time needs a survival goal`);
+            else if (survived > primary.target && levelConfig.victoryLapPolicy === 'none') {
+                errors.push(`${tier}-star survival time exceeds the goal without a victory lap`);
             }
         }
         const bonusCount = levelConfig.victory?.bonuses?.length || 0;

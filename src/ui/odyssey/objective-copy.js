@@ -20,6 +20,7 @@ export function formatOdysseyMapObjective(primary) {
     case 'time': return `Survive ${primary.target} seconds`;
     case 'combo': return formatOdysseyChainGoal(primary.target);
     case 'tetrises': return `Clear ${countOf(primary.target, 'Quad')}`;
+    case 'rubble': return `Dig out ${countOf(primary.target, 'rubble row')}`;
     case 'frags': return primary.description || formatOdysseyDuelGoal('the rival', primary.target);
     default: return `Complete: ${primary.type} (${primary.target})`;
     }
@@ -105,7 +106,13 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
     if (!primary || !metrics || level.mechanics?.versus) return null;
     const { type, target } = primary;
     const metricKey = {
-        lines: 'lines', score: 'score', cascade: 'cascades', combo: 'maxCombo', time: 'time', tetrises: 'tetrises',
+        lines: 'lines',
+        score: 'score',
+        cascade: 'cascades',
+        combo: 'maxCombo',
+        time: 'time',
+        tetrises: 'tetrises',
+        rubble: 'rubbleCleared',
     }[type];
     if (!metricKey) return null;
     const value = metrics[metricKey];
@@ -115,7 +122,13 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
         `${amount.toLocaleString()} ${amount === 1 ? singular : plural}`
     );
     const units = {
-        lines: 'line', score: 'point', cascade: 'cascade sequence', combo: 'wave', time: 'second', tetrises: 'Quad',
+        lines: 'line',
+        score: 'point',
+        cascade: 'cascade sequence',
+        combo: 'wave',
+        time: 'second',
+        tetrises: 'Quad',
+        rubble: 'rubble row',
     };
     const remaining = Math.ceil(Math.max(0, target - value));
     let remainingText = `${count(remaining, units[type])} short of the goal.`;
@@ -133,6 +146,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
             + 'clears on later pieces start a new chain.',
         time: 'Keep the stack low and take safe clears while the timer runs.',
         tetrises: 'Stack flat with one column left open, then drop a long I piece into it to clear four lines.',
+        rubble: 'Rubble rows have gaps. Clear the rows above them, then drop pieces into the gaps.',
     };
     let tip = cues[type];
     if (reason === 'top-out') {
@@ -180,6 +194,12 @@ export function formatOdysseyStarCondition(condition, starIndex = 0, bonuses = [
             break;
         case 'time':
             parts.push(formatOdysseyUnderTime(value));
+            break;
+        case 'survived':
+            parts.push(starIndex === 0 ? 'Clear the orb' : `Survive ${formatOdysseyBonusDuration(value)}`);
+            break;
+        case 'rubbleCleared':
+            parts.push(starIndex === 0 ? 'Clear the orb' : countOf(value, 'rubble row'));
             break;
         case 'tetrises':
             parts.push(formatOdysseyAtLeast(value, 'Quad'));
@@ -285,6 +305,8 @@ function readOdysseyStarMetrics(results = {}) {
         combo: chain,
         tetrises: readOdysseyMetric(results.tetrises),
         time: readOdysseyMetric(results.time),
+        survived: readOdysseyMetric(results.time),
+        rubbleCleared: readOdysseyMetric(results.rubbleCleared),
         bonuses,
         frags: readOdysseyMetric(results.duel?.playerFrags ?? results.frags),
         maxDeaths: readOdysseyMetric(results.duel?.deaths ?? results.deaths),
@@ -331,7 +353,9 @@ export function formatOdysseyStarActual(key, metrics) {
     case 'maxCascadeDepth':
     case 'combo': return `${actual}-wave chain`;
     case 'tetrises': return plural(actual, 'Quad');
-    case 'time': return formatOdysseyClock(actual);
+    case 'time':
+    case 'survived': return formatOdysseyClock(actual);
+    case 'rubbleCleared': return plural(actual, 'rubble row');
     case 'bonuses': return plural(actual, 'bonus', 'bonuses');
     case 'frags': return plural(actual, 'knockout');
     case 'maxDeaths': return plural(actual, 'top-out');
