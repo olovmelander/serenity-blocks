@@ -188,7 +188,6 @@
     "elixir/r1_recovery": { "voice": "olov-voice", "model": "eleven_v4", "take": "9e1867c61322", "words": "07b7f337ae65", "seconds": 4.23, "heard": "match" },
     "elixir/r2_active": { "voice": "olov-voice", "model": "eleven_v4", "take": "5f330afbf463", "words": "ec0856378a23", "seconds": 7.94, "heard": "match" },
     "elixir/r2_hold": { "voice": "olov-voice", "model": "eleven_v4", "take": "0835fed3b4ec", "words": "15fa8ed92546", "seconds": 5.37, "heard": "match" },
-    "elixir/r2_recovery": { "voice": "olov-voice", "model": "eleven_v4", "take": "7e7a3e3a8511", "words": "cded482cb3a0", "seconds": 5.27, "heard": "match" },
     "elixir/r3_active": { "voice": "olov-voice", "model": "eleven_v4", "take": "8dc99fdbad6d", "words": "3352517364bc", "seconds": 6.29, "heard": "match" },
     "elixir/r3_hold": { "voice": "olov-voice", "model": "eleven_v4", "take": "f8406587328a", "words": "d77460380d2b", "seconds": 5.44, "heard": "match" },
     "elixir/r3_recovery": { "voice": "olov-voice", "model": "eleven_v4", "take": "ffc7daa198d9", "words": "a284ac81c5ed", "seconds": 5.92, "heard": "match" },

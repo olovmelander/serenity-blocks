@@ -157,7 +157,6 @@
         { "id": "r1_recovery", "text": "Breathe all the way in... and hold it at the top." },
         { "id": "r2_active", "text": "The same steady loop... in... and out... connected breaths, with no pause between them." },
         { "id": "r2_hold", "delivery": "still", "text": "Deep silence... notice what you feel... without judging it." },
-        { "id": "r2_recovery", "text": "Breathe in fully... and hold... squeeze gently at the top." },
         { "id": "r3_active", "text": "Full and free... tingling is normal... if you feel dizzy, slow down." },
         { "id": "r3_hold", "delivery": "still", "text": "Complete release... you are held. Breathe in whenever you need." },
         { "id": "r3_recovery", "text": "One deep breath in... and hold... let the energy rise." },

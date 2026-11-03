@@ -812,8 +812,8 @@ export class BreathworkSessionManager {
                         duration: 15,
                         round: 2,
                         prompt: 'Recovery Breath',
-                        subPrompt: 'Breathe in fully, and hold. Squeeze gently at the top.',
-                        audio: { voice: 'elixir/r2_recovery', release: C.ELIXIR.release.out },
+                        subPrompt: 'Breathe all the way in, and hold it at the top.',
+                        audio: { voice: 'elixir/r1_recovery', release: C.ELIXIR.release.out },
                     },
                     {
                         type: 'active',

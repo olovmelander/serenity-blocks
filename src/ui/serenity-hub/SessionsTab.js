@@ -12,6 +12,9 @@ import { breathPosterUrl, getBreathWorld } from '../effects/breathing/breath-cat
 import { SESSION_WORLDS } from '../effects/breathwork-session-manager.js';
 import { getBreathCollection } from '../effects/breathing/breath-collection-store.js';
 import { announceBreathOpenings, describeOpenings } from '../effects/breathing/breath-openings.js';
+import {
+    BREATH_CAUTION_TEXT, BREATH_WELLNESS_TEXT, isBreathSafetyRead, isStrongSession, setBreathSafetyRead,
+} from '../effects/breathing/breath-safety.js';
 import { THEME_LOCK_ICON } from './ThemeCollectionView.js';
 import {
     MIN_PRACTICE_SECONDS, formatPracticeTime, longestOpenHold, readPracticeLog, recordPractice,
@@ -273,6 +276,8 @@ export class SessionsTab {
         return {
             ...info,
             id: sessionId,
+            // Open holds or fast breathing: the safety note is read before the first one.
+            strong: isStrongSession(phases),
             seconds: total,
             duration: `${Math.max(1, Math.ceil(total / 60))} min`,
             rounds,
@@ -438,10 +443,10 @@ export class SessionsTab {
                         </label>
                     </div>
                     <div class="hale-flow__caution" hidden>
-                        <p>${csIcon('shield', 15)} Holding your breath after fast breathing can make you light-headed. Sit or lie down. Never practise in or near water, while driving, or standing. Stop and breathe normally if you feel unwell.</p>
+                        <p>${csIcon('shield', 15)} ${BREATH_CAUTION_TEXT} ${BREATH_WELLNESS_TEXT}</p>
                         <label class="hale-flow__ack"><input type="checkbox" class="hale-flow__ack-input"><span>I understand</span></label>
                     </div>
-                    <p class="hale-flow__safety">Sit or lie down somewhere you can let go. Breathe comfortably, and return to your natural breath whenever you need to.</p>
+                    <p class="hale-flow__safety">Sit or lie down somewhere you can let go. Breathe comfortably, and return to your natural breath whenever you need to. ${BREATH_WELLNESS_TEXT}</p>
                     <button type="button" class="sb-btn sb-btn--primary hale-flow__begin">
                         <span>Begin session</span>${KEY_HINTS}
                     </button>
@@ -478,6 +483,9 @@ export class SessionsTab {
 
     /** Your saved choices: voice, bells, open holds, vibration, and the safety note read once. */
     get prefs() { return this.savedPrefs || DEFAULT_PREFS; }
+
+    /** The current safety note has been read (here or in the Breathing tab: breath-safety.js). */
+    get safetyRead() { return isBreathSafetyRead(storage()); }
 
     /**
      * True from Begin until the result is dismissed. The guide stops a moment before the
@@ -538,7 +546,10 @@ export class SessionsTab {
         toggle('.hale-flow__sounds', 'sounds');
         toggle('.hale-flow__holds', 'openHolds', () => this.renderJourney(this.pendingSessionId));
         toggle('.hale-flow__vibration', 'vibration');
-        toggle('.hale-flow__ack-input', 'safetyAcknowledged', () => this.updateBegin());
+        toggle('.hale-flow__ack-input', 'safetyAcknowledged', (read) => {
+            setBreathSafetyRead(read, storage());
+            this.updateBegin();
+        });
         // The Hub over a running session holds it; closing the Hub lets it continue.
         this.listen(window, 'serenityHubVisibilityChange', (event) => {
             if (!this.sessionRunning || !this.sessionManager?.activeSession) return;
@@ -665,11 +676,11 @@ export class SessionsTab {
         bestLine.textContent = bestLine.hidden ? '' : `Your best hold in ${info.name}: ${formatClock(best)}`;
     }
 
-    /** Begin is ready unless a strong-hold session still needs its one-time safety note read. */
+    /** Begin is ready unless a strong session still needs its one-time safety note read. */
     updateBegin() {
         const info = this.getSessionDetails(this.pendingSessionId);
         if (!info || !this.flow) return;
-        const caution = info.openHolds && !this.prefs.safetyAcknowledged;
+        const caution = info.strong && !this.safetyRead;
         const begin = this.flow.querySelector('.hale-flow__begin');
         begin.disabled = false;
         if (caution) {
@@ -709,10 +720,10 @@ export class SessionsTab {
         holds.checked = this.prefs.openHolds !== false;
         flow.querySelector('.hale-flow__switch--holds').hidden = !info.openHolds;
         const caution = flow.querySelector('.hale-flow__caution');
-        caution.hidden = !info.openHolds;
-        flow.querySelector('.hale-flow__ack').hidden = Boolean(this.prefs.safetyAcknowledged);
-        flow.querySelector('.hale-flow__ack-input').checked = Boolean(this.prefs.safetyAcknowledged);
-        flow.querySelector('.hale-flow__safety').hidden = info.openHolds;
+        caution.hidden = !info.strong;
+        flow.querySelector('.hale-flow__ack').hidden = this.safetyRead;
+        flow.querySelector('.hale-flow__ack-input').checked = this.safetyRead;
+        flow.querySelector('.hale-flow__safety').hidden = info.strong;
         const begin = flow.querySelector('.hale-flow__begin');
         begin.setAttribute('aria-label', `Begin ${info.name}. Intention optional.`);
         this.updateBegin();

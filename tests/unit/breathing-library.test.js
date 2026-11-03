@@ -67,6 +67,32 @@ describe('breathing library', () => {
             .toEqual(['calm-sleep']);
     });
 
+    it('shows the safety note with a fast world and begins it only once the note is read', () => {
+        const stored = new Map();
+        win.localStorage = { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) };
+        settings.breathingTechnique = 'wim-hof';
+        createTab();
+        const caution = hero('.breath-lib__caution');
+        expect(caution.hidden).toBe(false);
+        expect(caution.querySelector('.breath-lib__ack').hidden).toBe(false);
+        expect(hero('.breath-lib__begin').disabled).toBe(true);
+        click({ '.breath-lib__begin': true });
+        expect(guide.start).not.toHaveBeenCalled();
+        const ack = caution.querySelector('.breath-lib__ack-input');
+        container.fire('change', { target: Object.assign(targetMatching({ '.breath-lib__ack-input': ack }), { checked: true }) });
+        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-03');
+        expect(hero('.breath-lib__begin').disabled).toBe(false);
+        expect(caution.querySelector('.breath-lib__ack').hidden).toBe(true);
+        click({ '.breath-lib__begin': true });
+        expect(guide.start).toHaveBeenCalledOnce();
+    });
+
+    it('shows no safety note with a gentle world', () => {
+        createTab();
+        expect(hero('.breath-lib__caution').hidden).toBe(true);
+        expect(hero('.breath-lib__begin').disabled).toBe(false);
+    });
+
     it('shows what is playing while a practice runs', () => {
         guide.isActive = true;
         createTab();

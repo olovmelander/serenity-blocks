@@ -380,6 +380,30 @@ describe('Hale preparation choices', () => {
         expect(flow('.hale-flow__switch--holds').hidden).toBe(true);
     });
 
+    it('asks for the note before fast breathing too, and again when only the old note was read', () => {
+        // A tick on the note before its words changed (2026-11-03) does not count for the new one.
+        stored.set('serenity.halePrefs', JSON.stringify({ safetyAcknowledged: true }));
+        tab.destroy();
+        tab = new SessionsTab(hub, manager);
+        expect(tab.getSessionDetails('SUNRISE')).toMatchObject({ openHolds: false, strong: true });
+        tab.showPrepScreen('SUNRISE');
+        expect(flow('.hale-flow__caution').hidden).toBe(false);
+        expect(flow('.hale-flow__ack').hidden).toBe(false);
+        expect(flow('.hale-flow__begin').disabled).toBe(true);
+        const ack = flow('.hale-flow__ack-input');
+        ack.checked = true;
+        ack.fire('change', { target: { checked: true } });
+        expect(flow('.hale-flow__begin').disabled).toBe(false);
+        expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-03');
+        // Gentle sessions show the plain line, with the wellness words, and no note.
+        for (const id of ['FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'REST', 'FLOW']) {
+            expect(tab.getSessionDetails(id).strong, id).toBe(false);
+        }
+        tab.showPrepScreen('FLOW');
+        expect(flow('.hale-flow__caution').hidden).toBe(true);
+        expect(flow('.hale-flow__safety').hidden).toBe(false);
+    });
+
     it('hands the session your intention and choices, and keeps the choices for next time', () => {
         tab.showPrepScreen('BASE');
         flow('.hale-flow__sounds').fire('change', { target: { checked: false } });
