@@ -489,6 +489,9 @@ def review_blend(mod, built, motion, path, eagle_arm=None):
     scene.render.engine = "BLENDER_WORKBENCH"
     scene.display.shading.color_type = "VERTEX"
     scene.display.shading.light = "STUDIO"
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("sky")
+    scene.world.color = (0.42, 0.52, 0.62)
     cam_data = bpy.data.cameras.new("review-cam")
     cam = bpy.data.objects.new("review-cam", cam_data)
     scene.collection.objects.link(cam)
