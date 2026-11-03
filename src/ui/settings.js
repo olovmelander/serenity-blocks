@@ -1349,6 +1349,31 @@ function setupSettingsSheet(listen, signal) {
 }
 
 /**
+ * Credits & legal: the credits, third-party notices and licences and the privacy page, read in
+ * the game (src/ui/legal/legal-documents.js), loaded when the section is first opened.
+ */
+function setupLegalDocuments(listen, signal) {
+    const modal = document.getElementById('settings-modal');
+    const panel = document.getElementById('settings-legal');
+    if (!modal || !panel) return;
+    let loading = null;
+    const load = () => {
+        if (loading || signal.aborted) return;
+        loading = import('./legal/legal-documents.js').then(({ createLegalDocumentsView }) => {
+            if (signal.aborted) return null;
+            const view = createLegalDocumentsView(panel, { signal });
+            view.show('credits');
+            return view;
+        }).catch((error) => {
+            loading = null;
+            console.warn('[Settings] Credits & legal failed to load:', error);
+        });
+    };
+    listen(modal, 'settingsSectionChanged', (event) => { if (event.detail?.tab === 'legal') load(); });
+    if (panel.classList.contains('active')) load();
+}
+
+/**
  * Optional development reference, loaded only when its tab is first selected. Release builds
  * have no such tab (src/ui/developer-surfaces.js).
  */
@@ -1423,6 +1448,7 @@ export function initializeSettingsUI(settingsManager, callbacks) {
 
     // Setup tab switching
     setupSettingsTabs();
+    setupLegalDocuments(listen, controller.signal);
     setupUrlParameterReference(listen, controller.signal);
 
     // Setup controls sub-tab switching

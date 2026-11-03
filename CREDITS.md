@@ -94,7 +94,8 @@ Serenity Blocks is built with Phaser and three.js (MIT) and runs on Electron (MI
 includes Chromium; Steam features use steamworks.js (MIT). Their licences ship with the game in
 `THIRD_PARTY_LICENSES.md`, `LICENSE.electron.txt` and `LICENSES.chromium.html`. Code from other
 projects inside the game and inside those libraries (shader noise and hashes, decoders and
-helpers) is listed with its copyright and licence in `THIRD_PARTY_NOTICES.md`.
+helpers) is listed with its copyright and licence in `THIRD_PARTY_NOTICES.md`. All of these, and
+the game's privacy page, can also be read in the game: Settings › Credits & legal.
 
 ## Legal / trademarks
 

@@ -65,6 +65,15 @@ describe('electron-builder packaging config', () => {
         expect(steam('linux').filter).not.toContain('!dist/linux64/**');
     });
 
+    it('ships the credits, notices, licences and privacy page beside app.asar', () => {
+        const copied = manifest.build.extraResources.map((entry) => entry.to);
+        expect(copied).toEqual(expect.arrayContaining([
+            'CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.md', 'PRIVACY_POLICY.md',
+        ]));
+        expect(manifest.build.extraResources.find((entry) => entry.to === 'THIRD_PARTY_LICENSES.md').from)
+            .toBe('dist/THIRD_PARTY_LICENSES.md');
+    });
+
     it('generates no auto-update config, since the app has no updater', () => {
         expect(manifest.build.publish).toBeNull();
     });

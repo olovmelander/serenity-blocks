@@ -28,7 +28,7 @@ import {
     createRuntimeValidation,
     installPreloadErrorRecovery,
 } from '../../src/utils/release-observability.js';
-import { evaluateSteamAppIds } from '../../scripts/release-gate-policy.mjs';
+import { evaluatePrivacyPolicy, evaluateSteamAppIds } from '../../scripts/release-gate-policy.mjs';
 
 const temporaryGateRoots = [];
 
@@ -151,6 +151,17 @@ describe('behavioral release gates', () => {
         const inAsar = evaluateSteamAppIds({ root, manifest: { build: SAFE_BUILD }, releaseAppId });
         expect(inAsar.failed).toBe(true);
         expect(inAsar.diagnostics[0].message).toContain('electron/steam_appid.txt');
+    });
+
+    it('asks for the privacy contact before a store build', () => {
+        const root = createGateWorkspace();
+        writeFileSync(join(root, 'PRIVACY_POLICY.md'), '# Privacy\nContact: [contact address to be added before release]\n');
+        expect(evaluatePrivacyPolicy({ root })).toMatchObject({ failed: false, diagnostics: [{ level: 'warning' }] });
+        expect(evaluatePrivacyPolicy({ root, isReleaseBuild: true })).toMatchObject({ failed: true, diagnostics: [{ level: 'error' }] });
+        writeFileSync(join(root, 'PRIVACY_POLICY.md'), '# Privacy\nContact: someone@example.com\n');
+        expect(evaluatePrivacyPolicy({ root, isReleaseBuild: true })).toEqual({ diagnostics: [], failed: false });
+        rmSync(join(root, 'PRIVACY_POLICY.md'));
+        expect(evaluatePrivacyPolicy({ root }).failed).toBe(true);
     });
 
     it("passes the repo's own packaging config", () => {

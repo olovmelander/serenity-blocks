@@ -57,6 +57,10 @@ function createArtifact() {
         path.join(artifactRoot, 'THIRD_PARTY_NOTICES.md'),
     );
     copyFileSync(
+        path.join(repoRoot, 'PRIVACY_POLICY.md'),
+        path.join(artifactRoot, 'PRIVACY_POLICY.md'),
+    );
+    copyFileSync(
         path.join(repoRoot, 'README.md'),
         path.join(artifactRoot, 'README.md'),
     );

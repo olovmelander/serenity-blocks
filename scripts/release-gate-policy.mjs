@@ -6,6 +6,32 @@ import {
     isReleaseSteamAppId,
 } from '../electron/steam-app-id.js';
 
+/** The privacy page ships with this until the owner fills in a contact address. */
+export const PRIVACY_CONTACT_PLACEHOLDER = /to be added before release/i;
+
+/**
+ * The privacy page (PRIVACY_POLICY.md, shown in Settings › Credits & legal) must name a contact
+ * before a store build: a warning until then, an error under SERENITY_RELEASE=1.
+ */
+export function evaluatePrivacyPolicy({ root = process.cwd(), isReleaseBuild = false } = {}) {
+    const file = path.join(root, 'PRIVACY_POLICY.md');
+    let text = '';
+    try {
+        text = fs.readFileSync(file, 'utf8');
+    } catch {
+        return {
+            diagnostics: [{ level: 'error', message: 'PRIVACY_POLICY.md is missing (the game shows it and ships it).' }],
+            failed: true,
+        };
+    }
+    if (!PRIVACY_CONTACT_PLACEHOLDER.test(text)) return { diagnostics: [], failed: false };
+    const level = isReleaseBuild ? 'error' : 'warning';
+    return {
+        diagnostics: [{ level, message: 'PRIVACY_POLICY.md still has no contact address; fill it in before a store build.' }],
+        failed: isReleaseBuild,
+    };
+}
+
 function readManifest(root) {
     try {
         return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));

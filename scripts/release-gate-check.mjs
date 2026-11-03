@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { evaluateSteamAppIds } from './release-gate-policy.mjs';
+import { evaluatePrivacyPolicy, evaluateSteamAppIds } from './release-gate-policy.mjs';
 
 const root = process.cwd();
 
@@ -35,6 +35,14 @@ for (const diagnostic of appIdPolicy.diagnostics) {
     else console.warn(`⚠️  ${diagnostic.message}`);
 }
 failed ||= appIdPolicy.failed;
+
+// The privacy page needs a contact before a store build.
+const privacyPolicy = evaluatePrivacyPolicy({ root, isReleaseBuild });
+for (const diagnostic of privacyPolicy.diagnostics) {
+    if (diagnostic.level === 'error') console.error(`Release blocker: ${diagnostic.message}`);
+    else console.warn(`⚠️  ${diagnostic.message}`);
+}
+failed ||= privacyPolicy.failed;
 
 // The old gate only grepped source text. Run the focused behavioral suite in
 // every non-blocked invocation, including build-win.mjs's packaging path.

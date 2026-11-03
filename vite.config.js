@@ -53,7 +53,7 @@ function createCopyLegalNoticesPlugin() {
       outputDir = resolveBuildOutputDir(config);
     },
     closeBundle() {
-      for (const file of ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'README.md']) {
+      for (const file of ['CREDITS.md', 'THIRD_PARTY_NOTICES.md', 'PRIVACY_POLICY.md', 'README.md']) {
         const src = path.resolve(projectRoot, file);
         const dest = path.resolve(outputDir, file);
         if (!existsSync(src)) {

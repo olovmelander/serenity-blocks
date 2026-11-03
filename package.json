@@ -75,6 +75,14 @@
       {
         "from": "THIRD_PARTY_NOTICES.md",
         "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "dist/THIRD_PARTY_LICENSES.md",
+        "to": "THIRD_PARTY_LICENSES.md"
+      },
+      {
+        "from": "PRIVACY_POLICY.md",
+        "to": "PRIVACY_POLICY.md"
       }
     ],
     "win": {
