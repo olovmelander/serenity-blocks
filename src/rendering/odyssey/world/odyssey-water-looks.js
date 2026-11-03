@@ -99,6 +99,29 @@ export const SEA_SURF = Object.freeze({
     thinPx: Object.freeze([2.0, 8.0]),
     thinKeep: 0.4,
 });
+/** The sea film's opacity over the water's depth: clear at the first, whole at the second (u). */
+export const SEA_FILM = Object.freeze([-0.45, 2.0]);
+/**
+ * THE SHORE'S DEPTH FIGHT (2026-11-03, Olov: "the big shore on the back of the island, it flickers
+ * against the water"). The camera's depth buffer (near 0.1, far 9000, not reversed) steps by about
+ * 2^-24 near 1, which is `2^-24 * z^2 / near` world units along a ray at range z: 2.4 u at 2 km.
+ * Where a film of water lies over a gently shelving bed, the last fraction of a metre of water is
+ * inside that step, so the depth test between the film and the sand cannot decide, and the winner
+ * changes with every sub-pixel move of the camera. From the climb (the north beach at 1.7-2.1 km,
+ * 15-25 degrees down, a 2-degree beach) that was a band ~20 u wide right on the waterline, where
+ * the film is part-opaque and the surf line is drawn.
+ *
+ * The fix: the waters' films are drawn this many depth steps nearer the eye (a pipeline depth bias,
+ * `polygonOffsetUnits`: in the depth buffer's own steps, so it grows with range exactly as the
+ * precision falls). In the undecided band the water now always wins, and what shows there is its
+ * own opacity, which reads the real depth over the seabed (the plates). The undecided line moves
+ * onto the dry sand, `bias` steps above the water, where the film is clear and no foam is drawn.
+ * The look of the shallows, the surf line and the beach is unchanged. Near the eye the bias is
+ * tiny: 0.16 u along the ray at 300 u, 0.05 u of height looking 20 degrees down.
+ */
+export const WATER_SHORE_DEPTH_BIAS = 3;
+/** The depth buffer's step near 1 (24-bit unorm, or 32-bit float in [0.5, 1)). */
+export const DEPTH_STEP = 2 ** -24;
 
 // ── CPU twins ─────────────────────────────────────────────────────────────────────────────────
 
@@ -161,6 +184,26 @@ export function seaSurfLine(depth, depthPx, pulse = 0, breakN = 1) {
         * (SEA_SURF.broken + ((1 - SEA_SURF.broken) * smoothstepGpu(0.30, 0.62, breakN)))
         * smoothstepGpu(0.3, 1.2, px)
         * (1 - (smoothstepGpu(SEA_SURF.thinPx[0], SEA_SURF.thinPx[1], px) * (1 - SEA_SURF.thinKeep)));
+}
+
+/** The sea film's opacity over `depth` units of water (`opacityNode` before the foam). */
+export function seaFilmOpacity(depth) {
+    return smoothstepGpu(SEA_FILM[0], SEA_FILM[1], depth);
+}
+
+/** World units along a view ray that one depth-buffer step spans at range `range`. */
+export function depthStepAlongRay(range, near) {
+    return (DEPTH_STEP * range * range) / near;
+}
+
+/**
+ * The heights above the water (u, on the dry side) between which the depth test cannot decide
+ * between a water film drawn `units` steps nearer and the land under it, for an eye looking down
+ * at sine `downSine`: [low, high]. With no bias the band straddles the waterline (low < 0).
+ */
+export function shoreFightBand(range, downSine, near, units = WATER_SHORE_DEPTH_BIAS) {
+    const step = depthStepAlongRay(range, near) * downSine;
+    return [(units - 1) * step, (units + 1) * step];
 }
 
 /** The width (units of depth) of the lake's soft shore where one pixel spans `depthPx`. */
