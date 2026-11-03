@@ -1040,12 +1040,13 @@ export class IntroAnimation {
             // already unlocked before this DOM existed, create the prompt visible.
             prompt.classList.add('intro-prompt-hold');
         }
-        // Say what the player's own hands can do: a tap on a touch screen, a key (or a click) elsewhere.
+        // Say what the player's own hands can do: a tap on a touch screen, a key, a controller's
+        // button (or a click) elsewhere.
         const touchFirst = typeof window !== 'undefined'
             && Boolean(window.matchMedia?.('(hover: none) and (pointer: coarse)')?.matches);
         prompt.innerHTML = touchFirst
             ? '<span>Tap to begin</span>'
-            : '<span>Press any key</span><small>or click to begin</small>';
+            : '<span>Press any key or button</span><small>or click to begin</small>';
         this.container.appendChild(prompt);
 
         // Loading mask indicator (Phase 7 loading integration)

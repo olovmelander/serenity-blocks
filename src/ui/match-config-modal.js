@@ -7,6 +7,7 @@
  * Styles: public/styles/keystone-multiplayer.css (#match-config-modal).
  */
 import { enhanceSegmented } from './components/cosmic-select.js';
+import { getInputMode } from './keystone/input-mode.js';
 import { MATCH_START_LEVEL_MAX, MATCH_START_LEVEL_MIN } from '../core/multiplayer/match-level-rule.js';
 import {
     closeLayer, focusSoon, mpIcon, openLayer,
@@ -444,8 +445,11 @@ export class MatchConfigModal {
         this.reset();
         openLayer(this.container, () => this.cancel());
 
-        // Focus match name input
-        focusSoon(() => this.container?.querySelector('#match-name'));
+        // Focus the match name for typing; on a controller (which cannot type it: the name is
+        // optional) the sheet opens on Create match instead.
+        focusSoon(() => this.container?.querySelector(
+            getInputMode() === 'gamepad' ? '#create-match-submit' : '#match-name',
+        ));
     }
 
     /**

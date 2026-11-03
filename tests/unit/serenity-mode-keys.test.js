@@ -192,17 +192,17 @@ describe('Serenity on a controller', () => {
 
     it('wakes a resting world with any button and does nothing else', () => {
         const { controller, callbacks, gamepad } = setup({ resting: true });
-        gamepad.buttons[3].pressed = true; // Y
+        gamepad.buttons[8].pressed = true; // View: the Hub's button
         controller.processGamepadInput(gamepad, 0);
         expect(callbacks.wakeFromRest).toHaveBeenCalledOnce();
         expect(callbacks.toggleHub).not.toHaveBeenCalled();
-        // Awake now, the held Y still does nothing until it is let go.
+        // Awake now, the held View still does nothing until it is let go.
         callbacks.isResting = () => false;
         controller.processGamepadInput(gamepad, 0);
         expect(callbacks.toggleHub).not.toHaveBeenCalled();
-        gamepad.buttons[3].pressed = false;
+        gamepad.buttons[8].pressed = false;
         controller.processGamepadInput(gamepad, 0);
-        gamepad.buttons[3].pressed = true;
+        gamepad.buttons[8].pressed = true;
         controller.processGamepadInput(gamepad, 0);
         expect(callbacks.toggleHub).toHaveBeenCalledOnce();
     });

@@ -6,6 +6,7 @@
  */
 
 import { DEFAULT_SETTINGS, GAME_MODES } from '../core/constants.js';
+import { CONTROLLER_LAYOUT_VERSION, migrateSerenityPadLayout } from '../core/controller-layout.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
@@ -138,8 +139,10 @@ const DEFAULT_CONFIG = {
         hardDrop: 1,
         pause: 9,
     },
+    // View is the Hub's button in every mode (core/controller-layout.js).
+    controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
     serenityGamepadBindings: {
-        toggleHub: 3, // Y Button
+        toggleHub: 8, // View/Select: the Serenity Hub, in every mode
         toggleBreathing: 2, // X Button
         randomTheme: 10, // Left stick click
         toggleFullscreen: 11, // Right stick click
@@ -147,7 +150,7 @@ const DEFAULT_CONFIG = {
         nextTrack: 5, // Right bumper
         volumeDown: 6, // Left trigger
         volumeUp: 7, // Right trigger
-        toggleControlHints: 8, // Select/Share
+        toggleControlHints: 3, // Y Button
         openSettings: 9, // Start/Options
         previousBreathingTechnique: 12, // D-pad Up
         nextBreathingTechnique: 13, // D-pad Down
@@ -543,7 +546,12 @@ export class SettingsManager {
                 const loadedKeyBindings = loaded.keyBindings || {};
                 const loadedP2KeyBindings = loaded.player2KeyBindings || {};
                 const loadedSerenityKeyBindings = loaded.serenityKeyBindings || {};
-                const loadedSerenityGamepadBindings = loaded.serenityGamepadBindings || {};
+                // A save from before View became the Hub's button takes the new layout once.
+                const loadedSerenityGamepadBindings = migrateSerenityPadLayout(
+                    loaded.serenityGamepadBindings,
+                    loaded.controllerLayoutVersion,
+                );
+                const controllerLayoutChanged = loaded.controllerLayoutVersion !== CONTROLLER_LAYOUT_VERSION;
                 const sanitizedKeyBindings = sanitizePlayer1KeyBindings({
                     ...DEFAULT_CONFIG.keyBindings,
                     ...loadedKeyBindings,
@@ -590,6 +598,7 @@ export class SettingsManager {
                     player2KeyBindings: sanitizedP2KeyBindings,
                     serenityKeyBindings: sanitizedSerenityKeyBindings,
                     serenityGamepadBindings: sanitizedSerenityGamepadBindings,
+                    controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
                 };
                 // Each controller's buttons too (they were taken as saved).
                 let gamepadBindingsChanged = false;
@@ -610,8 +619,9 @@ export class SettingsManager {
                 const serenityKeyBindingsChanged = (
                     JSON.stringify(loadedSerenityKeyBindings) !== JSON.stringify(sanitizedSerenityKeyBindings)
                 );
-                const serenityGamepadBindingsChanged = (
-                    JSON.stringify(loadedSerenityGamepadBindings) !== JSON.stringify(sanitizedSerenityGamepadBindings)
+                const serenityGamepadBindingsChanged = controllerLayoutChanged || (
+                    JSON.stringify(loaded.serenityGamepadBindings || {})
+                        !== JSON.stringify(sanitizedSerenityGamepadBindings)
                 );
                 const cursorSettingsChanged = (
                     loaded.customCursorEnabled !== sanitizedCursorSettings.customCursorEnabled
@@ -813,8 +823,8 @@ const GAMEPAD_BUTTON_NAMES = {
     5: 'RB (R1)',
     6: 'LT (L2)',
     7: 'RT (R2)',
-    8: 'Select (Share)',
-    9: 'Start (Options)',
+    8: 'View (Select)',
+    9: 'Menu (Start)',
     10: 'L3',
     11: 'R3',
     12: 'D-Up',

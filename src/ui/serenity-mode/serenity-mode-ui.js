@@ -647,10 +647,17 @@ export class SerenityModeUi {
 
     /** The first-visit hint line, in the input the player is using. */
     hintItems() {
-        const status = this.deps.gamepadController?.getConnectionStatus?.();
+        const pad = this.deps.gamepadController;
+        const status = pad?.getConnectionStatus?.();
         if (status?.controller1?.connected || status?.controller2?.connected) {
-            return [[['←', '→'], 'Theme'], [['X'], 'Breathe'], [['Y'], 'Hub'], [['A'], 'Touch the world'],
-                [['Select'], 'All controls']];
+            // The player's own buttons (View opens the Hub and Y lists the rest, by default).
+            const bindings = pad.getSerenityGamepadBindings?.() || {};
+            const name = (action, fallback) => (Number.isInteger(bindings[action])
+                ? pad.padButtonLabel?.(bindings[action]) ?? fallback : fallback);
+            return [[[name('navigateLeft', '←'), name('navigateRight', '→')], 'Theme'],
+                [[name('toggleBreathing', 'X')], 'Breathe'], [[name('toggleHub', 'View')], 'Hub'],
+                [[name('confirmSelection', 'A')], 'Touch the world'],
+                [[name('toggleControlHints', 'Y')], 'All controls']];
         }
         if (window.matchMedia?.('(pointer: coarse)').matches) {
             return [[[], 'Swipe sideways to change the theme'], [[], 'Tap the world to touch it']];

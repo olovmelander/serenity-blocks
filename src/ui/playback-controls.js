@@ -5,7 +5,13 @@
  * Keystone styling (public/styles/keystone-overlays.css, `#playback-controls`): one
  * night bar, play/pause is the warm primary, the position fills with the spectrum and
  * speed is a row of tiles. The shell lives in index.html; this module owns its content.
+ *
+ * On a controller (replay-pad-controls.js) A plays and pauses, B stops, the D-pad seeks
+ * and LB / RB change speed while the bar is up; the bar shows those buttons as pad glyphs.
  */
+
+import { menuCoversGame } from './sheet-input.js';
+import { createReplayPadControls } from './replay-pad-controls.js';
 
 const SPEEDS = [0.5, 1, 2, 4];
 const ARROW_STEPS = {
@@ -14,6 +20,9 @@ const ARROW_STEPS = {
     ArrowLeft: -1,
     ArrowUp: -1,
 };
+
+/** A controller glyph keycap (shown only while a pad is the input: keystone.css). */
+const padCap = (label) => `<kbd class="sb-kbd pb-pad" data-pad aria-hidden="true">${label}</kbd>`;
 
 const svg = (body) => '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" '
     + `aria-hidden="true">${body}</svg>`;
@@ -51,10 +60,10 @@ export class PlaybackControls {
             this.container.innerHTML = `
                 <div class="playback-buttons">
                     <button type="button" id="pb-play-pause" class="pb-btn pb-btn--primary">
-                        <span class="pb-btn__icon"></span><span class="pb-btn__label"></span>
+                        <span class="pb-btn__icon"></span><span class="pb-btn__label"></span>${padCap('A')}
                     </button>
                     <button type="button" id="pb-stop" class="pb-btn">
-                        ${ICONS.stop}<span class="pb-btn__label">Stop</span>
+                        ${ICONS.stop}<span class="pb-btn__label">Stop</span>${padCap('B')}
                     </button>
                 </div>
                 <div class="playback-info">
@@ -63,12 +72,16 @@ export class PlaybackControls {
                     <span id="playback-duration">00:00</span>
                 </div>
                 <div class="playback-progress-container">
+                    ${padCap('&larr;')}
                     <input type="range" id="pb-progress" min="0" max="100" value="0" step="0.1"
                         aria-label="Replay position">
+                    ${padCap('&rarr;')}
                 </div>
                 <div class="playback-speed" id="pb-speed" role="radiogroup" aria-label="Playback speed">
+                    ${padCap('LB')}
                     ${SPEEDS.map((speed) => `<button type="button" class="pb-speed" role="radio" data-speed="${speed}"
                         aria-checked="false">${speedLabel(speed)}</button>`).join('')}
+                    ${padCap('RB')}
                 </div>
             `;
         }
@@ -130,6 +143,7 @@ export class PlaybackControls {
             this.container.style.display = 'flex';
             this.startUpdateLoop();
             this.updateUI();
+            this.attachPad();
         }
     }
 
@@ -138,6 +152,60 @@ export class PlaybackControls {
             this.container.style.display = 'none';
             this.stopUpdateLoop();
         }
+        this.detachPad();
+    }
+
+    /** While the bar is up a controller drives it (replay-pad-controls.js). */
+    attachPad() {
+        const controller = typeof window !== 'undefined' ? window.gamepadController : null;
+        if (this.pad || typeof controller?.setPanelControls !== 'function') return;
+        this.pad = controller.setPanelControls(createReplayPadControls(controller, {
+            isActive: () => this.isShown() && !this.isCovered(),
+            togglePlayPause: () => this.togglePlayPause(),
+            stop: () => this.stop(),
+            seekBy: (deltaMs) => this.seekBy(deltaMs),
+            stepSpeed: (direction) => this.stepSpeed(direction),
+        }));
+    }
+
+    detachPad() {
+        this.pad?.dispose?.();
+        this.pad = null;
+    }
+
+    isShown() {
+        return Boolean(this.container) && this.container.style.display !== 'none';
+    }
+
+    /** A menu over the replay (Settings, the Hub, a sheet) has the pad. */
+    isCovered() {
+        if (typeof document === 'undefined') return false;
+        return Boolean(document.querySelector('.modal.visible'))
+            || document.body?.classList?.contains('serenity-hub-open')
+            || menuCoversGame(document);
+    }
+
+    /** Seek from where the replay is now; the bar follows at once. */
+    seekBy(deltaMs) {
+        if (typeof this.demoPlayer.seek !== 'function') return;
+        const duration = Number(this.demoPlayer.getDuration?.()) || 0;
+        const current = Number(this.demoPlayer.getCurrentTime?.()) || 0;
+        const target = Math.max(0, Math.min(duration, current + deltaMs));
+        this.demoPlayer.seek(target);
+        if (this.timeDisplay) this.timeDisplay.textContent = formatTime(target);
+        if (this.progressBar && duration > 0) {
+            this.progressBar.max = duration / 1000;
+            this.progressBar.value = target / 1000;
+            this.renderProgressFill();
+        }
+    }
+
+    /** One speed slower (-1) or faster (1), within the bar's speeds. */
+    stepSpeed(direction) {
+        const current = typeof this.demoPlayer.playbackSpeed === 'number' ? this.demoPlayer.playbackSpeed : 1;
+        const index = SPEEDS.indexOf(current);
+        const next = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, (index < 0 ? 1 : index) + direction))];
+        this.setSpeed(next);
     }
 
     togglePlayPause() {

@@ -726,9 +726,11 @@
     transition: opacity var(--sb-dur-3) ease;
 }
 
-/* Paused (or pointed at): the map can be dragged to look around. */
+/* Paused (or pointed at): the map can be dragged to look around. A controller never hovers,
+   so with one in hand the right-stick line stays on the map (read-only maps have none). */
 .infinity-minimap:hover .minimap-instruction,
-.infinity-minimap.is-explorable .minimap-instruction {
+.infinity-minimap.is-explorable .minimap-instruction,
+body.sb-input-gamepad .infinity-minimap .minimap-instruction {
     opacity: 1;
 }
 

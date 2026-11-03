@@ -251,6 +251,27 @@ body.sb-input-gamepad .sb-kbd[data-pad] {
     display: inline-flex;
 }
 
+/* A controller in hand: no pointer sits over the menus (moving the mouse brings it back,
+   input-mode.js). */
+body.sb-input-gamepad,
+body.sb-input-gamepad * {
+    cursor: none !important;
+}
+
+/* Words for one input (input-mode.js): .sb-when-pad only while a controller is the input,
+   .sb-when-not-pad otherwise ("Drag to look" / "Right stick to look"). */
+.sb-when-pad {
+    display: none !important;
+}
+
+body.sb-input-gamepad .sb-when-pad {
+    display: inline !important;
+}
+
+body.sb-input-gamepad .sb-when-not-pad {
+    display: none !important;
+}
+
 /* ---- Input hints footer --------------------------------------------------------- */
 .sb-hints {
     display: flex;
@@ -268,6 +289,15 @@ body.sb-input-gamepad .sb-kbd[data-pad] {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+}
+
+/* Controller-only hints (View → Serenity Hub in the main menu has no keyboard twin there). */
+.sb-hints li.sb-hints__pad-only {
+    display: none;
+}
+
+body.sb-input-gamepad .sb-hints li.sb-hints__pad-only {
+    display: inline-flex;
 }
 
 /* ---- Chip (rounded square tag, not a pill) --------------------------------------- */
