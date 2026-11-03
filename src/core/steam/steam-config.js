@@ -3,10 +3,9 @@
  * Centralized configuration for Steam integration
  */
 
-// Steam App ID
-// 480 = Spacewar (Valve's test app) - use for development
-// Replace with your registered AppID for production
-export const STEAM_APP_ID = 480;
+// Steam App ID: the main process decides it (electron/steam-app-id.js) and reports it with the
+// Steam status. The renderer assumes none until then.
+export const STEAM_APP_ID = null;
 
 // Retry configuration for Steam initialization
 export const STEAM_RETRY = {

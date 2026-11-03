@@ -84,9 +84,10 @@ if (process.platform !== 'win32') {
 // in main.js achieves the same effect without a custom C executable.
 
 async function build() {
-    // Release gates first (Phase 0.4): warns in dev, hard-fails under
-    // SERENITY_RELEASE=1 (e.g. placeholder Steam AppID 480). runCommand exits
-    // the process on a non-zero status, so a failed gate stops the build here.
+    // Release gates first (Phase 0.4): a build that would ship a steam_appid.txt always
+    // fails; SERENITY_RELEASE=1 (a store build) also needs the release AppID in
+    // electron/steam-app-id.js. runCommand exits the process on a non-zero status, so
+    // a failed gate stops the build here.
     runCommand('node', ['scripts/release-gate-check.mjs']);
 
     ensureWindowsIcon();

@@ -26,8 +26,8 @@ for (const relativePath of requiredFiles) {
     }
 }
 
-// Release blocker: steam_appid.txt must not be Valve's Spacewar placeholder.
-// AppID 480 is allowed with a warning during development and blocks releases.
+// Steam AppID: no build ships a steam_appid.txt (always checked); a release build
+// (SERENITY_RELEASE=1) also needs the game's own AppID in electron/steam-app-id.js.
 const isReleaseBuild = process.env.SERENITY_RELEASE === '1';
 const appIdPolicy = evaluateSteamAppIds({ root, isReleaseBuild });
 for (const diagnostic of appIdPolicy.diagnostics) {

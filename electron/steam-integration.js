@@ -13,13 +13,14 @@
  */
 
 import { app, BrowserWindow, ipcMain } from 'electron';
-import { join, dirname, resolve } from 'path';
+import { join, resolve } from 'path';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
 import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './p2p-packet-codec.js';
 import { lobbyMemberChange } from './steam-peer-events.js';
+import { resolveSteamAppId as resolveSteamAppIdFor } from './steam-app-id.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -39,7 +40,6 @@ let steamOverlayEnabled = false;
 let steamCallbackHandles = [];
 let steamStatusPending = false;
 
-const DEFAULT_STEAM_APP_ID = 480;
 const MAX_P2P_PACKET_BYTES = 64 * 1024;
 let steamAppId = null;
 
@@ -81,19 +81,19 @@ function steamLog(message) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/** electron/steam-app-id.js decides; a packaged build reads no file or variable. */
 function resolveSteamAppId() {
-    const envAppId = process.env.STEAM_APP_ID;
-    if (envAppId && /^\d+$/.test(envAppId)) return Number(envAppId);
-
-    const candidateDirs = [process.cwd(), app.getAppPath(), dirname(process.execPath)];
-    for (const dir of candidateDirs) {
-        const appIdPath = join(dir, 'steam_appid.txt');
-        if (existsSync(appIdPath)) {
-            const text = readFileSync(appIdPath, 'utf8').trim();
-            if (/^\d+$/.test(text)) return Number(text);
-        }
-    }
-    return DEFAULT_STEAM_APP_ID;
+    return resolveSteamAppIdFor({
+        isPackaged: app.isPackaged,
+        env: process.env,
+        readAppIdFile: () => {
+            for (const dir of [process.cwd(), app.getAppPath()]) {
+                const appIdPath = join(dir, 'steam_appid.txt');
+                if (existsSync(appIdPath)) return readFileSync(appIdPath, 'utf8');
+            }
+            return null;
+        },
+    });
 }
 
 function hasUsableSteamClient() {
@@ -371,6 +371,12 @@ async function initSteamworks(retries = 3) {
         return true;
     }
 
+    const resolvedAppId = resolveSteamAppId();
+    if (!resolvedAppId.appId) {
+        steamLog(`Steam off: ${resolvedAppId.reason}`);
+        retries = 0;
+    }
+
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             // In packaged builds, native modules are copied to resources/native_modules/
@@ -399,8 +405,15 @@ async function initSteamworks(retries = 3) {
 
             installSteamOverlayFrameInvalidatorHook();
 
-            steamAppId = resolveSteamAppId();
-            steamLog(`Resolved Steam App ID: ${steamAppId}`);
+            steamAppId = resolvedAppId.appId;
+            steamLog(`Resolved Steam App ID: ${steamAppId} (${resolvedAppId.source})`);
+            // A shipped build started outside the Steam client hands itself to Steam, which
+            // launches it again as the game (Steamworks' DRM/launch contract).
+            if (app.isPackaged && steamworks.restartAppIfNecessary?.(steamAppId)) {
+                steamLog('Started outside Steam — relaunching through the Steam client');
+                app.quit();
+                return false;
+            }
             steamworksClient = steamworks.init(steamAppId);
 
             if (steamworksClient) {

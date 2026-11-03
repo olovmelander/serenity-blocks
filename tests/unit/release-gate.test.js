@@ -14,6 +14,7 @@ import {
     vi,
 } from 'vitest';
 import {
+    mkdirSync,
     mkdtempSync,
     rmSync,
     writeFileSync,
@@ -86,10 +87,16 @@ function createFakeTheme(name, lifecycle) {
     return theme;
 }
 
-function createGateWorkspace(appId) {
+const SAFE_BUILD = Object.freeze({
+    files: ['dist/**/*', 'electron/**/*', '!**/node_modules/**/*', '!**/steam_appid.txt'],
+    extraResources: [{ from: 'CREDITS.md', to: 'CREDITS.md' }],
+});
+
+function createGateWorkspace() {
     const root = mkdtempSync(join(tmpdir(), 'serenity-release-gate-'));
     temporaryGateRoots.push(root);
-    writeFileSync(join(root, 'steam_appid.txt'), `${appId}\n`, 'utf8');
+    // The repo's dev-only file: allowed to exist, never to be packaged.
+    writeFileSync(join(root, 'steam_appid.txt'), '480\n', 'utf8');
 
     return root;
 }
@@ -103,24 +110,52 @@ describe('behavioral release gates', () => {
         vi.restoreAllMocks();
     });
 
-    it('warns for a dev placeholder, blocks it in release, and accepts a real AppID', () => {
-        const root = createGateWorkspace('480');
+    it('warns while no release AppID is set, blocks a release build, and accepts a real AppID', () => {
+        const root = createGateWorkspace();
+        const manifest = { build: SAFE_BUILD };
 
-        const devResult = evaluateSteamAppIds({ root });
+        const devResult = evaluateSteamAppIds({ root, manifest, releaseAppId: null });
         expect(devResult.failed).toBe(false);
         expect(devResult.diagnostics).toEqual([
-            expect.objectContaining({ level: 'warning', message: expect.stringContaining('Spacewar placeholder') }),
+            expect.objectContaining({ level: 'warning', message: expect.stringContaining('Steam off') }),
         ]);
 
-        const blockedRelease = evaluateSteamAppIds({ root, isReleaseBuild: true });
+        const blockedRelease = evaluateSteamAppIds({ root, manifest, releaseAppId: null, isReleaseBuild: true });
         expect(blockedRelease.failed).toBe(true);
         expect(blockedRelease.diagnostics[0]).toMatchObject({ level: 'error' });
 
-        writeFileSync(join(root, 'steam_appid.txt'), '123456\n', 'utf8');
-        expect(evaluateSteamAppIds({ root, isReleaseBuild: true })).toEqual({
+        const testAppRelease = evaluateSteamAppIds({ root, manifest, releaseAppId: 480, isReleaseBuild: true });
+        expect(testAppRelease.failed).toBe(true);
+        expect(testAppRelease.diagnostics[0].message).toContain("Valve's test app");
+
+        expect(evaluateSteamAppIds({ root, manifest, releaseAppId: 123456, isReleaseBuild: true })).toEqual({
             diagnostics: [],
             failed: false,
         });
+    });
+
+    it('fails every build that would package a steam_appid.txt', () => {
+        const root = createGateWorkspace();
+        const releaseAppId = 123456;
+        const unexcluded = { build: { ...SAFE_BUILD, files: ['dist/**/*', 'electron/**/*'] } };
+        expect(evaluateSteamAppIds({ root, manifest: unexcluded, releaseAppId }).failed).toBe(true);
+
+        const copied = { build: { ...SAFE_BUILD, extraFiles: [{ from: 'steam_appid.txt', to: '.' }] } };
+        expect(evaluateSteamAppIds({ root, manifest: copied, releaseAppId }).failed).toBe(true);
+
+        const perPlatform = { build: { ...SAFE_BUILD, win: { extraResources: ['steam_appid.txt'] } } };
+        expect(evaluateSteamAppIds({ root, manifest: perPlatform, releaseAppId }).failed).toBe(true);
+
+        mkdirSync(join(root, 'electron'));
+        writeFileSync(join(root, 'electron', 'steam_appid.txt'), '480\n', 'utf8');
+        const inAsar = evaluateSteamAppIds({ root, manifest: { build: SAFE_BUILD }, releaseAppId });
+        expect(inAsar.failed).toBe(true);
+        expect(inAsar.diagnostics[0].message).toContain('electron/steam_appid.txt');
+    });
+
+    it("passes the repo's own packaging config", () => {
+        const result = evaluateSteamAppIds({ root: process.cwd() });
+        expect(result.diagnostics.filter((d) => d.level === 'error')).toEqual([]);
     });
 
     it('reports preload errors without reloading or swallowing the import rejection', () => {

@@ -1,42 +1,38 @@
 /**
  * electron-builder afterPack hook.
  *
- * Release mode (SERENITY_RELEASE=1) — Phase 1.1 of the remediation plan:
- *  - HARD-FAIL if the packaged steam_appid.txt still carries the Spacewar
- *    placeholder AppID (480). The 2026-07-01 installer demonstrably shipped it.
- *  - Strip steam_appid.txt from the packaged output entirely: per Steamworks
- *    docs the txt file is a dev-only convenience; release builds must init
- *    with the explicit AppID + restartAppIfNecessary.
+ * Every build (Phase 1.1 of the remediation plan, tightened 2026-11-03): the packaged output holds
+ * no steam_appid.txt. Per Steamworks the file is a dev-only convenience; a packaged build takes its
+ * AppID from electron/steam-app-id.js and, until that is set, runs with Steam off (it never starts
+ * as Valve's test app 480). package.json copies no such file and excludes it from app.asar; this
+ * hook fails the build if one turns up next to the executable anyway.
  *
- * Dev mode: keep the file (extraFiles copies it) so local Steam runs work.
+ * Release mode (SERENITY_RELEASE=1) also requires the release AppID to be set (the release gate
+ * checks it before the build starts; this is the last line).
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 module.exports = async function afterPack(context) {
     const appIdPath = path.join(context.appOutDir, 'steam_appid.txt');
-
-    if (process.env.SERENITY_RELEASE !== '1') {
-        console.log('[afterPack] Dev build — steam_appid.txt left in place.');
-        return;
+    if (fs.existsSync(appIdPath)) {
+        throw new Error(
+            '[afterPack] Packaging blocker: steam_appid.txt is in the packaged output. Packaged builds '
+            + 'take the Steam AppID from electron/steam-app-id.js; remove whatever copies the file.',
+        );
     }
 
-    if (fs.existsSync(appIdPath)) {
-        const appId = fs.readFileSync(appIdPath, 'utf8').trim();
-        if (appId === '480') {
+    if (process.env.SERENITY_RELEASE === '1') {
+        const appIdModule = path.join(__dirname, '..', 'electron', 'steam-app-id.js');
+        const { RELEASE_STEAM_APP_ID, isReleaseSteamAppId } = await import(pathToFileURL(appIdModule).href);
+        if (!isReleaseSteamAppId(RELEASE_STEAM_APP_ID)) {
             throw new Error(
-                '[afterPack] Release blocker: packaged steam_appid.txt contains the '
-                + 'Spacewar placeholder AppID 480. Set the real AppID before a release build.',
+                '[afterPack] Release blocker: no release Steam AppID is set in electron/steam-app-id.js.',
             );
         }
-        fs.rmSync(appIdPath, { force: true });
-        console.log('[afterPack] Release build — stripped steam_appid.txt from packaged output.');
+        console.log(`[afterPack] Release build — Steam AppID ${RELEASE_STEAM_APP_ID}, no steam_appid.txt.`);
     } else {
-        console.log('[afterPack] Release build — no steam_appid.txt in packaged output.');
-    }
-
-    // Belt-and-braces: fail if the strip somehow did not take effect.
-    if (fs.existsSync(appIdPath)) {
-        throw new Error('[afterPack] Release blocker: steam_appid.txt still present after strip.');
+        console.log('[afterPack] Test build — no steam_appid.txt; Steam is off unless the release AppID is set.');
     }
 };
