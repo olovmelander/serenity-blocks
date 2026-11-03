@@ -906,11 +906,14 @@ def graze_angles(animal, dip=0.06):
 
 
 COATS = {
-    "bay": (np.array([0.20, 0.085, 0.035]), np.array([0.02, 0.016, 0.014]), np.array([0.42, 0.30, 0.18])),
+    # (The bright red bay of the visibility check, 2026-11-03: as ODYSSEY_HORSES.coats.)
+    "bay": (np.array([0.28, 0.118, 0.045]), np.array([0.02, 0.016, 0.014]), np.array([0.52, 0.37, 0.22])),
     "dun": (np.array([0.42, 0.32, 0.18]), np.array([0.05, 0.035, 0.025]), np.array([0.70, 0.62, 0.48])),
     "grey": (np.array([0.50, 0.50, 0.49]), np.array([0.16, 0.16, 0.17]), np.array([0.68, 0.68, 0.66])),
 }
 BLACK = np.array([0.02, 0.018, 0.016])
+# A foal's coat, as ODYSSEY_HORSES.foalCoat: the body toward the pale, the legs and mane toward the body.
+FOAL_COAT = dict(pale=0.4, points=0.45)
 
 
 def _albedo(animal, coat):
@@ -926,6 +929,9 @@ def _albedo(animal, coat):
     definition = hair[:, 2:3]
     barring = hair[:, 3:4]
     rest = animal.positions
+    if _name(animal) == "foal":
+        body = body * (1 - FOAL_COAT["pale"]) + pale_c * FOAL_COAT["pale"]
+        points = points * (1 - FOAL_COAT["points"]) + body * FOAL_COAT["points"]
     base = np.tile(body, (len(colors), 1))
     if coat == "grey":
         # Dapples: rings of lighter hair (a smooth cellular-ish field over the rest position).

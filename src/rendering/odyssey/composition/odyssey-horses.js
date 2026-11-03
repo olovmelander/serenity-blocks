@@ -159,6 +159,7 @@ export function createOdysseyHorses({
         const material = new THREE.MeshBasicNodeMaterial();
         material.name = name === 'foal' ? 'OdysseyHorseFoals' : 'OdysseyHorses';
         material.fog = false;
+        const foalCoat = name === 'foal' ? ODYSSEY_HORSES.foalCoat : null;
         // (Six geometry attributes and ONE instanced: WebGPU allows eight vertex buffers a draw,
         // so the coat is an index into the three coats, picked here, not three colour attributes.)
         const look = attribute('look', 'vec4'); // row, tone, coat (0 bay, 1 dun, 2 grey), -
@@ -236,13 +237,17 @@ export function createOdysseyHorses({
             const dappleCell = mxWorley(vRest.mul(6.5));
             const onBody = smoothstep(0.55, 0.85, vRest.y).mul(smoothstep(1.75, 1.35, vRest.y));
             const dapple = smoothstep(0.12, 0.5, dappleCell).mul(grey).mul(float(1).sub(points)).mul(onBody);
-            const body = coat('body').mul(mix(float(0.88), float(1.1), vLook.y)).mul(float(1.06).sub(dapple.mul(0.2)));
+            const adultBody = coat('body').mul(mix(float(0.88), float(1.1), vLook.y))
+                .mul(float(1.06).sub(dapple.mul(0.2)));
+            // (A foal: its mother's coat, paler, with lighter legs and mane: ODYSSEY_HORSES.foalCoat.)
+            const body = foalCoat ? mix(adultBody, coat('pale'), foalCoat.pale) : adultBody;
             const mealy = mix(body, coat('pale'), pale.mul(0.85));
             // (A dun's leg bars: faint, thin and a little uneven, never a zebra's.)
             const wobble = mxNoise(vRest.mul(9)).mul(0.012);
             const bars = smoothstep(0.62, 0.9, sin(vRest.y.add(wobble).mul((Math.PI * 2) / 0.085)).mul(0.5).add(0.5));
             const barred = barring.mul(bars).mul(dun).mul(0.12);
-            const pointed = mix(mealy, coat('points'), clamp(points.add(barred), 0, 1));
+            const pointColour = foalCoat ? mix(coat('points'), body, foalCoat.points) : coat('points');
+            const pointed = mix(mealy, pointColour, clamp(points.add(barred), 0, 1));
             // The hair in strands: a streaked darkening along its fall.
             const strands = mxNoise(vRest.mul(vec3(70, 9, 70))).mul(0.5).add(0.5);
             const haired = pointed.mul(mix(float(1), mix(float(0.72), float(1.12), strands), hair));

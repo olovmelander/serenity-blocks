@@ -1176,6 +1176,108 @@ measured values:
 - The walk's lateral order holds in about a third of the strides (the walks are short; they
   start and stop within a few strides).
 
+### Visibility (2026-11-03)
+
+The owner, about the heron: "the heron is very hard to see!", then: "start the visibility check".
+The question for the band: does a player on the rail see the horses and the foals, and see what
+they are? Do the dun and the bay melt into the meadow?
+
+**How it was measured** (the shared visibility brief):
+- Shots: the installed Chrome over CDP (Electron is blocked on this machine), 2560x1440 PNG. The
+  board clock is pinned and the frame step frozen, so the shots of one moment differ only where
+  the horses are (checked: no stray pixels, or only their dust in a run).
+- Four shots a moment: everything; no shadows or dust; no foals; no horses. Their differences
+  give each horse's own pixels, and the foals apart from the mares.
+- Where: L11, L15, L16, the glide L16-L17, L17 and L18. Grazing at board time 60 s (the west
+  place) and 200 s (the east place); the runs at 128 and 142 s (west to east) and 268 s (back).
+- Per horse: its longest extent; its luminance contrast |La - Lb| / Lb and its colour difference
+  ΔE (CIE Lab) against the pixels it covers. And, on the CPU twin over the 300 s loop, the share
+  of the loop it is in frame and not hidden by crowns or terrain.
+- The rule of thumb: it reads at 24 px or more, with a contrast of 0.35 or more or a ΔE of 20 or
+  more.
+
+**What was found:**
+- The adults read wherever they are in clear view: 28-84 px from L15 to L18, ΔE 20-43.
+- The dun does not melt. This meadow is a deep green, dark under the low sun. The dun and the grey
+  are 2-6 times brighter than the grass under them.
+- The bay was the one at the grass's own brightness (contrast 0.12-0.64 grazing). It read by its
+  hue alone (ΔE 27-31).
+- The bay foal was the weakest: 23-26 px at the median from L15-L16, contrast mostly 0.01-0.5. It
+  wore its mother's coat, and melted into her when it stood against her.
+- Crowns hide two places from L15-L16: the west end of the west place (the lead mare, her foal and
+  the grey), and the grey's spot in the east place (behind one tree).
+
+**What changed:**
+1. **A bright red bay.** The bay's body is lighter and redder: linear (0.20, 0.085, 0.035) became
+   (0.28, 0.118, 0.045). Its mealy pale is a little lighter too.
+2. **The foals' own coat.** A foal now wears its mother's colour, paler and softer, with lighter
+   legs and mane (`ODYSSEY_HORSES.foalCoat`: the body 40 % toward the pale, the points 45 % toward
+   the body). Real foals are born so; the dark points come with the first moult. It also parts a
+   foal from its mother.
+3. **The foals x1.1, as a share of their mothers** (`FOAL_SIZE`; the bay foal 1.1 x 0.95, as her
+   mother). As built a foal was 0.75 of its mother at the withers (two or three months old); now
+   it is 0.83 (about five months). It is still plainly a foal: long legs, a short body (0.65 of
+   her length), a big head. x1.12 beside the smaller bay mare looked like a yearling up close, so
+   the step follows the mother.
+4. **The grey's east spots, about 20 m south**, out from behind a tree as seen from L15, still
+   inside the east place.
+
+Measured in the frozen shots from L15 to L18 (median, with the lowest in brackets; "reads" counts
+the shots that pass the rule of thumb):
+
+| Horse | Size (px) | Contrast | ΔE | Reads | At real size |
+|---|---|---|---|---|---|
+| lead mare (dun) | 54 → 54 | 3.5 → 3.7 (1.4) | 32 (20) | 11/12 → 11/12 | yes |
+| mare (grey) | 56 → 54 | 3.1 → 3.7 (1.1) | 34 → 36 (22) | 11/11 → 14/14 | yes |
+| mare (bay) | 38 → 37 | **0.58 (0.12) → 0.91 (0.37)** | 29 → 30 (20) | 15/15 → 17/17 | yes |
+| mare (dun) | 48 → 46 | 2.5 → 2.0 (0.2) | 29 → 26 (20) | 12/13 → 14/15 | yes |
+| stallion (bay) | 48 → 48 | 0.73 (0.36) → 0.91 (0.62) | 27 → 29 (20) | 11/11 → 13/13 | yes |
+| foal (dun) | 36 → 43 | 3.3 → 3.3 (0.5) | 27 → 30 (16) | 8/10 → 9/11 | shape → yes |
+| foal (bay) | 24 → 24 | **0.18 (0.01) → 1.14 (0.32)** | 23 → 26 (11) | 4/12 → 8/15 | shape → yes from L16, a shape at L15 |
+
+(More shots count after: the grey is seen from L15 now, and a foal lands in a frozen shot where it
+was hidden before. The foals stand elsewhere at a given moment after the size step, so one shot's
+size is a sample; the loop below is the measure of size.)
+
+The share of the 300 s loop each horse is in frame and not hidden, and its median size there (the
+CPU twin, every 3 s):
+
+| Seen · median size | L11 | L15 | L16 | glide L16-L17 | L17 | L18 |
+|---|---|---|---|---|---|---|
+| lead mare (dun) | 39 % · 24 px | 32 % · 40 px | 46 % · 42 px | 46 % · 64 px | 52 % · 54 px | 54 % · 60 px |
+| mare (grey) | 41 → 40 % · 25 → 26 px | 7 → 47 % · 38 px | 47 → 46 % · 48 → 34 px | 47 → 46 % · 75 → 58 px | 2 % · 58 px | 36 % · 68 px |
+| mare (bay) | 2 % · 38 px | 96 % · 36 px | 96 % · 39 px | 91 % · 43 px | 27 % · 88 px | 28 % · 91 px |
+| mare (dun) | 31 % · 24 px | 98 % · 45 px | 96 % · 45 px | 77 % · 65 px | 13 % · 76 px | 4 % · 45 px |
+| stallion (bay) | 80 % · 25 px | 57 % · 35 px | 79 % · 32 px | 57 % · 52 px | 2 % · 138 px | 3 % · 61 px |
+| foal (dun) | 28 → 31 % · 16 → 18 px | 36 → 32 % · 25 → 24 px | 46 % · 25 → 31 px | 45 % · 35 → 46 px | 38 → 39 % · 33 → 43 px | 53 % · 41 → 48 px |
+| foal (bay) | 2 % · 22 → 24 px | 91 → 90 % · 23 → 26 px | 94 % · 26 → 28 px | 91 → 92 % · 34 → 35 px | 46 % · 42 → 45 px | 26 % · 39 → 51 px |
+
+![1:1 crops at 1440p, before and after: the bay redder, the foals pale beside their mothers, the grey (east) out from behind the tree](images/odyssey-animals-2026-11-03/horses-vis-x1-before-after.jpg)
+
+![x4 crops, before and after: the bay foal no longer melts into its bay mother; the dun foal a little larger; the bays brighter](images/odyssey-animals-2026-11-03/horses-vis-x4-before-after.jpg)
+
+![L16, the whole frame after: the band in the east place below the mountain](images/odyssey-animals-2026-11-03/horses-vis-l16-frame-after.jpg)
+
+**Kept:** the places, the runs and the clock (world-anchored, the window, never popping), the
+model and the draws, the cost, the levers. No glow, no outline. The contact shadow is as it was:
+on this dark grass a darker shade adds little.
+
+**Left, and owner decisions:**
+- **The west end, from L15-L16.** A wall of crowns hides everything west of x -112 from L15 and
+  L16. The lead mare, her foal and the grey graze there for about half the loop, so from those two
+  parks they are seen 32-47 % of the loop. Options:
+  - (a) leave it: they are seen there from L17-L18, and from L15-L16 in the east place;
+  - (b) move the west place 20-35 m east (every spot east of x -100 is seen from L15 to L18); but
+    seven horses then graze in ~45 m, and the round run starts differently;
+  - (c) thin the crowns in front (the forest's, another owner).
+- **L11** sees the band far off over a ridge: 13-30 px, ΔE 8-27, mostly hidden by the terrain. A
+  distant glimpse; more would need a much bigger band.
+- **The bay foal at L15** is 26 px at the median and under 24 px for about half its time there. A
+  further step (x1.2 of the mother) would make it read there, but beside her it would look like a
+  yearling.
+- A foal at its mother's far side, or nursing, is hidden by her for a share of the time. That is
+  natural, and stays.
+
 ## Hoofed motion pass: the red deer and the ibex (2026-11-03)
 
 The owner, on all the animals: "I want them to feel natural and move in a smooth and natural way".
