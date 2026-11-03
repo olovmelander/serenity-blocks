@@ -43,7 +43,7 @@ function mountTitle() {
     img.src = './assets/branding/serenity-blocks-logo.svg';
     img.style.cssText = 'width:min(520px,70vw,80svh);height:auto;display:block';
     const tag = document.createElement('div');
-    tag.textContent = 'Stack · Breath · Ascend';
+    tag.textContent = 'Stack · Breathe · Ascend';
     tag.style.cssText = 'margin-top:26px;color:#c8d6e6;font:10px "Space Mono",monospace;'
         + 'letter-spacing:.32em;text-transform:uppercase';
     root.append(img, tag);
