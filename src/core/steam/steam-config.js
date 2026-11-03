@@ -172,7 +172,7 @@ export const STEAM_LEADERBOARDS = {
 export const STEAM_STATS = [
     'total_games_played',
     'total_lines_cleared',
-    'total_tspins',
+    'total_twists',
     'total_perfect_clears',
     'best_cascade',
     'odyssey_stars',

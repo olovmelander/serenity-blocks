@@ -350,8 +350,8 @@ export const EFFECTS = [
     {
         id: 'b2b',
         group: 'chains',
-        label: 'Back-to-back',
-        name: 'Back-to-back · two quads',
+        label: 'Chain',
+        name: 'Chain · two quads',
         build: (s, ctx) => {
             freshChain(s, ctx);
             quad(s, ctx);
@@ -367,8 +367,8 @@ export const EFFECTS = [
     {
         id: 'tspin',
         group: 'moments',
-        label: 'T-spin',
-        name: 'T-spin double',
+        label: 'Twist',
+        name: 'Twist double',
         build: (s, ctx) => {
             freshChain(s, ctx);
             // The T turned point-down into its slot: its bar and its point are the two rows.

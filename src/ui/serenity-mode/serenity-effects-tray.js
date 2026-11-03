@@ -7,8 +7,8 @@
  *     Pieces       [Lock] [Hard drop]
  *     Line clears  [Single] [Double] [Triple] [Quad]
  *     Cascades     [3 waves] [6 waves] [10 waves]
- *     Chains       [Combo ×5] [Back-to-back]
- *     Moments      [T-spin] [Perfect clear] [Level up]
+ *     Chains       [Combo ×5] [Chain]
+ *     Moments      [Twist] [Perfect clear] [Level up]
  *     Build-up     [Rush] [Fever]
  *     ← → another theme · E hides
  *

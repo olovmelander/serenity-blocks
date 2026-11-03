@@ -2762,8 +2762,9 @@ export class SharedEffects {
     }
 
     /**
-     * T-spin: the spin named in lavender, with a ring opening behind it.
-     * @param {number} [lineCount=0] - Lines cleared with the T-spin (0 = T-spin mini/zero).
+     * Twist (a clear made by spinning the piece into place): named in aqua, with a ring opening
+     * behind it. The game's own word for it; the internal event keeps its old key.
+     * @param {number} [lineCount=0] - Lines cleared with the twist (0 = a twist that clears none).
      */
     playTSpinEffect(lineCount = 0) {
         const boardWidth = this.scene.cols * this.scene.blockSize;
@@ -2771,28 +2772,28 @@ export class SharedEffects {
         const centerX = boardWidth / 2;
         const centerY = boardHeight / 2;
 
-        // "T-spin" leads; the line count is the qualifier beneath it.
+        // "Twist" leads; the line count is the qualifier beneath it.
         const qualifiers = [null, 'Single', 'Double', 'Triple'];
         this._showBanner({
-            title: 'T-spin',
+            title: 'Twist',
             subtitle: qualifiers[Math.min(lineCount, 3)],
             y: centerY * 0.75,
             titleSize: lineCount >= 2 ? 40 : 34,
             subtitleSize: 18,
-            accent: TONE.LAVENDER,
+            accent: TONE.AQUA,
             hold: 300,
             depth: 55,
         });
 
-        // The banner and ring stay — a T-spin is skill and deserves to be marked.
+        // The banner and ring stay — a twist is skill and deserves to be marked.
         // No border pulse or screen flash: they tint the entire frame for a single
         // piece placement.
-        this.createShockwaveRing(centerX, centerY * 0.75, TONE.LAVENDER, 1);
+        this.createShockwaveRing(centerX, centerY * 0.75, TONE.AQUA, 1);
     }
 
     /**
-     * Back-to-back: a small gold callout high on the board.
-     * @param {boolean} [active=true] - Whether a B2B was just scored (always true when called).
+     * Chain (two difficult clears in a row): a small gold callout high on the board.
+     * @param {boolean} [active=true] - Whether a chain was just scored (always true when called).
      */
     playB2BChange(active = true) {
         if (!active) return;
@@ -2801,7 +2802,7 @@ export class SharedEffects {
 
         // Sits high, out of the way of the combo popup and the centre banners.
         this._showBanner({
-            title: 'Back to back',
+            title: 'Chain',
             y: boardHeight * 0.18,
             titleSize: 24,
             accent: TONE.GOLD,
