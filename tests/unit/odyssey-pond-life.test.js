@@ -5,10 +5,11 @@
  *  - hidden until ready, drawn only through the window;
  *  - THE SWANS never leave the water (their whole hull over deep water at every moment of the loop)
  *    and keep apart; THE HERON stands in the shallows, its planted feet never slide, its legs reach
- *    them; THE DRINKERS walk dry or shallow, gentle ground clear of the trees and boulders, and come
- *    to the water's edge;
+ *    them; it flies between its two places now and then, its open wings drawn only then, clear of
+ *    the bank, landing on its feet; THE DRINKERS walk dry or shallow, gentle ground clear of the
+ *    trees and boulders, and come to the water's edge;
  *  - SITING on the real rail camera: in frame through the L18 -> L19 glide and at L22-L23, at the
- *    pixel sizes the doc records (1440p); never appearing or leaving in view.
+ *    pixel sizes the doc records (1440p), the heron's flights too; never appearing or leaving in view.
  */
 import { readFileSync } from 'node:fs';
 import {
@@ -19,8 +20,8 @@ import { context } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 import {
-    HERON_LOOP, ODYSSEY_POND, ODYSSEY_TARN_DEER, createBirdRig, heronStateAt, legReach, poseHeron, poseSwan, swanRoute,
-    swanStateAt,
+    HERON_FLIGHTS, HERON_LOOP, HERON_STOPS, ODYSSEY_POND, ODYSSEY_TARN_DEER, createBirdRig, heronStateAt, legReach, poseHeron,
+    poseSwan, swanRoute, swanStateAt,
 } from '../../src/rendering/odyssey/composition/odyssey-pond-life-motion.js';
 import { createOdysseyPondLife, parseOdysseyPondBird } from '../../src/rendering/odyssey/composition/odyssey-pond-life.js';
 import {
@@ -123,12 +124,13 @@ beforeAll(async () => {
 });
 
 describe('the pond birds: models, skins, the draw', () => {
-    it('are small skinned models: a swan of 9 bones (its wings their own), a heron of 13 (its catch its own), under 1,700 triangles', () => {
+    it('are small skinned models: a swan of 9 bones (its wings their own), a heron of 17 (its catch and open wings their own), under 1,700 triangles', () => {
         expect(swanModel.skeleton.map((b) => b.name))
             .toEqual(['root', 'neck0', 'neck1', 'neck2', 'neck3', 'neck4', 'head', 'wingL', 'wingR']);
         expect(heronModel.skeleton.map((b) => b.name).slice(0, 6)).toEqual(['root', 'neck0', 'neck1', 'neck2', 'neck3', 'head']);
-        expect(heronModel.skeleton.length).toBe(13);
+        expect(heronModel.skeleton.length).toBe(17);
         expect(heronModel.skeleton[12].name).toBe('fish');
+        expect(heronModel.skeleton.slice(13).map((b) => b.name)).toEqual(['wingL', 'handL', 'wingR', 'handR']);
         // The fish is its own small part, skinned whole to its bone.
         const bones = heronModel.geometry.attributes._bones;
         let fishVerts = 0;
@@ -280,6 +282,11 @@ describe('the swans', () => {
     });
 });
 
+const WING_BONES = Object.freeze(['wingL', 'handL', 'wingR', 'handR']);
+/** The rows of `arr` at the indices `idx`, and those not at them. */
+const pick = (arr, idx) => idx.map((b) => arr[b]);
+const omit = (arr, idx) => arr.filter((_, b) => !idx.includes(b));
+
 describe('the heron', () => {
     const rig = createBirdRig(heronModel ? heronModel.skeleton : []);
     const frames = [];
@@ -306,9 +313,11 @@ describe('the heron', () => {
         let miss = 0;
         frames.forEach((fr, i) => {
             fr.s.feet.forEach((f, side) => {
-                // The leg's solve: the ankle where the planner put it (over its ground by the ankle).
+                // The leg's solve: the ankle where the planner put it (over its ground by the ankle);
+                // in the air its legs trail, and reach for the water again before it lands.
                 const ankle = fr.feet[side];
-                miss = Math.max(miss, Math.hypot(ankle[0] - f.x, ankle[2] - f.z));
+                const onFeet = !fr.s.flying || (fr.s.legs < 1e-3 && fr.s.height < 1e-3);
+                if (onFeet) miss = Math.max(miss, Math.hypot(ankle[0] - f.x, ankle[2] - f.z));
                 if (i === 0 || !f.planted) return;
                 const prev = frames[i - 1].s.feet[side];
                 if (prev.planted) slide = Math.max(slide, Math.hypot(f.x - prev.x, f.z - prev.z));
@@ -322,9 +331,11 @@ describe('the heron', () => {
         // Over each stalk: the head's travel while the body moves under it, against the body's; and
         // the fastest any bone turns, frame to frame at 30 fps (the strike's shot is the fastest).
         const r = createBirdRig(heronModel.skeleton);
+        const wings = WING_BONES.map((n) => r.index[n]);
         let prev = null;
         let fastest = 0;
         let fastestShot = 0;
+        let fastestWing = 0;
         let bodyMoved = 0;
         let headMoved = 0;
         let last = null;
@@ -332,7 +343,9 @@ describe('the heron', () => {
             const s = poseHeron(r, t, odysseyWorldHeight, null, 0, { feet: [{}, {}] });
             const q = r.qw.map((v) => [...v]);
             if (prev) {
-                const w = fastestTurn(q, prev);
+                // The open wings beat (their own measure); the rest of it, the body and the neck.
+                const w = fastestTurn(omit(q, wings), omit(prev, wings));
+                fastestWing = Math.max(fastestWing, fastestTurn(pick(q, wings), pick(prev, wings)));
                 if (s.shoot > 0.001 && s.shoot < 0.999) fastestShot = Math.max(fastestShot, w);
                 else fastest = Math.max(fastest, w);
             }
@@ -352,6 +365,9 @@ describe('the heron', () => {
         // eased at both ends and never jumps.
         expect(fastest).toBeLessThan(12);
         expect(fastestShot).toBeLessThan(30);
+        // Slow, deep wingbeats (a heron's ~1.5 a second): the arm and hand never faster than that.
+        expect(fastestWing).toBeGreaterThan(5);
+        expect(fastestWing).toBeLessThan(14);
     });
 
     it('turns in small steps, never spinning, and swallows the fish it catches', () => {
@@ -359,6 +375,7 @@ describe('the heron', () => {
         // the bill only after a strike's shot (its bill under the water when it appears) and is
         // gone again within seconds, swallowed.
         let fastest = 0;
+        let fastestFlying = 0;
         let prev = null;
         let fishTime = 0;
         let fishRuns = 0;
@@ -367,7 +384,11 @@ describe('the heron', () => {
         let run = 0;
         for (let t = 0; t < HERON_LOOP; t += 1 / 30) {
             const s = heronStateAt(t, { feet: [{}, {}] });
-            if (prev !== null) fastest = Math.max(fastest, Math.abs(Math.atan2(Math.sin(s.heading - prev), Math.cos(s.heading - prev))) * 30);
+            if (prev !== null) {
+                const w = Math.abs(Math.atan2(Math.sin(s.heading - prev), Math.cos(s.heading - prev))) * 30;
+                if (s.flying) fastestFlying = Math.max(fastestFlying, w);
+                else fastest = Math.max(fastest, w);
+            }
             prev = s.heading;
             if (s.fish > 0.01) {
                 fishTime += 1 / 30;
@@ -384,9 +405,45 @@ describe('the heron', () => {
             }
         }
         expect(fastest).toBeLessThan(1.2);
+        // In the air it follows its curve, banked: never a sudden swing.
+        expect(fastestFlying).toBeLessThan(2.2);
         expect(fishRuns).toBeGreaterThan(0);
         expect(longest).toBeLessThan(5);
         expect(fishTime).toBeGreaterThan(0);
+    });
+
+    it('flies between its two places every two or three minutes, its wings drawn only in the air, clear of the bank', () => {
+        // Two flights a loop, a minute and a half to three apart; each leaves from its two feet and
+        // lands on them (planted, no slide), its body over the ground it left and the ground it lands on;
+        // in the air its feet are a unit and more over the bank it crosses.
+        expect(HERON_FLIGHTS.length).toBe(2);
+        const gaps = HERON_FLIGHTS.map((f, i) => {
+            const next = HERON_FLIGHTS[(i + 1) % HERON_FLIGHTS.length];
+            return ((next.t0 - f.t0) + HERON_LOOP) % HERON_LOOP;
+        });
+        gaps.forEach((g) => {
+            expect(g).toBeGreaterThan(90);
+            expect(g).toBeLessThan(180);
+        });
+        const r = createBirdRig(heronModel.skeleton);
+        const wings = WING_BONES.map((n) => r.index[n]);
+        HERON_FLIGHTS.forEach((f) => {
+            let clear = Infinity;
+            let peak = 0;
+            for (let u = -1; u < f.dur + 1; u += 1 / 30) {
+                const s = poseHeron(r, f.t0 + u, odysseyWorldHeight, null, 0, { feet: [{}, {}] });
+                const open = wings.map((b) => r.grown[b]);
+                if (!s.flying) open.forEach((v) => expect(v, `wings folded away at ${u.toFixed(2)}`).toBe(0));
+                if (s.height > 0.6) {
+                    const feetY = Math.min(r.hw[r.index.footL][1], r.hw[r.index.footR][1]);
+                    clear = Math.min(clear, feetY - Math.max(W, odysseyWorldHeight(s.x, s.z)));
+                }
+                peak = Math.max(peak, s.height * ODYSSEY_POND.heron.scale);
+            }
+            expect(clear, 'clear of the water and the bank').toBeGreaterThan(1);
+            expect(peak).toBeGreaterThan(4);
+            expect(peak).toBeLessThan(8);
+        });
     });
 
     it('reaches with a two-segment solve whose heel bends back', () => {
@@ -481,8 +538,23 @@ describe('the pond on the rail camera', () => {
             const label = `p ${p.toFixed(4)}`;
             expect(seen / n, `${label} swans in frame`).toBeGreaterThan(share);
             expect(px, `${label} swan length (px)`).toBeGreaterThan(12);
-            const heron = ODYSSEY_POND.heron.spots[0];
+            // The heron's north shore, every view's; and the flights, all but their ends at the
+            // south-west shallows (which the parks see at the frame's foot), in frame.
+            const heron = HERON_STOPS[0];
             expect(cam.inFrame(camera, new THREE.Vector3(heron[0], W + 2, heron[1]), 0.95), `${label} heron`).toBe(true);
+            if (p > 0.26) {
+                let inside = 0;
+                let n2 = 0;
+                HERON_FLIGHTS.forEach((f) => {
+                    for (let u = 0.6; u < f.touchdown - 0.6; u += 0.1) {
+                        const s = heronStateAt(f.t0 + u, { feet: [{}, {}] });
+                        const y = Math.max(W, odysseyWorldHeight(s.x, s.z)) + (s.height * ODYSSEY_POND.heron.scale) + 1;
+                        n2 += 1;
+                        if (cam.inFrame(camera, new THREE.Vector3(s.x, y, s.z), 1)) inside += 1;
+                    }
+                });
+                expect(inside / n2, `${label} flights in frame`).toBeGreaterThan(0.7);
+            }
             const bank = ODYSSEY_TARN_DEER.members[0].spots[0];
             expect(cam.inFrame(camera, new THREE.Vector3(bank[0], W + 3, bank[1]), 0.95), `${label} bank`).toBe(true);
         });
@@ -498,7 +570,13 @@ describe('the pond on the rail camera', () => {
             const b = swanStateAt(1, t, {});
             pts.push([a.x, W + 2, a.z], [b.x, W + 2, b.z]);
         }
-        ODYSSEY_POND.heron.spots.forEach(([x, z]) => pts.push([x, W + 3, z]));
+        HERON_STOPS.forEach(([x, z]) => pts.push([x, W + 4, z]));
+        HERON_FLIGHTS.forEach((f) => {
+            for (let u = 0; u < f.dur; u += 0.25) {
+                const s = heronStateAt(f.t0 + u + 1e-3, { feet: [{}, {}] });
+                pts.push([s.x, Math.max(W, odysseyWorldHeight(s.x, s.z)) + (s.height * ODYSSEY_POND.heron.scale) + 2, s.z]);
+            }
+        });
         ODYSSEY_TARN_DEER.members.forEach((m) => m.spots.forEach(([x, z]) => pts.push([x, odysseyWorldHeight(x, z) + 4, z])));
         pts.forEach(([x, y, z]) => {
             expect(cam.inFrame(camera, new THREE.Vector3(x, y, z), 1.1), `(${x.toFixed(0)}, ${z.toFixed(0)}) at p ${p1}`)

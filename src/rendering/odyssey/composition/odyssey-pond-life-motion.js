@@ -8,8 +8,9 @@
  * and again at L22-L23 (p 0.28-0.30, its west lobe). So the swans keep to the west and middle lobes
  * and the heron to the west lobe's shallows, which both stretches see.
  *
- * SIZE. Drawn at three times life, like the act's other life: a swan is ~25 px long at 1440p, the
- * heron ~15 px tall.
+ * SIZE. The swans are drawn at three times life, like the act's other life (16-28 px long at
+ * 1440p). The heron is drawn at 4.2 times (17-33 px tall) and the drinkers at 3.6 times: at three
+ * times both were specks on the rail (VISIBILITY, 2026-11-03).
  *
  * Everything is a function of the board clock (world-anchored; the camera only passes them):
  *  - THE SWANS glide round one closed route through the deep water, the second a few seconds behind
@@ -19,7 +20,10 @@
  *  - THE HERON stands in the shallows, mostly still, as herons do; it leans into a slow stalk, and
  *    now and then strikes (the neck shoots down and comes back). Every so often it walks a few slow
  *    steps along the shallows to its next spot: each foot is planted where it lands and stays there
- *    while the body passes over it (a two-segment leg solve reaches it), so nothing slides.
+ *    while the body passes over it (a two-segment leg solve reaches it), so nothing slides. Every two
+ *    or three minutes it flies to its other place: a take-off from its two feet, a few deep beats,
+ *    low over the water or the bank with its neck drawn back and its legs trailing, a glide and
+ *    braking beats, a landing and a few steps to settle (keyed in Blender: HERON_FLIGHT).
  *
  * OUTPUT. `poseBird` writes, per bone, its world rotation (a quaternion) and where its rest frame
  * lands (`at - k * q * rest`, with `k` the drawn size): the table odyssey-pond-life.js uploads. The
@@ -27,6 +31,7 @@
  */
 import { ODYSSEY_TARN } from '../world/odyssey-world-height.js';
 import { ODYSSEY_DEER } from './odyssey-deer-herd.js';
+import { HERON_FLIGHT } from './odyssey-heron-flight-keys.js';
 
 /** The pond's life: where, how big, when drawn. */
 export const ODYSSEY_POND = Object.freeze({
@@ -58,16 +63,43 @@ export const ODYSSEY_POND = Object.freeze({
         loop: 150,
     }),
     heron: Object.freeze({
-        /** Its spots in the west lobe's shallows (world x, z), walked between in turn. */
-        spots: Object.freeze([[-338.6, -432.4], [-333.0, -427.6], [-327.0, -425.2]]),
+        /**
+         * Drawn at 4.2 times life, 1.4 times the pond's: at three times it stood 13-22 px tall on
+         * the rail and read as a pale stroke (VISIBILITY, 2026-11-03).
+         */
+        scale: 4.2,
+        /** Its two places in the west lobe's shallows (world x, z): the north shore, which every
+         * view of the pond sees, and the south-west shallows by the drinkers' bank. */
+        sites: Object.freeze({
+            north: Object.freeze([[-336.0, -451.0], [-331.5, -454.0], [-327.0, -455.5]]),
+            west: Object.freeze([[-338.6, -432.4], [-333.0, -427.6]]),
+        }),
+        /**
+         * Its round: each stop a spot it stands at, and how it leaves for the next (the last for
+         * the first): a walk along the shallows, or a flight low over the water and the west bank
+         * through `via` (world x, z), a curve the rail's views of the pond keep in frame.
+         */
+        tour: Object.freeze([
+            Object.freeze({ site: 'north', spot: 2, then: 'walk' }),
+            Object.freeze({ site: 'north', spot: 1, then: 'walk' }),
+            Object.freeze({
+                site: 'north', spot: 0, then: 'fly', via: Object.freeze([[-343.3, -451.0], [-348.7, -446.2], [-349.4, -439.2], [-345.2, -433.7]]),
+            }),
+            Object.freeze({ site: 'west', spot: 0, then: 'walk' }),
+            Object.freeze({
+                site: 'west', spot: 1, then: 'fly', via: Object.freeze([[-326, -433], [-320, -440], [-320, -448]]),
+            }),
+        ]),
         /** Seconds it stands at a spot (min, max); how far the body moves a step (m at life size),
          * how long a step takes (s) and the pause after it (min, max s). */
-        stand: Object.freeze([38, 70]),
+        stand: Object.freeze([24, 50]),
         step: 0.17,
         stepTime: 1.15,
         pause: Object.freeze([0.7, 1.9]),
         /** How high a swinging foot lifts (share of the drawn size). */
         lift: 0.12,
+        /** After landing, the steps it takes to settle (count, m at life size a step). */
+        settle: Object.freeze({ steps: 2, step: 0.15 }),
         seed: 17,
     }),
 });
@@ -83,6 +115,11 @@ export const ODYSSEY_POND = Object.freeze({
  */
 export const ODYSSEY_TARN_DEER = Object.freeze({
     ...ODYSSEY_DEER,
+    /**
+     * Drawn at 3.6 times life, 1.2 times the glade's herd: at three times the hind was a speck at
+     * L15-L17 and the calf a shape (VISIBILITY, 2026-11-03).
+     */
+    scale: 3.6,
     window: ODYSSEY_POND.window,
     members: Object.freeze([
         Object.freeze({
@@ -97,7 +134,7 @@ export const ODYSSEY_TARN_DEER = Object.freeze({
             size: 0.62,
             seed: 131,
             tone: 0.35,
-            spots: Object.freeze([[-347.4, -439.2], [-367.5, -438.6], [-381.5, -440.2]]),
+            spots: Object.freeze([[-347.4, -439.2], [-365.5, -438.1], [-381.5, -440.2]]),
         }),
     ]),
 });
@@ -327,32 +364,173 @@ export function swanStateAt(i, time, out = {}) {
 }
 
 // ── THE HERON'S LIFE ─────────────────────────────────────────────────────────────────
+/** An open Catmull-Rom path through `points` (world x, z), with its arc-length table. */
+function buildPath(points) {
+    const n = points.length - 1;
+    const per = 32;
+    const pt = (i) => points[Math.max(0, Math.min(points.length - 1, i))];
+    const span = (i) => [pt(i - 1), pt(i), pt(i + 1), pt(i + 2)];
+    const params = [];
+    for (let k = 0; k <= n * per; k += 1) params.push(k / per);
+    const at = (u) => {
+        const i = Math.min(n - 1, Math.floor(u));
+        return catmull(...span(i), u - i, 0);
+    };
+    const lengths = new Float64Array(params.length);
+    let prev = at(0);
+    for (let k = 1; k < params.length; k += 1) {
+        const q = at(params[k]);
+        lengths[k] = lengths[k - 1] + Math.hypot(q[0] - prev[0], q[1] - prev[1]);
+        prev = q;
+    }
+    return {
+        params, lengths, length: lengths[lengths.length - 1], n, span,
+    };
+}
+
+/** A point on an open path at arc length `s` (clamped), with its unit tangent. */
+function pathAt(path, s, out) {
+    const u = Math.max(0, Math.min(path.length, s));
+    let lo = 0;
+    let hi = path.params.length - 2;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (path.lengths[mid] <= u) lo = mid; else hi = mid - 1;
+    }
+    const seg = Math.max(1e-9, path.lengths[lo + 1] - path.lengths[lo]);
+    const param = path.params[lo] + ((path.params[lo + 1] - path.params[lo]) * ((u - path.lengths[lo]) / seg));
+    const i = Math.min(path.n - 1, Math.floor(param));
+    const sp = path.span(i);
+    const p = catmull(...sp, param - i, 0);
+    const d = catmull(...sp, param - i, 1);
+    const len = Math.max(1e-9, Math.hypot(d[0], d[1]));
+    out.x = p[0];
+    out.z = p[1];
+    out.tx = d[0] / len;
+    out.tz = d[1] / len;
+    return out;
+}
+
+const FLY_AT = {};
+const FLY_BEHIND = {};
+const FLY_AHEAD = {};
+/** A flight's way (heading) at arc length `s`: the chord over 3 units round it (the tangent at an end). */
+function flyWay(seg, s, at) {
+    const a = pathAt(seg.path, s - 1.5, FLY_BEHIND);
+    const b = pathAt(seg.path, s + 1.5, FLY_AHEAD);
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    return Math.hypot(dx, dz) > 1e-6 ? Math.atan2(dx, dz) : Math.atan2(at.tx, at.tz);
+}
+
+/** A flight channel at `u` seconds into the flight (the Blender-keyed table, cubic between samples). */
+function flightChannel(name, u) {
+    const c = HERON_FLIGHT.channels[name];
+    const f = Math.max(0, Math.min(c.length - 1, u * HERON_FLIGHT.rate));
+    const i = Math.min(c.length - 2, Math.floor(f));
+    const at = (j) => [0, c[Math.max(0, Math.min(c.length - 1, j))]];
+    return catmull(at(i - 1), at(i), at(i + 1), at(i + 2), f - i, 0)[1];
+}
+/** Seconds into the flight its feet touch the water again (the first `height` 0 after the rise). */
+const HERON_TOUCHDOWN = (() => {
+    const h = HERON_FLIGHT.channels.height;
+    let i = h.findIndex((v) => v > 0.5);
+    while (i < h.length && h[i] > 1e-4) i += 1;
+    return i / HERON_FLIGHT.rate;
+})();
+
+const angleTo = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
+
 /**
- * The heron's schedule over one loop: stand at a spot (its stalks, strikes, shakes and small head
- * turns), then stalk to the next, one deliberate step at a time: each step lifts a foot, carries the
- * body over it and sets it down; between steps it stands, a different while each time. The last
- * step brings the trailing foot up beside the other.
+ * The heron's schedule over one loop, round its tour: stand at a stop (its stalks, strikes, shakes
+ * and small head turns), then leave for the next: a stalk along the shallows, one deliberate step at
+ * a time (each step lifts a foot, carries the body over it and sets it down; between steps it
+ * stands, a different while each time; the last step brings the trailing foot up beside the other),
+ * or a flight low across the water (the Blender-keyed take-off, beats, glide and landing, laid along
+ * a curved path), ending in a few quick steps to settle.
  */
 function buildHeronSchedule() {
     const H = ODYSSEY_POND.heron;
-    const k = ODYSSEY_POND.scale;
+    const k = H.scale;
     const rand = seeded(H.seed);
+    /** @type {any[]} the stands, walks and flights in order */
     const segs = [];
     let t = 0;
-    const n = H.spots.length;
-    // Each walk's heading; the heron stands facing the way it walked in.
-    const headings = H.spots.map((from, i) => {
-        const to = H.spots[(i + 1) % n];
-        return Math.atan2(to[0] - from[0], to[1] - from[1]);
-    });
+    const stops = H.tour.map((s) => H.sites[s.site][s.spot]);
+    const n = stops.length;
     const half = 0.04 * k;
     const lateral = (p, h, side) => {
         const s = side === 0 ? 1 : -1;
         return [p[0] + (Math.cos(h) * half * s), p[1] - (Math.sin(h) * half * s)];
     };
+    // Each flight's path and where it lands: short of its stop by the settling steps.
+    const settleBy = H.settle.steps * H.settle.step * k;
+    const flights = H.tour.map((s, i) => {
+        if (s.then !== 'fly') return null;
+        const to = stops[(i + 1) % n];
+        const path = buildPath([stops[i], ...s.via, to]);
+        const land = pathAt(path, path.length - settleBy, {});
+        return {
+            path, length: path.length - settleBy, land: [land.x, land.z], heading: Math.atan2(to[0] - land.x, to[1] - land.z),
+        };
+    });
+    // The heading it arrives at each stop with: its walk's or its settling steps'.
+    const arrive = stops.map((at, i) => {
+        const j = (i - 1 + n) % n;
+        if (flights[j]) return flights[j].heading;
+        return Math.atan2(at[0] - stops[j][0], at[1] - stops[j][1]);
+    });
+
+    /**
+     * A walk's moves from `from` to `to`: first a few small stepped turns toward it (each at most
+     * ~0.5 rad, a foot re-placed each time, never a spin), then steps of `step` (drawn units) one
+     * at a time, and the trailing foot brought up beside the other at the end.
+     */
+    function walkMoves(from, to, standHeading, { step, time = 1, pauses = 1 }) {
+        const dist = Math.hypot(to[0] - from[0], to[1] - from[1]);
+        const walkHeading = Math.atan2(to[0] - from[0], to[1] - from[1]);
+        const turnBy = angleTo(standHeading, walkHeading);
+        const turns = Math.abs(turnBy) < 0.05 ? 0 : Math.ceil(Math.abs(turnBy) / 0.5);
+        const count = Math.max(2, Math.round(dist / step));
+        const delta = dist / count;
+        const dx = (to[0] - from[0]) / dist;
+        const dz = (to[1] - from[1]) / dist;
+        const feet = [lateral(from, standHeading, 0), lateral(from, standHeading, 1)];
+        const moves = [];
+        let u = 0;
+        let along = 0;
+        let heading = standHeading;
+        // Turning toward the left (positive), the left foot steps first, and the other way round.
+        let side = turnBy >= 0 ? 0 : 1;
+        const pushMove = (to2, a1, h1, forward, closing = false) => {
+            const dur = H.stepTime * time * (0.9 + (rand() * 0.25)) * (forward ? 1 : 0.85);
+            moves.push({
+                t0: u, dur, side, from: feet[side].slice(), to: to2, feet: [feet[0].slice(), feet[1].slice()], a0: along, a1, h0: heading, h1, forward,
+            });
+            feet[side] = to2;
+            along = a1;
+            heading = h1;
+            u += dur + (closing ? 0.6 : (H.pause[0] + (rand() * (H.pause[1] - H.pause[0])) * (forward ? 1 : 0.6)) * pauses);
+            side = 1 - side;
+        };
+        for (let m = 1; m <= turns; m += 1) {
+            const h1 = standHeading + ((turnBy * m) / turns);
+            pushMove(lateral(from, h1, side), 0, h1, false);
+        }
+        for (let m = 0; m < count; m += 1) {
+            const pos = m >= count - 1 ? dist : Math.min(dist, ((m + 1) * delta) + (delta * 0.5));
+            const foot = lateral([from[0] + (dx * pos), from[1] + (dz * pos)], walkHeading, side);
+            pushMove(foot, (m + 1) * delta, walkHeading, true);
+        }
+        pushMove(lateral(to, walkHeading, side), dist, walkHeading, false, true);
+        return {
+            kind: 'walk', dur: u, from, to, dist, moves, heading: walkHeading,
+        };
+    }
+
     for (let i = 0; i < n; i += 1) {
-        const from = H.spots[i];
-        const to = H.spots[(i + 1) % n];
+        const from = stops[i];
+        const to = stops[(i + 1) % n];
         const stand = H.stand[0] + (rand() * (H.stand[1] - H.stand[0]));
         // Its acts while it stands: stalks (a slow lean, the neck reaching forward and low) and
         // strikes (a slow coil, the shot, the hold, the return; half of them come up with a fish,
@@ -380,70 +558,48 @@ function buildHeronSchedule() {
             looks.push({ t0: l, yaw: (rand() - 0.5) * 0.9, pitch: (rand() - 0.5) * 0.12 });
             l += 1.8 + (rand() * 3.5);
         }
-        const standHeading = headings[(i - 1 + n) % n];
         segs.push({
-            kind: 'stand', t0: t, dur: stand, x: from[0], z: from[1], acts, looks, heading: standHeading,
+            kind: 'stand', t0: t, dur: stand, x: from[0], z: from[1], acts, looks, heading: arrive[i],
         });
         t += stand;
-        // THE WALK: a list of moves, each lifting one foot and setting it down while the body is
-        // carried. It first turns toward its next spot in a few small stepped turns (each at most
-        // ~0.5 rad, a foot re-placed each time, never a spin), then stalks there one step at a time,
-        // and brings the trailing foot up beside the other at the end.
-        const walkHeading = headings[i];
-        const turnBy = Math.atan2(Math.sin(walkHeading - standHeading), Math.cos(walkHeading - standHeading));
-        const turns = Math.abs(turnBy) < 0.05 ? 0 : Math.ceil(Math.abs(turnBy) / 0.5);
-        const dist = Math.hypot(to[0] - from[0], to[1] - from[1]);
-        const count = Math.max(2, Math.round(dist / (H.step * k)));
-        const delta = dist / count;
-        const dx = (to[0] - from[0]) / dist;
-        const dz = (to[1] - from[1]) / dist;
-        const feet = [lateral(from, standHeading, 0), lateral(from, standHeading, 1)];
-        const moves = [];
-        let u = 0;
-        let along = 0;
-        let heading = standHeading;
-        // Turning toward the left (positive), the left foot steps first, and the other way round.
-        let side = turnBy >= 0 ? 0 : 1;
-        const pushMove = (to2, a1, h1, forward, closing = false) => {
-            const dur = H.stepTime * (0.9 + (rand() * 0.25)) * (forward ? 1 : 0.85);
-            moves.push({
-                t0: u,
-                dur,
-                side,
-                from: feet[side].slice(),
-                to: to2,
-                feet: [feet[0].slice(), feet[1].slice()],
-                a0: along,
-                a1,
-                h0: heading,
-                h1,
-                forward,
+        const flight = flights[i];
+        if (!flight) {
+            segs.push({ ...walkMoves(from, to, arrive[i], { step: H.step * k }), t0: t });
+            t += segs[segs.length - 1].dur;
+        } else {
+            // THE FLIGHT: off from its two feet, along the path, down onto two feet at `land`.
+            const h0 = arrive[i];
+            const p0 = pathAt(flight.path, 0, {});
+            segs.push({
+                kind: 'fly',
+                t0: t,
+                dur: HERON_FLIGHT.seconds,
+                path: flight.path,
+                length: flight.length,
+                h0,
+                h1: flight.heading,
+                rise: angleTo(h0, Math.atan2(p0.tx, p0.tz)),
+                feet0: [lateral(from, h0, 0), lateral(from, h0, 1)],
+                feet1: [lateral(flight.land, flight.heading, 0), lateral(flight.land, flight.heading, 1)],
             });
-            feet[side] = to2;
-            along = a1;
-            heading = h1;
-            u += dur + (closing ? 0.6 : H.pause[0] + (rand() * (H.pause[1] - H.pause[0])) * (forward ? 1 : 0.6));
-            side = 1 - side;
-        };
-        for (let m = 1; m <= turns; m += 1) {
-            const h1 = standHeading + ((turnBy * m) / turns);
-            pushMove(lateral(from, h1, side), 0, h1, false);
+            t += HERON_FLIGHT.seconds;
+            // ...and its settling steps, short and quick, to the stop.
+            segs.push({
+                ...walkMoves(flight.land, to, flight.heading, { step: H.settle.step * k, time: 0.7, pauses: 0.35 }), t0: t, settle: true,
+            });
+            t += segs[segs.length - 1].dur;
         }
-        for (let m = 0; m < count; m += 1) {
-            const pos = m >= count - 1 ? dist : Math.min(dist, ((m + 1) * delta) + (delta * 0.5));
-            const foot = lateral([from[0] + (dx * pos), from[1] + (dz * pos)], walkHeading, side);
-            pushMove(foot, (m + 1) * delta, walkHeading, true);
-        }
-        pushMove(lateral(to, walkHeading, side), dist, walkHeading, false, true);
-        segs.push({
-            kind: 'walk', t0: t, dur: u, from, to, dist, moves, heading: walkHeading,
-        });
-        t += u;
     }
     return { segs, loop: t };
 }
 const HERON = buildHeronSchedule();
 export const HERON_LOOP = HERON.loop;
+/** The heron's stops (world x, z), in its tour's order. */
+export const HERON_STOPS = Object.freeze(ODYSSEY_POND.heron.tour.map((s) => ODYSSEY_POND.heron.sites[s.site][s.spot]));
+/** Its flights in one loop: when each starts (board s), how long it lasts, when its feet touch down. */
+export const HERON_FLIGHTS = Object.freeze(HERON.segs.filter((s) => s.kind === 'fly').map((s) => Object.freeze({
+    t0: s.t0, dur: s.dur, length: s.length, touchdown: HERON_TOUCHDOWN,
+})));
 
 /** The stand's head turn at `u`: eased from the last look to the current over 0.35 s. */
 function heronLook(seg, u) {
@@ -484,6 +640,18 @@ export function heronStateAt(time, out = { feet: [{}, {}] }) {
     out.headLag = 0;
     out.look = 0;
     out.nod = 0;
+    out.flying = 0;
+    out.along = 0;
+    out.height = 0;
+    out.flyCrouch = 0;
+    out.wing = 0;
+    out.wingLag = 0;
+    out.sweep = 0;
+    out.spread = 0;
+    out.flyPitch = 0;
+    out.flyNeck = 0;
+    out.legs = 0;
+    out.bank = 0;
     if (seg.kind === 'stand') {
         out.x = seg.x;
         out.z = seg.z;
@@ -534,6 +702,47 @@ export function heronStateAt(time, out = { feet: [{}, {}] }) {
         });
         return out;
     }
+    if (seg.kind === 'fly') {
+        // THE FLIGHT: the keyed channels at this moment, laid along the path.
+        const F = (name) => flightChannel(name, u);
+        out.flying = 1;
+        out.along = clamp01(F('along'));
+        out.height = Math.max(0, F('height'));
+        out.flyCrouch = F('crouch');
+        out.wing = F('wing');
+        out.wingLag = flightChannel('wing', u - 0.09);
+        out.sweep = F('sweep');
+        out.spread = clamp01(F('spread'));
+        out.flyPitch = F('pitch');
+        out.flyNeck = clamp01(F('neck'));
+        out.legs = clamp01(F('legs'));
+        out.from = seg.feet0;
+        out.to = seg.feet1;
+        const s = out.along * seg.length;
+        const p = pathAt(seg.path, s, FLY_AT);
+        out.x = p.x;
+        out.z = p.z;
+        // It turns from the way it stood to the path's way as it rises, then follows the path (its
+        // way over a few units, so the spline's knots never jerk it), and faces its settling steps
+        // as it lands.
+        const th = flyWay(seg, s, p);
+        let h = seg.h0 + (angleTo(seg.h0, th) * s5((u - 0.2) / 1.4));
+        h += angleTo(h, seg.h1) * s5((u - (HERON_TOUCHDOWN - 0.9)) / 0.9);
+        out.heading = h;
+        // Banked into its turns as a bird flies them: tan(bank) = speed x turn rate / g (life size).
+        const speed = (flightChannel('along', u + (1 / 60)) - flightChannel('along', u - (1 / 60))) * 30 * seg.length;
+        const turnRate = (angleTo(flyWay(seg, s - 2, p), flyWay(seg, s + 2, p)) / 4) * speed;
+        const k = H.scale;
+        out.bank = -Math.max(-0.5, Math.min(0.5, Math.atan(((speed / k) * turnRate) / 9.8))) * out.spread;
+        // Its feet: on the water at the take-off until they leave it, and from the touchdown on.
+        out.feet.forEach((f, side) => {
+            const at = out.along < 0.5 ? seg.feet0[side] : seg.feet1[side];
+            [f.x, f.z] = at;
+            f.lift = 0;
+            f.planted = out.height < 1e-4 && (u < 1 || u >= HERON_TOUCHDOWN - 1e-6);
+        });
+        return out;
+    }
     // A walk: the move this is (or the pause after it).
     out.walking = 1;
     out.stalk = envelope(u, seg.dur, 1.6, 1.6);
@@ -549,8 +758,11 @@ export function heronStateAt(time, out = { feet: [{}, {}] }) {
     const dh = Math.atan2(Math.sin(mv.h1 - mv.h0), Math.cos(mv.h1 - mv.h0));
     out.heading = mv.h0 + (dh * w);
     // The head is held where it was while the body moves under it, then glides on in the pause.
+    // (It glides on within the pause, however short; a landing's quick settling steps carry it.)
     const pauseU = u - (mv.t0 + mv.dur);
-    if (mv.forward) out.headLag = pauseU < 0 ? (mv.a1 - mv.a0) * w : (mv.a1 - mv.a0) * (1 - s5(pauseU / 0.7));
+    const next = seg.moves[j + 1];
+    const release = Math.max(0.1, Math.min(0.7, (next ? next.t0 : seg.dur) - (mv.t0 + mv.dur)));
+    if (mv.forward && !seg.settle) out.headLag = pauseU < 0 ? (mv.a1 - mv.a0) * w : (mv.a1 - mv.a0) * (1 - s5(pauseU / release));
     const moving = pauseU < 0;
     out.feet.forEach((f, side) => {
         if (moving && side === mv.side) {
@@ -558,7 +770,7 @@ export function heronStateAt(time, out = { feet: [{}, {}] }) {
             f.z = mv.from[1] + ((mv.to[1] - mv.from[1]) * w);
             const lift = Math.hypot(mv.to[0] - mv.from[0], mv.to[1] - mv.from[1]) > 1e-6
                 ? Math.sin(Math.PI * ((u - mv.t0) / mv.dur)) ** 2.5 : 0;
-            f.lift = lift * H.lift * ODYSSEY_POND.scale;
+            f.lift = lift * H.lift * H.scale;
             f.planted = lift === 0;
         } else {
             const p = side === mv.side ? mv.to : mv.feet[side];
@@ -573,7 +785,7 @@ export function heronStateAt(time, out = { feet: [{}, {}] }) {
 /** A stand's two feet: where the walk before it left them (beside each other, the way it faces). */
 function HERON_STAND_FEET(seg) {
     if (!seg.feetCache) {
-        const k = ODYSSEY_POND.scale;
+        const k = ODYSSEY_POND.heron.scale;
         const half = 0.04 * k;
         const h = seg.heading;
         seg.feetCache = [0, 1].map((side) => {
@@ -645,9 +857,18 @@ export function poseBird(rig, {
         skeleton, local, qw, hw, tmp, v,
     } = rig;
     const base = qeuler(pitch, heading, roll, [0, 0, 0, 1]);
+    // A bone may be drawn smaller than the rest (`rig.size`: the heron's fish, its wings; 0 = gone),
+    // scaled about its own head, and its children with it.
+    const grown = rig.grown || (rig.grown = skeleton.map(() => 1));
     skeleton.forEach((bone, i) => {
         const l = local[i];
-        qeuler(l[0], l[1], l[2], tmp);
+        const lq = rig.localQ ? rig.localQ[i] : null;
+        if (lq) {
+            [tmp[0], tmp[1], tmp[2], tmp[3]] = lq;
+        } else {
+            qeuler(l[0], l[1], l[2], tmp);
+        }
+        grown[i] = (bone.parent < 0 ? 1 : grown[bone.parent]) * (rig.size ? rig.size[i] : 1);
         if (bone.parent < 0) {
             qmul(base, tmp, qw[i]);
             qrot(base, bone.head, v);
@@ -659,14 +880,13 @@ export function poseBird(rig, {
             qmul(qw[p], tmp, qw[i]);
             const ph = skeleton[p].head;
             qrot(qw[p], [bone.head[0] - ph[0], bone.head[1] - ph[1], bone.head[2] - ph[2]], v);
-            hw[i][0] = hw[p][0] + (v[0] * k);
-            hw[i][1] = hw[p][1] + (v[1] * k);
-            hw[i][2] = hw[p][2] + (v[2] * k);
+            const kp = k * grown[p];
+            hw[i][0] = hw[p][0] + (v[0] * kp);
+            hw[i][1] = hw[p][1] + (v[1] * kp);
+            hw[i][2] = hw[p][2] + (v[2] * kp);
         }
         if (table) {
-            // A bone may be drawn smaller than the rest (`rig.size`, the heron's fish: 0 = gone),
-            // scaled about its own head.
-            const ks = k * (rig.size ? rig.size[i] : 1);
+            const ks = k * grown[i];
             const o = offset + (i * 8);
             const q = qw[i];
             qrot(q, bone.head, v);
@@ -888,7 +1108,36 @@ const HERON_NECK_POSE = Object.freeze({
     coil: Object.freeze([0.55, -1.35, -0.1, 1.3]),
     // The shot: the neck thrown straight out, forward and down at the water.
     shoot: Object.freeze([1.45, 1.6, 1.7, 1.78]),
+    // In flight: drawn back into a tight S, the head just ahead of the shoulders (with the body
+    // levelled out, so these lean back by its flight pitch).
+    flight: Object.freeze([1.3, -0.4, -1.2, 0.8]),
 });
+/** The wings' axes in the body's rest frame: the chord's forward (the body's axis) and up out of the wing. */
+const WING_ALONG = Object.freeze([0, 0.5708, 0.8211]);
+const WING_UP = Object.freeze([0, 0.8211, -0.5708]);
+/** A turn of `angle` about a unit `axis`, as a quaternion (into `out`). */
+const qaxis = (axis, angle, out) => {
+    const h = Math.sin(angle / 2);
+    out[0] = axis[0] * h;
+    out[1] = axis[1] * h;
+    out[2] = axis[2] * h;
+    out[3] = Math.cos(angle / 2);
+    return out;
+};
+const WING_A = [0, 0, 0, 1];
+const WING_B = [0, 0, 0, 1];
+/** A wing bone's local turn: swept by `sweep` about the wing's up, after a stroke of `stroke` about its chord. */
+function wingTurn(rig, name, sweep, stroke) {
+    const i = rig.index[name];
+    rig.localQ = rig.localQ || rig.skeleton.map(() => null);
+    const q = rig.localQ[i] || (rig.localQ[i] = [0, 0, 0, 1]);
+    qmul(qaxis(WING_UP, sweep, WING_A), qaxis(WING_ALONG, stroke, WING_B), q);
+}
+/**
+ * The legs trailing in flight (body frame, rad from straight down toward forward): thigh and shin
+ * straight out behind along the body's axis, drooping a little, the toes in line with them.
+ */
+const LEG_TRAIL = Object.freeze({ upper: -0.9, lower: -0.85, toes: -0.85 });
 const HERON_NECK = Object.freeze(['neck0', 'neck1', 'neck2', 'neck3', 'head']);
 
 /**
@@ -897,18 +1146,24 @@ const HERON_NECK = Object.freeze(['neck0', 'neck1', 'neck2', 'neck3', 'head']);
  * @returns {object} the heron's state (feet included)
  */
 export function poseHeron(rig, time, heightAt, table = null, offset = 0, state = { feet: [{}, {}] }) {
-    const k = ODYSSEY_POND.scale;
+    const k = ODYSSEY_POND.heron.scale;
     const s = heronStateAt(time, state);
     const { skeleton, index } = rig;
     const head = (name) => skeleton[index[name]].head;
     // The body over its feet: the mean of the ground under them, breathing, lower while it stalks
     // and leaning into a stalk and a strike.
     s.feet.forEach((f) => { f.ground = heightAt(f.x, f.z); });
-    const ground = (s.feet[0].ground + s.feet[1].ground) / 2;
-    const breath = Math.sin(time * 1.35) * 0.004;
-    const crouch = (s.stalk * 0.05) + (s.coil * 0.03) + (s.shoot * 0.06) + breath;
-    const pitch = (s.stalk * 0.2) + (s.coil * 0.05) + (s.shoot * 0.2) + (breath * 1.5);
-    const y = ground - (crouch * k);
+    let ground = (s.feet[0].ground + s.feet[1].ground) / 2;
+    if (s.flying) {
+        // In flight: from the ground it left to the ground it lands on, as it goes.
+        const g0 = (heightAt(s.from[0][0], s.from[0][1]) + heightAt(s.from[1][0], s.from[1][1])) / 2;
+        const g1 = (heightAt(s.to[0][0], s.to[0][1]) + heightAt(s.to[1][0], s.to[1][1])) / 2;
+        ground = g0 + ((g1 - g0) * s.along);
+    }
+    const breath = Math.sin(time * 1.35) * 0.004 * (1 - s.flying);
+    const crouch = (s.stalk * 0.05) + (s.coil * 0.03) + (s.shoot * 0.06) + breath + s.flyCrouch;
+    const pitch = (s.stalk * 0.2) + (s.coil * 0.05) + (s.shoot * 0.2) + (breath * 1.5) + s.flyPitch;
+    const y = ground - (crouch * k) + (s.height * k);
     const fx = Math.sin(s.heading);
     const fz = Math.cos(s.heading);
     // Legs: each foot's target in the body's frame (forward, up) from its hip.
@@ -937,10 +1192,16 @@ export function poseHeron(rig, time, heightAt, table = null, offset = 0, state =
         const reach = legReach(a, b, bf - hip[2], -Math.hypot(down, lat));
         const restUpper = Math.atan2(heel[2] - hip[2], -(heel[1] - hip[1]));
         const restLower = Math.atan2(foot[2] - heel[2], -(foot[1] - heel[1]));
-        setLocal(rig, `thigh${tag}`, restUpper - reach.upper, 0, roll);
-        setLocal(rig, `shin${tag}`, (restLower - reach.lower) - (restUpper - reach.upper), 0, 0);
-        // The foot kept level: undo the leg's and the body's turn.
-        setLocal(rig, `foot${tag}`, -(restLower - reach.lower) - pitch, 0, -roll);
+        // Reaching for the ground (the foot kept level: the leg's and the body's turn undone), or
+        // in flight trailing behind (`legs`), mixed.
+        const m = s.legs;
+        const mix = (a0, a1) => a0 + ((a1 - a0) * m);
+        const thigh = mix(restUpper - reach.upper, restUpper - LEG_TRAIL.upper);
+        const shin = mix((restLower - reach.lower) - (restUpper - reach.upper), (restLower - LEG_TRAIL.lower) - (restUpper - LEG_TRAIL.upper));
+        const toes = mix(-(restLower - reach.lower) - pitch, ((Math.PI / 2) - LEG_TRAIL.toes) - (restLower - LEG_TRAIL.lower));
+        setLocal(rig, `thigh${tag}`, thigh, 0, roll * (1 - m));
+        setLocal(rig, `shin${tag}`, shin, 0, 0);
+        setLocal(rig, `foot${tag}`, toes, 0, -roll * (1 - m));
     });
     // The neck: the rest S, a stalk's forward reach, a strike's coil and shot.
     const neck = neckRest(rig, HERON_NECK);
@@ -950,6 +1211,7 @@ export function poseHeron(rig, time, heightAt, table = null, offset = 0, state =
     mixInto(want, want, HERON_NECK_POSE.stalk, s.stalk);
     mixInto(want, want, HERON_NECK_POSE.coil, s.coil);
     mixInto(want, want, HERON_NECK_POSE.shoot, s.shoot);
+    mixInto(want, want, HERON_NECK_POSE.flight, s.flyNeck);
     // While it steps, the head is held still: the neck folds back by as much as the body has moved.
     if (s.headLag > 0) {
         const cp = Math.cos(pitch);
@@ -969,11 +1231,27 @@ export function poseHeron(rig, time, heightAt, table = null, offset = 0, state =
     if (rig.index.fish != null) {
         rig.size = rig.size || new Array(rig.skeleton.length).fill(1);
         rig.size[rig.index.fish] = Math.max(0, Math.min(1, s.fish));
+        if (rig.index.wingL != null) {
+            // The open wings: drawn only in flight (0 = folded away into the body), unfolding as
+            // they grow: the arm swung back along the body, the hand folded forward under it.
+            rig.size[rig.index.wingL] = s.spread;
+            rig.size[rig.index.wingR] = s.spread;
+            const fold = 1 - s.spread;
+            // The hand follows the arm's stroke a moment late, and flexes back on the upstroke.
+            const lag = (s.wingLag - s.wing) * 0.45;
+            const flex = Math.max(0, Math.min(0.45, (s.wing - s.wingLag) * 0.6));
+            const arm = (fold * 1.25) - s.sweep;
+            const hand = flex - (fold * 2.4);
+            wingTurn(rig, 'wingL', arm, s.wing);
+            wingTurn(rig, 'handL', hand, lag);
+            wingTurn(rig, 'wingR', -arm, -s.wing);
+            wingTurn(rig, 'handR', -hand, -lag);
+        }
         setLocal(rig, 'fish', Math.sin(time * 9.0) * 0.25 * s.fish, 0, 0);
     }
     setLocal(rig, 'root', 0, 0, shake * 0.04);
     poseBird(rig, {
-        x: s.x, y, z: s.z, heading: s.heading, pitch, roll: 0,
+        x: s.x, y, z: s.z, heading: s.heading, pitch, roll: s.bank,
     }, k, table, offset);
     s.y = y;
     return s;
