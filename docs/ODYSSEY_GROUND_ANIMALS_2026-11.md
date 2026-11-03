@@ -1060,3 +1060,118 @@ the gallop (0.12 s apart), the wheel before a run, grazing, and a foal's buck:
 - the clearing holds every horse and every puff, has a ragged edge, keeps only a few lone trees in
   its core, and leaves the boulders exactly as they were;
 - dust rises only in a run.
+
+### Natural motion pass (2026-11-03)
+
+The owner: "I want us to keep improving the design, movement and animations of all animals in
+odyssey mode, i want them to feel natural and move in a smooth and natural way!!!"
+
+**How it was judged.**
+- The game's own CPU twin (`composition/odyssey-horse-band.js`) was sampled at 60 Hz over the whole
+  300 s loop for every horse. I measured:
+  - the root path (acceleration, jerk, vertical, turn rate);
+  - every joint (angular velocity and acceleration);
+  - the hooves in stance (slip, float, dig);
+  - the footfall order per gait;
+  - the foals' distance from their mothers;
+  - the band's spacing.
+- The same poses were skinned on the CPU in headless Blender
+  (`scripts/blender/odyssey/horse_motion_review.py`). It renders motion strips, onion skins and the
+  hooves' paths against the body, and builds a review .blend that can be scrubbed.
+- Close-up strips came from the playground in the browser (WebGPU), with the game's own shader.
+- Electron is blocked on this machine today, so there are no rail-station captures in this pass.
+
+**What looked least natural, worst first, and what changed.**
+
+1. **The gallop jolted and the knees popped.**
+   - The body's height jumped 4-7 cm from frame to frame (vertical spikes of ~420 m/s^2, life size)
+     and sank 22 cm low. The fore knee flipped between its two leg-solve answers (6,300-8,900
+     rad/s^2).
+   - Now the body's "drop" (how much it lowers so the hooves reach the ground) is averaged over a
+     few moments either side, so the body rides the strides in one swell.
+   - The hind hooves land under the hip at speed, the strides at a canter and gallop are shorter
+     and quicker, and the canter's rocking is lighter.
+   - The fore leg's knee folds only in the air. Its fold eases out by the stance share, and the
+     elbow is solved for that knee, so the hoof always lands where the plan put it. Deep in a
+     gallop's stance, the knee takes what the elbow can not.
+2. **Corners in the path.**
+   - Paths were read as a chain of straight pieces, which made spikes of 50-100 m/s^2 in the runs.
+     A run turned 90 degrees at the band's west end at full speed (3 u radius).
+   - Now the path comes from the curve itself.
+   - A run has a racing-line speed profile: it speeds up and slows at a horse's rate (1.6 m/s^2)
+     and eases off into a bend (at most 4 m/s^2 sideways), then the profile is smoothed.
+3. **Foals did not stay with their mothers.**
+   - Before: 5-5.5 m away on average, more than 6 m away 23-30 % of the time, never suckling.
+   - Now each foal keeps a place by its mother's hip. It walks to her, or trots when it has drifted
+     far, predicting where she will be when it arrives.
+   - It goes round her, never through her, and moves before she steps onto it.
+   - It suckles at her flank, head to tail, while she stands grazing, and plays (out and back,
+     sometimes a buck) only onto open grass clear of the rocks.
+   - In a run it ends beside her on its running side.
+4. **Turning on the spot.**
+   - Before: 43-73 s of every 5 minutes, with grazing steps spinning at the start (4-7.5 rad/s)
+     and a stumble in the wheel before a run.
+   - Now steps and walks curve from the way the horse faces to where it goes, and pivot only for
+     more than ~60 degrees. The wheel before a run is a firm 1.5 rad/s pivot, and the curve takes
+     the rest.
+5. **The walk's order.**
+   - The four-beat lateral sequence now holds in more strides (3-5 of 12-17, was 0-3 of 8-12).
+     Each walk starts with the left hind.
+   - The trot lands its diagonal pairs (7-13 diagonal against 0-1 lateral, was 1-2 against 0-1).
+6. **Life at rest.**
+   - A dozing mare stands with her head about her withers and one hind leg cocked on its toe, the
+     hip on that side dropped.
+   - A head toss now and then while a head is up.
+   - A suckling foal wags its tail.
+
+**Numbers, before -> after** (the worst over each group's loop; life size):
+
+| | adults | foals |
+|---|---|---|
+| Root acceleration (m/s^2) | 50-102 -> 6.6-8.2 | 72 -> 6.6-8.6 |
+| Root jerk (m/s^3) | 2,986-6,146 -> 657-812 | 4,293-4,335 -> 636-813 |
+| Vertical acceleration (m/s^2) | 418-434 -> 68-81 | 409-434 -> 58-59 |
+| Fastest turn of the body (rad/s) | 4.2-7.5 -> 1.6-2.0 | 3.6-4.5 -> 1.6-1.8 |
+| Leg joints, fastest (rad/s) | 52-56 -> 42-46 | 60-61 -> 45-46 |
+| Leg joints, acceleration max / 99.9 % (rad/s^2) | 6,332-7,872 / 2,063-2,230 -> 4,396-5,411 / 1,719-1,789 | 8,310-8,935 / 2,555-2,777 -> 5,693-5,825 / 2,305-2,386 |
+| Neck, acceleration max (rad/s^2) | 142-263 -> 120-133 | 158-164 -> 126-137 |
+| Hoof in stance: slip 99 % / dig | 0.04 / 0 -> 0.04 / 0 | 0.06 / 0.01 -> 0.06 / 0.01 |
+| Turning on the spot (s per 5 min) | 43-53 -> 28-38 | 52-73 -> 52-55 |
+| Foal from its mother: mean, share beyond 6 m | | 5.0-5.5 m, 23-30 % -> 2.3-2.4 m, 3 % |
+
+![The gallop in the playground, before (top) and after (bottom), 0.05 s apart](images/odyssey-animals-2026-11-03/horses-game-gallop-before-after.jpg)
+
+![Setting off: before, a stumble in a lone wheel; after, the foal at her side and a firm wheel](images/odyssey-animals-2026-11-03/horses-game-setoff-before-after.jpg)
+
+![A foal and its mother over 22 s: before, it grazes 8-12 m away; after, at her side](images/odyssey-animals-2026-11-03/horses-game-foalmum-before-after.jpg)
+
+![Blender, the game's poses: the gallop before (top) and after (bottom)](images/odyssey-animals-2026-11-03/horses-blender-gallop-before-after.jpg)
+
+![Blender: the gallop as an onion skin and the hooves' paths against the body, before (left) and after (right); the hind loops lost their lift-off spikes](images/odyssey-animals-2026-11-03/horses-blender-gallop-onion-hooves.jpg)
+
+![Blender: a bay foal and its mother; after, the foal at her side, then suckling head to tail](images/odyssey-animals-2026-11-03/horses-blender-nurse-before-after.jpg)
+
+![Blender: after, a doze on a cocked hind leg (bottom), where before the mare stepped and pivoted (top)](images/odyssey-animals-2026-11-03/horses-blender-doze-before-after.jpg)
+
+**Kept as they were:**
+- where the band lives, its world-anchored clock and runs, the window (never popping);
+- the model, the draws, the eight-buffer limit;
+- `?odysseyNoHorses=1` and `?odysseyNoMeadowClearing=1`.
+
+Planning the feet takes ~150 ms in all (one horse a task). The pose costs about 0.1 ms a frame on
+the CPU, as before; it now takes the drop at five moments instead of one, with no new allocation.
+
+**Tests** (`tests/unit/odyssey-wild-horses.test.js`): all pass. Bounds changed with notes, at the
+measured values:
+- a run may last up to 40 s (it eases into bends);
+- gallop strides at full speed, at least 10;
+- foals may spend up to 5 % of walking time on fewer than two hooves, and 2 % airborne (a quick
+  pivot hops);
+- a mother and her foal may brush (under 4.5 % of the time); every other pair keeps the strict gap.
+
+**Left:**
+- A foal still brushes its mother for about 3 % of the time: in a pivot, at a run's start, or
+  suckling at her flank.
+- The trot still takes a stride to settle its pairs when it starts from a walk.
+- The walk's lateral order holds in about a third of the strides (the walks are short; they
+  start and stop within a few strides).
