@@ -1,5 +1,5 @@
 /**
- * SerenityHub - the sheet that holds themes, music, breathing and Hale sessions.
+ * SerenityHub - the sheet that holds themes, music, breathing and Sukha sessions.
  *
  * Keystone layout (public/styles/keystone-hub.css, docs/MENU_UI_OVERHAUL_2026-10.md): an
  * eyebrow and title, a labelled close control, a tab strip, the scrolling content, and an
@@ -37,10 +37,10 @@ const HUB_TABS = Object.freeze([
     },
     {
         id: 'sessions',
-        label: 'Hale sessions',
+        label: 'Sukha sessions',
         eyebrow: 'Breath · Guided journeys',
-        icon: 'mode-hale',
-        ariaLabel: 'Hale sessions · guided breathwork',
+        icon: 'mode-sukha',
+        ariaLabel: 'Sukha sessions · guided breathwork',
     },
 ]);
 const HUB_TAB_IDS = HUB_TABS.map((tab) => tab.id);
@@ -109,7 +109,7 @@ export class SerenityHub {
 
         // DOM elements
         this.hubIcon = null;
-        this.haleSessionsEntry = null;
+        this.sukhaSessionsEntry = null;
         this.settingsBtn = null;
         this.panel = null;
         this.backdrop = null;
@@ -226,21 +226,21 @@ export class SerenityHub {
         this.hubIcon.addEventListener('mouseleave', this.hubIconMouseLeaveHandler, { signal });
     }
 
-    /** The Hub's programmatic route to guided sessions (not shown: Hale lives in the Hub's
+    /** The Hub's programmatic route to guided sessions (not shown: Sukha lives in the Hub's
      * own tab, one tap on the lotus in the play rail, and in the main menu's list). */
     createHaleSessionsEntry() {
-        if (this.haleSessionsEntry) return;
-        const button = document.getElementById('hale-sessions-btn') || document.createElement('button');
-        button.id = 'hale-sessions-btn';
+        if (this.sukhaSessionsEntry) return;
+        const button = document.getElementById('sukha-sessions-btn') || document.createElement('button');
+        button.id = 'sukha-sessions-btn';
         button.type = 'button';
-        button.className = 'hale-sessions-entry serenity-hub';
-        button.setAttribute('aria-label', 'Hale sessions · guided breathwork');
+        button.className = 'sukha-sessions-entry serenity-hub';
+        button.setAttribute('aria-label', 'Sukha sessions · guided breathwork');
         button.setAttribute('aria-haspopup', 'dialog');
         button.setAttribute('aria-controls', 'serenity-hub-panel');
         button.setAttribute('aria-expanded', 'false');
-        button.innerHTML = `<span class="hale-sessions-entry__icon">${csIcon('hale-base', 20)}</span>`
-            + '<span class="hale-sessions-entry__text">'
-            + '<strong>Hale sessions</strong><small>Guided breathwork</small></span>';
+        button.innerHTML = `<span class="sukha-sessions-entry__icon">${csIcon('sukha-base', 20)}</span>`
+            + '<span class="sukha-sessions-entry__text">'
+            + '<strong>Sukha sessions</strong><small>Guided breathwork</small></span>';
         const { signal } = this.abortController;
         button.addEventListener('click', (event) => {
             event.stopPropagation();
@@ -249,7 +249,7 @@ export class SerenityHub {
         button.addEventListener('keydown', (event) => {
             if (event.key === ' ' || event.key === 'Enter') event.stopPropagation();
         }, { signal });
-        this.haleSessionsEntry = button;
+        this.sukhaSessionsEntry = button;
         if (!button.parentNode) document.body.appendChild(button);
     }
 
@@ -270,7 +270,7 @@ export class SerenityHub {
     }
 
     /**
-     * True while breathing owns the screen: a Hale session, its preparation or result, or a
+     * True while breathing owns the screen: a Sukha session, its preparation or result, or a
      * standalone practice. Falling-block gameplay stays paused for as long as this holds.
      */
     holdsGameplay() {
@@ -286,7 +286,7 @@ export class SerenityHub {
     /** The guide started or stopped (possibly by its own End control or the Escape key). */
     onBreathingGuideChange(detail = {}) {
         const active = Boolean(detail.active);
-        if (this.haleSessionsEntry) this.haleSessionsEntry.hidden = active || this.isOpen;
+        if (this.sukhaSessionsEntry) this.sukhaSessionsEntry.hidden = active || this.isOpen;
         if (!detail.session) this.serenityMode?.onBreathingGuideChange?.(active);
         if (!active) this.releaseGameplay();
     }
@@ -876,9 +876,9 @@ export class SerenityHub {
         // Where focus was, to hand it back when the Hub closes (it used to drop to the page).
         const opener = typeof document !== 'undefined' ? document.activeElement : null;
         this.returnFocus = opener && opener !== document.body && !this.panel?.contains(opener) ? opener : null;
-        if (this.haleSessionsEntry) {
-            this.haleSessionsEntry.hidden = true;
-            this.haleSessionsEntry.setAttribute('aria-expanded', 'true');
+        if (this.sukhaSessionsEntry) {
+            this.sukhaSessionsEntry.hidden = true;
+            this.sukhaSessionsEntry.setAttribute('aria-expanded', 'true');
         }
 
         // Notify Serenity Mode to lower quality
@@ -941,9 +941,9 @@ export class SerenityHub {
         }
 
         this.isOpen = false;
-        if (this.haleSessionsEntry) {
-            this.haleSessionsEntry.hidden = Boolean(window.breathingIndicator?.isActive);
-            this.haleSessionsEntry.setAttribute('aria-expanded', 'false');
+        if (this.sukhaSessionsEntry) {
+            this.sukhaSessionsEntry.hidden = Boolean(window.breathingIndicator?.isActive);
+            this.sukhaSessionsEntry.setAttribute('aria-expanded', 'false');
         }
         this.musicTab?.setActive(false);
         this.themesTab?.setActive(false);
@@ -993,8 +993,8 @@ export class SerenityHub {
 
     /** Tab and Shift+Tab stay inside the open Hub (it is a modal dialog). */
     trapTab(event) {
-        // A Hale session's full-screen flow keeps its own keys.
-        if (typeof document === 'undefined' || document.querySelector('.hale-flow:not([hidden])')) return;
+        // A Sukha session's full-screen flow keeps its own keys.
+        if (typeof document === 'undefined' || document.querySelector('.sukha-flow:not([hidden])')) return;
         const shown = (el) => (typeof el.checkVisibility === 'function'
             ? el.checkVisibility({ visibilityProperty: true }) : el.getClientRects().length > 0);
         const focusables = Array.from(this.panel?.querySelectorAll?.(FOCUSABLE_SELECTOR) || []).filter(shown);
@@ -1072,7 +1072,7 @@ export class SerenityHub {
             navigate: (direction) => this.handleNavigation(direction),
             confirmSelection: () => this.confirmItem(),
 
-            // Hale sessions while the Hub is closed: the session screens first, then the guide;
+            // Sukha sessions while the Hub is closed: the session screens first, then the guide;
             // with neither, A touches the world.
             sessionPrimary: () => {
                 if (this.sessionsTab?.flowOpen) this.sessionsTab.primaryAction();
@@ -1351,8 +1351,8 @@ export class SerenityHub {
         // Don't remove hubIcon - it's a permanent element now
         // Just clear the reference and let event listeners be cleaned up by AbortController
         this.hubIcon = null;
-        this.haleSessionsEntry?.remove();
-        this.haleSessionsEntry = null;
+        this.sukhaSessionsEntry?.remove();
+        this.sukhaSessionsEntry = null;
         if (this.settingsBtn) {
             this.settingsBtn.remove();
             this.settingsBtn = null;

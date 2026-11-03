@@ -317,14 +317,14 @@ export function createSigns(u, signs, glyphTex) {
 
 // ── Billboard screens ───────────────────────────────────────────────────────────
 
-/** How an advert moves on a screen: still, Hale's breathing ring, or a travel poster's slow drift. */
+/** How an advert moves on a screen: still, Sukha's breathing ring, or a travel poster's slow drift. */
 export const AD_MOTION = Object.freeze({ none: 0, breathe: 1, pan: 2 });
 
 const adMotion = (cell) => AD_MOTION[cell.motion] ?? AD_MOTION.none;
 
 /**
  * LED walls facing down the street. Each cycles a playlist of three adverts of one shape, each
- * on for its period, with a wipe, a block dissolve or a slide into the next; a Hale advert's ring
+ * on for its period, with a wipe, a block dissolve or a slide into the next; a Sukha advert's ring
  * breathes with the breath, a travel poster drifts as it shows.
  * @param {object} u
  * @param {object[]} screens  plan.screens
@@ -444,7 +444,7 @@ export function createScreens(u, screens, atlas, fade, opts = {}) {
         const wipeGlow = exp(abs(img.y.sub(edgeY)).mul(-60.0)).mul(changing).mul(float(1.0).sub(step(0.999, tr)))
             .mul(isWipe);
 
-        // ── Hale's ring, breathing on the advert that leaves room for it ──
+        // ── Sukha's ring, breathing on the advert that leaves room for it ──
         const showsRing = step(abs(slot.sub(play.w)), 0.5).mul(float(1.0).sub(useNext)).mul(step(0.01, ring.z));
         const pm = img.mul(imgSize);
         const centre = vec2(ring.x.mul(imgSize.x), float(1.0).sub(ring.y).mul(imgSize.y));

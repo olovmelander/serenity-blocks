@@ -1031,7 +1031,7 @@ describe('Odyssey journey flow overlay', () => {
         const opening = nodes(modal).find((node) => node.className === 'ody-flow__breath-opening');
         expect(opening).toBeTruthy();
         expect(markup(opening)).toContain('New breath');
-        expect(markup(opening)).toContain('Ocean Tide and Hale Tide are yours now');
+        expect(markup(opening)).toContain('Ocean Tide and Sukha Tide are yours now');
         expect(nodes(opening).find((node) => node.className === 'ody-flow__breath-art').style.backgroundImage)
             .toBe('url("./assets/breathing/ocean-breath.webp")');
         action(modal, 'next').dispatch('click');

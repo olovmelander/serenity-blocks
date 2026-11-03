@@ -1,6 +1,6 @@
 /**
  * The game's one breath collection (breath-collection.js), wired to its evidence: saved Odyssey
- * progress, the Hale practice log, stand-alone breathing practice, and, once, what an existing
+ * progress, the Sukha practice log, stand-alone breathing practice, and, once, what an existing
  * player had already used before worlds could be locked.
  */
 import { BreathCollectionService, readSavedOdysseyProgress } from './breath-collection.js';
@@ -33,7 +33,7 @@ const worldsOf = (sessionId) => Object.entries(SESSION_WORLDS[sessionId] || {})
     .filter(([stage]) => stage !== 'featured').flatMap(([, worlds]) => [worlds].flat());
 
 /**
- * What an existing player had used: the Hale sessions in their log and the worlds those pass
+ * What an existing player had used: the Sukha sessions in their log and the worlds those pass
  * through, their stand-alone practice worlds, and the world they had chosen (the old default
  * counts only alongside other signs of breathing).
  */
@@ -48,7 +48,7 @@ export function readLegacyBreathEvidence(storage = defaultStorage()) {
     return { worlds: [...worlds], sessions: [...sessions] };
 }
 
-/** Minutes of breathing that count toward opening: Hale sessions and stand-alone practice. */
+/** Minutes of breathing that count toward opening: Sukha sessions and stand-alone practice. */
 export function readBreathPracticeSeconds(storage = defaultStorage()) {
     return (readPracticeLog(storage).seconds || 0) + readBreathPractice(storage).seconds;
 }

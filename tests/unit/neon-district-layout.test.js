@@ -16,7 +16,7 @@ import {
 } from '../../src/themes/neon-district/neon-district-atlas.js';
 import { KIT_KINDS } from '../../src/themes/neon-district/neon-district-kit.js';
 import {
-    BRANDS, BRAND_WORDS, CAMPAIGNS, HALE, SHOP_ARCHETYPES, TRADE_SHOPS,
+    BRANDS, BRAND_WORDS, CAMPAIGNS, SUKHA, SHOP_ARCHETYPES, TRADE_SHOPS,
 } from '../../src/themes/neon-district/neon-district-campaigns.js';
 import { LOGOS, logoIndex } from '../../src/themes/neon-district/neon-district-logos.js';
 import { PAINTED_OPENINGS } from '../../src/themes/neon-district/neon-district-openings.js';
@@ -174,7 +174,7 @@ describe('neon district city plan', () => {
 
     it('gives every brand with a shop a branch on the street, and every brand its campaign', () => {
         const shopsByBrand = new Set(plan.shops.filter((s) => s.brand).map((s) => s.brand));
-        for (const brand of [...BRANDS, HALE]) {
+        for (const brand of [...BRANDS, SUKHA]) {
             if (brand.shop) expect(shopsByBrand.has(brand.id), brand.id).toBe(true);
             // Its adverts are on the screens or pasted on the walls.
             const shown = plan.screens.some((s) => s.playlist.some((c) => BILLBOARD_CELLS[c].brand === brand.id))
@@ -192,7 +192,7 @@ describe('neon district city plan', () => {
             expect(LOGOS[mark.logo]).toBeTruthy();
             expect(plan.texts[mark.nameRow].length).toBe(mark.nameLength);
         }
-        for (const c of [...BRANDS, HALE, CAMPAIGNS.transit]) expect(logoIndex(c.logo), c.id).toBeGreaterThanOrEqual(0);
+        for (const c of [...BRANDS, SUKHA, CAMPAIGNS.transit]) expect(logoIndex(c.logo), c.id).toBeGreaterThanOrEqual(0);
     });
 
     it('spells every line of text with glyphs the atlas has', () => {
@@ -229,7 +229,7 @@ describe('neon district city plan', () => {
         expect(words).toBeGreaterThan(8);
     });
 
-    it('gives every screen three different adverts of its own shape, Hale\'s at most once', () => {
+    it('gives every screen three different adverts of its own shape, Sukha\'s at most once', () => {
         expect(plan.screens.length).toBeGreaterThanOrEqual(6);
         for (const screen of plan.screens) {
             expect(screen.playlist).toHaveLength(3);
@@ -238,7 +238,7 @@ describe('neon district city plan', () => {
                 expect(BILLBOARD_CELLS[cell]).toBeTruthy();
                 expect(BILLBOARD_CELLS[cell].shape).toBe(screen.shape);
             }
-            expect(screen.playlist.filter((c) => BILLBOARD_CELLS[c].family === 'hale').length).toBeLessThanOrEqual(1);
+            expect(screen.playlist.filter((c) => BILLBOARD_CELLS[c].family === 'sukha').length).toBeLessThanOrEqual(1);
             expect(screen.w / screen.h).toBeCloseTo({ wide: 16 / 9, portrait: 2 / 3, square: 1 }[screen.shape], 6);
             expect(screen.period).toBeGreaterThan(5);
             // A ticker runs one line per advert, each a line of the text texture.
@@ -363,14 +363,14 @@ describe('neon district atlases', () => {
         }
     });
 
-    it('files every advert under a campaign and a shape, Hale\'s with room for its ring', () => {
+    it('files every advert under a campaign and a shape, Sukha\'s with room for its ring', () => {
         const families = new Set(BILLBOARD_CELLS.map((c) => c.family));
-        expect([...families].sort()).toEqual(['brand', 'hale', 'transit', 'user']);
+        expect([...families].sort()).toEqual(['brand', 'sukha', 'transit', 'user']);
         for (const cell of BILLBOARD_CELLS) {
             expect(['wide', 'portrait', 'square']).toContain(cell.shape);
             if (cell.family === 'brand') expect(BRANDS.map((b) => b.id)).toContain(cell.brand);
             if (cell.ring) {
-                expect(cell.family).toBe('hale');
+                expect(cell.family).toBe('sukha');
                 expect(cell.motion).toBe('breathe');
             }
         }
@@ -378,7 +378,7 @@ describe('neon district atlases', () => {
             expect(BILLBOARD_CELLS.some((c) => c.brand === brand.id && c.shape === 'wide'), brand.id).toBe(true);
             expect(BILLBOARD_CELLS.some((c) => c.brand === brand.id && c.shape === 'portrait'), brand.id).toBe(true);
         }
-        expect(BILLBOARD_CELLS.some((c) => c.family === 'hale' && c.ring)).toBe(true);
+        expect(BILLBOARD_CELLS.some((c) => c.family === 'sukha' && c.ring)).toBe(true);
     });
 
     it('keeps every cell inside its atlas with a usable glow colour', () => {

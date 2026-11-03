@@ -592,7 +592,7 @@ export class SerenityMode extends BaseGameMode {
         if (!action) return;
         // Held keys repeat only where repeating means something (the volume).
         if (event.repeat && !REPEATING_ACTIONS.has(action)) return;
-        // The open Hub owns its keys (arrows walk its tabs and cards), and so do a Hale
+        // The open Hub owns its keys (arrows walk its tabs and cards), and so do a Sukha
         // session's full-screen preparation, countdown and result.
         const ownsKeys = this.serenityHub?.isOpen === true || this.serenityHub?.sessionsTab?.flowOpen === true;
         if (ownsKeys && !HUB_OPEN_ACTIONS.has(action)) return;
@@ -669,7 +669,7 @@ export class SerenityMode extends BaseGameMode {
 
     /**
      * Previous (-1) or next (1): the theme, or while a practice is open its breathing world
-     * (the arrows always change the world in front of you). A Hale session keeps its own.
+     * (the arrows always change the world in front of you). A Sukha session keeps its own.
      */
     stepWorld(direction) {
         const guide = this._guide();

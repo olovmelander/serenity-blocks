@@ -43,7 +43,7 @@ const soundManager = (overrides = {}) => {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('Hale session bells', () => {
+describe('Sukha session bells', () => {
     it('strikes a singing bowl on the game\'s effects bus, and lets every partial go when it ends', () => {
         const sound = soundManager();
         const chimes = new BreathworkChimes({ getSound: () => sound, getNavigator: () => null });

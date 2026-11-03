@@ -146,7 +146,7 @@ describe('breathing library', () => {
         expect(hub.hide).toHaveBeenCalledOnce();
     });
 
-    it('locks its controls while a Hale session owns the rhythm, and unlocks them after', () => {
+    it('locks its controls while a Sukha session owns the rhythm, and unlocks them after', () => {
         const tab = createTab();
         guide.isExternallyControlled = true;
         guide.isActive = true;
@@ -165,7 +165,7 @@ describe('breathing library', () => {
         expect(cards.every((card) => !card.disabled)).toBe(true);
     });
 
-    it('opens the Hale sessions from either entry and applies preferences at once', () => {
+    it('opens the Sukha sessions from either entry and applies preferences at once', () => {
         const tab = createTab();
         click({ '.breath-open-sessions': true });
         expect(hub.switchTab).toHaveBeenCalledWith('sessions');

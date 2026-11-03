@@ -45,7 +45,7 @@ The rest of `billboards.webp` (4096 × 3584, with a 2048 × 1792 half) is painte
   same campaign in another design: a product close-up (Cascade), a comic strip (Combo), type
   alone (Stack), a parcel label (Drop), a price tag (Level), the roof sign (Next), an eye chart
   (Clear), a wall of washer doors (Spin).
-- **Hale**: a billboard and a poster that leave an empty, dark ring area (`ring` in the cell
+- **Sukha**: a billboard and a poster that leave an empty, dark ring area (`ring` in the cell
   table) for the theme's shader to breathe in.
 - **Serenity Transit**: 34 world posters (2:3) and three mode posters (16:9). Each world poster
   is built round the game's own render of that world (captures under `docs/`), and takes its

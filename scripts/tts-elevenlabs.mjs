@@ -226,7 +226,7 @@ const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'sev
     'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
 
 /** Words a transcript may spell another way that sound the same. */
-const SOUNDS_LIKE = { hail: 'hale', hayle: 'hale', ok: 'okay' };
+const SOUNDS_LIKE = { hail: 'sukha', hayle: 'sukha', ok: 'okay' };
 
 /** The words of a line, as a listener hears them: lower case, no punctuation, numbers spelled. */
 export function heardWords(text) {

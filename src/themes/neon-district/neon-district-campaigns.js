@@ -7,7 +7,7 @@
  *  - District brands: the local businesses, named for what a player does on the board. Each has a
  *    mark, two colours and a slogan, runs the same campaign on every surface, and most keep a shop
  *    on the street — the noodle chain on the billboards has a noodle bar under them.
- *  - Hale: the breathing guide's own campaign, the calm spots in a loud street. Its screens breathe
+ *  - Sukha: the breathing guide's own campaign, the calm spots in a loud street. Its screens breathe
  *    on the game's breath (4 s in, 6 s out) and with the guide's breath while a session runs.
  *  - Serenity Transit: travel adverts for the game's other worlds and modes, each poster made from
  *    a render of the world it sells.
@@ -80,8 +80,8 @@ export const BRANDS = Object.freeze([
 ]);
 
 /** The breathing guide's campaign. */
-export const HALE = Object.freeze({
-    id: 'hale', name: 'HALE', short: 'HALE', slogan: 'BREATHE IN THE CITY', a: 0x7fe6d8, b: 0xc9b8ff, logo: 'hale', shop: 'calm',
+export const SUKHA = Object.freeze({
+    id: 'sukha', name: 'SUKHA', short: 'SUKHA', slogan: 'BREATHE IN THE CITY', a: 0x7fe6d8, b: 0xc9b8ff, logo: 'sukha', shop: 'calm',
 });
 
 /**
@@ -97,8 +97,8 @@ export const TRANSIT = Object.freeze({
     logo: 'transit',
 });
 
-/** Every campaign by id: the brands, Hale and the transit line. */
-export const CAMPAIGNS = Object.freeze(Object.fromEntries([...BRANDS, HALE, TRANSIT].map((c) => [c.id, c])));
+/** Every campaign by id: the brands, Sukha and the transit line. */
+export const CAMPAIGNS = Object.freeze(Object.fromEntries([...BRANDS, SUKHA, TRANSIT].map((c) => [c.id, c])));
 
 /**
  * Shops that are not a brand's: a trade word on the fascia and the room that goes with it. The
@@ -151,7 +151,7 @@ export const BRAND_WORDS = Object.freeze([
     { word: 'NEXT', id: 'next' }, { word: 'TAXI', id: 'next' },
     { word: 'CLEAR', id: 'clear' }, { word: 'OPTICS', id: 'clear' },
     { word: 'SPIN', id: 'spin' }, { word: 'LAUNDRY', id: 'spin' },
-    { word: 'HALE', id: 'hale' }, { word: 'BREATHE', id: 'hale' },
+    { word: 'SUKHA', id: 'sukha' }, { word: 'BREATHE', id: 'sukha' },
     { word: 'TRANSIT', id: 'transit' },
 ]);
 
@@ -180,13 +180,13 @@ export const DISTRICT_LINES = Object.freeze([
 ]);
 
 /**
- * The ticker line under an advert: a brand's name and slogan, Hale's breath, the transit line's
+ * The ticker line under an advert: a brand's name and slogan, Sukha's breath, the transit line's
  * next departure, or one of the district's own lines.
  */
 export function tickerLine(cell, pick = 0) {
     const campaign = CAMPAIGNS[cell.brand];
     if (cell.family === 'brand' && campaign) return `${campaign.name} · ${campaign.slogan}`;
-    if (cell.family === 'hale') return 'HALE · BREATHE IN THE CITY · INHALE 4 · EXHALE 6';
+    if (cell.family === 'sukha') return 'SUKHA · BREATHE IN THE CITY · INHALE 4 · EXHALE 6';
     if (cell.family === 'transit') {
         const key = String(cell.id || '').replace(/^transit-/, '');
         const name = TRANSIT_NAMES[key] || key.replace(/^mode-/, '').replace(/-/g, ' ').toUpperCase();

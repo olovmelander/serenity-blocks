@@ -1242,7 +1242,7 @@ export class NeonDistrictWorld {
         // ── Uniforms ──
         u.time.value = t;
         u.scroll.value = this.scroll;
-        // Hale's adverts breathe with the guide when a session leads one, else on the game's breath.
+        // Sukha's adverts breathe with the guide when a session leads one, else on the game's breath.
         u.breath.value = readBreathSignal() ?? breathFill(t);
         u.power.value = charge;
         u.heat.value = this.heat;

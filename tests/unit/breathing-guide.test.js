@@ -483,7 +483,7 @@ describe('breathing over the theme (Serenity Mode)', () => {
         expect(guide.isOverTheme).toBe(false);
     });
 
-    it('breathes in its world outside Serenity Mode and in a Hale session, whatever was chosen', async () => {
+    it('breathes in its world outside Serenity Mode and in a Sukha session, whatever was chosen', async () => {
         guide.setOverTheme(true);
         guide.start();
         await settle();
@@ -686,11 +686,11 @@ describe('breathing guide under a session', () => {
         const marks = guide.journeyTrack.children;
         expect(marks.map((mark) => mark.style.flexGrow)).toEqual(['180', '240', '60']);
         const progress = {
-            sessionName: 'Hale Base', phase: 'active', phaseIndex: 2, phaseProgress: 0.5, round: 1, totalRounds: 3,
+            sessionName: 'Sukha Homecoming', phase: 'active', phaseIndex: 2, phaseProgress: 0.5, round: 1, totalRounds: 3,
             breathCount: 14, totalBreaths: 30, remainingTime: 120, sessionProgress: 0.4, sessionRemaining: 900,
         };
         guide.updateProgress(progress);
-        expect(text(guide.eyebrow)).toBe('Hale Base · Round 1 of 3');
+        expect(text(guide.eyebrow)).toBe('Sukha Homecoming · Round 1 of 3');
         expect(text(guide.journeyStage)).toBe('Breathe');
         expect(text(guide.journeyDetail)).toBe('Breath 15 of 30');
         expect(text(guide.journeyRemaining)).toBe('15 min to go');

@@ -1,9 +1,9 @@
 /**
- * Time spent breathing in the worlds outside a Hale session (the Breathing tab's practice), kept
+ * Time spent breathing in the worlds outside a Sukha session (the Breathing tab's practice), kept
  * on this device: `serenity.breathPractice` = { v: 1, seconds, worlds: { <world id>: seconds } }.
  *
  * It counts toward opening worlds and sessions by practice (breath-collection.js), alongside the
- * Hale practice log. A stretch is counted from when the guide starts on a world to when it stops,
+ * Sukha practice log. A stretch is counted from when the guide starts on a world to when it stops,
  * changes world or the page is hidden; a stretch of a few seconds (a world glimpsed while
  * browsing) is not practice.
  */
@@ -58,7 +58,7 @@ export function addBreathPractice(worldId, seconds, storage = defaultStorage()) 
 }
 
 /**
- * Follow the breathing guide and record its stand-alone practice. A Hale session drives the
+ * Follow the breathing guide and record its stand-alone practice. A Sukha session drives the
  * guide too (`isExternallyControlled`): those minutes are the practice log's, not counted here.
  * @param {{guide: object, storage?: object, now?: () => number, onRecorded?: () => void,
  *   target?: EventTarget, doc?: Document}} options

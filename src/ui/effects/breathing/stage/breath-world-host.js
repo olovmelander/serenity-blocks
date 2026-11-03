@@ -196,7 +196,7 @@ export class BreathWorldHost {
     }
 
     /**
-     * Build a world ahead, off screen, for setWorld to adopt: a Hale session's next stage, built
+     * Build a world ahead, off screen, for setWorld to adopt: a Sukha session's next stage, built
      * while the current one is on screen. Its mood and visit seed are picked now, exactly as
      * setWorld would pick them, and kept like a visit's; nothing on screen changes (the seed
      * uniform is set when the world is adopted). Returns whether anything was built: nothing is

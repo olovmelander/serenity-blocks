@@ -2,7 +2,7 @@
 
 All twelve breathing worlds rebuilt as full-screen scenes with depth, light and motion, on a
 shared stage that gained a breathing camera, light shafts, a per-world grade and a phone tier with
-glow. The guide, the Breathing tab and the Hale sessions are unchanged and still described by
+glow. The guide, the Breathing tab and the Sukha sessions are unchanged and still described by
 [BREATHING_OVERHAUL_2026-10.md](BREATHING_OVERHAUL_2026-10.md); this record replaces that
 document's world list, its tier table and the parts of "Rendering" that describe the worlds.
 Captures: [reports/breathing-masterpiece-2026-10](../reports/breathing-masterpiece-2026-10/README.md).

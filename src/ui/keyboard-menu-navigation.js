@@ -31,8 +31,8 @@ const TEXT_INPUT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', '
 const ARROW_OWNING_ROLES = '[role="listbox"], [role="menu"], [role="menubar"], [role="grid"], '
     + '[role="tree"], [role="treegrid"], [role="slider"], [role="spinbutton"]';
 
-/** Full-screen surfaces that run their own keys (a Hale session's flow, the breathing guide). */
-const OWN_KEYS_SURFACES = '.hale-flow:not([hidden]), #breathing-guide:not([hidden])';
+/** Full-screen surfaces that run their own keys (a Sukha session's flow, the breathing guide). */
+const OWN_KEYS_SURFACES = '.sukha-flow:not([hidden]), #breathing-guide:not([hidden])';
 
 /**
  * Whether the focused control uses this arrow key itself.

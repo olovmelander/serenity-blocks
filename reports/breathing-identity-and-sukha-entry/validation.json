@@ -1158,7 +1158,7 @@
     },
     "sourceStable": true,
     "result": {
-      "id": "hale-entry-serenity",
+      "id": "sukha-entry-serenity",
       "modeId": "serenity",
       "viewport": {
         "width": 390,
@@ -1166,12 +1166,12 @@
       },
       "console": [],
       "screenshots": [
-        "hale-entry-serenity-catalogue.png",
-        "hale-entry-serenity-breathing.png",
-        "hale-entry-serenity-preparation.png",
-        "hale-entry-serenity-countdown.png",
-        "hale-entry-serenity-guided.png",
-        "hale-entry-serenity-completion.png"
+        "sukha-entry-serenity-catalogue.png",
+        "sukha-entry-serenity-breathing.png",
+        "sukha-entry-serenity-preparation.png",
+        "sukha-entry-serenity-countdown.png",
+        "sukha-entry-serenity-guided.png",
+        "sukha-entry-serenity-completion.png"
       ],
       "failures": [],
       "globalHub": {
@@ -1179,9 +1179,9 @@
         "afterStart": true,
         "afterStop": false
       },
-      "haleEntry": {
-        "label": "Hale sessions\nGuided breathwork",
-        "cardAction": "Start Hale Base\n\u2192",
+      "sukhaEntry": {
+        "label": "Sukha sessions\nGuided breathwork",
+        "cardAction": "Start Sukha Homecoming\n\u2192",
         "selectedTabBounds": {
           "x": 288.2265625,
           "y": 155.640625,
@@ -1199,7 +1199,7 @@
       },
       "standaloneGuidanceBounds": {
         "entry": {
-          "selector": "#hale-sessions-btn",
+          "selector": "#sukha-sessions-btn",
           "left": 176.703125,
           "right": 313,
           "top": 591.453125,
@@ -1218,7 +1218,7 @@
       },
       "preparation": {
         "beginEnabled": true,
-        "label": "Start Hale Base\n\u2192",
+        "label": "Start Sukha Homecoming\n\u2192",
         "beginBounds": {
           "x": 26.8046875,
           "y": 631.640625,
@@ -1236,7 +1236,7 @@
       },
       "guidedGuidanceBounds": {
         "entry": {
-          "selector": "#hale-sessions-btn",
+          "selector": "#sukha-sessions-btn",
           "left": 176.703125,
           "right": 313,
           "top": 591.453125,
@@ -1313,7 +1313,7 @@
     },
     "scope": "Native single-player start/pause/completion before final navigation and mode-boundary cleanup.",
     "result": {
-      "id": "hale-entry-single",
+      "id": "sukha-entry-single",
       "modeId": "single",
       "viewport": {
         "width": 1280,
@@ -1324,9 +1324,9 @@
         "afterStart": true,
         "afterStop": false
       },
-      "haleEntry": {
-        "label": "Hale sessions\nGuided breathwork",
-        "cardAction": "Start Hale Base\n\u2192",
+      "sukhaEntry": {
+        "label": "Sukha sessions\nGuided breathwork",
+        "cardAction": "Start Sukha Homecoming\n\u2192",
         "selectedTabBounds": {
           "x": 846.0999755859375,
           "y": 177.70001220703125,
@@ -1338,7 +1338,7 @@
       },
       "preparation": {
         "beginEnabled": true,
-        "label": "Start Hale Base\n\u2192",
+        "label": "Start Sukha Homecoming\n\u2192",
         "beginBounds": {
           "x": 280,
           "y": 674,
@@ -1470,13 +1470,13 @@
       "path": "src/ui/serenity-hub/SerenityHub.js",
       "matrixSHA256": "68d20f00354189f0c776f7a705993fe74d513528f755dd263d37f7b5c9e77b79",
       "finalSHA256": "d9c48d4faf7190c028de7ae4a9211c86a3aa90a70dc0417b640b59fae1c21c15",
-      "reason": "Scoped Hale navigation visibility and Hub closure without gameplay resume at mode boundaries; rendering artwork is unchanged."
+      "reason": "Scoped Sukha navigation visibility and Hub closure without gameplay resume at mode boundaries; rendering artwork is unchanged."
     },
     {
       "path": "public/styles/breathwork-sessions.css",
       "matrixSHA256": "df8462eaec28080b3aa070ba890e153fad711a10f3900048f1f83a6a4ab7a010",
       "finalSHA256": "16248a37f078e352d40c7c50dfdd236b182b5a88cd43497d9a3c87ca020277a7",
-      "reason": "Scoped Hale navigation visibility and Hub closure without gameplay resume at mode boundaries; rendering artwork is unchanged."
+      "reason": "Scoped Sukha navigation visibility and Hub closure without gameplay resume at mode boundaries; rendering artwork is unchanged."
     }
   ],
   "renderingFilesUnchanged": [
@@ -1493,7 +1493,7 @@
       "resolution": "Production cancelGuidedSession now closes the Hub with resumeGameplay:false; final mode-exit cases assert Hub closed with no harness workaround."
     },
     {
-      "finding": "The active Hale tab was horizontally clipped on the phone.",
+      "finding": "The active Sukha tab was horizontally clipped on the phone.",
       "resolution": "The scoped nav now has native horizontal overflow and compact phone labels; final native tab bounds are inside390px."
     }
   ],
@@ -1591,30 +1591,30 @@
       "bytes": 144353
     },
     {
-      "file": "hale-phone-entry.jpg",
+      "file": "sukha-phone-entry.jpg",
       "sourceRun": "final-phone-entry",
       "sourceCaptures": [
-        "hale-entry-serenity-breathing.png",
-        "hale-entry-serenity-catalogue.png"
+        "sukha-entry-serenity-breathing.png",
+        "sukha-entry-serenity-catalogue.png"
       ],
       "SHA256": "3e1c4fd58795aeb7461b53a873a5cd06323669f35137ff2b426c8c2f69c8d21f",
       "bytes": 88316
     },
     {
-      "file": "hale-phone-preparation.jpg",
+      "file": "sukha-phone-preparation.jpg",
       "sourceRun": "final-phone-entry",
       "sourceCaptures": [
-        "hale-entry-serenity-preparation.png"
+        "sukha-entry-serenity-preparation.png"
       ],
       "SHA256": "18784fcfc86f56ed32f8a911721b1d407a67a9a484b485981252c9856a1541cd",
       "bytes": 41152
     },
     {
-      "file": "hale-phone-countdown-guide.jpg",
+      "file": "sukha-phone-countdown-guide.jpg",
       "sourceRun": "final-phone-entry",
       "sourceCaptures": [
-        "hale-entry-serenity-countdown.png",
-        "hale-entry-serenity-guided.png"
+        "sukha-entry-serenity-countdown.png",
+        "sukha-entry-serenity-guided.png"
       ],
       "SHA256": "0c5c1c63d5aa60b12d3d18276b198ea137a39ee2d7c2d318d89610c50382fbcb",
       "bytes": 59465
@@ -1623,7 +1623,7 @@
       "file": "single-paused-guide.jpg",
       "sourceRun": "single-pause-baseline",
       "sourceCaptures": [
-        "hale-entry-single-guided.png"
+        "sukha-entry-single-guided.png"
       ],
       "SHA256": "15feca0f83e8ddf73352ab0b52f2b87a9829f7c2d0e6e5404e170708edea033a",
       "bytes": 58152
@@ -1635,8 +1635,8 @@
       "PLAYWRIGHT_EXECUTABLE_PATH": "/absolute/path/to/chrome-headless-shell"
     },
     "rendering": "node scripts/capture-breathing-overhaul.mjs --identity --artworkOnly --sessions 0 --out /tmp/breathing-identity",
-    "phoneAndModeExit": "node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --haleEntry --gameMode serenity --cancelCases --out /tmp/hale-entry",
-    "singlePauseAndCompletion": "node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --haleEntry --gameMode single --out /tmp/hale-single",
+    "phoneAndModeExit": "node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --sukhaEntry --gameMode serenity --cancelCases --out /tmp/sukha-entry",
+    "singlePauseAndCompletion": "node scripts/capture-breathing-overhaul.mjs --profile none --gameSmoke --sukhaEntry --gameMode single --out /tmp/sukha-single",
     "harnessSHA256": "5674b017f7c867c7f60591dd6beb9c3672e2e1e4f954636777b2eea08e3f7101"
   },
   "repositoryChecks": {

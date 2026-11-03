@@ -210,7 +210,7 @@ export function createDistrictUniforms(textures) {
         chase: uniform(0),
         /** Afterglow left by a clear wave whose slot a newer wave took (fades on the CPU). */
         clearGlow: uniform(0),
-        /** How full the lungs are, 0..1: the breath Hale's adverts and logos follow. */
+        /** How full the lungs are, 0..1: the breath Sukha's adverts and logos follow. */
         breath: uniform(0),
         viewport: uniform(new THREE.Vector2(1920, 1080)),
         /** Haze colours: at street level and high in the smog. */

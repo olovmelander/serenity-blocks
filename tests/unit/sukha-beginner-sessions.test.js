@@ -46,7 +46,7 @@ const worldOf = (sessionId, phase) => {
     return Array.isArray(choice) ? choice[Math.max(0, (phase.round || 1) - 1) % choice.length] : choice;
 };
 
-describe('Hale beginner sessions', () => {
+describe('Sukha beginner sessions', () => {
     it.each(BEGINNER)('%s is short, gentle and ends in rest', (sessionId) => {
         const session = manager.SESSIONS[sessionId];
         expect(session.intensity).toBe('Gentle');
@@ -127,7 +127,7 @@ describe('Hale beginner sessions', () => {
     });
 });
 
-describe('Hale lines spoken into silence', () => {
+describe('Sukha lines spoken into silence', () => {
     it('says "breathe in when ready" after the hold bell, and the closing words, never over the voice', async () => {
         vi.useFakeTimers();
         const audio = manager.audioManager;
@@ -155,7 +155,7 @@ describe('Hale lines spoken into silence', () => {
     });
 });
 
-describe('Hale lines that are written but not yet recorded', () => {
+describe('Sukha lines that are written but not yet recorded', () => {
     it('are found by asking the recorded index for the line id', () => {
         // Every line is recorded today; the stand-in indexes below play the lines that are not.
         const audio = manager.audioManager;

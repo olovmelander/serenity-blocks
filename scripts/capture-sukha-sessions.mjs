@@ -1,21 +1,21 @@
 /**
- * Capture the Hale sessions inside the real game: the catalogue with your practice, the
+ * Capture the Sukha sessions inside the real game: the catalogue with your practice, the
  * preparation screen, the countdown, a session's stages (arrival, a round's card, an open hold
  * counting up and then ready to end, the recovery, Rest's soft pause, Flow's rhythm kept on your
  * own, the natural rest and the closing) and the result with its holds and a new best.
  *
- * It boots index.html, enters Serenity Mode through the menu, opens the Hub's Hale tab and drives
+ * It boots index.html, enters Serenity Mode through the menu, opens the Hub's Sukha tab and drives
  * the flow with clicks; stages are stepped through the session manager (a real session is twenty
  * minutes). A few days of practice are seeded first so the streak and best-hold lines show.
  * Headless Chromium on SwiftShader, like scripts/capture-breathing-ingame.mjs: pixels, not timings
  * (ADR-0016).
  *
  * Usage (a Vite dev server must be running):
- *   node scripts/capture-hale-sessions.mjs                      desktop, 1440×900
- *   node scripts/capture-hale-sessions.mjs --width=390 --height=844 --shots=phone   (a touch device)
+ *   node scripts/capture-sukha-sessions.mjs                      desktop, 1440×900
+ *   node scripts/capture-sukha-sessions.mjs --width=390 --height=844 --shots=phone   (a touch device)
  *
  *   --baseUrl=URL      dev server (default http://127.0.0.1:5173)
- *   --out=DIR          where screenshots go (default artifacts/hale-sessions)
+ *   --out=DIR          where screenshots go (default artifacts/sukha-sessions)
  *   --backend=webgl2   force the WebGL2 backend
  *   --shots=all|phone  which steps to capture (phone: preparation, a ready hold, the result)
  */
@@ -41,7 +41,7 @@ async function loadPlaywright() {
 }
 
 const BASE = String(args.baseUrl || 'http://127.0.0.1:5173');
-const OUT = path.resolve(process.cwd(), String(args.out || path.join('artifacts', 'hale-sessions')));
+const OUT = path.resolve(process.cwd(), String(args.out || path.join('artifacts', 'sukha-sessions')));
 const WIDTH = Number(args.width || 1440);
 const HEIGHT = Number(args.height || 900);
 const WEBGL = args.backend === 'webgl2';
@@ -90,7 +90,7 @@ async function freezeAnimations(ms) {
 
 async function shot(name, { freezeAt = null } = {}) {
     if (freezeAt !== null) await freezeAnimations(freezeAt);
-    const file = path.join(OUT, `hale-${name}-${size}.png`);
+    const file = path.join(OUT, `sukha-${name}-${size}.png`);
     await page.screenshot({ path: file, timeout: 240000 });
     console.log(file);
 }
@@ -168,7 +168,7 @@ try {
     await page.routeWebSocket(/.*/, () => {});
     await page.addInitScript(() => {
         // A few days of practice, so the streak, the week and the best hold have something to say.
-        if (!localStorage.getItem('serenity.haleSessions')) {
+        if (!localStorage.getItem('serenity.sukhaSessions')) {
             const day = (days) => Date.now() - days * 86400000;
             const open = (round, seconds, suggested) => ({
                 round, seconds, suggested, mode: 'open',
@@ -181,7 +181,7 @@ try {
                 entry('BASE', 2, 1530, 110, [open(1, 64, 60), open(2, 88, 90), open(3, 102, 120)]),
                 entry('FLOW', 1, 1460, 45),
             ];
-            localStorage.setItem('serenity.haleSessions', JSON.stringify({
+            localStorage.setItem('serenity.sukhaSessions', JSON.stringify({
                 v: 2, count: 3, seconds: 4090, last: { id: 'FLOW', at: day(1) }, entries,
             }));
         }
@@ -212,23 +212,23 @@ try {
         hub.switchTab('sessions');
         hub.show();
     });
-    await page.waitForSelector('.hale-card__begin', { state: 'visible', timeout: 60000 });
+    await page.waitForSelector('.sukha-card__begin', { state: 'visible', timeout: 60000 });
     await page.waitForTimeout(1500);
     if (!PHONE) await shot('catalogue');
 
-    // Preparation for Hale Base: the journey, the guidance switches, the safety note.
-    await page.click('.hale-card__begin[data-session="BASE"]', { timeout: 60000 });
-    await page.waitForSelector('.hale-flow__panel--prepare:not([hidden])', { timeout: 60000 });
-    await page.click('.hale-flow__intention[data-intention="calm"]');
+    // Preparation for Sukha Homecoming: the journey, the guidance switches, the safety note.
+    await page.click('.sukha-card__begin[data-session="BASE"]', { timeout: 60000 });
+    await page.waitForSelector('.sukha-flow__panel--prepare:not([hidden])', { timeout: 60000 });
+    await page.click('.sukha-flow__intention[data-intention="calm"]');
     await page.waitForTimeout(1200);
     await shot('prepare-base');
-    await page.click('.hale-flow__ack');
+    await page.click('.sukha-flow__ack');
     if (!PHONE) {
-        await page.click('.hale-flow__begin');
+        await page.click('.sukha-flow__begin');
         await page.waitForTimeout(1300);
         await shot('countdown');
     } else {
-        await page.click('.hale-flow__begin');
+        await page.click('.sukha-flow__begin');
     }
     await page.waitForFunction(() => window.breathingIndicator?.isExternallyControlled, null, { timeout: 60000 });
     await holdStill();
@@ -296,13 +296,13 @@ try {
         manager.currentPhaseIndex = manager.activeSession.phases.length - 1;
         manager._nextPhase();
     });
-    await page.waitForSelector('.hale-flow__panel--complete:not([hidden])', { timeout: 60000 });
+    await page.waitForSelector('.sukha-flow__panel--complete:not([hidden])', { timeout: 60000 });
     await page.waitForTimeout(2000);
     await shot('result', { freezeAt: 5000 });
 
     if (!PHONE) {
         // Rest's soft pause, and Flow's rhythm kept on your own.
-        await page.click('.hale-flow__finish');
+        await page.click('.sukha-flow__finish');
         for (const [sessionId, index, name, shift] of [['REST', 2, 'rest-pause', 8000], ['FLOW', 2, 'flow-carry', 12000]]) {
             await page.evaluate((id) => {
                 const tab = window.serenityBlocks.serenityHub.sessionsTab;
@@ -319,7 +319,7 @@ try {
             const hub = window.serenityBlocks.serenityHub;
             hub.switchTab('sessions');
             hub.show();
-            document.querySelector('#serenity-hub-panel .hale__intro')?.scrollIntoView({ block: 'start' });
+            document.querySelector('#serenity-hub-panel .sukha__intro')?.scrollIntoView({ block: 'start' });
         });
         await page.waitForTimeout(1500);
         await shot('catalogue-after');

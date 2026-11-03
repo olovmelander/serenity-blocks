@@ -42,7 +42,7 @@ describe('breathing world registry', () => {
         });
     });
 
-    it('sets every stage of every Hale session in a world that exists', () => {
+    it('sets every stage of every Sukha session in a world that exists', () => {
         // The manager makes its audio elements as it is built; only its session data is read here.
         vi.stubGlobal('Audio', class {
             pause() {}

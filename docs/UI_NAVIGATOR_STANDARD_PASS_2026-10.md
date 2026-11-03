@@ -3,7 +3,7 @@
 **Status:** Reference (record of shipped work). Surfaces: the Odyssey map's header and orb
 panel, the failure and results sheets, the journey flow (completion ceremony, chapter and
 first arrival, travel cover, start cue), the campaign finale, the goal banner, the Stillfall
-puzzle atlas, and the global menus (player card, main-menu light, Hale sessions, Replays, play
+puzzle atlas, and the global menus (player card, main-menu light, Sukha sessions, Replays, play
 rail). Standard: the Odyssey navigator ([ODYSSEY_NAVIGATOR_2026-10.md](ODYSSEY_NAVIGATOR_2026-10.md))
 and the charm guide ([ODYSSEY_CHARM_GUIDE_2026-10.md](ODYSSEY_CHARM_GUIDE_2026-10.md)), on Keystone
 ([MENU_UI_OVERHAUL_2026-10.md](MENU_UI_OVERHAUL_2026-10.md)).
@@ -35,7 +35,7 @@ audit found these defects:
 - **Player card** said "Loading... / Connecting..." forever in every browser build (the live
   Pages site): with no Electron IPC `steamService` went offline without an event, and
   `main.js` never initialises it there; it also injected violet, blurred pre-Keystone styles.
-- Smaller: Hale sessions' Begin below the fold, a Replays sheet 300 px taller than its empty
+- Smaller: Sukha sessions' Begin below the fold, a Replays sheet 300 px taller than its empty
   state, the play rail's labels overlapping, the HUD's Finish button's pad cap shrinking under
   its label, flow buttons without keycaps, the travel cover's empty lower half.
 
@@ -116,7 +116,7 @@ HUD for its counts), so the boot bundle does not carry it.
   injected style block is gone); hidden while a sheet covers the menu.
 - **Main-menu light** (`src/ui/main-menu/menu-light.js`): the selected mode's hue lights the
   page around the stage, cross-fading on change (opacity only), reduced motion respected.
-- **Hale sessions**: title beside its lede and shorter pictures on short sheets; Begin is in
+- **Sukha sessions**: title beside its lede and shorter pictures on short sheets; Begin is in
   view at 1600 x 900 and 1280 x 720.
 - **Replays**: the sheet sizes to its content (empty 720 to 440 px) with a proper empty state.
 - **Play rail**: only the tile under the pointer shows its label; a label hides at once and

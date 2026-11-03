@@ -1,7 +1,7 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
-import { HALE_SESSIONS, SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
+import { SUKHA_SESSIONS, SessionsTab } from '../../src/ui/serenity-hub/SessionsTab.js';
 import { BreathCollectionService } from '../../src/ui/effects/breathing/breath-collection.js';
 import { BreathworkSessionManager } from '../../src/ui/effects/breathwork-session-manager.js';
 import { looseNode, looseWindow, targetMatching } from './helpers/loose-dom.js';
@@ -59,11 +59,11 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-describe('Hale session facts', () => {
+describe('Sukha session facts', () => {
     it('reads length, holds and breaths from the practice the manager actually runs', () => {
         const base = tab.getSessionDetails('BASE');
         expect(base).toMatchObject({
-            name: 'Hale Base', duration: '26 min', rounds: 3, maxHold: '2 min', breaths: 110,
+            name: 'Sukha Homecoming', duration: '26 min', rounds: 3, maxHold: '2 min', breaths: 110,
         });
         expect(base.seconds).toBe(150 + 240 + 60 + 15 + 280 + 90 + 15 + 240 + 120 + 15 + 300);
         expect(base.stages).toHaveLength(11);
@@ -92,17 +92,17 @@ describe('Hale session facts', () => {
     });
 
     it('names every session, the short beginner ones first, and a way to begin each', () => {
-        expect(Object.keys(HALE_SESSIONS)).toEqual([
+        expect(Object.keys(SUKHA_SESSIONS)).toEqual([
             'FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'SUNRISE', 'REST', 'FLOW', 'BASE', 'ELIXIR',
         ]);
-        Object.entries(HALE_SESSIONS).forEach(([id, info]) => {
+        Object.entries(SUKHA_SESSIONS).forEach(([id, info]) => {
             expect(container.innerHTML).toContain(`data-session="${id}"`);
             expect(container.innerHTML).toContain(`Begin ${info.name}`);
         });
     });
 });
 
-describe('Hale beginner sessions in the catalogue', () => {
+describe('Sukha beginner sessions in the catalogue', () => {
     it('describes them as short and free of breath holds', () => {
         ['FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'SUNRISE'].forEach((id) => {
             const info = tab.getSessionDetails(id);
@@ -111,7 +111,7 @@ describe('Hale beginner sessions in the catalogue', () => {
             expect(info.rounds, id).toBe(id === 'FIRST' ? 3 : 2);
             expect(info.feature, id).toBe('No breath holds');
             expect(info.openHolds, id).toBe(false);
-            expect(container.innerHTML).toContain(`<p class="hale-card__promise">${info.promise}</p>`);
+            expect(container.innerHTML).toContain(`<p class="sukha-card__promise">${info.promise}</p>`);
         });
         expect(tab.getSessionDetails('FIRST')).toMatchObject({
             duration: '5 min', breaths: 14, poster: './assets/breathing/coherence.webp',
@@ -127,18 +127,18 @@ describe('Hale beginner sessions in the catalogue', () => {
 
     it('ends a session without holds on its longest out-breath, not an empty hold', () => {
         tab.startSession('UNWIND');
-        manager.startSession.mock.calls[0][2]({ sessionName: 'Hale Unwind', totalDuration: 254, rounds: 2 });
-        const stats = flow('.hale-flow__stats').innerHTML;
+        manager.startSession.mock.calls[0][2]({ sessionName: 'Sukha Unwind', totalDuration: 254, rounds: 2 });
+        const stats = flow('.sukha-flow__stats').innerHTML;
         expect(stats).toContain('<dt>Longest out-breath</dt><dd>7 sec</dd>');
         expect(stats).not.toContain('no holds');
         tab.startSession('TIDE');
-        manager.startSession.mock.calls[1][2]({ sessionName: 'Hale Tide', totalDuration: 261, rounds: 2 });
-        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>0:32</dd>');
+        manager.startSession.mock.calls[1][2]({ sessionName: 'Sukha Tide', totalDuration: 261, rounds: 2 });
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>0:32</dd>');
     });
 
     it('outlines rounds without a recovery breath they do not have', () => {
         tab.showPrepScreen('TIDE');
-        const rounds = flow('.hale-flow__rounds').innerHTML;
+        const rounds = flow('.sukha-flow__rounds').innerHTML;
         expect(rounds).toContain('<b>Arrive</b> 0:45 at your own pace</li>');
         expect(rounds).toContain('<b>Round 1</b> 10 breaths · 0:32 on your own</li>');
         expect(rounds).toContain('<b>Round 2</b> 8 breaths</li>');
@@ -147,26 +147,26 @@ describe('Hale beginner sessions in the catalogue', () => {
 
     it('offers each its own intentions, spoken from its own lines', () => {
         tab.showPrepScreen('SUNRISE');
-        expect(flow('.hale-flow__intentions').innerHTML).toContain('Wake up gently');
+        expect(flow('.sukha-flow__intentions').innerHTML).toContain('Wake up gently');
         tab.selectIntention('wake', 'SUNRISE');
         expect(manager.audioManager.playVoice).toHaveBeenCalledWith('intentions/sunrise_wake');
     });
 });
 
-describe('Hale session flow', () => {
+describe('Sukha session flow', () => {
     it('opens preparation as its own surface: the Hub steps aside but nothing starts yet', () => {
-        container.fire('click', { target: targetMatching({ '.hale-card__begin': { dataset: { session: 'FLOW' } } }) });
+        container.fire('click', { target: targetMatching({ '.sukha-card__begin': { dataset: { session: 'FLOW' } } }) });
         expect(tab.flowOpen).toBe(true);
         expect(tab.step).toBe('prepare');
         expect(tab.flow.dataset.session).toBe('FLOW');
-        expect(flow('.hale-flow__name').textContent).toBe('Hale Flow');
-        expect(flow('.hale-flow__facts').textContent).toBe('16 min · Moderate · Box and triangle');
-        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Round 2</b> 12 breaths · 0:36 on your own</li>');
-        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Arrive</b> 1:30 at your own pace');
-        expect(flow('.hale-flow__rounds').innerHTML).toContain("url('./assets/breathing/triangle.webp')");
-        expect(flow('.hale-flow__caution').hidden).toBe(true);
-        expect(flow('.hale-flow__track').innerHTML.match(/<i /g)).toHaveLength(8);
-        expect(flow('.hale-flow__begin').disabled).toBe(false);
+        expect(flow('.sukha-flow__name').textContent).toBe('Sukha Mandala');
+        expect(flow('.sukha-flow__facts').textContent).toBe('16 min · Moderate · Box and triangle');
+        expect(flow('.sukha-flow__rounds').innerHTML).toContain('<b>Round 2</b> 12 breaths · 0:36 on your own</li>');
+        expect(flow('.sukha-flow__rounds').innerHTML).toContain('<b>Arrive</b> 1:30 at your own pace');
+        expect(flow('.sukha-flow__rounds').innerHTML).toContain("url('./assets/breathing/triangle.webp')");
+        expect(flow('.sukha-flow__caution').hidden).toBe(true);
+        expect(flow('.sukha-flow__track').innerHTML.match(/<i /g)).toHaveLength(8);
+        expect(flow('.sukha-flow__begin').disabled).toBe(false);
         expect(hub.hide).toHaveBeenCalledOnce();
         expect(manager.startSession).not.toHaveBeenCalled();
     });
@@ -174,13 +174,13 @@ describe('Hale session flow', () => {
     it('keeps the intention optional: choosing speaks it, choosing again clears it', () => {
         tab.showPrepScreen('BASE');
         const calm = Object.assign(looseNode('button'), { dataset: { intention: 'calm' } });
-        tab.flow.lists['.hale-flow__intention'] = [calm];
-        clickFlow({ '.hale-flow__intention': calm });
+        tab.flow.lists['.sukha-flow__intention'] = [calm];
+        clickFlow({ '.sukha-flow__intention': calm });
         expect(tab.selectedIntention.label).toBe('Find calm');
         expect(calm.getAttribute('aria-pressed')).toBe('true');
         expect(manager.audioManager.playVoice).toHaveBeenCalledWith('intentions/base_calm');
-        expect(flow('.hale-flow__begin').getAttribute('aria-label')).toBe('Begin Hale Base with intention: Find calm');
-        clickFlow({ '.hale-flow__intention': calm });
+        expect(flow('.sukha-flow__begin').getAttribute('aria-label')).toBe('Begin Sukha Homecoming with intention: Find calm');
+        clickFlow({ '.sukha-flow__intention': calm });
         expect(tab.selectedIntention).toBeNull();
         expect(calm.getAttribute('aria-pressed')).toBe('false');
         expect(manager.audioManager.playVoice).toHaveBeenCalledTimes(1);
@@ -188,13 +188,13 @@ describe('Hale session flow', () => {
 
     it('counts down, then hands the session to the manager with the voice preference', async () => {
         tab.showPrepScreen('REST');
-        tab.flow.querySelector('.hale-flow__voice').fire('change', { target: { checked: false } });
-        clickFlow({ '.hale-flow__begin': true });
+        tab.flow.querySelector('.sukha-flow__voice').fire('change', { target: { checked: false } });
+        clickFlow({ '.sukha-flow__begin': true });
         expect(tab.step).toBe('countdown');
-        expect(flow('.hale-flow__number').textContent).toBe('3');
-        expect(flow('.hale-flow__intent').textContent).toBe('Nothing to achieve. Just be here.');
+        expect(flow('.sukha-flow__number').textContent).toBe('3');
+        expect(flow('.sukha-flow__intent').textContent).toBe('Nothing to achieve. Just be here.');
         await vi.advanceTimersByTimeAsync(2100);
-        expect(flow('.hale-flow__number').textContent).toBe('1');
+        expect(flow('.sukha-flow__number').textContent).toBe('1');
         expect(manager.startSession).not.toHaveBeenCalled();
         await vi.advanceTimersByTimeAsync(2000);
         expect(manager.startSession).toHaveBeenCalledOnce();
@@ -230,30 +230,30 @@ describe('Hale session flow', () => {
         expect(tab.holdsScreen).toBe(true);
         tab.showStep(null);
         expect(tab.holdsScreen).toBe(true);
-        finish({ sessionName: 'Hale Base', totalDuration: 1555, rounds: 3 });
+        finish({ sessionName: 'Sukha Homecoming', totalDuration: 1555, rounds: 3 });
         expect(tab.step).toBe('complete');
-        expect(flow('.hale-flow__done-name').textContent).toBe('Hale Base');
-        expect(flow('.hale-flow__stats').innerHTML).toContain('<dd>25:55</dd>');
-        expect(flow('.hale-flow__stats').innerHTML).toContain('<dd>110</dd>');
-        expect(flow('.hale-flow__closing').textContent).toContain('You arrived with: Ground myself.');
-        expect(JSON.parse(stored.get('serenity.haleSessions'))).toMatchObject({ count: 1, seconds: 1555, last: { id: 'BASE' } });
+        expect(flow('.sukha-flow__done-name').textContent).toBe('Sukha Homecoming');
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dd>25:55</dd>');
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dd>110</dd>');
+        expect(flow('.sukha-flow__closing').textContent).toContain('You arrived with: Ground myself.');
+        expect(JSON.parse(stored.get('serenity.sukhaSessions'))).toMatchObject({ count: 1, seconds: 1555, last: { id: 'BASE' } });
         expect(hub.releaseGameplay).not.toHaveBeenCalled();
-        clickFlow({ '.hale-flow__finish': true });
+        clickFlow({ '.sukha-flow__finish': true });
         expect(tab.flowOpen).toBe(false);
         expect(tab.holdsScreen).toBe(false);
         expect(hub.releaseGameplay).toHaveBeenCalledOnce();
         tab.setActive(true);
-        const practice = container.querySelector('.hale__practice');
+        const practice = container.querySelector('.sukha__practice');
         expect(practice.hidden).toBe(false);
-        expect(practice.innerHTML).toContain('1 session completed · 26 min of practice · last: Hale Base');
+        expect(practice.innerHTML).toContain('1 session completed · 26 min of practice · last: Sukha Homecoming');
         expect(practice.innerHTML).toContain('<b>1</b><span>day</span>');
         expect(container.querySelector('[data-mine="BASE"]').textContent).toBe('You · 1 completed');
     });
 
     it('offers the same session again from its result', () => {
         tab.startSession('FLOW');
-        manager.startSession.mock.calls[0][2]({ sessionName: 'Hale Flow', totalDuration: 900, rounds: 3 });
-        clickFlow({ '.hale-flow__again': true });
+        manager.startSession.mock.calls[0][2]({ sessionName: 'Sukha Mandala', totalDuration: 900, rounds: 3 });
+        clickFlow({ '.sukha-flow__again': true });
         expect(tab.step).toBe('prepare');
         expect(tab.pendingSessionId).toBe('FLOW');
     });
@@ -266,8 +266,8 @@ describe('Hale session flow', () => {
         expect(manager.stopSession).toHaveBeenCalledOnce();
         expect(hub.releaseGameplay).toHaveBeenCalledOnce();
         expect(hub.breathingTab.refresh).toHaveBeenCalled();
-        finish({ sessionName: 'Hale Base', totalDuration: 60, rounds: 3 });
-        report({ sessionName: 'Hale Base', phase: 'active' });
+        finish({ sessionName: 'Sukha Homecoming', totalDuration: 60, rounds: 3 });
+        report({ sessionName: 'Sukha Homecoming', phase: 'active' });
         expect(tab.flowOpen).toBe(false);
         expect(tab.activeSessionData).toBeNull();
         expect(stored.size).toBe(0);
@@ -304,30 +304,30 @@ describe('Hale session flow', () => {
     });
 });
 
-describe('Hale catalogue while a session runs', () => {
+describe('Sukha catalogue while a session runs', () => {
     it('does no work while the Hub is closed and shows the latest stage when it opens', () => {
         manager.activeSession = {};
         tab.startSession('BASE');
         const report = manager.startSession.mock.calls[0][1];
-        const live = container.querySelector('.hale__live');
+        const live = container.querySelector('.sukha__live');
         live.hidden = true;
         for (let i = 0; i < 50; i++) {
             report({
-                sessionName: 'Hale Base', round: 2, totalRounds: 3, phase: 'retention',
+                sessionName: 'Sukha Homecoming', round: 2, totalRounds: 3, phase: 'retention',
             });
         }
         expect(live.hidden).toBe(true);
-        expect(live.querySelector('.hale__live-name').textContent).toBe('');
+        expect(live.querySelector('.sukha__live-name').textContent).toBe('');
         tab.setActive(true);
         expect(live.hidden).toBe(false);
-        expect(live.querySelector('.hale__live-name').textContent).toBe('Hale Base · Round 2 of 3 · Hold');
-        container.fire('click', { target: targetMatching({ '.hale__return': true }) });
+        expect(live.querySelector('.sukha__live-name').textContent).toBe('Sukha Homecoming · Round 2 of 3 · Hold');
+        container.fire('click', { target: targetMatching({ '.sukha__return': true }) });
         expect(hub.hide).toHaveBeenCalledTimes(2);
         // Ending twenty minutes of practice takes a second press.
-        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
+        container.fire('click', { target: targetMatching({ '.sukha__end': true }) });
         expect(manager.stopSession).not.toHaveBeenCalled();
-        expect(container.querySelector('.hale__end').textContent).toBe('Press again to end');
-        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
+        expect(container.querySelector('.sukha__end').textContent).toBe('Press again to end');
+        container.fire('click', { target: targetMatching({ '.sukha__end': true }) });
         expect(manager.stopSession).toHaveBeenCalledOnce();
         expect(live.hidden).toBe(true);
     });
@@ -335,10 +335,10 @@ describe('Hale catalogue while a session runs', () => {
     it('forgets a single End press after a few seconds', async () => {
         manager.activeSession = {};
         tab.startSession('BASE');
-        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
+        container.fire('click', { target: targetMatching({ '.sukha__end': true }) });
         await vi.advanceTimersByTimeAsync(4100);
-        expect(container.querySelector('.hale__end').textContent).toBe('End session');
-        container.fire('click', { target: targetMatching({ '.hale__end': true }) });
+        expect(container.querySelector('.sukha__end').textContent).toBe('End session');
+        container.fire('click', { target: targetMatching({ '.sukha__end': true }) });
         expect(manager.stopSession).not.toHaveBeenCalled();
     });
 
@@ -357,58 +357,67 @@ describe('Hale catalogue while a session runs', () => {
     });
 });
 
-describe('Hale preparation choices', () => {
+describe('Sukha preparation choices', () => {
     it('asks once for the safety note before a session with strong holds, and remembers it', () => {
         tab.showPrepScreen('ELIXIR');
-        expect(flow('.hale-flow__caution').hidden).toBe(false);
-        expect(flow('.hale-flow__ack').hidden).toBe(false);
-        expect(flow('.hale-flow__begin').disabled).toBe(true);
-        clickFlow({ '.hale-flow__begin': true });
+        expect(flow('.sukha-flow__caution').hidden).toBe(false);
+        expect(flow('.sukha-flow__ack').hidden).toBe(false);
+        expect(flow('.sukha-flow__begin').disabled).toBe(true);
+        clickFlow({ '.sukha-flow__begin': true });
         expect(tab.step).toBe('prepare');
-        const ack = flow('.hale-flow__ack-input');
+        const ack = flow('.sukha-flow__ack-input');
         ack.checked = true;
         ack.fire('change', { target: { checked: true } });
-        expect(flow('.hale-flow__begin').disabled).toBe(false);
-        expect(JSON.parse(stored.get('serenity.halePrefs'))).toMatchObject({ safetyAcknowledged: true });
+        expect(flow('.sukha-flow__begin').disabled).toBe(false);
+        expect(JSON.parse(stored.get('serenity.sukhaPrefs'))).toMatchObject({ safetyAcknowledged: true });
         tab.hidePrepScreen();
         tab.showPrepScreen('BASE');
-        expect(flow('.hale-flow__ack').hidden).toBe(true);
-        expect(flow('.hale-flow__begin').disabled).toBe(false);
-        expect(flow('.hale-flow__switch--holds').hidden).toBe(false);
+        expect(flow('.sukha-flow__ack').hidden).toBe(true);
+        expect(flow('.sukha-flow__begin').disabled).toBe(false);
+        expect(flow('.sukha-flow__switch--holds').hidden).toBe(false);
         tab.showPrepScreen('REST');
-        expect(flow('.hale-flow__caution').hidden).toBe(true);
-        expect(flow('.hale-flow__switch--holds').hidden).toBe(true);
+        expect(flow('.sukha-flow__caution').hidden).toBe(true);
+        expect(flow('.sukha-flow__switch--holds').hidden).toBe(true);
     });
 
     it('asks for the note before fast breathing too, and again when only the old note was read', () => {
         // A tick on the note before its words changed (2026-11-03) does not count for the new one.
-        stored.set('serenity.halePrefs', JSON.stringify({ safetyAcknowledged: true }));
+        stored.set('serenity.sukhaPrefs', JSON.stringify({ safetyAcknowledged: true }));
         tab.destroy();
         tab = new SessionsTab(hub, manager);
         expect(tab.getSessionDetails('SUNRISE')).toMatchObject({ openHolds: false, strong: true });
         tab.showPrepScreen('SUNRISE');
-        expect(flow('.hale-flow__caution').hidden).toBe(false);
-        expect(flow('.hale-flow__ack').hidden).toBe(false);
-        expect(flow('.hale-flow__begin').disabled).toBe(true);
-        const ack = flow('.hale-flow__ack-input');
+        expect(flow('.sukha-flow__caution').hidden).toBe(false);
+        expect(flow('.sukha-flow__ack').hidden).toBe(false);
+        expect(flow('.sukha-flow__begin').disabled).toBe(true);
+        const ack = flow('.sukha-flow__ack-input');
         ack.checked = true;
         ack.fire('change', { target: { checked: true } });
-        expect(flow('.hale-flow__begin').disabled).toBe(false);
+        expect(flow('.sukha-flow__begin').disabled).toBe(false);
         expect(stored.get('serenity.breathSafetyRead')).toBe('2026-11-03');
         // Gentle sessions show the plain line, with the wellness words, and no note.
         for (const id of ['FIRST', 'TIDE', 'ROOTS', 'UNWIND', 'REST', 'FLOW']) {
             expect(tab.getSessionDetails(id).strong, id).toBe(false);
         }
         tab.showPrepScreen('FLOW');
-        expect(flow('.hale-flow__caution').hidden).toBe(true);
-        expect(flow('.hale-flow__safety').hidden).toBe(false);
+        expect(flow('.sukha-flow__caution').hidden).toBe(true);
+        expect(flow('.sukha-flow__safety').hidden).toBe(false);
+    });
+
+    it('keeps choices saved under the sessions\' old key, and saves them under the new one', () => {
+        stored.set('serenity.halePrefs', JSON.stringify({ sounds: false, openHolds: false }));
+        tab.destroy();
+        tab = new SessionsTab(hub, manager);
+        expect(tab.prefs).toMatchObject({ sounds: false, openHolds: false, voice: true });
+        tab.savePrefs({ vibration: false });
+        expect(JSON.parse(stored.get('serenity.sukhaPrefs'))).toMatchObject({ sounds: false, vibration: false });
     });
 
     it('hands the session your intention and choices, and keeps the choices for next time', () => {
         tab.showPrepScreen('BASE');
-        flow('.hale-flow__sounds').fire('change', { target: { checked: false } });
-        flow('.hale-flow__holds').fire('change', { target: { checked: false } });
-        expect(flow('.hale-flow__rounds').innerHTML).toContain('<b>Round 1</b> 30 breaths · hold 1:00 · recover');
+        flow('.sukha-flow__sounds').fire('change', { target: { checked: false } });
+        flow('.sukha-flow__holds').fire('change', { target: { checked: false } });
+        expect(flow('.sukha-flow__rounds').innerHTML).toContain('<b>Round 1</b> 30 breaths · hold 1:00 · recover');
         tab.selectIntention('calm', 'BASE');
         tab.startSession('BASE');
         expect(manager.startSession.mock.calls[0][3]).toEqual({
@@ -419,7 +428,7 @@ describe('Hale preparation choices', () => {
             sounds: false,
             vibration: true,
         });
-        expect(JSON.parse(stored.get('serenity.halePrefs'))).toMatchObject({ sounds: false, openHolds: false });
+        expect(JSON.parse(stored.get('serenity.sukhaPrefs'))).toMatchObject({ sounds: false, openHolds: false });
         tab.destroy();
         tab = new SessionsTab(hub, manager);
         expect(tab.prefs).toMatchObject({ sounds: false, openHolds: false, voice: true });
@@ -435,15 +444,15 @@ describe('Hale preparation choices', () => {
 
     it('says "follow the light" when the voice is off', async () => {
         tab.showPrepScreen('FLOW');
-        flow('.hale-flow__voice').fire('change', { target: { checked: false } });
+        flow('.sukha-flow__voice').fire('change', { target: { checked: false } });
         tab.startCountdown();
         await vi.advanceTimersByTimeAsync(3050);
-        expect(flow('.hale-flow__number').textContent).toBe('Begin');
-        expect(flow('.hale-flow__message').textContent).toBe('Follow the light');
+        expect(flow('.sukha-flow__number').textContent).toBe('Begin');
+        expect(flow('.sukha-flow__message').textContent).toBe('Follow the light');
     });
 });
 
-describe('Hale results and your practice', () => {
+describe('Sukha results and your practice', () => {
     const holds = (...seconds) => seconds.map((value, index) => ({
         round: index + 1, seconds: value, suggested: [60, 90, 120][index], mode: 'open',
     }));
@@ -451,31 +460,31 @@ describe('Hale results and your practice', () => {
     it('shows what you measured: your holds round by round, and a new best when you beat it', () => {
         tab.startSession('BASE');
         manager.startSession.mock.calls[0][2]({
-            sessionName: 'Hale Base', totalDuration: 1500, rounds: 3, breaths: 110, holds: holds(64, 95, 118),
+            sessionName: 'Sukha Homecoming', totalDuration: 1500, rounds: 3, breaths: 110, holds: holds(64, 95, 118),
         });
-        expect(flow('.hale-flow__stats').innerHTML).toContain('<dd>1:58</dd>');
-        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>Longest hold</dt>');
-        const chart = flow('.hale-flow__holds-chart');
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dd>1:58</dd>');
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>Longest hold</dt>');
+        const chart = flow('.sukha-flow__holds-chart');
         expect(chart.hidden).toBe(false);
         expect(chart.innerHTML.match(/<li /g)).toHaveLength(3);
         expect(chart.innerHTML).toContain('<b>1:35</b>');
         expect(chart.innerHTML).toContain('marks show the suggested length');
         // A first measured hold is a beginning, not a record.
-        expect(flow('.hale-flow__record').hidden).toBe(true);
-        expect(flow('.hale-flow__streak-line').textContent).toBe('Practised today · 1 session · 25 min of practice');
-        clickFlow({ '.hale-flow__finish': true });
+        expect(flow('.sukha-flow__record').hidden).toBe(true);
+        expect(flow('.sukha-flow__streak-line').textContent).toBe('Practised today · 1 session · 25 min of practice');
+        clickFlow({ '.sukha-flow__finish': true });
 
         tab.startSession('BASE');
         manager.startSession.mock.calls[1][2]({
-            sessionName: 'Hale Base', totalDuration: 1520, rounds: 3, breaths: 110, holds: holds(70, 101, 131),
+            sessionName: 'Sukha Homecoming', totalDuration: 1520, rounds: 3, breaths: 110, holds: holds(70, 101, 131),
         });
-        expect(flow('.hale-flow__record').hidden).toBe(false);
-        expect(flow('.hale-flow__record').innerHTML).toContain('New best hold: 2:11');
-        expect(flow('.hale-flow__record').innerHTML).toContain('was 1:58');
-        expect(flow('.hale-flow__holds-chart').innerHTML).toContain('previous best 1:58');
+        expect(flow('.sukha-flow__record').hidden).toBe(false);
+        expect(flow('.sukha-flow__record').innerHTML).toContain('New best hold: 2:11');
+        expect(flow('.sukha-flow__record').innerHTML).toContain('was 1:58');
+        expect(flow('.sukha-flow__holds-chart').innerHTML).toContain('previous best 1:58');
         tab.showPrepScreen('BASE');
-        expect(flow('.hale-flow__best').hidden).toBe(false);
-        expect(flow('.hale-flow__best').textContent).toBe('Your best hold in Hale Base: 2:11');
+        expect(flow('.sukha-flow__best').hidden).toBe(false);
+        expect(flow('.sukha-flow__best').textContent).toBe('Your best hold in Sukha Homecoming: 2:11');
     });
 
     it('keeps the practice of a session you ended, but does not call it completed', () => {
@@ -484,7 +493,7 @@ describe('Hale results and your practice', () => {
         }));
         tab.startSession('ELIXIR');
         manager.onEndRequested();
-        const log = JSON.parse(stored.get('serenity.haleSessions'));
+        const log = JSON.parse(stored.get('serenity.sukhaSessions'));
         expect(log).toMatchObject({ count: 0, seconds: 420, last: { id: 'ELIXIR' } });
         expect(log.entries).toHaveLength(1);
         expect(log.entries[0]).toMatchObject({ completed: false, breaths: 70 });
@@ -493,31 +502,31 @@ describe('Hale results and your practice', () => {
         }));
         tab.startSession('ELIXIR');
         manager.onEndRequested();
-        expect(JSON.parse(stored.get('serenity.haleSessions')).entries).toHaveLength(1);
+        expect(JSON.parse(stored.get('serenity.sukhaSessions')).entries).toHaveLength(1);
     });
 
     it('names the stillness of each session in its result', () => {
         tab.startSession('FLOW');
         manager.startSession.mock.calls[0][2]({
-            sessionName: 'Hale Flow', totalDuration: 1460, rounds: 3, breaths: 45, holds: [],
+            sessionName: 'Sukha Mandala', totalDuration: 1460, rounds: 3, breaths: 45, holds: [],
         });
-        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>1:48</dd>');
-        expect(flow('.hale-flow__holds-chart').hidden).toBe(true);
-        clickFlow({ '.hale-flow__finish': true });
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>1:48</dd>');
+        expect(flow('.sukha-flow__holds-chart').hidden).toBe(true);
+        clickFlow({ '.sukha-flow__finish': true });
         tab.startSession('REST');
         manager.startSession.mock.calls[1][2]({
-            sessionName: 'Hale Rest',
+            sessionName: 'Sukha Nightfall',
             totalDuration: 1100,
             rounds: 3,
             breaths: 37,
             holds: [],
         });
         // Rest drifts between its rounds: no pause to chart, the time on your own instead.
-        expect(flow('.hale-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>1:08</dd>');
+        expect(flow('.sukha-flow__stats').innerHTML).toContain('<dt>On your own</dt><dd>1:08</dd>');
     });
 });
 
-describe('Hale sessions you have not found yet', () => {
+describe('Sukha sessions you have not found yet', () => {
     const chapterOne = { completedLevels: Object.fromEntries([1, 2, 3, 4, 5].map((id) => [id, { stars: 2 }])) };
     function withCollection(collection) {
         tab.destroy();
@@ -529,12 +538,12 @@ describe('Hale sessions you have not found yet', () => {
     it('shows them in the catalogue with where each is found, and never begins one', () => {
         withCollection(new BreathCollectionService());
         const html = container.innerHTML;
-        expect(html).toContain('<article class="hale-card" data-session="FIRST">');
-        expect(html).toContain('Begin Hale First Breath');
-        expect(html).toContain('<article class="hale-card is-locked" data-session="TIDE">');
+        expect(html).toContain('<article class="sukha-card" data-session="FIRST">');
+        expect(html).toContain('Begin Sukha First Breath');
+        expect(html).toContain('<article class="sukha-card is-locked" data-session="TIDE">');
         expect(html).toContain('Opens when you reach the Deep Ocean, or after 15 more minutes of breathing');
         expect(html).toContain('Opens when you complete the Odyssey, or after 120 more minutes of breathing');
-        expect(html).not.toContain('Begin Hale Elixir');
+        expect(html).not.toContain('Begin Sukha Phoenix');
         tab.showPrepScreen('TIDE');
         expect(tab.pendingSessionId).toBeNull();
         tab.startSession('TIDE');
@@ -545,8 +554,8 @@ describe('Hale sessions you have not found yet', () => {
 
     it('marks a session that has just opened as new until you open its preparation', () => {
         const collection = withCollection(new BreathCollectionService({ readOdysseyProgress: () => chapterOne }));
-        expect(container.innerHTML).toContain('<article class="hale-card is-new" data-session="TIDE">');
-        expect(container.innerHTML).toContain('<span class="hale-card__new">New</span>');
+        expect(container.innerHTML).toContain('<article class="sukha-card is-new" data-session="TIDE">');
+        expect(container.innerHTML).toContain('<span class="sukha-card__new">New</span>');
         tab.showPrepScreen('TIDE');
         expect(tab.pendingSessionId).toBe('TIDE');
         expect(collection.status('sessions', 'TIDE').isNew).toBe(false);
@@ -557,14 +566,14 @@ describe('Hale sessions you have not found yet', () => {
         withCollection(new BreathCollectionService({ readPracticeSeconds: () => seconds }));
         tab.startSession('FIRST');
         seconds = 15 * 60;
-        manager.startSession.mock.calls[0][2]({ sessionName: 'Hale First Breath', totalDuration: 226, rounds: 3 });
-        const line = flow('.hale-flow__opened');
+        manager.startSession.mock.calls[0][2]({ sessionName: 'Sukha First Breath', totalDuration: 226, rounds: 3 });
+        const line = flow('.sukha-flow__opened');
         expect(line.hidden).toBe(false);
-        expect(line.innerHTML).toBe('<span class="hale-flow__opened-label">New</span> Ocean Tide and Hale Tide are yours now, opened by your practice.');
-        expect(container.innerHTML).toContain('<article class="hale-card is-new" data-session="TIDE">');
-        expect(container.innerHTML).toContain('Begin Hale Tide');
+        expect(line.innerHTML).toBe('<span class="sukha-flow__opened-label">New</span> Ocean Tide and Sukha Tide are yours now, opened by your practice.');
+        expect(container.innerHTML).toContain('<article class="sukha-card is-new" data-session="TIDE">');
+        expect(container.innerHTML).toContain('Begin Sukha Tide');
         tab.startSession('FIRST');
-        manager.startSession.mock.calls[1][2]({ sessionName: 'Hale First Breath', totalDuration: 226, rounds: 3 });
+        manager.startSession.mock.calls[1][2]({ sessionName: 'Sukha First Breath', totalDuration: 226, rounds: 3 });
         expect(line.hidden).toBe(true);
     });
 });

@@ -836,7 +836,7 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
   - **No colour-blind option:** I is pure green next to Z pure red. That mapping is a deliberate legal mitigation, so fix it with glyphs or patterns, not guideline colours.
   - **Legibility:** 8–9 px text in places, faint text at ~4.4:1, and no UI scale or high-contrast mode.
   - **Focus:** the Hub is `aria-modal` but doesn't trap or return focus.
-  - **Captions:** Hale narration is only partly captioned, although the text exists in `scripts/tts-script.json`.
+  - **Captions:** Sukha narration is only partly captioned, although the text exists in `scripts/tts-script.json`.
   - **Motion on the map:** auto-drift ignores reduced motion and never stops.
 - **How:**
   1. An Accessibility tab:
@@ -983,13 +983,13 @@ Ordering inside a tier is by value per effort, with dependencies respected. For 
   - **No common contract:** 12 durable localStorage keys, 2 IndexedDB databases and 7 Steam keys, with no shared versioning, corruption handling or reset path.
   - **Unclear ownership:** Odyssey progress has 2 writers and 5 parsers.
   - **Settings have no schema:** two drifting defaults tables, dead keys, and Cloud data applied without clamps.
-  - **Gaps in coverage:** practice-earned breath grants and the Hale log aren't backed up.
+  - **Gaps in coverage:** practice-earned breath grants and the Sukha log aren't backed up.
   - **A trap for later:** any future `app://` move orphans every save unless migrated first.
 - **How:**
   1. `src/core/persistence/`: a registry with one owner per key and a codec per document (version, migrate, validate, backup-on-corrupt, Cloud merge policy, tombstones for a deliberate "Reset records").
   2. A fitness ratchet banning raw `localStorage` outside the registry.
   3. `settings-schema.js` (type, default, range, category, applies, cloud, platform, control id, help) that generates rows, reset and search.
-  4. Add `breath.json` and `hale.json` to Cloud.
+  4. Add `breath.json` and `sukha.json` to Cloud.
   5. Plan the origin migration before R-07's `app://` step.
 - **Benefit:** every player-owned byte has an owner, a version and a recovery path.
 
@@ -1356,7 +1356,7 @@ The 2026-10-07 gold-standard audit's Phase-1 fixes hold up in code: departures, 
 | SCORE-09 | **Stats use the real API, fragilely:** `store()` after every set (3–8 per game over); none at quit; the cache updates even on failure; `total_tspins` and `total_perfect_clears` declared but never written; `playtime_minutes` +1 minimum per game; the offline queue drops after 7 days. | Med | S | VERIFIED | `steam-integration.js:757-792,1161-1176`; `steam-service.js:1032,1079-1086`; `steam-config.js:173-174` |
 | SCORE-10 | **Achievements don't exist:** no IDs, no unlock calls, no IPC channel. The wrong `achievements` probe (the real API is `achievement.activate`) keeps capabilities "partial". | Med | M | VERIFIED | `steam-integration.js:548-553`; `steam-service.js:826,944-949` |
 | SCORE-11 | **Cloud durability:** failed uploads are kept only in memory; no quit flush; unsynced local changes are invisible after a restart; the offline queue replays stale snapshots over newer Cloud docs. | Med | M | VERIFIED code | `steam-cloud-sync.js:107,192-199,275-294,342-382`; `steam-service.js:214-217,1723-1727` |
-| SCORE-12 | **Progression not backed up:** practice-earned breath grants, the Hale log and streak, and demos aren't in `CLOUD_FILES`. | Med | S–M | VERIFIED | `steam-cloud-sync.js:8-16` |
+| SCORE-12 | **Progression not backed up:** practice-earned breath grants, the Sukha log and streak, and demos aren't in `CLOUD_FILES`. | Med | S–M | VERIFIED | `steam-cloud-sync.js:8-16` |
 | SCORE-13 | **Personal-best replays pruned after 200 games; roamed `demoId`s open the wrong replay on another device.** | Low-Med | S | VERIFIED | `DemoManager.js:11,85-106`; `high-scores.js:114-116` |
 | SCORE-14 | **Persistence is scattered:** 38 modules touch storage; 12 durable localStorage keys + 2 IndexedDB DBs + 7 Steam keys + ~11 dev keys + 40 flag overrides; Odyssey progress has 2 writers and 5 parsers; inconsistent corrupt-file handling; no reset path; an `app://` migration would orphan all saves unless migrated. | Med (arch) | M | VERIFIED | `OdysseyStateManager.js:147,165-205`; `breathwork-practice-log.js:60-65`; `high-scores.js:423` |
 | SCORE-15 | **Settings debounced but still unversioned and unvalidated;** Cloud apply isn't clamped; device-specific keys roam. | Low | S | VERIFIED | `settings.js:434-452`; `steam-cloud-sync.js:21-42,520-536` |
@@ -1384,7 +1384,7 @@ The 2026-10-07 gold-standard audit's Phase-1 fixes hold up in code: departures, 
 | UI-13 | **The Serenity Hub is `aria-modal` but doesn't trap or return focus;** the background isn't inert. | Med | S | VERIFIED | `SerenityHub.js:363-366,946-997`; `sheet-input.js:153-156` |
 | UI-14 | **The Steam invite toast can't be reached with a pad** and expires in 10 s. | Med | S | VERIFIED | `invite-toast.js:118-123` |
 | UI-15 | **Audio mix:** no master or voice volume (voice uses SFX); theme-linked audio silently overrides the player's choice. | Med | S–M | VERIFIED | `breathwork-audio-manager.js:117-123`; `main.js:2758-2762,3060-3063,3122-3133` |
-| UI-16 | **Hale narration only partly captioned;** the text already exists in `scripts/tts-script.json`. | Med | M | VERIFIED | `breathwork-session-manager.js:1194-1348,1421-1422` |
+| UI-16 | **Sukha narration only partly captioned;** the text already exists in `scripts/tts-script.json`. | Med | M | VERIFIED | `breathwork-session-manager.js:1194-1348,1421-1422` |
 | UI-17 | **Legibility at 1280×800:** 8–9 px text in places, faint text ~4.4:1 used 117×, no UI scale or high-contrast mode. | Med | M | VERIFIED sizes | `keystone-menu.css:834-845`; `keystone-settings.css:400,673,812,962` |
 | UI-18 | **No localization layer:** ~270 HTML text nodes, ~2,300 literals in `src/` and 1,098 voice lines; hand-rolled plurals; Latin-only fonts. | Med | L | VERIFIED (heuristic counts) | `settings.js:1102`; `modals.js:678,684` |
 | UI-19 | **No Deck on-screen keyboard or Deck detection** (the APIs exist in steamworks.js). | Med | S–M | VERIFIED | `client.d.ts:220-238` |

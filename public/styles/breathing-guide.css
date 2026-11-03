@@ -28,7 +28,7 @@
 .breath-guide.is-open { opacity: 1; }
 .breath-guide.is-leaving { opacity: 0; transition-duration: 0.4s; }
 
-/* On the main menu (a Hale session started from its list) the guide covers the menu. */
+/* On the main menu (a Sukha session started from its list) the guide covers the menu. */
 body.start-modal-open .breath-guide {
     z-index: 1100;
 }

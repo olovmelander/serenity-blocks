@@ -58,16 +58,16 @@ function hubHarness() {
     return hub;
 }
 
-describe('discoverable Hale session entry', () => {
-    it('provides one labelled native control that opens the Hale catalogue', () => {
+describe('discoverable Sukha session entry', () => {
+    it('provides one labelled native control that opens the Sukha catalogue', () => {
         const hub = hubHarness();
         hub.createHaleSessionsEntry();
         hub.createHaleSessionsEntry();
-        const button = hub.haleSessionsEntry;
+        const button = hub.sukhaSessionsEntry;
         expect(body.appendChild).toHaveBeenCalledOnce();
         expect(button.tagName).toBe('BUTTON');
         expect(button.type).toBe('button');
-        expect(button.innerHTML).toContain('Hale sessions');
+        expect(button.innerHTML).toContain('Sukha sessions');
         expect(button.innerHTML).toContain('Guided breathwork');
         expect(button.getAttribute('aria-controls')).toBe('serenity-hub-panel');
         expect(button.getAttribute('aria-haspopup')).toBe('dialog');
@@ -83,27 +83,27 @@ describe('discoverable Hale session entry', () => {
         const event = new Event('keydown', { cancelable: true });
         Object.defineProperty(event, 'key', { value: key });
         const stop = vi.spyOn(event, 'stopPropagation');
-        hub.haleSessionsEntry.dispatchEvent(event);
+        hub.sukhaSessionsEntry.dispatchEvent(event);
         expect(stop).toHaveBeenCalledOnce();
         expect(event.defaultPrevented).toBe(false);
         // The native browser click owns opening, avoiding double keyboard activation.
         expect(hub.show).not.toHaveBeenCalled();
-        hub.haleSessionsEntry.dispatchEvent(new Event('click'));
+        hub.sukhaSessionsEntry.dispatchEvent(new Event('click'));
         expect(hub.show).toHaveBeenCalledOnce();
     });
 
-    it('keeps Hale entry clicks inside the control rather than triggering scene interactions', () => {
+    it('keeps Sukha entry clicks inside the control rather than triggering scene interactions', () => {
         const hub = hubHarness();
         hub.createHaleSessionsEntry();
         const event = new Event('click');
         const stop = vi.spyOn(event, 'stopPropagation');
-        hub.haleSessionsEntry.dispatchEvent(event);
+        hub.sukhaSessionsEntry.dispatchEvent(event);
         expect(stop).toHaveBeenCalledOnce();
-        expect(hub.haleSessionsEntry.className).toContain('serenity-hub');
+        expect(hub.sukhaSessionsEntry.className).toContain('serenity-hub');
         expect(hub.show).toHaveBeenCalledOnce();
     });
 
-    it.each([' ', 'Enter'])('activates the Hale tab with %j without also changing the guide', (key) => {
+    it.each([' ', 'Enter'])('activates the Sukha tab with %j without also changing the guide', (key) => {
         const hub = hubHarness();
         const tab = element('button');
         tab.dataset.tab = 'sessions';
@@ -147,12 +147,12 @@ describe('discoverable Hale session entry', () => {
         hub.serenityMode.onBreathingGuideChange = vi.fn();
         window.breathingIndicator = { isActive: true };
         hub.onBreathingGuideChange({ active: true, session: false });
-        expect(hub.haleSessionsEntry.hidden).toBe(true);
+        expect(hub.sukhaSessionsEntry.hidden).toBe(true);
         expect(hub.serenityMode.onBreathingGuideChange).toHaveBeenLastCalledWith(true);
         expect(hub.onResumeCallback).not.toHaveBeenCalled();
         window.breathingIndicator.isActive = false;
         hub.onBreathingGuideChange({ active: false, session: false });
-        expect(hub.haleSessionsEntry.hidden).toBe(false);
+        expect(hub.sukhaSessionsEntry.hidden).toBe(false);
         expect(hub.onResumeCallback).toHaveBeenCalledOnce();
         // A session's guide is not the mode's standalone practice.
         hub.serenityMode.onBreathingGuideChange.mockClear();
@@ -163,10 +163,10 @@ describe('discoverable Hale session entry', () => {
     it('removes the labelled entry and its navigation listener when the Hub is destroyed', () => {
         const hub = hubHarness();
         hub.createHaleSessionsEntry();
-        const button = hub.haleSessionsEntry;
+        const button = hub.sukhaSessionsEntry;
         hub.destroy();
         expect(button.remove).toHaveBeenCalledOnce();
-        expect(hub.haleSessionsEntry).toBeNull();
+        expect(hub.sukhaSessionsEntry).toBeNull();
         button.dispatchEvent(new Event('click'));
         expect(hub.show).not.toHaveBeenCalled();
     });
@@ -174,7 +174,7 @@ describe('discoverable Hale session entry', () => {
     it.each([true, false])('closing the Hub preserves gameplay pause while session active is %s', (active) => {
         const hub = hubHarness();
         hub.isOpen = true;
-        hub.sessionManager = { activeSession: active ? { name: 'Hale Base' } : null };
+        hub.sessionManager = { activeSession: active ? { name: 'Sukha Homecoming' } : null };
         SerenityHub.prototype.hide.call(hub);
         expect(hub.isOpen).toBe(false);
         if (active) expect(hub.onResumeCallback).not.toHaveBeenCalled();
@@ -204,7 +204,7 @@ describe('discoverable Hale session entry', () => {
     it('closes the Hub after cancelling session ownership so menu controls are reachable', () => {
         const hub = hubHarness();
         hub.isOpen = true;
-        hub.sessionManager = { activeSession: { name: 'Hale Base' } };
+        hub.sessionManager = { activeSession: { name: 'Sukha Homecoming' } };
         hub.sessionsTab = {
             cancelForModeChange: vi.fn(() => { hub.sessionManager.activeSession = null; }),
             setActive: vi.fn(),
@@ -219,7 +219,7 @@ describe('discoverable Hale session entry', () => {
         expect(hub.onResumeCallback).not.toHaveBeenCalled();
     });
 
-    it('reveals Hale in an overflowing tab strip when the panel opens without moving dialog scroll', () => {
+    it('reveals Sukha in an overflowing tab strip when the panel opens without moving dialog scroll', () => {
         const hub = hubHarness();
         const nav = element('nav');
         const tab = element('button');

@@ -80,7 +80,7 @@ export class SerenityModeUi {
         return this.mode.serenityHub?.isOpen === true;
     }
 
-    /** A Hale session, or its full-screen preparation, countdown or result, has the screen. */
+    /** A Sukha session, or its full-screen preparation, countdown or result, has the screen. */
     get sessionHolds() {
         return this.mode.serenityHub?.sessionsTab?.holdsScreen === true;
     }
@@ -120,7 +120,7 @@ export class SerenityModeUi {
             canUse: (id) => themeManager?.canSelectTheme?.(id) !== false
                 && themeManager?.isThemeUnlocked?.(id) !== false,
             applyTheme: (id) => {
-                // A Hale session's screens do not change world under it; drift tries again later.
+                // A Sukha session's screens do not change world under it; drift tries again later.
                 if (this.sessionHolds) return;
                 Promise.resolve(themeManager?.switchTheme?.(id)).catch((error) => {
                     console.warn('[Serenity] Drift could not open a theme:', error);
@@ -519,7 +519,7 @@ export class SerenityModeUi {
         if (this.resting || !this.mode.isRunning) return;
         const { guide } = this;
         if (guide?.isExternallyControlled && guide.isActive) {
-            // A Hale session finishes first; rest a minute after.
+            // A Sukha session finishes first; rest a minute after.
             this.restTimer.set(1);
             return;
         }

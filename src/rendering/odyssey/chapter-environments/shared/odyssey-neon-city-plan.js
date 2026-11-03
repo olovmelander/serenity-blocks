@@ -188,7 +188,7 @@ export const NEON_CITY_WORDS = Object.freeze([
     'HOTEL', 'BAR', 'RAMEN', 'NOODLE', 'SAUNA', 'ARCADE', 'OPEN', '24H', 'TAXI', 'CLUB', 'DATA',
     'SUSHI', 'CAFE', 'SYNTH', 'NEON', 'MOTEL', 'LIVE', 'JAZZ', 'TEA', 'CAPSULE', 'CYBER',
     'VR', 'DISCO', 'KARAOKE', 'DINER', 'BATHS', 'COMBO', 'STACK', 'DROP', 'LEVEL', 'NEXT',
-    'CLEAR', 'SPIN', 'HALE', 'BREATHE', 'TRANSIT', 'CASCADE',
+    'CLEAR', 'SPIN', 'SUKHA', 'BREATHE', 'TRANSIT', 'CASCADE',
 ]);
 
 /** sRGB hex -> linear [r, g, b]. */
@@ -207,11 +207,11 @@ export const SIGN_KIND = Object.freeze({
 
 /**
  * The giant LED screens' adverts: what each shows (the shader's `ad`), its word and colour —
- * the district's campaigns (Neon District's Hale, Combo and Serenity Transit), drawn
+ * the district's campaigns (Neon District's Sukha, Combo and Serenity Transit), drawn
  * procedurally: no atlas to load.
  */
 export const NEON_SCREEN_ADS = Object.freeze([
-    { words: ['HALE', 'BREATHE'], palette: 0 },
+    { words: ['SUKHA', 'BREATHE'], palette: 0 },
     { words: ['COMBO', 'STACK', 'DROP'], palette: 1 },
     { words: ['TRANSIT'], palette: 2 },
 ]);

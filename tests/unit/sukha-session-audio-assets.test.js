@@ -7,7 +7,7 @@ import {
     BreathworkSessionManager, CLOSINGS, HOLD_READY_LINE, SESSION_WORLDS,
 } from '../../src/ui/effects/breathwork-session-manager.js';
 import { RECORDED_VOICES } from '../../src/ui/effects/breathwork-recorded-voices.js';
-import { HALE_INTENTIONS } from '../../src/ui/serenity-hub/SessionsTab.js';
+import { SUKHA_INTENTIONS } from '../../src/ui/serenity-hub/SessionsTab.js';
 import { BREATH_WORLDS, worldCuePairs, worldPauseCues } from '../../src/ui/effects/breathing/breath-catalogue.js';
 import { MIN_CUE_SECONDS, cueLines } from '../../src/ui/effects/breathing/cue-variety.js';
 import { sessionCueTakes } from '../../src/ui/effects/breathing/session-cues.js';
@@ -66,7 +66,7 @@ function sessionLines(sessionId, session) {
             ...[audio.release, audio.cues?.in, audio.cues?.hold, audio.cues?.out, audio.cues?.rest].flatMap(cueLines)]
             .filter(Boolean).forEach((id) => lines.add(id));
     });
-    (HALE_INTENTIONS[sessionId] || []).forEach(({ id }) => lines.add(`intentions/${sessionId.toLowerCase()}_${id}`));
+    (SUKHA_INTENTIONS[sessionId] || []).forEach(({ id }) => lines.add(`intentions/${sessionId.toLowerCase()}_${id}`));
     manager.options = { intention: null };
     manager._extraLines(session, sessionId).forEach((id) => lines.add(id));
     return [...lines];

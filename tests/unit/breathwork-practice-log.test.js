@@ -17,7 +17,7 @@ const open = (round, seconds, suggested = 60) => ({
     round, seconds, suggested, mode: 'open',
 });
 
-describe('Hale practice log', () => {
+describe('Sukha practice log', () => {
     it('starts empty, and keeps the totals of the first version of the log', () => {
         expect(readPracticeLog(memory())).toEqual({
             v: 2, count: 0, seconds: 0, last: null, entries: [],

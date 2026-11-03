@@ -31,8 +31,8 @@ export function themeStepTarget(app, doc) {
         return null;
     }
     if (doc.querySelector('.modal.visible')) return null;
-    // A multiplayer screen, another sheet or a Hale session's full-screen flow is not play.
-    if (doc.querySelector('.hale-flow:not([hidden])') || menuCoversGame(doc)) return null;
+    // A multiplayer screen, another sheet or a Sukha session's full-screen flow is not play.
+    if (doc.querySelector('.sukha-flow:not([hidden])') || menuCoversGame(doc)) return null;
     const manager = app.gameModeManager;
     const mode = manager?.getCurrentMode?.();
     if (!mode?.isRunning) return null;

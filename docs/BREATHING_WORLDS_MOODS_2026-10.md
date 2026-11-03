@@ -5,7 +5,7 @@ the same picture on every visit: one fixed seed, one palette, and nothing that h
 breaths. This pass gives every world several **moods** (another hour, weather, season or colour of
 light), a little **life** (rare, gentle events), more **atmosphere** (falling leaves, petals, snow,
 mist, spray), and per-visit variation in the details. The stage, the guide, the tiers and the
-Hale sessions are unchanged except where this record says so.
+Sukha sessions are unchanged except where this record says so.
 
 Captures: [reports/breathing-moods-2026-10](../reports/breathing-moods-2026-10/README.md).
 
@@ -55,7 +55,7 @@ world's grade, bloom, shafts, motes and exposure. `worlds/index.js` exposes `BRE
 **Picking one** (`stage/breath-moods.js`). The host picks a mood the first time it shows a world,
 never the one the previous visit to that world showed on this device (`serenity.breathMoods` =
 { world id: mood index } in localStorage; without storage the pick is just random). The host then
-keeps that mood, and the visit seed, for the rest of its life, so a Hale session that leaves a
+keeps that mood, and the visit seed, for the rest of its life, so a Sukha session that leaves a
 world and comes back (Flow's square, triangle, square) finds the same scene. Captures and the
 playground pin both: `setWorld(id, { mood, seed })`, `?mood=<index|id>&seed=0..1`.
 

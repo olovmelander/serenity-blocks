@@ -199,7 +199,7 @@ describe('The voice of a practice on your own', () => {
         expect(voice.playVoiceWithCallback).toHaveBeenCalledOnce();
     });
 
-    it('leaves a Hale session to its own voice, even one that takes over a practice', async () => {
+    it('leaves a Sukha session to its own voice, even one that takes over a practice', async () => {
         guide.isActive = true;
         guide.isExternallyControlled = true;
         start();
@@ -296,7 +296,7 @@ describe('The breath tone of a practice on your own', () => {
         expect(chimes.tone.mock.calls).toEqual([['in', 3], ['out', 2]]);
     });
 
-    it('is on all the time: silent only in a Hale session (it has its own) and once the practice stops', async () => {
+    it('is on all the time: silent only in a Sukha session (it has its own) and once the practice stops', async () => {
         switchOn = false;
         const worldVoice = start();
         guide.isActive = true;

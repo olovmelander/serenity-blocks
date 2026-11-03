@@ -124,7 +124,7 @@ export async function completeOdysseyLevel(mode, results) {
                 finalResults.themeUnlock = { persisted: false, failure: 'collection' };
             }
         }
-        // A finished chapter opens a breathing world and the Hale session that features it. Only
+        // A finished chapter opens a breathing world and the Sukha session that features it. Only
         // what this save opened is announced; a replayed orb opens nothing new.
         const breath = mode.deps?.breathCollection;
         if (completion?.persisted === true && breath) {

@@ -6,7 +6,7 @@
  *
  * Campaigns: everything the district advertises, packed the same way into a 4096 × 3584 atlas —
  * the user adverts from source-art/, and the generated campaigns painted here on a 2D canvas: the
- * eight district brands (one 16:9 billboard and two 2:3 posters in different designs each), Hale's
+ * eight district brands (one 16:9 billboard and two 2:3 posters in different designs each), Sukha's
  * calm spots (with an empty ring the theme's shader breathes in) and the Serenity Transit travel
  * posters — 34 worlds in seven poster designs, coloured from the game's own renders of them (docs/
  * captures), and the three modes from the menu's key art (public/assets/menu-art/).
@@ -81,8 +81,8 @@ const USER_ADS = [
     ...[7, 12, 13, 15, 16, 17].map((n) => ({ n, shape: 'square' })),
 ];
 
-/** Hale's empty ring: [cx, cy, r] in cell fractions (v down from the top, r a fraction of the height). */
-const HALE_RING = { wide: [0.735, 0.5, 0.38], portrait: [0.5, 0.465, 0.205] };
+/** Sukha's empty ring: [cx, cy, r] in cell fractions (v down from the top, r a fraction of the height). */
+const SUKHA_RING = { wide: [0.735, 0.5, 0.38], portrait: [0.5, 0.465, 0.205] };
 
 /**
  * Serenity Transit world posters, in atlas order. `image` is the game's own render of the world
@@ -439,8 +439,8 @@ const withUrls = (images) => images.map((im) => ({
     url: fileUrl(ROOT, im.image), region: im.region || null, focus: im.focus || null, zoom: im.zoom || 1,
 }));
 
-/** Every campaign cell, in table order: user adverts, brands, Hale, transit. */
-function campaignCells({ BRANDS, HALE, TRANSIT }) {
+/** Every campaign cell, in table order: user adverts, brands, Sukha, transit. */
+function campaignCells({ BRANDS, SUKHA, TRANSIT }) {
     const cells = [];
     for (const { n, shape } of USER_ADS) {
         const src = `ads_large_${pad(n)}.jpg`;
@@ -473,14 +473,14 @@ function campaignCells({ BRANDS, HALE, TRANSIT }) {
     }
     for (const shape of ['wide', 'portrait']) {
         cells.push({
-            id: `hale-${shape}`,
-            family: 'hale',
-            brand: 'hale',
+            id: `sukha-${shape}`,
+            family: 'sukha',
+            brand: 'sukha',
             shape,
             motion: 'breathe',
-            ring: HALE_RING[shape],
+            ring: SUKHA_RING[shape],
             src: null,
-            paint: { kind: 'hale', brand: HALE, ring: HALE_RING[shape] },
+            paint: { kind: 'sukha', brand: SUKHA, ring: SUKHA_RING[shape] },
         });
     }
     checkLayouts(TRANSIT_WORLDS);
@@ -1324,8 +1324,8 @@ function installArtInPage() {
             }
             ctx.stroke();
         },
-        /** Hale: a lotus of three petals over a still line. */
-        hale(ctx, A, B, lw = 3) {
+        /** Sukha: a lotus of three petals over a still line. */
+        sukha(ctx, A, B, lw = 3) {
             const g = ctx.createLinearGradient(-46, 0, 46, 0);
             g.addColorStop(0, css(A));
             g.addColorStop(1, css(B));
@@ -1810,7 +1810,7 @@ function installArtInPage() {
         },
     };
 
-    // ---- Hale ------------------------------------------------------------------------------
+    // ---- Sukha ------------------------------------------------------------------------------
     function paintHale(ctx, w, h, b, wide, ring) {
         const A = b.a;
         const B = b.b;
@@ -1856,9 +1856,9 @@ function installArtInPage() {
         };
         if (wide) {
             const x = 38;
-            mark(ctx, 'hale', x + 22, 62, 46, [A, B, 3.2]);
+            mark(ctx, 'sukha', x + 22, 62, 46, [A, B, 3.2]);
             const boxes = block(ctx, [
-                { str: 'HALE', s: word },
+                { str: 'SUKHA', s: word },
                 { str: 'BREATHE IN THE CITY', gap: 18, s: slogan },
                 { str: 'INHALE 4 · EXHALE 6', gap: 34, s: breath },
                 { str: 'TAKE A BREATH.', gap: 22, s: quiet },
@@ -1866,8 +1866,8 @@ function installArtInPage() {
             ], x, 114);
             rule(x, boxes[1].base + 15, 70);
         } else {
-            mark(ctx, 'hale', w / 2, 36, 38, [A, B, 3.4]);
-            block(ctx, [{ str: 'HALE', s: { ...word, size: 52 } }], w / 2, 70, { align: 'center' });
+            mark(ctx, 'sukha', w / 2, 36, 38, [A, B, 3.4]);
+            block(ctx, [{ str: 'SUKHA', s: { ...word, size: 52 } }], w / 2, 70, { align: 'center' });
             const boxes = block(ctx, [
                 { str: 'BREATHE IN THE CITY', s: { ...slogan, size: 15, maxW: w - 40 } },
                 { str: 'INHALE 4 · EXHALE 6', gap: 26, s: breath },
@@ -3347,7 +3347,7 @@ function installArtInPage() {
             if (spec.variant > 1) BRAND_POSTERS_2[spec.brand.id](ctx, w, h, spec.brand);
             else BRAND_PAINTERS[spec.brand.id](ctx, w, h, spec.brand, wide);
             vignette(ctx, w, h, 0.35);
-        } else if (spec.kind === 'hale') {
+        } else if (spec.kind === 'sukha') {
             paintHale(ctx, w, h, spec.brand, wide, spec.ring);
         } else {
             const imgs = [];
@@ -3522,13 +3522,13 @@ export const BILLBOARD_ATLAS = Object.freeze({
 
 /**
  * The campaign cells: ${families} (a wide billboard
- * and two portrait posters per brand), ${n('family', 'hale')} Hale pieces and ${n('family', 'transit')} Serenity
+ * and two portrait posters per brand), ${n('family', 'sukha')} Sukha pieces and ${n('family', 'transit')} Serenity
  * Transit posters.
- *  - \`family\`: 'user' | 'brand' | 'hale' | 'transit'; \`brand\`: the campaign id (neon-district-campaigns.js),
+ *  - \`family\`: 'user' | 'brand' | 'sukha' | 'transit'; \`brand\`: the campaign id (neon-district-campaigns.js),
  *    null for user adverts.
  *  - \`shape\`: ${shapes}; a user advert keeps its own
  *    \`aspect\` inside its shape.
- *  - \`motion\`: 'breathe' (Hale: the shader draws a breathing ring in \`ring\`), 'pan' (transit: drift
+ *  - \`motion\`: 'breathe' (Sukha: the shader draws a breathing ring in \`ring\`), 'pan' (transit: drift
  *    and zoom slowly) or 'none'.
  *  - \`ring\`: [cx, cy, r] of the empty ring area in cell fractions (v down from the top, r a fraction
  *    of the cell height), or null.

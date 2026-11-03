@@ -6,13 +6,13 @@
  * a CSS orb that works on any device. The living world is a lazily loaded three r186 stage
  * (WebGPU, or its WebGL2 backend) that is attached only when a guide actually starts.
  *
- * Two owners drive it: the player (a standalone practice) or a Hale session, which takes the
+ * Two owners drive it: the player (a standalone practice) or a Sukha session, which takes the
  * rhythm over with setExternalControl() and reports its journey through the session methods.
  *
  * Two presentations for a practice of your own: the breathing world (the default), or, in
  * Serenity Mode, **over the theme**: no world of its own, the theme keeps drawing beneath a
  * light veil that breathes, and the breath is published (src/core/breath-signal.js) so every
- * theme's camera breathes with you. A Hale session always has its worlds.
+ * theme's camera breathes with you. A Sukha session always has its worlds.
  */
 import {
     BREATH_WORLDS, DEFAULT_BREATH_WORLD, formatPattern, getBreathWorld, resolveBreathWorldId,
@@ -90,7 +90,7 @@ export class BreathingGuide {
         this.currentTechnique = DEFAULT_BREATH_WORLD;
         /**
          * Whether you may choose a world yourself (one you have found: breath-collection.js). Set
-         * by the game; a Hale session sets its worlds through setTechnique, past this.
+         * by the game; a Sukha session sets its worlds through setTechnique, past this.
          * @type {(id: string) => boolean}
          */
         this.canChoose = () => true;
@@ -607,7 +607,7 @@ export class BreathingGuide {
     }
 
     /**
-     * Get a world ready while the guide is still closed (a Hale session's countdown): the stage
+     * Get a world ready while the guide is still closed (a Sukha session's countdown): the stage
      * starts its renderer and compiles the world behind the hidden canvas, so the session opens on
      * its world instead of on the CSS orb while shaders compile. Kept like a parked stage: given
      * back if no practice starts within STAGE_IDLE_MS.
@@ -637,7 +637,7 @@ export class BreathingGuide {
     }
 
     /**
-     * The world a Hale session moves to next: the stage builds and compiles it while this one
+     * The world a Sukha session moves to next: the stage builds and compiles it while this one
      * breathes (BreathStage.prepareNext), so the stage change shows it at the end of the dip
      * instead of on the CSS orb while it compiles. null drops it.
      * @param {string|null} worldId
@@ -990,7 +990,7 @@ export class BreathingGuide {
         this._text(this.note, subText || '');
     }
 
-    /** @param {string|null} sessionId a Hale session key, e.g. 'FIRST' or 'BASE' */
+    /** @param {string|null} sessionId a Sukha session key, e.g. 'FIRST' or 'BASE' */
     setSessionTheme(sessionId) {
         this.sessionId = SESSION_ACCENTS[sessionId] ? sessionId : null;
         if (this.sessionId) this.root.dataset.session = this.sessionId;
@@ -1040,7 +1040,7 @@ export class BreathingGuide {
         if (!this.isExternallyControlled) return;
         const round = data.round > 0 ? `Round ${data.round} of ${data.totalRounds}` : '';
         this._text(this.eyebrow, [data.sessionName, round].filter(Boolean).join(' · '));
-        // A timed pause (Hale Rest) is a pause, not a hold.
+        // A timed pause (Sukha Nightfall) is a pause, not a hold.
         const stage = this.guidance?.mode === 'timed-hold' ? 'Pause' : SESSION_STAGE_LABELS[data.phase];
         this._text(this.journeyStage, stage || '');
         let detail = '';

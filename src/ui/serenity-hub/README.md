@@ -1,7 +1,7 @@
 # Serenity Hub
 
 The sheet that holds everything around a calm game: the world you play in (themes), what
-you hear (music), rhythms to follow (breathing worlds) and guided journeys (Hale sessions).
+you hear (music), rhythms to follow (breathing worlds) and guided journeys (Sukha sessions).
 It opens over Serenity mode (H, Y on a pad, or the lotus tile) and from the main menu.
 
 The visual language is **Keystone** — see
@@ -9,13 +9,13 @@ The visual language is **Keystone** — see
 tokens and primitives (`.sb-panel`, `.sb-key`, `.sb-btn`, `.sb-kbd`, `.sb-hints`, `.sb-chip`,
 `.sb-meter`, `.sb-toggle`). Breathing content follows
 [docs/BREATHING_OVERHAUL_2026-10.md](../../../docs/BREATHING_OVERHAUL_2026-10.md) and
-[docs/HALE_SESSIONS_2026-10.md](../../../docs/HALE_SESSIONS_2026-10.md).
+[docs/SUKHA_SESSIONS_2026-10.md](../../../docs/SUKHA_SESSIONS_2026-10.md).
 
 ## Files
 
 | File | Role |
 |------|------|
-| `SerenityHub.js` | The sheet: lotus tile, Hale sessions tile, backdrop, header, tab strip, footer hints, open/close, keyboard and gamepad routing, the controls overlay (`/` or Select). |
+| `SerenityHub.js` | The sheet: lotus tile, Sukha sessions tile, backdrop, header, tab strip, footer hints, open/close, keyboard and gamepad routing, the controls overlay (`/` or Select). |
 | `ThemesTab.js` | The library of worlds: the grid of art cards, labelled search, category chips, Random theme, thumbnail hydration, Tornado's live controls. |
 | `ThemeCollectionView.js` | What the collection adds to the Themes tab: the featured world and its action bar, the heading with the count and the progress tiles, the All / Collected / To discover filter. |
 | `theme-card-interactions.js` | Pointer spotlight on theme cards (writes `--mx` / `--my`). |
@@ -23,7 +23,7 @@ tokens and primitives (`.sb-panel`, `.sb-key`, `.sb-btn`, `.sb-kbd`, `.sb-hints`
 | `MusicTab.js` | Now playing with its world's artwork, seek slider, transport, volume sliders, the soundtrack with a thumbnail on every row. |
 | `MusicCollectionView.js` | Which songs are yours (a song comes with its theme) and the panel for one that is not. |
 | `BreathingTab.js` | The twelve breathing worlds and the guide's settings. |
-| `SessionsTab.js` | The Hale catalogue and its full-screen flow (prepare, countdown, complete). |
+| `SessionsTab.js` | The Sukha catalogue and its full-screen flow (prepare, countdown, complete). |
 | `hub-scroll-utils.js` | Wheel / gamepad scrolling of the shared `.hub-tab-content` scroller. |
 | `serenity-drift-panel.js` | The Themes tab's "Serenity Mode" panel: Drift and Rest as pills. Shown only while Serenity Mode runs (it asks the mode's `ui`). |
 
@@ -53,7 +53,7 @@ Tab ids are `themes`, `music`, `breathing`, `sessions` (see `HUB_TABS`). Each ta
 builds its content on first use; `switchTab()` remembers each tab's scroll position.
 
 The `.serenity-hub` class is load-bearing: SerenityMode ignores clicks inside it (the
-sheet, the lotus and Hale tiles, the controls overlay). Keep it on anything new that floats
+sheet, the lotus and Sukha tiles, the controls overlay). Keep it on anything new that floats
 over the game.
 
 ## Themes tab
@@ -127,13 +127,13 @@ the world; the full table is in
 
 | Sheet | Scope |
 |-------|-------|
-| `public/styles/keystone-hub.css` | The sheet, Themes, Music, Hale tile, controls overlay, responsive, reduced motion. Loaded after `keystone.css` and `keystone-menu.css`. |
+| `public/styles/keystone-hub.css` | The sheet, Themes, Music, Sukha tile, controls overlay, responsive, reduced motion. Loaded after `keystone.css` and `keystone-menu.css`. |
 | `public/styles/breathing-library.css` | Breathing tab (`.breath-lib`). |
-| `public/styles/breathwork-sessions.css` | Hale catalogue and `.hale-flow`. |
+| `public/styles/breathwork-sessions.css` | Sukha catalogue and `.sukha-flow`. |
 | `public/styles/breathing-guide.css` | The guide's DOM chrome (`#breathing-guide`). |
 | `public/styles/serenity-hub.css` | Floating icons only (lotus, records, replays, navigator). |
 
-Rules stay scoped under `#serenity-hub-panel`, `.hale-flow` or `#breathing-guide`; do not add
+Rules stay scoped under `#serenity-hub-panel`, `.sukha-flow` or `#breathing-guide`; do not add
 bare generic class rules (`.progress-fill`, `.section-title`, …) — they leak onto other
 screens. No `backdrop-filter`; motion is transform / opacity only, and everything has a
 `prefers-reduced-motion` path. Give controls the cream `:focus-visible` outline; the shared focus ring
@@ -155,7 +155,7 @@ on it.
 `tests/unit/serenity-hub-performance.test.js`, `serenity-hub-hidden-work.test.js`,
 `music-tab-lifecycle.test.js`, `theme-selection-event-isolation.test.js`,
 `breathing-library.test.js`, `breathwork-sessions-presentation.test.js`,
-`hale-session-entry.test.js`, `breathing-guide.test.js`, `menu-coverage.test.js`.
+`sukha-session-entry.test.js`, `breathing-guide.test.js`, `menu-coverage.test.js`.
 
 ## Adding a tab
 

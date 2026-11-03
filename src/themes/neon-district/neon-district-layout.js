@@ -16,7 +16,7 @@ import {
     GLYPH_COUNT, GLYPH_LATIN, GLYPH_SCRIPT, glyphFor,
 } from './neon-district-glyphs.js';
 import {
-    ARCHETYPE_LIGHT, BRANDS, BRAND_WORDS, CAMPAIGNS, HALE, TRADE_SHOPS, WINDOW_SIGNS, archetypeIndex, logoIndex, tickerLine,
+    ARCHETYPE_LIGHT, BRANDS, BRAND_WORDS, CAMPAIGNS, SUKHA, TRADE_SHOPS, WINDOW_SIGNS, archetypeIndex, logoIndex, tickerLine,
 } from './neon-district-campaigns.js';
 import { PAINTED_OPENINGS } from './neon-district-openings.js';
 
@@ -41,7 +41,7 @@ export const SIGN_WORDS = Object.freeze([
 
 /** How often each campaign family comes up when a screen or a wall is given an advert. */
 export const AD_FAMILY_SHARE = Object.freeze({
-    brand: 0.42, transit: 0.38, user: 0.12, hale: 0.08,
+    brand: 0.42, transit: 0.38, user: 0.12, sukha: 0.08,
 });
 
 /** The paste-up walls lean to the travel posters: that is where a city's travel adverts go. */
@@ -94,9 +94,9 @@ function shopDeck() {
         name: c.name, mark: c.short, shop: c.shop, a: c.a, b: c.b, logo: c.logo, brand: c.id,
     });
     BRANDS.filter((c) => c.shop).forEach((c) => deck.push(brandShop(c)));
-    deck.push(brandShop(HALE));
+    deck.push(brandShop(SUKHA));
     // The noodle chain and the laundromat have a branch on each side of the street.
-    deck.push(brandShop(CAMPAIGNS.combo), brandShop(CAMPAIGNS.spin), brandShop(HALE));
+    deck.push(brandShop(CAMPAIGNS.combo), brandShop(CAMPAIGNS.spin), brandShop(SUKHA));
     TRADE_SHOPS.forEach((t) => deck.push({
         name: t.name, mark: t.name, shop: t.shop, a: t.a, b: 0xffffff, logo: t.logo ?? null, brand: null,
     }));
@@ -201,13 +201,13 @@ export function buildLayout(seed = 0x0d15721c) {
         const cell = dealFrom(shape, family, avoid);
         return cell >= 0 ? cell : BILLBOARD_CELLS.findIndex((c) => c.shape === shape);
     };
-    /** Three adverts of one shape for a screen to cycle, Hale's at most once. */
+    /** Three adverts of one shape for a screen to cycle, Sukha's at most once. */
     const playlist = (shape) => {
         const list = [];
         while (list.length < 3) {
             const cell = dealAd(shape, list);
-            const hale = BILLBOARD_CELLS[cell].family === 'hale';
-            if (!hale || !list.some((c) => BILLBOARD_CELLS[c].family === 'hale')) list.push(cell);
+            const sukha = BILLBOARD_CELLS[cell].family === 'sukha';
+            if (!sukha || !list.some((c) => BILLBOARD_CELLS[c].family === 'sukha')) list.push(cell);
         }
         return list;
     };
@@ -893,7 +893,7 @@ export function buildLayout(seed = 0x0d15721c) {
     // ── Every campaign on at least one screen: a campaign the deal missed takes a slot ──
     const shownBy = (id) => plan.screens.some((s) => s.playlist.some((c) => BILLBOARD_CELLS[c].brand === id));
     let donor = 0;
-    [...BRANDS.map((b) => b.id), 'hale', 'transit'].forEach((id) => {
+    [...BRANDS.map((b) => b.id), 'sukha', 'transit'].forEach((id) => {
         if (shownBy(id)) return;
         for (let tries = 0; tries < plan.screens.length; tries++) {
             const screen = plan.screens[(donor + tries) % plan.screens.length];
@@ -903,7 +903,7 @@ export function buildLayout(seed = 0x0d15721c) {
             const runs = (brand) => plan.screens.reduce((n, s) => n + s.playlist.filter((c) => BILLBOARD_CELLS[c].brand === brand).length, 0);
             const slot = screen.playlist.findIndex((c) => {
                 const was = BILLBOARD_CELLS[c];
-                return was.family === 'user' || (was.family !== 'hale' && runs(was.brand) > 1);
+                return was.family === 'user' || (was.family !== 'sukha' && runs(was.brand) > 1);
             });
             if (slot < 0) continue; // eslint-disable-line no-continue
             screen.playlist[slot] = cell;

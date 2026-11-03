@@ -29,7 +29,7 @@ function swashThrough(pattern, cycles = 3) {
 /** Does the out-breath begin at frame `i`? (The spent bore moves out to the break there, unseen.) */
 const outBreathBegins = (frames, i) => frames[i].phase === 2 && frames[i - 1].phase !== 2;
 
-// The technique's own pattern, the Hale Tide's long ebb, and the natural pace of its rest stages
+// The technique's own pattern, the Sukha Tide's long ebb, and the natural pace of its rest stages
 // (a pause at both ends).
 describe.each([[[4, 0, 4, 0]], [[4, 0, 6, 0]], [[...NATURAL_PATTERN]]])('Ocean Tide swash, breathing %j', (pattern) => {
     const frames = swashThrough(pattern);

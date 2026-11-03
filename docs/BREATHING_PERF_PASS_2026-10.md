@@ -1,7 +1,7 @@
-# Breathing worlds and Hale sessions — a performance pass (October 2026)
+# Breathing worlds and Sukha sessions — a performance pass (October 2026)
 
 A static audit and code-level pass over everything that runs while you breathe: the guide and its
-frame loop, the stage and world host, the lens, the Hale session flow, and the twelve worlds in
+frame loop, the stage and world host, the lens, the Sukha session flow, and the twelve worlds in
 all their moods. It was done in a cloud session with no GPU, so **nothing in its first part is a
 frame-time figure** (ADR-0016): the pass changes code, and proves that the pictures did not change.
 A second session then measured on a discrete GPU (an RTX 5080 Laptop GPU) and changed code only where
@@ -29,7 +29,7 @@ orb, while the hidden world went on drawing every frame at full cost. It happene
 - ending a practice and beginning the same world again within 45 s;
 - in Serenity Mode, "Over the theme" then "Own world" on the same world.
 
-A Hale session escaped it by accident (its first `setTechnique` re-asks after `start()`).
+A Sukha session escaped it by accident (its first `setTechnique` re-asks after `start()`).
 `start()` now draws a fresh frame and says "ready" when it starts on the world it already shows.
 Reproduced in a real browser on the commit before (the world never returned within 20 s) and
 fixed after (back in 6 ms); `tests/unit/breath-stage.test.js` (new) pins it.
@@ -219,7 +219,7 @@ WebGPU): the orb's visibility through dawn, pause and resume; the trace's paint 
 restart bug before and after; a prepared start. **Tests:** `breath-stage.test.js` (new: first
 world, restart on the same world, restart on another, prepare without a frame loop, a start during
 a prepare, WebGL2, stop and dispose); `breathing-guide.test.js` (prepare, parking, a practice that
-starts first, preload); `hale-session-practice.test.js` (`prepareSession`); the full unit suite
+starts first, preload); `sukha-session-practice.test.js` (`prepareSession`); the full unit suite
 (1,271 files) and typecheck; and CI's other gates: the lint ratchet (at its baseline, 9 fewer
 warnings), boundaries, release gates, the build and its boot closure, IP strings, the Pages
 artifact and the perf budgets.
@@ -447,7 +447,7 @@ is nvidia-smi's board power through the window (the idle GPU drew 5–16 W befor
 ### Stage changes on hardware
 
 `scripts/breathing-stage-change-probe.mjs` boots the real game, builds a session manager over the
-real guide (as the Hub does) and runs Hale First Breath (Zen Garden → Heart Glow → Sacred Geometry →
+real guide (as the Hub does) and runs Sukha First Breath (Zen Garden → Heart Glow → Sacred Geometry →
 Moonlit Waters → Zen Garden) and Base (Ancient Forest → Electric Storm with light shafts → Cosmic
 Nebula → Heart Glow → Electric Storm) through their stage changes, on High at native resolution.
 Harness-only shortcuts: the stages are shortened in the probe's own copy of the plan (12–24 s each),
@@ -519,7 +519,7 @@ cache (a fresh profile) and one warm:
 The renderer itself is ready about 0.13–0.2 s in. An empty Chromium cache changed nothing measurable:
 the NVIDIA driver keeps its own cache of compiled shaders for the whole machine, which this session
 did not empty (it serves every other application too), so a first visit on a machine that has never
-compiled these shaders is unmeasured. Zen Garden is the slowest to appear by a second. A Hale session
+compiled these shaders is unmeasured. Zen Garden is the slowest to appear by a second. A Sukha session
 hides this behind its countdown (its first world is prepared then); a practice started from the
 Breathing tab shows the CSS orb this long, then the world fades in.
 

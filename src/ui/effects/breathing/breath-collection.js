@@ -1,8 +1,8 @@
 /**
- * Which breathing worlds and Hale sessions a player has found.
+ * Which breathing worlds and Sukha sessions a player has found.
  *
- * Four worlds and Hale First Breath are open from the start. Each Odyssey chapter you finish
- * opens one world and the Hale session that features it (the world you then breathe with as you
+ * Four worlds and Sukha First Breath are open from the start. Each Odyssey chapter you finish
+ * opens one world and the Sukha session that features it (the world you then breathe with as you
  * arrive in the next chapter). Practice opens them too: every PRACTICE_MINUTES_PER_STEP minutes
  * of breathing opens the next one along the same path, so nobody who only breathes is ever
  * blocked. Nothing ever closes again, and an existing player keeps every world and session they

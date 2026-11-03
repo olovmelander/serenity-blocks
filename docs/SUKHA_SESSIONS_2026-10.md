@@ -1,12 +1,12 @@
-# Hale sessions — the practice pass (October 2026)
+# Sukha sessions — the practice pass (October 2026)
 
-The four guided Hale sessions (Base, Elixir, Rest, Flow) rebuilt around what the practice actually
+The four guided Sukha sessions (Base, Elixir, Rest, Flow) rebuilt around what the practice actually
 is: holds you end when you need to breathe, stages that do what their voice says, an intention that
-is used, a real ending, and a result that measures what you did. It replaces the "Hale sessions"
+is used, a real ending, and a result that measures what you did. It replaces the "Sukha sessions"
 part of [BREATHING_OVERHAUL_2026-10.md](BREATHING_OVERHAUL_2026-10.md); the worlds the sessions
 pass through are described by
 [BREATHING_WORLDS_MASTERPIECE_2026-10.md](BREATHING_WORLDS_MASTERPIECE_2026-10.md).
-Captures: [reports/hale-sessions-2026-10](../reports/hale-sessions-2026-10/README.md).
+Captures: [reports/sukha-sessions-2026-10](../reports/sukha-sessions-2026-10/README.md).
 
 **2026-10-10:** five short beginner sessions joined them ([Beginner sessions](#beginner-sessions-2026-10-10));
 then every session was made to breathe the techniques of its worlds, the original four rewritten
@@ -29,10 +29,10 @@ holds.
 
 | Session | Stillness after each round | Arrival | Rest |
 | --- | --- | --- | --- |
-| Hale Base | A hold you end yourself | Paced 5 · 2 · 5 · 2 | Natural breath, no counts |
-| Hale Elixir | A hold you end yourself | Paced 4 · 1 · 4 · 1 | Natural breath, no counts |
-| Hale Rest | The rhythm goes on uncounted, on your own | At your own pace | Natural breath, then sleep (no closing bell) |
-| Hale Flow | The shape goes on uncounted, on your own | At your own pace | Natural breath, no counts |
+| Sukha Homecoming | A hold you end yourself | Paced 5 · 2 · 5 · 2 | Natural breath, no counts |
+| Sukha Phoenix | A hold you end yourself | Paced 4 · 1 · 4 · 1 | Natural breath, no counts |
+| Sukha Nightfall | The rhythm goes on uncounted, on your own | At your own pace | Natural breath, then sleep (no closing bell) |
+| Sukha Mandala | The shape goes on uncounted, on your own | At your own pace | Natural breath, no counts |
 
 (Rest and Flow as rewritten on 2026-10-10: [Every session breathes its worlds](#every-session-breathes-its-worlds-2026-10-10).)
 
@@ -101,11 +101,11 @@ named as such), and each arrival is breathed at your own pace.
 
 | Session | Length | Arrival · rounds (in · pause · out · pause, seconds) · rest | Featured world | For |
 | --- | --- | --- | --- | --- |
-| Hale First Breath | 4:21 | 45 s own pace · 6 × 5·0·5·0 *Heart Glow* · 4 × 4·2·4·2 *A Gentle Square* · 4 × 4·0·8·0 *The Long Breath Out* · 60 s | Heart Glow (then Sacred Geometry, Moonlit Waters) | A first taste of the starter worlds |
-| Hale Tide | 4:57 | 45 s · 10 × 4·0·4·0 · 32 s on your own · 8 × 4·0·6·0 *The Long Ebb* · 60 s | Ocean Tide | Calm and steady |
-| Hale Roots | 4:48 | 45 s · 7 × 4·1·6·0 · 22 s on your own · 6 × 4·2·6·2 *Take Root* · 60 s | Ancient Forest | Feeling grounded |
-| Hale Unwind | 4:57 | 45 s · 8 × 4·1·6·1 · 6 × 5·2·7·2 *Under the Aurora* · 60 s, a sleep closing | Aurora Dreams | The evening, before sleep |
-| Hale Sunrise | 4:00 | 45 s · 10 × 3·1·3·1 *Kindle* · 15 × 2·0·2·0 *Rising Light* · 55 s | Solar Flare | Waking up |
+| Sukha First Breath | 4:21 | 45 s own pace · 6 × 5·0·5·0 *Heart Glow* · 4 × 4·2·4·2 *A Gentle Square* · 4 × 4·0·8·0 *The Long Breath Out* · 60 s | Heart Glow (then Sacred Geometry, Moonlit Waters) | A first taste of the starter worlds |
+| Sukha Tide | 4:57 | 45 s · 10 × 4·0·4·0 · 32 s on your own · 8 × 4·0·6·0 *The Long Ebb* · 60 s | Ocean Tide | Calm and steady |
+| Sukha Roots | 4:48 | 45 s · 7 × 4·1·6·0 · 22 s on your own · 6 × 4·2·6·2 *Take Root* · 60 s | Ancient Forest | Feeling grounded |
+| Sukha Unwind | 4:57 | 45 s · 8 × 4·1·6·1 · 6 × 5·2·7·2 *Under the Aurora* · 60 s, a sleep closing | Aurora Dreams | The evening, before sleep |
+| Sukha Sunrise | 4:00 | 45 s · 10 × 3·1·3·1 *Kindle* · 15 × 2·0·2·0 *Rising Light* · 55 s | Solar Flare | Waking up |
 
 The arrival is 45 s (it was 30 s) so the bell, the welcome, the arrival's line and your intention
 are all spoken before the first round's bell: a stage's voice stops whatever is still playing. The
@@ -148,10 +148,10 @@ rewritten around them:
 
 | Session | Length | Journey | Featured world |
 | --- | --- | --- | --- |
-| Hale Rest | 15 min | 2 min arriving at your own pace · 10 × 4·0·8·0 *The Long Breath Out* · 36 s on your own · 9 × 4·4·8·0 *A Soft Hold* · 32 s · 8 × 4·7·8·0 *Four, Seven, Eight* · 5 min drifting off (no bell) | Cosmic Nebula, round 2 under Moonlit Waters |
-| Hale Flow | 15 min | 90 s at your own pace · 10 × 4·4·4·4 *The Square* · 32 s on your own · 12 × 4·0·4·4 *The Triangle* · 36 s · 9 × 5·5·5·5 *The Wide Square* · 40 s · 4 min rest | Crystal Prism, with Sacred Geometry |
-| Hale Base | 25 min | 150 s at 5·2·5·2 · 30 × 4·0·4·0 *Steady Charge* · 40 × 3.5·0·3.5·0 *Building* · 40 × 3·0·3·0 *Full Charge*, each followed by a hold you end (1:00, 1:30, 2:00 suggested) and a 15 s recovery · 5 min rest | Electric Storm |
-| Hale Elixir | 20 min | 150 s at 4·1·4·1 · 30 × 3·0·2·0 *Kindle the Fire* · 30 × 3·0·2·0 *Stoke the Fire* · 30 × 3·0·2·0 *Full Fire*, each with a hold you end and a recovery · 5 min rest | Volcanic Fire |
+| Sukha Nightfall | 15 min | 2 min arriving at your own pace · 10 × 4·0·8·0 *The Long Breath Out* · 36 s on your own · 9 × 4·4·8·0 *A Soft Hold* · 32 s · 8 × 4·7·8·0 *Four, Seven, Eight* · 5 min drifting off (no bell) | Cosmic Nebula, round 2 under Moonlit Waters |
+| Sukha Mandala | 15 min | 90 s at your own pace · 10 × 4·4·4·4 *The Square* · 32 s on your own · 12 × 4·0·4·4 *The Triangle* · 36 s · 9 × 5·5·5·5 *The Wide Square* · 40 s · 4 min rest | Crystal Prism, with Sacred Geometry |
+| Sukha Homecoming | 25 min | 150 s at 5·2·5·2 · 30 × 4·0·4·0 *Steady Charge* · 40 × 3.5·0·3.5·0 *Building* · 40 × 3·0·3·0 *Full Charge*, each followed by a hold you end (1:00, 1:30, 2:00 suggested) and a 15 s recovery · 5 min rest | Electric Storm |
+| Sukha Phoenix | 20 min | 150 s at 4·1·4·1 · 30 × 3·0·2·0 *Kindle the Fire* · 30 × 3·0·2·0 *Stoke the Fire* · 30 × 3·0·2·0 *Full Fire*, each with a hold you end and a recovery · 5 min rest | Volcanic Fire |
 
 What every session now does:
 
@@ -172,16 +172,16 @@ Built in `src/ui/effects/breathing/breath-collection.js` (pure model) and `breat
 (the game's instance and its evidence), shaped like the theme collection:
 
 - **From the start:** Heart Glow, Moonlit Waters, Sacred Geometry and Zen Garden (balance, sleep,
-  focus, stillness) and Hale First Breath. The default world is Heart Glow.
+  focus, stillness) and Sukha First Breath. The default world is Heart Glow.
 - **Finishing an Odyssey chapter** opens one world and the session that features it: Tide with
   Ocean Tide (chapter 1), Roots with Ancient Forest (2), Unwind with Aurora Dreams (3), Sunrise with
   Solar Flare (4), Rest with Cosmic Nebula (5), Flow with Crystal Prism (6), Base with Electric Storm
   (7), Elixir with Volcanic Fire (8). The completion says so beside the next chapter ("New breath ·
-  Ocean Tide and Hale Tide are yours now"), and the arrival's breathing light, which breathes in
+  Ocean Tide and Sukha Tide are yours now"), and the arrival's breathing light, which breathes in
   that very world, marks it "Yours now". Each session passes only through worlds open by then.
-- **Practice opens them too:** every 15 minutes of breathing (Hale sessions and practice on your
+- **Practice opens them too:** every 15 minutes of breathing (Sukha sessions and practice on your
   own, which is now counted) opens the next closed step, so nobody who only breathes is blocked. A
-  Hale result says what its practice opened; practice on your own announces it with a toast.
+  Sukha result says what its practice opened; practice on your own announces it with a toast.
 - **Nothing closes again.** Openings are kept as grants; an existing player keeps every session in
   their practice log, the worlds those pass through, their practice worlds and their chosen world.
 - **Closed ones are shown, not hidden:** dimmed, with a lock and where they are found ("Found in the
@@ -243,10 +243,10 @@ it begins, its cue words on the first three breaths and on one in ten after
 | `scripts/generate-tts.js` (`npm run tts:list`, `npm run tts:record`) | Records with Gemini TTS whatever is missing or in another voice, resumably; auditions; lists every line's state. |
 | `scripts/tts-recordings.mjs`, `tts-recordings.json` (new) | The take of every recorded clip: its speaker, and a fingerprint of model, voice, style and words. |
 
-**The practice log** stays under `localStorage['serenity.haleSessions']`, now version 2: the old
+**The practice log** stays under `localStorage['serenity.sukhaSessions']`, now version 2: the old
 totals (`count` completed, `seconds`, `last`) are kept, so an existing record carries over, and
 `entries` hold one line per sitting (`id`, `at`, `seconds`, `completed`, `rounds`, `breaths`, `holds`,
-`intention`), the newest 200. Preferences are `localStorage['serenity.halePrefs']`.
+`intention`), the newest 200. Preferences are `localStorage['serenity.sukhaPrefs']`.
 
 **Timing.** The journey and "minutes to go" are laid out by plan (open holds at their suggestion); a
 hold held past its suggestion waits at the end of its mark. What is reported at the end is measured
@@ -257,16 +257,16 @@ carry 0.45, the recovery 0.35, the arrival 0.25, the breathing rounds 0.
 
 ## Verification
 
-- **Unit tests:** `hale-session-practice.test.js` (open holds: Space/tap/limit/pause/timed; Rest's
+- **Unit tests:** `sukha-session-practice.test.js` (open holds: Space/tap/limit/pause/timed; Rest's
   soft pause; the release cue; the intention; the closing and the spacing of the rest's lines; round
   cards; measured results; `snapshot()`; suspensions for the Hub, the end question and a hidden page;
   wake lock), `breathwork-practice-log.test.js`, `breathwork-chimes.test.js`,
-  `hale-session-audio-assets.test.js` (every clip a session can play exists and is seconds long:
+  `sukha-session-audio-assets.test.js` (every clip a session can play exists and is seconds long:
   it fails on the two nine-minute clips this pass trimmed), and new cases in
   `breathing-guide.test.js` and `breathwork-sessions-presentation.test.js`. Existing tests updated
   where the behaviour changed on purpose (Flow's carry stage, the stage data, the practice strip, the
   Hub's two-press End, the end question holding the session).
-- **The real game**, driven by `scripts/capture-hale-sessions.mjs` in headless Chromium on
+- **The real game**, driven by `scripts/capture-sukha-sessions.mjs` in headless Chromium on
   SwiftShader at 1440 × 900 and 390 × 844 (touch): catalogue, preparation, countdown, arrival, a
   round card, an open hold before and after its suggestion, the recovery, the natural rest and its
   closing, the result with a new best, Rest's pause, Flow's carry stage, the catalogue afterwards.
@@ -283,12 +283,12 @@ and a full session played in real time (stages were stepped).
 
 **The beginner pass (2026-10-10):**
 
-- **Unit tests:** `hale-beginner-sessions.test.js` covers several things. Each session is short,
+- **Unit tests:** `sukha-beginner-sessions.test.js` covers several things. Each session is short,
   gentle, two rounds, with no pause over two seconds, and every stage is set in a real world. In the
   opening order, no session passes through a world that is still closed when it opens. A stretch on
   your own is worded by its rhythm. The hold-ready and closing lines are spoken only into silence.
   Unrecorded lines are never loaded, played, scheduled or preloaded.
-- `hale-session-audio-assets.test.js` is reworked. Every line a session can speak is in the script,
+- `sukha-session-audio-assets.test.js` is reworked. Every line a session can speak is in the script,
   and is either recorded and seconds long or absent from disk. The original four sessions are fully
   recorded, the index matches the files, and no line runs over 45 words.
 - Also new: `tts-recordings.test.js`, and new cases in `breathwork-sessions-presentation.test.js`

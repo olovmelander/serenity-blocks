@@ -133,24 +133,24 @@ export class BreathingTab {
                     </div>
                 </section>
                 <section class="breath-lib__notice" hidden>
-                    <p>${csIcon('breath', 16)} A Hale session is running and owns the rhythm.</p>
-                    <button type="button" class="sb-btn breath-open-sessions">Open Hale sessions</button>
+                    <p>${csIcon('breath', 16)} A Sukha session is running and owns the rhythm.</p>
+                    <button type="button" class="sb-btn breath-open-sessions">Open Sukha sessions</button>
                 </section>
                 <section>
                     <h3 class="breath-lib__heading">Twelve worlds <small>${found} · each breathes at its own pace</small></h3>
                     <div class="breath-lib__grid" id="breathing-technique-grid" aria-label="Breathing worlds">${this.techniques.map((world) => this.renderCard(world)).join('')}</div>
                     <p class="breath-lib__found-note">${summary.open === summary.total ? 'Every world is yours.'
-        : `Each Odyssey chapter you finish opens a world, and the Hale session that features it. Breathing opens
+        : `Each Odyssey chapter you finish opens a world, and the Sukha session that features it. Breathing opens
                         them too: every ${PRACTICE_MINUTES_PER_STEP} minutes of practice opens the next.`}</p>
                 </section>
-                <section class="breath-lib__hale">
+                <section class="breath-lib__sukha">
                     <div>
                         <span class="breath-lib__eyebrow">Guided · 4 to 26 minutes</span>
-                        <h3>Hale sessions</h3>
-                        <p>Journeys with a voice through these worlds. Begin with Hale First Breath: four minutes in three of the worlds above.</p>
+                        <h3>Sukha sessions</h3>
+                        <p>Journeys with a voice through these worlds. Begin with Sukha First Breath: four minutes in three of the worlds above.</p>
                     </div>
-                    <button type="button" class="sb-btn breath-open-sessions breath-lib__hale-button">
-                        Explore Hale sessions <span aria-hidden="true">→</span></button>
+                    <button type="button" class="sb-btn breath-open-sessions breath-lib__sukha-button">
+                        Explore Sukha sessions <span aria-hidden="true">→</span></button>
                 </section>
                 <section class="breath-lib__settings">
                     <label class="breath-lib__switch">

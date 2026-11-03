@@ -20,7 +20,7 @@ afterEach(() => {
     dir = null;
 });
 
-describe('Hale voice takes', () => {
+describe('Sukha voice takes', () => {
     it('fingerprints everything that shapes a take, and keeps who said it readable', () => {
         const take = takeOf(SPEAKER);
         expect(take).toEqual({
@@ -85,7 +85,7 @@ describe('Hale voice takes', () => {
 describe('Listening back to a take', () => {
     it('hears numbers, sound-alikes and punctuation as the line, and names what differs', () => {
         expect(compareHeard('Four, seven, eight.', '4, 7, 8.').verdict).toBe('match');
-        expect(compareHeard('Welcome to Hale Tide.', 'Welcome to Hail Tide.').verdict).toBe('match');
+        expect(compareHeard('Welcome to Sukha Tide.', 'Welcome to Hail Tide.').verdict).toBe('match');
         expect(compareHeard('Breathe in...', 'Soft, slow voice. Breathe in.')).toMatchObject({ verdict: 'differs', added: ['soft', 'slow', 'voice'] });
         expect(compareHeard('Let the breath deepen a little.', 'Let the breath deepen little.')).toMatchObject({ verdict: 'close', missing: ['a'] });
         expect(compareHeard('In...', 'Out.')).toMatchObject({ verdict: 'differs', missing: ['in'], added: ['out'] });
@@ -103,7 +103,7 @@ describe('Listening back to a take', () => {
         const text = renderRecordings(clips);
         expect(text).toContain('"retake": 2, "heard": "match"');
         expect(text).not.toContain('"retake": 0');
-        dir = mkdtempSync(path.join(os.tmpdir(), 'hale-takes-'));
+        dir = mkdtempSync(path.join(os.tmpdir(), 'sukha-takes-'));
         const file = path.join(dir, 'takes.json');
         writeRecordings(clips, file);
         expect(readRecordings(file)['cues/hold']).toMatchObject({ retake: 2, heard: 'match' });

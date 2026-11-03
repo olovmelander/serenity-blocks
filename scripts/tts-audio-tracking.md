@@ -1,9 +1,9 @@
-# Hale voice: recording guide (ElevenLabs Eleven v4)
+# Sukha voice: recording guide (ElevenLabs Eleven v4)
 
 **Last updated:** October 10, 2026
 
 Every line the breathing voice speaks is written in `scripts/tts-script.json`: 467 lines, about
-2,760 words, for the nine Hale sessions and the twelve breathing worlds. `npm run tts:list` is the
+2,760 words, for the nine Sukha sessions and the twelve breathing worlds. `npm run tts:list` is the
 live status (every line, its words, and whether it is recorded by the speaker the script names),
 so this page is the how-to, not a checklist to keep in sync.
 
@@ -13,7 +13,7 @@ so this page is the how-to, not a checklist to keep in sync.
   game's own voice, made in ElevenLabs.
 - **Recorded:** every line, in olov-voice at stability 0.5 with pauses sent as tags (chosen from
   the audition on October 10, 2026). The plan has no 44.1 kHz output, so the takes are 24 kHz.
-- **Breath cues are never one clip.** Every Hale session and every world has its own takes for
+- **Breath cues are never one clip.** Every Sukha session and every world has its own takes for
   the breath in, the hold, the breath out and the rest, so no two breaths in a row sound alike
   and no two sessions or worlds say the same words: see [Cue takes](#cue-takes) below.
 - A line that is not recorded is never requested: the session shows its words on screen. Sessions
@@ -116,7 +116,7 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
    again; `--no-verify` skips listening on a record run.
 
 7. **Check and commit.** `npm run tts:list` shows every line ✓. Then run
-   `npx vitest run tests/unit/hale-session-audio-assets.test.js tests/unit/tts-recordings.test.js`
+   `npx vitest run tests/unit/sukha-session-audio-assets.test.js tests/unit/tts-recordings.test.js`
    (every clip a few seconds long, the index matching the files), listen to a session or two, and
    commit together: `public/assets/audio/breathwork/voices/`,
    `src/ui/effects/breathwork-recorded-voices.js`, `scripts/tts-recordings.json` and
@@ -146,7 +146,7 @@ The direction the voice serves (one calm guide, no hype, fewer words deeper) is 
 they match.
 
 **A new line:** add it to a group in `tts-script.json` (45 words at most) and reference it from the
-session data. `hale-session-audio-assets.test.js` fails for a line a session can play that is not in
+session data. `sukha-session-audio-assets.test.js` fails for a line a session can play that is not in
 the script, and for a line in the script that nothing plays.
 
 ## Cue takes
@@ -155,7 +155,7 @@ A breath has four parts: the breath **in**, the **hold** with the lungs full, th
 and the **rest** with them empty. The voice has words for all four, and never one clip for any of
 them:
 
-- **Each Hale session has its own takes** (script groups `cues_first` ... `cues_elixir`, written
+- **Each Sukha session has its own takes** (script groups `cues_first` ... `cues_elixir`, written
   in `src/ui/effects/breathing/session-cues.js`): about six for the breath in and six for the
   breath out, and three to five for a hold or a rest its rounds have. Two of the in and out takes
   are `plain` ("Breathe in, with the sea"): a guided run opens on one of them, in turn, and its
@@ -191,7 +191,7 @@ npm run tts:index -- --prune     # remove the clips of takes that left
 `tts:cues` writes each take as its words with `...` for each comma and at the end ("Breathe in,
 softly" is spoken "Breathe in... softly..."); a line that already says its words is left exactly
 as it is, so its recording stays current. Tests hold it together
-(`hale-session-audio-assets.test.js`, `breath-cue-variety.test.js`):
+(`sukha-session-audio-assets.test.js`, `breath-cue-variety.test.js`):
 
 - every take is a line the game plays, and a line says the words the source has;
 - no two takes anywhere say the same words;

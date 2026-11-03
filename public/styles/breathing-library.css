@@ -1,5 +1,5 @@
 /* Breathing tab (Keystone): one featured world with a Begin that begins, the twelve worlds
-   as artwork, the way into Hale sessions, and two preferences. Each world brings its own
+   as artwork, the way into Sukha sessions, and two preferences. Each world brings its own
    accent as --world-accent (r, g, b); the chosen world wears it on its frame.
    Shell, tokens (--hub-card-r, --hub-card-fill) and shared patterns: keystone-hub.css. */
 #serenity-hub-panel .breath-lib {
@@ -431,8 +431,8 @@
     outline-offset: 3px;
 }
 
-/* ---- The way into Hale sessions ---------------------------------------------------- */
-#serenity-hub-panel .breath-lib__hale {
+/* ---- The way into Sukha sessions ---------------------------------------------------- */
+#serenity-hub-panel .breath-lib__sukha {
     --world-accent: var(--sb-mint-rgb);
     display: flex;
     align-items: center;
@@ -446,13 +446,13 @@
         var(--hub-card-fill);
 }
 
-#serenity-hub-panel .breath-lib__hale h3 {
+#serenity-hub-panel .breath-lib__sukha h3 {
     margin: 12px 0 8px;
     color: var(--sb-text);
     font: 700 1.375rem / 1.15 var(--sb-font-display);
 }
 
-#serenity-hub-panel .breath-lib__hale p {
+#serenity-hub-panel .breath-lib__sukha p {
     max-width: 52ch;
     margin: 0;
     color: var(--sb-text-muted);
@@ -518,7 +518,7 @@
     #serenity-hub-panel .breath-rhythm__step { min-width: 46px; letter-spacing: 0.1em; }
     #serenity-hub-panel .breath-lib__begin { flex: 1 1 auto; }
     #serenity-hub-panel .breath-lib__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
-    #serenity-hub-panel .breath-lib__hale { flex-direction: column; align-items: stretch; gap: 16px; padding: 18px; }
+    #serenity-hub-panel .breath-lib__sukha { flex-direction: column; align-items: stretch; gap: 16px; padding: 18px; }
     #serenity-hub-panel .breath-lib__settings { grid-template-columns: minmax(0, 1fr); }
     #serenity-hub-panel .breath-lib__notice { flex-direction: column; align-items: flex-start; }
 }

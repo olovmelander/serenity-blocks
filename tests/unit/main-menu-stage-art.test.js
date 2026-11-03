@@ -31,7 +31,7 @@ describe('main menu stage art', () => {
         expect(chapterForProgress(null, null)).toBeNull();
     });
 
-    it('shows the newest open Hale session along the breath path', () => {
+    it('shows the newest open Sukha session along the breath path', () => {
         const order = [...STARTER_SESSIONS, ...BREATH_LADDER.map((step) => step.session)];
         expect(newestOpenSession(order, (id) => id === 'FIRST')).toBe('FIRST');
         expect(newestOpenSession(order, (id) => ['FIRST', 'TIDE', 'ROOTS'].includes(id))).toBe('ROOTS');
@@ -40,9 +40,9 @@ describe('main menu stage art', () => {
         expect(newestOpenSession(order, () => false)).toBe('FIRST');
     });
 
-    it('has a picture for every mode, every Odyssey chapter and every Hale session', () => {
+    it('has a picture for every mode, every Odyssey chapter and every Sukha session', () => {
         Object.entries(MAIN_MENU_MODES).forEach(([mode, spec]) => {
-            if (mode === 'odyssey' || mode === 'hale') return;
+            if (mode === 'odyssey' || mode === 'sukha') return;
             expect(spec.art?.file, mode).toBeTruthy();
             expect(existsSync(path.join(PUBLIC, 'assets/menu-art', `${spec.art.file}.webp`)), spec.art.file).toBe(true);
         });

@@ -35,7 +35,7 @@ export function canExploreThemeCollection(app) {
 export function themeCollectionDependencies(app) {
     return {
         themeCollection: app.themeCollection,
-        // An Odyssey chapter also opens a breathing world and its Hale session (breath-collection.js).
+        // An Odyssey chapter also opens a breathing world and its Sukha session (breath-collection.js).
         breathCollection: getBreathCollection(),
         canExploreTheme: () => canExploreThemeCollection(app),
         onExploreTheme: (themeId) => exploreThemeFromCollection(app, themeId),

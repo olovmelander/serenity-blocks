@@ -167,7 +167,7 @@ Where it shows:
   the fallback backdrops sit on `--sb-void-sky`; the chapter-coloured portal stays Odyssey's own.
 
 Not changed: the Odyssey portal transitions into and out of a level (in-world canvas cinematics),
-the Ready/Go cue, the Hale session countdown and the return to the menu (the intro world revives;
+the Ready/Go cue, the Sukha session countdown and the return to the menu (the intro world revives;
 no cover).
 
 Verified: a harness page with the real stylesheets and modules (every cover, both countdowns, the

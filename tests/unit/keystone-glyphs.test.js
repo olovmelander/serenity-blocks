@@ -13,7 +13,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const html = readFileSync(path.join(repoRoot, 'index.html'), 'utf8');
 
 const IDENTITY = ['mode-single', 'mode-infinity', 'mode-stillfall', 'mode-local', 'mode-online', 'mode-serenity',
-    'mode-hale', 'mode-odyssey', 'records', 'replays', 'settings', 'themes', 'breathing', 'note'];
+    'mode-sukha', 'mode-odyssey', 'records', 'replays', 'settings', 'themes', 'breathing', 'note'];
 const MODES = {
     single: 'mode-single',
     infinity: 'mode-infinity',
@@ -21,7 +21,7 @@ const MODES = {
     'local-multiplayer': 'mode-local',
     'online-multiplayer': 'mode-online',
     serenity: 'mode-serenity',
-    hale: 'mode-hale',
+    sukha: 'mode-sukha',
     odyssey: 'mode-odyssey',
 };
 const DOCK = {

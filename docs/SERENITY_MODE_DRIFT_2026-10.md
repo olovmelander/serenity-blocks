@@ -103,7 +103,7 @@ same choices as pills a controller can reach (shown only in Serenity Mode). Save
 - **A timer**: the next theme from the shuffle deck, counted from the last change, so a theme you
   just chose gets its full time.
 - Drift holds while the theme is covered or you are choosing (the Hub, Settings, breathing in its
-  own world, a Hale session, the rest veil) and keeps the time it had left. Breathing over the
+  own world, a Sukha session, the rest veil) and keeps the time it had left. Breathing over the
   theme does not hold it. Drift's own changes are not saved as your background.
 
 ## Rest
@@ -112,11 +112,11 @@ same choices as pills a controller can reach (shown only in Serenity Mode). Save
 (the bar's chip, or the Hub). When the time is up the music fades and the screen dims to night over
 45 seconds; then the music pauses, the theme stops drawing (`window.isThemeCovered`, as under the
 breathing guide) and the screen wake lock is released, so the machine can rest too. Any key,
-pointer or button brings everything back at the volume you had. A Hale session running when the
+pointer or button brings everything back at the volume you had. A Sukha session running when the
 time is up finishes first. The rest timer lasts for one visit; it is not saved.
 
 **The screen stays awake** while Serenity Mode is watched (Screen Wake Lock, asked for again when
-the page comes back from hidden; Electron grants it). Before this, only Hale sessions held it.
+the page comes back from hidden; Electron grants it). Before this, only Sukha sessions held it.
 
 ## Breathing over the theme
 
@@ -136,7 +136,7 @@ practice of your own:
   still, as before.
 
 Choose it with the guide's own **Over the theme** / **Own world** button (top right, beside the
-arrows) or the Breathing tab's **Over the theme** switch; saved as `breathingOverTheme`. A Hale
+arrows) or the Breathing tab's **Over the theme** switch; saved as `breathingOverTheme`. A Sukha
 session always breathes in its worlds. A world parked behind the veil gives its GPU device back
 after 45 s. Drift and the theme arrows keep working while you breathe over the theme (← → change
 the breathing world, as in the guide).
@@ -227,7 +227,7 @@ Build-up     [Rush] [Fever]
   Notices stand on the strip (the tray publishes its height as `--serenity-effects-h`), and the
   dock steps out while it is open; beside the panel, the caption, the dock and the notices
   centre on the rest of the screen. It steps aside with the
-  world bar whenever something else has the screen (the Hub, the breathing guide, a Hale
+  world bar whenever something else has the screen (the Hub, the breathing guide, a Sukha
   session, the rest veil), and that ends what was playing. Drift holds while it is open or an
   effect plays, so the world you are trying stays. While it is in view, or Play all runs with it
   folded away, it owns Esc, as the Hub does (it listens on the way down, before Settings'

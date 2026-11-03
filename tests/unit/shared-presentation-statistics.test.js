@@ -115,7 +115,7 @@ const everyNode = (guide) => [
 const writeCount = (guide) => everyNode(guide).reduce((sum, el) => sum + el.writes.length, 0);
 
 const progress = {
-    sessionName: 'Hale Base', phase: 'active', phaseIndex: 2, phaseProgress: 0.3, round: 1, totalRounds: 3,
+    sessionName: 'Sukha Homecoming', phase: 'active', phaseIndex: 2, phaseProgress: 0.3, round: 1, totalRounds: 3,
     totalBreaths: 20, breathCount: 4, remainingTime: 90, sessionProgress: 0.3, sessionRemaining: 600,
 };
 
@@ -166,7 +166,7 @@ describe('breathing presentation retains identical state', () => {
         for (let i = 0; i < 100; i++) guide.updateProgress({ ...progress, round: 2, breathCount: 8 });
         expect(writeCount(guide)).toBe(0);
         guide.showProgress(true);
-        expect(guide.eyebrow.textContent).toBe('Hale Base · Round 2 of 3');
+        expect(guide.eyebrow.textContent).toBe('Sukha Homecoming · Round 2 of 3');
         expect(guide.journeyDetail.textContent).toBe('Breath 9 of 20');
         expect(guide.journey.hidden).toBe(false);
     });
