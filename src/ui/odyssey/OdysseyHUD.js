@@ -816,6 +816,7 @@ export class OdysseyHUD {
             objectiveText = formatOdysseyChainGoal(target);
             break;
         case 'tetrises':
+        case 'rubble':
             objectiveText = formatOdysseyMapObjective({ type, target });
             break;
         case 'time':
@@ -910,6 +911,9 @@ export class OdysseyHUD {
         case 'tetrises':
             current = this.metrics.tetrises || 0;
             break;
+        case 'rubble':
+            current = this.metrics.rubbleCleared || 0;
+            break;
         case 'time':
             current = Math.floor(this.elapsedTime / 1000);
             break;
@@ -971,6 +975,12 @@ export class OdysseyHUD {
                 break;
             case 'time':
                 if (this.elapsedTime / 1000 > value) return false;
+                break;
+            case 'survived':
+                if (this.elapsedTime / 1000 < value) return false;
+                break;
+            case 'rubbleCleared':
+                if ((this.metrics.rubbleCleared || 0) < value) return false;
                 break;
             case 'bonuses':
                 if (this.metrics.bonuses < value) return false;

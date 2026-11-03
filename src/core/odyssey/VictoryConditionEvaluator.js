@@ -36,6 +36,9 @@ export class VictoryConditionEvaluator {
             frags: 0,
             deaths: 0,
             opponentFrags: 0,
+            // Rubble rows still on the board and rows dug out since the start (the "rubble" goal).
+            rubbleLeft: 0,
+            rubbleCleared: 0,
         };
     }
 
@@ -150,6 +153,17 @@ export class VictoryConditionEvaluator {
     }
 
     /**
+     * Rubble rows left on the board, against the rows the attempt started with.
+     * @param {number} left - rows still holding rubble
+     * @param {number} start - rubble rows at the start of the attempt
+     */
+    updateRubble(left, start) {
+        const rowsLeft = Math.max(0, Number(left) || 0);
+        this.trackedMetrics.rubbleLeft = rowsLeft;
+        this.trackedMetrics.rubbleCleared = Math.max(0, (Number(start) || 0) - rowsLeft);
+    }
+
+    /**
      * Track a piece placed
      */
     onPiecePlaced() {
@@ -196,6 +210,13 @@ export class VictoryConditionEvaluator {
 
         case 'tetrises':
             return this.trackedMetrics.tetrises >= condition.target;
+
+        case 'rubble': {
+            // Dig out N rubble rows, never more than the attempt started with.
+            const { rubbleCleared, rubbleLeft } = this.trackedMetrics;
+            const goal = Math.min(condition.target, rubbleCleared + rubbleLeft);
+            return goal > 0 && rubbleCleared >= goal;
+        }
 
         case 'frags':
             return this.trackedMetrics.frags >= condition.target;
@@ -323,6 +344,8 @@ export class VictoryConditionEvaluator {
             let metricKey = key;
             if (key === 'combo') metricKey = 'maxCombo';
             else if (key === 'maxDeaths') metricKey = 'deaths';
+            // A survival star counts the seconds survived: at least that long (`time` is a finish-within bound).
+            else if (key === 'survived') metricKey = 'time';
 
             // Get value from metrics or gameState
             let value = this.trackedMetrics[metricKey];

@@ -25,6 +25,7 @@ import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 import { describeOdysseyCharms } from '../../core/odyssey/odyssey-charm-bag.js';
+import { hasOdysseyTimeBoard, isOdysseyTimeBoardRun } from '../../core/odyssey/odyssey-time-board.js';
 import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 import { createOdysseyStarRow } from './odyssey-orb-art.js';
 import {
@@ -154,13 +155,14 @@ export function createResultsModal({
         const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
         const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
         // A charmed run is not uploaded to the orb's time board (OdysseyMode._syncSteamStats), so
-        // it is not placed among its times either.
-        const timeRanked = !(results.charms?.length > 0);
+        // it is not placed among its times either; a survival orb has no fastest-first board at all.
+        const timeRanked = isOdysseyTimeBoardRun(levelConfig, results);
+        const showsTimeBoard = hasOdysseyTimeBoard(levelConfig);
 
         leaderboardPanel = new SteamLeaderboardPanel({
             title: 'Odyssey leaderboards',
             boards: [
-                {
+                ...(showsTimeBoard ? [{
                     id: 'level-time',
                     label: 'Orb time',
                     name: levelBoard,
@@ -168,7 +170,7 @@ export function createResultsModal({
                     formatScore: formatMilliseconds,
                     sortOrder: 'asc',
                     pendingLabel: 'You · this run',
-                },
+                }] : []),
                 {
                     id: 'total-stars',
                     label: 'Total stars',
@@ -179,7 +181,7 @@ export function createResultsModal({
                     pendingLabel: 'You · now',
                 },
             ],
-            defaultBoardId: 'level-time',
+            defaultBoardId: showsTimeBoard ? 'level-time' : 'total-stars',
             pageSize: 8,
         });
 

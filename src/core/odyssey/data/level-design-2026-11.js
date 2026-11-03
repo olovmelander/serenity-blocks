@@ -92,15 +92,19 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     },
     // Keep; retag it as practice.
     7: { role: 'reinforce' },
-    // The chapter's digging twist: 6 rubble rows at chapter 2's pace (450 → 331 ms instead of 320 → 151), 28 lines
-    // instead of 35. "No singles" is out of reach with rubble, so three stars are a time (65 s).
+    // The chapter's digging twist now digs: dig out the 6 rubble rows (phase 3's new goal) at chapter 2's pace
+    // (450 → 331 ms instead of 320 → 151). Two and three stars for digging fast.
     8: {
         mechanics: {
             board: { startingRows: 6 },
             speed: { startLevel: 3, fixedDropInterval: 450, levelProgression: true },
         },
-        victory: { primary: { type: 'lines', target: 28 }, bonuses: [] },
-        stars: { one: { lines: 28 }, two: { lines: 28, time: 100 }, three: { lines: 28, time: 60 } },
+        victory: { primary: { type: 'rubble', target: 6 }, bonuses: [] },
+        stars: {
+            one: { rubbleCleared: 6 },
+            two: { rubbleCleared: 6, time: 50 },
+            three: { rubbleCleared: 6, time: 25 },
+        },
         role: 'twist',
     },
     // The boss joins the chapter's two ideas: cascades out of a deep seabed (8 rubble rows, 8 cascades instead of
@@ -409,20 +413,27 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { score: 50000, time: 130, bonuses: 1 },
         },
     },
-    // A breather between the arc's two tests: 45,000 instead of 70,000, at 170 → 126 ms instead of 65 → 44. Stars:
-    // 3 Quads, then 6. Phase 3 can make it a survival goal ("keep the ember alive").
+    // Phase 3's survival goal ("keep the ember alive"): last 90 seconds from 170 ms while the pieces fall twice as
+    // fast every 2:30, then play on; two stars at 3 minutes, three at 5. A twist between the arc's two tests
+    // instead of a 70,000-point grind at 65 → 44 ms.
     39: {
-        mechanics: { speed: { startLevel: 9, fixedDropInterval: 170, levelProgression: true } },
+        victoryLapPolicy: 'showcase',
+        mechanics: {
+            speed: {
+                startLevel: 9,
+                fixedDropInterval: 170,
+                levelProgression: false,
+                doublingSeconds: 150,
+            },
+        },
+        modifiers: { active: [] },
         victory: {
-            primary: { type: 'score', target: 45000 },
-            bonuses: [{ type: 'tetris-count', target: 6, description: 'Clear 6 Quads' }],
+            primary: { type: 'time', target: 90 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [],
         },
-        stars: {
-            one: { score: 45000 },
-            two: { score: 45000, tetrises: 3 },
-            three: { score: 45000, tetrises: 6 },
-        },
-        role: 'reinforce',
+        stars: { one: { survived: 90 }, two: { survived: 180 }, three: { survived: 300 } },
+        role: 'twist',
     },
     // 45 lines in 210 s at 170 → 145 ms (0.55 pieces/s for one star instead of 0.76). Three stars: within 95 s and
     // 6 Quads, instead of 12 Quads that no policy reached.

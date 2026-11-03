@@ -109,7 +109,7 @@ describe('Odyssey campaign objectives', () => {
     it('makes every no-lap star primary requirement achievable before completion stops play', () => {
         for (const level of LEVEL_CONFIGS.filter((entry) => entry.victoryLapPolicy === 'none')) {
             const { primary } = level.victory;
-            const metric = primary.type === 'cascade' ? 'cascades' : primary.type;
+            const metric = { cascade: 'cascades', rubble: 'rubbleCleared' }[primary.type] || primary.type;
             for (const tier of ['one', 'two', 'three']) {
                 expect(level.stars[tier][metric], `Level ${level.id}, ${tier} stars`).toBe(primary.target);
             }
