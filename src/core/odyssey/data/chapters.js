@@ -222,7 +222,7 @@ export const CHAPTER_CONFIGS = [
         // Collection revision adds a fourteenth orb: Vesper pauses after the alien dunes.
         levelRange: [35, 48],
         arcBeats: [
-            'arrival', 'reinforce', 'reinforce', 'test', 'reinforce', 'test', 'release',
+            'arrival', 'reinforce', 'reinforce', 'test', 'twist', 'test', 'release',
             'test', 'release', 'reinforce', 'test', 'release', 'boss', 'rival',
         ],
         targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 6, 7, 10, 7, 10, 10],

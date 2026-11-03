@@ -16,6 +16,7 @@ import { columnsToMask, maskArrayToBits } from '../garbage.js';
 import { VictoryConditionEvaluator } from './VictoryConditionEvaluator.js';
 import { ModifierStack } from './ModifierStack.js';
 import { MechanicsMixer } from './MechanicsMixer.js';
+import { countRubbleRows } from './odyssey-rubble.js';
 import { bindLegacySessionRng } from '../session-rng.js';
 import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from '../infinity-spawn-policy.js';
 
@@ -43,6 +44,9 @@ function buildStartingRowEntries(rowCount, levelId = 0) {
     });
 }
 
+// The fastest drop the level table reaches (constants.js getDropIntervalForLevel), the survival ramp's limit.
+const MIN_DROP_INTERVAL_MS = 10;
+
 function resolveStartingRowCount(requestedRows, totalRows) {
     const requested = Math.max(0, Math.floor(Number(requestedRows) || 0));
     const maxSeedRows = Math.max(0, totalRows - HIDDEN_ROWS - 4);
@@ -61,6 +65,8 @@ export class GameplayHybridEngine {
         this.victoryEvaluator = new VictoryConditionEvaluator();
         this.modifierStack = new ModifierStack();
         this.mechanicsMixer = new MechanicsMixer();
+        this.rubbleStart = 0;
+        this.rampBaseInterval = null;
     }
 
     /**
@@ -167,6 +173,11 @@ export class GameplayHybridEngine {
         }
 
         this.seedStartingRows();
+        // The rows a "rubble" goal counts down from (level design audit 2026-11, phase 3).
+        this.rubbleStart = countRubbleRows(this.gameState.boardGrid);
+        this.refreshRubble();
+        // A survival ramp (phase 3) halves the drop interval every `doublingSeconds` of play, from the opening.
+        this.rampBaseInterval = Number(mechanics.speed?.doublingSeconds) > 0 ? this.gameState.dropInterval : null;
 
         console.log('[HybridEngine] GameState created:', {
             isInfinityMode: isInfinityBased,
@@ -294,6 +305,20 @@ export class GameplayHybridEngine {
      */
     updateTime(elapsedSeconds) {
         this.victoryEvaluator.updateTime(elapsedSeconds);
+        this.applySpeedRamp(elapsedSeconds);
+    }
+
+    /**
+     * Survival ramp: the pieces fall twice as fast every `speed.doublingSeconds` of play (sim time, so a replay
+     * ramps the same), down to the fastest drop the game has.
+     * @param {number} elapsedSeconds
+     */
+    applySpeedRamp(elapsedSeconds) {
+        const doubling = Number(this.levelConfig?.mechanics?.speed?.doublingSeconds);
+        if (!this.gameState || !(this.rampBaseInterval > 0) || !(doubling > 0)) return;
+        const seconds = Math.max(0, Number(elapsedSeconds) || 0);
+        const interval = this.rampBaseInterval * 0.5 ** (seconds / doubling);
+        this.gameState.dropInterval = Math.max(MIN_DROP_INTERVAL_MS, interval);
     }
 
     /**
@@ -315,6 +340,7 @@ export class GameplayHybridEngine {
      */
     checkVictory() {
         if (!this.levelConfig || !this.gameState) return false;
+        this.refreshRubble();
         return this.victoryEvaluator.evaluate(this.gameState, this.levelConfig.victory);
     }
 
@@ -333,6 +359,7 @@ export class GameplayHybridEngine {
      */
     calculateStars() {
         if (!this.levelConfig) return 0;
+        this.refreshRubble();
         return this.victoryEvaluator.calculateStars(
             this.levelConfig.stars,
             this.gameState,
@@ -354,7 +381,14 @@ export class GameplayHybridEngine {
      * @returns {Object}
      */
     getMetrics() {
+        this.refreshRubble();
         return this.victoryEvaluator.getMetrics();
+    }
+
+    /** Count the rubble rows left on the settled board (cheap: one pass over the grid). */
+    refreshRubble() {
+        if (!this.gameState?.boardGrid || this.gameState.isProcessingPhysics) return;
+        this.victoryEvaluator.updateRubble(countRubbleRows(this.gameState.boardGrid), this.rubbleStart);
     }
 
     /**
@@ -389,6 +423,8 @@ export class GameplayHybridEngine {
         this.levelConfig = null;
         this.gameState = null;
         this.victoryEvaluator.reset();
+        this.rubbleStart = 0;
+        this.rampBaseInterval = null;
         this.modifierStack.clear();
         this.mechanicsMixer.reset();
     }

@@ -10,6 +10,9 @@ const RESET_RULE = 'Both wells reset after every top-out.';
 const MULTIPLIER_RULE = 'Clears on consecutive pieces raise your score multiplier.';
 const MIRROR_RULE = 'Left and right controls are reversed.';
 const QUAD_RULE = 'A Quad is four lines cleared by one piece: leave one column open for a long I piece.';
+const RUBBLE_RULE = 'Rubble rows have gaps: clear the rows above them, then fill the gaps to break each row.';
+const SURVIVAL_RULE = 'Stay alive until the timer reaches the goal, then keep going: '
+    + 'every extra second counts toward your stars.';
 
 function positiveNumber(value) {
     return Number.isFinite(value) && value > 0 ? value : null;
@@ -51,7 +54,18 @@ function getGoalRule(level) {
     if (type === 'cascade') return CASCADE_RULE;
     if (type === 'combo') return CHAIN_RULE;
     if (type === 'tetrises') return QUAD_RULE;
+    if (type === 'rubble') return RUBBLE_RULE;
+    if (type === 'time') return SURVIVAL_RULE;
     return null;
+}
+
+/** A survival ramp in words: "The pieces fall twice as fast every 2:30." (phase 3) */
+function getSpeedRamp(level) {
+    const seconds = positiveNumber(level?.mechanics?.speed?.doublingSeconds);
+    if (!seconds) return null;
+    const every = seconds % 60 === 0 ? `${seconds / 60} minute${seconds === 60 ? '' : 's'}`
+        : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    return `The pieces fall twice as fast every ${every}.`;
 }
 
 function hasSpeedProgression(level) {
@@ -65,7 +79,7 @@ function getGoal(level) {
     const primary = level?.victory?.primary;
     if (!primary || !positiveNumber(primary.target)) return 'Clear the orb';
     if (primary.type === 'height') return `Build to ${primary.target} rows`;
-    if (!['lines', 'score', 'cascade', 'time', 'combo', 'tetrises', 'frags'].includes(primary.type)) {
+    if (!['lines', 'score', 'cascade', 'time', 'combo', 'tetrises', 'rubble', 'frags'].includes(primary.type)) {
         return 'Clear the orb';
     }
     return formatOdysseyMapObjective(primary);
@@ -96,6 +110,7 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
         goalRule,
         !duel && board && (board.rows !== 20 || board.startingRows > 0) && board.text,
         multiplier && MULTIPLIER_RULE,
+        getSpeedRamp(nextLevel),
         hasModifier(nextLevel, 'speed-up') && 'Pieces fall 50% faster.',
         hasModifier(nextLevel, 'slow-start') && 'Opening drop speed is slower.',
     ].filter(Boolean);
@@ -129,9 +144,12 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
         changes.push(hasModifier(nextLevel, 'slow-start')
             ? 'Opening drop speed is slower.' : 'The slower opening is gone.');
     }
+    const ramp = getSpeedRamp(nextLevel);
+    if (ramp && ramp !== getSpeedRamp(previousLevel)) changes.push(ramp);
     const progression = hasSpeedProgression(nextLevel);
     const previousProgression = hasSpeedProgression(previousLevel);
-    if (progression !== null && previousProgression !== null && progression !== previousProgression) {
+    if (!ramp && !getSpeedRamp(previousLevel)
+        && progression !== null && previousProgression !== null && progression !== previousProgression) {
         changes.push(progression ? 'Drop speed increases as you clear lines.' : 'Drop speed stays steady.');
     }
     // Keep routine handoffs brief; a changed deadline or controls may need a third cue.
