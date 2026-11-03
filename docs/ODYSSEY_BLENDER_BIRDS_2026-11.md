@@ -294,6 +294,14 @@ against the beat; gull bouts that start and end at mid-upstroke; swallows that n
 bank softly; the skein's wave and breathing; vultures that soar; the eagle's joints without a
 corner.
 
+### The butterflies
+
+The meadows' butterflies (composition/odyssey-meadow-life.js) are flat cut-outs facing the eye.
+Their wings' width was |cos| of the clock: it hit closed with a speed and bounced straight back,
+a corner every beat. The wings' elevation now swings smoothly from flat to nearly closed above the
+back and down again (the width is its cosine, never below 0.15), and the body bobs 0.12 u with each
+beat, rising as the wings come down. A test checks both have no corner.
+
 ### Left as it was
 
 - The models' design (checked at game size in the first pass). The gulls near L16 are often
