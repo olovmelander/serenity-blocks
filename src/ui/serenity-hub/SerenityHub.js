@@ -24,21 +24,21 @@ import { csIcon } from '../components/cosmic-icons.js';
 import { DEFAULT_SETTINGS } from '../../core/constants.js';
 import { describeKey } from '../settings.js';
 
-/** The Hub's sections in strip order. The eyebrow follows the main menu's "Breath · …" voice. */
+/** The Hub's sections in strip order. The eyebrow follows the main menu's "Breathe · …" voice. */
 const HUB_TABS = Object.freeze([
     {
-        id: 'themes', label: 'Themes', eyebrow: 'Breath · The world you play in', icon: 'themes',
+        id: 'themes', label: 'Themes', eyebrow: 'Breathe · The world you play in', icon: 'themes',
     },
     {
-        id: 'music', label: 'Music', eyebrow: 'Breath · What you hear', icon: 'note',
+        id: 'music', label: 'Music', eyebrow: 'Breathe · What you hear', icon: 'note',
     },
     {
-        id: 'breathing', label: 'Breathing', eyebrow: 'Breath · Rhythms to follow', icon: 'breathing',
+        id: 'breathing', label: 'Breathing', eyebrow: 'Breathe · Rhythms to follow', icon: 'breathing',
     },
     {
         id: 'sessions',
         label: 'Sukha sessions',
-        eyebrow: 'Breath · Guided journeys',
+        eyebrow: 'Breathe · Guided journeys',
         icon: 'mode-sukha',
         ariaLabel: 'Sukha sessions · guided breathwork',
     },

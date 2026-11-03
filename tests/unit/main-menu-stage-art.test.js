@@ -69,7 +69,7 @@ describe('the Serenity stage', () => {
         const { lede, eyebrow } = MAIN_MENU_MODES.serenity;
         expect(lede).toMatch(/^Nothing to play/);
         expect(lede).not.toMatch(/blocks fall|score/i);
-        expect(eyebrow).toBe('Breath · Worlds and music');
+        expect(eyebrow).toBe('Breathe · Worlds and music');
     });
 
     it('counts what the player has, and tells a new one where more worlds come from', () => {

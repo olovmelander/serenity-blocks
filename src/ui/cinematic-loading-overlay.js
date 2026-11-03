@@ -545,7 +545,7 @@ function _createOverlayElement(title) {
         content.appendChild(variant);
     }
     const tagline = element('p', 'cinematic-loading__tagline');
-    tagline.textContent = 'Stack \u00b7 Breath \u00b7 Ascend';
+    tagline.textContent = 'Stack \u00b7 Breathe \u00b7 Ascend';
     content.appendChild(tagline);
     overlay.appendChild(content);
 
