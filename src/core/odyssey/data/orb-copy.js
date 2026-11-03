@@ -390,9 +390,10 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     },
     'neon-dusk': {
         name: 'Neon Dusk',
-        description: 'A great sun sinks between neon mountains, mirrored in a floor of glass and light. '
-            + 'Build a steady score.',
-        tip: 'Keep clears coming piece after piece; on a score goal, the multiplier does the heavy lifting.',
+        description: 'A great sun sinks between neon mountains as the glass floor rises. '
+            + 'Hold it back, then play on for stars.',
+        tip: 'Rows rise faster and faster. Leave one column open: a long I piece digs out up to four rising rows '
+            + 'at once.',
     },
     'neon-district': {
         name: 'Rainlit Streets',

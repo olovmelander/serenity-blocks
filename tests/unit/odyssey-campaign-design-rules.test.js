@@ -64,7 +64,7 @@ const MEASURED = Object.freeze({
     54: [84, 103],
     55: [419, 189],
     57: [82, 30],
-    58: [147, 58],
+    58: [76, 31],
     59: [211, 86],
 });
 
@@ -97,8 +97,9 @@ const QUAD_ASK = Object.freeze({
 const ROLES = new Set(['arrival', 'teach', 'reinforce', 'twist', 'release', 'test', 'boss', 'rival']);
 const PEAKS = new Set(['test', 'boss', 'rival']);
 const GENTLE = new Set(['arrival', 'teach', 'twist', 'release']);
-// 39 is the survival orb (phase 3): its lap is the survival beyond the goal, where the extra stars are.
-const SHOWCASES = [32, 39, 47, 55, 59];
+// 39 and 58 are survival orbs (phase 3; 58 under the rising tide): their lap is the survival beyond the goal,
+// where the extra stars are.
+const SHOWCASES = [32, 39, 47, 55, 58, 59];
 // Phase 3: a rubble goal's stars count rows dug out; a survival goal's count seconds survived (a lower bound).
 const PRIMARY_METRIC = Object.freeze({ cascade: 'cascades', rubble: 'rubbleCleared', time: 'survived' });
 const CHAIN_KEYS = ['maxCascadeDepth', 'combo'];

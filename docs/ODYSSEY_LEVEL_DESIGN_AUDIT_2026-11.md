@@ -4,10 +4,10 @@
 1–1c (the retune, the rival caps and the test tooling) and phase 2's openings for orbs 2 and 12, on branch
 `feature/odyssey-level-design-phase1` (handover:
 [ODYSSEY_LEVEL_DESIGN_PHASE1_2026-11.md](ODYSSEY_LEVEL_DESIGN_PHASE1_2026-11.md)), then phase 3's new goals (dig out
-the rubble on orb 8, survive on orb 39) and in-game screenshots of the openings (§5.10, handover:
-[ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md](ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md)). This audits all 60 Odyssey orbs as
-they ship and proposes a campaign that is fun first, genuinely challenging and consistent from orb 1 to orb 60. It
-builds on [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUDIT_2026-10.md),
+the rubble on orb 8, survive on orb 39, the rising tide on orb 58) and in-game screenshots of the openings (§5.10,
+handover: [ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md](ODYSSEY_LEVEL_DESIGN_PHASE3_2026-11.md)). This audits all 60
+Odyssey orbs as they ship and proposes a campaign that is fun first, genuinely challenging and consistent from orb 1
+to orb 60. It builds on [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUDIT_2026-10.md),
 [ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md](ODYSSEY_JOURNEY_DIFFICULTY_2026-10.md),
 [ODYSSEY_BALANCE_HANDOVER_2026-10.md](ODYSSEY_BALANCE_HANDOVER_2026-10.md),
 [ODYSSEY_60_ORB_CAMPAIGN_2026-10.md](ODYSSEY_60_ORB_CAMPAIGN_2026-10.md),
@@ -89,7 +89,7 @@ the charm rules. It is mostly data:
 - **Hardest solo orb: 10 → 5.0** (orb 51, chapter 7's sprint). The fastest fall before one star goes from 37 to 105 ms
   a row, and the highest one-star clock pace from 1.62 to 0.75 pieces a second.
 - **Smoother and still climbing.** The largest rise from one orb to the next within a chapter goes from +6.0 to +2.5.
-  The average solo index per chapter runs 1.1, 1.1, 0.9, 2.1, 2.6, 3.1, 2.9 and 3.6.
+  The average solo index per chapter runs 1.1, 1.1, 0.9, 2.1, 2.6, 3.0, 2.9 and 3.4.
 - **Stars.** Free three stars 13 → 0, unreachable three stars 8 → 0, uncounted extra goals 26 → 0.
 - **Rules.** 127 breaches of the checkable design rules on 42 orbs → 0.
 - **Clears.** The novice proxy clears 93% of attempts (84% shipped); the regular proxy wins 85% of rival matches (68%).
@@ -397,7 +397,7 @@ them, and the regular proxy clears 45 and 59 on no seed. The rivals 56 and 60 lo
 | 5 Sky | 27–34 | 4.6 (10.0) → 2.9 (4.9) | 1 → 0 | 1 | 2 → 0 | score 3, lines 2, cascade 2, frags 1 |
 | 6 Space | 35–48 | 5.4 (10.0) → 3.2 (5.6) | 1 → 0 | 5 | 3 → 0 | score 7, cascade 2, lines 4, frags 1 |
 | 7 Black Hole | 49–56 | 5.9 (9.9) → 3.4 (6.6) | 3 → 0 | 1 | 1 → 0 | score 3, lines 2, cascade 2, frags 1 |
-| 8 Urban Dreams Encore | 57–60 | 7.2 (10.0) → 4.9 (8.8) | 2 → 1 | 2 | 0 → 0 | lines 1, score 2, frags 1 |
+| 8 Urban Dreams Encore | 57–60 | 7.2 (10.0) → 4.8 (8.8) | 2 → 1 | 2 | 0 → 0 | lines 1, score 2, frags 1 |
 
 - **Across the campaign** the curve doesn't rise; it saws. In chapters 1–4 it swings between about 0 and 4 orb to orb,
   driven by arrivals that start fast and rests that start at 720 ms. From orb 33 it jumps between walls (8–10) and
@@ -683,7 +683,7 @@ proxy (Q), which judges the Quad goals.
 | # | Orb | Role | Change (old → **new**) | Why | Bots N R S E Q: now → proposed | Index |
 |---|---|---|---|---|---|---|
 | 57 | Chromadelic Gateway | arrival | speed 120→84 ms → **180→126 ms** (`startLevel 5→5`, `fixedDropInterval None→180`); stars ≤210 s / ≤158 s → **≤75 s / ≤65 s, 1 extra goal**; extra goals [tetris-count=8, max-cascade-depth=6] → **[tetris-count=4]** | Pace 180 → 126 ms instead of 120 → 84. Real star times; three stars add 4 Quads. | 5/5 5/5 5/5 5/5 5/5 → 5/5 5/5 5/5 5/5 5/5 | 3.9 → 2.9 |
-| 58 | Neon Dusk | practise | goal score 46,000 → **score 34,000**; speed 99→58 ms → **190→125 ms** (`startLevel 6→6`, `fixedDropInterval None→190`); stars ≤460 s / ≤345 s → **≤135 s / ≤115 s, 1 extra goal**; extra goals [cascade=15, max-cascade-depth=6] → **[cascade=10]** | Shorter (34,000 instead of 46,000) at 190 → 125 ms instead of 99 → 58. Real star times; three stars add 10 cascades. | 5/5 5/5 4/5 5/5 3/5 → 5/5 5/5 4/5 5/5 4/5 | 4.8 → 3.0 |
+| 58 | Neon Dusk | twist | goal score 46,000 → **survive 60 s**; speed 99→58 ms → **160 ms** (`startLevel 6→6`, `fixedDropInterval None→160`); **rising tide**: a rubble row every 6 → 2 s over 180 s, from 8 s; modifiers ×M → **—**; stars ≤460 s / ≤345 s → **survive 120 s / survive 180 s**; extra goals [cascade=15, max-cascade-depth=6] → **[—]** | The encore's twist: survive the rising tide (rubble rows rise from below, faster over time) for a minute at a steady 160 ms, then play on; two stars at 2 minutes, three at 3. Replaces a score orb with the multiplier. | 5/5 5/5 4/5 5/5 3/5 → 5/5 5/5 4/5 5/5 2/5 | 4.8 → 2.4 |
 | 59 | Rainlit Streets | boss | goal score 160,000 in 210 s → **score 70,000 in 300 s**; speed 54→37 ms → **150→117 ms** (`startLevel 11→11`, `fixedDropInterval None→150`); stars score 200,000, 16 cascades, 4-wave chain / score 240,000, 20 cascades, 6-wave chain → **score 115,000, 14 cascades / score 140,000, 18 cascades, 5-wave chain**; extra goals [cascade=20, max-cascade-depth=6] → **[cascade=18, max-cascade-depth=5]** | The encore boss comes down from a wall to chapter 7's level instead of climbing past it: 70,000 in 300 s at 150 → 117 ms (0.70 pieces/s instead of 1.62). Stars after the goal: 115,000 with 14 cascades, then 140,000 with 18 and a 5-wave chain. | 0/5 0/5 2/5 5/5 1/5 → 5/5 5/5 5/5 5/5 3/5 | 10 → 4.9 |
 | 60 | Last Light | rival | goal Rival Neon (tier 8), 3 knockouts → **Rival Neon (tier 8), 3 knockouts, capped 340 APM** | The last rival stays the strongest but becomes beatable: capped at 340 actions a minute (tier 8 plays at 900). | 0/5 0/5 0/5 4/5 0/5 → 0/5 2/5 5/5 5/5 2/5 | 10 → 8.8 |
 
@@ -701,7 +701,7 @@ All but two are data on systems that already exist:
 | **Prepared opening** (new: `board.opening`, row strings as in Stillfall) | `applyGarbage` + Stillfall's row notation | 2 and 12 (phase 2, prototyped); 14 tried and rejected (§5.9) | the first cascade and the first Quad are one obvious placement away |
 | **Survive N seconds** (`primary: time`) | the evaluator's `time` case, a showcase lap to play on, a `survived` star key (at least N seconds) and a speed ramp (`speed.doublingSeconds`) | 39 (phase 3, built, §5.10) | a test of steadiness, not score |
 | **Dig out N rubble rows** (new: `primary: rubble`) | rubble rows counted on the settled grid by their GARBAGE cell type, which survives every clear | 8 (phase 3, built, §5.10) | gives the ocean chapter a goal of its own |
-| *Optional:* **rising tide** (a rubble row every N s) | `applyGarbage` on a timer | encore remix (not built: only if playtests want it) | a survival classic; not needed for the plan |
+| **Rising tide** (`mechanics.tide`: a rubble row every N s, tightening) | `applyGarbage` between pieces, gaps from the attempt's seed | 58 (built, §5.10) | a survival classic the bots can measure |
 
 None of these goes in `OdysseyMode.js`: it is under the line ratchet (ARCHITECTURAL_REMEDIATION_PLAN §fitness).
 They live in the data, the evaluator, `GameplayHybridEngine` and the briefing module. The deterministic-simulation rule
@@ -734,7 +734,7 @@ Implementation: an optional `versus.botOverrides` in `AUTHORED_BOT_CHALLENGES`. 
 | **1b · rivals** | `versus.botOverrides` (§5.5) | `levels.js`, `OdysseyBotMatch.js`, `puzzle-bot-controller.js` | Unit test: versus mode's config is byte-identical without overrides. Benchmark (15 seeds): at the chapter 8 rival, skilled ≥ 60% and regular ≥ 20%; at chapters 5–7, regular ≥ 40%. |
 | **1c · test tooling** | §5.7 levels 2–3: human-paced cadences (0.6, 1.0 and 1.6 pieces/s) in the benchmark, a per-attempt trace summary (tension, near-misses, reward cadence, shape, variety) and one card per orb | `scripts/odyssey-benchmark/profiles.mjs`, `runtime.mjs`, `report.mjs` | The human-paced cadences hold their target pace within ±10% on a calm orb. Cards for all 60 orbs from one overnight CPU run. |
 | **2 · prepared openings** | `board.opening` rows for 2 and 12 (and 29 if playtests ask), a briefing cue, and a tip that points at the board. Orb 14 keeps its rubble: every 3-wave puzzle needs a gap buried under a full row, which costs the players who don't solve it (§5.9). | `GameplayHybridEngine.seedStartingRows`, levels data, `odyssey-level-briefing.js`, `orb-copy.js` | Unit: an opening seeds exactly the authored cells, and each plays its lesson with the real physics (one I in the open column cascades on orb 2 and clears a Quad on orb 12). Benchmark: no proxy does worse beyond a one-seed swing over 15 seeds. Measured overnight: on orb 2 the novice proxy clears 15 of 15 (14 before) in 89 pieces instead of 128; on orb 12 the Quad proxy's median falls from 47 to 38 pieces. A stacking proxy can't judge a Quad opening: it never builds Quads, so it still needs 300–800 pieces. The real test is the playtest: do people learn the cascade and the Quad from them? Screenshots of both openings (WebGPU workflow). |
-| **3 · new goals** | Survive (with a `survived` star key and a speed ramp), dig out the rubble, optional rising tide. Built 2026-11-03 for orbs 39 and 8 (§5.10); the rising tide waits for playtests. | `VictoryConditionEvaluator`, `GameplayHybridEngine`, `objective-copy.js` | Evaluator unit tests per type; failure debrief copy; benchmark the orbs that adopt them. |
+| **3 · new goals** | Survive (with a `survived` star key and a speed ramp), dig out the rubble, the rising tide. Built 2026-11-03 for orbs 39, 8 and 58 (§5.10). | `VictoryConditionEvaluator`, `GameplayHybridEngine`, `objective-copy.js` | Evaluator unit tests per type; failure debrief copy; benchmark the orbs that adopt them. |
 | **4 · playtest** | The formative protocol in ODYSSEY_JOURNEY_DIFFICULTY (three experience groups, natural progression from orb 1), with §5.7's local attempt log, the two taps and the think-aloud orbs | playtest build only | §5.7's acceptance: medians inside the role targets, quits, boss named hardest, teach idea named. One tuning pass with the loop in §5.7, then re-verify neighbours. |
 
 ### 5.7 Test-and-tune programme: getting every orb right
@@ -825,8 +825,8 @@ attempt there had ended by 166 s. Star and extra-goal values were scored offline
 | Rival matches won by the regular proxy | 27/40 (68%) | 34/40 (85%) |
 | Fastest fall before one star (standard and hybrid) | 37 ms | 105 ms |
 | Highest one-star clock pace | 1.62 pieces/s (orb 59) | 0.75 pieces/s (orb 50) |
-| Largest index jump within a chapter | +6.0 (orb 33) | +2.5 (orb 47) |
-| Mean index | 4.1 | 2.6 |
+| Largest index jump within a chapter | +6.0 (orb 33) | +2.5 (orb 59) |
+| Mean index | 4.1 | 2.5 |
 | Orbs with free three stars | 13 | 0 |
 | Orbs whose three stars no policy reached | 8 | 0: — |
 | Orbs with uncounted extra goals | 26 | 0 |
@@ -834,7 +834,7 @@ attempt there had ended by 166 s. Star and extra-goal values were scored offline
 
 What the numbers say:
 
-- **Easier on average, by design.** The mean index drops from 4.1 to 2.6 because the walls go: most of the shipped
+- **Easier on average, by design.** The mean index drops from 4.1 to 2.5 because the walls go: most of the shipped
   difficulty was fall speed and clock pace beyond a person's reach. The challenge moves to construction (Quads, chains,
   cascades) and to the stars. Three stars now need more than a regular player's pace or a construction goal on every
   orb, and none come free.
@@ -1029,8 +1029,28 @@ whether regular players reach 3 minutes and only strong ones 5. The goal itself 
 **Gates** with both orbs: 9 of 9 over all 15 seeds, and on the tuning, fresh and combined sets; the confirmation set
 alone still misses only orb 52's three stars, as before.
 
-**Not built:** the rising tide (rubble pushing up on a timer). It stays an optional survival variant for an encore
-remix, if playtests ask for one.
+**The rising tide** (`mechanics.tide`) **on orb 58, Neon Dusk**, the encore's twist (built at the owner's request
+after phase 3). Rubble rows rise from below: the first at 8 s, then one every 6 s, tightening to one every 2 s over
+3 minutes. The goal is to survive a minute, then play on: two stars at 2 minutes, three at 3. The rows rise between
+pieces, never under a falling one, and the gaps come from the attempt's seed, holding the same column for a run of
+1–4 rows so one long I piece can dig several out at once. A row that would top the well out ends the run (a survival
+lap then finishes with the stars earned). The HUD counts down to the next row, the duels' garbage-arrival effect plays
+as rows land, and the briefing names the rule. The orb drops the score multiplier and its line-based speed-ups: a
+steady 160 ms, so the tide is the one pressure.
+
+Unlike the speed ramp on orb 39, the bots can judge the tide: it ends every run, so survival can be measured.
+
+| Orb 58, 15 seeds | Novice | Regular | Skilled | Expert | Quad builder |
+|---|---|---|---|---|---|
+| Survives the minute | 15/15 | 15/15 | 14/15 | 14/15 | 5/15 |
+| Three stars (3 minutes) | 2 | 2 | 4 | 12 | 0 |
+
+At human pace (10 seeds) the stacker survives the minute on 8 of 10 at a casual pace and 10 of 10 at regular and
+strong pace; two stars come on half or more of the runs, three stars on 2 of 10 at regular and strong pace and none
+at casual pace. The tide rewards digging technique more than raw speed, so regular and strong players earn three
+stars about equally often. The playtest question: does three minutes feel like a fair top mark?
+
+![The rising tide in game](images/odyssey-level-design-2026-11/in-game-rising-tide.jpg)
 
 **In game.** Both prepared openings (phase 2) and both new goals, captured in the real game at 30 fps with no console
 errors:
@@ -1042,6 +1062,8 @@ errors:
 | 09:50 | 8 (twist) | The chapter's digging twist asked for 28 lines, not digging. | Goal: dig out the 6 rubble rows | Novice 15 of 15; human casual 9 of 10. Kept. |
 | 09:50 | 39 | Phase 3's survival goal, first version: speed up with lines. | Goal: survive 90 s, then play on | **Rejected:** the stacker lasted the 15-minute cap at every pace. |
 | 10:15 | 39 | The speed table flattens, so survival never ends. | Ramp: twice as fast every 2:30, from 170 ms | Runs end. Bots still slide at full speed, so the extra stars come from the person model (3:00, 5:00). Kept. |
+| 11:15 | 58 (twist) | The owner asked for the rising tide. At 190 ms with a 90 s goal the novice proxy reached the goal on 3 of 5 seeds (gate 80%). | Goal 90 → 60 s, stars at 2 and 3 minutes | Novice 15 of 15; three stars not free. |
+| 11:45 | 58 | At a steady 190 ms the difficulty index read 2.0, a rise of 3.2 to the encore's boss (gate 3): the index doesn't count the tide. | Steady 190 → 160 ms, inside the encore's band | Rise 2.8; every gate passes over 15 seeds. Kept. |
 | 10:30 | 8 | Its three-star time rounded up to 30 s (1.03 pieces/s), under the 1.10 floor: a novice replayed at 1 piece/s got it on 8 of 15 seeds. | 30 → 25 s | 6 of 15; gates pass. Kept. |
 
 ---

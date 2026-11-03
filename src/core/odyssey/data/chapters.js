@@ -311,7 +311,7 @@ export const CHAPTER_CONFIGS = [
         name: 'Urban Dreams Encore',
         subtitle: 'One last electric dream',
         levelRange: [57, 60],
-        arcBeats: ['arrival', 'reinforce', 'boss', 'rival'],
+        arcBeats: ['arrival', 'twist', 'boss', 'rival'],
         targetDifficultyCurve: [7, 8, 9, 10],
 
         themes: {

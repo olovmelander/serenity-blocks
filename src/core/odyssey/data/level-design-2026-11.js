@@ -653,20 +653,27 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         role: 'arrival',
     },
-    // Shorter (34,000 instead of 46,000) at 190 → 125 ms instead of 99 → 58. Real star times; three stars add 10
-    // cascades.
+    // The encore's twist: survive the rising tide (rubble rows rise from below, faster over time) for a minute at
+    // a steady 160 ms, then play on; two stars at 2 minutes, three at 3. Replaces a score orb with the multiplier.
     58: {
-        mechanics: { speed: { startLevel: 6, fixedDropInterval: 190, levelProgression: true } },
+        victoryLapPolicy: 'showcase',
+        mechanics: {
+            speed: { startLevel: 6, fixedDropInterval: 160, levelProgression: false },
+            tide: {
+                startSeconds: 8,
+                firstEverySeconds: 6,
+                lastEverySeconds: 2,
+                rampSeconds: 180,
+            },
+        },
+        modifiers: { active: [] },
         victory: {
-            bonuses: [{ type: 'cascade', target: 10, description: 'Trigger 10 cascades' }],
-            primary: { type: 'score', target: 34000 },
+            primary: { type: 'time', target: 60 },
+            failure: { type: 'top-out', value: null },
+            bonuses: [],
         },
-        stars: {
-            one: { score: 34000 },
-            two: { score: 34000, time: 135 },
-            three: { score: 34000, time: 115, bonuses: 1 },
-        },
-        role: 'reinforce',
+        stars: { one: { survived: 60 }, two: { survived: 120 }, three: { survived: 180 } },
+        role: 'twist',
     },
     // The encore boss comes down from a wall to chapter 7's level instead of climbing past it: 70,000 in 300 s at
     // 150 → 117 ms (0.70 pieces/s instead of 1.62). Stars after the goal: 115,000 with 14 cascades, then 140,000

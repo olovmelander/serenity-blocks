@@ -11,6 +11,7 @@ const MULTIPLIER_RULE = 'Clears on consecutive pieces raise your score multiplie
 const MIRROR_RULE = 'Left and right controls are reversed.';
 const QUAD_RULE = 'A Quad is four lines cleared by one piece: leave one column open for a long I piece.';
 const RUBBLE_RULE = 'Rubble rows have gaps: clear the rows above them, then fill the gaps to break each row.';
+const TIDE_RULE = 'Rubble rows rise from below, faster as time goes on: clear lines to stay ahead of them.';
 const SURVIVAL_RULE = 'Stay alive until the timer reaches the goal, then keep going: '
     + 'every extra second counts toward your stars.';
 
@@ -68,6 +69,10 @@ function getSpeedRamp(level) {
     return `The pieces fall twice as fast every ${every}.`;
 }
 
+function hasTide(level) {
+    return Boolean(level?.mechanics?.tide);
+}
+
 function hasSpeedProgression(level) {
     const explicit = level?.mechanics?.speed?.levelProgression;
     if (typeof explicit === 'boolean') return explicit;
@@ -111,6 +116,7 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
         !duel && board && (board.rows !== 20 || board.startingRows > 0) && board.text,
         multiplier && MULTIPLIER_RULE,
         getSpeedRamp(nextLevel),
+        hasTide(nextLevel) && TIDE_RULE,
         hasModifier(nextLevel, 'speed-up') && 'Pieces fall 50% faster.',
         hasModifier(nextLevel, 'slow-start') && 'Opening drop speed is slower.',
     ].filter(Boolean);
@@ -143,6 +149,9 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
     if (hasModifier(nextLevel, 'slow-start') !== hasModifier(previousLevel, 'slow-start')) {
         changes.push(hasModifier(nextLevel, 'slow-start')
             ? 'Opening drop speed is slower.' : 'The slower opening is gone.');
+    }
+    if (hasTide(nextLevel) !== hasTide(previousLevel)) {
+        changes.push(hasTide(nextLevel) ? TIDE_RULE : 'No more rubble rising from below.');
     }
     const ramp = getSpeedRamp(nextLevel);
     if (ramp && ramp !== getSpeedRamp(previousLevel)) changes.push(ramp);

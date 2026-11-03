@@ -198,6 +198,8 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             const effects = mode._getBoardScene?.()?.sharedEffects;
             return session.duel ? effects?.playKnockout?.() : effects?.playGameOver?.();
         },
+        // The rising tide ends a solo run when its rows would top the well out (GameplayHybridEngine.riseTide).
+        onTideTopOut: () => mode._handleGameOver(session),
         onRoundWin: (options) => mode._getBoardScene?.()?.sharedEffects?.playRoundWin?.(options),
         onVictory: (options) => mode._getBoardScene?.()?.sharedEffects?.playVictory?.(options),
         spawnPiece: () => {
