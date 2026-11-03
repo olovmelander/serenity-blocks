@@ -24,6 +24,76 @@ const ATTACK_COUNTERS = [
 ];
 const wallNow = () => Number(process.hrtime.bigint()) / 1e6;
 
+/** The visible well's filled height (0-1) and whether a block sits in its top three visible rows. */
+function stackReading(grid, visibleRows) {
+    if (!Array.isArray(grid) || !grid.length || !(visibleRows > 0)) return { height: 0, nearTop: false };
+    const top = grid.findIndex((row) => row.some(Boolean));
+    if (top < 0) return { height: 0, nearTop: false };
+    const filled = grid.length - top;
+    return { height: Math.min(1, filled / visibleRows), nearTop: filled >= visibleRows - 2 };
+}
+
+const median = (values) => {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+const round3 = (value) => Math.round(value * 1000) / 1000;
+
+/**
+ * How an attempt felt to play (level design audit 2026-11, §5.7 level 3), from one sample per placed piece
+ * in virtual time, up to the goal. Difficulty gates cannot see boredom or stress; these can:
+ * - tension: share of pieces placed with the stack above 60% of the visible well;
+ * - near-misses: times the stack climbed into the top three visible rows;
+ * - reward gaps: seconds between notable events (a multi-line clear or a cascade);
+ * - shape: mean height in the last third minus the first (does the orb build to its end?);
+ * - clears: clear types, and the largest type's share of all clears (variety).
+ */
+export function summarizeFeel(samples) {
+    const play = samples.filter((sample) => !sample.goal);
+    if (play.length < 3) return null;
+    const first = play[0];
+    const last = play[play.length - 1];
+    let nearMisses = 0;
+    let wasNear = false;
+    const events = [];
+    play.forEach((sample, index) => {
+        if (sample.nearTop && !wasNear) nearMisses++;
+        wasNear = sample.nearTop;
+        const before = play[index - 1];
+        if (before && ['doubles', 'triples', 'tetrises', 'cascades'].some((key) => sample[key] > before[key])) {
+            events.push(sample.t);
+        }
+    });
+    const gaps = [];
+    let previous = first.t;
+    for (const at of events) {
+        gaps.push(at - previous);
+        previous = at;
+    }
+    gaps.push(last.t - previous);
+    const third = Math.max(1, Math.floor(play.length / 3));
+    const meanHeight = (entries) => entries.reduce((sum, entry) => sum + entry.height, 0) / entries.length;
+    const clears = Object.fromEntries(['singles', 'doubles', 'triples', 'tetrises']
+        .map((key) => [key, last[key] - first[key]]));
+    const totalClears = Object.values(clears).reduce((sum, count) => sum + count, 0);
+    const minutes = (last.t - first.t) / 60;
+    return {
+        samples: play.length,
+        tension: round3(play.filter((sample) => sample.height > 0.6).length / play.length),
+        nearMisses,
+        nearMissesPerMinute: minutes > 0 ? round3(nearMisses / minutes) : 0,
+        notableEvents: events.length,
+        rewardGapMedianSeconds: round3(median(gaps)),
+        rewardGapMaxSeconds: round3(Math.max(...gaps)),
+        shape: round3(meanHeight(play.slice(-third)) - meanHeight(play.slice(0, third))),
+        clears,
+        cascades: last.cascades - first.cascades,
+        dominantClearShare: totalClears ? round3(Math.max(...Object.values(clears)) / totalClears) : null,
+    };
+}
+
 /** Run real legacy Odyssey rules without presentation or campaign persistence. */
 export async function runAttempt({
     levelId, seed, profile = 'stacker', maxSimSeconds = 900, maxPieces = 1200,
@@ -42,6 +112,9 @@ export async function runAttempt({
     let result;
     let terminal;
     let humanPieces = 0;
+    // The feel trace: one reading per placed piece, in virtual time (summarizeFeel).
+    const feelSamples = [];
+    let feelPiecesSampled = -1;
     let goalReachedAtSeconds = null;
     let goalMetrics = null;
     let goalStars = null;
@@ -442,6 +515,20 @@ export async function runAttempt({
                     return;
                 }
                 if (gameState.isProcessingPhysics) return;
+                const settled = hybridEngine.getMetrics();
+                if (settled.piecesPlaced !== feelPiecesSampled) {
+                    feelPiecesSampled = settled.piecesPlaced;
+                    feelSamples.push({
+                        t: clock.now / 1000,
+                        ...stackReading(gameState.boardGrid, levelConfig.mechanics.board?.rows),
+                        singles: settled.singles || 0,
+                        doubles: settled.doubles || 0,
+                        triples: settled.triples || 0,
+                        tetrises: settled.tetrises || 0,
+                        cascades: settled.cascades || 0,
+                        goal: gameState.goalComplete === true,
+                    });
+                }
                 if (gameState.isInfinityMode) {
                     hybridEngine.victoryEvaluator.updateHeight(calculateBuildHeight(gameState));
                 }
@@ -507,6 +594,7 @@ export async function runAttempt({
             qualityCensored: lapEndReason === 'lap-time-limit' || !!lapEndReason?.endsWith('budget'),
             actions: actionsTaken,
             telemetry: telemetry(),
+            feel: session.duel ? null : summarizeFeel(feelSamples),
             duel: session.duel ? { ...session.duel.getResult(), telemetry: duelTelemetry() } : null,
             simulationClock: session.simulationClock,
             timingPolicy: 'legacy-virtual-60hz-normal-motion',

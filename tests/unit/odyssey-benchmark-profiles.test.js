@@ -391,8 +391,8 @@ describe('benchmark-only bot profiles', () => {
 });
 
 describe('measured benchmark capability gates', () => {
-    it('covers the effective authored chain requirements, which now stop at six waves', () => {
-        expect(getConstructionDepthTargets()).toEqual([3, 4, 5, 6, 8, 10]);
+    it('covers the effective authored chain requirements, which now stop at five waves', () => {
+        expect(getConstructionDepthTargets()).toEqual([3, 4, 5, 8, 10]);
     });
 
     it('constructs and replays a deeper chain using only real seeded tetromino actions', async () => {
@@ -459,12 +459,12 @@ describe('measured benchmark capability gates', () => {
             constructionLevelIds: [55, 59],
         });
         expect(result.mechanics.status).toBe('pass');
-        // The empty-board stopping target never drops below the ten-wave gate, so the six-wave
+        // The empty-board stopping target never drops below the ten-wave gate, so the five-wave
         // mastery chains leave it at ten.
         expect(result.profiles[0].construction.demonstrations.every((demo) => demo.targetDepth === 10)).toBe(true);
         expect(result.authoredConstruction).toMatchObject({ timed: false, kind: 'authored-board-construction' });
         expect(result.authoredConstruction.demonstrations.map((demo) => [demo.levelId, demo.maximumDepth,
-            demo.requirements.maximumEffectiveChainDepth])).toEqual([[55, 0, 6], [59, 0, 6]]);
+            demo.requirements.maximumEffectiveChainDepth])).toEqual([[55, 0, 5], [59, 0, 5]]);
         expect(result.authoredConstruction.demonstrations.every((demo) => demo.status === 'inconclusive')).toBe(true);
     }, 30000);
 });

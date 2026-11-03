@@ -9,6 +9,7 @@ const ATTACK_RULE = 'Clear two or more lines with one piece to send attack rows.
 const RESET_RULE = 'Both wells reset after every top-out.';
 const MULTIPLIER_RULE = 'Clears on consecutive pieces raise your score multiplier.';
 const MIRROR_RULE = 'Left and right controls are reversed.';
+const QUAD_RULE = 'A Quad is four lines cleared by one piece: leave one column open for a long I piece.';
 
 function positiveNumber(value) {
     return Number.isFinite(value) && value > 0 ? value : null;
@@ -28,12 +29,16 @@ function getBoard(level) {
     const board = level?.mechanics?.board;
     const rows = positiveNumber(board?.rows);
     if (!rows) return null;
-    // Match the engine's four-row starting clearance, without exposing hidden rows.
-    const requested = Math.max(0, Math.floor(Number(board.startingRows) || 0));
+    // Match the engine's four-row starting clearance, without exposing hidden rows. A prepared opening
+    // (authored rows) is set up for the player rather than dug through.
+    const prepared = Array.isArray(board.opening) ? board.opening.length : 0;
+    const requested = Math.max(0, Math.floor(Number(prepared || board.startingRows) || 0));
     const startingRows = Math.min(requested, Math.max(0, rows - 4));
-    const opening = startingRows > 0
-        ? `${startingRows} ${startingRows === 1 ? 'row' : 'rows'} to dig through`
-        : 'starts empty';
+    const rowWord = startingRows === 1 ? 'row' : 'rows';
+    let opening = 'starts empty';
+    if (startingRows > 0) {
+        opening = prepared ? `${startingRows} ${rowWord} set up for you` : `${startingRows} ${rowWord} to dig through`;
+    }
     return { rows, startingRows, text: `${rows}-row well · ${opening}.` };
 }
 
@@ -45,6 +50,7 @@ function getGoalRule(level) {
     const type = level?.victory?.primary?.type;
     if (type === 'cascade') return CASCADE_RULE;
     if (type === 'combo') return CHAIN_RULE;
+    if (type === 'tetrises') return QUAD_RULE;
     return null;
 }
 
@@ -58,9 +64,8 @@ function hasSpeedProgression(level) {
 function getGoal(level) {
     const primary = level?.victory?.primary;
     if (!primary || !positiveNumber(primary.target)) return 'Clear the orb';
-    if (primary.type === 'tetrises') return `Clear ${primary.target} quads`;
     if (primary.type === 'height') return `Build to ${primary.target} rows`;
-    if (!['lines', 'score', 'cascade', 'time', 'combo', 'frags'].includes(primary.type)) {
+    if (!['lines', 'score', 'cascade', 'time', 'combo', 'tetrises', 'frags'].includes(primary.type)) {
         return 'Clear the orb';
     }
     return formatOdysseyMapObjective(primary);

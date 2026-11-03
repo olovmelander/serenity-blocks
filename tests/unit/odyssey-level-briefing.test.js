@@ -10,7 +10,7 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
         expect(result.goal).toBe('Trigger 3 cascades');
         expect(result.changes).toEqual([
             'A cascade counts when falling blocks clear again.',
-            '24-row well · starts empty.',
+            '24-row well · 3 rows set up for you.',
         ]);
         expect(result.rules).toEqual(result.changes);
         expect(result.deadline).toBeNull();
@@ -55,9 +55,9 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
 
     it('retains a finale deadline, full well setup and score streak rule after the preview', () => {
         const result = briefing(55, 54);
-        expect(result.goal).toBe('Score 250,000 points');
+        expect(result.goal).toBe(`Score ${(160000).toLocaleString()} points`);
         expect(result.changes).toEqual([
-            'Reach the goal within 8:00.',
+            'Reach the goal within 10:00.',
             '100-row well · 30 rows to dig through.',
             'Clears on consecutive pieces raise your score multiplier.',
         ]);
@@ -69,7 +69,8 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
         next.victory.primary = { type: 'combo', target: 4 };
         next.victory.failure.value = 45;
         next.modifiers.active.push('mirror');
-        const result = getOdysseyLevelBriefing(next, getLevelById(53));
+        // Orb 52 plays unmirrored (orb 53 is the mirrored orb since the level design audit 2026-11).
+        const result = getOdysseyLevelBriefing(next, getLevelById(52));
         expect(result.goal).toBe('Trigger a chain of at least 4 waves');
         expect(result.changes).toEqual([
             'Left and right controls are reversed.',
@@ -77,6 +78,21 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
             'One locked piece must trigger the whole chain; the first clear is wave one.',
         ]);
         expect(result.rules).toContain('Clears on consecutive pieces raise your score multiplier.');
+    });
+
+    it('announces the mirrored controls on Murmuration and their return after it', () => {
+        expect(briefing(53, 52).changes[0]).toBe('Left and right controls are reversed.');
+        expect(briefing(53, 52).rules).toContain('Left and right controls are reversed.');
+        expect(briefing(54, 53).rules).not.toContain('Left and right controls are reversed.');
+    });
+
+    it('names a Quad goal in Quads and explains what a Quad is', () => {
+        const result = briefing(12, 11);
+        expect(result.goal).toBe('Clear 3 Quads');
+        expect(result.rules)
+            .toContain('A Quad is four lines cleared by one piece: leave one column open for a long I piece.');
+        // Its prepared opening (phase 2) is set up for the player, not rubble to dig through.
+        expect(result.rules).toContain('20-row well · 4 rows set up for you.');
     });
 
     it('only announces fixed gravity when progression actually changes', () => {

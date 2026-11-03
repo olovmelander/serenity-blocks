@@ -8,7 +8,8 @@ import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 import { OdysseyOpponentBoard } from '../../rendering/phaser/odyssey-opponent-board.js';
 import { updateNextQueue } from '../next-queue-ui.js';
 import {
-    formatOdysseyBonusObjective, formatOdysseyChainGoal, formatOdysseyStarCondition, getOdysseyLevelGuide,
+    formatOdysseyBonusObjective, formatOdysseyChainGoal, formatOdysseyMapObjective, formatOdysseyStarCondition,
+    getOdysseyLevelGuide,
 } from './objective-copy.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import {
@@ -804,7 +805,7 @@ export class OdysseyHUD {
             objectiveText = formatOdysseyChainGoal(target);
             break;
         case 'tetrises':
-            objectiveText = `Clear ${target} quads`;
+            objectiveText = formatOdysseyMapObjective({ type, target });
             break;
         case 'time':
             objectiveText = `Survive ${target} seconds`;

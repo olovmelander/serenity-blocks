@@ -9,6 +9,13 @@ import { ODYSSEY_DUEL_GRAVITY_BY_CHAPTER, ODYSSEY_DUEL_KNOCKOUTS } from '../../s
 
 const DUEL_IDS = [5, 10, 18, 26, 34, 48, 56, 60];
 const DUEL_NAMES = ['Cinder', 'Coral', 'Willow', 'Frost', 'Zephyr', 'Nova', 'Prism', 'Neon'];
+// Level design audit 2026-11 (R8, D8): each rival is at least as smart as the last and faster, but never faster
+// than a strong person. Prism (56) plays at tier 6 like Nova: tier 7's two-piece lookahead made it as hard as the
+// last rival for a person.
+const RIVAL_TIERS = [1, 2, 3, 4, 5, 6, 6, 8];
+const RIVAL_CAPS = [null, null, null, null,
+    { maxApm: 270, reactionMs: [200, 380] }, { maxApm: 300, reactionMs: [180, 340] },
+    { maxApm: 330, reactionMs: [160, 320] }, { maxApm: 340, reactionMs: [150, 300] }];
 
 function cloneLevel(id) {
     return structuredClone(getLevelById(id));
@@ -34,9 +41,12 @@ describe('Odyssey campaign objectives', () => {
             expect(duel.isChapterStart).toBe(false);
             expect(duel.isChapterEnd).toBe(true);
             expect(duel.mechanics.versus).toEqual({
-                botDifficulty: index + 1, botName: DUEL_NAMES[index], fragsToWin: ODYSSEY_DUEL_KNOCKOUTS,
+                botDifficulty: RIVAL_TIERS[index],
+                botName: DUEL_NAMES[index],
+                fragsToWin: ODYSSEY_DUEL_KNOCKOUTS,
+                ...(RIVAL_CAPS[index] ? { botOverrides: RIVAL_CAPS[index] } : {}),
             });
-            expect(duel.metadata.subtitle).toContain(DUEL_NAMES[index]);
+            expect(duel.metadata.subtitle).toBe(`Rival · ${DUEL_NAMES[index]} · Tier ${RIVAL_TIERS[index]}`);
             expect(duel.metadata.description).toContain(DUEL_NAMES[index]);
             expect(duel.victory.primary.type).toBe('frags');
             expect(duel.victory.primary.target).toBe(ODYSSEY_DUEL_KNOCKOUTS);
@@ -56,6 +66,9 @@ describe('Odyssey campaign objectives', () => {
             if (index > 0) {
                 expect(getBotDifficultyConfig(index + 1).actionIntervalMs)
                     .toBeLessThan(getBotDifficultyConfig(index).actionIntervalMs);
+                // The capped rivals still act faster than the one before them.
+                const apm = (i) => RIVAL_CAPS[i]?.maxApm ?? getBotDifficultyConfig(i + 1).maxApm;
+                expect(apm(index)).toBeGreaterThan(apm(index - 1));
                 expect(duel.mechanics.speed.fixedDropInterval)
                     .toBeLessThan(duels[index - 1].mechanics.speed.fixedDropInterval);
             }
@@ -101,23 +114,26 @@ describe('Odyssey campaign objectives', () => {
                 expect(level.stars[tier][metric], `Level ${level.id}, ${tier} stars`).toBe(primary.target);
             }
         }
+        // Audit 2026-11: the goal alone earns one star; the quality stars count the extra goals.
         const level = getLevelById(2);
         const evaluator = new VictoryConditionEvaluator();
         for (let sequence = 0; sequence < level.victory.primary.target; sequence++) {
             evaluator.onCascade(3);
         }
         expect(evaluator.evaluate({}, level.victory)).toBe(true);
-        expect(evaluator.calculateStars(level.stars, {})).toBe(3);
-        expect(getLevelById(52).stars.three.cascades).toBe(22);
-        expect(getLevelById(52).stars.three.maxCascadeDepth).toBe(6);
+        expect(evaluator.calculateStars(level.stars, {})).toBe(1);
+        expect(evaluator.calculateStars(level.stars, {}, [true, false])).toBe(2);
+        expect(evaluator.calculateStars(level.stars, {}, [true, true])).toBe(3);
+        expect(getLevelById(52).stars.three.cascades).toBe(14);
+        expect(getLevelById(52).stars.three.maxCascadeDepth).toBe(4);
     });
 
     it('retains meaningful quality tiers and extended showcase goals', () => {
-        const solo = getLevelById(12);
+        const solo = getLevelById(1);
         expect(solo.stars.two.time).toBeGreaterThan(solo.stars.three.time);
         expect(getLevelById(32).stars.three.cascades).toBeGreaterThan(getLevelById(32).victory.primary.target);
-        expect(getLevelById(55).stars.three.score).toBe(400000);
-        expect(getLevelById(59).stars.three.score).toBe(240000);
+        expect(getLevelById(55).stars.three.score).toBe(270000);
+        expect(getLevelById(59).stars.three.score).toBe(140000);
 
         const authored = cloneLevel(13);
         authored.stars.three.score = authored.victory.primary.target * 2;

@@ -460,7 +460,8 @@ function countOffBoardCells(state) {
 export async function searchMastery(options = {}) {
     const config = normalizeMasterySearchOptions(options);
     normalizeSessionSeed(options.seed);
-    const level = getLevelById(options.levelId);
+    // `levelConfig` lets a caller search a frozen orb (tests keep the shipped 2026-10 mastery tiers).
+    const level = options.levelConfig || getLevelById(options.levelId);
     if (!level || level.mechanics?.versus) throw new RangeError('Mastery search requires an authored solo orb');
     const engine = new GameplayHybridEngine();
     engine.configure(level);

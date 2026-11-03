@@ -72,7 +72,11 @@ describe.each([
     });
 
     it('retains the canonical schedule when no custom opening interval is authored', async () => {
-        const engine = createEngine(getLevelById(1));
+        // Since the level design audit (2026-11) every campaign orb with progression authors its opening, so
+        // the canonical schedule is checked on orb 1 with that opening removed.
+        const level = structuredClone(getLevelById(1));
+        level.mechanics.speed = { startLevel: 1, levelProgression: true, fixedDropInterval: null };
+        const engine = createEngine(level);
         const state = engine.gameState;
         expect(state.dropInterval).toBe(LEVEL_SPEEDS[0]);
         expect(state.speedMultiplier).toBeUndefined();
@@ -118,7 +122,13 @@ describe.each([
     });
 });
 
-it('limits the new progression scaling to orb 6 across all 60 composed configurations', () => {
+// Level design audit 2026-11 (R1): speed changes only through the proportional curve. Every standard or
+// hybrid orb with progression authors its opening interval and scales from it; none falls back to the raw
+// 720 -> 320 ms schedule.
+const PROPORTIONAL_ORBS = [1, 4, 6, 8, 11, 13, 15, 16, 19, 21, 23, 24, 27, 28, 31, 33, 35, 37, 38, 39, 40, 41, 42,
+    43, 45, 46, 49, 50, 51, 57, 58, 59];
+
+it('scales every authored opening proportionally across all 60 composed configurations', () => {
     const scaledIds = [];
     for (const level of LEVEL_CONFIGS) {
         const state = createEngine(level).gameState;
@@ -131,6 +141,11 @@ it('limits the new progression scaling to orb 6 across all 60 composed configura
         expect(state.disableLevelProgression, `orb ${level.id} progression`).toBe(!speed.levelProgression);
         if (state.speedMultiplier !== undefined) scaledIds.push(level.id);
     }
-    expect(scaledIds).toEqual([6]);
+    expect(scaledIds).toEqual(PROPORTIONAL_ORBS);
+    for (const level of LEVEL_CONFIGS.filter((entry) => entry.mechanics.speed.levelProgression)) {
+        expect(level.mechanics.speed.fixedDropInterval, `orb ${level.id} authored opening`).toBeGreaterThan(0);
+        expect(level.mechanics.speed.startLevel, `orb ${level.id} skips the 720 -> 320 cliff`)
+            .toBeGreaterThanOrEqual(2);
+    }
     expect(LEVEL_CONFIGS).toHaveLength(60);
 });

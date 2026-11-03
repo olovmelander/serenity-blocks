@@ -29,8 +29,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Crystal Cascade',
         description: 'Crystals glow along a hall of rock above a still pool. '
             + 'This is where you learn to make the blocks cascade.',
-        tip: 'Leave gaps under your overhangs. When a line clears, the blocks above fall into the gaps '
-            + 'and can clear again.',
+        tip: 'A block hangs over a gap. Fill the open column: when the line clears, the block drops in '
+            + 'and clears again.',
     },
     geode: {
         name: 'Geode Heart',
@@ -68,8 +68,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'koi-pond': {
         name: 'Koi Sanctuary',
         description: 'Koi rise through a moonlit garden pond beside a stone lantern. '
-            + 'Stack cleanly and keep the lines coming.',
-        tip: 'Use the preview to plan your next pieces, and keep one column open for multi-line clears.',
+            + 'Dig through the silt one line at a time.',
+        tip: 'Clear the opening rows one clean line at a time, and keep one column open for multi-line clears.',
     },
     stillwater: {
         name: 'Tarn of Wisps',
@@ -95,8 +95,9 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     spring: {
         name: 'Spring Flood',
         description: 'A northern river runs high with the spring melt, past meadows white with anemones. '
-            + 'Keep an easy rhythm.',
-        tip: 'Let the rapids set your pace: steady drops, clean lines, and every clear carried away downstream.',
+            + 'Clear your first Quads.',
+        tip: 'Leave one column open like a channel through the rapids, then drop a long I piece in to clear '
+            + 'four lines.',
     },
     'golden-forest': {
         name: 'Golden Reflection',
@@ -108,8 +109,9 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'moonlit-greenhouse': {
         name: 'Glasshouse Reverie',
         description: 'Moonlight slants through a glass palm house where moths circle the lanterns. '
-            + 'Build cascades calmly.',
-        tip: 'Build one layer at a time, leaving a gap under each shelf for the blocks above to drop into.',
+            + 'Build your first chain calmly.',
+        tip: 'Build a shelf with a gap beneath it. When a clear drops the shelf into the gap, it can clear again: '
+            + 'that is a chain.',
     },
     tornado: {
         name: 'Gathering Storm',
@@ -126,9 +128,9 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'halcyon-apex': {
         name: 'Halcyon Ascension',
         description: 'A dawn lagoon mirrors a temple and the crystal floating over it. '
-            + 'Chain cascades and the sanctuary rises.',
-        tip: 'The tall well leaves room for long chains. Build upward in shelves and keep the gaps beneath '
-            + 'them open.',
+            + 'Score against the clock as it rises.',
+        tip: 'Cascades and clears on consecutive pieces score the most here. Build upward in shelves and keep the '
+            + 'clears coming.',
     },
     summer: {
         name: 'Summer Glow',
@@ -167,7 +169,7 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Everest Ascent',
         description: 'Prayer flags snap on a high pass at first light, above a sea of cloud. '
             + 'Race the clock to the top.',
-        tip: 'The pieces start fast. Take safe doubles and triples rather than waiting too long for a Quad.',
+        tip: 'The clock is the real climb. Take safe doubles and triples rather than waiting too long for a Quad.',
     },
     'high-coast': {
         name: 'The High Coast',
@@ -205,7 +207,7 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Aurora Passage',
         description: 'Aurora curtains sway over snowy peaks and a mirror lake; every clear strums them. '
             + 'Precision beats force.',
-        tip: 'Take clean doubles and triples to keep the multiplier alive until a Quad opens up.',
+        tip: 'Keep the stack flat with one column open, and save that column for the long I piece: every Quad counts.',
     },
     'nimbus-veil': {
         name: 'Nimbus Veil',
@@ -216,7 +218,7 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     sunbraid: {
         name: 'The Turning Suns',
         description: 'Three colored suns wheel over a pale valley, and every shadow takes a color. '
-            + 'The pieces fall fast.',
+            + 'Race the clock across it.',
         tip: 'Chains spin the suns faster. Keep the stack low and take every clear the light offers.',
     },
     parhelion: {
@@ -256,8 +258,7 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Stellar Flare',
         description: 'A giant star burns inside the glowing shells it shed. '
             + 'Dig out of the opening rows and keep the stack low.',
-        tip: 'Quick drops leave little room for repairs. Dig clean escape routes, use the preview and stay '
-            + 'compact.',
+        tip: 'Rubble leaves little room for repairs. Dig clean escape routes, use the preview and stay compact.',
     },
     'blood-moon': {
         name: 'Blood Moon',
@@ -268,12 +269,12 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'void-ember': {
         name: 'Dying Ember',
         description: 'A dying star glows like a banked coal, fire in the cracks of its crust. Keep the score climbing.',
-        tip: 'The pieces start fast. Keep clears flowing; a piece that clears nothing resets the multiplier.',
+        tip: 'Quads score the most here. Keep clears flowing; a piece that clears nothing resets the multiplier.',
     },
     'aether-tides': {
         name: 'Aether Surge',
         description: 'A river of glowing gas winds between two stars and bends to their pull. '
-            + 'The pieces fall fast: keep moving.',
+            + 'Keep moving against the clock.',
         tip: 'A Quad clears four lines with one piece. The fastest way through is almost always the cleanest.',
     },
     'astral-weave': {
@@ -286,8 +287,7 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Twin-Sun Dunes',
         description: 'Twin suns set over alien dunes as something vast breaches the crests. '
             + 'Cross them with deliberate lines.',
-        tip: 'The pieces start fast and only get faster. Keep the stack open and take wide clears to keep '
-            + 'moving.',
+        tip: 'The pieces get faster as you clear. Keep the stack open and take wide clears to keep moving.',
     },
     'vesper-chrysalis': {
         name: 'Celestial Chrysalis',
@@ -298,8 +298,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'stellar-drift': {
         name: 'Silent Drift',
         description: 'A ringed giant fills the sky as you drift past two far moons. '
-            + 'No clock, no rush: build your score in peace.',
-        tip: 'Set up clean stacks and wait for the clears that score the most.',
+            + 'No clock, no rush: build your Quads in peace.',
+        tip: 'Keep one column open and wait for the long I piece. Every Quad here is worth the wait.',
     },
     'solar-eclipse': {
         name: 'Eclipse Horizon',
@@ -343,8 +343,9 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'chiral-gold': {
         name: 'Golden Convergence',
         description: 'Two towers of braided gold turn in opposite directions over still black water. '
-            + 'A sprint at very high speed.',
-        tip: 'High speed demands a clear plan. Trust the preview, keep the well open and favor multi-line clears.',
+            + 'A sprint at top pace.',
+        tip: 'The journey\'s fastest pieces demand a clear plan. Trust the preview, keep the well open and favor '
+            + 'multi-line clears.',
     },
     'voltage-storm': {
         name: 'Voltage Storm',
@@ -355,7 +356,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Murmuration',
         description: 'A swarm of light wheels through a dark nebula, gathering into shapes. '
             + 'Steady speed: dig out and breathe.',
-        tip: 'Do not race the board. Let each cascade finish before you commit to the next shape.',
+        tip: 'Left and right are reversed here. Do not race the board: let each cascade finish before you commit to '
+            + 'the next shape.',
     },
     'serenity-warp': {
         name: 'Serenity Passage',
@@ -373,7 +375,7 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
     'chromatic-impasto': {
         name: 'Chromatic Impasto',
         description: 'Thick oil paint swirls under a studio lamp. '
-            + 'Your rival, Prism, thinks two pieces ahead and loves a combo.',
+            + 'Your rival, Prism, is the quickest yet and loves a combo.',
         tip: 'Prism attacks in bursts. Keep your stack low between them and answer with cascades of your own.',
     },
 

@@ -34,9 +34,10 @@ describe('Odyssey retry debrief', () => {
     });
 
     it.each([
-        [getLevelById(51), { lines: 65 }, '1 line short of the goal.'],
+        [getLevelById(51), { lines: 49 }, '1 line short of the goal.'],
         [getLevelById(49), { score: 35999 }, '1 point short of the goal.'],
         [getLevelById(2), { cascades: 2 }, '1 cascade sequence short of the goal.'],
+        [getLevelById(12), { tetrises: 2 }, '1 Quad short of the goal.'],
         [soloLevel('time', 60), { time: 59.9 }, '1 second short of the goal.'],
     ])('reports a one-unit shortfall without rounding it into completion', (level, metrics, expected) => {
         const debrief = getOdysseyRetryDebrief(level, metrics, 'top-out');
@@ -103,7 +104,8 @@ describe('Odyssey retry debrief', () => {
         expect(getOdysseyRetryDebrief(getLevelById(1), { score: 5000 }, 'top-out')).toBeNull();
     });
 
-    it.each(['custom', 'height', 'tetrises', 'frags'])(
+    // Quad goals (orbs 12, 29, 44 since the level design audit 2026-11) now have their own debrief.
+    it.each(['custom', 'height', 'frags'])(
         'leaves unsupported %s goals to the existing failure presentation',
         (type) => {
             const metrics = { [type]: 1, undefined: 1 };
@@ -132,14 +134,22 @@ describe('Odyssey retry debrief', () => {
 
     it('keeps optional mastery separate from a timed primary shortfall', () => {
         const debrief = getOdysseyRetryDebrief(getLevelById(55), {
-            score: 249000, time: 480, maxCombo: 6, cascades: 28, tetrises: 12,
+            score: 159000, time: 600, maxCombo: 6, cascades: 28, tetrises: 12,
         }, 'time');
-        expect(debrief.target).toBe(250000);
+        expect(debrief.target).toBe(160000);
         expect(debrief.remainingText).toBe(`${(1000).toLocaleString()} points short of the goal.`);
         expect(debrief.tip).toContain('main goal within the time limit');
         expect(debrief.tip).toContain('extra stars can wait for a replay');
-        expect(debrief.progressLabel).not.toContain((400000).toLocaleString());
+        expect(debrief.progressLabel).not.toContain((270000).toLocaleString());
         expect(debrief).not.toHaveProperty('stars');
+    });
+
+    it('explains a Quad goal in Quads, with the open-column cue', () => {
+        const debrief = getOdysseyRetryDebrief(getLevelById(29), { tetrises: 3 }, 'top-out');
+        expect(debrief.objective).toBe('Clear 5 Quads');
+        expect(debrief.remainingText).toBe('2 Quads short of the goal.');
+        expect(debrief.progressLabel).toBe('3 / 5 Quads');
+        expect(debrief.tip).toContain('one column left open');
     });
 
     it('teaches the score multiplier only when the level activates it', () => {
